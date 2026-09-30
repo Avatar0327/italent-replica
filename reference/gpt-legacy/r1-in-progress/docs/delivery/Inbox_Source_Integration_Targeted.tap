@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: schedule validates scope, time ranges, candidate and interviewer conflicts; cancel retains evidence and releases the slot
+ok 1 - schedule validates scope, time ranges, candidate and interviewer conflicts; cancel retains evidence and releases the slot
+  ---
+  duration_ms: 306.135591
+  type: 'test'
+  ...
+# Subtest: only assigned current manager can complete ended appointment using frozen archived template; result and completion roll back together
+ok 2 - only assigned current manager can complete ended appointment using frozen archived template; result and completion roll back together
+  ---
+  duration_ms: 269.886031
+  type: 'test'
+  ...
+# Subtest: future, cancelled, moved and revoked appointments cannot be signed and pending schedules block legacy-offer bypass
+ok 3 - future, cancelled, moved and revoked appointments cannot be signed and pending schedules block legacy-offer bypass
+  ---
+  duration_ms: 260.941274
+  type: 'test'
+  ...
+# Subtest: rescheduling retains archived frozen form, transfers evaluation authority and preserves earlier schedule history
+ok 4 - rescheduling retains archived frozen form, transfers evaluation authority and preserves earlier schedule history
+  ---
+  duration_ms: 159.530099
+  type: 'test'
+  ...
+# Subtest: unified inbox shows only currently designated ended interviews and removes completed or cancelled work
+ok 5 - unified inbox shows only currently designated ended interviews and removes completed or cancelled work
+  ---
+  duration_ms: 438.369975
+  type: 'test'
+  ...
+# Subtest: payroll references only permitted frozen aggregates; amounts and employee masking remain independent
+ok 6 - payroll references only permitted frozen aggregates; amounts and employee masking remain independent
+  ---
+  duration_ms: 234.438316
+  type: 'test'
+  ...
+# Subtest: reopening or refreezing a source blocks submission and approval until an explicit draft refresh
+ok 7 - reopening or refreezing a source blocks submission and approval until an explicit draft refresh
+  ---
+  duration_ms: 152.543724
+  type: 'test'
+  ...
+# Subtest: changed sources block approved publication; changes after publishing flag follow-up without rewriting money
+ok 8 - changed sources block approved publication; changes after publishing flag follow-up without rewriting money
+  ---
+  duration_ms: 241.987314
+  type: 'test'
+  ...
+# Subtest: duplicate, foreign employee and wrong-month references reject; audit failure rolls back the entire slip
+ok 9 - duplicate, foreign employee and wrong-month references reject; audit failure rolls back the entire slip
+  ---
+  duration_ms: 215.028842
+  type: 'test'
+  ...
+# Subtest: inbox switches stale payroll to corrective work and reference report remains scoped and snapshot-based
+ok 10 - inbox switches stale payroll to corrective work and reference report remains scoped and snapshot-based
+  ---
+  duration_ms: 649.040652
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4289.409011

@@ -1,0 +1,179 @@
+{
+  "taskId": "P3-R1-09",
+  "status": "implemented_synthetic_verified_review_pending",
+  "implementationSha": "5ce0dd2a411bd5bea144074395c1a7787abf5135",
+  "freshEvidence": "evidence/r1-p3-20260910T101031691739Z.json",
+  "testSummary": {
+    "tests": 175,
+    "pass": 175,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "typecheck": "passed",
+  "build": "passed",
+  "capacityMeasured": [
+    {
+      "tier": "local-small",
+      "syntheticRows": 10,
+      "dbLogicalBytes": 10887,
+      "objectBytes": 65536,
+      "chunks": 2,
+      "backupMs": 61,
+      "restoreMs": 66,
+      "localProcessingMs": 127,
+      "incidentElapsedIncludingCurrentApprovalWaitMs": 66,
+      "ownerApproval": "pending",
+      "rtoComplete": false,
+      "rtoPassed": false,
+      "cloudSlaVerified": false
+    },
+    {
+      "tier": "local-medium",
+      "syntheticRows": 100,
+      "dbLogicalBytes": 442049,
+      "objectBytes": 1048576,
+      "chunks": 2,
+      "backupMs": 95,
+      "restoreMs": 114,
+      "localProcessingMs": 209,
+      "incidentElapsedIncludingCurrentApprovalWaitMs": 113,
+      "ownerApproval": "pending",
+      "rtoComplete": false,
+      "rtoPassed": false,
+      "cloudSlaVerified": false
+    },
+    {
+      "tier": "local-stress",
+      "syntheticRows": 1000,
+      "dbLogicalBytes": 8484595,
+      "objectBytes": 8388608,
+      "chunks": 5,
+      "backupMs": 359,
+      "restoreMs": 798,
+      "localProcessingMs": 1157,
+      "incidentElapsedIncludingCurrentApprovalWaitMs": 798,
+      "ownerApproval": "pending",
+      "rtoComplete": false,
+      "rtoPassed": false,
+      "cloudSlaVerified": false
+    }
+  ],
+  "cases": [
+    {
+      "id": "P3-REC-01",
+      "requirements": [
+        "BASE-03",
+        "BASE-04",
+        "BASE-05",
+        "R1-RECOVERY-01"
+      ],
+      "verifiedLocalScope": "77持久表实际基线、完整事务增量、不可变附件/墓碑、源cut/schema/epoch核对和幂等隔离导入",
+      "code": [
+        "lib/hris/r1-recovery-backup.ts",
+        "lib/hris/r1-recovery-data.ts",
+        "lib/hris/r1-recovery-restore.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-recovery.test.mjs",
+        "tests/r1-p3-security-ledger.test.mjs"
+      ],
+      "evidence": "evidence/r1-p3-20260910T101031691739Z.json",
+      "status": "local_runtime_evidence_independent_review_pending"
+    },
+    {
+      "id": "P3-REC-02",
+      "requirements": [
+        "BASE-01",
+        "BASE-02",
+        "BASE-05",
+        "E2"
+      ],
+      "verifiedLocalScope": "独立安全签名链/deny先行/当前撤权、恢复控制续跑、当前权限竞态及四HTTP入口503",
+      "code": [
+        "lib/hris/r1-security-ledger.ts",
+        "lib/hris/r1-security-runtime.ts",
+        "lib/hris/r1-recovery-control.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-recovery.test.mjs",
+        "tests/r1-p3-security-ledger.test.mjs"
+      ],
+      "evidence": "evidence/r1-p3-20260910T101031691739Z.json",
+      "status": "local_runtime_evidence_independent_review_pending"
+    },
+    {
+      "id": "P3-REC-03",
+      "requirements": [
+        "BASE-03",
+        "BASE-06",
+        "BASE-05"
+      ],
+      "verifiedLocalScope": "完整行效果重放不重执行命令；独立模拟已发送回执核原摘要，其余unknown/outbox暂停/真实发送0",
+      "code": [
+        "lib/hris/r1-recovery-receipts.ts",
+        "scripts/r1-recovery-isolated-target.mjs"
+      ],
+      "tests": [
+        "tests/r1-p3-recovery.test.mjs",
+        "tests/r1-p3-security-ledger.test.mjs"
+      ],
+      "evidence": "evidence/r1-p3-20260910T101031691739Z.json",
+      "status": "local_runtime_evidence_independent_review_pending"
+    },
+    {
+      "id": "P3-REC-04",
+      "requirements": [
+        "R1-RECOVERY-01",
+        "BASE-05"
+      ],
+      "verifiedLocalScope": "三档实际尺寸和阶段计时、40/45/55/60年龄、错误密钥/签名/缺对象/换版本拒绝；轮换后仍保留历史解封密钥",
+      "code": [
+        "lib/hris/r1-recovery-crypto.ts",
+        "lib/hris/r1-recovery-maintenance.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-recovery.test.mjs",
+        "tests/r1-p3-security-ledger.test.mjs"
+      ],
+      "evidence": "evidence/r1-p3-20260910T101031691739Z.json",
+      "status": "local_runtime_evidence_independent_review_pending"
+    },
+    {
+      "id": "P3-REC-05",
+      "requirements": [
+        "BASE-04",
+        "BASE-05"
+      ],
+      "verifiedLocalScope": "31基线/30日/旧祖先/墓碑/密钥依赖；48小时热日志保留；当前引用与unknown删除回执拒绝盲重试",
+      "code": [
+        "lib/hris/r1-recovery-maintenance.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-recovery.test.mjs",
+        "tests/r1-p3-security-ledger.test.mjs"
+      ],
+      "evidence": "evidence/r1-p3-20260910T101031691739Z.json",
+      "status": "local_runtime_evidence_independent_review_pending"
+    }
+  ],
+  "boundaries": [
+    "仅实际本地SQLite与隔离合成身份；对象/外效/平台访问为明确模拟，真实平台调度/隔离资源未接线",
+    "恢复停在business_checked且openGate=0；不代签owner_approved/opened，RTO未完成",
+    "当前授权覆盖采取保守交集，可能额外缩小同旧组织可见范围；平台当前访问也须独立证明",
+    "30天为依赖和时钟模拟，不是30天连续RPO观测；三档实际尺寸见capacityMeasured，非P2 GB级设计档",
+    "每表/人员安全映像2000、备份对象2000、单记录/事务16MiB、块4MiB；超预算显式失败",
+    "每次复制完整对象，尚未证明按P2去重假设的存储成本；真实报价和吞吐未知",
+    "有当前DB引用（含墓碑）仍保留字节；物理维护只有独占fence契约与本地执行验证，云端fence未落实",
+    "基线源并发变化即拒绝发布；未证明云端一致导出、停顿或MVCC能力",
+    "原D7已办节点跨域完整链在11继续核验；实际R2/R3联调在10逐项登记"
+  ],
+  "blockedValidation": [
+    "DEP-PLATFORM-01",
+    "DEP-PLATFORM-02"
+  ],
+  "fullApprovedAcceptancePassed": false,
+  "risksClosedByExecutor": 0,
+  "exitApproved": false,
+  "p4Started": false
+}

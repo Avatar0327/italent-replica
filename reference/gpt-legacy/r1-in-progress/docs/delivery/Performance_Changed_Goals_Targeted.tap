@@ -1,0 +1,59 @@
+TAP version 13
+# Subtest: H004 P02: one employee goal adjustment, checkin, evaluation, appeal and versioned consumers
+ok 1 - H004 P02: one employee goal adjustment, checkin, evaluation, appeal and versioned consumers
+  ---
+  duration_ms: 486.321292
+  type: 'test'
+  ...
+# H004_CHAIN {"employeeId":"d5da373f-f575-4200-ab45-1f6c8cdb3796","cycleId":"8f9bbf24-05b1-4d7a-9746-eaae45a9f6f5","planId":"ebd24703-524d-485e-8a6b-b52c0a880090","adjustmentId":"7830f751-21cc-4f35-a271-9973bb84eeab","checkinId":"dcdd6ea7-20fe-4d1b-a46e-4e8aa9499c9d","resultId":"1035d863-df15-41fa-9f77-5eba67bde920","appealId":"189e8b69-8b49-4595-a6a4-26a4ef38ca47","correctionId":"147868bc-9e9e-4df7-ac5e-bb0c850e1dd4","reviewId":"2acc5996-7ff0-4c22-b320-613fc9a732f0","originalScore":63,"latestScore":87}
+# Subtest: H004 P03: cycle status, dates, exact weights and score thresholds
+ok 2 - H004 P03: cycle status, dates, exact weights and score thresholds
+  ---
+  duration_ms: 247.402608
+  type: 'test'
+  ...
+# Subtest: H004 P03: exit preserves independent correction of published history
+ok 3 - H004 P03: exit preserves independent correction of published history
+  ---
+  duration_ms: 196.47998
+  type: 'test'
+  ...
+# Subtest: H004 P03: transfer preserves independent correction of published history
+ok 4 - H004 P03: transfer preserves independent correction of published history
+  ---
+  duration_ms: 119.524701
+  type: 'test'
+  ...
+# Subtest: sealed template snapshots enforce stage-specific required responses and hide unpublished management responses
+ok 5 - sealed template snapshots enforce stage-specific required responses and hide unpublished management responses
+  ---
+  duration_ms: 210.733868
+  type: 'test'
+  ...
+# Subtest: template revisions cannot silently replace active cycles; archived drafts do not trap future version numbers
+ok 6 - template revisions cannot silently replace active cycles; archived drafts do not trap future version numbers
+  ---
+  duration_ms: 149.787502
+  type: 'test'
+  ...
+# Subtest: template boundaries reject foreign scope and duplicate IDs; draft edits and response writes are atomic
+ok 7 - template boundaries reject foreign scope and duplicate IDs; draft edits and response writes are atomic
+  ---
+  duration_ms: 230.375851
+  type: 'test'
+  ...
+# Subtest: approved goal changes clear stale stage answers while preserving the prior self-review audit
+ok 8 - approved goal changes clear stale stage answers while preserving the prior self-review audit
+  ---
+  duration_ms: 149.715162
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4125.920075

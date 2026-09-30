@@ -1,0 +1,21 @@
+export type ModuleProgress={done:string;remaining:string;links:{label:string;href:string}[]};
+const link=(label:string,href:string)=>({label,href});
+export const moduleProgress:Record<string,ModuleProgress>={
+ '组织员工':{done:'组织人员、教育/工作/项目经历、岗位职级、入转调离、编制、协议类别、合同覆盖及续签报表、自定义字段分组及状态必填检查',remaining:'复杂跨字段联动、兼岗、复杂再入职及法人变更',links:[link('组织员工','/employees'),link('人员经历','/employee-experiences'),link('编制合同','/workforce'),link('合同字段与继承','/contract-fields'),link('档案字段','/employee-fields')]},
+ '审批中心':{done:'人事顺序审批、独立复核、撤回及历史',remaining:'管理员委托、复杂条件分支及其他模块待办汇集',links:[link('人事审批','/approvals'),link('跨模块待办','/work-inbox')]},
+ '干部管理2.0':{done:"跨模块人才档案、提名审议、调动任用核对、考察述职；独立主职任期登记、更正/结束/作废、历史与档案衔接",remaining:"干部四状态名册、任用类型扩展与期限自动计算、档案子集、委员会及原站详细提交规则",links:[link('干部访谈记录（HR）','/cadre-interviews'),link('干部人才档案','/cadre-profiles'),link('干部提名与考察','/cadres')]},
+ '任职资格':{done:'标准版本、能力证据、独立认证、到期与撤销',remaining:'任职类别层级及复杂认证委员会',links:[link('任职资格','/qualifications')]},
+ '薪酬社保':{done:'核定工资录入、独立复核、工资条、异议及补差、批次办理与已发布对账、冻结考勤引用/来源变化阻断及核对待办报表',remaining:'自动核算、税社保、薪资档案、支付及企业规则验证',links:[link('工资批次','/payroll'),link('工资异议与补差','/payroll-adjustments'),link('工资对账','/reports?dataset=payrollReconciliation'),link('考勤引用核对','/reports?dataset=payrollAttendanceReferences')]},
+ '假勤管理':{done:'固定班次、打卡、补卡版本核验及撤回、请假、人工余额及覆盖报表；单人期间预览/冻结/重新开放/版本快照和写保护、固定班次版本与原子派班、组织假种/时长边界/制度和历史余额快照',remaining:'弹性轮班、设备、加班、跨班请假、自动结转、完整期间发布/确认/封存',links:[link('假勤管理','/attendance'),link('固定班次与派班','/shift-definitions'),link('期间汇总与冻结','/attendance-periods')]},
+ '招聘管理系统':{done:"需求修订审批和运营报表、候选人、面试序号、录用退回与版本确认和原子入职；需求草稿/显式与组合提交/旧待审兼容、创建请求重试恢复、内部招聘职位版本及候选来源冻结、结构化四档面试表与冻结评价、内部单人排期/冲突/指定评价与完成原子关联、类型紧急程度与职责资格字段、列表筛选和报表",remaining:"渠道门户、简历解析、面试日历、电子签和AI能力",links:[link('招聘与入职','/recruitment'),link('内部招聘职位','/recruitment-jobs'),link('结构化面试评价','/recruitment-evaluations'),link('内部面试排期','/interview-schedule'),link('需求进度','/reports?dataset=recruitmentOperations')]},
+ '绩效管理':{done:"目标权重与独立调整、执行跟进、自评、独立评价、结果发布、申诉与更正；同组织等级方案版本、开闭区间与非百分制、周期和申诉冻结快照、人才三档显式映射；活动分类/筛选/报表与启动前草稿编辑、单维文本模板版本/活动快照与阶段必填及答案隔离、可选目标数量和整数权重范围、具体记录任务入口、同组织定性指标版本与目标来源快照",remaining:"完整OKR、组织绩效、多级校准审批和企业申诉时限；手工等级、绩效系数、不参与考核、活动在途规则更新、组织公开与考核关系锁定；完整模板模块、多维/软提示/小数权重、附件与动态权限、指标自动下发",links:[link('绩效管理','/performance'),link('定性指标库','/performance-indicators'),link('绩效文本模板','/performance-templates'),link('绩效等级','/performance-ratings'),link('目标调整','/performance-changes'),link('执行跟进','/performance-checkins'),link('办理报表','/reports?dataset=performanceOperations')]},
+ '继任与发展':{done:'盘点、人才池、后备提名、继任覆盖报表、发展计划与学习衔接',remaining:'复杂梯队、健康度模型和带教管理',links:[link('人才与发展','/development')]},
+ '在线盘点':{done:'标准、盘点项目、潜力校准、九宫格快照、人才池及继任记录',remaining:'校准会议及委员会、报告模板和多维模型',links:[link('人才与发展','/development')]},
+ '360度评估':{done:'指定评估人、量表答卷、分组阈值与冻结报告',remaining:'多种题型、提醒催办与完整活动运营',links:[link('360度评估','/feedback')]},
+ '学习管理':{done:'学习计划版本、课程/独立考试混合要求、阶段门槛与日期开放、任务顺序及考试提交放行、显式循环新轮与重复学分、独立客观题/分值及作答追溯、独立作业/提交版本/指定批阅/转交撤权及计划绑定、可配置计划成绩/考试作业权重和档案回流、未完成实例内容更新预览、增减替换与新增课程同步、阶段提交期限与超期策略；课程考试、培训申请与任务核对、课程阶段、显式批量派课、取消恢复与进度报表、项目、出勤、学分有效期、课程认证、活动报名、内部名册、试讲、培养派课与关联、培训带教、证书及报表',remaining:'人工题/排序/题库、其他活动成绩来源与小数权重、阶段期限规则对照及其他活动顺序例外、自动循环调度/积分奖励、退出内容重加/完成重开/循环更新与批量异步运营、完整培养编排与批量自动派课、证书样式与自动发证、导师认证及组织关系同步、外聘讲师、完整班级运营、学分折抵及企业到期规则对照',links:[link('学习计划','/learning-plans'),link('独立作业','/learning-homework'),link('独立试卷','/learning-exams'),link('独立考试','/learning-exam-tasks'),link('内部证书','/certificates'),link('培训带教','/mentoring'),link('认证培养','/instructor-development'),link('认证报名','/instructor-campaigns'),link('试讲评审','/instructor-trials'),link('内部讲师名册','/instructor-directory'),link('学习中心','/learning'),link('培训申请','/training-requests'),link('培训场次','/training-sessions'),link('学分','/learning-credits'),link('讲师认证','/instructors')]},
+ '员工调查':{done:'实名问卷模板、发布名单、答卷及统计',remaining:'匿名模式、完整调查报告与行动计划',links:[link('实名问卷','/surveys')]},
+ '问卷调查':{done:'实名量表和单选、模板版本、填报撤回与结项',remaining:'复杂题型、分类、条件跳转及匿名模式',links:[link('实名问卷','/surveys')]},
+ '报表':{done:'当前权限范围报表、分页查询和审计导出',remaining:'自助设计器、完整领域覆盖、大规模查询与历史快照',links:[link('人事报表','/reports')]},
+ '人才标准':{done:'能力标准版本、行为锚点及岗位要求',remaining:'复杂指标组合、多维模型和标准审批机制',links:[link('能力标准','/development')]},
+ '员工自助':{done:'本人档案、融入计划、假勤、学习、问卷、工资和申请进度',remaining:'日程、日报、完整OKR与统一消息',links:[link('员工自助','/self-service'),link('融入计划','/onboarding')]},
+};

@@ -1,0 +1,38 @@
+{
+  "startedAt": "2026-09-08T10:11:22.076642+00:00",
+  "completedAt": "2026-09-08T10:11:36.120150+00:00",
+  "command": "node --test --test-reporter=tap tests/*.test.mjs",
+  "exitCode": 1,
+  "report": "docs/delivery/Dashboard_Comprehensive.tap",
+  "scope": "合成数据综合回归，含看板聚合；不代替人工业务验收",
+  "tests": 229,
+  "passed": 228,
+  "failed": 1,
+  "typecheck": "passed",
+  "limitation": "旧rendered-html.test.mjs在普通Node无法加载cloudflare:workers；其余228项通过；未执行浏览器人工验收",
+  "build": {
+    "status": "passed",
+    "command": "Sites build-site.mjs → npm run build",
+    "completedAt": "2026-09-08T10:13:19.282317+00:00",
+    "routes": [
+      "/scope",
+      "/api/delivery-evidence"
+    ]
+  },
+  "sourceCommit": "523fa165ff34c69d7c417ee5a8bb78a234ed378f",
+  "deployment": {
+    "env_set_revision": 1,
+    "failure_message": null,
+    "id": "appgdep_6a9fe02d31bc8191bc8756ddcd04b7cc",
+    "project_id": "appgprj_6a9e2c705cfc819180e0e5251bb025cc",
+    "provider_deployment_id": "site---6a9e2c705cfc819180e0e5251bb025cc",
+    "screenshot_asset_pointer": null,
+    "status": "succeeded",
+    "title": "人才管理系统",
+    "type": "publish",
+    "updated_at": "2026-09-08T10:15:23.996533+00:00",
+    "url": "https://italent-hris-jack.creamy-fern-1782.chatgpt.site",
+    "version_id": "appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_b116c2af13848191b50702e24538921a"
+  },
+  "version": 104
+}

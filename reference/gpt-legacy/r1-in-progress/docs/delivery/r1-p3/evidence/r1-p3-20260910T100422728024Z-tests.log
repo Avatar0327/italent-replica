@@ -1,0 +1,29 @@
+✔ P3-REC-01/04: bounded AES-256-GCM chunks roundtrip with separate wrapped key and independent signature, preserving exact byte boundaries (153.761987ms)
+✔ P3-REC-01/04: corruption, missing chunk, bad signature, wrong key and cross-checkpoint AAD fail before publication or restore (46.561505ms)
+✔ P3-REC-01/05: tombstoned multi-chunk object requires complete ordered references and whole-object SHA before verified manifest (33.569808ms)
+✔ P3-REC-01: actual expanded schema baseline includes every registered persistent table and rejects concurrent source changes instead of publishing mixed cuts (290.243392ms)
+✔ P3-REC-01/03: current complete-row journal seals actual command transactions; missing, truncated and unguarded writes never pass as replayable effects (131.037421ms)
+✔ P3-REC-01: UTF-8 logical rows cross 4MiB boundaries without whole-export buffering; incomplete final records reject (54.233134ms)
+✔ P3-REC-01/03: real isolated SQLite imports baseline and complete increments once; schema/history preserved, gate closed and pending outbox paused (427.974817ms)
+✔ P3-REC-01: persisted isolated SQL receipts resume after a lost import response without duplicating any source key (272.08573ms)
+✔ P3-REC-01/05: explicitly simulated independent object target restores ranges and tombstones once while remaining isolated (27.148038ms)
+✔ P3-REC-02/03: controller restores an old active account but current independent revocation disables it; each phase persists and no owner approval or outbound replay is invented (256.134433ms)
+✔ P3-REC-02: unavailable current platform authority blocks after object verification and a later confirmed retry resumes the same isolated target (246.280151ms)
+✔ P3-REC-02: an authority change during final target sealing invalidates reconciliation and keeps the target closed (229.210769ms)
+✔ P3-REC-01: product backup builder exports actual rows, immutable reachable tombstone bytes and current ledger references; complete increment restores and retries exact published checkpoint (358.203927ms)
+✔ P3-REC-01/04: missing immutable source object, changing version or stale security source never publishes a verified checkpoint (304.132471ms)
+✔ P3-REC-04/05: 30-day clock simulation retains 31 daily baselines, all older ancestors, tombstone object and wrapping-key dependencies; missing parent blocks cleanup (16.418014ms)
+✔ P3-REC-05: actual independent catalog and local cleanup receipt retain referenced objects; a lost simulated delete response reconciles absence before marking complete (195.02583ms)
+✔ P3-REC-05: journal pruning preserves 48-hour verified hot window, complete last transaction and all business history/audit while later increments remain replayable (248.470861ms)
+✔ P3-REC-02: real separate SQL ledger persists deny before business shrink and activates only after both acknowledgements (41.690032ms)
+✔ P3-REC-02: partial cross-store failure remains denied; tampered or truncated signed authorization chains cannot become current trust (12.840242ms)
+✔ P3-REC-02: security event CAS admits one concurrent change, and an equal event ID with other content conflicts (7.149767ms)
+✔ P3-REC-02: actual command coordinator denies first, syncs its sealed authority image, and application access fails closed when trusted runtime is absent (399.449231ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3961.017587

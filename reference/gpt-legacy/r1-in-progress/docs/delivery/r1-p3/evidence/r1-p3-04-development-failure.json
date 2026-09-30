@@ -1,0 +1,15 @@
+{
+  "kind": "development_diagnostic_not_exact_source_verification",
+  "baseHead": "0e5fabc219594923a7b0110fcdbe6bafbb10040a",
+  "sourceState": "uncommitted incremental edits; exact intermediate source not archived",
+  "log": "evidence/r1-p3-04-development-statement-budget-failure.log",
+  "sha256": "8ac8d37f6f44135f64d0eb28fa3fd85bd3d9adc3b2d55015ed125479a9871fae",
+  "observed": {
+    "tests": 58,
+    "pass": 57,
+    "fail": 1
+  },
+  "failure": "20-row exit cleanup exceeded unchanged 74-statement business plan limit after per-row outbox statements were added",
+  "fix": "emit bounded event array with one INSERT SELECT json_each statement",
+  "recheck": "58/58 passed in development; exact committed-source evidence to follow"
+}

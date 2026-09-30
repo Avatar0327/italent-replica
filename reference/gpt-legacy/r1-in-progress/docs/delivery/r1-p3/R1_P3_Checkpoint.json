@@ -1,0 +1,600 @@
+{
+  "phase": "P3",
+  "exitApproved": false,
+  "tasks": [
+    {
+      "id": "P3-R1-01",
+      "dependsOn": [],
+      "status": "implemented_synthetic_verified_review_pending",
+      "caseIds": [
+        "P3-ARC-01",
+        "P3-ARC-02"
+      ],
+      "evidence": [
+        "evidence/r1-p3-01-20260910T034414Z.json"
+      ],
+      "implementationSha": "3a843b0f04f076abd9a8a33bf59315b7afe497ff",
+      "currentReviewEvidence": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+        "meaning": "关联测试文件已在本轮完整本地套件执行；不覆盖未执行的原子条件、真实联调、平台或独立签署"
+      }
+    },
+    {
+      "id": "P3-R1-02",
+      "dependsOn": [
+        "P3-R1-01"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "caseIds": [
+        "P3-M01-01",
+        "P3-M01-02",
+        "P3-M01-03",
+        "P3-M01-04",
+        "P3-M01-05",
+        "P3-M01-06",
+        "P3-M01-07",
+        "P3-M01-08",
+        "P3-M01-09",
+        "P3-M01-10",
+        "P3-M01-11",
+        "P3-M01-12"
+      ],
+      "evidence": [
+        "evidence/r1-p3-02-04-20260910T041245Z.json",
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T052108474343Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json",
+        "evidence/r1-p3-20260911T003553114467Z.json",
+        "evidence/r1-p3-20260911T003617713648Z.json",
+        "evidence/r1-p3-20260911T003733692664Z.json"
+      ],
+      "remaining": [],
+      "implementationSha": "812a3bddffeaea05a88baaac5816d94c75c2382e",
+      "subworkCompleted": [
+        "目录全部时点版本校验增量",
+        "重聘代次与有界退出清理增量",
+        "D7主职/兼容主档原子事务与编制事件增量",
+        "原站OBS07触发的显式模板必填空白缺口修复；34项本轮相关验证通过"
+      ],
+      "verificationBoundaries": [
+        "仅本地合成运行，不含真人独立验收或原站补证",
+        "UI表单映射、API、类型和构建已验证；未声称浏览器人工交互验收",
+        "合同迁移验证归08；M32跨版本统计归06"
+      ],
+      "latestOriginIntake": "R1_P3_Origin_Evidence_Intake.json",
+      "currentReviewEvidence": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+        "meaning": "关联测试文件已在本轮完整本地套件执行；不覆盖未执行的原子条件、真实联调、平台或独立签署"
+      }
+    },
+    {
+      "id": "P3-R1-03",
+      "dependsOn": [
+        "P3-R1-01",
+        "P3-R1-02"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "caseIds": [
+        "P3-M19-01",
+        "P3-M19-02",
+        "P3-M19-03",
+        "P3-M19-04",
+        "P3-M19-05",
+        "P3-M19-06",
+        "P3-M19-07"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T055326431928Z.json",
+        "evidence/r1-p3-20260910T060422840181Z.json",
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "subworkCompleted": [
+        "流程schema与不可变模板/决定/管理事件",
+        "模板图与路由类型校验、实例冻结、节点CAS、事务取消",
+        "管理员委托接受/三方交集/提交时到期守卫",
+        "批量逐项原子回执及丢响应查询恢复",
+        "组织限定模板、授权分页及审批/生效分栏",
+        "转正原单与稳定人员/兼容员工主档原子同步",
+        "审批中心页面与委托/发布/原单启动操作",
+        "持久通知unknown领取/查询优先/模拟并发防重",
+        "独立拒绝审计真实写入标记",
+        "委托入口、过滤口径、节点授权修订和决定摘要"
+      ],
+      "remaining": [],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "verificationBoundaries": [
+        "独立角色与浏览器人工验收未执行",
+        "供应商实际回调认证和R2/R3契约联调未执行",
+        "列表超过有界500记录会显式拒绝，权限持久投影及大数据压测由08/11核对"
+      ],
+      "currentReviewEvidence": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+        "meaning": "关联测试文件已在本轮完整本地套件执行；不覆盖未执行的原子条件、真实联调、平台或独立签署"
+      }
+    },
+    {
+      "id": "P3-R1-04",
+      "dependsOn": [
+        "P3-R1-01"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "caseIds": [
+        "P3-INT-01",
+        "P3-INT-02",
+        "P3-INT-03",
+        "P3-INT-04",
+        "P3-INT-05",
+        "P3-INT-06"
+      ],
+      "evidence": [
+        "evidence/r1-p3-02-04-20260910T041245Z.json",
+        "evidence/r1-p3-20260910T062541593684Z.json",
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ],
+      "remaining": [],
+      "implementationSha": "6c52613e9dde33084c3cbfa3ed2345b1f1bcd3dc",
+      "subworkCompleted": [
+        "消费者命名空间及各自序号/回执",
+        "持久模拟投递与nonce/协议/时间窗/签名回调",
+        "六外部契约与稳定标签/模板引用",
+        "M01/M19同事务规范事件及清理批次预算修复",
+        "上传前孤儿登记/命令回执优先/冻结后补偿/当前附件字段授权",
+        "外部预检HTTP入口，供应商空间防冲突和确认无副作用才重试",
+        "通用命令SQL核对授权见证最晚有效期"
+      ],
+      "verificationBoundaries": [
+        "只证明内部事务与显式模拟契约；供应商实际联调未执行",
+        "孤儿补偿仅确认从未引用且冻结旧写意图后允许；正式恢复点约束和墓碑物理GC归09",
+        "本轮74项整体+3项附件定向复验；筛选之外旧用例未计通过",
+        "未新增外部endpoint/密钥，不执行M35或其他暂缓业务引擎"
+      ],
+      "currentReviewEvidence": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+        "meaning": "关联测试文件已在本轮完整本地套件执行；不覆盖未执行的原子条件、真实联调、平台或独立签署"
+      }
+    },
+    {
+      "id": "P3-R1-05",
+      "dependsOn": [
+        "P3-R1-02",
+        "P3-R1-03",
+        "P3-R1-04"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "caseIds": [
+        "P3-M48-01",
+        "P3-M48-02",
+        "P3-M48-03",
+        "P3-M48-04",
+        "P3-M48-05",
+        "P3-M48-06",
+        "P3-M48-07"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "subworkCompleted": [
+        "角色授权逐元组并集与会话唯一绑定",
+        "七入口版本契约/合成动作消费及旧生产者只读映射",
+        "本人任务/申请/授权他人/团队分区与受控游标",
+        "字段/历史/已发布结果裁剪与未知状态禁办",
+        "原M19转正链路门户办理和原命令回执恢复",
+        "门户共享缓存代次/撤销及事件失效原子消费",
+        "自助页面新旧开关和no-store API"
+      ],
+      "remaining": [],
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "verificationBoundaries": [
+        "只证明R1本地隔离合成运行；独立角色/浏览器人工验收待评审",
+        "R2/R3新办理契约和真实联调未执行，责任保留P3-R1-10",
+        "旧360办理只在旧功能开关兼容路径复验，不标新生产者契约通过",
+        "current门户来源最多500记录，超出显式BOUNDED_QUERY_REQUIRED；无截断成功",
+        "84项和类型构建证据固定b7dac9c；新增11门户+5指定兼容证据固定2d6ae4f；两个源码间产品代码未变"
+      ],
+      "currentReviewEvidence": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+        "meaning": "关联测试文件已在本轮完整本地套件执行；不覆盖未执行的原子条件、真实联调、平台或独立签署"
+      }
+    },
+    {
+      "id": "P3-R1-06",
+      "dependsOn": [
+        "P3-R1-02",
+        "P3-R1-04"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "caseIds": [
+        "P3-M32-01",
+        "P3-M32-02",
+        "P3-M32-03",
+        "P3-M32-04",
+        "P3-M32-05",
+        "P3-M32-07",
+        "P3-M32-10",
+        "P3-XMOD-02"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T071309586525Z.json",
+        "evidence/r1-p3-20260910T072924847968Z.json",
+        "evidence/r1-p3-20260910T074453122156Z.json",
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "subworkCompleted": [
+        "21数据集254字段运行时目录与源版本标识",
+        "标签映射防可选字段偏移",
+        "类型AST白名单/复杂度/字段权限和参数绑定",
+        "BigInt精确小数、整数分溢出、缺值计数及零分母",
+        "兼容报表仅已发布更正替换正式绩效，招聘未知人数不补零",
+        "独立有界报表身份上下文",
+        "规范化report rows/generation/chunk/snapshot与SQL游标",
+        "M01不可变版本截点分页构建三数据集",
+        "当前人事组织/字段/历史权SQL先裁剪",
+        "不可变定义发布、审计失败原子回滚",
+        "精确十进制SQL过滤与直连接口参数拒绝",
+        "独立汇总权限与SQL先授权后聚合、零分母",
+        "保存定义按不可变发布版本执行、禁止临时覆盖",
+        "稳定多字段排序/唯一行键游标与缺值顺序",
+        "10001行51个真实SQLite事务构建块和索引分页",
+        "原报表入口feature gate切换及新版读取页面",
+        "已注册精确汇总/条件指标与固定来源1:N根去重",
+        "21逐数据集合成手算源计算核对/缺打卡不报未知分钟数"
+      ],
+      "remaining": [],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "currentReviewEvidence": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+        "meaning": "关联测试文件已在本轮完整本地套件执行；不覆盖未执行的原子条件、真实联调、平台或独立签署"
+      }
+    },
+    {
+      "id": "P3-R1-07",
+      "dependsOn": [
+        "P3-R1-06",
+        "P3-R1-04"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "caseIds": [
+        "P3-M32-06",
+        "P3-M32-08",
+        "P3-M32-09"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T080856347352Z.json",
+        "evidence/r1-p3-20260910T082305048810Z.json"
+      ],
+      "implementationSha": "74c5b0db8894209b827b8e1b097366ad4c99257d",
+      "subworkCompleted": [
+        "任务/租约/fence及孤儿分块同事务ready",
+        "当前read+export交集、人员调动范围水位及自然到期阻旧文件",
+        "同步预算超限转队列、10001行51块完整导出和下载",
+        "登录分块流下载、CSV注入/负数/null状态",
+        "后台HTTP显式blocked_runtime不擅接云调度",
+        "逐收件人当前行列权限交集/固定来源清单",
+        "订阅显式周期/DST/原子转交/屏蔽与unknown查询优先",
+        "保存定义固定版本明细和汇总导出",
+        "持久失败及显式安全重试/设计器/订阅管理和收件页面"
+      ],
+      "remaining": [],
+      "verificationBoundaries": [
+        "136/136本轮R1合成整体测试、类型、构建通过；非P3最终两轮收口",
+        "真实托管后台/调度仍DEP-PLATFORM-01未核实，HTTP明确blocked_runtime；不能声称云端任务运行",
+        "对象存储和消息传输为显式隔离模拟，未实发通知/附件，不是供应商或R2/R3真实联调",
+        "新页面经类型与构建检查；独立浏览器人工角色验收未执行",
+        "分块导出10001行完整运行；最大10000块/100汇总组为显式预算，未测试云端代表容量",
+        "业务历史不按导出24小时TTL删除；物理保留/恢复点约束交09"
+      ],
+      "blockedValidation": [
+        "DEP-PLATFORM-01"
+      ],
+      "currentReviewEvidence": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+        "meaning": "关联测试文件已在本轮完整本地套件执行；不覆盖未执行的原子条件、真实联调、平台或独立签署"
+      }
+    },
+    {
+      "id": "P3-R1-08",
+      "dependsOn": [
+        "P3-R1-01",
+        "P3-R1-02",
+        "P3-R1-03",
+        "P3-R1-04",
+        "P3-R1-06"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "caseIds": [
+        "P3-MIG-01",
+        "P3-MIG-02",
+        "P3-MIG-03",
+        "P3-MIG-04",
+        "P3-MIG-05",
+        "P3-MIG-06",
+        "P3-MIG-07",
+        "P3-XMOD-03"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T083119493394Z.json",
+        "evidence/r1-p3-20260910T084831357314Z.json",
+        "evidence/r1-p3-20260910T090030808611Z.json",
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ],
+      "implementationSha": "c36094e2f407fd0e2101b2b0e3988fc278b4ec1b",
+      "subworkCompleted": [
+        "实际DDL合同及完整旧写屏障前置核验",
+        "R1扩展174触发器完整行日志与事务封印",
+        "迁移/问题/对账/附件完整性控制表",
+        "旧JSON原文归档/11表有界规范化/末批切storage1",
+        "19旧表稳定映射与未知历史标记/100行批次/并发CAS/租约接管",
+        "迁移源水位和兼容字段事务双写/新事实保护",
+        "逐键映射/目标/不可变观察对账及重扫代次",
+        "19表同水位切读/保留全部事实的兼容只读回滚",
+        "旧范围只读LEGACY元组/附件摘要与缺对象隔离",
+        "D7旧一审签名/流程版本冻结兼容查询与终态拒绝重放",
+        "新增多任职回滚事实保全/旧字段别名的当前和历史裁剪",
+        "真实旧合同SQL版本回填/稳定ID计次与M01报表单根行核对"
+      ],
+      "remaining": [],
+      "verificationBoundaries": [
+        "仅本地SQLite隔离合成；148/148和类型构建固定c36094e，不是P3最终两轮收口",
+        "JSON归档预算4MiB/数组10000项；规范化和回填100行批次；超预算显式失败",
+        "未知历史/法律实体/关系不推断；目录补齐有效期等新事实须按已批准业务规则核实",
+        "旧审批保留原表/签名/节点及只读兼容视图；未核安全适配器的旧办理局部阻断，不猜测外部后效",
+        "未证明R2/R3真实版本契约、云端容量/生产迁移或独立人类验收；不关闭风险或批准退出"
+      ],
+      "currentReviewEvidence": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+        "meaning": "关联测试文件已在本轮完整本地套件执行；不覆盖未执行的原子条件、真实联调、平台或独立签署"
+      }
+    },
+    {
+      "id": "P3-R1-09",
+      "dependsOn": [
+        "P3-R1-01",
+        "P3-R1-04",
+        "P3-R1-08"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "caseIds": [
+        "P3-REC-01",
+        "P3-REC-02",
+        "P3-REC-03",
+        "P3-REC-04",
+        "P3-REC-05"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T091333336280Z.json",
+        "evidence/r1-p3-20260910T092112866567Z.json",
+        "evidence/r1-p3-20260910T092744057535Z.json",
+        "evidence/r1-p3-20260910T093905777390Z.json",
+        "evidence/r1-p3-20260910T095601121101Z.json",
+        "evidence/r1-p3-20260910T100422728024Z.json",
+        "evidence/r1-p3-20260910T101031691739Z.json"
+      ],
+      "remaining": [],
+      "blockedValidation": [
+        "DEP-PLATFORM-01",
+        "DEP-PLATFORM-02"
+      ],
+      "implementationSha": "5ce0dd2a411bd5bea144074395c1a7787abf5135",
+      "subworkCompleted": [
+        "4MiB AES-256-GCM/AAD/独立封装密钥/签名与完整对象摘要",
+        "实际77持久表基线逐页同水位读取（5项日志/缓存/断言表明确排除）",
+        "完整事务日志封印/连续序号及全列镜像校验",
+        "有界UTF-8跨块解码和本地独立SQLite基线+增量幂等还原/关闸暂停outbox",
+        "文件持久SQL目标丢导入响应后重开恢复",
+        "显式模拟独立对象目标逐范围/整体验证与墓碑字节恢复",
+        "独立SQL安全ledger链式签名/CAS/deny-first与双方映像确认",
+        "新challenge当前权证明和通用命令prepare→DB→finalize接线",
+        "独立恢复控制阶段与阻塞续跑回执",
+        "旧备份叠加可信当前授权保守交集/不创建业务对象/封存后再次核当前链",
+        "实际备份生成器/逐租户security引用/schema与epoch/不可变对象范围核对",
+        "独立验证目录/31日基线和30日依赖闭包/密钥与墓碑引用",
+        "维护独占fence接口/物理GC丢响应查询/48小时已验证热日志保留",
+        "共同恢复水位与40/45/55/60分钟阈值及含审批等待的RTO计时",
+        "独立签名模拟外效回执原摘要对账/恢复入口503",
+        "真实三档有界基线/对象/隔离目标计时",
+        "多历史密钥恢复/授权水位防回退"
+      ],
+      "verificationBoundaries": [
+        "仅实际本地SQLite与隔离合成身份；对象/外效/平台访问为明确模拟，真实平台调度/隔离资源未接线",
+        "恢复停在business_checked且openGate=0；不代签owner_approved/opened，RTO未完成",
+        "当前授权覆盖采取保守交集，可能额外缩小同旧组织可见范围；平台当前访问也须独立证明",
+        "30天为依赖和时钟模拟，不是30天连续RPO观测；三档实际尺寸见capacityMeasured，非P2 GB级设计档",
+        "每表/人员安全映像2000、备份对象2000、单记录/事务16MiB、块4MiB；超预算显式失败",
+        "每次复制完整对象，尚未证明按P2去重假设的存储成本；真实报价和吞吐未知",
+        "有当前DB引用（含墓碑）仍保留字节；物理维护只有独占fence契约与本地执行验证，云端fence未落实",
+        "基线源并发变化即拒绝发布；未证明云端一致导出、停顿或MVCC能力",
+        "原D7已办节点跨域完整链在11继续核验；实际R2/R3联调在10逐项登记"
+      ],
+      "currentReviewEvidence": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+        "meaning": "关联测试文件已在本轮完整本地套件执行；不覆盖未执行的原子条件、真实联调、平台或独立签署"
+      }
+    },
+    {
+      "id": "P3-R1-10",
+      "dependsOn": [
+        "P3-R1-05",
+        "P3-R1-06",
+        "P3-R1-07"
+      ],
+      "status": "partial_internal_verified_producer_blocked",
+      "caseIds": [
+        "P3-LINK-M48-team",
+        "P3-LINK-M48-approval",
+        "P3-LINK-M48-okr",
+        "P3-LINK-M48-goal",
+        "P3-LINK-M48-attendance",
+        "P3-LINK-M48-learning",
+        "P3-LINK-M48-development",
+        "P3-LINK-M32-M01",
+        "P3-LINK-M32-M19",
+        "P3-LINK-M32-M48",
+        "P3-LINK-M32-M32",
+        "P3-LINK-M32-M03",
+        "P3-LINK-M32-M06",
+        "P3-LINK-M32-M17",
+        "P3-LINK-M32-M18",
+        "P3-LINK-M32-M26",
+        "P3-LINK-M32-M37",
+        "P3-LINK-M32-M12",
+        "P3-LINK-M32-M16",
+        "P3-LINK-M32-M27",
+        "P3-LINK-M32-M11",
+        "P3-LINK-M32-M07"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T101913449916Z.json"
+      ],
+      "implementationSha": "254a70772bc78755d1e524d7b4bc4871b9da5904",
+      "blockedValidation": [
+        "DEP-PRODUCERS-01"
+      ],
+      "remaining": [
+        "16项生产者实际版本未就绪；需各R2/R3 P3实现和正式契约后继续，不能用mock闭合"
+      ],
+      "currentReviewEvidence": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+        "meaning": "关联测试文件已在本轮完整本地套件执行；不覆盖未执行的原子条件、真实联调、平台或独立签署"
+      }
+    },
+    {
+      "id": "P3-R1-11",
+      "dependsOn": [
+        "P3-R1-05",
+        "P3-R1-07",
+        "P3-R1-08",
+        "P3-R1-09"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "caseIds": [
+        "P3-XMOD-01"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T103230203458Z.json",
+        "evidence/r1-p3-20260910T104045821462Z.json",
+        "evidence/r1-p3-20260911T005747815482Z.json"
+      ],
+      "implementationSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+      "subworkCompleted": [
+        "跨域真实SQL正常/失败重试链及稳定ID/一审冻结签名",
+        "可校验关联ID/后台命令继承及恢复清单关联",
+        "调动后当前权限与旧快照/下载/在途任务拒绝",
+        "实际基线+增量隔离恢复及队列fence失效",
+        "独立目录重验签/缺归档字节阻清理"
+      ],
+      "remaining": [],
+      "verificationBoundaries": [
+        "只证明本轮本地SQLite实际事务及隔离合成身份；对象、当前平台访问及外效回执为显式模拟",
+        "恢复停在business_checked/openGate=0；未执行所有者开放、云端恢复、真实生产者联调或独立真人浏览器验收",
+        "correlationId需调用者提供，后台继承原命令；关联标识不授予权限",
+        "热日志清理须独立可信目录重验签及48小时合格基线字节完整验证；真实平台独占fence仍未就绪",
+        "任务10的16项真实生产者局部阻塞保留，不据11完成声明完整P3通过"
+      ],
+      "currentReviewEvidence": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+        "meaning": "关联测试文件已在本轮完整本地套件执行；不覆盖未执行的原子条件、真实联调、平台或独立签署"
+      }
+    }
+  ],
+  "currentTask": "P3-R1-10",
+  "lastVerifiedSourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+  "latestRun": "evidence/r1-p3-20260911T005747815482Z.json",
+  "currentActivity": "fixed_version_review_prepared_no_active_implementation_external_dependencies_blocked",
+  "overallRounds": [
+    {
+      "round": 1,
+      "evidence": "evidence/r1-p3-20260910T103230203458Z.json",
+      "sourceSha": "7a86db4c62f09de0b9606050c073a7ef2510e87a",
+      "startedAt": "2026-09-10T10:32:30.203490+00:00",
+      "finishedAt": "2026-09-10T10:32:58.490272+00:00",
+      "testSummary": {
+        "tests": 183,
+        "pass": 183,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "typecheck": "passed",
+      "build": "passed",
+      "scope": "full_R1_local_synthetic"
+    },
+    {
+      "round": 2,
+      "evidence": "evidence/r1-p3-20260910T104045821462Z.json",
+      "sourceSha": "e4b6d386025458ecfbdc71ff48b2b74d41cae1fc",
+      "startedAt": "2026-09-10T10:40:45.821491+00:00",
+      "finishedAt": "2026-09-10T10:41:50.651710+00:00",
+      "testSummary": {
+        "tests": 183,
+        "pass": 183,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "typecheck": "passed",
+      "build": "passed",
+      "scope": "full_R1_local_synthetic"
+    }
+  ],
+  "p4Started": false,
+  "allElevenTasksComplete": false,
+  "remainingLocalImplementation": [],
+  "blockingDependencies": [
+    "DEP-PRODUCERS-01",
+    "DEP-PLATFORM-01",
+    "DEP-PLATFORM-02"
+  ],
+  "latestOriginIntake": {
+    "sourceHead": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+    "receipt": "R1_P3_Origin_Increment_7920b64.json",
+    "summary": "R1_P3_Origin_Evidence_Intake.md",
+    "verification": "evidence/r1-p3-20260911T005747815482Z.json",
+    "status": "increment_received_review_pending"
+  },
+  "latestOriginIncrement": {
+    "sourceHead": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+    "receipt": "R1_P3_Origin_Increment_7920b64.json",
+    "previousSourceHead": "76a16265fdd65f6ba7608260dde1e07acfb85200"
+  },
+  "currentReview": {
+    "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+    "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+    "packet": "R1_P3_Review_Packet.md",
+    "manifest": "R1_P3_Fixed_Review_Manifest.json",
+    "independentReview": "pending"
+  },
+  "originReceiptHistory": [
+    {
+      "sourceHead": "76a16265fdd65f6ba7608260dde1e07acfb85200",
+      "receipt": "R1_P3_Origin_Evidence_Intake.json",
+      "summary": "R1_P3_Origin_Evidence_Intake.md",
+      "verification": "evidence/r1-p3-20260911T003733692664Z.json",
+      "finding": "P3-INTAKE-DEFECT-001",
+      "status": "received_local_gap_fixed_remaining_source_and_external_evidence_pending",
+      "artifactCheck": "R1_P3_Origin_Intake_Check.json"
+    }
+  ]
+}

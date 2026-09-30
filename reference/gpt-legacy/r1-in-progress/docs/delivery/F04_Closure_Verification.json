@@ -1,0 +1,22 @@
+{
+  "startedAt": "2026-09-08T12:11:47.786694+00:00",
+  "completedAt": "2026-09-08T12:11:49.230054+00:00",
+  "testedCommit": "a54381363e52c513fb79bc1a227368dad8bedab9",
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "--test-name-pattern=附件|历史读取一致性|成员目录撤权一致性",
+    "tests/p3-api.test.mjs"
+  ],
+  "exitCode": 0,
+  "scope": "仅附件、历史读取与成员目录撤权一致性选中场景；未执行其他P3场景",
+  "environment": "合成SQLite/模拟R2及身份；非云端存储或真人UAT",
+  "report": "docs/delivery/F04_Closure_Run.tap",
+  "tests": 5,
+  "pass": 5,
+  "fail": 0,
+  "skipped": 0,
+  "passed": 5,
+  "failed": 0
+}

@@ -1,0 +1,34 @@
+TAP version 13
+# Subtest: duration limits use working minutes after rest; historical application freezes the exact rule
+ok 1 - duration limits use working minutes after rest; historical application freezes the exact rule
+  ---
+  duration_ms: 126.868171
+  type: 'test'
+  ...
+# Subtest: scoped HR cannot create global or foreign rules; managers cannot retire; foreign staff cannot use the definition
+ok 2 - scoped HR cannot create global or foreign rules; managers cannot retire; foreign staff cannot use the definition
+  ---
+  duration_ms: 94.140169
+  type: 'test'
+  ...
+# Subtest: retirement blocks new requests and credits but retains pending independent decisions, reversals and balances
+ok 3 - retirement blocks new requests and credits but retains pending independent decisions, reversals and balances
+  ---
+  duration_ms: 102.081445
+  type: 'test'
+  ...
+# Subtest: transfer hides old organization rules but keeps own credited balance and rule snapshots readable
+ok 4 - transfer hides old organization rules but keeps own credited balance and rule snapshots readable
+  ---
+  duration_ms: 125.971704
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2484.193834

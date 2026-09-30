@@ -1,0 +1,12 @@
+{
+  "runId": "r1-p3-02-20260910T035514Z",
+  "implementationSha": "c5475c3d892eb7773428ea7dc1c203237cabe7da",
+  "command": "node --test tests/r1-p3-m01.test.mjs",
+  "fixtureSeed": "m01-v1-fixed-fixture-dates-with-today-derived-from-server",
+  "environment": "isolated in-memory SQLite; synthetic identities",
+  "exitCode": 0,
+  "log": "r1-p3-02-20260910T035514Z.log",
+  "taskComplete": false,
+  "fullDesignCasesPassed": false,
+  "independentReview": "not_performed"
+}

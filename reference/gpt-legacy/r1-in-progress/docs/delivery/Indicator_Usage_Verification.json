@@ -1,0 +1,17 @@
+{
+  "completedAt": "2026-09-08T10:49:54.452632+00:00",
+  "command": "node --test tests/performance-indicator-usage.test.mjs tests/performance-indicators.test.mjs",
+  "tests": 5,
+  "passed": 5,
+  "failed": 0,
+  "exitCode": 0,
+  "scope": "指标版本引用、待审/发布分离、去重与当前HR范围隔离；关联目录回归",
+  "sourceHashes": {
+    "lib/hris/performance-indicator-usage.ts": "c17e37855e88e4295b0996b66629db474087fa304760f7452cb6265cb6c0057a",
+    "app/api/performance-indicators/route.ts": "25f469309754edb57628207014ae42d8c8f2cf800932a8bfae4d614d8834a42a",
+    "app/performance-indicators/workspace.tsx": "9bc56883193c60ef6202ed78015723eb31a7fa0a4f634a328763d24a0473a267",
+    "tests/performance-indicator-usage.test.mjs": "205a4f28727dfee5b65aa0af22c9f91f571928457a3d22e6da91f4b48941a635"
+  },
+  "businessAccepted": false,
+  "productionAccepted": false
+}

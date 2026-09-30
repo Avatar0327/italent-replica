@@ -1,0 +1,49 @@
+{
+  "startedAt": "2026-09-08T12:11:01.732962+00:00",
+  "completedAt": "2026-09-08T12:11:02.862468+00:00",
+  "testedCommit": "a54381363e52c513fb79bc1a227368dad8bedab9",
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "tests/hris.test.mjs",
+    "tests/authorization.test.mjs",
+    "tests/workflows.test.mjs",
+    "tests/p2-api.test.mjs",
+    "tests/g0-contracts.test.mjs"
+  ],
+  "exitCode": 0,
+  "tests": 25,
+  "pass": 25,
+  "fail": 0,
+  "skipped": 0,
+  "scope": "F01–F04核心组织员工/权限/审批与存储；附件复用既有P3技术证据，本批未冒称全量回归",
+  "environment": "合成身份、SQLite :memory:、本地D1/R2替身；不是人工或生产验收",
+  "sourceHashes": {
+    "tests/hris.test.mjs": "e680e83bebc2d90bcc8f31c818fc56972a24a268f2386553799936c02c5677ec",
+    "tests/authorization.test.mjs": "e745333a6a9943882d7181fe507246da294355617dbb2757fc98ed0a72b87e72",
+    "tests/workflows.test.mjs": "dd1c50fd39a36b4fd9bbcb6177fb2b2c291ada3aef0d4a36464c0ec8b5786ca3",
+    "tests/p2-api.test.mjs": "4118428861625393f0f723107d4687da86ca2c1648cbcd289d9c9555e33deea7",
+    "tests/g0-contracts.test.mjs": "9ee98dda420e9ab65a0a1e57e9acd197693abf537304e1ef91be66028dd700fc"
+  },
+  "report": "docs/delivery/F01_F04_Closure_Run.tap",
+  "productSourceHashes": {
+    "lib/hris/model.ts": "9d1a19bb3f96757799ff25f85c818ada30ac78d380b58e0e8d54a9af00e47a02",
+    "lib/hris/authorization.ts": "31398bd79d579e4f28d70ec51b0500bd87282e1623e1cb3a24ca89721bbb8269",
+    "app/api/hris/route.ts": "779146e9d1571aa7efd55c6be8fda6130a638c11f3bb09232e7600f9aa5f6cc5",
+    "app/hris.tsx": "e3b871aec44e327cf5f658f51bf0c34f37a990ebfaf325f36b401843c1b1863c",
+    "app/settings/members.tsx": "a7faa61ffebb12531a1562a84637bbc3210327e8dbb819d0b3aee2b7848f10da",
+    "app/settings/workflows.tsx": "7e1063f87178bc7c7a2a8b3257e73051657cb9fbbf85efd29639f2eb8f37a668",
+    "app/employees/attachments.tsx": "5d0772f8241aa0a315ef0fe9b4ee9542442edf9a52b2b9dd8f3032bb8ac6feff"
+  },
+  "ui": {
+    "status": "blocked",
+    "start": "Sites preview running",
+    "browserError": "net::ERR_BLOCKED_BY_CLIENT",
+    "attempts": 1,
+    "sourceReview": "路由、角色按钮、表单及附件入口已源码核对，非浏览器实操"
+  },
+  "build": "复用v110成功构建；本轮main产品源码未变，未重新构建",
+  "passed": 25,
+  "failed": 0
+}

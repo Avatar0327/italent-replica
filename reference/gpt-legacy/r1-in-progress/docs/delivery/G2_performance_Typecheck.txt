@@ -1,0 +1,2 @@
+Command: node node_modules/typescript/bin/tsc --noEmit --incremental false
+Exit: 0

@@ -1,0 +1,24 @@
+✔ P3-REC-01/04: bounded AES-256-GCM chunks roundtrip with separate wrapped key and independent signature, preserving exact byte boundaries (105.439028ms)
+✔ P3-REC-01/04: corruption, missing chunk, bad signature, wrong key and cross-checkpoint AAD fail before publication or restore (65.35768ms)
+✔ P3-REC-01/05: tombstoned multi-chunk object requires complete ordered references and whole-object SHA before verified manifest (37.727945ms)
+✔ P3-REC-01: actual expanded schema baseline includes every registered persistent table and rejects concurrent source changes instead of publishing mixed cuts (288.763128ms)
+✔ P3-REC-01/03: current complete-row journal seals actual command transactions; missing, truncated and unguarded writes never pass as replayable effects (111.688485ms)
+✔ P3-REC-01: UTF-8 logical rows cross 4MiB boundaries without whole-export buffering; incomplete final records reject (49.517836ms)
+✔ P3-REC-01/03: real isolated SQLite imports baseline and complete increments once; schema/history preserved, gate closed and pending outbox paused (406.284318ms)
+✔ P3-REC-01: persisted isolated SQL receipts resume after a lost import response without duplicating any source key (270.110087ms)
+✔ P3-REC-01/05: explicitly simulated independent object target restores ranges and tombstones once while remaining isolated (37.608736ms)
+✔ P3-REC-02/03: controller restores an old active account but current independent revocation disables it; each phase persists and no owner approval or outbound replay is invented (327.106542ms)
+✔ P3-REC-02: unavailable current platform authority blocks after object verification and a later confirmed retry resumes the same isolated target (276.557153ms)
+✔ P3-REC-02: an authority change during final target sealing invalidates reconciliation and keeps the target closed (227.645145ms)
+✔ P3-REC-02: real separate SQL ledger persists deny before business shrink and activates only after both acknowledgements (28.728069ms)
+✔ P3-REC-02: partial cross-store failure remains denied; tampered or truncated signed authorization chains cannot become current trust (7.794042ms)
+✔ P3-REC-02: security event CAS admits one concurrent change, and an equal event ID with other content conflicts (5.287294ms)
+✔ P3-REC-02: actual command coordinator denies first, syncs its sealed authority image, and application access fails closed when trusted runtime is absent (367.192671ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2888.466115

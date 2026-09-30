@@ -1,0 +1,71 @@
+{
+  "kind": "local_synthetic_runtime_case_evidence_not_acceptance_approval",
+  "taskId": "P3-R1-11",
+  "sourceSha": "7a86db4c62f09de0b9606050c073a7ef2510e87a",
+  "cases": [
+    {
+      "id": "P3-XMOD-01",
+      "status": "implemented_synthetic_verified_review_pending",
+      "design": "R1_P2_P3_Work_Packages.json / P3-R1-11",
+      "requirements": [
+        "稳定ID→审批→执行→关系→报表→恢复",
+        "原一审签名/冻结版本保持",
+        "审计失败原子回滚/同键重试/未知回复查回执",
+        "当前权限阻旧团队/报表/导出worker",
+        "全链关联ID及恢复后隔离闸门"
+      ],
+      "code": [
+        "lib/hris/r1-command.ts",
+        "lib/hris/r1-domain-events.ts",
+        "lib/hris/r1-report-jobs.ts",
+        "lib/hris/r1-recovery-crypto.ts",
+        "lib/hris/r1-recovery-backup.ts",
+        "lib/hris/r1-recovery-control.ts",
+        "lib/hris/r1-recovery-maintenance.ts",
+        "scripts/r1-recovery-isolated-target.mjs"
+      ],
+      "tests": [
+        "tests/r1-p3-cross-domain.test.mjs",
+        "tests/r1-p3-recovery.test.mjs"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T103230203458Z.json"
+      ],
+      "actualRuns": [
+        {
+          "correlationId": "cc693765-8ec3-45c9-afe1-377a6020c4cf",
+          "approvalId": "745fcdbd-cf3b-483e-b503-f1be47fa2c81",
+          "stablePersonId": "67885cf0-2909-4d5a-b876-b5b767c60702",
+          "assignmentId": "b45f2aae-b35e-4a11-89d1-64b414a1ef7f",
+          "baseline": "5ab88c61-66ed-4b3a-ba80-ea87a817c698",
+          "increment": "b2e204a0-b5f4-4261-b9f3-67dee005fa05",
+          "correlatedEvents": 18,
+          "failureInjected": false,
+          "restoredOpenGate": 0,
+          "realExternalEffects": 0
+        },
+        {
+          "correlationId": "228d8bca-0cc9-4fc1-9f20-8b5521ba565f",
+          "approvalId": "85819895-d833-44ea-af6a-ebf84cec11d4",
+          "stablePersonId": "4a7c75be-c676-42d5-9bed-c1ee53fd7ba2",
+          "assignmentId": "67540eb7-c8d1-47e3-a45a-4dc78f022208",
+          "baseline": "36e8d45f-3338-4d21-afa1-ec29e1313a2e",
+          "increment": "297bc7ce-c37d-43a6-9f86-df7ac2a64f20",
+          "correlatedEvents": 18,
+          "failureInjected": true,
+          "restoredOpenGate": 0,
+          "realExternalEffects": 0
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    "只证明本轮本地SQLite实际事务及隔离合成身份；对象、当前平台访问及外效回执为显式模拟",
+    "恢复停在business_checked/openGate=0；未执行所有者开放、云端恢复、真实生产者联调或独立真人浏览器验收",
+    "correlationId需调用者提供，后台继承原命令；关联标识不授予权限",
+    "热日志清理须独立可信目录重验签及48小时合格基线字节完整验证；真实平台独占fence仍未就绪",
+    "任务10的16项真实生产者局部阻塞保留，不据11完成声明完整P3通过"
+  ],
+  "p3ExitApproved": false,
+  "p4Started": false
+}

@@ -1,0 +1,25 @@
+{
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "tests/hris.test.mjs",
+    "tests/authorization.test.mjs",
+    "tests/workflows.test.mjs",
+    "tests/p2-api.test.mjs",
+    "tests/p3-api.test.mjs",
+    "tests/g0-contracts.test.mjs",
+    "tests/g1-foundation.test.mjs",
+    "tests/g1-cadre-exit.test.mjs",
+    "tests/g1-learning.test.mjs",
+    "tests/g2-performance-flow.test.mjs",
+    "tests/g2-performance-lifecycle.test.mjs"
+  ],
+  "exitCode": 0,
+  "durationSeconds": 22.579,
+  "output": "docs/delivery/G2_performance_Test_Output.tap",
+  "outputSha256": "716d99589f404ccd1525bb4ae1f42bc19a85e6639da006ac6e68cfb432fb25af",
+  "summary": "1..122\n# tests 122\n# suites 0\n# pass 122\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 22175.638143\n",
+  "baseline": "bda3ffdce577aa04592534db131c2d634f225792",
+  "environment": "Local synthetic SQLite and identity; no real-account UI or production acceptance"
+}

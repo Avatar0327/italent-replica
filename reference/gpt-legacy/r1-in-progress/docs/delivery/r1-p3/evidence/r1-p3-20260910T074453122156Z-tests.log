@@ -1,0 +1,24 @@
+✔ P3-M32-01/10: 21 stable datasets and 254 unique fields retain registered labels/types; 15 producer entries do not claim integration (3.904608ms)
+✔ P3-XMOD-02: label mapping keeps grade when email column absent and rejects guessed or duplicate columns (0.678879ms)
+✔ P3-M32-02/07: exact decimal and safe money retain missing counts, no zero denominator or mixed currency fabrication (1.178598ms)
+✔ P3-M32-07: typed AST rejects hidden filter/sort/formula, SQL, units, ambiguous joins and excessive depth; values remain bindings (5.94103ms)
+✔ P3-M32-04/02: actual compatibility calculation keeps old published result under draft replacement and unknown recruitment headcount is null (294.598072ms)
+✔ P3-M32-07: decimal SQL filters compare exact signed decimal parts beyond JS safe integer precision (1.999412ms)
+✔ P3-M32-01/03: M01 projection keeps one row per stable person, left coverage rows and real dated contract records (417.594452ms)
+✔ P3-M32-03/05: snapshot retains fixed values while current person scope/field revocation strips access; source changes cannot splice pages (138.511866ms)
+✔ P3-M32-03: projection resume is idempotent and source cutoff is stable across build pages; audit failure cannot publish partial ready snapshot (137.373923ms)
+✔ P3-M32-07: definition publication freezes validated payload; hidden field, stale draft and audit failure publish no new version (126.149984ms)
+✔ P3-M32-03/05: direct API enforces time and unknown parameter rules without unbounded legacy context reads (107.620677ms)
+✔ P3-M32-05/07: summary-only grants aggregate current scope, refuse drill, count null separately and retain legal zero-denominator state (137.202884ms)
+✔ P3-M32-05: person scope update during SQL read invalidates response before any old fields are returned (99.023018ms)
+✔ P3-M32-03/07: sorted seek pages use unique tie-breakers; saved definition runs published version and rejects overrides (139.813649ms)
+{"proof":"synthetic 10001-row local SQLite query, not cloud load acceptance","chunks":51,"maxRows":200,"maxBytes":165201,"queryPlan":["SEARCH r USING INDEX sqlite_autoindex_r1_report_rows_1 (tenant_id=? AND dataset_id=? AND generation_id=? AND row_key>?)"]}
+✔ P3-M32-06: 10001 synthetic versioned rows build in bounded chunks; SQL indexed pagination covers every key exactly once (2862.566723ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4042.228531

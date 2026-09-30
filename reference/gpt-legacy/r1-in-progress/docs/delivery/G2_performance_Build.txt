@@ -1,0 +1,18 @@
+Command: node /root/.codex/plugins/cache/openai-curated-remote/sites/0.1.51/scripts/build-site.mjs
+Exit: 0
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> site-creator-vinext-starter@0.1.0 build
+> bash scripts/build-verified.sh
+
+
+Completion output excerpt collected from the same build session (exit 0):
+vinext build (Vite 8.0.13)
+[1/5] analyze client references: 296 modules; built in 2.65s
+[2/5] analyze server references: 248 modules; built in 889ms
+[3/5] build rsc environment: 302 modules; built in 2.57s
+[4/5] build client environment: 2049 modules; built in 3.46s
+[5/5] build ssr environment: 254 modules; built in 1.84s
+Build complete. Run `vinext start` to start the production server.
+Non-fatal warnings: proxy environment detected; some routes cannot be classified by static analysis.
+This file includes the initial output and a completion excerpt, not the full route listing.

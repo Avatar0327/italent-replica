@@ -1,0 +1,77 @@
+{
+  "kind": "P3_dependency_evidence_projection_not_scope_register",
+  "newBusinessDecisions": [],
+  "ownerDecisionRequiredNow": false,
+  "dependencies": [
+    {
+      "id": "DEP-PLATFORM-01",
+      "owner": "平台负责人",
+      "status": "capability_unverified",
+      "impact": "07/09云端调度、独立导出/导入及隔离目标运行验证阻塞",
+      "localAlternative": "仅本地显式worker和隔离适配器继续实施；不伪造正式平台能力",
+      "evidence": [
+        "evidence/r1-p3-20260910T082305048810Z.json"
+      ],
+      "resumeCondition": "平台提供经核实的隔离后台/调度、独立一致导出/导入和目标资源能力；本窗口不部署或修改线上配置",
+      "readOnlyCheck": "R1_P3_Current_Dependency_Check.json",
+      "minimumAction": "R1_P3_Platform_Actions.md#dep-platform-01"
+    },
+    {
+      "id": "DEP-PLATFORM-02",
+      "owner": "平台/独立安全负责人",
+      "status": "capability_unverified",
+      "impact": "09真实独立可信授权、维护独占fence和恢复开放未落实；目标保持关闭",
+      "resumeCondition": "独立安全/控制服务与可信当前平台访问证明、维护fence正式实现和隔离演练就绪；开放仍须所有者批准",
+      "readOnlyCheck": "R1_P3_Current_Dependency_Check.json",
+      "minimumAction": "R1_P3_Platform_Actions.md#dep-platform-02"
+    },
+    {
+      "id": "DEP-PRODUCERS-01",
+      "owner": "R2/R3生产者与M48/M32负责人",
+      "status": "16_real_producer_cases_blocked",
+      "impact": "10仍16真实生产者未完成；11本地检查点及本轮185项回归不代替真实联调",
+      "evidence": [
+        "R1_P3_Producer_Case_Evidence.json"
+      ],
+      "resumeCondition": "提供各生产者已批准版本、实际P3源码和隔离契约运行环境后，只续未完成的逐契约联调",
+      "readOnlyCheck": "R1_P3_Current_Dependency_Check.json"
+    },
+    {
+      "id": "SRC-13",
+      "owner": "P1总控",
+      "status": "source_evidence_retained",
+      "impact": "本窗口不抢原站浏览器或操作补证"
+    },
+    {
+      "id": "DEP-HUMAN-01",
+      "owner": "所有者及独立P4验收负责人",
+      "status": "P4_retained",
+      "impact": "本窗口不加人、不进入P4"
+    }
+  ],
+  "originEvidenceIntake": "R1_P3_Origin_Evidence_Intake.json",
+  "deferredChangeProposals": [
+    {
+      "id": "CP-R1-ORIGIN-OBS07-DATE",
+      "status": "proposal_not_approved_not_implemented",
+      "blockingCurrentP3": false,
+      "proposal": "明确哪些入口/雇佣类型要求计划入职日期不早于所选组织最早有效日，以及历史迁移/重聘/未来目录例外；已有执行时目标时态校验继续有效。",
+      "why": "employment.startOn目前只校验合法日期/前任期与未结束段；P2未明示该源模板跨对象前置规则，不自动变更已批准模型。"
+    },
+    {
+      "id": "CP-R1-ORIGIN-OBS07-PROBATION",
+      "status": "proposal_not_approved_not_implemented",
+      "blockingCurrentP3": false,
+      "proposal": "若采纳源试用模板联动，需明确适用模板版本、条件必填、月末/闰年算法与默认覆写规则；不得由一个月样本推所有入口策略。",
+      "why": "本次已修复显式required的空白绕过；新增条件规则/日期算法属于另一个需求问题。"
+    }
+  ],
+  "latestReadinessCheck": "R1_P3_Current_Dependency_Check.json",
+  "platformActionList": "R1_P3_Platform_Actions.md",
+  "latestOriginIncrement": "R1_P3_Origin_Increment_7920b64.json",
+  "authorizationRequestsPrepared": {
+    "status": "prepared_not_executed",
+    "document": "R1_P3_Platform_Actions.md",
+    "blocks": "无现成已授权资源时阻平台真实验证；不阻固定版本独立评审"
+  }
+}

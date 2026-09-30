@@ -1,0 +1,49 @@
+{
+  "completedAt": "2026-09-08T13:21:05.083631+00:00",
+  "baseCommit": "eb7cb7062688d42c0ff90ed67c4ed09ea0f1d9a1",
+  "command": "node --test --test-reporter=tap tests/f01-f04-transfer-roles.test.mjs tests/hris.test.mjs tests/workflows.test.mjs tests/authorization.test.mjs tests/p2-api.test.mjs tests/g1-foundation.test.mjs tests/p3-api.test.mjs",
+  "exitCode": 0,
+  "tests": 116,
+  "passed": 116,
+  "failed": 0,
+  "skipped": 0,
+  "report": "docs/delivery/F01_F04_Decisions_Run.tap",
+  "scope": "D1–D7首包必要实现：原子生效/日期/失败恢复/来源目标授权/职级防盲审/驳回重审；关联P2/P3/G1回归，仅合成SQLite/R2替身，不代替真人UAT或生产验收",
+  "ui": {
+    "command": "node --test --test-reporter=tap tests/f01-f04-transfer-ui.test.mjs",
+    "tests": 3,
+    "passed": 3,
+    "failed": 0,
+    "exitCode": 0,
+    "report": "docs/delivery/F01_F04_Decisions_UI_Run.tap",
+    "limitation": "真实React组件服务端渲染验证摘要、脱敏和按钮禁用；不是浏览器交互/视觉/键盘验收"
+  },
+  "typecheck": {
+    "command": "node node_modules/typescript/bin/tsc --noEmit",
+    "exitCode": 0
+  },
+  "firstAttempt": "纯模型测试首次因新增TS相对导入无扩展名失败；保留既有Node原生运行方式，补.ts扩展后115/115通过。随后新增编制恢复与原单关联约束，最终116/116；未降低业务断言。",
+  "sourceSha256": {
+    "app/api/hris/route.ts": "87424792fc3a73aceb1437820bdd0d9448827e3e248c76f86857eab7341cd95c",
+    "app/hris.tsx": "a67bfb7695e7ec1f6edbded33577780b00167805a79c7f6e78f3c4922f4ef8c2",
+    "app/approvals/transfer-review.tsx": "30e79c9348dceb634af99182272178f8af33e9f1ed88c1e4d87a507f1a0e8a1b",
+    "app/settings/workflows.tsx": "008c16dd65748d57d0f8f25c44a537d13b6558029a48a4bda438fe8d90eeaa9d",
+    "lib/hris/model.ts": "0261ebfe42dc0227d7889b9bb4e190f0e4b120d86c9b0093fd497d1b1b7a9480",
+    "lib/hris/authorization.ts": "a05aa4a6264495289b9512bc54f416d38881e905aaa0fa45f96624c1b50abcca",
+    "lib/hris/personnel-transfer.ts": "5eba784136a5682dab2557322525446a392dc170b09c6f4ead2d68208ac190a6",
+    "lib/hris/repository.ts": "d29c455ce153d7231728c7821d3571ad92ae60edf6b1811d478dcb6a2f1a1249",
+    "lib/hris/cadres.ts": "31f25c95c6c83abfb01d37cf34e18b68686f6cb83c991dc1f41ce0a7510a0bda",
+    "db/schema.ts": "7f17d8998944cb56d57bab6d6352e4e83cd6c356ca334fd472439cd0259f7bc7",
+    "drizzle/0009_spotty_redwing.sql": "215b7578ceb3213235fc80d6aab2c7792d02dbcccfd67fd116450db3a0dab858"
+  },
+  "humanUat": "未执行；E1正常打开仅为用户确认页面访问，E2不新增人类身份；多角色真人验收暂缓",
+  "productionAccepted": false,
+  "testedSourceCommit": "3d690cbbd6336c6de8b76a06fa4459700b1e3a88",
+  "build": {
+    "command": "node /root/.codex/plugins/cache/openai-curated-remote/sites/0.1.51/scripts/build-site.mjs",
+    "exitCode": 0,
+    "result": "五个构建阶段完成；0009迁移随构建打包；不冒称浏览器已验收"
+  },
+  "publishedSourceCommit": "3d690cbbd6336c6de8b76a06fa4459700b1e3a88",
+  "deploymentEvidence": "docs/delivery/Deployment_Evidence.json"
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `hris_approvals` ADD `details` text;

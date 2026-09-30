@@ -1,0 +1,26 @@
+✔ P3-ARC-01 / BASE-01-AC01: inactive, isolation and stale same-role authority reject (116.675694ms)
+✔ P3-ARC-01 / BASE-02-AC02: supplementary reads reject epoch or scope changes (90.944221ms)
+✔ P3-ARC-01: grant tuples do not cross product roles, fields, history, relations or actions (0.856097ms)
+✔ P3-ARC-02: audit failure rolls back facts, journal, receipt and outbox; next command succeeds once (89.040013ms)
+✔ P3-ARC-02: concurrent commands and lost response produce at most one business effect (80.354291ms)
+✔ P3-ARC-01: legacy HR and membership routes use the bridge; activation cannot bypass isolation (92.69996ms)
+✔ P3-MIG-07: actual isolated DDL matches full manifest; schema drift and missing writer barrier reject before backfill (124.903614ms)
+✔ P3-ARC-02/P3-MIG-07: expanded domain writes, command seal and source columns are journaled atomically with same transaction token (88.533004ms)
+✔ P3-M32-06/09: export has durable ID, exact idempotency, CSV states and current read+export authority; cancelled files remain bytes but unreadable (153.600637ms)
+✔ P3-M32-06: ready audit failure leaves only inaccessible orphan; retry and lost response recover by job ID without duplicating chunks (116.678079ms)
+✔ P3-M32-06: expired worker loses fencing, tenant has one active lease and fixed generation exports all pages under source updates (264.778948ms)
+✔ P3-M32-05/09: revoke field, move person, or cross actor denies old export; corrupt object never downloads (108.329766ms)
+✔ P3-M32-09: numeric negatives remain numeric and real zero differs from null in CSV (1.106529ms)
+✔ P3-M32-09: synchronous CSV commits audit before release and safely reproduces exact receipt; API never starts unverified background worker (123.70716ms)
+✔ P3-M32-06: concurrent claims admit only one worker; expiry during put leaves orphan and no visible chunk (87.718046ms)
+✔ P3-M32-07/09: export pins immutable saved definition including summary metrics; later draft never changes the job (181.248382ms)
+✔ P3-M32-06: executor failure is persisted, temporary put failure can resume only after explicit retry and current authorization (111.08621ms)
+✔ P3-M32-06: oversized individual source value is explicitly rejected before publication; no truncated ready generation exists (84.018282ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2125.766586

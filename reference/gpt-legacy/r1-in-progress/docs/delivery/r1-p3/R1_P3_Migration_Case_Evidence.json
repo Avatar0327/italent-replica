@@ -1,0 +1,105 @@
+{
+  "taskId": "P3-R1-08",
+  "sourceSha": "c36094e2f407fd0e2101b2b0e3988fc278b4ec1b",
+  "evidence": [
+    "evidence/r1-p3-20260910T090521350287Z.json"
+  ],
+  "execution": "local_synthetic_real_sql",
+  "taskStatus": "implemented_synthetic_verified_review_pending",
+  "testCount": 148,
+  "allOriginalAcPassed": false,
+  "independentReview": "pending",
+  "boundaries": [
+    "仅本地SQLite隔离合成；148/148和类型构建固定c36094e，不是P3最终两轮收口",
+    "JSON归档预算4MiB/数组10000项；规范化和回填100行批次；超预算显式失败",
+    "未知历史/法律实体/关系不推断；目录补齐有效期等新事实须按已批准业务规则核实",
+    "旧审批保留原表/签名/节点及只读兼容视图；未核安全适配器的旧办理局部阻断，不猜测外部后效",
+    "未证明R2/R3真实版本契约、云端容量/生产迁移或独立人类验收；不关闭风险或批准退出"
+  ],
+  "code": [
+    "lib/hris/r1-migration.ts",
+    "lib/hris/r1-normalize-json.ts",
+    "lib/hris/r1-migration-backfill.ts",
+    "lib/hris/r1-migration-map.ts",
+    "lib/hris/r1-migration-reconcile.ts",
+    "lib/hris/r1-migration-attachments.ts",
+    "lib/hris/r1-migration-compatibility.ts",
+    "lib/hris/r1-core-read.ts",
+    "lib/hris/r1-schema-check.ts",
+    "drizzle/0025_r1_migration_control.sql",
+    "drizzle/0026_r1_expansion_recovery_log.sql",
+    "drizzle/0027_r1_migration_bridge.sql",
+    "drizzle/0028_r1_migration_journal_columns.sql"
+  ],
+  "tests": [
+    "tests/r1-p3-migration.test.mjs",
+    "tests/r1-p3-report-oracles.test.mjs",
+    "tests/r1-p3-transfer.test.mjs"
+  ],
+  "cases": [
+    {
+      "id": "P3-MIG-01",
+      "status": "local_runtime_evidence_review_pending",
+      "assertions": "v0原文归档/11表末批storage1切换；v1稳定人物/雇佣/任职/合同分立，未知历史保留",
+      "evidence": [
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ]
+    },
+    {
+      "id": "P3-MIG-02",
+      "status": "local_runtime_evidence_review_pending",
+      "assertions": "101人100行分批、原命令幂等/源并发CAS全批回滚/高fence接管和重扫代次",
+      "evidence": [
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ]
+    },
+    {
+      "id": "P3-MIG-03",
+      "status": "local_runtime_evidence_review_pending",
+      "assertions": "LEGACY元组仅旧current/字段/范围；撤权、跨租户、新导出权与历史别名拒绝",
+      "evidence": [
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ]
+    },
+    {
+      "id": "P3-MIG-04",
+      "status": "local_runtime_evidence_review_pending",
+      "assertions": "合同源两版本真实回填但稳定根只一；法律实体未知；文件缺失/墓碑/哈希变化隔离，21原oracle本轮整体复验",
+      "evidence": [
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ]
+    },
+    {
+      "id": "P3-MIG-05",
+      "status": "local_runtime_evidence_review_pending",
+      "assertions": "旧D7第一签名/currentStep/模板版本保持；终态审批与执行unknown分离，旧命令切读后拒绝",
+      "evidence": [
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ]
+    },
+    {
+      "id": "P3-MIG-06",
+      "status": "local_runtime_evidence_review_pending",
+      "assertions": "切读后新多任职/不可变版本完整保留；回滚只读兼容，旧写屏障仍有效",
+      "evidence": [
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ]
+    },
+    {
+      "id": "P3-MIG-07",
+      "status": "local_runtime_evidence_review_pending",
+      "assertions": "实际82表/524对象DDL与旧全入口屏障核验；日志失败原子回滚",
+      "evidence": [
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ]
+    },
+    {
+      "id": "P3-XMOD-03",
+      "status": "local_runtime_evidence_review_pending",
+      "assertions": "旧员工稳定ID→雇佣/任职/合同映射→M01实际报表单根行和逐键对账切读",
+      "evidence": [
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+import {z} from 'zod';
+export const reportCommandInput=z.object({correlationId:z.string().regex(/^[A-Za-z0-9:_-]{1,100}$/).optional(),causationId:z.string().regex(/^[A-Za-z0-9:_-]{1,100}$/).optional(),commandId:z.string().uuid(),idempotencyKey:z.string().min(1).max(100),expectedWorkspaceRevision:z.number().int().nonnegative(),expectedAuthorizationRevision:z.number().int().nonnegative(),expectedWriterEpoch:z.number().int().nonnegative(),expectedRecoveryEpoch:z.number().int().nonnegative(),payload:z.unknown()}).strict();

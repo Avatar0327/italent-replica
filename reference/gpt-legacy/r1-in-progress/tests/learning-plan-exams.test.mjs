@@ -1,0 +1,52 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {setup,get,send,act,expect,request} from './support/foundation-scenario.mjs';
+const reports=await import('../app/api/reports/route.ts'),profiles=await import('../app/api/cadre-profiles/route.ts');
+const exams=await import('../app/api/learning-exams/route.ts'),tasks=await import('../app/api/learning-exam-tasks/route.ts'),plans=await import('../app/api/learning-plans/route.ts'),assign=await import('../app/api/learning-assignments/route.ts'),self=await import('../app/api/self-service/route.ts');
+async function cmd(api,command,status=200){const d=await expect(await api.GET());return expect(await api.POST(request('/api/test',{revision:d.revision,command})),status);}
+test('mixed course/exam requirements retain independent attempts through stages, cancellation, history reuse and exhaustion',async t=>{
+ const f=await setup();t.after(()=>f.sqlite.close());const course=await send({action:'course',code:'MIXED',title:'合成课程',description:'课程及独立考试闭环',content:'完成合成案例实践，再参加独立考试；不同类型的完成记录不能混用。'});await send({action:'publishCourse',id:course.id});
+ const exam=await cmd(exams,{action:'create',title:'合成独立考试',orgId:f.org.id,questions:[{prompt:'应当如何处理合成业务',options:['独立核验','自行审批'],correct:0}],passingScore:80,maxAttempts:2});await cmd(exams,{action:'seal',id:exam.id});
+ const definition=await cmd(plans,{action:'create',title:'课程后参加独立考试',orgId:f.org.id,courseIds:[course.id],examIds:[exam.id],config:{mode:'relative',durationDays:30,allowOverdue:false,orderedStages:true,progressSync:true}});
+ await cmd(plans,{action:'grading',id:definition.id,rule:{mode:'allHighest',attempts:'all',decimals:2}});
+ await cmd(plans,{action:'edit',id:definition.id,title:'课程后参加独立考试',orgId:f.org.id,courseIds:[course.id],config:{mode:'relative',durationDays:30,allowOverdue:false,orderedStages:true,progressSync:true}});assert.deepEqual((await expect(await plans.GET())).records.find(r=>r.id===definition.id).payload.examIds,[exam.id]);
+ await cmd(plans,{action:'stages',id:definition.id,stages:[{title:'课程实践',courseIds:[course.id]},{title:'独立考试',courseIds:[exam.id]}]});await cmd(plans,{action:'seal',id:definition.id});
+ const created=await cmd(assign,{action:'assign',definitionId:definition.id,employeeId:f.e.id});assert.equal(created.ids.length,3);
+ let rows=(await expect(await assign.GET())).records,instance=rows.find(r=>r.kind==='learningAssignment'),enrollment=rows.find(r=>r.kind==='enrollment'),examTask=rows.find(r=>r.kind==='learningExamTask');assert.equal(instance.payload.learningRequirements[1].kind,'exam');assert.equal(examTask.payload.learningRequirementId,instance.payload.learningRequirements[1].id);
+ act('employee');assert.equal((await expect(await tasks.GET())).papers.length,0);assert.ok(!(await expect(await self.GET())).tasks.some(r=>r.id===examTask.id));await cmd(tasks,{action:'submit',id:examTask.id,answers:[0]},400);
+ await send({action:'submitLearning',id:enrollment.id,evidence:'合成实践成果已经完成并提交'});act('hr');await send({action:'verifyLearning',id:enrollment.id,accepted:true,evidence:'独立核验课程实践成果完整'});await cmd(assign,{action:'closeAssignment',id:instance.id},400);
+ act('employee');assert.equal((await expect(await tasks.GET())).papers.length,1);assert.ok((await expect(await self.GET())).tasks.some(r=>r.id===examTask.id));await cmd(tasks,{action:'submit',id:examTask.id,answers:[0]});
+ act('hr');await cmd(assign,{action:'closeAssignment',id:instance.id});rows=(await get()).records;assert.equal(rows.find(r=>r.id===instance.id).status,'completed');assert.equal(rows.filter(r=>r.kind==='enrollment').length,1);assert.equal(rows.filter(r=>r.kind==='learningExamAttempt').length,1);assert.ok(!rows.some(r=>r.kind==='learningCredit'));const report=await expect(await reports.GET(request('/api/reports?dataset=learningExams')));assert.equal(report.total,1);assert.equal(report.rows[0][4],instance.id);assert.equal(report.rows[0][9],100);const planReport=await expect(await reports.GET(request('/api/reports?dataset=learningPlanProgress')));assert.equal(planReport.rows[0][9],'已结项');assert.equal(planReport.rows[0][10],100);await cmd(plans,{action:'grading',id:definition.id,rule:{mode:'none'}},400);const profile=await expect(await profiles.GET(request('/api/cadre-profiles?employeeId='+f.e.id)));assert.ok(profile.sections.find(s=>s.key==='learningExams').items.some(i=>i.id===examTask.id));
+ const next=await cmd(plans,{action:'revise',id:definition.id});await cmd(plans,{action:'seal',id:next.id});await cmd(assign,{action:'assign',definitionId:next.id,employeeId:f.e.id});rows=(await expect(await assign.GET())).records;const second=rows.find(r=>r.kind==='learningAssignment'&&r.referenceId===next.id),secondExam=rows.find(r=>r.kind==='learningExamTask'&&r.payload.learningAssignmentId===second.id);assert.equal(rows.find(r=>r.kind==='enrollment'&&r.payload.learningAssignmentId===second.id).status,'completed');assert.equal(secondExam.status,'active');assert.ok(!rows.some(r=>r.kind==='learningExamAttempt'&&r.referenceId===secondExam.id));
+ await cmd(assign,{action:'cancelAssignment',id:second.id,evidence:'合成整体取消课程与独立考试'});act('employee');await cmd(tasks,{action:'submit',id:secondExam.id,answers:[0]},400);act('hr');await cmd(assign,{action:'restoreAssignment',id:second.id,evidence:'恢复原实例任务不重建作答历史'});
+ act('employee');await cmd(tasks,{action:'submit',id:secondExam.id,answers:[1]});await cmd(tasks,{action:'submit',id:secondExam.id,answers:[1]});act('hr');await cmd(assign,{action:'closeAssignment',id:second.id},400);await cmd(assign,{action:'cancelAssignment',id:second.id,evidence:'次数用尽后整体暂停'});await cmd(assign,{action:'restoreAssignment',id:second.id,evidence:'恢复不能清空耗尽次数'});act('employee');await cmd(tasks,{action:'submit',id:secondExam.id,answers:[0]},400);assert.equal((await expect(await tasks.GET())).records.find(r=>r.id===secondExam.id).status,'failed');
+});
+
+test('exam-only plans retain the 20-resource atomic limit and reject audit failure without partial tasks',async t=>{
+ const f=await setup();t.after(()=>f.sqlite.close());const examIds=[];
+ for(let i=0;i<20;i++){const exam=await cmd(exams,{action:'create',title:'合成容量试卷'+i,orgId:f.org.id,questions:[{prompt:'合成题目应选哪一项',options:['正确','错误'],correct:0}],passingScore:80,maxAttempts:1});await cmd(exams,{action:'seal',id:exam.id});examIds.push(exam.id);}
+ const command={action:'create',title:'仅独立考试的学习计划',orgId:f.org.id,courseIds:[],examIds,config:{mode:'relative',durationDays:30,allowOverdue:false,orderedStages:false,progressSync:false}};
+ await cmd(plans,{...command,examIds:[...examIds,examIds[0]]},400);const plan=await cmd(plans,command);await cmd(plans,{action:'seal',id:plan.id});const before=(await get()).revision,count=(await get()).records.length;
+ f.sqlite.exec("CREATE TRIGGER mixed_audit_failure BEFORE INSERT ON hris_audit_events BEGIN SELECT RAISE(ABORT,'synthetic capacity audit failure'); END");await cmd(assign,{action:'assign',definitionId:plan.id,employeeId:f.e.id},503);f.sqlite.exec('DROP TRIGGER mixed_audit_failure');assert.equal((await get()).revision,before);assert.equal((await get()).records.length,count);
+ const assigned=await cmd(assign,{action:'assign',definitionId:plan.id,employeeId:f.e.id});assert.equal(assigned.ids.length,21);assert.equal((await get()).revision,before+1);assert.equal((await get()).records.filter(r=>r.kind==='learningExamTask').length,20);
+});
+
+test('ordered mixed tasks allow explicit exam-submission release without completion or borrowed attempts',async t=>{
+ const f=await setup();t.after(()=>f.sqlite.close());
+ const course=await send({action:'course',code:'ORDER',title:'考试后实践',description:'顺序与完成独立',content:'使用合成数据先提交考试，再进行课程实践与独立核验。'});await send({action:'publishCourse',id:course.id});
+ const exam=await cmd(exams,{action:'create',title:'顺序前置考试',orgId:f.org.id,questions:[{prompt:'该如何处理业务',options:['独立核验','自行核验'],correct:0}],passingScore:80,maxAttempts:1});await cmd(exams,{action:'seal',id:exam.id});
+ const definition=await cmd(plans,{action:'create',title:'作答后放行实践',orgId:f.org.id,courseIds:[course.id],examIds:[exam.id],config:{mode:'relative',durationDays:30,allowOverdue:false,orderedStages:false,progressSync:false}});
+ const stage={title:'作答及实践',courseIds:[exam.id,course.id],orderedTasks:true,examSubmissionUnlock:true};
+ await cmd(plans,{action:'stages',id:definition.id,stages:[{...stage,orderedTasks:false}]},400);
+ await cmd(plans,{action:'stages',id:definition.id,stages:[stage]});await cmd(plans,{action:'seal',id:definition.id});await cmd(assign,{action:'assign',definitionId:definition.id,employeeId:f.e.id});
+ let rows=(await get()).records;const instance=rows.find(r=>r.kind==='learningAssignment'),task=rows.find(r=>r.kind==='learningExamTask'),enrollment=rows.find(r=>r.kind==='enrollment');
+ act('employee');assert.ok(!(await expect(await self.GET())).tasks.some(r=>r.id===enrollment.id));await send({action:'submitLearning',id:enrollment.id,evidence:'前置考试尚未提交'},400);
+ await cmd(tasks,{action:'submit',id:task.id,answers:[1]});assert.ok((await expect(await self.GET())).tasks.some(r=>r.id===enrollment.id));
+ await send({action:'submitLearning',id:enrollment.id,evidence:'考试已提交，完成合成实践成果'});act('hr');await send({action:'verifyLearning',id:enrollment.id,accepted:true,evidence:'独立核验成果符合实践要求'});await cmd(assign,{action:'closeAssignment',id:instance.id},400);
+ rows=(await get()).records;assert.equal(rows.find(r=>r.id===task.id).status,'failed');assert.equal(rows.find(r=>r.id===instance.id).status,'active');
+ const {learningStageOpen,learningRequirementProgress}=await import('../lib/hris/learning-requirements.ts');
+ assert.equal(learningRequirementProgress(instance,rows).complete,false);
+ const attempt=rows.find(r=>r.kind==='learningExamAttempt');for(const changed of [{...attempt,employeeId:'another'},{...attempt,referenceId:'other-task'},{...attempt,payload:{...attempt.payload,examId:'other-exam'}},{...attempt,payload:{...attempt.payload,score:undefined}}])assert.equal(learningStageOpen(enrollment,rows.map(r=>r.id===attempt.id?changed:r)),false);
+ const strict={...instance,payload:{...instance.payload,trainingStages:[{...stage,examSubmissionUnlock:false}]}};assert.equal(learningStageOpen(enrollment,rows.map(r=>r.id===instance.id?strict:r)),false);
+ const next=await cmd(plans,{action:'revise',id:definition.id});await cmd(plans,{action:'stages',id:next.id,stages:[{...stage,courseIds:[course.id,exam.id],examSubmissionUnlock:false}]});assert.deepEqual((await get()).records.find(r=>r.id===instance.id).payload.trainingStages,[stage]);
+});

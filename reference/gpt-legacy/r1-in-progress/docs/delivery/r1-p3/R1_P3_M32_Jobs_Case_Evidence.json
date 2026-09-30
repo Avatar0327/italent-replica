@@ -1,0 +1,52 @@
+{
+  "task": "P3-R1-07",
+  "sourceSha": "74c5b0db8894209b827b8e1b097366ad4c99257d",
+  "cases": [
+    {
+      "id": "P3-M32-06",
+      "evidence": [
+        "evidence/r1-p3-20260910T082305048810Z.json"
+      ],
+      "tests": [
+        "tests/r1-p3-report-jobs.test.mjs",
+        "tests/r1-p3-report-scale.test.mjs"
+      ],
+      "status": "local_synthetic_verified_platform_validation_and_independent_review_pending"
+    },
+    {
+      "id": "P3-M32-08",
+      "evidence": [
+        "evidence/r1-p3-20260910T082305048810Z.json"
+      ],
+      "tests": [
+        "tests/r1-p3-report-subscriptions.test.mjs"
+      ],
+      "status": "local_synthetic_verified_platform_validation_and_independent_review_pending"
+    },
+    {
+      "id": "P3-M32-09",
+      "evidence": [
+        "evidence/r1-p3-20260910T082305048810Z.json"
+      ],
+      "tests": [
+        "tests/r1-p3-report-jobs.test.mjs",
+        "tests/r1-p3-report-scale.test.mjs"
+      ],
+      "status": "local_synthetic_verified_platform_validation_and_independent_review_pending"
+    }
+  ],
+  "approvedAcceptanceIds": [
+    "BP-I-REQ-11-AC01",
+    "BP-I-REQ-11-AC02",
+    "M32-REVIEW-AC10",
+    "M32-REVIEW-AC12"
+  ],
+  "verificationBoundaries": [
+    "136/136本轮R1合成整体测试、类型、构建通过；非P3最终两轮收口",
+    "真实托管后台/调度仍DEP-PLATFORM-01未核实，HTTP明确blocked_runtime；不能声称云端任务运行",
+    "对象存储和消息传输为显式隔离模拟，未实发通知/附件，不是供应商或R2/R3真实联调",
+    "新页面经类型与构建检查；独立浏览器人工角色验收未执行",
+    "分块导出10001行完整运行；最大10000块/100汇总组为显式预算，未测试云端代表容量",
+    "业务历史不按导出24小时TTL删除；物理保留/恢复点约束交09"
+  ]
+}

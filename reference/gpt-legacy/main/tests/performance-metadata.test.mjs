@@ -1,0 +1,18 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {setup,act,expect,request,get} from './support/foundation-scenario.mjs';
+import {perf,performance,cycleInput,goals} from './support/performance-scenario.mjs';
+const reports=await import('../app/api/reports/route.ts');
+test('activity classification is optional, validated, frozen into results and reported without changing authorization or calendar policy',async t=>{
+ const f=await setup();t.after(()=>f.sqlite.close());const metadata={year:2026,cycleLabel:'年度',category:'岗位履职',businessDate:'2026-01-01'};
+ const revision=(await get()).revision;await perf({...cycleInput(f.org.id),metadata:{...metadata,businessDate:'2026-02-30'}},400);assert.equal((await get()).revision,revision);await perf({...cycleInput(f.org.id),metadata:{...metadata,year:2026.5}},400);
+ act('hr');await perf({...cycleInput(f.otherOrg.id),metadata},403);act('owner');const cy=await perf({...cycleInput(f.org.id),metadata});await perf({action:'startCycle',id:cy.id});act('employee');const p=await perf({action:'goals',employeeId:f.e.id,cycleId:cy.id,goals});act('manager');await perf({action:'confirmGoals',id:p.id});act('employee');await perf({action:'selfReview',id:p.id,evidence:'合成活动分类不改变办理窗口'});act('manager');await perf({action:'evaluate',id:p.id,scores:[80,80],evidence:'按照原有独立评价流程计分'});act('owner');const result=await perf({action:'publishPerformance',id:p.id,evidence:'发布并保存活动分类快照'});const r=(await expect(await performance.GET())).records.find(r=>r.id===result.id);assert.deepEqual(r.payload.performanceSnapshot.cycle.performanceMetadata,metadata);
+ const report=await expect(await reports.GET(request('/api/reports?dataset=performanceOperations')));for(const [column,value]of[['活动年度',2026],['周期分类','年度'],['绩效类别','岗位履职'],['业务日期','2026-01-01']])assert.equal(report.rows[0][report.columns.indexOf(column)],value);
+ act('employee');await expect(await reports.GET(request('/api/reports?dataset=performanceOperations')),403);
+});
+
+test('cycle draft edits are audited, preserve archived frozen schemes unless explicitly replaced and cannot affect active cycles',async t=>{
+ const f=await setup();t.after(()=>f.sqlite.close());const ratings=await import('../app/api/performance-ratings/route.ts'),{post}=await import('./support/performance-scenario.mjs');const levels=[{label:'高',min:3,max:5,minInclusive:true,maxInclusive:true,description:'',talentBand:3},{label:'低',min:0,max:3,minInclusive:true,maxInclusive:false,description:'',talentBand:1}];const d=await post(ratings,'/api/performance-ratings',{action:'create',title:'草稿冻结配置',orgId:f.org.id,levels});await post(ratings,'/api/performance-ratings',{action:'seal',id:d.id});const cy=await perf({...cycleInput(f.org.id),ratingDefinitionId:d.id,metadata:{year:2026}});await post(ratings,'/api/performance-ratings',{action:'archive',id:d.id});
+ let r=(await expect(await performance.GET())).records.find(r=>r.id===cy.id),created=r.createdAt;const base={...cycleInput(f.org.id),action:'editCycle',id:cy.id,name:'已纠正草稿'};act('manager');await perf(base,403);act('owner');await perf({...base,orgId:f.otherOrg.id},400);await perf(base);r=(await expect(await performance.GET())).records.find(r=>r.id===cy.id);assert.equal(r.createdAt,created);assert.equal(r.payload.name,'已纠正草稿');assert.equal(r.payload.ratingScheme.id,d.id);assert.equal(r.payload.performanceMetadata.year,2026);
+ const revision=(await get()).revision;await perf({...base,ratingDefinitionId:null,metadata:{}},200,revision);await perf(base,409,revision);r=(await expect(await performance.GET())).records.find(r=>r.id===cy.id);assert.equal(r.payload.ratingScheme,undefined);assert.deepEqual(r.payload.performanceMetadata,{});await perf({action:'startCycle',id:cy.id});await perf(base,400);
+});

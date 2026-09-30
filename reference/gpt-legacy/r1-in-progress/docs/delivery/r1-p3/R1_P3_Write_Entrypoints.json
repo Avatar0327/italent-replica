@@ -1,0 +1,513 @@
+{
+  "purpose": "static inventory, not dynamic route coverage",
+  "routeCount": 62,
+  "methodCount": 63,
+  "sourceSha": "7a86db4c62f09de0b9606050c073a7ef2510e87a",
+  "routes": [
+    {
+      "path": "app/api/access/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "1ebdfc6ab80bc4e97224c49426c5b237dd72147501a74d45a0423ae0ccf3b25c",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/attachments/route.ts",
+      "methods": [
+        "POST",
+        "DELETE"
+      ],
+      "sha256": "4c81b46c1839b03fbbc175e3cb1dd13ad2c00e4a1cc91deca6a55e0a7e705b90",
+      "classification": "R1 command header + actor-bound receipt replay + current attachment tuples; legacy permitted only before feature switch"
+    },
+    {
+      "path": "app/api/attendance/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "5860b5a86edce11218c79ee1c8f56d3a83b1e29a50e65a7a61819deff2a57ef0",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/attendance-periods/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "5eef52cac893f2ad7135f5022f2af6c26d524f8e0cad93c3d5e89799c6966784",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/cadre-interviews/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "b755e23d6b9cd103b99a6b06b07a60aca00bf5bdee017ee648945c196634559a",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/cadre-terms/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "c81a11d350b6ed1a760b0990f15ad03310be13452a46f25a9ae718cc898c271c",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/cadres/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "43265795eaf5b36d86ba997cf20f0ec3a18ba86eebd9102f0bacb2e3b39cdb3c",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/certificates/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "a170884b21149e6301ed5f784b13b0029eba9f37aede5f046500e1ceb8c027f3",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/contract-fields/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "70ba5ac6ac3727a5ed0dee40c7d5fb209f3364655c218ba4dac48c81fd87e41c",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/development/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "6c5217a311fc77ccbad369a30587fcd28e7cc7e70617bde0f735886d78b481e1",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/employee-experiences/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "43b680c6e69f2a3fd88fff6f8ffef4037b7e4eb36a20397c46c2638d87941ae5",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/employee-fields/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "f2f61d021bc7a71e2449685b28cb01d3fa60f46bdb73ec474916ddc4486acf01",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/feedback/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "c7e9247cf5247c9bf1e3b067608317a1b59755bb7c325bfb97f1d91a0db83964",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/hris/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "077aed52a9633bc0d99846fd0962f9b4605bb814d05242e21e5e9cd96f012f2e",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/instructor-campaigns/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "d7c359cafab7ddc94d8a643155b2a991a1a7c7f319e6d62dd8b97300ace6862e",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/instructor-development/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "4c15fa7c9100386ccf6f591eb32326189eb2cda39d0e26800bcde3e938f81ec8",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/instructor-directory/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "d6074e0608810a659f5e44c12d14bd69375a306f7b6eebeebce360950c94c2f3",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/instructor-trials/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "14fb3e6770cc37e9df25608f6260cfb4a013bf07dd8e6dc76dbb2cd478a01f27",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/instructors/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "3111eb6fc9a279a40b14c5d8bf8238650a7f7bd908fa3e3278036fa77f3acec4",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/interview-definitions/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "169616911e54aecbca37ee93a945a0b82d7c6039d05e4b1b792774aa561c0455",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/interview-schedule/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "3bcdd4a955568562c6a2bf6b6e10f247e3c7f97a78bc52b9dc9974b0e5a7ea5c",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/learning-assignments/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "35fe67b47383d81a8f36e71f36a554336c15d7fcc09749d0ecc8c6a95bc2f6cf",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/learning-content-update/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "5f64bd5d020cc049663e868ea55274671106a52db0f510611c5553ce37bc32de",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/learning-credits/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "d67789759462b674a9a2f0da159fc426944613dad3d5d1028589d84706d39bfc",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/learning-exam-tasks/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "823e9b39898a2195c87987c17a39cff8c013e49c169b1a99657cdeff616ac3b9",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/learning-exams/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "b5d2cbf64cc5a1d02808a6850ebc78e35f8869d8f899ce011fc6348318e971b8",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/learning-homework/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "1c94af4d1eac29540c4c5e007ae107007dcb804d1f03115fe51a4d39ad2514f6",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/learning-plans/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "fd3e53d97f9c33b1065ac351db800bb1226569ce5243fd3135abb9cd613731fa",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/members/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "aa60b8a497c465d22284304200ae536c793b9c7f20f1dad76708edc791fc5143",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/mentoring/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "122ceffb350306e8f1753e57b723c8f9f94abf03d53b385a604a25fed8d8d447",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/onboarding/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "4a633f358654c77e61eae6e0cb597ca8d1d14337c7322b78f506173649bf2ec4",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/payroll/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "12a7ced6100c956723a565d4a69f98d12e2ccab11e1ddfd44ea5c55c5383813a",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/payroll-adjustments/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "23f8d7e5d0270c3bd55b0b1812f4504369376390bb98e7be18ee30b357510487",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/performance/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "6c356f85ea3ebb5b5fadb3c704ed84720a102970a750dc5ec8f1e34a1acda823",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/performance-changes/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "fdf4ad90cf679763466d0277192412fb46ca5ba76482a0d14832dfe258f155f1",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/performance-checkins/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "fb4f5bdd6b98a7057e64b0ef3806e749f35bb151abd1232d6f448d63398027e1",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/performance-indicators/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "25f469309754edb57628207014ae42d8c8f2cf800932a8bfae4d614d8834a42a",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/performance-ratings/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "912bbb89668cb370c7f6eb80ef86ae318ff62ed1a3cadc30187243e261f169b9",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/performance-templates/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "aba3e2d7ba6eaf0006ecdedda04073646dbd7d99a077c0d6298b217cf9407408",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/qualifications/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "7ce7fdda8d444d5d53215e39fa7415d1765132e0d936001745bcb1ec4c69e380",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/r1/adapters/[source]/preflight/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "842a13373414ef7744a21d6051d7de39887ad1e1cf1d7b9e3156c077bf6c4c8c",
+      "classification": "R1 explicit versioned service or read-only contract preflight; static inventory is not dynamic proof"
+    },
+    {
+      "path": "app/api/r1/commands/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "32f010353d2a7e552dd7da3de3b4397a25bf8fb8d5a681c52404c8a56e5b26ae",
+      "classification": "R1 explicit versioned service or read-only contract preflight; static inventory is not dynamic proof"
+    },
+    {
+      "path": "app/api/r1/migration/attachments/route.ts",
+      "classification": "R1专用授权上下文/严格命令/当前revision及epoch屏障",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "1e23381b127f7b5c4ecd467a3145789de38dbcc9ca48b5d68f5bd4d854273e08"
+    },
+    {
+      "path": "app/api/r1/migration/route.ts",
+      "classification": "R1专用授权上下文/严格命令/当前revision及epoch屏障",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "cce6c42da1f7a79d89dd6b21bd44d7a22523a8294b50c2437e3fd2b86ae521c0"
+    },
+    {
+      "path": "app/api/r1/reports/definitions/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "7f313e063e1ae62ed888dd72976b0525b90144efb355c801843d9d97f8065b21",
+      "classification": "R1 service command ledger + current authorization + feature gate"
+    },
+    {
+      "path": "app/api/r1/reports/export/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "f9c36eb25cce6ed753443a2102ac4f31753397c61063115f1609d46e00175825",
+      "classification": "R1 service command ledger + current authorization; unverified background steps return blocked_runtime"
+    },
+    {
+      "path": "app/api/r1/reports/jobs/[id]/step/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "00281050368284d4841d1f55a114e11c76b5298133ed649ba3a118aa6386cb19",
+      "classification": "R1 service command ledger + current authorization; unverified background steps return blocked_runtime"
+    },
+    {
+      "path": "app/api/r1/reports/jobs/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "1279d3e9fed5725bc5f5e1eeba7f4fffce3594dadd6cedba7765e90d5333f886",
+      "classification": "R1 service command ledger + current authorization; unverified background steps return blocked_runtime"
+    },
+    {
+      "path": "app/api/r1/reports/projections/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "0d928c1a9a722d8b3e4d84bbec68a4a8e1bfb3676b17017483cb05b50a783a79",
+      "classification": "R1 service command ledger + current authorization + feature gate"
+    },
+    {
+      "path": "app/api/r1/reports/subscriptions/[id]/run/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "bd9e3ff72cc3070e15af2dd97d2b7e9cbd09cfdd916aa3e8ed844f8991ead5cb",
+      "classification": "R1 service command ledger + current authorization; unverified background steps return blocked_runtime"
+    },
+    {
+      "path": "app/api/r1/reports/subscriptions/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "4e3a9ab55faff2a7d288c8ef401353ed4d76cefe91b5888fa9738576dd0f4897",
+      "classification": "R1 service command ledger + current authorization; unverified background steps return blocked_runtime"
+    },
+    {
+      "path": "app/api/r1/self-service/actions/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "c86efa7790df8a2a5ed34c4c2009d3d119a0ad875b3b4cd02729e24e985ea0b5",
+      "classification": "R1 command gateway; exact route dynamic coverage tracked separately"
+    },
+    {
+      "path": "app/api/r1/workflows/batch/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "dbe9283d49db08c5cd92489749b3d0ca4cd207cc293038cbeff1ddf446e20059",
+      "classification": "R1 explicit versioned service or read-only contract preflight; static inventory is not dynamic proof"
+    },
+    {
+      "path": "app/api/recruitment/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "f27a7d4e4a2cc4f5360ff948c4325f1f45d1c41608b1a8e01866b7ecfe3a922d",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/recruitment-jobs/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "3bc515c0b8f79d47fd43a418e165059a52b82139b587c9f9ce11ea44629ea79d",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/reports/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "1f56c94a73a985e7c527e36782cebd7c27d0de036f050a03228b485e78696ea1",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/shift-definitions/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "feba1914a7301fa72a4c913f4f6de76352e26c8d466c6631df4f276c2e772c4b",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/storage/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "8b31b489602c004753bed2d9544714c886159cf56df5872746f1acbb889f615d",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/surveys/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "5c639cae2e2bb9351ae5a0ce09dc7fbcffe2b92724c1fcafc3cd73f3cffa8ee0",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/training-requests/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "cce6338145ca25c81e6b3978b7bf316de7342aba7c1eac0242b8af6b2177849c",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/training-sessions/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "19df24023626e125d146843829139c59e76c2e90244ae21188ec1d32485d463c",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    },
+    {
+      "path": "app/api/workforce/route.ts",
+      "methods": [
+        "POST"
+      ],
+      "sha256": "ca8a156a638568d278e35fe32add73c58d093d31c9a57615e2686cef844a6a4a",
+      "classification": "existing API command bridge; feature gate prevents old writes after switch"
+    }
+  ],
+  "independentControlServices": {
+    "classification": "internal injected independent control interfaces; no public opening endpoint, no real platform wiring verified",
+    "paths": [
+      "lib/hris/r1-recovery-control.ts",
+      "lib/hris/r1-recovery-maintenance.ts",
+      "lib/hris/r1-security-runtime.ts"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "executedAt": "2026-09-07T14:35:12.461544+00:00",
+  "baseline": "ea2ab88ad8ccd51b05fa5bf3543a1848508821a6",
+  "testedCommit": "ad197fff5fefa3d6361a464a213efbe1a9d5f78a",
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "tests/hris.test.mjs",
+    "tests/authorization.test.mjs",
+    "tests/workflows.test.mjs",
+    "tests/p2-api.test.mjs",
+    "tests/p3-api.test.mjs",
+    "tests/g0-contracts.test.mjs",
+    "tests/g1-foundation.test.mjs"
+  ],
+  "exitCode": 0,
+  "node": "v24.19.0",
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.39",
+  "environment": "local synthetic SQLite :memory:; mocked Cloudflare/identity; no cloud data or browser",
+  "sourceSha256": {
+    "tests/hris.test.mjs": "e680e83bebc2d90bcc8f31c818fc56972a24a268f2386553799936c02c5677ec",
+    "tests/authorization.test.mjs": "e745333a6a9943882d7181fe507246da294355617dbb2757fc98ed0a72b87e72",
+    "tests/workflows.test.mjs": "dd1c50fd39a36b4fd9bbcb6177fb2b2c291ada3aef0d4a36464c0ec8b5786ca3",
+    "tests/p2-api.test.mjs": "4118428861625393f0f723107d4687da86ca2c1648cbcd289d9c9555e33deea7",
+    "tests/p3-api.test.mjs": "1adae64d4bb5323f583738516e167372d7cb929300456496c5ab6061e75ee255",
+    "tests/g0-contracts.test.mjs": "9ee98dda420e9ab65a0a1e57e9acd197693abf537304e1ef91be66028dd700fc",
+    "tests/g1-foundation.test.mjs": "29ee56c430b4d0fd0ce62c4d98fb224d7fe2c58030d7db52d2cd13f23f1849c4",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d",
+    "tests/support/foundation-scenario.mjs": "b84670b9f011ea80b27d67685d7bf648e209e3be1e3c7a194170393489fbbf69"
+  },
+  "tests": 114,
+  "pass": 114,
+  "fail": 0,
+  "cancelled": 0,
+  "skipped": 0,
+  "duration_ms": 15455.423324
+}

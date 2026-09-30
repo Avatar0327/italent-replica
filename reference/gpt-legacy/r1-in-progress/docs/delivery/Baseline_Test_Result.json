@@ -1,0 +1,11 @@
+{
+  "date": "2026-09-07",
+  "sourceCommit": "ad29248b74789e9c0d2418cae2655a25f40e5411",
+  "command": "node --test tests/hris.test.mjs tests/authorization.test.mjs tests/workflows.test.mjs tests/p2-api.test.mjs tests/p3-api.test.mjs",
+  "tests": 109,
+  "pass": 109,
+  "fail": 0,
+  "skipped": 0,
+  "duration_ms": 16251.636141,
+  "scope": "synthetic local API and rule regression; not browser UAT or production acceptance"
+}

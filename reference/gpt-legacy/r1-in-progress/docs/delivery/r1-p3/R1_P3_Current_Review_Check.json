@@ -1,0 +1,1197 @@
+{
+  "kind": "implementation_window_artifact_integrity_check_not_independent_review_not_business_tests",
+  "at": "2026-09-11T01:15:47.661581+00:00",
+  "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+  "checks": [
+    {
+      "check": "current source identity",
+      "passed": true
+    },
+    {
+      "check": "only P3 delivery files changed",
+      "passed": true
+    },
+    {
+      "check": "run source",
+      "passed": true
+    },
+    {
+      "check": "actual TAP counts",
+      "passed": true
+    },
+    {
+      "check": "Node reporter tests 185",
+      "passed": true
+    },
+    {
+      "check": "Node reporter pass 185",
+      "passed": true
+    },
+    {
+      "check": "Node reporter fail 0",
+      "passed": true
+    },
+    {
+      "check": "Node reporter skipped 0",
+      "passed": true
+    },
+    {
+      "check": "Node reporter cancelled 0",
+      "passed": true
+    },
+    {
+      "check": "17 R1 files executed",
+      "passed": true
+    },
+    {
+      "check": "tests exit",
+      "passed": true
+    },
+    {
+      "check": "tests log hash",
+      "passed": true
+    },
+    {
+      "check": "types exit",
+      "passed": true
+    },
+    {
+      "check": "types log hash",
+      "passed": true
+    },
+    {
+      "check": "build exit",
+      "passed": true
+    },
+    {
+      "check": "build log hash",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-cross-domain.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-foundation.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-integration.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-migration.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-portal.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-producers.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-recovery.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-report-definition.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-report-jobs.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-report-oracles.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-report-query.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-report-scale.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-report-subscriptions.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-security-ledger.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/r1-p3-workflow.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/support/cadre-checks.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/support/foundation-scenario.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/support/performance-scenario.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/support/r1-report-fixture.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/support/r1-transfer-fixture.mjs",
+      "passed": true
+    },
+    {
+      "check": "test input tests/support/runtime.mjs",
+      "passed": true
+    },
+    {
+      "check": "P3 exit unapproved",
+      "passed": true
+    },
+    {
+      "check": "11 tasks preserved",
+      "passed": true
+    },
+    {
+      "check": "task10 still blocked",
+      "passed": true
+    },
+    {
+      "check": "37 risk dispositions unchanged",
+      "passed": true
+    },
+    {
+      "check": "85 original AC preserved",
+      "passed": true
+    },
+    {
+      "check": "no executor risk closure",
+      "passed": true
+    },
+    {
+      "check": "latest source intake",
+      "passed": true
+    },
+    {
+      "check": "old receipt immutable",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/Browser_Concurrency_Check.md",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/Continuation_Validation.json",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/Current_Executable_Test_Disposition.json",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/Evidence_Integrity.json",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/Future_Date_Recovery.json",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/M01_Checkpoint.md",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/M19_Checkpoint.md",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/M32_Checkpoint.md",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/M48_Checkpoint.md",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/Original_Site_Data_Manifest.json",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/Priority_P3_Static_Comparison.json",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/R1-ORIGIN-20260910-100019/20260911_Priority_Recovery.json",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/R1_Original_Behavior_Matrix.json",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/R1_Original_Behavior_Matrix.md",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/R1_P3_Evidence_Feedback.md",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/R1_P4_Comparison_Cases.md",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/R1_Parity_Difference_Ledger.json",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/R1_Parity_Difference_Ledger.md",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/Resume.md",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/Run_Status.json",
+      "passed": true
+    },
+    {
+      "check": "origin docs/evidence/original-site/r1/Owner_Decision_DIFF_MAJOR_001_20260910.json",
+      "passed": true
+    },
+    {
+      "check": "increment count",
+      "passed": true
+    },
+    {
+      "check": "M32-SEP11-EXPLICIT-DATE-ATTEMPT path lib/hris/r1-report-m01-producer.ts",
+      "passed": true
+    },
+    {
+      "check": "M32-SEP11-EXPLICIT-DATE-ATTEMPT path lib/hris/r1-report-query.ts",
+      "passed": true
+    },
+    {
+      "check": "M32-SEP11-EXPLICIT-DATE-ATTEMPT path tests/r1-p3-report-query.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M32-SEP11-EXPLICIT-DATE-ATTEMPT path tests/r1-p3-report-oracles.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M32-SEP11-EXPLICIT-DATE-ATTEMPT executed tests/r1-p3-report-query.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M32-SEP11-EXPLICIT-DATE-ATTEMPT executed tests/r1-p3-report-oracles.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M32-SEP11-EXPLICIT-DATE-ATTEMPT planned P3-M32-01",
+      "passed": true
+    },
+    {
+      "check": "M32-SEP11-EXPLICIT-DATE-ATTEMPT planned P3-M32-02",
+      "passed": true
+    },
+    {
+      "check": "M32-SEP11-EXPLICIT-DATE-ATTEMPT planned P3-M32-03",
+      "passed": true
+    },
+    {
+      "check": "M19-TRANSFER-SEP11-TERMINATED path lib/hris/r1-m01.ts",
+      "passed": true
+    },
+    {
+      "check": "M19-TRANSFER-SEP11-TERMINATED path tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M19-TRANSFER-SEP11-TERMINATED path tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M19-TRANSFER-SEP11-TERMINATED executed tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M19-TRANSFER-SEP11-TERMINATED executed tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M19-TRANSFER-SEP11-TERMINATED planned P3-M01-10",
+      "passed": true
+    },
+    {
+      "check": "M01-EXIT-SEP11-STATE path lib/hris/r1-m01.ts",
+      "passed": true
+    },
+    {
+      "check": "M01-EXIT-SEP11-STATE path tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M01-EXIT-SEP11-STATE path tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M01-EXIT-SEP11-STATE executed tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M01-EXIT-SEP11-STATE executed tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M01-EXIT-SEP11-STATE planned P3-M01-10",
+      "passed": true
+    },
+    {
+      "check": "M01-PENDING-EXIT-REHIRE path lib/hris/r1-m01.ts",
+      "passed": true
+    },
+    {
+      "check": "M01-PENDING-EXIT-REHIRE path tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M01-PENDING-EXIT-REHIRE path tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M01-PENDING-EXIT-REHIRE executed tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M01-PENDING-EXIT-REHIRE executed tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "M01-PENDING-EXIT-REHIRE planned P3-M01-02",
+      "passed": true
+    },
+    {
+      "check": "OBS-05 path lib/hris/r1-m01.ts",
+      "passed": true
+    },
+    {
+      "check": "OBS-05 path lib/hris/r1-workflow.ts",
+      "passed": true
+    },
+    {
+      "check": "OBS-05 path tests/r1-p3-workflow.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "OBS-05 executed tests/r1-p3-workflow.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "OBS-05 planned P3-M19-01",
+      "passed": true
+    },
+    {
+      "check": "OBS-07 path lib/hris/r1-m01.ts",
+      "passed": true
+    },
+    {
+      "check": "OBS-07 path tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "OBS-07 path tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "OBS-07 executed tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "OBS-07 executed tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "OBS-07 planned P3-M01-08",
+      "passed": true
+    },
+    {
+      "check": "OBS-07 planned P3-M01-09",
+      "passed": true
+    },
+    {
+      "check": "ENV-05 path lib/hris/r1-report-m01-producer.ts",
+      "passed": true
+    },
+    {
+      "check": "ENV-05 path lib/hris/r1-report-query.ts",
+      "passed": true
+    },
+    {
+      "check": "ENV-05 path tests/r1-p3-report-query.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "ENV-05 path tests/r1-p3-report-oracles.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "ENV-05 executed tests/r1-p3-report-query.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "ENV-05 executed tests/r1-p3-report-oracles.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "ENV-05 planned P3-M32-01",
+      "passed": true
+    },
+    {
+      "check": "ENV-05 planned P3-M32-02",
+      "passed": true
+    },
+    {
+      "check": "ENV-05 planned P3-M32-03",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-EXIT path lib/hris/r1-m01.ts",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-EXIT path tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-EXIT path tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-EXIT executed tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-EXIT executed tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-EXIT planned P3-M01-10",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-TERMINATION path lib/hris/r1-m01.ts",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-TERMINATION path tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-TERMINATION path tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-TERMINATION executed tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-TERMINATION executed tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-TERMINATION planned P3-M01-10",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REPORT path lib/hris/r1-report-m01-producer.ts",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REPORT path lib/hris/r1-report-query.ts",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REPORT path tests/r1-p3-report-query.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REPORT path tests/r1-p3-report-oracles.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REPORT executed tests/r1-p3-report-query.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REPORT executed tests/r1-p3-report-oracles.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REPORT planned P3-M32-01",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REPORT planned P3-M32-02",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REPORT planned P3-M32-03",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REHIRE path lib/hris/r1-m01.ts",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REHIRE path tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REHIRE path tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REHIRE executed tests/r1-p3-m01.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REHIRE executed tests/r1-p3-transfer.test.mjs",
+      "passed": true
+    },
+    {
+      "check": "FUTURE-REHIRE planned P3-M01-02",
+      "passed": true
+    },
+    {
+      "check": "exit observed with audit unknown",
+      "passed": true
+    },
+    {
+      "check": "termination minute precision",
+      "passed": true
+    },
+    {
+      "check": "reports unknown rehire unperformed",
+      "passed": true
+    },
+    {
+      "check": "producer counts",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M48-team no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M48-approval no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M48-okr no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M48-okr no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M48-goal no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M48-goal no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M48-attendance no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M48-attendance no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M48-learning no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M48-learning no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M48-development no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M48-development no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M01 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M19 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M48 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M32 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M03 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M03 no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M06 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M06 no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M17 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M17 no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M18 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M18 no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M26 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M26 no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M37 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M37 no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M12 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M12 no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M16 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M16 no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M27 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M27 no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M11 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M11 no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M07 no independent acceptance",
+      "passed": true
+    },
+    {
+      "check": "P3-LINK-M32-M07 no fake runtime",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L01 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L01 case artifact R1_P3_M01_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L02 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L02 case artifact R1_P3_Migration_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L03 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L03 case artifact R1_P3_M01_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L04 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L04 case artifact R1_P3_M01_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L05 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L05 case artifact R1_P3_M01_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L06 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L06 case artifact R1_P3_M01_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L07 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L07 case artifact R1_P3_M01_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L08 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L08 case artifact R1_P3_Migration_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L09 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L09 case artifact R1_P3_M01_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L10 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M01-L10 case artifact R1_P3_Integration_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L01 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L01 case artifact R1_P3_M19_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L02 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L02 case artifact R1_P3_M19_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L03 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L03 case artifact R1_P3_M19_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L04 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L04 case artifact R1_P3_M19_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L05 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L05 case artifact R1_P3_M19_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L06 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L06 case artifact R1_P3_M19_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L07 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L07 case artifact R1_P3_Integration_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L08 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L08 case artifact R1_P3_Cross_Domain_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L09 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M19-L09 case artifact R1_P3_Integration_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L01 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L01 case artifact R1_P3_M48_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L02 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L02 case artifact R1_P3_M48_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L03 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L03 case artifact R1_P3_M48_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L04 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L04 case artifact R1_P3_M48_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L05 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L05 case artifact R1_P3_M48_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L06 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L06 case artifact R1_P3_M48_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L07 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L07 case artifact R1_P3_M48_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L08 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M48-L08 case artifact R1_P3_Cross_Domain_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L01 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L01 case artifact R1_P3_M32_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L02 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L02 case artifact R1_P3_M32_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L03 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L03 case artifact R1_P3_M32_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L04 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L04 case artifact R1_P3_M32_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L05 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L05 case artifact R1_P3_M32_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L06 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L06 case artifact R1_P3_M32_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L07 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L07 case artifact R1_P3_M32_Jobs_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L08 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L08 case artifact R1_P3_M32_Jobs_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L09 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L09 case artifact R1_P3_Cross_Domain_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L10 six dimensions",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L10 case artifact R1_P3_M32_Jobs_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "R1-M32-L10 case artifact R1_P3_Recovery_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Checkpoint.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Controller_Proposal.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Cross_Domain_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Current_Dependency_Check.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Dependencies_Decisions.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Fixed_Review_Packet.md",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Foundation_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Integration_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_M01_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_M19_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_M32_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_M32_Jobs_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_M48_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Migration_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Origin_Evidence_Intake.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Origin_Evidence_Intake.md",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Origin_Increment_7920b64.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Overall_Verification.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Platform_Actions.md",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Producer_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Recovery_Case_Evidence.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Resume.md",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Review_Packet.md",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Traceability.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file R1_P3_Write_Entrypoints.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file evidence/prepare-review-20260911.py",
+      "passed": true
+    },
+    {
+      "check": "manifest file evidence/r1-p3-20260911T005747815482Z-build.log",
+      "passed": true
+    },
+    {
+      "check": "manifest file evidence/r1-p3-20260911T005747815482Z-tests.log",
+      "passed": true
+    },
+    {
+      "check": "manifest file evidence/r1-p3-20260911T005747815482Z-types.log",
+      "passed": true
+    },
+    {
+      "check": "manifest file evidence/r1-p3-20260911T005747815482Z.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file evidence/review-check-20260911-initial-reporter-format.json",
+      "passed": true
+    },
+    {
+      "check": "manifest file evidence/seal-review-20260911.py",
+      "passed": true
+    },
+    {
+      "check": "main registered P2 exit and P3 entry",
+      "passed": true
+    }
+  ],
+  "counts": {
+    "total": 295,
+    "passed": 295,
+    "failed": 0
+  },
+  "previousAttempt": "evidence/review-check-20260911-initial-reporter-format.json",
+  "previousFailureReason": "5个摘要匹配检查只支持TAP #前缀；实际Node日志是ℹ前缀。已支持两种格式，原始日志及185项运行结果未修改，未重复产品测试。",
+  "independentReview": "pending",
+  "p3ExitApproved": false,
+  "p4Started": false
+}

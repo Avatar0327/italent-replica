@@ -1,0 +1,12 @@
+✔ frozen attendance guards new shifts and corrections and approved leave changes; reopening and refreezing retain prior snapshot (172.951361ms)
+✔ incomplete, empty, future, overlapping or out-of-scope periods cannot freeze; audit failure leaves attendance writable (164.943582ms)
+✔ current personnel scope governs historical period access while the employee lock survives a transfer (157.72753ms)
+✔ preview is read-only, scope checked and stale revisions do not freeze changed sources; employee receives only visible lock identifiers (116.337557ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2707.100454

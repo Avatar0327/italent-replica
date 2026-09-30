@@ -1,0 +1,12 @@
+✔ P3 待办工作台：顺序审批轮次、本人隔离、跨组织筛选、分页和办理后消退 (403.936172ms)
+✔ P3 扩展待办：薪酬角色保密、绩效环节和招聘独立审批流转 (209.776388ms)
+✔ changed sources block approved publication; changes after publishing flag follow-up without rewriting money (199.646704ms)
+✔ inbox switches stale payroll to corrective work and reference report remains scoped and snapshot-based (331.337358ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1808.785885

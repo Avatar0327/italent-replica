@@ -1,0 +1,124 @@
+{
+  "kind": "offline_intake_artifact_check_not_product_test_or_original_site_validation",
+  "checkedAt": "2026-09-11T00:44:33.884188+00:00",
+  "command": [
+    "python",
+    "docs/delivery/r1-p3/evidence/audit-origin-intake.py"
+  ],
+  "scriptSha256": "1f587d9a95d3f3b673f9b6649c3b902c5fca2f7d1f6dae13979e555a4b79c3fc",
+  "receiptSha256": "a0f6177705d1d4ec69d077bc970b32015385cecd2452ef6b0493ba46c728e9eb",
+  "checks": [
+    {
+      "check": "pinned_source",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "all_source_blob_hashes",
+      "passed": true,
+      "detail": 69
+    },
+    {
+      "check": "sourceCaseId_coverage_70",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "sourceLedgerId_coverage_15",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "sourceCaseId_coverage_4",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "approved_requirements_and_case_links",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "current_code_hashes_and_test_paths",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "future_facts_remain_unknown",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "direct_transfer_owner_decision_preserved",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "log_integrity_r1-p3-20260911T003553114467Z",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "exact_test_source_r1-p3-20260911T003553114467Z",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "log_integrity_r1-p3-20260911T003617713648Z",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "exact_test_source_r1-p3-20260911T003617713648Z",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "log_integrity_r1-p3-20260911T003733692664Z",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "exact_test_source_r1-p3-20260911T003733692664Z",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "failures_preserved_and_final_34_passed",
+      "passed": true,
+      "detail": [
+        [
+          0,
+          2
+        ],
+        [
+          32,
+          2
+        ],
+        [
+          34,
+          0
+        ]
+      ]
+    },
+    {
+      "check": "final_types_and_build_executed",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "check": "bounded_product_and_test_diff",
+      "passed": true,
+      "detail": [
+        "lib/hris/r1-m01.ts",
+        "tests/r1-p3-m01.test.mjs"
+      ]
+    },
+    {
+      "check": "external_and_phase_gates_preserved",
+      "passed": true,
+      "detail": null
+    }
+  ],
+  "allChecksPassed": true
+}

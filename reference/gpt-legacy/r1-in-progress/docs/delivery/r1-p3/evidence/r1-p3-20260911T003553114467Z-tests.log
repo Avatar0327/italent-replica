@@ -1,0 +1,40 @@
+✖ P3-ORIGIN-OBS07: required text rejects empty, whitespace and blank defaults in each declared entry template before any write (367.495141ms)
+✖ P3-ORIGIN-OBS07: required subset blank update rolls back, optional blank and numeric zero remain valid, unauthorized writes remain denied (203.183537ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1467.314567
+
+✖ failing tests:
+
+test at tests/r1-p3-m01.test.mjs:68:1
+✖ P3-ORIGIN-OBS07: required text rejects empty, whitespace and blank defaults in each declared entry template before any write (367.495141ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/r1-p3-m01.test.mjs:75:28)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /必填/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at tests/r1-p3-m01.test.mjs:81:1
+✖ P3-ORIGIN-OBS07: required subset blank update rolls back, optional blank and numeric zero remain valid, unauthorized writes remain denied (203.183537ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/r1-p3-m01.test.mjs:90:2)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /必填/,
+    operator: 'rejects',
+    diff: 'simple'
+  }

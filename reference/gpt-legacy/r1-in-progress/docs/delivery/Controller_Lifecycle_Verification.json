@@ -1,0 +1,39 @@
+{
+  "startedAt": "2026-09-08T10:44:27.178376+00:00",
+  "completedAt": "2026-09-08T10:44:34.710709+00:00",
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "tests/foundation-field-lifecycle.test.mjs",
+    "tests/cadre-lifecycle-review.test.mjs",
+    "tests/p3-api.test.mjs",
+    "tests/g1-cadre-exit.test.mjs",
+    "tests/g1-cadre-terms.test.mjs",
+    "tests/g1-learning.test.mjs",
+    "tests/g1-learning-thresholds.test.mjs",
+    "tests/learning-homework.test.mjs"
+  ],
+  "exitCode": 0,
+  "sourceHashes": {
+    "lib/hris/employee-fields.ts": "a5bd077ff4ab9067830d1b6f919338b0a2f5f13a9e23f082d93f7712f9e679b1",
+    "lib/hris/cadres.ts": "2d649b778af70d07b5c40d9c86750632e897c26c96261ce1b2d3016e8986813e",
+    "lib/hris/work-inbox.ts": "cd31c13614d86ae1d9e3be02b4186fd3133295c33d9e67a10203495cbdc08c9a",
+    "tests/foundation-field-lifecycle.test.mjs": "be333b919173e6c926538810cbb53ea1d15e46554c8ab057dabf12970f802891",
+    "tests/cadre-lifecycle-review.test.mjs": "53940830f2efc40c2d4cd3684a4858b89a4e45a96a7ff176c55a8a2771fdac6f",
+    "tests/p3-api.test.mjs": "699756e5e2cfb466ee9d266972b1243c6d1f967319c5df397be918ef7834a983",
+    "tests/g1-cadre-exit.test.mjs": "10651b3e4145c2ba2a7f516e0aad6e35dfcfcde02352b13f5b46035dbd7f89e0",
+    "tests/g1-cadre-terms.test.mjs": "256e6ac5ea1367d3c39649c26c5b6c1bd4a936b8027bf1f89e0e018156885280",
+    "tests/g1-learning.test.mjs": "0f20a7fa67add50771310ad1191a9a0da1d4543e134326547da13ab3063c6b7f",
+    "tests/g1-learning-thresholds.test.mjs": "1d428973629f29a8c817f808a1d06768591e2ca1df4243af4c80e22910f60eac",
+    "tests/learning-homework.test.mjs": "ffbb5710e954fe787f7550aa760f48df00cae62d357dbf6919ca0ec22236cc8f"
+  },
+  "productionAccepted": false,
+  "businessAccepted": false,
+  "report": "docs/delivery/Controller_Lifecycle_Run.tap",
+  "tests": 98,
+  "passed": 98,
+  "failed": 0,
+  "scope": "组织员工、干部、学习及既有P3 API关联回归",
+  "typecheck": "passed"
+}

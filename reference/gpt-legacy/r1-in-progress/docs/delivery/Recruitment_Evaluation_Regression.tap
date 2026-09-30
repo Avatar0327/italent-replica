@@ -1,0 +1,15 @@
+✔ structured evaluation freezes four-level criteria and explicit recommendation without inventing aggregate or altering prior results (217.955737ms)
+✔ unknown or incomplete scores, unauthorized templates, audit failure and latest rejecting result enforce workflow boundaries (159.668439ms)
+✔ maximum Chinese criteria and comments fit explicit bounded endpoints while oversized bodies are rejected (178.659119ms)
+✔ structured interview response recovery keeps a single original evaluation and enforces key-content identity (130.009813ms)
+✔ lost creation responses replay the original ID across stale/current revisions without another write or metadata disclosure (167.909998ms)
+✔ candidate and interview creation keys are per actor, retain failure atomicity and do not bypass current scope or role (132.876323ms)
+✔ unsupported keys and commands are rejected instead of suggesting replay support for state transitions (55.725191ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2864.091541

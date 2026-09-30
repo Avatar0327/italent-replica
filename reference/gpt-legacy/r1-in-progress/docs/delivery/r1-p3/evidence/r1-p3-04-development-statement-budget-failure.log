@@ -1,0 +1,79 @@
+✔ P3-INT-01: normalized envelope, durable duplicate, digest conflict and sequence gap (120.002737ms)
+✔ P3-INT-02: inbox projection and receipt roll back together under injected audit failure (85.066332ms)
+✔ P3-INT-03: explicitly simulated unknown delivery is queried and not blindly resent (14.449384ms)
+✔ P3-INT-04: six external adapters stay unconfigured; internal signed/published does not imply external success (0.88353ms)
+✔ P3-INT-05: unknown command and forged tenant cannot choose an unregistered producer (94.959557ms)
+✔ P3-INT-06: unknown DB commit preserves uploaded bytes; tombstone refuses download and queues cleanup (113.539082ms)
+✔ P3-INT-01: two consumers process once independently, quarantine gaps with owner and preserve old receipts (79.598606ms)
+✔ P3-INT-03: durable delivery loss, signed duplicate callback, nonce conflict, expiry and bad signature quarantine (114.385127ms)
+✔ P3-INT-03: callback audit failure rolls nonce/receipt/state back together; no trusted completion survives (86.48844ms)
+✔ P3-INT-05: equal labels retain independent stable IDs/versions; unknown statuses and revoked grants fail closed (96.113744ms)
+✔ P3-M01-01: same org overlapping position name rejects, cross org permits, future cycles reject (133.24062ms)
+✔ P3-M01-02: identity conflicts do not merge; stable rehire and tenure exclude gaps/internship (81.124603ms)
+✔ P3-M01-03: independent HR approves part time; it consumes zero additional headcount (107.222036ms)
+✔ P3-M01-07: legal scope, same legal ID and adjacent renewal dates; immutable versions (62.808276ms)
+✔ P3-M01-08: subset row key is idempotent across transport command IDs and explicit null survives (77.178107ms)
+✔ P3-M01-09: missing or wrong entry template blocks person creation and never activates accounts (74.441405ms)
+✔ P3-M01-10: exit fence rejects later approvals and queues all 101 cleanup items (58.277284ms)
+✔ P3-M01-12: protected waiting dependency blocks disable without exposing identity (58.476868ms)
+✔ P3-M01-11: explicit strong budget policy blocks effect; absent provider never reports budget passed (68.90283ms)
+✔ temporal versions: future publication preserves today and old bytes, all interval cuts reject historical hidden cycles (72.149055ms)
+✖ exit generation: rehire enables only new segment; cleanup resumes and unsupported domains retain blocked receipts (92.092941ms)
+✔ command replay runs before stale business-state validation and does not create a second employment (65.989561ms)
+✔ server identity candidates: forged candidate list cannot hide a second identifier match; protected keys contain no raw values (68.838977ms)
+✔ contract field roots survive revisions and inheritance; explicit null clears; stable contract counts exclude unknown and cancelled (96.391537ms)
+✔ ten subset types plus custom preserve field versions, reject missing field permission and enforce exact decimal precision (242.731614ms)
+✔ M01 paged reads enforce field tuples and reject a cursor after permission revision changes (189.447964ms)
+✔ client unknown result retains exact command identity and resolves through the receipt without a second send (5.452421ms)
+✔ catalog acceptance: sibling names, cross-parent reuse, same grade names with distinct codes, and concurrent protected references (87.928339ms)
+✔ all additional assignments occupy zero; duplicate overlap fails, cancellation preserves the case, ending releases no extra headcount (214.96582ms)
+✔ history read needs separate history authorization; present record access never reveals past fields (146.486574ms)
+✔ UI form payloads keep explicit null, stable IDs, two D7 reviewers and server validation contracts (15.986492ms)
+✔ three entry templates stay independent and saving never invites or creates membership (111.572585ms)
+✔ exit and approval racing share the tenant CAS; final exit blocks every later completion (69.391715ms)
+✔ P3-M19-01/04: real R1 regularize adapter updates stable person and normalized employee atomically (133.263989ms)
+✔ P3-M01-04 new D7 endpoint: second reviewer scope is target only; approval waits, atomic effect changes primary and compatibility once (212.00165ms)
+✔ P3-M01-05 new D7 endpoint: early execution has no attempt; audit exception rolls back both models and same key can safely retry (168.506094ms)
+✔ P3-M01-06 new D7 endpoint: unrelated terminal history permits independent intent; correction restarts both reviewers; parallel requests share CAS (196.802021ms)
+✔ same-day transfers retain exact event time and one day-end primary instead of invalid negative date intervals (172.820801ms)
+✔ D7 business failure commits only attempt and reason; primary history and occupancy remain unchanged (153.097504ms)
+✔ D7 field revocation rejects blind review; target-only summary does not grant source history or attachments (195.707971ms)
+✔ D7 approval expires at the planned Beijing date boundary; source and intent remain unchanged (137.138909ms)
+✔ D7 unknown after a real SQLite commit resolves by command receipt and never duplicates history or occupancy (160.934979ms)
+✔ P3-M19-01: graph/type validation, null/missing/multiple routes and no implicit auto pass (119.820899ms)
+✔ P3-M19-01: application dedup, immutable template v1 continues after v2 publication (123.913986ms)
+✔ P3-M19-02: all/any and reject policies are explicit and order-independent for same collected votes (101.792707ms)
+✔ P3-M19-03: transfer and intervention invalidate old node tokens, preserve actual decisions (126.504598ms)
+✔ P3-M19-04: domain cancellation SQL failure rolls back workflow/audit/receipt, success cancels both (101.798746ms)
+✔ P3-M19-06: delegation acceptance, intersection, no approval/proxy, revocation and commit-time expiry (285.270464ms)
+✔ P3-M19-05: three independent items, stale/denied results fixed, lost response queries atomic receipt (164.758049ms)
+✔ P3-M19-07: approval and execution queues differ, filters preserve counts, cursor revocation rejects (112.530483ms)
+✔ P3-M19-02/04: applied instance rejects rollback; actor cannot self-approve or spoof source type (79.846344ms)
+✔ P3-M19-06: delegated query uses both current grants and scope, then rejects revocation (76.500241ms)
+✔ P3-M19-07: durable notification unknown queries original receipt after transfer without a second send (82.881413ms)
+✔ P3-M19-06: forbidden attempts record only real denial audit; audit storage failure is not claimed (77.317134ms)
+✔ P3-M19-02: any policy in both serial orders gives one terminal outcome and no fabricated approvals (153.011527ms)
+✔ P3-M19-01/02: D7 blocks every generic management path; no missing policies, empty approvers or cross-org template writes (76.263639ms)
+✔ P3-M19-06: zero interval never grants and delegated creation is forbidden (70.686494ms)
+✔ P3-M19-07: competing notification dispatchers claim at most once under tenant CAS (78.802531ms)
+ℹ tests 58
+ℹ suites 0
+ℹ pass 57
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3200.812867
+
+✖ failing tests:
+
+test at tests/r1-p3-m01.test.mjs:96:1
+✖ exit generation: rehire enables only new segment; cleanup resumes and unsupported domains retain blocked receipts (92.092941ms)
+  Error: 请按受控批次提交
+      at commitCommand (file:///workspace/sites/italent-hris-r1-p3-20260910/lib/hris/r1-command.ts:68:15)
+      at async TestContext.<anonymous> (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/r1-p3-m01.test.mjs:104:22)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    status: 413,
+    machineCode: 'TRANSACTION_TOO_LARGE'
+  }

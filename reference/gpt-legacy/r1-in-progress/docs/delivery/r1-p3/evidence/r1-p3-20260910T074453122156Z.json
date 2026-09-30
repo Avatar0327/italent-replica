@@ -1,0 +1,62 @@
+{
+  "runId": "r1-p3-20260910T074453122156Z",
+  "sourceSha": "1d7725cef06a753063a2080ac0f0c37b1f493713",
+  "taskId": "P3-R1-06",
+  "startedAt": "2026-09-10T07:44:53.122206+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/r1-p3-report-definition.test.mjs": "7e32e2f1f35f544e83bcd542921d2af5bd060c6e454445484184dff6dfbcb04f",
+    "tests/r1-p3-report-query.test.mjs": "61cdf096915ff85e511aedc20f8984ea328dd025cc18e9611cee07676fb3349c",
+    "tests/r1-p3-report-scale.test.mjs": "517ceae19fd33fe6606a3c6de333b3d14034b500ae7f48573cb3729f08e2aabc",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/r1-p3-report-definition.test.mjs",
+        "tests/r1-p3-report-query.test.mjs",
+        "tests/r1-p3-report-scale.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T074453122156Z-tests.log",
+      "sha256": "b3bb0437639708a78c6ed5f1f4f94764216382d8dac20e615549f26c32531698"
+    },
+    {
+      "name": "types",
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T074453122156Z-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build",
+      "command": [
+        "node",
+        "/root/.codex/plugins/cache/openai-curated-remote/sites/0.1.56/scripts/build-site.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T074453122156Z-build.log",
+      "sha256": "5cfa3fb1e2004c271cb3bb0b25e404627675777d6794d136ea90eee9c30dee4e"
+    }
+  ],
+  "testSummary": {
+    "tests": 15,
+    "pass": 15,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T07:45:13.036601+00:00"
+}

@@ -1,0 +1,10 @@
+{
+  "completedAt": "2026-09-08T11:18:48.824215+00:00",
+  "tests": 25,
+  "passed": 25,
+  "failed": 0,
+  "scope": "绩效范围提示与强制、模板快照、周期生命周期、指标引用和权限关联回归",
+  "report": "docs/delivery/Goal_Advisory_Run.tap",
+  "typecheck": "passed",
+  "limitation": "非全量复测，人工业务与生产未验收；Worker渲染限制保留"
+}

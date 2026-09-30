@@ -1,0 +1,30 @@
+✔ P3-M01-01: same org overlapping position name rejects, cross org permits, future cycles reject (50.64934ms)
+✔ P3-M01-02: identity conflicts do not merge; stable rehire and tenure exclude gaps/internship (28.700622ms)
+✔ P3-M01-03: independent HR approves part time; it consumes zero additional headcount (32.471034ms)
+✔ P3-M01-07: legal scope, same legal ID and adjacent renewal dates; immutable versions (33.994681ms)
+✔ P3-M01-08: subset row key is idempotent across transport command IDs and explicit null survives (34.034967ms)
+✔ P3-M01-09: missing or wrong entry template blocks person creation and never activates accounts (25.311918ms)
+✔ P3-M01-10: exit fence rejects later approvals and queues all 101 cleanup items (23.390501ms)
+✔ P3-M01-12: protected waiting dependency blocks disable without exposing identity (16.951373ms)
+✔ P3-M01-11: explicit strong budget policy blocks effect; absent provider never reports budget passed (21.897924ms)
+✔ temporal versions: future publication preserves today and old bytes, all interval cuts reject historical hidden cycles (18.362547ms)
+✔ exit generation: rehire enables only new segment; cleanup resumes and unsupported domains retain blocked receipts (68.047131ms)
+✔ command replay runs before stale business-state validation and does not create a second employment (19.989865ms)
+✔ server identity candidates: forged candidate list cannot hide a second identifier match; protected keys contain no raw values (39.547782ms)
+✔ contract field roots survive revisions and inheritance; explicit null clears; stable contract counts exclude unknown and cancelled (50.418201ms)
+✔ ten subset types plus custom preserve field versions, reject missing field permission and enforce exact decimal precision (189.698403ms)
+✔ M01 paged reads enforce field tuples and reject a cursor after permission revision changes (30.424533ms)
+✔ client unknown result retains exact command identity and resolves through the receipt without a second send (4.365256ms)
+✔ P3-M01-04 new D7 endpoint: second reviewer scope is target only; approval waits, atomic effect changes primary and compatibility once (165.100099ms)
+✔ P3-M01-05 new D7 endpoint: early execution has no attempt; audit exception rolls back both models and same key can safely retry (137.536997ms)
+✔ P3-M01-06 new D7 endpoint: unrelated terminal history permits independent intent; correction restarts both reviewers; parallel requests share CAS (153.093972ms)
+✔ same-day transfers retain exact event time and one day-end primary instead of invalid negative date intervals (131.966791ms)
+✔ D7 business failure commits only attempt and reason; primary history and occupancy remain unchanged (116.359623ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1684.369447

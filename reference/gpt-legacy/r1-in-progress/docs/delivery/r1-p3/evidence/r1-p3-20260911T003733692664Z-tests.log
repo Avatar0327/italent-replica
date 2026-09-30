@@ -1,0 +1,42 @@
+✔ P3-M01-01: same org overlapping position name rejects, cross org permits, future cycles reject (206.438325ms)
+✔ P3-M01-02: identity conflicts do not merge; stable rehire and tenure exclude gaps/internship (156.908591ms)
+✔ P3-M01-03: independent HR approves part time; it consumes zero additional headcount (175.742742ms)
+✔ P3-M01-07: legal scope, same legal ID and adjacent renewal dates; immutable versions (142.561014ms)
+✔ P3-M01-08: subset row key is idempotent across transport command IDs and explicit null survives (163.568796ms)
+✔ P3-M01-09: missing or wrong entry template blocks person creation and never activates accounts (165.865186ms)
+✔ P3-ORIGIN-OBS07: required text rejects empty, whitespace and blank defaults in each declared entry template before any write (209.506268ms)
+✔ P3-ORIGIN-OBS07: required subset blank update rolls back, optional blank and numeric zero remain valid, unauthorized writes remain denied (191.039448ms)
+✔ P3-M01-10: exit fence rejects later approvals and queues all 101 cleanup items (157.082297ms)
+✔ P3-M01-12: protected waiting dependency blocks disable without exposing identity (129.123219ms)
+✔ P3-M01-11: explicit strong budget policy blocks effect; absent provider never reports budget passed (156.594759ms)
+✔ temporal versions: future publication preserves today and old bytes, all interval cuts reject historical hidden cycles (153.501521ms)
+✔ exit generation: rehire enables only new segment; cleanup resumes and unsupported domains retain blocked receipts (294.390984ms)
+✔ command replay runs before stale business-state validation and does not create a second employment (183.543006ms)
+✔ server identity candidates: forged candidate list cannot hide a second identifier match; protected keys contain no raw values (204.44139ms)
+✔ contract field roots survive revisions and inheritance; explicit null clears; stable contract counts exclude unknown and cancelled (286.567311ms)
+✔ ten subset types plus custom preserve field versions, reject missing field permission and enforce exact decimal precision (421.473474ms)
+✔ M01 paged reads enforce field tuples and reject a cursor after permission revision changes (161.5405ms)
+✔ client unknown result retains exact command identity and resolves through the receipt without a second send (10.230166ms)
+✔ catalog acceptance: sibling names, cross-parent reuse, same grade names with distinct codes, and concurrent protected references (179.495175ms)
+✔ all additional assignments occupy zero; duplicate overlap fails, cancellation preserves the case, ending releases no extra headcount (341.78288ms)
+✔ history read needs separate history authorization; present record access never reveals past fields (151.649524ms)
+✔ UI form payloads keep explicit null, stable IDs, two D7 reviewers and server validation contracts (11.256396ms)
+✔ three entry templates stay independent and saving never invites or creates membership (185.050516ms)
+✔ exit and approval racing share the tenant CAS; final exit blocks every later completion (165.0099ms)
+✔ P3-LINK-M48-approval + P3-M19-01/04 + P3-M48-05: real R1 portal and regularize adapter updates stable person and normalized employee atomically (501.197528ms)
+✔ P3-M01-04 new D7 endpoint: second reviewer scope is target only; approval waits, atomic effect changes primary and compatibility once (354.51724ms)
+✔ P3-M01-05 new D7 endpoint: early execution has no attempt; audit exception rolls back both models and same key can safely retry (328.961561ms)
+✔ P3-M01-06 new D7 endpoint: unrelated terminal history permits independent intent; correction restarts both reviewers; parallel requests share CAS (331.859437ms)
+✔ same-day transfers retain exact event time and one day-end primary instead of invalid negative date intervals (422.500209ms)
+✔ D7 business failure commits only attempt and reason; primary history and occupancy remain unchanged (385.812068ms)
+✔ D7 field revocation rejects blind review; target-only summary does not grant source history or attachments (357.625922ms)
+✔ D7 approval expires at the planned Beijing date boundary; source and intent remain unchanged (299.681549ms)
+✔ D7 unknown after a real SQLite commit resolves by command receipt and never duplicates history or occupancy (345.484115ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6019.828626

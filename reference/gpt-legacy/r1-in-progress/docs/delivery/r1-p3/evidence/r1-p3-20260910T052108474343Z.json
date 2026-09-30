@@ -1,0 +1,50 @@
+{
+  "runId": "r1-p3-20260910T052108474343Z",
+  "sourceSha": "086db8b388f7896aefd7a605173cc953829b340d",
+  "taskId": "P3-R1-02",
+  "startedAt": "2026-09-10T05:21:08.474375+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/r1-p3-m01.test.mjs": "69c7cfea864d91bfcc38e5bea1524ea879c4d70b03e58c6e25c97578e43cb7cc",
+    "tests/r1-p3-transfer.test.mjs": "2e9dc014ea889738bfa0e18a9dc9aa63402f711e6ce889c8ecaa60ca29f6f8c9",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T052108474343Z-tests.log",
+      "sha256": "56756c84a5354a6c3b7f5160dacb0afb7881dcef6346459101cc59c4f57bbdb2"
+    },
+    {
+      "name": "types",
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T052108474343Z-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "testSummary": {
+    "tests": 22,
+    "pass": 22,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T05:21:15.683807+00:00"
+}

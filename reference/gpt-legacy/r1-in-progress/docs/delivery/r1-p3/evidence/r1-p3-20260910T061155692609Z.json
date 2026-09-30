@@ -1,0 +1,38 @@
+{
+  "runId": "r1-p3-20260910T061155692609Z",
+  "sourceSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+  "taskId": "P3-R1-03",
+  "startedAt": "2026-09-10T06:11:55.692639+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/p3-api.test.mjs": "711c2b52c5ad98107206a17fb0800d5be6d4cd1387034b73721244348678fd06",
+    "tests/payroll-attendance.test.mjs": "c52385a7b8dfe74899fe24503b838ea85850a0ec9cef6c9c6fae8916d6cfcf13",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "--test-name-pattern=待办工作台|扩展待办|changed sources block|inbox switches stale",
+        "tests/p3-api.test.mjs",
+        "tests/payroll-attendance.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T061155692609Z-tests.log",
+      "sha256": "ed83072dd1dc30651e1b217590a18814ec8da11ff60bbe168795b63c2d9ee4bf"
+    }
+  ],
+  "testSummary": {
+    "tests": 4,
+    "pass": 4,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T06:11:57.577394+00:00"
+}

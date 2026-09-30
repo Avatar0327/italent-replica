@@ -1,0 +1,42 @@
+✔ P3-M01-01: same org overlapping position name rejects, cross org permits, future cycles reject (56.676522ms)
+✔ P3-M01-02: identity conflicts do not merge; stable rehire and tenure exclude gaps/internship (26.226735ms)
+✔ P3-M01-03: independent HR approves part time; it consumes zero additional headcount (27.463287ms)
+✔ P3-M01-07: legal scope, same legal ID and adjacent renewal dates; immutable versions (25.569522ms)
+✔ P3-M01-08: subset row key is idempotent across transport command IDs and explicit null survives (26.910472ms)
+✔ P3-M01-09: missing or wrong entry template blocks person creation and never activates accounts (25.845882ms)
+✔ P3-M01-10: exit fence rejects later approvals and queues all 101 cleanup items (25.197893ms)
+✔ P3-M01-12: protected waiting dependency blocks disable without exposing identity (20.249974ms)
+✔ P3-M01-11: explicit strong budget policy blocks effect; absent provider never reports budget passed (22.550927ms)
+✔ temporal versions: future publication preserves today and old bytes, all interval cuts reject historical hidden cycles (23.335891ms)
+✔ exit generation: rehire enables only new segment; cleanup resumes and unsupported domains retain blocked receipts (69.661666ms)
+✔ command replay runs before stale business-state validation and does not create a second employment (22.990905ms)
+✔ server identity candidates: forged candidate list cannot hide a second identifier match; protected keys contain no raw values (30.246472ms)
+✔ contract field roots survive revisions and inheritance; explicit null clears; stable contract counts exclude unknown and cancelled (37.141609ms)
+✔ ten subset types plus custom preserve field versions, reject missing field permission and enforce exact decimal precision (167.539261ms)
+✔ M01 paged reads enforce field tuples and reject a cursor after permission revision changes (34.867744ms)
+✔ client unknown result retains exact command identity and resolves through the receipt without a second send (4.765253ms)
+✔ catalog acceptance: sibling names, cross-parent reuse, same grade names with distinct codes, and concurrent protected references (40.377991ms)
+✔ all additional assignments occupy zero; duplicate overlap fails, cancellation preserves the case, ending releases no extra headcount (110.29283ms)
+✔ history read needs separate history authorization; present record access never reveals past fields (32.806113ms)
+✔ UI form payloads keep explicit null, stable IDs, two D7 reviewers and server validation contracts (7.039256ms)
+✔ three entry templates stay independent and saving never invites or creates membership (33.545351ms)
+✔ exit and approval racing share the tenant CAS; final exit blocks every later completion (26.683612ms)
+✔ P3-M19-01/04: real R1 regularize adapter updates stable person and normalized employee atomically (84.045084ms)
+✔ P3-M19-01: graph/type validation, null/missing/multiple routes and no implicit auto pass (47.559071ms)
+✔ P3-M19-01: application dedup, immutable template v1 continues after v2 publication (36.089288ms)
+✔ P3-M19-02: all/any and reject policies are explicit and order-independent for same collected votes (31.14784ms)
+✔ P3-M19-03: transfer and intervention invalidate old node tokens, preserve actual decisions (34.06393ms)
+✔ P3-M19-04: domain cancellation SQL failure rolls back workflow/audit/receipt, success cancels both (29.967587ms)
+✔ P3-M19-06: delegation acceptance, intersection, no approval/proxy, revocation and commit-time expiry (198.75569ms)
+✔ P3-M19-05: three independent items, stale/denied results fixed, lost response queries atomic receipt (86.548362ms)
+✔ P3-M19-07: approval and execution queues differ, filters preserve counts, cursor revocation rejects (74.081078ms)
+✔ P3-M19-02/04: applied instance rejects rollback; actor cannot self-approve or spoof source type (31.648763ms)
+✔ P3-M19-06: delegated query uses both current grants and scope, then rejects revocation (34.585935ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1631.836129

@@ -1,0 +1,60 @@
+{
+  "runId": "r1-p3-20260910T072924847968Z",
+  "sourceSha": "1aafb5731aebbb74aaf95b669a07afab57b50354",
+  "taskId": "P3-R1-06",
+  "startedAt": "2026-09-10T07:29:24.848000+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/r1-p3-report-definition.test.mjs": "7e32e2f1f35f544e83bcd542921d2af5bd060c6e454445484184dff6dfbcb04f",
+    "tests/r1-p3-report-query.test.mjs": "b49c94e7c5a0101c29b56ed6285242eae0e73b9919fa7b473b1ab524b5847d77",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/r1-p3-report-definition.test.mjs",
+        "tests/r1-p3-report-query.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T072924847968Z-tests.log",
+      "sha256": "7db3bc8c49e78d89b4f4803687f8e0b3166a2a42fa6810c2c75855ebf0ef02ce"
+    },
+    {
+      "name": "types",
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T072924847968Z-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build",
+      "command": [
+        "node",
+        "/root/.codex/plugins/cache/openai-curated-remote/sites/0.1.56/scripts/build-site.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T072924847968Z-build.log",
+      "sha256": "d3da75b8793aea8d754a2be248d19aea62402756e30a38f963c41c0195f1add8"
+    }
+  ],
+  "testSummary": {
+    "tests": 11,
+    "pass": 11,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T07:29:42.443891+00:00"
+}

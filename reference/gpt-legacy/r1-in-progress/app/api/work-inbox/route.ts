@@ -1,0 +1,5 @@
+import {z} from 'zod';
+import {developmentContext} from '@/lib/hris/development-repository';
+import {workInbox,inboxKinds} from '@/lib/hris/work-inbox';
+import {json,failure} from '@/lib/hris/http';
+export async function GET(request:Request){try{const url=new URL(request.url),page=z.coerce.number().int().min(1).max(10000).parse(url.searchParams.get('page')??1),domain=z.enum(['cadres','payroll','performance','recruitment','all','personnel','attendance','development','learning','onboarding']).parse(url.searchParams.get('domain')??'all'),query=z.string().max(200).parse(url.searchParams.get('q')??'').trim().toLocaleLowerCase();const ctx=await developmentContext(inboxKinds),all=workInbox(ctx.state,ctx.records,ctx.member),rows=all.filter(r=>(domain==='all'||r.domain===domain)&&[r.title,r.employeeName,r.action].join(' ').toLocaleLowerCase().includes(query));return json({items:rows.slice((page-1)*20,page*20),total:rows.length,page,hasMore:page*20<rows.length,counts:all.reduce<Record<string,number>>((a,r)=>({...a,[r.domain]:(a[r.domain]??0)+1}),{}),revision:ctx.row.revision});}catch(e){return failure(e);}}

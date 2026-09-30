@@ -1,0 +1,13 @@
+✔ P3-M32-01/10: 21 stable datasets and 254 unique fields retain registered labels/types; 15 producer entries do not claim integration (3.848164ms)
+✔ P3-XMOD-02: label mapping keeps grade when email column absent and rejects guessed or duplicate columns (1.113967ms)
+✔ P3-M32-02/07: exact decimal and safe money retain missing counts, no zero denominator or mixed currency fabrication (1.426599ms)
+✔ P3-M32-07: typed AST rejects hidden filter/sort/formula, SQL, units, ambiguous joins and excessive depth; values remain bindings (5.605877ms)
+✔ P3-M32-04/02: actual compatibility calculation keeps old published result under draft replacement and unknown recruitment headcount is null (344.260186ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1907.759691

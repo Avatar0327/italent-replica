@@ -1,0 +1,70 @@
+{
+  "runId": "r1-p3-20260910T101913449916Z",
+  "sourceSha": "254a70772bc78755d1e524d7b4bc4871b9da5904",
+  "taskId": "P3-R1-10",
+  "startedAt": "2026-09-10T10:19:13.449949+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/r1-p3-producers.test.mjs": "bbb54c6e68c8384d3e73df1af3e7cac87ebc1361e2ea82cb2d2a0c57a7750533",
+    "tests/r1-p3-m01.test.mjs": "de6390d10fbd094135b20459a4d4bd9b6d25af8b5fd88dc789872aa12538b41b",
+    "tests/r1-p3-portal.test.mjs": "b8a2c2222e3420e1568c0b704330aca5040046715d518196bf21ab8a90c77cdc",
+    "tests/r1-p3-report-query.test.mjs": "b04bbd705593e2e676cce915f6869fa23c4e6c6cc2f609c5dd9103eccf486da9",
+    "tests/r1-p3-report-jobs.test.mjs": "d042c1899323ff1aba8e135a19aee84c107c98793db988aa62decd50e20ac431",
+    "tests/support/cadre-checks.mjs": "73a4e3fb0fc2c22823670bae76b835e43d7651b5fd0eb88662f99644d3641072",
+    "tests/support/foundation-scenario.mjs": "b84670b9f011ea80b27d67685d7bf648e209e3be1e3c7a194170393489fbbf69",
+    "tests/support/performance-scenario.mjs": "b3b9b5c8f919d1d7243376cf78eebb2931ae82fd59007f4bd9f7597fc39e9a8e",
+    "tests/support/r1-report-fixture.mjs": "9dd683a30171e04c2d77c388341f47a637b8566b867542090303c47563122358",
+    "tests/support/runtime.mjs": "67d2392b94095b7cbaae36df97703d45bc5af7962c4feb5f3451235562091bde"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/r1-p3-producers.test.mjs",
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-portal.test.mjs",
+        "tests/r1-p3-report-query.test.mjs",
+        "tests/r1-p3-report-jobs.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T101913449916Z-tests.log",
+      "sha256": "e521a9267a8e3a96779cbc51af4b6d58711df4288f804e09bbf55c4337dffe69"
+    },
+    {
+      "name": "types",
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T101913449916Z-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build",
+      "command": [
+        "node",
+        "/root/.codex/plugins/cache/openai-curated-remote/sites/0.1.56/scripts/build-site.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T101913449916Z-build.log",
+      "sha256": "8d1621d9ee2ed21d0bd56fc9ad30062b2b7babdff04bc03bdb72712cac3c5fdb"
+    }
+  ],
+  "testSummary": {
+    "tests": 59,
+    "pass": 59,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T10:19:40.728023+00:00"
+}

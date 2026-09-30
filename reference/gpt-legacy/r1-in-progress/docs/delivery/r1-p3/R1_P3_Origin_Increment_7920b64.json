@@ -1,0 +1,980 @@
+{
+  "kind": "incremental_origin_receipt_not_independent_acceptance",
+  "receivedAt": "2026-09-11T01:08:32.838286+00:00",
+  "previousReceipt": "R1_P3_Origin_Evidence_Intake.json",
+  "previousSourceHead": "76a16265fdd65f6ba7608260dde1e07acfb85200",
+  "sourceHead": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+  "implementationReviewedHead": "de053be59cc0e08c2044fb534ef46ee085a38203",
+  "readMechanism": "git show pinned objects only; no browser/CDP",
+  "sourceInputs": [
+    {
+      "path": "docs/evidence/original-site/r1/Browser_Concurrency_Check.md",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "85a89552ea616af0e0e029cfe98824ad68f17ed394ccf00f89721ebb609b432e",
+      "bytes": 11349,
+      "blobId": "03df6c92cf7883a6822dbf21bf5d3bb9772d3741"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/Continuation_Validation.json",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "5f73591f89ca7db40c9293105f17a865a393de6017b26a3e011c3e263f43761a",
+      "bytes": 1014,
+      "blobId": "90435908f36d57605c3f9aa8d2963d2022d4de6b"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/Current_Executable_Test_Disposition.json",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "cc42ab86feca1bafdccbb463aee6dfc31b7b2279f799e9e00711318cbf65c8ea",
+      "bytes": 4554,
+      "blobId": "bf626622ac6817c94dcf5a7e68a77ddb138e15c3"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/Evidence_Integrity.json",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "eeedae7d741e3cadb8732fd8d33c370a5384e6f0a4424e801745cc0490ee8730",
+      "bytes": 16329,
+      "blobId": "f66ffb42f9c5ee0077f66f4109ebc5ebb4c28448"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/Future_Date_Recovery.json",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "f2ffe29169bbc32bd268258b7f11128ce5f1906842d735d86dfeea06494ce3c1",
+      "bytes": 6832,
+      "blobId": "0ba6dc376040ab6d698482e174246880fab22bd3"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/M01_Checkpoint.md",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "5874f451b60d1951cb33ca6ec2f4e7057fb2cd37f7dbbde485ea78b1011e819e",
+      "bytes": 3242,
+      "blobId": "a42a12c50147415a1398c3cfa276ebbd043d6649"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/M19_Checkpoint.md",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "38255f3695acd6067011e060ea696ad4b35d2909d7b1877cf64b6cb5fcfb93a7",
+      "bytes": 2685,
+      "blobId": "13cb9d0c74c7346a96b2881ac141b8574b363c2c"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/M32_Checkpoint.md",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "15ac4aaf2dceb23af9152d1822bd9adba7575eda889fe049df4ee9ae962d6442",
+      "bytes": 2884,
+      "blobId": "f641ac7cef37dd758c58e4280a7519d9887a160f"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/M48_Checkpoint.md",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "d37d5b7dacac807a5b59ed40dd094306ee5efd17f4404dad3c30de2b6122c3e1",
+      "bytes": 2214,
+      "blobId": "5485cd5c925083b23c183ef53c121b6fb227ddb6"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/Original_Site_Data_Manifest.json",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "44c3241dc0c2afa054e31024b95e5dd9183eecd9bfc88d72b922053f4f0a5771",
+      "bytes": 21364,
+      "blobId": "38a06a384f3c3fe73478b0f80fa4ca0f6ccb6ed7"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/Priority_P3_Static_Comparison.json",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "b679b7c7d573c6dc5741a5052bc0a4d2d3f94073449e62b0af01540fa1890e35",
+      "bytes": 784,
+      "blobId": "b6010a9ac841741bdaf365f11ff3b53f573719ce"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "571b5c33bc78991e79443537c9a693591ad0a8b316356ce0722c87efe7ecab9b",
+      "bytes": 10524,
+      "blobId": "743d70a18d0a7e021117c90d19165172351a3d8b"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/R1-ORIGIN-20260910-100019/20260911_Priority_Recovery.json",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "0e522fc954c269a7a62e65ce2d3e01543493b6a66c9554b198bbf42ac335d8f2",
+      "bytes": 8931,
+      "blobId": "46215e028990e59283407661025a83a5bee0f920"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/R1_Original_Behavior_Matrix.json",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "f8a6d15e8e54904db2459d9bde904fa0c3a8f6c185db5d2183ee2cc019067a62",
+      "bytes": 150860,
+      "blobId": "412759dbe8124e84a2063c8bab7a690a324c2346"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/R1_Original_Behavior_Matrix.md",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "e38638dbb290aa898eea77f294c042ee894deda9eba3a94adb062386d34d205f",
+      "bytes": 20863,
+      "blobId": "e4ae21f1b92c68b5e815225b1182b875ae19118d"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/R1_P3_Evidence_Feedback.md",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "fa365dac98da6971c6472b6a3bc946040af2a46975b6aec8bf245ed494b438d3",
+      "bytes": 15108,
+      "blobId": "65b4a05e56e4706e28d250a6a2798aaac0ea7449"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/R1_P4_Comparison_Cases.md",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "351f8ef25604cc69df26ee7880b48bcb86c5384f7c2e8926b53022c221818de2",
+      "bytes": 15351,
+      "blobId": "93816468b4c8a33dbaf5bb726fb26d84d976828f"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/R1_Parity_Difference_Ledger.json",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "38c6142bda398e629fc02d8109122b6f62b3069138616910343c5c109a111596",
+      "bytes": 20099,
+      "blobId": "dcf2749c11e5f34f4636aeb81bf4b52cbbb72c3a"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/R1_Parity_Difference_Ledger.md",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "e9ea8bdb0596917739b987893006deb1762e76111cd95a8aedf02fbd7833d91b",
+      "bytes": 11516,
+      "blobId": "bc2b928f009907b561708cceb35d6ef9dc5063c0"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/Resume.md",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "7928887d290cc5ac14b7675dc0d186414dccde2f0fe9061a9b8377b2552fba21",
+      "bytes": 13287,
+      "blobId": "261f5541b91822309620744d7b5a1a202dc6eb29"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/Run_Status.json",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "66ac9fc8c092ca79b6a71d25377ae612e81911508c8c6e1d06d3e770721ff039",
+      "bytes": 3938,
+      "blobId": "2d421ec2d251462847ca7406863ebf33c7999124"
+    },
+    {
+      "path": "docs/evidence/original-site/r1/Owner_Decision_DIFF_MAJOR_001_20260910.json",
+      "head": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+      "sha256": "adc06d6d2b18d99560f3ef5828e54c6ed4e5267f886123ba4edba5aacd158ef9",
+      "bytes": 871,
+      "blobId": "5d0e6f5acce34ab3d442941800c51c847c0f5d90"
+    }
+  ],
+  "counts": {
+    "changedSourceFiles": 21,
+    "newBehaviorRows": 3,
+    "updatedBehaviorRows": 1,
+    "updatedLedgerRows": 3,
+    "updatedFutureSteps": 4,
+    "mappingRows": 11
+  },
+  "countRule": "11条有交叠的增量映射，不是11项新增测试；既有70行为/15台账/4恢复89条回执不重复接收；新矩阵共73行为，台账仍15。",
+  "mappings": [
+    {
+      "id": "M32-SEP11-EXPLICIT-DATE-ATTEMPT",
+      "group": "behavior",
+      "sourcePath": "docs/evidence/original-site/r1/R1_Original_Behavior_Matrix.json",
+      "sourceRecord": {
+        "caseId": "M32-SEP11-EXPLICIT-DATE-ATTEMPT",
+        "module": "M32",
+        "title": "固定姓名日期报表尝试",
+        "runId": "R1-ORIGIN-20260910-100019",
+        "execution": "observed",
+        "time": "2026-09-11T00:51:52.069Z",
+        "role": "ORIGIN-ADMIN-01；不代表独立员工或审批角色",
+        "environment": "https://srworkshopbj.italent.cn",
+        "page": "固定姓名日期报表尝试",
+        "preconditions": "已确认测试租户；同RUN三组织UUID已核定；只操作本轮对象",
+        "steps": [
+          "从本轮新标签正式页面查询，限定完整姓名与原记录UUID",
+          "动作后独立回读页面状态，未进行业务提交",
+          "保存结构化字段/标识/实际审计；缺失项保留未知"
+        ],
+        "inputs": {
+          "businessDate": "2026-09-11",
+          "newBusinessWrites": 0
+        },
+        "actualResult": "两人已选择，日期控件超时，未确认筛选应用，未取得报表结果",
+        "pageState": "query_incomplete_timeout",
+        "recordIds": [
+          "927ef593-f930-4bcb-963f-e463df2e9e84"
+        ],
+        "evidence": [
+          "R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json"
+        ],
+        "screenshot": null,
+        "screenshotLimitation": "未采新截图；结构化正文及UUID证据。",
+        "repeatability": "只读重查可重复；保存不得无条件重放",
+        "requirements": [
+          "M32-SPEC-01",
+          "M32-SPEC-04"
+        ],
+        "design": {
+          "sha": "e15237281ff19f04f08a354fd9455c518b24ae47",
+          "path": "docs/delivery/r1-p2/R1_P2_M32_Reports_Jobs.md"
+        },
+        "p3": {
+          "sha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "path": "lib/hris/r1-report-m01-producer.ts",
+          "task": "P3-R1-06/07",
+          "cases": [
+            "P3-M32-01",
+            "P3-M32-02"
+          ],
+          "evidenceMode": "静态源码/既有测试映射；本窗口未运行复刻UI或测试"
+        },
+        "classification": "ENV_BLOCKED",
+        "severity": "Observation",
+        "timePrecision": "browser_observed",
+        "threeWayConclusion": "原站局部事实；批准规则不变；P3仅静态映射，未判实现缺陷或完整MATCH",
+        "ledgerId": "ENV-05"
+      },
+      "change": "added",
+      "approvedRequirementIds": [
+        "M32-SPEC-01",
+        "M32-SPEC-02",
+        "M32-SPEC-04"
+      ],
+      "designHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+      "implementation": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "paths": [
+          "lib/hris/r1-report-m01-producer.ts",
+          "lib/hris/r1-report-query.ts"
+        ]
+      },
+      "tests": {
+        "files": [
+          "tests/r1-p3-report-query.test.mjs",
+          "tests/r1-p3-report-oracles.test.mjs"
+        ],
+        "plannedCases": [
+          "P3-M32-01",
+          "P3-M32-02",
+          "P3-M32-03"
+        ],
+        "currentRun": "evidence/r1-p3-20260911T005747815482Z.json",
+        "scope": "本轮实际本地合成测试；原站未执行条件与独立验收不计通过"
+      },
+      "disposition": "接收报表交互仍受限；当前/历史结果未知，旧2人及预期1人均不得填为本次结果。",
+      "implementationDefectConfirmed": false,
+      "independentReview": "pending"
+    },
+    {
+      "id": "M19-TRANSFER-SEP11-TERMINATED",
+      "group": "behavior",
+      "sourcePath": "docs/evidence/original-site/r1/R1_Original_Behavior_Matrix.json",
+      "sourceRecord": {
+        "caseId": "M19-TRANSFER-SEP11-TERMINATED",
+        "module": "M19",
+        "title": "撤回原调动终止后效",
+        "runId": "R1-ORIGIN-20260910-100019",
+        "execution": "observed",
+        "time": "2026-09-11T00:51:52.069Z",
+        "role": "ORIGIN-ADMIN-01；不代表独立员工或审批角色",
+        "environment": "https://srworkshopbj.italent.cn",
+        "page": "撤回原调动终止后效",
+        "preconditions": "已确认测试租户；同RUN三组织UUID已核定；只操作本轮对象",
+        "steps": [
+          "从本轮新标签正式页面查询，限定完整姓名与原记录UUID",
+          "动作后独立回读页面状态，未进行业务提交",
+          "保存结构化字段/标识/实际审计；缺失项保留未知"
+        ],
+        "inputs": {
+          "businessDate": "2026-09-11",
+          "newBusinessWrites": 0
+        },
+        "actualResult": "原业务作废，原流程已终止；系统9/11 01:15撤销，理由离职发起后自动终止",
+        "pageState": "new_query_observed",
+        "recordIds": [
+          "927ef593-f930-4bcb-963f-e463df2e9e84",
+          "1cc37027-478b-4a9d-b055-e5a4f55b38e5",
+          "98436444-b9e5-468c-9abf-b3212bd666eb"
+        ],
+        "evidence": [
+          "R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json"
+        ],
+        "screenshot": null,
+        "screenshotLimitation": "未采新截图；结构化正文及UUID证据。",
+        "repeatability": "只读重查可重复；保存不得无条件重放",
+        "requirements": [
+          "F-SPEC-05",
+          "D1",
+          "D7"
+        ],
+        "design": {
+          "sha": "e15237281ff19f04f08a354fd9455c518b24ae47",
+          "path": "docs/delivery/r1-p2/R1_P2_M01_Data_History.md"
+        },
+        "p3": {
+          "sha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "path": "lib/hris/r1-m01.ts",
+          "task": "P3-R1-02/03/05",
+          "cases": [
+            "P3-M01-10"
+          ],
+          "evidenceMode": "静态源码/既有测试映射；本窗口未运行复刻UI或测试"
+        },
+        "classification": null,
+        "severity": "Observation",
+        "timePrecision": "browser_observed",
+        "threeWayConclusion": "原站局部事实；批准规则不变；P3仅静态映射，未判实现缺陷或完整MATCH"
+      },
+      "change": "added",
+      "approvedRequirementIds": [
+        "F-SPEC-05",
+        "F-SPEC-06",
+        "D1",
+        "D7"
+      ],
+      "designHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+      "implementation": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "paths": [
+          "lib/hris/r1-m01.ts"
+        ]
+      },
+      "tests": {
+        "files": [
+          "tests/r1-p3-m01.test.mjs",
+          "tests/r1-p3-transfer.test.mjs"
+        ],
+        "plannedCases": [
+          "P3-M01-10"
+        ],
+        "currentRun": "evidence/r1-p3-20260911T005747815482Z.json",
+        "scope": "本轮实际本地合成测试；原站未执行条件与独立验收不计通过"
+      },
+      "disposition": "接收实际离职/逐单终态的局部观察；按批准规则保留执行时间、原单、退出代次与有界清理；不是整链MATCH。",
+      "implementationDefectConfirmed": false,
+      "independentReview": "pending"
+    },
+    {
+      "id": "M01-EXIT-SEP11-STATE",
+      "group": "behavior",
+      "sourcePath": "docs/evidence/original-site/r1/R1_Original_Behavior_Matrix.json",
+      "sourceRecord": {
+        "caseId": "M01-EXIT-SEP11-STATE",
+        "module": "M01",
+        "title": "实际离职状态及区间",
+        "runId": "R1-ORIGIN-20260910-100019",
+        "execution": "observed",
+        "time": "2026-09-11T00:51:52.069Z",
+        "role": "ORIGIN-ADMIN-01；不代表独立员工或审批角色",
+        "environment": "https://srworkshopbj.italent.cn",
+        "page": "实际离职状态及区间",
+        "preconditions": "已确认测试租户；同RUN三组织UUID已核定；只操作本轮对象",
+        "steps": [
+          "从本轮新标签正式页面查询，限定完整姓名与原记录UUID",
+          "动作后独立回读页面状态，未进行业务提交",
+          "保存结构化字段/标识/实际审计；缺失项保留未知"
+        ],
+        "inputs": {
+          "businessDate": "2026-09-11",
+          "newBusinessWrites": 0
+        },
+        "actualResult": "离职人员唯一命中；离职任职生效中；同personId和退出UUID；执行人/审计未知",
+        "pageState": "new_query_observed",
+        "recordIds": [
+          "927ef593-f930-4bcb-963f-e463df2e9e84"
+        ],
+        "evidence": [
+          "R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json"
+        ],
+        "screenshot": null,
+        "screenshotLimitation": "未采新截图；结构化正文及UUID证据。",
+        "repeatability": "只读重查可重复；保存不得无条件重放",
+        "requirements": [
+          "F-SPEC-05",
+          "F-SPEC-06"
+        ],
+        "design": {
+          "sha": "e15237281ff19f04f08a354fd9455c518b24ae47",
+          "path": "docs/delivery/r1-p2/R1_P2_M01_Data_History.md"
+        },
+        "p3": {
+          "sha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "path": "lib/hris/r1-m01.ts",
+          "task": "P3-R1-02",
+          "cases": [
+            "P3-M01-10"
+          ],
+          "evidenceMode": "静态源码/既有测试映射；本窗口未运行复刻UI或测试"
+        },
+        "classification": null,
+        "severity": "Observation",
+        "timePrecision": "browser_observed",
+        "threeWayConclusion": "原站局部事实；批准规则不变；P3仅静态映射，未判实现缺陷或完整MATCH"
+      },
+      "change": "added",
+      "approvedRequirementIds": [
+        "F-SPEC-05",
+        "F-SPEC-06",
+        "D1",
+        "D7"
+      ],
+      "designHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+      "implementation": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "paths": [
+          "lib/hris/r1-m01.ts"
+        ]
+      },
+      "tests": {
+        "files": [
+          "tests/r1-p3-m01.test.mjs",
+          "tests/r1-p3-transfer.test.mjs"
+        ],
+        "plannedCases": [
+          "P3-M01-10"
+        ],
+        "currentRun": "evidence/r1-p3-20260911T005747815482Z.json",
+        "scope": "本轮实际本地合成测试；原站未执行条件与独立验收不计通过"
+      },
+      "disposition": "接收实际离职/逐单终态的局部观察；按批准规则保留执行时间、原单、退出代次与有界清理；不是整链MATCH。",
+      "implementationDefectConfirmed": false,
+      "independentReview": "pending"
+    },
+    {
+      "id": "M01-PENDING-EXIT-REHIRE",
+      "group": "behavior",
+      "sourcePath": "docs/evidence/original-site/r1/R1_Original_Behavior_Matrix.json",
+      "sourceRecord": {
+        "caseId": "M01-PENDING-EXIT-REHIRE",
+        "module": "M01",
+        "title": "离职、再入职与身份连续性",
+        "runId": "R1-ORIGIN-20260910-100019",
+        "execution": "partially_observed",
+        "time": null,
+        "role": "ORIGIN-ADMIN-01",
+        "environment": "https://srworkshopbj.italent.cn",
+        "page": null,
+        "preconditions": "仅本轮合成数据；正式页面人工操作可执行；下载/截图仅局部限制；独立身份须为现有授权测试角色",
+        "steps": [
+          "最后工作日与退出日分离",
+          "历史身份匹配冲突不自动合并",
+          "新雇佣段、司龄并集、账号不自动恢复"
+        ],
+        "inputs": {
+          "namespace": "ZZ_R1_R1-ORIGIN-20260910-100019_",
+          "actualValues": null
+        },
+        "actualResult": "9/11新查询确认人员离职、退出任职生效中；旧雇佣段ID/结束审计和正式再入职未完成",
+        "pageState": "exit_state_confirmed_rehire_not_executed",
+        "recordIds": [],
+        "evidence": [
+          "R1-ORIGIN-20260910-100019/M01/M01-EXIT-001-presubmit.json",
+          "R1-ORIGIN-20260910-100019/M01/M01-EXIT-001-warning.json",
+          "R1-ORIGIN-20260910-100019/M01/M01-EXIT-001-history.json",
+          "R1-ORIGIN-20260910-100019/M01/M01-EXIT-001-ID-report.json",
+          "R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json"
+        ],
+        "screenshot": null,
+        "screenshotLimitation": "未执行",
+        "repeatability": "待前置恢复后执行",
+        "requirements": [
+          "F-SPEC-04",
+          "F-SPEC-05"
+        ],
+        "design": {
+          "sha": "e15237281ff19f04f08a354fd9455c518b24ae47",
+          "path": "docs/delivery/r1-p2/R1_P2_M01_Data_History.md"
+        },
+        "p3": {
+          "sha": "25eff27ea5b9320a7dfa5c2df7287d760c8d2688",
+          "task": "P3-R1-02",
+          "cases": [
+            "P3-M01-02",
+            "P3-M01-10"
+          ],
+          "path": "tests/r1-p3-m01.test.mjs",
+          "evidenceMode": "关联既有任务；未在本窗口运行"
+        },
+        "classification": null,
+        "blockerIds": [],
+        "severity": "Observation",
+        "sep11Recheck": {
+          "dateConditionSatisfied": true,
+          "status": "partially_observed",
+          "evidence": "R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json"
+        }
+      },
+      "change": "updated",
+      "approvedRequirementIds": [
+        "F-SPEC-01",
+        "F-SPEC-05",
+        "F-SPEC-06"
+      ],
+      "designHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+      "implementation": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "paths": [
+          "lib/hris/r1-m01.ts"
+        ]
+      },
+      "tests": {
+        "files": [
+          "tests/r1-p3-m01.test.mjs",
+          "tests/r1-p3-transfer.test.mjs"
+        ],
+        "plannedCases": [
+          "P3-M01-02"
+        ],
+        "currentRun": "evidence/r1-p3-20260911T005747815482Z.json",
+        "scope": "本轮实际本地合成测试；原站未执行条件与独立验收不计通过"
+      },
+      "disposition": "接收未执行再入职；离职状态已证实，但旧雇佣段结束审计/正式入口/邀请否未核，不自动解除前置。",
+      "implementationDefectConfirmed": false,
+      "independentReview": "pending"
+    },
+    {
+      "id": "OBS-05",
+      "group": "ledger",
+      "sourcePath": "docs/evidence/original-site/r1/R1_Parity_Difference_Ledger.json",
+      "sourceRecord": {
+        "id": "OBS-05",
+        "runId": "R1-ORIGIN-20260910-100019",
+        "modules": [
+          "M19"
+        ],
+        "title": "调动及转正申请摘要显示离职字段",
+        "actual": "两张本轮申请均在审批详情显示离职字段，调动部分值对应调动，转正多项空值；不证明实际发生离职。；9/11正式发起日志显示TransferProcessNew匹配DimissionProcessNew，已保存版本；不修改共享配置。",
+        "classification": null,
+        "severity": "Observation",
+        "status": "observed_not_dispositioned",
+        "productDefectConfirmed": false,
+        "ownerDecisionRequired": false,
+        "requirements": [
+          "M19-SPEC-01",
+          "D4"
+        ],
+        "p3Tasks": [
+          "P3-R1-03"
+        ],
+        "evidence": [
+          "R1-ORIGIN-20260910-100019/M19/M19-TRANSFER-REQUEST-001-detail.json",
+          "R1-ORIGIN-20260910-100019/M19/M19-REG-002-detail.json",
+          "R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json"
+        ],
+        "feedback": "P2/P3核对摘要字段映射；P4独立角色实测，勿复制源错位标签。",
+        "conclusion": "仅确认源UI显示，不推断实际发生离职或P3实现缺陷。"
+      },
+      "change": "updated",
+      "approvedRequirementIds": [
+        "M19-SPEC-01",
+        "D7"
+      ],
+      "designHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+      "implementation": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "paths": [
+          "lib/hris/r1-m01.ts",
+          "lib/hris/r1-workflow.ts"
+        ]
+      },
+      "tests": {
+        "files": [
+          "tests/r1-p3-workflow.test.mjs"
+        ],
+        "plannedCases": [
+          "P3-M19-01"
+        ],
+        "currentRun": "evidence/r1-p3-20260911T005747815482Z.json",
+        "scope": "本轮实际本地合成测试；原站未执行条件与独立验收不计通过"
+      },
+      "disposition": "接收源TransferProcessNew匹配DimissionProcessNew的配置观察；不复制错位摘要/路由，不认定P3缺陷。",
+      "implementationDefectConfirmed": false,
+      "independentReview": "pending"
+    },
+    {
+      "id": "OBS-07",
+      "group": "ledger",
+      "sourcePath": "docs/evidence/original-site/r1/R1_Parity_Difference_Ledger.json",
+      "sourceRecord": {
+        "id": "OBS-07",
+        "runId": "R1-ORIGIN-20260910-100019",
+        "modules": [
+          "M01"
+        ],
+        "title": "试用字段联动与组织生效日约束",
+        "actual": "EMP002启用试用时期限/预计结束必填；9/1+1月=9/30；因早于ORG002生效9/10被拒，纠正9/10后结束10/9，创建成功。日期变化会重置邮箱和工号，已回读纠正。",
+        "classification": null,
+        "severity": "Observation",
+        "status": "observed_not_dispositioned",
+        "productDefectConfirmed": false,
+        "ownerDecisionRequired": false,
+        "requirements": [
+          "F-SPEC-01",
+          "F-SPEC-07",
+          "F-SPEC-08"
+        ],
+        "p3Tasks": [
+          "P3-R1-02"
+        ],
+        "evidence": [
+          "R1-ORIGIN-20260910-100019/M01/M01-EMP-002-probation-validation.json",
+          "R1-ORIGIN-20260910-100019/M01/M01-EMP-002-org-date-validation.json",
+          "R1-ORIGIN-20260910-100019/M01/M01-EMP-002-corrected.json",
+          "R1-ORIGIN-20260910-100019/M01/M01-EMP-002-readback.json"
+        ],
+        "feedback": "P2明确入口模板/跨对象日期约束，P3核查employment.startOn与组织有效日的实现及测试；未确认批准设计遗漏/实现缺陷。",
+        "conclusion": "原站当前模板规则不自动变成所有员工入口强制规则；未修改组织设立历史。",
+        "p3Followup": "P3 de053be离线增量含显式必填文本空白校验及测试；本窗口仅读取差异，未运行测试，不扩展为原站全部字段通过。"
+      },
+      "change": "updated",
+      "approvedRequirementIds": [
+        "F-SPEC-07"
+      ],
+      "designHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+      "implementation": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "paths": [
+          "lib/hris/r1-m01.ts"
+        ]
+      },
+      "tests": {
+        "files": [
+          "tests/r1-p3-m01.test.mjs",
+          "tests/r1-p3-transfer.test.mjs"
+        ],
+        "plannedCases": [
+          "P3-M01-08",
+          "P3-M01-09"
+        ],
+        "currentRun": "evidence/r1-p3-20260911T005747815482Z.json",
+        "scope": "本轮实际本地合成测试；原站未执行条件与独立验收不计通过"
+      },
+      "disposition": "接收源窗口静态观察；既有显式必填空白修复本轮完整回归通过；新增日期/试用规则仍仅提案。",
+      "implementationDefectConfirmed": false,
+      "independentReview": "pending"
+    },
+    {
+      "id": "ENV-05",
+      "group": "ledger",
+      "sourcePath": "docs/evidence/original-site/r1/R1_Parity_Difference_Ledger.json",
+      "sourceRecord": {
+        "id": "ENV-05",
+        "runId": "R1-ORIGIN-20260910-100019",
+        "modules": [
+          "M01",
+          "M19",
+          "M48",
+          "M32"
+        ],
+        "title": "原站业务请求超时/失败与交互超时",
+        "actual": "9/11专属tab24新组织、员工及调动查询成功；报表高级筛选固定日期仍连续选择器/Runtime.evaluate超时。",
+        "classification": "ENV_BLOCKED",
+        "severity": "Observation",
+        "status": "open_partial_recovered",
+        "productDefectConfirmed": false,
+        "ownerDecisionRequired": false,
+        "requirements": [
+          "F-SPEC-07",
+          "F-SPEC-08",
+          "D2",
+          "D6",
+          "M32-SPEC-04"
+        ],
+        "p3Tasks": [
+          "P3-R1-02",
+          "P3-R1-03",
+          "P3-R1-05",
+          "P3-R1-06",
+          "P3-R1-07"
+        ],
+        "feedback": "P3吸收到期日已达但实效未知的恢复状态，以及一次新标签/一次既有路径失败证据。继续D1–D7；需要真实执行审计和固定日期报表才能解除证据缺口。ROLE-01仍独立保留。",
+        "conclusion": "不再把原站全业务不可读作为当前结论；仅记录已观察到的报表交互限制，其余未测不冒充失败。",
+        "evidence": [
+          "R1-ORIGIN-20260910-100019/Resume_20260910_1532_DOM.json",
+          "R1-ORIGIN-20260910-100019/Browser_Resume_Request_Timeout.json",
+          "Current_Executable_Test_Disposition.json",
+          "R1-ORIGIN-20260910-100019/20260911_Fresh_Query_Gate.json",
+          "R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json"
+        ],
+        "followups": [
+          {
+            "at": "2026-09-10T16:16:42.486Z",
+            "basisHead": "60cfb04dc7fd869cd15b910de10e165cd72a7637",
+            "evidence": "R1-ORIGIN-20260910-100019/20260911_Fresh_Query_Gate.json",
+            "actual": "北京时间9/11 00:14:50起新标签组织页Failed to fetch，00:15:25起既有路径同样失败；业务main均空、输入控件0，管理身份标识匹配。一次新标签+一次既有路径后停止重试。",
+            "impact": "日期条件已满足，EMP001实际离职、原单终止、当前历史报表及再入职前置仍未知。",
+            "newUniqueFinding": false
+          }
+        ]
+      },
+      "change": "updated",
+      "approvedRequirementIds": [
+        "M32-SPEC-01",
+        "M32-SPEC-02",
+        "M32-SPEC-04"
+      ],
+      "designHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+      "implementation": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "paths": [
+          "lib/hris/r1-report-m01-producer.ts",
+          "lib/hris/r1-report-query.ts"
+        ]
+      },
+      "tests": {
+        "files": [
+          "tests/r1-p3-report-query.test.mjs",
+          "tests/r1-p3-report-oracles.test.mjs"
+        ],
+        "plannedCases": [
+          "P3-M32-01",
+          "P3-M32-02",
+          "P3-M32-03"
+        ],
+        "currentRun": "evidence/r1-p3-20260911T005747815482Z.json",
+        "scope": "本轮实际本地合成测试；原站未执行条件与独立验收不计通过"
+      },
+      "disposition": "接收报表交互仍受限；当前/历史结果未知，旧2人及预期1人均不得填为本次结果。",
+      "implementationDefectConfirmed": false,
+      "independentReview": "pending"
+    },
+    {
+      "id": "FUTURE-EXIT",
+      "group": "future",
+      "sourcePath": "docs/evidence/original-site/r1/Future_Date_Recovery.json",
+      "sourceRecord": {
+        "id": "FUTURE-EXIT",
+        "action": "核实际时钟、页面当前身份与测试域；按完整姓名+UUID读取员工主档和全部任职历史。",
+        "capture": [
+          "实际回查UTC时间和北京时间",
+          "原离职版本UUID",
+          "人员状态、任职状态和有效区间",
+          "计划日与实际执行/审计时间",
+          "授权HR执行状态（如页面提供）"
+        ],
+        "passLimit": "到日不等于生效；页面无执行记录不得声称实际执行完成或执行时刻为00:00。",
+        "manualSep11Status": "partially_observed",
+        "actualResult": "人员离职，退出任职9/11生效中；执行人/实际审计时间未知",
+        "evidence": [
+          "R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json"
+        ]
+      },
+      "change": "updated",
+      "approvedRequirementIds": [
+        "F-SPEC-05",
+        "F-SPEC-06",
+        "D1",
+        "D7"
+      ],
+      "designHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+      "implementation": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "paths": [
+          "lib/hris/r1-m01.ts"
+        ]
+      },
+      "tests": {
+        "files": [
+          "tests/r1-p3-m01.test.mjs",
+          "tests/r1-p3-transfer.test.mjs"
+        ],
+        "plannedCases": [
+          "P3-M01-10"
+        ],
+        "currentRun": "evidence/r1-p3-20260911T005747815482Z.json",
+        "scope": "本轮实际本地合成测试；原站未执行条件与独立验收不计通过"
+      },
+      "disposition": "接收实际离职/逐单终态的局部观察；按批准规则保留执行时间、原单、退出代次与有界清理；不是整链MATCH。",
+      "implementationDefectConfirmed": false,
+      "independentReview": "pending"
+    },
+    {
+      "id": "FUTURE-TERMINATION",
+      "group": "future",
+      "sourcePath": "docs/evidence/original-site/r1/Future_Date_Recovery.json",
+      "sourceRecord": {
+        "id": "FUTURE-TERMINATION",
+        "action": "打开已有调动原单UUID与流程UUID，核是否实际终止及原因、时间、原单关联。",
+        "capture": [
+          "当前节点",
+          "审批/业务终态",
+          "原单关联",
+          "终止原因与审计时间"
+        ],
+        "passLimit": "撤回/开始节点、先前确认警告均不能代替终止后效。",
+        "manualSep11Status": "observed",
+        "actualResult": "业务作废，流程已终止，系统9/11 01:15撤销，理由离职发起后自动终止",
+        "evidence": [
+          "R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json"
+        ]
+      },
+      "change": "updated",
+      "approvedRequirementIds": [
+        "F-SPEC-05",
+        "F-SPEC-06",
+        "D1",
+        "D7"
+      ],
+      "designHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+      "implementation": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "paths": [
+          "lib/hris/r1-m01.ts"
+        ]
+      },
+      "tests": {
+        "files": [
+          "tests/r1-p3-m01.test.mjs",
+          "tests/r1-p3-transfer.test.mjs"
+        ],
+        "plannedCases": [
+          "P3-M01-10"
+        ],
+        "currentRun": "evidence/r1-p3-20260911T005747815482Z.json",
+        "scope": "本轮实际本地合成测试；原站未执行条件与独立验收不计通过"
+      },
+      "disposition": "接收实际离职/逐单终态的局部观察；按批准规则保留执行时间、原单、退出代次与有界清理；不是整链MATCH。",
+      "implementationDefectConfirmed": false,
+      "independentReview": "pending"
+    },
+    {
+      "id": "FUTURE-REPORT",
+      "group": "future",
+      "sourcePath": "docs/evidence/original-site/r1/Future_Date_Recovery.json",
+      "sourceRecord": {
+        "id": "FUTURE-REPORT",
+        "action": "先保持本轮两名姓名精确过滤，将相对今天入职条件改为明确2026-09-10或清除日期但不清除姓名，再核当前和历史报表。",
+        "capture": [
+          "实际生效筛选条件",
+          "两员工明细",
+          "distinct人员数",
+          "正式/试用/离职分类",
+          "当前主职与历史任职数量"
+        ],
+        "passLimit": "若实际退出成功，当前在职口径预期仅EMP002试用1人；这是条件性预期，绝非提前结果。若源未执行则保留实际值及未知原因。",
+        "manualSep11Status": "attempted_not_completed",
+        "actualResult": "姓名已选择；固定日期未确认应用，未获取当前/历史结果",
+        "evidence": [
+          "R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json"
+        ]
+      },
+      "change": "updated",
+      "approvedRequirementIds": [
+        "M32-SPEC-01",
+        "M32-SPEC-02",
+        "M32-SPEC-04"
+      ],
+      "designHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+      "implementation": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "paths": [
+          "lib/hris/r1-report-m01-producer.ts",
+          "lib/hris/r1-report-query.ts"
+        ]
+      },
+      "tests": {
+        "files": [
+          "tests/r1-p3-report-query.test.mjs",
+          "tests/r1-p3-report-oracles.test.mjs"
+        ],
+        "plannedCases": [
+          "P3-M32-01",
+          "P3-M32-02",
+          "P3-M32-03"
+        ],
+        "currentRun": "evidence/r1-p3-20260911T005747815482Z.json",
+        "scope": "本轮实际本地合成测试；原站未执行条件与独立验收不计通过"
+      },
+      "disposition": "接收报表交互仍受限；当前/历史结果未知，旧2人及预期1人均不得填为本次结果。",
+      "implementationDefectConfirmed": false,
+      "independentReview": "pending"
+    },
+    {
+      "id": "FUTURE-REHIRE",
+      "group": "future",
+      "sourcePath": "docs/evidence/original-site/r1/Future_Date_Recovery.json",
+      "sourceRecord": {
+        "id": "FUTURE-REHIRE",
+        "action": "仅确认旧雇佣/离职实际结束后，使用原站正式再入职入口办理本轮EMP001；先核是否会邀请或恢复权限，如必须影响账号权限则停止该操作。",
+        "capture": [
+          "同一personId",
+          "新雇佣/任职UUID",
+          "前任期与原单关联",
+          "再入职开始日及实际执行时间",
+          "邀请否/账号未恢复"
+        ],
+        "passLimit": "不可新建同名第二人员替代再入职；不可修改历史或系统时间制造前置；缺角色部分仍ROLE_BLOCKED。",
+        "manualSep11Status": "not_executed",
+        "actualResult": "未打开或提交再入职；不新建同名第二人员",
+        "evidence": [
+          "R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json"
+        ]
+      },
+      "change": "updated",
+      "approvedRequirementIds": [
+        "F-SPEC-01",
+        "F-SPEC-05",
+        "F-SPEC-06"
+      ],
+      "designHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+      "implementation": {
+        "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+        "paths": [
+          "lib/hris/r1-m01.ts"
+        ]
+      },
+      "tests": {
+        "files": [
+          "tests/r1-p3-m01.test.mjs",
+          "tests/r1-p3-transfer.test.mjs"
+        ],
+        "plannedCases": [
+          "P3-M01-02"
+        ],
+        "currentRun": "evidence/r1-p3-20260911T005747815482Z.json",
+        "scope": "本轮实际本地合成测试；原站未执行条件与独立验收不计通过"
+      },
+      "disposition": "接收未执行再入职；离职状态已证实，但旧雇佣段结束审计/正式入口/邀请否未核，不自动解除前置。",
+      "implementationDefectConfirmed": false,
+      "independentReview": "pending"
+    }
+  ],
+  "currentFacts": {
+    "startedAtUTC": "2026-09-11T00:30:20Z",
+    "startedAtBeijing": "2026-09-11T08:30:20+08:00",
+    "completedEvidenceCaptureAt": "2026-09-11T00:51:52.069Z",
+    "basisHead": "76a16265fdd65f6ba7608260dde1e07acfb85200",
+    "dateConditionSatisfied": true,
+    "freshBusinessQuerySucceeded": true,
+    "gate": "passed_for_M01_and_M19_queries",
+    "outcome": "exit_state_and_transfer_termination_observed_report_and_rehire_incomplete",
+    "evidence": "R1-ORIGIN-20260910-100019/20260911_Priority_Handoff.json",
+    "actualExitStatus": "离职；离职任职生效中",
+    "actualExitExecutor": null,
+    "actualExitAuditAt": null,
+    "transferTerminationStatus": "业务作废；流程已终止",
+    "transferTerminationReason": "离职发起后自动终止",
+    "transferTerminationAt": "2026-09-11T01:15+08:00",
+    "currentReportDistinctPeople": null,
+    "currentAssignmentCount": null,
+    "rehirePrerequisiteConfirmed": false,
+    "rehireAttempted": false,
+    "newPersonCreated": false,
+    "transferTerminationExecutor": "系统",
+    "rehirePrerequisiteDetail": "离职人员/任职状态已成立；旧雇佣段ID/结束审计及入口邀请设置尚待正式再入职前核定。"
+  },
+  "ownerDecision": {
+    "id": "OWNER-DIFF-MAJOR-001-20260910",
+    "unchanged": true,
+    "D1toD7Retained": true
+  },
+  "interpretation": [
+    "状态由新查询证实，不是由日期推定。离职实际执行人/审计时间仍null。",
+    "调动终止时间2026-09-11T01:15+08:00仅分钟精度，不补秒，不挪作离职执行时间。",
+    "原单/流程ID相同；离职版本与原单直接字段链接未显示。",
+    "P3支持已批准原单执行和有界逐单清理；不据源系统定时终止替换D7授权HR执行，也不复制源状态标签/9999年哨兵。",
+    "ROLE-01、其他未测源行为与SRC13责任继续保留；ENV-05局部恢复，不再称全业务不可读。"
+  ],
+  "currentLocalRun": "evidence/r1-p3-20260911T005747815482Z.json",
+  "newImplementationDefects": [],
+  "newProductChanges": [],
+  "p3ExitApproved": false,
+  "p4Started": false
+}

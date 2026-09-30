@@ -1,0 +1,6 @@
+import {z} from 'zod';
+import {developmentContext,visibleDevelopment,saveDevelopmentMany} from '@/lib/hris/development-repository';
+import {applyLearningAssignment} from '@/lib/hris/learning-assignments';
+import {json,failure,readBody} from '@/lib/hris/http';
+export async function GET(){try{const c=await developmentContext(['homeworkDefinition','homeworkTask','homeworkSubmission','learningAssignment','learningDefinition','enrollment','course','exam','attempt','learningExamDefinition','learningExamTask','learningExamAttempt'],['admin','hr']);return json({records:visibleDevelopment(c),revision:c.row.revision,role:c.member.role});}catch(e){return failure(e);}}
+export async function POST(request:Request){try{const b=z.object({revision:z.number().int().nonnegative(),command:z.unknown()}).parse(await readBody(request)),c=await developmentContext(['homeworkDefinition','homeworkTask','homeworkSubmission','learningAssignment','learningDefinition','enrollment','course','exam','attempt','learningExamDefinition','learningExamTask','learningExamAttempt'],['admin','hr']),records=applyLearningAssignment(c.records,c.state,c.member,b.command);await saveDevelopmentMany(c,b.revision,records,'学习实例：'+String((b.command as {action:string}).action),21);return json({ids:records.map(r=>r.id),revision:c.row.revision+1});}catch(e){return failure(e);}}

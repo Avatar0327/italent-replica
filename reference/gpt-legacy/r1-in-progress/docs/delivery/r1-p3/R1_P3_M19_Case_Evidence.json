@@ -1,0 +1,206 @@
+{
+  "taskId": "P3-R1-03",
+  "sourceSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+  "independentReview": "pending",
+  "taskScope": "R1 engine and existing R1 integration; real producer deployment readiness is task 10",
+  "cases": [
+    {
+      "id": "P3-M19-01",
+      "status": "implemented_synthetic_verified_review_pending",
+      "testFile": "tests/r1-p3-workflow.test.mjs",
+      "testNames": [
+        "P3-M19-01: graph/type validation, null/missing/multiple routes and no implicit auto pass",
+        "P3-M19-01: application dedup, immutable template v1 continues after v2 publication",
+        "P3-M19-01/02: D7 blocks every generic management path; no missing policies, empty approvers or cross-org template writes"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json"
+    },
+    {
+      "id": "P3-M19-02",
+      "status": "implemented_synthetic_verified_review_pending",
+      "testFile": "tests/r1-p3-workflow.test.mjs",
+      "testNames": [
+        "P3-M19-02: all/any and reject policies are explicit and order-independent for same collected votes",
+        "P3-M19-02/04: applied instance rejects rollback; actor cannot self-approve or spoof source type",
+        "P3-M19-02: any policy in both serial orders gives one terminal outcome and no fabricated approvals",
+        "P3-M19-01/02: D7 blocks every generic management path; no missing policies, empty approvers or cross-org template writes"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json"
+    },
+    {
+      "id": "P3-M19-03",
+      "status": "implemented_synthetic_verified_review_pending",
+      "testFile": "tests/r1-p3-workflow.test.mjs",
+      "testNames": [
+        "P3-M19-03: transfer and intervention invalidate old node tokens, preserve actual decisions"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json"
+    },
+    {
+      "id": "P3-M19-04",
+      "status": "implemented_synthetic_verified_review_pending",
+      "testFile": "tests/r1-p3-workflow.test.mjs",
+      "testNames": [
+        "P3-M19-04: domain cancellation SQL failure rolls back workflow/audit/receipt, success cancels both",
+        "P3-M19-02/04: applied instance rejects rollback; actor cannot self-approve or spoof source type"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json"
+    },
+    {
+      "id": "P3-M19-05",
+      "status": "implemented_synthetic_verified_review_pending",
+      "testFile": "tests/r1-p3-workflow.test.mjs",
+      "testNames": [
+        "P3-M19-05: three independent items, stale/denied results fixed, lost response queries atomic receipt"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json"
+    },
+    {
+      "id": "P3-M19-06",
+      "status": "implemented_synthetic_verified_review_pending",
+      "testFile": "tests/r1-p3-workflow.test.mjs",
+      "testNames": [
+        "P3-M19-06: delegation acceptance, intersection, no approval/proxy, revocation and commit-time expiry",
+        "P3-M19-06: delegated query uses both current grants and scope, then rejects revocation",
+        "P3-M19-06: forbidden attempts record only real denial audit; audit storage failure is not claimed",
+        "P3-M19-06: zero interval never grants and delegated creation is forbidden"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json"
+    },
+    {
+      "id": "P3-M19-07",
+      "status": "implemented_synthetic_verified_review_pending",
+      "testFile": "tests/r1-p3-workflow.test.mjs",
+      "testNames": [
+        "P3-M19-07: approval and execution queues differ, filters preserve counts, cursor revocation rejects",
+        "P3-M19-07: durable notification unknown queries original receipt after transfer without a second send",
+        "P3-M19-07: competing notification dispatchers claim at most once under tenant CAS"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "BP-I-REQ-07-AC01",
+      "cases": [
+        "P3-M19-01",
+        "P3-M19-03"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061155692609Z.json",
+      "verificationBoundary": "fresh compatibility API tests; not real R2/R3 integration"
+    },
+    {
+      "id": "BP-I-REQ-07-AC02",
+      "cases": [
+        "P3-M19-01",
+        "P3-M19-03"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json",
+      "verificationBoundary": "isolated SQLite commands, synthetic identities and simulated external transport"
+    },
+    {
+      "id": "BP-I-REQ-07-AC03",
+      "cases": [
+        "P3-M19-01",
+        "P3-M19-03"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061155692609Z.json",
+      "verificationBoundary": "fresh compatibility API tests; not real R2/R3 integration"
+    },
+    {
+      "id": "BP-I-REQ-07-AC04",
+      "cases": [
+        "P3-M19-01",
+        "P3-M19-03"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json",
+      "verificationBoundary": "isolated SQLite commands, synthetic identities and simulated external transport"
+    },
+    {
+      "id": "M19-EXECUTION-LIST-01",
+      "cases": [
+        "P3-M19-01",
+        "P3-M19-03"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json",
+      "verificationBoundary": "isolated SQLite commands, synthetic identities and simulated external transport"
+    },
+    {
+      "id": "M19-REVIEW-AC01",
+      "cases": [
+        "P3-M19-01"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json",
+      "verificationBoundary": "isolated SQLite commands, synthetic identities and simulated external transport"
+    },
+    {
+      "id": "M19-REVIEW-AC02",
+      "cases": [
+        "P3-M19-01"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json",
+      "verificationBoundary": "isolated SQLite commands, synthetic identities and simulated external transport"
+    },
+    {
+      "id": "M19-REVIEW-AC03",
+      "cases": [
+        "P3-M19-03"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json",
+      "verificationBoundary": "isolated SQLite commands, synthetic identities and simulated external transport"
+    },
+    {
+      "id": "M19-REVIEW-AC04",
+      "cases": [
+        "P3-M19-04"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json",
+      "verificationBoundary": "isolated SQLite commands, synthetic identities and simulated external transport"
+    },
+    {
+      "id": "M19-REVIEW-AC05",
+      "cases": [
+        "P3-M19-05"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json",
+      "verificationBoundary": "isolated SQLite commands, synthetic identities and simulated external transport"
+    },
+    {
+      "id": "M19-REVIEW-AC06",
+      "cases": [
+        "P3-M19-06"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json",
+      "verificationBoundary": "isolated SQLite commands, synthetic identities and simulated external transport"
+    },
+    {
+      "id": "M19-REVIEW-AC07",
+      "cases": [
+        "P3-M19-06"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json",
+      "verificationBoundary": "isolated SQLite commands, synthetic identities and simulated external transport"
+    },
+    {
+      "id": "M19-REVIEW-AC08",
+      "cases": [
+        "P3-M19-07"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json",
+      "verificationBoundary": "isolated SQLite commands, synthetic identities and simulated external transport"
+    },
+    {
+      "id": "M19-REVIEW-AC09",
+      "cases": [
+        "P3-M19-07"
+      ],
+      "evidence": "evidence/r1-p3-20260910T061120991290Z.json",
+      "verificationBoundary": "isolated SQLite commands, synthetic identities and simulated external transport"
+    }
+  ],
+  "remainingExternalReview": [
+    "独立角色与浏览器人工验收未执行",
+    "供应商实际回调认证和R2/R3契约联调未执行",
+    "列表超过有界500记录会显式拒绝，权限持久投影及大数据压测由08/11核对"
+  ]
+}

@@ -1,0 +1,1495 @@
+TAP version 13
+# Subtest: frozen attendance guards new shifts and corrections and approved leave changes; reopening and refreezing retain prior snapshot
+ok 1 - frozen attendance guards new shifts and corrections and approved leave changes; reopening and refreezing retain prior snapshot
+  ---
+  duration_ms: 138.053309
+  type: 'test'
+  ...
+# Subtest: incomplete, empty, future, overlapping or out-of-scope periods cannot freeze; audit failure leaves attendance writable
+ok 2 - incomplete, empty, future, overlapping or out-of-scope periods cannot freeze; audit failure leaves attendance writable
+  ---
+  duration_ms: 126.521872
+  type: 'test'
+  ...
+# Subtest: current personnel scope governs historical period access while the employee lock survives a transfer
+ok 3 - current personnel scope governs historical period access while the employee lock survives a transfer
+  ---
+  duration_ms: 118.899842
+  type: 'test'
+  ...
+# Subtest: preview is read-only, scope checked and stale revisions do not freeze changed sources; employee receives only visible lock identifiers
+ok 4 - preview is read-only, scope checked and stale revisions do not freeze changed sources; employee receives only visible lock identifiers
+  ---
+  duration_ms: 56.500823
+  type: 'test'
+  ...
+# Subtest: 未配置、停用与未知角色均拒绝访问
+ok 5 - 未配置、停用与未知角色均拒绝访问
+  ---
+  duration_ms: 1.142601
+  type: 'test'
+  ...
+# Subtest: 员工响应不泄漏同事或审计记录
+ok 6 - 员工响应不泄漏同事或审计记录
+  ---
+  duration_ms: 1.320111
+  type: 'test'
+  ...
+# Subtest: 员工不能提交其他人员申请或维护组织
+ok 7 - 员工不能提交其他人员申请或维护组织
+  ---
+  duration_ms: 1.710036
+  type: 'test'
+  ...
+# Subtest: 申请与审批分离，申请人不能自审，审批者不能审批本人异动
+ok 8 - 申请与审批分离，申请人不能自审，审批者不能审批本人异动
+  ---
+  duration_ms: 2.571668
+  type: 'test'
+  ...
+# Subtest: 无申请人信息的遗留单据不能直接审批
+ok 9 - 无申请人信息的遗留单据不能直接审批
+  ---
+  duration_ms: 0.31526
+  type: 'test'
+  ...
+# Subtest: cadre interviews preserve corrections, prevent identity replacement and expose no record to non-HR roles
+ok 10 - cadre interviews preserve corrections, prevent identity replacement and expose no record to non-HR roles
+  ---
+  duration_ms: 143.903558
+  type: 'test'
+  ...
+# Subtest: current scope applies to subject and interviewer, including historical events after transfer
+ok 11 - current scope applies to subject and interviewer, including historical events after transfer
+  ---
+  duration_ms: 101.257191
+  type: 'test'
+  ...
+# Subtest: invalid fields, stale revisions and audit failure cannot leave partial interview records
+ok 12 - invalid fields, stale revisions and audit failure cannot leave partial interview records
+  ---
+  duration_ms: 79.292961
+  type: 'test'
+  ...
+# Subtest: nomination approval rechecks employee-exit without altering pending history
+ok 13 - nomination approval rechecks employee-exit without altering pending history
+  ---
+  duration_ms: 84.711852
+  type: 'test'
+  ...
+# Subtest: nomination approval rechecks position-disabled without altering pending history
+ok 14 - nomination approval rechecks position-disabled without altering pending history
+  ---
+  duration_ms: 56.236368
+  type: 'test'
+  ...
+# Subtest: rating: discarded drafts permit a later unique version while live successors still prevent forks
+ok 15 - rating: discarded drafts permit a later unique version while live successors still prevent forks
+  ---
+  duration_ms: 142.632353
+  type: 'test'
+  ...
+# Subtest: homework: discarded drafts permit a later unique version while live successors still prevent forks
+ok 16 - homework: discarded drafts permit a later unique version while live successors still prevent forks
+  ---
+  duration_ms: 52.336856
+  type: 'test'
+  ...
+# Subtest: exam: discarded drafts permit a later unique version while live successors still prevent forks
+ok 17 - exam: discarded drafts permit a later unique version while live successors still prevent forks
+  ---
+  duration_ms: 93.258967
+  type: 'test'
+  ...
+# Subtest: plan: discarded drafts permit a later unique version while live successors still prevent forks
+ok 18 - plan: discarded drafts permit a later unique version while live successors still prevent forks
+  ---
+  duration_ms: 97.877262
+  type: 'test'
+  ...
+# Subtest: scope retains all 48 modules and every task has a unique link and existing module
+ok 19 - scope retains all 48 modules and every task has a unique link and existing module
+  ---
+  duration_ms: 1.166498
+  type: 'test'
+  ...
+# Subtest: publication and technical delivery never count as acceptance
+ok 20 - publication and technical delivery never count as acceptance
+  ---
+  duration_ms: 1.807544
+  type: 'test'
+  ...
+# Subtest: only all criteria with signed evidence count; adding scope changes denominator
+ok 21 - only all criteria with signed evidence count; adding scope changes denominator
+  ---
+  duration_ms: 3.728842
+  type: 'test'
+  ...
+# Subtest: queue changes immediately affect aggregation without dashboard status edits
+ok 22 - queue changes immediately affect aggregation without dashboard status edits
+  ---
+  duration_ms: 1.003489
+  type: 'test'
+  ...
+# Subtest: missing execution evidence does not imply technical completion or awaiting verification
+ok 23 - missing execution evidence does not imply technical completion or awaiting verification
+  ---
+  duration_ms: 1.155401
+  type: 'test'
+  ...
+# Subtest: exit preserves authorized retrospective attendance settlement and final payroll without allowing new shifts or changing published money
+ok 24 - exit preserves authorized retrospective attendance settlement and final payroll without allowing new shifts or changing published money
+  ---
+  duration_ms: 150.173777
+  type: 'test'
+  ...
+# Subtest: pending field change cannot be approved after employee exit; independent return preserves formal value and audit
+ok 25 - pending field change cannot be approved after employee exit; independent return preserves formal value and audit
+  ---
+  duration_ms: 86.677281
+  type: 'test'
+  ...
+# Subtest: G0 SC-1：计划人员、标准版本与状态异常均不产生记录或审计
+ok 26 - G0 SC-1：计划人员、标准版本与状态异常均不产生记录或审计
+  ---
+  duration_ms: 146.174519
+  type: 'test'
+  ...
+# Subtest: G0 SC-1：历史20条分页保持事件快照，完成计划拒绝新增派课
+ok 27 - G0 SC-1：历史20条分页保持事件快照，完成计划拒绝新增派课
+  ---
+  duration_ms: 125.606117
+  type: 'test'
+  ...
+# Subtest: G0 SC-1：JSON请求、匿名身份、租户注入与错误响应边界
+ok 28 - G0 SC-1：JSON请求、匿名身份、租户注入与错误响应边界
+  ---
+  duration_ms: 39.353447
+  type: 'test'
+  ...
+# Subtest: G0 SC-1：多记录空批、超限、重复标识拒绝，20条边界原子保存
+ok 29 - G0 SC-1：多记录空批、超限、重复标识拒绝，20条边界原子保存
+  ---
+  duration_ms: 44.021752
+  type: 'test'
+  ...
+# Subtest: H002 G1-02：离职后的未完成计划和学习保留历史、拒绝新业务，离职账号可保留关联停用并立即撤权
+ok 30 - H002 G1-02：离职后的未完成计划和学习保留历史、拒绝新业务，离职账号可保留关联停用并立即撤权
+  ---
+  duration_ms: 229.267376
+  type: 'test'
+  ...
+# Subtest: Cadre terms: scoped registration, immutable history, correction, ending and profile integration
+ok 31 - Cadre terms: scoped registration, immutable history, correction, ending and profile integration
+  ---
+  duration_ms: 152.487709
+  type: 'test'
+  ...
+# Subtest: G1 X01：同一人员从组织岗位到盘点计划、考试学习核验与档案回流，调动后撤销旧组织访问
+ok 32 - G1 X01：同一人员从组织岗位到盘点计划、考试学习核验与档案回流，调动后撤销旧组织访问
+  ---
+  duration_ms: 282.753667
+  type: 'test'
+  ...
+# H002_SC1_INSTANCE {"employeeId":"0e368411-f680-4705-96d0-8a2df2fe220f","reviewId":"d6b0fc75-ef06-4fc7-8f4d-3c3c321ce258","standardId":"8b0a2f5a-c910-47a1-8e18-bd30ea80a8a4","planId":"fb8d96ad-6e7d-45ad-ac72-de01e2a1f098","planReferenceId":"8b0a2f5a-c910-47a1-8e18-bd30ea80a8a4","courseId":"c9386363-97ee-4ac7-bf01-f1667a2aa0eb","courseReferenceId":"8b0a2f5a-c910-47a1-8e18-bd30ea80a8a4","enrollmentId":"579c36b0-99a4-433c-a7a2-d7abed8f3450","enrollmentReferenceId":"c9386363-97ee-4ac7-bf01-f1667a2aa0eb","enrollmentPlanId":"fb8d96ad-6e7d-45ad-ac72-de01e2a1f098"}
+# Subtest: Learning thresholds: optional course counts unlock next stage, invalid minima reject, legacy rules remain
+ok 33 - Learning thresholds: optional course counts unlock next stage, invalid minima reject, legacy rules remain
+  ---
+  duration_ms: 149.391418
+  type: 'test'
+  ...
+# Subtest: G1-03 H003：同员工计划与两阶段考试、强制出勤、独立核验、恢复及学分来源闭环
+ok 34 - G1-03 H003：同员工计划与两阶段考试、强制出勤、独立核验、恢复及学分来源闭环
+  ---
+  duration_ms: 336.819018
+  type: 'test'
+  ...
+# H003: two stages completed; attempts 2+1 retained; credits 300 awarded/100 reversed/200 available; rejection snapshots unchanged.
+# Subtest: H004 P02: one employee goal adjustment, checkin, evaluation, appeal and versioned consumers
+ok 35 - H004 P02: one employee goal adjustment, checkin, evaluation, appeal and versioned consumers
+  ---
+  duration_ms: 204.082897
+  type: 'test'
+  ...
+# H004_CHAIN {"employeeId":"4f5b47a8-0451-48ec-ac99-3f14a09cf9f5","cycleId":"0732ad3d-f09a-4a7f-a66f-b50898824ccd","planId":"97daecfa-df5c-4966-a952-91a187128dfc","adjustmentId":"94f49352-9edc-43dc-b9fa-163eddf61543","checkinId":"f1e1b57b-0e5d-4037-b6ec-8c7dfa0c901d","resultId":"e4ff14b0-b638-4b2d-81aa-9a6e12b373ec","appealId":"79af3cb1-0cd7-40a1-b378-59a141d90ae5","correctionId":"0476c976-765d-4680-80d1-3fb7a3f2d7c2","reviewId":"8bd761c3-3963-4d57-8907-e4e14da29326","originalScore":63,"latestScore":87}
+# Subtest: H004 P03: cycle status, dates, exact weights and score thresholds
+ok 36 - H004 P03: cycle status, dates, exact weights and score thresholds
+  ---
+  duration_ms: 128.778192
+  type: 'test'
+  ...
+# Subtest: H004 P03: exit preserves independent correction of published history
+ok 37 - H004 P03: exit preserves independent correction of published history
+  ---
+  duration_ms: 79.512664
+  type: 'test'
+  ...
+# Subtest: H004 P03: transfer preserves independent correction of published history
+ok 38 - H004 P03: transfer preserves independent correction of published history
+  ---
+  duration_ms: 79.447415
+  type: 'test'
+  ...
+# Subtest: H004 P-DEF-01: exit blocks active plan progression, keeps history and cancellation
+ok 39 - H004 P-DEF-01: exit blocks active plan progression, keeps history and cancellation
+  ---
+  duration_ms: 277.278521
+  type: 'test'
+  ...
+# Subtest: H004 P-DEF-01: transfer blocks active plan progression, keeps history and cancellation
+ok 40 - H004 P-DEF-01: transfer blocks active plan progression, keeps history and cancellation
+  ---
+  duration_ms: 222.192654
+  type: 'test'
+  ...
+# Subtest: 审批通过调动更新任职，且旧状态保持不变
+ok 41 - 审批通过调动更新任职，且旧状态保持不变
+  ---
+  duration_ms: 3.524544
+  type: 'test'
+  ...
+# Subtest: 驳回不变更员工组织
+ok 42 - 驳回不变更员工组织
+  ---
+  duration_ms: 0.315718
+  type: 'test'
+  ...
+# Subtest: 组织循环以及有在职员工的停用被阻止
+ok 43 - 组织循环以及有在职员工的停用被阻止
+  ---
+  duration_ms: 0.734001
+  type: 'test'
+  ...
+# Subtest: 重复工号与无效入职日期被拒绝
+ok 44 - 重复工号与无效入职日期被拒绝
+  ---
+  duration_ms: 2.169543
+  type: 'test'
+  ...
+# Subtest: 同一员工不能重复发起待审批请求
+ok 45 - 同一员工不能重复发起待审批请求
+  ---
+  duration_ms: 0.352133
+  type: 'test'
+  ...
+# Subtest: 离职通过后限制继续发起申请
+ok 46 - 离职通过后限制继续发起申请
+  ---
+  duration_ms: 0.725878
+  type: 'test'
+  ...
+# Subtest: 编辑档案无法绕过调动审批
+ok 47 - 编辑档案无法绕过调动审批
+  ---
+  duration_ms: 0.506607
+  type: 'test'
+  ...
+# Subtest: preflight returns mapped candidate only, requires committed receipt for replay and does not mutate inputs
+ok 48 - preflight returns mapped candidate only, requires committed receipt for replay and does not mutate inputs
+  ---
+  duration_ms: 9.937499
+  type: 'test'
+  ...
+# Subtest: missing order, stale events, unmapped IDs and ambiguous identity never become write candidates
+ok 49 - missing order, stale events, unmapped IDs and ambiguous identity never become write candidates
+  ---
+  duration_ms: 4.910962
+  type: 'test'
+  ...
+# Subtest: contract rejects lifecycle, roles, salary and extra fields rather than silently accepting an unauthorized mutation
+ok 50 - contract rejects lifecycle, roles, salary and extra fields rather than silently accepting an unauthorized mutation
+  ---
+  duration_ms: 4.304494
+  type: 'test'
+  ...
+# Subtest: retry guidance bounds transient retries and does not retry authentication, business conflict or malformed requests
+ok 51 - retry guidance bounds transient retries and does not retry authentication, business conflict or malformed requests
+  ---
+  duration_ms: 0.441899
+  type: 'test'
+  ...
+# Subtest: schedule validates scope, time ranges, candidate and interviewer conflicts; cancel retains evidence and releases the slot
+ok 52 - schedule validates scope, time ranges, candidate and interviewer conflicts; cancel retains evidence and releases the slot
+  ---
+  duration_ms: 128.580708
+  type: 'test'
+  ...
+# Subtest: only assigned current manager can complete ended appointment using frozen archived template; result and completion roll back together
+ok 53 - only assigned current manager can complete ended appointment using frozen archived template; result and completion roll back together
+  ---
+  duration_ms: 116.722697
+  type: 'test'
+  ...
+# Subtest: future, cancelled, moved and revoked appointments cannot be signed and pending schedules block legacy-offer bypass
+ok 54 - future, cancelled, moved and revoked appointments cannot be signed and pending schedules block legacy-offer bypass
+  ---
+  duration_ms: 112.21153
+  type: 'test'
+  ...
+# Subtest: rescheduling retains archived frozen form, transfers evaluation authority and preserves earlier schedule history
+ok 55 - rescheduling retains archived frozen form, transfers evaluation authority and preserves earlier schedule history
+  ---
+  duration_ms: 88.83361
+  type: 'test'
+  ...
+# Subtest: unified inbox shows only currently designated ended interviews and removes completed or cancelled work
+ok 56 - unified inbox shows only currently designated ended interviews and removes completed or cancelled work
+  ---
+  duration_ms: 196.520288
+  type: 'test'
+  ...
+# Subtest: first learning instance atomically creates 20 tasks, blocks duplicate instances and permits separate plan versions, closes only after independent evidence
+ok 57 - first learning instance atomically creates 20 tasks, blocks duplicate instances and permits separate plan versions, closes only after independent evidence
+  ---
+  duration_ms: 438.187194
+  type: 'test'
+  ...
+# Subtest: first instance refuses outside scope, expired dates and stale revision without partial records
+ok 58 - first instance refuses outside scope, expired dates and stale revision without partial records
+  ---
+  duration_ms: 51.855087
+  type: 'test'
+  ...
+# Subtest: content update preview is read-only; application retains evidence, rejects stale/duplicate writes, rolls back atomically and completes added exam
+ok 59 - content update preview is read-only; application retains evidence, rejects stale/duplicate writes, rolls back atomically and completes added exam
+  ---
+  duration_ms: 151.561771
+  type: 'test'
+  ...
+# Subtest: content update rejects scope leaks and preserves completed/cancelled/version-conflicting instances
+ok 60 - content update rejects scope leaks and preserves completed/cancelled/version-conflicting instances
+  ---
+  duration_ms: 122.723649
+  type: 'test'
+  ...
+# Subtest: content update binds new course and homework with an independent reviewer and keeps all original deadlines
+ok 61 - content update binds new course and homework with an independent reviewer and keeps all original deadlines
+  ---
+  duration_ms: 137.278456
+  type: 'test'
+  ...
+# Subtest: content retirement preserves passed course and failed exam history and credit while replacing requirements atomically
+ok 62 - content retirement preserves passed course and failed exam history and credit while replacing requirements atomically
+  ---
+  duration_ms: 420.827211
+  type: 'test'
+  ...
+# Subtest: retired pending homework remains readable but cannot be reviewed, restored, reassigned or silently reintroduced
+ok 63 - retired pending homework remains readable but cannot be reviewed, restored, reassigned or silently reintroduced
+  ---
+  duration_ms: 266.094049
+  type: 'test'
+  ...
+# Subtest: added course progress sync previews original evidence and preserves credit uniqueness without copying attempts
+ok 64 - added course progress sync previews original evidence and preserves credit uniqueness without copying attempts
+  ---
+  duration_ms: 68.414644
+  type: 'test'
+  ...
+# Subtest: standalone exam definitions isolate organizations and answers, preserve sealed versions, reject stale edits and never create course exams
+ok 65 - standalone exam definitions isolate organizations and answers, preserve sealed versions, reject stale edits and never create course exams
+  ---
+  duration_ms: 137.421422
+  type: 'test'
+  ...
+# Subtest: independent exams bind attempts to employee and version, hide answers, honor revocation windows and roll back the entire submission
+ok 66 - independent exams bind attempts to employee and version, hide answers, honor revocation windows and roll back the entire submission
+  ---
+  duration_ms: 124.500148
+  type: 'test'
+  ...
+# Subtest: plan grading distinguishes two averages, retains zero, and never borrows other-instance attempts or replaces missing scores
+ok 67 - plan grading distinguishes two averages, retains zero, and never borrows other-instance attempts or replaces missing scores
+  ---
+  duration_ms: 6.486627
+  type: 'test'
+  ...
+# Subtest: content weights use actual current evidence, distinguish exam aggregation and keep missing or foreign homework pending
+ok 68 - content weights use actual current evidence, distinguish exam aggregation and keep missing or foreign homework pending
+  ---
+  duration_ms: 3.399956
+  type: 'test'
+  ...
+# Subtest: homework versions and submissions remain independent through return, reassignment and cancellation
+ok 69 - homework versions and submissions remain independent through return, reassignment and cancellation
+  ---
+  duration_ms: 236.952787
+  type: 'test'
+  ...
+# Subtest: homework audit failure rolls back both records and reviewer transfer removes access and actionable tasks
+ok 70 - homework audit failure rolls back both records and reviewer transfer removes access and actionable tasks
+  ---
+  duration_ms: 194.756102
+  type: 'test'
+  ...
+# Subtest: homework requirements bind mixed plans, keep submission release distinct from completion and survive instance recovery
+ok 71 - homework requirements bind mixed plans, keep submission release distinct from completion and survive instance recovery
+  ---
+  duration_ms: 231.128939
+  type: 'test'
+  ...
+# Subtest: same course across plans isolates exams and preserves legacy constraints, rewards and cancellation history
+ok 72 - same course across plans isolates exams and preserves legacy constraints, rewards and cancellation history
+  ---
+  duration_ms: 261.92745
+  type: 'test'
+  ...
+# Subtest: legacy cancelled task restores with original ID after an independent instance is assigned
+ok 73 - legacy cancelled task restores with original ID after an independent instance is assigned
+  ---
+  duration_ms: 76.605419
+  type: 'test'
+  ...
+# Subtest: versioned instance stages gate tasks and close at independent required/optional thresholds without crediting unfinished electives
+ok 74 - versioned instance stages gate tasks and close at independent required/optional thresholds without crediting unfinished electives
+  ---
+  duration_ms: 325.46799
+  type: 'test'
+  ...
+# Subtest: objective scoring validates shapes and keeps weighted, partial and wrong-selection results distinct
+ok 75 - objective scoring validates shapes and keeps weighted, partial and wrong-selection results distinct
+  ---
+  duration_ms: 3.780121
+  type: 'test'
+  ...
+# Subtest: mixed objective versions protect answers, retain attempts and reject legacy overwrite or malformed submissions
+ok 76 - mixed objective versions protect answers, retain attempts and reject legacy overwrite or malformed submissions
+  ---
+  duration_ms: 100.851383
+  type: 'test'
+  ...
+# Subtest: rounded display cannot turn a weighted near-pass into a passing attempt
+ok 77 - rounded display cannot turn a weighted near-pass into a passing attempt
+  ---
+  duration_ms: 45.135318
+  type: 'test'
+  ...
+# Subtest: Learning definitions retain immutable versions, reject stale writes and scope leaks
+ok 78 - Learning definitions retain immutable versions, reject stale writes and scope leaks
+  ---
+  duration_ms: 96.208251
+  type: 'test'
+  ...
+# Subtest: mixed course/exam requirements retain independent attempts through stages, cancellation, history reuse and exhaustion
+ok 79 - mixed course/exam requirements retain independent attempts through stages, cancellation, history reuse and exhaustion
+  ---
+  duration_ms: 207.733468
+  type: 'test'
+  ...
+# Subtest: exam-only plans retain the 20-resource atomic limit and reject audit failure without partial tasks
+ok 80 - exam-only plans retain the 20-resource atomic limit and reject audit failure without partial tasks
+  ---
+  duration_ms: 252.187964
+  type: 'test'
+  ...
+# Subtest: ordered mixed tasks allow explicit exam-submission release without completion or borrowed attempts
+ok 81 - ordered mixed tasks allow explicit exam-submission release without completion or borrowed attempts
+  ---
+  duration_ms: 112.407441
+  type: 'test'
+  ...
+# Subtest: learning instance contract rejects mixed modes, invalid dates and missing reward decisions
+ok 82 - learning instance contract rejects mixed modes, invalid dates and missing reward decisions
+  ---
+  duration_ms: 4.039794
+  type: 'test'
+  ...
+# Subtest: learning windows preserve fixed dates and inclusive leap/year boundaries; round keys do not collide
+ok 83 - learning windows preserve fixed dates and inclusive leap/year boundaries; round keys do not collide
+  ---
+  duration_ms: 1.152674
+  type: 'test'
+  ...
+# Subtest: instance availability keeps historical records while rejecting transferred, former and out-of-window learners
+ok 84 - instance availability keeps historical records while rejecting transferred, former and out-of-window learners
+  ---
+  duration_ms: 0.246333
+  type: 'test'
+  ...
+# Subtest: explicit recurrence isolates rounds and keeps repeat-credit false idempotent
+ok 85 - explicit recurrence isolates rounds and keeps repeat-credit false idempotent
+  ---
+  duration_ms: 184.251424
+  type: 'test'
+  ...
+# Subtest: explicit recurrence isolates rounds and keeps repeat-credit true idempotent
+ok 86 - explicit recurrence isolates rounds and keeps repeat-credit true idempotent
+  ---
+  duration_ms: 197.577738
+  type: 'test'
+  ...
+# Subtest: requirement completion rejects borrowed identities, duplicates and missing evidence while preserving legacy assignments
+ok 87 - requirement completion rejects borrowed identities, duplicates and missing evidence while preserving legacy assignments
+  ---
+  duration_ms: 9.087763
+  type: 'test'
+  ...
+# Subtest: assignment progression retains history but stops for exit, transfer or disabled organization
+ok 88 - assignment progression retains history but stops for exit, transfer or disabled organization
+  ---
+  duration_ms: 0.275877
+  type: 'test'
+  ...
+# Subtest: stage opening uses joined business date and fixed plan start without bypassing prerequisites
+ok 89 - stage opening uses joined business date and fixed plan start without bypassing prerequisites
+  ---
+  duration_ms: 1.204613
+  type: 'test'
+  ...
+# Subtest: fixed stages retain plan origin for early and late assignees at China business-day boundary
+ok 90 - fixed stages retain plan origin for early and late assignees at China business-day boundary
+  ---
+  duration_ms: 0.241927
+  type: 'test'
+  ...
+# Subtest: explicit future recurrence starts stage delays at the round start, not dispatch time
+ok 91 - explicit future recurrence starts stage delays at the round start, not dispatch time
+  ---
+  duration_ms: 0.188375
+  type: 'test'
+  ...
+# Subtest: explicit scheduled-inclusive stage deadlines preserve China calendar boundaries and legacy open-ended stages
+ok 92 - explicit scheduled-inclusive stage deadlines preserve China calendar boundaries and legacy open-ended stages
+  ---
+  duration_ms: 4.819173
+  type: 'test'
+  ...
+# Subtest: stage expiry blocks new course/exam/homework submissions but preserves independent review of already submitted work
+ok 93 - stage expiry blocks new course/exam/homework submissions but preserves independent review of already submitted work
+  ---
+  duration_ms: 107.787235
+  type: 'test'
+  ...
+# Subtest: expired incomplete stage configurations cannot create fresh instances or migrate live instances into closed submission windows
+ok 94 - expired incomplete stage configurations cannot create fresh instances or migrate live instances into closed submission windows
+  ---
+  duration_ms: 130.374618
+  type: 'test'
+  ...
+# Subtest: duration limits use working minutes after rest; historical application freezes the exact rule
+ok 95 - duration limits use working minutes after rest; historical application freezes the exact rule
+  ---
+  duration_ms: 90.913397
+  type: 'test'
+  ...
+# Subtest: scoped HR cannot create global or foreign rules; managers cannot retire; foreign staff cannot use the definition
+ok 96 - scoped HR cannot create global or foreign rules; managers cannot retire; foreign staff cannot use the definition
+  ---
+  duration_ms: 65.551786
+  type: 'test'
+  ...
+# Subtest: retirement blocks new requests and credits but retains pending independent decisions, reversals and balances
+ok 97 - retirement blocks new requests and credits but retains pending independent decisions, reversals and balances
+  ---
+  duration_ms: 57.518247
+  type: 'test'
+  ...
+# Subtest: transfer hides old organization rules but keeps own credited balance and rule snapshots readable
+ok 98 - transfer hides old organization rules but keeps own credited balance and rule snapshots readable
+  ---
+  duration_ms: 58.603029
+  type: 'test'
+  ...
+# Subtest: P2 API：企业初始化、组织员工、成员范围、顺序审批、任职历史、越权和刷新持久化
+ok 99 - P2 API：企业初始化、组织员工、成员范围、顺序审批、任职历史、越权和刷新持久化
+  ---
+  duration_ms: 181.294454
+  type: 'test'
+  ...
+# Subtest: P2 存储：迁移保留原快照、重入不重复、跨租户外键、并发冲突与失败整体回滚
+ok 100 - P2 存储：迁移保留原快照、重入不重复、跨租户外键、并发冲突与失败整体回滚
+  ---
+  duration_ms: 31.703495
+  type: 'test'
+  ...
+# Subtest: P2 权限竞争：数据快照之前撤销组织范围不沿用旧权限
+ok 101 - P2 权限竞争：数据快照之前撤销组织范围不沿用旧权限
+  ---
+  duration_ms: 5.054119
+  type: 'test'
+  ...
+# Subtest: P3 岗位与职级：目录关联、任职变更审批、在用保护及历史留存
+ok 102 - P3 岗位与职级：目录关联、任职变更审批、在用保护及历史留存
+  ---
+  duration_ms: 38.689997
+  type: 'test'
+  ...
+# Subtest: P3：标准版本、绩效更正、盘点快照、跨组织与本人评价隔离
+ok 103 - P3：标准版本、绩效更正、盘点快照、跨组织与本人评价隔离
+  ---
+  duration_ms: 844.159294
+  type: 'test'
+  ...
+# Subtest: P3：发展计划—课程—学习成果—独立核验闭环与重复处理保护
+ok 104 - P3：发展计划—课程—学习成果—独立核验闭环与重复处理保护
+  ---
+  duration_ms: 174.555476
+  type: 'test'
+  ...
+# Subtest: P3 附件：受权下载、类型与大小验证、并发清理、删除及数据库失败回滚
+ok 105 - P3 附件：受权下载、类型与大小验证、并发清理、删除及数据库失败回滚
+  ---
+  duration_ms: 106.681551
+  type: 'test'
+  ...
+# Subtest: P3 附件默认保密：员工和审批人不能列出或下载未开放的人事附件
+ok 106 - P3 附件默认保密：员工和审批人不能列出或下载未开放的人事附件
+  ---
+  duration_ms: 28.410055
+  type: 'test'
+  ...
+# Subtest: P3 考试：答案服务端保密、次数限制、自动评分及成果提交门槛
+ok 107 - P3 考试：答案服务端保密、次数限制、自动评分及成果提交门槛
+  ---
+  duration_ms: 50.639557
+  type: 'test'
+  ...
+# Subtest: P3 能力差距：同版本比较，缺失与版本不匹配均为未评定
+ok 108 - P3 能力差距：同版本比较，缺失与版本不匹配均为未评定
+  ---
+  duration_ms: 48.067496
+  type: 'test'
+  ...
+# Subtest: P3 项目化：盘点范围与期间、人才池隔离、培训报名及未结项保护
+ok 109 - P3 项目化：盘点范围与期间、人才池隔离、培训报名及未结项保护
+  ---
+  duration_ms: 83.521211
+  type: 'test'
+  ...
+# Subtest: P3 正式绩效：目标确认、自评、独立评价、发布、盘点使用与结项
+ok 110 - P3 正式绩效：目标确认、自评、独立评价、发布、盘点使用与结项
+  ---
+  duration_ms: 60.755732
+  type: 'test'
+  ...
+# Subtest: P3 招聘入职：独立审批、录用依据、字段权限、人数上限与原子建档
+ok 111 - P3 招聘入职：独立审批、录用依据、字段权限、人数上限与原子建档
+  ---
+  duration_ms: 87.210227
+  type: 'test'
+  ...
+# Subtest: P3 假勤：休息扣除、待批余额占用、撤回释放、独立审批及补卡保留原始记录
+ok 112 - P3 假勤：休息扣除、待批余额占用、撤回释放、独立审批及补卡保留原始记录
+  ---
+  duration_ms: 64.244501
+  type: 'test'
+  ...
+# Subtest: P3 打卡：只接受本人及服务端时间、先上班后下班、防重复
+ok 113 - P3 打卡：只接受本人及服务端时间、先上班后下班、防重复
+  ---
+  duration_ms: 37.841539
+  type: 'test'
+  ...
+# Subtest: P3 薪酬：分级保密、整数金额、编制复核分离、退回重审、发布锁定及历史隔离
+ok 114 - P3 薪酬：分级保密、整数金额、编制复核分离、退回重审、发布锁定及历史隔离
+  ---
+  duration_ms: 150.199842
+  type: 'test'
+  ...
+# Subtest: P3 薪酬：同期间防重复、本人受益与参与编制不得复核、审计失败原子回滚
+ok 115 - P3 薪酬：同期间防重复、本人受益与参与编制不得复核、审计失败原子回滚
+  ---
+  duration_ms: 73.924906
+  type: 'test'
+  ...
+# Subtest: P3 报表：人员范围、字段保密、分页、CSV公式防护及导出审计事务
+ok 116 - P3 报表：人员范围、字段保密、分页、CSV公式防护及导出审计事务
+  ---
+  duration_ms: 248.972663
+  type: 'test'
+  ...
+# Subtest: P3 员工自助：仅本人待办、未完成状态及缺少关联员工的空状态
+ok 117 - P3 员工自助：仅本人待办、未完成状态及缺少关联员工的空状态
+  ---
+  duration_ms: 77.278636
+  type: 'test'
+  ...
+# Subtest: P3 编制：独立审批、版本调整、直接新增和招聘入职共用容量约束
+ok 118 - P3 编制：独立审批、版本调整、直接新增和招聘入职共用容量约束
+  ---
+  duration_ms: 167.384071
+  type: 'test'
+  ...
+# Subtest: P3 合同：草稿保密、签署证明、续签关联、重叠拒绝、独立终止及档案状态不变
+ok 119 - P3 合同：草稿保密、签署证明、续签关联、重叠拒绝、独立终止及档案状态不变
+  ---
+  duration_ms: 137.735905
+  type: 'test'
+  ...
+# Subtest: P3 任职资格：标准版本严格匹配、未评定阻断、独立认证与证据快照不改任职
+ok 120 - P3 任职资格：标准版本严格匹配、未评定阻断、独立认证与证据快照不改任职
+  ---
+  duration_ms: 71.871136
+  type: 'test'
+  ...
+# Subtest: P3 任职资格：HR代办不得自审、跨组织拒绝、停用阻止新申请与撤回
+ok 121 - P3 任职资格：HR代办不得自审、跨组织拒绝、停用阻止新申请与撤回
+  ---
+  duration_ms: 43.253151
+  type: 'test'
+  ...
+# Subtest: P3 实名问卷：版本快照、名单冻结、本人填报、修改撤回及结项锁定
+ok 122 - P3 实名问卷：版本快照、名单冻结、本人填报、修改撤回及结项锁定
+  ---
+  duration_ms: 91.098579
+  type: 'test'
+  ...
+# Subtest: P3 干部：提名独立审议、真实调动前置、任用核对与本人述职独立核验
+ok 123 - P3 干部：提名独立审议、真实调动前置、任用核对与本人述职独立核验
+  ---
+  duration_ms: 87.201833
+  type: 'test'
+  ...
+# Subtest: P3 培训场次：排期冲突、必修出勤门槛、独立核验、补充记录与学习结项
+ok 124 - P3 培训场次：排期冲突、必修出勤门槛、独立核验、补充记录与学习结项
+  ---
+  duration_ms: 86.604468
+  type: 'test'
+  ...
+# Subtest: P3 360：指定评估人、人数阈值、低样本隐藏、冻结后发布及被评人不读取原始答卷
+ok 125 - P3 360：指定评估人、人数阈值、低样本隐藏、冻结后发布及被评人不读取原始答卷
+  ---
+  duration_ms: 125.036838
+  type: 'test'
+  ...
+# Subtest: P3 自定义档案：正式值和申请隔离、字段可见范围、独立复核、类型校验与停用
+ok 126 - P3 自定义档案：正式值和申请隔离、字段可见范围、独立复核、类型校验与停用
+  ---
+  duration_ms: 76.760505
+  type: 'test'
+  ...
+# Subtest: P3 绩效申诉：独立复核、发布分离、原快照保留、最新结果报表和历史隔离
+ok 127 - P3 绩效申诉：独立复核、发布分离、原快照保留、最新结果报表和历史隔离
+  ---
+  duration_ms: 151.297785
+  type: 'test'
+  ...
+# Subtest: P3 工资异议与补差：正负差额、独立复核、发布保密、原工资不变及反向冲减
+ok 128 - P3 工资异议与补差：正负差额、独立复核、发布保密、原工资不变及反向冲减
+  ---
+  duration_ms: 86.947894
+  type: 'test'
+  ...
+# Subtest: P3 薪酬专用角色：编制复核分离、组织范围、核心人事隔离与撤权即时生效
+ok 129 - P3 薪酬专用角色：编制复核分离、组织范围、核心人事隔离与撤权即时生效
+  ---
+  duration_ms: 67.168043
+  type: 'test'
+  ...
+# Subtest: P3 学习学分：课程版本固定、成果核验前置、授予唯一、独立撤销及范围隔离
+ok 130 - P3 学习学分：课程版本固定、成果核验前置、授予唯一、独立撤销及范围隔离
+  ---
+  duration_ms: 61.395211
+  type: 'test'
+  ...
+# Subtest: P3：讲师认证独立复核、组织隔离、课程版本和期限约束、排期快照及撤销
+ok 131 - P3：讲师认证独立复核、组织隔离、课程版本和期限约束、排期快照及撤销
+  ---
+  duration_ms: 68.946998
+  type: 'test'
+  ...
+# Subtest: P3 假勤联调：等价时区使用同一业务日与余额年度，取消请假后释放班次
+ok 132 - P3 假勤联调：等价时区使用同一业务日与余额年度，取消请假后释放班次
+  ---
+  duration_ms: 40.718677
+  type: 'test'
+  ...
+# Subtest: P3 入职融入：模板版本快照、本人办理、独立核验、结项及自助待办
+ok 133 - P3 入职融入：模板版本快照、本人办理、独立核验、结项及自助待办
+  ---
+  duration_ms: 64.616849
+  type: 'test'
+  ...
+# Subtest: P3 待办工作台：顺序审批轮次、本人隔离、跨组织筛选、分页和办理后消退
+ok 134 - P3 待办工作台：顺序审批轮次、本人隔离、跨组织筛选、分页和办理后消退
+  ---
+  duration_ms: 145.432531
+  type: 'test'
+  ...
+# Subtest: P3 扩展待办：薪酬角色保密、绩效环节和招聘独立审批流转
+ok 135 - P3 扩展待办：薪酬角色保密、绩效环节和招聘独立审批流转
+  ---
+  duration_ms: 69.940081
+  type: 'test'
+  ...
+# Subtest: P3 盘点校准：独立复核发布、版本链、原绩效保留、最新报表和越权隔离
+ok 136 - P3 盘点校准：独立复核发布、版本链、原绩效保留、最新报表和越权隔离
+  ---
+  duration_ms: 64.638182
+  type: 'test'
+  ...
+# Subtest: P3 档案完整性：分组、状态必填、正式值与待复核隔离、状态变化重新校验
+ok 137 - P3 档案完整性：分组、状态必填、正式值与待复核隔离、状态变化重新校验
+  ---
+  duration_ms: 49.071727
+  type: 'test'
+  ...
+# Subtest: P3 档案复核待办：只向独立HR展示、摘要保密、停用退回与权限撤销
+ok 138 - P3 档案复核待办：只向独立HR展示、摘要保密、停用退回与权限撤销
+  ---
+  duration_ms: 30.239216
+  type: 'test'
+  ...
+# Subtest: P3 干部人才档案：跨模块证据、最新版本、缺失保留及角色组织隔离
+ok 139 - P3 干部人才档案：跨模块证据、最新版本、缺失保留及角色组织隔离
+  ---
+  duration_ms: 29.278871
+  type: 'test'
+  ...
+# Subtest: P3 干部待办：提名角色与发起人排除，审议后消退，范围外隐藏
+ok 140 - P3 干部待办：提名角色与发起人排除，审议后消退，范围外隐藏
+  ---
+  duration_ms: 27.573949
+  type: 'test'
+  ...
+# Subtest: P3 继任覆盖报表：按岗位和在职有效记录统计、跨范围部分可见、关闭与离职剔除
+ok 141 - P3 继任覆盖报表：按岗位和在职有效记录统计、跨范围部分可见、关闭与离职剔除
+  ---
+  duration_ms: 32.447931
+  type: 'test'
+  ...
+# Subtest: P3 培训申请：独立审批、范围隔离、真实任务前置、核对幂等与审计失败回滚
+ok 142 - P3 培训申请：独立审批、范围隔离、真实任务前置、核对幂等与审计失败回滚
+  ---
+  duration_ms: 63.394749
+  type: 'test'
+  ...
+# Subtest: P3 培训管理报表：任务与学员分母、空完成率、取消排期及北京时间范围
+ok 143 - P3 培训管理报表：任务与学员分母、空完成率、取消排期及北京时间范围
+  ---
+  duration_ms: 93.837283
+  type: 'test'
+  ...
+# Subtest: P3 场次取消：待处理出勤不能悬挂，核验未出席保留历史且名册不误报
+ok 144 - P3 场次取消：待处理出勤不能悬挂，核验未出席保留历史且名册不误报
+  ---
+  duration_ms: 38.955376
+  type: 'test'
+  ...
+# Subtest: P3 内部讲师名册：独立入册、目录摘要保密、停用与重提版本及待办
+ok 145 - P3 内部讲师名册：独立入册、目录摘要保密、停用与重提版本及待办
+  ---
+  duration_ms: 44.567496
+  type: 'test'
+  ...
+# Subtest: P3 内部讲师名册：本人HR不得复核、审计失败回滚与离职后拒绝入册
+ok 146 - P3 内部讲师名册：本人HR不得复核、审计失败回滚与离职后拒绝入册
+  ---
+  duration_ms: 33.964708
+  type: 'test'
+  ...
+# Subtest: P3 讲师试讲：指定评委、互盲评分、独立冻结、最新结果入册门槛与历史隔离
+ok 147 - P3 讲师试讲：指定评委、互盲评分、独立冻结、最新结果入册门槛与历史隔离
+  ---
+  duration_ms: 84.087757
+  type: 'test'
+  ...
+# Subtest: P3 讲师试讲：取消不能绕过门槛、失败重试、截止日及冻结审计回滚
+ok 148 - P3 讲师试讲：取消不能绕过门槛、失败重试、截止日及冻结审计回滚
+  ---
+  duration_ms: 55.277736
+  type: 'test'
+  ...
+# Subtest: P3 认证报名：范围与本人隔离、停止报名后续办、资格提名试讲入册完整关联
+ok 149 - P3 认证报名：范围与本人隔离、停止报名后续办、资格提名试讲入册完整关联
+  ---
+  duration_ms: 65.116527
+  type: 'test'
+  ...
+# Subtest: P3 认证报名：时间窗口、跨组织、撤回重报与资格审计失败回滚
+ok 150 - P3 认证报名：时间窗口、跨组织、撤回重报与资格审计失败回滚
+  ---
+  duration_ms: 48.025733
+  type: 'test'
+  ...
+# Subtest: P3 认证活动组织层级：下级HR可核对上级活动的本部门报名，不能管理上级活动
+ok 151 - P3 认证活动组织层级：下级HR可核对上级活动的本部门报名，不能管理上级活动
+  ---
+  duration_ms: 35.674287
+  type: 'test'
+  ...
+# Subtest: P3 认证培养：真实学习任务引用、必修核验前置、本人和组织隔离及入册快照
+ok 152 - P3 认证培养：真实学习任务引用、必修核验前置、本人和组织隔离及入册快照
+  ---
+  duration_ms: 73.836802
+  type: 'test'
+  ...
+# Subtest: P3 认证培养：取消任务不算完成、参考任务不阻断、关联移除审计与修订保护
+ok 153 - P3 认证培养：取消任务不算完成、参考任务不阻断、关联移除审计与修订保护
+  ---
+  duration_ms: 46.546663
+  type: 'test'
+  ...
+# Subtest: P3 培训带教：关系授权、本人辅导与确认、独立出师及人事权限不扩展
+ok 154 - P3 培训带教：关系授权、本人辅导与确认、独立出师及人事权限不扩展
+  ---
+  duration_ms: 119.102065
+  type: 'test'
+  ...
+# Subtest: P3 培训带教：账号与组织校验、日期边界、出师回滚及终止保留未确认记录
+ok 155 - P3 培训带教：账号与组织校验、日期边界、出师回滚及终止保留未确认记录
+  ---
+  duration_ms: 59.94859
+  type: 'test'
+  ...
+# Subtest: P3 内部证书：真实完成依据、独立发放、有效期快照、模板版本及本人信息隔离
+ok 156 - P3 内部证书：真实完成依据、独立发放、有效期快照、模板版本及本人信息隔离
+  ---
+  duration_ms: 51.946881
+  type: 'test'
+  ...
+# Subtest: P3 内部证书：来源状态变更提示、撤销留痕、编号唯一与发放回滚
+ok 157 - P3 内部证书：来源状态变更提示、撤销留痕、编号唯一与发放回滚
+  ---
+  duration_ms: 56.631797
+  type: 'test'
+  ...
+# Subtest: P3 绩效目标调整：独立复核、双记录同修订、待审门槛与正式评分快照
+ok 158 - P3 绩效目标调整：独立复核、双记录同修订、待审门槛与正式评分快照
+  ---
+  duration_ms: 51.577251
+  type: 'test'
+  ...
+# Subtest: P2/P3 目标调整事务：第二条写入失败全回滚、过期CAS无旁写及撤权即时生效
+ok 159 - P2/P3 目标调整事务：第二条写入失败全回滚、过期CAS无旁写及撤权即时生效
+  ---
+  duration_ms: 44.739436
+  type: 'test'
+  ...
+# Subtest: P3 目标执行跟进：本人记录、独立反馈、补充留痕及评分隔离
+ok 160 - P3 目标执行跟进：本人记录、独立反馈、补充留痕及评分隔离
+  ---
+  duration_ms: 83.067252
+  type: 'test'
+  ...
+# Subtest: P3 目标执行跟进：旧目标快照、跨范围与撤权、审计回滚及修订冲突
+ok 161 - P3 目标执行跟进：旧目标快照、跨范围与撤权、审计回滚及修订冲突
+  ---
+  duration_ms: 51.278379
+  type: 'test'
+  ...
+# Subtest: P3 绩效办理报表：可办与历史待反馈区分、发布去重和范围及评分隔离
+ok 162 - P3 绩效办理报表：可办与历史待反馈区分、发布去重和范围及评分隔离
+  ---
+  duration_ms: 49.303277
+  type: 'test'
+  ...
+# Subtest: P3 招聘录用退回：独立复核、版本重提、旧条件锁存和事务回滚
+ok 163 - P3 招聘录用退回：独立复核、版本重提、旧条件锁存和事务回滚
+  ---
+  duration_ms: 50.926496
+  type: 'test'
+  ...
+# Subtest: P3 招聘边界：北京时间入职、同时间面试序号及旧冲突意见保守处理
+ok 164 - P3 招聘边界：北京时间入职、同时间面试序号及旧冲突意见保守处理
+  ---
+  duration_ms: 29.316449
+  type: 'test'
+  ...
+# Subtest: P3 招聘需求修订：退回重提、所有编写者隔离、批准后锁定与旧审批冲突
+ok 165 - P3 招聘需求修订：退回重提、所有编写者隔离、批准后锁定与旧审批冲突
+  ---
+  duration_ms: 46.427582
+  type: 'test'
+  ...
+# Subtest: P3 招聘需求报表：候选当前阶段去重、退回重提、剩余名额和范围隔离
+ok 166 - P3 招聘需求报表：候选当前阶段去重、退回重提、剩余名额和范围隔离
+  ---
+  duration_ms: 50.732403
+  type: 'test'
+  ...
+# Subtest: P3 补卡版本与撤回：独立核验、原记录保留、最新版本和回滚
+ok 167 - P3 补卡版本与撤回：独立核验、原记录保留、最新版本和回滚
+  ---
+  duration_ms: 47.545976
+  type: 'test'
+  ...
+# Subtest: P3 补卡历史冲突：同时间不同事实不猜测、等价时区与新版本消除歧义
+ok 168 - P3 补卡历史冲突：同时间不同事实不猜测、等价时区与新版本消除歧义
+  ---
+  duration_ms: 23.110711
+  type: 'test'
+  ...
+# Subtest: P3 假期余额口径：不计余额假种不出现负额度且不得登记无意义余额
+ok 169 - P3 假期余额口径：不计余额假种不出现负额度且不得登记无意义余额
+  ---
+  duration_ms: 33.815412
+  type: 'test'
+  ...
+# Subtest: P3 假期分钟精度：拒绝秒级分段与小数休息，合法分钟分段不重复扣取
+ok 170 - P3 假期分钟精度：拒绝秒级分段与小数休息，合法分钟分段不重复扣取
+  ---
+  duration_ms: 33.57688
+  type: 'test'
+  ...
+# Subtest: P2/P3 北京时间业务日：跨年评估、发展与学习截止日和日期合法性
+ok 171 - P2/P3 北京时间业务日：跨年评估、发展与学习截止日和日期合法性
+  ---
+  duration_ms: 22.281635
+  type: 'test'
+  ...
+# Subtest: P2/P3 薪酬独立复核：移除作者、移除人及历史提交者不可绕过角色隔离
+ok 172 - P2/P3 薪酬独立复核：移除作者、移除人及历史提交者不可绕过角色隔离
+  ---
+  duration_ms: 71.779637
+  type: 'test'
+  ...
+# Subtest: P3 薪酬报表：发布边界、整数补差冲减、专岗范围和导出审计
+ok 173 - P3 薪酬报表：发布边界、整数补差冲减、专岗范围和导出审计
+  ---
+  duration_ms: 53.612995
+  type: 'test'
+  ...
+# Subtest: P3 薪酬报表：取消明细和批次不进入正式对账、期间查询与分页一致
+ok 174 - P3 薪酬报表：取消明细和批次不进入正式对账、期间查询与分页一致
+  ---
+  duration_ms: 30.399889
+  type: 'test'
+  ...
+# Subtest: P3 自助绩效待办：目标调整阻塞与申请可见、退回跟进版本及任务导航
+ok 175 - P3 自助绩效待办：目标调整阻塞与申请可见、退回跟进版本及任务导航
+  ---
+  duration_ms: 40.283718
+  type: 'test'
+  ...
+# Subtest: P3 认证培养派课：任务与关联原子保存、重复保护及独立成果门槛
+ok 176 - P3 认证培养派课：任务与关联原子保存、重复保护及独立成果门槛
+  ---
+  duration_ms: 47.542972
+  type: 'test'
+  ...
+# Subtest: P2/P3 历史读取一致性：范围撤销与审计降权不混用旧权限和新记录
+ok 177 - P2/P3 历史读取一致性：范围撤销与审计降权不混用旧权限和新记录
+  ---
+  duration_ms: 39.090521
+  type: 'test'
+  ...
+# Subtest: P3 课程阶段：启动冻结、独立核验解锁及全部阶段结项
+ok 178 - P3 课程阶段：启动冻结、独立核验解锁及全部阶段结项
+  ---
+  duration_ms: 53.014017
+  type: 'test'
+  ...
+# Subtest: P3 阶段进度报表：未派发课程仍计入总要求、人员范围与核验口径
+ok 179 - P3 阶段进度报表：未派发课程仍计入总要求、人员范围与核验口径
+  ---
+  duration_ms: 44.2665
+  type: 'test'
+  ...
+# Subtest: P3 阶段批量派课：整批回滚、同修订保存、跳过已派发与独立核验后推进
+ok 180 - P3 阶段批量派课：整批回滚、同修订保存、跳过已派发与独立核验后推进
+  ---
+  duration_ms: 56.417907
+  type: 'test'
+  ...
+# Subtest: P3 合同运营报表：终止与原结束日、续签草稿、作废排除及HR范围
+ok 181 - P3 合同运营报表：终止与原结束日、续签草稿、作废排除及HR范围
+  ---
+  duration_ms: 77.388181
+  type: 'test'
+  ...
+# Subtest: P2/P3 管理报表入口：无岗位权限时不查询领域明细，导出同样拒绝
+ok 182 - P2/P3 管理报表入口：无岗位权限时不查询领域明细，导出同样拒绝
+  ---
+  duration_ms: 26.697553
+  type: 'test'
+  ...
+# Subtest: P3 学习任务恢复：保留考试次数和历史，重新提交，范围与项目状态重新检查
+ok 183 - P3 学习任务恢复：保留考试次数和历史，重新提交，范围与项目状态重新检查
+  ---
+  duration_ms: 65.553588
+  type: 'test'
+  ...
+# Subtest: P3 在职合同登记覆盖：无记录人员、当日边界、草稿与未来登记不充当覆盖
+ok 184 - P3 在职合同登记覆盖：无记录人员、当日边界、草稿与未来登记不充当覆盖
+  ---
+  duration_ms: 46.994086
+  type: 'test'
+  ...
+# Subtest: P3 合同协议类别与期限独立：保留旧数据未知状态，不由期限推断协议类别
+ok 185 - P3 合同协议类别与期限独立：保留旧数据未知状态，不由期限推断协议类别
+  ---
+  duration_ms: 30.868299
+  type: 'test'
+  ...
+# Subtest: P2/P3 附件读取撤权一致性：列表同批校验，文件读取后再次检查修订
+ok 186 - P2/P3 附件读取撤权一致性：列表同批校验，文件读取后再次检查修订
+  ---
+  duration_ms: 21.865364
+  type: 'test'
+  ...
+# Subtest: P2/P3 成员目录撤权一致性：读取授权名单期间管理员降权不返回旧权限下的名单
+ok 187 - P2/P3 成员目录撤权一致性：读取授权名单期间管理员降权不返回旧权限下的名单
+  ---
+  duration_ms: 19.431429
+  type: 'test'
+  ...
+# Subtest: P3 学分到期：授予快照、北京时间当日边界及撤销后不重复扣到期
+ok 188 - P3 学分到期：授予快照、北京时间当日边界及撤销后不重复扣到期
+  ---
+  duration_ms: 25.833054
+  type: 'test'
+  ...
+# Subtest: P3 人员经历：HR范围、本人只读、月份校验及更正作废保留历史
+ok 189 - P3 人员经历：HR范围、本人只读、月份校验及更正作废保留历史
+  ---
+  duration_ms: 49.78721
+  type: 'test'
+  ...
+# Subtest: P3 经历关联人才档案：HR可见有效摘要，普通经理不扩展经历权限
+ok 190 - P3 经历关联人才档案：HR可见有效摘要，普通经理不扩展经历权限
+  ---
+  duration_ms: 25.205192
+  type: 'test'
+  ...
+# Subtest: payroll references only permitted frozen aggregates; amounts and employee masking remain independent
+ok 191 - payroll references only permitted frozen aggregates; amounts and employee masking remain independent
+  ---
+  duration_ms: 159.019509
+  type: 'test'
+  ...
+# Subtest: reopening or refreezing a source blocks submission and approval until an explicit draft refresh
+ok 192 - reopening or refreezing a source blocks submission and approval until an explicit draft refresh
+  ---
+  duration_ms: 99.50484
+  type: 'test'
+  ...
+# Subtest: changed sources block approved publication; changes after publishing flag follow-up without rewriting money
+ok 193 - changed sources block approved publication; changes after publishing flag follow-up without rewriting money
+  ---
+  duration_ms: 119.316834
+  type: 'test'
+  ...
+# Subtest: duplicate, foreign employee and wrong-month references reject; audit failure rolls back the entire slip
+ok 194 - duplicate, foreign employee and wrong-month references reject; audit failure rolls back the entire slip
+  ---
+  duration_ms: 89.654548
+  type: 'test'
+  ...
+# Subtest: inbox switches stale payroll to corrective work and reference report remains scoped and snapshot-based
+ok 195 - inbox switches stale payroll to corrective work and reference report remains scoped and snapshot-based
+  ---
+  duration_ms: 343.34464
+  type: 'test'
+  ...
+# Subtest: performance inbox follows self-review, pending adjustment, return and lifecycle without exposing another employee task
+ok 196 - performance inbox follows self-review, pending adjustment, return and lifecycle without exposing another employee task
+  ---
+  duration_ms: 115.434217
+  type: 'test'
+  ...
+# Subtest: indicator usage separates versions and pending references, retains frozen published sources and respects current HR scope
+ok 197 - indicator usage separates versions and pending references, retains frozen published sources and respects current HR scope
+  ---
+  duration_ms: 147.336879
+  type: 'test'
+  ...
+# Subtest: indicator source is resolved server-side and stays frozen after archive and revision, including published result
+ok 198 - indicator source is resolved server-side and stays frozen after archive and revision, including published result
+  ---
+  duration_ms: 122.099844
+  type: 'test'
+  ...
+# Subtest: indicator catalog scopes draft and sealed records, rejects new archived and foreign employee references
+ok 199 - indicator catalog scopes draft and sealed records, rejects new archived and foreign employee references
+  ---
+  duration_ms: 61.235654
+  type: 'test'
+  ...
+# Subtest: goal adjustment freezes explicit replacement source and audit failure rolls back both plan and request
+ok 200 - goal adjustment freezes explicit replacement source and audit failure rolls back both plan and request
+  ---
+  duration_ms: 74.829821
+  type: 'test'
+  ...
+# Subtest: indicator codes and revisions preserve lineage, and accepted maximum goal text fits the bounded API
+ok 201 - indicator codes and revisions preserve lineage, and accepted maximum goal text fits the bounded API
+  ---
+  duration_ms: 65.434087
+  type: 'test'
+  ...
+# Subtest: activity classification is optional, validated, frozen into results and reported without changing authorization or calendar policy
+ok 202 - activity classification is optional, validated, frozen into results and reported without changing authorization or calendar policy
+  ---
+  duration_ms: 86.132298
+  type: 'test'
+  ...
+# Subtest: cycle draft edits are audited, preserve archived frozen schemes unless explicitly replaced and cannot affect active cycles
+ok 203 - cycle draft edits are audited, preserve archived frozen schemes unless explicitly replaced and cannot affect active cycles
+  ---
+  duration_ms: 48.515415
+  type: 'test'
+  ...
+# Subtest: grade intervals reject overlap, duplicate names and ambiguous ordering; exact brackets and uncovered gaps remain explicit
+ok 204 - grade intervals reject overlap, duplicate names and ambiguous ordering; exact brackets and uncovered gaps remain explicit
+  ---
+  duration_ms: 5.630357
+  type: 'test'
+  ...
+# Subtest: versioned ratings enforce scope and immutable drafts, CAS, snapshot publication and independent appeal after scheme revision
+ok 205 - versioned ratings enforce scope and immutable drafts, CAS, snapshot publication and independent appeal after scheme revision
+  ---
+  duration_ms: 125.189094
+  type: 'test'
+  ...
+# Subtest: legacy scores remain 0–100 and gaps cannot silently publish even when individual scores fit the scale
+ok 206 - legacy scores remain 0–100 and gaps cannot silently publish even when individual scores fit the scale
+  ---
+  duration_ms: 78.313162
+  type: 'test'
+  ...
+# Subtest: sealed template snapshots enforce stage-specific required responses and hide unpublished management responses
+ok 207 - sealed template snapshots enforce stage-specific required responses and hide unpublished management responses
+  ---
+  duration_ms: 119.104799
+  type: 'test'
+  ...
+# Subtest: template revisions cannot silently replace active cycles; archived drafts do not trap future version numbers
+ok 208 - template revisions cannot silently replace active cycles; archived drafts do not trap future version numbers
+  ---
+  duration_ms: 87.686683
+  type: 'test'
+  ...
+# Subtest: template boundaries reject foreign scope and duplicate IDs; draft edits and response writes are atomic
+ok 209 - template boundaries reject foreign scope and duplicate IDs; draft edits and response writes are atomic
+  ---
+  duration_ms: 118.380512
+  type: 'test'
+  ...
+# Subtest: approved goal changes clear stale stage answers while preserving the prior self-review audit
+ok 210 - approved goal changes clear stale stage answers while preserving the prior self-review audit
+  ---
+  duration_ms: 95.113976
+  type: 'test'
+  ...
+# Subtest: frozen goal limits apply to creation and changes; revisions cannot alter old cycles and impossible configurations are rejected
+ok 211 - frozen goal limits apply to creation and changes; revisions cannot alter old cycles and impossible configurations are rejected
+  ---
+  duration_ms: 110.454764
+  type: 'test'
+  ...
+# Subtest: advisory count limits retain universal constraints and immutable cycle rules
+ok 212 - advisory count limits retain universal constraints and immutable cycle rules
+  ---
+  duration_ms: 78.463719
+  type: 'test'
+  ...
+# Subtest: advisory weight limits retain universal constraints and immutable cycle rules
+ok 213 - advisory weight limits retain universal constraints and immutable cycle rules
+  ---
+  duration_ms: 80.006377
+  type: 'test'
+  ...
+# Subtest: advisory both limits retain universal constraints and immutable cycle rules
+ok 214 - advisory both limits retain universal constraints and immutable cycle rules
+  ---
+  duration_ms: 61.836649
+  type: 'test'
+  ...
+# Subtest: structured evaluation freezes four-level criteria and explicit recommendation without inventing aggregate or altering prior results
+ok 215 - structured evaluation freezes four-level criteria and explicit recommendation without inventing aggregate or altering prior results
+  ---
+  duration_ms: 144.127305
+  type: 'test'
+  ...
+# Subtest: unknown or incomplete scores, unauthorized templates, audit failure and latest rejecting result enforce workflow boundaries
+ok 216 - unknown or incomplete scores, unauthorized templates, audit failure and latest rejecting result enforce workflow boundaries
+  ---
+  duration_ms: 145.281869
+  type: 'test'
+  ...
+# Subtest: maximum Chinese criteria and comments fit explicit bounded endpoints while oversized bodies are rejected
+ok 217 - maximum Chinese criteria and comments fit explicit bounded endpoints while oversized bodies are rejected
+  ---
+  duration_ms: 128.492095
+  type: 'test'
+  ...
+# Subtest: structured interview response recovery keeps a single original evaluation and enforces key-content identity
+ok 218 - structured interview response recovery keeps a single original evaluation and enforces key-content identity
+  ---
+  duration_ms: 91.011097
+  type: 'test'
+  ...
+# Subtest: lost creation responses replay the original ID across stale/current revisions without another write or metadata disclosure
+ok 219 - lost creation responses replay the original ID across stale/current revisions without another write or metadata disclosure
+  ---
+  duration_ms: 166.67371
+  type: 'test'
+  ...
+# Subtest: candidate and interview creation keys are per actor, retain failure atomicity and do not bypass current scope or role
+ok 220 - candidate and interview creation keys are per actor, retain failure atomicity and do not bypass current scope or role
+  ---
+  duration_ms: 127.355594
+  type: 'test'
+  ...
+# Subtest: unsupported keys and commands are rejected instead of suggesting replay support for state transitions
+ok 221 - unsupported keys and commands are rejected instead of suggesting replay support for state transitions
+  ---
+  duration_ms: 35.338058
+  type: 'test'
+  ...
+# Subtest: internal job versions preserve candidate snapshots and all versions share requisition hire capacity
+ok 222 - internal job versions preserve candidate snapshots and all versions share requisition hire capacity
+  ---
+  duration_ms: 161.688019
+  type: 'test'
+  ...
+# Subtest: job scope, lifecycle, salary bounds, Unicode body size and audit failure are enforced
+ok 223 - job scope, lifecycle, salary bounds, Unicode body size and audit failure are enforced
+  ---
+  duration_ms: 74.244541
+  type: 'test'
+  ...
+# Subtest: discarded draft does not trap an active job family or reuse historical version numbers
+ok 224 - discarded draft does not trap an active job family or reuse historical version numbers
+  ---
+  duration_ms: 48.309253
+  type: 'test'
+  ...
+# Subtest: interview rejects disabled position and permits explicit cleanup
+ok 225 - interview rejects disabled position and permits explicit cleanup
+  ---
+  duration_ms: 78.115768
+  type: 'test'
+  ...
+# Subtest: approveOffer rejects disabled position and permits explicit cleanup
+ok 226 - approveOffer rejects disabled position and permits explicit cleanup
+  ---
+  duration_ms: 67.168699
+  type: 'test'
+  ...
+# Subtest: acceptOffer rejects disabled position and permits explicit cleanup
+ok 227 - acceptOffer rejects disabled position and permits explicit cleanup
+  ---
+  duration_ms: 55.90152
+  type: 'test'
+  ...
+# Subtest: approveOffer rejects disabled grade and permits explicit cleanup
+ok 228 - approveOffer rejects disabled grade and permits explicit cleanup
+  ---
+  duration_ms: 77.770986
+  type: 'test'
+  ...
+# Subtest: acceptOffer rejects disabled grade and permits explicit cleanup
+ok 229 - acceptOffer rejects disabled grade and permits explicit cleanup
+  ---
+  duration_ms: 78.492063
+  type: 'test'
+  ...
+# Subtest: draft and submission have separate permissions, inbox states, audit rollback, repeated request guards and contributor independence
+ok 230 - draft and submission have separate permissions, inbox states, audit rollback, repeated request guards and contributor independence
+  ---
+  duration_ms: 135.095968
+  type: 'test'
+  ...
+# Subtest: legacy draft approvals remain available, and invalid source-field values do not save new records
+ok 231 - legacy draft approvals remain available, and invalid source-field values do not save new records
+  ---
+  duration_ms: 52.808626
+  type: 'test'
+  ...
+# Subtest: save-and-submit is one atomic revision and cannot leave a saved draft after audit failure
+ok 232 - save-and-submit is one atomic revision and cannot leave a saved draft after audit failure
+  ---
+  duration_ms: 60.589435
+  type: 'test'
+  ...
+# Subtest: report reads and exports use current organization scope and revoked account cannot export
+ok 233 - report reads and exports use current organization scope and revoked account cannot export
+  ---
+  duration_ms: 87.178858
+  type: 'test'
+  ...
+# Subtest: exited employee keeps survey history but has no actionable survey or feedback tasks
+ok 234 - exited employee keeps survey history but has no actionable survey or feedback tasks
+  ---
+  duration_ms: 77.11632
+  type: 'test'
+  ...
+# Subtest: fixed shifts freeze assigned version, support next-day rest, and archived draft recovery never reuses version numbers
+ok 235 - fixed shifts freeze assigned version, support next-day rest, and archived draft recovery never reuses version numbers
+  ---
+  duration_ms: 63.094414
+  type: 'test'
+  ...
+# Subtest: assignment is all-or-nothing for duplicates, cross-org, departed staff and unavailable audit
+ok 236 - assignment is all-or-nothing for duplicates, cross-org, departed staff and unavailable audit
+  ---
+  duration_ms: 56.646388
+  type: 'test'
+  ...
+# Subtest: scoped managers assign but cannot maintain definitions; employee and out-of-scope HR cannot read or write
+ok 237 - scoped managers assign but cannot maintain definitions; employee and out-of-scope HR cannot read or write
+  ---
+  duration_ms: 47.375297
+  type: 'test'
+  ...
+# Subtest: one frozen date rejects all assignments without leaving the earlier valid date persisted
+ok 238 - one frozen date rejects all assignments without leaving the earlier valid date persisted
+  ---
+  duration_ms: 72.633075
+  type: 'test'
+  ...
+# Subtest: emits the catalog's animation and scrolling utilities
+ok 239 - emits the catalog's animation and scrolling utilities
+  ---
+  duration_ms: 65.384141
+  type: 'test'
+  ...
+# Subtest: forwards progress semantics to the primitive
+ok 240 - forwards progress semantics to the primitive
+  ---
+  duration_ms: 748.65387
+  type: 'test'
+  ...
+# Subtest: emits chart themes for the starter's media dark mode
+ok 241 - emits chart themes for the starter's media dark mode
+  ---
+  duration_ms: 370.124518
+  type: 'test'
+  ...
+# Subtest: renders sidebar skeletons deterministically
+ok 242 - renders sidebar skeletons deterministically
+  ---
+  duration_ms: 363.246877
+  type: 'test'
+  ...
+# Subtest: 多级审批仅终审通过更新组织，不能越级或重复审批
+ok 243 - 多级审批仅终审通过更新组织，不能越级或重复审批
+  ---
+  duration_ms: 7.142177
+  type: 'test'
+  ...
+# Subtest: 驳回与撤回不修改档案，已撤回不能审批
+ok 244 - 驳回与撤回不修改档案，已撤回不能审批
+  ---
+  duration_ms: 2.829816
+  type: 'test'
+  ...
+# Subtest: 修改流程不改变已提交申请的审批人及版本
+ok 245 - 修改流程不改变已提交申请的审批人及版本
+  ---
+  duration_ms: 0.742975
+  type: 'test'
+  ...
+# Subtest: 未配置流程、重复审批人与自审流程被拒绝
+ok 246 - 未配置流程、重复审批人与自审流程被拒绝
+  ---
+  duration_ms: 1.28733
+  type: 'test'
+  ...
+# Subtest: 成员验证禁止自降权、无档案员工授权与已离职关联
+ok 247 - 成员验证禁止自降权、无档案员工授权与已离职关联
+  ---
+  duration_ms: 1.293719
+  type: 'test'
+  ...
+1..247
+# tests 247
+# suites 0
+# pass 247
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14190.00272

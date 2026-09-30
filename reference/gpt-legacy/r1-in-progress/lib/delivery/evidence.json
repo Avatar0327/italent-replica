@@ -1,0 +1,282 @@
+{
+  "generatedAt": "2026-09-08T13:41:57.969Z",
+  "head": "c0b68ce42f4c5dfb340bf379094caf1d72d2bc84",
+  "commits": [
+    {
+      "sha": "c0b68ce42f4c5dfb340bf379094caf1d72d2bc84",
+      "time": "2026-09-08T06:25:20-07:00",
+      "title": "Record F01-F04 validation and owner-private v111 acceptance checkpoint"
+    },
+    {
+      "sha": "3d690cbbd6336c6de8b76a06fa4459700b1e3a88",
+      "time": "2026-09-08T06:21:47-07:00",
+      "title": "Implement confirmed F01-F04 dated transfer and two-party review rules"
+    },
+    {
+      "sha": "eb7cb7062688d42c0ff90ed67c4ed09ea0f1d9a1",
+      "time": "2026-09-08T05:57:23-07:00",
+      "title": "docs(acceptance): record owner access and defer additional test viewers"
+    },
+    {
+      "sha": "5d8d8e139946923f745bdc9b533e9d9d82783684",
+      "time": "2026-09-08T05:37:21-07:00",
+      "title": "test(acceptance): verify transfer roles and prepare business decisions"
+    },
+    {
+      "sha": "2bd69a1ad19706cdfbb7da0ef70af06989ffd575",
+      "time": "2026-09-08T05:17:34-07:00",
+      "title": "docs(acceptance): freeze expansion and baseline F01-F04 review package"
+    },
+    {
+      "sha": "a54381363e52c513fb79bc1a227368dad8bedab9",
+      "time": "2026-09-08T05:00:01-07:00",
+      "title": "chore(delivery): snapshot contract field verification evidence"
+    },
+    {
+      "sha": "7beed99f63b06e6ce96923bfeca0f14da691626c",
+      "time": "2026-09-08T04:56:12-07:00",
+      "title": "feat(workforce): snapshot contract fields and explicit renewal inheritance"
+    },
+    {
+      "sha": "df3f5e019aa0efe78632a5ee9af7724f03db8b45",
+      "time": "2026-09-08T04:41:28-07:00",
+      "title": "build(delivery): snapshot cadre interview verification and source recovery"
+    }
+  ],
+  "sources": [
+    {
+      "path": "docs/delivery/Scope_Register.json",
+      "sha256": "bb23d22ff52f712297d607f7e239df90d1c73043e6d4b2b6756878588f06506a"
+    },
+    {
+      "path": "docs/delivery/Module_Queue.json",
+      "sha256": "40cffb4957a383bf424ccf3d51cb7eebf17481d6d38539f74f406c8ba0c6ebff"
+    },
+    {
+      "path": "docs/Execution_Checkpoint.md",
+      "sha256": "91f636847b291002b6681c83997555f61bca48a7e8ffcadb2e714fe1186674ac"
+    }
+  ],
+  "checkpoint": "# 当前执行检查点\n\n## 唯一写入与边界\n当前聊天总控唯一写入者，main。云端 /workspace/sites/italent-hris；原站只读、仅合成测试数据；不新建项目/代理，不迁移真实数据或扩大访问。Controller_Resume.md 的连续执行授权继续有效。\n\n## 本轮有界只读核对\n2026-09-08：HEAD e1ec61797a5844cf33fee81f12a0d8d8628f3c54，main干净，无以项目目录为cwd的运行中进程。未发现Git写锁或测试/构建/部署进程；没有Mac变更需要合并。历史“未提交指标库增量”描述已过时。\n历史综合 Performance_Indicators_Comprehensive.tap：220/220，0失败，42.580秒；旧检查点记录类型/构建通过，非本轮新测试证据。\nSites最新保存v103对应上述HEAD；无可用v103部署ID，当前在线commit不能确认。指定ID重新核验v102部署succeeded，2026-09-08T08:17:16.639988+00:00，源f97a40f52c409aea7d7c1d256195bc19c4b76df5，环境revision1，所有者私有。详见delivery/Deployment_Evidence.json；不存在已知运行中写入，历史部署证据缺口不伪造补齐。\n\n## 当前看板增量\n已有建设/交付的总览与建设清单；Scope_Register.json作为统一台账；P3三级树、验收进度和五类数量、范围跳转、Git增量、部署/测试证据、阻塞及来源快照。所有48组范围保留；已登记子任务分母不代表全量需求已穷尽。技术交付不自动业务验收。\n聚合规则4/4、类型检查通过；综合228/229通过，唯一失败为旧Worker渲染测试的Node/cloudflare加载环境限制，保留失败证据。正式构建已通过（含/scope对应页面与刷新接口），当前提交并沿用既有所有者私有发布授权。最终运行证据记delivery/Dashboard_Verification.json。\n\n## blocker、恢复条件和下一步\n- G1人工界面核验历史ERR_BLOCKED_BY_CLIENT；恢复条件：内部预览可访问后重新核验。人工与生产未签署，不阻断当前看板开发。\n- v103部署缺少原始ID；恢复条件：取得原部署回执或后续新版本得到独立终态证据。看板保留未知，不把保存当发布。\n- 全量原子验收范围未穷尽；按组织员工→干部→学习→绩效→招聘→假勤→薪酬→自助/报表/集成继续拆解台账，已核实和待核实分列。\n- 当前交付顺序：聚合测试/类型/构建→记录完整SHA及证据→私有发布并核验终态→保存恢复检查点。\n\n## 历史\n[完整既有检查点](history/Execution_Checkpoint_2026-09-08.md)保留历史；工程E1约15%仍是低置信度估算，不能代替验收比例。G1/G2人工及G4生产未验收。\n\n## 看板交付结果（最新，覆盖上方执行中描述）\n\n- 实现提交 ae67cb2eef42e6505619aa9d716847654a571a8d；构建快照及已推送发布源 523fa165ff34c69d7c417ee5a8bb78a234ed378f。\n- v104：appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_b116c2af13848191b50702e24538921a；部署 appgdep_6a9fe02d31bc8191bc8756ddcd04b7cc；2026-09-08T10:15:23.996533+00:00 succeeded；Sites production，环境revision1，仅所有者私有访问。\n- 聚合规则4/4，类型检查及正式构建通过；综合228/229，旧Node Worker渲染测试cloudflare加载限制保留，未冒称全绿。无人工或生产业务签署。\n- 登记40个验收子任务（P2 4、P3 36），已完成0、进行中6、待验证33、阻塞1、未开始0。此为已登记分母，全部48组保留，未拆解范围不计成已完成。\n- 当前无运行中的构建/测试/部署。后续文档回执提交不改变已发布源码；实际HEAD以Git为准。网页快照截至构建时间，本次新回执会随下一次构建进入页面，每60秒检测新发布。\n- 下一步：继续细化P1和48组保留范围的原子验收条目，优先对齐原有F/C/L验收证据；人工确认不得以自动化代签。\n\n## 新一轮总控恢复（2026-09-08）\n\n恢复基线main / 3d6347c158b47e3b872019be9934856c0b77c07a，工作区干净，无项目cwd进程；v104指定部署再次核验succeeded。228/229为上轮历史结果，本轮尚未复测。当前执行规则完整沿用Controller_Resume.md并落实：连续队列、原站只读与四维证据、30分钟估算、同路径两次无新证据换方案、节点检查点、既有私有发布授权及严格停止门槛。\n当前工作队列：F-FIELD-EXIT（进行中）→C-LIFECYCLE-REVIEW→L-LIFECYCLE-REVIEW。先复现档案字段申请批准时离职状态漏检，再必要修复和相关测试，随后立即进入干部检查。原站规则未新增推断，沿用既有独立状态保护要求；仍仅合成数据。\n\n### 生命周期修复节点\nF-FIELD-EXIT和C-LIFECYCLE-REVIEW已复现并修复（原200应拒绝），相关待办改为失效/退回处理；学习复用已有保护。本轮Controller_Lifecycle_Run.tap 98/98，无失败/跳过，7.460秒。类型检查通过。当前修改待集中构建/发布。G4-WORKER-SMOKE尝试被环境网络审批取消，未有持续进程；不重复同路径，继续原站只读与独立业务。完整源哈希见Controller_Lifecycle_Verification.json。\n\n### 绩效引用追溯节点\nBC-P06已观察到引用情况列，本轮补同版本目标/待审/已发布明细，当前HR范围与分页、去重均有合成测试；5/5通过，类型通过。原站当前浏览器仅about:blank，无可复用会话，本轮无新增原站证据。已有证据范围之外不臆造原站制度。看板改为读取各批Verification证据，显示最近一批及历史结果，不把5项当全量回归。下一动作：集中构建/私有发布当前生命周期修复和引用追溯，然后进入招聘既有剩余队列；未启动其他代理。\n\n### v105交付节点与连续工作\n发布源码 46ac27edc0f0f8bc392d29973ec3aed8ef0d63d3，v105 appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_8b758486663c8191813e8f3e06546a7d，部署 appgdep_6a9fe902b02c8191be1ae00e2eb2cf32，2026-09-08T10:53:04.070955+00:00 succeeded，环境revision1，仅所有者私有。集中构建通过，98/98与5/5为本轮已记录关联证据；不将其相加为不重复覆盖数。代码完整SHA见Git；本节点仅追加回执和队列，未提交状态为这些文档修改。\n已立即进入R-LIFECYCLE-GATES：招聘面试/录用在岗位及职级停用后的推进复现。无进行中构建/部署；原站会话缺失、Worker测试网络审批取消仍为局部阻塞，不阻断独立业务。\n\n### 招聘→假勤→薪酬验证节点\n招聘5条停用后推进路径已复现200应拒绝并修复；页面资格标记使用原始服务端记录计算，再返回布尔值，避免经理职级脱敏后错误判定为有效，不返回隐藏职级。退回/结束保留。末期假勤与工资复用已有实现，联合10项通过。集中Controller_Regression_Run.tap 238/238、0失败/跳过、15.750秒；显式排除旧rendered-html.test.mjs（其环境问题仍未通过）。类型通过。当前待提交上述招聘代码、测试、范围及v105回执；无运行中测试/构建/部署。下一动作I-RESTORE-REVOCATIONS，隔离合成验证备份后撤权对账，云端数据不触碰。\n\n### 恢复撤权验证节点\nmain基线485743d5e7a0053d251aac2269707bcf8ab75fe7；未提交为恢复脚本、报告及本节点文档。node scripts/rehearse-local-recovery.mjs 本轮退出0，14项检查通过（19表、12表有数据、1附件），报告docs/Recovery_Synthetic_Report.json，2026-09-08T11:00:45.552Z。这些是恢复检查，不能与238个业务测试相加。当前无运行中测试或部署。在线仍v105/source46ac27edc0f0f8bc392d29973ec3aed8ef0d63d3。下一动作集中构建并私有发布招聘及恢复增量，随后细化全量验收范围。生产可信撤权来源与恢复闸门未实现，原站会话与Worker运行限制保留。\n\n### v106回执及下批自助核对\n发布源码af365d71ca5b22cc7596f337a3fc6cae191e0fb8；v106 appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_286164aacde88191876658731ab121cf；部署appgdep_6a9fec0787948191950ada2b414ebcdd，2026-09-08T11:06:37.095750+00:00 succeeded，环境revision1、所有者私有。本轮正式构建通过。继续完成P1八项登记与子任务四维展示；E-EXIT-TASKS复现离职后API拒绝但入口仍存在，已修复自助/问卷/360标记。关联6/6通过，类型检查进行中；此前tsc裸命令不在PATH退出127，已改用项目node_modules/typescript/bin/tsc。当前未提交为上述看板、自助代码与证据文档；无进行中部署，下一操作类型检查收尾、报表范围核对，然后集中构建发布。生产未验收，原站会话与Worker限制保留。\n\n### 自助与报表技术验证节点\nSelf_Report_Run.log本轮94/94，0失败/跳过，5.920秒，类型检查退出0。离职入口按已有API保护隐藏；经理调出员工后查询/导出均无该员工，撤权后读取和导出403且不写审计。报表无需代码改动。关联证据及源码哈希见Self_Report_Verification.json，未复跑或冒称Worker渲染通过。下一动作提交、集中构建发布，然后按Module_Queue依赖选择下一业务项。\n\n### v107节点及绩效范围提示开发\n源码a21845721aa1327abfa6bd4619547727e1b6f641，v107 appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_abb670612c848191b742c8e4b3be38f9；部署appgdep_6a9fedfaada0819189671f41ac10ec50，2026-09-08T11:14:49.844124+00:00 succeeded，环境revision1，所有者私有。94/94关联测试及正式构建通过。立即进入P-GOAL-ADVISORY，基于BC-P05既有选项补数量/单项权重分别仅提示；8项模板测试通过，类型通过后又补详情展示，待最终绩效回归/类型。未提交为该绩效增量和v107回执；当前无运行中部署。生产未验收，源站会话和Worker环境阻塞保留。\n\n### 绩效与总览证据修正节点\nP-GOAL-ADVISORY最终25/25关联回归、类型通过；看板另5/5通过，不能相加为全量测试。10个早期原子项补齐Execution队列引用：F/C/L正常链保留限定技术证据；L04显式例外转认仍待企业规则确认且未实现，与已开发progressSync历史同步区分。无执行证据不再默认“待验证”。当前main基线a21845721aa1327abfa6bd4619547727e1b6f641；未提交为绩效提示、聚合修正和回执/证据文档；无运行中任务。下一动作提交、集中构建私有发布，然后继续检查已核实的独立剩余工作。\n\n### v108及恢复续办节点\nmain发布源码f54f6a405af17c46da596a9ee4410d82e6612640；v108 appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_3ee21b8918448191820a4184c899a8bd；部署appgdep_6a9fefc029ec819199964035bde214af，2026-09-08T11:21:54.724342+00:00 succeeded，环境revision1、所有者私有。25项绩效/5项聚合与正式构建各通过，非全量复测。随后隔离恢复17检查通过、19表均有合成行，新增在途两级调动审批续办；首次夹具字段名错误已修正，不修改业务授权。当前未提交为恢复脚本/报告及回执文档，无运行中测试或部署。\n下一动作：旧Cadre_Learning_Source_Gaps.md实际找到用户截图租户域名srworkshopbj.italent.cn，覆盖此前“未找到入口”的判断；使用当前云浏览器尝试入口，只读核实会话和干部规则。不访问线上真实数据库。30分钟E1仍约15%（10–20%，低置信度），未完成全量原子基线，无新增业务/生产签署。\n\n### 原站会话恢复及干部访谈节点\n入口已从既有证据恢复，当前同一云端原站会话有效；干部访谈空表字段/类型/角色/200字上限取得BC-C02新P级证据，已取消并核对无待提交内容。P1各项解除会话阻塞，规则尚待逐项核实，不签署完整需求。新访谈HR登记/更正/作废/历史/档案已实现，247/247集中测试、类型通过，明确排除Worker渲染。当前main基线54340b027d270f2f1956a3444123e10ada600e50；未提交为访谈代码/源站脱敏字段证据/队列与测试结果。无运行中测试部署；原站停留访谈列表。下一动作提交集中构建发布，然后继续原站档案子集核实。\n\n### v109与合同字段闭环节点\nmain已推送发布源码df3f5e019aa0efe78632a5ee9af7724f03db8b45；v109 appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_5b88f1b8f3908191a217a1a2c3f112ab；部署appgdep_6a9ff4e141fc8191af6540dcea386c21，2026-09-08T11:44:00.732145+00:00 succeeded，环境revision1、所有者私有。后续BC-F02原站只读已核实继承说明与任职/合同信息集，空表取消。合同专属文本字段版本、续签默认继承/不继承、明确清空与来源快照已实现；98/98关联回归、类型通过，6.772秒，非全量复测。当前未提交为该代码、源站证据、队列及v109回执；无运行中测试或部署，原站停留不继承字段设置列表。下一动作集中构建私有发布，然后继续学习剩余范围只读核实与独立实现。整体E1仍约15%（10–20%低置信度），原子需求分母未穷尽，人工业务及生产未验收。\n\n### v110与学习规则续接节点\nmain完整发布源码a54381363e52c513fb79bc1a227368dad8bedab9；实现提交7beed99f63b06e6ce96923bfeca0f14da691626c。v110 appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_50a483b3d8c081919497345d55741028；部署appgdep_6a9ff90022d88191b161d2d398905e51，2026-09-08T12:01:17.221333+00:00 succeeded，环境revision1，所有者私有。Contract_Fields_Run.tap 98/98为本批关联测试，正式构建退出0；未复跑旧Worker渲染。当前未提交仅回执/队列/本检查点，无运行中测试构建部署；同一原站浏览器只读进入学习计划审批配置。下一操作取得脱敏配置字段证据，核对当前学习模型后推进具备条件项。原站会话有效；Worker网络审批取消及人工/生产未验收仍为局部阻塞。\n\n### 用户调整后的安全停点（2026-09-08 12:08 UTC，优先于历史连续增量要求）\n已暂停扩展；首包F01–F04组织员工及必要权限审批。main仍a54381363e52c513fb79bc1a227368dad8bedab9；未完成学习简介完整保存在checkpoint/learning-description-20260908，SHA f5f5b1bd9014d4b6eeb6d32da0f03e34da3bced2，已推送同名远端分支，未测试/未构建/未发布。没有丢弃、重建或重做成果。当前未提交仅总控/队列/检查点及v110回执文档。\n安全核对未发现项目cwd运行中测试、构建或Git写入；v110指定部署ID复核succeeded（源码a54381363e52c513fb79bc1a227368dad8bedab9，环境revision1、所有者私有；首次成功12:01:17，复核updated_at 12:01:53）。原站仅只读，无未取消表单。\n为本包界面验证启动受管预览成功；浏览器首次打开内部预览失败net::ERR_BLOCKED_BY_CLIENT，未改认证或绕过访问。当前预览正在运行供诊断，非新增模块。下一操作按Sites预览诊断取证，然后需求基线与本包API/权限/一致性核对。旧98/98为合同字段批次，不写成本包复测。人工及生产未验收。\n\n### F01–F04验收收口交付节点\n需求基线docs/delivery/F01_F04_Requirements_Baseline.md与操作/结果docs/delivery/F01_F04_Business_Acceptance.md已完成评审稿，保持Scope_Register唯一验收事实源。F01–F04未签署；全部48组与59个已登记子任务均保留。原站新增BC-F03调动列表说明，仅读列名与说明，无人员行保存或业务操作。\n本轮真实结果：2026-09-08 12:11 UTC核心25/25、附件/历史/成员撤权5/5；分别见F01_F04_Closure_Run.tap/F04_Closure_Run.tap及Verification。随后聚合规则5/5用于核对本次台账修改，不与业务场景相加。main产品源码与a54381363e52c513fb79bc1a227368dad8bedab9一致，因此复用v110正式构建，未重复构建或发布。\n界面预览启动/status为running，浏览器一次访问ERR_BLOCKED_BY_CLIENT；按Sites预览诊断归为环境访问阻塞，不改认证或换地址绕过。已通过受管stop结束预览，退出0。当前无进行中测试、构建、Git写入或部署；原站停留只读调动列表。多角色真人UAT和云端合成附件尚未执行。\n未完成：B01界面访问；B02即时调动与独立生效日规则；B03角色/审批制度；B04实际可登录测试身份及合成空间；B05云端附件/持久化操作。下一步只集中评审上述规则并按UAT-01至12收口，不继续其他模块。未完成学习简介已远端保存f5f5b1bd9014d4b6eeb6d32da0f03e34da3bced2，未合入main或发布。\n停止依据：用户明确暂停扩展并要求集中确认；本包可完成的证据与需求材料已保存，界面存在已取证环境限制，剩余业务规则和多身份条件需要集中确认。人工业务和生产均未验收，不宣称后台继续。\n\n### F01–F04决策及环境核实节点（2026-09-08）\n开始基线main/2bd69a1ad19706cdfbb7da0ef70af06989ffd575，工作区干净，v110及学习隔离分支保留。仅修改本包测试、需求/实操文档及既有台账；未修改app/lib产品源码，未构建发布或写云端数据。\n已核清并复现：HR-A不能发A→B；HR-AB改职级需字段权；仅B审批人导致A员工申请被拒；两个A审批人能终审后失去B员工访问。本轮15/15通过，源SHA与精确命令见F01_F04_Role_Arrangement_Verification.json，旧25/25和5/5未冒称复测。首次新增测试末尾历史字段误用toOrgId，按实际API的toOrg修正并重跑，未改业务规则。\nSites只读证明active/v110、仅Jack一名viewer/owner、无群组/外部访问者；应用唯一已激活admin与安装所有者及邮箱授权相匹配。企业“华耀有为”已开通、规范化版本1、revision0；八张本包业务表为空且无下一页，无需迁移/初始化。完整元数据摘要见F01_F04_Environment_Readiness.json，不保存人员或凭据。\n界面诊断沿用已确证的服务running但浏览器ERR_BLOCKED_BY_CLIENT；本轮status确认已stopped，无恢复证据，未重新start/goto。已排除未配置所有者/未开通企业/缺本包表，未由此推断所有者客户端正常。原站已有P级证据保留，不重跑或写原站。\nD1–D7集中业务决策表已并入原需求基线；UAT角色改为HR-AB发起、独立一级审批、所有者二级审批，最少需新增两名实际登录测试身份；后续角色对比仅在结案后显式改授权并留审计。E1要求所有者正常端只读打开/settings和/employees；E2明确两名具名账号、本站viewer及应用最小组织权限，另行授权前不添加。当前只读核实不等于真实多角色业务通过。\n未完成：用户业务选择D1–D7、所有者端访问结果E1、新增测试者的具名访问授权E2；均已提供具体对象/操作/影响。没有运行中测试、构建、预览或部署；等待集中回复，不恢复其他模块扩展、不声明后台运行。\n\n### E1/E2回复落实（2026-09-08T12:57:16.343604+00:00）\n恢复main/5d8d8e139946923f745bdc9b533e9d9d82783684时工作区干净。用户确认两个入口正常打开；仅记页面访问事实，不扩为功能/数据/业务通过。用户决定暂不新增人类测试访问者；已更新既有环境、验收文档和Scope/Queue，保持唯一所有者访问，多角色人工验收暂缓。D1–D7未回答，不自行改业务实现。无产品代码、云端权限、数据或部署变更；本轮仅文档，无新增测试/构建/发布，旧测试保留原日期。下一步用户集中决定D1–D7或记录单账号主数据实操；不重复E1/E2问题、不索取测试者、不扩展其他模块。\n\n### D1–D7已决必要实现安全节点（2026-09-08T13:21:05.083631+00:00）\nmain基线eb7cb7062688d42c0ff90ed67c4ed09ea0f1d9a1；本轮未提交为F01–F04调动规则/API/界面/迁移0009/测试及原台账更新。既有成果全部保留，学习WIP仍在checkpoint/learning-description-20260908（f5f5b1bd9014d4b6eeb6d32da0f03e34da3bced2）。无新模块/代理/访问者。\n用户D1–D7确认：HR双范围发起、来源目标顺序审批、职级变化必须前后可读、驳回必填及关联新单完整重审；批准与生效分离，北京时间00:00起HR手动执行，实际事务成功时间留痕，失败可恢复，不声称已有自动调度。日期变更撤回/取消原单并关联新单两级重审，不追溯历史。原站只读页面证据没有升级成完整政策核实。\n本轮实际回归116/116，React组件渲染3/3，类型检查exit0；原始TAP和源文件hash在F01_F04_Decisions_Verification.json。首次纯模型导入扩展名故障已修复，最终运行均完成。当前无运行中测试/提交/部署；下一操作是正式构建、保存完整SHA、按既有授权仅所有者私有发布，核验结果后记录验收入口。当前线上仍v110/a54381363e52c513fb79bc1a227368dad8bedab9，非本轮源码；未执行云端数据写入。\n四维：本包D规则用户已确认，原站制度仍部分；必要功能已开发；116+3技术验证通过，浏览器实操未完成；人工及生产均未验收。E1两个入口正常，E2不增人，完整多身份UAT暂缓。保留48模块59验收任务且accepted未变化；整体范围缺少可估计的完整原子工作量，不报全项目虚构百分比。\n\n### D1–D7首包私有可验证停点（2026-09-08T13:25:00.932995+00:00）\n- main已提交并推送功能源码完整SHA：`3d690cbbd6336c6de8b76a06fa4459700b1e3a88`。测试116/116，组件渲染3/3，类型exit0，正式构建/打包exit0；源文件哈希、原始TAP与具体限制见F01_F04_Decisions_Verification.json。无旧测试冒充本轮复测。\n- 私有v111，保存版本appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_0ad28e6fe0ac81919a51e411984b620f；部署appgdep_6aa00c1c77948191899be9e2c773c84f，2026-09-08T13:22:52.460505+00:00 succeeded，环境revision1，URL https://italent-hris-jack.creamy-fern-1782.chatgpt.site。部署与源码一一对应；当前仅所有者访问，没有身份/访问扩展。\n- 云端只读验证hris_approvals具备details列，共14列，limit1返回0行且has_more=false。0009仅增加nullable列，历史记录保留；未写人事记录或迁移真实数据。其余空表与身份记录仍按此前检查时刻保留。\n- 截至停点测试/构建/提交/推送均明确exit0，部署succeeded；有界项目进程检查无仍运行的测试/构建/提交/推送。当前剩余修改仅本节点测试/构建/发布回执与验收文档，将单独提交；提交自身完整SHA从该检查点提交的Git HEAD读取，不能自引用制造假SHA。该回执提交不改变已发布功能。\n- 范围48模块59验收子任务保留，F01–F04 accepted仍false；原站完整规则未核实，用户D1–D7本包选择已确认，不重问。D5判定见需求基线顶部。首包HR到期显式执行，没有自动定时执行承诺。\n- 验收恢复入口：F01_F04_Business_Acceptance.md；所有者正常会话进行UAT-01–04、UAT-11/12管理员部分，记录编号/结果/截图。不得以自动化、页面可访问或v111发布代替签署。多角色审批因E2不增人明确暂缓，代理预览仍无恢复证据，不重复同路径。\n- 当前交付停点按最新用户收口目标：供用户实操与集中确认；不因等待人工而扩展其他模块。没有声称本轮结束后后台继续工作。学习WIP隔离分支及全部历史证据保留。\n\n### 首包入口可发现性修复（2026-09-08T13:41:50.733266+00:00）\nmain基线c0b68ce42f4c5dfb340bf379094caf1d72d2bc84，开始工作区干净；现有私有站点v111 active，仅1访问者/0群组。用户截图确认离职筛选0条与侧栏蓝底蓝字，不能推断全企业空员工，也不能把UAT01/04已有按钮记为已通过。\n本轮变更限首包页面导航前置、侧栏对比/次级菜单折叠、空筛选恢复、新增员工后清除筛选、员工行显式申请/档案附件历史按钮、组织编辑状态说明以及对应文档。没有改后端业务/权限、没有云端业务写入或新增访问者；48组59子任务及验收标记保留。\n本轮真实React组件渲染5/5、类型exit0；F01_F04_Entry_UI_Verification.json及原始TAP保存。初次导航测试模块解析失败，修正Node测试解析器后通过；原116项API证据保留，不计本轮复测。未以组件渲染替代真人点击；原代理预览无恢复证据不机械重试。下一动作正式构建并仅所有者私有发布，核对终态、保存完整SHA，再请用户按顶部明确路径实操。其他模块暂停，E2不增人，独立多角色UAT继续暂缓。\n",
+  "tests": {
+    "path": "docs/delivery/F01_F04_Entry_UI_Verification.json",
+    "tests": 5,
+    "passed": 5,
+    "failed": 0,
+    "note": "首包入口/空筛选恢复/既有审批组件真实React渲染；无后端业务或权限修改，未重复全量API回归；非浏览器交互或人工UAT"
+  },
+  "testRuns": [
+    {
+      "path": "docs/delivery/F01_F04_Entry_UI_Verification.json",
+      "completedAt": "2026-09-08T13:41:50.733266+00:00",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "scope": "首包入口/空筛选恢复/既有审批组件真实React渲染；无后端业务或权限修改，未重复全量API回归；非浏览器交互或人工UAT",
+      "report": "docs/delivery/F01_F04_Entry_UI_Run.tap"
+    },
+    {
+      "path": "docs/delivery/F01_F04_Decisions_Verification.json",
+      "completedAt": "2026-09-08T13:21:05.083631+00:00",
+      "tests": 116,
+      "passed": 116,
+      "failed": 0,
+      "scope": "D1–D7首包必要实现：原子生效/日期/失败恢复/来源目标授权/职级防盲审/驳回重审；关联P2/P3/G1回归，仅合成SQLite/R2替身，不代替真人UAT或生产验收",
+      "report": "docs/delivery/F01_F04_Decisions_Run.tap"
+    },
+    {
+      "path": "docs/delivery/F01_F04_Role_Arrangement_Verification.json",
+      "completedAt": "2026-09-08T12:32:08.406906+00:00",
+      "tests": 15,
+      "passed": 15,
+      "failed": 0,
+      "scope": "跨组织发起者/审批者/字段权限安排及关联回归，合成数据；不改变产品行为，不代替UAT",
+      "report": "docs/delivery/F01_F04_Role_Arrangement_Run.tap"
+    },
+    {
+      "path": "docs/delivery/F04_Closure_Verification.json",
+      "completedAt": "2026-09-08T12:11:49.230054+00:00",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "scope": "仅附件、历史读取与成员目录撤权一致性选中场景；未执行其他P3场景",
+      "report": "docs/delivery/F04_Closure_Run.tap"
+    },
+    {
+      "path": "docs/delivery/F01_F04_Closure_Verification.json",
+      "completedAt": "2026-09-08T12:11:02.862468+00:00",
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "scope": "F01–F04核心组织员工/权限/审批与存储；附件复用既有P3技术证据，本批未冒称全量回归",
+      "report": "docs/delivery/F01_F04_Closure_Run.tap"
+    },
+    {
+      "path": "docs/delivery/Contract_Fields_Verification.json",
+      "completedAt": "2026-09-08T11:54:46.629532+00:00",
+      "tests": 98,
+      "passed": 98,
+      "failed": 0,
+      "scope": "合同字段继承及既有合同/基础/报表权限/看板关联回归，非全量复测",
+      "report": "docs/delivery/Contract_Fields_Run.tap"
+    },
+    {
+      "path": "docs/delivery/Cadre_Interview_Verification.json",
+      "completedAt": "2026-09-08T11:39:29.631504+00:00",
+      "tests": 247,
+      "passed": 247,
+      "failed": 0,
+      "scope": "当前全部业务测试，明确排除旧Worker渲染环境测试；含干部访谈共享权限、绩效提示、自助与聚合",
+      "report": "docs/delivery/Cadre_Interview_Regression.tap"
+    },
+    {
+      "path": "docs/delivery/Scope_Execution_Verification.json",
+      "completedAt": "2026-09-08T11:18:48.824647+00:00",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "scope": "看板聚合、验收签署门槛和无执行证据的保守分类",
+      "report": "工具实际结果，node --test tests/delivery-dashboard.test.mjs"
+    },
+    {
+      "path": "docs/delivery/Goal_Advisory_Verification.json",
+      "completedAt": "2026-09-08T11:18:48.824215+00:00",
+      "tests": 25,
+      "passed": 25,
+      "failed": 0,
+      "scope": "绩效范围提示与强制、模板快照、周期生命周期、指标引用和权限关联回归",
+      "report": "docs/delivery/Goal_Advisory_Run.tap"
+    },
+    {
+      "path": "docs/delivery/Self_Report_Verification.json",
+      "completedAt": "2026-09-08T11:12:08.452507+00:00",
+      "tests": 94,
+      "passed": 94,
+      "failed": 0,
+      "scope": "自助离职入口、报表调动撤权、P3既有接口及看板聚合；非全量测试",
+      "report": "docs/delivery/Self_Report_Run.log"
+    },
+    {
+      "path": "docs/delivery/Controller_Regression_Verification.json",
+      "completedAt": "2026-09-08T10:58:43.305486+00:00",
+      "tests": 238,
+      "passed": 238,
+      "failed": 0,
+      "scope": "本轮领域/API及聚合回归；明确排除旧rendered-html.test.mjs，其Node/cloudflare运行时问题仍未通过",
+      "report": "docs/delivery/Controller_Regression_Run.tap"
+    },
+    {
+      "path": "docs/delivery/Indicator_Usage_Verification.json",
+      "completedAt": "2026-09-08T10:49:54.452632+00:00",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "scope": "指标版本引用、待审/发布分离、去重与当前HR范围隔离；关联目录回归",
+      "report": null
+    },
+    {
+      "path": "docs/delivery/Controller_Lifecycle_Verification.json",
+      "completedAt": "2026-09-08T10:44:34.710709+00:00",
+      "tests": 98,
+      "passed": 98,
+      "failed": 0,
+      "scope": "组织员工、干部、学习及既有P3 API关联回归",
+      "report": "docs/delivery/Controller_Lifecycle_Run.tap"
+    },
+    {
+      "path": "docs/delivery/Dashboard_Verification.json",
+      "completedAt": "2026-09-08T10:11:36.120150+00:00",
+      "tests": 229,
+      "passed": 228,
+      "failed": 1,
+      "scope": "合成数据综合回归，含看板聚合；不代替人工业务验收",
+      "report": "docs/delivery/Dashboard_Comprehensive.tap"
+    }
+  ],
+  "verification": {
+    "startedAt": "2026-09-08T10:11:22.076642+00:00",
+    "completedAt": "2026-09-08T10:11:36.120150+00:00",
+    "command": "node --test --test-reporter=tap tests/*.test.mjs",
+    "exitCode": 1,
+    "report": "docs/delivery/Dashboard_Comprehensive.tap",
+    "scope": "合成数据综合回归，含看板聚合；不代替人工业务验收",
+    "tests": 229,
+    "passed": 228,
+    "failed": 1,
+    "typecheck": "passed",
+    "limitation": "旧rendered-html.test.mjs在普通Node无法加载cloudflare:workers；其余228项通过；未执行浏览器人工验收",
+    "build": {
+      "status": "passed",
+      "command": "Sites build-site.mjs → npm run build",
+      "completedAt": "2026-09-08T10:13:19.282317+00:00",
+      "routes": [
+        "/scope",
+        "/api/delivery-evidence"
+      ]
+    },
+    "sourceCommit": "523fa165ff34c69d7c417ee5a8bb78a234ed378f",
+    "deployment": {
+      "env_set_revision": 1,
+      "failure_message": null,
+      "id": "appgdep_6a9fe02d31bc8191bc8756ddcd04b7cc",
+      "project_id": "appgprj_6a9e2c705cfc819180e0e5251bb025cc",
+      "provider_deployment_id": "site---6a9e2c705cfc819180e0e5251bb025cc",
+      "screenshot_asset_pointer": null,
+      "status": "succeeded",
+      "title": "人才管理系统",
+      "type": "publish",
+      "updated_at": "2026-09-08T10:15:23.996533+00:00",
+      "url": "https://italent-hris-jack.creamy-fern-1782.chatgpt.site",
+      "version_id": "appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_b116c2af13848191b50702e24538921a"
+    },
+    "version": 104
+  },
+  "deployment": {
+    "checkedAt": "2026-09-08T13:24:25.422Z",
+    "environment": "Sites production / 仅所有者私有访问",
+    "latestDeploymentVerified": true,
+    "latestSavedCommit": "3d690cbbd6336c6de8b76a06fa4459700b1e3a88",
+    "latestSavedVersion": 111,
+    "note": "F01–F04用户D1–D7必要调动实现私有发布成功；业务/生产未验收。看板内构建快照仍为构建时证据，当前回执以本文件为准。",
+    "schemaVerification": {
+      "checkedAt": "2026-09-08T13:23:31.983Z",
+      "columns": [
+        "tenant_id",
+        "id",
+        "employee_id",
+        "kind",
+        "org_id",
+        "reason",
+        "status",
+        "created",
+        "created_by",
+        "decided",
+        "decided_by",
+        "current_step",
+        "workflow_version",
+        "details"
+      ],
+      "hasMore": false,
+      "projection": {
+        "next_offset": null,
+        "omitted_columns": 0,
+        "omitted_rows": 0,
+        "truncated": false,
+        "truncated_values": 0
+      },
+      "returnedRows": 0,
+      "table": "hris_approvals"
+    },
+    "source": "Sites save_site_version + deploy_private_site_version + get_deployment_status（部署ID指定核验）",
+    "verified": {
+      "commit": "3d690cbbd6336c6de8b76a06fa4459700b1e3a88",
+      "deploymentId": "appgdep_6aa00c1c77948191899be9e2c773c84f",
+      "envRevision": 1,
+      "status": "succeeded",
+      "time": "2026-09-08T13:22:52.460505+00:00",
+      "url": "https://italent-hris-jack.creamy-fern-1782.chatgpt.site",
+      "version": 111,
+      "versionId": "appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_0ad28e6fe0ac81919a51e411984b620f"
+    }
+  }
+}

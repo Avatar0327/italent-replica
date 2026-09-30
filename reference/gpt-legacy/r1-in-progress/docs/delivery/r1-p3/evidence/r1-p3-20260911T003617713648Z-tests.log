@@ -1,0 +1,68 @@
+✔ P3-M01-01: same org overlapping position name rejects, cross org permits, future cycles reject (217.086969ms)
+✔ P3-M01-02: identity conflicts do not merge; stable rehire and tenure exclude gaps/internship (148.885319ms)
+✔ P3-M01-03: independent HR approves part time; it consumes zero additional headcount (164.664363ms)
+✔ P3-M01-07: legal scope, same legal ID and adjacent renewal dates; immutable versions (149.062862ms)
+✔ P3-M01-08: subset row key is idempotent across transport command IDs and explicit null survives (168.800849ms)
+✔ P3-M01-09: missing or wrong entry template blocks person creation and never activates accounts (142.389482ms)
+✖ P3-ORIGIN-OBS07: required text rejects empty, whitespace and blank defaults in each declared entry template before any write (156.921579ms)
+✖ P3-ORIGIN-OBS07: required subset blank update rolls back, optional blank and numeric zero remain valid, unauthorized writes remain denied (170.392019ms)
+✔ P3-M01-10: exit fence rejects later approvals and queues all 101 cleanup items (171.457813ms)
+✔ P3-M01-12: protected waiting dependency blocks disable without exposing identity (135.555289ms)
+✔ P3-M01-11: explicit strong budget policy blocks effect; absent provider never reports budget passed (177.338576ms)
+✔ temporal versions: future publication preserves today and old bytes, all interval cuts reject historical hidden cycles (139.57001ms)
+✔ exit generation: rehire enables only new segment; cleanup resumes and unsupported domains retain blocked receipts (289.127756ms)
+✔ command replay runs before stale business-state validation and does not create a second employment (156.645365ms)
+✔ server identity candidates: forged candidate list cannot hide a second identifier match; protected keys contain no raw values (165.583814ms)
+✔ contract field roots survive revisions and inheritance; explicit null clears; stable contract counts exclude unknown and cancelled (197.562773ms)
+✔ ten subset types plus custom preserve field versions, reject missing field permission and enforce exact decimal precision (448.438772ms)
+✔ M01 paged reads enforce field tuples and reject a cursor after permission revision changes (160.930849ms)
+✔ client unknown result retains exact command identity and resolves through the receipt without a second send (8.933084ms)
+✔ catalog acceptance: sibling names, cross-parent reuse, same grade names with distinct codes, and concurrent protected references (183.043161ms)
+✔ all additional assignments occupy zero; duplicate overlap fails, cancellation preserves the case, ending releases no extra headcount (413.566238ms)
+✔ history read needs separate history authorization; present record access never reveals past fields (155.446144ms)
+✔ UI form payloads keep explicit null, stable IDs, two D7 reviewers and server validation contracts (17.827321ms)
+✔ three entry templates stay independent and saving never invites or creates membership (182.013028ms)
+✔ exit and approval racing share the tenant CAS; final exit blocks every later completion (181.126226ms)
+✔ P3-LINK-M48-approval + P3-M19-01/04 + P3-M48-05: real R1 portal and regularize adapter updates stable person and normalized employee atomically (528.125257ms)
+✔ P3-M01-04 new D7 endpoint: second reviewer scope is target only; approval waits, atomic effect changes primary and compatibility once (362.650523ms)
+✔ P3-M01-05 new D7 endpoint: early execution has no attempt; audit exception rolls back both models and same key can safely retry (306.104876ms)
+✔ P3-M01-06 new D7 endpoint: unrelated terminal history permits independent intent; correction restarts both reviewers; parallel requests share CAS (299.617049ms)
+✔ same-day transfers retain exact event time and one day-end primary instead of invalid negative date intervals (368.939426ms)
+✔ D7 business failure commits only attempt and reason; primary history and occupancy remain unchanged (307.277756ms)
+✔ D7 field revocation rejects blind review; target-only summary does not grant source history or attachments (293.019038ms)
+✔ D7 approval expires at the planned Beijing date boundary; source and intent remain unchanged (248.702646ms)
+✔ D7 unknown after a real SQLite commit resolves by command receipt and never duplicates history or occupancy (305.190791ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 32
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6048.966688
+
+✖ failing tests:
+
+test at tests/r1-p3-m01.test.mjs:68:1
+✖ P3-ORIGIN-OBS07: required text rejects empty, whitespace and blank defaults in each declared entry template before any write (156.921579ms)
+  Error: 同一命令键内容冲突
+      at replayCommand (file:///workspace/sites/italent-hris-r1-p3-20260910/lib/hris/r1-command.ts:39:15)
+      at async executeM01 (file:///workspace/sites/italent-hris-r1-p3-20260910/lib/hris/r1-m01.ts:134:20)
+      at async TestContext.<anonymous> (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/r1-p3-m01.test.mjs:78:17)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    status: 409,
+    machineCode: 'IDEMPOTENCY_CONFLICT'
+  }
+
+test at tests/r1-p3-m01.test.mjs:81:1
+✖ P3-ORIGIN-OBS07: required subset blank update rolls back, optional blank and numeric zero remain valid, unauthorized writes remain denied (170.392019ms)
+  Error: 同一命令键内容冲突
+      at replayCommand (file:///workspace/sites/italent-hris-r1-p3-20260910/lib/hris/r1-command.ts:39:15)
+      at async executeM01 (file:///workspace/sites/italent-hris-r1-p3-20260910/lib/hris/r1-m01.ts:134:20)
+      at async TestContext.<anonymous> (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/r1-p3-m01.test.mjs:91:111)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    status: 409,
+    machineCode: 'IDEMPOTENCY_CONFLICT'
+  }

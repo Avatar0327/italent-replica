@@ -1,0 +1,89 @@
+TAP version 13
+# Subtest: H004 P02: one employee goal adjustment, checkin, evaluation, appeal and versioned consumers
+ok 1 - H004 P02: one employee goal adjustment, checkin, evaluation, appeal and versioned consumers
+  ---
+  duration_ms: 443.959287
+  type: 'test'
+  ...
+# H004_CHAIN {"employeeId":"15df0ba4-1aad-4c1d-abe3-7af0055b10b1","cycleId":"ff30e0d0-cd93-4a6d-8b46-ca936c78f201","planId":"4b58d347-0e5a-43be-b683-e8f8ceb6db3d","adjustmentId":"2c6324f3-6557-4241-a1c1-14c73835bec0","checkinId":"566902df-43d0-46ae-8ac1-a5a733ad9573","resultId":"a78831c0-bd29-420e-b982-6e60c1a2fe90","appealId":"bfa4d5e8-8afd-4c48-a640-0c25060e3759","correctionId":"31f0d7cf-1d8d-4091-a609-5138e22332dd","reviewId":"a5ab69df-d741-4656-a2d3-649d93b6334c","originalScore":63,"latestScore":87}
+# Subtest: H004 P03: cycle status, dates, exact weights and score thresholds
+ok 2 - H004 P03: cycle status, dates, exact weights and score thresholds
+  ---
+  duration_ms: 386.883581
+  type: 'test'
+  ...
+# Subtest: H004 P03: exit preserves independent correction of published history
+ok 3 - H004 P03: exit preserves independent correction of published history
+  ---
+  duration_ms: 125.411277
+  type: 'test'
+  ...
+# Subtest: H004 P03: transfer preserves independent correction of published history
+ok 4 - H004 P03: transfer preserves independent correction of published history
+  ---
+  duration_ms: 150.901965
+  type: 'test'
+  ...
+# Subtest: indicator source is resolved server-side and stays frozen after archive and revision, including published result
+ok 5 - indicator source is resolved server-side and stays frozen after archive and revision, including published result
+  ---
+  duration_ms: 190.46165
+  type: 'test'
+  ...
+# Subtest: indicator catalog scopes draft and sealed records, rejects new archived and foreign employee references
+ok 6 - indicator catalog scopes draft and sealed records, rejects new archived and foreign employee references
+  ---
+  duration_ms: 162.85552
+  type: 'test'
+  ...
+# Subtest: goal adjustment freezes explicit replacement source and audit failure rolls back both plan and request
+ok 7 - goal adjustment freezes explicit replacement source and audit failure rolls back both plan and request
+  ---
+  duration_ms: 182.608408
+  type: 'test'
+  ...
+# Subtest: indicator codes and revisions preserve lineage, and accepted maximum goal text fits the bounded API
+ok 8 - indicator codes and revisions preserve lineage, and accepted maximum goal text fits the bounded API
+  ---
+  duration_ms: 172.682027
+  type: 'test'
+  ...
+# Subtest: sealed template snapshots enforce stage-specific required responses and hide unpublished management responses
+ok 9 - sealed template snapshots enforce stage-specific required responses and hide unpublished management responses
+  ---
+  duration_ms: 182.630968
+  type: 'test'
+  ...
+# Subtest: template revisions cannot silently replace active cycles; archived drafts do not trap future version numbers
+ok 10 - template revisions cannot silently replace active cycles; archived drafts do not trap future version numbers
+  ---
+  duration_ms: 135.577651
+  type: 'test'
+  ...
+# Subtest: template boundaries reject foreign scope and duplicate IDs; draft edits and response writes are atomic
+ok 11 - template boundaries reject foreign scope and duplicate IDs; draft edits and response writes are atomic
+  ---
+  duration_ms: 178.872686
+  type: 'test'
+  ...
+# Subtest: approved goal changes clear stale stage answers while preserving the prior self-review audit
+ok 12 - approved goal changes clear stale stage answers while preserving the prior self-review audit
+  ---
+  duration_ms: 201.986754
+  type: 'test'
+  ...
+# Subtest: frozen goal limits apply to creation and changes; revisions cannot alter old cycles and impossible configurations are rejected
+ok 13 - frozen goal limits apply to creation and changes; revisions cannot alter old cycles and impossible configurations are rejected
+  ---
+  duration_ms: 220.684135
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4409.621979

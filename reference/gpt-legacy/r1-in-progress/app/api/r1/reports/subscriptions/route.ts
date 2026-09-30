@@ -1,0 +1,6 @@
+import {reportContext,reportFence} from '@/lib/hris/r1-report-context';
+import {manageReportSubscription} from '@/lib/hris/r1-report-subscriptions';
+import {reportCommandInput} from '@/lib/hris/r1-report-command-input';
+import {json,failure,readBody,HttpError} from '@/lib/hris/http';
+export async function POST(request:Request){try{const b=reportCommandInput.parse(await readBody(request));return json(await manageReportSubscription(await reportContext(),{...b,payload:b.payload,action:'M32.subscription'}));}catch(e){return failure(e);}}
+export async function GET(request:Request){try{if(new URL(request.url).search)throw new HttpError(400,'未知列表参数','INVALID_INPUT');const c=await reportContext(),rows=(await c.db.prepare('SELECT id,title,owner_id AS ownerId,proposed_owner AS proposedOwner,status,revision,timezone,frequency,local_send_time AS localSendTime FROM r1_report_subscriptions WHERE tenant_id=? AND (owner_id=? OR proposed_owner=?) ORDER BY id LIMIT 51').bind(c.member.tenantId,c.member.userId,c.member.userId).all()).results;await reportFence(c);return json({subscriptions:rows.slice(0,50),hasMore:rows.length>50,runtimeState:'blocked_runtime',revision:c.row.revision,securityStamp:c.member.securityStamp});}catch(e){return failure(e);}}

@@ -1,0 +1,474 @@
+{
+  "kind": "artifact_integrity_review_not_product_test_or_acceptance",
+  "startedAt": "2026-09-10T10:44:36.739567+00:00",
+  "finishedAt": "2026-09-10T10:44:37.709923+00:00",
+  "command": [
+    "python",
+    "docs/delivery/r1-p3/evidence/audit-delivery.py"
+  ],
+  "scriptSha256": "a262c4f3ae158e1a59db89357b4083cfa11fc726f1174c537266b2bb2a985e78",
+  "sourceSha": "e4b6d386025458ecfbdc71ff48b2b74d41cae1fc",
+  "inputs": {
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_Traceability.json": "bcf181f6ca6642b0083d28cfe1a2918101fd4eaeaeac39e7449f92ecf13c15a5",
+    "/workspace/sites/italent-hris-r1-p2-20260909/docs/delivery/r1-p2/R1_P2_Approved_Acceptance_Trace.json": "a0a3a3c0c2b02af103a656fd5c6ce59e6a78c8f62cca1fa3eb375d22a83f5e20",
+    "/workspace/sites/italent-hris-r1-p2-20260909/docs/delivery/r1-p2/R1_P2_Limit_Resolution.json": "f4400e6ef0d37493637468b7862e29ebcc2c75c3fdb2b7eda1b4d09011232cda",
+    "/workspace/sites/italent-hris-r1-p2-20260909/docs/delivery/r1-p2/R1_P2_P3_Work_Packages.json": "973a746de742d9ffc2c93286a05ec0dc5e37c53f455ecdf85daa6e5fdd3b2bc2",
+    "/workspace/sites/italent-hris-r1-p2-20260909/docs/delivery/r1-p2/R1_P2_Producer_Integration_Cases.json": "c539d43cc5f28775470fd233ee956850e19346801903116b476e2cd9ae99aefc",
+    "/workspace/sites/italent-hris-r1-p2-20260909/docs/delivery/r1-p2/R1_P2_Dependencies_Decisions.json": "8b536d2f10e0ef4db8ac583b4e63d7a9643846a1764b6466f21ad6543a902e93",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_Cross_Domain_Case_Evidence.json": "503fa1595e4a6c6c60f7e81e177d55dc78faf74b1a3793287cd14e48d25e2d8a",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_Foundation_Case_Evidence.json": "69c7da4b6d4773cf4b759d654438c137d67cbe05838e6a2b8b342e172fda41a5",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_Integration_Case_Evidence.json": "c87aa3f6aabbfc20a577f82ff10e7f52dac25a9473f8f2cfed24038d1ec0ccce",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_M01_Case_Evidence.json": "2ab76b8fc2855aac6dc2ecd16c027389f92a0579681dc6de99d2a46359885948",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_M19_Case_Evidence.json": "c11adbc08eef5fa5191528c3ae79819aa2e5e303380ca62725f88c617c56a55a",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_M32_Case_Evidence.json": "40ac0a39b14596f2aaef66032687e44e81f51e00eeeebb59828a10bd1b4a9cdb",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_M32_Jobs_Case_Evidence.json": "a178d87dab46b7b9d810d23c199176d818e4a0e2dcd1adda0b2a2c5b5e2976fc",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_M48_Case_Evidence.json": "03ca34226fc1392f63a8ce09b3c458fc008ff2467d2ad92f7c017c9787e3cf40",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_Migration_Case_Evidence.json": "3dbf14af5ee7bdf964332379756614615506a253c3c87b7915daa52c34596e3f",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_Producer_Case_Evidence.json": "71a36d192d1e2a132c1bc41be7f697e600f8c4ad7ff75b55c979c7ddb76eb189",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_Recovery_Case_Evidence.json": "d7430a34a67c4457ee30a381e0e25d3b15f3093e7c252be6c262095424079716",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-01-20260910T034414Z.json": "21d1794247da6412229f00a194ccd0821fc89bbc88c1e14598300f874fd321cf",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-02-04-20260910T041245Z.json": "1600b389e98eefe1c0e723091133ab29ec7f7f7fed90fc03d28a3ef31b493018",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-02-20260910T035514Z.json": "ebf36355717ff749e674cc4aba74c54d4d643cbfd11a838fe84a90c421f08695",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-02-d7-20260910T042138Z.json": "34aee9009882672bfb49932c3bbcdabb5f15bd877884ad421ee16aa83201ff10",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-04-development-attachment-failures.json": "5fd1858d9c981f9b3eb722530845d01cd4c30ba1c791a02a2fc6cff532cabefa",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-04-development-failure.json": "b19e64ac807ca219b223cec4c41c7a1c17f8d66c02cb3677c2e9d67d915ae9b0",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T052108474343Z.json": "e5b30d3a20f9cd45a2f012c54d63cf47e5b5ee5a6712874daa4e60145acfb343",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T053805670409Z.json": "1e4d8b85fea1bb225a922ab624ac0508c1ab31413c0bd8292675fd21ebced81f",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T055326431928Z.json": "261ad0ccddb9c32244709d38bea80b109078c40284f941f3ffb97a95dcfb3cf7",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T060422840181Z.json": "e439e6a0dae7cc7b17362d5fe11c17c8950ae54d11794694be6db0d02425a1ed",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T061120991290Z.json": "518bd7429be9334f5566b7e4202b7843da9cb2eee5cf8d17593e245e9bf4fe43",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T061155692609Z.json": "19084133518e601b6ac80d482125f18b8b458847e926066350eaa284b5d29607",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T062541593684Z.json": "4cdb893d913ef2dafddf31ba93c29a051e322358c61b29c06b1c49eab78994f9",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T063815488860Z.json": "1c2c1fc2950da4e56bc78cf91a87af7c197294be5a96a9fa42b22fa71e01ac4c",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T063850609272Z.json": "f5ddad340c357b5e174eafd2200e8229be5e4d95985122ff1e112d9edaee4740",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T070210483124Z.json": "d52864211afd1e7181c1ff62acf2c959b41cc8128b1f152c30c691c0e8d1508c",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T070522816543Z.json": "722fe382737298469f3278feb4d965f0aa6234e9f5bdbdd3e3ad180f231afefd",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T070535639941Z.json": "b7f6e79d01ddf09309b9155220a6ad09f96829b2bc1358a1cb3e8df0e5ab6731",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T071309586525Z.json": "fe7fd7f8b838fdebe2c9d54a9beae31b185c7d496670be5e21e130ee96480fba",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T072924847968Z.json": "9f5beb73fe687efeae83181a36d47d934531cd67d6787bcd3cee99365fec803c",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T074453122156Z.json": "60ab97dfe3c7cc388e8184b70f449c820775a78cea92b6218d0da0788208291f",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T075750612916Z.json": "4ffdb610d28f92e52f34f37ff7ca33ecea5abceaf7e764bf1302262181615c5e",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T080856347352Z.json": "259878fd2f5551e3d7eff939b49d3821ae27f74145a037526236157b1d6ba73f",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T082305048810Z.json": "212d5bc54fda72ba129173e231724943680a77a6f43806645ae59d92f9fcd8da",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T083119493394Z.json": "7507235de1cc005c3d32f008ea31c6c49161b4797b4a62b2099a4a9bff0b8c01",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T084831357314Z.json": "3fee2d79cfd1f948a95d40e597b8c55f0f2eb75b145f62b7efa268f8571d73d2",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T090030808611Z.json": "99f78048ab14c2d3fe1976dc186af8a7754f0f1f535d4e3345a9141e6663d5b5",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T090521350287Z.json": "9e6670b20687f8e465c3cf1193e5481a47dfa1879e9526821847c68d5b7c957d",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T091333336280Z.json": "e11c79817d2822729fe49fcaa10156c95d990e5bd8b04d60ccaf13a7ee2270bf",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T092112866567Z.json": "70920f7c9df9e36f6f6d324db8b48836b8a12e943a789d9210adfbad0e01770e",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T092744057535Z.json": "bc71f91d5c5c3f22c9c112873a2ac16a6a4135fed49282291d1e373794321ecd",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T093905777390Z.json": "9c050993effb0508643b00c5168e69706361a6b37c5b4ae4dd2673a7d5a99e78",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T095601121101Z.json": "0a741df3d8f3d487f44d5dcf8eeef4dcc544d752e7333ccefdb7450b27884a72",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T100422728024Z.json": "0edb1964f2ee4efa65092993057643ea557cb9692953174f7c5e12299ea06dbe",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T101031691739Z.json": "d5a10bbdd098202b84794d4a9ae47e7360ec5af811067b3376e81ac4704a670b",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T101913449916Z.json": "960730462125b2967556079b708057dd7e26f85b7c2658c47031e225b7da68d0",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T103230203458Z.json": "4a491bb11a1e592bb992cbadc230b783faa1d86cabbbe21274bf0000096d4781",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/evidence/r1-p3-20260910T104045821462Z.json": "eeb10c54d8a5c7442d37c3946c5449d552ea323fdd282eeb58750083a8c23630",
+    "/workspace/sites/italent-hris-r1-p3-20260910/docs/delivery/r1-p3/R1_P3_Write_Entrypoints.json": "ad593213e67108c2c4f472ef8de01bda630e75e82e32e51bb0c6aa72704570b8"
+  },
+  "checks": [
+    {
+      "name": "85_original_acceptance_ids",
+      "passed": true,
+      "detail": 85
+    },
+    {
+      "name": "unchanged_acceptance_case_and_design_mapping",
+      "passed": true,
+      "detail": "No approved requirement remapped or removed"
+    },
+    {
+      "name": "37_risks_and_dispositions",
+      "passed": true,
+      "detail": {
+        "P2": 9,
+        "P3": 20,
+        "P4": 8
+      }
+    },
+    {
+      "name": "13_source_requests_remain_P1",
+      "passed": true,
+      "detail": "Source inspection not executed by this window"
+    },
+    {
+      "name": "no_executor_acceptance_or_risk_closure",
+      "passed": true,
+      "detail": "Independent review and P4 retained"
+    },
+    {
+      "name": "81_design_and_producer_case_records",
+      "passed": true,
+      "detail": {
+        "expected": 81,
+        "recorded": 81
+      }
+    },
+    {
+      "name": "acceptance_code_and_case_links_exist",
+      "passed": true,
+      "detail": "Structural links only; not proof that every original subcondition passed"
+    },
+    {
+      "name": "producer_unavailable_not_passed",
+      "passed": true,
+      "detail": {
+        "passed_actual_internal_producer": 3,
+        "not_executed_no_approved_runtime": 19
+      }
+    },
+    {
+      "name": "historical_evidence_integrity_not_fresh_execution",
+      "passed": false,
+      "detail": {
+        "records": 36,
+        "logs": 87,
+        "sourceInputHashes": 255,
+        "errors": [
+          "r1-p3-04-development-attachment-failures.json: missing source SHA",
+          "r1-p3-04-development-failure.json: missing source SHA"
+        ]
+      }
+    },
+    {
+      "name": "two_fresh_whole_R1_rounds",
+      "passed": true,
+      "detail": [
+        {
+          "sourceSha": "7a86db4c62f09de0b9606050c073a7ef2510e87a",
+          "runId": "r1-p3-20260910T103230203458Z"
+        },
+        {
+          "sourceSha": "e4b6d386025458ecfbdc71ff48b2b74d41cae1fc",
+          "runId": "r1-p3-20260910T104045821462Z"
+        }
+      ]
+    },
+    {
+      "name": "both_rounds_same_product_and_fixture_tree",
+      "passed": true,
+      "detail": "Docs-only checkpoint separates two executions"
+    },
+    {
+      "name": "static_write_entrypoint_inventory",
+      "passed": true,
+      "detail": {
+        "routes": 62,
+        "methods": 63,
+        "dynamicCoverageClaimed": false
+      }
+    },
+    {
+      "name": "P2_fixed_head_read_only",
+      "passed": true,
+      "detail": "No P2 mutation or integration performed"
+    }
+  ],
+  "historicalRecords": [
+    {
+      "file": "r1-p3-01-20260910T034414Z.json",
+      "sourceSha": "3a843b0f04f076abd9a8a33bf59315b7afe497ff",
+      "exitCodes": [
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-02-04-20260910T041245Z.json",
+      "sourceSha": "1d5e20e97220c8faab1b3510309954439052200a",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-02-20260910T035514Z.json",
+      "sourceSha": "c5475c3d892eb7773428ea7dc1c203237cabe7da",
+      "exitCodes": []
+    },
+    {
+      "file": "r1-p3-02-d7-20260910T042138Z.json",
+      "sourceSha": "682e6e46b78e249bde1e42d70868579715155ae8",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T052108474343Z.json",
+      "sourceSha": "086db8b388f7896aefd7a605173cc953829b340d",
+      "exitCodes": [
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T053805670409Z.json",
+      "sourceSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T055326431928Z.json",
+      "sourceSha": "9d592d7950153ee056761c0a015b1a4acd42893b",
+      "exitCodes": [
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T060422840181Z.json",
+      "sourceSha": "e7f0f2a858758900c135ee4cc6728b90ba05b091",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T061120991290Z.json",
+      "sourceSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T061155692609Z.json",
+      "sourceSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "exitCodes": [
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T062541593684Z.json",
+      "sourceSha": "e2472e10c0fc272da8cf60171f076f1d0cc4a19d",
+      "exitCodes": [
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T063815488860Z.json",
+      "sourceSha": "6c52613e9dde33084c3cbfa3ed2345b1f1bcd3dc",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T063850609272Z.json",
+      "sourceSha": "6c52613e9dde33084c3cbfa3ed2345b1f1bcd3dc",
+      "exitCodes": [
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T070210483124Z.json",
+      "sourceSha": "b7dac9cabaf078eef3b1632176e728d01901180a",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T070522816543Z.json",
+      "sourceSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "exitCodes": [
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T070535639941Z.json",
+      "sourceSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "exitCodes": [
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T071309586525Z.json",
+      "sourceSha": "f6dbf2191a9647a78487d863442a17da60fad128",
+      "exitCodes": [
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T072924847968Z.json",
+      "sourceSha": "1aafb5731aebbb74aaf95b669a07afab57b50354",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T074453122156Z.json",
+      "sourceSha": "1d7725cef06a753063a2080ac0f0c37b1f493713",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T075750612916Z.json",
+      "sourceSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T080856347352Z.json",
+      "sourceSha": "b6355ed11cf08dee270dd3e776b4cc7c6bf81f85",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T082305048810Z.json",
+      "sourceSha": "74c5b0db8894209b827b8e1b097366ad4c99257d",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T083119493394Z.json",
+      "sourceSha": "df1c1cbdce036c652bf704d9da1f147cdaecf656",
+      "exitCodes": [
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T084831357314Z.json",
+      "sourceSha": "43eb184cd7a88b7d4a9fe05ea7576163c6f2c1ab",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T090030808611Z.json",
+      "sourceSha": "d484af1acd99fc583f53c6b08cbafb3331a399ab",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T090521350287Z.json",
+      "sourceSha": "c36094e2f407fd0e2101b2b0e3988fc278b4ec1b",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T091333336280Z.json",
+      "sourceSha": "a9dba42cfb229b78cc00023f0fdd7b2f82bd2954",
+      "exitCodes": [
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T092112866567Z.json",
+      "sourceSha": "a0394c325075a80b05fa7e956269e9cd36a1363d",
+      "exitCodes": [
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T092744057535Z.json",
+      "sourceSha": "01863cfb8b54636cd2340be8415ae36304a5ed23",
+      "exitCodes": [
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T093905777390Z.json",
+      "sourceSha": "b3efb63ec5e2d639243dd2056ea6bde2f467eb84",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T095601121101Z.json",
+      "sourceSha": "1ddb1c93bba8b5aee900aa3235ae0f8551f27fa9",
+      "exitCodes": [
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T100422728024Z.json",
+      "sourceSha": "8a5e2c271873ecc826d40ca72f962526cafbafd2",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T101031691739Z.json",
+      "sourceSha": "5ce0dd2a411bd5bea144074395c1a7787abf5135",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T101913449916Z.json",
+      "sourceSha": "254a70772bc78755d1e524d7b4bc4871b9da5904",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T103230203458Z.json",
+      "sourceSha": "7a86db4c62f09de0b9606050c073a7ef2510e87a",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "file": "r1-p3-20260910T104045821462Z.json",
+      "sourceSha": "e4b6d386025458ecfbdc71ff48b2b74d41cae1fc",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "allChecksPassed": false,
+  "p3ExitApproved": false,
+  "p4Started": false
+}

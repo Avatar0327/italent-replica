@@ -1,0 +1,48 @@
+{
+  "runId": "r1-p3-20260910T055326431928Z",
+  "sourceSha": "9d592d7950153ee056761c0a015b1a4acd42893b",
+  "taskId": "P3-R1-03",
+  "startedAt": "2026-09-10T05:53:26.431964+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/r1-p3-workflow.test.mjs": "5eff8293d2a79df6f9b72f645f637991871c710d37d42ca71bea4b7cd3a93eb1",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/r1-p3-workflow.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T055326431928Z-tests.log",
+      "sha256": "4497ec3cc0b160a08720219e7e178c448e06243ff9680fca5a57978d94819471"
+    },
+    {
+      "name": "types",
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T055326431928Z-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "testSummary": {
+    "tests": 6,
+    "pass": 6,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T05:53:34.005864+00:00"
+}

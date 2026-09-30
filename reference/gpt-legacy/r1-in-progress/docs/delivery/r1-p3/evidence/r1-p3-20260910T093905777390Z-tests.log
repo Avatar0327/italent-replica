@@ -1,0 +1,27 @@
+✔ P3-ARC-01 / BASE-01-AC01: inactive, isolation and stale same-role authority reject (142.760094ms)
+✔ P3-ARC-01 / BASE-02-AC02: supplementary reads reject epoch or scope changes (127.132274ms)
+✔ P3-ARC-01: grant tuples do not cross product roles, fields, history, relations or actions (0.907776ms)
+✔ P3-ARC-02: audit failure rolls back facts, journal, receipt and outbox; next command succeeds once (113.21355ms)
+✔ P3-ARC-02: concurrent commands and lost response produce at most one business effect (117.153324ms)
+✔ P3-ARC-01: legacy HR and membership routes use the bridge; activation cannot bypass isolation (126.110918ms)
+✔ P3-REC-01/04: bounded AES-256-GCM chunks roundtrip with separate wrapped key and independent signature, preserving exact byte boundaries (160.301042ms)
+✔ P3-REC-01/04: corruption, missing chunk, bad signature, wrong key and cross-checkpoint AAD fail before publication or restore (40.091935ms)
+✔ P3-REC-01/05: tombstoned multi-chunk object requires complete ordered references and whole-object SHA before verified manifest (27.356085ms)
+✔ P3-REC-01: actual expanded schema baseline includes every registered persistent table and rejects concurrent source changes instead of publishing mixed cuts (303.382591ms)
+✔ P3-REC-01/03: current complete-row journal seals actual command transactions; missing, truncated and unguarded writes never pass as replayable effects (115.676722ms)
+✔ P3-REC-01: UTF-8 logical rows cross 4MiB boundaries without whole-export buffering; incomplete final records reject (45.209667ms)
+✔ P3-REC-01/03: real isolated SQLite imports baseline and complete increments once; schema/history preserved, gate closed and pending outbox paused (296.146867ms)
+✔ P3-REC-01: persisted isolated SQL receipts resume after a lost import response without duplicating any source key (225.835696ms)
+✔ P3-REC-01/05: explicitly simulated independent object target restores ranges and tombstones once while remaining isolated (39.258876ms)
+✔ P3-REC-02: real separate SQL ledger persists deny before business shrink and activates only after both acknowledgements (43.75939ms)
+✔ P3-REC-02: partial cross-store failure remains denied; tampered or truncated signed authorization chains cannot become current trust (14.954452ms)
+✔ P3-REC-02: security event CAS admits one concurrent change, and an equal event ID with other content conflicts (19.228373ms)
+✔ P3-REC-02: actual command coordinator denies first, syncs its sealed authority image, and application access fails closed when trusted runtime is absent (419.53313ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2017.862524

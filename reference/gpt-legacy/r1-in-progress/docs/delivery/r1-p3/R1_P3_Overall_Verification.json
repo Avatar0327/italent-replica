@@ -1,0 +1,92 @@
+{
+  "kind": "R1_P3_two_round_local_verification_not_exit_approval",
+  "createdAt": "2026-09-10T10:46:37.951207+00:00",
+  "branch": "impl/r1-p3-20260910",
+  "approvalId": "R1-P2-EXIT-OWNER-20260910",
+  "productSourceSha": "7a86db4c62f09de0b9606050c073a7ef2510e87a",
+  "rounds": [
+    {
+      "round": 1,
+      "evidence": "evidence/r1-p3-20260910T103230203458Z.json",
+      "sourceSha": "7a86db4c62f09de0b9606050c073a7ef2510e87a",
+      "startedAt": "2026-09-10T10:32:30.203490+00:00",
+      "finishedAt": "2026-09-10T10:32:58.490272+00:00",
+      "testSummary": {
+        "tests": 183,
+        "pass": 183,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "typecheck": "passed",
+      "build": "passed",
+      "scope": "full_R1_local_synthetic"
+    },
+    {
+      "round": 2,
+      "evidence": "evidence/r1-p3-20260910T104045821462Z.json",
+      "sourceSha": "e4b6d386025458ecfbdc71ff48b2b74d41cae1fc",
+      "startedAt": "2026-09-10T10:40:45.821491+00:00",
+      "finishedAt": "2026-09-10T10:41:50.651710+00:00",
+      "testSummary": {
+        "tests": 183,
+        "pass": 183,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "typecheck": "passed",
+      "build": "passed",
+      "scope": "full_R1_local_synthetic"
+    }
+  ],
+  "functionalCoverage": [
+    "全部29个DDL在隔离SQLite执行/迁移兼容回滚/新事实及历史保留",
+    "当前行列权限/角色元组/委托/审批冻结与执行/员工自助/报表链",
+    "幂等/并发CAS/审计失败/未知回复查回执/租约重试",
+    "真实SQLite基线及完整事务增量/文件目标中断恢复/独立授权覆盖/保留GC/密钥轮换",
+    "稳定ID至审批调动关系、报表权限、隔离恢复的跨域链"
+  ],
+  "audit": "R1_P3_Artifact_Review.json",
+  "taskCounts": {
+    "localImplementationCheckpoints": 10,
+    "partialExternalBlocked": 1,
+    "total": 11
+  },
+  "task10Cases": {
+    "total": 22,
+    "actualR1Internal": 3,
+    "r1DirectoryWithoutDataset": 3,
+    "blockedRealProducer": 16
+  },
+  "originalAcceptanceCount": 85,
+  "designAndProducerCaseCount": 81,
+  "riskDispositionCounts": {
+    "P2": 9,
+    "P3": 20,
+    "P4": 8
+  },
+  "sourceEvidenceRequestsOwnedByP1": 13,
+  "allOriginalAcPassed": false,
+  "allElevenTasksComplete": false,
+  "riskClosuresByExecutor": 0,
+  "p3ExitApproved": false,
+  "p4Started": false,
+  "independentReview": "pending",
+  "limits": [
+    "两个183是同一完整套件的两次独立新执行，不是366个不同用例",
+    "正式平台/真实R2R3生产者/独立真人跨角色浏览器验收未执行，不计通过或测试框架skipped",
+    "实际本地SQLite；身份为合成、对象及通知/回执/平台访问证明显式模拟，无真实外效",
+    "01静态62路由63写方法目录非全路由动态覆盖；BASE-02-AC02仍保留partial原条件及独立复核",
+    "恢复关闸business_checked，RTO未完成，未证明30天连续RPO、P2 GB级容量或去重成本",
+    "权限恢复保守交集可能多拒合法旧组织范围；真实平台独占fence与后台未接线",
+    "备份乐观一致切点遇并发拒绝发布；最多2000对象/安全映像每表2000/事务16MiB/块4MiB；超预算拒绝",
+    "仍有当前DB引用的墓碑字节保留；不可称所有历史对象可物理清理"
+  ],
+  "failureAccounting": {
+    "overallRoundsFailed": 0,
+    "overallRoundsSkipped": 0,
+    "artifactAuditFirstAttempt": "evidence/artifact-review-attempt-1.json",
+    "artifactAuditCorrection": "两份显式开发失败诊断不含精确源码；改为核原日志摘要并排除通过统计，未修改原诊断。历史开发失败另见Differences及诊断记录。"
+  }
+}

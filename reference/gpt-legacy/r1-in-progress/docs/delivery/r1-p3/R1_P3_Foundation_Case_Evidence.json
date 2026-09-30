@@ -1,0 +1,42 @@
+{
+  "taskId": "P3-R1-01",
+  "kind": "supplemental_evidence_index_no_reimplementation",
+  "sourceSha": "e4b6d386025458ecfbdc71ff48b2b74d41cae1fc",
+  "cases": [
+    {
+      "id": "P3-ARC-01",
+      "code": [
+        "lib/hris/context.ts",
+        "lib/hris/r1-command.ts",
+        "lib/hris/r1-authorization.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-foundation.test.mjs"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T104045821462Z.json"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending"
+    },
+    {
+      "id": "P3-ARC-02",
+      "code": [
+        "lib/hris/context.ts",
+        "lib/hris/r1-command.ts",
+        "lib/hris/r1-authorization.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-foundation.test.mjs"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T104045821462Z.json"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending"
+    }
+  ],
+  "boundaries": [
+    "静态入口目录不是全路径动态覆盖；实际入口和断言以测试文件/运行日志为准",
+    "原BASE-02-AC02的真人跨角色验收没有执行；不改变原partial状态",
+    "这是既有代码的两轮复验索引，不宣称重新实施01"
+  ]
+}

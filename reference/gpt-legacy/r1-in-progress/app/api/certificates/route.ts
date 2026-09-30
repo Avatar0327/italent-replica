@@ -1,0 +1,8 @@
+import {z} from 'zod';
+import {developmentContext,visibleDevelopment,saveDevelopment} from '@/lib/hris/development-repository';
+import {applyCertificate,certificateSourceValid} from '@/lib/hris/certificates';
+import {visibleState,scopedOrgs} from '@/lib/hris/authorization';
+import {json,failure,readBody} from '@/lib/hris/http';
+const kinds=['certificateTemplate','certificateAward','enrollment','instructorProfile','mentorship'] as const;
+export async function GET(){try{const ctx=await developmentContext(kinds),state=visibleState(ctx.state,ctx.member),records=visibleDevelopment(ctx);return json({records,sourceChecks:records.filter(r=>r.kind==='certificateAward').map(r=>({id:r.id,valid:certificateSourceValid(ctx.records.find(s=>s.id===ctx.records.find(a=>a.id===r.id)?.payload.sourceRecordId&&s.employeeId===r.employeeId))})),managedOrgIds:['admin','hr'].includes(ctx.member.role)?Array.from(scopedOrgs(ctx.state,ctx.member)):[],orgs:state.orgs.map(o=>({id:o.id,name:o.name,status:o.status})),employees:state.employees.map(e=>({id:e.id,name:e.name,status:e.status})),revision:ctx.row.revision,role:ctx.member.role,employeeId:ctx.member.employeeId,userId:ctx.member.userId});}catch(e){return failure(e);}}
+export async function POST(request:Request){try{const body=z.object({revision:z.number().int().nonnegative(),command:z.unknown()}).parse(await readBody(request)),ctx=await developmentContext(kinds),r=applyCertificate(ctx.records,ctx.state,ctx.member,body.command);await saveDevelopment(ctx,body.revision,r,'内部证书：'+String((body.command as {action:string}).action));return json({id:r.id,revision:body.revision+1});}catch(e){return failure(e);}}

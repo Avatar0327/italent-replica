@@ -1,0 +1,14 @@
+✔ P3-ARC-01 / BASE-01-AC01: inactive, isolation and stale same-role authority reject (31.745838ms)
+✔ P3-ARC-01 / BASE-02-AC02: supplementary reads reject epoch or scope changes (13.423391ms)
+✔ P3-ARC-01: grant tuples do not cross product roles, fields, history, relations or actions (1.354989ms)
+✔ P3-ARC-02: audit failure rolls back facts, journal, receipt and outbox; next command succeeds once (31.634568ms)
+✔ P3-ARC-02: concurrent commands and lost response produce at most one business effect (23.049303ms)
+✔ P3-ARC-01: legacy HR and membership routes use the bridge; activation cannot bypass isolation (26.579491ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1100.729551

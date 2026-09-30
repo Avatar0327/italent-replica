@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {setup,act,expect,get,request} from './support/foundation-scenario.mjs';
+import {moveEmployee} from './support/performance-scenario.mjs';
+const survey=await import('../app/api/surveys/route.ts'),feedback=await import('../app/api/feedback/route.ts'),portal=await import('../app/api/self-service/route.ts');
+const command=async(api,body,status=200)=>expect(await api.POST(request('/api/test',{revision:(await get()).revision,command:body})),status);
+test('exited employee keeps survey history but has no actionable survey or feedback tasks',async t=>{
+ const f=await setup();t.after(()=>f.sqlite.close());act('owner');
+ const template=await command(survey,{action:'template',code:'EXIT-SURVEY',name:'合成状态核对',description:'合成问卷和评估状态一致性',questions:[{type:'rating',prompt:'合成评价',lowLabel:'低',highLabel:'高'}]});
+ await command(survey,{action:'publishTemplate',id:template.id});
+ const common={templateId:template.id,orgId:f.org.id,start:'2026-01-01',end:'2099-12-31',purpose:'仅合成数据验证离职后可办理入口'};
+ const round=await command(survey,{action:'round',...common,name:'合成问卷'});await command(survey,{action:'open',id:round.id});
+ const project=await command(feedback,{action:'project',...common,name:'合成360',minRespondents:3});
+ const invitation=await command(feedback,{action:'invite',projectId:project.id,subjectId:f.e.id,reviewerEmployeeId:f.e.id,relationship:'self'});await command(feedback,{action:'open',id:project.id});
+ act('employee');let self=await expect(await portal.GET());assert.ok(self.tasks.some(x=>x.id===round.id));assert.ok(self.tasks.some(x=>x.id===invitation.id));
+ await moveEmployee(f,'exit');act('employee');
+ await command(survey,{action:'respond',roundId:round.id,answers:[4]},403);
+ await command(feedback,{action:'respond',inviteId:invitation.id,answers:[4]},403);
+ const revision=(await get()).revision;
+ self=await expect(await portal.GET());assert.ok(!self.tasks.some(x=>[round.id,invitation.id].includes(x.id)),'portal must not advertise tasks already refused by business API');
+ const catalog=await expect(await survey.GET());assert.ok(catalog.records.some(x=>x.id===round.id));assert.ok(!catalog.canRespondIds.includes(round.id));
+ assert.ok(!(await expect(await feedback.GET())).canRespondIds.includes(invitation.id));
+ assert.equal((await get()).revision,revision);
+});

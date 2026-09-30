@@ -1,0 +1,19 @@
+✔ P3-M48-01: session binding controls subject; forged subject, missing binding, duplicate binding and inactive member fail closed (68.767734ms)
+✔ P3-M48-02: multi-role grants preserve direct/dotted/department field tuples; no cross product or sensitive leakage (70.582068ms)
+✔ P3-M48-03: 25 self tasks and two delegated reviews separate with stable cursors; awaiting publication is not pending approval (72.556249ms)
+✔ P3-M48-04/07: seven entries keep availability and source identity; OKR never invents scoring or unknown status actions (75.751479ms)
+✔ P3-M48-05: producer rejection preserves original rows; unknown balances/scores are not zero, changed sources reject before dispatch (69.359458ms)
+✔ P3-M48-06: cache revocation aborts old requests and object URLs; late data, 503 and auth version mixing cannot revive sensitive data (5.397686ms)
+✔ P3-M48-05/07: all seven synthetic producer actions preserve IDs and versions; lost committed reply queries actor-bound original receipt (73.077211ms)
+✔ P3-M48-02/03: history never inherits current grants, revoked roles invalidate cursor, missing team and incomplete sources expose no global count (75.033175ms)
+✔ P3-M48-02/07: authorization race or stale client versions prevent producer dispatch; malformed records fail closed (65.368666ms)
+✔ P3-M48-03/06: consumer invalidation and inbox share rollback, duplicate event cannot invalidate twice; route rejects forged parameters (75.950916ms)
+✔ BP-I-REQ-01: real compatibility projection counts only own published payslips, tracks appeal publication and retains original M26 identity (82.781359ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1599.29996

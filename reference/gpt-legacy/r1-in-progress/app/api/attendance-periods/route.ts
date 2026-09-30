@@ -1,0 +1,8 @@
+import {scopedOrgs} from '@/lib/hris/authorization';
+import {z} from 'zod';
+import {developmentContext,visibleDevelopment,saveDevelopment} from '@/lib/hris/development-repository';
+import {applyAttendancePeriod,attendancePeriodPreview,attendancePeriodPreviewInput} from '@/lib/hris/attendance-periods';
+import {json,failure,readBody,HttpError} from '@/lib/hris/http';
+const kinds=['attendancePeriod','shift','clock','correction','leaveType','leaveCredit','leave'] as const;
+export async function GET(){try{const c=await developmentContext(kinds,['admin','hr','manager']);return json({records:visibleDevelopment(c).filter(r=>r.kind==='attendancePeriod'),revision:c.row.revision,role:c.member.role});}catch(e){return failure(e);}}
+export async function POST(request:Request){try{const b=z.object({revision:z.number().int().nonnegative(),command:z.unknown()}).strict().parse(await readBody(request)),c=await developmentContext(kinds,['admin','hr']);if((b.command as {action?:string})?.action==='preview'){const input=attendancePeriodPreviewInput.parse(b.command),employee=c.state.employees.find(e=>e.id===input.employeeId);if(!employee||!scopedOrgs(c.state,c.member).has(employee.orgId))throw new HttpError(403,'没有此员工考勤期间权限');if(b.revision!==c.row.revision)throw new HttpError(409,'数据已变化，请刷新后重新预览');const {source,...preview}=attendancePeriodPreview(c.records,c.state,input.employeeId,input.start,input.end);return json({...preview,revision:c.row.revision});}const r=applyAttendancePeriod(c.records,c.state,c.member,b.command,c.row.revision);await saveDevelopment(c,b.revision,r,'考勤期间：'+String((b.command as {action:string}).action));return json({id:r.id,revision:b.revision+1});}catch(e){return failure(e);}}

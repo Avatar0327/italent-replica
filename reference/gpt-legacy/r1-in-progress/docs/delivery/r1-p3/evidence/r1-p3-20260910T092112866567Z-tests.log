@@ -1,0 +1,27 @@
+✔ P3-MIG-07: actual isolated DDL matches full manifest; schema drift and missing writer barrier reject before backfill (216.665843ms)
+✔ P3-ARC-02/P3-MIG-07: expanded domain writes, command seal and source columns are journaled atomically with same transaction token (171.588669ms)
+✔ P3-MIG-01/02: bounded storage0 conversion archives original JSON and switches only after every normalized table; batch replay is harmless (353.658304ms)
+✔ P3-MIG-01/05: immutable observations and stable maps cover legacy source keys without inventing dates, legal entities or new permissions (499.789324ms)
+✔ P3-MIG-02: 100-row backfill CAS loses no partial rows under concurrent source change; receipt and higher lease fence resume without duplicates (475.350288ms)
+✔ P3-MIG-03/06: per-key reconciliation rejects dirty sources, resumes with fresh batches; cutover and forward rollback keep every new fact and fence old writers (586.897268ms)
+✔ P3-MIG-03: converted legacy tuple preserves original current rows/fields only; tenant, revoked member and new capability remain denied (384.591184ms)
+✔ P3-MIG-04: contract version IDs do not duplicate; missing legal fact stays unknown, attachment hashes and tombstones retain quarantined references (308.839066ms)
+✔ P3-MIG-05: frozen D7 first signature and terminal approval survive normalization; unknown side effects never become successful or replayed (408.210244ms)
+✔ P3-MIG-06: new multi-assignment facts survive rollback, and legacy bridge cannot modify their primary source (365.609489ms)
+✔ P3-MIG-03: current and historical migrated assignment views remove legacy field aliases under record-only grants (433.919733ms)
+✔ P3-MIG-04/XMOD-03: actual SQL contract backfill keeps stable key across corrected legacy versions and report projection emits one contract with unknown legal label (650.256868ms)
+✔ P3-REC-01/04: bounded AES-256-GCM chunks roundtrip with separate wrapped key and independent signature, preserving exact byte boundaries (124.766638ms)
+✔ P3-REC-01/04: corruption, missing chunk, bad signature, wrong key and cross-checkpoint AAD fail before publication or restore (57.94092ms)
+✔ P3-REC-01/05: tombstoned multi-chunk object requires complete ordered references and whole-object SHA before verified manifest (24.012359ms)
+✔ P3-REC-01: actual expanded schema baseline includes every registered persistent table and rejects concurrent source changes instead of publishing mixed cuts (402.676392ms)
+✔ P3-REC-01/03: current complete-row journal seals actual command transactions; missing, truncated and unguarded writes never pass as replayable effects (130.610464ms)
+✔ P3-REC-01: UTF-8 logical rows cross 4MiB boundaries without whole-export buffering; incomplete final records reject (48.726741ms)
+✔ P3-REC-01/03: real isolated SQLite imports baseline and complete increments once; schema/history preserved, gate closed and pending outbox paused (365.426421ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6150.420229

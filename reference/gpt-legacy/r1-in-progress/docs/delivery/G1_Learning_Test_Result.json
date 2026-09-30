@@ -1,0 +1,32 @@
+{
+  "baseline": "99dccf1d499ff2ec950a0f70eb1421e86e3de7b2",
+  "testCommit": "dd1044e3afba0c3ba249fc92a75b33a5812da3f8",
+  "executedAtUTC": "2026-09-07T15:26:34.250034+00:00",
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "tests/g0-contracts.test.mjs",
+    "tests/g1-foundation.test.mjs",
+    "tests/g1-cadre-exit.test.mjs",
+    "tests/g1-learning.test.mjs",
+    "tests/p3-api.test.mjs"
+  ],
+  "exitCode": 0,
+  "durationSeconds": 17.403033545000653,
+  "environment": "Local synthetic in-memory SQLite, identity and Cloudflare substitutes; no production access",
+  "sha256": {
+    "tests/g0-contracts.test.mjs": "9ee98dda420e9ab65a0a1e57e9acd197693abf537304e1ef91be66028dd700fc",
+    "tests/g1-foundation.test.mjs": "e3246d314589e95b0476610de183d09995948db1f9805deb9e6a3c298de4e27c",
+    "tests/g1-cadre-exit.test.mjs": "21061ce951334079107330738a3e16c066fc3d45677737c66713714d3faaef2d",
+    "tests/g1-learning.test.mjs": "0f20a7fa67add50771310ad1191a9a0da1d4543e134326547da13ab3063c6b7f",
+    "tests/p3-api.test.mjs": "1adae64d4bb5323f583738516e167372d7cb929300456496c5ab6061e75ee255"
+  },
+  "summary": [
+    "# tests 95",
+    "# pass 95",
+    "# fail 0",
+    "# skipped 0",
+    "# duration_ms 17036.727922"
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "runId": "r1-p3-20260910T070210483124Z",
+  "sourceSha": "b7dac9cabaf078eef3b1632176e728d01901180a",
+  "taskId": "P3-R1-05",
+  "startedAt": "2026-09-10T07:02:10.483154+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/r1-p3-foundation.test.mjs": "a8d697d070e9a055109554954db0eb9db6cbefc7f06ab41bb5bc56fa6e0cb32c",
+    "tests/r1-p3-m01.test.mjs": "099a87e5571ca5e0d8e908bdef4de76d9144d10b58df85e2a11708316bf37a47",
+    "tests/r1-p3-transfer.test.mjs": "eb466bd68346d72f418f822c16480e1f800bfdbf709b677aa02492cb2d499abb",
+    "tests/r1-p3-workflow.test.mjs": "ea9cb811242b3f7b4229b16afb47124564dd2a3799560ec7a46950ebbf8fcfe6",
+    "tests/r1-p3-integration.test.mjs": "fca5171df4a9c6fd2290f48b096e90d0c79f18d0eff6fc1743d624ec02e2284c",
+    "tests/r1-p3-portal.test.mjs": "9302a9a32cb71423974ed9e2daac12105eb4fbcda80a83ada6044f1d8f91f306",
+    "tests/integration-preflight.test.mjs": "367b8351347ebeeec3584b8badb166f0fed4815ee4e13a1ee0cebb773f564041",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/r1-p3-foundation.test.mjs",
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs",
+        "tests/r1-p3-workflow.test.mjs",
+        "tests/r1-p3-integration.test.mjs",
+        "tests/r1-p3-portal.test.mjs",
+        "tests/integration-preflight.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T070210483124Z-tests.log",
+      "sha256": "1d7b9481cad241ece6d4ba150de27af7b697ea8d96349b3aec8605bed0cb2332"
+    },
+    {
+      "name": "types",
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T070210483124Z-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build",
+      "command": [
+        "node",
+        "/root/.codex/plugins/cache/openai-curated-remote/sites/0.1.56/scripts/build-site.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T070210483124Z-build.log",
+      "sha256": "a8448864df34a955bb8fd325808ebb077f7c99f362618955b081829b7411be7f"
+    }
+  ],
+  "testSummary": {
+    "tests": 84,
+    "pass": 84,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T07:02:28.560831+00:00"
+}

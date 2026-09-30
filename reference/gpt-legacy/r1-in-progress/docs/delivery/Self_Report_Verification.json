@@ -1,0 +1,22 @@
+{
+  "completedAt": "2026-09-08T11:12:08.452507+00:00",
+  "scope": "自助离职入口、报表调动撤权、P3既有接口及看板聚合；非全量测试",
+  "tests": 94,
+  "passed": 94,
+  "failed": 0,
+  "report": "docs/delivery/Self_Report_Run.log",
+  "typecheck": "passed",
+  "durationMs": 5919.602598,
+  "command": "node --test tests/report-current-scope.test.mjs tests/self-service-exit-tasks.test.mjs tests/p3-api.test.mjs tests/delivery-dashboard.test.mjs",
+  "sourceHashes": {
+    "app/api/feedback/route.ts": "c7e9247cf5247c9bf1e3b067608317a1b59755bb7c325bfb97f1d91a0db83964",
+    "app/api/self-service/route.ts": "49142604b1851b51a112611fd911ebf44a589de5b210883dbbc4749c68b7f952",
+    "app/api/surveys/route.ts": "5c639cae2e2bb9351ae5a0ce09dc7fbcffe2b92724c1fcafc3cd73f3cffa8ee0",
+    "app/feedback/workspace.tsx": "3121f2ca39966a19da2fbcec44818404a8ad400ade8bc746a8f6d3f5bc51c4c6",
+    "app/scope/delivery-dashboard.tsx": "df32f5516e29a173c2b4d79f7b512c8786e6f7e1b2792fbce00a6491239fbf30",
+    "tests/report-current-scope.test.mjs": "332b7b740e28f64e08f8bc8add25e0eb09b071dc9c674f88fb4bdec014705184",
+    "tests/self-service-exit-tasks.test.mjs": "1aab058f33684bfd9132bd13ba9e9c7d81e02640fd5ba3a5d1db6d3ff8fc0c68",
+    "tests/delivery-dashboard.test.mjs": "2bac0b1ee89afd66cc021b380213b13f1cee86d8fc57b9bff409c561474308a2"
+  },
+  "limitation": "无新增原站核实，未替代人工业务或生产验收；Worker渲染环境限制仍保留"
+}

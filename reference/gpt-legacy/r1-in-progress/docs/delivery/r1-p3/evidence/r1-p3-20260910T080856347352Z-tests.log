@@ -1,0 +1,56 @@
+✔ P3-M32-01/10: 21 stable datasets and 254 unique fields retain registered labels/types; 15 producer entries do not claim integration (9.104226ms)
+✔ P3-XMOD-02: label mapping keeps grade when email column absent and rejects guessed or duplicate columns (4.023484ms)
+✔ P3-M32-02/07: exact decimal and safe money retain missing counts, no zero denominator or mixed currency fabrication (2.218949ms)
+✔ P3-M32-07: typed AST rejects hidden filter/sort/formula, SQL, units, ambiguous joins and excessive depth; values remain bindings (6.90261ms)
+✔ P3-M32-04/02: actual compatibility calculation keeps old published result under draft replacement and unknown recruitment headcount is null (456.99941ms)
+✔ P3-M32-07: decimal SQL filters compare exact signed decimal parts beyond JS safe integer precision (3.012299ms)
+✔ P3-M32-07: published registered metrics validate units, and timestamps reject normalized invalid calendar dates (3.236768ms)
+✔ P3-M32-06/09: export has durable ID, exact idempotency, CSV states and current read+export authority; cancelled files remain bytes but unreadable (243.946855ms)
+✔ P3-M32-06: ready audit failure leaves only inaccessible orphan; retry and lost response recover by job ID without duplicating chunks (110.50133ms)
+✔ P3-M32-06: expired worker loses fencing, tenant has one active lease and fixed generation exports all pages under source updates (250.700988ms)
+✔ P3-M32-05/09: revoke field, move person, or cross actor denies old export; corrupt object never downloads (92.459669ms)
+✔ P3-M32-09: numeric negatives remain numeric and real zero differs from null in CSV (0.795459ms)
+✔ P3-M32-09: synchronous CSV commits audit before release and safely reproduces exact receipt; API never starts unverified background worker (121.539814ms)
+✔ P3-M32-06: concurrent claims admit only one worker; expiry during put leaves orphan and no visible chunk (89.391555ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): workforce (4.32103ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): contractCoverage (1.990391ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): contractOperations (0.953692ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): recruitmentOperations (0.858026ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): attendance (1.158094ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): payrollOperations (1.348835ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): payrollReconciliation (0.49783ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): payrollAttendanceReferences (0.493475ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): performanceOperations (21.887003ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): performance (0.765237ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): talentReview (0.412041ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): successionCoverage (0.396136ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): learning (0.581427ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): learningPlanProgress (0.852406ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): learningExams (0.767463ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): homework (0.378173ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): trainingStageProgress (0.551761ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): trainingProgress (0.315508ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): trainingRoster (1.800056ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): instructorSchedule (0.787086ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): instructorCampaignProgress (0.385916ms)
+✔ P3-M32-01/03: M01 projection keeps one row per stable person, left coverage rows and real dated contract records (219.859824ms)
+✔ P3-M32-03/05: snapshot retains fixed values while current person scope/field revocation strips access; source changes cannot splice pages (154.186067ms)
+✔ P3-M32-03: projection resume is idempotent and source cutoff is stable across build pages; audit failure cannot publish partial ready snapshot (100.309915ms)
+✔ P3-M32-07: definition publication freezes validated payload; hidden field, stale draft and audit failure publish no new version (88.201869ms)
+✔ P3-M32-03/05: direct API enforces time and unknown parameter rules without unbounded legacy context reads (102.51341ms)
+✔ P3-M32-05/07: summary-only grants aggregate current scope, refuse drill, count null separately and retain legal zero-denominator state (103.025469ms)
+✔ P3-M32-05: person scope update during SQL read invalidates response before any old fields are returned (71.545432ms)
+✔ P3-M32-03/07: sorted seek pages use unique tie-breakers; saved definition runs published version and rejects overrides (111.794568ms)
+✔ P3-M32-01/07: fixed authorized 1:N joins deduplicate before root metrics; coverage counts people and preserves unknown coverage (105.461673ms)
+✔ P3-M32-02/07: database decimal sums are exact with missing counts; money never aggregates mixed currencies (81.87081ms)
+{"proof":"synthetic 10001-row local SQLite query, not cloud load acceptance","chunks":51,"maxRows":200,"maxBytes":165201,"queryPlan":["SEARCH r USING INDEX sqlite_autoindex_r1_report_rows_1 (tenant_id=? AND dataset_id=? AND generation_id=? AND row_key>?)"]}
+{"proof":"local SQL + simulated object store export; no cloud worker","exportChunks":51,"exportedRows":10001,"maxConcurrentLease":1}
+✔ P3-M32-06: 10001 synthetic versioned rows build in bounded chunks; SQL indexed pagination covers every key exactly once (3698.087543ms)
+ℹ tests 46
+ℹ suites 0
+ℹ pass 46
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5089.87541

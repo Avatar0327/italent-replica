@@ -1,0 +1,136 @@
+{
+  "checkedAt": "2026-09-08T12:36:34.759Z",
+  "projectId": "appgprj_6a9e2c705cfc819180e0e5251bb025cc",
+  "source": "Sites get_site / read_database_overview / read_database_table_rows；只读、有界、无原站人员数据",
+  "identity": {
+    "authClientConfigured": true,
+    "externalVisitors": 0,
+    "groups": 0,
+    "installationExists": true,
+    "installationOwnerHasActiveAdmin": true,
+    "ownerMatchesApplicationGrant": true,
+    "siteStatus": "active",
+    "siteViewers": 1,
+    "version": 110,
+    "workspaceRevision": 0,
+    "workspaceStorageVersion": 1
+  },
+  "company": "华耀有为",
+  "tablesChecked": [
+    {
+      "hasMore": false,
+      "returnedRows": 0,
+      "table": "hris_orgs",
+      "truncated": false
+    },
+    {
+      "hasMore": false,
+      "returnedRows": 0,
+      "table": "hris_employees",
+      "truncated": false
+    },
+    {
+      "hasMore": false,
+      "returnedRows": 0,
+      "table": "hris_positions",
+      "truncated": false
+    },
+    {
+      "hasMore": false,
+      "returnedRows": 0,
+      "table": "hris_grades",
+      "truncated": false
+    },
+    {
+      "hasMore": false,
+      "returnedRows": 0,
+      "table": "hris_workflows",
+      "truncated": false
+    },
+    {
+      "hasMore": false,
+      "returnedRows": 0,
+      "table": "hris_approvals",
+      "truncated": false
+    },
+    {
+      "hasMore": false,
+      "returnedRows": 0,
+      "table": "hris_attachments",
+      "truncated": false
+    },
+    {
+      "hasMore": false,
+      "returnedRows": 0,
+      "table": "hris_development_records",
+      "truncated": false
+    }
+  ],
+  "identityReadBound": {
+    "tables": [
+      "hris_installation",
+      "hris_memberships",
+      "hris_access_grants",
+      "hris_workspaces"
+    ],
+    "limitPerTable": 3,
+    "eachRows": 1,
+    "hasMore": false
+  },
+  "browser": {
+    "historical": "受管预览running；浏览器ERR_BLOCKED_BY_CLIENT",
+    "currentPreviewStatus": "stopped",
+    "newNavigationAttempts": 0,
+    "reason": "没有恢复证据，不重复原路径；Sites环境不允许代理浏览器访问线上Sites",
+    "ownerCurrentSession": "用户已确认两个入口均正常打开；非代理浏览器复测"
+  },
+  "writes": "决策前检查无写入；本轮已授权提交/私有发布及0009增量schema，详见postDecisionDeployment；没有业务数据或访问权限写入",
+  "conclusion": "所有者端页面访问已由用户确认；保持仅所有者访问，多角色人工验收暂缓；此前空业务表为原检查时刻证据，未重新读取数据",
+  "userConfirmation": {
+    "recordedAt": "2026-09-08T12:57:16.343604+00:00",
+    "source": "用户本轮明确回复",
+    "E1": "正常，都能正常打开",
+    "E2": "暂时不新增人类测试访问者",
+    "scope": "仅确认/settings与/employees页面可打开；未确认数据内容、业务操作、多角色或生产验收"
+  },
+  "postDecisionDeployment": {
+    "checkedAt": "2026-09-08T13:25:00.932995+00:00",
+    "version": 111,
+    "commit": "3d690cbbd6336c6de8b76a06fa4459700b1e3a88",
+    "deploymentId": "appgdep_6aa00c1c77948191899be9e2c773c84f",
+    "status": "succeeded",
+    "envRevision": 1,
+    "schema": {
+      "checkedAt": "2026-09-08T13:23:31.983Z",
+      "columns": [
+        "tenant_id",
+        "id",
+        "employee_id",
+        "kind",
+        "org_id",
+        "reason",
+        "status",
+        "created",
+        "created_by",
+        "decided",
+        "decided_by",
+        "current_step",
+        "workflow_version",
+        "details"
+      ],
+      "hasMore": false,
+      "projection": {
+        "next_offset": null,
+        "omitted_columns": 0,
+        "omitted_rows": 0,
+        "truncated": false,
+        "truncated_values": 0
+      },
+      "returnedRows": 0,
+      "table": "hris_approvals"
+    },
+    "writes": "已授权代码提交/私有发布与0009非破坏schema增量；未写云端业务数据/身份/访问权限",
+    "humanUat": "未执行；E2保持唯一实际访问者；仅所有者可操作子集就绪",
+    "previousTableReads": "其余表空表证据仍为此前检查，不计本轮重查"
+  }
+}

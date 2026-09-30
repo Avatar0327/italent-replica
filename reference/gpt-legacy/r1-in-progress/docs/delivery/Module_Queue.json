@@ -1,0 +1,1914 @@
+{
+  "version": "33-core15",
+  "activeWriter": "当前聊天唯一总控",
+  "mode": "module-closure-rolling-R",
+  "branchCreationBase": "commit introducing this queue; exact SHA in git history",
+  "items": [
+    {
+      "handoff": "H004",
+      "module": "04 绩效管理",
+      "branch": "delivery/performance",
+      "status": "returned",
+      "writer": null,
+      "assignedOwner": "总控（当前聊天）",
+      "allowedPaths": [
+        "lib/hris/performance.ts",
+        "lib/hris/performance-changes.ts",
+        "lib/hris/performance-checkins.ts",
+        "app/performance/",
+        "app/performance-changes/",
+        "app/performance-checkins/",
+        "app/api/performance/",
+        "app/api/performance-changes/",
+        "app/api/performance-checkins/",
+        "tests/g2-performance*.test.mjs",
+        "tests/support/performance-*.mjs",
+        "docs/delivery/modules/performance.md",
+        "docs/delivery/G2_performance_*"
+      ],
+      "predecessor": null,
+      "gate": "G2"
+    },
+    {
+      "handoff": "H005",
+      "module": "05 招聘管理",
+      "branch": "delivery/recruitment",
+      "status": "controller-backlog",
+      "writer": null,
+      "assignedOwner": "总控（当前聊天）",
+      "allowedPaths": [
+        "lib/hris/recruitment.ts",
+        "app/recruitment/",
+        "app/api/recruitment/",
+        "tests/g2-recruitment*.test.mjs",
+        "tests/support/recruitment-*.mjs",
+        "docs/delivery/modules/recruitment.md",
+        "docs/delivery/G2_recruitment_*"
+      ],
+      "predecessor": "H004",
+      "gate": "G2"
+    },
+    {
+      "handoff": "H006",
+      "module": "06 假勤管理",
+      "branch": "delivery/attendance",
+      "status": "controller-backlog",
+      "writer": null,
+      "assignedOwner": "总控（当前聊天）",
+      "allowedPaths": [
+        "lib/hris/attendance.ts",
+        "app/attendance/",
+        "app/api/attendance/",
+        "tests/g3-attendance*.test.mjs",
+        "tests/support/attendance-*.mjs",
+        "docs/delivery/modules/attendance.md",
+        "docs/delivery/G3_attendance_*"
+      ],
+      "predecessor": "H005",
+      "gate": "G3"
+    },
+    {
+      "handoff": "H007",
+      "module": "07 薪酬管理",
+      "branch": "delivery/payroll",
+      "status": "controller-backlog",
+      "writer": null,
+      "assignedOwner": "总控（当前聊天）",
+      "allowedPaths": [
+        "lib/hris/payroll.ts",
+        "lib/hris/payroll-access.ts",
+        "lib/hris/payroll-review.ts",
+        "lib/hris/payroll-adjustments.ts",
+        "lib/hris/payroll-reports.ts",
+        "app/payroll/",
+        "app/payroll-adjustments/",
+        "app/api/payroll/",
+        "app/api/payroll-adjustments/",
+        "tests/g3-payroll*.test.mjs",
+        "tests/support/payroll-*.mjs",
+        "docs/delivery/modules/payroll.md",
+        "docs/delivery/G3_payroll_*"
+      ],
+      "predecessor": "H006",
+      "gate": "G3"
+    },
+    {
+      "handoff": "H008",
+      "module": "08 自助报表与集成",
+      "branch": "delivery/integration",
+      "status": "controller-backlog",
+      "writer": null,
+      "assignedOwner": "总控（当前聊天）",
+      "allowedPaths": [
+        "lib/hris/work-inbox.ts",
+        "lib/hris/reports.ts",
+        "app/work-inbox/",
+        "app/reports/",
+        "app/self-service/",
+        "app/api/work-inbox/",
+        "app/api/reports/",
+        "app/api/self-service/",
+        "tests/g3-integration*.test.mjs",
+        "tests/support/integration-*.mjs",
+        "docs/delivery/modules/integration.md",
+        "docs/delivery/G3_integration_*"
+      ],
+      "predecessor": "H007",
+      "gate": "G3/G4准备"
+    }
+  ],
+  "handoffReturn": {
+    "sha": "ca5f82af7fee4a29789ba969ea070a5cd3544307",
+    "merged": true,
+    "businessAccepted": false
+  },
+  "controllerQueue": [
+    {
+      "id": "L-REQ",
+      "status": "technical-delivered-v78",
+      "next": "保持兼容及回归"
+    },
+    {
+      "id": "L-EXAM",
+      "status": "technical-delivered-v79",
+      "next": "保留多题型待办"
+    },
+    {
+      "id": "L-BIND",
+      "status": "technical-delivered-v80",
+      "next": "保留回归；推进阶段窗口，业务/生产未验收"
+    },
+    {
+      "id": "L-GRADE",
+      "status": "technical-delivered-v80",
+      "dependencies": [
+        "L-BIND"
+      ],
+      "next": "保留回归；推进阶段窗口，业务/生产未验收"
+    },
+    {
+      "id": "G1-UAT",
+      "status": "blocked-ui-environment",
+      "next": "预览服务正常但浏览器ERR_BLOCKED_BY_CLIENT；不阻断其他开发，不冒称通过"
+    },
+    {
+      "id": "L-STAGE-WINDOW",
+      "status": "technical-delivered-v87-partial",
+      "dependencies": [
+        "L-REQ"
+      ],
+      "acceptance": "阶段截止与逾期规则明确标记原站证据/独立策略；服务端、待办和历史一致，兼容旧版本",
+      "next": "精确原站规则仍待业务对照；保留旧版与跨日回归"
+    },
+    {
+      "id": "L-RECURRENCE",
+      "status": "technical-delivered-v81",
+      "dependencies": [
+        "L-BIND"
+      ],
+      "acceptance": "新轮实例与任务原子隔离、重复请求/撤销不重复奖励、不得冒称自动调度",
+      "next": "作业新轮已验证，自动调度与积分仍待开发"
+    },
+    {
+      "id": "L-EXAM-TYPES",
+      "status": "technical-delivered-v82",
+      "dependencies": [
+        "L-EXAM"
+      ],
+      "acceptance": "客观题版本、计分和答案投影，旧单选兼容；人工题/题库另列",
+      "next": "保留人工题/题库待办"
+    },
+    {
+      "id": "L-HOMEWORK",
+      "status": "technical-delivered-v83",
+      "dependencies": [
+        "L-BIND"
+      ],
+      "acceptance": "独立提交/批阅版本、转交撤权、阶段/循环及单项整单取消隔离",
+      "next": "保留多级批阅/附件/AI及奖励待办"
+    },
+    {
+      "id": "L-WEIGHTED-GRADE",
+      "status": "technical-delivered-v84",
+      "dependencies": [
+        "L-HOMEWORK",
+        "L-GRADE"
+      ],
+      "acceptance": "BC-L10来源映射，缺失不归零、不同实例不可借用、权重版本冻结",
+      "next": "保留回归；继续在途内容更新影响预览"
+    },
+    {
+      "id": "L-CONTENT-UPDATE",
+      "status": "technical-delivered-v86-partial",
+      "dependencies": [
+        "L-BIND",
+        "L-HOMEWORK",
+        "L-WEIGHTED-GRADE"
+      ],
+      "acceptance": "BC-L03未完成实例内容更新，完成历史默认保留；影响可预览，权限/并发/成绩与学分来源不被静默改写",
+      "next": "循环更新、完成重开、退出重加及批量异步运营仍保留"
+    },
+    {
+      "id": "P-SOURCE",
+      "status": "partial-evidence-verified",
+      "dependencies": [
+        "H004"
+      ],
+      "acceptance": "核对原站员工绩效字段与流程；分清页面证据、独立实现与企业待确认规则",
+      "next": "BC-P01/P02已核对；后续核对考核关系与组织绩效，不把新增字段等同提交规则"
+    },
+    {
+      "id": "P-RATINGS",
+      "status": "technical-delivered-v88-partial",
+      "dependencies": [
+        "H004",
+        "P-SOURCE"
+      ],
+      "acceptance": "同组织定版等级、冻结历史、明确区间、三档映射、独立申诉与旧百分制兼容",
+      "next": "保持原版兼容与申诉回归；手工等级、系数、排除考核与在途更新继续保留"
+    },
+    {
+      "id": "P-ACTIVITY",
+      "status": "technical-delivered-v89-partial",
+      "dependencies": [
+        "P-SOURCE",
+        "P-RATINGS"
+      ],
+      "acceptance": "分类可筛选/报表追溯、草稿明确编辑与启动后冻结、旧版本兼容",
+      "next": "最终类型/构建收集后私有发布；完整模板按Performance_Template_Design.md继续"
+    },
+    {
+      "id": "R-SOURCE",
+      "status": "in-progress",
+      "dependencies": [
+        "H005"
+      ],
+      "acceptance": "只读核对招聘需求/候选/面试/录用流程字段，未知规则明确保留",
+      "next": "同会话已进入需求列表，核对新增表单及现有招聘实现差异"
+    },
+    {
+      "id": "R-SUBMISSION",
+      "status": "technical-delivered-v90",
+      "dependencies": [
+        "R-SOURCE",
+        "H005"
+      ],
+      "acceptance": "保存/提交/审批分离，旧draft兼容，贡献者隔离、CAS及审计回滚和录用入职回归",
+      "next": "构建后统一私有发布，继续职位/应聘者与面试原站差异"
+    },
+    {
+      "id": "R-RETRY",
+      "status": "technical-delivered-v91",
+      "dependencies": [
+        "R-SUBMISSION"
+      ],
+      "acceptance": "保存并提交一修订原子性、丢失响应创建重放不再写入、请求键冲突、作用域角色及内部信息隔离",
+      "next": "类型/构建后统一私有发布；继续独立待办，不将本局部机制说成全API幂等"
+    },
+    {
+      "id": "R-JOB",
+      "status": "technical-delivered-v92",
+      "dependencies": [
+        "R-SOURCE",
+        "R-SUBMISSION"
+      ],
+      "acceptance": "内部招聘职位独立版本、候选冻结来源、需求容量与权限不扩大；旧候选兼容，外发广告不冒充实现",
+      "next": "继续面试排期原站表单与候选多职位需求，人工验收另记"
+    },
+    {
+      "id": "R-INTERVIEW-SOURCE",
+      "status": "partial-evidence-BC-R08",
+      "dependencies": [
+        "R-SOURCE"
+      ],
+      "acceptance": "核实只读排期字段、角色和生命周期；明确未核实的通知/评价规则，不操作原业务",
+      "next": "排期字段已核实，实际提交/通知及完整规则仍后续只读研究"
+    },
+    {
+      "id": "R-EVALUATION",
+      "status": "technical-delivered-v93",
+      "dependencies": [
+        "R-INTERVIEW-SOURCE"
+      ],
+      "acceptance": "四档多指标模板冻结，显式结论，旧面试兼容，当前账号与组织权限，最近评价录用门槛和历史追溯",
+      "next": "内部排期关联与冻结模板；人工及生产验收独立记录"
+    },
+    {
+      "id": "R-SCHEDULE",
+      "status": "technical-delivered-v94",
+      "dependencies": [
+        "R-EVALUATION",
+        "R-INTERVIEW-SOURCE"
+      ],
+      "acceptance": "内部单人排期、冲突和角色约束、冻结评价表、取消/调动/离职阻断、评价与完成原子保存，通知不外发",
+      "next": "人工预验收独立记录；多人员/外发/多时区等保留；按优先级继续假勤"
+    },
+    {
+      "id": "A-SOURCE",
+      "status": "partial-evidence-BC-A01-06",
+      "dependencies": [
+        "R-SCHEDULE"
+      ],
+      "acceptance": "原站班次/假种/期间结算可见规则与既有实现对照，未验证规则单列；不修改原业务",
+      "next": "后续核实班次/休假/完整月报流程，原站仅只读"
+    },
+    {
+      "id": "A-PERIOD",
+      "status": "technical-delivered-v95",
+      "dependencies": [
+        "A-SOURCE"
+      ],
+      "acceptance": "单人期间预览、来源快照和版本、冻结假勤写保护、重新开放/更正、范围/并发/审计回滚；无完整月报发布封存声称",
+      "next": "继续固定班次定义及批量派班，原站其他月报功能保留"
+    },
+    {
+      "id": "A-SHIFT-DEFINITION",
+      "status": "technical-delivered-v96",
+      "dependencies": [
+        "A-SOURCE",
+        "A-PERIOD"
+      ],
+      "acceptance": "版本化固定班次与派班原子性、既有时间/范围/冻结锁复用、历史班次不被新定义覆盖",
+      "next": "人工预验收独立记录；复杂班次保持范围，继续A-LEAVE-SOURCE"
+    },
+    {
+      "id": "A-LEAVE-SOURCE",
+      "status": "partial-evidence-BC-A07",
+      "dependencies": [
+        "A-SOURCE"
+      ],
+      "acceptance": "只读核对休假/假种配置、计量及余额边界，区分已证实字段与未核实自动规则",
+      "next": "空表已取消；继续余额配置，未验证的公式/自动发假不实现为既定规则"
+    },
+    {
+      "id": "A-LEAVE-RULES",
+      "status": "technical-delivered-v97",
+      "dependencies": [
+        "A-LEAVE-SOURCE"
+      ],
+      "acceptance": "组织、工作分钟上下限、制度与快照、退休停止新增但不毁损历史、调动余额保留及独立审批回归",
+      "next": "人工预验收独立记录；继续PAY-SOURCE，完整假期模式不删减"
+    },
+    {
+      "id": "PAY-SOURCE",
+      "status": "partial-evidence-BC-S01-03",
+      "dependencies": [
+        "A-SOURCE"
+      ],
+      "acceptance": "薪酬原站可见模块/字段/流程与既有独立编制复核发布对照，税/银行/公式未知规则不臆造",
+      "next": "活动空表已读，需关闭验证并记录；原站自动核算、税/支付仍只读后续"
+    },
+    {
+      "id": "PAY-ATTENDANCE",
+      "status": "technical-delivered-v98",
+      "dependencies": [
+        "A-PERIOD",
+        "PAY-SOURCE"
+      ],
+      "acceptance": "冻结期间聚合快照、权限/同月/同人/去重、来源变化阻止提交复核发布，既有金额和已发布历史不重写",
+      "next": "继续统一待办与引用报表联调；人工验收独立记录"
+    },
+    {
+      "id": "I-INBOX-SOURCES",
+      "status": "technical-delivered-v99",
+      "dependencies": [
+        "PAY-ATTENDANCE",
+        "R-SCHEDULE"
+      ],
+      "acceptance": "指定面试待办与当前角色一致；薪酬来源变化转纠正待办而非推进；引用报表权限与冻结快照一致",
+      "next": "人工预验收独立记录，继续I04外部集成契约"
+    },
+    {
+      "id": "I-EXTERNAL-CONTRACT",
+      "status": "contract-and-synthetic-tested",
+      "dependencies": [
+        "G0"
+      ],
+      "acceptance": "定义字段归属/映射、事件幂等/重试/对账/失败处理；仅合成桩或只读预验，不执行真实迁移或外部写入",
+      "next": "协议/真实字段责任未核实，不启动外部写入；契约4项测试和类型通过，继续独立业务缺口"
+    },
+    {
+      "id": "P-TEXT-TEMPLATE",
+      "status": "private-published-v100",
+      "dependencies": [
+        "P-RATINGS",
+        "P-ACTIVITY",
+        "P-SOURCE"
+      ],
+      "acceptance": "同组织模板版本和活动快照、阶段必填及未知字段拒绝、未发布管理文本在接口/历史隔离、旧无模板流程兼容",
+      "next": "完整多维/角色/附件仍保留，继续已核实的模板与任务入口缺口；213项为v100历史证据"
+    },
+    {
+      "id": "P-INBOX-LINK",
+      "status": "private-published-v101",
+      "dependencies": [
+        "P-TEXT-TEMPLATE"
+      ],
+      "acceptance": "自评/退回重提、调整待审暂缓、评价与发布任务指向权限范围内具体记录；调动离职不产生可推进任务",
+      "next": "214/214综合、类型与构建通过并已私有发布；人工界面仍待验证。继续模板范围与恢复验证"
+    },
+    {
+      "id": "P-GOAL-RANGE",
+      "status": "private-published-v102",
+      "dependencies": [
+        "P-TEXT-TEMPLATE"
+      ],
+      "acceptance": "BC-P05范围随周期冻结、目标保存与变更强制检查、非法范围无副作用、目标变更清空旧回答保留历史",
+      "next": "216/216综合、类型和构建通过并已私有发布；继续指标库和来源快照，软提示及跨模块权重仍保留"
+    },
+    {
+      "id": "P-INDICATOR-CATALOG",
+      "status": "tested-awaiting-private-publish",
+      "dependencies": [
+        "P-GOAL-RANGE"
+      ],
+      "acceptance": "BC-P06同组织定性指标版本、目标来源服务端快照、归档前后新旧引用、目标调整原子性与无指标兼容",
+      "next": "220/220综合、类型及构建通过，提交打包私有发布；继续引用情况与追溯，定量、共享分类和自动下发仍保留"
+    },
+    {
+      "id": "F-FIELD-EXIT",
+      "status": "private-published-v105",
+      "dependencies": [
+        "F01",
+        "F02"
+      ],
+      "acceptance": "离职前提出的档案字段申请不能在离职后批准生效；独立HR可退回，正式值、修订与历史保持一致；仅合成数据",
+      "next": "保留回归，人工业务验收未签署；继续既定模块队列"
+    },
+    {
+      "id": "C-LIFECYCLE-REVIEW",
+      "status": "private-published-v105",
+      "dependencies": [
+        "F-FIELD-EXIT"
+      ],
+      "acceptance": "核查干部任期/考察待办在员工离职或调动后的读写与历史边界；仅修复有既有规则依据的确切缺陷",
+      "next": "保留回归，人工业务验收未签署；继续既定模块队列"
+    },
+    {
+      "id": "L-LIFECYCLE-REVIEW",
+      "status": "technical-reviewed-tested",
+      "dependencies": [
+        "C-LIFECYCLE-REVIEW"
+      ],
+      "acceptance": "核查学习未完成任务与员工状态变化组合，保留已核验成果和历史，不自动授予资格",
+      "next": "本轮学习组合5项通过，未发现须新增改动的生命周期缺陷；继续既有阶段/循环完整范围"
+    },
+    {
+      "id": "G4-WORKER-SMOKE",
+      "status": "blocked-runtime-network-approval",
+      "dependencies": [
+        "G0"
+      ],
+      "acceptance": "以实际Worker兼容运行时验证构建产物启动和匿名访问边界，消除普通Node误加载cloudflare协议的测试工具问题；不代替线上或人工验收",
+      "next": "Miniflare启动尝试被环境网络审批取消，未建立运行中进程；取得可运行的Worker测试环境后验证，不用普通Node伪替代。继续原站只读核实和独立业务开发"
+    },
+    {
+      "id": "P-INDICATOR-USAGE",
+      "status": "private-published-v105",
+      "dependencies": [
+        "P-INDICATOR-CATALOG"
+      ],
+      "acceptance": "BC-P06引用情况以实际指标版本快照追溯目标/待审/已发布；HR当前权限、分页与同记录去重，不显示未授权人员或评分",
+      "next": "保留回归，人工业务验收未签署；继续既定模块队列"
+    },
+    {
+      "id": "R-LIFECYCLE-GATES",
+      "status": "private-published-v106",
+      "dependencies": [
+        "P-INDICATOR-USAGE"
+      ],
+      "acceptance": "已有招聘要求R03的岗位/职级停用后不允许推进面试或录用；退回和拒绝可清理在途，保持历史与事务",
+      "next": "v106已发布；保留五条停用路径回归，人工业务验收仍待签署"
+    },
+    {
+      "id": "A-PAY-EXIT-SETTLEMENT",
+      "status": "technical-reviewed-tested",
+      "dependencies": [
+        "R-LIFECYCLE-GATES"
+      ],
+      "acceptance": "离职后禁止新增班次，历史待审假勤独立核实后可冻结并引用末期工资；发布后来源变化不改金额",
+      "next": "复用现有实现，10项关联测试通过，人工业务及生产验收仍待签署"
+    },
+    {
+      "id": "I-RESTORE-REVOCATIONS",
+      "status": "technical-reviewed-tested",
+      "dependencies": [
+        "A-PAY-EXIT-SETTLEMENT"
+      ],
+      "acceptance": "隔离合成恢复演练覆盖备份后撤权：旧快照恢复前后识别陈旧授权，经独立可信撤权清单对账后保持拒绝；不访问云端真实数据",
+      "next": "本轮隔离恢复14项检查通过；云端可信撤权来源、持久重放和开放闸门待实现及生产验收。下一步登记既有未拆分范围与明确验收缺口"
+    },
+    {
+      "id": "P1-F-RULES",
+      "status": "in-progress",
+      "dependencies": [],
+      "acceptance": "将已观察结构、未核实规则与独立设计逐条映射；业务负责人确认范围和规则，记录确认人、时间及证据，不以代码或测试代签",
+      "recoveryCondition": "当前原站会话可复用；按来源缺口只读补证，不将既有人工验收设为前置；具体局部限制见P1_Review例外。",
+      "next": "已补BC-F04–07。继续只读组织视图/配置、再入职说明、兼职生效与终止、法人变更及复杂字段联动；禁止业务提交，不以人工UAT阻断。"
+    },
+    {
+      "id": "P1-C-RULES",
+      "status": "in-progress",
+      "dependencies": [],
+      "acceptance": "将已观察结构、未核实规则与独立设计逐条映射；业务负责人确认范围和规则，记录确认人、时间及证据，不以代码或测试代签",
+      "recoveryCondition": "当前原站会话可复用；按来源缺口只读补证，不将既有人工验收设为前置；具体局部限制见P1_Review例外。",
+      "next": "已补BC-C04–07；继续任用类型/期限和委员会说明、旧干部与健康分析控件；N级模块按原ID补典型页，不移植其他应用证据。"
+    },
+    {
+      "id": "P1-L-RULES",
+      "status": "in-progress",
+      "dependencies": [],
+      "acceptance": "将已观察结构、未核实规则与独立设计逐条映射；业务负责人确认范围和规则，记录确认人、时间及证据，不以代码或测试代签",
+      "recoveryCondition": "当前原站会话可复用；按来源缺口只读补证，不将既有人工验收设为前置；具体局部限制见P1_Review例外。",
+      "next": "BC-L12已解除学分页历史占位；继续只读设置方式/授予折抵、完整共享/循环/成绩说明；不合并学习简介隔离代码，不扩展实现。"
+    },
+    {
+      "id": "P1-P-RULES",
+      "status": "in-progress",
+      "dependencies": [],
+      "acceptance": "将已观察结构、未核实规则与独立设计逐条映射；业务负责人确认范围和规则，记录确认人、时间及证据，不以代码或测试代签",
+      "recoveryCondition": "当前原站会话可复用；按来源缺口只读补证，不将既有人工验收设为前置；具体局部限制见P1_Review例外。",
+      "next": "BC-P07已取得组织绩效列表；流程页无内容/无权限仍未核实，补手工评级、系数及组织绩效说明；不开发。"
+    },
+    {
+      "id": "P1-R-RULES",
+      "status": "in-progress",
+      "dependencies": [],
+      "acceptance": "将已观察结构、未核实规则与独立设计逐条映射；业务负责人确认范围和规则，记录确认人、时间及证据，不以代码或测试代签",
+      "recoveryCondition": "当前原站会话可复用；按来源缺口只读补证，不将既有人工验收设为前置；具体局部限制见P1_Review例外。",
+      "next": "BC-R09到达Offer审批载体但未取表头；继续只读录用、渠道/电子签、容量扣占说明；不发Offer、不审批、不通知。"
+    },
+    {
+      "id": "P1-A-RULES",
+      "status": "in-progress",
+      "dependencies": [],
+      "acceptance": "将已观察结构、未核实规则与独立设计逐条映射；业务负责人确认范围和规则，记录确认人、时间及证据，不以代码或测试代签",
+      "recoveryCondition": "当前原站会话可复用；按来源缺口只读补证，不将既有人工验收设为前置；具体局部限制见P1_Review例外。",
+      "next": "BC-A09已取调休假结算表头；继续单位、结转/额度、跨班及月报状态说明；不执行结算。"
+    },
+    {
+      "id": "P1-S-RULES",
+      "status": "in-progress",
+      "dependencies": [],
+      "acceptance": "将已观察结构、未核实规则与独立设计逐条映射；业务负责人确认范围和规则，记录确认人、时间及证据，不以代码或测试代签",
+      "recoveryCondition": "当前原站会话可复用；按来源缺口只读补证，不将既有人工验收设为前置；具体局部限制见P1_Review例外。",
+      "next": "BC-S05已取薪资组层级/对应部门表头；继续薪资组依赖及企业调动核算说明；不选择真实配置展开核算，不执行计算支付。"
+    },
+    {
+      "id": "P1-I-RULES",
+      "status": "in-progress",
+      "dependencies": [],
+      "acceptance": "将已观察结构、未核实规则与独立设计逐条映射；业务负责人确认范围和规则，记录确认人、时间及证据，不以代码或测试代签",
+      "recoveryCondition": "当前原站会话可复用；按来源缺口只读补证，不将既有人工验收设为前置；具体局部限制见P1_Review例外。",
+      "next": "BC-I03报告设置和BC-I04映射筛选复核已记录；继续自助/报表角色及N级扩展模块、第三方方向/调度/重试契约只读说明；不读取秘密、不连接测试或同步。"
+    },
+    {
+      "id": "E-EXIT-TASKS",
+      "status": "private-published-v107",
+      "dependencies": [
+        "A-PAY-EXIT-SETTLEMENT"
+      ],
+      "acceptance": "离职员工问卷与360不能填报时，自助和业务页均不再显示可办理入口；历史仍可按授权查看，撤权立即拒绝",
+      "next": "94项关联验证与正式构建通过，v107已发布；人工业务及生产未验收"
+    },
+    {
+      "id": "P-GOAL-ADVISORY",
+      "status": "private-published-v108",
+      "dependencies": [
+        "P-GOAL-RANGE"
+      ],
+      "acceptance": "数量和权重分别可配置提示/强制，旧快照默认强制，基础权重总和等约束仍生效；模板修订不能改写既有周期",
+      "next": "25项绩效关联回归、类型和正式构建通过，v108私有发布；完整模板范围及业务验收继续保留"
+    },
+    {
+      "id": "F01",
+      "status": "technical-validation-human-uat-pending",
+      "dependencies": [],
+      "acceptance": "组织/员工/岗位标识及入转调离；按业务场景独立验收并记录确认人、时间与证据",
+      "next": "保持历史技术与未完UAT；当前推进BP-F的P1A/P1B，不以E2多人UAT暂缓阻断需求工作",
+      "recoveryCondition": "多角色人工验收需用户未来主动恢复具名测试访问；本轮保持单账号，不改业务规则或自审保护",
+      "acceptancePackage": "F01-F04"
+    },
+    {
+      "id": "F02",
+      "status": "technical-validation-human-uat-pending",
+      "dependencies": [],
+      "acceptance": "角色、组织和字段权限及撤权；按业务场景独立验收并记录确认人、时间与证据",
+      "next": "保持历史技术与未完UAT；当前推进BP-F的P1A/P1B，不以E2多人UAT暂缓阻断需求工作",
+      "recoveryCondition": "多角色人工验收需用户未来主动恢复具名测试访问；本轮保持单账号，不改业务规则或自审保护",
+      "acceptancePackage": "F01-F04"
+    },
+    {
+      "id": "F03",
+      "status": "technical-validation-human-uat-pending",
+      "dependencies": [],
+      "acceptance": "修订冲突、事务、审批快照、审计；按业务场景独立验收并记录确认人、时间与证据",
+      "next": "保持历史技术与未完UAT；当前推进BP-F的P1A/P1B，不以E2多人UAT暂缓阻断需求工作",
+      "recoveryCondition": "多角色人工验收需用户未来主动恢复具名测试访问；本轮保持单账号，不改业务规则或自审保护",
+      "acceptancePackage": "F01-F04"
+    },
+    {
+      "id": "F04",
+      "status": "technical-validation-human-uat-pending",
+      "dependencies": [],
+      "acceptance": "本人附件和历史权限；按业务场景独立验收并记录确认人、时间与证据",
+      "next": "保持历史技术与未完UAT；当前推进BP-F的P1A/P1B，不以E2多人UAT暂缓阻断需求工作",
+      "recoveryCondition": "多角色人工验收需用户未来主动恢复具名测试访问；本轮保持单账号，不改业务规则或自审保护",
+      "acceptancePackage": "F01-F04"
+    },
+    {
+      "id": "C01",
+      "status": "technical-reviewed-tested",
+      "dependencies": [],
+      "acceptance": "标准版本→盘点→发展计划；按业务场景独立验收并记录确认人、时间与证据",
+      "next": "限定技术证据见docs/delivery/G1_PreAcceptance_Report.md；保留历史及当前关联回归，不代签人工业务或生产验收",
+      "recoveryCondition": "完成人工业务核对与签署"
+    },
+    {
+      "id": "C02",
+      "status": "technical-reviewed-tested",
+      "dependencies": [],
+      "acceptance": "人才档案展示授权的计划与学习状态；按业务场景独立验收并记录确认人、时间与证据",
+      "next": "限定技术证据见docs/delivery/G1_PreAcceptance_Report.md；保留历史及当前关联回归，不代签人工业务或生产验收",
+      "recoveryCondition": "完成人工业务核对与签署"
+    },
+    {
+      "id": "L01",
+      "status": "technical-reviewed-tested",
+      "dependencies": [],
+      "acceptance": "同标准版本的 planId 派课；按业务场景独立验收并记录确认人、时间与证据",
+      "next": "限定技术证据见docs/delivery/G1_PreAcceptance_Report.md；保留历史及当前关联回归，不代签人工业务或生产验收",
+      "recoveryCondition": "完成人工业务核对与签署"
+    },
+    {
+      "id": "L02",
+      "status": "technical-reviewed-tested",
+      "dependencies": [],
+      "acceptance": "考试/出勤→提交→独立核验；按业务场景独立验收并记录确认人、时间与证据",
+      "next": "限定技术证据见docs/delivery/G1_PreAcceptance_Report.md；保留历史及当前关联回归，不代签人工业务或生产验收",
+      "recoveryCondition": "完成人工业务核对与签署"
+    },
+    {
+      "id": "L03",
+      "status": "technical-reviewed-tested",
+      "dependencies": [],
+      "acceptance": "阶段门槛、取消恢复、学分去重/有效期；按业务场景独立验收并记录确认人、时间与证据",
+      "next": "限定技术证据见docs/delivery/G1_PreAcceptance_Report.md；保留历史及当前关联回归，不代签人工业务或生产验收",
+      "recoveryCondition": "完成人工业务核对与签署"
+    },
+    {
+      "id": "L04",
+      "status": "blocked-rule-confirmation",
+      "dependencies": [
+        "业务转认例外规则确认"
+      ],
+      "acceptance": "显式申请与独立审核历史课程复用；按业务场景独立验收并记录确认人、时间与证据",
+      "next": "显式例外转认提案仍未实现；不得用progressSync同步功能冒充。确认适用课程/有效期/目标出勤豁免/已结项撤销策略后，再实现独立申请审核和消费者一致性",
+      "recoveryCondition": "业务负责人确认显式例外转认适用范围、有效期与撤销策略；继续独立已核实项"
+    },
+    {
+      "id": "C-INTERVIEW-REGISTER",
+      "status": "private-published-v109",
+      "dependencies": [
+        "BC-C02空表字段证据已取得"
+      ],
+      "acceptance": "BC-C02访谈字段、类型/角色/200字上限有原站空表证据；HR范围内登记、更正、作废和不可变历史，通用接口与档案不向经理或本人泄露内容",
+      "next": "本轮247/247、类型与正式构建通过，v109已私有发布；人工业务及生产未验收"
+    },
+    {
+      "id": "F-CONTRACT-FIELDS",
+      "status": "private-published-awaiting-business-acceptance",
+      "dependencies": [
+        "BC-F02字段继承说明及信息集已只读核实"
+      ],
+      "acceptance": "合同文本字段独立版本与合同快照；续签按当前字段版本选择继承或不继承，手工覆盖/清空有明确来源，旧合同不被配置变化改写；HR权限与事务保持",
+      "next": "v110已发布；任职继承/合同变更/其他字段类型保留，人工业务验收待签署"
+    }
+  ],
+  "executionMode": "模块闭环优先、按R版本滚动转序",
+  "activeAcceptancePackage": null,
+  "expansionPaused": true,
+  "handoff": {
+    "to": "总控｜P1盘点与需求基线",
+    "status": "当前用户已确认缩为15模块，接续实际HEAD与未提交成果，不回退/不重盘；唯一执行者",
+    "objective": "原规划细化P1A原站证据及P1B产品需求；全项目P1未验收",
+    "humanAcceptancePrerequisite": false,
+    "E2": "暂不新增人类测试访问者",
+    "resumeDocument": "docs/delivery/Controller_Resume.md"
+  },
+  "currentP1": {
+    "revision": "2026-09-09-module-closure-rolling-R",
+    "introducedBy": "用户本轮要求新增细化；不是原规划早已定义",
+    "updatedAt": "2026-09-10T03:24:03.609414+00:00",
+    "phaseOrder": [
+      "P0",
+      "P1A",
+      "P1B",
+      "P2",
+      "P3",
+      "P4",
+      "P5"
+    ],
+    "phases": [
+      {
+        "id": "P0",
+        "name": "规划维护",
+        "input": "原48组规划/台账、当前用户15核心模块范围变更",
+        "work": "在原Scope维护15/33/6及R1–R4、单主模块/备用条件、模块收口与条件化转序，保留48/59历史",
+        "deliverables": "范围变更/路标/同源生成视图/恢复点",
+        "exit": "15+33精确分区，原48编号/59任务与历史不变；未静默删减15模块内部常规业务",
+        "limits": "不重写原规划历史；不宣称该划分启动时已有",
+        "next": "当前15模块P1A/P1B衔接执行"
+      },
+      {
+        "id": "P1A",
+        "name": "原站盘点与证据基线",
+        "input": "当前15组原登记范围、六类基础能力、已有48组证据与合成数据",
+        "work": "按唯一主模块的具体待关闭问题采用风险匹配证据；普通配置综合页面/帮助/既有证据，高风险优先合成执行。已充分证据不重测；不阻塞项列后续验证。",
+        "deliverables": "模块清单、页面目录、字段字典、流程说明、差异与受限清单",
+        "exit": "模块完整原登记范围逐项有足以明确需求的证据判定；核心风险未证部分须有明确替代设计与批准例外。完整通过/受限通过/已完成待评审/进行中/受阻分列；15分母不变，不要求穷尽全部组合。",
+        "limits": "合成授权保持，不更改真实业务/外部通知/交易/签署；单账号不能代独立角色；未知不编造，不擅自缩减15模块内部功能",
+        "next": "按R1 P3、R2/R3 P2明确授权分别交接；LIMIT保留",
+        "currentStatus": "当前15模块受限关闭，完整0/受限15"
+      },
+      {
+        "id": "P1B",
+        "name": "本项目产品需求基线",
+        "input": "当前15模块P1A、D1–D7、已有代码和历史证据、六类基础与必要外部契约",
+        "work": "同模块对象/字段/权限/状态/异常/依赖/接口及可执行验收形成集中评审包；原站事实、已确认设计、建议、待决分列；F01–04不代整个M01。",
+        "deliverables": "总体PRD、分包规格、需求就绪表、实现对应表",
+        "exit": "模块适用范围明确、实施规则已决、验收可执行、依赖/例外已处理，且有P1A/P1B批准及转序评审才就绪；受限通过单列。全项目P1仍须15模块及基础范围评审，版本转序不等待其后R版本。",
+        "limits": "编写完成不等于需求验收；首包就绪不等于全项目P1完成；多人UAT不作为P1前置",
+        "next": "按R1 P3、R2/R3 P2明确授权分别交接；LIMIT保留",
+        "currentStatus": "当前15模块受限关闭，完整0/受限15"
+      },
+      {
+        "id": "P2",
+        "name": "复核复用技术底座",
+        "input": "获模块与R版本转序评审的需求/适用基础、既有技术底座和对应版本历史证据",
+        "work": "复核复用历史底座，独立完成架构、数据、权限、接口、迁移及异常设计评审；验证云端备份目标/成本/责任，仅补必要设计",
+        "deliverables": "各R设计说明、数据/权限/接口/迁移/异常设计和独立退出评审",
+        "exit": "六类设计齐备可实施，批准需求逐项映射，阻断差异关闭或批准处置，恢复目标可行性/成本及责任明确；设计评审记录批准，证据注明版本",
+        "limits": "已有受限技术验收不扩大到当前全量；不重复建底座",
+        "next": "P2退出条件满足并评审批准后才进入该R的P3，不能由P1转序批准或历史技术记录推定",
+        "currentStatus": "R1所有者批准退出；R2/R3获准进入尚未执行"
+      },
+      {
+        "id": "P3",
+        "name": "按业务包实现与验收",
+        "input": "该包P1B就绪、P2复核、前包验收/转序记录",
+        "work": "按获准R版本/业务包复用并补实现、验证、业务验收和问题关闭；一次一个主要执行任务，R2/R3 P1在依赖和可用时段推进",
+        "deliverables": "可运行包、版本化测试、业务验收结论和问题关闭记录",
+        "exit": "当前包验收结论已记录；未通过项、依赖影响及转序依据明确，阻断项不静默跳过",
+        "limits": "本P1窗口不执行产品修改/P3测试/部署；R2/R3必须先独立P2退出评审。业务和生产验收独立",
+        "next": "按队列下一包；全部包达条件后P4",
+        "currentStatus": "R1获准进入，尚未开始；R2/R3未获准"
+      },
+      {
+        "id": "P4",
+        "name": "跨模块及生产准备验收",
+        "input": "当前15模块/基础能力验收与跨包契约、正式环境要求",
+        "work": "跨模块数据/状态联动、完整权限、业务UAT、容量/恢复/监控/迁移与生产准备验证",
+        "deliverables": "集成与权限验收、缺陷关闭、生产准备结论",
+        "exit": "当前约定15模块及基础集成/完整权限/生产准备有证据和签署，阻断缺陷关闭；外部预留边界明确，不以私有部署当生产验收",
+        "limits": "完整多人UAT和正式身份、容量、运维指标待条件具备；合成身份测试不能代签",
+        "next": "进入P5交付及上线审查"
+      },
+      {
+        "id": "P5",
+        "name": "交付运维与上线",
+        "input": "当前交付15模块/基础的P4结论、上线授权与运行责任",
+        "work": "交付源码/版本、操作及运维资料、恢复/回滚、培训、上线和切换核对",
+        "deliverables": "交付清单、运维手册、上线/回滚与生产验收记录",
+        "exit": "约定交付齐备并验收；正式切换获授权，关键路径及运行责任确认",
+        "limits": "私有部署成功不是生产验收；本轮不发布、不切换；33暂缓资产留存，不计本次交付完成",
+        "next": "运行维护及约定后续变更"
+      }
+    ],
+    "projectP1Accepted": false,
+    "activeWorkPackage": "P1治理交接",
+    "mainDevelopmentPackage": null,
+    "expansionPaused": true,
+    "humanUatBlocksP1": false,
+    "businessOrder": [
+      "BP-F",
+      "BP-I",
+      "BP-C",
+      "BP-L",
+      "BP-P",
+      "BP-R",
+      "BP-A",
+      "BP-S"
+    ],
+    "nextTasks": [
+      "R1独立P3窗口读取固定P2对象及启动提示词",
+      "R2独立P2设计窗口读取R2交接与启动提示词",
+      "R3独立P2设计窗口读取R3交接与启动提示词",
+      "P1总控保留13项原站定向补证及各LIMIT责任，不重开宽泛探索"
+    ],
+    "state": "当前15模块P1受限关闭，Release分别交接",
+    "scopeChange": "SCOPE-20260909-CORE15",
+    "supportModuleIds": [
+      "M19",
+      "M48",
+      "M32"
+    ],
+    "currentWork": "P1最终收口与下游交接完成；原站补证责任保留",
+    "executionPolicy": {
+      "id": "MODE-MODULE-CLOSURE-R-20260909",
+      "authorizedAt": "2026-09-09T15:43:36.730682+00:00",
+      "mode": "模块闭环优先、按R版本滚动转序",
+      "primaryModuleId": "M01",
+      "backupModuleId": null,
+      "backupCandidateId": null,
+      "activeExecutionModuleId": "M01",
+      "wipLimit": 1,
+      "backupLimit": 1,
+      "backupActivation": "仅主模块剩余必要工作全部依赖外部条件/用户决定才可启用1个备用；主模块可推进时优先回归",
+      "evidencePolicy": {
+        "highRisk": "核心交易、权限、生效时间、数据完整性及关键异常优先执行证据；不足时写明限制和明确项目设计，须获规则/例外批准才能转序",
+        "ordinary": "普通配置/静态字段允许页面、帮助与一致既有证据形成需求结论；不穷尽配置组合",
+        "newExploration": "每个新探索绑定closureChecklist问题ID；先判断是否改变当前需求正确性，不阻塞事项进入后续验证清单",
+        "noAutomaticWaiver": "模式调整不批准业务规则、内部延期或验收豁免；D1–D7保持，E2仅本人；P1权限设计评审不替代后续真人权限验收"
+      },
+      "statusVocabulary": [
+        "完整通过",
+        "受限通过",
+        "已完成待评审",
+        "进行中",
+        "受阻"
+      ],
+      "transitionConditions": [
+        "applicableScopeDetermined",
+        "implementationRulesDecided",
+        "acceptanceExecutable",
+        "dependenciesAndExceptionsResolved"
+      ],
+      "transitionRule": "四项条件均true且有证据；P1A结论及P1B评审均完整通过或获明确受限批准；transitionReview.approved=true且有批准范围/日期/记录才可转序。受限通过自身不足以转序。",
+      "rangeTransitionRule": "R1 P2已批准，仅准P3；R2/R3 P1已关闭，仅准P2设计；P4和生产独立。当前窗口不实施下游。",
+      "focusHistory": [
+        {
+          "at": "2026-09-09T15:43:36.730682+00:00",
+          "from": "M17",
+          "to": "M01",
+          "reason": "用户确认模块闭环/R顺序；此前原子单元已提交，停止M17扩展",
+          "remaining": "M17停用IDP流程一次保存结果未知；池成员培养中/3~6个月为最近证据；原站当前页面不可读，无新增结果不明操作",
+          "restore": "轮到R2/M17或M01必要依赖时先查询旧记录；不重复创建"
+        },
+        {
+          "at": "2026-09-09T15:54:02.023639+00:00",
+          "from": "M01",
+          "to": "M19（备用）",
+          "reason": "M01六项收口/10组决策/例外/验收及实现差异已完成可评审材料，剩余关闭动作均依用户批准或原站连接恢复；启用唯一备用M19做现有证据/代码可完成部分",
+          "remaining": "M01仍唯一主模块；无通过/转序批准",
+          "restore": "收到任何可推进M01的规则/例外批准或源连接恢复，先回M01；不等待M19整个模块结束"
+        },
+        {
+          "at": "2026-09-09T16:17:23.873817+00:00",
+          "from": "M01（收到批准后优先恢复）",
+          "to": "M19",
+          "reason": "M01-P1-APPROVAL-20260909：M01条件已满足并受限关闭，按已确认顺序转下一主模块",
+          "remaining": "M01仅P2/P3/P4残余验证，不为此留P1硬阻塞",
+          "restore": "仅已批规则发生实质变更需重新评审受影响范围，不重开全量盘点"
+        },
+        {
+          "at": "2026-09-09T16:23:54.326124+00:00",
+          "from": "M19",
+          "to": "M48（唯一备用）",
+          "reason": "M19完整范围、四组可决定建议、验收及差异已准备；剩余全部依明确规则/例外批准或原站连接。启M48唯一备用做现有证据和需求闭环材料。",
+          "remaining": "M19仍唯一主模块、未关闭；不启动M32第三模块",
+          "restore": "M19获得可推进的批准或原站连接恢复即优先回归，不等M48完整结束"
+        },
+        {
+          "at": "2026-09-09T16:53:50.674271+00:00",
+          "from": "M19",
+          "to": "M48",
+          "reason": "M19-P1-APPROVAL-20260909明确批准、四项退出条件复核满足，按用户既定顺序受限关闭",
+          "remaining": "M19只有P2/P3/P4残余验证，不再有P1硬阻塞",
+          "restore": "仅未来明确的实质变更重新评审受影响条款，不重开宽泛取证"
+        },
+        {
+          "at": "2026-09-09T16:54:17.104368+00:00",
+          "from": "M48",
+          "to": "M32",
+          "reason": "M48-P1-APPROVAL-20260909明确批准、四项退出条件复核满足，按用户既定顺序受限关闭",
+          "remaining": "M48只有P2/P3/P4残余验证，不再有P1硬阻塞",
+          "restore": "仅未来明确的实质变更重新评审受影响条款，不重开宽泛取证"
+        },
+        {
+          "at": "2026-09-09T17:17:54.867696+00:00",
+          "from": "M32 / R1 P2交接",
+          "to": "M37",
+          "reason": "R1四模块受限关闭、六基础及P2设计转序获批，交接e7f9d3d已推送核实，按用户指定续R2 P1",
+          "remaining": "R1仅后续P2/P3/P4责任，不作为本窗口P1硬阻塞；M37接续已有证据",
+          "restore": "R1需求实质变更才复核受影响条款，不重开宽泛盘点"
+        },
+        {
+          "at": "2026-09-09T17:25:41.784317+00:00",
+          "from": "M37",
+          "to": "M06（唯一备用）",
+          "reason": "M37两项完整范围/五组推荐/LIMIT/验收/差异已提交；剩余关闭条件全部依用户批准或不可用源连接，启用M06唯一备用做已有证据和静态需求收口",
+          "remaining": "M37仍唯一主模块，未获需求/例外批准",
+          "restore": "收到M37可推进批准或源连接恢复即优先回归，不等M06完整结束"
+        },
+        {
+          "at": "2026-09-09T18:22:09.823974+00:00",
+          "from": "M37",
+          "to": "M06",
+          "reason": "M37-P1-APPROVAL-R2-20260909四退出条件满足，严格顺序受限关闭",
+          "remaining": "仅后续阶段风险补验",
+          "restore": "仅明确新变更重新评审受影响条款"
+        },
+        {
+          "at": "2026-09-09T18:22:46.166597+00:00",
+          "from": "M06",
+          "to": "M26",
+          "reason": "M06-P1-APPROVAL-R2-20260909四退出条件满足，严格顺序受限关闭",
+          "remaining": "仅后续阶段风险补验",
+          "restore": "仅明确新变更重新评审受影响条款"
+        },
+        {
+          "at": "2026-09-09T18:28:44.746209+00:00",
+          "from": "M26",
+          "to": "M18",
+          "reason": "本模块全部可自主材料完成，按本轮明确夜间材料授权串行移交；不代表关闭",
+          "remaining": [
+            "M26-SPEC-01",
+            "M26-SPEC-02",
+            "M26-SPEC-03",
+            "M26-SPEC-04",
+            "M26-SPEC-05",
+            "M26-LIMIT-01"
+          ],
+          "restore": "集中决定后按正式关闭顺序M26优先应用；补证仅围绕所列问题"
+        },
+        {
+          "at": "2026-09-09T18:32:47.077203+00:00",
+          "from": "M18",
+          "to": "M17",
+          "reason": "本模块全部可自主材料完成，按本轮明确夜间材料授权串行移交；不代表关闭",
+          "remaining": [
+            "M18-SPEC-01",
+            "M18-SPEC-02",
+            "M18-SPEC-03",
+            "M18-SPEC-04",
+            "M18-SPEC-05",
+            "M18-LIMIT-01"
+          ],
+          "restore": "集中决定后按正式关闭顺序M26优先应用；补证仅围绕所列问题"
+        },
+        {
+          "at": "2026-09-09T18:40:16.868160+00:00",
+          "from": "M17",
+          "to": "M03",
+          "reason": "本模块全部可自主材料完成，按本轮明确夜间材料授权串行移交；不代表关闭",
+          "remaining": [
+            "M17-SPEC-01",
+            "M17-SPEC-02",
+            "M17-SPEC-03",
+            "M17-SPEC-04",
+            "M17-SPEC-05",
+            "M17-SPEC-06",
+            "M17-LIMIT-01"
+          ],
+          "restore": "集中决定后按正式关闭顺序M26优先应用；补证仅围绕所列问题"
+        },
+        {
+          "at": "2026-09-09T18:45:46.389452+00:00",
+          "from": "M03",
+          "to": "M26",
+          "reason": "本模块全部可自主材料完成，按本轮明确夜间材料授权串行移交；不代表关闭",
+          "remaining": [
+            "M03-SPEC-01",
+            "M03-SPEC-02",
+            "M03-SPEC-03",
+            "M03-SPEC-04",
+            "M03-SPEC-05",
+            "M03-SPEC-06",
+            "M03-LIMIT-01"
+          ],
+          "restore": "集中决定后按正式关闭顺序M26优先应用；补证仅围绕所列问题"
+        },
+        {
+          "at": "2026-09-10T02:39:23.518757+00:00",
+          "from": "M26",
+          "to": "M18",
+          "reason": "M26-P1-APPROVAL-20260910四条件满足，按批准顺序受限关闭",
+          "remaining": "仅P2设计/P3验证/P4验收残余责任",
+          "restore": "仅新批准变更回到受影响条款，不重开宽泛盘点"
+        },
+        {
+          "at": "2026-09-10T02:41:58.226023+00:00",
+          "from": "M18",
+          "to": "M17",
+          "reason": "M18-P1-APPROVAL-20260910四条件满足，按批准顺序受限关闭",
+          "remaining": "仅P2设计/P3验证/P4验收残余责任",
+          "restore": "仅新批准变更回到受影响条款，不重开宽泛盘点"
+        },
+        {
+          "at": "2026-09-10T02:43:06.591554+00:00",
+          "from": "M17",
+          "to": "M03",
+          "reason": "M17-P1-APPROVAL-20260910四条件满足，按批准顺序受限关闭",
+          "remaining": "仅P2设计/P3验证/P4验收残余责任",
+          "restore": "仅新批准变更回到受影响条款，不重开宽泛盘点"
+        },
+        {
+          "at": "2026-09-10T02:44:14.280019+00:00",
+          "from": "M03",
+          "to": "M27",
+          "reason": "M03-P1-APPROVAL-20260910四条件满足，按批准顺序受限关闭",
+          "remaining": "仅P2设计/P3验证/P4验收残余责任",
+          "restore": "仅新批准变更回到受影响条款，不重开宽泛盘点"
+        },
+        {
+          "at": "2026-09-10T02:48:41.726545+00:00",
+          "from": "M27",
+          "to": "M16",
+          "reason": "本模块可自主材料完成，仅剩新业务选择及LIMIT，按本轮明确R3材料授权转下一项",
+          "remaining": [
+            "M27-SPEC-01",
+            "M27-SPEC-02",
+            "M27-SPEC-03",
+            "M27-SPEC-04",
+            "M27-SPEC-05",
+            "M27-SPEC-06",
+            "M27-LIMIT-01"
+          ],
+          "restore": "集中批准后按M27→M16→M12→M11→M07逐个判定"
+        },
+        {
+          "at": "2026-09-10T02:51:15.660044+00:00",
+          "from": "M16",
+          "to": "M12",
+          "reason": "本模块可自主材料完成，仅剩新业务选择及LIMIT，按本轮明确R3材料授权转下一项",
+          "remaining": [
+            "M16-SPEC-01",
+            "M16-SPEC-02",
+            "M16-SPEC-03",
+            "M16-SPEC-04",
+            "M16-SPEC-05",
+            "M16-SPEC-06",
+            "M16-LIMIT-01"
+          ],
+          "restore": "集中批准后按M27→M16→M12→M11→M07逐个判定"
+        },
+        {
+          "at": "2026-09-10T02:53:58.299605+00:00",
+          "from": "M12",
+          "to": "M11",
+          "reason": "本模块可自主材料完成，仅剩新业务选择及LIMIT，按本轮明确R3材料授权转下一项",
+          "remaining": [
+            "M12-SPEC-01",
+            "M12-SPEC-02",
+            "M12-SPEC-03",
+            "M12-SPEC-04",
+            "M12-SPEC-05",
+            "M12-SPEC-06",
+            "M12-LIMIT-01"
+          ],
+          "restore": "集中批准后按M27→M16→M12→M11→M07逐个判定"
+        },
+        {
+          "at": "2026-09-10T02:56:23.457492+00:00",
+          "from": "M11",
+          "to": "M07",
+          "reason": "本模块可自主材料完成，仅剩新业务选择及LIMIT，按本轮明确R3材料授权转下一项",
+          "remaining": [
+            "M11-SPEC-01",
+            "M11-SPEC-02",
+            "M11-SPEC-03",
+            "M11-SPEC-04",
+            "M11-SPEC-05",
+            "M11-LIMIT-01"
+          ],
+          "restore": "集中批准后按M27→M16→M12→M11→M07逐个判定"
+        },
+        {
+          "at": "2026-09-10T02:58:52.883177+00:00",
+          "from": "M07",
+          "to": "M27",
+          "reason": "本模块可自主材料完成，仅剩新业务选择及LIMIT，按本轮明确R3材料授权转下一项",
+          "remaining": [
+            "M07-SPEC-01",
+            "M07-SPEC-02",
+            "M07-SPEC-03",
+            "M07-SPEC-04",
+            "M07-SPEC-05",
+            "M07-SPEC-06",
+            "M07-LIMIT-01"
+          ],
+          "restore": "集中批准后按M27→M16→M12→M11→M07逐个判定"
+        },
+        {
+          "at": "2026-09-10T03:21:03.591922+00:00",
+          "from": "M27",
+          "to": "M16",
+          "reason": "M27-P1-APPROVAL-20260910四条件满足，按批准顺序受限关闭",
+          "remaining": "仅P2设计/P3验证/P4验收残余责任",
+          "restore": "仅新批准变更回到受影响条款，不重开宽泛盘点"
+        },
+        {
+          "at": "2026-09-10T03:21:49.283664+00:00",
+          "from": "M16",
+          "to": "M12",
+          "reason": "M16-P1-APPROVAL-20260910四条件满足，按批准顺序受限关闭",
+          "remaining": "仅P2设计/P3验证/P4验收残余责任",
+          "restore": "仅新批准变更回到受影响条款，不重开宽泛盘点"
+        },
+        {
+          "at": "2026-09-10T03:21:54.095842+00:00",
+          "from": "M12",
+          "to": "M11",
+          "reason": "M12-P1-APPROVAL-20260910四条件满足，按批准顺序受限关闭",
+          "remaining": "仅P2设计/P3验证/P4验收残余责任",
+          "restore": "仅新批准变更回到受影响条款，不重开宽泛盘点"
+        },
+        {
+          "at": "2026-09-10T03:22:13.305264+00:00",
+          "from": "M11",
+          "to": "M07",
+          "reason": "M11-P1-APPROVAL-20260910四条件满足，按批准顺序受限关闭",
+          "remaining": "仅P2设计/P3验证/P4验收残余责任",
+          "restore": "仅新批准变更回到受影响条款，不重开宽泛盘点"
+        },
+        {
+          "at": "2026-09-10T03:22:17.727544+00:00",
+          "from": "M07",
+          "to": "M07",
+          "reason": "M07-P1-APPROVAL-20260910四条件满足，按批准顺序受限关闭",
+          "remaining": "仅P2设计/P3验证/P4验收残余责任",
+          "restore": "仅新批准变更回到受影响条款，不重开宽泛盘点"
+        },
+        {
+          "at": "2026-09-10T03:24:03.609414+00:00",
+          "fromModule": "M07",
+          "to": "M01",
+          "reason": "全部15模块P1已受限关闭；保留R1补证统筹入口，当前仅治理交接",
+          "remaining": "13项原站补证和已批LIMIT后续责任",
+          "restore": "按具体风险与可用权限定向核证，不重开已批需求"
+        }
+      ],
+      "backupActivationHistory": [
+        {
+          "at": "2026-09-09T15:54:02.023639+00:00",
+          "reason": "M01六项收口/10组决策/例外/验收及实现差异已完成可评审材料，剩余关闭动作均依用户批准或原站连接恢复；启用唯一备用M19做现有证据/代码可完成部分",
+          "remainingPrimary": [
+            "F-SPEC-01–08",
+            "SCOPE-DEP-01",
+            "M01-BASELINE-01",
+            "M01-LIMIT-01"
+          ],
+          "returnWhen": "收到任何可推进M01的规则/例外批准或源连接恢复，先回M01；不等待M19整个模块结束"
+        },
+        {
+          "at": "2026-09-09T16:23:54.326124+00:00",
+          "reason": "M19完整范围、四组可决定建议、验收及差异已准备；剩余全部依明确规则/例外批准或原站连接。启M48唯一备用做现有证据和需求闭环材料。",
+          "remainingPrimary": [
+            "M19-SPEC-01–04",
+            "M19-LIMIT-01",
+            "原站CDP刷新20秒超时"
+          ],
+          "returnWhen": "M19获得可推进的批准或原站连接恢复即优先回归，不等M48完整结束"
+        },
+        {
+          "at": "2026-09-09T17:25:41.784317+00:00",
+          "reason": "M37两项完整范围/五组推荐/LIMIT/验收/差异已提交；剩余关闭条件全部依用户批准或不可用源连接，启用M06唯一备用做已有证据和静态需求收口",
+          "remainingPrimary": [
+            "M37-SPEC-01",
+            "M37-SPEC-02",
+            "M37-SPEC-03",
+            "M37-SPEC-04",
+            "M37-SPEC-05",
+            "M37-LIMIT-01",
+            "CDP刷新20秒超时"
+          ],
+          "returnWhen": "收到M37可推进批准或源连接恢复即优先回归，不等M06完整结束",
+          "boundary": "M06仅四项原登记范围与认证依赖，不探索M26及其他第三模块，不改代码/部署/访问者"
+        }
+      ],
+      "nightReviewPipeline": {
+        "authorization": "本窗口最新用户明确授权，仅本轮R2 P1评审材料流水线",
+        "order": [
+          "M26",
+          "M18",
+          "M17",
+          "M03"
+        ],
+        "waitingModuleIds": [],
+        "preparedModuleIds": [
+          "M26",
+          "M18",
+          "M17",
+          "M03"
+        ],
+        "formalClosureOrder": [
+          "M37",
+          "M06",
+          "M26",
+          "M18",
+          "M17",
+          "M03"
+        ],
+        "rule": "按最新用户批准顺序关闭R2；随后允许R3串行材料准备，未批准R3不关闭，不进入P2/P3",
+        "ownerBranch": "main",
+        "protectedWorktree": "/workspace/sites/italent-hris-r1-p2-20260909",
+        "protectedBranch": "design/r1-p2-20260909",
+        "observedProtectedHead": "617a707",
+        "parallelBoundary": "仅git worktree list查看注册信息；不进入、不修改、不合并/cherry-pick其任何提交；P2建议完成后统一纳入",
+        "status": "R2四模块均受限关闭",
+        "nextFormalClosureModule": "M27",
+        "reviewBundleRef": "docs/delivery/P1_R2_Review_Package.md"
+      },
+      "r3ReviewPipeline": {
+        "authorization": "本窗口2026-09-10明确授权R3串行评审材料准备",
+        "order": [
+          "M27",
+          "M16",
+          "M12",
+          "M11",
+          "M07"
+        ],
+        "preparedModuleIds": [
+          "M27",
+          "M16",
+          "M12",
+          "M11",
+          "M07"
+        ],
+        "waitingModuleIds": [],
+        "formalClosureOrder": [
+          "M27",
+          "M16",
+          "M12",
+          "M11",
+          "M07"
+        ],
+        "status": "五模块已顺序受限关闭，材料流水线结束",
+        "nextFormalClosureModule": null,
+        "rule": "按最新用户批准顺序关闭R3；随后允许R3串行材料准备，未批准R3不关闭，不进入P2/P3"
+      },
+      "currentTaskKind": "P1关闭后的13项原站补证责任统筹，不重开模块盘点"
+    },
+    "moduleExecutionOrder": [
+      "M01",
+      "M19",
+      "M48",
+      "M32",
+      "M37",
+      "M06",
+      "M26",
+      "M18",
+      "M17",
+      "M03",
+      "M27",
+      "M16",
+      "M12",
+      "M11",
+      "M07"
+    ],
+    "rangeGates": [
+      {
+        "id": "R1",
+        "applicableFoundationIds": [
+          "BASE-01",
+          "BASE-02",
+          "BASE-03",
+          "BASE-04",
+          "BASE-05",
+          "BASE-06"
+        ],
+        "foundationReadiness": {
+          "BASE-01": {
+            "value": true,
+            "basis": "R1-FOUNDATION-P1-APPROVAL-20260909已批准该基础R1适用需求/验收及例外，后续实现和生产验证未通过",
+            "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+            "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+          },
+          "BASE-02": {
+            "value": true,
+            "basis": "R1-FOUNDATION-P1-APPROVAL-20260909已批准该基础R1适用需求/验收及例外，后续实现和生产验证未通过",
+            "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+            "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+          },
+          "BASE-03": {
+            "value": true,
+            "basis": "R1-FOUNDATION-P1-APPROVAL-20260909已批准该基础R1适用需求/验收及例外，后续实现和生产验证未通过",
+            "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+            "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+          },
+          "BASE-04": {
+            "value": true,
+            "basis": "R1-FOUNDATION-P1-APPROVAL-20260909已批准该基础R1适用需求/验收及例外，后续实现和生产验证未通过",
+            "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+            "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+          },
+          "BASE-05": {
+            "value": true,
+            "basis": "R1-FOUNDATION-P1-APPROVAL-20260909已批准该基础R1适用需求/验收及例外，后续实现和生产验证未通过",
+            "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+            "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+          },
+          "BASE-06": {
+            "value": true,
+            "basis": "R1-FOUNDATION-P1-APPROVAL-20260909已批准该基础R1适用需求/验收及例外，后续实现和生产验证未通过",
+            "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+            "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+          }
+        },
+        "review": {
+          "approved": true,
+          "record": "R1-P1-P2-TRANSITION-20260909",
+          "approvedAt": "2026-09-09T17:11:16.592266+00:00",
+          "scope": "R1 P1关闭，只准P2设计，不准跳过P2退出进入P3"
+        },
+        "foundationReviewPackage": {
+          "status": "R1适用P1需求基线已批准",
+          "preparedAt": "2026-09-09T17:01:22.299836+00:00",
+          "basedOnHead": "c5d52eabdcc09f86bfcdb85bf373f2df2f0cfa08",
+          "decisionIds": [
+            "R1-BASELINE-01",
+            "R1-RECOVERY-01"
+          ],
+          "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+          "scope": "R1四模块所需六基础能力，其他R版本另核适用差异；不新增模块分母，不代批M32或R1转序。",
+          "next": "按R1转序记录进入P2设计复核；目标/接口/权限残余工作列入交接，不重问已批推荐。",
+          "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+        },
+        "p1Conclusion": {
+          "status": "受限通过并关闭",
+          "approvalRecord": "R1-P1-P2-TRANSITION-20260909",
+          "closedAt": "2026-09-09T17:11:16.592266+00:00"
+        },
+        "downstream": {
+          "authorizedPhase": "P3",
+          "entryApproved": true,
+          "entryApprovalRecord": "R1-P3-ENTRY-OWNER-20260910",
+          "p2Status": "所有者批准P2设计退出；9设计关闭/20转P3/8转P4",
+          "p2ExitApproved": true,
+          "p2ExitRecord": "R1-P2-EXIT-OWNER-20260910",
+          "p3EntryApproved": true,
+          "businessAccepted": false,
+          "productionAccepted": false,
+          "p3HandoffReady": true,
+          "p3Started": false,
+          "p3Status": "获准进入，尚未开始"
+        },
+        "p2Handoff": {
+          "id": "R1-P2-HANDOFF",
+          "status": "已完成交接材料，P2尚未执行/评审",
+          "preparedAt": "2026-09-09T17:12:54.443453+00:00",
+          "basedOnHead": "c59d1c2653202dfbe2652f84bccfc8bdbc199d9c",
+          "moduleIds": [
+            "M01",
+            "M19",
+            "M48",
+            "M32"
+          ],
+          "baseCapabilityIds": [
+            "BASE-01",
+            "BASE-02",
+            "BASE-03",
+            "BASE-04",
+            "BASE-05",
+            "BASE-06"
+          ],
+          "contractIds": [
+            "BP-F-REQ-01",
+            "BP-F-REQ-02",
+            "BP-F-REQ-04",
+            "BP-F-REQ-05",
+            "BP-F-REQ-06",
+            "BP-F-REQ-10",
+            "BP-F-REQ-11",
+            "BP-F-REQ-12",
+            "BP-F-REQ-13",
+            "BP-F-REQ-14",
+            "BP-F-REQ-15",
+            "BP-P-REQ-09",
+            "BP-S-REQ-07",
+            "BP-S-REQ-08",
+            "BP-S-REQ-12",
+            "BP-I-REQ-01",
+            "BP-I-REQ-02",
+            "BP-I-REQ-03",
+            "BP-I-REQ-04",
+            "BP-I-REQ-05",
+            "BP-I-REQ-07",
+            "BP-I-REQ-08",
+            "BP-I-REQ-11",
+            "BP-I-REQ-12"
+          ],
+          "approvalRecordIds": [
+            "M01-P1-APPROVAL-20260909",
+            "M19-P1-APPROVAL-20260909",
+            "M48-P1-APPROVAL-20260909",
+            "M32-P1-APPROVAL-20260909",
+            "R1-FOUNDATION-P1-APPROVAL-20260909",
+            "R1-P1-P2-TRANSITION-20260909"
+          ],
+          "exclusions": [
+            "R2/R3完整业务实现不纳R1，M48/M32仅按已批契约消费、未配置状态及后续联调责任保留范围",
+            "33暂缓模块完整运营/引擎，独立AI陪练/面试/推荐/RPA不建设；必要最小结构保留原映射",
+            "真实通知/支付/电子签/外部交易不作本轮P1前置，不实施真实调用；不新增用户/访问者",
+            "不重建系统，不删除/scope、已有代码/测试/部署/历史/隔离分支，不合并未完分支或额外发布",
+            "P1总控不执行R1产品修改/数据库迁移/P3测试；P2窗口仅设计，后续开发需P2退出评审"
+          ],
+          "designWorklist": [
+            {
+              "id": "R1-P2-01",
+              "area": "架构与复用",
+              "constraint": "保留Sites/Vinext、D1/R2、当前路由/身份/事务底座；界定模块边界、生产者消费与后台任务，独立治理看板失败不阻产品链。",
+              "deliverable": "架构图/数据流/复用清单/依赖边界；记录每一补充的必要性与替代方案。",
+              "codeRefs": [
+                "lib/hris/context.ts",
+                "lib/hris/repository.ts",
+                "lib/hris/development-repository.ts",
+                ".openai/hosting.json"
+              ],
+              "status": "P2待设计/评审"
+            },
+            {
+              "id": "R1-P2-02",
+              "area": "M01数据与有效历史",
+              "constraint": "按已批F-SPEC-01至08，设计组织/职位/职务/职级/法人有效版本、稳定人员/任职段、主兼职/借调/再入职、编制、合同计次、子集/模板/导入；F01–F04不能代完整M01。",
+              "deliverable": "实体/键/外键/唯一性/有效期/状态表、幂等及冲突恢复、消费者迁移映射，明确旧字段来源与未知历史。",
+              "codeRefs": [
+                "lib/hris/model.ts",
+                "lib/hris/personnel-transfer.ts",
+                "lib/hris/workforce.ts",
+                "lib/hris/contract-fields.ts"
+              ],
+              "status": "P2待设计/评审"
+            },
+            {
+              "id": "R1-P2-03",
+              "area": "M19流程与业务一致性",
+              "constraint": "复用既有人事流程版本/节点与事务，补通用路由/会签/管理操作/委托；禁止空路由默认成功，D7调动仍固定独立两级，管理权不代节点审批权。",
+              "deliverable": "路由校验/版本冻结/实例与领域原单/待办与生效/通知映射；转交撤销批量的原子性、部分失败和未知恢复矩阵。",
+              "codeRefs": [
+                "lib/hris/model.ts",
+                "lib/hris/personnel-transfer.ts",
+                "lib/hris/work-inbox.ts",
+                "app/api/hris/route.ts"
+              ],
+              "status": "P2待设计/评审"
+            },
+            {
+              "id": "R1-P2-04",
+              "area": "权限与M48消费",
+              "constraint": "复用成员及服务端范围投影；补显式直线/虚线/部门负责人关系、独立动作权限及敏感字段策略；七项入口消费生产者版本，不复刻生产者算法。",
+              "deliverable": "角色×关系×动作×对象×字段矩阵；本人绑定/受托任务/申请/团队分列、401/403清缓存、当前/历史/附件一致权；R2/R3不可用适配协议。",
+              "codeRefs": [
+                "lib/hris/authorization.ts",
+                "app/api/self-service/route.ts",
+                "lib/hris/work-inbox.ts",
+                "app/api/attachments/route.ts"
+              ],
+              "status": "P2待设计/评审"
+            },
+            {
+              "id": "R1-P2-05",
+              "area": "M32查询与报表任务",
+              "constraint": "保留已有数据集粒度和CSV安全/审计；补定义版本、声明式设计器、时间/快照模式、服务端有界分页、独立export/subscribe/manage、有界异步导出。",
+              "deliverable": "数据集目录和类型/分母/null/去重表、索引/执行计划/容量估算、快照权限重裁、jobId幂等和就绪文件原子性、订阅逐收件者验权/链接投递/屏蔽。",
+              "codeRefs": [
+                "lib/hris/reports.ts",
+                "lib/hris/payroll-reports.ts",
+                "app/api/reports/route.ts",
+                "app/reports/workspace.tsx"
+              ],
+              "status": "P2待设计/评审"
+            },
+            {
+              "id": "R1-P2-06",
+              "area": "接口与异常",
+              "constraint": "已批准未配置服务可以契约先行；内部保存、审批、业务生效、通知回执不同状态，未知先查不重复提交；共享最小结构不恢复33暂缓模块。",
+              "deliverable": "M01↔M19↔M48/M32事件/请求/版本/错误契约，R2/R3生产者消费清单；外部id/摘要/去重/签名及失败恢复适配位置，不编造供应商endpoint。",
+              "codeRefs": [
+                "lib/hris/integration-preflight.ts",
+                "lib/hris/repository.ts",
+                "lib/hris/development-repository.ts"
+              ],
+              "status": "P2待设计/评审"
+            },
+            {
+              "id": "R1-P2-07",
+              "area": "迁移与历史保护",
+              "constraint": "现模型单org/job/level与新多任职/版本不能靠覆盖迁移；保留稳定ID、原单/审计、历史证据与隔离分支。先读实际库状态，不继承2026-09-08空表结论。",
+              "deliverable": "增量迁移及兼容读/回滚策略、版本映射/未知历史标记、幂等重入/中断恢复/完整性与权限对账用例；只设计，不执行业务库迁移。",
+              "codeRefs": [
+                "lib/hris/repository.ts",
+                "docs/P2_Acceptance.md",
+                "docs/Recovery_Rehearsal.md"
+              ],
+              "status": "P2待设计/评审"
+            },
+            {
+              "id": "R1-P2-08",
+              "area": "备份恢复目标与责任",
+              "constraint": "落实RPO≤60分钟/RTO≤240分钟/30天、加密/清单哈希/版本/审批；DB和附件共同恢复点、独立可信撤权记录，隔离核验后所有者开放。",
+              "deliverable": "云端能力与一致性方案、容量/成本估算、备份与恢复执行/复核/批准分工；不能经济实现提交量化差异，不静默降目标；P3演练/P4生产验证计划。",
+              "codeRefs": [
+                "scripts/rehearse-local-recovery.mjs",
+                "docs/Recovery_Rehearsal.md",
+                "docs/Recovery_Synthetic_Report.json"
+              ],
+              "status": "P2待设计/评审"
+            },
+            {
+              "id": "R1-P2-09",
+              "area": "设计验收与P3门槛",
+              "constraint": "历史P2受限技术验收仅作为复用证据，当前新规则必须差异复核。全部已批需求关联实现/设计/可执行用例；多角色人工验收不得豁免。",
+              "deliverable": "逐项追踪矩阵、设计评审结论和真实硬阻塞/例外；只有P2退出获明确批准才提出P3任务，不以当前P1批准冒充已获P3通过。",
+              "codeRefs": [
+                "docs/P2_Acceptance.md",
+                "docs/delivery/F01_F04_Business_Acceptance.md",
+                "docs/delivery/P1_Approval_Records.md"
+              ],
+              "status": "P2待设计/评审"
+            }
+          ],
+          "entryDecision": "R1-P1-P2-TRANSITION-20260909",
+          "p2ExitConditions": [
+            "架构、数据、权限、接口、迁移、异常六类设计可实施且覆盖四模块完整范围及适用六基础",
+            "每条已批准需求、受限风险和验收预期关联到复用/待修改/待新增设计，没有以F01–F04代整个M01或删未接生产者功能",
+            "备份目标云端可行性/成本和执行复核责任明确；不能经济实现的量化差异获得处置，未静默降目标",
+            "未解决阻断差异有明确关闭或批准例外；本版本独立设计评审记录批准P2退出；历史测试不能自动继承"
+          ],
+          "collaborationBoundary": "本P1总控继续维护Scope和生成视图，P2启动时核HEAD/工作区/进行中操作，设计在隔离工作树/设计分支进行，不同时写主Scope、不重置或覆盖他人修改；范围/状态反馈以待总控纳入的结构化提案提交，不建立第二套手工进度。没有本轮新代理或新窗口被实际启动。",
+          "historicalEvidenceRefs": [
+            "docs/P2_Acceptance.md",
+            "docs/delivery/F01_F04_Business_Acceptance.md",
+            "docs/Recovery_Rehearsal.md",
+            "docs/Recovery_Synthetic_Report.json",
+            "docs/delivery/Deployment_Evidence.json"
+          ],
+          "validationEvidencePaths": [
+            "docs/delivery/Contract_Fields_Verification.json",
+            "docs/delivery/Controller_Regression_Verification.json",
+            "docs/delivery/Dashboard_Verification.json",
+            "docs/delivery/F01_F04_Closure_Verification.json",
+            "docs/delivery/F01_F04_Decisions_Verification.json",
+            "docs/delivery/F01_F04_Entry_UI_Verification.json",
+            "docs/delivery/F01_F04_Role_Arrangement_Verification.json",
+            "docs/delivery/F04_Closure_Verification.json",
+            "docs/delivery/Self_Report_Verification.json"
+          ],
+          "doNotReask": [
+            "D1–D7按原批准原义；尤其调动独立审批不得被通用管理动作绕过",
+            "E1只页面可打开，E2仅所有者访问，不能以管理员自审代替跨角色验收",
+            "M01 F-SPEC-01至08、SCOPE-DEP-01、M01-BASELINE-01及LIMIT已批",
+            "M19/M48/M32所审SPEC及各自LIMIT已批，仅需求阶段",
+            "R1六基础及RPO60分钟/RTO240分钟/保留30天目标已批；只待方案/成本核实，不重问目标是否采用",
+            "R1已准P2设计，不等P2退出或P3/业务/生产通过"
+          ],
+          "next": "P1总控提交本交接后转M37；新P2窗口读取启动提示词可独立开始设计，当前窗口不执行P2实现。"
+        },
+        "p2ResultIntake": {
+          "approvalId": "R1-P2-EXIT-OWNER-20260910",
+          "reviewedHead": "65cfcf85e4fccf8cba53319deb7b87dd7f79600a",
+          "sourceHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+          "sourceBranch": "design/r1-p2-20260909",
+          "references": [
+            {
+              "branch": "design/r1-p2-20260909",
+              "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+              "path": "docs/delivery/r1-p2/R1_P2_Controller_Proposal.json",
+              "sha256": "a8d1873c712601d90e1ad498feb202343e6f8d12d7405185052db7596dd904da"
+            },
+            {
+              "branch": "design/r1-p2-20260909",
+              "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+              "path": "docs/delivery/r1-p2/R1_P2_Exit_Review.md",
+              "sha256": "53ee09fe93fcf667afe48c6cf3b21cada18645a9950f0f1cb18e06faa02cb149"
+            },
+            {
+              "branch": "design/r1-p2-20260909",
+              "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+              "path": "docs/delivery/r1-p2/R1_P2_P3_Handoff.md",
+              "sha256": "2df90ce6d557500f65206cf458d7b548d94fd8a9205bbc0c977f4a83c9273c14"
+            },
+            {
+              "branch": "design/r1-p2-20260909",
+              "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+              "path": "docs/delivery/r1-p2/R1_P2_P3_Start_Prompt.md",
+              "sha256": "eb06c0b47931fab637a4c5c19c1670fbe56560ff77166704986bfaa7bf2cca10"
+            },
+            {
+              "branch": "design/r1-p2-20260909",
+              "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+              "path": "docs/delivery/r1-p2/R1_P2_Owner_Exit_Approval.json",
+              "sha256": "2905b1cfeb18ead0985a49fbaadc55d13b39bba354599a92a15352499e04cda0"
+            },
+            {
+              "branch": "design/r1-p2-20260909",
+              "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+              "path": "docs/delivery/r1-p2/R1_P2_Limit_Resolution.json",
+              "sha256": "f4400e6ef0d37493637468b7862e29ebcc2c75c3fdb2b7eda1b4d09011232cda"
+            },
+            {
+              "branch": "design/r1-p2-20260909",
+              "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+              "path": "docs/delivery/r1-p2/R1_P2_Dependencies_Decisions.json",
+              "sha256": "8b536d2f10e0ef4db8ac583b4e63d7a9643846a1764b6466f21ad6543a902e93"
+            }
+          ],
+          "riskDisposition": {
+            "ownerClosedDesignRiskIds": [
+              "R1-M01-L01",
+              "R1-M01-L02",
+              "R1-M01-L03",
+              "R1-M19-L01",
+              "R1-M19-L02",
+              "R1-M48-L01",
+              "R1-M48-L02",
+              "R1-M32-L01",
+              "R1-M32-L02"
+            ],
+            "remainingP3RiskIds": [
+              "R1-M01-L04",
+              "R1-M01-L05",
+              "R1-M01-L06",
+              "R1-M01-L07",
+              "R1-M01-L08",
+              "R1-M19-L03",
+              "R1-M19-L04",
+              "R1-M19-L05",
+              "R1-M19-L06",
+              "R1-M19-L07",
+              "R1-M48-L03",
+              "R1-M48-L04",
+              "R1-M48-L05",
+              "R1-M48-L06",
+              "R1-M32-L03",
+              "R1-M32-L04",
+              "R1-M32-L05",
+              "R1-M32-L06",
+              "R1-M32-L07",
+              "R1-M32-L08"
+            ],
+            "remainingP4RiskIds": [
+              "R1-M01-L09",
+              "R1-M01-L10",
+              "R1-M19-L08",
+              "R1-M19-L09",
+              "R1-M48-L07",
+              "R1-M48-L08",
+              "R1-M32-L09",
+              "R1-M32-L10"
+            ]
+          },
+          "riskCounts": {
+            "total": 37,
+            "designClosed": 9,
+            "p3": 20,
+            "p4": 8
+          },
+          "sourceEvidenceRequests": [
+            "SRC-M01-01",
+            "SRC-M01-02",
+            "SRC-M01-03",
+            "SRC-M01-04",
+            "SRC-M19-01",
+            "SRC-M19-02",
+            "SRC-M19-03",
+            "SRC-M48-01",
+            "SRC-M48-02",
+            "SRC-M48-03",
+            "SRC-M32-01",
+            "SRC-M32-02",
+            "SRC-M32-03"
+          ],
+          "sourceEvidenceOwner": "P1总控",
+          "businessTestsRun": 0,
+          "historicalTestRevalidations": 0,
+          "p3Started": false,
+          "readOnlyIntake": true,
+          "recordedAt": "2026-09-10T03:24:03.609414+00:00"
+        }
+      },
+      {
+        "id": "R2",
+        "applicableFoundationIds": [
+          "BASE-01",
+          "BASE-02",
+          "BASE-03",
+          "BASE-04",
+          "BASE-05",
+          "BASE-06"
+        ],
+        "foundationReadiness": {
+          "BASE-01": {
+            "value": true,
+            "basis": "R2-BASELINE-01由M26-P1-APPROVAL-20260910记录；仅需求"
+          },
+          "BASE-02": {
+            "value": true,
+            "basis": "R2-BASELINE-01由M26-P1-APPROVAL-20260910记录；仅需求"
+          },
+          "BASE-03": {
+            "value": true,
+            "basis": "R2-BASELINE-01由M26-P1-APPROVAL-20260910记录；仅需求"
+          },
+          "BASE-04": {
+            "value": true,
+            "basis": "R2-BASELINE-01由M26-P1-APPROVAL-20260910记录；仅需求"
+          },
+          "BASE-05": {
+            "value": true,
+            "basis": "R2-BASELINE-01由M26-P1-APPROVAL-20260910记录；仅需求"
+          },
+          "BASE-06": {
+            "value": true,
+            "basis": "R2-BASELINE-01由M26-P1-APPROVAL-20260910记录；仅需求"
+          }
+        },
+        "review": {
+          "approved": true,
+          "record": "R2-P1-P2-TRANSITION-20260910",
+          "approvedAt": "2026-09-10T03:24:03.609414+00:00",
+          "scope": "R2 P1关闭，批准仅P2设计"
+        },
+        "p1ClosureSummary": {
+          "status": "P1受限关闭；获准进入P2设计",
+          "record": "R2-P1-P2-TRANSITION-20260910",
+          "at": "2026-09-10T03:24:03.609414+00:00",
+          "downstreamAuthorized": true
+        },
+        "p1Conclusion": {
+          "status": "受限通过并关闭",
+          "approvalRecord": "R2-P1-P2-TRANSITION-20260910",
+          "closedAt": "2026-09-10T03:24:03.609414+00:00"
+        },
+        "downstream": {
+          "authorizedPhase": "P2",
+          "entryApproved": true,
+          "entryApprovalRecord": "R2-P1-P2-TRANSITION-20260910",
+          "p2Status": "获准进入，尚未开始",
+          "p2ExitApproved": false,
+          "p2ExitRecord": null,
+          "p3EntryApproved": false,
+          "p3Started": false,
+          "businessAccepted": false,
+          "productionAccepted": false
+        },
+        "controllerHandoff": {
+          "document": "docs/delivery/P1_R2_P2_Handoff.md",
+          "startPrompt": "docs/delivery/R2_P2_Start_Prompt.md",
+          "moduleIds": [
+            "M37",
+            "M06",
+            "M26",
+            "M18",
+            "M17",
+            "M03"
+          ],
+          "foundationIds": [
+            "BASE-01",
+            "BASE-02",
+            "BASE-03",
+            "BASE-04",
+            "BASE-05",
+            "BASE-06"
+          ],
+          "approvalRecords": [
+            "M37-P1-APPROVAL-R2-20260909",
+            "M06-P1-APPROVAL-R2-20260909",
+            "M26-P1-APPROVAL-20260910",
+            "M18-P1-APPROVAL-20260910",
+            "M17-P1-APPROVAL-20260910",
+            "M03-P1-APPROVAL-20260910"
+          ],
+          "ready": true,
+          "entryRecord": "R2-P1-P2-TRANSITION-20260910"
+        }
+      },
+      {
+        "id": "R3",
+        "applicableFoundationIds": [
+          "BASE-01",
+          "BASE-02",
+          "BASE-03",
+          "BASE-04",
+          "BASE-05",
+          "BASE-06"
+        ],
+        "foundationReadiness": {
+          "BASE-01": {
+            "value": true,
+            "basis": "R3-BASELINE-01由M27-P1-APPROVAL-20260910记录；仅需求"
+          },
+          "BASE-02": {
+            "value": true,
+            "basis": "R3-BASELINE-01由M27-P1-APPROVAL-20260910记录；仅需求"
+          },
+          "BASE-03": {
+            "value": true,
+            "basis": "R3-BASELINE-01由M27-P1-APPROVAL-20260910记录；仅需求"
+          },
+          "BASE-04": {
+            "value": true,
+            "basis": "R3-BASELINE-01由M27-P1-APPROVAL-20260910记录；仅需求"
+          },
+          "BASE-05": {
+            "value": true,
+            "basis": "R3-BASELINE-01由M27-P1-APPROVAL-20260910记录；仅需求"
+          },
+          "BASE-06": {
+            "value": true,
+            "basis": "R3-BASELINE-01由M27-P1-APPROVAL-20260910记录；仅需求"
+          }
+        },
+        "review": {
+          "approved": true,
+          "record": "R3-P1-P2-TRANSITION-20260910",
+          "approvedAt": "2026-09-10T03:24:03.609414+00:00",
+          "scope": "R3 P1关闭，批准仅P2设计"
+        },
+        "p1ClosureSummary": {
+          "status": "P1受限关闭；获准进入P2设计",
+          "record": "R3-P1-P2-TRANSITION-20260910",
+          "at": "2026-09-10T03:24:03.609414+00:00",
+          "downstreamAuthorized": true
+        },
+        "p1Conclusion": {
+          "status": "受限通过并关闭",
+          "approvalRecord": "R3-P1-P2-TRANSITION-20260910",
+          "closedAt": "2026-09-10T03:24:03.609414+00:00"
+        },
+        "downstream": {
+          "authorizedPhase": "P2",
+          "entryApproved": true,
+          "entryApprovalRecord": "R3-P1-P2-TRANSITION-20260910",
+          "p2Status": "获准进入，尚未开始",
+          "p2ExitApproved": false,
+          "p2ExitRecord": null,
+          "p3EntryApproved": false,
+          "p3Started": false,
+          "businessAccepted": false,
+          "productionAccepted": false
+        },
+        "controllerHandoff": {
+          "document": "docs/delivery/P1_R3_P2_Handoff.md",
+          "startPrompt": "docs/delivery/R3_P2_Start_Prompt.md",
+          "moduleIds": [
+            "M27",
+            "M16",
+            "M12",
+            "M11",
+            "M07"
+          ],
+          "foundationIds": [
+            "BASE-01",
+            "BASE-02",
+            "BASE-03",
+            "BASE-04",
+            "BASE-05",
+            "BASE-06"
+          ],
+          "approvalRecords": [
+            "M27-P1-APPROVAL-20260910",
+            "M16-P1-APPROVAL-20260910",
+            "M12-P1-APPROVAL-20260910",
+            "M11-P1-APPROVAL-20260910",
+            "M07-P1-APPROVAL-20260910"
+          ],
+          "ready": true,
+          "entryRecord": "R3-P1-P2-TRANSITION-20260910"
+        }
+      }
+    ],
+    "p1FinalClosure": {
+      "status": "受限通过并关闭",
+      "closedAt": "2026-09-10T03:24:03.609414+00:00",
+      "moduleIds": [
+        "M01",
+        "M19",
+        "M48",
+        "M32",
+        "M03",
+        "M06",
+        "M17",
+        "M18",
+        "M26",
+        "M37",
+        "M12",
+        "M16",
+        "M27",
+        "M11",
+        "M07"
+      ],
+      "completeCount": 0,
+      "restrictedCount": 15,
+      "moduleCount": 15,
+      "basis": "15模块逐项四条件、P1A/P1B批准及六基础适用批准齐备",
+      "businessTestsRun": 0,
+      "historicalTestRevalidations": 0,
+      "businessAccepted": false,
+      "productionAccepted": false,
+      "report": "docs/delivery/P1_Final_Closure.md"
+    }
+  },
+  "historicalQueuePolicy": "items/controllerQueue保留历史，非当前主动队列；当前执行只读currentP1.executionPolicy/moduleExecutionOrder/nextTasks。"
+}

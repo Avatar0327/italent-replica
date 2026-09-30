@@ -1,0 +1,32 @@
+✔ P3-ARC-01 / BASE-01-AC01: inactive, isolation and stale same-role authority reject (46.419863ms)
+✔ P3-ARC-01 / BASE-02-AC02: supplementary reads reject epoch or scope changes (44.175711ms)
+✔ P3-ARC-01: grant tuples do not cross product roles, fields, history, relations or actions (0.967123ms)
+✔ P3-ARC-02: audit failure rolls back facts, journal, receipt and outbox; next command succeeds once (33.090528ms)
+✔ P3-ARC-02: concurrent commands and lost response produce at most one business effect (25.937042ms)
+✔ P3-ARC-01: legacy HR and membership routes use the bridge; activation cannot bypass isolation (45.444885ms)
+✔ P3-INT-01: normalized envelope, durable duplicate, digest conflict and sequence gap (65.265689ms)
+✔ P3-INT-02: inbox projection and receipt roll back together under injected audit failure (26.797456ms)
+✔ P3-INT-03: explicitly simulated unknown delivery is queried and not blindly resent (5.660932ms)
+✔ P3-INT-04: six external adapters stay unconfigured; internal signed/published does not imply external success (0.596034ms)
+✔ P3-INT-05: unknown command and forged tenant cannot choose an unregistered producer (24.256396ms)
+✔ P3-INT-06: unknown DB commit preserves uploaded bytes; tombstone refuses download and queues cleanup (34.063815ms)
+✔ P3-M01-01: same org overlapping position name rejects, cross org permits, future cycles reject (37.77881ms)
+✔ P3-M01-02: identity conflicts do not merge; stable rehire and tenure exclude gaps/internship (18.336533ms)
+✔ P3-M01-03: independent HR approves part time; it consumes zero additional headcount (42.275243ms)
+✔ P3-M01-07: legal scope, same legal ID and adjacent renewal dates; immutable versions (25.059777ms)
+✔ P3-M01-08: subset row key is idempotent across transport command IDs and explicit null survives (35.532633ms)
+✔ P3-M01-09: missing or wrong entry template blocks person creation and never activates accounts (34.05248ms)
+✔ P3-M01-10: exit fence rejects later approvals and queues all 101 cleanup items (24.504318ms)
+✔ P3-M01-12: protected waiting dependency blocks disable without exposing identity (16.065959ms)
+✔ P3-M01-11: explicit strong budget policy blocks effect; absent provider never reports budget passed (17.919404ms)
+✔ temporal versions: future publication preserves today and old bytes, all interval cuts reject historical hidden cycles (30.44351ms)
+✔ exit generation: rehire enables only new segment; cleanup resumes and unsupported domains retain blocked receipts (60.44512ms)
+✔ command replay runs before stale business-state validation and does not create a second employment (26.235748ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1373.512192

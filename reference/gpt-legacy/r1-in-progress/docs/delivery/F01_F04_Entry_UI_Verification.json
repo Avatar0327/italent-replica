@@ -1,0 +1,35 @@
+{
+  "completedAt": "2026-09-08T13:41:50.733266+00:00",
+  "baseCommit": "c0b68ce42f4c5dfb340bf379094caf1d72d2bc84",
+  "command": "node --test --test-reporter=tap tests/f01-f04-transfer-ui.test.mjs",
+  "exitCode": 0,
+  "tests": 5,
+  "passed": 5,
+  "failed": 0,
+  "skipped": 0,
+  "report": "docs/delivery/F01_F04_Entry_UI_Run.tap",
+  "scope": "首包入口/空筛选恢复/既有审批组件真实React渲染；无后端业务或权限修改，未重复全量API回归；非浏览器交互或人工UAT",
+  "typecheck": {
+    "command": "node node_modules/typescript/bin/tsc --noEmit",
+    "exitCode": 0
+  },
+  "firstAttempt": "新增导航测试因Node无法解析next/link无扩展名失败；测试解析器映射现有next/link.js后5/5通过，不修改生产路由或权限",
+  "sourceSha256": {
+    "app/hris.tsx": "ad567eff8228c2870f374182586fb867ef9043c736b3689f0969aeb344ffa9ea",
+    "app/globals.css": "61b03f660a9b916be534720108a7c07937171f520861903c74d39de30518169f",
+    "app/personnel-navigation.tsx": "feed9fc2abd89f4989ccb4013cd01e11a9c628ef2a65663f389c630f1a4d5560",
+    "app/employees/empty-employees.tsx": "177f15a84bd9dabd64b19114e1cb1dba476ac4330999850e3ecabec162b44d1c",
+    "app/positions/catalogs.tsx": "56fb9120feba5ed922831cf6cec01115e1a6088cbc99991460d4a06913c31e57",
+    "app/settings/members.tsx": "a100f74ff5f84a2a6a8fbe32ad21857309686de7920dfec327ab45570ce51288"
+  },
+  "userEvidence": "用户image.png：离职筛选0条，长侧栏蓝底蓝字；只有UAT01/04找到按钮，不代表这两项已验收通过",
+  "browserLimitation": "未重新访问原已失败的代理预览路径；本轮截图来自用户，组件渲染不替代真实点击",
+  "productionAccepted": false,
+  "testedSourceCommit": "fdc423fcba607bd5814a0672836b55536c71ecb1",
+  "build": {
+    "exitCode": 0,
+    "command": "node /root/.codex/plugins/cache/openai-curated-remote/sites/0.1.51/scripts/build-site.mjs",
+    "packageExitCode": 0
+  },
+  "userRetest": "尚未取得；本窗口按用户指令交接停止，不以人工验收阻断P1"
+}

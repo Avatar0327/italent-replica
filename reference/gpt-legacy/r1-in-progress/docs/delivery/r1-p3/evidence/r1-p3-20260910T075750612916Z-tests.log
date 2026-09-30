@@ -1,0 +1,48 @@
+✔ P3-M32-01/10: 21 stable datasets and 254 unique fields retain registered labels/types; 15 producer entries do not claim integration (6.586019ms)
+✔ P3-XMOD-02: label mapping keeps grade when email column absent and rejects guessed or duplicate columns (1.489797ms)
+✔ P3-M32-02/07: exact decimal and safe money retain missing counts, no zero denominator or mixed currency fabrication (1.304241ms)
+✔ P3-M32-07: typed AST rejects hidden filter/sort/formula, SQL, units, ambiguous joins and excessive depth; values remain bindings (7.580122ms)
+✔ P3-M32-04/02: actual compatibility calculation keeps old published result under draft replacement and unknown recruitment headcount is null (659.721575ms)
+✔ P3-M32-07: decimal SQL filters compare exact signed decimal parts beyond JS safe integer precision (2.485904ms)
+✔ P3-M32-07: published registered metrics validate units, and timestamps reject normalized invalid calendar dates (3.389157ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): workforce (5.018526ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): contractCoverage (1.437951ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): contractOperations (0.951409ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): recruitmentOperations (0.861451ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): attendance (1.6928ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): payrollOperations (1.649298ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): payrollReconciliation (0.733483ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): payrollAttendanceReferences (0.889709ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): performanceOperations (14.043575ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): performance (0.935543ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): talentReview (0.58285ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): successionCoverage (0.56703ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): learning (0.865382ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): learningPlanProgress (1.274154ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): learningExams (0.450575ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): homework (0.442289ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): trainingStageProgress (0.506628ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): trainingProgress (0.548853ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): trainingRoster (2.050563ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): instructorSchedule (0.771936ms)
+✔ P3-M32-01/02 source compatibility oracle (not real producer integration): instructorCampaignProgress (0.384999ms)
+✔ P3-M32-01/03: M01 projection keeps one row per stable person, left coverage rows and real dated contract records (217.133262ms)
+✔ P3-M32-03/05: snapshot retains fixed values while current person scope/field revocation strips access; source changes cannot splice pages (209.442202ms)
+✔ P3-M32-03: projection resume is idempotent and source cutoff is stable across build pages; audit failure cannot publish partial ready snapshot (167.274977ms)
+✔ P3-M32-07: definition publication freezes validated payload; hidden field, stale draft and audit failure publish no new version (167.498785ms)
+✔ P3-M32-03/05: direct API enforces time and unknown parameter rules without unbounded legacy context reads (101.020645ms)
+✔ P3-M32-05/07: summary-only grants aggregate current scope, refuse drill, count null separately and retain legal zero-denominator state (104.050325ms)
+✔ P3-M32-05: person scope update during SQL read invalidates response before any old fields are returned (86.471413ms)
+✔ P3-M32-03/07: sorted seek pages use unique tie-breakers; saved definition runs published version and rejects overrides (98.399419ms)
+✔ P3-M32-01/07: fixed authorized 1:N joins deduplicate before root metrics; coverage counts people and preserves unknown coverage (102.795522ms)
+✔ P3-M32-02/07: database decimal sums are exact with missing counts; money never aggregates mixed currencies (75.670644ms)
+{"proof":"synthetic 10001-row local SQLite query, not cloud load acceptance","chunks":51,"maxRows":200,"maxBytes":165201,"queryPlan":["SEARCH r USING INDEX sqlite_autoindex_r1_report_rows_1 (tenant_id=? AND dataset_id=? AND generation_id=? AND row_key>?)"]}
+✔ P3-M32-06: 10001 synthetic versioned rows build in bounded chunks; SQL indexed pagination covers every key exactly once (2943.280805ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5186.226414

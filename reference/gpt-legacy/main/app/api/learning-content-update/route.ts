@@ -1,0 +1,6 @@
+import {z} from 'zod';
+import {developmentContext,saveDevelopmentMany} from '@/lib/hris/development-repository';
+import {contentUpdateSchema,previewLearningContentUpdate,applyLearningContentUpdate} from '@/lib/hris/learning-content-update';
+import {json,failure,readBody,HttpError} from '@/lib/hris/http';
+const schema=z.object({revision:z.number().int().nonnegative(),action:z.enum(['preview','apply']),command:contentUpdateSchema,evidence:z.string().optional()}).strict();
+export async function POST(request:Request){try{const b=schema.parse(await readBody(request)),c=await developmentContext(['homeworkDefinition','homeworkTask','homeworkSubmission','learningAssignment','learningDefinition','enrollment','course','exam','attempt','learningExamDefinition','learningExamTask','learningExamAttempt'],['admin','hr']);if(b.revision!==c.row.revision)throw new HttpError(409,'数据已更新，请刷新后重新预览');if(b.action==='preview'){const {projected,...preview}=previewLearningContentUpdate(c.records,c.state,c.member,b.command);return json({preview,revision:c.row.revision});}const rows=applyLearningContentUpdate(c.records,c.state,c.member,b.command,b.evidence??'');await saveDevelopmentMany(c,b.revision,rows,'学习内容版本更新',21);return json({ids:rows.map(r=>r.id),revision:c.row.revision+1});}catch(e){return failure(e);}}

@@ -1,0 +1,90 @@
+{
+  "runId": "r1-p3-20260910T101031691739Z",
+  "sourceSha": "5ce0dd2a411bd5bea144074395c1a7787abf5135",
+  "taskId": "P3-R1-09",
+  "startedAt": "2026-09-10T10:10:31.691777+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/r1-p3-foundation.test.mjs": "a8d697d070e9a055109554954db0eb9db6cbefc7f06ab41bb5bc56fa6e0cb32c",
+    "tests/r1-p3-integration.test.mjs": "fca5171df4a9c6fd2290f48b096e90d0c79f18d0eff6fc1743d624ec02e2284c",
+    "tests/r1-p3-m01.test.mjs": "099a87e5571ca5e0d8e908bdef4de76d9144d10b58df85e2a11708316bf37a47",
+    "tests/r1-p3-migration.test.mjs": "827019817e09c184b016bf47b846f8612dbd983bcf904d39b1dddc29f625f100",
+    "tests/r1-p3-portal.test.mjs": "b8a2c2222e3420e1568c0b704330aca5040046715d518196bf21ab8a90c77cdc",
+    "tests/r1-p3-recovery.test.mjs": "05c11e2105226bbb7171318cde82f6d3c39c83cfd3ca3dc5112a0d0e15b63db3",
+    "tests/r1-p3-report-definition.test.mjs": "a21337d9a5f321791f3ce250b99cff72d35bf0f5d93f0f4883974084ca8d0ace",
+    "tests/r1-p3-report-jobs.test.mjs": "d042c1899323ff1aba8e135a19aee84c107c98793db988aa62decd50e20ac431",
+    "tests/r1-p3-report-oracles.test.mjs": "1b9c6eca9dcd99ba8d3051c0f3042550c7b5ea3a7d9bbd5b424d69762a00f6ee",
+    "tests/r1-p3-report-query.test.mjs": "b04bbd705593e2e676cce915f6869fa23c4e6c6cc2f609c5dd9103eccf486da9",
+    "tests/r1-p3-report-scale.test.mjs": "71f0f95dab4adf9ed3cbf60fc36760cd166b073ab2940285d24f0608686a32ad",
+    "tests/r1-p3-report-subscriptions.test.mjs": "765cd186d9c6c3e25ef6dd9df5440b29231ce16e5d33a2d9b2b8e24bd4b0e2de",
+    "tests/r1-p3-security-ledger.test.mjs": "600cbd95976ea349f44d9af8fa186adfcfc0e5eee0ffc709bae9e70c76e27ede",
+    "tests/r1-p3-transfer.test.mjs": "eb466bd68346d72f418f822c16480e1f800bfdbf709b677aa02492cb2d499abb",
+    "tests/r1-p3-workflow.test.mjs": "ea9cb811242b3f7b4229b16afb47124564dd2a3799560ec7a46950ebbf8fcfe6",
+    "tests/support/cadre-checks.mjs": "73a4e3fb0fc2c22823670bae76b835e43d7651b5fd0eb88662f99644d3641072",
+    "tests/support/foundation-scenario.mjs": "b84670b9f011ea80b27d67685d7bf648e209e3be1e3c7a194170393489fbbf69",
+    "tests/support/performance-scenario.mjs": "b3b9b5c8f919d1d7243376cf78eebb2931ae82fd59007f4bd9f7597fc39e9a8e",
+    "tests/support/r1-report-fixture.mjs": "9dd683a30171e04c2d77c388341f47a637b8566b867542090303c47563122358",
+    "tests/support/runtime.mjs": "67d2392b94095b7cbaae36df97703d45bc5af7962c4feb5f3451235562091bde"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/r1-p3-foundation.test.mjs",
+        "tests/r1-p3-integration.test.mjs",
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-migration.test.mjs",
+        "tests/r1-p3-portal.test.mjs",
+        "tests/r1-p3-recovery.test.mjs",
+        "tests/r1-p3-report-definition.test.mjs",
+        "tests/r1-p3-report-jobs.test.mjs",
+        "tests/r1-p3-report-oracles.test.mjs",
+        "tests/r1-p3-report-query.test.mjs",
+        "tests/r1-p3-report-scale.test.mjs",
+        "tests/r1-p3-report-subscriptions.test.mjs",
+        "tests/r1-p3-security-ledger.test.mjs",
+        "tests/r1-p3-transfer.test.mjs",
+        "tests/r1-p3-workflow.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T101031691739Z-tests.log",
+      "sha256": "05ce39f4bcdcba3c3d85c000d2bb58d4347c9295827d1a278111a36cd2bbc5ad"
+    },
+    {
+      "name": "types",
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T101031691739Z-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build",
+      "command": [
+        "node",
+        "/root/.codex/plugins/cache/openai-curated-remote/sites/0.1.56/scripts/build-site.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T101031691739Z-build.log",
+      "sha256": "9d8f085600c682e54b2999abcbccb756f9e95ff2e42475174cd572df18d60f14"
+    }
+  ],
+  "testSummary": {
+    "tests": 175,
+    "pass": 175,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T10:11:00.559141+00:00"
+}

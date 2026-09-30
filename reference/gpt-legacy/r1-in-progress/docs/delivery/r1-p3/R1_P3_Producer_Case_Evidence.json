@@ -1,0 +1,871 @@
+{
+  "taskId": "P3-R1-10",
+  "status": "partial_internal_verified_producer_blocked",
+  "implementationSha": "254a70772bc78755d1e524d7b4bc4871b9da5904",
+  "evidence": "evidence/r1-p3-20260910T101913449916Z.json",
+  "testSummary": {
+    "tests": 59,
+    "pass": 59,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "cases": [
+    {
+      "id": "P3-LINK-M48-team",
+      "consumer": "M48",
+      "producer": "M01",
+      "given": "生产者已批准版本与实际隔离实现可用；本人/范围外两组记录及旧revision、未配置/不可用响应",
+      "when": "读取team并按源allowedActions提交/撤回；故意旧版本和越权请求",
+      "then": "保留personId/assignmentId/relationshipRevision；原域与门户状态/版本/字段一致；越权拒绝、未知先查、未配置不报0/成功；不实发",
+      "evidence": "producer源码/contractVersion/输入输出摘要/拒绝回执及实际运行时间",
+      "gate": "P3-R1-10逐入口联调；P4业务验收前",
+      "owner": "M01生产者与M48实施负责人",
+      "execution": "actual_r1_internal_synthetic_verified_review_pending",
+      "contract": {
+        "caseId": "P3-LINK-M48-team",
+        "consumer": "M48",
+        "producer": "M01",
+        "entry": "team",
+        "producerVersion": "r1-m01-team-v1",
+        "mode": "internal",
+        "availability": "internal_contract_connected",
+        "evidence": "docs/delivery/r1-p3/R1_P3_Producer_Case_Evidence.json#P3-LINK-M48-team",
+        "accepted": false
+      },
+      "producerSourceSha": "254a70772bc78755d1e524d7b4bc4871b9da5904",
+      "realEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "passed_actual_internal_producer",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M48-approval",
+      "consumer": "M48",
+      "producer": "M19",
+      "given": "生产者已批准版本与实际隔离实现可用；本人/范围外两组记录及旧revision、未配置/不可用响应",
+      "when": "读取approval并按源allowedActions提交/撤回；故意旧版本和越权请求",
+      "then": "保留instanceId/businessId/nodeRevision/approvalStatus/effectStatus；原域与门户状态/版本/字段一致；越权拒绝、未知先查、未配置不报0/成功；不实发",
+      "evidence": "producer源码/contractVersion/输入输出摘要/拒绝回执及实际运行时间",
+      "gate": "P3-R1-10逐入口联调；P4业务验收前",
+      "owner": "M19生产者与M48实施负责人",
+      "execution": "actual_r1_internal_synthetic_verified_review_pending",
+      "contract": {
+        "caseId": "P3-LINK-M48-approval",
+        "consumer": "M48",
+        "producer": "M19",
+        "entry": "approvals",
+        "producerVersion": "r1-m19-portal-v1",
+        "mode": "internal",
+        "availability": "internal_contract_connected",
+        "evidence": "docs/delivery/r1-p3/R1_P3_Producer_Case_Evidence.json#P3-LINK-M48-approval",
+        "accepted": false
+      },
+      "producerSourceSha": "254a70772bc78755d1e524d7b4bc4871b9da5904",
+      "realEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "passed_actual_internal_producer",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-m01.test.mjs"
+      ],
+      "blockedBy": [],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M48-okr",
+      "consumer": "M48",
+      "producer": "M16",
+      "given": "生产者已批准版本与实际隔离实现可用；本人/范围外两组记录及旧revision、未配置/不可用响应",
+      "when": "读取okr并按源allowedActions提交/撤回；故意旧版本和越权请求",
+      "then": "保留objectiveId/keyResultId/cycleId/metric单位；原域与门户状态/版本/字段一致；越权拒绝、未知先查、未配置不报0/成功；不实发",
+      "evidence": "producer源码/contractVersion/输入输出摘要/拒绝回执及实际运行时间",
+      "gate": "P3-R1-10逐入口联调；P4业务验收前",
+      "owner": "M16生产者与M48实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M48-okr",
+        "consumer": "M48",
+        "producer": "M16",
+        "entry": "okr",
+        "producerVersion": "okr-v1",
+        "mode": "internal",
+        "availability": "not_configured",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M48-goal",
+      "consumer": "M48",
+      "producer": "M16",
+      "given": "生产者已批准版本与实际隔离实现可用；本人/范围外两组记录及旧revision、未配置/不可用响应",
+      "when": "读取goal并按源allowedActions提交/撤回；故意旧版本和越权请求",
+      "then": "保留planId/planVersion/目标调整/发布状态；原域与门户状态/版本/字段一致；越权拒绝、未知先查、未配置不报0/成功；不实发",
+      "evidence": "producer源码/contractVersion/输入输出摘要/拒绝回执及实际运行时间",
+      "gate": "P3-R1-10逐入口联调；P4业务验收前",
+      "owner": "M16生产者与M48实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M48-goal",
+        "consumer": "M48",
+        "producer": "M16",
+        "entry": "goals",
+        "producerVersion": "legacy-goals-read-v1",
+        "mode": "compatibility",
+        "availability": "legacy_read_only_contract_upgrade_required",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M48-attendance",
+      "consumer": "M48",
+      "producer": "M11",
+      "given": "生产者已批准版本与实际隔离实现可用；本人/范围外两组记录及旧revision、未配置/不可用响应",
+      "when": "读取attendance并按源allowedActions提交/撤回；故意旧版本和越权请求",
+      "then": "保留shiftId/leaveId/余额单位/sourceRevision；原域与门户状态/版本/字段一致；越权拒绝、未知先查、未配置不报0/成功；不实发",
+      "evidence": "producer源码/contractVersion/输入输出摘要/拒绝回执及实际运行时间",
+      "gate": "P3-R1-10逐入口联调；P4业务验收前",
+      "owner": "M11生产者与M48实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M48-attendance",
+        "consumer": "M48",
+        "producer": "M11",
+        "entry": "attendance",
+        "producerVersion": "legacy-attendance-read-v1",
+        "mode": "compatibility",
+        "availability": "legacy_read_only_contract_upgrade_required",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M48-learning",
+      "consumer": "M48",
+      "producer": "M27",
+      "given": "生产者已批准版本与实际隔离实现可用；本人/范围外两组记录及旧revision、未配置/不可用响应",
+      "when": "读取learning并按源allowedActions提交/撤回；故意旧版本和越权请求",
+      "then": "保留assignmentId/taskId/attemptId/阶段开放；原域与门户状态/版本/字段一致；越权拒绝、未知先查、未配置不报0/成功；不实发",
+      "evidence": "producer源码/contractVersion/输入输出摘要/拒绝回执及实际运行时间",
+      "gate": "P3-R1-10逐入口联调；P4业务验收前",
+      "owner": "M27生产者与M48实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M48-learning",
+        "consumer": "M48",
+        "producer": "M27",
+        "entry": "learning",
+        "producerVersion": "legacy-learning-read-v1",
+        "mode": "compatibility",
+        "availability": "legacy_read_only_contract_upgrade_required",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M48-development",
+      "consumer": "M48",
+      "producer": "M17",
+      "given": "生产者已批准版本与实际隔离实现可用；本人/范围外两组记录及旧revision、未配置/不可用响应",
+      "when": "读取development并按源allowedActions提交/撤回；故意旧版本和越权请求",
+      "then": "保留planId/stageId/actionId/导师关系；原域与门户状态/版本/字段一致；越权拒绝、未知先查、未配置不报0/成功；不实发",
+      "evidence": "producer源码/contractVersion/输入输出摘要/拒绝回执及实际运行时间",
+      "gate": "P3-R1-10逐入口联调；P4业务验收前",
+      "owner": "M17生产者与M48实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M48-development",
+        "consumer": "M48",
+        "producer": "M17",
+        "entry": "development",
+        "producerVersion": "legacy-development-read-v1",
+        "mode": "compatibility",
+        "availability": "legacy_read_only_contract_upgrade_required",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M01",
+      "consumer": "M32",
+      "producer": "M01",
+      "given": "M01已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M01生产者与M32实施负责人",
+      "execution": "actual_r1_internal_synthetic_verified_review_pending",
+      "contract": {
+        "caseId": "P3-LINK-M32-M01",
+        "consumer": "M32",
+        "producer": "M01",
+        "datasets": [
+          "workforce",
+          "contractCoverage",
+          "contractOperations"
+        ],
+        "producerVersion": "r1-m01-v1",
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "internal_contract_connected",
+        "evidence": "docs/delivery/r1-p3/R1_P3_Producer_Case_Evidence.json#P3-LINK-M32-M01",
+        "accepted": false
+      },
+      "producerSourceSha": "254a70772bc78755d1e524d7b4bc4871b9da5904",
+      "realEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "passed_actual_internal_producer",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M19",
+      "consumer": "M32",
+      "producer": "M19",
+      "given": "M19已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M19生产者与M32实施负责人",
+      "execution": "directory_rejection_verified_no_business_dataset",
+      "contract": {
+        "caseId": "P3-LINK-M32-M19",
+        "consumer": "M32",
+        "producer": "M19",
+        "datasets": [],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "dataset_not_registered",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M48",
+      "consumer": "M32",
+      "producer": "M48",
+      "given": "M48已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M48生产者与M32实施负责人",
+      "execution": "directory_rejection_verified_no_business_dataset",
+      "contract": {
+        "caseId": "P3-LINK-M32-M48",
+        "consumer": "M32",
+        "producer": "M48",
+        "datasets": [],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "dataset_not_registered",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M32",
+      "consumer": "M32",
+      "producer": "M32",
+      "given": "M32已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M32生产者与M32实施负责人",
+      "execution": "directory_rejection_verified_no_business_dataset",
+      "contract": {
+        "caseId": "P3-LINK-M32-M32",
+        "consumer": "M32",
+        "producer": "M32",
+        "datasets": [],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "dataset_not_registered",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M03",
+      "consumer": "M32",
+      "producer": "M03",
+      "given": "M03已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M03生产者与M32实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M32-M03",
+        "consumer": "M32",
+        "producer": "M03",
+        "datasets": [],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "dataset_not_registered",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M06",
+      "consumer": "M32",
+      "producer": "M06",
+      "given": "M06已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M06生产者与M32实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M32-M06",
+        "consumer": "M32",
+        "producer": "M06",
+        "datasets": [],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "dataset_not_registered",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M17",
+      "consumer": "M32",
+      "producer": "M17",
+      "given": "M17已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M17生产者与M32实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M32-M17",
+        "consumer": "M32",
+        "producer": "M17",
+        "datasets": [
+          "successionCoverage"
+        ],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "producer_not_configured",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M18",
+      "consumer": "M32",
+      "producer": "M18",
+      "given": "M18已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M18生产者与M32实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M32-M18",
+        "consumer": "M32",
+        "producer": "M18",
+        "datasets": [
+          "talentReview"
+        ],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "producer_not_configured",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M26",
+      "consumer": "M32",
+      "producer": "M26",
+      "given": "M26已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M26生产者与M32实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M32-M26",
+        "consumer": "M32",
+        "producer": "M26",
+        "datasets": [],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "dataset_not_registered",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M37",
+      "consumer": "M32",
+      "producer": "M37",
+      "given": "M37已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M37生产者与M32实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M32-M37",
+        "consumer": "M32",
+        "producer": "M37",
+        "datasets": [],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "dataset_not_registered",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M12",
+      "consumer": "M32",
+      "producer": "M12",
+      "given": "M12已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M12生产者与M32实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M32-M12",
+        "consumer": "M32",
+        "producer": "M12",
+        "datasets": [
+          "recruitmentOperations"
+        ],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "producer_not_configured",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M16",
+      "consumer": "M32",
+      "producer": "M16",
+      "given": "M16已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M16生产者与M32实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M32-M16",
+        "consumer": "M32",
+        "producer": "M16",
+        "datasets": [
+          "performanceOperations",
+          "performance"
+        ],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "producer_not_configured",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M27",
+      "consumer": "M32",
+      "producer": "M27",
+      "given": "M27已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M27生产者与M32实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M32-M27",
+        "consumer": "M32",
+        "producer": "M27",
+        "datasets": [
+          "learning",
+          "learningPlanProgress",
+          "learningExams",
+          "homework",
+          "trainingStageProgress",
+          "trainingProgress",
+          "trainingRoster",
+          "instructorSchedule",
+          "instructorCampaignProgress"
+        ],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "producer_not_configured",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M11",
+      "consumer": "M32",
+      "producer": "M11",
+      "given": "M11已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M11生产者与M32实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M32-M11",
+        "consumer": "M32",
+        "producer": "M11",
+        "datasets": [
+          "attendance",
+          "payrollAttendanceReferences"
+        ],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "producer_not_configured",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "P3-LINK-M32-M07",
+      "consumer": "M32",
+      "producer": "M07",
+      "given": "M07已批准原域契约和实际实现；可见/不可见对象、草稿/已发布/旧版本及未知字段样本",
+      "when": "核该来源目录和已注册数据集；查询/聚合/历史/导出分别验当前权，暂缺定义时请求查询",
+      "then": "按真实原域ID/版本/单位/发布/权限映射，不强造新评分；现有21数据集按对应rowKey和字段字典逐值核；未注册/未配置明确不可用，目录存在不等业务验收",
+      "evidence": "catalog/producer版本、对应datasetDefinition、独立oracle和实际联调回执；无实现则明确依赖未满足",
+      "gate": "P3-R1-10该来源联调；P4完整业务验收前",
+      "owner": "M07生产者与M32实施负责人",
+      "execution": "blocked_real_producer_not_ready",
+      "contract": {
+        "caseId": "P3-LINK-M32-M07",
+        "consumer": "M32",
+        "producer": "M07",
+        "datasets": [
+          "payrollOperations",
+          "payrollReconciliation",
+          "payrollAttendanceReferences"
+        ],
+        "producerVersion": null,
+        "definitionVersion": "r1-report-v1",
+        "mode": "internal",
+        "availability": "producer_not_configured",
+        "evidence": null,
+        "accepted": false
+      },
+      "producerSourceSha": null,
+      "realEvidence": null,
+      "negativeContractEvidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "normal": "not_executed_no_approved_runtime",
+      "forbidden": "local_consumer_rejection_verified",
+      "unavailable": "local_explicit_unavailability_verified",
+      "tests": [
+        "tests/r1-p3-producers.test.mjs"
+      ],
+      "blockedBy": [
+        "DEP-PRODUCERS-01"
+      ],
+      "accepted": false
+    }
+  ],
+  "counts": {
+    "total": 22,
+    "actualR1Internal": 3,
+    "r1DirectoryWithoutDataset": 3,
+    "blockedRealProducer": 16
+  },
+  "readOnlySourceInspection": {
+    "main": "22be3a7e366d6787180d4f593a30f5984c70e03a",
+    "p2": "e15237281ff19f04f08a354fd9455c518b24ae47",
+    "r2Design": "a7a23d6bff024f4660fd14b0c22f47a6d40d928f",
+    "remoteInspectedAt": "2026-09-10T10:22:36.301Z",
+    "r2R3P3ImplementationBranches": [],
+    "r2Handoff": "docs/delivery/r2-p2/P3_Handoff.md explicitly says P3 not started / 138 not_run",
+    "oldDeliveryBranches": "legacy source only; not R2/R3 P3 implementation"
+  },
+  "boundaries": [
+    "实际R1生产者在隔离SQLite合成运行，不是mock替换生产者",
+    "对象存储/供应商仍显式模拟；没有生产数据/身份/真实外效",
+    "R2/R3不由R1擅自实现或批准；16项保持真实联调未完成",
+    "M19/M48/M32未注册数据集仅验证目录/拒绝，不虚构业务数据集",
+    "旧四类门户读模式compatibility，真实新动作未配置；旧数据为空不代表新生产者验收0"
+  ],
+  "fullTaskComplete": false,
+  "exitApproved": false,
+  "p4Started": false,
+  "latestReadinessCheck": "R1_P3_Current_Dependency_Check.json",
+  "latestConsumerRegression": {
+    "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+    "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+    "meaning": "消费者和3项实际R1内部合成路径复验；16真实生产者仍未执行，不改历史realEvidence或accepted"
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "taskId": "P3-R1-05",
+  "sourceSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+  "cases": [
+    {
+      "id": "P3-M48-01",
+      "testNames": [
+        "P3-M48-01: session binding controls subject; forged subject, missing binding, duplicate binding and inactive member fail closed"
+      ],
+      "testFile": "tests/r1-p3-portal.test.mjs",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "status": "implemented_synthetic_verified_review_pending"
+    },
+    {
+      "id": "P3-M48-02",
+      "testNames": [
+        "P3-M48-02: multi-role grants preserve direct/dotted/department field tuples; no cross product or sensitive leakage",
+        "P3-M48-02/03: history never inherits current grants, revoked roles invalidate cursor, missing team and incomplete sources expose no global count",
+        "P3-M48-02/07: authorization race or stale client versions prevent producer dispatch; malformed records fail closed"
+      ],
+      "testFile": "tests/r1-p3-portal.test.mjs",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "status": "implemented_synthetic_verified_review_pending"
+    },
+    {
+      "id": "P3-M48-03",
+      "testNames": [
+        "P3-M48-03: 25 self tasks and two delegated reviews separate with stable cursors; awaiting publication is not pending approval",
+        "P3-M48-02/03: history never inherits current grants, revoked roles invalidate cursor, missing team and incomplete sources expose no global count",
+        "P3-M48-03/06: consumer invalidation and inbox share rollback, duplicate event cannot invalidate twice; route rejects forged parameters",
+        "BP-I-REQ-01: real compatibility projection counts only own published payslips, tracks appeal publication and retains original M26 identity"
+      ],
+      "testFile": "tests/r1-p3-portal.test.mjs",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "status": "implemented_synthetic_verified_review_pending"
+    },
+    {
+      "id": "P3-M48-04",
+      "testNames": [
+        "P3-M48-04/07: seven entries keep availability and source identity; OKR never invents scoring or unknown status actions",
+        "P3-M48-05/07: all seven synthetic producer actions preserve IDs and versions; lost committed reply queries actor-bound original receipt"
+      ],
+      "testFile": "tests/r1-p3-portal.test.mjs",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "status": "implemented_synthetic_verified_review_pending"
+    },
+    {
+      "id": "P3-M48-05",
+      "testNames": [
+        "P3-M48-05: producer rejection preserves original rows; unknown balances/scores are not zero, changed sources reject before dispatch",
+        "P3-M48-05/07: all seven synthetic producer actions preserve IDs and versions; lost committed reply queries actor-bound original receipt",
+        "P3-M48-02/07: authorization race or stale client versions prevent producer dispatch; malformed records fail closed",
+        "BP-I-REQ-01: real compatibility projection counts only own published payslips, tracks appeal publication and retains original M26 identity"
+      ],
+      "testFile": "tests/r1-p3-portal.test.mjs",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "status": "implemented_synthetic_verified_review_pending"
+    },
+    {
+      "id": "P3-M48-06",
+      "testNames": [
+        "P3-M48-06: cache revocation aborts old requests and object URLs; late data, 503 and auth version mixing cannot revive sensitive data",
+        "P3-M48-03/06: consumer invalidation and inbox share rollback, duplicate event cannot invalidate twice; route rejects forged parameters"
+      ],
+      "testFile": "tests/r1-p3-portal.test.mjs",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "status": "implemented_synthetic_verified_review_pending"
+    },
+    {
+      "id": "P3-M48-07",
+      "testNames": [
+        "P3-M48-04/07: seven entries keep availability and source identity; OKR never invents scoring or unknown status actions",
+        "P3-M48-05/07: all seven synthetic producer actions preserve IDs and versions; lost committed reply queries actor-bound original receipt",
+        "P3-M48-02/07: authorization race or stale client versions prevent producer dispatch; malformed records fail closed"
+      ],
+      "testFile": "tests/r1-p3-portal.test.mjs",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "status": "implemented_synthetic_verified_review_pending"
+    }
+  ],
+  "additionalRealR1Chain": {
+    "testFile": "tests/r1-p3-m01.test.mjs",
+    "testName": "P3-M19-01/04 + P3-M48-05: real R1 portal and regularize adapter updates stable person and normalized employee atomically",
+    "evidence": "evidence/r1-p3-20260910T070210483124Z.json"
+  },
+  "verificationBoundaries": [
+    "只证明R1本地隔离合成运行；独立角色/浏览器人工验收待评审",
+    "R2/R3新办理契约和真实联调未执行，责任保留P3-R1-10",
+    "旧360办理只在旧功能开关兼容路径复验，不标新生产者契约通过",
+    "current门户来源最多500记录，超出显式BOUNDED_QUERY_REQUIRED；无截断成功",
+    "84项和类型构建证据固定b7dac9c；新增11门户+5指定兼容证据固定2d6ae4f；两个源码间产品代码未变"
+  ],
+  "exitApproved": false
+}

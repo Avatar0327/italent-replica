@@ -1,0 +1,14 @@
+✔ P3-M19-01: graph/type validation, null/missing/multiple routes and no implicit auto pass (67.033093ms)
+✔ P3-M19-01: application dedup, immutable template v1 continues after v2 publication (36.235927ms)
+✔ P3-M19-02: all/any and reject policies are explicit and order-independent for same collected votes (36.879162ms)
+✔ P3-M19-03: transfer and intervention invalidate old node tokens, preserve actual decisions (32.399522ms)
+✔ P3-M19-04: domain cancellation SQL failure rolls back workflow/audit/receipt, success cancels both (28.48015ms)
+✔ P3-M19-06: delegation acceptance, intersection, no approval/proxy, revocation and commit-time expiry (200.840445ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1718.872388

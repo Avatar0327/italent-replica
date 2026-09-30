@@ -1,0 +1,2 @@
+CREATE INDEX `idx_grants_tenant` ON `hris_access_grants` (`tenant_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_grants_active_employee` ON `hris_access_grants` (`tenant_id`,`employee_id`) WHERE "hris_access_grants"."active" = 1 AND "hris_access_grants"."employee_id" IS NOT NULL;

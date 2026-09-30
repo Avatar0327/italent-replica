@@ -1,0 +1,140 @@
+{
+  "taskId": "P3-R1-04",
+  "sourceSha": "6c52613e9dde33084c3cbfa3ed2345b1f1bcd3dc",
+  "cases": [
+    {
+      "id": "P3-INT-01",
+      "testNames": [
+        "P3-INT-01: normalized envelope, durable duplicate, digest conflict and sequence gap",
+        "P3-INT-01: two consumers process once independently, quarantine gaps with owner and preserve old receipts",
+        "P3-INT-01: actual M01 domain outbox has canonical versioned envelopes and rolls back with its command"
+      ],
+      "testFile": "tests/r1-p3-integration.test.mjs",
+      "evidence": "evidence/r1-p3-20260910T063815488860Z.json",
+      "status": "implemented_synthetic_verified_review_pending"
+    },
+    {
+      "id": "P3-INT-02",
+      "testNames": [
+        "P3-INT-02: inbox projection and receipt roll back together under injected audit failure",
+        "P3-INT-02: grant expires after application validation; final command SQL rejects without partial changes"
+      ],
+      "testFile": "tests/r1-p3-integration.test.mjs",
+      "evidence": "evidence/r1-p3-20260910T063815488860Z.json",
+      "status": "implemented_synthetic_verified_review_pending"
+    },
+    {
+      "id": "P3-INT-03",
+      "testNames": [
+        "P3-INT-03: explicitly simulated unknown delivery is queried and not blindly resent",
+        "P3-INT-03: durable delivery loss, signed duplicate callback, nonce conflict, expiry and bad signature quarantine",
+        "P3-INT-03: callback audit failure rolls nonce/receipt/state back together; no trusted completion survives",
+        "P3-INT-03/04: confirmed-no-effect retries obey due time and diagnostics, namespaces never collide"
+      ],
+      "testFile": "tests/r1-p3-integration.test.mjs",
+      "evidence": "evidence/r1-p3-20260910T063815488860Z.json",
+      "status": "implemented_synthetic_verified_review_pending"
+    },
+    {
+      "id": "P3-INT-04",
+      "testNames": [
+        "P3-INT-04: six external adapters stay unconfigured; internal signed/published does not imply external success",
+        "P3-INT-03/04: confirmed-no-effect retries obey due time and diagnostics, namespaces never collide",
+        "P3-INT-04: HTTP preflight validates retained contracts without invoking any network sender"
+      ],
+      "testFile": "tests/r1-p3-integration.test.mjs",
+      "evidence": "evidence/r1-p3-20260910T063815488860Z.json",
+      "status": "implemented_synthetic_verified_review_pending"
+    },
+    {
+      "id": "P3-INT-05",
+      "testNames": [
+        "P3-INT-05: unknown command and forged tenant cannot choose an unregistered producer",
+        "P3-INT-05: equal labels retain independent stable IDs/versions; unknown statuses and revoked grants fail closed"
+      ],
+      "testFile": "tests/r1-p3-integration.test.mjs",
+      "evidence": "evidence/r1-p3-20260910T063815488860Z.json",
+      "status": "implemented_synthetic_verified_review_pending"
+    },
+    {
+      "id": "P3-INT-06",
+      "testNames": [
+        "P3-INT-06: unknown DB commit preserves uploaded bytes; tombstone refuses download and queues cleanup",
+        "P3-INT-06: put then real metadata rollback leaves inaccessible orphan; compensation failure stays pending",
+        "P3-INT-06: upgraded attachment commands replay once, old writes block before put, current field revocation denies bytes"
+      ],
+      "testFile": "tests/r1-p3-integration.test.mjs",
+      "evidence": "evidence/r1-p3-20260910T063815488860Z.json",
+      "status": "implemented_synthetic_verified_review_pending"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "BASE-03-AC01",
+      "cases": [
+        "P3-INT-02"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ]
+    },
+    {
+      "id": "BASE-04-AC03",
+      "cases": [
+        "P3-INT-06"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ]
+    },
+    {
+      "id": "BASE-04-AC04",
+      "cases": [
+        "P3-INT-06"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ]
+    },
+    {
+      "id": "BASE-06-AC01",
+      "cases": [
+        "P3-INT-01"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ]
+    },
+    {
+      "id": "BASE-06-AC02",
+      "cases": [
+        "P3-INT-04"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ]
+    },
+    {
+      "id": "BASE-06-AC03",
+      "cases": [
+        "P3-INT-03"
+      ],
+      "evidence": [
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ]
+    }
+  ],
+  "boundaries": [
+    "只证明内部事务与显式模拟契约；供应商实际联调未执行",
+    "孤儿补偿仅确认从未引用且冻结旧写意图后允许；正式恢复点约束和墓碑物理GC归09",
+    "本轮74项整体+3项附件定向复验；筛选之外旧用例未计通过",
+    "未新增外部endpoint/密钥，不执行M35或其他暂缓业务引擎"
+  ],
+  "independentReview": "pending"
+}

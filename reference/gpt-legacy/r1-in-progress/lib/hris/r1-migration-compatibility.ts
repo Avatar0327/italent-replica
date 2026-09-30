@@ -1,0 +1,7 @@
+import type {memberContext} from './context';
+import {readConsistent} from './context';
+import {visibleState} from './authorization';
+import {projectR1CoreState} from './r1-core-read';
+import {HttpError} from './http';
+/** Existing IDs, frozen legacy decisions and D7 data remain under their original current permissions. */
+export async function migrationApprovalCompatibility(ctx:Awaited<ReturnType<typeof memberContext>>,id:string){const state=await projectR1CoreState(ctx.db,ctx.member,visibleState(JSON.parse(ctx.row.data),ctx.member)),approval=state.approvals.find(a=>a.id===id);if(!approval)throw new HttpError(404,'原申请不存在或不可见','NOT_FOUND_OR_NOT_VISIBLE');const result=await readConsistent(ctx,[ctx.db.prepare("SELECT source_digest AS sourceDigest,source_revision AS sourceRevision,confidence FROM r1_migration_map WHERE tenant_id=? AND source_table='hris_approvals' AND source_key=json_array(?,?) ORDER BY ordinal LIMIT 1").bind(ctx.member.tenantId,ctx.member.tenantId,id)]),mapping=result[0].results[0] as any;if(!mapping)throw new HttpError(409,'此原单尚未完成迁移观察','MIGRATION_OBJECT_NOT_BACKFILLED');const execution=approval.details?.transfer?.execution;return {approval,provenance:mapping,approvalStatus:approval.status,executionStatus:execution??'unknown',notificationStatus:'unknown',historyQuality:'legacy_observation',actions:[],reasonCode:'LEGACY_COMMAND_REQUIRES_VERIFIED_ADAPTER',terminalReplayAllowed:false};}

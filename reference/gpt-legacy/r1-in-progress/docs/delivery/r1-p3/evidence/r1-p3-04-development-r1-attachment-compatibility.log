@@ -1,0 +1,48 @@
+✖ P3 附件：受权下载、类型与大小验证、并发清理、删除及数据库失败回滚 (601.028628ms)
+✔ P3 附件默认保密：员工和审批人不能列出或下载未开放的人事附件 (107.524145ms)
+✖ P2/P3 附件读取撤权一致性：列表同批校验，文件读取后再次检查修订 (94.344196ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 1
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1682.561675
+
+✖ failing tests:
+
+test at tests/p3-api.test.mjs:39:1
+✖ P3 附件：受权下载、类型与大小验证、并发清理、删除及数据库失败回滚 (601.028628ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  2 !== 1
+  
+      at TestContext.<anonymous> (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/p3-api.test.mjs:43:214)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/p3-api.test.mjs:586:1
+✖ P2/P3 附件读取撤权一致性：列表同批校验，文件读取后再次检查修订 (94.344196ms)
+  AssertionError [ERR_ASSERTION]: {"error":"操作暂时无法完成，请查询原命令状态","machineCode":"STORAGE_UNAVAILABLE","outcome":"unknown"}
+  
+  503 !== 409
+  
+      at expect (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/p3-api.test.mjs:7:44)
+      at async TestContext.<anonymous> (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/p3-api.test.mjs:588:275)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 503,
+    expected: 409,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

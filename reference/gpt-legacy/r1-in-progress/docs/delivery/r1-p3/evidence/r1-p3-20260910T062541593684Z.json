@@ -1,0 +1,54 @@
+{
+  "runId": "r1-p3-20260910T062541593684Z",
+  "sourceSha": "e2472e10c0fc272da8cf60171f076f1d0cc4a19d",
+  "taskId": "P3-R1-04",
+  "startedAt": "2026-09-10T06:25:41.593716+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/r1-p3-integration.test.mjs": "4f5ce2c4e4e2e4603da5f4932c9969d53bc261b72bd9e54a90a990d58c70ebf8",
+    "tests/r1-p3-workflow.test.mjs": "ea9cb811242b3f7b4229b16afb47124564dd2a3799560ec7a46950ebbf8fcfe6",
+    "tests/r1-p3-m01.test.mjs": "9df561a349e3dec19da752d9d4087407f76de8f2c615eb4cecceef6c678c1d82",
+    "tests/r1-p3-transfer.test.mjs": "eb466bd68346d72f418f822c16480e1f800bfdbf709b677aa02492cb2d499abb",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/r1-p3-integration.test.mjs",
+        "tests/r1-p3-workflow.test.mjs",
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T062541593684Z-tests.log",
+      "sha256": "0bc449e9a3afa2db237dd21baf48e10d96f952bb2e0ec54e1f4bab4d273f2a77"
+    },
+    {
+      "name": "types",
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T062541593684Z-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "testSummary": {
+    "tests": 58,
+    "pass": 58,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T06:25:53.761185+00:00"
+}

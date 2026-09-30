@@ -1,0 +1,30 @@
+{
+  "baseline": "637bb8d268fa1d30cdb634af662a5ed204de1a41",
+  "executedAt": "2026-09-07T15:07:03.101665+00:00",
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "tests/g0-contracts.test.mjs",
+    "tests/g1-foundation.test.mjs",
+    "tests/g1-cadre-exit.test.mjs"
+  ],
+  "exitCode": 0,
+  "environment": "local in-memory SQLite; synthetic identity and Cloudflare bindings; no cloud writes",
+  "sourceSHA256": {
+    "tests/g0-contracts.test.mjs": "9ee98dda420e9ab65a0a1e57e9acd197693abf537304e1ef91be66028dd700fc",
+    "tests/g1-foundation.test.mjs": "e3246d314589e95b0476610de183d09995948db1f9805deb9e6a3c298de4e27c",
+    "tests/g1-cadre-exit.test.mjs": "e6b2f710e131ab06c48eeaa260655c16ca0e2ec0daf84af2fff50336571d023f",
+    "tests/support/cadre-checks.mjs": "73a4e3fb0fc2c22823670bae76b835e43d7651b5fd0eb88662f99644d3641072",
+    "tests/support/foundation-scenario.mjs": "b84670b9f011ea80b27d67685d7bf648e209e3be1e3c7a194170393489fbbf69",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d",
+    "lib/hris/cadre-profiles.ts": "365fcdbe620f9323cf2b7cf678018d9ebcb743a343815d7fadfc7c65946d15da",
+    "lib/hris/development.ts": "1b2ca68f6dfdb3ba9ce0cbdbff157c7790fb03244c787b6de486d30387281512",
+    "lib/hris/member-rules.ts": "07b27d1f1a4bee881cbea1de105439274acc04f37845d237fa0f41cef7afa791",
+    "app/api/members/route.ts": "f0f292db36c6a9668b355a0a27df227d4aff92ceb4c1ed54ac4e7f44bc7eabdd"
+  },
+  "stdout": "TAP version 13\n# Subtest: G0 SC-1：计划人员、标准版本与状态异常均不产生记录或审计\nok 1 - G0 SC-1：计划人员、标准版本与状态异常均不产生记录或审计\n  ---\n  duration_ms: 312.556045\n  type: 'test'\n  ...\n# Subtest: G0 SC-1：历史20条分页保持事件快照，完成计划拒绝新增派课\nok 2 - G0 SC-1：历史20条分页保持事件快照，完成计划拒绝新增派课\n  ---\n  duration_ms: 225.767802\n  type: 'test'\n  ...\n# Subtest: G0 SC-1：JSON请求、匿名身份、租户注入与错误响应边界\nok 3 - G0 SC-1：JSON请求、匿名身份、租户注入与错误响应边界\n  ---\n  duration_ms: 56.03525\n  type: 'test'\n  ...\n# Subtest: G0 SC-1：多记录空批、超限、重复标识拒绝，20条边界原子保存\nok 4 - G0 SC-1：多记录空批、超限、重复标识拒绝，20条边界原子保存\n  ---\n  duration_ms: 77.763604\n  type: 'test'\n  ...\n# Subtest: H002 G1-02：离职后的未完成计划和学习保留历史、拒绝新业务，记录离职账号停用阻断并验证HR停用撤权\nok 5 - H002 G1-02：离职后的未完成计划和学习保留历史、拒绝新业务，记录离职账号停用阻断并验证HR停用撤权\n  ---\n  duration_ms: 397.323107\n  type: 'test'\n  ...\n# Subtest: G1 X01：同一人员从组织岗位到盘点计划、考试学习核验与档案回流，调动后撤销旧组织访问\nok 6 - G1 X01：同一人员从组织岗位到盘点计划、考试学习核验与档案回流，调动后撤销旧组织访问\n  ---\n  duration_ms: 467.920969\n  type: 'test'\n  ...\n# H002_SC1_INSTANCE {\"employeeId\":\"87c4e24a-31bb-432b-96ac-b5bf9ed1d340\",\"reviewId\":\"599d6092-39d8-4704-ba00-ada632d0fdd3\",\"standardId\":\"faa2101f-f0c3-4b1a-a142-5631a7249c02\",\"planId\":\"aa55b04b-4389-4bc0-8436-2d5cea24d557\",\"planReferenceId\":\"faa2101f-f0c3-4b1a-a142-5631a7249c02\",\"courseId\":\"b5ed2d70-b991-44da-b0d1-f0b1b1fbcc4b\",\"courseReferenceId\":\"faa2101f-f0c3-4b1a-a142-5631a7249c02\",\"enrollmentId\":\"e80c0714-13d2-4359-8b33-fa6485e6bf53\",\"enrollmentReferenceId\":\"b5ed2d70-b991-44da-b0d1-f0b1b1fbcc4b\",\"enrollmentPlanId\":\"aa55b04b-4389-4bc0-8436-2d5cea24d557\"}\n1..6\n# tests 6\n# suites 0\n# pass 6\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 3302.739466\n",
+  "stderr": "",
+  "limitation": "6 passing tests characterize existing behavior; C-DEF-01 remains unresolved, G1 is not accepted",
+  "executionCommit": "5bf8b9385fb4cb326880df7e3d1d2fc4bc183eb6"
+}

@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: 未配置、停用与未知角色均拒绝访问
+ok 1 - 未配置、停用与未知角色均拒绝访问
+  ---
+  duration_ms: 1.204703
+  type: 'test'
+  ...
+# Subtest: 员工响应不泄漏同事或审计记录
+ok 2 - 员工响应不泄漏同事或审计记录
+  ---
+  duration_ms: 1.484385
+  type: 'test'
+  ...
+# Subtest: 员工不能提交其他人员申请或维护组织
+ok 3 - 员工不能提交其他人员申请或维护组织
+  ---
+  duration_ms: 1.814655
+  type: 'test'
+  ...
+# Subtest: 申请与审批分离，申请人不能自审，审批者不能审批本人异动
+ok 4 - 申请与审批分离，申请人不能自审，审批者不能审批本人异动
+  ---
+  duration_ms: 2.714987
+  type: 'test'
+  ...
+# Subtest: 无申请人信息的遗留单据不能直接审批
+ok 5 - 无申请人信息的遗留单据不能直接审批
+  ---
+  duration_ms: 0.299894
+  type: 'test'
+  ...
+# Subtest: F01-F04 cross-org UAT: origin-only HR cannot initiate; B-only reviewer cannot review an A employee; both A reviewers can finalize without B scope
+ok 6 - F01-F04 cross-org UAT: origin-only HR cannot initiate; B-only reviewer cannot review an A employee; both A reviewers can finalize without B scope
+  ---
+  duration_ms: 89.602269
+  type: 'test'
+  ...
+# Subtest: P2 API：企业初始化、组织员工、成员范围、顺序审批、任职历史、越权和刷新持久化
+ok 7 - P2 API：企业初始化、组织员工、成员范围、顺序审批、任职历史、越权和刷新持久化
+  ---
+  duration_ms: 77.881098
+  type: 'test'
+  ...
+# Subtest: P2 存储：迁移保留原快照、重入不重复、跨租户外键、并发冲突与失败整体回滚
+ok 8 - P2 存储：迁移保留原快照、重入不重复、跨租户外键、并发冲突与失败整体回滚
+  ---
+  duration_ms: 12.445708
+  type: 'test'
+  ...
+# Subtest: P2 权限竞争：数据快照之前撤销组织范围不沿用旧权限
+ok 9 - P2 权限竞争：数据快照之前撤销组织范围不沿用旧权限
+  ---
+  duration_ms: 4.29009
+  type: 'test'
+  ...
+# Subtest: P3 岗位与职级：目录关联、任职变更审批、在用保护及历史留存
+ok 10 - P3 岗位与职级：目录关联、任职变更审批、在用保护及历史留存
+  ---
+  duration_ms: 25.78015
+  type: 'test'
+  ...
+# Subtest: 多级审批仅终审通过更新组织，不能越级或重复审批
+ok 11 - 多级审批仅终审通过更新组织，不能越级或重复审批
+  ---
+  duration_ms: 4.597806
+  type: 'test'
+  ...
+# Subtest: 驳回与撤回不修改档案，已撤回不能审批
+ok 12 - 驳回与撤回不修改档案，已撤回不能审批
+  ---
+  duration_ms: 1.959214
+  type: 'test'
+  ...
+# Subtest: 修改流程不改变已提交申请的审批人及版本
+ok 13 - 修改流程不改变已提交申请的审批人及版本
+  ---
+  duration_ms: 0.425003
+  type: 'test'
+  ...
+# Subtest: 未配置流程、重复审批人与自审流程被拒绝
+ok 14 - 未配置流程、重复审批人与自审流程被拒绝
+  ---
+  duration_ms: 1.479879
+  type: 'test'
+  ...
+# Subtest: 成员验证禁止自降权、无档案员工授权与已离职关联
+ok 15 - 成员验证禁止自降权、无档案员工授权与已离职关联
+  ---
+  duration_ms: 2.743841
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 822.813374

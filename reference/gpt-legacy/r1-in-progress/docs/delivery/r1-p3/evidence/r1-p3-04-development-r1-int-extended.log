@@ -1,0 +1,55 @@
+✔ P3-INT-01: normalized envelope, durable duplicate, digest conflict and sequence gap (92.038114ms)
+✔ P3-INT-02: inbox projection and receipt roll back together under injected audit failure (53.733559ms)
+✔ P3-INT-03: explicitly simulated unknown delivery is queried and not blindly resent (3.574325ms)
+✔ P3-INT-04: six external adapters stay unconfigured; internal signed/published does not imply external success (0.46939ms)
+✔ P3-INT-05: unknown command and forged tenant cannot choose an unregistered producer (51.711071ms)
+✔ P3-INT-06: unknown DB commit preserves uploaded bytes; tombstone refuses download and queues cleanup (90.831154ms)
+✔ P3-INT-01: two consumers process once independently, quarantine gaps with owner and preserve old receipts (65.590464ms)
+✔ P3-INT-03: durable delivery loss, signed duplicate callback, nonce conflict, expiry and bad signature quarantine (110.988535ms)
+✔ P3-INT-03: callback audit failure rolls nonce/receipt/state back together; no trusted completion survives (63.180279ms)
+✔ P3-INT-05: equal labels retain independent stable IDs/versions; unknown statuses and revoked grants fail closed (64.474809ms)
+✔ P3-INT-06: put then real metadata rollback leaves inaccessible orphan; compensation failure stays pending (68.746468ms)
+✖ P3-INT-06: upgraded attachment commands replay once, old writes block before put, current field revocation denies bytes (100.636598ms)
+✔ P3-INT-02: grant expires after application validation; final command SQL rejects without partial changes (188.632507ms)
+✔ P3-INT-03/04: confirmed-no-effect retries obey due time and diagnostics, namespaces never collide (96.099477ms)
+✔ P3-INT-04: HTTP preflight validates retained contracts without invoking any network sender (85.073984ms)
+✖ P3-INT-01: actual M01 domain outbox has canonical versioned envelopes and rolls back with its command (58.534172ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 14
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2169.203604
+
+✖ failing tests:
+
+test at tests/r1-p3-integration.test.mjs:89:1
+✖ P3-INT-06: upgraded attachment commands replay once, old writes block before put, current field revocation denies bytes (100.636598ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  409 !== 200
+  
+      at TestContext.<anonymous> (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/r1-p3-integration.test.mjs:90:239)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 409,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/r1-p3-integration.test.mjs:104:1
+✖ P3-INT-01: actual M01 domain outbox has canonical versioned envelopes and rolls back with its command (58.534172ms)
+  Error: 目录有效日期无效
+      at invalid (file:///workspace/sites/italent-hris-r1-p3-20260910/lib/hris/r1-m01.ts:60:59)
+      at executeM01 (file:///workspace/sites/italent-hris-r1-p3-20260910/lib/hris/r1-m01.ts:161:17)
+      at async TestContext.<anonymous> (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/r1-p3-integration.test.mjs:105:812)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    status: 400,
+    machineCode: 'INVALID_INPUT'
+  }

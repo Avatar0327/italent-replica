@@ -1,0 +1,69 @@
+{
+  "checkedAt": "2026-09-08T13:45:39.865467+00:00",
+  "environment": "Sites production / 仅所有者私有访问",
+  "latestDeploymentVerified": true,
+  "latestSavedCommit": "fdc423fcba607bd5814a0672836b55536c71ecb1",
+  "latestSavedVersion": 112,
+  "note": "v112首包按钮/导航可发现性修复；发布在停点指令前启动，停点后仅取得终态，不为交接额外发布；未取得用户复验。",
+  "schemaVerification": {
+    "checkedAt": "2026-09-08T13:23:31.983Z",
+    "columns": [
+      "tenant_id",
+      "id",
+      "employee_id",
+      "kind",
+      "org_id",
+      "reason",
+      "status",
+      "created",
+      "created_by",
+      "decided",
+      "decided_by",
+      "current_step",
+      "workflow_version",
+      "details"
+    ],
+    "hasMore": false,
+    "projection": {
+      "next_offset": null,
+      "omitted_columns": 0,
+      "omitted_rows": 0,
+      "truncated": false,
+      "truncated_values": 0
+    },
+    "returnedRows": 0,
+    "table": "hris_approvals"
+  },
+  "source": "Sites save_site_version + deploy_private_site_version + get_deployment_status（部署ID指定核验）",
+  "verified": {
+    "version": 112,
+    "versionId": "appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_54fa1b3048f08191ba42a78ebc371c72",
+    "deploymentId": "appgdep_6aa010f1e1e481919f2a4331af5b0184",
+    "commit": "fdc423fcba607bd5814a0672836b55536c71ecb1",
+    "time": "2026-09-08T13:43:27.663228+00:00",
+    "status": "succeeded",
+    "envRevision": 1,
+    "url": "https://italent-hris-jack.creamy-fern-1782.chatgpt.site"
+  },
+  "previousVerified": {
+    "commit": "3d690cbbd6336c6de8b76a06fa4459700b1e3a88",
+    "deploymentId": "appgdep_6aa00c1c77948191899be9e2c773c84f",
+    "envRevision": 1,
+    "status": "succeeded",
+    "time": "2026-09-08T13:22:52.460505+00:00",
+    "url": "https://italent-hris-jack.creamy-fern-1782.chatgpt.site",
+    "version": 111,
+    "versionId": "appgprj_6a9e2c705cfc819180e0e5251bb025cc~appgver_0ad28e6fe0ac81919a51e411984b620f"
+  },
+  "p1ReadOnlyRecheck": {
+    "checkedAt": "2026-09-08T14:14:15.632554+00:00",
+    "deploymentId": "appgdep_6aa010f1e1e481919f2a4331af5b0184",
+    "status": "succeeded",
+    "providerUpdatedAt": "2026-09-08T13:43:50.706930+00:00",
+    "version": 112,
+    "envRevision": 1,
+    "externalVisitorCount": 0,
+    "newDeployment": false,
+    "note": "只读复核原部署；不改变原发布时刻/源码，不能当业务或生产验收"
+  }
+}

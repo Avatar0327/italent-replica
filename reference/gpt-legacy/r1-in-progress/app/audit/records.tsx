@@ -1,0 +1,11 @@
+'use client';
+import {useEffect,useState} from 'react';
+import Link from 'next/link';
+import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+import {Table,TableHeader,TableBody,TableRow,TableHead,TableCell} from '@/components/ui/table';
+type Item={id:string;action:string;subject:string;at:string;actor:string;revision:number};
+export default function Audit(){const [query,setQuery]=useState(''),[search,setSearch]=useState(''),[page,setPage]=useState(1),[data,setData]=useState<{items:Item[];total:number}|null>(null),[error,setError]=useState('');
+ useEffect(()=>{let live=true;setData(null);setError('');fetch(`/api/audit?page=${page}&q=${encodeURIComponent(search)}`,{cache:'no-store'}).then(async r=>{const d=await r.json() as {items:Item[];total:number;error?:string};if(!r.ok)throw Error(d.error);if(live)setData(d);}).catch(e=>live&&setError(e.message));return()=>{live=false;};},[page,search]);
+ return <main className="main-content mx-auto max-w-6xl"><Link href="/" className="text-link">返回导航台</Link><h1 className="text-3xl font-semibold my-6">操作审计</h1><section className="panel"><form className="filters" onSubmit={e=>{e.preventDefault();setPage(1);setSearch(query);}}><Input className="max-w-md" placeholder="搜索操作或对象" aria-label="搜索操作记录" value={query} onChange={e=>setQuery(e.target.value)}/><Button>查询</Button></form>{error&&<p className="p-6 text-red-700" role="alert">{error}</p>}<Table><TableHeader><TableRow>{['时间（UTC）','操作人','操作','对象','数据版本'].map(t=><TableHead key={t}>{t}</TableHead>)}</TableRow></TableHeader><TableBody>{data?.items.map(i=><TableRow key={i.id}><TableCell>{i.at.slice(0,19).replace('T',' ')}</TableCell><TableCell>{i.actor}</TableCell><TableCell>{i.action}</TableCell><TableCell className="max-w-xl whitespace-normal break-all">{i.subject}</TableCell><TableCell>{i.revision}</TableCell></TableRow>)}</TableBody></Table>{!data&&!error&&<p className="p-6">加载中…</p>}{data&&!data.items.length&&<p className="p-6">暂无匹配记录</p>}{data&&<div className="pagination"><span>共 {data.total} 条 · 第 {page} 页</span><Button variant="outline" disabled={page===1} onClick={()=>setPage(page-1)}>上一页</Button><Button variant="outline" disabled={page*20>=data.total} onClick={()=>setPage(page+1)}>下一页</Button></div>}</section></main>;
+}

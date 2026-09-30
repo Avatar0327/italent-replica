@@ -1,0 +1,775 @@
+TAP version 13
+# Subtest: 未配置、停用与未知角色均拒绝访问
+ok 1 - 未配置、停用与未知角色均拒绝访问
+  ---
+  duration_ms: 4.581883
+  type: 'test'
+  ...
+# Subtest: 员工响应不泄漏同事或审计记录
+ok 2 - 员工响应不泄漏同事或审计记录
+  ---
+  duration_ms: 5.696251
+  type: 'test'
+  ...
+# Subtest: 员工不能提交其他人员申请或维护组织
+ok 3 - 员工不能提交其他人员申请或维护组织
+  ---
+  duration_ms: 5.019024
+  type: 'test'
+  ...
+# Subtest: 申请与审批分离，申请人不能自审，审批者不能审批本人异动
+ok 4 - 申请与审批分离，申请人不能自审，审批者不能审批本人异动
+  ---
+  duration_ms: 14.689395
+  type: 'test'
+  ...
+# Subtest: 无申请人信息的遗留单据不能直接审批
+ok 5 - 无申请人信息的遗留单据不能直接审批
+  ---
+  duration_ms: 1.068527
+  type: 'test'
+  ...
+# Subtest: G0 SC-1：计划人员、标准版本与状态异常均不产生记录或审计
+ok 6 - G0 SC-1：计划人员、标准版本与状态异常均不产生记录或审计
+  ---
+  duration_ms: 547.330795
+  type: 'test'
+  ...
+# Subtest: G0 SC-1：历史20条分页保持事件快照，完成计划拒绝新增派课
+ok 7 - G0 SC-1：历史20条分页保持事件快照，完成计划拒绝新增派课
+  ---
+  duration_ms: 320.68031
+  type: 'test'
+  ...
+# Subtest: G0 SC-1：JSON请求、匿名身份、租户注入与错误响应边界
+ok 8 - G0 SC-1：JSON请求、匿名身份、租户注入与错误响应边界
+  ---
+  duration_ms: 140.660162
+  type: 'test'
+  ...
+# Subtest: G0 SC-1：多记录空批、超限、重复标识拒绝，20条边界原子保存
+ok 9 - G0 SC-1：多记录空批、超限、重复标识拒绝，20条边界原子保存
+  ---
+  duration_ms: 111.912951
+  type: 'test'
+  ...
+# Subtest: H002 G1-02：离职后的未完成计划和学习保留历史、拒绝新业务，离职账号可保留关联停用并立即撤权
+ok 10 - H002 G1-02：离职后的未完成计划和学习保留历史、拒绝新业务，离职账号可保留关联停用并立即撤权
+  ---
+  duration_ms: 427.542109
+  type: 'test'
+  ...
+# Subtest: Cadre terms: scoped registration, immutable history, correction, ending and profile integration
+ok 11 - Cadre terms: scoped registration, immutable history, correction, ending and profile integration
+  ---
+  duration_ms: 320.870171
+  type: 'test'
+  ...
+# Subtest: G1 X01：同一人员从组织岗位到盘点计划、考试学习核验与档案回流，调动后撤销旧组织访问
+ok 12 - G1 X01：同一人员从组织岗位到盘点计划、考试学习核验与档案回流，调动后撤销旧组织访问
+  ---
+  duration_ms: 687.622686
+  type: 'test'
+  ...
+# H002_SC1_INSTANCE {"employeeId":"81e920f9-06d0-4ad4-bc53-07b9cdaaf595","reviewId":"3b643b1e-7164-416b-9648-cc531e1d1cd0","standardId":"c1c4cd5c-ceec-4c49-830a-638b0779e32b","planId":"c3100a86-cacb-4adc-8ba9-4dc7c4a5ca62","planReferenceId":"c1c4cd5c-ceec-4c49-830a-638b0779e32b","courseId":"d4242514-03b1-473a-9125-f223f1335b1b","courseReferenceId":"c1c4cd5c-ceec-4c49-830a-638b0779e32b","enrollmentId":"c93c2b46-ef2b-4008-8005-a764f850c143","enrollmentReferenceId":"d4242514-03b1-473a-9125-f223f1335b1b","enrollmentPlanId":"c3100a86-cacb-4adc-8ba9-4dc7c4a5ca62"}
+# Subtest: Learning thresholds: optional course counts unlock next stage, invalid minima reject, legacy rules remain
+ok 13 - Learning thresholds: optional course counts unlock next stage, invalid minima reject, legacy rules remain
+  ---
+  duration_ms: 441.414294
+  type: 'test'
+  ...
+# Subtest: G1-03 H003：同员工计划与两阶段考试、强制出勤、独立核验、恢复及学分来源闭环
+ok 14 - G1-03 H003：同员工计划与两阶段考试、强制出勤、独立核验、恢复及学分来源闭环
+  ---
+  duration_ms: 1008.628466
+  type: 'test'
+  ...
+# H003: two stages completed; attempts 2+1 retained; credits 300 awarded/100 reversed/200 available; rejection snapshots unchanged.
+# Subtest: H004 P02: one employee goal adjustment, checkin, evaluation, appeal and versioned consumers
+ok 15 - H004 P02: one employee goal adjustment, checkin, evaluation, appeal and versioned consumers
+  ---
+  duration_ms: 449.222656
+  type: 'test'
+  ...
+# H004_CHAIN {"employeeId":"3998c228-48bd-4097-b744-de90f8b6c12c","cycleId":"bf4aa5c2-91ca-4589-ba83-e990132bda25","planId":"93fde7fe-3b3c-4ae9-8647-47b08b71c34d","adjustmentId":"cbffeaaa-4de5-4da8-a120-339672d32dd4","checkinId":"0f6b6f6c-ad5b-4ced-8c41-0c980c8b3307","resultId":"8a120442-6ad7-45b5-ae61-e689bce3240b","appealId":"04ff807e-2930-4e97-920b-1dcfadfa6835","correctionId":"c66dd70a-d009-49b7-8697-1bffdb24b92f","reviewId":"b450759c-065f-4c14-a057-1143f8925e40","originalScore":63,"latestScore":87}
+# Subtest: H004 P03: cycle status, dates, exact weights and score thresholds
+ok 16 - H004 P03: cycle status, dates, exact weights and score thresholds
+  ---
+  duration_ms: 302.231001
+  type: 'test'
+  ...
+# Subtest: H004 P03: exit preserves independent correction of published history
+ok 17 - H004 P03: exit preserves independent correction of published history
+  ---
+  duration_ms: 120.190667
+  type: 'test'
+  ...
+# Subtest: H004 P03: transfer preserves independent correction of published history
+ok 18 - H004 P03: transfer preserves independent correction of published history
+  ---
+  duration_ms: 280.95755
+  type: 'test'
+  ...
+# Subtest: H004 P-DEF-01: exit blocks active plan progression, keeps history and cancellation
+ok 19 - H004 P-DEF-01: exit blocks active plan progression, keeps history and cancellation
+  ---
+  duration_ms: 575.904698
+  type: 'test'
+  ...
+# Subtest: H004 P-DEF-01: transfer blocks active plan progression, keeps history and cancellation
+ok 20 - H004 P-DEF-01: transfer blocks active plan progression, keeps history and cancellation
+  ---
+  duration_ms: 370.115128
+  type: 'test'
+  ...
+# Subtest: 审批通过调动更新任职，且旧状态保持不变
+ok 21 - 审批通过调动更新任职，且旧状态保持不变
+  ---
+  duration_ms: 15.951674
+  type: 'test'
+  ...
+# Subtest: 驳回不变更员工组织
+ok 22 - 驳回不变更员工组织
+  ---
+  duration_ms: 1.442374
+  type: 'test'
+  ...
+# Subtest: 组织循环以及有在职员工的停用被阻止
+ok 23 - 组织循环以及有在职员工的停用被阻止
+  ---
+  duration_ms: 2.054747
+  type: 'test'
+  ...
+# Subtest: 重复工号与无效入职日期被拒绝
+ok 24 - 重复工号与无效入职日期被拒绝
+  ---
+  duration_ms: 5.340171
+  type: 'test'
+  ...
+# Subtest: 同一员工不能重复发起待审批请求
+ok 25 - 同一员工不能重复发起待审批请求
+  ---
+  duration_ms: 1.215056
+  type: 'test'
+  ...
+# Subtest: 离职通过后限制继续发起申请
+ok 26 - 离职通过后限制继续发起申请
+  ---
+  duration_ms: 2.055717
+  type: 'test'
+  ...
+# Subtest: 编辑档案无法绕过调动审批
+ok 27 - 编辑档案无法绕过调动审批
+  ---
+  duration_ms: 1.216051
+  type: 'test'
+  ...
+# Subtest: Learning definitions retain immutable versions, reject stale writes and scope leaks
+ok 28 - Learning definitions retain immutable versions, reject stale writes and scope leaks
+  ---
+  duration_ms: 300.869315
+  type: 'test'
+  ...
+# Subtest: learning instance contract rejects mixed modes, invalid dates and missing reward decisions
+ok 29 - learning instance contract rejects mixed modes, invalid dates and missing reward decisions
+  ---
+  duration_ms: 10.704202
+  type: 'test'
+  ...
+# Subtest: learning windows preserve fixed dates and inclusive leap/year boundaries; round keys do not collide
+ok 30 - learning windows preserve fixed dates and inclusive leap/year boundaries; round keys do not collide
+  ---
+  duration_ms: 3.593437
+  type: 'test'
+  ...
+# Subtest: P2 API：企业初始化、组织员工、成员范围、顺序审批、任职历史、越权和刷新持久化
+ok 31 - P2 API：企业初始化、组织员工、成员范围、顺序审批、任职历史、越权和刷新持久化
+  ---
+  duration_ms: 209.831468
+  type: 'test'
+  ...
+# Subtest: P2 存储：迁移保留原快照、重入不重复、跨租户外键、并发冲突与失败整体回滚
+ok 32 - P2 存储：迁移保留原快照、重入不重复、跨租户外键、并发冲突与失败整体回滚
+  ---
+  duration_ms: 34.975318
+  type: 'test'
+  ...
+# Subtest: P2 权限竞争：数据快照之前撤销组织范围不沿用旧权限
+ok 33 - P2 权限竞争：数据快照之前撤销组织范围不沿用旧权限
+  ---
+  duration_ms: 9.243801
+  type: 'test'
+  ...
+# Subtest: P3 岗位与职级：目录关联、任职变更审批、在用保护及历史留存
+ok 34 - P3 岗位与职级：目录关联、任职变更审批、在用保护及历史留存
+  ---
+  duration_ms: 93.680172
+  type: 'test'
+  ...
+# Subtest: P3：标准版本、绩效更正、盘点快照、跨组织与本人评价隔离
+ok 35 - P3：标准版本、绩效更正、盘点快照、跨组织与本人评价隔离
+  ---
+  duration_ms: 1096.955241
+  type: 'test'
+  ...
+# Subtest: P3：发展计划—课程—学习成果—独立核验闭环与重复处理保护
+ok 36 - P3：发展计划—课程—学习成果—独立核验闭环与重复处理保护
+  ---
+  duration_ms: 256.233429
+  type: 'test'
+  ...
+# Subtest: P3 附件：受权下载、类型与大小验证、并发清理、删除及数据库失败回滚
+ok 37 - P3 附件：受权下载、类型与大小验证、并发清理、删除及数据库失败回滚
+  ---
+  duration_ms: 310.171576
+  type: 'test'
+  ...
+# Subtest: P3 附件默认保密：员工和审批人不能列出或下载未开放的人事附件
+ok 38 - P3 附件默认保密：员工和审批人不能列出或下载未开放的人事附件
+  ---
+  duration_ms: 45.617692
+  type: 'test'
+  ...
+# Subtest: P3 考试：答案服务端保密、次数限制、自动评分及成果提交门槛
+ok 39 - P3 考试：答案服务端保密、次数限制、自动评分及成果提交门槛
+  ---
+  duration_ms: 97.059297
+  type: 'test'
+  ...
+# Subtest: P3 能力差距：同版本比较，缺失与版本不匹配均为未评定
+ok 40 - P3 能力差距：同版本比较，缺失与版本不匹配均为未评定
+  ---
+  duration_ms: 81.603424
+  type: 'test'
+  ...
+# Subtest: P3 项目化：盘点范围与期间、人才池隔离、培训报名及未结项保护
+ok 41 - P3 项目化：盘点范围与期间、人才池隔离、培训报名及未结项保护
+  ---
+  duration_ms: 136.712039
+  type: 'test'
+  ...
+# Subtest: P3 正式绩效：目标确认、自评、独立评价、发布、盘点使用与结项
+ok 42 - P3 正式绩效：目标确认、自评、独立评价、发布、盘点使用与结项
+  ---
+  duration_ms: 106.683676
+  type: 'test'
+  ...
+# Subtest: P3 招聘入职：独立审批、录用依据、字段权限、人数上限与原子建档
+ok 43 - P3 招聘入职：独立审批、录用依据、字段权限、人数上限与原子建档
+  ---
+  duration_ms: 154.683498
+  type: 'test'
+  ...
+# Subtest: P3 假勤：休息扣除、待批余额占用、撤回释放、独立审批及补卡保留原始记录
+ok 44 - P3 假勤：休息扣除、待批余额占用、撤回释放、独立审批及补卡保留原始记录
+  ---
+  duration_ms: 168.344515
+  type: 'test'
+  ...
+# Subtest: P3 打卡：只接受本人及服务端时间、先上班后下班、防重复
+ok 45 - P3 打卡：只接受本人及服务端时间、先上班后下班、防重复
+  ---
+  duration_ms: 99.949015
+  type: 'test'
+  ...
+# Subtest: P3 薪酬：分级保密、整数金额、编制复核分离、退回重审、发布锁定及历史隔离
+ok 46 - P3 薪酬：分级保密、整数金额、编制复核分离、退回重审、发布锁定及历史隔离
+  ---
+  duration_ms: 215.451144
+  type: 'test'
+  ...
+# Subtest: P3 薪酬：同期间防重复、本人受益与参与编制不得复核、审计失败原子回滚
+ok 47 - P3 薪酬：同期间防重复、本人受益与参与编制不得复核、审计失败原子回滚
+  ---
+  duration_ms: 131.325854
+  type: 'test'
+  ...
+# Subtest: P3 报表：人员范围、字段保密、分页、CSV公式防护及导出审计事务
+ok 48 - P3 报表：人员范围、字段保密、分页、CSV公式防护及导出审计事务
+  ---
+  duration_ms: 409.602751
+  type: 'test'
+  ...
+# Subtest: P3 员工自助：仅本人待办、未完成状态及缺少关联员工的空状态
+ok 49 - P3 员工自助：仅本人待办、未完成状态及缺少关联员工的空状态
+  ---
+  duration_ms: 61.541285
+  type: 'test'
+  ...
+# Subtest: P3 编制：独立审批、版本调整、直接新增和招聘入职共用容量约束
+ok 50 - P3 编制：独立审批、版本调整、直接新增和招聘入职共用容量约束
+  ---
+  duration_ms: 129.220357
+  type: 'test'
+  ...
+# Subtest: P3 合同：草稿保密、签署证明、续签关联、重叠拒绝、独立终止及档案状态不变
+ok 51 - P3 合同：草稿保密、签署证明、续签关联、重叠拒绝、独立终止及档案状态不变
+  ---
+  duration_ms: 115.393392
+  type: 'test'
+  ...
+# Subtest: P3 任职资格：标准版本严格匹配、未评定阻断、独立认证与证据快照不改任职
+ok 52 - P3 任职资格：标准版本严格匹配、未评定阻断、独立认证与证据快照不改任职
+  ---
+  duration_ms: 138.347183
+  type: 'test'
+  ...
+# Subtest: P3 任职资格：HR代办不得自审、跨组织拒绝、停用阻止新申请与撤回
+ok 53 - P3 任职资格：HR代办不得自审、跨组织拒绝、停用阻止新申请与撤回
+  ---
+  duration_ms: 97.516507
+  type: 'test'
+  ...
+# Subtest: P3 实名问卷：版本快照、名单冻结、本人填报、修改撤回及结项锁定
+ok 54 - P3 实名问卷：版本快照、名单冻结、本人填报、修改撤回及结项锁定
+  ---
+  duration_ms: 144.657912
+  type: 'test'
+  ...
+# Subtest: P3 干部：提名独立审议、真实调动前置、任用核对与本人述职独立核验
+ok 55 - P3 干部：提名独立审议、真实调动前置、任用核对与本人述职独立核验
+  ---
+  duration_ms: 99.427604
+  type: 'test'
+  ...
+# Subtest: P3 培训场次：排期冲突、必修出勤门槛、独立核验、补充记录与学习结项
+ok 56 - P3 培训场次：排期冲突、必修出勤门槛、独立核验、补充记录与学习结项
+  ---
+  duration_ms: 130.31286
+  type: 'test'
+  ...
+# Subtest: P3 360：指定评估人、人数阈值、低样本隐藏、冻结后发布及被评人不读取原始答卷
+ok 57 - P3 360：指定评估人、人数阈值、低样本隐藏、冻结后发布及被评人不读取原始答卷
+  ---
+  duration_ms: 162.923
+  type: 'test'
+  ...
+# Subtest: P3 自定义档案：正式值和申请隔离、字段可见范围、独立复核、类型校验与停用
+ok 58 - P3 自定义档案：正式值和申请隔离、字段可见范围、独立复核、类型校验与停用
+  ---
+  duration_ms: 110.628772
+  type: 'test'
+  ...
+# Subtest: P3 绩效申诉：独立复核、发布分离、原快照保留、最新结果报表和历史隔离
+ok 59 - P3 绩效申诉：独立复核、发布分离、原快照保留、最新结果报表和历史隔离
+  ---
+  duration_ms: 148.576715
+  type: 'test'
+  ...
+# Subtest: P3 工资异议与补差：正负差额、独立复核、发布保密、原工资不变及反向冲减
+ok 60 - P3 工资异议与补差：正负差额、独立复核、发布保密、原工资不变及反向冲减
+  ---
+  duration_ms: 193.630598
+  type: 'test'
+  ...
+# Subtest: P3 薪酬专用角色：编制复核分离、组织范围、核心人事隔离与撤权即时生效
+ok 61 - P3 薪酬专用角色：编制复核分离、组织范围、核心人事隔离与撤权即时生效
+  ---
+  duration_ms: 114.678894
+  type: 'test'
+  ...
+# Subtest: P3 学习学分：课程版本固定、成果核验前置、授予唯一、独立撤销及范围隔离
+ok 62 - P3 学习学分：课程版本固定、成果核验前置、授予唯一、独立撤销及范围隔离
+  ---
+  duration_ms: 106.402157
+  type: 'test'
+  ...
+# Subtest: P3：讲师认证独立复核、组织隔离、课程版本和期限约束、排期快照及撤销
+ok 63 - P3：讲师认证独立复核、组织隔离、课程版本和期限约束、排期快照及撤销
+  ---
+  duration_ms: 142.320768
+  type: 'test'
+  ...
+# Subtest: P3 假勤联调：等价时区使用同一业务日与余额年度，取消请假后释放班次
+ok 64 - P3 假勤联调：等价时区使用同一业务日与余额年度，取消请假后释放班次
+  ---
+  duration_ms: 87.398786
+  type: 'test'
+  ...
+# Subtest: P3 入职融入：模板版本快照、本人办理、独立核验、结项及自助待办
+ok 65 - P3 入职融入：模板版本快照、本人办理、独立核验、结项及自助待办
+  ---
+  duration_ms: 114.295363
+  type: 'test'
+  ...
+# Subtest: P3 待办工作台：顺序审批轮次、本人隔离、跨组织筛选、分页和办理后消退
+ok 66 - P3 待办工作台：顺序审批轮次、本人隔离、跨组织筛选、分页和办理后消退
+  ---
+  duration_ms: 172.128043
+  type: 'test'
+  ...
+# Subtest: P3 扩展待办：薪酬角色保密、绩效环节和招聘独立审批流转
+ok 67 - P3 扩展待办：薪酬角色保密、绩效环节和招聘独立审批流转
+  ---
+  duration_ms: 182.518546
+  type: 'test'
+  ...
+# Subtest: P3 盘点校准：独立复核发布、版本链、原绩效保留、最新报表和越权隔离
+ok 68 - P3 盘点校准：独立复核发布、版本链、原绩效保留、最新报表和越权隔离
+  ---
+  duration_ms: 120.535686
+  type: 'test'
+  ...
+# Subtest: P3 档案完整性：分组、状态必填、正式值与待复核隔离、状态变化重新校验
+ok 69 - P3 档案完整性：分组、状态必填、正式值与待复核隔离、状态变化重新校验
+  ---
+  duration_ms: 100.548873
+  type: 'test'
+  ...
+# Subtest: P3 档案复核待办：只向独立HR展示、摘要保密、停用退回与权限撤销
+ok 70 - P3 档案复核待办：只向独立HR展示、摘要保密、停用退回与权限撤销
+  ---
+  duration_ms: 70.710835
+  type: 'test'
+  ...
+# Subtest: P3 干部人才档案：跨模块证据、最新版本、缺失保留及角色组织隔离
+ok 71 - P3 干部人才档案：跨模块证据、最新版本、缺失保留及角色组织隔离
+  ---
+  duration_ms: 78.438934
+  type: 'test'
+  ...
+# Subtest: P3 干部待办：提名角色与发起人排除，审议后消退，范围外隐藏
+ok 72 - P3 干部待办：提名角色与发起人排除，审议后消退，范围外隐藏
+  ---
+  duration_ms: 61.882529
+  type: 'test'
+  ...
+# Subtest: P3 继任覆盖报表：按岗位和在职有效记录统计、跨范围部分可见、关闭与离职剔除
+ok 73 - P3 继任覆盖报表：按岗位和在职有效记录统计、跨范围部分可见、关闭与离职剔除
+  ---
+  duration_ms: 67.212288
+  type: 'test'
+  ...
+# Subtest: P3 培训申请：独立审批、范围隔离、真实任务前置、核对幂等与审计失败回滚
+ok 74 - P3 培训申请：独立审批、范围隔离、真实任务前置、核对幂等与审计失败回滚
+  ---
+  duration_ms: 202.754371
+  type: 'test'
+  ...
+# Subtest: P3 培训管理报表：任务与学员分母、空完成率、取消排期及北京时间范围
+ok 75 - P3 培训管理报表：任务与学员分母、空完成率、取消排期及北京时间范围
+  ---
+  duration_ms: 188.582452
+  type: 'test'
+  ...
+# Subtest: P3 场次取消：待处理出勤不能悬挂，核验未出席保留历史且名册不误报
+ok 76 - P3 场次取消：待处理出勤不能悬挂，核验未出席保留历史且名册不误报
+  ---
+  duration_ms: 164.655602
+  type: 'test'
+  ...
+# Subtest: P3 内部讲师名册：独立入册、目录摘要保密、停用与重提版本及待办
+ok 77 - P3 内部讲师名册：独立入册、目录摘要保密、停用与重提版本及待办
+  ---
+  duration_ms: 110.555093
+  type: 'test'
+  ...
+# Subtest: P3 内部讲师名册：本人HR不得复核、审计失败回滚与离职后拒绝入册
+ok 78 - P3 内部讲师名册：本人HR不得复核、审计失败回滚与离职后拒绝入册
+  ---
+  duration_ms: 76.102864
+  type: 'test'
+  ...
+# Subtest: P3 讲师试讲：指定评委、互盲评分、独立冻结、最新结果入册门槛与历史隔离
+ok 79 - P3 讲师试讲：指定评委、互盲评分、独立冻结、最新结果入册门槛与历史隔离
+  ---
+  duration_ms: 146.779249
+  type: 'test'
+  ...
+# Subtest: P3 讲师试讲：取消不能绕过门槛、失败重试、截止日及冻结审计回滚
+ok 80 - P3 讲师试讲：取消不能绕过门槛、失败重试、截止日及冻结审计回滚
+  ---
+  duration_ms: 119.80151
+  type: 'test'
+  ...
+# Subtest: P3 认证报名：范围与本人隔离、停止报名后续办、资格提名试讲入册完整关联
+ok 81 - P3 认证报名：范围与本人隔离、停止报名后续办、资格提名试讲入册完整关联
+  ---
+  duration_ms: 170.278169
+  type: 'test'
+  ...
+# Subtest: P3 认证报名：时间窗口、跨组织、撤回重报与资格审计失败回滚
+ok 82 - P3 认证报名：时间窗口、跨组织、撤回重报与资格审计失败回滚
+  ---
+  duration_ms: 100.965404
+  type: 'test'
+  ...
+# Subtest: P3 认证活动组织层级：下级HR可核对上级活动的本部门报名，不能管理上级活动
+ok 83 - P3 认证活动组织层级：下级HR可核对上级活动的本部门报名，不能管理上级活动
+  ---
+  duration_ms: 96.776619
+  type: 'test'
+  ...
+# Subtest: P3 认证培养：真实学习任务引用、必修核验前置、本人和组织隔离及入册快照
+ok 84 - P3 认证培养：真实学习任务引用、必修核验前置、本人和组织隔离及入册快照
+  ---
+  duration_ms: 135.769987
+  type: 'test'
+  ...
+# Subtest: P3 认证培养：取消任务不算完成、参考任务不阻断、关联移除审计与修订保护
+ok 85 - P3 认证培养：取消任务不算完成、参考任务不阻断、关联移除审计与修订保护
+  ---
+  duration_ms: 160.380211
+  type: 'test'
+  ...
+# Subtest: P3 培训带教：关系授权、本人辅导与确认、独立出师及人事权限不扩展
+ok 86 - P3 培训带教：关系授权、本人辅导与确认、独立出师及人事权限不扩展
+  ---
+  duration_ms: 158.929186
+  type: 'test'
+  ...
+# Subtest: P3 培训带教：账号与组织校验、日期边界、出师回滚及终止保留未确认记录
+ok 87 - P3 培训带教：账号与组织校验、日期边界、出师回滚及终止保留未确认记录
+  ---
+  duration_ms: 115.540761
+  type: 'test'
+  ...
+# Subtest: P3 内部证书：真实完成依据、独立发放、有效期快照、模板版本及本人信息隔离
+ok 88 - P3 内部证书：真实完成依据、独立发放、有效期快照、模板版本及本人信息隔离
+  ---
+  duration_ms: 110.753991
+  type: 'test'
+  ...
+# Subtest: P3 内部证书：来源状态变更提示、撤销留痕、编号唯一与发放回滚
+ok 89 - P3 内部证书：来源状态变更提示、撤销留痕、编号唯一与发放回滚
+  ---
+  duration_ms: 156.79286
+  type: 'test'
+  ...
+# Subtest: P3 绩效目标调整：独立复核、双记录同修订、待审门槛与正式评分快照
+ok 90 - P3 绩效目标调整：独立复核、双记录同修订、待审门槛与正式评分快照
+  ---
+  duration_ms: 153.70282
+  type: 'test'
+  ...
+# Subtest: P2/P3 目标调整事务：第二条写入失败全回滚、过期CAS无旁写及撤权即时生效
+ok 91 - P2/P3 目标调整事务：第二条写入失败全回滚、过期CAS无旁写及撤权即时生效
+  ---
+  duration_ms: 159.22054
+  type: 'test'
+  ...
+# Subtest: P3 目标执行跟进：本人记录、独立反馈、补充留痕及评分隔离
+ok 92 - P3 目标执行跟进：本人记录、独立反馈、补充留痕及评分隔离
+  ---
+  duration_ms: 183.368371
+  type: 'test'
+  ...
+# Subtest: P3 目标执行跟进：旧目标快照、跨范围与撤权、审计回滚及修订冲突
+ok 93 - P3 目标执行跟进：旧目标快照、跨范围与撤权、审计回滚及修订冲突
+  ---
+  duration_ms: 250.388389
+  type: 'test'
+  ...
+# Subtest: P3 绩效办理报表：可办与历史待反馈区分、发布去重和范围及评分隔离
+ok 94 - P3 绩效办理报表：可办与历史待反馈区分、发布去重和范围及评分隔离
+  ---
+  duration_ms: 112.938689
+  type: 'test'
+  ...
+# Subtest: P3 招聘录用退回：独立复核、版本重提、旧条件锁存和事务回滚
+ok 95 - P3 招聘录用退回：独立复核、版本重提、旧条件锁存和事务回滚
+  ---
+  duration_ms: 159.537134
+  type: 'test'
+  ...
+# Subtest: P3 招聘边界：北京时间入职、同时间面试序号及旧冲突意见保守处理
+ok 96 - P3 招聘边界：北京时间入职、同时间面试序号及旧冲突意见保守处理
+  ---
+  duration_ms: 94.471015
+  type: 'test'
+  ...
+# Subtest: P3 招聘需求修订：退回重提、所有编写者隔离、批准后锁定与旧审批冲突
+ok 97 - P3 招聘需求修订：退回重提、所有编写者隔离、批准后锁定与旧审批冲突
+  ---
+  duration_ms: 146.30037
+  type: 'test'
+  ...
+# Subtest: P3 招聘需求报表：候选当前阶段去重、退回重提、剩余名额和范围隔离
+ok 98 - P3 招聘需求报表：候选当前阶段去重、退回重提、剩余名额和范围隔离
+  ---
+  duration_ms: 117.984481
+  type: 'test'
+  ...
+# Subtest: P3 补卡版本与撤回：独立核验、原记录保留、最新版本和回滚
+ok 99 - P3 补卡版本与撤回：独立核验、原记录保留、最新版本和回滚
+  ---
+  duration_ms: 97.605742
+  type: 'test'
+  ...
+# Subtest: P3 补卡历史冲突：同时间不同事实不猜测、等价时区与新版本消除歧义
+ok 100 - P3 补卡历史冲突：同时间不同事实不猜测、等价时区与新版本消除歧义
+  ---
+  duration_ms: 46.114218
+  type: 'test'
+  ...
+# Subtest: P3 假期余额口径：不计余额假种不出现负额度且不得登记无意义余额
+ok 101 - P3 假期余额口径：不计余额假种不出现负额度且不得登记无意义余额
+  ---
+  duration_ms: 112.985183
+  type: 'test'
+  ...
+# Subtest: P3 假期分钟精度：拒绝秒级分段与小数休息，合法分钟分段不重复扣取
+ok 102 - P3 假期分钟精度：拒绝秒级分段与小数休息，合法分钟分段不重复扣取
+  ---
+  duration_ms: 100.313331
+  type: 'test'
+  ...
+# Subtest: P2/P3 北京时间业务日：跨年评估、发展与学习截止日和日期合法性
+ok 103 - P2/P3 北京时间业务日：跨年评估、发展与学习截止日和日期合法性
+  ---
+  duration_ms: 74.704963
+  type: 'test'
+  ...
+# Subtest: P2/P3 薪酬独立复核：移除作者、移除人及历史提交者不可绕过角色隔离
+ok 104 - P2/P3 薪酬独立复核：移除作者、移除人及历史提交者不可绕过角色隔离
+  ---
+  duration_ms: 180.601416
+  type: 'test'
+  ...
+# Subtest: P3 薪酬报表：发布边界、整数补差冲减、专岗范围和导出审计
+ok 105 - P3 薪酬报表：发布边界、整数补差冲减、专岗范围和导出审计
+  ---
+  duration_ms: 423.844339
+  type: 'test'
+  ...
+# Subtest: P3 薪酬报表：取消明细和批次不进入正式对账、期间查询与分页一致
+ok 106 - P3 薪酬报表：取消明细和批次不进入正式对账、期间查询与分页一致
+  ---
+  duration_ms: 83.596872
+  type: 'test'
+  ...
+# Subtest: P3 自助绩效待办：目标调整阻塞与申请可见、退回跟进版本及任务导航
+ok 107 - P3 自助绩效待办：目标调整阻塞与申请可见、退回跟进版本及任务导航
+  ---
+  duration_ms: 111.573063
+  type: 'test'
+  ...
+# Subtest: P3 认证培养派课：任务与关联原子保存、重复保护及独立成果门槛
+ok 108 - P3 认证培养派课：任务与关联原子保存、重复保护及独立成果门槛
+  ---
+  duration_ms: 148.874558
+  type: 'test'
+  ...
+# Subtest: P2/P3 历史读取一致性：范围撤销与审计降权不混用旧权限和新记录
+ok 109 - P2/P3 历史读取一致性：范围撤销与审计降权不混用旧权限和新记录
+  ---
+  duration_ms: 128.816835
+  type: 'test'
+  ...
+# Subtest: P3 课程阶段：启动冻结、独立核验解锁及全部阶段结项
+ok 110 - P3 课程阶段：启动冻结、独立核验解锁及全部阶段结项
+  ---
+  duration_ms: 193.364664
+  type: 'test'
+  ...
+# Subtest: P3 阶段进度报表：未派发课程仍计入总要求、人员范围与核验口径
+ok 111 - P3 阶段进度报表：未派发课程仍计入总要求、人员范围与核验口径
+  ---
+  duration_ms: 145.978557
+  type: 'test'
+  ...
+# Subtest: P3 阶段批量派课：整批回滚、同修订保存、跳过已派发与独立核验后推进
+ok 112 - P3 阶段批量派课：整批回滚、同修订保存、跳过已派发与独立核验后推进
+  ---
+  duration_ms: 193.670635
+  type: 'test'
+  ...
+# Subtest: P3 合同运营报表：终止与原结束日、续签草稿、作废排除及HR范围
+ok 113 - P3 合同运营报表：终止与原结束日、续签草稿、作废排除及HR范围
+  ---
+  duration_ms: 143.739226
+  type: 'test'
+  ...
+# Subtest: P2/P3 管理报表入口：无岗位权限时不查询领域明细，导出同样拒绝
+ok 114 - P2/P3 管理报表入口：无岗位权限时不查询领域明细，导出同样拒绝
+  ---
+  duration_ms: 82.24892
+  type: 'test'
+  ...
+# Subtest: P3 学习任务恢复：保留考试次数和历史，重新提交，范围与项目状态重新检查
+ok 115 - P3 学习任务恢复：保留考试次数和历史，重新提交，范围与项目状态重新检查
+  ---
+  duration_ms: 260.096021
+  type: 'test'
+  ...
+# Subtest: P3 在职合同登记覆盖：无记录人员、当日边界、草稿与未来登记不充当覆盖
+ok 116 - P3 在职合同登记覆盖：无记录人员、当日边界、草稿与未来登记不充当覆盖
+  ---
+  duration_ms: 130.587216
+  type: 'test'
+  ...
+# Subtest: P3 合同协议类别与期限独立：保留旧数据未知状态，不由期限推断协议类别
+ok 117 - P3 合同协议类别与期限独立：保留旧数据未知状态，不由期限推断协议类别
+  ---
+  duration_ms: 105.225275
+  type: 'test'
+  ...
+# Subtest: P2/P3 附件读取撤权一致性：列表同批校验，文件读取后再次检查修订
+ok 118 - P2/P3 附件读取撤权一致性：列表同批校验，文件读取后再次检查修订
+  ---
+  duration_ms: 64.982297
+  type: 'test'
+  ...
+# Subtest: P2/P3 成员目录撤权一致性：读取授权名单期间管理员降权不返回旧权限下的名单
+ok 119 - P2/P3 成员目录撤权一致性：读取授权名单期间管理员降权不返回旧权限下的名单
+  ---
+  duration_ms: 42.944854
+  type: 'test'
+  ...
+# Subtest: P3 学分到期：授予快照、北京时间当日边界及撤销后不重复扣到期
+ok 120 - P3 学分到期：授予快照、北京时间当日边界及撤销后不重复扣到期
+  ---
+  duration_ms: 61.329198
+  type: 'test'
+  ...
+# Subtest: P3 人员经历：HR范围、本人只读、月份校验及更正作废保留历史
+ok 121 - P3 人员经历：HR范围、本人只读、月份校验及更正作废保留历史
+  ---
+  duration_ms: 166.302233
+  type: 'test'
+  ...
+# Subtest: P3 经历关联人才档案：HR可见有效摘要，普通经理不扩展经历权限
+ok 122 - P3 经历关联人才档案：HR可见有效摘要，普通经理不扩展经历权限
+  ---
+  duration_ms: 55.97489
+  type: 'test'
+  ...
+# Subtest: 多级审批仅终审通过更新组织，不能越级或重复审批
+ok 123 - 多级审批仅终审通过更新组织，不能越级或重复审批
+  ---
+  duration_ms: 15.244947
+  type: 'test'
+  ...
+# Subtest: 驳回与撤回不修改档案，已撤回不能审批
+ok 124 - 驳回与撤回不修改档案，已撤回不能审批
+  ---
+  duration_ms: 10.743272
+  type: 'test'
+  ...
+# Subtest: 修改流程不改变已提交申请的审批人及版本
+ok 125 - 修改流程不改变已提交申请的审批人及版本
+  ---
+  duration_ms: 1.494843
+  type: 'test'
+  ...
+# Subtest: 未配置流程、重复审批人与自审流程被拒绝
+ok 126 - 未配置流程、重复审批人与自审流程被拒绝
+  ---
+  duration_ms: 2.122902
+  type: 'test'
+  ...
+# Subtest: 成员验证禁止自降权、无档案员工授权与已离职关联
+ok 127 - 成员验证禁止自降权、无档案员工授权与已离职关联
+  ---
+  duration_ms: 10.693505
+  type: 'test'
+  ...
+1..127
+# tests 127
+# suites 0
+# pass 127
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 20189.452622

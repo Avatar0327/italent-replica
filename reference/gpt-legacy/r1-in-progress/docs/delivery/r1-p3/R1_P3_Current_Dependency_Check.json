@@ -1,0 +1,211 @@
+{
+  "kind": "read_only_dependency_snapshot_not_runtime_proof",
+  "observedAt": "2026-09-11T01:08:32.838286+00:00",
+  "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+  "remote": "r1-p2-origin",
+  "method": "authenticated git ls-remote --heads, shared fixed Git objects, Sites get_site/get_environment_variables; metadata only",
+  "observedHeads": {
+    "main": "22be3a7e366d6787180d4f593a30f5984c70e03a",
+    "design/r1-p2-20260909": "e15237281ff19f04f08a354fd9455c518b24ae47",
+    "design/r2-p2-20260910": "a7a23d6bff024f4660fd14b0c22f47a6d40d928f",
+    "review/r2-p2-exit-20260910": "077e0dc7f37529b9585f030fb1c8460f4c884cd1",
+    "evidence/r1-origin-parity-20260910": "7920b64ea30f1e4b232fb86bba2742852d0892e8",
+    "impl/r1-p3-20260910": "de053be59cc0e08c2044fb534ef46ee085a38203"
+  },
+  "repositoryFindings": [
+    "远端所有分支列表无R2/R3 P3实施分支；旧delivery分支不是已批准的新P3契约。",
+    "R2最新独立定向复核通过，可提交所有者；P2退出/P3准入仍未发生，46任务和138场景未开始/未执行。旧不通过段落不作最新结论。",
+    "R2可按能力冻结基线启动获准子片段，不把全部R1退出设为循环前置。R3当前有原站补证分支，没有P3源码/运行交接。"
+  ],
+  "producerCases": [
+    {
+      "id": "P3-LINK-M48-okr",
+      "producer": "M16",
+      "owner": "M16生产者与M48实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M48-goal",
+      "producer": "M16",
+      "owner": "M16生产者与M48实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M48-attendance",
+      "producer": "M11",
+      "owner": "M11生产者与M48实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M48-learning",
+      "producer": "M27",
+      "owner": "M27生产者与M48实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M48-development",
+      "producer": "M17",
+      "owner": "M17生产者与M48实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M32-M03",
+      "producer": "M03",
+      "owner": "M03生产者与M32实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M32-M06",
+      "producer": "M06",
+      "owner": "M06生产者与M32实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M32-M17",
+      "producer": "M17",
+      "owner": "M17生产者与M32实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M32-M18",
+      "producer": "M18",
+      "owner": "M18生产者与M32实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M32-M26",
+      "producer": "M26",
+      "owner": "M26生产者与M32实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M32-M37",
+      "producer": "M37",
+      "owner": "M37生产者与M32实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M32-M12",
+      "producer": "M12",
+      "owner": "M12生产者与M32实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M32-M16",
+      "producer": "M16",
+      "owner": "M16生产者与M32实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M32-M27",
+      "producer": "M27",
+      "owner": "M27生产者与M32实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M32-M11",
+      "producer": "M11",
+      "owner": "M11生产者与M32实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    },
+    {
+      "id": "P3-LINK-M32-M07",
+      "producer": "M07",
+      "owner": "M07生产者与M32实施负责人",
+      "approvedRuntimeVersion": null,
+      "actualP3SourceSha": null,
+      "isolatedRuntimeEvidence": null,
+      "status": "not_ready_evidence_not_supplied",
+      "nextAction": "生产者负责人提供批准契约版本+实际P3固定SHA+隔离启动/复位方式+合成数据集+预期逐字段结果；R1只续此契约联调"
+    }
+  ],
+  "platform": {
+    "site": {
+      "id": "appgprj_6a9e2c705cfc819180e0e5251bb025cc",
+      "version": 112,
+      "updatedAt": "2026-09-08T13:43:27.542661+00:00",
+      "accessMode": "custom",
+      "externalVisitorCount": 0
+    },
+    "environment": {
+      "revision": 1,
+      "updatedAt": "2026-09-07T03:42:24.537360+00:00",
+      "keys": [
+        "HRIS_SETUP_OWNER_EMAIL"
+      ],
+      "valuesRecorded": false
+    },
+    "localBindings": {
+      "d1": "DB",
+      "r2": "BUCKET"
+    },
+    "workerEntry": "worker/index.ts: fetch only; no scheduled/queue handler",
+    "securityRuntime": "lib/hris/r1-security-runtime.ts: needs R1_REQUIRE_SECURITY_LEDGER=1 plus independent R1_SECURITY_RUNTIME and R1_SECURITY_PUBLIC_KEY",
+    "conclusion": "未发现新增能力证据；仅业务DB/BUCKET声明及站点元数据，不能证明独立资源、云端一致cut、调度、独占维护或可信当前访问；未查全平台资源，不推断资源绝对不存在。",
+    "nextActions": "R1_P3_Platform_Actions.md"
+  },
+  "resourcesCreated": 0,
+  "deployments": 0,
+  "accessChanges": 0,
+  "realExternalEffects": 0
+}

@@ -1,0 +1,55 @@
+{
+  "sourceSha": "682e6e46b78e249bde1e42d70868579715155ae8",
+  "startedAt": "2026-09-10T04:21:38.719793+00:00",
+  "taskIds": [
+    "P3-R1-01",
+    "P3-R1-02",
+    "P3-R1-04"
+  ],
+  "task02Complete": false,
+  "task04Complete": false,
+  "fullDesignCasesPassed": false,
+  "testEnvironment": "isolated synthetic data; local node:sqlite executes product SQL and transactions; platform identity and object-store adapters simulated; no cloud D1, production or original-site operation",
+  "externalDelivery": "simulated interceptor only; real integrations not executed",
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/r1-p3-foundation.test.mjs",
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-integration.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-02-d7-20260910T042138Z-tests.log",
+      "sha256": "0da70b638dfdd1e89c6f89aabe5361a3a1224504a5db0411f053e1182c893c09"
+    },
+    {
+      "name": "types",
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-02-d7-20260910T042138Z-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build",
+      "command": [
+        "node",
+        "/root/.codex/plugins/cache/openai-curated-remote/sites/0.1.56/scripts/build-site.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-02-d7-20260910T042138Z-build.log",
+      "sha256": "6e2b5fbb027efc6dbba9f5e9d81a8db285058e24d652ee7637d5759ff6089371"
+    }
+  ],
+  "finishedAt": "2026-09-10T04:21:56.581445+00:00",
+  "testEntriesPassed": 29
+}

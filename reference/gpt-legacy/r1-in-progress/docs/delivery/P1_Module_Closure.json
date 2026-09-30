@@ -1,0 +1,1802 @@
+{
+  "source": "Scope_Register.json → roadmap.executionPolicy / modules[].p1.moduleClosure / roadmap.rangeGates",
+  "generatedFromUpdatedAt": "2026-09-10T03:24:03.609414+00:00",
+  "primaryModuleId": "M01",
+  "backupModuleId": null,
+  "activeExecutionModuleId": "M01",
+  "moduleCount": 15,
+  "completeCount": 0,
+  "restrictedCount": 15,
+  "transitionReadyCount": 15,
+  "progress": {
+    "p1A": {
+      "full": 0,
+      "restricted": 15,
+      "total": 15
+    },
+    "p1B": {
+      "full": 0,
+      "restricted": 15,
+      "total": 15
+    },
+    "review": {
+      "full": 0,
+      "restricted": 15,
+      "total": 15
+    }
+  },
+  "p1ClosedCount": 15,
+  "modules": [
+    {
+      "moduleId": "M01",
+      "name": "组织员工",
+      "rangeId": "R1",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M01-P1-APPROVAL-20260909",
+        "evidenceRefs": [
+          "BC-F03",
+          "BC-F02",
+          "P1-CONTRACT-LIST",
+          "P1-CONTRACT-TYPE",
+          "BC-F04",
+          "BC-F05",
+          "BC-F06",
+          "BC-F07",
+          "P1-ORG-RECHECK",
+          "BC-F08",
+          "BC-F09",
+          "BC-F10",
+          "BC-F11",
+          "BC-F12",
+          "BC-F13",
+          "BC-F14",
+          "BC-F15",
+          "BC-F16",
+          "BC-F17",
+          "BC-F18",
+          "BC-F19",
+          "BC-F20",
+          "BC-F21",
+          "BC-F22",
+          "BC-F23",
+          "BC-F24",
+          "BC-F25",
+          "BC-F26",
+          "BC-F27",
+          "BC-F28",
+          "BC-F29",
+          "BC-F30",
+          "BC-F31",
+          "BC-F32",
+          "BC-F33",
+          "BC-F34",
+          "BC-F35",
+          "BC-F36",
+          "BC-F37",
+          "BC-F38",
+          "BC-F39",
+          "BC-F40",
+          "BC-F41",
+          "BC-F42",
+          "BC-F43",
+          "BC-F44",
+          "BC-F45",
+          "BC-F46"
+        ],
+        "limits": "已有源证据与范围/字段/流程/差异/限制形成充分需求输入；M01-LIMIT-01获用户批准，未证源算法仍未知，按受限P1关闭，不计完整源验证。",
+        "approvedAt": "2026-09-09T16:17:23.873817+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M01-P1-APPROVAL-20260909",
+        "evidenceRefs": [
+          "docs/delivery/P1_M01_Review_Package.md",
+          "docs/delivery/P1B_BP_F_Specification.md"
+        ],
+        "limits": "10项推荐与其余明确基线已批准，实施规则、权限及可执行验收明确；源差异按M01-LIMIT-01保留到后续阶段，需求就绪不等实现通过。",
+        "approvedAt": "2026-09-09T16:17:23.873817+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M01-P1-APPROVAL-20260909：M01六项原登记范围全保留，无内部延期"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M01-P1-APPROVAL-20260909：10项当前推荐已批准；D1–D7维持原结论"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M01-P1-APPROVAL-20260909：M01-BASELINE-01批准已具体化规格/权限/验收预期；用例未执行，后续责任明确"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M01-P1-APPROVAL-20260909：SCOPE-DEP-01人数编制/外部金额未校验；M01-LIMIT-01限制获处理，不再作为P1阻塞"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M01-P1-APPROVAL-20260909",
+        "scope": "M01 P1受限关闭及模块转序资格；依据用户条件满足即关闭并转M19指令判定。不等R1四模块/六基础整体获准进入P2/P3。",
+        "approvedAt": "2026-09-09T16:17:23.873817+00:00"
+      },
+      "restrictedApproval": {
+        "scope": "原站组织/职位未来时态及停用、重聘执行/冲突恢复、兼职终态/借派占编、法人空范围/合同自动规则、单账号之外权限、通知后效",
+        "residualRisk": "与北森实际边界可能不同；角色/历史/跨模块消费者需在实现后验证，否则可能误授权、错计人数或误显示生效。",
+        "revalidation": "P2负责人复核ID/版本/时态/迁移/事务设计；P3执行者使用合成链验证边界，独立人类权限验收待E2后续授权；P4验收责任人完成全权限和业务准备。若源恢复且结果推翻已批规则，开有范围变更评审，不静默改规则。",
+        "record": "M01-P1-APPROVAL-20260909",
+        "approvedAt": "2026-09-09T16:17:23.873817+00:00",
+        "phaseScope": "仅P1需求基线，不豁免实现或后续测试/UAT/生产验收"
+      },
+      "closureClass": "受限通过",
+      "p1Closed": true,
+      "closureRecord": "M01-P1-APPROVAL-20260909",
+      "closedAt": "2026-09-09T16:17:23.873817+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M19",
+      "name": "审批中心",
+      "rangeId": "R1",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M19-P1-APPROVAL-20260909",
+        "evidenceRefs": [
+          "BC-P1C-M19",
+          "BC-I10",
+          "BC-I27"
+        ],
+        "limits": "当前完整范围证据/深度/限制已齐备用于需求判定；用户批准M19-LIMIT-01，未知源行为保留，不计完整源执行验证。",
+        "approvedAt": "2026-09-09T16:53:50.674271+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M19-P1-APPROVAL-20260909",
+        "evidenceRefs": [],
+        "limits": "所审版本四组推荐、规格/权限/验收/依赖与受限责任已批准；需求就绪，不代表实现或跨域联调通过。",
+        "approvedAt": "2026-09-09T16:53:50.674271+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M19-P1-APPROVAL-20260909：原登记范围全部保留，无内部删减"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M19-P1-APPROVAL-20260909：四组推荐及明确用户边界已批准，其他模块不继承"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M19-P1-APPROVAL-20260909：所审验收场景明确且作为需求基线获批；accepted/executionThisRun仍false"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M19-P1-APPROVAL-20260909：原站限制及后续补验责任获批；供应商/跨域未接按已批契约处理，不作当前P1前置"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M19-P1-APPROVAL-20260909",
+        "approvedAt": "2026-09-09T16:53:50.674271+00:00",
+        "scope": "M19满足现有条件后P1受限关闭及转序资格；用户明确要求随后转M48，不等R1整体P2/P3批准"
+      },
+      "restrictedApproval": {
+        "scope": "原站通用路由、管理员委托、管理干预/撤销补偿、并发撤权和消息结果的未验证行为",
+        "residualRisk": "委托可能与源语义不同；错误路由、撤销/生效竞态、撤权和消息重试需实施后验证，单账号无法替多人验收。",
+        "revalidation": "P2执行者核事务/版本/权限/业务适配器；P3用隔离合成身份及消息拦截器验证路由、撤权、重复和失败；P4责任人完成独立人类权限/跨域业务验收，E2新增人仍须后续授权。",
+        "record": "M19-P1-APPROVAL-20260909",
+        "approvedAt": "2026-09-09T16:53:50.674271+00:00",
+        "phaseScope": "仅P1，不免除实现、测试、跨角色及P4验收"
+      },
+      "closureClass": "受限通过",
+      "p1Closed": true,
+      "closureRecord": "M19-P1-APPROVAL-20260909",
+      "closedAt": "2026-09-09T16:53:50.674271+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M48",
+      "name": "员工自助",
+      "rangeId": "R1",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M48-P1-APPROVAL-20260909",
+        "evidenceRefs": [
+          "P1-SELF-REVIEW",
+          "BC-P1C-M48"
+        ],
+        "limits": "当前完整范围证据/深度/限制已齐备用于需求判定；用户批准M48-LIMIT-01，未知源行为保留，不计完整源执行验证。",
+        "approvedAt": "2026-09-09T16:54:17.104368+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M48-P1-APPROVAL-20260909",
+        "evidenceRefs": [],
+        "limits": "所审版本四组推荐、规格/权限/验收/依赖与受限责任已批准；需求就绪，不代表实现或跨域联调通过。",
+        "approvedAt": "2026-09-09T16:54:17.104368+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M48-P1-APPROVAL-20260909：原登记范围全部保留，无内部删减"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M48-P1-APPROVAL-20260909：四组推荐及明确用户边界已批准，其他模块不继承"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M48-P1-APPROVAL-20260909：所审验收场景明确且作为需求基线获批；accepted/executionThisRun仍false"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M48-P1-APPROVAL-20260909：原站限制及后续补验责任获批；供应商/跨域未接按已批契约处理，不作当前P1前置"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M48-P1-APPROVAL-20260909",
+        "approvedAt": "2026-09-09T16:54:17.104368+00:00",
+        "scope": "M48满足现有条件后P1受限关闭及转序资格；用户明确要求随后转M32，不等R1整体P2/P3批准"
+      },
+      "restrictedApproval": {
+        "scope": "源团队/本人角色、OKR详细页、各域本人提交/撤回/异常链和跨域生产者未接通",
+        "residualRisk": "当前源行为和角色可能不同；团队敏感字段、旧缓存、域状态映射及OKR联调未实证，不能以契约模拟冒充真实业务通过。",
+        "revalidation": "P2核团队有效关系/权限/版本与七项适配；P3用合成且明确授权的独立角色与源适配器验证撤权/状态/错误，联调未具备的功能逐项列未通过；P4完成真实多角色及跨模块业务验收。E2和不实发通知/支付/签署边界保持。",
+        "record": "M48-P1-APPROVAL-20260909",
+        "approvedAt": "2026-09-09T16:54:17.104368+00:00",
+        "phaseScope": "仅P1，不免除实现、测试、跨角色及P4验收"
+      },
+      "closureClass": "受限通过",
+      "p1Closed": true,
+      "closureRecord": "M48-P1-APPROVAL-20260909",
+      "closedAt": "2026-09-09T16:54:17.104368+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M32",
+      "name": "报表",
+      "rangeId": "R1",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M32-P1-APPROVAL-20260909",
+        "evidenceRefs": [
+          "BC-P1C-M32"
+        ],
+        "limits": "六项完整范围有证据/深度/限制及差异，M32-LIMIT-01已明确批准；原站未知不算执行通过。",
+        "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M32-P1-APPROVAL-20260909",
+        "evidenceRefs": [],
+        "limits": "六组推荐及数据集/权限/时间/订阅/异常/验收/消费契约已批准，需求就绪，不等实现或联调验收。",
+        "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M32-P1-APPROVAL-20260909：原登记六项范围保留，无内部删减"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M32-P1-APPROVAL-20260909：所审六项推荐及明确用户边界已批准"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M32-P1-APPROVAL-20260909：所审给定/动作/预期齐备并获批，执行accepted仍false"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M32-P1-APPROVAL-20260909：M32-LIMIT-01及R2/R3契约消费边界已批准，后续补验明确"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M32-P1-APPROVAL-20260909",
+        "approvedAt": "2026-09-09T17:11:16.592266+00:00",
+        "scope": "M32 P1受限关闭及模块转序就绪；R1版本进入P2由独立版本记录批准"
+      },
+      "restrictedApproval": {
+        "scope": "原站各域报表/设计器公式/历史快照/订阅权限与执行、导出及独立多角色行为未验证",
+        "residualRisk": "源算法/订阅权限可能不同；汇总/历史/导出泄漏、错误统计、容量和重复投递未实证；已下载外部副本不可保证收回。",
+        "revalidation": "P2核数据集定义/历史/访问交集/有界任务及引用一致性；P3用合成数据/已授权角色/消息拦截器验证边界与真实生产者联调；P4责任人完成独立多人权限、业务/容量和生产准备；E2保持，不新增访问者。",
+        "record": "M32-P1-APPROVAL-20260909",
+        "approvedAt": "2026-09-09T17:11:16.592266+00:00",
+        "phaseScope": "仅P1，不免除P2/P3/P4"
+      },
+      "closureClass": "受限通过",
+      "p1Closed": true,
+      "closureRecord": "M32-P1-APPROVAL-20260909",
+      "closedAt": "2026-09-09T17:11:16.592266+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M37",
+      "name": "人才标准",
+      "rangeId": "R2",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M37-P1-APPROVAL-R2-20260909",
+        "evidenceRefs": [
+          "BC-P1C-M37",
+          "BC-C32",
+          "BC-C33",
+          "BC-C34",
+          "BC-C35",
+          "BC-C36"
+        ],
+        "limits": "M37-P1-APPROVAL-R2-20260909批准完整所审规格及限制；原站未知/实现差异保留P2/P3/P4，不等实测通过",
+        "approvedAt": "2026-09-09T18:22:09.823974+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M37-P1-APPROVAL-R2-20260909",
+        "evidenceRefs": [],
+        "limits": "M37-P1-APPROVAL-R2-20260909批准完整所审规格及限制；原站未知/实现差异保留P2/P3/P4，不等实测通过",
+        "approvedAt": "2026-09-09T18:22:09.823974+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M37-P1-APPROVAL-R2-20260909：完整范围保留、五组规则和验收预期及LIMIT获批；M37生产者依赖已处理，不代批其他消费者"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M37-P1-APPROVAL-R2-20260909：完整范围保留、五组规则和验收预期及LIMIT获批；M37生产者依赖已处理，不代批其他消费者"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M37-P1-APPROVAL-R2-20260909：完整范围保留、五组规则和验收预期及LIMIT获批；M37生产者依赖已处理，不代批其他消费者"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M37-P1-APPROVAL-R2-20260909：完整范围保留、五组规则和验收预期及LIMIT获批；M37生产者依赖已处理，不代批其他消费者"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M37-P1-APPROVAL-R2-20260909",
+        "scope": "用户明确批准满足条件时模块转序就绪；不等R2版本P2批准",
+        "approvedAt": "2026-09-09T18:22:09.823974+00:00"
+      },
+      "restrictedApproval": {
+        "scope": "原站目标权重算法、潜力/经历库深操作、行为/建议/面试子集保存、使用中改版/停用、独立审批和跨角色权限未执行；共享对象UUID/真实评测未核",
+        "residualRisk": "本项目独立审批/权限/组合算法可能不同于原站；历史迁移映射、冻结版本和多角色消费实际未验证，真实评测结果不可宣称已接通。",
+        "revalidation": "P2完成根/版本/尺度/范围/审批与旧消费者映射设计；P3用明确授权合成数据验证并发版本、权限、停用在途、null与故障和实际消费；P4多角色、跨模块及生产权限/恢复验收。E2保持，外部真实消息/支付/签署边界不变。",
+        "record": "M37-P1-APPROVAL-R2-20260909",
+        "approvedAt": "2026-09-09T18:22:09.823974+00:00",
+        "phaseScope": "仅P1"
+      },
+      "closureClass": "受限通过",
+      "p1Closed": true,
+      "closureRecord": "M37-P1-APPROVAL-R2-20260909",
+      "closedAt": "2026-09-09T18:22:09.823974+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M06",
+      "name": "任职资格",
+      "rangeId": "R2",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M06-P1-APPROVAL-R2-20260909",
+        "evidenceRefs": [
+          "BC-C04",
+          "BC-P1C-M06",
+          "BC-C19",
+          "BC-C20",
+          "BC-C22",
+          "BC-C21",
+          "BC-C23",
+          "BC-C24"
+        ],
+        "limits": "M06-P1-APPROVAL-R2-20260909批准完整所审规格及限制；原站未知/实现差异保留P2/P3/P4，不等实测通过",
+        "approvedAt": "2026-09-09T18:22:46.166597+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M06-P1-APPROVAL-R2-20260909",
+        "evidenceRefs": [],
+        "limits": "M06-P1-APPROVAL-R2-20260909批准完整所审规格及限制；原站未知/实现差异保留P2/P3/P4，不等实测通过",
+        "approvedAt": "2026-09-09T18:22:46.166597+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M06-P1-APPROVAL-R2-20260909：完整范围保留、五组规则和验收预期及LIMIT获批；M37生产者依赖已处理，不代批其他消费者"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M06-P1-APPROVAL-R2-20260909：完整范围保留、五组规则和验收预期及LIMIT获批；M37生产者依赖已处理，不代批其他消费者"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M06-P1-APPROVAL-R2-20260909：完整范围保留、五组规则和验收预期及LIMIT获批；M37生产者依赖已处理，不代批其他消费者"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M06-P1-APPROVAL-R2-20260909：完整范围保留、五组规则和验收预期及LIMIT获批；M37生产者依赖已处理，不代批其他消费者"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M06-P1-APPROVAL-R2-20260909",
+        "scope": "用户明确批准满足条件时模块转序就绪；不等R2版本P2批准",
+        "approvedAt": "2026-09-09T18:22:46.166597+00:00"
+      },
+      "restrictedApproval": {
+        "scope": "目录重复/完整级别评级算法、发布审查/委员会、证据时效/续证/撤销及跨角色原站执行未验证；发展通道/学习地图实际关联未知",
+        "residualRisk": "独立委员会/有效期/停用在途策略可能与源不同；权限、目录范围及多版本迁移未实际运行，M37新模型未获需求批准。",
+        "revalidation": "P2核类别/级别/方案/根版本/认证有效性及独立回避设计与迁移；P3合成跑评分/评级、委员会阈值、时效、同版证据、重复续证、事务故障及消费者；P4完整多角色与跨域权限业务验收。E2不新增人，任何内部认证不当外部许可或自动任免。",
+        "record": "M06-P1-APPROVAL-R2-20260909",
+        "approvedAt": "2026-09-09T18:22:46.166597+00:00",
+        "phaseScope": "仅P1"
+      },
+      "closureClass": "受限通过",
+      "p1Closed": true,
+      "closureRecord": "M06-P1-APPROVAL-R2-20260909",
+      "closedAt": "2026-09-09T18:22:46.166597+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M26",
+      "name": "360度评估",
+      "rangeId": "R2",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M26-P1-APPROVAL-20260910",
+        "evidenceRefs": [
+          "BC-P1C-M26",
+          "BC-P1C-M26-02",
+          "BC-C14",
+          "BC-C15",
+          "BC-C16"
+        ],
+        "limits": "原站匿名算法、题型和套卷完整行为、答卷撤回/更正、报告开放/撤权及多角色执行未验证；本轮只读未执行新业务链。",
+        "approvedAt": "2026-09-10T02:39:23.518757+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M26-P1-APPROVAL-20260910",
+        "evidenceRefs": [],
+        "limits": "原站匿名算法、题型和套卷完整行为、答卷撤回/更正、报告开放/撤权及多角色执行未验证；本轮只读未执行新业务链。",
+        "approvedAt": "2026-09-10T02:39:23.518757+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M26-P1-APPROVAL-20260910；原登记完整范围逐项与收口清单一致，无内部删减"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M26-P1-APPROVAL-20260910；本模块SPEC与R2-BASELINE-01均由所有者明确批准，版本/哈希锁定"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M26-P1-APPROVAL-20260910；逐项Given/When/Then已存在，作为验收预期获批，未冒本轮执行"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M26-P1-APPROVAL-20260910；已批准生产者契约与本模块LIMIT；源缺证/独立角色留P2/P3/P4，不要求先实联调"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M26-P1-APPROVAL-20260910",
+        "scope": "模块P1转序就绪；R2整体进入P2未批准",
+        "approvedAt": "2026-09-10T02:39:23.518757+00:00"
+      },
+      "restrictedApproval": {
+        "scope": "原站匿名算法、题型和套卷完整行为、答卷撤回/更正、报告开放/撤权及多角色执行未验证；本轮只读未执行新业务链。",
+        "residualRisk": "评价者身份重识别、低样本差分、跨报告推断、用途越权、问卷版本漂移及报告纠错影响。",
+        "revalidation": "P2：复核匿名身份映射隔离、问卷/角色/邀请/答卷版本、报告权限与聚合抑制，设计增量迁移但不执行；P3：合成验证2/3样本边界、角色重叠、零样本、问卷改版、撤回重交、报告更正与事务/消息失败；历史测试不代当前复验；P4：独立多角色、敏感字段/历史/附件/下载权限、跨模块业务及生产容量/恢复验收；E2不新增访问者，管理员操作不代验。",
+        "record": "M26-P1-APPROVAL-20260910",
+        "approvedAt": "2026-09-10T02:39:23.518757+00:00",
+        "phaseScope": "仅P1"
+      },
+      "p1Closed": true,
+      "closureClass": "受限通过",
+      "closureRecord": "M26-P1-APPROVAL-20260910",
+      "closedAt": "2026-09-10T02:39:23.518757+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M18",
+      "name": "在线盘点",
+      "rangeId": "R2",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M18-P1-APPROVAL-20260910",
+        "evidenceRefs": [
+          "P1-CAL",
+          "P1-STD",
+          "P1-SUC",
+          "P1-POOL",
+          "BC-C37",
+          "BC-C38",
+          "BC-C39",
+          "BC-C40"
+        ],
+        "limits": "原站启动/采集/校准会/九宫格算法/发布及跨角色行为未执行；工具计算项目来源与对象子ID、标准共享UUID未确认。",
+        "approvedAt": "2026-09-10T02:41:58.226023+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M18-P1-APPROVAL-20260910",
+        "evidenceRefs": [],
+        "limits": "原站启动/采集/校准会/九宫格算法/发布及跨角色行为未执行；工具计算项目来源与对象子ID、标准共享UUID未确认。",
+        "approvedAt": "2026-09-10T02:41:58.226023+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M18-P1-APPROVAL-20260910；原登记完整范围逐项与收口清单一致，无内部删减"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M18-P1-APPROVAL-20260910；本模块SPEC与R2-BASELINE-01均由所有者明确批准，版本/哈希锁定"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M18-P1-APPROVAL-20260910；逐项Given/When/Then已存在，作为验收预期获批，未冒本轮执行"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M18-P1-APPROVAL-20260910；已批准生产者契约与本模块LIMIT；源缺证/独立角色留P2/P3/P4，不要求先实联调"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M18-P1-APPROVAL-20260910",
+        "scope": "模块P1转序就绪；R2整体进入P2未批准",
+        "approvedAt": "2026-09-10T02:41:58.226023+00:00"
+      },
+      "restrictedApproval": {
+        "scope": "原站启动/采集/校准会/九宫格算法/发布及跨角色行为未执行；工具计算项目来源与对象子ID、标准共享UUID未确认。",
+        "residualRisk": "错误人员评价、历史时点错置、校准利益冲突、共享泄漏、缺证被错误落格、盘点结果自动改变池或任用。",
+        "revalidation": "P2：核对象/采集/会议/评价版本、轴映射与边界、独立节点及来源合同、历史结果保护和迁移；P3：合成验证边界等值、缺失、版本漂移、人员变动、校准驳回撤回/重开、会议回避和发布并发、跨池继任幂等引用；P4：独立多角色、敏感字段/历史/附件/下载权限、跨模块业务及生产容量/恢复验收；E2不新增访问者，管理员操作不代验。",
+        "record": "M18-P1-APPROVAL-20260910",
+        "approvedAt": "2026-09-10T02:41:58.226023+00:00",
+        "phaseScope": "仅P1"
+      },
+      "p1Closed": true,
+      "closureClass": "受限通过",
+      "closureRecord": "M18-P1-APPROVAL-20260910",
+      "closedAt": "2026-09-10T02:41:58.226023+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M17",
+      "name": "继任与发展",
+      "rangeId": "R2",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M17-P1-APPROVAL-20260910",
+        "evidenceRefs": [
+          "BC-C06",
+          "BC-P1C-M17",
+          "BC-P1C-M17-02",
+          "BC-C27",
+          "BC-C28",
+          "BC-C29",
+          "BC-C30",
+          "BC-C31"
+        ],
+        "limits": "原站自动入出池/重入历史、继任目标目录映射与准备度算法、IDP流程UUID/节点及执行/通知/角色、组织健康公式和跨模块共享未验证。",
+        "approvedAt": "2026-09-10T02:43:06.591554+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M17-P1-APPROVAL-20260910",
+        "evidenceRefs": [],
+        "limits": "原站自动入出池/重入历史、继任目标目录映射与准备度算法、IDP流程UUID/节点及执行/通知/角色、组织健康公式和跨模块共享未验证。",
+        "approvedAt": "2026-09-10T02:43:06.591554+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M17-P1-APPROVAL-20260910；原登记完整范围逐项与收口清单一致，无内部删减"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M17-P1-APPROVAL-20260910；本模块SPEC与R2-BASELINE-01均由所有者明确批准，版本/哈希锁定"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M17-P1-APPROVAL-20260910；逐项Given/When/Then已存在，作为验收预期获批，未冒本轮执行"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M17-P1-APPROVAL-20260910；已批准生产者契约与本模块LIMIT；源缺证/独立角色留P2/P3/P4，不要求先实联调"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M17-P1-APPROVAL-20260910",
+        "scope": "模块P1转序就绪；R2整体进入P2未批准",
+        "approvedAt": "2026-09-10T02:43:06.591554+00:00"
+      },
+      "restrictedApproval": {
+        "scope": "原站自动入出池/重入历史、继任目标目录映射与准备度算法、IDP流程UUID/节点及执行/通知/角色、组织健康公式和跨模块共享未验证。",
+        "residualRisk": "错误后备/任用暗示、自动资格变化、指导自审、历史成员区间重叠、健康指标分母偏差和敏感人才名单泄漏。",
+        "revalidation": "P2：设计池规则/成员区间/继任任期、准备度词典与版本、IDP阶段职责/任务依赖、历史映射和健康指标定义；保留legacy原义；P3：合成验证自动规则幂等/失效、出池重入、到期/离职、指导自审、阶段阻塞与替换、目标目录缺失、健康分母和审计失败；P4：独立多角色、敏感字段/历史/附件/下载权限、跨模块业务及生产容量/恢复验收；E2不新增访问者，管理员操作不代验。",
+        "record": "M17-P1-APPROVAL-20260910",
+        "approvedAt": "2026-09-10T02:43:06.591554+00:00",
+        "phaseScope": "仅P1"
+      },
+      "p1Closed": true,
+      "closureClass": "受限通过",
+      "closureRecord": "M17-P1-APPROVAL-20260910",
+      "closedAt": "2026-09-10T02:43:06.591554+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M03",
+      "name": "干部管理2.0",
+      "rangeId": "R2",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M03-P1-APPROVAL-20260910",
+        "evidenceRefs": [
+          "US-C01-02",
+          "BC-C01",
+          "BC-C02",
+          "BC-C03",
+          "BC-C08",
+          "BC-C09",
+          "BC-C10",
+          "BC-C11",
+          "BC-C12",
+          "BC-C13",
+          "BC-C25",
+          "BC-C26"
+        ],
+        "limits": "原站任期通用日期算法、选拔多评委/阈值等值及缺评、任免/转正提交路由、免职恢复/未来离职联动及敏感档案跨角色未验证；本轮不提交实际任用/审批。",
+        "approvedAt": "2026-09-10T02:44:14.280019+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M03-P1-APPROVAL-20260910",
+        "evidenceRefs": [],
+        "limits": "原站任期通用日期算法、选拔多评委/阈值等值及缺评、任免/转正提交路由、免职恢复/未来离职联动及敏感档案跨角色未验证；本轮不提交实际任用/审批。",
+        "approvedAt": "2026-09-10T02:44:14.280019+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M03-P1-APPROVAL-20260910；原登记完整范围逐项与收口清单一致，无内部删减"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M03-P1-APPROVAL-20260910；本模块SPEC与R2-BASELINE-01均由所有者明确批准，版本/哈希锁定"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M03-P1-APPROVAL-20260910；逐项Given/When/Then已存在，作为验收预期获批，未冒本轮执行"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M03-P1-APPROVAL-20260910；已批准生产者契约与本模块LIMIT；源缺证/独立角色留P2/P3/P4，不要求先实联调"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M03-P1-APPROVAL-20260910",
+        "scope": "模块P1转序就绪；R2整体进入P2未批准",
+        "approvedAt": "2026-09-10T02:44:14.280019+00:00"
+      },
+      "restrictedApproval": {
+        "scope": "原站任期通用日期算法、选拔多评委/阈值等值及缺评、任免/转正提交路由、免职恢复/未来离职联动及敏感档案跨角色未验证；本轮不提交实际任用/审批。",
+        "residualRisk": "错误任命或人事生效、投票分母/阈值不一致、自审利益冲突、过期资格被引用、考察期自动转正及档案敏感泄漏。",
+        "revalidation": "P2：设计干部身份/任期/人事生效/提名/任免记录映射、评分策略与委员会、考察/述职版本与当前权限、增量迁移及未知历史标记；P3：合成验证任期月末/闰年/重叠、多评委阈值等值/弃权缺评、资格失效、调动失败/未知、考察延期退回/撤回/退出和档案撤权；P4：独立多角色、敏感字段/历史/附件/下载权限、跨模块业务及生产容量/恢复验收；E2不新增访问者，管理员操作不代验。",
+        "record": "M03-P1-APPROVAL-20260910",
+        "approvedAt": "2026-09-10T02:44:14.280019+00:00",
+        "phaseScope": "仅P1"
+      },
+      "p1Closed": true,
+      "closureClass": "受限通过",
+      "closureRecord": "M03-P1-APPROVAL-20260910",
+      "closedAt": "2026-09-10T02:44:14.280019+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M27",
+      "name": "学习管理",
+      "rangeId": "R3",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M27-P1-APPROVAL-20260910",
+        "evidenceRefs": [
+          "P1-LEARN-02",
+          "P1-LEARN-03-04",
+          "US-L01-02",
+          "BC-L01-02",
+          "BC-L03",
+          "BC-L04-05-07-10",
+          "BC-L06-08",
+          "BC-L06-EXAM",
+          "BC-L09",
+          "BC-L11",
+          "P1-INSTRUCTOR",
+          "P1-TEACHING",
+          "P1-CERTIFICATION",
+          "P1-CERT-DETAIL",
+          "P1-MENTOR",
+          "P1-CERTIFICATE",
+          "P1-CREDIT",
+          "BC-L12",
+          "BC-P1C-M27",
+          "BC-L13",
+          "BC-L14",
+          "BC-L15",
+          "BC-L16",
+          "BC-L17",
+          "BC-L18",
+          "BC-L19",
+          "BC-L20",
+          "BC-L21",
+          "BC-L22"
+        ],
+        "limits": "原站自动循环、已完成学员更新、复杂题型/重考、学习问卷隐私、费用同步/课酬、师资和证书失效传播未执行；单账号不能验证独立审批。",
+        "approvedAt": "2026-09-10T03:21:03.591922+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M27-P1-APPROVAL-20260910",
+        "evidenceRefs": [],
+        "limits": "原站自动循环、已完成学员更新、复杂题型/重考、学习问卷隐私、费用同步/课酬、师资和证书失效传播未执行；单账号不能验证独立审批。",
+        "approvedAt": "2026-09-10T03:21:03.591922+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M27-P1-APPROVAL-20260910；原登记完整范围逐项与收口清单一致，无内部删减"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M27-P1-APPROVAL-20260910；本模块SPEC与R3-BASELINE-01均由所有者明确批准，版本/哈希锁定"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M27-P1-APPROVAL-20260910；逐项Given/When/Then已存在，作为验收预期获批，未冒本轮执行"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M27-P1-APPROVAL-20260910；已批准生产者契约与本模块LIMIT；源缺证/独立角色留P2/P3/P4，不要求先实联调"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M27-P1-APPROVAL-20260910",
+        "scope": "模块P1转序就绪；R3整体进入P2未批准",
+        "approvedAt": "2026-09-10T03:21:03.591922+00:00"
+      },
+      "restrictedApproval": {
+        "scope": "原站自动循环、已完成学员更新、复杂题型/重考、学习问卷隐私、费用同步/课酬、师资和证书失效传播未执行；单账号不能验证独立审批。",
+        "residualRisk": "错误重复派发/授学分、匿名重识别、考试版本漂移、错误结训/课酬及证书效力",
+        "revalidation": "P2：设计自动循环调度及cycleKey幂等、完成实例显式改版、完整题型/抽题/人工批阅、费用与课酬版本化、问卷隐私、学分事件账及跨模块有效性；保留隔离learning-description分支，不合并；P3：按本包Given/When/Then合成验证正常/边界/并发/故障，补算法及版本迁移证据，历史测试不代复验；P4：独立多角色、敏感字段/历史附件/下载、跨模块业务、生产恢复与外部联调。E2不新增人，单管理员不代验。",
+        "record": "M27-P1-APPROVAL-20260910",
+        "approvedAt": "2026-09-10T03:21:03.591922+00:00",
+        "phaseScope": "仅P1"
+      },
+      "p1Closed": true,
+      "closureClass": "受限通过",
+      "closureRecord": "M27-P1-APPROVAL-20260910",
+      "closedAt": "2026-09-10T03:21:03.591922+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M16",
+      "name": "绩效管理",
+      "rangeId": "R3",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M16-P1-APPROVAL-20260910",
+        "evidenceRefs": [
+          "P1-GOAL",
+          "BC-P01",
+          "BC-P02",
+          "BC-P03",
+          "BC-P04",
+          "BC-P05",
+          "BC-P06",
+          "BC-P07",
+          "BC-P1C-M16",
+          "BC-P08",
+          "BC-P09",
+          "BC-P10",
+          "BC-P11",
+          "BC-P12",
+          "BC-P13",
+          "BC-P14",
+          "BC-P15",
+          "BC-P16"
+        ],
+        "limits": "OKR/组织目标完整页面及业务算法未探索；多维缺评、强分、兼职及系数仅局部帮助证据；申诉期限和独立多角色未执行。",
+        "approvedAt": "2026-09-10T03:21:49.283664+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M16-P1-APPROVAL-20260910",
+        "evidenceRefs": [],
+        "limits": "OKR/组织目标完整页面及业务算法未探索；多维缺评、强分、兼职及系数仅局部帮助证据；申诉期限和独立多角色未执行。",
+        "approvedAt": "2026-09-10T03:21:49.283664+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M16-P1-APPROVAL-20260910；原登记完整范围逐项与收口清单一致，无内部删减"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M16-P1-APPROVAL-20260910；本模块SPEC与R3-BASELINE-01均由所有者明确批准，版本/哈希锁定"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M16-P1-APPROVAL-20260910；逐项Given/When/Then已存在，作为验收预期获批，未冒本轮执行"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M16-P1-APPROVAL-20260910；已批准生产者契约与本模块LIMIT；源缺证/独立角色留P2/P3/P4，不要求先实联调"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M16-P1-APPROVAL-20260910",
+        "scope": "模块P1转序就绪；R3整体进入P2未批准",
+        "approvedAt": "2026-09-10T03:21:49.283664+00:00"
+      },
+      "restrictedApproval": {
+        "scope": "OKR/组织目标完整页面及业务算法未探索；多维缺评、强分、兼职及系数仅局部帮助证据；申诉期限和独立多角色未执行。",
+        "residualRisk": "不当评价/分布、错误缺评分母、兼职身份漂移、越权分数可见及更正后奖金联动",
+        "revalidation": "P2：补组织绩效稳定对象、OKR目标/KR/对齐及复盘、多维评分和缺评类型、兼职上下文、时间窗口、强制分布与系数契约；复核更正发布回避及下游影响；P3：按本包Given/When/Then合成验证正常/边界/并发/故障，补算法及版本迁移证据，历史测试不代复验；P4：独立多角色、敏感字段/历史附件/下载、跨模块业务、生产恢复与外部联调。E2不新增人，单管理员不代验。",
+        "record": "M16-P1-APPROVAL-20260910",
+        "approvedAt": "2026-09-10T03:21:49.283664+00:00",
+        "phaseScope": "仅P1"
+      },
+      "p1Closed": true,
+      "closureClass": "受限通过",
+      "closureRecord": "M16-P1-APPROVAL-20260910",
+      "closedAt": "2026-09-10T03:21:49.283664+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M12",
+      "name": "招聘管理系统",
+      "rangeId": "R3",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M12-P1-APPROVAL-20260910",
+        "evidenceRefs": [
+          "BC-R01",
+          "BC-R02",
+          "BC-R03",
+          "BC-R04-06",
+          "BC-R05",
+          "BC-R07",
+          "BC-R08",
+          "BC-P1C-M12",
+          "BC-R12",
+          "BC-R13",
+          "BC-R14",
+          "BC-R15",
+          "BC-R16"
+        ],
+        "limits": "原站系统查重、多库/多申请、完整Offer路由及占编、再入职交接、排期通知和入职后权限传播均未执行；没有外部签署/门户联调。",
+        "approvedAt": "2026-09-10T03:21:54.095842+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M12-P1-APPROVAL-20260910",
+        "evidenceRefs": [],
+        "limits": "原站系统查重、多库/多申请、完整Offer路由及占编、再入职交接、排期通知和入职后权限传播均未执行；没有外部签署/门户联调。",
+        "approvedAt": "2026-09-10T03:21:54.095842+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M12-P1-APPROVAL-20260910；原登记完整范围逐项与收口清单一致，无内部删减"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M12-P1-APPROVAL-20260910；本模块SPEC与R3-BASELINE-01均由所有者明确批准，版本/哈希锁定"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M12-P1-APPROVAL-20260910；逐项Given/When/Then已存在，作为验收预期获批，未冒本轮执行"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M12-P1-APPROVAL-20260910；已批准生产者契约与本模块LIMIT；源缺证/独立角色留P2/P3/P4，不要求先实联调"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M12-P1-APPROVAL-20260910",
+        "scope": "模块P1转序就绪；R3整体进入P2未批准",
+        "approvedAt": "2026-09-10T03:21:54.095842+00:00"
+      },
+      "restrictedApproval": {
+        "scope": "原站系统查重、多库/多申请、完整Offer路由及占编、再入职交接、排期通知和入职后权限传播均未执行；没有外部签署/门户联调。",
+        "residualRisk": "误合并自然人、超编或错误入职、Offer利益冲突、候选隐私及外部回执伪成功",
+        "revalidation": "P2：拆自然人/申请/库关系与去重审核；Offer版本及参与者历史、人数预留账和失效释放、M01稳定身份与再入职接口、排期修订历史、候选用途权限与外部渠道状态；P3：按本包Given/When/Then合成验证正常/边界/并发/故障，补算法及版本迁移证据，历史测试不代复验；P4：独立多角色、敏感字段/历史附件/下载、跨模块业务、生产恢复与外部联调。E2不新增人，单管理员不代验。",
+        "record": "M12-P1-APPROVAL-20260910",
+        "approvedAt": "2026-09-10T03:21:54.095842+00:00",
+        "phaseScope": "仅P1"
+      },
+      "p1Closed": true,
+      "closureClass": "受限通过",
+      "closureRecord": "M12-P1-APPROVAL-20260910",
+      "closedAt": "2026-09-10T03:21:54.095842+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M11",
+      "name": "假勤管理",
+      "rangeId": "R3",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M11-P1-APPROVAL-20260910",
+        "evidenceRefs": [
+          "BC-A02-03",
+          "BC-A04",
+          "BC-A05-06",
+          "BC-A07",
+          "BC-A08",
+          "BC-A09",
+          "BC-P1C-M11",
+          "BC-A10",
+          "BC-A11",
+          "BC-A12"
+        ],
+        "limits": "原站常规多段/轮班/日历、自动授假折算/结转/过期/调休结算、月报自动和反向流程未执行；部分申请子类仅配置线索。AI排班按既有决定暂缓不纳退出。",
+        "approvedAt": "2026-09-10T03:22:13.305264+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M11-P1-APPROVAL-20260910",
+        "evidenceRefs": [],
+        "limits": "原站常规多段/轮班/日历、自动授假折算/结转/过期/调休结算、月报自动和反向流程未执行；部分申请子类仅配置线索。AI排班按既有决定暂缓不纳退出。",
+        "approvedAt": "2026-09-10T03:22:13.305264+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M11-P1-APPROVAL-20260910；原登记完整范围逐项与收口清单一致，无内部删减"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M11-P1-APPROVAL-20260910；本模块SPEC与R3-BASELINE-01均由所有者明确批准，版本/哈希锁定"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M11-P1-APPROVAL-20260910；逐项Given/When/Then已存在，作为验收预期获批，未冒本轮执行"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M11-P1-APPROVAL-20260910；已批准生产者契约与本模块LIMIT；源缺证/独立角色留P2/P3/P4，不要求先实联调"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M11-P1-APPROVAL-20260910",
+        "scope": "模块P1转序就绪；R3整体进入P2未批准",
+        "approvedAt": "2026-09-10T03:22:13.305264+00:00"
+      },
+      "restrictedApproval": {
+        "scope": "原站常规多段/轮班/日历、自动授假折算/结转/过期/调休结算、月报自动和反向流程未执行；部分申请子类仅配置线索。AI排班按既有决定暂缓不纳退出。",
+        "residualRisk": "错误缺勤/扣假、跨日跨年重复消费、工资引用失效、敏感证明越权",
+        "revalidation": "P2：补多段常规轮班/节假日与历史任职方案、通用申请分类、额度批次与跨年结转、加班转调休、不可变期间版本及发布确认封存、工资消费撤回阻断；P3：按本包Given/When/Then合成验证正常/边界/并发/故障，补算法及版本迁移证据，历史测试不代复验；P4：独立多角色、敏感字段/历史附件/下载、跨模块业务、生产恢复与外部联调。E2不新增人，单管理员不代验。",
+        "record": "M11-P1-APPROVAL-20260910",
+        "approvedAt": "2026-09-10T03:22:13.305264+00:00",
+        "phaseScope": "仅P1"
+      },
+      "p1Closed": true,
+      "closureClass": "受限通过",
+      "closureRecord": "M11-P1-APPROVAL-20260910",
+      "closedAt": "2026-09-10T03:22:13.305264+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "moduleId": "M07",
+      "name": "薪酬社保",
+      "rangeId": "R3",
+      "queueState": "closed_restricted",
+      "p1AConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M07-P1-APPROVAL-20260910",
+        "evidenceRefs": [
+          "BC-S01-02",
+          "BC-S03",
+          "BC-S04",
+          "BC-S05",
+          "BC-P1C-M07",
+          "BC-S07",
+          "BC-S08",
+          "BC-S09",
+          "BC-S18",
+          "BC-S19",
+          "BC-S20",
+          "BC-S21"
+        ],
+        "limits": "自动档案、公式/多期间/追溯补差仅局部源证据；社保/个税/激励详细原站规则尚未探索；无银行支付、税务申报及多角色薪酬验证。外部交易不作P1前置。",
+        "approvedAt": "2026-09-10T03:22:17.727544+00:00"
+      },
+      "p1BConclusion": {
+        "status": "受限通过",
+        "approvalRecord": "M07-P1-APPROVAL-20260910",
+        "evidenceRefs": [],
+        "limits": "自动档案、公式/多期间/追溯补差仅局部源证据；社保/个税/激励详细原站规则尚未探索；无银行支付、税务申报及多角色薪酬验证。外部交易不作P1前置。",
+        "approvedAt": "2026-09-10T03:22:17.727544+00:00"
+      },
+      "conditions": {
+        "applicableScopeDetermined": {
+          "value": true,
+          "basis": "M07-P1-APPROVAL-20260910；原登记完整范围逐项与收口清单一致，无内部删减"
+        },
+        "implementationRulesDecided": {
+          "value": true,
+          "basis": "M07-P1-APPROVAL-20260910；本模块SPEC与R3-BASELINE-01均由所有者明确批准，版本/哈希锁定"
+        },
+        "acceptanceExecutable": {
+          "value": true,
+          "basis": "M07-P1-APPROVAL-20260910；逐项Given/When/Then已存在，作为验收预期获批，未冒本轮执行"
+        },
+        "dependenciesAndExceptionsResolved": {
+          "value": true,
+          "basis": "M07-P1-APPROVAL-20260910；已批准生产者契约与本模块LIMIT；源缺证/独立角色留P2/P3/P4，不要求先实联调"
+        }
+      },
+      "transitionReview": {
+        "approved": true,
+        "record": "M07-P1-APPROVAL-20260910",
+        "scope": "模块P1转序就绪；R3整体进入P2未批准",
+        "approvedAt": "2026-09-10T03:22:17.727544+00:00"
+      },
+      "restrictedApproval": {
+        "scope": "自动档案、公式/多期间/追溯补差仅局部源证据；社保/个税/激励详细原站规则尚未探索；无银行支付、税务申报及多角色薪酬验证。外部交易不作P1前置。",
+        "residualRisk": "错误计薪或扣款、政策/身份错配、负净额不当追收、薪酬泄露及重复支付",
+        "revalidation": "P2：补薪资组/包/事件档案、受控公式DAG和输入政策快照、社保/税期/激励对象、负净额待处理账、支付幂等及对账、薪资权限和历史迁移；不引入完整预算/佣金/福利模块；P3：按本包Given/When/Then合成验证正常/边界/并发/故障，补算法及版本迁移证据，历史测试不代复验；P4：独立多角色、敏感字段/历史附件/下载、跨模块业务、生产恢复与外部联调。E2不新增人，单管理员不代验。",
+        "record": "M07-P1-APPROVAL-20260910",
+        "approvedAt": "2026-09-10T03:22:17.727544+00:00",
+        "phaseScope": "仅P1"
+      },
+      "p1Closed": true,
+      "closureClass": "受限通过",
+      "closureRecord": "M07-P1-APPROVAL-20260910",
+      "closedAt": "2026-09-10T03:22:17.727544+00:00",
+      "transitionReady": true,
+      "missingConditions": []
+    }
+  ],
+  "ranges": [
+    {
+      "id": "R1",
+      "applicableFoundationIds": [
+        "BASE-01",
+        "BASE-02",
+        "BASE-03",
+        "BASE-04",
+        "BASE-05",
+        "BASE-06"
+      ],
+      "foundationReadiness": {
+        "BASE-01": {
+          "value": true,
+          "basis": "R1-FOUNDATION-P1-APPROVAL-20260909已批准该基础R1适用需求/验收及例外，后续实现和生产验证未通过",
+          "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+          "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+        },
+        "BASE-02": {
+          "value": true,
+          "basis": "R1-FOUNDATION-P1-APPROVAL-20260909已批准该基础R1适用需求/验收及例外，后续实现和生产验证未通过",
+          "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+          "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+        },
+        "BASE-03": {
+          "value": true,
+          "basis": "R1-FOUNDATION-P1-APPROVAL-20260909已批准该基础R1适用需求/验收及例外，后续实现和生产验证未通过",
+          "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+          "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+        },
+        "BASE-04": {
+          "value": true,
+          "basis": "R1-FOUNDATION-P1-APPROVAL-20260909已批准该基础R1适用需求/验收及例外，后续实现和生产验证未通过",
+          "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+          "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+        },
+        "BASE-05": {
+          "value": true,
+          "basis": "R1-FOUNDATION-P1-APPROVAL-20260909已批准该基础R1适用需求/验收及例外，后续实现和生产验证未通过",
+          "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+          "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+        },
+        "BASE-06": {
+          "value": true,
+          "basis": "R1-FOUNDATION-P1-APPROVAL-20260909已批准该基础R1适用需求/验收及例外，后续实现和生产验证未通过",
+          "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+          "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+        }
+      },
+      "review": {
+        "approved": true,
+        "record": "R1-P1-P2-TRANSITION-20260909",
+        "approvedAt": "2026-09-09T17:11:16.592266+00:00",
+        "scope": "R1 P1关闭，只准P2设计，不准跳过P2退出进入P3"
+      },
+      "foundationReviewPackage": {
+        "status": "R1适用P1需求基线已批准",
+        "preparedAt": "2026-09-09T17:01:22.299836+00:00",
+        "basedOnHead": "c5d52eabdcc09f86bfcdb85bf373f2df2f0cfa08",
+        "decisionIds": [
+          "R1-BASELINE-01",
+          "R1-RECOVERY-01"
+        ],
+        "approvalRecord": "R1-FOUNDATION-P1-APPROVAL-20260909",
+        "scope": "R1四模块所需六基础能力，其他R版本另核适用差异；不新增模块分母，不代批M32或R1转序。",
+        "next": "按R1转序记录进入P2设计复核；目标/接口/权限残余工作列入交接，不重问已批推荐。",
+        "approvedAt": "2026-09-09T17:11:16.592266+00:00"
+      },
+      "p1Conclusion": {
+        "status": "受限通过并关闭",
+        "approvalRecord": "R1-P1-P2-TRANSITION-20260909",
+        "closedAt": "2026-09-09T17:11:16.592266+00:00"
+      },
+      "downstream": {
+        "authorizedPhase": "P3",
+        "entryApproved": true,
+        "entryApprovalRecord": "R1-P3-ENTRY-OWNER-20260910",
+        "p2Status": "所有者批准P2设计退出；9设计关闭/20转P3/8转P4",
+        "p2ExitApproved": true,
+        "p2ExitRecord": "R1-P2-EXIT-OWNER-20260910",
+        "p3EntryApproved": true,
+        "businessAccepted": false,
+        "productionAccepted": false,
+        "p3HandoffReady": true,
+        "p3Started": false,
+        "p3Status": "获准进入，尚未开始"
+      },
+      "p2Handoff": {
+        "id": "R1-P2-HANDOFF",
+        "status": "已完成交接材料，P2尚未执行/评审",
+        "preparedAt": "2026-09-09T17:12:54.443453+00:00",
+        "basedOnHead": "c59d1c2653202dfbe2652f84bccfc8bdbc199d9c",
+        "moduleIds": [
+          "M01",
+          "M19",
+          "M48",
+          "M32"
+        ],
+        "baseCapabilityIds": [
+          "BASE-01",
+          "BASE-02",
+          "BASE-03",
+          "BASE-04",
+          "BASE-05",
+          "BASE-06"
+        ],
+        "contractIds": [
+          "BP-F-REQ-01",
+          "BP-F-REQ-02",
+          "BP-F-REQ-04",
+          "BP-F-REQ-05",
+          "BP-F-REQ-06",
+          "BP-F-REQ-10",
+          "BP-F-REQ-11",
+          "BP-F-REQ-12",
+          "BP-F-REQ-13",
+          "BP-F-REQ-14",
+          "BP-F-REQ-15",
+          "BP-P-REQ-09",
+          "BP-S-REQ-07",
+          "BP-S-REQ-08",
+          "BP-S-REQ-12",
+          "BP-I-REQ-01",
+          "BP-I-REQ-02",
+          "BP-I-REQ-03",
+          "BP-I-REQ-04",
+          "BP-I-REQ-05",
+          "BP-I-REQ-07",
+          "BP-I-REQ-08",
+          "BP-I-REQ-11",
+          "BP-I-REQ-12"
+        ],
+        "approvalRecordIds": [
+          "M01-P1-APPROVAL-20260909",
+          "M19-P1-APPROVAL-20260909",
+          "M48-P1-APPROVAL-20260909",
+          "M32-P1-APPROVAL-20260909",
+          "R1-FOUNDATION-P1-APPROVAL-20260909",
+          "R1-P1-P2-TRANSITION-20260909"
+        ],
+        "exclusions": [
+          "R2/R3完整业务实现不纳R1，M48/M32仅按已批契约消费、未配置状态及后续联调责任保留范围",
+          "33暂缓模块完整运营/引擎，独立AI陪练/面试/推荐/RPA不建设；必要最小结构保留原映射",
+          "真实通知/支付/电子签/外部交易不作本轮P1前置，不实施真实调用；不新增用户/访问者",
+          "不重建系统，不删除/scope、已有代码/测试/部署/历史/隔离分支，不合并未完分支或额外发布",
+          "P1总控不执行R1产品修改/数据库迁移/P3测试；P2窗口仅设计，后续开发需P2退出评审"
+        ],
+        "designWorklist": [
+          {
+            "id": "R1-P2-01",
+            "area": "架构与复用",
+            "constraint": "保留Sites/Vinext、D1/R2、当前路由/身份/事务底座；界定模块边界、生产者消费与后台任务，独立治理看板失败不阻产品链。",
+            "deliverable": "架构图/数据流/复用清单/依赖边界；记录每一补充的必要性与替代方案。",
+            "codeRefs": [
+              "lib/hris/context.ts",
+              "lib/hris/repository.ts",
+              "lib/hris/development-repository.ts",
+              ".openai/hosting.json"
+            ],
+            "status": "P2待设计/评审"
+          },
+          {
+            "id": "R1-P2-02",
+            "area": "M01数据与有效历史",
+            "constraint": "按已批F-SPEC-01至08，设计组织/职位/职务/职级/法人有效版本、稳定人员/任职段、主兼职/借调/再入职、编制、合同计次、子集/模板/导入；F01–F04不能代完整M01。",
+            "deliverable": "实体/键/外键/唯一性/有效期/状态表、幂等及冲突恢复、消费者迁移映射，明确旧字段来源与未知历史。",
+            "codeRefs": [
+              "lib/hris/model.ts",
+              "lib/hris/personnel-transfer.ts",
+              "lib/hris/workforce.ts",
+              "lib/hris/contract-fields.ts"
+            ],
+            "status": "P2待设计/评审"
+          },
+          {
+            "id": "R1-P2-03",
+            "area": "M19流程与业务一致性",
+            "constraint": "复用既有人事流程版本/节点与事务，补通用路由/会签/管理操作/委托；禁止空路由默认成功，D7调动仍固定独立两级，管理权不代节点审批权。",
+            "deliverable": "路由校验/版本冻结/实例与领域原单/待办与生效/通知映射；转交撤销批量的原子性、部分失败和未知恢复矩阵。",
+            "codeRefs": [
+              "lib/hris/model.ts",
+              "lib/hris/personnel-transfer.ts",
+              "lib/hris/work-inbox.ts",
+              "app/api/hris/route.ts"
+            ],
+            "status": "P2待设计/评审"
+          },
+          {
+            "id": "R1-P2-04",
+            "area": "权限与M48消费",
+            "constraint": "复用成员及服务端范围投影；补显式直线/虚线/部门负责人关系、独立动作权限及敏感字段策略；七项入口消费生产者版本，不复刻生产者算法。",
+            "deliverable": "角色×关系×动作×对象×字段矩阵；本人绑定/受托任务/申请/团队分列、401/403清缓存、当前/历史/附件一致权；R2/R3不可用适配协议。",
+            "codeRefs": [
+              "lib/hris/authorization.ts",
+              "app/api/self-service/route.ts",
+              "lib/hris/work-inbox.ts",
+              "app/api/attachments/route.ts"
+            ],
+            "status": "P2待设计/评审"
+          },
+          {
+            "id": "R1-P2-05",
+            "area": "M32查询与报表任务",
+            "constraint": "保留已有数据集粒度和CSV安全/审计；补定义版本、声明式设计器、时间/快照模式、服务端有界分页、独立export/subscribe/manage、有界异步导出。",
+            "deliverable": "数据集目录和类型/分母/null/去重表、索引/执行计划/容量估算、快照权限重裁、jobId幂等和就绪文件原子性、订阅逐收件者验权/链接投递/屏蔽。",
+            "codeRefs": [
+              "lib/hris/reports.ts",
+              "lib/hris/payroll-reports.ts",
+              "app/api/reports/route.ts",
+              "app/reports/workspace.tsx"
+            ],
+            "status": "P2待设计/评审"
+          },
+          {
+            "id": "R1-P2-06",
+            "area": "接口与异常",
+            "constraint": "已批准未配置服务可以契约先行；内部保存、审批、业务生效、通知回执不同状态，未知先查不重复提交；共享最小结构不恢复33暂缓模块。",
+            "deliverable": "M01↔M19↔M48/M32事件/请求/版本/错误契约，R2/R3生产者消费清单；外部id/摘要/去重/签名及失败恢复适配位置，不编造供应商endpoint。",
+            "codeRefs": [
+              "lib/hris/integration-preflight.ts",
+              "lib/hris/repository.ts",
+              "lib/hris/development-repository.ts"
+            ],
+            "status": "P2待设计/评审"
+          },
+          {
+            "id": "R1-P2-07",
+            "area": "迁移与历史保护",
+            "constraint": "现模型单org/job/level与新多任职/版本不能靠覆盖迁移；保留稳定ID、原单/审计、历史证据与隔离分支。先读实际库状态，不继承2026-09-08空表结论。",
+            "deliverable": "增量迁移及兼容读/回滚策略、版本映射/未知历史标记、幂等重入/中断恢复/完整性与权限对账用例；只设计，不执行业务库迁移。",
+            "codeRefs": [
+              "lib/hris/repository.ts",
+              "docs/P2_Acceptance.md",
+              "docs/Recovery_Rehearsal.md"
+            ],
+            "status": "P2待设计/评审"
+          },
+          {
+            "id": "R1-P2-08",
+            "area": "备份恢复目标与责任",
+            "constraint": "落实RPO≤60分钟/RTO≤240分钟/30天、加密/清单哈希/版本/审批；DB和附件共同恢复点、独立可信撤权记录，隔离核验后所有者开放。",
+            "deliverable": "云端能力与一致性方案、容量/成本估算、备份与恢复执行/复核/批准分工；不能经济实现提交量化差异，不静默降目标；P3演练/P4生产验证计划。",
+            "codeRefs": [
+              "scripts/rehearse-local-recovery.mjs",
+              "docs/Recovery_Rehearsal.md",
+              "docs/Recovery_Synthetic_Report.json"
+            ],
+            "status": "P2待设计/评审"
+          },
+          {
+            "id": "R1-P2-09",
+            "area": "设计验收与P3门槛",
+            "constraint": "历史P2受限技术验收仅作为复用证据，当前新规则必须差异复核。全部已批需求关联实现/设计/可执行用例；多角色人工验收不得豁免。",
+            "deliverable": "逐项追踪矩阵、设计评审结论和真实硬阻塞/例外；只有P2退出获明确批准才提出P3任务，不以当前P1批准冒充已获P3通过。",
+            "codeRefs": [
+              "docs/P2_Acceptance.md",
+              "docs/delivery/F01_F04_Business_Acceptance.md",
+              "docs/delivery/P1_Approval_Records.md"
+            ],
+            "status": "P2待设计/评审"
+          }
+        ],
+        "entryDecision": "R1-P1-P2-TRANSITION-20260909",
+        "p2ExitConditions": [
+          "架构、数据、权限、接口、迁移、异常六类设计可实施且覆盖四模块完整范围及适用六基础",
+          "每条已批准需求、受限风险和验收预期关联到复用/待修改/待新增设计，没有以F01–F04代整个M01或删未接生产者功能",
+          "备份目标云端可行性/成本和执行复核责任明确；不能经济实现的量化差异获得处置，未静默降目标",
+          "未解决阻断差异有明确关闭或批准例外；本版本独立设计评审记录批准P2退出；历史测试不能自动继承"
+        ],
+        "collaborationBoundary": "本P1总控继续维护Scope和生成视图，P2启动时核HEAD/工作区/进行中操作，设计在隔离工作树/设计分支进行，不同时写主Scope、不重置或覆盖他人修改；范围/状态反馈以待总控纳入的结构化提案提交，不建立第二套手工进度。没有本轮新代理或新窗口被实际启动。",
+        "historicalEvidenceRefs": [
+          "docs/P2_Acceptance.md",
+          "docs/delivery/F01_F04_Business_Acceptance.md",
+          "docs/Recovery_Rehearsal.md",
+          "docs/Recovery_Synthetic_Report.json",
+          "docs/delivery/Deployment_Evidence.json"
+        ],
+        "validationEvidencePaths": [
+          "docs/delivery/Contract_Fields_Verification.json",
+          "docs/delivery/Controller_Regression_Verification.json",
+          "docs/delivery/Dashboard_Verification.json",
+          "docs/delivery/F01_F04_Closure_Verification.json",
+          "docs/delivery/F01_F04_Decisions_Verification.json",
+          "docs/delivery/F01_F04_Entry_UI_Verification.json",
+          "docs/delivery/F01_F04_Role_Arrangement_Verification.json",
+          "docs/delivery/F04_Closure_Verification.json",
+          "docs/delivery/Self_Report_Verification.json"
+        ],
+        "doNotReask": [
+          "D1–D7按原批准原义；尤其调动独立审批不得被通用管理动作绕过",
+          "E1只页面可打开，E2仅所有者访问，不能以管理员自审代替跨角色验收",
+          "M01 F-SPEC-01至08、SCOPE-DEP-01、M01-BASELINE-01及LIMIT已批",
+          "M19/M48/M32所审SPEC及各自LIMIT已批，仅需求阶段",
+          "R1六基础及RPO60分钟/RTO240分钟/保留30天目标已批；只待方案/成本核实，不重问目标是否采用",
+          "R1已准P2设计，不等P2退出或P3/业务/生产通过"
+        ],
+        "next": "P1总控提交本交接后转M37；新P2窗口读取启动提示词可独立开始设计，当前窗口不执行P2实现。"
+      },
+      "p2ResultIntake": {
+        "approvalId": "R1-P2-EXIT-OWNER-20260910",
+        "reviewedHead": "65cfcf85e4fccf8cba53319deb7b87dd7f79600a",
+        "sourceHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+        "sourceBranch": "design/r1-p2-20260909",
+        "references": [
+          {
+            "branch": "design/r1-p2-20260909",
+            "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+            "path": "docs/delivery/r1-p2/R1_P2_Controller_Proposal.json",
+            "sha256": "a8d1873c712601d90e1ad498feb202343e6f8d12d7405185052db7596dd904da"
+          },
+          {
+            "branch": "design/r1-p2-20260909",
+            "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+            "path": "docs/delivery/r1-p2/R1_P2_Exit_Review.md",
+            "sha256": "53ee09fe93fcf667afe48c6cf3b21cada18645a9950f0f1cb18e06faa02cb149"
+          },
+          {
+            "branch": "design/r1-p2-20260909",
+            "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+            "path": "docs/delivery/r1-p2/R1_P2_P3_Handoff.md",
+            "sha256": "2df90ce6d557500f65206cf458d7b548d94fd8a9205bbc0c977f4a83c9273c14"
+          },
+          {
+            "branch": "design/r1-p2-20260909",
+            "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+            "path": "docs/delivery/r1-p2/R1_P2_P3_Start_Prompt.md",
+            "sha256": "eb06c0b47931fab637a4c5c19c1670fbe56560ff77166704986bfaa7bf2cca10"
+          },
+          {
+            "branch": "design/r1-p2-20260909",
+            "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+            "path": "docs/delivery/r1-p2/R1_P2_Owner_Exit_Approval.json",
+            "sha256": "2905b1cfeb18ead0985a49fbaadc55d13b39bba354599a92a15352499e04cda0"
+          },
+          {
+            "branch": "design/r1-p2-20260909",
+            "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+            "path": "docs/delivery/r1-p2/R1_P2_Limit_Resolution.json",
+            "sha256": "f4400e6ef0d37493637468b7862e29ebcc2c75c3fdb2b7eda1b4d09011232cda"
+          },
+          {
+            "branch": "design/r1-p2-20260909",
+            "head": "e15237281ff19f04f08a354fd9455c518b24ae47",
+            "path": "docs/delivery/r1-p2/R1_P2_Dependencies_Decisions.json",
+            "sha256": "8b536d2f10e0ef4db8ac583b4e63d7a9643846a1764b6466f21ad6543a902e93"
+          }
+        ],
+        "riskDisposition": {
+          "ownerClosedDesignRiskIds": [
+            "R1-M01-L01",
+            "R1-M01-L02",
+            "R1-M01-L03",
+            "R1-M19-L01",
+            "R1-M19-L02",
+            "R1-M48-L01",
+            "R1-M48-L02",
+            "R1-M32-L01",
+            "R1-M32-L02"
+          ],
+          "remainingP3RiskIds": [
+            "R1-M01-L04",
+            "R1-M01-L05",
+            "R1-M01-L06",
+            "R1-M01-L07",
+            "R1-M01-L08",
+            "R1-M19-L03",
+            "R1-M19-L04",
+            "R1-M19-L05",
+            "R1-M19-L06",
+            "R1-M19-L07",
+            "R1-M48-L03",
+            "R1-M48-L04",
+            "R1-M48-L05",
+            "R1-M48-L06",
+            "R1-M32-L03",
+            "R1-M32-L04",
+            "R1-M32-L05",
+            "R1-M32-L06",
+            "R1-M32-L07",
+            "R1-M32-L08"
+          ],
+          "remainingP4RiskIds": [
+            "R1-M01-L09",
+            "R1-M01-L10",
+            "R1-M19-L08",
+            "R1-M19-L09",
+            "R1-M48-L07",
+            "R1-M48-L08",
+            "R1-M32-L09",
+            "R1-M32-L10"
+          ]
+        },
+        "riskCounts": {
+          "total": 37,
+          "designClosed": 9,
+          "p3": 20,
+          "p4": 8
+        },
+        "sourceEvidenceRequests": [
+          "SRC-M01-01",
+          "SRC-M01-02",
+          "SRC-M01-03",
+          "SRC-M01-04",
+          "SRC-M19-01",
+          "SRC-M19-02",
+          "SRC-M19-03",
+          "SRC-M48-01",
+          "SRC-M48-02",
+          "SRC-M48-03",
+          "SRC-M32-01",
+          "SRC-M32-02",
+          "SRC-M32-03"
+        ],
+        "sourceEvidenceOwner": "P1总控",
+        "businessTestsRun": 0,
+        "historicalTestRevalidations": 0,
+        "p3Started": false,
+        "readOnlyIntake": true,
+        "recordedAt": "2026-09-10T03:24:03.609414+00:00"
+      },
+      "moduleIds": [
+        "M01",
+        "M19",
+        "M48",
+        "M32"
+      ],
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "id": "R2",
+      "applicableFoundationIds": [
+        "BASE-01",
+        "BASE-02",
+        "BASE-03",
+        "BASE-04",
+        "BASE-05",
+        "BASE-06"
+      ],
+      "foundationReadiness": {
+        "BASE-01": {
+          "value": true,
+          "basis": "R2-BASELINE-01由M26-P1-APPROVAL-20260910记录；仅需求"
+        },
+        "BASE-02": {
+          "value": true,
+          "basis": "R2-BASELINE-01由M26-P1-APPROVAL-20260910记录；仅需求"
+        },
+        "BASE-03": {
+          "value": true,
+          "basis": "R2-BASELINE-01由M26-P1-APPROVAL-20260910记录；仅需求"
+        },
+        "BASE-04": {
+          "value": true,
+          "basis": "R2-BASELINE-01由M26-P1-APPROVAL-20260910记录；仅需求"
+        },
+        "BASE-05": {
+          "value": true,
+          "basis": "R2-BASELINE-01由M26-P1-APPROVAL-20260910记录；仅需求"
+        },
+        "BASE-06": {
+          "value": true,
+          "basis": "R2-BASELINE-01由M26-P1-APPROVAL-20260910记录；仅需求"
+        }
+      },
+      "review": {
+        "approved": true,
+        "record": "R2-P1-P2-TRANSITION-20260910",
+        "approvedAt": "2026-09-10T03:24:03.609414+00:00",
+        "scope": "R2 P1关闭，批准仅P2设计"
+      },
+      "p1ClosureSummary": {
+        "status": "P1受限关闭；获准进入P2设计",
+        "record": "R2-P1-P2-TRANSITION-20260910",
+        "at": "2026-09-10T03:24:03.609414+00:00",
+        "downstreamAuthorized": true
+      },
+      "p1Conclusion": {
+        "status": "受限通过并关闭",
+        "approvalRecord": "R2-P1-P2-TRANSITION-20260910",
+        "closedAt": "2026-09-10T03:24:03.609414+00:00"
+      },
+      "downstream": {
+        "authorizedPhase": "P2",
+        "entryApproved": true,
+        "entryApprovalRecord": "R2-P1-P2-TRANSITION-20260910",
+        "p2Status": "获准进入，尚未开始",
+        "p2ExitApproved": false,
+        "p2ExitRecord": null,
+        "p3EntryApproved": false,
+        "p3Started": false,
+        "businessAccepted": false,
+        "productionAccepted": false
+      },
+      "controllerHandoff": {
+        "document": "docs/delivery/P1_R2_P2_Handoff.md",
+        "startPrompt": "docs/delivery/R2_P2_Start_Prompt.md",
+        "moduleIds": [
+          "M37",
+          "M06",
+          "M26",
+          "M18",
+          "M17",
+          "M03"
+        ],
+        "foundationIds": [
+          "BASE-01",
+          "BASE-02",
+          "BASE-03",
+          "BASE-04",
+          "BASE-05",
+          "BASE-06"
+        ],
+        "approvalRecords": [
+          "M37-P1-APPROVAL-R2-20260909",
+          "M06-P1-APPROVAL-R2-20260909",
+          "M26-P1-APPROVAL-20260910",
+          "M18-P1-APPROVAL-20260910",
+          "M17-P1-APPROVAL-20260910",
+          "M03-P1-APPROVAL-20260910"
+        ],
+        "ready": true,
+        "entryRecord": "R2-P1-P2-TRANSITION-20260910"
+      },
+      "moduleIds": [
+        "M37",
+        "M06",
+        "M26",
+        "M18",
+        "M17",
+        "M03"
+      ],
+      "transitionReady": true,
+      "missingConditions": []
+    },
+    {
+      "id": "R3",
+      "applicableFoundationIds": [
+        "BASE-01",
+        "BASE-02",
+        "BASE-03",
+        "BASE-04",
+        "BASE-05",
+        "BASE-06"
+      ],
+      "foundationReadiness": {
+        "BASE-01": {
+          "value": true,
+          "basis": "R3-BASELINE-01由M27-P1-APPROVAL-20260910记录；仅需求"
+        },
+        "BASE-02": {
+          "value": true,
+          "basis": "R3-BASELINE-01由M27-P1-APPROVAL-20260910记录；仅需求"
+        },
+        "BASE-03": {
+          "value": true,
+          "basis": "R3-BASELINE-01由M27-P1-APPROVAL-20260910记录；仅需求"
+        },
+        "BASE-04": {
+          "value": true,
+          "basis": "R3-BASELINE-01由M27-P1-APPROVAL-20260910记录；仅需求"
+        },
+        "BASE-05": {
+          "value": true,
+          "basis": "R3-BASELINE-01由M27-P1-APPROVAL-20260910记录；仅需求"
+        },
+        "BASE-06": {
+          "value": true,
+          "basis": "R3-BASELINE-01由M27-P1-APPROVAL-20260910记录；仅需求"
+        }
+      },
+      "review": {
+        "approved": true,
+        "record": "R3-P1-P2-TRANSITION-20260910",
+        "approvedAt": "2026-09-10T03:24:03.609414+00:00",
+        "scope": "R3 P1关闭，批准仅P2设计"
+      },
+      "p1ClosureSummary": {
+        "status": "P1受限关闭；获准进入P2设计",
+        "record": "R3-P1-P2-TRANSITION-20260910",
+        "at": "2026-09-10T03:24:03.609414+00:00",
+        "downstreamAuthorized": true
+      },
+      "p1Conclusion": {
+        "status": "受限通过并关闭",
+        "approvalRecord": "R3-P1-P2-TRANSITION-20260910",
+        "closedAt": "2026-09-10T03:24:03.609414+00:00"
+      },
+      "downstream": {
+        "authorizedPhase": "P2",
+        "entryApproved": true,
+        "entryApprovalRecord": "R3-P1-P2-TRANSITION-20260910",
+        "p2Status": "获准进入，尚未开始",
+        "p2ExitApproved": false,
+        "p2ExitRecord": null,
+        "p3EntryApproved": false,
+        "p3Started": false,
+        "businessAccepted": false,
+        "productionAccepted": false
+      },
+      "controllerHandoff": {
+        "document": "docs/delivery/P1_R3_P2_Handoff.md",
+        "startPrompt": "docs/delivery/R3_P2_Start_Prompt.md",
+        "moduleIds": [
+          "M27",
+          "M16",
+          "M12",
+          "M11",
+          "M07"
+        ],
+        "foundationIds": [
+          "BASE-01",
+          "BASE-02",
+          "BASE-03",
+          "BASE-04",
+          "BASE-05",
+          "BASE-06"
+        ],
+        "approvalRecords": [
+          "M27-P1-APPROVAL-20260910",
+          "M16-P1-APPROVAL-20260910",
+          "M12-P1-APPROVAL-20260910",
+          "M11-P1-APPROVAL-20260910",
+          "M07-P1-APPROVAL-20260910"
+        ],
+        "ready": true,
+        "entryRecord": "R3-P1-P2-TRANSITION-20260910"
+      },
+      "moduleIds": [
+        "M27",
+        "M16",
+        "M12",
+        "M11",
+        "M07"
+      ],
+      "transitionReady": true,
+      "missingConditions": []
+    }
+  ],
+  "nightReviewPipeline": {
+    "authorization": "本窗口最新用户明确授权，仅本轮R2 P1评审材料流水线",
+    "order": [
+      "M26",
+      "M18",
+      "M17",
+      "M03"
+    ],
+    "waitingModuleIds": [],
+    "preparedModuleIds": [
+      "M26",
+      "M18",
+      "M17",
+      "M03"
+    ],
+    "formalClosureOrder": [
+      "M37",
+      "M06",
+      "M26",
+      "M18",
+      "M17",
+      "M03"
+    ],
+    "rule": "按最新用户批准顺序关闭R2；随后允许R3串行材料准备，未批准R3不关闭，不进入P2/P3",
+    "ownerBranch": "main",
+    "protectedWorktree": "/workspace/sites/italent-hris-r1-p2-20260909",
+    "protectedBranch": "design/r1-p2-20260909",
+    "observedProtectedHead": "617a707",
+    "parallelBoundary": "仅git worktree list查看注册信息；不进入、不修改、不合并/cherry-pick其任何提交；P2建议完成后统一纳入",
+    "status": "R2四模块均受限关闭",
+    "nextFormalClosureModule": "M27",
+    "reviewBundleRef": "docs/delivery/P1_R2_Review_Package.md"
+  },
+  "r3ReviewPipeline": {
+    "authorization": "本窗口2026-09-10明确授权R3串行评审材料准备",
+    "order": [
+      "M27",
+      "M16",
+      "M12",
+      "M11",
+      "M07"
+    ],
+    "preparedModuleIds": [
+      "M27",
+      "M16",
+      "M12",
+      "M11",
+      "M07"
+    ],
+    "waitingModuleIds": [],
+    "formalClosureOrder": [
+      "M27",
+      "M16",
+      "M12",
+      "M11",
+      "M07"
+    ],
+    "status": "五模块已顺序受限关闭，材料流水线结束",
+    "nextFormalClosureModule": null,
+    "rule": "按最新用户批准顺序关闭R3；随后允许R3串行材料准备，未批准R3不关闭，不进入P2/P3"
+  }
+}

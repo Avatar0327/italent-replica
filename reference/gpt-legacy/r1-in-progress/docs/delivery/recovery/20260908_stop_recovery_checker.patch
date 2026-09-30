@@ -1,0 +1,24 @@
+diff --git a/scripts/check-p1-baseline.py b/scripts/check-p1-baseline.py
+index a944933..0c5240c 100644
+--- a/scripts/check-p1-baseline.py
++++ b/scripts/check-p1-baseline.py
+@@ -7,9 +7,9 @@ def check(v,name):
+ check(len(s['modules'])==48 and len(s['acceptanceTasks'])==59,'48组和59原任务保留')
+ check([m['id'] for m in s['modules']]==[m['id'] for m in old['modules']],'原范围ID及顺序保持')
+ for a,b in zip(s['modules'],old['modules']):
+- for k in ['id','name','scope','developed','productionAccepted']:check(a[k]==b[k],a['id']+' '+k+'保留')
++ for k in ['id','name','scope','requirements','developed','tested','productionAccepted']:check(a[k]==b[k],a['id']+' '+k+'保留')
+ for a,b in zip(s['acceptanceTasks'],old['acceptanceTasks']):
+- check(a['id']==b['id'] and a['criteria']==b['criteria'],a['id']+'验收条件和accepted保留')
++ check(a['id']==b['id'] and a['criteria']==b['criteria'] and a.get('dimensions')==b.get('dimensions'),a['id']+'验收条件和accepted保留')
+ ids=[i for p in s['p1B']['packages'] for i in p['moduleIds']]
+ check(len(ids)==48 and len(set(ids))==48 and set(ids)=={m['id'] for m in s['modules']},'全量业务包映射无重复遗漏')
+ pages={p['id']:p for p in s['p1Baseline']['pages']}
+@@ -39,6 +39,6 @@ for p in files:
+   check((p.parent/target.split('#')[0]).exists(),p.name+'链接'+target)
+ changed=subprocess.check_output(['git','diff','--name-only'],cwd=R,text=True).splitlines()
+ check(all(p.startswith('docs/') or p in ['scripts/render-p1-baseline.py','scripts/check-p1-baseline.py'] for p in changed),'未改产品源码/测试/依赖/配置')
+-result={'completedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'baseCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=R,text=True).strip(),'scope':'文档完整性/引用/生成一致性；非业务回归、原站取证、需求签署或UAT','result':'passed','checks':checks,'notes':['对当前HEAD核对原48组及59原验收条件/标志未改变','本轮有新增原站只读观察，观察和归档时间分别记录；未执行业务提交','D1历史测试源3d690cbbd6336c6de8b76a06fa4459700b1e3a88；入口渲染源fdc423fcba607bd5814a0672836b55536c71ecb1；本轮未复测'],'businessAccepted':False,'productionAccepted':False}
++result={'completedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'baseCommit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=R,text=True).strip(),'scope':'文档完整性/引用/生成一致性；非业务回归、原站取证、需求签署或UAT','result':'passed','checks':checks,'notes':['对当前HEAD核对原48组及59原验收条件/标志未改变','本检查仅验证文档结构；是否新增原站观察以带来源与观察时间的记录为准，不能由脚本推断','D1历史测试源3d690cbbd6336c6de8b76a06fa4459700b1e3a88；入口渲染源fdc423fcba607bd5814a0672836b55536c71ecb1；本轮未复测'],'businessAccepted':False,'productionAccepted':False}
+ (D/'P1AB_Document_Check.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
+ print('PASS: scope, acceptance flags, package mapping, page attribution, links, deterministic generation and unchanged product source')

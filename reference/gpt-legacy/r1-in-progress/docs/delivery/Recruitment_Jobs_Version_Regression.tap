@@ -1,0 +1,11 @@
+✔ internal job versions preserve candidate snapshots and all versions share requisition hire capacity (276.259576ms)
+✔ job scope, lifecycle, salary bounds, Unicode body size and audit failure are enforced (168.460254ms)
+✔ discarded draft does not trap an active job family or reuse historical version numbers (117.980626ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2947.814759

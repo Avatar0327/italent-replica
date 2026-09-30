@@ -1,0 +1,161 @@
+TAP version 13
+# Subtest: H004 P02: one employee goal adjustment, checkin, evaluation, appeal and versioned consumers
+ok 1 - H004 P02: one employee goal adjustment, checkin, evaluation, appeal and versioned consumers
+  ---
+  duration_ms: 178.883929
+  type: 'test'
+  ...
+# H004_CHAIN {"employeeId":"08363841-d8d8-429c-a6b3-3d4cc60ba0b1","cycleId":"1cf36212-4f6d-4f18-a01e-9215a8c3c948","planId":"36b741ed-9151-4d4b-8bd1-1f7e23e63e4f","adjustmentId":"1e7cd961-78ad-47d5-8ce5-5163fedda19a","checkinId":"d92b07db-6b7c-43ce-b97a-86649050598b","resultId":"2d8fe315-7d94-44e1-953a-a00e3b5dc6b5","appealId":"bc5f6284-a66c-4375-b5bf-8f47129f7411","correctionId":"0b3db67c-3c0a-4083-9757-cab2c4bce797","reviewId":"ce56b28c-ff0e-4390-89e9-ca02e93f020f","originalScore":63,"latestScore":87}
+# Subtest: H004 P03: cycle status, dates, exact weights and score thresholds
+ok 2 - H004 P03: cycle status, dates, exact weights and score thresholds
+  ---
+  duration_ms: 97.550975
+  type: 'test'
+  ...
+# Subtest: H004 P03: exit preserves independent correction of published history
+ok 3 - H004 P03: exit preserves independent correction of published history
+  ---
+  duration_ms: 54.615645
+  type: 'test'
+  ...
+# Subtest: H004 P03: transfer preserves independent correction of published history
+ok 4 - H004 P03: transfer preserves independent correction of published history
+  ---
+  duration_ms: 71.169075
+  type: 'test'
+  ...
+# Subtest: H004 P-DEF-01: exit blocks active plan progression, keeps history and cancellation
+ok 5 - H004 P-DEF-01: exit blocks active plan progression, keeps history and cancellation
+  ---
+  duration_ms: 387.197278
+  type: 'test'
+  ...
+# Subtest: H004 P-DEF-01: transfer blocks active plan progression, keeps history and cancellation
+ok 6 - H004 P-DEF-01: transfer blocks active plan progression, keeps history and cancellation
+  ---
+  duration_ms: 197.804164
+  type: 'test'
+  ...
+# Subtest: performance inbox follows self-review, pending adjustment, return and lifecycle without exposing another employee task
+ok 7 - performance inbox follows self-review, pending adjustment, return and lifecycle without exposing another employee task
+  ---
+  duration_ms: 163.805854
+  type: 'test'
+  ...
+# Subtest: indicator usage separates versions and pending references, retains frozen published sources and respects current HR scope
+ok 8 - indicator usage separates versions and pending references, retains frozen published sources and respects current HR scope
+  ---
+  duration_ms: 208.432608
+  type: 'test'
+  ...
+# Subtest: indicator source is resolved server-side and stays frozen after archive and revision, including published result
+ok 9 - indicator source is resolved server-side and stays frozen after archive and revision, including published result
+  ---
+  duration_ms: 157.730988
+  type: 'test'
+  ...
+# Subtest: indicator catalog scopes draft and sealed records, rejects new archived and foreign employee references
+ok 10 - indicator catalog scopes draft and sealed records, rejects new archived and foreign employee references
+  ---
+  duration_ms: 82.304255
+  type: 'test'
+  ...
+# Subtest: goal adjustment freezes explicit replacement source and audit failure rolls back both plan and request
+ok 11 - goal adjustment freezes explicit replacement source and audit failure rolls back both plan and request
+  ---
+  duration_ms: 107.118593
+  type: 'test'
+  ...
+# Subtest: indicator codes and revisions preserve lineage, and accepted maximum goal text fits the bounded API
+ok 12 - indicator codes and revisions preserve lineage, and accepted maximum goal text fits the bounded API
+  ---
+  duration_ms: 87.605148
+  type: 'test'
+  ...
+# Subtest: activity classification is optional, validated, frozen into results and reported without changing authorization or calendar policy
+ok 13 - activity classification is optional, validated, frozen into results and reported without changing authorization or calendar policy
+  ---
+  duration_ms: 132.035776
+  type: 'test'
+  ...
+# Subtest: cycle draft edits are audited, preserve archived frozen schemes unless explicitly replaced and cannot affect active cycles
+ok 14 - cycle draft edits are audited, preserve archived frozen schemes unless explicitly replaced and cannot affect active cycles
+  ---
+  duration_ms: 57.518521
+  type: 'test'
+  ...
+# Subtest: grade intervals reject overlap, duplicate names and ambiguous ordering; exact brackets and uncovered gaps remain explicit
+ok 15 - grade intervals reject overlap, duplicate names and ambiguous ordering; exact brackets and uncovered gaps remain explicit
+  ---
+  duration_ms: 9.443151
+  type: 'test'
+  ...
+# Subtest: versioned ratings enforce scope and immutable drafts, CAS, snapshot publication and independent appeal after scheme revision
+ok 16 - versioned ratings enforce scope and immutable drafts, CAS, snapshot publication and independent appeal after scheme revision
+  ---
+  duration_ms: 172.718488
+  type: 'test'
+  ...
+# Subtest: legacy scores remain 0–100 and gaps cannot silently publish even when individual scores fit the scale
+ok 17 - legacy scores remain 0–100 and gaps cannot silently publish even when individual scores fit the scale
+  ---
+  duration_ms: 105.059266
+  type: 'test'
+  ...
+# Subtest: sealed template snapshots enforce stage-specific required responses and hide unpublished management responses
+ok 18 - sealed template snapshots enforce stage-specific required responses and hide unpublished management responses
+  ---
+  duration_ms: 69.054991
+  type: 'test'
+  ...
+# Subtest: template revisions cannot silently replace active cycles; archived drafts do not trap future version numbers
+ok 19 - template revisions cannot silently replace active cycles; archived drafts do not trap future version numbers
+  ---
+  duration_ms: 56.442818
+  type: 'test'
+  ...
+# Subtest: template boundaries reject foreign scope and duplicate IDs; draft edits and response writes are atomic
+ok 20 - template boundaries reject foreign scope and duplicate IDs; draft edits and response writes are atomic
+  ---
+  duration_ms: 53.053518
+  type: 'test'
+  ...
+# Subtest: approved goal changes clear stale stage answers while preserving the prior self-review audit
+ok 21 - approved goal changes clear stale stage answers while preserving the prior self-review audit
+  ---
+  duration_ms: 48.955087
+  type: 'test'
+  ...
+# Subtest: frozen goal limits apply to creation and changes; revisions cannot alter old cycles and impossible configurations are rejected
+ok 22 - frozen goal limits apply to creation and changes; revisions cannot alter old cycles and impossible configurations are rejected
+  ---
+  duration_ms: 59.457693
+  type: 'test'
+  ...
+# Subtest: advisory count limits retain universal constraints and immutable cycle rules
+ok 23 - advisory count limits retain universal constraints and immutable cycle rules
+  ---
+  duration_ms: 42.439633
+  type: 'test'
+  ...
+# Subtest: advisory weight limits retain universal constraints and immutable cycle rules
+ok 24 - advisory weight limits retain universal constraints and immutable cycle rules
+  ---
+  duration_ms: 39.699874
+  type: 'test'
+  ...
+# Subtest: advisory both limits retain universal constraints and immutable cycle rules
+ok 25 - advisory both limits retain universal constraints and immutable cycle rules
+  ---
+  duration_ms: 40.06113
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2824.19995

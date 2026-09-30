@@ -1,0 +1,36 @@
+{
+  "sourceCommit": "7c845459e255b743f7d6db3c98018e7e051bcac5",
+  "recordedAtUTC": "2026-09-07T15:46:54.102861+00:00",
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "tests/hris.test.mjs",
+    "tests/authorization.test.mjs",
+    "tests/workflows.test.mjs",
+    "tests/p2-api.test.mjs",
+    "tests/p3-api.test.mjs",
+    "tests/g0-contracts.test.mjs",
+    "tests/g1-foundation.test.mjs",
+    "tests/g1-cadre-exit.test.mjs",
+    "tests/g1-learning.test.mjs"
+  ],
+  "tests": 116,
+  "pass": 116,
+  "fail": 0,
+  "skipped": 0,
+  "duration_ms": 21279.516286,
+  "sha256": {
+    "tests/hris.test.mjs": "e680e83bebc2d90bcc8f31c818fc56972a24a268f2386553799936c02c5677ec",
+    "tests/authorization.test.mjs": "e745333a6a9943882d7181fe507246da294355617dbb2757fc98ed0a72b87e72",
+    "tests/workflows.test.mjs": "dd1c50fd39a36b4fd9bbcb6177fb2b2c291ada3aef0d4a36464c0ec8b5786ca3",
+    "tests/p2-api.test.mjs": "4118428861625393f0f723107d4687da86ca2c1648cbcd289d9c9555e33deea7",
+    "tests/p3-api.test.mjs": "1adae64d4bb5323f583738516e167372d7cb929300456496c5ab6061e75ee255",
+    "tests/g0-contracts.test.mjs": "9ee98dda420e9ab65a0a1e57e9acd197693abf537304e1ef91be66028dd700fc",
+    "tests/g1-foundation.test.mjs": "e3246d314589e95b0476610de183d09995948db1f9805deb9e6a3c298de4e27c",
+    "tests/g1-cadre-exit.test.mjs": "21061ce951334079107330738a3e16c066fc3d45677737c66713714d3faaef2d",
+    "tests/g1-learning.test.mjs": "0f20a7fa67add50771310ad1191a9a0da1d4543e134326547da13ab3063c6b7f"
+  },
+  "environment": "synthetic in-memory SQLite, mocked identity and Cloudflare bindings",
+  "uiStatus": "blocked: running managed preview but browser ERR_BLOCKED_BY_CLIENT; no UI pass claimed"
+}

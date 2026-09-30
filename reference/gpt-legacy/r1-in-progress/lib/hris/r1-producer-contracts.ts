@@ -1,0 +1,7 @@
+import {portalAdapters} from './r1-portal-adapters';
+import {producerDirectory,reportDatasets,reportSchemaVersion} from './r1-report-catalog';
+import {reportProducers} from './r1-report-m01-producer';
+/** Readiness describes connected product code, never approval or a fabricated external integration result. */
+export function producerIntegrationContracts(){const portal=portalAdapters(),reports=reportProducers();return [
+ ...Object.entries(portal).map(([entry,a])=>({caseId:'P3-LINK-M48-'+({approvals:'approval',goals:'goal'}[entry]??entry),consumer:'M48',producer:a.producerId,entry,producerVersion:a.contractVersion,mode:a.mode,availability:a.configurationState==='not_configured'?'not_configured':a.mode==='compatibility'?'legacy_read_only_contract_upgrade_required':'internal_contract_connected',evidence:a.integrationEvidenceRef,accepted:false})),
+ ...producerDirectory.map(p=>{const datasets=reportDatasets.filter(d=>d.producer.split('+').includes(p.producerId)).map(d=>d.datasetId),versions=[...new Set(datasets.flatMap(id=>reports[id]?[reports[id].version]:[]))];return {caseId:'P3-LINK-M32-'+p.producerId,consumer:'M32',producer:p.producerId,datasets,producerVersion:versions.length?versions.join(','):null,definitionVersion:reportSchemaVersion,mode:'internal',availability:!datasets.length?'dataset_not_registered':versions.length===0?'producer_not_configured':'internal_contract_connected',evidence:p.producerId==='M01'?'docs/delivery/r1-p3/R1_P3_Producer_Case_Evidence.json#P3-LINK-M32-M01':null,accepted:false};})];}

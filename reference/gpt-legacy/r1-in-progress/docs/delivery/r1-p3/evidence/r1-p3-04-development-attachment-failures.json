@@ -1,0 +1,28 @@
+{
+  "kind": "development_diagnostics",
+  "sourceState": "uncommitted intermediate edits; no exact intermediate snapshot claim",
+  "failures": [
+    {
+      "log": "evidence/r1-p3-04-development-r1-int-attachments-final.log",
+      "sha256": "8807574e3f37daa9449ee01d7df13c408f6687760b425f6f1efb00ae0523015d",
+      "note": "two attachment fixture setup failures: empty job violates existing schema"
+    },
+    {
+      "log": "evidence/r1-p3-04-development-r1-int-extended.log",
+      "sha256": "dc15aec90a682d3ad7b68f6edb6bbfee54c789e4d12c31c8fb702f1f97a4912c",
+      "note": "attachment replay rejected before receipt lookup; catalog fixture used prohibited retroactive date"
+    },
+    {
+      "log": "evidence/r1-p3-04-development-r1-attachment-compatibility.log",
+      "sha256": "6187a454995e3879f2e019685cb60d70bdf090ddd331bef971426468f0c48fab",
+      "note": "historical physical delete assertions and direct unfenced fixture mutations no longer match approved recovery protocol"
+    }
+  ],
+  "resolution": "input corrected; receipt replay precedes stale workspace check; tests use fenced concurrent writes and retained orphan/tombstone bytes",
+  "finalDevelopmentChecks": {
+    "integrationTests": 16,
+    "integrationPass": 16,
+    "legacyAttachmentSelectedTests": 3,
+    "legacyAttachmentPass": 3
+  }
+}

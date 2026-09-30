@@ -1,0 +1,64 @@
+{
+  "runId": "r1-p3-20260910T053805670409Z",
+  "sourceSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+  "taskId": "P3-R1-02",
+  "startedAt": "2026-09-10T05:38:05.670436+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/r1-p3-foundation.test.mjs": "a8d697d070e9a055109554954db0eb9db6cbefc7f06ab41bb5bc56fa6e0cb32c",
+    "tests/r1-p3-m01.test.mjs": "d3aacdbfe627e4950626c94b55c59236dac1bd06b91974fbb93b2fbd54ab9c4a",
+    "tests/r1-p3-transfer.test.mjs": "eb466bd68346d72f418f822c16480e1f800bfdbf709b677aa02492cb2d499abb",
+    "tests/r1-p3-integration.test.mjs": "93ac89f204772cd965f7814d122a37c2e29e5b4aa537a19feb223556f62d4958",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/r1-p3-foundation.test.mjs",
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs",
+        "tests/r1-p3-integration.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T053805670409Z-tests.log",
+      "sha256": "f74738b6d521aa02c83072646e0712c32e9f4ec97a62547b627ee12fd391d050"
+    },
+    {
+      "name": "types",
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T053805670409Z-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build",
+      "command": [
+        "node",
+        "/root/.codex/plugins/cache/openai-curated-remote/sites/0.1.56/scripts/build-site.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T053805670409Z-build.log",
+      "sha256": "2bc01bdbba2aab2099eed23a836884faa170b08cc4b573cbbadb0440f77cbf24"
+    }
+  ],
+  "testSummary": {
+    "tests": 43,
+    "pass": 43,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T05:38:33.276229+00:00"
+}

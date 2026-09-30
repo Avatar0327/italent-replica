@@ -1,0 +1,7 @@
+import {businessDate} from '@/lib/hris/workforce';
+import {z} from 'zod';
+import {developmentContext,visibleDevelopment,saveDevelopment} from '@/lib/hris/development-repository';
+import {applyQualification,qualificationEvidence} from '@/lib/hris/qualification';
+import {json,failure,readBody} from '@/lib/hris/http';
+export async function GET(){try{const ctx=await developmentContext(['qualificationStandard', 'qualificationApplication', 'standard', 'assessment']),records=visibleDevelopment(ctx).filter(r=>['qualificationStandard','qualificationApplication','standard'].includes(r.kind));return json({today:businessDate(),records,readiness:records.filter(r=>r.kind==='qualificationApplication'&&r.status==='submitted').map(r=>({id:r.id,items:qualificationEvidence(ctx.records,r.employeeId!,ctx.records.find(x=>x.id===r.referenceId)!)})),revision:ctx.row.revision,role:ctx.member.role,employeeId:ctx.member.employeeId,userId:ctx.member.userId});}catch(e){return failure(e);}}
+export async function POST(request:Request){try{const body=z.object({revision:z.number().int().nonnegative(),command:z.unknown()}).parse(await readBody(request));const ctx=await developmentContext(['qualificationStandard', 'qualificationApplication', 'standard', 'assessment']),r=applyQualification(ctx.records,ctx.state,ctx.member,body.command);await saveDevelopment(ctx,body.revision,r,'任职资格：'+String((body.command as {action:string}).action));return json({id:r.id,revision:body.revision+1});}catch(e){return failure(e);}}

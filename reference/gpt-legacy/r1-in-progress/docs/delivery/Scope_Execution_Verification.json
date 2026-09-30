@@ -1,0 +1,10 @@
+{
+  "completedAt": "2026-09-08T11:18:48.824647+00:00",
+  "tests": 5,
+  "passed": 5,
+  "failed": 0,
+  "scope": "看板聚合、验收签署门槛和无执行证据的保守分类",
+  "report": "工具实际结果，node --test tests/delivery-dashboard.test.mjs",
+  "typecheck": "passed",
+  "limitation": "非全量复测，人工业务与生产未验收；Worker渲染限制保留"
+}

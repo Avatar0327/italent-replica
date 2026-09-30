@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {initialState,applyCommand} from '../lib/hris/model.ts';
+import {requireMember,visibleState,authorizeCommand} from '../lib/hris/authorization.ts';
+const member=(role,extra={})=>({userId:'user-a',tenantId:'tenant-a',role,employeeId:'e2',active:true,orgScope:['o1'],viewEmail:true,viewLevel:true,...extra});
+test('未配置、停用与未知角色均拒绝访问',()=>{for(const m of [null,member('employee',{active:false}),member('root')])assert.throws(()=>requireMember(m));});
+test('员工响应不泄漏同事或审计记录',()=>{const s=visibleState(initialState(),member('employee'));assert.deepEqual(s.employees.map(e=>e.id),['e2']);assert.deepEqual(s.orgs.map(o=>o.id),['o3']);assert.equal(s.approvals.length,0);assert.equal(s.audit.length,0);});
+test('员工不能提交其他人员申请或维护组织',()=>{const s=initialState();assert.throws(()=>authorizeCommand(s,{action:'request',employeeId:'e3',kind:'exit',orgId:'',reason:'个人原因'},member('employee')));assert.throws(()=>authorizeCommand(s,{action:'org',...s.orgs[0]},member('employee')));});
+test('申请与审批分离，申请人不能自审，审批者不能审批本人异动',()=>{const c={action:'request',employeeId:'e3',kind:'exit',orgId:'',reason:'个人原因'};const base=initialState();base.workflows={exit:{version:1,steps:[{userId:'user-b',name:'审批人'}]}};const s=applyCommand(base,authorizeCommand(base,c,member('hr')),undefined,'user-a');const d={action:'decide',id:s.approvals[0].id,decision:'approved'};assert.throws(()=>authorizeCommand(s,d,member('admin')));assert.throws(()=>authorizeCommand(s,d,member('approver',{userId:'user-b',employeeId:'e3'})));assert.throws(()=>authorizeCommand(s,d,member('hr',{userId:'user-b'})));const reviewer=member('approver',{userId:'user-b'});const result=applyCommand(s,authorizeCommand(s,d,reviewer),undefined,reviewer.userId);assert.equal(result.approvals[0].createdBy,'user-a');assert.equal(result.approvals[0].decidedBy,'user-b');assert.equal(result.audit[0].actorId,'user-b');assert.equal(result.employees.find(e=>e.id==='e3').status,'离职');});
+test('无申请人信息的遗留单据不能直接审批',()=>{assert.throws(()=>authorizeCommand(initialState(),{action:'decide',id:'a1',decision:'approved'},member('admin')));});

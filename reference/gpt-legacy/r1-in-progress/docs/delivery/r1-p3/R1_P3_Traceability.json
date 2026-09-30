@@ -1,0 +1,4702 @@
+{
+  "kind": "P3_evidence_projection_not_scope_register",
+  "sourceHead": "e15237281ff19f04f08a354fd9455c518b24ae47",
+  "acceptance": [
+    {
+      "id": "BASE-01-AC01",
+      "plannedCases": [
+        "P3-ARC-01",
+        "P3-M48-01"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-01-20260910T034414Z.json",
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_Architecture.md",
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Foundation_Case_Evidence.json",
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-01-AC02",
+      "plannedCases": [
+        "P3-REC-02"
+      ],
+      "status": "local_runtime_evidence_platform_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T101031691739Z.json"
+      ],
+      "caseEvidence": "R1_P3_Recovery_Case_Evidence.json",
+      "implementationSha": "5ce0dd2a411bd5bea144074395c1a7787abf5135",
+      "code": [
+        "lib/hris/r1-recovery-control.ts",
+        "lib/hris/r1-recovery-backup.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_Backup_Recovery.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Recovery_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-02-AC01",
+      "plannedCases": [
+        "P3-M01-04"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BASE-02-AC02",
+      "plannedCases": [
+        "P3-ARC-01"
+      ],
+      "status": "partial_runtime_evidence_full_case_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-01-20260910T034414Z.json",
+        "evidence/r1-p3-02-d7-20260910T042138Z.json"
+      ],
+      "code": [
+        "lib/hris/context.ts",
+        "lib/hris/r1-command.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-foundation.test.mjs"
+      ],
+      "verificationBoundary": "实际补读旧epoch拒绝和当前权限路径已有合成证据；原角色实例不替独立真人跨角色验收。保留原partial状态，不以条目总数自动闭合全部原条件。",
+      "designDocuments": [
+        "R1_P2_Architecture.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Foundation_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-02-AC03",
+      "plannedCases": [
+        "P3-M32-05"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-03-AC01",
+      "plannedCases": [
+        "P3-INT-02"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ],
+      "caseEvidence": "R1_P3_Integration_Case_Evidence.json",
+      "implementationSha": "6c52613e9dde33084c3cbfa3ed2345b1f1bcd3dc",
+      "code": [
+        "lib/hris/r1-integration.ts",
+        "lib/hris/r1-callbacks.ts",
+        "lib/hris/r1-delivery.ts",
+        "lib/hris/r1-attachment-commands.ts",
+        "app/api/attachments/route.ts",
+        "lib/hris/r1-command.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_Interfaces_Exceptions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Integration_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-03-AC02",
+      "plannedCases": [
+        "P3-MIG-01"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ],
+      "implementationSha": "c36094e2f407fd0e2101b2b0e3988fc278b4ec1b",
+      "code": [
+        "lib/hris/r1-migration.ts",
+        "lib/hris/r1-normalize-json.ts",
+        "lib/hris/r1-migration-backfill.ts",
+        "lib/hris/r1-migration-map.ts",
+        "lib/hris/r1-migration-reconcile.ts",
+        "lib/hris/r1-migration-attachments.ts",
+        "lib/hris/r1-migration-compatibility.ts",
+        "lib/hris/r1-core-read.ts",
+        "lib/hris/r1-schema-check.ts",
+        "drizzle/0025_r1_migration_control.sql",
+        "drizzle/0026_r1_expansion_recovery_log.sql",
+        "drizzle/0027_r1_migration_bridge.sql",
+        "drizzle/0028_r1_migration_journal_columns.sql"
+      ],
+      "tests": [
+        "tests/r1-p3-migration.test.mjs",
+        "tests/r1-p3-report-oracles.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ],
+      "caseEvidence": "R1_P3_Migration_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地SQLite隔离合成；148/148和类型构建固定c36094e，不是P3最终两轮收口",
+        "JSON归档预算4MiB/数组10000项；规范化和回填100行批次；超预算显式失败",
+        "未知历史/法律实体/关系不推断；目录补齐有效期等新事实须按已批准业务规则核实",
+        "旧审批保留原表/签名/节点及只读兼容视图；未核安全适配器的旧办理局部阻断，不猜测外部后效",
+        "未证明R2/R3真实版本契约、云端容量/生产迁移或独立人类验收；不关闭风险或批准退出"
+      ],
+      "designDocuments": [
+        "R1_P2_Migration_Rollback.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Migration_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-04-AC01",
+      "plannedCases": [
+        "P3-M48-06"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-04-AC02",
+      "plannedCases": [
+        "P3-MIG-04"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ],
+      "implementationSha": "c36094e2f407fd0e2101b2b0e3988fc278b4ec1b",
+      "code": [
+        "lib/hris/r1-migration.ts",
+        "lib/hris/r1-normalize-json.ts",
+        "lib/hris/r1-migration-backfill.ts",
+        "lib/hris/r1-migration-map.ts",
+        "lib/hris/r1-migration-reconcile.ts",
+        "lib/hris/r1-migration-attachments.ts",
+        "lib/hris/r1-migration-compatibility.ts",
+        "lib/hris/r1-core-read.ts",
+        "lib/hris/r1-schema-check.ts",
+        "drizzle/0025_r1_migration_control.sql",
+        "drizzle/0026_r1_expansion_recovery_log.sql",
+        "drizzle/0027_r1_migration_bridge.sql",
+        "drizzle/0028_r1_migration_journal_columns.sql"
+      ],
+      "tests": [
+        "tests/r1-p3-migration.test.mjs",
+        "tests/r1-p3-report-oracles.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ],
+      "caseEvidence": "R1_P3_Migration_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地SQLite隔离合成；148/148和类型构建固定c36094e，不是P3最终两轮收口",
+        "JSON归档预算4MiB/数组10000项；规范化和回填100行批次；超预算显式失败",
+        "未知历史/法律实体/关系不推断；目录补齐有效期等新事实须按已批准业务规则核实",
+        "旧审批保留原表/签名/节点及只读兼容视图；未核安全适配器的旧办理局部阻断，不猜测外部后效",
+        "未证明R2/R3真实版本契约、云端容量/生产迁移或独立人类验收；不关闭风险或批准退出"
+      ],
+      "designDocuments": [
+        "R1_P2_Migration_Rollback.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Migration_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-04-AC03",
+      "plannedCases": [
+        "P3-INT-06"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ],
+      "caseEvidence": "R1_P3_Integration_Case_Evidence.json",
+      "implementationSha": "6c52613e9dde33084c3cbfa3ed2345b1f1bcd3dc",
+      "code": [
+        "lib/hris/r1-integration.ts",
+        "lib/hris/r1-callbacks.ts",
+        "lib/hris/r1-delivery.ts",
+        "lib/hris/r1-attachment-commands.ts",
+        "app/api/attachments/route.ts",
+        "lib/hris/r1-command.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_Interfaces_Exceptions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Integration_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-04-AC04",
+      "plannedCases": [
+        "P3-INT-06"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ],
+      "caseEvidence": "R1_P3_Integration_Case_Evidence.json",
+      "implementationSha": "6c52613e9dde33084c3cbfa3ed2345b1f1bcd3dc",
+      "code": [
+        "lib/hris/r1-integration.ts",
+        "lib/hris/r1-callbacks.ts",
+        "lib/hris/r1-delivery.ts",
+        "lib/hris/r1-attachment-commands.ts",
+        "app/api/attachments/route.ts",
+        "lib/hris/r1-command.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_Interfaces_Exceptions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Integration_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-05-AC01",
+      "plannedCases": [
+        "P3-REC-01"
+      ],
+      "status": "local_runtime_evidence_platform_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T101031691739Z.json"
+      ],
+      "caseEvidence": "R1_P3_Recovery_Case_Evidence.json",
+      "implementationSha": "5ce0dd2a411bd5bea144074395c1a7787abf5135",
+      "code": [
+        "lib/hris/r1-recovery-control.ts",
+        "lib/hris/r1-recovery-backup.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_Backup_Recovery.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Recovery_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-05-AC02",
+      "plannedCases": [
+        "P3-REC-03"
+      ],
+      "status": "local_runtime_evidence_platform_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T101031691739Z.json"
+      ],
+      "caseEvidence": "R1_P3_Recovery_Case_Evidence.json",
+      "implementationSha": "5ce0dd2a411bd5bea144074395c1a7787abf5135",
+      "code": [
+        "lib/hris/r1-recovery-control.ts",
+        "lib/hris/r1-recovery-backup.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_Backup_Recovery.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Recovery_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-06-AC01",
+      "plannedCases": [
+        "P3-INT-01"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ],
+      "caseEvidence": "R1_P3_Integration_Case_Evidence.json",
+      "implementationSha": "6c52613e9dde33084c3cbfa3ed2345b1f1bcd3dc",
+      "code": [
+        "lib/hris/r1-integration.ts",
+        "lib/hris/r1-callbacks.ts",
+        "lib/hris/r1-delivery.ts",
+        "lib/hris/r1-attachment-commands.ts",
+        "app/api/attachments/route.ts",
+        "lib/hris/r1-command.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_Interfaces_Exceptions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Integration_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-06-AC02",
+      "plannedCases": [
+        "P3-INT-04"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ],
+      "caseEvidence": "R1_P3_Integration_Case_Evidence.json",
+      "implementationSha": "6c52613e9dde33084c3cbfa3ed2345b1f1bcd3dc",
+      "code": [
+        "lib/hris/r1-integration.ts",
+        "lib/hris/r1-callbacks.ts",
+        "lib/hris/r1-delivery.ts",
+        "lib/hris/r1-attachment-commands.ts",
+        "app/api/attachments/route.ts",
+        "lib/hris/r1-command.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_Interfaces_Exceptions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Integration_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BASE-06-AC03",
+      "plannedCases": [
+        "P3-INT-03"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ],
+      "caseEvidence": "R1_P3_Integration_Case_Evidence.json",
+      "implementationSha": "6c52613e9dde33084c3cbfa3ed2345b1f1bcd3dc",
+      "code": [
+        "lib/hris/r1-integration.ts",
+        "lib/hris/r1-callbacks.ts",
+        "lib/hris/r1-delivery.ts",
+        "lib/hris/r1-attachment-commands.ts",
+        "app/api/attachments/route.ts",
+        "lib/hris/r1-command.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_Interfaces_Exceptions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_Integration_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-F-REQ-01-AC01",
+      "plannedCases": [
+        "P3-M01-01"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-temporal.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BP-F-REQ-01-AC02",
+      "plannedCases": [
+        "P3-M01-01"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-temporal.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BP-F-REQ-01-AC03",
+      "plannedCases": [
+        "P3-M01-01"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-temporal.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BP-F-REQ-02-AC01",
+      "plannedCases": [
+        "P3-M01-04"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BP-F-REQ-02-AC02",
+      "plannedCases": [
+        "P3-M01-04"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BP-F-REQ-02-AC03",
+      "plannedCases": [
+        "P3-M01-04"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BP-F-REQ-02-AC04",
+      "plannedCases": [
+        "P3-M01-04"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BP-F-REQ-02-AC05",
+      "plannedCases": [
+        "P3-M01-04"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BP-F-REQ-02-AC06",
+      "plannedCases": [
+        "P3-M01-04"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BP-F-REQ-04-AC01",
+      "plannedCases": [
+        "P3-M01-02"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-temporal.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BP-F-REQ-04-AC02",
+      "plannedCases": [
+        "P3-M01-02"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-temporal.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BP-F-REQ-04-AC03",
+      "plannedCases": [
+        "P3-M01-02"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-temporal.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "BP-I-REQ-01-AC01",
+      "plannedCases": [
+        "P3-M48-03"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-01-AC02",
+      "plannedCases": [
+        "P3-M48-03"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-01-AC03",
+      "plannedCases": [
+        "P3-M48-03"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-01-AC04",
+      "plannedCases": [
+        "P3-M48-03"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-02-AC01",
+      "plannedCases": [
+        "P3-M32-01"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-02-AC02",
+      "plannedCases": [
+        "P3-M32-01"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-02-AC03",
+      "plannedCases": [
+        "P3-M32-01"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-02-AC04",
+      "plannedCases": [
+        "P3-M32-01"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-02-AC05",
+      "plannedCases": [
+        "P3-M32-01"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-07-AC01",
+      "plannedCases": [
+        "P3-M19-01",
+        "P3-M19-03"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-07-AC02",
+      "plannedCases": [
+        "P3-M19-01",
+        "P3-M19-03"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-07-AC03",
+      "plannedCases": [
+        "P3-M19-01",
+        "P3-M19-03"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-07-AC04",
+      "plannedCases": [
+        "P3-M19-01",
+        "P3-M19-03"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-11-AC01",
+      "plannedCases": [
+        "P3-M32-08"
+      ],
+      "status": "local_synthetic_verified_platform_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T082305048810Z.json"
+      ],
+      "implementationSha": "74c5b0db8894209b827b8e1b097366ad4c99257d",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-jobs.ts",
+        "lib/hris/r1-report-export-plan.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-csv.ts",
+        "lib/hris/r1-report-export.ts",
+        "lib/hris/r1-report-schedule.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-subscriptions.ts",
+        "lib/hris/r1-report-runtime.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "app/reports/r1-actions.tsx",
+        "app/reports/subscriptions/results/[id]/result.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Jobs_Case_Evidence.json",
+      "verificationBoundaries": [
+        "136/136本轮R1合成整体测试、类型、构建通过；非P3最终两轮收口",
+        "真实托管后台/调度仍DEP-PLATFORM-01未核实，HTTP明确blocked_runtime；不能声称云端任务运行",
+        "对象存储和消息传输为显式隔离模拟，未实发通知/附件，不是供应商或R2/R3真实联调",
+        "新页面经类型与构建检查；独立浏览器人工角色验收未执行",
+        "分块导出10001行完整运行；最大10000块/100汇总组为显式预算，未测试云端代表容量",
+        "业务历史不按导出24小时TTL删除；物理保留/恢复点约束交09"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Jobs_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "BP-I-REQ-11-AC02",
+      "plannedCases": [
+        "P3-M32-08"
+      ],
+      "status": "local_synthetic_verified_platform_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T082305048810Z.json"
+      ],
+      "implementationSha": "74c5b0db8894209b827b8e1b097366ad4c99257d",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-jobs.ts",
+        "lib/hris/r1-report-export-plan.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-csv.ts",
+        "lib/hris/r1-report-export.ts",
+        "lib/hris/r1-report-schedule.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-subscriptions.ts",
+        "lib/hris/r1-report-runtime.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "app/reports/r1-actions.tsx",
+        "app/reports/subscriptions/results/[id]/result.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Jobs_Case_Evidence.json",
+      "verificationBoundaries": [
+        "136/136本轮R1合成整体测试、类型、构建通过；非P3最终两轮收口",
+        "真实托管后台/调度仍DEP-PLATFORM-01未核实，HTTP明确blocked_runtime；不能声称云端任务运行",
+        "对象存储和消息传输为显式隔离模拟，未实发通知/附件，不是供应商或R2/R3真实联调",
+        "新页面经类型与构建检查；独立浏览器人工角色验收未执行",
+        "分块导出10001行完整运行；最大10000块/100汇总组为显式预算，未测试云端代表容量",
+        "业务历史不按导出24小时TTL删除；物理保留/恢复点约束交09"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Jobs_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M01-REVIEW-AC01",
+      "plannedCases": [
+        "P3-M01-12"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-temporal.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "M01-REVIEW-AC02",
+      "plannedCases": [
+        "P3-M01-01"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-temporal.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "M01-REVIEW-AC03",
+      "plannedCases": [
+        "P3-M01-03"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "M01-REVIEW-AC04",
+      "plannedCases": [
+        "P3-M01-02"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-temporal.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "M01-REVIEW-AC05",
+      "plannedCases": [
+        "P3-M01-08"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-temporal.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ],
+      "supplementalEvidence": [
+        {
+          "finding": "P3-INTAKE-DEFECT-001",
+          "evidence": "evidence/r1-p3-20260911T003733692664Z.json",
+          "note": "只补显式required空白拒绝；不追加原站模板联动政策，不自动闭合原条件。"
+        }
+      ]
+    },
+    {
+      "id": "M01-REVIEW-AC06",
+      "plannedCases": [
+        "P3-M01-05"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "M01-REVIEW-AC07",
+      "plannedCases": [
+        "P3-M01-06"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "M01-REVIEW-AC08",
+      "plannedCases": [
+        "P3-M01-10"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "M01-REVIEW-AC09",
+      "plannedCases": [
+        "P3-M01-07"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "M01-REVIEW-AC10",
+      "plannedCases": [
+        "P3-M01-04"
+      ],
+      "status": "local_synthetic_verified_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "implementationSha": "9d295e4623e79c6a578875eda4a1090e2a515906",
+      "designDocuments": [
+        "R1_P2_M01_Data_History.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。",
+      "code": [
+        "lib/hris/r1-m01-read.ts",
+        "lib/hris/r1-m01.ts",
+        "lib/hris/r1-temporal.ts",
+        "lib/hris/r1-transfer.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs",
+        "tests/r1-p3-transfer.test.mjs"
+      ]
+    },
+    {
+      "id": "M19-EXECUTION-LIST-01",
+      "plannedCases": [
+        "P3-M19-01",
+        "P3-M19-03"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M19-REVIEW-AC01",
+      "plannedCases": [
+        "P3-M19-01"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M19-REVIEW-AC02",
+      "plannedCases": [
+        "P3-M19-01"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M19-REVIEW-AC03",
+      "plannedCases": [
+        "P3-M19-03"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M19-REVIEW-AC04",
+      "plannedCases": [
+        "P3-M19-04"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M19-REVIEW-AC05",
+      "plannedCases": [
+        "P3-M19-05"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M19-REVIEW-AC06",
+      "plannedCases": [
+        "P3-M19-06"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M19-REVIEW-AC07",
+      "plannedCases": [
+        "P3-M19-06"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M19-REVIEW-AC08",
+      "plannedCases": [
+        "P3-M19-07"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M19-REVIEW-AC09",
+      "plannedCases": [
+        "P3-M19-07"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "caseEvidence": "R1_P3_M19_Case_Evidence.json",
+      "code": [
+        "lib/hris/r1-workflow.ts",
+        "lib/hris/r1-workflow-batch.ts",
+        "lib/hris/r1-workflow-read.ts",
+        "lib/hris/r1-workflow-notifications.ts",
+        "app/r1-approvals/workspace.tsx"
+      ],
+      "implementationSha": "b24a57ed7986b2eb22b32a6ebdb3b34e2687309b",
+      "designDocuments": [
+        "R1_P2_M19_Workflow_Transactions.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC01",
+      "plannedCases": [
+        "P3-M32-01"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC02",
+      "plannedCases": [
+        "P3-M32-02"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC03",
+      "plannedCases": [
+        "P3-M32-02"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC04",
+      "plannedCases": [
+        "P3-M32-02"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC05",
+      "plannedCases": [
+        "P3-M32-04"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC06",
+      "plannedCases": [
+        "P3-M32-01"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC07",
+      "plannedCases": [
+        "P3-M32-02"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC08",
+      "plannedCases": [
+        "P3-M32-03"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC09",
+      "plannedCases": [
+        "P3-M32-05"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC10",
+      "plannedCases": [
+        "P3-M32-06"
+      ],
+      "status": "local_synthetic_verified_platform_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T080856347352Z.json",
+        "evidence/r1-p3-20260910T082305048810Z.json"
+      ],
+      "implementationSha": "74c5b0db8894209b827b8e1b097366ad4c99257d",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-jobs.ts",
+        "lib/hris/r1-report-export-plan.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-csv.ts",
+        "lib/hris/r1-report-export.ts",
+        "lib/hris/r1-report-schedule.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-subscriptions.ts",
+        "lib/hris/r1-report-runtime.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "app/reports/r1-actions.tsx",
+        "app/reports/subscriptions/results/[id]/result.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Jobs_Case_Evidence.json",
+      "verificationBoundaries": [
+        "136/136本轮R1合成整体测试、类型、构建通过；非P3最终两轮收口",
+        "真实托管后台/调度仍DEP-PLATFORM-01未核实，HTTP明确blocked_runtime；不能声称云端任务运行",
+        "对象存储和消息传输为显式隔离模拟，未实发通知/附件，不是供应商或R2/R3真实联调",
+        "新页面经类型与构建检查；独立浏览器人工角色验收未执行",
+        "分块导出10001行完整运行；最大10000块/100汇总组为显式预算，未测试云端代表容量",
+        "业务历史不按导出24小时TTL删除；物理保留/恢复点约束交09"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Jobs_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC11",
+      "plannedCases": [
+        "P3-M32-07"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC12",
+      "plannedCases": [
+        "P3-M32-08"
+      ],
+      "status": "local_synthetic_verified_platform_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T082305048810Z.json"
+      ],
+      "implementationSha": "74c5b0db8894209b827b8e1b097366ad4c99257d",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-jobs.ts",
+        "lib/hris/r1-report-export-plan.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-csv.ts",
+        "lib/hris/r1-report-export.ts",
+        "lib/hris/r1-report-schedule.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-subscriptions.ts",
+        "lib/hris/r1-report-runtime.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "app/reports/r1-actions.tsx",
+        "app/reports/subscriptions/results/[id]/result.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Jobs_Case_Evidence.json",
+      "verificationBoundaries": [
+        "136/136本轮R1合成整体测试、类型、构建通过；非P3最终两轮收口",
+        "真实托管后台/调度仍DEP-PLATFORM-01未核实，HTTP明确blocked_runtime；不能声称云端任务运行",
+        "对象存储和消息传输为显式隔离模拟，未实发通知/附件，不是供应商或R2/R3真实联调",
+        "新页面经类型与构建检查；独立浏览器人工角色验收未执行",
+        "分块导出10001行完整运行；最大10000块/100汇总组为显式预算，未测试云端代表容量",
+        "业务历史不按导出24小时TTL删除；物理保留/恢复点约束交09"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Jobs_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M32-REVIEW-AC13",
+      "plannedCases": [
+        "P3-M32-10"
+      ],
+      "status": "local_synthetic_evidence_cross_task_conditions_and_independent_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "implementationSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+      "code": [
+        "lib/hris/r1-report-projection.ts",
+        "lib/hris/r1-report-m01-producer.ts",
+        "lib/hris/r1-report-definition-service.ts",
+        "lib/hris/r1-report-run.ts",
+        "lib/hris/r1-report-labels.ts",
+        "lib/hris/r1-report-definition.ts",
+        "lib/hris/r1-report-permissions.ts",
+        "lib/hris/r1-report-catalog.ts",
+        "lib/hris/r1-report-query.ts",
+        "lib/hris/r1-report-aggregate.ts",
+        "lib/hris/r1-report-context.ts",
+        "lib/hris/r1-report-values.ts",
+        "lib/hris/r1-report-command-input.ts",
+        "lib/hris/reports.ts",
+        "app/reports/r1-workspace.tsx"
+      ],
+      "caseEvidence": "R1_P3_M32_Case_Evidence.json",
+      "verificationBoundaries": [
+        "仅本地隔离合成；39测试/类型/构建固定源码7ccfbe6",
+        "21手算是实际兼容计算；R2/R3新版本化生产者未联调，任务10保留",
+        "真实M01版本投影/快照已验证；其他版本化源未配置，旧数据不伪造历史",
+        "关联限根字段固定版本先去重/聚合；关联历史快照未冻结清单则拒绝",
+        "导出/订阅与设计器页面操作归07；06交叉验收的导出子条件未计通过",
+        "独立真人和云端性能未执行，风险不由本窗口关闭"
+      ],
+      "designDocuments": [
+        "R1_P2_M32_Reports_Jobs.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M48-REVIEW-AC01",
+      "plannedCases": [
+        "P3-M48-02"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M48-REVIEW-AC02",
+      "plannedCases": [
+        "P3-M48-01"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M48-REVIEW-AC03",
+      "plannedCases": [
+        "P3-M48-03"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M48-REVIEW-AC04",
+      "plannedCases": [
+        "P3-M48-04"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M48-REVIEW-AC05",
+      "plannedCases": [
+        "P3-M48-05"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M48-REVIEW-AC06",
+      "plannedCases": [
+        "P3-M48-05"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M48-REVIEW-AC07",
+      "plannedCases": [
+        "P3-M48-05"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M48-REVIEW-AC08",
+      "plannedCases": [
+        "P3-M48-05"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    },
+    {
+      "id": "M48-REVIEW-AC09",
+      "plannedCases": [
+        "P3-M48-06"
+      ],
+      "status": "implemented_synthetic_verified_review_pending",
+      "evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "caseEvidence": "R1_P3_M48_Case_Evidence.json",
+      "implementationSha": "2d6ae4f665154ffafbb301ed6825cb8d32cd8218",
+      "code": [
+        "lib/hris/r1-grants.ts",
+        "lib/hris/r1-authorization.ts",
+        "lib/hris/r1-portal.ts",
+        "lib/hris/r1-portal-adapters.ts",
+        "lib/hris/r1-portal-summary.ts",
+        "lib/hris/r1-portal-cache.ts",
+        "lib/hris/r1-portal-events.ts",
+        "app/self-service/r1-workspace.tsx",
+        "app/api/attachments/route.ts"
+      ],
+      "designDocuments": [
+        "R1_P2_M48_Authorization_Consumers.md"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260911T005747815482Z.json",
+      "overallRevalidationNote": "2026-09-11固定de053be的一轮完整R1本地185项；关联代码/文件复验，不将原AC全部子条件或独立验收自动置通过。"
+    }
+  ],
+  "risks": [
+    {
+      "id": "R1-M01-L01",
+      "status": "owner_design_review_closed",
+      "p3Evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json"
+      ],
+      "primaryDisposition": "P2",
+      "sourceStatus": "owner_design_review_closed",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M01-01"
+      ],
+      "p3RuntimeStatus": "partial_evidence_not_closed",
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "P2设计已由所有者关闭，新增运行证据待独立复核",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M01-L02",
+      "status": "owner_design_review_closed",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ],
+      "primaryDisposition": "P2",
+      "sourceStatus": "owner_design_review_closed",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-MIG-01"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_Migration_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "P2设计已由所有者关闭，新增运行证据待独立复核",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M01-L03",
+      "status": "owner_design_review_closed",
+      "p3Evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json"
+      ],
+      "primaryDisposition": "P2",
+      "sourceStatus": "owner_design_review_closed",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M01-07"
+      ],
+      "p3RuntimeStatus": "partial_evidence_not_closed",
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "P2设计已由所有者关闭，新增运行证据待独立复核",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M01-L04",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M01-01",
+        "P3-M01-12"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_recorded_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M01-L05",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M01-02"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_recorded_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M01-L06",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M01-03",
+        "P3-M01-10"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_recorded_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M01-L07",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T053805670409Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M01-05"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_recorded_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M01-L08",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T090521350287Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-MIG-04"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_Migration_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M01-L09",
+      "status": "design_complete_acceptance_open",
+      "p3Evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json"
+      ],
+      "primaryDisposition": "P4",
+      "sourceStatus": "design_complete_acceptance_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M01-04"
+      ],
+      "p3RuntimeStatus": "partial_evidence_not_closed",
+      "caseEvidenceFiles": [
+        "R1_P3_M01_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "retained"
+      }
+    },
+    {
+      "id": "R1-M01-L10",
+      "status": "design_complete_acceptance_open",
+      "p3Evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json"
+      ],
+      "primaryDisposition": "P4",
+      "sourceStatus": "design_complete_acceptance_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-INT-03"
+      ],
+      "p3RuntimeStatus": "partial_evidence_not_closed",
+      "caseEvidenceFiles": [
+        "R1_P3_Integration_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "retained"
+      }
+    },
+    {
+      "id": "R1-M19-L01",
+      "status": "owner_design_review_closed",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "primaryDisposition": "P2",
+      "sourceStatus": "owner_design_review_closed",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M19-01"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "P2设计已由所有者关闭，新增运行证据待独立复核",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M19-L02",
+      "status": "owner_design_review_closed",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "primaryDisposition": "P2",
+      "sourceStatus": "owner_design_review_closed",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M19-06"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "P2设计已由所有者关闭，新增运行证据待独立复核",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M19-L03",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M19-01",
+        "P3-M19-02"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M19-L04",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M19-01"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M19-L05",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M19-03",
+        "P3-M19-04"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M19-L06",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M19-06"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M19_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M19-L07",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json",
+        "evidence/r1-p3-20260910T061120991290Z.json",
+        "evidence/r1-p3-20260910T061155692609Z.json",
+        "evidence/r1-p3-20260910T063815488860Z.json",
+        "evidence/r1-p3-20260910T063850609272Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-INT-03"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_Integration_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M19-L08",
+      "status": "design_complete_acceptance_open",
+      "p3Evidence": [],
+      "primaryDisposition": "P4",
+      "sourceStatus": "design_complete_acceptance_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-XMOD-01"
+      ],
+      "p3RuntimeStatus": "not_executed",
+      "caseEvidenceFiles": [
+        "R1_P3_Cross_Domain_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "retained"
+      }
+    },
+    {
+      "id": "R1-M19-L09",
+      "status": "design_complete_acceptance_open",
+      "p3Evidence": [
+        "evidence/r1-p3-02-d7-20260910T042138Z.json"
+      ],
+      "primaryDisposition": "P4",
+      "sourceStatus": "design_complete_acceptance_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-INT-04"
+      ],
+      "p3RuntimeStatus": "partial_evidence_not_closed",
+      "caseEvidenceFiles": [
+        "R1_P3_Integration_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "外部供应商/跨域取消未实联，适用条件见原场景；不以模拟关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "retained"
+      }
+    },
+    {
+      "id": "R1-M48-L01",
+      "status": "owner_design_review_closed",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "primaryDisposition": "P2",
+      "sourceStatus": "owner_design_review_closed",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M48-02"
+      ],
+      "p3RuntimeStatus": "local_synthetic_evidence_independent_review_pending",
+      "verificationBoundaries": [
+        "只证明R1本地隔离合成运行；独立角色/浏览器人工验收待评审",
+        "R2/R3新办理契约和真实联调未执行，责任保留P3-R1-10",
+        "旧360办理只在旧功能开关兼容路径复验，不标新生产者契约通过",
+        "current门户来源最多500记录，超出显式BOUNDED_QUERY_REQUIRED；无截断成功",
+        "84项和类型构建证据固定b7dac9c；新增11门户+5指定兼容证据固定2d6ae4f；两个源码间产品代码未变"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "P2设计已由所有者关闭，新增运行证据待独立复核",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M48-L02",
+      "status": "owner_design_review_closed",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "primaryDisposition": "P2",
+      "sourceStatus": "owner_design_review_closed",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M48-04"
+      ],
+      "p3RuntimeStatus": "local_synthetic_evidence_independent_review_pending",
+      "verificationBoundaries": [
+        "只证明R1本地隔离合成运行；独立角色/浏览器人工验收待评审",
+        "R2/R3新办理契约和真实联调未执行，责任保留P3-R1-10",
+        "旧360办理只在旧功能开关兼容路径复验，不标新生产者契约通过",
+        "current门户来源最多500记录，超出显式BOUNDED_QUERY_REQUIRED；无截断成功",
+        "84项和类型构建证据固定b7dac9c；新增11门户+5指定兼容证据固定2d6ae4f；两个源码间产品代码未变"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "P2设计已由所有者关闭，新增运行证据待独立复核",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M48-L03",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M48-06"
+      ],
+      "p3RuntimeStatus": "local_synthetic_evidence_independent_review_pending",
+      "verificationBoundaries": [
+        "只证明R1本地隔离合成运行；独立角色/浏览器人工验收待评审",
+        "R2/R3新办理契约和真实联调未执行，责任保留P3-R1-10",
+        "旧360办理只在旧功能开关兼容路径复验，不标新生产者契约通过",
+        "current门户来源最多500记录，超出显式BOUNDED_QUERY_REQUIRED；无截断成功",
+        "84项和类型构建证据固定b7dac9c；新增11门户+5指定兼容证据固定2d6ae4f；两个源码间产品代码未变"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M48-L04",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M48-03"
+      ],
+      "p3RuntimeStatus": "local_synthetic_evidence_independent_review_pending",
+      "verificationBoundaries": [
+        "只证明R1本地隔离合成运行；独立角色/浏览器人工验收待评审",
+        "R2/R3新办理契约和真实联调未执行，责任保留P3-R1-10",
+        "旧360办理只在旧功能开关兼容路径复验，不标新生产者契约通过",
+        "current门户来源最多500记录，超出显式BOUNDED_QUERY_REQUIRED；无截断成功",
+        "84项和类型构建证据固定b7dac9c；新增11门户+5指定兼容证据固定2d6ae4f；两个源码间产品代码未变"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M48-L05",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M48-07"
+      ],
+      "p3RuntimeStatus": "local_synthetic_evidence_independent_review_pending",
+      "verificationBoundaries": [
+        "只证明R1本地隔离合成运行；独立角色/浏览器人工验收待评审",
+        "R2/R3新办理契约和真实联调未执行，责任保留P3-R1-10",
+        "旧360办理只在旧功能开关兼容路径复验，不标新生产者契约通过",
+        "current门户来源最多500记录，超出显式BOUNDED_QUERY_REQUIRED；无截断成功",
+        "84项和类型构建证据固定b7dac9c；新增11门户+5指定兼容证据固定2d6ae4f；两个源码间产品代码未变"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M48-L06",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M48-05",
+        "P3-M48-07"
+      ],
+      "p3RuntimeStatus": "local_synthetic_evidence_independent_review_pending",
+      "verificationBoundaries": [
+        "只证明R1本地隔离合成运行；独立角色/浏览器人工验收待评审",
+        "R2/R3新办理契约和真实联调未执行，责任保留P3-R1-10",
+        "旧360办理只在旧功能开关兼容路径复验，不标新生产者契约通过",
+        "current门户来源最多500记录，超出显式BOUNDED_QUERY_REQUIRED；无截断成功",
+        "84项和类型构建证据固定b7dac9c；新增11门户+5指定兼容证据固定2d6ae4f；两个源码间产品代码未变"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M48-L07",
+      "status": "design_complete_acceptance_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T070210483124Z.json",
+        "evidence/r1-p3-20260910T070522816543Z.json",
+        "evidence/r1-p3-20260910T070535639941Z.json"
+      ],
+      "primaryDisposition": "P4",
+      "sourceStatus": "design_complete_acceptance_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M48-02"
+      ],
+      "p3RuntimeStatus": "local_synthetic_evidence_independent_review_pending",
+      "verificationBoundaries": [
+        "只证明R1本地隔离合成运行；独立角色/浏览器人工验收待评审",
+        "R2/R3新办理契约和真实联调未执行，责任保留P3-R1-10",
+        "旧360办理只在旧功能开关兼容路径复验，不标新生产者契约通过",
+        "current门户来源最多500记录，超出显式BOUNDED_QUERY_REQUIRED；无截断成功",
+        "84项和类型构建证据固定b7dac9c；新增11门户+5指定兼容证据固定2d6ae4f；两个源码间产品代码未变"
+      ],
+      "caseEvidenceFiles": [
+        "R1_P3_M48_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "retained"
+      }
+    },
+    {
+      "id": "R1-M48-L08",
+      "status": "design_complete_acceptance_open",
+      "p3Evidence": [],
+      "primaryDisposition": "P4",
+      "sourceStatus": "design_complete_acceptance_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-XMOD-01"
+      ],
+      "p3RuntimeStatus": "not_executed",
+      "caseEvidenceFiles": [
+        "R1_P3_Cross_Domain_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "retained"
+      }
+    },
+    {
+      "id": "R1-M32-L01",
+      "status": "owner_design_review_closed",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "primaryDisposition": "P2",
+      "sourceStatus": "owner_design_review_closed",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M32-01"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_recorded_cross_task_and_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "P2设计已由所有者关闭，新增运行证据待独立复核",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M32-L02",
+      "status": "owner_design_review_closed",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "primaryDisposition": "P2",
+      "sourceStatus": "owner_design_review_closed",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M32-01"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_recorded_cross_task_and_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "P2设计已由所有者关闭，新增运行证据待独立复核",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M32-L03",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M32-01",
+        "P3-M32-02",
+        "P3-M32-04"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_recorded_cross_task_and_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M32-L04",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M32-05"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_recorded_cross_task_and_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M32-L05",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M32-03",
+        "P3-M32-05"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_recorded_cross_task_and_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M32-L06",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T075750612916Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M32-07"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_recorded_cross_task_and_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M32-L07",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T080856347352Z.json",
+        "evidence/r1-p3-20260910T082305048810Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M32-06",
+        "P3-M32-09"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_platform_and_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Jobs_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [
+          "DEP-PLATFORM-01"
+        ],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M32-L08",
+      "status": "design_complete_validation_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T082305048810Z.json"
+      ],
+      "primaryDisposition": "P3",
+      "sourceStatus": "design_complete_validation_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M32-08"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_platform_and_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Jobs_Case_Evidence.json"
+      ],
+      "latestOverallRevalidation": "evidence/r1-p3-20260910T104045821462Z.json",
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [
+          "DEP-PLATFORM-01"
+        ],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "相关独立人工条件不由本地测试替代；不改变本风险原阶段"
+      }
+    },
+    {
+      "id": "R1-M32-L09",
+      "status": "design_complete_acceptance_open",
+      "p3Evidence": [],
+      "primaryDisposition": "P4",
+      "sourceStatus": "design_complete_acceptance_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-XMOD-01"
+      ],
+      "p3RuntimeStatus": "not_executed",
+      "caseEvidenceFiles": [
+        "R1_P3_Cross_Domain_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "retained"
+      }
+    },
+    {
+      "id": "R1-M32-L10",
+      "status": "design_complete_acceptance_open",
+      "p3Evidence": [
+        "evidence/r1-p3-20260910T080856347352Z.json",
+        "evidence/r1-p3-20260910T082305048810Z.json",
+        "evidence/r1-p3-20260910T101031691739Z.json"
+      ],
+      "primaryDisposition": "P4",
+      "sourceStatus": "design_complete_acceptance_open",
+      "sourceEvidenceOwner": "P1 controller",
+      "plannedP3Cases": [
+        "P3-M32-06",
+        "P3-REC-04"
+      ],
+      "p3RuntimeStatus": "local_runtime_evidence_platform_and_independent_review_pending",
+      "caseEvidenceFiles": [
+        "R1_P3_M32_Jobs_Case_Evidence.json",
+        "R1_P3_Recovery_Case_Evidence.json"
+      ],
+      "currentReviewDimensions": {
+        "localVerified": {
+          "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+          "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+          "meaning": "关联用例文件本轮复验；逐子条件以caseEvidenceFiles为准，非整项风险通过"
+        },
+        "independentReview": "pending_not_signed",
+        "realIntegrationGap": "16真实生产者缺口对相关跨域条件保留，详见Producer_Case_Evidence；不以消费者负向测试关闭",
+        "platformGap": [
+          "DEP-PLATFORM-01",
+          "DEP-PLATFORM-02"
+        ],
+        "originEvidence": {
+          "owner": "P1总控",
+          "receipt": "R1_P3_Origin_Increment_7920b64.json",
+          "meaning": "仅局部增量；SRC13未整体关闭"
+        },
+        "p4HumanAcceptance": "retained"
+      }
+    }
+  ],
+  "latestEvidence": [
+    "evidence/r1-p3-20260911T005747815482Z.json"
+  ],
+  "allOriginalAcPassed": false,
+  "risksClosedByExecutor": 0,
+  "riskDispositionCounts": {
+    "P2": 9,
+    "P3": 20,
+    "P4": 8
+  },
+  "latestMigrationIncrement": {
+    "sourceSha": "c36094e2f407fd0e2101b2b0e3988fc278b4ec1b",
+    "cases": [
+      "P3-MIG-01",
+      "P3-MIG-02",
+      "P3-MIG-03",
+      "P3-MIG-04",
+      "P3-MIG-05",
+      "P3-MIG-06",
+      "P3-MIG-07",
+      "P3-XMOD-03"
+    ],
+    "status": "implemented_synthetic_verified_review_pending",
+    "evidence": "evidence/r1-p3-20260910T090521350287Z.json",
+    "code": [
+      "lib/hris/r1-migration.ts",
+      "lib/hris/r1-migration-backfill.ts",
+      "lib/hris/r1-migration-map.ts",
+      "lib/hris/r1-normalize-json.ts"
+    ],
+    "tests": [
+      "tests/r1-p3-migration.test.mjs"
+    ],
+    "riskClosure": false
+  },
+  "latestRecoveryIncrement": {
+    "sourceSha": "7a86db4c62f09de0b9606050c073a7ef2510e87a",
+    "evidence": "evidence/r1-p3-20260910T103230203458Z.json",
+    "status": "implemented_synthetic_verified_platform_and_independent_review_pending",
+    "cases": [
+      "P3-REC-01",
+      "P3-REC-02",
+      "P3-REC-03",
+      "P3-REC-04",
+      "P3-REC-05"
+    ],
+    "code": [
+      "lib/hris/r1-recovery-crypto.ts",
+      "lib/hris/r1-recovery-data.ts",
+      "lib/hris/r1-recovery-restore.ts",
+      "scripts/r1-recovery-isolated-target.mjs",
+      "lib/hris/r1-recovery-objects.ts",
+      "lib/hris/r1-security-ledger.ts",
+      "lib/hris/r1-security-source.ts",
+      "lib/hris/r1-security-runtime.ts"
+    ],
+    "tests": [
+      "tests/r1-p3-recovery.test.mjs",
+      "tests/r1-p3-security-ledger.test.mjs"
+    ],
+    "caseEvidence": "R1_P3_Recovery_Case_Evidence.json"
+  },
+  "implementationCheckpoints": [
+    {
+      "taskId": "P3-R1-09",
+      "sourceSha": "1ddb1c93bba8b5aee900aa3235ae0f8551f27fa9",
+      "caseIds": [
+        "P3-REC-02",
+        "P3-REC-03"
+      ],
+      "code": [
+        "lib/hris/r1-recovery-control.ts",
+        "scripts/r1-recovery-isolated-target.mjs"
+      ],
+      "tests": [
+        "tests/r1-p3-recovery.test.mjs"
+      ],
+      "evidence": "evidence/r1-p3-20260910T095601121101Z.json",
+      "status": "partial_runtime_evidence_review_pending",
+      "risksClosed": 0
+    },
+    {
+      "taskId": "P3-R1-09",
+      "sourceSha": "8a5e2c271873ecc826d40ca72f962526cafbafd2",
+      "caseIds": [
+        "P3-REC-01",
+        "P3-REC-04",
+        "P3-REC-05"
+      ],
+      "code": [
+        "lib/hris/r1-recovery-backup.ts",
+        "lib/hris/r1-recovery-maintenance.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-recovery.test.mjs"
+      ],
+      "evidence": "evidence/r1-p3-20260910T100422728024Z.json",
+      "status": "partial_runtime_evidence_review_pending",
+      "risksClosed": 0
+    },
+    {
+      "taskId": "P3-R1-09",
+      "sourceSha": "5ce0dd2a411bd5bea144074395c1a7787abf5135",
+      "caseEvidence": "R1_P3_Recovery_Case_Evidence.json",
+      "evidence": "evidence/r1-p3-20260910T101031691739Z.json",
+      "status": "implemented_synthetic_verified_review_pending",
+      "risksClosed": 0
+    },
+    {
+      "taskId": "P3-R1-10",
+      "sourceSha": "254a70772bc78755d1e524d7b4bc4871b9da5904",
+      "evidence": "evidence/r1-p3-20260910T101913449916Z.json",
+      "status": "partial_internal_verified_producer_blocked",
+      "risksClosed": 0
+    },
+    {
+      "taskId": "P3-R1-11",
+      "sourceSha": "7a86db4c62f09de0b9606050c073a7ef2510e87a",
+      "caseEvidence": "R1_P3_Cross_Domain_Case_Evidence.json",
+      "evidence": "evidence/r1-p3-20260910T103230203458Z.json",
+      "status": "implemented_synthetic_verified_review_pending",
+      "risksClosed": 0
+    },
+    {
+      "taskId": "P3-R1-02",
+      "sourceSha": "812a3bddffeaea05a88baaac5816d94c75c2382e",
+      "evidence": "evidence/r1-p3-20260911T003733692664Z.json",
+      "finding": "P3-INTAKE-DEFECT-001",
+      "status": "fixed_targeted_synthetic_verified_independent_review_pending",
+      "code": [
+        "lib/hris/r1-m01.ts"
+      ],
+      "tests": [
+        "tests/r1-p3-m01.test.mjs"
+      ],
+      "risksClosed": 0
+    }
+  ],
+  "producerIntegrationCaseEvidence": "R1_P3_Producer_Case_Evidence.json",
+  "crossDomainCaseEvidence": "R1_P3_Cross_Domain_Case_Evidence.json",
+  "caseEvidenceIndex": {
+    "P3-INT-01": [
+      "R1_P3_Integration_Case_Evidence.json"
+    ],
+    "P3-INT-02": [
+      "R1_P3_Integration_Case_Evidence.json"
+    ],
+    "P3-INT-03": [
+      "R1_P3_Integration_Case_Evidence.json"
+    ],
+    "P3-INT-04": [
+      "R1_P3_Integration_Case_Evidence.json"
+    ],
+    "P3-INT-05": [
+      "R1_P3_Integration_Case_Evidence.json"
+    ],
+    "P3-INT-06": [
+      "R1_P3_Integration_Case_Evidence.json"
+    ],
+    "P3-LINK-M48-team": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M48-approval": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M48-okr": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M48-goal": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M48-attendance": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M48-learning": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M48-development": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M01": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M19": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M48": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M32": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M03": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M06": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M17": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M18": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M26": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M37": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M12": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M16": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M27": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M11": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-LINK-M32-M07": [
+      "R1_P3_Producer_Case_Evidence.json"
+    ],
+    "P3-XMOD-01": [
+      "R1_P3_Cross_Domain_Case_Evidence.json"
+    ],
+    "P3-ARC-01": [
+      "R1_P3_Foundation_Case_Evidence.json"
+    ],
+    "P3-ARC-02": [
+      "R1_P3_Foundation_Case_Evidence.json"
+    ],
+    "P3-MIG-01": [
+      "R1_P3_Migration_Case_Evidence.json"
+    ],
+    "P3-MIG-02": [
+      "R1_P3_Migration_Case_Evidence.json"
+    ],
+    "P3-MIG-03": [
+      "R1_P3_Migration_Case_Evidence.json"
+    ],
+    "P3-MIG-04": [
+      "R1_P3_Migration_Case_Evidence.json"
+    ],
+    "P3-MIG-05": [
+      "R1_P3_Migration_Case_Evidence.json"
+    ],
+    "P3-MIG-06": [
+      "R1_P3_Migration_Case_Evidence.json"
+    ],
+    "P3-MIG-07": [
+      "R1_P3_Migration_Case_Evidence.json"
+    ],
+    "P3-XMOD-03": [
+      "R1_P3_Migration_Case_Evidence.json"
+    ],
+    "P3-M32-06": [
+      "R1_P3_M32_Jobs_Case_Evidence.json"
+    ],
+    "P3-M32-08": [
+      "R1_P3_M32_Jobs_Case_Evidence.json"
+    ],
+    "P3-M32-09": [
+      "R1_P3_M32_Jobs_Case_Evidence.json"
+    ],
+    "P3-M19-01": [
+      "R1_P3_M19_Case_Evidence.json"
+    ],
+    "P3-M19-02": [
+      "R1_P3_M19_Case_Evidence.json"
+    ],
+    "P3-M19-03": [
+      "R1_P3_M19_Case_Evidence.json"
+    ],
+    "P3-M19-04": [
+      "R1_P3_M19_Case_Evidence.json"
+    ],
+    "P3-M19-05": [
+      "R1_P3_M19_Case_Evidence.json"
+    ],
+    "P3-M19-06": [
+      "R1_P3_M19_Case_Evidence.json"
+    ],
+    "P3-M19-07": [
+      "R1_P3_M19_Case_Evidence.json"
+    ],
+    "P3-M32-01": [
+      "R1_P3_M32_Case_Evidence.json"
+    ],
+    "P3-M32-02": [
+      "R1_P3_M32_Case_Evidence.json"
+    ],
+    "P3-M32-03": [
+      "R1_P3_M32_Case_Evidence.json"
+    ],
+    "P3-M32-04": [
+      "R1_P3_M32_Case_Evidence.json"
+    ],
+    "P3-M32-05": [
+      "R1_P3_M32_Case_Evidence.json"
+    ],
+    "P3-M32-07": [
+      "R1_P3_M32_Case_Evidence.json"
+    ],
+    "P3-M32-10": [
+      "R1_P3_M32_Case_Evidence.json"
+    ],
+    "P3-XMOD-02": [
+      "R1_P3_M32_Case_Evidence.json"
+    ],
+    "P3-M48-01": [
+      "R1_P3_M48_Case_Evidence.json"
+    ],
+    "P3-M48-02": [
+      "R1_P3_M48_Case_Evidence.json"
+    ],
+    "P3-M48-03": [
+      "R1_P3_M48_Case_Evidence.json"
+    ],
+    "P3-M48-04": [
+      "R1_P3_M48_Case_Evidence.json"
+    ],
+    "P3-M48-05": [
+      "R1_P3_M48_Case_Evidence.json"
+    ],
+    "P3-M48-06": [
+      "R1_P3_M48_Case_Evidence.json"
+    ],
+    "P3-M48-07": [
+      "R1_P3_M48_Case_Evidence.json"
+    ],
+    "P3-REC-01": [
+      "R1_P3_Recovery_Case_Evidence.json"
+    ],
+    "P3-REC-02": [
+      "R1_P3_Recovery_Case_Evidence.json"
+    ],
+    "P3-REC-03": [
+      "R1_P3_Recovery_Case_Evidence.json"
+    ],
+    "P3-REC-04": [
+      "R1_P3_Recovery_Case_Evidence.json"
+    ],
+    "P3-REC-05": [
+      "R1_P3_Recovery_Case_Evidence.json"
+    ],
+    "P3-M01-01": [
+      "R1_P3_M01_Case_Evidence.json"
+    ],
+    "P3-M01-02": [
+      "R1_P3_M01_Case_Evidence.json"
+    ],
+    "P3-M01-03": [
+      "R1_P3_M01_Case_Evidence.json"
+    ],
+    "P3-M01-04": [
+      "R1_P3_M01_Case_Evidence.json"
+    ],
+    "P3-M01-05": [
+      "R1_P3_M01_Case_Evidence.json"
+    ],
+    "P3-M01-06": [
+      "R1_P3_M01_Case_Evidence.json"
+    ],
+    "P3-M01-07": [
+      "R1_P3_M01_Case_Evidence.json"
+    ],
+    "P3-M01-08": [
+      "R1_P3_M01_Case_Evidence.json"
+    ],
+    "P3-M01-09": [
+      "R1_P3_M01_Case_Evidence.json"
+    ],
+    "P3-M01-10": [
+      "R1_P3_M01_Case_Evidence.json"
+    ],
+    "P3-M01-11": [
+      "R1_P3_M01_Case_Evidence.json"
+    ],
+    "P3-M01-12": [
+      "R1_P3_M01_Case_Evidence.json"
+    ]
+  },
+  "overallRounds": [
+    {
+      "round": 1,
+      "evidence": "evidence/r1-p3-20260910T103230203458Z.json",
+      "sourceSha": "7a86db4c62f09de0b9606050c073a7ef2510e87a",
+      "startedAt": "2026-09-10T10:32:30.203490+00:00",
+      "finishedAt": "2026-09-10T10:32:58.490272+00:00",
+      "testSummary": {
+        "tests": 183,
+        "pass": 183,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "typecheck": "passed",
+      "build": "passed",
+      "scope": "full_R1_local_synthetic"
+    },
+    {
+      "round": 2,
+      "evidence": "evidence/r1-p3-20260910T104045821462Z.json",
+      "sourceSha": "e4b6d386025458ecfbdc71ff48b2b74d41cae1fc",
+      "startedAt": "2026-09-10T10:40:45.821491+00:00",
+      "finishedAt": "2026-09-10T10:41:50.651710+00:00",
+      "testSummary": {
+        "tests": 183,
+        "pass": 183,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0
+      },
+      "typecheck": "passed",
+      "build": "passed",
+      "scope": "full_R1_local_synthetic"
+    }
+  ],
+  "overallReview": "R1_P3_Artifact_Review.json",
+  "originEvidenceIntake": {
+    "sourceHead": "76a16265fdd65f6ba7608260dde1e07acfb85200",
+    "receipt": "R1_P3_Origin_Evidence_Intake.json",
+    "mappingCount": 89,
+    "sourceParityPassed": false
+  },
+  "currentReview": {
+    "sourceSha": "de053be59cc0e08c2044fb534ef46ee085a38203",
+    "evidence": "evidence/r1-p3-20260911T005747815482Z.json",
+    "packet": "R1_P3_Review_Packet.md",
+    "manifest": "R1_P3_Fixed_Review_Manifest.json",
+    "independentReview": "pending"
+  },
+  "originEvidenceIncrement": "R1_P3_Origin_Increment_7920b64.json"
+}

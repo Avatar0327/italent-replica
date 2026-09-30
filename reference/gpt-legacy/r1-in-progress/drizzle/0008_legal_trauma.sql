@@ -1,0 +1,1 @@
+ALTER TABLE `hris_attachments` ADD `visibility` text DEFAULT 'hr' NOT NULL;

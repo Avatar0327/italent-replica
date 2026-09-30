@@ -1,0 +1,59 @@
+✔ P3-INT-01: normalized envelope, durable duplicate, digest conflict and sequence gap (83.32058ms)
+✔ P3-INT-02: inbox projection and receipt roll back together under injected audit failure (57.250038ms)
+✔ P3-INT-03: explicitly simulated unknown delivery is queried and not blindly resent (3.249466ms)
+✔ P3-INT-04: six external adapters stay unconfigured; internal signed/published does not imply external success (0.445799ms)
+✔ P3-INT-05: unknown command and forged tenant cannot choose an unregistered producer (51.358473ms)
+✔ P3-INT-06: unknown DB commit preserves uploaded bytes; tombstone refuses download and queues cleanup (69.106797ms)
+✔ P3-INT-01: two consumers process once independently, quarantine gaps with owner and preserve old receipts (74.10169ms)
+✔ P3-INT-03: durable delivery loss, signed duplicate callback, nonce conflict, expiry and bad signature quarantine (112.252629ms)
+✔ P3-INT-03: callback audit failure rolls nonce/receipt/state back together; no trusted completion survives (136.757428ms)
+✔ P3-INT-05: equal labels retain independent stable IDs/versions; unknown statuses and revoked grants fail closed (157.138335ms)
+✖ P3-INT-06: put then real metadata rollback leaves inaccessible orphan; compensation failure stays pending (126.680322ms)
+✖ P3-INT-06: upgraded attachment commands replay once, old writes block before put, current field revocation denies bytes (100.944605ms)
+✔ P3-INT-02: grant expires after application validation; final command SQL rejects without partial changes (209.363073ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 11
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2133.153994
+
+✖ failing tests:
+
+test at tests/r1-p3-integration.test.mjs:85:1
+✖ P3-INT-06: put then real metadata rollback leaves inaccessible orphan; compensation failure stays pending (126.680322ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  400 !== 200
+  
+      at attachmentFixture (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/r1-p3-integration.test.mjs:81:337)
+      at async TestContext.<anonymous> (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/r1-p3-integration.test.mjs:86:163)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 400,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at tests/r1-p3-integration.test.mjs:89:1
+✖ P3-INT-06: upgraded attachment commands replay once, old writes block before put, current field revocation denies bytes (100.944605ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  400 !== 200
+  
+      at attachmentFixture (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/r1-p3-integration.test.mjs:81:337)
+      at async TestContext.<anonymous> (file:///workspace/sites/italent-hris-r1-p3-20260910/tests/r1-p3-integration.test.mjs:90:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 400,
+    expected: 200,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,28 @@
+{
+  "startedAt": "2026-09-08T11:54:39.781580+00:00",
+  "completedAt": "2026-09-08T11:54:46.629532+00:00",
+  "tests": 98,
+  "passed": 98,
+  "failed": 0,
+  "skipped": 0,
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "tests/contract-fields.test.mjs",
+    "tests/p3-api.test.mjs",
+    "tests/g1-foundation.test.mjs",
+    "tests/report-current-scope.test.mjs",
+    "tests/delivery-dashboard.test.mjs"
+  ],
+  "report": "docs/delivery/Contract_Fields_Run.tap",
+  "scope": "合同字段继承及既有合同/基础/报表权限/看板关联回归，非全量复测",
+  "typecheck": "passed",
+  "limitation": "原站已核实字段继承说明；内部版本策略与权限尚待人工业务验收，生产未验收",
+  "sourceHashes": {
+    "lib/hris/contract-fields.ts": "d4285a1633739adf695fb28c8b82a99d2233d3d46e519007cd4fc391dea9d514",
+    "lib/hris/contract-field-model.ts": "203870c81c3af3a8cdb58ba4009c299b146ebbc27134ddf78c586e4b46217efc",
+    "lib/hris/workforce.ts": "63ea24a9d415d9036f90c4e81da748035495bf4e334c57f454293f4e98f7855a",
+    "tests/contract-fields.test.mjs": "7b9b4a9c464cba7e61656d47c7cd87cfa775fdfe4ae4d9cbbdb863df24d8ccbe"
+  }
+}

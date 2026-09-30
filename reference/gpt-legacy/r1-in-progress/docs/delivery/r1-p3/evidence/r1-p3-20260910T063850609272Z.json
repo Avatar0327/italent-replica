@@ -1,0 +1,36 @@
+{
+  "runId": "r1-p3-20260910T063850609272Z",
+  "sourceSha": "6c52613e9dde33084c3cbfa3ed2345b1f1bcd3dc",
+  "taskId": "P3-R1-04",
+  "startedAt": "2026-09-10T06:38:50.609304+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/p3-api.test.mjs": "2f74bc68cfc8deb48f4c929c7e17f9f051cf651ca6b28391d102283f800a9c3b",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "--test-name-pattern=附件",
+        "tests/p3-api.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T063850609272Z-tests.log",
+      "sha256": "a31741d3507e5ef54655d369b6f16119e2af7e0b7157fc88725eecdf770577a9"
+    }
+  ],
+  "testSummary": {
+    "tests": 3,
+    "pass": 3,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T06:38:52.386400+00:00"
+}

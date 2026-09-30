@@ -1,0 +1,195 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1788751140085,
+      "tag": "0000_windy_paper_doll",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788751763873,
+      "tag": "0001_oval_sunset_bain",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788752304036,
+      "tag": "0002_petite_speedball",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788752475884,
+      "tag": "0003_demonic_gauntlet",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788752936365,
+      "tag": "0004_chubby_quasar",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1788753921404,
+      "tag": "0005_nice_redwing",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788755295536,
+      "tag": "0006_curious_zaladane",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788755522415,
+      "tag": "0007_low_mojo",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788755681055,
+      "tag": "0008_legal_trauma",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788873028653,
+      "tag": "0009_spotty_redwing",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1789012800000,
+      "tag": "0010_r1_command_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1789012801000,
+      "tag": "0011_r1_m01_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1789012802000,
+      "tag": "0012_r1_integration_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1789013918168,
+      "tag": "0013_r1_occupancy_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1789017143463,
+      "tag": "0014_r1_identity_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1789018987917,
+      "tag": "0015_r1_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1789019744367,
+      "tag": "0016_r1_workflow_batches",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1789019962016,
+      "tag": "0017_r1_workflow_template_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1789020399305,
+      "tag": "0018_r1_workflow_denial_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1789020961996,
+      "tag": "0019_r1_adapter_contracts",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1789021762472,
+      "tag": "0020_r1_upload_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1789022521988,
+      "tag": "0021_r1_portal_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1789022521989,
+      "tag": "0022_r1_report_read_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1789022521990,
+      "tag": "0023_r1_report_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1789022521991,
+      "tag": "0024_r1_report_subscriptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1789022521992,
+      "tag": "0025_r1_migration_control",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1789022521993,
+      "tag": "0026_r1_expansion_recovery_log",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+✔ P3-M01-01: same org overlapping position name rejects, cross org permits, future cycles reject (33.424444ms)
+✔ P3-M01-02: identity conflicts do not merge; stable rehire and tenure exclude gaps/internship (17.633678ms)
+✔ P3-M01-03: independent HR approves part time; it consumes zero additional headcount (20.526444ms)
+✔ P3-M01-07: legal scope, same legal ID and adjacent renewal dates; immutable versions (24.905779ms)
+✔ P3-M01-08: subset row key is idempotent across transport command IDs and explicit null survives (22.65403ms)
+✔ P3-M01-09: missing or wrong entry template blocks person creation and never activates accounts (21.025488ms)
+✔ P3-M01-10: exit fence rejects later approvals and queues all 101 cleanup items (21.602166ms)
+✔ P3-M01-12: protected waiting dependency blocks disable without exposing identity (16.581262ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 861.57924

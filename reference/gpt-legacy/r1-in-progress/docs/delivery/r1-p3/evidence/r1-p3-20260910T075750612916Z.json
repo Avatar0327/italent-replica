@@ -1,0 +1,68 @@
+{
+  "runId": "r1-p3-20260910T075750612916Z",
+  "sourceSha": "7ccfbe6029bf28a5e35be97271b16fce7f325325",
+  "taskId": "P3-R1-06",
+  "startedAt": "2026-09-10T07:57:50.612955+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/r1-p3-report-definition.test.mjs": "a21337d9a5f321791f3ce250b99cff72d35bf0f5d93f0f4883974084ca8d0ace",
+    "tests/r1-p3-report-query.test.mjs": "b04bbd705593e2e676cce915f6869fa23c4e6c6cc2f609c5dd9103eccf486da9",
+    "tests/r1-p3-report-oracles.test.mjs": "1b9c6eca9dcd99ba8d3051c0f3042550c7b5ea3a7d9bbd5b424d69762a00f6ee",
+    "tests/r1-p3-report-scale.test.mjs": "517ceae19fd33fe6606a3c6de333b3d14034b500ae7f48573cb3729f08e2aabc",
+    "tests/support/cadre-checks.mjs": "73a4e3fb0fc2c22823670bae76b835e43d7651b5fd0eb88662f99644d3641072",
+    "tests/support/foundation-scenario.mjs": "b84670b9f011ea80b27d67685d7bf648e209e3be1e3c7a194170393489fbbf69",
+    "tests/support/performance-scenario.mjs": "b3b9b5c8f919d1d7243376cf78eebb2931ae82fd59007f4bd9f7597fc39e9a8e",
+    "tests/support/r1-report-fixture.mjs": "9dd683a30171e04c2d77c388341f47a637b8566b867542090303c47563122358",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/r1-p3-report-definition.test.mjs",
+        "tests/r1-p3-report-query.test.mjs",
+        "tests/r1-p3-report-oracles.test.mjs",
+        "tests/r1-p3-report-scale.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T075750612916Z-tests.log",
+      "sha256": "a4d2b500c2042948ab63b937ea7c093c1e43b20d4ca542cdff180fd5161b63f9"
+    },
+    {
+      "name": "types",
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T075750612916Z-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build",
+      "command": [
+        "node",
+        "/root/.codex/plugins/cache/openai-curated-remote/sites/0.1.56/scripts/build-site.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T075750612916Z-build.log",
+      "sha256": "a0aa48016399bcf76f08ec752e0362cdc3a97551e813c3767ea9c9df6c01b171"
+    }
+  ],
+  "testSummary": {
+    "tests": 39,
+    "pass": 39,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T07:58:10.089749+00:00"
+}

@@ -1,0 +1,8 @@
+import {activeContractFields,contractFieldDefault} from '@/lib/hris/contract-field-model';
+import type {DevelopmentRecord as R} from '@/lib/hris/development';
+import {Button} from '@/components/ui/button';
+export default function ContractFieldsEditor({records,orgId,previous,values,onChange}:{records:R[];orgId?:string;previous?:R;values:Record<string,string|null>;onChange:(v:Record<string,string|null>)=>void}){
+ const definitions=orgId?activeContractFields(records,orgId):[];
+ if(!definitions.length)return null;
+ return <section className="rounded border p-4 space-y-3"><h3 className="font-semibold">合同自定义字段</h3><p className="text-sm text-slate-500">以下值随本份合同保存。可覆盖默认值或明确清空；不改变原合同。</p>{definitions.map(def=>{const initial=contractFieldDefault(def,previous),manual=Object.hasOwn(values,def.id),value=manual?values[def.id]:initial.value;return <div className="space-y-2" key={def.id}><label className="field">{def.payload.contractField!.name} · V{def.payload.version}<textarea className="w-full rounded border p-2" rows={2} maxLength={1000} value={value??''} onChange={e=>onChange({...values,[def.id]:e.target.value||null})}/></label><div className="flex flex-wrap items-center gap-3 text-xs text-slate-500"><span>{manual?'手工录入 / 明确清空':initial.source==='inherited'?'默认继承原合同 V'+initial.sourceFieldVersion:'未带入原值'}</span><Button type="button" variant="ghost" size="sm" onClick={()=>onChange({...values,[def.id]:null})}>清空</Button>{manual&&<Button type="button" variant="ghost" size="sm" onClick={()=>{const next={...values};delete next[def.id];onChange(next)}}>恢复默认</Button>}</div></div>})}</section>;
+}

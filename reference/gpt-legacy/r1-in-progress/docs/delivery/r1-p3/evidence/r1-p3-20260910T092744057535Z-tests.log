@@ -1,0 +1,17 @@
+✔ P3-REC-01/04: bounded AES-256-GCM chunks roundtrip with separate wrapped key and independent signature, preserving exact byte boundaries (113.602446ms)
+✔ P3-REC-01/04: corruption, missing chunk, bad signature, wrong key and cross-checkpoint AAD fail before publication or restore (43.446628ms)
+✔ P3-REC-01/05: tombstoned multi-chunk object requires complete ordered references and whole-object SHA before verified manifest (21.901589ms)
+✔ P3-REC-01: actual expanded schema baseline includes every registered persistent table and rejects concurrent source changes instead of publishing mixed cuts (248.644115ms)
+✔ P3-REC-01/03: current complete-row journal seals actual command transactions; missing, truncated and unguarded writes never pass as replayable effects (109.74ms)
+✔ P3-REC-01: UTF-8 logical rows cross 4MiB boundaries without whole-export buffering; incomplete final records reject (51.735306ms)
+✔ P3-REC-01/03: real isolated SQLite imports baseline and complete increments once; schema/history preserved, gate closed and pending outbox paused (308.513615ms)
+✔ P3-REC-01: persisted isolated SQL receipts resume after a lost import response without duplicating any source key (223.550913ms)
+✔ P3-REC-01/05: explicitly simulated independent object target restores ranges and tombstones once while remaining isolated (34.718206ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1877.899825

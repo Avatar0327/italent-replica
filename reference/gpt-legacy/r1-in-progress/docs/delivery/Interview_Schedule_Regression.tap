@@ -1,0 +1,19 @@
+✔ schedule validates scope, time ranges, candidate and interviewer conflicts; cancel retains evidence and releases the slot (369.391754ms)
+✔ only assigned current manager can complete ended appointment using frozen archived template; result and completion roll back together (291.117136ms)
+✔ future, cancelled, moved and revoked appointments cannot be signed and pending schedules block legacy-offer bypass (208.222166ms)
+✔ rescheduling retains archived frozen form, transfers evaluation authority and preserves earlier schedule history (206.833719ms)
+✔ structured evaluation freezes four-level criteria and explicit recommendation without inventing aggregate or altering prior results (359.814424ms)
+✔ unknown or incomplete scores, unauthorized templates, audit failure and latest rejecting result enforce workflow boundaries (199.883411ms)
+✔ maximum Chinese criteria and comments fit explicit bounded endpoints while oversized bodies are rejected (285.80205ms)
+✔ structured interview response recovery keeps a single original evaluation and enforces key-content identity (140.347161ms)
+✔ lost creation responses replay the original ID across stale/current revisions without another write or metadata disclosure (237.7972ms)
+✔ candidate and interview creation keys are per actor, retain failure atomicity and do not bypass current scope or role (157.403425ms)
+✔ unsupported keys and commands are rejected instead of suggesting replay support for state transitions (65.09987ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4127.310169

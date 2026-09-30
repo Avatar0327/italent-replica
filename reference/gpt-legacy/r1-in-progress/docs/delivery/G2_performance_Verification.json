@@ -1,0 +1,118 @@
+{
+  "baseline": "bda3ffdce577aa04592534db131c2d634f225792",
+  "applicationAndTestCommit": "9d3d416769a7ab28945261d231e1a29eeaaf50da",
+  "verifiedAt": "2026-09-07T16:24:58.387064+00:00",
+  "tests": {
+    "passed": 122,
+    "failed": 0,
+    "skipped": 0,
+    "existing": 116,
+    "new": 6
+  },
+  "typecheckExit": 0,
+  "buildExit": 0,
+  "sourceSha256": {
+    "lib/hris/performance.ts": "b5f81325cba344f25b18951dcbe5b341fd82f6d686c142261c3c309225fd442d",
+    "lib/hris/performance-changes.ts": "f6e68029fd5338118ed6f3831d4e918d03c5b1ba42e3e736291f4009969b8372",
+    "lib/hris/performance-checkins.ts": "f359e39910d5df0c98e5b8002b1899cee389682488d76869d4086b344db44612",
+    "tests/g2-performance-flow.test.mjs": "75804e544fa47d2d1f1e8fcfd204214ad5ea06ebeb87f360c4ebd9c335b90c58",
+    "tests/g2-performance-lifecycle.test.mjs": "65c3cffeddb2afbcb2fb12570215343730cfff93cb5ba9f8f73bca1774981bf6",
+    "tests/support/performance-scenario.mjs": "b3b9b5c8f919d1d7243376cf78eebb2931ae82fd59007f4bd9f7597fc39e9a8e"
+  },
+  "evidenceSha256": {
+    "docs/delivery/G2_performance_Build.txt": "a2142258943377a3ab9f10bd0a4bff05bc1bcf15d4d5a9b0f9f207b45fbf0cac",
+    "docs/delivery/G2_performance_Delivery.md": "6d5e59298cf6654dc69a6199b75035be797bb640bea6cfd2a239741ec0d857fa",
+    "docs/delivery/G2_performance_Test_Output.tap": "716d99589f404ccd1525bb4ae1f42bc19a85e6639da006ac6e68cfb432fb25af",
+    "docs/delivery/G2_performance_Test_Result.json": "d66d2fa6dfab09d3b55037c01a6c143255a4e9a6281af0ed27c2a5ec254b0c83",
+    "docs/delivery/G2_performance_Typecheck.txt": "4590e956b0e288898b457d4aaae6931fecdf48988fa70dacc706fc3c0dec17dd",
+    "docs/delivery/G2_performance_User_Guide.md": "dd4555aa452fdf54bd93d83a033a57967cdf4c4aa7b660aa251cbd4b942747c1"
+  },
+  "protectedFiles": {
+    "lib/hris/development.ts": {
+      "sha256": "1b2ca68f6dfdb3ba9ce0cbdbff157c7790fb03244c787b6de486d30387281512",
+      "unchangedFromBaseline": true
+    },
+    "lib/hris/context.ts": {
+      "sha256": "2a2fd5162c44c61cfb8c703d6efc5e7c30e86ec3f4885ce2becb56b1dcac3a45",
+      "unchangedFromBaseline": true
+    },
+    "lib/hris/model.ts": {
+      "sha256": "9d1a19bb3f96757799ff25f85c818ada30ac78d380b58e0e8d54a9af00e47a02",
+      "unchangedFromBaseline": true
+    },
+    "lib/hris/authorization.ts": {
+      "sha256": "31398bd79d579e4f28d70ec51b0500bd87282e1623e1cb3a24ca89721bbb8269",
+      "unchangedFromBaseline": true
+    },
+    "lib/hris/development-repository.ts": {
+      "sha256": "64188dffd4a19143a016866508a655029399da296549d51265d62174f5d85264",
+      "unchangedFromBaseline": true
+    },
+    "lib/hris/member-rules.ts": {
+      "sha256": "b6681424cc51357cff0bb24b9c12ba05eaee7ace42f4f3c1481cb17b582adff1",
+      "unchangedFromBaseline": true
+    },
+    "tests/p3-api.test.mjs": {
+      "sha256": "1adae64d4bb5323f583738516e167372d7cb929300456496c5ab6061e75ee255",
+      "unchangedFromBaseline": true
+    },
+    "tests/support/runtime.mjs": {
+      "sha256": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d",
+      "unchangedFromBaseline": true
+    },
+    "tests/support/foundation-scenario.mjs": {
+      "sha256": "b84670b9f011ea80b27d67685d7bf648e209e3be1e3c7a194170393489fbbf69",
+      "unchangedFromBaseline": true
+    },
+    "tests/g1-cadre-exit.test.mjs": {
+      "sha256": "21061ce951334079107330738a3e16c066fc3d45677737c66713714d3faaef2d",
+      "unchangedFromBaseline": true
+    },
+    "docs/delivery/Ownership.md": {
+      "sha256": "e07e6654e7ad7b4f2028a9d3a927474f69612721d2e9e4872796e4e66faca361",
+      "unchangedFromBaseline": true
+    },
+    "docs/delivery/Module_Queue.md": {
+      "sha256": "25bcb4df195e0e5c32a770692fb8edb7ec29b2427c9fe0b93fc20b4393d807dc",
+      "unchangedFromBaseline": true
+    },
+    "docs/delivery/Module_Queue.json": {
+      "sha256": "a4eba19800b4cf0b6ce7932905d2c8cf07287b17ccde7fc3d4568187e05b5836",
+      "unchangedFromBaseline": true
+    },
+    "docs/delivery/Shared_Contracts.md": {
+      "sha256": "ef7bc50bf3fbd0f3044760646b3a40bf6edd7f4c86086276306fddac6d733631",
+      "unchangedFromBaseline": true
+    },
+    "docs/delivery/Scope_Register.md": {
+      "sha256": "c0484078e45e334335cb651da4ccfec411eff372a56554d7ae2e1a0a128e6150",
+      "unchangedFromBaseline": true
+    },
+    "docs/Execution_Checkpoint.md": {
+      "sha256": "8d7eaac9b9959a47bf5c31b0d01ab6ef00eeaf94d477f163ba97e8fa79a55a83",
+      "unchangedFromBaseline": true
+    },
+    ".openai/hosting.json": {
+      "sha256": "69fbe98861d2790d2d029fca25d257b8bd8b031777e3e164485a60ca69a12638",
+      "unchangedFromBaseline": true
+    },
+    "package.json": {
+      "sha256": "0321088addf0a61b071497d457ba93e1452edf4a04d2876145d19389927d6ba6",
+      "unchangedFromBaseline": true
+    },
+    "package-lock.json": {
+      "sha256": "920d21ca287ce8911f9fb9089c2a388d0fcd45ca6a397af13f33787d5c6800a5",
+      "unchangedFromBaseline": true
+    }
+  },
+  "beforeFix": {
+    "command": "node --test tests/g2-performance-lifecycle.test.mjs",
+    "failed": 2,
+    "passed": 0,
+    "failure": "exit and transfer confirmGoals returned 200, expected 400"
+  },
+  "g2BusinessAccepted": false,
+  "productionAccepted": false,
+  "published": false,
+  "writerHandedBackTo": "总控"
+}

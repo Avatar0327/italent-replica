@@ -1,0 +1,23 @@
+{
+  "startedAt": "2026-09-08T12:32:07.522018+00:00",
+  "completedAt": "2026-09-08T12:32:08.406906+00:00",
+  "baseCommit": "2bd69a1ad19706cdfbb7da0ef70af06989ffd575",
+  "command": [
+    "node",
+    "--test",
+    "--test-reporter=tap",
+    "tests/f01-f04-transfer-roles.test.mjs",
+    "tests/authorization.test.mjs",
+    "tests/workflows.test.mjs",
+    "tests/p2-api.test.mjs"
+  ],
+  "exitCode": 0,
+  "report": "docs/delivery/F01_F04_Role_Arrangement_Run.tap",
+  "scope": "跨组织发起者/审批者/字段权限安排及关联回归，合成数据；不改变产品行为，不代替UAT",
+  "firstAttempt": "新增测试初次在最后历史字段断言失败：误用toOrgId，实际API返回toOrg名称；已按接口契约修正测试，未改应用代码。",
+  "testSha256": "888b2da7775aadf4ee47324e08340f1658023aaae11f0b5da949f3cddec81f8c",
+  "tests": 15,
+  "passed": 15,
+  "failed": 0,
+  "skipped": 0
+}

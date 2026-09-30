@@ -1,0 +1,60 @@
+{
+  "runId": "r1-p3-20260910T060422840181Z",
+  "sourceSha": "e7f0f2a858758900c135ee4cc6728b90ba05b091",
+  "taskId": "P3-R1-03",
+  "startedAt": "2026-09-10T06:04:22.840210+00:00",
+  "environment": "local node:sqlite real SQL transactions; isolated fixture identities and simulated external adapters; no cloud, production, original-site or real external effects",
+  "fixtureVersion": "synthetic R1 tests at sourceSha; fixed scenario values, independently generated opaque UUIDs",
+  "fullTaskComplete": false,
+  "independentReview": "pending",
+  "inputs": {
+    "tests/r1-p3-workflow.test.mjs": "ed0fbb538ba621085d2378913360bfac7e95b8f8fd545567f5d08d785e46e24b",
+    "tests/r1-p3-m01.test.mjs": "9df561a349e3dec19da752d9d4087407f76de8f2c615eb4cecceef6c678c1d82",
+    "tests/support/runtime.mjs": "8a7853a6c244cc79a19dc7c1e93b87b16d3d7734013864c7b68caf370decdb7d"
+  },
+  "checks": [
+    {
+      "name": "tests",
+      "command": [
+        "node",
+        "--test",
+        "tests/r1-p3-workflow.test.mjs",
+        "tests/r1-p3-m01.test.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T060422840181Z-tests.log",
+      "sha256": "8186693d2d322a96a822e7667168896f0765fd63cf9d141bbe72a850dee80f7e"
+    },
+    {
+      "name": "types",
+      "command": [
+        "node",
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T060422840181Z-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build",
+      "command": [
+        "node",
+        "/root/.codex/plugins/cache/openai-curated-remote/sites/0.1.56/scripts/build-site.mjs"
+      ],
+      "exitCode": 0,
+      "log": "evidence/r1-p3-20260910T060422840181Z-build.log",
+      "sha256": "95378d4fe1ef1712bfd21163fcd356fe103b389dba38a3e6026c33907e04b2ab"
+    }
+  ],
+  "testSummary": {
+    "tests": 34,
+    "pass": 34,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "finishedAt": "2026-09-10T06:04:38.772625+00:00"
+}

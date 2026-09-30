@@ -1,0 +1,197 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> site-creator-vinext-starter@0.1.0 build
+> bash scripts/build-verified.sh
+
+/usr/bin/timeout
+Delivery evidence generated from repository sources
+Running bounded vinext build...
+
+  vinext build  (Vite 8.0.13)
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mProxy environment variables detected. We'll use your proxy for fetch requests.[0m
+
+
+[1/5] analyze client references...
+[2K
+transforming...✓ 469 modules transformed.
+rendering chunks...
+✓ built in 1.77s
+[2/5] analyze server references...
+[2K
+transforming...✓ 314 modules transformed.
+rendering chunks...
+✓ built in 945ms
+[3/5] build rsc environment...
+[2K
+transforming...✓ 475 modules transformed.
+rendering chunks...
+computing gzip size...
+✓ built in 2.02s
+[4/5] build client environment...
+[2K
+transforming...✓ 2114 modules transformed.
+rendering chunks...
+computing gzip size...
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.16s
+[5/5] build ssr environment...
+[2K
+transforming...✓ 320 modules transformed.
+rendering chunks...
+computing gzip size...
+✓ built in 1.32s
+[0m
+  Route (app)
+  ┌ ƒ /                                        
+  ├ λ /api/access                              
+  ├ λ /api/attachments                         
+  ├ λ /api/attendance                          
+  ├ λ /api/attendance-periods                  
+  ├ λ /api/audit                               
+  ├ λ /api/cadre-interviews                    
+  ├ λ /api/cadre-profiles                      
+  ├ λ /api/cadre-terms                         
+  ├ λ /api/cadres                              
+  ├ λ /api/certificates                        
+  ├ λ /api/contract-fields                     
+  ├ λ /api/delivery-evidence                   
+  ├ λ /api/development                         
+  ├ λ /api/employee-experiences                
+  ├ λ /api/employee-fields                     
+  ├ λ /api/feedback                            
+  ├ λ /api/history                             
+  ├ λ /api/hris                                
+  ├ λ /api/instructor-campaigns                
+  ├ λ /api/instructor-development              
+  ├ λ /api/instructor-directory                
+  ├ λ /api/instructor-trials                   
+  ├ λ /api/instructors                         
+  ├ λ /api/interview-definitions               
+  ├ λ /api/interview-schedule                  
+  ├ λ /api/learning-assignments                
+  ├ λ /api/learning-content-update             
+  ├ λ /api/learning-credits                    
+  ├ λ /api/learning-exam-tasks                 
+  ├ λ /api/learning-exams                      
+  ├ λ /api/learning-homework                   
+  ├ λ /api/learning-plans                      
+  ├ λ /api/members                             
+  ├ λ /api/mentoring                           
+  ├ λ /api/onboarding                          
+  ├ λ /api/payroll                             
+  ├ λ /api/payroll-adjustments                 
+  ├ λ /api/performance                         
+  ├ λ /api/performance-changes                 
+  ├ λ /api/performance-checkins                
+  ├ λ /api/performance-indicators              
+  ├ λ /api/performance-ratings                 
+  ├ λ /api/performance-templates               
+  ├ λ /api/qualifications                      
+  ├ λ /api/r1/adapters                         
+  ├ λ /api/r1/adapters/:source/preflight       
+  ├ λ /api/r1/commands                         
+  ├ λ /api/r1/commands/:commandId              
+  ├ λ /api/r1/m01                              
+  ├ λ /api/r1/m01/:id/history                  
+  ├ λ /api/r1/migration                        
+  ├ λ /api/r1/migration/attachments            
+  ├ λ /api/r1/migration/compatibility          
+  ├ λ /api/r1/reports                          
+  ├ λ /api/r1/reports/catalog                  
+  ├ λ /api/r1/reports/definitions              
+  ├ λ /api/r1/reports/definitions/:id/run      
+  ├ λ /api/r1/reports/export                   
+  ├ λ /api/r1/reports/jobs                     
+  ├ λ /api/r1/reports/jobs/:id                 
+  ├ λ /api/r1/reports/jobs/:id/download        
+  ├ λ /api/r1/reports/jobs/:id/step            
+  ├ λ /api/r1/reports/projections              
+  ├ λ /api/r1/reports/subscriptions            
+  ├ λ /api/r1/reports/subscriptions/:id/run    
+  ├ λ /api/r1/reports/subscriptions/results/:id
+  ├ λ /api/r1/self-service/:entry              
+  ├ λ /api/r1/self-service/actions             
+  ├ λ /api/r1/workflows                        
+  ├ λ /api/r1/workflows/batch                  
+  ├ λ /api/r1/workflows/options                
+  ├ λ /api/recruitment                         
+  ├ λ /api/recruitment-jobs                    
+  ├ λ /api/reports                             
+  ├ λ /api/self-service                        
+  ├ λ /api/shift-definitions                   
+  ├ λ /api/storage                             
+  ├ λ /api/surveys                             
+  ├ λ /api/training-requests                   
+  ├ λ /api/training-sessions                   
+  ├ λ /api/work-inbox                          
+  ├ λ /api/workforce                           
+  ├ ƒ /approvals                               
+  ├ ƒ /attendance                              
+  ├ ƒ /attendance-periods                      
+  ├ ƒ /audit                                   
+  ├ ? /cadre-interviews                        
+  ├ ƒ /cadre-profiles                          
+  ├ ? /cadre-terms                             
+  ├ ? /cadres                                  
+  ├ ? /certificates                            
+  ├ ? /contract-fields                         
+  ├ ƒ /development                             
+  ├ ? /employee-experiences                    
+  ├ ? /employee-fields                         
+  ├ ƒ /employees                               
+  ├ ? /feedback                                
+  ├ ? /instructor-campaigns                    
+  ├ ? /instructor-development                  
+  ├ ? /instructor-directory                    
+  ├ ? /instructor-trials                       
+  ├ ? /instructors                             
+  ├ ƒ /interview-schedule                      
+  ├ ƒ /learning                                
+  ├ ? /learning-credits                        
+  ├ ƒ /learning-exam-tasks                     
+  ├ ƒ /learning-exams                          
+  ├ ? /learning-homework                       
+  ├ ƒ /learning-plans                          
+  ├ ? /mentoring                               
+  ├ ? /onboarding                              
+  ├ ƒ /organizations                           
+  ├ ? /payroll                                 
+  ├ ? /payroll-adjustments                     
+  ├ ƒ /performance                             
+  ├ ? /performance-changes                     
+  ├ ? /performance-checkins                    
+  ├ ƒ /performance-indicators                  
+  ├ ƒ /performance-ratings                     
+  ├ ƒ /performance-templates                   
+  ├ ƒ /positions                               
+  ├ ? /qualifications                          
+  ├ ƒ /r1-approvals                            
+  ├ ƒ /r1-personnel                            
+  ├ ƒ /recruitment                             
+  ├ ƒ /recruitment-evaluations                 
+  ├ ƒ /recruitment-jobs                        
+  ├ ƒ /reports                                 
+  ├ ƒ /reports/subscriptions/results/:id       
+  ├ ƒ /scope                                   
+  ├ ƒ /self-service                            
+  ├ ƒ /settings                                
+  ├ ƒ /shift-definitions                       
+  ├ ? /surveys                                 
+  ├ ƒ /training-requests                       
+  ├ ? /training-sessions                       
+  ├ ? /work-inbox                              
+  └ ? /workforce                               
+
+  λ API  ƒ Dynamic  ? Unknown
+
+  ? Some routes could not be classified. vinext currently uses static analysis
+    and cannot detect dynamic API usage (headers(), cookies(), etc.) at build time.
+    Automatic classification will be improved in a future release.
+
+  Build complete. Run `vinext start` to start the production server.
+
