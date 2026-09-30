@@ -103,7 +103,7 @@ export const systemSettings = pgTable('system_settings', {
   updatedAt: utc('updated_at'),
 });
 
-/** 租户级覆盖。有效值 = 覆盖 ?? 系统值；“恢复” = 删除覆盖行（REQ-TEN-001 R3）。 */
+/** 租户级覆盖。有效值 = 激活的覆盖 ?? 系统值；“恢复” = 覆盖置为非激活（REQ-TEN-001 R3）。 */
 export const tenantSettingOverrides = pgTable(
   'tenant_setting_overrides',
   {
@@ -114,6 +114,8 @@ export const tenantSettingOverrides = pgTable(
       .notNull()
       .references(() => systemSettings.key),
     value: jsonb('value').notNull(),
+    // 恢复系统值时不删行，只置 false 并 revision + 1，保证 revision 单调、旧 ETag 不会误写（避免 ABA）
+    active: boolean('active').notNull().default(true),
     revision: integer('revision').notNull().default(1),
     updatedBy: uuid('updated_by')
       .notNull()

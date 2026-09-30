@@ -35,6 +35,12 @@ describe('AC-TEN-03 预置配置的租户覆盖与恢复', () => {
     asA = { user: a.user.id, tenant: a.tenant.id };
   });
 
+  /** 当前 revision（取 GET 的 ETag）；写请求必须携带它。 */
+  async function currentRevision(): Promise<number> {
+    const res = await api.request('GET', PATH, asA);
+    return Number(res.headers.get('etag')?.replaceAll('"', ''));
+  }
+
   it('覆盖 → 有效值来源 tenant；恢复 → 回到 system 值；两次操作都写入审计', async () => {
     const initial = await api.request('GET', PATH, asA);
     expect(initial.status).toBe(200);
@@ -51,7 +57,10 @@ describe('AC-TEN-03 预置配置的租户覆盖与恢复', () => {
 
     const restore = await api.request('DELETE', `${PATH}/override`, { ...asA, ifMatch: 1 });
     expect(restore.status).toBe(200);
-    expect(await restore.json()).toMatchObject({ value: SYSTEM_VALUE, source: 'system', revision: 0 });
+    expect(await restore.json()).toMatchObject({ value: SYSTEM_VALUE, source: 'system', revision: 2 });
+    const afterRestore = await api.request('GET', PATH, asA);
+    expect(afterRestore.headers.get('etag')).toBe('"2"');
+    expect(await afterRestore.json()).toMatchObject({ value: SYSTEM_VALUE, source: 'system', revision: 2 });
 
     const events = await withTenant(testDb().db, a.tenant.id, (tx) =>
       tx.select().from(auditEvents).where(eq(auditEvents.objectId, KEY)).orderBy(asc(auditEvents.occurredAt)),
@@ -61,6 +70,26 @@ describe('AC-TEN-03 预置配置的租户覆盖与恢复', () => {
     expect(events[0]?.after).toMatchObject({ value: override, revision: 1 });
     expect(events[1]?.before).toMatchObject({ value: override, revision: 1 });
     expect(events[1]?.after).toBeNull();
+  });
+
+  it('revision 单调递增（无 ABA）：覆盖 r1 → 恢复 r2 后，持旧 ETag（1）写入 → 409', async () => {
+    expect(await currentRevision()).toBe(2);
+    const stale = await api.request('PUT', PATH, { ...asA, ifMatch: 1, body: { value: { queryMonths: 7 } } });
+    expect(stale.status).toBe(409);
+    expect(await errorCode(stale)).toBe('REVISION_CONFLICT');
+
+    const again = await api.request('PUT', PATH, { ...asA, ifMatch: 2, body: { value: { queryMonths: 7 } } });
+    expect(await again.json()).toMatchObject({ source: 'tenant', revision: 3, value: { queryMonths: 7 } });
+    const restored = await api.request('DELETE', `${PATH}/override`, { ...asA, ifMatch: 3 });
+    expect(await restored.json()).toMatchObject({ source: 'system', revision: 4 });
+
+    // 本就取系统值时恢复是空操作：revision 不变、不写审计
+    const noop = await api.request('DELETE', `${PATH}/override`, { ...asA, ifMatch: 4 });
+    expect(await noop.json()).toMatchObject({ source: 'system', revision: 4 });
+    const restores = await withTenant(testDb().db, a.tenant.id, (tx) =>
+      tx.select().from(auditEvents).where(eq(auditEvents.action, 'tenant_setting.restore')),
+    );
+    expect(restores).toHaveLength(2);
   });
 
   it('审计不可修改、不可删除：应用角色与连接角色（表属主 / 超级用户）都被拒绝', async () => {
@@ -84,34 +113,34 @@ describe('AC-TEN-03 预置配置的租户覆盖与恢复', () => {
   });
 
   it('revision 不一致 → 409 REVISION_CONFLICT；缺少 If-Match → 400 REVISION_REQUIRED', async () => {
-    const first = await api.request('PUT', PATH, { ...asA, ifMatch: 0, body: { value: { queryMonths: 6 } } });
+    const rev = await currentRevision();
+    const first = await api.request('PUT', PATH, { ...asA, ifMatch: rev, body: { value: { queryMonths: 6 } } });
     expect(first.status).toBe(200);
 
-    const stale = await api.request('PUT', PATH, { ...asA, ifMatch: 0, body: { value: { queryMonths: 9 } } });
+    const stale = await api.request('PUT', PATH, { ...asA, ifMatch: rev, body: { value: { queryMonths: 9 } } });
     expect(stale.status).toBe(409);
     expect(await errorCode(stale)).toBe('REVISION_CONFLICT');
 
-    const staleRestore = await api.request('DELETE', `${PATH}/override`, { ...asA, ifMatch: 5 });
+    const staleRestore = await api.request('DELETE', `${PATH}/override`, { ...asA, ifMatch: 99 });
     expect(staleRestore.status).toBe(409);
 
     const missing = await api.request('PUT', PATH, { ...asA, body: { value: { queryMonths: 9 } } });
     expect(missing.status).toBe(400);
     expect(await errorCode(missing)).toBe('REVISION_REQUIRED');
 
-    const cleanup = await api.request('DELETE', `${PATH}/override`, { ...asA, ifMatch: 1 });
+    const cleanup = await api.request('DELETE', `${PATH}/override`, { ...asA, ifMatch: rev + 1 });
     expect(cleanup.status).toBe(200);
   });
 
   it('同一 Idempotency-Key 同内容重放返回原结果且只执行一次；同键异内容 → 409', async () => {
+    const rev = await currentRevision();
     const body = { value: { queryMonths: 4, retainMonths: 8 } };
-    const opts = { ...asA, ifMatch: 0, body, idempotencyKey: 'cmd-0001' };
+    const opts = { ...asA, ifMatch: rev, body, idempotencyKey: 'cmd-0001' };
     const first = await api.request('PUT', PATH, opts);
     const replay = await api.request('PUT', PATH, opts);
     expect([first.status, replay.status]).toEqual([200, 200]);
     expect(await replay.json()).toEqual(await first.json());
-
-    const current = (await (await api.request('GET', PATH, asA)).json()) as SettingBody;
-    expect(current.revision).toBe(1);
+    expect(await currentRevision()).toBe(rev + 1);
 
     const different = await api.request('PUT', PATH, { ...opts, body: { value: { queryMonths: 5 } } });
     expect(different.status).toBe(409);
@@ -121,7 +150,7 @@ describe('AC-TEN-03 预置配置的租户覆盖与恢复', () => {
       tx.select().from(auditEvents).where(eq(auditEvents.commandId, 'cmd-0001')),
     );
     expect(events).toHaveLength(1);
-    await api.request('DELETE', `${PATH}/override`, { ...asA, ifMatch: 1 });
+    await api.request('DELETE', `${PATH}/override`, { ...asA, ifMatch: rev + 1 });
   });
 
   it('系统预置且只读的配置不可覆盖 → 403 SETTING_READ_ONLY；未知配置 → 404', async () => {
@@ -144,13 +173,14 @@ describe('AC-TEN-03 预置配置的租户覆盖与恢复', () => {
     expect(unknown.status).toBe(404);
   });
 
-  it('未接入授权（R1-T01 之前的默认钩子）时写操作 fail-closed → 403', async () => {
+  it('未接入授权（R1-T01 之前的默认钩子）时读写一律 fail-closed → 403', async () => {
     const { db } = testDb();
     const locked = tenantApi(db, { authorize: undefined });
-    const res = await locked.request('PUT', PATH, { ...asA, ifMatch: 0, body: { value: { queryMonths: 1 } } });
-    expect(res.status).toBe(403);
-    expect(await errorCode(res)).toBe('FORBIDDEN');
+    const write = await locked.request('PUT', PATH, { ...asA, ifMatch: 0, body: { value: { queryMonths: 1 } } });
+    expect(write.status).toBe(403);
+    expect(await errorCode(write)).toBe('FORBIDDEN');
     const read = await locked.request('GET', PATH, asA);
-    expect(read.status).toBe(200);
+    expect(read.status).toBe(403);
+    expect(await errorCode(read)).toBe('FORBIDDEN');
   });
 });
