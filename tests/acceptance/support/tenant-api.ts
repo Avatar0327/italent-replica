@@ -2,7 +2,7 @@
  * 多租户验收测试的公共装配：建租户 / 用户 / 成员关系（走平台路径），
  * 并用开发期签名身份头构造请求。签名密钥每次运行随机生成，不入库、不入仓。
  */
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   type AppDeps,
   type Authorizer,
@@ -21,8 +21,11 @@ export interface RequestOptions {
   readonly tenant?: string;
   readonly body?: unknown;
   readonly ifMatch?: string | number;
-  readonly idempotencyKey?: string;
+  /** 写请求缺省自动生成；传 null 表示故意不带（验证 400）。 */
+  readonly idempotencyKey?: string | null;
 }
+
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 export function tenantApi(db: Db, deps: Omit<AppDeps, 'db' | 'identity'> = {}) {
   const secret = randomBytes(32).toString('hex');
@@ -38,7 +41,9 @@ export function tenantApi(db: Db, deps: Omit<AppDeps, 'db' | 'identity'> = {}) {
     if (options.user) Object.assign(headers, devIdentityHeaders(secret, options.user));
     if (options.tenant) headers['x-tenant-id'] = options.tenant;
     if (options.ifMatch !== undefined) headers['if-match'] = `"${options.ifMatch}"`;
-    if (options.idempotencyKey) headers['idempotency-key'] = options.idempotencyKey;
+    const key =
+      options.idempotencyKey === undefined && WRITE_METHODS.has(method) ? randomUUID() : options.idempotencyKey;
+    if (key) headers['idempotency-key'] = key;
     let body: string | undefined;
     if (options.body !== undefined) {
       body = JSON.stringify(options.body);
@@ -63,6 +68,6 @@ export async function seedTenantWithMember(
   const suffix = randomBytes(3).toString('hex');
   const tenant = await createTenant(db, { code: `${label}-${suffix}`, name: `租户${label}`, timezone });
   const user = await createUser(db, { email: `${label}-${suffix}@example.com`, displayName: `${label} 管理员` });
-  await grantMembership(db, { tenantId: tenant.id, userId: user.id });
+  await grantMembership(db, { tenantId: tenant.id, userId: user.id, actorUserId: null });
   return { tenant, user };
 }

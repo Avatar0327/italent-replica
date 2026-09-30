@@ -1,3 +1,4 @@
+import { RevisionConflictError } from '@italent/db';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
@@ -17,6 +18,7 @@ export const ERROR_STATUS = {
   SETTING_READ_ONLY: 403,
   // 并发与幂等（AGENTS.md §10）
   REVISION_REQUIRED: 400,
+  IDEMPOTENCY_KEY_REQUIRED: 400,
   REVISION_CONFLICT: 409,
   IDEMPOTENCY_CONFLICT: 409,
   PAYLOAD_TOO_LARGE: 413,
@@ -59,6 +61,9 @@ export function errorResponse(c: Context, code: ErrorCode, message: string, deta
 /** app.onError：AppError 按码返回；其他异常一律 500，不向客户端泄露内部信息。 */
 export function handleError(err: Error, c: Context): Response {
   if (err instanceof AppError) return errorResponse(c, err.code, err.message, err.details);
+  if (err instanceof RevisionConflictError) {
+    return errorResponse(c, 'REVISION_CONFLICT', err.message, { expected: err.expectedRevision });
+  }
   console.error(err);
   return errorResponse(c, 'INTERNAL_ERROR', '服务器内部错误');
 }
