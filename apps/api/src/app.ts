@@ -19,7 +19,7 @@ export interface AppDeps {
   readonly db?: Db;
   /** 身份解析；缺省谁都不认（401）。生产实现由 B-01 提供，见 identity.ts。 */
   readonly identity?: IdentityResolver;
-  /** 授权钩子；缺省只放行读（R1-T01 接入真实判定）。 */
+  /** 授权钩子；缺省一律拒绝（R1-T01 接入真实判定）。 */
   readonly authorize?: Authorizer | undefined;
   readonly clock?: () => Date;
   /** 额外的租户路由模块（后续业务模块、测试夹具）。 */
