@@ -1,0 +1,5 @@
+.DS_Store
+_private/
+99_临时/
+.env*
+node_modules/

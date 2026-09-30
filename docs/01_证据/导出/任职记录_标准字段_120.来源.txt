@@ -1,0 +1,8 @@
+来源：配置中心 → 组织员工 → 业务系统配置 → 任职管理/调动管理 → 字段页签
+对象：TenantBase.EmploymentRecord
+接口：POST /ldapi/Implementer/BusinessScenariosSetting/GetMetaFieldList
+      body: {"MetaDataType":0,"PageIndex":n,"PageSize":80,"ControlStatus":-1,"FilterItems":{"Name":"","Label":""}}
+      MetaDataType: 0=标准字段(120) / 1=自定义字段(80)
+采集：2026-09-22，A0 管理员视角，租户 北京SR样板间(410142)
+说明：字段说明列为原站原文，未做改写。
+类型码实测映射：2=文本/Lookup/枚举 4=是否 5=员工单选/Lookup引用 6=整数 7=小数 11=日期 12=日期时间
