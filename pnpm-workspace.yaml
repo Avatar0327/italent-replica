@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+
+# pnpm 10 默认不执行依赖的安装脚本；只放行确需原生二进制的包
+onlyBuiltDependencies:
+  - esbuild

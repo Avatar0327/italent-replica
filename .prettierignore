@@ -1,0 +1,10 @@
+docs/
+reference/
+_private/
+99_临时/
+node_modules/
+dist/
+coverage/
+pnpm-lock.yaml
+packages/db/migrations/meta/
+*.md

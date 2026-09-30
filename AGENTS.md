@@ -74,10 +74,33 @@
 - 领域模型用明确的表和列表达；除非规格要求“自定义字段”，否则不要用通用 JSON 实体表承载核心对象。
 - 注释只解释“为什么”，并在关键规则处引用规格位置（如 `// docs/02_业务建模/07 §2`）。
 
-## 8. 技术栈、命令与目录 ⏳
+## 8. 技术栈、命令与目录
 - 技术栈：**DEC-050 方案 B2**（TypeScript 全栈 + PostgreSQL，容器部署），选型清单见 `docs/07_M0/02_技术栈评估.md` §6。
-- 安装、测试、lint、构建命令：⏳
-- 目录归属表：⏳（M0 完成后按第 1 轮派发单填写）
+- 安装、测试、lint、构建命令（Node >=22.12，pnpm 版本由根 `package.json` 的 `packageManager` 锁定）：
+  | 用途 | 命令 |
+  |---|---|
+  | 云端容器初始化（唯一联网步骤，幂等） | `bash scripts/cloud-setup.sh` |
+  | 安装依赖 | `pnpm install --frozen-lockfile` |
+  | lint（ESLint + Prettier 检查） / 自动格式化 | `pnpm lint` / `pnpm format` |
+  | 类型检查 | `pnpm typecheck` |
+  | 测试（离线，PGlite，每个测试文件一个新库） | `pnpm test` |
+  | 测试（真 PostgreSQL 16；未设 `TEST_DATABASE_URL` 时自动调用 `scripts/dev-db.sh`） | `pnpm test:pg` |
+  | 两者都跑（有真 PG 才跑第二轮） | `bash scripts/test-all.sh` |
+  | 构建 | `pnpm build` |
+  | 生成迁移（改 `packages/db/src/schema/` 后） / 手写 SQL 迁移 | `pnpm db:generate` / `pnpm --filter @italent/db exec drizzle-kit generate --custom --name=<名称>` |
+  | 对 `DATABASE_URL` 执行迁移 | `pnpm db:migrate` |
+- 目录结构（归属车道留待第 1 轮派发单填写）：
+  | 目录 | 内容 |
+  |---|---|
+  | `apps/api/` | 后端（Hono on Node）；`createApp(deps)` 装配路由，`src/errors.ts` 统一错误码，`src/server.ts` 进程入口 |
+  | `apps/web/` | 前端（React + Vite SPA） |
+  | `packages/domain/` | 纯业务规则，禁止 IO（lint 禁止 import 数据库、网络、`node:*`） |
+  | `packages/db/` | Drizzle 表结构 `src/schema/`、迁移 `migrations/`（只增不改）、连接工厂 `createPgDb` / `createPgliteDb` |
+  | `packages/testkit/` | 测试辅助：`useTestDb()` 为每个测试文件建全新库并跑迁移（设了 `TEST_DATABASE_URL` 用真 PG，否则 PGlite） |
+  | `tests/acceptance/` | 验收测试 `AC-<编号>.test.ts`，示例见 `AC-SMOKE-01.test.ts` |
+  | `scripts/` | `cloud-setup.sh`、`dev-db.sh`、`test-pg.sh`、`test-all.sh` |
+  | `.github/workflows/ci.yml` | CI：Node 22/24 跑 lint、typecheck、test、build；另一个 job 用 postgres:16 跑 `test:pg` |
+- 工作区包之间直接解析到 `src/*.ts`（自定义导出条件 `@italent/source`），测试与类型检查无需先构建。
 
 ## 9. 交叉审计清单（审计方逐条检查）
 1. 八条硬规则；
