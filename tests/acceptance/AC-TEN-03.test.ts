@@ -153,6 +153,32 @@ describe('AC-TEN-03 预置配置的租户覆盖与恢复', () => {
     await api.request('DELETE', `${PATH}/override`, { ...asA, ifMatch: rev + 1 });
   });
 
+  it('写请求缺少 Idempotency-Key → 400 IDEMPOTENCY_KEY_REQUIRED，不存在绕过命令台账的写路径', async () => {
+    const rev = await currentRevision();
+    const put = await api.request('PUT', PATH, { ...asA, ifMatch: rev, idempotencyKey: null, body: { value: 1 } });
+    const del = await api.request('DELETE', `${PATH}/override`, { ...asA, ifMatch: rev, idempotencyKey: null });
+    expect([put.status, del.status]).toEqual([400, 400]);
+    expect(await errorCode(put)).toBe('IDEMPOTENCY_KEY_REQUIRED');
+    expect(await errorCode(del)).toBe('IDEMPOTENCY_KEY_REQUIRED');
+    expect(await currentRevision()).toBe(rev);
+  });
+
+  it('同键同内容的并发重复请求：都得到相同的成功响应，只执行一次、只写一次审计', async () => {
+    const rev = await currentRevision();
+    const opts = { ...asA, ifMatch: rev, body: { value: { queryMonths: 2 } }, idempotencyKey: 'cmd-concurrent' };
+    const [first, second] = await Promise.all([api.request('PUT', PATH, opts), api.request('PUT', PATH, opts)]);
+    expect([first.status, second.status]).toEqual([200, 200]);
+    const [body1, body2] = await Promise.all([first.json(), second.json()]);
+    expect(body2).toEqual(body1);
+    expect(body1).toMatchObject({ source: 'tenant', revision: rev + 1 });
+
+    const events = await withTenant(testDb().db, a.tenant.id, (tx) =>
+      tx.select().from(auditEvents).where(eq(auditEvents.commandId, 'cmd-concurrent')),
+    );
+    expect(events).toHaveLength(1);
+    await api.request('DELETE', `${PATH}/override`, { ...asA, ifMatch: rev + 1 });
+  });
+
   it('系统预置且只读的配置不可覆盖 → 403 SETTING_READ_ONLY；未知配置 → 404', async () => {
     const { db } = testDb();
     await upsertSystemSetting(db, {

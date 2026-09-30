@@ -32,19 +32,20 @@ export interface SettingWrite {
   readonly key: string;
   readonly expectedRevision: number;
   readonly now: Date;
-  readonly commandId: string | null;
+  readonly commandId: string;
 }
 
 export async function readEffectiveSetting(tx: Tx, tenantId: string, key: string): Promise<EffectiveSetting> {
   const system = await loadSystemSetting(tx, key);
-  const override = await loadOverride(tx, tenantId, key);
+  // 只读路径不加行锁：读者不应阻塞写者，也不需要 UPDATE 权限
+  const [override] = await tx.select().from(tenantSettingOverrides).where(overrideKey(tenantId, key));
   return effective(system, override);
 }
 
 export async function overrideSetting(tx: Tx, write: SettingWrite, value: unknown): Promise<EffectiveSetting> {
   const system = await loadSystemSetting(tx, write.key);
   if (!system.overridable) throw new AppError('SETTING_READ_ONLY', '该配置为系统预置只读，不可覆盖');
-  const current = await loadOverride(tx, write.tenantId, write.key);
+  const current = await loadOverrideForUpdate(tx, write.tenantId, write.key);
   assertRevision(write.expectedRevision, current);
 
   const next = {
@@ -70,7 +71,7 @@ export async function overrideSetting(tx: Tx, write: SettingWrite, value: unknow
 /** 恢复为系统值。当前本就取系统值时是无副作用的空操作（revision 不变、不写审计）。 */
 export async function restoreSetting(tx: Tx, write: SettingWrite): Promise<EffectiveSetting> {
   const system = await loadSystemSetting(tx, write.key);
-  const current = await loadOverride(tx, write.tenantId, write.key);
+  const current = await loadOverrideForUpdate(tx, write.tenantId, write.key);
   assertRevision(write.expectedRevision, current);
   if (!current?.active) return effective(system, current);
 
@@ -91,7 +92,8 @@ async function loadSystemSetting(tx: Tx, key: string): Promise<SystemSetting> {
   return system;
 }
 
-async function loadOverride(tx: Tx, tenantId: string, key: string): Promise<TenantSettingOverride | undefined> {
+/** 仅供覆盖 / 恢复路径使用。 */
+async function loadOverrideForUpdate(tx: Tx, tenantId: string, key: string) {
   // 行锁：同一租户同一配置的并发写串行化，后到者在 revision 比对时得到 409
   const [row] = await tx.select().from(tenantSettingOverrides).where(overrideKey(tenantId, key)).for('update');
   return row;

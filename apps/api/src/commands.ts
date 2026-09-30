@@ -1,11 +1,13 @@
 /**
  * 写命令执行器：一个租户事务内完成“业务写 + 审计 + 命令台账”（AGENTS.md §10「幂等」「审计」）。
- * - 不带命令 ID：直接执行；
- * - 带命令 ID（Idempotency-Key）：同键同内容 → 返回首次结果，不再执行；同键异内容 → 409 IDEMPOTENCY_CONFLICT。
- * 失败的命令整体回滚、不入台账，客户端可按原键重提（结果未知时先回查再决定，DEC-067）。
+ * - 每个写命令都必须带客户端命令 ID（Idempotency-Key），缺失即 400 IDEMPOTENCY_KEY_REQUIRED，不存在绕过台账的写路径；
+ * - 同键同内容 → 返回首次结果，不再执行；同键异内容 → 409 IDEMPOTENCY_CONFLICT；
+ * - 执行失败时先回查台账（结果未知先回查，DEC-067）：并发的同键同内容请求中，败者可能因行锁后 revision 已变
+ *   得到 409，或在主键上冲突，只要先提交者已记录同一命令，就重放其响应而不是报错。
+ * 失败的命令整体回滚、不入台账，客户端可按原键重提。
  */
 import { createHash } from 'node:crypto';
-import { commandLedger, type Db, eq, pgErrorCode, type Tx, withTenant } from '@italent/db';
+import { commandLedger, type Db, eq, type Tx, withTenant } from '@italent/db';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { AppError } from './errors.js';
 import type { TenantContext } from './tenant-context.js';
@@ -16,20 +18,20 @@ export interface CommandResult {
 }
 
 export interface Command {
-  /** 客户端命令 ID；不带时不做幂等。 */
+  /** 客户端命令 ID（Idempotency-Key 请求头）；必填。 */
   readonly id: string | undefined;
   /** 决定“同内容”的请求指纹（方法、路径、前置 revision、请求体等）。 */
   readonly fingerprint: unknown;
-  readonly execute: (tx: Tx, commandId: string | null) => Promise<CommandResult>;
+  readonly execute: (tx: Tx, commandId: string) => Promise<CommandResult>;
 }
 
 const COMMAND_ID = /^[A-Za-z0-9:_-]{1,100}$/;
 
 export async function runCommand(db: Db, ctx: TenantContext, command: Command): Promise<CommandResult> {
-  if (command.id === undefined) return withTenant(db, ctx.tenantId, (tx) => command.execute(tx, null));
   const commandId = command.id;
+  if (commandId === undefined) throw new AppError('IDEMPOTENCY_KEY_REQUIRED', '写请求必须携带 Idempotency-Key');
   if (!COMMAND_ID.test(commandId)) throw new AppError('VALIDATION_FAILED', 'Idempotency-Key 格式不合法');
-  const requestHash = hashOf({ userId: ctx.userId, fingerprint: command.fingerprint });
+  const requestHash = commandHash(ctx.userId, command.fingerprint);
 
   try {
     return await withTenant(db, ctx.tenantId, async (tx) => {
@@ -46,12 +48,27 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
       return result;
     });
   } catch (error) {
-    // 并发的同键请求：先提交者赢，后到者在唯一键上冲突并整体回滚，再按台账重放或报冲突
-    if (pgErrorCode(error) !== '23505') throw error;
-    const replay = await withTenant(db, ctx.tenantId, (tx) => findReplay(tx, commandId, requestHash));
-    if (!replay) throw error;
-    return replay;
+    return replayAfterFailure(db, ctx.tenantId, { commandId, requestHash }, error);
   }
+}
+
+/**
+ * 命令失败后回查台账：已有同键同内容的记录 → 重放；同键异内容 → 409 IDEMPOTENCY_CONFLICT；
+ * 台账里没有 → 原样抛出原错误。单独导出以便对“并发败者”路径做确定性测试。
+ */
+export async function replayAfterFailure(
+  db: Db,
+  tenantId: string,
+  key: { readonly commandId: string; readonly requestHash: string },
+  error: unknown,
+): Promise<CommandResult> {
+  const replay = await withTenant(db, tenantId, (tx) => findReplay(tx, key.commandId, key.requestHash));
+  if (!replay) throw error;
+  return replay;
+}
+
+export function commandHash(userId: string, fingerprint: unknown): string {
+  return createHash('sha256').update(JSON.stringify({ userId, fingerprint })).digest('hex');
 }
 
 async function findReplay(tx: Tx, commandId: string, requestHash: string): Promise<CommandResult | undefined> {
@@ -61,8 +78,4 @@ async function findReplay(tx: Tx, commandId: string, requestHash: string): Promi
     throw new AppError('IDEMPOTENCY_CONFLICT', '同一命令 ID 已用于不同内容的请求');
   }
   return { status: entry.responseStatus as ContentfulStatusCode, body: entry.responseBody };
-}
-
-function hashOf(value: unknown): string {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
