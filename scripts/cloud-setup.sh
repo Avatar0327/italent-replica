@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
 
-# 1) Node：要求 >=22.12；Codex 设 CODEX_ENV_NODE_VERSION=24，Claude 默认 22 即可
+# 1) Node：要求 >=22.12；Codex 在环境设置「Preinstalled packages」里选 Node 22（CODEX_ENV_ 前缀是保留变量，不能手填），Claude 默认 22
 node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=12)?0:1)' \
   || { echo "Node 版本过低：$(node -v)，需要 >=22.12"; exit 1; }
 
