@@ -3,10 +3,9 @@
  * 新租户默认 Asia/Shanghai；同一生效日在两个时区下的到期判定不同；审计事件时间以 UTC 存储、按租户时区显示。
  * “定时任务在 UTC 09-30 17:00 运行并落地调动”部分依赖 R1-T08（定时生效）与调动对象，暂以 it.todo 占位。
  */
-import { auditEvents, createTenant, getTenant, withTenant } from '@italent/db';
+import { auditEvents, createTenant, eq, getTenant, sql, withTenant } from '@italent/db';
 import { isEffectiveDue, tenantLocalDate } from '@italent/domain';
 import { pgErrorCode, useTestDb } from '@italent/testkit';
-import { eq, sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 

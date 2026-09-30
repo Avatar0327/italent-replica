@@ -2,9 +2,8 @@
  * AC-TEN-03（REQ-TEN-001 R3；docs/02_业务建模/11 §13.1）：租户覆盖一条系统预置配置后“恢复” → 回到系统级配置。
  * 同时覆盖平台约定（AGENTS.md §10）：revision 乐观锁 409、命令 ID 幂等、业务与审计同事务、审计只追加。
  */
-import { auditEvents, upsertSystemSetting, withTenant } from '@italent/db';
+import { asc, auditEvents, eq, sql, upsertSystemSetting, withTenant } from '@italent/db';
 import { pgErrorCode, useTestDb } from '@italent/testkit';
-import { asc, eq, sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { errorCode, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 
@@ -64,7 +63,7 @@ describe('AC-TEN-03 预置配置的租户覆盖与恢复', () => {
     expect(events[1]?.after).toBeNull();
   });
 
-  it('审计不可修改、不可删除：应用角色与超级用户（绕过 RLS）都被拒绝', async () => {
+  it('审计不可修改、不可删除：应用角色与连接角色（表属主 / 超级用户）都被拒绝', async () => {
     const { db } = testDb();
     const asAppUser = withTenant(db, a.tenant.id, (tx) => tx.update(auditEvents).set({ action: 'forged' }));
     await expect(asAppUser).rejects.toThrow();

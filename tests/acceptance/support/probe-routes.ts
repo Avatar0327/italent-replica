@@ -4,9 +4,8 @@
  * 他租户对象一律 404（与不存在无法区分，docs/08_设计/R1-T00 §4）。
  */
 import { AppError, tenantOf, type TenantRouteModule } from '@italent/api';
-import { withTenant } from '@italent/db';
+import { eq, withTenant } from '@italent/db';
 import { tenantProbe } from '@italent/testkit';
-import { eq } from 'drizzle-orm';
 
 const notFound = () => new AppError('NOT_FOUND', '对象不存在');
 
@@ -19,9 +18,7 @@ export const probeRoutes: TenantRouteModule = (router, { db }) => {
   router.post('/api/tenant/probes', async (c) => {
     const { name } = await c.req.json<{ name: string }>();
     const { tenantId } = tenantOf(c);
-    const [row] = await withTenant(db, tenantId, (tx) =>
-      tx.insert(tenantProbe).values({ tenantId, name }).returning(),
-    );
+    const [row] = await withTenant(db, tenantId, (tx) => tx.insert(tenantProbe).values({ tenantId, name }).returning());
     return c.json(row, 201);
   });
 

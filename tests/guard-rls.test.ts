@@ -3,9 +3,8 @@
  * public schema 中凡含 tenant_id 列的表，必须 ENABLE + FORCE ROW LEVEL SECURITY 且至少有一条策略；
  * 应用角色与平台角色都不得是超级用户或带 BYPASSRLS。新表漏配 RLS 时本测试失败。
  */
-import { APP_ROLE } from '@italent/db';
+import { APP_ROLE, sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
 const testDb = useTestDb();

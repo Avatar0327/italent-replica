@@ -3,9 +3,8 @@
  * 数据库层（RLS）与 API 层（租户中间件）各验证一次；不带租户上下文的查询一律 0 行。
  * API 对他租户对象统一返回 404，与“不存在”不可区分，不泄露存在性。
  */
-import { APP_ROLE, withPlatform, withTenant } from '@italent/db';
+import { APP_ROLE, eq, sql, withPlatform, withTenant } from '@italent/db';
 import { installTenantProbe, pgErrorCode, tenantProbe, useTestDb } from '@italent/testkit';
-import { eq, sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { probeRoutes } from './support/probe-routes.js';
 import { errorCode, seedTenantWithMember, tenantApi } from './support/tenant-api.js';

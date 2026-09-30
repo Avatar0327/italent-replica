@@ -24,9 +24,7 @@ describe('AC-TEN-01 两租户同名对象互不可见', () => {
   it('数据库层：各自以租户会话写入同名记录，各自只读到自己的一条', async () => {
     const { db } = testDb();
     for (const t of [a, b]) {
-      await withTenant(db, t.tenant.id, (tx) =>
-        tx.insert(tenantProbe).values({ tenantId: t.tenant.id, name: '总部' }),
-      );
+      await withTenant(db, t.tenant.id, (tx) => tx.insert(tenantProbe).values({ tenantId: t.tenant.id, name: '总部' }));
     }
 
     const rowsA = await withTenant(db, a.tenant.id, (tx) => tx.select().from(tenantProbe));

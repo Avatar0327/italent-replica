@@ -15,6 +15,20 @@
       "when": 1790783651363,
       "tag": "0001_btree_gist_exclusion",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790785581885,
+      "tag": "0002_tenancy",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790785609594,
+      "tag": "0003_tenant_rls",
+      "breakpoints": true
     }
   ]
 }
