@@ -9,6 +9,7 @@ export {
 } from './tenant-time.js';
 export {
   ORG_DIMENSIONS,
+  type OrgDescendantsOptions,
   type OrgDescendantsQuery,
   type OrgDimension,
   type OrgEnabledQuery,

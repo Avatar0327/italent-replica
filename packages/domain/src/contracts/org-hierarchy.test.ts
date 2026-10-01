@@ -1,5 +1,11 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { ORG_DIMENSIONS, type OrgDimension, type OrgHierarchyReader, type OrgId } from './org-hierarchy.js';
+import {
+  ORG_DIMENSIONS,
+  type OrgDescendantsOptions,
+  type OrgDimension,
+  type OrgHierarchyReader,
+  type OrgId,
+} from './org-hierarchy.js';
 
 describe('契约 OrgHierarchyReader（只校验类型形状，实现由 R1-T03 提供）', () => {
   it('组织维度为 1 个行政维度 + 4 个扩展维度，不含成本中心', () => {
@@ -19,6 +25,9 @@ describe('契约 OrgHierarchyReader（只校验类型形状，实现由 R1-T03 �
       readonly orgId: OrgId;
       readonly asOf: string;
     }>();
+    expectTypeOf<OrgHierarchyReader['listDescendantIds']>().parameter(1).toEqualTypeOf<{
+      readonly includeDisabled: boolean;
+    }>();
     expectTypeOf<OrgHierarchyReader['listDescendantIds']>().returns.toEqualTypeOf<Promise<readonly OrgId[]>>();
     expectTypeOf<OrgHierarchyReader['isEnabled']>().parameter(0).toEqualTypeOf<{
       readonly tenantId: string;
@@ -26,5 +35,11 @@ describe('契约 OrgHierarchyReader（只校验类型形状，实现由 R1-T03 �
       readonly asOf: string;
     }>();
     expectTypeOf<OrgHierarchyReader['isEnabled']>().returns.toEqualTypeOf<Promise<boolean>>();
+  });
+
+  it('includeDisabled 必填且无默认值（D-6 未决，调用方须显式选择）', () => {
+    expectTypeOf<OrgHierarchyReader['listDescendantIds']>().parameters.toHaveProperty('length').toEqualTypeOf<2>();
+    expectTypeOf<OrgDescendantsOptions>().not.toEqualTypeOf<{ readonly includeDisabled?: boolean }>();
+    expectTypeOf<Record<string, never>>().not.toExtend<OrgDescendantsOptions>();
   });
 });

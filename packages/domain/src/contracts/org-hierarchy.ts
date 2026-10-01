@@ -34,6 +34,17 @@ export interface OrgDescendantsQuery {
   readonly asOf: IsoDate;
 }
 
+/**
+ * 是否展开已停用的组织。必填、不设默认值：docs/02_业务建模/11 D-6（范围内组织停用后范围是否收缩）未决，
+ * 契约不替规格做决定，调用方须显式选择。
+ * - false：已停用的组织及其整棵子树都不展开（若 orgId 本身已停用则返回空数组）；
+ * - true：按层级全部展开，不看启用状态。
+ * R1-T02 在 D-6 定论前一律传 false（fail-closed），并在调用处留 TODO(需取证 D-6)。
+ */
+export interface OrgDescendantsOptions {
+  readonly includeDisabled: boolean;
+}
+
 export interface OrgEnabledQuery {
   readonly tenantId: string;
   readonly orgId: OrgId;
@@ -45,10 +56,11 @@ export interface OrgEnabledQuery {
  * 组织层级只读接口。所有方法都必须限定在 tenantId 内（AGENTS.md §2 租户隔离）。
  * 约定（实现方须由契约测试覆盖）：
  * - 组织在 asOf 不存在、属于其他租户、或维度未开启时：listDescendantIds 返回空数组，isEnabled 返回 false（fail-closed）；
- * - listDescendantIds 返回全部层级的下级（传递闭包），不含 orgId 本身，不去掉已停用的下级，结果不含重复 ID；
+ * - listDescendantIds 返回全部层级的下级（传递闭包），不含 orgId 本身，结果不含重复 ID；
+ *   已停用组织是否展开由 options.includeDisabled 显式决定（见 OrgDescendantsOptions）；
  * - 是否启用是组织本身的状态，与维度无关。
  */
 export interface OrgHierarchyReader {
-  listDescendantIds(query: OrgDescendantsQuery): Promise<readonly OrgId[]>;
+  listDescendantIds(query: OrgDescendantsQuery, options: OrgDescendantsOptions): Promise<readonly OrgId[]>;
   isEnabled(query: OrgEnabledQuery): Promise<boolean>;
 }
