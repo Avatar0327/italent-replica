@@ -11,3 +11,11 @@ export {
 } from './identity.js';
 export type { TenantRouteDeps, TenantRouteModule } from './routes.js';
 export { TENANT_HEADER, type TenantContext, tenantContext, type TenantEnv, tenantOf } from './tenant-context.js';
+export {
+  bootstrapTenantAdmin,
+  createPermissionAuthorizer,
+  type LicenseQuotaChange,
+  type PermissionAdminView,
+  registerObjectDefinition,
+  setLicenseQuota,
+} from './modules/permission/index.js';

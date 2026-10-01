@@ -16,3 +16,4 @@ export {
   type OrgHierarchyReader,
   type OrgId,
 } from './contracts/org-hierarchy.js';
+export * from './permission/index.js';
