@@ -41,7 +41,7 @@ export interface OrganizationValidation extends EstablishmentAssessment {
   readonly fields: Record<string, string>;
 }
 
-// TODO(需取证 R1-T03 编制校验): T04 接入真实编制数据和组织新建超编的计算规则。
+// TODO(需取证 #9): T04 接入真实编制数据和组织新建超编的计算规则。
 const noEstablishmentRule: EstablishmentAssessor = async () => ({
   isBeyondEstablishment: false,
   strictControl: false,

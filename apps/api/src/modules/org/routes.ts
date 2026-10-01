@@ -114,6 +114,7 @@ function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   });
   router.get(`${BASE}/views`, async (c) => {
     await context(c, deps, 'read');
+    // TODO(需取证 #9): 界面任务接入四视图目录；当前车道不含 apps/web，不能冒充页面菜单验收。
     return c.json({
       items: [
         { label: '组织', resource: 'organization', dimension: 'admin' },

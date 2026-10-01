@@ -54,6 +54,7 @@ export async function loadOrgSnapshot(tx: Tx, tenantId: string, asOf: string): P
 }
 
 export function orderOrganizations(a: OrgRecord, b: OrgRecord): number {
+  // TODO(需取证 #9): DEC-037 长整数排序编码待明确组合算法与任务归属；此处只落实 DEC-038。
   const display = (a.displayOrder ?? Number.MAX_SAFE_INTEGER) - (b.displayOrder ?? Number.MAX_SAFE_INTEGER);
   if (display) return display;
   return a.code < b.code ? -1 : a.code > b.code ? 1 : 0;
