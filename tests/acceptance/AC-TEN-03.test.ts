@@ -5,7 +5,7 @@
 import { asc, auditEvents, eq, sql, upsertSystemSetting, withTenant } from '@italent/db';
 import { pgErrorCode, useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { errorCode, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
+import { cmd, errorCode, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 
@@ -181,12 +181,11 @@ describe('AC-TEN-03 预置配置的租户覆盖与恢复', () => {
 
   it('系统预置且只读的配置不可覆盖 → 403 SETTING_READ_ONLY；未知配置 → 404', async () => {
     const { db } = testDb();
-    await upsertSystemSetting(db, {
-      key: 'test.read_only',
-      value: true,
-      description: '测试用只读预置',
-      overridable: false,
-    });
+    await upsertSystemSetting(
+      db,
+      { key: 'test.read_only', value: true, description: '测试用只读预置', overridable: false, expectedVersion: 0 },
+      cmd(),
+    );
     const readOnly = await api.request('PUT', '/api/tenant/settings/test.read_only', {
       ...asA,
       ifMatch: 0,

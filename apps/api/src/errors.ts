@@ -1,4 +1,4 @@
-import { RevisionConflictError } from '@italent/db';
+import { IdempotencyConflictError, RevisionConflictError } from '@italent/db';
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
@@ -64,6 +64,7 @@ export function handleError(err: Error, c: Context): Response {
   if (err instanceof RevisionConflictError) {
     return errorResponse(c, 'REVISION_CONFLICT', err.message, { expected: err.expectedRevision });
   }
+  if (err instanceof IdempotencyConflictError) return errorResponse(c, 'IDEMPOTENCY_CONFLICT', err.message);
   console.error(err);
   return errorResponse(c, 'INTERNAL_ERROR', '服务器内部错误');
 }

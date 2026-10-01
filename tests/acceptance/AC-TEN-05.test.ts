@@ -7,7 +7,7 @@ import { auditEvents, createTenant, eq, getTenant, sql, withTenant } from '@ital
 import { isEffectiveDue, tenantLocalDate } from '@italent/domain';
 import { pgErrorCode, useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { seedTenantWithMember, tenantApi } from './support/tenant-api.js';
+import { cmd, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 const RUN_AT = new Date('2026-09-30T17:00:00Z'); // 北京时间 10-01 01:00
@@ -30,7 +30,7 @@ describe('AC-TEN-05 租户时区', () => {
 
   it('非 IANA 时区在平台开通与数据库约束两层都被拒绝', async () => {
     const { db } = testDb();
-    await expect(createTenant(db, { code: 'bad-tz', name: '坏时区', timezone: 'Mars/Olympus' })).rejects.toThrow(
+    await expect(createTenant(db, { code: 'bad-tz', name: '坏时区', timezone: 'Mars/Olympus' }, cmd())).rejects.toThrow(
       RangeError,
     );
     const direct = await db

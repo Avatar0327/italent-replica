@@ -1,6 +1,14 @@
 export { pgErrorCode } from './pg-error.js';
 export { createPgDb, createPgliteDb, type Db, type DbHandle, migrationsFolder } from './client.js';
 export {
+  type AuditEntry,
+  IdempotencyConflictError,
+  type PlatformCommandContext,
+  type PlatformCommandMeta,
+  RevisionConflictError,
+  runPlatformCommand,
+} from './platform-command.js';
+export {
   createTenant,
   createUser,
   getTenant,
@@ -8,12 +16,13 @@ export {
   grantMembership,
   type MembershipChange,
   type NewTenant,
-  RevisionConflictError,
   revokeMembership,
   setTenantStatus,
   setUserStatus,
   type SystemSettingInput,
+  type TenantStatusChange,
   upsertSystemSetting,
+  type UserStatusChange,
 } from './platform-ops.js';
 export * as schema from './schema/index.js';
 export * from './schema/index.js';

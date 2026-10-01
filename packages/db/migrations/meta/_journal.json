@@ -36,6 +36,20 @@
       "when": 1790786247561,
       "tag": "0004_setting_override_active",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790817400078,
+      "tag": "0005_platform_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790817400636,
+      "tag": "0006_platform_audit_guard",
+      "breakpoints": true
     }
   ]
 }

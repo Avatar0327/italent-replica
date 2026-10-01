@@ -11,7 +11,15 @@ import {
   devIdentityHeaders,
   type ErrorBody,
 } from '@italent/api';
-import { createTenant, createUser, type Db, grantMembership, type Tenant, type User } from '@italent/db';
+import {
+  createTenant,
+  createUser,
+  type Db,
+  grantMembership,
+  type PlatformCommandMeta,
+  type Tenant,
+  type User,
+} from '@italent/db';
 
 /** 测试中注入“全部允许”的授权钩子；真实判定由 R1-T01 接入。 */
 export const allowAll: Authorizer = () => true;
@@ -55,6 +63,11 @@ export function tenantApi(db: Db, deps: Omit<AppDeps, 'db' | 'identity'> = {}) {
   return { app, request };
 }
 
+/** 平台命令元信息：新的命令 ID；操作人缺省为平台方（null）。 */
+export function cmd(actorUserId: string | null = null): PlatformCommandMeta {
+  return { actorUserId, commandId: randomUUID() };
+}
+
 export async function errorCode(res: Response): Promise<string> {
   return ((await res.json()) as ErrorBody).error.code;
 }
@@ -66,8 +79,8 @@ export async function seedTenantWithMember(
   timezone?: string,
 ): Promise<{ tenant: Tenant; user: User }> {
   const suffix = randomBytes(3).toString('hex');
-  const tenant = await createTenant(db, { code: `${label}-${suffix}`, name: `租户${label}`, timezone });
-  const user = await createUser(db, { email: `${label}-${suffix}@example.com`, displayName: `${label} 管理员` });
-  await grantMembership(db, { tenantId: tenant.id, userId: user.id, actorUserId: null });
+  const tenant = await createTenant(db, { code: `${label}-${suffix}`, name: `租户${label}`, timezone }, cmd());
+  const user = await createUser(db, { email: `${label}-${suffix}@example.com`, displayName: `${label} 管理员` }, cmd());
+  await grantMembership(db, { tenantId: tenant.id, userId: user.id, expectedRevision: 0 }, cmd());
   return { tenant, user };
 }

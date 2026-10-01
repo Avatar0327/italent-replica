@@ -1,7 +1,7 @@
 /**
  * CI 守卫（硬规则 7；docs/07_M0/02_技术栈评估.md §8 R-2）：
  * public schema 中凡含 tenant_id 列的表，必须 ENABLE + FORCE ROW LEVEL SECURITY 且至少有一条策略；
- * 应用角色与平台角色都不得是超级用户或带 BYPASSRLS。新表漏配 RLS 时本测试失败。
+ * 不含 tenant_id 的表必须在平台表豁免清单内；应用角色与平台角色都不得是超级用户或带 BYPASSRLS。
  */
 import { APP_ROLE, sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -59,6 +59,33 @@ describe('守卫：带 tenant_id 的表必须启用并强制 RLS', () => {
       })
       .catch((e: { found?: string[] }) => e.found);
     expect(found).toEqual(['guard_canary']);
+  });
+
+  it('不含 tenant_id 的表都在平台表豁免清单内（新增平台表必须在此登记理由）', async () => {
+    // 豁免理由：这些表描述平台本身或跨租户的全局对象，不属于任何租户；只授予 app_platform，app_user 无权访问
+    const platformTables: Record<string, string> = {
+      tenants: '租户本身',
+      users: '全局身份，一人可属多租户',
+      system_settings: '系统级预置，租户只读',
+      platform_meta: '平台元数据（M0）',
+      platform_audit_events: '无租户归属的平台变更审计（用户、系统预置），只追加',
+      platform_command_ledger: '平台写命令幂等台账',
+    };
+    const result = await testDb().db.execute(sql`
+      SELECT c.relname AS "table" FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+         AND NOT EXISTS (SELECT 1 FROM pg_attribute a
+                          WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped)
+       ORDER BY c.relname`);
+    const tables = rowsOf<{ table: string }>(result).map((r) => r.table);
+    expect(tables).toEqual(Object.keys(platformTables).sort());
+
+    for (const table of tables.filter((t) => t !== 'system_settings')) {
+      const [row] = rowsOf<{ ok: boolean }>(
+        await testDb().db.execute(sql`SELECT has_table_privilege(${APP_ROLE.tenant}, ${table}, 'SELECT') AS ok`),
+      );
+      expect({ table, readableByTenantRole: row?.ok }).toEqual({ table, readableByTenantRole: false });
+    }
   });
 
   it('应用角色与平台角色不是超级用户、没有 BYPASSRLS、不能登录', async () => {

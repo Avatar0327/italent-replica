@@ -1,12 +1,19 @@
 /**
  * 平台路径上的操作（L1 平台方，REQ-PLT-001 R1；R1-T17 将在此基础上补开通预置、许可等）。
- * 平台级表经 withPlatform 访问；需要写租户数据（如成员关系）时显式切到 withTenant。
+ * 读：经 withPlatform。写：一律经 runPlatformCommand——带操作人与命令 ID（幂等）、更新带 expectedRevision
+ * （创建除外；成员关系“尚不存在”记为 revision 0）、同一事务内写审计。
  */
 import { assertValidTimeZone, DEFAULT_TENANT_TIMEZONE } from '@italent/domain';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from './client.js';
 import {
-  auditEvents,
+  type PlatformCommandContext,
+  type PlatformCommandMeta,
+  RevisionConflictError,
+  runPlatformCommand,
+} from './platform-command.js';
+import {
+  type MembershipStatus,
   type SystemSetting,
   systemSettings,
   type Tenant,
@@ -18,7 +25,7 @@ import {
   users,
   type UserStatus,
 } from './schema/index.js';
-import { type Tx, withPlatform, withTenant } from './tenant-context.js';
+import { withPlatform } from './tenant-context.js';
 
 export interface NewTenant {
   readonly code: string;
@@ -27,13 +34,30 @@ export interface NewTenant {
   readonly timezone?: string | undefined;
 }
 
-export async function createTenant(db: Db, input: NewTenant): Promise<Tenant> {
+const tenantSnapshot = (t: Tenant) => ({
+  code: t.code,
+  name: t.name,
+  timezone: t.timezone,
+  status: t.status,
+  revision: t.revision,
+});
+const userSnapshot = (u: User) => ({
+  email: u.email,
+  displayName: u.displayName,
+  status: u.status,
+  revision: u.revision,
+});
+
+/** 开通租户；审计写入新租户自己的 audit_events。 */
+export async function createTenant(db: Db, input: NewTenant, meta: PlatformCommandMeta): Promise<Tenant> {
   const timezone = input.timezone ?? DEFAULT_TENANT_TIMEZONE;
   assertValidTimeZone(timezone);
-  const [row] = await withPlatform(db, (tx) =>
-    tx.insert(tenants).values({ code: input.code, name: input.name, timezone }).returning(),
-  );
-  return row!;
+  const values = { code: input.code, name: input.name, timezone };
+  return runPlatformCommand(db, meta, 'tenant.create', values, async (ctx) => {
+    const [row] = await ctx.tx.insert(tenants).values(values).returning();
+    await ctx.auditTenant(row!.id, audit('tenant.create', 'tenant', row!.id, null, tenantSnapshot(row!)));
+    return row!;
+  });
 }
 
 export async function getTenant(db: Db, tenantId: string): Promise<Tenant | undefined> {
@@ -41,41 +65,40 @@ export async function getTenant(db: Db, tenantId: string): Promise<Tenant | unde
   return row;
 }
 
-/** 平台写操作的 revision 不一致（AGENTS.md §10「并发」）；API 层映射为 409 REVISION_CONFLICT。 */
-export class RevisionConflictError extends Error {
-  readonly code = 'REVISION_CONFLICT';
-  constructor(
-    readonly object: string,
-    readonly expectedRevision: number,
-  ) {
-    super(`${object} 的 revision 已不是 ${expectedRevision}`);
-    this.name = 'RevisionConflictError';
-  }
+export interface TenantStatusChange {
+  readonly tenantId: string;
+  readonly status: TenantStatus;
+  readonly expectedRevision: number;
 }
 
-/** 停用 / 恢复隔离 / 重新开放，须带 expectedRevision。restoring 期间除平台方外一律拒绝访问（DEC-061）。 */
-export async function setTenantStatus(
-  db: Db,
-  tenantId: string,
-  status: TenantStatus,
-  expectedRevision: number,
-): Promise<Tenant> {
-  const [row] = await withPlatform(db, (tx) =>
-    tx
+/** 停用 / 恢复隔离 / 重新开放。restoring 期间除平台方外一律拒绝访问（DEC-061）。审计写入该租户。 */
+export async function setTenantStatus(db: Db, change: TenantStatusChange, meta: PlatformCommandMeta): Promise<Tenant> {
+  return runPlatformCommand(db, meta, 'tenant.set_status', change, async (ctx) => {
+    const [before] = await ctx.tx.select().from(tenants).where(eq(tenants.id, change.tenantId)).for('update');
+    const [row] = await ctx.tx
       .update(tenants)
-      .set({ status, revision: expectedRevision + 1, updatedAt: sql`now()` })
-      .where(and(eq(tenants.id, tenantId), eq(tenants.revision, expectedRevision)))
-      .returning(),
-  );
-  if (!row) throw new RevisionConflictError('tenant', expectedRevision);
-  return row;
+      .set({ status: change.status, revision: change.expectedRevision + 1, updatedAt: sql`now()` })
+      .where(and(eq(tenants.id, change.tenantId), eq(tenants.revision, change.expectedRevision)))
+      .returning();
+    if (!before || !row) throw new RevisionConflictError('tenant', change.expectedRevision);
+    const entry = audit('tenant.set_status', 'tenant', row.id, tenantSnapshot(before), tenantSnapshot(row));
+    await ctx.auditTenant(row.id, entry);
+    return row;
+  });
 }
 
-export async function createUser(db: Db, input: { email: string; displayName: string }): Promise<User> {
-  const [row] = await withPlatform(db, (tx) =>
-    tx.insert(users).values({ email: input.email.toLowerCase(), displayName: input.displayName }).returning(),
-  );
-  return row!;
+/** 建全局用户；无租户归属，审计写入 platform_audit_events。 */
+export async function createUser(
+  db: Db,
+  input: { email: string; displayName: string },
+  meta: PlatformCommandMeta,
+): Promise<User> {
+  const values = { email: input.email.toLowerCase(), displayName: input.displayName };
+  return runPlatformCommand(db, meta, 'user.create', values, async (ctx) => {
+    const [row] = await ctx.tx.insert(users).values(values).returning();
+    await ctx.auditPlatform(audit('user.create', 'user', row!.id, null, userSnapshot(row!)));
+    return row!;
+  });
 }
 
 export async function getUser(db: Db, userId: string): Promise<User | undefined> {
@@ -83,56 +106,69 @@ export async function getUser(db: Db, userId: string): Promise<User | undefined>
   return row;
 }
 
-export async function setUserStatus(db: Db, userId: string, status: UserStatus): Promise<void> {
-  await withPlatform(db, (tx) =>
-    tx
+export interface UserStatusChange {
+  readonly userId: string;
+  readonly status: UserStatus;
+  readonly expectedRevision: number;
+}
+
+export async function setUserStatus(db: Db, change: UserStatusChange, meta: PlatformCommandMeta): Promise<User> {
+  return runPlatformCommand(db, meta, 'user.set_status', change, async (ctx) => {
+    const [before] = await ctx.tx.select().from(users).where(eq(users.id, change.userId)).for('update');
+    const [row] = await ctx.tx
       .update(users)
-      .set({ status, updatedAt: sql`now()` })
-      .where(eq(users.id, userId)),
-  );
+      .set({ status: change.status, revision: change.expectedRevision + 1, updatedAt: sql`now()` })
+      .where(and(eq(users.id, change.userId), eq(users.revision, change.expectedRevision)))
+      .returning();
+    if (!before || !row) throw new RevisionConflictError('user', change.expectedRevision);
+    await ctx.auditPlatform(audit('user.set_status', 'user', row.id, userSnapshot(before), userSnapshot(row)));
+    return row;
+  });
 }
 
 export interface MembershipChange {
   readonly tenantId: string;
   readonly userId: string;
-  /** 操作人；平台方或系统任务为 null（审计记为“系统”）。 */
-  readonly actorUserId: string | null;
+  /** 当前成员关系的 revision；尚无成员关系时为 0。 */
+  readonly expectedRevision: number;
 }
 
-/** 授予（或重新激活）成员关系；写在租户路径上，受 RLS 约束，并在同一事务内写审计。 */
-export async function grantMembership(db: Db, change: MembershipChange): Promise<TenantMembership> {
-  return withTenant(db, change.tenantId, async (tx) => {
-    const before = await findMembershipForUpdate(tx, change);
-    const [row] = await tx
-      .insert(tenantMemberships)
-      .values({ tenantId: change.tenantId, userId: change.userId })
-      .onConflictDoUpdate({
-        target: [tenantMemberships.tenantId, tenantMemberships.userId],
-        set: { status: 'active', revision: sql`${tenantMemberships.revision} + 1`, updatedAt: sql`now()` },
-      })
-      .returning();
-    await auditMembership(tx, change, 'tenant_membership.grant', before, row!);
-    return row!;
-  });
+/** 授予（revision 0 时新建）或重新激活成员关系。成员关系行与审计都写在该租户下（RLS）。 */
+export function grantMembership(db: Db, change: MembershipChange, meta: PlatformCommandMeta) {
+  return changeMembership(db, change, meta, 'active');
 }
 
-/** 撤销只改状态、保留行（留痕）并写审计；中间件每次请求都会重新读取，撤销立即生效。 */
-export async function revokeMembership(db: Db, change: MembershipChange): Promise<TenantMembership | undefined> {
-  return withTenant(db, change.tenantId, async (tx) => {
-    const before = await findMembershipForUpdate(tx, change);
-    if (before?.status !== 'active') return before;
-    const [row] = await tx
-      .update(tenantMemberships)
-      .set({ status: 'revoked', revision: before.revision + 1, updatedAt: sql`now()` })
-      .where(eq(tenantMemberships.id, before.id))
-      .returning();
-    await auditMembership(tx, change, 'tenant_membership.revoke', before, row!);
-    return row;
-  });
+/** 撤销只改状态、保留行（留痕）；中间件每次请求都会重新读取，撤销立即生效。 */
+export function revokeMembership(db: Db, change: MembershipChange, meta: PlatformCommandMeta) {
+  return changeMembership(db, change, meta, 'revoked');
 }
 
-async function findMembershipForUpdate(tx: Tx, change: MembershipChange): Promise<TenantMembership | undefined> {
-  const [row] = await tx
+async function changeMembership(
+  db: Db,
+  change: MembershipChange,
+  meta: PlatformCommandMeta,
+  status: MembershipStatus,
+): Promise<TenantMembership> {
+  const op = status === 'active' ? 'tenant_membership.grant' : 'tenant_membership.revoke';
+  return runPlatformCommand(db, meta, op, change, (ctx) =>
+    ctx.inTenant(change.tenantId, async () => {
+      const before = await findMembershipForUpdate(ctx, change);
+      if ((before?.revision ?? 0) !== change.expectedRevision) {
+        throw new RevisionConflictError('tenant_membership', change.expectedRevision);
+      }
+      if (!before && status === 'revoked') throw new RevisionConflictError('tenant_membership', 0);
+      const after = before ? await updateMembership(ctx, before, status) : await insertMembership(ctx, change);
+      await ctx.auditTenant(change.tenantId, audit(op, 'tenant_membership', after.id, snap(before), snap(after)));
+      return after;
+    }),
+  );
+}
+
+const snap = (m: TenantMembership | undefined) =>
+  m ? { userId: m.userId, status: m.status, revision: m.revision } : null;
+
+async function findMembershipForUpdate(ctx: PlatformCommandContext, change: MembershipChange) {
+  const [row] = await ctx.tx
     .select()
     .from(tenantMemberships)
     .where(and(eq(tenantMemberships.tenantId, change.tenantId), eq(tenantMemberships.userId, change.userId)))
@@ -140,25 +176,22 @@ async function findMembershipForUpdate(tx: Tx, change: MembershipChange): Promis
   return row;
 }
 
-async function auditMembership(
-  tx: Tx,
-  change: MembershipChange,
-  action: string,
-  before: TenantMembership | undefined,
-  after: TenantMembership,
-): Promise<void> {
-  const snapshot = (m: TenantMembership | undefined) =>
-    m ? { userId: m.userId, status: m.status, revision: m.revision } : null;
-  // 审计行落在该租户下（tenant_id = 租户），受同一 RLS 策略约束
-  await tx.insert(auditEvents).values({
-    tenantId: change.tenantId,
-    actorUserId: change.actorUserId,
-    action,
-    objectType: 'tenant_membership',
-    objectId: after.id,
-    before: snapshot(before),
-    after: snapshot(after),
-  });
+async function insertMembership(ctx: PlatformCommandContext, change: MembershipChange) {
+  const [row] = await ctx.tx
+    .insert(tenantMemberships)
+    .values({ tenantId: change.tenantId, userId: change.userId })
+    .returning();
+  return row!;
+}
+
+async function updateMembership(ctx: PlatformCommandContext, before: TenantMembership, status: MembershipStatus) {
+  const [row] = await ctx.tx
+    .update(tenantMemberships)
+    .set({ status, revision: before.revision + 1, updatedAt: sql`now()` })
+    .where(and(eq(tenantMemberships.id, before.id), eq(tenantMemberships.revision, before.revision)))
+    .returning();
+  if (!row) throw new RevisionConflictError('tenant_membership', before.revision);
+  return row;
 }
 
 export interface SystemSettingInput {
@@ -166,25 +199,35 @@ export interface SystemSettingInput {
   readonly value: unknown;
   readonly description: string;
   readonly overridable: boolean;
+  /** 当前 version；新建时为 0。 */
+  readonly expectedVersion: number;
 }
 
-/** 平台下发 / 更新系统级预置；内容变化时 version + 1。 */
-export async function upsertSystemSetting(db: Db, input: SystemSettingInput): Promise<SystemSetting> {
-  const [row] = await withPlatform(db, (tx) =>
-    tx
-      .insert(systemSettings)
-      .values(input)
-      .onConflictDoUpdate({
-        target: systemSettings.key,
-        set: {
-          value: input.value,
-          description: input.description,
-          overridable: input.overridable,
-          version: sql`${systemSettings.version} + 1`,
-          updatedAt: sql`now()`,
-        },
-      })
-      .returning(),
-  );
-  return row!;
+/** 平台下发 / 更新系统级预置；version 即其 revision。无租户归属，审计写入 platform_audit_events。 */
+export async function upsertSystemSetting(
+  db: Db,
+  input: SystemSettingInput,
+  meta: PlatformCommandMeta,
+): Promise<SystemSetting> {
+  return runPlatformCommand(db, meta, 'system_setting.upsert', input, async (ctx) => {
+    const { expectedVersion, ...values } = input;
+    const [before] = await ctx.tx.select().from(systemSettings).where(eq(systemSettings.key, input.key)).for('update');
+    if ((before?.version ?? 0) !== expectedVersion) throw new RevisionConflictError('system_setting', expectedVersion);
+    const [row] = before
+      ? await ctx.tx
+          .update(systemSettings)
+          .set({ ...values, version: expectedVersion + 1, updatedAt: sql`now()` })
+          .where(and(eq(systemSettings.key, input.key), eq(systemSettings.version, expectedVersion)))
+          .returning()
+      : await ctx.tx.insert(systemSettings).values(values).returning();
+    if (!row) throw new RevisionConflictError('system_setting', expectedVersion);
+    const snapshot = (s: SystemSetting | undefined) =>
+      s ? { value: s.value, overridable: s.overridable, version: s.version } : null;
+    await ctx.auditPlatform(audit('system_setting.upsert', 'system_setting', row.key, snapshot(before), snapshot(row)));
+    return row;
+  });
+}
+
+function audit(action: string, objectType: string, objectId: string, before: unknown, after: unknown) {
+  return { action, objectType, objectId, before, after };
 }

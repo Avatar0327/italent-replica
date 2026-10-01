@@ -18,7 +18,8 @@ describe('命令失败后回查台账（结果未知先回查，DEC-067）', () 
 
   beforeAll(async () => {
     const { db } = testDb();
-    tenantId = (await createTenant(db, { code: 'cmd-t', name: '命令租户' })).id;
+    const meta = { actorUserId: null, commandId: 'seed-cmd-t' };
+    tenantId = (await createTenant(db, { code: 'cmd-t', name: '命令租户' }, meta)).id;
     await withTenant(db, tenantId, (tx) =>
       tx.insert(commandLedger).values({
         tenantId,

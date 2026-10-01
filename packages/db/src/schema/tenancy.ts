@@ -56,6 +56,7 @@ export const users = pgTable(
     email: text('email').notNull().unique(),
     displayName: text('display_name').notNull(),
     status: text('status').$type<UserStatus>().notNull().default('active'),
+    revision: integer('revision').notNull().default(1),
     createdAt: utc('created_at'),
     updatedAt: utc('updated_at'),
   },
@@ -165,6 +166,31 @@ export const commandLedger = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.commandId] })],
 );
+
+/**
+ * 平台审计：没有租户归属的平台级变更（用户、系统预置）。不带 tenant_id，故不受 RLS 约束（guard-rls 中列为豁免）；
+ * 只有 app_platform 可读写，只追加（迁移 0006 触发器）。与租户相关的平台变更（开租户、改租户状态、成员关系）
+ * 写入该租户的 audit_events，租户管理员可见。
+ */
+export const platformAuditEvents = pgTable('platform_audit_events', {
+  id: id(),
+  actorUserId: uuid('actor_user_id').references(() => users.id),
+  action: text('action').notNull(),
+  objectType: text('object_type').notNull(),
+  objectId: text('object_id').notNull(),
+  before: jsonb('before'),
+  after: jsonb('after'),
+  occurredAt: utc('occurred_at'),
+  commandId: text('command_id').notNull(),
+});
+
+/** 平台命令台账：平台写命令的幂等键全局唯一（AGENTS.md §10「幂等」）。 */
+export const platformCommandLedger = pgTable('platform_command_ledger', {
+  commandId: text('command_id').primaryKey(),
+  requestHash: text('request_hash').notNull(),
+  response: jsonb('response').notNull(),
+  createdAt: utc('created_at'),
+});
 
 export type Tenant = typeof tenants.$inferSelect;
 export type User = typeof users.$inferSelect;
