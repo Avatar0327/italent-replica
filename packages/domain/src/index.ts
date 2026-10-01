@@ -7,3 +7,11 @@ export {
   isValidTimeZone,
   tenantLocalDate,
 } from './tenant-time.js';
+export {
+  ORG_DIMENSIONS,
+  type OrgDescendantsQuery,
+  type OrgDimension,
+  type OrgEnabledQuery,
+  type OrgHierarchyReader,
+  type OrgId,
+} from './contracts/org-hierarchy.js';
