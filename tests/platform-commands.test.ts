@@ -145,6 +145,55 @@ describe('平台写命令：用户与系统预置（无租户归属 → 平台�
     );
   });
 
+  it('系统预置审计快照含全部可变字段；创建时记录初始 description', async () => {
+    const { db } = testDb();
+    const base = { key: 'test.snapshot', value: { a: 1 }, description: '初始说明', overridable: true };
+    await upsertSystemSetting(db, { ...base, expectedVersion: 0 }, cmd());
+    await upsertSystemSetting(db, { ...base, description: '新说明', overridable: false, expectedVersion: 1 }, cmd());
+    const events = await platformAudit(db, 'test.snapshot');
+    const created = events.find((e) => e.before === null);
+    const updated = events.find((e) => e.before !== null);
+    expect(created?.after).toEqual({ value: { a: 1 }, description: '初始说明', overridable: true, version: 1 });
+    expect(updated?.before).toEqual({ value: { a: 1 }, description: '初始说明', overridable: true, version: 1 });
+    expect(updated?.after).toEqual({ value: { a: 1 }, description: '新说明', overridable: false, version: 2 });
+  });
+
+  it('重放结果与首次结果 deepEqual：业务 JSON 里形似时间戳的字段不被改写', async () => {
+    const { db } = testDb();
+    const input = {
+      key: 'test.revive',
+      value: { cutoffAt: 'abc', createdAt: '2026-01-01T00:00:00.000Z', nested: { updatedAt: 'x' } },
+      description: '重放测试',
+      overridable: true,
+      expectedVersion: 0,
+    };
+    const meta = cmd();
+    const first = await upsertSystemSetting(db, input, meta);
+    const replay = await upsertSystemSetting(db, input, meta);
+    expect(replay).toEqual(first);
+    expect(replay.value).toEqual(input.value);
+    expect(replay.updatedAt).toBeInstanceOf(Date);
+  });
+
+  it('同 key 首次并发下发：不同命令 → 一个成功、另一个 revision 冲突；同命令 → 都得到同一结果', async () => {
+    // 真 PG 下败者在主键上冲突（23505），已转换为 RevisionConflictError；PGlite 串行执行时败者在版本比对处冲突
+    const { db } = testDb();
+    const input = { key: 'test.race', value: 1, description: '并发', overridable: true, expectedVersion: 0 };
+    const results = await Promise.allSettled([
+      upsertSystemSetting(db, input, cmd()),
+      upsertSystemSetting(db, input, cmd()),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
+    expect(rejected.reason).toBeInstanceOf(RevisionConflictError);
+
+    const same = { ...input, key: 'test.race2' };
+    const meta = cmd();
+    const [x, y] = await Promise.all([upsertSystemSetting(db, same, meta), upsertSystemSetting(db, same, meta)]);
+    expect(y).toEqual(x);
+    expect(await platformAudit(db, 'test.race2')).toHaveLength(1);
+  });
+
   it('平台审计只追加，且租户角色无权读取', async () => {
     const { db } = testDb();
     for (const statement of [

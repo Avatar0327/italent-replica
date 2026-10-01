@@ -6,6 +6,7 @@
 import { assertValidTimeZone, DEFAULT_TENANT_TIMEZONE } from '@italent/domain';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from './client.js';
+import { pgErrorCode } from './pg-error.js';
 import {
   type PlatformCommandContext,
   type PlatformCommandMeta,
@@ -177,11 +178,24 @@ async function findMembershipForUpdate(ctx: PlatformCommandContext, change: Memb
 }
 
 async function insertMembership(ctx: PlatformCommandContext, change: MembershipChange) {
-  const [row] = await ctx.tx
-    .insert(tenantMemberships)
-    .values({ tenantId: change.tenantId, userId: change.userId })
-    .returning();
+  const [row] = await insertOnce(
+    () => ctx.tx.insert(tenantMemberships).values({ tenantId: change.tenantId, userId: change.userId }).returning(),
+    'tenant_membership',
+  );
   return row!;
+}
+
+/**
+ * “期望不存在（revision 0）”的首次插入：并发的另一方已先插入时唯一键冲突（23505），
+ * 语义上就是 revision 冲突（与租户配置首次覆盖一致）；runPlatformCommand 随后先查台账，同命令则重放，否则 409。
+ */
+async function insertOnce<T>(insert: () => Promise<T>, object: string): Promise<T> {
+  try {
+    return await insert();
+  } catch (error) {
+    if (pgErrorCode(error) === '23505') throw new RevisionConflictError(object, 0);
+    throw error;
+  }
 }
 
 async function updateMembership(ctx: PlatformCommandContext, before: TenantMembership, status: MembershipStatus) {
@@ -219,10 +233,11 @@ export async function upsertSystemSetting(
           .set({ ...values, version: expectedVersion + 1, updatedAt: sql`now()` })
           .where(and(eq(systemSettings.key, input.key), eq(systemSettings.version, expectedVersion)))
           .returning()
-      : await ctx.tx.insert(systemSettings).values(values).returning();
+      : await insertOnce(() => ctx.tx.insert(systemSettings).values(values).returning(), 'system_setting');
     if (!row) throw new RevisionConflictError('system_setting', expectedVersion);
+    // 快照覆盖全部可变字段；创建时 before 为 null，after 含初始 description
     const snapshot = (s: SystemSetting | undefined) =>
-      s ? { value: s.value, overridable: s.overridable, version: s.version } : null;
+      s ? { value: s.value, description: s.description, overridable: s.overridable, version: s.version } : null;
     await ctx.auditPlatform(audit('system_setting.upsert', 'system_setting', row.key, snapshot(before), snapshot(row)));
     return row;
   });

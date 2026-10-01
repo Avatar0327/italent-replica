@@ -88,7 +88,7 @@ async function findReplay<T>(tx: Tx, commandId: string, requestHash: string): Pr
   const [entry] = await tx.select().from(platformCommandLedger).where(eq(platformCommandLedger.commandId, commandId));
   if (!entry) return undefined;
   if (entry.requestHash !== requestHash) throw new IdempotencyConflictError(commandId);
-  return { value: reviveTimestamps(entry.response) as T };
+  return { value: reviveEntityTimestamps(entry.response) as T };
 }
 
 function contextFor(tx: Tx, meta: PlatformCommandMeta): PlatformCommandContext {
@@ -120,11 +120,18 @@ function contextFor(tx: Tx, meta: PlatformCommandMeta): PlatformCommandContext {
   };
 }
 
-// 台账以 JSON 保存结果；重放时把 *At 时间字段还原为 Date，使重放结果与首次返回同形
-function reviveTimestamps(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(reviveTimestamps);
-  if (value === null || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value).map(([k, v]) => [k, k.endsWith('At') && typeof v === 'string' ? new Date(v) : v]),
-  );
+/**
+ * 平台命令的结果都是单个实体行（租户、用户、成员关系、系统预置）。台账以 JSON 保存，Date 变成 ISO 字符串；
+ * 重放时只还原实体行顶层的已知时间戳列，不触碰其他字段——尤其是 value 等业务 JSON 里的同名或形似字段。
+ */
+const ENTITY_TIMESTAMP_COLUMNS = ['createdAt', 'updatedAt'] as const;
+
+export function reviveEntityTimestamps(response: unknown): unknown {
+  if (response === null || typeof response !== 'object' || Array.isArray(response)) return response;
+  const entity: Record<string, unknown> = { ...response };
+  for (const column of ENTITY_TIMESTAMP_COLUMNS) {
+    const v = entity[column];
+    if (typeof v === 'string') entity[column] = new Date(v);
+  }
+  return entity;
 }
