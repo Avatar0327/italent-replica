@@ -16,6 +16,13 @@ until pg_isready -q -h localhost; do sleep 0.5; done
   || "${PSQL[@]}" -c "CREATE ROLE app LOGIN PASSWORD 'app' NOSUPERUSER NOBYPASSRLS"
 "${PSQL[@]}" -c "SELECT 1 FROM pg_roles WHERE rolname='app_owner'" | grep -q 1 \
   || "${PSQL[@]}" -c "CREATE ROLE app_owner LOGIN PASSWORD 'app_owner' CREATEDB"
+# 租户路径 / 平台路径角色（R1-T00，迁移 0003）：集群级对象，由超级用户预建；
+# 迁移角色 app_owner 与运行时角色 app 都须是其成员，才能在事务内 SET LOCAL ROLE
+for role in app_user app_platform; do
+  "${PSQL[@]}" -c "SELECT 1 FROM pg_roles WHERE rolname='$role'" | grep -q 1 \
+    || "${PSQL[@]}" -c "CREATE ROLE $role NOLOGIN NOSUPERUSER NOBYPASSRLS"
+done
+"${PSQL[@]}" -c "GRANT app_user, app_platform TO app_owner, app"
 "${PSQL[@]}" -c "SELECT 1 FROM pg_database WHERE datname='italent_test'" | grep -q 1 \
   || $SUDO -u postgres createdb -O app_owner italent_test
 # 在模板库装好扩展，测试时新建的库自动带上（btree_gist 是可信扩展，库属主也可自行创建）

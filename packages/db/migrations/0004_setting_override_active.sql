@@ -1,0 +1,1 @@
+ALTER TABLE "tenant_setting_overrides" ADD COLUMN "active" boolean DEFAULT true NOT NULL;
