@@ -1,5 +1,4 @@
 /** R1-T03：真实组织存储实现 OrgHierarchyReader，供 R1-T02 按时点展开数据范围。 */
-import type { Db } from '@italent/db';
 import { ORG_DIMENSIONS, type OrgDimension, type OrgHierarchyReader, type OrgId } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, expectTypeOf, it } from 'vitest';
@@ -17,12 +16,9 @@ interface Organization {
 type Parents = Partial<Record<OrgDimension, { parentId: string; sequence?: number }>>;
 
 async function reader(): Promise<OrgHierarchyReader> {
-  // 在测试体内加载，先记录真实红测；模块尚未实现时也能正常收集每条契约用例。
-  const modulePath = `${process.cwd()}/apps/api/src/modules/org/hierarchy-reader.ts`;
-  const module = (await import(modulePath)) as {
-    createOrgHierarchyReader(db: Db): OrgHierarchyReader;
-  };
-  return module.createOrgHierarchyReader(testDb().db);
+  const { createOrgHierarchyReader } = await import('../../apps/api/src/modules/org/hierarchy-reader.js');
+  expectTypeOf(createOrgHierarchyReader).returns.toEqualTypeOf<OrgHierarchyReader>();
+  return createOrgHierarchyReader(testDb().db);
 }
 
 async function fixture(label: string) {
@@ -147,14 +143,29 @@ describe('OrgHierarchyReader 真实实现契约（AC-ORG-07、组织有效期、
     const expired = await f.create('有效期组织', undefined, { startDate: '2026-03-01', stopDate: '2026-09-30' });
     const future = await f.create('未来组织', undefined, { startDate: '2026-11-01' });
     const disabled = await f.create('停用历史组织');
+    const endedVersion = await f.create('旧版本不能复活');
     await f.update(disabled, { effectiveDate: '2026-09-01', enabled: false });
+    await f.update(endedVersion, { effectiveDate: '2026-09-01', stopDate: '2026-09-30' });
 
     expect(await hierarchy.isEnabled(query(f.tenant.id, expired.id, 'admin', '2026-02-28'))).toBe(false);
     expect(await hierarchy.isEnabled(query(f.tenant.id, expired.id, 'admin', '2026-03-01'))).toBe(true);
     expect(await hierarchy.isEnabled(query(f.tenant.id, expired.id, 'admin', '2026-09-30'))).toBe(true);
+    expect(
+      await hierarchy.listDescendantIds(query(f.tenant.id, f.tenant.id, 'admin', '2026-09-30'), {
+        includeDisabled: true,
+      }),
+    ).toContain(expired.id);
     expect(await hierarchy.isEnabled(query(f.tenant.id, expired.id))).toBe(false);
     expect(await hierarchy.listDescendantIds(query(f.tenant.id, expired.id), { includeDisabled: true })).toEqual([]);
     expect(await hierarchy.isEnabled(query(f.tenant.id, future.id))).toBe(false);
+    const currentIds = await hierarchy.listDescendantIds(query(f.tenant.id, f.tenant.id), {
+      includeDisabled: true,
+    });
+    expect(currentIds).not.toContain(expired.id);
+    expect(currentIds).not.toContain(future.id);
+    expect(currentIds).not.toContain(endedVersion.id);
+    expect(await hierarchy.isEnabled(query(f.tenant.id, endedVersion.id, 'admin', '2026-09-30'))).toBe(true);
+    expect(await hierarchy.isEnabled(query(f.tenant.id, endedVersion.id))).toBe(false);
     expect(await hierarchy.isEnabled(query(f.tenant.id, future.id, 'admin', '2026-11-01'))).toBe(true);
     expect(await hierarchy.isEnabled(query(f.tenant.id, disabled.id, 'admin', '2026-08-31'))).toBe(true);
     expect(await hierarchy.isEnabled(query(f.tenant.id, disabled.id, 'admin', '2026-09-01'))).toBe(false);
@@ -201,5 +212,34 @@ describe('OrgHierarchyReader 真实实现契约（AC-ORG-07、组织有效期、
       expect(await hierarchy.isEnabled(query(a.tenant.id, id))).toBe(false);
     }
     expect(await hierarchy.isEnabled(query(b.tenant.id, parent.id))).toBe(true);
+  });
+
+  it('JavaScript 调用方也必须显式选择 includeDisabled，不能依靠隐式默认值', async () => {
+    const hierarchy = await reader();
+    const q = query('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002');
+    for (const args of [[q], [q, {}], [q, { includeDisabled: 'false' }]]) {
+      await expect(Reflect.apply(hierarchy.listDescendantIds, hierarchy, args)).rejects.toThrow(TypeError);
+    }
+  });
+
+  it('非法租户、维度与业务日期 fail-closed，不能降级为当前或全量读取', async () => {
+    const hierarchy = await reader();
+    const f = await fixture('contract-invalid');
+    const child = await f.create('有效组织');
+    const queries = [
+      query('', f.tenant.id),
+      query('not-a-tenant-id', f.tenant.id),
+      query(f.tenant.id, f.tenant.id, 'admin', '2026-02-30'),
+      query(f.tenant.id, f.tenant.id, 'admin', 'invalid-date'),
+    ];
+    for (const q of queries) {
+      expect(await hierarchy.listDescendantIds(q, { includeDisabled: true })).toEqual([]);
+      expect(await hierarchy.isEnabled({ ...q, orgId: child.id as OrgId })).toBe(false);
+    }
+    expect(
+      await hierarchy.listDescendantIds(query(f.tenant.id, f.tenant.id, 'cost-center' as OrgDimension), {
+        includeDisabled: true,
+      }),
+    ).toEqual([]);
   });
 });

@@ -12,6 +12,7 @@ import { registerTenantSettingRoutes } from './modules/tenant-settings/routes.js
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
 const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerTenantSettingRoutes, // R1-T00 两层配置
+  (await import('./modules/org/routes.js')).registerOrgRoutes, // R1-T03 多维组织
 ];
 
 export interface AppDeps {

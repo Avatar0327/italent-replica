@@ -50,6 +50,20 @@
       "when": 1790817400636,
       "tag": "0006_platform_audit_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790868264724,
+      "tag": "0007_org",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790868269160,
+      "tag": "0008_org_rls",
+      "breakpoints": true
     }
   ]
 }
