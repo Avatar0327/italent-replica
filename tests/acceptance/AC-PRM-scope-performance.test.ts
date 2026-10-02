@@ -1,4 +1,4 @@
-/** Bounded real SQL on a tenant with 2,001 organizations and employees; not an in-memory scope mock. */
+/** Bounded real SQL on a large tenant; personnel scope remains a relational SQL predicate. */
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
@@ -86,14 +86,16 @@ it('scope resolution + paginated list uses a fixed number of queries with thousa
         employment_records: 'business',
         employment_timeline: 'timeline',
       }[table];
+      const generatedRows = table === 'employment_employees' ? 50000 : 2000;
       const patch = sql`jsonb_build_object('id',md5(${tid}||${idPrefix}||g)::uuid,'tenant_id',${tid}::uuid,
         'employee_id',md5(${tid}||'person'||g)::uuid,'business_id',md5(${tid}||'business'||g)::uuid,
         'payload_version_id',md5(${tid}||'payload'||g)::uuid,'staff_id',md5(${tid}||'staff'||g)::uuid,
-        'record_id',md5(${tid}||'business'||g)::uuid,'code','E'||g,'department_id',md5(${tid}||'org'||g)::uuid)`;
+        'record_id',md5(${tid}||'business'||g)::uuid,'code','E'||g,
+        'department_id',md5(${tid}||'org'||(1 + ((g - 1) % 2000)))::uuid)`;
       await tx.execute(sql`INSERT INTO ${tableSql}
         SELECT (jsonb_populate_record(NULL::${tableSql},to_jsonb(sample)||${patch})).*
         FROM (SELECT * FROM ${tableSql} WHERE tenant_id=${tid} AND ${ownKey}=${employee.id} LIMIT 1) sample
-        CROSS JOIN generate_series(1,2000) g`);
+        CROSS JOIN generate_series(1,${generatedRows}) g`);
     }
   });
 
@@ -118,7 +120,8 @@ it('scope resolution + paginated list uses a fixed number of queries with thousa
       asOf: '2026-10-01',
     });
     expect(scope.orgIds).toHaveLength(2001);
-    expect(scope.personIds).toHaveLength(2001);
+    expect(scope.personIds).toEqual([]);
+    expect(scope.terms?.[0]?.personQuery?.kind).toBe('organization');
     const rows = await listEmployees(counted, w.tenant.id, '2026-10-01', { limit: 50, offset: 0 }, {}, scope);
     expect(rows).toHaveLength(50);
     expect(queryCount).toBeLessThanOrEqual(8);
@@ -127,7 +130,7 @@ it('scope resolution + paginated list uses a fixed number of queries with thousa
       await tx.execute(sql`SELECT count(*)::text AS count
       FROM employment_employees WHERE tenant_id=${w.tenant.id}`),
     );
-    expect(total[0]!.count).toBe('2001');
+    expect(total[0]!.count).toBe('50001');
   });
   const api = tenantApi(w.db, { authorize: undefined, clock: () => new Date('2026-10-01T01:00:00Z') });
   const response = await api.request('GET', '/api/tenant/employment/employees', { user: user.id, tenant: w.tenant.id });
@@ -136,4 +139,4 @@ it('scope resolution + paginated list uses a fixed number of queries with thousa
   expect(body.items).toHaveLength(50);
   expect(body.hasDataPermission).toBe(true);
   expect(body.items.every((row) => !('name' in row))).toBe(true);
-}, 30000);
+}, 120000);

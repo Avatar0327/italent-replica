@@ -3,7 +3,7 @@ import { sql, type Tx } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import type { TenantRouteDeps } from '../../routes.js';
 import { AppError } from '../../errors.js';
-import type { BusinessContext } from '../job/context.js';
+import type { ScopeBusinessContext } from './module-contracts.js';
 import { authorizeInTransaction } from './module-access.js';
 import { visible, writeFields, type ModuleScope } from './module-route-access.js';
 
@@ -28,7 +28,7 @@ const MAX_FOOTPRINTS = 20_000;
 export async function authorizeEstablishmentReplay(
   tx: Tx,
   deps: TenantRouteDeps,
-  ctx: BusinessContext,
+  ctx: ScopeBusinessContext,
   scope: ModuleScope,
   commandId: string,
   copyExecution: boolean,

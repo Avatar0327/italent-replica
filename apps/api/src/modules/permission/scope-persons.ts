@@ -1,7 +1,5 @@
-import { sql, type Tx } from '@italent/db';
+import { sql } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
-import { AppError } from '../../errors.js';
-import { scopeRows } from './scope-hierarchy.js';
 
 /** Latest immutable payload projected at the authorization date, not the requested historical date. */
 export function currentPersons(tenantId: string, asOf: string): SQL {
@@ -17,37 +15,26 @@ export function currentPersons(tenantId: string, asOf: string): SQL {
     WHERE t.tenant_id=${tenantId} AND t.valid_during @> ${asOf}::date
   `;
 }
-function bounded(rows: { employee_id: string }[]) {
-  if (rows.length > 20_000) throw new AppError('PAYLOAD_TOO_LARGE', '管理人员超过有界解析上限');
-  return rows.map((row) => row.employee_id);
-}
-export async function managedPersons(tx: Tx, tenantId: string, asOf: string, orgIds: readonly string[]) {
-  if (!orgIds.length) return [];
+export function managedPersonsSql(tenantId: string, asOf: string, orgIds: readonly string[], person: SQL): SQL {
+  if (!orgIds.length) return sql`false`;
   // TODO(需取证 Q-M0-29): §14.3 高级管理人员条件对象未定位；首版仅从当前任职组织归属派生。
-  const people = scopeRows<{ employee_id: string }>(
-    await tx.execute(sql`
-      SELECT DISTINCT employee_id FROM (${currentPersons(tenantId, asOf)}) p
-      WHERE p.department_id=ANY(${`{${orgIds.join(',')}}`}::uuid[])
-    `),
-  );
-  return people.map((row) => row.employee_id);
+  return sql`EXISTS (SELECT 1 FROM (${currentPersons(tenantId, asOf)}) managed
+    WHERE managed.employee_id=${person} AND managed.department_id=ANY(${`{${orgIds.join(',')}}`}::uuid[]))`;
 }
-export async function reportingPersons(
-  tx: Tx,
+
+export function reportingPersonsSql(
   tenantId: string,
   asOf: string,
   employeeId: string,
   mode: string,
-): Promise<string[]> {
+  person: SQL,
+): SQL {
   const direct = ['direct', 'all_direct', 'direct_mixed', 'part_time'].includes(mode);
   const dotted = ['dotted', 'dotted_mixed'].includes(mode);
   const recursive = ['all_direct', 'direct_mixed', 'dotted_mixed', 'part_time'].includes(mode);
   const mixed = ['direct_mixed', 'dotted_mixed'].includes(mode);
   // TODO(需取证 Q-M0-31): 任职当前仅支持 primary；副职关系未接入时 part_time 必须为空。
-  return bounded(
-    scopeRows<{ employee_id: string }>(
-      await tx.execute(sql`
-    WITH RECURSIVE people AS (${currentPersons(tenantId, asOf)}),
+  return sql`${person} IN (WITH RECURSIVE people AS (${currentPersons(tenantId, asOf)}),
     reports(employee_id) AS (
       SELECT employee_id FROM people WHERE kind NOT IN ('leave','retirement')
         AND employee_id<>${employeeId}::uuid
@@ -60,8 +47,5 @@ export async function reportingPersons(
         OR (${dotted || mixed} AND p.dotted_manager_id=r.employee_id)
       WHERE ${recursive} AND p.kind NOT IN ('leave','retirement') AND p.employee_id<>${employeeId}::uuid
         AND (${mode !== 'part_time'} OR p.service_type<>'primary')
-    ) SELECT employee_id FROM reports WHERE employee_id<>${employeeId}::uuid LIMIT 20001
-  `),
-    ),
-  );
+    ) SELECT employee_id FROM reports WHERE employee_id<>${employeeId}::uuid)`;
 }

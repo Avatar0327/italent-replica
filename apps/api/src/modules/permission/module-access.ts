@@ -5,6 +5,7 @@ import type { Authorizer } from '../../authorization.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { EMPTY_SCOPE, type ModuleScope, type ScopeQuery, type ScopeTerm } from './scope-types.js';
+import { managedPersonsSql, reportingPersonsSql } from './scope-persons.js';
 export type { ModuleScope } from './scope-types.js';
 
 interface AccessProvider {
@@ -101,14 +102,16 @@ export function scopeAllows(scope: ModuleScope, target: Target): boolean {
   if (scope.all) return true;
   return terms(scope).some((term) => {
     if (term.dimension === 'using_user') return !!target.creatorId && target.creatorId === term.creatorId;
-    if (term.dimension === 'reporting') return !!target.personId && term.personIds.includes(target.personId);
+    if (term.dimension === 'reporting')
+      return !term.personQuery && !!target.personId && term.personIds.includes(target.personId);
     if (term.dimension === 'organization')
       return 'orgId' in target
         ? !!target.orgId && term.orgIds.includes(target.orgId)
-        : !!target.personId && term.personIds.includes(target.personId);
+        : !term.personQuery && !!target.personId && term.personIds.includes(target.personId);
     const checks: boolean[] = [];
     if ('orgId' in target) checks.push(!!target.orgId && term.orgIds.includes(target.orgId));
-    if ('personId' in target) checks.push(!!target.personId && term.personIds.includes(target.personId));
+    if ('personId' in target)
+      checks.push(!!target.personId && (!!term.personQuery || term.personIds.includes(target.personId)));
     return checks.length > 0 && checks.every(Boolean);
   });
 }
@@ -119,6 +122,20 @@ interface Columns {
 }
 const inIds = (column: SQL | undefined, ids: readonly string[]) =>
   column && ids.length ? sql`${column} = ANY(${`{${ids.join(',')}}`}::uuid[])` : sql`false`;
+function personSql(term: ScopeTerm, person: SQL | undefined): SQL {
+  if (!person) return sql`false`;
+  if (term.personQuery?.kind === 'organization')
+    return managedPersonsSql(term.personQuery.tenantId, term.personQuery.asOf, term.orgIds, person);
+  if (term.personQuery?.kind === 'reporting')
+    return reportingPersonsSql(
+      term.personQuery.tenantId,
+      term.personQuery.asOf,
+      term.personQuery.managerId,
+      term.personQuery.mode,
+      person,
+    );
+  return inIds(person, term.personIds);
+}
 /** SQL-side scope predicates precede LIMIT/OFFSET; no full-tenant result filtering. */
 export function scopeSql(scope: ModuleScope, columns: Columns): SQL {
   if (scope.all) return sql`true`;
@@ -126,13 +143,29 @@ export function scopeSql(scope: ModuleScope, columns: Columns): SQL {
     if (term.dimension === 'using_user') {
       return columns.creator && term.creatorId ? sql`${columns.creator} = ${term.creatorId}::uuid` : sql`false`;
     }
-    if (term.dimension === 'reporting') return inIds(columns.person, term.personIds);
+    if (term.dimension === 'reporting') return personSql(term, columns.person);
     if (term.dimension === 'organization')
-      return columns.org ? inIds(columns.org, term.orgIds) : inIds(columns.person, term.personIds);
+      return columns.org ? inIds(columns.org, term.orgIds) : personSql(term, columns.person);
     const both: SQL[] = [];
     if (columns.org) both.push(inIds(columns.org, term.orgIds));
-    if (columns.person) both.push(inIds(columns.person, term.personIds));
+    if (columns.person) both.push(personSql(term, columns.person));
     return both.length ? sql`(${sql.join(both, sql` AND `)})` : sql`false`;
   });
   return predicates.length ? sql`(${sql.join(predicates, sql` OR `)})` : sql`false`;
+}
+
+/** Point checks use the same relational predicate as list/detail SQL; personnel IDs are not materialized. */
+export async function scopeAllowsInTransaction(tx: Tx, scope: ModuleScope, target: Target): Promise<boolean> {
+  if (scope.all) return true;
+  const result = await tx.execute(
+    sql`SELECT ${scopeSql(scope, {
+      ...('orgId' in target && target.orgId ? { org: sql`${target.orgId}::uuid` } : {}),
+      ...('personId' in target && target.personId ? { person: sql`${target.personId}::uuid` } : {}),
+      ...('creatorId' in target && target.creatorId ? { creator: sql`${target.creatorId}::uuid` } : {}),
+    })} AS allowed`,
+  );
+  const rows = (Array.isArray(result) ? result : (result as { rows: { allowed: boolean }[] }).rows) as {
+    allowed: boolean;
+  }[];
+  return rows[0]?.allowed === true;
 }

@@ -16,6 +16,7 @@ import {
   scopeSql,
   scopeAllows,
   authorizeInTransaction,
+  scopeAllowsInTransaction,
 } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { authorizeEmploymentResult } from '../permission/employment-replay.js';
@@ -58,8 +59,12 @@ export async function readContext(
   }
   const result = { ...context, scope, authorize: deps.authorize, objectCode, trustedScopeBypass };
   if (resource) {
-    const creatorId = await withTenant(deps.db, tenant.tenantId, (tx) => employmentCreatorId(tx, result, resource));
-    requireEmploymentScope(result, resource, undefined, creatorId);
+    const creatorId = await withTenant(deps.db, tenant.tenantId, async (tx) => {
+      const creator = await employmentCreatorId(tx, result, resource);
+      if (scope && !(await scopeAllowsInTransaction(tx, scope, { personId: resource, creatorId: creator })))
+        throw new AppError('NOT_FOUND', '任职数据不存在');
+      return creator;
+    });
     return { ...result, scopeEmployeeId: resource, scopeEmployeeCreatorId: creatorId };
   }
   return result;
@@ -129,12 +134,10 @@ export async function requireScopedEmploymentObject(
   departmentId: string | null,
   businessId?: string,
 ) {
-  requireEmploymentScope(
-    ctx,
-    employeeId,
-    departmentId,
-    businessId ? await employmentCreatorId(tx, ctx, businessId, true) : ctx.userId,
-  );
+  if (!ctx.scope || ctx.scope.all) return;
+  const creatorId = businessId ? await employmentCreatorId(tx, ctx, businessId, true) : ctx.userId;
+  if (!(await scopeAllowsInTransaction(tx, ctx.scope, { personId: employeeId, orgId: departmentId, creatorId })))
+    throw new AppError('NOT_FOUND', '任职数据不存在');
 }
 
 export async function requireEmploymentWrite(

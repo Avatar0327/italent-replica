@@ -3,6 +3,16 @@ export interface ScopeTerm {
   readonly dimension: 'management' | 'organization' | 'reporting' | 'using_user';
   readonly orgIds: readonly string[];
   readonly personIds: readonly string[];
+  /** Parameters for a correlated SQL predicate; personnel sets are never materialized in application memory. */
+  readonly personQuery?:
+    | { readonly kind: 'organization'; readonly tenantId: string; readonly asOf: string }
+    | {
+        readonly kind: 'reporting';
+        readonly tenantId: string;
+        readonly asOf: string;
+        readonly managerId: string;
+        readonly mode: string;
+      };
   readonly creatorId?: string;
 }
 export interface ModuleScope {

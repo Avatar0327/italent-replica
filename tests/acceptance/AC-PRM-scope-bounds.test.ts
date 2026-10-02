@@ -16,19 +16,12 @@ import { useTestDb } from '@italent/testkit';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ScopeHierarchy from '../../apps/api/src/modules/permission/scope-hierarchy.js';
 import { expandScopeRoots } from '../../apps/api/src/modules/permission/scope-hierarchy.js';
-import type * as ScopePersons from '../../apps/api/src/modules/permission/scope-persons.js';
-import { managedPersons, reportingPersons } from '../../apps/api/src/modules/permission/scope-persons.js';
 import { resolveDataScope } from '../../apps/api/src/modules/permission/scope-resolver.js';
 import { seedTenantWithMember } from './support/tenant-api.js';
 
 vi.mock('../../apps/api/src/modules/permission/scope-hierarchy.js', async (original) => ({
   ...(await original<typeof ScopeHierarchy>()),
   expandScopeRoots: vi.fn(),
-}));
-vi.mock('../../apps/api/src/modules/permission/scope-persons.js', async (original) => ({
-  ...(await original<typeof ScopePersons>()),
-  managedPersons: vi.fn(),
-  reportingPersons: vi.fn(),
 }));
 
 const database = useTestDb();
@@ -108,13 +101,12 @@ describe('AC-PRM 管理人员无上限、组织与汇报范围仍有界且重复
     vi.resetAllMocks();
   });
 
-  it('DEC-080 管理人员超过20,000时不因人数拒绝整个解析', async () => {
+  it('管理与汇报人员保留为SQL关系条件，不在解析器中生成有上限的ID数组', async () => {
     const world = await fixture([{ dimension: 'management' }, { dimension: 'reporting', relationMode: 'direct' }]);
     vi.mocked(expandScopeRoots).mockResolvedValue([world.mouRoot]);
-    vi.mocked(managedPersons).mockResolvedValue(ids(1, 10_001));
-    vi.mocked(reportingPersons).mockResolvedValue(ids(10_002, 10_000));
     const result = await world.resolve();
-    expect(result.personIds).toHaveLength(20_001);
+    expect(result.personIds).toEqual([]);
+    expect(result.terms?.map((term) => term.personQuery?.kind).sort()).toEqual(['organization', 'reporting']);
   });
 
   it('管理单元与组织关系的组织并集超过20,000时拒绝，不能把每term上限当总上限', async () => {
@@ -122,7 +114,6 @@ describe('AC-PRM 管理人员无上限、组织与汇报范围仍有界且重复
     vi.mocked(expandScopeRoots).mockImplementation(async (_tx, _tenant, _date, roots) =>
       roots[0]?.orgId === world.mouRoot ? ids(1, 10_001) : ids(10_002, 10_000),
     );
-    vi.mocked(managedPersons).mockResolvedValue([]);
     await expect(world.resolve()).rejects.toMatchObject({ code: 'PAYLOAD_TOO_LARGE' });
   });
 
@@ -135,30 +126,24 @@ describe('AC-PRM 管理人员无上限、组织与汇报范围仍有界且重复
       ),
     );
     vi.mocked(expandScopeRoots).mockResolvedValue([world.roleRoot]);
-    vi.mocked(managedPersons).mockResolvedValue(ids(1, 2));
-    vi.mocked(reportingPersons).mockResolvedValue(ids(3, 2));
     const result = await world.resolve();
-    expect(result.personIds).toHaveLength(4);
+    expect(result.personIds).toEqual([]);
     expect(result.terms).toHaveLength(2);
     expect(expandScopeRoots).toHaveBeenCalledTimes(1);
-    expect(managedPersons).toHaveBeenCalledTimes(1);
-    expect(reportingPersons).toHaveBeenCalledTimes(1);
+    expect(result.terms?.every((term) => !!term.personQuery)).toBe(true);
   });
 
-  it('重叠的两个20,000人员集合按去重后的并集计算，不能误拒绝', async () => {
+  it('人员关系不受20,000并集上限影响', async () => {
     const world = await fixture([{ dimension: 'management' }, { dimension: 'reporting', relationMode: 'direct' }]);
     vi.mocked(expandScopeRoots).mockResolvedValue([world.mouRoot]);
-    vi.mocked(managedPersons).mockResolvedValue(ids(1, 20_000));
-    vi.mocked(reportingPersons).mockResolvedValue(ids(1, 20_000));
     const result = await world.resolve();
-    expect(result.personIds).toHaveLength(20_000);
+    expect(result.personIds).toEqual([]);
     expect(result.hasDataPermission).toBe(true);
   });
 
   it('超出管理API的20条规则上限的存量策略也拒绝，不能静默截断或放大查询预算', async () => {
     const world = await fixture(Array.from({ length: 21 }, () => ({ dimension: 'management' as const })));
     vi.mocked(expandScopeRoots).mockResolvedValue([world.mouRoot]);
-    vi.mocked(managedPersons).mockResolvedValue([]);
     await expect(world.resolve()).rejects.toMatchObject({ code: 'PAYLOAD_TOO_LARGE' });
   });
 });

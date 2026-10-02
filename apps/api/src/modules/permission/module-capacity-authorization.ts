@@ -2,12 +2,16 @@ import { MODULE_OBJECTS } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { creatorOf, hasCreatorScope, visible, writeFields, type ModuleScope } from './module-route-access.js';
-import type { BusinessContext } from '../job/context.js';
+import type { ScopeBusinessContext } from './module-contracts.js';
 import { authorizeInTransaction } from './module-access.js';
 import type { EstablishmentContext } from '../establishment/store.js';
 
 /** HTTP 提供事务内钩子；自动补月、跨期调整、复制和同步祖先不能越过发起人的范围/字段权限。 */
-export function capacityContext(deps: TenantRouteDeps, ctx: BusinessContext, scope: ModuleScope): EstablishmentContext {
+export function capacityContext(
+  deps: TenantRouteDeps,
+  ctx: ScopeBusinessContext,
+  scope: ModuleScope,
+): EstablishmentContext {
   return {
     ...ctx,
     authorizeCapacity: async (tx, change) => {

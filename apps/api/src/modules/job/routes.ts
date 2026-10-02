@@ -1,4 +1,5 @@
 import { authorizeJobResult } from '../permission/job-result-scope.js';
+import { registerJobScopeReader } from '../permission/module-contracts.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
 import { withTenant, type Tx } from '@italent/db';
 import type { Context, Hono } from 'hono';
@@ -34,13 +35,14 @@ import {
 import { businessDate, jobCreationSchema, jobPatchSchema } from './fields.js';
 import { authorizeJobImportRows, importJobObjects, type JobImportRow } from './import-service.js';
 import { JOB_KINDS, type JobKind } from './metadata.js';
-import { jobCandidates, listJobObjects } from './read-model.js';
+import { jobCandidates, latestJobObject, listJobObjects, loadJobObject } from './read-model.js';
 import { jobSettingsSchema, readJobSettings, writeJobSettings } from './settings.js';
 import type { JobInput, JobPatch } from './types.js';
 import { validateJobAssignment } from './validation.js';
 import { createJobObject, updateJobObject } from './write-service.js';
 
 const BASE = '/api/tenant/job';
+registerJobScopeReader({ load: loadJobObject, latest: latestJobObject });
 const assignment = z.strictObject({
   postId: z.uuid(),
   levelId: z.uuid().optional(),

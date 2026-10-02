@@ -2,7 +2,7 @@
 import { and, eq, orgImportResults, sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
-import type { BusinessContext } from '../job/context.js';
+import type { ScopeBusinessContext } from './module-contracts.js';
 import { scopeAllows, type ModuleScope } from './module-access.js';
 import { creatorOf, hasCreatorScope, visible } from './module-route-access.js';
 
@@ -16,7 +16,7 @@ export async function originalOrgImportRows(tx: Tx, tenantId: string, commandId:
 
 export async function authorizeOrgResult(
   tx: Tx,
-  ctx: BusinessContext,
+  ctx: ScopeBusinessContext,
   scope: ModuleScope,
   id: string,
   created: boolean,

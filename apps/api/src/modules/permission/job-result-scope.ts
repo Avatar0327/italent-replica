@@ -2,16 +2,14 @@
 import type { Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
-import type { BusinessContext } from '../job/context.js';
-import type { JobKind } from '../job/metadata.js';
-import { latestJobObject, loadJobObject } from '../job/read-model.js';
+import { jobScopeReader, type ScopeBusinessContext, type ScopedJobKind } from './module-contracts.js';
 import { creatorOf, hasCreatorScope, visible, type ModuleScope } from './module-route-access.js';
 
 export async function authorizeJobResult(
   tx: Tx,
-  ctx: BusinessContext,
+  ctx: ScopeBusinessContext,
   scope: ModuleScope,
-  kind: JobKind,
+  kind: ScopedJobKind,
   body: unknown,
 ): Promise<void> {
   if (scope.all || !body || typeof body !== 'object') return;
@@ -21,11 +19,16 @@ export async function authorizeJobResult(
     const id = typeof record.id === 'string' ? record.id : record.objectId;
     if (typeof id !== 'string') continue;
     const current =
-      (await loadJobObject(tx, ctx.tenantId, kind, id, tenantLocalDate(ctx.now, ctx.timezone), true)) ??
-      (await latestJobObject(tx, ctx.tenantId, kind, id));
+      (await jobScopeReader().load(tx, ctx.tenantId, kind, id, tenantLocalDate(ctx.now, ctx.timezone), true)) ??
+      (await jobScopeReader().latest(tx, ctx.tenantId, kind, id));
     if (!current) throw new AppError('NOT_FOUND', '职务体系对象不存在或已失效');
     const creator = hasCreatorScope(scope) ? await creatorOf(tx, ctx.tenantId, id, 'job.create', kind) : undefined;
-    visible(scope, kind === 'positions' ? current.orgId : undefined, '职务体系对象不存在或已失效', creator);
+    visible(
+      scope,
+      kind === 'positions' ? (current.orgId ?? undefined) : undefined,
+      '职务体系对象不存在或已失效',
+      creator,
+    );
     if (kind === 'positions' && typeof record.orgId === 'string')
       visible(scope, record.orgId, '职务体系对象不存在或已失效', creator);
   }

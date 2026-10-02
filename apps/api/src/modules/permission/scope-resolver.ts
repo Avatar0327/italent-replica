@@ -1,7 +1,6 @@
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { expandScopeRoots, scopeRows, type ScopeRoot } from './scope-hierarchy.js';
-import { managedPersons, reportingPersons } from './scope-persons.js';
 import { EMPTY_SCOPE, type ModuleScope, type ScopeQuery, type ScopeTerm } from './scope-types.js';
 
 const MAX_SCOPE_IDS = 20_000;
@@ -130,8 +129,8 @@ export async function resolveDataScope(tx: Tx, query: ScopeQuery): Promise<Modul
   if (await identityAll(tx, query)) return { ...EMPTY_SCOPE, all: true, hasDataPermission: true, source: 'identity' };
   const { source, rules } = await rulesFor(tx, query);
   const terms: ScopeTerm[] = [];
+  const usesPersonnelScope = ['TenantBase.Employee', 'TenantBase.EmploymentRecord'].includes(query.objectCode ?? '');
   const orgIds = new Set<string>();
-  const personIds = new Set<string>();
   const resolvedRules = new Set<string>();
   for (const rule of rules) {
     // Identical OR rules do not widen access; derive once instead of repeating the query and SQL predicate.
@@ -142,41 +141,61 @@ export async function resolveDataScope(tx: Tx, query: ScopeQuery): Promise<Modul
     if (rule.dimension === 'management') {
       const roots = await managementRoots(tx, query);
       const orgIds = await expandScopeRoots(tx, query.tenantId, query.asOf, roots);
-      // Management personnel is unbounded: large tenants must not fail authorization merely due to headcount.
-      const personIds = await managedPersons(tx, query.tenantId, query.asOf, orgIds);
-      term = { dimension: 'management', orgIds, personIds };
+      term = {
+        dimension: 'management',
+        orgIds,
+        personIds: [],
+        ...(usesPersonnelScope && orgIds.length
+          ? { personQuery: { kind: 'organization' as const, tenantId: query.tenantId, asOf: query.asOf } }
+          : {}),
+      };
     } else if (rule.dimension === 'organization') {
       const roots = await roleRoots(tx, query, [rule.role_code ?? ''], true);
       const orgIds = await expandScopeRoots(tx, query.tenantId, query.asOf, roots);
       term = {
         dimension: 'organization',
         orgIds,
-        personIds: await managedPersons(tx, query.tenantId, query.asOf, orgIds),
+        personIds: [],
+        ...(usesPersonnelScope && orgIds.length
+          ? { personQuery: { kind: 'organization' as const, tenantId: query.tenantId, asOf: query.asOf } }
+          : {}),
       };
     } else if (rule.dimension === 'reporting') {
-      const person = await linkedPerson(tx, query);
-      const personIds = person
-        ? await reportingPersons(tx, query.tenantId, query.asOf, person, rule.relation_mode ?? 'direct')
-        : [];
-      term = { dimension: 'reporting', orgIds: [], personIds };
+      const person = usesPersonnelScope ? await linkedPerson(tx, query) : undefined;
+      term = {
+        dimension: 'reporting',
+        orgIds: [],
+        personIds: [],
+        ...(usesPersonnelScope && person
+          ? {
+              personQuery: {
+                kind: 'reporting' as const,
+                tenantId: query.tenantId,
+                asOf: query.asOf,
+                managerId: person,
+                mode: rule.relation_mode ?? 'direct',
+              },
+            }
+          : {}),
+      };
     } else if (rule.dimension === 'using_user') {
       term = { dimension: 'using_user', creatorId: query.userId, orgIds: [], personIds: [] };
     }
     if (term) {
       // Reader limits apply to one rule. Bound each distinct final union too, without counting overlaps twice.
       addBoundedIds(orgIds, term.orgIds);
-      // Each reporting derivation is bounded by its SQL reader; management headcount is intentionally unbounded.
-      for (const personId of term.personIds) personIds.add(personId);
       terms.push(term);
     }
   }
   return {
     orgIds: [...orgIds],
-    personIds: [...personIds],
+    personIds: [],
     terms,
     source,
     all: false,
-    hasDataPermission: terms.some((term) => !!term.creatorId || term.orgIds.length > 0 || term.personIds.length > 0),
+    hasDataPermission: terms.some(
+      (term) => !!term.creatorId || term.orgIds.length > 0 || term.personIds.length > 0 || !!term.personQuery,
+    ),
   };
 }
 /** No scripts executed in R1; extension point reserved for future data-permission triggers. */

@@ -8,14 +8,12 @@ import type { TenantRouteDeps } from '../../routes.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
 import { resolveModuleScope, scopeAllows, trimModuleResponse } from './module-access.js';
 import { requireObjectWrite } from './object-write.js';
-import type { BusinessContext } from '../job/context.js';
-import type { JobKind } from '../job/metadata.js';
+import { jobScopeReader, type ScopeBusinessContext, type ScopedJobKind } from './module-contracts.js';
 import { creatorOf, hasCreatorScope } from './scope-audit.js';
 export { creatorOf, creatorSql, hasCreatorScope } from './scope-audit.js';
-import { loadJobObject } from '../job/read-model.js';
 
 export type ModuleScope = Awaited<ReturnType<typeof resolveModuleScope>>;
-export const JOB_OBJECT_CODES: Readonly<Record<JobKind, string>> = {
+export const JOB_OBJECT_CODES: Readonly<Record<ScopedJobKind, string>> = {
   layers: MODULE_OBJECTS.jobLayer.code,
   grades: MODULE_OBJECTS.jobGrade.code,
   'level-types': MODULE_OBJECTS.jobLevelType.code,
@@ -32,7 +30,7 @@ export async function objectContext(
   objectCode: string,
   operation: 'view' | 'create' | 'update' | 'delete' = 'view',
   expectedRevision = 0,
-): Promise<BusinessContext> {
+): Promise<ScopeBusinessContext> {
   const ctx = tenantOf(c);
   // 先判定操作开关，结构校验后 writeFields 会再校验真实字段，不能把这里的空集合当完整写授权。
   await requirePermission(deps.authorize, { ...ctx, action: `object.${operation}`, resource: objectCode, fields: [] });
@@ -41,7 +39,7 @@ export async function objectContext(
 
 export async function writeFields(
   deps: TenantRouteDeps,
-  ctx: BusinessContext,
+  ctx: ScopeBusinessContext,
   objectCode: string,
   operation: 'create' | 'update',
   payload: Readonly<Record<string, unknown>>,
@@ -62,7 +60,7 @@ export async function writeFields(
 
 export async function button(
   deps: TenantRouteDeps,
-  ctx: BusinessContext,
+  ctx: ScopeBusinessContext,
   objectCode: string,
   code: string,
   level: 'list' | 'detail',
@@ -87,22 +85,38 @@ export function visible(
 
 export async function visibleJob(
   tx: Tx,
-  ctx: BusinessContext,
+  ctx: ScopeBusinessContext,
   scope: ModuleScope,
-  kind: JobKind,
+  kind: ScopedJobKind,
   id: string,
   asOf: string,
 ) {
-  const item = await loadJobObject(tx, ctx.tenantId, kind, id, asOf, true);
+  const item = await jobScopeReader().load(tx, ctx.tenantId, kind, id, asOf, true);
   if (!item) throw new AppError('NOT_FOUND', '职务体系对象不存在或已失效');
   const creator = hasCreatorScope(scope) ? await creatorOf(tx, ctx.tenantId, item.id, 'job.create', kind) : undefined;
-  visible(scope, kind === 'positions' ? item.orgId : undefined, '职务体系对象不存在或已失效', creator);
+  visible(scope, kind === 'positions' ? (item.orgId ?? undefined) : undefined, '职务体系对象不存在或已失效', creator);
   return item;
 }
 
 export { resolveModuleScope, trimModuleResponse };
 
-export function requestScope(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: BusinessContext, objectCode: string) {
+const requestScopes = new WeakMap<Context<TenantEnv>, Map<string, Promise<ModuleScope>>>();
+export function requestScope(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  ctx: ScopeBusinessContext,
+  objectCode: string,
+) {
   const pageCode = c.req.method === 'GET' ? `${objectCode}.${c.req.param('id') ? 'detail' : 'list'}` : undefined;
-  return resolveModuleScope(deps, ctx, undefined, objectCode, pageCode);
+  const key = `${objectCode}:${pageCode ?? ''}`;
+  let scopes = requestScopes.get(c);
+  if (!scopes) {
+    scopes = new Map();
+    requestScopes.set(c, scopes);
+  }
+  const cached = scopes.get(key);
+  if (cached) return cached;
+  const pending = resolveModuleScope(deps, ctx, undefined, objectCode, pageCode);
+  scopes.set(key, pending);
+  return pending;
 }
