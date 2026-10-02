@@ -29,6 +29,11 @@ export interface ButtonDefinition {
 /** 对象元数据：由各业务模块登记（权限模块只消费，不定义业务对象）。 */
 export interface ObjectDefinition {
   readonly code: string;
+  /**
+   * 对象所属应用（如 TenantBase = 组织员工，见 docs/01_证据/导出/组织员工应用_对象注册表_214.txt）。
+   * 身份按“身份 × 应用”授权（REQ-PRM-001）：对象只能配置进、也只在登记了该应用的身份里生效。
+   */
+  readonly application: string;
   readonly fields: readonly FieldDefinition[];
   readonly buttons: readonly ButtonDefinition[];
 }
@@ -94,6 +99,11 @@ function buttonViolations(definition: ObjectDefinition, buttons: readonly Button
     seen.add(key);
   }
   return violations;
+}
+
+/** 应用边界：对象所属应用必须在身份登记的应用内，身份才能配置、才能凭它获得该对象的权限。 */
+export function isWithinProfileApps(definition: ObjectDefinition, profileApps: readonly string[]): boolean {
+  return profileApps.includes(definition.application);
 }
 
 export function buttonKey(code: string, level: ButtonLevel): string {

@@ -8,6 +8,7 @@ import {
   eq,
   permissionAdmins,
   permissionGrants,
+  permissionProfileApps,
   permissionProfileButtons,
   permissionProfileFields,
   permissionProfileObjects,
@@ -18,6 +19,7 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import {
   type AdminRole,
   type ButtonLevel,
+  type GrantedObjectPermission,
   isAdminRole,
   type ObjectPermission,
   type PermissionSubject,
@@ -45,6 +47,15 @@ export async function loadObjectPermissions(
   profileIds: readonly string[],
   objectCode?: string,
 ): Promise<ObjectPermission[]> {
+  const rows = await loadObjectPermissionRows(tx, profileIds, objectCode);
+  return rows.map(({ profileId: _profileId, ...permission }) => permission);
+}
+
+async function loadObjectPermissionRows(
+  tx: Tx,
+  profileIds: readonly string[],
+  objectCode?: string,
+): Promise<(ObjectPermission & { profileId: string })[]> {
   if (profileIds.length === 0) return [];
   const byObject = (table: { profileId: AnyPgColumn; objectCode: AnyPgColumn }) =>
     and(
@@ -57,6 +68,7 @@ export async function loadObjectPermissions(
   const same = (o: (typeof objects)[number]) => (r: { profileId: string; objectCode: string }) =>
     r.profileId === o.profileId && r.objectCode === o.objectCode;
   return objects.map((o) => ({
+    profileId: o.profileId,
     objectCode: o.objectCode,
     dataOperations: { create: o.canCreate, update: o.canUpdate, delete: o.canDelete },
     fields: fields.filter(same(o)).map((f) => ({ fieldCode: f.fieldCode, view: f.canView, edit: f.canEdit })),
@@ -64,8 +76,27 @@ export async function loadObjectPermissions(
   }));
 }
 
+/** 用户有效授权带来的对象权限，各自带上所属身份登记的应用（判定应用边界用）。 */
+export async function loadGrantedObjectPermissions(
+  tx: Tx,
+  userId: string,
+  objectCode?: string,
+): Promise<GrantedObjectPermission[]> {
+  const profileIds = await loadActiveProfileIds(tx, userId);
+  if (profileIds.length === 0) return [];
+  const permissions = await loadObjectPermissionRows(tx, profileIds, objectCode);
+  const apps = await tx
+    .select({ profileId: permissionProfileApps.profileId, appCode: permissionProfileApps.appCode })
+    .from(permissionProfileApps)
+    .where(inArray(permissionProfileApps.profileId, profileIds));
+  return permissions.map(({ profileId, ...permission }) => ({
+    ...permission,
+    profileApps: apps.filter((a) => a.profileId === profileId).map((a) => a.appCode),
+  }));
+}
+
 export async function loadSubject(tx: Tx, userId: string, objectCode?: string): Promise<PermissionSubject> {
   const adminRoles = await loadAdminRoles(tx, userId);
-  const objectPermissions = await loadObjectPermissions(tx, await loadActiveProfileIds(tx, userId), objectCode);
+  const objectPermissions = await loadGrantedObjectPermissions(tx, userId, objectCode);
   return { adminRoles, objectPermissions };
 }

@@ -7,9 +7,16 @@ import {
   buttonKey,
   type DataOperation,
   type DataOperations,
+  isWithinProfileApps,
+  type ObjectCatalog,
   type ObjectDefinition,
   type ObjectPermission,
 } from './object-permission.js';
+
+/** 用户某个有效授权带来的对象权限，连同该身份登记的应用（判定应用边界用）。 */
+export interface GrantedObjectPermission extends ObjectPermission {
+  readonly profileApps: readonly string[];
+}
 
 export interface EffectiveObjectPermission {
   readonly objectCode: string;
@@ -52,6 +59,55 @@ export function mergeObjectPermissions(
     editableFields: editable,
     grantedButtons: buttons,
   };
+}
+
+export interface ResolvedObjectPermission {
+  readonly definition: ObjectDefinition;
+  readonly effective: EffectiveObjectPermission;
+}
+
+/**
+ * 判定入口：对象须已登记；只取“身份登记了对象所属应用”的那些权限（应用边界）再并集；
+ * 可编辑字段再收窄到已登记的非系统字段（库里即便有脏数据，系统字段也不可写，AC-PRM-23）。
+ */
+export function resolveObjectPermission(
+  objectCode: string,
+  permissions: readonly GrantedObjectPermission[],
+  catalog: ObjectCatalog,
+): ResolvedObjectPermission | undefined {
+  const definition = catalog.get(objectCode);
+  if (!definition) return undefined;
+  const inBoundary = permissions.filter((p) => isWithinProfileApps(definition, p.profileApps));
+  const merged = mergeObjectPermissions(objectCode, inBoundary);
+  if (!merged) return undefined;
+  const writable = new Set(definition.fields.filter((f) => !f.system).map((f) => f.code));
+  const editableFields = new Set([...merged.editableFields].filter((f) => writable.has(f)));
+  return { definition, effective: { ...merged, editableFields } };
+}
+
+export type FieldWriteViolation =
+  | { readonly reason: 'UNKNOWN_FIELD'; readonly fieldCode: string }
+  | { readonly reason: 'SYSTEM_FIELD_NOT_EDITABLE'; readonly fieldCode: string }
+  | { readonly reason: 'FIELD_NOT_EDITABLE'; readonly fieldCode: string };
+
+/**
+ * 服务端载荷字段校验（REQ-PRM-001 字段权限）：要写的每个字段都必须是对象的已登记字段、非系统字段，
+ * 且至少一个有效身份授了「编辑」（DEC-042 并集）。返回全部违规项（空数组即可写）。
+ */
+export function fieldWriteViolations(
+  resolved: ResolvedObjectPermission,
+  fields: readonly string[],
+): FieldWriteViolation[] {
+  const known = new Map(resolved.definition.fields.map((f) => [f.code, f]));
+  const violations: FieldWriteViolation[] = [];
+  for (const fieldCode of new Set(fields)) {
+    const field = known.get(fieldCode);
+    if (!field) violations.push({ reason: 'UNKNOWN_FIELD', fieldCode });
+    else if (field.system) violations.push({ reason: 'SYSTEM_FIELD_NOT_EDITABLE', fieldCode });
+    else if (!resolved.effective.editableFields.has(fieldCode))
+      violations.push({ reason: 'FIELD_NOT_EDITABLE', fieldCode });
+  }
+  return violations;
 }
 
 export interface ExecutableButton {

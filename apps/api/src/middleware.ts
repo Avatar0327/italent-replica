@@ -19,8 +19,28 @@ export const requireJson: MiddlewareHandler = async (c, next) => {
   await next();
 };
 
-export const limitBody = (maxSize: number = DEFAULT_BODY_LIMIT): MiddlewareHandler =>
+/** 个别接口放宽的请求体上限（AGENTS.md §10「个别接口按需放宽」）：按方法 + 完整路径匹配，仍有上限。 */
+export interface BodyLimitOverride {
+  readonly method: string;
+  readonly path: RegExp;
+  readonly maxSize: number;
+}
+
+const sizedLimit = (maxSize: number): MiddlewareHandler =>
   bodyLimit({
     maxSize,
     onError: (c) => errorResponse(c, 'PAYLOAD_TOO_LARGE', `请求体超过 ${maxSize} 字节上限`),
   });
+
+/** 全局请求体上限；命中 overrides 的接口改用其各自的上限（其余接口仍为默认 32KB）。 */
+export const limitBody = (
+  maxSize: number = DEFAULT_BODY_LIMIT,
+  overrides: readonly BodyLimitOverride[] = [],
+): MiddlewareHandler => {
+  const fallback = sizedLimit(maxSize);
+  const special = overrides.map((o) => ({ ...o, handler: sizedLimit(o.maxSize) }));
+  return (c, next) => {
+    const override = special.find((o) => o.method === c.req.method && o.path.test(c.req.path));
+    return (override?.handler ?? fallback)(c, next);
+  };
+};

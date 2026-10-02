@@ -4,11 +4,15 @@ import { Hono } from 'hono';
 import type { Authorizer } from './authorization.js';
 import { AppError, errorResponse, handleError } from './errors.js';
 import { denyAllIdentity, type IdentityResolver } from './identity.js';
-import { limitBody, requireJson } from './middleware.js';
+import { DEFAULT_BODY_LIMIT, limitBody, requireJson } from './middleware.js';
 import type { TenantRouteDeps, TenantRouteModule } from './routes.js';
 import { type TenantEnv, tenantContext } from './tenant-context.js';
 import { registerTenantSettingRoutes } from './modules/tenant-settings/routes.js';
-import { createPermissionAuthorizer, registerPermissionRoutes } from './modules/permission/index.js';
+import {
+  createPermissionAuthorizer,
+  PERMISSION_BODY_LIMITS,
+  registerPermissionRoutes,
+} from './modules/permission/index.js';
 import { registerOrgRoutes } from './modules/org/routes.js';
 import { registerJobEstablishmentRoutes } from './modules/job/register.js';
 import { registerEmploymentRoutes } from './modules/employment/routes.js';
@@ -38,7 +42,8 @@ export function createApp(deps: AppDeps = {}): Hono {
   const app = new Hono();
 
   app.use('*', requireJson);
-  app.use('*', limitBody());
+  // 默认 32KB；只有登记的个别接口放宽且仍有上限（身份对象权限整对象替换，见 permission/routes.ts）
+  app.use('*', limitBody(DEFAULT_BODY_LIMIT, PERMISSION_BODY_LIMITS));
 
   app.get('/healthz', async (c) => {
     if (deps.db) {

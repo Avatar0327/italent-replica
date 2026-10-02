@@ -13,6 +13,7 @@ export const BASE = '/api/tenant/permission';
 /** 合成对象（仿任职记录）：两个普通字段、一个系统字段，直接执行与申请两类按钮。 */
 export const DEMO_OBJECT: ObjectDefinition = {
   code: 'Demo.EmploymentRecord',
+  application: 'TenantBase',
   fields: [
     { code: 'Name', system: false },
     { code: 'MobilePhone', system: false },
@@ -27,6 +28,25 @@ export const DEMO_OBJECT: ObjectDefinition = {
   ],
 };
 
+/** 合成对象：属于另一个应用（验证“身份 × 应用”边界）。 */
+export const OTHER_APP_OBJECT: ObjectDefinition = {
+  code: 'Demo.SalaryItem',
+  application: 'DemoPayroll',
+  fields: [{ code: 'Amount', system: false }],
+  buttons: [{ code: 'SalaryItem.View', level: 'detail' }],
+};
+
+/** 合成大对象：与原站任职记录同规模（274 字段、349 按钮，06 §7.2），验证整对象替换载荷可提交。 */
+export const LARGE_OBJECT: ObjectDefinition = {
+  code: 'Demo.LargeRecord',
+  application: 'TenantBase',
+  fields: Array.from({ length: 274 }, (_, i) => ({ code: `Field${String(i).padStart(3, '0')}`, system: false })),
+  buttons: Array.from({ length: 349 }, (_, i) => ({
+    code: `LargeRecord.Button${String(i).padStart(3, '0')}`,
+    level: 'detail' as const,
+  })),
+};
+
 export interface PermissionWorld {
   readonly db: Db;
   readonly tenant: Tenant;
@@ -37,7 +57,7 @@ export interface PermissionWorld {
 }
 
 export async function seedPermissionWorld(db: Db): Promise<PermissionWorld> {
-  registerObjectDefinition(DEMO_OBJECT);
+  for (const definition of [DEMO_OBJECT, OTHER_APP_OBJECT, LARGE_OBJECT]) registerObjectDefinition(definition);
   const { tenant, user: admin } = await seedTenantWithMember(db, 'prm');
   const adminRecord = await bootstrapTenantAdmin(db, { tenantId: tenant.id, userId: admin.id }, cmd());
   // authorize: undefined → createApp 使用真实的权限授权器

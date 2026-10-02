@@ -12,9 +12,15 @@ export {
   type EffectiveObjectPermission,
   type ExecutableButton,
   executableButtons,
+  fieldWriteViolations,
+  type FieldWriteViolation,
+  type GrantedObjectPermission,
   mergeObjectPermissions,
+  type ResolvedObjectPermission,
+  resolveObjectPermission,
   trimToViewableFields,
 } from './effective.js';
+export { MODULE_ACTIONS, MODULE_OBJECTS, type ModuleAction, ORG_EMPLOYEE_APP } from './module-actions.js';
 export {
   BUTTON_LEVELS,
   type ButtonDefinition,
@@ -26,6 +32,7 @@ export {
   type DataOperations,
   type FieldDefinition,
   type FieldPermission,
+  isWithinProfileApps,
   ObjectCatalog,
   type ObjectDefinition,
   type ObjectPermission,

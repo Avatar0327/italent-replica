@@ -15,7 +15,9 @@ export {
   bootstrapTenantAdmin,
   createPermissionAuthorizer,
   type LicenseQuotaChange,
+  type ObjectWrite,
   type PermissionAdminView,
   registerObjectDefinition,
+  requireObjectWrite,
   setLicenseQuota,
 } from './modules/permission/index.js';

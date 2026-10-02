@@ -15,7 +15,12 @@ import {
   permissionProfiles,
   type Tx,
 } from '@italent/db';
-import { type ObjectCatalog, type ObjectPermission, validateObjectPermission } from '@italent/domain';
+import {
+  isWithinProfileApps,
+  type ObjectCatalog,
+  type ObjectPermission,
+  validateObjectPermission,
+} from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { audit, type WriteContext } from './audit.js';
 import { revisionConflict } from './http.js';
@@ -57,10 +62,10 @@ export async function listProfiles(tx: Tx): Promise<ProfileView[]> {
 
 export async function getProfileDetail(tx: Tx, id: string): Promise<ProfileDetail> {
   const profile = await loadProfile(tx, id);
-  const apps = await tx.select().from(permissionProfileApps).where(eq(permissionProfileApps.profileId, id));
+  const apps = await loadProfileApps(tx, id);
   const objects = await loadObjectPermissions(tx, [id]);
   objects.sort((a, b) => a.objectCode.localeCompare(b.objectCode));
-  return { ...view(profile, apps.map((a) => a.appCode).sort()), objects };
+  return { ...view(profile, apps), objects };
 }
 
 export async function createProfile(tx: Tx, write: WriteContext, input: NewProfile): Promise<ProfileView> {
@@ -117,6 +122,13 @@ export async function setObjectPermission(
 
   const profile = await loadProfile(tx, profileId, true);
   if (profile.revision !== change.expectedRevision) throw revisionConflict(change.expectedRevision, profile.revision);
+  // 应用边界：身份按“身份 × 应用”授权，对象所属应用不在该身份登记的应用内时不能配置进来
+  const apps = await loadProfileApps(tx, profileId);
+  if (!isWithinProfileApps(definition, apps)) {
+    throw new AppError('VALIDATION_FAILED', '对象不属于该身份登记的应用', [
+      { reason: 'OBJECT_OUTSIDE_PROFILE_APPS', objectCode: definition.code, application: definition.application },
+    ]);
+  }
   const [before] = await loadObjectPermissions(tx, [profileId], permission.objectCode);
 
   await replaceObjectRows(tx, write.tenantId, profileId, permission);
@@ -159,6 +171,11 @@ async function replaceObjectRows(tx: Tx, tenantId: string, profileId: string, pe
       .insert(permissionProfileButtons)
       .values(permission.buttons.map((b) => ({ ...key, buttonCode: b.buttonCode, level: b.level })));
   }
+}
+
+async function loadProfileApps(tx: Tx, profileId: string): Promise<string[]> {
+  const rows = await tx.select().from(permissionProfileApps).where(eq(permissionProfileApps.profileId, profileId));
+  return rows.map((a) => a.appCode).sort();
 }
 
 export async function loadProfile(tx: Tx, id: string, forUpdate = false): Promise<PermissionProfile> {

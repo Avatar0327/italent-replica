@@ -12,6 +12,7 @@ import { withTenant } from '@italent/db';
 import type { Hono } from 'hono';
 import { requirePermission } from '../../authorization.js';
 import { runCommand } from '../../commands.js';
+import type { BodyLimitOverride } from '../../middleware.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { type TenantContext, type TenantEnv, tenantOf } from '../../tenant-context.js';
 import { createAdmin, getAdmin, listAdmins, updateAdmin } from './admins.js';
@@ -25,6 +26,21 @@ import { createProfile, getProfileDetail, listProfiles, setObjectPermission } fr
 import { adminBody, adminSetsBody, grantBody, grantQuery, objectPermissionBody, profileBody } from './schemas.js';
 
 const BASE = '/api/tenant/permission';
+
+/**
+ * 身份对象权限按“整对象替换”提交（一次给出全部字段与按钮，保证原子与 revision 语义），
+ * 原站任职记录一个对象就有 274 字段、349 按钮（06 §7.2），载荷约 40KB，超过默认 32KB。
+ * 结构校验上限为字段、按钮各 1000 条、编码 ≤128 字符（schemas.ts），紧凑 JSON 最大约 340KB；
+ * 放宽到 512KB，仍是有界上限。只对这一个 PUT 生效，其余权限接口仍是默认 32KB。
+ */
+export const OBJECT_PERMISSION_BODY_LIMIT = 512 * 1024;
+export const PERMISSION_BODY_LIMITS: readonly BodyLimitOverride[] = [
+  {
+    method: 'PUT',
+    path: /^\/api\/tenant\/permission\/profiles\/[^/]+\/objects\/[^/]+$/,
+    maxSize: OBJECT_PERMISSION_BODY_LIMIT,
+  },
+];
 
 type Router = Hono<TenantEnv>;
 
