@@ -133,7 +133,7 @@ describe('AC-ORG-07/11 组织历史版本与结构化引用安全', () => {
     expect((await session.list('字段校验部门'))[0]?.revision).toBe(1);
   });
 
-  it('改名同步已排定的下级未来版本全称，同时保留下级未来业务字段和历史路径', async () => {
+  it('DEC-072：已有未来版本时拒绝插入更早变更，且数据不变', async () => {
     const session = await orgSession(testDb().db, 'org-future-full-name');
     const group = await session.create('历史集团');
     const child = await session.create('跨版本部门', {
@@ -145,22 +145,40 @@ describe('AC-ORG-07/11 组织历史版本与结构化引用安全', () => {
       body: { effectiveDate: '2026-10-10', location: '新地点' },
     });
     expect(future.status).toBe(200);
-    const rename = await session.request('PATCH', `/organizations/${group.id}`, {
-      ifMatch: group.revision,
-      body: { effectiveDate: '2026-10-02', name: '新集团' },
+    const rename = await session.request('PATCH', `/organizations/${child.id}`, {
+      ifMatch: 2,
+      body: { effectiveDate: '2026-10-02', name: '不得插入的名称' },
     });
-    expect(rename.status).toBe(200);
+    expect(rename.status).toBe(409);
+    expect(await rename.json()).toMatchObject({ error: { code: 'ORG_FUTURE_VERSION_EXISTS' } });
     expect((await session.list('跨版本部门', '2026-10-01'))[0]).toMatchObject({
       fullName: child.fullName,
       location: '旧地点',
     });
     expect((await session.list('跨版本部门', '2026-10-02'))[0]).toMatchObject({
-      fullName: `${session.tenant.name}/新集团/跨版本部门`,
+      fullName: child.fullName,
       location: '旧地点',
     });
     expect((await session.list('跨版本部门', '2026-10-10'))[0]).toMatchObject({
-      fullName: `${session.tenant.name}/新集团/跨版本部门`,
+      fullName: child.fullName,
       location: '新地点',
     });
+  });
+
+  it('组织编码随版本保存，历史时点仍返回旧编码', async () => {
+    const session = await orgSession(testDb().db, 'org-versioned-code');
+    const org = await session.create('版本编码部门', { code: 'CODE-OLD' });
+    const changed = await session.request('PATCH', `/organizations/${org.id}`, {
+      ifMatch: org.revision,
+      body: { effectiveDate: '2026-10-02', code: 'CODE-NEW' },
+    });
+    expect(changed.status).toBe(200);
+    expect((await session.list('版本编码部门', '2026-10-01'))[0]?.code).toBe('CODE-OLD');
+    expect((await session.list('版本编码部门', '2026-10-02'))[0]?.code).toBe('CODE-NEW');
+    const duplicate = await session.request('POST', '/organizations', {
+      ifMatch: 0,
+      body: { code: 'CODE-NEW', name: '编码冲突', parents: { admin: { parentId: session.tenant.id } } },
+    });
+    expect(duplicate.status).toBe(409);
   });
 });

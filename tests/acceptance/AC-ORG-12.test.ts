@@ -14,6 +14,36 @@ interface ImportResult {
 }
 
 describe('AC-ORG-12 DEC-060 原站编码映射与导入冲突', () => {
+  it('导入更新行未传行政顺序号时保留旧值', async () => {
+    const session = await orgSession(testDb().db, 'org12-sequence');
+    const created = await session.request('POST', '/import', {
+      ifMatch: 0,
+      body: { rows: [{ sourceCode: 'SEQ001', code: 'seq001', name: '顺序部门', parentId: session.tenant.id }] },
+    });
+    const id = ((await created.json()) as { results: ImportResult[] }).results[0]!.orgId!;
+    const ordered = await session.request('PATCH', `/organizations/${id}`, {
+      ifMatch: 1,
+      body: { effectiveDate: '2026-10-02', parents: { admin: { parentId: session.tenant.id, sequence: 17 } } },
+    });
+    expect(ordered.status).toBe(200);
+    const imported = await session.request('POST', '/import', {
+      ifMatch: 0,
+      body: {
+        rows: [
+          {
+            sourceCode: 'SEQ001',
+            code: 'seq001',
+            name: '顺序部门更名',
+            parentId: session.tenant.id,
+            expectedRevision: 2,
+            startDate: '2026-10-03',
+          },
+        ],
+      },
+    });
+    expect(imported.status).toBe(200);
+    expect((await session.list('顺序部门更名', '2026-10-03'))[0]?.parents.admin.sequence).toBe(17);
+  });
   it('按已存映射更新稳定内部 ID，导入前已有的业务编码冲突行不覆盖组织', async () => {
     const { db } = testDb();
     const session = await orgSession(db, 'org12');
@@ -177,7 +207,7 @@ describe('AC-ORG-12 DEC-060 原站编码映射与导入冲突', () => {
       expect(await session.list('失败行后续部门')).toHaveLength(1);
       expect(await session.list('测试落库失败')).toEqual([]);
       const objects = await withTenant(db, session.tenant.id, (tx) =>
-        tx.execute(sql`SELECT id FROM org_objects WHERE code = 'fail001'`),
+        tx.execute(sql`SELECT org_id FROM org_versions WHERE code = 'fail001'`),
       );
       expect(resultRows(objects)).toEqual([]);
       const mappings = await withTenant(db, session.tenant.id, (tx) => tx.select().from(orgImportMappings));

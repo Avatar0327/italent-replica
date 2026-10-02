@@ -1,3 +1,4 @@
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { orgSession, ORG_TODAY, type Organization } from './AC-ORG-support.js';
@@ -28,6 +29,17 @@ describe('AC-ORG-01~09 组织创建与多维视图', () => {
     const next = await session.reserve();
     expect(next.code).toBe(first.code);
     expect(next.id).not.toBe(first.id);
+  });
+
+  it('编码预占过期后视为已释放并可重用', async () => {
+    const { db } = testDb();
+    const session = await orgSession(db, 'org02-expired');
+    const first = await session.reserve();
+    await withTenant(db, session.tenant.id, (tx) =>
+      tx.execute(sql`UPDATE org_code_reservations SET expires_at = '2026-09-30T00:00:00Z' WHERE id = ${first.id}`),
+    );
+    const next = await session.reserve();
+    expect(next.code).toBe(first.code);
   });
 
   it('AC-ORG-03 仅名称与行政上级即可创建，大类默认部门且内部 ID 与编码分离', async () => {
@@ -80,6 +92,15 @@ describe('AC-ORG-01~09 组织创建与多维视图', () => {
     const created = await session.create('精确名称研发中心');
     expect(await session.list('研发')).toEqual([]);
     expect((await session.list('精确名称研发中心')).map((item) => item.id)).toEqual([created.id]);
+  });
+
+  it('组织列表默认分页且拒绝超过上限的 pageSize', async () => {
+    const session = await orgSession(testDb().db, 'org-pagination');
+    await Promise.all(Array.from({ length: 3 }, (_, index) => session.create(`分页部门${index}`)));
+    const page = await session.request('GET', '/organizations?page=2&pageSize=2');
+    expect(page.status).toBe(200);
+    expect(((await page.json()) as { items: Organization[] }).items).toHaveLength(1);
+    expect((await session.request('GET', '/organizations?pageSize=201')).status).toBe(400);
   });
 
   it('AC-ORG-07 行政、业务、产品（财务别名）及预留维度分别保存上级和顺序号', async () => {

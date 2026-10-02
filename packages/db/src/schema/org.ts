@@ -1,6 +1,6 @@
 /**
  * 组织主数据（R1-T03；docs/02_业务建模/10 §8、REQ-ORG-001/002）。
- * 稳定对象保存编码与并发版本；业务字段及每维层级只能追加版本，RLS 与不可变触发器见组织迁移。
+ * 稳定对象只保存标识与并发版本；编码、业务字段及每维层级只能追加版本。
  */
 import type { OrgDimension } from '@italent/domain';
 import { sql } from 'drizzle-orm';
@@ -32,20 +32,17 @@ const tenantId = () =>
     .references(() => tenants.id);
 const utc = (name: string) => timestamp(name, { withTimezone: true }).notNull().defaultNow();
 
-/** DEC-060：内部主键不随业务编码改变，编码只在租户内唯一。 */
+/** DEC-060：内部主键不随业务编码改变。 */
 export const orgObjects = pgTable(
   'org_objects',
   {
     id: id(),
     tenantId: tenantId(),
-    code: text('code').notNull(),
     revision: integer('revision').notNull().default(1),
     createdAt: utc('created_at'),
   },
   (t) => [
     unique('org_objects_tenant_id').on(t.tenantId, t.id),
-    unique('org_objects_tenant_code').on(t.tenantId, t.code),
-    check('org_objects_code_nonempty', sql`btrim(${t.code}) <> ''`),
     check('org_objects_revision_positive', sql`${t.revision} > 0`),
   ],
 );
@@ -62,6 +59,7 @@ export const orgVersions = pgTable(
     startDate: date('start_date', { mode: 'string' }).notNull(),
     stopDate: date('stop_date', { mode: 'string' }).notNull().default('9999-12-31'),
     enabled: boolean('enabled').notNull().default(true),
+    code: text('code').notNull(),
     name: text('name').notNull(),
     shortName: text('short_name'),
     broadType: text('broad_type').notNull().default('部门'),
@@ -93,6 +91,7 @@ export const orgVersions = pgTable(
     }),
     index('org_versions_tenant_as_of').on(t.tenantId, t.orgId, t.startDate, t.versionNo),
     check('org_versions_name_nonempty', sql`btrim(${t.name}) <> ''`),
+    check('org_versions_code_nonempty', sql`btrim(${t.code}) <> ''`),
     check('org_versions_version_positive', sql`${t.versionNo} > 0`),
     check('org_versions_dates_valid', sql`${t.stopDate} >= ${t.startDate}`),
     check('org_versions_level_nonnegative', sql`${t.level} >= 0`),
@@ -165,6 +164,7 @@ export const orgCodeReservations = pgTable(
       .notNull()
       .references(() => users.id),
     reservedAt: utc('reserved_at'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   },
   (t) => [
     uniqueIndex('org_code_reservations_held_code')

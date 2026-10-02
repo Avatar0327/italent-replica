@@ -14,6 +14,7 @@ import {
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { ensureOrgSetup } from './codes.js';
+import { loadOrgSnapshot } from './read-model.js';
 import { createOrganization, type OrgWriteContext, updateOrganization } from './write-service.js';
 
 export interface OrgImportRow {
@@ -45,7 +46,7 @@ interface ImportSnapshot {
 export async function importOrganizations(tx: Tx, ctx: OrgWriteContext, rows: readonly OrgImportRow[]) {
   assertBatch(rows);
   await ensureOrgSetup(tx, ctx);
-  const snapshot = await importSnapshot(tx, ctx.tenantId);
+  const snapshot = await importSnapshot(tx, ctx);
   assertRequiredRevisions(rows, snapshot);
   const seenSources = new Set<string>();
   const seenCodes = new Set<string>();
@@ -70,8 +71,10 @@ export async function importOrganizations(tx: Tx, ctx: OrgWriteContext, rows: re
   return { results };
 }
 
-async function importSnapshot(tx: Tx, tenantId: string): Promise<ImportSnapshot> {
+async function importSnapshot(tx: Tx, ctx: OrgWriteContext): Promise<ImportSnapshot> {
+  const tenantId = ctx.tenantId;
   const objects = await tx.select().from(orgObjects).where(eq(orgObjects.tenantId, tenantId));
+  const versions = await loadOrgSnapshot(tx, tenantId, tenantLocalDate(ctx.now, ctx.timezone));
   const mappings = await tx.select().from(orgImportMappings).where(eq(orgImportMappings.tenantId, tenantId));
   const held = await tx
     .select()
@@ -79,9 +82,9 @@ async function importSnapshot(tx: Tx, tenantId: string): Promise<ImportSnapshot>
     .where(and(eq(orgCodeReservations.tenantId, tenantId), eq(orgCodeReservations.state, 'held')));
   return {
     objects: new Map(objects.map((row) => [row.id, row])),
-    codes: new Map(objects.map((row) => [row.code, row.id])),
+    codes: new Map(versions.map((row) => [row.code, row.id])),
     mappings: new Map(mappings.map((row) => [row.sourceCode, row.orgId])),
-    heldCodes: new Set(held.map((row) => row.code)),
+    heldCodes: new Set(held.filter((row) => row.expiresAt > ctx.now).map((row) => row.code)),
   };
 }
 

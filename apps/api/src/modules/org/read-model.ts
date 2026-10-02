@@ -1,4 +1,4 @@
-import { and, desc, eq, orgHierarchyLinks, orgObjects, orgVersions, type Tx } from '@italent/db';
+import { and, desc, eq, inArray, lte, ne, orgHierarchyLinks, orgObjects, orgVersions, type Tx } from '@italent/db';
 import type { OrgDimension } from '@italent/domain';
 
 export interface OrgParent {
@@ -24,37 +24,52 @@ export function validIsoDate(value: string): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
 }
 
-/** 最新版本先选中再判断失效日，不能把已失效的新版本回退成旧版本（10 §8.3）。 */
-export async function loadOrgSnapshot(tx: Tx, tenantId: string, asOf: string): Promise<OrgRecord[]> {
-  const rows = await tx
-    .select({ object: orgObjects, version: orgVersions })
+/** SQL 先为每个组织选中时点最新版本，再仅加载命中版本的层级。 */
+export async function loadOrgSnapshot(
+  tx: Tx,
+  tenantId: string,
+  asOf: string,
+  page?: { readonly limit: number; readonly offset: number },
+): Promise<OrgRecord[]> {
+  let query = tx
+    .selectDistinctOn([orgVersions.orgId], { object: orgObjects, version: orgVersions })
     .from(orgVersions)
     .innerJoin(orgObjects, and(eq(orgObjects.id, orgVersions.orgId), eq(orgObjects.tenantId, orgVersions.tenantId)))
-    .where(and(eq(orgVersions.tenantId, tenantId)))
-    .orderBy(desc(orgVersions.startDate), desc(orgVersions.versionNo));
-  const selected = new Map<string, (typeof rows)[number]>();
-  for (const row of rows) {
-    if (row.version.startDate <= asOf && !selected.has(row.object.id)) selected.set(row.object.id, row);
-  }
-  const links = await tx.select().from(orgHierarchyLinks).where(eq(orgHierarchyLinks.tenantId, tenantId));
-  return [...selected.values()]
-    .filter(({ version }) => version.stopDate >= asOf)
-    .map(({ object, version }) => ({
-      ...version,
-      id: object.id,
-      versionId: version.id,
-      code: object.code,
-      revision: object.revision,
-      parents: Object.fromEntries(
-        links
-          .filter((link) => link.versionId === version.id)
-          .map((link) => [link.dimension, { parentId: link.parentOrgId, sequence: link.sequence }]),
+    .where(
+      and(
+        eq(orgVersions.tenantId, tenantId),
+        lte(orgVersions.startDate, asOf),
+        ...(page ? [ne(orgVersions.orgId, tenantId)] : []),
       ),
-    }));
+    )
+    .orderBy(orgVersions.orgId, desc(orgVersions.startDate), desc(orgVersions.versionNo))
+    .$dynamic();
+  if (page) query = query.limit(page.limit).offset(page.offset);
+  const rows = await query;
+  const selected = rows.filter(({ version }) => version.stopDate >= asOf);
+  const versionIds = selected.map(({ version }) => version.id);
+  const links = versionIds.length
+    ? await tx
+        .select()
+        .from(orgHierarchyLinks)
+        .where(and(eq(orgHierarchyLinks.tenantId, tenantId), inArray(orgHierarchyLinks.versionId, versionIds)))
+    : [];
+  return selected.map(({ object, version }) => ({
+    ...version,
+    id: object.id,
+    versionId: version.id,
+    code: version.code,
+    revision: object.revision,
+    parents: Object.fromEntries(
+      links
+        .filter((link) => link.versionId === version.id)
+        .map((link) => [link.dimension, { parentId: link.parentOrgId, sequence: link.sequence }]),
+    ),
+  }));
 }
 
 export function orderOrganizations(a: OrgRecord, b: OrgRecord): number {
-  // TODO(需取证 #9): DEC-037 长整数排序编码待明确组合算法与任务归属；此处只落实 DEC-038。
+  // TODO(需取证 Q-M0-07): DEC-037 长整数排序编码待明确组合算法与任务归属。
   const display = (a.displayOrder ?? Number.MAX_SAFE_INTEGER) - (b.displayOrder ?? Number.MAX_SAFE_INTEGER);
   if (display) return display;
   return a.code < b.code ? -1 : a.code > b.code ? 1 : 0;

@@ -1,5 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { and, auditEvents, desc, eq, isUuid, orgHierarchyLinks, orgObjects, orgVersions, type Tx } from '@italent/db';
+import {
+  and,
+  auditEvents,
+  desc,
+  eq,
+  isUuid,
+  orgHierarchyLinks,
+  orgObjects,
+  orgVersions,
+  sql,
+  type Tx,
+} from '@italent/db';
 import { AppError } from '../../errors.js';
 import { assertCodeAvailable, consumeCode, ensureOrgSetup } from './codes.js';
 import { loadOrgSnapshot, type OrgRecord } from './read-model.js';
@@ -41,7 +52,7 @@ export interface OrganizationValidation extends EstablishmentAssessment {
   readonly fields: Record<string, string>;
 }
 
-// TODO(需取证 #9): T04 接入真实编制数据和组织新建超编的计算规则。
+// TODO(需取证 Q-M0-08): T04 接入真实编制数据和组织新建超编的计算规则。
 const noEstablishmentRule: EstablishmentAssessor = async () => ({
   isBeyondEstablishment: false,
   strictControl: false,
@@ -80,7 +91,7 @@ export async function createOrganization(
   const nodes = await validateHierarchy(tx, ctx, normalized);
   const code = await consumeCode(tx, ctx, input);
   const id = randomUUID();
-  await tx.insert(orgObjects).values({ id, tenantId: ctx.tenantId, code, revision: 1, createdAt: ctx.now });
+  await tx.insert(orgObjects).values({ id, tenantId: ctx.tenantId, revision: 1, createdAt: ctx.now });
   const path = parentPath(ctx, normalized, nodes);
   const saved = await appendVersion(tx, ctx, id, code, 1, normalized, path, null);
   await audit(tx, ctx, 'org.create', id, null, saved);
@@ -105,14 +116,16 @@ export async function updateOrganization(
   const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('update');
   if (!object) throw new AppError('NOT_FOUND', '组织不存在');
   assertRevision(ctx.expectedRevision, object.revision);
+  await rejectEarlierThanFutureVersion(tx, ctx, orgId, effectiveDate);
   const current = await recordAt(tx, object, effectiveDate);
   const input = mergePatch(current, patch, effectiveDate);
   const normalized = normalizeOrganization(ctx, input);
+  // TODO(需取证 Q-M0-12): 停用上级时是否应限制仍启用的下级，规格未定义，当前不自定规则。
   const nodes = await validateHierarchy(tx, ctx, normalized, orgId, current.parents);
-  const code = patch.code?.trim() ?? object.code;
-  if (code !== object.code) await assertCodeAvailable(tx, ctx, code, orgId);
+  const code = patch.code?.trim() ?? current.code;
+  if (code !== current.code) await assertCodeAvailable(tx, ctx, code, effectiveDate, orgId);
   const revision = object.revision + 1;
-  await tx.update(orgObjects).set({ code, revision }).where(objectKey(ctx.tenantId, orgId));
+  await tx.update(orgObjects).set({ revision }).where(objectKey(ctx.tenantId, orgId));
   const saved = await appendVersion(
     tx,
     ctx,
@@ -127,6 +140,22 @@ export async function updateOrganization(
   await audit(tx, ctx, 'org.update', orgId, current, saved);
   if (saved.fullName !== current.fullName) await synchronizeFullNames(tx, ctx, effectiveDate);
   return saved;
+}
+
+async function rejectEarlierThanFutureVersion(tx: Tx, ctx: OrgWriteContext, orgId: string, effectiveDate: string) {
+  const [future] = await tx
+    .select({ id: orgVersions.id })
+    .from(orgVersions)
+    .where(
+      and(
+        eq(orgVersions.tenantId, ctx.tenantId),
+        eq(orgVersions.orgId, orgId),
+        // TODO(需取证 Q-M0-06): 原站是否拒绝在已排定版本前插入变更。
+        sql`${orgVersions.startDate} > ${effectiveDate}`,
+      ),
+    )
+    .limit(1);
+  if (future) throw new AppError('ORG_FUTURE_VERSION_EXISTS', '组织已有后续版本，请先处理后续版本');
 }
 
 function assertCanSubmit(validation: OrganizationValidation): void {
@@ -148,8 +177,17 @@ function objectKey(tenantId: string, orgId: string) {
 }
 
 function mergePatch(current: OrgRecord, patch: OrganizationPatch, effectiveDate: string): OrganizationInput {
-  const parents = { ...current.parents, ...patch.parents } as OrgParentsInput;
-  return { ...current, ...patch, startDate: effectiveDate, parents };
+  const parents: Record<string, { parentId: string; sequence?: number | null }> = { ...current.parents } as Record<
+    string,
+    { parentId: string; sequence?: number | null }
+  >;
+  for (const [dimension, change] of Object.entries(patch.parents ?? {})) {
+    parents[dimension] = {
+      ...current.parents[dimension as keyof OrgParentsInput],
+      ...change,
+    };
+  }
+  return { ...current, ...patch, startDate: effectiveDate, parents: parents as unknown as OrgParentsInput };
 }
 
 /** 停用或失效组织仍能追加恢复版本；只能从生效日之前最近的一条继承，不能读取未来业务值。 */
@@ -166,7 +204,7 @@ async function recordAt(tx: Tx, object: typeof orgObjects.$inferSelect, effectiv
     ...version,
     id: object.id,
     versionId: version.id,
-    code: object.code,
+    code: version.code,
     revision: object.revision,
     parents: Object.fromEntries(
       links.map((link) => [link.dimension, { parentId: link.parentOrgId, sequence: link.sequence }]),
@@ -203,6 +241,7 @@ async function appendVersion(
     .values({
       ...fields,
       ...path,
+      code,
       orgId,
       tenantId: ctx.tenantId,
       versionNo: revision,

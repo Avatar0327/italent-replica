@@ -72,7 +72,7 @@ export function invalid(field: string, message: string): AppError {
 export function normalizeOrganization(ctx: OrgWriteContext, input: OrganizationInput): NormalizedOrganization {
   if (!input || typeof input !== 'object') throw invalid('organization', '组织信息必须是对象');
   const name = requiredText(input.name, 'name');
-  // TODO(需取证 #9): 确认最小创建的缺省生效日；暂按 DEC-056 使用租户业务日。
+  // TODO(需取证 Q-M0-10): 确认最小创建的缺省生效日；暂按 DEC-056 使用租户业务日。
   const startDate = date(input.startDate ?? tenantLocalDate(ctx.now, ctx.timezone), 'startDate');
   const stopDate = date(input.stopDate ?? '9999-12-31', 'stopDate');
   if (stopDate < startDate) throw invalid('stopDate', '失效日期不得早于生效日期');
@@ -80,11 +80,11 @@ export function normalizeOrganization(ctx: OrgWriteContext, input: OrganizationI
   const personInChargeId = reference(input.personInChargeId, 'personInChargeId');
   const hrbpId = reference(input.hrbpId, 'hrbpId');
   const costCenterId = reference(input.costCenterId, 'costCenterId');
-  // TODO(需取证 #9): 员工主数据落地后验证人员存在性、租户与当前访问权限。
+  // TODO(需取证 Q-M0-11): 员工主数据落地后验证人员存在性、租户与当前访问权限。
   if (personInChargeId || hrbpId) {
     throw new AppError('SERVICE_UNAVAILABLE', '员工主数据验证尚未接入，暂不能保存负责人或 HRBP');
   }
-  // TODO(需取证 #9): 成本中心独立对象接入后验证对象存在性及租户归属。
+  // TODO(需取证 Q-M0-13): 成本中心独立对象接入后验证对象存在性及租户归属。
   if (costCenterId) throw new AppError('SERVICE_UNAVAILABLE', '成本中心主数据验证尚未接入，暂不能保存引用');
   return {
     name,

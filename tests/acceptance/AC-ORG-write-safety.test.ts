@@ -32,6 +32,22 @@ describe('AC-ORG 写命令安全边界', () => {
     expect(await errorCode(conflict)).toBe('IDEMPOTENCY_CONFLICT');
   });
 
+  it('同一 Idempotency-Key 并发重放只产生一个组织', async () => {
+    const session = await orgSession(testDb().db, 'org-concurrent-replay');
+    const options = {
+      ifMatch: 0,
+      idempotencyKey: 'same-concurrent-command',
+      body: { name: '并发幂等部门', parents: { admin: { parentId: session.tenant.id } } },
+    };
+    const responses = await Promise.all([
+      session.request('POST', '/organizations', options),
+      session.request('POST', '/organizations', options),
+    ]);
+    expect(responses.map((response) => response.status)).toEqual([201, 201]);
+    expect(await responses[0]!.json()).toEqual(await responses[1]!.json());
+    expect(await session.list('并发幂等部门')).toHaveLength(1);
+  });
+
   it('同一旧 revision 并发改名只有一次成功，失败方不留业务与审计副作用', async () => {
     const session = await orgSession(testDb().db, 'org-concurrent-update');
     const org = await session.create('并发原名');

@@ -28,6 +28,8 @@ describe('AC-TEN-01 R1-T03 真实组织表的租户隔离', () => {
         body: { name: '不得跨租户修改', effectiveDate: '2026-10-01' },
       });
       expect([403, 404]).toContain(forbiddenWrite.status);
+      const forbiddenRead = await session.request('GET', `/organizations/${foreign.id}`);
+      expect([403, 404]).toContain(forbiddenRead.status);
     }
   });
 });

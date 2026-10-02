@@ -1,4 +1,4 @@
-import { type Db, eq, isUuid, orgSettings, withTenant } from '@italent/db';
+import { type Db, eq, isUuid, orgSettings, sql, type Tx, withTenant } from '@italent/db';
 import {
   ORG_DIMENSIONS,
   type OrgDescendantsOptions,
@@ -8,44 +8,38 @@ import {
   type OrgHierarchyReader,
   type OrgId,
 } from '@italent/domain';
-import { loadOrgSnapshot, type OrgRecord, validIsoDate } from './read-model.js';
+import { loadOrgSnapshot, validIsoDate } from './read-model.js';
 
 function validQuery(query: OrgEnabledQuery): boolean {
   return isUuid(query.tenantId) && validIsoDate(query.asOf);
 }
 
-function descendants(
-  snapshot: readonly OrgRecord[],
-  query: OrgDescendantsQuery,
-  options: OrgDescendantsOptions,
-): readonly OrgId[] {
-  const root = snapshot.find((record) => record.id === query.orgId);
-  if (!root || (!options.includeDisabled && !root.enabled)) return [];
-
-  const children = new Map<string, OrgRecord[]>();
-  for (const record of snapshot) {
-    const parentId = record.parents[query.dimension]?.parentId;
-    if (!parentId) continue;
-    const siblings = children.get(parentId) ?? [];
-    siblings.push(record);
-    children.set(parentId, siblings);
-  }
-
-  const seen = new Set<string>([query.orgId]);
-  const pending: string[] = [query.orgId];
-  const ids: OrgId[] = [];
-  while (pending.length) {
-    const parentId = pending.pop()!;
-    for (const child of children.get(parentId) ?? []) {
-      if (seen.has(child.id)) continue;
-      seen.add(child.id);
-      // 契约 includeDisabled=false 要剪整棵停用子树，不能仅从最终列表隐藏停用节点。
-      if (!options.includeDisabled && !child.enabled) continue;
-      ids.push(child.id as OrgId);
-      pending.push(child.id);
-    }
-  }
-  return ids.sort();
+async function descendantIds(tx: Tx, query: OrgDescendantsQuery, options: OrgDescendantsOptions) {
+  const result = await tx.execute(sql`
+    WITH RECURSIVE current_versions AS (
+      SELECT DISTINCT ON (org_id) id, org_id, enabled, stop_date
+      FROM org_versions
+      WHERE tenant_id = ${query.tenantId} AND start_date <= ${query.asOf}
+      ORDER BY org_id, start_date DESC, version_no DESC
+    ), tree AS (
+      SELECT v.org_id, ARRAY[v.org_id]::uuid[] AS path
+      FROM current_versions v
+      WHERE v.org_id = ${query.orgId} AND v.stop_date >= ${query.asOf}
+        AND (${options.includeDisabled} OR v.enabled)
+      UNION ALL
+      SELECT child.org_id, tree.path || child.org_id
+      FROM tree
+      JOIN org_hierarchy_links link ON link.tenant_id = ${query.tenantId}
+        AND link.dimension = ${query.dimension} AND link.parent_org_id = tree.org_id
+      JOIN current_versions child ON child.id = link.version_id AND child.stop_date >= ${query.asOf}
+      WHERE (${options.includeDisabled} OR child.enabled) AND NOT child.org_id = ANY(tree.path)
+    )
+    SELECT org_id FROM tree WHERE org_id <> ${query.orgId} ORDER BY org_id
+  `);
+  const rows = (Array.isArray(result) ? result : (result as { rows: { org_id: string }[] }).rows) as {
+    org_id: string;
+  }[];
+  return rows.map((row) => row.org_id as OrgId);
 }
 
 function extensionEnabled(settings: typeof orgSettings.$inferSelect | undefined, dimension: OrgDimension): boolean {
@@ -71,7 +65,7 @@ export function createOrgHierarchyReader(db: Db): OrgHierarchyReader {
       return withTenant(db, query.tenantId, async (tx) => {
         const [settings] = await tx.select().from(orgSettings).where(eq(orgSettings.tenantId, query.tenantId));
         if (!extensionEnabled(settings, query.dimension)) return [];
-        return descendants(await loadOrgSnapshot(tx, query.tenantId, query.asOf), query, options);
+        return descendantIds(tx, query, options);
       });
     },
     async isEnabled(query) {

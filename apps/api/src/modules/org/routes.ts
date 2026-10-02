@@ -84,10 +84,13 @@ function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     const dimension = z.enum(ORG_DIMENSIONS).safeParse(c.req.query('dimension') ?? 'admin');
     if (!dimension.success) throw new AppError('VALIDATION_FAILED', '组织维度不合法');
     const includeDisabled = c.req.query('includeDisabled') === 'true';
+    const page = queryInteger(c, 'page', 1, 1, 1_000_000);
+    const pageSize = queryInteger(c, 'pageSize', 50, 1, 200);
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const config = await readOrgSettings(tx, ctx.tenantId);
       if (!config.enabledDimensions.includes(dimension.data)) return [];
-      return (await loadOrgSnapshot(tx, ctx.tenantId, asOf))
+      // TODO(R1-T02 数据范围裁剪): 当前 tenant.org.read 只能在租户边界内授予全组织读取。
+      return (await loadOrgSnapshot(tx, ctx.tenantId, asOf, { limit: pageSize, offset: (page - 1) * pageSize }))
         .filter((org) => org.id !== ctx.tenantId && (includeDisabled || org.enabled))
         .filter((org) => dimension.data === 'admin' || !!org.parents[dimension.data])
         .filter((org) => c.req.query('name') === undefined || org.name === c.req.query('name'))
@@ -100,6 +103,7 @@ function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     const ctx = await context(c, deps, 'read');
     const id = orgId(c);
     const org = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      // TODO(R1-T02 数据范围裁剪): 详情也必须按当前用户范围判定不可见。
       const snapshot = await loadOrgSnapshot(tx, ctx.tenantId, queryDate(c, ctx));
       const record = snapshot.find((org) => org.id === id);
       if (!record) throw new AppError('NOT_FOUND', '组织不存在');
@@ -114,7 +118,7 @@ function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   });
   router.get(`${BASE}/views`, async (c) => {
     await context(c, deps, 'read');
-    // TODO(需取证 #9): 界面任务接入四视图目录；当前车道不含 apps/web，不能冒充页面菜单验收。
+    // TODO(需取证 Q-M0-09): 界面任务接入四视图目录；本车道不含 apps/web。
     return c.json({
       items: [
         { label: '组织', resource: 'organization', dimension: 'admin' },
@@ -124,6 +128,16 @@ function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
       ],
     });
   });
+}
+
+function queryInteger(c: Context, name: string, fallback: number, minimum: number, maximum: number): number {
+  const raw = c.req.query(name);
+  if (raw === undefined) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new AppError('VALIDATION_FAILED', `${name} 不合法`);
+  }
+  return parsed;
 }
 
 function registerReservations(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
