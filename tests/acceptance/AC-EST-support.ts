@@ -136,11 +136,15 @@ export async function transferFixture(
     applyTransfer: vi.fn(async () => undefined),
   };
 
+  let now = EST_NOW;
+  const advanceTo = (value: Date) => {
+    now = value;
+  };
   const context = (expectedRevision = 0) => ({
     tenantId: session.tenant.id,
     userId: session.user.id,
     timezone: session.tenant.timezone,
-    now: EST_NOW,
+    now,
     commandId: randomUUID(),
     expectedRevision,
   });
@@ -170,5 +174,18 @@ export async function transferFixture(
     return id;
   }
 
-  return { ...session, source, target, scheme, port, counts, businessId, context, apply, stats, addTransfer };
+  return {
+    ...session,
+    source,
+    target,
+    scheme,
+    port,
+    counts,
+    businessId,
+    context,
+    apply,
+    stats,
+    addTransfer,
+    advanceTo,
+  };
 }

@@ -14,6 +14,7 @@ import { registerOrgRoutes } from './modules/org/routes.js';
 const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerTenantSettingRoutes, // R1-T00 两层配置
   registerOrgRoutes, // R1-T03 多维组织
+  (await import('./modules/job/register.js')).registerJobEstablishmentRoutes, // R1-T04 职务体系与编制
 ];
 
 export interface AppDeps {

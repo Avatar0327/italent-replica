@@ -14,7 +14,7 @@ async function session(label: string) {
   const member = await seedTenantWithMember(testDb().db, label);
   const api = tenantApi(testDb().db, { clock });
   const auth = { tenant: member.tenant.id, user: member.user.id };
-  async function create(name: string, code = randomUUID()) {
+  async function create(name: string, code: string = randomUUID()) {
     const response = await api.request('POST', base, {
       ...auth,
       ifMatch: 0,
@@ -92,11 +92,11 @@ describe('AC-JOB 平台约定与隔离', () => {
     const query = new URLSearchParams({ asOf, page: '1', pageSize: '1', name: target.name });
     const filtered = await s.api.request('GET', `${base}?${query}`, s.auth);
     expect(filtered.status).toBe(200);
-    expect((await filtered.json()).items).toEqual([expect.objectContaining({ id: target.id })]);
+    expect(((await filtered.json()) as { items: Item[] }).items).toEqual([expect.objectContaining({ id: target.id })]);
     const firstPage = await s.api.request('GET', `${base}?pageSize=2&asOf=${asOf}`, s.auth);
-    expect((await firstPage.json()).items).toHaveLength(2);
+    expect(((await firstPage.json()) as { items: Item[] }).items).toHaveLength(2);
     const secondPage = await s.api.request('GET', `${base}?page=2&pageSize=2&asOf=${asOf}`, s.auth);
-    expect((await secondPage.json()).items).toHaveLength(1);
+    expect(((await secondPage.json()) as { items: Item[] }).items).toHaveLength(1);
     const tooLarge = await s.api.request('GET', `${base}?pageSize=201`, s.auth);
     expect(tooLarge.status).toBe(400);
   });
