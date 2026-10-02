@@ -146,7 +146,7 @@ const DATA = {
     "M0":{n:"仓库骨架、技术栈、AGENTS.md、决策对齐、CI",s:"done",who:"Claude",pr:null,note:"DEC-047~070"},
     "R1-T00":{n:"多租户隔离底座",s:"done",who:"Claude",pr:1,note:"3 轮 Codex 审计后合并"},
     "R1-T01":{n:"权限模型",s:"done",who:"Claude",pr:8,note:"4 个模块接入缺口并入 R1-T02（DEC-080）"},
-    "R1-T02":{n:"数据范围 + 权限全面接入",s:"todo",who:"Codex",pr:null,note:"DEC-080 扩大范围；提示词已发出，待派发"},
+    "R1-T02":{n:"数据范围 + 权限全面接入",s:"review",who:"Codex",pr:22,note:"481 测试通过，CI 全绿，Claude 审查中"},
     "R1-T15":{n:"企业设置（用户/授权/管理单元/许可）",s:"todo",who:"",pr:null,note:""},
     "R1-T17":{n:"平台运营层（租户开通、预置）",s:"todo",who:"",pr:null,note:""},
     "R1-T03":{n:"组织对象（多维层级）",s:"done",who:"Codex",pr:10,note:""},
@@ -171,7 +171,7 @@ const DATA = {
     "R3-T05":{n:"继任管理",s:"todo"},"R3-T06":{n:"人才池与人才梯队",s:"todo"},"R3-T07":{n:"个人发展计划 IDP",s:"todo"}
   },
   now: [
-    {id:"R1-T02", s:"todo", d:"数据范围 + 权限全面接入（DEC-080）：合并 PR #8 后有身份的人能看全部记录，优先补上", next:"在 Codex 派发提示词，开出 PR 后由 Claude 审查"},
+    {id:"R1-T02", s:"review", d:"数据范围 + 权限全面接入：Codex 已开 PR，481 测试通过", next:"Claude 以攻击者视角审越权漏洞"},
     {id:"R1-T12", s:"todo", d:"人员信息与人员子集：M4 剩余的最后一项", next:"R1-T02 之后派发"},
     {id:"R1-T07 / T08", s:"todo", d:"审批中心与定时生效：M5", next:"排在 R1-T12 之后或并行"}
   ],
