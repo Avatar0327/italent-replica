@@ -124,7 +124,7 @@ const DATA = {
   updated: "2026-10-02",
   mode: "当前开发方式（DEC-071）：<b>Codex 开发、Claude 审查</b>；每个 PR 经交叉审计、CI 全绿后合并。",
   stats: [
-    {v:"7", l:"已合并 PR"}, {v:"304", l:"main 测试通过"}, {v:"79", l:"已确认决策"}, {v:"25", l:"待取证事项"}
+    {v:"7", l:"已合并 PR"}, {v:"304", l:"main 测试通过"}, {v:"80", l:"已确认决策"}, {v:"26", l:"待取证事项"}
   ],
   status: {
     done:{t:"已完成",c:"s-done"}, review:{t:"审查中",c:"s-review"}, active:{t:"修改中",c:"s-active"},
@@ -145,14 +145,14 @@ const DATA = {
   tasks: {
     "M0":{n:"仓库骨架、技术栈、AGENTS.md、决策对齐、CI",s:"done",who:"Claude",pr:null,note:"DEC-047~070"},
     "R1-T00":{n:"多租户隔离底座",s:"done",who:"Claude",pr:1,note:"3 轮 Codex 审计后合并"},
-    "R1-T01":{n:"权限模型",s:"review",who:"Claude",pr:8,note:"已修 Codex 3 条意见并同步 main，等 Codex 复审；需排在 PR #16 之后合并"},
-    "R1-T02":{n:"数据范围（默认为空）",s:"todo",who:"Codex",pr:null,note:"提示词已备好，等 PR #8 合并后派发"},
+    "R1-T01":{n:"权限模型",s:"review",who:"Claude",pr:8,note:"Codex 复审通过前 3 条；4 个模块接入缺口并入 R1-T02（DEC-080），PR #16 合并后同步再合"},
+    "R1-T02":{n:"数据范围 + 权限全面接入",s:"todo",who:"Codex",pr:null,note:"DEC-080 扩大范围；提示词已备好，等 PR #8 合并后派发"},
     "R1-T15":{n:"企业设置（用户/授权/管理单元/许可）",s:"todo",who:"",pr:null,note:""},
     "R1-T17":{n:"平台运营层（租户开通、预置）",s:"todo",who:"",pr:null,note:""},
     "R1-T03":{n:"组织对象（多维层级）",s:"done",who:"Codex",pr:10,note:""},
     "R1-T04":{n:"职务体系与编制",s:"done",who:"Codex",pr:11,note:"带编调动暂缓（DEC-073）"},
     "R1-T05":{n:"任职记录版本链",s:"done",who:"Codex",pr:12,note:"表单字段级配置转入 R1-T09"},
-    "R1-T06":{n:"向后更新",s:"active",who:"Codex",pr:16,note:"按审计修改中：DEC-078/079、导入开关作用范围"},
+    "R1-T06":{n:"向后更新",s:"review",who:"Codex",pr:16,note:"审计意见已全部修复，349 测试通过、CI 全绿，待合并"},
     "R1-T12":{n:"人员信息与人员子集",s:"todo",who:"",pr:null,note:""},
     "R1-T07":{n:"审批中心",s:"todo",who:"",pr:null,note:""},
     "R1-T08":{n:"定时生效任务",s:"todo",who:"",pr:null,note:"含租户时区、失败待办（DEC-052/056）"},
@@ -171,11 +171,13 @@ const DATA = {
     "R3-T05":{n:"继任管理",s:"todo"},"R3-T06":{n:"人才池与人才梯队",s:"todo"},"R3-T07":{n:"个人发展计划 IDP",s:"todo"}
   },
   now: [
-    {id:"PR #16 · R1-T06", s:"active", d:"向后更新：Codex 按审计意见修改", next:"完成后本地复跑、推送、看 CI，然后合并"},
-    {id:"PR #8 · R1-T01", s:"review", d:"权限模型：已修复并同步 main，等 Codex 复审", next:"PR #16 合并后再同步一次、迁移顺延编号再合并"},
-    {id:"R1-T02", s:"todo", d:"数据范围：合并后有身份的人能看全部记录，需尽快补上", next:"PR #8 合并后派发给 Codex"}
+    {id:"PR #16 · R1-T06", s:"review", d:"向后更新：审计意见已全部修复，CI 全绿", next:"等你确认后合并"},
+    {id:"PR #8 · R1-T01", s:"review", d:"权限模型：3 条已修；4 个接入缺口转入 R1-T02（DEC-080）", next:"PR #16 合并后同步 main、迁移顺延，再合并"},
+    {id:"R1-T02", s:"todo", d:"数据范围 + 权限全面接入（DEC-080）", next:"PR #8 合并后派发给 Codex"}
   ],
   log: [
+    {d:"10-02", t:"R1-T06 审计修复完成（Codex 直接 Update branch），CI 全绿，待合并"},
+    {d:"10-02", t:"PR #8 Codex 复审：权限接入各模块的 4 个缺口并入 R1-T02（DEC-080）"},
     {d:"10-02", t:"R1-T06（PR #16）审完：规则②记录级（DEC-078）、停用按后续记录生效日（DEC-079）"},
     {d:"10-02", t:"PR #8 合并 main 并修复 Codex 三条意见，登记组织/职务/任职模块权限动作"},
     {d:"10-02", t:"合并 PR #12：任职记录版本链；跨周期同日允许（DEC-077）"},
