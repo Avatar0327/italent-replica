@@ -11,7 +11,6 @@ const EFFECT_TABLES = [
   'employment_payload_versions',
   'employment_state_events',
   'employment_records',
-  'employment_changes',
   'employment_record_tombstones',
   'employment_timeline',
   'employment_outbox',

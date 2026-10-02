@@ -79,8 +79,18 @@ export async function auditEmployment(
     occurredAt: ctx.now,
   });
   await tx.execute(sql`
-    INSERT INTO employment_outbox(tenant_id,event_type,object_type,object_id,command_id,payload,created_at)
-    VALUES(${ctx.tenantId},${action},${objectType},${objectId},${ctx.commandId},
-      ${JSON.stringify({ before, after })}::jsonb,${ctx.now.toISOString()}::timestamptz)
+    WITH ownership AS (
+      SELECT employee_id, id AS business_id FROM employment_business_objects
+      WHERE tenant_id=${ctx.tenantId} AND id=${objectId}::uuid
+    ), queued AS (
+      INSERT INTO employment_outbox(
+        tenant_id,employee_id,business_id,event_type,object_type,object_id,command_id,payload,created_at
+      )
+      SELECT ${ctx.tenantId},ownership.employee_id,ownership.business_id,${action},${objectType},${objectId},
+        ${ctx.commandId},${JSON.stringify({ before, after })}::jsonb,${ctx.now.toISOString()}::timestamptz
+      FROM (SELECT 1) seed LEFT JOIN ownership ON true RETURNING id
+    )
+    INSERT INTO employment_outbox_attempts(tenant_id,outbox_id,attempt_no,state,created_at)
+    SELECT ${ctx.tenantId},id,1,'pending',${ctx.now.toISOString()}::timestamptz FROM queued
   `);
 }

@@ -42,10 +42,13 @@ export async function validateEmploymentReferences(
     if (!id) continue;
     const [employee] = rowsOf(
       await tx.execute(sql`
-        SELECT 1 FROM employment_employees WHERE tenant_id=${tenantId} AND id=${id}::uuid LIMIT 1
+        SELECT 1 FROM employment_timeline t
+        JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+        WHERE t.tenant_id=${tenantId} AND t.employee_id=${id}::uuid
+          AND t.valid_during @> ${effectiveDate}::date AND r.kind NOT IN ('leave', 'retirement') LIMIT 1
       `),
     );
-    if (!employee) throw invalid('managerId', '经理不属于当前租户的员工');
+    if (!employee) throw invalid('managerId', '经理在任职生效日必须处于在职状态');
   }
 }
 

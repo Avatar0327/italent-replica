@@ -58,7 +58,7 @@ function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: Pag
       CASE WHEN upper_inf(t.valid_during) THEN '9999-12-31' ELSE (upper(t.valid_during)-1)::text END AS stop_date,
       t.valid_during @> ${asOf}::date AS is_current,
       NOT EXISTS (SELECT 1 FROM employment_timeline n WHERE n.tenant_id=${tenantId}
-        AND n.employee_id=r.employee_id AND n.start_date>r.start_date) AS is_latest,
+        AND n.employee_id=r.employee_id AND (n.start_date,n.sort_order)>(t.start_date,t.sort_order)) AS is_latest,
       previous.id AS previous_record_id,previous.body AS previous
     FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
@@ -66,11 +66,12 @@ function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: Pag
     LEFT JOIN LATERAL (
       SELECT p.id,to_jsonb(p) AS body FROM employment_records p
       JOIN employment_timeline pt ON pt.tenant_id=p.tenant_id AND pt.record_id=p.id
-      WHERE p.tenant_id=${tenantId} AND p.employee_id=r.employee_id AND p.start_date<r.start_date
-      ORDER BY p.start_date DESC LIMIT 1
+      WHERE p.tenant_id=${tenantId} AND p.employee_id=r.employee_id
+        AND (pt.start_date,pt.sort_order)<(t.start_date,t.sort_order)
+      ORDER BY pt.start_date DESC,pt.sort_order DESC LIMIT 1
     ) previous ON true
     WHERE r.tenant_id=${tenantId} AND ${predicates}
-    ORDER BY r.start_date ASC,r.id LIMIT ${page.limit} OFFSET ${page.offset}
+    ORDER BY r.start_date ASC,t.sort_order ASC,r.id LIMIT ${page.limit} OFFSET ${page.offset}
   `;
 }
 
@@ -116,9 +117,10 @@ export async function findPredecessor(
     await tx.execute(sql`
     SELECT t.record_id FROM employment_timeline t
     JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-    WHERE t.tenant_id=${tenantId} AND t.employee_id=${employeeId} AND t.start_date<${effectiveDate}::date
+    WHERE t.tenant_id=${tenantId} AND t.employee_id=${employeeId}
+      AND (t.start_date,t.sort_order)<(${effectiveDate}::date,1)
       ${staffId ? sql`AND r.staff_id=${staffId}` : sql``}
-    ORDER BY t.start_date DESC LIMIT 1
+    ORDER BY t.start_date DESC,t.sort_order DESC LIMIT 1
   `),
   );
   return previous ? loadEmploymentRecord(tx, tenantId, previous.record_id, effectiveDate) : null;

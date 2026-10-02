@@ -87,7 +87,7 @@ function assertTransition(business: LockedEmploymentBusiness, action: Employment
     activate: business.payload.mode === 'application' && business.state === 'approved',
     delete: ['draft', 'rejected', 'approved', 'effective'].includes(business.state),
   };
-  // TODO(需取证 Q-M0-23)：驳回后的同单重提与节点策略由 R1-T07 处理，不自行恢复审批节点。
+  // TODO(R1-T07, DEC-053)：按节点配置支持驳回后在同一申请上重提。
   if (!permitted[action]) throw new AppError('CONFLICT', '当前状态不允许此动作', { state: business.state, action });
 }
 
@@ -122,7 +122,14 @@ async function deleteEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business
       commandId: ctx.commandId,
       createdAt: ctx.now.toISOString(),
     });
-    await removeLatestEmploymentTimeline(tx, ctx, business.employeeId, business.id, business.payload.effectiveDate);
+    await removeLatestEmploymentTimeline(
+      tx,
+      ctx,
+      business.employeeId,
+      business.id,
+      business.payload.effectiveDate,
+      business.payload.kind,
+    );
     await auditEmployment(
       tx,
       ctx,

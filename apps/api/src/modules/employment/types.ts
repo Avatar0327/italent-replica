@@ -14,7 +14,7 @@ export type EmploymentState = 'draft' | 'in_review' | 'approved' | 'rejected' | 
 export type EmployType = 'internal' | 'intern' | 'external';
 export type CustomValue = string | number | boolean | null;
 export type CustomFields = Readonly<Record<string, CustomValue>>;
-export type FormId = 'standard' | 'readonly-custom' | 'hidden-custom' | 'omitted-custom' | 'ungrouped-custom';
+export type FormId = string;
 
 export const PRESET_FIELD_NAMES = [
   'departmentId',

@@ -11,13 +11,13 @@ SELECT enable_tenant_isolation('employment_state_events');
 --> statement-breakpoint
 SELECT enable_tenant_isolation('employment_records');
 --> statement-breakpoint
-SELECT enable_tenant_isolation('employment_changes');
---> statement-breakpoint
 SELECT enable_tenant_isolation('employment_record_tombstones');
 --> statement-breakpoint
 SELECT enable_tenant_isolation('employment_timeline');
 --> statement-breakpoint
 SELECT enable_tenant_isolation('employment_outbox');
+--> statement-breakpoint
+SELECT enable_tenant_isolation('employment_outbox_attempts');
 --> statement-breakpoint
 SELECT enable_tenant_isolation('employment_custom_field_objects');
 --> statement-breakpoint
@@ -30,8 +30,8 @@ SELECT enable_tenant_isolation('employment_setting_versions');
 GRANT SELECT, INSERT ON
   employment_employees, employment_cycles, employment_business_objects,
   employment_payload_versions, employment_state_events, employment_records,
-  employment_changes, employment_record_tombstones, employment_timeline,
-  employment_outbox, employment_custom_field_objects,
+  employment_record_tombstones, employment_timeline,
+  employment_outbox, employment_outbox_attempts, employment_custom_field_objects,
   employment_custom_field_inheritance_versions, employment_settings,
   employment_setting_versions TO app_user;
 --> statement-breakpoint
@@ -61,16 +61,16 @@ CREATE TRIGGER employment_records_append_only
   BEFORE UPDATE OR DELETE OR TRUNCATE ON employment_records
   FOR EACH STATEMENT EXECUTE FUNCTION forbid_audit_mutation();
 --> statement-breakpoint
-CREATE TRIGGER employment_changes_append_only
-  BEFORE UPDATE OR DELETE OR TRUNCATE ON employment_changes
-  FOR EACH STATEMENT EXECUTE FUNCTION forbid_audit_mutation();
---> statement-breakpoint
 CREATE TRIGGER employment_record_tombstones_append_only
   BEFORE UPDATE OR DELETE OR TRUNCATE ON employment_record_tombstones
   FOR EACH STATEMENT EXECUTE FUNCTION forbid_audit_mutation();
 --> statement-breakpoint
 CREATE TRIGGER employment_outbox_append_only
   BEFORE UPDATE OR DELETE OR TRUNCATE ON employment_outbox
+  FOR EACH STATEMENT EXECUTE FUNCTION forbid_audit_mutation();
+--> statement-breakpoint
+CREATE TRIGGER employment_outbox_attempts_append_only
+  BEFORE UPDATE OR DELETE OR TRUNCATE ON employment_outbox_attempts
   FOR EACH STATEMENT EXECUTE FUNCTION forbid_audit_mutation();
 --> statement-breakpoint
 CREATE TRIGGER employment_custom_field_inheritance_versions_append_only

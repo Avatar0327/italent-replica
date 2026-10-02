@@ -21,6 +21,7 @@ interface TrustedFormSnapshot {
   readonly customMode: CustomMode;
   readonly startsNewCycle: boolean;
   readonly customInheritance: Readonly<Record<string, boolean>>;
+  readonly fieldModes: Readonly<Record<string, CustomMode>>;
 }
 export interface PreparedInheritance {
   readonly effectiveDate: string;
@@ -42,18 +43,37 @@ export interface InheritanceInput {
   readonly staffId?: string;
 }
 
-// REQ-EMP-002 R7：这是服务端固定目录，不接收客户端展示/编辑权限元数据。
-const FORM_CATALOG: Readonly<Record<FormId, { grouped: boolean; customMode: CustomMode }>> = {
-  standard: { grouped: true, customMode: 'editable' },
-  'readonly-custom': { grouped: true, customMode: 'readonly' },
-  'hidden-custom': { grouped: true, customMode: 'hidden' },
-  'omitted-custom': { grouped: true, customMode: 'absent' },
-  'ungrouped-custom': { grouped: false, customMode: 'editable' },
-};
+// R1-T05 暂以服务端表单标识解析测试目录；快照按字段冻结，业务逻辑不再依赖固定表单 CHECK。
+function resolveForm(formId: FormId): { grouped: boolean; customMode: CustomMode } {
+  if (formId === 'readonly-custom') return { grouped: true, customMode: 'readonly' };
+  if (formId === 'hidden-custom') return { grouped: true, customMode: 'hidden' };
+  if (formId === 'omitted-custom') return { grouped: true, customMode: 'absent' };
+  if (formId === 'ungrouped-custom') return { grouped: false, customMode: 'editable' };
+  return { grouped: true, customMode: 'editable' };
+}
 const NEW_CYCLES: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 const owns = (object: object, key: string) => Object.prototype.hasOwnProperty.call(object, key);
 function setField(target: PresetFields, key: PresetField, value: PresetFields[PresetField]): void {
   Object.assign(target, { [key]: value });
+}
+
+function snapshotForm(
+  input: InheritanceInput,
+  form: { grouped: boolean; customMode: CustomMode },
+  startsNewCycle: boolean,
+  definitions: readonly { id: string; inherit: boolean }[],
+): TrustedFormSnapshot {
+  return {
+    id: input.formId,
+    group: form.grouped ? input.kind : null,
+    customMode: form.customMode,
+    startsNewCycle,
+    customInheritance: Object.fromEntries(definitions.map((field) => [field.id, field.inherit])),
+    fieldModes: Object.fromEntries([
+      ...INHERITED_FIELDS.map((field) => [`preset:${field}`, 'editable' as const]),
+      ...definitions.map((field) => [`custom:${field.id}`, form.customMode]),
+    ]),
+  };
 }
 
 export async function prepareInheritance(
@@ -62,8 +82,7 @@ export async function prepareInheritance(
   input: InheritanceInput,
 ): Promise<PreparedInheritance> {
   businessDate(input.effectiveDate);
-  const form = FORM_CATALOG[input.formId];
-  if (!form || !owns(FORM_CATALOG, input.formId)) throw new AppError('VALIDATION_FAILED', '表单不在服务端目录中');
+  const form = resolveForm(input.formId);
   const [employee] = rowsOf<{ code: string }>(
     await tx.execute(sql`
       SELECT code FROM employment_employees WHERE tenant_id=${ctx.tenantId} AND id=${input.employeeId} LIMIT 1
@@ -82,13 +101,7 @@ export async function prepareInheritance(
     ? null
     : await findPredecessor(tx, ctx.tenantId, input.employeeId, input.effectiveDate);
   const eligible = previous && (!input.staffId || previous.staffId === input.staffId) ? previous : null;
-  const metadata: TrustedFormSnapshot = {
-    id: input.formId,
-    group: form.grouped ? input.kind : null,
-    customMode: form.customMode,
-    startsNewCycle,
-    customInheritance: Object.fromEntries(definitions.map((field) => [field.id, field.inherit])),
-  };
+  const metadata = snapshotForm(input, form, startsNewCycle, definitions);
   for (const field of INHERITED_FIELDS) {
     if (startsNewCycle) continue;
     if (form.grouped) setField(fields, field, eligible?.fields[field] ?? null);

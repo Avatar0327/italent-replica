@@ -9,19 +9,6 @@ CREATE TABLE "employment_business_objects" (
 	CONSTRAINT "employment_business_objects_revision_positive" CHECK ("employment_business_objects"."revision" > 0)
 );
 --> statement-breakpoint
-CREATE TABLE "employment_changes" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"tenant_id" uuid NOT NULL,
-	"employee_id" uuid NOT NULL,
-	"current_record_id" uuid NOT NULL,
-	"previous_record_id" uuid,
-	"command_id" text NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "employment_changes_tenant_id" UNIQUE("tenant_id","id"),
-	CONSTRAINT "employment_changes_current_record" UNIQUE("tenant_id","current_record_id"),
-	CONSTRAINT "employment_changes_previous_not_self" CHECK ("employment_changes"."previous_record_id" <> "employment_changes"."current_record_id")
-);
---> statement-breakpoint
 CREATE TABLE "employment_custom_field_inheritance_versions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
@@ -104,6 +91,20 @@ CREATE TABLE "employment_outbox" (
 	CONSTRAINT "employment_outbox_state" CHECK ("employment_outbox"."state" IN ('pending', 'sent', 'failed', 'unknown'))
 );
 --> statement-breakpoint
+CREATE TABLE "employment_outbox_attempts" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid NOT NULL,
+	"outbox_id" uuid NOT NULL,
+	"attempt_no" integer NOT NULL,
+	"state" text DEFAULT 'pending' NOT NULL,
+	"error_reason" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "employment_outbox_attempts_tenant_id" UNIQUE("tenant_id","id"),
+	CONSTRAINT "employment_outbox_attempts_number" UNIQUE("tenant_id","outbox_id","attempt_no"),
+	CONSTRAINT "employment_outbox_attempts_number_positive" CHECK ("employment_outbox_attempts"."attempt_no" > 0),
+	CONSTRAINT "employment_outbox_attempts_state" CHECK ("employment_outbox_attempts"."state" IN ('pending', 'sent', 'failed', 'unknown'))
+);
+--> statement-breakpoint
 CREATE TABLE "employment_payload_versions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
@@ -158,7 +159,7 @@ CREATE TABLE "employment_payload_versions" (
 	CONSTRAINT "employment_payload_versions_version_positive" CHECK ("employment_payload_versions"."version_no" > 0),
 	CONSTRAINT "employment_payload_versions_previous_not_self" CHECK ("employment_payload_versions"."previous_version_id" <> "employment_payload_versions"."id"),
 	CONSTRAINT "employment_payload_versions_mode" CHECK ("employment_payload_versions"."mode" IN ('direct', 'application')),
-	CONSTRAINT "employment_payload_versions_form" CHECK ("employment_payload_versions"."form_id" IN ('standard', 'readonly-custom', 'hidden-custom', 'omitted-custom', 'ungrouped-custom')),
+	CONSTRAINT "employment_payload_versions_form_nonempty" CHECK (btrim("employment_payload_versions"."form_id") <> ''),
 	CONSTRAINT "employment_payload_versions_source_pair" CHECK (("employment_payload_versions"."source_record_id" IS NULL) = ("employment_payload_versions"."source_staff_id" IS NULL)),
 	CONSTRAINT "employment_payload_versions_form_object" CHECK (jsonb_typeof("employment_payload_versions"."form_snapshot") = 'object'),
 	CONSTRAINT "employment_payload_versions_date_finite" CHECK (isfinite("employment_payload_versions"."effective_date"))
@@ -217,7 +218,6 @@ CREATE TABLE "employment_records" (
 	CONSTRAINT "employment_records_employee_id" UNIQUE("tenant_id","employee_id","id"),
 	CONSTRAINT "employment_records_employee_staff" UNIQUE("tenant_id","employee_id","id","staff_id"),
 	CONSTRAINT "employment_records_employee_start_id" UNIQUE("tenant_id","employee_id","id","start_date"),
-	CONSTRAINT "employment_records_employee_start" UNIQUE("tenant_id","employee_id","start_date"),
 	CONSTRAINT "employment_records_employ_type" CHECK ("employment_records"."employ_type" IN ('internal', 'intern', 'external')),
 	CONSTRAINT "employment_records_custom_object" CHECK (jsonb_typeof("employment_records"."custom_fields") = 'object'),
 	CONSTRAINT "employment_records_kind" CHECK ("employment_records"."kind" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',
@@ -268,19 +268,20 @@ CREATE TABLE "employment_timeline" (
 	"tenant_id" uuid NOT NULL,
 	"employee_id" uuid NOT NULL,
 	"record_id" uuid NOT NULL,
+	"staff_id" uuid NOT NULL,
+	"sort_order" integer DEFAULT 1 NOT NULL,
 	"start_date" date NOT NULL,
 	"valid_during" daterange NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "employment_timeline_tenant_id_record_id_pk" PRIMARY KEY("tenant_id","record_id"),
-	CONSTRAINT "employment_timeline_lower_matches" CHECK (NOT isempty("employment_timeline"."valid_during") AND NOT lower_inf("employment_timeline"."valid_during")
-        AND lower("employment_timeline"."valid_during") = "employment_timeline"."start_date")
+	CONSTRAINT "employment_timeline_cycle_start" UNIQUE("tenant_id","employee_id","staff_id","start_date"),
+	CONSTRAINT "employment_timeline_lower_matches" CHECK (isempty("employment_timeline"."valid_during") OR (NOT lower_inf("employment_timeline"."valid_during")
+        AND lower("employment_timeline"."valid_during") = "employment_timeline"."start_date")),
+	CONSTRAINT "employment_timeline_sort_order" CHECK ("employment_timeline"."sort_order" IN (0, 1))
 );
 --> statement-breakpoint
 ALTER TABLE "employment_business_objects" ADD CONSTRAINT "employment_business_objects_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_business_objects" ADD CONSTRAINT "employment_business_objects_employee_fk" FOREIGN KEY ("tenant_id","employee_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "employment_changes" ADD CONSTRAINT "employment_changes_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "employment_changes" ADD CONSTRAINT "employment_changes_current_fk" FOREIGN KEY ("tenant_id","employee_id","current_record_id") REFERENCES "public"."employment_records"("tenant_id","employee_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "employment_changes" ADD CONSTRAINT "employment_changes_previous_fk" FOREIGN KEY ("tenant_id","employee_id","previous_record_id") REFERENCES "public"."employment_records"("tenant_id","employee_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_custom_field_inheritance_versions" ADD CONSTRAINT "employment_custom_field_inheritance_versions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_custom_field_inheritance_versions" ADD CONSTRAINT "employment_custom_field_inheritance_versions_field_fk" FOREIGN KEY ("tenant_id","field_id") REFERENCES "public"."employment_custom_field_objects"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_custom_field_inheritance_versions" ADD CONSTRAINT "employment_custom_field_inheritance_versions_previous_fk" FOREIGN KEY ("tenant_id","field_id","previous_version_id") REFERENCES "public"."employment_custom_field_inheritance_versions"("tenant_id","field_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -292,6 +293,8 @@ ALTER TABLE "employment_outbox" ADD CONSTRAINT "employment_outbox_tenant_id_tena
 ALTER TABLE "employment_outbox" ADD CONSTRAINT "employment_outbox_employee_fk" FOREIGN KEY ("tenant_id","employee_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_outbox" ADD CONSTRAINT "employment_outbox_business_fk" FOREIGN KEY ("tenant_id","business_id") REFERENCES "public"."employment_business_objects"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_outbox" ADD CONSTRAINT "employment_outbox_employee_business_fk" FOREIGN KEY ("tenant_id","employee_id","business_id") REFERENCES "public"."employment_business_objects"("tenant_id","employee_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "employment_outbox_attempts" ADD CONSTRAINT "employment_outbox_attempts_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "employment_outbox_attempts" ADD CONSTRAINT "employment_outbox_attempts_outbox_fk" FOREIGN KEY ("tenant_id","outbox_id") REFERENCES "public"."employment_outbox"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_payload_versions" ADD CONSTRAINT "employment_payload_versions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_payload_versions" ADD CONSTRAINT "employment_payload_versions_business_fk" FOREIGN KEY ("tenant_id","employee_id","business_id") REFERENCES "public"."employment_business_objects"("tenant_id","employee_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_payload_versions" ADD CONSTRAINT "employment_payload_versions_previous_fk" FOREIGN KEY ("tenant_id","employee_id","business_id","previous_version_id") REFERENCES "public"."employment_payload_versions"("tenant_id","employee_id","business_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -328,11 +331,15 @@ ALTER TABLE "employment_settings" ADD CONSTRAINT "employment_settings_tenant_id_
 ALTER TABLE "employment_state_events" ADD CONSTRAINT "employment_state_events_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_state_events" ADD CONSTRAINT "employment_state_events_payload_fk" FOREIGN KEY ("tenant_id","employee_id","business_id","payload_version_id") REFERENCES "public"."employment_payload_versions"("tenant_id","employee_id","business_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "employment_timeline" ADD CONSTRAINT "employment_timeline_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "employment_timeline" ADD CONSTRAINT "employment_timeline_record_fk" FOREIGN KEY ("tenant_id","employee_id","record_id","start_date") REFERENCES "public"."employment_records"("tenant_id","employee_id","id","start_date") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "employment_timeline" ADD CONSTRAINT "employment_timeline_record_fk" FOREIGN KEY ("tenant_id","employee_id","record_id","staff_id") REFERENCES "public"."employment_records"("tenant_id","employee_id","id","staff_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "employment_business_objects_employee_created" ON "employment_business_objects" USING btree ("tenant_id","employee_id","created_at","id");--> statement-breakpoint
 CREATE INDEX "employment_custom_field_objects_tenant_type" ON "employment_custom_field_objects" USING btree ("tenant_id","object_type","id");--> statement-breakpoint
 CREATE INDEX "employment_cycles_employee_date" ON "employment_cycles" USING btree ("tenant_id","employee_id","entry_date","id");--> statement-breakpoint
 CREATE UNIQUE INDEX "employment_employees_tenant_code" ON "employment_employees" USING btree ("tenant_id",lower("code"));--> statement-breakpoint
 CREATE INDEX "employment_employees_tenant_created" ON "employment_employees" USING btree ("tenant_id","created_at","id");--> statement-breakpoint
 CREATE INDEX "employment_outbox_tenant_created" ON "employment_outbox" USING btree ("tenant_id","created_at","id");--> statement-breakpoint
-CREATE INDEX "employment_timeline_employee_start" ON "employment_timeline" USING btree ("tenant_id","employee_id","start_date");
+CREATE INDEX "employment_outbox_employee_created" ON "employment_outbox" USING btree ("tenant_id","employee_id","created_at");--> statement-breakpoint
+CREATE INDEX "employment_outbox_business_created" ON "employment_outbox" USING btree ("tenant_id","business_id","created_at");--> statement-breakpoint
+CREATE INDEX "employment_outbox_attempts_pending" ON "employment_outbox_attempts" USING btree ("tenant_id","state","created_at");--> statement-breakpoint
+CREATE INDEX "employment_records_position_start" ON "employment_records" USING btree ("tenant_id","position_id","start_date","employee_id");--> statement-breakpoint
+CREATE INDEX "employment_timeline_employee_start" ON "employment_timeline" USING btree ("tenant_id","employee_id","start_date","sort_order");

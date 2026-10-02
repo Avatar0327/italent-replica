@@ -143,7 +143,6 @@ const TABLES = new Set([
   'employment_state_events',
   'employment_cycles',
   'employment_records',
-  'employment_changes',
   'employment_record_tombstones',
 ]);
 const JSON_COLUMNS = new Set(['customFields', 'formSnapshot']);

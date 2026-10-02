@@ -253,10 +253,7 @@ export const employmentPayloadVersions = pgTable(
     check('employment_payload_versions_version_positive', sql`${t.versionNo} > 0`),
     check('employment_payload_versions_previous_not_self', sql`${t.previousVersionId} <> ${t.id}`),
     check('employment_payload_versions_mode', sql`${t.mode} IN ('direct', 'application')`),
-    check(
-      'employment_payload_versions_form',
-      sql`${t.formId} IN ('standard', 'readonly-custom', 'hidden-custom', 'omitted-custom', 'ungrouped-custom')`,
-    ),
+    check('employment_payload_versions_form_nonempty', sql`btrim(${t.formId}) <> ''`),
     check('employment_payload_versions_source_pair', sql`(${t.sourceRecordId} IS NULL) = (${t.sourceStaffId} IS NULL)`),
     check('employment_payload_versions_form_object', sql`jsonb_typeof(${t.formSnapshot}) = 'object'`),
     check('employment_payload_versions_date_finite', sql`isfinite(${t.effectiveDate})`),
@@ -323,7 +320,7 @@ export const employmentRecords = pgTable(
     unique('employment_records_employee_id').on(t.tenantId, t.employeeId, t.id),
     unique('employment_records_employee_staff').on(t.tenantId, t.employeeId, t.id, t.staffId),
     unique('employment_records_employee_start_id').on(t.tenantId, t.employeeId, t.id, t.startDate),
-    unique('employment_records_employee_start').on(t.tenantId, t.employeeId, t.startDate),
+    index('employment_records_position_start').on(t.tenantId, t.positionId, t.startDate, t.employeeId),
     foreignKey({
       name: 'employment_records_payload_fk',
       columns: [t.tenantId, t.employeeId, t.id, t.payloadVersionId],
@@ -365,26 +362,6 @@ function recordReference(name: string, tenant: AnyPgColumn, employee: AnyPgColum
   });
 }
 
-export const employmentChanges = pgTable(
-  'employment_changes',
-  {
-    id: id(),
-    tenantId: tenantId(),
-    employeeId: uuid('employee_id').notNull(),
-    currentRecordId: uuid('current_record_id').notNull(),
-    previousRecordId: uuid('previous_record_id'),
-    commandId: text('command_id').notNull(),
-    createdAt: utc(),
-  },
-  (t) => [
-    unique('employment_changes_tenant_id').on(t.tenantId, t.id),
-    unique('employment_changes_current_record').on(t.tenantId, t.currentRecordId),
-    recordReference('employment_changes_current_fk', t.tenantId, t.employeeId, t.currentRecordId),
-    recordReference('employment_changes_previous_fk', t.tenantId, t.employeeId, t.previousRecordId),
-    check('employment_changes_previous_not_self', sql`${t.previousRecordId} <> ${t.currentRecordId}`),
-  ],
-);
-
 export const employmentRecordTombstones = pgTable(
   'employment_record_tombstones',
   {
@@ -409,6 +386,8 @@ export const employmentTimeline = pgTable(
     tenantId: tenantId(),
     employeeId: uuid('employee_id').notNull(),
     recordId: uuid('record_id').notNull(),
+    staffId: uuid('staff_id').notNull(),
+    sortOrder: integer('sort_order').notNull().default(1),
     startDate: day('start_date').notNull(),
     validDuring: daterange('valid_during').notNull(),
     createdAt: utc(),
@@ -417,20 +396,22 @@ export const employmentTimeline = pgTable(
     primaryKey({ columns: [t.tenantId, t.recordId] }),
     foreignKey({
       name: 'employment_timeline_record_fk',
-      columns: [t.tenantId, t.employeeId, t.recordId, t.startDate],
+      columns: [t.tenantId, t.employeeId, t.recordId, t.staffId],
       foreignColumns: [
         employmentRecords.tenantId,
         employmentRecords.employeeId,
         employmentRecords.id,
-        employmentRecords.startDate,
+        employmentRecords.staffId,
       ],
     }),
-    index('employment_timeline_employee_start').on(t.tenantId, t.employeeId, t.startDate),
+    unique('employment_timeline_cycle_start').on(t.tenantId, t.employeeId, t.staffId, t.startDate),
+    index('employment_timeline_employee_start').on(t.tenantId, t.employeeId, t.startDate, t.sortOrder),
     check(
       'employment_timeline_lower_matches',
-      sql`NOT isempty(${t.validDuring}) AND NOT lower_inf(${t.validDuring})
-        AND lower(${t.validDuring}) = ${t.startDate}`,
+      sql`isempty(${t.validDuring}) OR (NOT lower_inf(${t.validDuring})
+        AND lower(${t.validDuring}) = ${t.startDate})`,
     ),
+    check('employment_timeline_sort_order', sql`${t.sortOrder} IN (0, 1)`),
   ],
 );
 
@@ -464,10 +445,37 @@ export const employmentOutbox = pgTable(
       ],
     }),
     index('employment_outbox_tenant_created').on(t.tenantId, t.createdAt, t.id),
+    index('employment_outbox_employee_created').on(t.tenantId, t.employeeId, t.createdAt),
+    index('employment_outbox_business_created').on(t.tenantId, t.businessId, t.createdAt),
     check('employment_outbox_object_nonempty', sql`btrim(${t.objectType}) <> ''`),
     check('employment_outbox_event_nonempty', sql`btrim(${t.eventType}) <> ''`),
     check('employment_outbox_payload_object', sql`jsonb_typeof(${t.payload}) = 'object'`),
     check('employment_outbox_state', sql`${t.state} IN ('pending', 'sent', 'failed', 'unknown')`),
+  ],
+);
+
+export const employmentOutboxAttempts = pgTable(
+  'employment_outbox_attempts',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    outboxId: uuid('outbox_id').notNull(),
+    attemptNo: integer('attempt_no').notNull(),
+    state: text('state').notNull().default('pending'),
+    errorReason: text('error_reason'),
+    createdAt: utc(),
+  },
+  (t) => [
+    unique('employment_outbox_attempts_tenant_id').on(t.tenantId, t.id),
+    unique('employment_outbox_attempts_number').on(t.tenantId, t.outboxId, t.attemptNo),
+    foreignKey({
+      name: 'employment_outbox_attempts_outbox_fk',
+      columns: [t.tenantId, t.outboxId],
+      foreignColumns: [employmentOutbox.tenantId, employmentOutbox.id],
+    }),
+    index('employment_outbox_attempts_pending').on(t.tenantId, t.state, t.createdAt),
+    check('employment_outbox_attempts_number_positive', sql`${t.attemptNo} > 0`),
+    check('employment_outbox_attempts_state', sql`${t.state} IN ('pending', 'sent', 'failed', 'unknown')`),
   ],
 );
 

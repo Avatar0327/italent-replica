@@ -58,8 +58,17 @@ export async function createEmploymentBusiness(
 ): Promise<EmploymentBusiness> {
   const normalized = normalizeEmploymentInput(ctx, input);
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
+  await assertBusinessSequence(tx, ctx, employee.id, normalized);
+  assertEmployTypeUsage(normalized);
   await assertDirectTransferAllowed(tx, ctx, normalized);
-  await assertEmploymentDateAvailable(tx, ctx, employee.id, normalized.effectiveDate);
+  await assertEmploymentDateAvailable(
+    tx,
+    ctx,
+    employee.id,
+    normalized.effectiveDate,
+    normalized.kind,
+    normalized.staffId,
+  );
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
     ? undefined
     : await selectEmploymentCycle(tx, ctx, employee.id, normalized);
@@ -120,7 +129,16 @@ export async function updateEmploymentBusiness(
   }
   const before = business.payload;
   const normalized = normalizePatchedInput(ctx, before, patch);
-  await assertEmploymentDateAvailable(tx, ctx, business.employeeId, normalized.effectiveDate);
+  await assertBusinessSequence(tx, ctx, business.employeeId, normalized);
+  assertEmployTypeUsage(normalized);
+  await assertEmploymentDateAvailable(
+    tx,
+    ctx,
+    business.employeeId,
+    normalized.effectiveDate,
+    normalized.kind,
+    normalized.staffId,
+  );
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
     ? undefined
     : await selectEmploymentCycle(tx, ctx, business.employeeId, normalized);
@@ -186,6 +204,40 @@ function normalizePatchedInput(
     fields: { ...fields, ...patch.fields },
     customFields: { ...customFields, ...patch.customFields },
   });
+}
+
+function assertEmployTypeUsage(input: Pick<NormalizedEmploymentInput, 'kind' | 'fields'>): void {
+  if (!NEW_CYCLE_KINDS.includes(input.kind) && Object.prototype.hasOwnProperty.call(input.fields, 'employType')) {
+    throw new AppError('VALIDATION_FAILED', '非入职类业务不能设置人员类别', { reason: 'EMPLOY_TYPE_NOT_ALLOWED' });
+  }
+}
+
+async function assertBusinessSequence(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: Pick<NormalizedEmploymentInput, 'kind' | 'effectiveDate' | 'staffId'>,
+): Promise<void> {
+  const [latest] = rowsOf<{ kind: BusinessKind; staffId: string }>(
+    await tx.execute(sql`
+    SELECT r.kind, r.staff_id AS "staffId" FROM employment_timeline t
+    JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+    WHERE t.tenant_id=${ctx.tenantId} AND t.employee_id=${employeeId}::uuid
+      AND t.start_date <= ${input.effectiveDate}::date
+    ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1
+  `),
+  );
+  const terminal = latest && ['leave', 'retirement'].includes(latest.kind);
+  let reason: string | undefined;
+  if (input.kind === 'hire' && latest && !terminal) reason = 'EMPLOYEE_ALREADY_EMPLOYED';
+  else if (input.kind === 'rehire' && latest?.kind !== 'leave') reason = 'REHIRE_REQUIRES_LEAVE';
+  else if (input.kind === 'retire_rehire' && latest?.kind !== 'retirement')
+    reason = 'RETIRE_REHIRE_REQUIRES_RETIREMENT';
+  else if (!NEW_CYCLE_KINDS.includes(input.kind) && ((!latest && !input.staffId) || terminal))
+    reason = 'ACTIVE_EMPLOYMENT_REQUIRED';
+  else if (!NEW_CYCLE_KINDS.includes(input.kind) && latest && input.staffId && latest.staffId !== input.staffId)
+    reason = 'EMPLOYMENT_CYCLE_MISMATCH';
+  if (reason) throw new AppError('CONFLICT', '任职业务前后顺序不合法', { reason });
 }
 
 async function assertDirectTransferAllowed(tx: Tx, ctx: EmploymentContext, input: NormalizedEmploymentInput) {
@@ -300,20 +352,36 @@ export async function appendEmploymentState(
   );
 }
 
+async function cycleForMaterialization(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  newCycle: boolean,
+): Promise<SelectedEmploymentCycle | undefined> {
+  if (newCycle) return undefined;
+  return selectEmploymentCycle(tx, ctx, business.employeeId, {
+    effectiveDate: business.payload.effectiveDate,
+    staffId: business.payload.selectedStaffId ?? undefined,
+  });
+}
+
 export async function materializeEmploymentRecord(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
 ): Promise<void> {
   const payload = business.payload;
-  await assertEmploymentDateAvailable(tx, ctx, business.employeeId, payload.effectiveDate);
+  await assertBusinessSequence(tx, ctx, business.employeeId, payload);
+  await assertEmploymentDateAvailable(
+    tx,
+    ctx,
+    business.employeeId,
+    payload.effectiveDate,
+    payload.kind,
+    payload.selectedStaffId ?? undefined,
+  );
   const newCycle = NEW_CYCLE_KINDS.includes(payload.kind);
-  const selected = newCycle
-    ? undefined
-    : await selectEmploymentCycle(tx, ctx, business.employeeId, {
-        effectiveDate: payload.effectiveDate,
-        staffId: payload.selectedStaffId ?? undefined,
-      });
+  const selected = await cycleForMaterialization(tx, ctx, business, newCycle);
   const staffId = selected?.cycle.id ?? randomUUID();
   const entryDate = selected?.cycle.entryDate ?? payload.effectiveDate;
   const inherited = await resolveEffectiveInheritance(tx, ctx, payload, {
@@ -323,7 +391,7 @@ export async function materializeEmploymentRecord(
   const employType = effectiveEmployType(payload, selected);
   const fields = { ...inherited.fields, employType, jobNumber: business.employee.code };
   await validateEmploymentReferences(tx, ctx, fields, payload.effectiveDate);
-  const { previous, next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate);
+  const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, payload.kind);
   if (newCycle) {
     await insertEmploymentRow(tx, 'employment_cycles', {
       id: staffId,
@@ -352,16 +420,15 @@ export async function materializeEmploymentRecord(
     customFields: inherited.customFields,
     createdAt: ctx.now.toISOString(),
   });
-  await insertEmploymentTimeline(tx, ctx, business.employeeId, business.id, payload.effectiveDate);
-  await insertEmploymentRow(tx, 'employment_changes', {
-    id: randomUUID(),
-    tenantId: ctx.tenantId,
-    employeeId: business.employeeId,
-    currentRecordId: business.id,
-    previousRecordId: previous?.recordId ?? null,
-    commandId: ctx.commandId,
-    createdAt: ctx.now.toISOString(),
-  });
+  await insertEmploymentTimeline(
+    tx,
+    ctx,
+    business.employeeId,
+    business.id,
+    staffId,
+    payload.effectiveDate,
+    payload.kind,
+  );
   await auditEmployment(
     tx,
     ctx,
