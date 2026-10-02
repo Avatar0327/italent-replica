@@ -25,12 +25,23 @@ if ! command -v pg_ctlcluster >/dev/null 2>&1; then
 fi
 
 # 4) 依赖（PGlite 的 WASM 随 npm 包下载，之后离线可用）
-pnpm install --frozen-lockfile
+# 网络偶发卡住（Codex 曾停在 downloaded 0 超过 50 分钟）：限时 + 重试，失败就报错而不是无限等待
+for attempt in 1 2 3; do
+  if timeout 600 pnpm install --frozen-lockfile --fetch-timeout=60000 --fetch-retries=5 --network-concurrency=8; then
+    break
+  fi
+  echo "pnpm install 第 ${attempt} 次失败或超时，重试…"
+  [ "$attempt" -eq 3 ] && { echo "pnpm install 连续 3 次失败"; exit 1; }
+done
 
 # 5) 启动 PG 并创建测试库与角色（幂等）；缓存快照不保留进程，test:pg 会再次调用
 bash scripts/dev-db.sh
 
 # 6) 预热：编译检查一次，让 tsc/vite 缓存进入快照
 pnpm typecheck
+
+# 7) setup 结束前停掉数据库：缓存快照不保留进程，残留后台进程会让云端 setup 判定未结束；test:pg 会按需重新启动
+SUDO_STOP=""; [ "$(id -u)" -ne 0 ] && SUDO_STOP="sudo"
+$SUDO_STOP pg_ctlcluster 16 main stop >/dev/null 2>&1 </dev/null || true
 
 echo "setup 完成。离线测试：pnpm test；真 PG 测试：pnpm test:pg；全部：bash scripts/test-all.sh"
