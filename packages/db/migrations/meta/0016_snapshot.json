@@ -1,6 +1,6 @@
 {
-  "id": "82557083-fe1f-4047-9b40-dd4433abef1b",
-  "prevId": "dd05aeb0-e129-47f0-b3fa-b907027dca5e",
+  "id": "3cf2fc7e-4262-48ec-b49b-572517c7b41c",
+  "prevId": "82557083-fe1f-4047-9b40-dd4433abef1b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -803,6 +803,1159 @@
         "users_status_valid": {
           "name": "users_status_valid",
           "value": "\"users\".\"status\" IN ('active', 'disabled')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.license_pools": {
+      "name": "license_pools",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "license_type": {
+          "name": "license_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "quota": {
+          "name": "quota",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "license_pools_tenant_id_tenants_id_fk": {
+          "name": "license_pools_tenant_id_tenants_id_fk",
+          "tableFrom": "license_pools",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "license_pools_tenant_id_license_type_pk": {
+          "name": "license_pools_tenant_id_license_type_pk",
+          "columns": [
+            "tenant_id",
+            "license_type"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "license_pools_quota_non_negative": {
+          "name": "license_pools_quota_non_negative",
+          "value": "\"license_pools\".\"quota\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.license_seats": {
+      "name": "license_seats",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "license_type": {
+          "name": "license_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grant_id": {
+          "name": "grant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "consumed_at": {
+          "name": "consumed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "license_seats_tenant_id_tenants_id_fk": {
+          "name": "license_seats_tenant_id_tenants_id_fk",
+          "tableFrom": "license_seats",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "license_seats_user_id_users_id_fk": {
+          "name": "license_seats_user_id_users_id_fk",
+          "tableFrom": "license_seats",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "license_seats_grant_id_permission_grants_id_fk": {
+          "name": "license_seats_grant_id_permission_grants_id_fk",
+          "tableFrom": "license_seats",
+          "tableTo": "permission_grants",
+          "columnsFrom": [
+            "grant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "license_seats_pool": {
+          "name": "license_seats_pool",
+          "tableFrom": "license_seats",
+          "tableTo": "license_pools",
+          "columnsFrom": [
+            "tenant_id",
+            "license_type"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "license_type"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "license_seats_tenant_id_license_type_user_id_pk": {
+          "name": "license_seats_tenant_id_license_type_user_id_pk",
+          "columns": [
+            "tenant_id",
+            "license_type",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.permission_admin_grantable_profiles": {
+      "name": "permission_admin_grantable_profiles",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "admin_id": {
+          "name": "admin_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile_id": {
+          "name": "profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "permission_admin_grantable_profiles_tenant_id_tenants_id_fk": {
+          "name": "permission_admin_grantable_profiles_tenant_id_tenants_id_fk",
+          "tableFrom": "permission_admin_grantable_profiles",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_admin_grantable_profiles_admin": {
+          "name": "permission_admin_grantable_profiles_admin",
+          "tableFrom": "permission_admin_grantable_profiles",
+          "tableTo": "permission_admins",
+          "columnsFrom": [
+            "tenant_id",
+            "admin_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_admin_grantable_profiles_profile": {
+          "name": "permission_admin_grantable_profiles_profile",
+          "tableFrom": "permission_admin_grantable_profiles",
+          "tableTo": "permission_profiles",
+          "columnsFrom": [
+            "tenant_id",
+            "profile_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "permission_admin_grantable_profiles_admin_id_profile_id_pk": {
+          "name": "permission_admin_grantable_profiles_admin_id_profile_id_pk",
+          "columns": [
+            "admin_id",
+            "profile_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.permission_admin_grantable_roles": {
+      "name": "permission_admin_grantable_roles",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "admin_id": {
+          "name": "admin_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "permission_admin_grantable_roles_tenant_id_tenants_id_fk": {
+          "name": "permission_admin_grantable_roles_tenant_id_tenants_id_fk",
+          "tableFrom": "permission_admin_grantable_roles",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_admin_grantable_roles_admin": {
+          "name": "permission_admin_grantable_roles_admin",
+          "tableFrom": "permission_admin_grantable_roles",
+          "tableTo": "permission_admins",
+          "columnsFrom": [
+            "tenant_id",
+            "admin_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "permission_admin_grantable_roles_admin_id_role_pk": {
+          "name": "permission_admin_grantable_roles_admin_id_role_pk",
+          "columns": [
+            "admin_id",
+            "role"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "permission_admin_grantable_roles_role_valid": {
+          "name": "permission_admin_grantable_roles_role_valid",
+          "value": "\"permission_admin_grantable_roles\".\"role\" IN ('tenant_admin', 'system_admin', 'employee_admin', 'user_admin', 'permission_admin', 'matrix_admin', 'audit_admin', 'billing_admin')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.permission_admins": {
+      "name": "permission_admins",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "permission_admins_active_user_role": {
+          "name": "permission_admins_active_user_role",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "role",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"permission_admins\".\"status\" = 'active'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "permission_admins_tenant_id_tenants_id_fk": {
+          "name": "permission_admins_tenant_id_tenants_id_fk",
+          "tableFrom": "permission_admins",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_admins_user_id_users_id_fk": {
+          "name": "permission_admins_user_id_users_id_fk",
+          "tableFrom": "permission_admins",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_admins_created_by_users_id_fk": {
+          "name": "permission_admins_created_by_users_id_fk",
+          "tableFrom": "permission_admins",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "permission_admins_tenant_id": {
+          "name": "permission_admins_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "permission_admins_role_valid": {
+          "name": "permission_admins_role_valid",
+          "value": "\"permission_admins\".\"role\" IN ('tenant_admin', 'system_admin', 'employee_admin', 'user_admin', 'permission_admin', 'matrix_admin', 'audit_admin', 'billing_admin')"
+        },
+        "permission_admins_status_valid": {
+          "name": "permission_admins_status_valid",
+          "value": "\"permission_admins\".\"status\" IN ('active', 'revoked')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.permission_grants": {
+      "name": "permission_grants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile_id": {
+          "name": "profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "granted_by": {
+          "name": "granted_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_by": {
+          "name": "revoked_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "permission_grants_active_user_profile": {
+          "name": "permission_grants_active_user_profile",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "profile_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"permission_grants\".\"status\" = 'active'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "permission_grants_tenant_id_tenants_id_fk": {
+          "name": "permission_grants_tenant_id_tenants_id_fk",
+          "tableFrom": "permission_grants",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_grants_user_id_users_id_fk": {
+          "name": "permission_grants_user_id_users_id_fk",
+          "tableFrom": "permission_grants",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_grants_granted_by_users_id_fk": {
+          "name": "permission_grants_granted_by_users_id_fk",
+          "tableFrom": "permission_grants",
+          "tableTo": "users",
+          "columnsFrom": [
+            "granted_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_grants_revoked_by_users_id_fk": {
+          "name": "permission_grants_revoked_by_users_id_fk",
+          "tableFrom": "permission_grants",
+          "tableTo": "users",
+          "columnsFrom": [
+            "revoked_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_grants_profile": {
+          "name": "permission_grants_profile",
+          "tableFrom": "permission_grants",
+          "tableTo": "permission_profiles",
+          "columnsFrom": [
+            "tenant_id",
+            "profile_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "permission_grants_source_valid": {
+          "name": "permission_grants_source_valid",
+          "value": "\"permission_grants\".\"source\" IN ('manual', 'auto')"
+        },
+        "permission_grants_status_valid": {
+          "name": "permission_grants_status_valid",
+          "value": "\"permission_grants\".\"status\" IN ('active', 'revoked')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.permission_profile_apps": {
+      "name": "permission_profile_apps",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile_id": {
+          "name": "profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "app_code": {
+          "name": "app_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "permission_profile_apps_tenant_id_tenants_id_fk": {
+          "name": "permission_profile_apps_tenant_id_tenants_id_fk",
+          "tableFrom": "permission_profile_apps",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_profile_apps_profile": {
+          "name": "permission_profile_apps_profile",
+          "tableFrom": "permission_profile_apps",
+          "tableTo": "permission_profiles",
+          "columnsFrom": [
+            "tenant_id",
+            "profile_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "permission_profile_apps_profile_id_app_code_pk": {
+          "name": "permission_profile_apps_profile_id_app_code_pk",
+          "columns": [
+            "profile_id",
+            "app_code"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.permission_profile_buttons": {
+      "name": "permission_profile_buttons",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile_id": {
+          "name": "profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_code": {
+          "name": "object_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "button_code": {
+          "name": "button_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level": {
+          "name": "level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "permission_profile_buttons_tenant_id_tenants_id_fk": {
+          "name": "permission_profile_buttons_tenant_id_tenants_id_fk",
+          "tableFrom": "permission_profile_buttons",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_profile_buttons_object": {
+          "name": "permission_profile_buttons_object",
+          "tableFrom": "permission_profile_buttons",
+          "tableTo": "permission_profile_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "profile_id",
+            "object_code"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "profile_id",
+            "object_code"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "permission_profile_buttons_profile_id_object_code_button_code_level_pk": {
+          "name": "permission_profile_buttons_profile_id_object_code_button_code_level_pk",
+          "columns": [
+            "profile_id",
+            "object_code",
+            "button_code",
+            "level"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "permission_profile_buttons_level_valid": {
+          "name": "permission_profile_buttons_level_valid",
+          "value": "\"permission_profile_buttons\".\"level\" IN ('list', 'list_row', 'detail', 'app_page')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.permission_profile_fields": {
+      "name": "permission_profile_fields",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile_id": {
+          "name": "profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_code": {
+          "name": "object_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field_code": {
+          "name": "field_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "can_view": {
+          "name": "can_view",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "can_edit": {
+          "name": "can_edit",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "permission_profile_fields_tenant_id_tenants_id_fk": {
+          "name": "permission_profile_fields_tenant_id_tenants_id_fk",
+          "tableFrom": "permission_profile_fields",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_profile_fields_object": {
+          "name": "permission_profile_fields_object",
+          "tableFrom": "permission_profile_fields",
+          "tableTo": "permission_profile_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "profile_id",
+            "object_code"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "profile_id",
+            "object_code"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "permission_profile_fields_profile_id_object_code_field_code_pk": {
+          "name": "permission_profile_fields_profile_id_object_code_field_code_pk",
+          "columns": [
+            "profile_id",
+            "object_code",
+            "field_code"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.permission_profile_objects": {
+      "name": "permission_profile_objects",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile_id": {
+          "name": "profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_code": {
+          "name": "object_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "can_create": {
+          "name": "can_create",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "can_update": {
+          "name": "can_update",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "can_delete": {
+          "name": "can_delete",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "permission_profile_objects_tenant_id_tenants_id_fk": {
+          "name": "permission_profile_objects_tenant_id_tenants_id_fk",
+          "tableFrom": "permission_profile_objects",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_profile_objects_profile": {
+          "name": "permission_profile_objects_profile",
+          "tableFrom": "permission_profile_objects",
+          "tableTo": "permission_profiles",
+          "columnsFrom": [
+            "tenant_id",
+            "profile_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "permission_profile_objects_tenant_id_profile_id_object_code_pk": {
+          "name": "permission_profile_objects_tenant_id_profile_id_object_code_pk",
+          "columns": [
+            "tenant_id",
+            "profile_id",
+            "object_code"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.permission_profiles": {
+      "name": "permission_profiles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'custom'"
+        },
+        "license_type": {
+          "name": "license_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "permission_profiles_tenant_id_tenants_id_fk": {
+          "name": "permission_profiles_tenant_id_tenants_id_fk",
+          "tableFrom": "permission_profiles",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "permission_profiles_created_by_users_id_fk": {
+          "name": "permission_profiles_created_by_users_id_fk",
+          "tableFrom": "permission_profiles",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "permission_profiles_tenant_code": {
+          "name": "permission_profiles_tenant_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        },
+        "permission_profiles_tenant_id": {
+          "name": "permission_profiles_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "permission_profiles_source_valid": {
+          "name": "permission_profiles_source_valid",
+          "value": "\"permission_profiles\".\"source\" IN ('standard', 'custom')"
         }
       },
       "isRLSEnabled": false
@@ -8844,6 +9997,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "payload_version_id": {
+          "name": "payload_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -9014,7 +10173,8 @@
             "tenant_id",
             "command_id",
             "event_type",
-            "object_id"
+            "object_id",
+            "payload_version_id"
           ]
         }
       },

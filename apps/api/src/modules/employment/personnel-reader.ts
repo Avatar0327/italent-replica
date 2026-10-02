@@ -21,11 +21,27 @@ function query(input: IncumbentQuery) {
   if (!isUuid(input.tenantId) || !isUuid(input.positionId))
     throw new AppError('VALIDATION_FAILED', '租户与职位标识必须是UUID');
   return sql`
+    WITH position_candidates AS (
+      SELECT id FROM employment_records
+      WHERE tenant_id=${input.tenantId} AND position_id=${input.positionId}
+      UNION
+      SELECT business_id AS id FROM employment_payload_versions
+      WHERE tenant_id=${input.tenantId} AND position_id=${input.positionId} AND is_record_snapshot
+    )
     SELECT r.employee_id AS "employeeId",r.id AS "recordId",r.staff_id AS "staffId",
-      r.direct_manager_id AS "directManagerId"
-    FROM employment_timeline t JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+      CASE WHEN latest.id IS NULL THEN r.direct_manager_id ELSE latest.direct_manager_id END AS "directManagerId"
+    FROM position_candidates candidate
+    JOIN employment_records r ON r.tenant_id=${input.tenantId} AND r.id=candidate.id
+    JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
+    LEFT JOIN LATERAL (
+      SELECT p.id,p.position_id,p.direct_manager_id FROM employment_payload_versions p
+      WHERE p.tenant_id=r.tenant_id AND p.employee_id=r.employee_id AND p.business_id=r.id
+        AND p.is_record_snapshot
+      ORDER BY p.version_no DESC LIMIT 1
+    ) latest ON true
     WHERE t.tenant_id=${input.tenantId} AND t.valid_during @> ${input.asOf}::date
-      AND r.position_id=${input.positionId} AND r.kind NOT IN ('leave','retirement') AND r.service_type='primary'
+      AND (CASE WHEN latest.id IS NULL THEN r.position_id ELSE latest.position_id END)=${input.positionId}
+      AND r.kind NOT IN ('leave','retirement') AND r.service_type='primary'
   `;
 }
 

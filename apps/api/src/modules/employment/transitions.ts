@@ -57,6 +57,7 @@ export async function transitionEmployment(
   if (input.action === 'delete') {
     await deleteEmploymentBusiness(tx, ctx, business);
   } else if (input.action === 'approve') {
+    // TODO(R1-T07)：审批中心完成节点鉴权后调用；只有立即生效才执行向后更新。
     await appendEmploymentState(tx, ctx, business, 'approved');
     if (tenantLocalDate(ctx.now, ctx.timezone) >= business.payload.effectiveDate) {
       await materializeEmploymentRecord(tx, ctx, business);
@@ -67,6 +68,7 @@ export async function transitionEmployment(
     if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) {
       throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
     }
+    // TODO(R1-T08)：调度器调用此端口；materialize 同事务执行向后更新。
     await materializeEmploymentRecord(tx, ctx, business);
     await appendEmploymentState(tx, ctx, business, 'effective');
   } else {
@@ -136,7 +138,12 @@ async function deleteEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business
       'employment.record.delete',
       'employment-record',
       business.id,
-      deletionSnapshot(raw),
+      {
+        ...deletionSnapshot(raw),
+        payloadVersionId: business.payload.id,
+        ...record.fields,
+        ...Object.fromEntries(Object.entries(record.customFields).map(([key, value]) => [`custom:${key}`, value])),
+      },
       null,
     );
   }

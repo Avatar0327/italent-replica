@@ -166,7 +166,7 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
     ]);
   });
 
-  it('DEC-041 补录继承插入点前一条，后续原业务记录和字段完全不改写（向后更新归属 R1-T06）', async () => {
+  it('DEC-041 补录继承插入点前一条，后续匹配字段追加更新且独立值保留', async () => {
     const session = await employmentSession(testDb().db, 'empbackfill');
     const employee = await session.employee('补录合成员工');
     const hire = await session.business(
@@ -192,7 +192,12 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
     const laterBefore = await session.record(later.record!.id);
     const backfill = await session.business(
       employee.id,
-      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-10', fields: { remarks: '补录备注' } },
+      {
+        kind: 'transfer',
+        mode: 'direct',
+        effectiveDate: '2026-09-10',
+        fields: { remarks: '补录备注', employmentSource: '补录来源' },
+      },
       later.employeeRevision,
     );
     expect(backfill.record!.isInserted).toBe(true);
@@ -205,7 +210,7 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
     const laterAfter = await session.record(later.record!.id);
     expect(laterAfter.id).toBe(laterBefore.id);
     expect(laterAfter.staffId).toBe(laterBefore.staffId);
-    expect(laterAfter.fields).toEqual(laterBefore.fields);
+    expect(laterAfter.fields).toEqual({ ...laterBefore.fields, employmentSource: '补录来源' });
     expect(laterAfter.customFields).toEqual(laterBefore.customFields);
     expect(laterAfter.previousRecordId).toBe(backfill.record!.id);
     const rows = await session.records(employee.id);

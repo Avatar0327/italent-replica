@@ -9,6 +9,13 @@
  *   也未传入要写的字段，故字段级与按钮级判定要等模块改用 object.create|update|delete（带 fields）后才生效。
  * - 只判定功能权限；记录是否在数据范围内由 R1-T02 判定（DEC-043），resource（如员工 ID）这里不使用。
  * - 字段、按钮元数据由各模块登记；此处先登记空字段 / 按钮的占位定义，只承载应用归属。
+ * - R1-T06 向后更新的预览 / 导入 / 记录编辑路由沿用 tenant.employment.read|write，已由本表覆盖。
+ *
+ * 已知缺口（Codex 复审 PR #8 提出；DEC-080 决定整体并入 R1-T02，本任务不修）：
+ * TODO(R1-T02, DEC-080) 1. 模块写路由未传 fields：字段级可编辑校验对模块路由不生效（应改走 requireObjectWrite）。
+ * TODO(R1-T02, DEC-080) 2. 模块写操作一律映射到「编辑」：新增 / 删除未按 create / delete 数据操作分别判定。
+ * TODO(R1-T02, DEC-080) 3. 模块对象字段 / 按钮目录为空（占位定义）：无法配置字段与按钮权限，按钮判定恒拒绝。
+ * TODO(R1-T02, DEC-080) 4. 模块读接口未按可查看字段裁剪（trimToViewableFields）：读出全部字段。
  */
 import type { DataOperation, ObjectDefinition } from './object-permission.js';
 

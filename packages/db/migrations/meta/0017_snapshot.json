@@ -1,6 +1,6 @@
 {
-  "id": "56fb5b2d-437f-4abf-a610-f0d1398147a7",
-  "prevId": "9cf2152a-c029-4d18-8edd-80d460acf664",
+  "id": "e878a937-280c-4051-87e2-21ab8aa8d2db",
+  "prevId": "3cf2fc7e-4262-48ec-b49b-572517c7b41c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9997,6 +9997,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "payload_version_id": {
+          "name": "payload_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -10166,7 +10172,8 @@
             "tenant_id",
             "command_id",
             "event_type",
-            "object_id"
+            "object_id",
+            "payload_version_id"
           ],
           "nullsNotDistinct": false
         }
@@ -10374,6 +10381,25 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trigger_business_id": {
+          "name": "trigger_business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_record_snapshot": {
+          "name": "is_record_snapshot",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "kind": {
           "name": "kind",
@@ -10597,7 +10623,115 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "employment_payload_versions_cycle_date": {
+          "name": "employment_payload_versions_cycle_date",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "selected_staff_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "effective_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version_no",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "employment_payload_versions_snapshot_position": {
+          "name": "employment_payload_versions_snapshot_position",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version_no",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "where": "\"employment_payload_versions\".\"is_record_snapshot\"",
+          "concurrently": false
+        },
+        "employment_payload_versions_latest_snapshot": {
+          "name": "employment_payload_versions_latest_snapshot",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version_no",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "where": "\"employment_payload_versions\".\"is_record_snapshot\"",
+          "concurrently": false
+        }
+      },
       "foreignKeys": {
         "employment_payload_versions_tenant_id_tenants_id_fk": {
           "name": "employment_payload_versions_tenant_id_tenants_id_fk",
@@ -10643,6 +10777,23 @@
             "tenant_id",
             "employee_id",
             "business_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "employment_payload_versions_trigger_business_fk": {
+          "name": "employment_payload_versions_trigger_business_fk",
+          "tableFrom": "employment_payload_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "trigger_business_id"
+          ],
+          "tableTo": "employment_business_objects",
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
             "id"
           ],
           "onUpdate": "no action",
@@ -10880,6 +11031,18 @@
         "employment_payload_versions_previous_not_self": {
           "name": "employment_payload_versions_previous_not_self",
           "value": "\"employment_payload_versions\".\"previous_version_id\" <> \"employment_payload_versions\".\"id\""
+        },
+        "employment_payload_versions_command_pair": {
+          "name": "employment_payload_versions_command_pair",
+          "value": "(\"employment_payload_versions\".\"command_id\" IS NULL) = (\"employment_payload_versions\".\"trigger_business_id\" IS NULL)"
+        },
+        "employment_payload_versions_snapshot_command": {
+          "name": "employment_payload_versions_snapshot_command",
+          "value": "NOT \"employment_payload_versions\".\"is_record_snapshot\" OR \"employment_payload_versions\".\"command_id\" IS NOT NULL"
+        },
+        "employment_payload_versions_command_nonempty": {
+          "name": "employment_payload_versions_command_nonempty",
+          "value": "\"employment_payload_versions\".\"command_id\" IS NULL OR btrim(\"employment_payload_versions\".\"command_id\") <> ''"
         },
         "employment_payload_versions_mode": {
           "name": "employment_payload_versions_mode",

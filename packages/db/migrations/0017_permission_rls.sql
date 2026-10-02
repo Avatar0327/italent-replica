@@ -1,4 +1,4 @@
--- 手写迁移：权限模型表（R1-T01，0014 生成）纳入租户隔离（硬规则 7）并授予最小权限。
+-- 手写迁移：权限模型表（R1-T01，0016 生成）纳入租户隔离（硬规则 7）并授予最小权限。
 -- 身份对象权限按“整对象替换”写入，所以子表需要 DELETE；授权、管理员记录撤销只改状态，不授 DELETE。
 SELECT enable_tenant_isolation('permission_profiles');
 --> statement-breakpoint

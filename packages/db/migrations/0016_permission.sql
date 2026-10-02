@@ -1,3 +1,5 @@
+-- R1-T01 权限模型表（pnpm db:generate 生成）。main 的 0015_employment_outbox_payload_version 是手写迁移且未更新快照，
+-- 生成时会重复带出 employment_outbox 的 3 条变更；它们已由 0015 执行，故从本文件删去（快照 0016 已含其最终状态）。
 CREATE TABLE "license_pools" (
 	"tenant_id" uuid NOT NULL,
 	"license_type" text NOT NULL,

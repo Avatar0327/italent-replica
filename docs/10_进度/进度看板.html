@@ -1,0 +1,231 @@
+<title>iTalent 复刻进度</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* 布局：顶部状态条 → 里程碑轨道 → “正在进行”卡片 → 分阶段任务表 → 最近动态。像施工进度看板：一眼先看“现在在哪、卡在哪”。 */
+:root{
+  --bg:#f6f7f5; --panel:#ffffff; --ink:#1d2421; --muted:#5f6b66; --line:#dfe4e1;
+  --accent:#1f6f5c; --accent-soft:#e3f0ec;
+  --done:#2e7d4f; --active:#b26a00; --review:#2b5fa8; --todo:#9aa5a0; --blocked:#b23a3a;
+  --done-bg:#e6f3ea; --active-bg:#fbf0de; --review-bg:#e5edf9; --todo-bg:#eef1ef; --blocked-bg:#f8e6e6;
+  --f-display:"Noto Serif SC","Songti SC",serif; --f-body:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121614; --panel:#1a201d; --ink:#e4ebe7; --muted:#9aa8a1; --line:#2b3430;
+  --accent:#5cc3a6; --accent-soft:#1d3029;
+  --done:#6fcf97; --active:#f0b14d; --review:#7fa8e8; --todo:#6f7b76; --blocked:#e88080;
+  --done-bg:#1b2d22; --active-bg:#33270f; --review-bg:#1a2536; --todo-bg:#1f2522; --blocked-bg:#361d1d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121614; --panel:#1a201d; --ink:#e4ebe7; --muted:#9aa8a1; --line:#2b3430;
+  --accent:#5cc3a6; --accent-soft:#1d3029;
+  --done:#6fcf97; --active:#f0b14d; --review:#7fa8e8; --todo:#6f7b76; --blocked:#e88080;
+  --done-bg:#1b2d22; --active-bg:#33270f; --review-bg:#1a2536; --todo-bg:#1f2522; --blocked-bg:#361d1d; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:14px/1.6 var(--f-body)}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:grid;gap:22px}
+h1{font:700 26px/1.25 var(--f-display);margin:0;text-wrap:balance}
+h2{font:700 17px/1.3 var(--f-display);margin:0 0 10px}
+.sub{color:var(--muted);font-size:13px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between}
+.stats{display:flex;flex-wrap:wrap;gap:8px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-width:104px}
+.stat b{display:block;font:600 20px/1.2 var(--f-mono);font-variant-numeric:tabular-nums}
+.stat span{font-size:12px;color:var(--muted)}
+/* 里程碑轨道 */
+.track{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto}
+.rail{display:grid;grid-template-columns:repeat(var(--n),minmax(92px,1fr));gap:6px;min-width:calc(var(--n) * 98px)}
+.ms{display:grid;gap:6px}
+.bar{height:8px;border-radius:4px;background:var(--todo-bg);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--done)}
+.ms.cur .bar{outline:2px solid var(--active);outline-offset:2px}
+.ms .k{font:600 13px var(--f-mono)}
+.ms .t{font-size:12px;color:var(--muted);line-height:1.35}
+.ms .p{font:500 12px var(--f-mono);color:var(--muted)}
+/* 正在进行 */
+.now{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:grid;gap:6px;min-width:0}
+.card .h{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.card .id{font:600 13px var(--f-mono)}
+.card p{margin:0;font-size:13px;color:var(--muted)}
+.card .next{font-size:13px;color:var(--ink)}
+.pill{display:inline-block;font-size:11.5px;font-weight:500;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.s-done{color:var(--done);background:var(--done-bg)} .s-active{color:var(--active);background:var(--active-bg)}
+.s-review{color:var(--review);background:var(--review-bg)} .s-todo{color:var(--todo);background:var(--todo-bg)}
+.s-blocked{color:var(--blocked);background:var(--blocked-bg)}
+/* 任务表 */
+.phases{display:grid;gap:14px}
+details{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+summary{cursor:pointer;padding:12px 14px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:10px}
+summary .nm{font:700 15px var(--f-display)}
+summary .mini{flex:1;min-width:120px;height:6px;border-radius:3px;background:var(--todo-bg);overflow:hidden}
+summary .mini i{display:block;height:100%;background:var(--done)}
+.tbl{overflow-x:auto;border-top:1px solid var(--line)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:13px}
+th,td{text-align:left;padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:500;color:var(--muted);font-size:12px;letter-spacing:.04em}
+tr:last-child td{border-bottom:0}
+td.idc{font-family:var(--f-mono);white-space:nowrap}
+td a{color:var(--accent)}
+.legend{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+.log{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 14px}
+.log ol{list-style:none;margin:0;padding:0}
+.log li{display:grid;grid-template-columns:92px 1fr;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.log li:last-child{border-bottom:0}
+.log time{font-family:var(--f-mono);color:var(--muted);font-size:12px}
+.mode{background:var(--accent-soft);color:var(--ink);border-radius:8px;padding:10px 14px;font-size:13px}
+.mode b{color:var(--accent)}
+@media (max-width:560px){h1{font-size:22px}.log li{grid-template-columns:1fr;gap:2px}}
+@media (prefers-reduced-motion:no-preference){.bar i,.mini i{transition:width .6s ease}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>北森 iTalent 复刻 · 开发进度</h1>
+      <div class="sub">更新于 <span class="mono" id="updated"></span> · 仓库 <span class="mono">Avatar0327/italent-replica</span></div>
+    </div>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <div class="mode" id="mode"></div>
+
+  <section>
+    <h2>里程碑</h2>
+    <div class="track"><div class="rail" id="rail"></div></div>
+  </section>
+
+  <section>
+    <h2>正在进行</h2>
+    <div class="now" id="now"></div>
+  </section>
+
+  <section>
+    <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between">
+      <h2>全部任务</h2>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="phases" id="phases"></div>
+  </section>
+
+  <section>
+    <h2>最近动态</h2>
+    <div class="log"><ol id="log"></ol></div>
+  </section>
+</div>
+
+<script>
+/* ===== 进度数据：每次更新只改这一段 ===== */
+const DATA = {
+  updated: "2026-10-02",
+  mode: "当前开发方式（DEC-071）：<b>Codex 开发、Claude 审查</b>；每个 PR 经交叉审计、CI 全绿后合并。",
+  stats: [
+    {v:"7", l:"已合并 PR"}, {v:"304", l:"main 测试通过"}, {v:"80", l:"已确认决策"}, {v:"26", l:"待取证事项"}
+  ],
+  status: {
+    done:{t:"已完成",c:"s-done"}, review:{t:"审查中",c:"s-review"}, active:{t:"修改中",c:"s-active"},
+    todo:{t:"未开始",c:"s-todo"}, blocked:{t:"受阻",c:"s-blocked"}
+  },
+  milestones: [
+    {k:"M0", t:"底座与决策", tasks:["M0"]},
+    {k:"M1", t:"多租户隔离", tasks:["R1-T00"]},
+    {k:"M2", t:"权限与平台", tasks:["R1-T01","R1-T02","R1-T15","R1-T17"]},
+    {k:"M3", t:"组织与职务编制", tasks:["R1-T03","R1-T04"]},
+    {k:"M4", t:"任职版本链", tasks:["R1-T05","R1-T06","R1-T12"]},
+    {k:"M5", t:"审批与定时生效", tasks:["R1-T07","R1-T08"]},
+    {k:"M6", t:"调动业务", tasks:["R1-T09","R1-T11"]},
+    {k:"M7", t:"联动·自助·审计", tasks:["R1-T10","R1-T13","R1-T14","R1-T16"]},
+    {k:"R2", t:"人事完整化", tasks:["R2-T01","R2-T02","R2-T03","R2-T04","R2-T05","R2-T06","R2-T07","R2-T08","R2-T09","R2-T10"]},
+    {k:"R3", t:"人才链路", tasks:["R3-T00","R3-T01","R3-T02","R3-T03","R3-T04","R3-T05","R3-T06","R3-T07"]}
+  ],
+  tasks: {
+    "M0":{n:"仓库骨架、技术栈、AGENTS.md、决策对齐、CI",s:"done",who:"Claude",pr:null,note:"DEC-047~070"},
+    "R1-T00":{n:"多租户隔离底座",s:"done",who:"Claude",pr:1,note:"3 轮 Codex 审计后合并"},
+    "R1-T01":{n:"权限模型",s:"review",who:"Claude",pr:8,note:"Codex 复审通过前 3 条；4 个模块接入缺口并入 R1-T02（DEC-080），PR #16 合并后同步再合"},
+    "R1-T02":{n:"数据范围 + 权限全面接入",s:"todo",who:"Codex",pr:null,note:"DEC-080 扩大范围；提示词已备好，等 PR #8 合并后派发"},
+    "R1-T15":{n:"企业设置（用户/授权/管理单元/许可）",s:"todo",who:"",pr:null,note:""},
+    "R1-T17":{n:"平台运营层（租户开通、预置）",s:"todo",who:"",pr:null,note:""},
+    "R1-T03":{n:"组织对象（多维层级）",s:"done",who:"Codex",pr:10,note:""},
+    "R1-T04":{n:"职务体系与编制",s:"done",who:"Codex",pr:11,note:"带编调动暂缓（DEC-073）"},
+    "R1-T05":{n:"任职记录版本链",s:"done",who:"Codex",pr:12,note:"表单字段级配置转入 R1-T09"},
+    "R1-T06":{n:"向后更新",s:"review",who:"Codex",pr:16,note:"审计意见已全部修复，349 测试通过、CI 全绿，待合并"},
+    "R1-T12":{n:"人员信息与人员子集",s:"todo",who:"",pr:null,note:""},
+    "R1-T07":{n:"审批中心",s:"todo",who:"",pr:null,note:""},
+    "R1-T08":{n:"定时生效任务",s:"todo",who:"",pr:null,note:"含租户时区、失败待办（DEC-052/056）"},
+    "R1-T09":{n:"调动业务",s:"todo",who:"",pr:null,note:"含表单字段级可编辑配置"},
+    "R1-T11":{n:"撤销与删除任职",s:"todo",who:"",pr:null,note:""},
+    "R1-T10":{n:"调动跨对象联动",s:"todo",who:"",pr:null,note:""},
+    "R1-T13":{n:"员工自助",s:"todo",who:"",pr:null,note:""},
+    "R1-T14":{n:"经理自助",s:"todo",who:"",pr:null,note:""},
+    "R1-T16":{n:"审计日志",s:"todo",who:"",pr:null,note:"含失败命令三类审计（PR #1 转入）"},
+    "R2-T01":{n:"录用入职",s:"todo"},"R2-T02":{n:"试用期与转正",s:"todo"},"R2-T03":{n:"离职管理",s:"todo"},
+    "R2-T04":{n:"退休管理",s:"todo"},"R2-T05":{n:"兼职管理",s:"todo"},"R2-T06":{n:"合同协议",s:"todo"},
+    "R2-T07":{n:"实习生与劳务人员",s:"todo"},"R2-T08":{n:"组织调整审批",s:"todo"},"R2-T09":{n:"职责转交",s:"todo"},
+    "R2-T10":{n:"人事数据分析",s:"todo"},
+    "R3-T00":{n:"表达式引擎与北森函数库",s:"todo"},"R3-T01":{n:"人才标准与指标库",s:"todo"},
+    "R3-T02":{n:"任职资格与人才评定",s:"todo"},"R3-T03":{n:"360 度评估",s:"todo"},"R3-T04":{n:"人才盘点",s:"todo"},
+    "R3-T05":{n:"继任管理",s:"todo"},"R3-T06":{n:"人才池与人才梯队",s:"todo"},"R3-T07":{n:"个人发展计划 IDP",s:"todo"}
+  },
+  now: [
+    {id:"PR #16 · R1-T06", s:"review", d:"向后更新：审计意见已全部修复，CI 全绿", next:"等你确认后合并"},
+    {id:"PR #8 · R1-T01", s:"review", d:"权限模型：3 条已修；4 个接入缺口转入 R1-T02（DEC-080）", next:"PR #16 合并后同步 main、迁移顺延，再合并"},
+    {id:"R1-T02", s:"todo", d:"数据范围 + 权限全面接入（DEC-080）", next:"PR #8 合并后派发给 Codex"}
+  ],
+  log: [
+    {d:"10-02", t:"R1-T06 审计修复完成（Codex 直接 Update branch），CI 全绿，待合并"},
+    {d:"10-02", t:"PR #8 Codex 复审：权限接入各模块的 4 个缺口并入 R1-T02（DEC-080）"},
+    {d:"10-02", t:"R1-T06（PR #16）审完：规则②记录级（DEC-078）、停用按后续记录生效日（DEC-079）"},
+    {d:"10-02", t:"PR #8 合并 main 并修复 Codex 三条意见，登记组织/职务/任职模块权限动作"},
+    {d:"10-02", t:"合并 PR #12：任职记录版本链；跨周期同日允许（DEC-077）"},
+    {d:"10-02", t:"合并 PR #11：职务体系与编制；编制时机出厂值照搬本租户（DEC-075）"},
+    {d:"10-01", t:"合并 PR #10：组织对象；修复云端 setup 超时"},
+    {d:"10-01", t:"开发方式临时改为 Codex 开发、Claude 审查（DEC-071）"},
+    {d:"09-30", t:"合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"}
+  ]
+};
+/* ===== 渲染 ===== */
+const S = DATA.status, T = DATA.tasks;
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pill = s => `<span class="pill ${S[s].c}">${S[s].t}</span>`;
+const prLink = n => n ? `<a href="https://github.com/Avatar0327/italent-replica/pull/${n}" target="_blank" rel="noopener">#${n}</a>` : "—";
+const ratio = ids => { const w = {done:1, review:.7, active:.5, todo:0, blocked:0};
+  return ids.reduce((a,id)=>a + (w[T[id].s]||0), 0) / ids.length; };
+
+document.getElementById("updated").textContent = DATA.updated;
+document.getElementById("mode").innerHTML = DATA.mode;
+document.getElementById("stats").innerHTML = DATA.stats.map(x=>`<div class="stat"><b>${esc(x.v)}</b><span>${esc(x.l)}</span></div>`).join("");
+document.getElementById("legend").innerHTML = Object.keys(S).map(pill).join("");
+
+const rail = document.getElementById("rail");
+rail.style.setProperty("--n", DATA.milestones.length);
+let curFound = false;
+rail.innerHTML = DATA.milestones.map(m => {
+  const r = ratio(m.tasks); const done = m.tasks.filter(id=>T[id].s==="done").length;
+  const cur = !curFound && r < 1 && (curFound = true);
+  return `<div class="ms${cur?" cur":""}"><div class="k">${m.k}</div><div class="bar"><i style="width:${Math.round(r*100)}%"></i></div>
+    <div class="t">${esc(m.t)}</div><div class="p">${done}/${m.tasks.length}</div></div>`;
+}).join("");
+
+document.getElementById("now").innerHTML = DATA.now.map(c =>
+  `<div class="card"><div class="h"><span class="id">${esc(c.id)}</span>${pill(c.s)}</div><p>${esc(c.d)}</p><div class="next">下一步：${esc(c.next)}</div></div>`).join("");
+
+const groups = [
+  {nm:"R1 底座", ms:["M0","M1","M2","M3","M4","M5","M6","M7"], open:true},
+  {nm:"R2 人事完整化", ms:["R2"]}, {nm:"R3 人才链路", ms:["R3"]}
+];
+document.getElementById("phases").innerHTML = groups.map(g => {
+  const ms = DATA.milestones.filter(m => g.ms.includes(m.k));
+  const ids = ms.flatMap(m => m.tasks); const r = ratio(ids);
+  const done = ids.filter(id=>T[id].s==="done").length;
+  const rows = ms.flatMap(m => m.tasks.map(id => { const t = T[id];
+    return `<tr><td class="idc">${id}</td><td class="idc">${m.k}</td><td>${esc(t.n)}</td><td>${pill(t.s)}</td><td>${esc(t.who||"—")}</td><td class="idc">${prLink(t.pr)}</td><td>${esc(t.note||"")}</td></tr>`; })).join("");
+  return `<details${g.open?" open":""}><summary><span class="nm">${g.nm}</span><span class="mono sub">${done}/${ids.length} 完成</span><span class="mini"><i style="width:${Math.round(r*100)}%"></i></span></summary>
+    <div class="tbl"><table><thead><tr><th>任务</th><th>里程碑</th><th>内容</th><th>状态</th><th>开发方</th><th>PR</th><th>备注</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
+}).join("");
+
+document.getElementById("log").innerHTML = DATA.log.map(x=>`<li><time>${esc(x.d)}</time><span>${esc(x.t)}</span></li>`).join("");
+</script>
