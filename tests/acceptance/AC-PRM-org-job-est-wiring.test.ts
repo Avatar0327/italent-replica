@@ -630,16 +630,63 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
   for (const imported of [false, true]) {
     it(`组织${imported ? '导入新增' : '直接新增'}同键重放必须按现行父级权限检查`, async () => {
       const as = await actor('organization', { scope: true, buttons: [{ buttonCode: 'import', level: 'list' }] });
-      const body = imported ? { rows: [{ sourceCode: randomUUID(), code: randomUUID(), name: '导入创建后移出', parentId: org.id }] } : { name: '直接创建后移出', parents: { admin: { parentId: org.id } } };
+      const body = imported
+        ? { rows: [{ sourceCode: randomUUID(), code: randomUUID(), name: '导入创建后移出', parentId: org.id }] }
+        : { name: '直接创建后移出', parents: { admin: { parentId: org.id } } };
       const path = imported ? '/api/tenant/org/import' : paths.organization;
       const input = { ...as, ifMatch: 0, idempotencyKey: randomUUID(), body };
       const first = await world.api.request('POST', path, input);
       expect(first.status, await first.clone().text()).toBe(imported ? 200 : 201);
-      const data = await first.json() as { id: string; results: { orgId: string }[] };
+      const data = (await first.json()) as { id: string; results: { orgId: string }[] };
       const id = imported ? data.results[0]!.orgId : data.id;
       expect((await world.api.request('POST', path, input)).status).toBe(imported ? 200 : 201);
-      expect((await fixture.request('PATCH', `${paths.organization}/${id}`, { ...world.asAdmin, ifMatch: 1, body: { effectiveDate: TODAY, parents: { admin: { parentId: secondOrg.id } } } })).status).toBe(200);
+      expect(
+        (
+          await fixture.request('PATCH', `${paths.organization}/${id}`, {
+            ...world.asAdmin,
+            ifMatch: 1,
+            body: { effectiveDate: TODAY, parents: { admin: { parentId: secondOrg.id } } },
+          })
+        ).status,
+      ).toBe(200);
       expect((await world.api.request('GET', `${paths.organization}/${id}`, as)).status).toBe(404);
+      expect((await world.api.request('POST', path, input)).status).toBe(404);
+    });
+  }
+
+  for (const imported of [false, true]) {
+    it(`职位${imported ? '导入新增' : '直接新增'}同键重放不能绕过当前组织范围`, async () => {
+      const as = await actor('jobPosition', { scope: true, buttons: [{ buttonCode: 'import', level: 'list' }] });
+      const row = {
+        name: `职位创建后移出-${randomUUID()}`,
+        code: randomUUID(),
+        orgId: org.id,
+        postId: post.id,
+        startDate: '2026-01-01',
+      };
+      const body = imported ? { kind: 'positions', rows: [{ ...row, sourceCode: randomUUID() }] } : row;
+      const path = imported ? '/api/tenant/job/import' : '/api/tenant/job/positions';
+      const input = { ...as, ifMatch: 0, idempotencyKey: randomUUID(), body };
+      const first = await world.api.request('POST', path, input);
+      expect(first.status, await first.clone().text()).toBe(imported ? 200 : 201);
+      const data = (await first.json()) as { id: string; results: { objectId: string }[] };
+      const raw = await (await fixture.request('POST', path, input)).json();
+      if (imported) expect(raw, JSON.stringify(raw)).toMatchObject({ results: [{ status: 'created' }] });
+      const current = (await (
+        await fixture.request('GET', `/api/tenant/job/positions?name=${encodeURIComponent(row.name)}`, world.asAdmin)
+      ).json()) as { items: { id: string; code: string }[] };
+      const id = imported ? current.items.find((item) => item.code === row.code)!.id : data.id;
+      expect((await world.api.request('POST', path, input)).status).toBe(imported ? 200 : 201);
+      expect(
+        (
+          await fixture.request('PATCH', `/api/tenant/job/positions/${id}`, {
+            ...world.asAdmin,
+            ifMatch: 1,
+            body: { effectiveDate: TODAY, orgId: secondOrg.id },
+          })
+        ).status,
+      ).toBe(200);
+      expect((await world.api.request('GET', `/api/tenant/job/positions/${id}`, as)).status).toBe(404);
       expect((await world.api.request('POST', path, input)).status).toBe(404);
     });
   }
