@@ -21,6 +21,7 @@ import {
   type ObjectPermission,
   validateObjectPermission,
 } from '@italent/domain';
+import { tenantObjectCatalog } from './tenant-catalog.js';
 import { AppError } from '../../errors.js';
 import { audit, type WriteContext } from './audit.js';
 import { revisionConflict } from './http.js';
@@ -115,7 +116,7 @@ export async function setObjectPermission(
   change: ObjectPermissionWrite,
 ): Promise<ProfileDetail> {
   const { profileId, permission } = change;
-  const definition = catalog.get(permission.objectCode);
+  const definition = (await tenantObjectCatalog(tx, catalog, permission.objectCode)).get(permission.objectCode);
   if (!definition) throw new AppError('NOT_FOUND', '对象不存在');
   const violations = validateObjectPermission(definition, permission);
   if (violations.length > 0) throw new AppError('VALIDATION_FAILED', '对象权限配置不合法', violations);

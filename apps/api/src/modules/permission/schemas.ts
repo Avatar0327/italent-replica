@@ -2,13 +2,14 @@
 import { ADMIN_ROLES, BUTTON_LEVELS } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
+import { grantScopeBody } from './data-scope-schemas.js';
 
 const MAX_ITEMS = 1000;
 const code = (pattern: RegExp) => z.string().regex(pattern);
 const PROFILE_CODE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const APP_CODE = /^[A-Za-z][A-Za-z0-9_.]{0,63}$/;
 const LICENSE_TYPE = /^[a-z][a-z0-9_]{0,63}$/;
-const ITEM_CODE = /^[A-Za-z0-9_.-]{1,128}$/;
+const ITEM_CODE = /^[A-Za-z0-9_.:-]{1,128}$/;
 
 export const profileBody = z.strictObject({
   code: code(PROFILE_CODE),
@@ -24,7 +25,11 @@ export const objectPermissionBody = z.strictObject({
   buttons: z.array(z.strictObject({ buttonCode: code(ITEM_CODE), level: z.enum(BUTTON_LEVELS) })).max(MAX_ITEMS),
 });
 
-export const grantBody = z.strictObject({ userId: z.uuid(), profileId: z.uuid() });
+export const grantBody = z.strictObject({
+  userId: z.uuid(),
+  profileId: z.uuid(),
+  scopes: z.array(grantScopeBody).max(100).optional(),
+});
 
 export const adminSetsBody = z.strictObject({
   grantableAdminRoles: z.array(z.enum(ADMIN_ROLES)).max(ADMIN_ROLES.length),

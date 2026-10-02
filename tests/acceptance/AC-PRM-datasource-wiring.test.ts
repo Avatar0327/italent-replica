@@ -13,7 +13,7 @@ import {
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
-it('datasource overrides page rules and datasource seeAll still takes identity precedence', async () => {
+it('datasource replaces entity rules and datasource seeAll still takes identity precedence', async () => {
   const w = await seedPermissionWorld(database().db);
   const clock = () => new Date('2026-10-01T01:00:00Z');
   const setup = tenantApi(w.db, { clock });
@@ -54,9 +54,10 @@ it('datasource overrides page rules and datasource seeAll still takes identity p
     ).status,
   ).toBe(200);
   const policy = async (kind: string, rules: { dimension: string }[], revision: number) => {
+    const target = kind === 'entity' ? object.code : code;
     const response = await w.api.request(
       'PUT',
-      `/api/tenant/permission/scope-policies/TenantBase/${object.code}/${kind}/${code}`,
+      `/api/tenant/permission/scope-policies/TenantBase/${object.code}/${kind}/${target}`,
       {
         ...w.asAdmin,
         ifMatch: revision,
@@ -73,10 +74,10 @@ it('datasource overrides page rules and datasource seeAll still takes identity p
     expect(response.status).toBe(200);
     return (await response.json()) as { items: { id: string }[]; hasDataPermission: boolean };
   };
-  await policy('page', [{ dimension: 'management' }], 0);
+  await policy('entity', [{ dimension: 'management' }], 0);
   await policy('datasource', [], 0);
   expect(await list()).toMatchObject({ items: [], hasDataPermission: false });
-  await policy('page', [], 1);
+  await policy('entity', [], 1);
   await policy('datasource', [{ dimension: 'management' }], 1);
   expect((await list()).items.map((row) => row.id)).toEqual([ids[0]]);
   await policy('datasource', [], 2);

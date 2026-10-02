@@ -14,10 +14,15 @@ describe('DEC-080 real module catalogs and fail-closed writes', () => {
     const definition = MODULE_OBJECTS.organization;
     const subject: PermissionSubject = {
       adminRoles: [],
-      objectPermissions: [{
-        objectCode: definition.code, profileApps: [definition.application],
-        dataOperations: { create: false, update: true, delete: false }, fields: [], buttons: [],
-      }],
+      objectPermissions: [
+        {
+          objectCode: definition.code,
+          profileApps: [definition.application],
+          dataOperations: { create: false, update: true, delete: false },
+          fields: [],
+          buttons: [],
+        },
+      ],
     };
     const catalog = new ObjectCatalog(Object.values(MODULE_OBJECTS));
     expect(decide(subject, { action: 'tenant.org.write' }, catalog)).toBe(false);

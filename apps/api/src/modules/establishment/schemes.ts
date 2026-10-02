@@ -9,6 +9,7 @@ import {
   establishmentSchemeRanges,
   establishmentSchemeVersions,
   gte,
+  inArray,
   lte,
   ne,
   type Tx,
@@ -309,4 +310,75 @@ export function nextPeriod(start: string, scheme: Pick<SchemeRecord, 'periodType
   const next = end.toISOString().slice(0, 10);
   if (next.length !== 10) throw invalid('periodStart', '下一周期超出可用日期');
   return next;
+}
+
+/** 列表只批量读取本页方案，三个查询获取版本、排除组织和占编范围，避免逐行 N+1。 */
+export async function loadSchemeBatch(
+  tx: Tx,
+  tenantId: string,
+  ids: readonly string[],
+  asOf: string,
+): Promise<SchemeRecord[]> {
+  if (!ids.length) return [];
+  const rows = await tx
+    .selectDistinctOn([establishmentSchemeVersions.schemeId], {
+      object: establishmentSchemeObjects,
+      version: establishmentSchemeVersions,
+    })
+    .from(establishmentSchemeVersions)
+    .innerJoin(
+      establishmentSchemeObjects,
+      and(
+        eq(establishmentSchemeObjects.id, establishmentSchemeVersions.schemeId),
+        eq(establishmentSchemeObjects.tenantId, establishmentSchemeVersions.tenantId),
+      ),
+    )
+    .where(
+      and(
+        eq(establishmentSchemeVersions.tenantId, tenantId),
+        inArray(establishmentSchemeVersions.schemeId, [...ids]),
+        lte(establishmentSchemeVersions.startDate, asOf),
+      ),
+    )
+    .orderBy(
+      establishmentSchemeVersions.schemeId,
+      desc(establishmentSchemeVersions.startDate),
+      desc(establishmentSchemeVersions.versionNo),
+    );
+  const current = rows.filter(({ version }) => version.stopDate >= asOf);
+  const versionIds = current.map(({ version }) => version.id);
+  if (!versionIds.length) return [];
+  const exclusions = await tx
+    .select()
+    .from(establishmentSchemeExclusions)
+    .where(
+      and(
+        eq(establishmentSchemeExclusions.tenantId, tenantId),
+        inArray(establishmentSchemeExclusions.versionId, versionIds),
+      ),
+    )
+    .limit(ids.length * 101);
+  const ranges = await tx
+    .select()
+    .from(establishmentSchemeRanges)
+    .where(
+      and(eq(establishmentSchemeRanges.tenantId, tenantId), inArray(establishmentSchemeRanges.versionId, versionIds)),
+    )
+    .orderBy(establishmentSchemeRanges.ordinal)
+    .limit(ids.length * 6);
+  return current.map(({ object, version }) => {
+    const excluded = exclusions.filter((item) => item.versionId === version.id);
+    const occupancy = ranges.filter((item) => item.versionId === version.id);
+    if (excluded.length > 100 || occupancy.length > 5)
+      throw new AppError('SERVICE_UNAVAILABLE', '方案条件超过单次处理预算');
+    return {
+      ...version,
+      id: object.id,
+      versionId: version.id,
+      revision: object.revision,
+      periodType: version.cycle,
+      excludedOrgIds: excluded.map((item) => item.orgId),
+      occupancyRanges: occupancy.map((item) => ({ employmentType: item.employmentType })),
+    };
+  });
 }

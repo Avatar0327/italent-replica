@@ -1,5 +1,5 @@
-import { isUuid, type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { isUuid, type Tx, withTenant } from '@italent/db';
+import { MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
 import type { Context } from 'hono';
 import type { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
@@ -7,6 +7,8 @@ import { runCommand, type CommandResult } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
+import { resolveModuleScope, trimModuleResponse } from '../permission/module-access.js';
+import { authorizeEstablishmentReplay } from '../permission/establishment-replay.js';
 import { validIsoDate } from '../org/read-model.js';
 
 export interface BusinessContext extends TenantContext {
@@ -33,15 +35,42 @@ export async function runWrite(
   ctx: BusinessContext,
   input: unknown,
   execute: (tx: Tx, ctx: BusinessContext) => Promise<CommandResult>,
+  objectCode?: string,
+  preflight?: (tx: Tx) => Promise<void>,
+  checkResult?: (tx: Tx, body: unknown) => Promise<void>,
 ) {
+  if (preflight) await withTenant(deps.db, ctx.tenantId, preflight);
+  if (objectCode === MODULE_OBJECTS.establishment.code) {
+    const scope = await resolveModuleScope(deps, ctx, undefined, objectCode);
+    await withTenant(deps.db, ctx.tenantId, (tx) =>
+      authorizeEstablishmentReplay(
+        tx,
+        deps,
+        ctx,
+        scope,
+        c.req.header('idempotency-key') ?? '',
+        c.req.path.endsWith('/execute'),
+      ),
+    );
+  }
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input },
     execute: (tx, commandId) => execute(tx, { ...ctx, commandId }),
   });
+  if (checkResult) await withTenant(deps.db, ctx.tenantId, (tx) => checkResult(tx, result.body));
   const payload = result.body as { revision?: number } | null;
   if (payload?.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
-  return c.json(result.body, result.status);
+  const value = { ...(result.body as Record<string, unknown>) };
+  if (objectCode && Array.isArray(value.subdivisions)) {
+    value.subdivisions = await trimModuleResponse(deps, ctx, objectCode, value.subdivisions);
+  }
+  const output = !objectCode
+    ? value
+    : Array.isArray(value.results)
+      ? { results: await trimModuleResponse(deps, ctx, objectCode, value.results) }
+      : await trimModuleResponse(deps, ctx, objectCode, value);
+  return c.json(output, result.status);
 }
 
 export function revision(c: Context): number {

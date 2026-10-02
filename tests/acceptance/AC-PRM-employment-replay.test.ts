@@ -58,7 +58,7 @@ async function fixture() {
   );
   const user = await addMember(seed, 'replay-writer');
   const profile = await createProfile(seed, `replay-${randomUUID()}`);
-  async function permissions(update = true) {
+  async function permissions(update = true, editablePlace = true) {
     expect(
       (
         await setObjectPermission(
@@ -66,7 +66,11 @@ async function fixture() {
           profile,
           {
             dataOperations: { create: true, update, delete: true },
-            fields: OBJECT.fields.map((field) => ({ fieldCode: field.code, view: true, edit: !field.system })),
+            fields: OBJECT.fields.map((field) => ({
+              fieldCode: field.code,
+              view: true,
+              edit: !field.system && (field.code !== 'place' || editablePlace),
+            })),
             buttons: OBJECT.buttons.map((button) => ({ buttonCode: button.code, level: button.level })),
           },
           OBJECT.code,
@@ -128,5 +132,54 @@ describe('AC-PRM 任职安全重放', () => {
     expect((await world.api.request('POST', path, request)).status).toBe(201);
     await world.permissions(false);
     expect((await world.api.request('POST', path, request)).status).toBe(403);
+  });
+
+  it('当前对象已移入范围也不能重放包含旧范围外部门的原始响应', async () => {
+    const world = await fixture();
+    const path = `/api/tenant/employment/businesses/${world.future.id}`;
+    const request = {
+      ...world.as,
+      ifMatch: world.future.revision,
+      idempotencyKey: randomUUID(),
+      body: { fields: { place: '旧部门的快照' } },
+    };
+    const first = await world.api.request('PATCH', path, request);
+    expect(first.status).toBe(200);
+    const updated = (await first.json()) as { revision: number };
+    expect(
+      (
+        await world.setup.request('PATCH', path, {
+          ...world.asAdmin,
+          ifMatch: updated.revision,
+          body: { fields: { departmentId: world.inside.id } },
+        })
+      ).status,
+    ).toBe(200);
+    await world.scope([world.inside.id], 1);
+    expect((await world.api.request('GET', path, world.as)).status).toBe(200);
+    expect((await world.api.request('PATCH', path, request)).status).toBe(404);
+  });
+
+  it('字段编辑权撤销后同键拒绝；删除成功的对象仍可合法同键重放', async () => {
+    const world = await fixture();
+    const path = `/api/tenant/employment/businesses/${world.future.id}`;
+    const request = {
+      ...world.as,
+      ifMatch: world.future.revision,
+      idempotencyKey: randomUUID(),
+      body: { fields: { place: '字段权限回查' } },
+    };
+    const first = await world.api.request('PATCH', path, request);
+    expect(first.status).toBe(200);
+    const updated = (await first.json()) as { revision: number };
+    await world.permissions(true, false);
+    expect((await world.api.request('PATCH', path, request)).status).toBe(403);
+    const deletion = { ...world.as, ifMatch: updated.revision, idempotencyKey: randomUUID() };
+    const deleted = await world.api.request('DELETE', path, deletion);
+    expect(deleted.status).toBe(200);
+    const deletedBody = await deleted.json();
+    const replay = await world.api.request('DELETE', path, deletion);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(deletedBody);
   });
 });

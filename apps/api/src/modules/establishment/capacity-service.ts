@@ -159,6 +159,7 @@ export async function createCapacity(
   input: CapacityInput,
   options: { autoFill?: boolean } = {},
 ): Promise<CapacityRecord> {
+  await ctx.authorizeCapacity?.(tx, { operation: 'create', orgId: input.orgId, payload: { ...input } });
   assertRevision(ctx.expectedRevision, 0);
   await lockEstablishment(tx, ctx);
   const date = businessDate(input.effectiveDate ?? (input.periodStart < today(ctx) ? input.periodStart : today(ctx)));
@@ -232,6 +233,7 @@ export async function updateCapacity(
     .where(and(eq(establishmentObjects.tenantId, ctx.tenantId), eq(establishmentObjects.id, id)))
     .limit(1);
   if (!object) throw new AppError('NOT_FOUND', '组织编制不存在');
+  await ctx.authorizeCapacity?.(tx, { operation: 'update', id, orgId: object.orgId, payload: { ...patch } });
   assertRevision(ctx.expectedRevision, object.revision);
   const [future] = await tx
     .select({ id: establishmentVersions.id })
@@ -390,6 +392,23 @@ async function syncAncestors(
     if (!parent) continue;
     const scheme = await loadScheme(tx, ctx.tenantId, parent.schemeId, after.startDate);
     if (scheme.maintenanceMode === 'local') continue;
+    await ctx.authorizeCapacity?.(tx, {
+      operation: 'update',
+      id: parent.id,
+      orgId: parent.orgId,
+      payload: {
+        effectiveDate: after.startDate,
+        ...(scheme.subdivision === 'position'
+          ? {
+              subdivisions: subdivisionDelta(before, after, parent, scheme.maintenanceMode, true),
+              reservedInclusive: parent.reservedInclusive + after.reservedInclusive - before.reservedInclusive,
+            }
+          : {
+              inclusiveCapacity:
+                (parent.inclusiveCapacity ?? 0) + (after.inclusiveCapacity ?? 0) - (before.inclusiveCapacity ?? 0),
+            }),
+      },
+    });
     const [future] = await tx
       .select({ id: establishmentVersions.id })
       .from(establishmentVersions)

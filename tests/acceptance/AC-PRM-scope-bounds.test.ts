@@ -14,17 +14,19 @@ import {
 } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as ScopeHierarchy from '../../apps/api/src/modules/permission/scope-hierarchy.js';
 import { expandScopeRoots } from '../../apps/api/src/modules/permission/scope-hierarchy.js';
+import type * as ScopePersons from '../../apps/api/src/modules/permission/scope-persons.js';
 import { managedPersons, reportingPersons } from '../../apps/api/src/modules/permission/scope-persons.js';
 import { resolveDataScope } from '../../apps/api/src/modules/permission/scope-resolver.js';
 import { seedTenantWithMember } from './support/tenant-api.js';
 
 vi.mock('../../apps/api/src/modules/permission/scope-hierarchy.js', async (original) => ({
-  ...(await original<typeof import('../../apps/api/src/modules/permission/scope-hierarchy.js')>()),
+  ...(await original<typeof ScopeHierarchy>()),
   expandScopeRoots: vi.fn(),
 }));
 vi.mock('../../apps/api/src/modules/permission/scope-persons.js', async (original) => ({
-  ...(await original<typeof import('../../apps/api/src/modules/permission/scope-persons.js')>()),
+  ...(await original<typeof ScopePersons>()),
   managedPersons: vi.fn(),
   reportingPersons: vi.fn(),
 }));

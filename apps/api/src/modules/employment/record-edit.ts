@@ -2,7 +2,7 @@ import { type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { getCustomFieldsForInheritance } from './configuration.js';
-import { auditEmployment } from './context.js';
+import { auditEmployment, requireScopedEmploymentObject } from './context.js';
 import { normalizeBusinessPatch, validateCustomValue } from './fields.js';
 import { isForwardEditSupported, type ForwardEditEntry, type ForwardFieldChange } from './forward-rules.js';
 import { appendForwardPayload } from './forward-store.js';
@@ -32,7 +32,10 @@ export async function editedValues(
     if (!definition) throw new AppError('VALIDATION_FAILED', '自定义字段不属于本租户任职对象');
     customFields[id] = validateCustomValue(value, definition.valueType);
   }
-  return { fields: { ...record.fields, ...patch.fields }, customFields };
+  const fields = { ...record.fields, ...patch.fields };
+  await requireScopedEmploymentObject(tx, ctx, record.employeeId, record.fields.departmentId, record.id);
+  await requireScopedEmploymentObject(tx, ctx, record.employeeId, fields.departmentId, record.id);
+  return { fields, customFields };
 }
 
 /** 内部编辑端口；页面、人员、交接的入口接入时保留真实 entry，不模拟审批权限。 */

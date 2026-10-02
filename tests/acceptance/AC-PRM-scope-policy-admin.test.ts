@@ -135,10 +135,15 @@ describe('AC-PRM-17/18/21 范围消费规则与关系管理API', () => {
     });
     expect((await put(path, { ...body, departmentField: 'remarks' }, 1)).status).toBe(400);
     expect((await put(path, { ...body, rules: [{ dimension: 'reporting' }] }, 1)).status).toBe(400);
-    const page = `/scope-policies/TenantBase/${objectCode}/page/people`;
+    const page = `/scope-policies/TenantBase/${objectCode}/page/${objectCode}.list`;
     expect((await put(page, { rules: [] })).status).toBe(200);
     const get = await world.api.request('GET', `${BASE}${page}`, world.asAdmin);
-    expect(await get.json()).toMatchObject({ targetKind: 'page', targetCode: 'people', rules: [], revision: 1 });
+    expect(await get.json()).toMatchObject({
+      targetKind: 'page',
+      targetCode: `${objectCode}.list`,
+      rules: [],
+      revision: 1,
+    });
     expect(
       (await put(page, { rules: Array.from({ length: 21 }, () => ({ dimension: 'management' })) }, 1)).status,
     ).toBe(400);

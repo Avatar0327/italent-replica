@@ -1,5 +1,6 @@
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
+import { requireScopedEmploymentObject, requireEmploymentWrite } from './context.js';
 import { AppError } from '../../errors.js';
 import { getCustomFieldsForInheritance } from './configuration.js';
 import { findCurrentRecord, loadEmploymentRecord } from './read-model.js';
@@ -104,6 +105,14 @@ export async function forwardUpdateEmployment(
       target.values,
       custom.map((field) => field.id),
     );
+    if (changes.length)
+      await requireScopedEmploymentObject(
+        tx,
+        ctx,
+        source.employeeId,
+        target.values.fields.departmentId,
+        target.payload.businessId,
+      );
     const available = await availableForwardChanges(tx, ctx, changes, target.payload.effectiveDate, cache);
     if (available.skipped.length)
       plan.skipped.push({
@@ -112,6 +121,20 @@ export async function forwardUpdateEmployment(
         fields: available.skipped,
       });
     if (!available.accepted.length) continue;
+    const nextValues = applyForwardChanges(target.values, available.accepted);
+    await requireScopedEmploymentObject(
+      tx,
+      ctx,
+      source.employeeId,
+      nextValues.fields.departmentId,
+      target.payload.businessId,
+    );
+    if (!dryRun)
+      await requireEmploymentWrite(
+        ctx,
+        'update',
+        Object.fromEntries(available.accepted.map((change) => [change.field.replace(/^preset:/, ''), change.after])),
+      );
     plan.changes.push({
       businessId: target.payload.businessId,
       staffId: source.staffId,

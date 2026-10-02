@@ -13,8 +13,10 @@ import {
   inArray,
   isUuid,
   type EstablishmentCopyStatus,
+  sql,
   type Tx,
 } from '@italent/db';
+import { scopeSql } from '../permission/module-access.js';
 import { AppError } from '../../errors.js';
 import { readCapacity, type CapacityRecord } from './capacity-read.js';
 import { createCapacity } from './capacity-service.js';
@@ -73,6 +75,7 @@ export async function readCopyJobReport(
   tx: Tx,
   ctx: EstablishmentContext,
   id: string,
+  fields?: ReadonlySet<string>,
 ): Promise<{ filename: string; content: string }> {
   const job = await readCopyJob(tx, ctx.tenantId, id);
   if (job.status === 'pending') {
@@ -81,10 +84,12 @@ export async function readCopyJobReport(
   // docs/02_业务建模/18 §9：明细保留 15 天，以持久化结果时间起算，读取不延长保留期。
   const expiresAt = job.createdAt.getTime() + 15 * 24 * 60 * 60 * 1000;
   if (ctx.now.getTime() >= expiresAt) throw new AppError('NOT_FOUND', '复制明细不存在或已过期');
-  const rows = job.capacityIds.map((capacityId) => [capacityId, job.status, job.failureReason ?? '']);
+  const columns = ['capacityIds', 'status', 'failureReason'];
+  const allowed = (values: string[]) => values.filter((_value, index) => !fields || fields.has(columns[index]!));
+  const rows = job.capacityIds.map((capacityId) => allowed([capacityId, job.status, job.failureReason ?? '']));
   return {
     filename: `establishment-copy-${job.id}.csv`,
-    content: [['capacityId', 'status', 'reason'], ...rows]
+    content: [allowed(['capacityId', 'status', 'reason']), ...rows]
       .map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(','))
       .join('\r\n'),
   };
@@ -224,6 +229,7 @@ export async function listNotifications(
   tenantId: string,
   recipientUserId: string,
   page: { limit: number; offset: number },
+  scope?: Parameters<typeof scopeSql>[0],
 ) {
   if (!Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > 100) {
     throw invalid('limit', '每页通知数量须为 1 至 100');
@@ -243,6 +249,28 @@ export async function listNotifications(
       and(
         eq(establishmentNotifications.tenantId, tenantId),
         eq(establishmentNotifications.recipientUserId, recipientUserId),
+        ...(scope
+          ? [
+              sql`(
+          (${establishmentNotifications.jobId} IS NOT NULL AND EXISTS (
+            SELECT 1 FROM establishment_copy_job_items ci
+            WHERE ci.tenant_id = ${tenantId} AND ci.job_id = ${establishmentNotifications.jobId}
+          ) AND NOT EXISTS (
+            SELECT 1 FROM establishment_copy_job_items ci
+            JOIN establishment_objects co ON co.tenant_id = ci.tenant_id AND co.id = ci.capacity_id
+            WHERE ci.tenant_id = ${tenantId} AND ci.job_id = ${establishmentNotifications.jobId}
+            AND NOT (${scopeSql(scope, { org: sql`co.org_id` })})
+          )) OR (${establishmentNotifications.movementId} IS NOT NULL AND EXISTS (
+            SELECT 1 FROM (
+              SELECT * FROM establishment_movement_versions mv
+              WHERE mv.tenant_id = ${tenantId} AND mv.movement_id = ${establishmentNotifications.movementId}
+              ORDER BY mv.version_no DESC LIMIT 1
+            ) movement WHERE ${scopeSql(scope, { org: sql`movement.source_org_id` })}
+              AND ${scopeSql(scope, { org: sql`movement.target_org_id` })}
+          ))
+        )`,
+            ]
+          : []),
       ),
     )
     .orderBy(desc(establishmentNotifications.createdAt), desc(establishmentNotifications.id))

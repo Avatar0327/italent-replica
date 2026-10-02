@@ -1,14 +1,40 @@
-import { withTenant } from '@italent/db';
+import { authorizeJobResult } from '../permission/job-result-scope.js';
+import { authorizeInTransaction } from '../permission/module-access.js';
+import { withTenant, type Tx } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
+import { MODULE_OBJECTS } from '@italent/domain';
+import {
+  button,
+  hasCreatorScope,
+  resolveModuleScope,
+  JOB_OBJECT_CODES,
+  objectContext,
+  requestScope,
+  trimModuleResponse,
+  visible,
+  visibleJob,
+  writeFields,
+  type ModuleScope,
+} from '../permission/module-route-access.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
-import type { TenantEnv } from '../../tenant-context.js';
-import { pageQuery, parseBody, queryDate, readContext, requireNew, revision, runWrite, uuidParam } from './context.js';
+import { tenantOf, type TenantEnv } from '../../tenant-context.js';
+import {
+  type BusinessContext,
+  pageQuery,
+  parseBody,
+  queryDate,
+  readContext,
+  requireNew,
+  revision,
+  runWrite,
+  uuidParam,
+} from './context.js';
 import { businessDate, jobCreationSchema, jobPatchSchema } from './fields.js';
-import { importJobObjects, type JobImportRow } from './import-service.js';
+import { authorizeJobImportRows, importJobObjects, type JobImportRow } from './import-service.js';
 import { JOB_KINDS, type JobKind } from './metadata.js';
-import { jobCandidates, listJobObjects, loadJobObject } from './read-model.js';
+import { jobCandidates, listJobObjects } from './read-model.js';
 import { jobSettingsSchema, readJobSettings, writeJobSettings } from './settings.js';
 import type { JobInput, JobPatch } from './types.js';
 import { validateJobAssignment } from './validation.js';
@@ -27,18 +53,19 @@ export function registerJobRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
   registerCandidates(router, deps);
   registerImport(router, deps);
   registerObjects(router, deps);
+  registerObjectWrites(router, deps);
 }
 
 function registerSettings(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(`${BASE}/settings`, async (c) => {
-    const ctx = await readContext(c, deps, 'tenant.job.read');
+    const ctx = await readContext(c, deps, 'admin.other_settings');
     const asOf = queryDate(c, ctx);
     const result = await withTenant(deps.db, ctx.tenantId, (tx) => readJobSettings(tx, ctx.tenantId, asOf));
     c.header('ETag', `"${result.revision}"`);
     return c.json(result);
   });
   router.put(`${BASE}/settings`, async (c) => {
-    const ctx = await readContext(c, deps, 'tenant.job.write', revision(c));
+    const ctx = await readContext(c, deps, 'admin.other_settings', revision(c));
     const input = await parseBody(c, jobSettingsSchema);
     return runWrite(c, deps, ctx, input, async (tx, writeCtx) => ({
       status: 200,
@@ -50,27 +77,78 @@ function registerSettings(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 function registerCandidates(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   for (const kind of ['levels', 'grades'] as const) {
     router.get(`${BASE}/candidates/${kind}`, async (c) => {
-      const ctx = await readContext(c, deps, 'tenant.job.read');
+      const objectCode = JOB_OBJECT_CODES[kind];
+      const ctx = await objectContext(c, deps, objectCode);
       const postId = z.uuid().safeParse(c.req.query('postId'));
       const levelId = z.uuid().optional().safeParse(c.req.query('levelId'));
       if (!postId.success || !levelId.success) throw new AppError('VALIDATION_FAILED', '职务或职级 ID 不合法');
       const page = pageQuery(c);
       const input = { postId: postId.data, levelId: levelId.data, asOf: queryDate(c, ctx), ...page };
-      const items = await withTenant(deps.db, ctx.tenantId, (tx) => jobCandidates(tx, ctx.tenantId, input, kind));
-      return c.json({ items, page: page.page, pageSize: page.pageSize });
+      const scope = await requestScope(c, deps, ctx, objectCode);
+      const references = await assignmentReferences(c, deps, input);
+      const items =
+        !scope.all && !hasCreatorScope(scope)
+          ? []
+          : await withTenant(deps.db, ctx.tenantId, async (tx) => {
+              await references(tx);
+              return jobCandidates(tx, ctx.tenantId, { ...input, scope }, kind);
+            });
+      return c.json({
+        items: await trimModuleResponse(deps, ctx, objectCode, items),
+        page: page.page,
+        pageSize: page.pageSize,
+        hasDataPermission: scope.all || hasCreatorScope(scope),
+      });
     });
   }
   router.post(`${BASE}/validate-assignment`, async (c) => {
-    const ctx = await readContext(c, deps, 'tenant.job.read');
+    const objectCode = MODULE_OBJECTS.jobPost.code;
+    const ctx = await objectContext(c, deps, objectCode);
     const input = await parseBody(c, assignment);
-    const result = await withTenant(deps.db, ctx.tenantId, (tx) => validateJobAssignment(tx, ctx.tenantId, input));
+    await button(deps, ctx, objectCode, 'validate', 'detail');
+    const references = await assignmentReferences(c, deps, input);
+    const result = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      await references(tx);
+      return validateJobAssignment(tx, ctx.tenantId, input);
+    });
     return c.json(result);
   });
 }
 
+/** 显式引用逐对象授权，不能用候选/职务自身的看全部来放行另一个对象。 */
+async function assignmentReferences(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  input: { postId: string; levelId?: string; gradeId?: string; asOf: string },
+) {
+  const references: { kind: JobKind; id: string; ctx: BusinessContext; scope: ModuleScope }[] = [];
+  for (const [kind, id] of [
+    ['posts', input.postId],
+    ['levels', input.levelId],
+    ['grades', input.gradeId],
+  ] as const) {
+    if (!id) continue;
+    const code = JOB_OBJECT_CODES[kind];
+    const ctx = await objectContext(c, deps, code);
+    const scope = await resolveModuleScope(
+      deps,
+      ctx,
+      undefined,
+      code,
+      c.req.method === 'GET' ? `${code}.detail` : undefined,
+    );
+    references.push({ kind, id, ctx, scope });
+  }
+  return async (tx: Tx) => {
+    for (const { kind, id, ctx, scope } of references) {
+      if (!scope.all) await visibleJob(tx, ctx, scope, kind, id, input.asOf);
+    }
+  };
+}
+
 function registerImport(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post(`${BASE}/import`, async (c) => {
-    const ctx = await readContext(c, deps, 'tenant.job.write', revision(c));
+    const ctx = { ...tenantOf(c), expectedRevision: revision(c), commandId: '', now: deps.clock() };
     requireNew(ctx);
     const input = await parseBody(
       c,
@@ -79,6 +157,10 @@ function registerImport(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         rows: z.array(z.record(z.string(), z.unknown())).min(1).max(100),
       }),
     );
+    const objectCode = JOB_OBJECT_CODES[input.kind];
+    await objectContext(c, deps, objectCode);
+    await button(deps, ctx, objectCode, 'import', 'list');
+    const scope = await requestScope(c, deps, ctx, objectCode);
     const row = jobCreationSchema(input.kind).extend({
       sourceCode: z.string().trim().min(1).max(100),
       objectId: z.uuid().optional(),
@@ -86,56 +168,125 @@ function registerImport(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     });
     const parsed = z.array(row).safeParse(input.rows);
     if (!parsed.success) throw new AppError('VALIDATION_FAILED', '导入行字段不合法', parsed.error.issues);
-    return runWrite(c, deps, ctx, input, async (tx, writeCtx) => ({
-      status: 200,
-      body: await importJobObjects(tx, writeCtx, input.kind, parsed.data as JobImportRow[]),
-    }));
+    const guard = async (tx: Tx, row: JobImportRow, targetId: string | undefined) => {
+      const { objectId: _id, expectedRevision: _revision, ...payload } = row;
+      await writeFields(
+        { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) },
+        ctx,
+        objectCode,
+        targetId ? 'update' : 'create',
+        payload,
+      );
+      visible(
+        scope,
+        input.kind === 'positions' ? (row.orgId as string) : undefined,
+        '职务体系对象不存在或已失效',
+        ctx.userId,
+      );
+      if (targetId && !scope.all)
+        await visibleJob(tx, ctx, scope, input.kind, targetId, row.startDate ?? queryDate(c, ctx));
+    };
+    const rows = parsed.data as JobImportRow[];
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, writeCtx) => ({
+        status: 200,
+        body: await importJobObjects(tx, writeCtx, input.kind, rows, (row, target) => guard(tx, row, target)),
+      }),
+      objectCode,
+      (tx) => authorizeJobImportRows(tx, ctx, input.kind, rows, (row, target) => guard(tx, row, target)),
+      (tx, body) => authorizeJobResult(tx, ctx, scope, input.kind, body),
+    );
   });
 }
 
 function registerObjects(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(`${BASE}/:kind`, async (c) => {
-    const ctx = await readContext(c, deps, 'tenant.job.read');
     const kind = objectKind(c);
+    const objectCode = JOB_OBJECT_CODES[kind];
+    const ctx = await objectContext(c, deps, objectCode);
     const page = pageQuery(c);
     const orgId = z.uuid().optional().safeParse(c.req.query('orgId'));
     if (!orgId.success) throw new AppError('VALIDATION_FAILED', '组织 ID 不合法');
     const enabled = enabledFilter(c);
-    const query = { asOf: queryDate(c, ctx), name: c.req.query('name'), orgId: orgId.data, enabled, ...page };
+    const scope = await requestScope(c, deps, ctx, objectCode);
+    const query = { asOf: queryDate(c, ctx), name: c.req.query('name'), orgId: orgId.data, enabled, scope, ...page };
     const items = await withTenant(deps.db, ctx.tenantId, (tx) => listJobObjects(tx, ctx.tenantId, kind, query));
-    return c.json({ items, page: page.page, pageSize: page.pageSize });
+    return c.json({
+      items: await trimModuleResponse(deps, ctx, objectCode, items),
+      page: page.page,
+      pageSize: page.pageSize,
+      hasDataPermission: kind === 'positions' ? scope.hasDataPermission : scope.all || hasCreatorScope(scope),
+    });
   });
   router.get(`${BASE}/:kind/:id`, async (c) => {
-    const ctx = await readContext(c, deps, 'tenant.job.read');
     const kind = objectKind(c);
+    const objectCode = JOB_OBJECT_CODES[kind];
+    const ctx = await objectContext(c, deps, objectCode);
     const id = uuidParam(c);
     const asOf = queryDate(c, ctx);
-    const result = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      loadJobObject(tx, ctx.tenantId, kind, id, asOf, true),
-    );
+    const scope = await requestScope(c, deps, ctx, objectCode);
+    const result = await withTenant(deps.db, ctx.tenantId, (tx) => visibleJob(tx, ctx, scope, kind, id, asOf));
     if (!result) throw new AppError('NOT_FOUND', '职务体系对象不存在或已失效');
     c.header('ETag', `"${result.revision}"`);
-    return c.json(result);
+    return c.json(await trimModuleResponse(deps, ctx, objectCode, result));
   });
+}
+
+function registerObjectWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post(`${BASE}/:kind`, async (c) => {
-    const ctx = await readContext(c, deps, 'tenant.job.write', revision(c));
-    requireNew(ctx);
     const kind = objectKind(c);
+    const objectCode = JOB_OBJECT_CODES[kind];
+    const ctx = await objectContext(c, deps, objectCode, 'create', revision(c));
+    requireNew(ctx);
     const input = await parseBody(c, jobCreationSchema(kind));
-    return runWrite(c, deps, ctx, input, async (tx, writeCtx) => ({
-      status: 201,
-      body: await createJobObject(tx, writeCtx, kind, input as JobInput),
-    }));
+    await writeFields(deps, ctx, objectCode, 'create', input);
+    const scope = await requestScope(c, deps, ctx, objectCode);
+    visible(scope, (input as JobInput).orgId as string | undefined, '职务体系对象不存在或已失效', ctx.userId);
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, writeCtx) => ({
+        status: 201,
+        body: await createJobObject(tx, writeCtx, kind, input as JobInput),
+      }),
+      objectCode,
+      undefined,
+      (tx, body) => authorizeJobResult(tx, ctx, scope, kind, body),
+    );
   });
   router.patch(`${BASE}/:kind/:id`, async (c) => {
-    const ctx = await readContext(c, deps, 'tenant.job.write', revision(c));
     const kind = objectKind(c);
+    const objectCode = JOB_OBJECT_CODES[kind];
+    const ctx = await objectContext(c, deps, objectCode, 'update', revision(c));
     const id = uuidParam(c);
     const input = await parseBody(c, jobPatchSchema(kind));
-    return runWrite(c, deps, ctx, input, async (tx, writeCtx) => ({
-      status: 200,
-      body: await updateJobObject(tx, writeCtx, kind, id, input as JobPatch),
-    }));
+    await writeFields(deps, ctx, objectCode, 'update', input);
+    const scope = await requestScope(c, deps, ctx, objectCode);
+    return runWrite(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, writeCtx) => {
+        if (!scope.all) await visibleJob(tx, ctx, scope, kind, id, input.effectiveDate);
+        if ((input as JobPatch).orgId)
+          visible(scope, (input as JobPatch).orgId as string, '职务体系对象不存在或已失效');
+        return { status: 200, body: await updateJobObject(tx, writeCtx, kind, id, input as JobPatch) };
+      },
+      objectCode,
+      async (tx) => {
+        if (!scope.all) await visibleJob(tx, ctx, scope, kind, id, input.effectiveDate);
+        if ((input as JobPatch).orgId)
+          visible(scope, (input as JobPatch).orgId as string, '职务体系对象不存在或已失效');
+      },
+      (tx, body) => authorizeJobResult(tx, ctx, scope, kind, body),
+    );
   });
 }
 

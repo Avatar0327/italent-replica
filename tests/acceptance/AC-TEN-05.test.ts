@@ -3,7 +3,7 @@
  * 新租户默认 Asia/Shanghai；同一生效日在两个时区下的到期判定不同；审计事件时间以 UTC 存储、按租户时区显示。
  * “定时任务在 UTC 09-30 17:00 运行并落地调动”部分依赖 R1-T08（定时生效）与调动对象，暂以 it.todo 占位。
  */
-import { auditEvents, createTenant, eq, getTenant, sql, withTenant } from '@italent/db';
+import { and, auditEvents, createTenant, eq, getTenant, sql, withTenant } from '@italent/db';
 import { isEffectiveDue, tenantLocalDate } from '@italent/domain';
 import { pgErrorCode, useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -77,7 +77,7 @@ describe('AC-TEN-05 租户时区', () => {
             utcText: sql<string>`to_char(${auditEvents.occurredAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')`,
           })
           .from(auditEvents)
-          .where(eq(auditEvents.tenantId, t.tenant.id));
+          .where(and(eq(auditEvents.tenantId, t.tenant.id), eq(auditEvents.action, 'tenant_setting.override')));
       });
       expect(row?.utcText).toBe('2026-09-30 17:00:00');
       expect(row?.occurredAt.toISOString()).toBe(RUN_AT.toISOString());

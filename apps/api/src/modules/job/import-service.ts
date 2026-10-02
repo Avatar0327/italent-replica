@@ -35,6 +35,7 @@ export async function importJobObjects(
   ctx: JobWriteContext,
   kind: JobKind,
   inputRows: readonly JobImportRow[],
+  authorizeRow?: (row: JobImportRow, targetId: string | undefined, rowIndex: number) => Promise<void>,
 ) {
   assertRows(inputRows);
   const parsed = z
@@ -56,6 +57,7 @@ export async function importJobObjects(
   const results: Receipt[] = [];
   for (const [rowIndex, row] of rows.entries()) {
     const target = snapshot.mappings.get(row.sourceCode) ?? row.objectId;
+    await authorizeRow?.(row, target, rowIndex);
     const reason = conflictReason(kind, row, target, snapshot, sources, codes);
     sources.add(row.sourceCode);
     codes.add(row.code);
@@ -209,4 +211,25 @@ async function updateMapped(
     ...patch,
     effectiveDate: startDate ?? tenantLocalDate(ctx.now, ctx.timezone),
   });
+}
+
+export async function authorizeJobImportRows(
+  tx: Tx,
+  ctx: JobWriteContext,
+  kind: JobKind,
+  rows: readonly JobImportRow[],
+  authorize: (row: JobImportRow, targetId: string | undefined) => Promise<void>,
+) {
+  const sources = sql.join(
+    rows.map((row) => sql`${row.sourceCode}`),
+    sql`, `,
+  );
+  const mappings = rowsOf<{ sourceCode: string; objectId: string }>(
+    await tx.execute(sql`
+    SELECT source_code AS "sourceCode", ${sql.identifier(snakeCase(jobTables(kind).importTarget))} AS "objectId"
+    FROM job_import_mappings WHERE tenant_id=${ctx.tenantId} AND kind=${kind} AND source_code IN (${sources}) LIMIT 100
+  `),
+  );
+  const targets = new Map(mappings.map((row) => [row.sourceCode, row.objectId]));
+  for (const row of rows) await authorize(row, targets.get(row.sourceCode) ?? row.objectId);
 }

@@ -1,14 +1,27 @@
+import { authorizeOrgResult, originalOrgImportRows } from '../permission/org-result-scope.js';
+import { authorizeInTransaction } from '../permission/module-access.js';
 import { getTenant, isUuid, type Tx, withTenant } from '@italent/db';
-import { ORG_DIMENSIONS, tenantLocalDate } from '@italent/domain';
+import { MODULE_OBJECTS, ORG_DIMENSIONS, tenantLocalDate } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
+import {
+  button,
+  creatorOf,
+  hasCreatorScope,
+  objectContext,
+  requestScope,
+  resolveModuleScope,
+  trimModuleResponse,
+  visible,
+  writeFields,
+} from '../permission/module-route-access.js';
 import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { type TenantEnv, tenantOf } from '../../tenant-context.js';
 import { releaseCode, reserveCode } from './codes.js';
-import { importOrganizations } from './import-service.js';
+import { authorizeOrgImportRows, importOrganizations, type OrgImportRow } from './import-service.js';
 import {
   displayOrganization,
   loadOrgSnapshot,
@@ -20,6 +33,7 @@ import { readOrgSettings, writeOrgSettings } from './settings.js';
 import { createOrganization, updateOrganization, validateOrganization, type OrgWriteContext } from './write-service.js';
 
 const BASE = '/api/tenant/org';
+const OBJECT = MODULE_OBJECTS.organization.code;
 const date = z.string().refine(validIsoDate, '日期必须为合法 YYYY-MM-DD');
 const order = z.number().int().min(-2_147_483_648).max(2_147_483_647).nullable().optional();
 const parent = z.strictObject({ parentId: z.uuid(), sequence: order });
@@ -75,6 +89,7 @@ export function registerOrgRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
   registerQueries(router, deps);
   registerReservations(router, deps);
   registerWrites(router, deps);
+  registerOrgImport(router, deps);
 }
 
 function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
@@ -86,46 +101,65 @@ function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     const includeDisabled = c.req.query('includeDisabled') === 'true';
     const page = queryInteger(c, 'page', 1, 1, 1_000_000);
     const pageSize = queryInteger(c, 'pageSize', 50, 1, 200);
+    const scope = await requestScope(c, deps, ctx, OBJECT);
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const config = await readOrgSettings(tx, ctx.tenantId);
       if (!config.enabledDimensions.includes(dimension.data)) return [];
-      // TODO(R1-T02 数据范围裁剪): 当前 tenant.org.read 只能在租户边界内授予全组织读取。
-      return (await loadOrgSnapshot(tx, ctx.tenantId, asOf, { limit: pageSize, offset: (page - 1) * pageSize }))
-        .filter((org) => org.id !== ctx.tenantId && (includeDisabled || org.enabled))
-        .filter((org) => dimension.data === 'admin' || !!org.parents[dimension.data])
-        .filter((org) => c.req.query('name') === undefined || org.name === c.req.query('name'))
+      return (
+        await loadOrgSnapshot(
+          tx,
+          ctx.tenantId,
+          asOf,
+          { limit: pageSize, offset: (page - 1) * pageSize },
+          {
+            scope,
+            includeDisabled,
+            dimension: dimension.data,
+            name: c.req.query('name'),
+          },
+        )
+      )
         .sort(orderOrganizations)
         .map((org) => displayOrganization(org, config.fullNameStartLevel));
     });
-    return c.json({ items });
+    return c.json({
+      items: await trimModuleResponse(deps, ctx, OBJECT, items),
+      hasDataPermission: scope.hasDataPermission,
+    });
   });
   router.get(`${BASE}/organizations/:id`, async (c) => {
     const ctx = await context(c, deps, 'read');
     const id = orgId(c);
+    const scope = await requestScope(c, deps, ctx, OBJECT);
     const org = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      // TODO(R1-T02 数据范围裁剪): 详情也必须按当前用户范围判定不可见。
-      const snapshot = await loadOrgSnapshot(tx, ctx.tenantId, queryDate(c, ctx));
+      visible(
+        scope,
+        id,
+        '组织不存在',
+        hasCreatorScope(scope) ? await creatorOf(tx, ctx.tenantId, id, 'org.create', 'organization') : undefined,
+      );
+      const snapshot = await loadOrgSnapshot(tx, ctx.tenantId, queryDate(c, ctx), undefined, { id });
       const record = snapshot.find((org) => org.id === id);
       if (!record) throw new AppError('NOT_FOUND', '组织不存在');
       return displayOrganization(record, (await readOrgSettings(tx, ctx.tenantId)).fullNameStartLevel);
     });
     c.header('ETag', `"${org.revision}"`);
-    return c.json(org);
+    return c.json(await trimModuleResponse(deps, ctx, OBJECT, org));
   });
   router.get(`${BASE}/settings`, async (c) => {
-    const ctx = await context(c, deps, 'read');
+    const ctx = await context(c, deps, 'configuration');
     return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => readOrgSettings(tx, ctx.tenantId)));
   });
   router.get(`${BASE}/views`, async (c) => {
-    await context(c, deps, 'read');
+    const ctx = await context(c, deps, 'read');
     // TODO(需取证 Q-M0-09): 界面任务接入四视图目录；本车道不含 apps/web。
     return c.json({
-      items: [
+      items: await trimModuleResponse(deps, ctx, OBJECT, [
         { label: '组织', resource: 'organization', dimension: 'admin' },
         { label: '业务组织', resource: 'organization', dimension: 'business' },
         { label: '利润中心', resource: 'organization', dimension: 'product' },
         { label: '成本中心', resource: 'cost-center', dimension: null },
-      ],
+      ]),
     });
   });
 }
@@ -142,13 +176,19 @@ function queryInteger(c: Context, name: string, fallback: number, minimum: numbe
 
 function registerReservations(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   router.post(`${BASE}/code-reservations`, async (c) => {
-    const ctx = await context(c, deps, 'write', revision(c));
+    const ctx = await context(c, deps, 'create', revision(c));
     requireNew(ctx);
+    await body(c, z.strictObject({}));
+    await button(deps, ctx, OBJECT, 'reserve', 'list');
+    await writeFields(deps, ctx, OBJECT, 'create', {});
+    visible(await requestScope(c, deps, ctx, OBJECT), undefined);
     return write(c, deps, ctx, {}, async (tx, writeCtx) => ({ status: 201, body: await reserveCode(tx, writeCtx) }));
   });
   router.delete(`${BASE}/code-reservations/:id`, async (c) => {
-    const ctx = await context(c, deps, 'write', revision(c));
+    const ctx = await context(c, deps, 'delete', revision(c));
     const id = orgId(c);
+    await button(deps, ctx, OBJECT, 'release', 'detail');
+    visible(await requestScope(c, deps, ctx, OBJECT), undefined);
     return write(c, deps, ctx, {}, async (tx, writeCtx) => ({
       status: 200,
       body: await releaseCode(tx, writeCtx, id),
@@ -158,51 +198,116 @@ function registerReservations(router: Hono<TenantEnv>, deps: TenantRouteDeps): v
 
 function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   router.post(`${BASE}/validate`, async (c) => {
-    const ctx = await context(c, deps, 'write');
+    const ctx = await context(c, deps, 'create');
     const input = await body(c, creation);
+    await writeFields(deps, ctx, OBJECT, 'create', input);
+    await button(deps, ctx, OBJECT, 'validate', 'detail');
+    await visibleParents(deps, ctx, input.parents);
     const result = await withTenant(deps.db, ctx.tenantId, (tx) => validateOrganization(tx, ctx, input));
-    return c.json(result);
+    return c.json(await trimModuleResponse(deps, ctx, OBJECT, result));
   });
   router.post(`${BASE}/organizations`, async (c) => {
-    const ctx = await context(c, deps, 'write', revision(c));
+    const ctx = await context(c, deps, 'create', revision(c));
     requireNew(ctx);
     const input = await body(c, creation);
+    await writeFields(deps, ctx, OBJECT, 'create', input);
+    await visibleParents(deps, ctx, input.parents);
     return write(c, deps, ctx, input, async (tx, writeCtx) => ({
       status: 201,
       body: await organizationResponse(tx, writeCtx, await createOrganization(tx, writeCtx, input)),
     }));
   });
   router.patch(`${BASE}/organizations/:id`, async (c) => {
-    const ctx = await context(c, deps, 'write', revision(c));
+    const ctx = await context(c, deps, 'update', revision(c));
     const id = orgId(c);
     const input = await body(c, update);
+    await writeFields(deps, ctx, OBJECT, 'update', input);
+    const scope = await requestScope(c, deps, ctx, OBJECT);
+    await withTenant(deps.db, ctx.tenantId, async (tx) =>
+      visible(
+        scope,
+        id,
+        '组织不存在',
+        hasCreatorScope(scope) ? await creatorOf(tx, ctx.tenantId, id, 'org.create', 'organization') : undefined,
+      ),
+    );
+    if (input.parents) await visibleParents(deps, ctx, input.parents);
     return write(c, deps, ctx, input, async (tx, writeCtx) => ({
       status: 200,
       body: await organizationResponse(tx, writeCtx, await updateOrganization(tx, writeCtx, id, input)),
     }));
   });
   router.put(`${BASE}/settings`, async (c) => {
-    const ctx = await context(c, deps, 'write', revision(c));
+    const ctx = await context(c, deps, 'configuration', revision(c));
     const input = await body(c, settings);
-    return write(c, deps, ctx, input, async (tx, writeCtx) => ({
-      status: 200,
-      body: await writeOrgSettings(tx, writeCtx, input),
-    }));
+    return write(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, writeCtx) => ({
+        status: 200,
+        body: await writeOrgSettings(tx, writeCtx, input),
+      }),
+      false,
+    );
   });
+}
+
+function registerOrgImport(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   router.post(`${BASE}/import`, async (c) => {
-    const ctx = await context(c, deps, 'write', revision(c));
+    const ctx = await context(c, deps, 'read', revision(c));
     requireNew(ctx);
     const input = await body(c, z.strictObject({ rows: z.array(importRow).min(1).max(100) }));
+    await button(deps, ctx, OBJECT, 'import', 'list');
+    const scope = await requestScope(c, deps, ctx, OBJECT);
+    const originalRows = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      originalOrgImportRows(tx, ctx.tenantId, c.req.header('idempotency-key') ?? ''),
+    );
+    const guard = async (tx: Tx, row: OrgImportRow, targetId: string | undefined) => {
+      const replayCreated =
+        !!targetId &&
+        originalRows.some(
+          (original) =>
+            original.orgId === targetId && original.sourceCode === row.sourceCode && original.status === 'created',
+        );
+      const { orgId: _id, expectedRevision: _revision, ...payload } = row;
+      await writeFields(
+        { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) },
+        ctx,
+        OBJECT,
+        targetId && !replayCreated ? 'update' : 'create',
+        payload,
+      );
+      visible(
+        scope,
+        row.parentId,
+        '组织不存在',
+        hasCreatorScope(scope)
+          ? await creatorOf(tx, ctx.tenantId, row.parentId, 'org.create', 'organization')
+          : undefined,
+      );
+      if (targetId) await authorizeOrgResult(tx, ctx, scope, targetId, replayCreated);
+    };
+    await withTenant(deps.db, ctx.tenantId, (tx) =>
+      authorizeOrgImportRows(tx, ctx, input.rows, (row, target) => guard(tx, row, target)),
+    );
     return write(c, deps, ctx, input, async (tx, writeCtx) => ({
       status: 200,
-      body: await importOrganizations(tx, writeCtx, input.rows),
+      body: await importOrganizations(tx, writeCtx, input.rows, (row, target) => guard(tx, row, target)),
     }));
   });
 }
 
-async function context(c: Context<TenantEnv>, deps: TenantRouteDeps, action: 'read' | 'write', expectedRevision = 0) {
+async function context(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  action: 'read' | 'create' | 'update' | 'delete' | 'configuration',
+  expectedRevision = 0,
+) {
   const ctx = tenantOf(c);
-  await requirePermission(deps.authorize, { ...ctx, action: `tenant.org.${action}` });
+  if (action === 'configuration') await requirePermission(deps.authorize, { ...ctx, action: 'admin.other_settings' });
+  else await objectContext(c, deps, OBJECT, action === 'read' ? 'view' : action, expectedRevision);
   const tenant = await getTenant(deps.db, ctx.tenantId);
   if (!tenant) throw new AppError('TENANT_NOT_MEMBER', '不是该租户的成员');
   return { ...ctx, expectedRevision, rootName: tenant.name, now: deps.clock(), commandId: '' };
@@ -214,6 +319,7 @@ async function write(
   ctx: OrgWriteContext,
   input: unknown,
   execute: (tx: Tx, ctx: OrgWriteContext) => Promise<Awaited<ReturnType<typeof runCommand>>>,
+  trim = true,
 ) {
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
@@ -222,7 +328,24 @@ async function write(
   });
   const payload = result.body as { revision?: number };
   if (payload.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
-  return c.json(result.body, result.status);
+  const value = result.body as Record<string, unknown>;
+  if (trim && (c.req.path.includes('/organizations') || c.req.path.endsWith('/import'))) {
+    const scope = await resolveModuleScope(deps, ctx, undefined, OBJECT);
+    await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      if (Array.isArray(value.results)) {
+        for (const row of value.results as { orgId?: string; status: string }[]) {
+          if (row.orgId) await authorizeOrgResult(tx, ctx, scope, row.orgId, row.status === 'created');
+        }
+      } else if (typeof value.id === 'string')
+        await authorizeOrgResult(tx, ctx, scope, value.id, result.status === 201);
+    });
+  }
+  const output = !trim
+    ? value
+    : Array.isArray(value.results)
+      ? { results: await trimModuleResponse(deps, ctx, OBJECT, value.results) }
+      : await trimModuleResponse(deps, ctx, OBJECT, value);
+  return c.json(output, result.status);
 }
 
 async function organizationResponse(tx: Tx, ctx: OrgWriteContext, org: OrgRecord) {
@@ -255,4 +378,24 @@ function queryDate(c: Context, ctx: OrgWriteContext): string {
   const asOf = c.req.query('asOf') ?? tenantLocalDate(ctx.now, ctx.timezone);
   if (!validIsoDate(asOf)) throw new AppError('VALIDATION_FAILED', '查询时点必须为合法日期');
   return asOf;
+}
+
+async function visibleParents(
+  deps: TenantRouteDeps,
+  ctx: OrgWriteContext,
+  parents: Record<string, { parentId: string } | undefined>,
+) {
+  const scope = await resolveModuleScope(deps, ctx, undefined, OBJECT);
+  await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    for (const parent of Object.values(parents))
+      if (parent)
+        visible(
+          scope,
+          parent.parentId,
+          '组织不存在',
+          hasCreatorScope(scope)
+            ? await creatorOf(tx, ctx.tenantId, parent.parentId, 'org.create', 'organization')
+            : undefined,
+        );
+  });
 }

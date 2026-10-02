@@ -163,6 +163,7 @@ export const permissionGrants = pgTable(
   },
   (t) => [
     profileFk('permission_grants_profile', t.tenantId, t.profileId),
+    unique('permission_grants_tenant_id').on(t.tenantId, t.id),
     uniqueIndex('permission_grants_active_user_profile')
       .on(t.tenantId, t.userId, t.profileId)
       .where(sql`${t.status} = 'active'`),

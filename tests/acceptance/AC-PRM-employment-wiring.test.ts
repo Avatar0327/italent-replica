@@ -111,4 +111,13 @@ describe('AC-PRM-22 / DEC-080 任职授权接线', () => {
       true,
     );
   });
+  it('空嵌套字段不能被视为已经完成字段校验的编辑', async () => {
+    const world = await fixture(() => false);
+    const response = await world.api.request('PATCH', `/api/tenant/employment/businesses/${world.business.id}`, {
+      ...world.as,
+      ifMatch: world.business.revision,
+      body: { fields: {} },
+    });
+    expect(response.status).toBe(400);
+  });
 });

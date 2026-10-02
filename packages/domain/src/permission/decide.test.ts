@@ -196,7 +196,10 @@ describe('已上线模块的路由动作（R1-T03/T04/T05 接入）', () => {
   const moduleGrant = (objectCode: string, update: boolean): GrantedObjectPermission => ({
     objectCode,
     dataOperations: { create: false, update, delete: false },
-    fields: [],
+    fields: Object.values(MODULE_OBJECTS)
+      .find((object) => object.code === objectCode)!
+      .fields.filter((field) => !field.system)
+      .map((field) => ({ fieldCode: field.code, view: true, edit: update })),
     buttons: [],
     profileApps: [ORG_EMPLOYEE_APP],
   });
@@ -208,23 +211,27 @@ describe('已上线模块的路由动作（R1-T03/T04/T05 接入）', () => {
     expect(decide(nobody, { action: 'tenant.unknown.read' }, catalog)).toBe(false);
   });
 
-  it('读 = 对象在身份对象清单中；写 = 编辑开关；应用边界同样生效', () => {
+  it('读 = 对象在身份对象清单中；写 = 编辑开关与显式字段；应用边界同样生效', () => {
     for (const object of Object.values(MODULE_OBJECTS)) {
       const actions = Object.entries(MODULE_ACTIONS).filter(
         ([, a]) => a.kind === 'object' && a.objectCode === object.code,
       );
-      const readAction = actions.find(([, a]) => a.kind === 'object' && a.operation === 'view')![0];
-      const writeAction = actions.find(([, a]) => a.kind === 'object' && a.operation === 'update')![0];
+      const readAction = actions.find(([, a]) => a.kind === 'object' && a.operation === 'view')?.[0] ?? 'object.view';
+      const writeAction =
+        actions.find(([, a]) => a.kind === 'object' && a.operation === 'update')?.[0] ?? 'object.update';
+      const resource = object.code;
+      const fields = [object.fields.find((field) => !field.system)!.code];
       const viewer: PermissionSubject = { adminRoles: [], objectPermissions: [moduleGrant(object.code, false)] };
       const editor: PermissionSubject = { adminRoles: [], objectPermissions: [moduleGrant(object.code, true)] };
       const outside: PermissionSubject = {
         adminRoles: [],
         objectPermissions: [{ ...moduleGrant(object.code, true), profileApps: ['OtherApp'] }],
       };
-      expect(decide(viewer, { action: readAction }, catalog), readAction).toBe(true);
-      expect(decide(viewer, { action: writeAction }, catalog), writeAction).toBe(false);
-      expect(decide(editor, { action: writeAction }, catalog), writeAction).toBe(true);
-      expect(decide(outside, { action: readAction }, catalog), readAction).toBe(false);
+      expect(decide(viewer, { action: readAction, resource }, catalog), readAction).toBe(true);
+      expect(decide(viewer, { action: writeAction, resource, fields }, catalog), writeAction).toBe(false);
+      expect(decide(editor, { action: writeAction, resource }, catalog), writeAction).toBe(false);
+      expect(decide(editor, { action: writeAction, resource, fields }, catalog), writeAction).toBe(true);
+      expect(decide(outside, { action: readAction, resource }, catalog), readAction).toBe(false);
     }
   });
 

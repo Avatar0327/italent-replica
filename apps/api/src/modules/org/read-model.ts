@@ -1,5 +1,7 @@
-import { and, desc, eq, inArray, lte, ne, orgHierarchyLinks, orgObjects, orgVersions, type Tx } from '@italent/db';
+import { and, desc, eq, inArray, lte, ne, orgHierarchyLinks, orgObjects, orgVersions, sql, type Tx } from '@italent/db';
 import type { OrgDimension } from '@italent/domain';
+import { creatorSql } from '../permission/scope-audit.js';
+import { scopeSql } from '../permission/module-access.js';
 
 export interface OrgParent {
   readonly parentId: string | null;
@@ -30,22 +32,15 @@ export async function loadOrgSnapshot(
   tenantId: string,
   asOf: string,
   page?: { readonly limit: number; readonly offset: number },
+  filter?: {
+    readonly scope?: Parameters<typeof scopeSql>[0];
+    readonly id?: string;
+    readonly name?: string;
+    readonly includeDisabled?: boolean;
+    readonly dimension?: OrgDimension;
+  },
 ): Promise<OrgRecord[]> {
-  let query = tx
-    .selectDistinctOn([orgVersions.orgId], { object: orgObjects, version: orgVersions })
-    .from(orgVersions)
-    .innerJoin(orgObjects, and(eq(orgObjects.id, orgVersions.orgId), eq(orgObjects.tenantId, orgVersions.tenantId)))
-    .where(
-      and(
-        eq(orgVersions.tenantId, tenantId),
-        lte(orgVersions.startDate, asOf),
-        ...(page ? [ne(orgVersions.orgId, tenantId)] : []),
-      ),
-    )
-    .orderBy(orgVersions.orgId, desc(orgVersions.startDate), desc(orgVersions.versionNo))
-    .$dynamic();
-  if (page) query = query.limit(page.limit).offset(page.offset);
-  const rows = await query;
+  const rows = await orgSnapshotQuery(tx, tenantId, asOf, page, filter);
   const selected = rows.filter(({ version }) => version.stopDate >= asOf);
   const versionIds = selected.map(({ version }) => version.id);
   const links = versionIds.length
@@ -66,6 +61,86 @@ export async function loadOrgSnapshot(
         .map((link) => [link.dimension, { parentId: link.parentOrgId, sequence: link.sequence }]),
     ),
   }));
+}
+
+function orgSnapshotQuery(
+  tx: Tx,
+  tenantId: string,
+  asOf: string,
+  page: Parameters<typeof loadOrgSnapshot>[3],
+  filter: Parameters<typeof loadOrgSnapshot>[4],
+) {
+  const current = tx
+    .selectDistinctOn([orgVersions.orgId])
+    .from(orgVersions)
+    .where(
+      and(
+        eq(orgVersions.tenantId, tenantId),
+        lte(orgVersions.startDate, asOf),
+        ...(page ? [ne(orgVersions.orgId, tenantId)] : []),
+        ...(filter?.scope
+          ? [
+              scopeSql(filter.scope, {
+                org: sql`${orgVersions.orgId}`,
+                creator: creatorSql(tenantId, sql`${orgVersions.orgId}`, 'org.create', 'organization'),
+              }),
+            ]
+          : []),
+        ...(filter?.id ? [eq(orgVersions.orgId, filter.id)] : []),
+      ),
+    )
+    .orderBy(orgVersions.orgId, desc(orgVersions.startDate), desc(orgVersions.versionNo))
+    .as('current_org');
+  let query = tx
+    .select({
+      object: orgObjects,
+      version: {
+        id: current.id,
+        tenantId: current.tenantId,
+        orgId: current.orgId,
+        versionNo: current.versionNo,
+        previousVersionId: current.previousVersionId,
+        startDate: current.startDate,
+        stopDate: current.stopDate,
+        enabled: current.enabled,
+        code: current.code,
+        name: current.name,
+        shortName: current.shortName,
+        broadType: current.broadType,
+        establishedOn: current.establishedOn,
+        personInChargeId: current.personInChargeId,
+        hrbpId: current.hrbpId,
+        costCenterId: current.costCenterId,
+        location: current.location,
+        remarks: current.remarks,
+        fullName: current.fullName,
+        displayOrder: current.displayOrder,
+        isVirtual: current.isVirtual,
+        level: current.level,
+        createdAt: current.createdAt,
+      },
+    })
+    .from(current)
+    .innerJoin(orgObjects, and(eq(orgObjects.id, current.orgId), eq(orgObjects.tenantId, current.tenantId)))
+    .where(
+      and(
+        sql`${current.stopDate} >= ${asOf}::date`,
+        ...(filter?.name !== undefined ? [eq(current.name, filter.name)] : []),
+        ...(filter?.includeDisabled === false ? [eq(current.enabled, true)] : []),
+        ...(filter?.dimension && filter.dimension !== 'admin'
+          ? [
+              sql`EXISTS (
+        SELECT 1 FROM org_hierarchy_links h WHERE h.tenant_id = ${tenantId}
+        AND h.version_id = ${current.id} AND h.dimension = ${filter.dimension}
+      )`,
+            ]
+          : []),
+      ),
+    )
+    .orderBy(current.displayOrder, current.code, orgObjects.id)
+    .$dynamic();
+  if (page) query = query.limit(page.limit).offset(page.offset);
+  return query;
 }
 
 export function orderOrganizations(a: OrgRecord, b: OrgRecord): number {
