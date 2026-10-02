@@ -19,6 +19,9 @@ export interface EmploymentPayloadRow extends PreparedInheritance {
   businessId: string;
   versionNo: number;
   previousVersionId: string | null;
+  commandId?: string | null;
+  triggerBusinessId?: string | null;
+  isRecordSnapshot?: boolean;
   kind: EmploymentBusiness['kind'];
   mode: 'direct' | 'application';
   effectiveDate: string;
@@ -70,6 +73,23 @@ export async function lockEmploymentEmployee(
   const employee = camelRow(row) as unknown as EmploymentEmployeeRow;
   if (expectedRevision !== undefined) assertRevision(expectedRevision, employee.revision);
   return employee;
+}
+
+/** 预览等只读路径不取行锁，一致性由单个数据库快照保证。 */
+export async function readEmploymentEmployee(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+): Promise<EmploymentEmployeeRow> {
+  if (!isUuid(employeeId)) throw new AppError('VALIDATION_FAILED', '员工标识必须是 UUID');
+  const [row] = rowsOf<Record<string, unknown>>(
+    await tx.execute(sql`
+      SELECT id, tenant_id, code, name, revision FROM employment_employees
+      WHERE tenant_id = ${ctx.tenantId} AND id = ${employeeId}::uuid
+    `),
+  );
+  if (!row) throw new AppError('NOT_FOUND', '员工不存在');
+  return camelRow(row) as unknown as EmploymentEmployeeRow;
 }
 
 /** 所有业务先锁员工再锁业务头，统一锁顺序，也串行同员工的时间线改动。 */

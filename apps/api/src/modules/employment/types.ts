@@ -115,6 +115,7 @@ export interface EmploymentRecord {
   readonly revision: number;
   readonly staffId: string;
   readonly entryDate: string;
+  readonly serviceType: string;
   readonly kind: BusinessKind;
   readonly effectiveDate: string;
   readonly stopDate: string;

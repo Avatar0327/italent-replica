@@ -29,6 +29,8 @@ export function snapshotFields(row: Record<string, unknown>): PresetFields {
 
 function record(row: Record<string, unknown>): EmploymentRecord {
   const previous = row.previous as Record<string, unknown> | null;
+  // 旧 payload 尚未解析延迟继承；只有完整生效快照才能替代原 records 中的最终字段。
+  const current = (row.current_payload as Record<string, unknown> | null) ?? row;
   return {
     id: String(row.id),
     tenantId: String(row.tenant_id),
@@ -37,11 +39,12 @@ function record(row: Record<string, unknown>): EmploymentRecord {
     staffId: String(row.staff_id),
     entryDate: String(row.entry_date),
     kind: row.kind as BusinessKind,
+    serviceType: row.service_type as EmploymentRecord['serviceType'],
     effectiveDate: String(row.start_date),
     stopDate: String(row.stop_date),
     previousRecordId: (row.previous_record_id as string | null) ?? null,
-    fields: snapshotFields(row),
-    customFields: row.custom_fields as CustomFields,
+    fields: snapshotFields(current),
+    customFields: current.custom_fields as CustomFields,
     isCurrent: Boolean(row.is_current),
     isLatest: Boolean(row.is_latest),
     status: 'effective',
@@ -54,7 +57,7 @@ function record(row: Record<string, unknown>): EmploymentRecord {
 
 function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: PageQuery): SQL {
   return sql`
-    SELECT r.*,b.revision,
+    SELECT r.*,b.revision,current_payload.body AS current_payload,
       CASE WHEN upper_inf(t.valid_during) THEN '9999-12-31' ELSE (upper(t.valid_during)-1)::text END AS stop_date,
       t.valid_during @> ${asOf}::date AS is_current,
       NOT EXISTS (SELECT 1 FROM employment_timeline n WHERE n.tenant_id=${tenantId}
@@ -64,8 +67,21 @@ function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: Pag
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
     JOIN employment_business_objects b ON b.tenant_id=r.tenant_id AND b.id=r.id
     LEFT JOIN LATERAL (
-      SELECT p.id,to_jsonb(p) AS body FROM employment_records p
+      SELECT to_jsonb(p) AS body FROM employment_payload_versions p
+      WHERE p.tenant_id=r.tenant_id AND p.employee_id=r.employee_id AND p.business_id=r.id
+        AND p.is_record_snapshot
+      ORDER BY p.version_no DESC LIMIT 1
+    ) current_payload ON true
+    LEFT JOIN LATERAL (
+      SELECT p.id,CASE WHEN previous_payload.body IS NULL THEN to_jsonb(p)
+        ELSE previous_payload.body END AS body FROM employment_records p
       JOIN employment_timeline pt ON pt.tenant_id=p.tenant_id AND pt.record_id=p.id
+      LEFT JOIN LATERAL (
+        SELECT to_jsonb(v) AS body FROM employment_payload_versions v
+        WHERE v.tenant_id=p.tenant_id AND v.employee_id=p.employee_id AND v.business_id=p.id
+          AND v.is_record_snapshot
+        ORDER BY v.version_no DESC LIMIT 1
+      ) previous_payload ON true
       WHERE p.tenant_id=${tenantId} AND p.employee_id=r.employee_id
         AND (pt.start_date,pt.sort_order)<(t.start_date,t.sort_order)
       ORDER BY pt.start_date DESC,pt.sort_order DESC LIMIT 1

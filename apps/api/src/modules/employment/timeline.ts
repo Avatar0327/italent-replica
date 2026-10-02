@@ -87,7 +87,6 @@ export async function insertEmploymentTimeline(
       ${ctx.now.toISOString()}::timestamptz)
   `);
   // TODO(需取证 Q-M0-21)：首次入职尚未到期时不造占位任职。
-  // TODO(R1-T06)：向后更新需独立版本追加算法，不覆盖后续业务字段。
   return { previousRecordId: previous?.recordId ?? null, isInserted: !!next };
 }
 
