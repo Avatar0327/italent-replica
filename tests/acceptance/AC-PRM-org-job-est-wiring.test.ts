@@ -309,12 +309,14 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
   async function fixtureCreate(path: string, body: object) {
     const response = await fixture.request('POST', path, { ...world.asAdmin, ifMatch: 0, body });
     expect(response.status, await response.clone().text()).toBe(201);
-    return await response.json() as { id: string; revision: number };
+    return (await response.json()) as { id: string; revision: number };
   }
 
   async function revokeScope(user: string) {
     const response = await world.api.request('PUT', `/api/tenant/permission/scopes/${user}/TenantBase`, {
-      ...world.asAdmin, ifMatch: 1, body: { kind: 'default' },
+      ...world.asAdmin,
+      ifMatch: 1,
+      body: { kind: 'default' },
     });
     expect(response.status, await response.clone().text()).toBe(200);
   }
@@ -322,9 +324,17 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
   it('职位成功命令在收回范围后不能用原幂等键重放旧结果', async () => {
     const as = await actor('jobPosition', { scope: true });
     const made = await fixtureCreate('/api/tenant/job/positions', {
-      name: '重放职位', orgId: org.id, postId: post.id, startDate: '2026-01-01',
+      name: '重放职位',
+      orgId: org.id,
+      postId: post.id,
+      startDate: '2026-01-01',
     });
-    const input = { ...as, ifMatch: made.revision, idempotencyKey: randomUUID(), body: { effectiveDate: TODAY, name: '第一次成功' } };
+    const input = {
+      ...as,
+      ifMatch: made.revision,
+      idempotencyKey: randomUUID(),
+      body: { effectiveDate: TODAY, name: '第一次成功' },
+    };
     expect((await world.api.request('PATCH', `/api/tenant/job/positions/${made.id}`, input)).status).toBe(200);
     await revokeScope(as.user);
     expect((await world.api.request('PATCH', `/api/tenant/job/positions/${made.id}`, input)).status).toBe(404);
@@ -333,78 +343,220 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
   it('当前职位移入范围也不能重放包含旧范围外组织的缓存快照', async () => {
     const as = await actor('jobPosition', { scope: 'all' });
     const made = await fixtureCreate('/api/tenant/job/positions', {
-      name: '旧快照职位', orgId: secondOrg.id, postId: post.id, startDate: '2026-01-01',
+      name: '旧快照职位',
+      orgId: secondOrg.id,
+      postId: post.id,
+      startDate: '2026-01-01',
     });
-    const input = { ...as, ifMatch: made.revision, idempotencyKey: randomUUID(), body: { effectiveDate: TODAY, name: '旧范围外快照' } };
+    const input = {
+      ...as,
+      ifMatch: made.revision,
+      idempotencyKey: randomUUID(),
+      body: { effectiveDate: TODAY, name: '旧范围外快照' },
+    };
     const first = await world.api.request('PATCH', `/api/tenant/job/positions/${made.id}`, input);
     expect(first.status).toBe(200);
     const moved = await fixture.request('PATCH', `/api/tenant/job/positions/${made.id}`, {
-      ...world.asAdmin, ifMatch: 2, body: { effectiveDate: TODAY, orgId: org.id },
+      ...world.asAdmin,
+      ifMatch: 2,
+      body: { effectiveDate: TODAY, orgId: org.id },
     });
     expect(moved.status).toBe(200);
-    expect((await world.api.request('PUT', `/api/tenant/permission/profiles/${as.profile.id}/data-scopes/TenantBase`, {
-      ...world.asAdmin, ifMatch: 1, body: { targetKind: 'app', targetCode: '', seeAll: false },
-    })).status).toBe(200);
-    expect((await world.api.request('PUT', `/api/tenant/permission/scopes/${as.user}/TenantBase`, {
-      ...world.asAdmin, ifMatch: 0, body: { kind: 'org_range', orgRanges: [{ orgId: org.id, includeDescendants: false }] },
-    })).status).toBe(200);
+    expect(
+      (
+        await world.api.request('PUT', `/api/tenant/permission/profiles/${as.profile.id}/data-scopes/TenantBase`, {
+          ...world.asAdmin,
+          ifMatch: 1,
+          body: { targetKind: 'app', targetCode: '', seeAll: false },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await world.api.request('PUT', `/api/tenant/permission/scopes/${as.user}/TenantBase`, {
+          ...world.asAdmin,
+          ifMatch: 0,
+          body: { kind: 'org_range', orgRanges: [{ orgId: org.id, includeDescendants: false }] },
+        })
+      ).status,
+    ).toBe(200);
     expect((await world.api.request('PATCH', `/api/tenant/job/positions/${made.id}`, input)).status).toBe(404);
   });
 
-  it('编制修改和复制入队在收回范围后不能重放', async () => {
+  it('编制修改在收回范围后不能重放', async () => {
     const as = await actor('establishment', { scope: true, buttons: [{ buttonCode: 'copy', level: 'list' }] });
     const made = await fixtureCreate('/api/tenant/establishment/capacities', {
-      orgId: org.id, schemeId: scheme.id, periodStart: '2027-01-01', inclusiveCapacity: 10,
+      orgId: org.id,
+      schemeId: scheme.id,
+      periodStart: '2027-01-01',
+      inclusiveCapacity: 10,
     });
-    const patch = { ...as, ifMatch: made.revision, idempotencyKey: randomUUID(), body: { effectiveDate: '2027-01-01', inclusiveCapacity: 11 } };
-    expect((await world.api.request('PATCH', `/api/tenant/establishment/capacities/${made.id}`, patch)).status).toBe(200);
+    const patch = {
+      ...as,
+      ifMatch: made.revision,
+      idempotencyKey: randomUUID(),
+      body: { effectiveDate: '2027-01-01', inclusiveCapacity: 11 },
+    };
+    expect((await world.api.request('PATCH', `/api/tenant/establishment/capacities/${made.id}`, patch)).status).toBe(
+      200,
+    );
     await revokeScope(as.user);
-    expect((await world.api.request('PATCH', `/api/tenant/establishment/capacities/${made.id}`, patch)).status).toBe(404);
+    expect((await world.api.request('PATCH', `/api/tenant/establishment/capacities/${made.id}`, patch)).status).toBe(
+      404,
+    );
   });
 
   it('编制 subdivisions 的 edit 不能代替嵌套容量字段 edit', async () => {
     const as = await actor('establishment', { scope: true, editable: ['effectiveDate', 'subdivisions', 'positionId'] });
     const customScheme = await fixtureCreate(paths.establishment, {
-      name: '细分字段方案', periodType: 'annual', maintenanceMode: 'both', subdivision: 'position', startDate: '2026-01-01',
+      name: '细分字段方案',
+      periodType: 'annual',
+      maintenanceMode: 'both',
+      subdivision: 'position',
+      startDate: '2026-01-01',
     });
     const made = await fixtureCreate('/api/tenant/establishment/capacities', {
-      orgId: org.id, schemeId: customScheme.id, periodStart: '2026-01-01',
+      orgId: org.id,
+      schemeId: customScheme.id,
+      periodStart: '2026-01-01',
       subdivisions: [{ positionId: position.id, localCapacity: 1, inclusiveCapacity: 2 }],
     });
     const changed = await world.api.request('PATCH', `/api/tenant/establishment/capacities/${made.id}`, {
-      ...as, ifMatch: made.revision, body: { effectiveDate: TODAY, subdivisions: [{ positionId: position.id, localCapacity: 5, inclusiveCapacity: 6 }] },
+      ...as,
+      ifMatch: made.revision,
+      body: {
+        effectiveDate: TODAY,
+        subdivisions: [{ positionId: position.id, localCapacity: 5, inclusiveCapacity: 6 }],
+      },
     });
     expect(changed.status).toBe(403);
-    expect(await (await fixture.request('GET', `/api/tenant/establishment/capacities/${made.id}`, world.asAdmin)).json()).toMatchObject({ revision: 1, localCapacity: 1, inclusiveCapacity: 2 });
+    expect(
+      await (await fixture.request('GET', `/api/tenant/establishment/capacities/${made.id}`, world.asAdmin)).json(),
+    ).toMatchObject({ revision: 1, localCapacity: 1, inclusiveCapacity: 2 });
   });
 
   it('子部门范围不能通过 syncParents 修改无权父部门，整单回滚', async () => {
-    const child = await fixtureCreate(paths.organization, { name: '仅有权子部门', startDate: '2026-01-01', parents: { admin: { parentId: org.id } } });
-    const ownScheme = await fixtureCreate(paths.establishment, { name: '同步父级方案', periodType: 'annual', maintenanceMode: 'inclusive', startDate: '2026-01-01' });
-    const parentCap = await fixtureCreate('/api/tenant/establishment/capacities', { orgId: org.id, schemeId: ownScheme.id, periodStart: '2026-01-01', inclusiveCapacity: 10 });
-    const childCap = await fixtureCreate('/api/tenant/establishment/capacities', { orgId: child.id, schemeId: ownScheme.id, periodStart: '2026-01-01', inclusiveCapacity: 1 });
+    const child = await fixtureCreate(paths.organization, {
+      name: '仅有权子部门',
+      startDate: '2026-01-01',
+      parents: { admin: { parentId: org.id } },
+    });
+    const ownScheme = await fixtureCreate(paths.establishment, {
+      name: '同步父级方案',
+      periodType: 'annual',
+      maintenanceMode: 'inclusive',
+      startDate: '2026-01-01',
+    });
+    const parentCap = await fixtureCreate('/api/tenant/establishment/capacities', {
+      orgId: org.id,
+      schemeId: ownScheme.id,
+      periodStart: '2026-01-01',
+      inclusiveCapacity: 10,
+    });
+    const childCap = await fixtureCreate('/api/tenant/establishment/capacities', {
+      orgId: child.id,
+      schemeId: ownScheme.id,
+      periodStart: '2026-01-01',
+      inclusiveCapacity: 1,
+    });
     const as = await actor('establishment');
-    expect((await world.api.request('PUT', `/api/tenant/permission/scopes/${as.user}/TenantBase`, { ...world.asAdmin, ifMatch: 0, body: { kind: 'org_range', orgRanges: [{ orgId: child.id, includeDescendants: false }] } })).status).toBe(200);
-    const changed = await world.api.request('PATCH', `/api/tenant/establishment/capacities/${childCap.id}`, { ...as, ifMatch: 1, body: { effectiveDate: TODAY, inclusiveCapacity: 2, syncParents: true } });
+    expect(
+      (
+        await world.api.request('PUT', `/api/tenant/permission/scopes/${as.user}/TenantBase`, {
+          ...world.asAdmin,
+          ifMatch: 0,
+          body: { kind: 'org_range', orgRanges: [{ orgId: child.id, includeDescendants: false }] },
+        })
+      ).status,
+    ).toBe(200);
+    const changed = await world.api.request('PATCH', `/api/tenant/establishment/capacities/${childCap.id}`, {
+      ...as,
+      ifMatch: 1,
+      body: { effectiveDate: TODAY, inclusiveCapacity: 2, syncParents: true },
+    });
     expect(changed.status).toBe(404);
-    for (const [record, expected] of [[parentCap, 10], [childCap, 1]] as const) {
-      expect(await (await fixture.request('GET', `/api/tenant/establishment/capacities/${record.id}`, world.asAdmin)).json()).toMatchObject({ revision: 1, inclusiveCapacity: expected });
+    for (const [record, expected] of [
+      [parentCap, 10],
+      [childCap, 1],
+    ] as const) {
+      expect(
+        await (await fixture.request('GET', `/api/tenant/establishment/capacities/${record.id}`, world.asAdmin)).json(),
+      ).toMatchObject({ revision: 1, inclusiveCapacity: expected });
     }
+  });
+
+  it('原同步父级命令即使入口子级仍有权，收窄为子级后也不能重放', async () => {
+    const child = await fixtureCreate(paths.organization, { name: '重放子部门', startDate: '2026-01-01', parents: { admin: { parentId: org.id } } });
+    const ownScheme = await fixtureCreate(paths.establishment, { name: '重放祖先方案', periodType: 'annual', maintenanceMode: 'inclusive', startDate: '2026-01-01' });
+    await fixtureCreate('/api/tenant/establishment/capacities', { orgId: org.id, schemeId: ownScheme.id, periodStart: '2026-01-01', inclusiveCapacity: 10 });
+    const childCap = await fixtureCreate('/api/tenant/establishment/capacities', { orgId: child.id, schemeId: ownScheme.id, periodStart: '2026-01-01', inclusiveCapacity: 1 });
+    const as = await actor('establishment', { scope: 'all' });
+    const input = { ...as, ifMatch: 1, idempotencyKey: randomUUID(), body: { effectiveDate: TODAY, inclusiveCapacity: 2, syncParents: true } };
+    expect((await world.api.request('PATCH', `/api/tenant/establishment/capacities/${childCap.id}`, input)).status).toBe(200);
+    expect((await world.api.request('PUT', `/api/tenant/permission/profiles/${as.profile.id}/data-scopes/TenantBase`, { ...world.asAdmin, ifMatch: 1, body: { targetKind: 'app', targetCode: '', seeAll: false } })).status).toBe(200);
+    expect((await world.api.request('PUT', `/api/tenant/permission/scopes/${as.user}/TenantBase`, { ...world.asAdmin, ifMatch: 0, body: { kind: 'org_range', orgRanges: [{ orgId: child.id, includeDescendants: false }] } })).status).toBe(200);
+    expect((await world.api.request('PATCH', `/api/tenant/establishment/capacities/${childCap.id}`, input)).status).toBe(404);
+  });
+
+  it('职务导入映射与编制复制入队重放前仍检查当前范围', async () => {
+    const as = await actor('jobPosition', { scope: true, buttons: [{ buttonCode: 'import', level: 'list' }] });
+    const input = { ...as, ifMatch: 0, idempotencyKey: randomUUID(), body: { kind: 'positions', rows: [{ sourceCode: randomUUID(), code: randomUUID(), name: '导入重放', orgId: org.id, postId: post.id }] } };
+    expect((await world.api.request('POST', '/api/tenant/job/import', input)).status).toBe(200);
+    await revokeScope(as.user);
+    expect((await world.api.request('POST', '/api/tenant/job/import', input)).status).toBe(404);
+    const est = await actor('establishment', { scope: true, buttons: [{ buttonCode: 'copy', level: 'list' }] });
+    const ownScheme = await fixtureCreate(paths.establishment, { name: '复制重放方案', periodType: 'annual', maintenanceMode: 'inclusive', startDate: '2026-01-01' });
+    const source = await fixtureCreate('/api/tenant/establishment/capacities', { orgId: org.id, schemeId: ownScheme.id, periodStart: '2026-01-01', inclusiveCapacity: 10 });
+    const copy = { ...est, ifMatch: 0, idempotencyKey: randomUUID(), body: { capacityIds: [source.id] } };
+    expect((await world.api.request('POST', '/api/tenant/establishment/copy-jobs', copy)).status).toBe(202);
+    await revokeScope(est.user);
+    expect((await world.api.request('POST', '/api/tenant/establishment/copy-jobs', copy)).status).toBe(404);
+  });
+
+  it('编制复制执行的缓存不能绕过目标字段权限收回', async () => {
+    const buttons = [{ buttonCode: 'copy', level: 'list' }, { buttonCode: 'execute', level: 'detail' }];
+    const as = await actor('establishment', { scope: true, buttons });
+    const ownScheme = await fixtureCreate(paths.establishment, { name: '复制字段重放方案', periodType: 'annual', maintenanceMode: 'inclusive', startDate: '2026-01-01' });
+    const source = await fixtureCreate('/api/tenant/establishment/capacities', { orgId: org.id, schemeId: ownScheme.id, periodStart: '2026-01-01', inclusiveCapacity: 10 });
+    const queued = await world.api.request('POST', '/api/tenant/establishment/copy-jobs', { ...as, ifMatch: 0, body: { capacityIds: [source.id] } });
+    expect(queued.status).toBe(202);
+    const job = await queued.json() as { id: string; revision: number };
+    const input = { ...as, ifMatch: job.revision, idempotencyKey: randomUUID(), body: {} };
+    const executed = await world.api.request('POST', `/api/tenant/establishment/copy-jobs/${job.id}/execute`, input);
+    expect(executed.status, await executed.clone().text()).toBe(200);
+    expect(await executed.json()).toMatchObject({ status: 'succeeded' });
+    expect((await setObjectPermission(world, as.profile, {
+      dataOperations: { create: true, update: true, delete: true }, buttons,
+      fields: MODULE_OBJECTS.establishment.fields.map(field => ({ fieldCode: field.code, view: true, edit: !field.system && field.code !== 'inclusiveCapacity' })),
+    }, MODULE_OBJECTS.establishment.code)).status).toBe(200);
+    expect((await world.api.request('POST', `/api/tenant/establishment/copy-jobs/${job.id}/execute`, input)).status).toBe(403);
   });
 
   async function addObjectView(as: Awaited<ReturnType<typeof actor>>, key: keyof typeof MODULE_OBJECTS) {
     const definition = MODULE_OBJECTS[key];
-    const response = await setObjectPermission(world, as.profile, {
-      dataOperations: { create: false, update: false, delete: false },
-      fields: definition.fields.map(field => ({ fieldCode: field.code, view: true, edit: false })), buttons: [],
-    }, definition.code);
+    const response = await setObjectPermission(
+      world,
+      as.profile,
+      {
+        dataOperations: { create: false, update: false, delete: false },
+        fields: definition.fields.map((field) => ({ fieldCode: field.code, view: true, edit: false })),
+        buttons: [],
+      },
+      definition.code,
+    );
     expect(response.status, await response.clone().text()).toBe(200);
   }
 
   async function objectAll(as: Awaited<ReturnType<typeof actor>>, key: keyof typeof MODULE_OBJECTS) {
-    const response = await world.api.request('PUT', `/api/tenant/permission/profiles/${as.profile.id}/data-scopes/TenantBase`, {
-      ...world.asAdmin, ifMatch: 0, body: { targetKind: 'entity', targetCode: MODULE_OBJECTS[key].code, seeAll: true },
-    });
+    const response = await world.api.request(
+      'PUT',
+      `/api/tenant/permission/profiles/${as.profile.id}/data-scopes/TenantBase`,
+      {
+        ...world.asAdmin,
+        ifMatch: 0,
+        body: { targetKind: 'entity', targetCode: MODULE_OBJECTS[key].code, seeAll: true },
+      },
+    );
     expect(response.status, await response.clone().text()).toBe(200);
   }
 
@@ -412,16 +564,32 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     const as = await actor('jobLevel');
     await addObjectView(as, 'jobPost');
     await objectAll(as, 'jobLevel');
-    expect((await world.api.request('GET', `/api/tenant/job/candidates/levels?postId=${post.id}`, as)).status).toBe(404);
+    expect((await world.api.request('GET', `/api/tenant/job/candidates/levels?postId=${post.id}`, as)).status).toBe(
+      404,
+    );
   });
 
-  for (const [kind, key, field] of [['levels', 'jobLevel', 'levelId'], ['grades', 'jobGrade', 'gradeId']] as const) {
+  for (const [kind, key, field] of [
+    ['levels', 'jobLevel', 'levelId'],
+    ['grades', 'jobGrade', 'gradeId'],
+  ] as const) {
     it(`任职校验不能探测范围外 ${key}`, async () => {
       const as = await actor('jobPost', { buttons: [{ buttonCode: 'validate', level: 'detail' }] });
       await addObjectView(as, key);
       await objectAll(as, 'jobPost');
-      const reference = await fixtureCreate(`/api/tenant/job/${kind}`, { name: '隐藏的关联对象', startDate: '2026-01-01', [kind === 'levels' ? 'level' : 'grade']: 1 });
-      expect((await world.api.request('POST', '/api/tenant/job/validate-assignment', { ...as, body: { postId: post.id, [field]: reference.id, asOf: TODAY } })).status).toBe(404);
+      const reference = await fixtureCreate(`/api/tenant/job/${kind}`, {
+        name: '隐藏的关联对象',
+        startDate: '2026-01-01',
+        [kind === 'levels' ? 'level' : 'grade']: 1,
+      });
+      expect(
+        (
+          await world.api.request('POST', '/api/tenant/job/validate-assignment', {
+            ...as,
+            body: { postId: post.id, [field]: reference.id, asOf: TODAY },
+          })
+        ).status,
+      ).toBe(404);
     });
   }
 
