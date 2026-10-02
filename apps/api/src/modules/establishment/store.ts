@@ -25,6 +25,7 @@ export interface EstablishmentContext {
       readonly id?: string;
       readonly orgId: string;
       readonly payload: Readonly<Record<string, unknown>>;
+      readonly linked?: boolean;
     },
   ) => Promise<void>;
 }

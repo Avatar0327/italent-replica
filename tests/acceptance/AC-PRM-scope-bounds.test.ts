@@ -103,17 +103,18 @@ async function fixture(rules: Rule[]) {
   };
 }
 
-describe('AC-PRM 范围并集保留20,000上限与重复规则复用', () => {
+describe('AC-PRM 管理人员无上限、组织与汇报范围仍有界且重复规则复用', () => {
   beforeEach(() => {
     vi.resetAllMocks();
   });
 
-  it('两条合法人员范围各≤20,000，但最终并集20,001时拒绝整个解析', async () => {
+  it('DEC-080 管理人员超过20,000时不因人数拒绝整个解析', async () => {
     const world = await fixture([{ dimension: 'management' }, { dimension: 'reporting', relationMode: 'direct' }]);
     vi.mocked(expandScopeRoots).mockResolvedValue([world.mouRoot]);
     vi.mocked(managedPersons).mockResolvedValue(ids(1, 10_001));
     vi.mocked(reportingPersons).mockResolvedValue(ids(10_002, 10_000));
-    await expect(world.resolve()).rejects.toMatchObject({ code: 'PAYLOAD_TOO_LARGE' });
+    const result = await world.resolve();
+    expect(result.personIds).toHaveLength(20_001);
   });
 
   it('管理单元与组织关系的组织并集超过20,000时拒绝，不能把每term上限当总上限', async () => {

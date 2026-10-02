@@ -181,7 +181,7 @@ function registerImport(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         scope,
         input.kind === 'positions' ? (row.orgId as string) : undefined,
         '职务体系对象不存在或已失效',
-        ctx.userId,
+        input.kind === 'positions' ? undefined : ctx.userId,
       );
       if (targetId && !scope.all)
         await visibleJob(tx, ctx, scope, input.kind, targetId, row.startDate ?? queryDate(c, ctx));
@@ -245,7 +245,7 @@ function registerObjectWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const input = await parseBody(c, jobCreationSchema(kind));
     await writeFields(deps, ctx, objectCode, 'create', input);
     const scope = await requestScope(c, deps, ctx, objectCode);
-    visible(scope, (input as JobInput).orgId as string | undefined, '职务体系对象不存在或已失效', ctx.userId);
+    visible(scope, (input as JobInput).orgId as string | undefined, '职务体系对象不存在或已失效');
     return runWrite(
       c,
       deps,

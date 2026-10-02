@@ -56,7 +56,12 @@ export async function runWrite(
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input },
-    execute: (tx, commandId) => execute(tx, { ...ctx, commandId }),
+    execute: async (tx, commandId) => {
+      const commandResult = await execute(tx, { ...ctx, commandId });
+      // First execution must validate its complete write footprint before commit. Replays are checked below.
+      if (checkResult) await checkResult(tx, commandResult.body);
+      return commandResult;
+    },
   });
   if (checkResult) await withTenant(deps.db, ctx.tenantId, (tx) => checkResult(tx, result.body));
   const payload = result.body as { revision?: number } | null;

@@ -202,7 +202,8 @@ function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     const input = await body(c, creation);
     await writeFields(deps, ctx, OBJECT, 'create', input);
     await button(deps, ctx, OBJECT, 'validate', 'detail');
-    await visibleParents(deps, ctx, input.parents);
+    const scope = await requestScope(c, deps, ctx, OBJECT);
+    await visibleParents(deps, ctx, input.parents, scope);
     const result = await withTenant(deps.db, ctx.tenantId, (tx) => validateOrganization(tx, ctx, input));
     return c.json(await trimModuleResponse(deps, ctx, OBJECT, result));
   });
@@ -211,11 +212,20 @@ function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     requireNew(ctx);
     const input = await body(c, creation);
     await writeFields(deps, ctx, OBJECT, 'create', input);
-    await visibleParents(deps, ctx, input.parents);
-    return write(c, deps, ctx, input, async (tx, writeCtx) => ({
-      status: 201,
-      body: await organizationResponse(tx, writeCtx, await createOrganization(tx, writeCtx, input)),
-    }));
+    const scope = await requestScope(c, deps, ctx, OBJECT);
+    await visibleParents(deps, ctx, input.parents, scope);
+    return write(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, writeCtx) => ({
+        status: 201,
+        body: await organizationResponse(tx, writeCtx, await createOrganization(tx, writeCtx, input)),
+      }),
+      true,
+      scope,
+    );
   });
   router.patch(`${BASE}/organizations/:id`, async (c) => {
     const ctx = await context(c, deps, 'update', revision(c));
@@ -231,11 +241,19 @@ function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
         hasCreatorScope(scope) ? await creatorOf(tx, ctx.tenantId, id, 'org.create', 'organization') : undefined,
       ),
     );
-    if (input.parents) await visibleParents(deps, ctx, input.parents);
-    return write(c, deps, ctx, input, async (tx, writeCtx) => ({
-      status: 200,
-      body: await organizationResponse(tx, writeCtx, await updateOrganization(tx, writeCtx, id, input)),
-    }));
+    if (input.parents) await visibleParents(deps, ctx, input.parents, scope);
+    return write(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, writeCtx) => ({
+        status: 200,
+        body: await organizationResponse(tx, writeCtx, await updateOrganization(tx, writeCtx, id, input)),
+      }),
+      true,
+      scope,
+    );
   });
   router.put(`${BASE}/settings`, async (c) => {
     const ctx = await context(c, deps, 'configuration', revision(c));
@@ -292,10 +310,18 @@ function registerOrgImport(router: Hono<TenantEnv>, deps: TenantRouteDeps): void
     await withTenant(deps.db, ctx.tenantId, (tx) =>
       authorizeOrgImportRows(tx, ctx, input.rows, (row, target) => guard(tx, row, target)),
     );
-    return write(c, deps, ctx, input, async (tx, writeCtx) => ({
-      status: 200,
-      body: await importOrganizations(tx, writeCtx, input.rows, (row, target) => guard(tx, row, target)),
-    }));
+    return write(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, writeCtx) => ({
+        status: 200,
+        body: await importOrganizations(tx, writeCtx, input.rows, (row, target) => guard(tx, row, target)),
+      }),
+      true,
+      scope,
+    );
   });
 }
 
@@ -320,26 +346,33 @@ async function write(
   input: unknown,
   execute: (tx: Tx, ctx: OrgWriteContext) => Promise<Awaited<ReturnType<typeof runCommand>>>,
   trim = true,
+  resolvedScope?: Awaited<ReturnType<typeof resolveModuleScope>>,
 ) {
+  const checksOrgResult = trim && (c.req.path.includes('/organizations') || c.req.path.endsWith('/import'));
+  const scope = checksOrgResult
+    ? (resolvedScope ?? (await resolveModuleScope(deps, ctx, undefined, OBJECT)))
+    : undefined;
+  const checkResult = async (tx: Tx, value: Record<string, unknown>, status: number) => {
+    if (!scope) return;
+    if (Array.isArray(value.results)) {
+      for (const row of value.results as { orgId?: string; status: string }[]) {
+        if (row.orgId) await authorizeOrgResult(tx, ctx, scope, row.orgId, row.status === 'created');
+      }
+    } else if (typeof value.id === 'string') await authorizeOrgResult(tx, ctx, scope, value.id, status === 201);
+  };
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input },
-    execute: (tx, commandId) => execute(tx, { ...ctx, commandId }),
+    execute: async (tx, commandId) => {
+      const commandResult = await execute(tx, { ...ctx, commandId });
+      await checkResult(tx, commandResult.body as Record<string, unknown>, commandResult.status);
+      return commandResult;
+    },
   });
   const payload = result.body as { revision?: number };
   if (payload.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
   const value = result.body as Record<string, unknown>;
-  if (trim && (c.req.path.includes('/organizations') || c.req.path.endsWith('/import'))) {
-    const scope = await resolveModuleScope(deps, ctx, undefined, OBJECT);
-    await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      if (Array.isArray(value.results)) {
-        for (const row of value.results as { orgId?: string; status: string }[]) {
-          if (row.orgId) await authorizeOrgResult(tx, ctx, scope, row.orgId, row.status === 'created');
-        }
-      } else if (typeof value.id === 'string')
-        await authorizeOrgResult(tx, ctx, scope, value.id, result.status === 201);
-    });
-  }
+  if (checksOrgResult) await withTenant(deps.db, ctx.tenantId, (tx) => checkResult(tx, value, result.status));
   const output = !trim
     ? value
     : Array.isArray(value.results)
@@ -384,8 +417,8 @@ async function visibleParents(
   deps: TenantRouteDeps,
   ctx: OrgWriteContext,
   parents: Record<string, { parentId: string } | undefined>,
+  scope: Awaited<ReturnType<typeof resolveModuleScope>>,
 ) {
-  const scope = await resolveModuleScope(deps, ctx, undefined, OBJECT);
   await withTenant(deps.db, ctx.tenantId, async (tx) => {
     for (const parent of Object.values(parents))
       if (parent)

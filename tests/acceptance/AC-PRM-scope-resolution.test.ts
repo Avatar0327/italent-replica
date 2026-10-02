@@ -77,12 +77,12 @@ async function fixture() {
 }
 
 describe('AC-PRM-03~07/17/18/21 scope resolution and policy priority', () => {
-  it('per-root expansion, disabled subtree pruning, app separation and default empty', async () => {
+  it('DEC-083 keeps disabled in-scope organizations visible with app separation', async () => {
     const w = await fixture();
     const root = await w.org('范围根');
     const child = await w.org('下级', root.id);
     const disabled = await w.org('已停用', root.id, { enabled: false });
-    await w.org('停用下级', disabled.id);
+    const disabledChild = await w.org('停用下级', disabled.id);
     const other = await w.org('另一个根');
     await w.org('不展开子级', other.id);
     expect((await w.resolve()).hasDataPermission).toBe(false);
@@ -90,7 +90,9 @@ describe('AC-PRM-03~07/17/18/21 scope resolution and policy priority', () => {
       { orgId: root.id, includeDescendants: true },
       { orgId: other.id, includeDescendants: false },
     ]);
-    expect([...(await w.resolve()).orgIds].sort()).toEqual([root.id, child.id, other.id].sort());
+    expect([...(await w.resolve()).orgIds].sort()).toEqual(
+      [root.id, child.id, disabled.id, disabledChild.id, other.id].sort(),
+    );
     expect((await w.resolve({ appCode: 'Other' })).orgIds).toEqual([]);
     await w.assign([{ orgId: root.id, includeDescendants: false }], 1);
     expect((await w.resolve()).orgIds).toEqual([root.id]);

@@ -77,8 +77,6 @@ export const MODULE_OBJECTS = {
       'parents',
       'sourceCode',
       'parentId',
-      'enabledDimensions',
-      'fullNameStartLevel',
     ],
     [
       ...crud,
@@ -87,7 +85,7 @@ export const MODULE_OBJECTS = {
       button('validate', 'detail'),
       button('import', 'list'),
     ],
-    ['fullName', 'level', 'valid', 'errors', 'warnings', 'label', 'resource', 'dimension', 'status', 'reason', 'orgId'],
+    ['fullName', 'level', 'resource', 'dimension', 'status', 'reason', 'orgId'],
   ),
   jobLayer: job('JobLayer', ['layerLevel']),
   jobGrade: job('JobGrade', ['grade', 'scoreLow', 'scoreHigh', 'layerId']),

@@ -110,8 +110,9 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/employees/:id/businesses', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
-    const input = normalizeEmploymentInput(ctx, await jsonBody(c));
-    await requireEmploymentWrite(ctx, 'create', input, 'Employment.Create');
+    const rawInput = await jsonBody(c);
+    const input = normalizeEmploymentInput(ctx, rawInput);
+    await requireEmploymentWrite(ctx, 'create', rawInput as object, 'Employment.Create');
     if (input.fields.departmentId !== undefined) requireEmploymentScope(ctx, id, input.fields.departmentId);
     return runWrite(c, deps, ctx, input, async (tx, context) => ({
       status: 201,
@@ -430,7 +431,7 @@ async function authorizeImport(
   for (const item of input.items) {
     if (item.operation === 'create') {
       const business = normalizeEmploymentInput(ctx, item.business);
-      if (!preview) await requireEmploymentWrite(ctx, 'create', business, 'Employment.Create');
+      if (!preview) await requireEmploymentWrite(ctx, 'create', item.business as object, 'Employment.Create');
       if (business.fields.departmentId !== undefined)
         requireEmploymentScope(ctx, employeeId, business.fields.departmentId);
     } else {

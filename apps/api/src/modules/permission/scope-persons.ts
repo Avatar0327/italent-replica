@@ -24,14 +24,13 @@ function bounded(rows: { employee_id: string }[]) {
 export async function managedPersons(tx: Tx, tenantId: string, asOf: string, orgIds: readonly string[]) {
   if (!orgIds.length) return [];
   // TODO(需取证 Q-M0-29): §14.3 高级管理人员条件对象未定位；首版仅从当前任职组织归属派生。
-  return bounded(
-    scopeRows<{ employee_id: string }>(
-      await tx.execute(sql`
-    SELECT DISTINCT employee_id FROM (${currentPersons(tenantId, asOf)}) p
-    WHERE p.department_id=ANY(${`{${orgIds.join(',')}}`}::uuid[]) LIMIT 20001
-  `),
-    ),
+  const people = scopeRows<{ employee_id: string }>(
+    await tx.execute(sql`
+      SELECT DISTINCT employee_id FROM (${currentPersons(tenantId, asOf)}) p
+      WHERE p.department_id=ANY(${`{${orgIds.join(',')}}`}::uuid[])
+    `),
   );
+  return people.map((row) => row.employee_id);
 }
 export async function reportingPersons(
   tx: Tx,

@@ -1,4 +1,5 @@
 import { MODULE_OBJECTS } from '@italent/domain';
+import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { creatorOf, hasCreatorScope, visible, writeFields, type ModuleScope } from './module-route-access.js';
 import type { BusinessContext } from '../job/context.js';
@@ -16,7 +17,15 @@ export function capacityContext(deps: TenantRouteDeps, ctx: BusinessContext, sco
           : change.id && hasCreatorScope(scope)
             ? await creatorOf(tx, ctx.tenantId, change.id, 'establishment.capacity.create', 'establishment-capacity')
             : undefined;
-      visible(scope, change.orgId, '编制在该时点不存在', creator);
+      try {
+        visible(scope, change.orgId, '编制在该时点不存在', creator);
+      } catch (error) {
+        if (change.linked && error instanceof AppError && error.code === 'NOT_FOUND') {
+          // TODO(需取证 Q-M0-33): 原站联动越权提示及引导文案待取证。
+          throw new AppError('LINKED_RECORD_OUT_OF_SCOPE', '联动记录不在当前数据范围，请由覆盖该范围的人员操作');
+        }
+        throw error;
+      }
       await writeFields(
         { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) },
         ctx,

@@ -75,7 +75,17 @@ export async function trimModuleResponse<T extends object>(
 export async function trimModuleResponse(deps: Deps, ctx: TenantContext, objectCode: string, value: object | object[]) {
   const fields = await getModuleViewableFields(deps, ctx, objectCode);
   if (fields === undefined) return value;
-  const trim = (row: object) => Object.fromEntries(Object.entries(row).filter(([field]) => fields.has(field)));
+  // Validation/result envelopes are protocol metadata, not configurable business fields (DEC-080 b).
+  const envelope = new Set([
+    'valid',
+    'errors',
+    'warnings',
+    'canSubmit',
+    'requiresConfirmation',
+    'isBeyondEstablishment',
+  ]);
+  const trim = (row: object) =>
+    Object.fromEntries(Object.entries(row).filter(([field]) => envelope.has(field) || fields.has(field)));
   return Array.isArray(value) ? value.map(trim) : trim(value);
 }
 

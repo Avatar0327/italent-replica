@@ -246,12 +246,14 @@ describe('AC-PRM-03/22/29 任职数据范围与字段裁剪', () => {
       body: { fields: { place: '新的地点' } },
     });
     expect(preview.status).toBe(404);
+    expect(await preview.json()).toMatchObject({ error: { code: 'LINKED_RECORD_OUT_OF_SCOPE' } });
     const changed = await world.api.request('PATCH', path, {
       ...world.asWriter,
       ifMatch: world.movedIn.current.revision,
       body: { fields: { place: '新的地点' } },
     });
     expect(changed.status).toBe(404);
+    expect(await changed.json()).toMatchObject({ error: { code: 'LINKED_RECORD_OUT_OF_SCOPE' } });
     const actual = await world.setup.request('GET', path, world.asAdmin);
     expect(actual.status).toBe(200);
     expect(await actual.json()).toMatchObject({

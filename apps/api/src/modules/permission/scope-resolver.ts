@@ -60,6 +60,7 @@ async function managementRoots(tx: Tx, q: ScopeQuery): Promise<ScopeRoot[]> {
     `),
     ).map((r) => ({ orgId: r.org_id, dimension: r.dimension, includeDescendants: r.include_descendants }));
   }
+  // TODO(需取证 Q-M0-34): 动态组织角色暂只覆盖角色所在组织本级，不隐式包含下级。
   // REQ-PRM-002: org-role automatic grant + default MOU + HR/attendance is an explicit branch.
   const roles = scopeRows<{ role_code: string }>(
     await tx.execute(sql`
@@ -99,6 +100,7 @@ async function rulesFor(tx: Tx, q: ScopeQuery): Promise<{ source: ModuleScope['s
   const specific = policies.filter((policy) => policy.target_kind !== 'entity');
   if (specific.length > 1) throw new AppError('SERVICE_UNAVAILABLE', '页面与数据源数据权限冲突，需核实配置');
   const policy = specific[0] ?? policies.find((candidate) => candidate.target_kind === 'entity');
+  // TODO(需取证 Q-M0-32): 未配置实体策略时暂按管理单元规则 fail-closed 解析。
   if (!policy) return { source: 'entity', rules: [{ dimension: 'management', role_code: null, relation_mode: null }] };
   const rules = scopeRows<Rule>(
     await tx.execute(sql`
@@ -140,6 +142,7 @@ export async function resolveDataScope(tx: Tx, query: ScopeQuery): Promise<Modul
     if (rule.dimension === 'management') {
       const roots = await managementRoots(tx, query);
       const orgIds = await expandScopeRoots(tx, query.tenantId, query.asOf, roots);
+      // Management personnel is unbounded: large tenants must not fail authorization merely due to headcount.
       const personIds = await managedPersons(tx, query.tenantId, query.asOf, orgIds);
       term = { dimension: 'management', orgIds, personIds };
     } else if (rule.dimension === 'organization') {
@@ -162,7 +165,8 @@ export async function resolveDataScope(tx: Tx, query: ScopeQuery): Promise<Modul
     if (term) {
       // Reader limits apply to one rule. Bound each distinct final union too, without counting overlaps twice.
       addBoundedIds(orgIds, term.orgIds);
-      addBoundedIds(personIds, term.personIds);
+      // Each reporting derivation is bounded by its SQL reader; management headcount is intentionally unbounded.
+      for (const personId of term.personIds) personIds.add(personId);
       terms.push(term);
     }
   }

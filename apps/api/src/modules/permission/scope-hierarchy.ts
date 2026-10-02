@@ -39,12 +39,12 @@ export function scopeHierarchyReader(
           WHEN 'reserve5' THEN s.reserve5_enabled ELSE false END
       ), tree(root_id,dimension,expand,org_id) AS (
         SELECT q.org_id,q.dimension,q.expand,v.org_id FROM roots q JOIN current_versions v ON v.org_id=q.org_id
-        WHERE v.enabled AND v.stop_date>=${asOf}::date
+
         UNION
         SELECT tree.root_id,tree.dimension,tree.expand,v.org_id FROM tree
         JOIN org_hierarchy_links h ON h.tenant_id=${tenantId} AND h.dimension=tree.dimension
           AND h.parent_org_id=tree.org_id
-        JOIN current_versions v ON v.id=h.version_id AND v.enabled AND v.stop_date>=${asOf}::date
+        JOIN current_versions v ON v.id=h.version_id
         WHERE tree.expand
       ) SELECT root_id,dimension,org_id FROM tree LIMIT ${MAX_SCOPE_IDS + 1}
     `),

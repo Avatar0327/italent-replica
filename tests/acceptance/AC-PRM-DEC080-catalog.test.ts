@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { trimModuleResponse } from '../../apps/api/src/modules/permission/module-access.js';
 import { decide, MODULE_OBJECTS, ObjectCatalog, type PermissionSubject } from '@italent/domain';
 
 describe('DEC-080 real module catalogs and fail-closed writes', () => {
@@ -28,5 +29,19 @@ describe('DEC-080 real module catalogs and fail-closed writes', () => {
     expect(decide(subject, { action: 'tenant.org.write' }, catalog)).toBe(false);
     expect(decide(subject, { action: 'tenant.org.create', fields: [] }, catalog)).toBe(false);
     expect(decide(subject, { action: 'tenant.org.delete' }, catalog)).toBe(false);
+  });
+
+  it('keeps validation envelopes outside the configurable organization business-field catalog', async () => {
+    const fields = MODULE_OBJECTS.organization.fields.map((field) => field.code);
+    expect(fields).not.toEqual(expect.arrayContaining(['valid', 'errors', 'warnings', 'label']));
+    expect(fields).not.toEqual(expect.arrayContaining(['enabledDimensions', 'fullNameStartLevel']));
+
+    const result = await trimModuleResponse(
+      { authorize: async () => false, db: {} as never, clock: () => new Date('2026-10-02T00:00:00Z') },
+      { tenantId: 'tenant', userId: 'user', timezone: 'Asia/Shanghai' },
+      MODULE_OBJECTS.organization.code,
+      { valid: false, errors: ['name'], warnings: [], canSubmit: false, name: 'hidden' },
+    );
+    expect(result).toEqual({ valid: false, errors: ['name'], warnings: [], canSubmit: false });
   });
 });

@@ -267,8 +267,13 @@ export async function runWrite(
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input },
-    execute: (tx, commandId) =>
-      execute(tx, { ...ctx, commandId, authorize: authorizeInTransaction(deps.authorize, tx) }),
+    execute: async (tx, commandId) => {
+      const commandContext = { ...ctx, commandId, authorize: authorizeInTransaction(deps.authorize, tx) };
+      const commandResult = await execute(tx, commandContext);
+      // Validate linked writes in the command transaction so an out-of-scope footprint rolls back atomically.
+      await authorizeEmploymentResult(tx, commandContext, deps.authorize, commandId, commandResult.body);
+      return commandResult;
+    },
   });
   await withTenant(deps.db, ctx.tenantId, (tx) =>
     authorizeEmploymentResult(tx, ctx, deps.authorize, c.req.header('idempotency-key')!, result.body),

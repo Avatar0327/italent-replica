@@ -47,7 +47,12 @@ export async function createEmployee(tx: Tx, ctx: EmploymentContext, input: { co
 
 function employeeQuery(tenantId: string, asOf: string, scope?: EmploymentScope) {
   businessDate(asOf);
-  const predicate = employmentScopePredicate(scope, sql`e.id`, undefined, employmentCreator(tenantId, sql`e.id`));
+  const predicate = employmentScopePredicate(
+    scope,
+    sql`e.id`,
+    sql`r.department_id`,
+    employmentCreator(tenantId, sql`e.id`),
+  );
   return sql`
     SELECT e.id,e.code,e.name,e.revision,
       CASE WHEN r.id IS NULL THEN 'pending' WHEN r.kind='leave' THEN 'left'

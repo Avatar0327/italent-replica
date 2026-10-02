@@ -27,6 +27,7 @@ export const ERROR_STATUS = {
   PAYLOAD_TOO_LARGE: 413,
   UNSUPPORTED_MEDIA_TYPE: 415,
   SERVICE_UNAVAILABLE: 503,
+  LINKED_RECORD_OUT_OF_SCOPE: 404,
   NOT_FOUND: 404,
   INTERNAL_ERROR: 500,
 } as const satisfies Record<string, ContentfulStatusCode>;

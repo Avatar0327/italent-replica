@@ -120,4 +120,19 @@ describe('AC-PRM-22 / DEC-080 任职授权接线', () => {
     });
     expect(response.status).toBe(400);
   });
+
+  it('DEC-080 c 创建只校验请求实际提供的键，不把默认 formId/lastWorkDate 当写入', async () => {
+    const world = await fixture(
+      (request) => request.fields?.includes('formId') === true || request.fields?.includes('lastWorkDate') === true,
+    );
+    const employee = await world.session.employee();
+    const response = await world.api.request('POST', `/api/tenant/employment/employees/${employee.id}/businesses`, {
+      ...world.as,
+      ifMatch: employee.revision,
+      body: { kind: 'hire', mode: 'direct', effectiveDate: '2026-10-02', fields: { place: '乙地' } },
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    const create = world.calls.find((request) => request.action === 'object.create' && request.resource === objectCode);
+    expect(create?.fields).not.toEqual(expect.arrayContaining(['formId', 'lastWorkDate']));
+  });
 });

@@ -1,12 +1,9 @@
 import {
   and,
-  desc,
   eq,
   establishmentObjects,
   establishmentSchemeObjects,
-  establishmentSchemeVersions,
   isUuid,
-  lte,
   sql,
   withTenant,
   type Tx,
@@ -101,37 +98,24 @@ function registerSchemes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     const page = pageQuery(c);
     const scope = await requestScope(c, deps, ctx, OBJECT);
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const selected = await tx
-        .selectDistinctOn([establishmentSchemeVersions.schemeId], { id: establishmentSchemeObjects.id })
-        .from(establishmentSchemeVersions)
-        .innerJoin(
-          establishmentSchemeObjects,
-          and(
-            eq(establishmentSchemeObjects.id, establishmentSchemeVersions.schemeId),
-            eq(establishmentSchemeObjects.tenantId, establishmentSchemeVersions.tenantId),
-          ),
+      const result = await tx.execute(sql`
+        WITH current_versions AS (
+          SELECT DISTINCT ON (v.scheme_id) v.scheme_id,v.enabled,v.stop_date
+          FROM establishment_scheme_versions v
+          WHERE v.tenant_id=${ctx.tenantId} AND v.start_date<=${asOf}::date
+          ORDER BY v.scheme_id,v.start_date DESC,v.version_no DESC
         )
-        .where(
-          and(
-            eq(establishmentSchemeVersions.tenantId, ctx.tenantId),
-            lte(establishmentSchemeVersions.startDate, asOf),
-            scopeSql(scope, {
-              creator: creatorSql(
-                ctx.tenantId,
-                sql`${establishmentSchemeObjects.id}`,
-                'establishment.scheme.create',
-                'establishment-scheme',
-              ),
-            }),
-          ),
-        )
-        .orderBy(
-          establishmentSchemeVersions.schemeId,
-          desc(establishmentSchemeVersions.startDate),
-          desc(establishmentSchemeVersions.versionNo),
-        )
-        .limit(page.limit)
-        .offset(page.offset);
+        SELECT o.id FROM current_versions v
+        JOIN establishment_scheme_objects o ON o.tenant_id=${ctx.tenantId} AND o.id=v.scheme_id
+        WHERE v.enabled AND v.stop_date>=${asOf}::date
+          AND ${scopeSql(scope, {
+            creator: creatorSql(ctx.tenantId, sql`o.id`, 'establishment.scheme.create', 'establishment-scheme'),
+          })}
+        ORDER BY o.id LIMIT ${page.limit} OFFSET ${page.offset}
+      `);
+      const selected = (Array.isArray(result) ? result : (result as { rows: { id: string }[] }).rows) as {
+        id: string;
+      }[];
       return loadSchemeBatch(
         tx,
         ctx.tenantId,
@@ -248,7 +232,7 @@ function registerCapacities(router: Hono<TenantEnv>, deps: TenantRouteDeps): voi
     const input = await parseBody(c, capacity);
     await writeFields(deps, ctx, OBJECT, 'create', input);
     const scope = await requestScope(c, deps, ctx, OBJECT);
-    visible(scope, input.orgId, '编制在该时点不存在', ctx.userId);
+    visible(scope, input.orgId, '编制在该时点不存在');
     return runWrite(
       c,
       deps,

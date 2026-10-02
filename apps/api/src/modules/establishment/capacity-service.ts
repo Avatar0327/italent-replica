@@ -396,6 +396,7 @@ async function syncAncestors(
       operation: 'update',
       id: parent.id,
       orgId: parent.orgId,
+      linked: true,
       payload: {
         effectiveDate: after.startDate,
         ...(scheme.subdivision === 'position'
