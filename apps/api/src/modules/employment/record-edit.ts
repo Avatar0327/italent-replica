@@ -13,7 +13,12 @@ import { validateEmploymentReferences } from './references.js';
 import { requireSavedBusiness } from './write-service.js';
 import type { EmploymentBusinessPatch, EmploymentContext, EmploymentRecord, CustomFields } from './types.js';
 
-async function editedValues(tx: Tx, ctx: EmploymentContext, record: EmploymentRecord, patch: EmploymentBusinessPatch) {
+export async function editedValues(
+  tx: Tx,
+  ctx: EmploymentContext,
+  record: EmploymentRecord,
+  patch: EmploymentBusinessPatch,
+) {
   if (patch.effectiveDate !== undefined || patch.lastWorkDate !== undefined) {
     throw new AppError('VALIDATION_FAILED', '任职字段编辑入口不能重排生效日期', { reason: 'RECORD_DATE_IMMUTABLE' });
   }

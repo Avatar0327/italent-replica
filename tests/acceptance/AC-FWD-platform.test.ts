@@ -187,4 +187,14 @@ describe('AC-FWD-01/02 DEC-019 版本追加、幂等与事务边界', () => {
     );
     expect(commands).toEqual([]);
   });
+
+  it('申请制预览明确按生效日计算且提示生效时可能变化', async () => {
+    const { db } = testDb();
+    const { session, employee } = await fixture(db, 'fwd-preview-application-date');
+    const response = await session.request('POST', `/employees/${employee.id}/forward-update-preview`, {
+      body: { ...backfill(), mode: 'application' },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ notice: '结果以生效时为准' });
+  });
 });

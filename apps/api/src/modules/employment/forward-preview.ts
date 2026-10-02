@@ -2,12 +2,18 @@ import type { Tx } from '@italent/db';
 import { emptyPresetFields, type EmploymentBusinessInput, type EmploymentContext } from './types.js';
 import { normalizeEmploymentInput } from './fields.js';
 import { prepareInheritance, resolveEffectiveInheritance } from './inheritance.js';
-import { lockEmploymentEmployee } from './record-store.js';
+import { readEmploymentEmployee } from './record-store.js';
 import { validateEmploymentReferences } from './references.js';
+import { editedValues } from './record-edit.js';
+import { loadEmploymentRecord } from './read-model.js';
+import { isForwardEditSupported } from './forward-rules.js';
+import { AppError } from '../../errors.js';
+import type { EmploymentBusinessPatch } from './types.js';
+import { tenantLocalDate } from '@italent/domain';
 import { selectEmploymentCycle, NEW_CYCLE_KINDS } from './write-service.js';
 import { forwardUpdateEmployment } from './forward-update.js';
 
-/** 只读预览取得员工锁以保证多条查询一致；不创建命令、payload、审计或 outbox。 */
+/** 只读预览依赖事务快照；不加行锁，不创建命令、payload、审计或 outbox。 */
 export async function previewEmploymentForwardUpdate(
   tx: Tx,
   ctx: EmploymentContext,
@@ -15,7 +21,7 @@ export async function previewEmploymentForwardUpdate(
   input: EmploymentBusinessInput,
 ) {
   const normalized = normalizeEmploymentInput(ctx, input);
-  const employee = await lockEmploymentEmployee(tx, ctx, employeeId);
+  const employee = await readEmploymentEmployee(tx, ctx, employeeId);
   if (NEW_CYCLE_KINDS.includes(normalized.kind))
     return { employeeRevision: employee.revision, changes: [], skipped: [] };
   const selected = await selectEmploymentCycle(tx, ctx, employeeId, normalized);
@@ -33,6 +39,7 @@ export async function previewEmploymentForwardUpdate(
       employeeId,
       staffId: selected.cycle.id,
       effectiveDate: normalized.effectiveDate,
+      evaluationDate: normalized.mode === 'application' ? normalized.effectiveDate : undefined,
       before:
         selected.predecessor?.staffId === selected.cycle.id
           ? selected.predecessor
@@ -41,5 +48,35 @@ export async function previewEmploymentForwardUpdate(
     },
     true,
   );
-  return { employeeRevision: employee.revision, ...plan };
+  return {
+    employeeRevision: employee.revision,
+    ...plan,
+    ...(normalized.mode === 'application' ? { notice: '结果以生效时为准' } : {}),
+  };
+}
+
+export async function previewEmploymentEditForwardUpdate(
+  tx: Tx,
+  ctx: EmploymentContext,
+  id: string,
+  input: EmploymentBusinessPatch,
+) {
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const record = await loadEmploymentRecord(tx, ctx.tenantId, id, today);
+  if (!record) throw new AppError('CONFLICT', '只能预览有效任职记录的编辑');
+  const after = await editedValues(tx, ctx, record, input);
+  await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate);
+  if (!isForwardEditSupported({ ...record, entry: 'import', today })) return { changes: [], skipped: [] };
+  return forwardUpdateEmployment(
+    tx,
+    ctx,
+    {
+      employeeId: record.employeeId,
+      staffId: record.staffId,
+      effectiveDate: record.effectiveDate,
+      before: record,
+      after,
+    },
+    true,
+  );
 }

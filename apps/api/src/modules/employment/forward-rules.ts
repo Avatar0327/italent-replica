@@ -41,14 +41,15 @@ export function matchingForwardChanges(
     before.fields.departmentId !== after.fields.departmentId && before.fields.positionId !== after.fields.positionId;
   const pairMatches =
     target.fields.departmentId === before.fields.departmentId && target.fields.positionId === before.fields.positionId;
+  // TODO(需取证 Q-M0-27)：DEC-078 暂按记录级解释职位、部门的联合匹配。
+  if (coupled && !pairMatches) return [];
   const changes: ForwardFieldChange[] = [];
   for (const field of FORWARD_PRESET_FIELDS) {
-    if (coupled && !pairMatches && (field === 'departmentId' || field === 'positionId')) continue;
     if (before.fields[field] !== after.fields[field] && target.fields[field] === before.fields[field]) {
       changes.push({ field, before: target.fields[field], after: after.fields[field] });
     }
   }
-  // TODO(需取证 #14, Q-M0-25)：未填写的新序列不推导；显式序列仍按旧值匹配，不覆盖独立序列。
+  // TODO(需取证 Q-M0-25)：未填写的新序列不推导；显式序列仍按旧值匹配，不覆盖独立序列。
   for (const id of customFieldIds) {
     const oldValue = before.customFields[id] ?? null;
     const newValue = after.customFields[id] ?? null;

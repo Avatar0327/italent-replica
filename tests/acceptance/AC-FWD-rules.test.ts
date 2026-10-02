@@ -8,7 +8,7 @@ describe('AC-FWD-05/06 值匹配核心组合', () => {
     { departmentMatches: true, positionMatches: false },
     { departmentMatches: false, positionMatches: true },
     { departmentMatches: false, positionMatches: false },
-  ])('部门匹配=$departmentMatches 职位匹配=$positionMatches 联合条件不影响其他字段', (combination) => {
+  ])('DEC-078 部门匹配=$departmentMatches 职位匹配=$positionMatches 按记录级联合判定', (combination) => {
     const before = {
       fields: {
         ...emptyPresetFields(),
@@ -32,13 +32,11 @@ describe('AC-FWD-05/06 值匹配核心组合', () => {
     };
     const changes = matchingForwardChanges(before, after, target, []);
     const bothMatch = combination.departmentMatches && combination.positionMatches;
-    expect(changes.map((change) => change.field)).toEqual(
-      bothMatch ? ['departmentId', 'positionId', 'place'] : ['place'],
-    );
+    expect(changes.map((change) => change.field)).toEqual(bothMatch ? ['departmentId', 'positionId', 'place'] : []);
     expect(applyForwardChanges(target, changes).fields).toMatchObject({
       departmentId: bothMatch ? 'new-department' : target.fields.departmentId,
       positionId: bothMatch ? 'new-position' : target.fields.positionId,
-      place: 'new-place',
+      place: bothMatch ? 'new-place' : 'old-place',
     });
     expect(target.fields.place).toBe('old-place');
   });

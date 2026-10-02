@@ -19,6 +19,7 @@ export interface ForwardSource {
   readonly businessId?: string;
   readonly staffId: string;
   readonly effectiveDate: string;
+  readonly evaluationDate?: string;
   readonly before: ForwardValues;
   readonly after: ForwardValues;
 }
@@ -33,7 +34,7 @@ export interface ForwardChange {
   readonly status: EmploymentState;
   readonly fields: readonly ForwardFieldChange[];
 }
-interface ForwardPlan {
+export interface ForwardPlan {
   readonly changes: ForwardChange[];
   readonly skipped: { readonly businessId?: string; readonly reason: string; readonly fields?: string[] }[];
 }
@@ -66,7 +67,7 @@ async function candidates(tx: Tx, ctx: EmploymentContext, source: ForwardSource)
     const payload = { ...row, fields: snapshotFields(row) } as unknown as EmploymentPayloadRow;
     const effective =
       state === 'effective'
-        ? await loadEmploymentRecord(tx, ctx.tenantId, payload.businessId, tenantLocalDate(ctx.now, ctx.timezone))
+        ? await loadEmploymentRecord(tx, ctx.tenantId, payload.businessId, payload.effectiveDate)
         : null;
     if (state === 'effective' && !effective) continue;
     result.push({ payload, status: state as EmploymentState, values: effective ?? payload });
@@ -82,17 +83,19 @@ export async function forwardUpdateEmployment(
   dryRun = false,
 ): Promise<ForwardPlan> {
   const plan: ForwardPlan = { changes: [], skipped: [] };
-  const current = await findCurrentRecord(tx, ctx.tenantId, source.employeeId, tenantLocalDate(ctx.now, ctx.timezone));
+  const current = await findCurrentRecord(
+    tx,
+    ctx.tenantId,
+    source.employeeId,
+    source.evaluationDate ?? tenantLocalDate(ctx.now, ctx.timezone),
+  );
   if (current?.staffId !== source.staffId) {
-    // TODO(需取证 #15, Q-M0-26)：旧/未来周期补录是否属于“当前周期”待证；本轮不传播。
+    // TODO(需取证 Q-M0-26)：旧/未来周期补录是否属于“当前周期”待证；本轮不传播。
     plan.skipped.push({ reason: 'NOT_CURRENT_EMPLOYMENT_CYCLE' });
     return plan;
   }
   const custom = (await getCustomFieldsForInheritance(tx, ctx.tenantId)).filter((field) => field.inherit);
   const targets = await candidates(tx, ctx, source);
-  const coupled =
-    source.before.fields.departmentId !== source.after.fields.departmentId &&
-    source.before.fields.positionId !== source.after.fields.positionId;
   const cache = new Map<string, boolean>();
   for (const target of targets) {
     const changes = matchingForwardChanges(
@@ -101,14 +104,7 @@ export async function forwardUpdateEmployment(
       target.values,
       custom.map((field) => field.id),
     );
-    const available = await availableForwardChanges(
-      tx,
-      ctx,
-      changes,
-      { source: source.effectiveDate, target: target.payload.effectiveDate },
-      coupled,
-      cache,
-    );
+    const available = await availableForwardChanges(tx, ctx, changes, target.payload.effectiveDate, cache);
     if (available.skipped.length)
       plan.skipped.push({
         businessId: target.payload.businessId,

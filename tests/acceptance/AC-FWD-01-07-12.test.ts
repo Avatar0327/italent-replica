@@ -1,8 +1,11 @@
+import { randomUUID } from 'node:crypto';
+import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { customField } from './AC-EMP-inheritance-support.js';
 import { forwardFixture, forwardJobApi, preview } from './AC-FWD-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { loadJobWriteService } from './AC-JOB-personnel-support.js';
 
 const testDb = useTestDb();
 
@@ -106,6 +109,41 @@ describe('AC-FWD-01~07/12 值匹配向后更新', () => {
     expect((await session.record(later.id)).fields).toMatchObject({ departmentId: org.id, place: '新地点' });
   });
 
+  it('AC-FWD-04 DEC-079 只按后续记录生效日判断引用，不受运行当天影响', async () => {
+    const { db } = testDb();
+    const { session, employee, nextOrg, hired } = await forwardFixture(db, 'fwd04-target-date-only');
+    const later = await session.business(
+      employee.id,
+      { kind: 'regularization', mode: 'direct', effectiveDate: '2026-12-01' },
+      hired.employeeRevision,
+    );
+    const disabled = await tenantApi(db).request('PATCH', `/api/tenant/org/organizations/${nextOrg.id}`, {
+      user: session.user.id,
+      tenant: session.tenant.id,
+      ifMatch: nextOrg.revision,
+      body: { enabled: false, effectiveDate: '2027-03-01' },
+    });
+    expect(disabled.status).toBe(200);
+    const apiAfterDisable = tenantApi(db, { clock: () => new Date('2027-04-01T01:00:00.000Z') });
+    const response = await apiAfterDisable.request(
+      'POST',
+      `/api/tenant/employment/employees/${employee.id}/businesses`,
+      {
+        user: session.user.id,
+        tenant: session.tenant.id,
+        ifMatch: later.employeeRevision,
+        body: {
+          kind: 'transfer',
+          mode: 'direct',
+          effectiveDate: '2026-09-10',
+          fields: { departmentId: nextOrg.id },
+        },
+      },
+    );
+    expect(response.status).toBe(201);
+    expect((await session.record(later.id)).fields.departmentId).toBe(nextOrg.id);
+  });
+
   it('AC-FWD-05 部门和职位同时变化时，两者都匹配才一起传播', async () => {
     const { db } = testDb();
     const { session, employee, org, nextOrg, hired } = await forwardFixture(db, 'fwd05');
@@ -160,6 +198,58 @@ describe('AC-FWD-01~07/12 值匹配向后更新', () => {
     expect((await session.record(partial.id)).fields).toMatchObject({
       departmentId: org.id,
       positionId: siblingPosition.id,
+    });
+  });
+
+  it('AC-FWD-04 DEC-079 部门和职位同时变化时，停用引用仅排除自身字段', async () => {
+    const { db } = testDb();
+    const { session, employee, org, nextOrg, hired } = await forwardFixture(db, 'fwd04-independent-reference');
+    const jobs = forwardJobApi(db, session);
+    const post = await jobs.create('posts');
+    const oldPosition = await jobs.create('positions', { orgId: org.id, postId: post.id });
+    const newPosition = await jobs.create('positions', { orgId: nextOrg.id, postId: post.id });
+    const baseline = await session.business(
+      employee.id,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-05', fields: { positionId: oldPosition.id } },
+      hired.employeeRevision,
+    );
+    const later = await session.business(
+      employee.id,
+      { kind: 'regularization', mode: 'direct', effectiveDate: '2026-09-20' },
+      baseline.employeeRevision,
+    );
+    const service = await loadJobWriteService();
+    await withTenant(db, session.tenant.id, (tx) =>
+      service.updateJobObject(
+        tx,
+        {
+          tenantId: session.tenant.id,
+          userId: session.user.id,
+          timezone: session.tenant.timezone,
+          now: new Date('2026-10-01T01:00:00.000Z'),
+          commandId: randomUUID(),
+          expectedRevision: newPosition.revision,
+        },
+        'positions',
+        newPosition.id,
+        { enabled: false, effectiveDate: '2026-09-18' },
+        { listIncumbents: async () => [], appendManagerVersion: async () => undefined },
+      ),
+    );
+    await session.business(
+      employee.id,
+      {
+        kind: 'transfer',
+        mode: 'direct',
+        effectiveDate: '2026-09-10',
+        fields: { departmentId: nextOrg.id, positionId: newPosition.id, place: '新地点' },
+      },
+      later.employeeRevision,
+    );
+    expect((await session.record(later.id)).fields).toMatchObject({
+      departmentId: nextOrg.id,
+      positionId: oldPosition.id,
+      place: '新地点',
     });
   });
 

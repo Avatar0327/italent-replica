@@ -183,8 +183,8 @@ describe('AC-FWD-08/10 导入批次的提交前revision与原子传播', () => {
         await tx.execute(sql`SELECT before,after FROM audit_events
         WHERE tenant_id=${session.tenant.id} AND object_id=${later.id} AND command_id=${commandId}`),
       ),
-      events: resultRows(
-        await tx.execute(sql`SELECT payload FROM employment_outbox
+      events: resultRows<{ event_type: string; payload_version_id: string; payload: unknown }>(
+        await tx.execute(sql`SELECT event_type,payload_version_id,payload FROM employment_outbox
         WHERE tenant_id=${session.tenant.id} AND object_id=${later.id} AND command_id=${commandId}`),
       ),
     }));
@@ -194,6 +194,8 @@ describe('AC-FWD-08/10 导入批次的提交前revision与原子传播', () => {
     expect(new Set(versions.map((version) => version.trigger_business_id)).size).toBe(2);
     expect(audits).toHaveLength(2);
     expect(events).toHaveLength(2);
+    expect(events.map((event) => event.event_type)).toEqual(['employment.forward-update', 'employment.forward-update']);
+    expect(new Set(events.map((event) => event.payload_version_id)).size).toBe(2);
     for (const [before, after] of [
       ['原地点', '第一次同步'],
       ['第一次同步', '第二次同步'],

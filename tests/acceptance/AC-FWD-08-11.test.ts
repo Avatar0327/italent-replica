@@ -78,7 +78,7 @@ describe('AC-FWD-08~11 导入开关和编辑入口矩阵', () => {
     expect((await session.record(later.id)).fields.place).toBe('原地点');
   });
 
-  it('AC-FWD-10 编辑导入当前主职记录会传播到未来记录，同键重放不追加版本', async () => {
+  it('AC-FWD-10 编辑导入即使开关为否也传播，同键重放不追加版本', async () => {
     const { session, employee, hired } = await forwardFixture(testDb().db, 'fwd10');
     const later = await session.business(
       employee.id,
@@ -93,6 +93,7 @@ describe('AC-FWD-08~11 导入开关和编辑入口矩阵', () => {
       ifMatch: later.employeeRevision,
       idempotencyKey: randomUUID(),
       body: {
+        updateLaterEmployment: '否',
         items: [
           { operation: 'edit', id: hired.id, revision: hired.revision, patch: { fields: { place: '编辑导入地点' } } },
         ],
@@ -143,6 +144,31 @@ describe('AC-FWD-08~11 导入开关和编辑入口矩阵', () => {
     });
     expect(currentEdit.status).toBe(200);
     expect((await session.record(future.id)).fields.place).toBe('当前编辑地点');
+  });
+
+  it('AC-FWD-10 编辑和导入路径可在落库前预览向后更新', async () => {
+    const { session, employee, hired } = await forwardFixture(testDb().db, 'fwd10-edit-import-preview');
+    const later = await session.business(
+      employee.id,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-11-01' },
+      hired.employeeRevision,
+    );
+    const editPreview = await session.request('POST', `/records/${hired.id}/forward-update-preview`, {
+      body: { fields: { place: '预览编辑地点' } },
+    });
+    expect(editPreview.status).toBe(200);
+    expect(JSON.stringify(await editPreview.json())).toContain(later.id);
+    const importPreview = await session.request('POST', `/employees/${employee.id}/import/forward-update-preview`, {
+      body: {
+        updateLaterEmployment: '否',
+        items: [
+          { operation: 'edit', id: hired.id, revision: hired.revision, patch: { fields: { place: '导入预览地点' } } },
+        ],
+      },
+    });
+    expect(importPreview.status).toBe(200);
+    expect(JSON.stringify(await importPreview.json())).toContain(later.id);
+    expect((await session.record(later.id)).fields.place).toBe('原地点');
   });
 
   it('AC-FWD-11 core only：兼职生命周期未建设，核心入口守卫明确禁止兼职传播', async () => {

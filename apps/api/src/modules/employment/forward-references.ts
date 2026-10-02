@@ -1,6 +1,5 @@
 import { sql, type Tx } from '@italent/db';
 import type { OrgId } from '@italent/domain';
-import { tenantLocalDate } from '@italent/domain';
 import { createTxOrgHierarchyReader } from '../establishment/org-reader.js';
 import { loadJobObject } from '../job/read-model.js';
 import type { JobKind } from '../job/metadata.js';
@@ -40,8 +39,7 @@ export async function availableForwardChanges(
   tx: Tx,
   ctx: EmploymentContext,
   changes: readonly ForwardFieldChange[],
-  dates: { source: string; target: string },
-  coupled: boolean,
+  targetDate: string,
   cache: Map<string, boolean>,
 ): Promise<{ accepted: ForwardFieldChange[]; skipped: string[] }> {
   const accepted: ForwardFieldChange[] = [];
@@ -54,22 +52,17 @@ export async function availableForwardChanges(
       change.field === 'directManagerId' ||
       change.field === 'dottedManagerId';
     if (reference && typeof change.after === 'string') {
-      // TODO(需取证 #13, Q-M0-24)：停用时点未定，日期间状态不一致时暂不传播该引用。
-      for (const date of new Set([dates.source, dates.target, tenantLocalDate(ctx.now, ctx.timezone)])) {
-        const key = `${change.field}:${change.after}:${date}`;
-        let result = cache.get(key);
-        if (result === undefined) {
-          result = await enabled(tx, ctx, change.field, change.after, date);
-          cache.set(key, result);
-        }
-        available &&= result;
+      // TODO(需取证 Q-M0-24)：DEC-079 暂只按被更新记录的生效日判断引用是否启用。
+      const key = `${change.field}:${change.after}:${targetDate}`;
+      let result = cache.get(key);
+      if (result === undefined) {
+        result = await enabled(tx, ctx, change.field, change.after, targetDate);
+        cache.set(key, result);
       }
+      available = result;
     }
     if (available) accepted.push(change);
     else skipped.push(change.field);
-  }
-  if (coupled && skipped.some((field) => field === 'positionId' || field === 'departmentId')) {
-    return { accepted: accepted.filter((change) => !['positionId', 'departmentId'].includes(change.field)), skipped };
   }
   return { accepted, skipped };
 }

@@ -66,7 +66,7 @@ export async function auditEmployment(
   objectId: string,
   before: unknown,
   after: unknown,
-  eventDiscriminator?: string,
+  payloadVersionId?: string,
 ): Promise<void> {
   await tx.insert(auditEvents).values({
     tenantId: ctx.tenantId,
@@ -79,17 +79,18 @@ export async function auditEmployment(
     commandId: ctx.commandId,
     occurredAt: ctx.now,
   });
-  const eventType = eventDiscriminator ? `${action}.${eventDiscriminator}` : action;
   await tx.execute(sql`
     WITH ownership AS (
       SELECT employee_id, id AS business_id FROM employment_business_objects
       WHERE tenant_id=${ctx.tenantId} AND id=${objectId}::uuid
     ), queued AS (
       INSERT INTO employment_outbox(
-        tenant_id,employee_id,business_id,event_type,object_type,object_id,command_id,payload,created_at
+        tenant_id,employee_id,business_id,event_type,object_type,object_id,command_id,payload,
+        payload_version_id,created_at
       )
-      SELECT ${ctx.tenantId},ownership.employee_id,ownership.business_id,${eventType},${objectType},${objectId},
-        ${ctx.commandId},${JSON.stringify({ before, after })}::jsonb,${ctx.now.toISOString()}::timestamptz
+      SELECT ${ctx.tenantId},ownership.employee_id,ownership.business_id,${action},${objectType},${objectId},
+        ${ctx.commandId},${JSON.stringify({ before, after })}::jsonb,${payloadVersionId ?? null}::uuid,
+        ${ctx.now.toISOString()}::timestamptz
       FROM (SELECT 1) seed LEFT JOIN ownership ON true RETURNING id
     )
     INSERT INTO employment_outbox_attempts(tenant_id,outbox_id,attempt_no,state,created_at)

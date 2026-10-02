@@ -457,11 +457,12 @@ export const employmentOutbox = pgTable(
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     state: text('state').notNull().default('pending'),
     commandId: text('command_id').notNull(),
+    payloadVersionId: uuid('payload_version_id'),
     createdAt: utc(),
   },
   (t) => [
     unique('employment_outbox_tenant_id').on(t.tenantId, t.id),
-    unique('employment_outbox_command_event').on(t.tenantId, t.commandId, t.eventType, t.objectId),
+    unique('employment_outbox_command_event').on(t.tenantId, t.commandId, t.eventType, t.objectId, t.payloadVersionId),
     reference('employment_outbox_employee_fk', t.tenantId, t.employeeId, employmentEmployees),
     reference('employment_outbox_business_fk', t.tenantId, t.businessId, employmentBusinessObjects),
     foreignKey({

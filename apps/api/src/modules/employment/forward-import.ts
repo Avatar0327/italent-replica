@@ -7,6 +7,7 @@ import { editEmploymentRecord } from './record-edit.js';
 import { lockEmploymentEmployee, rowsOf } from './record-store.js';
 import { createEmploymentBusiness } from './write-service.js';
 import type { EmploymentContext } from './types.js';
+import { previewEmploymentEditForwardUpdate, previewEmploymentForwardUpdate } from './forward-preview.js';
 
 const schema = z.strictObject({
   items: z
@@ -34,12 +35,26 @@ export function normalizeEmploymentImport(input: unknown) {
   return parsed.data;
 }
 
+/** 导入预览逐项返回计划，不取锁也不保留批内模拟写入。 */
+export async function previewEmploymentImport(tx: Tx, ctx: EmploymentContext, employeeId: string, raw: unknown) {
+  const input = normalizeEmploymentImport(raw);
+  const items = [];
+  for (const item of input.items) {
+    items.push(
+      item.operation === 'create'
+        ? await previewEmploymentForwardUpdate(tx, ctx, employeeId, normalizeEmploymentInput(ctx, item.business))
+        : await previewEmploymentEditForwardUpdate(tx, ctx, item.id, normalizeBusinessPatch(item.patch)),
+    );
+  }
+  return { items, notice: '预览不模拟批内前项写入，申请制结果以生效时为准' };
+}
+
 /** 07 A6/A7：结构化导入核心端口；模板/人员导入界面接入时复用，批次整体提交。 */
 export async function importEmploymentRecords(tx: Tx, ctx: EmploymentContext, employeeId: string, raw: unknown) {
   const input = normalizeEmploymentImport(raw);
   await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
   await validateImportRevisions(tx, ctx, employeeId, input);
-  const options = { forwardUpdate: input.updateLaterEmployment !== '否' };
+  const createOptions = { forwardUpdate: input.updateLaterEmployment !== '否' };
   const results = [];
   for (const item of input.items) {
     if (item.operation === 'create') {
@@ -54,7 +69,7 @@ export async function importEmploymentRecords(tx: Tx, ctx: EmploymentContext, em
           { ...ctx, expectedRevision: employee.revision },
           employeeId,
           business,
-          options,
+          createOptions,
         ),
       );
     } else {
@@ -67,7 +82,8 @@ export async function importEmploymentRecords(tx: Tx, ctx: EmploymentContext, em
           item.id,
           normalizeBusinessPatch(item.patch),
           'import',
-          options,
+          // 07 A7.1 / AC-FWD-10：编辑模式始终向后更新，新增开关不影响它。
+          { forwardUpdate: true },
         ),
       );
     }
