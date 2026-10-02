@@ -66,6 +66,7 @@ export async function auditEmployment(
   objectId: string,
   before: unknown,
   after: unknown,
+  eventDiscriminator?: string,
 ): Promise<void> {
   await tx.insert(auditEvents).values({
     tenantId: ctx.tenantId,
@@ -78,6 +79,7 @@ export async function auditEmployment(
     commandId: ctx.commandId,
     occurredAt: ctx.now,
   });
+  const eventType = eventDiscriminator ? `${action}.${eventDiscriminator}` : action;
   await tx.execute(sql`
     WITH ownership AS (
       SELECT employee_id, id AS business_id FROM employment_business_objects
@@ -86,7 +88,7 @@ export async function auditEmployment(
       INSERT INTO employment_outbox(
         tenant_id,employee_id,business_id,event_type,object_type,object_id,command_id,payload,created_at
       )
-      SELECT ${ctx.tenantId},ownership.employee_id,ownership.business_id,${action},${objectType},${objectId},
+      SELECT ${ctx.tenantId},ownership.employee_id,ownership.business_id,${eventType},${objectType},${objectId},
         ${ctx.commandId},${JSON.stringify({ before, after })}::jsonb,${ctx.now.toISOString()}::timestamptz
       FROM (SELECT 1) seed LEFT JOIN ownership ON true RETURNING id
     )

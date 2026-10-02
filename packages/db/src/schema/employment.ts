@@ -193,6 +193,9 @@ export const employmentPayloadVersions = pgTable(
     businessId: uuid('business_id').notNull(),
     versionNo: integer('version_no').notNull(),
     previousVersionId: uuid('previous_version_id'),
+    commandId: text('command_id'),
+    triggerBusinessId: uuid('trigger_business_id'),
+    isRecordSnapshot: boolean('is_record_snapshot').notNull().default(false),
     kind: text('kind').notNull(),
     mode: text('mode').notNull(),
     effectiveDate: day('effective_date').notNull(),
@@ -219,6 +222,20 @@ export const employmentPayloadVersions = pgTable(
     unique('employment_payload_versions_employee_id').on(t.tenantId, t.employeeId, t.id),
     unique('employment_payload_versions_business_id').on(t.tenantId, t.employeeId, t.businessId, t.id),
     unique('employment_payload_versions_business_version').on(t.tenantId, t.businessId, t.versionNo),
+    index('employment_payload_versions_cycle_date').on(
+      t.tenantId,
+      t.employeeId,
+      t.selectedStaffId,
+      t.effectiveDate,
+      t.businessId,
+      t.versionNo,
+    ),
+    index('employment_payload_versions_snapshot_position')
+      .on(t.tenantId, t.positionId, t.businessId, t.versionNo)
+      .where(sql`${t.isRecordSnapshot}`),
+    index('employment_payload_versions_latest_snapshot')
+      .on(t.tenantId, t.businessId, t.versionNo.desc())
+      .where(sql`${t.isRecordSnapshot}`),
     foreignKey({
       name: 'employment_payload_versions_business_fk',
       columns: [t.tenantId, t.employeeId, t.businessId],
@@ -232,6 +249,15 @@ export const employmentPayloadVersions = pgTable(
       name: 'employment_payload_versions_previous_fk',
       columns: [t.tenantId, t.employeeId, t.businessId, t.previousVersionId],
       foreignColumns: [t.tenantId, t.employeeId, t.businessId, t.id],
+    }),
+    foreignKey({
+      name: 'employment_payload_versions_trigger_business_fk',
+      columns: [t.tenantId, t.employeeId, t.triggerBusinessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
     }),
     foreignKey({
       name: 'employment_payload_versions_selected_cycle_fk',
@@ -252,6 +278,9 @@ export const employmentPayloadVersions = pgTable(
     kindRule('employment_payload_versions_kind', t.kind),
     check('employment_payload_versions_version_positive', sql`${t.versionNo} > 0`),
     check('employment_payload_versions_previous_not_self', sql`${t.previousVersionId} <> ${t.id}`),
+    check('employment_payload_versions_command_pair', sql`(${t.commandId} IS NULL) = (${t.triggerBusinessId} IS NULL)`),
+    check('employment_payload_versions_snapshot_command', sql`NOT ${t.isRecordSnapshot} OR ${t.commandId} IS NOT NULL`),
+    check('employment_payload_versions_command_nonempty', sql`${t.commandId} IS NULL OR btrim(${t.commandId}) <> ''`),
     check('employment_payload_versions_mode', sql`${t.mode} IN ('direct', 'application')`),
     check('employment_payload_versions_form_nonempty', sql`btrim(${t.formId}) <> ''`),
     check('employment_payload_versions_source_pair', sql`(${t.sourceRecordId} IS NULL) = (${t.sourceStaffId} IS NULL)`),

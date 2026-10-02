@@ -49,9 +49,9 @@ describe('AC-EMP-08 入职忽略继承设置与跨任职周期', () => {
 
 describe('REQ-EMP-002 生效时继承与服务端表单配置', () => {
   it.each([
-    { formId: 'standard', expected: '上一任职字段值' },
+    { formId: 'standard', expected: '生效前新增任职值' },
     { formId: 'omitted-custom', expected: '生效前新增任职值' },
-  ])('$formId：拖出字段创建时捕获，未拖出字段到实际生效才取最新前驱', async ({ formId, expected }) => {
+  ])('$formId：拖出字段先按值匹配更新，未拖出字段到实际生效才取最新前驱', async ({ formId, expected }) => {
     const { db } = testDb();
     const fixture = await inheritanceFixture(db, `inherit-deferred-${formId}`);
     const draft = await fixture.business(
@@ -71,7 +71,9 @@ describe('REQ-EMP-002 生效时继承与服务端表单配置', () => {
       draft.employeeRevision,
     );
     expect(interim.record?.customFields[fixture.field.id]).toBe('生效前新增任职值');
-    const submitted = await fixture.request('POST', `/businesses/${draft.id}/submit`, { ifMatch: draft.revision });
+    // R1-T06 向后更新会增加目标业务 revision；必须刷新后显式提交。
+    const latest = (await (await fixture.request('GET', `/businesses/${draft.id}`)).json()) as EmploymentBusiness;
+    const submitted = await fixture.request('POST', `/businesses/${draft.id}/submit`, { ifMatch: latest.revision });
     expect(submitted.status).toBe(200);
     const inReview = (await submitted.json()) as EmploymentBusiness;
     const approved = await trustedTransition(db, fixture, inReview, 'approve', '2026-10-01T01:00:00Z');

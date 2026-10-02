@@ -5,6 +5,9 @@ import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment } from './context.js';
 import { EmploymentError } from './errors.js';
+import { forwardUpdateEmployment } from './forward-update.js';
+import type { ForwardValues } from './forward-rules.js';
+import { emptyPresetFields } from './types.js';
 import { normalizeBusinessPatch, normalizeEmploymentInput } from './fields.js';
 import {
   prepareInheritance,
@@ -55,6 +58,7 @@ export async function createEmploymentBusiness(
   ctx: EmploymentContext,
   employeeId: string,
   input: EmploymentBusinessInput,
+  options: { forwardUpdate?: boolean } = {},
 ): Promise<EmploymentBusiness> {
   const normalized = normalizeEmploymentInput(ctx, input);
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
@@ -109,7 +113,7 @@ export async function createEmploymentBusiness(
     state: normalized.mode === 'direct' ? 'effective' : 'draft',
     eventNo: 0,
   };
-  if (normalized.mode === 'direct') await materializeEmploymentRecord(tx, ctx, business);
+  if (normalized.mode === 'direct') await materializeEmploymentRecord(tx, ctx, business, options);
   await appendEmploymentState(tx, ctx, business, business.state);
   await bumpEmploymentEmployee(tx, ctx, employee);
   await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, payloadAudit(payload));
@@ -369,6 +373,7 @@ export async function materializeEmploymentRecord(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
+  options: { forwardUpdate?: boolean } = {},
 ): Promise<void> {
   const payload = business.payload;
   await assertBusinessSequence(tx, ctx, business.employeeId, payload);
@@ -392,17 +397,7 @@ export async function materializeEmploymentRecord(
   const fields = { ...inherited.fields, employType, jobNumber: business.employee.code };
   await validateEmploymentReferences(tx, ctx, fields, payload.effectiveDate);
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, payload.kind);
-  if (newCycle) {
-    await insertEmploymentRow(tx, 'employment_cycles', {
-      id: staffId,
-      tenantId: ctx.tenantId,
-      employeeId: business.employeeId,
-      entryDate,
-      entryType: payload.kind,
-      employType,
-      createdAt: ctx.now.toISOString(),
-    });
-  }
+  if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
   await insertEmploymentRow(tx, 'employment_records', {
     ...fields,
     id: business.id,
@@ -440,6 +435,12 @@ export async function materializeEmploymentRecord(
       : null,
     { ...fields, ...customAudit(inherited.customFields), staffId, entryDate, effectiveDate: payload.effectiveDate },
   );
+  if (options.forwardUpdate !== false) {
+    await forwardMaterializedRecord(tx, ctx, business, staffId, selected?.predecessor ?? null, {
+      fields,
+      customFields: inherited.customFields,
+    });
+  }
 }
 
 function effectiveEmployType(payload: EmploymentPayloadRow, selected?: SelectedEmploymentCycle): EmployType {
@@ -466,4 +467,39 @@ export async function requireSavedBusiness(tx: Tx, ctx: EmploymentContext, id: s
   const saved = await loadEmploymentBusiness(tx, ctx.tenantId, id, tenantLocalDate(ctx.now, ctx.timezone));
   if (!saved) throw new AppError('SERVICE_UNAVAILABLE', '任职业务保存结果不可用');
   return saved;
+}
+
+async function forwardMaterializedRecord(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  staffId: string,
+  predecessor: EmploymentRecord | null,
+  after: ForwardValues,
+) {
+  await forwardUpdateEmployment(tx, ctx, {
+    employeeId: business.employeeId,
+    businessId: business.id,
+    staffId,
+    effectiveDate: business.payload.effectiveDate,
+    before: predecessor?.staffId === staffId ? predecessor : { fields: emptyPresetFields(), customFields: {} },
+    after,
+  });
+}
+
+async function insertNewEmploymentCycle(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  cycle: { staffId: string; entryDate: string; employType: EmployType },
+) {
+  await insertEmploymentRow(tx, 'employment_cycles', {
+    id: cycle.staffId,
+    tenantId: ctx.tenantId,
+    employeeId: business.employeeId,
+    entryDate: cycle.entryDate,
+    entryType: business.payload.kind,
+    employType: cycle.employType,
+    createdAt: ctx.now.toISOString(),
+  });
 }

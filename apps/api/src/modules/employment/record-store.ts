@@ -19,6 +19,9 @@ export interface EmploymentPayloadRow extends PreparedInheritance {
   businessId: string;
   versionNo: number;
   previousVersionId: string | null;
+  commandId?: string | null;
+  triggerBusinessId?: string | null;
+  isRecordSnapshot?: boolean;
   kind: EmploymentBusiness['kind'];
   mode: 'direct' | 'application';
   effectiveDate: string;

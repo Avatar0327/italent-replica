@@ -16,6 +16,9 @@ import { readContext, jsonBody, pageQuery, revision, queryDate, runWrite, uuidPa
 import { createEmployee, getEmployee, listEmployees } from './employees.js';
 import { EmploymentError } from './errors.js';
 import { normalizeEmploymentInput, normalizeBusinessPatch } from './fields.js';
+import { previewEmploymentForwardUpdate } from './forward-preview.js';
+import { importEmploymentRecords, normalizeEmploymentImport } from './forward-import.js';
+import { editEmploymentRecord } from './record-edit.js';
 import { prepareInheritance, inheritancePreview } from './inheritance.js';
 import { listEmploymentRecords, loadEmploymentBusiness, loadEmploymentRecord } from './read-model.js';
 import { createEmploymentBusiness, updateEmploymentBusiness } from './write-service.js';
@@ -32,6 +35,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   });
   registerEmployees(module, deps);
   registerBusinesses(module, deps);
+  registerForwardUpdates(module, deps);
   registerSettings(module, deps);
   registerCustomFields(module, deps);
   router.route('/api/tenant/employment', module);
@@ -216,4 +220,32 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value);
   if (!result.success) throw new AppError('VALIDATION_FAILED', '请求字段不合法', result.error.issues);
   return result.data;
+}
+
+function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.post('/employees/:id/forward-update-preview', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'tenant.employment.read', 0, id);
+    const input = normalizeEmploymentInput(ctx, await jsonBody(c));
+    return c.json(await withTenant(deps.db, ctx.tenantId, (tx) => previewEmploymentForwardUpdate(tx, ctx, id, input)));
+  });
+  router.patch('/records/:id', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'tenant.employment.write', revision(c));
+    const input = normalizeBusinessPatch(await jsonBody(c));
+    await authorizeBusinessWrite(deps, ctx, id);
+    return runWrite(c, deps, ctx, input, async (tx, context) => ({
+      status: 200,
+      body: await editEmploymentRecord(tx, context, id, input),
+    }));
+  });
+  router.post('/employees/:id/import', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'tenant.employment.write', revision(c), id);
+    const input = normalizeEmploymentImport(await jsonBody(c));
+    return runWrite(c, deps, ctx, input, async (tx, context) => ({
+      status: 200,
+      body: await importEmploymentRecords(tx, context, id, input),
+    }));
+  });
 }
