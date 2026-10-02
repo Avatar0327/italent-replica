@@ -71,6 +71,20 @@
       "when": 1790905678536,
       "tag": "0009_org_versioned_code",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790914840561,
+      "tag": "0010_job_establishment",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790914855666,
+      "tag": "0011_job_establishment_rls",
+      "breakpoints": true
     }
   ]
 }
