@@ -40,4 +40,8 @@ bash scripts/dev-db.sh
 # 6) 预热：编译检查一次，让 tsc/vite 缓存进入快照
 pnpm typecheck
 
+# 7) setup 结束前停掉数据库：缓存快照不保留进程，残留后台进程会让云端 setup 判定未结束；test:pg 会按需重新启动
+SUDO_STOP=""; [ "$(id -u)" -ne 0 ] && SUDO_STOP="sudo"
+$SUDO_STOP pg_ctlcluster 16 main stop >/dev/null 2>&1 </dev/null || true
+
 echo "setup 完成。离线测试：pnpm test；真 PG 测试：pnpm test:pg；全部：bash scripts/test-all.sh"
