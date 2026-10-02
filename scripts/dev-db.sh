@@ -9,7 +9,9 @@ if [ -n "$SUDO" ]; then AS_PG=(sudo -u postgres); else AS_PG=(runuser -u postgre
 PSQL=("${AS_PG[@]}" psql -v ON_ERROR_STOP=1 -qtA)
 
 if ! pg_isready -q -h localhost; then
-  $SUDO service postgresql start >/dev/null 2>&1 || $SUDO pg_ctlcluster 16 main start
+  # 后台数据库进程不得继承本脚本的 stdout/stderr，否则云端 setup 会一直等待输出关闭直到超时
+  $SUDO service postgresql start >/dev/null 2>&1 </dev/null \
+    || $SUDO pg_ctlcluster 16 main start >/dev/null 2>&1 </dev/null
 fi
 until pg_isready -q -h localhost; do sleep 0.5; done
 

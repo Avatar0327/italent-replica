@@ -1,0 +1,469 @@
+import { randomUUID } from 'node:crypto';
+import { sql, type Tx } from '@italent/db';
+import { tenantLocalDate } from '@italent/domain';
+import { AppError } from '../../errors.js';
+import { readEmploymentSettings } from './configuration.js';
+import { auditEmployment } from './context.js';
+import { EmploymentError } from './errors.js';
+import { normalizeBusinessPatch, normalizeEmploymentInput } from './fields.js';
+import {
+  prepareInheritance,
+  prepareEmploymentPatch,
+  resolveEffectiveInheritance,
+  type PreparedInheritance,
+} from './inheritance.js';
+import { findPredecessor, loadEmploymentBusiness } from './read-model.js';
+import {
+  bumpEmploymentBusiness,
+  bumpEmploymentEmployee,
+  insertEmploymentRow,
+  lockEmploymentBusiness,
+  lockEmploymentEmployee,
+  rowsOf,
+  type EmploymentPayloadRow,
+  type LockedEmploymentBusiness,
+} from './record-store.js';
+import { validateEmploymentReferences } from './references.js';
+import { assertEmploymentDateAvailable, employmentTimelineNeighbors, insertEmploymentTimeline } from './timeline.js';
+import {
+  type BusinessKind,
+  type EmployType,
+  type EmploymentBusiness,
+  type EmploymentBusinessInput,
+  type EmploymentBusinessPatch,
+  type EmploymentContext,
+  type EmploymentRecord,
+  type NormalizedEmploymentInput,
+} from './types.js';
+
+export const NEW_CYCLE_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
+
+interface EmploymentCycleRow {
+  id: string;
+  entryDate: string;
+  entryType: BusinessKind;
+  employType: EmployType;
+}
+
+interface SelectedEmploymentCycle {
+  cycle: EmploymentCycleRow;
+  predecessor: EmploymentRecord | null;
+}
+
+export async function createEmploymentBusiness(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: EmploymentBusinessInput,
+): Promise<EmploymentBusiness> {
+  const normalized = normalizeEmploymentInput(ctx, input);
+  const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
+  await assertBusinessSequence(tx, ctx, employee.id, normalized);
+  assertEmployTypeUsage(normalized);
+  await assertDirectTransferAllowed(tx, ctx, normalized);
+  await assertEmploymentDateAvailable(
+    tx,
+    ctx,
+    employee.id,
+    normalized.effectiveDate,
+    normalized.kind,
+    normalized.staffId,
+  );
+  const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
+    ? undefined
+    : await selectEmploymentCycle(tx, ctx, employee.id, normalized);
+  if (NEW_CYCLE_KINDS.includes(normalized.kind) && normalized.staffId) {
+    throw new AppError('VALIDATION_FAILED', '入职类业务的任职周期标识由系统生成');
+  }
+  const prepared = await prepareInheritance(tx, ctx, {
+    ...normalized,
+    employeeId: employee.id,
+    staffId: selected?.cycle.id,
+  });
+  await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate);
+  const id = randomUUID();
+  await insertEmploymentRow(tx, 'employment_business_objects', {
+    id,
+    tenantId: ctx.tenantId,
+    employeeId: employee.id,
+    revision: 1,
+    createdAt: ctx.now.toISOString(),
+  });
+  const payload = await appendEmploymentPayload(
+    tx,
+    ctx,
+    employee.id,
+    id,
+    1,
+    normalized,
+    prepared,
+    null,
+    selected?.cycle.id,
+  );
+  const business: LockedEmploymentBusiness = {
+    id,
+    employeeId: employee.id,
+    revision: 1,
+    employee,
+    payload,
+    state: normalized.mode === 'direct' ? 'effective' : 'draft',
+    eventNo: 0,
+  };
+  if (normalized.mode === 'direct') await materializeEmploymentRecord(tx, ctx, business);
+  await appendEmploymentState(tx, ctx, business, business.state);
+  await bumpEmploymentEmployee(tx, ctx, employee);
+  await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, payloadAudit(payload));
+  return requireSavedBusiness(tx, ctx, id);
+}
+
+export async function updateEmploymentBusiness(
+  tx: Tx,
+  ctx: EmploymentContext,
+  id: string,
+  input: EmploymentBusinessPatch,
+): Promise<EmploymentBusiness> {
+  const patch = normalizeBusinessPatch(input);
+  const business = await lockEmploymentBusiness(tx, ctx, id);
+  if (business.payload.mode !== 'application' || !['draft', 'in_review'].includes(business.state)) {
+    throw new AppError('CONFLICT', '只有草稿或审批中的申请可以修改', { reason: 'PAYLOAD_IMMUTABLE' });
+  }
+  const before = business.payload;
+  const normalized = normalizePatchedInput(ctx, before, patch);
+  await assertBusinessSequence(tx, ctx, business.employeeId, normalized);
+  assertEmployTypeUsage(normalized);
+  await assertEmploymentDateAvailable(
+    tx,
+    ctx,
+    business.employeeId,
+    normalized.effectiveDate,
+    normalized.kind,
+    normalized.staffId,
+  );
+  const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
+    ? undefined
+    : await selectEmploymentCycle(tx, ctx, business.employeeId, normalized);
+  const prepared = await prepareEmploymentPatch(
+    tx,
+    ctx,
+    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
+    before,
+  );
+  await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate);
+  await bumpEmploymentBusiness(tx, ctx, business);
+  business.payload = await appendEmploymentPayload(
+    tx,
+    ctx,
+    business.employeeId,
+    id,
+    business.revision,
+    normalized,
+    prepared,
+    before.id,
+    selected?.cycle.id,
+  );
+  await auditEmployment(
+    tx,
+    ctx,
+    'employment.business.payload.append',
+    'employment-business',
+    id,
+    payloadAudit(before),
+    payloadAudit(business.payload),
+  );
+  return requireSavedBusiness(tx, ctx, id);
+}
+
+function normalizePatchedInput(
+  ctx: EmploymentContext,
+  before: EmploymentPayloadRow,
+  patch: EmploymentBusinessPatch,
+): NormalizedEmploymentInput {
+  const fields = Object.fromEntries(
+    before.explicitFieldCodes
+      .filter((code) => code.startsWith('preset:'))
+      .map((code) => {
+        const field = code.slice('preset:'.length) as keyof typeof before.fields;
+        return [field, before.fields[field]];
+      }),
+  );
+  const customFields = Object.fromEntries(
+    before.explicitFieldCodes
+      .filter((code) => code.startsWith('custom:'))
+      .map((code) => [code.slice('custom:'.length), before.customFields[code.slice('custom:'.length)] ?? null]),
+  );
+  const lastWorkDate = patch.lastWorkDate === undefined ? before.lastWorkDate : patch.lastWorkDate;
+  // 修改最后工作日时重新推导 D+1；客户端另填生效日仍由统一校验拒绝矛盾值。
+  const effectiveDate = patch.effectiveDate ?? (patch.lastWorkDate === undefined ? before.effectiveDate : undefined);
+  return normalizeEmploymentInput(ctx, {
+    kind: before.kind,
+    mode: before.mode,
+    formId: before.formId,
+    staffId: before.selectedStaffId ?? undefined,
+    effectiveDate,
+    lastWorkDate,
+    fields: { ...fields, ...patch.fields },
+    customFields: { ...customFields, ...patch.customFields },
+  });
+}
+
+function assertEmployTypeUsage(input: Pick<NormalizedEmploymentInput, 'kind' | 'fields'>): void {
+  if (!NEW_CYCLE_KINDS.includes(input.kind) && Object.prototype.hasOwnProperty.call(input.fields, 'employType')) {
+    throw new AppError('VALIDATION_FAILED', '非入职类业务不能设置人员类别', { reason: 'EMPLOY_TYPE_NOT_ALLOWED' });
+  }
+}
+
+async function assertBusinessSequence(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: Pick<NormalizedEmploymentInput, 'kind' | 'effectiveDate' | 'staffId'>,
+): Promise<void> {
+  const [latest] = rowsOf<{ kind: BusinessKind; staffId: string }>(
+    await tx.execute(sql`
+    SELECT r.kind, r.staff_id AS "staffId" FROM employment_timeline t
+    JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+    WHERE t.tenant_id=${ctx.tenantId} AND t.employee_id=${employeeId}::uuid
+      AND t.start_date <= ${input.effectiveDate}::date
+    ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1
+  `),
+  );
+  const terminal = latest && ['leave', 'retirement'].includes(latest.kind);
+  let reason: string | undefined;
+  if (input.kind === 'hire' && latest && !terminal) reason = 'EMPLOYEE_ALREADY_EMPLOYED';
+  else if (input.kind === 'rehire' && latest?.kind !== 'leave') reason = 'REHIRE_REQUIRES_LEAVE';
+  else if (input.kind === 'retire_rehire' && latest?.kind !== 'retirement')
+    reason = 'RETIRE_REHIRE_REQUIRES_RETIREMENT';
+  else if (!NEW_CYCLE_KINDS.includes(input.kind) && ((!latest && !input.staffId) || terminal))
+    reason = 'ACTIVE_EMPLOYMENT_REQUIRED';
+  else if (!NEW_CYCLE_KINDS.includes(input.kind) && latest && input.staffId && latest.staffId !== input.staffId)
+    reason = 'EMPLOYMENT_CYCLE_MISMATCH';
+  if (reason) throw new AppError('CONFLICT', '任职业务前后顺序不合法', { reason });
+}
+
+async function assertDirectTransferAllowed(tx: Tx, ctx: EmploymentContext, input: NormalizedEmploymentInput) {
+  if (input.mode !== 'direct' || input.kind !== 'transfer') return;
+  const settings = await readEmploymentSettings(tx, ctx.tenantId);
+  if (!settings.allowDirectTransfer) {
+    throw new AppError('CONFLICT', '租户已关闭允许直接调动', { reason: 'DIRECT_TRANSFER_DISABLED' });
+  }
+}
+
+export async function selectEmploymentCycle(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: { effectiveDate: string; staffId?: string },
+): Promise<SelectedEmploymentCycle> {
+  const previous = await findPredecessor(tx, ctx.tenantId, employeeId, input.effectiveDate);
+  const staffId = input.staffId ?? previous?.staffId;
+  if (!staffId) {
+    const [first] = rowsOf<{ entryDate: string }>(
+      await tx.execute(sql`
+        SELECT entry_date::text AS "entryDate" FROM employment_cycles
+        WHERE tenant_id = ${ctx.tenantId} AND employee_id = ${employeeId}::uuid ORDER BY entry_date LIMIT 1
+      `),
+    );
+    if (first && input.effectiveDate < first.entryDate) throw cycleStartUnresolved();
+    throw new AppError('VALIDATION_FAILED', '员工尚无可用于此业务的任职周期');
+  }
+  const [cycle] = rowsOf<EmploymentCycleRow>(
+    await tx.execute(sql`
+      SELECT id, entry_date::text AS "entryDate", entry_type AS "entryType", employ_type AS "employType"
+      FROM employment_cycles
+      WHERE tenant_id = ${ctx.tenantId} AND employee_id = ${employeeId}::uuid AND id = ${staffId}::uuid LIMIT 1
+    `),
+  );
+  if (!cycle) throw new AppError('VALIDATION_FAILED', '任职周期不存在或不属于当前员工与租户');
+  if (input.effectiveDate < cycle.entryDate) throw cycleStartUnresolved();
+  return {
+    cycle,
+    predecessor: previous,
+  };
+}
+
+function cycleStartUnresolved(): EmploymentError {
+  // TODO(需取证 Q-M0-19)：早于指定周期起始日的业务尚无规则，不能猜测或自动建立周期。
+  return new EmploymentError('EMPLOYMENT_CYCLE_START_UNRESOLVED', '生效日期早于任职周期起始日');
+}
+
+export async function appendEmploymentPayload(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  businessId: string,
+  versionNo: number,
+  input: NormalizedEmploymentInput,
+  prepared: PreparedInheritance,
+  previousVersionId: string | null,
+  selectedStaffId?: string,
+): Promise<EmploymentPayloadRow> {
+  const payload: EmploymentPayloadRow = {
+    ...prepared,
+    id: randomUUID(),
+    tenantId: ctx.tenantId,
+    employeeId,
+    businessId,
+    versionNo,
+    previousVersionId,
+    kind: input.kind,
+    mode: input.mode,
+    effectiveDate: input.effectiveDate,
+    lastWorkDate: input.lastWorkDate,
+    formId: input.formId,
+    selectedStaffId: selectedStaffId ?? null,
+  };
+  const { fields, ...metadata } = payload;
+  await insertEmploymentRow(tx, 'employment_payload_versions', {
+    ...fields,
+    ...metadata,
+    createdAt: ctx.now.toISOString(),
+  });
+  return payload;
+}
+
+export async function appendEmploymentState(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  state: EmploymentBusiness['status'],
+): Promise<void> {
+  const before = business.eventNo ? business.state : null;
+  await insertEmploymentRow(tx, 'employment_state_events', {
+    id: randomUUID(),
+    tenantId: ctx.tenantId,
+    employeeId: business.employeeId,
+    businessId: business.id,
+    payloadVersionId: business.payload.id,
+    state,
+    eventNo: business.eventNo + 1,
+    commandId: ctx.commandId,
+    createdAt: ctx.now.toISOString(),
+  });
+  business.state = state;
+  business.eventNo += 1;
+  await auditEmployment(
+    tx,
+    ctx,
+    `employment.business.state.${state}`,
+    'employment-business',
+    business.id,
+    { state: before },
+    { state },
+  );
+}
+
+async function cycleForMaterialization(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  newCycle: boolean,
+): Promise<SelectedEmploymentCycle | undefined> {
+  if (newCycle) return undefined;
+  return selectEmploymentCycle(tx, ctx, business.employeeId, {
+    effectiveDate: business.payload.effectiveDate,
+    staffId: business.payload.selectedStaffId ?? undefined,
+  });
+}
+
+export async function materializeEmploymentRecord(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+): Promise<void> {
+  const payload = business.payload;
+  await assertBusinessSequence(tx, ctx, business.employeeId, payload);
+  await assertEmploymentDateAvailable(
+    tx,
+    ctx,
+    business.employeeId,
+    payload.effectiveDate,
+    payload.kind,
+    payload.selectedStaffId ?? undefined,
+  );
+  const newCycle = NEW_CYCLE_KINDS.includes(payload.kind);
+  const selected = await cycleForMaterialization(tx, ctx, business, newCycle);
+  const staffId = selected?.cycle.id ?? randomUUID();
+  const entryDate = selected?.cycle.entryDate ?? payload.effectiveDate;
+  const inherited = await resolveEffectiveInheritance(tx, ctx, payload, {
+    staffId,
+    predecessor: selected?.predecessor ?? null,
+  });
+  const employType = effectiveEmployType(payload, selected);
+  const fields = { ...inherited.fields, employType, jobNumber: business.employee.code };
+  await validateEmploymentReferences(tx, ctx, fields, payload.effectiveDate);
+  const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, payload.kind);
+  if (newCycle) {
+    await insertEmploymentRow(tx, 'employment_cycles', {
+      id: staffId,
+      tenantId: ctx.tenantId,
+      employeeId: business.employeeId,
+      entryDate,
+      entryType: payload.kind,
+      employType,
+      createdAt: ctx.now.toISOString(),
+    });
+  }
+  await insertEmploymentRow(tx, 'employment_records', {
+    ...fields,
+    id: business.id,
+    tenantId: ctx.tenantId,
+    employeeId: business.employeeId,
+    payloadVersionId: payload.id,
+    staffId,
+    entryDate,
+    kind: payload.kind,
+    startDate: payload.effectiveDate,
+    lastWorkDate: payload.lastWorkDate,
+    serviceType: 'primary',
+    isInserted: !!next,
+    inheritanceSourceId: selected?.predecessor?.staffId === staffId ? selected.predecessor.id : null,
+    customFields: inherited.customFields,
+    createdAt: ctx.now.toISOString(),
+  });
+  await insertEmploymentTimeline(
+    tx,
+    ctx,
+    business.employeeId,
+    business.id,
+    staffId,
+    payload.effectiveDate,
+    payload.kind,
+  );
+  await auditEmployment(
+    tx,
+    ctx,
+    'employment.record.create',
+    'employment-record',
+    business.id,
+    selected?.predecessor
+      ? { ...selected.predecessor.fields, ...customAudit(selected.predecessor.customFields) }
+      : null,
+    { ...fields, ...customAudit(inherited.customFields), staffId, entryDate, effectiveDate: payload.effectiveDate },
+  );
+}
+
+function effectiveEmployType(payload: EmploymentPayloadRow, selected?: SelectedEmploymentCycle): EmployType {
+  if (payload.kind === 'intern_regularization') return 'internal';
+  if (NEW_CYCLE_KINDS.includes(payload.kind)) return payload.fields.employType ?? 'internal';
+  const sameCycle = selected?.predecessor?.staffId === selected?.cycle.id;
+  return (sameCycle ? selected?.predecessor?.fields.employType : null) ?? selected?.cycle.employType ?? 'internal';
+}
+
+function customAudit(fields: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(fields).map(([key, value]) => [`custom:${key}`, value]));
+}
+
+function payloadAudit(payload: EmploymentPayloadRow): Record<string, unknown> {
+  return {
+    ...payload.fields,
+    ...customAudit(payload.customFields),
+    kind: payload.kind,
+    effectiveDate: payload.effectiveDate,
+  };
+}
+
+export async function requireSavedBusiness(tx: Tx, ctx: EmploymentContext, id: string): Promise<EmploymentBusiness> {
+  const saved = await loadEmploymentBusiness(tx, ctx.tenantId, id, tenantLocalDate(ctx.now, ctx.timezone));
+  if (!saved) throw new AppError('SERVICE_UNAVAILABLE', '任职业务保存结果不可用');
+  return saved;
+}

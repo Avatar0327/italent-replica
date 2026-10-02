@@ -139,7 +139,7 @@ export async function setObjectPermission(
 
 async function replaceObjectRows(tx: Tx, tenantId: string, profileId: string, permission: ObjectPermission) {
   const key = { tenantId, profileId, objectCode: permission.objectCode };
-  // 字段、按钮行随对象行级联删除（迁移 0007 的复合外键 ON DELETE CASCADE）
+  // 字段、按钮行随对象行级联删除（迁移 0014 的复合外键 ON DELETE CASCADE）
   await tx
     .delete(permissionProfileObjects)
     .where(
