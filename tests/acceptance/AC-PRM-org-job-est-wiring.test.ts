@@ -627,6 +627,23 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     ).toBe(403);
   });
 
+  for (const imported of [false, true]) {
+    it(`组织${imported ? '导入新增' : '直接新增'}同键重放必须按现行父级权限检查`, async () => {
+      const as = await actor('organization', { scope: true, buttons: [{ buttonCode: 'import', level: 'list' }] });
+      const body = imported ? { rows: [{ sourceCode: randomUUID(), code: randomUUID(), name: '导入创建后移出', parentId: org.id }] } : { name: '直接创建后移出', parents: { admin: { parentId: org.id } } };
+      const path = imported ? '/api/tenant/org/import' : paths.organization;
+      const input = { ...as, ifMatch: 0, idempotencyKey: randomUUID(), body };
+      const first = await world.api.request('POST', path, input);
+      expect(first.status, await first.clone().text()).toBe(imported ? 200 : 201);
+      const data = await first.json() as { id: string; results: { orgId: string }[] };
+      const id = imported ? data.results[0]!.orgId : data.id;
+      expect((await world.api.request('POST', path, input)).status).toBe(imported ? 200 : 201);
+      expect((await fixture.request('PATCH', `${paths.organization}/${id}`, { ...world.asAdmin, ifMatch: 1, body: { effectiveDate: TODAY, parents: { admin: { parentId: secondOrg.id } } } })).status).toBe(200);
+      expect((await world.api.request('GET', `${paths.organization}/${id}`, as)).status).toBe(404);
+      expect((await world.api.request('POST', path, input)).status).toBe(404);
+    });
+  }
+
   async function addObjectView(as: Awaited<ReturnType<typeof actor>>, key: keyof typeof MODULE_OBJECTS) {
     const definition = MODULE_OBJECTS[key];
     const response = await setObjectPermission(
@@ -723,13 +740,40 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
   }
   it('组织 using_user 实体范围允许修改本人创建记录，拒绝他人记录', async () => {
     const as = await actor('organization');
-    const created = await fixture.request('POST', paths.organization, { ...as, ifMatch: 0, body: { name: '本人维护的组织', parents: { admin: { parentId: org.id } } } });
+    const created = await fixture.request('POST', paths.organization, {
+      ...as,
+      ifMatch: 0,
+      body: { name: '本人维护的组织', parents: { admin: { parentId: org.id } } },
+    });
     expect(created.status).toBe(201);
-    const own = await created.json() as { id: string; revision: number };
+    const own = (await created.json()) as { id: string; revision: number };
     const code = MODULE_OBJECTS.organization.code;
-    expect((await world.api.request('PUT', `/api/tenant/permission/scope-policies/TenantBase/${code}/entity/${code}`, { ...world.asAdmin, ifMatch: 0, body: { creatorField: 'createdBy', rules: [{ dimension: 'using_user' }] } })).status).toBe(200);
-    expect((await world.api.request('PATCH', `${paths.organization}/${own.id}`, { ...as, ifMatch: own.revision, body: { effectiveDate: TODAY, name: '本人可维护' } })).status).toBe(200);
-    expect((await world.api.request('PATCH', `${paths.organization}/${org.id}`, { ...as, ifMatch: org.revision, body: { effectiveDate: TODAY, name: '无权维护' } })).status).toBe(404);
+    expect(
+      (
+        await world.api.request('PUT', `/api/tenant/permission/scope-policies/TenantBase/${code}/entity/${code}`, {
+          ...world.asAdmin,
+          ifMatch: 0,
+          body: { creatorField: 'createdBy', rules: [{ dimension: 'using_user' }] },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await world.api.request('PATCH', `${paths.organization}/${own.id}`, {
+          ...as,
+          ifMatch: own.revision,
+          body: { effectiveDate: TODAY, name: '本人可维护' },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await world.api.request('PATCH', `${paths.organization}/${org.id}`, {
+          ...as,
+          ifMatch: org.revision,
+          body: { effectiveDate: TODAY, name: '无权维护' },
+        })
+      ).status,
+    ).toBe(404);
   });
-
 });
