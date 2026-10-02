@@ -17,6 +17,8 @@ describe('AC-EMP-08 入职忽略继承设置与跨任职周期', () => {
       ((await preview.json()) as { customFields: Record<string, unknown> }).customFields[field.id] ?? null,
     ).toBeNull();
     const hired = await session.business(employee.id, input, employee.revision);
+    expect(hired.status).toBe('effective');
+    expect(hired.record).not.toBeNull();
     expect(hired.record?.customFields[field.id] ?? null).toBeNull();
     expect(hired.record?.fields.place ?? null).toBeNull();
     expect(hired.record?.fields.remarks ?? null).toBeNull();

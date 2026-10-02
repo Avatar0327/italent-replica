@@ -52,7 +52,7 @@ export async function inheritanceFixture(db: Db, label: string, inherit = true, 
 
 export async function trustedTransition(
   db: Db,
-  session: EmploymentSession,
+  session: Pick<EmploymentSession, 'tenant' | 'user'>,
   business: EmploymentBusiness,
   action: 'approve' | 'activate',
   now: string,

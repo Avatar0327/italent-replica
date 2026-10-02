@@ -4,7 +4,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { EMP_TODAY, employmentSession, type EmploymentBusiness } from './AC-EMP-support.js';
 import { resultRows } from './AC-ORG-support.js';
-import { errorCode } from './support/tenant-api.js';
+import { errorCode, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 
@@ -69,14 +69,21 @@ describe('AC-EMP 平台并发、幂等、隔离与数据库时间轴约束', () 
       withTenant(db, session.tenant.id, async (tx) =>
         resultRows(await tx.execute(sql`SELECT id FROM audit_events WHERE command_id=${commandId} ORDER BY id`)),
       );
+    const events = () =>
+      withTenant(db, session.tenant.id, async (tx) =>
+        resultRows(await tx.execute(sql`SELECT id FROM employment_outbox WHERE command_id=${commandId} ORDER BY id`)),
+      );
     const firstAudits = await audits();
+    const firstEvents = await events();
     expect(firstAudits.length).toBeGreaterThan(0);
+    expect(firstEvents.length).toBe(firstAudits.length);
     const replay = await session.request('POST', `/employees/${employee.id}/businesses`, options);
     expect(replay.status).toBe(201);
     expect(await replay.json()).toEqual(saved);
     expect(await session.getEmployee(employee.id)).toMatchObject({ revision: saved.employeeRevision });
     expect(await session.records(employee.id)).toHaveLength(2);
     expect(await audits()).toEqual(firstAudits);
+    expect(await events()).toEqual(firstEvents);
     const different = await session.request('POST', `/employees/${employee.id}/businesses`, {
       ...options,
       body: { ...body, fields: { place: '不同地点' } },
@@ -111,6 +118,40 @@ describe('AC-EMP 平台并发、幂等、隔离与数据库时间轴约束', () 
     expect(await owner.records(employee.id)).toHaveLength(1);
   });
 
+  it('员工范围撤权后同命令重放仍须重新验权，不能返回缓存业务字段', async () => {
+    const { db } = testDb();
+    const { session, employee, hire } = await hired(db, 'emp-platform-scope-replay');
+    const draft = await session.business(
+      employee.id,
+      { kind: 'transfer', mode: 'application', effectiveDate: '2026-10-02', fields: { place: '受限业务字段' } },
+      hire.employeeRevision,
+    );
+    let employeeAllowed = true;
+    const api = tenantApi(db, {
+      clock: () => new Date(`${EMP_TODAY}T01:00:00.000Z`),
+      authorize: ({ action, resource }) =>
+        action !== 'tenant.employment.write' || resource !== employee.id || employeeAllowed,
+    });
+    const path = `/api/tenant/employment/businesses/${draft.id}/submit`;
+    const options = {
+      user: session.user.id,
+      tenant: session.tenant.id,
+      ifMatch: draft.revision,
+      idempotencyKey: randomUUID(),
+      body: {},
+    };
+    const submitted = await api.request('POST', path, options);
+    expect(submitted.status).toBe(200);
+    const saved = (await submitted.json()) as EmploymentBusiness;
+    expect(saved.status).toBe('in_review');
+    employeeAllowed = false;
+    const replay = await api.request('POST', path, options);
+    expect(replay.status).toBe(403);
+    expect(await errorCode(replay)).toBe('FORBIDDEN');
+    expect(await session.getEmployee(employee.id)).toMatchObject({ revision: saved.employeeRevision });
+    expect(await session.records(employee.id)).toHaveLength(1);
+  });
+
   it('数据库拒绝两个任职投影区间重叠，拒绝后当前记录与两条业务快照不变', async () => {
     const { db } = testDb();
     const { session, employee, hire } = await hired(db, 'emp-platform-overlap');
@@ -129,7 +170,9 @@ describe('AC-EMP 平台并发、幂等、隔离与数据库时间轴约束', () 
     expect(['23P01', '23514']).toContain(pgErrorCode(error));
     expect(await session.records(employee.id)).toEqual(before);
     expect(before.filter((record) => record.isCurrent)).toEqual([expect.objectContaining({ id: hire.record!.id })]);
-    expect(before).toContainEqual(expect.objectContaining({ id: future.record!.id, fields: { place: '下条地点' } }));
+    expect(before).toContainEqual(
+      expect.objectContaining({ id: future.record!.id, fields: expect.objectContaining({ place: '下条地点' }) }),
+    );
   });
 
   it('数据库拒绝删除未撤销任职的唯一投影，不能留下有任职却无当前记录的缺口', async () => {
@@ -149,13 +192,17 @@ describe('AC-EMP 平台并发、幂等、隔离与数据库时间轴约束', () 
   it('数据库拒绝修改或物理删除生效任职，业务字段只能保留不可变快照', async () => {
     const { db } = testDb();
     const { session, employee, hire } = await hired(db, 'emp-platform-immutable');
-    const update = await withTenant(db, session.tenant.id, (tx) =>
+    const tenantUpdate = await withTenant(db, session.tenant.id, (tx) =>
       tx.execute(sql`UPDATE employment_records SET place='禁止覆盖' WHERE id=${hire.record!.id}`),
     ).catch((cause: unknown) => cause);
+    expect(pgErrorCode(tenantUpdate)).toBe('42501');
+    const update = await db
+      .execute(sql`UPDATE employment_records SET place='禁止覆盖' WHERE id=${hire.record!.id}`)
+      .catch((cause: unknown) => cause);
     expect(pgErrorCode(update)).toBe('55000');
-    const deletion = await withTenant(db, session.tenant.id, (tx) =>
-      tx.execute(sql`DELETE FROM employment_records WHERE id=${hire.record!.id}`),
-    ).catch((cause: unknown) => cause);
+    const deletion = await db
+      .execute(sql`DELETE FROM employment_records WHERE id=${hire.record!.id}`)
+      .catch((cause: unknown) => cause);
     expect(pgErrorCode(deletion)).toBe('55000');
     expect(await session.records(employee.id)).toHaveLength(1);
   });
