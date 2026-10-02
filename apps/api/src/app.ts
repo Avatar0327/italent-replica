@@ -1,13 +1,18 @@
 import type { Db } from '@italent/db';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { type Authorizer, defaultAuthorizer } from './authorization.js';
+import type { Authorizer } from './authorization.js';
 import { AppError, errorResponse, handleError } from './errors.js';
 import { denyAllIdentity, type IdentityResolver } from './identity.js';
-import { limitBody, requireJson } from './middleware.js';
+import { DEFAULT_BODY_LIMIT, limitBody, requireJson } from './middleware.js';
 import type { TenantRouteDeps, TenantRouteModule } from './routes.js';
 import { type TenantEnv, tenantContext } from './tenant-context.js';
 import { registerTenantSettingRoutes } from './modules/tenant-settings/routes.js';
+import {
+  createPermissionAuthorizer,
+  PERMISSION_BODY_LIMITS,
+  registerPermissionRoutes,
+} from './modules/permission/index.js';
 import { registerOrgRoutes } from './modules/org/routes.js';
 import { registerJobEstablishmentRoutes } from './modules/job/register.js';
 import { registerEmploymentRoutes } from './modules/employment/routes.js';
@@ -15,6 +20,7 @@ import { registerEmploymentRoutes } from './modules/employment/routes.js';
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
 const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerTenantSettingRoutes, // R1-T00 两层配置
+  registerPermissionRoutes, // R1-T01 权限模型
   registerOrgRoutes, // R1-T03 多维组织
   registerJobEstablishmentRoutes, // R1-T04 职务体系与编制
   registerEmploymentRoutes, // R1-T05 任职记录版本链
@@ -25,7 +31,7 @@ export interface AppDeps {
   readonly db?: Db;
   /** 身份解析；缺省谁都不认（401）。生产实现由 B-01 提供，见 identity.ts。 */
   readonly identity?: IdentityResolver;
-  /** 授权钩子；缺省一律拒绝（R1-T01 接入真实判定）。 */
+  /** 授权钩子；缺省按权限模型判定（R1-T01），无数据库时一律拒绝。测试可注入替身。 */
   readonly authorize?: Authorizer | undefined;
   readonly clock?: () => Date;
   /** 额外的租户路由模块（后续业务模块、测试夹具）。 */
@@ -36,7 +42,8 @@ export function createApp(deps: AppDeps = {}): Hono {
   const app = new Hono();
 
   app.use('*', requireJson);
-  app.use('*', limitBody());
+  // 默认 32KB；只有登记的个别接口放宽且仍有上限（身份对象权限整对象替换，见 permission/routes.ts）
+  app.use('*', limitBody(DEFAULT_BODY_LIMIT, PERMISSION_BODY_LIMITS));
 
   app.get('/healthz', async (c) => {
     if (deps.db) {
@@ -59,7 +66,7 @@ export function createApp(deps: AppDeps = {}): Hono {
 function createTenantRouter(db: Db, deps: AppDeps): Hono<TenantEnv> {
   const routeDeps: TenantRouteDeps = {
     db,
-    authorize: deps.authorize ?? defaultAuthorizer,
+    authorize: deps.authorize ?? createPermissionAuthorizer(db),
     clock: deps.clock ?? (() => new Date()),
   };
   const router = new Hono<TenantEnv>();

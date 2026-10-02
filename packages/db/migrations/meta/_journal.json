@@ -113,6 +113,20 @@
       "when": 1790950000000,
       "tag": "0015_employment_outbox_payload_version",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790952773513,
+      "tag": "0016_permission",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790952790715,
+      "tag": "0017_permission_rls",
+      "breakpoints": true
     }
   ]
 }
