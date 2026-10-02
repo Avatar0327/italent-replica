@@ -26,6 +26,7 @@ describe('AC-EST-05 生效时间与明确选择的周期范围', () => {
       body: { name: '提前变更', effectiveDate: '2026-10-01' },
     });
     expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: 'EST_FUTURE_VERSION_EXISTS' } });
   });
 
   it('DEC-072 变更早于组织编制第一版时也返回409', async () => {
@@ -41,6 +42,7 @@ describe('AC-EST-05 生效时间与明确选择的周期范围', () => {
       body: { localCapacity: 20, effectiveDate: '2026-10-01' },
     });
     expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: 'EST_FUTURE_VERSION_EXISTS' } });
   });
 
   it('季度差值传播遵循显式选定的跨年范围，范围外周期不变', async () => {

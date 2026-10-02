@@ -221,7 +221,7 @@ export async function updateScheme(
       ),
     )
     .limit(1);
-  if (future) throw new AppError('CONFLICT', '方案已有后续版本', { reason: 'FUTURE_VERSION_EXISTS' });
+  if (future) throw new AppError('EST_FUTURE_VERSION_EXISTS', '方案已有后续版本');
   const previous = await loadScheme(tx, ctx.tenantId, id, date);
   await checkSchemeLifecycle(tx, ctx, previous, patch);
   await tx

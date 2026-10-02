@@ -180,6 +180,7 @@ describe('AC-EST-01/03/04 编制范围、占用时机与关联时间轴', () => 
       body: { effectiveDate: '2026-06-01', inclusiveCapacity: 2, syncParents: true },
     });
     expect(changed.status).toBe(409);
+    expect(await changed.json()).toMatchObject({ error: { code: 'EST_FUTURE_VERSION_EXISTS' } });
     expect(await session.capacities({ orgId: child.id, asOf: '2026-06-01' })).toContainEqual(
       expect.objectContaining({ id: childCapacity.id, revision: 1, inclusiveCapacity: 1 }),
     );

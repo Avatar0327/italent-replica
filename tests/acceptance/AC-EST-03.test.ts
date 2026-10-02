@@ -5,6 +5,21 @@ import { transferFixture } from './AC-EST-support.js';
 const testDb = useTestDb();
 
 describe('AC-EST-03 提交与审批占用时机以及驳回撤销回退', () => {
+  it('DEC-075 未配置租户使用提交即占用、提交即释放的出厂值', async () => {
+    const fixture = await transferFixture(testDb().db, 'est03-default', {
+      targetCount: 5,
+      configureTimings: false,
+    });
+    const settings = await fixture.request('GET', '/settings');
+    expect(settings.status).toBe(200);
+    expect(await settings.json()).toMatchObject({ transferIn: 'submitted', transferOut: 'submitted', revision: 0 });
+
+    const submitted = await fixture.apply('submitted');
+    expect(submitted).toMatchObject({ reserveIn: true, reserveOut: true });
+    expect(await fixture.stats()).toMatchObject({ inclusive: { preIncrease: 1 } });
+    expect(await fixture.stats(fixture.source.id)).toMatchObject({ inclusive: { preDecrease: 1 } });
+  });
+
   it.each(['rejected', 'withdrawn'] as const)('提交即增加双方预增/预减，%s后各回退1', async (stage) => {
     const fixture = await transferFixture(testDb().db, `est03-${stage}`, { targetCount: 5 });
     const submitted = await fixture.apply('submitted');
@@ -40,5 +55,21 @@ describe('AC-EST-03 提交与审批占用时机以及驳回撤销回退', () => 
     expect(await fixture.stats()).toMatchObject({ inclusive: { preIncrease: 0 } });
     expect(await fixture.stats(fixture.source.id)).toMatchObject({ inclusive: { preDecrease: 0 } });
     expect(fixture.port.applyTransfer).not.toHaveBeenCalled();
+  });
+
+  it('两笔调入并发争最后一个严格编制时只能成功一笔', async () => {
+    const fixture = await transferFixture(testDb().db, 'est03-concurrent', {
+      strictControl: true,
+      targetCount: 9,
+      targetCapacity: 10,
+    });
+    const another = fixture.addTransfer();
+    const results = await Promise.allSettled([
+      fixture.apply('submitted'),
+      fixture.apply('submitted', 0, false, another),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(await fixture.stats()).toMatchObject({ inclusive: { actual: 9, preIncrease: 1, vacancy: 0 } });
   });
 });

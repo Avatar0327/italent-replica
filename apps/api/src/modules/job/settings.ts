@@ -57,7 +57,7 @@ export async function writeJobSettings(tx: Tx, ctx: JobWriteContext, input: z.in
   if (startDate > stopDate) throw new AppError('VALIDATION_FAILED', '失效日期不得早于生效日期');
   const before = await readJobSettings(tx, ctx.tenantId);
   if (before.versionId && startDate < before.startDate) {
-    throw new AppError('CONFLICT', '已有后续设置版本，请先处理后续版本', { reason: 'FUTURE_VERSION_EXISTS' });
+    throw new AppError('JOB_FUTURE_VERSION_EXISTS', '已有后续设置版本，请先处理后续版本');
   }
   if (!parsed.data.allowDuplicatePositionNames || parsed.data.enabled === false) {
     await assertUniquePositionNames(tx, ctx.tenantId, startDate);

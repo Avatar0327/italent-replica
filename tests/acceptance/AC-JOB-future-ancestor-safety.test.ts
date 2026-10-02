@@ -26,6 +26,7 @@ describe('AC-JOB-02 未来祖先关系与冗余序列字段一致性', () => {
       },
     });
     expect(created.status).toBe(409);
+    expect(await created.json()).toMatchObject({ error: { code: 'JOB_FUTURE_VERSION_EXISTS' } });
     expect((await session.list('sequences')).map((item) => item.name)).not.toContain('拒绝提前缓存的下级');
     expect(await session.detail('sequences', parent.id, '2026-11-01')).toMatchObject({
       parentId: first.id,
@@ -50,6 +51,7 @@ describe('AC-JOB-02 未来祖先关系与冗余序列字段一致性', () => {
       body: { parentId: parent.id, effectiveDate: '2026-10-02' },
     });
     expect(moved.status).toBe(409);
+    expect(await moved.json()).toMatchObject({ error: { code: 'JOB_FUTURE_VERSION_EXISTS' } });
     expect(await session.detail('sequences', child.id, '2026-10-02')).toMatchObject({
       revision: 1,
       parentId: originalRoot.id,

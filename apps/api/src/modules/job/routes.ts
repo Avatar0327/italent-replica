@@ -61,7 +61,7 @@ function registerCandidates(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     });
   }
   router.post(`${BASE}/validate-assignment`, async (c) => {
-    const ctx = await readContext(c, deps, 'tenant.job.write');
+    const ctx = await readContext(c, deps, 'tenant.job.read');
     const input = await parseBody(c, assignment);
     const result = await withTenant(deps.db, ctx.tenantId, (tx) => validateJobAssignment(tx, ctx.tenantId, input));
     return c.json(result);

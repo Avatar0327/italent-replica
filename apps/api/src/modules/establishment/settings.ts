@@ -15,7 +15,9 @@ export async function readSettings(tx: Tx, tenantId: string, asOf: string) {
     .where(and(eq(establishmentTimingVersions.tenantId, tenantId), lte(establishmentTimingVersions.startDate, asOf)))
     .orderBy(desc(establishmentTimingVersions.startDate), desc(establishmentTimingVersions.versionNo))
     .limit(1);
-  if (!version) throw new AppError('SERVICE_UNAVAILABLE', '请先配置编制占用时机');
+  // DEC-075：租户未配置时使用产品出厂值；revision 仍来自稳定头行，便于首次显式配置时做 CAS。
+  if (!version)
+    return { transferIn: 'submitted' as const, transferOut: 'submitted' as const, revision: head?.revision ?? 0 };
   return { ...version, revision: head?.revision ?? 0 };
 }
 
@@ -37,7 +39,7 @@ export async function updateSettings(
     .from(establishmentTimingVersions)
     .where(and(eq(establishmentTimingVersions.tenantId, ctx.tenantId), gt(establishmentTimingVersions.startDate, date)))
     .limit(1);
-  if (future) throw new AppError('CONFLICT', '占用时机已有后续版本', { reason: 'FUTURE_VERSION_EXISTS' });
+  if (future) throw new AppError('EST_FUTURE_VERSION_EXISTS', '占用时机已有后续版本');
   const [previous] = await tx
     .select()
     .from(establishmentTimingVersions)

@@ -244,7 +244,7 @@ export async function updateCapacity(
       ),
     )
     .limit(1);
-  if (future) throw new AppError('CONFLICT', '编制已有后续版本', { reason: 'FUTURE_VERSION_EXISTS' });
+  if (future) throw new AppError('EST_FUTURE_VERSION_EXISTS', '编制已有后续版本');
   const previous = await readCapacity(tx, ctx.tenantId, id, date);
   if (
     (patch.orgId && patch.orgId !== previous.orgId) ||
@@ -401,7 +401,7 @@ async function syncAncestors(
         ),
       )
       .limit(1);
-    if (future) throw new AppError('CONFLICT', '上级编制已有后续版本', { reason: 'FUTURE_VERSION_EXISTS' });
+    if (future) throw new AppError('EST_FUTURE_VERSION_EXISTS', '上级编制已有后续版本');
     await tx
       .update(establishmentObjects)
       .set({ revision: parent.revision + 1 })

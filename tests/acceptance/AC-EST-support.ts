@@ -93,6 +93,7 @@ export async function transferFixture(
     targetCapacity?: number;
     transferIn?: 'submitted' | 'approved';
     transferOut?: 'submitted' | 'approved';
+    configureTimings?: boolean;
   } = {},
 ) {
   const session = await establishmentSession(db, label);
@@ -104,11 +105,13 @@ export async function transferFixture(
     localCapacity: options.targetCapacity ?? 10,
     strictControl: options.strictControl ?? false,
   });
-  const settings = await session.request('PUT', '/settings', {
-    ifMatch: 0,
-    body: { transferIn: options.transferIn ?? 'submitted', transferOut: options.transferOut ?? 'submitted' },
-  });
-  expect(settings.status).toBe(200);
+  if (options.configureTimings !== false) {
+    const settings = await session.request('PUT', '/settings', {
+      ifMatch: 0,
+      body: { transferIn: options.transferIn ?? 'submitted', transferOut: options.transferOut ?? 'submitted' },
+    });
+    expect(settings.status).toBe(200);
+  }
 
   const businessId = randomUUID();
   const employeeId = randomUUID();

@@ -76,6 +76,7 @@ describe('AC-JOB 平台约定与隔离', () => {
       body: { name: '插入过去', effectiveDate: '2026-11-01' },
     });
     expect(earlier.status).toBe(409);
+    expect(await earlier.json()).toMatchObject({ error: { code: 'JOB_FUTURE_VERSION_EXISTS' } });
     const before = await s.api.request('GET', `${base}/${item.id}?asOf=2026-12-01`, s.auth);
     expect(before.status).toBe(200);
     expect(await before.json()).toMatchObject({ id: item.id, code: 'TYPE-OLD', name: '专业类' });

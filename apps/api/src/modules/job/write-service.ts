@@ -75,7 +75,7 @@ export async function updateJobObject(
 export function assertTemporalOrder(current: { startDate: string }, effectiveDate: string): void {
   // DEC-072：不在已排定的后续版本之前插入历史变更，避免隐式覆盖未来业务值。
   if (effectiveDate < current.startDate) {
-    throw new AppError('CONFLICT', '对象已有后续版本，请先处理后续版本', { reason: 'FUTURE_VERSION_EXISTS' });
+    throw new AppError('JOB_FUTURE_VERSION_EXISTS', '对象已有后续版本，请先处理后续版本');
   }
 }
 

@@ -219,7 +219,12 @@ async function appendJobVersion(
   });
 }
 
-export async function listNotifications(tx: Tx, tenantId: string, page: { limit: number; offset: number }) {
+export async function listNotifications(
+  tx: Tx,
+  tenantId: string,
+  recipientUserId: string,
+  page: { limit: number; offset: number },
+) {
   if (!Number.isSafeInteger(page.limit) || page.limit < 1 || page.limit > 100) {
     throw invalid('limit', '每页通知数量须为 1 至 100');
   }
@@ -234,7 +239,12 @@ export async function listNotifications(tx: Tx, tenantId: string, page: { limit:
         eq(establishmentNotifications.movementId, establishmentMovementObjects.id),
       ),
     )
-    .where(eq(establishmentNotifications.tenantId, tenantId))
+    .where(
+      and(
+        eq(establishmentNotifications.tenantId, tenantId),
+        eq(establishmentNotifications.recipientUserId, recipientUserId),
+      ),
+    )
     .orderBy(desc(establishmentNotifications.createdAt), desc(establishmentNotifications.id))
     .limit(page.limit)
     .offset(page.offset);

@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { sql } from '@italent/db';
+import { createUser, grantMembership, sql } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { establishmentSession, type CopyJob } from './AC-EST-support.js';
+import { cmd, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 
@@ -36,6 +37,32 @@ describe('AC-EST 复制成功幂等与审计失败整批回滚', () => {
     expect(
       ((await notices.json()) as { items: { jobId?: string }[] }).items.filter((item) => item.jobId === pending.id),
     ).toHaveLength(1);
+  });
+
+  it('同租户其他成员不能读取复制任务接收人的通知', async () => {
+    const { db } = testDb();
+    const session = await establishmentSession(db, 'est-copy-notice-scope');
+    const org = await session.create('通知隔离部门');
+    const scheme = await session.scheme();
+    const source = await session.capacity(org.id, scheme.id);
+    const enqueued = await session.request('POST', '/copy-jobs', {
+      ifMatch: 0,
+      body: { capacityIds: [source.id] },
+    });
+    const pending = (await enqueued.json()) as CopyJob;
+    await session.request('POST', `/copy-jobs/${pending.id}/execute`, {
+      ifMatch: pending.revision,
+      body: {},
+    });
+
+    const other = await createUser(db, { email: `other-${randomUUID()}@example.com`, displayName: '其他成员' }, cmd());
+    await grantMembership(db, { tenantId: session.tenant.id, userId: other.id, expectedRevision: 0 }, cmd());
+    const response = await tenantApi(db).request('GET', '/api/tenant/establishment/notifications', {
+      tenant: session.tenant.id,
+      user: other.id,
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ items: [] });
   });
 
   it('审计存储拒绝写入时目标编制和任务状态均回滚，恢复后可按原revision执行', async () => {

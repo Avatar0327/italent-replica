@@ -235,7 +235,7 @@ function registerCopyJobs(router: Hono<TenantEnv>, deps: TenantRouteDeps): void 
     const ctx = await readContext(c, deps, 'tenant.establishment.read');
     const page = pageQuery(c);
     return c.json({
-      items: await withTenant(deps.db, ctx.tenantId, (tx) => listNotifications(tx, ctx.tenantId, page)),
+      items: await withTenant(deps.db, ctx.tenantId, (tx) => listNotifications(tx, ctx.tenantId, ctx.userId, page)),
     });
   });
 }

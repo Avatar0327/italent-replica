@@ -177,7 +177,7 @@ async function assertNoFutureAncestorMove(
   // DEC-072 / Q-M0-06：先处理祖先已排定的结构变更，防止新下级缓存的祖先路径在未来失真。
   // 后续版本仅改名或改码时，parent_id 不变，不影响当前缓存路径。
   if (futureMove) {
-    throw new AppError('CONFLICT', '祖先已有后续层级变更，请先处理后续版本', { reason: 'FUTURE_VERSION_EXISTS' });
+    throw new AppError('JOB_FUTURE_VERSION_EXISTS', '祖先已有后续层级变更，请先处理后续版本');
   }
 }
 
