@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { conditionViolations, evaluateCondition } from './conditions.js';
 import { publishViolations } from './definition.js';
 import { PRESET_PROCESSES } from './presets.js';
-import { decideNode, type Candidate, type RoutingFacts } from './routing.js';
+import { avoidSelfExceptionAdmin, decideNode, type Candidate, type RoutingFacts } from './routing.js';
 import { APPROVAL_TYPES, type ApprovalNode, type ConditionItem } from './types.js';
 
 const fields = APPROVAL_TYPES.transfer.conditionFields;
@@ -78,19 +78,27 @@ const facts = (extra: Partial<RoutingFacts> = {}): RoutingFacts => ({
 const person = (userId: string | null, personId: string | null = null): Candidate => ({ userId, personId });
 
 describe('节点审批人决策（DEC-054 / DEC-068）', () => {
-  it('首节点为空报错；中间节点按配置转异常管理员 / 跳过 / 同意', () => {
+  it('首节点为空报错；中间节点一律转异常管理员', () => {
     expect(decideNode(node(), person(null), facts({ isFirstNode: true })).kind).toBe('first_node_empty');
     expect(decideNode(node(), person(null), facts())).toMatchObject({
       kind: 'assign',
       userId: 'admin',
       isExceptionAdmin: true,
     });
-    expect(decideNode(node({ noAssignee: 'skip' }), person(null), facts())).toMatchObject({
-      outcome: 'no_assignee_skip',
+  });
+  it('DEC-091：异常管理员是发起人或异动本人时转其直线经理，否则不可用', () => {
+    expect(avoidSelfExceptionAdmin(person('admin'), facts())).toMatchObject({ kind: 'assign', userId: 'admin' });
+    expect(avoidSelfExceptionAdmin(person('initiator'), facts(), person('boss'))).toMatchObject({
+      kind: 'assign',
+      userId: 'boss',
     });
-    expect(decideNode(node({ noAssignee: 'approve' }), person(null), facts())).toMatchObject({
-      outcome: 'no_assignee_approve',
-    });
+    expect(avoidSelfExceptionAdmin(person('initiator'), facts()).kind).toBe('unavailable');
+    expect(avoidSelfExceptionAdmin(person('x', 'subject-person'), facts(), person('subject-user')).kind).toBe(
+      'unavailable',
+    );
+    expect(avoidSelfExceptionAdmin(person('initiator'), facts({ chainUserIds: ['boss'] }), person('boss')).kind).toBe(
+      'unavailable',
+    );
   });
   it('自审优先于相同审批人跳过：转直线经理；经理为空 / 本人 / 已在链上转异常管理员', () => {
     const self = person('initiator');

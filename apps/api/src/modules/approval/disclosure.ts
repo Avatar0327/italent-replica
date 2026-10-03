@@ -55,8 +55,10 @@ export async function readDetail(
 ): Promise<DetailData> {
   const instance = await loadInstance(tx, ctx.tenantId, instanceId);
   const tasks = await loadTasks(tx, ctx.tenantId, instanceId);
+  // C-非3：被自审跳过的人只是留痕，不因此成为参与人。
   const participant =
-    instance.initiatorUserId === viewer.userId || tasks.some((task) => task.assigneeUserId === viewer.userId);
+    instance.initiatorUserId === viewer.userId ||
+    tasks.some((task) => task.assigneeUserId === viewer.userId && task.origin !== 'self_skip');
   const isAdmin = await adminCovers(tx, ctx.tenantId, instanceId, viewer.adminScope);
   if (!participant && !isAdmin) throw new AppError('NOT_FOUND', '审批实例不存在');
   const setting = await readEffectiveSetting(tx, ctx.tenantId, SHOW_ORIGINALS_SETTING);
@@ -73,7 +75,7 @@ export async function readDetail(
 }
 
 function viewerNode(data: DetailData, userId: string): ApprovalNode | null {
-  const own = data.tasks.filter((task) => task.assigneeUserId === userId).at(-1);
+  const own = data.tasks.filter((task) => task.assigneeUserId === userId && task.origin !== 'self_skip').at(-1);
   const key = own?.nodeKey ?? data.instance.currentNodeKey ?? data.tasks.at(-1)?.nodeKey ?? data.version.nodes[0]?.key;
   return data.version.nodes.find((node) => node.key === key) ?? null;
 }

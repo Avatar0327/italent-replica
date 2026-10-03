@@ -31,6 +31,26 @@ export async function userOfPerson(tx: Tx, tenantId: string, personId: string | 
   return row?.user_id ?? null;
 }
 
+/** 本租户的有效成员（DEC-098：账号停用 / 撤销成员关系即不是可审批的人）。 */
+export async function isActiveMember(tx: Tx, tenantId: string, userId: string): Promise<boolean> {
+  const [row] = rowsOf(
+    await tx.execute(sql`SELECT 1 FROM tenant_memberships
+      WHERE tenant_id=${tenantId} AND user_id=${userId}::uuid AND status='active'`),
+  );
+  return Boolean(row);
+}
+
+/** DEC-098：流程上的异常管理员已停用时，由租户管理员接管（取最早开通的有效租户管理员，确定性）。 */
+export async function tenantAdminUser(tx: Tx, tenantId: string): Promise<string | null> {
+  const [row] = rowsOf<{ user_id: string }>(
+    await tx.execute(sql`SELECT a.user_id FROM permission_admins a
+      JOIN tenant_memberships m ON m.tenant_id=a.tenant_id AND m.user_id=a.user_id AND m.status='active'
+      WHERE a.tenant_id=${tenantId} AND a.role='tenant_admin' AND a.status='active'
+      ORDER BY a.created_at,a.id LIMIT 1`),
+  );
+  return row?.user_id ?? null;
+}
+
 export async function personOfUser(tx: Tx, tenantId: string, userId: string): Promise<string | null> {
   const [row] = rowsOf<{ employee_id: string }>(
     await tx.execute(sql`SELECT employee_id FROM permission_user_person_links
@@ -85,8 +105,12 @@ export async function resolveCandidate(
 ): Promise<Candidate> {
   const { tenantId } = subject;
   switch (expression) {
-    case 'owner':
+    case 'owner': {
+      // 派单前复核成员身份（C-非5）：发起人已停用时按“审批人为空”处理（DEC-098）。
+      const active = await isActiveMember(tx, tenantId, subject.initiatorUserId);
+      if (!active) return NOBODY;
       return { personId: await personOfUser(tx, tenantId, subject.initiatorUserId), userId: subject.initiatorUserId };
+    }
     case 'latest_record_department_head':
       return candidateOf(tx, tenantId, await orgRole(tx, subject, subject.latestDepartmentId, 'head'));
     case 'record_department_head':

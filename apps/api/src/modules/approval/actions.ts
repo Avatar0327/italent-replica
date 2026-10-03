@@ -22,10 +22,12 @@ import {
   advanceFrom,
   afterNodeApproved,
   assertBusinessUnchanged,
+  currentRouting,
+  exceptionAdminFor,
   nodeIndex,
   openRun,
   persistRun,
-  resume,
+  startOrResume,
   type Run,
 } from './engine.js';
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
@@ -74,7 +76,8 @@ async function blindReview(
   const hidden = blindFields(scene.run.snapshot, viewable);
   if (!hidden.length) return null;
   const { run, task } = scene;
-  const admin = run.version.exceptionAdminUserId!;
+  const routing = await currentRouting(tx, run, task.nodeKey);
+  const admin = (await exceptionAdminFor(tx, run, routing.subject, routing.facts)).userId;
   await closeTask(tx, run.ctx, task.id, 'transferred');
   const next = await insertTask(tx, run.ctx, run.instance.id, {
     round: run.instance.round,
@@ -447,7 +450,11 @@ export async function cancel(tx: Tx, ctx: ApprovalContext, instanceId: string): 
 export async function resubmit(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<Outcome> {
   const run = await openOwn(tx, ctx, instanceId);
   await ADAPTERS[run.instance.businessType].resubmitted(tx, ctx, run.instance.businessId);
-  const saved = await resume(tx, ctx, instanceId);
+  // DEC-093：重提与业务入口一样，改了发起条件字段时重新匹配流程。
+  const saved = await startOrResume(tx, ctx, {
+    businessType: run.instance.businessType,
+    businessId: run.instance.businessId,
+  });
   return { status: 200, body: { instanceId: saved.id } };
 }
 
@@ -471,6 +478,15 @@ export async function adminAct(tx: Tx, ctx: ApprovalContext, input: AdminInput, 
   assertRevision(ctx.expectedRevision, run.instance.revision);
   if (run.instance.status !== 'running') throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程不在审批中');
   assertBusinessUnchanged(run);
+  // DEC-092：管理员不得干预本人发起或本人为异动对象的实例，须由其他管理员处理。
+  const subjectUser = await userOfPerson(tx, ctx.tenantId, run.snapshot.subjectEmployeeId);
+  if (ctx.userId === run.instance.initiatorUserId || ctx.userId === subjectUser) {
+    throw approvalError(
+      'FORBIDDEN',
+      'APPROVAL_ADMIN_SELF',
+      '不能干预本人发起或本人为异动对象的审批，请由其他管理员处理',
+    );
+  }
   const intervene = input.kind !== 'transfer';
   if ((intervene || input.toUserId === ctx.userId) && !input.reason?.trim()) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_REASON_REQUIRED', '管理员干预或转交给自己时必须填写理由');

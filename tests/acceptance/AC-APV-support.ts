@@ -154,6 +154,8 @@ export async function approvalWorld(db: Db, label: string) {
     await grantMembership(db, { tenantId: tenant.id, userId: created.id, expectedRevision: 0 }, cmd());
     return created.id;
   }
+  // 默认异常管理员是独立成员：发起人 HR 兼任时按 DEC-091 回避，没有直线经理即拒绝提交。
+  const exceptionAdmin = await member('默认异常管理员');
 
   async function org(name: string, parentId: string = tenant.id): Promise<string> {
     const created = await json<{ id: string }>(
@@ -289,7 +291,7 @@ export async function approvalWorld(db: Db, label: string) {
           approvalType: input.approvalType ?? 'transfer',
           priority: input.priority ?? 0,
           isFallback: input.isFallback ?? false,
-          exceptionAdminUserId: input.exceptionAdminUserId === undefined ? hr.id : input.exceptionAdminUserId,
+          exceptionAdminUserId: input.exceptionAdminUserId === undefined ? exceptionAdmin : input.exceptionAdminUserId,
           conditions: input.conditions ?? {
             items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }],
           },
@@ -349,6 +351,7 @@ export async function approvalWorld(db: Db, label: string) {
     db,
     tenant,
     hr,
+    exceptionAdmin,
     api,
     clock,
     setNow(iso: string) {
@@ -452,6 +455,10 @@ export async function grantVisibleFields(
  */
 export async function installApprovalFallbacks(db: Db, tenantId: string, userId: string): Promise<void> {
   const ctx = { tenantId, userId, timezone: 'Asia/Shanghai', now: new Date(), expectedRevision: 0 };
+  // 异常管理员用独立成员：被测模块的操作人兼任时按 DEC-091 回避，没有直线经理会拒绝提交。
+  const suffix = randomBytes(3).toString('hex');
+  const admin = await createUser(db, { email: `fallback-${suffix}@example.com`, displayName: '夹具异常管理员' }, cmd());
+  await grantMembership(db, { tenantId, userId: admin.id, expectedRevision: 0 }, cmd());
   await withTenant(db, tenantId, async (tx) => {
     for (const approvalType of Object.keys(APPROVAL_TYPES) as ApprovalTypeCode[]) {
       const created = await createProcess(
@@ -464,7 +471,7 @@ export async function installApprovalFallbacks(db: Db, tenantId: string, userId:
           description: null,
           priority: 0,
           isFallback: true,
-          exceptionAdminUserId: userId,
+          exceptionAdminUserId: admin.id,
           urgeEnabled: true,
           conditions: { items: [], expression: '' },
           nodes: [

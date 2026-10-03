@@ -10,7 +10,7 @@ import { bootstrapTenantAdmin } from '@italent/api';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld, TRANSFER_NODES, transferScene, type InstanceView } from './AC-APV-support.js';
-import { cmd } from './support/tenant-api.js';
+import { cmd, tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
 const BASE = '/api/tenant/approval';
@@ -197,11 +197,17 @@ describe('清单 21：无可用账号按空处理；异常管理员停用前交�
     const successor = await w.member('接任的异常管理员');
     await w.setOrgRoles(s.to, { hrbp: null });
     const process = await w.publishedProcess({ exceptionAdminUserId: leaving, nodes: TRANSFER_NODES.slice(0, 2) });
-    const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    // 发起人不是租户管理员，否则接管人按 DEC-091 还要回避。
+    const applicant = await w.member('发起人');
+    const draft = await w.application(s.subject.employeeId, { departmentId: s.to }, { actor: applicant });
+    const view = await w.submit(draft, applicant);
     const revision = await membershipRevision(w, leaving);
-    await expect(
-      revokeMembership(w.db, { tenantId: w.tenant.id, userId: leaving, expectedRevision: revision }, cmd()),
-    ).rejects.toThrow(/异常管理员/);
+    const blocked = await revokeMembership(
+      w.db,
+      { tenantId: w.tenant.id, userId: leaving, expectedRevision: revision },
+      cmd(),
+    ).catch((error: unknown) => error as { message: string; cause?: { message?: string } });
+    expect(String((blocked as { cause?: { message?: string } }).cause?.message ?? blocked)).toContain('异常管理员');
     const handover = await w.request(w.hr.id, 'POST', `${BASE}/exception-admins/handover`, {
       ifMatch: 0,
       body: { fromUserId: leaving, toUserId: successor },
@@ -212,7 +218,7 @@ describe('清单 21：无可用账号按空处理；异常管理员停用前交�
     );
     expect(reloaded.currentVersion).toMatchObject({ exceptionAdminUserId: successor, versionNo: 2 });
     await revokeMembership(w.db, { tenantId: w.tenant.id, userId: leaving, expectedRevision: revision }, cmd());
-    const before = await w.detail(view.id);
+    const before = await w.detail(view.id, applicant);
     const after = await w.json<InstanceView>(
       await w.taskAction(s.outHead.userId, current(before).id, 'approve', before.revision),
     );
@@ -281,7 +287,14 @@ describe('C-非3：被自审跳过的人不因此成为参与人', () => {
     await w.publishedProcess({ nodes: TRANSFER_NODES });
     const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     expect(view.tasks.find((task) => task.origin === 'self_skip')).toMatchObject({ assigneeUserId: s.subject.userId });
-    expect((await w.request(s.subject.userId, 'GET', `${BASE}/instances/${view.id}`)).status).toBe(404);
+    // 用不含审批管理员按钮的授权器，排除“范围内管理员可看详情”的另一条通道。
+    const plain = tenantApi(w.db, {
+      clock: w.clock,
+      authorize: (request) =>
+        !(request.action === 'object.button' && /ApprovalInstance/.test(String(request.resource))),
+    });
+    const opened = await plain.request('GET', `${BASE}/instances/${view.id}`, w.as(s.subject.userId));
+    expect(opened.status).toBe(404);
     const participated = await w.json<{ items: { id: string }[] }>(
       await w.request(s.subject.userId, 'GET', `${BASE}/instances?role=participated`),
     );

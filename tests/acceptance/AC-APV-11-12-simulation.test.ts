@@ -113,7 +113,7 @@ describe('AC-APV-12 单流程仿真', () => {
       expect.objectContaining({
         key: 'in_hrbp',
         status: 'exception',
-        approverUserId: w.hr.id,
+        approverUserId: w.exceptionAdmin,
         resolution: 'exception_admin',
         message: expect.stringContaining('审批人为空'),
       }),

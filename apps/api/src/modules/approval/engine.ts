@@ -7,9 +7,12 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  avoidSelfExceptionAdmin,
   decideNode,
+  isSelf,
   tenantLocalDate,
   type ApprovalNode,
+  type Candidate,
   type NodeDecision,
   type RoutingFacts,
 } from '@italent/domain';
@@ -18,10 +21,19 @@ import { approvalError, auditApproval, emitOutbox, type ApprovalContext, type Ro
 import { loadVersion, type VersionView } from './definitions.js';
 import { candidates, conditionContext, evaluate, noProcessMessage, replicaMatch } from './matching.js';
 import { applyMessageRules, notifyTodo } from './notifications.js';
-import { directManagerOf, resolveCandidate, userOfPerson, type RoutingSubject } from './resolver.js';
+import {
+  directManagerOf,
+  isActiveMember,
+  personOfUser,
+  resolveCandidate,
+  tenantAdminUser,
+  userOfPerson,
+  type RoutingSubject,
+} from './resolver.js';
 import {
   activeInstanceOf,
   appendLog,
+  cancelPending,
   insertTask,
   loadInstance,
   loadTasks,
@@ -143,12 +155,53 @@ export async function decide(
 const AUTO_EVENTS: Record<string, string> = {
   same_skip: 'same_assignee_skip',
   history_skip: 'history_assignee_skip',
-  no_assignee_skip: 'no_assignee_skip',
-  no_assignee_approve: 'no_assignee_approve',
 };
 
-async function assign(tx: Tx, run: Run, node: ApprovalNode, decision: Extract<NodeDecision, { kind: 'assign' }>) {
+/**
+ * 实际接手异常任务的人：流程上的异常管理员已停用时由租户管理员接管（DEC-098）；接手人恰为发起人或异动本人时
+ * 回避给其直线经理，不可用即拒绝本次提交 / 操作并提示调整流程（DEC-091）。
+ */
+export async function exceptionAdminFor(
+  tx: Tx,
+  run: Run,
+  subject: RoutingSubject,
+  facts: RoutingFacts,
+): Promise<{ userId: string; reason: string }> {
+  const tenantId = run.ctx.tenantId;
+  const configured = run.version.exceptionAdminUserId!;
+  const userId = (await isActiveMember(tx, tenantId, configured)) ? configured : await tenantAdminUser(tx, tenantId);
+  if (!userId) {
+    throw approvalError('CONFLICT', 'APPROVAL_EXCEPTION_ADMIN_UNAVAILABLE', '异常管理员已停用且租户没有可接管的管理员');
+  }
+  const admin: Candidate = { userId, personId: await personOfUser(tx, tenantId, userId) };
+  const manager = isSelf(admin, facts) ? await directManagerOf(tx, subject, admin) : undefined;
+  const choice = avoidSelfExceptionAdmin(admin, facts, manager);
+  if (choice.kind === 'unavailable') throw approvalError('CONFLICT', 'APPROVAL_EXCEPTION_ADMIN_SELF', choice.reason);
+  const takeover = userId === configured ? '' : '（原异常管理员已停用，由租户管理员接管）';
+  return { userId: choice.userId, reason: choice.reason + takeover };
+}
+
+/** 按实例当前状态计算路由事实（盲审转异常管理员、提交前预检共用）。 */
+export async function currentRouting(tx: Tx, run: Run, nodeKey: string | null) {
+  const subject = routingSubject(run);
+  const subjectUserId = await userOfPerson(tx, run.ctx.tenantId, run.snapshot.subjectEmployeeId);
+  const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
+  const index = nodeKey ? nodeIndex(run, nodeKey) : 0;
+  return { subject, facts: routingFacts(run, tasks, index, subjectUserId) };
+}
+
+async function assign(
+  tx: Tx,
+  run: Run,
+  node: ApprovalNode,
+  decision: Extract<NodeDecision, { kind: 'assign' }>,
+  routing: { subject: RoutingSubject; facts: RoutingFacts },
+) {
   const { ctx, instance } = run;
+  if (decision.isExceptionAdmin) {
+    const admin = await exceptionAdminFor(tx, run, routing.subject, routing.facts);
+    decision = { ...decision, userId: admin.userId, reason: `${decision.reason}；${admin.reason}` };
+  }
   if (decision.selfSkippedUserId) {
     const skipped = await insertTask(tx, ctx, instance.id, {
       round: instance.round,
@@ -193,12 +246,13 @@ export async function advanceFrom(tx: Tx, run: Run, index: number): Promise<void
   for (let i = index; i < run.version.nodes.length; i++) {
     const node = run.version.nodes[i]!;
     const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
-    const decision = await decide(tx, subject, node, routingFacts(run, tasks, i, subjectUserId));
+    const facts = routingFacts(run, tasks, i, subjectUserId);
+    const decision = await decide(tx, subject, node, facts);
     if (decision.kind === 'first_node_empty') {
       throw approvalError('CONFLICT', 'APPROVAL_FIRST_NODE_EMPTY', decision.reason, { nodeKey: node.key });
     }
     if (decision.kind === 'assign') {
-      await assign(tx, run, node, decision);
+      await assign(tx, run, node, decision, { subject, facts });
       run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
       return;
     }
@@ -215,6 +269,11 @@ export async function advanceFrom(tx: Tx, run: Run, index: number): Promise<void
       taskId,
       actorUserId: null,
       detail: { userId: decision.userId, reason: decision.reason },
+    });
+    // X-14：自动同意与人工同意一样触发本节点的“同意”消息规则。
+    await applyMessageRules(tx, run.ctx, run.instance, node, 'approve', {
+      id: taskId,
+      assigneeUserId: decision.userId,
     });
   }
   await complete(tx, run);
@@ -244,18 +303,12 @@ export interface StartRequest {
 export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: StartRequest): Promise<InstanceRow> {
   const active = await activeInstanceOf(tx, ctx.tenantId, request.businessType, request.businessId);
   if (active?.status === 'running') throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '该申请已在审批中');
-  if (active) return resume(tx, ctx, active.id);
   const snapshot = await ADAPTERS[request.businessType].snapshot(tx, ctx, request.businessId);
-  const asOf = tenantLocalDate(ctx.now, ctx.timezone);
-  const type = snapshot.approvalType;
-  const list = await candidates(tx, ctx.tenantId, {
-    objectCode: APPROVAL_TYPES[type].objectCode,
-    approvalType: type,
-    scope: 'published',
-  });
-  const context = await conditionContext(tx, ctx.tenantId, asOf, type, snapshot.conditionValues);
-  const matched = replicaMatch(evaluate(list, context), type);
-  if (!matched) throw approvalError('CONFLICT', 'APPROVAL_PROCESS_NOT_MATCHED', noProcessMessage(type));
+  if (active) {
+    const rematched = await rematchIfConditionsChanged(tx, ctx, active, snapshot);
+    if (!rematched) return resume(tx, ctx, active.id);
+  }
+  const matched = await matchProcess(tx, ctx, snapshot);
   const instance = await insertInstance(tx, ctx, request, snapshot, matched);
   const run: Run = {
     ctx,
@@ -269,8 +322,60 @@ export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: Start
     event: 'start',
     detail: { processId: matched.processId, versionNo: matched.version.versionNo, processCode: snapshot.processCode },
   });
+  await assertExceptionAdminAvailable(tx, run);
   await advanceFrom(tx, run, 0);
   return persistRun(tx, run, 'approval.instance.start', true);
+}
+
+async function matchProcess(tx: Tx, ctx: ApprovalContext, snapshot: BusinessSnapshot) {
+  const type = snapshot.approvalType;
+  const list = await candidates(tx, ctx.tenantId, {
+    objectCode: APPROVAL_TYPES[type].objectCode,
+    approvalType: type,
+    scope: 'published',
+  });
+  const asOf = tenantLocalDate(ctx.now, ctx.timezone);
+  const context = await conditionContext(tx, ctx.tenantId, asOf, type, snapshot.conditionValues);
+  const matched = replicaMatch(evaluate(list, context), type);
+  if (!matched) throw approvalError('CONFLICT', 'APPROVAL_PROCESS_NOT_MATCHED', noProcessMessage(type));
+  return matched;
+}
+
+/** DEC-091：提交前预检异常管理员可用（本人回避后无人可接替即拒绝提交，不等到中途卡住）。 */
+async function assertExceptionAdminAvailable(tx: Tx, run: Run): Promise<void> {
+  const routing = await currentRouting(tx, run, null);
+  await exceptionAdminFor(tx, run, routing.subject, routing.facts);
+}
+
+const sameValues = (left: Readonly<Row>, right: Readonly<Row>) => {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...keys].every((key) => JSON.stringify(left[key] ?? null) === JSON.stringify(right[key] ?? null));
+};
+
+/**
+ * DEC-093：驳回后重提时若改了发起条件所用字段，重新匹配；命中不同流程则作废旧实例（保留历史），由调用方新开实例。
+ * TODO(需取证 Q-M0-45)：原站是否重新匹配未取证；命中同一流程时沿用旧实例与其冻结版本。
+ * @returns 旧实例是否已作废
+ */
+async function rematchIfConditionsChanged(
+  tx: Tx,
+  ctx: ApprovalContext,
+  active: InstanceRow,
+  snapshot: BusinessSnapshot,
+): Promise<boolean> {
+  if (sameValues(active.conditionValues, snapshot.conditionValues)) return false;
+  const matched = await matchProcess(tx, ctx, snapshot);
+  if (matched.processId === active.processId) return false;
+  const run = await openRun(tx, ctx, active.id);
+  await cancelPending(tx, ctx, active.id);
+  run.instance = { ...run.instance, status: 'cancelled', currentNodeKey: null };
+  await appendLog(tx, ctx, run.instance, {
+    event: 'rematch',
+    detail: { fromProcessId: active.processId, toProcessId: matched.processId, reason: '发起条件字段已修改' },
+  });
+  run.events.push('approval.instance.cancelled');
+  await persistRun(tx, run, 'approval.instance.rematch');
+  return true;
 }
 
 async function insertInstance(
@@ -310,6 +415,7 @@ export async function resume(tx: Tx, ctx: ApprovalContext, instanceId: string): 
   };
   run.events.push('approval.instance.resubmitted');
   await appendLog(tx, ctx, run.instance, { event: 'resubmit', detail: { toNodeKey: toRejecting ? rejecting : null } });
+  await assertExceptionAdminAvailable(tx, run);
   await advanceFrom(tx, run, toRejecting ? nodeIndex(run, rejecting) : 0);
   return persistRun(tx, run, 'approval.instance.resubmit');
 }

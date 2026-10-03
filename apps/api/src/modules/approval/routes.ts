@@ -43,6 +43,7 @@ import {
 } from './definitions.js';
 import { detailView, readDetail } from './disclosure.js';
 import { startOrResume } from './engine.js';
+import { handoverExceptionAdmin } from './handover.js';
 import { listAdminLogs, listInstances, listNotifications, listTodos } from './queries.js';
 import { simulateByObject, simulateProcess } from './simulation.js';
 import { activeInstanceOf, instanceOfTask, loadInstance } from './store.js';
@@ -200,6 +201,16 @@ function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return processResponse(c, deps, result);
     });
   }
+  router.post('/exception-admins/handover', async (c) => {
+    const ctx = writeCtx(c, deps);
+    const input = await parseBody(c, z.strictObject({ fromUserId: z.uuid(), toUserId: z.uuid() }));
+    await requireProcessButton(deps, ctx, 'publish');
+    const result = await command(c, deps, ctx, input, async (tx, context) => ({
+      status: 200,
+      body: await handoverExceptionAdmin(tx, context, input),
+    }));
+    return c.json(result.body as object, result.status);
+  });
   router.post('/presets/install', async (c) => {
     const ctx = writeCtx(c, deps);
     await requireProcessButton(deps, ctx, 'installPresets');

@@ -25,7 +25,7 @@ export interface RoutingFacts {
   readonly chainUserIds: readonly string[];
 }
 
-export type AutoOutcome = 'same_skip' | 'history_skip' | 'no_assignee_skip' | 'no_assignee_approve';
+export type AutoOutcome = 'same_skip' | 'history_skip';
 export type AssignOrigin = 'resolved' | 'self_skip_manager' | 'exception_admin';
 
 export type NodeDecision =
@@ -64,18 +64,13 @@ function exceptionAdmin(facts: RoutingFacts, reason: string, selfSkippedUserId: 
  * @param manager 自审时该审批人任职记录上的直线经理（调用方按需解析）。
  */
 export function decideNode(
-  node: ApprovalNode,
+  node: Pick<ApprovalNode, 'sameAssigneeSkip' | 'historySameAssigneeSkip'>,
   candidate: Candidate,
   facts: RoutingFacts,
   manager: Candidate = { personId: null, userId: null },
 ): NodeDecision {
   if (candidate.userId === null) {
     if (facts.isFirstNode) return { kind: 'first_node_empty', reason: '第一个审批节点没有审批人' };
-    if (node.noAssignee === 'skip')
-      return { kind: 'auto', outcome: 'no_assignee_skip', userId: null, reason: '审批人为空，自动跳过' };
-    if (node.noAssignee === 'approve') {
-      return { kind: 'auto', outcome: 'no_assignee_approve', userId: null, reason: '审批人为空，自动同意' };
-    }
     return exceptionAdmin(facts, '审批人为空，转异常管理员', null);
   }
   if (isSelf(candidate, facts)) {
@@ -108,4 +103,28 @@ export function decideNode(
     selfSkippedUserId: null,
     reason: '按表达式解析',
   };
+}
+
+export type ExceptionAdminChoice =
+  | { readonly kind: 'assign'; readonly userId: string; readonly reason: string }
+  | { readonly kind: 'unavailable'; readonly reason: string };
+
+/**
+ * DEC-091：异常管理员恰为发起人或异动本人时回避，改派给其直线经理；直线经理为空、仍是本人或已在本单
+ * 审批链上时不可用（调用方拒绝提交 / 本次操作并提示调整流程）。
+ * @param admin 实际生效的异常管理员（DEC-098：流程上的异常管理员已停用时由租户管理员接管）
+ * @param manager 该异常管理员任职记录上的直线经理（仅在需要回避时由调用方解析）
+ */
+export function avoidSelfExceptionAdmin(
+  admin: Candidate,
+  facts: Pick<RoutingFacts, 'initiatorUserId' | 'subjectEmployeeId' | 'subjectUserId' | 'chainUserIds'>,
+  manager: Candidate = { personId: null, userId: null },
+): ExceptionAdminChoice {
+  if (admin.userId === null) return { kind: 'unavailable', reason: '流程没有可用的异常管理员' };
+  if (!isSelf(admin, facts as RoutingFacts)) return { kind: 'assign', userId: admin.userId, reason: '异常管理员' };
+  const invalid = manager.userId === null || manager.userId === admin.userId || isSelf(manager, facts as RoutingFacts);
+  if (invalid || facts.chainUserIds.includes(manager.userId!)) {
+    return { kind: 'unavailable', reason: '异常管理员是发起人或异动本人，且没有可接替的直线经理，请调整流程' };
+  }
+  return { kind: 'assign', userId: manager.userId!, reason: '异常管理员是发起人或异动本人，转其直线经理' };
 }

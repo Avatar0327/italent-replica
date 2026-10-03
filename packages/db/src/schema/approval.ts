@@ -177,7 +177,8 @@ export const approvalProcessNodes = pgTable(
       sql`${t.approverExpression} IN ('owner','latest_record_department_head','record_department_head',
         'record_department_hrbp','record_first_level_org_head')`,
     ),
-    check('approval_nodes_no_assignee', sql`${t.noAssigneePolicy} IN ('exception_admin','skip','approve')`),
+    // DEC-054：中间节点审批人为空一律转异常管理员（PR #35 第二轮清单 6）。
+    check('approval_nodes_no_assignee', sql`${t.noAssigneePolicy} = 'exception_admin'`),
     check('approval_nodes_edit_mode', sql`${t.editMode} IN ('none','separate','with_approve')`),
     check('approval_nodes_resubmit', sql`${t.rejectResubmitMode} IN ('restart','rejecting_node')`),
     check('approval_nodes_seq_positive', sql`${t.seq} > 0`),
@@ -311,7 +312,7 @@ export const approvalTasks = pgTable(
       'approval_tasks_origin',
       sql`${t.origin} IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',
         'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',
-        'admin_intervene','blind_review')`,
+        'admin_intervene','blind_review','handover')`,
     ),
   ],
 );

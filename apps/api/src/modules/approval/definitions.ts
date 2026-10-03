@@ -377,6 +377,7 @@ export async function publishProcess(tx: Tx, ctx: ApprovalContext, id: string) {
   const [violation] = publishViolations(draft);
   if (violation) throw approvalError('VALIDATION_FAILED', violation.reason, violation.message);
   await assertExceptionAdminMember(tx, ctx.tenantId, draft.exceptionAdminUserId!);
+  if (!draft.isFallback) await assertUniquePriority(tx, ctx.tenantId, before, draft.priority);
   await tx.execute(sql`UPDATE approval_process_versions SET status='published',published_by=${ctx.userId},
       published_at=${ctx.now.toISOString()}
     WHERE tenant_id=${ctx.tenantId} AND id=${draft.id}::uuid`);
@@ -384,7 +385,44 @@ export async function publishProcess(tx: Tx, ctx: ApprovalContext, id: string) {
   return audited(tx, ctx, 'publish', before, id);
 }
 
-async function assertExceptionAdminMember(tx: Tx, tenantId: string, userId: string) {
+/**
+ * DEC-096：同类型普通流程优先级相同禁止发布（兜底流程始终排在最后，不参与比较）。
+ * 同租户同类型的发布以事务级咨询锁串行，避免并发发布出两个同优先级流程。
+ */
+async function assertUniquePriority(tx: Tx, tenantId: string, process: ProcessView, priority: number) {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`approval_priority:${tenantId}:${process.approvalType}`}, 0))`,
+  );
+  const [tie] = rowsOf<{ code: string }>(
+    await tx.execute(sql`SELECT p.code FROM approval_processes p
+      JOIN approval_process_versions v ON v.tenant_id=p.tenant_id AND v.id=p.current_version_id
+      WHERE p.tenant_id=${tenantId} AND p.status='active' AND p.approval_type=${process.approvalType}
+        AND p.id<>${process.id}::uuid AND NOT v.is_fallback AND v.priority=${priority} LIMIT 1`),
+  );
+  if (tie) {
+    throw approvalError('CONFLICT', 'APPROVAL_PRIORITY_DUPLICATE', `与流程 ${tie.code} 的优先级相同，请调整后再发布`);
+  }
+}
+
+/**
+ * DEC-098 交接：以当前生效版本为底稿生成并发布下一版，只替换异常管理员；最新版本是草稿时拒绝（先处理草稿）。
+ */
+export async function republishWithExceptionAdmin(tx: Tx, ctx: ApprovalContext, id: string, userId: string) {
+  const row = await processRow(tx, ctx.tenantId, id, true);
+  const before = await loadProcess(tx, ctx.tenantId, id);
+  if (before.latestVersion.status === 'draft' || !before.currentVersion) {
+    throw approvalError('CONFLICT', 'APPROVAL_DRAFT_EXISTS', `流程 ${row.code} 有未发布的草稿，请先处理后再交接`);
+  }
+  const next = Number(row.latest_version_no) + 1;
+  const versionId = await insertVersion(tx, ctx, id, next, { ...before.currentVersion, exceptionAdminUserId: userId });
+  await tx.execute(sql`UPDATE approval_process_versions SET status='published',published_by=${ctx.userId},
+      published_at=${ctx.now.toISOString()}
+    WHERE tenant_id=${ctx.tenantId} AND id=${versionId}::uuid`);
+  await bump(tx, ctx, id, sql`,latest_version_no=${next},current_version_id=${versionId}::uuid`);
+  return audited(tx, ctx, 'exception_admin.handover', before, id);
+}
+
+export async function assertExceptionAdminMember(tx: Tx, tenantId: string, userId: string) {
   const [member] = rowsOf(
     await tx.execute(sql`SELECT 1 FROM tenant_memberships
       WHERE tenant_id=${tenantId} AND user_id=${userId}::uuid AND status='active'`),
