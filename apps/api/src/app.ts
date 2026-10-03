@@ -15,6 +15,7 @@ import {
 } from './modules/permission/index.js';
 import { registerOrgRoutes } from './modules/org/routes.js';
 import { registerJobEstablishmentRoutes } from './modules/job/register.js';
+import { registerPersonnelRoutes } from './modules/personnel/routes.js';
 import { registerEmploymentRoutes } from './modules/employment/routes.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
@@ -24,6 +25,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerOrgRoutes, // R1-T03 多维组织
   registerJobEstablishmentRoutes, // R1-T04 职务体系与编制
   registerEmploymentRoutes, // R1-T05 任职记录版本链
+  registerPersonnelRoutes, // R1-T12 人员信息与子集
 ];
 
 export interface AppDeps {

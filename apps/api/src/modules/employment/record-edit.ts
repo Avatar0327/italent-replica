@@ -1,3 +1,4 @@
+import { syncEmploymentHistory } from '../personnel/employment-sync.js';
 import { type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
@@ -78,6 +79,7 @@ export async function editEmploymentRecord(
       after,
     });
   }
+  await syncEmploymentHistory(tx, ctx, business.employeeId, id, record.kind, record.effectiveDate);
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, id);
 }

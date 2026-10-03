@@ -1,3 +1,4 @@
+import { syncEmploymentHistory } from '../personnel/employment-sync.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Db, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
@@ -56,6 +57,14 @@ export async function transitionEmployment(
   assertTransition(business, input.action);
   if (input.action === 'delete') {
     await deleteEmploymentBusiness(tx, ctx, business);
+    await syncEmploymentHistory(
+      tx,
+      ctx,
+      business.employeeId,
+      business.id,
+      business.payload.kind,
+      business.payload.effectiveDate,
+    );
   } else if (input.action === 'approve') {
     // TODO(R1-T07)：审批中心完成节点鉴权后调用；只有立即生效才执行向后更新。
     await appendEmploymentState(tx, ctx, business, 'approved');

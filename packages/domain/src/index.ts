@@ -17,3 +17,4 @@ export {
   type OrgId,
 } from './contracts/org-hierarchy.js';
 export * from './permission/index.js';
+export * from './personnel/index.js';

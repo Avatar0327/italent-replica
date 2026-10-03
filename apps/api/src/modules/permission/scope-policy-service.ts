@@ -1,3 +1,4 @@
+import { PERSONNEL_SCOPE_FIELDS } from '@italent/domain';
 /** 显式范围配置；身份绕过必须由租户管理员授予，空配置始终 fail-closed。 */
 import {
   and,
@@ -327,11 +328,12 @@ function policyFields(key: PolicyKey, body?: PolicyBody) {
   if (key.targetKind !== 'entity' && ![`${key.objectCode}.list`, `${key.objectCode}.detail`].includes(key.targetCode))
     throw invalid('页面或数据源必须使用服务端登记的列表或详情编码');
   const personField =
-    key.objectCode === MODULE_OBJECTS.employmentRecord.code
+    PERSONNEL_SCOPE_FIELDS[key.objectCode] ??
+    (key.objectCode === MODULE_OBJECTS.employmentRecord.code
       ? 'employeeId'
       : key.objectCode === MODULE_OBJECTS.employee.code
         ? 'id'
-        : null;
+        : null);
   const departmentField =
     key.objectCode === MODULE_OBJECTS.employmentRecord.code
       ? 'departmentId'

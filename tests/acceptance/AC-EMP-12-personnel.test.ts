@@ -75,3 +75,51 @@ describe('AC-EMP-12 / 17 §1 人员主档', () => {
     ).toMatchObject({ currentJobPostInYears: '1.0', accumulateJobPostInYears: '1.0000' });
   });
 });
+
+it('AC-EMP-12 HTTP 从真实任职版本链计算 A→B→A；主档日期从有效周期派生', async () => {
+  const s = await personnelSession(database().db);
+  const post = async (code: string) => {
+    const r = await s.api.request('POST', '/api/tenant/job/posts', {
+      ...s.as,
+      ifMatch: 0,
+      body: { name: code, code, startDate: '2020-01-01' },
+    });
+    expect(r.status, await r.clone().text()).toBe(201);
+    return ((await r.json()) as { id: string }).id;
+  };
+  const a = await post('POST_A');
+  const b = await post('POST_B');
+  const hire = await s.business(
+    s.employee.id,
+    { kind: 'hire', mode: 'direct', effectiveDate: '2020-01-01', fields: { postId: a } },
+    1,
+  );
+  const change = await s.business(
+    s.employee.id,
+    { kind: 'transfer', mode: 'direct', effectiveDate: '2021-12-31', fields: { postId: b } },
+    hire.employeeRevision,
+  );
+  await s.business(
+    s.employee.id,
+    { kind: 'transfer', mode: 'direct', effectiveDate: '2022-12-31', fields: { postId: a } },
+    change.employeeRevision,
+  );
+  const tenure = await s.request('GET', `/employees/${s.employee.id}/tenure?asOf=2023-07-02`);
+  expect(tenure.status).toBe(200);
+  expect(await tenure.json()).toMatchObject({ currentJobPostInYears: '2.5', accumulateJobPostInYears: '2.5013' });
+  expect(await (await s.request('GET', `/employees/${s.employee.id}`)).json()).toMatchObject({
+    firstEntryDate: '2020-01-01',
+    latestEntryDate: '2020-01-01',
+    entryDate: '2020-01-01',
+  });
+});
+
+it('显示姓名派生自姓名及其他语言姓名，客户端不能覆盖派生字段', async () => {
+  const s = await personnelSession(database().db);
+  const path = `/employees/${s.employee.id}`;
+  const r = await s.request('PATCH', path, { ifMatch: 0, body: { name: '合成人员', engName: 'Synthetic' } });
+  expect(r.status).toBe(200);
+  expect(await r.json()).toMatchObject({ displayName: '合成人员（Synthetic）' });
+  expect(await s.getEmployee(s.employee.id)).toMatchObject({ name: '合成人员' });
+  expect((await s.request('PATCH', path, { ifMatch: 1, body: { displayName: '绕过派生' } })).status).toBe(400);
+});

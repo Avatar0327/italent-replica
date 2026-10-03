@@ -1,3 +1,4 @@
+import { currentPersonName } from '../personnel/employee-projection.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
@@ -54,7 +55,7 @@ function employeeQuery(tenantId: string, asOf: string, scope?: EmploymentScope) 
     employmentCreator(tenantId, sql`e.id`),
   );
   return sql`
-    SELECT e.id,e.code,e.name,e.revision,
+    SELECT e.id,e.code,${currentPersonName(tenantId, sql`e.id`, sql`e.name`)} AS name,e.revision,
       CASE WHEN r.id IS NULL THEN 'pending' WHEN r.kind='leave' THEN 'left'
         WHEN r.kind='retirement' THEN 'retired' ELSE 'employed' END AS status
     FROM employment_employees e

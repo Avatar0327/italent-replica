@@ -5,3 +5,4 @@ export * from './org.js';
 export * from './job-establishment.js';
 export * from './employment.js';
 export * from './permission-data-scope.js';
+export * from './personnel.js';

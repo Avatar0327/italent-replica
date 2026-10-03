@@ -1,3 +1,4 @@
+import { PERSONNEL_SCOPE_FIELDS } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { expandScopeRoots, scopeRows, type ScopeRoot } from './scope-hierarchy.js';
@@ -129,7 +130,11 @@ export async function resolveDataScope(tx: Tx, query: ScopeQuery): Promise<Modul
   if (await identityAll(tx, query)) return { ...EMPTY_SCOPE, all: true, hasDataPermission: true, source: 'identity' };
   const { source, rules } = await rulesFor(tx, query);
   const terms: ScopeTerm[] = [];
-  const usesPersonnelScope = ['TenantBase.Employee', 'TenantBase.EmploymentRecord'].includes(query.objectCode ?? '');
+  const usesPersonnelScope = [
+    'TenantBase.Employee',
+    'TenantBase.EmploymentRecord',
+    ...Object.keys(PERSONNEL_SCOPE_FIELDS),
+  ].includes(query.objectCode ?? '');
   const orgIds = new Set<string>();
   const resolvedRules = new Set<string>();
   for (const rule of rules) {
@@ -203,3 +208,16 @@ export interface DataScopeExtension {
   resolve(query: ScopeQuery, current: ModuleScope): Promise<ModuleScope>;
 }
 // TODO(R1-T07): approval detail intersects node form/viewable fields, never widens resolveDataScope (DEC-057).
+
+/** DEC-082 personnel catalog hook: creator rights do not authorize creating a record outside managed persons. */
+export async function personnelCreationScope(tx: Tx, query: ScopeQuery, current: ModuleScope): Promise<ModuleScope> {
+  if (current.all || !current.terms?.some((term) => term.dimension === 'using_user')) return current;
+  const orgIds = await expandScopeRoots(tx, query.tenantId, query.asOf, await managementRoots(tx, query));
+  const managed: ScopeTerm = {
+    dimension: 'management',
+    orgIds,
+    personIds: [],
+    personQuery: { kind: 'organization', tenantId: query.tenantId, asOf: query.asOf },
+  };
+  return { ...current, terms: current.terms.map((term) => (term.dimension === 'using_user' ? managed : term)) };
+}
