@@ -1,11 +1,28 @@
 import { sql } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
+import type { SQL } from 'drizzle-orm';
 import type { PersonnelContext } from './store.js';
 
+/**
+ * 组织 / 职务排序号是全租户排名，必须遍历全部组织才能得出；只有按其排序或筛选时才计算
+ * （PR #26 审计；`22` §2 只要求保留按员工属性排序的能力）。其余读取返回 null，不伪造排名。
+ */
+export interface SortRanks {
+  readonly org: boolean;
+  readonly post: boolean;
+}
+export const NO_SORT_RANKS: SortRanks = { org: false, post: false };
+export function sortRanksFor(keys: Iterable<string>): SortRanks {
+  const used = new Set(keys);
+  return { org: used.has('organizationSortNumber'), post: used.has('postSortNumber') };
+}
+
 /** G-036 / DEC-037：排序属性关联现行版本，组织依据行政路径、职务依据业务编码。 */
-export function sortingCtes(ctx: PersonnelContext) {
+export function sortingCtes(ctx: PersonnelContext, ranks: SortRanks): SQL {
   const date = tenantLocalDate(ctx.now, ctx.timezone);
-  return sql`WITH RECURSIVE personnel_org_current AS (
+  const ctes: SQL[] = [];
+  if (ranks.org)
+    ctes.push(sql`personnel_org_current AS (
     SELECT DISTINCT ON (org_id) id,org_id,code,start_date,stop_date,enabled
     FROM org_versions WHERE tenant_id=${ctx.tenantId} AND start_date<=${date}::date
     ORDER BY org_id,start_date DESC,version_no DESC
@@ -21,11 +38,26 @@ export function sortingCtes(ctx: PersonnelContext) {
     WHERE v.enabled AND v.stop_date>=${date}::date AND NOT v.org_id=ANY(p.visited)
   ), personnel_org_ranks AS (
     SELECT org_id,row_number() OVER (ORDER BY sort_path)::integer AS sort_number FROM personnel_org_paths
-  ), personnel_post_current AS (
+  )`);
+  if (ranks.post)
+    ctes.push(sql`personnel_post_current AS (
     SELECT DISTINCT ON (object_id) object_id,code,stop_date,enabled FROM job_post_versions
     WHERE tenant_id=${ctx.tenantId} AND start_date<=${date}::date ORDER BY object_id,start_date DESC,version_no DESC
   ), personnel_post_ranks AS (
     SELECT object_id,row_number() OVER (ORDER BY code,object_id)::integer AS sort_number
     FROM personnel_post_current WHERE enabled AND stop_date>=${date}::date
-  )`;
+  )`);
+  return ctes.length ? sql`WITH RECURSIVE ${sql.join(ctes, sql`, `)}` : sql``;
+}
+export function sortRankJoins(ranks: SortRanks): SQL {
+  const org = sql`LEFT JOIN personnel_org_ranks org_rank
+    ON org_rank.org_id=(r.current_fields->>'department_id')::uuid`;
+  const post = sql`LEFT JOIN personnel_post_ranks post_rank
+    ON post_rank.object_id=(r.current_fields->>'post_id')::uuid`;
+  return sql`${ranks.org ? org : sql``} ${ranks.post ? post : sql``}`;
+}
+export function sortRankColumns(ranks: SortRanks): SQL {
+  const org = ranks.org ? sql`org_rank.sort_number` : sql`NULL::integer`;
+  const post = ranks.post ? sql`post_rank.sort_number` : sql`NULL::integer`;
+  return sql`${org} AS organization_sort_number,${post} AS post_sort_number`;
 }
