@@ -267,6 +267,14 @@ export async function approvalWorld(db: Db, label: string) {
     return detail(list.items[0]!.id, actor);
   }
 
+  /** 同一业务单的全部实例（DEC-093 重新匹配后旧实例作废、新开实例）。 */
+  async function instanceOfAll(businessId: string, actor = hr.id): Promise<InstanceView[]> {
+    const list = await json<{ items: { id: string }[] }>(
+      await request(actor, 'GET', `${BASE}/instances?role=initiated&businessId=${businessId}`),
+    );
+    return Promise.all(list.items.map((item) => detail(item.id, actor)));
+  }
+
   async function detail(instanceId: string, actor = hr.id): Promise<InstanceView> {
     return json(await request(actor, 'GET', `${BASE}/instances/${instanceId}`));
   }
@@ -359,6 +367,7 @@ export async function approvalWorld(db: Db, label: string) {
     submitRaw,
     submit,
     instanceOf,
+    instanceOfAll,
     detail,
     createProcess,
     publish,

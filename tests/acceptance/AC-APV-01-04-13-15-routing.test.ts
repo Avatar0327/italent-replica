@@ -127,30 +127,7 @@ describe('AC-APV-04 中间节点审批人为空 → 异常管理员', () => {
     ]);
   });
 
-  it('节点配置“审批人为空自动跳过 / 自动同意”时不派异常管理员', async () => {
-    const w = await approvalWorld(database().db, 'apv-empty-skip');
-    const s = await transferScene(w);
-    await w.setOrgRoles(s.to, { hrbp: null });
-    await w.publishedProcess({
-      nodes: [
-        { key: 'out_head', approver: 'latest_record_department_head' },
-        { key: 'skip', approver: 'record_department_hrbp', noAssignee: 'skip' },
-        { key: 'auto', approver: 'record_department_hrbp', noAssignee: 'approve' },
-        { key: 'in_head', approver: 'record_department_head' },
-      ],
-    });
-    let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
-    view = await w.json(await w.taskAction(s.outHead.userId, current(view).id, 'approve', view.revision));
-    expect(current(view)).toMatchObject({ nodeKey: 'in_head', assigneeUserId: s.inHead.userId });
-    expect(view.tasks.find((t) => t.nodeKey === 'skip')).toMatchObject({
-      status: 'skipped',
-      origin: 'no_assignee_skip',
-    });
-    expect(view.tasks.find((t) => t.nodeKey === 'auto')).toMatchObject({
-      status: 'skipped',
-      origin: 'no_assignee_approve',
-    });
-  });
+  // “审批人为空自动跳过 / 自动同意”配置已按 DEC-054 移除，见 AC-APV-04-routing-rules（清单 6）。
 });
 
 describe('AC-APV-13 首节点没有审批人：提交即报错（DEC-054）', () => {
