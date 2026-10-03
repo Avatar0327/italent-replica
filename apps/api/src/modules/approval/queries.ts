@@ -62,8 +62,10 @@ export async function listInstances(
   const mine =
     filter.role === 'initiated'
       ? sql`i.initiator_user_id=${userId}::uuid`
-      : sql`EXISTS (SELECT 1 FROM approval_tasks t WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id
-          AND t.assignee_user_id=${userId}::uuid AND t.origin<>'self_skip')`;
+      : sql`(EXISTS (SELECT 1 FROM approval_tasks t WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id
+          AND t.assignee_user_id=${userId}::uuid AND t.origin<>'self_skip')
+        OR EXISTS (SELECT 1 FROM approval_instance_ccs c WHERE c.tenant_id=i.tenant_id AND c.instance_id=i.id
+          AND c.user_id=${userId}::uuid))`;
   const rows = rowsOf(
     await tx.execute(sql`SELECT i.* FROM approval_instances i WHERE i.tenant_id=${tenantId} AND ${mine}
       ${filter.businessId ? sql`AND i.business_id=${filter.businessId}::uuid` : sql``}

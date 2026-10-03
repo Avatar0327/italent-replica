@@ -16,6 +16,7 @@ import {
 } from './store.js';
 import { loadSubset, saveSubset } from './subsets.js';
 import { subsetInput } from './validation.js';
+import { readEffectiveSetting } from '../tenant-settings/service.js';
 
 export interface ChangeInput {
   readonly employeeId: string;
@@ -54,8 +55,54 @@ export async function createChange(tx: Tx, ctx: PersonnelContext, input: ChangeI
     createdAt: ctx.now.toISOString(),
   };
   await insert(tx, 'personnel_change_requests', { ...row, values: JSON.stringify(row.values) });
+  await appendVersion(tx, ctx, row.employeeId, row.id, 1, row.values);
   await audit(tx, ctx, PERSONNEL_REQUEST_OBJECT, input.employeeId, row.id, 1, null, row);
   return row;
+}
+/** DEC-099：申请载荷按版本留存——首次提交为第 1 版，驳回后同单修正追加新版本。 */
+async function appendVersion(tx: Tx, ctx: PersonnelContext, employeeId: string, id: string, no: number, values: Row) {
+  await insert(tx, 'personnel_change_request_versions', {
+    id: randomUUID(),
+    tenantId: ctx.tenantId,
+    employeeId,
+    requestId: id,
+    versionNo: no,
+    values: JSON.stringify(values),
+    createdBy: ctx.userId,
+    commandId: ctx.commandId,
+    createdAt: ctx.now.toISOString(),
+  });
+}
+/**
+ * DEC-099：被驳回的员工信息变更由申请人在同一张单上修正，修正内容合并后追加为新版本、历史保留；
+ * 只由审批中心在发起人校验后同事务调用，字段仍受员工自助修改清单与子集校验约束。
+ */
+export async function correctChangeInTransaction(tx: Tx, ctx: PersonnelContext, id: string, corrections: Row) {
+  const initial = await loadChange(tx, ctx, id);
+  await lockPerson(tx, ctx, String(initial.employeeId));
+  const before = await loadChange(tx, ctx, id);
+  if (before.status !== 'pending_approval') throw new AppError('CONFLICT', '申请不在待审批状态');
+  if (String(before.createdBy) !== ctx.userId) throw new AppError('FORBIDDEN', '只有申请人可以修正申请');
+  const kind = before.subset as SubsetKind;
+  const setting = await readEffectiveSetting(tx, ctx.tenantId, 'personnel.self_service_fields');
+  const configured = (setting.value as Record<string, unknown>)[kind];
+  const allowed = new Set(
+    Array.isArray(configured) ? configured.filter((v): v is string => typeof v === 'string') : [],
+  );
+  if (Object.keys(corrections).some((field) => !allowed.has(field)))
+    throw new AppError('FORBIDDEN', '字段不在员工自助修改清单内');
+  // 申请行的载荷按 0021 设计不可改，修正只追加版本并推进 revision；生效值取最新版本（currentChangeValues）。
+  const values = { ...(await currentChangeValues(tx, ctx, id)), ...subsetInput(kind, corrections, true) };
+  const after = { ...before, values, revision: Number(before.revision) + 1 };
+  await update(
+    tx,
+    'personnel_change_requests',
+    { revision: after.revision },
+    sql`tenant_id=${ctx.tenantId} AND id=${id}::uuid`,
+  );
+  await appendVersion(tx, ctx, String(before.employeeId), id, after.revision, values);
+  await audit(tx, ctx, PERSONNEL_REQUEST_OBJECT, String(before.employeeId), id, after.revision, before, after);
+  return after;
 }
 export async function loadChange(tx: Tx, ctx: PersonnelContext, id: string) {
   const [row] = rows(
@@ -64,6 +111,15 @@ export async function loadChange(tx: Tx, ctx: PersonnelContext, id: string) {
   );
   if (!row) throw new AppError('NOT_FOUND', '个人信息变更申请不存在');
   return camel(row);
+}
+/** 申请当前生效的载荷：最新版本（DEC-099 同单修正后为修正值），无版本记录的旧申请取申请行。 */
+export async function currentChangeValues(tx: Tx, ctx: PersonnelContext, id: string): Promise<Row> {
+  const [latest] = rows(
+    await tx.execute(sql`SELECT values FROM personnel_change_request_versions
+    WHERE tenant_id=${ctx.tenantId} AND request_id=${id}::uuid ORDER BY version_no DESC LIMIT 1`),
+  );
+  if (latest) return latest.values as Row;
+  return (await loadChange(tx, ctx, id)).values as Row;
 }
 /**
  * 只由审批中心（R1-T07）在节点鉴权、非自审校验与审批决定持久化后同事务调用。
@@ -77,7 +133,7 @@ export async function applyApprovedChangeInTransaction(tx: Tx, ctx: PersonnelCon
   if (before.status !== 'pending_approval') throw new AppError('CONFLICT', '申请不在待审批状态');
   const kind = before.subset as SubsetKind;
   if (!Object.hasOwn(SUBSETS, kind)) throw new AppError('VALIDATION_FAILED', '申请子集不存在');
-  const values = subsetInput(kind, before.values, true);
+  const values = subsetInput(kind, await currentChangeValues(tx, ctx, id), true);
   const result = await saveSubset(
     tx,
     { ...ctx, expectedRevision: Number(before.targetRevision) },

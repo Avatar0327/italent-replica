@@ -1,5 +1,5 @@
 {
-  "id": "665d4469-cb6a-40fe-aab4-6f797a33f9d0",
+  "id": "df9f720a-df8a-42e0-9d30-4e3ada41bdad",
   "prevId": "21cbdf6c-9759-4a96-8d2b-e75ec21f96fa",
   "version": "7",
   "dialect": "postgresql",
@@ -2660,7 +2660,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'部门'"
+          "default": "'\u90e8\u95e8'"
         },
         "established_on": {
           "name": "established_on",
@@ -14258,6 +14258,121 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.personnel_change_request_versions": {
+      "name": "personnel_change_request_versions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_no": {
+          "name": "version_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "values": {
+          "name": "values",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "personnel_change_request_versions_tenant_id_tenants_id_fk": {
+          "name": "personnel_change_request_versions_tenant_id_tenants_id_fk",
+          "tableFrom": "personnel_change_request_versions",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "personnel_change_request_versions_request_fk": {
+          "name": "personnel_change_request_versions_request_fk",
+          "tableFrom": "personnel_change_request_versions",
+          "tableTo": "personnel_change_requests",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "request_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "personnel_change_request_versions_no": {
+          "name": "personnel_change_request_versions_no",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "request_id",
+            "version_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "personnel_change_request_versions_positive": {
+          "name": "personnel_change_request_versions_positive",
+          "value": "\"personnel_change_request_versions\".\"version_no\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.personnel_change_requests": {
       "name": "personnel_change_requests",
       "schema": "",
@@ -20353,6 +20468,174 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.approval_instance_ccs": {
+      "name": "approval_instance_ccs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "instance_id": {
+          "name": "instance_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_key": {
+          "name": "node_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comment": {
+          "name": "comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "approval_ccs_user": {
+          "name": "approval_ccs_user",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "approval_ccs_instance": {
+          "name": "approval_ccs_instance",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "instance_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "approval_instance_ccs_tenant_id_tenants_id_fk": {
+          "name": "approval_instance_ccs_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_instance_ccs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_ccs_instance_fk": {
+          "name": "approval_ccs_instance_fk",
+          "tableFrom": "approval_instance_ccs",
+          "tableTo": "approval_instances",
+          "columnsFrom": [
+            "tenant_id",
+            "instance_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_ccs_user_fk": {
+          "name": "approval_ccs_user_fk",
+          "tableFrom": "approval_instance_ccs",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.approval_instance_logs": {
       "name": "approval_instance_logs",
       "schema": "",
@@ -21116,7 +21399,7 @@
       "checkConstraints": {
         "approval_notifications_kind": {
           "name": "approval_notifications_kind",
-          "value": "\"approval_notifications\".\"kind\" IN ('todo','urge','message')"
+          "value": "\"approval_notifications\".\"kind\" IN ('todo','urge','message','cc')"
         },
         "approval_notifications_channel": {
           "name": "approval_notifications_channel",
@@ -21451,12 +21734,26 @@
           "notNull": true,
           "default": false
         },
-        "allow_urge": {
-          "name": "allow_urge",
+        "allow_copy_send": {
+          "name": "allow_copy_send",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": true
+          "default": false
+        },
+        "allow_retrieve": {
+          "name": "allow_retrieve",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "urge_mode": {
+          "name": "urge_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'inherit'"
         },
         "reject_comment_required": {
           "name": "reject_comment_required",
@@ -21577,6 +21874,10 @@
         "approval_nodes_seq_positive": {
           "name": "approval_nodes_seq_positive",
           "value": "\"approval_process_nodes\".\"seq\" > 0"
+        },
+        "approval_nodes_urge_mode": {
+          "name": "approval_nodes_urge_mode",
+          "value": "\"approval_process_nodes\".\"urge_mode\" IN ('inherit','enabled','disabled')"
         }
       },
       "isRLSEnabled": false
@@ -22213,11 +22514,11 @@
         },
         "approval_tasks_status": {
           "name": "approval_tasks_status",
-          "value": "\"approval_tasks\".\"status\" IN ('pending','approved','rejected','transferred','skipped','cancelled')"
+          "value": "\"approval_tasks\".\"status\" IN ('pending','approved','rejected','transferred','skipped','cancelled','add_signed')"
         },
         "approval_tasks_origin": {
           "name": "approval_tasks_origin",
-          "value": "\"approval_tasks\".\"origin\" IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',\n        'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',\n        'admin_intervene','blind_review','handover')"
+          "value": "\"approval_tasks\".\"origin\" IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',\n        'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',\n        'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve')"
         }
       },
       "isRLSEnabled": false

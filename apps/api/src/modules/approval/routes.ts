@@ -3,7 +3,7 @@
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
  */
 import { pgErrorCode, type Tx, withTenant } from '@italent/db';
-import { APPROVAL_PROCESS_OBJECT, APPROVAL_TYPES, APPROVER_EXPRESSIONS } from '@italent/domain';
+import { ADD_SIGN_TYPES, APPROVAL_PROCESS_OBJECT, APPROVAL_TYPES, APPROVER_EXPRESSIONS } from '@italent/domain';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { runCommand, type CommandResult } from '../../commands.js';
@@ -47,6 +47,7 @@ import {
   replaceDraft,
 } from './definitions.js';
 import { detailView, readDetail } from './disclosure.js';
+import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
 import { handoverExceptionAdmin } from './handover.js';
 import { listAdminLogs, listInstances, listNotifications, listTodos } from './queries.js';
@@ -350,19 +351,36 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return respondOutcome(c, deps, result);
     });
   }
-  const delegateSchema = (key: 'toUserId' | 'userId') => z.strictObject({ [key]: z.uuid(), comment });
-  for (const [path, key, act] of [
-    ['transfer', 'toUserId', transferTask],
-    ['add-sign', 'userId', addSign],
-  ] as const) {
-    router.post(`/tasks/:id/${path}`, async (c) => {
-      const ctx = writeCtx(c, deps);
-      const input = (await parseBody(c, delegateSchema(key))) as Record<string, string | null | undefined>;
-      const request = { taskId: uuidParam(c), userId: input[key]!, comment: input.comment ?? null };
-      const result = await command(c, deps, ctx, request, (tx, context) => act(tx, context, request));
-      return respondOutcome(c, deps, result);
-    });
-  }
+  router.post('/tasks/:id/transfer', async (c) => {
+    const ctx = writeCtx(c, deps);
+    const input = await parseBody(c, z.strictObject({ toUserId: z.uuid(), comment }));
+    const request = { taskId: uuidParam(c), userId: input.toUserId, comment: input.comment ?? null };
+    const result = await command(c, deps, ctx, request, (tx, context) => transferTask(tx, context, request));
+    return respondOutcome(c, deps, result);
+  });
+  router.post('/tasks/:id/add-sign', async (c) => {
+    const ctx = writeCtx(c, deps);
+    const taskId = uuidParam(c);
+    const input = await parseBody(c, z.strictObject({ userId: z.uuid(), type: z.enum(ADD_SIGN_TYPES), comment }));
+    // 后加签含本人的同意，盲审按本人字段权限判断（DEC-095）。
+    const viewable = await fieldRights(c, deps, taskId, undefined);
+    const request = { taskId, userId: input.userId, type: input.type, comment: input.comment ?? null };
+    const result = await command(c, deps, ctx, request, (tx, context) => addSign(tx, context, request, viewable));
+    return respondOutcome(c, deps, result);
+  });
+  router.post('/tasks/:id/cc', async (c) => {
+    const ctx = writeCtx(c, deps);
+    const input = await parseBody(c, z.strictObject({ userIds: z.array(z.uuid()).min(1).max(20), comment }));
+    const request = { taskId: uuidParam(c), userIds: input.userIds, comment: input.comment ?? null };
+    const result = await command(c, deps, ctx, request, (tx, context) => copySend(tx, context, request));
+    return respondOutcome(c, deps, result);
+  });
+  router.post('/tasks/:id/retrieve', async (c) => {
+    const ctx = writeCtx(c, deps);
+    const taskId = uuidParam(c);
+    const result = await command(c, deps, ctx, { taskId }, (tx, context) => retrieveTask(tx, context, taskId));
+    return respondOutcome(c, deps, result);
+  });
   router.post('/tasks/:id/edit', async (c) => {
     const ctx = writeCtx(c, deps);
     const taskId = uuidParam(c);
@@ -386,8 +404,15 @@ function registerInstanceRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
   const own: readonly [string, (tx: Tx, ctx: ApprovalContext, id: string) => Promise<Outcome>][] = [
     ['urge', urge],
     ['withdraw', withdraw],
-    ['resubmit', resubmit],
   ];
+  router.post('/instances/:id/resubmit', async (c) => {
+    const ctx = writeCtx(c, deps);
+    const id = uuidParam(c);
+    // DEC-099：员工信息变更可带修正内容在同一张单上重提。
+    const input = c.req.header('content-type') ? await parseBody(c, z.strictObject({ fields: fields.optional() })) : {};
+    const result = await command(c, deps, ctx, { id, input }, (tx, context) => resubmit(tx, context, id, input.fields));
+    return respondOutcome(c, deps, result);
+  });
   for (const [path, act] of own) {
     router.post(`/instances/:id/${path}`, async (c) => {
       const ctx = writeCtx(c, deps);

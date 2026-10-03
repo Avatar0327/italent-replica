@@ -9,7 +9,7 @@ export const MAX_TASKS = 500;
 export const MAX_LOGS = 1000;
 
 export type InstanceStatus = 'running' | 'returned' | 'approved' | 'withdrawn' | 'cancelled';
-export type TaskStatus = 'pending' | 'approved' | 'rejected' | 'transferred' | 'skipped' | 'cancelled';
+export type TaskStatus = 'pending' | 'approved' | 'rejected' | 'transferred' | 'skipped' | 'cancelled' | 'add_signed';
 
 export interface InstanceRow {
   readonly id: string;

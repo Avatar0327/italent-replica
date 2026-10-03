@@ -123,7 +123,9 @@ function nodeOf(row: Row, rules: Row[]): ApprovalNode {
     actions: {
       transfer: Boolean(row.allow_transfer),
       addSign: Boolean(row.allow_add_sign),
-      urge: Boolean(row.allow_urge),
+      copySend: Boolean(row.allow_copy_send),
+      retrieve: Boolean(row.allow_retrieve),
+      urge: row.urge_mode as ApprovalNode['actions']['urge'],
     },
     rejectCommentRequired: Boolean(row.reject_comment_required),
     commentPrivate: Boolean(row.comment_private),
@@ -244,12 +246,13 @@ async function writeVersionContent(tx: Tx, tenantId: string, id: string, definit
   for (const [index, node] of definition.nodes.entries()) {
     await tx.execute(sql`INSERT INTO approval_process_nodes
       (tenant_id,version_id,node_key,seq,name,approver_expression,no_assignee_policy,same_assignee_skip,
-       history_same_assignee_skip,form_fields,editable_fields,edit_mode,allow_transfer,allow_add_sign,allow_urge,
-       reject_comment_required,comment_private,reject_resubmit_mode)
+       history_same_assignee_skip,form_fields,editable_fields,edit_mode,allow_transfer,allow_add_sign,
+       allow_copy_send,allow_retrieve,urge_mode,reject_comment_required,comment_private,reject_resubmit_mode)
       VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${node.approver},${node.noAssignee},
         ${node.sameAssigneeSkip},${node.historySameAssigneeSkip},${textArray(node.formFields)},
         ${textArray(node.editableFields)},${node.editMode},${node.actions.transfer},${node.actions.addSign},
-        ${node.actions.urge},${node.rejectCommentRequired},${node.commentPrivate},${node.rejectResubmit})`);
+        ${node.actions.copySend},${node.actions.retrieve},${node.actions.urge},${node.rejectCommentRequired},
+        ${node.commentPrivate},${node.rejectResubmit})`);
     for (const [ruleIndex, rule] of node.messageRules.entries()) {
       await tx.execute(sql`INSERT INTO approval_node_message_rules
         (tenant_id,version_id,node_key,rule_no,trigger,channels,template_code,recipient)

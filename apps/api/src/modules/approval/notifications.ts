@@ -11,7 +11,7 @@ import type { InstanceRow } from './store.js';
 
 interface Notice {
   readonly recipientUserId: string;
-  readonly kind: 'todo' | 'urge' | 'message';
+  readonly kind: 'todo' | 'urge' | 'message' | 'cc';
   readonly channel: 'inbox' | 'email' | 'sms';
   readonly templateCode: string | null;
   readonly taskId: string | null;
@@ -28,6 +28,17 @@ export async function notifyTodo(tx: Tx, ctx: ApprovalContext, instance: Instanc
   await insertNotice(tx, ctx, instance, {
     recipientUserId: userId,
     kind: 'todo',
+    channel: 'inbox',
+    templateCode: null,
+    taskId,
+  });
+}
+
+/** DEC-097：抄送通知（站内）。 */
+export async function notifyCc(tx: Tx, ctx: ApprovalContext, instance: InstanceRow, taskId: string, userId: string) {
+  await insertNotice(tx, ctx, instance, {
+    recipientUserId: userId,
+    kind: 'cc',
     channel: 'inbox',
     templateCode: null,
     taskId,

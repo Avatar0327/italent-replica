@@ -49,7 +49,9 @@ describe('清单 20：抄送（DEC-097）', () => {
     expect(inbox.items).toEqual([expect.objectContaining({ kind: 'cc', instanceId: view.id })]);
     const ccView = await w.detail(view.id, payroll);
     expect(ccView.form).toMatchObject({ nodeKey: 'in_hrbp', values: { place: '新地点' } });
-    expect(ccView.actions).toEqual([]);
+    // 被抄送人只能查看，不能处理（夹具授权器放行管理员按钮，所以只断言审批动作）。
+    expect(ccView.actions).not.toEqual(expect.arrayContaining(['approve']));
+    expect(ccView.actions).not.toContain('reject');
   });
 });
 

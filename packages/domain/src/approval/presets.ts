@@ -37,7 +37,7 @@ const node = (key: string, name: string, approver: ApprovalNode['approver'], ext
     formFields: TRANSFER_FORM,
     editableFields: [],
     editMode: 'none',
-    actions: { transfer: false, addSign: false, urge: true },
+    actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' },
     rejectCommentRequired: false,
     commentPrivate: false,
     rejectResubmit: 'restart',
@@ -66,7 +66,7 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
         node('out_head', '调出部门负责人审批', 'latest_record_department_head'),
         node('in_hrbp', '调入部门HRBP审核', 'record_department_hrbp', {
           historySameAssigneeSkip: false,
-          actions: { transfer: true, addSign: true, urge: true },
+          actions: { transfer: true, addSign: true, copySend: true, retrieve: true, urge: 'inherit' },
           rejectResubmit: 'rejecting_node',
           messageRules: [
             {

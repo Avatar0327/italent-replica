@@ -3,7 +3,7 @@
  * 管理员只能转交或干预，不得代签（DEC-063），转交给自己须填理由并醒目标注（DEC-070）；盲审转异常管理员（DEC-069）。
  */
 import { sql, type Tx } from '@italent/db';
-import type { ApprovalNode } from '@italent/domain';
+import type { AddSignType, ApprovalNode } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { ErrorBody } from '../../errors.js';
@@ -31,6 +31,7 @@ import {
   type Run,
 } from './engine.js';
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
+import { urgeOpen } from './rules.js';
 import { userOfPerson } from './resolver.js';
 import { appendLog, cancelPending, closeTask, insertTask, instanceOfTask, loadTasks, type TaskRow } from './store.js';
 
@@ -39,15 +40,15 @@ export interface Outcome {
   readonly body: { readonly instanceId: string } | ErrorBody;
 }
 
-const ok = (run: Run): Outcome => ({ status: 200, body: { instanceId: run.instance.id } });
+export const ok = (run: Run): Outcome => ({ status: 200, body: { instanceId: run.instance.id } });
 
-interface TaskScene {
+export interface TaskScene {
   readonly run: Run;
   readonly task: TaskRow;
   readonly node: ApprovalNode;
 }
 
-async function openTask(tx: Tx, ctx: ApprovalContext, taskId: string): Promise<TaskScene> {
+export async function openTask(tx: Tx, ctx: ApprovalContext, taskId: string): Promise<TaskScene> {
   const run = await openRun(tx, ctx, await instanceOfTask(tx, ctx.tenantId, taskId));
   const task = (await loadTasks(tx, ctx.tenantId, run.instance.id)).find((candidate) => candidate.id === taskId)!;
   // DEC-063：只有被分配任务的人能处理；管理员须先转交（DEC-070），不能以他人名义审批。
@@ -56,7 +57,7 @@ async function openTask(tx: Tx, ctx: ApprovalContext, taskId: string): Promise<T
   return { run, task, node: run.version.nodes[nodeIndex(run, task.nodeKey)]! };
 }
 
-function assertOpen(scene: TaskScene, ctx: ApprovalContext): void {
+export function assertOpen(scene: TaskScene, ctx: ApprovalContext): void {
   assertRevision(ctx.expectedRevision, scene.run.instance.revision);
   if (scene.run.instance.status !== 'running' || scene.task.status !== 'pending') {
     throw approvalError('CONFLICT', 'APPROVAL_TASK_CLOSED', '该任务已处理或流程已结束');
@@ -202,7 +203,9 @@ export async function approveTask(
     { status: 'approved', comment: input.comment },
   );
   await applyMessageRules(tx, ctx, run.instance, node, 'approve', task);
-  await afterNodeApproved(tx, run, task.nodeKey);
+  // DEC-095 前加签：被加签人同意后回到加签发起人，本节点继续等待。
+  if (task.origin === 'add_sign_before') await returnToAddSigner(tx, run, task);
+  else await afterNodeApproved(tx, run, task.nodeKey);
   run.events.push('approval.task.approved');
   await persistRun(
     tx,
@@ -294,21 +297,72 @@ export async function transferTask(tx: Tx, ctx: ApprovalContext, input: Delegate
   return ok(run);
 }
 
-export async function addSign(tx: Tx, ctx: ApprovalContext, input: DelegateInput): Promise<Outcome> {
+export interface AddSignInput extends DelegateInput {
+  readonly type: AddSignType;
+}
+
+/**
+ * DEC-095 加签：前加签 = 本人任务挂起（add_signed），被加签人先审、同意后回到本人；后加签 = 本人同意后再由被加签人审。
+ * 任一加签人驳回即整单驳回（驳回本就退回整单）。TODO(需取证 Q-M0-46)：原站前 / 后加签的确切流转待核对后照搬。
+ */
+export async function addSign(
+  tx: Tx,
+  ctx: ApprovalContext,
+  input: AddSignInput,
+  viewable: ReadonlySet<string> | undefined,
+): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
   assertOpen(scene, ctx);
   const { run, task, node } = scene;
   if (!node.actions.addSign) throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '本节点未开启加签');
+  if (input.userId === ctx.userId) throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '不能加签给自己');
   await assertReviewer(tx, run, input.userId);
-  const tasks = await loadTasks(tx, ctx.tenantId, run.instance.id);
-  if (tasks.some((t) => t.nodeKey === task.nodeKey && t.status === 'pending' && t.assigneeUserId === input.userId)) {
-    throw approvalError('CONFLICT', 'APPROVAL_ALREADY_ASSIGNED', '该用户已在本节点审批');
+  if (input.type === 'after') {
+    // 后加签包含本人的同意：照常做盲审与自审校验。
+    const blocked = await blindReview(tx, scene, viewable);
+    if (blocked) return blocked;
+    await assertNotSelf(tx, run, ctx.userId);
   }
-  // TODO(需取证 Q-M0-41)：原站加签的类型（前加签 / 后加签 / 并加签）未取证；首版按“同节点全部同意才通过”。
-  const next = await delegate(tx, run, task, input.userId, 'add_sign', { comment: input.comment });
-  await auditDelegation(tx, run, 'approval.task.add_sign', task, next, input, 'pending');
+  const status = input.type === 'after' ? 'approved' : 'add_signed';
+  await closeTask(tx, ctx, task.id, status, input.comment);
+  if (input.type === 'after') {
+    await appendLog(tx, ctx, run.instance, {
+      event: 'approve',
+      nodeKey: task.nodeKey,
+      taskId: task.id,
+      adminSelfTransfer: task.adminSelfTransfer,
+      detail: { comment: input.comment, addSign: 'after' },
+    });
+    await applyMessageRules(tx, ctx, run.instance, node, 'approve', task);
+  }
+  const origin = input.type === 'after' ? 'add_sign_after' : 'add_sign_before';
+  const next = await delegate(tx, run, task, input.userId, origin, { comment: input.comment, type: input.type });
+  await auditDelegation(tx, run, 'approval.task.add_sign', task, next, input, status);
   await persistRun(tx, run, 'approval.instance.add_sign');
   return ok(run);
+}
+
+/** 前加签的被加签人同意后，给加签发起人新建本节点待办（DEC-095）。 */
+async function returnToAddSigner(tx: Tx, run: Run, approved: TaskRow): Promise<void> {
+  const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
+  const signer = tasks.find((candidate) => candidate.id === approved.parentTaskId);
+  if (!signer?.assigneeUserId) throw approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_TASK_CHAIN', '加签任务链不完整');
+  const next = await insertTask(tx, run.ctx, run.instance.id, {
+    round: run.instance.round,
+    nodeKey: approved.nodeKey,
+    assigneeUserId: signer.assigneeUserId,
+    origin: 'add_sign_return',
+    status: 'pending',
+    isExceptionAdmin: signer.isExceptionAdmin,
+    parentTaskId: approved.id,
+  });
+  await appendLog(tx, run.ctx, run.instance, {
+    event: 'add_sign_return',
+    nodeKey: approved.nodeKey,
+    taskId: next,
+    detail: { toUserId: signer.assigneeUserId },
+  });
+  await notifyTodo(tx, run.ctx, run.instance, next, signer.assigneeUserId);
 }
 
 /** 转交 / 加签与同意 / 驳回一样写任务审计：原任务状态、原 / 新审批人、新任务与意见（AGENTS §10「审计」）。 */
@@ -319,7 +373,7 @@ async function auditDelegation(
   from: TaskRow,
   next: string,
   input: DelegateInput,
-  taskStatus: 'transferred' | 'pending',
+  taskStatus: 'transferred' | 'approved' | 'add_signed',
 ): Promise<void> {
   await auditTask(
     tx,
@@ -333,7 +387,8 @@ async function auditDelegation(
 /** 每次改派都写 outbox，通知处理器按游标消费（AGENTS §10「事件」）。 */
 const DELEGATION_EVENTS = {
   transfer: 'approval.task.transferred',
-  add_sign: 'approval.task.add_signed',
+  add_sign_before: 'approval.task.add_signed',
+  add_sign_after: 'approval.task.add_signed',
   admin_transfer: 'approval.task.transferred',
   admin_intervene: 'approval.task.reassigned',
 } as const;
@@ -343,7 +398,7 @@ async function delegate(
   run: Run,
   from: TaskRow,
   userId: string,
-  origin: 'transfer' | 'add_sign' | 'admin_transfer' | 'admin_intervene',
+  origin: keyof typeof DELEGATION_EVENTS,
   detail: Row,
   adminSelfTransfer = false,
 ): Promise<string> {
@@ -397,7 +452,7 @@ async function openOwn(tx: Tx, ctx: ApprovalContext, instanceId: string): Promis
 export async function urge(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<Outcome> {
   const run = await openOwn(tx, ctx, instanceId);
   const node = run.version.nodes.find((candidate) => candidate.key === run.instance.currentNodeKey);
-  if (run.instance.status !== 'running' || !run.version.urgeEnabled || !node?.actions.urge) {
+  if (!node || !urgeOpen(run.instance, run.version)) {
     throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '当前节点不允许催办');
   }
   await assertUrgeInterval(tx, run);
@@ -472,9 +527,15 @@ export async function cancel(tx: Tx, ctx: ApprovalContext, instanceId: string): 
   await persistRun(tx, run, 'approval.instance.cancel');
 }
 
-export async function resubmit(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<Outcome> {
+export async function resubmit(tx: Tx, ctx: ApprovalContext, instanceId: string, corrections?: Row): Promise<Outcome> {
   const run = await openOwn(tx, ctx, instanceId);
-  await ADAPTERS[run.instance.businessType].resubmitted(tx, ctx, run.instance.businessId);
+  if (run.instance.status !== 'returned')
+    throw approvalError('CONFLICT', 'APPROVAL_NOT_RETURNED', '只有被驳回的申请可以重提');
+  const adapter = ADAPTERS[run.instance.businessType];
+  // DEC-099：被驳回的单据可在同一张单上修正后重提，修正追加为业务侧的新版本。
+  if (corrections && Object.keys(corrections).length)
+    await adapter.correct(tx, ctx, run.instance.businessId, corrections);
+  await adapter.resubmitted(tx, ctx, run.instance.businessId);
   // DEC-093：重提与业务入口一样，改了发起条件字段时重新匹配流程。
   const saved = await startOrResume(tx, ctx, {
     businessType: run.instance.businessType,

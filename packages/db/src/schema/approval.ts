@@ -155,7 +155,11 @@ export const approvalProcessNodes = pgTable(
     editMode: text('edit_mode').notNull().default('none'),
     allowTransfer: boolean('allow_transfer').notNull().default(false),
     allowAddSign: boolean('allow_add_sign').notNull().default(false),
-    allowUrge: boolean('allow_urge').notNull().default(true),
+    /** DEC-097：抄送、审批人撤回随版本冻结。 */
+    allowCopySend: boolean('allow_copy_send').notNull().default(false),
+    allowRetrieve: boolean('allow_retrieve').notNull().default(false),
+    /** X-15：节点催办 继承 / 开启 / 关闭。 */
+    urgeMode: text('urge_mode').notNull().default('inherit'),
     rejectCommentRequired: boolean('reject_comment_required').notNull().default(false),
     /** DEC-100：意见仅本节点与发起人可见（出厂关 = 默认公开）。 */
     commentPrivate: boolean('comment_private').notNull().default(false),
@@ -184,6 +188,7 @@ export const approvalProcessNodes = pgTable(
     check('approval_nodes_edit_mode', sql`${t.editMode} IN ('none','separate','with_approve')`),
     check('approval_nodes_resubmit', sql`${t.rejectResubmitMode} IN ('restart','rejecting_node')`),
     check('approval_nodes_seq_positive', sql`${t.seq} > 0`),
+    check('approval_nodes_urge_mode', sql`${t.urgeMode} IN ('inherit','enabled','disabled')`),
   ],
 );
 
@@ -308,13 +313,13 @@ export const approvalTasks = pgTable(
     check('approval_tasks_pending_assignee', sql`${t.status} <> 'pending' OR ${t.assigneeUserId} IS NOT NULL`),
     check(
       'approval_tasks_status',
-      sql`${t.status} IN ('pending','approved','rejected','transferred','skipped','cancelled')`,
+      sql`${t.status} IN ('pending','approved','rejected','transferred','skipped','cancelled','add_signed')`,
     ),
     check(
       'approval_tasks_origin',
       sql`${t.origin} IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',
         'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',
-        'admin_intervene','blind_review','handover')`,
+        'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve')`,
     ),
   ],
 );
@@ -371,9 +376,36 @@ export const approvalNotifications = pgTable(
       foreignColumns: [approvalInstances.tenantId, approvalInstances.id],
     }),
     memberFk('approval_notifications_recipient_fk', t.tenantId, t.recipientUserId),
-    check('approval_notifications_kind', sql`${t.kind} IN ('todo','urge','message')`),
+    check('approval_notifications_kind', sql`${t.kind} IN ('todo','urge','message','cc')`),
     check('approval_notifications_channel', sql`${t.channel} IN ('inbox','email','sms')`),
     check('approval_notifications_status', sql`${t.status} IN ('pending','sent','failed','unknown')`),
+  ],
+);
+
+/** 抄送记录（DEC-097）：被抄送人凭此成为参与人，只看抄送节点的表单字段（DEC-057）。 */
+export const approvalInstanceCcs = pgTable(
+  'approval_instance_ccs',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    instanceId: uuid('instance_id').notNull(),
+    nodeKey: text('node_key').notNull(),
+    taskId: uuid('task_id').notNull(),
+    userId: uuid('user_id').notNull(),
+    comment: text('comment'),
+    createdBy: uuid('created_by').notNull(),
+    commandId: text('command_id').notNull(),
+    createdAt: utc('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    index('approval_ccs_user').on(t.tenantId, t.userId, t.createdAt),
+    index('approval_ccs_instance').on(t.tenantId, t.instanceId),
+    foreignKey({
+      name: 'approval_ccs_instance_fk',
+      columns: [t.tenantId, t.instanceId],
+      foreignColumns: [approvalInstances.tenantId, approvalInstances.id],
+    }),
+    memberFk('approval_ccs_user_fk', t.tenantId, t.userId),
   ],
 );
 

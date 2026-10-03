@@ -12,6 +12,7 @@ import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
 import { rowsOf, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import { userOfPerson } from './resolver.js';
+import { retrievableTask, urgeOpen } from './rules.js';
 import { loadInstance, loadLogs, loadTasks, type InstanceRow, type TaskRow } from './store.js';
 
 export const SHOW_ORIGINALS_SETTING = 'approval.show_original_values';
@@ -31,6 +32,8 @@ export interface DetailData {
   readonly showOriginals: boolean;
   readonly isAdmin: boolean;
   readonly subjectUserId: string | null;
+  /** 查看人被抄送的节点（DEC-097）：被抄送人只看该节点的表单。 */
+  readonly ccNodeKey: string | null;
 }
 
 export function blindFields(snapshot: BusinessSnapshot, viewable: ReadonlySet<string> | undefined): string[] {
@@ -56,8 +59,10 @@ export async function readDetail(
   const instance = await loadInstance(tx, ctx.tenantId, instanceId);
   const tasks = await loadTasks(tx, ctx.tenantId, instanceId);
   // C-非3：被自审跳过的人只是留痕，不因此成为参与人。
+  const ccNodeKey = await ccNodeOf(tx, ctx.tenantId, instanceId, viewer.userId);
   const participant =
     instance.initiatorUserId === viewer.userId ||
+    ccNodeKey !== null ||
     tasks.some((task) => task.assigneeUserId === viewer.userId && task.origin !== 'self_skip');
   const isAdmin = await adminCovers(tx, ctx.tenantId, instanceId, viewer.adminScope);
   if (!participant && !isAdmin) throw new AppError('NOT_FOUND', '审批实例不存在');
@@ -71,12 +76,27 @@ export async function readDetail(
     showOriginals: setting.value === true,
     isAdmin,
     subjectUserId: await userOfPerson(tx, ctx.tenantId, instance.subjectEmployeeId),
+    ccNodeKey,
   };
+}
+
+async function ccNodeOf(tx: Tx, tenantId: string, instanceId: string, userId: string): Promise<string | null> {
+  const [row] = rowsOf<{ node_key: string }>(
+    await tx.execute(sql`SELECT node_key FROM approval_instance_ccs
+      WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid AND user_id=${userId}::uuid
+      ORDER BY created_at DESC LIMIT 1`),
+  );
+  return row?.node_key ?? null;
 }
 
 function viewerNode(data: DetailData, userId: string): ApprovalNode | null {
   const own = data.tasks.filter((task) => task.assigneeUserId === userId && task.origin !== 'self_skip').at(-1);
-  const key = own?.nodeKey ?? data.instance.currentNodeKey ?? data.tasks.at(-1)?.nodeKey ?? data.version.nodes[0]?.key;
+  const key =
+    own?.nodeKey ??
+    data.ccNodeKey ??
+    data.instance.currentNodeKey ??
+    data.tasks.at(-1)?.nodeKey ??
+    data.version.nodes[0]?.key;
   return data.version.nodes.find((node) => node.key === key) ?? null;
 }
 
@@ -99,11 +119,14 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
     if (node.actions.transfer || mine.isExceptionAdmin) actions.push('transfer');
     if (decide && node.actions.addSign) actions.push('addSign');
     if (decide && node.editMode === 'separate') actions.push('edit');
+    if (node.actions.copySend) actions.push('cc');
   }
+  if (retrievableTask(instance, version, data.tasks, userId)) actions.push('retrieve');
   if (instance.initiatorUserId === userId && ['running', 'returned'].includes(instance.status)) {
     actions.push('withdraw');
-    if (instance.status === 'returned') actions.push('resubmit');
-    if (running && version.urgeEnabled && node?.actions.urge) actions.push('urge');
+    // X-16：任职申请只能在申请单上修改后提交，审批侧不公布执行不了的“重提”。
+    if (instance.status === 'returned' && instance.businessType === 'personnel_change') actions.push('resubmit');
+    if (urgeOpen(instance, version)) actions.push('urge');
   }
   if (running && data.isAdmin) actions.push('adminTransfer', 'adminIntervene');
   return actions;

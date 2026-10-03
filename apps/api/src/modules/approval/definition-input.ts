@@ -10,6 +10,7 @@ import {
   MESSAGE_TRIGGERS,
   NO_ASSIGNEE_POLICIES,
   REJECT_RESUBMIT_MODES,
+  URGE_MODES,
   APPROVAL_TYPES,
   type ApprovalTypeCode,
   type ProcessDefinition,
@@ -42,9 +43,11 @@ const node = z.strictObject({
     .strictObject({
       transfer: z.boolean().default(false),
       addSign: z.boolean().default(false),
-      urge: z.boolean().default(true),
+      copySend: z.boolean().default(false),
+      retrieve: z.boolean().default(false),
+      urge: z.enum(URGE_MODES).default('inherit'),
     })
-    .default({ transfer: false, addSign: false, urge: true }),
+    .default({ transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' }),
   rejectCommentRequired: z.boolean().default(false),
   commentPrivate: z.boolean().default(false),
   rejectResubmit: z.enum(REJECT_RESUBMIT_MODES).default('restart'),

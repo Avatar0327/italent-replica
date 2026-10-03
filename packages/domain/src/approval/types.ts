@@ -42,10 +42,28 @@ export interface MessageRule {
   readonly recipient: (typeof MESSAGE_RECIPIENTS)[number];
 }
 
+/** 节点催办：继承流程设置 / 本节点开启 / 本节点关闭（X-15，`14` 节点动作覆盖流程级“催办设置”）。 */
+export const URGE_MODES = ['inherit', 'enabled', 'disabled'] as const;
+export type UrgeMode = (typeof URGE_MODES)[number];
+
+/** 加签类型（DEC-095）：前加签 = 被加签人先审、再回到本人；后加签 = 本人同意后再由被加签人审。 */
+export const ADD_SIGN_TYPES = ['before', 'after'] as const;
+export type AddSignType = (typeof ADD_SIGN_TYPES)[number];
+
+/** 节点动作开关集（`14` §8.2：抄送 / 转交 / 撤回 / 加签 / 催办），随流程版本冻结（DEC-097）。 */
 export interface NodeActions {
   readonly transfer: boolean;
   readonly addSign: boolean;
-  readonly urge: boolean;
+  /** 抄送：审批人手动选人抄送（`isCopySend`，原站无固定抄送对象清单）。 */
+  readonly copySend: boolean;
+  /** 审批人撤回：下一节点尚未处理时撤回本人的同意（`isRetrieve`）。 */
+  readonly retrieve: boolean;
+  readonly urge: UrgeMode;
+}
+
+/** 节点最终是否允许催办：节点开启 / 关闭覆盖流程设置，继承时取流程设置（X-15）。 */
+export function urgeAllowed(processUrgeEnabled: boolean, node: Pick<ApprovalNode, 'actions'>): boolean {
+  return node.actions.urge === 'inherit' ? processUrgeEnabled : node.actions.urge === 'enabled';
 }
 
 export interface ApprovalNode {

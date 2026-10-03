@@ -18,6 +18,8 @@ import { PRESET_FIELD_NAMES, type PresetFields } from '../employment/types.js';
 import { updateEmploymentBusiness } from '../employment/write-service.js';
 import {
   applyApprovedChangeInTransaction,
+  correctChangeInTransaction,
+  currentChangeValues,
   loadChange,
   withdrawChangeInTransaction,
 } from '../personnel/change-requests.js';
@@ -62,6 +64,8 @@ export interface BusinessAdapter {
   /** 审批侧发起的同单重提（任职申请经任职模块的“提交”重提）。 */
   resubmitted(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   edit(tx: Tx, ctx: ApprovalContext, businessId: string, fields: Readonly<Row>): Promise<void>;
+  /** DEC-099：被驳回后由发起人在同一张单上修正（追加业务侧新版本）。 */
+  correct(tx: Tx, ctx: ApprovalContext, businessId: string, fields: Readonly<Row>): Promise<void>;
 }
 
 const same = (left: unknown, right: unknown) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
@@ -221,6 +225,9 @@ const employmentAdapter: BusinessAdapter = {
   resubmitted: () => {
     throw approvalError('CONFLICT', 'APPROVAL_RESUBMIT_VIA_BUSINESS', '任职申请请在申请单上修改后重新提交');
   },
+  correct: () => {
+    throw approvalError('CONFLICT', 'APPROVAL_RESUBMIT_VIA_BUSINESS', '任职申请请在申请单上修改后重新提交');
+  },
   async edit(tx, ctx, id, input) {
     const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
     await updateEmploymentBusiness(tx, { ...ctx, expectedRevision }, id, employmentPatch(input), {
@@ -236,6 +243,28 @@ async function personnelChange(tx: Tx, ctx: ApprovalContext, id: string) {
   return { change, subset };
 }
 
+/** 子集历史版本（含已删除记录的版本链），按记录 ID 与 revision 定位。 */
+async function subsetVersion(
+  tx: Tx,
+  tenantId: string,
+  employeeId: string,
+  subset: SubsetKind,
+  recordId: string,
+  revision: number,
+): Promise<Row | null> {
+  const [raw] = rowsOf<Row>(
+    await tx.execute(sql`SELECT * FROM ${sql.identifier(`${SUBSETS[subset].table}_versions`)}
+      WHERE tenant_id=${tenantId} AND employee_id=${employeeId}::uuid AND record_id=${recordId}::uuid
+        AND revision=${revision} LIMIT 1`),
+  );
+  return raw ? camelRow(raw) : null;
+}
+
+const camelRow = (row: Row): Row =>
+  Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()), value]),
+  );
+
 const personnelAdapter: BusinessAdapter = {
   async lock(tx, ctx, businessId) {
     const { change } = await personnelChange(tx, ctx, businessId);
@@ -244,9 +273,17 @@ const personnelAdapter: BusinessAdapter = {
   async snapshot(tx, ctx, businessId) {
     const { change, subset } = await personnelChange(tx, ctx, businessId);
     const employeeId = String(change.employeeId);
-    const values = change.values as Row;
+    const values = await currentChangeValues(tx, { ...ctx, expectedRevision: 0 }, businessId);
+    // 清单 9：原值取申请所针对的那一版（targetRevision），不随审批落地或源记录删除而漂移 / 失败。
     const record = change.recordId
-      ? await loadSubset(tx, { ...ctx, expectedRevision: 0 }, employeeId, subset, String(change.recordId))
+      ? await subsetVersion(
+          tx,
+          ctx.tenantId,
+          employeeId,
+          subset,
+          String(change.recordId),
+          Number(change.targetRevision),
+        )
       : null;
     const originals = record ? Object.fromEntries(Object.keys(values).map((key) => [key, record[key] ?? null])) : null;
     const employee = await employeeHeader(tx, ctx.tenantId, employeeId);
@@ -276,7 +313,20 @@ const personnelAdapter: BusinessAdapter = {
     };
   },
   async approved(tx, ctx, id) {
-    const { change } = await personnelChange(tx, ctx, id);
+    const { change, subset } = await personnelChange(tx, ctx, id);
+    if (change.recordId) {
+      const live = await loadSubset(
+        tx,
+        { ...ctx, expectedRevision: 0 },
+        String(change.employeeId),
+        subset,
+        String(change.recordId),
+        true,
+      ).catch(() => null);
+      if (!live || live.deleted || Number(live.revision) !== Number(change.targetRevision)) {
+        throw approvalError('CONFLICT', 'APPROVAL_BUSINESS_CONFLICT', '申请针对的记录已被修改或删除，请撤回后重新申请');
+      }
+    }
     await applyApprovedChangeInTransaction(tx, { ...ctx, expectedRevision: Number(change.revision) }, id);
   },
   // 驳回到发起人：申请保持待审批，可在同一实例上重提或撤回（DEC-053）。
@@ -285,6 +335,9 @@ const personnelAdapter: BusinessAdapter = {
     await withdrawChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id);
   },
   resubmitted: async () => undefined,
+  async correct(tx, ctx, id, fields) {
+    await correctChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id, fields);
+  },
   edit: () => {
     // TODO(需取证 Q-M0-40)：员工子集变更审批节点上的“审批中编辑”字段与落地口径未取证，首版不开放。
     throw approvalError('CONFLICT', 'APPROVAL_EDIT_UNSUPPORTED', '该审批类型暂不支持审批中编辑');

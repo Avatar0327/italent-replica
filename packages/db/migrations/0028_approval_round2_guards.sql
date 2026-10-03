@@ -18,3 +18,12 @@ END $$;
 --> statement-breakpoint
 CREATE TRIGGER "approval_guard_exception_admin_revoke" BEFORE UPDATE OF "status" ON "tenant_memberships"
   FOR EACH ROW EXECUTE FUNCTION approval_guard_exception_admin_revoke();
+--> statement-breakpoint
+-- DEC-097 抄送记录、DEC-099 员工信息变更申请版本：租户隔离 + 只追加（应用角色只有查询与新增权限）。
+SELECT enable_tenant_isolation('approval_instance_ccs');
+--> statement-breakpoint
+GRANT SELECT, INSERT ON "approval_instance_ccs" TO app_user;
+--> statement-breakpoint
+SELECT enable_tenant_isolation('personnel_change_request_versions');
+--> statement-breakpoint
+GRANT SELECT, INSERT ON "personnel_change_request_versions" TO app_user;
