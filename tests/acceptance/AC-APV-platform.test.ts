@@ -119,6 +119,69 @@ describe('转交 / 加签写统一审计与 outbox（AGENTS §10）', () => {
   });
 });
 
+describe('清单 12 / 13：任务创建、自动跳过、取消写统一审计；跳转与编辑写 outbox', () => {
+  it('每个任务的创建（含自动跳过）与取消都按任务 ID 写字段级审计', async () => {
+    const w = await approvalWorld(database().db, 'apv-task-audit');
+    const s = await transferScene(w);
+    await w.setOrgRoles(s.to, { head: s.outHead.employeeId });
+    await w.publishedProcess({
+      nodes: [TRANSFER_NODES[0]!, { ...TRANSFER_NODES[2]!, sameAssigneeSkip: true }, TRANSFER_NODES[1]!],
+    });
+    let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    view = await w.json<InstanceView>(
+      await w.taskAction(s.outHead.userId, view.tasks[0]!.id, 'approve', view.revision),
+    );
+    view = await w.json<InstanceView>(await w.instanceAction(w.hr.id, view.id, 'withdraw', view.revision));
+    const audits = await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.select().from(auditEvents).where(eq(auditEvents.objectType, 'approval-task')),
+    );
+    const of = (taskId: string, action: string) => audits.find((a) => a.objectId === taskId && a.action === action);
+    const [first, skipped, last] = view.tasks;
+    expect(of(first!.id, 'approval.task.create')).toMatchObject({
+      before: null,
+      after: expect.objectContaining({ status: 'pending', assigneeUserId: s.outHead.userId, nodeKey: 'out_head' }),
+    });
+    expect(of(skipped!.id, 'approval.task.create')).toMatchObject({
+      after: expect.objectContaining({ status: 'skipped', origin: 'same_skip', assigneeUserId: s.outHead.userId }),
+    });
+    expect(of(last!.id, 'approval.task.cancel')).toMatchObject({
+      before: { status: 'pending' },
+      after: { status: 'cancelled' },
+    });
+  });
+
+  it('管理员跳转与审批中编辑都写领域事件', async () => {
+    const w = await approvalWorld(database().db, 'apv-jump-outbox');
+    const s = await transferScene(w);
+    const admin = await w.member('流程管理员');
+    await w.publishedProcess({
+      nodes: [
+        { ...TRANSFER_NODES[0]!, formFields: ['place'], editableFields: ['place'], editMode: 'separate' },
+        TRANSFER_NODES[2]!,
+      ],
+    });
+    let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    view = await w.json<InstanceView>(
+      await w.taskAction(s.outHead.userId, view.tasks[0]!.id, 'edit', view.revision, { fields: { place: '新' } }),
+    );
+    view = await w.json<InstanceView>(
+      await w.instanceAction(admin, view.id, 'admin-intervene', view.revision, {
+        kind: 'jump',
+        toNodeKey: 'in_head',
+        reason: '跳过调出负责人',
+      }),
+    );
+    const outbox = await withTenant(w.db, w.tenant.id, async (tx) =>
+      rowsOf<{ event_type: string }>(
+        await tx.execute(sql`SELECT event_type FROM approval_outbox WHERE object_id=${view.id}::uuid`),
+      ),
+    );
+    expect(outbox.map((row) => row.event_type)).toEqual(
+      expect.arrayContaining(['approval.instance.edited', 'approval.instance.jumped']),
+    );
+  });
+});
+
 describe('权限目录（DEC-080）', () => {
   it('审批中心对象登记真实字段与按钮', () => {
     expect(objectCatalog.get('TenantBase.ApprovalProcess')?.buttons.map((b) => b.code)).toEqual(

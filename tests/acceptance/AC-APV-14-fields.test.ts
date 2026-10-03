@@ -4,6 +4,7 @@
  * 4 编辑并同意后按新快照重新盲审；5 同人自动跳过前也做盲审；C-非4 异常管理员本人也看不到变化字段时不循环建任务；
  * X-13 用户可见日志按字段权限投影。
  */
+import { auditEvents, eq, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import {
@@ -274,5 +275,13 @@ describe('C-非4 / X-13：异常管理员本人也看不到变化字段；日志
     expect(current(view).id).toBe(adminTask.id);
     const blindLog = view.logs.find((log) => log.event === 'blind_review_exception_admin')!;
     expect(blindLog.detail.fields).toEqual([]);
+    // 清单 12 / A-2：盲审转交像普通转交一样写统一字段级审计。
+    const audits = await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.select().from(auditEvents).where(eq(auditEvents.objectId, instance.id)),
+    );
+    expect(audits.find((a) => a.action === 'approval.task.blind_review')).toMatchObject({
+      before: expect.objectContaining({ taskStatus: 'pending', assigneeUserId: s.outHead.userId }),
+      after: expect.objectContaining({ taskStatus: 'transferred', assigneeUserId: w.exceptionAdmin }),
+    });
   });
 });

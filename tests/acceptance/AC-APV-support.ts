@@ -41,6 +41,8 @@ export interface NodeInput {
   readonly editMode?: 'none' | 'separate' | 'with_approve';
   readonly actions?: { readonly transfer?: boolean; readonly addSign?: boolean; readonly urge?: boolean };
   readonly rejectCommentRequired?: boolean;
+  /** DEC-100：意见仅本节点与发起人可见（出厂关 = 默认公开）。 */
+  readonly commentPrivate?: boolean;
   readonly rejectResubmit?: 'restart' | 'rejecting_node';
   readonly messageRules?: readonly {
     trigger: string;
@@ -127,6 +129,8 @@ export interface InstanceView {
   readonly logs: LogView[];
   readonly form: { nodeKey: string | null; values: Record<string, unknown>; originals?: Record<string, unknown> };
   readonly actions: string[];
+  readonly title: string;
+  readonly commentNotice?: string;
 }
 
 export interface Person {

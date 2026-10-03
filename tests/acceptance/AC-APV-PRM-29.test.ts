@@ -8,12 +8,19 @@ import {
   approvalWorld,
   grantVisibleFields,
   permissionAdmin,
+  TRANSFER_NODES,
   transferScene,
   type InstanceView,
 } from './AC-APV-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
+
+function current(view: InstanceView) {
+  const tasks = view.tasks.filter((task) => task.status === 'pending');
+  expect(tasks).toHaveLength(1);
+  return tasks[0]!;
+}
 
 describe('AC-PRM-29 审批人最小披露', () => {
   it('B 只看本节点表单字段（且按字段权限裁剪），对员工档案 / 履历 / 子集 / 附件的请求按无数据权限处理', async () => {
@@ -80,5 +87,40 @@ describe('AC-PRM-29 审批人最小披露', () => {
     expect((await real.request('GET', `/api/tenant/approval/instances/${submitted.id}`, w.as(stranger))).status).toBe(
       404,
     );
+  });
+});
+
+describe('清单 8 / 23：标题不含个人数据；审批意见可见范围（DEC-100）', () => {
+  it('标题与待办只显示审批类型，不含员工姓名', async () => {
+    const w = await approvalWorld(database().db, 'apv-title');
+    const s = await transferScene(w);
+    await w.publishedProcess({ nodes: TRANSFER_NODES });
+    const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    expect(view.title).toBe('调动申请');
+    const todos = await w.json<{ items: { title: string }[] }>(
+      await w.request(s.outHead.userId, 'GET', '/api/tenant/approval/todos'),
+    );
+    expect(todos.items.map((item) => item.title)).toEqual(['调动申请']);
+  });
+
+  it('意见默认公开；节点开启“仅本节点与发起人可见”后，后续节点看不到；详情带填写提示', async () => {
+    const w = await approvalWorld(database().db, 'apv-comment-private');
+    const s = await transferScene(w);
+    await w.publishedProcess({ nodes: [{ ...TRANSFER_NODES[0]!, commentPrivate: true }, TRANSFER_NODES[2]!] });
+    let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    view = await w.json(
+      await w.taskAction(s.outHead.userId, view.tasks[0]!.id, 'approve', view.revision, { comment: '薪资 30k' }),
+    );
+    const later = await w.detail(view.id, s.inHead.userId);
+    expect(later.tasks.find((task) => task.nodeKey === 'out_head')!.comment).toBeNull();
+    expect(JSON.stringify(later.logs)).not.toContain('薪资 30k');
+    expect(later.commentNotice).toContain('敏感');
+    const owner = await w.detail(view.id);
+    expect(owner.tasks.find((task) => task.nodeKey === 'out_head')!.comment).toBe('薪资 30k');
+    const done = await w.json<InstanceView>(
+      await w.taskAction(s.inHead.userId, current(later).id, 'approve', later.revision, { comment: '同意调入' }),
+    );
+    const publicView = await w.detail(done.id, s.outHead.userId);
+    expect(publicView.tasks.find((task) => task.nodeKey === 'in_head')!.comment).toBe('同意调入');
   });
 });
