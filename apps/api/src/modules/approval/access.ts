@@ -3,7 +3,7 @@
  * 再按其数据范围限定到范围内员工的实例（数据范围默认为空，fail-closed）。
  * “我的待办 / 我发起的 / 通知”按接收人过滤，不需要身份权限。
  */
-import { sql, withTenant } from '@italent/db';
+import { sql, type Tx, withTenant } from '@italent/db';
 import {
   APPROVAL_INSTANCE_OBJECT,
   APPROVAL_OBJECTS,
@@ -19,7 +19,12 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { employmentCreator } from '../employment/context.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
-import { resolveModuleScope, scopeSql, type ModuleScope } from '../permission/module-access.js';
+import {
+  resolveModuleScope,
+  resolveModuleScopeInTransaction,
+  scopeSql,
+  type ModuleScope,
+} from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { approvalError, rowsOf } from './context.js';
 import { personOfUser } from './resolver.js';
@@ -71,7 +76,7 @@ async function hasButton(deps: TenantRouteDeps, ctx: TenantContext, button: stri
  * 实例的数据范围谓词（对 approval_instances 别名 i）：人员维度取异动员工；“使用用户”维度取任职业务的真实创建人
  * （与任职模块的范围判断一致，F10）。员工子集变更没有任职创建人，“使用用户”维度对其不成立（默认拒绝）。
  */
-function instanceScopeSql(ctx: TenantContext, scope: ModuleScope): SQL {
+export function instanceScopeSql(ctx: TenantContext, scope: ModuleScope): SQL {
   return scopeSql(scope, {
     person: sql`i.subject_employee_id`,
     creator: sql`CASE WHEN i.business_type='employment'
@@ -146,5 +151,15 @@ export async function adminScope(
   if (!allowed) return null;
   const objectCode = MODULE_OBJECTS.employmentRecord.code;
   const scope = await resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
+  return instanceScopeSql(ctx, scope);
+}
+
+/**
+ * DEC-123：某成员（替代人）的数据范围对实例的谓词，在调用方事务内解析（成员停用的平台事务内使用）。
+ * 与管理员范围同一对象与页面（任职记录列表），但不要求管理员按钮——这是系统自动接管，不是该成员的操作。
+ */
+export async function memberInstanceScope(deps: TenantRouteDeps, ctx: TenantContext, tx: Tx): Promise<SQL> {
+  const objectCode = MODULE_OBJECTS.employmentRecord.code;
+  const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, objectCode, `${objectCode}.list`);
   return instanceScopeSql(ctx, scope);
 }

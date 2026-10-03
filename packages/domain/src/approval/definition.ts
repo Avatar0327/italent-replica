@@ -30,6 +30,8 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
     if (unknown.length) violations.push(`节点 ${node.key} 表单字段不在对象目录内：${unknown.join('、')}`);
     const notOnForm = node.editableFields.filter((field) => !node.formFields.includes(field));
     if (notOnForm.length) violations.push(`节点 ${node.key} 可编辑字段必须在节点表单上：${notOnForm.join('、')}`);
+    const readonly = node.editableFields.filter((field) => type.readonlyFields.includes(field));
+    if (readonly.length) violations.push(`节点 ${node.key} 的只读带出字段不能编辑：${readonly.join('、')}`);
     if ((node.editMode === 'none') !== (node.editableFields.length === 0)) {
       violations.push(`节点 ${node.key} 的审批中编辑形态与可编辑字段不一致`);
     }

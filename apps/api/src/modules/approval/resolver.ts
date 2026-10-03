@@ -17,7 +17,10 @@ export interface RoutingSubject {
   readonly cache?: Map<string, Promise<unknown>>;
 }
 
-export function memo<T>(subject: RoutingSubject, key: string, load: () => Promise<T>): Promise<T> {
+/** 资格判定只需要租户与业务日期（查询缓存可选）。 */
+export type EligibilityScope = Pick<RoutingSubject, 'tenantId' | 'asOf' | 'cache'>;
+
+export function memo<T>(subject: Pick<RoutingSubject, 'cache'>, key: string, load: () => Promise<T>): Promise<T> {
   if (!subject.cache) return load();
   const hit = subject.cache.get(key) as Promise<T> | undefined;
   if (hit) return hit;
@@ -53,11 +56,13 @@ export async function isActiveMember(tx: Tx, tenantId: string, userId: string): 
 }
 
 /** DEC-098：流程上的异常管理员已停用时，由租户管理员接管（取最早开通的有效租户管理员，确定性）。 */
-export async function tenantAdminUser(tx: Tx, tenantId: string): Promise<string | null> {
+export async function tenantAdminUser(tx: Tx, tenantId: string, excludeUserId?: string): Promise<string | null> {
+  // 正在停用的成员在同一事务里仍是 active，接管人须排除他本人（DEC-123）。
+  const exclude = excludeUserId ? sql`AND a.user_id<>${excludeUserId}::uuid` : sql``;
   const [row] = rowsOf<{ user_id: string }>(
     await tx.execute(sql`SELECT a.user_id FROM permission_admins a
       JOIN tenant_memberships m ON m.tenant_id=a.tenant_id AND m.user_id=a.user_id AND m.status='active'
-      WHERE a.tenant_id=${tenantId} AND a.role='tenant_admin' AND a.status='active'
+      WHERE a.tenant_id=${tenantId} AND a.role='tenant_admin' AND a.status='active' ${exclude}
       ORDER BY a.created_at,a.id LIMIT 1`),
   );
   return row?.user_id ?? null;
@@ -75,7 +80,7 @@ export async function personOfUser(tx: Tx, tenantId: string, userId: string): Pr
  * F6：离职 / 退休已生效（业务日期上的现行任职是离职或退休）。只用于审批候选资格，不改通用的账号绑定查询
  * （userOfPerson 还要用于识别异动本人等）。
  */
-function departed(tx: Tx, subject: RoutingSubject, personId: string): Promise<boolean> {
+function departed(tx: Tx, subject: EligibilityScope, personId: string): Promise<boolean> {
   return memo(subject, `departed:${personId}`, async () => {
     const record = await findCurrentRecord(tx, subject.tenantId, personId, subject.asOf);
     return record?.kind === 'leave' || record?.kind === 'retirement';
@@ -93,10 +98,11 @@ async function candidateOf(tx: Tx, subject: RoutingSubject, personId: string | n
 }
 
 /**
- * 加签人激活、回到原审批人之前的资格复核（F8）：账号有效，且绑定的人员离职未生效（与 candidateOf 同一口径）。
- * 没有绑定人员的账号只看成员关系。
+ * 可审批资格（与 candidateOf 同一口径）：账号有效，且绑定的人员离职未生效；没有绑定人员的账号只看成员关系。
+ * 所有派出新任务的入口都按它复核——表达式解析、加签激活与回到原审批人（F8），以及普通转交、加签名单、
+ * 管理员转交 / 改派、异常管理员交接（第四轮 N2）。离职前已有的待办不自动撤销，由管理员转交（`14` §11.7）。
  */
-export async function isEligibleApprover(tx: Tx, subject: RoutingSubject, userId: string): Promise<boolean> {
+export async function isEligibleApprover(tx: Tx, subject: EligibilityScope, userId: string): Promise<boolean> {
   if (!(await isActiveMember(tx, subject.tenantId, userId))) return false;
   const personId = await personOfUser(tx, subject.tenantId, userId);
   return !personId || !(await departed(tx, subject, personId));

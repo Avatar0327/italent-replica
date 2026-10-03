@@ -1,8 +1,8 @@
 /**
- * 用户离开期间由编排会话按推荐代选的决策（DEC-113～119，待用户复核，`02_已确认决策.md`）。
- * 每条判断只在这里实现一次；复核结论不同时，只改本文件对应的函数和它的测试。
- * 目录与范围类的代选决策另有唯一位置：DEC-116 见 types.ts 的 APPROVAL_TYPES 与 presets.ts，
- * DEC-117 见 types.ts 的 ADD_SIGN_TYPES（不含并加签），DEC-118 见 transfer-view.ts。
+ * 审批路由与披露中可能随取证或复核改变的产品判断（DEC-113～119 原为编排会话代选，2026-10-03 用户逐条复核确认；
+ * DEC-124 暂定，待 Q-M0-43）。每条判断只在这里实现一次；结论改变时，只改本文件对应的函数和它的测试。
+ * 目录与范围类的决策另有唯一位置：DEC-116 见 types.ts 的 APPROVAL_TYPES 与 presets.ts，
+ * DEC-117 见 types.ts 的 ADD_SIGN_TYPES（不含并加签），DEC-118 / DEC-122 见 transfer-view.ts。
  */
 
 /** DEC-113：撤回 / 驳回后只有原发起人能重提（首版不做 HR / 代理代为重提）；当前权限复核由调用方按首次提交执行。 */
@@ -23,6 +23,18 @@ export interface PreviousNodeTask {
  */
 export function previousNodeComparand(tasks: readonly PreviousNodeTask[]): string | null {
   return tasks.filter((task) => task.candidateUserId !== null).at(-1)?.candidateUserId ?? null;
+}
+
+/**
+ * DEC-124（暂定，TODO(需取证 Q-M0-43，#39)）：“历史审批人相同”只计算本轮的有效同意——驳回或撤回后重提开启
+ * 新一轮，上一轮的同意不参与自动处理；本轮内管理员干预 / 跳转之后，边界之前的任务也不再算历史（F7，`14` §11.6）。
+ * “与上一节点相同”的比较对象同样只在有效历史内取。
+ */
+export function effectiveHistory<T extends { readonly round: number; readonly seq: number }>(
+  tasks: readonly T[],
+  instance: { readonly round: number; readonly historyFromSeq: number },
+): T[] {
+  return tasks.filter((task) => task.round === instance.round && task.seq >= instance.historyFromSeq);
 }
 
 /** 查看人与本单的关系（记录隐藏判定用）。 */

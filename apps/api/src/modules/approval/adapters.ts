@@ -4,8 +4,10 @@
  */
 import { sql, type Tx } from '@italent/db';
 import {
+  ageOn,
   APPROVAL_TYPES,
   approvalTypeOfBusiness,
+  PROFILE_FORM_FIELDS,
   SUBSETS,
   subsetProcessCode,
   tenantLocalDate,
@@ -19,10 +21,9 @@ import { PRESET_FIELD_NAMES, type PresetFields } from '../employment/types.js';
 import { updateEmploymentBusiness } from '../employment/write-service.js';
 import {
   applyApprovedChangeInTransaction,
-  correctChangeInTransaction,
   currentChangeValues,
   loadChange,
-  reopenChangeInTransaction,
+  resubmitChangeInTransaction,
   withdrawChangeInTransaction,
 } from '../personnel/change-requests.js';
 import { lockPerson } from '../personnel/store.js';
@@ -38,6 +39,8 @@ export interface BusinessSnapshot {
   readonly businessId: string;
   /** 字段权限所在对象：最小披露与盲审都按该对象的可查看字段判断（DEC-057 / DEC-058）。 */
   readonly fieldObjectCode: string;
+  /** 表单带出的员工档案只读字段（DEC-122 性别、年龄）：值在 values 中，按员工信息对象的字段查看权裁剪。 */
+  readonly profileFields: readonly string[];
   readonly subjectEmployeeId: string | null;
   readonly title: string;
   readonly values: Readonly<Row>;
@@ -64,14 +67,30 @@ export interface BusinessAdapter {
   rejected(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   /** 审批侧发起的撤回（业务侧撤回已由业务模块自己迁移状态）。 */
   withdrawn(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
-  /** 审批侧发起的同单重提：业务单回到待审批（任职申请经任职模块的“提交”重提，这里拒绝）。 */
-  resubmitted(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
+  /**
+   * 审批侧发起的同单重提（DEC-099 / DEC-103）：业务单回到待审批，修正追加为业务侧新版本，并按首次提交复核当前权限
+   * （第四轮 N1）。任职申请经任职模块的“提交”重提，这里拒绝。
+   */
+  resubmit(tx: Tx, ctx: ApprovalContext, businessId: string, corrections: Readonly<Row>): Promise<void>;
   edit(tx: Tx, ctx: ApprovalContext, businessId: string, fields: Readonly<Row>): Promise<void>;
-  /** DEC-099：被驳回后由发起人在同一张单上修正（追加业务侧新版本）。 */
-  correct(tx: Tx, ctx: ApprovalContext, businessId: string, fields: Readonly<Row>): Promise<void>;
 }
 
 const same = (left: unknown, right: unknown) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+
+/**
+ * DEC-122：调动审批详情带出员工档案的性别与年龄（年龄按租户业务日期由出生日期计算，与员工档案一致）。
+ * 只读带出，不进入变化字段与盲审；可见性按员工信息对象的字段查看权另行裁剪（routes.detailViewable）。
+ */
+async function profileValues(tx: Tx, ctx: ApprovalContext, employeeId: string): Promise<Row> {
+  const [profile] = rowsOf<{ gender: string | null; birthday: string | null }>(
+    await tx.execute(sql`SELECT gender,birthday::text FROM personnel_employee_versions
+      WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid ORDER BY revision DESC LIMIT 1`),
+  );
+  return {
+    gender: profile?.gender ?? null,
+    age: ageOn(profile?.birthday ?? null, tenantLocalDate(ctx.now, ctx.timezone)),
+  };
+}
 
 async function employeeHeader(tx: Tx, tenantId: string, employeeId: string) {
   const [row] = rowsOf<{ code: string; name: string }>(
@@ -178,6 +197,7 @@ const employmentAdapter: BusinessAdapter = {
       lastWorkDate: payload.lastWorkDate,
       kind: business.kind,
       mode: business.mode,
+      ...(await profileValues(tx, ctx, business.employeeId)),
     };
     const customCodes = new Set([
       ...Object.keys(customValues(business.customFields)),
@@ -202,6 +222,7 @@ const employmentAdapter: BusinessAdapter = {
       businessType: 'employment',
       businessId,
       fieldObjectCode: type.objectCode,
+      profileFields: PROFILE_FORM_FIELDS,
       subjectEmployeeId: business.employeeId,
       // 清单 8：标题不含个人数据（DEC-057），待办与列表原样展示也不泄露被隐藏的姓名。
       title: `${type.name}申请`,
@@ -226,10 +247,7 @@ const employmentAdapter: BusinessAdapter = {
   approved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'approve'),
   rejected: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'reject'),
   withdrawn: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'withdraw'),
-  resubmitted: () => {
-    throw approvalError('CONFLICT', 'APPROVAL_RESUBMIT_VIA_BUSINESS', '任职申请请在申请单上修改后重新提交');
-  },
-  correct: () => {
+  resubmit: () => {
     throw approvalError('CONFLICT', 'APPROVAL_RESUBMIT_VIA_BUSINESS', '任职申请请在申请单上修改后重新提交');
   },
   async edit(tx, ctx, id, input) {
@@ -298,6 +316,7 @@ const personnelAdapter: BusinessAdapter = {
       businessType: 'personnel_change',
       businessId,
       fieldObjectCode: SUBSETS[subset].objectCode,
+      profileFields: [],
       subjectEmployeeId: employeeId,
       title: `${APPROVAL_TYPES.personnel_change.name}申请`,
       values,
@@ -338,12 +357,8 @@ const personnelAdapter: BusinessAdapter = {
   async withdrawn(tx, ctx, id) {
     await withdrawChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id);
   },
-  // 撤回后重提：申请回到待审批（F9）；驳回后申请本就待审批，不变。
-  async resubmitted(tx, ctx, id) {
-    await reopenChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id);
-  },
-  async correct(tx, ctx, id, fields) {
-    await correctChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id, fields);
+  async resubmit(tx, ctx, id, corrections) {
+    await resubmitChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id, corrections);
   },
   edit: () => {
     // DEC-105：首版不做员工子集变更的审批中编辑（有意差异，原站可绑定，`14` §11.3）；要改内容时驳回，

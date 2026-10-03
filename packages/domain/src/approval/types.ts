@@ -171,7 +171,16 @@ const EMPLOYEE_INFO_CONDITION_FIELDS: readonly ConditionField[] = PERSONNEL_COND
   (field) => field.path !== 'request.subset',
 );
 
-const employmentFormFields = MODULE_OBJECTS.employmentRecord.fields.filter((f) => !f.system).map((f) => f.code);
+/**
+ * 任职类审批表单可带出的员工档案只读字段（DEC-122：调动审批详情的性别、年龄）：值取员工档案，按员工信息对象
+ * 的字段查看权裁剪，不能配置为可编辑字段。
+ */
+export const PROFILE_FORM_FIELDS = ['gender', 'age'] as const;
+
+const employmentFormFields = [
+  ...MODULE_OBJECTS.employmentRecord.fields.filter((f) => !f.system).map((f) => f.code),
+  ...PROFILE_FORM_FIELDS,
+];
 const personnelFormFields = [...new Set(Object.values(SUBSETS).flatMap((subset) => subset.fields.map((f) => f.code)))];
 const employeeInfoFormFields = EMPLOYEE_EDITABLE_FIELDS.filter((f) => !f.system).map((f) => f.code);
 
@@ -186,6 +195,8 @@ export interface ApprovalTypeDefinition {
   readonly defaultProcessCode: string | null;
   readonly conditionFields: readonly ConditionField[];
   readonly formFields: readonly string[];
+  /** 表单上只读的带出字段（不能配置为可编辑字段）。 */
+  readonly readonlyFields: readonly string[];
   /** 是否开放审批中编辑（REQ-APV-003 R2）；员工信息类首版不做（DEC-105），配置与详情动作都按此判断。 */
   readonly approvalEdit: boolean;
 }
@@ -199,6 +210,7 @@ const employmentType = (code: string, name: string, defaultProcessCode: string |
     defaultProcessCode,
     conditionFields: EMPLOYMENT_CONDITION_FIELDS,
     formFields: employmentFormFields,
+    readonlyFields: PROFILE_FORM_FIELDS,
     approvalEdit: true,
   }) as const satisfies ApprovalTypeDefinition;
 
@@ -225,6 +237,7 @@ export const APPROVAL_TYPES = {
     defaultProcessCode: 'EmpInfoChangeProcess',
     conditionFields: EMPLOYEE_INFO_CONDITION_FIELDS,
     formFields: employeeInfoFormFields,
+    readonlyFields: [],
     approvalEdit: false,
   },
   personnel_change: {
@@ -235,6 +248,7 @@ export const APPROVAL_TYPES = {
     defaultProcessCode: null,
     conditionFields: PERSONNEL_CONDITION_FIELDS,
     formFields: personnelFormFields,
+    readonlyFields: [],
     approvalEdit: false,
   },
 } as const satisfies Record<string, ApprovalTypeDefinition>;

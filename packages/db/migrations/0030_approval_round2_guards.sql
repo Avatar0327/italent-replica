@@ -27,3 +27,8 @@ GRANT SELECT, INSERT ON "approval_instance_ccs" TO app_user;
 SELECT enable_tenant_isolation('personnel_change_request_versions');
 --> statement-breakpoint
 GRANT SELECT, INSERT ON "personnel_change_request_versions" TO app_user;
+--> statement-breakpoint
+-- DEC-123：异常管理员交接指定的替代人（停用时自动转派剩余异常待办用）：租户隔离；交接时新增或改写。
+SELECT enable_tenant_isolation('approval_exception_admin_successors');
+--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE ON "approval_exception_admin_successors" TO app_user;

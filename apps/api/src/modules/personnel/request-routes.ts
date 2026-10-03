@@ -6,15 +6,13 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { revision, uuidParam } from '../job/context.js';
 import { access, preflight, trim } from './access.js';
-import { createChange, loadChange, requireSelf } from './change-requests.js';
+import { assertSelfServiceFields, createChange, loadChange, requireSelf } from './change-requests.js';
 import { personnelApprovalHooks } from './approval-hooks.js';
 import { body, safe } from './http.js';
 import { parse, subsetInput, subsetKind } from './validation.js';
 import { tenantOf } from '../../tenant-context.js';
 import { requirePermission } from '../../authorization.js';
-import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { runCommand } from '../../commands.js';
-import { AppError } from '../../errors.js';
 
 const base = '/api/tenant/personnel/change-requests';
 const requestSchema = z
@@ -40,13 +38,7 @@ export function registerChangeRequestRoutes(router: Hono<TenantEnv>, deps: Tenan
       });
       await withTenant(deps.db, tenant.tenantId, async (tx) => {
         await requireSelf(tx, { ...tenant, now: deps.clock(), commandId: '', expectedRevision: 0 }, input.employeeId);
-        const setting = await readEffectiveSetting(tx, tenant.tenantId, 'personnel.self_service_fields');
-        const configured = (setting.value as Record<string, unknown>)[kind];
-        const allowed = new Set(
-          Array.isArray(configured) ? configured.filter((v): v is string => typeof v === 'string') : [],
-        );
-        if (Object.keys(input.values).some((field) => !allowed.has(field)))
-          throw new AppError('FORBIDDEN', '字段不在员工自助修改清单内');
+        await assertSelfServiceFields(tx, tenant.tenantId, kind, Object.keys(input.values));
       });
       const expectedRevision = revision(c);
       const ctx = { ...tenant, now: deps.clock(), commandId: '', expectedRevision };

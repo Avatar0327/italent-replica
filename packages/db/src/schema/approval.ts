@@ -423,6 +423,32 @@ export const approvalInstanceCcs = pgTable(
   ],
 );
 
+/**
+ * DEC-098 / DEC-123：异常管理员交接时指定的替代人（每个租户每人一行，再次交接即改写）。该成员停用时，
+ * 其剩余在途异常待办自动转给替代人；替代人数据范围或本人回避不允许接手的部分转给租户管理员。
+ */
+export const approvalExceptionAdminSuccessors = pgTable(
+  'approval_exception_admin_successors',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    userId: uuid('user_id').notNull(),
+    successorUserId: uuid('successor_user_id').notNull(),
+    designatedBy: uuid('designated_by').notNull(),
+    commandId: text('command_id').notNull(),
+    revision: integer('revision').notNull().default(1),
+    createdAt: utc('created_at').notNull().defaultNow(),
+    updatedAt: utc('updated_at').notNull().defaultNow(),
+  },
+  (t) => [
+    unique('approval_exception_admin_successors_user').on(t.tenantId, t.userId),
+    memberFk('approval_exception_admin_successors_user_fk', t.tenantId, t.userId),
+    memberFk('approval_exception_admin_successors_successor_fk', t.tenantId, t.successorUserId),
+    check('approval_exception_admin_successors_not_self', sql`${t.userId} <> ${t.successorUserId}`),
+    check('approval_exception_admin_successors_revision', sql`${t.revision} > 0`),
+  ],
+);
+
 export const approvalOutbox = pgTable(
   'approval_outbox',
   {

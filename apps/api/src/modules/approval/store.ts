@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
-import { auditApproval, rowsOf, type ApprovalContext, type Row } from './context.js';
+import { actorOf, auditApproval, rowsOf, type ApprovalContext, type Row } from './context.js';
 import type { BusinessType } from './adapters.js';
 
 /**
@@ -303,7 +303,7 @@ export async function appendLog(tx: Tx, ctx: ApprovalContext, instance: Instance
     (id,tenant_id,instance_id,seq,round,node_key,task_id,event,actor_user_id,admin_self_transfer,detail,created_at)
     SELECT ${randomUUID()},${ctx.tenantId},${instance.id}::uuid,COALESCE(max(seq),0)+1,${instance.round},
       ${entry.nodeKey ?? null},${entry.taskId ?? null},${entry.event},
-      ${entry.actorUserId === undefined ? ctx.userId : entry.actorUserId},${entry.adminSelfTransfer ?? false},
+      ${entry.actorUserId === undefined ? actorOf(ctx) : entry.actorUserId},${entry.adminSelfTransfer ?? false},
       ${JSON.stringify(entry.detail ?? {})}::jsonb,${ctx.now.toISOString()}
     FROM approval_instance_logs WHERE tenant_id=${ctx.tenantId} AND instance_id=${instance.id}::uuid`);
 }

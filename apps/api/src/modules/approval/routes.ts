@@ -2,13 +2,14 @@
  * 审批中心路由（R1-T07）：/api/tenant/approval/*。写请求带 If-Match 与 Idempotency-Key，业务 + 审计 + outbox 同事务；
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
  */
-import { pgErrorCode, type Tx, withTenant } from '@italent/db';
+import { pgErrorCode, registerMembershipRevokeHook, type Tx, withTenant } from '@italent/db';
 import {
   ADD_SIGN_TYPES,
   APPROVAL_PROCESS_OBJECT,
   APPROVAL_TYPES,
   APPROVER_EXPRESSIONS,
   MAX_ADD_SIGNERS,
+  PERSONNEL_OBJECT,
 } from '@italent/domain';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
@@ -59,10 +60,19 @@ import {
   publishProcess,
   replaceDraft,
 } from './definitions.js';
-import { detailView, disclosedFields, projectLog, readDetail, recordsHidden, visibleTasks } from './disclosure.js';
+import {
+  detailView,
+  disclosedFields,
+  projectLog,
+  readDetail,
+  recordsHidden,
+  visibleTasks,
+  type DetailData,
+  type Viewer,
+} from './disclosure.js';
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
-import { handoverExceptionAdmin } from './handover.js';
+import { handoverExceptionAdmin, takeOverOnDeactivation } from './handover.js';
 import { listAdminLogs, listInstances, listNotifications, listTodos } from './queries.js';
 import { simulateByObject, simulateProcess } from './simulation.js';
 import {
@@ -118,14 +128,34 @@ async function command(
   }
 }
 
+/** 查看人的两个管理员按钮各自的实例范围（第四轮 N8：详情逐按钮公布动作）。 */
+async function viewerOf(deps: TenantRouteDeps, ctx: TenantContext): Promise<Viewer> {
+  return {
+    userId: ctx.userId,
+    transferScope: await adminScope(deps, ctx, ['adminTransfer']),
+    interveneScope: await adminScope(deps, ctx, ['adminIntervene']),
+  };
+}
+
+/**
+ * 详情可见字段：业务对象的字段查看权，加上表单带出的员工档案只读字段按员工信息对象的查看权（DEC-122）。
+ * undefined = 不受字段权限约束。
+ */
+async function detailViewable(deps: TenantRouteDeps, ctx: TenantContext, data: DetailData) {
+  const base = await getModuleViewableFields(deps, ctx, data.snapshot.fieldObjectCode);
+  const profileFields = data.snapshot.profileFields;
+  if (!profileFields.length) return base;
+  const profile = await getModuleViewableFields(deps, ctx, PERSONNEL_OBJECT);
+  if (base === undefined && profile === undefined) return undefined;
+  const own = base ?? new Set(Object.keys(data.snapshot.values).filter((field) => !profileFields.includes(field)));
+  return new Set([...own, ...profileFields.filter((field) => profile === undefined || profile.has(field))]);
+}
+
 async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
   const ctx = readCtx(c, deps);
-  const scope = await adminScope(deps, ctx, ['adminTransfer', 'adminIntervene']);
-  const data = await withTenant(deps.db, ctx.tenantId, (tx) =>
-    readDetail(tx, ctx, instanceId, { userId: ctx.userId, adminScope: scope }),
-  );
-  const viewable = await getModuleViewableFields(deps, ctx, data.snapshot.fieldObjectCode);
-  return c.json(detailView(data, ctx.userId, viewable));
+  const viewer = await viewerOf(deps, ctx);
+  const data = await withTenant(deps.db, ctx.tenantId, (tx) => readDetail(tx, ctx, instanceId, viewer));
+  return c.json(detailView(data, ctx.userId, await detailViewable(deps, ctx, data)));
 }
 
 /** DEC-101 / X-19：完整任务与日志历史分页读取（最新在前），权限与披露同详情。 */
@@ -133,16 +163,16 @@ async function respondHistory(c: C, deps: TenantRouteDeps, kind: 'tasks' | 'logs
   const ctx = readCtx(c, deps);
   const instanceId = uuidParam(c);
   const page = pageQuery(c);
-  const scope = await adminScope(deps, ctx, ['adminTransfer', 'adminIntervene']);
+  const viewer = await viewerOf(deps, ctx);
   const { data, rows } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-    const detail = await readDetail(tx, ctx, instanceId, { userId: ctx.userId, adminScope: scope });
+    const detail = await readDetail(tx, ctx, instanceId, viewer);
     const items =
       kind === 'tasks'
         ? await pageTasks(tx, ctx.tenantId, instanceId, page)
         : await pageLogs(tx, ctx.tenantId, instanceId, page);
     return { data: detail, rows: items };
   });
-  const viewable = await getModuleViewableFields(deps, ctx, data.snapshot.fieldObjectCode);
+  const viewable = await detailViewable(deps, ctx, data);
   // DEC-104 / DEC-115：查看人参与的任一节点（或开始节点）勾选了审批记录查看权限时，历史同样隐藏，只留当前待办。
   const hidden = recordsHidden(data, ctx.userId);
   const disclosed = disclosedFields(data, ctx.userId, viewable);
@@ -186,6 +216,8 @@ export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
 /** 把审批中心装配到任职与人员模块的挂接端口（它们不 import 审批模块）。 */
 function registerHooks(deps: TenantRouteDeps) {
   const withFields = <T extends ApprovalContext>(ctx: T): T => ({ ...ctx, fields: fieldAccess(deps, ctx) });
+  // DEC-123：成员停用（平台撤销成员关系）的同一事务内，自动转派其剩余在途异常待办。
+  registerMembershipRevokeHook((tx, revocation) => takeOverOnDeactivation(tx, deps, revocation));
   registerEmploymentApprovalHooks({
     submitted: async (tx, ctx, businessId) => {
       await startOrResume(tx, withFields(ctx), { businessType: 'employment', businessId });
@@ -277,13 +309,21 @@ function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 function registerTenantConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/exception-admins/handover', async (c) => {
     const ctx = writeCtx(c, deps);
-    const input = await parseBody(c, z.strictObject({ fromUserId: z.uuid(), toUserId: z.uuid() }));
+    const input = await parseBody(
+      c,
+      z.strictObject({ fromUserId: z.uuid(), toUserId: z.uuid(), cursor: z.uuid().nullable().optional() }),
+    );
     // F2：替换流程配置要求流程配置权（DEC-102）；改派在途实例另按实例转交按钮 + 数据范围逐单判断。
     await requireProcessButton(deps, ctx, 'publish');
     const scopeSql = await adminScope(deps, ctx, ['adminTransfer']);
+    const handover = {
+      fromUserId: input.fromUserId,
+      toUserId: input.toUserId,
+      ...(input.cursor ? { cursor: input.cursor } : {}),
+    };
     const result = await command(c, deps, ctx, input, async (tx, context) => ({
       status: 200,
-      body: await handoverExceptionAdmin(tx, context, input, scopeSql),
+      body: await handoverExceptionAdmin(tx, context, handover, scopeSql),
     }));
     return c.json(result.body as object, result.status);
   });

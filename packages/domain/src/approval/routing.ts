@@ -2,7 +2,7 @@
  * 节点审批人决策（纯函数）：三种内建机制（`14` §2.2）+ 首节点为空报错（DEC-054）+ 自审（DEC-058 / DEC-068）。
  * 顺序：审批人为空 → 自审（优先于相同审批人自动处理，DEC-068）→ 相同 / 历史相同审批人自动处理 → 派任务。
  * 自动处理的结果按节点配置为「同意」或「跳过」（DEC-106）。
- * TODO(需取证 Q-M0-43，#39)：“历史节点”是否跨驳回重提的轮次未取证，首版只认本轮（engine.routingFacts）。
+ * “历史节点”只认本轮有效历史（DEC-124 暂定，TODO(需取证 Q-M0-43，#39)，判断在 policies.effectiveHistory）。
  */
 import type { ApprovalNode, AutoResult } from './types.js';
 

@@ -10,6 +10,7 @@ import {
   avoidSelfExceptionAdmin,
   blindReviewFields,
   decideNode,
+  effectiveHistory,
   isSelf,
   mayResubmit,
   previousNodeComparand,
@@ -123,10 +124,9 @@ function routingSubject(run: Run): RoutingSubject {
 }
 
 function routingFacts(run: Run, tasks: readonly TaskRow[], index: number, subjectUserId: string | null): RoutingFacts {
-  // TODO(需取证 Q-M0-43，#39)：“历史节点”是否跨驳回重提的轮次未取证；首版只认本轮已同意的人。
-  // F7：管理员干预 / 跳转后，边界之前的任务不再算历史（`14` §11.6）。自动「跳过」的节点处理人是系统（DEC-106），
-  // 不计为任何人的同意。
-  const history = tasks.filter((task) => task.round === run.instance.round && task.seq >= run.instance.historyFromSeq);
+  // DEC-124 / F7：只认本轮、有效历史边界之后的任务（policies.effectiveHistory，暂定待 Q-M0-43）。
+  // 自动「跳过」的节点处理人是系统（DEC-106），不计为任何人的同意。
+  const history = effectiveHistory(tasks, run.instance);
   const approvedBy = (task: TaskRow) => task.assigneeUserId !== null && task.status === 'approved';
   const previousKey = index > 0 ? run.version.nodes[index - 1]!.key : null;
   return {

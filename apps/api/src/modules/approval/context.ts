@@ -15,6 +15,12 @@ export interface ApprovalContext extends TenantContext {
   readonly expectedRevision: number;
   /** 同人自动跳过前要按候选审批人的当前字段权限做盲审（清单 5）；未注入时按看不到处理（fail-closed）。 */
   readonly fields?: FieldAccess;
+  /** 审计与日志记录的操作人；系统自动处理（如成员停用时的接管，DEC-123）可为平台操作人或空。缺省为 userId。 */
+  readonly actorUserId?: string | null;
+}
+
+export function actorOf(ctx: ApprovalContext): string | null {
+  return ctx.actorUserId === undefined ? ctx.userId : ctx.actorUserId;
 }
 
 export type Row = Record<string, unknown>;
@@ -49,7 +55,7 @@ export async function auditApproval(
   const pick = (value: Row | null) => (value ? Object.fromEntries(keys.map((key) => [key, value[key] ?? null])) : null);
   await tx.insert(auditEvents).values({
     tenantId: ctx.tenantId,
-    actorUserId: ctx.userId,
+    actorUserId: actorOf(ctx),
     action: entry.action,
     objectType: entry.objectType,
     objectId: entry.objectId,

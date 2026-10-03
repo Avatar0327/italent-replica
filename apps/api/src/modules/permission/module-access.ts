@@ -9,7 +9,7 @@ import { managedPersonsSql, reportingPersonsSql } from './scope-persons.js';
 export type { ModuleScope } from './scope-types.js';
 
 interface AccessProvider {
-  scope(query: ScopeQuery): Promise<ModuleScope>;
+  scope(query: ScopeQuery, tx?: Tx): Promise<ModuleScope>;
   authorize(request: Parameters<Authorizer>[0], tx: Tx): Promise<boolean>;
   fields(tenantId: string, userId: string, objectCode: string, tx?: Tx): Promise<ReadonlySet<string>>;
 }
@@ -48,6 +48,27 @@ export async function resolveModuleScope(
     });
   // Explicit trusted Authorizer injection is also an authorization boundary. Unset/false is EMPTY.
   const all = await deps.authorize({ ...ctx, action: 'data.scope.all', resource: objectCode ?? ORG_EMPLOYEE_APP });
+  return all ? { ...EMPTY_SCOPE, all: true, hasDataPermission: true, source: 'identity' } : EMPTY_SCOPE;
+}
+
+/**
+ * 同 resolveModuleScope，但在调用方的租户事务内解析（不另开连接）。审批中心在成员停用的平台事务内判断替代人的
+ * 数据范围（DEC-123）时使用。
+ */
+export async function resolveModuleScopeInTransaction(
+  deps: Deps,
+  ctx: TenantContext,
+  tx: Tx,
+  objectCode: string,
+  pageCode: string,
+): Promise<ModuleScope> {
+  const provider = providers.get(deps.authorize);
+  if (provider) {
+    const asOf = tenantLocalDate(deps.clock(), ctx.timezone);
+    const query = { tenantId: ctx.tenantId, userId: ctx.userId, appCode: ORG_EMPLOYEE_APP, asOf, objectCode };
+    return provider.scope({ ...query, pageCode, dataSourceCode: pageCode }, tx);
+  }
+  const all = await deps.authorize({ ...ctx, action: 'data.scope.all', resource: objectCode });
   return all ? { ...EMPTY_SCOPE, all: true, hasDataPermission: true, source: 'identity' } : EMPTY_SCOPE;
 }
 

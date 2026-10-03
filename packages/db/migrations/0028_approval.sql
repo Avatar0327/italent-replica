@@ -12,6 +12,21 @@ CREATE TABLE "personnel_change_request_versions" (
 	CONSTRAINT "personnel_change_request_versions_positive" CHECK ("personnel_change_request_versions"."version_no" > 0)
 );
 --> statement-breakpoint
+CREATE TABLE "approval_exception_admin_successors" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"tenant_id" uuid NOT NULL,
+	"user_id" uuid NOT NULL,
+	"successor_user_id" uuid NOT NULL,
+	"designated_by" uuid NOT NULL,
+	"command_id" text NOT NULL,
+	"revision" integer DEFAULT 1 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "approval_exception_admin_successors_user" UNIQUE("tenant_id","user_id"),
+	CONSTRAINT "approval_exception_admin_successors_not_self" CHECK ("approval_exception_admin_successors"."user_id" <> "approval_exception_admin_successors"."successor_user_id"),
+	CONSTRAINT "approval_exception_admin_successors_revision" CHECK ("approval_exception_admin_successors"."revision" > 0)
+);
+--> statement-breakpoint
 CREATE TABLE "approval_instance_ccs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
@@ -242,6 +257,9 @@ CREATE TABLE "approval_tasks" (
 ALTER TABLE "personnel_change_requests" DROP CONSTRAINT "personnel_change_requests_state";--> statement-breakpoint
 ALTER TABLE "personnel_change_request_versions" ADD CONSTRAINT "personnel_change_request_versions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "personnel_change_request_versions" ADD CONSTRAINT "personnel_change_request_versions_request_fk" FOREIGN KEY ("tenant_id","employee_id","request_id") REFERENCES "public"."personnel_change_requests"("tenant_id","employee_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "approval_exception_admin_successors" ADD CONSTRAINT "approval_exception_admin_successors_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "approval_exception_admin_successors" ADD CONSTRAINT "approval_exception_admin_successors_user_fk" FOREIGN KEY ("tenant_id","user_id") REFERENCES "public"."tenant_memberships"("tenant_id","user_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "approval_exception_admin_successors" ADD CONSTRAINT "approval_exception_admin_successors_successor_fk" FOREIGN KEY ("tenant_id","successor_user_id") REFERENCES "public"."tenant_memberships"("tenant_id","user_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "approval_instance_ccs" ADD CONSTRAINT "approval_instance_ccs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "approval_instance_ccs" ADD CONSTRAINT "approval_ccs_instance_fk" FOREIGN KEY ("tenant_id","instance_id") REFERENCES "public"."approval_instances"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "approval_instance_ccs" ADD CONSTRAINT "approval_ccs_user_fk" FOREIGN KEY ("tenant_id","user_id") REFERENCES "public"."tenant_memberships"("tenant_id","user_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

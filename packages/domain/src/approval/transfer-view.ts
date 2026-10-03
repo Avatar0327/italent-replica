@@ -1,7 +1,8 @@
 /**
- * DEC-118：调动审批详情页 TransferDetailView（`14` §11.2，原站视图 TransferMultiFormView）逐字段映射，分批交付。
- * 现有业务模型已有数据的标准字段在本期交付：任职调整区块映射到任职记录字段（审批表单值、字段权限、节点表单
- * 共用同一字段编码），调动人员映射到实例抬头；业务模型里还没有的字段与区块逐项登记延期，不算已完成。
+ * DEC-118 / DEC-122：调动审批详情页 TransferDetailView（`14` §11.2，原站视图 TransferMultiFormView）逐字段映射，
+ * 分批交付。现有业务模型已有数据的标准字段在本期交付：任职调整区块映射到任职记录字段（审批表单值、字段权限、
+ * 节点表单共用同一字段编码），性别、年龄取员工档案（只读带出），调动人员映射到实例抬头；业务模型里还没有的
+ * 字段与区块逐项登记延期，不算已完成。
  * 继续遵守 DEC-057：节点只给其表单上的字段，预置表单取本表“已交付且在表单上”的字段（presets.ts）。
  */
 
@@ -45,8 +46,9 @@ export const TRANSFER_DETAIL_VIEW: readonly TransferViewItem[] = [
   later('调动原因', 'ChangeReason', 'R1-T09', `${NO_FIELD}（变动原因字典随调动业务接入）`),
   later('交接人', 'HandoverPerson', 'R1-T10', `${NO_MODEL}（调动交接）`),
   form('工号', null, 'jobNumber'),
-  later('性别', null, 'R1-T09', '员工信息字段的只读带出随调动表单接入'),
-  later('年龄', null, 'R1-T09', '员工信息字段的只读带出随调动表单接入'),
+  // DEC-122：员工档案已有性别与出生日期，本期交付（只读带出，按员工信息对象的字段查看权裁剪）。
+  form('性别', null, 'gender'),
+  form('年龄', null, 'age'),
   later('是否调整薪资', 'AdjustSalary', 'R1-T10', `${NO_MODEL}（薪资只记标志，DEC-002）`),
   later('是否变更合同', 'IsChangeContract', 'R1-T10', `${NO_MODEL}（合同变更联动）`),
   later('是否同步履历', 'TransferSyncToJobHistory', 'R1-T10', `${NO_MODEL}（工作履历联动）`),

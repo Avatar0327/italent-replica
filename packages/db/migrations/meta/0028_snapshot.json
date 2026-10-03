@@ -1,5 +1,5 @@
 {
-  "id": "80be9674-4ae3-45a4-89ce-0d896304f709",
+  "id": "a5aab6c8-7c39-4136-86fd-a28b05800415",
   "prevId": "6ac355ba-fbb4-4591-800c-29687f426d19",
   "version": "7",
   "dialect": "postgresql",
@@ -20771,6 +20771,139 @@
         "personnel_vocational_qualification_versions_source": {
           "name": "personnel_vocational_qualification_versions_source",
           "value": "\"personnel_vocational_qualification_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_vocational_qualification_versions\".\"source_type\" = 'hr_direct' AND \"personnel_vocational_qualification_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_vocational_qualification_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_vocational_qualification_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_exception_admin_successors": {
+      "name": "approval_exception_admin_successors",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "successor_user_id": {
+          "name": "successor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "designated_by": {
+          "name": "designated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "approval_exception_admin_successors_tenant_id_tenants_id_fk": {
+          "name": "approval_exception_admin_successors_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_exception_admin_successors",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_exception_admin_successors_user_fk": {
+          "name": "approval_exception_admin_successors_user_fk",
+          "tableFrom": "approval_exception_admin_successors",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_exception_admin_successors_successor_fk": {
+          "name": "approval_exception_admin_successors_successor_fk",
+          "tableFrom": "approval_exception_admin_successors",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "successor_user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approval_exception_admin_successors_user": {
+          "name": "approval_exception_admin_successors_user",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "approval_exception_admin_successors_not_self": {
+          "name": "approval_exception_admin_successors_not_self",
+          "value": "\"approval_exception_admin_successors\".\"user_id\" <> \"approval_exception_admin_successors\".\"successor_user_id\""
+        },
+        "approval_exception_admin_successors_revision": {
+          "name": "approval_exception_admin_successors_revision",
+          "value": "\"approval_exception_admin_successors\".\"revision\" > 0"
         }
       },
       "isRLSEnabled": false

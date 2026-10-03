@@ -27,8 +27,12 @@ export const SHOW_ORIGINALS_SETTING = 'approval.show_original_values';
 
 export interface Viewer {
   readonly userId: string;
-  /** 管理员（持有转交 / 干预按钮）且实例员工在其数据范围内时的 SQL 判定；非管理员为 null。 */
-  readonly adminScope: SQL | null;
+  /**
+   * 管理员转交、干预两个按钮各自的实例范围（按钮 + 数据范围的 SQL 判定，没有该按钮为 null）。详情按钮逐个公布
+   * （第四轮 N8）；任一覆盖即可打开详情。
+   */
+  readonly transferScope: SQL | null;
+  readonly interveneScope: SQL | null;
 }
 
 export interface DetailData {
@@ -41,7 +45,8 @@ export interface DetailData {
   readonly allTasks: readonly TaskRow[];
   readonly logs: Awaited<ReturnType<typeof loadLogs>>;
   readonly showOriginals: boolean;
-  readonly isAdmin: boolean;
+  /** 查看人可对本单执行的管理员动作（N8）。 */
+  readonly admin: { readonly transfer: boolean; readonly intervene: boolean };
   readonly subjectUserId: string | null;
   /** 查看人被抄送的节点（DEC-097）：被抄送人只看该节点的表单。 */
   readonly ccNodeKey: string | null;
@@ -67,7 +72,10 @@ export async function readDetail(
   await assertCanOpen(tx, ctx, instance, viewer);
   const allTasks = await loadTasks(tx, ctx.tenantId, instanceId);
   const ccNodeKey = await ccNodeOf(tx, ctx.tenantId, instanceId, viewer.userId);
-  const isAdmin = await adminCovers(tx, ctx.tenantId, instanceId, viewer.adminScope);
+  const admin = {
+    transfer: await adminCovers(tx, ctx.tenantId, instanceId, viewer.transferScope),
+    intervene: await adminCovers(tx, ctx.tenantId, instanceId, viewer.interveneScope),
+  };
   const setting = await readEffectiveSetting(tx, ctx.tenantId, SHOW_ORIGINALS_SETTING);
   return {
     instance,
@@ -77,7 +85,7 @@ export async function readDetail(
     allTasks,
     logs: await loadLogs(tx, ctx.tenantId, instanceId),
     showOriginals: setting.value === true,
-    isAdmin,
+    admin,
     subjectUserId: await userOfPerson(tx, ctx.tenantId, instance.subjectEmployeeId),
     ccNodeKey,
   };
@@ -95,7 +103,10 @@ export async function assertCanOpen(tx: Tx, ctx: ApprovalContext, instance: Inst
       OR EXISTS (SELECT 1 FROM approval_instance_ccs c WHERE c.tenant_id=${ctx.tenantId}
         AND c.instance_id=${instance.id}::uuid AND c.user_id=${viewer.userId}::uuid)`),
   );
-  if (participant || (await adminCovers(tx, ctx.tenantId, instance.id, viewer.adminScope))) return;
+  if (participant) return;
+  for (const scope of [viewer.transferScope, viewer.interveneScope]) {
+    if (await adminCovers(tx, ctx.tenantId, instance.id, scope)) return;
+  }
   throw new AppError('NOT_FOUND', '审批实例不存在');
 }
 
@@ -157,7 +168,8 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
   if (retrievableTask(instance, version, allTasks, userId)) actions.push('retrieve');
   if (instance.initiatorUserId === userId) actions.push(...initiatorActions(data));
   // DEC-092：本人发起或本人为异动对象的申请，不公布管理员转交 / 干预。
-  if (running && data.isAdmin && !own) actions.push('adminTransfer', 'adminIntervene');
+  if (running && !own && data.admin.transfer) actions.push('adminTransfer');
+  if (running && !own && data.admin.intervene) actions.push('adminIntervene');
   return actions;
 }
 

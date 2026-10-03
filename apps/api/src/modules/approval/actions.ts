@@ -3,7 +3,13 @@
  * 管理员只能转交或干预，不得代签（DEC-063），转交给自己须填理由并醒目标注（DEC-070）；盲审转异常管理员（DEC-069）。
  */
 import { sql, type Tx } from '@italent/db';
-import { APPROVAL_TYPES, blindReviewFields, type AddSignType, type ApprovalNode } from '@italent/domain';
+import {
+  APPROVAL_TYPES,
+  blindReviewFields,
+  tenantLocalDate,
+  type AddSignType,
+  type ApprovalNode,
+} from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { ErrorBody } from '../../errors.js';
@@ -31,7 +37,7 @@ import {
 } from './engine.js';
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
 import { addSignAllowed, isOwnRequest, urgeOpen } from './rules.js';
-import { userOfPerson } from './resolver.js';
+import { isEligibleApprover, userOfPerson } from './resolver.js';
 import { appendLog, cancelPending, closeTask, insertTask, instanceOfTask, loadTasks, type TaskRow } from './store.js';
 
 export interface Outcome {
@@ -270,13 +276,14 @@ async function assertNotSelf(tx: Tx, run: Run, userId: string): Promise<void> {
   }
 }
 
-/** 转交 / 加签对象：本租户有效成员，且不是发起人或异动本人。 */
+/**
+ * 转交 / 加签 / 管理员转交改派的对象：具备审批资格（有效成员且离职未生效，第四轮 N2），且不是发起人或异动本人。
+ */
 async function assertReviewer(tx: Tx, run: Run, userId: string): Promise<void> {
-  const [member] = rowsOf(
-    await tx.execute(sql`SELECT 1 FROM tenant_memberships
-      WHERE tenant_id=${run.ctx.tenantId} AND user_id=${userId}::uuid AND status='active'`),
-  );
-  if (!member) throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '目标用户不是本租户有效成员');
+  const scope = { tenantId: run.ctx.tenantId, asOf: tenantLocalDate(run.ctx.now, run.ctx.timezone) };
+  if (!(await isEligibleApprover(tx, scope, userId))) {
+    throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '目标用户已离职或不是本租户有效成员');
+  }
   await assertNotSelf(tx, run, userId);
 }
 
@@ -548,11 +555,8 @@ export async function resubmit(tx: Tx, ctx: ApprovalContext, instanceId: string,
     run.instance.status === 'returned' ||
     (run.instance.status === 'withdrawn' && run.instance.businessType === 'personnel_change');
   if (!reopenable) throw approvalError('CONFLICT', 'APPROVAL_NOT_RETURNED', '只有被驳回或已撤回的申请可以重提');
-  const adapter = ADAPTERS[run.instance.businessType];
-  // 先让业务单回到待审批（撤回后），再把修正追加为业务侧新版本（DEC-099）。
-  await adapter.resubmitted(tx, ctx, run.instance.businessId);
-  if (corrections && Object.keys(corrections).length)
-    await adapter.correct(tx, ctx, run.instance.businessId, corrections);
+  // 业务单回到待审批、修正追加为新版本，并按完整载荷复核当前自助字段白名单（DEC-099 / DEC-113 / N1）。
+  await ADAPTERS[run.instance.businessType].resubmit(tx, ctx, run.instance.businessId, corrections ?? {});
   // DEC-103：重提沿用原实例与原流程版本，不重新匹配。
   const saved = await startOrResume(tx, ctx, {
     businessType: run.instance.businessType,

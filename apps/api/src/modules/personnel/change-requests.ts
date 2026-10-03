@@ -73,34 +73,44 @@ async function appendVersion(tx: Tx, ctx: PersonnelContext, employeeId: string, 
     createdAt: ctx.now.toISOString(),
   });
 }
-/**
- * DEC-099：被驳回的员工信息变更由申请人在同一张单上修正，修正内容合并后追加为新版本、历史保留；
- * 只由审批中心在发起人校验后同事务调用，字段仍受员工自助修改清单与子集校验约束。
- */
-export async function correctChangeInTransaction(tx: Tx, ctx: PersonnelContext, id: string, corrections: Row) {
-  const initial = await loadChange(tx, ctx, id);
-  await lockPerson(tx, ctx, String(initial.employeeId));
-  const before = await loadChange(tx, ctx, id);
-  if (before.status !== 'pending_approval') throw new AppError('CONFLICT', '申请不在待审批状态');
-  if (String(before.createdBy) !== ctx.userId) throw new AppError('FORBIDDEN', '只有申请人可以修正申请');
-  const kind = before.subset as SubsetKind;
-  const setting = await readEffectiveSetting(tx, ctx.tenantId, 'personnel.self_service_fields');
+/** 员工自助修改清单（租户设置）：首次提交与同单重提共用，载荷里每个字段都必须在清单内。 */
+export async function assertSelfServiceFields(tx: Tx, tenantId: string, kind: SubsetKind, fields: readonly string[]) {
+  const setting = await readEffectiveSetting(tx, tenantId, 'personnel.self_service_fields');
   const configured = (setting.value as Record<string, unknown>)[kind];
   const allowed = new Set(
     Array.isArray(configured) ? configured.filter((v): v is string => typeof v === 'string') : [],
   );
-  if (Object.keys(corrections).some((field) => !allowed.has(field)))
-    throw new AppError('FORBIDDEN', '字段不在员工自助修改清单内');
+  if (fields.some((field) => !allowed.has(field))) throw new AppError('FORBIDDEN', '字段不在员工自助修改清单内');
+}
+/**
+ * 同单重提（DEC-099 / DEC-103 / DEC-113）：被驳回或已撤回的申请由原申请人在同一张单上重提。撤回的申请回到待审批；
+ * 修正内容合并后追加为新版本、历史保留。按首次提交复核当前权限：合并后的完整载荷（旧载荷 + 本次修正）每个字段都
+ * 须仍在员工自助修改清单内，空修正也要复核（第四轮 N1）。只由审批中心在发起人校验后同事务调用。
+ */
+export async function resubmitChangeInTransaction(tx: Tx, ctx: PersonnelContext, id: string, corrections: Row) {
+  const initial = await loadChange(tx, ctx, id);
+  await lockPerson(tx, ctx, String(initial.employeeId));
+  const before = await loadChange(tx, ctx, id);
+  if (!['pending_approval', 'withdrawn'].includes(String(before.status)))
+    throw new AppError('CONFLICT', '申请已办结，不能重新提交');
+  if (String(before.createdBy) !== ctx.userId) throw new AppError('FORBIDDEN', '只有申请人可以重新提交');
+  const kind = before.subset as SubsetKind;
+  const corrected = Object.keys(corrections).length > 0;
   // 申请行的载荷按 0021 设计不可改，修正只追加版本并推进 revision；生效值取最新版本（currentChangeValues）。
-  const values = { ...(await currentChangeValues(tx, ctx, id)), ...subsetInput(kind, corrections, true) };
-  const after = { ...before, values, revision: Number(before.revision) + 1 };
+  const values = {
+    ...(await currentChangeValues(tx, ctx, id)),
+    ...(corrected ? subsetInput(kind, corrections, true) : {}),
+  };
+  await assertSelfServiceFields(tx, ctx.tenantId, kind, Object.keys(values));
+  if (!corrected && before.status === 'pending_approval') return before;
+  const after = { ...before, status: 'pending_approval', values, revision: Number(before.revision) + 1 };
   await update(
     tx,
     'personnel_change_requests',
-    { revision: after.revision },
+    { status: after.status, revision: after.revision },
     sql`tenant_id=${ctx.tenantId} AND id=${id}::uuid`,
   );
-  await appendVersion(tx, ctx, String(before.employeeId), id, after.revision, values);
+  if (corrected) await appendVersion(tx, ctx, String(before.employeeId), id, after.revision, values);
   await audit(tx, ctx, PERSONNEL_REQUEST_OBJECT, String(before.employeeId), id, after.revision, before, after);
   return after;
 }
@@ -165,27 +175,6 @@ export async function withdrawChangeInTransaction(tx: Tx, ctx: PersonnelContext,
     tx,
     'personnel_change_requests',
     { status: 'withdrawn', revision: after.revision },
-    sql`tenant_id=${ctx.tenantId} AND id=${id}::uuid`,
-  );
-  await audit(tx, ctx, PERSONNEL_REQUEST_OBJECT, String(before.employeeId), id, after.revision, before, after);
-  return after;
-}
-/**
- * DEC-103：已撤回的申请由原申请人沿原审批实例重提，申请回到待审批（撤回后人员模块没有单独的重提入口）。
- * 只由审批中心在发起人与当前权限复核后同事务调用；仍在待审批（驳回后重提）时不变。
- */
-export async function reopenChangeInTransaction(tx: Tx, ctx: PersonnelContext, id: string) {
-  const initial = await loadChange(tx, ctx, id);
-  await lockPerson(tx, ctx, String(initial.employeeId));
-  const before = await loadChange(tx, ctx, id);
-  if (before.status === 'pending_approval') return before;
-  if (before.status !== 'withdrawn') throw new AppError('CONFLICT', '申请已办结，不能重新提交');
-  if (String(before.createdBy) !== ctx.userId) throw new AppError('FORBIDDEN', '只有申请人可以重新提交');
-  const after = { ...before, status: 'pending_approval', revision: Number(before.revision) + 1 };
-  await update(
-    tx,
-    'personnel_change_requests',
-    { status: 'pending_approval', revision: after.revision },
     sql`tenant_id=${ctx.tenantId} AND id=${id}::uuid`,
   );
   await audit(tx, ctx, PERSONNEL_REQUEST_OBJECT, String(before.employeeId), id, after.revision, before, after);

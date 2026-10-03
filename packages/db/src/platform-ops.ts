@@ -26,7 +26,7 @@ import {
   users,
   type UserStatus,
 } from './schema/index.js';
-import { withPlatform } from './tenant-context.js';
+import { type Tx, withPlatform } from './tenant-context.js';
 
 export interface NewTenant {
   readonly code: string;
@@ -144,6 +144,26 @@ export function revokeMembership(db: Db, change: MembershipChange, meta: Platfor
   return changeMembership(db, change, meta, 'revoked');
 }
 
+export interface MembershipRevocation {
+  readonly tenantId: string;
+  readonly userId: string;
+  /** 租户时区（业务日期按租户时区，DEC-056）。 */
+  readonly timezone: string;
+  readonly actorUserId: string | null;
+  readonly commandId: string;
+}
+
+/**
+ * 成员关系撤销前、同一事务内的挂接点：业务模块据此处理该成员名下的在途事务（R1-T07 审批中心：异常管理员停用时
+ * 自动转派剩余异常待办，DEC-123）。在租户上下文内调用；挂接抛错即整笔撤销回滚。本包不依赖业务模块，由应用装配时注册。
+ */
+export type MembershipRevokeHook = (tx: Tx, revocation: MembershipRevocation) => Promise<void>;
+let membershipRevokeHook: MembershipRevokeHook | null = null;
+
+export function registerMembershipRevokeHook(hook: MembershipRevokeHook): void {
+  membershipRevokeHook = hook;
+}
+
 async function changeMembership(
   db: Db,
   change: MembershipChange,
@@ -151,18 +171,30 @@ async function changeMembership(
   status: MembershipStatus,
 ): Promise<TenantMembership> {
   const op = status === 'active' ? 'tenant_membership.grant' : 'tenant_membership.revoke';
-  return runPlatformCommand(db, meta, op, change, (ctx) =>
-    ctx.inTenant(change.tenantId, async () => {
+  return runPlatformCommand(db, meta, op, change, async (ctx) => {
+    const timezone = status === 'revoked' ? await tenantTimezone(ctx.tx, change.tenantId) : null;
+    return ctx.inTenant(change.tenantId, async () => {
       const before = await findMembershipForUpdate(ctx, change);
       if ((before?.revision ?? 0) !== change.expectedRevision) {
         throw new RevisionConflictError('tenant_membership', change.expectedRevision);
       }
       if (!before && status === 'revoked') throw new RevisionConflictError('tenant_membership', 0);
+      if (before?.status === 'active' && timezone !== null && membershipRevokeHook) {
+        const { tenantId, userId } = change;
+        await membershipRevokeHook(ctx.tx, { tenantId, userId, timezone, ...meta });
+      }
       const after = before ? await updateMembership(ctx, before, status) : await insertMembership(ctx, change);
       await ctx.auditTenant(change.tenantId, audit(op, 'tenant_membership', after.id, snap(before), snap(after)));
       return after;
-    }),
-  );
+    });
+  });
+}
+
+/** 租户表只对平台角色开放：在切入租户上下文之前读取。 */
+async function tenantTimezone(tx: Tx, tenantId: string): Promise<string> {
+  const [row] = await tx.select({ timezone: tenants.timezone }).from(tenants).where(eq(tenants.id, tenantId));
+  if (!row) throw new RevisionConflictError('tenant', 0);
+  return row.timezone;
 }
 
 const snap = (m: TenantMembership | undefined) =>
