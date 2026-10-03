@@ -40,11 +40,34 @@ export async function saveSubset(
   patch: Row,
   id?: string,
   deleted = false,
+  source: { type: 'hr_direct' | 'self_service' | 'info_collection'; id: string | null } = {
+    type: 'hr_direct',
+    id: null,
+  },
 ) {
   await lockPerson(tx, ctx, employeeId);
   const before = id ? await loadSubset(tx, ctx, employeeId, kind, id) : null;
   assertRevision(ctx.expectedRevision, Number(before?.revision ?? 0));
-  if (before?.isThisCompany) throw new AppError('CONFLICT', '本单位经历由任职记录维护');
+  if (before?.isThisCompany) {
+    if (deleted) throw new AppError('CONFLICT', '本单位经历由任职记录维护');
+    const locked = new Set([
+      'company',
+      'department',
+      'departmentFullName',
+      'post',
+      'position',
+      'level',
+      'startDate',
+      'endDate',
+      'entryDate',
+      'leaveDate',
+      'employmentType',
+      'employmentRecordId',
+      'isThisCompany',
+    ]);
+    if (Object.keys(patch).some((field) => locked.has(field)))
+      throw new AppError('VALIDATION_FAILED', '任职同步字段不可编辑');
+  }
   const fields = Object.fromEntries(SUBSETS[kind].fields.map((f) => [f.code, null]));
   const row: Row = {
     ...fields,
@@ -55,8 +78,8 @@ export async function saveSubset(
     employeeId,
     revision: Number(before?.revision ?? 0) + 1,
     deleted,
-    sourceType: patch.sourceType ?? before?.sourceType ?? 'hr_direct',
-    sourceId: patch.sourceId ?? before?.sourceId ?? null,
+    sourceType: source.type,
+    sourceId: source.id,
     createdBy: before?.createdBy ?? ctx.userId,
     createdAt: before?.createdAt ?? ctx.now.toISOString(),
     commandId: ctx.commandId,

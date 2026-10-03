@@ -58,14 +58,9 @@ export function employeeInput(value: unknown): Row {
 }
 export function subsetInput(kind: SubsetKind, value: unknown, internal = false): Row {
   const fields: PersonnelField[] = [...SUBSETS[kind].fields];
-  if (!internal) fields.push({ code: 'sourceType', kind: 'text' }, { code: 'sourceId', kind: 'uuid' });
   const parsed = parseFields(fields, value);
-  if ('sourceType' in parsed && !['hr_direct', 'info_collection'].includes(String(parsed.sourceType)))
-    throw new AppError('VALIDATION_FAILED', '自助来源只能由审批端口写入');
-  if (parsed.sourceType === 'info_collection' && !parsed.sourceId)
-    throw new AppError('VALIDATION_FAILED', '信息采集必须提供来源标识');
-  if (parsed.sourceId && parsed.sourceType !== 'info_collection')
-    throw new AppError('VALIDATION_FAILED', '来源标识与来源类型不匹配');
+  // DEC-087: provenance is assigned by trusted server-side ports, never accepted from an HTTP patch.
+  void internal;
   return parsed;
 }
 export function validateDates(row: Row) {

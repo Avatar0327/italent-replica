@@ -1,12 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { SUBSETS } from '@italent/domain';
-import { AppError } from '../../errors.js';
 import type { EmploymentContext, EmploymentRecord } from '../employment/types.js';
 import { loadEmploymentRecord } from '../employment/read-model.js';
 import { rows, camel, type Row } from './store.js';
 import { persistSubset } from './subsets.js';
-import { safe } from './http.js';
 
 const switches: Record<string, string> = {
   hire: 'EntrySyncJobHistory',
@@ -34,29 +32,28 @@ export async function syncEmploymentHistory(
   kind: string,
   effectiveDate: string,
 ) {
-  return safe(async () => {
-    const key = switches[kind];
-    if (!key || !(await enabled(tx, ctx.tenantId, key))) return;
-    const trigger = await loadEmploymentRecord(tx, ctx.tenantId, recordId, effectiveDate);
-    const terminal = ['leave', 'retirement'].includes(kind);
-    const existing = rows(
-      await tx.execute(sql`SELECT * FROM personnel_job_history
-      WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND employment_record_id IS NOT NULL
-      AND NOT deleted ORDER BY id LIMIT 201`),
-    ).map(camel);
-    if (existing.length > 200) throw new AppError('PAYLOAD_TOO_LARGE', '单次工作履历同步最多 200 条');
-    // TODO(需取证 Q-M0-37)：离职是否另建历史行未取证；只同步已知工作区间终点，不虚构离职后任期。
-    if (trigger && !terminal && !existing.some((row) => row.employmentRecordId === recordId))
-      existing.push({ employmentRecordId: recordId });
-    for (const previous of existing) {
-      const record = await loadEmploymentRecord(tx, ctx.tenantId, String(previous.employmentRecordId), effectiveDate);
-      const leaveDate =
-        terminal && trigger?.staffId === record?.staffId
-          ? await lastWorkDate(tx, ctx.tenantId, recordId)
-          : (previous.leaveDate ?? null);
-      await syncOne(tx, ctx, employeeId, previous, record, leaveDate);
-    }
-  });
+  const trigger = await loadEmploymentRecord(tx, ctx.tenantId, recordId, effectiveDate);
+  const mayCreate = Boolean(switches[kind]) && (await enabled(tx, ctx.tenantId, switches[kind]!));
+  const terminal = ['leave', 'retirement'].includes(kind);
+  const existing = rows(
+    await tx.execute(sql`SELECT j.* FROM personnel_job_history j
+      LEFT JOIN employment_records r ON r.tenant_id=j.tenant_id AND r.id=j.employment_record_id
+      WHERE j.tenant_id=${ctx.tenantId} AND j.employee_id=${employeeId}::uuid AND NOT j.deleted
+      AND (j.employment_record_id=${recordId}::uuid OR (${trigger?.staffId ?? null}::uuid IS NOT NULL
+        AND r.staff_id=${trigger?.staffId ?? null}::uuid AND r.start_date<=${effectiveDate}::date))
+      ORDER BY r.start_date DESC LIMIT 2`),
+  ).map(camel);
+  // TODO(需取证 Q-M0-37)：离职是否另建历史行未取证；只同步已知工作区间终点，不虚构离职后任期。
+  if (mayCreate && trigger && !terminal && !existing.some((row) => row.employmentRecordId === recordId))
+    existing.push({ employmentRecordId: recordId });
+  for (const previous of existing) {
+    const record = await loadEmploymentRecord(tx, ctx.tenantId, String(previous.employmentRecordId), effectiveDate);
+    const leaveDate =
+      terminal && trigger?.staffId === record?.staffId
+        ? await lastWorkDate(tx, ctx.tenantId, recordId)
+        : (previous.leaveDate ?? null);
+    await syncOne(tx, ctx, employeeId, previous, record, leaveDate);
+  }
 }
 async function syncOne(
   tx: Tx,
@@ -98,8 +95,8 @@ async function syncOne(
     employeeId,
     revision: Number(before?.revision ?? 0) + 1,
     deleted: false,
-    sourceType: 'hr_direct',
-    sourceId: null,
+    sourceType: 'employment_sync',
+    sourceId: record.id,
     createdBy: before?.createdBy ?? ctx.userId,
     createdAt: before?.createdAt ?? ctx.now.toISOString(),
     commandId: ctx.commandId,

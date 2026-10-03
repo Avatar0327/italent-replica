@@ -83,8 +83,10 @@ export async function applyApprovedChangeInTransaction(tx: Tx, ctx: PersonnelCon
     { ...ctx, expectedRevision: Number(before.targetRevision) },
     String(before.employeeId),
     kind,
-    { ...values, sourceType: 'self_service', sourceId: id },
+    values,
     before.recordId ? String(before.recordId) : undefined,
+    false,
+    { type: 'self_service', id },
   );
   const after = { ...before, status: 'applied', revision: Number(before.revision) + 1 };
   await update(

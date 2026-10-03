@@ -32,8 +32,34 @@ it('AC-SUB-03 自助申请先待审批，可信审批完成后来源为申请 ID
   };
   const first = await applyApprovedChange(db, ctx, request.id);
   expect(await applyApprovedChange(db, ctx, request.id)).toEqual(first);
-  const items = await (await s.request('GET', s.path('education'))).json();
+  const items = (await (await s.request('GET', s.path('education'))).json()) as {
+    items: { id: string; revision: number }[];
+  };
   expect(items).toMatchObject({ items: [{ school: '申请大学', sourceType: 'self_service', sourceId: request.id }] });
+  const applied = items.items[0] as { id: string; revision: number };
+  const edited = await s.request('PATCH', `${s.path('education')}/${applied.id}`, {
+    ifMatch: applied.revision,
+    body: { school: 'HR复核大学' },
+  });
+  expect(await edited.json()).toMatchObject({ sourceType: 'hr_direct', sourceId: null });
+  expect(await (await s.request('GET', `${s.path('education')}/${applied.id}/history`)).json()).toMatchObject({
+    items: [
+      { sourceType: 'hr_direct', sourceId: null },
+      { sourceType: 'self_service', sourceId: request.id },
+    ],
+  });
+});
+
+it('AC-SUB-01 客户端不能伪造系统来源字段', async () => {
+  const s = await personnelSession(database().db);
+  expect(
+    (
+      await s.request('POST', s.path('education'), {
+        ifMatch: 0,
+        body: { school: '合成大学', sourceType: 'self_service', sourceId: randomUUID() },
+      })
+    ).status,
+  ).toBe(400);
 });
 
 it('自助申请绑定本人；不同 patch 的同键请求冲突；目标版本过期不部分落地', async () => {

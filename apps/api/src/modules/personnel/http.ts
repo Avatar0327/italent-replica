@@ -25,7 +25,10 @@ export async function write(
   button: string = operation,
   fingerprint: unknown = input,
 ) {
-  await withTenant(deps.db, ctx.tenantId, (tx) => requirePerson(tx, ctx, employeeId));
+  await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    await requirePerson(tx, ctx, employeeId);
+    await authorizeTx(tx, deps, ctx, operation, input, button);
+  });
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input: fingerprint },

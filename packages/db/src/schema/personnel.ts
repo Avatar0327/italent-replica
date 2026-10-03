@@ -182,8 +182,9 @@ export const personnelEducation = pgTable(
     check('personnel_education_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_education_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
     uniqueIndex('personnel_education_is_first_education_one')
       .on(t.tenantId, t.employeeId)
@@ -259,8 +260,9 @@ export const personnelJobHistory = pgTable(
     check('personnel_job_history_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_job_history_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
     uniqueIndex('personnel_job_history_employment')
       .on(t.tenantId, t.employmentRecordId)
@@ -328,8 +330,9 @@ export const personnelFamily = pgTable(
     check('personnel_family_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_family_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
   ],
 );
@@ -383,8 +386,9 @@ export const personnelTraining = pgTable(
     check('personnel_training_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_training_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
   ],
 );
@@ -432,8 +436,9 @@ export const personnelCertificate = pgTable(
     check('personnel_certificate_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_certificate_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
   ],
 );
@@ -477,8 +482,9 @@ export const personnelAwards = pgTable(
     check('personnel_awards_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_awards_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
   ],
 );
@@ -529,8 +535,9 @@ export const personnelProjectExperience = pgTable(
     check('personnel_project_experience_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_project_experience_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
   ],
 );
@@ -577,8 +584,9 @@ export const personnelSkill = pgTable(
     check('personnel_skill_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_skill_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
   ],
 );
@@ -625,8 +633,9 @@ export const personnelLanguageAbility = pgTable(
     check('personnel_language_ability_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_language_ability_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
   ],
 );
@@ -687,8 +696,9 @@ export const personnelEstimationResult = pgTable(
     check('personnel_estimation_result_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_estimation_result_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
   ],
 );
@@ -733,8 +743,9 @@ export const personnelPunish = pgTable(
     check('personnel_punish_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_punish_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
   ],
 );
@@ -784,8 +795,9 @@ export const personnelProfessionalTechnicalPost = pgTable(
     check('personnel_professional_technical_post_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_professional_technical_post_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
     uniqueIndex('personnel_professional_technical_post_is_highest_level_one')
       .on(t.tenantId, t.employeeId)
@@ -843,8 +855,9 @@ export const personnelVocationalQualification = pgTable(
     check('personnel_vocational_qualification_revision_positive', sql`${t.revision} > 0`),
     check(
       'personnel_vocational_qualification_source',
-      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection')
-    AND (${t.sourceType} = 'hr_direct' OR ${t.sourceId} IS NOT NULL)`,
+      sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
     ),
     uniqueIndex('personnel_vocational_qualification_is_highest_level_one')
       .on(t.tenantId, t.employeeId)

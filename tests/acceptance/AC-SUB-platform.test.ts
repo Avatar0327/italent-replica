@@ -3,6 +3,7 @@ import { pgErrorCode, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import { personnelSession } from './AC-SUB-support.js';
+import { saveInformationCollection } from '../../apps/api/src/modules/personnel/integrations.js';
 const database = useTestDb();
 const rows = (r: unknown) => (Array.isArray(r) ? r : (r as { rows: Record<string, unknown>[] }).rows);
 
@@ -87,12 +88,23 @@ describe('AC-SUB-01 事务及数据库约束', () => {
     const db = database().db;
     const s = await personnelSession(db);
     const sourceId = randomUUID();
-    const item = await s.add('family', {
-      name: '合成家属',
-      idNumber: 'SECRET-SYNTHETIC',
-      sourceType: 'info_collection',
-      sourceId,
-    });
+    const item = await withTenant(db, s.tenant.id, (tx) =>
+      saveInformationCollection(
+        tx,
+        {
+          tenantId: s.tenant.id,
+          userId: s.user.id,
+          timezone: s.tenant.timezone,
+          now: new Date('2026-10-01T00:00:00Z'),
+          commandId: randomUUID(),
+          expectedRevision: 0,
+        },
+        s.employee.id,
+        'family',
+        sourceId,
+        { name: '合成家属', idNumber: 'SECRET-SYNTHETIC' },
+      ),
+    );
     expect(item).toMatchObject({ sourceType: 'info_collection', sourceId });
     const key = randomUUID();
     const changed = await s.request('PATCH', `${s.path('family')}/${item.id}`, {

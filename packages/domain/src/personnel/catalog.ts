@@ -66,7 +66,7 @@ export const PERSONNEL_OBJECTS: readonly ObjectDefinition[] = [
     application: 'TenantBase',
     fields: [
       ...subset.fields.map((field) => ({ code: field.code, system: 'system' in field && field.system === true })),
-      ...['sourceType', 'sourceId'].map((code) => ({ code, system: false })),
+      ...['sourceType', 'sourceId'].map((code) => ({ code, system: true })),
       ...[...metadata, ...Object.keys(SUBSET_EMPLOYEE_ATTRIBUTES)].map((code) => ({ code, system: true })),
     ],
     buttons: PERSONNEL_BUTTONS,

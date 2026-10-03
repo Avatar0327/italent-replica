@@ -68,13 +68,26 @@ describe('AC-SUB-02 实际任职生效联动', () => {
         employmentRecordId: transfer.id,
         isThisCompany: true,
         startDate: '2026-07-01',
-        sourceType: 'hr_direct',
+        sourceType: 'employment_sync',
+        sourceId: transfer.id,
       },
     ]);
     await withTenant(on.db, on.s.tenant.id, (tx) =>
       syncEmploymentHistory(tx, on.ctx, on.s.employee.id, transfer.id, 'transfer', '2026-07-01'),
     );
     expect(await on.history()).toHaveLength(1);
+  });
+  it('关闭调动开关仍封口已同步的入职经历，但不新建调动经历', async () => {
+    const f = await fixture(['EntrySyncJobHistory']);
+    const transfer = await f.s.business(
+      f.s.employee.id,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-07-01', fields: {} },
+      f.hire.employeeRevision,
+    );
+    expect(await f.history()).toMatchObject([
+      { employmentRecordId: f.hire.id, endDate: '2026-06-30', sourceType: 'employment_sync' },
+    ]);
+    expect((await f.history()).some((row) => row.employmentRecordId === transfer.id)).toBe(false);
   });
   it('入职和调动经历的有效期随链更新，离职开关只封口已同步的有效工作区间', async () => {
     const f = await fixture(switches);
@@ -148,6 +161,24 @@ describe('AC-SUB-02 实际任职生效联动', () => {
     expect(changed.status, await changed.clone().text()).toBe(200);
     const business = (await changed.json()) as { revision: number };
     expect(await f.history()).toMatchObject([{ id: first.id, department: '变更后部门', revision: 2 }]);
+    const editable = await f.s.request('PATCH', `${f.s.path('jobhistory')}/${first.id}`, {
+      ifMatch: 2,
+      body: { responsibilities: '负责内部流程' },
+    });
+    expect(editable.status).toBe(200);
+    expect(await editable.json()).toMatchObject({
+      responsibilities: '负责内部流程',
+      sourceType: 'hr_direct',
+      sourceId: null,
+    });
+    expect(
+      (
+        await f.s.request('PATCH', `${f.s.path('jobhistory')}/${first.id}`, {
+          ifMatch: 3,
+          body: { company: '不可改单位' },
+        })
+      ).status,
+    ).toBe(400);
     const deleted = await f.s.api.request('DELETE', `/api/tenant/employment/businesses/${f.hire.id}`, {
       ...f.s.as,
       ifMatch: business.revision,
@@ -158,8 +189,9 @@ describe('AC-SUB-02 实际任职生效联动', () => {
     expect(history.status).toBe(200);
     expect(await history.json()).toMatchObject({
       items: [
-        { deleted: true, revision: 3 },
-        { deleted: false, revision: 2 },
+        { deleted: true, revision: 4 },
+        { deleted: false, revision: 3, sourceType: 'hr_direct' },
+        { deleted: false, revision: 2, sourceType: 'employment_sync' },
         { deleted: false, revision: 1 },
       ],
     });
