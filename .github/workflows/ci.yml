@@ -1,21 +1,38 @@
 name: CI
 
+# Actions 分钟按 job 向上取整计费，以下配置均为控制消耗：
+# - 纯文档改动（*.md / docs / reference，均已被 prettier 忽略、测试不读取）不触发
+# - 同一分支/PR 连续推送时取消旧运行，只验证最新提交
+# - Draft PR 不跑，转 Ready 后再跑
+# - Node 22（engines 下限）只在每周定时与手动触发时补跑，日常只跑 Node 24
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'reference/**']
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ['**.md', 'docs/**', 'reference/**']
+  schedule:
+    - cron: '0 1 * * 1' # 每周一 09:00（北京时间）
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     name: lint / typecheck / test (PGlite, Node ${{ matrix.node }})
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        node: [22, 24]
+        node: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[22, 24]' || '[24]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4 # 版本取自 package.json 的 packageManager
@@ -31,7 +48,9 @@ jobs:
 
   test-pg:
     name: test (PostgreSQL 16)
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:16
