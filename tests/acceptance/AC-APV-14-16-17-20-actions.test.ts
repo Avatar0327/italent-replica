@@ -186,6 +186,25 @@ describe('转交、加签、催办、撤销（节点动作开关与消息规则�
   });
 });
 
+describe('DEC-058 / DEC-069 异常管理员恰为发起人', () => {
+  it('不能审批自己的单据，但异常管理员任务总可转交给他人', async () => {
+    const w = await approvalWorld(database().db, 'apv-self-admin');
+    const s = await transferScene(w);
+    // 首节点“流程所有者”= 发起人 HR：自审跳过，HR 无直线经理 → 落到异常管理员，而异常管理员恰是 HR 本人。
+    await w.publishedProcess({ nodes: [{ key: 'owner', approver: 'owner' }] });
+    let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    const task = current(view);
+    expect(task).toMatchObject({ assigneeUserId: w.hr.id, isExceptionAdmin: true });
+    expect(view.actions).toEqual(expect.arrayContaining(['transfer']));
+    expect(view.actions).not.toContain('approve');
+    const self = await errorOf(await w.taskAction(w.hr.id, task.id, 'approve', view.revision));
+    expect(self).toMatchObject({ status: 409, body: { error: { details: { reason: 'APPROVAL_SELF_REVIEW' } } } });
+    view = await w.json(await w.taskAction(w.hr.id, task.id, 'transfer', view.revision, { toUserId: s.inHead.userId }));
+    view = await w.json(await w.taskAction(s.inHead.userId, current(view).id, 'approve', view.revision));
+    expect(view.status).toBe('approved');
+  });
+});
+
 describe('AC-APV-17 / AC-APV-20 管理员不得代签，只能转交或干预', () => {
   it('管理员直接同意被拒；转交与改审批人成功并入审计；转交给自己须填理由并醒目标注', async () => {
     const w = await approvalWorld(database().db, 'apv-admin');

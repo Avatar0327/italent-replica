@@ -66,7 +66,7 @@ export async function loadChange(tx: Tx, ctx: PersonnelContext, id: string) {
   return camel(row);
 }
 /**
- * TODO(R1-T07)：仅在审批中心完成节点鉴权、非自审与审批决定持久化后同事务调用。
+ * 只由审批中心（R1-T07）在节点鉴权、非自审校验与审批决定持久化后同事务调用。
  * 此函数不代表审批决定，不挂公开 HTTP 路由；用于履行已通过申请的业务落地。
  */
 export async function applyApprovedChangeInTransaction(tx: Tx, ctx: PersonnelContext, id: string) {
@@ -97,6 +97,22 @@ export async function applyApprovedChangeInTransaction(tx: Tx, ctx: PersonnelCon
   );
   await audit(tx, ctx, PERSONNEL_REQUEST_OBJECT, String(before.employeeId), id, after.revision, before, after);
   return { ...after, resultId: result.id };
+}
+/** 审批撤回（R1-T07）：申请关闭为“已撤回”，不写入子集；只由审批中心同事务调用。 */
+export async function withdrawChangeInTransaction(tx: Tx, ctx: PersonnelContext, id: string) {
+  const initial = await loadChange(tx, ctx, id);
+  await lockPerson(tx, ctx, String(initial.employeeId));
+  const before = await loadChange(tx, ctx, id);
+  if (before.status !== 'pending_approval') throw new AppError('CONFLICT', '申请不在待审批状态');
+  const after = { ...before, status: 'withdrawn', revision: Number(before.revision) + 1 };
+  await update(
+    tx,
+    'personnel_change_requests',
+    { status: 'withdrawn', revision: after.revision },
+    sql`tenant_id=${ctx.tenantId} AND id=${id}::uuid`,
+  );
+  await audit(tx, ctx, PERSONNEL_REQUEST_OBJECT, String(before.employeeId), id, after.revision, before, after);
+  return after;
 }
 export async function applyApprovedChange(db: Db, ctx: PersonnelContext, id: string) {
   return runCommand(db, ctx, {

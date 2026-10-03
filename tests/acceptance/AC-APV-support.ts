@@ -15,8 +15,9 @@ import {
   withTenant,
 } from '@italent/db';
 import { bootstrapTenantAdmin } from '@italent/api';
-import { MODULE_OBJECTS, type ObjectDefinition } from '@italent/domain';
+import { APPROVAL_TYPES, MODULE_OBJECTS, type ApprovalTypeCode, type ObjectDefinition } from '@italent/domain';
 import { expect } from 'vitest';
+import { createProcess, publishProcess } from '../../apps/api/src/modules/approval/definitions.js';
 import { createProfile, grant, makeGrantable, setObjectPermission, type PermissionWorld } from './AC-PRM-support.js';
 import { cmd, seedTenantWithMember, tenantApi, type RequestOptions } from './support/tenant-api.js';
 
@@ -435,4 +436,50 @@ export async function grantVisibleFields(
   const granted = await grant(world, userId, profile.id);
   expect(granted.status, await granted.clone().text()).toBe(201);
   return profile;
+}
+
+/**
+ * 其他模块的验收夹具：R1-T07 起提交任职申请 / 自助变更申请必须匹配到已发布流程（DEC-017）。
+ * 为每个审批类型安装一条已发布的兜底流程（DEC-018 显式兜底），首节点为“流程所有者”——发起人自审跳过后
+ * 落到异常管理员（DEC-068），保证提交成功且不改变被测模块自身的语义。
+ */
+export async function installApprovalFallbacks(db: Db, tenantId: string, userId: string): Promise<void> {
+  const ctx = { tenantId, userId, timezone: 'Asia/Shanghai', now: new Date(), expectedRevision: 0 };
+  await withTenant(db, tenantId, async (tx) => {
+    for (const approvalType of Object.keys(APPROVAL_TYPES) as ApprovalTypeCode[]) {
+      const created = await createProcess(
+        tx,
+        { ...ctx, commandId: randomUUID() },
+        { code: `FIXTURE_${approvalType}`, approvalType },
+        {
+          name: `夹具兜底流程-${approvalType}`,
+          groupName: null,
+          description: null,
+          priority: 0,
+          isFallback: true,
+          exceptionAdminUserId: userId,
+          urgeEnabled: true,
+          conditions: { items: [], expression: '' },
+          nodes: [
+            {
+              key: 'owner',
+              name: '夹具节点',
+              approver: 'owner',
+              noAssignee: 'exception_admin',
+              sameAssigneeSkip: false,
+              historySameAssigneeSkip: false,
+              formFields: [],
+              editableFields: [],
+              editMode: 'none',
+              actions: { transfer: false, addSign: false, urge: true },
+              rejectCommentRequired: false,
+              rejectResubmit: 'restart',
+              messageRules: [],
+            },
+          ],
+        },
+      );
+      await publishProcess(tx, { ...ctx, commandId: randomUUID(), expectedRevision: created.revision }, created.id);
+    }
+  });
 }

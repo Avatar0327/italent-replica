@@ -928,7 +928,7 @@ export const personnelChangeRequests = pgTable(
   (t) => [
     unique('personnel_change_requests_owner_id').on(t.tenantId, t.employeeId, t.id),
     employeeFk('personnel_change_requests_employee_fk', t),
-    check('personnel_change_requests_state', sql`${t.status} IN ('pending_approval','applied')`),
+    check('personnel_change_requests_state', sql`${t.status} IN ('pending_approval','applied','withdrawn')`),
     check('personnel_change_requests_revision_positive', sql`${t.revision}>0 AND ${t.targetRevision}>=0`),
   ],
 );

@@ -30,7 +30,7 @@ export interface EmploymentTransitionInput {
   readonly action: (typeof ACTIONS)[number];
 }
 
-/** 可信审批/任务调用入口；本轮不提供 HTTP 审批接口，也不假定节点或参与人规则。 */
+/** 可信审批 / 定时任务调用入口；审批动作只经审批中心（R1-T07），生效到期由 R1-T08 调度。 */
 export async function runEmploymentTransition(
   db: Db,
   ctx: EmploymentContext,
@@ -46,7 +46,7 @@ export async function runEmploymentTransition(
   });
 }
 
-/** 同事务编排端口，审批中心在 R1-T07 对操作者及节点权限负责。 */
+/** 同事务编排端口；审批中心（R1-T07）对操作者、节点与参与人规则负责。 */
 export async function transitionEmployment(
   tx: Tx,
   ctx: EmploymentContext,
@@ -66,7 +66,7 @@ export async function transitionEmployment(
       business.payload.effectiveDate,
     );
   } else if (input.action === 'approve') {
-    // TODO(R1-T07)：审批中心完成节点鉴权后调用；只有立即生效才执行向后更新。
+    // R1-T07：只由审批中心在最后一个节点通过后同事务调用；审批通过 ≠ 生效，只有生效日已到才落地并向后更新。
     await appendEmploymentState(tx, ctx, business, 'approved');
     if (tenantLocalDate(ctx.now, ctx.timezone) >= business.payload.effectiveDate) {
       await materializeEmploymentRecord(tx, ctx, business);
@@ -91,14 +91,14 @@ export async function transitionEmployment(
 
 function assertTransition(business: LockedEmploymentBusiness, action: EmploymentTransitionInput['action']): void {
   const permitted = {
-    submit: business.payload.mode === 'application' && business.state === 'draft',
+    // DEC-053：驳回后在同一申请上修改并重提，或撤回为草稿。
+    submit: business.payload.mode === 'application' && ['draft', 'rejected'].includes(business.state),
     approve: business.payload.mode === 'application' && business.state === 'in_review',
     reject: business.payload.mode === 'application' && business.state === 'in_review',
-    withdraw: business.payload.mode === 'application' && business.state === 'in_review',
+    withdraw: business.payload.mode === 'application' && ['in_review', 'rejected'].includes(business.state),
     activate: business.payload.mode === 'application' && business.state === 'approved',
     delete: ['draft', 'rejected', 'approved', 'effective'].includes(business.state),
   };
-  // TODO(R1-T07, DEC-053)：按节点配置支持驳回后在同一申请上重提。
   if (!permitted[action]) throw new AppError('CONFLICT', '当前状态不允许此动作', { state: business.state, action });
 }
 

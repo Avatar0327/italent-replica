@@ -7,6 +7,7 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { revision, uuidParam } from '../job/context.js';
 import { access, preflight, trim } from './access.js';
 import { createChange, loadChange, requireSelf } from './change-requests.js';
+import { personnelApprovalHooks } from './approval-hooks.js';
 import { body, safe } from './http.js';
 import { parse, subsetInput, subsetKind } from './validation.js';
 import { tenantOf } from '../../tenant-context.js';
@@ -52,10 +53,12 @@ export function registerChangeRequestRoutes(router: Hono<TenantEnv>, deps: Tenan
       const result = await runCommand(deps.db, ctx, {
         id: c.req.header('idempotency-key'),
         fingerprint: { operation: 'personnel.self-service-request', input, expectedRevision },
-        execute: async (tx, commandId) => ({
-          status: 201,
-          body: await createChange(tx, { ...ctx, commandId }, input),
-        }),
+        execute: async (tx, commandId) => {
+          const created = await createChange(tx, { ...ctx, commandId }, input);
+          // R1-T07：申请与审批实例同事务创建；没有可用流程即整单回滚，不留无人审批的申请。
+          await personnelApprovalHooks.submitted(tx, { ...ctx, commandId }, created.id);
+          return { status: 201, body: created };
+        },
       });
       return c.json(result.body, 201);
     }),
@@ -69,7 +72,7 @@ export function registerChangeRequestRoutes(router: Hono<TenantEnv>, deps: Tenan
         return row;
       });
       await preflight(deps, ctx, String(result.employeeId));
-      // Approval-node disclosure is R1-T07. Generic request metadata never exposes an untrimmed patch.
+      // 审批节点披露见审批中心（R1-T07）；申请元数据接口不暴露未裁剪的变更内容。
       return c.json(await trim(deps, ctx, PERSONNEL_REQUEST_OBJECT, result));
     }),
   );

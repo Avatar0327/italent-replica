@@ -1,0 +1,111 @@
+/**
+ * 节点审批人决策（纯函数）：三种内建机制（`14` §2.2）+ 首节点为空报错（DEC-054）+ 自审（DEC-058 / DEC-068）。
+ * 顺序：审批人为空 → 自审（优先于“相同审批人跳过 = 同意”，DEC-068）→ 相同 / 历史相同审批人跳过 → 派任务。
+ * TODO(需取证 Q-M0-43)：相同 / 历史相同审批人跳过的“跳过后结果”除“同意”外还有哪些取值未取证，首版只实现“同意”。
+ */
+import type { ApprovalNode } from './types.js';
+
+/** 表达式解析出的人员与其绑定的账号（无账号视为审批人为空）。 */
+export interface Candidate {
+  readonly personId: string | null;
+  readonly userId: string | null;
+}
+
+export interface RoutingFacts {
+  readonly isFirstNode: boolean;
+  readonly initiatorUserId: string;
+  readonly subjectEmployeeId: string | null;
+  readonly subjectUserId: string | null;
+  readonly exceptionAdminUserId: string;
+  /** 相邻上一节点的同意人（相同审批人跳过的比较对象）。 */
+  readonly previousApproverUserId: string | null;
+  /** 本实例本轮内已同意过的人（历史相同审批人跳过）。 */
+  readonly approvedUserIds: readonly string[];
+  /** 本实例已分配过任务的人（DEC-068“已在本单审批链上”）。 */
+  readonly chainUserIds: readonly string[];
+}
+
+export type AutoOutcome = 'same_skip' | 'history_skip' | 'no_assignee_skip' | 'no_assignee_approve';
+export type AssignOrigin = 'resolved' | 'self_skip_manager' | 'exception_admin';
+
+export type NodeDecision =
+  | {
+      readonly kind: 'assign';
+      readonly userId: string;
+      readonly origin: AssignOrigin;
+      readonly isExceptionAdmin: boolean;
+      /** 被自审跳过的原审批人（不计为同意）。 */
+      readonly selfSkippedUserId: string | null;
+      readonly reason: string;
+    }
+  | { readonly kind: 'auto'; readonly outcome: AutoOutcome; readonly userId: string | null; readonly reason: string }
+  | { readonly kind: 'first_node_empty'; readonly reason: string };
+
+export function isSelf(candidate: Candidate, facts: RoutingFacts): boolean {
+  return (
+    (candidate.userId !== null &&
+      (candidate.userId === facts.initiatorUserId || candidate.userId === facts.subjectUserId)) ||
+    (candidate.personId !== null && candidate.personId === facts.subjectEmployeeId)
+  );
+}
+
+function exceptionAdmin(facts: RoutingFacts, reason: string, selfSkippedUserId: string | null): NodeDecision {
+  return {
+    kind: 'assign',
+    userId: facts.exceptionAdminUserId,
+    origin: 'exception_admin',
+    isExceptionAdmin: true,
+    selfSkippedUserId,
+    reason,
+  };
+}
+
+/**
+ * @param manager 自审时该审批人任职记录上的直线经理（调用方按需解析）。
+ */
+export function decideNode(
+  node: ApprovalNode,
+  candidate: Candidate,
+  facts: RoutingFacts,
+  manager: Candidate = { personId: null, userId: null },
+): NodeDecision {
+  if (candidate.userId === null) {
+    if (facts.isFirstNode) return { kind: 'first_node_empty', reason: '第一个审批节点没有审批人' };
+    if (node.noAssignee === 'skip')
+      return { kind: 'auto', outcome: 'no_assignee_skip', userId: null, reason: '审批人为空，自动跳过' };
+    if (node.noAssignee === 'approve') {
+      return { kind: 'auto', outcome: 'no_assignee_approve', userId: null, reason: '审批人为空，自动同意' };
+    }
+    return exceptionAdmin(facts, '审批人为空，转异常管理员', null);
+  }
+  if (isSelf(candidate, facts)) {
+    const selfSkipped = candidate.userId;
+    const managerInvalid = manager.userId === null || manager.userId === selfSkipped || isSelf(manager, facts);
+    if (managerInvalid) return exceptionAdmin(facts, '自审跳过；直线经理为空或仍为本人，转异常管理员', selfSkipped);
+    if (facts.chainUserIds.includes(manager.userId!)) {
+      return exceptionAdmin(facts, '自审跳过；直线经理已在本单审批链上，转异常管理员', selfSkipped);
+    }
+    return {
+      kind: 'assign',
+      userId: manager.userId!,
+      origin: 'self_skip_manager',
+      isExceptionAdmin: false,
+      selfSkippedUserId: selfSkipped,
+      reason: '自审跳过（不计为同意），转直线经理',
+    };
+  }
+  if (node.sameAssigneeSkip && candidate.userId === facts.previousApproverUserId) {
+    return { kind: 'auto', outcome: 'same_skip', userId: candidate.userId, reason: '与上一节点审批人相同，自动同意' };
+  }
+  if (node.historySameAssigneeSkip && facts.approvedUserIds.includes(candidate.userId)) {
+    return { kind: 'auto', outcome: 'history_skip', userId: candidate.userId, reason: '历史节点已同意，自动同意' };
+  }
+  return {
+    kind: 'assign',
+    userId: candidate.userId,
+    origin: 'resolved',
+    isExceptionAdmin: false,
+    selfSkippedUserId: null,
+    reason: '按表达式解析',
+  };
+}

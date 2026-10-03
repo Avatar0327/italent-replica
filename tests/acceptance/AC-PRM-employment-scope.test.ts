@@ -197,7 +197,7 @@ describe('AC-PRM-03/22/29 任职数据范围与字段裁剪', () => {
   });
 
   it('DEC-057：具有审批相关功能身份也不产生员工/任职数据范围', async () => {
-    // TODO(R1-T07)：真正审批节点详情只披露节点表单；此处证明业务权限本身不产生档案范围。
+    // 审批节点详情的最小披露见 AC-APV-PRM-29；此处证明业务权限本身不产生档案范围。
     const as = { user: world.approver.id, tenant: world.tenant.id };
     const list = await world.api.request('GET', '/api/tenant/employment/employees', as);
     expect(list.status).toBe(200);
