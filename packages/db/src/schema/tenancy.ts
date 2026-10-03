@@ -35,14 +35,18 @@ export const tenants = pgTable(
     id: id(),
     code: text('code').notNull().unique(),
     name: text('name').notNull(),
-    // IANA 时区名，默认 Asia/Shanghai（DEC-056）；合法性约束见迁移 0003 的 tenants_timezone_valid
+    // IANA 时区名，默认 Asia/Shanghai（DEC-056）；合法性由 tenants_timezone_valid 约束
     timezone: text('timezone').notNull().default('Asia/Shanghai'),
     status: text('status').$type<TenantStatus>().notNull().default('active'),
     revision: integer('revision').notNull().default(1),
     createdAt: utc('created_at'),
     updatedAt: utc('updated_at'),
   },
-  (t) => [check('tenants_status_valid', sql`${t.status} IN ('active', 'suspended', 'restoring')`)],
+  (t) => [
+    check('tenants_status_valid', sql`${t.status} IN ('active', 'suspended', 'restoring')`),
+    // 函数 is_valid_iana_timezone 由迁移 0003 手写创建
+    check('tenants_timezone_valid', sql`is_valid_iana_timezone(${t.timezone})`),
+  ],
 );
 
 export const USER_STATUSES = ['active', 'disabled'] as const;
@@ -148,7 +152,11 @@ export const auditEvents = pgTable(
     occurredAt: utc('occurred_at'),
     commandId: text('command_id'),
   },
-  (t) => [index('audit_events_tenant_occurred').on(t.tenantId, t.occurredAt)],
+  (t) => [
+    index('audit_events_tenant_occurred').on(t.tenantId, t.occurredAt),
+    // 数据范围“创建人”判定按对象回查创建事件（迁移 0019）
+    index('audit_events_scope_creator_lookup').on(t.tenantId, t.objectId, t.action, t.occurredAt),
+  ],
 );
 
 /** 命令台账：同一租户内同一命令 ID 同内容视为幂等重放，异内容报冲突（AGENTS.md §10「幂等」）。 */

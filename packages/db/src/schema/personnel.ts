@@ -49,6 +49,15 @@ function subsetMeta() {
     commandId: text('command_id').notNull(),
   };
 }
+/** 来源类型与来源单据成对出现；版本表上的同名约束由迁移 0022 手写添加。 */
+function versionSourceCheck(name: string, t: { sourceType: AnyPgColumn; sourceId: AnyPgColumn }) {
+  return check(
+    name,
+    sql`${t.sourceType} IN ('hr_direct','self_service','info_collection','employment_sync')
+    AND ((${t.sourceType} = 'hr_direct' AND ${t.sourceId} IS NULL)
+      OR (${t.sourceType} <> 'hr_direct' AND ${t.sourceId} IS NOT NULL))`,
+  );
+}
 function employeeFields() {
   return {
     name: text('name'),
@@ -141,7 +150,8 @@ export const personnelAttachments = pgTable(
   'personnel_attachments',
   {
     id: id(),
-    tenantId: tenantId(),
+    // 0024 用列内联约束建表，约束名由 PostgreSQL 自动生成，这里与之对齐
+    tenantId: uuid('tenant_id').notNull(),
     employeeId: uuid('employee_id').notNull(),
     purpose: text('purpose').notNull(),
     filename: text('filename').notNull(),
@@ -155,8 +165,9 @@ export const personnelAttachments = pgTable(
   (t) => [
     unique('personnel_attachments_tenant_id').on(t.tenantId, t.id),
     employeeFk('personnel_attachments_employee_fk', t),
-    check('personnel_attachments_status', sql`${t.status} IN ('registered','uploaded','pending_cleanup')`),
-    check('personnel_attachments_size', sql`${t.byteSize} >= 0`),
+    foreignKey({ name: 'personnel_attachments_tenant_id_fkey', columns: [t.tenantId], foreignColumns: [tenants.id] }),
+    check('personnel_attachments_status_check', sql`${t.status} IN ('registered','uploaded','pending_cleanup')`),
+    check('personnel_attachments_byte_size_check', sql`${t.byteSize} >= 0`),
   ],
 );
 function educationFields() {
@@ -231,6 +242,7 @@ export const personnelEducationVersions = pgTable(
   },
   (t) => [
     unique('personnel_education_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_education_versions_source', t),
     employeeFk('personnel_education_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_education_versions_record_fk',
@@ -306,6 +318,7 @@ export const personnelJobHistoryVersions = pgTable(
   },
   (t) => [
     unique('personnel_job_history_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_job_history_versions_source', t),
     employeeFk('personnel_job_history_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_job_history_versions_record_fk',
@@ -367,6 +380,7 @@ export const personnelFamilyVersions = pgTable(
   },
   (t) => [
     unique('personnel_family_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_family_versions_source', t),
     employeeFk('personnel_family_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_family_versions_record_fk',
@@ -423,6 +437,7 @@ export const personnelTrainingVersions = pgTable(
   },
   (t) => [
     unique('personnel_training_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_training_versions_source', t),
     employeeFk('personnel_training_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_training_versions_record_fk',
@@ -473,6 +488,7 @@ export const personnelCertificateVersions = pgTable(
   },
   (t) => [
     unique('personnel_certificate_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_certificate_versions_source', t),
     employeeFk('personnel_certificate_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_certificate_versions_record_fk',
@@ -519,6 +535,7 @@ export const personnelAwardsVersions = pgTable(
   },
   (t) => [
     unique('personnel_awards_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_awards_versions_source', t),
     employeeFk('personnel_awards_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_awards_versions_record_fk',
@@ -572,6 +589,7 @@ export const personnelProjectExperienceVersions = pgTable(
   },
   (t) => [
     unique('personnel_project_experience_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_project_experience_versions_source', t),
     employeeFk('personnel_project_experience_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_project_experience_versions_record_fk',
@@ -621,6 +639,7 @@ export const personnelSkillVersions = pgTable(
   },
   (t) => [
     unique('personnel_skill_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_skill_versions_source', t),
     employeeFk('personnel_skill_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_skill_versions_record_fk',
@@ -670,6 +689,7 @@ export const personnelLanguageAbilityVersions = pgTable(
   },
   (t) => [
     unique('personnel_language_ability_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_language_ability_versions_source', t),
     employeeFk('personnel_language_ability_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_language_ability_versions_record_fk',
@@ -733,6 +753,7 @@ export const personnelEstimationResultVersions = pgTable(
   },
   (t) => [
     unique('personnel_estimation_result_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_estimation_result_versions_source', t),
     employeeFk('personnel_estimation_result_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_estimation_result_versions_record_fk',
@@ -780,6 +801,7 @@ export const personnelPunishVersions = pgTable(
   },
   (t) => [
     unique('personnel_punish_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_punish_versions_source', t),
     employeeFk('personnel_punish_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_punish_versions_record_fk',
@@ -835,6 +857,7 @@ export const personnelProfessionalTechnicalPostVersions = pgTable(
   },
   (t) => [
     unique('personnel_professional_technical_post_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_professional_technical_post_versions_source', t),
     employeeFk('personnel_professional_technical_post_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_professional_technical_post_versions_record_fk',
@@ -895,6 +918,7 @@ export const personnelVocationalQualificationVersions = pgTable(
   },
   (t) => [
     unique('personnel_vocational_qualification_versions_revision').on(t.tenantId, t.recordId, t.revision),
+    versionSourceCheck('personnel_vocational_qualification_versions_source', t),
     employeeFk('personnel_vocational_qualification_versions_employee_fk', t),
     foreignKey({
       name: 'personnel_vocational_qualification_versions_record_fk',
