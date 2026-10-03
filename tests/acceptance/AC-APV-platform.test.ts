@@ -90,7 +90,7 @@ describe('转交 / 加签写统一审计与 outbox（AGENTS §10）', () => {
     const transferred = view.tasks.find((t) => t.status === 'pending')!;
     view = await w.json<InstanceView>(
       await w.taskAction(delegate, transferred.id, 'add-sign', view.revision, {
-        userId: helper,
+        userIds: [helper],
         type: 'before',
         comment: '请会签',
       }),
@@ -146,7 +146,7 @@ describe('清单 12 / 13：任务创建、自动跳过、取消写统一审计�
       after: expect.objectContaining({ status: 'pending', assigneeUserId: s.outHead.userId, nodeKey: 'out_head' }),
     });
     expect(of(skipped!.id, 'approval.task.create')).toMatchObject({
-      after: expect.objectContaining({ status: 'skipped', origin: 'same_skip', assigneeUserId: s.outHead.userId }),
+      after: expect.objectContaining({ status: 'approved', origin: 'same_skip', assigneeUserId: s.outHead.userId }),
     });
     expect(of(last!.id, 'approval.task.cancel')).toMatchObject({
       before: { status: 'pending' },

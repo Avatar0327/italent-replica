@@ -95,7 +95,7 @@ describe('清单 24：审批容量（DEC-101）', () => {
           'transfer','pending',now() FROM generate_series(1,60) g`),
     );
     const response = await w.taskAction(s.outHead.userId, current(view).id, 'add-sign', view.revision, {
-      userId: finance,
+      userIds: [finance],
       type: 'before',
     });
     expect(response.status).toBe(413);
@@ -121,6 +121,7 @@ describe('清单 24：审批容量（DEC-101）', () => {
             isFallback: false,
             exceptionAdminUserId: w.exceptionAdmin,
             urgeEnabled: true,
+            hideRecordsFromInitiator: false,
             conditions: {
               items: [{ no: 1, field: 'employee.name', operator: 'eq', value: i === 204 ? '调动员工' : `无人${i}` }],
               expression: '',
@@ -133,12 +134,14 @@ describe('清单 24：审批容量（DEC-101）', () => {
                 noAssignee: 'exception_admin',
                 sameAssigneeSkip: false,
                 historySameAssigneeSkip: false,
+                sameAssigneeResult: 'approve',
+                historySameAssigneeResult: 'approve',
                 formFields: [],
                 editableFields: [],
                 editMode: 'none',
                 actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' },
                 rejectCommentRequired: false,
-                commentPrivate: false,
+                hideRecords: false,
                 rejectResubmit: 'restart',
                 messageRules: [],
               },

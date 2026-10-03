@@ -127,7 +127,7 @@ describe('转交、加签、催办、撤销（节点动作开关与消息规则�
     expect((await w.todos(s.inHead.userId)).items).toEqual([]);
     // DEC-095 后加签：本人同意后再由被加签人审批。
     view = await w.json(
-      await w.taskAction(delegate, current(view).id, 'add-sign', view.revision, { userId: helper, type: 'after' }),
+      await w.taskAction(delegate, current(view).id, 'add-sign', view.revision, { userIds: [helper], type: 'after' }),
     );
     expect(current(view)).toMatchObject({ assigneeUserId: helper, origin: 'add_sign_after' });
     expect(view.status).toBe('running');

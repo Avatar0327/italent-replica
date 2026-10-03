@@ -96,10 +96,23 @@ describe('AC-APV-03 相同审批人跳过 / 历史相同审批人跳过（结果
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     view = await w.json(await w.taskAction(s.outHead.userId, current(view).id, 'approve', view.revision));
     expect(current(view)).toMatchObject({ nodeKey: 'in_hrbp', assigneeUserId: s.inHrbp.userId });
-    expect(view.tasks.find((t) => t.nodeKey === 'in_head')).toMatchObject({ status: 'skipped', origin: 'same_skip' });
-    expect(view.logs).toEqual(expect.arrayContaining([expect.objectContaining({ event: 'same_assignee_skip' })]));
+    expect(view.tasks.find((t) => t.nodeKey === 'in_head')).toMatchObject({
+      status: 'approved',
+      origin: 'same_skip',
+      assigneeUserId: s.outHead.userId,
+    });
+    expect(view.logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'auto_approve',
+          detail: expect.objectContaining({
+            mechanism: 'same',
+          }),
+        }),
+      ]),
+    );
     view = await w.json(await w.taskAction(s.inHrbp.userId, current(view).id, 'approve', view.revision));
-    expect(view.tasks.find((t) => t.nodeKey === 'again')).toMatchObject({ status: 'skipped', origin: 'history_skip' });
+    expect(view.tasks.find((t) => t.nodeKey === 'again')).toMatchObject({ status: 'approved', origin: 'history_skip' });
     expect(view.status).toBe('approved');
   });
 });

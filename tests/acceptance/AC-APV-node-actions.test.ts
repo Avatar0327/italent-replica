@@ -97,7 +97,7 @@ describe('清单 26：前加签 / 后加签（DEC-095）', () => {
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     view = await w.json(
       await w.taskAction(s.outHead.userId, current(view).id, 'add-sign', view.revision, {
-        userId: finance,
+        userIds: [finance],
         type: 'before',
       }),
     );
@@ -106,7 +106,7 @@ describe('清单 26：前加签 / 后加签（DEC-095）', () => {
     expect(current(view)).toMatchObject({ assigneeUserId: s.outHead.userId, origin: 'add_sign_return' });
     view = await w.json(
       await w.taskAction(s.outHead.userId, current(view).id, 'add-sign', view.revision, {
-        userId: finance,
+        userIds: [finance],
         type: 'after',
         comment: '本人同意，请财务复核',
       }),
@@ -127,7 +127,7 @@ describe('清单 26：前加签 / 后加签（DEC-095）', () => {
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     view = await w.json(
       await w.taskAction(s.outHead.userId, current(view).id, 'add-sign', view.revision, {
-        userId: finance,
+        userIds: [finance],
         type: 'after',
       }),
     );

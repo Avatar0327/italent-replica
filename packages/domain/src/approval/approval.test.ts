@@ -3,7 +3,13 @@ import { conditionViolations, evaluateCondition } from './conditions.js';
 import { publishViolations } from './definition.js';
 import { PRESET_PROCESSES } from './presets.js';
 import { avoidSelfExceptionAdmin, decideNode, type Candidate, type RoutingFacts } from './routing.js';
-import { APPROVAL_TYPES, type ApprovalNode, type ConditionItem } from './types.js';
+import {
+  APPROVAL_TYPES,
+  approvalTypeOfBusiness,
+  subsetProcessCode,
+  type ApprovalNode,
+  type ConditionItem,
+} from './types.js';
 
 const fields = APPROVAL_TYPES.transfer.conditionFields;
 const item = (no: number, field: string, operator: ConditionItem['operator'], value: ConditionItem['value']) => ({
@@ -55,12 +61,14 @@ const node = (extra: Partial<ApprovalNode> = {}): ApprovalNode => ({
   noAssignee: 'exception_admin',
   sameAssigneeSkip: true,
   historySameAssigneeSkip: true,
+  sameAssigneeResult: 'approve',
+  historySameAssigneeResult: 'approve',
   formFields: [],
   editableFields: [],
   editMode: 'none',
   actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' },
   rejectCommentRequired: false,
-  commentPrivate: false,
+  hideRecords: false,
   rejectResubmit: 'restart',
   messageRules: [],
   ...extra,
@@ -117,13 +125,28 @@ describe('节点审批人决策（DEC-054 / DEC-068）', () => {
       origin: 'exception_admin',
     });
   });
-  it('相同 / 历史相同审批人跳过（结果 = 同意）', () => {
+  it('相同 / 历史相同审批人自动处理：结果按节点配置为「同意」或「跳过」（DEC-106）', () => {
     expect(decideNode(node(), person('a'), facts({ previousApproverUserId: 'a' }))).toMatchObject({
       outcome: 'same_skip',
+      result: 'approve',
     });
     expect(decideNode(node(), person('a'), facts({ approvedUserIds: ['a'] }))).toMatchObject({
       outcome: 'history_skip',
+      result: 'approve',
     });
+    const skipping = node({ sameAssigneeResult: 'skip', historySameAssigneeResult: 'skip' });
+    expect(decideNode(skipping, person('a'), facts({ previousApproverUserId: 'a' }))).toMatchObject({
+      outcome: 'same_skip',
+      result: 'skip',
+    });
+    expect(decideNode(skipping, person('a'), facts({ approvedUserIds: ['a'] }))).toMatchObject({
+      outcome: 'history_skip',
+      result: 'skip',
+    });
+    // 自审规则优先（DEC-068）：结果配置为「跳过」也不影响自审转直线经理。
+    expect(
+      decideNode(skipping, person('initiator'), facts({ previousApproverUserId: 'initiator' }), person('boss')),
+    ).toMatchObject({ origin: 'self_skip_manager' });
     expect(
       decideNode(
         node({ sameAssigneeSkip: false, historySameAssigneeSkip: false }),
@@ -146,5 +169,46 @@ describe('发布校验与出厂预置（DEC-018 / DEC-054）', () => {
         conditions: { items: [], expression: '' },
       }),
     ).toMatchObject([{ reason: 'APPROVAL_CONDITION_REQUIRED' }]);
+  });
+});
+
+describe('审批类型与标准流程编码（`14` §11.1，PR #35 第二轮补充·第 14 / 18 条）', () => {
+  it('各类型使用原站标准流程编码；原站没有“重聘”类型，重聘入职 / 退休返聘归入入职', () => {
+    expect(Object.keys(APPROVAL_TYPES)).not.toContain('rehire');
+    expect(Object.keys(APPROVAL_TYPES)).not.toContain('retire_rehire');
+    expect(APPROVAL_TYPES.hire).toMatchObject({ name: '入职', defaultProcessCode: 'EntryProcessNew' });
+    expect(APPROVAL_TYPES.regularization.defaultProcessCode).toBe('ProbationProcessNew');
+    expect(APPROVAL_TYPES.intern_regularization.defaultProcessCode).toBe('TraineeEntryProcess');
+    expect(APPROVAL_TYPES.leave.defaultProcessCode).toBe('DimissionProcessNew');
+    expect(APPROVAL_TYPES.transfer.defaultProcessCode).toBe('TransferProcessNew');
+    expect(APPROVAL_TYPES.retirement.defaultProcessCode).toBe('RetireProcess');
+    expect(approvalTypeOfBusiness('rehire')).toBe('hire');
+    expect(approvalTypeOfBusiness('retire_rehire')).toBe('hire');
+    expect(approvalTypeOfBusiness('transfer')).toBe('transfer');
+  });
+  it('员工子集变更按子集各用自己的流程编码；未取到标准编码的子集为空', () => {
+    expect(subsetProcessCode('education')).toBe('ChangeEducationProcess');
+    expect(subsetProcessCode('family')).toBe('ChangeFamilyProcess');
+    expect(subsetProcessCode('jobhistory')).toBe('ChangeJobHistoryProcess');
+    expect(subsetProcessCode('language-ability')).toBe('LanguageSkillsChange');
+    expect(subsetProcessCode('skill')).toBe('ProfessionalSkillsChange');
+    expect(subsetProcessCode('estimation-result')).toBeNull();
+  });
+  it('预置流程按标准编码带发起条件；调动节点表单字段取 TransferDetailView 的任职调整区块', () => {
+    const byType = new Map(PRESET_PROCESSES.map((preset) => [preset.approvalType, preset]));
+    expect(byType.has('rehire' as never)).toBe(false);
+    for (const type of ['hire', 'regularization', 'intern_regularization', 'leave', 'retirement'] as const) {
+      expect(byType.get(type)!.definition).toMatchObject({
+        isFallback: false,
+        conditions: {
+          items: [{ field: 'processCode', operator: 'eq', value: APPROVAL_TYPES[type].defaultProcessCode }],
+        },
+      });
+    }
+    const transfer = byType.get('transfer')!.definition.nodes;
+    expect(transfer.every((node) => node.formFields.includes('jobNumber'))).toBe(true);
+    expect(transfer[0]!.formFields).toEqual(
+      expect.arrayContaining(['effectiveDate', 'departmentId', 'postId', 'positionId', 'directManagerId']),
+    );
   });
 });

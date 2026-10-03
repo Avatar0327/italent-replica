@@ -1,7 +1,7 @@
 /**
  * PR #35 第二轮清单 主题 C：路由规则。
  * 6 中间节点审批人为空一律转异常管理员（DEC-054）；15 异常管理员本人回避（DEC-091）；16 管理员不得干预本人
- * 实例（DEC-092）；17 改了条件字段的重提重新匹配（DEC-093）；19 兜底排尾、同优先级禁止发布（DEC-096）；
+ * 实例（DEC-092）；19 兜底排尾、同优先级禁止发布（DEC-096）（清单 17 已由 DEC-103 取代，见 AC-APV-DEC-103-106）；
  * 21 无可用账号按空处理、异常管理员停用前交接、在途异常任务由租户管理员接管（DEC-098）；
  * X-14 自动同意触发同意消息；C-非3 被自审跳过的人不因此成为参与人。
  */
@@ -100,52 +100,6 @@ describe('清单 16：管理员不得干预本人发起或本人为异动对象�
     expect(await reasonOf(jump)).toMatchObject({ status: 403, reason: 'APPROVAL_ADMIN_SELF' });
     const ok = await w.instanceAction(other, view.id, 'admin-intervene', view.revision, body);
     expect(ok.status, await ok.clone().text()).toBe(200);
-  });
-});
-
-describe('清单 17：驳回后改了发起条件字段的重提重新匹配流程（DEC-093）', () => {
-  it('命中不同流程：旧实例作废、新开实例，单据与历史保留；只改非条件字段则同单重提', async () => {
-    const w = await approvalWorld(database().db, 'apv-rematch');
-    const s = await transferScene(w);
-    const other = await w.org('另一调入部门');
-    const otherHead = await w.person('另一调入负责人', other);
-    await w.setOrgRoles(other, { head: otherHead.employeeId });
-    const byDepartment = (code: string, priority: number, org: string) =>
-      w.publishedProcess({
-        code,
-        priority,
-        conditions: { items: [{ no: 1, field: 'record.departmentId', operator: 'in_org_tree', value: org }] },
-        nodes: [{ key: 'in_head', approver: 'record_department_head' }],
-      });
-    const first = await byDepartment('BY_TO', 1, s.to);
-    const second = await byDepartment('BY_OTHER', 2, other);
-    const draft = await w.application(s.subject.employeeId, { departmentId: s.to, place: '旧地点' });
-    let view = await w.submit(draft);
-    expect(view.processId).toBe(first.id);
-    view = await w.json(await w.taskAction(s.inHead.userId, current(view).id, 'reject', view.revision));
-    const patch = async (fields: Record<string, unknown>) => {
-      const business = await w.business(draft.id);
-      return w.json<{ revision: number }>(
-        await w.request(w.hr.id, 'PATCH', `/api/tenant/employment/businesses/${draft.id}`, {
-          ifMatch: business.revision,
-          body: { fields },
-        }),
-      );
-    };
-    let patched = await patch({ place: '新地点' });
-    await w.json(await w.submitRaw({ id: draft.id, revision: patched.revision }));
-    const same = await w.detail(view.id);
-    expect(same).toMatchObject({ status: 'running', processId: first.id });
-    await w.json(await w.taskAction(s.inHead.userId, current(same).id, 'reject', same.revision));
-    patched = await patch({ departmentId: other });
-    await w.json(await w.submitRaw({ id: draft.id, revision: patched.revision }));
-    const old = await w.detail(view.id);
-    expect(old.status).toBe('cancelled');
-    expect(old.logs).toEqual(expect.arrayContaining([expect.objectContaining({ event: 'rematch' })]));
-    const fresh = await w.instanceOfAll(draft.id);
-    const active = fresh.find((item) => item.status === 'running')!;
-    expect(active.processId).toBe(second.id);
-    expect(current(active)).toMatchObject({ assigneeUserId: otherHead.userId });
   });
 });
 

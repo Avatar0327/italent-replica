@@ -36,6 +36,9 @@ export interface NodeInput {
   readonly noAssignee?: 'exception_admin' | 'skip' | 'approve';
   readonly sameAssigneeSkip?: boolean;
   readonly historySameAssigneeSkip?: boolean;
+  /** DEC-106：自动处理结果「同意」（默认）/「跳过」。 */
+  readonly sameAssigneeResult?: 'approve' | 'skip';
+  readonly historySameAssigneeResult?: 'approve' | 'skip';
   readonly formFields?: readonly string[];
   readonly editableFields?: readonly string[];
   readonly editMode?: 'none' | 'separate' | 'with_approve';
@@ -47,8 +50,8 @@ export interface NodeInput {
     readonly urge?: 'inherit' | 'enabled' | 'disabled';
   };
   readonly rejectCommentRequired?: boolean;
-  /** DEC-100：意见仅本节点与发起人可见（出厂关 = 默认公开）。 */
-  readonly commentPrivate?: boolean;
+  /** DEC-104：审批记录查看权限——勾选后本节点审批人看不到审批记录与沟通。 */
+  readonly hideRecords?: boolean;
   readonly rejectResubmit?: 'restart' | 'rejecting_node';
   readonly messageRules?: readonly {
     trigger: string;
@@ -72,6 +75,8 @@ export interface ProcessInput {
   readonly priority?: number;
   readonly isFallback?: boolean;
   readonly exceptionAdminUserId?: string | null;
+  /** DEC-104：开始节点的审批记录查看权限——勾选后发起人看不到审批记录与沟通。 */
+  readonly hideRecordsFromInitiator?: boolean;
   readonly conditions?: { readonly items: readonly ConditionItem[]; readonly expression?: string };
   readonly nodes: readonly NodeInput[];
 }
@@ -137,6 +142,9 @@ export interface InstanceView {
   readonly actions: string[];
   readonly title: string;
   readonly commentNotice?: string;
+  readonly processCode?: string | null;
+  /** DEC-104：查看人所在节点（或开始节点）勾选了审批记录查看权限，审批记录与沟通已隐藏。 */
+  readonly recordsHidden?: boolean;
 }
 
 export interface Person {
@@ -279,7 +287,7 @@ export async function approvalWorld(db: Db, label: string) {
     return detail(list.items[0]!.id, actor);
   }
 
-  /** 同一业务单的全部实例（DEC-093 重新匹配后旧实例作废、新开实例）。 */
+  /** 同一业务单的全部实例。 */
   async function instanceOfAll(businessId: string, actor = hr.id): Promise<InstanceView[]> {
     const list = await json<{ items: { id: string }[] }>(
       await request(actor, 'GET', `${BASE}/instances?role=initiated&businessId=${businessId}`),
@@ -302,6 +310,9 @@ export async function approvalWorld(db: Db, label: string) {
           priority: input.priority ?? 0,
           isFallback: input.isFallback ?? false,
           exceptionAdminUserId: input.exceptionAdminUserId === undefined ? exceptionAdmin : input.exceptionAdminUserId,
+          ...(input.hideRecordsFromInitiator === undefined
+            ? {}
+            : { hideRecordsFromInitiator: input.hideRecordsFromInitiator }),
           conditions: input.conditions ?? {
             items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }],
           },
@@ -513,6 +524,7 @@ export async function installApprovalFallbacks(db: Db, tenantId: string, userId:
           isFallback: true,
           exceptionAdminUserId: admin.id,
           urgeEnabled: true,
+          hideRecordsFromInitiator: false,
           conditions: { items: [], expression: '' },
           nodes: [
             {
@@ -522,12 +534,14 @@ export async function installApprovalFallbacks(db: Db, tenantId: string, userId:
               noAssignee: 'exception_admin',
               sameAssigneeSkip: false,
               historySameAssigneeSkip: false,
+              sameAssigneeResult: 'approve',
+              historySameAssigneeResult: 'approve',
               formFields: [],
               editableFields: [],
               editMode: 'none',
               actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' },
               rejectCommentRequired: false,
-              commentPrivate: false,
+              hideRecords: false,
               rejectResubmit: 'restart',
               messageRules: [],
             },
