@@ -1,4 +1,4 @@
-import { sortingCtes } from './sorting.js';
+import { sortRankColumns, sortRankJoins } from './sorting.js';
 import { sql, type Tx } from '@italent/db';
 import { ageOn, computeTenure, EMPLOYEE_FIELDS, tenantLocalDate, type TenureInterval } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
@@ -26,8 +26,7 @@ export function employeeJoins(ctx: PersonnelContext): SQL {
     ${jobJoin('job_grade_versions', 'jg', 'grade_id', asOf)}
     ${jobJoin('job_position_versions', 'jp', 'position_id', asOf)}
     ${jobJoin('job_post_versions', 'jpost', 'post_id', asOf)}
-    LEFT JOIN personnel_org_ranks org_rank ON org_rank.org_id=(r.current_fields->>'department_id')::uuid
-    LEFT JOIN personnel_post_ranks post_rank ON post_rank.object_id=(r.current_fields->>'post_id')::uuid
+    ${sortRankJoins(asOf)}
   `;
 }
 function jobJoin(table: string, alias: string, field: string, date: string) {
@@ -37,7 +36,7 @@ function jobJoin(table: string, alias: string, field: string, date: string) {
 }
 export const employeeAttributes = sql`e.code,COALESCE(v.name,e.name) AS employee_name,u.user_id,
   cycles.first_entry_date::text,cycles.latest_entry_date::text,r.entry_date::text,r.last_work_date::text,
-  org_rank.sort_number AS organization_sort_number,post_rank.sort_number AS post_sort_number,
+  ${sortRankColumns},
   jl.level AS level_sort_number,jg.grade AS grade_sort_number,jp.display_order AS position_sort_number`;
 export function employeeDto(row: Row, ctx: PersonnelContext): Row {
   const profile = (row.profile ?? {}) as Row;
@@ -60,7 +59,7 @@ export function employeeDto(row: Row, ctx: PersonnelContext): Row {
 }
 export async function readEmployee(tx: Tx, ctx: PersonnelContext, employeeId: string) {
   const [row] = rows(
-    await tx.execute(sql`${sortingCtes(ctx)} SELECT e.id,${employeeAttributes},to_jsonb(v) AS profile
+    await tx.execute(sql`SELECT e.id,${employeeAttributes},to_jsonb(v) AS profile
     FROM employment_employees e ${employeeJoins(ctx)}
     WHERE e.tenant_id=${ctx.tenantId} AND e.id=${employeeId}::uuid LIMIT 1`),
   );

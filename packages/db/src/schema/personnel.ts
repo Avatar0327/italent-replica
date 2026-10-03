@@ -9,6 +9,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -977,3 +978,30 @@ export const personnelOutbox = pgTable(
     check('personnel_outbox_state', sql`${t.state} IN ('pending','sent','failed','unknown')`),
   ],
 );
+
+/**
+ * DEC-089：组织 / 职务排序号预计算（DEC-037 / G-036）。名次按“生效区间”分段存储：版本按生效日期生效，
+ * 区间 [valid_from, valid_to) 内名次不变，读取按业务日期取一段，不需要定时任务；
+ * 由 org_versions / org_hierarchy_links / job_post_versions 上的触发器在同一事务提交前增量刷新（迁移 0027）。
+ */
+function sortRankTable(name: 'personnel_org_sort_ranks' | 'personnel_post_sort_ranks', key: string) {
+  return pgTable(
+    name,
+    {
+      tenantId: tenantId(),
+      objectId: uuid(key).notNull(),
+      validFrom: date('valid_from', { mode: 'string' }).notNull(),
+      /** 开放区间为 'infinity'。 */
+      validTo: date('valid_to', { mode: 'string' }).notNull(),
+      sortNumber: integer('sort_number').notNull(),
+    },
+    (t) => [
+      primaryKey({ columns: [t.tenantId, t.objectId, t.validFrom] }),
+      index(`${name}_as_of`).on(t.tenantId, t.validFrom),
+      check(`${name}_range`, sql`${t.validTo} > ${t.validFrom}`),
+      check(`${name}_positive`, sql`${t.sortNumber} > 0`),
+    ],
+  );
+}
+export const personnelOrgSortRanks = sortRankTable('personnel_org_sort_ranks', 'org_id');
+export const personnelPostSortRanks = sortRankTable('personnel_post_sort_ranks', 'post_id');

@@ -1,31 +1,18 @@
 import { sql } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
-import type { PersonnelContext } from './store.js';
+import type { SQL } from 'drizzle-orm';
 
-/** G-036 / DEC-037：排序属性关联现行版本，组织依据行政路径、职务依据业务编码。 */
-export function sortingCtes(ctx: PersonnelContext) {
-  const date = tenantLocalDate(ctx.now, ctx.timezone);
-  return sql`WITH RECURSIVE personnel_org_current AS (
-    SELECT DISTINCT ON (org_id) id,org_id,code,start_date,stop_date,enabled
-    FROM org_versions WHERE tenant_id=${ctx.tenantId} AND start_date<=${date}::date
-    ORDER BY org_id,start_date DESC,version_no DESC
-  ), personnel_org_paths(org_id,sort_path,visited) AS (
-    SELECT v.org_id,ARRAY[v.code]::text[],ARRAY[v.org_id] FROM personnel_org_current v
-    WHERE v.org_id=${ctx.tenantId}::uuid AND v.enabled AND v.stop_date>=${date}::date
-    UNION ALL
-    SELECT v.org_id,p.sort_path || (lpad(COALESCE(h.sequence,2147483647)::text,10,'0') || ':' || v.code),
-      p.visited || v.org_id
-    FROM personnel_org_current v JOIN org_hierarchy_links h
-      ON h.tenant_id=${ctx.tenantId} AND h.version_id=v.id AND h.dimension='admin'
-    JOIN personnel_org_paths p ON p.org_id=h.parent_org_id
-    WHERE v.enabled AND v.stop_date>=${date}::date AND NOT v.org_id=ANY(p.visited)
-  ), personnel_org_ranks AS (
-    SELECT org_id,row_number() OVER (ORDER BY sort_path)::integer AS sort_number FROM personnel_org_paths
-  ), personnel_post_current AS (
-    SELECT DISTINCT ON (object_id) object_id,code,stop_date,enabled FROM job_post_versions
-    WHERE tenant_id=${ctx.tenantId} AND start_date<=${date}::date ORDER BY object_id,start_date DESC,version_no DESC
-  ), personnel_post_ranks AS (
-    SELECT object_id,row_number() OVER (ORDER BY code,object_id)::integer AS sort_number
-    FROM personnel_post_current WHERE enabled AND stop_date>=${date}::date
-  )`;
+/**
+ * DEC-089：组织 / 职务排序号是全租户名次（G-036 / DEC-037：组织按行政路径的顺序号 + 编码，职务按编码），
+ * 由迁移 0027 的触发器在组织 / 职务变更的同一事务内按生效区间预计算存储；读取只按业务日期取所在区间，
+ * 不再递归遍历组织树。停用、失效或不在行政树上的组织 / 职务没有名次。
+ */
+export function sortRankJoins(asOf: string): SQL {
+  return sql`LEFT JOIN personnel_org_sort_ranks org_rank ON org_rank.tenant_id=e.tenant_id
+      AND org_rank.org_id=(r.current_fields->>'department_id')::uuid
+      AND org_rank.valid_from<=${asOf}::date AND org_rank.valid_to>${asOf}::date
+    LEFT JOIN personnel_post_sort_ranks post_rank ON post_rank.tenant_id=e.tenant_id
+      AND post_rank.post_id=(r.current_fields->>'post_id')::uuid
+      AND post_rank.valid_from<=${asOf}::date AND post_rank.valid_to>${asOf}::date`;
 }
+export const sortRankColumns = sql`org_rank.sort_number AS organization_sort_number,
+  post_rank.sort_number AS post_sort_number`;

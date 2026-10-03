@@ -10,7 +10,7 @@ import { access, preflight, trim, trimWithFields, type AccessContext } from './a
 import { readEmployee, readTenure } from './employee-read.js';
 import { appendEmployee } from './employee-write.js';
 import { body, safe, write } from './http.js';
-import { listEmployees, listFieldVisibility, listOptions, listSubsets, trimSubset } from './lists.js';
+import { listEmployees, listFieldVisibility, listOptions, listSubsets, trimSubset, UNSORTED } from './lists.js';
 import { registerSubsetRoutes } from './subset-routes.js';
 import { registerChangeRequestRoutes } from './request-routes.js';
 import { camel, rows } from './store.js';
@@ -111,8 +111,9 @@ function registerEmployeeReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       ORDER BY revision DESC LIMIT ${page.limit} OFFSET ${page.offset}`),
         ).map(camel),
       );
+      const fields = await getModuleViewableFields(deps, ctx, PERSONNEL_OBJECT);
       return c.json({
-        items: await Promise.all(items.map((r) => trim(deps, ctx, PERSONNEL_OBJECT, r))),
+        items: items.map((r) => trimWithFields(r, fields)),
         page: page.page,
         pageSize: page.pageSize,
       });
@@ -128,7 +129,7 @@ async function nestedSubsets(deps: TenantRouteDeps, ctx: AccessContext, id: stri
     const context = { ...ctx, objectCode, scope };
     const fields = await listFieldVisibility(deps, context);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listSubsets(tx, context, kind, { limit: 50, offset: 0 }, { order: sql``, filter: sql`true` }, id),
+      listSubsets(tx, context, kind, { limit: 50, offset: 0 }, UNSORTED, id),
     );
     result[kind] = { items: items.map((row) => trimSubset(row, fields)), pageSize: 50 };
   }

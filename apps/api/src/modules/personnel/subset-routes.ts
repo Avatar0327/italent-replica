@@ -4,7 +4,8 @@ import type { Hono } from 'hono';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery, revision, uuidParam } from '../job/context.js';
-import { access, preflight, trim } from './access.js';
+import { getModuleViewableFields } from '../permission/module-access.js';
+import { access, preflight, trim, trimWithFields } from './access.js';
 import { body, safe, write } from './http.js';
 import { listFieldVisibility, listOptions, listSubsets, subsetDto, trimSubset } from './lists.js';
 import { rows } from './store.js';
@@ -65,8 +66,9 @@ function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         ORDER BY revision DESC LIMIT ${page.limit} OFFSET ${page.offset}`),
         ).map((r) => subsetDto(r, kind));
       });
+      const fields = await getModuleViewableFields(deps, ctx, ctx.objectCode);
       return c.json({
-        items: await Promise.all(items.map((row) => trim(deps, ctx, ctx.objectCode, row))),
+        items: items.map((row) => trimWithFields(row, fields)),
         page: page.page,
         pageSize: page.pageSize,
       });
