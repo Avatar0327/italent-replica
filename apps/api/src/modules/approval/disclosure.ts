@@ -131,18 +131,43 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
     subjectEmployeeId: instance.subjectEmployeeId,
     createdAt: instance.createdAt,
     completedAt: instance.completedAt,
-    tasks: data.tasks.map((task) => ({ ...task, nodeName: names.get(task.nodeKey) ?? task.nodeKey })),
-    logs: data.logs.map((log) => projectLog(log, viewable)),
+    tasks: data.tasks.map((task) => ({
+      ...task,
+      comment: commentVisible(data, task.nodeKey, userId) ? task.comment : null,
+      nodeName: names.get(task.nodeKey) ?? task.nodeKey,
+    })),
+    logs: data.logs.map((log) => projectLog(log, viewable, commentVisible(data, log.nodeKey, userId))),
+    commentNotice: COMMENT_NOTICE,
     form: { nodeKey: node?.key ?? null, values: pick(snapshot.values, fields), ...originals },
     actions: [...new Set(actionsFor(data, userId, blindFields(snapshot, viewable).length > 0))],
   };
 }
 
-/** X-13：日志里的字段名（盲审、编辑）按查看人当前字段权限投影；完整信息只留在内部审计。 */
-function projectLog<T extends { detail: Row }>(log: T, viewable: ReadonlySet<string> | undefined): T {
-  const fields = log.detail.fields;
-  if (viewable === undefined || !Array.isArray(fields)) return log;
-  return { ...log, detail: { ...log.detail, fields: fields.filter((field) => viewable.has(String(field))) } };
+/** DEC-100：意见框旁的提示。 */
+export const COMMENT_NOTICE = '审批意见默认对后续审批人公开，请勿在意见中填写敏感信息';
+
+/** DEC-100：节点开启“意见仅本节点与发起人可见”时，只有该节点的审批人与发起人看得到意见。 */
+function commentVisible(data: DetailData, nodeKey: string | null, userId: string): boolean {
+  const node = data.version.nodes.find((candidate) => candidate.key === nodeKey);
+  if (!node?.commentPrivate || data.instance.initiatorUserId === userId) return true;
+  return data.tasks.some(
+    (task) => task.nodeKey === nodeKey && task.assigneeUserId === userId && task.origin !== 'self_skip',
+  );
+}
+
+/**
+ * X-13：日志里的字段名（盲审、编辑）按查看人当前字段权限投影；不可见节点的意见 / 理由一并隐去（DEC-100）。
+ * 完整信息只留在内部审计。
+ */
+function projectLog<T extends { detail: Row }>(log: T, viewable: ReadonlySet<string> | undefined, comment: boolean): T {
+  const detail: Row = { ...log.detail };
+  if (!comment) {
+    delete detail.comment;
+    delete detail.reason;
+  }
+  if (viewable !== undefined && Array.isArray(detail.fields))
+    detail.fields = detail.fields.filter((field) => viewable.has(String(field)));
+  return { ...log, detail };
 }
 
 export type InstanceView = ReturnType<typeof detailView>;

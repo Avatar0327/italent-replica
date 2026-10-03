@@ -521,6 +521,7 @@ export async function installApprovalFallbacks(db: Db, tenantId: string, userId:
               editMode: 'none',
               actions: { transfer: false, addSign: false, urge: true },
               rejectCommentRequired: false,
+              commentPrivate: false,
               rejectResubmit: 'restart',
               messageRules: [],
             },

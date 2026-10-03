@@ -97,6 +97,14 @@ async function blindReview(
     detail: { fromUserId: task.assigneeUserId, toUserId: admin, fields: hidden },
   });
   await notifyTodo(tx, run.ctx, run.instance, next, admin);
+  // 清单 12 / A-2：盲审转交与普通转交一样写任务审计。
+  await auditTask(
+    tx,
+    run,
+    'approval.task.blind_review',
+    { taskStatus: 'pending', assigneeUserId: task.assigneeUserId, newTaskId: null, newTaskStatus: null, fields: null },
+    { taskStatus: 'transferred', assigneeUserId: admin, newTaskId: next, newTaskStatus: 'pending', fields: hidden },
+  );
   run.events.push('approval.task.transferred');
   await persistRun(tx, run, 'approval.task.blind_review');
   return blindRejection();
@@ -141,6 +149,7 @@ async function applyEdit(tx: Tx, scene: TaskScene, fields: Row): Promise<void> {
     taskId: task.id,
     detail: { fields: Object.keys(fields) },
   });
+  run.events.push('approval.instance.edited');
 }
 
 async function auditTask(tx: Tx, run: Run, action: string, before: Row, after: Row): Promise<void> {
@@ -554,6 +563,7 @@ async function adminJump(tx: Tx, run: Run, input: AdminInput): Promise<Outcome> 
     after: { currentNodeKey: input.toNodeKey, reason: input.reason },
   });
   await advanceFrom(tx, run, index);
+  run.events.push('approval.instance.jumped');
   await persistRun(tx, run, 'approval.instance.admin');
   return ok(run);
 }

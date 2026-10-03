@@ -61,6 +61,8 @@ export interface ApprovalNode {
   readonly actions: NodeActions;
   /** DEC-059：出厂关闭。 */
   readonly rejectCommentRequired: boolean;
+  /** DEC-100：意见仅本节点与发起人可见；出厂关闭 = 意见默认对后续节点公开。TODO(需取证 Q-M0-47)。 */
+  readonly commentPrivate: boolean;
   readonly rejectResubmit: RejectResubmitMode;
   readonly messageRules: readonly MessageRule[];
 }

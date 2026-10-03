@@ -126,6 +126,7 @@ function nodeOf(row: Row, rules: Row[]): ApprovalNode {
       urge: Boolean(row.allow_urge),
     },
     rejectCommentRequired: Boolean(row.reject_comment_required),
+    commentPrivate: Boolean(row.comment_private),
     rejectResubmit: row.reject_resubmit_mode as ApprovalNode['rejectResubmit'],
     messageRules: rules
       .filter((rule) => rule.node_key === row.node_key)
@@ -244,11 +245,11 @@ async function writeVersionContent(tx: Tx, tenantId: string, id: string, definit
     await tx.execute(sql`INSERT INTO approval_process_nodes
       (tenant_id,version_id,node_key,seq,name,approver_expression,no_assignee_policy,same_assignee_skip,
        history_same_assignee_skip,form_fields,editable_fields,edit_mode,allow_transfer,allow_add_sign,allow_urge,
-       reject_comment_required,reject_resubmit_mode)
+       reject_comment_required,comment_private,reject_resubmit_mode)
       VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${node.approver},${node.noAssignee},
         ${node.sameAssigneeSkip},${node.historySameAssigneeSkip},${textArray(node.formFields)},
         ${textArray(node.editableFields)},${node.editMode},${node.actions.transfer},${node.actions.addSign},
-        ${node.actions.urge},${node.rejectCommentRequired},${node.rejectResubmit})`);
+        ${node.actions.urge},${node.rejectCommentRequired},${node.commentPrivate},${node.rejectResubmit})`);
     for (const [ruleIndex, rule] of node.messageRules.entries()) {
       await tx.execute(sql`INSERT INTO approval_node_message_rules
         (tenant_id,version_id,node_key,rule_no,trigger,channels,template_code,recipient)

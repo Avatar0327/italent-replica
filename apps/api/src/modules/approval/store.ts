@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
-import { rowsOf, type ApprovalContext, type Row } from './context.js';
+import { auditApproval, rowsOf, type ApprovalContext, type Row } from './context.js';
 import type { BusinessType } from './adapters.js';
 
 export const MAX_TASKS = 500;
@@ -145,12 +145,28 @@ export interface NewTask {
   readonly parentTaskId?: string | null;
 }
 
+/** 任务字段级审计（清单 12）：创建（含自动跳过）、关闭、取消都按任务 ID 记录前后值，与写入同事务。 */
+async function auditTask(tx: Tx, ctx: ApprovalContext, action: string, taskId: string, before: Row | null, after: Row) {
+  await auditApproval(tx, ctx, { action, objectType: 'approval-task', objectId: taskId, before, after });
+}
+
 export async function insertTask(tx: Tx, ctx: ApprovalContext, instanceId: string, task: NewTask): Promise<string> {
   const id = randomUUID();
   const actedAt = task.status === 'pending' ? null : ctx.now.toISOString();
   if ((await taskCount(tx, ctx.tenantId, instanceId)) >= MAX_TASKS) {
     throw new AppError('PAYLOAD_TOO_LARGE', '审批任务超过单实例上限');
   }
+  await auditTask(tx, ctx, 'approval.task.create', id, null, {
+    instanceId,
+    round: task.round,
+    nodeKey: task.nodeKey,
+    assigneeUserId: task.assigneeUserId,
+    origin: task.origin,
+    status: task.status,
+    isExceptionAdmin: task.isExceptionAdmin ?? false,
+    adminSelfTransfer: task.adminSelfTransfer ?? false,
+    parentTaskId: task.parentTaskId ?? null,
+  });
   await tx.execute(sql`INSERT INTO approval_tasks
     (id,tenant_id,instance_id,seq,round,node_key,assignee_user_id,origin,status,is_exception_admin,
      admin_self_transfer,parent_task_id,acted_at,created_at)
@@ -176,13 +192,22 @@ export async function closeTask(
   status: TaskStatus,
   comment: string | null = null,
 ): Promise<void> {
-  await tx.execute(sql`UPDATE approval_tasks SET status=${status},comment=${comment},acted_at=${ctx.now.toISOString()}
-    WHERE tenant_id=${ctx.tenantId} AND id=${taskId}::uuid AND status='pending'`);
+  const closed = rowsOf(
+    await tx.execute(sql`UPDATE approval_tasks SET status=${status},comment=${comment},acted_at=${ctx.now.toISOString()}
+    WHERE tenant_id=${ctx.tenantId} AND id=${taskId}::uuid AND status='pending' RETURNING id`),
+  );
+  if (closed.length)
+    await auditTask(tx, ctx, 'approval.task.close', taskId, { status: 'pending', comment: null }, { status, comment });
 }
 
 export async function cancelPending(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<void> {
-  await tx.execute(sql`UPDATE approval_tasks SET status='cancelled',acted_at=${ctx.now.toISOString()}
-    WHERE tenant_id=${ctx.tenantId} AND instance_id=${instanceId}::uuid AND status='pending'`);
+  const cancelled = rowsOf<{ id: string }>(
+    await tx.execute(sql`UPDATE approval_tasks SET status='cancelled',acted_at=${ctx.now.toISOString()}
+    WHERE tenant_id=${ctx.tenantId} AND instance_id=${instanceId}::uuid AND status='pending' RETURNING id`),
+  );
+  for (const task of cancelled) {
+    await auditTask(tx, ctx, 'approval.task.cancel', task.id, { status: 'pending' }, { status: 'cancelled' });
+  }
 }
 
 export interface LogEntry {

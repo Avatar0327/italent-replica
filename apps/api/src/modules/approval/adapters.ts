@@ -195,7 +195,8 @@ const employmentAdapter: BusinessAdapter = {
       businessId,
       fieldObjectCode: type.objectCode,
       subjectEmployeeId: business.employeeId,
-      title: `${employee.name}的${type.name}申请`,
+      // 清单 8：标题不含个人数据（DEC-057），待办与列表原样展示也不泄露被隐藏的姓名。
+      title: `${type.name}申请`,
       values,
       originals,
       changedFields,
@@ -257,7 +258,7 @@ const personnelAdapter: BusinessAdapter = {
       businessId,
       fieldObjectCode: SUBSETS[subset].objectCode,
       subjectEmployeeId: employeeId,
-      title: `${employee.name}的${APPROVAL_TYPES.personnel_change.name}申请`,
+      title: `${APPROVAL_TYPES.personnel_change.name}申请`,
       values,
       originals,
       changedFields: Object.keys(values).filter((key) => !same(values[key], originals?.[key])),

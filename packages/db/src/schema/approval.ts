@@ -157,6 +157,8 @@ export const approvalProcessNodes = pgTable(
     allowAddSign: boolean('allow_add_sign').notNull().default(false),
     allowUrge: boolean('allow_urge').notNull().default(true),
     rejectCommentRequired: boolean('reject_comment_required').notNull().default(false),
+    /** DEC-100：意见仅本节点与发起人可见（出厂关 = 默认公开）。 */
+    commentPrivate: boolean('comment_private').notNull().default(false),
     rejectResubmitMode: text('reject_resubmit_mode').notNull().default('restart'),
     // DEC-035：时效首版不做，只保留 `14` §9.1 的字段结构，不参与计算。
     timeSpan: integer('time_span'),

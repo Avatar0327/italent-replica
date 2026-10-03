@@ -39,6 +39,7 @@ const node = (key: string, name: string, approver: ApprovalNode['approver'], ext
     editMode: 'none',
     actions: { transfer: false, addSign: false, urge: true },
     rejectCommentRequired: false,
+    commentPrivate: false,
     rejectResubmit: 'restart',
     messageRules: [],
     ...extra,

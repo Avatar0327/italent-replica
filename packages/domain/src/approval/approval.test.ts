@@ -60,6 +60,7 @@ const node = (extra: Partial<ApprovalNode> = {}): ApprovalNode => ({
   editMode: 'none',
   actions: { transfer: false, addSign: false, urge: true },
   rejectCommentRequired: false,
+  commentPrivate: false,
   rejectResubmit: 'restart',
   messageRules: [],
   ...extra,

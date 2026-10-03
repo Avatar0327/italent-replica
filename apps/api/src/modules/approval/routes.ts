@@ -3,7 +3,7 @@
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
  */
 import { pgErrorCode, type Tx, withTenant } from '@italent/db';
-import { APPROVAL_PROCESS_OBJECT, APPROVAL_TYPES } from '@italent/domain';
+import { APPROVAL_PROCESS_OBJECT, APPROVAL_TYPES, APPROVER_EXPRESSIONS } from '@italent/domain';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { runCommand, type CommandResult } from '../../commands.js';
@@ -242,10 +242,14 @@ function registerTenantConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
   });
 }
 
+/** 仿真只收虚拟数据（清单 7）：审批人关系、直线经理、组织上下级都由输入给出，不接受真实员工标识去查库。 */
 const simulationData = z.strictObject({
   values: z.record(z.string().max(100), z.union([z.string().max(500), z.null()])),
-  subjectEmployeeId: z.uuid().nullable().optional(),
+  relations: z.partialRecord(z.enum(APPROVER_EXPRESSIONS), z.uuid().nullable()).optional(),
+  managers: z.record(z.uuid(), z.uuid().nullable()).optional(),
+  orgAncestors: z.record(z.uuid(), z.array(z.uuid()).max(100)).optional(),
   initiatorUserId: z.uuid().nullable().optional(),
+  subjectUserId: z.uuid().nullable().optional(),
 });
 const scope = z.enum(['published', 'latest']).default('published');
 

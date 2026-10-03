@@ -46,6 +46,7 @@ const node = z.strictObject({
     })
     .default({ transfer: false, addSign: false, urge: true }),
   rejectCommentRequired: z.boolean().default(false),
+  commentPrivate: z.boolean().default(false),
   rejectResubmit: z.enum(REJECT_RESUBMIT_MODES).default('restart'),
   messageRules: z.array(messageRule).max(20).default([]),
 });

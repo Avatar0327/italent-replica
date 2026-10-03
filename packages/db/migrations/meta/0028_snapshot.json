@@ -1,6 +1,6 @@
 {
-  "id": "ffbea992-2d7d-4498-bc4a-ec45fa361985",
-  "prevId": "85ad4d34-9752-4029-999c-524e6a1852f4",
+  "id": "425923bf-d304-4d4b-a943-e2f46b22d3f1",
+  "prevId": "665d4469-cb6a-40fe-aab4-6f797a33f9d0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -21460,6 +21460,13 @@
         },
         "reject_comment_required": {
           "name": "reject_comment_required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "comment_private": {
+          "name": "comment_private",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
