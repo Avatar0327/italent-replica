@@ -303,7 +303,7 @@ export interface AddSignInput extends DelegateInput {
 
 /**
  * DEC-095 加签：前加签 = 本人任务挂起（add_signed），被加签人先审、同意后回到本人；后加签 = 本人同意后再由被加签人审。
- * 任一加签人驳回即整单驳回（驳回本就退回整单）。TODO(需取证 Q-M0-46)：原站前 / 后加签的确切流转待核对后照搬。
+ * 任一加签人驳回即整单驳回（驳回本就退回整单）。与原站取证一致（`14` §11.4，Q-M0-46）。
  */
 export async function addSign(
   tx: Tx,
