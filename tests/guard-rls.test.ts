@@ -36,6 +36,28 @@ function rowsOf<T>(result: unknown): T[] {
   return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 }
 
+interface NonStandardPolicy {
+  table: string;
+  policy: string;
+}
+
+/**
+ * 宽松策略之间是 OR 关系：任何一条表达式不对（甚至 true）都会放开跨租户访问，只查“有策略”不够。
+ * 标准形态见迁移 0003 的 enable_tenant_isolation；确需特殊策略时必须在此登记理由并单独测试。
+ */
+const nonStandardPoliciesQuery = sql`
+  SELECT c.relname AS "table", p.polname AS "policy"
+    FROM pg_policy p
+    JOIN pg_class c ON c.oid = p.polrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname = 'public'
+     AND NOT (
+       p.polcmd = '*' AND p.polpermissive AND p.polroles = '{0}'::oid[]
+       AND pg_get_expr(p.polqual, p.polrelid) = '(tenant_id = current_tenant_id())'
+       AND pg_get_expr(p.polwithcheck, p.polrelid) = '(tenant_id = current_tenant_id())'
+     )
+   ORDER BY 1, 2`;
+
 function violations(tables: TableRls[]): string[] {
   return tables.filter((t) => !t.rls || !t.forced || t.policies < 1).map((t) => t.table);
 }
@@ -59,6 +81,23 @@ describe('守卫：带 tenant_id 的表必须启用并强制 RLS', () => {
       })
       .catch((e: { found?: string[] }) => e.found);
     expect(found).toEqual(['guard_canary']);
+  });
+
+  it('租户表上的每条策略都是标准隔离形态（ALL、宽松、不限角色、USING 与 WITH CHECK 均按当前租户）', async () => {
+    expect(rowsOf<NonStandardPolicy>(await testDb().db.execute(nonStandardPoliciesQuery))).toEqual([]);
+  });
+
+  it('守卫本身有效：表达式被改坏、或多出一条放行策略都会被查出来', async () => {
+    const { db } = testDb();
+    const found = await db
+      .transaction(async (tx) => {
+        await tx.execute(sql`ALTER POLICY tenant_isolation ON tenant_memberships USING (true)`);
+        await tx.execute(sql`CREATE POLICY guard_open ON audit_events USING (true)`);
+        const rows = rowsOf<NonStandardPolicy>(await tx.execute(nonStandardPoliciesQuery));
+        throw Object.assign(new Error('rollback'), { found: rows.map((r) => `${r.table}.${r.policy}`) });
+      })
+      .catch((e: { found?: string[] }) => e.found);
+    expect(found).toEqual(['audit_events.guard_open', 'tenant_memberships.tenant_isolation']);
   });
 
   it('不含 tenant_id 的表都在平台表豁免清单内（新增平台表必须在此登记理由）', async () => {
