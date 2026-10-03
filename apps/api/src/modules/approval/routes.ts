@@ -107,6 +107,7 @@ export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
   const module = new Hono<TenantEnv>();
   module.onError(handleError);
   registerProcessRoutes(module, deps);
+  registerTenantConfigRoutes(module, deps);
   registerSimulationRoutes(module, deps);
   registerReadRoutes(module, deps);
   registerTaskRoutes(module, deps);
@@ -201,6 +202,10 @@ function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return processResponse(c, deps, result);
     });
   }
+}
+
+/** 租户级配置动作：异常管理员交接（DEC-098）与出厂预置安装（DEC-018 / DEC-094）。 */
+function registerTenantConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/exception-admins/handover', async (c) => {
     const ctx = writeCtx(c, deps);
     const input = await parseBody(c, z.strictObject({ fromUserId: z.uuid(), toUserId: z.uuid() }));
