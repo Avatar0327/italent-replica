@@ -85,6 +85,8 @@ export const approvalProcessVersions = pgTable(
     isFallback: boolean('is_fallback').notNull().default(false),
     exceptionAdminUserId: uuid('exception_admin_user_id'),
     urgeEnabled: boolean('urge_enabled').notNull().default(true),
+    /** DEC-104：开始节点的「审批记录查看权限」，勾选后发起人看不到审批记录与沟通。 */
+    hideRecordsFromInitiator: boolean('hide_records_from_initiator').notNull().default(false),
     conditionExpression: text('condition_expression').notNull().default(''),
     createdBy: uuid('created_by').notNull(),
     createdAt: utc('created_at').notNull().defaultNow(),
@@ -150,6 +152,9 @@ export const approvalProcessNodes = pgTable(
     noAssigneePolicy: text('no_assignee_policy').notNull().default('exception_admin'),
     sameAssigneeSkip: boolean('same_assignee_skip').notNull().default(false),
     historySameAssigneeSkip: boolean('history_same_assignee_skip').notNull().default(false),
+    /** DEC-106：相同 / 历史相同审批人自动处理的结果「同意」/「跳过」。 */
+    sameAssigneeResult: text('same_assignee_result').notNull().default('approve'),
+    historySameAssigneeResult: text('history_same_assignee_result').notNull().default('approve'),
     formFields: textArray('form_fields'),
     editableFields: textArray('editable_fields'),
     editMode: text('edit_mode').notNull().default('none'),
@@ -161,8 +166,8 @@ export const approvalProcessNodes = pgTable(
     /** X-15：节点催办 继承 / 开启 / 关闭。 */
     urgeMode: text('urge_mode').notNull().default('inherit'),
     rejectCommentRequired: boolean('reject_comment_required').notNull().default(false),
-    /** DEC-100：意见仅本节点与发起人可见（出厂关 = 默认公开）。 */
-    commentPrivate: boolean('comment_private').notNull().default(false),
+    /** DEC-104「审批记录查看权限」：勾选后本节点审批人看不到审批记录与沟通（出厂关 = 默认公开）。 */
+    hideRecords: boolean('hide_records').notNull().default(false),
     rejectResubmitMode: text('reject_resubmit_mode').notNull().default('restart'),
     // DEC-035：时效首版不做，只保留 `14` §9.1 的字段结构，不参与计算。
     timeSpan: integer('time_span'),
@@ -189,6 +194,10 @@ export const approvalProcessNodes = pgTable(
     check('approval_nodes_resubmit', sql`${t.rejectResubmitMode} IN ('restart','rejecting_node')`),
     check('approval_nodes_seq_positive', sql`${t.seq} > 0`),
     check('approval_nodes_urge_mode', sql`${t.urgeMode} IN ('inherit','enabled','disabled')`),
+    check(
+      'approval_nodes_auto_result',
+      sql`${t.sameAssigneeResult} IN ('approve','skip') AND ${t.historySameAssigneeResult} IN ('approve','skip')`,
+    ),
   ],
 );
 
@@ -239,8 +248,6 @@ export const approvalInstances = pgTable(
     title: text('title').notNull(),
     /** 审批人所读的业务载荷版本：业务单绕过审批被改动后，旧审批一律 409（AGENTS §10「并发」）。 */
     businessVersion: text('business_version').notNull().default(''),
-    /** 发起 / 重提时参与匹配的条件取值；重提时据此判断是否需重新匹配流程（DEC-093）。 */
-    conditionValues: jsonb('condition_values').$type<Record<string, unknown>>().notNull().default({}),
     status: text('status').notNull().default('running'),
     currentNodeKey: text('current_node_key'),
     returnedFromNodeKey: text('returned_from_node_key'),
@@ -288,7 +295,7 @@ export const approvalTasks = pgTable(
     seq: integer('seq').notNull(),
     round: integer('round').notNull(),
     nodeKey: text('node_key').notNull(),
-    /** 审批人为空而自动跳过 / 同意的节点没有审批人。 */
+    /** 自动「跳过」的节点处理人记为系统，没有审批人（DEC-106）。 */
     assigneeUserId: uuid('assignee_user_id'),
     origin: text('origin').notNull(),
     status: text('status').notNull().default('pending'),
@@ -313,7 +320,7 @@ export const approvalTasks = pgTable(
     check('approval_tasks_pending_assignee', sql`${t.status} <> 'pending' OR ${t.assigneeUserId} IS NOT NULL`),
     check(
       'approval_tasks_status',
-      sql`${t.status} IN ('pending','approved','rejected','transferred','skipped','cancelled','add_signed')`,
+      sql`${t.status} IN ('pending','approved','rejected','transferred','skipped','cancelled','add_signed','queued')`,
     ),
     check(
       'approval_tasks_origin',

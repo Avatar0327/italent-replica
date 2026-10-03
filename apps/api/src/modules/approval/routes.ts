@@ -3,7 +3,13 @@
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
  */
 import { pgErrorCode, type Tx, withTenant } from '@italent/db';
-import { ADD_SIGN_TYPES, APPROVAL_PROCESS_OBJECT, APPROVAL_TYPES, APPROVER_EXPRESSIONS } from '@italent/domain';
+import {
+  ADD_SIGN_TYPES,
+  APPROVAL_PROCESS_OBJECT,
+  APPROVAL_TYPES,
+  APPROVER_EXPRESSIONS,
+  MAX_ADD_SIGNERS,
+} from '@italent/domain';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { runCommand, type CommandResult } from '../../commands.js';
@@ -52,7 +58,7 @@ import {
   publishProcess,
   replaceDraft,
 } from './definitions.js';
-import { commentVisible, detailView, projectLog, readDetail } from './disclosure.js';
+import { detailView, projectLog, readDetail, recordsHidden, visibleTasks } from './disclosure.js';
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
 import { handoverExceptionAdmin } from './handover.js';
@@ -136,12 +142,15 @@ async function respondHistory(c: C, deps: TenantRouteDeps, kind: 'tasks' | 'logs
     return { data: detail, rows: items };
   });
   const viewable = await getModuleViewableFields(deps, ctx, data.snapshot.fieldObjectCode);
-  const visible = (nodeKey: string | null) => commentVisible(data, nodeKey, ctx.userId);
+  // DEC-104：查看人所在节点（或开始节点）勾选了审批记录查看权限时，历史同样隐藏，只留本人的任务。
+  const hidden = recordsHidden(data, ctx.userId);
   const items =
     kind === 'tasks'
-      ? (rows as TaskRow[]).map((task) => ({ ...task, comment: visible(task.nodeKey) ? task.comment : null }))
-      : (rows as LogView[]).map((log) => projectLog(log, viewable, visible(log.nodeKey)));
-  return c.json({ items, page: page.page, pageSize: page.pageSize });
+      ? visibleTasks(data, ctx.userId, rows as TaskRow[])
+      : hidden
+        ? []
+        : (rows as LogView[]).map((log) => projectLog(log, viewable));
+  return c.json({ items, recordsHidden: hidden, page: page.page, pageSize: page.pageSize });
 }
 
 async function respondOutcome(c: C, deps: TenantRouteDeps, result: CommandResult) {
@@ -405,10 +414,11 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/tasks/:id/add-sign', async (c) => {
     const ctx = writeCtx(c, deps);
     const taskId = uuidParam(c);
-    const input = await parseBody(c, z.strictObject({ userId: z.uuid(), type: z.enum(ADD_SIGN_TYPES), comment }));
+    const signers = z.array(z.uuid()).min(1).max(MAX_ADD_SIGNERS);
+    const input = await parseBody(c, z.strictObject({ userIds: signers, type: z.enum(ADD_SIGN_TYPES), comment }));
     // 后加签含本人的同意，盲审按本人字段权限判断（DEC-095）。
     const viewable = await fieldRights(c, deps, taskId, undefined);
-    const request = { taskId, userId: input.userId, type: input.type, comment: input.comment ?? null };
+    const request = { taskId, userIds: input.userIds, type: input.type, comment: input.comment ?? null };
     const result = await command(c, deps, ctx, request, (tx, context) => addSign(tx, context, request, viewable));
     return respondOutcome(c, deps, result);
   });

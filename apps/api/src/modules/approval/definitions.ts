@@ -94,6 +94,7 @@ export async function loadVersion(tx: Tx, tenantId: string, versionId: string): 
     isFallback: Boolean(version.is_fallback),
     exceptionAdminUserId: (version.exception_admin_user_id as string | null) ?? null,
     urgeEnabled: Boolean(version.urge_enabled),
+    hideRecordsFromInitiator: Boolean(version.hide_records_from_initiator),
     conditions: { expression: String(version.condition_expression), items: conditions.map(conditionItem) },
     nodes: nodes.map((row) => nodeOf(row, rules)),
   };
@@ -117,6 +118,8 @@ function nodeOf(row: Row, rules: Row[]): ApprovalNode {
     noAssignee: row.no_assignee_policy as ApprovalNode['noAssignee'],
     sameAssigneeSkip: Boolean(row.same_assignee_skip),
     historySameAssigneeSkip: Boolean(row.history_same_assignee_skip),
+    sameAssigneeResult: row.same_assignee_result as ApprovalNode['sameAssigneeResult'],
+    historySameAssigneeResult: row.history_same_assignee_result as ApprovalNode['historySameAssigneeResult'],
     formFields: row.form_fields as string[],
     editableFields: row.editable_fields as string[],
     editMode: row.edit_mode as ApprovalNode['editMode'],
@@ -128,7 +131,7 @@ function nodeOf(row: Row, rules: Row[]): ApprovalNode {
       urge: row.urge_mode as ApprovalNode['actions']['urge'],
     },
     rejectCommentRequired: Boolean(row.reject_comment_required),
-    commentPrivate: Boolean(row.comment_private),
+    hideRecords: Boolean(row.hide_records),
     rejectResubmit: row.reject_resubmit_mode as ApprovalNode['rejectResubmit'],
     messageRules: rules
       .filter((rule) => rule.node_key === row.node_key)
@@ -246,13 +249,15 @@ async function writeVersionContent(tx: Tx, tenantId: string, id: string, definit
   for (const [index, node] of definition.nodes.entries()) {
     await tx.execute(sql`INSERT INTO approval_process_nodes
       (tenant_id,version_id,node_key,seq,name,approver_expression,no_assignee_policy,same_assignee_skip,
-       history_same_assignee_skip,form_fields,editable_fields,edit_mode,allow_transfer,allow_add_sign,
-       allow_copy_send,allow_retrieve,urge_mode,reject_comment_required,comment_private,reject_resubmit_mode)
+       history_same_assignee_skip,same_assignee_result,history_same_assignee_result,form_fields,editable_fields,
+       edit_mode,allow_transfer,allow_add_sign,allow_copy_send,allow_retrieve,urge_mode,reject_comment_required,
+       hide_records,reject_resubmit_mode)
       VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${node.approver},${node.noAssignee},
-        ${node.sameAssigneeSkip},${node.historySameAssigneeSkip},${textArray(node.formFields)},
-        ${textArray(node.editableFields)},${node.editMode},${node.actions.transfer},${node.actions.addSign},
-        ${node.actions.copySend},${node.actions.retrieve},${node.actions.urge},${node.rejectCommentRequired},
-        ${node.commentPrivate},${node.rejectResubmit})`);
+        ${node.sameAssigneeSkip},${node.historySameAssigneeSkip},${node.sameAssigneeResult},
+        ${node.historySameAssigneeResult},${textArray(node.formFields)},${textArray(node.editableFields)},
+        ${node.editMode},${node.actions.transfer},${node.actions.addSign},${node.actions.copySend},
+        ${node.actions.retrieve},${node.actions.urge},${node.rejectCommentRequired},${node.hideRecords},
+        ${node.rejectResubmit})`);
     for (const [ruleIndex, rule] of node.messageRules.entries()) {
       await tx.execute(sql`INSERT INTO approval_node_message_rules
         (tenant_id,version_id,node_key,rule_no,trigger,channels,template_code,recipient)
@@ -272,10 +277,11 @@ async function insertVersion(
   const id = randomUUID();
   await tx.execute(sql`INSERT INTO approval_process_versions
     (id,tenant_id,process_id,version_no,status,name,group_name,description,priority,is_fallback,
-     exception_admin_user_id,urge_enabled,condition_expression,created_by,created_at)
+     exception_admin_user_id,urge_enabled,hide_records_from_initiator,condition_expression,created_by,created_at)
     VALUES (${id},${ctx.tenantId},${processId}::uuid,${versionNo},'draft',${definition.name},${definition.groupName},
       ${definition.description},${definition.priority},${definition.isFallback},${definition.exceptionAdminUserId},
-      ${definition.urgeEnabled},${definition.conditions.expression},${ctx.userId},${ctx.now.toISOString()})`);
+      ${definition.urgeEnabled},${definition.hideRecordsFromInitiator},${definition.conditions.expression},
+      ${ctx.userId},${ctx.now.toISOString()})`);
   await writeVersionContent(tx, ctx.tenantId, id, definition);
   return id;
 }
@@ -356,6 +362,7 @@ export async function replaceDraft(tx: Tx, ctx: ApprovalContext, id: string, def
   await tx.execute(sql`UPDATE approval_process_versions SET name=${definition.name},group_name=${definition.groupName},
       description=${definition.description},priority=${definition.priority},is_fallback=${definition.isFallback},
       exception_admin_user_id=${definition.exceptionAdminUserId},urge_enabled=${definition.urgeEnabled},
+      hide_records_from_initiator=${definition.hideRecordsFromInitiator},
       condition_expression=${definition.conditions.expression}
     WHERE tenant_id=${ctx.tenantId} AND id=${draft.id}::uuid`);
   await writeVersionContent(tx, ctx.tenantId, draft.id, definition);

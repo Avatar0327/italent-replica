@@ -5,8 +5,9 @@
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
-  isApprovalType,
+  approvalTypeOfBusiness,
   SUBSETS,
+  subsetProcessCode,
   tenantLocalDate,
   type ApprovalTypeCode,
   type SubsetKind,
@@ -47,8 +48,9 @@ export interface BusinessSnapshot {
   /** 业务载荷版本：实例记下审批人所读的版本，绕过审批改了业务单即判旧审批失效（AGENTS §10「并发」）。 */
   readonly version: string;
   /**
-   * 流程编码由服务端按业务与发起入口派生，不由发起人指定（PR #35 第二轮清单 14）。
-   * TODO(R1-T09)：发起入口接通后按入口派生；在此之前固定为审批类型的默认编码（需取证 Q-M0-38）。
+   * 流程编码由服务端按业务与发起入口派生，不由发起人指定（PR #35 第二轮清单 14），取原站标准编码（`14` §11.1）：
+   * 任职业务取审批类型的标准编码，员工子集变更按子集取各自的编码。
+   * TODO(R1-T09)：调动类型等多入口接通后按入口派生（如 Customized{n}TransferFlow）；在此之前固定为类型标准编码。
    */
   readonly processCode: string | null;
 }
@@ -148,8 +150,9 @@ const employmentAdapter: BusinessAdapter = {
     const asOf = tenantLocalDate(ctx.now, ctx.timezone);
     const business = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, asOf);
     if (!business) throw new AppError('NOT_FOUND', '任职业务不存在');
-    if (!isApprovalType(business.kind)) throw approvalError('CONFLICT', 'APPROVAL_TYPE_UNKNOWN', '该业务没有审批类型');
-    const type = APPROVAL_TYPES[business.kind];
+    const approvalType = approvalTypeOfBusiness(business.kind);
+    if (!approvalType) throw approvalError('CONFLICT', 'APPROVAL_TYPE_UNKNOWN', '该业务没有审批类型');
+    const type = APPROVAL_TYPES[approvalType];
     const processCode = type.defaultProcessCode;
     const before = await findPredecessor(tx, ctx.tenantId, business.employeeId, business.effectiveDate);
     const current = await findCurrentRecord(tx, ctx.tenantId, business.employeeId, asOf);
@@ -194,7 +197,7 @@ const employmentAdapter: BusinessAdapter = {
         ]),
       );
     return {
-      approvalType: business.kind,
+      approvalType,
       businessType: 'employment',
       businessId,
       fieldObjectCode: type.objectCode,
@@ -300,7 +303,7 @@ const personnelAdapter: BusinessAdapter = {
       originals,
       changedFields: Object.keys(values).filter((key) => !same(values[key], originals?.[key])),
       conditionValues: {
-        processCode: APPROVAL_TYPES.personnel_change.defaultProcessCode,
+        processCode: subsetProcessCode(subset),
         'employee.code': employee.code,
         'employee.name': employee.name,
         'employee.departmentId': departmentId,
@@ -309,7 +312,7 @@ const personnelAdapter: BusinessAdapter = {
       latestDepartmentId: departmentId,
       recordDepartmentId: departmentId,
       version: `revision:${Number(change.revision)}`,
-      processCode: APPROVAL_TYPES.personnel_change.defaultProcessCode,
+      processCode: subsetProcessCode(subset),
     };
   },
   async approved(tx, ctx, id) {
@@ -339,8 +342,9 @@ const personnelAdapter: BusinessAdapter = {
     await correctChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id, fields);
   },
   edit: () => {
-    // TODO(需取证 Q-M0-40)：员工子集变更审批节点上的“审批中编辑”字段与落地口径未取证，首版不开放。
-    throw approvalError('CONFLICT', 'APPROVAL_EDIT_UNSUPPORTED', '该审批类型暂不支持审批中编辑');
+    // DEC-105：首版不做员工子集变更的审批中编辑（有意差异，原站可绑定，`14` §11.3）；要改内容时驳回，
+    // 由申请人在同一张单上修正重提（DEC-099）。
+    throw approvalError('CONFLICT', 'APPROVAL_EDIT_UNSUPPORTED', '员工子集变更不支持审批中编辑，请驳回后由申请人修正');
   },
 };
 

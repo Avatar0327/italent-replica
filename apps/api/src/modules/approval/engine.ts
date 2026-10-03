@@ -32,9 +32,8 @@ import {
   type RoutingSubject,
 } from './resolver.js';
 import {
-  activeInstanceOf,
+  resumableInstanceOf,
   appendLog,
-  cancelPending,
   insertTask,
   loadInstance,
   loadTasks,
@@ -119,14 +118,11 @@ function routingSubject(run: Run): RoutingSubject {
   };
 }
 
-const APPROVING = new Set(['same_skip', 'history_skip']);
-
 function routingFacts(run: Run, tasks: readonly TaskRow[], index: number, subjectUserId: string | null): RoutingFacts {
-  // TODO(需取证 #39)：原站“历史相同审批人跳过”是否跨驳回重提的轮次未取证；首版只认本轮已同意的人。
+  // TODO(需取证 Q-M0-43，#39)：“历史节点”是否跨驳回重提的轮次未取证；首版只认本轮已同意的人。
+  // 自动「跳过」的节点处理人是系统（DEC-106），不计为任何人的同意。
   const round = tasks.filter((task) => task.round === run.instance.round);
-  const approvedBy = (task: TaskRow) =>
-    task.assigneeUserId !== null &&
-    (task.status === 'approved' || (task.status === 'skipped' && APPROVING.has(task.origin)));
+  const approvedBy = (task: TaskRow) => task.assigneeUserId !== null && task.status === 'approved';
   const previousKey = index > 0 ? run.version.nodes[index - 1]!.key : null;
   const previous = round.filter((task) => task.nodeKey === previousKey && approvedBy(task)).at(-1);
   return {
@@ -156,10 +152,8 @@ export async function decide(
   return decideNode(node, candidate, facts, await directManagerOf(tx, subject, candidate));
 }
 
-const AUTO_EVENTS: Record<string, string> = {
-  same_skip: 'same_assignee_skip',
-  history_skip: 'history_assignee_skip',
-};
+/** 自动处理的触发机制（审批记录里区分“与上一节点相同 / 与历史节点相同”）。 */
+const MECHANISMS = { same_skip: 'same', history_skip: 'history' } as const;
 
 /**
  * 实际接手异常任务的人：流程上的异常管理员已停用时由租户管理员接管（DEC-098）；接手人恰为发起人或异动本人时
@@ -264,45 +258,48 @@ export async function advanceFrom(tx: Tx, run: Run, index: number, known?: reado
       return;
     }
     if (await blockedAutoApproval(tx, run, node, decision, { subject, facts })) return;
-    const taskId = await insertTask(tx, run.ctx, run.instance.id, {
-      round: run.instance.round,
-      nodeKey: node.key,
-      assigneeUserId: decision.userId,
-      origin: decision.outcome,
-      status: 'skipped',
-    });
-    await appendLog(tx, run.ctx, run.instance, {
-      event: AUTO_EVENTS[decision.outcome]!,
-      nodeKey: node.key,
-      taskId,
-      actorUserId: null,
-      detail: { userId: decision.userId, reason: decision.reason },
-    });
-    // X-14：自动同意与人工同意一样触发本节点的“同意”消息规则。
-    await applyMessageRules(tx, run.ctx, run.instance, node, 'approve', {
-      id: taskId,
-      assigneeUserId: decision.userId,
-    });
-    tasks.push(skippedTask(run, tasks, node.key, taskId, decision));
+    tasks.push(await autoProcess(tx, run, node, decision, tasks));
   }
   await complete(tx, run);
 }
 
-function skippedTask(
+/**
+ * DEC-106：自动「同意」记为该审批人同意，并与人工同意一样触发本节点的“同意”消息规则（X-14）；
+ * 自动「跳过」沿同意路径流转，处理人记为系统（任务无审批人），审批记录里两者分别记为 auto_approve / skip。
+ */
+async function autoProcess(
+  tx: Tx,
   run: Run,
-  tasks: readonly TaskRow[],
-  nodeKey: string,
-  id: string,
+  node: ApprovalNode,
   decision: Extract<NodeDecision, { kind: 'auto' }>,
-): TaskRow {
-  return {
-    id,
-    seq: (tasks.at(-1)?.seq ?? 0) + 1,
-    round: run.instance.round,
-    nodeKey,
-    assigneeUserId: decision.userId,
+  tasks: readonly TaskRow[],
+): Promise<TaskRow> {
+  const skip = decision.result === 'skip';
+  const assigneeUserId = skip ? null : decision.userId;
+  const status = skip ? 'skipped' : 'approved';
+  const round = run.instance.round;
+  const taskId = await insertTask(tx, run.ctx, run.instance.id, {
+    round,
+    nodeKey: node.key,
+    assigneeUserId,
     origin: decision.outcome,
-    status: 'skipped',
+    status,
+  });
+  const mechanism = MECHANISMS[decision.outcome];
+  const detail = skip
+    ? { mechanism, handler: '系统', candidateUserId: decision.userId, reason: decision.reason }
+    : { mechanism, userId: decision.userId, reason: decision.reason };
+  const event = skip ? 'skip' : 'auto_approve';
+  await appendLog(tx, run.ctx, run.instance, { event, nodeKey: node.key, taskId, actorUserId: null, detail });
+  if (!skip) await applyMessageRules(tx, run.ctx, run.instance, node, 'approve', { id: taskId, assigneeUserId });
+  return {
+    id: taskId,
+    seq: (tasks.at(-1)?.seq ?? 0) + 1,
+    round,
+    nodeKey: node.key,
+    assigneeUserId,
+    origin: decision.outcome,
+    status,
     isExceptionAdmin: false,
     adminSelfTransfer: false,
     parentTaskId: null,
@@ -360,11 +357,12 @@ async function complete(tx: Tx, run: Run): Promise<void> {
   run.events.push('approval.instance.approved');
 }
 
-/** 节点上没有待审批任务时推进到下一节点（加签要求同节点全部同意）。 */
-export async function afterNodeApproved(tx: Tx, run: Run, nodeKey: string): Promise<void> {
-  const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
-  if (tasks.some((task) => task.round === run.instance.round && task.nodeKey === nodeKey && task.status === 'pending'))
-    return;
+/** 节点上没有待审批或排队中的任务时推进到下一节点（加签要求同节点全部完成）。 */
+export async function afterNodeApproved(tx: Tx, run: Run, nodeKey: string, known?: readonly TaskRow[]): Promise<void> {
+  const tasks = known ?? (await loadTasks(tx, run.ctx.tenantId, run.instance.id));
+  const open = (task: TaskRow) =>
+    task.round === run.instance.round && task.nodeKey === nodeKey && ['pending', 'queued'].includes(task.status);
+  if (tasks.some(open)) return;
   await advanceFrom(tx, run, nodeIndex(run, nodeKey) + 1, tasks);
 }
 
@@ -373,15 +371,15 @@ export interface StartRequest {
   readonly businessId: string;
 }
 
-/** 提交审批：退回中的实例按驳回节点配置同单重提（DEC-053），否则按类型匹配新流程（DEC-017）。 */
+/**
+ * 提交审批：首次提交按类型匹配流程（DEC-017）；驳回或撤回后再提交一律沿用原实例与原流程版本，不重新匹配，
+ * 也不再触发“流程发起”（DEC-103，`14` §11.8）。
+ */
 export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: StartRequest): Promise<InstanceRow> {
-  const active = await activeInstanceOf(tx, ctx.tenantId, request.businessType, request.businessId);
-  if (active?.status === 'running') throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '该申请已在审批中');
+  const latest = await resumableInstanceOf(tx, ctx.tenantId, request.businessType, request.businessId);
+  if (latest?.status === 'running') throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '该申请已在审批中');
+  if (latest) return resume(tx, ctx, latest.id);
   const snapshot = await ADAPTERS[request.businessType].snapshot(tx, ctx, request.businessId);
-  if (active) {
-    const rematched = await rematchIfConditionsChanged(tx, ctx, active, snapshot);
-    if (!rematched) return resume(tx, ctx, active.id);
-  }
   const matched = await matchProcess(tx, ctx, snapshot);
   const instance = await insertInstance(tx, ctx, request, snapshot, matched);
   const run: Run = {
@@ -421,37 +419,6 @@ async function assertExceptionAdminAvailable(tx: Tx, run: Run): Promise<void> {
   await exceptionAdminFor(tx, run, routing.subject, routing.facts);
 }
 
-const sameValues = (left: Readonly<Row>, right: Readonly<Row>) => {
-  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
-  return [...keys].every((key) => JSON.stringify(left[key] ?? null) === JSON.stringify(right[key] ?? null));
-};
-
-/**
- * DEC-093：驳回后重提时若改了发起条件所用字段，重新匹配；命中不同流程则作废旧实例（保留历史），由调用方新开实例。
- * TODO(需取证 Q-M0-45)：原站是否重新匹配未取证；命中同一流程时沿用旧实例与其冻结版本。
- * @returns 旧实例是否已作废
- */
-async function rematchIfConditionsChanged(
-  tx: Tx,
-  ctx: ApprovalContext,
-  active: InstanceRow,
-  snapshot: BusinessSnapshot,
-): Promise<boolean> {
-  if (sameValues(active.conditionValues, snapshot.conditionValues)) return false;
-  const matched = await matchProcess(tx, ctx, snapshot);
-  if (matched.processId === active.processId) return false;
-  const run = await openRun(tx, ctx, active.id);
-  await cancelPending(tx, ctx, active.id);
-  run.instance = { ...run.instance, status: 'cancelled', currentNodeKey: null };
-  await appendLog(tx, ctx, run.instance, {
-    event: 'rematch',
-    detail: { fromProcessId: active.processId, toProcessId: matched.processId, reason: '发起条件字段已修改' },
-  });
-  run.events.push('approval.instance.cancelled');
-  await persistRun(tx, run, 'approval.instance.rematch');
-  return true;
-}
-
 async function insertInstance(
   tx: Tx,
   ctx: ApprovalContext,
@@ -462,21 +429,26 @@ async function insertInstance(
   const id = randomUUID();
   await tx.execute(sql`INSERT INTO approval_instances
     (id,tenant_id,process_id,version_id,approval_type,object_code,business_type,business_id,subject_employee_id,
-     initiator_user_id,process_code,title,business_version,condition_values,status,created_at,updated_at)
+     initiator_user_id,process_code,title,business_version,status,created_at,updated_at)
     VALUES (${id},${ctx.tenantId},${matched.processId}::uuid,${matched.version.id}::uuid,${snapshot.approvalType},
       ${APPROVAL_TYPES[snapshot.approvalType].objectCode},${request.businessType},${request.businessId}::uuid,
       ${snapshot.subjectEmployeeId},${ctx.userId},${snapshot.processCode},${snapshot.title},${snapshot.version},
-      ${JSON.stringify(snapshot.conditionValues)}::jsonb,'running',${ctx.now.toISOString()},${ctx.now.toISOString()})`);
+      'running',${ctx.now.toISOString()},${ctx.now.toISOString()})`);
   return loadInstance(tx, ctx.tenantId, id, true);
 }
 
+/**
+ * DEC-103 重提：沿用原实例与其冻结版本。驳回后按驳回节点的「驳回后提交方式」（DEC-053）；撤回后从第一个节点
+ * 重新审批。实例的发起人不可改（0026 触发器），只有原发起人能重提。
+ */
 export async function resume(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<InstanceRow> {
   const run = await openRun(tx, ctx, instanceId);
-  if (run.instance.status !== 'returned')
-    throw approvalError('CONFLICT', 'APPROVAL_NOT_RETURNED', '只有被驳回的申请可以重提');
+  const afterWithdraw = run.instance.status === 'withdrawn';
+  if (run.instance.status !== 'returned' && !afterWithdraw)
+    throw approvalError('CONFLICT', 'APPROVAL_NOT_RETURNED', '只有被驳回或已撤回的申请可以重提');
   if (run.instance.initiatorUserId !== ctx.userId)
-    throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有发起人可以重提');
-  const rejecting = run.instance.returnedFromNodeKey;
+    throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有原发起人可以重新提交');
+  const rejecting = afterWithdraw ? null : run.instance.returnedFromNodeKey;
   const toRejecting =
     rejecting !== null && run.version.nodes[nodeIndex(run, rejecting)]!.rejectResubmit === 'rejecting_node';
   run.instance = {
@@ -485,10 +457,12 @@ export async function resume(tx: Tx, ctx: ApprovalContext, instanceId: string): 
     round: run.instance.round + 1,
     returnedFromNodeKey: null,
     businessVersion: run.snapshot.version,
-    conditionValues: run.snapshot.conditionValues,
   };
   run.events.push('approval.instance.resubmitted');
-  await appendLog(tx, ctx, run.instance, { event: 'resubmit', detail: { toNodeKey: toRejecting ? rejecting : null } });
+  await appendLog(tx, ctx, run.instance, {
+    event: 'resubmit',
+    detail: { toNodeKey: toRejecting ? rejecting : null, afterWithdraw },
+  });
   await assertExceptionAdminAvailable(tx, run);
   await advanceFrom(tx, run, toRejecting ? nodeIndex(run, rejecting) : 0);
   return persistRun(tx, run, 'approval.instance.resubmit');

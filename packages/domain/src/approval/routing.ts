@@ -1,9 +1,10 @@
 /**
  * 节点审批人决策（纯函数）：三种内建机制（`14` §2.2）+ 首节点为空报错（DEC-054）+ 自审（DEC-058 / DEC-068）。
- * 顺序：审批人为空 → 自审（优先于“相同审批人跳过 = 同意”，DEC-068）→ 相同 / 历史相同审批人跳过 → 派任务。
- * TODO(需取证 Q-M0-43)：相同 / 历史相同审批人跳过的“跳过后结果”除“同意”外还有哪些取值未取证，首版只实现“同意”。
+ * 顺序：审批人为空 → 自审（优先于相同审批人自动处理，DEC-068）→ 相同 / 历史相同审批人自动处理 → 派任务。
+ * 自动处理的结果按节点配置为「同意」或「跳过」（DEC-106）。
+ * TODO(需取证 Q-M0-43，#39)：“历史节点”是否跨驳回重提的轮次未取证，首版只认本轮（engine.routingFacts）。
  */
-import type { ApprovalNode } from './types.js';
+import type { ApprovalNode, AutoResult } from './types.js';
 
 /** 表达式解析出的人员与其绑定的账号（无账号视为审批人为空）。 */
 export interface Candidate {
@@ -38,7 +39,15 @@ export type NodeDecision =
       readonly selfSkippedUserId: string | null;
       readonly reason: string;
     }
-  | { readonly kind: 'auto'; readonly outcome: AutoOutcome; readonly userId: string | null; readonly reason: string }
+  | {
+      readonly kind: 'auto';
+      /** 触发自动处理的机制：与上一节点相同 / 与历史节点相同。 */
+      readonly outcome: AutoOutcome;
+      /** 自动处理的结果（DEC-106）。 */
+      readonly result: AutoResult;
+      readonly userId: string | null;
+      readonly reason: string;
+    }
   | { readonly kind: 'first_node_empty'; readonly reason: string };
 
 export function isSelf(candidate: Candidate, facts: RoutingFacts): boolean {
@@ -60,11 +69,18 @@ function exceptionAdmin(facts: RoutingFacts, reason: string, selfSkippedUserId: 
   };
 }
 
+function auto(outcome: AutoOutcome, result: AutoResult, userId: string, why: string): NodeDecision {
+  return { kind: 'auto', outcome, result, userId, reason: `${why}，${result === 'skip' ? '自动跳过' : '自动同意'}` };
+}
+
 /**
  * @param manager 自审时该审批人任职记录上的直线经理（调用方按需解析）。
  */
 export function decideNode(
-  node: Pick<ApprovalNode, 'sameAssigneeSkip' | 'historySameAssigneeSkip'>,
+  node: Pick<
+    ApprovalNode,
+    'sameAssigneeSkip' | 'historySameAssigneeSkip' | 'sameAssigneeResult' | 'historySameAssigneeResult'
+  >,
   candidate: Candidate,
   facts: RoutingFacts,
   manager: Candidate = { personId: null, userId: null },
@@ -90,10 +106,10 @@ export function decideNode(
     };
   }
   if (node.sameAssigneeSkip && candidate.userId === facts.previousApproverUserId) {
-    return { kind: 'auto', outcome: 'same_skip', userId: candidate.userId, reason: '与上一节点审批人相同，自动同意' };
+    return auto('same_skip', node.sameAssigneeResult, candidate.userId, '与上一节点审批人相同');
   }
   if (node.historySameAssigneeSkip && facts.approvedUserIds.includes(candidate.userId)) {
-    return { kind: 'auto', outcome: 'history_skip', userId: candidate.userId, reason: '历史节点已同意，自动同意' };
+    return auto('history_skip', node.historySameAssigneeResult, candidate.userId, '历史节点已同意');
   }
   return {
     kind: 'assign',

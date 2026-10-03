@@ -3,7 +3,7 @@
  * 流程按审批类型隔离（DEC-017）；节点是动作开关集 + 消息规则数组（`14` §8.2）；时效字段只预留（DEC-035）。
  */
 import { MODULE_OBJECTS } from '../permission/module-actions.js';
-import { SUBSETS } from '../personnel/fields.js';
+import { SUBSETS, type SubsetKind } from '../personnel/fields.js';
 
 /** 首版五种审批人表达式（REQ-APV-002「首版最小表达式集」）。 */
 export const APPROVER_EXPRESSIONS = [
@@ -46,9 +46,21 @@ export interface MessageRule {
 export const URGE_MODES = ['inherit', 'enabled', 'disabled'] as const;
 export type UrgeMode = (typeof URGE_MODES)[number];
 
-/** 加签类型（DEC-095）：前加签 = 被加签人先审、再回到本人；后加签 = 本人同意后再由被加签人审。 */
+/**
+ * 加签类型（DEC-095，`14` §11.4 单人审批节点）：前加签 = 加签人按选择顺序依次先审、全部同意后回到原审批人；
+ * 后加签 = 原审批人同意后加签人依次审批，全部完成才离开本节点。会签节点的并加签不适用（首版节点均为单人审批）。
+ */
 export const ADD_SIGN_TYPES = ['before', 'after'] as const;
 export type AddSignType = (typeof ADD_SIGN_TYPES)[number];
+/** 单次加签的人数上限（DEC-101：只限制单次操作规模）。 */
+export const MAX_ADD_SIGNERS = 10;
+
+/**
+ * 相同 / 历史相同审批人自动处理的结果（DEC-106，`14` §11.6）：「同意」记为该审批人同意；「跳过」沿同意路径流转、
+ * 处理人记为系统。节点其他出口线动作（含「不同意」）首版不做；审批人为空不适用（DEC-054）。
+ */
+export const AUTO_RESULTS = ['approve', 'skip'] as const;
+export type AutoResult = (typeof AUTO_RESULTS)[number];
 
 /** 节点动作开关集（`14` §8.2：抄送 / 转交 / 撤回 / 加签 / 催办），随流程版本冻结（DEC-097）。 */
 export interface NodeActions {
@@ -73,14 +85,19 @@ export interface ApprovalNode {
   readonly noAssignee: NoAssigneePolicy;
   readonly sameAssigneeSkip: boolean;
   readonly historySameAssigneeSkip: boolean;
+  readonly sameAssigneeResult: AutoResult;
+  readonly historySameAssigneeResult: AutoResult;
   readonly formFields: readonly string[];
   readonly editableFields: readonly string[];
   readonly editMode: EditMode;
   readonly actions: NodeActions;
   /** DEC-059：出厂关闭。 */
   readonly rejectCommentRequired: boolean;
-  /** DEC-100：意见仅本节点与发起人可见；出厂关闭 = 意见默认对后续节点公开。TODO(需取证 Q-M0-47)。 */
-  readonly commentPrivate: boolean;
+  /**
+   * DEC-104「审批记录查看权限」：查看方的设置，勾选后本节点审批人进入详情页时看不到审批记录与沟通（`14` §11.9）。
+   * 出厂关闭 = 所有能打开详情页的人都看得到（DEC-100）。
+   */
+  readonly hideRecords: boolean;
   readonly rejectResubmit: RejectResubmitMode;
   readonly messageRules: readonly MessageRule[];
 }
@@ -111,6 +128,8 @@ export interface ProcessDefinition {
   readonly isFallback: boolean;
   readonly exceptionAdminUserId: string | null;
   readonly urgeEnabled: boolean;
+  /** DEC-104：开始节点上的「审批记录查看权限」，勾选后发起人看不到审批记录与沟通。 */
+  readonly hideRecordsFromInitiator: boolean;
   readonly conditions: ProcessCondition;
   readonly nodes: readonly ApprovalNode[];
 }
@@ -156,7 +175,7 @@ export interface ApprovalTypeDefinition {
   readonly name: string;
   readonly objectCode: string;
   readonly adapter: ApprovalAdapterKind;
-  /** 发起入口默认携带的流程编码（`13` §6.3）；未取证的类型不预设。 */
+  /** 发起入口默认携带的标准流程编码（`14` §11.1）；原站没有对应标准流程的类型为空。 */
   readonly defaultProcessCode: string | null;
   readonly conditionFields: readonly ConditionField[];
   readonly formFields: readonly string[];
@@ -174,18 +193,17 @@ const employmentType = (code: string, name: string, defaultProcessCode: string |
   }) as const satisfies ApprovalTypeDefinition;
 
 /**
- * 审批类型目录：任职业务各类型一一对应（`14` §5 审批类型管理）；人员自助变更为“员工子集变更”。
- * TODO(需取证 Q-M0-38)：原站审批类型字典的完整编码、名称与各类型标准流程编码。
+ * 审批类型目录（`14` §11.1，原站 88 个类型中首版涉及的任职记录类型 + 员工子集变更）。原站没有“重聘”审批类型：
+ * 重聘入职、退休返聘是「入职」的异动类型（`07` §2），走入职审批（approvalTypeOfBusiness）。
+ * 原站「组织调整」审批类型挂在组织调整申请对象上（`33`），任职记录上的组织调整异动没有对应的标准流程编码。
  */
 export const APPROVAL_TYPES = {
   transfer: employmentType('transfer', '调动', 'TransferProcessNew'),
   leave: employmentType('leave', '离职', 'DimissionProcessNew'),
-  regularization: employmentType('regularization', '转正'),
-  intern_regularization: employmentType('intern_regularization', '实习生转正'),
-  hire: employmentType('hire', '新增员工'),
-  rehire: employmentType('rehire', '重新入职'),
-  retire_rehire: employmentType('retire_rehire', '退休返聘'),
-  retirement: employmentType('retirement', '退休'),
+  regularization: employmentType('regularization', '转正', 'ProbationProcessNew'),
+  intern_regularization: employmentType('intern_regularization', '实习转正', 'TraineeEntryProcess'),
+  hire: employmentType('hire', '入职', 'EntryProcessNew'),
+  retirement: employmentType('retirement', '退休', 'RetireProcess'),
   org_adjustment: employmentType('org_adjustment', '组织调整'),
   personnel_change: {
     code: 'personnel_change',
@@ -201,6 +219,32 @@ export type ApprovalTypeCode = keyof typeof APPROVAL_TYPES;
 
 export function isApprovalType(value: string): value is ApprovalTypeCode {
   return Object.hasOwn(APPROVAL_TYPES, value);
+}
+
+/** 任职业务类型 → 审批类型：重聘入职、退休返聘归入「入职」（`07` §2、`14` §11.1）。 */
+const ENTRY_KINDS: Readonly<Record<string, ApprovalTypeCode>> = { rehire: 'hire', retire_rehire: 'hire' };
+
+export function approvalTypeOfBusiness(kind: string): ApprovalTypeCode | null {
+  const mapped = ENTRY_KINDS[kind] ?? kind;
+  return isApprovalType(mapped) && mapped !== 'personnel_change' ? mapped : null;
+}
+
+/** 员工子集变更按子集各用自己的标准流程编码（`14` §11.1，手册 185008911）；未取到标准编码的子集为空。 */
+const SUBSET_PROCESS_CODES: Readonly<Partial<Record<SubsetKind, string>>> = {
+  education: 'ChangeEducationProcess',
+  family: 'ChangeFamilyProcess',
+  jobhistory: 'ChangeJobHistoryProcess',
+  training: 'ChangeTrainingProcess',
+  'project-experience': 'ChangeProjectExperienceProcess',
+  awards: 'ChangeAwardsProcess',
+  'language-ability': 'LanguageSkillsChange',
+  skill: 'ProfessionalSkillsChange',
+  punish: 'ChangePunishProcess',
+  certificate: 'ChangeCertificateProcess',
+};
+
+export function subsetProcessCode(subset: SubsetKind): string | null {
+  return SUBSET_PROCESS_CODES[subset] ?? null;
 }
 
 export function approvalType(code: ApprovalTypeCode): ApprovalTypeDefinition {

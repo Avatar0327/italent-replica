@@ -1,6 +1,6 @@
 {
-  "id": "ec0f0660-0001-45b3-9318-9ba1a452ee73",
-  "prevId": "df9f720a-df8a-42e0-9d30-4e3ada41bdad",
+  "id": "5d453d58-72b5-4d07-9d7c-b3e178d168dd",
+  "prevId": "6163abce-bfb1-4387-93a3-9d1b62445ca6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -20875,13 +20875,6 @@
           "notNull": true,
           "default": "''"
         },
-        "condition_values": {
-          "name": "condition_values",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
         "status": {
           "name": "status",
           "type": "text",
@@ -21699,6 +21692,20 @@
           "notNull": true,
           "default": false
         },
+        "same_assignee_result": {
+          "name": "same_assignee_result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'approve'"
+        },
+        "history_same_assignee_result": {
+          "name": "history_same_assignee_result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'approve'"
+        },
         "form_fields": {
           "name": "form_fields",
           "type": "text[]",
@@ -21762,8 +21769,8 @@
           "notNull": true,
           "default": false
         },
-        "comment_private": {
-          "name": "comment_private",
+        "hide_records": {
+          "name": "hide_records",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
@@ -21878,6 +21885,10 @@
         "approval_nodes_urge_mode": {
           "name": "approval_nodes_urge_mode",
           "value": "\"approval_process_nodes\".\"urge_mode\" IN ('inherit','enabled','disabled')"
+        },
+        "approval_nodes_auto_result": {
+          "name": "approval_nodes_auto_result",
+          "value": "\"approval_process_nodes\".\"same_assignee_result\" IN ('approve','skip') AND \"approval_process_nodes\".\"history_same_assignee_result\" IN ('approve','skip')"
         }
       },
       "isRLSEnabled": false
@@ -21962,6 +21973,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "hide_records_from_initiator": {
+          "name": "hide_records_from_initiator",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "condition_expression": {
           "name": "condition_expression",
@@ -22514,7 +22532,7 @@
         },
         "approval_tasks_status": {
           "name": "approval_tasks_status",
-          "value": "\"approval_tasks\".\"status\" IN ('pending','approved','rejected','transferred','skipped','cancelled','add_signed')"
+          "value": "\"approval_tasks\".\"status\" IN ('pending','approved','rejected','transferred','skipped','cancelled','add_signed','queued')"
         },
         "approval_tasks_origin": {
           "name": "approval_tasks_origin",

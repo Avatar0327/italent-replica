@@ -1,8 +1,8 @@
 /**
  * 出厂预置流程（DEC-018 / DEC-094）：全部业务类型与员工信息变更都有草稿预置，租户开通时配置异常管理员后发布（R1-T17）。
- * 调动按本租户已取证的节点结构（`14` §2、§8.2、§8.3）预置并带流程编码条件；离职按 §8.5 取证的“直接上级 → HR 访谈”
- * 结构以现有表达式近似，并带标准离职流程编码条件；其余类型的节点结构尚未取证，预置为本类型兜底草稿
- * （TODO(需取证 #38)），由租户按实际流程调整后发布。
+ * 有标准流程编码的类型都带“流程编码 = 标准编码”发起条件（`14` §11.1）。调动按本租户已取证的节点结构（`14` §2、§8.2、
+ * §8.3）与 TransferDetailView 字段（§11.2）预置；离职按 §8.5 取证的“直接上级 → HR 访谈”结构以现有表达式近似；
+ * 其余类型的节点结构尚未取证（TODO(需取证 #38)），预置为“部门负责人审批 → HRBP 审核”，由租户调整后发布。
  */
 import { APPROVAL_TYPES, type ApprovalNode, type ApprovalTypeCode, type ProcessDefinition } from './types.js';
 
@@ -13,9 +13,13 @@ export interface PresetProcess {
   readonly definition: ProcessDefinition;
 }
 
-// TODO(需取证 Q-M0-39)：各节点审批详情页视图（TransferDetailView 等）的确切字段；暂取调动表单“任职调整”区块（`13` §7）。
+/**
+ * 调动审批详情页 TransferDetailView 中复刻已有的标准字段（`14` §11.2）：调动日期、工号与“任职调整”区块；
+ * `ext*` 自定义字段与薪资、合同区块不预置。
+ */
 const TRANSFER_FORM = [
   'effectiveDate',
+  'jobNumber',
   'departmentId',
   'postId',
   'levelId',
@@ -36,23 +40,40 @@ const node = (key: string, name: string, approver: ApprovalNode['approver'], ext
     noAssignee: 'exception_admin',
     sameAssigneeSkip: true,
     historySameAssigneeSkip: true,
+    sameAssigneeResult: 'approve',
+    historySameAssigneeResult: 'approve',
     formFields: TRANSFER_FORM,
     editableFields: [],
     editMode: 'none',
     actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' },
     rejectCommentRequired: false,
-    commentPrivate: false,
+    hideRecords: false,
     rejectResubmit: 'restart',
     messageRules: [],
     ...extra,
   }) satisfies ApprovalNode;
 
-const draft = (definition: Omit<ProcessDefinition, 'exceptionAdminUserId' | 'urgeEnabled' | 'groupName'>) => ({
+type DraftInput = Omit<
+  ProcessDefinition,
+  'exceptionAdminUserId' | 'urgeEnabled' | 'groupName' | 'hideRecordsFromInitiator'
+>;
+const draft = (definition: DraftInput): ProcessDefinition => ({
   groupName: '员工审批流程',
   exceptionAdminUserId: null,
   urgeEnabled: true,
+  hideRecordsFromInitiator: false,
   ...definition,
 });
+
+/** “流程编码 = 本类型标准编码”发起条件；没有标准编码的类型预置为本类型兜底流程（DEC-018）。 */
+function standardCondition(type: ApprovalTypeCode): Pick<ProcessDefinition, 'conditions' | 'isFallback'> {
+  const code = APPROVAL_TYPES[type].defaultProcessCode;
+  if (!code) return { isFallback: true, conditions: { items: [], expression: '' } };
+  return {
+    isFallback: false,
+    conditions: { items: [{ no: 1, field: 'processCode', operator: 'eq', value: code }], expression: '1' },
+  };
+}
 
 /** 未取证节点结构的业务类型：部门负责人审批 → HRBP 审核（TODO(需取证 #38)）。 */
 const GENERIC_FORM = ['effectiveDate', 'departmentId', 'postId', 'positionId', 'levelId'];
@@ -66,8 +87,7 @@ function genericPreset(type: Exclude<ApprovalTypeCode, 'transfer' | 'leave' | 'p
       name: `标准${name}流程`,
       description: '出厂预置：节点结构待按本租户实际流程核对，发布前须配置异常管理员',
       priority: 0,
-      isFallback: true,
-      conditions: { items: [], expression: '' },
+      ...standardCondition(type),
       nodes: [
         node('department_head', '部门负责人审批', 'latest_record_department_head', { formFields: GENERIC_FORM }),
         node('hrbp', 'HRBP审核', 'record_department_hrbp', { formFields: GENERIC_FORM }),
@@ -91,6 +111,7 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       isFallback: false,
       exceptionAdminUserId: null,
       urgeEnabled: true,
+      hideRecordsFromInitiator: false,
       conditions: {
         items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }],
         expression: '1',
@@ -135,17 +156,7 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       ],
     }),
   },
-  ...(
-    [
-      'regularization',
-      'intern_regularization',
-      'hire',
-      'rehire',
-      'retire_rehire',
-      'retirement',
-      'org_adjustment',
-    ] as const
-  ).map(genericPreset),
+  ...(['regularization', 'intern_regularization', 'hire', 'retirement', 'org_adjustment'] as const).map(genericPreset),
   {
     presetKey: 'standard_personnel_change',
     code: 'StandardPersonnelChange',

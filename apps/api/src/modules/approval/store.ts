@@ -14,7 +14,9 @@ const BATCH = 500;
 export const RECENT = 200;
 
 export type InstanceStatus = 'running' | 'returned' | 'approved' | 'withdrawn' | 'cancelled';
-export type TaskStatus = 'pending' | 'approved' | 'rejected' | 'transferred' | 'skipped' | 'cancelled' | 'add_signed';
+/** queued：多人依次加签中排在后面、尚未轮到的加签任务（`14` §11.4）。 */
+export type TaskStatus =
+  'pending' | 'approved' | 'rejected' | 'transferred' | 'skipped' | 'cancelled' | 'add_signed' | 'queued';
 
 export interface InstanceRow {
   readonly id: string;
@@ -29,7 +31,6 @@ export interface InstanceRow {
   readonly processCode: string | null;
   readonly title: string;
   readonly businessVersion: string;
-  readonly conditionValues: Readonly<Row>;
   readonly status: InstanceStatus;
   readonly currentNodeKey: string | null;
   readonly returnedFromNodeKey: string | null;
@@ -71,7 +72,6 @@ function instanceOf(row: Row): InstanceRow {
     processCode: (row.process_code as string | null) ?? null,
     title: String(row.title),
     businessVersion: String(row.business_version ?? ''),
-    conditionValues: (row.condition_values as Row | null) ?? {},
     status: row.status as InstanceStatus,
     currentNodeKey: (row.current_node_key as string | null) ?? null,
     returnedFromNodeKey: (row.returned_from_node_key as string | null) ?? null,
@@ -118,6 +118,23 @@ export async function activeInstanceOf(
     await tx.execute(sql`SELECT * FROM approval_instances WHERE tenant_id=${tenantId}
       AND business_type=${businessType} AND business_id=${businessId}::uuid AND status IN ('running','returned')
       FOR UPDATE`),
+  );
+  return row ? instanceOf(row) : null;
+}
+
+/**
+ * 业务单最近一次可重提的实例（DEC-103）：在办、被驳回或已撤回。撤回不新开实例，重新提交时沿用这一个。
+ */
+export async function resumableInstanceOf(
+  tx: Tx,
+  tenantId: string,
+  businessType: BusinessType,
+  businessId: string,
+): Promise<InstanceRow | null> {
+  const [row] = rowsOf(
+    await tx.execute(sql`SELECT * FROM approval_instances WHERE tenant_id=${tenantId}
+      AND business_type=${businessType} AND business_id=${businessId}::uuid
+      AND status IN ('running','returned','withdrawn') ORDER BY created_at DESC,id DESC LIMIT 1 FOR UPDATE`),
   );
   return row ? instanceOf(row) : null;
 }
@@ -181,12 +198,8 @@ async function auditTask(tx: Tx, ctx: ApprovalContext, action: string, taskId: s
 
 export async function insertTask(tx: Tx, ctx: ApprovalContext, instanceId: string, task: NewTask): Promise<string> {
   const id = randomUUID();
-  const actedAt = task.status === 'pending' ? null : ctx.now.toISOString();
-  if (task.status === 'pending' && (await pendingCount(tx, ctx.tenantId, instanceId)) >= MAX_PENDING) {
-    throw new AppError('PAYLOAD_TOO_LARGE', `同一审批单同时在办的任务不能超过 ${MAX_PENDING} 个`, {
-      reason: 'APPROVAL_TOO_MANY_PENDING',
-    });
-  }
+  const actedAt = task.status === 'pending' || task.status === 'queued' ? null : ctx.now.toISOString();
+  if (task.status === 'pending') await assertPendingRoom(tx, ctx.tenantId, instanceId);
   await auditTask(tx, ctx, 'approval.task.create', id, null, {
     instanceId,
     round: task.round,
@@ -208,12 +221,27 @@ export async function insertTask(tx: Tx, ctx: ApprovalContext, instanceId: strin
   return id;
 }
 
-async function pendingCount(tx: Tx, tenantId: string, instanceId: string): Promise<number> {
+async function assertPendingRoom(tx: Tx, tenantId: string, instanceId: string): Promise<void> {
   const [row] = rowsOf<{ n: number }>(
     await tx.execute(sql`SELECT count(*)::int AS n FROM approval_tasks
       WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid AND status='pending'`),
   );
-  return Number(row?.n ?? 0);
+  if (Number(row?.n ?? 0) >= MAX_PENDING) {
+    throw new AppError('PAYLOAD_TOO_LARGE', `同一审批单同时在办的任务不能超过 ${MAX_PENDING} 个`, {
+      reason: 'APPROVAL_TOO_MANY_PENDING',
+    });
+  }
+}
+
+/** 依次加签轮到排队中的下一位：queued → pending（`14` §11.4）。 */
+export async function activateTask(tx: Tx, ctx: ApprovalContext, instanceId: string, taskId: string): Promise<void> {
+  await assertPendingRoom(tx, ctx.tenantId, instanceId);
+  const activated = rowsOf(
+    await tx.execute(sql`UPDATE approval_tasks SET status='pending'
+      WHERE tenant_id=${ctx.tenantId} AND id=${taskId}::uuid AND status='queued' RETURNING id`),
+  );
+  if (activated.length)
+    await auditTask(tx, ctx, 'approval.task.activate', taskId, { status: 'queued' }, { status: 'pending' });
 }
 
 export async function closeTask(
@@ -231,13 +259,16 @@ export async function closeTask(
     await auditTask(tx, ctx, 'approval.task.close', taskId, { status: 'pending', comment: null }, { status, comment });
 }
 
+/** 结束实例时取消在办与排队中的任务，逐个写任务审计（AGENTS §10「审计」）。 */
 export async function cancelPending(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<void> {
-  const cancelled = rowsOf<{ id: string }>(
-    await tx.execute(sql`UPDATE approval_tasks SET status='cancelled',acted_at=${ctx.now.toISOString()}
-    WHERE tenant_id=${ctx.tenantId} AND instance_id=${instanceId}::uuid AND status='pending' RETURNING id`),
+  const open = rowsOf<{ id: string; status: string }>(
+    await tx.execute(sql`SELECT id,status FROM approval_tasks WHERE tenant_id=${ctx.tenantId}
+      AND instance_id=${instanceId}::uuid AND status IN ('pending','queued') ORDER BY seq FOR UPDATE`),
   );
-  for (const task of cancelled) {
-    await auditTask(tx, ctx, 'approval.task.cancel', task.id, { status: 'pending' }, { status: 'cancelled' });
+  for (const task of open) {
+    await tx.execute(sql`UPDATE approval_tasks SET status='cancelled',acted_at=${ctx.now.toISOString()}
+      WHERE tenant_id=${ctx.tenantId} AND id=${task.id}::uuid`);
+    await auditTask(tx, ctx, 'approval.task.cancel', task.id, { status: task.status }, { status: 'cancelled' });
   }
 }
 
@@ -297,18 +328,13 @@ export async function updateInstance(
   tx: Tx,
   ctx: ApprovalContext,
   instance: InstanceRow,
-  patch: Partial<
-    Pick<
-      InstanceRow,
-      'status' | 'currentNodeKey' | 'returnedFromNodeKey' | 'round' | 'businessVersion' | 'conditionValues'
-    >
-  >,
+  patch: Partial<Pick<InstanceRow, 'status' | 'currentNodeKey' | 'returnedFromNodeKey' | 'round' | 'businessVersion'>>,
 ): Promise<InstanceRow> {
   const next = { ...instance, ...patch, revision: instance.revision + 1 };
   const done = ['approved', 'withdrawn', 'cancelled'].includes(next.status);
   await tx.execute(sql`UPDATE approval_instances SET status=${next.status},current_node_key=${next.currentNodeKey},
       returned_from_node_key=${next.returnedFromNodeKey},round=${next.round},revision=${next.revision},
-      business_version=${next.businessVersion},condition_values=${JSON.stringify(next.conditionValues)}::jsonb,
+      business_version=${next.businessVersion},
       updated_at=${ctx.now.toISOString()},completed_at=${done ? ctx.now.toISOString() : null}
     WHERE tenant_id=${ctx.tenantId} AND id=${instance.id}::uuid AND revision=${instance.revision}`);
   return { ...next, completedAt: done ? ctx.now.toISOString() : null };

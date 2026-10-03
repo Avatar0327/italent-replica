@@ -30,11 +30,13 @@ ALTER TABLE "approval_process_nodes" DROP CONSTRAINT "approval_nodes_no_assignee
 ALTER TABLE "approval_tasks" DROP CONSTRAINT "approval_tasks_status";--> statement-breakpoint
 ALTER TABLE "approval_tasks" DROP CONSTRAINT "approval_tasks_origin";--> statement-breakpoint
 ALTER TABLE "approval_instances" ADD COLUMN "business_version" text DEFAULT '' NOT NULL;--> statement-breakpoint
-ALTER TABLE "approval_instances" ADD COLUMN "condition_values" jsonb DEFAULT '{}'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "approval_process_nodes" ADD COLUMN "same_assignee_result" text DEFAULT 'approve' NOT NULL;--> statement-breakpoint
+ALTER TABLE "approval_process_nodes" ADD COLUMN "history_same_assignee_result" text DEFAULT 'approve' NOT NULL;--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD COLUMN "allow_copy_send" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD COLUMN "allow_retrieve" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD COLUMN "urge_mode" text DEFAULT 'inherit' NOT NULL;--> statement-breakpoint
-ALTER TABLE "approval_process_nodes" ADD COLUMN "comment_private" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "approval_process_nodes" ADD COLUMN "hide_records" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "approval_process_versions" ADD COLUMN "hide_records_from_initiator" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "personnel_change_request_versions" ADD CONSTRAINT "personnel_change_request_versions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "personnel_change_request_versions" ADD CONSTRAINT "personnel_change_request_versions_request_fk" FOREIGN KEY ("tenant_id","employee_id","request_id") REFERENCES "public"."personnel_change_requests"("tenant_id","employee_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "approval_instance_ccs" ADD CONSTRAINT "approval_instance_ccs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -44,8 +46,9 @@ CREATE INDEX "approval_ccs_user" ON "approval_instance_ccs" USING btree ("tenant
 CREATE INDEX "approval_ccs_instance" ON "approval_instance_ccs" USING btree ("tenant_id","instance_id");--> statement-breakpoint
 ALTER TABLE "approval_notifications" ADD CONSTRAINT "approval_notifications_kind" CHECK ("approval_notifications"."kind" IN ('todo','urge','message','cc'));--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD CONSTRAINT "approval_nodes_urge_mode" CHECK ("approval_process_nodes"."urge_mode" IN ('inherit','enabled','disabled'));--> statement-breakpoint
+ALTER TABLE "approval_process_nodes" ADD CONSTRAINT "approval_nodes_auto_result" CHECK ("approval_process_nodes"."same_assignee_result" IN ('approve','skip') AND "approval_process_nodes"."history_same_assignee_result" IN ('approve','skip'));--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD CONSTRAINT "approval_nodes_no_assignee" CHECK ("approval_process_nodes"."no_assignee_policy" = 'exception_admin');--> statement-breakpoint
-ALTER TABLE "approval_tasks" ADD CONSTRAINT "approval_tasks_status" CHECK ("approval_tasks"."status" IN ('pending','approved','rejected','transferred','skipped','cancelled','add_signed'));--> statement-breakpoint
+ALTER TABLE "approval_tasks" ADD CONSTRAINT "approval_tasks_status" CHECK ("approval_tasks"."status" IN ('pending','approved','rejected','transferred','skipped','cancelled','add_signed','queued'));--> statement-breakpoint
 ALTER TABLE "approval_tasks" ADD CONSTRAINT "approval_tasks_origin" CHECK ("approval_tasks"."origin" IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',
         'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',
         'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve'));--> statement-breakpoint

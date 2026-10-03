@@ -7,6 +7,7 @@ import type { AddSignType, ApprovalNode } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { ErrorBody } from '../../errors.js';
+import { assertNotAddSigner, continueAfterApproval } from './add-sign.js';
 import { ADAPTERS } from './adapters.js';
 import {
   approvalError,
@@ -20,7 +21,6 @@ import {
 import { blindFields } from './disclosure.js';
 import {
   advanceFrom,
-  afterNodeApproved,
   assertBusinessUnchanged,
   currentRouting,
   exceptionAdminFor,
@@ -184,6 +184,7 @@ export async function approveTask(
   if (input.fields && Object.keys(input.fields).length) {
     if (node.editMode !== 'with_approve')
       throw approvalError('CONFLICT', 'APPROVAL_EDIT_MODE', '本节点不支持编辑与同意合一');
+    assertNotAddSigner(await loadTasks(tx, ctx.tenantId, run.instance.id), task);
     await applyEdit(tx, scene, editableInput(node, input.fields, viewable));
     assertNotBlindAfterEdit(run, viewable);
   }
@@ -203,9 +204,8 @@ export async function approveTask(
     { status: 'approved', comment: input.comment },
   );
   await applyMessageRules(tx, ctx, run.instance, node, 'approve', task);
-  // DEC-095 前加签：被加签人同意后回到加签发起人，本节点继续等待。
-  if (task.origin === 'add_sign_before') await returnToAddSigner(tx, run, task);
-  else await afterNodeApproved(tx, run, task.nodeKey);
+  // DEC-095：加签人依次审批，前加签全部同意后回到原审批人，后加签全部完成才离开本节点。
+  await continueAfterApproval(tx, run, task);
   run.events.push('approval.task.approved');
   await persistRun(
     tx,
@@ -297,13 +297,24 @@ export async function transferTask(tx: Tx, ctx: ApprovalContext, input: Delegate
   return ok(run);
 }
 
-export interface AddSignInput extends DelegateInput {
+export interface AddSignInput {
+  readonly taskId: string;
+  /** 加签人，按选择顺序依次审批（`14` §11.4）。 */
+  readonly userIds: readonly string[];
   readonly type: AddSignType;
+  readonly comment: string | null;
+}
+
+async function assertAddSigners(tx: Tx, run: Run, userIds: readonly string[], self: string): Promise<void> {
+  if (new Set(userIds).size !== userIds.length)
+    throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '加签人不能重复');
+  if (userIds.includes(self)) throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '不能加签给自己');
+  for (const userId of userIds) await assertReviewer(tx, run, userId);
 }
 
 /**
- * DEC-095 加签：前加签 = 本人任务挂起（add_signed），被加签人先审、同意后回到本人；后加签 = 本人同意后再由被加签人审。
- * 任一加签人驳回即整单驳回（驳回本就退回整单）。与原站取证一致（`14` §11.4，Q-M0-46）。
+ * DEC-095 加签（`14` §11.4）：前加签 = 本人任务挂起（add_signed），加签人依次先审、全部同意后回到本人；
+ * 后加签 = 本人同意后加签人依次审批。第一位立即派待办，其余排队；任一加签人驳回即整单驳回（驳回本就退回整单）。
  */
 export async function addSign(
   tx: Tx,
@@ -315,8 +326,7 @@ export async function addSign(
   assertOpen(scene, ctx);
   const { run, task, node } = scene;
   if (!node.actions.addSign) throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '本节点未开启加签');
-  if (input.userId === ctx.userId) throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '不能加签给自己');
-  await assertReviewer(tx, run, input.userId);
+  await assertAddSigners(tx, run, input.userIds, ctx.userId);
   if (input.type === 'after') {
     // 后加签包含本人的同意：照常做盲审与自审校验。
     const blocked = await blindReview(tx, scene, viewable);
@@ -336,33 +346,22 @@ export async function addSign(
     await applyMessageRules(tx, ctx, run.instance, node, 'approve', task);
   }
   const origin = input.type === 'after' ? 'add_sign_after' : 'add_sign_before';
-  const next = await delegate(tx, run, task, input.userId, origin, { comment: input.comment, type: input.type });
-  await auditDelegation(tx, run, 'approval.task.add_sign', task, next, input, status);
+  const [first, ...queued] = input.userIds as [string, ...string[]];
+  const detail = { comment: input.comment, type: input.type, signers: input.userIds };
+  const next = await delegate(tx, run, task, first, origin, detail);
+  for (const userId of queued) {
+    await insertTask(tx, ctx, run.instance.id, {
+      round: run.instance.round,
+      nodeKey: task.nodeKey,
+      assigneeUserId: userId,
+      origin,
+      status: 'queued',
+      parentTaskId: task.id,
+    });
+  }
+  await auditDelegation(tx, run, 'approval.task.add_sign', task, next, { ...input, userId: first }, status);
   await persistRun(tx, run, 'approval.instance.add_sign');
   return ok(run);
-}
-
-/** 前加签的被加签人同意后，给加签发起人新建本节点待办（DEC-095）。 */
-async function returnToAddSigner(tx: Tx, run: Run, approved: TaskRow): Promise<void> {
-  const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
-  const signer = tasks.find((candidate) => candidate.id === approved.parentTaskId);
-  if (!signer?.assigneeUserId) throw approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_TASK_CHAIN', '加签任务链不完整');
-  const next = await insertTask(tx, run.ctx, run.instance.id, {
-    round: run.instance.round,
-    nodeKey: approved.nodeKey,
-    assigneeUserId: signer.assigneeUserId,
-    origin: 'add_sign_return',
-    status: 'pending',
-    isExceptionAdmin: signer.isExceptionAdmin,
-    parentTaskId: approved.id,
-  });
-  await appendLog(tx, run.ctx, run.instance, {
-    event: 'add_sign_return',
-    nodeKey: approved.nodeKey,
-    taskId: next,
-    detail: { toUserId: signer.assigneeUserId },
-  });
-  await notifyTodo(tx, run.ctx, run.instance, next, signer.assigneeUserId);
 }
 
 /** 转交 / 加签与同意 / 驳回一样写任务审计：原任务状态、原 / 新审批人、新任务与意见（AGENTS §10「审计」）。 */
@@ -434,6 +433,7 @@ export async function editTask(
   assertOpen(scene, ctx);
   if (scene.node.editMode !== 'separate')
     throw approvalError('CONFLICT', 'APPROVAL_EDIT_MODE', '本节点没有独立的编辑按钮');
+  assertNotAddSigner(await loadTasks(tx, ctx.tenantId, scene.run.instance.id), scene.task);
   await applyEdit(tx, scene, editableInput(scene.node, input.fields, viewable));
   assertNotBlindAfterEdit(scene.run, viewable);
   await persistRun(tx, scene.run, 'approval.task.edit');
@@ -536,7 +536,7 @@ export async function resubmit(tx: Tx, ctx: ApprovalContext, instanceId: string,
   if (corrections && Object.keys(corrections).length)
     await adapter.correct(tx, ctx, run.instance.businessId, corrections);
   await adapter.resubmitted(tx, ctx, run.instance.businessId);
-  // DEC-093：重提与业务入口一样，改了发起条件字段时重新匹配流程。
+  // DEC-103：重提沿用原实例与原流程版本，不重新匹配。
   const saved = await startOrResume(tx, ctx, {
     businessType: run.instance.businessType,
     businessId: run.instance.businessId,

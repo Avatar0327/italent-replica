@@ -12,7 +12,7 @@ import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
 import { rowsOf, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import { userOfPerson } from './resolver.js';
-import { retrievableTask, urgeOpen } from './rules.js';
+import { addSignLink, retrievableTask, urgeOpen } from './rules.js';
 import { loadInstance, loadLogs, loadRecentTasks, type InstanceRow, type TaskRow } from './store.js';
 
 export const SHOW_ORIGINALS_SETTING = 'approval.show_original_values';
@@ -129,7 +129,8 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
     if (decide) actions.push('approve', 'reject');
     if (node.actions.transfer || mine.isExceptionAdmin) actions.push('transfer');
     if (decide && node.actions.addSign) actions.push('addSign');
-    if (decide && node.editMode === 'separate') actions.push('edit');
+    // `14` §11.3：加签人不能编辑表单内容，只有本节点原审批人可以。
+    if (decide && node.editMode === 'separate' && !addSignLink(data.tasks, mine)) actions.push('edit');
     if (node.actions.copySend) actions.push('cc');
   }
   if (retrievableTask(instance, version, data.tasks, userId)) actions.push('retrieve');
@@ -146,6 +147,7 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
 export function detailView(data: DetailData, userId: string, viewable: ReadonlySet<string> | undefined) {
   const { instance, version, snapshot } = data;
   const node = viewerNode(data, userId);
+  const hidden = recordsHidden(data, userId);
   const fields = (node?.formFields ?? []).filter((field) => viewable === undefined || viewable.has(field));
   const names = new Map(version.nodes.map((candidate) => [candidate.key, candidate.name]));
   const originals = data.showOriginals && snapshot.originals ? { originals: pick(snapshot.originals, fields) } : {};
@@ -165,47 +167,51 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
     subjectEmployeeId: instance.subjectEmployeeId,
     createdAt: instance.createdAt,
     completedAt: instance.completedAt,
-    tasks: data.tasks.map((task) => ({
+    tasks: visibleTasks(data, userId, data.tasks).map((task) => ({
       ...task,
-      comment: commentVisible(data, task.nodeKey, userId) ? task.comment : null,
       nodeName: names.get(task.nodeKey) ?? task.nodeKey,
     })),
-    logs: data.logs.map((log) => projectLog(log, viewable, commentVisible(data, log.nodeKey, userId))),
+    logs: hidden ? [] : data.logs.map((log) => projectLog(log, viewable)),
+    recordsHidden: hidden,
     commentNotice: COMMENT_NOTICE,
     form: { nodeKey: node?.key ?? null, values: pick(snapshot.values, fields), ...originals },
     actions: [...new Set(actionsFor(data, userId, blindFields(snapshot, viewable).length > 0))],
   };
 }
 
-/** DEC-100：意见框旁的提示。 */
-export const COMMENT_NOTICE = '审批意见默认对后续审批人公开，请勿在意见中填写敏感信息';
+/** DEC-100：意见框旁的提示（意见默认对所有能打开详情页的人公开）。 */
+export const COMMENT_NOTICE = '审批意见默认对所有能查看本单的人公开，请勿在意见中填写敏感信息';
 
-/** DEC-100：节点开启“意见仅本节点与发起人可见”时，只有该节点的审批人与发起人看得到意见。 */
-export function commentVisible(data: DetailData, nodeKey: string | null, userId: string): boolean {
-  const node = data.version.nodes.find((candidate) => candidate.key === nodeKey);
-  if (!node?.commentPrivate || data.instance.initiatorUserId === userId) return true;
-  return data.tasks.some(
-    (task) => task.nodeKey === nodeKey && task.assigneeUserId === userId && task.origin !== 'self_skip',
-  );
+/**
+ * DEC-104「审批记录查看权限」是查看方的设置（`14` §11.9）：查看人最近一次处理的节点勾选了开关时，或查看人是发起人
+ * 且开始节点勾选了开关时，隐藏审批记录与沟通。不是该节点审批人的人（被抄送人、范围内管理员）不受限制。
+ */
+export function recordsHidden(data: Pick<DetailData, 'instance' | 'version' | 'tasks'>, userId: string): boolean {
+  const own = data.tasks.filter((task) => task.assigneeUserId === userId && task.origin !== 'self_skip').at(-1);
+  if (own) return data.version.nodes.find((node) => node.key === own.nodeKey)?.hideRecords ?? false;
+  return data.instance.initiatorUserId === userId && data.version.hideRecordsFromInitiator;
 }
 
 /**
- * X-13：日志里的字段名（盲审、编辑）按查看人当前字段权限投影；不可见节点的意见 / 理由一并隐去（DEC-100）。
- * 完整信息只留在内部审计。
+ * 记录被隐藏时，已处理的他人任务（含其意见）一律不返回；只保留查看人自己的任务与当前待办（当前处理人，
+ * 尚无意见），以便办理、催办与撤回。
  */
-export function projectLog<T extends { detail: Row }>(
-  log: T,
-  viewable: ReadonlySet<string> | undefined,
-  comment: boolean,
-): T {
-  const detail: Row = { ...log.detail };
-  if (!comment) {
-    delete detail.comment;
-    delete detail.reason;
-  }
-  if (viewable !== undefined && Array.isArray(detail.fields))
-    detail.fields = detail.fields.filter((field) => viewable.has(String(field)));
-  return { ...log, detail };
+export function visibleTasks<T extends TaskRow>(
+  data: Pick<DetailData, 'instance' | 'version' | 'tasks'>,
+  userId: string,
+  tasks: readonly T[],
+): T[] {
+  if (!recordsHidden(data, userId)) return [...tasks];
+  return tasks.filter((task) => task.assigneeUserId === userId || task.status === 'pending');
+}
+
+/** X-13：日志里的字段名（盲审、编辑）按查看人当前字段权限投影；完整信息只留在内部审计。 */
+export function projectLog<T extends { detail: Row }>(log: T, viewable: ReadonlySet<string> | undefined): T {
+  if (viewable === undefined || !Array.isArray(log.detail.fields)) return log;
+  return {
+    ...log,
+    detail: { ...log.detail, fields: log.detail.fields.filter((field) => viewable.has(String(field))) },
+  };
 }
 
 export type InstanceView = ReturnType<typeof detailView>;

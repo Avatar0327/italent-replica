@@ -80,7 +80,15 @@ function describe(decision: NodeDecision, version: VersionView, data: Simulation
     };
   }
   if (decision.kind === 'auto') {
-    return { status: 'pass', approverUserId: decision.userId, resolution: decision.outcome, message: decision.reason };
+    // DEC-106：自动「跳过」处理人记为系统，不计为该审批人的同意。
+    const approverUserId = decision.result === 'skip' ? null : decision.userId;
+    return {
+      status: 'pass',
+      approverUserId,
+      resolution: decision.outcome,
+      result: decision.result,
+      message: decision.reason,
+    };
   }
   if (decision.origin === 'exception_admin') {
     if (!version.exceptionAdminUserId) {

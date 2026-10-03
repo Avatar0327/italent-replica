@@ -1,6 +1,7 @@
 /** 流程定义的请求体校验：只接受 JSON 白名单结构，再交给领域校验（definitionViolations）。 */
 import {
   APPROVER_EXPRESSIONS,
+  AUTO_RESULTS,
   CONDITION_OPERATORS,
   definitionViolations,
   EDIT_MODES,
@@ -36,6 +37,8 @@ const node = z.strictObject({
   noAssignee: z.enum(NO_ASSIGNEE_POLICIES).default('exception_admin'),
   sameAssigneeSkip: z.boolean().default(false),
   historySameAssigneeSkip: z.boolean().default(false),
+  sameAssigneeResult: z.enum(AUTO_RESULTS).default('approve'),
+  historySameAssigneeResult: z.enum(AUTO_RESULTS).default('approve'),
   formFields: codeList.default([]),
   editableFields: codeList.default([]),
   editMode: z.enum(EDIT_MODES).default('none'),
@@ -49,7 +52,7 @@ const node = z.strictObject({
     })
     .default({ transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' }),
   rejectCommentRequired: z.boolean().default(false),
-  commentPrivate: z.boolean().default(false),
+  hideRecords: z.boolean().default(false),
   rejectResubmit: z.enum(REJECT_RESUBMIT_MODES).default('restart'),
   messageRules: z.array(messageRule).max(20).default([]),
 });
@@ -72,6 +75,7 @@ export const definitionSchema = z.strictObject({
   isFallback: z.boolean().default(false),
   exceptionAdminUserId: z.uuid().nullable().default(null),
   urgeEnabled: z.boolean().default(true),
+  hideRecordsFromInitiator: z.boolean().default(false),
   conditions: z
     .strictObject({ items: z.array(conditionItem).max(50), expression: z.string().max(500).default('') })
     .default({ items: [], expression: '' }),
@@ -95,6 +99,7 @@ export function toDefinition(input: DefinitionInput, type: ApprovalTypeCode): Pr
     isFallback: input.isFallback,
     exceptionAdminUserId: input.exceptionAdminUserId,
     urgeEnabled: input.urgeEnabled,
+    hideRecordsFromInitiator: input.hideRecordsFromInitiator,
     conditions: {
       expression: input.conditions.expression.trim(),
       items: input.conditions.items.map((item) => ({ ...item, value: item.value ?? null })),

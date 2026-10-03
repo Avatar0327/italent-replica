@@ -279,7 +279,11 @@ describe('C-非4 / X-13：异常管理员本人也看不到变化字段；日志
     const audits = await withTenant(w.db, w.tenant.id, (tx) =>
       tx.select().from(auditEvents).where(eq(auditEvents.objectId, instance.id)),
     );
-    expect(audits.find((a) => a.action === 'approval.task.blind_review')).toMatchObject({
+    // 同一命令还写了实例审计（同名动作、同一对象），查询无排序，按内容挑出任务级审计。
+    const taskAudit = audits.find(
+      (a) => a.action === 'approval.task.blind_review' && (a.before as { taskStatus?: string } | null)?.taskStatus,
+    );
+    expect(taskAudit).toMatchObject({
       before: expect.objectContaining({ taskStatus: 'pending', assigneeUserId: s.outHead.userId }),
       after: expect.objectContaining({ taskStatus: 'transferred', assigneeUserId: w.exceptionAdmin }),
     });
