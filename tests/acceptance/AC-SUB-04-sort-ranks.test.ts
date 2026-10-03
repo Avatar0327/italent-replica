@@ -124,6 +124,22 @@ async function world(db: Db, label: string) {
       expect(posts).toEqual(await expectedPostRanks(tx, tenant.id, date));
     });
   }
+  /** 增量刷新累积出的分段（含区间切分与合并）必须与从头全量重算（迁移回填同一路径）逐行一致。 */
+  async function assertMatchesFullRecompute() {
+    await withTenant(db, tenant.id, async (tx) => {
+      const segments = async () =>
+        rowsOf(
+          await tx.execute(sql`SELECT 'org' AS kind,org_id AS id,valid_from::text,valid_to::text,sort_number
+            FROM personnel_org_sort_ranks UNION ALL
+            SELECT 'post',post_id,valid_from::text,valid_to::text,sort_number FROM personnel_post_sort_ranks
+            ORDER BY 1,2,3`),
+        );
+      const incremental = await segments();
+      await tx.execute(sql`SELECT personnel_refresh_org_sort_ranks(${tenant.id}::uuid, DATE '0001-01-01'),
+        personnel_refresh_post_sort_ranks(${tenant.id}::uuid, DATE '0001-01-01')`);
+      expect(await segments()).toEqual(incremental);
+    });
+  }
   async function orgRank(orgId: string, date = TODAY) {
     return withTenant(db, tenant.id, async (tx) => (await expectedOrgRanks(tx, tenant.id, date)).get(orgId) ?? null);
   }
@@ -137,6 +153,7 @@ async function world(db: Db, label: string) {
     employee,
     list,
     assertRanks,
+    assertMatchesFullRecompute,
     orgRank,
     setNow(iso: string) {
       now = new Date(iso);
@@ -187,6 +204,7 @@ describe('DEC-089 组织排序号预计算', () => {
     await w.updateOrg(c, { effectiveDate: TODAY, parents: { admin: { parentId: b.id } } });
     await w.assertRanks();
     expect(order(await w.list('&sortBy=organizationSortNumber'), ids)).toEqual([ids[0], ids[1], ids[2]]);
+    await w.assertMatchesFullRecompute();
     const filtered = await w.list(`&organizationSortNumber=${await w.orgRank(c.id)}`);
     expect(filtered.map((item) => item.id)).toEqual([ids[2]]);
   });
@@ -219,6 +237,7 @@ describe('DEC-089 组织排序号预计算', () => {
     expect(order(await w.list('&sortBy=organizationSortNumber'), [ea, eb])).toEqual([eb, ea]);
     w.setNow('2026-10-10T01:00:00Z');
     expect(order(await w.list('&sortBy=organizationSortNumber'), [ea, eb])).toEqual([ea, eb]);
+    await w.assertMatchesFullRecompute();
   });
 
   it('任何写入路径都在同一事务刷新（含直接写库的导入 / 夹具）', async () => {
@@ -256,6 +275,7 @@ describe('DEC-089 职务排序号预计算', () => {
     await w.updatePost(p20, { code: 'P05', effectiveDate: TODAY });
     await w.assertRanks();
     expect(order(await w.list('&sortBy=postSortNumber'), [e20, e10])).toEqual([e20, e10]);
+    await w.assertMatchesFullRecompute();
   });
 });
 
@@ -269,5 +289,6 @@ describe('DEC-089 并发变更', () => {
       w.updateOrg(base, { effectiveDate: TODAY, parents: { admin: { parentId: w.tenant.id, sequence: 2 } } }),
     ]);
     await w.assertRanks();
+    await w.assertMatchesFullRecompute();
   });
 });

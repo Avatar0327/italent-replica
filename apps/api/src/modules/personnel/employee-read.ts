@@ -1,11 +1,11 @@
-import { NO_SORT_RANKS, sortRankColumns, sortRankJoins, type SortRanks } from './sorting.js';
+import { sortRankColumns, sortRankJoins } from './sorting.js';
 import { sql, type Tx } from '@italent/db';
 import { ageOn, computeTenure, EMPLOYEE_FIELDS, tenantLocalDate, type TenureInterval } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { camel, rows, type PersonnelContext, type Row } from './store.js';
 
-export function employeeJoins(ctx: PersonnelContext, ranks: SortRanks): SQL {
+export function employeeJoins(ctx: PersonnelContext): SQL {
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
   return sql`
     LEFT JOIN LATERAL (SELECT v.* FROM personnel_employee_versions v
@@ -26,7 +26,7 @@ export function employeeJoins(ctx: PersonnelContext, ranks: SortRanks): SQL {
     ${jobJoin('job_grade_versions', 'jg', 'grade_id', asOf)}
     ${jobJoin('job_position_versions', 'jp', 'position_id', asOf)}
     ${jobJoin('job_post_versions', 'jpost', 'post_id', asOf)}
-    ${sortRankJoins(ranks)}
+    ${sortRankJoins(asOf)}
   `;
 }
 function jobJoin(table: string, alias: string, field: string, date: string) {
@@ -34,12 +34,10 @@ function jobJoin(table: string, alias: string, field: string, date: string) {
     AND j.object_id=(r.current_fields->>${field})::uuid AND j.start_date<=${date}::date
     ORDER BY j.start_date DESC,j.version_no DESC LIMIT 1) ${sql.identifier(alias)} ON true`;
 }
-export function employeeAttributes(ranks: SortRanks): SQL {
-  return sql`e.code,COALESCE(v.name,e.name) AS employee_name,u.user_id,
+export const employeeAttributes = sql`e.code,COALESCE(v.name,e.name) AS employee_name,u.user_id,
   cycles.first_entry_date::text,cycles.latest_entry_date::text,r.entry_date::text,r.last_work_date::text,
-  ${sortRankColumns(ranks)},
+  ${sortRankColumns},
   jl.level AS level_sort_number,jg.grade AS grade_sort_number,jp.display_order AS position_sort_number`;
-}
 export function employeeDto(row: Row, ctx: PersonnelContext): Row {
   const profile = (row.profile ?? {}) as Row;
   const dto = camel(profile);
@@ -61,8 +59,8 @@ export function employeeDto(row: Row, ctx: PersonnelContext): Row {
 }
 export async function readEmployee(tx: Tx, ctx: PersonnelContext, employeeId: string) {
   const [row] = rows(
-    await tx.execute(sql`SELECT e.id,${employeeAttributes(NO_SORT_RANKS)},to_jsonb(v) AS profile
-    FROM employment_employees e ${employeeJoins(ctx, NO_SORT_RANKS)}
+    await tx.execute(sql`SELECT e.id,${employeeAttributes},to_jsonb(v) AS profile
+    FROM employment_employees e ${employeeJoins(ctx)}
     WHERE e.tenant_id=${ctx.tenantId} AND e.id=${employeeId}::uuid LIMIT 1`),
   );
   if (!row) throw new AppError('NOT_FOUND', '人员不存在');

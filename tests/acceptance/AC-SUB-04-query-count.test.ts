@@ -190,12 +190,13 @@ describe('AC-SUB 人员读取有界：语句数与行数无关', () => {
     }
   });
 
-  it('DEC-089：任何读取（含按排序号排序 / 筛选）都不做递归排名，排序号不排序时也有值', async () => {
+  it('DEC-089：任何读取（含按排序号排序 / 筛选）都不现算排名，排序号不排序时也有值', async () => {
     const paths = [...readPaths(), `/employees?pageSize=${ROWS}&sortBy=organizationSortNumber`];
     for (const path of paths) {
       const { statements } = await measure(path);
+      // 数据范围展开本身也用递归 CTE，所以只认排名特征：沿行政路径排序后编号。
       expect(
-        statements.filter((s) => /WITH RECURSIVE/i.test(s)),
+        statements.filter((s) => /sort_path|row_number\s*\(\s*\)\s*OVER/i.test(s)),
         path,
       ).toEqual([]);
     }

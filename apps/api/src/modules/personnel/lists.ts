@@ -1,4 +1,4 @@
-import { NO_SORT_RANKS, sortingCtes, sortRankColumns, sortRanksFor, type SortRanks } from './sorting.js';
+import { sortRankColumns } from './sorting.js';
 import { sql, type Tx } from '@italent/db';
 import { SUBSET_EMPLOYEE_ATTRIBUTES, PERSONNEL_OBJECT, SUBSETS, type SubsetKind } from '@italent/domain';
 import type { Context } from 'hono';
@@ -29,7 +29,6 @@ export async function listOptions(c: Context, deps: TenantRouteDeps, ctx: Access
   if (!['asc', 'desc'].includes(direction) || (sortBy && !sortColumns[sortBy]))
     throw new AppError('VALIDATION_FAILED', '排序参数不合法');
   const filters: SQL[] = [];
-  const used: string[] = sortBy ? [sortBy] : [];
   const viewable = await getModuleViewableFields(deps, ctx, PERSONNEL_OBJECT);
   const subsetFields = await getModuleViewableFields(deps, ctx, ctx.objectCode);
   for (const key of Object.keys(sortColumns)) {
@@ -46,18 +45,16 @@ export async function listOptions(c: Context, deps: TenantRouteDeps, ctx: Access
     if (value !== undefined) {
       if (value.length > 200) throw new AppError('VALIDATION_FAILED', '筛选值过长');
       filters.push(sql`${sortColumns[key]}::text=${value}`);
-      used.push(key);
     }
   }
   const order = sortBy ? sql`${sortColumns[sortBy]} ${direction === 'desc' ? sql`DESC` : sql`ASC`} NULLS LAST,` : sql``;
-  return { order, filter: filters.length ? sql.join(filters, sql` AND `) : sql`true`, ranks: sortRanksFor(used) };
+  return { order, filter: filters.length ? sql.join(filters, sql` AND `) : sql`true` };
 }
 export interface ListOptions {
   readonly order: SQL;
   readonly filter: SQL;
-  readonly ranks: SortRanks;
 }
-export const UNSORTED: ListOptions = { order: sql``, filter: sql`true`, ranks: NO_SORT_RANKS };
+export const UNSORTED: ListOptions = { order: sql``, filter: sql`true` };
 export async function listEmployees(
   tx: Tx,
   ctx: AccessContext,
@@ -65,9 +62,8 @@ export async function listEmployees(
   options: ListOptions,
 ) {
   return rows(
-    await tx.execute(sql`${sortingCtes(ctx, options.ranks)}
-    SELECT e.id,${employeeAttributes(options.ranks)},to_jsonb(v) AS profile
-    FROM employment_employees e ${employeeJoins(ctx, options.ranks)} WHERE e.tenant_id=${ctx.tenantId}
+    await tx.execute(sql`SELECT e.id,${employeeAttributes},to_jsonb(v) AS profile
+    FROM employment_employees e ${employeeJoins(ctx)} WHERE e.tenant_id=${ctx.tenantId}
     AND ${personScope(ctx)} AND ${options.filter} ORDER BY ${options.order} e.id
     LIMIT ${page.limit} OFFSET ${page.offset}`),
   ).map((row) => employeeDto(row, ctx));
@@ -88,15 +84,14 @@ export async function listSubsets(
   employeeId?: string,
 ) {
   return rows(
-    await tx.execute(sql`${sortingCtes(ctx, options.ranks)}
-      SELECT s.*,e.code,u.user_id,COALESCE(v.name,e.name) AS employee_name,
+    await tx.execute(sql`SELECT s.*,e.code,u.user_id,COALESCE(v.name,e.name) AS employee_name,
       r.entry_date::text AS employee_entry_date,r.last_work_date::text AS employee_last_work_date,
       cycles.first_entry_date::text AS employee_first_entry_date,
       cycles.latest_entry_date::text AS employee_latest_entry_date,
-      ${sortRankColumns(options.ranks)},
+      ${sortRankColumns},
       jl.level AS level_sort_number,jg.grade AS grade_sort_number,jp.display_order AS position_sort_number
     FROM ${sql.identifier(SUBSETS[kind].table)} s JOIN employment_employees e
-      ON e.tenant_id=s.tenant_id AND e.id=s.employee_id ${employeeJoins(ctx, options.ranks)}
+      ON e.tenant_id=s.tenant_id AND e.id=s.employee_id ${employeeJoins(ctx)}
     WHERE s.tenant_id=${ctx.tenantId} AND NOT s.deleted AND ${personScope(ctx, 'e', sql`s.created_by`)}
       AND ${options.filter}
     ${employeeId ? sql`AND s.employee_id=${employeeId}::uuid` : sql``}
