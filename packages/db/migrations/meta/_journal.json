@@ -190,6 +190,13 @@
       "when": 1791009287433,
       "tag": "0026_approval_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791026694284,
+      "tag": "0027_approval_round2",
+      "breakpoints": true
     }
   ]
 }

@@ -93,7 +93,17 @@ describe('AC-APV-09 多流程同时满足：按优先级（越小越先），并
   it('优先级 -1 的条件流程先于 0；兜底流程最后；草稿不参与匹配', async () => {
     const w = await approvalWorld(database().db, 'apv-priority');
     const s = await transferScene(w);
-    const generic = await w.publishedProcess({ code: 'B_GENERIC', priority: 0, nodes: [TRANSFER_NODES[2]!] });
+    const generic = await w.publishedProcess({
+      code: 'B_GENERIC',
+      priority: 0,
+      conditions: {
+        items: [
+          { no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' },
+          { no: 2, field: 'employee.name', operator: 'eq', value: '直线经理' },
+        ],
+      },
+      nodes: [TRANSFER_NODES[2]!],
+    });
     const precise = await w.publishedProcess({
       code: 'Z_PRECISE',
       priority: -1,
@@ -119,12 +129,9 @@ describe('AC-APV-09 多流程同时满足：按优先级（越小越先），并
     expect(first.processId).toBe(precise.id);
     const second = await w.submit(await w.application(s.manager.employeeId, { departmentId: s.to }));
     expect(second.processId).toBe(generic.id);
-    const custom = await w.submit(
-      await w.application(s.outHead.employeeId, { departmentId: s.to }),
-      w.hr.id,
-      'Customized1TransferFlow',
-    );
-    expect(custom.currentNodeKey).toBe('in_hrbp');
+    // 流程编码由服务端派生（清单 14）：两条条件流程都不命中的员工落到本类型兜底流程。
+    const fallback = await w.submit(await w.application(s.outHead.employeeId, { departmentId: s.to }));
+    expect(fallback.currentNodeKey).toBe('in_hrbp');
   });
 });
 

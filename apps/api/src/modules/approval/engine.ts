@@ -41,11 +41,25 @@ export interface Run {
   readonly events: string[];
 }
 
+/**
+ * 锁序与业务入口一致：先按业务侧顺序锁员工 / 业务单，再锁实例（清单 11）；业务入口（提交、撤回、删除）
+ * 也是先锁业务再经挂接端口锁实例，两条路径不会互相等待成环。
+ */
 export async function openRun(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<Run> {
+  const peek = await loadInstance(tx, ctx.tenantId, instanceId);
+  const adapter = ADAPTERS[peek.businessType];
+  await adapter.lock(tx, ctx, peek.businessId);
   const instance = await loadInstance(tx, ctx.tenantId, instanceId, true);
   const version = await loadVersion(tx, ctx.tenantId, instance.versionId);
-  const snapshot = await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId, instance.processCode);
+  const snapshot = await adapter.snapshot(tx, ctx, instance.businessId);
   return { ctx, before: instance, version, snapshot, instance, events: [] };
+}
+
+/** 审批人所读的载荷版本必须仍是业务单的当前版本，否则旧审批失效（清单 1）。 */
+export function assertBusinessUnchanged(run: Run): void {
+  if (run.snapshot.version !== run.instance.businessVersion) {
+    throw approvalError('REVISION_CONFLICT', 'APPROVAL_BUSINESS_CHANGED', '单据已被修改，请刷新后重新审批');
+  }
 }
 
 function instanceAudit(instance: InstanceRow): Row {
@@ -224,7 +238,6 @@ export async function afterNodeApproved(tx: Tx, run: Run, nodeKey: string): Prom
 export interface StartRequest {
   readonly businessType: BusinessType;
   readonly businessId: string;
-  readonly processCode: string | null;
 }
 
 /** 提交审批：退回中的实例按驳回节点配置同单重提（DEC-053），否则按类型匹配新流程（DEC-017）。 */
@@ -232,7 +245,7 @@ export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: Start
   const active = await activeInstanceOf(tx, ctx.tenantId, request.businessType, request.businessId);
   if (active?.status === 'running') throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '该申请已在审批中');
   if (active) return resume(tx, ctx, active.id);
-  const snapshot = await ADAPTERS[request.businessType].snapshot(tx, ctx, request.businessId, request.processCode);
+  const snapshot = await ADAPTERS[request.businessType].snapshot(tx, ctx, request.businessId);
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
   const type = snapshot.approvalType;
   const list = await candidates(tx, ctx.tenantId, {
@@ -254,7 +267,7 @@ export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: Start
   };
   await appendLog(tx, ctx, instance, {
     event: 'start',
-    detail: { processId: matched.processId, versionNo: matched.version.versionNo, processCode: request.processCode },
+    detail: { processId: matched.processId, versionNo: matched.version.versionNo, processCode: snapshot.processCode },
   });
   await advanceFrom(tx, run, 0);
   return persistRun(tx, run, 'approval.instance.start', true);
@@ -270,11 +283,11 @@ async function insertInstance(
   const id = randomUUID();
   await tx.execute(sql`INSERT INTO approval_instances
     (id,tenant_id,process_id,version_id,approval_type,object_code,business_type,business_id,subject_employee_id,
-     initiator_user_id,process_code,title,status,created_at,updated_at)
+     initiator_user_id,process_code,title,business_version,condition_values,status,created_at,updated_at)
     VALUES (${id},${ctx.tenantId},${matched.processId}::uuid,${matched.version.id}::uuid,${snapshot.approvalType},
       ${APPROVAL_TYPES[snapshot.approvalType].objectCode},${request.businessType},${request.businessId}::uuid,
-      ${snapshot.subjectEmployeeId},${ctx.userId},${request.processCode},${snapshot.title},'running',
-      ${ctx.now.toISOString()},${ctx.now.toISOString()})`);
+      ${snapshot.subjectEmployeeId},${ctx.userId},${snapshot.processCode},${snapshot.title},${snapshot.version},
+      ${JSON.stringify(snapshot.conditionValues)}::jsonb,'running',${ctx.now.toISOString()},${ctx.now.toISOString()})`);
   return loadInstance(tx, ctx.tenantId, id, true);
 }
 
@@ -287,7 +300,14 @@ export async function resume(tx: Tx, ctx: ApprovalContext, instanceId: string): 
   const rejecting = run.instance.returnedFromNodeKey;
   const toRejecting =
     rejecting !== null && run.version.nodes[nodeIndex(run, rejecting)]!.rejectResubmit === 'rejecting_node';
-  run.instance = { ...run.instance, status: 'running', round: run.instance.round + 1, returnedFromNodeKey: null };
+  run.instance = {
+    ...run.instance,
+    status: 'running',
+    round: run.instance.round + 1,
+    returnedFromNodeKey: null,
+    businessVersion: run.snapshot.version,
+    conditionValues: run.snapshot.conditionValues,
+  };
   run.events.push('approval.instance.resubmitted');
   await appendLog(tx, ctx, run.instance, { event: 'resubmit', detail: { toNodeKey: toRejecting ? rejecting : null } });
   await advanceFrom(tx, run, toRejecting ? nodeIndex(run, rejecting) : 0);

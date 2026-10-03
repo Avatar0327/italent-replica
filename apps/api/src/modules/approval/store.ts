@@ -23,6 +23,8 @@ export interface InstanceRow {
   readonly initiatorUserId: string;
   readonly processCode: string | null;
   readonly title: string;
+  readonly businessVersion: string;
+  readonly conditionValues: Readonly<Row>;
   readonly status: InstanceStatus;
   readonly currentNodeKey: string | null;
   readonly returnedFromNodeKey: string | null;
@@ -63,6 +65,8 @@ function instanceOf(row: Row): InstanceRow {
     initiatorUserId: String(row.initiator_user_id),
     processCode: (row.process_code as string | null) ?? null,
     title: String(row.title),
+    businessVersion: String(row.business_version ?? ''),
+    conditionValues: (row.condition_values as Row | null) ?? {},
     status: row.status as InstanceStatus,
     currentNodeKey: (row.current_node_key as string | null) ?? null,
     returnedFromNodeKey: (row.returned_from_node_key as string | null) ?? null,
@@ -220,12 +224,18 @@ export async function updateInstance(
   tx: Tx,
   ctx: ApprovalContext,
   instance: InstanceRow,
-  patch: Partial<Pick<InstanceRow, 'status' | 'currentNodeKey' | 'returnedFromNodeKey' | 'round'>>,
+  patch: Partial<
+    Pick<
+      InstanceRow,
+      'status' | 'currentNodeKey' | 'returnedFromNodeKey' | 'round' | 'businessVersion' | 'conditionValues'
+    >
+  >,
 ): Promise<InstanceRow> {
   const next = { ...instance, ...patch, revision: instance.revision + 1 };
   const done = ['approved', 'withdrawn', 'cancelled'].includes(next.status);
   await tx.execute(sql`UPDATE approval_instances SET status=${next.status},current_node_key=${next.currentNodeKey},
       returned_from_node_key=${next.returnedFromNodeKey},round=${next.round},revision=${next.revision},
+      business_version=${next.businessVersion},condition_values=${JSON.stringify(next.conditionValues)}::jsonb,
       updated_at=${ctx.now.toISOString()},completed_at=${done ? ctx.now.toISOString() : null}
     WHERE tenant_id=${ctx.tenantId} AND id=${instance.id}::uuid AND revision=${instance.revision}`);
   return { ...next, completedAt: done ? ctx.now.toISOString() : null };

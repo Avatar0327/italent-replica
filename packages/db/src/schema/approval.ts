@@ -229,6 +229,10 @@ export const approvalInstances = pgTable(
     initiatorUserId: uuid('initiator_user_id').notNull(),
     processCode: text('process_code'),
     title: text('title').notNull(),
+    /** 审批人所读的业务载荷版本：业务单绕过审批被改动后，旧审批一律 409（AGENTS §10「并发」）。 */
+    businessVersion: text('business_version').notNull().default(''),
+    /** 发起 / 重提时参与匹配的条件取值；重提时据此判断是否需重新匹配流程（DEC-093）。 */
+    conditionValues: jsonb('condition_values').$type<Record<string, unknown>>().notNull().default({}),
     status: text('status').notNull().default('running'),
     currentNodeKey: text('current_node_key'),
     returnedFromNodeKey: text('returned_from_node_key'),

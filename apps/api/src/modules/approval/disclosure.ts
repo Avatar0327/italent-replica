@@ -63,7 +63,7 @@ export async function readDetail(
   return {
     instance,
     version: await loadVersion(tx, ctx.tenantId, instance.versionId),
-    snapshot: await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId, instance.processCode),
+    snapshot: await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId),
     tasks,
     logs: await loadLogs(tx, ctx.tenantId, instanceId),
     showOriginals: setting.value === true,

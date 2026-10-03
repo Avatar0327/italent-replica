@@ -1,0 +1,2 @@
+ALTER TABLE "approval_instances" ADD COLUMN "business_version" text DEFAULT '' NOT NULL;--> statement-breakpoint
+ALTER TABLE "approval_instances" ADD COLUMN "condition_values" jsonb DEFAULT '{}'::jsonb NOT NULL;

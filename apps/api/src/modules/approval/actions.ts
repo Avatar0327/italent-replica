@@ -18,7 +18,16 @@ import {
   type Row,
 } from './context.js';
 import { blindFields } from './disclosure.js';
-import { advanceFrom, afterNodeApproved, nodeIndex, openRun, persistRun, resume, type Run } from './engine.js';
+import {
+  advanceFrom,
+  afterNodeApproved,
+  assertBusinessUnchanged,
+  nodeIndex,
+  openRun,
+  persistRun,
+  resume,
+  type Run,
+} from './engine.js';
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
 import { userOfPerson } from './resolver.js';
 import { appendLog, cancelPending, closeTask, insertTask, instanceOfTask, loadTasks, type TaskRow } from './store.js';
@@ -50,6 +59,7 @@ function assertOpen(scene: TaskScene, ctx: ApprovalContext): void {
   if (scene.run.instance.status !== 'running' || scene.task.status !== 'pending') {
     throw approvalError('CONFLICT', 'APPROVAL_TASK_CLOSED', '该任务已处理或流程已结束');
   }
+  assertBusinessUnchanged(scene.run);
 }
 
 /**
@@ -106,7 +116,8 @@ async function applyEdit(tx: Tx, scene: TaskScene, fields: Row): Promise<void> {
   const adapter = ADAPTERS[run.instance.businessType];
   await adapter.edit(tx, run.ctx, run.instance.businessId, fields);
   // 【编辑并同意】随后推进节点：路由部门必须取编辑后的业务单，不能沿用打开任务时的快照。
-  run.snapshot = await adapter.snapshot(tx, run.ctx, run.instance.businessId, run.instance.processCode);
+  run.snapshot = await adapter.snapshot(tx, run.ctx, run.instance.businessId);
+  run.instance = { ...run.instance, businessVersion: run.snapshot.version };
   await appendLog(tx, run.ctx, run.instance, {
     event: 'edit',
     nodeKey: task.nodeKey,
@@ -361,6 +372,7 @@ export async function urge(tx: Tx, ctx: ApprovalContext, instanceId: string): Pr
   if (run.instance.status !== 'running' || !run.version.urgeEnabled || !node?.actions.urge) {
     throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '当前节点不允许催办');
   }
+  await assertUrgeInterval(tx, run);
   const pending = (await loadTasks(tx, ctx.tenantId, instanceId)).filter((task) => task.status === 'pending');
   await notifyUrge(
     tx,
@@ -385,6 +397,19 @@ export async function urge(tx: Tx, ctx: ApprovalContext, instanceId: string): Pr
   return ok(run);
 }
 
+/** 催办频率限制（PR #35 第二轮 C-非5）：同一实例 30 分钟内只能催办一次。 */
+const URGE_INTERVAL_MS = 30 * 60 * 1000;
+
+async function assertUrgeInterval(tx: Tx, run: Run): Promise<void> {
+  const [last] = rowsOf<{ created_at: string }>(
+    await tx.execute(sql`SELECT created_at FROM approval_instance_logs WHERE tenant_id=${run.ctx.tenantId}
+      AND instance_id=${run.instance.id}::uuid AND event='urge' ORDER BY seq DESC LIMIT 1`),
+  );
+  if (last && run.ctx.now.getTime() - new Date(last.created_at).getTime() < URGE_INTERVAL_MS) {
+    throw approvalError('CONFLICT', 'APPROVAL_URGE_TOO_FREQUENT', '催办过于频繁，请 30 分钟后再试');
+  }
+}
+
 /**
  * 发起人撤回（AC-TRF-28）。fromBusiness = 业务模块已自行迁移状态（任职申请的“撤回”按钮）。
  */
@@ -394,7 +419,10 @@ export async function withdraw(
   instanceId: string,
   fromBusiness = false,
 ): Promise<Outcome> {
+  // 业务入口撤回只跳过重复的业务状态迁移，不跳过“仅发起人”校验（清单 10）。
   const run = fromBusiness ? await openRun(tx, ctx, instanceId) : await openOwn(tx, ctx, instanceId);
+  if (run.instance.initiatorUserId !== ctx.userId)
+    throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有发起人可以撤回');
   if (!['running', 'returned'].includes(run.instance.status))
     throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程已结束');
   await cancelPending(tx, ctx, instanceId);
@@ -442,6 +470,7 @@ export async function adminAct(tx: Tx, ctx: ApprovalContext, input: AdminInput, 
   if (!covered) throw approvalError('NOT_FOUND', 'APPROVAL_NOT_FOUND', '审批实例不存在');
   assertRevision(ctx.expectedRevision, run.instance.revision);
   if (run.instance.status !== 'running') throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程不在审批中');
+  assertBusinessUnchanged(run);
   const intervene = input.kind !== 'transfer';
   if ((intervene || input.toUserId === ctx.userId) && !input.reason?.trim()) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_REASON_REQUIRED', '管理员干预或转交给自己时必须填写理由');

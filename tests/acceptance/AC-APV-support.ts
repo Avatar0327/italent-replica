@@ -246,17 +246,15 @@ export async function approvalWorld(db: Db, label: string) {
     );
   }
 
-  function submitRaw(business: { id: string; revision: number }, actor = hr.id, processCode?: string) {
+  function submitRaw(business: { id: string; revision: number }, actor = hr.id) {
     return request(actor, 'POST', `/api/tenant/employment/businesses/${business.id}/submit`, {
       ifMatch: business.revision,
-      body: processCode ? { processCode } : {},
+      body: {},
     });
   }
 
-  async function submit(business: { id: string; revision: number }, actor = hr.id, processCode?: string) {
-    const submitted = await json<{ id: string; status: string; revision: number }>(
-      await submitRaw(business, actor, processCode),
-    );
+  async function submit(business: { id: string; revision: number }, actor = hr.id) {
+    const submitted = await json<{ id: string; status: string; revision: number }>(await submitRaw(business, actor));
     expect(submitted.status).toBe('in_review');
     return instanceOf(business.id, actor);
   }

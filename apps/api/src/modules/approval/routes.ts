@@ -2,7 +2,7 @@
  * 审批中心路由（R1-T07）：/api/tenant/approval/*。写请求带 If-Match 与 Idempotency-Key，业务 + 审计 + outbox 同事务；
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
  */
-import { type Tx, withTenant } from '@italent/db';
+import { pgErrorCode, type Tx, withTenant } from '@italent/db';
 import { APPROVAL_PROCESS_OBJECT, APPROVAL_TYPES } from '@italent/domain';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
@@ -14,7 +14,7 @@ import { registerEmploymentApprovalHooks } from '../employment/approval-hooks.js
 import { pageQuery, parseBody, revision, uuidParam } from '../job/context.js';
 import { getModuleViewableFields, trimModuleResponse } from '../permission/module-access.js';
 import { registerPersonnelApprovalHooks } from '../personnel/approval-hooks.js';
-import { adminScope, requireProcessButton, requireProcessView } from './access.js';
+import { adminScope, requireProcessButton, requireProcessView, requireWithdrawRight } from './access.js';
 import {
   addSign,
   adminAct,
@@ -57,18 +57,28 @@ function writeCtx(c: C, deps: TenantRouteDeps): ApprovalContext {
   return { ...readCtx(c, deps), expectedRevision: revision(c) };
 }
 
-function command(
+/** 锁冲突（死锁、序列化失败、锁超时）返回可识别的 409，由客户端刷新后显式重提，不自动盲重试（清单 11）。 */
+const LOCK_CONFLICTS = new Set(['40P01', '40001', '55P03']);
+
+async function command(
   c: C,
   deps: TenantRouteDeps,
   ctx: ApprovalContext,
   input: unknown,
   execute: (tx: Tx, ctx: ApprovalContext) => Promise<CommandResult>,
 ) {
-  return runCommand(deps.db, ctx, {
-    id: c.req.header('idempotency-key'),
-    fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input },
-    execute: (tx, commandId) => execute(tx, { ...ctx, commandId }),
-  });
+  try {
+    return await runCommand(deps.db, ctx, {
+      id: c.req.header('idempotency-key'),
+      fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input },
+      execute: (tx, commandId) => execute(tx, { ...ctx, commandId }),
+    });
+  } catch (error) {
+    if (LOCK_CONFLICTS.has(pgErrorCode(error) ?? '')) {
+      throw approvalError('CONFLICT', 'APPROVAL_CONCURRENT_CONFLICT', '单据正被他人处理，请刷新后重试');
+    }
+    throw error;
+  }
 }
 
 async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
@@ -106,8 +116,8 @@ export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
 /** 把审批中心装配到任职与人员模块的挂接端口（它们不 import 审批模块）。 */
 function registerHooks() {
   registerEmploymentApprovalHooks({
-    submitted: async (tx, ctx, businessId, processCode) => {
-      await startOrResume(tx, ctx, { businessType: 'employment', businessId, processCode });
+    submitted: async (tx, ctx, businessId) => {
+      await startOrResume(tx, ctx, { businessType: 'employment', businessId });
     },
     withdrawn: async (tx, ctx, businessId) => {
       const active = await activeInstanceOf(tx, ctx.tenantId, 'employment', businessId);
@@ -120,7 +130,7 @@ function registerHooks() {
   });
   registerPersonnelApprovalHooks({
     submitted: async (tx, ctx, requestId) => {
-      await startOrResume(tx, ctx, { businessType: 'personnel_change', businessId: requestId, processCode: null });
+      await startOrResume(tx, ctx, { businessType: 'personnel_change', businessId: requestId });
     },
   });
 }
@@ -270,7 +280,7 @@ async function viewableFor(c: C, deps: TenantRouteDeps, taskId: string) {
   const ctx = readCtx(c, deps);
   const objectCode = await withTenant(deps.db, ctx.tenantId, async (tx) => {
     const instance = await loadInstance(tx, ctx.tenantId, await instanceOfTask(tx, ctx.tenantId, taskId));
-    const snapshot = await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId, instance.processCode);
+    const snapshot = await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId);
     return snapshot.fieldObjectCode;
   });
   return getModuleViewableFields(deps, ctx, objectCode);
@@ -337,6 +347,7 @@ function registerInstanceRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     router.post(`/instances/:id/${path}`, async (c) => {
       const ctx = writeCtx(c, deps);
       const id = uuidParam(c);
+      if (path === 'withdraw') await requireWithdrawRight(deps, ctx, id);
       const result = await command(c, deps, ctx, { id }, (tx, context) => act(tx, context, id));
       return respondOutcome(c, deps, result);
     });

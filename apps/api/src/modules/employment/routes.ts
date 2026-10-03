@@ -213,7 +213,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       async (c) => {
         const id = uuidParam(c);
         const ctx = await readContext(c, deps, action === 'delete' ? 'object.delete' : 'object.update', revision(c));
-        const processCode = action === 'submit' ? await submitProcessCode(c) : null;
+        if (action === 'submit') await emptySubmitBody(c);
         await requireEmploymentWrite(
           ctx,
           action === 'delete' ? 'delete' : 'update',
@@ -221,10 +221,10 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`,
         );
         await authorizeBusinessWrite(deps, ctx, id);
-        return runWrite(c, deps, ctx, { id, action, processCode }, async (tx, context) => {
+        return runWrite(c, deps, ctx, { id, action }, async (tx, context) => {
           const business = await transitionEmployment(tx, context, { id, action });
           // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 删除同步结束在途实例，均与状态迁移同事务。
-          if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id, processCode);
+          if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
           else if (action === 'withdraw') await employmentApprovalHooks.withdrawn(tx, context, id);
           else await employmentApprovalHooks.deleted(tx, context, id);
           return { status: 200, body: business };
@@ -234,19 +234,9 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   }
 }
 
-/** 发起入口携带的流程编码（`13` §6.3）；缺省由审批类型决定。 */
-async function submitProcessCode(c: Context<TenantEnv>): Promise<string | null> {
-  if (!c.req.header('content-type')) return null;
-  const body = parse(
-    z.strictObject({
-      processCode: z
-        .string()
-        .regex(/^[A-Za-z][A-Za-z0-9_]{0,99}$/)
-        .optional(),
-    }),
-    await jsonBody(c),
-  );
-  return body.processCode ?? null;
+/** 提交不接受客户端参数：流程编码由审批中心按业务派生（PR #35 第二轮清单 14），带任何字段一律 400。 */
+async function emptySubmitBody(c: Context<TenantEnv>): Promise<void> {
+  if (c.req.header('content-type')) parse(z.strictObject({}), await jsonBody(c));
 }
 
 async function authorizeBusinessWrite(deps: TenantRouteDeps, ctx: EmploymentContext, id: string, employeeId?: string) {

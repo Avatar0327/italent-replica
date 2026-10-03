@@ -4,13 +4,14 @@
  * “我的待办 / 我发起的 / 通知”按接收人过滤，不需要身份权限。
  * TODO(需取证 Q-M0-42)：原站流程配置与“流程管理员”由哪类管理员身份持有未取证；首版按身份对象权限的按钮控制。
  */
-import { sql } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import {
   APPROVAL_INSTANCE_OBJECT,
   APPROVAL_OBJECTS,
   APPROVAL_PROCESS_OBJECT,
   buttonResource,
   MODULE_OBJECTS,
+  PERSONNEL_REQUEST_OBJECT,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { requirePermission } from '../../authorization.js';
@@ -19,6 +20,8 @@ import type { TenantContext } from '../../tenant-context.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
 import { resolveModuleScope, scopeSql } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
+import { approvalError, rowsOf } from './context.js';
+import { loadInstance } from './store.js';
 
 for (const object of APPROVAL_OBJECTS) registerObjectDefinition(object);
 
@@ -63,6 +66,38 @@ async function hasButton(deps: TenantRouteDeps, ctx: TenantContext, button: stri
     action: 'object.button',
     resource: buttonResource(APPROVAL_INSTANCE_OBJECT, button, level),
   });
+}
+
+/**
+ * 审批侧撤回时复核发起人当前权限（PR #35 第二轮 C-非5）：任职申请须仍持有任职撤回按钮与编辑权，
+ * 且异动员工仍在其数据范围内；员工子集变更须仍可使用自助申请入口。发起人身份在命令内校验。
+ */
+export async function requireWithdrawRight(deps: TenantRouteDeps, ctx: TenantContext, instanceId: string) {
+  const instance = await withTenant(deps.db, ctx.tenantId, (tx) => loadInstance(tx, ctx.tenantId, instanceId));
+  if (instance.businessType === 'personnel_change') {
+    await requirePermission(deps.authorize, {
+      ...ctx,
+      action: 'object.button',
+      resource: buttonResource(PERSONNEL_REQUEST_OBJECT, 'self-service-submit', 'list'),
+    });
+    return;
+  }
+  const objectCode = MODULE_OBJECTS.employmentRecord.code;
+  await requireObjectWrite(deps.authorize, ctx, { objectCode, operation: 'update', payload: {} });
+  await requirePermission(deps.authorize, {
+    ...ctx,
+    action: 'object.button',
+    resource: buttonResource(objectCode, 'Employment.Withdraw', 'detail'),
+  });
+  const scope = await resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
+  const predicate = scopeSql(scope, { person: sql`i.subject_employee_id` });
+  const [covered] = rowsOf(
+    await withTenant(deps.db, ctx.tenantId, (tx) =>
+      tx.execute(sql`SELECT 1 FROM approval_instances i WHERE i.tenant_id=${ctx.tenantId}
+        AND i.id=${instanceId}::uuid AND ${predicate}`),
+    ),
+  );
+  if (!covered) throw approvalError('FORBIDDEN', 'APPROVAL_SCOPE_DENIED', '异动员工已不在您的数据范围内');
 }
 
 /** 管理员按钮 + 员工数据范围；返回限定实例的 SQL 谓词（对 approval_instances 别名 i）。 */

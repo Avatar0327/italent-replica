@@ -12,6 +12,7 @@ import {
   type SubsetKind,
 } from '@italent/domain';
 import { findCurrentRecord, findPredecessor, loadEmploymentBusiness } from '../employment/read-model.js';
+import { lockEmploymentEmployee } from '../employment/record-store.js';
 import { transitionEmployment } from '../employment/transitions.js';
 import { PRESET_FIELD_NAMES, type PresetFields } from '../employment/types.js';
 import { updateEmploymentBusiness } from '../employment/write-service.js';
@@ -20,6 +21,7 @@ import {
   loadChange,
   withdrawChangeInTransaction,
 } from '../personnel/change-requests.js';
+import { lockPerson } from '../personnel/store.js';
 import { loadSubset } from '../personnel/subsets.js';
 import { AppError } from '../../errors.js';
 import { approvalError, rowsOf, type ApprovalContext, type Row } from './context.js';
@@ -40,10 +42,19 @@ export interface BusinessSnapshot {
   readonly conditionValues: Readonly<Row>;
   readonly latestDepartmentId: string | null;
   readonly recordDepartmentId: string | null;
+  /** 业务载荷版本：实例记下审批人所读的版本，绕过审批改了业务单即判旧审批失效（AGENTS §10「并发」）。 */
+  readonly version: string;
+  /**
+   * 流程编码由服务端按业务与发起入口派生，不由发起人指定（PR #35 第二轮清单 14）。
+   * TODO(R1-T09)：发起入口接通后按入口派生；在此之前固定为审批类型的默认编码（需取证 Q-M0-38）。
+   */
+  readonly processCode: string | null;
 }
 
 export interface BusinessAdapter {
-  snapshot(tx: Tx, ctx: ApprovalContext, businessId: string, processCode: string | null): Promise<BusinessSnapshot>;
+  /** 按业务侧既有顺序加锁（员工 → 业务单），审批命令随后再锁实例，与业务入口的锁序一致（清单 11）。 */
+  lock(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
+  snapshot(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<BusinessSnapshot>;
   approved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   rejected(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   /** 审批侧发起的撤回（业务侧撤回已由业务模块自己迁移状态）。 */
@@ -85,13 +96,33 @@ async function employmentTransition(
   await transitionEmployment(tx, { ...ctx, expectedRevision }, { id, action });
 }
 
+async function payloadVersion(tx: Tx, tenantId: string, businessId: string): Promise<string> {
+  const [row] = rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT id FROM employment_payload_versions
+      WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid ORDER BY version_no DESC LIMIT 1`),
+  );
+  if (!row) throw new AppError('SERVICE_UNAVAILABLE', '任职业务版本链不完整');
+  return row.id;
+}
+
 const employmentAdapter: BusinessAdapter = {
-  async snapshot(tx, ctx, businessId, processCode) {
+  async lock(tx, ctx, businessId) {
+    const [owner] = rowsOf<{ employee_id: string }>(
+      await tx.execute(sql`SELECT employee_id FROM employment_business_objects
+        WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid`),
+    );
+    if (!owner) throw new AppError('NOT_FOUND', '任职业务不存在');
+    await lockEmploymentEmployee(tx, ctx, owner.employee_id);
+    await tx.execute(sql`SELECT 1 FROM employment_business_objects
+      WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE`);
+  },
+  async snapshot(tx, ctx, businessId) {
     const asOf = tenantLocalDate(ctx.now, ctx.timezone);
     const business = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, asOf);
     if (!business) throw new AppError('NOT_FOUND', '任职业务不存在');
     if (!isApprovalType(business.kind)) throw approvalError('CONFLICT', 'APPROVAL_TYPE_UNKNOWN', '该业务没有审批类型');
     const type = APPROVAL_TYPES[business.kind];
+    const processCode = type.defaultProcessCode;
     const before = await findPredecessor(tx, ctx.tenantId, business.employeeId, business.effectiveDate);
     const current = await findCurrentRecord(tx, ctx.tenantId, business.employeeId, asOf);
     const employee = await employeeHeader(tx, ctx.tenantId, business.employeeId);
@@ -118,7 +149,7 @@ const employmentAdapter: BusinessAdapter = {
       originals,
       changedFields: PRESET_FIELD_NAMES.filter((field) => !same(fields[field], originals?.[field])),
       conditionValues: {
-        processCode: processCode ?? type.defaultProcessCode,
+        processCode,
         'business.kind': business.kind,
         'employee.code': employee.code,
         'employee.name': employee.name,
@@ -128,6 +159,8 @@ const employmentAdapter: BusinessAdapter = {
       },
       latestDepartmentId: current?.fields.departmentId ?? null,
       recordDepartmentId: fields.departmentId,
+      version: await payloadVersion(tx, ctx.tenantId, businessId),
+      processCode,
     };
   },
   approved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'approve'),
@@ -139,10 +172,16 @@ const employmentAdapter: BusinessAdapter = {
   async edit(tx, ctx, id, input) {
     const { effectiveDate, ...fields } = input;
     const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
-    await updateEmploymentBusiness(tx, { ...ctx, expectedRevision }, id, {
-      ...(typeof effectiveDate === 'string' ? { effectiveDate } : {}),
-      ...(Object.keys(fields).length ? { fields: fields as Partial<PresetFields> } : {}),
-    });
+    await updateEmploymentBusiness(
+      tx,
+      { ...ctx, expectedRevision },
+      id,
+      {
+        ...(typeof effectiveDate === 'string' ? { effectiveDate } : {}),
+        ...(Object.keys(fields).length ? { fields: fields as Partial<PresetFields> } : {}),
+      },
+      { approvalEdit: true },
+    );
   },
 };
 
@@ -154,7 +193,11 @@ async function personnelChange(tx: Tx, ctx: ApprovalContext, id: string) {
 }
 
 const personnelAdapter: BusinessAdapter = {
-  async snapshot(tx, ctx, businessId, processCode) {
+  async lock(tx, ctx, businessId) {
+    const { change } = await personnelChange(tx, ctx, businessId);
+    await lockPerson(tx, { ...ctx, expectedRevision: 0 }, String(change.employeeId));
+  },
+  async snapshot(tx, ctx, businessId) {
     const { change, subset } = await personnelChange(tx, ctx, businessId);
     const employeeId = String(change.employeeId);
     const values = change.values as Row;
@@ -176,7 +219,7 @@ const personnelAdapter: BusinessAdapter = {
       originals,
       changedFields: Object.keys(values).filter((key) => !same(values[key], originals?.[key])),
       conditionValues: {
-        processCode,
+        processCode: APPROVAL_TYPES.personnel_change.defaultProcessCode,
         'employee.code': employee.code,
         'employee.name': employee.name,
         'employee.departmentId': departmentId,
@@ -184,6 +227,8 @@ const personnelAdapter: BusinessAdapter = {
       },
       latestDepartmentId: departmentId,
       recordDepartmentId: departmentId,
+      version: `revision:${Number(change.revision)}`,
+      processCode: APPROVAL_TYPES.personnel_change.defaultProcessCode,
     };
   },
   async approved(tx, ctx, id) {
