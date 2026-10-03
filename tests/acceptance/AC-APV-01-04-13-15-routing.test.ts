@@ -52,6 +52,34 @@ describe('AC-APV-01/02 审批人按对象路径解析', () => {
   });
 });
 
+describe('AC-APV-01/02 编辑并同意后按编辑后的单据解析后续审批人', () => {
+  it('编辑并同意改了调入部门：调入 HRBP / 负责人节点派给新部门，而不是编辑前的部门', async () => {
+    const w = await approvalWorld(database().db, 'apv-edit-route');
+    const s = await transferScene(w);
+    const other = await w.org('改派部门');
+    const otherHead = await w.person('改派负责人', other);
+    const otherHrbp = await w.person('改派HRBP', other);
+    await w.setOrgRoles(other, { head: otherHead.employeeId, hrbp: otherHrbp.employeeId });
+    const editable = { formFields: ['departmentId'], editableFields: ['departmentId'] } as const;
+    await w.publishedProcess({
+      nodes: [{ ...TRANSFER_NODES[0]!, ...editable, editMode: 'with_approve' }, TRANSFER_NODES[1]!, TRANSFER_NODES[2]!],
+    });
+    const draft = await w.application(s.subject.employeeId, { departmentId: s.to });
+    let view = await w.submit(draft);
+    view = await w.json(
+      await w.taskAction(s.outHead.userId, current(view).id, 'approve', view.revision, {
+        comment: '改调入部门',
+        fields: { departmentId: other },
+      }),
+    );
+    expect(current(view)).toMatchObject({ nodeKey: 'in_hrbp', assigneeUserId: otherHrbp.userId });
+    view = await w.json(await w.taskAction(otherHrbp.userId, current(view).id, 'approve', view.revision));
+    expect(current(view)).toMatchObject({ nodeKey: 'in_head', assigneeUserId: otherHead.userId });
+    expect((await w.todos(s.inHrbp.userId)).items).toEqual([]);
+    expect((await w.business(draft.id)).fields).toMatchObject({ departmentId: other });
+  });
+});
+
 describe('AC-APV-03 相同审批人跳过 / 历史相同审批人跳过（结果 = 同意）', () => {
   it('调出与调入负责人为同一人时，第二个节点自动同意并写节点日志', async () => {
     const w = await approvalWorld(database().db, 'apv-same');

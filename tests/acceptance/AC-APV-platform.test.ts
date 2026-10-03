@@ -73,6 +73,52 @@ describe('审计与 outbox 同事务（AGENTS §10）', () => {
   });
 });
 
+describe('转交 / 加签写统一审计与 outbox（AGENTS §10）', () => {
+  it('转交、加签与任务写入同事务：审计含任务状态、原 / 新审批人与意见，outbox 有对应事件', async () => {
+    const w = await approvalWorld(database().db, 'apv-delegate-audit');
+    const s = await transferScene(w);
+    const delegate = await w.member('转交对象');
+    const helper = await w.member('加签人');
+    await w.publishedProcess({ nodes: [{ ...TRANSFER_NODES[0]!, actions: { transfer: true, addSign: true } }] });
+    let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    view = await w.json<InstanceView>(
+      await w.taskAction(s.outHead.userId, view.tasks[0]!.id, 'transfer', view.revision, {
+        toUserId: delegate,
+        comment: '请代为审批',
+      }),
+    );
+    const transferred = view.tasks.find((t) => t.status === 'pending')!;
+    view = await w.json<InstanceView>(
+      await w.taskAction(delegate, transferred.id, 'add-sign', view.revision, { userId: helper, comment: '请会签' }),
+    );
+    const added = view.tasks.find((t) => t.assigneeUserId === helper)!;
+    const audits = await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.select().from(auditEvents).where(eq(auditEvents.objectId, view.id)),
+    );
+    const transfer = audits.find((a) => a.action === 'approval.task.transfer');
+    expect(transfer).toMatchObject({
+      actorUserId: s.outHead.userId,
+      before: { taskStatus: 'pending', assigneeUserId: s.outHead.userId, newTaskId: null, comment: null },
+      after: { taskStatus: 'transferred', assigneeUserId: delegate, newTaskId: transferred.id, comment: '请代为审批' },
+    });
+    const addSign = audits.find((a) => a.action === 'approval.task.add_sign');
+    expect(addSign).toMatchObject({
+      actorUserId: delegate,
+      before: { assigneeUserId: delegate, newTaskId: null, newTaskStatus: null, comment: null },
+      after: { assigneeUserId: helper, newTaskId: added.id, newTaskStatus: 'pending', comment: '请会签' },
+    });
+    const outbox = await withTenant(w.db, w.tenant.id, async (tx) =>
+      rowsOf<{ event_type: string; command_id: string; state: string }>(
+        await tx.execute(sql`SELECT event_type,command_id,state FROM approval_outbox WHERE object_id=${view.id}::uuid`),
+      ),
+    );
+    const event = (type: string) => outbox.find((row) => row.event_type === type);
+    // 同一命令（同一事务）写入：outbox 与审计带同一命令 ID，消费者按游标拉取。
+    expect(event('approval.task.transferred')).toMatchObject({ command_id: transfer!.commandId, state: 'pending' });
+    expect(event('approval.task.add_signed')).toMatchObject({ command_id: addSign!.commandId, state: 'pending' });
+  });
+});
+
 describe('权限目录（DEC-080）', () => {
   it('审批中心对象登记真实字段与按钮', () => {
     expect(objectCatalog.get('TenantBase.ApprovalProcess')?.buttons.map((b) => b.code)).toEqual(

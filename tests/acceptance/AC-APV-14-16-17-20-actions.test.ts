@@ -4,7 +4,7 @@
  * 禁止盲审（DEC-058 / DEC-069）。
  */
 import { randomUUID } from 'node:crypto';
-import { auditEvents, eq, sql, withTenant } from '@italent/db';
+import { auditEvents, type Db, eq, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import {
@@ -278,38 +278,47 @@ describe('AC-APV-17 / AC-APV-20 管理员不得代签，只能转交或干预', 
   });
 });
 
+/** 盲审场景：调出负责人只能看到部门 / 生效日期 / 地点，申请改了职级；流程的异常管理员另设。 */
+async function blindScene(db: Db, label: string) {
+  const w = await approvalWorld(db, label);
+  const s = await transferScene(w);
+  const world = await permissionAdmin(w);
+  await grantVisibleFields(world, s.outHead.userId, ['id', 'departmentId', 'effectiveDate', 'place']);
+  const exceptionAdmin = await w.member('异常管理员');
+  const levelType = await w.json<{ id: string }>(
+    await w.request(w.hr.id, 'POST', '/api/tenant/job/level-types', {
+      ifMatch: 0,
+      body: { name: '职级体系', code: 'LT', startDate: '2020-01-01' },
+    }),
+    201,
+  );
+  const level = await w.json<{ id: string }>(
+    await w.request(w.hr.id, 'POST', '/api/tenant/job/levels', {
+      ifMatch: 0,
+      body: { name: '高级', code: 'L9', level: 9, levelTypeId: levelType.id, startDate: '2020-01-01' },
+    }),
+    201,
+  );
+  await w.publishedProcess({ exceptionAdminUserId: exceptionAdmin, nodes: TRANSFER_NODES });
+  const real = tenantApi(db, { authorize: undefined, clock: w.clock });
+  const act = (task: string, action: 'approve' | 'reject', revision: number) =>
+    real.request('POST', `/api/tenant/approval/tasks/${task}/${action}`, {
+      ...w.as(s.outHead.userId),
+      ifMatch: revision,
+      body: { comment: '意见' },
+    });
+  const submitBlind = (employeeId: string) =>
+    w.application(employeeId, { departmentId: s.to, levelId: level.id }).then((draft) => w.submit(draft));
+  return { w, s, real, exceptionAdmin, act, submitBlind };
+}
+
+const blindLogs = (view: InstanceView) => view.logs.filter((log) => log.event === 'blind_review_exception_admin');
+
 describe('AC-APV-14 禁止盲审（DEC-058 / DEC-069）', () => {
   it('变更字段无查看权：同意、驳回均被拒，任务自动转异常管理员；字段未变化时不受限', async () => {
     const db = database().db;
-    const w = await approvalWorld(db, 'apv-blind');
-    const s = await transferScene(w);
-    const world = await permissionAdmin(w);
-    await grantVisibleFields(world, s.outHead.userId, ['id', 'departmentId', 'effectiveDate', 'place']);
-    const exceptionAdmin = await w.member('异常管理员');
-    const levelType = await w.json<{ id: string }>(
-      await w.request(w.hr.id, 'POST', '/api/tenant/job/level-types', {
-        ifMatch: 0,
-        body: { name: '职级体系', code: 'LT', startDate: '2020-01-01' },
-      }),
-      201,
-    );
-    const level = await w.json<{ id: string }>(
-      await w.request(w.hr.id, 'POST', '/api/tenant/job/levels', {
-        ifMatch: 0,
-        body: { name: '高级', code: 'L9', level: 9, levelTypeId: levelType.id, startDate: '2020-01-01' },
-      }),
-      201,
-    );
-    await w.publishedProcess({ exceptionAdminUserId: exceptionAdmin, nodes: TRANSFER_NODES });
-    const real = tenantApi(db, { authorize: undefined, clock: w.clock });
-    const act = (task: string, action: 'approve' | 'reject', revision: number) =>
-      real.request('POST', `/api/tenant/approval/tasks/${task}/${action}`, {
-        ...w.as(s.outHead.userId),
-        ifMatch: revision,
-        body: { comment: '意见' },
-      });
-
-    let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to, levelId: level.id }));
+    const { w, s, real, exceptionAdmin, act, submitBlind } = await blindScene(db, 'apv-blind');
+    let view = await submitBlind(s.subject.employeeId);
     const opened = await real.request('GET', `/api/tenant/approval/instances/${view.id}`, w.as(s.outHead.userId));
     expect(opened.status).toBe(200);
     const approve = await errorOf(await act(current(view).id, 'approve', view.revision));
@@ -325,21 +334,42 @@ describe('AC-APV-14 禁止盲审（DEC-058 / DEC-069）', () => {
       isExceptionAdmin: true,
       origin: 'blind_review',
     });
-    expect(view.logs).toEqual(
-      expect.arrayContaining([expect.objectContaining({ event: 'blind_review_exception_admin' })]),
-    );
-    const reject = await errorOf(
+    expect(blindLogs(view)).toHaveLength(1);
+    // 已转走的原任务不再待办：先校验任务状态（409），不再进入盲审出路。
+    const closed = await errorOf(
       await act(view.tasks.find((t) => t.assigneeUserId === s.outHead.userId)!.id, 'reject', view.revision),
     );
+    expect(closed).toMatchObject({ status: 409, body: { error: { details: { reason: 'APPROVAL_TASK_CLOSED' } } } });
+
+    const colleague = await w.person('同部门员工', s.from);
+    let second = await submitBlind(colleague.employeeId);
+    const reject = await errorOf(await act(current(second).id, 'reject', second.revision));
     expect(reject).toMatchObject({ status: 403, body: { error: { details: { reason: 'APPROVAL_BLIND_REVIEW' } } } });
+    second = await w.detail(second.id);
+    expect(current(second)).toMatchObject({ assigneeUserId: exceptionAdmin, origin: 'blind_review' });
 
     const plain = await w.submit(await w.application(s.manager.employeeId, { departmentId: s.to }));
     const ok = await act(current(plain).id, 'approve', plain.revision);
     expect(ok.status, await ok.clone().text()).toBe(200);
-    const stored = await withTenant(db, w.tenant.id, (tx) =>
-      tx.execute(sql`SELECT count(*)::int AS n FROM approval_instance_logs WHERE instance_id=${plain.id}::uuid
-        AND event='blind_review_exception_admin'`),
-    );
-    expect((Array.isArray(stored) ? stored : (stored as { rows: { n: number }[] }).rows)[0]).toMatchObject({ n: 0 });
+    expect(blindLogs(await w.detail(plain.id))).toHaveLength(0);
+  });
+
+  it('先校验 revision 与任务状态：过期 revision 返回 409 且不自动转交；并发两次只转交一次', async () => {
+    const { w, s, exceptionAdmin, act, submitBlind } = await blindScene(database().db, 'apv-blind-race');
+    let view = await submitBlind(s.subject.employeeId);
+    const task = current(view).id;
+    const stale = await errorOf(await act(task, 'approve', view.revision - 1));
+    expect(stale.status).toBe(409);
+    view = await w.detail(view.id);
+    expect(current(view)).toMatchObject({ id: task, assigneeUserId: s.outHead.userId });
+    expect(blindLogs(view)).toHaveLength(0);
+    expect((await w.todos(exceptionAdmin)).items).toEqual([]);
+
+    const raced = await Promise.all([act(task, 'approve', view.revision), act(task, 'reject', view.revision)]);
+    expect(raced.map((response) => response.status).sort()).toEqual([403, 409]);
+    view = await w.detail(view.id);
+    expect(blindLogs(view)).toHaveLength(1);
+    expect(view.tasks.filter((t) => t.origin === 'blind_review')).toHaveLength(1);
+    expect(current(view)).toMatchObject({ assigneeUserId: exceptionAdmin, origin: 'blind_review' });
   });
 });
