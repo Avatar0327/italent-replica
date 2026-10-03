@@ -96,13 +96,37 @@ async function employmentTransition(
   await transitionEmployment(tx, { ...ctx, expectedRevision }, { id, action });
 }
 
-async function payloadVersion(tx: Tx, tenantId: string, businessId: string): Promise<string> {
-  const [row] = rowsOf<{ id: string }>(
-    await tx.execute(sql`SELECT id FROM employment_payload_versions
+async function latestPayload(tx: Tx, tenantId: string, businessId: string) {
+  const [row] = rowsOf<{ id: string; last_work_date: string | null }>(
+    await tx.execute(sql`SELECT id,last_work_date::text FROM employment_payload_versions
       WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid ORDER BY version_no DESC LIMIT 1`),
   );
   if (!row) throw new AppError('SERVICE_UNAVAILABLE', '任职业务版本链不完整');
-  return row.id;
+  return { version: row.id, lastWorkDate: row.last_work_date ?? null };
+}
+
+/** 自定义字段以权限字段编码 `custom:<id>` 出现在审批载荷里，与任职字段权限一致。 */
+const customValues = (values: Readonly<Record<string, unknown>> | undefined): Row =>
+  Object.fromEntries(Object.entries(values ?? {}).map(([id, value]) => [`custom:${id}`, value]));
+
+/**
+ * 审批字段 → 任职业务修改：任职预置字段进 fields，`custom:<id>` 进 customFields，业务日期与最后工作日写顶层
+ * （最后工作日变化时由任职模块重算生效日并校验日期关系）。
+ */
+function employmentPatch(input: Readonly<Row>) {
+  const fields: Row = {};
+  const customFields: Row = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (key === 'effectiveDate' || key === 'lastWorkDate') continue;
+    if (key.startsWith('custom:')) customFields[key.slice('custom:'.length)] = value;
+    else fields[key] = value;
+  }
+  return {
+    ...(typeof input.effectiveDate === 'string' ? { effectiveDate: input.effectiveDate } : {}),
+    ...(Object.hasOwn(input, 'lastWorkDate') ? { lastWorkDate: input.lastWorkDate as string | null } : {}),
+    ...(Object.keys(fields).length ? { fields: fields as Partial<PresetFields> } : {}),
+    ...(Object.keys(customFields).length ? { customFields: customFields as Record<string, never> } : {}),
+  };
 }
 
 const employmentAdapter: BusinessAdapter = {
@@ -129,8 +153,35 @@ const employmentAdapter: BusinessAdapter = {
     // 人员类型（employType）由任职周期派生、申请载荷不携带（write-service effectiveEmployType），不算本单变化。
     const employType = business.kind === 'intern_regularization' ? 'internal' : before?.fields.employType;
     const fields: PresetFields = { ...business.fields, employType: business.fields.employType ?? employType ?? null };
-    const originals: Row | null = before ? { ...before.fields } : null;
-    const values: Row = { ...fields, effectiveDate: business.effectiveDate, kind: business.kind, mode: business.mode };
+    const payload = await latestPayload(tx, ctx.tenantId, businessId);
+    // 清单 3：载荷、原值与变化检测覆盖预置字段、自定义字段、业务日期与最后工作日。
+    const originals: Row | null = before
+      ? {
+          ...before.fields,
+          ...customValues(before.customFields),
+          effectiveDate: before.effectiveDate,
+          lastWorkDate: null,
+        }
+      : null;
+    const values: Row = {
+      ...fields,
+      ...customValues(business.customFields),
+      effectiveDate: business.effectiveDate,
+      lastWorkDate: payload.lastWorkDate,
+      kind: business.kind,
+      mode: business.mode,
+    };
+    const customCodes = new Set([
+      ...Object.keys(customValues(business.customFields)),
+      ...Object.keys(customValues(before?.customFields)),
+    ]);
+    const changedFields = [
+      ...PRESET_FIELD_NAMES.filter((field) => !same(fields[field], originals?.[field])),
+      ...[...customCodes].filter((code) => !same(values[code], originals?.[code])),
+      // 业务日期是本单新内容，审批人必须看得到；最后工作日只在离职 / 退休单上出现。
+      'effectiveDate',
+      ...(payload.lastWorkDate ? ['lastWorkDate'] : []),
+    ];
     const ref = (prefix: 'before' | 'record', source: Partial<PresetFields> | undefined) =>
       Object.fromEntries(
         (['departmentId', 'postId', 'positionId', 'levelId'] as const).map((key) => [
@@ -147,7 +198,7 @@ const employmentAdapter: BusinessAdapter = {
       title: `${employee.name}的${type.name}申请`,
       values,
       originals,
-      changedFields: PRESET_FIELD_NAMES.filter((field) => !same(fields[field], originals?.[field])),
+      changedFields,
       conditionValues: {
         processCode,
         'business.kind': business.kind,
@@ -159,7 +210,7 @@ const employmentAdapter: BusinessAdapter = {
       },
       latestDepartmentId: current?.fields.departmentId ?? null,
       recordDepartmentId: fields.departmentId,
-      version: await payloadVersion(tx, ctx.tenantId, businessId),
+      version: payload.version,
       processCode,
     };
   },
@@ -170,18 +221,10 @@ const employmentAdapter: BusinessAdapter = {
     throw approvalError('CONFLICT', 'APPROVAL_RESUBMIT_VIA_BUSINESS', '任职申请请在申请单上修改后重新提交');
   },
   async edit(tx, ctx, id, input) {
-    const { effectiveDate, ...fields } = input;
     const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
-    await updateEmploymentBusiness(
-      tx,
-      { ...ctx, expectedRevision },
-      id,
-      {
-        ...(typeof effectiveDate === 'string' ? { effectiveDate } : {}),
-        ...(Object.keys(fields).length ? { fields: fields as Partial<PresetFields> } : {}),
-      },
-      { approvalEdit: true },
-    );
+    await updateEmploymentBusiness(tx, { ...ctx, expectedRevision }, id, employmentPatch(input), {
+      approvalEdit: true,
+    });
   },
 };
 

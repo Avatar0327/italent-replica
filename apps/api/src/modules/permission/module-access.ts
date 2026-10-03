@@ -11,7 +11,7 @@ export type { ModuleScope } from './scope-types.js';
 interface AccessProvider {
   scope(query: ScopeQuery): Promise<ModuleScope>;
   authorize(request: Parameters<Authorizer>[0], tx: Tx): Promise<boolean>;
-  fields(tenantId: string, userId: string, objectCode: string): Promise<ReadonlySet<string>>;
+  fields(tenantId: string, userId: string, objectCode: string, tx?: Tx): Promise<ReadonlySet<string>>;
 }
 const providers = new WeakMap<Authorizer, AccessProvider>();
 export function registerScopeProvider(authorize: Authorizer, provider: AccessProvider): void {
@@ -58,6 +58,18 @@ export async function getModuleViewableFields(
 ): Promise<ReadonlySet<string> | undefined> {
   const provider = providers.get(deps.authorize);
   if (provider) return provider.fields(ctx.tenantId, ctx.userId, objectCode);
+  return (await deps.authorize({ ...ctx, action: 'data.scope.all', resource: objectCode })) ? undefined : new Set();
+}
+
+/** 同 getModuleViewableFields，但在调用方的租户事务内解析（不另开连接；审批流转内用，R1-T07）。 */
+export async function getModuleViewableFieldsInTransaction(
+  deps: Deps,
+  ctx: TenantContext,
+  objectCode: string,
+  tx: Tx,
+): Promise<ReadonlySet<string> | undefined> {
+  const provider = providers.get(deps.authorize);
+  if (provider) return provider.fields(ctx.tenantId, ctx.userId, objectCode, tx);
   return (await deps.authorize({ ...ctx, action: 'data.scope.all', resource: objectCode })) ? undefined : new Set();
 }
 

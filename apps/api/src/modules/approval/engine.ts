@@ -256,6 +256,7 @@ export async function advanceFrom(tx: Tx, run: Run, index: number): Promise<void
       run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
       return;
     }
+    if (await blockedAutoApproval(tx, run, node, decision, { subject, facts })) return;
     const taskId = await insertTask(tx, run.ctx, run.instance.id, {
       round: run.instance.round,
       nodeKey: node.key,
@@ -277,6 +278,45 @@ export async function advanceFrom(tx: Tx, run: Run, index: number): Promise<void
     });
   }
   await complete(tx, run);
+}
+
+/**
+ * 清单 5：同人自动同意前按该审批人当前的字段权限做盲审；看不到变化字段即不自动同意，
+ * 按 DEC-069 转异常管理员（未注入字段权限解析时按看不到处理）。
+ * @returns 是否已改派异常管理员（流程停在本节点）
+ */
+async function blockedAutoApproval(
+  tx: Tx,
+  run: Run,
+  node: ApprovalNode,
+  decision: Extract<NodeDecision, { kind: 'auto' }>,
+  routing: { subject: RoutingSubject; facts: RoutingFacts },
+): Promise<boolean> {
+  const viewable = run.ctx.fields
+    ? await run.ctx.fields.viewable(tx, decision.userId!, run.snapshot.fieldObjectCode)
+    : new Set<string>();
+  const hidden = viewable === undefined ? [] : run.snapshot.changedFields.filter((field) => !viewable.has(field));
+  if (!hidden.length) return false;
+  const admin = await exceptionAdminFor(tx, run, routing.subject, routing.facts);
+  const taskId = await insertTask(tx, run.ctx, run.instance.id, {
+    round: run.instance.round,
+    nodeKey: node.key,
+    assigneeUserId: admin.userId,
+    origin: 'blind_review',
+    status: 'pending',
+    isExceptionAdmin: true,
+  });
+  await appendLog(tx, run.ctx, run.instance, {
+    event: 'blind_review_exception_admin',
+    nodeKey: node.key,
+    taskId,
+    actorUserId: null,
+    detail: { fromUserId: decision.userId, toUserId: admin.userId, fields: hidden, autoSkip: decision.outcome },
+  });
+  await notifyTodo(tx, run.ctx, run.instance, taskId, admin.userId);
+  run.events.push('approval.task.transferred');
+  run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
+  return true;
 }
 
 async function complete(tx: Tx, run: Run): Promise<void> {

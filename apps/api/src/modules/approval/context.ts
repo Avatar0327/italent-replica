@@ -3,11 +3,18 @@ import { auditEvents, sql, type Tx } from '@italent/db';
 import { AppError, type ErrorCode } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 
+/** 按用户解析某业务对象的可查看字段（undefined = 全部可见）；由路由用授权器注入。 */
+export interface FieldAccess {
+  viewable(tx: Tx, userId: string, objectCode: string): Promise<ReadonlySet<string> | undefined>;
+}
+
 /** 审批命令上下文：时钟与命令 ID 由路由注入，事件时间存 UTC（DEC-056）。 */
 export interface ApprovalContext extends TenantContext {
   readonly now: Date;
   readonly commandId: string;
   readonly expectedRevision: number;
+  /** 同人自动跳过前要按候选审批人的当前字段权限做盲审（清单 5）；未注入时按看不到处理（fail-closed）。 */
+  readonly fields?: FieldAccess;
 }
 
 export type Row = Record<string, unknown>;

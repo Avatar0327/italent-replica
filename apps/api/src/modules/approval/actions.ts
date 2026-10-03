@@ -78,6 +78,8 @@ async function blindReview(
   const { run, task } = scene;
   const routing = await currentRouting(tx, run, task.nodeKey);
   const admin = (await exceptionAdminFor(tx, run, routing.subject, routing.facts)).userId;
+  // C-非4：被拦的就是异常管理员本人（或接手人就是本人）时不再给自己建任务，由其转交给有权限者。
+  if (task.isExceptionAdmin || admin === task.assigneeUserId) return blindRejection();
   await closeTask(tx, run.ctx, task.id, 'transferred');
   const next = await insertTask(tx, run.ctx, run.instance.id, {
     round: run.instance.round,
@@ -97,8 +99,20 @@ async function blindReview(
   await notifyTodo(tx, run.ctx, run.instance, next, admin);
   run.events.push('approval.task.transferred');
   await persistRun(tx, run, 'approval.task.blind_review');
+  return blindRejection();
+}
+
+function blindRejection(): Outcome {
   const message = '本单含您无权查看且已变更的字段，无法审批';
   return { status: 403, body: { error: { code: 'FORBIDDEN', message, details: { reason: 'APPROVAL_BLIND_REVIEW' } } } };
+}
+
+/** 清单 4：编辑后按新快照重新盲审；编辑带出了编辑人看不到的变化即整单回滚（编辑不生效，任务不动）。 */
+function assertNotBlindAfterEdit(run: Run, viewable: ReadonlySet<string> | undefined): void {
+  const hidden = blindFields(run.snapshot, viewable);
+  if (hidden.length) {
+    throw approvalError('FORBIDDEN', 'APPROVAL_BLIND_REVIEW', '编辑后本单出现您无权查看的变化字段，编辑未生效');
+  }
 }
 
 function editableInput(node: ApprovalNode, fields: Row, viewable: ReadonlySet<string> | undefined): Row {
@@ -161,6 +175,7 @@ export async function approveTask(
     if (node.editMode !== 'with_approve')
       throw approvalError('CONFLICT', 'APPROVAL_EDIT_MODE', '本节点不支持编辑与同意合一');
     await applyEdit(tx, scene, editableInput(node, input.fields, viewable));
+    assertNotBlindAfterEdit(run, viewable);
   }
   await closeTask(tx, ctx, task.id, 'approved', input.comment);
   await appendLog(tx, ctx, run.instance, {
@@ -356,6 +371,7 @@ export async function editTask(
   if (scene.node.editMode !== 'separate')
     throw approvalError('CONFLICT', 'APPROVAL_EDIT_MODE', '本节点没有独立的编辑按钮');
   await applyEdit(tx, scene, editableInput(scene.node, input.fields, viewable));
+  assertNotBlindAfterEdit(scene.run, viewable);
   await persistRun(tx, scene.run, 'approval.task.edit');
   return ok(scene.run);
 }

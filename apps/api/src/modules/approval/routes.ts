@@ -9,10 +9,15 @@ import { z } from 'zod';
 import { runCommand, type CommandResult } from '../../commands.js';
 import { handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
-import { tenantOf, type TenantEnv } from '../../tenant-context.js';
+import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { registerEmploymentApprovalHooks } from '../employment/approval-hooks.js';
 import { pageQuery, parseBody, revision, uuidParam } from '../job/context.js';
-import { getModuleViewableFields, trimModuleResponse } from '../permission/module-access.js';
+import {
+  getModuleViewableFields,
+  getModuleViewableFieldsInTransaction,
+  trimModuleResponse,
+} from '../permission/module-access.js';
+import { requireObjectWrite } from '../permission/object-write.js';
 import { registerPersonnelApprovalHooks } from '../personnel/approval-hooks.js';
 import { adminScope, requireProcessButton, requireProcessView, requireWithdrawRight } from './access.js';
 import {
@@ -29,7 +34,7 @@ import {
   type Outcome,
 } from './actions.js';
 import { ADAPTERS } from './adapters.js';
-import { approvalError, type ApprovalContext } from './context.js';
+import { approvalError, type ApprovalContext, type FieldAccess } from './context.js';
 import { approvalTypeOf, createSchema, definitionSchema, toDefinition } from './definition-input.js';
 import {
   createProcess,
@@ -50,8 +55,17 @@ import { activeInstanceOf, instanceOfTask, loadInstance } from './store.js';
 
 type C = Context<TenantEnv>;
 
+/** 按授权器解析任意用户对业务对象的可查看字段（同人自动跳过前的盲审要看候选审批人的权限，清单 5）。 */
+function fieldAccess(deps: TenantRouteDeps, ctx: TenantContext): FieldAccess {
+  return {
+    viewable: (tx, userId, objectCode) =>
+      getModuleViewableFieldsInTransaction(deps, { ...ctx, userId }, objectCode, tx),
+  };
+}
+
 function readCtx(c: C, deps: TenantRouteDeps): ApprovalContext {
-  return { ...tenantOf(c), now: deps.clock(), commandId: '', expectedRevision: 0 };
+  const tenant = tenantOf(c);
+  return { ...tenant, now: deps.clock(), commandId: '', expectedRevision: 0, fields: fieldAccess(deps, tenant) };
 }
 
 function writeCtx(c: C, deps: TenantRouteDeps): ApprovalContext {
@@ -103,7 +117,7 @@ async function processResponse(c: C, deps: TenantRouteDeps, result: CommandResul
 }
 
 export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
-  registerHooks();
+  registerHooks(deps);
   const module = new Hono<TenantEnv>();
   module.onError(handleError);
   registerProcessRoutes(module, deps);
@@ -116,23 +130,24 @@ export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
 };
 
 /** 把审批中心装配到任职与人员模块的挂接端口（它们不 import 审批模块）。 */
-function registerHooks() {
+function registerHooks(deps: TenantRouteDeps) {
+  const withFields = <T extends ApprovalContext>(ctx: T): T => ({ ...ctx, fields: fieldAccess(deps, ctx) });
   registerEmploymentApprovalHooks({
     submitted: async (tx, ctx, businessId) => {
-      await startOrResume(tx, ctx, { businessType: 'employment', businessId });
+      await startOrResume(tx, withFields(ctx), { businessType: 'employment', businessId });
     },
     withdrawn: async (tx, ctx, businessId) => {
       const active = await activeInstanceOf(tx, ctx.tenantId, 'employment', businessId);
-      if (active) await withdraw(tx, ctx, active.id, true);
+      if (active) await withdraw(tx, withFields(ctx), active.id, true);
     },
     deleted: async (tx, ctx, businessId) => {
       const active = await activeInstanceOf(tx, ctx.tenantId, 'employment', businessId);
-      if (active) await cancel(tx, ctx, active.id);
+      if (active) await cancel(tx, withFields(ctx), active.id);
     },
   });
   registerPersonnelApprovalHooks({
     submitted: async (tx, ctx, requestId) => {
-      await startOrResume(tx, ctx, { businessType: 'personnel_change', businessId: requestId });
+      await startOrResume(tx, withFields(ctx), { businessType: 'personnel_change', businessId: requestId });
     },
   });
 }
@@ -291,14 +306,24 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 }
 
-/** 盲审与编辑都按查看人对业务对象的可查看字段判断；对象由业务快照决定（人员子集各有对象）。 */
-async function viewableFor(c: C, deps: TenantRouteDeps, taskId: string) {
+/** 任务所属业务对象（人员子集各有对象）：盲审与编辑都按查看人对该对象的字段权限判断。 */
+async function objectOfTask(c: C, deps: TenantRouteDeps, taskId: string) {
   const ctx = readCtx(c, deps);
-  const objectCode = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+  return withTenant(deps.db, ctx.tenantId, async (tx) => {
     const instance = await loadInstance(tx, ctx.tenantId, await instanceOfTask(tx, ctx.tenantId, taskId));
-    const snapshot = await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId);
-    return snapshot.fieldObjectCode;
+    return (await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId)).fieldObjectCode;
   });
+}
+
+/**
+ * 可查看字段 + 编辑权（清单 2）：带编辑内容时，编辑字段须是审批人当前可编辑的字段且对象编辑操作开启；
+ * 审批身份不能把只读字段变成可写（节点可编辑字段在命令内再取交集）。
+ */
+async function fieldRights(c: C, deps: TenantRouteDeps, taskId: string, edits: Record<string, unknown> | undefined) {
+  const ctx = readCtx(c, deps);
+  const objectCode = await objectOfTask(c, deps, taskId);
+  if (edits && Object.keys(edits).length)
+    await requireObjectWrite(deps.authorize, ctx, { objectCode, operation: 'update', payload: edits });
   return getModuleViewableFields(deps, ctx, objectCode);
 }
 
@@ -315,7 +340,7 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const ctx = writeCtx(c, deps);
       const taskId = uuidParam(c);
       const input = await parseBody(c, decision);
-      const viewable = await viewableFor(c, deps, taskId);
+      const viewable = await fieldRights(c, deps, taskId, input.fields);
       const request = { taskId, comment: input.comment ?? null, ...(input.fields ? { fields: input.fields } : {}) };
       const result = await command(c, deps, ctx, request, (tx, context) => act(tx, context, request, viewable));
       return respondOutcome(c, deps, result);
@@ -338,7 +363,7 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = writeCtx(c, deps);
     const taskId = uuidParam(c);
     const input = await parseBody(c, z.strictObject({ fields }));
-    const viewable = await viewableFor(c, deps, taskId);
+    const viewable = await fieldRights(c, deps, taskId, input.fields);
     const request = { taskId, fields: input.fields };
     const result = await command(c, deps, ctx, request, (tx, context) => editTask(tx, context, request, viewable));
     return respondOutcome(c, deps, result);

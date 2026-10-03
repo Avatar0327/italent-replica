@@ -6,6 +6,7 @@ import type { ApprovalTypeDefinition, ProcessDefinition } from './types.js';
 
 export const MAX_NODES = 50;
 const NODE_KEY = /^[a-z][a-z0-9_]{0,39}$/;
+const CUSTOM_FIELD = /^custom:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export interface DefinitionViolation {
   readonly reason: string;
@@ -22,7 +23,10 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
     if (!NODE_KEY.test(node.key) || keys.has(node.key)) violations.push(`节点编码 ${node.key} 不合法或重复`);
     keys.add(node.key);
     if (!node.name.trim()) violations.push(`节点 ${node.key} 名称不能为空`);
-    const unknown = node.formFields.filter((field) => !formFields.has(field));
+    // 任职类审批的节点表单可配置租户自定义任职字段（权限编码 custom:<id>，清单 3）。
+    const known = (field: string) =>
+      formFields.has(field) || (type.adapter === 'employment' && CUSTOM_FIELD.test(field));
+    const unknown = node.formFields.filter((field) => !known(field));
     if (unknown.length) violations.push(`节点 ${node.key} 表单字段不在对象目录内：${unknown.join('、')}`);
     const notOnForm = node.editableFields.filter((field) => !node.formFields.includes(field));
     if (notOnForm.length) violations.push(`节点 ${node.key} 可编辑字段必须在节点表单上：${notOnForm.join('、')}`);

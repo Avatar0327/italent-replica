@@ -21,8 +21,9 @@ describe('AC-PRM-29 审批人最小披露', () => {
     const w = await approvalWorld(db, 'apv-disclosure');
     const s = await transferScene(w);
     const world = await permissionAdmin(w);
-    // B = 调入部门负责人：能看 部门、地点、备注 字段，但没有任何数据范围。
-    await grantVisibleFields(world, s.inHead.userId, ['id', 'departmentId', 'place', 'remarks']);
+    // B = 调入部门负责人：能看 部门、生效日期、地点、备注 字段，但没有任何数据范围。
+    // 业务日期是本单新内容，看不到即为盲审（PR #35 第二轮清单 3）。
+    await grantVisibleFields(world, s.inHead.userId, ['id', 'departmentId', 'effectiveDate', 'place', 'remarks']);
     await w.publishedProcess({
       nodes: [
         { key: 'in_head', approver: 'record_department_head', formFields: ['departmentId', 'levelId', 'place'] },

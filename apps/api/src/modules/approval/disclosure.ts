@@ -86,19 +86,19 @@ function pick(source: Readonly<Row>, fields: readonly string[]): Row {
   );
 }
 
-function actionsFor(data: DetailData, userId: string): string[] {
+function actionsFor(data: DetailData, userId: string, blind: boolean): string[] {
   const { instance, version } = data;
   const actions: string[] = [];
   const running = instance.status === 'running';
   const mine = data.tasks.find((task) => task.status === 'pending' && task.assigneeUserId === userId);
   const node = version.nodes.find((candidate) => candidate.key === (mine?.nodeKey ?? instance.currentNodeKey));
-  // DEC-058：发起人或异动本人即使落到其名下（如恰为异常管理员）也只能转交。
-  const self = userId === instance.initiatorUserId || userId === data.subjectUserId;
+  // DEC-058：发起人或异动本人不能审批；看不到本单变化字段的人（盲审，C-非4）也不显示同意 / 驳回，只能转交。
+  const decide = !(userId === instance.initiatorUserId || userId === data.subjectUserId) && !blind;
   if (running && mine && node) {
-    if (!self) actions.push('approve', 'reject');
+    if (decide) actions.push('approve', 'reject');
     if (node.actions.transfer || mine.isExceptionAdmin) actions.push('transfer');
-    if (!self && node.actions.addSign) actions.push('addSign');
-    if (!self && node.editMode === 'separate') actions.push('edit');
+    if (decide && node.actions.addSign) actions.push('addSign');
+    if (decide && node.editMode === 'separate') actions.push('edit');
   }
   if (instance.initiatorUserId === userId && ['running', 'returned'].includes(instance.status)) {
     actions.push('withdraw');
@@ -132,10 +132,17 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
     createdAt: instance.createdAt,
     completedAt: instance.completedAt,
     tasks: data.tasks.map((task) => ({ ...task, nodeName: names.get(task.nodeKey) ?? task.nodeKey })),
-    logs: data.logs,
+    logs: data.logs.map((log) => projectLog(log, viewable)),
     form: { nodeKey: node?.key ?? null, values: pick(snapshot.values, fields), ...originals },
-    actions: [...new Set(actionsFor(data, userId))],
+    actions: [...new Set(actionsFor(data, userId, blindFields(snapshot, viewable).length > 0))],
   };
+}
+
+/** X-13：日志里的字段名（盲审、编辑）按查看人当前字段权限投影；完整信息只留在内部审计。 */
+function projectLog<T extends { detail: Row }>(log: T, viewable: ReadonlySet<string> | undefined): T {
+  const fields = log.detail.fields;
+  if (viewable === undefined || !Array.isArray(fields)) return log;
+  return { ...log, detail: { ...log.detail, fields: fields.filter((field) => viewable.has(String(field))) } };
 }
 
 export type InstanceView = ReturnType<typeof detailView>;
