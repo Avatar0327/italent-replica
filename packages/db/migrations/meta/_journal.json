@@ -127,6 +127,20 @@
       "when": 1790952790715,
       "tag": "0017_permission_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790954377533,
+      "tag": "0018_condemned_cargill",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790954390600,
+      "tag": "0019_data_scope_rls",
+      "breakpoints": true
     }
   ]
 }

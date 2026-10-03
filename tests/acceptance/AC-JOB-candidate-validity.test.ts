@@ -17,7 +17,12 @@ describe('AC-JOB-01 候选与保存使用相同的引用有效期', () => {
     expect(disabled.status).toBe(200);
     const response = await session.request('GET', `/candidates/levels?postId=${post.id}`);
     expect(response.status).toBe(200);
-    expect((await response.json()) as { items: unknown[] }).toEqual({ items: [], page: 1, pageSize: 50 });
+    expect((await response.json()) as { items: unknown[] }).toEqual({
+      items: [],
+      page: 1,
+      pageSize: 50,
+      hasDataPermission: true,
+    });
     const grades = await session.request('GET', `/candidates/grades?postId=${post.id}&levelId=${level.id}`);
     expect(grades.status).toBe(400);
   });

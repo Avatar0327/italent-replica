@@ -1,5 +1,6 @@
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
+import { requireScopedEmploymentObject, requireEmploymentWrite } from './context.js';
 import { AppError } from '../../errors.js';
 import { getCustomFieldsForInheritance } from './configuration.js';
 import { findCurrentRecord, loadEmploymentRecord } from './read-model.js';
@@ -39,6 +40,24 @@ export interface ForwardPlan {
   readonly skipped: { readonly businessId?: string; readonly reason: string; readonly fields?: string[] }[];
 }
 const TARGET_LIMIT = 1000;
+
+async function requireLinkedScope(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  departmentId: string | null,
+  businessId: string,
+): Promise<void> {
+  try {
+    await requireScopedEmploymentObject(tx, ctx, employeeId, departmentId, businessId);
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') {
+      // TODO(需取证 Q-M0-33): 原站联动越权提示及引导文案待取证。
+      throw new AppError('LINKED_RECORD_OUT_OF_SCOPE', '联动记录不在当前数据范围，请由覆盖该范围的人员操作');
+    }
+    throw error;
+  }
+}
 
 /** 候选查询只访问已锁定员工的周期；超预算整体拒绝，绝不静默截断。 */
 async function candidates(tx: Tx, ctx: EmploymentContext, source: ForwardSource): Promise<ForwardTarget[]> {
@@ -104,6 +123,14 @@ export async function forwardUpdateEmployment(
       target.values,
       custom.map((field) => field.id),
     );
+    if (changes.length)
+      await requireLinkedScope(
+        tx,
+        ctx,
+        source.employeeId,
+        target.values.fields.departmentId,
+        target.payload.businessId,
+      );
     const available = await availableForwardChanges(tx, ctx, changes, target.payload.effectiveDate, cache);
     if (available.skipped.length)
       plan.skipped.push({
@@ -112,6 +139,14 @@ export async function forwardUpdateEmployment(
         fields: available.skipped,
       });
     if (!available.accepted.length) continue;
+    const nextValues = applyForwardChanges(target.values, available.accepted);
+    await requireLinkedScope(tx, ctx, source.employeeId, nextValues.fields.departmentId, target.payload.businessId);
+    if (!dryRun)
+      await requireEmploymentWrite(
+        ctx,
+        'update',
+        Object.fromEntries(available.accepted.map((change) => [change.field.replace(/^preset:/, ''), change.after])),
+      );
     plan.changes.push({
       businessId: target.payload.businessId,
       staffId: source.staffId,

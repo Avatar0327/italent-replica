@@ -1,6 +1,7 @@
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
+import { employmentScopePredicate, employmentCreator } from './context.js';
 import {
   PRESET_FIELD_NAMES,
   type PresetFields,
@@ -11,6 +12,7 @@ import {
   type EmploymentState,
   type BusinessKind,
   type FormId,
+  type EmploymentScope,
 } from './types.js';
 
 export function rowsOf<T>(value: unknown): T[] {
@@ -55,7 +57,15 @@ function record(row: Record<string, unknown>): EmploymentRecord {
   };
 }
 
-function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: PageQuery): SQL {
+function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: PageQuery, scope?: EmploymentScope): SQL {
+  const department = sql`(CASE WHEN current_payload.body IS NULL THEN r.department_id::text
+    ELSE current_payload.body->>'department_id' END)::uuid`;
+  const scopeFilter = employmentScopePredicate(
+    scope,
+    sql`r.employee_id`,
+    department,
+    employmentCreator(tenantId, sql`r.id`, true),
+  );
   return sql`
     SELECT r.*,b.revision,current_payload.body AS current_payload,
       CASE WHEN upper_inf(t.valid_during) THEN '9999-12-31' ELSE (upper(t.valid_during)-1)::text END AS stop_date,
@@ -87,6 +97,7 @@ function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: Pag
       ORDER BY pt.start_date DESC,pt.sort_order DESC LIMIT 1
     ) previous ON true
     WHERE r.tenant_id=${tenantId} AND ${predicates}
+      AND ${scopeFilter}
     ORDER BY r.start_date ASC,t.sort_order ASC,r.id LIMIT ${page.limit} OFFSET ${page.offset}
   `;
 }
@@ -108,16 +119,23 @@ export async function listEmploymentRecords(
   employeeId: string,
   asOf: string,
   page: PageQuery,
+  scope?: EmploymentScope,
 ) {
   checkPage(page);
   return rowsOf<Record<string, unknown>>(
-    await tx.execute(recordsQuery(tenantId, asOf, sql`r.employee_id=${employeeId}`, page)),
+    await tx.execute(recordsQuery(tenantId, asOf, sql`r.employee_id=${employeeId}`, page, scope)),
   ).map(record);
 }
 
-export async function loadEmploymentRecord(tx: Tx, tenantId: string, id: string, asOf: string) {
+export async function loadEmploymentRecord(
+  tx: Tx,
+  tenantId: string,
+  id: string,
+  asOf: string,
+  scope?: EmploymentScope,
+) {
   const [row] = rowsOf<Record<string, unknown>>(
-    await tx.execute(recordsQuery(tenantId, asOf, sql`r.id=${id}`, { limit: 1, offset: 0 })),
+    await tx.execute(recordsQuery(tenantId, asOf, sql`r.id=${id}`, { limit: 1, offset: 0 }, scope)),
   );
   return row ? record(row) : null;
 }
@@ -159,7 +177,15 @@ export async function loadEmploymentBusiness(
   tenantId: string,
   id: string,
   asOf: string,
+  scope?: EmploymentScope,
 ): Promise<EmploymentBusiness | null> {
+  const department = sql`CASE WHEN p.is_record_snapshot OR r.id IS NULL THEN p.department_id ELSE r.department_id END`;
+  const scopeFilter = employmentScopePredicate(
+    scope,
+    sql`b.employee_id`,
+    department,
+    employmentCreator(tenantId, sql`b.id`, true),
+  );
   const [row] = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`
     SELECT b.id,b.employee_id,b.revision,e.revision AS employee_revision,p.*,s.state
@@ -167,13 +193,15 @@ export async function loadEmploymentBusiness(
     JOIN employment_employees e ON e.tenant_id=b.tenant_id AND e.id=b.employee_id
     JOIN LATERAL (SELECT p.* FROM employment_payload_versions p
       WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY p.version_no DESC LIMIT 1) p ON true
+    LEFT JOIN employment_records r ON r.tenant_id=b.tenant_id AND r.id=b.id
     JOIN LATERAL (SELECT s.state FROM employment_state_events s
       WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
-    WHERE b.tenant_id=${tenantId} AND b.id=${id} LIMIT 1
+    WHERE b.tenant_id=${tenantId} AND b.id=${id}
+      AND ${scopeFilter} LIMIT 1
   `),
   );
   if (!row) return null;
-  const effectiveRecord = await loadEmploymentRecord(tx, tenantId, id, asOf);
+  const effectiveRecord = await loadEmploymentRecord(tx, tenantId, id, asOf, scope);
   return {
     id,
     employeeId: String(row.employee_id),

@@ -2,6 +2,7 @@ import {
   and,
   auditEvents,
   eq,
+  inArray,
   orgCodeReservations,
   orgImportMappings,
   orgImportResults,
@@ -43,7 +44,12 @@ interface ImportSnapshot {
 }
 
 /** DEC-060：按导入开始时的编码占用判冲突，不能由前一行改码为后一行腾出覆盖机会。 */
-export async function importOrganizations(tx: Tx, ctx: OrgWriteContext, rows: readonly OrgImportRow[]) {
+export async function importOrganizations(
+  tx: Tx,
+  ctx: OrgWriteContext,
+  rows: readonly OrgImportRow[],
+  authorizeRow?: (row: OrgImportRow, targetId: string | undefined, rowIndex: number) => Promise<void>,
+) {
   assertBatch(rows);
   await ensureOrgSetup(tx, ctx);
   const snapshot = await importSnapshot(tx, ctx);
@@ -53,6 +59,7 @@ export async function importOrganizations(tx: Tx, ctx: OrgWriteContext, rows: re
   const results: OrgImportReceipt[] = [];
   for (const [rowIndex, row] of rows.entries()) {
     const targetId = snapshot.mappings.get(row.sourceCode) ?? row.orgId;
+    await authorizeRow?.(row, targetId, rowIndex);
     const reason = preflightConflict(row, targetId, snapshot, seenSources, seenCodes);
     seenSources.add(row.sourceCode);
     seenCodes.add(row.code);
@@ -223,4 +230,27 @@ async function saveReceipt(tx: Tx, ctx: OrgWriteContext, rowIndex: number, resul
     before: null,
     after: { rowIndex, ...result },
   });
+}
+
+export async function authorizeOrgImportRows(
+  tx: Tx,
+  ctx: OrgWriteContext,
+  rows: readonly OrgImportRow[],
+  authorize: (row: OrgImportRow, targetId: string | undefined) => Promise<void>,
+) {
+  const mappings = await tx
+    .select()
+    .from(orgImportMappings)
+    .where(
+      and(
+        eq(orgImportMappings.tenantId, ctx.tenantId),
+        inArray(
+          orgImportMappings.sourceCode,
+          rows.map((row) => row.sourceCode),
+        ),
+      ),
+    )
+    .limit(100);
+  const targets = new Map(mappings.map((row) => [row.sourceCode, row.orgId]));
+  for (const row of rows) await authorize(row, targets.get(row.sourceCode) ?? row.orgId);
 }

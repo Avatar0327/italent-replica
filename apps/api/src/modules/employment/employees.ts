@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
-import { assertRevision, auditEmployment } from './context.js';
+import { assertRevision, auditEmployment, employmentScopePredicate, employmentCreator } from './context.js';
 import { businessDate } from './fields.js';
 import { checkPage, rowsOf } from './read-model.js';
-import type { EmploymentContext, PageQuery } from './types.js';
+import type { EmploymentContext, EmploymentScope, PageQuery } from './types.js';
 
 export type EmployeeStatus = 'pending' | 'employed' | 'left' | 'retired';
 export interface Employee {
@@ -45,8 +45,14 @@ export async function createEmployee(tx: Tx, ctx: EmploymentContext, input: { co
   return after;
 }
 
-function employeeQuery(tenantId: string, asOf: string) {
+function employeeQuery(tenantId: string, asOf: string, scope?: EmploymentScope) {
   businessDate(asOf);
+  const predicate = employmentScopePredicate(
+    scope,
+    sql`e.id`,
+    sql`r.department_id`,
+    employmentCreator(tenantId, sql`e.id`),
+  );
   return sql`
     SELECT e.id,e.code,e.name,e.revision,
       CASE WHEN r.id IS NULL THEN 'pending' WHEN r.kind='leave' THEN 'left'
@@ -55,13 +61,19 @@ function employeeQuery(tenantId: string, asOf: string) {
     LEFT JOIN employment_timeline t ON t.tenant_id=e.tenant_id AND t.employee_id=e.id
       AND t.valid_during @> ${asOf}::date
     LEFT JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-    WHERE e.tenant_id=${tenantId}
+    WHERE e.tenant_id=${tenantId} AND ${predicate}
   `;
 }
 
-export async function getEmployee(tx: Tx, tenantId: string, id: string, asOf: string): Promise<Employee> {
+export async function getEmployee(
+  tx: Tx,
+  tenantId: string,
+  id: string,
+  asOf: string,
+  scope?: EmploymentScope,
+): Promise<Employee> {
   if (!z.string().uuid().safeParse(id).success) throw new AppError('NOT_FOUND', '员工不存在');
-  const [row] = rowsOf<Employee>(await tx.execute(sql`${employeeQuery(tenantId, asOf)} AND e.id=${id} LIMIT 1`));
+  const [row] = rowsOf<Employee>(await tx.execute(sql`${employeeQuery(tenantId, asOf, scope)} AND e.id=${id} LIMIT 1`));
   if (!row) throw new AppError('NOT_FOUND', '员工不存在');
   return row;
 }
@@ -72,6 +84,7 @@ export async function listEmployees(
   asOf: string,
   page: PageQuery,
   filters: { status?: EmployeeStatus; code?: string; name?: string } = {},
+  scope?: EmploymentScope,
 ): Promise<Employee[]> {
   checkPage(page);
   if (filters.status && !['pending', 'employed', 'left', 'retired'].includes(filters.status)) {
@@ -79,7 +92,7 @@ export async function listEmployees(
   }
   return rowsOf<Employee>(
     await tx.execute(sql`
-    SELECT * FROM (${employeeQuery(tenantId, asOf)}) employee WHERE true
+    SELECT * FROM (${employeeQuery(tenantId, asOf, scope)}) employee WHERE true
       ${filters.status ? sql`AND status=${filters.status}` : sql``}
       ${filters.code ? sql`AND lower(code)=lower(${filters.code})` : sql``}
       ${filters.name ? sql`AND name ILIKE ${`%${filters.name}%`}` : sql``}

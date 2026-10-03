@@ -17,6 +17,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import { type TenantContext, type TenantEnv, tenantOf } from '../../tenant-context.js';
 import { createAdmin, getAdmin, listAdmins, updateAdmin } from './admins.js';
 import type { WriteContext } from './audit.js';
+import { registerDataScopeRoutes } from './data-scope-routes.js';
 import { objectCatalog } from './catalog.js';
 import { createGrant, grantableProfiles, listGrants, revokeGrant } from './grants.js';
 import { etag, idParam, ifMatch, objectCodeParam, parseBody } from './http.js';
@@ -45,6 +46,7 @@ export const PERMISSION_BODY_LIMITS: readonly BodyLimitOverride[] = [
 type Router = Hono<TenantEnv>;
 
 export function registerPermissionRoutes(router: Router, deps: TenantRouteDeps): void {
+  registerDataScopeRoutes(router, deps);
   profileRoutes(router, deps);
   grantRoutes(router, deps);
   adminRoutes(router, deps);
@@ -113,6 +115,7 @@ function grantRoutes(router: Router, deps: TenantRouteDeps): void {
   router.post(`${BASE}/grants`, async (c) => {
     const ctx = await guard(c, deps, 'user_grant');
     const body = await parseBody(c, grantBody);
+    if (body.scopes?.length) await requirePermission(deps.authorize, { ...ctx, action: 'admin.other_settings' });
     const result = await command(c, deps, ctx, { op: 'grant.create', body }, (tx, w) => createGrant(tx, w, body), 201);
     return c.json(result.body, 201);
   });

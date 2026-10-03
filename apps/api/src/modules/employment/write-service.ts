@@ -3,7 +3,7 @@ import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
-import { auditEmployment } from './context.js';
+import { auditEmployment, requireScopedEmploymentObject } from './context.js';
 import { EmploymentError } from './errors.js';
 import { forwardUpdateEmployment } from './forward-update.js';
 import type { ForwardValues } from './forward-rules.js';
@@ -84,6 +84,7 @@ export async function createEmploymentBusiness(
     employeeId: employee.id,
     staffId: selected?.cycle.id,
   });
+  await requireScopedEmploymentObject(tx, ctx, employee.id, prepared.fields.departmentId);
   await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate);
   const id = randomUUID();
   await insertEmploymentRow(tx, 'employment_business_objects', {
@@ -152,6 +153,7 @@ export async function updateEmploymentBusiness(
     { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
     before,
   );
+  await requireScopedEmploymentObject(tx, ctx, business.employeeId, prepared.fields.departmentId, business.id);
   await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate);
   await bumpEmploymentBusiness(tx, ctx, business);
   business.payload = await appendEmploymentPayload(
@@ -395,6 +397,7 @@ export async function materializeEmploymentRecord(
   });
   const employType = effectiveEmployType(payload, selected);
   const fields = { ...inherited.fields, employType, jobNumber: business.employee.code };
+  await requireScopedEmploymentObject(tx, ctx, business.employeeId, fields.departmentId);
   await validateEmploymentReferences(tx, ctx, fields, payload.effectiveDate);
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, payload.kind);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });

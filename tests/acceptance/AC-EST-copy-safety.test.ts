@@ -62,7 +62,8 @@ describe('AC-EST 复制成功幂等与审计失败整批回滚', () => {
       user: other.id,
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ items: [] });
+    // D-003：保留接收人隔离断言，并明确有范围但没有通知。
+    expect(await response.json()).toEqual({ items: [], hasDataPermission: true });
   });
 
   it('审计存储拒绝写入时目标编制和任务状态均回滚，恢复后可按原revision执行', async () => {

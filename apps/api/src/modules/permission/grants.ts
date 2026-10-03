@@ -17,6 +17,8 @@ import {
 import { AppError } from '../../errors.js';
 import { grantableSetsOf } from './admins.js';
 import { audit, type WriteContext } from './audit.js';
+import { applyGrantScopes } from './data-scope-admin.js';
+import type { GrantScopeInput } from './data-scope-schemas.js';
 import { revisionConflict } from './http.js';
 import { consumeSeat } from './licenses.js';
 import { assertActiveMember } from './members.js';
@@ -56,11 +58,12 @@ export async function grantableProfiles(
 export async function createGrant(
   tx: Tx,
   write: WriteContext,
-  input: { readonly userId: string; readonly profileId: string },
+  input: { readonly userId: string; readonly profileId: string; readonly scopes?: readonly GrantScopeInput[] },
 ): Promise<GrantView> {
   await assertGrantable(tx, write.userId, input.profileId);
   await assertActiveMember(tx, input.userId);
   const profile = await loadProfile(tx, input.profileId);
+  if (input.scopes?.length) await applyGrantScopes(tx, write, input.userId, input.profileId, input.scopes);
 
   let row: PermissionGrant | undefined;
   try {
@@ -68,7 +71,8 @@ export async function createGrant(
       .insert(permissionGrants)
       .values({
         tenantId: write.tenantId,
-        ...input,
+        userId: input.userId,
+        profileId: input.profileId,
         grantedBy: write.userId,
         createdAt: write.now,
         updatedAt: write.now,

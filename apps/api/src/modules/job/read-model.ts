@@ -1,6 +1,8 @@
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
+import { creatorSql } from '../permission/scope-audit.js';
+import { scopeSql } from '../permission/module-access.js';
 import { jobTables, type JobKind } from './metadata.js';
 
 export interface PositionParent {
@@ -133,6 +135,7 @@ export async function latestJobObject(
 }
 
 export interface JobListQuery {
+  readonly scope?: Parameters<typeof scopeSql>[0];
   readonly asOf: string;
   readonly name?: string;
   readonly orgId?: string;
@@ -144,6 +147,13 @@ export interface JobListQuery {
 export async function listJobObjects(tx: Tx, tenantId: string, kind: JobKind, query: JobListQuery) {
   checkPage(query.limit, query.offset);
   const predicates = [sql`v.stop_date >= ${query.asOf}::date`];
+  if (query.scope)
+    predicates.push(
+      scopeSql(query.scope, {
+        ...(kind === 'positions' ? { org: sql`v.org_id` } : {}),
+        creator: creatorSql(tenantId, sql`v.object_id`, 'job.create', kind),
+      }),
+    );
   if (query.enabled !== undefined) predicates.push(sql`v.enabled = ${query.enabled}`);
   if (query.name !== undefined) predicates.push(sql`v.name = ${query.name}`);
   if (query.orgId !== undefined) {
@@ -169,6 +179,7 @@ function checkPage(limit: number, offset: number): void {
 }
 
 export interface CandidateQuery {
+  readonly scope?: Parameters<typeof scopeSql>[0];
   readonly postId: string;
   readonly levelId?: string;
   readonly asOf: string;
@@ -184,6 +195,8 @@ export async function jobCandidates(
 ): Promise<JobRecord[]> {
   const post = await requiredObject(tx, tenantId, 'posts', query.postId, query.asOf);
   const predicates = [sql`v.enabled`, sql`v.stop_date >= ${query.asOf}::date`];
+  if (query.scope)
+    predicates.push(scopeSql(query.scope, { creator: creatorSql(tenantId, sql`v.object_id`, 'job.create', kind) }));
   if (post.levelTypeId) {
     await requiredObject(tx, tenantId, 'level-types', post.levelTypeId, query.asOf);
     if (kind === 'levels') predicates.push(sql`v.level_type_id = ${post.levelTypeId}::uuid`);

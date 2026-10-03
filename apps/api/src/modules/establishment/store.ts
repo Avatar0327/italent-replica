@@ -18,6 +18,16 @@ export interface EstablishmentContext {
   readonly now: Date;
   readonly commandId: string;
   readonly expectedRevision: number;
+  readonly authorizeCapacity?: (
+    tx: Tx,
+    change: {
+      readonly operation: 'create' | 'update';
+      readonly id?: string;
+      readonly orgId: string;
+      readonly payload: Readonly<Record<string, unknown>>;
+      readonly linked?: boolean;
+    },
+  ) => Promise<void>;
 }
 
 /** 容量、方案、占编和复制共用租户锁，避免“分别合法、合起来超编”的并发写入。 */

@@ -14,10 +14,12 @@ describe('AC-JOB 路由装配与只读校验权限', () => {
     expect(source).not.toContain("await import('./modules/job/register.js')");
   });
 
-  it('validate-assignment 只要求职务体系读权限', async () => {
+  it('validate-assignment 按 DEC-080 校验查看、按钮与范围，不要求写权限', async () => {
     const { db } = testDb();
     const session = await orgSession(db, 'job-validation-read');
-    const authorize = vi.fn((request: { action: string }) => request.action === 'tenant.job.read');
+    const authorize = vi.fn((request: { action: string }) =>
+      ['object.view', 'object.button', 'data.scope.all'].includes(request.action),
+    );
     const response = await tenantApi(db, { authorize }).request('POST', '/api/tenant/job/validate-assignment', {
       tenant: session.tenant.id,
       user: session.user.id,
@@ -28,9 +30,14 @@ describe('AC-JOB 路由装配与只读校验权限', () => {
       expect.objectContaining({
         userId: session.user.id,
         tenantId: session.tenant.id,
-        action: 'tenant.job.read',
+        action: 'object.view',
+        resource: 'TenantBase.JobPost',
       }),
     );
-    expect(authorize).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'tenant.job.write' }));
+    expect(authorize).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'object.button', resource: 'TenantBase.JobPost#validate@detail' }),
+    );
+    expect(authorize).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'object.update' }));
+    expect(authorize).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'object.create' }));
   });
 });

@@ -60,8 +60,9 @@ export function decide(subject: PermissionSubject, query: PermissionQuery, catal
   if (mapped === undefined) return false;
   if (mapped.kind === 'admin') return decideAdmin(subject, mapped.capability);
   const resolved = resolveObjectPermission(mapped.objectCode, subject.objectPermissions, catalog);
-  // 模块路由尚未传字段时只能按对象级判定（见 module-actions.ts）；传了就逐字段校验
-  return allows(resolved, mapped.operation, query.fields ?? []);
+  // DEC-080：模块别名同样不能以缺失字段集绕过写入校验。
+  const fields = mapped.operation === 'create' || mapped.operation === 'update' ? query.fields : [];
+  return fields !== undefined && allows(resolved, mapped.operation, fields);
 }
 
 function allows(resolved: ResolvedObjectPermission | undefined, op: ObjectOperation, fields: readonly string[]) {

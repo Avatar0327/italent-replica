@@ -1,10 +1,12 @@
 /** 当前用户对某对象的有效功能权限（多身份并集，DEC-042；只认登记了对象所属应用的身份）；前台据此显示按钮、列与字段。 */
 import type { Tx } from '@italent/db';
 import { executableButtons, type ObjectCatalog, resolveObjectPermission } from '@italent/domain';
+import { tenantObjectCatalog } from './tenant-catalog.js';
 import { AppError } from '../../errors.js';
 import { loadGrantedObjectPermissions } from './subject.js';
 
 export async function myObjectPermission(tx: Tx, userId: string, objectCode: string, catalog: ObjectCatalog) {
+  catalog = await tenantObjectCatalog(tx, catalog, objectCode);
   if (!catalog.get(objectCode)) throw new AppError('NOT_FOUND', '对象不存在');
   const resolved = resolveObjectPermission(
     objectCode,

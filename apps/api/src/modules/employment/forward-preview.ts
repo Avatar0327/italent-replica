@@ -1,4 +1,5 @@
 import type { Tx } from '@italent/db';
+import { requireEmploymentScope } from './context.js';
 import { emptyPresetFields, type EmploymentBusinessInput, type EmploymentContext } from './types.js';
 import { normalizeEmploymentInput } from './fields.js';
 import { prepareInheritance, resolveEffectiveInheritance } from './inheritance.js';
@@ -22,6 +23,9 @@ export async function previewEmploymentForwardUpdate(
 ) {
   const normalized = normalizeEmploymentInput(ctx, input);
   const employee = await readEmploymentEmployee(tx, ctx, employeeId);
+  requireEmploymentScope(ctx, employeeId);
+  if (normalized.fields.departmentId !== undefined)
+    requireEmploymentScope(ctx, employeeId, normalized.fields.departmentId);
   if (NEW_CYCLE_KINDS.includes(normalized.kind))
     return { employeeRevision: employee.revision, changes: [], skipped: [] };
   const selected = await selectEmploymentCycle(tx, ctx, employeeId, normalized);
@@ -31,6 +35,7 @@ export async function previewEmploymentForwardUpdate(
     predecessor: selected.predecessor,
   });
   const after = { ...resolved, fields: { ...resolved.fields, jobNumber: employee.code } };
+  requireEmploymentScope(ctx, employeeId, after.fields.departmentId);
   await validateEmploymentReferences(tx, ctx, after.fields, normalized.effectiveDate);
   const plan = await forwardUpdateEmployment(
     tx,
@@ -62,7 +67,7 @@ export async function previewEmploymentEditForwardUpdate(
   input: EmploymentBusinessPatch,
 ) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  const record = await loadEmploymentRecord(tx, ctx.tenantId, id, today);
+  const record = await loadEmploymentRecord(tx, ctx.tenantId, id, today, ctx.scope);
   if (!record) throw new AppError('CONFLICT', '只能预览有效任职记录的编辑');
   const after = await editedValues(tx, ctx, record, input);
   await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate);

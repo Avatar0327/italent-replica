@@ -1,3 +1,5 @@
+import type { Authorizer } from '../../authorization.js';
+import type { resolveModuleScope } from '../permission/module-access.js';
 export const BUSINESS_KINDS = [
   'hire',
   'rehire',
@@ -73,7 +75,15 @@ export function emptyPresetFields(): PresetFields {
   return Object.fromEntries(PRESET_FIELD_NAMES.map((field) => [field, null])) as unknown as PresetFields;
 }
 
+export type EmploymentScope = Awaited<ReturnType<typeof resolveModuleScope>>;
+
 export interface EmploymentContext {
+  readonly scope?: EmploymentScope;
+  readonly scopeEmployeeId?: string;
+  readonly scopeEmployeeCreatorId?: string | null;
+  readonly authorize?: Authorizer;
+  readonly objectCode?: string;
+  readonly trustedScopeBypass?: boolean;
   readonly tenantId: string;
   readonly userId: string;
   readonly timezone: string;

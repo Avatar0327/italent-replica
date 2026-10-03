@@ -1,22 +1,55 @@
-/**
- * 真实授权器（替换 R1-T00 的“R1-T01 接入”钩子）：每次请求按用户在当前租户的管理员身份与业务身份判定，
- * 默认拒绝（fail-closed）。只判定功能权限；数据范围由 R1-T02 判定（DEC-043）。
- */
-import { type Db, withTenant } from '@italent/db';
-import { decide, MODULE_ACTIONS, type ObjectCatalog } from '@italent/domain';
+/** Real functional authorizer plus its data-scope/field provider (DEC-080). No implicit admin data bypass. */
+import { type Db, type Tx, withTenant } from '@italent/db';
+import { decide, MODULE_ACTIONS, MODULE_OBJECTS, type ObjectCatalog, resolveObjectPermission } from '@italent/domain';
 import type { Authorizer } from '../../authorization.js';
 import { objectCatalog } from './catalog.js';
+import { registerScopeProvider } from './module-access.js';
+import { resolveDataScope } from './scope-resolver.js';
 import { loadSubject } from './subject.js';
+import { tenantObjectCatalog } from './tenant-catalog.js';
 
+const CONFIG_OBJECTS = new Set<string>([
+  MODULE_OBJECTS.employmentSettings.code,
+  MODULE_OBJECTS.employmentCustomField.code,
+]);
 export function createPermissionAuthorizer(db: Db, catalog: ObjectCatalog = objectCatalog): Authorizer {
-  return async (request) => {
+  const evaluate = async (request: Parameters<Authorizer>[0], tx: Tx): Promise<boolean> => {
     const objectCode = objectOf(request.action, request.resource);
-    const subject = await withTenant(db, request.tenantId, (tx) => loadSubject(tx, request.userId, objectCode));
-    return decide(subject, request, catalog);
+    const subject = await loadSubject(tx, request.userId, objectCode);
+    const currentCatalog = await tenantObjectCatalog(tx, catalog, objectCode);
+    if (objectCode && CONFIG_OBJECTS.has(objectCode)) {
+      if (!decide(subject, { action: 'admin.other_settings' }, currentCatalog)) return false;
+      if (request.action === 'object.view') return true;
+      if (!['object.create', 'object.update'].includes(request.action) || !request.fields) return false;
+      const writable = new Set(
+        currentCatalog
+          .get(objectCode)
+          ?.fields.filter((f) => !f.system)
+          .map((f) => f.code),
+      );
+      return request.fields.every((field) => writable.has(field));
+    }
+    return decide(subject, request, currentCatalog);
   };
+  const authorize: Authorizer = (request) => withTenant(db, request.tenantId, (tx) => evaluate(request, tx));
+  registerScopeProvider(authorize, {
+    authorize: evaluate,
+    scope: (query) => withTenant(db, query.tenantId, (tx) => resolveDataScope(tx, query)),
+    fields: (tenantId, userId, objectCode) =>
+      withTenant(db, tenantId, async (tx) => {
+        const subject = await loadSubject(tx, userId, objectCode);
+        const currentCatalog = await tenantObjectCatalog(tx, catalog, objectCode);
+        if (CONFIG_OBJECTS.has(objectCode) && decide(subject, { action: 'admin.other_settings' }, currentCatalog)) {
+          return new Set(currentCatalog.get(objectCode)?.fields.map((f) => f.code));
+        }
+        return (
+          resolveObjectPermission(objectCode, subject.objectPermissions, currentCatalog)?.effective.viewableFields ??
+          new Set()
+        );
+      }),
+  });
+  return authorize;
 }
-
-/** 只需加载该动作涉及的那个对象的权限；管理员能力与对象无关。 */
 function objectOf(action: string, resource: string | undefined): string | undefined {
   if (action.startsWith('object.')) return resource?.split('#')[0];
   const mapped = MODULE_ACTIONS[action];
