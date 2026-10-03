@@ -137,6 +137,28 @@ export const personnelEmployeeVersions = pgTable(
     check('personnel_employee_revision_positive', sql`${t.revision} > 0`),
   ],
 );
+export const personnelAttachments = pgTable(
+  'personnel_attachments',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employeeId: uuid('employee_id').notNull(),
+    purpose: text('purpose').notNull(),
+    filename: text('filename').notNull(),
+    contentType: text('content_type').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    sha256: text('sha256').notNull(),
+    status: text('status').notNull().default('registered'),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('personnel_attachments_tenant_id').on(t.tenantId, t.id),
+    employeeFk('personnel_attachments_employee_fk', t),
+    check('personnel_attachments_status', sql`${t.status} IN ('registered','uploaded','pending_cleanup')`),
+    check('personnel_attachments_size', sql`${t.byteSize} >= 0`),
+  ],
+);
 function educationFields() {
   return {
     educationLevel: text('education_level'),

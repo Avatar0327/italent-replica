@@ -6,7 +6,7 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery, revision, uuidParam } from '../job/context.js';
 import { access, preflight, trim } from './access.js';
 import { body, safe, write } from './http.js';
-import { listOptions, listSubsets, subsetDto, trimSubset } from './lists.js';
+import { listFieldVisibility, listOptions, listSubsets, subsetDto, trimSubset } from './lists.js';
 import { rows } from './store.js';
 import { loadSubset, saveSubset } from './subsets.js';
 import { subsetInput, subsetKind } from './validation.js';
@@ -23,11 +23,12 @@ export function registerSubsetRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
         if (employeeId) await preflight(deps, ctx, employeeId);
         const page = pageQuery(c);
         const options = await listOptions(c, deps, ctx);
+        const fields = await listFieldVisibility(deps, ctx);
         const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
           listSubsets(tx, ctx, kind, page, options, employeeId),
         );
         return c.json({
-          items: await Promise.all(items.map((row) => trimSubset(deps, ctx, row))),
+          items: items.map((row) => trimSubset(row, fields)),
           page: page.page,
           pageSize: page.pageSize,
           hasDataPermission: ctx.scope.hasDataPermission,

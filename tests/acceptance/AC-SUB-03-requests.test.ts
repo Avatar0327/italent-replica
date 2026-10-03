@@ -3,7 +3,51 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { personnelSession } from './AC-SUB-support.js';
+import { tenantApi } from './support/tenant-api.js';
 const database = useTestDb();
+
+it('DEC-085 本人自助权限不依赖管理范围，不能代他人、改清单外字段或直接写子集', async () => {
+  const db = database().db;
+  const s = await personnelSession(db, 'self-service-only');
+  const otherResponse = await s.api.request('POST', '/api/tenant/employment/employees', {
+    ...s.as,
+    ifMatch: 0,
+    body: { name: '另一员工', code: `OTHER_${randomUUID().replaceAll('-', '')}` },
+  });
+  const other = (await otherResponse.json()) as { id: string };
+  await withTenant(db, s.tenant.id, (tx) =>
+    tx.execute(sql`INSERT INTO permission_user_person_links
+      (tenant_id,user_id,employee_id) VALUES(${s.tenant.id},${s.user.id},${s.employee.id})`),
+  );
+  await s.api.request('PUT', '/api/tenant/settings/personnel.self_service_fields', {
+    ...s.as,
+    ifMatch: 0,
+    body: { value: { education: ['school'] } },
+  });
+  const api = tenantApi(db, {
+    authorize: ({ action, resource }) =>
+      action === 'object.button' && resource === 'TenantBase.PersonalInformationChange#self-service-submit@list',
+  });
+  const request = (body: object) =>
+    api.request('POST', '/api/tenant/personnel/change-requests', { ...s.as, ifMatch: 0, body });
+
+  expect(
+    (await request({ employeeId: s.employee.id, subset: 'education', values: { school: '自助大学' } })).status,
+  ).toBe(201);
+  expect((await request({ employeeId: other.id, subset: 'education', values: { school: '越权' } })).status).toBe(404);
+  expect((await request({ employeeId: s.employee.id, subset: 'education', values: { degree: '清单外' } })).status).toBe(
+    403,
+  );
+  expect(
+    (
+      await api.request('POST', `/api/tenant/personnel/employees/${s.employee.id}/subsets/education`, {
+        ...s.as,
+        ifMatch: 0,
+        body: { school: '直接写入' },
+      })
+    ).status,
+  ).toBe(403);
+});
 
 it('AC-SUB-03 自助申请先待审批，可信审批完成后来源为申请 ID，重复执行不重复写入', async () => {
   const db = database().db;
@@ -12,6 +56,15 @@ it('AC-SUB-03 自助申请先待审批，可信审批完成后来源为申请 ID
     tx.execute(sql`INSERT INTO permission_user_person_links
     (tenant_id,user_id,employee_id) VALUES(${s.tenant.id},${s.user.id},${s.employee.id})`),
   );
+  expect(
+    (
+      await s.api.request('PUT', '/api/tenant/settings/personnel.self_service_fields', {
+        ...s.as,
+        ifMatch: 0,
+        body: { value: { education: ['school', 'educationLevel'] } },
+      })
+    ).status,
+  ).toBe(200);
   const response = await s.request('POST', '/change-requests', {
     ifMatch: 0,
     body: { employeeId: s.employee.id, subset: 'education', values: { school: '申请大学', educationLevel: '硕士' } },
@@ -71,6 +124,15 @@ it('自助申请绑定本人；不同 patch 的同键请求冲突；目标版本
     tx.execute(sql`INSERT INTO permission_user_person_links
     (tenant_id,user_id,employee_id) VALUES(${s.tenant.id},${s.user.id},${s.employee.id})`),
   );
+  expect(
+    (
+      await s.api.request('PUT', '/api/tenant/settings/personnel.self_service_fields', {
+        ...s.as,
+        ifMatch: 0,
+        body: { value: { education: ['school'] } },
+      })
+    ).status,
+  ).toBe(200);
   const item = await s.add('education', { school: '原始值' });
   const body = { ...payload, recordId: item.id, targetRevision: item.revision };
   const key = randomUUID();

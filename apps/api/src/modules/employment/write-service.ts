@@ -1,4 +1,4 @@
-import { syncEmploymentHistory } from '../personnel/employment-sync.js';
+import { personnelHooks } from './personnel-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
@@ -445,7 +445,7 @@ export async function materializeEmploymentRecord(
       customFields: inherited.customFields,
     });
   }
-  await syncEmploymentHistory(tx, ctx, business.employeeId, business.id, payload.kind, payload.effectiveDate);
+  await personnelHooks.sync(tx, ctx, business.employeeId, business.id, payload.kind, payload.effectiveDate);
 }
 
 function effectiveEmployType(payload: EmploymentPayloadRow, selected?: SelectedEmploymentCycle): EmployType {

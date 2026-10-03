@@ -5,26 +5,34 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery, revision, uuidParam } from '../job/context.js';
 import { resolveModuleScope } from '../permission/module-access.js';
-import { access, preflight, trim, type AccessContext } from './access.js';
+import { getModuleViewableFields } from '../permission/module-access.js';
+import { access, preflight, trim, trimWithFields, type AccessContext } from './access.js';
 import { readEmployee, readTenure } from './employee-read.js';
 import { appendEmployee } from './employee-write.js';
 import { body, safe, write } from './http.js';
-import { listEmployees, listOptions, listSubsets, trimSubset } from './lists.js';
+import { listEmployees, listFieldVisibility, listOptions, listSubsets, trimSubset } from './lists.js';
 import { registerSubsetRoutes } from './subset-routes.js';
 import { registerChangeRequestRoutes } from './request-routes.js';
 import { camel, rows } from './store.js';
-import { dateValue, employeeInput } from './validation.js';
+import { dateValue, employeeInput, parse } from './validation.js';
+import { registerPersonnelHooks } from '../employment/personnel-hooks.js';
+import { currentPersonName } from './employee-projection.js';
+import { syncEmploymentHistory } from './employment-sync.js';
+import { registerAttachment } from './attachments.js';
+import { z } from 'zod';
 
 const base = '/api/tenant/personnel/employees';
 export function registerPersonnelRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  registerPersonnelHooks({ currentName: currentPersonName, sync: syncEmploymentHistory });
   router.get(base, (c) =>
     safe(async () => {
       const ctx = await access(c, deps, PERSONNEL_OBJECT, 'view', {}, undefined, 0, 'list');
       const page = pageQuery(c);
       const options = await listOptions(c, deps, ctx);
+      const fields = await getModuleViewableFields(deps, ctx, PERSONNEL_OBJECT);
       const items = await withTenant(deps.db, ctx.tenantId, (tx) => listEmployees(tx, ctx, page, options));
       return c.json({
-        items: await Promise.all(items.map((r) => trim(deps, ctx, PERSONNEL_OBJECT, r))),
+        items: items.map((r) => trimWithFields(r, fields)),
         page: page.page,
         pageSize: page.pageSize,
         hasDataPermission: ctx.scope.hasDataPermission,
@@ -54,6 +62,25 @@ export function registerPersonnelRoutes(router: Hono<TenantEnv>, deps: TenantRou
         await appendEmployee(tx, ctx, id, input);
         return readEmployee(tx, ctx, id);
       });
+    }),
+  );
+  router.post(`${base}/:id/attachments`, (c) =>
+    safe(async () => {
+      const schema = z
+        .object({
+          purpose: z.string().min(1).max(100),
+          filename: z.string().min(1).max(255),
+          contentType: z.string().min(1).max(100),
+          byteSize: z.number().int().nonnegative(),
+          sha256: z.string().regex(/^[a-f0-9]{64}$/),
+        })
+        .strict();
+      const input = parse(schema, await body(c));
+      const ctx = await access(c, deps, PERSONNEL_OBJECT, 'update', {}, 'update', revision(c));
+      const employeeId = uuidParam(c);
+      return write(c, deps, ctx, employeeId, 'update', {}, (tx, command) =>
+        registerAttachment(tx, command, employeeId, input),
+      );
     }),
   );
   registerEmployeeReads(router, deps);
@@ -99,10 +126,11 @@ async function nestedSubsets(deps: TenantRouteDeps, ctx: AccessContext, id: stri
     if (!(await deps.authorize({ ...ctx, action: 'object.view', resource: objectCode }))) continue;
     const scope = await resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
     const context = { ...ctx, objectCode, scope };
+    const fields = await listFieldVisibility(deps, context);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listSubsets(tx, context, kind, { limit: 50, offset: 0 }, { order: sql``, filter: sql`true` }, id),
     );
-    result[kind] = { items: await Promise.all(items.map((row) => trimSubset(deps, context, row))), pageSize: 50 };
+    result[kind] = { items: items.map((row) => trimSubset(row, fields)), pageSize: 50 };
   }
   return result;
 }

@@ -78,7 +78,11 @@ export const PERSONNEL_OBJECTS: readonly ObjectDefinition[] = [
       ...['employeeId', 'subset', 'recordId', 'targetRevision'].map((code) => ({ code, system: false })),
       ...['id', 'revision', 'status', 'createdAt', 'createdBy'].map((code) => ({ code, system: true })),
     ],
-    buttons: [{ code: 'submit', level: 'list', requires: 'create' }],
+    buttons: [
+      { code: 'submit', level: 'list', requires: 'create' },
+      // DEC-085: independent of HR create rights and management data scope.
+      { code: 'self-service-submit', level: 'list' },
+    ],
   },
 ];
 

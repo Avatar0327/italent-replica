@@ -6,7 +6,7 @@ import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { getModuleViewableFields } from '../permission/module-access.js';
-import { personScope, trim, type AccessContext } from './access.js';
+import { personScope, trimWithFields, type AccessContext } from './access.js';
 import { employeeAttributes, employeeDto, employeeJoins } from './employee-read.js';
 import { camel, rows, type Row } from './store.js';
 
@@ -93,9 +93,18 @@ export async function listSubsets(
     ORDER BY ${options.order} e.id,s.id LIMIT ${page.limit} OFFSET ${page.offset}`),
   ).map((row) => subsetDto(row, kind));
 }
-export async function trimSubset(deps: TenantRouteDeps, ctx: AccessContext, value: Row) {
-  const result = await trim(deps, ctx, ctx.objectCode, value);
-  const employeeFields = await getModuleViewableFields(deps, ctx, PERSONNEL_OBJECT);
+export async function listFieldVisibility(deps: TenantRouteDeps, ctx: AccessContext) {
+  return {
+    object: await getModuleViewableFields(deps, ctx, ctx.objectCode),
+    employee: await getModuleViewableFields(deps, ctx, PERSONNEL_OBJECT),
+  };
+}
+export function trimSubset(
+  value: Row,
+  fields: { object: ReadonlySet<string> | undefined; employee: ReadonlySet<string> | undefined },
+) {
+  const result = trimWithFields(value, fields.object);
+  const employeeFields = fields.employee;
   if (employeeFields)
     for (const [field, employeeField] of Object.entries(SUBSET_EMPLOYEE_ATTRIBUTES)) {
       if (!employeeFields.has(employeeField)) delete result[field];

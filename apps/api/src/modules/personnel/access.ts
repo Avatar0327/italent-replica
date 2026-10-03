@@ -110,5 +110,8 @@ export async function preflight(deps: TenantRouteDeps, ctx: AccessContext, emplo
 }
 export async function trim(deps: TenantRouteDeps, ctx: PersonnelContext, objectCode: string, value: Row) {
   const fields = await getModuleViewableFields(deps, ctx, objectCode);
+  return trimWithFields(value, fields);
+}
+export function trimWithFields(value: Row, fields: ReadonlySet<string> | undefined) {
   return Object.fromEntries(Object.entries(value).filter(([key]) => fields === undefined || fields.has(key)));
 }

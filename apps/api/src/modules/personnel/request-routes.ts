@@ -1,15 +1,19 @@
 import { withTenant } from '@italent/db';
-import { PERSONNEL_REQUEST_OBJECT, SUBSETS } from '@italent/domain';
+import { buttonResource, PERSONNEL_REQUEST_OBJECT } from '@italent/domain';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { revision, uuidParam } from '../job/context.js';
-import { authorizeInTransaction, resolveModuleScope } from '../permission/module-access.js';
-import { access, authorize, preflight, requirePerson, trim } from './access.js';
+import { access, preflight, trim } from './access.js';
 import { createChange, loadChange, requireSelf } from './change-requests.js';
-import { body, safe, write } from './http.js';
+import { body, safe } from './http.js';
 import { parse, subsetInput, subsetKind } from './validation.js';
+import { tenantOf } from '../../tenant-context.js';
+import { requirePermission } from '../../authorization.js';
+import { readEffectiveSetting } from '../tenant-settings/service.js';
+import { runCommand } from '../../commands.js';
+import { AppError } from '../../errors.js';
 
 const base = '/api/tenant/personnel/change-requests';
 const requestSchema = z
@@ -27,31 +31,33 @@ export function registerChangeRequestRoutes(router: Hono<TenantEnv>, deps: Tenan
       const raw = parse(requestSchema, await body(c));
       const kind = subsetKind(raw.subset);
       const input = { ...raw, subset: kind, values: subsetInput(kind, raw.values, true) };
-      const { values, ...metadata } = input;
-      const ctx = await access(c, deps, PERSONNEL_REQUEST_OBJECT, 'create', metadata, 'submit', revision(c));
-      const objectCode = SUBSETS[kind].objectCode;
-      const operation = raw.recordId ? 'update' : 'create';
-      // Patch fields are evaluated against the target object's catalog, never the values container.
-      await authorize(deps.authorize, { ...ctx, objectCode }, operation, values);
-      const scope = await resolveModuleScope(deps, ctx, undefined, objectCode);
-      const target = { ...ctx, objectCode, scope, ...(input.recordId ? { targetId: input.recordId } : {}) };
-      await preflight(deps, target, input.employeeId);
-      await withTenant(deps.db, ctx.tenantId, (tx) => requireSelf(tx, ctx, input.employeeId));
-      return write(
-        c,
-        deps,
-        ctx,
-        input.employeeId,
-        'create',
-        metadata,
-        async (tx, ctx) => {
-          await authorize(authorizeInTransaction(deps.authorize, tx), { ...ctx, objectCode }, operation, values);
-          await requirePerson(tx, target, input.employeeId);
-          return createChange(tx, ctx, input);
-        },
-        'submit',
-        input,
-      );
+      const tenant = tenantOf(c);
+      await requirePermission(deps.authorize, {
+        ...tenant,
+        action: 'object.button',
+        resource: buttonResource(PERSONNEL_REQUEST_OBJECT, 'self-service-submit', 'list'),
+      });
+      await withTenant(deps.db, tenant.tenantId, async (tx) => {
+        await requireSelf(tx, { ...tenant, now: deps.clock(), commandId: '', expectedRevision: 0 }, input.employeeId);
+        const setting = await readEffectiveSetting(tx, tenant.tenantId, 'personnel.self_service_fields');
+        const configured = (setting.value as Record<string, unknown>)[kind];
+        const allowed = new Set(
+          Array.isArray(configured) ? configured.filter((v): v is string => typeof v === 'string') : [],
+        );
+        if (Object.keys(input.values).some((field) => !allowed.has(field)))
+          throw new AppError('FORBIDDEN', '字段不在员工自助修改清单内');
+      });
+      const expectedRevision = revision(c);
+      const ctx = { ...tenant, now: deps.clock(), commandId: '', expectedRevision };
+      const result = await runCommand(deps.db, ctx, {
+        id: c.req.header('idempotency-key'),
+        fingerprint: { operation: 'personnel.self-service-request', input, expectedRevision },
+        execute: async (tx, commandId) => ({
+          status: 201,
+          body: await createChange(tx, { ...ctx, commandId }, input),
+        }),
+      });
+      return c.json(result.body, 201);
     }),
   );
   router.get(`${base}/:id`, (c) =>

@@ -1,4 +1,4 @@
-import { syncEmploymentHistory } from '../personnel/employment-sync.js';
+import { personnelHooks } from './personnel-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Db, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
@@ -57,7 +57,7 @@ export async function transitionEmployment(
   assertTransition(business, input.action);
   if (input.action === 'delete') {
     await deleteEmploymentBusiness(tx, ctx, business);
-    await syncEmploymentHistory(
+    await personnelHooks.sync(
       tx,
       ctx,
       business.employeeId,

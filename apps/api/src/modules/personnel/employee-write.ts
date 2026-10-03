@@ -4,6 +4,7 @@ import { EMPLOYEE_FIELDS, PERSONNEL_OBJECT } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { audit, assertRevision, camel, insert, lockPerson, rows, type PersonnelContext, type Row } from './store.js';
 import { validateDates } from './validation.js';
+import { validateAttachments } from './attachments.js';
 
 export async function employeeSnapshot(tx: Tx, ctx: PersonnelContext, employeeId: string) {
   const [previous] = rows(
@@ -21,6 +22,7 @@ export async function appendEmployee(
   checkRevision = true,
 ) {
   const person = await lockPerson(tx, ctx, employeeId);
+  await validateAttachments(tx, ctx, employeeId, patch);
   const previous = await employeeSnapshot(tx, ctx, employeeId);
   if (checkRevision) assertRevision(ctx.expectedRevision, Number(previous?.revision ?? 0));
   const before = Object.fromEntries(

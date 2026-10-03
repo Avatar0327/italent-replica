@@ -15,6 +15,7 @@ import {
   type Row,
 } from './store.js';
 import { validateDates } from './validation.js';
+import { validateAttachments } from './attachments.js';
 
 export async function loadSubset(
   tx: Tx,
@@ -46,6 +47,7 @@ export async function saveSubset(
   },
 ) {
   await lockPerson(tx, ctx, employeeId);
+  await validateAttachments(tx, ctx, employeeId, patch);
   const before = id ? await loadSubset(tx, ctx, employeeId, kind, id) : null;
   assertRevision(ctx.expectedRevision, Number(before?.revision ?? 0));
   if (before?.isThisCompany) {
