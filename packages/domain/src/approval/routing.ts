@@ -18,9 +18,9 @@ export interface RoutingFacts {
   readonly subjectEmployeeId: string | null;
   readonly subjectUserId: string | null;
   readonly exceptionAdminUserId: string;
-  /** 相邻上一节点的同意人（相同审批人跳过的比较对象）。 */
+  /** 相邻上一节点的比较对象（相同审批人跳过）：DEC-114 取上一节点解析出的候选人（policies.previousNodeComparand）。 */
   readonly previousApproverUserId: string | null;
-  /** 本实例本轮内已同意过的人（历史相同审批人跳过）。 */
+  /** 本实例本轮、有效历史边界之后已同意过的人（历史相同审批人跳过；干预 / 跳转前的同意不算，F7）。 */
   readonly approvedUserIds: readonly string[];
   /** 本实例已分配过任务的人（DEC-068“已在本单审批链上”）。 */
   readonly chainUserIds: readonly string[];
@@ -143,4 +143,23 @@ export function avoidSelfExceptionAdmin(
     return { kind: 'unavailable', reason: '异常管理员是发起人或异动本人，且没有可接替的直线经理，请调整流程' };
   }
   return { kind: 'assign', userId: manager.userId!, reason: '异常管理员是发起人或异动本人，转其直线经理' };
+}
+
+export interface SubmitBlocker {
+  readonly reason: 'APPROVAL_FIRST_NODE_EMPTY' | 'APPROVAL_EXCEPTION_ADMIN_SELF';
+  readonly message: string;
+}
+
+/**
+ * 提交前预检（运行与仿真共用，F13）：第一个审批节点没有审批人（DEC-054），或异常管理员本人回避后无人接替
+ * （DEC-091），都拒绝提交，不等到流程中途卡住。
+ * @param firstNode 第一个节点的决策；只核验异常管理员时不传
+ */
+export function submitBlockers(admin: ExceptionAdminChoice, firstNode?: NodeDecision): SubmitBlocker[] {
+  const blockers: SubmitBlocker[] = [];
+  if (firstNode?.kind === 'first_node_empty') {
+    blockers.push({ reason: 'APPROVAL_FIRST_NODE_EMPTY', message: firstNode.reason });
+  }
+  if (admin.kind === 'unavailable') blockers.push({ reason: 'APPROVAL_EXCEPTION_ADMIN_SELF', message: admin.reason });
+  return blockers;
 }

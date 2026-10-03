@@ -170,6 +170,27 @@ export async function withdrawChangeInTransaction(tx: Tx, ctx: PersonnelContext,
   await audit(tx, ctx, PERSONNEL_REQUEST_OBJECT, String(before.employeeId), id, after.revision, before, after);
   return after;
 }
+/**
+ * DEC-103：已撤回的申请由原申请人沿原审批实例重提，申请回到待审批（撤回后人员模块没有单独的重提入口）。
+ * 只由审批中心在发起人与当前权限复核后同事务调用；仍在待审批（驳回后重提）时不变。
+ */
+export async function reopenChangeInTransaction(tx: Tx, ctx: PersonnelContext, id: string) {
+  const initial = await loadChange(tx, ctx, id);
+  await lockPerson(tx, ctx, String(initial.employeeId));
+  const before = await loadChange(tx, ctx, id);
+  if (before.status === 'pending_approval') return before;
+  if (before.status !== 'withdrawn') throw new AppError('CONFLICT', '申请已办结，不能重新提交');
+  if (String(before.createdBy) !== ctx.userId) throw new AppError('FORBIDDEN', '只有申请人可以重新提交');
+  const after = { ...before, status: 'pending_approval', revision: Number(before.revision) + 1 };
+  await update(
+    tx,
+    'personnel_change_requests',
+    { status: 'pending_approval', revision: after.revision },
+    sql`tenant_id=${ctx.tenantId} AND id=${id}::uuid`,
+  );
+  await audit(tx, ctx, PERSONNEL_REQUEST_OBJECT, String(before.employeeId), id, after.revision, before, after);
+  return after;
+}
 export async function applyApprovedChange(db: Db, ctx: PersonnelContext, id: string) {
   return runCommand(db, ctx, {
     id: ctx.commandId,

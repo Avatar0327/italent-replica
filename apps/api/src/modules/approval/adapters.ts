@@ -22,6 +22,7 @@ import {
   correctChangeInTransaction,
   currentChangeValues,
   loadChange,
+  reopenChangeInTransaction,
   withdrawChangeInTransaction,
 } from '../personnel/change-requests.js';
 import { lockPerson } from '../personnel/store.js';
@@ -63,7 +64,7 @@ export interface BusinessAdapter {
   rejected(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   /** 审批侧发起的撤回（业务侧撤回已由业务模块自己迁移状态）。 */
   withdrawn(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
-  /** 审批侧发起的同单重提（任职申请经任职模块的“提交”重提）。 */
+  /** 审批侧发起的同单重提：业务单回到待审批（任职申请经任职模块的“提交”重提，这里拒绝）。 */
   resubmitted(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   edit(tx: Tx, ctx: ApprovalContext, businessId: string, fields: Readonly<Row>): Promise<void>;
   /** DEC-099：被驳回后由发起人在同一张单上修正（追加业务侧新版本）。 */
@@ -337,7 +338,10 @@ const personnelAdapter: BusinessAdapter = {
   async withdrawn(tx, ctx, id) {
     await withdrawChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id);
   },
-  resubmitted: async () => undefined,
+  // 撤回后重提：申请回到待审批（F9）；驳回后申请本就待审批，不变。
+  async resubmitted(tx, ctx, id) {
+    await reopenChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id);
+  },
   async correct(tx, ctx, id, fields) {
     await correctChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id, fields);
   },

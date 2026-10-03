@@ -8,8 +8,12 @@ import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
   avoidSelfExceptionAdmin,
+  blindReviewFields,
   decideNode,
   isSelf,
+  mayResubmit,
+  previousNodeComparand,
+  submitBlockers,
   tenantLocalDate,
   type ApprovalNode,
   type Candidate,
@@ -75,8 +79,8 @@ export function assertBusinessUnchanged(run: Run): void {
 }
 
 function instanceAudit(instance: InstanceRow): Row {
-  const { status, currentNodeKey, returnedFromNodeKey, round, revision, versionId } = instance;
-  return { status, currentNodeKey, returnedFromNodeKey, round, revision, versionId };
+  const { status, currentNodeKey, returnedFromNodeKey, round, historyFromSeq, revision, versionId } = instance;
+  return { status, currentNodeKey, returnedFromNodeKey, round, historyFromSeq, revision, versionId };
 }
 
 /** 落库实例状态 + 字段级审计 + outbox，与本命令的其他写入同事务。 */
@@ -120,36 +124,31 @@ function routingSubject(run: Run): RoutingSubject {
 
 function routingFacts(run: Run, tasks: readonly TaskRow[], index: number, subjectUserId: string | null): RoutingFacts {
   // TODO(需取证 Q-M0-43，#39)：“历史节点”是否跨驳回重提的轮次未取证；首版只认本轮已同意的人。
-  // 自动「跳过」的节点处理人是系统（DEC-106），不计为任何人的同意。
-  const round = tasks.filter((task) => task.round === run.instance.round);
+  // F7：管理员干预 / 跳转后，边界之前的任务不再算历史（`14` §11.6）。自动「跳过」的节点处理人是系统（DEC-106），
+  // 不计为任何人的同意。
+  const history = tasks.filter((task) => task.round === run.instance.round && task.seq >= run.instance.historyFromSeq);
   const approvedBy = (task: TaskRow) => task.assigneeUserId !== null && task.status === 'approved';
   const previousKey = index > 0 ? run.version.nodes[index - 1]!.key : null;
-  const previous = round.filter((task) => task.nodeKey === previousKey && approvedBy(task)).at(-1);
   return {
     isFirstNode: index === 0,
     initiatorUserId: run.instance.initiatorUserId,
     subjectEmployeeId: run.snapshot.subjectEmployeeId,
     subjectUserId,
     exceptionAdminUserId: run.version.exceptionAdminUserId!,
-    previousApproverUserId: previous?.assigneeUserId ?? null,
-    approvedUserIds: round.filter(approvedBy).map((task) => task.assigneeUserId!),
+    previousApproverUserId: previousNodeComparand(history.filter((task) => task.nodeKey === previousKey)),
+    approvedUserIds: history.filter(approvedBy).map((task) => task.assigneeUserId!),
     chainUserIds: tasks
       .filter((task) => task.assigneeUserId !== null && task.origin !== 'self_skip')
       .map((task) => task.assigneeUserId!),
   };
 }
 
-/** 解析某节点的审批人并给出决策（运行与仿真共用）。 */
-export async function decide(
-  tx: Tx,
-  subject: RoutingSubject,
-  node: ApprovalNode,
-  facts: RoutingFacts,
-): Promise<NodeDecision> {
+/** 解析某节点的审批人并给出决策；候选人随任务留存，作为下一节点“与上一节点相同”的比较对象（DEC-114）。 */
+async function decide(tx: Tx, subject: RoutingSubject, node: ApprovalNode, facts: RoutingFacts) {
   const candidate = await resolveCandidate(tx, subject, node.approver);
   const draft = decideNode(node, candidate, facts);
-  if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return draft;
-  return decideNode(node, candidate, facts, await directManagerOf(tx, subject, candidate));
+  if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return { candidate, decision: draft };
+  return { candidate, decision: decideNode(node, candidate, facts, await directManagerOf(tx, subject, candidate)) };
 }
 
 /** 自动处理的触发机制（审批记录里区分“与上一节点相同 / 与历史节点相同”）。 */
@@ -174,7 +173,10 @@ export async function exceptionAdminFor(
   const admin: Candidate = { userId, personId: await personOfUser(tx, tenantId, userId) };
   const manager = isSelf(admin, facts) ? await directManagerOf(tx, subject, admin) : undefined;
   const choice = avoidSelfExceptionAdmin(admin, facts, manager);
-  if (choice.kind === 'unavailable') throw approvalError('CONFLICT', 'APPROVAL_EXCEPTION_ADMIN_SELF', choice.reason);
+  if (choice.kind === 'unavailable') {
+    // 提交预检与仿真共用 submitBlockers（F13）。
+    throw approvalError('CONFLICT', 'APPROVAL_EXCEPTION_ADMIN_SELF', submitBlockers(choice)[0]!.message);
+  }
   const takeover = userId === configured ? '' : '（原异常管理员已停用，由租户管理员接管）';
   return { userId: choice.userId, reason: choice.reason + takeover };
 }
@@ -193,7 +195,7 @@ async function assign(
   run: Run,
   node: ApprovalNode,
   decision: Extract<NodeDecision, { kind: 'assign' }>,
-  routing: { subject: RoutingSubject; facts: RoutingFacts },
+  routing: { subject: RoutingSubject; facts: RoutingFacts; candidateUserId: string | null },
 ) {
   const { ctx, instance } = run;
   if (decision.isExceptionAdmin) {
@@ -220,6 +222,7 @@ async function assign(
     round: instance.round,
     nodeKey: node.key,
     assigneeUserId: decision.userId,
+    candidateUserId: routing.candidateUserId,
     origin: decision.origin,
     status: 'pending',
     isExceptionAdmin: decision.isExceptionAdmin,
@@ -248,12 +251,12 @@ export async function advanceFrom(tx: Tx, run: Run, index: number, known?: reado
   for (let i = index; i < run.version.nodes.length; i++) {
     const node = run.version.nodes[i]!;
     const facts = routingFacts(run, tasks, i, subjectUserId);
-    const decision = await decide(tx, subject, node, facts);
+    const { candidate, decision } = await decide(tx, subject, node, facts);
     if (decision.kind === 'first_node_empty') {
       throw approvalError('CONFLICT', 'APPROVAL_FIRST_NODE_EMPTY', decision.reason, { nodeKey: node.key });
     }
     if (decision.kind === 'assign') {
-      await assign(tx, run, node, decision, { subject, facts });
+      await assign(tx, run, node, decision, { subject, facts, candidateUserId: candidate.userId });
       run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
       return;
     }
@@ -282,6 +285,7 @@ async function autoProcess(
     round,
     nodeKey: node.key,
     assigneeUserId,
+    candidateUserId: decision.userId,
     origin: decision.outcome,
     status,
   });
@@ -298,6 +302,7 @@ async function autoProcess(
     round,
     nodeKey: node.key,
     assigneeUserId,
+    candidateUserId: decision.userId,
     origin: decision.outcome,
     status,
     isExceptionAdmin: false,
@@ -326,13 +331,14 @@ async function blockedAutoApproval(
         fields.viewable(tx, decision.userId!, run.snapshot.fieldObjectCode),
       )
     : new Set<string>();
-  const hidden = viewable === undefined ? [] : run.snapshot.changedFields.filter((field) => !viewable.has(field));
+  const hidden = blindReviewFields(run.snapshot.changedFields, viewable);
   if (!hidden.length) return false;
   const admin = await exceptionAdminFor(tx, run, routing.subject, routing.facts);
   const taskId = await insertTask(tx, run.ctx, run.instance.id, {
     round: run.instance.round,
     nodeKey: node.key,
     assigneeUserId: admin.userId,
+    candidateUserId: decision.userId,
     origin: 'blind_review',
     status: 'pending',
     isExceptionAdmin: true,
@@ -446,7 +452,7 @@ export async function resume(tx: Tx, ctx: ApprovalContext, instanceId: string): 
   const afterWithdraw = run.instance.status === 'withdrawn';
   if (run.instance.status !== 'returned' && !afterWithdraw)
     throw approvalError('CONFLICT', 'APPROVAL_NOT_RETURNED', '只有被驳回或已撤回的申请可以重提');
-  if (run.instance.initiatorUserId !== ctx.userId)
+  if (!mayResubmit(run.instance.initiatorUserId, ctx.userId))
     throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有原发起人可以重新提交');
   const rejecting = afterWithdraw ? null : run.instance.returnedFromNodeKey;
   const toRejecting =

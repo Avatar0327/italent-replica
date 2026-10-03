@@ -29,8 +29,8 @@ export function memo<T>(subject: RoutingSubject, key: string, load: () => Promis
 const NOBODY: Candidate = { personId: null, userId: null };
 
 /**
- * 账号绑定（Q-M0-30：用户与人员由管理员显式绑定）且成员关系有效，才视为可审批的人。
- * 解析到没有账号或账号已停用的人员按“审批人为空”处理（DEC-098；已离职 = 审批人为空已取证，`14` §11.7）。
+ * 人员的有效账号：账号绑定（Q-M0-30：用户与人员由管理员显式绑定）且成员关系有效。审批候选另要求离职未生效
+ * （candidateOf）。解析到没有账号或账号已停用的人员按“审批人为空”处理（DEC-098）。
  * TODO(需取证 Q-M0-44)：在职但没有系统账号 / 账号已停用的人员被解析为审批人时原站怎么处理，未取证。
  */
 export async function userOfPerson(tx: Tx, tenantId: string, personId: string | null): Promise<string | null> {
@@ -71,8 +71,35 @@ export async function personOfUser(tx: Tx, tenantId: string, userId: string): Pr
   return row?.employee_id ?? null;
 }
 
-async function candidateOf(tx: Tx, tenantId: string, personId: string | null): Promise<Candidate> {
-  return personId ? { personId, userId: await userOfPerson(tx, tenantId, personId) } : NOBODY;
+/**
+ * F6：离职 / 退休已生效（业务日期上的现行任职是离职或退休）。只用于审批候选资格，不改通用的账号绑定查询
+ * （userOfPerson 还要用于识别异动本人等）。
+ */
+function departed(tx: Tx, subject: RoutingSubject, personId: string): Promise<boolean> {
+  return memo(subject, `departed:${personId}`, async () => {
+    const record = await findCurrentRecord(tx, subject.tenantId, personId, subject.asOf);
+    return record?.kind === 'leave' || record?.kind === 'retirement';
+  });
+}
+
+/**
+ * 审批候选：人员须有有效账号（DEC-098），且离职未生效——找到了审批人但其已离职，同样视为审批人为空，转异常管理员
+ * （`14` §11.7，手册 112859839）。
+ */
+async function candidateOf(tx: Tx, subject: RoutingSubject, personId: string | null): Promise<Candidate> {
+  if (!personId) return NOBODY;
+  const userId = await userOfPerson(tx, subject.tenantId, personId);
+  return { personId, userId: userId && !(await departed(tx, subject, personId)) ? userId : null };
+}
+
+/**
+ * 加签人激活、回到原审批人之前的资格复核（F8）：账号有效，且绑定的人员离职未生效（与 candidateOf 同一口径）。
+ * 没有绑定人员的账号只看成员关系。
+ */
+export async function isEligibleApprover(tx: Tx, subject: RoutingSubject, userId: string): Promise<boolean> {
+  if (!(await isActiveMember(tx, subject.tenantId, userId))) return false;
+  const personId = await personOfUser(tx, subject.tenantId, userId);
+  return !personId || !(await departed(tx, subject, personId));
 }
 
 /** 组织在业务日期的现行版本上的负责人 / HRBP（人员 ID）。 */
@@ -118,20 +145,19 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
   const { tenantId } = subject;
   switch (expression) {
     case 'owner': {
-      // 派单前复核成员身份（C-非5）：发起人已停用时按“审批人为空”处理（DEC-098）。
-      const active = await isActiveMember(tx, tenantId, subject.initiatorUserId);
-      if (!active) return NOBODY;
+      // 派单前复核资格（C-非5 / F6）：发起人已停用或已离职时按“审批人为空”处理（DEC-098）。
+      if (!(await isEligibleApprover(tx, subject, subject.initiatorUserId))) return NOBODY;
       return { personId: await personOfUser(tx, tenantId, subject.initiatorUserId), userId: subject.initiatorUserId };
     }
     case 'latest_record_department_head':
-      return candidateOf(tx, tenantId, await orgRole(tx, subject, subject.latestDepartmentId, 'head'));
+      return candidateOf(tx, subject, await orgRole(tx, subject, subject.latestDepartmentId, 'head'));
     case 'record_department_head':
-      return candidateOf(tx, tenantId, await orgRole(tx, subject, subject.recordDepartmentId, 'head'));
+      return candidateOf(tx, subject, await orgRole(tx, subject, subject.recordDepartmentId, 'head'));
     case 'record_department_hrbp':
-      return candidateOf(tx, tenantId, await orgRole(tx, subject, subject.recordDepartmentId, 'hrbp'));
+      return candidateOf(tx, subject, await orgRole(tx, subject, subject.recordDepartmentId, 'hrbp'));
     case 'record_first_level_org_head': {
       const firstLevel = await firstLevelOrg(tx, subject, subject.recordDepartmentId);
-      return candidateOf(tx, tenantId, await orgRole(tx, subject, firstLevel, 'head'));
+      return candidateOf(tx, subject, await orgRole(tx, subject, firstLevel, 'head'));
     }
   }
 }
@@ -147,5 +173,5 @@ async function managerFresh(tx: Tx, subject: RoutingSubject, candidate: Candidat
     candidate.personId ?? (candidate.userId ? await personOfUser(tx, subject.tenantId, candidate.userId) : null);
   if (!personId) return NOBODY;
   const record = await findCurrentRecord(tx, subject.tenantId, personId, subject.asOf);
-  return candidateOf(tx, subject.tenantId, record?.fields.directManagerId ?? null);
+  return candidateOf(tx, subject, record?.fields.directManagerId ?? null);
 }

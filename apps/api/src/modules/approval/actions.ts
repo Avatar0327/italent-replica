@@ -3,7 +3,7 @@
  * 管理员只能转交或干预，不得代签（DEC-063），转交给自己须填理由并醒目标注（DEC-070）；盲审转异常管理员（DEC-069）。
  */
 import { sql, type Tx } from '@italent/db';
-import type { AddSignType, ApprovalNode } from '@italent/domain';
+import { APPROVAL_TYPES, blindReviewFields, type AddSignType, type ApprovalNode } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { ErrorBody } from '../../errors.js';
@@ -18,7 +18,6 @@ import {
   type ApprovalContext,
   type Row,
 } from './context.js';
-import { blindFields } from './disclosure.js';
 import {
   advanceFrom,
   assertBusinessUnchanged,
@@ -31,7 +30,7 @@ import {
   type Run,
 } from './engine.js';
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
-import { urgeOpen } from './rules.js';
+import { addSignAllowed, isOwnRequest, urgeOpen } from './rules.js';
 import { userOfPerson } from './resolver.js';
 import { appendLog, cancelPending, closeTask, insertTask, instanceOfTask, loadTasks, type TaskRow } from './store.js';
 
@@ -74,7 +73,7 @@ async function blindReview(
   scene: TaskScene,
   viewable: ReadonlySet<string> | undefined,
 ): Promise<Outcome | null> {
-  const hidden = blindFields(scene.run.snapshot, viewable);
+  const hidden = blindReviewFields(scene.run.snapshot.changedFields, viewable);
   if (!hidden.length) return null;
   const { run, task } = scene;
   const routing = await currentRouting(tx, run, task.nodeKey);
@@ -118,9 +117,16 @@ function blindRejection(): Outcome {
 
 /** 清单 4：编辑后按新快照重新盲审；编辑带出了编辑人看不到的变化即整单回滚（编辑不生效，任务不动）。 */
 function assertNotBlindAfterEdit(run: Run, viewable: ReadonlySet<string> | undefined): void {
-  const hidden = blindFields(run.snapshot, viewable);
+  const hidden = blindReviewFields(run.snapshot.changedFields, viewable);
   if (hidden.length) {
     throw approvalError('FORBIDDEN', 'APPROVAL_BLIND_REVIEW', '编辑后本单出现您无权查看的变化字段，编辑未生效');
+  }
+}
+
+/** DEC-105：审批类型不开放审批中编辑时（员工信息类），历史配置下的编辑一律拒绝，详情也不公布（F14）。 */
+function assertApprovalEdit(run: Run): void {
+  if (!APPROVAL_TYPES[run.snapshot.approvalType].approvalEdit) {
+    throw approvalError('CONFLICT', 'APPROVAL_EDIT_UNSUPPORTED', '该类审批不支持审批中编辑，请驳回后由申请人修正');
   }
 }
 
@@ -182,6 +188,7 @@ export async function approveTask(
   await assertNotSelf(tx, scene.run, ctx.userId);
   const { run, task, node } = scene;
   if (input.fields && Object.keys(input.fields).length) {
+    assertApprovalEdit(run);
     if (node.editMode !== 'with_approve')
       throw approvalError('CONFLICT', 'APPROVAL_EDIT_MODE', '本节点不支持编辑与同意合一');
     assertNotAddSigner(await loadTasks(tx, ctx.tenantId, run.instance.id), task);
@@ -326,6 +333,9 @@ export async function addSign(
   assertOpen(scene, ctx);
   const { run, task, node } = scene;
   if (!node.actions.addSign) throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '本节点未开启加签');
+  if (!addSignAllowed(await loadTasks(tx, ctx.tenantId, run.instance.id), task)) {
+    throw approvalError('CONFLICT', 'APPROVAL_ADD_SIGN_NESTED', '加签人不能再加签，请同意或驳回后由原审批人处理');
+  }
   await assertAddSigners(tx, run, input.userIds, ctx.userId);
   if (input.type === 'after') {
     // 后加签包含本人的同意：照常做盲审与自审校验。
@@ -431,6 +441,7 @@ export async function editTask(
 ): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
   assertOpen(scene, ctx);
+  assertApprovalEdit(scene.run);
   if (scene.node.editMode !== 'separate')
     throw approvalError('CONFLICT', 'APPROVAL_EDIT_MODE', '本节点没有独立的编辑按钮');
   assertNotAddSigner(await loadTasks(tx, ctx.tenantId, scene.run.instance.id), scene.task);
@@ -527,15 +538,21 @@ export async function cancel(tx: Tx, ctx: ApprovalContext, instanceId: string): 
   await persistRun(tx, run, 'approval.instance.cancel');
 }
 
+/**
+ * 审批侧重提（DEC-103 / DEC-113）：只由原发起人进行（当前权限在路由层按首次提交复核）。驳回后重提；员工子集变更
+ * 撤回后没有业务侧入口，也在这里沿原实例重提（F9）。任职申请一律经任职模块的“提交”重提。
+ */
 export async function resubmit(tx: Tx, ctx: ApprovalContext, instanceId: string, corrections?: Row): Promise<Outcome> {
   const run = await openOwn(tx, ctx, instanceId);
-  if (run.instance.status !== 'returned')
-    throw approvalError('CONFLICT', 'APPROVAL_NOT_RETURNED', '只有被驳回的申请可以重提');
+  const reopenable =
+    run.instance.status === 'returned' ||
+    (run.instance.status === 'withdrawn' && run.instance.businessType === 'personnel_change');
+  if (!reopenable) throw approvalError('CONFLICT', 'APPROVAL_NOT_RETURNED', '只有被驳回或已撤回的申请可以重提');
   const adapter = ADAPTERS[run.instance.businessType];
-  // DEC-099：被驳回的单据可在同一张单上修正后重提，修正追加为业务侧的新版本。
+  // 先让业务单回到待审批（撤回后），再把修正追加为业务侧新版本（DEC-099）。
+  await adapter.resubmitted(tx, ctx, run.instance.businessId);
   if (corrections && Object.keys(corrections).length)
     await adapter.correct(tx, ctx, run.instance.businessId, corrections);
-  await adapter.resubmitted(tx, ctx, run.instance.businessId);
   // DEC-103：重提沿用原实例与原流程版本，不重新匹配。
   const saved = await startOrResume(tx, ctx, {
     businessType: run.instance.businessType,
@@ -566,7 +583,7 @@ export async function adminAct(tx: Tx, ctx: ApprovalContext, input: AdminInput, 
   assertBusinessUnchanged(run);
   // DEC-092：管理员不得干预本人发起或本人为异动对象的实例，须由其他管理员处理。
   const subjectUser = await userOfPerson(tx, ctx.tenantId, run.snapshot.subjectEmployeeId);
-  if (ctx.userId === run.instance.initiatorUserId || ctx.userId === subjectUser) {
+  if (isOwnRequest(run.instance, subjectUser, ctx.userId)) {
     throw approvalError(
       'FORBIDDEN',
       'APPROVAL_ADMIN_SELF',
@@ -578,10 +595,12 @@ export async function adminAct(tx: Tx, ctx: ApprovalContext, input: AdminInput, 
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_REASON_REQUIRED', '管理员干预或转交给自己时必须填写理由');
   }
   if (input.kind === 'jump') return adminJump(tx, run, input);
-  const task = (await loadTasks(tx, ctx.tenantId, run.instance.id)).find((t) => t.id === input.taskId);
+  const tasks = await loadTasks(tx, ctx.tenantId, run.instance.id);
+  const task = tasks.find((t) => t.id === input.taskId);
   if (!task || task.status !== 'pending')
     throw approvalError('CONFLICT', 'APPROVAL_TASK_CLOSED', '只能转交待处理的任务');
   await assertReviewer(tx, run, input.toUserId!);
+  if (intervene) startHistoryAfter(run, tasks);
   const self = input.toUserId === ctx.userId;
   await closeTask(tx, ctx, task.id, 'transferred', input.reason);
   await delegate(
@@ -609,9 +628,19 @@ export async function adminAct(tx: Tx, ctx: ApprovalContext, input: AdminInput, 
   return ok(run);
 }
 
+/**
+ * F7：流程干预、跳转之后，之前的节点不再算历史审批人（`14` §11.6，手册 120981507）。失效的同意保留在任务与审计中，
+ * 只是不再参与相同 / 历史审批人自动处理。
+ */
+function startHistoryAfter(run: Run, tasks: readonly TaskRow[]): void {
+  run.instance = { ...run.instance, historyFromSeq: (tasks.at(-1)?.seq ?? 0) + 1 };
+}
+
 async function adminJump(tx: Tx, run: Run, input: AdminInput): Promise<Outcome> {
   const index = nodeIndex(run, input.toNodeKey ?? '');
   await cancelPending(tx, run.ctx, run.instance.id);
+  const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
+  startHistoryAfter(run, tasks);
   await appendLog(tx, run.ctx, run.instance, {
     event: 'admin_intervene',
     detail: { kind: 'jump', toNodeKey: input.toNodeKey, reason: input.reason },
@@ -623,7 +652,7 @@ async function adminJump(tx: Tx, run: Run, input: AdminInput): Promise<Outcome> 
     before: { currentNodeKey: run.instance.currentNodeKey, reason: null },
     after: { currentNodeKey: input.toNodeKey, reason: input.reason },
   });
-  await advanceFrom(tx, run, index);
+  await advanceFrom(tx, run, index, tasks);
   run.events.push('approval.instance.jumped');
   await persistRun(tx, run, 'approval.instance.admin');
   return ok(run);

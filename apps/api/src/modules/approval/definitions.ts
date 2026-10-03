@@ -452,6 +452,8 @@ export async function discardProcess(tx: Tx, ctx: ApprovalContext, id: string) {
 
 /** 安装出厂预置流程（幂等）；TODO(R1-T17)：租户开通时由平台层自动调用。 */
 export async function installPresets(tx: Tx, ctx: ApprovalContext): Promise<ProcessView[]> {
+  // F17：与其他创建命令一致，只接受 If-Match: 0。
+  assertRevision(ctx.expectedRevision, 0);
   const views: ProcessView[] = [];
   for (const preset of PRESET_PROCESSES) {
     const [existing] = rowsOf<{ id: string }>(

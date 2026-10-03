@@ -1,6 +1,6 @@
 {
-  "id": "d0c5d4ff-ff40-4d8c-b97e-5772a636b52e",
-  "prevId": "1a5ed646-4907-447a-8ff6-603524576248",
+  "id": "c6b548fa-ff10-4d78-a3aa-532d438b4b7f",
+  "prevId": "80be9674-4ae3-45a4-89ce-0d896304f709",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -21208,6 +21208,13 @@
           "notNull": true,
           "default": 1
         },
+        "history_from_seq": {
+          "name": "history_from_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "revision": {
           "name": "revision",
           "type": "integer",
@@ -21424,7 +21431,7 @@
         },
         "approval_instances_revision": {
           "name": "approval_instances_revision",
-          "value": "\"approval_instances\".\"revision\" > 0 AND \"approval_instances\".\"round\" > 0"
+          "value": "\"approval_instances\".\"revision\" > 0 AND \"approval_instances\".\"round\" > 0 AND \"approval_instances\".\"history_from_seq\" >= 0"
         }
       },
       "isRLSEnabled": false
@@ -22674,6 +22681,12 @@
         },
         "assignee_user_id": {
           "name": "assignee_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "candidate_user_id": {
+          "name": "candidate_user_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false

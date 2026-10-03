@@ -252,6 +252,11 @@ export const approvalInstances = pgTable(
     currentNodeKey: text('current_node_key'),
     returnedFromNodeKey: text('returned_from_node_key'),
     round: integer('round').notNull().default(1),
+    /**
+     * 有效历史边界（F7）：管理员干预 / 跳转后，序号小于它的任务不再算相同 / 历史审批人（`14` §11.6，手册 120981507）；
+     * 失效的同意仍保留在任务与审计中。
+     */
+    historyFromSeq: integer('history_from_seq').notNull().default(0),
     revision: integer('revision').notNull().default(1),
     createdAt: utc('created_at').notNull().defaultNow(),
     updatedAt: utc('updated_at').notNull().defaultNow(),
@@ -282,7 +287,7 @@ export const approvalInstances = pgTable(
     memberFk('approval_instances_initiator_fk', t.tenantId, t.initiatorUserId),
     check('approval_instances_status', sql`${t.status} IN ('running','returned','approved','withdrawn','cancelled')`),
     check('approval_instances_business_type', sql`${t.businessType} IN ('employment','personnel_change')`),
-    check('approval_instances_revision', sql`${t.revision} > 0 AND ${t.round} > 0`),
+    check('approval_instances_revision', sql`${t.revision} > 0 AND ${t.round} > 0 AND ${t.historyFromSeq} >= 0`),
   ],
 );
 
@@ -297,6 +302,8 @@ export const approvalTasks = pgTable(
     nodeKey: text('node_key').notNull(),
     /** 自动「跳过」的节点处理人记为系统，没有审批人（DEC-106）。 */
     assigneeUserId: uuid('assignee_user_id'),
+    /** 节点按表达式解析出的候选人（DEC-114：“与上一节点相同”的比较对象）；改派、加签产生的任务为空。 */
+    candidateUserId: uuid('candidate_user_id'),
     origin: text('origin').notNull(),
     status: text('status').notNull().default('pending'),
     isExceptionAdmin: boolean('is_exception_admin').notNull().default(false),

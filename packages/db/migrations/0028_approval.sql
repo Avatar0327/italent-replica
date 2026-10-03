@@ -59,6 +59,7 @@ CREATE TABLE "approval_instances" (
 	"current_node_key" text,
 	"returned_from_node_key" text,
 	"round" integer DEFAULT 1 NOT NULL,
+	"history_from_seq" integer DEFAULT 0 NOT NULL,
 	"revision" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -66,7 +67,7 @@ CREATE TABLE "approval_instances" (
 	CONSTRAINT "approval_instances_tenant_id" UNIQUE("tenant_id","id"),
 	CONSTRAINT "approval_instances_status" CHECK ("approval_instances"."status" IN ('running','returned','approved','withdrawn','cancelled')),
 	CONSTRAINT "approval_instances_business_type" CHECK ("approval_instances"."business_type" IN ('employment','personnel_change')),
-	CONSTRAINT "approval_instances_revision" CHECK ("approval_instances"."revision" > 0 AND "approval_instances"."round" > 0)
+	CONSTRAINT "approval_instances_revision" CHECK ("approval_instances"."revision" > 0 AND "approval_instances"."round" > 0 AND "approval_instances"."history_from_seq" >= 0)
 );
 --> statement-breakpoint
 CREATE TABLE "approval_node_message_rules" (
@@ -220,6 +221,7 @@ CREATE TABLE "approval_tasks" (
 	"round" integer NOT NULL,
 	"node_key" text NOT NULL,
 	"assignee_user_id" uuid,
+	"candidate_user_id" uuid,
 	"origin" text NOT NULL,
 	"status" text DEFAULT 'pending' NOT NULL,
 	"is_exception_admin" boolean DEFAULT false NOT NULL,

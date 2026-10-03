@@ -3,7 +3,8 @@
  * 流程按审批类型隔离（DEC-017）；节点是动作开关集 + 消息规则数组（`14` §8.2）；时效字段只预留（DEC-035）。
  */
 import { MODULE_OBJECTS } from '../permission/module-actions.js';
-import { SUBSETS, type SubsetKind } from '../personnel/fields.js';
+import { PERSONNEL_OBJECT } from '../personnel/catalog.js';
+import { EMPLOYEE_EDITABLE_FIELDS, SUBSETS, type SubsetKind } from '../personnel/fields.js';
 
 /** 首版五种审批人表达式（REQ-APV-002「首版最小表达式集」）。 */
 export const APPROVER_EXPRESSIONS = [
@@ -166,10 +167,16 @@ const PERSONNEL_CONDITION_FIELDS: readonly ConditionField[] = [
   { path: 'request.subset', label: '变更子集', kind: 'text' },
 ];
 
+const EMPLOYEE_INFO_CONDITION_FIELDS: readonly ConditionField[] = PERSONNEL_CONDITION_FIELDS.filter(
+  (field) => field.path !== 'request.subset',
+);
+
 const employmentFormFields = MODULE_OBJECTS.employmentRecord.fields.filter((f) => !f.system).map((f) => f.code);
 const personnelFormFields = [...new Set(Object.values(SUBSETS).flatMap((subset) => subset.fields.map((f) => f.code)))];
+const employeeInfoFormFields = EMPLOYEE_EDITABLE_FIELDS.filter((f) => !f.system).map((f) => f.code);
 
-export type ApprovalAdapterKind = 'employment' | 'personnel_change';
+/** employee_info：个人信息变更（员工信息主表），发起入口留待后续业务接入（DEC-116），尚无运行时适配器。 */
+export type ApprovalAdapterKind = 'employment' | 'personnel_change' | 'employee_info';
 export interface ApprovalTypeDefinition {
   readonly code: string;
   readonly name: string;
@@ -179,6 +186,8 @@ export interface ApprovalTypeDefinition {
   readonly defaultProcessCode: string | null;
   readonly conditionFields: readonly ConditionField[];
   readonly formFields: readonly string[];
+  /** 是否开放审批中编辑（REQ-APV-003 R2）；员工信息类首版不做（DEC-105），配置与详情动作都按此判断。 */
+  readonly approvalEdit: boolean;
 }
 
 const employmentType = (code: string, name: string, defaultProcessCode: string | null = null) =>
@@ -190,10 +199,11 @@ const employmentType = (code: string, name: string, defaultProcessCode: string |
     defaultProcessCode,
     conditionFields: EMPLOYMENT_CONDITION_FIELDS,
     formFields: employmentFormFields,
+    approvalEdit: true,
   }) as const satisfies ApprovalTypeDefinition;
 
 /**
- * 审批类型目录（`14` §11.1，原站 88 个类型中首版涉及的任职记录类型 + 员工子集变更）。原站没有“重聘”审批类型：
+ * 审批类型目录（`14` §11.1，原站 88 个类型中首版涉及的任职记录类型 + 员工信息类型）。原站没有“重聘”审批类型：
  * 重聘入职、退休返聘是「入职」的异动类型（`07` §2），走入职审批（approvalTypeOfBusiness）。
  * 原站「组织调整」审批类型挂在组织调整申请对象上（`33`），任职记录上的组织调整异动没有对应的标准流程编码。
  */
@@ -205,6 +215,18 @@ export const APPROVAL_TYPES = {
   hire: employmentType('hire', '入职', 'EntryProcessNew'),
   retirement: employmentType('retirement', '退休', 'RetireProcess'),
   org_adjustment: employmentType('org_adjustment', '组织调整'),
+  // DEC-116（代选）：「新增员工」「个人信息变更」先建类型与草稿预置，发起入口随后续业务接入。
+  add_employee: employmentType('add_employee', '新增员工', 'AddEmployeeProcess'),
+  emp_info_change: {
+    code: 'emp_info_change',
+    name: '个人信息变更',
+    objectCode: PERSONNEL_OBJECT,
+    adapter: 'employee_info',
+    defaultProcessCode: 'EmpInfoChangeProcess',
+    conditionFields: EMPLOYEE_INFO_CONDITION_FIELDS,
+    formFields: employeeInfoFormFields,
+    approvalEdit: false,
+  },
   personnel_change: {
     code: 'personnel_change',
     name: '员工子集变更',
@@ -213,6 +235,7 @@ export const APPROVAL_TYPES = {
     defaultProcessCode: null,
     conditionFields: PERSONNEL_CONDITION_FIELDS,
     formFields: personnelFormFields,
+    approvalEdit: false,
   },
 } as const satisfies Record<string, ApprovalTypeDefinition>;
 export type ApprovalTypeCode = keyof typeof APPROVAL_TYPES;
@@ -226,7 +249,10 @@ const ENTRY_KINDS: Readonly<Record<string, ApprovalTypeCode>> = { rehire: 'hire'
 
 export function approvalTypeOfBusiness(kind: string): ApprovalTypeCode | null {
   const mapped = ENTRY_KINDS[kind] ?? kind;
-  return isApprovalType(mapped) && mapped !== 'personnel_change' ? mapped : null;
+  // 「新增员工」还没有对应的任职业务入口（DEC-116），任职业务不会落到它。
+  return isApprovalType(mapped) && APPROVAL_TYPES[mapped].adapter === 'employment' && mapped !== 'add_employee'
+    ? mapped
+    : null;
 }
 
 /** 员工子集变更按子集各用自己的标准流程编码（`14` §11.1，手册 185008911）；未取到标准编码的子集为空。 */

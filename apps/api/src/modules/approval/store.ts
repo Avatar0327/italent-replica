@@ -35,6 +35,8 @@ export interface InstanceRow {
   readonly currentNodeKey: string | null;
   readonly returnedFromNodeKey: string | null;
   readonly round: number;
+  /** 有效历史边界（F7）：序号小于它的任务不再算相同 / 历史审批人。 */
+  readonly historyFromSeq: number;
   readonly revision: number;
   readonly createdAt: string;
   readonly completedAt: string | null;
@@ -46,6 +48,8 @@ export interface TaskRow {
   readonly round: number;
   readonly nodeKey: string;
   readonly assigneeUserId: string | null;
+  /** 按表达式解析出的候选人（DEC-114）。 */
+  readonly candidateUserId: string | null;
   readonly origin: string;
   readonly status: TaskStatus;
   readonly isExceptionAdmin: boolean;
@@ -76,6 +80,7 @@ function instanceOf(row: Row): InstanceRow {
     currentNodeKey: (row.current_node_key as string | null) ?? null,
     returnedFromNodeKey: (row.returned_from_node_key as string | null) ?? null,
     round: Number(row.round),
+    historyFromSeq: Number(row.history_from_seq ?? 0),
     revision: Number(row.revision),
     createdAt: iso(row.created_at)!,
     completedAt: iso(row.completed_at),
@@ -89,6 +94,7 @@ function taskOf(row: Row): TaskRow {
     round: Number(row.round),
     nodeKey: String(row.node_key),
     assigneeUserId: (row.assignee_user_id as string | null) ?? null,
+    candidateUserId: (row.candidate_user_id as string | null) ?? null,
     origin: String(row.origin),
     status: row.status as TaskStatus,
     isExceptionAdmin: Boolean(row.is_exception_admin),
@@ -161,15 +167,13 @@ export async function loadTasks(tx: Tx, tenantId: string, instanceId: string): P
   }
 }
 
-/** 详情展示用：最新的若干条任务（按时间正序）与全部待办。 */
-export async function loadRecentTasks(tx: Tx, tenantId: string, instanceId: string): Promise<TaskRow[]> {
-  const rows = rowsOf(
-    await tx.execute(sql`SELECT * FROM (
-        SELECT * FROM approval_tasks WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid
-        ORDER BY seq DESC LIMIT ${RECENT}
-      ) recent ORDER BY seq`),
-  );
-  return rows.map(taskOf);
+/**
+ * 详情展示窗口：最新的若干条任务与全部在办 / 排队任务（按序号正序）。只用于展示；授权、披露与动作判定一律按
+ * 完整任务计算（F1），不受这个窗口影响。
+ */
+export function displayWindow(tasks: readonly TaskRow[]): TaskRow[] {
+  const from = tasks.length - RECENT;
+  return tasks.filter((task, index) => index >= from || task.status === 'pending' || task.status === 'queued');
 }
 
 /** 完整历史分页（最新在前）。 */
@@ -184,6 +188,7 @@ export interface NewTask {
   readonly round: number;
   readonly nodeKey: string;
   readonly assigneeUserId: string | null;
+  readonly candidateUserId?: string | null;
   readonly origin: string;
   readonly status: TaskStatus;
   readonly isExceptionAdmin?: boolean;
@@ -205,6 +210,7 @@ export async function insertTask(tx: Tx, ctx: ApprovalContext, instanceId: strin
     round: task.round,
     nodeKey: task.nodeKey,
     assigneeUserId: task.assigneeUserId,
+    candidateUserId: task.candidateUserId ?? null,
     origin: task.origin,
     status: task.status,
     isExceptionAdmin: task.isExceptionAdmin ?? false,
@@ -212,11 +218,12 @@ export async function insertTask(tx: Tx, ctx: ApprovalContext, instanceId: strin
     parentTaskId: task.parentTaskId ?? null,
   });
   await tx.execute(sql`INSERT INTO approval_tasks
-    (id,tenant_id,instance_id,seq,round,node_key,assignee_user_id,origin,status,is_exception_admin,
-     admin_self_transfer,parent_task_id,acted_at,created_at)
+    (id,tenant_id,instance_id,seq,round,node_key,assignee_user_id,candidate_user_id,origin,status,
+     is_exception_admin,admin_self_transfer,parent_task_id,acted_at,created_at)
     SELECT ${id},${ctx.tenantId},${instanceId}::uuid,COALESCE(max(seq),0)+1,${task.round},${task.nodeKey},
-      ${task.assigneeUserId},${task.origin},${task.status},${task.isExceptionAdmin ?? false},
-      ${task.adminSelfTransfer ?? false},${task.parentTaskId ?? null},${actedAt},${ctx.now.toISOString()}
+      ${task.assigneeUserId},${task.candidateUserId ?? null},${task.origin},${task.status},
+      ${task.isExceptionAdmin ?? false},${task.adminSelfTransfer ?? false},${task.parentTaskId ?? null},${actedAt},
+      ${ctx.now.toISOString()}
     FROM approval_tasks WHERE tenant_id=${ctx.tenantId} AND instance_id=${instanceId}::uuid`);
   return id;
 }
@@ -242,6 +249,16 @@ export async function activateTask(tx: Tx, ctx: ApprovalContext, instanceId: str
   );
   if (activated.length)
     await auditTask(tx, ctx, 'approval.task.activate', taskId, { status: 'queued' }, { status: 'pending' });
+}
+
+/** 排队中的加签人已不可审批（F8）：排队任务改记为已转交，由调用方另建异常管理员任务接替。 */
+export async function closeQueued(tx: Tx, ctx: ApprovalContext, taskId: string): Promise<void> {
+  const closed = rowsOf(
+    await tx.execute(sql`UPDATE approval_tasks SET status='transferred',acted_at=${ctx.now.toISOString()}
+      WHERE tenant_id=${ctx.tenantId} AND id=${taskId}::uuid AND status='queued' RETURNING id`),
+  );
+  if (closed.length)
+    await auditTask(tx, ctx, 'approval.task.close', taskId, { status: 'queued' }, { status: 'transferred' });
 }
 
 export async function closeTask(
@@ -328,12 +345,18 @@ export async function updateInstance(
   tx: Tx,
   ctx: ApprovalContext,
   instance: InstanceRow,
-  patch: Partial<Pick<InstanceRow, 'status' | 'currentNodeKey' | 'returnedFromNodeKey' | 'round' | 'businessVersion'>>,
+  patch: Partial<
+    Pick<
+      InstanceRow,
+      'status' | 'currentNodeKey' | 'returnedFromNodeKey' | 'round' | 'businessVersion' | 'historyFromSeq'
+    >
+  >,
 ): Promise<InstanceRow> {
   const next = { ...instance, ...patch, revision: instance.revision + 1 };
   const done = ['approved', 'withdrawn', 'cancelled'].includes(next.status);
   await tx.execute(sql`UPDATE approval_instances SET status=${next.status},current_node_key=${next.currentNodeKey},
       returned_from_node_key=${next.returnedFromNodeKey},round=${next.round},revision=${next.revision},
+      history_from_seq=${next.historyFromSeq},
       business_version=${next.businessVersion},
       updated_at=${ctx.now.toISOString()},completed_at=${done ? ctx.now.toISOString() : null}
     WHERE tenant_id=${ctx.tenantId} AND id=${instance.id}::uuid AND revision=${instance.revision}`);

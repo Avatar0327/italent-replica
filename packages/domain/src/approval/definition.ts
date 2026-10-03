@@ -33,6 +33,9 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
     if ((node.editMode === 'none') !== (node.editableFields.length === 0)) {
       violations.push(`节点 ${node.key} 的审批中编辑形态与可编辑字段不一致`);
     }
+    if (!type.approvalEdit && node.editMode !== 'none') {
+      violations.push(`节点 ${node.key}：${type.name}审批不支持审批中编辑（DEC-105）`);
+    }
   }
   return violations;
 }

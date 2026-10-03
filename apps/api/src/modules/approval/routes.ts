@@ -30,6 +30,7 @@ import {
   isProcessAdmin,
   requireProcessButton,
   requireProcessView,
+  requireResubmitRight,
   requireWithdrawRight,
 } from './access.js';
 import {
@@ -58,7 +59,7 @@ import {
   publishProcess,
   replaceDraft,
 } from './definitions.js';
-import { detailView, projectLog, readDetail, recordsHidden, visibleTasks } from './disclosure.js';
+import { detailView, disclosedFields, projectLog, readDetail, recordsHidden, visibleTasks } from './disclosure.js';
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
 import { handoverExceptionAdmin } from './handover.js';
@@ -142,14 +143,15 @@ async function respondHistory(c: C, deps: TenantRouteDeps, kind: 'tasks' | 'logs
     return { data: detail, rows: items };
   });
   const viewable = await getModuleViewableFields(deps, ctx, data.snapshot.fieldObjectCode);
-  // DEC-104：查看人所在节点（或开始节点）勾选了审批记录查看权限时，历史同样隐藏，只留本人的任务。
+  // DEC-104 / DEC-115：查看人参与的任一节点（或开始节点）勾选了审批记录查看权限时，历史同样隐藏，只留当前待办。
   const hidden = recordsHidden(data, ctx.userId);
+  const disclosed = disclosedFields(data, ctx.userId, viewable);
   const items =
     kind === 'tasks'
       ? visibleTasks(data, ctx.userId, rows as TaskRow[])
       : hidden
         ? []
-        : (rows as LogView[]).map((log) => projectLog(log, viewable));
+        : (rows as LogView[]).map((log) => projectLog(log, disclosed));
   return c.json({ items, recordsHidden: hidden, page: page.page, pageSize: page.pageSize });
 }
 
@@ -276,10 +278,12 @@ function registerTenantConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
   router.post('/exception-admins/handover', async (c) => {
     const ctx = writeCtx(c, deps);
     const input = await parseBody(c, z.strictObject({ fromUserId: z.uuid(), toUserId: z.uuid() }));
+    // F2：替换流程配置要求流程配置权（DEC-102）；改派在途实例另按实例转交按钮 + 数据范围逐单判断。
     await requireProcessButton(deps, ctx, 'publish');
+    const scopeSql = await adminScope(deps, ctx, ['adminTransfer']);
     const result = await command(c, deps, ctx, input, async (tx, context) => ({
       status: 200,
-      body: await handoverExceptionAdmin(tx, context, input),
+      body: await handoverExceptionAdmin(tx, context, input, scopeSql),
     }));
     return c.json(result.body as object, result.status);
   });
@@ -464,6 +468,8 @@ function registerInstanceRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     const id = uuidParam(c);
     // DEC-099：员工信息变更可带修正内容在同一张单上重提。
     const input = c.req.header('content-type') ? await parseBody(c, z.strictObject({ fields: fields.optional() })) : {};
+    // DEC-113 / F3：只有原发起人能重提，并按首次提交复核其当前的自助权限与本人绑定。
+    await requireResubmitRight(deps, ctx, id);
     const result = await command(c, deps, ctx, { id, input }, (tx, context) => resubmit(tx, context, id, input.fields));
     return respondOutcome(c, deps, result);
   });

@@ -11,6 +11,7 @@ import {
   decideNode,
   evaluateCondition,
   isSelf,
+  submitBlockers,
   type ApprovalNode,
   type ApprovalTypeCode,
   type ApproverExpression,
@@ -62,8 +63,12 @@ const managerOf = (data: SimulationData, candidate: Candidate): Candidate => ({
   userId: (candidate.userId && data.managers?.[candidate.userId]) ?? null,
 });
 
+function candidateOf(node: ApprovalNode, data: SimulationData, facts: RoutingFacts): string | null {
+  return node.approver === 'owner' ? facts.initiatorUserId : (data.relations?.[node.approver] ?? null);
+}
+
 function decideVirtual(node: ApprovalNode, data: SimulationData, facts: RoutingFacts): NodeDecision {
-  const userId = node.approver === 'owner' ? facts.initiatorUserId : (data.relations?.[node.approver] ?? null);
+  const userId = candidateOf(node, data, facts);
   const candidate: Candidate = userId ? { personId: null, userId } : NOBODY;
   const draft = decideNode(node, candidate, facts);
   if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return draft;
@@ -104,24 +109,51 @@ function describe(decision: NodeDecision, version: VersionView, data: Simulation
   return { status, approverUserId: decision.userId, resolution: decision.origin, message: decision.reason };
 }
 
-/** 逐节点推演：假定每个节点由解析出的审批人同意，据此计算后续节点的相同 / 历史审批人与审批链。 */
+function virtualFacts(ctx: ApprovalContext, version: VersionView, data: SimulationData, index: number): RoutingFacts {
+  return {
+    isFirstNode: index === 0,
+    initiatorUserId: data.initiatorUserId ?? ctx.userId,
+    subjectEmployeeId: null,
+    subjectUserId: data.subjectUserId ?? null,
+    exceptionAdminUserId: version.exceptionAdminUserId ?? '',
+    previousApproverUserId: null,
+    approvedUserIds: [],
+    chainUserIds: [],
+  };
+}
+
+/**
+ * F13：与真实提交同一套预检（submitBlockers）——第一个节点没有审批人，或异常管理员本人回避后（按虚拟直线经理）
+ * 无人接替，都不可提交。
+ */
+function preflight(ctx: ApprovalContext, version: VersionView, data: SimulationData) {
+  const facts = virtualFacts(ctx, version, data, 0);
+  const first = version.nodes[0] ? decideVirtual(version.nodes[0], data, facts) : undefined;
+  const admin: Candidate = version.exceptionAdminUserId
+    ? { personId: null, userId: version.exceptionAdminUserId }
+    : NOBODY;
+  const choice = avoidSelfExceptionAdmin(admin, facts, isSelf(admin, facts) ? managerOf(data, admin) : undefined);
+  return submitBlockers(choice, first).map((blocker) => blocker.message);
+}
+
+/**
+ * 逐节点推演：假定每个节点由解析出的审批人同意，据此计算后续节点的相同 / 历史审批人与审批链。
+ * DEC-114：“与上一节点相同”比较上一节点解析出的候选人（跳过的节点也有候选人）。
+ */
 function simulateNodes(ctx: ApprovalContext, version: VersionView, data: SimulationData) {
   const initiatorUserId = data.initiatorUserId ?? ctx.userId;
   const approved: string[] = [];
   let previous: string | null = null;
   return version.nodes.map((node, index) => {
     const facts: RoutingFacts = {
-      isFirstNode: index === 0,
-      initiatorUserId,
-      subjectEmployeeId: null,
-      subjectUserId: data.subjectUserId ?? null,
-      exceptionAdminUserId: version.exceptionAdminUserId ?? '',
+      ...virtualFacts(ctx, version, data, index),
       previousApproverUserId: previous,
       approvedUserIds: approved,
       chainUserIds: approved,
     };
-    const outcome = describe(decideVirtual(node, data, facts), version, data, facts);
-    previous = outcome.approverUserId;
+    const decision = decideVirtual(node, data, facts);
+    const outcome = describe(decision, version, data, facts);
+    previous = candidateOf(node, data, facts);
     if (outcome.approverUserId) approved.push(outcome.approverUserId);
     const messages = node.messageRules.map((rule) => ({
       trigger: rule.trigger,
@@ -138,9 +170,6 @@ function simulateNodes(ctx: ApprovalContext, version: VersionView, data: Simulat
   });
 }
 
-const startable = (nodes: ReturnType<typeof simulateNodes>) =>
-  !nodes.some((node) => node.resolution === 'first_node_empty');
-
 export async function simulateProcess(
   tx: Tx,
   ctx: ApprovalContext,
@@ -152,13 +181,15 @@ export async function simulateProcess(
   if (!version) throw approvalError('CONFLICT', 'APPROVAL_NOT_PUBLISHED', '流程尚无已发布版本');
   const conditions = evaluateCondition(version.conditions, conditionContext(process.approvalType, request.data));
   const nodes = simulateNodes(ctx, version, request.data);
+  const blockers = preflight(ctx, version, request.data);
   return {
     processId,
     versionNo: version.versionNo,
     versionStatus: version.status,
     conditions,
     nodes,
-    startable: conditions.result && startable(nodes),
+    blockers,
+    startable: conditions.result && blockers.length === 0,
     requiredInputs: APPROVAL_TYPES[process.approvalType].conditionFields.map((field) => field.path),
   };
 }
@@ -179,11 +210,8 @@ export async function simulateByObject(
       versionNo: item.version.versionNo,
     };
   const replica = replicaMatch(evaluated, request.approvalType);
-  // X-17：命中流程后继续无副作用地核算能否提交（首节点为空时提交会失败）。
-  const nodes = replica
-    ? simulateNodes(ctx, await loadVersion(tx, ctx.tenantId, replica.version.id), request.data)
-    : [];
-  const blocked = nodes.find((node) => node.resolution === 'first_node_empty');
+  // X-17 / F13：命中流程后继续无副作用地核算能否提交（与真实提交同一套预检）。
+  const blockers = replica ? preflight(ctx, await loadVersion(tx, ctx.tenantId, replica.version.id), request.data) : [];
   return {
     approvalType: request.approvalType,
     objectCode: type.objectCode,
@@ -202,7 +230,7 @@ export async function simulateByObject(
     })),
     originalSite: pick(originalSiteMatch(evaluated)),
     replica: pick(replica),
-    replicaStartable: replica !== null && !blocked,
-    replicaError: replica ? (blocked?.message ?? null) : noProcessMessage(request.approvalType),
+    replicaStartable: replica !== null && blockers.length === 0,
+    replicaError: replica ? (blockers[0] ?? null) : noProcessMessage(request.approvalType),
   };
 }
