@@ -141,6 +141,41 @@
       "when": 1790954390600,
       "tag": "0019_data_scope_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790989857939,
+      "tag": "0020_hesitant_dracula",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790990559749,
+      "tag": "0021_personnel_isolation",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790997387094,
+      "tag": "0022_personnel_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791000000000,
+      "tag": "0023_personnel_self_service",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791000001000,
+      "tag": "0024_personnel_attachments",
+      "breakpoints": true
     }
   ]
 }
