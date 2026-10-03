@@ -423,6 +423,36 @@ export async function permissionAdmin(w: ApprovalWorld): Promise<PermissionWorld
   };
 }
 
+/** 给用户授予指定可见 / 可编辑字段（可编辑须同时可见）及编辑数据操作的身份（PR #35 第二轮清单 2）。 */
+export async function grantFieldAccess(
+  world: PermissionWorld,
+  userId: string,
+  access: { readonly view: readonly string[]; readonly edit?: readonly string[] },
+  definition: ObjectDefinition = MODULE_OBJECTS.employmentRecord,
+) {
+  const edit = access.edit ?? [];
+  const profile = await createProfile(world, `apv${randomUUID().slice(0, 8)}`);
+  const response = await setObjectPermission(
+    world,
+    profile,
+    {
+      dataOperations: { create: false, update: edit.length > 0, delete: false },
+      fields: definition.fields.map((f) => ({
+        fieldCode: f.code,
+        view: access.view.includes(f.code) || edit.includes(f.code),
+        edit: edit.includes(f.code),
+      })),
+      buttons: [],
+    },
+    definition.code,
+  );
+  expect(response.status, await response.clone().text()).toBe(200);
+  await makeGrantable(world, [profile.id]);
+  const granted = await grant(world, userId, profile.id);
+  expect(granted.status, await granted.clone().text()).toBe(201);
+  return profile;
+}
+
 /** 给用户授予一个只含指定可见字段的身份（无数据范围：DEC-057 审批不授予范围）。 */
 export async function grantVisibleFields(
   world: PermissionWorld,
