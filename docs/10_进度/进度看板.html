@@ -153,7 +153,7 @@ const DATA = {
     "R1-T04":{n:"职务体系与编制",s:"done",who:"Codex",pr:11,note:"带编调动暂缓（DEC-073）"},
     "R1-T05":{n:"任职记录版本链",s:"done",who:"Codex",pr:12,note:"表单字段级配置转入 R1-T09"},
     "R1-T06":{n:"向后更新",s:"done",who:"Codex",pr:16,note:"规则②记录级（DEC-078）、停用按后续记录生效日（DEC-079）"},
-    "R1-T12":{n:"人员信息与人员子集",s:"todo",who:"Codex",pr:null,note:"提示词已备好，待派发"},
+    "R1-T12":{n:"人员信息与人员子集",s:"review",who:"Codex",pr:26,note:"529 测试通过、CI 全绿，Claude 审查中"},
     "R1-T07":{n:"审批中心",s:"todo",who:"",pr:null,note:""},
     "R1-T08":{n:"定时生效任务",s:"todo",who:"",pr:null,note:"含租户时区、失败待办（DEC-052/056）"},
     "R1-T09":{n:"调动业务",s:"todo",who:"",pr:null,note:"含表单字段级可编辑配置"},
@@ -171,7 +171,7 @@ const DATA = {
     "R3-T05":{n:"继任管理",s:"todo"},"R3-T06":{n:"人才池与人才梯队",s:"todo"},"R3-T07":{n:"个人发展计划 IDP",s:"todo"}
   },
   now: [
-    {id:"R1-T12", s:"todo", d:"人员信息与 13 个人员子集：M4 最后一项", next:"在 Codex 派发提示词，开出 PR 后由 Claude 审查"},
+    {id:"PR #26 · R1-T12", s:"review", d:"人员信息与 13 个人员子集：M4 最后一项", next:"Claude 审查中"},
     {id:"R1-T07 / T08", s:"todo", d:"审批中心与定时生效：M5", next:"R1-T12 之后派发"},
     {id:"R1-T15 / T17", s:"todo", d:"企业设置、平台运营层：M2 剩余", next:"含 DEC-081 “看全部”预置"}
   ],
