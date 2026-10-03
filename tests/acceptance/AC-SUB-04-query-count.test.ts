@@ -1,6 +1,6 @@
 /**
  * PR #26 审计遗留（非 blocking 2、3）：人员列表、嵌套子集与历史读取的 SQL 语句数不随行数增长；
- * 组织 / 职务排序号只在按其排序或筛选时才计算全租户排名（docs/02_业务建模/22 §2：保留按员工属性排序的能力）。
+ * 组织 / 职务排序号预计算并存储（DEC-089），读取时直接取值，不在请求里做全租户递归排名。
  */
 import { randomUUID } from 'node:crypto';
 import { type Db, sql, withTenant } from '@italent/db';
@@ -190,17 +190,22 @@ describe('AC-SUB 人员读取有界：语句数与行数无关', () => {
     }
   });
 
-  it('未按组织 / 职务排序号排序或筛选时，不对全租户组织做递归排名', async () => {
-    for (const path of readPaths()) {
+  it('DEC-089：任何读取（含按排序号排序 / 筛选）都不做递归排名，排序号不排序时也有值', async () => {
+    const paths = [...readPaths(), `/employees?pageSize=${ROWS}&sortBy=organizationSortNumber`];
+    for (const path of paths) {
       const { statements } = await measure(path);
       expect(
-        statements.filter((s) => /WITH RECURSIVE personnel_org/i.test(s)),
+        statements.filter((s) => /WITH RECURSIVE/i.test(s)),
         path,
       ).toEqual([]);
     }
+    const response = await world.api.request('GET', `/api/tenant/personnel/employees?pageSize=${ROWS}`, world.as);
+    const items = ((await response.json()) as { items: { organizationSortNumber: number | null }[] }).items;
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((item) => typeof item.organizationSortNumber === 'number')).toBe(true);
   });
 
-  it('按组织排序号排序 / 筛选时仍按行政路径计算全租户排名', async () => {
+  it('按组织排序号排序 / 筛选时按行政路径的全租户名次', async () => {
     const person = await world.create('employment/employees', { code: `LATE-${randomUUID()}`, name: '后排员工' });
     await world.create(
       `employment/employees/${person.id}/businesses`,
