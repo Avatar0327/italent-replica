@@ -30,7 +30,7 @@ const NOBODY: Candidate = { personId: null, userId: null };
 
 /**
  * 账号绑定（Q-M0-30：用户与人员由管理员显式绑定）且成员关系有效，才视为可审批的人。
- * TODO(需取证 Q-M0-44)：解析到没有账号或账号停用的人员时原站如何处理未取证；首版视为审批人为空。
+ * 解析到没有账号或账号已停用的人员按“审批人为空”处理（DEC-098，原站口径仍待 Q-M0-44 核对）。
  */
 export async function userOfPerson(tx: Tx, tenantId: string, personId: string | null): Promise<string | null> {
   if (!personId) return null;

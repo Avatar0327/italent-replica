@@ -255,7 +255,7 @@ export async function rejectTask(
   return ok(run);
 }
 
-/** DEC-058：发起人或异动本人不得审批自己的单据（异常管理员恰为本人时也只能转交）。 */
+/** DEC-058：发起人或异动本人不得审批自己的单据；异常任务按 DEC-091 回避，不会落到本人名下。 */
 async function assertNotSelf(tx: Tx, run: Run, userId: string): Promise<void> {
   const subjectUser = await userOfPerson(tx, run.ctx.tenantId, run.snapshot.subjectEmployeeId);
   if (userId === run.instance.initiatorUserId || userId === subjectUser) {

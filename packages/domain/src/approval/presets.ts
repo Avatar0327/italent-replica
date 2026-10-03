@@ -2,7 +2,7 @@
  * 出厂预置流程（DEC-018 / DEC-094）：全部业务类型与员工信息变更都有草稿预置，租户开通时配置异常管理员后发布（R1-T17）。
  * 调动按本租户已取证的节点结构（`14` §2、§8.2、§8.3）预置并带流程编码条件；离职按 §8.5 取证的“直接上级 → HR 访谈”
  * 结构以现有表达式近似，并带标准离职流程编码条件；其余类型的节点结构尚未取证，预置为本类型兜底草稿
- * （TODO(需取证 Q-M0-49)），由租户按实际流程调整后发布。
+ * （TODO(需取证 #38)），由租户按实际流程调整后发布。
  */
 import { APPROVAL_TYPES, type ApprovalNode, type ApprovalTypeCode, type ProcessDefinition } from './types.js';
 
@@ -54,7 +54,7 @@ const draft = (definition: Omit<ProcessDefinition, 'exceptionAdminUserId' | 'urg
   ...definition,
 });
 
-/** 未取证节点结构的业务类型：部门负责人审批 → HRBP 审核（TODO(需取证 Q-M0-49)）。 */
+/** 未取证节点结构的业务类型：部门负责人审批 → HRBP 审核（TODO(需取证 #38)）。 */
 const GENERIC_FORM = ['effectiveDate', 'departmentId', 'postId', 'positionId', 'levelId'];
 function genericPreset(type: Exclude<ApprovalTypeCode, 'transfer' | 'leave' | 'personnel_change'>): PresetProcess {
   const name = APPROVAL_TYPES[type].name;

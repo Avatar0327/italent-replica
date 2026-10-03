@@ -122,6 +122,7 @@ function routingSubject(run: Run): RoutingSubject {
 const APPROVING = new Set(['same_skip', 'history_skip']);
 
 function routingFacts(run: Run, tasks: readonly TaskRow[], index: number, subjectUserId: string | null): RoutingFacts {
+  // TODO(需取证 #39)：原站“历史相同审批人跳过”是否跨驳回重提的轮次未取证；首版只认本轮已同意的人。
   const round = tasks.filter((task) => task.round === run.instance.round);
   const approvedBy = (task: TaskRow) =>
     task.assigneeUserId !== null &&

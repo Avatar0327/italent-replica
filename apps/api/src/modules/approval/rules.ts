@@ -7,7 +7,7 @@ const AUTO_ORIGINS = new Set(['same_skip', 'history_skip', 'self_skip']);
 
 /**
  * DEC-097 审批人撤回：本人在开启撤回的节点上已同意，且其后还没有任何人工处理（只有待办或自动跳过）时可撤回。
- * TODO(需取证 Q-M0-48)：原站审批人撤回的时限与效果未取证；首版以“其后尚无人工处理”为界。
+ * TODO(需取证 #37)：原站审批人撤回的时限与效果未取证；首版以“其后尚无人工处理”为界。
  */
 export function retrievableTask(
   instance: InstanceRow,
