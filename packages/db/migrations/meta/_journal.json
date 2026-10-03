@@ -176,6 +176,13 @@
       "when": 1791000001000,
       "tag": "0024_personnel_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791029487860,
+      "tag": "0025_personnel_attachments_policy",
+      "breakpoints": true
     }
   ]
 }

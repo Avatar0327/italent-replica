@@ -4,6 +4,8 @@
  *    列（类型、可空、默认值）、主键 / 唯一 / 外键 / 检查约束定义、索引定义——两边都由 PostgreSQL
  *    规范化输出，名字相同但定义不同也能查出；否则下次 db:generate 会重复建、错改或删不存在的对象；
  * 2. journal 的 when 必须严格递增，否则 drizzle 迁移器会跳过时间戳倒挂的迁移。
+ * 快照不含的对象不在本守卫范围：RLS 启用与策略表达式由 guard-rls 守卫；EXCLUDE 约束、触发器、
+ * 函数、授权只存在于手写迁移，靠各模块的行为测试覆盖。
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -34,7 +36,7 @@ function latestSnapshot(): DrizzleSnapshotJSON {
   return JSON.parse(readFileSync(join(metaDir, files.at(-1) as string), 'utf8'));
 }
 
-/** 某个 schema 下全部表的结构，按 PostgreSQL 规范化文本输出；EXCLUDE 约束及其索引 drizzle 不建模，不计入。 */
+/** 某个 schema 下全部表的结构，按 PostgreSQL 规范化文本输出；EXCLUDE 约束及其索引不在快照里，不计入。 */
 async function structureOf(tx: Tx, schema: string): Promise<string[]> {
   // public 留在路径里，函数引用两边才都输出为不带 schema 的形式
   await tx.execute(sql.raw(`SET LOCAL search_path = ${schema}, public`));
