@@ -26,6 +26,9 @@ importers:
       '@types/node':
         specifier: ^22.19.0
         version: 22.20.4
+      drizzle-kit:
+        specifier: ^0.31.11
+        version: 0.31.11
       eslint:
         specifier: ^9.39.5
         version: 9.39.5

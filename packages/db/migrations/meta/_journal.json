@@ -180,15 +180,22 @@
     {
       "idx": 25,
       "version": "7",
-      "when": 1791012818572,
-      "tag": "0025_personnel_sort_ranks",
+      "when": 1791029487860,
+      "tag": "0025_personnel_attachments_policy",
       "breakpoints": true
     },
     {
       "idx": 26,
       "version": "7",
-      "when": 1791012825152,
-      "tag": "0026_personnel_sort_rank_refresh",
+      "when": 1791032503397,
+      "tag": "0026_personnel_sort_ranks",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791032511849,
+      "tag": "0027_personnel_sort_rank_refresh",
       "breakpoints": true
     }
   ]
