@@ -37,6 +37,7 @@
    - 参考了 `reference/` 中哪些文件；
    - 新开的 `需取证` issue。
 6. CI 必须全部通过；不得跳过或删除别人的测试。
+7. **节省 CI 分钟**（私有仓库按分钟计费）：推送前先在本地跑通 `pnpm lint && pnpm typecheck && pnpm test`；PR 先以 Draft 开、完成后再转 Ready；把零碎修改攒成一次推送，不要逐个小提交推送；修改 `.github/workflows/ci.yml` 必须单独开 PR 并说明对分钟消耗的影响。
 
 ## 4. 不确定时：开“需取证”issue，不猜
 规格没写到、写得有歧义、或规格与代码现实冲突时：
@@ -99,7 +100,7 @@
   | `packages/testkit/` | 测试辅助：`useTestDb()` 为每个测试文件建全新库并跑迁移（设了 `TEST_DATABASE_URL` 用真 PG，否则 PGlite） |
   | `tests/acceptance/` | 验收测试 `AC-<编号>.test.ts`，示例见 `AC-SMOKE-01.test.ts` |
   | `scripts/` | `cloud-setup.sh`、`dev-db.sh`、`test-pg.sh`、`test-all.sh` |
-  | `.github/workflows/ci.yml` | CI：Node 22/24 跑 lint、typecheck、test、build；另一个 job 用 postgres:16 跑 `test:pg` |
+  | `.github/workflows/ci.yml` | CI：Node 24 跑 lint、typecheck、test、build（Node 22 每周定时/手动补跑）；另一个 job 用 postgres:16 跑 `test:pg`；Draft PR 与纯文档改动不触发 |
 - 工作区包之间直接解析到 `src/*.ts`（自定义导出条件 `@italent/source`），测试与类型检查无需先构建。
 
 ## 9. 交叉审计清单（审计方逐条检查）
