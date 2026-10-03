@@ -316,15 +316,16 @@ export async function createProcess(
   definition: ProcessDefinition,
 ): Promise<ProcessView> {
   assertRevision(ctx.expectedRevision, 0);
-  const [duplicate] = rowsOf(
-    await tx.execute(sql`SELECT 1 FROM approval_processes WHERE tenant_id=${ctx.tenantId} AND code=${input.code}`),
-  );
-  if (duplicate) throw approvalError('CONFLICT', 'APPROVAL_CODE_DUPLICATE', '流程编码已存在');
   const id = randomUUID();
-  await tx.execute(sql`INSERT INTO approval_processes
+  // X-21：并发创建同编码（或同一预置）时由唯一约束裁决，冲突返回 409 而不是 500。
+  const inserted = rowsOf(
+    await tx.execute(sql`INSERT INTO approval_processes
     (id,tenant_id,code,approval_type,object_code,preset_key,created_by,created_at)
     VALUES (${id},${ctx.tenantId},${input.code},${input.approvalType},${APPROVAL_TYPES[input.approvalType].objectCode},
-      ${input.presetKey ?? null},${ctx.userId},${ctx.now.toISOString()})`);
+      ${input.presetKey ?? null},${ctx.userId},${ctx.now.toISOString()})
+    ON CONFLICT DO NOTHING RETURNING id`),
+  );
+  if (!inserted.length) throw approvalError('CONFLICT', 'APPROVAL_CODE_DUPLICATE', '流程编码已存在');
   await insertVersion(tx, ctx, id, 1, definition);
   return audited(tx, ctx, 'create', null, id);
 }
@@ -458,7 +459,15 @@ export async function installPresets(tx: Tx, ctx: ApprovalContext): Promise<Proc
             { ...ctx, expectedRevision: 0 },
             { code: preset.code, approvalType: preset.approvalType, presetKey: preset.presetKey },
             preset.definition,
-          ),
+          ).catch(async (error: unknown) => {
+            // 并发安装：另一方已先装好（唯一约束裁决），返回已有的预置，保持幂等。
+            const [raced] = rowsOf<{ id: string }>(
+              await tx.execute(sql`SELECT id FROM approval_processes
+                WHERE tenant_id=${ctx.tenantId} AND preset_key=${preset.presetKey}`),
+            );
+            if (!raced) throw error;
+            return loadProcess(tx, ctx.tenantId, raced.id);
+          }),
     );
   }
   return views;

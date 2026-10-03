@@ -13,6 +13,17 @@ export interface RoutingSubject {
   readonly initiatorUserId: string;
   readonly latestDepartmentId: string | null;
   readonly recordDepartmentId: string | null;
+  /** 同一次推进内的查询缓存（结果只依赖本主体的部门与业务日期，X-20）。 */
+  readonly cache?: Map<string, Promise<unknown>>;
+}
+
+export function memo<T>(subject: RoutingSubject, key: string, load: () => Promise<T>): Promise<T> {
+  if (!subject.cache) return load();
+  const hit = subject.cache.get(key) as Promise<T> | undefined;
+  if (hit) return hit;
+  const value = load();
+  subject.cache.set(key, value);
+  return value;
 }
 
 const NOBODY: Candidate = { personId: null, userId: null };
@@ -98,11 +109,11 @@ async function firstLevelOrg(tx: Tx, subject: RoutingSubject, orgId: string | nu
   return rootIndex > 0 ? chain[rootIndex - 1]! : null;
 }
 
-export async function resolveCandidate(
-  tx: Tx,
-  subject: RoutingSubject,
-  expression: ApproverExpression,
-): Promise<Candidate> {
+export function resolveCandidate(tx: Tx, subject: RoutingSubject, expression: ApproverExpression): Promise<Candidate> {
+  return memo(subject, `candidate:${expression}`, () => resolveFresh(tx, subject, expression));
+}
+
+async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: ApproverExpression): Promise<Candidate> {
   const { tenantId } = subject;
   switch (expression) {
     case 'owner': {
@@ -125,7 +136,12 @@ export async function resolveCandidate(
 }
 
 /** DEC-068：自审时转该审批人任职记录上的直线经理。 */
-export async function directManagerOf(tx: Tx, subject: RoutingSubject, candidate: Candidate): Promise<Candidate> {
+export function directManagerOf(tx: Tx, subject: RoutingSubject, candidate: Candidate): Promise<Candidate> {
+  const key = `manager:${candidate.personId ?? ''}:${candidate.userId ?? ''}`;
+  return memo(subject, key, () => managerFresh(tx, subject, candidate));
+}
+
+async function managerFresh(tx: Tx, subject: RoutingSubject, candidate: Candidate): Promise<Candidate> {
   const personId =
     candidate.personId ?? (candidate.userId ? await personOfUser(tx, subject.tenantId, candidate.userId) : null);
   if (!personId) return NOBODY;

@@ -5,8 +5,13 @@ import { AppError } from '../../errors.js';
 import { auditApproval, rowsOf, type ApprovalContext, type Row } from './context.js';
 import type { BusinessType } from './adapters.js';
 
-export const MAX_TASKS = 500;
-export const MAX_LOGS = 1000;
+/**
+ * DEC-101：历史任务与日志不设总量上限、分页读取；只限制同时在办的任务数与单次读取的批量。
+ */
+export const MAX_PENDING = 50;
+const BATCH = 500;
+/** 详情默认展示的最新记录条数；完整历史走分页接口。 */
+export const RECENT = 200;
 
 export type InstanceStatus = 'running' | 'returned' | 'approved' | 'withdrawn' | 'cancelled';
 export type TaskStatus = 'pending' | 'approved' | 'rejected' | 'transferred' | 'skipped' | 'cancelled' | 'add_signed';
@@ -125,13 +130,37 @@ export async function instanceOfTask(tx: Tx, tenantId: string, taskId: string): 
   return row.instance_id;
 }
 
+/** 实例的全部任务（流转判定用）：按序号分批读取，每条语句有界，不因历史累积而拒绝（DEC-101）。 */
 export async function loadTasks(tx: Tx, tenantId: string, instanceId: string): Promise<TaskRow[]> {
+  const tasks: TaskRow[] = [];
+  for (;;) {
+    const after = tasks.at(-1)?.seq ?? 0;
+    const rows = rowsOf(
+      await tx.execute(sql`SELECT * FROM approval_tasks WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid
+        AND seq>${after} ORDER BY seq LIMIT ${BATCH}`),
+    );
+    tasks.push(...rows.map(taskOf));
+    if (rows.length < BATCH) return tasks;
+  }
+}
+
+/** 详情展示用：最新的若干条任务（按时间正序）与全部待办。 */
+export async function loadRecentTasks(tx: Tx, tenantId: string, instanceId: string): Promise<TaskRow[]> {
   const rows = rowsOf(
-    await tx.execute(sql`SELECT * FROM approval_tasks WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid
-      ORDER BY seq LIMIT ${MAX_TASKS + 1}`),
+    await tx.execute(sql`SELECT * FROM (
+        SELECT * FROM approval_tasks WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid
+        ORDER BY seq DESC LIMIT ${RECENT}
+      ) recent ORDER BY seq`),
   );
-  if (rows.length > MAX_TASKS) throw new AppError('PAYLOAD_TOO_LARGE', '审批任务超过单实例上限');
   return rows.map(taskOf);
+}
+
+/** 完整历史分页（最新在前）。 */
+export async function pageTasks(tx: Tx, tenantId: string, instanceId: string, page: { limit: number; offset: number }) {
+  return rowsOf(
+    await tx.execute(sql`SELECT * FROM approval_tasks WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid
+      ORDER BY seq DESC LIMIT ${page.limit} OFFSET ${page.offset}`),
+  ).map(taskOf);
 }
 
 export interface NewTask {
@@ -153,8 +182,10 @@ async function auditTask(tx: Tx, ctx: ApprovalContext, action: string, taskId: s
 export async function insertTask(tx: Tx, ctx: ApprovalContext, instanceId: string, task: NewTask): Promise<string> {
   const id = randomUUID();
   const actedAt = task.status === 'pending' ? null : ctx.now.toISOString();
-  if ((await taskCount(tx, ctx.tenantId, instanceId)) >= MAX_TASKS) {
-    throw new AppError('PAYLOAD_TOO_LARGE', '审批任务超过单实例上限');
+  if (task.status === 'pending' && (await pendingCount(tx, ctx.tenantId, instanceId)) >= MAX_PENDING) {
+    throw new AppError('PAYLOAD_TOO_LARGE', `同一审批单同时在办的任务不能超过 ${MAX_PENDING} 个`, {
+      reason: 'APPROVAL_TOO_MANY_PENDING',
+    });
   }
   await auditTask(tx, ctx, 'approval.task.create', id, null, {
     instanceId,
@@ -177,10 +208,10 @@ export async function insertTask(tx: Tx, ctx: ApprovalContext, instanceId: strin
   return id;
 }
 
-async function taskCount(tx: Tx, tenantId: string, instanceId: string): Promise<number> {
+async function pendingCount(tx: Tx, tenantId: string, instanceId: string): Promise<number> {
   const [row] = rowsOf<{ n: number }>(
     await tx.execute(sql`SELECT count(*)::int AS n FROM approval_tasks
-      WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid`),
+      WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid AND status='pending'`),
   );
   return Number(row?.n ?? 0);
 }
@@ -229,11 +260,28 @@ export async function appendLog(tx: Tx, ctx: ApprovalContext, instance: Instance
     FROM approval_instance_logs WHERE tenant_id=${ctx.tenantId} AND instance_id=${instance.id}::uuid`);
 }
 
+/** X-19：详情默认展示最新的若干条日志（按时间正序），完整历史分页读取（pageLogs）。 */
 export async function loadLogs(tx: Tx, tenantId: string, instanceId: string) {
   return rowsOf(
+    await tx.execute(sql`SELECT * FROM (
+        SELECT * FROM approval_instance_logs WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid
+        ORDER BY seq DESC LIMIT ${RECENT}
+      ) recent ORDER BY seq`),
+  ).map(logOf);
+}
+
+/** 完整日志分页（最新在前）。 */
+export async function pageLogs(tx: Tx, tenantId: string, instanceId: string, page: { limit: number; offset: number }) {
+  return rowsOf(
     await tx.execute(sql`SELECT * FROM approval_instance_logs WHERE tenant_id=${tenantId}
-      AND instance_id=${instanceId}::uuid ORDER BY seq LIMIT ${MAX_LOGS}`),
-  ).map((row) => ({
+      AND instance_id=${instanceId}::uuid ORDER BY seq DESC LIMIT ${page.limit} OFFSET ${page.offset}`),
+  ).map(logOf);
+}
+
+export type LogView = ReturnType<typeof logOf>;
+
+function logOf(row: Row) {
+  return {
     event: String(row.event),
     nodeKey: (row.node_key as string | null) ?? null,
     taskId: (row.task_id as string | null) ?? null,
@@ -241,7 +289,7 @@ export async function loadLogs(tx: Tx, tenantId: string, instanceId: string) {
     adminSelfTransfer: Boolean(row.admin_self_transfer),
     detail: row.detail as Row,
     createdAt: iso(row.created_at),
-  }));
+  };
 }
 
 /** 每个审批写命令都推进实例 revision（AGENTS §10「并发」）。 */

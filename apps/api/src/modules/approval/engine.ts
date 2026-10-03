@@ -24,6 +24,7 @@ import { applyMessageRules, notifyTodo } from './notifications.js';
 import {
   directManagerOf,
   isActiveMember,
+  memo,
   personOfUser,
   resolveCandidate,
   tenantAdminUser,
@@ -106,6 +107,7 @@ export function nodeIndex(run: Run, key: string): number {
   return index;
 }
 
+/** 一次推进内的路由查询缓存：长串自动跳过不逐个节点重复查组织负责人与账号（X-20）。 */
 function routingSubject(run: Run): RoutingSubject {
   return {
     tenantId: run.ctx.tenantId,
@@ -113,6 +115,7 @@ function routingSubject(run: Run): RoutingSubject {
     initiatorUserId: run.instance.initiatorUserId,
     latestDepartmentId: run.snapshot.latestDepartmentId,
     recordDepartmentId: run.snapshot.recordDepartmentId,
+    cache: new Map(),
   };
 }
 
@@ -239,13 +242,16 @@ async function assign(
   await applyMessageRules(tx, ctx, instance, node, 'arrive', { id: taskId, assigneeUserId: decision.userId });
 }
 
-/** 从第 index 个节点起激活，直到出现待审批任务或流程结束。 */
-export async function advanceFrom(tx: Tx, run: Run, index: number): Promise<void> {
+/**
+ * 从第 index 个节点起激活，直到出现待审批任务或流程结束。任务只读一次，本次推进新增的自动跳过任务在内存中追加，
+ * 路由查询按推进缓存（X-20）。
+ */
+export async function advanceFrom(tx: Tx, run: Run, index: number, known?: readonly TaskRow[]): Promise<void> {
   const subject = routingSubject(run);
   const subjectUserId = await userOfPerson(tx, run.ctx.tenantId, run.snapshot.subjectEmployeeId);
+  const tasks = [...(known ?? (await loadTasks(tx, run.ctx.tenantId, run.instance.id)))];
   for (let i = index; i < run.version.nodes.length; i++) {
     const node = run.version.nodes[i]!;
-    const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
     const facts = routingFacts(run, tasks, i, subjectUserId);
     const decision = await decide(tx, subject, node, facts);
     if (decision.kind === 'first_node_empty') {
@@ -276,8 +282,32 @@ export async function advanceFrom(tx: Tx, run: Run, index: number): Promise<void
       id: taskId,
       assigneeUserId: decision.userId,
     });
+    tasks.push(skippedTask(run, tasks, node.key, taskId, decision));
   }
   await complete(tx, run);
+}
+
+function skippedTask(
+  run: Run,
+  tasks: readonly TaskRow[],
+  nodeKey: string,
+  id: string,
+  decision: Extract<NodeDecision, { kind: 'auto' }>,
+): TaskRow {
+  return {
+    id,
+    seq: (tasks.at(-1)?.seq ?? 0) + 1,
+    round: run.instance.round,
+    nodeKey,
+    assigneeUserId: decision.userId,
+    origin: decision.outcome,
+    status: 'skipped',
+    isExceptionAdmin: false,
+    adminSelfTransfer: false,
+    parentTaskId: null,
+    comment: null,
+    actedAt: run.ctx.now.toISOString(),
+  };
 }
 
 /**
@@ -292,8 +322,11 @@ async function blockedAutoApproval(
   decision: Extract<NodeDecision, { kind: 'auto' }>,
   routing: { subject: RoutingSubject; facts: RoutingFacts },
 ): Promise<boolean> {
-  const viewable = run.ctx.fields
-    ? await run.ctx.fields.viewable(tx, decision.userId!, run.snapshot.fieldObjectCode)
+  const fields = run.ctx.fields;
+  const viewable = fields
+    ? await memo(routing.subject, `viewable:${decision.userId}`, () =>
+        fields.viewable(tx, decision.userId!, run.snapshot.fieldObjectCode),
+      )
     : new Set<string>();
   const hidden = viewable === undefined ? [] : run.snapshot.changedFields.filter((field) => !viewable.has(field));
   if (!hidden.length) return false;
@@ -331,7 +364,7 @@ export async function afterNodeApproved(tx: Tx, run: Run, nodeKey: string): Prom
   const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
   if (tasks.some((task) => task.round === run.instance.round && task.nodeKey === nodeKey && task.status === 'pending'))
     return;
-  await advanceFrom(tx, run, nodeIndex(run, nodeKey) + 1);
+  await advanceFrom(tx, run, nodeIndex(run, nodeKey) + 1, tasks);
 }
 
 export interface StartRequest {

@@ -13,7 +13,7 @@ import { rowsOf, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import { userOfPerson } from './resolver.js';
 import { retrievableTask, urgeOpen } from './rules.js';
-import { loadInstance, loadLogs, loadTasks, type InstanceRow, type TaskRow } from './store.js';
+import { loadInstance, loadLogs, loadRecentTasks, type InstanceRow, type TaskRow } from './store.js';
 
 export const SHOW_ORIGINALS_SETTING = 'approval.show_original_values';
 
@@ -57,15 +57,10 @@ export async function readDetail(
   viewer: Viewer,
 ): Promise<DetailData> {
   const instance = await loadInstance(tx, ctx.tenantId, instanceId);
-  const tasks = await loadTasks(tx, ctx.tenantId, instanceId);
-  // C-非3：被自审跳过的人只是留痕，不因此成为参与人。
+  await assertCanOpen(tx, ctx, instance, viewer);
+  const tasks = await loadRecentTasks(tx, ctx.tenantId, instanceId);
   const ccNodeKey = await ccNodeOf(tx, ctx.tenantId, instanceId, viewer.userId);
-  const participant =
-    instance.initiatorUserId === viewer.userId ||
-    ccNodeKey !== null ||
-    tasks.some((task) => task.assigneeUserId === viewer.userId && task.origin !== 'self_skip');
   const isAdmin = await adminCovers(tx, ctx.tenantId, instanceId, viewer.adminScope);
-  if (!participant && !isAdmin) throw new AppError('NOT_FOUND', '审批实例不存在');
   const setting = await readEffectiveSetting(tx, ctx.tenantId, SHOW_ORIGINALS_SETTING);
   return {
     instance,
@@ -78,6 +73,22 @@ export async function readDetail(
     subjectUserId: await userOfPerson(tx, ctx.tenantId, instance.subjectEmployeeId),
     ccNodeKey,
   };
+}
+
+/**
+ * 参与人（发起人、任一任务的审批人、被抄送人）或范围内的流程管理员才能打开详情 / 历史；其余一律按不存在处理。
+ * C-非3：被自审跳过的人只是留痕，不因此成为参与人。
+ */
+export async function assertCanOpen(tx: Tx, ctx: ApprovalContext, instance: InstanceRow, viewer: Viewer) {
+  if (instance.initiatorUserId === viewer.userId) return;
+  const [participant] = rowsOf(
+    await tx.execute(sql`SELECT 1 WHERE EXISTS (SELECT 1 FROM approval_tasks t WHERE t.tenant_id=${ctx.tenantId}
+        AND t.instance_id=${instance.id}::uuid AND t.assignee_user_id=${viewer.userId}::uuid AND t.origin<>'self_skip')
+      OR EXISTS (SELECT 1 FROM approval_instance_ccs c WHERE c.tenant_id=${ctx.tenantId}
+        AND c.instance_id=${instance.id}::uuid AND c.user_id=${viewer.userId}::uuid)`),
+  );
+  if (participant || (await adminCovers(tx, ctx.tenantId, instance.id, viewer.adminScope))) return;
+  throw new AppError('NOT_FOUND', '审批实例不存在');
 }
 
 async function ccNodeOf(tx: Tx, tenantId: string, instanceId: string, userId: string): Promise<string | null> {
@@ -170,7 +181,7 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
 export const COMMENT_NOTICE = '审批意见默认对后续审批人公开，请勿在意见中填写敏感信息';
 
 /** DEC-100：节点开启“意见仅本节点与发起人可见”时，只有该节点的审批人与发起人看得到意见。 */
-function commentVisible(data: DetailData, nodeKey: string | null, userId: string): boolean {
+export function commentVisible(data: DetailData, nodeKey: string | null, userId: string): boolean {
   const node = data.version.nodes.find((candidate) => candidate.key === nodeKey);
   if (!node?.commentPrivate || data.instance.initiatorUserId === userId) return true;
   return data.tasks.some(
@@ -182,7 +193,11 @@ function commentVisible(data: DetailData, nodeKey: string | null, userId: string
  * X-13：日志里的字段名（盲审、编辑）按查看人当前字段权限投影；不可见节点的意见 / 理由一并隐去（DEC-100）。
  * 完整信息只留在内部审计。
  */
-function projectLog<T extends { detail: Row }>(log: T, viewable: ReadonlySet<string> | undefined, comment: boolean): T {
+export function projectLog<T extends { detail: Row }>(
+  log: T,
+  viewable: ReadonlySet<string> | undefined,
+  comment: boolean,
+): T {
   const detail: Row = { ...log.detail };
   if (!comment) {
     delete detail.comment;

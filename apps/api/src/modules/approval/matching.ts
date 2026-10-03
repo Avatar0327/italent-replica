@@ -13,7 +13,7 @@ import {
   type ConditionResult,
   type ProcessCondition,
 } from '@italent/domain';
-import { approvalError, rowsOf } from './context.js';
+import { rowsOf } from './context.js';
 import { conditionItem } from './definitions.js';
 import { adminAncestors } from './resolver.js';
 
@@ -37,11 +37,30 @@ export interface Evaluated extends Candidate {
   readonly condition: ConditionResult;
 }
 
-/** 某对象下全部可用流程的指定版本（已发布 = 当前生效版本；最新 = 最新版本，含草稿）；两条有界查询。 */
+/**
+ * 某对象下全部可用流程的指定版本（已发布 = 当前生效版本；最新 = 最新版本，含草稿）。
+ * DEC-101：不设流程数量硬上限，按编码分批读取，每条语句有界。
+ */
 export async function candidates(
   tx: Tx,
   tenantId: string,
   filter: { objectCode: string; approvalType?: ApprovalTypeCode; scope: 'published' | 'latest' },
+): Promise<Candidate[]> {
+  const result: Candidate[] = [];
+  for (;;) {
+    const batch = await candidateBatch(tx, tenantId, filter, result.at(-1)?.code ?? null);
+    result.push(...batch);
+    if (batch.length < BATCH) return result;
+  }
+}
+
+const BATCH = 200;
+
+async function candidateBatch(
+  tx: Tx,
+  tenantId: string,
+  filter: { objectCode: string; approvalType?: ApprovalTypeCode; scope: 'published' | 'latest' },
+  afterCode: string | null,
 ): Promise<Candidate[]> {
   const versionJoin =
     filter.scope === 'published'
@@ -53,14 +72,15 @@ export async function candidates(
       FROM approval_processes p JOIN approval_process_versions v ON v.tenant_id=p.tenant_id AND ${versionJoin}
       WHERE p.tenant_id=${tenantId} AND p.status='active' AND p.object_code=${filter.objectCode}
         ${filter.approvalType ? sql`AND p.approval_type=${filter.approvalType}` : sql``}
-      ORDER BY p.code LIMIT 201`),
+        ${afterCode === null ? sql`` : sql`AND p.code>${afterCode}`}
+      ORDER BY p.code LIMIT ${BATCH}`),
   );
-  if (rows.length > 200) throw approvalError('PAYLOAD_TOO_LARGE', 'APPROVAL_TOO_MANY_PROCESSES', '同一对象下流程过多');
   if (!rows.length) return [];
   const ids = rows.map((row) => String(row.version_id));
+  // 每个版本至多 50 个条件条目（definition-input），本批条件读取有界。
   const items = rowsOf(
     await tx.execute(sql`SELECT * FROM approval_process_conditions WHERE tenant_id=${tenantId}
-      AND version_id=ANY(${`{${ids.join(',')}}`}::uuid[]) ORDER BY version_id,item_no LIMIT 10000`),
+      AND version_id=ANY(${`{${ids.join(',')}}`}::uuid[]) ORDER BY version_id,item_no LIMIT ${BATCH * 50}`),
   );
   return rows.map((row) => ({
     processId: String(row.id),

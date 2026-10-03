@@ -19,7 +19,13 @@ import {
 } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { registerPersonnelApprovalHooks } from '../personnel/approval-hooks.js';
-import { adminScope, requireProcessButton, requireProcessView, requireWithdrawRight } from './access.js';
+import {
+  adminScope,
+  isProcessAdmin,
+  requireProcessButton,
+  requireProcessView,
+  requireWithdrawRight,
+} from './access.js';
 import {
   addSign,
   adminAct,
@@ -46,13 +52,21 @@ import {
   publishProcess,
   replaceDraft,
 } from './definitions.js';
-import { detailView, readDetail } from './disclosure.js';
+import { commentVisible, detailView, projectLog, readDetail } from './disclosure.js';
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
 import { handoverExceptionAdmin } from './handover.js';
 import { listAdminLogs, listInstances, listNotifications, listTodos } from './queries.js';
 import { simulateByObject, simulateProcess } from './simulation.js';
-import { activeInstanceOf, instanceOfTask, loadInstance } from './store.js';
+import {
+  activeInstanceOf,
+  instanceOfTask,
+  loadInstance,
+  pageLogs,
+  pageTasks,
+  type LogView,
+  type TaskRow,
+} from './store.js';
 
 type C = Context<TenantEnv>;
 
@@ -107,14 +121,42 @@ async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
   return c.json(detailView(data, ctx.userId, viewable));
 }
 
+/** DEC-101 / X-19：完整任务与日志历史分页读取（最新在前），权限与披露同详情。 */
+async function respondHistory(c: C, deps: TenantRouteDeps, kind: 'tasks' | 'logs') {
+  const ctx = readCtx(c, deps);
+  const instanceId = uuidParam(c);
+  const page = pageQuery(c);
+  const scope = await adminScope(deps, ctx, ['adminTransfer', 'adminIntervene']);
+  const { data, rows } = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const detail = await readDetail(tx, ctx, instanceId, { userId: ctx.userId, adminScope: scope });
+    const items =
+      kind === 'tasks'
+        ? await pageTasks(tx, ctx.tenantId, instanceId, page)
+        : await pageLogs(tx, ctx.tenantId, instanceId, page);
+    return { data: detail, rows: items };
+  });
+  const viewable = await getModuleViewableFields(deps, ctx, data.snapshot.fieldObjectCode);
+  const visible = (nodeKey: string | null) => commentVisible(data, nodeKey, ctx.userId);
+  const items =
+    kind === 'tasks'
+      ? (rows as TaskRow[]).map((task) => ({ ...task, comment: visible(task.nodeKey) ? task.comment : null }))
+      : (rows as LogView[]).map((log) => projectLog(log, viewable, visible(log.nodeKey)));
+  return c.json({ items, page: page.page, pageSize: page.pageSize });
+}
+
 async function respondOutcome(c: C, deps: TenantRouteDeps, result: CommandResult) {
   if (result.status !== 200) return c.json(result.body as object, result.status);
   return respondDetail(c, deps, (result.body as { instanceId: string }).instanceId);
 }
 
+/** 流程管理员看完整配置（DEC-102）；其余可查看者按流程对象字段权限裁剪。 */
+async function trimProcess<T extends object>(deps: TenantRouteDeps, ctx: TenantContext, value: T | T[]) {
+  if (await isProcessAdmin(deps, ctx)) return value;
+  return trimModuleResponse(deps, ctx, APPROVAL_PROCESS_OBJECT, value as object);
+}
+
 async function processResponse(c: C, deps: TenantRouteDeps, result: CommandResult) {
-  const body = await trimModuleResponse(deps, tenantOf(c), APPROVAL_PROCESS_OBJECT, result.body as object);
-  return c.json(body, result.status);
+  return c.json(await trimProcess(deps, tenantOf(c), result.body as object), result.status);
 }
 
 export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
@@ -170,18 +212,18 @@ function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listProcesses(tx, ctx.tenantId, { status, ...(approvalType ? { approvalType } : {}) }, page),
     );
-    return c.json({ items: await trimModuleResponse(deps, ctx, APPROVAL_PROCESS_OBJECT, items), page: page.page });
+    return c.json({ items: await trimProcess(deps, ctx, items), page: page.page });
   });
   router.get('/processes/:id', async (c) => {
     const ctx = readCtx(c, deps);
     await requireProcessView(deps, ctx);
     const view = await withTenant(deps.db, ctx.tenantId, (tx) => loadProcess(tx, ctx.tenantId, uuidParam(c)));
-    return c.json(await trimModuleResponse(deps, ctx, APPROVAL_PROCESS_OBJECT, view));
+    return c.json(await trimProcess(deps, ctx, view));
   });
   router.post('/processes', async (c) => {
     const ctx = writeCtx(c, deps);
     const input = await parseBody(c, createSchema);
-    await requireProcessButton(deps, ctx, 'create', input);
+    await requireProcessButton(deps, ctx, 'create');
     const type = approvalTypeOf(input.approvalType);
     const definition = toDefinition(input, type);
     const result = await command(c, deps, ctx, input, async (tx, context) => ({
@@ -194,7 +236,7 @@ function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = writeCtx(c, deps);
     const id = uuidParam(c);
     const input = await parseBody(c, definitionSchema);
-    await requireProcessButton(deps, ctx, 'update', input);
+    await requireProcessButton(deps, ctx, 'update');
     const result = await command(c, deps, ctx, input, async (tx, context) => {
       const definition = toDefinition(input, (await loadProcess(tx, context.tenantId, id)).approvalType);
       return { status: 200, body: await replaceDraft(tx, context, id, definition) };
@@ -298,6 +340,8 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     return c.json({ items, page: page.page, pageSize: page.pageSize });
   });
   router.get('/instances/:id', (c) => respondDetail(c, deps, uuidParam(c)));
+  router.get('/instances/:id/tasks', (c) => respondHistory(c, deps, 'tasks'));
+  router.get('/instances/:id/logs', (c) => respondHistory(c, deps, 'logs'));
   router.get('/admin-logs', async (c) => {
     const ctx = readCtx(c, deps);
     const scopeSql = await adminScope(deps, ctx, ['adminLogs']);

@@ -27,9 +27,21 @@ for (const object of APPROVAL_OBJECTS) registerObjectDefinition(object);
 
 type ProcessButton =
   'create' | 'installPresets' | 'simulateByObject' | 'update' | 'newVersion' | 'publish' | 'discard' | 'simulate';
-const LIST_BUTTONS = new Set<ProcessButton>(['create', 'installPresets', 'simulateByObject']);
 
+/**
+ * DEC-102：流程配置权仅限租户级管理员——持有“流程矩阵”能力的企业管理员身份（租户管理员、系统管理员、矩阵管理员；
+ * 矩阵管理员即专门的流程管理员）。与实例干预权（ApprovalInstance 按钮 + 数据范围）分开，部门级身份即使持有
+ * 流程对象按钮也不能修改租户全局流程。TODO(需取证 Q-M0-42)：原站流程管理员身份的确切归属待核对。
+ */
+const PROCESS_ADMIN = 'admin.process_matrix';
+
+export async function isProcessAdmin(deps: TenantRouteDeps, ctx: TenantContext): Promise<boolean> {
+  return deps.authorize({ ...ctx, action: PROCESS_ADMIN });
+}
+
+/** 查看 / 仿真：流程管理员，或身份对象权限可查看流程。 */
 export async function requireProcessView(deps: TenantRouteDeps, ctx: TenantContext): Promise<void> {
+  if (await isProcessAdmin(deps, ctx)) return;
   await requirePermission(deps.authorize, { ...ctx, action: 'object.view', resource: APPROVAL_PROCESS_OBJECT });
 }
 
@@ -37,27 +49,12 @@ export async function requireProcessButton(
   deps: TenantRouteDeps,
   ctx: TenantContext,
   button: ProcessButton,
-  payload?: Record<string, unknown>,
 ): Promise<void> {
-  if (button === 'create' || button === 'update') {
-    await requireObjectWrite(deps.authorize, ctx, {
-      objectCode: APPROVAL_PROCESS_OBJECT,
-      operation: button,
-      payload: payload ?? {},
-    });
-  } else if (['simulate', 'simulateByObject'].includes(button)) await requireProcessView(deps, ctx);
-  else
-    await requirePermission(deps.authorize, {
-      ...ctx,
-      action: button === 'installPresets' ? 'object.create' : 'object.update',
-      resource: APPROVAL_PROCESS_OBJECT,
-      fields: [],
-    });
-  await requirePermission(deps.authorize, {
-    ...ctx,
-    action: 'object.button',
-    resource: buttonResource(APPROVAL_PROCESS_OBJECT, button, LIST_BUTTONS.has(button) ? 'list' : 'detail'),
-  });
+  if (button === 'simulate' || button === 'simulateByObject') {
+    await requireProcessView(deps, ctx);
+    return;
+  }
+  await requirePermission(deps.authorize, { ...ctx, action: PROCESS_ADMIN });
 }
 
 async function hasButton(deps: TenantRouteDeps, ctx: TenantContext, button: string, level: 'list' | 'detail') {
