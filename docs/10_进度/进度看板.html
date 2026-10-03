@@ -79,6 +79,16 @@ td a{color:var(--accent)}
 .log time{font-family:var(--f-mono);color:var(--muted);font-size:12px}
 .mode{background:var(--accent-soft);color:var(--ink);border-radius:8px;padding:10px 14px;font-size:13px}
 .mode b{color:var(--accent)}
+.rounds{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.rounds li{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:grid;grid-template-columns:110px 1fr;gap:4px 14px}
+.rounds .rk{font:700 14px var(--f-display);display:grid;gap:4px;align-content:start}
+.rounds .rk time{font:400 12px var(--f-mono);color:var(--muted)}
+.rounds .rd{display:grid;gap:3px;font-size:13px;min-width:0}
+.rounds .rd .m{color:var(--muted)}
+.third{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.third .card b{font:700 14px var(--f-display)}
+.third .card .it{font:500 12px var(--f-mono);color:var(--accent)}
+@media (max-width:560px){.rounds li{grid-template-columns:1fr}}
 @media (max-width:560px){h1{font-size:22px}.log li{grid-template-columns:1fr;gap:2px}}
 @media (prefers-reduced-motion:no-preference){.bar i,.mini i{transition:width .6s ease}}
 </style>
@@ -105,6 +115,14 @@ td a{color:var(--accent)}
   </section>
 
   <section>
+    <h2>审批中心 PR #35：修改轮次</h2>
+    <div class="sub" style="margin:-4px 0 10px">每一轮 = 审查提出问题 → 开发窗口先写失败测试再修复 → 交下一轮审查。只有审查无问题、CI 全绿、你确认后才合并。</div>
+    <ol class="rounds" id="rounds"></ol>
+    <h2 style="margin-top:18px">第三轮在修什么</h2>
+    <div class="third" id="third"></div>
+  </section>
+
+  <section>
     <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between">
       <h2>全部任务</h2>
       <div class="legend" id="legend"></div>
@@ -124,7 +142,7 @@ const DATA = {
   updated: "2026-10-03",
   mode: "当前开发方式（DEC-088/090）：<b>Claude 开发、Codex 审查</b>（ChatGPT 应用云端任务，astra · High 及以上）；每个 PR 经交叉审计、CI 全绿后合并。",
   stats: [
-    {v:"12", l:"已合并 PR"}, {v:"547", l:"测试通过"}, {v:"108", l:"已确认决策"}, {v:"29", l:"待取证事项"}
+    {v:"13", l:"已合并 PR"}, {v:"676", l:"#35 本地测试通过"}, {v:"121", l:"已确认决策"}, {v:"29", l:"待取证事项"}
   ],
   status: {
     done:{t:"已完成",c:"s-done"}, review:{t:"审查中",c:"s-review"}, active:{t:"修改中",c:"s-active"},
@@ -153,8 +171,8 @@ const DATA = {
     "R1-T04":{n:"职务体系与编制",s:"done",who:"Codex",pr:11,note:"带编调动暂缓（DEC-073）"},
     "R1-T05":{n:"任职记录版本链",s:"done",who:"Codex",pr:12,note:"表单字段级配置转入 R1-T09"},
     "R1-T06":{n:"向后更新",s:"done",who:"Codex",pr:16,note:"规则②记录级（DEC-078）、停用按后续记录生效日（DEC-079）"},
-    "R1-T12":{n:"人员信息与人员子集",s:"done",who:"Codex",pr:26,note:"两轮审计；本人自助权限 DEC-085~087"},
-    "R1-T07":{n:"审批中心",s:"active",who:"Claude",pr:35,note:"第二轮已交付；按 DEC-103~106 补充调整中，之后 astra 复审"},
+    "R1-T12":{n:"人员信息与人员子集",s:"done",who:"Codex",pr:26,note:"两轮审计；本人自助权限 DEC-085~087；排序号预计算 #27 已合并"},
+    "R1-T07":{n:"审批中心",s:"review",who:"Claude",pr:35,note:"第三轮修复已推送（7e0fc3f），本地 676 条通过；GitHub CI 因账单问题无法启动"},
     "R1-T08":{n:"定时生效任务",s:"todo",who:"",pr:null,note:"含租户时区、失败待办（DEC-052/056）"},
     "R1-T09":{n:"调动业务",s:"todo",who:"",pr:null,note:"含表单字段级可编辑配置"},
     "R1-T11":{n:"撤销与删除任职",s:"todo",who:"",pr:null,note:""},
@@ -171,14 +189,30 @@ const DATA = {
     "R3-T05":{n:"继任管理",s:"todo"},"R3-T06":{n:"人才池与人才梯队",s:"todo"},"R3-T07":{n:"个人发展计划 IDP",s:"todo"}
   },
   now: [
-    {id:"待你决定", s:"blocked", d:"D-026 规则②原站是字段级（DEC-078 记录级）；D-027 停用值原站按补录日判断（DEC-079 按后续记录生效日）；D-028 原站拒绝往旧周期补录（PR #12 允许）", next:"三项都改已合并的 R1-T05/T06，定了才能派发 F-001/F-002"},{id:"PR #27", s:"review", d:"排序编码预计算：CI 全绿、Codex 复核通过、门禁已放行（Q-M0-30 改挂 R1-T15）", next:"等你在编排窗口确认合并；之后 #35 迁移顺延到 0028 起"},
-    {id:"R1-T07", s:"active", d:"PR #35 第二轮已交付（f7c167f）；取证结论登记为 DEC-103~106 并以补充清单派给开发窗口", next:"补充修改推送后跑测试、发起 astra 复审"},
-    {id:"取证", s:"active", d:"已完成 17 项；原站写入实测 Q-M0-19/24/26/27（W-401~413，数据保留）", next:"R1-T08 开工前扫描 → Q-M0-16 → Q-M0-28"},
-    
-    {id:"F-001 / F-002", s:"blocked", d:"后续任务（合成一个 PR）：F-001 DEC-108 同日多条按操作先后（改 PR #12/#16）；F-002 DEC-107 服务端带出职务序列（改 PR #16）", next:"等取证改 Q-M0-14/15 阻塞列、完成 Q-M0-16，以及 D-026 实测"},
-    {id:"R1-T08", s:"todo", d:"定时生效任务（租户时区、失败待办）", next:"等开工前取证扫描；按同日操作顺序设计（D-024②）"}
+    {id:"要你处理", s:"blocked", d:"GitHub Actions 停摆：账号扣费失败或支出上限不足，自 14:24 起所有 CI 未启动（main 与 #35 都是“失败”，实际没跑）", next:"到 GitHub Settings → Billing & plans 处理付款或调高 Actions 支出上限，之后重跑 CI"},
+    {id:"R1-T07", s:"review", d:"PR #35 第三轮修复已推送（astra 二审 17 条 + 代选决策 DEC-113~119），本地 676 条测试通过、含真 PostgreSQL", next:"CI 恢复变绿 → 编排窗口发起 astra 第三轮复审 → 你在编排窗口确认合并"},
+    {id:"F-001 / F-002", s:"todo", d:"后续任务（一个 PR）：同日多条按操作先后（DEC-108）、早于入职日的业务一律拒绝（DEC-111）、服务端带出职务序列（DEC-107）、规则②保持记录级并在预览提醒（DEC-120）", next:"门禁已放行，等你开一个新的云端开发窗口（提示词见 09_派发/后续任务.md §3）"},
+    {id:"R1-T08", s:"blocked", d:"定时生效：同日按操作先后依次生效、前一条失败则后续挂起（DEC-108/112）", next:"门禁拦在 Q-M0-50（走审批的未来业务在生效日前是什么形态），取证窗口在查"},
+    {id:"取证", s:"active", d:"50 项中已完成 21 项；D-026~030 已全部由你决定（DEC-110~112、120、121）", next:"Q-M0-50（R1-T08 开工前）→ Q-M0-16（R1-T04 同步序列）→ 其余"}
+  ],
+  rounds: [
+    {k:"首版", t:"10-03 07:01", s:"done", d:"审批中心首版：流程配置、审批人解析、同意 / 驳回 / 转交 / 加签、详情与日志", by:"Claude 开发窗口", out:"Codex 自动审查提出意见，09:25 修完"},
+    {k:"一审", t:"10-03 11:01", s:"done", d:"astra 深度审计（Ultra）：26 条必须修的问题，主要是权限越界、盲审、审计记录不全", by:"编排窗口合并三方意见成“第二轮修改清单”，并定 DEC-091~102", out:"第二轮修改 12:46 交付"},
+    {k:"取证插入", t:"10-03 12:49", s:"done", d:"取证发现原站做法和第二轮写的不一样：重提不重新匹配流程、意见隐藏是“看的一方”开关、相同审批人可“跳过”", by:"你选择照搬原站 → DEC-103~106", out:"“第二轮·补充”13:20 交付（这就是一次返工）"},
+    {k:"二审", t:"10-03 14:20", s:"done", d:"astra 复审：17 条问题 F1~F17 + 7 个产品问题", by:"编排窗口按推荐代选 7 个决策 DEC-113~119，你回来后逐条确认维持", out:"派出“第三轮修改清单”"},
+    {k:"第三轮", t:"10-03 15:11", s:"review", d:"修 F1~F17、落实 DEC-113~119、把“通过却证明不了修复”的测试改扎实", by:"Claude 开发窗口：先提交失败测试，再提交修复", out:"本地 676 条通过；GitHub CI 因账单停摆未跑"},
+    {k:"三审 → 合并", t:"待定", s:"todo", d:"CI 恢复变绿后，astra 第三轮复审；通过即可合并", by:"编排窗口发起；合并需你在编排窗口亲自确认", out:"会签与并加签延到后续任务 F-003（DEC-117）"}
+  ],
+  third: [
+    {g:"堵权限漏洞", items:"F1 F2 F3 F9 F10 F16 · DEC-113", d:"不让人借边角路径看到或操作不该碰的单：权限判断不能只看最近 200 条记录；异常管理员交接要逐单查范围、不能审自己的单；撤回后只有原发起人能重提，且重新核对他当前的权限；本人相关的单不显示被禁止的管理员按钮"},
+    {g:"防止单子卡死", items:"F4 F5 F8", d:"复杂加签组合（多人加签、嵌套加签、加签中途撤回、加签人离职）下，单子要么正确流转，要么在入口就拒绝，不能出现“没人能办”的状态"},
+    {g:"对齐原站规则", items:"F6 F7 F11 F12 F15 · DEC-114/115/116/118/119", d:"离职但账号还在的人视为审批人为空；管理员干预后，之前的审批人不再算“历史相同”；调动预置流程关掉自动跳过；补“新增员工”“个人信息变更”两种审批类型；调动详情先补已有数据的字段，薪资 / 合同等登记延期"},
+    {g:"小修", items:"F13 F14 F17", d:"流程仿真给出和真实提交一致的失败原因；子集审批详情不再出现“编辑”按钮；安装预置时校验版本号"},
+    {g:"测试做扎实", items:"测试质量", d:"astra 指出几条测试换成旧代码也能通过，等于没证明修复：改成强制制造并发锁竞争、在真 PostgreSQL 上跑，断言要能区分新旧行为，期望值取自规格文档而不是代码本身"}
   ],
   log: [
+    {d:"10-03", t:"PR #35 第三轮修复推送（astra 二审 F1~F17 + DEC-113~119），本地 676 条通过；GitHub Actions 因账单问题停摆"},
+    {d:"10-03", t:"你决定 D-026①（保持记录级，DEC-120）、D-027①（DEC-110）、D-028①（DEC-111）、D-029①（DEC-112）、D-030①（DEC-121）；合并 PR #27"},
     {d:"10-03", t:"原站写入实测完成：规则②字段级、停用值按补录日判断、旧周期补录被拒 → D-026~028 待决；Q-M0-14/15/30 阻塞列改写，#27 门禁放行"},
     {d:"10-03", t:"合并 PR #36：迁移快照对齐 + 库结构 / RLS 策略守卫（迁移 0025）；#27 迁移顺延为 0026/0027"},
     {d:"10-03", t:"用户同意合并 PR #36；同意 D-026 原站写入实测（仅此一项，先写方案与回退）"},
@@ -234,6 +268,11 @@ rail.innerHTML = DATA.milestones.map(m => {
 
 document.getElementById("now").innerHTML = DATA.now.map(c =>
   `<div class="card"><div class="h"><span class="id">${esc(c.id)}</span>${pill(c.s)}</div><p>${esc(c.d)}</p><div class="next">下一步：${esc(c.next)}</div></div>`).join("");
+
+document.getElementById("rounds").innerHTML = DATA.rounds.map(r =>
+  `<li><div class="rk">${esc(r.k)}<time>${esc(r.t)}</time>${pill(r.s)}</div><div class="rd"><span>${esc(r.d)}</span><span class="m">谁：${esc(r.by)}</span><span class="m">结果：${esc(r.out)}</span></div></li>`).join("");
+document.getElementById("third").innerHTML = DATA.third.map(x =>
+  `<div class="card"><b>${esc(x.g)}</b><span class="it">${esc(x.items)}</span><p>${esc(x.d)}</p></div>`).join("");
 
 const groups = [
   {nm:"R1 底座", ms:["M0","M1","M2","M3","M4","M5","M6","M7"], open:true},
