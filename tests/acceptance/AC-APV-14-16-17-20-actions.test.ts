@@ -82,11 +82,11 @@ describe('转交、加签、催办、撤销（节点动作开关与消息规则�
     const delegate = await w.member('转交对象');
     await w.publishedProcess({
       nodes: [
-        { key: 'out_head', approver: 'latest_record_department_head', actions: { urge: true } },
+        { key: 'out_head', approver: 'latest_record_department_head', actions: { urge: 'inherit' } },
         {
           key: 'in_head',
           approver: 'record_department_head',
-          actions: { transfer: true, addSign: true, urge: true },
+          actions: { transfer: true, addSign: true, urge: 'inherit' },
           messageRules: [
             {
               trigger: 'approve',
@@ -125,12 +125,11 @@ describe('转交、加签、催办、撤销（节点动作开关与消息规则�
     );
     expect(current(view)).toMatchObject({ assigneeUserId: delegate, origin: 'transfer' });
     expect((await w.todos(s.inHead.userId)).items).toEqual([]);
-    view = await w.json(await w.taskAction(delegate, current(view).id, 'add-sign', view.revision, { userId: helper }));
-    const open = w.pending(view);
-    expect(open.map((task) => task.assigneeUserId).sort()).toEqual([delegate, helper].sort());
+    // DEC-095 后加签：本人同意后再由被加签人审批。
     view = await w.json(
-      await w.taskAction(delegate, open.find((t) => t.assigneeUserId === delegate)!.id, 'approve', view.revision),
+      await w.taskAction(delegate, current(view).id, 'add-sign', view.revision, { userId: helper, type: 'after' }),
     );
+    expect(current(view)).toMatchObject({ assigneeUserId: helper, origin: 'add_sign_after' });
     expect(view.status).toBe('running');
     view = await w.json(await w.taskAction(helper, current(view).id, 'approve', view.revision));
     expect(view.status).toBe('approved');

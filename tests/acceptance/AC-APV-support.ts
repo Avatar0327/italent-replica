@@ -39,7 +39,13 @@ export interface NodeInput {
   readonly formFields?: readonly string[];
   readonly editableFields?: readonly string[];
   readonly editMode?: 'none' | 'separate' | 'with_approve';
-  readonly actions?: { readonly transfer?: boolean; readonly addSign?: boolean; readonly urge?: boolean };
+  readonly actions?: {
+    readonly transfer?: boolean;
+    readonly addSign?: boolean;
+    readonly copySend?: boolean;
+    readonly retrieve?: boolean;
+    readonly urge?: 'inherit' | 'enabled' | 'disabled';
+  };
   readonly rejectCommentRequired?: boolean;
   /** DEC-100：意见仅本节点与发起人可见（出厂关 = 默认公开）。 */
   readonly commentPrivate?: boolean;
@@ -519,7 +525,7 @@ export async function installApprovalFallbacks(db: Db, tenantId: string, userId:
               formFields: [],
               editableFields: [],
               editMode: 'none',
-              actions: { transfer: false, addSign: false, urge: true },
+              actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' },
               rejectCommentRequired: false,
               commentPrivate: false,
               rejectResubmit: 'restart',

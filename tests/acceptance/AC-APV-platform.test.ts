@@ -89,7 +89,11 @@ describe('转交 / 加签写统一审计与 outbox（AGENTS §10）', () => {
     );
     const transferred = view.tasks.find((t) => t.status === 'pending')!;
     view = await w.json<InstanceView>(
-      await w.taskAction(delegate, transferred.id, 'add-sign', view.revision, { userId: helper, comment: '请会签' }),
+      await w.taskAction(delegate, transferred.id, 'add-sign', view.revision, {
+        userId: helper,
+        type: 'before',
+        comment: '请会签',
+      }),
     );
     const added = view.tasks.find((t) => t.assigneeUserId === helper)!;
     const audits = await withTenant(w.db, w.tenant.id, (tx) =>
