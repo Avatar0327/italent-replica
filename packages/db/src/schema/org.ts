@@ -16,7 +16,6 @@ import {
   text,
   timestamp,
   unique,
-  uniqueIndex,
   uuid,
   type PgTableExtraConfigValue,
 } from 'drizzle-orm/pg-core';
@@ -167,9 +166,8 @@ export const orgCodeReservations = pgTable(
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   },
   (t) => [
-    uniqueIndex('org_code_reservations_held_code')
-      .on(t.tenantId, t.code)
-      .where(sql`${t.state} = 'held'`),
+    // 迁移 0009 起编码按版本预占、到期释放，不再要求 held 编码全租户唯一
+    index('org_code_reservations_tenant_expiry').on(t.tenantId, t.state, t.expiresAt, t.code),
     index('org_code_reservations_tenant_state').on(t.tenantId, t.state),
     check('org_code_reservations_state_valid', sql`${t.state} IN ('held', 'released', 'consumed')`),
     check('org_code_reservations_revision_positive', sql`${t.revision} > 0`),

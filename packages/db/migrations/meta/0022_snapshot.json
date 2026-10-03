@@ -162,6 +162,39 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "audit_events_scope_creator_lookup": {
+          "name": "audit_events_scope_creator_lookup",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "object_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "action",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -726,6 +759,10 @@
         "tenants_status_valid": {
           "name": "tenants_status_valid",
           "value": "\"tenants\".\"status\" IN ('active', 'suspended', 'restoring')"
+        },
+        "tenants_timezone_valid": {
+          "name": "tenants_timezone_valid",
+          "value": "is_valid_iana_timezone(\"tenants\".\"timezone\")"
         }
       },
       "isRLSEnabled": false
@@ -2027,28 +2064,6 @@
         }
       },
       "indexes": {
-        "org_code_reservations_held_code": {
-          "name": "org_code_reservations_held_code",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "code",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"org_code_reservations\".\"state\" = 'held'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "org_code_reservations_tenant_state": {
           "name": "org_code_reservations_tenant_state",
           "columns": [
@@ -2060,6 +2075,39 @@
             },
             {
               "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "org_code_reservations_tenant_expiry": {
+          "name": "org_code_reservations_tenant_expiry",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "code",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -13718,7 +13766,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_awards_versions_source": {
+          "name": "personnel_awards_versions_source",
+          "value": "\"personnel_awards_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_awards_versions\".\"source_type\" = 'hr_direct' AND \"personnel_awards_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_awards_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_awards_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.personnel_certificate": {
@@ -14126,7 +14179,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_certificate_versions_source": {
+          "name": "personnel_certificate_versions_source",
+          "value": "\"personnel_certificate_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_certificate_versions\".\"source_type\" = 'hr_direct' AND \"personnel_certificate_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_certificate_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_certificate_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.personnel_change_requests": {
@@ -14974,7 +15032,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_education_versions_source": {
+          "name": "personnel_education_versions_source",
+          "value": "\"personnel_education_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_education_versions\".\"source_type\" = 'hr_direct' AND \"personnel_education_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_education_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_education_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.personnel_employee_versions": {
@@ -15977,7 +16040,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_estimation_result_versions_source": {
+          "name": "personnel_estimation_result_versions_source",
+          "value": "\"personnel_estimation_result_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_estimation_result_versions\".\"source_type\" = 'hr_direct' AND \"personnel_estimation_result_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_estimation_result_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_estimation_result_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.personnel_family": {
@@ -16517,7 +16585,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_family_versions_source": {
+          "name": "personnel_family_versions_source",
+          "value": "\"personnel_family_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_family_versions\".\"source_type\" = 'hr_direct' AND \"personnel_family_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_family_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_family_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.personnel_job_history": {
@@ -17160,7 +17233,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_job_history_versions_source": {
+          "name": "personnel_job_history_versions_source",
+          "value": "\"personnel_job_history_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_job_history_versions\".\"source_type\" = 'hr_direct' AND \"personnel_job_history_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_job_history_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_job_history_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.personnel_language_ability": {
@@ -17556,7 +17634,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_language_ability_versions_source": {
+          "name": "personnel_language_ability_versions_source",
+          "value": "\"personnel_language_ability_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_language_ability_versions\".\"source_type\" = 'hr_direct' AND \"personnel_language_ability_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_language_ability_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_language_ability_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.personnel_outbox": {
@@ -18159,7 +18242,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_professional_technical_post_versions_source": {
+          "name": "personnel_professional_technical_post_versions_source",
+          "value": "\"personnel_professional_technical_post_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_professional_technical_post_versions\".\"source_type\" = 'hr_direct' AND \"personnel_professional_technical_post_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_professional_technical_post_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_professional_technical_post_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.personnel_project_experience": {
@@ -18603,7 +18691,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_project_experience_versions_source": {
+          "name": "personnel_project_experience_versions_source",
+          "value": "\"personnel_project_experience_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_project_experience_versions\".\"source_type\" = 'hr_direct' AND \"personnel_project_experience_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_project_experience_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_project_experience_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.personnel_punish": {
@@ -18927,7 +19020,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_punish_versions_source": {
+          "name": "personnel_punish_versions_source",
+          "value": "\"personnel_punish_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_punish_versions\".\"source_type\" = 'hr_direct' AND \"personnel_punish_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_punish_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_punish_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.personnel_skill": {
@@ -19275,7 +19373,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_skill_versions_source": {
+          "name": "personnel_skill_versions_source",
+          "value": "\"personnel_skill_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_skill_versions\".\"source_type\" = 'hr_direct' AND \"personnel_skill_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_skill_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_skill_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.personnel_training": {
@@ -19755,7 +19858,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_training_versions_source": {
+          "name": "personnel_training_versions_source",
+          "value": "\"personnel_training_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_training_versions\".\"source_type\" = 'hr_direct' AND \"personnel_training_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_training_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_training_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.personnel_vocational_qualification": {
@@ -20221,7 +20329,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "personnel_vocational_qualification_versions_source": {
+          "name": "personnel_vocational_qualification_versions_source",
+          "value": "\"personnel_vocational_qualification_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_vocational_qualification_versions\".\"source_type\" = 'hr_direct' AND \"personnel_vocational_qualification_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_vocational_qualification_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_vocational_qualification_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
       "isRLSEnabled": false
     }
   },
