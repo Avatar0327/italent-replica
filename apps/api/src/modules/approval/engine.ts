@@ -35,7 +35,8 @@ export interface Run {
   readonly ctx: ApprovalContext;
   readonly before: InstanceRow;
   readonly version: VersionView;
-  readonly snapshot: BusinessSnapshot;
+  /** 审批中编辑改写业务单后重新加载，后续节点按编辑后的部门解析审批人。 */
+  snapshot: BusinessSnapshot;
   instance: InstanceRow;
   readonly events: string[];
 }

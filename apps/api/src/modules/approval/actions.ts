@@ -52,7 +52,10 @@ function assertOpen(scene: TaskScene, ctx: ApprovalContext): void {
   }
 }
 
-/** DEC-058 / DEC-069：变化字段不可见时不能同意也不能驳回；在办任务自动转异常管理员，流程不卡死。 */
+/**
+ * DEC-058 / DEC-069：变化字段不可见时不能同意也不能驳回；在办任务自动转异常管理员，流程不卡死。
+ * 调用前必须已通过 assertOpen：过期 revision 或已处理的任务不能触发自动转交（AGENTS §10「并发」）。
+ */
 async function blindReview(
   tx: Tx,
   scene: TaskScene,
@@ -61,27 +64,26 @@ async function blindReview(
   const hidden = blindFields(scene.run.snapshot, viewable);
   if (!hidden.length) return null;
   const { run, task } = scene;
-  if (task.status === 'pending' && run.instance.status === 'running') {
-    const admin = run.version.exceptionAdminUserId!;
-    await closeTask(tx, run.ctx, task.id, 'transferred');
-    const next = await insertTask(tx, run.ctx, run.instance.id, {
-      round: run.instance.round,
-      nodeKey: task.nodeKey,
-      assigneeUserId: admin,
-      origin: 'blind_review',
-      status: 'pending',
-      isExceptionAdmin: true,
-      parentTaskId: task.id,
-    });
-    await appendLog(tx, run.ctx, run.instance, {
-      event: 'blind_review_exception_admin',
-      nodeKey: task.nodeKey,
-      taskId: next,
-      detail: { fromUserId: task.assigneeUserId, toUserId: admin, fields: hidden },
-    });
-    await notifyTodo(tx, run.ctx, run.instance, next, admin);
-    await persistRun(tx, run, 'approval.task.blind_review');
-  }
+  const admin = run.version.exceptionAdminUserId!;
+  await closeTask(tx, run.ctx, task.id, 'transferred');
+  const next = await insertTask(tx, run.ctx, run.instance.id, {
+    round: run.instance.round,
+    nodeKey: task.nodeKey,
+    assigneeUserId: admin,
+    origin: 'blind_review',
+    status: 'pending',
+    isExceptionAdmin: true,
+    parentTaskId: task.id,
+  });
+  await appendLog(tx, run.ctx, run.instance, {
+    event: 'blind_review_exception_admin',
+    nodeKey: task.nodeKey,
+    taskId: next,
+    detail: { fromUserId: task.assigneeUserId, toUserId: admin, fields: hidden },
+  });
+  await notifyTodo(tx, run.ctx, run.instance, next, admin);
+  run.events.push('approval.task.transferred');
+  await persistRun(tx, run, 'approval.task.blind_review');
   const message = '本单含您无权查看且已变更的字段，无法审批';
   return { status: 403, body: { error: { code: 'FORBIDDEN', message, details: { reason: 'APPROVAL_BLIND_REVIEW' } } } };
 }
@@ -101,7 +103,10 @@ function editableInput(node: ApprovalNode, fields: Row, viewable: ReadonlySet<st
 
 async function applyEdit(tx: Tx, scene: TaskScene, fields: Row): Promise<void> {
   const { run, task } = scene;
-  await ADAPTERS[run.instance.businessType].edit(tx, run.ctx, run.instance.businessId, fields);
+  const adapter = ADAPTERS[run.instance.businessType];
+  await adapter.edit(tx, run.ctx, run.instance.businessId, fields);
+  // 【编辑并同意】随后推进节点：路由部门必须取编辑后的业务单，不能沿用打开任务时的快照。
+  run.snapshot = await adapter.snapshot(tx, run.ctx, run.instance.businessId, run.instance.processCode);
   await appendLog(tx, run.ctx, run.instance, {
     event: 'edit',
     nodeKey: task.nodeKey,
@@ -133,9 +138,9 @@ export async function approveTask(
   viewable: ReadonlySet<string> | undefined,
 ): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
+  assertOpen(scene, ctx);
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
-  assertOpen(scene, ctx);
   await assertNotSelf(tx, scene.run, ctx.userId);
   const { run, task, node } = scene;
   if (input.fields && Object.keys(input.fields).length) {
@@ -176,9 +181,9 @@ export async function rejectTask(
   viewable: ReadonlySet<string> | undefined,
 ): Promise<Outcome> {
   const scene = await openTask(tx, ctx, input.taskId);
+  assertOpen(scene, ctx);
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
-  assertOpen(scene, ctx);
   await assertNotSelf(tx, scene.run, ctx.userId);
   const { run, task, node } = scene;
   // DEC-059：节点开关「驳回意见必填」，出厂关闭。
@@ -244,9 +249,10 @@ export async function transferTask(tx: Tx, ctx: ApprovalContext, input: Delegate
   if (input.userId === ctx.userId) throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '不能转交给自己');
   await assertReviewer(tx, run, input.userId);
   await closeTask(tx, ctx, task.id, 'transferred', input.comment);
-  await delegate(tx, run, task, input.userId, 'transfer', { comment: input.comment });
+  const next = await delegate(tx, run, task, input.userId, 'transfer', { comment: input.comment });
+  await auditDelegation(tx, run, 'approval.task.transfer', task, next, input, 'transferred');
   await applyMessageRules(tx, ctx, run.instance, node, 'transfer', { id: task.id, assigneeUserId: input.userId });
-  await persistRun(tx, run, 'approval.task.transfer');
+  await persistRun(tx, run, 'approval.instance.transfer');
   return ok(run);
 }
 
@@ -261,10 +267,38 @@ export async function addSign(tx: Tx, ctx: ApprovalContext, input: DelegateInput
     throw approvalError('CONFLICT', 'APPROVAL_ALREADY_ASSIGNED', '该用户已在本节点审批');
   }
   // TODO(需取证 Q-M0-41)：原站加签的类型（前加签 / 后加签 / 并加签）未取证；首版按“同节点全部同意才通过”。
-  await delegate(tx, run, task, input.userId, 'add_sign', { comment: input.comment });
-  await persistRun(tx, run, 'approval.task.add_sign');
+  const next = await delegate(tx, run, task, input.userId, 'add_sign', { comment: input.comment });
+  await auditDelegation(tx, run, 'approval.task.add_sign', task, next, input, 'pending');
+  await persistRun(tx, run, 'approval.instance.add_sign');
   return ok(run);
 }
+
+/** 转交 / 加签与同意 / 驳回一样写任务审计：原任务状态、原 / 新审批人、新任务与意见（AGENTS §10「审计」）。 */
+async function auditDelegation(
+  tx: Tx,
+  run: Run,
+  action: string,
+  from: TaskRow,
+  next: string,
+  input: DelegateInput,
+  taskStatus: 'transferred' | 'pending',
+): Promise<void> {
+  await auditTask(
+    tx,
+    run,
+    action,
+    { taskStatus: 'pending', assigneeUserId: from.assigneeUserId, newTaskId: null, newTaskStatus: null, comment: null },
+    { taskStatus, assigneeUserId: input.userId, newTaskId: next, newTaskStatus: 'pending', comment: input.comment },
+  );
+}
+
+/** 每次改派都写 outbox，通知处理器按游标消费（AGENTS §10「事件」）。 */
+const DELEGATION_EVENTS = {
+  transfer: 'approval.task.transferred',
+  add_sign: 'approval.task.add_signed',
+  admin_transfer: 'approval.task.transferred',
+  admin_intervene: 'approval.task.reassigned',
+} as const;
 
 async function delegate(
   tx: Tx,
@@ -274,7 +308,7 @@ async function delegate(
   origin: 'transfer' | 'add_sign' | 'admin_transfer' | 'admin_intervene',
   detail: Row,
   adminSelfTransfer = false,
-): Promise<void> {
+): Promise<string> {
   const next = await insertTask(tx, run.ctx, run.instance.id, {
     round: run.instance.round,
     nodeKey: from.nodeKey,
@@ -293,6 +327,8 @@ async function delegate(
     detail: { fromUserId: from.assigneeUserId, toUserId: userId, ...detail },
   });
   await notifyTodo(tx, run.ctx, run.instance, next, userId);
+  run.events.push(DELEGATION_EVENTS[origin]);
+  return next;
 }
 
 export async function editTask(
