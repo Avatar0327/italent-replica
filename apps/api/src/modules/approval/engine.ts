@@ -439,7 +439,7 @@ async function insertInstance(
 
 /**
  * DEC-103 重提：沿用原实例与其冻结版本。驳回后按驳回节点的「驳回后提交方式」（DEC-053）；撤回后从第一个节点
- * 重新审批。实例的发起人不可改（0026 触发器），只有原发起人能重提。
+ * 重新审批。实例的发起人不可改（0029 触发器），只有原发起人能重提。
  */
 export async function resume(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<InstanceRow> {
   const run = await openRun(tx, ctx, instanceId);
