@@ -251,7 +251,7 @@ describe('PR #35 第三轮：预置与目录按规格核对', () => {
     }
   });
 
-  it('F15 / DEC-118：TransferDetailView 每个标准字段都有交付或延期登记，预置表单只含已交付的表单字段', () => {
+  it('F15 / DEC-118 / DEC-122：TransferDetailView 每个标准字段都有交付或延期登记，规定必须交付的字段都已交付', () => {
     // 字段清单抄自 `14` §11.2 TransferDetailView 一行。
     const spec = [
       '调动人员',
@@ -294,10 +294,31 @@ describe('PR #35 第三轮：预置与目录按规格核对', () => {
       if (item.status === 'deferred') expect(item.deferredTo, item.label).toBeTruthy();
       else expect(item.field, item.label).toBeTruthy();
     }
-    const delivered = TRANSFER_DETAIL_VIEW.filter((item) => item.status === 'delivered' && item.place === 'form');
+    // 现有业务模型已有数据、必须在本 PR 交付的字段（DEC-118 / DEC-122），独立于实现列出：标签 → 表单字段编码。
+    const mustDeliver: Record<string, string> = {
+      调动日期: 'effectiveDate',
+      工号: 'jobNumber',
+      性别: 'gender',
+      年龄: 'age',
+      新部门: 'departmentId',
+      新职务: 'postId',
+      新职级: 'levelId',
+      新职等: 'gradeId',
+      新职务序列: 'sequenceId',
+      新职位: 'positionId',
+      新直线经理: 'directManagerId',
+      用工形式: 'employmentForm',
+      人员类别: 'employmentType',
+      调动后是否部门负责人: 'isDepartmentHead',
+    };
+    const byLabel = new Map(TRANSFER_DETAIL_VIEW.map((item) => [item.label, item]));
+    for (const [label, field] of Object.entries(mustDeliver)) {
+      expect(byLabel.get(label), label).toMatchObject({ status: 'delivered', place: 'form', field });
+    }
+    expect(byLabel.get('调动人员')).toMatchObject({ status: 'delivered', place: 'header' });
     const transfer = PRESET_PROCESSES.find((preset) => preset.approvalType === 'transfer')!;
     for (const node of transfer.definition.nodes) {
-      expect([...node.formFields].sort()).toEqual(delivered.map((item) => item.field!).sort());
+      expect([...node.formFields].sort()).toEqual(Object.values(mustDeliver).sort());
     }
   });
 });

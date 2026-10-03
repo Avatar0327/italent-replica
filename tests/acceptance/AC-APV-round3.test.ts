@@ -169,9 +169,10 @@ describe('F2：异常管理员交接不绕过实例范围与本人回避（DEC-0
       body: { fromUserId: w.exceptionAdmin, toUserId: successor },
     });
     expect(response.status, await response.clone().text()).toBe(200);
-    const result = (await response.json()) as { tasks: number; skipped: { reason: string }[] };
+    const result = (await response.json()) as { tasks: number; skipped: { reason: string }[]; unlisted: number };
     expect(result.tasks).toBe(0);
-    expect(result.skipped).toEqual([expect.objectContaining({ reason: 'APPROVAL_ADMIN_REQUIRED' })]);
+    // 第四轮 N3：调用者看不到的实例不列出编号与原因，只计入不可识别的 unlisted。
+    expect(result).toMatchObject({ skipped: [], unlisted: 1 });
     expect(current(await w.detail(view.id))).toMatchObject({ assigneeUserId: w.exceptionAdmin });
   });
 });
