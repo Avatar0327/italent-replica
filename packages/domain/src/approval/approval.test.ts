@@ -3,6 +3,7 @@ import { conditionViolations, evaluateCondition } from './conditions.js';
 import { publishViolations } from './definition.js';
 import { PRESET_PROCESSES } from './presets.js';
 import { avoidSelfExceptionAdmin, decideNode, type Candidate, type RoutingFacts } from './routing.js';
+import { TRANSFER_DETAIL_VIEW } from './transfer-view.js';
 import {
   APPROVAL_TYPES,
   approvalTypeOfBusiness,
@@ -210,5 +211,93 @@ describe('审批类型与标准流程编码（`14` §11.1，PR #35 第二轮补�
     expect(transfer[0]!.formFields).toEqual(
       expect.arrayContaining(['effectiveDate', 'departmentId', 'postId', 'positionId', 'directManagerId']),
     );
+  });
+});
+
+describe('PR #35 第三轮：预置与目录按规格核对', () => {
+  it('F11：调动预置各节点的相同 / 历史相同审批人跳过全部关闭（`14` §11.10 更正）', () => {
+    const transfer = PRESET_PROCESSES.find((preset) => preset.approvalType === 'transfer')!;
+    expect(
+      transfer.definition.nodes.map((node) => [node.key, node.sameAssigneeSkip, node.historySameAssigneeSkip]),
+    ).toEqual([
+      ['out_head', false, false],
+      ['in_hrbp', false, false],
+      ['in_head', false, false],
+      ['first_level', false, false],
+    ]);
+  });
+
+  it('F12 / DEC-116：规格目录（`14` §11.1）中首版涉及的标准流程编码都有审批类型与预置', () => {
+    // 期望值抄自规格目录，不取实现自身的目录作分母。
+    const spec = [
+      ['入职', 'EntryProcessNew'],
+      ['转正', 'ProbationProcessNew'],
+      ['离职', 'DimissionProcessNew'],
+      ['调动', 'TransferProcessNew'],
+      ['新增员工', 'AddEmployeeProcess'],
+      ['实习转正', 'TraineeEntryProcess'],
+      ['退休', 'RetireProcess'],
+      ['个人信息变更', 'EmpInfoChangeProcess'],
+    ] as const;
+    const byCode = new Map(
+      Object.entries(APPROVAL_TYPES).map(([key, type]) => [type.defaultProcessCode, { key, type }]),
+    );
+    for (const [name, code] of spec) {
+      expect(byCode.get(code)?.type.name, code).toBe(name);
+      const preset = PRESET_PROCESSES.find((item) => item.approvalType === byCode.get(code)!.key);
+      expect(preset?.definition.conditions.items, code).toEqual([
+        expect.objectContaining({ field: 'processCode', operator: 'eq', value: code }),
+      ]);
+    }
+  });
+
+  it('F15 / DEC-118：TransferDetailView 每个标准字段都有交付或延期登记，预置表单只含已交付的表单字段', () => {
+    // 字段清单抄自 `14` §11.2 TransferDetailView 一行。
+    const spec = [
+      '调动人员',
+      '调动日期',
+      '异动类型',
+      '调动原因',
+      '交接人',
+      '工号',
+      '性别',
+      '年龄',
+      '是否调整薪资',
+      '是否变更合同',
+      '是否同步履历',
+      '是否带编制调动',
+      '试岗方式',
+      '试岗开始日期',
+      '预计试岗结束日期',
+      '试岗期限（月）',
+      '是否调整目标',
+      '新部门',
+      '新职务',
+      '新职级',
+      '新职等',
+      '新职务序列',
+      '新职位',
+      '新直线经理',
+      '用工形式',
+      '人员类别',
+      '调动后是否部门负责人',
+      '新增下属',
+      '兼职调整',
+      '薪资调整',
+      '合同变更',
+      '职责转交',
+      '目标调整',
+    ];
+    const labels = TRANSFER_DETAIL_VIEW.map((item) => item.label);
+    expect([...labels].sort()).toEqual([...spec].sort());
+    for (const item of TRANSFER_DETAIL_VIEW) {
+      if (item.status === 'deferred') expect(item.deferredTo, item.label).toBeTruthy();
+      else expect(item.field, item.label).toBeTruthy();
+    }
+    const delivered = TRANSFER_DETAIL_VIEW.filter((item) => item.status === 'delivered' && item.place === 'form');
+    const transfer = PRESET_PROCESSES.find((preset) => preset.approvalType === 'transfer')!;
+    for (const node of transfer.definition.nodes) {
+      expect([...node.formFields].sort()).toEqual(delivered.map((item) => item.field!).sort());
+    }
   });
 });

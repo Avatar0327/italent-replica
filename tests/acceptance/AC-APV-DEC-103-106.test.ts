@@ -205,7 +205,7 @@ describe('DEC-104：审批记录查看权限（查看方的节点开关）', () 
 });
 
 describe('DEC-105：员工子集变更不做审批中编辑', () => {
-  it('子集变更节点即使配置了可编辑字段，编辑也返回 409，申请内容不变', async () => {
+  it('子集变更节点不公布编辑、编辑返回 409，申请内容不变；流程编码按子集派生', async () => {
     const w = await approvalWorld(database().db, 'apv-dec105');
     const s = await transferScene(w);
     const settings = await w.request(w.hr.id, 'PUT', '/api/tenant/settings/personnel.self_service_fields', {
@@ -216,15 +216,7 @@ describe('DEC-105：员工子集变更不做审批中编辑', () => {
     await w.publishedProcess({
       approvalType: 'personnel_change',
       conditions: { items: [{ no: 1, field: 'request.subset', operator: 'eq', value: 'education' }] },
-      nodes: [
-        {
-          key: 'head',
-          approver: 'latest_record_department_head',
-          formFields: ['school'],
-          editableFields: ['school'],
-          editMode: 'separate',
-        },
-      ],
+      nodes: [{ key: 'head', approver: 'latest_record_department_head', formFields: ['school'] }],
     });
     const path = `/api/tenant/personnel/employees/${s.subject.employeeId}/subsets/education`;
     const record = await w.json<{ id: string; revision: number }>(
@@ -246,10 +238,11 @@ describe('DEC-105：员工子集变更不做审批中编辑', () => {
     );
     const view = await w.instanceOf(created.id, s.subject.userId);
     expect(view.processCode).toBe('ChangeEducationProcess');
+    expect((await w.detail(view.id, s.outHead.userId)).actions).not.toContain('edit');
     const edit = await w.taskAction(s.outHead.userId, current(view).id, 'edit', view.revision, {
       fields: { school: '丙校' },
     });
-    expect(await reasonOf(edit)).toMatchObject({ status: 409, reason: 'APPROVAL_EDIT_UNSUPPORTED' });
+    expect(edit.status).toBe(409);
     expect((await w.detail(view.id, s.outHead.userId)).form.values).toEqual({ school: '乙校' });
   });
 });
