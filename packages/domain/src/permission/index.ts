@@ -7,6 +7,12 @@ export {
   isAdminCapability,
   isAdminRole,
 } from './admin-roles.js';
+export {
+  ENTERPRISE_MENUS,
+  type EnterpriseMenu,
+  type VisibleEnterpriseMenu,
+  visibleEnterpriseMenus,
+} from './enterprise-menus.js';
 export { buttonResource, decide, type PermissionQuery, type PermissionSubject } from './decide.js';
 export {
   type EffectiveObjectPermission,

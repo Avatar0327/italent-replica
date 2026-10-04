@@ -4,7 +4,7 @@
  * DEC-098：仍是可用流程异常管理员的成员须先指定替代人，否则两者都拒绝。
  * 停用全局账号只允许账号仅属本租户时进行，不能借租户侧接口影响其他租户（硬规则 7）。
  */
-import { auditEvents, createUser, eq, getUser, grantMembership, withTenant } from '@italent/db';
+import { auditEvents, createUser, eq, getUser, grantMembership, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { approvalWorld, permissionAdmin, TRANSFER_NODES } from './AC-APV-support.js';
@@ -21,6 +21,10 @@ import {
 import { cmd, seedTenantWithMember } from './support/tenant-api.js';
 
 const testDb = useTestDb();
+
+function rowsOf<T>(result: unknown): T[] {
+  return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
+}
 
 describe('移出租户：调用平台撤销成员流程', () => {
   let world: PermissionWorld;
@@ -48,7 +52,12 @@ describe('移出租户：调用平台撤销成员流程', () => {
     const events = await withTenant(testDb().db, world.tenant.id, (tx) =>
       tx.select().from(auditEvents).where(eq(auditEvents.action, 'tenant_membership.revoke')),
     );
-    expect(events.some((e) => (e.after as { userId?: string } | null)?.userId === target.userId)).toBe(true);
+    const revoke = events.find((e) => (e.after as { userId?: string } | null)?.userId === target.userId);
+    expect(revoke).toBeDefined();
+    const outbox = await withTenant(testDb().db, world.tenant.id, (tx) =>
+      tx.execute(sql`SELECT event_type FROM permission_outbox WHERE object_id=${revoke!.objectId}`),
+    );
+    expect(rowsOf<{ event_type: string }>(outbox).map((r) => r.event_type)).toContain('tenant_membership.revoke');
     // 被移出的成员不能再访问本租户
     const denied = await world.api.request('GET', `${BASE}/me/objects/Demo.EmploymentRecord`, {
       user: target.userId,
@@ -123,6 +132,11 @@ describe('停用用户：调用平台全局停用流程', () => {
     expect(disabled.status, await disabled.clone().text()).toBe(200);
     expect(await disabled.json()).toMatchObject({ accountStatus: 'disabled', membershipStatus: 'active' });
     expect((await hr.getEmployee(employee.id)).status).toBe('employed');
+    // 租户侧发起的停用记入本租户审计（平台审计之外）
+    const statusEvents = await withTenant(db, world.tenant.id, (tx) =>
+      tx.select().from(auditEvents).where(eq(auditEvents.objectId, user.userId)),
+    );
+    expect(statusEvents.map((e) => e.action)).toContain('user.set_status');
 
     const reenabled = await world.api.request('POST', `${BASE}/users/${user.userId}/status`, {
       ...world.asAdmin,

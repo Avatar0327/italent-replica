@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { ADMIN_CAPABILITIES, ADMIN_ROLES, hasAdminCapability } from './admin-roles.js';
+import { type AdminCapability, ADMIN_ROLES, hasAdminCapability } from './admin-roles.js';
 import { ENTERPRISE_MENUS, visibleEnterpriseMenus } from './enterprise-menus.js';
 
-const holdersOf = (capability: (typeof ADMIN_CAPABILITIES)[number]) =>
-  ADMIN_ROLES.filter((role) => hasAdminCapability([role], capability));
+const holdersOf = (capability: AdminCapability) => ADMIN_ROLES.filter((role) => hasAdminCapability([role], capability));
 
 describe('企业设置菜单矩阵（06 §7.1）与后端管理员能力一致', () => {
   it('67 行，编码与路径唯一', () => {

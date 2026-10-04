@@ -62,10 +62,32 @@ async function orgRefs(tx: Tx, mouId: string): Promise<OrgRangeInput[]> {
   return refs as OrgRangeInput[];
 }
 
-export async function getMou(tx: Tx, id: string) {
-  const [row] = await tx.select().from(permissionMous).where(eq(permissionMous.id, id));
+/**
+ * lock = 'share'：引用方（用户范围改为该管理单元）以 FOR SHARE 读，与删除时的 FOR UPDATE 互斥——
+ * 删除先提交则这里读到 deleted 而拒绝；引用先提交则删除的引用检查能看到它（R1-T15 引用检查）。
+ */
+export async function getMou(tx: Tx, id: string, lock?: 'share') {
+  const query = tx.select().from(permissionMous).where(eq(permissionMous.id, id));
+  const [row] = lock ? await query.for('share') : await query;
   if (!row || row.kind !== 'named' || row.status === 'deleted') throw notFound();
   return { ...row, orgRanges: await orgRefs(tx, id) };
+}
+
+/** 被授权引用（用户 × 应用范围选了它）或仍有下级的管理单元不能删除（R1-T15；06 §7.4）。 */
+async function assertMouDeletable(tx: Tx, id: string) {
+  const [inUse] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(permissionUserAppScopes)
+    .where(and(eq(permissionUserAppScopes.mouId, id), eq(permissionUserAppScopes.kind, 'mou')));
+  if (inUse && inUse.count > 0) {
+    throw new AppError('CONFLICT', '管理单元已被用户授权引用，不能删除', { reason: 'MOU_IN_USE', scopes: inUse.count });
+  }
+  const [child] = await tx
+    .select({ id: permissionMous.id })
+    .from(permissionMous)
+    .where(and(eq(permissionMous.parentId, id), sql`${permissionMous.status}<>'deleted'`))
+    .limit(1);
+  if (child) throw new AppError('CONFLICT', '管理单元还有下级，不能删除', { reason: 'MOU_HAS_CHILDREN' });
 }
 
 export async function listMous(tx: Tx, page: { limit: number; offset: number }) {
@@ -154,6 +176,8 @@ export async function updateMou(
   if (input) {
     await validateRefs(tx, input.orgRanges);
     await validateParent(tx, input.parentId, id);
+  } else {
+    await assertMouDeletable(tx, id);
   }
   const revision = row.revision + 1;
   const fields = input
@@ -275,7 +299,7 @@ export async function assignUserAppScope(
   if (!allowed.includes(input.kind)) throw new AppError('VALIDATION_FAILED', '该应用不支持此范围类型');
   let mouId: string | null = null;
   if (input.kind === 'mou') {
-    const mou = await getMou(tx, input.mouId);
+    const mou = await getMou(tx, input.mouId, 'share');
     if (mou.status !== 'active') throw notFound();
     mouId = mou.id;
   } else if (input.kind === 'org_range') {

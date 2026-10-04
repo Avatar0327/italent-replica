@@ -33,7 +33,7 @@ async function linkedPerson(tx: Tx, q: ScopeQuery): Promise<string | undefined> 
 async function roleRoots(tx: Tx, q: ScopeQuery, roles: readonly string[], expand: boolean): Promise<ScopeRoot[]> {
   const person = await linkedPerson(tx, q);
   if (!person || !roles.length) return [];
-  // TODO(需取证 Q-M0-30): user/person 由管理员显式绑定，绝不假定两者 UUID 相同。
+  // DEC-128（06 §9）：用户与人员一一对应、由建档 / 入职绑定（user-provisioning.ts）；按绑定取人员，绝不假定两者 UUID 相同。
   return scopeRows<{ org_id: string }>(
     await tx.execute(sql`
     SELECT org_id FROM (SELECT DISTINCT ON (org_id) org_id,enabled,stop_date,person_in_charge_id,hrbp_id

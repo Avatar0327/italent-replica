@@ -8,6 +8,7 @@ import {
   and,
   asc,
   eq,
+  inArray,
   pgErrorCode,
   type PermissionGrant,
   permissionGrants,
@@ -42,17 +43,26 @@ export async function listGrants(tx: Tx, userId?: string): Promise<GrantView[]> 
   return rows.map(view);
 }
 
-/** 操作者可授予的业务身份（授权选择器的数据源，AC-PRM-10）。 */
+/**
+ * 操作者可授予的业务身份（授权选择器的数据源，AC-PRM-10）：范围外的身份不出现。
+ * 带出身份消耗的许可类型，授权界面据此实时显示该类许可余额（REQ-PRM-003 R3）。
+ */
 export async function grantableProfiles(
   tx: Tx,
   actorUserId: string,
-): Promise<Pick<ProfileView, 'id' | 'code' | 'name'>[]> {
+): Promise<Pick<ProfileView, 'id' | 'code' | 'name' | 'licenseType'>[]> {
   const { profiles } = await grantableSetsOf(tx, actorUserId);
-  const rows = await tx
-    .select({ id: permissionProfiles.id, code: permissionProfiles.code, name: permissionProfiles.name })
+  if (profiles.size === 0) return [];
+  return tx
+    .select({
+      id: permissionProfiles.id,
+      code: permissionProfiles.code,
+      name: permissionProfiles.name,
+      licenseType: permissionProfiles.licenseType,
+    })
     .from(permissionProfiles)
+    .where(inArray(permissionProfiles.id, [...profiles]))
     .orderBy(asc(permissionProfiles.code));
-  return rows.filter((p) => profiles.has(p.id));
 }
 
 export async function createGrant(

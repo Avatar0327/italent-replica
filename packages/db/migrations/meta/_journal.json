@@ -218,6 +218,20 @@
       "when": 1791045615660,
       "tag": "0030_approval_round2_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791128486063,
+      "tag": "0031_enterprise_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791128487516,
+      "tag": "0032_enterprise_settings_guards",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,7 @@ import {
   boolean,
   check,
   foreignKey,
+  index,
   integer,
   pgTable,
   primaryKey,
@@ -265,6 +266,29 @@ export const licenseSeats = pgTable(
       columns: [t.tenantId, t.licenseType],
       foreignColumns: [licensePools.tenantId, licensePools.licenseType],
     }),
+  ],
+);
+
+/**
+ * 权限模块的领域事件 outbox（AGENTS.md §10「事件」）：与业务写、审计同一事务写入，消费者按游标拉取。
+ * 对象编号用文本：用户 × 应用范围等对象的键是复合的（与 audit_events.object_id 一致）。
+ */
+export const permissionOutbox = pgTable(
+  'permission_outbox',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    objectType: text('object_type').notNull(),
+    objectId: text('object_id').notNull(),
+    eventType: text('event_type').notNull(),
+    revision: integer('revision'),
+    commandId: text('command_id').notNull(),
+    state: text('state').notNull().default('pending'),
+    createdAt: utc('created_at'),
+  },
+  (t) => [
+    index('permission_outbox_cursor').on(t.tenantId, t.createdAt, t.id),
+    check('permission_outbox_state', sql`${t.state} IN ('pending', 'sent', 'failed', 'unknown')`),
   ],
 );
 

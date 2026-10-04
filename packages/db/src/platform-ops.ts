@@ -8,6 +8,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from './client.js';
 import { pgErrorCode } from './pg-error.js';
 import {
+  type AuditEntry,
   type PlatformCommandContext,
   type PlatformCommandMeta,
   RevisionConflictError,
@@ -15,6 +16,7 @@ import {
 } from './platform-command.js';
 import {
   type MembershipStatus,
+  permissionOutbox,
   type SystemSetting,
   systemSettings,
   type Tenant,
@@ -111,6 +113,20 @@ export interface UserStatusChange {
   readonly userId: string;
   readonly status: UserStatus;
   readonly expectedRevision: number;
+  /**
+   * 租户侧发起（企业设置 · 用户管理，R1-T15）：账号必须是该租户的有效成员，且不是其他任何租户的有效成员，
+   * 否则抛 AccountScopeError——一个租户的管理员不能停用 / 启用别的租户也在用的全局账号（硬规则 7）。
+   */
+  readonly onlyTenantId?: string;
+}
+
+/** 租户侧停用 / 启用全局账号的范围不满足（见 UserStatusChange.onlyTenantId）；API 层映射为 404 / 409。 */
+export class AccountScopeError extends Error {
+  readonly code = 'ACCOUNT_SCOPE';
+  constructor(readonly reason: 'NOT_A_MEMBER' | 'ACCOUNT_SHARED_ACROSS_TENANTS') {
+    super(reason === 'NOT_A_MEMBER' ? '账号不是本租户的有效成员' : '该账号同时属于其他租户，不能在本租户停用或启用');
+    this.name = 'AccountScopeError';
+  }
 }
 
 /**
@@ -125,6 +141,7 @@ export async function setUserStatus(db: Db, change: UserStatusChange, meta: Plat
     if (before && before.revision !== change.expectedRevision) {
       throw new RevisionConflictError('user', change.expectedRevision);
     }
+    if (before && change.onlyTenantId) await assertOnlyTenant(ctx, change.userId, change.onlyTenantId);
     if (before?.status === 'active' && change.status === 'disabled' && membershipRevokeHook) {
       await deactivateInTenants(ctx, change.userId, meta, membershipRevokeHook);
     }
@@ -134,7 +151,10 @@ export async function setUserStatus(db: Db, change: UserStatusChange, meta: Plat
       .where(and(eq(users.id, change.userId), eq(users.revision, change.expectedRevision)))
       .returning();
     if (!before || !row) throw new RevisionConflictError('user', change.expectedRevision);
-    await ctx.auditPlatform(audit('user.set_status', 'user', row.id, userSnapshot(before), userSnapshot(row)));
+    const entry = audit('user.set_status', 'user', row.id, userSnapshot(before), userSnapshot(row));
+    await ctx.auditPlatform(entry);
+    // 租户侧发起的停用 / 启用（R1-T15）同时记入该租户的审计与 outbox，租户管理员可见
+    if (change.onlyTenantId) await tenantEvent(ctx, meta, change.onlyTenantId, entry, row.revision);
     return row;
   });
 }
@@ -203,23 +223,44 @@ async function changeMembership(
       const before = await findMembership(ctx, change, true);
       assertMembershipRevision(before, change, status);
       const after = before ? await updateMembership(ctx, before, status) : await insertMembership(ctx, change);
-      await ctx.auditTenant(change.tenantId, audit(op, 'tenant_membership', after.id, snap(before), snap(after)));
+      const entry = audit(op, 'tenant_membership', after.id, snap(before), snap(after));
+      await tenantEvent(ctx, meta, change.tenantId, entry, after.revision);
       return after;
+    });
+  });
+}
+
+/**
+ * 与租户相关的成员关系 / 账号变更：同一事务写入该租户的审计与权限 outbox（AGENTS.md §10「审计」「事件」），
+ * 权限模块据此刷新缓存、通知等（R1-T15 企业设置的停用与移出租户经此留痕）。
+ */
+async function tenantEvent(
+  ctx: PlatformCommandContext,
+  meta: PlatformCommandMeta,
+  tenantId: string,
+  entry: AuditEntry,
+  revision: number,
+) {
+  await ctx.auditTenant(tenantId, entry);
+  await ctx.inTenant(tenantId, async (tx) => {
+    await tx.insert(permissionOutbox).values({
+      tenantId,
+      objectType: entry.objectType,
+      objectId: entry.objectId,
+      eventType: entry.action,
+      revision,
+      commandId: meta.commandId,
     });
   });
 }
 
 const TENANT_BATCH = 500;
 
-/**
- * 平台角色不能跨租户读成员关系（RLS），按租户逐个切入，该用户在其中是有效成员的就调用挂接点。
- * 停用是低频的平台操作；租户按编号分批读取，不一次读入全部租户。
- */
-async function deactivateInTenants(
+/** 按租户编号分批，在每个租户上下文里回答“该用户是否为有效成员”（平台角色不能跨租户读成员关系，RLS）。 */
+async function forEachActiveMembership(
   ctx: PlatformCommandContext,
   userId: string,
-  meta: PlatformCommandMeta,
-  hook: MembershipRevokeHook,
+  visit: (tenant: { id: string; timezone: string }, tx: Tx) => Promise<void>,
 ) {
   let after: string | null = null;
   for (;;) {
@@ -235,13 +276,37 @@ async function deactivateInTenants(
           .select({ id: tenantMemberships.id })
           .from(tenantMemberships)
           .where(and(eq(tenantMemberships.userId, userId), eq(tenantMemberships.status, 'active')));
-        if (member)
-          await hook(tx, { tenantId: tenant.id, userId, reason: 'user_disabled', timezone: tenant.timezone, ...meta });
+        if (member) await visit(tenant, tx);
       });
     }
     if (page.length < TENANT_BATCH) return;
     after = page.at(-1)!.id;
   }
+}
+
+/** users 行已被锁住，此后不会新增有效成员关系（R5-2），检查结果在本事务内稳定。 */
+async function assertOnlyTenant(ctx: PlatformCommandContext, userId: string, tenantId: string) {
+  let own = false;
+  await forEachActiveMembership(ctx, userId, async (tenant) => {
+    if (tenant.id !== tenantId) throw new AccountScopeError('ACCOUNT_SHARED_ACROSS_TENANTS');
+    own = true;
+  });
+  if (!own) throw new AccountScopeError('NOT_A_MEMBER');
+}
+
+/**
+ * 平台角色不能跨租户读成员关系（RLS），按租户逐个切入，该用户在其中是有效成员的就调用挂接点。
+ * 停用是低频的平台操作；租户按编号分批读取，不一次读入全部租户。
+ */
+async function deactivateInTenants(
+  ctx: PlatformCommandContext,
+  userId: string,
+  meta: PlatformCommandMeta,
+  hook: MembershipRevokeHook,
+) {
+  await forEachActiveMembership(ctx, userId, (tenant, tx) =>
+    hook(tx, { tenantId: tenant.id, userId, reason: 'user_disabled', timezone: tenant.timezone, ...meta }),
+  );
 }
 
 /** 租户表只对平台角色开放：在切入租户上下文之前读取。 */
