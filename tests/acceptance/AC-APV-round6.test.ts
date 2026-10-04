@@ -124,8 +124,9 @@ describe('R5-3（P2）：回退的租户管理员候选按游标分批扫描，�
 
 /**
  * R6-4：确定性构造“第一单可接手、第二单无人接手”。两张单都由 HR 发起（交接时按 DEC-092 都跳过），异动对象是两位
- * 未绑账号的员工；编号定下来后，把替代人的账号绑到编号较大那张单的异动对象上——替代人在那张单上是异动本人（回避），
- * 租户又没有管理员，无人接手；编号较小的那张单替代人可接手。接管按实例编号顺序，顺序由构造保证，不靠随机重试。
+ * 未绑账号的员工；编号定下来后，把替代人的账号绑到接管顺序靠后那张单的异动对象上——替代人在那张单上是异动本人（回避），
+ * 租户又没有管理员，无人接手；靠前的那张单替代人可接手。接管按全局取锁顺序（异动员工, 实例编号，F-008 / R6-3），
+ * 两张单的异动员工不同，先后即员工编号的先后，由构造保证，不靠随机重试。
  */
 async function orderedPair(w: ApprovalWorld, s: Scene, successor: string) {
   const pair: { view: InstanceView; employeeId: string }[] = [];
@@ -135,7 +136,7 @@ async function orderedPair(w: ApprovalWorld, s: Scene, successor: string) {
     pair.push({ view: await exceptionInstance(w, s, w.hr.id, employee.id), employeeId: employee.id });
   }
   // 小写 UUID 文本的字典序与 PostgreSQL uuid 的排序一致。
-  const [first, second] = pair.sort((a, b) => (a.view.id < b.view.id ? -1 : 1));
+  const [first, second] = pair.sort((a, b) => (a.employeeId < b.employeeId ? -1 : 1));
   await withTenant(w.db, w.tenant.id, (tx) =>
     tx
       .insert(permissionUserPersonLinks)
@@ -148,7 +149,7 @@ describe('顺带补测：停用接管中途失败，整体回滚', () => {
   it('第一单已转给替代人、第二单无人接手：停用被拒，两单都不动，没有接管审计、outbox 为零', async () => {
     const { w, s } = await exceptionWorld('apv-r6-rollback');
     const successor = await w.member('接任的异常管理员');
-    // 接管按实例编号顺序：第一单替代人可接手，第二单替代人是异动本人（回避）且租户没有管理员 → 无人接手。
+    // 接管按（异动员工, 实例编号）顺序：第一单替代人可接手，第二单替代人是异动本人（回避）且租户没有管理员 → 无人接手。
     const { takeable, failing } = await orderedPair(w, s, successor);
     await w.json(await handover(w, { fromUserId: w.exceptionAdmin, toUserId: successor }));
     const revision = await membershipRevision(w, w.exceptionAdmin);

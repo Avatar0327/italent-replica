@@ -12,6 +12,9 @@ import {
   orgVersions,
   permissionUserPersonLinks,
   sql,
+  tenants,
+  users,
+  withPlatform,
   withTenant,
 } from '@italent/db';
 import { bootstrapTenantAdmin } from '@italent/api';
@@ -153,8 +156,39 @@ export interface Person {
   readonly name: string;
 }
 
-export async function approvalWorld(db: Db, label: string) {
-  const { tenant, user: hr } = await seedTenantWithMember(db, label);
+/**
+ * 可信夹具的固定编号（F-008 / R6-1 第七轮 P3）：大小写用例要求编号一定含字母，随机 UUID 做不到，改用固定编号。
+ * 只用于需要固定编号的用例；同一测试文件共用一个库，固定编号在文件内不得重复。
+ */
+export interface FixedIds {
+  readonly tenantId?: string;
+  readonly exceptionAdminId?: string;
+}
+
+/** 以固定编号开通租户（直接写平台表，不走 createTenant：它不接受指定编号），其余同 seedTenantWithMember。 */
+async function seedFixedTenant(db: Db, label: string, tenantId: string) {
+  const suffix = randomBytes(3).toString('hex');
+  const [tenant] = await withPlatform(db, (tx) =>
+    tx
+      .insert(tenants)
+      .values({ id: tenantId, code: `${label}-${suffix}`, name: `租户${label}` })
+      .returning(),
+  );
+  const user = await createUser(db, { email: `${label}-${suffix}@example.com`, displayName: `${label} 管理员` }, cmd());
+  await grantMembership(db, { tenantId, userId: user.id, expectedRevision: 0 }, cmd());
+  return { tenant: tenant!, user };
+}
+
+/** 以固定编号建全局账号（直接写平台用户表，createUser 不接受指定编号）。 */
+async function insertFixedUser(db: Db, id: string, account: { email: string; displayName: string }) {
+  await withPlatform(db, (tx) => tx.insert(users).values({ id, ...account }));
+  return id;
+}
+
+export async function approvalWorld(db: Db, label: string, fixed: FixedIds = {}) {
+  const { tenant, user: hr } = fixed.tenantId
+    ? await seedFixedTenant(db, label, fixed.tenantId)
+    : await seedTenantWithMember(db, label);
   let now = new Date(`${APV_TODAY}T01:00:00.000Z`);
   const clock = () => now;
   const api = tenantApi(db, { clock });
@@ -166,14 +200,16 @@ export async function approvalWorld(db: Db, label: string) {
     return (await response.json()) as T;
   };
 
-  async function member(name: string): Promise<string> {
+  /** @param fixedId 可信夹具：以固定编号建账号 */
+  async function member(name: string, fixedId?: string): Promise<string> {
     const suffix = randomBytes(3).toString('hex');
-    const created = await createUser(db, { email: `${label}-${suffix}@example.com`, displayName: name }, cmd());
-    await grantMembership(db, { tenantId: tenant.id, userId: created.id, expectedRevision: 0 }, cmd());
-    return created.id;
+    const account = { email: `${label}-${suffix}@example.com`, displayName: name };
+    const userId = fixedId ? await insertFixedUser(db, fixedId, account) : (await createUser(db, account, cmd())).id;
+    await grantMembership(db, { tenantId: tenant.id, userId, expectedRevision: 0 }, cmd());
+    return userId;
   }
   // 默认异常管理员是独立成员：发起人 HR 兼任时按 DEC-091 回避，没有直线经理即拒绝提交。
-  const exceptionAdmin = await member('默认异常管理员');
+  const exceptionAdmin = await member('默认异常管理员', fixed.exceptionAdminId);
 
   async function org(name: string, parentId: string = tenant.id): Promise<string> {
     const created = await json<{ id: string }>(
