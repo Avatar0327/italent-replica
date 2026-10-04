@@ -4,6 +4,7 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   check,
   date,
@@ -106,6 +107,9 @@ export const employmentBusinessObjects = pgTable(
     employeeId: uuid('employee_id').notNull(),
     revision: integer('revision').notNull().default(1),
     createdAt: utc(),
+    // 发起（操作）先后（DEC-108，R1-T08 同日待生效排序）：数据库在持员工行锁的插入时分配，同员工内严格递增；
+    // created_at 取请求时钟，同一毫秒或锁等待时不能代表先后
+    operationSeq: bigint('operation_seq', { mode: 'number' }).generatedAlwaysAsIdentity(),
   },
   (t) => [
     unique('employment_business_objects_tenant_id').on(t.tenantId, t.id),

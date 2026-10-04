@@ -1,7 +1,7 @@
 /**
  * 待生效业务队列与生效尝试记录（R1-T08）。待生效业务 = 最新状态为「审批通过」的申请单（DEC-125：生效前只有申请单，
  * 不进任职版本链）。同一员工的队列顺序 = 生效日 → 同日结束周期类在前、开新周期类在后（DEC-077 保留部分）
- * → 操作先后（发起先后，DEC-108）。调用方须先持员工行锁：同员工的全部任职写入都先锁员工（record-store.ts）。
+ * → 操作先后（发起先后，DEC-108，取 operation_seq）。调用方须先持员工行锁：同员工的全部任职写入都先锁员工（record-store.ts）。
  */
 import { employmentActivationAttempts, sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
@@ -52,7 +52,7 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
       WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
       AND s.state='approved' AND p.mode='application'
-    ORDER BY p.effective_date, p.kind IN ('hire', 'rehire', 'retire_rehire'), b.created_at, b.id
+    ORDER BY p.effective_date, p.kind IN ('hire', 'rehire', 'retire_rehire'), b.operation_seq
     LIMIT ${QUEUE_LIMIT + 1}
   `),
   ).map((row) => ({ ...row, revision: Number(row.revision), lastAttemptNo: Number(row.lastAttemptNo) }));
@@ -232,7 +232,7 @@ export async function listActivationTodos(
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id AND t.start_date<=p.effective_date
       ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1) current_record ON true
     WHERE b.tenant_id=${tenantId} AND s.state='approved' AND a.outcome='failed' AND ${scopeFilter}
-    ORDER BY p.effective_date, b.created_at, b.id LIMIT ${page.limit} OFFSET ${page.offset}
+    ORDER BY p.effective_date, b.operation_seq LIMIT ${page.limit} OFFSET ${page.offset}
   `),
   );
   return rows.map((row) => ({

@@ -1,6 +1,6 @@
 {
-  "id": "d814ca9f-f8e4-42a9-a7e2-a1d2ecc5b2ba",
-  "prevId": "8c2e09d1-edab-495b-ad30-3afe6aff2b45",
+  "id": "28f45838-7465-46e9-b824-9fbccbcd115f",
+  "prevId": "1da0408a-2265-4618-a717-e694d72c1118",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9542,6 +9542,23 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "operation_seq": {
+          "name": "operation_seq",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "name": "employment_business_objects_operation_seq_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "always"
+          }
         }
       },
       "indexes": {
