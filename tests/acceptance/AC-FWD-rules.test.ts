@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { applyForwardChanges, matchingForwardChanges } from '../../apps/api/src/modules/employment/forward-rules.js';
+import {
+  applyForwardChanges,
+  matchingForwardChanges,
+  skipsWholeRecord,
+  wholeRecordSkipReminder,
+} from '../../apps/api/src/modules/employment/forward-rules.js';
 import { emptyPresetFields } from '../../apps/api/src/modules/employment/types.js';
 
 describe('AC-FWD-05/06 值匹配核心组合', () => {
@@ -55,5 +60,26 @@ describe('AC-FWD-05/06 值匹配核心组合', () => {
     expect(matchingForwardChanges(before, after, independent, [])).toEqual([
       { field: 'postId', before: 'old-post', after: 'new-post' },
     ]);
+  });
+
+  it('AC-FWD-14 DEC-120 规则②整条跳过时，提醒列出部门、职位之外本可按值匹配的字段', () => {
+    const before = {
+      fields: { ...emptyPresetFields(), departmentId: 'O1', positionId: null, directManagerId: 'A', place: '原地点' },
+      customFields: { custom1: '原值' },
+    };
+    const after = {
+      fields: { ...before.fields, departmentId: 'O2', positionId: 'P_C', directManagerId: 'B' },
+      customFields: { custom1: '新值' },
+    };
+    const mismatched = { fields: { ...before.fields, positionId: 'P_B' }, customFields: { custom1: '原值' } };
+    expect(skipsWholeRecord(before, after, mismatched)).toBe(true);
+    expect(matchingForwardChanges(before, after, mismatched, ['custom1'])).toEqual([]);
+    expect(wholeRecordSkipReminder(before, after, mismatched, ['custom1'])).toEqual([
+      { field: 'directManagerId', before: 'A', after: 'B' },
+      { field: 'custom:custom1', before: '原值', after: '新值' },
+    ]);
+    expect(skipsWholeRecord(before, after, before)).toBe(false);
+    const departmentOnly = { fields: { ...before.fields, departmentId: 'O2' }, customFields: {} };
+    expect(skipsWholeRecord(before, departmentOnly, mismatched)).toBe(false);
   });
 });

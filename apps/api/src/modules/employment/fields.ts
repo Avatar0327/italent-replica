@@ -54,7 +54,6 @@ const businessSchema = z.strictObject({
   formId: formId.default('standard'),
   fields: presetFieldsSchema.default({}),
   customFields: customFields.default({}),
-  staffId: z.uuid().optional(),
 });
 const patchSchema = z.strictObject({
   effectiveDate: date.optional(),
@@ -64,6 +63,11 @@ const patchSchema = z.strictObject({
 });
 
 export function normalizeEmploymentInput(_ctx: EmploymentContext, value: unknown): NormalizedEmploymentInput {
+  return parseEmploymentInput(value);
+}
+
+/** 只做结构与日期推导，不读库；导入批次在鉴权前据此做批内校验。 */
+export function parseEmploymentInput(value: unknown): NormalizedEmploymentInput {
   const parsed = businessSchema.safeParse(value);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '任职业务字段不合法', parsed.error.issues);
   const input = parsed.data;

@@ -8,6 +8,7 @@ import { normalizeBusinessPatch, validateCustomValue } from './fields.js';
 import { isForwardEditSupported, type ForwardEditEntry, type ForwardFieldChange } from './forward-rules.js';
 import { appendForwardPayload } from './forward-store.js';
 import { forwardUpdateEmployment } from './forward-update.js';
+import { sequenceForNewPost } from './inheritance.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
 import { validateEmploymentReferences } from './references.js';
@@ -33,7 +34,8 @@ export async function editedValues(
     if (!definition) throw new AppError('VALIDATION_FAILED', '自定义字段不属于本租户任职对象');
     customFields[id] = validateCustomValue(value, definition.valueType);
   }
-  const fields = { ...record.fields, ...patch.fields };
+  const sequenceId = await sequenceForNewPost(tx, ctx.tenantId, patch.fields ?? {}, record.effectiveDate);
+  const fields = { ...record.fields, ...patch.fields, ...(sequenceId ? { sequenceId } : {}) };
   await requireScopedEmploymentObject(tx, ctx, record.employeeId, record.fields.departmentId, record.id);
   await requireScopedEmploymentObject(tx, ctx, record.employeeId, fields.departmentId, record.id);
   return { fields, customFields };

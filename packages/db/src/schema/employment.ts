@@ -408,7 +408,11 @@ export const employmentRecordTombstones = pgTable(
   ],
 );
 
-/** 可重排的日期元数据；EXCLUDE 与延迟连续覆盖检查由配套 SQL 迁移提供。 */
+/**
+ * 可重排的日期元数据；EXCLUDE 与延迟连续覆盖检查由配套 SQL 迁移提供。
+ * sort_order 是同一员工同一生效日内的操作先后（DEC-108），同日后操作的排在后面；
+ * 同日被覆盖的记录区间为空，当天当前任职即最后一次操作。
+ */
 export const employmentTimeline = pgTable(
   'employment_timeline',
   {
@@ -433,14 +437,13 @@ export const employmentTimeline = pgTable(
         employmentRecords.staffId,
       ],
     }),
-    unique('employment_timeline_cycle_start').on(t.tenantId, t.employeeId, t.staffId, t.startDate),
-    index('employment_timeline_employee_start').on(t.tenantId, t.employeeId, t.startDate, t.sortOrder),
+    unique('employment_timeline_day_order').on(t.tenantId, t.employeeId, t.startDate, t.sortOrder),
     check(
       'employment_timeline_lower_matches',
       sql`isempty(${t.validDuring}) OR (NOT lower_inf(${t.validDuring})
         AND lower(${t.validDuring}) = ${t.startDate})`,
     ),
-    check('employment_timeline_sort_order', sql`${t.sortOrder} IN (0, 1)`),
+    check('employment_timeline_sort_order', sql`${t.sortOrder} >= 0`),
   ],
 );
 

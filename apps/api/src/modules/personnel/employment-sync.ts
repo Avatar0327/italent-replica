@@ -35,14 +35,15 @@ export async function syncEmploymentHistory(
   const trigger = await loadEmploymentRecord(tx, ctx.tenantId, recordId, effectiveDate);
   const mayCreate = Boolean(switches[kind]) && (await enabled(tx, ctx.tenantId, switches[kind]!));
   const terminal = ['leave', 'retirement'].includes(kind);
-  const existing = rows(
-    await tx.execute(sql`SELECT j.* FROM personnel_job_history j
-      LEFT JOIN employment_records r ON r.tenant_id=j.tenant_id AND r.id=j.employment_record_id
+  // 触发记录自己的履历单独按 recordId 取；同日可有多条任职（DEC-108），按日期截取会漏掉它而重复插入。
+  const existing = [
+    ...rows(
+      await tx.execute(sql`SELECT j.* FROM personnel_job_history j
       WHERE j.tenant_id=${ctx.tenantId} AND j.employee_id=${employeeId}::uuid AND NOT j.deleted
-      AND (j.employment_record_id=${recordId}::uuid OR (${trigger?.staffId ?? null}::uuid IS NOT NULL
-        AND r.staff_id=${trigger?.staffId ?? null}::uuid AND r.start_date<=${effectiveDate}::date))
-      ORDER BY r.start_date DESC LIMIT 2`),
-  ).map(camel);
+        AND j.employment_record_id=${recordId}::uuid LIMIT 1`),
+    ),
+    ...(trigger ? await previousHistory(tx, ctx, employeeId, recordId) : []),
+  ].map(camel);
   // TODO(需取证 Q-M0-37)：离职是否另建历史行未取证；只同步已知工作区间终点，不虚构离职后任期。
   if (mayCreate && trigger && !terminal && !existing.some((row) => row.employmentRecordId === recordId))
     existing.push({ employmentRecordId: recordId });
@@ -54,6 +55,18 @@ export async function syncEmploymentHistory(
         : (previous.leaveDate ?? null);
     await syncOne(tx, ctx, employeeId, previous, record, leaveDate);
   }
+}
+/** 时间轴上（生效日 + 同日操作先后）排在触发记录之前、同周期内最近一条已有履历的任职，其结束日随之变化。 */
+async function previousHistory(tx: Tx, ctx: EmploymentContext, employeeId: string, recordId: string) {
+  return rows(
+    await tx.execute(sql`SELECT j.* FROM employment_timeline t
+      JOIN employment_timeline p ON p.tenant_id=t.tenant_id AND p.employee_id=t.employee_id AND p.staff_id=t.staff_id
+        AND (p.start_date,p.sort_order)<(t.start_date,t.sort_order)
+      JOIN personnel_job_history j ON j.tenant_id=p.tenant_id AND j.employee_id=p.employee_id
+        AND j.employment_record_id=p.record_id AND NOT j.deleted
+      WHERE t.tenant_id=${ctx.tenantId} AND t.employee_id=${employeeId}::uuid AND t.record_id=${recordId}::uuid
+      ORDER BY p.start_date DESC,p.sort_order DESC LIMIT 1`),
+  );
 }
 async function syncOne(
   tx: Tx,
