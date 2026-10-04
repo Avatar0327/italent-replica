@@ -21,7 +21,7 @@ import { audit, type WriteContext } from './audit.js';
 import { applyGrantScopes } from './data-scope-admin.js';
 import type { GrantScopeInput } from './data-scope-schemas.js';
 import { revisionConflict } from './http.js';
-import { consumeSeat, type LicenseOverage, releaseSeat } from './licenses.js';
+import { consumeSeat, type LicenseOverage, lockLicenseType, releaseSeat } from './licenses.js';
 import { assertActiveMember } from './members.js';
 import { loadProfile, type ProfileView } from './profiles.js';
 
@@ -128,6 +128,14 @@ export async function revokeGrant(
   write: WriteContext,
   change: { readonly grantId: string; readonly expectedRevision: number },
 ): Promise<GrantView> {
+  const [target] = await tx
+    .select({ profileId: permissionGrants.profileId })
+    .from(permissionGrants)
+    .where(eq(permissionGrants.id, change.grantId));
+  if (!target) throw new AppError('NOT_FOUND', '授权记录不存在');
+  // 先取该类许可锁、再锁授权行（与归还名额同序，见 lockLicenseType）；身份的许可类型建好后不变，可先无锁读
+  const { licenseType } = await loadProfile(tx, target.profileId);
+  if (licenseType) await lockLicenseType(tx, write.tenantId, licenseType);
   const [current] = await tx
     .select()
     .from(permissionGrants)
@@ -146,7 +154,6 @@ export async function revokeGrant(
     .where(and(eq(permissionGrants.id, current.id), eq(permissionGrants.revision, current.revision)))
     .returning();
   if (!saved) throw revisionConflict(change.expectedRevision, undefined);
-  const { licenseType } = await loadProfile(tx, current.profileId);
   const released = licenseType
     ? await releaseSeat(tx, { tenantId: write.tenantId, licenseType, userId: current.userId })
     : false;

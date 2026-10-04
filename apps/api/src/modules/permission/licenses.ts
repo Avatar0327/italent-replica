@@ -65,11 +65,16 @@ export interface SeatRequest {
 export interface SeatOutcome {
   /** 本次是否新占了一个名额。 */
   readonly consumed: boolean;
+  /** 授予后该类许可的超额提示（不论本次是否新占名额，DEC-143）；未超额为 null。 */
   readonly overage: LicenseOverage | null;
 }
 
-/** 同类许可的占用与归还串行化（许可池可能尚未发放，不能只靠锁池行）。 */
-async function lockLicenseType(tx: Tx, tenantId: string, licenseType: string) {
+/**
+ * 同类许可的占用、归还串行化（许可池可能尚未发放，不能只靠锁池行）。
+ * 取锁顺序：先取本锁，再锁授权行——撤销时名额改记到同类另一条授权要对那条授权取外键共享锁，
+ * 两笔撤销若先各自锁授权行再争本锁会形成死锁环（revokeGrant 据此先取本锁）。
+ */
+export async function lockLicenseType(tx: Tx, tenantId: string, licenseType: string) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:license:${licenseType}`}, 0))`);
 }
 
@@ -80,14 +85,18 @@ export async function consumeSeat(tx: Tx, request: SeatRequest): Promise<SeatOut
     .select()
     .from(licenseSeats)
     .where(and(eq(licenseSeats.licenseType, licenseType), eq(licenseSeats.userId, userId)));
-  if (held) return { consumed: false, overage: null };
-  await tx.insert(licenseSeats).values({ ...request, consumedAt: request.now });
+  // 已占名额不再消耗（W-123），但仍按当前余额提示超额：与余额接口的 overage 一致
+  if (!held) await tx.insert(licenseSeats).values({ ...request, consumedAt: request.now });
+  return { consumed: !held, overage: await currentOverage(tx, licenseType) };
+}
+
+async function currentOverage(tx: Tx, licenseType: string): Promise<LicenseOverage | null> {
   const [pool] = await tx.select().from(licensePools).where(eq(licensePools.licenseType, licenseType));
   const [{ count } = { count: 0 }] = await tx
     .select({ count: sql<number>`count(*)::int` })
     .from(licenseSeats)
     .where(eq(licenseSeats.licenseType, licenseType));
-  return { consumed: true, overage: overageOf(licenseType, pool?.quota ?? 0, count) };
+  return overageOf(licenseType, pool?.quota ?? 0, count);
 }
 
 /**

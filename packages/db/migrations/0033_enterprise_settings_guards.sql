@@ -91,3 +91,54 @@ CREATE TRIGGER "tenant_memberships_external_unlinked" BEFORE INSERT OR UPDATE OF
 --> statement-breakpoint
 -- 6) DEC-141：撤销已消耗许可的身份时归还名额（删除占用），仍持有同类授权时占用改记到仍有效的授权（更新 grant_id）。
 GRANT UPDATE, DELETE ON "license_seats" TO app_user;
+--> statement-breakpoint
+-- 7) DEC-141 升级对账：旧版“撤销授权不归还名额”，历史数据里可能留有指向已撤销授权的占用，升级后仍计入已用。
+--    该用户仍持有同类有效授权的，占用改记到最早的那条有效授权（与 licenses.ts releaseSeat 同一口径）；否则释放。
+--    表强制 RLS，按租户逐个设置 app.tenant_id 执行（同 0027），并显式按租户过滤（迁移角色若为超级用户会绕过 RLS）。
+--    每条变更同事务写审计（操作者为空 = 系统）与 outbox，释放的占用在审计里保留快照（AGENTS.md §5、§10）。
+DO $$
+DECLARE
+  t record;
+  s record;
+  seat jsonb;
+BEGIN
+  FOR t IN SELECT id FROM tenants LOOP
+    PERFORM set_config('app.tenant_id', t.id::text, true);
+    FOR s IN
+      SELECT ls.license_type, ls.user_id, ls.grant_id, ls.consumed_at, successor.id AS successor_id
+        FROM license_seats ls
+        LEFT JOIN LATERAL (
+          SELECT g.id FROM permission_grants g
+            JOIN permission_profiles p ON p.tenant_id = g.tenant_id AND p.id = g.profile_id
+           WHERE g.tenant_id = ls.tenant_id AND g.user_id = ls.user_id AND g.status = 'active'
+             AND p.license_type = ls.license_type
+           ORDER BY g.created_at, g.id
+           LIMIT 1
+        ) successor ON true
+       WHERE ls.tenant_id = t.id AND NOT EXISTS (
+         SELECT 1 FROM permission_grants held
+          WHERE held.tenant_id = ls.tenant_id AND held.id = ls.grant_id AND held.status = 'active')
+       ORDER BY ls.license_type, ls.user_id
+    LOOP
+      seat := jsonb_build_object('licenseType', s.license_type, 'userId', s.user_id, 'grantId', s.grant_id,
+        'consumedAt', s.consumed_at);
+      IF s.successor_id IS NOT NULL THEN
+        UPDATE license_seats SET grant_id = s.successor_id
+         WHERE tenant_id = t.id AND license_type = s.license_type AND user_id = s.user_id;
+      ELSE
+        DELETE FROM license_seats WHERE tenant_id = t.id AND license_type = s.license_type AND user_id = s.user_id;
+      END IF;
+      INSERT INTO audit_events (tenant_id, actor_user_id, action, object_type, object_id, before, after, command_id)
+      VALUES (t.id, NULL,
+        CASE WHEN s.successor_id IS NULL THEN 'license_seat.release' ELSE 'license_seat.reassign' END,
+        'license_seat', s.license_type || ':' || s.user_id, seat,
+        CASE WHEN s.successor_id IS NULL THEN NULL ELSE seat || jsonb_build_object('grantId', s.successor_id) END,
+        'migration:license-seat-reconcile');
+      INSERT INTO permission_outbox (tenant_id, object_type, object_id, event_type, command_id)
+      VALUES (t.id, 'license_seat', s.license_type || ':' || s.user_id,
+        CASE WHEN s.successor_id IS NULL THEN 'license_seat.release' ELSE 'license_seat.reassign' END,
+        'migration:license-seat-reconcile');
+    END LOOP;
+  END LOOP;
+  PERFORM set_config('app.tenant_id', '', true);
+END $$;
