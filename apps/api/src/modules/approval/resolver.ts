@@ -55,9 +55,13 @@ export async function userOfPerson(tx: Tx, tenantId: string, personId: string | 
   return row?.user_id ?? null;
 }
 
-/** 派单闸的键：租户 × 用户（事务级咨询锁，键里带租户，各租户互不影响）。 */
+/**
+ * 派单闸的键：租户 × 用户（事务级咨询锁，键里带租户，各租户互不影响）。R6-1：两个 ID 先经 `::uuid::text`
+ * 按数据库 UUID 语义规范化（大小写、花括号等写法都落到同一个规范形式），所有调用路径（请求头、请求体、
+ * 停用挂接点）对同一个人取到的都是同一把闸。
+ */
 const assigneeGate = (tenantId: string, userId: string) =>
-  sql`hashtextextended(${`approval-assignee:${tenantId}:${userId}`}, 0)`;
+  sql`hashtextextended('approval-assignee:' || ${tenantId}::uuid::text || ':' || ${userId}::uuid::text, 0)`;
 
 /**
  * 派单闸（R4-2 / R5-1 / R5-2：成员停用与审批派单的串行协议）。只有审批中心使用它：
