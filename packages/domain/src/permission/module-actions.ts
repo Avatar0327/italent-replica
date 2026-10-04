@@ -69,6 +69,7 @@ export const MODULE_OBJECTS = {
       'establishedOn',
       'personInChargeId',
       'hrbpId',
+      'shopOwnerId',
       'costCenterId',
       'location',
       'remarks',
@@ -229,6 +230,8 @@ export const MODULE_OBJECTS = {
       'isCurrent',
       'isLatest',
       'isInserted',
+      // 变动类型由系统联动写入（F-006，W-416），不是可编辑字段。
+      'changeType',
     ],
   ),
 } as const satisfies Record<string, ObjectDefinition>;

@@ -13,20 +13,25 @@ import {
 } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { assertCodeAvailable, consumeCode, ensureOrgSetup } from './codes.js';
-import { loadOrgSnapshot, type OrgRecord } from './read-model.js';
+import { assertParentAvailable, type CascadeAuthorizer, planDeactivation, unavailableFrom } from './deactivation.js';
+import { assertOrgPeopleEligible, submittedPeople } from './people.js';
+import { futureBoundaries, loadOrgSnapshot, type OrgRecord } from './read-model.js';
 import {
   assertSnapshotAcyclic,
   date,
   invalid,
+  normalizeCreation,
   normalizeOrganization,
   type NormalizedOrganization,
   type OrganizationInput,
   type OrganizationPatch,
+  type OrganizationVersionInput,
   type OrgParentsInput,
   type OrgWriteContext,
   validateHierarchy,
 } from './validation.js';
 
+export type { CascadeAuthorizer } from './deactivation.js';
 export type {
   OrganizationInput,
   OrganizationPatch,
@@ -65,8 +70,10 @@ export async function validateOrganization(
   input: OrganizationInput,
   assess: EstablishmentAssessor = noEstablishmentRule,
 ): Promise<OrganizationValidation> {
-  const normalized = normalizeOrganization(ctx, input);
+  const normalized = normalizeCreation(ctx, input);
   await validateHierarchy(tx, ctx, normalized);
+  await assertParentAvailable(tx, ctx, normalized);
+  await assertOrgPeopleEligible(tx, ctx, submittedPeople(input), normalized.startDate);
   const assessment = await assess(tx, ctx, input);
   const requiresConfirmation = assessment.isBeyondEstablishment && !assessment.strictControl;
   return {
@@ -84,7 +91,7 @@ export async function createOrganization(
   assess: EstablishmentAssessor = noEstablishmentRule,
 ): Promise<OrgRecord> {
   assertRevision(ctx.expectedRevision, 0);
-  const normalized = normalizeOrganization(ctx, input);
+  const normalized = normalizeCreation(ctx, input);
   await ensureOrgSetup(tx, ctx);
   const validation = await validateOrganization(tx, ctx, input, assess);
   assertCanSubmit(validation);
@@ -98,12 +105,18 @@ export async function createOrganization(
   return saved;
 }
 
+export interface OrgUpdateOptions {
+  /** DEC-129 级联停用前，按操作人当前数据范围逐个校验下级组织（路由提供）。 */
+  readonly authorizeCascade?: CascadeAuthorizer;
+}
+
 /** 业务字段全部追加版本；对象头只保存稳定标识、可修改的业务编码及全局 revision。 */
 export async function updateOrganization(
   tx: Tx,
   ctx: OrgWriteContext,
   orgId: string,
   patch: OrganizationPatch,
+  options: OrgUpdateOptions = {},
 ): Promise<OrgRecord> {
   if (!isUuid(orgId)) throw invalid('orgId', '组织 ID 必须是 UUID');
   if (orgId === ctx.tenantId) throw new AppError('FORBIDDEN', '租户根组织不可修改');
@@ -117,29 +130,66 @@ export async function updateOrganization(
   if (!object) throw new AppError('NOT_FOUND', '组织不存在');
   assertRevision(ctx.expectedRevision, object.revision);
   await rejectEarlierThanFutureVersion(tx, ctx, orgId, effectiveDate);
+  if (patch.establishedOn !== undefined) await assertEstablishedOnUnchanged(tx, ctx, orgId, patch.establishedOn);
   const current = await recordAt(tx, object, effectiveDate);
-  const input = mergePatch(current, patch, effectiveDate);
-  const normalized = normalizeOrganization(ctx, input);
-  // TODO(需取证 Q-M0-12): 停用上级时是否应限制仍启用的下级，规格未定义，当前不自定规则。
+  const normalized = normalizeOrganization(ctx, mergePatch(current, patch, effectiveDate));
   const nodes = await validateHierarchy(tx, ctx, normalized, orgId, current.parents);
+  await assertParentAvailable(tx, ctx, normalized);
+  await assertOrgPeopleEligible(tx, ctx, submittedPeople(patch, current), effectiveDate);
   const code = patch.code?.trim() ?? current.code;
   if (code !== current.code) await assertCodeAvailable(tx, ctx, code, effectiveDate, orgId);
   const revision = object.revision + 1;
   await tx.update(orgObjects).set({ revision }).where(objectKey(ctx.tenantId, orgId));
-  const saved = await appendVersion(
-    tx,
-    ctx,
-    orgId,
-    code,
-    revision,
-    normalized,
-    parentPath(ctx, normalized, nodes),
-    current,
-  );
+  const path = parentPath(ctx, normalized, nodes);
+  const saved = await appendVersion(tx, ctx, orgId, code, revision, normalized, path, current);
+  // DEC-129、`10` §9：停用（或失效日期提前）时整支下级同日级联停用；整支仍有在职人员或启用职位则整单拒绝。
+  const from = unavailableFrom(current, normalized);
+  if (from) {
+    const descendants = await planDeactivation(tx, ctx, saved, from, options.authorizeCascade);
+    await disableDescendants(tx, ctx, descendants, from);
+  }
   await validateFutureSnapshots(tx, ctx, effectiveDate);
   await audit(tx, ctx, 'org.update', orgId, current, saved);
   if (saved.fullName !== current.fullName) await synchronizeFullNames(tx, ctx, effectiveDate);
   return saved;
+}
+
+/**
+ * DEC-130：设立日期就是首个版本的生效日期，变更中不能改成其他日期或清空；只允许原样提交
+ * （历史数据缺设立日期时可按首版生效日补齐）。
+ * TODO(需取证 #52): 原站建成后能否在「变更 / 编辑」中改设立日期未取证，先按不可改处理。
+ */
+async function assertEstablishedOnUnchanged(tx: Tx, ctx: OrgWriteContext, orgId: string, value: string | null) {
+  const [first] = await tx
+    .select({ startDate: orgVersions.startDate })
+    .from(orgVersions)
+    .where(and(eq(orgVersions.tenantId, ctx.tenantId), eq(orgVersions.orgId, orgId)))
+    .orderBy(orgVersions.startDate)
+    .limit(1);
+  if (value !== null && value === first?.startDate) return;
+  throw new AppError('VALIDATION_FAILED', '设立日期即组织首个版本的生效日期，不能在变更中修改或清空', {
+    reason: 'ESTABLISHED_ON_IMMUTABLE',
+    fields: { establishedOn: '设立日期不能在变更中修改' },
+  });
+}
+
+/** DEC-129：下级按停用日当天的状态原样追加一个停用版本，各自 revision 前进并留审计。 */
+async function disableDescendants(tx: Tx, ctx: OrgWriteContext, nodes: readonly OrgRecord[], from: string) {
+  for (const node of nodes) {
+    const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, node.id)).for('update');
+    if (!object) throw new AppError('SERVICE_UNAVAILABLE', '下级组织不存在');
+    const revision = object.revision + 1;
+    await tx.update(orgObjects).set({ revision }).where(objectKey(ctx.tenantId, node.id));
+    const input = normalizeOrganization(ctx, {
+      ...node,
+      startDate: from,
+      enabled: false,
+      parents: node.parents as OrgParentsInput,
+    });
+    const path = { fullName: node.fullName, level: node.level };
+    const saved = await appendVersion(tx, ctx, node.id, node.code, revision, input, path, node);
+    await audit(tx, ctx, 'org.disable.cascade', node.id, node, saved);
+  }
 }
 
 async function rejectEarlierThanFutureVersion(tx: Tx, ctx: OrgWriteContext, orgId: string, effectiveDate: string) {
@@ -176,7 +226,7 @@ function objectKey(tenantId: string, orgId: string) {
   return and(eq(orgObjects.tenantId, tenantId), eq(orgObjects.id, orgId));
 }
 
-function mergePatch(current: OrgRecord, patch: OrganizationPatch, effectiveDate: string): OrganizationInput {
+function mergePatch(current: OrgRecord, patch: OrganizationPatch, effectiveDate: string): OrganizationVersionInput {
   const parents: Record<string, { parentId: string; sequence?: number | null }> = { ...current.parents } as Record<
     string,
     { parentId: string; sequence?: number | null }
@@ -289,16 +339,6 @@ async function validateFutureSnapshots(tx: Tx, ctx: OrgWriteContext, effectiveDa
   for (const boundary of await futureBoundaries(tx, ctx.tenantId, effectiveDate)) {
     assertSnapshotAcyclic(await loadOrgSnapshot(tx, ctx.tenantId, boundary));
   }
-}
-
-async function futureBoundaries(tx: Tx, tenantId: string, effectiveDate: string): Promise<string[]> {
-  const versions = await tx
-    .select({ startDate: orgVersions.startDate })
-    .from(orgVersions)
-    .where(eq(orgVersions.tenantId, tenantId));
-  return [...new Set([effectiveDate, ...versions.map((row) => row.startDate)])]
-    .filter((boundary) => boundary >= effectiveDate)
-    .sort();
 }
 
 function resolvePath(ctx: OrgWriteContext, node: OrgRecord, nodes: OrgRecord[], visited: Set<string>): OrgPath {

@@ -31,6 +31,7 @@ import { validateEmploymentReferences } from './references.js';
 import { employmentTimelineNeighbors, insertEmploymentTimeline } from './timeline.js';
 import {
   type BusinessKind,
+  type ChangeType,
   type EmployType,
   type EmploymentBusiness,
   type EmploymentBusinessInput,
@@ -54,12 +55,18 @@ interface SelectedEmploymentCycle {
   predecessor: EmploymentRecord | null;
 }
 
+export interface CreateEmploymentOptions {
+  readonly forwardUpdate?: boolean;
+  /** 变动类型只由可信的系统联动传入（如职位变更同步直线经理，F-006），不开放给请求体。 */
+  readonly changeType?: ChangeType;
+}
+
 export async function createEmploymentBusiness(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
   input: EmploymentBusinessInput,
-  options: { forwardUpdate?: boolean } = {},
+  options: CreateEmploymentOptions = {},
 ): Promise<EmploymentBusiness> {
   const normalized = normalizeEmploymentInput(ctx, input);
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
@@ -95,6 +102,7 @@ export async function createEmploymentBusiness(
     prepared,
     null,
     selected?.cycle.id,
+    options.changeType,
   );
   const business: LockedEmploymentBusiness = {
     id,
@@ -160,6 +168,7 @@ export async function updateEmploymentBusiness(
     prepared,
     before.id,
     selected?.cycle.id,
+    before.changeType ?? undefined,
   );
   await auditEmployment(
     tx,
@@ -286,6 +295,7 @@ export async function appendEmploymentPayload(
   prepared: PreparedInheritance,
   previousVersionId: string | null,
   selectedStaffId?: string,
+  changeType?: ChangeType,
 ): Promise<EmploymentPayloadRow> {
   const payload: EmploymentPayloadRow = {
     ...prepared,
@@ -296,6 +306,7 @@ export async function appendEmploymentPayload(
     versionNo,
     previousVersionId,
     kind: input.kind,
+    changeType: changeType ?? null,
     mode: input.mode,
     effectiveDate: input.effectiveDate,
     lastWorkDate: input.lastWorkDate,
@@ -387,6 +398,7 @@ export async function materializeEmploymentRecord(
     staffId,
     entryDate,
     kind: payload.kind,
+    changeType: payload.changeType ?? null,
     startDate: payload.effectiveDate,
     lastWorkDate: payload.lastWorkDate,
     serviceType: 'primary',

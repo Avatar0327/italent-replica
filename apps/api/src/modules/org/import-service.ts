@@ -159,9 +159,10 @@ async function importRow(
         : await createOrganization(
             savepoint,
             { ...ctx, expectedRevision: 0 },
+            // DEC-130：新建行的 startDate 即原站首版生效日，也就是设立日期；不填时设立日期缺省为租户当天。
             {
               ...input,
-              ...(row.startDate === undefined ? {} : { startDate: row.startDate }),
+              ...(row.startDate === undefined ? {} : { establishedOn: row.startDate }),
             },
           );
       if (!mapped) {

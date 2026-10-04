@@ -11,6 +11,7 @@ import {
   type PageQuery,
   type EmploymentState,
   type BusinessKind,
+  type ChangeType,
   type FormId,
   type EmploymentScope,
 } from './types.js';
@@ -41,6 +42,7 @@ function record(row: Record<string, unknown>): EmploymentRecord {
     staffId: String(row.staff_id),
     entryDate: String(row.entry_date),
     kind: row.kind as BusinessKind,
+    changeType: (row.change_type as ChangeType | null) ?? null,
     serviceType: row.service_type as EmploymentRecord['serviceType'],
     effectiveDate: String(row.start_date),
     stopDate: String(row.stop_date),
@@ -207,6 +209,7 @@ export async function loadEmploymentBusiness(
     employeeRevision: Number(row.employee_revision),
     status: row.state as EmploymentState,
     kind: row.kind as BusinessKind,
+    changeType: (row.change_type as ChangeType | null) ?? null,
     mode: row.mode as 'direct' | 'application',
     formId: row.form_id as FormId,
     effectiveDate: String(row.effective_date),

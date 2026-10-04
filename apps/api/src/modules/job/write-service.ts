@@ -3,7 +3,8 @@ import { isUuid, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { jobCreationSchema, jobPatchSchema, normalizeFields } from './fields.js';
 import { jobTables, type JobKind } from './metadata.js';
-import { applyPositionPersonnelRules, unavailableJobPersonnel } from './personnel.js';
+import { employmentJobPersonnel } from './employment-port.js';
+import { applyPositionPersonnelRules } from './personnel.js';
 import { latestJobObject, loadJobObject, type JobRecord } from './read-model.js';
 import { lockJobTenant } from './settings.js';
 import { auditJob, insertRow, rowsOf } from './store.js';
@@ -25,7 +26,7 @@ export async function createJobObject(
   ctx: JobWriteContext,
   kind: JobKind,
   input: JobInput,
-  _personnel: JobPersonnelGateway = unavailableJobPersonnel,
+  _personnel?: JobPersonnelGateway,
 ): Promise<JobRecord> {
   assertRevision(ctx.expectedRevision, 0);
   const id = randomUUID();
@@ -52,7 +53,8 @@ export async function updateJobObject(
   kind: JobKind,
   id: string,
   patch: JobPatch,
-  personnel: JobPersonnelGateway = unavailableJobPersonnel,
+  // 缺省只读真实在岗人（停用校验）；同步直线经理须由路由传入带操作人授权的端口，否则 fail-closed。
+  personnel: JobPersonnelGateway = employmentJobPersonnel(),
 ): Promise<JobRecord> {
   if (!isUuid(id)) throw invalid('id', '对象 ID 必须是 UUID');
   const parsed = jobPatchSchema(kind).safeParse(patch);

@@ -275,3 +275,34 @@ async function assertLevelInPost(tx: Tx, tenantId: string, post: JobRecord, leve
     throw new AppError('VALIDATION_FAILED', '职级不在职务允许区间内');
   }
 }
+
+/**
+ * DEC-129：自 from 起（含 from 之后才生效的版本）在这些组织下仍启用的职位数。版本有效区间为
+ * [生效日, min(失效日 + 1, 同一职位下一版本生效日))；同日多版本以版本号大的为准（前者区间为空）。
+ */
+export async function countEnabledPositions(
+  tx: Tx,
+  tenantId: string,
+  orgIds: readonly string[],
+  from: string,
+): Promise<Map<string, number>> {
+  if (!orgIds.length) return new Map();
+  const ids = sql`${`{${orgIds.join(',')}}`}::uuid[]`;
+  const rows = resultRows<{ orgId: string; count: number }>(
+    await tx.execute(sql`
+      SELECT org_id AS "orgId", count(DISTINCT object_id)::int AS count FROM (
+        SELECT object_id, org_id, enabled, start_date,
+          LEAST(stop_date + 1, COALESCE(
+            lead(start_date) OVER (PARTITION BY object_id ORDER BY start_date, version_no), 'infinity'::date
+          )) AS end_exclusive
+        FROM job_position_versions
+        WHERE tenant_id = ${tenantId} AND object_id IN (
+          SELECT object_id FROM job_position_versions WHERE tenant_id = ${tenantId} AND org_id = ANY(${ids})
+        )
+      ) versions
+      WHERE enabled AND org_id = ANY(${ids}) AND end_exclusive > ${from}::date AND end_exclusive > start_date
+      GROUP BY org_id
+    `),
+  );
+  return new Map(rows.map((row) => [row.orgId, Number(row.count)]));
+}

@@ -57,11 +57,12 @@ export interface JobIncumbent {
   readonly directManagerId: string | null;
 }
 
-/** 可信员工模块在传入的租户事务内验权、校验任职 revision，并追加任职版本。 */
+/** 可信员工模块在传入的租户事务内验权、校验任职 revision，并追加任职版本（实现见 job/employment-port.ts）。 */
 export interface JobPersonnelGateway {
+  /** limit：调用方只需判断有无 / 是否唯一时传入；不传时读全部，超过单次上限整体拒绝而不是截断。 */
   listIncumbents(
     tx: Tx,
-    query: { readonly tenantId: string; readonly positionId: string; readonly asOf: string },
+    query: { readonly tenantId: string; readonly positionId: string; readonly asOf: string; readonly limit?: number },
   ): Promise<readonly JobIncumbent[]>;
   appendManagerVersion(
     tx: Tx,

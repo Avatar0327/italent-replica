@@ -1,4 +1,17 @@
-import { and, desc, eq, inArray, lte, ne, orgHierarchyLinks, orgObjects, orgVersions, sql, type Tx } from '@italent/db';
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  lte,
+  ne,
+  orgHierarchyLinks,
+  orgObjects,
+  orgVersions,
+  personnelOrgSortRanks,
+  sql,
+  type Tx,
+} from '@italent/db';
 import type { OrgDimension } from '@italent/domain';
 import { creatorSql } from '../permission/scope-audit.js';
 import { scopeSql } from '../permission/module-access.js';
@@ -63,21 +76,22 @@ export async function loadOrgSnapshot(
   }));
 }
 
-function orgSnapshotQuery(
+/** 每个组织在 asOf 当日的现行版本（分页时排除租户根组织）。 */
+function currentOrgVersions(
   tx: Tx,
   tenantId: string,
   asOf: string,
-  page: Parameters<typeof loadOrgSnapshot>[3],
+  excludeRoot: boolean,
   filter: Parameters<typeof loadOrgSnapshot>[4],
 ) {
-  const current = tx
+  return tx
     .selectDistinctOn([orgVersions.orgId])
     .from(orgVersions)
     .where(
       and(
         eq(orgVersions.tenantId, tenantId),
         lte(orgVersions.startDate, asOf),
-        ...(page ? [ne(orgVersions.orgId, tenantId)] : []),
+        ...(excludeRoot ? [ne(orgVersions.orgId, tenantId)] : []),
         ...(filter?.scope
           ? [
               scopeSql(filter.scope, {
@@ -91,6 +105,16 @@ function orgSnapshotQuery(
     )
     .orderBy(orgVersions.orgId, desc(orgVersions.startDate), desc(orgVersions.versionNo))
     .as('current_org');
+}
+
+function orgSnapshotQuery(
+  tx: Tx,
+  tenantId: string,
+  asOf: string,
+  page: Parameters<typeof loadOrgSnapshot>[3],
+  filter: Parameters<typeof loadOrgSnapshot>[4],
+) {
+  const current = currentOrgVersions(tx, tenantId, asOf, Boolean(page), filter);
   let query = tx
     .select({
       object: orgObjects,
@@ -110,6 +134,7 @@ function orgSnapshotQuery(
         establishedOn: current.establishedOn,
         personInChargeId: current.personInChargeId,
         hrbpId: current.hrbpId,
+        shopOwnerId: current.shopOwnerId,
         costCenterId: current.costCenterId,
         location: current.location,
         remarks: current.remarks,
@@ -122,6 +147,15 @@ function orgSnapshotQuery(
     })
     .from(current)
     .innerJoin(orgObjects, and(eq(orgObjects.id, current.orgId), eq(orgObjects.tenantId, current.tenantId)))
+    .leftJoin(
+      personnelOrgSortRanks,
+      and(
+        eq(personnelOrgSortRanks.tenantId, current.tenantId),
+        eq(personnelOrgSortRanks.objectId, current.orgId),
+        lte(personnelOrgSortRanks.validFrom, asOf),
+        sql`${personnelOrgSortRanks.validTo} > ${asOf}::date`,
+      ),
+    )
     .where(
       and(
         sql`${current.stopDate} >= ${asOf}::date`,
@@ -137,17 +171,24 @@ function orgSnapshotQuery(
           : []),
       ),
     )
-    .orderBy(current.displayOrder, current.code, orgObjects.id)
+    // DEC-089 / DEC-037（`15` §12 Q-M0-07）：组织的排序编码按名次口径，直接取迁移 0027 预计算并存储的组织名次
+    // （行政路径上逐级比较行政维度顺序号、再比较编码），不现算、不拼长整数分段编码；停用或不在行政树上的组织
+    // 没有名次，排在最后按编码。分页在 SQL 内完成，页内不再重排。
+    .orderBy(sql`${personnelOrgSortRanks.sortNumber} ASC NULLS LAST`, current.code, orgObjects.id)
     .$dynamic();
   if (page) query = query.limit(page.limit).offset(page.offset);
   return query;
 }
 
-export function orderOrganizations(a: OrgRecord, b: OrgRecord): number {
-  // TODO(需取证 Q-M0-07): DEC-037 长整数排序编码待明确组合算法与任务归属。
-  const display = (a.displayOrder ?? Number.MAX_SAFE_INTEGER) - (b.displayOrder ?? Number.MAX_SAFE_INTEGER);
-  if (display) return display;
-  return a.code < b.code ? -1 : a.code > b.code ? 1 : 0;
+/** 某日及以后的全部版本边界（含该日）；全称同步、环检查与 DEC-129 级联都按这些时点各算一次快照。 */
+export async function futureBoundaries(tx: Tx, tenantId: string, effectiveDate: string): Promise<string[]> {
+  const versions = await tx
+    .select({ startDate: orgVersions.startDate })
+    .from(orgVersions)
+    .where(eq(orgVersions.tenantId, tenantId));
+  return [...new Set([effectiveDate, ...versions.map((row) => row.startDate)])]
+    .filter((boundary) => boundary >= effectiveDate)
+    .sort();
 }
 
 export function displayOrganization(org: OrgRecord, startLevel: number): OrgRecord {

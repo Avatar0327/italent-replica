@@ -44,7 +44,9 @@ export function employeeDto(row: Row, ctx: PersonnelContext): Row {
   const attrs = camel(row);
   delete attrs.profile;
   delete attrs.employeeName;
-  // TODO(需取证 Q-M0-36)：长整数排序编码的分段宽度及溢出无规格，暂不伪造编码。
+  // DEC-089 / DEC-037（`15` §12，Q-M0-36 已取证）：排序编码按名次口径——规则项（所属部门 → 工号 → 职级）依次比较
+  // 预计算并存储的名次（organizationSortNumber 等），不拼长整数分段编码，读取时也不现算全租户名次（AC-SUB-04）。
+  // 组合成单一名次需随任职变动重排全租户，目前没有存储，字段保持为空，不伪造数值。
   return {
     ...Object.fromEntries(EMPLOYEE_FIELDS.map((f) => [f.code, null])),
     ...dto,
