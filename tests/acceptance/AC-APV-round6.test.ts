@@ -122,16 +122,24 @@ describe('R5-3（P2）：回退的租户管理员候选按游标分批扫描，�
   });
 });
 
+async function orderedPair(w: ApprovalWorld, s: Scene, successor: string) {
+  for (let attempt = 1; ; attempt++) {
+    const failing = await exceptionInstance(w, s, successor);
+    const takeable = await exceptionInstance(w, s);
+    if (takeable.id < failing.id) return { takeable, failing };
+    expect(attempt).toBeLessThan(20);
+    await w.json(await w.instanceAction(successor, failing.id, 'withdraw', failing.revision));
+    await w.json(await w.instanceAction(w.hr.id, takeable.id, 'withdraw', takeable.revision));
+  }
+}
+
 describe('顺带补测：停用接管中途失败，整体回滚', () => {
   it('第一单已转给替代人、第二单无人接手：停用被拒，两单都不动，没有接管审计、outbox 为零', async () => {
     const { w, s } = await exceptionWorld('apv-r6-rollback');
     const successor = await w.member('接任的异常管理员');
-    // 第二单：替代人本人发起，替代人回避且租户没有管理员 → 无人接手。
-    const failing = await exceptionInstance(w, s, successor);
-    // 第一单：HR 发起（交接时按 DEC-092 跳过），替代人可接手；接管按实例编号顺序，须排在第二单之前。
-    let takeable = await exceptionInstance(w, s);
-    for (let i = 0; i < 12 && takeable.id > failing.id; i++) takeable = await exceptionInstance(w, s);
-    expect(takeable.id < failing.id).toBe(true);
+    // 接管按实例编号顺序：第一单（HR 发起，交接时按 DEC-092 跳过，替代人可接手）须排在第二单（替代人本人发起，
+    // 替代人回避且租户没有管理员 → 无人接手）之前。编号随机：顺序不对就撤回这一对、换一对（每对一半概率）。
+    const { takeable, failing } = await orderedPair(w, s, successor);
     await w.json(await handover(w, { fromUserId: w.exceptionAdmin, toUserId: successor }));
     const revision = await membershipRevision(w, w.exceptionAdmin);
     const error = await revoke(w, w.exceptionAdmin).catch((caught: unknown) => caught);
