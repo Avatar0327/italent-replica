@@ -45,7 +45,15 @@ const decisions = read('docs/00_状态/04_缺口冲突差异登记册.md')
   .filter((l) => /^\| \*\*D-\d+\*\*/.test(l))
   .map((l) => {
     const c = cells(l);
-    return { id: c[0].replace(/\*/g, ''), what: c[1], diff: c[2], st: c[4] ?? '', tasks: taskIds(c.join(' ')) };
+    // 只认显式写明的“影响任务：R1-T03、F-007”；行里顺带提到的任务号不算范围（PR #46 Codex 审查 P2）
+    const scope = /影响任务[：:]\s*([^|；;。]+)/.exec(l);
+    return {
+      id: c[0].replace(/\*/g, ''),
+      what: c[1],
+      diff: c[2],
+      st: c[4] ?? '',
+      tasks: scope ? taskIds(scope[1]) : null,
+    };
   })
   .filter((d) => !/✅/.test(d.st));
 
@@ -76,9 +84,9 @@ if (targets.length === 0) {
   }
 }
 
-// 待决差异：写明了影响任务的只拦对应任务；没写任何任务号的按保守口径拦所有目标
+// 待决差异：登记册行里显式写了“影响任务：…”的只拦对应任务；没写的按保守口径拦所有目标
 const relevant =
-  targets.length === 0 ? decisions : decisions.filter((d) => d.tasks.size === 0 || targets.some((t) => d.tasks.has(t)));
+  targets.length === 0 ? decisions : decisions.filter((d) => !d.tasks || targets.some((t) => d.tasks.has(t)));
 if (relevant.length) {
   blocked = blocked || targets.length > 0;
   console.log(`\n待用户决定 / 待原站实测的差异 ${relevant.length} 项（开工前确认是否涉及本任务）：`);
