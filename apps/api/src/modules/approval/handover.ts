@@ -6,6 +6,7 @@
  * 跳过的实例凭游标翻过（N4）；拿到锁后实例已结束或已无待转任务时什么都不写（N5）。
  * DEC-123：成员停用时（平台撤销成员关系或全局停用账号的同一事务内，R4-3），其剩余在途异常待办自动转给替代人或
  * 租户管理员；与派单的串行协议（派单闸）见 resolver.closeAssigneeGate（R4-2 / R5-1 / R5-2）。
+ * F-008 / R6-3：一个事务里处理多张单（停用接管、手动交接的一批）时按全局取锁顺序逐单处理，见 LOCK_ORDER。
  */
 import { sql, type MembershipRevocation, type Tx } from '@italent/db';
 import { avoidSelfExceptionAdmin, isSelf, tenantLocalDate, type Candidate } from '@italent/domain';
@@ -52,6 +53,31 @@ export interface HandoverResult {
   readonly nextCursor: string | null;
 }
 
+/**
+ * F-008 / R6-3 全局取锁顺序：审批命令先锁实例的异动员工（openRun → 业务适配器），再锁业务单、实例。一个事务处理
+ * 多张单时须按（异动员工, 实例编号）升序逐单处理，且整个事务都保持这一顺序（停用接管跨页也一样）：员工锁总是按编号
+ * 递增取得，同一员工的业务单与实例都在其员工锁之下串行，两个批量事务不会互持对方要的员工锁。
+ * 实例的异动员工即适配器锁住的员工（任职业务 / 员工信息变更申请的员工，发起时写入、之后不改）。该列在表上可空
+ * （两种业务都不会写空）：万一为空按最小值排在最前，保证键集游标不会因 NULL 比较而提前结束、漏掉待接管的单。
+ */
+const LOCK_EMPLOYEE = sql`coalesce(i.subject_employee_id,'00000000-0000-0000-0000-000000000000'::uuid)`;
+const LOCK_ORDER = sql`${LOCK_EMPLOYEE},i.id`;
+
+/** 实例及其异动员工（取锁顺序的键）。 */
+export interface LockKey {
+  readonly id: string;
+  readonly employee_id: string;
+}
+
+/** 小写规范 UUID 文本的字典序与 PostgreSQL uuid 的排序一致。 */
+function compareUuid(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+
+/** 同 LOCK_ORDER 的内存排序。 */
+const byLockOrder = (a: LockKey, b: LockKey) => compareUuid(a.employee_id, b.employee_id) || compareUuid(a.id, b.id);
+
 /** 待转的异常任务所在的在途实例（对 approval_instances 别名 i）。 */
 const pendingExceptionOf = (tenantId: string, userId: string) => sql`EXISTS (SELECT 1 FROM approval_tasks t
   WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id AND t.status='pending' AND t.is_exception_admin
@@ -82,7 +108,8 @@ export async function handoverExceptionAdmin(
   const batch = instances.slice(0, BATCH);
   let tasks = 0;
   const skipped: SkippedInstance[] = [];
-  for (const instanceId of batch) {
+  // R6-3：选批与游标仍按实例编号（对外不变）；批内按全局取锁顺序逐单处理（一批一个事务，批与批之间锁已释放）。
+  for (const { id: instanceId } of [...batch].sort(byLockOrder)) {
     const outcome =
       (await ownRequestBlocker(tx, ctx, instanceId)) ?? (await handoverInstance(tx, ctx, instanceId, input));
     if (typeof outcome === 'number') tasks += outcome;
@@ -92,10 +119,10 @@ export async function handoverExceptionAdmin(
   return {
     processes: Math.min(processes, BATCH),
     tasks,
-    skipped,
+    skipped: skipped.sort((a, b) => compareUuid(a.instanceId, b.instanceId)),
     unlisted: await unlistedCount(tx, ctx, input, scope),
     remaining: processes > BATCH || more,
-    nextCursor: more ? batch.at(-1)! : null,
+    nextCursor: more ? batch.at(-1)!.id : null,
   };
 }
 
@@ -190,12 +217,11 @@ async function republishProcesses(tx: Tx, ctx: ApprovalContext, input: HandoverI
 /** N4：调用者范围在限量之前过滤；游标之后的实例按编号排序。 */
 async function transferableInstances(tx: Tx, ctx: ApprovalContext, input: HandoverInput, scope: SQL) {
   const after = input.cursor ? sql`AND i.id>${input.cursor}::uuid` : sql``;
-  const rows = rowsOf<{ id: string }>(
-    await tx.execute(sql`SELECT i.id FROM approval_instances i
+  return rowsOf<LockKey>(
+    await tx.execute(sql`SELECT i.id,${LOCK_EMPLOYEE} AS employee_id FROM approval_instances i
       WHERE ${pendingExceptionOf(ctx.tenantId, input.fromUserId)} AND ${scope} ${after}
       ORDER BY i.id LIMIT ${BATCH + 1}`),
   );
-  return rows.map((row) => row.id);
 }
 
 /**
@@ -306,17 +332,32 @@ export async function takeOverOnDeactivation(tx: Tx, deps: TenantRouteDeps, revo
   const successorScope = successor
     ? await memberInstanceScope(deps, { tenantId, userId: successor, timezone }, tx)
     : null;
-  let cursor: string | null = null;
+  // R6-3：整个停用在一个事务里、已取的锁不释放，按全局取锁顺序逐页接管，游标按同一顺序跨页延续（不能只在页内排序）。
+  let after: LockKey | null = null;
   for (;;) {
-    const after: SQL = cursor ? sql`AND i.id>${cursor}::uuid` : sql``;
-    const ids = rowsOf<{ id: string }>(
-      await tx.execute(sql`SELECT i.id FROM approval_instances i WHERE ${pendingExceptionOf(tenantId, userId)} ${after}
-        ORDER BY i.id LIMIT ${BATCH}`),
-    ).map((row) => row.id);
-    for (const instanceId of ids) await takeOverInstance(tx, ctx, instanceId, userId, successor, successorScope);
-    if (ids.length < BATCH) return;
-    cursor = ids.at(-1)!;
+    const page = await pendingInLockOrder(tx, tenantId, userId, after);
+    for (const { id } of page) await takeOverInstance(tx, ctx, id, userId, successor, successorScope);
+    if (page.length < BATCH) return;
+    after = page.at(-1)!;
   }
+}
+
+/**
+ * 停用者名下待转的在途实例，按 LOCK_ORDER 从 after 之后取一页（键集游标）。
+ * @param limit 页长；只在验收测试里调小，以验证跨页仍沿全局顺序延续
+ */
+export async function pendingInLockOrder(
+  tx: Tx,
+  tenantId: string,
+  userId: string,
+  after: LockKey | null,
+  limit = BATCH,
+): Promise<LockKey[]> {
+  const from = after ? sql`AND (${LOCK_EMPLOYEE},i.id)>(${after.employee_id}::uuid,${after.id}::uuid)` : sql``;
+  return rowsOf<LockKey>(
+    await tx.execute(sql`SELECT i.id,${LOCK_EMPLOYEE} AS employee_id FROM approval_instances i
+      WHERE ${pendingExceptionOf(tenantId, userId)} ${from} ORDER BY ${LOCK_ORDER} LIMIT ${limit}`),
+  );
 }
 
 /**
