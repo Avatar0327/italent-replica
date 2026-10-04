@@ -88,6 +88,21 @@ td a{color:var(--accent)}
 .third{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
 .third .card b{font:700 14px var(--f-display)}
 .third .card .it{font:500 12px var(--f-mono);color:var(--accent)}
+.lanes{display:grid;gap:10px}
+.lane{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:grid;gap:8px}
+.lane .ln{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline}
+.lane .ln b{font:700 15px var(--f-display)}
+.lane .ln span{font-size:12.5px;color:var(--muted)}
+.flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px}
+.step{display:flex;flex-direction:column;gap:6px}
+.arrow{align-self:center;color:var(--muted);font-size:16px;padding:0 2px}
+.node{border:1px solid var(--line);border-radius:8px;padding:6px 10px;min-width:150px;max-width:220px;display:grid;gap:3px;font-size:12.5px;background:var(--bg)}
+.node.wait{border-style:dashed}
+.node.ready{border:2px solid var(--blocked)}
+.node .nid{font:600 12.5px var(--f-mono);display:flex;gap:6px;align-items:center;justify-content:space-between}
+.node .w{color:var(--muted);font-size:12px}
+.tag-ready{color:var(--blocked);background:var(--blocked-bg);font-size:11.5px;font-weight:500;padding:1px 8px;border-radius:999px;white-space:nowrap}
+@media (max-width:560px){.flow{flex-direction:column}.arrow{transform:rotate(90deg)}.node{max-width:none}}
 @media (max-width:560px){.rounds li{grid-template-columns:1fr}}
 @media (max-width:560px){h1{font-size:22px}.log li{grid-template-columns:1fr;gap:2px}}
 @media (prefers-reduced-motion:no-preference){.bar i,.mini i{transition:width .6s ease}}
@@ -107,6 +122,12 @@ td a{color:var(--accent)}
   <section>
     <h2>里程碑</h2>
     <div class="track"><div class="rail" id="rail"></div></div>
+  </section>
+
+  <section>
+    <h2>关键路径</h2>
+    <div class="sub" style="margin:-4px 0 10px">谁在挡谁一眼可见。<b class="tag-ready">可派发</b> = 前置都已完成却还没派；虚线框 = 还在等前置。</div>
+    <div class="lanes" id="lanes"></div>
   </section>
 
   <section>
@@ -188,6 +209,23 @@ const DATA = {
     "R3-T02":{n:"任职资格与人才评定",s:"todo"},"R3-T03":{n:"360 度评估",s:"todo"},"R3-T04":{n:"人才盘点",s:"todo"},
     "R3-T05":{n:"继任管理",s:"todo"},"R3-T06":{n:"人才池与人才梯队",s:"todo"},"R3-T07":{n:"个人发展计划 IDP",s:"todo"}
   },
+  deps: {
+    "R1-T07":["R1-T01"], "R1-T08":["R1-T05","R1-T07"], "R1-T09":["R1-T05","R1-T07","R1-T08"],
+    "R1-T10":["R1-T09"], "R1-T11":["R1-T09"], "R1-T13":["R1-T09"], "R1-T14":["R1-T09"],
+    "R1-T15":["R1-T01","R1-T02"], "R1-T16":["R1-T05"], "R1-T17":["R1-T00","R1-T15"],
+    "F-001/002":[], "F-005/006":[], "F-003":["R1-T07"], "F-008":["R1-T07"], "F-007":["R1-T07","F-001/002"]
+  },
+  ftasks: {
+    "F-001/002":{n:"同日多条、早于入职拒绝、带出序列",s:"review",pr:45},
+    "F-005/006":{n:"组织停用级联、职务接人员端口",s:"todo",note:"提示词已备好，等开窗口"},
+    "F-003":{n:"会签与并加签",s:"todo"}, "F-008":{n:"派单并发死锁",s:"todo"},
+    "F-007":{n:"组织改名 / 改上级联动任职",s:"todo"}
+  },
+  lanes: [
+    {nm:"主线（关键路径）", d:"R1 剩余 10 个任务中 6 个排在审批中心之后：#35 不合并，这条线整体不动", steps:[["R1-T07"],["R1-T08"],["R1-T09"],["R1-T10","R1-T11","R1-T13","R1-T14"]]},
+    {nm:"支线（不依赖审批中心）", d:"前置已完成、门禁 ✅，可与 #35 并行；派发前由编排窗口查文件 / 迁移冲突", steps:[["R1-T15","R1-T16"],["R1-T17"]]},
+    {nm:"后续修正（取证推翻已合并代码）", d:"不计入 9/19，但占用开发与审查力量", steps:[["F-001/002","F-005/006"],["F-003","F-008"],["F-007"]]}
+  ],
   now: [
     {id:"R1-T07", s:"review", d:"PR #35 第七轮修复已推送（R6-1 锁键大小写规范化、R6-4 测试改为确定性），CI 全绿；六审的 2 个并发死锁问题按 DEC-136 转为后续任务 F-008", next:"编排窗口发起七审（按 DEC-136 用 High）→ 通过后你在编排窗口确认合并"},
     {id:"F-001 + F-002（PR #45）", s:"review", d:"同日多条按操作先后、早于入职日拒绝、向后更新排序与预览提醒、按新职务带出序列；CI 全绿", next:"等 astra 复审；迁移 0028 与 #35 撞号，后合并的那个重新生成"},
@@ -213,6 +251,7 @@ const DATA = {
     {g:"转到后续", items:"R6-2 R6-3 → F-008", d:"两个罕见的并发死锁场景修改面大，按 DEC-136 不再拖住审批中心合并，另开后续任务 F-008 处理"}
   ],
   log: [
+    {d:"10-04", t:"看板新增“关键路径”：主线被 #35 挡住；支线 R1-T15/T16 可并行，编排窗口先查冲突；#35 合并标准不变（用户决定）"},
     {d:"10-04", t:"PR #35 第七轮修复（R6-1、R6-4），CI 全绿；DEC-136 复审分档：核心首轮 Ultra、之后 High、只报 P0~P2"},
     {d:"10-04", t:"合并 PR #41（F-004 职位变更同步经理，DEC-131~133）；开出 PR #45（F-001 + F-002）"},
     {d:"10-04", t:"取证 Q-M0-04/06/11/13/53/54 完成，登记 DEC-134~138；新增后续任务 F-007、F-008"},
@@ -273,6 +312,21 @@ rail.innerHTML = DATA.milestones.map(m => {
   const cur = !curFound && r < 1 && (curFound = true);
   return `<div class="ms${cur?" cur":""}"><div class="k">${m.k}</div><div class="bar"><i style="width:${Math.round(r*100)}%"></i></div>
     <div class="t">${esc(m.t)}</div><div class="p">${done}/${m.tasks.length}</div></div>`;
+}).join("");
+
+const F = DATA.ftasks;
+const info = id => T[id] ? {n:T[id].n, s:T[id].s, pr:T[id].pr, note:""} : {n:F[id].n, s:F[id].s, pr:F[id].pr, note:F[id].note||""};
+const pending = id => (DATA.deps[id]||[]).filter(d => info(d).s !== "done");
+document.getElementById("lanes").innerHTML = DATA.lanes.map(l => {
+  const flow = l.steps.map(step => `<div class="step">${step.map(id => {
+    const x = info(id), p = pending(id);
+    const ready = x.s === "todo" && !p.length && !x.note;
+    const cls = x.s === "todo" ? (p.length ? " wait" : (ready ? " ready" : "")) : "";
+    const tag = ready ? `<span class="tag-ready">可派发</span>` : pill(x.s);
+    const w = p.length ? `等 ${p.join("、")}` : (x.note || (x.pr ? `PR #${x.pr}` : ""));
+    return `<div class="node${cls}"><div class="nid">${esc(id)}${tag}</div><div>${esc(x.n)}</div>${w ? `<div class="w">${esc(w)}</div>` : ""}</div>`;
+  }).join("")}</div>`).join(`<div class="arrow" aria-hidden="true">→</div>`);
+  return `<div class="lane"><div class="ln"><b>${esc(l.nm)}</b><span>${esc(l.d)}</span></div><div class="flow">${flow}</div></div>`;
 }).join("");
 
 document.getElementById("now").innerHTML = DATA.now.map(c =>
