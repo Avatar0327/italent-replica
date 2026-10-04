@@ -5,7 +5,7 @@
  * 以及 DEC-092 本人回避。第四轮：范围过滤放进查询（N4），调用者看不到的实例只计数、不列出编号（N3），其他原因
  * 跳过的实例凭游标翻过（N4）；拿到锁后实例已结束或已无待转任务时什么都不写（N5）。
  * DEC-123：成员停用时（平台撤销成员关系或全局停用账号的同一事务内，R4-3），其剩余在途异常待办自动转给替代人或
- * 租户管理员；与派单的串行协议见 resolver.isUsableAccount（R4-2）。
+ * 租户管理员；与派单的串行协议（派单闸）见 resolver.closeAssigneeGate（R4-2 / R5-1 / R5-2）。
  */
 import { sql, type MembershipRevocation, type Tx } from '@italent/db';
 import { avoidSelfExceptionAdmin, isSelf, tenantLocalDate, type Candidate } from '@italent/domain';
@@ -16,7 +16,14 @@ import { approvalError, assertRevision, auditApproval, rowsOf, type ApprovalCont
 import { assertExceptionAdminMember, republishWithExceptionAdmin } from './definitions.js';
 import { currentRouting, openRun, persistRun, type Run } from './engine.js';
 import { notifyTodo } from './notifications.js';
-import { directManagerOf, isEligibleApprover, personOfUser, tenantAdminTakeover, userOfPerson } from './resolver.js';
+import {
+  closeAssigneeGate,
+  directManagerOf,
+  isEligibleApprover,
+  personOfUser,
+  tenantAdminTakeover,
+  userOfPerson,
+} from './resolver.js';
 import { isOwnRequest } from './rules.js';
 import { appendLog, closeTask, insertTask, loadInstance, loadTasks, type TaskRow } from './store.js';
 
@@ -283,6 +290,8 @@ async function reassignAll(tx: Tx, run: Run, plan: readonly Step[], from: string
  */
 export async function takeOverOnDeactivation(tx: Tx, deps: TenantRouteDeps, revocation: MembershipRevocation) {
   const { tenantId, userId, timezone, actorUserId, commandId } = revocation;
+  // 先关派单闸（排他，可以等）：此后的派单拿不到闸、不会再派给他；已拿到闸的派单提交后，下面的扫描能看到。
+  await closeAssigneeGate(tx, tenantId, userId);
   await assertNotActiveExceptionAdmin(tx, tenantId, userId);
   const ctx: ApprovalContext = {
     tenantId,

@@ -40,7 +40,7 @@ const NOBODY: Candidate = { personId: null, userId: null };
 
 /**
  * 人员的有效账号：账号绑定（Q-M0-30：用户与人员由管理员显式绑定）、成员关系有效且全局账号未停用（R4-3）。
- * 只用于识别（异动本人、通知接收人等）；审批候选另经 isEligibleApprover 复核并锁住成员行（candidateOf）。
+ * 只用于识别（异动本人、通知接收人等）；审批候选另经 isEligibleApprover 复核并取派单闸（candidateOf）。
  * 解析到没有账号或账号已停用的人员按“审批人为空”处理（DEC-098）。
  * TODO(需取证 Q-M0-44)：在职但没有系统账号 / 账号已停用的人员被解析为审批人时原站怎么处理，未取证。
  */
@@ -55,38 +55,69 @@ export async function userOfPerson(tx: Tx, tenantId: string, personId: string | 
   return row?.user_id ?? null;
 }
 
+/** 派单闸的键：租户 × 用户（事务级咨询锁，键里带租户，各租户互不影响）。 */
+const assigneeGate = (tenantId: string, userId: string) =>
+  sql`hashtextextended(${`approval-assignee:${tenantId}:${userId}`}, 0)`;
+
 /**
- * 可用账号（DEC-098、R4-2、R4-3）：本租户成员关系有效、全局账号未停用，并以 FOR KEY SHARE SKIP LOCKED 锁住其成员行。
- * 成员停用（撤销成员关系 / 全局停用账号）先以 FOR UPDATE 锁住成员行，再逐单接管其在途待办；审批事务对别人的成员行
- * 只“拿到或跳过”、从不等待——拿不到锁即视为正在停用、不可用。由此：
- * - 审批方持有业务单 / 实例锁时不会等成员行锁，停用方只等业务单 / 实例锁，两者不成环；
- * - 拿到锁的审批事务提交前，停用方锁不住成员行、开始不了接管扫描，提交后扫描能看到新派的待办并接管。
+ * 派单闸（R4-2 / R5-1 / R5-2：成员停用与审批派单的串行协议）。只有审批中心使用它：
+ * - 停用方（撤销成员关系、全局停用账号）在接管其在途待办之前以排他方式取闸（可以等），持有到事务结束；
+ * - 审批方把某人当作接手人（派单、交接、接管）或以其身份操作时，以共享方式试取，拿不到即视为正在停用，从不等待。
+ * 停用方只等闸与业务锁，审批方从不等停用方持有的锁（users 行只被全局停用以 NO KEY UPDATE 锁住，与外键的
+ * KEY SHARE 相容；成员行只在撤销的最后一步、接管完成后才 FOR UPDATE），两者不成环。
  */
-export async function isUsableAccount(tx: Tx, tenantId: string, userId: string): Promise<boolean> {
+export async function closeAssigneeGate(tx: Tx, tenantId: string, userId: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(${assigneeGate(tenantId, userId)})`);
+}
+
+async function enterAssigneeGate(tx: Tx, tenantId: string, userId: string): Promise<boolean> {
+  const [row] = rowsOf<{ entered: boolean }>(
+    await tx.execute(sql`SELECT pg_try_advisory_xact_lock_shared(${assigneeGate(tenantId, userId)}) AS entered`),
+  );
+  return Boolean(row?.entered);
+}
+
+/** 账号有效（已提交的状态）：本租户成员关系有效、全局账号未停用（DEC-098、R4-3）。用于通知接收人与抄送对象。 */
+export async function isActiveAccount(tx: Tx, tenantId: string, userId: string): Promise<boolean> {
   const [row] = rowsOf(
     await tx.execute(sql`SELECT 1 FROM tenant_memberships m
       WHERE m.tenant_id=${tenantId} AND m.user_id=${userId}::uuid AND m.status='active'
-        AND tenant_account_active(m.user_id)
-      FOR KEY SHARE OF m SKIP LOCKED`),
+        AND tenant_account_active(m.user_id)`),
   );
   return Boolean(row);
 }
 
-/** 可接管的租户管理员候选（DEC-098）：最早开通的在前（确定性）；资格由调用方逐个复核（R4-4）。 */
-async function tenantAdminCandidates(tx: Tx, tenantId: string, excludeUserId?: string): Promise<string[]> {
+/**
+ * 可派：取到派单闸（共享，试取）且账号有效。分两条语句：读状态的快照须晚于取到闸，才能看到停用方释放闸之前
+ * 已提交的结果。
+ */
+export async function isAssignable(tx: Tx, tenantId: string, userId: string): Promise<boolean> {
+  return (await enterAssigneeGate(tx, tenantId, userId)) && isActiveAccount(tx, tenantId, userId);
+}
+
+const ADMIN_PAGE = 50;
+
+interface AdminCursor {
+  readonly createdAt: string;
+  readonly id: string;
+}
+
+/** 可接管的租户管理员候选的一页（DEC-098）：最早开通的在前（确定性）；资格由调用方逐个复核（R4-4）。 */
+async function tenantAdminPage(tx: Tx, tenantId: string, excludeUserId?: string, after?: AdminCursor) {
   // 正在停用的成员在同一事务里仍是 active，接管人须排除他本人（DEC-123）。
   const exclude = excludeUserId ? sql`AND a.user_id<>${excludeUserId}::uuid` : sql``;
-  const rows = rowsOf<{ user_id: string }>(
-    await tx.execute(sql`SELECT a.user_id FROM permission_admins a
+  const from = after ? sql`AND (a.created_at,a.id)>(${after.createdAt}::timestamptz,${after.id}::uuid)` : sql``;
+  return rowsOf<{ id: string; user_id: string; created_at: string }>(
+    await tx.execute(sql`SELECT a.id,a.user_id,a.created_at::text AS created_at FROM permission_admins a
       JOIN tenant_memberships m ON m.tenant_id=a.tenant_id AND m.user_id=a.user_id AND m.status='active'
-      WHERE a.tenant_id=${tenantId} AND a.role='tenant_admin' AND a.status='active' ${exclude}
-      ORDER BY a.created_at,a.id LIMIT 50`),
+      WHERE a.tenant_id=${tenantId} AND a.role='tenant_admin' AND a.status='active' ${exclude} ${from}
+      ORDER BY a.created_at,a.id LIMIT ${ADMIN_PAGE}`),
   );
-  return rows.map((row) => row.user_id);
 }
 
 /**
- * 由租户管理员接管异常任务（DEC-098、DEC-123）：按开通先后逐个复核审批资格（已离职 / 不可用的跳过，R4-4），
+ * 由租户管理员接管异常任务（DEC-098、DEC-123）：按开通先后逐个复核审批资格（已离职 / 不可用的跳过，R4-4；
+ * 候选分批扫描不截断，R5-3），
  * 恰为发起人或异动本人的按 DEC-091 回避给其直线经理，回避后仍无人接替的继续找下一个。
  * @returns 接手人；没有任何具备资格的租户管理员时为 null；有但都因本人回避不可用时为最后一个不可用原因
  */
@@ -97,15 +128,22 @@ export async function tenantAdminTakeover(
   excludeUserId?: string,
 ): Promise<ExceptionAdminChoice | null> {
   let blocked: ExceptionAdminChoice | null = null;
-  for (const userId of await tenantAdminCandidates(tx, subject.tenantId, excludeUserId)) {
-    if (!(await isEligibleApprover(tx, subject, userId))) continue;
-    const admin: Candidate = { userId, personId: await personOfUser(tx, subject.tenantId, userId) };
-    const manager = isSelf(admin, facts as RoutingFacts) ? await directManagerOf(tx, subject, admin) : undefined;
-    const choice = avoidSelfExceptionAdmin(admin, facts, manager);
-    if (choice.kind === 'assign') return choice;
-    blocked = choice;
+  let after: AdminCursor | undefined;
+  // R5-3：候选按开通先后分批（每批有上限）扫描，资格过滤后不够就凭游标继续，直到找到或真正用尽。
+  for (;;) {
+    const page = await tenantAdminPage(tx, subject.tenantId, excludeUserId, after);
+    for (const { user_id: userId } of page) {
+      if (!(await isEligibleApprover(tx, subject, userId))) continue;
+      const admin: Candidate = { userId, personId: await personOfUser(tx, subject.tenantId, userId) };
+      const manager = isSelf(admin, facts as RoutingFacts) ? await directManagerOf(tx, subject, admin) : undefined;
+      const choice = avoidSelfExceptionAdmin(admin, facts, manager);
+      if (choice.kind === 'assign') return choice;
+      blocked = choice;
+    }
+    if (page.length < ADMIN_PAGE) return blocked;
+    const last = page.at(-1)!;
+    after = { createdAt: last.created_at, id: last.id };
   }
-  return blocked;
 }
 
 export async function personOfUser(tx: Tx, tenantId: string, userId: string): Promise<string | null> {
@@ -134,7 +172,7 @@ function departed(tx: Tx, subject: EligibilityScope, personId: string): Promise<
 async function candidateOf(tx: Tx, subject: RoutingSubject, personId: string | null): Promise<Candidate> {
   if (!personId) return NOBODY;
   const userId = await userOfPerson(tx, subject.tenantId, personId);
-  const usable = userId && (await isUsableAccount(tx, subject.tenantId, userId));
+  const usable = userId && (await isAssignable(tx, subject.tenantId, userId));
   return { personId, userId: usable && !(await departed(tx, subject, personId)) ? userId : null };
 }
 
@@ -145,7 +183,7 @@ async function candidateOf(tx: Tx, subject: RoutingSubject, personId: string | n
  * 离职前已有的待办不自动撤销，由管理员转交（`14` §11.7）。
  */
 export async function isEligibleApprover(tx: Tx, subject: EligibilityScope, userId: string): Promise<boolean> {
-  if (!(await isUsableAccount(tx, subject.tenantId, userId))) return false;
+  if (!(await isAssignable(tx, subject.tenantId, userId))) return false;
   const personId = await personOfUser(tx, subject.tenantId, userId);
   return !personId || !(await departed(tx, subject, personId));
 }

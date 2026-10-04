@@ -28,7 +28,7 @@ import { candidates, conditionContext, evaluate, noProcessMessage, replicaMatch 
 import { applyMessageRules, notifyTodo } from './notifications.js';
 import {
   directManagerOf,
-  isUsableAccount,
+  isAssignable,
   memo,
   personOfUser,
   resolveCandidate,
@@ -59,20 +59,20 @@ export interface Run {
 }
 
 /**
- * R4-2：操作人本人的成员行同样只“拿到或跳过”（isUsableAccount）——正在停用或已停用即拒绝本次操作，审批事务从不
- * 等待成员行锁；拿到之后，停用方须等本事务结束才能锁住其成员行、开始接管扫描。系统接管（DEC-123，操作人是平台方）
- * 不做此检查。
+ * R4-2 / R5-1：操作人本人在入口试取派单闸（isAssignable）——正在停用或已停用即拒绝本次操作，从不等待；取到之后，
+ * 他的停用须等本次操作结束才能关闸、开始接管，本次操作派给他本人的待办随后被接管。系统接管（DEC-123，操作人是
+ * 平台方）不做此检查。
  */
 async function assertActorUsable(tx: Tx, ctx: ApprovalContext): Promise<void> {
   if (ctx.actorUserId !== undefined) return;
-  if (!(await isUsableAccount(tx, ctx.tenantId, ctx.userId))) {
+  if (!(await isAssignable(tx, ctx.tenantId, ctx.userId))) {
     throw approvalError('CONFLICT', 'APPROVAL_CONCURRENT_CONFLICT', '账号状态正在变更或已停用，请稍后重试');
   }
 }
 
 /**
  * 锁序与业务入口一致：先按业务侧顺序锁员工 / 业务单，再锁实例（清单 11）；业务入口（提交、撤回、删除）
- * 也是先锁业务再经挂接端口锁实例，两条路径不会互相等待成环。成员行锁只“拿到或跳过”，不参与排队（R4-2）。
+ * 也是先锁业务再经挂接端口锁实例，两条路径不会互相等待成环。派单闸只试取、不排队（R4-2 / R5-1）。
  */
 export async function openRun(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<Run> {
   await assertActorUsable(tx, ctx);
@@ -179,7 +179,7 @@ export async function exceptionAdminFor(
 ): Promise<{ userId: string; reason: string }> {
   const tenantId = run.ctx.tenantId;
   const configured = run.version.exceptionAdminUserId!;
-  if (!(await isUsableAccount(tx, tenantId, configured))) {
+  if (!(await isAssignable(tx, tenantId, configured))) {
     const takeover = await tenantAdminTakeover(tx, subject, facts);
     if (!takeover) {
       throw approvalError(

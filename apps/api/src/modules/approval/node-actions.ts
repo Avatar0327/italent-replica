@@ -8,7 +8,7 @@ import { assertOpen, ok, openTask, type Outcome } from './actions.js';
 import { approvalError, assertRevision, auditApproval, type ApprovalContext } from './context.js';
 import { assertBusinessUnchanged, openRun, persistRun } from './engine.js';
 import { notifyCc } from './notifications.js';
-import { isUsableAccount } from './resolver.js';
+import { isActiveAccount } from './resolver.js';
 import { retrievableTask } from './rules.js';
 import { appendLog, cancelPending, insertTask, instanceOfTask, loadTasks } from './store.js';
 
@@ -24,9 +24,9 @@ export async function copySend(tx: Tx, ctx: ApprovalContext, input: CopySendInpu
   const { run, task, node } = scene;
   if (!node.actions.copySend) throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '本节点未开启抄送');
   const userIds = [...new Set(input.userIds)];
-  // 抄送对象须是可用账号（成员关系有效、全局账号未停用、不在停用中，R4-2 / R4-3）。
+  // 抄送对象须是有效账号（成员关系有效、全局账号未停用，R4-3）；抄送不派任务，不取派单闸。
   for (const userId of userIds) {
-    if (!(await isUsableAccount(tx, ctx.tenantId, userId)))
+    if (!(await isActiveAccount(tx, ctx.tenantId, userId)))
       throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '抄送对象必须是本租户有效成员');
   }
   for (const userId of userIds) {

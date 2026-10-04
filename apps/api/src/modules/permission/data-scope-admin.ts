@@ -261,13 +261,12 @@ export async function assignUserAppScope(
   input: ScopeAssignment,
 ): Promise<ScopeView> {
   await assertActiveMember(tx, userId);
-  // 首次写无范围行可锁，锁成员行使首次并发同样得到明确 409。用 NO KEY UPDATE：同样串行化范围写入，但不与
-  // 审批派单的 FOR KEY SHARE 冲突——成员行上的 FOR UPDATE 只留给成员停用（R1-T07 R4-2 串行协议）。
+  // 首次写无范围行可锁，锁成员行使首次并发同样得到明确 409。
   await tx
     .select({ id: tenantMemberships.id })
     .from(tenantMemberships)
     .where(eq(tenantMemberships.userId, userId))
-    .for('no key update');
+    .for('update');
   const before = await getUserAppScope(tx, userId, appCode);
   if (before.revision !== expectedRevision) throw revisionConflict(expectedRevision, before.revision);
   const [app] = await tx.select().from(permissionScopeApps).where(eq(permissionScopeApps.appCode, appCode));

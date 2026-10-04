@@ -24,7 +24,7 @@ import {
   type ApprovalContext,
   type Row,
 } from './context.js';
-import { isUsableAccount } from './resolver.js';
+import { isAssignable } from './resolver.js';
 
 export interface VersionView extends ProcessDefinition {
   readonly id: string;
@@ -435,9 +435,9 @@ export async function republishWithExceptionAdmin(tx: Tx, ctx: ApprovalContext, 
   return audited(tx, ctx, 'exception_admin.handover', before, id);
 }
 
-/** 异常管理员须是可用账号：成员关系有效、全局账号未停用、不在停用中（R4-3 / R4-2）。 */
+/** 异常管理员须可派：成员关系有效、全局账号未停用、不在停用中（取派单闸，R4-3 / R5-1）。 */
 export async function assertExceptionAdminMember(tx: Tx, tenantId: string, userId: string) {
-  if (!(await isUsableAccount(tx, tenantId, userId)))
+  if (!(await isAssignable(tx, tenantId, userId)))
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_EXCEPTION_ADMIN_INVALID', '异常管理员必须是本租户有效成员');
 }
 
