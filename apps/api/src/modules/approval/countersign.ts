@@ -45,6 +45,8 @@ export function activationVotes(activation: readonly TaskRow[]): CountersignVote
 
 /** 成员同意 / 不同意之后结算本节点；仍待定时什么都不做。 */
 export async function settleCountersign(tx: Tx, run: Run, node: CountersignApprovalNode, acted: TaskRow) {
+  // 只结算一次：节点已流转（实例已不在本节点）时不再结算，即使调用方漏了入口校验也不会重复推进。
+  if (run.instance.status !== 'running' || run.instance.currentNodeKey !== node.key) return;
   const activation = activationOf(await loadTasks(tx, run.ctx.tenantId, run.instance.id), acted);
   const rules = exitRulesOf(node.transitionRule, nodeExits(node));
   const outcome = countersignOutcome(rules, activationVotes(activation));
