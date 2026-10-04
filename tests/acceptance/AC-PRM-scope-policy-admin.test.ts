@@ -72,23 +72,16 @@ describe('AC-PRM-17/18/21 范围消费规则与关系管理API', () => {
     expect(denied.status).toBe(403);
   });
 
-  it('用户-人员绑定只接受同租户员工，DELETE后保留revision防旧请求重建', async () => {
+  // DEC-128 推翻了 R1-T02 的“管理员显式绑定”：绑定只由建档 / 入职写入（AC-PRM-31/32），接口只读。
+  it('用户-人员绑定接口只读：PUT / DELETE 一律 403，GET 返回未绑定', async () => {
     const user = await addMember(world, 'person-link');
     const employeeId = await person();
     const path = `/person-links/${user.id}`;
-    expect((await put(path, { employeeId: randomUUID() })).status).toBe(404);
-    expect((await put(path, { employeeId })).status).toBe(200);
+    expect((await put(path, { employeeId })).status).toBe(403);
+    const removed = await world.api.request('DELETE', `${BASE}${path}`, { ...world.asAdmin, ifMatch: 0, body: {} });
+    expect(removed.status).toBe(403);
     const get = await world.api.request('GET', `${BASE}${path}`, world.asAdmin);
-    expect(await get.json()).toMatchObject({ userId: user.id, employeeId, revision: 1 });
-    const removed = await world.api.request('DELETE', `${BASE}${path}`, {
-      ...world.asAdmin,
-      ifMatch: 1,
-      body: {},
-    });
-    expect(removed.status).toBe(200);
-    expect(await removed.json()).toMatchObject({ employeeId: null, revision: 2 });
-    expect((await put(path, { employeeId }, 0)).status).toBe(409);
-    expect((await put(path, { employeeId }, 2)).status).toBe(200);
+    expect(await get.json()).toMatchObject({ userId: user.id, employeeId: null, revision: 0 });
   });
 
   it('动态组织角色只关联auto授权，支持撤销与revision', async () => {
