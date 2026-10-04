@@ -1,4 +1,5 @@
-import { type Db, type Tx } from '@italent/db';
+import { randomUUID } from 'node:crypto';
+import { type Db, jobSettingsObjects, jobSettingsVersions, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { runCommand } from '../../apps/api/src/commands.js';
@@ -82,7 +83,7 @@ describe('AC-JOB-03/05 职位停用与职位变更时调整员工直线经理', 
     const saved = await runPositionChange(db, ctx, command, personnelFixtureGateway(observed), (tx) => {
       writeTransaction = tx;
     });
-    expect(saved).toMatchObject({ revision: 2, directParentId: newParent.id });
+    expect(saved).toMatchObject({ revision: 2, directParentId: newParent.id, managerSync: { skipped: [] } });
     for (const employee of employees) {
       const history = await assignmentVersions(db, session.tenant.id, employee.assignmentId);
       expect(history).toHaveLength(2);
@@ -177,6 +178,51 @@ describe('AC-JOB-03/05 职位停用与职位变更时调整员工直线经理', 
     });
     expect(observed).toEqual([]);
     expect(await assignmentVersions(db, session.tenant.id, employees[0]!.assignmentId)).toHaveLength(1);
+  });
+
+  it('DEC-133 升级前已成功的旧设置命令（开关为 true）按原幂等键重放仍返回首次结果，新命令照旧拒绝', async () => {
+    const { db } = testDb();
+    const session = await jobSession(db, 'job05legacyreplay');
+    const legacyBody = { allowDuplicatePositionNames: false, adjustEmployeeDirectManager: true };
+    const idempotencyKey = randomUUID();
+    const ctx = { ...jobWriteContext(session, 0), commandId: idempotencyKey };
+    // 模拟升级前版本：同一指纹（方法、路径、revision、请求体）已成功执行并写入命令台账。
+    const legacy = await runCommand(db, ctx, {
+      id: idempotencyKey,
+      fingerprint: { method: 'PUT', path: '/api/tenant/job/settings', expectedRevision: 0, input: legacyBody },
+      execute: async (tx) => {
+        await tx.insert(jobSettingsObjects).values({ tenantId: ctx.tenantId, revision: 1, createdAt: ctx.now });
+        const [version] = await tx
+          .insert(jobSettingsVersions)
+          .values({ tenantId: ctx.tenantId, versionNo: 1, startDate: '2026-10-01', ...legacyBody, createdAt: ctx.now })
+          .returning();
+        const body = {
+          tenantId: ctx.tenantId,
+          revision: 1,
+          versionId: version!.id,
+          startDate: '2026-10-01',
+          stopDate: '9999-12-31',
+          enabled: true,
+          ...legacyBody,
+        };
+        return { status: 200 as const, body };
+      },
+    });
+    const replay = await session.request('PUT', '/settings', { ifMatch: 0, idempotencyKey, body: legacyBody });
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(legacy.body);
+    const changed = await session.request('PUT', '/settings', {
+      ifMatch: 0,
+      idempotencyKey,
+      body: { allowDuplicatePositionNames: true, adjustEmployeeDirectManager: true },
+    });
+    expect(changed.status).toBe(409);
+    expect(await changed.json()).toMatchObject({ error: { code: 'IDEMPOTENCY_CONFLICT' } });
+    const fresh = await session.request('PUT', '/settings', { ifMatch: 1, body: legacyBody });
+    expect(fresh.status).toBe(400);
+    expect(await fresh.json()).toMatchObject({ error: { code: 'VALIDATION_FAILED' } });
+    const current = await session.request('GET', '/settings');
+    expect(await current.json()).toMatchObject({ revision: 1 });
   });
 
   it('AC-JOB-05 职位变更接口接受单次选项；租户设置不再承载常驻开关（只兼容 false）', async () => {
