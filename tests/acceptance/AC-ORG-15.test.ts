@@ -1,6 +1,7 @@
 /**
  * AC-ORG-15（DEC-130，`10` §11）：新建组织时“设立日期”必填（缺省为租户当天，可倒填或填未来），
- * 组织首个版本的生效日期等于设立日期；新建请求不再单独收生效日期。后续变更照常由变更单填生效日期。
+ * 组织首个版本的生效日期等于设立日期；新建请求不再单独收生效日期。后续变更照常由变更单填生效日期；
+ * 建成后改设立日期走「编辑」（DEC-147，见 AC-ORG-20）。
  */
 import { type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -69,7 +70,7 @@ describe('AC-ORG-15 设立日期必填并作为首个版本的生效日期（DEC
     expect(await session.list('设立日期为空')).toEqual([]);
   });
 
-  it('变更照常由变更单填生效日期；设立日期即首版生效日期，变更中不能改成其他日期或清空', async () => {
+  it('变更照常由变更单填生效日期；「变更」中没有设立日期，改动或清空都 400，须到「编辑」中改（DEC-147）', async () => {
     const session = await orgSession(testDb().db, 'org15change');
     const org = (await created(session, { name: '变更设立部门', establishedOn: '2026-09-01' })).body as {
       id: string;
@@ -87,6 +88,7 @@ describe('AC-ORG-15 设立日期必填并作为首个版本的生效日期（DEC
         body: { establishedOn, effectiveDate: '2026-10-06' },
       });
       expect(changed.status).toBe(400);
+      expect(await changed.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHED_ON_EDIT_ONLY' } } });
     }
     expect((await session.list('变更后名称', '2026-10-06'))[0]).toMatchObject({ revision: 2 });
   });
