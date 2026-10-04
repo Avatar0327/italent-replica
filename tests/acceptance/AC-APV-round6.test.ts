@@ -6,7 +6,7 @@
  * R5-5（R4-5 的 SHARE 屏障）在 AC-APV-concurrency-pg.test.ts（真 PostgreSQL）。
  */
 import { bootstrapTenantAdmin } from '@italent/api';
-import { revokeMembership, sql, withPlatform, withTenant } from '@italent/db';
+import { permissionUserPersonLinks, revokeMembership, sql, withPlatform, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import type { Authorizer } from '../../apps/api/src/authorization.js';
@@ -66,8 +66,8 @@ async function exceptionWorld(label: string) {
   return { w, s };
 }
 
-async function exceptionInstance(w: ApprovalWorld, s: Scene, initiator = w.hr.id) {
-  const draft = await w.application(s.subject.employeeId, { departmentId: s.to }, { actor: initiator });
+async function exceptionInstance(w: ApprovalWorld, s: Scene, initiator = w.hr.id, employeeId = s.subject.employeeId) {
+  const draft = await w.application(employeeId, { departmentId: s.to }, { actor: initiator });
   let view = await w.submit(draft, initiator);
   view = await w.json(await w.taskAction(s.outHead.userId, current(view).id, 'approve', view.revision));
   expect(current(view)).toMatchObject({ assigneeUserId: w.exceptionAdmin, isExceptionAdmin: true });
@@ -122,23 +122,33 @@ describe('R5-3（P2）：回退的租户管理员候选按游标分批扫描，�
   });
 });
 
+/**
+ * R6-4：确定性构造“第一单可接手、第二单无人接手”。两张单都由 HR 发起（交接时按 DEC-092 都跳过），异动对象是两位
+ * 未绑账号的员工；编号定下来后，把替代人的账号绑到编号较大那张单的异动对象上——替代人在那张单上是异动本人（回避），
+ * 租户又没有管理员，无人接手；编号较小的那张单替代人可接手。接管按实例编号顺序，顺序由构造保证，不靠随机重试。
+ */
 async function orderedPair(w: ApprovalWorld, s: Scene, successor: string) {
-  for (let attempt = 1; ; attempt++) {
-    const failing = await exceptionInstance(w, s, successor);
-    const takeable = await exceptionInstance(w, s);
-    if (takeable.id < failing.id) return { takeable, failing };
-    expect(attempt).toBeLessThan(20);
-    await w.json(await w.instanceAction(successor, failing.id, 'withdraw', failing.revision));
-    await w.json(await w.instanceAction(w.hr.id, takeable.id, 'withdraw', takeable.revision));
+  const pair: { view: InstanceView; employeeId: string }[] = [];
+  for (const name of ['甲', '乙']) {
+    const employee = await w.employee(`异动对象${name}`);
+    await w.hire(employee.id, { departmentId: s.from });
+    pair.push({ view: await exceptionInstance(w, s, w.hr.id, employee.id), employeeId: employee.id });
   }
+  // 小写 UUID 文本的字典序与 PostgreSQL uuid 的排序一致。
+  const [first, second] = pair.sort((a, b) => (a.view.id < b.view.id ? -1 : 1));
+  await withTenant(w.db, w.tenant.id, (tx) =>
+    tx
+      .insert(permissionUserPersonLinks)
+      .values({ tenantId: w.tenant.id, userId: successor, employeeId: second!.employeeId }),
+  );
+  return { takeable: first!.view, failing: second!.view };
 }
 
 describe('顺带补测：停用接管中途失败，整体回滚', () => {
   it('第一单已转给替代人、第二单无人接手：停用被拒，两单都不动，没有接管审计、outbox 为零', async () => {
     const { w, s } = await exceptionWorld('apv-r6-rollback');
     const successor = await w.member('接任的异常管理员');
-    // 接管按实例编号顺序：第一单（HR 发起，交接时按 DEC-092 跳过，替代人可接手）须排在第二单（替代人本人发起，
-    // 替代人回避且租户没有管理员 → 无人接手）之前。编号随机：顺序不对就撤回这一对、换一对（每对一半概率）。
+    // 接管按实例编号顺序：第一单替代人可接手，第二单替代人是异动本人（回避）且租户没有管理员 → 无人接手。
     const { takeable, failing } = await orderedPair(w, s, successor);
     await w.json(await handover(w, { fromUserId: w.exceptionAdmin, toUserId: successor }));
     const revision = await membershipRevision(w, w.exceptionAdmin);

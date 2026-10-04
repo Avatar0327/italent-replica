@@ -8,6 +8,7 @@
  * - R4-5（并发首次指定替代人）：审计旧值必须是实际被覆盖的那个值；R5-5：SHARE 屏障放行旧实现的两次读取、挡住插入，
  *   保证旧实现必然两次都读到空值。
  * - R5-1（全局停用与本人审批交错）、R5-2（双租户：成员重新激活与派单交错）、R5-4（停用最终回滚时通知意图不丢）。
+ * - R6-1（派单闸锁键按 UUID 规范化）：租户头或目标用户 ID 用大写 UUID 时，与停用方取的仍是同一把闸。
  */
 import { bootstrapTenantAdmin } from '@italent/api';
 import {
@@ -241,17 +242,19 @@ describe.runIf(realPostgres)('真 PostgreSQL 强制锁竞争', () => {
     return Number(row?.n);
   }
 
-  it('R4-2：停用事务锁住成员行、停在接管扫描时，并发派单不把新待办派给正在停用的异常管理员', async () => {
-    const w = await approvalWorld(database().db, 'apv-pg-r42-dispatch');
+  /**
+   * R4-2 / R6-1 的场景：J（HR 发起）停在异常管理员，交接时按 DEC-092 跳过；I（另一位发起人）停在第一节点，
+   * 同意后第二节点为空，按冻结版本应派给异常管理员；异常管理员已交接给替代人。
+   */
+  async function revokingScene(label: string, firstNode: (typeof TRANSFER_NODES)[number] = TRANSFER_NODES[0]!) {
+    const w = await approvalWorld(database().db, label);
     const s = await transferScene(w);
     await bootstrapTenantAdmin(w.db, { tenantId: w.tenant.id, userId: w.hr.id }, cmd());
     await w.setOrgRoles(s.to, { hrbp: null });
-    await w.publishedProcess({ nodes: [TRANSFER_NODES[0]!, TRANSFER_NODES[1]!] });
-    // J：HR 发起，停在异常管理员（交接时按 DEC-092 跳过）；屏障锁住它的员工行，停用会停在对 J 的接管上。
+    await w.publishedProcess({ nodes: [firstNode, TRANSFER_NODES[1]!] });
     let held = await w.submit(await w.application(s.manager.employeeId, { departmentId: s.to }));
     held = await w.json(await w.taskAction(s.outHead.userId, pending(held).id, 'approve', held.revision));
     expect(pending(held)).toMatchObject({ assigneeUserId: w.exceptionAdmin });
-    // I：另一位发起人的单，停在第一个节点；同意后第二节点为空，按冻结版本应派给异常管理员。
     const applicant = await w.member('发起人');
     const view = await w.submit(
       await w.application(s.subject.employeeId, { departmentId: s.to }, { actor: applicant }),
@@ -264,18 +267,30 @@ describe.runIf(realPostgres)('真 PostgreSQL 强制锁竞争', () => {
         body: { fromUserId: w.exceptionAdmin, toUserId: successor },
       }),
     );
+    return { w, s, held, view, successor };
+  }
+
+  /** 屏障锁住 J 的员工行：撤销异常管理员（已关派单闸）停在对 J 的接管上时发出 race；返回先结束还是先阻塞。 */
+  async function duringRevoke(w: ApprovalWorld, heldEmployeeId: string, race: () => Promise<Response>) {
     const revision = await membershipRevision(w, w.exceptionAdmin);
-    const [revoked, approved, order] = await withTenant(w.db, w.tenant.id, async (barrier) => {
+    return withTenant(w.db, w.tenant.id, async (barrier) => {
       await barrier.execute(sql`SELECT id FROM employment_employees
-        WHERE tenant_id=${w.tenant.id} AND id=${s.manager.employeeId}::uuid FOR UPDATE`);
+        WHERE tenant_id=${w.tenant.id} AND id=${heldEmployeeId}::uuid FOR UPDATE`);
       const revoke = outcomeOf(
         revokeMembership(w.db, { tenantId: w.tenant.id, userId: w.exceptionAdmin, expectedRevision: revision }, cmd()),
       );
       await waitForBlocked(w.db, 1);
-      const approve = w.taskAction(s.outHead.userId, pending(view).id, 'approve', view.revision);
-      // 停用持有异常管理员的成员行锁：派单方只“拿到或跳过”成员行锁，不等它。
-      return [revoke, approve, await settledOrBlocked(w.db, approve, 2)] as const;
+      const raced = race();
+      // 派单方只试取派单闸、从不等待：race 请求应直接结束，不会成为第二个锁等待者。
+      return [revoke, raced, await settledOrBlocked(w.db, raced, 2)] as const;
     });
+  }
+
+  it('R4-2：停用事务锁住成员行、停在接管扫描时，并发派单不把新待办派给正在停用的异常管理员', async () => {
+    const { w, s, held, view, successor } = await revokingScene('apv-pg-r42-dispatch');
+    const [revoked, approved, order] = await duringRevoke(w, s.manager.employeeId, () =>
+      w.taskAction(s.outHead.userId, pending(view).id, 'approve', view.revision),
+    );
     expect(await revoked).toBe('ok');
     const after = await w.json<InstanceView>(await approved);
     expect(order).toBe('settled');
@@ -283,6 +298,39 @@ describe.runIf(realPostgres)('真 PostgreSQL 强制锁竞争', () => {
     expect(pending(after)).toMatchObject({ nodeKey: 'in_hrbp', assigneeUserId: w.hr.id, isExceptionAdmin: true });
     expect(await pendingOf(w, w.exceptionAdmin)).toBe(0);
     expect(pending(await w.detail(held.id))).toMatchObject({ assigneeUserId: successor });
+  });
+
+  it('R6-1：同意请求的租户头用大写 UUID，与停用并发：同一把派单闸，新待办不落到正在停用的异常管理员', async () => {
+    const { w, s, held, view, successor } = await revokingScene('apv-pg-r61-tenant');
+    const [revoked, approved, order] = await duringRevoke(w, s.manager.employeeId, () =>
+      w.api.request('POST', `${BASE}/tasks/${pending(view).id}/approve`, {
+        user: s.outHead.userId,
+        tenant: w.tenant.id.toUpperCase(),
+        ifMatch: view.revision,
+        body: {},
+      }),
+    );
+    expect(await revoked).toBe('ok');
+    const after = await w.json<InstanceView>(await approved);
+    expect(order).toBe('settled');
+    expect(pending(after)).toMatchObject({ nodeKey: 'in_hrbp', assigneeUserId: w.hr.id, isExceptionAdmin: true });
+    expect(await pendingOf(w, w.exceptionAdmin)).toBe(0);
+    expect(pending(await w.detail(held.id))).toMatchObject({ assigneeUserId: successor });
+  });
+
+  it('R6-1：转交目标用户 ID 用大写 UUID，与其停用并发：视为正在停用、拒绝转交，任务不动', async () => {
+    const node = { ...TRANSFER_NODES[0]!, actions: { transfer: true } };
+    const { w, s, view } = await revokingScene('apv-pg-r61-target', node);
+    const [revoked, transferred, order] = await duringRevoke(w, s.manager.employeeId, () =>
+      w.taskAction(s.outHead.userId, pending(view).id, 'transfer', view.revision, {
+        toUserId: w.exceptionAdmin.toUpperCase(),
+      }),
+    );
+    expect(await revoked).toBe('ok');
+    expect(order).toBe('settled');
+    expect(await reasonOf(await transferred)).toMatchObject({ status: 400, reason: 'APPROVAL_USER_INVALID' });
+    expect(pending(await w.detail(view.id))).toMatchObject({ nodeKey: 'out_head', assigneeUserId: s.outHead.userId });
+    expect(await pendingOf(w, w.exceptionAdmin)).toBe(0);
   });
 
   it('R4-2：异常管理员本人审批与其停用交错：不成环死锁，随后派给他的新待办被接管', async () => {
