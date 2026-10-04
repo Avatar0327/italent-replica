@@ -6,15 +6,24 @@ import { businessDate } from './fields.js';
 import { auditJob, rowsOf } from './store.js';
 import type { JobWriteContext } from './types.js';
 
-export const jobSettingsSchema = z.strictObject({
+/**
+ * 设置写命令的请求体：只做结构校验，用于命令指纹。adjustEmployeeDirectManager 仍接受 true，
+ * 是为了让升级前已成功的命令按原指纹命中台账、重放首次结果（DEC-133，AGENTS §10「幂等」）；
+ * 新命令是否允许由 jobSettingsSchema 在执行时判定。字段顺序须与升级前一致，否则指纹会变。
+ */
+export const jobSettingsCommandSchema = z.strictObject({
   allowDuplicatePositionNames: z.boolean(),
-  // F-004：已改为职位变更的单次选项（19 §3.1）；为兼容旧客户端只接受 false，且不再保存。
-  adjustEmployeeDirectManager: z
-    .literal(false, { error: '「调整员工直线经理」已改为职位变更时的单次选项，不能在设置中开启' })
-    .optional(),
+  adjustEmployeeDirectManager: z.boolean().optional(),
   startDate: businessDate.optional(),
   stopDate: businessDate.optional(),
   enabled: z.boolean().optional(),
+});
+
+export const jobSettingsSchema = jobSettingsCommandSchema.extend({
+  // DEC-133：已退役，改为职位变更的单次选项（19 §3.1）；为兼容旧客户端只接受 false，读取时不再返回。
+  adjustEmployeeDirectManager: z
+    .literal(false, { error: '「调整员工直线经理」已改为职位变更时的单次选项，不能在设置中开启' })
+    .optional(),
 });
 
 /** 所有职务体系写命令共用此锁，跨对象编码、职位重名与配置修改不会并发绕过校验。 */
@@ -49,7 +58,7 @@ export async function readJobSettings(tx: Tx, tenantId: string, asOf?: string) {
   };
 }
 
-export async function writeJobSettings(tx: Tx, ctx: JobWriteContext, input: z.input<typeof jobSettingsSchema>) {
+export async function writeJobSettings(tx: Tx, ctx: JobWriteContext, input: z.input<typeof jobSettingsCommandSchema>) {
   const parsed = jobSettingsSchema.safeParse(input);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '职位名称与经理联动设置不合法', parsed.error.issues);
   const currentRevision = await lockJobTenant(tx, ctx);

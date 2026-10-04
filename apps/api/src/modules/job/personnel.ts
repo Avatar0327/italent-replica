@@ -2,7 +2,15 @@ import { isUuid, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import type { JobRecord } from './read-model.js';
 import { auditJob } from './store.js';
-import type { JobFields, JobIncumbent, JobPersonnelGateway, JobWriteContext, PositionChangeOptions } from './types.js';
+import type {
+  JobFields,
+  JobIncumbent,
+  JobPersonnelGateway,
+  JobWriteContext,
+  ManagerSyncResult,
+  ManagerSyncSkip,
+  PositionChangeOptions,
+} from './types.js';
 
 // TODO(需取证 Q-M0-15): 员工主数据和任职版本链未接入前，不得把未知人数假定为零。
 export const unavailableJobPersonnel: JobPersonnelGateway = {
@@ -21,7 +29,7 @@ export async function applyPositionPersonnelRules(
   fields: JobFields,
   options: PositionChangeOptions,
   gateway: JobPersonnelGateway,
-): Promise<void> {
+): Promise<ManagerSyncResult | undefined> {
   if (current.enabled && (!fields.enabled || fields.stopDate < current.stopDate)) {
     const asOf = !fields.enabled ? fields.startDate : dayAfter(fields.stopDate);
     const incumbents = await gateway.listIncumbents(tx, { tenantId: ctx.tenantId, positionId: current.id, asOf });
@@ -31,8 +39,8 @@ export async function applyPositionPersonnelRules(
     }
   }
   // docs/02_业务建模/19 §3.1：「调整员工直线经理」是本次变更的选项（默认否），只在改了上级职位时生效。
-  if (!options.adjustEmployeeDirectManager || current.directParentId === fields.directParentId) return;
-  await synchronizeManagers(tx, ctx, current, fields, gateway);
+  if (!options.adjustEmployeeDirectManager || current.directParentId === fields.directParentId) return undefined;
+  return synchronizeManagers(tx, ctx, current, fields, gateway);
 }
 
 /**
@@ -47,15 +55,15 @@ async function synchronizeManagers(
   current: JobRecord,
   fields: JobFields,
   gateway: JobPersonnelGateway,
-): Promise<void> {
-  if (typeof fields.directParentId !== 'string') return;
+): Promise<ManagerSyncResult | undefined> {
+  if (typeof fields.directParentId !== 'string') return undefined;
   const source = await gateway.listIncumbents(tx, {
     tenantId: ctx.tenantId,
     positionId: fields.directParentId,
     asOf: fields.startDate,
   });
   assertIncumbents(source);
-  if (source.length !== 1) return;
+  if (source.length !== 1) return undefined;
   const directManagerId = source[0]!.employeeId;
   // W-416：只作用于生效日当天在本职位上的员工；历史记录不改。
   const targets = await gateway.listIncumbents(tx, {
@@ -64,10 +72,19 @@ async function synchronizeManagers(
     asOf: fields.startDate,
   });
   assertIncumbents(targets);
+  const skipped: ManagerSyncSkip[] = [];
   for (const assignment of targets) {
-    // 原站“是否新增任职”被锁定为“是”，经理原本就是此人也照样新增；只跳过员工本人即唯一在岗人的情形，
-    // 避免把自己设为直线经理（原站未实测，见 PR 说明）。
-    if (assignment.employeeId === directManagerId) continue;
+    // DEC-131：员工本人就是唯一在岗人时跳过（不新增、不自任经理），并在保存结果逐人告知。原站未实测。
+    if (assignment.employeeId === directManagerId) {
+      skipped.push({
+        employeeId: assignment.employeeId,
+        assignmentId: assignment.assignmentId,
+        reason: 'EMPLOYEE_IS_SOLE_MANAGER',
+      });
+      continue;
+    }
+    // DEC-132：经理本来就是此人也照样新增（AC-JOB-05“各新增一条”、原站“是否新增任职”锁定为是）。
+    // 该边界原站未实测，属规格解释。
     const change = {
       assignmentId: assignment.assignmentId,
       employeeId: assignment.employeeId,
@@ -93,6 +110,7 @@ async function synchronizeManagers(
       },
     );
   }
+  return { skipped };
 }
 
 /** W-416：同步经理新增的任职记录业务类型为“组织调整”、变动类型为“职位调整”。 */

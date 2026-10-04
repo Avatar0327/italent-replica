@@ -38,6 +38,18 @@ export interface PositionChangeOptions {
   readonly adjustEmployeeDirectManager: boolean;
 }
 
+/** 本次同步跳过的员工及原因（DEC-131），随保存结果返回 `managerSync.skipped`。 */
+export interface ManagerSyncSkip {
+  readonly employeeId: string;
+  readonly assignmentId: string;
+  readonly reason: 'EMPLOYEE_IS_SOLE_MANAGER';
+}
+
+/** 新上级职位恰好 1 人在岗、实际执行了同步时才有此结果。 */
+export interface ManagerSyncResult {
+  readonly skipped: readonly ManagerSyncSkip[];
+}
+
 export interface JobIncumbent {
   readonly employeeId: string;
   readonly assignmentId: string;
