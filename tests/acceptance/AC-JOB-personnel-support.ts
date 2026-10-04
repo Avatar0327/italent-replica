@@ -22,6 +22,8 @@ export interface JobIncumbent {
 export interface ManagerChange extends JobIncumbent {
   readonly expectedRevision: number;
   readonly effectiveDate: string;
+  readonly businessKind: string;
+  readonly changeType: string;
 }
 
 export interface JobPersonnelGateway {
@@ -45,6 +47,8 @@ interface JobWriteService {
 
 interface AssignmentVersion extends JobIncumbent {
   readonly id: string;
+  readonly businessKind: string | null;
+  readonly changeType: string | null;
   readonly tenantId: string;
   readonly positionId: string;
   readonly effectiveDate: string;
@@ -79,6 +83,8 @@ export async function installJobPersonnelFixture(db: Db): Promise<void> {
     revision integer NOT NULL,
     direct_manager_id uuid,
     effective_date date NOT NULL,
+    business_kind text,
+    change_type text,
     previous_version_id uuid,
     UNIQUE (tenant_id, assignment_id, revision)
   )`);
@@ -112,7 +118,8 @@ export async function assignmentVersions(db: Db, tenantId: string, assignmentId:
     resultRows<AssignmentVersion>(
       await tx.execute(sql`SELECT id, tenant_id AS "tenantId", assignment_id AS "assignmentId",
         employee_id AS "employeeId", position_id AS "positionId", revision,
-        direct_manager_id AS "directManagerId", effective_date AS "effectiveDate",
+        direct_manager_id AS "directManagerId", effective_date::text AS "effectiveDate",
+        business_kind AS "businessKind", change_type AS "changeType",
         previous_version_id AS "previousVersionId"
         FROM job_test_assignment_versions WHERE assignment_id = ${assignmentId} ORDER BY revision`),
     ),
@@ -144,9 +151,10 @@ export function personnelFixtureGateway(observedTransactions: Tx[] = []): JobPer
       }
       await tx.execute(sql`INSERT INTO job_test_assignment_versions
         (tenant_id, assignment_id, employee_id, position_id, revision, direct_manager_id,
-          effective_date, previous_version_id)
+          effective_date, business_kind, change_type, previous_version_id)
         VALUES (${ctx.tenantId}, ${change.assignmentId}, ${change.employeeId}, ${previous.positionId},
-          ${previous.revision + 1}, ${change.directManagerId}, ${change.effectiveDate}, ${previous.id})`);
+          ${previous.revision + 1}, ${change.directManagerId}, ${change.effectiveDate},
+          ${change.businessKind}, ${change.changeType}, ${previous.id})`);
     },
   };
 }

@@ -25,11 +25,6 @@ async function managerScenario(label: string, managerCount: number) {
   const position = await session.create('positions', '经理端口事务员工', { orgId: org.id, postId: post.id });
   const employee = await seedIncumbent(db, session, position.id);
   for (let index = 0; index < managerCount; index++) await seedIncumbent(db, session, parent.id);
-  const settings = await session.request('PUT', '/settings', {
-    ifMatch: 0,
-    body: { allowDuplicatePositionNames: false, adjustEmployeeDirectManager: true },
-  });
-  expect(settings.status).toBe(200);
   return { db, session, parent, position, employee };
 }
 
@@ -62,28 +57,43 @@ describe('AC-JOB-03/05 可信人员校验与失败事务回滚', () => {
     expect(await session.list('positions', { asOf: '2026-10-02' })).toEqual([]);
   });
 
-  it.each([0, 2])('新上级职位有 %i 名在岗人员时经理来源不唯一，拒绝并保留职位及任职版本', async (count) => {
+  it.each([0, 2])('新上级职位有 %i 名在岗人员时经理来源不唯一，只读不写任职，职位变更照常保存', async (count) => {
     const { db, session, parent, position, employee } = await managerScenario(`jobmanagercount${count}`, count);
     const service = await loadJobWriteService();
+    const base = personnelFixtureGateway();
+    let appended = 0;
+    const gateway: JobPersonnelGateway = {
+      ...base,
+      async appendManagerVersion(tx, ctx, change) {
+        appended++;
+        await base.appendManagerVersion(tx, ctx, change);
+      },
+    };
     const ctx = jobWriteContext(session, position.revision);
-    await expect(
-      runCommand(db, ctx, {
-        id: ctx.commandId,
-        fingerprint: { action: 'test-ambiguous-manager', id: position.id },
-        execute: async (tx, commandId) => ({
-          status: 200,
-          body: await service.updateJobObject(
-            tx,
-            { ...ctx, commandId },
-            'positions',
-            position.id,
-            { parents: { admin: { parentId: parent.id } }, effectiveDate: '2026-10-02' },
-            personnelFixtureGateway(),
-          ),
-        }),
+    await runCommand(db, ctx, {
+      id: ctx.commandId,
+      fingerprint: { action: 'test-ambiguous-manager', id: position.id },
+      execute: async (tx, commandId) => ({
+        status: 200,
+        body: await service.updateJobObject(
+          tx,
+          { ...ctx, commandId },
+          'positions',
+          position.id,
+          {
+            parents: { admin: { parentId: parent.id } },
+            effectiveDate: '2026-10-02',
+            adjustEmployeeDirectManager: true,
+          },
+          gateway,
+        ),
       }),
-    ).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
-    expect(await session.detail('positions', position.id, '2026-10-02')).toMatchObject({ revision: 1 });
+    });
+    expect(appended).toBe(0);
+    expect(await session.detail('positions', position.id, '2026-10-02')).toMatchObject({
+      revision: 2,
+      directParentId: parent.id,
+    });
     expect(await assignmentVersions(db, session.tenant.id, employee.assignmentId)).toHaveLength(1);
   });
 
@@ -112,7 +122,11 @@ describe('AC-JOB-03/05 可信人员校验与失败事务回滚', () => {
             { ...ctx, commandId },
             'positions',
             position.id,
-            { parents: { admin: { parentId: parent.id } }, effectiveDate: '2026-10-02' },
+            {
+              parents: { admin: { parentId: parent.id } },
+              effectiveDate: '2026-10-02',
+              adjustEmployeeDirectManager: true,
+            },
             failedGateway,
           ),
         }),
