@@ -100,7 +100,6 @@ export interface EmploymentBusinessInput {
   readonly formId?: FormId;
   readonly fields?: Partial<PresetFields>;
   readonly customFields?: CustomFields;
-  readonly staffId?: string;
 }
 
 export interface NormalizedEmploymentInput extends EmploymentBusinessInput {
