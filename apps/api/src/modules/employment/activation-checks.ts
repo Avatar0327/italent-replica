@@ -1,5 +1,6 @@
 /**
- * 定时生效的失败判定（DEC-052），全部集中在此：先按生效日校验调入部门 / 职位与编制，再在保存点内经 activate 端口落地；
+ * 定时生效的失败判定（DEC-052），全部集中在此：先按生效日校验调入部门 / 职位，再经编制单一判定入口（DEC-145：
+ * R1-T09 前不检查编制），然后在保存点内经 activate 端口落地；
  * 业务规则拒绝记为生效失败（申请单仍为审批通过，失败时联动一律不执行），存储或依赖不可用则原样抛出、不记失败，
  * 由下一次运行重新尝试（AGENTS.md §10：业务失败与存储不可写 / 结果未知分开处理）。
  * TODO(需取证 Q-M0-48)：原站到期当天是否再校验（目标组织 / 职位停用、编制不足）、失败如何表现，待 10-10 回查；
@@ -29,14 +30,21 @@ export interface ActivationTarget {
   readonly effectiveDate: string;
 }
 
-/** 编制校验端口：编制模块按严格控制判定调入是否超编。 */
+/** 编制单一判定入口：定时生效与调动保存（R1-T09）共用同一口径，按严格控制判定调入是否超编。 */
 export interface EmploymentActivationChecks {
   establishmentExceeded(tx: Tx, ctx: EmploymentContext, target: ActivationTarget): Promise<boolean>;
 }
 
-// TODO(R1-T09)：编制↔任职的人员桥（Q-M0-15 已取证）随调动接入后，在装配处注册编制模块的严格控制判定
-// （establishment/transfer-service 的到期再校验）；未注册前不做编制判定，与直接调动、即时生效的现状一致。
-let checks: EmploymentActivationChecks = { establishmentExceeded: async () => false };
+/**
+ * DEC-145：定时生效的“编制不足”检查延到 R1-T09 随调动一并接入。生产装配下**暂不检查编制**（到期生效不查编制，
+ * 与当前直接调动不查编制一致），这不是已实现的编制校验；失败框架（记录 / 待办 / 重试 / 挂起）已由停用校验与
+ * 测试注入的判定覆盖（AC-TRF-31 的 R1-T08 段）。
+ * TODO(R1-T09, DEC-145)：编制↔任职人员桥（Q-M0-15）接入后，在装配处注册编制模块的严格控制判定
+ * （establishment/transfer-service 的到期再校验），并补 AC-TRF-31 的 R1-T09 段：真实满编 → 失败 → 调整编制 → 重试。
+ */
+export const ESTABLISHMENT_CHECK_DEFERRED: EmploymentActivationChecks = { establishmentExceeded: async () => false };
+
+let checks: EmploymentActivationChecks = ESTABLISHMENT_CHECK_DEFERRED;
 
 export function registerEmploymentActivationChecks(implementation: EmploymentActivationChecks): void {
   checks = implementation;
