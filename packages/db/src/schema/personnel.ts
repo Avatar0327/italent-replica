@@ -953,8 +953,36 @@ export const personnelChangeRequests = pgTable(
   (t) => [
     unique('personnel_change_requests_owner_id').on(t.tenantId, t.employeeId, t.id),
     employeeFk('personnel_change_requests_employee_fk', t),
-    check('personnel_change_requests_state', sql`${t.status} IN ('pending_approval','applied')`),
+    check('personnel_change_requests_state', sql`${t.status} IN ('pending_approval','applied','withdrawn')`),
     check('personnel_change_requests_revision_positive', sql`${t.revision}>0 AND ${t.targetRevision}>=0`),
+  ],
+);
+/** 员工信息变更申请的载荷版本（DEC-099）：首次提交为第 1 版，驳回后同单修正追加新版本，历史保留。 */
+export const personnelChangeRequestVersions = pgTable(
+  'personnel_change_request_versions',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employeeId: uuid('employee_id').notNull(),
+    requestId: uuid('request_id').notNull(),
+    versionNo: integer('version_no').notNull(),
+    values: jsonb('values').$type<Record<string, unknown>>().notNull(),
+    createdBy: uuid('created_by').notNull(),
+    commandId: text('command_id').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('personnel_change_request_versions_no').on(t.tenantId, t.requestId, t.versionNo),
+    foreignKey({
+      name: 'personnel_change_request_versions_request_fk',
+      columns: [t.tenantId, t.employeeId, t.requestId],
+      foreignColumns: [
+        personnelChangeRequests.tenantId,
+        personnelChangeRequests.employeeId,
+        personnelChangeRequests.id,
+      ],
+    }),
+    check('personnel_change_request_versions_positive', sql`${t.versionNo} > 0`),
   ],
 );
 export const personnelOutbox = pgTable(

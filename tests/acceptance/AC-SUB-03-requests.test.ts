@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
+import { installApprovalFallbacks } from './AC-APV-support.js';
 import { personnelSession } from './AC-SUB-support.js';
 import { tenantApi } from './support/tenant-api.js';
 const database = useTestDb();
@@ -9,6 +10,8 @@ const database = useTestDb();
 it('DEC-085 本人自助权限不依赖管理范围，不能代他人、改清单外字段或直接写子集', async () => {
   const db = database().db;
   const s = await personnelSession(db, 'self-service-only');
+  // R1-T07：自助申请提交即发起审批，须有已发布流程（DEC-017）；本文件只验证申请本身，安装兜底流程。
+  await installApprovalFallbacks(db, s.tenant.id, s.user.id);
   const otherResponse = await s.api.request('POST', '/api/tenant/employment/employees', {
     ...s.as,
     ifMatch: 0,
@@ -52,6 +55,8 @@ it('DEC-085 本人自助权限不依赖管理范围，不能代他人、改清�
 it('AC-SUB-03 自助申请先待审批，可信审批完成后来源为申请 ID，重复执行不重复写入', async () => {
   const db = database().db;
   const s = await personnelSession(db);
+  // R1-T07：自助申请提交即发起审批，须有已发布流程（DEC-017）；本文件只验证申请本身，安装兜底流程。
+  await installApprovalFallbacks(db, s.tenant.id, s.user.id);
   await withTenant(db, s.tenant.id, (tx) =>
     tx.execute(sql`INSERT INTO permission_user_person_links
     (tenant_id,user_id,employee_id) VALUES(${s.tenant.id},${s.user.id},${s.employee.id})`),
@@ -118,6 +123,8 @@ it('AC-SUB-01 客户端不能伪造系统来源字段', async () => {
 it('自助申请绑定本人；不同 patch 的同键请求冲突；目标版本过期不部分落地', async () => {
   const db = database().db;
   const s = await personnelSession(db);
+  // R1-T07：自助申请提交即发起审批，须有已发布流程（DEC-017）；本文件只验证申请本身，安装兜底流程。
+  await installApprovalFallbacks(db, s.tenant.id, s.user.id);
   const payload = { employeeId: s.employee.id, subset: 'education', values: { school: '申请大学' } };
   expect((await s.request('POST', '/change-requests', { ifMatch: 0, body: payload })).status).toBe(404);
   await withTenant(db, s.tenant.id, (tx) =>

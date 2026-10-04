@@ -127,11 +127,17 @@ export async function updateEmploymentBusiness(
   ctx: EmploymentContext,
   id: string,
   input: EmploymentBusinessPatch,
+  options: { readonly approvalEdit?: boolean } = {},
 ): Promise<EmploymentBusiness> {
   const patch = normalizeBusinessPatch(input);
   const business = await lockEmploymentBusiness(tx, ctx, id);
-  if (business.payload.mode !== 'application' || !['draft', 'in_review'].includes(business.state)) {
-    throw new AppError('CONFLICT', '只有草稿或审批中的申请可以修改', { reason: 'PAYLOAD_IMMUTABLE' });
+  // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。
+  if (business.payload.mode !== 'application' || !['draft', 'in_review', 'rejected'].includes(business.state)) {
+    throw new AppError('CONFLICT', '只有草稿、审批中或被驳回的申请可以修改', { reason: 'PAYLOAD_IMMUTABLE' });
+  }
+  // 审批中的单据只能由审批中心按当前节点的可编辑字段修改，业务端修改一律 409（PR #35 第二轮清单 1）。
+  if (business.state === 'in_review' && !options.approvalEdit) {
+    throw new AppError('CONFLICT', '审批中的申请只能由当前审批节点修改', { reason: 'APPROVAL_IN_PROGRESS' });
   }
   const before = business.payload;
   const normalized = normalizePatchedInput(ctx, before, patch);

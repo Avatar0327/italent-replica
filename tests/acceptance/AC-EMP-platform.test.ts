@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { pgErrorCode, sql, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { installApprovalFallbacks } from './AC-APV-support.js';
 import { EMP_TODAY, employmentSession, type EmploymentBusiness } from './AC-EMP-support.js';
 import { resultRows } from './AC-ORG-support.js';
 import { errorCode, tenantApi } from './support/tenant-api.js';
@@ -10,6 +11,8 @@ const testDb = useTestDb();
 
 async function hired(db: Db, label: string) {
   const session = await employmentSession(db, label);
+  // R1-T07：提交申请须匹配已发布流程（DEC-017）；本文件只验证平台约定，安装兜底流程。
+  await installApprovalFallbacks(db, session.tenant.id, session.user.id);
   const department = await session.org('平台验收部门');
   const employee = await session.employee();
   const hire = await session.business(

@@ -34,20 +34,25 @@ export function createPermissionAuthorizer(db: Db, catalog: ObjectCatalog = obje
   const authorize: Authorizer = (request) => withTenant(db, request.tenantId, (tx) => evaluate(request, tx));
   registerScopeProvider(authorize, {
     authorize: evaluate,
-    scope: (query) => withTenant(db, query.tenantId, (tx) => resolveDataScope(tx, query)),
-    fields: (tenantId, userId, objectCode) =>
-      withTenant(db, tenantId, async (tx) => {
-        const subject = await loadSubject(tx, userId, objectCode);
-        const currentCatalog = await tenantObjectCatalog(tx, catalog, objectCode);
-        if (CONFIG_OBJECTS.has(objectCode) && decide(subject, { action: 'admin.other_settings' }, currentCatalog)) {
-          return new Set(currentCatalog.get(objectCode)?.fields.map((f) => f.code));
-        }
-        return (
-          resolveObjectPermission(objectCode, subject.objectPermissions, currentCatalog)?.effective.viewableFields ??
-          new Set()
-        );
-      }),
+    scope: (query, tx) =>
+      tx ? resolveDataScope(tx, query) : withTenant(db, query.tenantId, (t) => resolveDataScope(t, query)),
+    // 调用方已在租户事务内时沿用该事务（审批流转内要解析其他审批人的字段权限，R1-T07 第二轮清单 5）。
+    fields: (tenantId, userId, objectCode, tx) =>
+      tx
+        ? viewableFields(tx, userId, objectCode)
+        : withTenant(db, tenantId, (t) => viewableFields(t, userId, objectCode)),
   });
+  async function viewableFields(tx: Tx, userId: string, objectCode: string): Promise<ReadonlySet<string>> {
+    const subject = await loadSubject(tx, userId, objectCode);
+    const currentCatalog = await tenantObjectCatalog(tx, catalog, objectCode);
+    if (CONFIG_OBJECTS.has(objectCode) && decide(subject, { action: 'admin.other_settings' }, currentCatalog)) {
+      return new Set(currentCatalog.get(objectCode)?.fields.map((f) => f.code));
+    }
+    return (
+      resolveObjectPermission(objectCode, subject.objectPermissions, currentCatalog)?.effective.viewableFields ??
+      new Set()
+    );
+  }
   return authorize;
 }
 function objectOf(action: string, resource: string | undefined): string | undefined {
