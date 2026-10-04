@@ -41,6 +41,72 @@ describe('AC-TRF-33 DEC-108 同日多条待生效业务按操作先后生效', (
   });
 });
 
+/**
+ * PR #53 第二轮 P2-2：同日申请与直接业务混合时，生效时插入版本链也按操作先后（DEC-108）与当天已有记录统一排序，
+ * 不能一律追加到当日最后。申请的操作时点是提交（原站提交即写入版本链，W-417），直接业务是保存。
+ */
+describe('AC-TRF-33 DEC-108 同日申请与直接业务混合的先后', () => {
+  async function scene(label: string) {
+    const w = await activationWorld(testDb().db, label);
+    const { employee, hire } = await w.hired();
+    const direct = async (fields: Record<string, unknown>) =>
+      w.session.business(
+        employee.id,
+        { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields },
+        (await w.session.getEmployee(employee.id)).revision,
+      );
+    return { w, employee, hire, direct };
+  }
+
+  it('先提交并审批申请 A、后保存直接业务 B（同为 D）：D 当天定时落地 A 时插在 B 之前，当前任职为 B', async () => {
+    const { w, employee, hire, direct } = await scene('trf33-application-then-direct');
+    const a = await w.approve(
+      await w.apply(employee.id, '2026-10-05', { departmentId: w.to.id, place: 'A 地点' }),
+      '2026-10-02T02:00:00Z',
+    );
+    const b = await direct({ place: 'B 地点' });
+    expect(b.record).toMatchObject({ previousRecordId: hire.record!.id, fields: { departmentId: w.from.id } });
+
+    expect((await w.runScheduler('2026-10-04T17:15:00Z')).activated).toEqual([a.id]);
+    const records = await w.session.records(employee.id, '2026-10-05');
+    expect(records.map((record) => record.id)).toEqual([hire.record!.id, a.id, b.id]);
+    expect(records.filter((record) => record.isCurrent)).toEqual([expect.objectContaining({ id: b.id })]);
+    // A 的变更前取入职记录（插入点之前），B 的变更前改为 A；B 继承的部门随 A 向后更新为调入部门。
+    expect(await w.session.record(a.id, '2026-10-05')).toMatchObject({
+      previousRecordId: hire.record!.id,
+      isInserted: true,
+      fields: { departmentId: w.to.id, place: 'A 地点' },
+    });
+    expect(await w.session.record(b.id, '2026-10-05')).toMatchObject({
+      previousRecordId: a.id,
+      fields: { departmentId: w.to.id, place: 'B 地点' },
+    });
+    expect((await w.session.record(hire.record!.id, '2026-10-05')).stopDate).toBe('2026-10-04');
+  });
+
+  it('先保存直接业务 B、后提交申请 A（同为 D）：A 落地时排在 B 之后，当前任职为 A', async () => {
+    const { w, employee, hire, direct } = await scene('trf33-direct-then-application');
+    const b = await direct({ place: 'B 地点' });
+    const a = await w.approve(await w.apply(employee.id, '2026-10-05', { place: 'A 地点' }), '2026-10-02T02:00:00Z');
+    expect((await w.runScheduler('2026-10-04T17:15:00Z')).activated).toEqual([a.id]);
+    const records = await w.session.records(employee.id, '2026-10-05');
+    expect(records.map((record) => record.id)).toEqual([hire.record!.id, b.id, a.id]);
+    expect(records.filter((record) => record.isCurrent)).toEqual([expect.objectContaining({ id: a.id })]);
+    expect(await w.session.record(a.id, '2026-10-05')).toMatchObject({ previousRecordId: b.id, isInserted: false });
+  });
+
+  it('审批通过时生效日已到（立即生效）也按提交先后插入：先提交 A、后保存 B、再审批 A，当前任职仍为 B', async () => {
+    const { w, employee, hire, direct } = await scene('trf33-immediate-approval');
+    const submitted = await w.apply(employee.id, '2026-10-05', { place: 'A 地点' });
+    const b = await direct({ place: 'B 地点' });
+    const a = await w.approve(submitted, '2026-10-05T02:00:00Z');
+    expect(a).toMatchObject({ status: 'effective', record: { previousRecordId: hire.record!.id } });
+    const records = await w.session.records(employee.id, '2026-10-05');
+    expect(records.map((record) => record.id)).toEqual([hire.record!.id, a.id, b.id]);
+    expect(records.filter((record) => record.isCurrent)).toEqual([expect.objectContaining({ id: b.id })]);
+  });
+});
+
 describe('AC-TRF-35 DEC-112 前序业务生效失败时其后业务挂起', () => {
   it('A（D）编制不足失败；D+5 时 B 不生效、记因前序业务失败挂起；A 重试成功后 B 紧接着生效，顺序 A → B', async () => {
     const w = await activationWorld(testDb().db, 'trf35-suspend');

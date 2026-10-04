@@ -1,8 +1,8 @@
 /**
- * AC-TRF-31（DEC-052）：定时生效失败记 failed / 次数 / 原因并生成 HR 待办；修正后重试按原调动日期落地，
- * 联动（向后更新）照常执行、待办关闭，重复重试不重复生效。自动生效主路径不变（AC-TRF-06）。
- * 编制是否足够由编制模块判定：编制↔任职的人员桥属 R1-T09（Q-M0-15），此处经生效校验端口注入替身；
- * 目标组织 / 职位停用走真实引用校验。
+ * AC-TRF-31（DEC-052）R1-T08 段（DEC-145 拆分）：验失败框架——定时生效失败记 failed / 次数 / 原因并生成 HR 待办；
+ * 修正后重试按原调动日期落地，联动（向后更新）照常执行、待办关闭，重复重试不重复生效；自动生效主路径不变（AC-TRF-06）。
+ * 失败诱因：目标组织 / 职位停用走真实引用校验；编制不足经单一判定入口注入替身判定，只验失败分支的处理。
+ * 真实“满编 → 失败 → 调整编制 → 重试”是 AC-TRF-31 的 R1-T09 段（DEC-145：编制检查随调动接入），不在本文件。
  * TODO(需取证 Q-M0-48)：原站到期是否再校验、失败如何表现待 10-10 回查，结论只影响失败判定一处。
  */
 import { randomUUID } from 'node:crypto';
@@ -23,8 +23,8 @@ afterEach(() => {
   fullDepartments = new Set();
 });
 
-describe('AC-TRF-31 DEC-052 定时生效失败、HR 待办与重试', () => {
-  it('编制不足：仍为审批通过、failed 1 次、原因编制不足、HR 待办；修正后重试按原日期生效并向后更新', async () => {
+describe('AC-TRF-31（R1-T08 段，DEC-145）DEC-052 定时生效失败、HR 待办与重试', () => {
+  it('编制不足（替身判定）：仍为审批通过、failed 1 次、原因编制不足、HR 待办；修正后重试按原日期生效并向后更新', async () => {
     const w = await activationWorld(testDb().db, 'trf31-establishment');
     const { employee, hire } = await w.hired();
     const approved = await w.approve(
