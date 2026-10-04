@@ -1,8 +1,9 @@
 /**
- * 企业设置 · 用户管理的停用与移出租户（R1-T15）：一律调用 PR #35 的平台流程（`packages/db/src/platform-ops.ts`），
- * 不另写一套——移出租户 = revokeMembership（同事务经挂接点接管待办，DEC-123）；停用用户 = setUserStatus 全局停用。
- * DEC-098：仍是可用流程异常管理员的成员须先指定替代人，否则两者都拒绝。
- * 停用全局账号只允许账号仅属本租户时进行，不能借租户侧接口影响其他租户（硬规则 7）。
+ * 企业设置 · 用户管理的停用、启用与移出租户（R1-T15）：一律调用 PR #35 的平台流程（`packages/db/src/platform-ops.ts`），
+ * 不另写一套。DEC-142：租户侧的“停用 / 移出”只作用于本租户成员关系（revokeMembership，同事务经挂接点接管待办，
+ * DEC-123），“启用”恢复本租户成员关系（grantMembership）；账号的全局停用只由平台运营层执行，租户侧返回不提及其他租户。
+ * DEC-098：仍是可用流程异常管理员的成员须先指定替代人，否则拒绝。
+ * astra P2-2：命令重放返回首次回执（取自平台命令台账），不回查当前状态（AGENTS.md §10「幂等」）。
  */
 import { auditEvents, createUser, eq, getUser, grantMembership, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -130,7 +131,7 @@ describe('移出租户：调用平台撤销成员流程', () => {
   });
 });
 
-describe('停用用户：调用平台全局停用流程', () => {
+describe('停用 / 启用：只作用于本租户成员关系（DEC-142）', () => {
   let world: PermissionWorld;
   let hr: ReturnType<typeof hrApi>;
 
@@ -139,107 +140,102 @@ describe('停用用户：调用平台全局停用流程', () => {
     hr = hrApi(world);
   });
 
-  it('账号同属其他租户 → 409，账号保持启用；只属本租户 → 停用，在职状态不受影响', async () => {
+  const setStatus = (user: TenantUserBody, status: 'active' | 'disabled', ifMatch: number, key?: string) =>
+    world.api.request('POST', `${BASE}/users/${user.userId}/status`, {
+      ...world.asAdmin,
+      ifMatch,
+      body: { status },
+      ...(key ? { idempotencyKey: key } : {}),
+    });
+
+  it('同属其他租户的账号：停用只撤销本租户成员关系，全局账号与他租户成员关系不变，返回不提及其他租户', async () => {
     const { db } = testDb();
     const email = syntheticEmail('shared');
     const shared = await createUser(db, { email, displayName: '共享账号' }, cmd());
     const other = await seedTenantWithMember(db, 'disable-other');
     await grantMembership(db, { tenantId: other.tenant.id, userId: shared.id, expectedRevision: 0 }, cmd());
-    const sharedEmployee = await hr.employee('共享账号', email);
-    const sharedUser = await getTenantUser(world, shared.id);
-    expect(sharedUser.employeeId).toBe(sharedEmployee.id);
-    const blocked = await world.api.request('POST', `${BASE}/users/${shared.id}/status`, {
-      ...world.asAdmin,
-      ifMatch: sharedUser.accountRevision,
-      body: { status: 'disabled' },
-    });
-    expect(await reasonOf(blocked)).toMatchObject({ status: 409, reason: 'ACCOUNT_SHARED_ACROSS_TENANTS' });
-    expect((await getUser(db, shared.id))!.status).toBe('active');
+    await hr.employee('共享账号', email);
+    const user = await getTenantUser(world, shared.id);
 
+    const disabled = await setStatus(user, 'disabled', user.membershipRevision);
+    expect(disabled.status, await disabled.clone().text()).toBe(200);
+    expect(await disabled.json()).toEqual({
+      userId: shared.id,
+      membershipStatus: 'revoked',
+      membershipRevision: user.membershipRevision + 1,
+    });
+    expect((await getUser(db, shared.id))!.status).toBe('active');
+    const otherMembership = await withTenant(db, other.tenant.id, (tx) =>
+      tx.execute(sql`SELECT status FROM tenant_memberships WHERE user_id=${shared.id}::uuid`),
+    );
+    expect(rowsOf<{ status: string }>(otherMembership)).toEqual([{ status: 'active' }]);
+    // 本租户已不能访问，其他租户照常访问
+    const menus = (tenant: string) => world.api.request('GET', `${BASE}/admin-menus`, { user: shared.id, tenant });
+    expect((await menus(world.tenant.id)).status).toBe(403);
+    expect((await menus(other.tenant.id)).status).toBe(200);
+  });
+
+  it('停用不影响在职状态、写本租户审计；启用恢复本租户成员关系', async () => {
+    const { db } = testDb();
     const departmentId = await hr.org('停用部门');
     const employee = await hr.employee('专属账号', syntheticEmail('exclusive'));
     expect((await hr.hire(employee, departmentId)).status).toBe(201);
     const user = (await listUsers(world)).find((u) => u.employeeId === employee.id)!;
-    const disabled = await world.api.request('POST', `${BASE}/users/${user.userId}/status`, {
-      ...world.asAdmin,
-      ifMatch: user.accountRevision,
-      body: { status: 'disabled' },
-    });
+    const disabled = await setStatus(user, 'disabled', user.membershipRevision);
     expect(disabled.status, await disabled.clone().text()).toBe(200);
-    expect(await disabled.json()).toEqual({
-      userId: user.userId,
-      accountStatus: 'disabled',
-      accountRevision: user.accountRevision + 1,
-    });
-    expect(await getTenantUser(world, user.userId)).toMatchObject({
-      accountStatus: 'disabled',
-      membershipStatus: 'active',
-    });
     expect((await hr.getEmployee(employee.id)).status).toBe('employed');
-    // 租户侧发起的停用记入本租户审计（平台审计之外）
-    const statusEvents = await withTenant(db, world.tenant.id, (tx) =>
-      tx.select().from(auditEvents).where(eq(auditEvents.objectId, user.userId)),
-    );
-    expect(statusEvents.map((e) => e.action)).toContain('user.set_status');
-
-    const reenabled = await world.api.request('POST', `${BASE}/users/${user.userId}/status`, {
-      ...world.asAdmin,
-      ifMatch: user.accountRevision + 1,
-      body: { status: 'active' },
+    expect(await getTenantUser(world, user.userId)).toMatchObject({
+      membershipStatus: 'revoked',
+      accountStatus: 'active',
+      employeeId: employee.id,
     });
-    expect(reenabled.status).toBe(200);
-    expect(await reenabled.json()).toMatchObject({ accountStatus: 'active' });
+    const events = await withTenant(db, world.tenant.id, (tx) =>
+      tx.select().from(auditEvents).where(eq(auditEvents.action, 'tenant_membership.revoke')),
+    );
+    expect(events.some((e) => (e.after as { userId?: string } | null)?.userId === user.userId)).toBe(true);
+
+    const enabled = await setStatus(user, 'active', user.membershipRevision + 1);
+    expect(enabled.status, await enabled.clone().text()).toBe(200);
+    expect(await enabled.json()).toEqual({
+      userId: user.userId,
+      membershipStatus: 'active',
+      membershipRevision: user.membershipRevision + 2,
+    });
   });
 
-  it('astra P2-2：停用 → 另一键启用 → 原样重放停用，返回首次的停用回执，账号保持启用', async () => {
+  it('astra P2-2：K 停用 → L 启用 → 原样重放 K，返回首次的停用回执，成员关系保持有效', async () => {
     const employee = await hr.employee('重放停用', syntheticEmail('replay-status'));
     const user = (await listUsers(world)).find((u) => u.employeeId === employee.id)!;
-    const path = `${BASE}/users/${user.userId}/status`;
-    const disable = {
-      ...world.asAdmin,
-      ifMatch: user.accountRevision,
-      idempotencyKey: 'status-replay-k',
-      body: { status: 'disabled' },
+    const receipt = {
+      userId: user.userId,
+      membershipStatus: 'revoked',
+      membershipRevision: user.membershipRevision + 1,
     };
-    const receipt = { userId: user.userId, accountStatus: 'disabled', accountRevision: user.accountRevision + 1 };
-    expect(await (await world.api.request('POST', path, disable)).json()).toEqual(receipt);
-    const enable = await world.api.request('POST', path, {
-      ...world.asAdmin,
-      ifMatch: user.accountRevision + 1,
-      idempotencyKey: 'status-replay-l',
-      body: { status: 'active' },
-    });
+    const first = await setStatus(user, 'disabled', user.membershipRevision, 'status-replay-k');
+    expect(await first.json()).toEqual(receipt);
+    const enable = await setStatus(user, 'active', user.membershipRevision + 1, 'status-replay-l');
     expect(await enable.json()).toEqual({
       ...receipt,
-      accountStatus: 'active',
-      accountRevision: user.accountRevision + 2,
+      membershipStatus: 'active',
+      membershipRevision: user.membershipRevision + 2,
     });
-    const replay = await world.api.request('POST', path, disable);
+    const replay = await setStatus(user, 'disabled', user.membershipRevision, 'status-replay-k');
     expect(replay.status).toBe(200);
     expect(await replay.json()).toEqual(receipt);
     expect(await getTenantUser(world, user.userId)).toMatchObject({
-      accountStatus: 'active',
-      accountRevision: user.accountRevision + 2,
+      membershipStatus: 'active',
+      membershipRevision: user.membershipRevision + 2,
     });
   });
 
-  it('不能停用自己；旧账号 revision → 409', async () => {
+  it('不能停用自己；旧成员关系 revision → 409', async () => {
     const self = await getTenantUser(world, world.admin.id);
-    const own = await world.api.request('POST', `${BASE}/users/${world.admin.id}/status`, {
-      ...world.asAdmin,
-      ifMatch: self.accountRevision,
-      body: { status: 'disabled' },
-    });
+    const own = await setStatus(self, 'disabled', self.membershipRevision);
     expect(await reasonOf(own)).toMatchObject({ status: 409, reason: 'CANNOT_DISABLE_SELF' });
 
     const employee = await hr.employee('旧版本', syntheticEmail('stale'));
     const user = (await listUsers(world)).find((u) => u.employeeId === employee.id)!;
-    const stale = await world.api.request('POST', `${BASE}/users/${user.userId}/status`, {
-      ...world.asAdmin,
-      ifMatch: user.accountRevision + 3,
-      body: { status: 'disabled' },
-    });
-    expect(stale.status).toBe(409);
+    expect((await setStatus(user, 'disabled', user.membershipRevision + 3)).status).toBe(409);
   });
 });
 
@@ -261,7 +257,7 @@ describe('DEC-098 / DEC-123：异常管理员须先指定替代人', () => {
     });
     const disable = await world.api.request('POST', `${BASE}/users/${w.exceptionAdmin}/status`, {
       ...world.asAdmin,
-      ifMatch: target.accountRevision,
+      ifMatch: target.membershipRevision,
       body: { status: 'disabled' },
     });
     expect(await reasonOf(disable)).toMatchObject({

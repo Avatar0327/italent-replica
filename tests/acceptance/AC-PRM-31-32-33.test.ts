@@ -68,17 +68,36 @@ describe('AC-PRM-31 建档 / 入职自动创建并绑定租户用户', () => {
     expect(rowsOf<{ event_type: string }>(outbox).map((r) => r.event_type)).toContain('tenant_user.provision');
   });
 
-  it('建档时未给登录邮箱：暂不建用户；办理入职时带登录邮箱 → 新建全局账号并绑定', async () => {
+  it('DEC-140：建档可暂无邮箱；入职无邮箱被拒且不生效；补登录邮箱后入职成功并建用户', async () => {
     const departmentId = await hr.org('入职部门');
     const employee = await hr.employee('赵六');
+    expect((await listUsers(world)).some((u) => u.employeeId === employee.id)).toBe(false);
+
+    const rejected = await hr.hire(employee, departmentId);
+    expect(await reasonOf(rejected)).toMatchObject({ status: 400, reason: 'LOGIN_EMAIL_REQUIRED' });
+    expect((await hr.getEmployee(employee.id)).status).toBe('pending');
     expect((await listUsers(world)).some((u) => u.employeeId === employee.id)).toBe(false);
 
     const email = syntheticEmail('zhaoliu');
     const hired = await hr.hire(employee, departmentId, { loginEmail: email });
     expect(hired.status, await hired.clone().text()).toBe(201);
+    expect((await hr.getEmployee(employee.id)).status).toBe('employed');
 
     const bound = (await listUsers(world, 'internal')).find((u) => u.employeeId === employee.id);
     expect(bound).toMatchObject({ email, displayName: '赵六', userType: 'internal', accountStatus: 'active' });
+  });
+
+  it('DEC-140：入职申请（审批制）同样必须有登录邮箱；建档时已给邮箱的人员入职可不再填写', async () => {
+    const departmentId = await hr.org('申请部门');
+    const unbound = await hr.employee('申请入职');
+    const application = await hr.hire(unbound, departmentId, { mode: 'application' });
+    expect(await reasonOf(application)).toMatchObject({ status: 400, reason: 'LOGIN_EMAIL_REQUIRED' });
+
+    const email = syntheticEmail('prebound');
+    const bound = await hr.employee('已有账号', email);
+    const hired = await hr.hire(bound, departmentId);
+    expect(hired.status, await hired.clone().text()).toBe(201);
+    expect((await listUsers(world)).find((u) => u.employeeId === bound.id)).toMatchObject({ email });
   });
 
   it('账号启用状态与在职状态分别记录：待入职员工的账号已启用；建档命令重放不建第二个用户', async () => {
@@ -267,6 +286,18 @@ describe('AC-PRM-33 没有人员档案的账号登记为外部用户', () => {
       body: { userType: 'external', businessIdentity: '猎头' },
     });
     expect(await reasonOf(locked)).toMatchObject({ status: 409, reason: 'USER_TYPE_LOCKED' });
+  });
+
+  it('数据库层：外部用户的业务身份不能为空（含 SQL NULL，astra P3）', async () => {
+    const member = await addMember(world, 'null-identity');
+    const setType = (identity: string | null) =>
+      withTenant(testDb().db, world.tenant.id, (tx) =>
+        tx.execute(sql`UPDATE tenant_memberships SET user_type='external', business_identity=${identity}
+          WHERE user_id=${member.id}::uuid`),
+      );
+    await expect(setType(null)).rejects.toThrow();
+    await expect(setType('  ')).rejects.toThrow();
+    await expect(setType('猎头')).resolves.toBeDefined();
   });
 
   it('只有持「用户管理」能力的管理员可用（06 §7.1）：员工管理员可以，权限管理员 403', async () => {
