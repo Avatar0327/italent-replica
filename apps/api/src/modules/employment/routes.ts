@@ -1,4 +1,4 @@
-import { withTenant } from '@italent/db';
+import { type Tx, withTenant } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
@@ -61,7 +61,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   router.route('/api/tenant/employment', module);
 };
 
-/** 登录邮箱不是人员字段：建档 / 入职时交给权限模块的用户端口（DEC-128），不参与任职字段权限校验。 */
+/** 登录邮箱不是人员字段：建档 / 入职时交给权限模块的用户端口（DEC-128；入职必填，DEC-140），不参与任职字段权限校验。 */
 const loginEmail = z.email().max(320).optional();
 
 function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -135,11 +135,7 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     if (input.fields.departmentId !== undefined) requireEmploymentScope(ctx, id, input.fields.departmentId);
     return runWrite(c, deps, ctx, { ...input, loginEmail: email }, async (tx, context) => {
       const business = await createEmploymentBusiness(tx, context, id, input);
-      // DEC-128：办理入职（含重聘）时在同一事务内确保人员已有绑定的租户用户（AC-PRM-31）
-      if (NEW_CYCLE_KINDS.includes(input.kind)) {
-        const name = await employeeName(tx, context.tenantId, id);
-        await provisionEmployeeUser(tx, context, { employeeId: id, loginEmail: email, displayName: name });
-      }
+      if (NEW_CYCLE_KINDS.includes(input.kind)) await ensureHiredAccount(tx, context, id, email);
       return { status: 201, body: business };
     });
   });
@@ -359,6 +355,15 @@ function registerCustomFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       body: await setCustomFieldInheritance(tx, context, id, input),
     }));
   });
+}
+
+/**
+ * DEC-128 / DEC-140：办理入职（含重聘、入职申请）时在同一事务内确保人员已有绑定的租户用户；
+ * 尚未绑定又没给登录邮箱即拒绝并提示补填，整单回滚。
+ */
+async function ensureHiredAccount(tx: Tx, context: EmploymentContext, employeeId: string, loginEmail?: string) {
+  const displayName = await employeeName(tx, context.tenantId, employeeId);
+  await provisionEmployeeUser(tx, context, { employeeId, loginEmail, displayName, accountRequired: true });
 }
 
 /** 入职请求里的登录邮箱与任职业务字段分开：前者交给用户端口，后者照原样校验与鉴权。 */

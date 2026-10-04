@@ -245,7 +245,10 @@ export const licensePools = pgTable(
   ],
 );
 
-/** 许可占用：一个用户在一类许可上占一个名额；再授同类身份不再消耗（W-123）。 */
+/**
+ * 许可占用：一个用户在一类许可上占一个名额；再授同类身份不再消耗（W-123）。
+ * 不再外键约束到许可池：余额为 0 或尚未发放时仍允许授予并记为超额（DEC-143），占用可先于发放存在。
+ */
 export const licenseSeats = pgTable(
   'license_seats',
   {
@@ -259,14 +262,7 @@ export const licenseSeats = pgTable(
       .references(() => permissionGrants.id),
     consumedAt: utc('consumed_at'),
   },
-  (t) => [
-    primaryKey({ columns: [t.tenantId, t.licenseType, t.userId] }),
-    foreignKey({
-      name: 'license_seats_pool',
-      columns: [t.tenantId, t.licenseType],
-      foreignColumns: [licensePools.tenantId, licensePools.licenseType],
-    }),
-  ],
+  (t) => [primaryKey({ columns: [t.tenantId, t.licenseType, t.userId] })],
 );
 
 /**

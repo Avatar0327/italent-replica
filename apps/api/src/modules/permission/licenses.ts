@@ -1,9 +1,21 @@
 /**
  * 许可（REQ-PRM-003）：每类许可一个池（总量由平台发放，R1-T17），用户在一类许可上占一个名额。
  * 授予消耗许可的身份时，若该用户尚未占用此类许可则占一个（AC-PRM-08）；已占用则不再消耗（W-123）。
+ * 余额为 0 或尚未发放时照常授予、余额记为负数并提示超额（DEC-143）；撤销后不再持有同类授权即归还名额（DEC-141）。
  * 企业设置 · 许可管理（R1-T15，06 §7.1）：余额（listBalances）与使用明细（listSeats）只读；发放不在租户侧。
  */
-import { and, asc, eq, licensePools, licenseSeats, permissionGrants, sql, type Tx } from '@italent/db';
+import {
+  and,
+  asc,
+  eq,
+  licensePools,
+  licenseSeats,
+  ne,
+  permissionGrants,
+  permissionProfiles,
+  sql,
+  type Tx,
+} from '@italent/db';
 import { AppError } from '../../errors.js';
 
 export interface LicenseBalance {
@@ -11,18 +23,34 @@ export interface LicenseBalance {
   readonly quota: number;
   readonly used: number;
   readonly balance: number;
+  /** 余额为负：已授出的名额超过发放总量，待平台补发（DEC-143）。 */
+  readonly overage: boolean;
+  /** 许可池的 revision；尚未发放（只有超额占用）时为 0。 */
   readonly revision: number;
 }
 
+/** 授权响应里的可机读超额提示（DEC-143）。 */
+export interface LicenseOverage {
+  readonly code: 'LICENSE_OVERAGE';
+  readonly licenseType: string;
+  readonly quota: number;
+  readonly used: number;
+  readonly balance: number;
+}
+
+/** 已发放的许可池，加上未发放却已有占用的类型（总量按 0 计）。 */
 export async function listBalances(tx: Tx): Promise<LicenseBalance[]> {
-  const pools = await tx.select().from(licensePools).orderBy(asc(licensePools.licenseType));
+  const pools = await tx.select().from(licensePools);
   const used = await tx
     .select({ licenseType: licenseSeats.licenseType, count: sql<number>`count(*)::int` })
     .from(licenseSeats)
     .groupBy(licenseSeats.licenseType);
-  return pools.map((p) => {
-    const n = used.find((u) => u.licenseType === p.licenseType)?.count ?? 0;
-    return { licenseType: p.licenseType, quota: p.quota, used: n, balance: p.quota - n, revision: p.revision };
+  const types = [...new Set([...pools.map((p) => p.licenseType), ...used.map((u) => u.licenseType)])].sort();
+  return types.map((licenseType) => {
+    const pool = pools.find((p) => p.licenseType === licenseType);
+    const quota = pool?.quota ?? 0;
+    const n = used.find((u) => u.licenseType === licenseType)?.count ?? 0;
+    return { licenseType, quota, used: n, balance: quota - n, overage: quota < n, revision: pool?.revision ?? 0 };
   });
 }
 
@@ -34,34 +62,89 @@ export interface SeatRequest {
   readonly now: Date;
 }
 
-/** 返回本次是否新占了一个名额。 */
-export async function consumeSeat(tx: Tx, request: SeatRequest): Promise<boolean> {
-  const { licenseType, userId } = request;
-  // 锁许可池行：同类许可的并发授权串行化，避免超发
-  const [pool] = await tx.select().from(licensePools).where(eq(licensePools.licenseType, licenseType)).for('update');
+export interface SeatOutcome {
+  /** 本次是否新占了一个名额。 */
+  readonly consumed: boolean;
+  readonly overage: LicenseOverage | null;
+}
+
+/** 同类许可的占用与归还串行化（许可池可能尚未发放，不能只靠锁池行）。 */
+async function lockLicenseType(tx: Tx, tenantId: string, licenseType: string) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:license:${licenseType}`}, 0))`);
+}
+
+export async function consumeSeat(tx: Tx, request: SeatRequest): Promise<SeatOutcome> {
+  const { tenantId, licenseType, userId } = request;
+  await lockLicenseType(tx, tenantId, licenseType);
   const [held] = await tx
     .select()
     .from(licenseSeats)
     .where(and(eq(licenseSeats.licenseType, licenseType), eq(licenseSeats.userId, userId)));
-  if (held) return false;
+  if (held) return { consumed: false, overage: null };
+  await tx.insert(licenseSeats).values({ ...request, consumedAt: request.now });
+  const [pool] = await tx.select().from(licensePools).where(eq(licensePools.licenseType, licenseType));
   const [{ count } = { count: 0 }] = await tx
     .select({ count: sql<number>`count(*)::int` })
     .from(licenseSeats)
     .where(eq(licenseSeats.licenseType, licenseType));
-  assertSeatAvailable(licenseType, pool?.quota, count);
-  await tx.insert(licenseSeats).values({ ...request, consumedAt: request.now });
-  return true;
+  return { consumed: true, overage: overageOf(licenseType, pool?.quota ?? 0, count) };
 }
 
 /**
- * AC-PRM-09 的唯一判断点：余额为 0（或该类许可尚未发放）时授予消耗该类许可的身份。原站未验证（许可余额难以构造），
- * 属复刻自定，口径待编排会话登记 DEC 后定；当前按 PR“需决策”的建议：拒绝并提示余额不足，授权整单回滚。
- * TODO(需取证 #6)：撤销身份后是否归还名额原站同样未验证，暂不归还（见 revokeGrant）。
+ * AC-PRM-09 的唯一判断点（DEC-143）：余额为 0 或该类许可尚未发放时仍允许授予，余额记为负数，
+ * 返回可机读的超额提示，由平台运营补发许可。
  */
-function assertSeatAvailable(licenseType: string, quota: number | undefined, used: number): void {
-  if (quota === undefined || used >= quota) {
-    throw new AppError('CONFLICT', '许可证余额不足', { reason: 'LICENSE_EXHAUSTED', licenseType });
+function overageOf(licenseType: string, quota: number, used: number): LicenseOverage | null {
+  const balance = quota - used;
+  return balance < 0 ? { code: 'LICENSE_OVERAGE', licenseType, quota, used, balance } : null;
+}
+
+/**
+ * DEC-141：撤销授权后，该用户不再持有消耗同类许可的有效授权即归还名额（余额 = 发放总数 − 仍在用的名额）；
+ * 仍持有时名额不释放，占用改记到仍有效的那条授权上（使用明细不指向已撤销的授权）。须在授权已置为撤销后调用。
+ * @returns 本次是否归还了名额
+ */
+export async function releaseSeat(
+  tx: Tx,
+  request: { readonly tenantId: string; readonly licenseType: string; readonly userId: string },
+): Promise<boolean> {
+  const { tenantId, licenseType, userId } = request;
+  await lockLicenseType(tx, tenantId, licenseType);
+  const seatOf = and(eq(licenseSeats.licenseType, licenseType), eq(licenseSeats.userId, userId));
+  const [seat] = await tx.select().from(licenseSeats).where(seatOf);
+  if (!seat) return false;
+  const [remaining] = await tx
+    .select({ id: permissionGrants.id })
+    .from(permissionGrants)
+    .innerJoin(
+      permissionProfiles,
+      and(
+        eq(permissionProfiles.tenantId, permissionGrants.tenantId),
+        eq(permissionProfiles.id, permissionGrants.profileId),
+      ),
+    )
+    .where(
+      and(
+        eq(permissionGrants.userId, userId),
+        eq(permissionGrants.status, 'active'),
+        eq(permissionProfiles.licenseType, licenseType),
+        ne(permissionGrants.id, seat.grantId),
+      ),
+    )
+    .orderBy(asc(permissionGrants.createdAt), asc(permissionGrants.id))
+    .limit(1);
+  const [stillHeld] = remaining
+    ? [remaining]
+    : await tx
+        .select({ id: permissionGrants.id })
+        .from(permissionGrants)
+        .where(and(eq(permissionGrants.id, seat.grantId), eq(permissionGrants.status, 'active')));
+  if (stillHeld) {
+    if (stillHeld.id !== seat.grantId) await tx.update(licenseSeats).set({ grantId: stillHeld.id }).where(seatOf);
+    return false;
   }
+  await tx.delete(licenseSeats).where(seatOf);
+  return true;
 }
 
 export const LICENSE_TYPE = /^[a-z][a-z0-9_]{0,63}$/;
@@ -79,10 +162,7 @@ export async function listSeats(
   licenseType: string,
   page: { readonly limit: number; readonly offset: number },
 ): Promise<LicenseSeatView[]> {
-  const [pool] = LICENSE_TYPE.test(licenseType)
-    ? await tx.select().from(licensePools).where(eq(licensePools.licenseType, licenseType))
-    : [];
-  if (!pool) throw new AppError('NOT_FOUND', '许可类型不存在');
+  if (!(await licenseTypeKnown(tx, licenseType))) throw new AppError('NOT_FOUND', '许可类型不存在');
   return tx
     .select({
       userId: licenseSeats.userId,
@@ -99,4 +179,13 @@ export async function listSeats(
     .orderBy(asc(licenseSeats.consumedAt), asc(licenseSeats.userId))
     .limit(page.limit)
     .offset(page.offset);
+}
+
+/** 已发放，或虽未发放但已有超额占用（DEC-143）。 */
+async function licenseTypeKnown(tx: Tx, licenseType: string): Promise<boolean> {
+  if (!LICENSE_TYPE.test(licenseType)) return false;
+  const [pool] = await tx.select().from(licensePools).where(eq(licensePools.licenseType, licenseType));
+  if (pool) return true;
+  const [seat] = await tx.select().from(licenseSeats).where(eq(licenseSeats.licenseType, licenseType)).limit(1);
+  return seat !== undefined;
 }

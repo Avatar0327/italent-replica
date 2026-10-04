@@ -103,10 +103,10 @@ export const tenantMemberships = pgTable(
     unique('tenant_memberships_tenant_user').on(t.tenantId, t.userId),
     check('tenant_memberships_status_valid', sql`${t.status} IN ('active', 'revoked')`),
     check('tenant_memberships_user_type_valid', sql`${t.userType} IN ('internal', 'external')`),
-    // 外部用户必须带业务身份；内部员工与未登记成员不带
+    // 外部用户必须带业务身份（显式排除 NULL：CHECK 结果为 NULL 时会放行）；内部员工与未登记成员不带
     check(
       'tenant_memberships_business_identity',
-      sql`(${t.userType} = 'external' AND btrim(${t.businessIdentity}) <> '')
+      sql`(${t.userType} = 'external' AND ${t.businessIdentity} IS NOT NULL AND btrim(${t.businessIdentity}) <> '')
     OR (${t.userType} IS DISTINCT FROM 'external' AND ${t.businessIdentity} IS NULL)`,
     ),
   ],

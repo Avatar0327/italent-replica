@@ -132,9 +132,16 @@ async function validateParent(tx: Tx, parentId: string | null, id?: string) {
   if (rows.length) throw new AppError('VALIDATION_FAILED', '管理单元不能形成循环');
 }
 
+/** 管理单元层级的写入（新建、改上级、删除）串行化：A→B / B→A 并发改上级、删除父级与新建下级都不能各自通过检查。 */
+async function lockMouHierarchy(tx: Tx, write: WriteContext) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${write.tenantId + ':mou-hierarchy'},0))`);
+}
+
 export async function createMou(tx: Tx, write: WriteContext, input: MouInput, expectedRevision: number) {
   if (expectedRevision !== 0) throw revisionConflict(expectedRevision, 0);
   await validateRefs(tx, input.orgRanges);
+  // 删除父级先持锁未提交时，新建下级在此等待，之后读到父级已删除而拒绝（R1-T15，astra 首审 P3）
+  if (input.parentId) await lockMouHierarchy(tx, write);
   await validateParent(tx, input.parentId);
   const { orgRanges, ...fields } = input;
   let saved: MouRow;
@@ -167,8 +174,7 @@ export async function updateMou(
   expectedRevision: number,
   input: MouInput | null,
 ) {
-  // 序列化管理单元的层级变更，避免 A→B/B→A 并发分别通过循环检查。
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${write.tenantId + ':mou-hierarchy'},0))`);
+  await lockMouHierarchy(tx, write);
   const [row] = await tx.select().from(permissionMous).where(eq(permissionMous.id, id)).for('update');
   if (!row || row.kind !== 'named' || row.status === 'deleted') throw notFound();
   if (row.revision !== expectedRevision) throw revisionConflict(expectedRevision, row.revision);

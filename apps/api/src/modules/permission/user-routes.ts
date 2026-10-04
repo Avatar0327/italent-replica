@@ -4,12 +4,13 @@
  *   GET  /users/:userId                                    详情（ETag = 成员关系 revision）
  *   POST /users                                            登记外部用户（内部员工随建档产生，一律拒绝）
  *   PUT  /users/:userId                                    修改外部用户的业务身份（If-Match 成员关系 revision）
- *   POST /users/:userId/status                             停用 / 启用账号（If-Match 账号 revision）→ 平台 setUserStatus
- *   POST /users/:userId/remove                             移出租户（If-Match 成员关系 revision）→ 平台 revokeMembership
- * 停用与移出租户直接调用 PR #35 的平台流程：同事务经挂接点接管在途待办（DEC-123），仍是可用流程异常管理员的
- * 须先指定替代人（DEC-098），审计由平台流程写入本租户。
+ *   POST /users/:userId/status                             本租户停用 / 启用（If-Match 成员关系 revision）
+ *   POST /users/:userId/remove                             移出租户（If-Match 成员关系 revision）
+ * DEC-142：租户侧的停用 / 移出只作用于本租户成员关系，直接调用 PR #35 的平台流程 revokeMembership（同事务经挂接点
+ * 接管在途待办，DEC-123；仍是可用流程异常管理员的须先指定替代人，DEC-098），启用调用 grantMembership；账号的全局停用
+ * 只由平台运营层执行。返回只含本租户成员关系，不提及该账号是否属于其他租户。
  */
-import { AccountScopeError, revokeMembership, setUserStatus, USER_TYPES, withTenant } from '@italent/db';
+import { grantMembership, revokeMembership, type TenantMembership, USER_TYPES, withTenant } from '@italent/db';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
@@ -97,19 +98,33 @@ function registerLifecycleRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps)
   router.post(`${BASE}/:userId/status`, async (c) => {
     const { ctx, userId, expectedRevision, commandId } = await lifecycleRequest(c, deps);
     const { status } = await parseBody(c, statusBody);
-    if (userId === ctx.userId) throw selfConflict('CANNOT_DISABLE_SELF', '不能停用或启用自己的账号');
-    const change = { userId, status, expectedRevision, onlyTenantId: ctx.tenantId };
-    await platform(() => setUserStatus(deps.db, change, { actorUserId: ctx.userId, commandId }));
-    return c.json(await currentUser(deps, ctx, userId));
+    if (status === 'disabled' && userId === ctx.userId) throw selfConflict('CANNOT_DISABLE_SELF', '不能停用自己');
+    const change = { tenantId: ctx.tenantId, userId, expectedRevision };
+    const meta = { actorUserId: ctx.userId, commandId };
+    const membership =
+      status === 'disabled'
+        ? await revokeMembership(deps.db, change, meta)
+        : await grantMembership(deps.db, change, meta);
+    return receipt(c, membership);
   });
   router.post(`${BASE}/:userId/remove`, async (c) => {
     const { ctx, userId, expectedRevision, commandId } = await lifecycleRequest(c, deps);
     if (userId === ctx.userId) throw selfConflict('CANNOT_REMOVE_SELF', '不能把自己移出租户');
     const change = { tenantId: ctx.tenantId, userId, expectedRevision };
-    await platform(() => revokeMembership(deps.db, change, { actorUserId: ctx.userId, commandId }));
-    const user = await currentUser(deps, ctx, userId);
-    etag(c, user.membershipRevision);
-    return c.json(user);
+    return receipt(c, await revokeMembership(deps.db, change, { actorUserId: ctx.userId, commandId }));
+  });
+}
+
+/**
+ * 生命周期命令的回执只取平台命令的结果（同键重放时即平台台账保存的首次结果），不回查当前状态，
+ * 期间被其他命令改过也照样返回首次回执（astra 首审 P2-2，AGENTS.md §10「幂等」）。完整视图请 GET /users/:userId。
+ */
+function receipt(c: RouteContext, membership: TenantMembership) {
+  etag(c, membership.revision);
+  return c.json({
+    userId: membership.userId,
+    membershipStatus: membership.status,
+    membershipRevision: membership.revision,
   });
 }
 
@@ -128,13 +143,3 @@ function currentUser(deps: TenantRouteDeps, ctx: TenantContext, userId: string):
 }
 
 const selfConflict = (reason: string, message: string) => new AppError('CONFLICT', message, { reason });
-
-async function platform<T>(run: () => Promise<T>): Promise<T> {
-  try {
-    return await run();
-  } catch (error) {
-    if (!(error instanceof AccountScopeError)) throw error;
-    if (error.reason === 'NOT_A_MEMBER') throw new AppError('NOT_FOUND', '用户不存在');
-    throw new AppError('CONFLICT', error.message, { reason: error.reason });
-  }
-}

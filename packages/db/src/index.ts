@@ -9,7 +9,6 @@ export {
   runPlatformCommand,
 } from './platform-command.js';
 export {
-  AccountScopeError,
   createTenant,
   createUser,
   getTenant,

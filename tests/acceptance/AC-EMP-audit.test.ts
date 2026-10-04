@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { employmentSession } from './AC-EMP-support.js';
+import { employmentSession, withLoginEmail } from './AC-EMP-support.js';
 import { resultRows } from './AC-ORG-support.js';
 
 const testDb = useTestDb();
@@ -84,7 +84,7 @@ describe('DEC-019 任职字段审计与 outbox 原子提交', () => {
       const options = {
         ifMatch: employee.revision,
         idempotencyKey: commandId,
-        body: { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01' },
+        body: withLoginEmail(employee.id, { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01' }),
       };
       await db.execute(sql`CREATE FUNCTION emp_test_fail_event() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN RAISE EXCEPTION 'synthetic event storage unavailable'; END $$`);

@@ -21,7 +21,7 @@ import { audit, type WriteContext } from './audit.js';
 import { applyGrantScopes } from './data-scope-admin.js';
 import type { GrantScopeInput } from './data-scope-schemas.js';
 import { revisionConflict } from './http.js';
-import { consumeSeat } from './licenses.js';
+import { consumeSeat, type LicenseOverage, releaseSeat } from './licenses.js';
 import { assertActiveMember } from './members.js';
 import { loadProfile, type ProfileView } from './profiles.js';
 
@@ -69,7 +69,7 @@ export async function createGrant(
   tx: Tx,
   write: WriteContext,
   input: { readonly userId: string; readonly profileId: string; readonly scopes?: readonly GrantScopeInput[] },
-): Promise<GrantView> {
+): Promise<GrantView & { readonly licenseOverage: LicenseOverage | null }> {
   await assertGrantable(tx, write.userId, input.profileId);
   await assertActiveMember(tx, input.userId);
   const profile = await loadProfile(tx, input.profileId);
@@ -95,27 +95,33 @@ export async function createGrant(
   }
   const seat = profile.licenseType
     ? await consumeSeat(tx, {
-        ...input,
+        userId: input.userId,
         tenantId: write.tenantId,
         licenseType: profile.licenseType,
         grantId: row!.id,
         now: write.now,
       })
-    : false;
+    : { consumed: false, overage: null };
   const created = view(row!);
   await audit(tx, write, {
     action: 'permission_grant.create',
     objectType: 'permission_grant',
     objectId: created.id,
     before: null,
-    after: { ...created, licenseType: profile.licenseType, licenseSeatConsumed: seat },
+    after: {
+      ...created,
+      licenseType: profile.licenseType,
+      licenseSeatConsumed: seat.consumed,
+      licenseOverage: seat.overage,
+    },
   });
-  return created;
+  // DEC-143：超额照常授予，响应带可机读的超额提示，授权页据此标出超额
+  return { ...created, licenseOverage: seat.overage };
 }
 
 /**
  * 撤销授权。自动授权（自助身份 / 动态授权，DEC-020）不允许手工撤销。
- * TODO(需取证 #6)：撤销后是否归还许可名额原站未验证，暂不归还。
+ * 撤销后该用户不再持有同类许可的有效授权即归还名额（DEC-141，releaseSeat）。
  */
 export async function revokeGrant(
   tx: Tx,
@@ -140,13 +146,17 @@ export async function revokeGrant(
     .where(and(eq(permissionGrants.id, current.id), eq(permissionGrants.revision, current.revision)))
     .returning();
   if (!saved) throw revisionConflict(change.expectedRevision, undefined);
+  const { licenseType } = await loadProfile(tx, current.profileId);
+  const released = licenseType
+    ? await releaseSeat(tx, { tenantId: write.tenantId, licenseType, userId: current.userId })
+    : false;
   const after = view(saved);
   await audit(tx, write, {
     action: 'permission_grant.revoke',
     objectType: 'permission_grant',
     objectId: current.id,
     before: view(current),
-    after,
+    after: { ...after, licenseType, licenseSeatReleased: released },
   });
   return after;
 }

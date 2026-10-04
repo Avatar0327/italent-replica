@@ -88,3 +88,6 @@ END $$;
 --> statement-breakpoint
 CREATE TRIGGER "tenant_memberships_external_unlinked" BEFORE INSERT OR UPDATE OF "user_type" ON "tenant_memberships"
   FOR EACH ROW EXECUTE FUNCTION guard_member_external_unlinked();
+--> statement-breakpoint
+-- 6) DEC-141：撤销已消耗许可的身份时归还名额（删除占用），仍持有同类授权时占用改记到仍有效的授权（更新 grant_id）。
+GRANT UPDATE, DELETE ON "license_seats" TO app_user;

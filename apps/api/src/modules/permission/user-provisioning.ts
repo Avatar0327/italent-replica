@@ -12,10 +12,15 @@ import { getTenantUser, insertMembership, memberSnapshot, provisionAccount, upda
 
 export interface EmployeeUserRequest {
   readonly employeeId: string;
-  /** 登录邮箱；建档时未给则暂不建用户，可在入职时补给（R1-T05 是否改为必填见 PR“需决策”）。 */
+  /** 登录邮箱；建立人员档案时可暂无，办理入职前必须补齐（DEC-140）。 */
   readonly loginEmail?: string | undefined;
   /** 新建全局账号时的显示名（人员姓名）；复用已有账号时不改。 */
   readonly displayName: string;
+  /**
+   * 办理入职（含重聘、入职申请）时为 true：人员尚未绑定用户又没给登录邮箱即拒绝并提示补填，
+   * 保证入职完成的员工一定已有租户用户并绑定档案（DEC-140，落实 DEC-128）。
+   */
+  readonly accountRequired?: boolean;
 }
 
 export interface EmployeeUser {
@@ -27,8 +32,9 @@ const conflict = (reason: string, message: string) => new AppError('CONFLICT', m
 
 /**
  * 确保该人员有绑定的租户用户：已绑定 → 不改绑（给了不同的登录邮箱即 409），成员关系已被移出的在（重新）入职时恢复；
- * 未绑定且给了登录邮箱 → 找到或新建全局账号、建 / 恢复成员关系（用户类型 = 内部员工）并绑定。
- * @returns 绑定的用户；未绑定且没有登录邮箱时为 null
+ * 未绑定且给了登录邮箱 → 找到或新建全局账号、建 / 恢复成员关系（用户类型 = 内部员工）并绑定；
+ * 未绑定也没给登录邮箱 → 建档时暂不建用户，入职时拒绝（DEC-140）。
+ * @returns 绑定的用户；建档时未绑定且没有登录邮箱为 null
  */
 export async function provisionEmployeeUser(
   tx: Tx,
@@ -40,7 +46,10 @@ export async function provisionEmployeeUser(
     .from(permissionUserPersonLinks)
     .where(eq(permissionUserPersonLinks.employeeId, request.employeeId));
   if (bound) return keepBinding(tx, write, bound.userId, request);
-  if (!request.loginEmail) return null;
+  if (!request.loginEmail) {
+    if (!request.accountRequired) return null;
+    throw new AppError('VALIDATION_FAILED', '办理入职必须填写登录邮箱', { reason: 'LOGIN_EMAIL_REQUIRED' });
+  }
 
   const account = await provisionAccount(tx, write, request.loginEmail, request.displayName);
   // 同一账号的并发建档串行化：后到者看到已有绑定，按“账号已绑定另一人员”拒绝，而不是撞唯一键

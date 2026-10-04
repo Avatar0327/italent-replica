@@ -1,6 +1,6 @@
 {
-  "id": "ac3f90af-a67a-4034-9cc7-0e7954b8d05b",
-  "prevId": "67e44198-d601-4510-b808-a182813bc7f0",
+  "id": "cf951246-866e-44eb-8747-902b2071eb92",
+  "prevId": "dda1b3a6-a2ee-46f5-981f-74cbe5fac0f4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -592,7 +592,7 @@
         },
         "tenant_memberships_business_identity": {
           "name": "tenant_memberships_business_identity",
-          "value": "(\"tenant_memberships\".\"user_type\" = 'external' AND btrim(\"tenant_memberships\".\"business_identity\") <> '')\n    OR (\"tenant_memberships\".\"user_type\" IS DISTINCT FROM 'external' AND \"tenant_memberships\".\"business_identity\" IS NULL)"
+          "value": "(\"tenant_memberships\".\"user_type\" = 'external' AND \"tenant_memberships\".\"business_identity\" IS NOT NULL AND btrim(\"tenant_memberships\".\"business_identity\") <> '')\n    OR (\"tenant_memberships\".\"user_type\" IS DISTINCT FROM 'external' AND \"tenant_memberships\".\"business_identity\" IS NULL)"
         }
       },
       "isRLSEnabled": false
@@ -1009,21 +1009,6 @@
           "tableTo": "permission_grants",
           "columnsTo": [
             "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "license_seats_pool": {
-          "name": "license_seats_pool",
-          "tableFrom": "license_seats",
-          "columnsFrom": [
-            "tenant_id",
-            "license_type"
-          ],
-          "tableTo": "license_pools",
-          "columnsTo": [
-            "tenant_id",
-            "license_type"
           ],
           "onUpdate": "no action",
           "onDelete": "no action"

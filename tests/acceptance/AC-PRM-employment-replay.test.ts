@@ -12,6 +12,7 @@ import {
   setObjectPermission,
 } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { loginEmailOf } from './AC-EMP-support.js';
 
 const database = useTestDb();
 const OBJECT = MODULE_OBJECTS.employmentRecord;
@@ -43,6 +44,7 @@ async function fixture() {
       mode: 'direct',
       effectiveDate: '2026-01-01',
       fields: { departmentId: inside.id, place: '旧地点' },
+      loginEmail: loginEmailOf(employee.id),
     },
     employee.revision,
   );
