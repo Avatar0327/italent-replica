@@ -34,7 +34,16 @@ async function enabled(tx: Tx, ctx: EmploymentContext, field: string, id: string
   return !!row;
 }
 
-/** 停用只排除此字段，不取消其他合法字段。每次查询按租户、对象和日期限定。 */
+/**
+ * 特殊规则①“引用值已停用”的判断日（DEC-079；DEC-110 用户 2026-10-03 确认维持）：按被更新的后续记录自己的
+ * 生效日判断，与补录日、当天无关，同一补录何时执行结果都一致。原站按补录日或当天判断，会把已停用组织写进
+ * 未来记录（W-406），复刻有意不照搬。
+ */
+export function referenceCheckDate(target: { readonly effectiveDate: string }): string {
+  return target.effectiveDate;
+}
+
+/** 停用只排除此字段，不取消其他合法字段。每次查询按租户、对象和日期限定；targetDate 取 referenceCheckDate。 */
 export async function availableForwardChanges(
   tx: Tx,
   ctx: EmploymentContext,
@@ -52,7 +61,6 @@ export async function availableForwardChanges(
       change.field === 'directManagerId' ||
       change.field === 'dottedManagerId';
     if (reference && typeof change.after === 'string') {
-      // TODO(需取证 Q-M0-24)：DEC-079 暂只按被更新记录的生效日判断引用是否启用。
       const key = `${change.field}:${change.after}:${targetDate}`;
       let result = cache.get(key);
       if (result === undefined) {

@@ -33,8 +33,8 @@ async function effects(db: Db, session: EmploymentSession): Promise<unknown> {
   });
 }
 
-describe('AC-EMP-11 周期和时间轴未取证边界的保守处理', () => {
-  it('Q-M0-19 早于指定周期起始日返回 503，业务、审计、outbox、台账与员工 revision 都不变', async () => {
+describe('AC-EMP-11 周期和时间轴边界（Q-M0-19/20 已由 DEC-111/108 定案）', () => {
+  it('DEC-111 早于任职周期入职生效日返回 409 并照搬原站提示，业务、审计、outbox、台账与员工 revision 都不变', async () => {
     const { db } = testDb();
     const session = await employmentSession(db, 'empbeforecyclestart');
     const employee = await session.employee('周期开始前合成员工');
@@ -53,18 +53,19 @@ describe('AC-EMP-11 周期和时间轴未取证边界的保守处理', () => {
         kind: 'transfer',
         mode: 'direct',
         effectiveDate: '2026-08-31',
-        staffId: hire.record!.staffId,
         fields: { place: '不得写入的地点' },
       },
     });
-    expect(rejected.status).toBe(503);
-    expect(await rejected.json()).toMatchObject({ error: { code: 'EMPLOYMENT_CYCLE_START_UNRESOLVED' } });
+    expect(rejected.status).toBe(409);
+    expect(await rejected.json()).toMatchObject({
+      error: { code: 'EMPLOYMENT_BEFORE_CYCLE_ENTRY', message: '调动日期不能早于入职生效日期（2026-09-01）' },
+    });
     expect(await session.getEmployee(employee.id)).toEqual(beforeEmployee);
     expect(await session.records(employee.id)).toEqual(beforeRecords);
     expect(await effects(db, session)).toEqual(beforeEffects);
   });
 
-  it('Q-M0-20 同日第二条主职业务返回 409，原任职及同事务数据保持不变', async () => {
+  it('DEC-108 同日第二条主职业务按操作先后保存，原任职字段保持不变且当天不再是当前', async () => {
     const { db } = testDb();
     const session = await employmentSession(db, 'empsamedaybusiness');
     const employee = await session.employee('同日业务合成员工');
@@ -73,19 +74,19 @@ describe('AC-EMP-11 周期和时间轴未取证边界的保守处理', () => {
       { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { remarks: '原记录' } },
       employee.revision,
     );
-    const beforeEmployee = await session.getEmployee(employee.id);
     const beforeRecords = await session.records(employee.id);
-    const beforeEffects = await effects(db, session);
-    const rejected = await session.request('POST', `/employees/${employee.id}/businesses`, {
+    const saved = await session.request('POST', `/employees/${employee.id}/businesses`, {
       ifMatch: hire.employeeRevision,
       idempotencyKey: randomUUID(),
-      body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-01', fields: { remarks: '不得替换原记录' } },
+      body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-01', fields: { remarks: '同日后一条' } },
     });
-    expect(rejected.status).toBe(409);
-    expect(await rejected.json()).toMatchObject({ error: { code: 'EMPLOYMENT_SAME_DATE_UNRESOLVED' } });
-    expect(await session.getEmployee(employee.id)).toEqual(beforeEmployee);
-    expect(await session.records(employee.id)).toEqual(beforeRecords);
-    expect(await effects(db, session)).toEqual(beforeEffects);
+    expect(saved.status).toBe(201);
+    const transfer = (await saved.json()) as { id: string };
+    const records = await session.records(employee.id);
+    expect(records.map((record) => record.id)).toEqual([hire.id, transfer.id]);
+    expect(records[0]).toMatchObject({ fields: beforeRecords[0]!.fields, isCurrent: false });
+    expect(records[1]).toMatchObject({ fields: { remarks: '同日后一条' }, isCurrent: true, previousRecordId: hire.id });
+    expect(await session.getEmployee(employee.id)).toMatchObject({ status: 'employed' });
   });
 
   it('Q-M0-21 首次入职在未来时今天没有当前记录，到生效日恰有一条且无需再写业务', async () => {

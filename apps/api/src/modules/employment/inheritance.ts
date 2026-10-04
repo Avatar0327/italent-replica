@@ -1,5 +1,6 @@
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
+import { loadJobObject } from '../job/read-model.js';
 import { getCustomFieldsForInheritance } from './configuration.js';
 import { businessDate, emptyFields, INHERITED_FIELDS, presetFieldsSchema, validateCustomValue } from './fields.js';
 import { findPredecessor, rowsOf } from './read-model.js';
@@ -52,6 +53,23 @@ function resolveForm(formId: FormId): { grouped: boolean; customMode: CustomMode
   return { grouped: true, customMode: 'editable' };
 }
 const NEW_CYCLES: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
+
+/**
+ * DEC-107（照搬原站 W-240、W-425）：选了新职务而未传职务序列时，由服务端按该职务在生效日的序列带出；
+ * 页面、接口、导入与编辑任职一致，随后按特殊规则③与职务一并向后更新。显式传入序列（含清空）时以传入为准。
+ * 返回 null 表示不带出。
+ * TODO(需取证 #42)：新职务未配置序列时原站是否清空序列未实测，暂保留原有序列。
+ */
+export async function sequenceForNewPost(
+  tx: Tx,
+  tenantId: string,
+  fields: Partial<PresetFields>,
+  effectiveDate: string,
+): Promise<string | null> {
+  if (!fields.postId || Object.hasOwn(fields, 'sequenceId')) return null;
+  const post = await loadJobObject(tx, tenantId, 'posts', fields.postId, effectiveDate);
+  return typeof post?.sequenceId === 'string' ? post.sequenceId : null;
+}
 const owns = (object: object, key: string) => Object.prototype.hasOwnProperty.call(object, key);
 function setField(target: PresetFields, key: PresetField, value: PresetFields[PresetField]): void {
   Object.assign(target, { [key]: value });
@@ -111,6 +129,11 @@ export async function prepareInheritance(
     setField(fields, field as PresetField, value ?? null);
     explicitFieldCodes.push(`preset:${field}`);
   }
+  const derivedSequence = await sequenceForNewPost(tx, ctx.tenantId, parsedFields.data, input.effectiveDate);
+  if (derivedSequence) {
+    setField(fields, 'sequenceId', derivedSequence);
+    explicitFieldCodes.push('preset:sequenceId');
+  }
   if (owns(parsedFields.data, 'jobNumber') && parsedFields.data.jobNumber !== null) {
     if (parsedFields.data.jobNumber!.toLowerCase() !== employee.code.toLowerCase()) {
       throw new AppError('VALIDATION_FAILED', '任职工号必须等于员工主档工号');
@@ -159,11 +182,14 @@ export async function prepareEmploymentPatch(
   if (input.effectiveDate !== previous.effectiveDate) return prepared;
   const explicit = new Set(prepared.explicitFieldCodes);
   const oldDeferred = new Set(previous.deferredFieldCodes);
+  const oldExplicit = new Set(previous.explicitFieldCodes);
   const fields = { ...prepared.fields };
   const customFields = { ...prepared.customFields };
   for (const field of INHERITED_FIELDS) {
     const code = `preset:${field}`;
-    if (!explicit.has(code) && !oldDeferred.has(code)) setField(fields, field, previous.fields[field]);
+    // 只恢复创建时冻结的默认值；上一版显式填写、本次被放弃的值（DEC-107 改选职务时的序列）改取当前默认值。
+    if (!explicit.has(code) && !oldDeferred.has(code) && !oldExplicit.has(code))
+      setField(fields, field, previous.fields[field]);
   }
   for (const id of Object.keys(customFields)) {
     const code = `custom:${id}`;

@@ -105,7 +105,7 @@ describe('AC-FWD-01/02 状态、周期与并发边界', () => {
     },
   );
 
-  it('仅严格晚于源日期的effective记录传播，同周期同日effective仍按DEC-077返回409', async () => {
+  it('仅时间轴在后的effective记录传播；同日后操作的记录排在已有记录之后，不回改它（DEC-108）', async () => {
     const { db } = testDb();
     const { session, employee, hire } = await fixture(db, 'fwd-effective-after');
     const later = await session.business(
@@ -120,11 +120,13 @@ describe('AC-FWD-01/02 状态、周期与并发边界', () => {
     );
     expect((await session.record(hire.id)).fields.place).toBe('原地点');
     expect((await session.record(later.id)).fields.place).toBe('同步地点');
-    const duplicate = await session.request('POST', `/employees/${employee.id}/businesses`, {
+    const sameDay = await session.request('POST', `/employees/${employee.id}/businesses`, {
       ifMatch: source.employeeRevision,
-      body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-20', fields: { place: '同日覆盖' } },
+      body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-20', fields: { place: '同日后操作' } },
     });
-    expect(duplicate.status).toBe(409);
+    expect(sameDay.status).toBe(201);
+    const appended = (await sameDay.json()) as EmploymentBusiness;
+    expect(appended.record).toMatchObject({ previousRecordId: later.id, fields: { place: '同日后操作' } });
     expect((await session.record(later.id)).fields.place).toBe('同步地点');
   });
 
@@ -151,7 +153,7 @@ describe('AC-FWD-01/02 状态、周期与并发边界', () => {
     expect((await session.record(later.id)).fields.place).toBe('到期地点');
   });
 
-  it('DEC-077同日退休返聘不跨StaffID，Q-M0-26旧周期补录也不传播', async () => {
+  it('DEC-077同日退休返聘不跨StaffID；DEC-111旧周期补录被拒，新周期补录只在本周期传播', async () => {
     const { db } = testDb();
     const { session, employee, hire } = await fixture(db, 'fwd-cycle-boundary');
     const firstLater = await session.business(
@@ -174,11 +176,14 @@ describe('AC-FWD-01/02 状态、周期与并发边界', () => {
       { kind: 'regularization', mode: 'direct', effectiveDate: '2026-09-28' },
       rehire.employeeRevision,
     );
-    const oldBackfill = await session.business(
-      employee.id,
-      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-05', fields: { place: '旧周期更正' } },
-      later.employeeRevision,
-    );
+    const oldBackfill = await session.request('POST', `/employees/${employee.id}/businesses`, {
+      ifMatch: later.employeeRevision,
+      body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-05', fields: { place: '旧周期更正' } },
+    });
+    expect(oldBackfill.status).toBe(409);
+    expect(await oldBackfill.json()).toMatchObject({
+      error: { code: 'EMPLOYMENT_BEFORE_CYCLE_ENTRY', message: '调动日期不能早于入职生效日期（2026-09-20）' },
+    });
     expect((await session.record(firstLater.id)).fields.place).toBe('原地点');
     expect((await session.record(retired.id)).fields.place).toBe('原地点');
     expect((await session.record(rehire.id)).fields.place).toBe('原地点');
@@ -186,7 +191,7 @@ describe('AC-FWD-01/02 状态、周期与并发边界', () => {
     await session.business(
       employee.id,
       { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-25', fields: { place: '新周期更正' } },
-      oldBackfill.employeeRevision,
+      later.employeeRevision,
     );
     expect((await session.record(later.id)).fields.place).toBe('新周期更正');
     expect((await session.record(retired.id)).fields.place).toBe('原地点');
