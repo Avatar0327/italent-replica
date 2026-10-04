@@ -66,7 +66,8 @@ export async function runWrite(
   if (checkResult) await withTenant(deps.db, ctx.tenantId, (tx) => checkResult(tx, result.body));
   const payload = result.body as { revision?: number } | null;
   if (payload?.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
-  const value = { ...(result.body as Record<string, unknown>) };
+  // 职位变更的同步回执（DEC-131）是结果信封，不是可配置的业务字段，不参与字段裁剪。
+  const { managerSync, ...value } = { ...(result.body as Record<string, unknown>) };
   if (objectCode && Array.isArray(value.subdivisions)) {
     value.subdivisions = await trimModuleResponse(deps, ctx, objectCode, value.subdivisions);
   }
@@ -75,7 +76,7 @@ export async function runWrite(
     : Array.isArray(value.results)
       ? { results: await trimModuleResponse(deps, ctx, objectCode, value.results) }
       : await trimModuleResponse(deps, ctx, objectCode, value);
-  return c.json(output, result.status);
+  return c.json(managerSync === undefined ? output : { ...output, managerSync }, result.status);
 }
 
 export function revision(c: Context): number {

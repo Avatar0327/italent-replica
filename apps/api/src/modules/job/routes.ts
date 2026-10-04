@@ -36,7 +36,7 @@ import { businessDate, jobCreationSchema, jobPatchSchema } from './fields.js';
 import { authorizeJobImportRows, importJobObjects, type JobImportRow } from './import-service.js';
 import { JOB_KINDS, type JobKind } from './metadata.js';
 import { jobCandidates, latestJobObject, listJobObjects, loadJobObject } from './read-model.js';
-import { jobSettingsSchema, readJobSettings, writeJobSettings } from './settings.js';
+import { jobSettingsCommandSchema, readJobSettings, writeJobSettings } from './settings.js';
 import type { JobInput, JobPatch } from './types.js';
 import { validateJobAssignment } from './validation.js';
 import { createJobObject, updateJobObject } from './write-service.js';
@@ -68,7 +68,8 @@ function registerSettings(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
   router.put(`${BASE}/settings`, async (c) => {
     const ctx = await readContext(c, deps, 'admin.other_settings', revision(c));
-    const input = await parseBody(c, jobSettingsSchema);
+    // 先命中命令台账再按新规则校验：升级前已成功的旧命令可重放首次结果（DEC-133）。
+    const input = await parseBody(c, jobSettingsCommandSchema);
     return runWrite(c, deps, ctx, input, async (tx, writeCtx) => ({
       status: 200,
       body: await writeJobSettings(tx, writeCtx, input),
@@ -268,7 +269,9 @@ function registerObjectWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await objectContext(c, deps, objectCode, 'update', revision(c));
     const id = uuidParam(c);
     const input = await parseBody(c, jobPatchSchema(kind));
-    await writeFields(deps, ctx, objectCode, 'update', input);
+    // 「调整员工直线经理」是本次变更的选项而非职位字段；同步任职由人员端口在事务内另行验权。
+    const { adjustEmployeeDirectManager: _option, ...fields } = input as JobPatch;
+    await writeFields(deps, ctx, objectCode, 'update', fields);
     const scope = await requestScope(c, deps, ctx, objectCode);
     return runWrite(
       c,

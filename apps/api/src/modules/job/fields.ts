@@ -69,7 +69,8 @@ export function jobCreationSchema(kind: JobKind) {
 }
 
 export function jobPatchSchema(kind: JobKind) {
-  return jobCreationSchema(kind).omit({ startDate: true }).partial().extend({ effectiveDate: businessDate });
+  const patch = jobCreationSchema(kind).omit({ startDate: true }).partial().extend({ effectiveDate: businessDate });
+  return kind === 'positions' ? patch.extend({ adjustEmployeeDirectManager: z.boolean().optional() }) : patch;
 }
 
 export function normalizeFields(ctx: JobWriteContext, kind: JobKind, input: JobInput): JobFields {
