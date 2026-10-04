@@ -190,8 +190,9 @@ export interface MembershipRevocation {
 /**
  * 成员停用前、同一事务内的挂接点：业务模块据此处理该成员名下的在途事务（R1-T07 审批中心：异常管理员停用时
  * 自动转派剩余异常待办，DEC-123）。撤销成员关系与全局停用账号都会调用（R4-3）。调用时尚未锁成员行：业务模块
- * 在挂接点里自行与其派单串行（审批中心的派单闸），撤销在挂接点之后才锁成员行并改状态（R5-1）。在租户上下文内调用；
- * 挂接抛错即整笔回滚。本包不依赖业务模块，由应用装配时注册。
+ * 在挂接点里自行与其派单串行（审批中心的派单闸），撤销在挂接点之后才锁成员行并改状态（R5-1）；成员行以 NO KEY UPDATE
+ * 锁，与其他事务引用该成员的外键锁相容（F-008 / R6-2）。在租户上下文内调用；挂接抛错即整笔回滚。
+ * 本包不依赖业务模块，由应用装配时注册。
  */
 export type MembershipRevokeHook = (tx: Tx, revocation: MembershipRevocation) => Promise<void>;
 let membershipRevokeHook: MembershipRevokeHook | null = null;
@@ -214,6 +215,8 @@ async function changeMembership(
       await ctx.tx.select({ id: users.id }).from(users).where(eq(users.id, change.userId)).for('share');
     return ctx.inTenant(change.tenantId, async () => {
       // 撤销先经挂接点接管（不持成员行锁），最后才锁成员行改状态：持成员行锁期间不再等任何业务锁（R1-T07 R5-1）。
+      // 最后这一步也不能反过来等“已引用该成员、正在等业务锁”的事务（F-008 / R6-2，如首次交接插入替代人记录时
+      // 来源成员外键已取得其成员行的 KEY SHARE）：成员行锁用 NO KEY UPDATE，见 findMembership。
       const current = await findMembership(ctx, change);
       assertMembershipRevision(current, change, status);
       if (current?.status === 'active' && timezone !== null && membershipRevokeHook) {
@@ -319,12 +322,17 @@ async function tenantTimezone(tx: Tx, tenantId: string): Promise<string> {
 const snap = (m: TenantMembership | undefined) =>
   m ? { userId: m.userId, status: m.status, revision: m.revision } : null;
 
-async function findMembership(ctx: PlatformCommandContext, change: MembershipChange, forUpdate = false) {
+/**
+ * @param lock 锁住成员行以改写。授予 / 撤销只改状态、revision 等非键列（键是编号与“租户 + 用户”），UPDATE 本身只需
+ *   NO KEY UPDATE，这里取同一级：同一成员的授予 / 撤销照样互斥；而它与外键检查的 KEY SHARE 相容——别的事务插入引用
+ *   该成员的行（审批任务、通知、替代人记录等）不会挡住撤销的最后一步（F-008 / R6-2）。
+ */
+async function findMembership(ctx: PlatformCommandContext, change: MembershipChange, lock = false) {
   const query = ctx.tx
     .select()
     .from(tenantMemberships)
     .where(and(eq(tenantMemberships.tenantId, change.tenantId), eq(tenantMemberships.userId, change.userId)));
-  const [row] = forUpdate ? await query.for('update') : await query;
+  const [row] = lock ? await query.for('no key update') : await query;
   return row;
 }
 

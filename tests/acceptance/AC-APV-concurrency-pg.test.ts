@@ -8,8 +8,14 @@
  * - R4-5（并发首次指定替代人）：审计旧值必须是实际被覆盖的那个值；R5-5：SHARE 屏障放行旧实现的两次读取、挡住插入，
  *   保证旧实现必然两次都读到空值。
  * - R5-1（全局停用与本人审批交错）、R5-2（双租户：成员重新激活与派单交错）、R5-4（停用最终回滚时通知意图不丢）。
- * - R6-1（派单闸锁键按 UUID 规范化）：租户头或目标用户 ID 用大写 UUID 时，与停用方取的仍是同一把闸。
+ * - R6-1（派单闸锁键按 UUID 规范化）：租户头或目标用户 ID 用大写 UUID 时，与停用方取的仍是同一把闸；第七轮 P3：租户与
+ *   异常管理员用含字母的固定编号，大小写差异一定成立。
+ * - R6-2（F-008，首次手动交接与撤销成员）：交接首次插入替代人记录时，来源成员外键先取得其成员行的 KEY SHARE，之后才等业务锁；
+ *   撤销先锁业务并接管、末尾再锁成员行——旧协议下成环死锁。
+ * - R6-3（F-008，批量接管的员工锁顺序）：两名员工、两位停用者、四张申请，两批按实例编号的顺序交叉（E：X→Y，F：Y→X）；
+ *   旧实现按实例编号接管、实际先锁员工且整批不释放，并发撤销成环死锁。实例编号由下面的编号前缀确定性构造，不靠随机重试。
  */
+import type * as NodeCrypto from 'node:crypto';
 import { bootstrapTenantAdmin } from '@italent/api';
 import {
   createUser,
@@ -22,15 +28,45 @@ import {
   type Db,
 } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   approvalWorld,
   TRANSFER_NODES,
   transferScene,
   type ApprovalWorld,
+  type FixedIds,
   type InstanceView,
+  type NodeInput,
+  type ProcessView,
 } from './AC-APV-support.js';
 import { cmd } from './support/tenant-api.js';
+
+/**
+ * 确定性实例编号（R6-3）：审批实例编号由服务端 randomUUID() 生成，旧实现按它决定接管顺序。设了前缀时，生成的 UUID
+ * 以该前缀开头（其余位仍随机，保证唯一），由此确定几张单的编号先后；未设时原样透传，不影响其他用例。
+ */
+const uuidPrefix = vi.hoisted(() => ({ value: null as string | null }));
+vi.mock('node:crypto', async (importOriginal) => {
+  const actual = await importOriginal<typeof NodeCrypto>();
+  const randomUUID = () => {
+    const id = actual.randomUUID();
+    return uuidPrefix.value ? uuidPrefix.value + id.slice(uuidPrefix.value.length) : id;
+  };
+  return { ...actual, randomUUID };
+});
+
+async function withUuidPrefix<T>(prefix: string, run: () => Promise<T>): Promise<T> {
+  uuidPrefix.value = prefix;
+  try {
+    return await run();
+  } finally {
+    uuidPrefix.value = null;
+  }
+}
+
+/** R6-1 / 第七轮 P3：含字母的固定编号，大写后一定与原文不同。 */
+const MIXED_CASE_TENANT = 'abcdef00-f008-4a61-8b00-0000000000aa';
+const MIXED_CASE_ADMIN = 'abcdef00-f008-4a61-8b00-0000000000bb';
 
 const database = useTestDb();
 const BASE = '/api/tenant/approval';
@@ -246,8 +282,12 @@ describe.runIf(realPostgres)('真 PostgreSQL 强制锁竞争', () => {
    * R4-2 / R6-1 的场景：J（HR 发起）停在异常管理员，交接时按 DEC-092 跳过；I（另一位发起人）停在第一节点，
    * 同意后第二节点为空，按冻结版本应派给异常管理员；异常管理员已交接给替代人。
    */
-  async function revokingScene(label: string, firstNode: (typeof TRANSFER_NODES)[number] = TRANSFER_NODES[0]!) {
-    const w = await approvalWorld(database().db, label);
+  async function revokingScene(
+    label: string,
+    firstNode: (typeof TRANSFER_NODES)[number] = TRANSFER_NODES[0]!,
+    fixed: FixedIds = {},
+  ) {
+    const w = await approvalWorld(database().db, label, fixed);
     const s = await transferScene(w);
     await bootstrapTenantAdmin(w.db, { tenantId: w.tenant.id, userId: w.hr.id }, cmd());
     await w.setOrgRoles(s.to, { hrbp: null });
@@ -301,11 +341,14 @@ describe.runIf(realPostgres)('真 PostgreSQL 强制锁竞争', () => {
   });
 
   it('R6-1：同意请求的租户头用大写 UUID，与停用并发：同一把派单闸，新待办不落到正在停用的异常管理员', async () => {
-    const { w, s, held, view, successor } = await revokingScene('apv-pg-r61-tenant');
+    const scene = await revokingScene('apv-pg-r61-tenant', TRANSFER_NODES[0]!, { tenantId: MIXED_CASE_TENANT });
+    const { w, s, held, view, successor } = scene;
+    const upperTenant = w.tenant.id.toUpperCase();
+    expect(upperTenant).not.toBe(w.tenant.id);
     const [revoked, approved, order] = await duringRevoke(w, s.manager.employeeId, () =>
       w.api.request('POST', `${BASE}/tasks/${pending(view).id}/approve`, {
         user: s.outHead.userId,
-        tenant: w.tenant.id.toUpperCase(),
+        tenant: upperTenant,
         ifMatch: view.revision,
         body: {},
       }),
@@ -320,11 +363,11 @@ describe.runIf(realPostgres)('真 PostgreSQL 强制锁竞争', () => {
 
   it('R6-1：转交目标用户 ID 用大写 UUID，与其停用并发：视为正在停用、拒绝转交，任务不动', async () => {
     const node = { ...TRANSFER_NODES[0]!, actions: { transfer: true } };
-    const { w, s, view } = await revokingScene('apv-pg-r61-target', node);
+    const { w, s, view } = await revokingScene('apv-pg-r61-target', node, { exceptionAdminId: MIXED_CASE_ADMIN });
+    const upperTarget = w.exceptionAdmin.toUpperCase();
+    expect(upperTarget).not.toBe(w.exceptionAdmin);
     const [revoked, transferred, order] = await duringRevoke(w, s.manager.employeeId, () =>
-      w.taskAction(s.outHead.userId, pending(view).id, 'transfer', view.revision, {
-        toUserId: w.exceptionAdmin.toUpperCase(),
-      }),
+      w.taskAction(s.outHead.userId, pending(view).id, 'transfer', view.revision, { toUserId: upperTarget }),
     );
     expect(await revoked).toBe('ok');
     expect(order).toBe('settled');
@@ -586,5 +629,126 @@ describe.runIf(realPostgres)('真 PostgreSQL 强制锁竞争', () => {
       ),
     );
     expect(notices.map((notice) => notice.kind)).toEqual(['message']);
+  });
+
+  /** 以当前生效版本为底稿发布新版本，只换异常管理员（流程改版后，在途实例仍按各自冻结的版本派单）。 */
+  async function republish(w: ApprovalWorld, process: ProcessView, exceptionAdminUserId: string) {
+    const draft = await w.json<ProcessView>(
+      await w.request(w.hr.id, 'POST', `${BASE}/processes/${process.id}/versions`, { ifMatch: process.revision }),
+      201,
+    );
+    const { name, priority, isFallback, conditions, nodes } = draft.latestVersion;
+    const edited = await w.json<ProcessView>(
+      await w.request(w.hr.id, 'PUT', `${BASE}/processes/${process.id}/draft`, {
+        ifMatch: draft.revision,
+        body: { name, priority, isFallback, exceptionAdminUserId, conditions, nodes },
+      }),
+    );
+    return w.publish(edited);
+  }
+
+  /** 调动审批两节点：调出负责人 → 调入 HRBP（为空 → 冻结版本的异常管理员）；租户管理员 HR 负责停用接管。 */
+  async function takeoverScene(label: string) {
+    const w = await approvalWorld(database().db, label);
+    const s = await transferScene(w);
+    await bootstrapTenantAdmin(w.db, { tenantId: w.tenant.id, userId: w.hr.id }, cmd());
+    await w.setOrgRoles(s.to, { hrbp: null });
+    const nodes: NodeInput[] = [TRANSFER_NODES[0]!, TRANSFER_NODES[1]!];
+    const applicant = await w.member('发起人');
+    /** 发起人提交调动，第一节点同意后停在冻结版本的异常管理员；prefix 决定实例编号的先后（R6-3）。 */
+    async function exceptionPending(employeeId: string, prefix?: string) {
+      const draft = await w.application(employeeId, { departmentId: s.to }, { actor: applicant });
+      const submit = () => w.submit(draft, applicant);
+      const view = prefix ? await withUuidPrefix(prefix, submit) : await submit();
+      if (prefix) expect(view.id.startsWith(prefix)).toBe(true);
+      return w.json<InstanceView>(await w.taskAction(s.outHead.userId, pending(view).id, 'approve', view.revision));
+    }
+    return { w, s, nodes, exceptionPending };
+  }
+
+  async function successorOf(w: ApprovalWorld, userId: string) {
+    const [row] = await withTenant(w.db, w.tenant.id, async (tx) =>
+      rowsOf<{ successor_user_id: string }>(
+        await tx.execute(sql`SELECT successor_user_id FROM approval_exception_admin_successors
+          WHERE tenant_id=${w.tenant.id} AND user_id=${userId}::uuid`),
+      ),
+    );
+    return row?.successor_user_id ?? null;
+  }
+
+  it('R6-2：首次手动交接（来源成员外键已取 KEY SHARE）与撤销来源成员交错：不成环死锁，撤销接管后交接不再转派', async () => {
+    const { w, s, nodes, exceptionPending } = await takeoverScene('apv-pg-r62');
+    const process = await w.publishedProcess({ nodes });
+    const held = await exceptionPending(s.subject.employeeId);
+    expect(pending(held)).toMatchObject({ assigneeUserId: w.exceptionAdmin, isExceptionAdmin: true });
+    // 当前流程已改版为新异常管理员 S（停用保护不再拦撤销），但 E 还没有替代人记录：交接是首次插入。
+    const successor = await w.member('新异常管理员');
+    await republish(w, process, successor);
+    expect(await successorOf(w, w.exceptionAdmin)).toBeNull();
+    const revision = await membershipRevision(w, w.exceptionAdmin);
+    const [revoked, handedOver] = await withTenant(w.db, w.tenant.id, async (barrier) => {
+      await barrier.execute(sql`SELECT id FROM employment_employees
+        WHERE tenant_id=${w.tenant.id} AND id=${s.subject.employeeId}::uuid FOR UPDATE`);
+      // 撤销先排队（已关派单闸，等 J 的员工锁）；交接后排队：首次插入替代人记录时来源成员外键已取得 E 成员行的
+      // KEY SHARE，再等 J。旧协议下放行后撤销接管 J、末尾 FOR UPDATE 锁 E 的成员行而等交接，交接等撤销持有的员工锁，
+      // 两者成环死锁（40P01）。
+      const revoke = outcomeOf(
+        revokeMembership(w.db, { tenantId: w.tenant.id, userId: w.exceptionAdmin, expectedRevision: revision }, cmd()),
+      );
+      await waitForBlocked(w.db, 1);
+      const handover = w.request(w.hr.id, 'POST', `${BASE}/exception-admins/handover`, {
+        ifMatch: 0,
+        body: { fromUserId: w.exceptionAdmin, toUserId: successor },
+      });
+      await waitForBlocked(w.db, 2);
+      return [revoke, handover] as const;
+    });
+    expect(await revoked).toBe('ok');
+    // 撤销先拿到 J：替代人记录尚未提交，按 DEC-098 由租户管理员接管；交接随后拿到 J 时已无待转任务，不再转派。
+    expect(await w.json<{ tasks: number; skipped: unknown[] }>(await handedOver)).toMatchObject({
+      tasks: 0,
+      skipped: [],
+    });
+    expect(pending(await w.detail(held.id))).toMatchObject({ assigneeUserId: w.hr.id, isExceptionAdmin: true });
+    expect(await pendingOf(w, w.exceptionAdmin)).toBe(0);
+    expect(await membershipRevision(w, w.exceptionAdmin)).toBe(revision + 1);
+    // 来源成员已撤销，交接记下的替代人照常保留（“来源成员已撤销仍可交接”的语义不变）。
+    expect(await successorOf(w, w.exceptionAdmin)).toBe(successor);
+  });
+
+  it('R6-3：两名员工、两位停用者、四张申请，两批实例编号顺序交叉：并发撤销不成环死锁，各自的待办都被接管', async () => {
+    const { w, s, nodes, exceptionPending } = await takeoverScene('apv-pg-r63');
+    const [x, y] = [s.subject.employeeId, s.manager.employeeId];
+    const e = await w.member('异常管理员E');
+    const f = await w.member('异常管理员F');
+    // 编号前缀定下旧实现的接管顺序：E 的两单为 X(1)→Y(3)，F 的两单为 Y(2)→X(4)，两批的员工锁顺序相反。
+    let process = await w.publishedProcess({ exceptionAdminUserId: e, nodes });
+    const ofE = [await exceptionPending(x, '1'), await exceptionPending(y, '3')];
+    process = await republish(w, process, f);
+    const ofF = [await exceptionPending(y, '2'), await exceptionPending(x, '4')];
+    // 当前版本改为默认异常管理员：E、F 都不再被可用流程引用，停用保护不拦。
+    await republish(w, process, w.exceptionAdmin);
+    for (const view of ofE) expect(pending(view)).toMatchObject({ assigneeUserId: e, isExceptionAdmin: true });
+    for (const view of ofF) expect(pending(view)).toMatchObject({ assigneeUserId: f, isExceptionAdmin: true });
+    const revisions = [await membershipRevision(w, e), await membershipRevision(w, f)];
+    const [revokedE, revokedF] = await withTenant(w.db, w.tenant.id, async (barrier) => {
+      // 屏障锁住两批各自第一张单（按实例编号）的实例行：旧实现里 E 持 X、F 持 Y 后停在这里，放行后各自再等对方的员工，
+      // 成环死锁（40P01）。按员工统一顺序时两批先争同一个员工，后到的一方整批排在先到的一方之后。
+      await barrier.execute(sql`SELECT id FROM approval_instances WHERE tenant_id=${w.tenant.id}
+        AND id IN (${ofE[0]!.id}::uuid,${ofF[0]!.id}::uuid) FOR UPDATE`);
+      const revokes = [e, f].map((userId, i) =>
+        outcomeOf(revokeMembership(w.db, { tenantId: w.tenant.id, userId, expectedRevision: revisions[i]! }, cmd())),
+      );
+      await waitForBlocked(w.db, 2);
+      return revokes;
+    });
+    expect(await revokedE).toBe('ok');
+    expect(await revokedF).toBe('ok');
+    // 两边都没有替代人：四张单的异常待办都由租户管理员接管（DEC-098 / DEC-123），停用者名下不留待办。
+    for (const view of [...ofE, ...ofF]) {
+      expect(pending(await w.detail(view.id))).toMatchObject({ assigneeUserId: w.hr.id, isExceptionAdmin: true });
+    }
+    expect([await pendingOf(w, e), await pendingOf(w, f)]).toEqual([0, 0]);
+    expect([await membershipRevision(w, e), await membershipRevision(w, f)]).toEqual(revisions.map((r) => r + 1));
   });
 });

@@ -68,7 +68,8 @@ const assigneeGate = (tenantId: string, userId: string) =>
  * - 停用方（撤销成员关系、全局停用账号）在接管其在途待办之前以排他方式取闸（可以等），持有到事务结束；
  * - 审批方把某人当作接手人（派单、交接、接管）或以其身份操作时，以共享方式试取，拿不到即视为正在停用，从不等待。
  * 停用方只等闸与业务锁，审批方从不等停用方持有的锁（users 行只被全局停用以 NO KEY UPDATE 锁住，与外键的
- * KEY SHARE 相容；成员行只在撤销的最后一步、接管完成后才 FOR UPDATE），两者不成环。
+ * KEY SHARE 相容；成员行只在撤销的最后一步、接管完成后才锁，同样是 NO KEY UPDATE，F-008 / R6-2），两者不成环。
+ * 停用方之间、以及手动交接一批实例时，业务锁按全局取锁顺序取得（handover.LOCK_ORDER，F-008 / R6-3）。
  */
 export async function closeAssigneeGate(tx: Tx, tenantId: string, userId: string): Promise<void> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${assigneeGate(tenantId, userId)})`);
