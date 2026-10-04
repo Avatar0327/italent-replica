@@ -95,6 +95,48 @@ describe('AC-TRF-33 DEC-108 同日申请与直接业务混合的先后', () => {
     expect(await w.session.record(a.id, '2026-10-05')).toMatchObject({ previousRecordId: b.id, isInserted: false });
   });
 
+  it('先提交申请 A、后保存同日直接业务 B 与 C：A 落地时 B、C 一并后移，顺序 A→B→C，当前任职为 C', async () => {
+    const { w, employee, hire, direct } = await scene('trf33-application-then-two-directs');
+    const a = await w.approve(await w.apply(employee.id, '2026-10-05', { place: 'A 地点' }), '2026-10-02T02:00:00Z');
+    const b = await direct({ place: 'B 地点' });
+    const c = await direct({ remarks: 'C 备注' });
+    expect((await w.runScheduler('2026-10-04T17:15:00Z')).activated).toEqual([a.id]);
+    const records = await w.session.records(employee.id, '2026-10-05');
+    expect(records.map((record) => record.id)).toEqual([hire.record!.id, a.id, b.id, c.id]);
+    expect(records.filter((record) => record.isCurrent)).toEqual([expect.objectContaining({ id: c.id })]);
+    expect(await w.session.record(c.id, '2026-10-05')).toMatchObject({
+      previousRecordId: b.id,
+      fields: { place: 'B 地点', remarks: 'C 备注' },
+    });
+  });
+
+  it('先提交离职申请 A、后保存同日直接调动 B：A 插入会形成“离职→同周期调动”，记生效失败，版本链不变', async () => {
+    const { w, employee, hire, direct } = await scene('trf33-leave-then-direct');
+    const draft = await w.session.business(
+      employee.id,
+      { kind: 'leave', mode: 'application', lastWorkDate: '2026-10-04' },
+      (await w.session.getEmployee(employee.id)).revision,
+    );
+    const submitted = await w.session.request('POST', `/businesses/${draft.id}/submit`, {
+      ifMatch: draft.revision,
+      body: {},
+    });
+    expect(submitted.status).toBe(200);
+    const a = await w.approve(draft, '2026-10-02T02:00:00Z');
+    expect(a).toMatchObject({ status: 'approved', effectiveDate: '2026-10-05' });
+    const b = await direct({ place: 'B 地点' });
+
+    expect(await w.runScheduler('2026-10-04T17:15:00Z')).toMatchObject({ activated: [], failed: [a.id] });
+    expect(await w.business(a.id)).toMatchObject({
+      status: 'approved',
+      record: null,
+      activation: { status: 'failed', failureReason: 'RULE_REJECTED' },
+    });
+    const records = await w.session.records(employee.id, '2026-10-05');
+    expect(records.map((record) => record.id)).toEqual([hire.record!.id, b.id]);
+    expect(records.filter((record) => record.isCurrent)).toEqual([expect.objectContaining({ id: b.id })]);
+  });
+
   it('审批通过时生效日已到（立即生效）也按提交先后插入：先提交 A、后保存 B、再审批 A，当前任职仍为 B', async () => {
     const { w, employee, hire, direct } = await scene('trf33-immediate-approval');
     const submitted = await w.apply(employee.id, '2026-10-05', { place: 'A 地点' });
