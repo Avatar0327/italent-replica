@@ -1,5 +1,5 @@
 {
-  "id": "e33f8e75-62f7-4508-8fe5-48cced4f9252",
+  "id": "a5aab6c8-7c39-4136-86fd-a28b05800415",
   "prevId": "6ac355ba-fbb4-4591-800c-29687f426d19",
   "version": "7",
   "dialect": "postgresql",
@@ -12124,7 +12124,41 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "employment_timeline_employee_start": {
+          "name": "employment_timeline_employee_start",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "start_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sort_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "employment_timeline_tenant_id_tenants_id_fk": {
           "name": "employment_timeline_tenant_id_tenants_id_fk",
@@ -12169,14 +12203,14 @@
         }
       },
       "uniqueConstraints": {
-        "employment_timeline_day_order": {
-          "name": "employment_timeline_day_order",
+        "employment_timeline_cycle_start": {
+          "name": "employment_timeline_cycle_start",
           "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
             "employee_id",
-            "start_date",
-            "sort_order"
+            "staff_id",
+            "start_date"
           ]
         }
       },
@@ -12188,7 +12222,7 @@
         },
         "employment_timeline_sort_order": {
           "name": "employment_timeline_sort_order",
-          "value": "\"employment_timeline\".\"sort_order\" >= 0"
+          "value": "\"employment_timeline\".\"sort_order\" IN (0, 1)"
         }
       },
       "isRLSEnabled": false
@@ -14282,6 +14316,121 @@
       },
       "isRLSEnabled": false
     },
+    "public.personnel_change_request_versions": {
+      "name": "personnel_change_request_versions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "request_id": {
+          "name": "request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_no": {
+          "name": "version_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "values": {
+          "name": "values",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "personnel_change_request_versions_tenant_id_tenants_id_fk": {
+          "name": "personnel_change_request_versions_tenant_id_tenants_id_fk",
+          "tableFrom": "personnel_change_request_versions",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "personnel_change_request_versions_request_fk": {
+          "name": "personnel_change_request_versions_request_fk",
+          "tableFrom": "personnel_change_request_versions",
+          "tableTo": "personnel_change_requests",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "request_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "personnel_change_request_versions_no": {
+          "name": "personnel_change_request_versions_no",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "request_id",
+            "version_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "personnel_change_request_versions_positive": {
+          "name": "personnel_change_request_versions_positive",
+          "value": "\"personnel_change_request_versions\".\"version_no\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.personnel_change_requests": {
       "name": "personnel_change_requests",
       "schema": "",
@@ -14409,7 +14558,7 @@
       "checkConstraints": {
         "personnel_change_requests_state": {
           "name": "personnel_change_requests_state",
-          "value": "\"personnel_change_requests\".\"status\" IN ('pending_approval','applied')"
+          "value": "\"personnel_change_requests\".\"status\" IN ('pending_approval','applied','withdrawn')"
         },
         "personnel_change_requests_revision_positive": {
           "name": "personnel_change_requests_revision_positive",
@@ -20622,6 +20771,2225 @@
         "personnel_vocational_qualification_versions_source": {
           "name": "personnel_vocational_qualification_versions_source",
           "value": "\"personnel_vocational_qualification_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_vocational_qualification_versions\".\"source_type\" = 'hr_direct' AND \"personnel_vocational_qualification_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_vocational_qualification_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_vocational_qualification_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_exception_admin_successors": {
+      "name": "approval_exception_admin_successors",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "successor_user_id": {
+          "name": "successor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "designated_by": {
+          "name": "designated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "approval_exception_admin_successors_tenant_id_tenants_id_fk": {
+          "name": "approval_exception_admin_successors_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_exception_admin_successors",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_exception_admin_successors_user_fk": {
+          "name": "approval_exception_admin_successors_user_fk",
+          "tableFrom": "approval_exception_admin_successors",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_exception_admin_successors_successor_fk": {
+          "name": "approval_exception_admin_successors_successor_fk",
+          "tableFrom": "approval_exception_admin_successors",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "successor_user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approval_exception_admin_successors_user": {
+          "name": "approval_exception_admin_successors_user",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "approval_exception_admin_successors_not_self": {
+          "name": "approval_exception_admin_successors_not_self",
+          "value": "\"approval_exception_admin_successors\".\"user_id\" <> \"approval_exception_admin_successors\".\"successor_user_id\""
+        },
+        "approval_exception_admin_successors_revision": {
+          "name": "approval_exception_admin_successors_revision",
+          "value": "\"approval_exception_admin_successors\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_instance_ccs": {
+      "name": "approval_instance_ccs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "instance_id": {
+          "name": "instance_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_key": {
+          "name": "node_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "comment": {
+          "name": "comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "approval_ccs_user": {
+          "name": "approval_ccs_user",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "approval_ccs_instance": {
+          "name": "approval_ccs_instance",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "instance_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "approval_instance_ccs_tenant_id_tenants_id_fk": {
+          "name": "approval_instance_ccs_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_instance_ccs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_ccs_instance_fk": {
+          "name": "approval_ccs_instance_fk",
+          "tableFrom": "approval_instance_ccs",
+          "tableTo": "approval_instances",
+          "columnsFrom": [
+            "tenant_id",
+            "instance_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_ccs_user_fk": {
+          "name": "approval_ccs_user_fk",
+          "tableFrom": "approval_instance_ccs",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.approval_instance_logs": {
+      "name": "approval_instance_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "instance_id": {
+          "name": "instance_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "round": {
+          "name": "round",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_key": {
+          "name": "node_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "event": {
+          "name": "event",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "admin_self_transfer": {
+          "name": "admin_self_transfer",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "detail": {
+          "name": "detail",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "approval_logs_admin_self": {
+          "name": "approval_logs_admin_self",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "admin_self_transfer",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "approval_instance_logs_tenant_id_tenants_id_fk": {
+          "name": "approval_instance_logs_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_instance_logs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_logs_instance_fk": {
+          "name": "approval_logs_instance_fk",
+          "tableFrom": "approval_instance_logs",
+          "tableTo": "approval_instances",
+          "columnsFrom": [
+            "tenant_id",
+            "instance_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approval_logs_seq": {
+          "name": "approval_logs_seq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "instance_id",
+            "seq"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.approval_instances": {
+      "name": "approval_instances",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "process_id": {
+          "name": "process_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_id": {
+          "name": "version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approval_type": {
+          "name": "approval_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_code": {
+          "name": "object_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_type": {
+          "name": "business_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_employee_id": {
+          "name": "subject_employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "initiator_user_id": {
+          "name": "initiator_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "process_code": {
+          "name": "process_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_version": {
+          "name": "business_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'running'"
+        },
+        "current_node_key": {
+          "name": "current_node_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "returned_from_node_key": {
+          "name": "returned_from_node_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "round": {
+          "name": "round",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "history_from_seq": {
+          "name": "history_from_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "approval_instances_active_business": {
+          "name": "approval_instances_active_business",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"approval_instances\".\"status\" IN ('running','returned')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "approval_instances_initiator": {
+          "name": "approval_instances_initiator",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "initiator_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "approval_instances_business": {
+          "name": "approval_instances_business",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "business_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "approval_instances_tenant_id_tenants_id_fk": {
+          "name": "approval_instances_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_instances",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_instances_process_fk": {
+          "name": "approval_instances_process_fk",
+          "tableFrom": "approval_instances",
+          "tableTo": "approval_processes",
+          "columnsFrom": [
+            "tenant_id",
+            "process_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_instances_version_fk": {
+          "name": "approval_instances_version_fk",
+          "tableFrom": "approval_instances",
+          "tableTo": "approval_process_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_instances_subject_fk": {
+          "name": "approval_instances_subject_fk",
+          "tableFrom": "approval_instances",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "subject_employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_instances_initiator_fk": {
+          "name": "approval_instances_initiator_fk",
+          "tableFrom": "approval_instances",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "initiator_user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approval_instances_tenant_id": {
+          "name": "approval_instances_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "approval_instances_status": {
+          "name": "approval_instances_status",
+          "value": "\"approval_instances\".\"status\" IN ('running','returned','approved','withdrawn','cancelled')"
+        },
+        "approval_instances_business_type": {
+          "name": "approval_instances_business_type",
+          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change')"
+        },
+        "approval_instances_revision": {
+          "name": "approval_instances_revision",
+          "value": "\"approval_instances\".\"revision\" > 0 AND \"approval_instances\".\"round\" > 0 AND \"approval_instances\".\"history_from_seq\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_node_message_rules": {
+      "name": "approval_node_message_rules",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_id": {
+          "name": "version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_key": {
+          "name": "node_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rule_no": {
+          "name": "rule_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channels": {
+          "name": "channels",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "template_code": {
+          "name": "template_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipient": {
+          "name": "recipient",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "approval_node_message_rules_tenant_id_tenants_id_fk": {
+          "name": "approval_node_message_rules_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_node_message_rules",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_message_rules_node_fk": {
+          "name": "approval_message_rules_node_fk",
+          "tableFrom": "approval_node_message_rules",
+          "tableTo": "approval_process_nodes",
+          "columnsFrom": [
+            "tenant_id",
+            "version_id",
+            "node_key"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "version_id",
+            "node_key"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "approval_node_message_rules_tenant_id_version_id_node_key_rule_no_pk": {
+          "name": "approval_node_message_rules_tenant_id_version_id_node_key_rule_no_pk",
+          "columns": [
+            "tenant_id",
+            "version_id",
+            "node_key",
+            "rule_no"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "approval_message_rules_trigger": {
+          "name": "approval_message_rules_trigger",
+          "value": "\"approval_node_message_rules\".\"trigger\" IN ('arrive','approve','reject','transfer')"
+        },
+        "approval_message_rules_recipient": {
+          "name": "approval_message_rules_recipient",
+          "value": "\"approval_node_message_rules\".\"recipient\" IN ('owner','subject_employee','assignee')"
+        },
+        "approval_message_rules_channels": {
+          "name": "approval_message_rules_channels",
+          "value": "cardinality(\"approval_node_message_rules\".\"channels\") > 0 AND \"approval_node_message_rules\".\"channels\" <@ ARRAY['inbox','email','sms']::text[]"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_notifications": {
+      "name": "approval_notifications",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "instance_id": {
+          "name": "instance_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recipient_user_id": {
+          "name": "recipient_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channel": {
+          "name": "channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "template_code": {
+          "name": "template_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "approval_notifications_recipient": {
+          "name": "approval_notifications_recipient",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "recipient_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "approval_notifications_tenant_id_tenants_id_fk": {
+          "name": "approval_notifications_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_notifications",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_notifications_instance_fk": {
+          "name": "approval_notifications_instance_fk",
+          "tableFrom": "approval_notifications",
+          "tableTo": "approval_instances",
+          "columnsFrom": [
+            "tenant_id",
+            "instance_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_notifications_recipient_fk": {
+          "name": "approval_notifications_recipient_fk",
+          "tableFrom": "approval_notifications",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "recipient_user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "approval_notifications_kind": {
+          "name": "approval_notifications_kind",
+          "value": "\"approval_notifications\".\"kind\" IN ('todo','urge','message','cc')"
+        },
+        "approval_notifications_channel": {
+          "name": "approval_notifications_channel",
+          "value": "\"approval_notifications\".\"channel\" IN ('inbox','email','sms')"
+        },
+        "approval_notifications_status": {
+          "name": "approval_notifications_status",
+          "value": "\"approval_notifications\".\"status\" IN ('pending','sent','failed','unknown')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_outbox": {
+      "name": "approval_outbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_type": {
+          "name": "object_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "approval_outbox_cursor": {
+          "name": "approval_outbox_cursor",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "approval_outbox_tenant_id_tenants_id_fk": {
+          "name": "approval_outbox_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_outbox",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approval_outbox_event": {
+          "name": "approval_outbox_event",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "command_id",
+            "object_id",
+            "event_type"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "approval_outbox_state": {
+          "name": "approval_outbox_state",
+          "value": "\"approval_outbox\".\"state\" IN ('pending','sent','failed','unknown')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_process_conditions": {
+      "name": "approval_process_conditions",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_id": {
+          "name": "version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_no": {
+          "name": "item_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field_path": {
+          "name": "field_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operator": {
+          "name": "operator",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value_text": {
+          "name": "value_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "value_list": {
+          "name": "value_list",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "approval_process_conditions_tenant_id_tenants_id_fk": {
+          "name": "approval_process_conditions_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_process_conditions",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_conditions_version_fk": {
+          "name": "approval_conditions_version_fk",
+          "tableFrom": "approval_process_conditions",
+          "tableTo": "approval_process_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "approval_process_conditions_tenant_id_version_id_item_no_pk": {
+          "name": "approval_process_conditions_tenant_id_version_id_item_no_pk",
+          "columns": [
+            "tenant_id",
+            "version_id",
+            "item_no"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "approval_conditions_operator": {
+          "name": "approval_conditions_operator",
+          "value": "\"approval_process_conditions\".\"operator\" IN ('eq','ne','in','not_in','is_empty','not_empty','in_org_tree')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_process_nodes": {
+      "name": "approval_process_nodes",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_id": {
+          "name": "version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_key": {
+          "name": "node_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approver_expression": {
+          "name": "approver_expression",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "no_assignee_policy": {
+          "name": "no_assignee_policy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'exception_admin'"
+        },
+        "same_assignee_skip": {
+          "name": "same_assignee_skip",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "history_same_assignee_skip": {
+          "name": "history_same_assignee_skip",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "same_assignee_result": {
+          "name": "same_assignee_result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'approve'"
+        },
+        "history_same_assignee_result": {
+          "name": "history_same_assignee_result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'approve'"
+        },
+        "form_fields": {
+          "name": "form_fields",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "editable_fields": {
+          "name": "editable_fields",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "edit_mode": {
+          "name": "edit_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "allow_transfer": {
+          "name": "allow_transfer",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "allow_add_sign": {
+          "name": "allow_add_sign",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "allow_copy_send": {
+          "name": "allow_copy_send",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "allow_retrieve": {
+          "name": "allow_retrieve",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "urge_mode": {
+          "name": "urge_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'inherit'"
+        },
+        "reject_comment_required": {
+          "name": "reject_comment_required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "hide_records": {
+          "name": "hide_records",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "reject_resubmit_mode": {
+          "name": "reject_resubmit_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'restart'"
+        },
+        "time_span": {
+          "name": "time_span",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "time_effect_before": {
+          "name": "time_effect_before",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "time_effect": {
+          "name": "time_effect",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "period": {
+          "name": "period",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "approval_process_nodes_tenant_id_tenants_id_fk": {
+          "name": "approval_process_nodes_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_process_nodes",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_nodes_version_fk": {
+          "name": "approval_nodes_version_fk",
+          "tableFrom": "approval_process_nodes",
+          "tableTo": "approval_process_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "approval_process_nodes_tenant_id_version_id_node_key_pk": {
+          "name": "approval_process_nodes_tenant_id_version_id_node_key_pk",
+          "columns": [
+            "tenant_id",
+            "version_id",
+            "node_key"
+          ]
+        }
+      },
+      "uniqueConstraints": {
+        "approval_nodes_seq": {
+          "name": "approval_nodes_seq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "version_id",
+            "seq"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "approval_nodes_approver": {
+          "name": "approval_nodes_approver",
+          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head')"
+        },
+        "approval_nodes_no_assignee": {
+          "name": "approval_nodes_no_assignee",
+          "value": "\"approval_process_nodes\".\"no_assignee_policy\" = 'exception_admin'"
+        },
+        "approval_nodes_edit_mode": {
+          "name": "approval_nodes_edit_mode",
+          "value": "\"approval_process_nodes\".\"edit_mode\" IN ('none','separate','with_approve')"
+        },
+        "approval_nodes_resubmit": {
+          "name": "approval_nodes_resubmit",
+          "value": "\"approval_process_nodes\".\"reject_resubmit_mode\" IN ('restart','rejecting_node')"
+        },
+        "approval_nodes_seq_positive": {
+          "name": "approval_nodes_seq_positive",
+          "value": "\"approval_process_nodes\".\"seq\" > 0"
+        },
+        "approval_nodes_urge_mode": {
+          "name": "approval_nodes_urge_mode",
+          "value": "\"approval_process_nodes\".\"urge_mode\" IN ('inherit','enabled','disabled')"
+        },
+        "approval_nodes_auto_result": {
+          "name": "approval_nodes_auto_result",
+          "value": "\"approval_process_nodes\".\"same_assignee_result\" IN ('approve','skip') AND \"approval_process_nodes\".\"history_same_assignee_result\" IN ('approve','skip')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_process_versions": {
+      "name": "approval_process_versions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "process_id": {
+          "name": "process_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_no": {
+          "name": "version_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "group_name": {
+          "name": "group_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "is_fallback": {
+          "name": "is_fallback",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "exception_admin_user_id": {
+          "name": "exception_admin_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "urge_enabled": {
+          "name": "urge_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "hide_records_from_initiator": {
+          "name": "hide_records_from_initiator",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "condition_expression": {
+          "name": "condition_expression",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "published_by": {
+          "name": "published_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "approval_process_versions_tenant_id_tenants_id_fk": {
+          "name": "approval_process_versions_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_process_versions",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_versions_process_fk": {
+          "name": "approval_versions_process_fk",
+          "tableFrom": "approval_process_versions",
+          "tableTo": "approval_processes",
+          "columnsFrom": [
+            "tenant_id",
+            "process_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_versions_exception_admin": {
+          "name": "approval_versions_exception_admin",
+          "tableFrom": "approval_process_versions",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "exception_admin_user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_versions_creator": {
+          "name": "approval_versions_creator",
+          "tableFrom": "approval_process_versions",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "created_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approval_versions_tenant_id": {
+          "name": "approval_versions_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "approval_versions_number": {
+          "name": "approval_versions_number",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "process_id",
+            "version_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "approval_versions_status": {
+          "name": "approval_versions_status",
+          "value": "\"approval_process_versions\".\"status\" IN ('draft','published')"
+        },
+        "approval_versions_number_positive": {
+          "name": "approval_versions_number_positive",
+          "value": "\"approval_process_versions\".\"version_no\" > 0"
+        },
+        "approval_versions_priority": {
+          "name": "approval_versions_priority",
+          "value": "\"approval_process_versions\".\"priority\" BETWEEN -100000 AND 100000"
+        },
+        "approval_versions_published": {
+          "name": "approval_versions_published",
+          "value": "(\"approval_process_versions\".\"status\" = 'draft') = (\"approval_process_versions\".\"published_at\" IS NULL)\n        AND (\"approval_process_versions\".\"status\" = 'draft' OR \"approval_process_versions\".\"exception_admin_user_id\" IS NOT NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_processes": {
+      "name": "approval_processes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approval_type": {
+          "name": "approval_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_code": {
+          "name": "object_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "current_version_id": {
+          "name": "current_version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latest_version_no": {
+          "name": "latest_version_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "preset_key": {
+          "name": "preset_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "approval_processes_code": {
+          "name": "approval_processes_code",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "approval_processes_preset": {
+          "name": "approval_processes_preset",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "preset_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"approval_processes\".\"preset_key\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "approval_processes_type": {
+          "name": "approval_processes_type",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "approval_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "approval_processes_tenant_id_tenants_id_fk": {
+          "name": "approval_processes_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_processes",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_processes_creator": {
+          "name": "approval_processes_creator",
+          "tableFrom": "approval_processes",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "created_by"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approval_processes_tenant_id": {
+          "name": "approval_processes_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "approval_processes_status": {
+          "name": "approval_processes_status",
+          "value": "\"approval_processes\".\"status\" IN ('active','discarded')"
+        },
+        "approval_processes_revision": {
+          "name": "approval_processes_revision",
+          "value": "\"approval_processes\".\"revision\" > 0 AND \"approval_processes\".\"latest_version_no\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.approval_tasks": {
+      "name": "approval_tasks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "instance_id": {
+          "name": "instance_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "round": {
+          "name": "round",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "node_key": {
+          "name": "node_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "assignee_user_id": {
+          "name": "assignee_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "candidate_user_id": {
+          "name": "candidate_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "is_exception_admin": {
+          "name": "is_exception_admin",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "admin_self_transfer": {
+          "name": "admin_self_transfer",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "parent_task_id": {
+          "name": "parent_task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "comment": {
+          "name": "comment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "acted_at": {
+          "name": "acted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "approval_tasks_assignee": {
+          "name": "approval_tasks_assignee",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "assignee_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "approval_tasks_tenant_id_tenants_id_fk": {
+          "name": "approval_tasks_tenant_id_tenants_id_fk",
+          "tableFrom": "approval_tasks",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_tasks_instance_fk": {
+          "name": "approval_tasks_instance_fk",
+          "tableFrom": "approval_tasks",
+          "tableTo": "approval_instances",
+          "columnsFrom": [
+            "tenant_id",
+            "instance_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "approval_tasks_assignee_fk": {
+          "name": "approval_tasks_assignee_fk",
+          "tableFrom": "approval_tasks",
+          "tableTo": "tenant_memberships",
+          "columnsFrom": [
+            "tenant_id",
+            "assignee_user_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "user_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "approval_tasks_tenant_id": {
+          "name": "approval_tasks_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "approval_tasks_seq": {
+          "name": "approval_tasks_seq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "instance_id",
+            "seq"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "approval_tasks_pending_assignee": {
+          "name": "approval_tasks_pending_assignee",
+          "value": "\"approval_tasks\".\"status\" <> 'pending' OR \"approval_tasks\".\"assignee_user_id\" IS NOT NULL"
+        },
+        "approval_tasks_status": {
+          "name": "approval_tasks_status",
+          "value": "\"approval_tasks\".\"status\" IN ('pending','approved','rejected','transferred','skipped','cancelled','add_signed','queued')"
+        },
+        "approval_tasks_origin": {
+          "name": "approval_tasks_origin",
+          "value": "\"approval_tasks\".\"origin\" IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',\n        'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',\n        'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve')"
         }
       },
       "isRLSEnabled": false

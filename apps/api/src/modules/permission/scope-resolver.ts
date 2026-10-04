@@ -207,7 +207,7 @@ export async function resolveDataScope(tx: Tx, query: ScopeQuery): Promise<Modul
 export interface DataScopeExtension {
   resolve(query: ScopeQuery, current: ModuleScope): Promise<ModuleScope>;
 }
-// TODO(R1-T07): approval detail intersects node form/viewable fields, never widens resolveDataScope (DEC-057).
+// DEC-057：审批详情只取节点表单 ∩ 可查看字段（approval/disclosure.ts），从不扩大 resolveDataScope。
 
 /** DEC-082 personnel catalog hook: creator rights do not authorize creating a record outside managed persons. */
 export async function personnelCreationScope(tx: Tx, query: ScopeQuery, current: ModuleScope): Promise<ModuleScope> {

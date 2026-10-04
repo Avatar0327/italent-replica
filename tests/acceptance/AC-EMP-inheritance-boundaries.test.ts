@@ -1,5 +1,6 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { installApprovalFallbacks } from './AC-APV-support.js';
 import { employmentSession, type EmploymentBusiness } from './AC-EMP-support.js';
 import { customField, inheritanceFixture, trustedTransition } from './AC-EMP-inheritance-support.js';
 
@@ -54,6 +55,8 @@ describe('REQ-EMP-002 生效时继承与服务端表单配置', () => {
   ])('$formId：拖出字段先按值匹配更新，未拖出字段到实际生效才取最新前驱', async ({ formId, expected }) => {
     const { db } = testDb();
     const fixture = await inheritanceFixture(db, `inherit-deferred-${formId}`);
+    // R1-T07：提交申请须匹配已发布流程（DEC-017）；此处只验证继承，安装兜底流程。
+    await installApprovalFallbacks(db, fixture.tenant.id, fixture.user.id);
     const draft = await fixture.business(
       fixture.employee.id,
       { kind: 'transfer', mode: 'application', effectiveDate: '2026-12-01', formId },

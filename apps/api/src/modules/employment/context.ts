@@ -176,7 +176,7 @@ export async function requireEmploymentWrite(
     });
 }
 
-/** TODO(R1-T07, DEC-057)：审批节点详情另按本节点表单裁剪，参与人不获得临时数据范围。 */
+/** 任职接口按本人权限裁剪；审批节点详情另按节点表单裁剪（approval/disclosure.ts，DEC-057），参与人不获得临时数据范围。 */
 export async function trimEmploymentResponse(
   deps: TenantRouteDeps,
   ctx: EmploymentContext,

@@ -6,14 +6,13 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { revision, uuidParam } from '../job/context.js';
 import { access, preflight, trim } from './access.js';
-import { createChange, loadChange, requireSelf } from './change-requests.js';
+import { assertSelfServiceFields, createChange, loadChange, requireSelf } from './change-requests.js';
+import { personnelApprovalHooks } from './approval-hooks.js';
 import { body, safe } from './http.js';
 import { parse, subsetInput, subsetKind } from './validation.js';
 import { tenantOf } from '../../tenant-context.js';
 import { requirePermission } from '../../authorization.js';
-import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { runCommand } from '../../commands.js';
-import { AppError } from '../../errors.js';
 
 const base = '/api/tenant/personnel/change-requests';
 const requestSchema = z
@@ -39,23 +38,19 @@ export function registerChangeRequestRoutes(router: Hono<TenantEnv>, deps: Tenan
       });
       await withTenant(deps.db, tenant.tenantId, async (tx) => {
         await requireSelf(tx, { ...tenant, now: deps.clock(), commandId: '', expectedRevision: 0 }, input.employeeId);
-        const setting = await readEffectiveSetting(tx, tenant.tenantId, 'personnel.self_service_fields');
-        const configured = (setting.value as Record<string, unknown>)[kind];
-        const allowed = new Set(
-          Array.isArray(configured) ? configured.filter((v): v is string => typeof v === 'string') : [],
-        );
-        if (Object.keys(input.values).some((field) => !allowed.has(field)))
-          throw new AppError('FORBIDDEN', '字段不在员工自助修改清单内');
+        await assertSelfServiceFields(tx, tenant.tenantId, kind, Object.keys(input.values));
       });
       const expectedRevision = revision(c);
       const ctx = { ...tenant, now: deps.clock(), commandId: '', expectedRevision };
       const result = await runCommand(deps.db, ctx, {
         id: c.req.header('idempotency-key'),
         fingerprint: { operation: 'personnel.self-service-request', input, expectedRevision },
-        execute: async (tx, commandId) => ({
-          status: 201,
-          body: await createChange(tx, { ...ctx, commandId }, input),
-        }),
+        execute: async (tx, commandId) => {
+          const created = await createChange(tx, { ...ctx, commandId }, input);
+          // R1-T07：申请与审批实例同事务创建；没有可用流程即整单回滚，不留无人审批的申请。
+          await personnelApprovalHooks.submitted(tx, { ...ctx, commandId }, created.id);
+          return { status: 201, body: created };
+        },
       });
       return c.json(result.body, 201);
     }),
@@ -69,7 +64,7 @@ export function registerChangeRequestRoutes(router: Hono<TenantEnv>, deps: Tenan
         return row;
       });
       await preflight(deps, ctx, String(result.employeeId));
-      // Approval-node disclosure is R1-T07. Generic request metadata never exposes an untrimmed patch.
+      // 审批节点披露见审批中心（R1-T07）；申请元数据接口不暴露未裁剪的变更内容。
       return c.json(await trim(deps, ctx, PERSONNEL_REQUEST_OBJECT, result));
     }),
   );
