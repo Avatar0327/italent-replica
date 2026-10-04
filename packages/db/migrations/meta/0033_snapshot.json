@@ -1,6 +1,6 @@
 {
-  "id": "6f5bd63c-3764-446a-8c17-2cdceb02a0f5",
-  "prevId": "e99fbd3a-a7bb-4824-8bf6-40d940ddaa72",
+  "id": "dc227570-bb1f-4845-b758-9bf56a29a069",
+  "prevId": "33d543f3-aa7f-4a4e-96eb-729070418724",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9542,23 +9542,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "operation_seq": {
-          "name": "operation_seq",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "identity": {
-            "name": "employment_business_objects_operation_seq_seq",
-            "increment": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "startWith": "1",
-            "cache": "1",
-            "cycle": false,
-            "schema": "public",
-            "type": "byDefault"
-          }
         }
       },
       "indexes": {
@@ -12244,6 +12227,23 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "event_seq": {
+          "name": "event_seq",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "name": "employment_state_events_event_seq_seq",
+            "increment": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "startWith": "1",
+            "cache": "1",
+            "cycle": false,
+            "schema": "public",
+            "type": "byDefault"
+          }
         }
       },
       "indexes": {

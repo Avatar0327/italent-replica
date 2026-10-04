@@ -1,4 +1,5 @@
 import { sql, type Tx } from '@italent/db';
+import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { EmploymentError } from './errors.js';
 import { rowsOf } from './record-store.js';
@@ -11,31 +12,51 @@ interface TimelinePoint {
 }
 
 /**
- * 同一员工同一生效日的位置 = 当日已有记录之后（DEC-108：同周期同日按操作先后，后操作的成为当天当前任职）。
- * 跨周期同日（DEC-077 保留部分）也由此得到“结束周期类在前、开新周期类在后”：入职类业务要求当日已有的
- * 最后一条是离职 / 退休（write-service 的 assertBusinessSequence），因此新周期总是追加在旧周期结束之后。
+ * 操作先后键（DEC-108；PR #53 第二轮 P2-2）：申请取最近一次提交的状态事件序号（原站提交即写入版本链，W-417），
+ * 直接业务取保存时的状态事件序号。正在落地的直接业务尚未写状态事件，键为空，视为最新一次操作。
  */
-async function appendOrder(tx: Tx, ctx: EmploymentContext, employeeId: string, date: string): Promise<number> {
-  const [row] = rowsOf<{ next: number }>(
-    await tx.execute(sql`
-    SELECT COALESCE(max(sort_order) + 1, 0)::int AS next FROM employment_timeline
-    WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND start_date=${date}::date
-  `),
-  );
-  return row?.next ?? 0;
+export function operationKey(tenantId: string, businessId: SQL): SQL {
+  return sql`(SELECT COALESCE(max(e.event_seq) FILTER (WHERE e.state = 'in_review'), min(e.event_seq))
+    FROM employment_state_events e WHERE e.tenant_id = ${tenantId} AND e.business_id = ${businessId})`;
 }
 
-async function neighbor(
+/** 新记录在时间轴上的位置；shifted 表示当日已有操作更晚的记录，新记录插在它们之前（它们依次后移一位）。 */
+export interface TimelinePosition {
+  readonly date: string;
+  readonly order: number;
+  readonly shifted: boolean;
+}
+
+/**
+ * 同一员工同一生效日按操作先后排序（DEC-108：当天最终状态取最后一次操作）：新记录排在当日第一条操作更晚的记录之前，
+ * 没有则追加在当日最后。直接业务落地时总是最新操作，因此只有“先提交、后落地”的申请会插到当日中间。
+ * 跨周期同日（DEC-077 保留部分）由入职类业务要求当日在前一条为离职 / 退休保证（write-service 的 assertBusinessSequence）。
+ */
+export async function timelinePosition(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
   date: string,
-  order: number,
-  previous: boolean,
-) {
-  const comparison = previous
-    ? sql`(start_date, sort_order) < (${date}::date, ${order})`
-    : sql`(start_date, sort_order) > (${date}::date, ${order})`;
+  recordId?: string,
+): Promise<TimelinePosition> {
+  const mine = recordId ? operationKey(ctx.tenantId, sql`${recordId}::uuid`) : sql`NULL::bigint`;
+  const [row] = rowsOf<{ before: number | null; append: number }>(
+    await tx.execute(sql`
+    SELECT
+      (SELECT min(t.sort_order) FROM employment_timeline t
+        WHERE t.tenant_id=${ctx.tenantId} AND t.employee_id=${employeeId}::uuid AND t.start_date=${date}::date
+          AND ${operationKey(ctx.tenantId, sql`t.record_id`)} > ${mine})::int AS before,
+      (SELECT COALESCE(max(sort_order) + 1, 0) FROM employment_timeline
+        WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND start_date=${date}::date)::int AS append
+  `),
+  );
+  const before = row?.before ?? null;
+  return before === null
+    ? { date, order: Number(row?.append ?? 0), shifted: false }
+    : { date, order: Number(before), shifted: true };
+}
+
+async function neighbor(tx: Tx, ctx: EmploymentContext, employeeId: string, comparison: SQL, previous: boolean) {
   const direction = previous ? sql`DESC` : sql`ASC`;
   const [point] = rowsOf<TimelinePoint>(
     await tx.execute(sql`
@@ -49,9 +70,36 @@ async function neighbor(
 
 async function neighbors(tx: Tx, ctx: EmploymentContext, employeeId: string, date: string, order: number) {
   return {
-    previous: await neighbor(tx, ctx, employeeId, date, order, true),
-    next: await neighbor(tx, ctx, employeeId, date, order, false),
+    previous: await neighbor(tx, ctx, employeeId, sql`(start_date, sort_order) < (${date}::date, ${order})`, true),
+    next: await neighbor(tx, ctx, employeeId, sql`(start_date, sort_order) > (${date}::date, ${order})`, false),
   };
+}
+
+/** 新记录插入位置前后的记录：插到当日中间时，位置上现有的那条（随后后移）就是下一条。 */
+async function neighborsAt(tx: Tx, ctx: EmploymentContext, employeeId: string, position: TimelinePosition) {
+  const { date, order, shifted } = position;
+  const after = shifted ? sql`>=` : sql`>`;
+  return {
+    previous: await neighbor(tx, ctx, employeeId, sql`(start_date, sort_order) < (${date}::date, ${order})`, true),
+    next: await neighbor(tx, ctx, employeeId, sql`(start_date, sort_order) ${after} (${date}::date, ${order})`, false),
+  };
+}
+
+/**
+ * 当日操作更晚的记录依次后移一位，给新记录腾出位置。投影只允许改区间（触发器），故删除后按原值重插、只改顺序号；
+ * 不重叠与连续覆盖为延迟约束，事务提交时校验；当日顺序唯一约束因先删后插不会冲突。
+ */
+async function shiftSameDay(tx: Tx, ctx: EmploymentContext, employeeId: string, position: TimelinePosition) {
+  await tx.execute(sql`
+    WITH moved AS (
+      DELETE FROM employment_timeline WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid
+        AND start_date=${position.date}::date AND sort_order >= ${position.order}
+      RETURNING tenant_id, employee_id, record_id, staff_id, sort_order, start_date, valid_during, created_at
+    )
+    INSERT INTO employment_timeline
+      (tenant_id, employee_id, record_id, staff_id, sort_order, start_date, valid_during, created_at)
+    SELECT tenant_id, employee_id, record_id, staff_id, sort_order + 1, start_date, valid_during, created_at FROM moved
+  `);
 }
 
 export async function insertEmploymentTimeline(
@@ -62,18 +110,19 @@ export async function insertEmploymentTimeline(
   staffId: string,
   effectiveDate: string,
 ): Promise<{ previousRecordId: string | null; isInserted: boolean }> {
-  const sortOrder = await appendOrder(tx, ctx, employeeId, effectiveDate);
-  const { previous, next } = await neighbors(tx, ctx, employeeId, effectiveDate, sortOrder);
+  const position = await timelinePosition(tx, ctx, employeeId, effectiveDate, recordId);
+  const { previous, next } = await neighborsAt(tx, ctx, employeeId, position);
   // 同日在前的记录区间收缩为空：它仍在版本链上（变更前取它），但当天不再是当前任职。
   if (previous)
     await tx.execute(sql`
     UPDATE employment_timeline SET valid_during=daterange(start_date, ${effectiveDate}::date, '[)')
     WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND record_id=${previous.recordId}::uuid
   `);
+  if (position.shifted) await shiftSameDay(tx, ctx, employeeId, position);
   await tx.execute(sql`
     INSERT INTO employment_timeline
       (tenant_id,employee_id,record_id,staff_id,sort_order,start_date,valid_during,created_at)
-    VALUES (${ctx.tenantId}::uuid,${employeeId}::uuid,${recordId}::uuid,${staffId}::uuid,${sortOrder},
+    VALUES (${ctx.tenantId}::uuid,${employeeId}::uuid,${recordId}::uuid,${staffId}::uuid,${position.order},
       ${effectiveDate}::date,daterange(${effectiveDate}::date,${next?.startDate ?? null}::date,'[)'),
       ${ctx.now.toISOString()}::timestamptz)
   `);
@@ -81,9 +130,15 @@ export async function insertEmploymentTimeline(
   return { previousRecordId: previous?.recordId ?? null, isInserted: !!next };
 }
 
-/** 新记录将追加到的位置（生效日 + 当日最后）前后的记录；调用方已持员工锁。 */
-export async function employmentTimelineNeighbors(tx: Tx, ctx: EmploymentContext, employeeId: string, date: string) {
-  return neighbors(tx, ctx, employeeId, date, await appendOrder(tx, ctx, employeeId, date));
+/** 新记录将插入的位置前后的记录（不给 recordId 时按当日最后）；调用方已持员工锁。 */
+export async function employmentTimelineNeighbors(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  date: string,
+  recordId?: string,
+) {
+  return neighborsAt(tx, ctx, employeeId, await timelinePosition(tx, ctx, employeeId, date, recordId));
 }
 
 export async function removeLatestEmploymentTimeline(
