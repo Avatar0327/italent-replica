@@ -7,7 +7,14 @@ import { applyPositionPersonnelRules, unavailableJobPersonnel } from './personne
 import { latestJobObject, loadJobObject, type JobRecord } from './read-model.js';
 import { lockJobTenant } from './settings.js';
 import { auditJob, insertRow, rowsOf } from './store.js';
-import type { JobFields, JobInput, JobPatch, JobPersonnelGateway, JobWriteContext } from './types.js';
+import type {
+  JobFields,
+  JobInput,
+  JobPatch,
+  JobPersonnelGateway,
+  JobWriteContext,
+  ManagerSyncResult,
+} from './types.js';
 import { assertJobCodeAvailable, assertPositionNameAvailable, positionBoundaries } from './uniqueness.js';
 import { invalid, treeFields, validateJobFields } from './validation.js';
 
@@ -53,14 +60,17 @@ export async function updateJobObject(
   await lockJobTenant(tx, ctx);
   const current = await lockObject(tx, ctx, kind, id);
   assertRevision(ctx.expectedRevision, current.revision);
-  const effectiveDate = parsed.data.effectiveDate;
+  const { adjustEmployeeDirectManager = false, ...changes } = parsed.data as JobPatch;
+  const effectiveDate = changes.effectiveDate;
   assertTemporalOrder(current, effectiveDate);
-  const input = mergeInput(kind, current, parsed.data, effectiveDate);
+  const input = mergeInput(kind, current, changes, effectiveDate);
   const fields = await validateJobFields(tx, ctx, kind, id, normalizeFields(ctx, kind, input));
   await assertJobCodeAvailable(tx, ctx, kind, fields, id);
+  let managerSync: ManagerSyncResult | undefined;
   if (kind === 'positions') {
     await assertPositionNameAvailable(tx, ctx, fields, id);
-    await applyPositionPersonnelRules(tx, ctx, current, fields, personnel);
+    const options = { adjustEmployeeDirectManager };
+    managerSync = await applyPositionPersonnelRules(tx, ctx, current, fields, options, personnel);
   }
   await updateRevision(tx, ctx, kind, id, current.revision + 1);
   const saved = await appendVersion(tx, ctx, kind, id, current.revision + 1, fields, current.versionId);
@@ -69,7 +79,7 @@ export async function updateJobObject(
   if ((kind === 'sequences' || kind === 'professional-lines') && fields.parentId !== current.parentId) {
     await synchronizeDescendantTrees(tx, ctx, kind, id, effectiveDate);
   }
-  return saved;
+  return managerSync ? { ...saved, managerSync } : saved;
 }
 
 export function assertTemporalOrder(current: { startDate: string }, effectiveDate: string): void {
