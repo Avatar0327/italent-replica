@@ -27,15 +27,38 @@ import { cmd, seedTenantWithMember, tenantApi, type RequestOptions } from './sup
 export const APV_TODAY = '2026-10-01';
 const BASE = '/api/tenant/approval';
 
+export type ApproverExpressionInput =
+  | 'owner'
+  | 'latest_record_department_head'
+  | 'record_department_head'
+  | 'record_department_hrbp'
+  | 'record_first_level_org_head';
+
+export interface ExitRuleInput {
+  readonly kind: 'count' | 'percent';
+  readonly value: number;
+}
+
+export interface TransitionRuleInput {
+  readonly type: 'any' | 'all' | 'custom';
+  readonly rules?: { readonly approve?: ExitRuleInput; readonly disagree?: ExitRuleInput };
+}
+
 export interface NodeInput {
   readonly key: string;
   readonly name?: string;
-  readonly approver:
-    | 'owner'
-    | 'latest_record_department_head'
-    | 'record_department_head'
-    | 'record_department_hrbp'
-    | 'record_first_level_org_head';
+  /** F-003：节点类型，缺省为单人审批。 */
+  readonly kind?: 'single' | 'countersign';
+  /** 单人审批节点的审批人。 */
+  readonly approver?: ApproverExpressionInput;
+  /** F-003：会签节点的审批人（多人同时审批、无先后）。 */
+  readonly approvers?: readonly ApproverExpressionInput[];
+  /**
+   * F-003 / DEC-144：会签流转规则——任一人同意即可（缺省）/ 需所有人同意 / 自定义审批方式（按出口动作设整数或百分比）。
+   */
+  readonly transitionRule?: TransitionRuleInput;
+  /** F-003：节点出口动作（同意 / 不同意），缺省只有同意；驳回是节点动作，不在其中（DEC-144）。 */
+  readonly exits?: readonly ('approve' | 'disagree')[];
   readonly noAssignee?: 'exception_admin' | 'skip' | 'approve';
   readonly sameAssigneeSkip?: boolean;
   readonly historySameAssigneeSkip?: boolean;
@@ -118,9 +141,15 @@ export interface TaskView {
   readonly isExceptionAdmin: boolean;
   readonly adminSelfTransfer: boolean;
   readonly comment: string | null;
+  readonly round?: number;
+  readonly parentTaskId?: string | null;
+  readonly candidateUserId?: string | null;
+  /** F-003：节点本次激活（会签结算范围）。 */
+  readonly activationId?: string | null;
 }
 
 export interface LogView {
+  readonly taskId?: string | null;
   readonly event: string;
   readonly nodeKey: string | null;
   readonly actorUserId: string | null;
@@ -370,7 +399,7 @@ export async function approvalWorld(db: Db, label: string, fixed: FixedIds = {})
   function taskAction(
     actor: string,
     task: string,
-    action: 'approve' | 'reject' | 'transfer' | 'add-sign' | 'edit',
+    action: 'approve' | 'reject' | 'disagree' | 'transfer' | 'add-sign' | 'edit',
     revision: number,
     body: Record<string, unknown> = {},
   ) {
