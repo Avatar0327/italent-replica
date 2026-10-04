@@ -47,7 +47,15 @@ describe('移出租户：调用平台撤销成员流程', () => {
     expect(stale.status).toBe(409);
     const removed = await world.api.request('POST', path, { ...world.asAdmin, ifMatch: target.membershipRevision });
     expect(removed.status, await removed.clone().text()).toBe(200);
-    expect(await removed.json()).toMatchObject({ membershipStatus: 'revoked', employeeId: target.employeeId });
+    expect(await removed.json()).toEqual({
+      userId: target.userId,
+      membershipStatus: 'revoked',
+      membershipRevision: target.membershipRevision + 1,
+    });
+    expect(await getTenantUser(world, target.userId)).toMatchObject({
+      membershipStatus: 'revoked',
+      employeeId: target.employeeId,
+    });
 
     const events = await withTenant(testDb().db, world.tenant.id, (tx) =>
       tx.select().from(auditEvents).where(eq(auditEvents.action, 'tenant_membership.revoke')),
@@ -81,6 +89,34 @@ describe('移出租户：调用平台撤销成员流程', () => {
       ifMatch: 1,
     });
     expect(foreign.status).toBe(404);
+  });
+
+  it('astra P2-2：期间被其他命令改过后重放，仍返回首次结果（命令回执取自平台台账，不回查当前状态）', async () => {
+    const email = syntheticEmail('replay-external');
+    const register = () =>
+      world.api.request('POST', `${BASE}/users`, {
+        ...world.asAdmin,
+        body: { email, displayName: '外部顾问', userType: 'external', businessIdentity: '实施顾问' },
+      });
+    const external = (await (await register()).json()) as TenantUserBody;
+    const options = { ...world.asAdmin, ifMatch: external.membershipRevision, idempotencyKey: 'remove-replay-2' };
+    const path = `${BASE}/users/${external.userId}/remove`;
+    const first = await world.api.request('POST', path, options);
+    const receipt = {
+      userId: external.userId,
+      membershipStatus: 'revoked',
+      membershipRevision: external.membershipRevision + 1,
+    };
+    expect(await first.json()).toEqual(receipt);
+    // 新键：重新登记为外部用户，成员关系恢复有效
+    expect((await register()).status).toBe(201);
+    const replay = await world.api.request('POST', path, options);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(receipt);
+    expect(await getTenantUser(world, external.userId)).toMatchObject({
+      membershipStatus: 'active',
+      membershipRevision: external.membershipRevision + 2,
+    });
   });
 
   it('只有持「用户管理」能力的管理员可以移出（06 §7.1）：审计管理员 403', async () => {
@@ -130,7 +166,15 @@ describe('停用用户：调用平台全局停用流程', () => {
       body: { status: 'disabled' },
     });
     expect(disabled.status, await disabled.clone().text()).toBe(200);
-    expect(await disabled.json()).toMatchObject({ accountStatus: 'disabled', membershipStatus: 'active' });
+    expect(await disabled.json()).toEqual({
+      userId: user.userId,
+      accountStatus: 'disabled',
+      accountRevision: user.accountRevision + 1,
+    });
+    expect(await getTenantUser(world, user.userId)).toMatchObject({
+      accountStatus: 'disabled',
+      membershipStatus: 'active',
+    });
     expect((await hr.getEmployee(employee.id)).status).toBe('employed');
     // 租户侧发起的停用记入本租户审计（平台审计之外）
     const statusEvents = await withTenant(db, world.tenant.id, (tx) =>
@@ -145,6 +189,38 @@ describe('停用用户：调用平台全局停用流程', () => {
     });
     expect(reenabled.status).toBe(200);
     expect(await reenabled.json()).toMatchObject({ accountStatus: 'active' });
+  });
+
+  it('astra P2-2：停用 → 另一键启用 → 原样重放停用，返回首次的停用回执，账号保持启用', async () => {
+    const employee = await hr.employee('重放停用', syntheticEmail('replay-status'));
+    const user = (await listUsers(world)).find((u) => u.employeeId === employee.id)!;
+    const path = `${BASE}/users/${user.userId}/status`;
+    const disable = {
+      ...world.asAdmin,
+      ifMatch: user.accountRevision,
+      idempotencyKey: 'status-replay-k',
+      body: { status: 'disabled' },
+    };
+    const receipt = { userId: user.userId, accountStatus: 'disabled', accountRevision: user.accountRevision + 1 };
+    expect(await (await world.api.request('POST', path, disable)).json()).toEqual(receipt);
+    const enable = await world.api.request('POST', path, {
+      ...world.asAdmin,
+      ifMatch: user.accountRevision + 1,
+      idempotencyKey: 'status-replay-l',
+      body: { status: 'active' },
+    });
+    expect(await enable.json()).toEqual({
+      ...receipt,
+      accountStatus: 'active',
+      accountRevision: user.accountRevision + 2,
+    });
+    const replay = await world.api.request('POST', path, disable);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(receipt);
+    expect(await getTenantUser(world, user.userId)).toMatchObject({
+      accountStatus: 'active',
+      accountRevision: user.accountRevision + 2,
+    });
   });
 
   it('不能停用自己；旧账号 revision → 409', async () => {
