@@ -211,13 +211,14 @@ export async function trimEmploymentResponse(
           });
         result.before = allowed ? trim(field) : null;
         if (!allowed && Object.hasOwn(source, 'previousRecordId')) result.previousRecordId = null;
-      } else if (key === 'changes' && Array.isArray(field))
-        result.changes = field.map((change) => {
+      } else if ((key === 'changes' || key === 'wholeRecordSkips') && Array.isArray(field))
+        // DEC-120 的整条跳过提醒与 changes 同形，字段值同样按可见字段裁剪；reason 是协议元数据。
+        result[key] = field.map((change) => {
           const current = change as Record<string, unknown> & { fields?: { field: string }[] };
           return {
             ...Object.fromEntries(
-              Object.entries(current).filter(([key]) =>
-                key === 'businessId' ? viewable.has('id') : viewable.has(key),
+              Object.entries(current).filter(
+                ([key]) => key === 'reason' || (key === 'businessId' ? viewable.has('id') : viewable.has(key)),
               ),
             ),
             fields: current.fields?.filter((entry) => viewable.has(entry.field.replace(/^preset:/, ''))),

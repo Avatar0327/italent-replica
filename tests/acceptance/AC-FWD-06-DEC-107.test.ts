@@ -110,7 +110,7 @@ describe('AC-FWD-06 DEC-107 选了新职务而未传职务序列时由服务端�
   });
 
   it('草稿申请改选职务时重新带出序列；只改其他字段时保留已带出的序列', async () => {
-    const { session, employee, newPost, otherPost, newSequence, otherSequence, before } =
+    const { session, employee, jobs, newPost, otherPost, oldSequence, newSequence, otherSequence, before } =
       await sequenceFixture('fwd06-derive-draft');
     const draft = await session.business(
       employee.id,
@@ -135,10 +135,22 @@ describe('AC-FWD-06 DEC-107 选了新职务而未传职务序列时由服务端�
       body: { fields: { remarks: '只改备注' } },
     });
     expect(remarked.status).toBe(200);
+    const remarkedBusiness = (await remarked.json()) as EmploymentBusiness;
     expect((await stored(draft.id)).fields).toMatchObject({
       postId: otherPost.id,
       sequenceId: otherSequence.id,
       remarks: '只改备注',
+    });
+    // 改选未配置序列的职务（#42 待取证）：放弃按旧职务带出的序列，回到插入点前一条的序列
+    const unsequencedPost = await jobs.create('posts');
+    const unsequenced = await session.request('PATCH', `/businesses/${draft.id}`, {
+      ifMatch: remarkedBusiness.revision,
+      body: { fields: { postId: unsequencedPost.id } },
+    });
+    expect(unsequenced.status).toBe(200);
+    expect((await stored(draft.id)).fields).toMatchObject({
+      postId: unsequencedPost.id,
+      sequenceId: oldSequence.id,
     });
   });
 
