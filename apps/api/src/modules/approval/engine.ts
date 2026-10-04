@@ -28,11 +28,11 @@ import { candidates, conditionContext, evaluate, noProcessMessage, replicaMatch 
 import { applyMessageRules, notifyTodo } from './notifications.js';
 import {
   directManagerOf,
-  isActiveMember,
+  isUsableAccount,
   memo,
   personOfUser,
   resolveCandidate,
-  tenantAdminUser,
+  tenantAdminTakeover,
   userOfPerson,
   type RoutingSubject,
 } from './resolver.js';
@@ -59,10 +59,23 @@ export interface Run {
 }
 
 /**
+ * R4-2：操作人本人的成员行同样只“拿到或跳过”（isUsableAccount）——正在停用或已停用即拒绝本次操作，审批事务从不
+ * 等待成员行锁；拿到之后，停用方须等本事务结束才能锁住其成员行、开始接管扫描。系统接管（DEC-123，操作人是平台方）
+ * 不做此检查。
+ */
+async function assertActorUsable(tx: Tx, ctx: ApprovalContext): Promise<void> {
+  if (ctx.actorUserId !== undefined) return;
+  if (!(await isUsableAccount(tx, ctx.tenantId, ctx.userId))) {
+    throw approvalError('CONFLICT', 'APPROVAL_CONCURRENT_CONFLICT', '账号状态正在变更或已停用，请稍后重试');
+  }
+}
+
+/**
  * 锁序与业务入口一致：先按业务侧顺序锁员工 / 业务单，再锁实例（清单 11）；业务入口（提交、撤回、删除）
- * 也是先锁业务再经挂接端口锁实例，两条路径不会互相等待成环。
+ * 也是先锁业务再经挂接端口锁实例，两条路径不会互相等待成环。成员行锁只“拿到或跳过”，不参与排队（R4-2）。
  */
 export async function openRun(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<Run> {
+  await assertActorUsable(tx, ctx);
   const peek = await loadInstance(tx, ctx.tenantId, instanceId);
   const adapter = ADAPTERS[peek.businessType];
   await adapter.lock(tx, ctx, peek.businessId);
@@ -155,8 +168,8 @@ async function decide(tx: Tx, subject: RoutingSubject, node: ApprovalNode, facts
 const MECHANISMS = { same_skip: 'same', history_skip: 'history' } as const;
 
 /**
- * 实际接手异常任务的人：流程上的异常管理员已停用时由租户管理员接管（DEC-098）；接手人恰为发起人或异动本人时
- * 回避给其直线经理，不可用即拒绝本次提交 / 操作并提示调整流程（DEC-091）。
+ * 实际接手异常任务的人：流程上的异常管理员不可用（已停用、正在停用）时由租户管理员接管（DEC-098，回退人同样复核
+ * 审批资格，R4-4）；接手人恰为发起人或异动本人时回避给其直线经理，不可用即拒绝本次提交 / 操作并提示调整流程（DEC-091）。
  */
 export async function exceptionAdminFor(
   tx: Tx,
@@ -166,19 +179,28 @@ export async function exceptionAdminFor(
 ): Promise<{ userId: string; reason: string }> {
   const tenantId = run.ctx.tenantId;
   const configured = run.version.exceptionAdminUserId!;
-  const userId = (await isActiveMember(tx, tenantId, configured)) ? configured : await tenantAdminUser(tx, tenantId);
-  if (!userId) {
-    throw approvalError('CONFLICT', 'APPROVAL_EXCEPTION_ADMIN_UNAVAILABLE', '异常管理员已停用且租户没有可接管的管理员');
+  if (!(await isUsableAccount(tx, tenantId, configured))) {
+    const takeover = await tenantAdminTakeover(tx, subject, facts);
+    if (!takeover) {
+      throw approvalError(
+        'CONFLICT',
+        'APPROVAL_EXCEPTION_ADMIN_UNAVAILABLE',
+        '异常管理员已停用且租户没有可接管的管理员',
+      );
+    }
+    if (takeover.kind === 'unavailable') {
+      throw approvalError('CONFLICT', 'APPROVAL_EXCEPTION_ADMIN_SELF', submitBlockers(takeover)[0]!.message);
+    }
+    return { userId: takeover.userId, reason: `${takeover.reason}（原异常管理员已停用，由租户管理员接管）` };
   }
-  const admin: Candidate = { userId, personId: await personOfUser(tx, tenantId, userId) };
+  const admin: Candidate = { userId: configured, personId: await personOfUser(tx, tenantId, configured) };
   const manager = isSelf(admin, facts) ? await directManagerOf(tx, subject, admin) : undefined;
   const choice = avoidSelfExceptionAdmin(admin, facts, manager);
   if (choice.kind === 'unavailable') {
     // 提交预检与仿真共用 submitBlockers（F13）。
     throw approvalError('CONFLICT', 'APPROVAL_EXCEPTION_ADMIN_SELF', submitBlockers(choice)[0]!.message);
   }
-  const takeover = userId === configured ? '' : '（原异常管理员已停用，由租户管理员接管）';
-  return { userId: choice.userId, reason: choice.reason + takeover };
+  return { userId: choice.userId, reason: choice.reason };
 }
 
 /** 按实例当前状态计算路由事实（盲审转异常管理员、提交前预检共用）。 */
@@ -382,6 +404,7 @@ export interface StartRequest {
  * 也不再触发“流程发起”（DEC-103，`14` §11.8）。
  */
 export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: StartRequest): Promise<InstanceRow> {
+  await assertActorUsable(tx, ctx);
   const latest = await resumableInstanceOf(tx, ctx.tenantId, request.businessType, request.businessId);
   if (latest?.status === 'running') throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '该申请已在审批中');
   if (latest) return resume(tx, ctx, latest.id);

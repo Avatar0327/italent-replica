@@ -3,7 +3,14 @@
  * 组织的负责人、HRBP 是结构化人员引用（REQ-ORG-001 R4），人员再经账号绑定落到可审批的用户。
  */
 import { sql, type Tx } from '@italent/db';
-import type { ApproverExpression, Candidate } from '@italent/domain';
+import {
+  avoidSelfExceptionAdmin,
+  isSelf,
+  type ApproverExpression,
+  type Candidate,
+  type ExceptionAdminChoice,
+  type RoutingFacts,
+} from '@italent/domain';
 import { findCurrentRecord } from '../employment/read-model.js';
 import { rowsOf } from './context.js';
 
@@ -32,8 +39,9 @@ export function memo<T>(subject: Pick<RoutingSubject, 'cache'>, key: string, loa
 const NOBODY: Candidate = { personId: null, userId: null };
 
 /**
- * 人员的有效账号：账号绑定（Q-M0-30：用户与人员由管理员显式绑定）且成员关系有效。审批候选另要求离职未生效
- * （candidateOf）。解析到没有账号或账号已停用的人员按“审批人为空”处理（DEC-098）。
+ * 人员的有效账号：账号绑定（Q-M0-30：用户与人员由管理员显式绑定）、成员关系有效且全局账号未停用（R4-3）。
+ * 只用于识别（异动本人、通知接收人等）；审批候选另经 isEligibleApprover 复核并锁住成员行（candidateOf）。
+ * 解析到没有账号或账号已停用的人员按“审批人为空”处理（DEC-098）。
  * TODO(需取证 Q-M0-44)：在职但没有系统账号 / 账号已停用的人员被解析为审批人时原站怎么处理，未取证。
  */
 export async function userOfPerson(tx: Tx, tenantId: string, personId: string | null): Promise<string | null> {
@@ -41,31 +49,63 @@ export async function userOfPerson(tx: Tx, tenantId: string, personId: string | 
   const [row] = rowsOf<{ user_id: string }>(
     await tx.execute(sql`SELECT l.user_id FROM permission_user_person_links l
       JOIN tenant_memberships m ON m.tenant_id=l.tenant_id AND m.user_id=l.user_id AND m.status='active'
-      WHERE l.tenant_id=${tenantId} AND l.employee_id=${personId}::uuid LIMIT 1`),
+      WHERE l.tenant_id=${tenantId} AND l.employee_id=${personId}::uuid AND tenant_account_active(l.user_id)
+      LIMIT 1`),
   );
   return row?.user_id ?? null;
 }
 
-/** 本租户的有效成员（DEC-098：账号停用 / 撤销成员关系即不是可审批的人）。 */
-export async function isActiveMember(tx: Tx, tenantId: string, userId: string): Promise<boolean> {
+/**
+ * 可用账号（DEC-098、R4-2、R4-3）：本租户成员关系有效、全局账号未停用，并以 FOR KEY SHARE SKIP LOCKED 锁住其成员行。
+ * 成员停用（撤销成员关系 / 全局停用账号）先以 FOR UPDATE 锁住成员行，再逐单接管其在途待办；审批事务对别人的成员行
+ * 只“拿到或跳过”、从不等待——拿不到锁即视为正在停用、不可用。由此：
+ * - 审批方持有业务单 / 实例锁时不会等成员行锁，停用方只等业务单 / 实例锁，两者不成环；
+ * - 拿到锁的审批事务提交前，停用方锁不住成员行、开始不了接管扫描，提交后扫描能看到新派的待办并接管。
+ */
+export async function isUsableAccount(tx: Tx, tenantId: string, userId: string): Promise<boolean> {
   const [row] = rowsOf(
-    await tx.execute(sql`SELECT 1 FROM tenant_memberships
-      WHERE tenant_id=${tenantId} AND user_id=${userId}::uuid AND status='active'`),
+    await tx.execute(sql`SELECT 1 FROM tenant_memberships m
+      WHERE m.tenant_id=${tenantId} AND m.user_id=${userId}::uuid AND m.status='active'
+        AND tenant_account_active(m.user_id)
+      FOR KEY SHARE OF m SKIP LOCKED`),
   );
   return Boolean(row);
 }
 
-/** DEC-098：流程上的异常管理员已停用时，由租户管理员接管（取最早开通的有效租户管理员，确定性）。 */
-export async function tenantAdminUser(tx: Tx, tenantId: string, excludeUserId?: string): Promise<string | null> {
+/** 可接管的租户管理员候选（DEC-098）：最早开通的在前（确定性）；资格由调用方逐个复核（R4-4）。 */
+async function tenantAdminCandidates(tx: Tx, tenantId: string, excludeUserId?: string): Promise<string[]> {
   // 正在停用的成员在同一事务里仍是 active，接管人须排除他本人（DEC-123）。
   const exclude = excludeUserId ? sql`AND a.user_id<>${excludeUserId}::uuid` : sql``;
-  const [row] = rowsOf<{ user_id: string }>(
+  const rows = rowsOf<{ user_id: string }>(
     await tx.execute(sql`SELECT a.user_id FROM permission_admins a
       JOIN tenant_memberships m ON m.tenant_id=a.tenant_id AND m.user_id=a.user_id AND m.status='active'
       WHERE a.tenant_id=${tenantId} AND a.role='tenant_admin' AND a.status='active' ${exclude}
-      ORDER BY a.created_at,a.id LIMIT 1`),
+      ORDER BY a.created_at,a.id LIMIT 50`),
   );
-  return row?.user_id ?? null;
+  return rows.map((row) => row.user_id);
+}
+
+/**
+ * 由租户管理员接管异常任务（DEC-098、DEC-123）：按开通先后逐个复核审批资格（已离职 / 不可用的跳过，R4-4），
+ * 恰为发起人或异动本人的按 DEC-091 回避给其直线经理，回避后仍无人接替的继续找下一个。
+ * @returns 接手人；没有任何具备资格的租户管理员时为 null；有但都因本人回避不可用时为最后一个不可用原因
+ */
+export async function tenantAdminTakeover(
+  tx: Tx,
+  subject: RoutingSubject,
+  facts: Pick<RoutingFacts, 'initiatorUserId' | 'subjectEmployeeId' | 'subjectUserId' | 'chainUserIds'>,
+  excludeUserId?: string,
+): Promise<ExceptionAdminChoice | null> {
+  let blocked: ExceptionAdminChoice | null = null;
+  for (const userId of await tenantAdminCandidates(tx, subject.tenantId, excludeUserId)) {
+    if (!(await isEligibleApprover(tx, subject, userId))) continue;
+    const admin: Candidate = { userId, personId: await personOfUser(tx, subject.tenantId, userId) };
+    const manager = isSelf(admin, facts as RoutingFacts) ? await directManagerOf(tx, subject, admin) : undefined;
+    const choice = avoidSelfExceptionAdmin(admin, facts, manager);
+    if (choice.kind === 'assign') return choice;
+    blocked = choice;
+  }
+  return blocked;
 }
 
 export async function personOfUser(tx: Tx, tenantId: string, userId: string): Promise<string | null> {
@@ -94,16 +134,18 @@ function departed(tx: Tx, subject: EligibilityScope, personId: string): Promise<
 async function candidateOf(tx: Tx, subject: RoutingSubject, personId: string | null): Promise<Candidate> {
   if (!personId) return NOBODY;
   const userId = await userOfPerson(tx, subject.tenantId, personId);
-  return { personId, userId: userId && !(await departed(tx, subject, personId)) ? userId : null };
+  const usable = userId && (await isUsableAccount(tx, subject.tenantId, userId));
+  return { personId, userId: usable && !(await departed(tx, subject, personId)) ? userId : null };
 }
 
 /**
  * 可审批资格（与 candidateOf 同一口径）：账号有效，且绑定的人员离职未生效；没有绑定人员的账号只看成员关系。
  * 所有派出新任务的入口都按它复核——表达式解析、加签激活与回到原审批人（F8），以及普通转交、加签名单、
- * 管理员转交 / 改派、异常管理员交接（第四轮 N2）。离职前已有的待办不自动撤销，由管理员转交（`14` §11.7）。
+ * 管理员转交 / 改派、异常管理员交接（第四轮 N2）、停用接管的替代人与回退的租户管理员（R4-4）。
+ * 离职前已有的待办不自动撤销，由管理员转交（`14` §11.7）。
  */
 export async function isEligibleApprover(tx: Tx, subject: EligibilityScope, userId: string): Promise<boolean> {
-  if (!(await isActiveMember(tx, subject.tenantId, userId))) return false;
+  if (!(await isUsableAccount(tx, subject.tenantId, userId))) return false;
   const personId = await personOfUser(tx, subject.tenantId, userId);
   return !personId || !(await departed(tx, subject, personId));
 }

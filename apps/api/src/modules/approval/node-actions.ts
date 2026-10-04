@@ -5,9 +5,10 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { assertOpen, ok, openTask, type Outcome } from './actions.js';
-import { approvalError, assertRevision, auditApproval, rowsOf, type ApprovalContext } from './context.js';
+import { approvalError, assertRevision, auditApproval, type ApprovalContext } from './context.js';
 import { assertBusinessUnchanged, openRun, persistRun } from './engine.js';
 import { notifyCc } from './notifications.js';
+import { isUsableAccount } from './resolver.js';
 import { retrievableTask } from './rules.js';
 import { appendLog, cancelPending, insertTask, instanceOfTask, loadTasks } from './store.js';
 
@@ -23,12 +24,11 @@ export async function copySend(tx: Tx, ctx: ApprovalContext, input: CopySendInpu
   const { run, task, node } = scene;
   if (!node.actions.copySend) throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '本节点未开启抄送');
   const userIds = [...new Set(input.userIds)];
-  const members = rowsOf<{ user_id: string }>(
-    await tx.execute(sql`SELECT user_id FROM tenant_memberships WHERE tenant_id=${ctx.tenantId} AND status='active'
-      AND user_id=ANY(${`{${userIds.join(',')}}`}::uuid[])`),
-  );
-  if (members.length !== userIds.length)
-    throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '抄送对象必须是本租户有效成员');
+  // 抄送对象须是可用账号（成员关系有效、全局账号未停用、不在停用中，R4-2 / R4-3）。
+  for (const userId of userIds) {
+    if (!(await isUsableAccount(tx, ctx.tenantId, userId)))
+      throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '抄送对象必须是本租户有效成员');
+  }
   for (const userId of userIds) {
     await tx.execute(sql`INSERT INTO approval_instance_ccs
       (id,tenant_id,instance_id,node_key,task_id,user_id,comment,created_by,command_id,created_at)

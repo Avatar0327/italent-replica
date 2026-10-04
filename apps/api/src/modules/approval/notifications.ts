@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import type { ApprovalNode, MessageRule } from '@italent/domain';
 import type { ApprovalContext } from './context.js';
-import { userOfPerson } from './resolver.js';
+import { isUsableAccount, userOfPerson } from './resolver.js';
 import type { InstanceRow } from './store.js';
 
 interface Notice {
@@ -17,7 +17,12 @@ interface Notice {
   readonly taskId: string | null;
 }
 
+/**
+ * 接收人账号已停用或正在停用时不发（与“接收人无账号不发”同一口径，不伪造接收人）；判断时只“拿到或跳过”其成员行锁，
+ * 不在持有业务单 / 实例锁时等待（R4-2）。
+ */
 async function insertNotice(tx: Tx, ctx: ApprovalContext, instance: InstanceRow, notice: Notice): Promise<void> {
+  if (!(await isUsableAccount(tx, ctx.tenantId, notice.recipientUserId))) return;
   await tx.execute(sql`INSERT INTO approval_notifications
     (id,tenant_id,instance_id,task_id,recipient_user_id,kind,channel,template_code,command_id,created_at)
     VALUES (${randomUUID()},${ctx.tenantId},${instance.id}::uuid,${notice.taskId},${notice.recipientUserId}::uuid,

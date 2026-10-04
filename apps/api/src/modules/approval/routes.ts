@@ -72,7 +72,7 @@ import {
 } from './disclosure.js';
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
-import { handoverExceptionAdmin, takeOverOnDeactivation } from './handover.js';
+import { discloseHandover, handoverExceptionAdmin, takeOverOnDeactivation, type HandoverResult } from './handover.js';
 import { listAdminLogs, listInstances, listNotifications, listTodos } from './queries.js';
 import { simulateByObject, simulateProcess } from './simulation.js';
 import {
@@ -325,7 +325,11 @@ function registerTenantConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
       status: 200,
       body: await handoverExceptionAdmin(tx, context, handover, scopeSql),
     }));
-    return c.json(result.body as object, result.status);
+    // R4-1：幂等重放返回台账里的首次结果，其中的实例编号按调用者当前的范围重新裁剪（不重新执行交接）。
+    const body = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      discloseHandover(tx, ctx, result.body as HandoverResult, scopeSql),
+    );
+    return c.json(body, result.status);
   });
   router.post('/presets/install', async (c) => {
     const ctx = writeCtx(c, deps);

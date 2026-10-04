@@ -2,8 +2,9 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
-import { actorOf, auditApproval, rowsOf, type ApprovalContext, type Row } from './context.js';
+import { actorOf, approvalError, auditApproval, rowsOf, type ApprovalContext, type Row } from './context.js';
 import type { BusinessType } from './adapters.js';
+import { isUsableAccount } from './resolver.js';
 
 /**
  * DEC-101：历史任务与日志不设总量上限、分页读取；只限制同时在办的任务数与单次读取的批量。
@@ -203,8 +204,10 @@ async function auditTask(tx: Tx, ctx: ApprovalContext, action: string, taskId: s
 
 export async function insertTask(tx: Tx, ctx: ApprovalContext, instanceId: string, task: NewTask): Promise<string> {
   const id = randomUUID();
-  const actedAt = task.status === 'pending' || task.status === 'queued' ? null : ctx.now.toISOString();
+  const open = task.status === 'pending' || task.status === 'queued';
+  const actedAt = open ? null : ctx.now.toISOString();
   if (task.status === 'pending') await assertPendingRoom(tx, ctx.tenantId, instanceId);
+  if (open && task.assigneeUserId) await assertAssigneeUsable(tx, ctx, task.assigneeUserId);
   await auditTask(tx, ctx, 'approval.task.create', id, null, {
     instanceId,
     round: task.round,
@@ -226,6 +229,15 @@ export async function insertTask(tx: Tx, ctx: ApprovalContext, instanceId: strin
       ${ctx.now.toISOString()}
     FROM approval_tasks WHERE tenant_id=${ctx.tenantId} AND instance_id=${instanceId}::uuid`);
   return id;
+}
+
+/**
+ * R4-2：写入新待办前对接手人做最终资格复核（并锁住其成员行）。派单决策时已按 isEligibleApprover 选人，这里是兜底：
+ * 接手人此刻正在停用或已停用即拒绝本次操作，不让新待办落到不能处理它的人名下。
+ */
+async function assertAssigneeUsable(tx: Tx, ctx: ApprovalContext, userId: string): Promise<void> {
+  if (await isUsableAccount(tx, ctx.tenantId, userId)) return;
+  throw approvalError('CONFLICT', 'APPROVAL_ASSIGNEE_UNAVAILABLE', '接手人账号已停用或正在停用，请刷新后重试');
 }
 
 async function assertPendingRoom(tx: Tx, tenantId: string, instanceId: string): Promise<void> {

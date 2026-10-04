@@ -113,9 +113,19 @@ export interface UserStatusChange {
   readonly expectedRevision: number;
 }
 
+/**
+ * 全局停用账号同样要走成员停用的挂接点（R4-3）：在该用户仍是有效成员的每个租户里，先锁住成员行、再调用挂接点
+ * （与撤销成员关系同一协议，R4-2），挂接抛错即整笔停用回滚。
+ */
 export async function setUserStatus(db: Db, change: UserStatusChange, meta: PlatformCommandMeta): Promise<User> {
   return runPlatformCommand(db, meta, 'user.set_status', change, async (ctx) => {
     const [before] = await ctx.tx.select().from(users).where(eq(users.id, change.userId)).for('update');
+    if (before && before.revision !== change.expectedRevision) {
+      throw new RevisionConflictError('user', change.expectedRevision);
+    }
+    if (before?.status === 'active' && change.status === 'disabled' && membershipRevokeHook) {
+      await deactivateInTenants(ctx, change.userId, meta, membershipRevokeHook);
+    }
     const [row] = await ctx.tx
       .update(users)
       .set({ status: change.status, revision: change.expectedRevision + 1, updatedAt: sql`now()` })
@@ -147,6 +157,8 @@ export function revokeMembership(db: Db, change: MembershipChange, meta: Platfor
 export interface MembershipRevocation {
   readonly tenantId: string;
   readonly userId: string;
+  /** 撤销本租户成员关系，或全局停用账号（R4-3）。 */
+  readonly reason: 'membership_revoked' | 'user_disabled';
   /** 租户时区（业务日期按租户时区，DEC-056）。 */
   readonly timezone: string;
   readonly actorUserId: string | null;
@@ -154,8 +166,9 @@ export interface MembershipRevocation {
 }
 
 /**
- * 成员关系撤销前、同一事务内的挂接点：业务模块据此处理该成员名下的在途事务（R1-T07 审批中心：异常管理员停用时
- * 自动转派剩余异常待办，DEC-123）。在租户上下文内调用；挂接抛错即整笔撤销回滚。本包不依赖业务模块，由应用装配时注册。
+ * 成员停用前、同一事务内的挂接点：业务模块据此处理该成员名下的在途事务（R1-T07 审批中心：异常管理员停用时
+ * 自动转派剩余异常待办，DEC-123）。撤销成员关系与全局停用账号都会调用（R4-3）；调用时其成员行已被本事务
+ * FOR UPDATE 锁住（R4-2 串行协议）。在租户上下文内调用；挂接抛错即整笔回滚。本包不依赖业务模块，由应用装配时注册。
  */
 export type MembershipRevokeHook = (tx: Tx, revocation: MembershipRevocation) => Promise<void>;
 let membershipRevokeHook: MembershipRevokeHook | null = null;
@@ -174,20 +187,56 @@ async function changeMembership(
   return runPlatformCommand(db, meta, op, change, async (ctx) => {
     const timezone = status === 'revoked' ? await tenantTimezone(ctx.tx, change.tenantId) : null;
     return ctx.inTenant(change.tenantId, async () => {
-      const before = await findMembershipForUpdate(ctx, change);
+      const before = await findMembershipForUpdate(ctx, change, status);
       if ((before?.revision ?? 0) !== change.expectedRevision) {
         throw new RevisionConflictError('tenant_membership', change.expectedRevision);
       }
       if (!before && status === 'revoked') throw new RevisionConflictError('tenant_membership', 0);
       if (before?.status === 'active' && timezone !== null && membershipRevokeHook) {
         const { tenantId, userId } = change;
-        await membershipRevokeHook(ctx.tx, { tenantId, userId, timezone, ...meta });
+        await membershipRevokeHook(ctx.tx, { tenantId, userId, reason: 'membership_revoked', timezone, ...meta });
       }
       const after = before ? await updateMembership(ctx, before, status) : await insertMembership(ctx, change);
       await ctx.auditTenant(change.tenantId, audit(op, 'tenant_membership', after.id, snap(before), snap(after)));
       return after;
     });
   });
+}
+
+const TENANT_BATCH = 500;
+
+/**
+ * 平台角色不能跨租户读成员关系（RLS），按租户逐个切入、锁住该用户的有效成员行后调用挂接点。
+ * 停用是低频的平台操作；租户按编号分批读取，不一次读入全部租户。
+ */
+async function deactivateInTenants(
+  ctx: PlatformCommandContext,
+  userId: string,
+  meta: PlatformCommandMeta,
+  hook: MembershipRevokeHook,
+) {
+  let after: string | null = null;
+  for (;;) {
+    const page: { id: string; timezone: string }[] = await ctx.tx
+      .select({ id: tenants.id, timezone: tenants.timezone })
+      .from(tenants)
+      .where(after ? sql`${tenants.id} > ${after}` : sql`true`)
+      .orderBy(tenants.id)
+      .limit(TENANT_BATCH);
+    for (const tenant of page) {
+      await ctx.inTenant(tenant.id, async (tx) => {
+        const [member] = await tx
+          .select({ id: tenantMemberships.id })
+          .from(tenantMemberships)
+          .where(and(eq(tenantMemberships.userId, userId), eq(tenantMemberships.status, 'active')))
+          .for('update');
+        if (member)
+          await hook(tx, { tenantId: tenant.id, userId, reason: 'user_disabled', timezone: tenant.timezone, ...meta });
+      });
+    }
+    if (page.length < TENANT_BATCH) return;
+    after = page.at(-1)!.id;
+  }
 }
 
 /** 租户表只对平台角色开放：在切入租户上下文之前读取。 */
@@ -200,12 +249,20 @@ async function tenantTimezone(tx: Tx, tenantId: string): Promise<string> {
 const snap = (m: TenantMembership | undefined) =>
   m ? { userId: m.userId, status: m.status, revision: m.revision } : null;
 
-async function findMembershipForUpdate(ctx: PlatformCommandContext, change: MembershipChange) {
+/**
+ * 撤销以 FOR UPDATE 锁成员行：业务模块的派单只以 FOR KEY SHARE SKIP LOCKED 试锁，拿不到即视为正在停用（R1-T07 R4-2）。
+ * 授予 / 重新激活不是停用，用 NO KEY UPDATE 串行化即可，不让派单把该成员误判为正在停用。
+ */
+async function findMembershipForUpdate(
+  ctx: PlatformCommandContext,
+  change: MembershipChange,
+  status: MembershipStatus,
+) {
   const [row] = await ctx.tx
     .select()
     .from(tenantMemberships)
     .where(and(eq(tenantMemberships.tenantId, change.tenantId), eq(tenantMemberships.userId, change.userId)))
-    .for('update');
+    .for(status === 'revoked' ? 'update' : 'no key update');
   return row;
 }
 

@@ -32,3 +32,19 @@ GRANT SELECT, INSERT ON "personnel_change_request_versions" TO app_user;
 SELECT enable_tenant_isolation('approval_exception_admin_successors');
 --> statement-breakpoint
 GRANT SELECT, INSERT, UPDATE ON "approval_exception_admin_successors" TO app_user;
+--> statement-breakpoint
+-- 第五轮 R4-3：审批资格要看全局账号状态（users.status），但应用角色 app_user 不能读平台用户表。
+-- 只回答“当前租户的这个成员，其全局账号是否有效”：不是本租户成员的用户一律 false，不能借此跨租户探测账号。
+-- 定义者权限只用于读 users；成员关系仍按当前租户过滤（非超级用户的属主同样受 RLS 约束）。
+CREATE FUNCTION tenant_account_active(target uuid) RETURNS boolean
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, pg_temp
+  AS $$
+    SELECT EXISTS (
+      SELECT 1 FROM users u JOIN tenant_memberships m ON m.user_id = u.id
+      WHERE u.id = target AND u.status = 'active' AND m.tenant_id = current_tenant_id()
+    )
+  $$;
+--> statement-breakpoint
+REVOKE EXECUTE ON FUNCTION tenant_account_active(uuid) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION tenant_account_active(uuid) TO app_user;
