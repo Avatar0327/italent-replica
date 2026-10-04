@@ -137,6 +137,27 @@ describe('AC-TRF-33 DEC-108 同日申请与直接业务混合的先后', () => {
     expect(records.filter((record) => record.isCurrent)).toEqual([expect.objectContaining({ id: b.id })]);
   });
 
+  it('暂定口径：同日较早提交、尚未落地的申请 A 不接受之后保存的直接业务 B 的向后更新', async () => {
+    const { w, employee, hire, direct } = await scene('trf33-no-forward-to-earlier');
+    const a = await w.approve(await w.apply(employee.id, '2026-10-05', { place: 'A 地点' }), '2026-10-02T02:00:00Z');
+    expect((await w.business(a.id)).fields).toMatchObject({ departmentId: w.from.id });
+    const b = await direct({ departmentId: w.to.id });
+    // A 按操作先后排在 B 之前（落地时插在 B 前），B 的变更不向它传播：A 的载荷不变、没有向后更新事件。
+    expect((await w.business(a.id)).fields).toMatchObject({ departmentId: w.from.id, place: 'A 地点' });
+    expect((await w.auditEvents(a.id)).map((event) => event.action)).not.toContain('employment.forward-update');
+
+    expect((await w.runScheduler('2026-10-04T17:15:00Z')).activated).toEqual([a.id]);
+    const records = await w.session.records(employee.id, '2026-10-05');
+    expect(records.map((record) => record.id)).toEqual([hire.record!.id, a.id, b.id]);
+    expect(await w.session.record(a.id, '2026-10-05')).toMatchObject({
+      fields: { departmentId: w.from.id, place: 'A 地点' },
+    });
+    expect(await w.session.record(b.id, '2026-10-05')).toMatchObject({
+      previousRecordId: a.id,
+      fields: { departmentId: w.to.id, place: 'A 地点' },
+    });
+  });
+
   it('审批通过时生效日已到（立即生效）也按提交先后插入：先提交 A、后保存 B、再审批 A，当前任职仍为 B', async () => {
     const { w, employee, hire, direct } = await scene('trf33-immediate-approval');
     const submitted = await w.apply(employee.id, '2026-10-05', { place: 'A 地点' });
