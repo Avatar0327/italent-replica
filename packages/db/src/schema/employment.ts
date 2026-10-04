@@ -30,7 +30,7 @@ import {
   jobSequenceObjects,
 } from './job.js';
 import { orgObjects } from './org.js';
-import { tenants } from './tenancy.js';
+import { tenants, users } from './tenancy.js';
 import { daterange } from './types.js';
 
 type CustomValues = Record<string, string | number | boolean | null>;
@@ -315,6 +315,10 @@ export const employmentStateEvents = pgTable(
         employmentPayloadVersions.id,
       ],
     }),
+    // R1-T08：定时任务只扫描审批通过的申请（再判断是否仍是最新状态），避免逐租户全表扫描
+    index('employment_state_events_approved')
+      .on(t.tenantId, t.businessId, t.eventNo)
+      .where(sql`${t.state} = 'approved'`),
     check('employment_state_events_number_positive', sql`${t.eventNo} > 0`),
     check(
       'employment_state_events_state',
@@ -602,5 +606,65 @@ export const employmentSettingVersions = pgTable(
     }),
     check('employment_setting_versions_positive', sql`${t.versionNo} > 0`),
     check('employment_setting_versions_not_self', sql`${t.previousVersionId} <> ${t.id}`),
+  ],
+);
+
+/**
+ * 定时生效尝试（R1-T08；DEC-052 失败分支、DEC-112 挂起）：只追加，一条记一次生效尝试的结果。
+ * 申请单仍停在「审批通过」（DEC-125），本表不替代状态事件：failed 次数 = outcome='failed' 的条数，
+ * 生效失败待办 = 仍为审批通过且最近一次尝试为 failed；suspended 记“因前序业务失败挂起”及挂在哪一条之后。
+ */
+export const employmentActivationAttempts = pgTable(
+  'employment_activation_attempts',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employeeId: uuid('employee_id').notNull(),
+    businessId: uuid('business_id').notNull(),
+    attemptNo: integer('attempt_no').notNull(),
+    outcome: text('outcome').notNull(),
+    reason: text('reason'),
+    detail: jsonb('detail').$type<Record<string, unknown>>().notNull().default({}),
+    blockedByBusinessId: uuid('blocked_by_business_id'),
+    // 尝试当天的租户业务日（DEC-056）；created_at 是 UTC 瞬时
+    businessDate: day('business_date').notNull(),
+    trigger: text('trigger').notNull(),
+    // 定时任务为空（系统），HR 重试为操作人
+    actorUserId: uuid('actor_user_id').references(() => users.id),
+    commandId: text('command_id').notNull(),
+    createdAt: utc(),
+  },
+  (t) => [
+    unique('employment_activation_attempts_tenant_id').on(t.tenantId, t.id),
+    unique('employment_activation_attempts_number').on(t.tenantId, t.businessId, t.attemptNo),
+    foreignKey({
+      name: 'employment_activation_attempts_business_fk',
+      columns: [t.tenantId, t.employeeId, t.businessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
+    foreignKey({
+      name: 'employment_activation_attempts_blocked_by_fk',
+      columns: [t.tenantId, t.employeeId, t.blockedByBusinessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
+    index('employment_activation_attempts_employee').on(t.tenantId, t.employeeId, t.businessId),
+    check('employment_activation_attempts_number_positive', sql`${t.attemptNo} > 0`),
+    check('employment_activation_attempts_outcome', sql`${t.outcome} IN ('effective', 'failed', 'suspended')`),
+    check(
+      'employment_activation_attempts_reason',
+      sql`(${t.outcome} = 'effective') = (${t.reason} IS NULL)
+        AND (${t.outcome} = 'suspended') = (${t.blockedByBusinessId} IS NOT NULL)`,
+    ),
+    check('employment_activation_attempts_trigger', sql`${t.trigger} IN ('scheduler', 'retry', 'approval')`),
+    check('employment_activation_attempts_detail_object', sql`jsonb_typeof(${t.detail}) = 'object'`),
+    check('employment_activation_attempts_command_nonempty', sql`btrim(${t.commandId}) <> ''`),
   ],
 );

@@ -4,6 +4,12 @@ import { sql, type Db, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { runCommand, type CommandResult } from '../../commands.js';
 import { AppError } from '../../errors.js';
+import {
+  activationPredecessors,
+  failedPredecessor,
+  PREDECESSOR_FAILED,
+  recordActivationAttempt,
+} from './activation-store.js';
 import { auditEmployment } from './context.js';
 import { EmploymentError } from './errors.js';
 import { loadEmploymentRecord } from './read-model.js';
@@ -30,7 +36,7 @@ export interface EmploymentTransitionInput {
   readonly action: (typeof ACTIONS)[number];
 }
 
-/** 可信审批 / 定时任务调用入口；审批动作只经审批中心（R1-T07），生效到期由 R1-T08 调度。 */
+/** 可信审批 / 定时任务调用入口；审批动作只经审批中心（R1-T07），到期生效由 R1-T08 定时任务经 activate 端口落地。 */
 export async function runEmploymentTransition(
   db: Db,
   ctx: EmploymentContext,
@@ -68,16 +74,19 @@ export async function transitionEmployment(
   } else if (input.action === 'approve') {
     // R1-T07：只由审批中心在最后一个节点通过后同事务调用；审批通过 ≠ 生效，只有生效日已到才落地并向后更新。
     await appendEmploymentState(tx, ctx, business, 'approved');
-    if (tenantLocalDate(ctx.now, ctx.timezone) >= business.payload.effectiveDate) {
-      await materializeEmploymentRecord(tx, ctx, business);
-      await appendEmploymentState(tx, ctx, business, 'effective');
-    }
-    // TODO(R1-T08)：提前审批保持 approved；由租户时区的调度器通过 activate 端口落地。
+    await approveEmploymentBusiness(tx, ctx, business);
   } else if (input.action === 'activate') {
     if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) {
       throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
     }
-    // TODO(R1-T08)：调度器调用此端口；materialize 同事务执行向后更新。
+    // R1-T08：定时任务与 HR 重试经此端口按队列逐条落地（activation-service.ts）；前序未落地时不得越过它（DEC-108 / 112）。
+    const { before } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
+    if (before.length)
+      throw new AppError('CONFLICT', '前序待生效业务尚未生效', {
+        reason: 'ACTIVATION_PREDECESSOR_PENDING',
+        blockedByBusinessId: before[0]!.id,
+      });
+    // materialize 同事务完成向后更新、审计与 outbox。
     await materializeEmploymentRecord(tx, ctx, business);
     await appendEmploymentState(tx, ctx, business, 'effective');
   } else {
@@ -87,6 +96,32 @@ export async function transitionEmployment(
   // 一条命令只增加一次业务 revision；approve→effective 的两条状态事件不各自递增头版本。
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, business.id);
+}
+
+/**
+ * 审批通过日已到生效日则立即生效（AC-TRF-05）；未到则停在「审批通过」，只存申请单（DEC-125），由 R1-T08 定时任务
+ * 到期落地（AC-TRF-06）。同员工排在它前面的待生效业务尚未落地时也不立即生效，交给定时任务按序处理（DEC-108）；
+ * 前序生效失败未修正时记“因前序业务失败挂起”（DEC-112）。
+ */
+async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
+  if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) return;
+  const { item, before } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
+  if (!before.length) {
+    await materializeEmploymentRecord(tx, ctx, business);
+    await appendEmploymentState(tx, ctx, business, 'effective');
+    return;
+  }
+  const blocker = failedPredecessor(before);
+  if (item && blocker) {
+    // 本命令结束时统一递增一次业务 revision，挂起记录不另行递增。
+    await recordActivationAttempt(
+      tx,
+      ctx,
+      item,
+      { outcome: 'suspended', trigger: 'approval', reason: PREDECESSOR_FAILED, blockedBy: blocker.id },
+      { bumpRevision: false },
+    );
+  }
 }
 
 function assertTransition(business: LockedEmploymentBusiness, action: EmploymentTransitionInput['action']): void {

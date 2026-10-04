@@ -83,6 +83,7 @@ export async function readTenure(tx: Tx, ctx: PersonnelContext, employeeId: stri
     ORDER BY t.start_date LIMIT 2001`),
   );
   if (intervals.length > 2000) throw new AppError('PAYLOAD_TOO_LARGE', '任职区间超过单次计算上限');
-  // TODO(R1-T08)：调度器按租户业务日期调用此计算；当前按需读取，不伪称已每日刷新。
+  // R1-T08 / DEC-056：任职时长不落库，每次读取按调用方给出的租户业务日即时计算，不由定时生效调度器驱动；
+  // 定时任务落地的任职记录在提交后立即进入此计算，不存在“当天尚未刷新”的窗口。
   return computeTenure(intervals, asOf);
 }

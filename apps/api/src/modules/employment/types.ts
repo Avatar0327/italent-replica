@@ -1,5 +1,6 @@
 import type { Authorizer } from '../../authorization.js';
 import type { resolveModuleScope } from '../permission/module-access.js';
+import type { ActivationSummary } from './activation-store.js';
 export const BUSINESS_KINDS = [
   'hire',
   'rehire',
@@ -152,6 +153,8 @@ export interface EmploymentBusiness {
   readonly fields: PresetFields;
   readonly customFields: CustomFields;
   readonly record: EmploymentRecord | null;
+  /** R1-T08 生效结果（DEC-052 / DEC-112）：审批通过的申请与经定时任务 / 重试生效的业务才有。 */
+  readonly activation: ActivationSummary | null;
 }
 
 export interface PageQuery {

@@ -20,14 +20,13 @@ export interface ActivationView {
 
 export type ActivationBusiness = EmploymentBusiness & { readonly activation: ActivationView | null };
 
+/** 生效失败待办：业务单标识 + 生效结果（与业务详情的 activation 同形）。 */
 export interface ActivationTodo {
-  readonly businessId: string;
+  readonly id: string;
   readonly employeeId: string;
   readonly kind: string;
   readonly effectiveDate: string;
-  readonly failureCount: number;
-  readonly failureReason: string;
-  readonly failedAt: string;
+  readonly activation: ActivationView;
 }
 
 export async function activationWorld(

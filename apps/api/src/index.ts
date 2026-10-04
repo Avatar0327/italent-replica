@@ -21,3 +21,17 @@ export {
   requireObjectWrite,
   setLicenseQuota,
 } from './modules/permission/index.js';
+// R1-T08 定时生效：平台路径的运维 / 调度入口；编制校验端口由编制↔任职人员桥接入（R1-T09）
+export {
+  type EmploymentActivationRun,
+  type EmploymentActivationRunInput,
+  type EmploymentActivationRunResult,
+  type EmploymentActivationScheduler,
+  runEmploymentActivations,
+  startEmploymentActivationScheduler,
+} from './modules/employment/activation-scheduler.js';
+export {
+  type ActivationTarget,
+  type EmploymentActivationChecks,
+  registerEmploymentActivationChecks,
+} from './modules/employment/activation-checks.js';

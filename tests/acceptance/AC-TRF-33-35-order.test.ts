@@ -66,7 +66,7 @@ describe('AC-TRF-35 DEC-112 前序业务生效失败时其后业务挂起', () =
     // 挂起不重复记：再跑一次没有新的挂起。
     expect((await w.runScheduler('2026-10-09T17:30:00Z')).suspended).toEqual([]);
     // 待办只针对失败的那一条；被挂起的业务随前序修正后自动续上。
-    expect((await w.todos()).map((todo) => todo.businessId)).toEqual([a.id]);
+    expect((await w.todos()).map((todo) => todo.id)).toEqual([a.id]);
 
     fullDepartments.delete(w.to.id);
     const retried = await w.retry(a, '2026-10-11T02:00:00Z');

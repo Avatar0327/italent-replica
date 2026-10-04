@@ -1,6 +1,7 @@
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
+import { activationSummary } from './activation-store.js';
 import { employmentScopePredicate, employmentCreator } from './context.js';
 import {
   PRESET_FIELD_NAMES,
@@ -202,6 +203,7 @@ export async function loadEmploymentBusiness(
   );
   if (!row) return null;
   const effectiveRecord = await loadEmploymentRecord(tx, tenantId, id, asOf, scope);
+  const activation = await activationSummary(tx, tenantId, id, String(row.state));
   return {
     id,
     employeeId: String(row.employee_id),
@@ -215,5 +217,6 @@ export async function loadEmploymentBusiness(
     fields: effectiveRecord?.fields ?? snapshotFields(row),
     customFields: effectiveRecord?.customFields ?? (row.custom_fields as CustomFields),
     record: effectiveRecord,
+    activation,
   };
 }

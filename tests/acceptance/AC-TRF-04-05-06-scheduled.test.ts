@@ -4,6 +4,7 @@
  * AC-TRF-06 审批通过日 < 调动日：申请单停在「审批通过」、版本链不新增记录（DEC-125），
  * 到调动日由定时任务新增生效记录、前一条止于前一天，审计操作人记为空（系统）。
  */
+import { startEmploymentActivationScheduler } from '@italent/api';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { activationWorld } from './AC-TRF-activation-support.js';
@@ -89,6 +90,24 @@ describe('AC-TRF-04/05/06 审批通过 ≠ 生效，到期由定时任务落地'
     expect(removed.status).toBe(200);
     expect((await w.runScheduler('2026-10-04T17:15:00Z')).activated).toEqual([]);
     expect(await w.session.records(employee.id, '2026-10-05')).toHaveLength(1);
+  });
+
+  it('进程内调度：启动即运行当前时间槽，同一时间槽重复启动（多实例）不重复生效，stop 等本轮结束', async () => {
+    const w = await activationWorld(testDb().db, 'trf06-process');
+    const { employee } = await w.hired();
+    const approved = await w.approve(
+      await w.apply(employee.id, '2026-10-05', { departmentId: w.to.id }),
+      '2026-10-02T02:00:00Z',
+    );
+    const errors: unknown[] = [];
+    const options = { intervalMs: 3_600_000, clock: () => new Date('2026-10-04T17:15:00Z') };
+    const first = startEmploymentActivationScheduler(w.db, { ...options, onError: (error) => errors.push(error) });
+    const second = startEmploymentActivationScheduler(w.db, { ...options, onError: (error) => errors.push(error) });
+    await Promise.all([first.stop(), second.stop()]);
+    expect(errors).toEqual([]);
+    expect(await w.business(approved.id)).toMatchObject({ status: 'effective' });
+    expect(await w.session.records(employee.id, '2026-10-05')).toHaveLength(2);
+    expect(() => startEmploymentActivationScheduler(w.db, { intervalMs: 0 })).toThrow(RangeError);
   });
 
   it('单次处理量有界：limit 1 只处理一名员工并返回续跑游标，续跑处理剩余员工', async () => {

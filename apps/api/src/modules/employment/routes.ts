@@ -37,7 +37,9 @@ import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentIm
 import { editEmploymentRecord } from './record-edit.js';
 import { prepareInheritance, inheritancePreview } from './inheritance.js';
 import { listEmploymentRecords, loadEmploymentBusiness, loadEmploymentRecord } from './read-model.js';
-import { createEmploymentBusiness, updateEmploymentBusiness } from './write-service.js';
+import { createEmploymentBusiness, requireSavedBusiness, updateEmploymentBusiness } from './write-service.js';
+import { retryActivation } from './activation-service.js';
+import { listActivationTodos } from './activation-store.js';
 import { transitionEmployment } from './transitions.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import type { EmploymentContext } from './types.js';
@@ -54,6 +56,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerEmployeeRecords(module, deps);
   registerInheritancePreview(module, deps);
   registerBusinesses(module, deps);
+  registerActivation(module, deps);
   registerForwardUpdates(module, deps);
   registerSettings(module, deps);
   registerCustomFields(module, deps);
@@ -232,6 +235,34 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       },
     );
   }
+}
+
+/** R1-T08：生效失败待办与 HR 重试（DEC-052 / DEC-112）；定时任务本身只经平台路径运行，租户接口上没有触发入口。 */
+function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get('/activation-todos', async (c) => {
+    const ctx = await readPageContext(c, deps, 'list');
+    const page = pageQuery(c);
+    const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      listActivationTodos(tx, ctx.tenantId, page, ctx.scope),
+    );
+    return c.json({
+      items: await trimEmploymentResponse(deps, ctx, items),
+      page: page.page,
+      pageSize: page.pageSize,
+      hasDataPermission: ctx.scope?.hasDataPermission ?? true,
+    });
+  });
+  router.post('/businesses/:id/activation/retry', async (c) => {
+    const id = uuidParam(c);
+    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    await emptySubmitBody(c);
+    await requireEmploymentWrite(ctx, 'update', {}, 'Employment.RetryActivation');
+    const current = await authorizeBusinessWrite(deps, ctx, id);
+    return runWrite(c, deps, ctx, { id, action: 'retry-activation' }, async (tx, context) => {
+      await retryActivation(tx, context, id, current.employeeId);
+      return { status: 200, body: await requireSavedBusiness(tx, context, id) };
+    });
+  });
 }
 
 /** 提交不接受客户端参数：流程编码由审批中心按业务派生（PR #35 第二轮清单 14），带任何字段一律 400。 */

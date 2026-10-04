@@ -7,6 +7,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { registerEmploymentActivationChecks } from '@italent/api';
+import { desc, eq, jobPositionVersions, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { errorCode, tenantApi } from './support/tenant-api.js';
@@ -50,11 +51,11 @@ describe('AC-TRF-31 DEC-052 定时生效失败、HR 待办与重试', () => {
     expect(await w.session.records(employee.id, '2026-10-05')).toHaveLength(2);
     expect(await w.todos()).toEqual([
       expect.objectContaining({
-        businessId: approved.id,
+        id: approved.id,
         employeeId: employee.id,
-        failureCount: 1,
-        failureReason: 'ESTABLISHMENT_EXCEEDED',
+        kind: 'transfer',
         effectiveDate: '2026-10-05',
+        activation: expect.objectContaining({ failureCount: 1, failureReason: 'ESTABLISHMENT_EXCEEDED' }),
       }),
     ]);
     // 失败与业务同事务留痕：审计 + outbox（通知消费者据此推送“生效失败”待办）。
@@ -143,6 +144,59 @@ describe('AC-TRF-31 DEC-052 定时生效失败、HR 待办与重试', () => {
     const retried = await w.retry(approved, '2026-10-05T03:00:00Z');
     expect(retried.status).toBe(200);
     expect(await retried.json()).toMatchObject({ status: 'effective', record: { fields: { departmentId: w.to.id } } });
+  });
+
+  it('目标职位在生效日已停用：failed 原因为目标职位停用，联动不执行', async () => {
+    const w = await activationWorld(testDb().db, 'trf31-position-disabled');
+    const raw = tenantApi(w.db);
+    const job = (method: string, path: string, revision: number, body: Record<string, unknown>) =>
+      raw.request(method, `/api/tenant/job${path}`, {
+        user: w.session.user.id,
+        tenant: w.session.tenant.id,
+        ifMatch: revision,
+        body,
+      });
+    const code = () => `TRF31_${randomUUID().replaceAll('-', '')}`;
+    const post = await job('POST', '/posts', 0, { name: '调入职务', code: code(), startDate: '2026-01-01' });
+    expect(post.status).toBe(201);
+    const postId = ((await post.json()) as { id: string }).id;
+    const created = await job('POST', '/positions', 0, {
+      name: '调入职位',
+      code: code(),
+      startDate: '2026-01-01',
+      orgId: w.to.id,
+      postId,
+    });
+    expect(created.status).toBe(201);
+    const position = (await created.json()) as { id: string };
+    const { employee } = await w.hired();
+    const approved = await w.approve(
+      await w.apply(employee.id, '2026-10-05', { departmentId: w.to.id, positionId: position.id }),
+      '2026-10-02T02:00:00Z',
+    );
+    // 职位停用经在岗人员端口（Q-M0-15，R1-T09 接入）；此处以可信夹具追加 10-05 起停用的职位版本。
+    await withTenant(w.db, w.session.tenant.id, async (tx) => {
+      const [latest] = await tx
+        .select()
+        .from(jobPositionVersions)
+        .where(eq(jobPositionVersions.objectId, position.id))
+        .orderBy(desc(jobPositionVersions.versionNo))
+        .limit(1);
+      await tx.insert(jobPositionVersions).values({
+        ...latest!,
+        id: randomUUID(),
+        versionNo: latest!.versionNo + 1,
+        previousVersionId: latest!.id,
+        startDate: '2026-10-05',
+        enabled: false,
+      });
+    });
+    expect((await w.runScheduler('2026-10-04T17:15:00Z')).failed).toEqual([approved.id]);
+    expect(await w.business(approved.id)).toMatchObject({
+      status: 'approved',
+      activation: { status: 'failed', failureCount: 1, failureReason: 'TARGET_POSITION_DISABLED' },
+    });
+    expect(await w.session.records(employee.id, '2026-10-05')).toHaveLength(1);
   });
 
   it('重试只适用于生效失败或被挂起的申请：待生效、未到期的申请拒绝重试', async () => {
