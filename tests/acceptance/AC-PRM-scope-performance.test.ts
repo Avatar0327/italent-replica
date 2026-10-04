@@ -28,7 +28,7 @@ it('scope resolution + paginated list uses a fixed number of queries with thousa
   }
   const org = await create('org/organizations', {
     name: '范围根',
-    startDate: '2025-01-01',
+    establishedOn: '2025-01-01',
     parents: { admin: { parentId: w.tenant.id } },
   });
   const employee = await create('employment/employees', { code: randomUUID(), name: '合成员工' });

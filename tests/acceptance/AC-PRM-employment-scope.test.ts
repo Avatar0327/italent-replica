@@ -34,7 +34,11 @@ describe('AC-PRM-03/22/29 任职数据范围与字段裁剪', () => {
       return (await response.json()) as { id: string; revision: number; employeeRevision?: number };
     }
     const org = async (name: string) =>
-      create('org/organizations', { name, startDate: '2025-01-01', parents: { admin: { parentId: seed.tenant.id } } });
+      create('org/organizations', {
+        name,
+        establishedOn: '2025-01-01',
+        parents: { admin: { parentId: seed.tenant.id } },
+      });
     const inside = await org('管理内部门');
     const outside = await org('管理外部门');
     async function employee(previousDepartment: string, currentDepartment: string) {

@@ -79,7 +79,7 @@ async function world(db: Db, label: string) {
         'org/organizations',
         {
           name,
-          startDate: '2020-01-01',
+          establishedOn: '2020-01-01',
           parents: { admin: { parentId, ...(sequence === undefined ? {} : { sequence }) } },
         },
         0,
@@ -214,15 +214,39 @@ describe('DEC-089 组织排序号预计算', () => {
     const a = await w.org('A部门', undefined, 1);
     const b = await w.org('B部门', undefined, 2);
     const c = await w.org('C部门', a.id);
-    const ea = await w.employee('甲', { departmentId: a.id });
     const eb = await w.employee('乙', { departmentId: b.id });
-    const ec = await w.employee('丙', { departmentId: c.id });
+    // DEC-129：整支仍有在职人员时拒绝停用，接口只能停用空的整支，下级 C 同日级联停用。
     await w.updateOrg(a, { effectiveDate: TODAY, enabled: false });
     await w.assertRanks();
-    const items = await w.list();
-    expect(items.find((item) => item.id === ea)?.organizationSortNumber).toBeNull();
-    expect(items.find((item) => item.id === ec)?.organizationSortNumber).toBeNull();
-    expect(items.find((item) => item.id === eb)?.organizationSortNumber).toBe(2);
+    expect(await w.orgRank(a.id)).toBeNull();
+    expect(await w.orgRank(c.id)).toBeNull();
+    expect((await w.list()).find((item) => item.id === eb)?.organizationSortNumber).toBe(2);
+    await w.assertMatchesFullRecompute();
+  });
+
+  it('停用组织里仍挂着员工的存量 / 导入数据：这些员工没有组织名次', async () => {
+    const w = await world(database().db, 'rank-disable-legacy');
+    const a = await w.org('A部门', undefined, 1);
+    await w.org('B部门', undefined, 2);
+    const ea = await w.employee('甲', { departmentId: a.id });
+    // DEC-129 只约束接口写入；直接写库的导入仍可能留下这种数据，名次照样按停用处理。
+    await withTenant(w.db, w.tenant.id, async (tx) => {
+      const [old] = rowsOf<{ id: string }>(
+        await tx.execute(sql`SELECT id FROM org_versions WHERE org_id=${a.id}::uuid
+          ORDER BY version_no DESC LIMIT 1`),
+      );
+      const versionId = randomUUID();
+      await tx.execute(sql`INSERT INTO org_versions
+        SELECT (jsonb_populate_record(NULL::org_versions, to_jsonb(v) || jsonb_build_object(
+          'id',${versionId}::uuid,'version_no',v.version_no+1,'previous_version_id',v.id,
+          'start_date',${TODAY}::date,'enabled',false))).*
+        FROM org_versions v WHERE v.id=${old!.id}::uuid`);
+      await tx.execute(sql`INSERT INTO org_hierarchy_links(tenant_id,version_id,dimension,parent_org_id,sequence)
+        VALUES (${w.tenant.id},${versionId}::uuid,'admin',${w.tenant.id}::uuid,1)`);
+    });
+    await w.assertRanks();
+    expect((await w.list()).find((item) => item.id === ea)?.organizationSortNumber).toBeNull();
+    await w.assertMatchesFullRecompute();
   });
 
   it('未来生效的调整：生效日前取旧名次，到生效日无需再写入即取新名次', async () => {

@@ -59,12 +59,12 @@ describe('AC-SUB DEC-080/081 人员范围与敏感字段', () => {
     };
     const inside = await create('org/organizations', {
       name: '内部门',
-      startDate: '2020-01-01',
+      establishedOn: '2020-01-01',
       parents: { admin: { parentId: seed.tenant.id } },
     });
     const outside = await create('org/organizations', {
       name: '外部门',
-      startDate: '2020-01-01',
+      establishedOn: '2020-01-01',
       parents: { admin: { parentId: seed.tenant.id } },
     });
     const employee = async (code: string, org: string) => {

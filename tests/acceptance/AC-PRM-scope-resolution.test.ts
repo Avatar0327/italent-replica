@@ -49,7 +49,7 @@ async function fixture() {
     const r = await setup.request('POST', '/api/tenant/org/organizations', {
       ...world.asAdmin,
       ifMatch: 0,
-      body: { name, startDate: '2025-01-01', parents: { admin: { parentId } }, ...extra },
+      body: { name, establishedOn: '2025-01-01', parents: { admin: { parentId } }, ...extra },
     });
     expect(r.status, await r.clone().text()).toBe(201);
     return (await r.json()) as { id: string; revision: number };
@@ -82,7 +82,8 @@ describe('AC-PRM-03~07/17/18/21 scope resolution and policy priority', () => {
     const root = await w.org('范围根');
     const child = await w.org('下级', root.id);
     const disabled = await w.org('已停用', root.id, { enabled: false });
-    const disabledChild = await w.org('停用下级', disabled.id);
+    // DEC-129：停用组织下不能再新建启用的下级，停用分支整支都是停用状态。
+    const disabledChild = await w.org('停用下级', disabled.id, { enabled: false });
     const other = await w.org('另一个根');
     await w.org('不展开子级', other.id);
     expect((await w.resolve()).hasDataPermission).toBe(false);

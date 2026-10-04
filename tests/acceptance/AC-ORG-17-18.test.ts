@@ -71,7 +71,12 @@ describe('AC-ORG-17 负责人 / HRBP / 店长保存校验（DEC-135）', () => {
     }
     const created = await world.call('POST', 'org/organizations', {
       ifMatch: 0,
-      body: { name: '离职负责人部门', parents: { admin: { parentId: world.tenant.id } }, hrbpId: leaver.id },
+      body: {
+        name: '离职负责人部门',
+        establishedOn: '2026-10-02',
+        parents: { admin: { parentId: world.tenant.id } },
+        hrbpId: leaver.id,
+      },
     });
     expect(created.status).toBe(400);
     expect((await world.orgsAt('2026-10-02')).get(org.id)).toMatchObject({ revision: 1, personInChargeId: null });
@@ -98,6 +103,16 @@ describe('AC-ORG-17 负责人 / HRBP / 店长保存校验（DEC-135）', () => {
     );
     expect(renamed.status, await renamed.clone().text()).toBe(200);
     expect(await renamed.json()).toMatchObject({ name: '改名部门', personInChargeId: leaver.id });
+    // 整表提交的客户端会原样带上沿用的值：与原值相同视为沿用，同样不重新校验；改成别的离职人员仍被拒。
+    const resubmitted = await world.patchOrg(
+      { id: org.id, revision: 3 },
+      { name: '整表提交部门', personInChargeId: leaver.id, effectiveDate: '2026-10-06' },
+    );
+    expect(resubmitted.status, await resubmitted.clone().text()).toBe(200);
+    await expectIneligible(
+      await world.patchOrg({ id: org.id, revision: 4 }, { hrbpId: leaver.id, effectiveDate: '2026-10-07' }),
+      'hrbpId',
+    );
   });
 });
 
