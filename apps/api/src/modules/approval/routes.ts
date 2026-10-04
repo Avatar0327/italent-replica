@@ -39,6 +39,7 @@ import {
   adminAct,
   approveTask,
   cancel,
+  disagreeTask,
   editTask,
   rejectTask,
   resubmit,
@@ -440,6 +441,7 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   const decision = z.strictObject({ comment, fields: fields.optional() });
   for (const [path, act] of [
     ['approve', approveTask],
+    ['disagree', disagreeTask],
     ['reject', rejectTask],
   ] as const) {
     router.post(`/tasks/:id/${path}`, async (c) => {

@@ -6,7 +6,13 @@
  * “部门负责人审批 → HRBP 审核”，由租户调整后发布。
  */
 import { TRANSFER_FORM_FIELDS } from './transfer-view.js';
-import { APPROVAL_TYPES, type ApprovalNode, type ApprovalTypeCode, type ProcessDefinition } from './types.js';
+import {
+  APPROVAL_TYPES,
+  type ApprovalTypeCode,
+  type ApproverExpression,
+  type ProcessDefinition,
+  type SingleApprovalNode,
+} from './types.js';
 
 export interface PresetProcess {
   readonly presetKey: string;
@@ -19,7 +25,7 @@ export interface PresetProcess {
  * 相同 / 历史相同审批人自动处理默认关闭：本租户调动流程各节点都未启用（`14` §11.10 更正 §8.3，登记册 C-008），
  * 功能仍可由管理员按节点开启。
  */
-const node = (key: string, name: string, approver: ApprovalNode['approver'], extra: Partial<ApprovalNode> = {}) =>
+const node = (key: string, name: string, approver: ApproverExpression, extra: Partial<SingleApprovalNode> = {}) =>
   ({
     key,
     name,
@@ -38,7 +44,7 @@ const node = (key: string, name: string, approver: ApprovalNode['approver'], ext
     rejectResubmit: 'restart',
     messageRules: [],
     ...extra,
-  }) satisfies ApprovalNode;
+  }) satisfies SingleApprovalNode;
 
 type DraftInput = Omit<
   ProcessDefinition,

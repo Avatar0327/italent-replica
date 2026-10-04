@@ -15,9 +15,24 @@ const BATCH = 500;
 export const RECENT = 200;
 
 export type InstanceStatus = 'running' | 'returned' | 'approved' | 'withdrawn' | 'cancelled';
-/** queued：多人依次加签中排在后面、尚未轮到的加签任务（`14` §11.4）。 */
+/**
+ * queued：多人依次加签中排在后面、尚未轮到的加签任务（`14` §11.4）。disagreed：点了「不同意」出口动作（DEC-144）。
+ * ended：会签节点已沿某个出口动作流转，其余未处理的任务自动结束（暂定，policies.countersignEndedReason）。
+ */
 export type TaskStatus =
-  'pending' | 'approved' | 'rejected' | 'transferred' | 'skipped' | 'cancelled' | 'add_signed' | 'queued';
+  | 'pending'
+  | 'approved'
+  | 'disagreed'
+  | 'rejected'
+  | 'transferred'
+  | 'skipped'
+  | 'cancelled'
+  | 'add_signed'
+  | 'queued'
+  | 'ended';
+
+/** 仍在办的任务状态（待办、依次加签排队中、前加签挂起中）。 */
+export const OPEN_STATUSES: ReadonlySet<TaskStatus> = new Set(['pending', 'queued', 'add_signed']);
 
 export interface InstanceRow {
   readonly id: string;
@@ -56,6 +71,8 @@ export interface TaskRow {
   readonly isExceptionAdmin: boolean;
   readonly adminSelfTransfer: boolean;
   readonly parentTaskId: string | null;
+  /** 节点的本次激活（F-003）：会签按它结算；R1-T07 时期的任务为空。 */
+  readonly activationId: string | null;
   readonly comment: string | null;
   readonly actedAt: string | null;
 }
@@ -101,6 +118,7 @@ function taskOf(row: Row): TaskRow {
     isExceptionAdmin: Boolean(row.is_exception_admin),
     adminSelfTransfer: Boolean(row.admin_self_transfer),
     parentTaskId: (row.parent_task_id as string | null) ?? null,
+    activationId: (row.activation_id as string | null) ?? null,
     comment: (row.comment as string | null) ?? null,
     actedAt: iso(row.acted_at),
   };
@@ -195,6 +213,8 @@ export interface NewTask {
   readonly isExceptionAdmin?: boolean;
   readonly adminSelfTransfer?: boolean;
   readonly parentTaskId?: string | null;
+  /** 节点的本次激活：进入节点时新取，转交、加签、撤回与恢复沿用上级任务的（F-003）。 */
+  readonly activationId: string | null;
 }
 
 /** 任务字段级审计（清单 12）：创建（含自动跳过）、关闭、取消都按任务 ID 记录前后值，与写入同事务。 */
@@ -219,14 +239,15 @@ export async function insertTask(tx: Tx, ctx: ApprovalContext, instanceId: strin
     isExceptionAdmin: task.isExceptionAdmin ?? false,
     adminSelfTransfer: task.adminSelfTransfer ?? false,
     parentTaskId: task.parentTaskId ?? null,
+    activationId: task.activationId,
   });
   await tx.execute(sql`INSERT INTO approval_tasks
     (id,tenant_id,instance_id,seq,round,node_key,assignee_user_id,candidate_user_id,origin,status,
-     is_exception_admin,admin_self_transfer,parent_task_id,acted_at,created_at)
+     is_exception_admin,admin_self_transfer,parent_task_id,activation_id,acted_at,created_at)
     SELECT ${id},${ctx.tenantId},${instanceId}::uuid,COALESCE(max(seq),0)+1,${task.round},${task.nodeKey},
       ${task.assigneeUserId},${task.candidateUserId ?? null},${task.origin},${task.status},
-      ${task.isExceptionAdmin ?? false},${task.adminSelfTransfer ?? false},${task.parentTaskId ?? null},${actedAt},
-      ${ctx.now.toISOString()}
+      ${task.isExceptionAdmin ?? false},${task.adminSelfTransfer ?? false},${task.parentTaskId ?? null},
+      ${task.activationId},${actedAt},${ctx.now.toISOString()}
     FROM approval_tasks WHERE tenant_id=${ctx.tenantId} AND instance_id=${instanceId}::uuid`);
   return id;
 }
@@ -286,6 +307,24 @@ export async function closeTask(
   );
   if (closed.length)
     await auditTask(tx, ctx, 'approval.task.close', taskId, { status: 'pending', comment: null }, { status, comment });
+}
+
+/**
+ * 会签节点流转后，其余仍在办的任务自动结束（暂定，DEC-144 / Q-M0-57），逐个写任务审计；返回被结束的任务。
+ * 只动传入的任务（本次激活），其他节点的任务不受影响。
+ */
+export async function endOpenTasks(tx: Tx, ctx: ApprovalContext, tasks: readonly TaskRow[]): Promise<TaskRow[]> {
+  const ended: TaskRow[] = [];
+  for (const task of tasks.filter((candidate) => OPEN_STATUSES.has(candidate.status))) {
+    const updated = rowsOf(
+      await tx.execute(sql`UPDATE approval_tasks SET status='ended',acted_at=${ctx.now.toISOString()}
+        WHERE tenant_id=${ctx.tenantId} AND id=${task.id}::uuid AND status=${task.status} RETURNING id`),
+    );
+    if (!updated.length) continue;
+    await auditTask(tx, ctx, 'approval.task.end', task.id, { status: task.status }, { status: 'ended' });
+    ended.push(task);
+  }
+  return ended;
 }
 
 /** 结束实例时取消在办与排队中的任务，逐个写任务审计（AGENTS §10「审计」）。 */

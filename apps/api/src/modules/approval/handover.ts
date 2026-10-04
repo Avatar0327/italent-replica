@@ -288,6 +288,7 @@ async function reassignAll(tx: Tx, run: Run, plan: readonly Step[], from: string
   const { ctx, instance } = run;
   for (const step of plan) {
     await closeTask(tx, ctx, step.task.id, 'transferred', '异常管理员交接');
+    // F-003：接替的任务沿用原任务的节点激活，会签节点里这一票随之转给接手人。
     const next = await insertTask(tx, ctx, instance.id, {
       round: instance.round,
       nodeKey: step.task.nodeKey,
@@ -296,6 +297,7 @@ async function reassignAll(tx: Tx, run: Run, plan: readonly Step[], from: string
       status: 'pending',
       isExceptionAdmin: true,
       parentTaskId: step.task.id,
+      activationId: step.task.activationId,
     });
     await appendLog(tx, ctx, instance, {
       event,

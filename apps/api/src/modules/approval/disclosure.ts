@@ -9,6 +9,7 @@ import {
   APPROVAL_TYPES,
   blindReviewFields,
   disclosedFieldNames,
+  hasExit,
   recordsHiddenFor,
   visibleWhenHidden,
   type ApprovalNode,
@@ -157,7 +158,10 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
   // DEC-058：发起人或异动本人不能审批；看不到本单变化字段的人（盲审，C-非4）也不显示同意 / 驳回，只能转交。
   const decide = !own && !blind;
   if (running && mine && node) {
-    if (decide) actions.push('approve', 'reject');
+    // DEC-144：同意 / 不同意是出口动作，按节点配置公布；驳回是节点动作，一直可用（R1-T07 起的现状）。
+    if (decide && hasExit(node, 'approve')) actions.push('approve');
+    if (decide && hasExit(node, 'disagree')) actions.push('disagree');
+    if (decide) actions.push('reject');
     if (node.actions.transfer || mine.isExceptionAdmin) actions.push('transfer');
     if (decide && node.actions.addSign && addSignAllowed(allTasks, mine)) actions.push('addSign');
     // `14` §11.3：加签人不能编辑表单内容，只有本节点原审批人可以；DEC-105：员工信息类不开放编辑。

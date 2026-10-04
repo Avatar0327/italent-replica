@@ -5,14 +5,19 @@ import {
   CONDITION_OPERATORS,
   definitionViolations,
   EDIT_MODES,
+  EXIT_RULE_KINDS,
   isApprovalType,
   MESSAGE_CHANNELS,
   MESSAGE_RECIPIENTS,
   MESSAGE_TRIGGERS,
   NO_ASSIGNEE_POLICIES,
+  NODE_EXITS,
+  NODE_KINDS,
   REJECT_RESUBMIT_MODES,
+  TRANSITION_RULE_TYPES,
   URGE_MODES,
   APPROVAL_TYPES,
+  type ApprovalNode,
   type ApprovalTypeCode,
   type ProcessDefinition,
 } from '@italent/domain';
@@ -30,10 +35,26 @@ const messageRule = z.strictObject({
   recipient: z.enum(MESSAGE_RECIPIENTS),
 });
 
+const exitRule = z.strictObject({ kind: z.enum(EXIT_RULE_KINDS), value: z.number().finite() });
+
+/** DEC-144：会签流转规则；缺省为任一人同意即可（新会签节点默认），自定义审批方式按出口动作逐行给出条件。 */
+const transitionRule = z.strictObject({
+  type: z.enum(TRANSITION_RULE_TYPES),
+  rules: z.strictObject({ approve: exitRule.optional(), disagree: exitRule.optional() }).optional(),
+});
+
 const node = z.strictObject({
   key: text(40),
   name: text(100).optional(),
-  approver: z.enum(APPROVER_EXPRESSIONS),
+  /** F-003：单人审批（缺省）/ 会签审批。 */
+  kind: z.enum(NODE_KINDS).default('single'),
+  /** 单人审批节点的审批人。 */
+  approver: z.enum(APPROVER_EXPRESSIONS).optional(),
+  /** 会签节点的审批人（逐人解析，表达式不重复）。 */
+  approvers: z.array(z.enum(APPROVER_EXPRESSIONS)).max(APPROVER_EXPRESSIONS.length).optional(),
+  transitionRule: transitionRule.optional(),
+  /** 出口动作（DEC-144）：缺省只有「同意」。 */
+  exits: z.array(z.enum(NODE_EXITS)).max(NODE_EXITS.length).default(['approve']),
   noAssignee: z.enum(NO_ASSIGNEE_POLICIES).default('exception_admin'),
   sameAssigneeSkip: z.boolean().default(false),
   historySameAssigneeSkip: z.boolean().default(false),
@@ -88,9 +109,37 @@ export const createSchema = definitionSchema.extend({
 });
 
 export type DefinitionInput = z.infer<typeof definitionSchema>;
+type NodeInput = DefinitionInput['nodes'][number];
 
-/** 结构化后的定义；值缺省补 null，名称缺省取节点编码。 */
+/** 单人节点只用 approver，会签节点只用 approvers 与流转规则（F-003）；缺了或混用都是结构错误。 */
+function nodeTypeViolations(input: NodeInput): string[] {
+  if (input.kind === 'countersign') {
+    const violations = input.approver ? [`会签节点 ${input.key} 用审批人列表（approvers），不能设单个审批人`] : [];
+    if (!input.approvers) violations.push(`会签节点 ${input.key} 必须配置审批人`);
+    return violations;
+  }
+  const violations = input.approver ? [] : [`节点 ${input.key} 必须配置审批人`];
+  if (input.approvers || input.transitionRule)
+    violations.push(`单人审批节点 ${input.key} 不能配置会签审批人或流转规则`);
+  return violations;
+}
+
+function toNode(input: NodeInput): ApprovalNode {
+  const { kind, approver, approvers, transitionRule, name, ...common } = input;
+  const base = { ...common, name: name ?? input.key };
+  if (kind === 'countersign') {
+    // DEC-144：新会签节点缺省为任一人同意即可。
+    return { ...base, kind, approvers: approvers ?? [], transitionRule: transitionRule ?? { type: 'any' } };
+  }
+  return { ...base, kind, approver: approver! };
+}
+
+/** 结构化后的定义；值缺省补 null，名称缺省取节点编码，会签流转规则缺省为任一人同意即可（DEC-144）。 */
 export function toDefinition(input: DefinitionInput, type: ApprovalTypeCode): ProcessDefinition {
+  const shape = input.nodes.flatMap(nodeTypeViolations);
+  if (shape.length) {
+    throw approvalError('VALIDATION_FAILED', 'APPROVAL_DEFINITION_INVALID', shape[0]!, { violations: shape });
+  }
   const definition: ProcessDefinition = {
     name: input.name,
     groupName: input.groupName ?? null,
@@ -104,7 +153,7 @@ export function toDefinition(input: DefinitionInput, type: ApprovalTypeCode): Pr
       expression: input.conditions.expression.trim(),
       items: input.conditions.items.map((item) => ({ ...item, value: item.value ?? null })),
     },
-    nodes: input.nodes.map((n) => ({ ...n, name: n.name ?? n.key })),
+    nodes: input.nodes.map(toNode),
   };
   const violations = definitionViolations(definition, APPROVAL_TYPES[type]);
   if (violations.length)

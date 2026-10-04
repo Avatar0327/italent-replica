@@ -1,11 +1,14 @@
 /**
  * 加签任务链（DEC-095，`14` §11.4 单人审批节点）：一次加签可选多人，按选择顺序依次审批——第一位立即派待办，
  * 其余排队（queued）。前加签全部同意后回到原审批人；后加签（原审批人已同意）全部完成才离开本节点。
- * 会签节点的并加签不在首版（DEC-117，转后续任务 F-003）；嵌套加签在入口拒绝（rules.addSignAllowed，F5）。
+ * 会签节点的并加签人与原审批人同时审批、计入流转规则（F-003 / DEC-144），同意后按会签结算（countersign.ts）；
+ * 嵌套加签在入口拒绝（rules.addSignAllowed，F5）。
  */
 import type { Tx } from '@italent/db';
+import { isCountersign } from '@italent/domain';
 import { approvalError } from './context.js';
-import { afterNodeApproved, currentRouting, exceptionAdminFor, type Run } from './engine.js';
+import { settleCountersign } from './countersign.js';
+import { afterNodeApproved, currentRouting, exceptionAdminFor, nodeIndex, type Run } from './engine.js';
 import { notifyTodo } from './notifications.js';
 import { isEligibleApprover } from './resolver.js';
 import { addSignLink } from './rules.js';
@@ -18,8 +21,13 @@ export function assertNotAddSigner(tasks: readonly TaskRow[], task: TaskRow): vo
   }
 }
 
-/** 同意之后的去向：轮到排队中的下一位加签人 → 前加签回到原审批人 → 本节点已无待办则推进到下一节点。 */
+/**
+ * 同意之后的去向：会签节点按流转规则结算（F-003）；单人节点轮到排队中的下一位加签人 → 前加签回到原审批人 →
+ * 本节点已无待办则推进到下一节点。
+ */
 export async function continueAfterApproval(tx: Tx, run: Run, approved: TaskRow): Promise<void> {
+  const node = run.version.nodes[nodeIndex(run, approved.nodeKey)]!;
+  if (isCountersign(node)) return settleCountersign(tx, run, node, approved);
   const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
   const link = addSignLink(tasks, approved);
   if (link) {
@@ -78,6 +86,7 @@ async function returnToSigner(
     status: 'pending',
     isExceptionAdmin: signer.isExceptionAdmin,
     parentTaskId: approved.id,
+    activationId: approved.activationId,
   });
   await appendLog(tx, run.ctx, run.instance, {
     event: 'add_sign_return',
@@ -99,6 +108,7 @@ async function handToExceptionAdmin(tx: Tx, run: Run, replaced: TaskRow, parentT
     status: 'pending',
     isExceptionAdmin: true,
     parentTaskId,
+    activationId: replaced.activationId,
   });
   await appendLog(tx, run.ctx, run.instance, {
     event: 'add_sign_exception_admin',

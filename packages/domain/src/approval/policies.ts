@@ -1,9 +1,12 @@
 /**
  * 审批路由与披露中可能随取证或复核改变的产品判断（DEC-113～119 原为编排会话代选，2026-10-03 用户逐条复核确认；
- * DEC-124 暂定，待 Q-M0-43）。每条判断只在这里实现一次；结论改变时，只改本文件对应的函数和它的测试。
- * 目录与范围类的决策另有唯一位置：DEC-116 见 types.ts 的 APPROVAL_TYPES 与 presets.ts，
- * DEC-117 见 types.ts 的 ADD_SIGN_TYPES（不含并加签），DEC-118 / DEC-122 见 transfer-view.ts。
+ * DEC-124 暂定，待 Q-M0-43；F-003 会签的暂定部分待 Q-M0-57 与 #57）。每条判断只在这里实现一次；结论改变时，只改
+ * 本文件对应的函数和它的测试。
+ * 目录与范围类的决策另有唯一位置：DEC-116 见 types.ts 的 APPROVAL_TYPES 与 presets.ts，DEC-117 / F-003 的加签类型见
+ * types.ts 的 NODE_ADD_SIGN_TYPES（并加签只用于会签节点），DEC-144 的会签流转规则见 countersign.ts，
+ * DEC-118 / DEC-122 见 transfer-view.ts。
  */
+import type { NodeExit } from './types.js';
 
 /** DEC-113：撤回 / 驳回后只有原发起人能重提（首版不做 HR / 代理代为重提）；当前权限复核由调用方按首次提交执行。 */
 export function mayResubmit(initiatorUserId: string, actorUserId: string): boolean {
@@ -19,10 +22,12 @@ export interface PreviousNodeTask {
 /**
  * DEC-114（暂定，TODO(需取证 Q-M0-43，#39)）：“与上一节点审批人相同”比较的是上一节点解析出的候选人，
  * 不是实际同意人——因此 A→A（跳过）→A 可连续跳过；跳过本身仍不计为任何人的同意（DEC-106）。
+ * F-003：上一节点是会签时，它逐人解析出多个候选人，与其中任一人相同即算相同（单人节点只有一个，口径不变）。
  * @param tasks 上一节点在有效历史内的任务，按序号正序
+ * @returns 候选人，按出现先后去重
  */
-export function previousNodeComparand(tasks: readonly PreviousNodeTask[]): string | null {
-  return tasks.filter((task) => task.candidateUserId !== null).at(-1)?.candidateUserId ?? null;
+export function previousNodeComparand(tasks: readonly PreviousNodeTask[]): string[] {
+  return [...new Set(tasks.flatMap((task) => (task.candidateUserId === null ? [] : [task.candidateUserId])))];
 }
 
 /**
@@ -77,3 +82,17 @@ export function disclosedFieldNames(
 ): ReadonlySet<string> {
   return new Set(nodeFormFields.filter((field) => viewable === undefined || viewable.has(field)));
 }
+
+/**
+ * DEC-144 中的暂定部分（Q-M0-57 🟡，TODO(需取证 Q-M0-57，#56)）：会签节点沿某个出口动作流转后，其余未处理的待办
+ * 自动结束，并记明原因。驳回不进流转规则：任一人驳回即整单驳回，在办任务与单人节点驳回一样取消。
+ */
+export function countersignEndedReason(exit: NodeExit): string {
+  return exit === 'approve' ? '因节点已通过而结束' : '因节点已按不同意流转而结束';
+}
+
+/**
+ * 暂定（TODO(需取证 #57)）：自定义审批方式下，本节点已没有在办任务、仍没有出口动作达到其规则（如两人一同意一不同意、
+ * 或整数大于实际人数）时，按不通过处理（fail-closed）：沿「不同意」的处理退回发起人，不让流程停在无人可办的节点。
+ */
+export const STALLED_COUNTERSIGN_EXIT: NodeExit = 'disagree';

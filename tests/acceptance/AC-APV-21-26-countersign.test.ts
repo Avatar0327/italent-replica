@@ -116,6 +116,15 @@ describe('AC-APV-21 会签节点的配置、版本与发布', () => {
       'custom',
       null,
     ]);
+    // 读出的节点（含预设规则按出口动作生成的条件）原样写回草稿可以保存，不改变配置。
+    const { name, priority, isFallback, exceptionAdminUserId, conditions, nodes } = next.latestVersion;
+    const saved = await w.json<typeof published>(
+      await w.request(w.hr.id, 'PUT', `${BASE}/processes/${published.id}/draft`, {
+        ifMatch: next.revision,
+        body: { name, priority, isFallback, exceptionAdminUserId, conditions, nodes },
+      }),
+    );
+    expect(saved.latestVersion.nodes).toEqual(next.latestVersion.nodes);
   });
 
   it('结构校验：审批人、流转规则、出口动作与 DEC-106 都按节点类型校验，违规一律 400', async () => {
@@ -321,6 +330,30 @@ describe('AC-APV-24 自定义审批方式（DEC-144）', () => {
     let both = await act(w2, submitted2, s2.inHead.userId, 'approve');
     both = await act(w2, both, s2.inHrbp.userId, 'approve');
     expect(both).toMatchObject({ status: 'returned' });
+
+    // 进入节点时就无法达成：两席都按历史相同审批人自动同意，仍不够“整数 3”，同样退回，不停在没有待办的节点。
+    const w3 = await approvalWorld(database().db, 'apv-cs-custom-entry');
+    const { s: s3, view: submitted3 } = await started(w3, [
+      { ...JOINT, transitionRule: { type: 'all' } },
+      {
+        ...JOINT,
+        key: 'again',
+        historySameAssigneeSkip: true,
+        transitionRule: { type: 'custom', rules: { approve: { kind: 'count', value: 3 } } },
+      },
+    ]);
+    let entry = await act(w3, submitted3, s3.inHead.userId, 'approve');
+    entry = await act(w3, entry, s3.inHrbp.userId, 'approve');
+    expect(entry).toMatchObject({ status: 'returned' });
+    expect(entry.tasks.filter((task) => task.nodeKey === 'again').map((task) => task.origin)).toEqual([
+      'history_skip',
+      'history_skip',
+    ]);
+    expect(entry.logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ event: 'countersign_stalled', nodeKey: 'again', detail: expect.anything() }),
+      ]),
+    );
   });
 });
 

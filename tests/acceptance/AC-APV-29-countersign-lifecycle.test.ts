@@ -152,6 +152,36 @@ describe('AC-APV-29 会签节点的审批人撤回（DEC-097）', () => {
     await assertNoOrphans(w, view.id);
   });
 
+  it('恢复时原审批人已不可审批（成员关系已撤销）：恢复的任务转异常管理员，不留无人可办的任务', async () => {
+    const w = await approvalWorld(database().db, 'apv-cs-retrieve-gone');
+    const nodes = [{ ...JOINT, transitionRule: { type: 'any' as const }, actions: { retrieve: true } }, FINAL];
+    const { s, view: submitted } = await started(w, nodes);
+    const headTask = taskOf(submitted, s.inHead.userId);
+    let view = await approve(w, submitted, s.inHead.userId);
+    const endedHrbp = taskOf(view, s.inHrbp.userId, 'ended');
+    const revision = await withTenant(w.db, w.tenant.id, async (tx) =>
+      Number(
+        rowsOf<{ revision: number }>(
+          await tx.execute(sql`SELECT revision FROM tenant_memberships
+            WHERE tenant_id=${w.tenant.id} AND user_id=${s.inHrbp.userId}::uuid`),
+        )[0]!.revision,
+      ),
+    );
+    await revokeMembership(w.db, { tenantId: w.tenant.id, userId: s.inHrbp.userId, expectedRevision: revision }, cmd());
+    view = await w.json(await retrieve(w, s.inHead.userId, headTask.id, view.revision));
+    expect(taskOf(view, w.exceptionAdmin)).toMatchObject({
+      origin: 'exception_admin',
+      isExceptionAdmin: true,
+      parentTaskId: endedHrbp.id,
+    });
+    expect(
+      pendingOf(view)
+        .map((task) => task.assigneeUserId)
+        .sort(),
+    ).toEqual([s.inHead.userId, w.exceptionAdmin].sort());
+    await assertNoOrphans(w, view.id);
+  });
+
   it('需所有人同意、节点已流转：撤回后只有撤回人重新审批，其他人的同意保留', async () => {
     const w = await approvalWorld(database().db, 'apv-cs-retrieve-all');
     const { s, view: submitted } = await started(w, [{ ...JOINT, actions: { retrieve: true } }, FINAL]);

@@ -18,8 +18,11 @@ export interface RoutingFacts {
   readonly subjectEmployeeId: string | null;
   readonly subjectUserId: string | null;
   readonly exceptionAdminUserId: string;
-  /** 相邻上一节点的比较对象（相同审批人跳过）：DEC-114 取上一节点解析出的候选人（policies.previousNodeComparand）。 */
-  readonly previousApproverUserId: string | null;
+  /**
+   * 相邻上一节点的比较对象（相同审批人跳过）：DEC-114 取上一节点解析出的候选人（policies.previousNodeComparand）；
+   * 上一节点是会签时有多个（F-003）。
+   */
+  readonly previousApproverUserIds: readonly string[];
   /** 本实例本轮、有效历史边界之后已同意过的人（历史相同审批人跳过；干预 / 跳转前的同意不算，F7）。 */
   readonly approvedUserIds: readonly string[];
   /** 本实例已分配过任务的人（DEC-068“已在本单审批链上”）。 */
@@ -105,7 +108,7 @@ export function decideNode(
       reason: '自审跳过（不计为同意），转直线经理',
     };
   }
-  if (node.sameAssigneeSkip && candidate.userId === facts.previousApproverUserId) {
+  if (node.sameAssigneeSkip && facts.previousApproverUserIds.includes(candidate.userId)) {
     return auto('same_skip', node.sameAssigneeResult, candidate.userId, '与上一节点审批人相同');
   }
   if (node.historySameAssigneeSkip && facts.approvedUserIds.includes(candidate.userId)) {
