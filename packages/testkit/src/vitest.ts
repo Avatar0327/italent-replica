@@ -1,15 +1,15 @@
 import type { DbHandle } from '@italent/db';
 import { afterAll, beforeAll } from 'vitest';
-import { createTestDb } from './test-db.js';
+import { createTestDb, type TestDbOptions } from './test-db.js';
 
 /**
  * 在当前测试文件里注册一个全新测试库：beforeAll 建库并迁移，afterAll 关闭（真 PG 时删库）。
  * 返回取值函数，须在测试体内调用：`const testDb = useTestDb(); ... testDb().db`。
  */
-export function useTestDb(): () => DbHandle {
+export function useTestDb(options: TestDbOptions = {}): () => DbHandle {
   let handle: DbHandle | undefined;
   beforeAll(async () => {
-    handle = await createTestDb();
+    handle = await createTestDb(options);
   }, 60_000);
   afterAll(async () => {
     await handle?.close();

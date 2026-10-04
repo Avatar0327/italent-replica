@@ -1,7 +1,8 @@
 /**
  * 企业设置 · 授权管理与许可管理（R1-T15；REQ-PRM-003；06 §4、§7.1）。
  * - AC-PRM-09 / DEC-143：许可余额为 0（或尚未发放）时仍允许授予消耗该类许可的身份，余额记为负数，授权响应带可机读的
- *   超额提示（licenseOverage），许可余额标出超额；判断收在 licenses.ts 一处。
+ *   超额提示（licenseOverage），许可余额标出超额；已占名额再授同类身份不消耗，但仍按当前余额提示超额；
+ *   判断收在 licenses.ts 一处。
  * - AC-PRM-11：自动授权产生的身份不允许手工撤销。
  * - DEC-141：撤销已消耗许可的身份时归还名额（余额 = 发放总数 − 仍在用的名额）；同一用户还持有同类身份时名额不释放。
  * - 许可管理：余额（租户 / 系统 / 计费管理员）、使用明细（租户 / 计费管理员）；授权选择器带出许可类型以便显示余额（R3）。
@@ -69,10 +70,18 @@ describe('AC-PRM-09 / DEC-143 许可余额为 0 时仍允许授予并提示超�
     });
     expect(await balanceOf('core_hr')).toMatchObject({ quota: 1, used: 2, balance: -1, overage: true });
 
-    // W-123：已占用该类名额的用户再授同类身份不再消耗，也不提示超额
+    // 配额 1、两人各占一席（余额 -1）→ 给其中一人再授同类第二身份：不再消耗名额（W-123），
+    // 但当前仍超额，响应照样带超额提示（DEC-143 没有“已有名额不提示”的例外），与余额接口一致
     const again = await grant(world, first.id, core2.id);
     expect(again.status).toBe(201);
-    expect(await again.json()).toMatchObject({ licenseOverage: null });
+    expect(((await again.json()) as { licenseOverage: unknown }).licenseOverage).toEqual({
+      code: 'LICENSE_OVERAGE',
+      licenseType: 'core_hr',
+      quota: 1,
+      used: 2,
+      balance: -1,
+    });
+    expect(await balanceOf('core_hr')).toMatchObject({ quota: 1, used: 2, balance: -1, overage: true });
 
     const revoked = await world.api.request('POST', `${BASE}/grants/${created.id}/revoke`, {
       ...world.asAdmin,
