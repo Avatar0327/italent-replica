@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 取证门禁：列出某个任务开工 / 合并前还在等的取证项（Q-M0-xx）与待用户决定的差异（D-xxx）。
-// 用法：node scripts/evidence-gate.mjs R1-T08 [R1-T09 ...]    无参数时列出全部未完成取证。
+// 用法：node scripts/evidence-gate.mjs R1-T08 [R1-T09 | F-007 ...]    无参数时列出全部未完成取证。
 // 退出码：有“开工前”未完成项或待决差异时为 1，否则为 0。
 // 数据源：docs/07_M0/03_需取证清单.md、docs/00_状态/04_缺口冲突差异登记册.md（只读）。
 import { readFileSync } from 'node:fs';
@@ -21,6 +21,8 @@ function taskIds(text) {
     ids.add(`${m[1]}-T${m[2]}`);
     for (const n of m[3].matchAll(/(?:(R\d)-)?T(\d{2})/g)) ids.add(`${n[1] ?? m[1]}-T${n[2]}`);
   }
+  // 后续任务（docs/09_派发/后续任务.md）的编号 F-xxx 也可作为门禁目标
+  for (const m of text.matchAll(/\bF-(\d{3})\b/g)) ids.add(`F-${m[1]}`);
   return ids;
 }
 
@@ -43,7 +45,7 @@ const decisions = read('docs/00_状态/04_缺口冲突差异登记册.md')
   .filter((l) => /^\| \*\*D-\d+\*\*/.test(l))
   .map((l) => {
     const c = cells(l);
-    return { id: c[0].replace(/\*/g, ''), what: c[1], diff: c[2], st: c[4] ?? '' };
+    return { id: c[0].replace(/\*/g, ''), what: c[1], diff: c[2], st: c[4] ?? '', tasks: taskIds(c.join(' ')) };
   })
   .filter((d) => !/✅/.test(d.st));
 
@@ -74,9 +76,12 @@ if (targets.length === 0) {
   }
 }
 
-if (decisions.length) {
+// 待决差异：写明了影响任务的只拦对应任务；没写任何任务号的按保守口径拦所有目标
+const relevant =
+  targets.length === 0 ? decisions : decisions.filter((d) => d.tasks.size === 0 || targets.some((t) => d.tasks.has(t)));
+if (relevant.length) {
   blocked = blocked || targets.length > 0;
-  console.log(`\n待用户决定 / 待原站实测的差异 ${decisions.length} 项（开工前确认是否涉及本任务）：`);
-  for (const d of decisions) console.log(`  ${d.id}  ${clip(d.st, 20)}  ${clip(d.what)}`);
+  console.log(`\n待用户决定 / 待原站实测的差异 ${relevant.length} 项（开工前确认是否涉及本任务）：`);
+  for (const d of relevant) console.log(`  ${d.id}  ${clip(d.st, 20)}  ${clip(d.what)}`);
 }
 process.exit(blocked ? 1 : 0);
