@@ -268,7 +268,9 @@ function registerObjectWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await objectContext(c, deps, objectCode, 'update', revision(c));
     const id = uuidParam(c);
     const input = await parseBody(c, jobPatchSchema(kind));
-    await writeFields(deps, ctx, objectCode, 'update', input);
+    // 「调整员工直线经理」是本次变更的选项而非职位字段；同步任职由人员端口在事务内另行验权。
+    const { adjustEmployeeDirectManager: _option, ...fields } = input as JobPatch;
+    await writeFields(deps, ctx, objectCode, 'update', fields);
     const scope = await requestScope(c, deps, ctx, objectCode);
     return runWrite(
       c,

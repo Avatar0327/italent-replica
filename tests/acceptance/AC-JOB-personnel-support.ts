@@ -97,9 +97,9 @@ export async function seedIncumbent(
   session: JobSession,
   positionId: string,
   directManagerId: string | null = null,
+  employeeId: string = randomUUID(),
 ): Promise<JobIncumbent> {
   const assignmentId = randomUUID();
-  const employeeId = randomUUID();
   await withTenant(db, session.tenant.id, (tx) =>
     tx.execute(sql`INSERT INTO job_test_assignment_versions
       (tenant_id, assignment_id, employee_id, position_id, revision, direct_manager_id, effective_date)

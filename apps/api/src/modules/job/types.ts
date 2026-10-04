@@ -28,7 +28,14 @@ export interface JobInput {
 export interface JobPatch {
   readonly effectiveDate: string;
   readonly parents?: Partial<Record<'admin' | 'dotted', JobParent>>;
+  /** 仅职位：本次变更的「调整员工直线经理」单次选项，不写入职位字段（docs/02_业务建模/19 §3.1）。 */
+  readonly adjustEmployeeDirectManager?: boolean;
   readonly [field: string]: unknown;
+}
+
+/** 本次职位变更的单次选项，与职位字段分开传递。 */
+export interface PositionChangeOptions {
+  readonly adjustEmployeeDirectManager: boolean;
 }
 
 export interface JobIncumbent {
@@ -53,6 +60,10 @@ export interface JobPersonnelGateway {
       readonly expectedRevision: number;
       readonly effectiveDate: string;
       readonly directManagerId: string | null;
+      /** W-416：业务类型“组织调整”。 */
+      readonly businessKind: 'org_adjustment';
+      /** W-416：变动类型“职位调整”。 */
+      readonly changeType: 'position_adjustment';
     },
   ): Promise<void>;
 }

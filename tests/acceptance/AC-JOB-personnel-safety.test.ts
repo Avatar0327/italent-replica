@@ -97,6 +97,44 @@ describe('AC-JOB-03/05 可信人员校验与失败事务回滚', () => {
     expect(await assignmentVersions(db, session.tenant.id, employee.assignmentId)).toHaveLength(1);
   });
 
+  it('员工本人即唯一在岗人时不新增版本；经理已是此人的员工照常新增组织调整版本', async () => {
+    const { db, session, parent, position, employee } = await managerScenario('jobmanagerself', 0);
+    const manager = await seedIncumbent(db, session, parent.id);
+    const self = await seedIncumbent(db, session, position.id, null, manager.employeeId);
+    const already = await seedIncumbent(db, session, position.id, manager.employeeId);
+    const service = await loadJobWriteService();
+    const ctx = jobWriteContext(session, position.revision);
+    await runCommand(db, ctx, {
+      id: ctx.commandId,
+      fingerprint: { action: 'test-self-manager', id: position.id },
+      execute: async (tx, commandId) => ({
+        status: 200,
+        body: await service.updateJobObject(
+          tx,
+          { ...ctx, commandId },
+          'positions',
+          position.id,
+          {
+            parents: { admin: { parentId: parent.id } },
+            effectiveDate: '2026-10-02',
+            adjustEmployeeDirectManager: true,
+          },
+          personnelFixtureGateway(),
+        ),
+      }),
+    });
+    expect(await assignmentVersions(db, session.tenant.id, self.assignmentId)).toHaveLength(1);
+    for (const assignment of [already, employee]) {
+      const synced = await assignmentVersions(db, session.tenant.id, assignment.assignmentId);
+      expect(synced).toHaveLength(2);
+      expect(synced[1]).toMatchObject({
+        directManagerId: manager.employeeId,
+        effectiveDate: '2026-10-02',
+        businessKind: 'org_adjustment',
+      });
+    }
+  });
+
   it('人员端口追加任职后报存储故障，整个命令撤销任职、职位版本与 revision', async () => {
     const { db, session, parent, position, employee } = await managerScenario('jobmanagerrollback', 1);
     const service = await loadJobWriteService();

@@ -8,7 +8,10 @@ import type { JobWriteContext } from './types.js';
 
 export const jobSettingsSchema = z.strictObject({
   allowDuplicatePositionNames: z.boolean(),
-  adjustEmployeeDirectManager: z.boolean(),
+  // F-004：已改为职位变更的单次选项（19 §3.1）；为兼容旧客户端只接受 false，且不再保存。
+  adjustEmployeeDirectManager: z
+    .literal(false, { error: '「调整员工直线经理」已改为职位变更时的单次选项，不能在设置中开启' })
+    .optional(),
   startDate: businessDate.optional(),
   stopDate: businessDate.optional(),
   enabled: z.boolean().optional(),
@@ -43,7 +46,6 @@ export async function readJobSettings(tx: Tx, tenantId: string, asOf?: string) {
     stopDate: version?.stopDate ?? '9999-12-31',
     enabled: version ? !!active : true,
     allowDuplicatePositionNames: active ? version.allowDuplicatePositionNames : false,
-    adjustEmployeeDirectManager: active ? version.adjustEmployeeDirectManager : false,
   };
 }
 
@@ -67,10 +69,11 @@ export async function writeJobSettings(tx: Tx, ctx: JobWriteContext, input: z.in
     afterExpiry.setUTCDate(afterExpiry.getUTCDate() + 1);
     await assertUniquePositionNames(tx, ctx.tenantId, afterExpiry.toISOString().slice(0, 10));
   }
+  const { adjustEmployeeDirectManager: _legacy, ...settings } = parsed.data;
   const [version] = await tx
     .insert(jobSettingsVersions)
     .values({
-      ...parsed.data,
+      ...settings,
       tenantId: ctx.tenantId,
       startDate,
       stopDate,

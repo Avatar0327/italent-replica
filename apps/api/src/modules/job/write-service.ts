@@ -53,14 +53,15 @@ export async function updateJobObject(
   await lockJobTenant(tx, ctx);
   const current = await lockObject(tx, ctx, kind, id);
   assertRevision(ctx.expectedRevision, current.revision);
-  const effectiveDate = parsed.data.effectiveDate;
+  const { adjustEmployeeDirectManager = false, ...changes } = parsed.data as JobPatch;
+  const effectiveDate = changes.effectiveDate;
   assertTemporalOrder(current, effectiveDate);
-  const input = mergeInput(kind, current, parsed.data, effectiveDate);
+  const input = mergeInput(kind, current, changes, effectiveDate);
   const fields = await validateJobFields(tx, ctx, kind, id, normalizeFields(ctx, kind, input));
   await assertJobCodeAvailable(tx, ctx, kind, fields, id);
   if (kind === 'positions') {
     await assertPositionNameAvailable(tx, ctx, fields, id);
-    await applyPositionPersonnelRules(tx, ctx, current, fields, personnel);
+    await applyPositionPersonnelRules(tx, ctx, current, fields, { adjustEmployeeDirectManager }, personnel);
   }
   await updateRevision(tx, ctx, kind, id, current.revision + 1);
   const saved = await appendVersion(tx, ctx, kind, id, current.revision + 1, fields, current.versionId);
