@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 启动容器内本地 PostgreSQL 16，并幂等创建测试角色与测试库（docs/07_M0/02_技术栈评估.md §7）。
+# 启动容器内本地 PostgreSQL 16，幂等创建测试角色与测试库，并清理残留测试库（docs/07_M0/02_技术栈评估.md §7）。
 # 口令仅用于容器内一次性测试库；生产口令走平台 Secret。
 # 最后一行输出 TEST_DATABASE_URL=...，供 scripts/test-pg.sh 读取。
 set -euo pipefail
@@ -27,11 +27,26 @@ for role in app_user app_platform; do
     || "${PSQL[@]}" -c "CREATE ROLE $role NOLOGIN NOSUPERUSER NOBYPASSRLS"
 done
 "${PSQL[@]}" -c "GRANT app_user, app_platform TO app_owner, app"
+# 测试库在 afterAll 用 DROP DATABASE … WITH (FORCE) 删除（packages/testkit/src/test-db.ts），FORCE 要终止库内
+# 所有进程；碰上 autovacuum worker 时，非超级用户须有 pg_signal_backend，否则报“permission denied to
+# terminate process”，测试文件失败并残留库。只授这一个内建角色，不把 app_owner 提升为超级用户。
+"${PSQL[@]}" -c "GRANT pg_signal_backend TO app_owner"
 "${PSQL[@]}" -c "SELECT 1 FROM pg_database WHERE datname='italent_test'" | grep -q 1 \
   || "${AS_PG[@]}" createdb -O app_owner italent_test
 # 在模板库装好扩展，测试时新建的库自动带上（btree_gist 是可信扩展，库属主也可自行创建）
 "${PSQL[@]}" -d template1 -c "CREATE EXTENSION IF NOT EXISTS btree_gist"
 "${PSQL[@]}" -d italent_test -c "CREATE EXTENSION IF NOT EXISTS btree_gist"
+
+# 清理残留测试库（只删 testkit 命名的 italent_t_<32 位十六进制>）：测试进程被中断时 afterAll 不执行，
+# 残留库越多 autovacuum 越忙。有 app_owner 会话或测试库有客户端连接（另一轮测试正在跑）时整体跳过；
+# 库清单与会话检查在同一条语句里，清单里在用的库，其建库连接必然还在。不加 FORCE，删不掉就留到下次。
+"${PSQL[@]}" -v ON_ERROR_STOP=0 <<'SQL'
+SELECT format('DROP DATABASE IF EXISTS %I', d.datname) FROM pg_database d
+WHERE d.datname ~ '^italent_t_[0-9a-f]{32}$'
+  AND NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.backend_type = 'client backend'
+                  AND (a.usename = 'app_owner' OR a.datname ~ '^italent_t_'))
+\gexec
+SQL
 
 echo "DATABASE_URL=postgres://app:app@localhost:5432/italent_test"
 echo "TEST_DATABASE_URL=postgres://app_owner:app_owner@localhost:5432/italent_test"

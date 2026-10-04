@@ -69,7 +69,8 @@ function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: Pag
   );
   return sql`
     SELECT r.*,b.revision,current_payload.body AS current_payload,
-      CASE WHEN upper_inf(t.valid_during) THEN '9999-12-31' ELSE (upper(t.valid_during)-1)::text END AS stop_date,
+      CASE WHEN isempty(t.valid_during) THEN (t.start_date-1)::text
+        WHEN upper_inf(t.valid_during) THEN '9999-12-31' ELSE (upper(t.valid_during)-1)::text END AS stop_date,
       t.valid_during @> ${asOf}::date AS is_current,
       NOT EXISTS (SELECT 1 FROM employment_timeline n WHERE n.tenant_id=${tenantId}
         AND n.employee_id=r.employee_id AND (n.start_date,n.sort_order)>(t.start_date,t.sort_order)) AS is_latest,
@@ -141,20 +142,17 @@ export async function loadEmploymentRecord(
   return row ? record(row) : null;
 }
 
+/** 新业务的插入点前一条：生效日当天及以前最后一条，同日已有多条时取最后一次操作（DEC-108）。 */
 export async function findPredecessor(
   tx: Tx,
   tenantId: string,
   employeeId: string,
   effectiveDate: string,
-  staffId?: string,
 ): Promise<EmploymentRecord | null> {
   const [previous] = rowsOf<{ record_id: string }>(
     await tx.execute(sql`
     SELECT t.record_id FROM employment_timeline t
-    JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-    WHERE t.tenant_id=${tenantId} AND t.employee_id=${employeeId}
-      AND (t.start_date,t.sort_order)<(${effectiveDate}::date,1)
-      ${staffId ? sql`AND r.staff_id=${staffId}` : sql``}
+    WHERE t.tenant_id=${tenantId} AND t.employee_id=${employeeId} AND t.start_date<=${effectiveDate}::date
     ORDER BY t.start_date DESC,t.sort_order DESC LIMIT 1
   `),
   );

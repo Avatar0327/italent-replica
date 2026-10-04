@@ -168,14 +168,7 @@ async function deleteEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business
       commandId: ctx.commandId,
       createdAt: ctx.now.toISOString(),
     });
-    await removeLatestEmploymentTimeline(
-      tx,
-      ctx,
-      business.employeeId,
-      business.id,
-      business.payload.effectiveDate,
-      business.payload.kind,
-    );
+    await removeLatestEmploymentTimeline(tx, ctx, business.employeeId, business.id);
     await auditEmployment(
       tx,
       ctx,
