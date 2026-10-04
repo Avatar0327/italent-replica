@@ -1,5 +1,5 @@
 {
-  "id": "cc72b917-36c2-46e4-9122-ba688d2e882a",
+  "id": "e99fbd3a-a7bb-4824-8bf6-40d940ddaa72",
   "prevId": "4589b9f0-98c6-4bae-b483-dda4343fc24a",
   "version": "7",
   "dialect": "postgresql",
@@ -9549,7 +9549,7 @@
           "primaryKey": false,
           "notNull": true,
           "identity": {
-            "type": "always",
+            "type": "byDefault",
             "name": "employment_business_objects_operation_seq_seq",
             "schema": "public",
             "increment": "1",

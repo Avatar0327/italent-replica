@@ -1,6 +1,6 @@
 {
-  "id": "08c499c1-9601-4921-a19d-2489e29abfc6",
-  "prevId": "cc72b917-36c2-46e4-9122-ba688d2e882a",
+  "id": "6f5bd63c-3764-446a-8c17-2cdceb02a0f5",
+  "prevId": "e99fbd3a-a7bb-4824-8bf6-40d940ddaa72",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -9557,7 +9557,7 @@
             "cache": "1",
             "cycle": false,
             "schema": "public",
-            "type": "always"
+            "type": "byDefault"
           }
         }
       },
