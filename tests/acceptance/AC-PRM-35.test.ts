@@ -1,4 +1,4 @@
-/** AC-PRM-35：组织角色范围保留停用前最后一版负责人 / HRBP（DEC-160）。 */
+/** AC-PRM-35：组织角色范围保留停用前最后一版负责人 / HRBP（DEC-160 / DEC-168）。 */
 import { randomUUID } from 'node:crypto';
 import { permissionUserPersonLinks, sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
@@ -24,7 +24,7 @@ type Person = { id: string; recordId: string };
 type Identity = { user: string; tenant: string };
 type Role = 'head' | 'hrbp';
 
-async function fixture(role: Role) {
+async function fixture(role: Role, dimension: 'organization' | 'management' = 'organization') {
   const db = database().db;
   const seed = await seedPermissionWorld(db);
   const api = tenantApi(db, { authorize: undefined, clock });
@@ -37,7 +37,7 @@ async function fixture(role: Role) {
   }
   const org = (name: string, parentId = world.tenant.id) =>
     create('org/organizations', { name, establishedOn: '2025-01-01', parents: { admin: { parentId } } });
-  const employee = async (departmentId?: string): Promise<Person> => {
+  const employee = async (departmentId?: string, directManagerId?: string): Promise<Person> => {
     const person = await create('employment/employees', { code: randomUUID(), name: '角色范围测试人员' });
     if (!departmentId) return { id: person.id, recordId: '' };
     const hire = await create(
@@ -46,7 +46,7 @@ async function fixture(role: Role) {
         kind: 'hire',
         mode: 'direct',
         effectiveDate: '2026-01-01',
-        fields: { departmentId },
+        fields: { departmentId, ...(directManagerId ? { directManagerId } : {}) },
         loginEmail: loginEmailOf(person.id),
       },
       person.revision,
@@ -101,7 +101,7 @@ async function fixture(role: Role) {
         body: {
           personField: definition === MODULE_OBJECTS.employee ? 'id' : 'employeeId',
           ...(definition === MODULE_OBJECTS.employmentRecord ? { departmentField: 'departmentId' } : {}),
-          rules: [{ dimension: 'organization', roleCode: role }],
+          rules: [dimension === 'organization' ? { dimension, roleCode: role } : { dimension }],
         },
       },
     );
@@ -118,6 +118,16 @@ async function fixture(role: Role) {
     );
     expect((await grant(world, user.id, profile.id)).status).toBe(201);
     return { personId: person.id, as: { user: user.id, tenant: world.tenant.id } };
+  }
+  async function autoGrant(as: Identity) {
+    const autoProfile = await createProfile(world, `auto-${randomUUID()}`);
+    await withTenant(db, world.tenant.id, async (tx) => {
+      const grantId = randomUUID();
+      await tx.execute(sql`INSERT INTO permission_grants(id,tenant_id,user_id,profile_id,source)
+        VALUES (${grantId}::uuid,${world.tenant.id},${as.user},${autoProfile.id},'auto')`);
+      await tx.execute(sql`INSERT INTO permission_dynamic_org_grants(tenant_id,grant_id,role_code)
+        VALUES (${world.tenant.id},${grantId}::uuid,${role})`);
+    });
   }
   const resolve = (as: Identity, date = asOf, objectCode = MODULE_OBJECTS.employee.code) =>
     withTenant(db, world.tenant.id, (tx) =>
@@ -144,7 +154,7 @@ async function fixture(role: Role) {
       record: (await get(`/records/${person.recordId}`)).status,
     };
   }
-  return { world, org, employee, version, reader, resolve, visibility, profile };
+  return { world, org, employee, version, reader, autoGrant, resolve, visibility };
 }
 const visible = (person: Person) => ({ listed: true, detail: 200, records: [person.recordId], record: 200 });
 const hidden = { listed: false, detail: 404, records: [], record: 404 };
@@ -207,18 +217,44 @@ describe.each<Role>(['head', 'hrbp'])('AC-PRM-35 %s 停用组织角色范围', (
     await w.version(cleared, '2026-09-01', false, reader.personId);
     expect((await w.resolve(reader.as)).orgIds).not.toContain(cleared.id);
   });
-  it('动态授权的默认管理单元同样保留停用根，仍只含本级', async () => {
-    const autoProfile = await createProfile(w.world, `auto-${randomUUID()}`);
-    await withTenant(w.world.db, w.world.tenant.id, async (tx) => {
-      const grantId = randomUUID();
-      await tx.execute(sql`INSERT INTO permission_grants(id,tenant_id,user_id,profile_id,source)
-        VALUES (${grantId}::uuid,${w.world.tenant.id},${reader.as.user},${autoProfile.id},'auto')`);
-      await tx.execute(sql`INSERT INTO permission_dynamic_org_grants(tenant_id,grant_id,role_code)
-        VALUES (${w.world.tenant.id},${grantId}::uuid,${role})`);
-    });
+  it('动态授权的默认管理单元保留停用根并包含全部下级（DEC-168）', async () => {
+    await w.autoGrant(reader.as);
     expect([...(await w.resolve(reader.as, asOf, 'TenantBase.Organization')).orgIds].sort()).toEqual(
-      [root.id, enabled.id, expired.id].sort(),
+      [root.id, child.id, grandchild.id, enabled.id, expired.id].sort(),
     );
+  });
+  it('无管理单元范围、直线经理是他人时，默认角色范围可见全部下级任职；停用与跨租户隔离不变', async () => {
+    const dynamic = await fixture(role, 'management');
+    const actor = await dynamic.reader('default-role-reader');
+    const outside = await dynamic.org('范围外经理所在组织');
+    const manager = await dynamic.employee(outside.id);
+    expect(manager.id).not.toBe(actor.personId);
+    const parent = await dynamic.org('默认角色范围根');
+    const subordinate = await dynamic.org('默认角色下级', parent.id);
+    const descendant = await dynamic.org('默认角色隔级下级', subordinate.id);
+    const staff = await dynamic.employee(subordinate.id, manager.id);
+    const nestedStaff = await dynamic.employee(descendant.id, manager.id);
+    await dynamic.version(parent, '2026-02-01', true, actor.personId);
+    // 未配置管理单元 / 枚举范围；普通手动身份仍为空，只有组织角色动态授权才取得范围。
+    expect((await dynamic.resolve(actor.as)).hasDataPermission).toBe(false);
+    await dynamic.autoGrant(actor.as);
+    expect(await dynamic.visibility(actor.as, staff)).toEqual(visible(staff));
+    expect(await dynamic.visibility(actor.as, nestedStaff)).toEqual(visible(nestedStaff));
+    expect(await dynamic.visibility(actor.as, manager)).toEqual(hidden);
+    await dynamic.version(parent, '2026-09-01', false, null);
+    await dynamic.version(subordinate, '2026-09-01', false, null);
+    expect(await dynamic.visibility(actor.as, staff)).toEqual(visible(staff));
+    expect(await dynamic.visibility(actor.as, nestedStaff)).toEqual(visible(nestedStaff));
+    const foreign = await fixture(role, 'management');
+    const foreignRoot = await foreign.org('其他租户的角色范围根');
+    const foreignChild = await foreign.org('其他租户的下级', foreignRoot.id);
+    const foreignStaff = await foreign.employee(foreignChild.id);
+    await foreign.version(foreignRoot, '2026-02-01', true, actor.personId);
+    await foreign.version(foreignRoot, '2026-09-01', false, actor.personId);
+    expect([...(await dynamic.resolve(actor.as)).orgIds].sort()).toEqual(
+      [parent.id, subordinate.id, descendant.id].sort(),
+    );
+    expect(await dynamic.visibility(actor.as, foreignStaff)).toEqual(hidden);
   });
   it('其他租户的停用组织及其人员与任职仍不可见', async () => {
     const other = await fixture(role);
