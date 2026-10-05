@@ -97,8 +97,8 @@ export async function checkImportScope(tx: Tx, ctx: ContractContext, input: Inpu
   for (const row of input.rows) {
     const target = await importTarget(tx, ctx, input, row, config);
     if (!target && ['edit', 'change'].includes(input.mode)) {
-      // 未匹配的行由预览/CSV 返回行级错误；这里只验证员工租户归属，不误用新建权限。
-      await checkScope(tx, { ...ctx, scope: undefined }, row.employeeId);
+      // 未匹配的行只能按当前人员范围检查；有权时仍由预览/CSV 返回行级错误。
+      await checkScope(tx, ctx, row.employeeId);
     } else await checkScope(tx, ctx, row.employeeId, target?.createdBy);
   }
 }
