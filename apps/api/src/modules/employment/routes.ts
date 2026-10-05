@@ -52,6 +52,12 @@ import {
 import { retryActivation } from './activation-service.js';
 import { listActivationTodos } from './activation-store.js';
 import { transitionEmployment } from './transitions.js';
+import {
+  disclosePendingApplications,
+  PendingApplicationError,
+  ReportingCycleDeletionError,
+} from './deletion-guards.js';
+import { visibleEmploymentRecords } from './visibility.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import type { EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
@@ -273,7 +279,8 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return { status: 200, body: await updateEmploymentBusiness(tx, checked, id, input) };
     });
   });
-  for (const action of ['submit', 'withdraw', 'delete'] as const) {
+  // R1-T11：revoke = HR 撤销未审批完成的申请（置作废、作废流程，AC-TRF-07）；withdraw 是发起人撤回到草稿（AC-TRF-28）。
+  for (const action of ['submit', 'withdraw', 'revoke', 'delete'] as const) {
     router.on(
       action === 'delete' ? 'DELETE' : 'POST',
       `/businesses/:id${action === 'delete' ? '' : `/${action}`}`,
@@ -289,17 +296,39 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`,
         );
         await authorizeBusinessWrite(deps, ctx, id);
-        return runWrite(c, deps, ctx, { id, action }, async (tx, context) => {
+        const write = runWrite(c, deps, ctx, { id, action }, async (tx, context) => {
           const checked = await transferBusinessContext(tx, { ...context, transferTarget: undefined }, id, true);
           const business = await transitionEmployment(tx, checked, { id, action });
-          // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 删除同步结束在途实例，均与状态迁移同事务。
+          // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 撤销 / 删除同步结束在途实例，均与状态迁移同事务。
           if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
           else if (action === 'withdraw') await employmentApprovalHooks.withdrawn(tx, context, id);
           else await employmentApprovalHooks.deleted(tx, context, id);
           return { status: 200, body: business };
         });
+        return discloseDeletionBlock(deps, ctx, write);
       },
     );
+  }
+}
+
+/**
+ * 删除拒绝详情按操作人当前范围与字段权限披露（PR #73 第二轮 P2-1、第三轮 3）；不经此处的拒绝默认不带明细：
+ * DEC-126 在途申请只给件数；循环汇报只在路径上的人都可见（DEC-177）且经理字段可看时才给完整路径。
+ */
+async function discloseDeletionBlock<T>(deps: TenantRouteDeps, ctx: EmploymentContext, write: Promise<T>) {
+  try {
+    return await write;
+  } catch (error) {
+    if (!(error instanceof PendingApplicationError) && !(error instanceof ReportingCycleDeletionError)) throw error;
+    const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
+    if (error instanceof PendingApplicationError)
+      throw await withTenant(deps.db, ctx.tenantId, (tx) => disclosePendingApplications(tx, ctx, error, viewable));
+    if (viewable !== undefined && !viewable.has('directManagerId')) throw error;
+    const people = error.path.map((employeeId) => ({ employeeId, departmentId: null }));
+    const visible = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      visibleEmploymentRecords(tx, ctx.tenantId, ctx.scope, people),
+    );
+    throw visible.every(Boolean) ? error.disclosed : error;
   }
 }
 

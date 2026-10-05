@@ -14,7 +14,6 @@ import {
   recordActivationAttempt,
 } from './activation-store.js';
 import { auditEmployment } from './context.js';
-import { EmploymentError } from './errors.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
 import { resolveEffectiveInheritance } from './inheritance.js';
 import {
@@ -25,7 +24,8 @@ import {
   rowsOf,
   type LockedEmploymentBusiness,
 } from './record-store.js';
-import { removeLatestEmploymentTimeline } from './timeline.js';
+import { removeEmploymentTimeline } from './timeline.js';
+import { assertNoLinkedChanges, assertNoPendingApplication, assertRestoredPredecessor } from './deletion-guards.js';
 import type { EmploymentBusiness, EmploymentContext, EmploymentState } from './types.js';
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import {
@@ -35,16 +35,18 @@ import {
   requireSavedBusiness,
 } from './write-service.js';
 
-const ACTIONS = ['submit', 'approve', 'reject', 'disapprove', 'withdraw', 'activate', 'delete'] as const;
+const ACTIONS = ['submit', 'approve', 'reject', 'disapprove', 'withdraw', 'revoke', 'activate', 'delete'] as const;
 /**
  * 只追加一条状态事件的动作。撤回回到草稿（AC-TRF-28）；驳回可在同一申请上修改重提（DEC-053）；审批沿「不同意」
- * 流转到结束则办结为“未通过”、不生效（DEC-144，F-003 第二轮）。
+ * 流转到结束则办结为“未通过”、不生效（DEC-144，F-003 第二轮）；HR 撤销未审批完成的申请置“作废”，不生成任职，
+ * 之后只能删除（R1-T11，AC-TRF-07 / W-224）。
  */
 const STATE_AFTER = {
   submit: 'in_review',
   reject: 'rejected',
   disapprove: 'disapproved',
   withdraw: 'draft',
+  revoke: 'voided',
 } as const satisfies Partial<Record<(typeof ACTIONS)[number], EmploymentState>>;
 
 export interface EmploymentTransitionInput {
@@ -106,15 +108,11 @@ export async function transitionEmployment(
     });
   }
   if (input.action === 'delete') {
-    await deleteEmploymentBusiness(tx, ctx, business);
-    await personnelHooks.sync(
-      tx,
-      ctx,
-      business.employeeId,
-      business.id,
-      business.payload.kind,
-      business.payload.effectiveDate,
-    );
+    const previous = await deleteEmploymentBusiness(tx, ctx, business);
+    const { kind, effectiveDate } = business.payload;
+    await personnelHooks.sync(tx, ctx, business.employeeId, business.id, kind, effectiveDate);
+    // 前一条的结束日随删除恢复，其同步履历也要同事务跟着变（AC-TRF-08）。
+    if (previous) await personnelHooks.sync(tx, ctx, business.employeeId, previous.id, previous.kind, previous.date);
   } else if (input.action === 'approve') {
     // R1-T07：只由审批中心在最后一个节点通过后同事务调用；审批通过 ≠ 生效，只有生效日已到才落地并向后更新。
     await appendEmploymentState(tx, ctx, business, 'approved');
@@ -181,13 +179,20 @@ function assertTransition(business: LockedEmploymentBusiness, action: Employment
     // F-003 第二轮（DEC-144）：审批沿「不同意」流转到结束，申请办结为“未通过”，不能再提交或撤回，只能删除。
     disapprove: business.payload.mode === 'application' && business.state === 'in_review',
     withdraw: business.payload.mode === 'application' && ['in_review', 'rejected'].includes(business.state),
+    // `08` §6：流程尚未审批完成才能撤销；审批通过（含未生效）与直接业务只能删除任职。
+    revoke: business.payload.mode === 'application' && ['in_review', 'rejected'].includes(business.state),
     activate: business.payload.mode === 'application' && business.state === 'approved',
-    delete: ['draft', 'rejected', 'disapproved', 'approved', 'effective'].includes(business.state),
+    delete: ['draft', 'rejected', 'disapproved', 'voided', 'approved', 'effective'].includes(business.state),
   };
   if (!permitted[action]) throw new AppError('CONFLICT', '当前状态不允许此动作', { state: business.state, action });
 }
 
-async function deleteEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
+/** 返回时间轴上的前一条（已生效记录被删时），供调用方同步其投影。 */
+async function deleteEmploymentBusiness(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+): Promise<{ id: string; kind: string; date: string } | null> {
   const { fields, customFields, ...metadata } = business.payload;
   const before = {
     ...metadata,
@@ -198,6 +203,7 @@ async function deleteEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business
     revision: business.revision,
     state: business.state,
   };
+  let previous: { id: string; kind: string; date: string } | null = null;
   if (business.state === 'effective') {
     const record = await loadEmploymentRecord(tx, ctx.tenantId, business.id, tenantLocalDate(ctx.now, ctx.timezone));
     if (!record) throw new AppError('SERVICE_UNAVAILABLE', '生效业务没有可读取的任职记录');
@@ -209,7 +215,8 @@ async function deleteEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business
       `),
     );
     if (!raw) throw new AppError('SERVICE_UNAVAILABLE', '任职记录删除快照不可用');
-    await assertNoDependentApplication(tx, ctx, business, record.staffId);
+    await assertNoPendingApplication(tx, ctx, { ...record, id: business.id });
+    await assertNoLinkedChanges(tx, ctx, record);
     await insertEmploymentRow(tx, 'employment_record_tombstones', {
       id: randomUUID(),
       tenantId: ctx.tenantId,
@@ -218,7 +225,13 @@ async function deleteEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business
       commandId: ctx.commandId,
       createdAt: ctx.now.toISOString(),
     });
-    await removeLatestEmploymentTimeline(tx, ctx, business.employeeId, business.id);
+    const opensCycle = NEW_CYCLE_KINDS.includes(business.payload.kind);
+    const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
+    if (point) {
+      await assertRestoredPredecessor(tx, ctx, record, { previousId: point.recordId, window: point.window });
+      const kept = await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, point.window.from);
+      if (kept) previous = { id: kept.id, kind: kept.kind, date: kept.effectiveDate };
+    }
     await auditEmployment(
       tx,
       ctx,
@@ -236,46 +249,11 @@ async function deleteEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business
   }
   await appendEmploymentState(tx, ctx, business, 'deleted');
   await auditEmployment(tx, ctx, 'employment.business.delete', 'employment-business', business.id, before, null);
+  return previous;
 }
 
 function deletionSnapshot(raw: Record<string, unknown>): Record<string, unknown> {
   const { customFields, ...snapshot } = camelRow(raw);
   const custom = customFields as Readonly<Record<string, unknown>>;
   return { ...snapshot, ...Object.fromEntries(Object.entries(custom).map(([id, value]) => [`custom:${id}`, value])) };
-}
-
-async function assertNoDependentApplication(
-  tx: Tx,
-  ctx: EmploymentContext,
-  business: LockedEmploymentBusiness,
-  staffId: string,
-): Promise<void> {
-  const [dependent] = rowsOf(
-    await tx.execute(sql`
-      SELECT 1 FROM employment_business_objects b
-      JOIN LATERAL (
-        SELECT mode, kind, effective_date, selected_staff_id FROM employment_payload_versions
-        WHERE tenant_id = b.tenant_id AND employee_id = b.employee_id AND business_id = b.id
-        ORDER BY version_no DESC LIMIT 1
-      ) p ON TRUE
-      JOIN LATERAL (
-        SELECT state FROM employment_state_events
-        WHERE tenant_id = b.tenant_id AND employee_id = b.employee_id AND business_id = b.id
-        ORDER BY event_no DESC LIMIT 1
-      ) s ON TRUE
-      WHERE b.tenant_id = ${ctx.tenantId} AND b.employee_id = ${business.employeeId}::uuid
-        AND b.id <> ${business.id}::uuid AND p.mode = 'application'
-        AND p.kind NOT IN (${sql.join(
-          NEW_CYCLE_KINDS.map((kind) => sql`${kind}`),
-          sql`, `,
-        )})
-        AND p.effective_date >= ${business.payload.effectiveDate}::date
-        AND (p.selected_staff_id IS NULL OR p.selected_staff_id = ${staffId}::uuid)
-        AND s.state IN ('draft', 'in_review', 'approved') LIMIT 1
-    `),
-  );
-  if (dependent) {
-    // TODO(需取证 Q-M0-22)：后续同周期申请依赖的删除及回滚由 R1-T11 处理。
-    throw new EmploymentError('EMPLOYMENT_FUTURE_VERSION_EXISTS', '存在依赖此任职周期的后续申请');
-  }
 }

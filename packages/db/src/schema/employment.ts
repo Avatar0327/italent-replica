@@ -302,6 +302,9 @@ export const employmentPayloadVersions = pgTable(
   ],
 );
 
+const EMPLOYMENT_STATES =
+  "'draft', 'in_review', 'approved', 'rejected', 'disapproved', 'voided', 'effective', 'deleted'";
+
 export const employmentStateEvents = pgTable(
   'employment_state_events',
   {
@@ -338,10 +341,8 @@ export const employmentStateEvents = pgTable(
       .where(sql`${t.state} = 'approved'`),
     check('employment_state_events_number_positive', sql`${t.eventNo} > 0`),
     // disapproved：审批沿「不同意」流转到结束（DEC-144），申请办结、不生效，不能再提交（F-003 第二轮）。
-    check(
-      'employment_state_events_state',
-      sql`${t.state} IN ('draft', 'in_review', 'approved', 'rejected', 'disapproved', 'effective', 'deleted')`,
-    ),
+    // voided：HR 撤销未审批完成的申请后置“作废”，不生成任职，之后只能删除（R1-T11，AC-TRF-07 / W-224）。
+    check('employment_state_events_state', sql`${t.state} IN (${sql.raw(EMPLOYMENT_STATES)})`),
     check('employment_state_events_command_nonempty', sql`btrim(${t.commandId}) <> ''`),
   ],
 );
