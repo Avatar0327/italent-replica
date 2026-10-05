@@ -170,3 +170,12 @@ it('F-017 向后更新条件字段也检查编制；DEC-015 导入编辑保留�
   });
   expect((await w.business(future.id)).fields.employmentForm).toBe('正式');
 });
+it('F-017 同员工同日在后申请调出后，审批在前调入不能虚占编制', async () => {
+  const w = await fixture();
+  const person = await w.hired();
+  const first = await w.apply(person.employee.id, '2026-10-10', { departmentId: w.to.id });
+  await w.apply(person.employee.id, '2026-10-10', { departmentId: w.from.id });
+  const other = await w.hired();
+  await w.apply(other.employee.id, '2026-10-10', { departmentId: w.to.id });
+  expect((await w.approve(first, '2026-10-02T01:00:00Z')).status).toBe('approved');
+});
