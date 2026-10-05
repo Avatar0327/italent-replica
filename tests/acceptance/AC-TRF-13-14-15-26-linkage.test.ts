@@ -54,6 +54,7 @@ describe('AC-TRF-13 / 14 / 15 / 26 生效联动', () => {
       const run = await w.runScheduler('2026-10-10T01:00:00Z');
       expect(run.errors).toEqual([]);
       expect(run.failed).toEqual([]);
+      if (mode === 'direct') expect((await w.business(business.id)).revision).toBeGreaterThan(business.revision);
       expect(await w.roles()).toEqual({ head: w.manager.employee.id, shop: w.manager.employee.id });
       expect(await w.subordinateRecord()).toBe(w.manager.employee.id);
       const before = await w.outboxEvents(business.id);

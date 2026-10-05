@@ -1,3 +1,4 @@
+import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { applyTransferLinkage } from './transfer-linkage.js';
 /**
@@ -122,7 +123,7 @@ export async function activateWithJudgement(
   try {
     await tx.transaction(async (savepoint) => {
       await (item.materialized
-        ? applyTransferLinkage(savepoint, ctx, item.id)
+        ? activateMaterializedLinkage(savepoint, ctx, item)
         : transitionEmployment(
             savepoint,
             { ...ctx, expectedRevision: item.revision },
@@ -135,4 +136,11 @@ export async function activateWithJudgement(
     if (!rejected) throw error;
     return rejected;
   }
+}
+
+/** 直接未来调动已有任职记录：联动完成同样推进业务/员工 revision，旧页面不能沿用生效前版本提交。 */
+async function activateMaterializedLinkage(tx: Tx, ctx: EmploymentContext, item: PendingActivation) {
+  const business = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: item.revision }, item.id);
+  await applyTransferLinkage(tx, ctx, item.id);
+  await bumpEmploymentBusiness(tx, ctx, business);
 }
