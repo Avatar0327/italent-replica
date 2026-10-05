@@ -50,6 +50,35 @@ describe('DEC-163 任职信息待补全', () => {
     expect(reminders.at(-1)?.after?.fieldCodes ?? []).not.toContain('preset:directManagerId');
   });
 
+  it('DEC-174 关闭条件仅取字段值：后续离职任职仍留空时保留待办', async () => {
+    const w = await activationWorld(database().db, 'trf-completion-leave');
+    const { employee, hire } = await w.hired();
+    const saved = await w.session.request('POST', `/transfers/employees/${employee.id}`, {
+      ifMatch: hire.employeeRevision,
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
+        mode: 'direct',
+        effectiveDate: '2026-10-05',
+        fields: { departmentId: w.to.id, directManagerId: null },
+      },
+    });
+    expect(saved.status).toBe(201);
+    const first = (await saved.json()) as { id: string };
+    const current = await w.session.getEmployee(employee.id);
+    await w.session.business(
+      employee.id,
+      { kind: 'leave', mode: 'direct', lastWorkDate: '2026-10-09' },
+      current.revision,
+    );
+    w.session.setNow('2026-10-10T01:00:00Z');
+    const todos = await w.session.request('GET', '/completion-todos');
+    expect(todos.status).toBe(200);
+    expect(((await todos.json()) as { items: unknown[] }).items).toContainEqual(
+      expect.objectContaining({ id: first.id, fieldCodes: expect.arrayContaining(['preset:directManagerId']) }),
+    );
+  });
+
   it.each(['edit', 'later_transfer'])(
     '元数据独立于字段；未来不提醒，到期每 7 天幂等提醒，%s 补全后关闭',
     async (method) => {
