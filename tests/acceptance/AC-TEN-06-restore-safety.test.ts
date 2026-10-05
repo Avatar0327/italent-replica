@@ -256,4 +256,51 @@ describe('AC-TEN-06 恢复安全与对账（astra 复审回归）', () => {
     const restored = await posts(tenantApi(isolated, { authorize: undefined }));
     expect(restored.status).toBe(403);
   });
+
+  it('P2-N3：备份后撤销并重授同一身份 → 恢复对账成功，许可名额指向新授权', async () => {
+    const hr = a.profiles.find((p) => p.code === 'standard_hr_admin')!;
+    const regranted = await api.request('POST', '/api/tenant/permission/grants', {
+      ...asAdmin,
+      body: { userId: asH.user, profileId: hr.id },
+    });
+    expect(regranted.status, await regranted.clone().text()).toBe(201);
+    const fresh = (await regranted.json()) as { id: string };
+    const isolated = await target();
+    const report = await restoreTenant(
+      isolated,
+      { backup, live: testDb().db, attachments: noAttachments },
+      cmd(operator.id),
+    );
+    expect(report.ok, JSON.stringify(report.reconciliation)).toBe(true);
+    await openRestoredTenant(isolated, { tenantId: a.tenant.id, live: testDb().db, backup }, cmd(operator.id));
+    const seats = await withTenant(isolated, a.tenant.id, async (tx) =>
+      rowsOf<{ grant_id: string }>(
+        await tx.execute(sql`SELECT grant_id::text FROM license_seats WHERE user_id = ${asH.user}::uuid`),
+      ),
+    );
+    expect(seats).toEqual([{ grant_id: fresh.id }]);
+    const restored = await posts(tenantApi(isolated, { authorize: undefined }));
+    expect(restored.status).toBe(200);
+  });
+
+  it('P2-N5：命令 ID 长 99 / 100 时三个阶段仍各用各的台账键；超过 100 拒绝', async () => {
+    for (const length of [99, 100]) {
+      const isolated = await target();
+      const meta = { actorUserId: operator.id, commandId: 'r'.repeat(length) };
+      const input = { backup, live: testDb().db, attachments: noAttachments };
+      const report = await restoreTenant(isolated, input, meta);
+      expect(report).toMatchObject({ ok: true, tenantId: a.tenant.id });
+      const opened = await openRestoredTenant(isolated, { tenantId: a.tenant.id, live: testDb().db, backup }, meta);
+      expect(opened.status).toBe('active');
+    }
+    const isolated = await target();
+    await expect(
+      restoreTenant(
+        isolated,
+        { backup, live: testDb().db, attachments: noAttachments },
+        { actorUserId: operator.id, commandId: 'r'.repeat(101) },
+      ),
+    ).rejects.toThrow();
+    expect(await withPlatform(isolated, (tx) => tx.select().from(tenants))).toEqual([]);
+  });
 });

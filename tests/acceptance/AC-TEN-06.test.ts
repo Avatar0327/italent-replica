@@ -268,6 +268,26 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
     const missing = await restoreTenant(empty, { backup, live, attachments: attachments(new Map()) }, cmd(operator.id));
     expect(missing.ok).toBe(false);
     expect(missing.attachments).toMatchObject({ missing: [attachment.id], mismatched: [] });
+
+    // P2-N4：补齐附件后，以新的命令 ID 对已导入的快照重新校验；通过后可开放。同键重试仍返回首次（失败）结果。
+    const failedCommand = cmd(operator.id);
+    const fixedTarget = await target();
+    const first = await restoreTenant(
+      fixedTarget,
+      { backup, live, attachments: attachments(new Map()) },
+      failedCommand,
+    );
+    expect(first.ok).toBe(false);
+    const fixedStore = attachments(store());
+    expect(await restoreTenant(fixedTarget, { backup, live, attachments: fixedStore }, failedCommand)).toEqual(first);
+    const reverified = await restoreTenant(fixedTarget, { backup, live, attachments: fixedStore }, cmd(operator.id));
+    expect(reverified).toMatchObject({ ok: true, attachments: { ok: true } });
+    const opened = await openRestoredTenant(fixedTarget, { tenantId: a.tenant.id, live, backup }, cmd(operator.id));
+    expect(opened.status).toBe('active');
+    // 已开放的租户不能再“重新校验”
+    await expect(
+      restoreTenant(fixedTarget, { backup, live, attachments: fixedStore }, cmd(operator.id)),
+    ).rejects.toEqual(expect.objectContaining({ reason: 'TARGET_NOT_EMPTY' }));
     await expect(
       openRestoredTenant(isolated, { tenantId: a.tenant.id, live, backup }, cmd(operator.id)),
     ).rejects.toThrow(BackupIntegrityError);

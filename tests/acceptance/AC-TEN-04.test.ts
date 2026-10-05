@@ -106,6 +106,45 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
     expect(((await admins.json()) as { items: { userId: string }[] }).items.map((a) => a.userId)).toContain(admin.id);
   });
 
+  it('DEC-158 / P2-N1：已停用的外部成员以同一邮箱建档 → 类型转内部、成员状态仍停用、请求仍被拒', async () => {
+    const { db } = testDb();
+    const external = await newUser(db, 'revoked-vendor');
+    const added = await api.request('POST', '/api/tenant/permission/users', {
+      ...asAdmin,
+      body: {
+        email: external.email,
+        displayName: '已停用的外部用户',
+        userType: 'external',
+        businessIdentity: '供应商',
+      },
+    });
+    expect(added.status, await added.clone().text()).toBe(201);
+    const membership = (await added.json()) as { membershipRevision: number };
+    await revokeMembership(
+      db,
+      { tenantId: result.tenant.id, userId: external.id, expectedRevision: membership.membershipRevision },
+      cmd(),
+    );
+    const created = await tenantApi(db).request('POST', '/api/tenant/employment/employees', {
+      ...asAdmin,
+      ifMatch: 0,
+      body: { code: 'RVK001', name: '已停用的外部用户', loginEmail: external.email },
+    });
+    expect(created.status, await created.clone().text()).toBe(201);
+    const user = await api.request('GET', `/api/tenant/permission/users/${external.id}`, asAdmin);
+    expect(await user.json()).toMatchObject({
+      userType: 'internal',
+      businessIdentity: null,
+      membershipStatus: 'revoked',
+    });
+    const own = await api.request('GET', '/api/tenant/permission/admin-menus', {
+      user: external.id,
+      tenant: result.tenant.id,
+    });
+    expect(own.status).toBe(403);
+    expect(await errorCode(own)).toBe('TENANT_NOT_MEMBER');
+  });
+
   it('标准业务身份已下发（source=standard），且在首位租户管理员的可授权范围内', async () => {
     const res = await api.request('GET', '/api/tenant/permission/profiles', asAdmin);
     expect(res.status).toBe(200);

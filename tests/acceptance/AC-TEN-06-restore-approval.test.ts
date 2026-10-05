@@ -145,4 +145,89 @@ describe('AC-TEN-06 恢复对账：异常管理员与在途异常待办（DEC-09
       openRestoredTenant(handle.db, { tenantId: w.tenant.id, live: w.db, backup }, cmd(), w.clock),
     ).rejects.toEqual(expect.objectContaining({ reason: 'RESTORE_NOT_VERIFIED' }));
   });
+
+  for (const last of [false, true]) {
+    it(`P2-N2：会签中接任人已同意、异常管理员席位待办（会签${last ? '为最后节点' : '后还有节点'}）→ 恢复不推进流转，列入 problems`, async () => {
+      const w = await approvalWorld(database().db, `restore-joint-${last ? 'last' : 'mid'}`);
+      const s = await transferScene(w);
+      await w.setOrgRoles(s.to, { hrbp: null });
+      const joint = {
+        key: 'joint',
+        name: '调入部门会签',
+        kind: 'countersign' as const,
+        approvers: ['record_department_head', 'record_department_hrbp'] as const,
+        transitionRule: { type: 'all' as const },
+      };
+      const first = { key: 'out_head', name: '调出负责人审批', approver: 'latest_record_department_head' as const };
+      const final = { key: 'final', name: '调出负责人确认', approver: 'latest_record_department_head' as const };
+      await w.publishedProcess({ nodes: last ? [first, joint] : [first, joint, final] });
+      const draft = await w.application(s.subject.employeeId, { departmentId: s.to });
+      const submitted = await w.submit(draft);
+      const pendingOf = (v: InstanceView) => v.tasks.filter((t) => t.status === 'pending');
+      let view = await w.json<InstanceView>(
+        await w.taskAction(s.outHead.userId, pendingOf(submitted)[0]!.id, 'approve', submitted.revision),
+      );
+      const own = pendingOf(view).find((t) => t.assigneeUserId === s.inHead.userId)!;
+      view = await w.json<InstanceView>(await w.taskAction(s.inHead.userId, own.id, 'approve', view.revision));
+      expect(view.currentNodeKey).toBe('joint');
+      expect(pendingOf(view)).toEqual([
+        expect.objectContaining({ assigneeUserId: w.exceptionAdmin, nodeKey: 'joint' }),
+      ]);
+
+      const backup = await exportTenantBackup(w.db, { tenantId: w.tenant.id, codeVersion: 'joint' }, cmd());
+
+      // 现网：接任人 = 已在会签中同意的调入负责人（真实授权下可覆盖该实例），交接并停用原异常管理员
+      const world = await permissionAdmin(w);
+      await grantFieldAccess(world, s.inHead.userId, { view: ['employeeId', 'departmentId', 'effectiveDate'] });
+      const profiles = (await (
+        await world.api.request('GET', '/api/tenant/permission/profiles', world.asAdmin)
+      ).json()) as {
+        items: { id: string }[];
+      };
+      const seeAll = await world.api.request(
+        'PUT',
+        `/api/tenant/permission/profiles/${profiles.items.at(-1)!.id}/data-scopes/TenantBase`,
+        { ...world.asAdmin, ifMatch: 0, body: { targetKind: 'app', targetCode: '', seeAll: true } },
+      );
+      expect(seeAll.status, await seeAll.clone().text()).toBe(200);
+      const handed = await w.request(w.hr.id, 'POST', '/api/tenant/approval/exception-admins/handover', {
+        ifMatch: 0,
+        body: { fromUserId: w.exceptionAdmin, toUserId: s.inHead.userId },
+      });
+      expect(handed.status, await handed.clone().text()).toBe(200);
+      const account = await getUser(w.db, w.exceptionAdmin);
+      await setUserStatus(
+        w.db,
+        { userId: w.exceptionAdmin, status: 'disabled', expectedRevision: account!.revision },
+        cmd(),
+      );
+
+      const handle = await createTestDb();
+      handles.push(handle);
+      const input = { backup, live: w.db, attachments: { sha256: async () => null } };
+      const report = await restoreTenant(handle.db, input, cmd(), w.clock);
+      expect(report.ok).toBe(false);
+      expect(report.reconciliation.problems).toEqual([
+        expect.objectContaining({ reason: 'EXCEPTION_TASK_TAKEOVER_FAILED', userId: w.exceptionAdmin }),
+      ]);
+      const state = await withTenant(handle.db, w.tenant.id, async (tx) => ({
+        instance: rowsOf<{ status: string; current_node_key: string }>(
+          await tx.execute(sql`SELECT status, current_node_key FROM approval_instances WHERE id = ${view.id}::uuid`),
+        )[0],
+        nodes: rowsOf<{ node_key: string }>(
+          await tx.execute(sql`SELECT DISTINCT node_key FROM approval_tasks WHERE instance_id = ${view.id}::uuid`),
+        ).map((r) => r.node_key),
+        business: rowsOf<{ status: string }>(
+          await tx.execute(sql`SELECT state AS status FROM employment_state_events
+            WHERE business_id = ${draft.id}::uuid ORDER BY event_seq DESC LIMIT 1`),
+        )[0],
+      }));
+      expect(state.instance).toEqual({ status: 'running', current_node_key: 'joint' });
+      expect(state.nodes.sort()).toEqual(['joint', 'out_head']);
+      expect(state.business?.status).toBe('in_review');
+      await expect(
+        openRestoredTenant(handle.db, { tenantId: w.tenant.id, live: w.db, backup }, cmd(), w.clock),
+      ).rejects.toEqual(expect.objectContaining({ reason: 'RESTORE_NOT_VERIFIED' }));
+    });
+  }
 });
