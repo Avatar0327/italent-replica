@@ -382,7 +382,7 @@ export async function assignTransferOrganizationPeople(
   context: Omit<OrgWriteContext, 'rootName' | 'expectedRevision'>,
   orgId: string,
   effectiveDate: string,
-  people: { personInChargeId?: string; shopOwnerId?: string },
+  people: { personInChargeId?: string; shopOwnerId?: string; hrbpId?: string },
 ): Promise<OrgRecord> {
   const [root] = await tx
     .select({ name: orgVersions.name })

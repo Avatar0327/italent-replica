@@ -16,6 +16,8 @@ import type { EmploymentContext, NormalizedEmploymentInput } from '../employment
 import { authorizeInTransaction } from '../permission/module-access.js';
 import { requireTransferSource, transferDirectActions, type TransferInitiator } from './access.js';
 import { readTransferCatalog, readTransferSettings, resolveTransferForm } from './configuration.js';
+import { dutySubordinateIds, normalizeLinkage, type LinkageOptions } from './linkage/input.js';
+import { saveNewTransferLinkage } from './linkage/service.js';
 
 const schema = z.strictObject({
   initiator: z.enum(['hr', 'manager', 'employee']),
@@ -28,6 +30,8 @@ const schema = z.strictObject({
   customFields: z.record(z.string(), z.unknown()).optional(),
   submit: z.boolean().default(false),
   withEstablishment: z.boolean().optional(),
+  // R1-T10：是否变更合同、调整薪资、试岗、交接、调整兼职、转交职责（input.ts 细校验）。
+  linkage: z.unknown().optional(),
 });
 export interface TransferInput {
   readonly initiator: TransferInitiator;
@@ -36,12 +40,14 @@ export interface TransferInput {
   readonly submit: boolean;
   readonly writable: Readonly<Record<string, unknown>>;
   readonly employment: NormalizedEmploymentInput;
+  readonly linkage: LinkageOptions | null;
 }
 
 export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw: unknown): Promise<TransferInput> {
   const parsed = schema.safeParse(raw);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '调动表单字段不合法', parsed.error.issues);
   const input = parsed.data;
+  const linkage = input.linkage === undefined || input.linkage === null ? null : normalizeLinkage(input.linkage);
   // TODO(需取证 Q-M0-18)：带编转移数量与分配规则未确认，明确拒绝。
   if (input.withEstablishment)
     throw new AppError('SERVICE_UNAVAILABLE', '带编调动分配规则尚待取证', { reason: 'WITH_ESTABLISHMENT_UNAVAILABLE' });
@@ -74,7 +80,8 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
   )
     throw new AppError('VALIDATION_FAILED', '表单与调动入口不匹配', { reason: 'TRANSFER_FORM_ENTRY_MISMATCH' });
   await resolveTransferForm(tx, ctx.tenantId, employment.formId);
-  const writable = Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'submit'));
+  // 联动选项不是任职对象字段，不进字段权限校验；合同部分按合同模块权限另行校验（linkage/routes.ts）。
+  const writable = Object.fromEntries(Object.entries(input).filter(([key]) => !['submit', 'linkage'].includes(key)));
   return {
     writable,
     initiator: input.initiator,
@@ -82,6 +89,7 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
     ...(input.reasonCode ? { reasonCode: input.reasonCode } : {}),
     submit: input.submit,
     employment,
+    linkage,
   };
 }
 
@@ -106,9 +114,13 @@ export async function transferTargetContext(
 
 export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
   // F-008：先取员工锁，再重验关系/范围；业务写入沿用员工 → 业务 → 审批实例的顺序。
-  await lockTransferParticipants(tx, ctx, employeeId, input.employment.fields.addedSubordinateIds ?? []);
+  const { linkage } = input;
+  await lockTransferParticipants(tx, ctx, employeeId, [
+    ...(input.employment.fields.addedSubordinateIds ?? []),
+    ...dutySubordinateIds(linkage),
+  ]);
   await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
-  input = await normalizeTransferInput(tx, ctx, { ...input.writable, submit: input.submit });
+  input = { ...(await normalizeTransferInput(tx, ctx, { ...input.writable, submit: input.submit })), linkage };
   const prepared = await prepareInheritance(tx, ctx, { ...input.employment, employeeId });
   const sourceContext = { ...ctx, transferTarget: undefined };
   ctx = await transferTargetContext(tx, sourceContext, employeeId, input, prepared.fields.departmentId);
@@ -129,6 +141,12 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
       ${metadata.transferTypeCode},${metadata.reasonCode},${metadata.processCode})
   `);
   await auditEmployment(tx, ctx, 'transfer.request.create', 'transfer-request', created.id, null, metadata);
+  await saveNewTransferLinkage(
+    tx,
+    ctx,
+    { businessId: created.id, employeeId, effectiveDate: created.effectiveDate, mode: input.employment.mode },
+    linkage,
+  );
   if (input.employment.mode === 'application' && input.submit) {
     const context = { ...ctx, expectedRevision: created.revision };
     await transitionEmployment(tx, context, { id: created.id, action: 'submit' });

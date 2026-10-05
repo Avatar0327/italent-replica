@@ -81,6 +81,7 @@ describe('AC-TRF-31 联动段：DEC-183 到期时遇在途合同整单不执行'
       body: {},
     });
     expect(withdrawn.status, await withdrawn.clone().text()).toBe(200);
+    const beforeRetry = await w.business(business.id);
     const retried = await w.retry(business, '2026-10-11T02:00:00Z', 'lnk-trf31-retry');
     expect(retried.status, await retried.clone().text()).toBe(200);
     const done = await w.linkage(business.id);
@@ -93,7 +94,11 @@ describe('AC-TRF-31 联动段：DEC-183 到期时遇在途合同整单不执行'
     expect(await w.managerOf(subordinate.hire.id)).toBe(receiver.employee.id);
     expect(await w.todos()).toEqual([]);
     // 同一幂等键重放不重复执行；新键重试 409（已生效）。
-    const replay = await w.retry(business, '2026-10-11T03:00:00Z', 'lnk-trf31-retry');
+    const replay = await w.session.request('POST', `/businesses/${business.id}/activation/retry`, {
+      ifMatch: beforeRetry.revision,
+      body: {},
+      idempotencyKey: 'lnk-trf31-retry',
+    });
     expect(replay.status).toBe(200);
     expect(await w.contracts(person.employee.id)).toHaveLength(contracts.length);
     expect((await w.retry(business, '2026-10-11T03:00:00Z')).status).toBe(409);
@@ -129,7 +134,7 @@ describe('DEC-178 / DEC-084 联动改写碰到操作人范围外记录', () => {
         terms: [{ dimension: 'organization' as const, orgIds, personIds: [] }],
       }),
       authorize: async () => true,
-      fields: async () => undefined,
+      fields: async () => new Set(['id', 'revision', 'status']),
     });
     const api = tenantApi(w.db, { authorize, clock: () => new Date('2026-10-01T01:00:00Z') });
     return (method: string, path: string, body: object, ifMatch: number) =>

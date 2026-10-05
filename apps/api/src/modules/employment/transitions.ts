@@ -27,6 +27,7 @@ import {
 import { removeLatestEmploymentTimeline } from './timeline.js';
 import type { EmploymentBusiness, EmploymentContext, EmploymentState } from './types.js';
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
+import { assertTransferLinkageSubmittable } from '../transfer/linkage/service.js';
 import {
   appendEmploymentState,
   materializeEmploymentRecord,
@@ -85,6 +86,8 @@ export async function transitionEmployment(
       predecessor,
     });
     assertRequiredTransferFields(payload.kind, payload.formSnapshot, { ...fields });
+    // DEC-183：变更合同遇同类型在途未来合同，提交即 409。
+    if (payload.kind === 'transfer') await assertTransferLinkageSubmittable(tx, ctx, business.id);
     await assertEstablishmentCapacity(tx, ctx, {
       businessId: business.id,
       employeeId: business.employeeId,

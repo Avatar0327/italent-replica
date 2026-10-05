@@ -82,7 +82,7 @@ const RULE_REJECTIONS = new Set<ErrorCode>([
   'ORG_FUTURE_VERSION_EXISTS',
 ]);
 
-function ruleRejection(error: unknown): ActivationFailure | null {
+export function ruleRejection(error: unknown): ActivationFailure | null {
   if (error instanceof EmploymentError) {
     return { reason: 'RULE_REJECTED', detail: { code: error.code, message: error.message } };
   }

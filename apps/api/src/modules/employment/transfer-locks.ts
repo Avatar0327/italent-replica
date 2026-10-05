@@ -1,4 +1,4 @@
-/** F-008：一次生效涉及的员工先按 UUID 取锁，再锁业务头，最后由审批入口锁实例。
+/** F-008：一次生效涉及的员工（含新增下属与 R1-T10 职责转交的下属）先按 UUID 取锁，再锁业务头，最后由审批入口锁实例。
  * 锁内重读参与者；等待期间载荷新增了参与者时返回 409，由调用方刷新后显式重提。
  * 事务本地设置跟随保存点回滚，不能用进程缓存替代数据库持锁事实。
  */
@@ -15,9 +15,13 @@ async function participants(tx: Tx, ctx: EmploymentContext, employeeId: string, 
   for (;;) {
     const rows = rowsOf<{ ids: string[] | null }>(
       await tx.execute(sql`
-      SELECT p.added_subordinate_ids AS ids FROM employment_business_objects b
+      SELECT p.added_subordinate_ids || COALESCE(duty.ids, '{}'::uuid[]) AS ids FROM employment_business_objects b
       JOIN LATERAL (SELECT kind, added_subordinate_ids FROM employment_payload_versions p
         WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) p ON true
+      LEFT JOIN LATERAL (SELECT array_agg(d.subordinate_id) AS ids FROM transfer_linkage_duties d
+        WHERE d.tenant_id=b.tenant_id AND d.subordinate_id IS NOT NULL AND d.version_id=(
+          SELECT v.id FROM transfer_linkage_versions v WHERE v.tenant_id=b.tenant_id AND v.business_id=b.id
+          ORDER BY v.version_no DESC LIMIT 1)) duty ON true
       JOIN LATERAL (SELECT state FROM employment_state_events s
         WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY event_no DESC LIMIT 1) s ON true
       WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=ANY(${array([...ids])})
