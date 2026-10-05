@@ -1,4 +1,4 @@
-import { withTenant } from '@italent/db';
+import { type Tx, withTenant } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
@@ -7,6 +7,7 @@ import { AppError, handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { scopeAllows } from '../permission/module-access.js';
+import { provisionEmployeeUser } from '../permission/user-provisioning.js';
 import {
   readSettings,
   updateSettings,
@@ -29,7 +30,7 @@ import {
   trimEmploymentResponse,
   EMPLOYEE_OBJECT,
 } from './context.js';
-import { createEmployee, getEmployee, listEmployees } from './employees.js';
+import { createEmployee, employeeName, getEmployee, listEmployees } from './employees.js';
 import { EmploymentError } from './errors.js';
 import { normalizeEmploymentInput, normalizeBusinessPatch } from './fields.js';
 import { previewEmploymentEditForwardUpdate, previewEmploymentForwardUpdate } from './forward-preview.js';
@@ -37,7 +38,7 @@ import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentIm
 import { editEmploymentRecord } from './record-edit.js';
 import { prepareInheritance, inheritancePreview } from './inheritance.js';
 import { listEmploymentRecords, loadEmploymentBusiness, loadEmploymentRecord } from './read-model.js';
-import { createEmploymentBusiness, updateEmploymentBusiness } from './write-service.js';
+import { createEmploymentBusiness, NEW_CYCLE_KINDS, updateEmploymentBusiness } from './write-service.js';
 import { transitionEmployment } from './transitions.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import type { EmploymentContext } from './types.js';
@@ -60,20 +61,34 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   router.route('/api/tenant/employment', module);
 };
 
+/** 登录邮箱不是人员字段：建档 / 入职时交给权限模块的用户端口（DEC-128；入职必填，DEC-140），不参与任职字段权限校验。 */
+const loginEmail = z.email().max(320).optional();
+
 function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/employees', async (c) => {
     const ctx = await readContext(c, deps, 'object.create', revision(c), undefined, EMPLOYEE_OBJECT);
     const input = parse(
-      z.strictObject({ code: z.string().trim().min(1).max(100), name: z.string().trim().min(1).max(200) }),
+      z.strictObject({
+        code: z.string().trim().min(1).max(100),
+        name: z.string().trim().min(1).max(200),
+        loginEmail,
+      }),
       await jsonBody(c),
     );
-    await requireEmploymentWrite(ctx, 'create', input, 'Employee.Create', EMPLOYEE_OBJECT);
+    const profile = { code: input.code, name: input.name };
+    await requireEmploymentWrite(ctx, 'create', profile, 'Employee.Create', EMPLOYEE_OBJECT);
     // TODO(需取证 Q-M0-28)：新员工尚无任职鉴权字段，仅显式看全部范围可创建。
     requireEmploymentScope(ctx);
-    return runWrite(c, deps, ctx, input, async (tx, context) => ({
-      status: 201,
-      body: await createEmployee(tx, context, input),
-    }));
+    return runWrite(c, deps, ctx, input, async (tx, context) => {
+      const employee = await createEmployee(tx, context, profile);
+      // DEC-128：建档即在同一事务内自动创建并绑定租户用户（AC-PRM-31）
+      await provisionEmployeeUser(tx, context, {
+        employeeId: employee.id,
+        loginEmail: input.loginEmail,
+        displayName: employee.name,
+      });
+      return { status: 201, body: employee };
+    });
   });
   router.get('/employees', async (c) => {
     const ctx = await readPageContext(c, deps, 'list', undefined, EMPLOYEE_OBJECT);
@@ -111,14 +126,18 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/employees/:id/businesses', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
-    const rawInput = await jsonBody(c);
+    const { rawInput, email } = splitLoginEmail(await jsonBody(c));
     const input = normalizeEmploymentInput(ctx, rawInput);
+    if (email !== undefined && !NEW_CYCLE_KINDS.includes(input.kind)) {
+      throw new AppError('VALIDATION_FAILED', '只有入职类业务可以提供登录邮箱');
+    }
     await requireEmploymentWrite(ctx, 'create', rawInput as object, 'Employment.Create');
     if (input.fields.departmentId !== undefined) requireEmploymentScope(ctx, id, input.fields.departmentId);
-    return runWrite(c, deps, ctx, input, async (tx, context) => ({
-      status: 201,
-      body: await createEmploymentBusiness(tx, context, id, input),
-    }));
+    return runWrite(c, deps, ctx, { ...input, loginEmail: email }, async (tx, context) => {
+      const business = await createEmploymentBusiness(tx, context, id, input);
+      if (NEW_CYCLE_KINDS.includes(input.kind)) await ensureHiredAccount(tx, context, id, email);
+      return { status: 201, body: business };
+    });
   });
 }
 
@@ -336,6 +355,24 @@ function registerCustomFields(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       body: await setCustomFieldInheritance(tx, context, id, input),
     }));
   });
+}
+
+/**
+ * DEC-128 / DEC-140：办理入职（含重聘、入职申请）时在同一事务内确保人员已有绑定的租户用户；
+ * 尚未绑定又没给登录邮箱即拒绝并提示补填，整单回滚。
+ */
+async function ensureHiredAccount(tx: Tx, context: EmploymentContext, employeeId: string, loginEmail?: string) {
+  const displayName = await employeeName(tx, context.tenantId, employeeId);
+  await provisionEmployeeUser(tx, context, { employeeId, loginEmail, displayName, accountRequired: true });
+}
+
+/** 入职请求里的登录邮箱与任职业务字段分开：前者交给用户端口，后者照原样校验与鉴权。 */
+function splitLoginEmail(body: unknown): { rawInput: unknown; email: string | undefined } {
+  if (body === null || typeof body !== 'object' || Array.isArray(body) || !('loginEmail' in body)) {
+    return { rawInput: body, email: undefined };
+  }
+  const { loginEmail: raw, ...rest } = body as Record<string, unknown>;
+  return { rawInput: rest, email: parse(loginEmail, raw) };
 }
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {

@@ -39,7 +39,7 @@ export function memo<T>(subject: Pick<RoutingSubject, 'cache'>, key: string, loa
 const NOBODY: Candidate = { personId: null, userId: null };
 
 /**
- * 人员的有效账号：账号绑定（Q-M0-30：用户与人员由管理员显式绑定）、成员关系有效且全局账号未停用（R4-3）。
+ * 人员的有效账号：账号绑定（DEC-128：用户与人员一一对应、由建档 / 入职绑定）、成员关系有效且全局账号未停用（R4-3）。
  * 只用于识别（异动本人、通知接收人等）；审批候选另经 isEligibleApprover 复核并取派单闸（candidateOf）。
  * 解析到没有账号或账号已停用的人员按“审批人为空”处理（DEC-098）。
  * TODO(需取证 Q-M0-44)：在职但没有系统账号 / 账号已停用的人员被解析为审批人时原站怎么处理，未取证。

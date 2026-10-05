@@ -229,15 +229,29 @@
     {
       "idx": 32,
       "version": "7",
-      "when": 1791129849195,
-      "tag": "0032_org_shop_owner_employment_change_type",
+      "when": 1791135163806,
+      "tag": "0032_enterprise_settings",
       "breakpoints": true
     },
     {
       "idx": 33,
       "version": "7",
-      "when": 1791158531315,
-      "tag": "0033_org_established_on_correction",
+      "when": 1791135165300,
+      "tag": "0033_enterprise_settings_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791159418373,
+      "tag": "0034_org_shop_owner_employment_change_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791159424218,
+      "tag": "0035_org_established_on_correction",
       "breakpoints": true
     }
   ]

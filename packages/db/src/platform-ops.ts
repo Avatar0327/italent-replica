@@ -8,6 +8,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { Db } from './client.js';
 import { pgErrorCode } from './pg-error.js';
 import {
+  type AuditEntry,
   type PlatformCommandContext,
   type PlatformCommandMeta,
   RevisionConflictError,
@@ -15,6 +16,7 @@ import {
 } from './platform-command.js';
 import {
   type MembershipStatus,
+  permissionOutbox,
   type SystemSetting,
   systemSettings,
   type Tenant,
@@ -206,8 +208,33 @@ async function changeMembership(
       const before = await findMembership(ctx, change, true);
       assertMembershipRevision(before, change, status);
       const after = before ? await updateMembership(ctx, before, status) : await insertMembership(ctx, change);
-      await ctx.auditTenant(change.tenantId, audit(op, 'tenant_membership', after.id, snap(before), snap(after)));
+      const entry = audit(op, 'tenant_membership', after.id, snap(before), snap(after));
+      await tenantEvent(ctx, meta, change.tenantId, entry, after.revision);
       return after;
+    });
+  });
+}
+
+/**
+ * 成员关系变更：同一事务写入该租户的审计与权限 outbox（AGENTS.md §10「审计」「事件」）；
+ * 企业设置的停用、启用与移出租户（R1-T15，DEC-142）经此留痕，权限模块据此刷新缓存、通知等。
+ */
+async function tenantEvent(
+  ctx: PlatformCommandContext,
+  meta: PlatformCommandMeta,
+  tenantId: string,
+  entry: AuditEntry,
+  revision: number,
+) {
+  await ctx.auditTenant(tenantId, entry);
+  await ctx.inTenant(tenantId, async (tx) => {
+    await tx.insert(permissionOutbox).values({
+      tenantId,
+      objectType: entry.objectType,
+      objectId: entry.objectId,
+      eventType: entry.action,
+      revision,
+      commandId: meta.commandId,
     });
   });
 }

@@ -16,6 +16,7 @@ import {
   setObjectPermission,
 } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { loginEmailOf } from './AC-EMP-support.js';
 
 const database = useTestDb();
 it('scope resolution + paginated list uses a fixed number of queries with thousands of records', async () => {
@@ -34,7 +35,13 @@ it('scope resolution + paginated list uses a fixed number of queries with thousa
   const employee = await create('employment/employees', { code: randomUUID(), name: '合成员工' });
   await create(
     `employment/employees/${employee.id}/businesses`,
-    { kind: 'hire', mode: 'direct', effectiveDate: '2026-01-01', fields: { departmentId: org.id } },
+    {
+      kind: 'hire',
+      mode: 'direct',
+      effectiveDate: '2026-01-01',
+      fields: { departmentId: org.id },
+      loginEmail: loginEmailOf(employee.id),
+    },
     employee.revision,
   );
   const user = await addMember(w, 'bounded-list');

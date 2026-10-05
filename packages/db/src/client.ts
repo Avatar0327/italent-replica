@@ -17,7 +17,8 @@ export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 export interface DbHandle {
   readonly db: Db;
   readonly driver: 'pg' | 'pglite';
-  migrate(): Promise<void>;
+  /** 执行迁移；folder 默认包内迁移目录（升级测试可传只含前一部分迁移的目录）。 */
+  migrate(folder?: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -28,7 +29,7 @@ export function createPgDb(url: string, options: { max?: number } = {}): DbHandl
   return {
     db: db as unknown as Db,
     driver: 'pg',
-    migrate: () => migratePg(db, { migrationsFolder }),
+    migrate: (folder = migrationsFolder) => migratePg(db, { migrationsFolder: folder }),
     close: () => client.end(),
   };
 }
@@ -39,7 +40,7 @@ export function createPgliteDb(client: PGlite): DbHandle {
   return {
     db: db as unknown as Db,
     driver: 'pglite',
-    migrate: () => migratePglite(db, { migrationsFolder }),
+    migrate: (folder = migrationsFolder) => migratePglite(db, { migrationsFolder: folder }),
     close: () => client.close(),
   };
 }

@@ -1,6 +1,6 @@
 {
-  "id": "cf951246-866e-44eb-8747-902b2071eb92",
-  "prevId": "dda1b3a6-a2ee-46f5-981f-74cbe5fac0f4",
+  "id": "759d42b3-43c4-4462-a119-d4eca172cb8a",
+  "prevId": "1c27d3f4-af3f-4533-a403-d9c220291164",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2846,6 +2846,12 @@
         },
         "hrbp_id": {
           "name": "hrbp_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "shop_owner_id": {
+          "name": "shop_owner_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -10586,6 +10592,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "change_type": {
+          "name": "change_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "mode": {
           "name": "mode",
           "type": "text",
@@ -11203,6 +11215,10 @@
           "name": "employment_payload_versions_kind",
           "value": "\"employment_payload_versions\".\"kind\" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',\n      'org_adjustment', 'leave', 'retirement', 'intern_regularization')"
         },
+        "employment_payload_versions_change_type": {
+          "name": "employment_payload_versions_change_type",
+          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment')"
+        },
         "employment_payload_versions_version_positive": {
           "name": "employment_payload_versions_version_positive",
           "value": "\"employment_payload_versions\".\"version_no\" > 0"
@@ -11391,6 +11407,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "change_type": {
+          "name": "change_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "start_date": {
           "name": "start_date",
@@ -11870,6 +11892,10 @@
         "employment_records_kind": {
           "name": "employment_records_kind",
           "value": "\"employment_records\".\"kind\" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',\n      'org_adjustment', 'leave', 'retirement', 'intern_regularization')"
+        },
+        "employment_records_change_type": {
+          "name": "employment_records_change_type",
+          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment')"
         },
         "employment_records_primary_only": {
           "name": "employment_records_primary_only",

@@ -1,5 +1,5 @@
 {
-  "id": "970ec558-8afb-47ee-afc7-ed44590e4cd7",
+  "id": "dda1b3a6-a2ee-46f5-981f-74cbe5fac0f4",
   "prevId": "4589b9f0-98c6-4bae-b483-dda4343fc24a",
   "version": "7",
   "dialect": "postgresql",
@@ -506,6 +506,18 @@
           "notNull": true,
           "default": "'active'"
         },
+        "user_type": {
+          "name": "user_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "business_identity": {
+          "name": "business_identity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "revision": {
           "name": "revision",
           "type": "integer",
@@ -573,6 +585,14 @@
         "tenant_memberships_status_valid": {
           "name": "tenant_memberships_status_valid",
           "value": "\"tenant_memberships\".\"status\" IN ('active', 'revoked')"
+        },
+        "tenant_memberships_user_type_valid": {
+          "name": "tenant_memberships_user_type_valid",
+          "value": "\"tenant_memberships\".\"user_type\" IN ('internal', 'external')"
+        },
+        "tenant_memberships_business_identity": {
+          "name": "tenant_memberships_business_identity",
+          "value": "(\"tenant_memberships\".\"user_type\" = 'external' AND \"tenant_memberships\".\"business_identity\" IS NOT NULL AND btrim(\"tenant_memberships\".\"business_identity\") <> '')\n    OR (\"tenant_memberships\".\"user_type\" IS DISTINCT FROM 'external' AND \"tenant_memberships\".\"business_identity\" IS NULL)"
         }
       },
       "isRLSEnabled": false
@@ -989,21 +1009,6 @@
           ],
           "columnsTo": [
             "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "license_seats_pool": {
-          "name": "license_seats_pool",
-          "tableFrom": "license_seats",
-          "tableTo": "license_pools",
-          "columnsFrom": [
-            "tenant_id",
-            "license_type"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "license_type"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -1535,6 +1540,123 @@
         "permission_grants_status_valid": {
           "name": "permission_grants_status_valid",
           "value": "\"permission_grants\".\"status\" IN ('active', 'revoked')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.permission_outbox": {
+      "name": "permission_outbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_type": {
+          "name": "object_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "permission_outbox_cursor": {
+          "name": "permission_outbox_cursor",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "permission_outbox_tenant_id_tenants_id_fk": {
+          "name": "permission_outbox_tenant_id_tenants_id_fk",
+          "tableFrom": "permission_outbox",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "permission_outbox_state": {
+          "name": "permission_outbox_state",
+          "value": "\"permission_outbox\".\"state\" IN ('pending', 'sent', 'failed', 'unknown')"
         }
       },
       "isRLSEnabled": false
@@ -2724,12 +2846,6 @@
         },
         "hrbp_id": {
           "name": "hrbp_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "shop_owner_id": {
-          "name": "shop_owner_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -10470,12 +10586,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "change_type": {
-          "name": "change_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "mode": {
           "name": "mode",
           "type": "text",
@@ -11093,10 +11203,6 @@
           "name": "employment_payload_versions_kind",
           "value": "\"employment_payload_versions\".\"kind\" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',\n      'org_adjustment', 'leave', 'retirement', 'intern_regularization')"
         },
-        "employment_payload_versions_change_type": {
-          "name": "employment_payload_versions_change_type",
-          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment')"
-        },
         "employment_payload_versions_version_positive": {
           "name": "employment_payload_versions_version_positive",
           "value": "\"employment_payload_versions\".\"version_no\" > 0"
@@ -11285,12 +11391,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "change_type": {
-          "name": "change_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "start_date": {
           "name": "start_date",
@@ -11770,10 +11870,6 @@
         "employment_records_kind": {
           "name": "employment_records_kind",
           "value": "\"employment_records\".\"kind\" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',\n      'org_adjustment', 'leave', 'retirement', 'intern_regularization')"
-        },
-        "employment_records_change_type": {
-          "name": "employment_records_change_type",
-          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment')"
         },
         "employment_records_primary_only": {
           "name": "employment_records_primary_only",

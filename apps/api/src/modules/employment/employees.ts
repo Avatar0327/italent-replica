@@ -46,6 +46,18 @@ export async function createEmployee(tx: Tx, ctx: EmploymentContext, input: { co
   return after;
 }
 
+/** 人员当前姓名（人员信息投影优先）；入职时为新建的全局账号取显示名（DEC-128）。 */
+export async function employeeName(tx: Tx, tenantId: string, id: string): Promise<string> {
+  const [row] = rowsOf<{ name: string }>(
+    await tx.execute(sql`
+    SELECT ${personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`)} AS name
+    FROM employment_employees e WHERE e.tenant_id=${tenantId} AND e.id=${id}::uuid
+  `),
+  );
+  if (!row) throw new AppError('NOT_FOUND', '员工不存在');
+  return row.name;
+}
+
 function employeeQuery(tenantId: string, asOf: string, scope?: EmploymentScope) {
   businessDate(asOf);
   const predicate = employmentScopePredicate(

@@ -5,7 +5,7 @@
  * 21 无可用账号按空处理、异常管理员停用前交接、在途异常任务由租户管理员接管（DEC-098）；
  * X-14 自动同意触发同意消息；C-非3 被自审跳过的人不因此成为参与人。
  */
-import { revokeMembership, sql, withTenant } from '@italent/db';
+import { eq, permissionUserPersonLinks, revokeMembership, sql, withTenant } from '@italent/db';
 import { bootstrapTenantAdmin } from '@italent/api';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -136,6 +136,10 @@ describe('清单 21：无可用账号按空处理；异常管理员停用前交�
     const admin = await w.member('异常管理员');
     const unbound = await w.employee('没有账号的 HRBP');
     await w.hire(unbound.id, { departmentId: s.to });
+    // 入职时按 DEC-140 一定建了账号；可信夹具删掉绑定，模拟解析到的人员没有可用账号
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.delete(permissionUserPersonLinks).where(eq(permissionUserPersonLinks.employeeId, unbound.id)),
+    );
     await w.setOrgRoles(s.to, { hrbp: unbound.id });
     await w.publishedProcess({ exceptionAdminUserId: admin, nodes: TRANSFER_NODES.slice(0, 2) });
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));

@@ -42,6 +42,19 @@ export interface EmploymentBusiness {
   readonly record: EmploymentRecord | null;
 }
 
+const NEW_CYCLE_KINDS = new Set(['hire', 'rehire', 'retire_rehire']);
+
+/** 人员的合成登录邮箱（按人员编号确定，重聘时与首次入职一致，不会触发改绑拒绝）。 */
+export function loginEmailOf(employeeId: string): string {
+  return `person-${employeeId}@example.com`;
+}
+
+/** DEC-140：办理入职必须有登录邮箱；入职类业务未指定时补上该人员的合成登录邮箱。 */
+export function withLoginEmail(employeeId: string, body: Record<string, unknown>): Record<string, unknown> {
+  if (!NEW_CYCLE_KINDS.has(String(body.kind)) || 'loginEmail' in body) return body;
+  return { ...body, loginEmail: loginEmailOf(employeeId) };
+}
+
 export async function employmentSession(db: Db, label: string, options: { timezone?: string } = {}) {
   const member = await seedTenantWithMember(db, label, options.timezone);
   let now = new Date(`${EMP_TODAY}T01:00:00.000Z`);
@@ -72,7 +85,10 @@ export async function employmentSession(db: Db, label: string, options: { timezo
     body: Record<string, unknown>,
     revision: number,
   ): Promise<EmploymentBusiness> {
-    const response = await request('POST', `/employees/${employeeId}/businesses`, { ifMatch: revision, body });
+    const response = await request('POST', `/employees/${employeeId}/businesses`, {
+      ifMatch: revision,
+      body: withLoginEmail(employeeId, body),
+    });
     expect(response.status).toBe(201);
     return (await response.json()) as EmploymentBusiness;
   }
