@@ -103,19 +103,30 @@ it('F-017 DEC-185 补全后永久关闭，再清空生成新的员工字段待�
   const manager = await w.hired('补全经理');
   const response = await w.session.request('POST', `/transfers/employees/${person.employee.id}`, {
     ifMatch: person.hire.employeeRevision,
-    body: { initiator: 'hr', mode: 'direct', transferTypeCode: 'cross_department', effectiveDate: '2026-10-01', fields: { departmentId: w.to.id, directManagerId: null } },
+    body: {
+      initiator: 'hr',
+      mode: 'direct',
+      transferTypeCode: 'cross_department',
+      effectiveDate: '2026-10-01',
+      fields: { departmentId: w.to.id, directManagerId: null },
+    },
   });
   expect(response.status).toBe(201);
-  const business = await response.json() as { id: string; revision: number };
+  const business = (await response.json()) as { id: string; revision: number };
   const edit = async (directManagerId: string | null) => {
     const current = await w.business(business.id);
-    const edited = await w.session.request('PATCH', `/records/${business.id}`, { ifMatch: current.revision, body: { fields: { directManagerId } } });
+    const edited = await w.session.request('PATCH', `/records/${business.id}`, {
+      ifMatch: current.revision,
+      body: { fields: { directManagerId } },
+    });
     expect(edited.status, await edited.clone().text()).toBe(200);
   };
   await edit(manager.employee.id);
   await edit(null);
   const events = await w.auditEvents(business.id);
-  const opened = events.filter((event) => event.action === 'employment.completion.opened' && event.after?.fieldCode === 'preset:directManagerId');
+  const opened = events.filter(
+    (event) => event.action === 'employment.completion.opened' && event.after?.fieldCode === 'preset:directManagerId',
+  );
   expect(opened).toHaveLength(2);
   expect(new Set(opened.map((event) => event.after?.todoId)).size).toBe(2);
   expect(events.some((event) => event.action === 'employment.completion.closed')).toBe(true);

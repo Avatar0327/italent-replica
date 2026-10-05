@@ -165,7 +165,7 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
         const current = await w.session.getEmployee(employee.id);
         await w.session.business(
           employee.id,
-          { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-09', fields: { departmentId: w.from.id } },
+          { kind: 'regularization', mode: 'direct', effectiveDate: '2026-10-09', fields: { departmentId: w.from.id } },
           current.revision,
         );
         const disabled = await tenantApi(w.db, { clock: () => new Date('2026-10-03T01:00:00Z') }).request(
@@ -340,7 +340,7 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
     expect((await create({ employmentForm: 'contract', employmentType: 'engineer' })).status).toBe(201);
   });
 
-  it('申请通过后真实满编 → 到期失败 → 调整编制 → 按原日重试，幂等关闭待办', async () => {
+  it('申请通过后真实满编 → 到期失败 → 调整编制 → 按执行日重试，幂等关闭待办', async () => {
     const w = await fixture('trf-est-retry');
     const { employee } = await w.hired();
     const application = await w.apply(employee.id, '2026-10-10', { departmentId: w.to.id });
@@ -371,7 +371,7 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
     expect(adjusted.status, await adjusted.clone().text()).toBe(200);
     const retried = await w.retry(application, '2026-10-11T01:00:00Z', 'est-retry');
     expect(retried.status, await retried.clone().text()).toBe(200);
-    expect(await w.business(application.id)).toMatchObject({ status: 'effective', effectiveDate: '2026-10-10' });
+    expect(await w.business(application.id)).toMatchObject({ status: 'effective', effectiveDate: '2026-10-11' });
     expect(await w.todos()).toEqual([]);
     expect((await w.runScheduler('2026-10-11T02:00:00Z')).activated).toEqual([]);
     expect(

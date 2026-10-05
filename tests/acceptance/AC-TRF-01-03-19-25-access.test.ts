@@ -180,7 +180,7 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
         (SELECT count(*) FROM employment_records WHERE tenant_id=${world.tenant.id}) AS records,
         (SELECT count(*) FROM org_versions WHERE tenant_id=${world.tenant.id}) AS organizations,
         (SELECT count(*) FROM audit_events WHERE tenant_id=${world.tenant.id}) AS audits`);
-      return Array.isArray(result) ? result : result.rows;
+      return Array.isArray(result) ? result : (result as { rows: unknown[] }).rows;
     });
   }
 
