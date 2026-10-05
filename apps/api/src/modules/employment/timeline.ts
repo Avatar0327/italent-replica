@@ -26,7 +26,9 @@ export function operationKey(tenantId: string, businessId: SQL): SQL {
 export function plannedEffectiveDate(tenantId: string, businessId: SQL, fallback: SQL): SQL {
   return sql`COALESCE((SELECT (e.payload->'after'->>'originalEffectiveDate')::date
     FROM employment_outbox e WHERE e.tenant_id=${tenantId} AND e.business_id=${businessId}
-      AND e.event_type='employment.transfer.rescheduled' ORDER BY e.created_at,e.id LIMIT 1), ${fallback})`;
+      AND e.event_type='employment.transfer.rescheduled' ORDER BY e.created_at,e.id LIMIT 1),
+    (SELECT p.effective_date FROM employment_payload_versions p
+      WHERE p.tenant_id=${tenantId} AND p.business_id=${businessId} ORDER BY p.version_no DESC LIMIT 1), ${fallback})`;
 }
 
 /** 新记录在时间轴上的位置；shifted 表示当日已有操作更晚的记录，新记录插在它们之前（它们依次后移一位）。 */

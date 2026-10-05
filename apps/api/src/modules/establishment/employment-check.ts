@@ -1,7 +1,8 @@
+import { pendingActivationState } from '../employment/activation-store.js';
 import { insertedWindow, recordWindow } from '../employment/reporting-cycle.js';
 import { camelRow, snapshotFields, type EmploymentPayloadRow } from '../employment/record-store.js';
 import { resolveEffectiveInheritance } from '../employment/inheritance.js';
-import { employmentTimelineNeighbors, operationKey } from '../employment/timeline.js';
+import { employmentTimelineNeighbors, operationKey, plannedEffectiveDate } from '../employment/timeline.js';
 /** DEC-145 / 18 §11：真实任职投影，条件内且、条件间或；外部人员计数但不拦其调入。 */
 import { auditActor } from '../../system-actor.js';
 import { AppError } from '../../errors.js';
@@ -156,7 +157,8 @@ async function projectedMembers(
   // SQL 先按目标子树裁剪；时间轴区间天然包含直接调入、调出、入职、离职等已落地业务。
   // 本次按实际区间并入同一端点扫描，不能把本人当成永久占编的常量。
   const rows = await occupancyRows(tx, ctx, target, end, orgIds);
-  // 申请单只在指定占用/释放时机后参与；撤回/驳回自动退出，已落地单不重复统计。
+  // DEC-195：迟到申请及待复查的直接调动按实际执行日投影，原计划日决定同日顺序。
+  // 已落地单用冻结字段替换其旧区间，不重复占编；撤回/驳回自动退出。
   const pending = await pendingTransfers(tx, ctx, target, start, end);
   const { readSettings } = await import('./settings.js');
   const timings = await readSettings(tx, ctx.tenantId, target.effectiveDate);
@@ -185,11 +187,20 @@ async function projectedMembers(
     const projected = projectedPredecessors.get(row.employeeId);
     const predecessor =
       projected && (!original || projected.effectiveDate >= original.effectiveDate) ? projected : original;
-    const resolved = await resolveEffectiveInheritance(tx, ctx, payload, {
-      staffId: payload.selectedStaffId ?? predecessor?.staffId ?? '',
-      predecessor,
-    });
-    const fields = { ...resolved.fields, employType: predecessor?.fields.employType ?? 'internal' };
+    const materialized =
+      row.state === 'effective'
+        ? await loadEmploymentRecord(tx, ctx.tenantId, payload.businessId, payload.effectiveDate)
+        : null;
+    const resolved =
+      materialized ??
+      (await resolveEffectiveInheritance(tx, ctx, payload, {
+        staffId: payload.selectedStaffId ?? predecessor?.staffId ?? '',
+        predecessor,
+      }));
+    const fields = {
+      ...resolved.fields,
+      employType: resolved.fields.employType ?? predecessor?.fields.employType ?? 'internal',
+    };
     if (predecessor)
       projectedPredecessors.set(row.employeeId, {
         ...predecessor,
@@ -202,7 +213,7 @@ async function projectedMembers(
     if (!window || from >= until) continue;
     const previous = members.get(row.employeeId) ?? [];
     const intervals =
-      timings.transferOut === 'submitted' || row.state === 'approved'
+      timings.transferOut === 'submitted' || row.state !== 'in_review'
         ? previous.flatMap((interval) => {
             if (interval.until <= from || interval.from >= until) return [interval];
             return [
@@ -211,7 +222,7 @@ async function projectedMembers(
             ];
           })
         : previous;
-    if (timings.transferIn === 'submitted' || row.state === 'approved')
+    if (timings.transferIn === 'submitted' || row.state !== 'in_review')
       intervals.push({ employeeId: row.employeeId, fields, from, until });
     members.set(row.employeeId, intervals);
   }
@@ -292,10 +303,12 @@ async function occupancyRows(
 }
 
 async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: ActivationTarget, start: string, end: string) {
+  const date = sql`greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date)`;
   const pending = rowsOf<{ employeeId: string; fields: Record<string, unknown>; state: string }>(
     await tx.execute(sql`
     SELECT b.employee_id AS "employeeId",
-      to_jsonb(p) || jsonb_build_object('employ_type',COALESCE(current_record.employ_type,'internal')) AS fields,s.state
+      to_jsonb(p) || jsonb_build_object('employ_type',COALESCE(current_record.employ_type,'internal'),
+        'effective_date',${date}) AS fields,s.state
     FROM employment_business_objects b
     JOIN LATERAL (SELECT * FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id
       ORDER BY version_no DESC LIMIT 1) p ON true
@@ -306,9 +319,12 @@ async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: Activati
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id
         AND t.valid_during @> p.effective_date AND r.service_type='primary' LIMIT 1) current_record ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.id<>${target.businessId}::uuid
-      AND p.kind='transfer' AND p.mode='application' AND s.state IN ('in_review','approved')
-      AND p.effective_date BETWEEN ${start}::date AND ${end}::date
-    ORDER BY p.effective_date,${operationKey(ctx.tenantId, sql`b.id`)} LIMIT 10001
+      AND p.kind='transfer' AND (p.mode='application' AND s.state IN ('in_review','approved')
+        OR s.state='effective' AND p.effective_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date
+          AND ${pendingActivationState(ctx.timezone)})
+      AND ${date} BETWEEN ${start}::date AND ${end}::date
+    ORDER BY ${date},${plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`)},
+      ${operationKey(ctx.tenantId, sql`b.id`)} LIMIT 10001
   `),
   );
   if (pending.length > 10000) throw new AppError('SERVICE_UNAVAILABLE', '编制占用申请超过处理上限');
@@ -356,19 +372,29 @@ async function projectTarget(
 /** 本人后续申请也有占用/释放时点；审批早提交单不能覆盖同日在后的投影。 */
 async function nextReservedTransfer(tx: Tx, ctx: EmploymentContext, target: ActivationTarget, transferOut: string) {
   const mine = operationKey(ctx.tenantId, sql`${target.businessId}::uuid`);
+  const date = sql`greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date)`;
+  const planned = plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`);
+  const minePlanned = plannedEffectiveDate(
+    ctx.tenantId,
+    sql`${target.businessId}::uuid`,
+    sql`${target.effectiveDate}::date`,
+  );
   const [next] = rowsOf<{ date: string }>(
     await tx.execute(sql`
-    SELECT p.effective_date::text AS date FROM employment_business_objects b
+    SELECT ${date}::text AS date FROM employment_business_objects b
     JOIN LATERAL (SELECT * FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id
       ORDER BY version_no DESC LIMIT 1) p ON true
     JOIN LATERAL (SELECT state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id
       ORDER BY event_no DESC LIMIT 1) s ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${target.employeeId}::uuid AND b.id<>${target.businessId}::uuid
-      AND p.kind='transfer' AND p.mode='application'
-      AND (s.state='approved' OR s.state='in_review' AND ${transferOut}='submitted')
-      AND (p.effective_date>${target.effectiveDate}::date OR p.effective_date=${target.effectiveDate}::date
-        AND ${operationKey(ctx.tenantId, sql`b.id`)}>${mine})
-    ORDER BY p.effective_date,${operationKey(ctx.tenantId, sql`b.id`)} LIMIT 1`),
+      AND p.kind='transfer'
+      AND (p.mode='application' AND (s.state='approved' OR s.state='in_review' AND ${transferOut}='submitted')
+        OR s.state='effective' AND p.effective_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date
+          AND ${pendingActivationState(ctx.timezone)})
+      AND (${date}>${target.effectiveDate}::date OR ${date}=${target.effectiveDate}::date
+        AND (${planned}>${minePlanned} OR ${planned}=${minePlanned}
+          AND ${operationKey(ctx.tenantId, sql`b.id`)}>${mine}))
+    ORDER BY ${date},${planned},${operationKey(ctx.tenantId, sql`b.id`)} LIMIT 1`),
   );
   return next?.date;
 }
