@@ -1,6 +1,6 @@
 {
-  "id": "3e3f6aa6-8e4a-4ba2-9a85-51f9930e75c0",
-  "prevId": "29506575-d2b8-401b-834b-85442a9fa893",
+  "id": "68283d92-9f11-4940-85b2-f6a5a28cdd52",
+  "prevId": "57a032e4-81cb-441c-8612-512480adc734",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -362,9 +362,37 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "subject_tenant_id": {
+          "name": "subject_tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "platform_audit_events_subject_tenant": {
+          "name": "platform_audit_events_subject_tenant",
+          "columns": [
+            {
+              "expression": "subject_tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
       "foreignKeys": {
         "platform_audit_events_actor_user_id_users_id_fk": {
           "name": "platform_audit_events_actor_user_id_users_id_fk",
@@ -373,6 +401,19 @@
             "actor_user_id"
           ],
           "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "platform_audit_events_subject_tenant_id_tenants_id_fk": {
+          "name": "platform_audit_events_subject_tenant_id_tenants_id_fk",
+          "tableFrom": "platform_audit_events",
+          "columnsFrom": [
+            "subject_tenant_id"
+          ],
+          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
@@ -422,6 +463,72 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.platform_operators": {
+      "name": "platform_operators",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "platform_operators_user_id_users_id_fk": {
+          "name": "platform_operators_user_id_users_id_fk",
+          "tableFrom": "platform_operators",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "platform_operators_status_valid": {
+          "name": "platform_operators_status_valid",
+          "value": "\"platform_operators\".\"status\" IN ('active', 'revoked')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.system_settings": {
@@ -2846,12 +2953,6 @@
         },
         "hrbp_id": {
           "name": "hrbp_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "shop_owner_id": {
-          "name": "shop_owner_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -10824,12 +10925,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "change_type": {
-          "name": "change_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "mode": {
           "name": "mode",
           "type": "text",
@@ -11447,10 +11542,6 @@
           "name": "employment_payload_versions_kind",
           "value": "\"employment_payload_versions\".\"kind\" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',\n      'org_adjustment', 'leave', 'retirement', 'intern_regularization')"
         },
-        "employment_payload_versions_change_type": {
-          "name": "employment_payload_versions_change_type",
-          "value": "\"employment_payload_versions\".\"change_type\" IN ('position_adjustment')"
-        },
         "employment_payload_versions_version_positive": {
           "name": "employment_payload_versions_version_positive",
           "value": "\"employment_payload_versions\".\"version_no\" > 0"
@@ -11639,12 +11730,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "change_type": {
-          "name": "change_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "start_date": {
           "name": "start_date",
@@ -12124,10 +12209,6 @@
         "employment_records_kind": {
           "name": "employment_records_kind",
           "value": "\"employment_records\".\"kind\" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',\n      'org_adjustment', 'leave', 'retirement', 'intern_regularization')"
-        },
-        "employment_records_change_type": {
-          "name": "employment_records_change_type",
-          "value": "\"employment_records\".\"change_type\" IN ('position_adjustment')"
         },
         "employment_records_primary_only": {
           "name": "employment_records_primary_only",

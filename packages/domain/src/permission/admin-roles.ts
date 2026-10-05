@@ -17,6 +17,18 @@ export const ADMIN_ROLES = [
 
 export type AdminRole = (typeof ADMIN_ROLES)[number];
 
+/** 管理员身份的显示名称（原站“××管理员（企业设置）”，06 §2、§7.1）。 */
+export const ADMIN_ROLE_NAMES: Readonly<Record<AdminRole, string>> = {
+  tenant_admin: '租户管理员（企业设置）',
+  system_admin: '系统管理员（企业设置）',
+  employee_admin: '员工管理员（企业设置）',
+  user_admin: '用户管理员（企业设置）',
+  permission_admin: '权限管理员（企业设置）',
+  matrix_admin: '矩阵管理员（企业设置）',
+  audit_admin: '审计管理员（企业设置）',
+  billing_admin: '计费管理员（企业设置）',
+};
+
 export function isAdminRole(value: string): value is AdminRole {
   return (ADMIN_ROLES as readonly string[]).includes(value);
 }

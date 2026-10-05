@@ -3,30 +3,33 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-/* 布局：顶部状态条 → 里程碑轨道 → “正在进行”卡片 → 分阶段任务表 → 最近动态。像施工进度看板：一眼先看“现在在哪、卡在哪”。 */
+/* 布局：要你处理 → 阶段 / 子阶段 / 任务的逐层穿透树（主视图）→ 依赖主线 → 进行中的长流程 PR → 最近动态。像施工进度台账：先看卡在哪，再逐层点开看为什么。 */
 :root{
-  --bg:#f6f7f5; --panel:#ffffff; --ink:#1d2421; --muted:#5f6b66; --line:#dfe4e1;
+  --bg:#f6f7f5; --panel:#ffffff; --sunk:#eef1ef; --ink:#1d2421; --muted:#5f6b66; --line:#dfe4e1;
   --accent:#1f6f5c; --accent-soft:#e3f0ec;
-  --done:#2e7d4f; --active:#b26a00; --review:#2b5fa8; --todo:#9aa5a0; --blocked:#b23a3a;
+  --done:#2e7d4f; --active:#b26a00; --review:#2b5fa8; --todo:#7d8984; --blocked:#b23a3a;
   --done-bg:#e6f3ea; --active-bg:#fbf0de; --review-bg:#e5edf9; --todo-bg:#eef1ef; --blocked-bg:#f8e6e6;
+  --codex:#6a4bb0; --codex-bg:#efe9fa; --claude:#a4532a; --claude-bg:#f8ebe2;
   --f-display:"Noto Serif SC","Songti SC",serif; --f-body:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
   --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#121614; --panel:#1a201d; --ink:#e4ebe7; --muted:#9aa8a1; --line:#2b3430;
+  --bg:#121614; --panel:#1a201d; --sunk:#161b19; --ink:#e4ebe7; --muted:#9aa8a1; --line:#2b3430;
   --accent:#5cc3a6; --accent-soft:#1d3029;
-  --done:#6fcf97; --active:#f0b14d; --review:#7fa8e8; --todo:#6f7b76; --blocked:#e88080;
-  --done-bg:#1b2d22; --active-bg:#33270f; --review-bg:#1a2536; --todo-bg:#1f2522; --blocked-bg:#361d1d; color-scheme:dark}}
+  --done:#6fcf97; --active:#f0b14d; --review:#7fa8e8; --todo:#8a9690; --blocked:#e88080;
+  --done-bg:#1b2d22; --active-bg:#33270f; --review-bg:#1a2536; --todo-bg:#1f2522; --blocked-bg:#361d1d;
+  --codex:#b79cf0; --codex-bg:#2a2140; --claude:#eba27c; --claude-bg:#3a2519; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#121614; --panel:#1a201d; --ink:#e4ebe7; --muted:#9aa8a1; --line:#2b3430;
+  --bg:#121614; --panel:#1a201d; --sunk:#161b19; --ink:#e4ebe7; --muted:#9aa8a1; --line:#2b3430;
   --accent:#5cc3a6; --accent-soft:#1d3029;
-  --done:#6fcf97; --active:#f0b14d; --review:#7fa8e8; --todo:#6f7b76; --blocked:#e88080;
-  --done-bg:#1b2d22; --active-bg:#33270f; --review-bg:#1a2536; --todo-bg:#1f2522; --blocked-bg:#361d1d; color-scheme:dark}
+  --done:#6fcf97; --active:#f0b14d; --review:#7fa8e8; --todo:#8a9690; --blocked:#e88080;
+  --done-bg:#1b2d22; --active-bg:#33270f; --review-bg:#1a2536; --todo-bg:#1f2522; --blocked-bg:#361d1d;
+  --codex:#b79cf0; --codex-bg:#2a2140; --claude:#eba27c; --claude-bg:#3a2519; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font:14px/1.6 var(--f-body)}
-.wrap{max-width:1080px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:grid;gap:22px}
+.wrap{max-width:1100px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:grid;gap:24px}
 h1{font:700 26px/1.25 var(--f-display);margin:0;text-wrap:balance}
-h2{font:700 17px/1.3 var(--f-display);margin:0 0 10px}
+h2{font:700 17px/1.3 var(--f-display);margin:0 0 4px;text-wrap:balance}
 .sub{color:var(--muted);font-size:13px}
 .mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between}
@@ -34,60 +37,75 @@ header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-co
 .stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-width:104px}
 .stat b{display:block;font:600 20px/1.2 var(--f-mono);font-variant-numeric:tabular-nums}
 .stat span{font-size:12px;color:var(--muted)}
-/* 里程碑轨道 */
-.track{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto}
-.rail{display:grid;grid-template-columns:repeat(var(--n),minmax(92px,1fr));gap:6px;min-width:calc(var(--n) * 98px)}
-.ms{display:grid;gap:6px}
-.bar{height:8px;border-radius:4px;background:var(--todo-bg);overflow:hidden}
-.bar i{display:block;height:100%;background:var(--done)}
-.ms.cur .bar{outline:2px solid var(--active);outline-offset:2px}
-.ms .k{font:600 13px var(--f-mono)}
-.ms .t{font-size:12px;color:var(--muted);line-height:1.35}
-.ms .p{font:500 12px var(--f-mono);color:var(--muted)}
-/* 正在进行 */
-.now{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:grid;gap:6px;min-width:0}
-.card .h{display:flex;gap:8px;align-items:center;justify-content:space-between}
-.card .id{font:600 13px var(--f-mono)}
-.card p{margin:0;font-size:13px;color:var(--muted)}
-.card .next{font-size:13px;color:var(--ink)}
+.mode{background:var(--accent-soft);border-radius:8px;padding:10px 14px;font-size:13px;display:grid;gap:4px}
+.mode b{color:var(--accent)}
+.sec-head{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+
+/* 状态与标签 */
 .pill{display:inline-block;font-size:11.5px;font-weight:500;padding:1px 8px;border-radius:999px;white-space:nowrap}
 .s-done{color:var(--done);background:var(--done-bg)} .s-active{color:var(--active);background:var(--active-bg)}
 .s-review{color:var(--review);background:var(--review-bg)} .s-todo{color:var(--todo);background:var(--todo-bg)}
-.s-blocked{color:var(--blocked);background:var(--blocked-bg)}
-/* 任务表 */
-.phases{display:grid;gap:14px}
-details{background:var(--panel);border:1px solid var(--line);border-radius:10px}
-summary{cursor:pointer;padding:12px 14px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;list-style:none}
-summary::-webkit-details-marker{display:none}
-summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:10px}
-summary .nm{font:700 15px var(--f-display)}
-summary .mini{flex:1;min-width:120px;height:6px;border-radius:3px;background:var(--todo-bg);overflow:hidden}
-summary .mini i{display:block;height:100%;background:var(--done)}
-.tbl{overflow-x:auto;border-top:1px solid var(--line)}
-table{border-collapse:collapse;width:100%;min-width:640px;font-size:13px}
-th,td{text-align:left;padding:8px 14px;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-weight:500;color:var(--muted);font-size:12px;letter-spacing:.04em}
-tr:last-child td{border-bottom:0}
-td.idc{font-family:var(--f-mono);white-space:nowrap}
-td a{color:var(--accent)}
-.legend{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
-.log{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 14px}
-.log ol{list-style:none;margin:0;padding:0}
-.log li{display:grid;grid-template-columns:92px 1fr;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
-.log li:last-child{border-bottom:0}
-.log time{font-family:var(--f-mono);color:var(--muted);font-size:12px}
-.mode{background:var(--accent-soft);color:var(--ink);border-radius:8px;padding:10px 14px;font-size:13px}
-.mode b{color:var(--accent)}
-.rounds{list-style:none;margin:0;padding:0;display:grid;gap:8px}
-.rounds li{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:grid;grid-template-columns:110px 1fr;gap:4px 14px}
-.rounds .rk{font:700 14px var(--f-display);display:grid;gap:4px;align-content:start}
-.rounds .rk time{font:400 12px var(--f-mono);color:var(--muted)}
-.rounds .rd{display:grid;gap:3px;font-size:13px;min-width:0}
-.rounds .rd .m{color:var(--muted)}
-.third{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
-.third .card b{font:700 14px var(--f-display)}
-.third .card .it{font:500 12px var(--f-mono);color:var(--accent)}
+.s-blocked,.s-ready{color:var(--blocked);background:var(--blocked-bg)}
+.who{display:inline-flex;gap:3px;align-items:center;font:500 11px var(--f-mono);white-space:nowrap}
+.who i{font-style:normal;padding:0 6px;border-radius:4px}
+.w-Codex{color:var(--codex);background:var(--codex-bg)} .w-Claude{color:var(--claude);background:var(--claude-bg)}
+.tag{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.tag.warn{color:var(--blocked)}
+.ms-tag{font:500 11px var(--f-mono);color:var(--accent);background:var(--accent-soft);padding:0 6px;border-radius:4px;white-space:nowrap}
+a{color:var(--accent)}
+
+/* 要你处理 */
+.attn{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.attn .it{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:grid;gap:6px;min-width:0}
+.attn .it.you{border-color:var(--blocked)}
+.attn .k{font:600 12px var(--f-mono);display:flex;gap:8px;align-items:center;justify-content:space-between}
+.attn p{margin:0;font-size:13px}
+.attn .nx{font-size:12.5px;color:var(--muted)}
+
+/* 可穿透元素：统一用左侧箭头 + “点开”提示 + 悬停底色标识 */
+.legend{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;font-size:12px;color:var(--muted)}
+.drill-hint{display:inline-flex;gap:4px;align-items:center;color:var(--accent);font-weight:500}
+details>summary{list-style:none;cursor:pointer}
+details>summary::-webkit-details-marker{display:none}
+.chev{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:5px;background:var(--accent-soft);color:var(--accent);font-size:11px;flex:none;transition:transform .15s}
+details[open]>summary .chev{transform:rotate(90deg)}
+summary:hover{background:var(--sunk)}
+summary:focus-visible,.jump:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.jump{cursor:pointer;border:1px dashed var(--accent);background:transparent;color:var(--ink);border-radius:6px;padding:1px 7px;font:500 12px var(--f-mono);display:inline-flex;gap:5px;align-items:center}
+.jump:hover{background:var(--accent-soft)}
+.flash{animation:flash 1.6s ease}
+@keyframes flash{0%,40%{background:var(--accent-soft)}100%{background:transparent}}
+@media (prefers-reduced-motion:reduce){.flash{animation:none}.chev{transition:none}}
+
+/* 阶段树 */
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.stage-h{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+.stage-h b{font:700 16px var(--f-display)}
+.bar{flex:1;min-width:120px;height:6px;border-radius:3px;background:var(--todo-bg);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--done)}
+.ms>summary{display:grid;grid-template-columns:auto 52px minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:10px 16px;border-top:1px solid var(--line)}
+.ms:first-of-type>summary{border-top:0}
+.ms .mk{font:600 13px var(--f-mono)}
+.ms .mt{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;min-width:0}
+.ms .mt span:first-child{font-weight:500}
+.ms .mr{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.tasks{background:var(--sunk);padding:6px 10px 10px 16px;display:grid;gap:6px}
+.task{background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.task>summary{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:8px 10px;border-radius:8px}
+.task .tl{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;min-width:0}
+.task .tid{font:600 12.5px var(--f-mono)}
+.task .tr{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.detail{border-top:1px solid var(--line);padding:10px 12px 12px 40px;display:grid;gap:10px;font-size:13px}
+.blk{display:grid;gap:4px;min-width:0}
+.blk h4{margin:0;font:600 12px var(--f-body);color:var(--muted);letter-spacing:.04em}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.fix{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;align-items:start;padding:6px 8px;border-left:3px solid var(--line);background:var(--sunk);border-radius:0 6px 6px 0}
+.fix .fh{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.ev{display:grid;grid-template-columns:72px 80px minmax(0,1fr);gap:8px;font-size:12.5px}
+.ev .lv{color:var(--muted)}
+.empty{color:var(--muted);font-size:12.5px}
+
+/* 依赖主线 */
 .lanes{display:grid;gap:10px}
 .lane{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:grid;gap:8px}
 .lane .ln{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline}
@@ -95,24 +113,47 @@ td a{color:var(--accent)}
 .lane .ln span{font-size:12.5px;color:var(--muted)}
 .flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px}
 .step{display:flex;flex-direction:column;gap:6px}
-.arrow{align-self:center;color:var(--muted);font-size:16px;padding:0 2px}
-.node{border:1px solid var(--line);border-radius:8px;padding:6px 10px;min-width:150px;max-width:220px;display:grid;gap:3px;font-size:12.5px;background:var(--bg)}
+.arrow{align-self:center;color:var(--muted);padding:0 2px}
+.node{cursor:pointer;text-align:left;border:1px solid var(--line);border-radius:8px;padding:6px 10px;min-width:160px;max-width:230px;display:grid;gap:3px;font:inherit;font-size:12.5px;background:var(--bg);color:var(--ink)}
+.node:hover{border-color:var(--accent)}
 .node.wait{border-style:dashed}
 .node.ready{border:2px solid var(--blocked)}
 .node .nid{font:600 12.5px var(--f-mono);display:flex;gap:6px;align-items:center;justify-content:space-between}
 .node .w{color:var(--muted);font-size:12px}
-.tag-ready{color:var(--blocked);background:var(--blocked-bg);font-size:11.5px;font-weight:500;padding:1px 8px;border-radius:999px;white-space:nowrap}
-@media (max-width:560px){.flow{flex-direction:column}.arrow{transform:rotate(90deg)}.node{max-width:none}}
-@media (max-width:560px){.rounds li{grid-template-columns:1fr}}
-@media (max-width:560px){h1{font-size:22px}.log li{grid-template-columns:1fr;gap:2px}}
-@media (prefers-reduced-motion:no-preference){.bar i,.mini i{transition:width .6s ease}}
+
+/* 长流程 PR */
+.longpr{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:grid;gap:8px}
+.rounds{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.rounds li{display:grid;grid-template-columns:120px minmax(0,1fr);gap:2px 12px;font-size:13px;padding:6px 0;border-top:1px solid var(--line)}
+.rounds li:first-child{border-top:0}
+.rounds .rk{display:grid;gap:2px;font-weight:500}
+.rounds time{font:400 12px var(--f-mono);color:var(--muted)}
+
+.log{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 14px}
+.log ol{list-style:none;margin:0;padding:0}
+.log li{display:grid;grid-template-columns:72px 1fr;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
+.log li:last-child{border-bottom:0}
+.log time{font-family:var(--f-mono);color:var(--muted);font-size:12px}
+.more{margin-top:6px;font:inherit;font-size:12.5px;color:var(--accent);background:none;border:0;cursor:pointer;padding:4px 0}
+
+@media (max-width:620px){
+  h1{font-size:22px}
+  .ms>summary{grid-template-columns:auto 44px minmax(0,1fr)}
+  .ms .mr{grid-column:2 / -1;justify-content:flex-start}
+  .task>summary{grid-template-columns:auto minmax(0,1fr)}
+  .task .tr{grid-column:2;justify-content:flex-start}
+  .detail{padding-left:12px}
+  .ev{grid-template-columns:64px minmax(0,1fr)}.ev .lv{display:none}
+  .flow{flex-direction:column}.arrow{transform:rotate(90deg)}.node{max-width:none}
+  .rounds li,.log li{grid-template-columns:1fr}
+}
 </style>
 
 <div class="wrap">
   <header>
     <div>
       <h1>北森 iTalent 复刻 · 开发进度</h1>
-      <div class="sub">更新于 <span class="mono" id="updated"></span> · 仓库 <span class="mono">Avatar0327/italent-replica</span></div>
+      <div class="sub">更新于 <span class="mono" id="updated"></span> · 仓库 <span class="mono">Avatar0327/italent-replica</span> · 进度窗口维护</div>
     </div>
     <div class="stats" id="stats"></div>
   </header>
@@ -120,137 +161,153 @@ td a{color:var(--accent)}
   <div class="mode" id="mode"></div>
 
   <section>
-    <h2>里程碑</h2>
-    <div class="track"><div class="rail" id="rail"></div></div>
+    <div class="sec-head"><h2>要你处理 / 下一步</h2><span class="sub">红框 = 需要你本人决定或操作</span></div>
+    <div class="attn" id="attn"></div>
   </section>
 
   <section>
-    <h2>关键路径</h2>
-    <div class="sub" style="margin:-4px 0 10px">谁在挡谁一眼可见。<b class="tag-ready">可派发</b> = 前置都已完成却还没派；虚线框 = 还在等前置。</div>
+    <div class="sec-head">
+      <h2>阶段 · 子阶段 · 任务</h2>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="sub" style="margin-bottom:10px">R 是大阶段，M 是 R1 下的子阶段。<span class="drill-hint"><span class="chev" aria-hidden="true">▶</span>可点开</span>的行逐层展开：子阶段 → 任务 → 修正任务、PR 轮次、待取证、依赖。虚线框的任务号可点击跳转。</div>
+    <div id="tree" style="display:grid;gap:12px"></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>依赖主线</h2><span class="sub">谁在挡谁；点任一方块跳到上面的任务</span></div>
     <div class="lanes" id="lanes"></div>
   </section>
 
-  <section>
-    <h2>正在进行</h2>
-    <div class="now" id="now"></div>
-  </section>
-
-  <section>
-    <h2>审批中心 PR #35：修改轮次</h2>
-    <div class="sub" style="margin:-4px 0 10px">每一轮 = 审查提出问题 → 开发窗口先写失败测试再修复 → 交下一轮审查。只有审查无问题、CI 全绿、你确认后才合并。</div>
-    <ol class="rounds" id="rounds"></ol>
-    <h2 style="margin-top:18px">最新一轮（第七轮）在修什么</h2>
-    <div class="third" id="third"></div>
-  </section>
-
-  <section>
-    <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between">
-      <h2>全部任务</h2>
-      <div class="legend" id="legend"></div>
-    </div>
-    <div class="phases" id="phases"></div>
+  <section id="longpr-sec">
+    <div class="sec-head"><h2>进行中的长流程 PR</h2><span class="sub">审查达 3 轮及以上时显示，合并后自动移除</span></div>
+    <div id="longpr" style="display:grid;gap:10px"></div>
   </section>
 
   <section>
     <h2>最近动态</h2>
-    <div class="log"><ol id="log"></ol></div>
+    <div class="log"><ol id="log"></ol><button class="more" id="logmore" type="button">显示全部</button></div>
   </section>
 </div>
 
 <script>
-/* ===== 进度数据：每次更新只改这一段 ===== */
+/* ===== 进度数据：每次更新只改这一段 =====
+   tasks：R 任务带 ms（子阶段）；F 修正任务带 parent（被修正的任务），子阶段随 parent。
+   s：done 已完成 / review 审查中 / active 开发或修改中 / todo 未开始 / blocked 受阻。
+   dev / rev：开发方 / 审查方（Claude、Codex）。deps：前置任务。hold：可派发但暂缓的原因。
+   prs：只列在途或需要展示轮次的 PR；rounds 达 3 轮且未合并时显示在“长流程 PR”。 */
 const DATA = {
   updated: "2026-10-05",
-  mode: "<b>合并授权（10-04 起，10-05 扩展到小 PR 的 Codex 结论）</b>：astra 结论可合并、CI 全绿、审后只有文档或合并 main 的提交、按合并顺序、不涉及待决差异时，由编排窗口直接合并；复审与 CI 并行。<br><b>开发方式调整（DEC-156/159，额度原因）</b>：10-05 当天派发的新任务（R1-T09、R2-T06）全程 Codex 开发、Claude 审查（cross-review skill，与 astra 同等严格），合并以 Claude 审查结论为准；在途 PR 不换手；10-06 起新任务恢复 Claude 开发、Codex 审查。<br>常规开发方式（DEC-088/090）：<b>Claude 开发、Codex 审查</b>（ChatGPT 应用云端任务，astra · High 及以上）；每个 PR 经交叉审计、CI 全绿后合并。",
+  mode: [
+    "<b>开发方式（DEC-156/159）</b>：10-05 当天新派发的任务（R1-T09、R2-T06）全程 Codex 开发、Claude 审查（cross-review skill，与 astra 同等严格），合并以 Claude 审查结论为准；在途 PR 不换手；10-06 起新任务恢复 Claude 开发、Codex 审查。",
+    "<b>合并授权</b>：审查结论“可以合并”、CI 全绿、审后只有文档或合并 main 的提交、按合并顺序、不涉及待决差异时，由编排窗口直接合并（小 PR 以 Codex 结论为准）。",
+    "<b>派发规则</b>：编排窗口派发前先与进度窗口互核依赖与冲突；有 R1 可派发任务时优先 R1，跨阶段并行需说明理由并经你确认。"
+  ],
   stats: [
-    {v:"22", l:"已合并 PR"}, {v:"12/19", l:"R1 底座任务完成"}, {v:"159", l:"已确认决策"}, {v:"18", l:"待取证事项"}
+    {v:"25", l:"已合并 PR"}, {v:"13/19", l:"R1 底座完成"}, {v:"165", l:"已确认决策"}, {v:"16", l:"待取证（共 65）"}
   ],
-  status: {
-    done:{t:"已完成",c:"s-done"}, review:{t:"审查中",c:"s-review"}, active:{t:"修改中",c:"s-active"},
-    todo:{t:"未开始",c:"s-todo"}, blocked:{t:"受阻",c:"s-blocked"}
+  stages: [
+    {k:"R1", t:"底座", ms:["M0","M1","M2","M3","M4","M5","M6","M7"]},
+    {k:"R2", t:"人事完整化", ms:["R2"]},
+    {k:"R3", t:"人才链路", ms:["R3"]}
+  ],
+  milestones: {
+    M0:"底座与决策", M1:"多租户隔离", M2:"权限与平台", M3:"组织与职务编制", M4:"任职版本链",
+    M5:"审批与定时生效", M6:"调动业务", M7:"联动 · 自助 · 审计", R2:"人事完整化（单一子阶段）", R3:"人才链路（单一子阶段）"
   },
-  milestones: [
-    {k:"M0", t:"底座与决策", tasks:["M0"]},
-    {k:"M1", t:"多租户隔离", tasks:["R1-T00"]},
-    {k:"M2", t:"权限与平台", tasks:["R1-T01","R1-T02","R1-T15","R1-T17"]},
-    {k:"M3", t:"组织与职务编制", tasks:["R1-T03","R1-T04"]},
-    {k:"M4", t:"任职版本链", tasks:["R1-T05","R1-T06","R1-T12"]},
-    {k:"M5", t:"审批与定时生效", tasks:["R1-T07","R1-T08"]},
-    {k:"M6", t:"调动业务", tasks:["R1-T09","R1-T11"]},
-    {k:"M7", t:"联动·自助·审计", tasks:["R1-T10","R1-T13","R1-T14","R1-T16"]},
-    {k:"R2", t:"人事完整化", tasks:["R2-T01","R2-T02","R2-T03","R2-T04","R2-T05","R2-T06","R2-T07","R2-T08","R2-T09","R2-T10"]},
-    {k:"R3", t:"人才链路", tasks:["R3-T00","R3-T01","R3-T02","R3-T03","R3-T04","R3-T05","R3-T06","R3-T07"]}
-  ],
   tasks: {
-    "M0":{n:"仓库骨架、技术栈、AGENTS.md、决策对齐、CI",s:"done",who:"Claude",pr:null,note:"DEC-047~070"},
-    "R1-T00":{n:"多租户隔离底座",s:"done",who:"Claude",pr:1,note:"3 轮 Codex 审计后合并"},
-    "R1-T01":{n:"权限模型",s:"done",who:"Claude",pr:8,note:"4 个模块接入缺口并入 R1-T02（DEC-080）"},
-    "R1-T02":{n:"数据范围 + 权限全面接入",s:"done",who:"Codex",pr:22,note:"两轮审计；人员范围改为 SQL 关联、5 万人规模测试（DEC-080~084）"},
-    "R1-T15":{n:"企业设置（用户/授权/管理单元/许可）",s:"done",who:"Claude",pr:49,note:"3 轮审查后合并（10-05，a98b587）；DEC-140~143"},
-    "R1-T17":{n:"平台运营层（租户开通、预置）",s:"active",who:"Claude",pr:60,note:"PR #60 第二轮修改中"},
-    "R1-T03":{n:"组织对象（多维层级）",s:"done",who:"Codex",pr:10,note:""},
-    "R1-T04":{n:"职务体系与编制",s:"done",who:"Codex",pr:11,note:"带编调动暂缓（DEC-073）；F-004 修正经理同步已合并（#41）"},
-    "R1-T05":{n:"任职记录版本链",s:"done",who:"Codex",pr:12,note:"表单字段级配置转入 R1-T09"},
-    "R1-T06":{n:"向后更新",s:"done",who:"Codex",pr:16,note:"规则②记录级（DEC-078）、停用按后续记录生效日（DEC-079）"},
-    "R1-T12":{n:"人员信息与人员子集",s:"done",who:"Codex",pr:26,note:"两轮审计；本人自助权限 DEC-085~087；排序号预计算 #27 已合并"},
-    "R1-T07":{n:"审批中心",s:"done",who:"Claude",pr:35,note:"7 轮审查后合并（10-04，4d5a53d）；会签 / 并加签转 F-003，派单并发死锁转 F-008"},
-    "R1-T08":{n:"定时生效任务",s:"done",who:"Claude",pr:53,note:"3 轮审查后合并（10-05，4596a3e）；编制检查延到 R1-T09（DEC-145）"},
-    "R1-T09":{n:"调动业务",s:"active",who:"Codex",pr:null,note:"PR-A 调动核心 Codex 开发中 → PR-B 编制与联动（DEC-157）；Claude 审查（DEC-156）"},
-    "R1-T11":{n:"撤销与删除任职",s:"todo",who:"",pr:null,note:""},
-    "R1-T10":{n:"调动跨对象联动",s:"todo",who:"",pr:null,note:""},
-    "R1-T13":{n:"员工自助",s:"todo",who:"",pr:null,note:""},
-    "R1-T14":{n:"经理自助",s:"todo",who:"",pr:null,note:""},
-    "R1-T16":{n:"审计日志",s:"todo",who:"",pr:null,note:"含失败命令三类审计（PR #1 转入）"},
-    "R2-T01":{n:"录用入职",s:"todo"},"R2-T02":{n:"试用期与转正",s:"todo"},"R2-T03":{n:"离职管理",s:"todo"},
-    "R2-T04":{n:"退休管理",s:"todo"},"R2-T05":{n:"兼职管理",s:"todo"},"R2-T06":{n:"合同协议",s:"active",who:"Codex",pr:null,note:"10-05 派给 Codex（§15.1），Claude 审查（DEC-159）"},
-    "R2-T07":{n:"实习生与劳务人员",s:"todo"},"R2-T08":{n:"组织调整审批",s:"todo"},"R2-T09":{n:"职责转交",s:"todo"},
-    "R2-T10":{n:"人事数据分析",s:"todo"},
-    "R3-T00":{n:"表达式引擎与北森函数库",s:"todo"},"R3-T01":{n:"人才标准与指标库",s:"todo"},
-    "R3-T02":{n:"任职资格与人才评定",s:"todo"},"R3-T03":{n:"360 度评估",s:"todo"},"R3-T04":{n:"人才盘点",s:"todo"},
-    "R3-T05":{n:"继任管理",s:"todo"},"R3-T06":{n:"人才池与人才梯队",s:"todo"},"R3-T07":{n:"个人发展计划 IDP",s:"todo"}
+    "M0":{n:"仓库骨架、技术栈、AGENTS.md、决策对齐、CI",ms:"M0",s:"done",dev:"Claude",note:"DEC-047~070"},
+    "R1-T00":{n:"多租户隔离底座",ms:"M1",s:"done",dev:"Claude",rev:"Codex",pr:[1]},
+    "R1-T01":{n:"权限模型",ms:"M2",s:"done",dev:"Claude",rev:"Codex",pr:[8]},
+    "R1-T02":{n:"数据范围 + 权限全面接入",ms:"M2",s:"done",dev:"Codex",rev:"Claude",pr:[22],deps:["R1-T01"]},
+    "R1-T15":{n:"企业设置（用户 / 授权 / 管理单元 / 许可）",ms:"M2",s:"done",dev:"Claude",rev:"Codex",pr:[49],deps:["R1-T01","R1-T02","R1-T07"],note:"3 轮审查后合并（10-05）；DEC-140~143"},
+    "R1-T17":{n:"平台运营层（租户开通、预置、备份恢复）",ms:"M2",s:"done",dev:"Claude",rev:"Codex",pr:[60],deps:["R1-T00","R1-T15"],note:"3 轮审查后合并（10-05，3250779；迁移 0037/0038）"},
+    "R1-T03":{n:"组织对象（多维层级）",ms:"M3",s:"done",dev:"Codex",rev:"Claude",pr:[10]},
+    "R1-T04":{n:"职务体系与编制",ms:"M3",s:"done",dev:"Codex",rev:"Claude",pr:[11],deps:["R1-T03"]},
+    "R1-T05":{n:"任职记录版本链",ms:"M4",s:"done",dev:"Codex",rev:"Claude",pr:[12],deps:["R1-T03"]},
+    "R1-T06":{n:"向后更新",ms:"M4",s:"done",dev:"Codex",rev:"Claude",pr:[16],deps:["R1-T05"]},
+    "R1-T12":{n:"人员信息与人员子集",ms:"M4",s:"done",dev:"Codex",rev:"Claude",pr:[26,27],deps:["R1-T05"]},
+    "R1-T07":{n:"审批中心",ms:"M5",s:"done",dev:"Claude",rev:"Codex",pr:[35],deps:["R1-T01"],note:"7 轮审查后合并（10-04）"},
+    "R1-T08":{n:"定时生效任务",ms:"M5",s:"done",dev:"Claude",rev:"Codex",pr:[53],deps:["R1-T05","R1-T07"],note:"3 轮审查后合并（10-05）；编制检查移到 R1-T09（DEC-145）"},
+    "R1-T09":{n:"调动业务",ms:"M6",s:"review",dev:"Codex",rev:"Claude",pr:[63],deps:["R1-T05","R1-T07","R1-T08"],note:"PR-A（#63）复审通过，待重排迁移后合并；PR-B：编制检查、负责人 / 店长 / 新增下属联动、待补全待办与提醒（DEC-163）、任何场景新部门不能为空（DEC-165）"},
+    "R1-T11":{n:"撤销与删除任职",ms:"M6",s:"todo",deps:["R1-T09"]},
+    "R1-T10":{n:"调动跨对象联动（合同、兼职、职责转交）",ms:"M7",s:"todo",deps:["R1-T09","R2-T06"],note:"调动表单“是否变更合同”与生效时调用 R2-T06 的合同变更端口（§16）；须等 R1-T09、R2-T06 都合并"},
+    "R1-T13":{n:"员工自助",ms:"M7",s:"todo",deps:["R1-T09"]},
+    "R1-T14":{n:"经理自助",ms:"M7",s:"todo",deps:["R1-T09"]},
+    "R1-T16":{n:"审计日志",ms:"M7",s:"todo",deps:["R1-T05","F-005","F-006"],note:"用户 10-04 决定排在在审 PR 之后，不拆分"},
+    "R2-T01":{n:"录用入职",ms:"R2",s:"todo"},"R2-T02":{n:"试用期与转正",ms:"R2",s:"todo"},"R2-T03":{n:"离职管理",ms:"R2",s:"todo"},
+    "R2-T04":{n:"退休管理",ms:"R2",s:"todo"},"R2-T05":{n:"兼职管理",ms:"R2",s:"todo"},
+    "R2-T06":{n:"合同协议",ms:"R2",s:"review",dev:"Codex",rev:"Claude",pr:[64],note:"复审通过，排在 #63 之后重排迁移并合并；DEC-164；Q-M0-66 编辑导入能否改已终止合同待取证"},
+    "R2-T07":{n:"实习生与劳务人员",ms:"R2",s:"todo"},"R2-T08":{n:"组织调整审批",ms:"R2",s:"todo"},"R2-T09":{n:"职责转交",ms:"R2",s:"todo"},
+    "R2-T10":{n:"人事数据分析",ms:"R2",s:"todo"},
+    "R3-T00":{n:"表达式引擎与北森函数库",ms:"R3",s:"todo"},"R3-T01":{n:"人才标准与指标库",ms:"R3",s:"todo"},
+    "R3-T02":{n:"任职资格与人才评定",ms:"R3",s:"todo"},"R3-T03":{n:"360 度评估",ms:"R3",s:"todo"},"R3-T04":{n:"人才盘点",ms:"R3",s:"todo",deps:["R3-T00"]},
+    "R3-T05":{n:"继任管理",ms:"R3",s:"todo",deps:["R3-T00"]},"R3-T06":{n:"人才池与人才梯队",ms:"R3",s:"todo"},"R3-T07":{n:"个人发展计划 IDP",ms:"R3",s:"todo"},
+
+    "F-001":{n:"同周期同日多条主职业务、早于入职日一律拒绝",parent:"R1-T05",s:"done",dev:"Claude",rev:"Codex",pr:[45],why:"DEC-108、DEC-111 推翻原实现"},
+    "F-002":{n:"按新职务带出序列、规则②预览提醒",parent:"R1-T06",s:"done",dev:"Claude",rev:"Codex",pr:[45],why:"DEC-107、DEC-120"},
+    "F-003":{n:"会签节点与并加签 / 前加签",parent:"R1-T07",s:"done",dev:"Claude",rev:"Codex",pr:[58],why:"DEC-117 从 PR #35 延期；DEC-144、DEC-152"},
+    "F-004":{n:"职位变更同步直线经理改为单次选项",parent:"R1-T04",s:"done",dev:"Claude",rev:"Codex",pr:[41],why:"Q-M0-14 原站实测"},
+    "F-005":{n:"组织停用级联、设立日期即首版生效日、负责人候选",parent:"R1-T03",s:"review",dev:"Claude",rev:"Codex",pr:[54],why:"DEC-129、130、134、135"},
+    "F-006":{n:"职务接入真实人员端口、任职补变动类型",parent:"R1-T04",s:"review",dev:"Claude",rev:"Codex",pr:[54],why:"F-004 留下的缺口"},
+    "F-007":{n:"组织改名 / 改行政上级时联动任职",parent:"R1-T03",s:"todo",deps:["F-005","F-006"],why:"DEC-137"},
+    "F-008":{n:"审批取锁顺序（两个并发死锁）",parent:"R1-T07",s:"done",dev:"Claude",rev:"Codex",pr:[50],why:"PR #35 六审转出（DEC-136）"},
+    "F-009":{n:"下级组织停用不缩数据范围",parent:"R1-T02",s:"done",dev:"Claude",rev:"Codex",pr:[59],why:"DEC-146"},
+    "F-012":{n:"组织角色取得的数据范围不因组织停用而收缩",parent:"R1-T02",s:"todo",hold:"10-06 起由 Claude 开发，编排窗口派发前先发拟派发核对",why:"DEC-160（Q-M0-63）"},
+    "F-010":{n:"人员组合排序编码 orderCode",parent:"R1-T12",s:"todo",deps:["F-005","F-006"],why:"DEC-148，PR #54 首审延期项"},
+    "F-011":{n:"职位新建校验修正",parent:"R1-T04",s:"todo",deps:["F-005","F-006"],why:"DEC-151（Q-M0-60）"}
   },
-  deps: {
-    "R1-T07":["R1-T01"], "R1-T08":["R1-T05","R1-T07"], "R1-T09":["R1-T05","R1-T07","R1-T08"],
-    "R1-T10":["R1-T09"], "R1-T11":["R1-T09"], "R1-T13":["R1-T09"], "R1-T14":["R1-T09"],
-    "R1-T15":["R1-T01","R1-T02","R1-T07"], "R1-T16":["R1-T07","F-001/002","F-005/006","R1-T08","F-003"], "R1-T17":["R1-T00","R1-T15"],
-    "F-001/002":[], "F-005/006":[], "F-003":["R1-T07"], "F-008":["R1-T07"], "F-007":["R1-T07","F-001/002"], "F-009":[], "F-010":["F-005/006"], "F-011":["F-005/006"]
+  prs: {
+    64:{t:"R2-T06 合同协议",s:"review",round:2,note:"Claude 第二轮复审：可以合并；#63 合并后重排迁移 0041/0042 再合并（Q-M0-66 先按现状 409）"},
+    63:{t:"R1-T09 PR-A 调动核心",s:"review",round:2,note:"Claude 第二轮复审：可以合并；Codex 合并 main、迁移重排为 0039/0040，CI 绿后合并"},
+    54:{t:"F-005 + F-006",s:"review",round:3,note:"第三轮修改已交，复审中",rounds:[
+      {k:"首审",t:"10-04 23:13",d:"astra Ultra：2 个 P2；登记 DEC-147、148（orderCode 延到 F-010）"},
+      {k:"第二轮",t:"10-05 00:50",d:"上一轮 2 个 P2 关闭，新复现 2 个 P2"},
+      {k:"第三轮",t:"10-05",d:"修完后合并 main、迁移重排；复审中"}
+    ]},
   },
-  ftasks: {
-    "F-001/002":{n:"同日多条、早于入职拒绝、带出序列",s:"done",pr:45},
-    "F-005/006":{n:"组织停用级联、职务接人员端口",s:"review",pr:54,note:"第三轮复审中"},
-    "F-003":{n:"会签与并加签",s:"review",pr:58,note:"第三轮复审中；DEC-144/152"}, "F-008":{n:"派单并发死锁",s:"done",pr:50},
-    "F-007":{n:"组织改名 / 改上级联动任职",s:"todo"},
-    "F-009":{n:"停用下级组织不缩数据范围",s:"done",pr:59}, "F-010":{n:"人员组合排序编码 orderCode",s:"todo"}, "F-011":{n:"职务新建修正（R1-T04）",s:"todo"}
-  },
+  evidence: [
+    {id:"Q-M0-66",st:"□",task:"R2-T06",lv:"可后补",w:"编辑导入能否修改已终止的合同（#64 先按现状返回 409）"},
+    {id:"Q-M0-07",st:"🟡",task:"R1-T03",lv:"可后补",w:"组织长整数排序编码的组合算法"},
+    {id:"Q-M0-29",st:"□",task:"R1-T02",lv:"可后补",w:"数据范围“管理人员”高级条件对象的定位与结构"},
+    {id:"Q-M0-32",st:"□",task:"R1-T02",lv:"可后补",w:"页面规则与数据源规则同时存在时的优先级"},
+    {id:"Q-M0-33",st:"□",task:"R1-T02",lv:"可后补",w:"系统联动碰到操作人范围外记录时是否拒绝"},
+    {id:"Q-M0-34",st:"□",task:"R1-T02",lv:"可后补",w:"动态组织角色授权是否包含下级"},
+    {id:"Q-M0-52",st:"□",task:"R1-T04",lv:"可后补",w:"列表按钮“同步序列到任职”的范围"},
+    {id:"Q-M0-36",st:"🟡",task:"R1-T12",lv:"可后补",w:"组合排序编码 OrderCode 的分段规则"},
+    {id:"Q-M0-37",st:"□",task:"R1-T12",lv:"可后补",w:"离职同步到人员子集是否另建履历行"},
+    {id:"Q-M0-44",st:"🟡",task:"R1-T07",lv:"可后补",w:"审批人无账号或账号停用时原站如何处理"},
+    {id:"Q-M0-57",st:"🟡",task:"F-003",lv:"可后补",w:"会签中有人驳回时整个节点如何处理"},
+    {id:"Q-M0-48",st:"🟡",task:"R1-T08",lv:"可后补",w:"生效当天原站是否再校验、失败如何表现"},
+    {id:"Q-M0-18",st:"🟡",task:"R1-T09",lv:"带编调动前",w:"带编调动：只读部分已取证、与现有一致（DEC-073 不变）；细分编制分配待排期时写入实测"},
+    {id:"Q-M0-64",st:"□",task:"R1-T11",lv:"可后补",w:"有在途申请时其他直接业务是否同样被拦截"},
+    {id:"Q-M0-31",st:"□",task:"R2-T05",lv:"开工前",w:"兼职 / 副职是否计入管理人员范围"},
+    {id:"Q-M0-35",st:"□",task:"",lv:"模块恢复时",w:"干部任期来源（干部模块暂停）"}
+  ],
   lanes: [
-    {nm:"主线（关键路径）", d:"R1-T08 已合并，调动 R1-T09 可派发；它合并后放开 T10 / T11 / T13 / T14", steps:[["R1-T07"],["R1-T08"],["R1-T09"],["R1-T10","R1-T11","R1-T13","R1-T14"]]},
-    {nm:"支线", d:"R1-T15 已合并，R1-T17 平台运营层可派发；R1-T16 审计日志排在在审 PR 之后", steps:[["R1-T15","R1-T16"],["R1-T17"]]},
-    {nm:"后续修正（取证推翻已合并代码）", d:"不计入 9/19，但占用开发与审查力量", steps:[["F-001/002","F-005/006","F-003","F-008"],["F-007","F-009"],["F-010","F-011"]]}
+    {nm:"主线（关键路径）", d:"R1 剩余 7 个任务中 5 个排在调动之后", steps:[["R1-T08"],["R1-T09"],["R1-T10","R1-T11","R1-T13","R1-T14"]]},
+    {nm:"支线", d:"R1-T17 已合并；审计日志等 #54 合并后再派", steps:[["R1-T17"],["F-005","F-006"],["R1-T16"]]},
+    {nm:"修正链", d:"取证推翻已合并实现后回头改；#54 合并后 F-007 / F-010 / F-011 拟合成一个派", steps:[["F-005","F-006","F-012"],["F-007","F-010","F-011"]]},
+    {nm:"R2 跨阶段", d:"你直接要求提前开工（DEC-159）；R1-T10 要等它提供的合同变更端口", steps:[["R2-T06"],["R1-T10"]]}
   ],
-  now: [
-    {id:"在审 / 在改", s:"review", d:"#54 F-005+F-006、#58 F-003：第三轮复审中；#60 R1-T17：第二轮修改中", next:"谁先过审谁先合；满足条件由编排窗口直接合并"},
-    {id:"Codex 开发中（Claude 审查）", s:"active", d:"R1-T09 调动 PR-A（主线，§14）；R2-T06 合同协议（§15.1，R2 第一个任务）", next:"开出 PR 后用 cross-review skill 审查；PR-A 合并后派 PR-B"},
-    {id:"最近合并", s:"done", d:"#53 R1-T08 定时生效（R1 12/19，M5 完成）；#59 F-009 停用下级组织不缩数据范围", next:"—"},
-    {id:"排队中", s:"todo", d:"R1-T16 审计日志", next:"排在 R1-T08 → F-005+F-006 → R1-T15 之后"},
-    {id:"取证", s:"active", d:"新增：组织停用后负责人 / HRBP 角色范围是否保留（F-009 遗留）", next:"取证窗口处理中"}
-  ],
-  rounds: [
-    {k:"首版", t:"10-03 07:01", s:"done", d:"审批中心首版：流程配置、审批人解析、同意 / 驳回 / 转交 / 加签、详情与日志", by:"Claude 开发窗口", out:"Codex 自动审查提出意见，09:25 修完"},
-    {k:"一审 → 第二轮", t:"10-03 11:01", s:"done", d:"astra 深度审计：26 条必须修，主要是权限越界、盲审、审计记录不全", by:"编排窗口合并意见并定 DEC-091~102", out:"第二轮修改 12:46 交付"},
-    {k:"取证插入", t:"10-03 12:49", s:"done", d:"取证发现原站重提、意见可见性、相同审批人跳过的做法不同", by:"你选择照搬原站 → DEC-103~106", out:"“第二轮·补充”13:20 交付（一次返工）"},
-    {k:"二审 → 第三轮", t:"10-03 14:20", s:"done", d:"17 条问题 F1~F17 + 7 个产品问题", by:"编排窗口代选 DEC-113~119，你逐条确认维持", out:"第三轮 15:11 交付"},
-    {k:"三审 → 第四轮", t:"10-03 16:22", s:"done", d:"F1~F17 修好 13 项；新确认 2 个 P1、5 个 P2、1 个 P3", by:"新增决策 DEC-122~124（调动详情含性别年龄、异常管理员停用后待办转替代人、历史审批人只算本轮）", out:"第四轮交付"},
-    {k:"四审 → 第五轮", t:"10-04 01:29", s:"done", d:"上轮 8 项修好 7 项；无 P0/P1，剩 5 个 P2、2 个 P3（并发与边界情况）", by:"Claude 开发窗口，先补失败测试再修", out:"第五轮 02:18 交付，CI 全绿"},
-    {k:"五审 → 第六轮", t:"10-04 06:08", s:"done", d:"无 P0/P1；4 个 P2、1 个 P3", by:"Claude 开发窗口", out:"第六轮交付"},
-    {k:"六审 → 第七轮", t:"10-04 12:11", s:"done", d:"3 个 P2、1 个 P3。其中 2 个是派单并发死锁，按 DEC-136 转为后续任务 F-008，不再卡住本 PR", by:"Claude 开发窗口：先补失败测试再修", out:"第七轮 12:26 交付，CI 全绿"},
-    {k:"七审 → 合并", t:"10-04 15:10", s:"done", d:"astra 七审（High）结论：可以合并", by:"你在编排窗口确认合并（4d5a53d）", out:"放出 F-003、F-008、R1-T08、R1-T15"}
-  ],
-  third: [
-    {g:"派单锁键规范化", items:"R6-1（P2）", d:"同一个用户 ID 写成大小写不同的形式时，系统会把它当成两个人分别加锁，停用和派单可能同时进行。改为在生成锁键的地方统一转成小写，所有入口都走这一处"},
-    {g:"测试改为确定性", items:"R6-4（P3）", d:"原来的回滚测试靠随机重试才能碰到目标场景；改成用固定 ID 和固定排序构造数据，每次都稳定覆盖"},
-    {g:"转到后续", items:"R6-2 R6-3 → F-008", d:"两个罕见的并发死锁场景修改面大，按 DEC-136 不再拖住审批中心合并，另开后续任务 F-008 处理"}
+  attn: [
+    {k:"#63 R1-T09 PR-A",d:"Claude 复审可以合并；Codex 正在合并 main、迁移重排为 0039/0040", nx:"CI 绿后编排窗口按授权合并；随后派 PR-B（DEC-163、DEC-165）"},
+    {k:"#64 R2-T06 合同协议",d:"Claude 复审可以合并", nx:"等 #63 合并后重排迁移 0041/0042 再合并；合并后 R1-T10 的合同端口就绪"},
+    {k:"#54 F-005+F-006",d:"astra 第三轮复审中", nx:"合并前需把迁移重排到更后的编号；合并后放开 F-007 / F-010 / F-011 与 R1-T16"},
+    {k:"R1-T17 已合并",d:"平台运营层 3 轮审查后合并，M2 权限与平台完成", nx:"R1 底座 13/19"}
   ],
   log: [
+    {d:"10-05", t:"合并 PR #60（R1-T17 平台运营层，3 轮审查），M2 完成，R1 底座 13/19；#63、#64 Claude 复审可以合并，待重排迁移；DEC-165 新部门任何场景不能为空"},
+    {d:"10-05", t:"#60 第三轮修复推送（52f4b9b），CI 全绿，astra 第三轮复审中"},
+    {d:"10-05", t:"#63 按 DEC-162 的 c829f34 CI 全绿；DEC-163 更正已发给 Codex，第二轮继续修改"},
+    {d:"10-05", t:"DEC-163 取代 DEC-162（新部门必填，其余不带出字段可存空并生成待补全待办）；DEC-164 合同三处口径；#64 Claude 首审 6 个 P2，第二轮修改中"},
+    {d:"10-05", t:"#60 astra 二审：原 9 项大部分修复，新确认 5 个 P2，进入第三轮；#63 第二轮修改已发给 Codex；#64 Claude 首审中"},
+    {d:"10-05", t:"开出 PR #64：R2-T06 合同协议（Codex 开发）；Q-M0-18 带编调动只读部分取证完成，DEC-073 不变"},
+    {d:"10-05", t:"PR #63 Claude 首审（cross-review）：1 个 P2，6 项派发要求落实；DEC-161 生效时整段校验目标部门停用、DEC-162 不带出字段暂定必填（交取证）；#60 第二轮复审中"},
+    {d:"10-05", t:"DEC-160：负责人 / HRBP 按组织角色取得的数据范围不因组织停用而收缩；新增后续任务 F-012（R1-T02，10-06 起 Claude 开发）"},
+    {d:"10-05", t:"开出 PR #63：R1-T09 PR-A 调动核心（Codex 开发），CI 绿后 Claude 首审"},
+    {d:"10-05", t:"合同联动分界核定（§16）：R2-T06 提供端口、R1-T09 PR-B 不碰合同、R1-T10 等 T09 与 R2-T06；看板与编排窗口的四条通信规则生效；#58（F-003）合并，迁移 0036"},
+    {d:"10-05", t:"看板改版：阶段 → 子阶段 → 任务逐层穿透，修正任务挂到被修正的任务下，依赖可点击跳转；长流程 PR 只在进行中显示；自动检查阶段优先级。合并 PR #58（F-003）、#61"},
     {d:"10-05", t:"DEC-159：当天新任务全部交 Codex 开发、Claude 审查；R1-T09 PR-A 与 R2-T06 合同协议已派给 Codex；DEC-155~158 登记"},
     {d:"10-05", t:"登记 DEC-156（开发方式调整与合并授权补充）、DEC-157（R1-T09 拆为 PR-A 调动核心 → PR-B 编制与联动）；cross-review skill 经编排窗口核对与 astra 口径一致"},
     {d:"10-05", t:"开发方式调整：R1-T09 由 Codex 开发、Claude 审查，10-06 起新任务恢复 Claude 开发；新增交叉审查清单 skill（.claude/skills/cross-review）"},
@@ -307,65 +364,128 @@ const DATA = {
     {d:"09-30", t:"合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"}
   ]
 };
+
 /* ===== 渲染 ===== */
-const S = DATA.status, T = DATA.tasks;
+const ST = {done:{t:"已完成",c:"s-done"}, review:{t:"审查中",c:"s-review"}, active:{t:"开发 / 修改中",c:"s-active"}, todo:{t:"未开始",c:"s-todo"}, blocked:{t:"受阻",c:"s-blocked"}};
+const T = DATA.tasks;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const pill = s => `<span class="pill ${S[s].c}">${S[s].t}</span>`;
-const prLink = n => n ? `<a href="https://github.com/Avatar0327/italent-replica/pull/${n}" target="_blank" rel="noopener">#${n}</a>` : "—";
-const ratio = ids => { const w = {done:1, review:.7, active:.5, todo:0, blocked:0};
-  return ids.reduce((a,id)=>a + (w[T[id].s]||0), 0) / ids.length; };
+const pill = s => `<span class="pill ${ST[s].c}">${ST[s].t}</span>`;
+const ready = id => { const t = T[id]; return t && t.s === "todo" && !pending(id).length; };
+const statePill = id => ready(id) && !T[id].hold ? `<span class="pill s-ready">可派发</span>` : (ready(id) ? `<span class="pill s-todo">可派发 · 暂缓</span>` : pill(T[id].s));
+const pending = id => (T[id]?.deps || []).filter(d => T[d] && T[d].s !== "done");
+const blocksOf = id => Object.keys(T).filter(k => (T[k].deps || []).includes(id) && T[k].s !== "done");
+const msOf = id => T[id]?.ms || T[T[id]?.parent]?.ms;
+const isF = id => !!T[id]?.parent;
+const kids = id => Object.keys(T).filter(k => T[k].parent === id);
+const evOf = id => DATA.evidence.filter(e => e.task === id);
+const prLink = n => `<a href="https://github.com/Avatar0327/italent-replica/pull/${n}" target="_blank" rel="noopener">#${n}</a>`;
+const who = t => t.dev ? `<span class="who"><i class="w-${t.dev}">${t.dev} 开发</i>${t.rev ? `<i class="w-${t.rev}">${t.rev} 审</i>` : ""}</span>` : "";
+const jump = id => `<button class="jump" type="button" data-go="${esc(id)}">${esc(id)} ${T[id] ? pill(T[id].s) : ""}</button>`;
+const domId = id => "t-" + id.replace(/[^A-Za-z0-9]/g, "_");
 
 document.getElementById("updated").textContent = DATA.updated;
-document.getElementById("mode").innerHTML = DATA.mode;
-document.getElementById("stats").innerHTML = DATA.stats.map(x=>`<div class="stat"><b>${esc(x.v)}</b><span>${esc(x.l)}</span></div>`).join("");
-document.getElementById("legend").innerHTML = Object.keys(S).map(pill).join("");
+document.getElementById("mode").innerHTML = DATA.mode.map(x => `<div>${x}</div>`).join("");
+document.getElementById("stats").innerHTML = DATA.stats.map(x => `<div class="stat"><b>${esc(x.v)}</b><span>${esc(x.l)}</span></div>`).join("");
+document.getElementById("legend").innerHTML = Object.keys(ST).map(pill).join("") + `<span class="pill s-ready">可派发</span><span class="who"><i class="w-Claude">Claude</i><i class="w-Codex">Codex</i></span>`;
 
-const rail = document.getElementById("rail");
-rail.style.setProperty("--n", DATA.milestones.length);
-let curFound = false;
-rail.innerHTML = DATA.milestones.map(m => {
-  const r = ratio(m.tasks); const done = m.tasks.filter(id=>T[id].s==="done").length;
-  const cur = !curFound && r < 1 && (curFound = true);
-  return `<div class="ms${cur?" cur":""}"><div class="k">${m.k}</div><div class="bar"><i style="width:${Math.round(r*100)}%"></i></div>
-    <div class="t">${esc(m.t)}</div><div class="p">${done}/${m.tasks.length}</div></div>`;
+/* 要你处理：手写条目 + 自动检查阶段优先级 */
+const attn = [...DATA.attn];
+const r1Ready = Object.keys(T).filter(id => (msOf(id) || "").startsWith("M") && ready(id) && !T[id].hold);
+const crossActive = Object.keys(T).filter(id => /^R[23]/.test(msOf(id) || "") && ["active","review"].includes(T[id].s));
+if (crossActive.length && r1Ready.length) attn.unshift({you:true,k:"阶段优先级提醒",d:`R1 仍有可派发任务（${r1Ready.join("、")}），同时 ${crossActive.join("、")} 已在 R2/R3 开工`, nx:"请确认这是有意的跨阶段并行"});
+document.getElementById("attn").innerHTML = attn.map(a => `<div class="it${a.you ? " you" : ""}"><div class="k">${esc(a.k)}${a.you ? `<span class="pill s-blocked">要你处理</span>` : ""}</div><p>${esc(a.d)}</p><div class="nx">下一步：${esc(a.nx)}</div></div>`).join("");
+
+/* 任务详情：依赖、被挡、修正、PR、取证 */
+function detail(id){
+  const t = T[id], out = [];
+  const pd = pending(id), bl = blocksOf(id);
+  if (t.why) out.push(`<div class="blk"><h4>为什么要修正</h4><div>${esc(t.why)}；修正的是 ${jump(t.parent)}</div></div>`);
+  if (t.note) out.push(`<div class="blk"><h4>说明</h4><div>${esc(t.note)}</div></div>`);
+  if (t.hold) out.push(`<div class="blk"><h4>暂缓原因</h4><div>${esc(t.hold)}</div></div>`);
+  out.push(`<div class="blk"><h4>前置任务</h4><div class="row">${(t.deps||[]).length ? t.deps.map(jump).join("") : `<span class="empty">无</span>`}${pd.length ? `<span class="tag warn">还在等 ${pd.length} 个</span>` : ""}</div></div>`);
+  if (bl.length) out.push(`<div class="blk"><h4>它挡住的任务</h4><div class="row">${bl.map(jump).join("")}</div></div>`);
+  const ks = kids(id);
+  if (ks.length) out.push(`<div class="blk"><h4>修正任务（取证推翻后回头改）</h4>${ks.map(k => { const f = T[k], p = pending(k);
+      return `<div class="fix" id="${domId(k)}"><span class="mono">${esc(k)}</span><div class="fh">${statePill(k)} <span>${esc(f.n)}</span> ${who(f)} ${(f.pr||[]).map(prLink).join(" ")} <span class="tag">${esc(f.why||"")}</span>${p.length ? `<span class="tag warn">等 ${p.join("、")}</span>` : ""}${f.hold ? `<span class="tag">${esc(f.hold)}</span>` : ""}</div></div>`; }).join("")}</div>`);
+  const prs = (t.pr||[]).filter(n => DATA.prs[n]);
+  if (prs.length) out.push(`<div class="blk"><h4>PR 进度</h4>${prs.map(n => { const p = DATA.prs[n];
+      return `<div class="row">${prLink(n)} ${pill(p.s)} <span class="tag">第 ${p.round} 轮 · ${esc(p.note||"")}</span></div>`; }).join("")}</div>`);
+  const ev = evOf(id);
+  if (ev.length) out.push(`<div class="blk"><h4>待取证 ${ev.length} 项</h4>${ev.map(e => `<div class="ev"><span class="mono">${e.id}</span><span class="lv">${e.st} ${esc(e.lv)}</span><span>${esc(e.w)}</span></div>`).join("")}</div>`);
+  return out.join("");
+}
+
+function taskRow(id){
+  const t = T[id], pd = pending(id), ks = kids(id), ev = evOf(id);
+  const openKids = ks.filter(k => T[k].s !== "done").length;
+  const right = [statePill(id), who(t), ...(t.pr||[]).map(prLink),
+    pd.length ? `<span class="tag warn">等 ${pd.length}</span>` : "",
+    ks.length ? `<span class="tag">修正 ${openKids}/${ks.length}</span>` : "",
+    ev.length ? `<span class="tag">取证 ${ev.length}</span>` : ""].join(" ");
+  return `<details class="task" id="${domId(id)}" data-id="${esc(id)}"><summary><span class="chev" aria-hidden="true">▶</span><span class="tl"><span class="tid">${esc(id)}</span><span>${esc(t.n)}</span></span><span class="tr">${right}</span></summary><div class="detail">${detail(id)}</div></details>`;
+}
+
+const mainTasks = ms => Object.keys(T).filter(id => !isF(id) && T[id].ms === ms);
+document.getElementById("tree").innerHTML = DATA.stages.map(st => {
+  const ids = st.ms.flatMap(mainTasks), done = ids.filter(i => T[i].s === "done").length;
+  const rows = st.ms.map(ms => {
+    const ts = mainTasks(ms), d = ts.filter(i => T[i].s === "done").length;
+    const fx = ts.flatMap(kids).filter(k => T[k].s !== "done").length;
+    const ev = ts.flatMap(evOf).length + ts.flatMap(kids).flatMap(evOf).length;
+    const act = ts.filter(i => ["active","review"].includes(T[i].s)).length;
+    const rd = ts.filter(i => ready(i) && !T[i].hold).length;
+    const label = st.ms.length > 1 ? ms : st.k;
+    return `<details class="ms" data-ms="${ms}"><summary><span class="chev" aria-hidden="true">▶</span><span class="mk">${label}</span>
+      <span class="mt"><span>${esc(DATA.milestones[ms])}</span><span class="tag mono">${d}/${ts.length}</span>${d === ts.length ? pill("done") : ""}</span>
+      <span class="mr">${act ? `<span class="pill s-active">进行中 ${act}</span>` : ""}${rd ? `<span class="pill s-ready">可派发 ${rd}</span>` : ""}${fx ? `<span class="tag">修正 ${fx}</span>` : ""}${ev ? `<span class="tag">取证 ${ev}</span>` : ""}</span></summary>
+      <div class="tasks">${ts.map(taskRow).join("")}</div></details>`;
+  }).join("");
+  return `<div class="stage"><div class="stage-h"><b>${st.k} ${esc(st.t)}</b><span class="mono sub">${done}/${ids.length} 完成</span><span class="bar"><i style="width:${Math.round(done / ids.length * 100)}%"></i></span></div>${rows}</div>`;
 }).join("");
 
-const F = DATA.ftasks;
-const info = id => T[id] ? {n:T[id].n, s:T[id].s, pr:T[id].pr, note:""} : {n:F[id].n, s:F[id].s, pr:F[id].pr, note:F[id].note||""};
-const pending = id => (DATA.deps[id]||[]).filter(d => info(d).s !== "done");
+/* 依赖主线 */
 document.getElementById("lanes").innerHTML = DATA.lanes.map(l => {
   const flow = l.steps.map(step => `<div class="step">${step.map(id => {
-    const x = info(id), p = pending(id);
-    const ready = x.s === "todo" && !p.length && !x.note;
-    const cls = x.s === "todo" ? (p.length ? " wait" : (ready ? " ready" : "")) : "";
-    const tag = ready ? `<span class="tag-ready">可派发</span>` : pill(x.s);
-    const w = p.length ? `等 ${p.join("、")}` : (x.note || (x.pr ? `PR #${x.pr}` : ""));
-    return `<div class="node${cls}"><div class="nid">${esc(id)}${tag}</div><div>${esc(x.n)}</div>${w ? `<div class="w">${esc(w)}</div>` : ""}</div>`;
+    const t = T[id], p = pending(id), r = ready(id) && !t.hold;
+    const cls = t.s === "todo" ? (p.length ? " wait" : (r ? " ready" : "")) : "";
+    const ctx = isF(id) ? `修正 ${t.parent} · ${msOf(id)}` : msOf(id);
+    const w = p.length ? `等 ${p.join("、")}` : (t.hold ? "暂缓：" + t.hold : (t.pr ? "PR " + t.pr.map(n => "#" + n).join(" ") : ""));
+    return `<button class="node${cls}" type="button" data-go="${esc(id)}"><span class="nid">${esc(id)} ${statePill(id)}</span><span class="ms-tag">${esc(ctx)}</span><span>${esc(t.n)}</span>${w ? `<span class="w">${esc(w)}</span>` : ""}</button>`;
   }).join("")}</div>`).join(`<div class="arrow" aria-hidden="true">→</div>`);
   return `<div class="lane"><div class="ln"><b>${esc(l.nm)}</b><span>${esc(l.d)}</span></div><div class="flow">${flow}</div></div>`;
 }).join("");
 
-document.getElementById("now").innerHTML = DATA.now.map(c =>
-  `<div class="card"><div class="h"><span class="id">${esc(c.id)}</span>${pill(c.s)}</div><p>${esc(c.d)}</p><div class="next">下一步：${esc(c.next)}</div></div>`).join("");
+/* 长流程 PR：未合并且达 3 轮 */
+const longs = Object.entries(DATA.prs).filter(([n, p]) => p.s !== "done" && p.round >= 3 && p.rounds);
+document.getElementById("longpr-sec").hidden = !longs.length;
+document.getElementById("longpr").innerHTML = longs.map(([n, p]) => `<div class="longpr"><div class="row"><b class="mono">${prLink(n)}</b><span>${esc(p.t)}</span>${pill(p.s)}<span class="tag">第 ${p.round} 轮</span></div>
+  <ol class="rounds">${p.rounds.map(r => `<li><span class="rk">${esc(r.k)}<time>${esc(r.t)}</time></span><span>${esc(r.d)}</span></li>`).join("")}</ol></div>`).join("");
 
-document.getElementById("rounds").innerHTML = DATA.rounds.map(r =>
-  `<li><div class="rk">${esc(r.k)}<time>${esc(r.t)}</time>${pill(r.s)}</div><div class="rd"><span>${esc(r.d)}</span><span class="m">谁：${esc(r.by)}</span><span class="m">结果：${esc(r.out)}</span></div></li>`).join("");
-document.getElementById("third").innerHTML = DATA.third.map(x =>
-  `<div class="card"><b>${esc(x.g)}</b><span class="it">${esc(x.items)}</span><p>${esc(x.d)}</p></div>`).join("");
+/* 最近动态 */
+const logEl = document.getElementById("log"), moreBtn = document.getElementById("logmore");
+function drawLog(all){ logEl.innerHTML = DATA.log.slice(0, all ? undefined : 10).map(x => `<li><time>${esc(x.d)}</time><span>${esc(x.t)}</span></li>`).join(""); moreBtn.hidden = all || DATA.log.length <= 10; }
+drawLog(false); moreBtn.addEventListener("click", () => drawLog(true));
 
-const groups = [
-  {nm:"R1 底座", ms:["M0","M1","M2","M3","M4","M5","M6","M7"], open:true},
-  {nm:"R2 人事完整化", ms:["R2"]}, {nm:"R3 人才链路", ms:["R3"]}
-];
-document.getElementById("phases").innerHTML = groups.map(g => {
-  const ms = DATA.milestones.filter(m => g.ms.includes(m.k));
-  const ids = ms.flatMap(m => m.tasks); const r = ratio(ids);
-  const done = ids.filter(id=>T[id].s==="done").length;
-  const rows = ms.flatMap(m => m.tasks.map(id => { const t = T[id];
-    return `<tr><td class="idc">${id}</td><td class="idc">${m.k}</td><td>${esc(t.n)}</td><td>${pill(t.s)}</td><td>${esc(t.who||"—")}</td><td class="idc">${prLink(t.pr)}</td><td>${esc(t.note||"")}</td></tr>`; })).join("");
-  return `<details${g.open?" open":""}><summary><span class="nm">${g.nm}</span><span class="mono sub">${done}/${ids.length} 完成</span><span class="mini"><i style="width:${Math.round(r*100)}%"></i></span></summary>
-    <div class="tbl"><table><thead><tr><th>任务</th><th>里程碑</th><th>内容</th><th>状态</th><th>开发方</th><th>PR</th><th>备注</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
-}).join("");
+/* 穿透跳转：打开所在子阶段与任务（修正任务打开其父任务），滚动并高亮 */
+function go(id){
+  const host = isF(id) ? T[id].parent : id;
+  const el = document.getElementById(domId(host)); if (!el) return;
+  const ms = el.closest("details.ms"); if (ms) ms.open = true;
+  el.open = true;
+  const target = document.getElementById(domId(id)) || el;
+  target.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block:"center"});
+  target.classList.remove("flash"); void target.offsetWidth; target.classList.add("flash");
+}
+document.addEventListener("click", e => { const b = e.target.closest("[data-go]"); if (b){ e.preventDefault(); go(b.dataset.go); } });
 
-document.getElementById("log").innerHTML = DATA.log.map(x=>`<li><time>${esc(x.d)}</time><span>${esc(x.t)}</span></li>`).join("");
+/* 记住展开状态（仅本机浏览器） */
+const KEY = "italent-board-open";
+let opened = []; try { opened = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) {}
+if (!opened.length) opened = DATA.stages.flatMap(s => s.ms).filter(ms => mainTasks(ms).some(i => ["active","review"].includes(T[i].s) || (ready(i) && !T[i].hold))).map(ms => `details.ms[data-ms="${ms}"]`);
+opened.forEach(sel => { const el = document.querySelector(sel); if (el) el.open = true; });
+document.addEventListener("toggle", () => {
+  const list = [...document.querySelectorAll("details.ms[open]")].map(d => `details.ms[data-ms="${d.dataset.ms}"]`)
+    .concat([...document.querySelectorAll("details.task[open]")].map(d => "#" + d.id));
+  try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {}
+}, true);
 </script>
