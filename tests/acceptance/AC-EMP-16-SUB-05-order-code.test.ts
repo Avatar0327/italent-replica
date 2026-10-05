@@ -46,6 +46,69 @@ async function world(label: string) {
 }
 
 describe('AC-EMP-16 / AC-SUB-05 人员组合排序编码', () => {
+  it('DEC-171 未配置无内置规则，手动重算明确返回未计算且不插入名次', async () => {
+    const w = await world('oc-unconfigured');
+    const b = await w.employee('9');
+    const a = await w.employee('10');
+    expect(await w.ok(await w.request('GET', 'order-code/settings'))).toEqual({
+      revision: 0,
+      enabled: false,
+      items: [],
+    });
+    expect(await w.recompute(0)).toMatchObject({ outcome: 'not_configured', changed: 0 });
+    expect((await w.list()).map((r) => [r.id, r.orderCode])).toEqual([
+      [a, null],
+      [b, null],
+    ]);
+    await withTenant(w.db, w.tenant.id, async (tx) => {
+      expect(rows(await tx.execute(sql`SELECT * FROM personnel_employee_order_codes`))).toEqual([]);
+    });
+    await w.configure([rule('code', 'desc')]);
+    expect(await w.recompute()).toMatchObject({ outcome: 'computed', changed: 2 });
+    expect((await w.list()).map((r) => [r.id, r.orderCode])).toEqual([
+      [b, 1],
+      [a, 2],
+    ]);
+  });
+
+  it.each(['delete', 'disable'] as const)('DEC-171 %s 全部规则项后重算清空旧名次', async (operation) => {
+    const w = await world(`oc-clear-${operation}`);
+    await w.employee('B');
+    await w.employee('A');
+    await w.configure([rule('code', 'desc')]);
+    await w.recompute();
+    await w.configure(operation === 'delete' ? [] : [rule('code', 'desc', false)], 1);
+    expect(await w.recompute(2)).toMatchObject({ outcome: 'no_enabled_rules', changed: 2 });
+    expect((await w.list()).map((r) => [r.code, r.orderCode])).toEqual([
+      ['A', null],
+      ['B', null],
+    ]);
+    expect(await w.recompute(2)).toMatchObject({ outcome: 'no_enabled_rules', changed: 0 });
+  });
+
+  it('手动重算无变化仍记操作人和结果；同命令重放不重复记运行级审计', async () => {
+    const w = await world('oc-run-audit');
+    await w.employee('A');
+    await w.configure([rule('code')]);
+    await w.recompute();
+    const key = randomUUID();
+    await w.recompute(1, key);
+    await w.recompute(1, key);
+    await withTenant(w.db, w.tenant.id, async (tx) => {
+      expect(
+        rows(
+          await tx.execute(sql`SELECT actor_user_id,"after" FROM audit_events
+        WHERE action='personnel.order.run' AND command_id=${key}`),
+        ),
+      ).toEqual([
+        {
+          actor_user_id: w.user.id,
+          after: { revision: 1, changed: 0, outcome: 'computed', businessDate: '2026-10-01' },
+        },
+      ]);
+    });
+  });
+
   it('部门优先、职务次之；并列用竞争名次 1/1/3，列表和详情读取存储值', async () => {
     const w = await world('oc-rank');
     const a = await w.org('部门甲', {
