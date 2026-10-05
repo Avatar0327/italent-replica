@@ -29,7 +29,7 @@ export async function transferRequest<T>(tenantId: string, path: string, options
 }
 export function previewInput(model: TransferFormModel) {
   return {
-    initiator: 'hr',
+    initiator: model.initiator ?? 'hr',
     mode: 'application',
     effectiveDate: model.effectiveDate,
     transferTypeCode: model.transferTypeCode,

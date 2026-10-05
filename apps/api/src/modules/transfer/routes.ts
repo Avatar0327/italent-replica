@@ -1,4 +1,7 @@
-import { withTenant } from '@italent/db';
+import { rowsOf } from '../employment/record-store.js';
+import { requireTransferSource, requireTransferButton } from './access.js';
+import { TRANSFER_FORMS } from '@italent/domain';
+import { sql, withTenant } from '@italent/db';
 import { tenantLocalDate, buttonResource } from '@italent/domain';
 import type { Hono, Context } from 'hono';
 import { z } from 'zod';
@@ -31,15 +34,7 @@ import { previewTransfer } from './preview.js';
 import { createTransfer, normalizeTransferInput, requireTransferWrite, requireDirectTransfer } from './service.js';
 
 export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  router.get('/transfers/catalog', async (c) => {
-    const ctx = await readPageContext(c, deps, 'detail');
-    const today = tenantLocalDate(ctx.now, ctx.timezone);
-    const effectiveDate = businessDate(c.req.query('effectiveDate') ?? today);
-    const catalog = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      readTransferCatalog(tx, ctx.tenantId, effectiveDate),
-    );
-    return c.json({ ...catalog, today });
-  });
+  registerPersonalEntry(router, deps);
   router.get('/transfers/departments', async (c) => {
     const ctx = await readPageContext(c, deps, 'detail');
     const permitted = await Promise.all(
@@ -85,6 +80,11 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
       employeeRevision,
       allowDirectTransfer,
       allowedActions,
+      // 不返回不可见字段名或值；仅给前端一个不可提交的配置状态（PR-A P3）。
+      requiredFieldsUnavailable:
+        preview.requiredDepartmentMissing &&
+        (form.fieldModes['preset:departmentId'] !== 'editable' ||
+          (viewable !== undefined && !viewable.has('departmentId'))),
     });
   });
   router.post('/transfers/employees/:id', async (c) => {
@@ -169,4 +169,44 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '调动配置字段不合法', parsed.error.issues);
   return parsed.data;
+}
+
+function registerPersonalEntry(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get('/transfers/self', async (c) => {
+    const ctx = await readPageContext(c, deps, 'detail');
+    await requireTransferButton(ctx, 'employee');
+    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const [employee] = rowsOf<{ id: string; name: string; code: string; revision: number }>(
+        await tx.execute(sql`
+        SELECT e.id,e.name,e.code,e.revision FROM permission_user_person_links l
+        JOIN employment_employees e ON e.tenant_id=l.tenant_id AND e.id=l.employee_id
+        WHERE l.tenant_id=${ctx.tenantId} AND l.user_id=${ctx.userId}::uuid
+      `),
+      );
+      if (!employee) throw new AppError('FORBIDDEN', '当前用户未绑定员工');
+      await requireTransferSource(tx, ctx, employee.id, 'employee');
+      return [employee];
+    });
+    return c.json({ items });
+  });
+  router.get('/transfers/catalog', async (c) => {
+    const ctx = await readPageContext(c, deps, 'detail');
+    const today = tenantLocalDate(ctx.now, ctx.timezone);
+    const effectiveDate = businessDate(c.req.query('effectiveDate') ?? today);
+    const catalog = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      readTransferCatalog(tx, ctx.tenantId, effectiveDate),
+    );
+    if (c.req.query('initiator') === 'employee') {
+      await requireTransferButton(ctx, 'employee');
+      return c.json({
+        ...catalog,
+        today,
+        types: catalog.types.flatMap((type) => {
+          const formId = type.formId.replace('TenantBase.', 'TenantBase.Personal');
+          return TRANSFER_FORMS.some((form) => form.id === formId) ? [{ ...type, formId }] : [];
+        }),
+      });
+    }
+    return c.json({ ...catalog, today });
+  });
 }

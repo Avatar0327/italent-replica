@@ -146,6 +146,16 @@ async function transferProcessCode(tx: Tx, tenantId: string, businessId: string,
   return entry?.processCode ?? (await resolveTransferForm(tx, tenantId, formId)).processCode;
 }
 
+async function transferMetadata(tx: Tx, tenantId: string, businessId: string) {
+  const [row] = rowsOf<{ transferTypeCode: string; reasonCode: string | null }>(
+    await tx.execute(sql`
+    SELECT transfer_type_code AS "transferTypeCode",reason_code AS "reasonCode" FROM transfer_requests
+    WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid
+  `),
+  );
+  return row ?? {};
+}
+
 /** 自定义字段以权限字段编码 `custom:<id>` 出现在审批载荷里，与任职字段权限一致。 */
 const customValues = (values: Readonly<Record<string, unknown>> | undefined): Row =>
   Object.fromEntries(Object.entries(values ?? {}).map(([id, value]) => [`custom:${id}`, value]));
@@ -210,6 +220,7 @@ const employmentAdapter: BusinessAdapter = {
       : null;
     const values: Row = {
       ...fields,
+      ...(business.kind === 'transfer' ? await transferMetadata(tx, ctx.tenantId, businessId) : {}),
       ...customValues(business.customFields),
       effectiveDate: business.effectiveDate,
       lastWorkDate: payload.lastWorkDate,

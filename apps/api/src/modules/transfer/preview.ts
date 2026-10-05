@@ -1,6 +1,6 @@
 import type { Tx } from '@italent/db';
 import { readEmploymentSettings, getCustomFieldsForInheritance } from '../employment/configuration.js';
-import { prepareInheritance, inheritancePreview } from '../employment/inheritance.js';
+import { prepareInheritance, inheritancePreview, resolveEffectiveInheritance } from '../employment/inheritance.js';
 import { findPredecessor } from '../employment/read-model.js';
 import { readEmploymentEmployee } from '../employment/record-store.js';
 import { requireScopedEmploymentObject } from '../employment/context.js';
@@ -20,6 +20,10 @@ export async function previewTransfer(tx: Tx, ctx: EmploymentContext, employeeId
   if (prepared.fields.departmentId)
     await requireScopedEmploymentObject(tx, context, employeeId, prepared.fields.departmentId);
   const before = await findPredecessor(tx, ctx.tenantId, employeeId, input.employment.effectiveDate);
+  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
+    staffId: before?.staffId ?? '',
+    predecessor: before,
+  });
   const form = await resolveTransferForm(tx, ctx.tenantId, input.employment.formId);
   const settings = await readEmploymentSettings(tx, ctx.tenantId);
   const visible = (prefix: string, fields: object) =>
@@ -30,6 +34,7 @@ export async function previewTransfer(tx: Tx, ctx: EmploymentContext, employeeId
     );
   return {
     context,
+    requiredDepartmentMissing: !effective.fields.departmentId,
     value: {
       employeeId,
       form: { ...form, customFields: await getCustomFieldsForInheritance(tx, ctx.tenantId) },
@@ -38,10 +43,10 @@ export async function previewTransfer(tx: Tx, ctx: EmploymentContext, employeeId
         ? { fields: visible('preset', before.fields), customFields: visible('custom', before.customFields) }
         : null,
       employeeRevision: employee.revision,
-      allowDirectTransfer: settings.allowDirectTransfer,
+      allowDirectTransfer: input.initiator !== 'employee' && settings.allowDirectTransfer,
       allowedActions: {
         application: true,
-        ...(await transferDirectActions(accessContext, settings.allowDirectTransfer)),
+        ...(await transferDirectActions(accessContext, input.initiator !== 'employee' && settings.allowDirectTransfer)),
       },
     },
   };

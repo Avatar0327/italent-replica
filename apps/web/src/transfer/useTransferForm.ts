@@ -36,8 +36,8 @@ const initial: TransferFormModel = {
   customFields: {},
   preview: null,
 };
-export function useTransferForm(tenantId: string) {
-  const [model, setModel] = useState(initial);
+export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' = 'hr') {
+  const [model, setModel] = useState<TransferFormModel>({ ...initial, initiator });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -45,8 +45,8 @@ export function useTransferForm(tenantId: string) {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const commands = useTransferCommand(tenantId, model, loadingPreview, setModel, setError, setNotice);
-  useCatalog(tenantId, model.effectiveDate, setModel, setError);
-  useEmployees(tenantId, model.catalog.today, search, page, setModel, setError);
+  useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator);
+  useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator);
   usePreview(tenantId, model, reload, setModel, setLoadingPreview, setError, setNotice);
   const selection = (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
     setError('');
@@ -118,8 +118,16 @@ function useTransferCommand(
   const [unknownCommand, setUnknownCommand] = useState('');
   const requestInProgress = useRef(false);
   const submit = async (action: TransferAction) => {
-    if (!model.preview || requestInProgress.current || unknownCommand || loadingPreview) return;
-    if (missingTransferRequiredFields(model.preview.form, model.fields).length > 0) return;
+    if (
+      !model.preview ||
+      model.preview.requiredFieldsUnavailable ||
+      requestInProgress.current ||
+      unknownCommand ||
+      loadingPreview
+    )
+      return;
+    if (missingTransferRequiredFields(model.preview.form, { ...model.preview.fields, ...model.fields }).length > 0)
+      return;
     requestInProgress.current = true;
     setBusy(true);
     setError('');
@@ -157,10 +165,10 @@ function useTransferCommand(
 
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;
 type SetText = React.Dispatch<React.SetStateAction<string>>;
-function useCatalog(tenantId: string, date: string, setModel: SetModel, setError: SetText) {
+function useCatalog(tenantId: string, date: string, setModel: SetModel, setError: SetText, initiator: string) {
   useEffect(() => {
     const controller = new AbortController();
-    const query = date ? `?effectiveDate=${encodeURIComponent(date)}` : '';
+    const query = `?initiator=${initiator}${date ? `&effectiveDate=${encodeURIComponent(date)}` : ''}`;
     void transferRequest<TransferCatalog>(tenantId, `${TRANSFER_API}/catalog${query}`, { signal: controller.signal })
       .then((catalog) => {
         if (controller.signal.aborted) return;
@@ -177,7 +185,7 @@ function useCatalog(tenantId: string, date: string, setModel: SetModel, setError
         if (!controller.signal.aborted) setError(requestError(cause));
       });
     return () => controller.abort();
-  }, [tenantId, date, setModel, setError]);
+  }, [tenantId, date, setModel, setError, initiator]);
 }
 function useEmployees(
   tenantId: string,
@@ -186,6 +194,7 @@ function useEmployees(
   page: number,
   setModel: SetModel,
   setError: SetText,
+  initiator: string,
 ) {
   useEffect(() => {
     if (!today) return;
@@ -197,17 +206,26 @@ function useEmployees(
       page: String(page),
       pageSize: '50',
     });
-    void transferRequest<{ items: EmployeeChoice[] }>(tenantId, `${EMPLOYMENT_API}/employees?${query}`, {
-      signal: controller.signal,
-    })
+    void transferRequest<{ items: EmployeeChoice[] }>(
+      tenantId,
+      initiator === 'employee' ? `${TRANSFER_API}/self` : `${EMPLOYMENT_API}/employees?${query}`,
+      {
+        signal: controller.signal,
+      },
+    )
       .then((result) => {
-        if (!controller.signal.aborted) setModel((current) => ({ ...current, employees: result.items }));
+        if (!controller.signal.aborted)
+          setModel((current) => ({
+            ...current,
+            employees: result.items,
+            ...(initiator === 'employee' ? { employeeId: result.items[0]?.id ?? '' } : {}),
+          }));
       })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(requestError(cause));
       });
     return () => controller.abort();
-  }, [tenantId, today, search, page, setModel, setError]);
+  }, [tenantId, today, search, page, setModel, setError, initiator]);
 }
 function usePreview(
   tenantId: string,

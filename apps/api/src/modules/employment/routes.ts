@@ -1,3 +1,5 @@
+import { listCompletionTodos } from '../transfer/completion.js';
+import { requireTransferButton } from '../transfer/access.js';
 import { type Tx, withTenant } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { Hono, type Context } from 'hono';
@@ -6,7 +8,7 @@ import { requirePermission } from '../../authorization.js';
 import { AppError, handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { scopeAllows } from '../permission/module-access.js';
+import { scopeAllows, getModuleViewableFields } from '../permission/module-access.js';
 import { provisionEmployeeUser } from '../permission/user-provisioning.js';
 import {
   readSettings,
@@ -299,6 +301,25 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 
 /** R1-T08：生效失败待办与 HR 重试（DEC-052 / DEC-112）；定时任务本身只经平台路径运行，租户接口上没有触发入口。 */
 function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get('/completion-todos', async (c) => {
+    const ctx = await readPageContext(c, deps, 'list');
+    await requireTransferButton(ctx, 'hr');
+    const page = pageQuery(c);
+    const items = await withTenant(deps.db, ctx.tenantId, (tx) => listCompletionTodos(tx, ctx, page));
+    const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
+    return c.json({
+      items: items.map((item) => ({
+        id: item.id,
+        employeeId: item.employeeId,
+        effectiveDate: item.effectiveDate,
+        fieldCodes: item.fieldCodes.filter(
+          (code) => viewable === undefined || viewable.has(code.replace(/^preset:/, '')),
+        ),
+      })),
+      page: page.page,
+      pageSize: page.pageSize,
+    });
+  });
   router.get('/activation-todos', async (c) => {
     const ctx = await readPageContext(c, deps, 'list');
     const page = pageQuery(c);

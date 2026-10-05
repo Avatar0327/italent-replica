@@ -1,11 +1,12 @@
 /**
  * 定时生效的失败判定（DEC-052），全部集中在此：先按生效日校验调入部门 / 职位，再经编制单一判定入口（DEC-145：
- * R1-T09 前不检查编制），然后在保存点内经 activate 端口落地；
+ * 保存与到期使用真实任职占编投影），然后在保存点内经 activate 端口落地；
  * 业务规则拒绝记为生效失败（申请单仍为审批通过，失败时联动一律不执行），存储或依赖不可用则原样抛出、不记失败，
  * 由下一次运行重新尝试（AGENTS.md §10：业务失败与存储不可写 / 结果未知分开处理）。
  * TODO(需取证 Q-M0-48)：原站到期当天是否再校验（目标组织 / 职位停用、编制不足）、失败如何表现，待 10-10 回查；
  * 原站很可能没有失败分支（`08` §17），本判定为复刻自定，取证后只需调整本文件。
  */
+import { employmentEstablishmentExceeded } from '../establishment/employment-check.js';
 import type { Tx } from '@italent/db';
 import type { OrgId } from '@italent/domain';
 import { AppError, type ErrorCode } from '../../errors.js';
@@ -14,7 +15,7 @@ import { loadJobObject } from '../job/read-model.js';
 import type { PendingActivation } from './activation-store.js';
 import { EmploymentError } from './errors.js';
 import { transitionEmployment } from './transitions.js';
-import type { BusinessKind, EmploymentContext } from './types.js';
+import type { BusinessKind, EmploymentContext, PresetFields } from './types.js';
 
 export interface ActivationFailure {
   readonly reason: 'TARGET_ORG_DISABLED' | 'TARGET_POSITION_DISABLED' | 'ESTABLISHMENT_EXCEEDED' | 'RULE_REJECTED';
@@ -22,6 +23,7 @@ export interface ActivationFailure {
 }
 
 export interface ActivationTarget {
+  readonly fields?: Partial<PresetFields>;
   readonly businessId: string;
   readonly employeeId: string;
   readonly kind: BusinessKind;
@@ -35,19 +37,35 @@ export interface EmploymentActivationChecks {
   establishmentExceeded(tx: Tx, ctx: EmploymentContext, target: ActivationTarget): Promise<boolean>;
 }
 
-/**
- * DEC-145：定时生效的“编制不足”检查延到 R1-T09 随调动一并接入。生产装配下**暂不检查编制**（到期生效不查编制，
- * 与当前直接调动不查编制一致），这不是已实现的编制校验；失败框架（记录 / 待办 / 重试 / 挂起）已由停用校验与
- * 测试注入的判定覆盖（AC-TRF-31 的 R1-T08 段）。
- * TODO(R1-T09, DEC-145)：编制↔任职人员桥（Q-M0-15）接入后，在装配处注册编制模块的严格控制判定
- * （establishment/transfer-service 的到期再校验），并补 AC-TRF-31 的 R1-T09 段：真实满编 → 失败 → 调整编制 → 重试。
- */
-export const ESTABLISHMENT_CHECK_DEFERRED: EmploymentActivationChecks = { establishmentExceeded: async () => false };
-
-let checks: EmploymentActivationChecks = ESTABLISHMENT_CHECK_DEFERRED;
-
+/** 默认生产实现；测试可注入同一判定入口。 */
+export const DEFAULT_ESTABLISHMENT_CHECKS: EmploymentActivationChecks = {
+  establishmentExceeded: employmentEstablishmentExceeded,
+};
+let checks: EmploymentActivationChecks = DEFAULT_ESTABLISHMENT_CHECKS;
 export function registerEmploymentActivationChecks(implementation: EmploymentActivationChecks): void {
   checks = implementation;
+}
+export function establishmentExceeded(tx: Tx, ctx: EmploymentContext, target: ActivationTarget): Promise<boolean> {
+  return checks.establishmentExceeded(tx, ctx, target);
+}
+export interface EstablishmentWarning {
+  readonly businessId: string;
+  readonly reason: 'ESTABLISHMENT_EXCEEDED';
+}
+export async function assertEstablishmentCapacity(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget,
+  warnings?: EstablishmentWarning[],
+) {
+  if (!(await establishmentExceeded(tx, ctx, target))) return;
+  // DEC-015 仅内部导入端口提供警告收集器；HTTP 单笔保存与定时生效不能关闭严格校验。
+  if (warnings) {
+    if (!warnings.some((item) => item.businessId === target.businessId))
+      warnings.push({ businessId: target.businessId, reason: 'ESTABLISHMENT_EXCEEDED' });
+    return;
+  }
+  throw new AppError('CONFLICT', '已超出设定编制，不可继续操作', { reason: 'ESTABLISHMENT_EXCEEDED' });
 }
 
 /** 业务规则拒绝：按租户数据确定的结果，重跑也不会变，记为失败交 HR 修正。 */
@@ -79,7 +97,7 @@ async function precheck(tx: Tx, ctx: EmploymentContext, item: PendingActivation)
   if (positionId && !(await loadJobObject(tx, ctx.tenantId, 'positions', positionId, effectiveDate)))
     return { reason: 'TARGET_POSITION_DISABLED', detail: { positionId } };
   const target = { businessId, employeeId, kind, departmentId, positionId, effectiveDate };
-  if (departmentId && (await checks.establishmentExceeded(tx, ctx, target)))
+  if (departmentId && (await establishmentExceeded(tx, ctx, target)))
     return { reason: 'ESTABLISHMENT_EXCEEDED', detail: { departmentId } };
   return null;
 }

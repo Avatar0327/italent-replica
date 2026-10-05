@@ -26,6 +26,7 @@ const schema = z.strictObject({
   fields: z.record(z.string(), z.unknown()).optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
   submit: z.boolean().default(false),
+  withEstablishment: z.boolean().optional(),
 });
 export interface TransferInput {
   readonly initiator: TransferInitiator;
@@ -40,6 +41,8 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
   const parsed = schema.safeParse(raw);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '调动表单字段不合法', parsed.error.issues);
   const input = parsed.data;
+  if (input.withEstablishment)
+    throw new AppError('SERVICE_UNAVAILABLE', '带编调动分配规则尚待取证', { reason: 'WITH_ESTABLISHMENT_UNAVAILABLE' });
   if (input.formId === 'standard') throw new AppError('VALIDATION_FAILED', '调动接口必须选择真实表单');
   const catalog = await readTransferCatalog(tx, ctx.tenantId, input.effectiveDate);
   const type = catalog.types.find((item) => item.code === input.transferTypeCode);
@@ -56,10 +59,18 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
     kind: 'transfer',
     mode: input.mode,
     effectiveDate: input.effectiveDate,
-    formId: input.formId ?? type.formId,
+    formId:
+      input.formId ??
+      (input.initiator === 'employee' ? type.formId.replace('TenantBase.', 'TenantBase.Personal') : type.formId),
     fields: input.fields,
     customFields: input.customFields,
   });
+  // 08 §10 / AC-TRF-23：人事申请入口只能使用 Personal 表单，不能借用 HR 按钮。
+  if (
+    employment.formId.startsWith('TenantBase.Personal') !== (input.initiator === 'employee') ||
+    (input.initiator === 'employee' && input.mode !== 'application')
+  )
+    throw new AppError('VALIDATION_FAILED', '表单与调动入口不匹配', { reason: 'TRANSFER_FORM_ENTRY_MISMATCH' });
   await resolveTransferForm(tx, ctx.tenantId, employment.formId);
   const writable = Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'submit'));
   return {

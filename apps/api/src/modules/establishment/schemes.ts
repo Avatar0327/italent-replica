@@ -27,6 +27,11 @@ import {
   type EstablishmentContext,
 } from './store.js';
 
+export interface OccupancyRange {
+  readonly employmentType: string;
+  readonly conditions?: Readonly<Record<string, readonly string[]>>;
+}
+
 export interface SchemeInput {
   readonly name: string;
   readonly code?: string;
@@ -39,7 +44,7 @@ export interface SchemeInput {
   readonly startDate?: string;
   readonly stopDate?: string;
   readonly excludedOrgIds?: readonly string[];
-  readonly occupancyRanges?: readonly { employmentType: string }[];
+  readonly occupancyRanges?: readonly OccupancyRange[];
 }
 
 export interface SchemeRecord extends Omit<typeof establishmentSchemeVersions.$inferSelect, 'id'> {
@@ -48,7 +53,7 @@ export interface SchemeRecord extends Omit<typeof establishmentSchemeVersions.$i
   readonly revision: number;
   readonly periodType: SchemeInput['periodType'];
   readonly excludedOrgIds: readonly string[];
-  readonly occupancyRanges: readonly { employmentType: string }[];
+  readonly occupancyRanges: readonly OccupancyRange[];
 }
 
 export async function loadScheme(tx: Tx, tenantId: string, id: string, asOf: string): Promise<SchemeRecord> {
@@ -99,7 +104,7 @@ export async function loadScheme(tx: Tx, tenantId: string, id: string, asOf: str
     revision: row.object.revision,
     periodType: row.version.cycle,
     excludedOrgIds: exclusions.map((item) => item.orgId),
-    occupancyRanges: ranges.map((item) => ({ employmentType: item.employmentType })),
+    occupancyRanges: ranges.map((item) => ({ employmentType: item.employmentType, conditions: item.conditions })),
   };
 }
 
@@ -117,6 +122,31 @@ function normalize(ctx: EstablishmentContext, input: SchemeInput) {
   if ((input.excludedOrgIds?.length ?? 0) > 100) throw invalid('excludedOrgIds', '不占编组织超过单次处理上限');
   for (const range of input.occupancyRanges ?? []) {
     if (!range.employmentType?.trim()) throw invalid('occupancyRanges', '雇佣类型条件不可为空');
+    for (const [field, values] of Object.entries(range.conditions ?? {})) {
+      if (
+        ![
+          'employType',
+          'employmentForm',
+          'employmentType',
+          'employmentSource',
+          'positionId',
+          'postId',
+          'levelId',
+          'gradeId',
+          'sequenceId',
+          'dimension1',
+          'dimension2',
+          'dimension3',
+          'dimension4',
+          'dimension5',
+        ].includes(field) ||
+        !Array.isArray(values) ||
+        !values.length ||
+        values.length > 100 ||
+        values.some((value) => typeof value !== 'string' || !value.trim() || value.length > 2000)
+      )
+        throw invalid('occupancyRanges', '占编条件字段或取值不合法');
+    }
   }
   const code = input.code?.trim() ?? `es-${randomUUID().slice(0, 12)}`;
   if (!code || code.length > 64) throw invalid('code', '方案编码必须非空且不超过64字');
@@ -181,6 +211,7 @@ async function appendScheme(
         versionId: version.id,
         ordinal: index,
         employmentType: range.employmentType,
+        conditions: Object.fromEntries(Object.entries(range.conditions ?? {}).map(([k, v]) => [k, [...v]])),
       })),
     );
   return loadScheme(tx, ctx.tenantId, id, fields.startDate);
@@ -378,7 +409,7 @@ export async function loadSchemeBatch(
       revision: object.revision,
       periodType: version.cycle,
       excludedOrgIds: excluded.map((item) => item.orgId),
-      occupancyRanges: occupancy.map((item) => ({ employmentType: item.employmentType })),
+      occupancyRanges: occupancy.map((item) => ({ employmentType: item.employmentType, conditions: item.conditions })),
     };
   });
 }

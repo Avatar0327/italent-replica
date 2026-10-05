@@ -15,9 +15,15 @@ describe('任职命令并发与当前任职唯一', () => {
     const { db } = testDb();
     const session = await employmentSession(db, 'empconcurrent');
     const employee = await session.employee('并发合成员工');
+    const department = await session.org('合成并发部门', { startDate: '2026-01-01' });
     const hire = await session.business(
       employee.id,
-      { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { employType: 'internal' } },
+      {
+        kind: 'hire',
+        mode: 'direct',
+        effectiveDate: '2026-09-01',
+        fields: { employType: 'internal', departmentId: department.id },
+      },
       employee.revision,
     );
     const responses = await Promise.all(

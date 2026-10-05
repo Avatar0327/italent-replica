@@ -53,7 +53,12 @@ const scheme = z.strictObject({
   stopDate: date.optional(),
   excludedOrgIds: z.array(z.uuid()).max(100).optional(),
   occupancyRanges: z
-    .array(z.strictObject({ employmentType: z.string().trim().min(1).max(100) }))
+    .array(
+      z.strictObject({
+        employmentType: z.string().trim().min(1).max(100),
+        conditions: z.record(z.string(), z.array(z.string()).min(1).max(100)).optional(),
+      }),
+    )
     .max(5)
     .optional(),
 });

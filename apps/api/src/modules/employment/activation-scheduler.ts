@@ -1,3 +1,4 @@
+import { completionCandidates, remindCompletion } from '../transfer/completion.js';
 /**
  * 定时生效调度（R1-T08，`08` §12 / §16；REQ-TRF-004）。按各租户时区判定业务日（DEC-056，事件时间存 UTC），
  * 把到期的「审批通过」申请经 activate 端口落地。原站 W-013 观察到生效日 01:15 由系统执行；这里每个间隔扫描一次，
@@ -133,7 +134,7 @@ async function sweepTenant(
 ): Promise<EmploymentActivationRun> {
   const businessDate = tenantLocalDate(now, tenant.timezone);
   const candidates = await withTenant(db, tenant.id, (tx) =>
-    dueEmployees(tx, tenant.id, businessDate, input.cursor, input.limit + 1),
+    dueEmployees(tx, tenant.id, businessDate, input.cursor, input.limit + 1, now, tenant.timezone),
   );
   const batch = candidates.slice(0, input.limit);
   const run = { activated: [] as string[], failed: [] as string[], suspended: [] as string[], skippedLocked: 0 };
@@ -150,7 +151,9 @@ async function sweepTenant(
     try {
       const outcome = await withTenant(db, tenant.id, async (tx) => {
         if (!(await lockEmployeeOrSkip(tx, tenant.id, employeeId))) return null;
-        return activateDueBusinesses(tx, ctx, employeeId, 'scheduler');
+        const outcome = await activateDueBusinesses(tx, ctx, employeeId, 'scheduler');
+        await remindCompletion(tx, ctx, employeeId);
+        return outcome;
       });
       if (!outcome) {
         run.skippedLocked += 1;
@@ -187,6 +190,8 @@ async function dueEmployees(
   businessDate: string,
   cursor: string | null,
   limit: number,
+  now: Date,
+  timezone: string,
 ): Promise<string[]> {
   const rows = rowsOf<{ employeeId: string }>(
     await tx.execute(sql`
@@ -205,6 +210,15 @@ async function dueEmployees(
           AND x.business_id=a.blocked_by_business_id ORDER BY x.event_no DESC LIMIT 1) = 'approved'
         AND (SELECT y.outcome FROM employment_activation_attempts y WHERE y.tenant_id=s.tenant_id
           AND y.business_id=a.blocked_by_business_id ORDER BY y.attempt_no DESC LIMIT 1) = 'failed')))
+    UNION SELECT "employeeId"::text FROM (${completionCandidates({
+      tenantId,
+      timezone,
+      now,
+      userId: SYSTEM_USER_ID,
+      commandId: '',
+      expectedRevision: 0,
+    })}) c
+      WHERE (${cursor}::uuid IS NULL OR c."employeeId">${cursor}::uuid)
     ORDER BY 1 LIMIT ${limit}
   `),
   );

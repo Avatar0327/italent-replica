@@ -62,17 +62,20 @@ describe('DEC-163 任职信息待补全', () => {
     const api = tenantApi(w.db, { clock: () => new Date('2026-10-17T02:00:00Z') });
     async function job(kind: string, fields: object = {}) {
       const response = await api.request('POST', `/api/tenant/job/${kind}`, {
-        user: w.session.user.id, tenant: w.session.tenant.id, ifMatch: 0,
+        user: w.session.user.id,
+        tenant: w.session.tenant.id,
+        ifMatch: 0,
         body: { name: '合成补全职位', code: randomUUID(), startDate: '2026-01-01', ...fields },
       });
       expect(response.status, await response.clone().text()).toBe(201);
-      return await response.json() as { id: string };
+      return (await response.json()) as { id: string };
     }
     const post = await job('posts');
     const position = await job('positions', { postId: post.id, orgId: w.to.id });
-    const current = await edited.json() as { revision: number };
+    const current = (await edited.json()) as { revision: number };
     const completed = await w.session.request('PATCH', `/records/${business.id}`, {
-      ifMatch: current.revision, body: { fields: { positionId: position.id } },
+      ifMatch: current.revision,
+      body: { fields: { positionId: position.id } },
     });
     expect(completed.status, await completed.clone().text()).toBe(200);
     expect(await todos('2026-10-17T02:00:00Z')).toEqual([]);

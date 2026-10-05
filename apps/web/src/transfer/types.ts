@@ -15,6 +15,7 @@ export interface TransferCatalog {
   readonly reasons: readonly { code: string; name: string; transferTypeCode: string | null }[];
 }
 export interface TransferPreview {
+  readonly requiredFieldsUnavailable?: boolean;
   readonly form: {
     readonly id: string;
     readonly name: string;
@@ -31,6 +32,7 @@ export interface TransferPreview {
   readonly allowedActions?: { application: boolean; directList: boolean; directRow: boolean };
 }
 export interface TransferFormModel {
+  readonly initiator?: 'hr' | 'employee';
   readonly employees: readonly EmployeeChoice[];
   readonly departments: readonly Choice[];
   readonly references?: Readonly<Record<string, readonly Choice[]>>;

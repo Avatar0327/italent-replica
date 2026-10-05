@@ -31,10 +31,14 @@ export interface EstablishmentContext {
 }
 
 /** 容量、方案、占编和复制共用租户锁，避免“分别合法、合起来超编”的并发写入。 */
-export async function lockEstablishment(tx: Tx, ctx: EstablishmentContext): Promise<void> {
+export async function lockEstablishment(
+  tx: Tx,
+  ctx: EstablishmentContext,
+  options: { initializeDefault?: boolean } = {},
+): Promise<void> {
   await tx.insert(establishmentSettings).values({ tenantId: ctx.tenantId }).onConflictDoNothing();
   await tx.select().from(establishmentSettings).where(eq(establishmentSettings.tenantId, ctx.tenantId)).for('update');
-  await ensureDefaultScheme(tx, ctx);
+  if (options.initializeDefault !== false) await ensureDefaultScheme(tx, ctx);
 }
 
 export function assertRevision(expected: number, actual: number): void {

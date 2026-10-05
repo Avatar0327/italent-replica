@@ -52,13 +52,14 @@ describe('AC-EMP-11 DEC-077 同日跨周期顺序与删除重建', () => {
   it('DEC-108 同周期同日第二条不再返回409而按操作先后排在后面；删除后可按相同生效日重建', async () => {
     const session = await employmentSession(testDb().db, 'emp-dec077-delete-recreate');
     const employee = await session.employee('删除重建合成员工');
+    const department = await session.org('合成重建部门', { startDate: '2026-01-01' });
     const hire = await session.business(
       employee.id,
       {
         kind: 'hire',
         mode: 'direct',
         effectiveDate: '2026-09-01',
-        fields: { employType: 'internal' },
+        fields: { employType: 'internal', departmentId: department.id },
       },
       employee.revision,
     );

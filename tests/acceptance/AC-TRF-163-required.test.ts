@@ -214,15 +214,22 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
   it('隐藏部门仍继承非空原部门时，预览不泄漏值，也不误报必填项不可用', async () => {
     const w = await fixture(database().db, 'trf-required-hidden-preview');
     const configured = await w.request(w.hr.id, 'PUT', `${base}/transfers/forms/${formId}`, {
-      ifMatch: 0, body: { name: '合成隐藏部门', group: 'transfer', fieldModes: { 'preset:departmentId': 'hidden' } },
+      ifMatch: 0,
+      body: { name: '合成隐藏部门', group: 'transfer', fieldModes: { 'preset:departmentId': 'hidden' } },
     });
     expect(configured.status).toBe(200);
     const response = await w.request(w.hr.id, 'POST', `${base}/transfers/employees/${w.person.employeeId}/preview`, {
-      body: { initiator: 'hr', transferTypeCode: 'cross_department', formId,
-        mode: 'application', effectiveDate: '2026-10-01', fields: {} },
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
+        formId,
+        mode: 'application',
+        effectiveDate: '2026-10-01',
+        fields: {},
+      },
     });
     expect(response.status).toBe(200);
-    const preview = await response.json() as { fields: object; requiredFieldsUnavailable: boolean };
+    const preview = (await response.json()) as { fields: object; requiredFieldsUnavailable: boolean };
     expect(preview.fields).not.toHaveProperty('departmentId');
     expect(preview.requiredFieldsUnavailable).toBe(false);
   });

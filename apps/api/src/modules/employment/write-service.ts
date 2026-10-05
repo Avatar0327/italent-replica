@@ -1,3 +1,4 @@
+import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
@@ -44,6 +45,7 @@ import {
   type EmploymentContext,
   type EmploymentRecord,
   type NormalizedEmploymentInput,
+  type PresetFields,
 } from './types.js';
 
 export const NEW_CYCLE_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
@@ -65,7 +67,7 @@ export async function createEmploymentBusiness(
   ctx: EmploymentContext,
   employeeId: string,
   input: EmploymentBusinessInput,
-  options: { forwardUpdate?: boolean } = {},
+  options: { forwardUpdate?: boolean; establishmentWarnings?: EstablishmentWarning[] } = {},
 ): Promise<EmploymentBusiness> {
   const normalized = normalizeEmploymentInput(ctx, input);
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
@@ -81,10 +83,28 @@ export async function createEmploymentBusiness(
     employeeId: employee.id,
     staffId: selected?.cycle.id,
   });
-  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, { ...prepared.fields });
+  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
+    staffId: selected?.cycle.id ?? '',
+    predecessor: selected?.predecessor ?? null,
+  });
+  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, { ...effective.fields });
   await requireScopedEmploymentObject(tx, ctx, employee.id, prepared.fields.departmentId);
   await validateNewEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate);
   const id = randomUUID();
+  await assertEstablishmentCapacity(
+    tx,
+    ctx,
+    {
+      businessId: id,
+      employeeId: employee.id,
+      kind: normalized.kind,
+      effectiveDate: normalized.effectiveDate,
+      fields: effective.fields,
+      departmentId: effective.fields.departmentId,
+      positionId: effective.fields.positionId,
+    },
+    options.establishmentWarnings,
+  );
   await insertEmploymentRow(tx, 'employment_business_objects', {
     id,
     tenantId: ctx.tenantId,
@@ -154,9 +174,22 @@ export async function updateEmploymentBusiness(
     { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
     before,
   );
-  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, { ...prepared.fields });
+  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
+    staffId: selected?.cycle.id ?? '',
+    predecessor: selected?.predecessor ?? null,
+  });
+  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, { ...effective.fields });
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, prepared.fields.departmentId, business.id);
   await validateNewEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate);
+  await assertEstablishmentCapacity(tx, ctx, {
+    businessId: id,
+    employeeId: business.employeeId,
+    kind: normalized.kind,
+    effectiveDate: normalized.effectiveDate,
+    fields: effective.fields,
+    departmentId: effective.fields.departmentId,
+    positionId: effective.fields.positionId,
+  });
   await bumpEmploymentBusiness(tx, ctx, business);
   business.payload = await appendEmploymentPayload(
     tx,
@@ -429,7 +462,7 @@ export async function materializeEmploymentRecord(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
-  options: { forwardUpdate?: boolean } = {},
+  options: { forwardUpdate?: boolean; establishmentWarnings?: EstablishmentWarning[] } = {},
 ): Promise<void> {
   const payload = business.payload;
   // DEC-108：按操作先后定插入点；先提交、后落地的申请可能插在当日已有记录之前，前驱与顺序校验都以插入点为准。
@@ -451,6 +484,8 @@ export async function materializeEmploymentRecord(
   // DEC-161：审批通过后仍可能新增停用排期，落地前按 DEC-150 重查整个时段。
   // 拒绝后由生效端口记失败与 HR 待办、按 DEC-112 挂起后序；不能截断任职或改期绕过。
   await validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate);
+  assertRequiredTransferFields(payload.kind, payload.formSnapshot, fields);
+  await checkMaterializedCapacity(tx, ctx, business, fields, options.establishmentWarnings);
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
   await insertEmploymentRow(tx, 'employment_records', {
@@ -486,11 +521,11 @@ export async function materializeEmploymentRecord(
       staffId,
       entryDate,
       effectiveDate: payload.effectiveDate,
-      // DEC-163：留空结果与实际落地同事务发布；PR-B 按业务、字段和 effectiveDate 处理补全待办。
-      ...(payload.kind === 'transfer'
-        ? { clearedFieldCodes: clearedTransferFields(payload.formSnapshot, fields).map((field) => `preset:${field}`) }
-        : {}),
     },
+    undefined,
+    payload.kind === 'transfer'
+      ? { clearedFieldCodes: clearedTransferFields(payload.formSnapshot, fields).map((field) => `preset:${field}`) }
+      : undefined,
   );
   if (options.forwardUpdate !== false) {
     await forwardMaterializedRecord(tx, ctx, business, staffId, selected?.predecessor ?? null, {
@@ -560,4 +595,27 @@ async function insertNewEmploymentCycle(
     employType: cycle.employType,
     createdAt: ctx.now.toISOString(),
   });
+}
+
+async function checkMaterializedCapacity(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  fields: PresetFields,
+  warnings?: EstablishmentWarning[],
+) {
+  await assertEstablishmentCapacity(
+    tx,
+    ctx,
+    {
+      businessId: business.id,
+      employeeId: business.employeeId,
+      kind: business.payload.kind,
+      effectiveDate: business.payload.effectiveDate,
+      fields,
+      departmentId: fields.departmentId,
+      positionId: fields.positionId,
+    },
+    warnings,
+  );
 }

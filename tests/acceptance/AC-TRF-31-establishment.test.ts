@@ -78,13 +78,24 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
     const { employee, hire } = await w.hired();
     const response = await w.session.request('POST', `/employees/${employee.id}/import`, {
       ifMatch: hire.employeeRevision,
-      body: { items: [{ operation: 'create', business: {
-        kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-01', fields: { departmentId: w.to.id },
-      } }] },
+      body: {
+        items: [
+          {
+            operation: 'create',
+            business: {
+              kind: 'transfer',
+              mode: 'direct',
+              effectiveDate: '2026-10-01',
+              fields: { departmentId: w.to.id },
+            },
+          },
+        ],
+      },
     });
     expect(response.status, await response.clone().text()).toBe(200);
     expect(await response.json()).toMatchObject({
-      items: [{ status: 'effective' }], warnings: [{ reason: 'ESTABLISHMENT_EXCEEDED' }],
+      items: [{ status: 'effective' }],
+      warnings: [{ reason: 'ESTABLISHMENT_EXCEEDED' }],
     });
   });
 

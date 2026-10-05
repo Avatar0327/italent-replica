@@ -1,3 +1,4 @@
+import type { EstablishmentWarning } from './activation-checks.js';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { assertRevision } from './context.js';
@@ -79,7 +80,8 @@ export async function importEmploymentRecords(tx: Tx, ctx: EmploymentContext, em
   const input = normalizeEmploymentImport(raw);
   await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
   await validateImportRevisions(tx, ctx, employeeId, input);
-  const createOptions = { forwardUpdate: input.updateLaterEmployment !== '否' };
+  const warnings: EstablishmentWarning[] = [];
+  const createOptions = { forwardUpdate: input.updateLaterEmployment !== '否', establishmentWarnings: warnings };
   const results = [];
   for (const item of input.items) {
     if (item.operation === 'create') {
@@ -114,7 +116,7 @@ export async function importEmploymentRecords(tx: Tx, ctx: EmploymentContext, em
     }
   }
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId);
-  return { items: results, revision: employee.revision };
+  return { items: results, revision: employee.revision, warnings };
 }
 
 async function importRecordRevision(tx: Tx, ctx: EmploymentContext, employeeId: string, id: string) {

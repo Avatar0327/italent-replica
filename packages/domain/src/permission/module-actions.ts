@@ -259,6 +259,8 @@ export const MODULE_OBJECTS = {
       'jobNumber',
       'remarks',
       'isDepartmentHead',
+      'transferTypeCode',
+      'reasonCode',
       'employType',
     ],
     [

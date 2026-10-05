@@ -60,6 +60,12 @@ export async function resolveTransferForm(tx: Tx, tenantId: string, id: string):
     ...PRESET_FIELD_NAMES.map((name) => [`preset:${name}`, 'editable' as const]),
     ...definitions.map((field) => [`custom:${field.id}`, 'editable' as const]),
   ]);
+  // 12 附录：本人调动表单仅任职调整基本字段，无薪资、合同、试岗、编制区块。
+  if (id.startsWith('TenantBase.Personal')) {
+    const personal = new Set(['departmentId', 'directManagerId', 'postId', 'levelId', 'sequenceId']);
+    for (const field of PRESET_FIELD_NAMES) fieldModes[`preset:${field}`] = personal.has(field) ? 'editable' : 'absent';
+    for (const field of definitions) fieldModes[`custom:${field.id}`] = 'absent';
+  }
   if (stored) {
     const fields = rowsOf<{ code: string; mode: TransferFieldMode }>(
       await tx.execute(sql`

@@ -1,3 +1,4 @@
+import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
@@ -56,6 +57,7 @@ export async function editEmploymentRecord(
   const record = await loadEmploymentRecord(tx, ctx.tenantId, id, today);
   if (business.state !== 'effective' || !record) throw new AppError('CONFLICT', '只能编辑有效任职记录');
   const after = await editedValues(tx, ctx, record, patch);
+  assertRequiredTransferFields(record.kind, business.payload.formSnapshot, after.fields);
   if (
     after.fields.jobNumber !== null &&
     after.fields.jobNumber.toLowerCase() !== business.employee.code.toLowerCase()

@@ -1,0 +1,1 @@
+ALTER TABLE "establishment_scheme_ranges" ADD COLUMN "conditions" jsonb DEFAULT '{}'::jsonb NOT NULL;

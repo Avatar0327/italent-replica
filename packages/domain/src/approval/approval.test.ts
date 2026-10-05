@@ -297,6 +297,8 @@ describe('PR #35 第三轮：预置与目录按规格核对', () => {
     // 现有业务模型已有数据、必须在本 PR 交付的字段（DEC-118 / DEC-122），独立于实现列出：标签 → 表单字段编码。
     const mustDeliver: Record<string, string> = {
       调动日期: 'effectiveDate',
+      异动类型: 'transferTypeCode',
+      调动原因: 'reasonCode',
       工号: 'jobNumber',
       性别: 'gender',
       年龄: 'age',
