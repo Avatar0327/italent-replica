@@ -345,6 +345,24 @@ describe('P2-1 / P2-2 联动日期', () => {
   });
 });
 
+describe('DEC-195② 迟到审批同样按实际执行日', () => {
+  it('计划 10-10、10-12 才审批通过：联动按批准当天执行，审计保留原计划日', async () => {
+    const w = await linkageWorld(database().db, 'r2-late-approval');
+    const person = await w.hire('迟到审批员工');
+    const contract = await w.contract(person.employee.id);
+    const business = await w.saved(
+      await w.transfer(person, { linkage: { contract: { targetId: contract.id }, onTrial: { months: 1 } } }),
+    );
+    await w.approve(business, '2026-10-12T01:00:00Z');
+    const view = await w.linkage(business.id);
+    expect(view.onTrial).toMatchObject({ startDate: '2026-10-12', expectedEndDate: '2026-11-11' });
+    const changed = (await w.contracts(person.employee.id)).find((c) => c.previousContractId === contract.id);
+    expect(changed).toMatchObject({ effectiveDate: '2026-10-12' });
+    const executed = (await w.auditEvents(business.id)).find((e) => e.action === 'transfer.linkage.executed');
+    expect(executed?.after).toMatchObject({ plannedEffectiveDate: D, effectiveDate: '2026-10-12' });
+  });
+});
+
 describe('P3 联动子项只能推进执行状态', () => {
   it('应用角色不能改写子项的业务键（列级授权）', async () => {
     const w = await linkageWorld(database().db, 'r2-p3');
