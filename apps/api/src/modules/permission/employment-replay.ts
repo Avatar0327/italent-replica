@@ -3,6 +3,7 @@ import { sql, type Tx } from '@italent/db';
 import type { Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { EmploymentContext } from '../employment/types.js';
+import { isEmploymentRecordVisible } from '../employment/visibility.js';
 import { authorizeInTransaction, scopeAllowsInTransaction } from './module-access.js';
 import { requireObjectWrite } from './object-write.js';
 
@@ -45,16 +46,18 @@ export async function authorizeEmploymentResult(
   const transferId = await transferException(tx, ctx, commandId);
   const targets = await currentTargets(tx, ctx.tenantId, ids);
   const byId = new Map(targets.map((target) => [target.id, target]));
+  const linked = linkedOnly(events, snapshots);
   for (const id of ids) {
     const target = byId.get(id);
     if (!target) throw new AppError('NOT_FOUND', '任职数据不存在');
-    await assertScope(tx, ctx, target, target.departmentId, transferId);
+    await assertScope(tx, ctx, target, target.departmentId, transferId, linked.has(id));
   }
   for (const event of events) {
     const target = byId.get(event.id)!;
+    const isLinked = linked.has(event.id);
     if (event.after && Object.hasOwn(event.after, 'departmentId'))
-      await assertScope(tx, ctx, target, event.after.departmentId as string | null, transferId);
-    if (event.hasSnapshot) await assertScope(tx, ctx, target, event.snapshotDepartment, transferId);
+      await assertScope(tx, ctx, target, event.after.departmentId as string | null, transferId, isLinked);
+    if (event.hasSnapshot) await assertScope(tx, ctx, target, event.snapshotDepartment, transferId, isLinked);
   }
   for (const snapshot of snapshots) {
     const target = byId.get(snapshot.id)!;
@@ -76,12 +79,27 @@ export async function authorizeEmploymentResult(
     });
 }
 
+/**
+ * 本命令只经联动改写（向后更新、负责人标志补写）的记录：DEC-178 按 DEC-177 可见口径复查；
+ * 命令直接写入或在响应中返回的记录仍按写入口径（记录部门与员工当前任职同时在范围内）。
+ */
+function linkedOnly(events: Footprint[], snapshots: Snapshot[]): Set<string> {
+  const direct = new Set([
+    ...events.filter((event) => !['employment.forward-update', 'snapshot'].includes(event.action)).map((e) => e.id),
+    ...snapshots.map((snapshot) => snapshot.id),
+  ]);
+  return new Set(
+    events.filter((event) => event.action === 'employment.forward-update' && !direct.has(event.id)).map((e) => e.id),
+  );
+}
+
 async function assertScope(
   tx: Tx,
   ctx: EmploymentContext,
   target: Target,
   departmentId: string | null,
   transferId: string | undefined,
+  linked = false,
 ) {
   if (
     transferId === target.id &&
@@ -89,15 +107,16 @@ async function assertScope(
     ctx.transferTarget.departmentId === departmentId
   )
     return;
-  if (
-    ctx.scope &&
-    !(await scopeAllowsInTransaction(tx, ctx.scope, {
-      personId: target.employeeId,
-      orgId: departmentId,
-      creatorId: target.creatorId,
-    }))
-  )
-    throw new AppError('NOT_FOUND', '任职数据不存在');
+  if (!ctx.scope) return;
+  const subject = { employeeId: target.employeeId, departmentId, creatorId: target.creatorId };
+  const allowed = linked
+    ? await isEmploymentRecordVisible(tx, ctx.tenantId, ctx.scope, subject)
+    : await scopeAllowsInTransaction(tx, ctx.scope, {
+        personId: target.employeeId,
+        orgId: departmentId,
+        creatorId: target.creatorId,
+      });
+  if (!allowed) throw new AppError('NOT_FOUND', '任职数据不存在');
 }
 
 async function transferException(tx: Tx, ctx: EmploymentContext, commandId: string): Promise<string | undefined> {
