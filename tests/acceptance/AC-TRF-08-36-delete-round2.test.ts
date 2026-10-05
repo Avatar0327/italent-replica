@@ -8,66 +8,15 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import type { Authorizer } from '../../apps/api/src/authorization.js';
-import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
-import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { activationWorld } from './AC-TRF-activation-support.js';
+import { NOW, RECORD_FIELDS, scopedWorld } from './AC-TRF-delete-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
-const NOW = () => new Date('2026-10-01T01:00:00.000Z');
-const RECORD_FIELDS = ['id', 'employeeId', 'revision', 'effectiveDate', 'kind', 'status', 'departmentId', 'staffId'];
-
-/**
- * 员工 9/1 入职 A（调出部门）、9/10 调入 B、（可选）9/25 调入 C。操作人用组织关系范围（如“B 的负责人”，DEC-168
- * organization 维度，只看记录部门），由范围提供者注入；范围判定、字段裁剪与真实授权器走同一套代码。
- */
-async function scopedWorld(label: string) {
-  const w = await activationWorld(database().db, label);
-  const b = await w.session.org('B部门', { establishedOn: '2026-01-01' });
-  const c = await w.session.org('C部门', { establishedOn: '2026-01-01' });
-  const subject = await w.hired('删除范围员工');
-  async function addBusiness(body: Record<string, unknown>) {
-    const employee = await w.session.getEmployee(subject.employee.id);
-    return w.session.business(subject.employee.id, body, employee.revision);
-  }
-  const toB = await addBusiness({
-    kind: 'transfer',
-    mode: 'direct',
-    effectiveDate: '2026-09-10',
-    fields: { departmentId: b.id },
-  });
-
-  function operator(orgIds: readonly string[], fields: readonly string[] = RECORD_FIELDS) {
-    const authorize: Authorizer = () => true;
-    registerScopeProvider(authorize, {
-      scope: async () => ({
-        ...EMPTY_SCOPE,
-        orgIds,
-        hasDataPermission: true,
-        terms: [{ dimension: 'organization' as const, orgIds, personIds: [] }],
-      }),
-      authorize: async () => true,
-      fields: async () => new Set(fields),
-    });
-    return tenantApi(w.db, { authorize, clock: NOW });
-  }
-  async function timeline() {
-    return (await w.session.records(subject.employee.id)).map(({ id, stopDate }) => ({ id, stopDate }));
-  }
-  async function remove(api: ReturnType<typeof operator>, id: string) {
-    return api.request('DELETE', `/api/tenant/employment/businesses/${id}`, {
-      user: w.session.user.id,
-      tenant: w.session.tenant.id,
-      ifMatch: (await w.business(id)).revision,
-    });
-  }
-  return { ...w, a: w.from, b, c, subject, toB, addBusiness, operator, timeline, remove };
-}
 
 describe('P1-1 删除中间记录：前一条不在操作人范围内时整单拒绝', () => {
   it('只管 B 的操作人删除 9/10 的 B 记录被拒（前一条在 A）；时间轴不变。A、B 都管时可删', async () => {
-    const w = await scopedWorld('p1');
+    const w = await scopedWorld(database().db, 'p1');
     await w.addBusiness({
       kind: 'transfer',
       mode: 'direct',
@@ -99,7 +48,7 @@ describe('P1-1 删除中间记录：前一条不在操作人范围内时整单�
 
 describe('P2-1 在途申请拒绝详情按范围与字段权限裁剪', () => {
   it('范围外的在途申请只计数、不给单号与日期；仍然拒绝删除。范围内按字段权限裁剪', async () => {
-    const w = await scopedWorld('p21');
+    const w = await scopedWorld(database().db, 'p21');
     // 员工当前已在范围外的 C（DEC-177 ②不成立），其后的申请也在 C：申请对只管 A、B 的操作人不可见。
     await w.addBusiness({
       kind: 'transfer',
