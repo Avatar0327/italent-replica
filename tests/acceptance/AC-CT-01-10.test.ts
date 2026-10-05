@@ -30,6 +30,10 @@ describe('R2-T06 合同验收 AC-CT-01～10', () => {
     expect(changed.endDate).toBe(original.endDate);
     expect(changed.number === original.number).toBe(sameNumber);
     expect((await w.list()).find((c) => c.id === original.id)?.status).toBe(status);
+    if (_ac === 'AC-CT-06')
+      expect(await (await w.request('GET', `/records/${original.id}`)).json()).toMatchObject({
+        actualTerminationDate: '2025-01-31',
+      });
   });
 
   it('AC-CT-07/08 离职端口删除未来劳动合同，保留允许离职后签订的类型', async () => {
