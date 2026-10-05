@@ -1,8 +1,8 @@
-import { sql, type Tx } from '@italent/db';
+import { auditEvents, sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { auditActor } from '../../system-actor.js';
-import { employeeJoins } from './employee-read.js';
+import { orderCodeProjection } from './order-code-query.js';
 import { assertRevision, rows, type PersonnelContext } from './store.js';
 import { lockOrderSettings } from './order-code-settings.js';
 
@@ -14,8 +14,10 @@ const columns: Record<string, SQL> = {
   grade: sql`grade_number`,
   code: sql`code COLLATE "C"`,
 };
-/** DEC-148 / 15 §12：按启用规则依次比较，用 rank() 保留并列；没有编码分段或数值拼接。 */
+/** DEC-148 / DEC-170 / 15 §12：按启用规则依次比较，用 rank() 保留并列；没有编码分段或数值拼接。 */
 export async function recomputeOrderCodes(tx: Tx, ctx: PersonnelContext, checkRevision = true) {
+  // 限制与业务事务争用配置 / 员工外键锁的等待时间；只影响本次事务。
+  await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
   const config = await lockOrderSettings(tx, ctx.tenantId);
   if (checkRevision) assertRevision(ctx.expectedRevision, config.revision);
   const items = config.items.filter((i) => i.enabled);
@@ -26,33 +28,19 @@ export async function recomputeOrderCodes(tx: Tx, ctx: PersonnelContext, checkRe
   // NULL 仅按 SQL 比较顺序放末尾，不转为占位数字；没有当前主职的人员不参与名次。
   const [result] = rows<{ changed: number }>(
     await tx.execute(sql`
-    WITH RECURSIVE cur_org AS (
-      SELECT DISTINCT ON (org_id) id,org_id,enabled,stop_date FROM org_versions
-      WHERE tenant_id=${ctx.tenantId} AND start_date<=${asOf}::date
-      ORDER BY org_id,start_date DESC,version_no DESC
-    ), paths(org_id,path,visited) AS (
-      SELECT org_id,ARRAY[]::int[],ARRAY[org_id] FROM cur_org
-      WHERE org_id=${ctx.tenantId}::uuid AND enabled AND stop_date>=${asOf}::date
-      UNION ALL
-      SELECT c.org_id,p.path || h.sequence,p.visited || c.org_id FROM cur_org c
-      JOIN org_hierarchy_links h ON h.tenant_id=${ctx.tenantId} AND h.version_id=c.id AND h.dimension='admin'
-      JOIN paths p ON p.org_id=h.parent_org_id
-      WHERE c.enabled AND c.stop_date>=${asOf}::date AND NOT c.org_id=ANY(p.visited)
-    ), candidates AS (
-      SELECT e.id,e.code,paths.path AS department_path,jpost.code COLLATE "C" AS post_code,
-        jp.display_order AS position_order,jl.level AS level_number,jg.grade AS grade_number
-      FROM employment_employees e ${employeeJoins(ctx)}
-      LEFT JOIN paths ON paths.org_id=(r.current_fields->>'department_id')::uuid
-      WHERE e.tenant_id=${ctx.tenantId} AND r.id IS NOT NULL
-    ), ranked AS (
-      SELECT id,${enabled ? sql`rank() OVER (ORDER BY ${sql.join(order, sql`,`)})::int` : sql`NULL::int`} AS n
-      FROM candidates
+    WITH projected AS (
+      ${
+        enabled
+          ? orderCodeProjection(ctx, order)
+          : sql`
+        SELECT employee_id AS id,NULL::int AS n FROM personnel_employee_order_codes
+        WHERE tenant_id=${ctx.tenantId}`
+      }
     ), previous AS MATERIALIZED (
       SELECT employee_id,order_code FROM personnel_employee_order_codes WHERE tenant_id=${ctx.tenantId}
     ), changed AS (
       INSERT INTO personnel_employee_order_codes AS target(tenant_id,employee_id,order_code)
-      SELECT e.tenant_id,e.id,r.n FROM employment_employees e LEFT JOIN ranked r ON r.id=e.id
-      WHERE e.tenant_id=${ctx.tenantId} ORDER BY e.id
+      SELECT ${ctx.tenantId},id,n FROM projected ORDER BY id
       ON CONFLICT (tenant_id,employee_id) DO UPDATE SET order_code=EXCLUDED.order_code,revision=target.revision+1
         WHERE target.order_code IS DISTINCT FROM EXCLUDED.order_code
       RETURNING employee_id,order_code,revision
@@ -71,9 +59,34 @@ export async function recomputeOrderCodes(tx: Tx, ctx: PersonnelContext, checkRe
     ) SELECT count(*)::int AS changed FROM changed
   `),
   );
+  const outcome =
+    config.revision === 0
+      ? 'not_configured'
+      : !config.enabled
+        ? 'disabled'
+        : items.length === 0
+          ? 'no_enabled_rules'
+          : 'computed';
+  const resultBody = { revision: config.revision, changed: result!.changed, businessDate: asOf, outcome };
+  await recordRun(tx, ctx, resultBody, checkRevision);
+  return resultBody;
+}
+async function recordRun(tx: Tx, ctx: PersonnelContext, result: object, manual: boolean) {
   await tx.execute(sql`INSERT INTO personnel_order_runs(tenant_id,command_id,state,attempts,ran_at)
     VALUES (${ctx.tenantId},${ctx.commandId},'succeeded',1,${ctx.now.toISOString()}::timestamptz)
     ON CONFLICT (tenant_id,command_id) DO UPDATE SET state='succeeded',attempts=personnel_order_runs.attempts+1,
       error=NULL,ran_at=EXCLUDED.ran_at`);
-  return { revision: config.revision, changed: result!.changed, businessDate: asOf };
+  // 即使没有名次变化也记录手动触发人；命令台账保证重放不会再执行这一写入。
+  if (manual)
+    await tx.insert(auditEvents).values({
+      tenantId: ctx.tenantId,
+      actorUserId: auditActor(ctx.userId),
+      action: 'personnel.order.run',
+      objectType: 'personnel-order-run',
+      objectId: ctx.commandId,
+      commandId: ctx.commandId,
+      before: null,
+      after: result,
+      occurredAt: ctx.now,
+    });
 }

@@ -5,6 +5,7 @@ import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { recomputeOrderCodes } from './order-code.js';
 import { rows } from './store.js';
 
+// DEC-170：只做周期批量 + 手动触发，不把组合名次刷新挂到业务写事务。
 export const DEFAULT_ORDER_CODE_INTERVAL_MS = 3 * 60 * 60_000;
 function interval(value = DEFAULT_ORDER_CODE_INTERVAL_MS) {
   if (!Number.isSafeInteger(value) || value < 1000 || value > 2_147_483_647)
@@ -12,7 +13,10 @@ function interval(value = DEFAULT_ORDER_CODE_INTERVAL_MS) {
   return value;
 }
 /** 平台仅分页读取启用租户目录；重算、幂等台账和失败记录始终走租户 RLS。 */
-export async function runOrderCodeJobs(db: Db, options: { clock?: () => Date; intervalMs?: number } = {}) {
+export async function runOrderCodeJobs(
+  db: Db,
+  options: { clock?: () => Date; intervalMs?: number; onError?: (error: unknown) => void } = {},
+) {
   const period = interval(options.intervalMs);
   const now = (options.clock ?? (() => new Date()))();
   const commandId = `person-order:${period}:${Math.floor(now.getTime() / period)}`;
@@ -46,13 +50,24 @@ export async function runOrderCodeJobs(db: Db, options: { clock?: () => Date; in
         // runCommand 已先回查成功台账；存储错误只能记 unknown，不能伪造业务失败。
         const state = error instanceof AppError ? 'failed' : 'unknown';
         const code = error instanceof AppError ? error.code : 'SERVICE_UNAVAILABLE';
-        await withTenant(db, tenant.id, async (tx) => {
-          await tx.execute(sql`INSERT INTO personnel_order_runs(tenant_id,command_id,state,attempts,error,ran_at)
-            VALUES (${tenant.id},${commandId},${state},1,${code},${now.toISOString()}::timestamptz)
-            ON CONFLICT (tenant_id,command_id) DO UPDATE SET attempts=personnel_order_runs.attempts+1,
-              state=EXCLUDED.state,error=EXCLUDED.error,ran_at=EXCLUDED.ran_at
-            WHERE personnel_order_runs.state<>'succeeded'`);
-        });
+        try {
+          await withTenant(db, tenant.id, async (tx) => {
+            await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+            await tx.execute(sql`INSERT INTO personnel_order_runs(tenant_id,command_id,state,attempts,error,ran_at)
+              VALUES (${tenant.id},${commandId},${state},1,${code},${now.toISOString()}::timestamptz)
+              ON CONFLICT (tenant_id,command_id) DO UPDATE SET attempts=personnel_order_runs.attempts+1,
+                state=EXCLUDED.state,error=EXCLUDED.error,ran_at=EXCLUDED.ran_at
+              WHERE personnel_order_runs.state<>'succeeded'`);
+          });
+        } catch {
+          // 回执也不可写时不伪造持久状态，不中断其余租户，交给进程告警。
+          (options.onError ?? console.error)(
+            new AppError('SERVICE_UNAVAILABLE', '人员排序失败回执无法保存', {
+              tenantId: tenant.id,
+              commandId,
+            }),
+          );
+        }
         failures.push({ tenantId: tenant.id, state, error: code });
       }
     }
@@ -70,7 +85,7 @@ export function startOrderCodeScheduler(
   let running: Promise<void> | null = null;
   const tick = () => {
     if (running) return;
-    running = runOrderCodeJobs(db, { ...options, intervalMs: period })
+    running = runOrderCodeJobs(db, { ...options, intervalMs: period, onError })
       .then((result) => {
         if (result.failures.length) onError(new Error(`人员排序重算失败：${JSON.stringify(result.failures)}`));
       })

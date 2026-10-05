@@ -46,7 +46,7 @@ export function employeeDto(row: Row, ctx: PersonnelContext): Row {
   const attrs = camel(row);
   delete attrs.profile;
   delete attrs.employeeName;
-  // DEC-148 / 15 §12：orderCode 读取周期重算后存储的组合名次；首次计算前为 null。
+  // DEC-148 / DEC-170 / DEC-171 / 15 §12：orderCode 读取周期重算后存储的组合名次；首次计算前为 null。
   return {
     ...Object.fromEntries(EMPLOYEE_FIELDS.map((f) => [f.code, null])),
     ...dto,
