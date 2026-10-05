@@ -136,6 +136,12 @@ export async function requireScopedEmploymentObject(
   businessId?: string,
 ) {
   if (!ctx.scope || ctx.scope.all) return;
+  if (
+    ctx.transferTarget?.employeeId === employeeId &&
+    ctx.transferTarget.departmentId === departmentId &&
+    (businessId === undefined || ctx.transferTarget.businessId === businessId)
+  )
+    return;
   const creatorId = businessId ? await employmentCreatorId(tx, ctx, businessId, true) : ctx.userId;
   if (!(await scopeAllowsInTransaction(tx, ctx.scope, { personId: employeeId, orgId: departmentId, creatorId })))
     throw new AppError('NOT_FOUND', '任职数据不存在');

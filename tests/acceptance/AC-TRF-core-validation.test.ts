@@ -118,6 +118,28 @@ describe('AC-TRF 保存校验 DEC-150 / DEC-154', () => {
     });
   });
 
+  it.each(['2026-10-01', '2026-10-02'])(
+    'DEC-150：%s 恢复启用后的历史停用不误拦（同日修正只取最后版本）',
+    async (restoredOn) => {
+      const w = await activationWorld(testDb().db, `trf150-restored-${restoredOn}`);
+      const { employee, hire } = await w.hired();
+      await disableTarget(w, '2026-10-01');
+      const restored = await tenantApi(w.db).request('PATCH', `/api/tenant/org/organizations/${w.to.id}`, {
+        user: w.session.user.id,
+        tenant: w.session.tenant.id,
+        ifMatch: w.to.revision + 1,
+        body: { enabled: true, effectiveDate: restoredOn },
+      });
+      expect(restored.status, await restored.clone().text()).toBe(200);
+      const transfer = await w.session.business(
+        employee.id,
+        { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { departmentId: w.to.id } },
+        hire.employeeRevision,
+      );
+      expect(transfer.status).toBe('effective');
+    },
+  );
+
   it('DEC-154：审批中的调动阻止直接调动；同一员工撤回后可重新直接调动', async () => {
     const w = await activationWorld(testDb().db, 'trf154-in-review');
     const { employee } = await w.hired();

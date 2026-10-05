@@ -86,6 +86,12 @@ export interface EmploymentContext {
   readonly authorize?: Authorizer;
   readonly objectCode?: string;
   readonly trustedScopeBypass?: boolean;
+  /** Switch 31：仅经调动入口重验源员工后授予指定目标，不能用于任意员工或向后更新。 */
+  readonly transferTarget?: {
+    readonly employeeId: string;
+    readonly departmentId: string | null;
+    readonly businessId?: string;
+  };
   readonly tenantId: string;
   readonly userId: string;
   readonly timezone: string;

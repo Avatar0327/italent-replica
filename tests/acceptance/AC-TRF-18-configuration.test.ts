@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import {
@@ -9,13 +9,17 @@ import {
   saveTransferForm,
   updateTransferSettings,
 } from '../../apps/api/src/modules/transfer/configuration.js';
-import { prepareInheritance, inheritancePreview } from '../../apps/api/src/modules/employment/inheritance.js';
+import {
+  prepareInheritance,
+  inheritancePreview,
+  prepareEmploymentPatch,
+} from '../../apps/api/src/modules/employment/inheritance.js';
 import { inheritanceFixture } from './AC-EMP-inheritance-support.js';
 import { employmentSession, type EmploymentSession } from './AC-EMP-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
-function context(session: EmploymentSession, expectedRevision = 0) {
+function context(session: Pick<EmploymentSession, 'tenant' | 'user'>, expectedRevision = 0) {
   return {
     tenantId: session.tenant.id,
     userId: session.user.id,
@@ -67,6 +71,13 @@ describe('AC-TRF-18：真实调动表单配置、字典与 R1-T05 继承矩阵',
       await expect(resolveTransferForm(tx, session.tenant.id, 'forged-form')).rejects.toMatchObject({
         code: 'VALIDATION_FAILED',
       });
+      await tx.execute(sql`
+        INSERT INTO transfer_types(tenant_id,code,name,effective_date,enabled,display_order,form_id)
+        VALUES(${session.tenant.id},'job_level','职级调整','1900-01-01',false,3,
+          'TenantBase.JobLevelTransferMultiFormView')
+      `);
+      const overridden = await readTransferCatalog(tx, session.tenant.id, '2026-10-01');
+      expect(overridden.types.some((type) => type.code === 'job_level')).toBe(false);
     });
   });
 
@@ -194,6 +205,24 @@ describe('AC-TRF-18：真实调动表单配置、字典与 R1-T05 继承矩阵',
         }),
       ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
       expect(await resolveTransferForm(tx, session.tenant.id, base.formId)).toMatchObject({ isStandard: false });
+      await saveTransferForm(tx, context(session, 1), {
+        id: base.formId,
+        name: '后改为可编辑表单',
+        group: 'transfer',
+        fieldModes: {},
+      });
+      // 原申请已冻结字段策略；后续配置放开不能让原单只读字段经补丁写入。
+      await expect(
+        prepareEmploymentPatch(
+          tx,
+          context(session),
+          {
+            ...base,
+            fields: { place: '配置变更后伪造值' },
+          },
+          prepared,
+        ),
+      ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     });
   });
 });

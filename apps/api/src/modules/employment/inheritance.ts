@@ -1,8 +1,17 @@
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { loadJobObject } from '../job/read-model.js';
-import { getCustomFieldsForInheritance } from './configuration.js';
-import { businessDate, emptyFields, INHERITED_FIELDS, presetFieldsSchema, validateCustomValue } from './fields.js';
+import { resolveTransferForm } from '../transfer/configuration.js';
+import { managerForTransferDepartment } from '../transfer/preview-defaults.js';
+import { getCustomFieldsForInheritance, type CustomFieldDefinition } from './configuration.js';
+import {
+  businessDate,
+  emptyFields,
+  INHERITED_FIELDS,
+  PRESET_FIELDS,
+  presetFieldsSchema,
+  validateCustomValue,
+} from './fields.js';
 import { findPredecessor, rowsOf } from './read-model.js';
 import type {
   BusinessKind,
@@ -23,6 +32,8 @@ interface TrustedFormSnapshot {
   readonly startsNewCycle: boolean;
   readonly customInheritance: Readonly<Record<string, boolean>>;
   readonly fieldModes: Readonly<Record<string, CustomMode>>;
+  readonly autoPopulate?: boolean;
+  readonly excludedAutofillFields?: readonly string[];
 }
 export interface PreparedInheritance {
   readonly effectiveDate: string;
@@ -44,7 +55,7 @@ export interface InheritanceInput {
   readonly staffId?: string;
 }
 
-// R1-T05 暂以服务端表单标识解析测试目录；快照按字段冻结，业务逻辑不再依赖固定表单 CHECK。
+// 非调动业务及历史 R1-T05 表单继续使用原有继承语义；调动真实表单从租户配置解析。
 function resolveForm(formId: FormId): { grouped: boolean; customMode: CustomMode } {
   if (formId === 'readonly-custom') return { grouped: true, customMode: 'readonly' };
   if (formId === 'hidden-custom') return { grouped: true, customMode: 'hidden' };
@@ -77,7 +88,13 @@ function setField(target: PresetFields, key: PresetField, value: PresetFields[Pr
 
 function snapshotForm(
   input: InheritanceInput,
-  form: { grouped: boolean; customMode: CustomMode },
+  form: {
+    grouped: boolean;
+    customMode: CustomMode;
+    fieldModes?: Readonly<Record<string, CustomMode>>;
+    autoPopulate?: boolean;
+    excludedAutofillFields?: readonly string[];
+  },
   startsNewCycle: boolean,
   definitions: readonly { id: string; inherit: boolean }[],
 ): TrustedFormSnapshot {
@@ -87,20 +104,115 @@ function snapshotForm(
     customMode: form.customMode,
     startsNewCycle,
     customInheritance: Object.fromEntries(definitions.map((field) => [field.id, field.inherit])),
-    fieldModes: Object.fromEntries([
-      ...INHERITED_FIELDS.map((field) => [`preset:${field}`, 'editable' as const]),
-      ...definitions.map((field) => [`custom:${field.id}`, form.customMode]),
-    ]),
+    fieldModes:
+      form.fieldModes ??
+      Object.fromEntries([
+        ...PRESET_FIELDS.map((field) => [`preset:${field}`, 'editable' as const]),
+        ...definitions.map((field) => [`custom:${field.id}`, form.customMode]),
+      ]),
+    autoPopulate: form.autoPopulate ?? true,
+    excludedAutofillFields: form.excludedAutofillFields ?? [],
   };
+}
+
+async function applyExplicitPresetFields(
+  tx: Tx,
+  ctx: EmploymentContext,
+  input: InheritanceInput,
+  parsedFields: Partial<PresetFields>,
+  metadata: TrustedFormSnapshot,
+  fields: PresetFields,
+  explicitFieldCodes: string[],
+  employeeCode: string,
+): Promise<void> {
+  const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
+  for (const [field, value] of Object.entries(parsedFields)) {
+    if (input.kind === 'transfer' && fieldMode(`preset:${field}`) !== 'editable')
+      throw new AppError('VALIDATION_FAILED', '当前表单不允许编辑此任职字段');
+    setField(fields, field as PresetField, value ?? null);
+    explicitFieldCodes.push(`preset:${field}`);
+  }
+  const derivedSequence =
+    input.kind !== 'transfer' || fieldMode('preset:sequenceId') === 'editable'
+      ? await sequenceForNewPost(tx, ctx.tenantId, parsedFields, input.effectiveDate)
+      : null;
+  if (derivedSequence) {
+    setField(fields, 'sequenceId', derivedSequence);
+    explicitFieldCodes.push('preset:sequenceId');
+  }
+  if (
+    input.kind === 'transfer' &&
+    // 通用任职接口保留版本链继承；选部门带负责人只属于真实调动场景表单，不能改变既有申请的变化字段。
+    input.formId !== 'standard' &&
+    metadata.group !== null &&
+    metadata.autoPopulate &&
+    fieldMode('preset:directManagerId') === 'editable'
+  ) {
+    const manager = await managerForTransferDepartment(tx, ctx.tenantId, parsedFields, input.effectiveDate);
+    if (manager !== undefined) {
+      setField(fields, 'directManagerId', manager);
+      explicitFieldCodes.push('preset:directManagerId');
+    }
+  }
+  if (owns(parsedFields, 'jobNumber') && parsedFields.jobNumber !== null) {
+    if (parsedFields.jobNumber!.toLowerCase() !== employeeCode.toLowerCase()) {
+      throw new AppError('VALIDATION_FAILED', '任职工号必须等于员工主档工号');
+    }
+    setField(fields, 'jobNumber', employeeCode);
+  }
+}
+
+function applyCustomInheritance(
+  input: InheritanceInput,
+  metadata: TrustedFormSnapshot,
+  definitions: readonly CustomFieldDefinition[],
+  eligible: EmploymentRecord | null,
+  customFields: Record<string, CustomValue>,
+  explicitFieldCodes: string[],
+  deferredFieldCodes: string[],
+): void {
+  const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
+  const explicitCustom = input.customFields ?? {};
+  if (Object.keys(explicitCustom).length > 200) throw new AppError('VALIDATION_FAILED', '单次自定义字段超过处理上限');
+  for (const id of Object.keys(explicitCustom)) {
+    if (!definitions.some((field) => field.id === id))
+      throw new AppError('VALIDATION_FAILED', '自定义字段不属于本租户任职对象');
+    if (fieldMode(`custom:${id}`) !== 'editable')
+      throw new AppError('VALIDATION_FAILED', '当前表单不允许编辑此自定义字段');
+  }
+  for (const field of definitions) {
+    if (owns(explicitCustom, field.id)) {
+      customFields[field.id] = validateCustomValue(explicitCustom[field.id], field.valueType);
+      explicitFieldCodes.push(`custom:${field.id}`);
+    } else if (!metadata.startsNewCycle) {
+      const mode = fieldMode(`custom:${field.id}`);
+      const inherits = field.inherit || mode === 'readonly' || mode === 'hidden';
+      if (!inherits) continue;
+      if (metadata.group === null || mode === 'absent' || (!metadata.autoPopulate && mode === 'editable'))
+        deferredFieldCodes.push(`custom:${field.id}`);
+      else customFields[field.id] = eligible?.customFields[field.id] ?? null;
+    }
+  }
 }
 
 export async function prepareInheritance(
   tx: Tx,
   ctx: EmploymentContext,
   input: InheritanceInput,
+  frozenForm?: TrustedFormSnapshot,
 ): Promise<PreparedInheritance> {
   businessDate(input.effectiveDate);
-  const form = resolveForm(input.formId);
+  const configured =
+    input.kind === 'transfer' ? await resolveTransferForm(tx, ctx.tenantId, input.formId) : resolveForm(input.formId);
+  const form = frozenForm
+    ? {
+        grouped: frozenForm.group !== null,
+        customMode: frozenForm.customMode,
+        fieldModes: frozenForm.fieldModes,
+        autoPopulate: frozenForm.autoPopulate ?? true,
+        excludedAutofillFields: frozenForm.excludedAutofillFields ?? [],
+      }
+    : configured;
   const [employee] = rowsOf<{ code: string }>(
     await tx.execute(sql`
       SELECT code FROM employment_employees WHERE tenant_id=${ctx.tenantId} AND id=${input.employeeId} LIMIT 1
@@ -110,7 +222,10 @@ export async function prepareInheritance(
   const parsedFields = presetFieldsSchema.safeParse(input.fields ?? {});
   if (!parsedFields.success) throw new AppError('VALIDATION_FAILED', '任职预置字段不合法');
   const fields = emptyFields();
-  const definitions = await getCustomFieldsForInheritance(tx, ctx.tenantId);
+  const definitions = (await getCustomFieldsForInheritance(tx, ctx.tenantId)).map((field) => ({
+    ...field,
+    inherit: frozenForm ? (frozenForm.customInheritance[field.id] ?? false) : field.inherit,
+  }));
   const customFields: Record<string, CustomValue> = Object.fromEntries(definitions.map((field) => [field.id, null]));
   const explicitFieldCodes: string[] = [];
   const deferredFieldCodes: string[] = [];
@@ -120,44 +235,27 @@ export async function prepareInheritance(
     : await findPredecessor(tx, ctx.tenantId, input.employeeId, input.effectiveDate);
   const eligible = previous && (!input.staffId || previous.staffId === input.staffId) ? previous : null;
   const metadata = snapshotForm(input, form, startsNewCycle, definitions);
+  const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
+  const excluded = new Set(metadata.excludedAutofillFields);
   for (const field of INHERITED_FIELDS) {
     if (startsNewCycle) continue;
-    if (form.grouped) setField(fields, field, eligible?.fields[field] ?? null);
+    const mode = fieldMode(`preset:${field}`);
+    if (excluded.has(field) && mode === 'editable') continue;
+    if (form.grouped && mode !== 'absent' && (metadata.autoPopulate || mode === 'readonly' || mode === 'hidden'))
+      setField(fields, field, eligible?.fields[field] ?? null);
     else deferredFieldCodes.push(`preset:${field}`);
   }
-  for (const [field, value] of Object.entries(parsedFields.data)) {
-    setField(fields, field as PresetField, value ?? null);
-    explicitFieldCodes.push(`preset:${field}`);
-  }
-  const derivedSequence = await sequenceForNewPost(tx, ctx.tenantId, parsedFields.data, input.effectiveDate);
-  if (derivedSequence) {
-    setField(fields, 'sequenceId', derivedSequence);
-    explicitFieldCodes.push('preset:sequenceId');
-  }
-  if (owns(parsedFields.data, 'jobNumber') && parsedFields.data.jobNumber !== null) {
-    if (parsedFields.data.jobNumber!.toLowerCase() !== employee.code.toLowerCase()) {
-      throw new AppError('VALIDATION_FAILED', '任职工号必须等于员工主档工号');
-    }
-    setField(fields, 'jobNumber', employee.code);
-  }
-  const explicitCustom = input.customFields ?? {};
-  if (Object.keys(explicitCustom).length > 200) throw new AppError('VALIDATION_FAILED', '单次自定义字段超过处理上限');
-  for (const id of Object.keys(explicitCustom)) {
-    if (!definitions.some((field) => field.id === id))
-      throw new AppError('VALIDATION_FAILED', '自定义字段不属于本租户任职对象');
-    if (form.customMode !== 'editable') throw new AppError('VALIDATION_FAILED', '当前表单不允许编辑此自定义字段');
-  }
-  for (const field of definitions) {
-    if (owns(explicitCustom, field.id)) {
-      customFields[field.id] = validateCustomValue(explicitCustom[field.id], field.valueType);
-      explicitFieldCodes.push(`custom:${field.id}`);
-    } else if (!startsNewCycle) {
-      const inherits = field.inherit || form.customMode === 'readonly' || form.customMode === 'hidden';
-      if (!inherits) continue;
-      if (!form.grouped || form.customMode === 'absent') deferredFieldCodes.push(`custom:${field.id}`);
-      else customFields[field.id] = eligible?.customFields[field.id] ?? null;
-    }
-  }
+  await applyExplicitPresetFields(
+    tx,
+    ctx,
+    input,
+    parsedFields.data,
+    metadata,
+    fields,
+    explicitFieldCodes,
+    employee.code,
+  );
+  applyCustomInheritance(input, metadata, definitions, eligible, customFields, explicitFieldCodes, deferredFieldCodes);
   const explicit = new Set(explicitFieldCodes);
   return {
     effectiveDate: input.effectiveDate,
@@ -178,7 +276,8 @@ export async function prepareEmploymentPatch(
   input: InheritanceInput,
   previous: PreparedInheritance,
 ): Promise<PreparedInheritance> {
-  const prepared = await prepareInheritance(tx, ctx, input);
+  // 已保存申请的字段策略随申请冻结；修改表单配置不能把原单只读字段变成可伪造写入。
+  const prepared = await prepareInheritance(tx, ctx, input, previous.formSnapshot);
   if (input.effectiveDate !== previous.effectiveDate) return prepared;
   const explicit = new Set(prepared.explicitFieldCodes);
   const oldDeferred = new Set(previous.deferredFieldCodes);
@@ -242,10 +341,16 @@ export async function resolveEffectiveInheritance(
 
 /** 仅裁剪预览；隐藏字段的可信快照仍保留供生效与审计使用。 */
 export function inheritancePreview(prepared: PreparedInheritance) {
-  const hidden = prepared.formSnapshot.customMode === 'hidden' || prepared.formSnapshot.customMode === 'absent';
-  const customFields = hidden ? {} : prepared.customFields;
+  const visible = (code: string) => {
+    const mode = prepared.formSnapshot.fieldModes[code];
+    return mode === 'editable' || mode === 'readonly';
+  };
+  const fields = Object.fromEntries(Object.entries(prepared.fields).filter(([field]) => visible(`preset:${field}`)));
+  const customFields = Object.fromEntries(
+    Object.entries(prepared.customFields).filter(([id]) => visible(`custom:${id}`)),
+  );
   return {
-    fields: prepared.fields,
+    fields,
     customFields,
     previousRecordId: prepared.sourceRecordId,
     staffId: prepared.sourceStaffId,

@@ -85,7 +85,7 @@ async function fixture() {
 
   async function actor(label: string, options: { empty?: boolean; role?: string; direct?: boolean } = {}) {
     const user = await addMember(world, label);
-    const profile = await createProfile(world, `${label}-${randomUUID()}`);
+    const profile = await createProfile(world, `${label.slice(0, 26)}-${randomUUID()}`);
     const definition = MODULE_OBJECTS.employmentRecord;
     const buttons = definition.buttons
       .filter((button) => ![...INITIATOR_BUTTONS, ...DIRECT_BUTTONS].includes(button.code))
@@ -261,6 +261,31 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
     expect(await world.currentRevision(unrelated)).toBe(unrelated.revision);
   });
 
+  it('HR按自己的入口权限读取并修改员工或经理发起的跨范围草稿，不冒充原发起身份', async () => {
+    const hr = await world.actor('transfer-followup-hr');
+    for (const initiator of ['employee', 'manager'] as const) {
+      const actor = await world.actor(`transfer-followup-${initiator}`, {
+        role: initiator === 'employee' ? 'Transfer.Self' : 'Transfer.Manager',
+      });
+      const own = await world.person(world.inside.id, actor);
+      const employee = initiator === 'employee' ? own : await world.person(world.inside.id, undefined, own.id);
+      const saved = await world.transfer(actor, employee, { initiator });
+      expect(saved.status, await saved.clone().text()).toBe(201);
+      const business = (await saved.json()) as { id: string; revision: number };
+      const path = `/api/tenant/employment/businesses/${business.id}`;
+      const read = await world.api.request('GET', path, hr);
+      expect(read.status, await read.clone().text()).toBe(200);
+      const edited = await world.api.request('PATCH', path, {
+        ...hr,
+        ifMatch: business.revision,
+        body: { fields: { remarks: 'HR依自身授权核对' } },
+      });
+      expect(edited.status, await edited.clone().text()).toBe(200);
+      const noRole = await world.actor(`transfer-followup-unrelated-${initiator}`, { role: 'Transfer.Self' });
+      expect((await world.api.request('GET', path, noRole)).status).toBe(404);
+    }
+  });
+
   it('直接调动需独立按钮，不能只凭发起申请权限改mode绕过审批', async () => {
     const hr = await world.actor('transfer-application-only', { direct: false });
     const employee = await world.person();
@@ -268,6 +293,144 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
     expect(await world.currentRevision(employee)).toBe(employee.revision);
     const application = await world.transfer(hr, employee);
     expect(application.status, await application.clone().text()).toBe(201);
+  });
+
+  it('旧任职写入接口同样拒绝缺少直接调动按钮的调用，不能借Employment.Create绕过', async () => {
+    const hr = await world.actor('transfer-generic-application-only', { direct: false });
+    const employee = await world.person();
+    const denied = await world.api.request('POST', `/api/tenant/employment/employees/${employee.id}/businesses`, {
+      ...hr,
+      ifMatch: employee.revision,
+      body: {
+        kind: 'transfer',
+        mode: 'direct',
+        effectiveDate: EFFECTIVE_DATE,
+        fields: { departmentId: world.inside.id },
+      },
+    });
+    expect(denied.status, await denied.clone().text()).toBe(403);
+    expect(await world.currentRevision(employee)).toBe(employee.revision);
+  });
+
+  it('R1-T05测试表单标识不能从公开预览接口绕过真实调动配置', async () => {
+    const hr = await world.actor('transfer-generic-form');
+    const employee = await world.person();
+    const preview = await world.api.request('POST', `/api/tenant/employment/employees/${employee.id}/preview`, {
+      ...hr,
+      body: {
+        kind: 'transfer',
+        mode: 'application',
+        effectiveDate: EFFECTIVE_DATE,
+        formId: 'readonly-custom',
+        fields: { departmentId: world.inside.id },
+      },
+    });
+    expect([400, 403]).toContain(preview.status);
+    for (const formId of ['standard', 'readonly-custom', 'hidden-custom', 'omitted-custom', 'ungrouped-custom']) {
+      for (const isPreview of [true, false]) {
+        const bypass = await world.transfer(
+          hr,
+          employee,
+          { formId, fields: { departmentId: world.inside.id } },
+          isPreview,
+        );
+        expect(bypass.status, `真实调动入口必须拒绝旧测试表单 ${formId}`).toBe(400);
+      }
+    }
+    expect(await world.currentRevision(employee)).toBe(employee.revision);
+  });
+
+  it('幂等重放重新校验当前人员范围；撤销范围后不返回先前保存的调动内容', async () => {
+    const hr = await world.actor('transfer-replay-scope');
+    const employee = await world.person();
+    const options = {
+      ...hr,
+      ifMatch: employee.revision,
+      idempotencyKey: randomUUID(),
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
+        effectiveDate: EFFECTIVE_DATE,
+        mode: 'application',
+        fields: { departmentId: world.outside.id, remarks: '重放不得泄露此字段' },
+      },
+    };
+    const path = `${BASE}/employees/${employee.id}`;
+    const saved = await world.api.request('POST', path, options);
+    expect(saved.status, await saved.clone().text()).toBe(201);
+    const revoked = await world.api.request('PUT', `/api/tenant/permission/scopes/${hr.user}/TenantBase`, {
+      ...world.asAdmin,
+      ifMatch: 1,
+      body: { kind: 'org_range', orgRanges: [] },
+    });
+    expect(revoked.status).toBe(200);
+    const replay = await world.api.request('POST', path, options);
+    expect(replay.status).toBe(404);
+    expect(await replay.text()).not.toContain('重放不得泄露此字段');
+  });
+
+  it('标准表单跨范围保存后关闭部门开关，原命令重放不能绕过当前目标范围限制', async () => {
+    const hr = await world.actor('transfer-replay-setting');
+    const employee = await world.person();
+    const options = {
+      ...hr,
+      ifMatch: employee.revision,
+      idempotencyKey: randomUUID(),
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
+        effectiveDate: EFFECTIVE_DATE,
+        mode: 'application',
+        fields: { departmentId: world.outside.id },
+      },
+    };
+    const path = `${BASE}/employees/${employee.id}`;
+    const saved = await world.api.request('POST', path, options);
+    expect(saved.status, await saved.clone().text()).toBe(201);
+    await world.settings(false);
+    try {
+      expect((await world.api.request('POST', path, options)).status).toBe(404);
+    } finally {
+      await world.settings(true);
+    }
+  });
+
+  it('直接调动命令重放仍受当前允许直接调动开关控制', async () => {
+    const hr = await world.actor('transfer-replay-direct');
+    const employee = await world.person();
+    const options = {
+      ...hr,
+      ifMatch: employee.revision,
+      idempotencyKey: randomUUID(),
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
+        effectiveDate: EFFECTIVE_DATE,
+        mode: 'direct',
+        fields: { departmentId: world.inside.id },
+      },
+    };
+    const path = `${BASE}/employees/${employee.id}`;
+    const saved = await world.api.request('POST', path, options);
+    expect(saved.status, await saved.clone().text()).toBe(201);
+    const disabled = await world.setup.request('PUT', '/api/tenant/employment/settings', {
+      ...world.asAdmin,
+      ifMatch: 0,
+      body: { allowDirectTransfer: false },
+    });
+    expect(disabled.status).toBe(200);
+    try {
+      const replay = await world.api.request('POST', path, options);
+      expect(replay.status).toBe(409);
+      expect(await replay.json()).toMatchObject({ error: { message: '本租户调动须走审批' } });
+    } finally {
+      const enabled = await world.setup.request('PUT', '/api/tenant/employment/settings', {
+        ...world.asAdmin,
+        ifMatch: 1,
+        body: { allowDirectTransfer: true },
+      });
+      expect(enabled.status).toBe(200);
+    }
   });
 
   it('切换租户不能访问另一租户的员工或目标部门', async () => {

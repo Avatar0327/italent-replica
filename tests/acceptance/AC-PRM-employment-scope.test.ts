@@ -241,6 +241,43 @@ describe('AC-PRM-03/22/29 任职数据范围与字段裁剪', () => {
     expect(denied.status).toBe(404);
   });
 
+  it('只有查看和Preview权限可预览导入新增调动，真实导入仍拒绝且不改变任职', async () => {
+    const employeeId = world.inScope.employee.id;
+    const body = {
+      items: [
+        {
+          operation: 'create',
+          business: {
+            kind: 'transfer',
+            mode: 'direct',
+            effectiveDate: '2026-10-02',
+            fields: { place: '只读导入试算' },
+          },
+        },
+      ],
+    };
+    const employeePath = `/api/tenant/employment/employees/${employeeId}`;
+    const before = await world.setup.request('GET', employeePath, world.asAdmin);
+    const snapshot = await before.json();
+    const preview = await world.api.request('POST', `${employeePath}/import/forward-update-preview`, {
+      ...world.as,
+      body,
+    });
+    expect(preview.status, await preview.clone().text()).toBe(200);
+    const result = await preview.text();
+    expect(result).toContain('只读导入试算');
+    expect(result).not.toContain('隐藏备注');
+    expect(result).not.toContain('"remarks"');
+    const denied = await world.api.request('POST', `${employeePath}/import`, {
+      ...world.as,
+      ifMatch: (snapshot as { revision: number }).revision,
+      body,
+    });
+    expect(denied.status).toBe(403);
+    const after = await world.setup.request('GET', employeePath, world.asAdmin);
+    expect(await after.json()).toEqual(snapshot);
+  });
+
   it('自动向后更新不越过未来记录的部门范围，失败时原记录编辑整体回滚', async () => {
     const path = `/api/tenant/employment/records/${world.movedIn.current.id}`;
     const preview = await world.api.request('POST', `${path}/forward-update-preview`, {

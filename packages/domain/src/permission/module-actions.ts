@@ -171,7 +171,11 @@ export const MODULE_OBJECTS = {
       'attempt',
     ],
   ),
-  employmentSettings: object('EmploymentSettings', ['allowDirectTransfer']),
+  employmentSettings: object('EmploymentSettings', [
+    'allowDirectTransfer',
+    'unrestrictTargetDepartment',
+    'autoPopulate',
+  ]),
   employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [
     'code',
   ]),
@@ -181,6 +185,9 @@ export const MODULE_OBJECTS = {
     [
       'kind',
       'mode',
+      'initiator',
+      'transferTypeCode',
+      'reasonCode',
       'effectiveDate',
       'lastWorkDate',
       'formId',
@@ -211,6 +218,11 @@ export const MODULE_OBJECTS = {
     ],
     [
       button('Employment.Create', 'detail', 'create'),
+      button('Transfer.Hr', 'detail', 'create'),
+      button('Transfer.Manager', 'detail', 'create'),
+      button('Transfer.Self', 'detail', 'create'),
+      button('EmploymentRecord.LineOp.Transfer', 'list_row', 'create'),
+      button('Employment.Tranfer', 'list', 'create'),
       button('Employment.Edit', 'detail', 'update'),
       button('Employment.Delete', 'detail', 'delete'),
       button('Employment.Submit', 'detail', 'update'),

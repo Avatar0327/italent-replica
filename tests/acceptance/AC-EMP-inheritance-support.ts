@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Db } from '@italent/db';
 import { expect } from 'vitest';
 import { employmentSession, type EmploymentBusiness, type EmploymentSession } from './AC-EMP-support.js';
+import { saveTransferForm } from '../../apps/api/src/modules/transfer/configuration.js';
 
 export interface CustomField {
   readonly id: string;
@@ -33,6 +34,33 @@ export async function customField(session: EmploymentSession, inherit = true): P
 export async function inheritanceFixture(db: Db, label: string, inherit = true, employType = 'internal') {
   const session = await employmentSession(db, label);
   const field = await customField(session, inherit);
+  // R1-T09：用真实租户表单配置覆盖 R1-T05 原测试表单矩阵，禁止生产魔法 ID 后门。
+  await db.transaction(async (tx) => {
+    for (const [id, mode] of [
+      ['readonly-custom', 'readonly'],
+      ['hidden-custom', 'hidden'],
+      ['omitted-custom', 'absent'],
+      ['ungrouped-custom', 'editable'],
+    ] as const) {
+      await saveTransferForm(
+        tx,
+        {
+          tenantId: session.tenant.id,
+          userId: session.user.id,
+          timezone: session.tenant.timezone,
+          now: new Date('2026-10-01T01:00:00Z'),
+          commandId: randomUUID(),
+          expectedRevision: 0,
+        },
+        {
+          id,
+          name: `合成${id}`,
+          group: id === 'ungrouped-custom' ? null : 'transfer',
+          fieldModes: { [`custom:${field.id}`]: mode },
+        },
+      );
+    }
+  });
   const employee = await session.employee();
   const hired = await session.business(
     employee.id,

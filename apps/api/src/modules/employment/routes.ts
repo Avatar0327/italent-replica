@@ -37,6 +37,7 @@ import { previewEmploymentEditForwardUpdate, previewEmploymentForwardUpdate } fr
 import { importEmploymentRecords, normalizeEmploymentImport, previewEmploymentImport } from './forward-import.js';
 import { editEmploymentRecord } from './record-edit.js';
 import { prepareInheritance, inheritancePreview } from './inheritance.js';
+import { lockEmploymentEmployee } from './record-store.js';
 import { listEmploymentRecords, loadEmploymentBusiness, loadEmploymentRecord } from './read-model.js';
 import {
   createEmploymentBusiness,
@@ -49,6 +50,9 @@ import { listActivationTodos } from './activation-store.js';
 import { transitionEmployment } from './transitions.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import type { EmploymentContext } from './types.js';
+import { registerTransferRoutes } from '../transfer/routes.js';
+import { requireTransferSource } from '../transfer/access.js';
+import { requireDirectTransfer, transferBusinessContext } from '../transfer/service.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   const module = new Hono<TenantEnv>();
@@ -58,6 +62,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
     }
     return handleError(error, c);
   });
+  registerTransferRoutes(module, deps);
   registerEmployees(module, deps);
   registerEmployeeRecords(module, deps);
   registerInheritancePreview(module, deps);
@@ -131,6 +136,10 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     if (!employee) throw new AppError('NOT_FOUND', '员工不存在');
     return c.json(await trimEmploymentResponse(deps, ctx, employee));
   });
+  registerEmployeeBusinessCreate(router, deps);
+}
+
+function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/employees/:id/businesses', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.create', revision(c), id);
@@ -140,8 +149,19 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       throw new AppError('VALIDATION_FAILED', '只有入职类业务可以提供登录邮箱');
     }
     await requireEmploymentWrite(ctx, 'create', rawInput as object, 'Employment.Create');
+    if (input.kind === 'transfer') {
+      await withTenant(deps.db, ctx.tenantId, async (tx) => {
+        await requireTransferSource(tx, ctx, id, 'hr');
+        if (input.mode === 'direct') await requireDirectTransfer(tx, ctx);
+      });
+    }
     if (input.fields.departmentId !== undefined) requireEmploymentScope(ctx, id, input.fields.departmentId);
     return runWrite(c, deps, ctx, { ...input, loginEmail: email }, async (tx, context) => {
+      if (input.kind === 'transfer') {
+        await lockEmploymentEmployee(tx, context, id, context.expectedRevision);
+        await requireTransferSource(tx, context, id, 'hr');
+        if (input.mode === 'direct') await requireDirectTransfer(tx, context);
+      }
       const business = await createEmploymentBusiness(tx, context, id, input);
       if (NEW_CYCLE_KINDS.includes(input.kind)) await ensureHiredAccount(tx, context, id, email);
       return { status: 201, body: business };
@@ -199,9 +219,10 @@ function registerInheritancePreview(router: Hono<TenantEnv>, deps: TenantRouteDe
 function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/businesses/:id', async (c) => {
     const id = uuidParam(c);
-    const ctx = await readPageContext(c, deps, 'detail');
+    let ctx = await readPageContext(c, deps, 'detail');
+    ctx = await withTenant(deps.db, ctx.tenantId, (tx) => transferBusinessContext(tx, ctx, id));
     const value = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      loadEmploymentBusiness(tx, ctx.tenantId, id, queryDate(c, ctx), ctx.scope),
+      loadEmploymentBusiness(tx, ctx.tenantId, id, queryDate(c, ctx), ctx.transferTarget ? undefined : ctx.scope),
     );
     if (!value) throw new AppError('NOT_FOUND', '任职业务不存在');
     await requirePermission(deps.authorize, { ...ctx, action: 'tenant.employment.read', resource: value.employeeId });
@@ -219,19 +240,32 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
   router.patch('/businesses/:id', async (c) => {
     const id = uuidParam(c);
-    const ctx = await readContext(c, deps, 'object.update', revision(c));
+    let ctx = await readContext(c, deps, 'object.update', revision(c));
     const input = normalizeBusinessPatch(await jsonBody(c));
+    ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      transferBusinessContext(tx, ctx, id, false, input.fields?.departmentId),
+    );
     const current = await authorizeBusinessWrite(deps, ctx, id);
     await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit');
     const departmentId = input.fields?.departmentId;
+    if (departmentId !== undefined && ctx.transferTarget)
+      ctx = { ...ctx, transferTarget: { ...ctx.transferTarget, departmentId } };
     if (departmentId !== undefined)
       await withTenant(deps.db, ctx.tenantId, (tx) =>
         requireScopedEmploymentObject(tx, ctx, current.employeeId, departmentId, id),
       );
-    return runWrite(c, deps, ctx, input, async (tx, context) => ({
-      status: 200,
-      body: await updateEmploymentBusiness(tx, context, id, input),
-    }));
+    return runWrite(c, deps, ctx, input, async (tx, context) => {
+      let checked = await transferBusinessContext(
+        tx,
+        { ...context, transferTarget: undefined },
+        id,
+        true,
+        departmentId,
+      );
+      if (departmentId !== undefined && checked.transferTarget)
+        checked = { ...checked, transferTarget: { ...checked.transferTarget, departmentId } };
+      return { status: 200, body: await updateEmploymentBusiness(tx, checked, id, input) };
+    });
   });
   for (const action of ['submit', 'withdraw', 'delete'] as const) {
     router.on(
@@ -239,7 +273,8 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       `/businesses/:id${action === 'delete' ? '' : `/${action}`}`,
       async (c) => {
         const id = uuidParam(c);
-        const ctx = await readContext(c, deps, action === 'delete' ? 'object.delete' : 'object.update', revision(c));
+        let ctx = await readContext(c, deps, action === 'delete' ? 'object.delete' : 'object.update', revision(c));
+        ctx = await withTenant(deps.db, ctx.tenantId, (tx) => transferBusinessContext(tx, ctx, id));
         if (action === 'submit') await emptySubmitBody(c);
         await requireEmploymentWrite(
           ctx,
@@ -249,7 +284,8 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         );
         await authorizeBusinessWrite(deps, ctx, id);
         return runWrite(c, deps, ctx, { id, action }, async (tx, context) => {
-          const business = await transitionEmployment(tx, context, { id, action });
+          const checked = await transferBusinessContext(tx, { ...context, transferTarget: undefined }, id, true);
+          const business = await transitionEmployment(tx, checked, { id, action });
           // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 删除同步结束在途实例，均与状态迁移同事务。
           if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
           else if (action === 'withdraw') await employmentApprovalHooks.withdrawn(tx, context, id);
@@ -297,7 +333,13 @@ async function emptySubmitBody(c: Context<TenantEnv>): Promise<void> {
 async function authorizeBusinessWrite(deps: TenantRouteDeps, ctx: EmploymentContext, id: string, employeeId?: string) {
   // 幂等重放也重验当前范围，不能依赖可能被命令台账跳过的 execute。
   const value = await withTenant(deps.db, ctx.tenantId, (tx) =>
-    loadEmploymentBusiness(tx, ctx.tenantId, id, tenantLocalDate(ctx.now, ctx.timezone), ctx.scope),
+    loadEmploymentBusiness(
+      tx,
+      ctx.tenantId,
+      id,
+      tenantLocalDate(ctx.now, ctx.timezone),
+      ctx.transferTarget ? undefined : ctx.scope,
+    ),
   );
   if (!value || (employeeId && value.employeeId !== employeeId)) throw new AppError('NOT_FOUND', '任职业务不存在');
   if (ctx.trustedScopeBypass)
@@ -486,7 +528,7 @@ function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     await authorizeImport(deps, ctx, id, input);
     return runWrite(c, deps, ctx, input, async (tx, context) => ({
       status: 200,
-      body: await importEmploymentRecords(tx, context, id, input),
+      body: await importWithTransferAuthorization(tx, context, id, input),
     }));
   });
 }
@@ -512,6 +554,8 @@ async function authorizeImport(
       action: 'object.button',
       resource: 'TenantBase.EmploymentRecord#Employment.Import@list',
     });
+  if (!preview)
+    await withTenant(deps.db, ctx.tenantId, (tx) => requireImportTransferAccess(tx, ctx, employeeId, input));
   for (const item of input.items) {
     if (item.operation === 'create') {
       const business = normalizeEmploymentInput(ctx, item.business);
@@ -529,4 +573,31 @@ async function authorizeImport(
         );
     }
   }
+}
+
+async function requireImportTransferAccess(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: ReturnType<typeof normalizeEmploymentImport>,
+  preview = false,
+) {
+  const transfers = input.items
+    .flatMap((item) => (item.operation === 'create' ? [normalizeEmploymentInput(ctx, item.business)] : []))
+    .filter((business) => business.kind === 'transfer');
+  if (!transfers.length) return;
+  await requireTransferSource(tx, ctx, employeeId, 'hr');
+  if (!preview && transfers.some((business) => business.mode === 'direct')) await requireDirectTransfer(tx, ctx);
+}
+
+async function importWithTransferAuthorization(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: ReturnType<typeof normalizeEmploymentImport>,
+) {
+  // 导入与单笔采用相同员工锁；批内先重验发起权限，再进入原来的整体提交端口。
+  await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
+  await requireImportTransferAccess(tx, ctx, employeeId, input);
+  return importEmploymentRecords(tx, ctx, employeeId, input);
 }
