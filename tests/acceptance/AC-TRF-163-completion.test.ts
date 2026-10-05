@@ -1,3 +1,4 @@
+import { completionCandidates } from '../../apps/api/src/modules/transfer/completion.js';
 import { randomUUID } from 'node:crypto';
 import { tenantApi } from './support/tenant-api.js';
 import { sql, withTenant } from '@italent/db';
@@ -7,6 +8,48 @@ import { activationWorld } from './AC-TRF-activation-support.js';
 
 const database = useTestDb();
 describe('DEC-163 任职信息待补全', () => {
+  it('DEC-174 后续调动补全当前字段即关闭旧待办，停止提醒；未来补全尚未到期不关闭', async () => {
+    const w = await activationWorld(database().db, 'trf-completion-current');
+    const { employee, hire } = await w.hired();
+    const manager = await w.hired('经理');
+    const saved = await w.session.request('POST', `/transfers/employees/${employee.id}`, {
+      ifMatch: hire.employeeRevision,
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
+        mode: 'direct',
+        effectiveDate: '2026-10-05',
+        fields: { departmentId: w.to.id, directManagerId: null },
+      },
+    });
+    expect(saved.status).toBe(201);
+    const first = (await saved.json()) as { id: string };
+    await w.runScheduler('2026-10-05T01:00:00Z');
+    const current = await w.session.getEmployee(employee.id);
+    await w.session.business(
+      employee.id,
+      {
+        kind: 'transfer',
+        mode: 'direct',
+        effectiveDate: '2026-10-10',
+        fields: { departmentId: w.to.id, directManagerId: manager.employee.id },
+      },
+      current.revision,
+    );
+    async function codes(at: string) {
+      w.session.setNow(at);
+      const response = await w.session.request('GET', '/completion-todos');
+      expect(response.status).toBe(200);
+      const { items } = (await response.json()) as { items: { id: string; fieldCodes: string[] }[] };
+      return items.find((i) => i.id === first.id)?.fieldCodes ?? [];
+    }
+    expect(await codes('2026-10-09T01:00:00Z')).toContain('preset:directManagerId');
+    expect(await codes('2026-10-10T01:00:00Z')).not.toContain('preset:directManagerId');
+    await w.runScheduler('2026-10-12T01:00:00Z');
+    const reminders = (await w.auditEvents(first.id)).filter((e) => e.action === 'employment.completion.reminder');
+    expect(reminders.at(-1)?.after?.fieldCodes ?? []).not.toContain('preset:directManagerId');
+  });
+
   it('元数据独立于字段；未来日期不提醒，到期生成待办，7 天提醒且同日幂等，编辑后关闭', async () => {
     const w = await activationWorld(database().db, 'trf-completion');
     const { employee, hire } = await w.hired();
@@ -48,7 +91,21 @@ describe('DEC-163 任职信息待补全', () => {
     expect(await todos('2026-10-10T01:00:00Z')).toMatchObject([{ id: business.id }]);
     expect(await events('employment.completion.reminder')).toHaveLength(1);
     await w.runScheduler('2026-10-10T02:00:00Z');
-    await w.runScheduler('2026-10-16T02:00:00Z');
+    const candidates = await withTenant(w.db, w.session.tenant.id, (tx) =>
+      tx.execute(
+        completionCandidates({
+          tenantId: w.session.tenant.id,
+          userId: w.session.user.id,
+          timezone: w.session.tenant.timezone,
+          now: new Date('2026-10-16T02:00:00Z'),
+          commandId: randomUUID(),
+          expectedRevision: 0,
+        }),
+      ),
+    );
+    expect(Array.isArray(candidates) ? candidates : candidates.rows).toEqual([]);
+    const notDue = await w.runScheduler('2026-10-16T02:00:00Z', { limit: 1 });
+    expect(notDue.nextCursor).toBeNull();
     expect(await events('employment.completion.reminder')).toHaveLength(1);
     await w.runScheduler('2026-10-17T02:00:00Z');
     expect(await events('employment.completion.reminder')).toHaveLength(2);

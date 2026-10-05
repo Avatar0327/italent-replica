@@ -37,6 +37,138 @@ async function fixture(label: string, capacity = 1, occupancyRanges = [{ employm
 }
 
 describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
+  it.each(['direct', 'application'])('P2-1 先存 10-20 直接调入，再存 10-05 %s 调入不能绕过严格编制', async (mode) => {
+    const w = await fixture(`trf-est-order-${mode}`);
+    const first = await w.hired('晚调入');
+    const second = await w.hired('早调入');
+    const save = (person: typeof first, date: string, mode: string) =>
+      w.session.request('POST', `/transfers/employees/${person.employee.id}`, {
+        ifMatch: person.hire.employeeRevision,
+        body: {
+          initiator: 'hr',
+          transferTypeCode: 'cross_department',
+          mode,
+          submit: mode === 'application',
+          effectiveDate: date,
+          fields: { departmentId: w.to.id },
+        },
+      });
+    expect((await save(first, '2026-10-20', 'direct')).status).toBe(201);
+    const blocked = await save(second, '2026-10-05', mode);
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHMENT_EXCEEDED' } } });
+  });
+
+  it('P3-1 草稿保存后容量被占满，提交时重新检查', async () => {
+    const w = await fixture('trf-est-submit');
+    const { employee, hire } = await w.hired();
+    const draft = await w.session.business(
+      employee.id,
+      { kind: 'transfer', mode: 'application', effectiveDate: '2026-10-05', fields: { departmentId: w.to.id } },
+      hire.employeeRevision,
+    );
+    const first = await w.hired('占编');
+    await w.session.business(
+      first.employee.id,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-20', fields: { departmentId: w.to.id } },
+      first.hire.employeeRevision,
+    );
+    const submitted = await w.session.request('POST', `/businesses/${draft.id}/submit`, {
+      ifMatch: draft.revision,
+      body: {},
+    });
+    expect(submitted.status).toBe(409);
+    expect(await submitted.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHMENT_EXCEEDED' } } });
+    expect((await w.business(draft.id)).status).toBe('draft');
+  });
+
+  it.each(['capacity', 'disabled'])(
+    'DEC-173 无联动直接调动到期复查 %s：只提醒、不改变任职、不挂起后序',
+    async (cause) => {
+      const w = await fixture(`trf-direct-recheck-${cause}`);
+      const { employee, hire } = await w.hired();
+      const direct = await w.session.business(
+        employee.id,
+        { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { departmentId: w.to.id } },
+        hire.employeeRevision,
+      );
+      const later = await w.approve(
+        await w.apply(employee.id, '2026-10-06', { departmentId: w.from.id }),
+        '2026-10-02T01:00:00Z',
+      );
+      if (cause === 'capacity') {
+        expect(
+          (
+            await w.request(
+              'PATCH',
+              `/capacities/${w.cap.id}`,
+              { localCapacity: 0, effectiveDate: '2026-10-04' },
+              w.cap.revision,
+            )
+          ).status,
+        ).toBe(200);
+      } else {
+        // 已排定 10-09 调出，满足 DEC-129 停用时组织无人；10-05 的整段复查仍须发现 10-10 停用。
+        const current = await w.session.getEmployee(employee.id);
+        await w.session.business(
+          employee.id,
+          { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-09', fields: { departmentId: w.from.id } },
+          current.revision,
+        );
+        const disabled = await tenantApi(w.db, { clock: () => new Date('2026-10-03T01:00:00Z') }).request(
+          'PATCH',
+          `/api/tenant/org/organizations/${w.to.id}`,
+          {
+            user: w.session.user.id,
+            tenant: w.session.tenant.id,
+            ifMatch: w.to.revision,
+            body: { enabled: false, effectiveDate: '2026-10-10' },
+          },
+        );
+        expect(disabled.status, await disabled.clone().text()).toBe(200);
+      }
+      const before = await w.session.records(employee.id, '2026-10-05');
+      expect(await w.runScheduler('2026-10-05T01:00:00Z')).toMatchObject({
+        failed: [direct.id],
+        suspended: [],
+        errors: [],
+      });
+      expect(await w.session.records(employee.id, '2026-10-05')).toEqual(before);
+      expect(await w.business(direct.id)).toMatchObject({ status: 'effective', activation: { status: 'failed' } });
+      expect(await w.todos()).toMatchObject([{ id: direct.id }]);
+      expect(
+        (await w.outboxEvents(direct.id)).filter((e) => e.eventType === 'employment.activation.failed'),
+      ).toHaveLength(1);
+      expect(await w.runScheduler('2026-10-06T01:00:00Z')).toMatchObject({
+        activated: [later.id],
+        failed: [],
+        suspended: [],
+        errors: [],
+      });
+      expect((await w.business(later.id)).status).toBe('effective');
+      expect((await w.business(direct.id)).activation?.failureCount).toBe(1);
+    },
+  );
+
+  it('P3-4 带编调动明确拒绝且不写业务', async () => {
+    const w = await fixture('trf-with-establishment');
+    const { employee, hire } = await w.hired();
+    const response = await w.session.request('POST', `/transfers/employees/${employee.id}`, {
+      ifMatch: hire.employeeRevision,
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
+        mode: 'direct',
+        effectiveDate: '2026-10-05',
+        fields: { departmentId: w.to.id },
+        withEstablishment: true,
+      },
+    });
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: { details: { reason: 'WITH_ESTABLISHMENT_UNAVAILABLE' } } });
+    expect((await w.session.records(employee.id, '2026-10-05')).map((r) => r.id)).toEqual([hire.id]);
+  });
+
   it('保存时已满编拒绝，非占编人员与外部人员不拦截', async () => {
     const w = await fixture('trf-est-save', 0);
     const { employee, hire } = await w.hired();
