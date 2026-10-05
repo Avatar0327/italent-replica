@@ -233,6 +233,25 @@ describe('AC-TEN-06 恢复安全与对账（astra 复审回归）', () => {
     expect(reopened).toEqual(opened);
   });
 
+  it('P2-9：导入阶段的审计写入失败 → 整个导入回滚、目标保持为空；修复后同一命令 ID 重试成功', async () => {
+    const isolated = await target();
+    // 故障注入：让隔离库拒绝写入导入阶段的平台审计
+    await isolated.execute(sql`CREATE FUNCTION fail_restore_audit() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.action = 'tenant.restore.import' THEN RAISE EXCEPTION 'audit store unavailable'; END IF;
+        RETURN NEW;
+      END $$`);
+    await isolated.execute(sql`CREATE TRIGGER fail_restore_audit BEFORE INSERT ON platform_audit_events
+      FOR EACH ROW EXECUTE FUNCTION fail_restore_audit()`);
+    const meta = cmd(operator.id);
+    const input = { backup, live: testDb().db, attachments: noAttachments };
+    await expect(restoreTenant(isolated, input, meta)).rejects.toThrow();
+    expect(await withPlatform(isolated, (tx) => tx.select().from(tenants))).toEqual([]);
+    await isolated.execute(sql`DROP TRIGGER fail_restore_audit ON platform_audit_events`);
+    const report = await restoreTenant(isolated, input, meta);
+    expect(report.ok).toBe(true);
+  });
+
   it('P2-3：恢复校验之后、开放之前的现网撤权，开放时再次对账，不复活', async () => {
     const isolated = await target();
     const report = await restoreTenant(
