@@ -12,6 +12,7 @@ import { sequenceForNewPost } from './inheritance.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
 import { validateEmploymentReferences } from './references.js';
+import { recordWindow } from './reporting-cycle.js';
 import { requireSavedBusiness } from './write-service.js';
 import type { EmploymentBusinessPatch, EmploymentContext, EmploymentRecord, CustomFields } from './types.js';
 
@@ -62,8 +63,8 @@ export async function editEmploymentRecord(
   ) {
     throw new AppError('VALIDATION_FAILED', '任职工号必须等于员工主档工号');
   }
-  const reportingOf = patch.fields && Object.hasOwn(patch.fields, 'directManagerId') ? record.employeeId : undefined;
-  await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate, reportingOf);
+  const reporting = await editedRecordReporting(tx, ctx, record, patch);
+  await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate, reporting);
   const beforeAudit = { ...record.fields, ...customAudit(record.customFields) };
   const afterAudit = { ...after.fields, ...customAudit(after.customFields) };
   const changes: ForwardFieldChange[] = Object.entries(afterAudit)
@@ -85,6 +86,20 @@ export async function editEmploymentRecord(
   await personnelHooks.sync(tx, ctx, business.employeeId, id, record.kind, record.effectiveDate);
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, id);
+}
+
+/**
+ * 编辑改了直线经理时，按被编辑记录在时间轴上实际生效的区间校验循环汇报（DEC-108，PR #54 P2-B）：被同日在后的
+ * 记录取代的，区间为空、不校验；随之被向后修改的后续记录由 forward-update 按各自的区间逐条校验。
+ */
+export async function editedRecordReporting(
+  tx: Tx,
+  ctx: EmploymentContext,
+  record: EmploymentRecord,
+  patch: EmploymentBusinessPatch,
+) {
+  if (!patch.fields || !Object.hasOwn(patch.fields, 'directManagerId')) return undefined;
+  return { employeeId: record.employeeId, window: await recordWindow(tx, ctx.tenantId, record.id) };
 }
 
 function customAudit(fields: CustomFields): Record<string, CustomFields[string]> {

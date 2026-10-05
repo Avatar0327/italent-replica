@@ -27,7 +27,8 @@ import {
   type EmploymentPayloadRow,
   type LockedEmploymentBusiness,
 } from './record-store.js';
-import { setsDirectManager, validateEmploymentReferences } from './references.js';
+import { newRecordReporting, setsDirectManager, validateEmploymentReferences } from './references.js';
+import { windowBefore } from './reporting-cycle.js';
 import {
   employmentTimelineNeighbors,
   insertEmploymentTimeline,
@@ -88,8 +89,14 @@ export async function createEmploymentBusiness(
     staffId: selected?.cycle.id,
   });
   await requireScopedEmploymentObject(tx, ctx, employee.id, prepared.fields.departmentId);
-  const reportingOf = setsDirectManager(prepared.explicitFieldCodes) ? employee.id : undefined;
-  await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reportingOf);
+  const reporting = await newRecordReporting(
+    tx,
+    ctx,
+    employee.id,
+    prepared.explicitFieldCodes,
+    normalized.effectiveDate,
+  );
+  await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reporting);
   const id = randomUUID();
   await insertEmploymentRow(tx, 'employment_business_objects', {
     id,
@@ -162,8 +169,15 @@ export async function updateEmploymentBusiness(
     before,
   );
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, prepared.fields.departmentId, business.id);
-  const reportingOf = setsDirectManager(prepared.explicitFieldCodes) ? business.employeeId : undefined;
-  await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reportingOf);
+  // 申请尚未进时间轴：按排在当日最后预检，到期落地时再按实际插入位置复核（materializeEmploymentRecord）。
+  const reporting = await newRecordReporting(
+    tx,
+    ctx,
+    business.employeeId,
+    prepared.explicitFieldCodes,
+    normalized.effectiveDate,
+  );
+  await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reporting);
   await bumpEmploymentBusiness(tx, ctx, business);
   business.payload = await appendEmploymentPayload(
     tx,
@@ -436,10 +450,13 @@ export async function materializeEmploymentRecord(
   const employType = effectiveEmployType(payload, selected);
   const fields = { ...inherited.fields, employType, jobNumber: business.employee.code };
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, fields.departmentId);
-  // 申请到生效日落地时按当日的汇报链再判一次循环汇报（审批期间他人的任职可能已变）。
-  const reportingOf = setsDirectManager(payload.explicitFieldCodes) ? business.employeeId : undefined;
-  await validateEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reportingOf);
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
+  // 申请到生效日落地时按实际插入位置（DEC-108）与当日的汇报链再判一次循环汇报（审批期间他人的任职可能已变）；
+  // 插在当日操作更晚的记录之前时区间为空，经理当天就被取代，不校验。
+  const reporting = setsDirectManager(payload.explicitFieldCodes)
+    ? { employeeId: business.employeeId, window: windowBefore(payload.effectiveDate, next) }
+    : undefined;
+  await validateEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
   await insertEmploymentRow(tx, 'employment_records', {
     ...fields,

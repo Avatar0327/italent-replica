@@ -3,12 +3,18 @@ import { assertOrg } from '../establishment/org-reader.js';
 import type { JobRecord } from '../job/read-model.js';
 import { invalid, requiredJob, validateJobAssignment } from '../job/validation.js';
 import { rowsOf } from './read-model.js';
-import { assertNoReportingCycle } from './reporting-cycle.js';
+import { assertNoReportingCycle, insertedWindow, type ReportingWindow } from './reporting-cycle.js';
 import type { EmploymentContext, PresetFields } from './types.js';
+
+/** 循环汇报校验的对象：哪名员工，被校验的记录在时间轴上实际生效的区间（为空则不校验）。 */
+export interface ReportingCheck {
+  readonly employeeId: string;
+  readonly window: ReportingWindow | null;
+}
 
 /**
  * docs/02_业务建模/15 §8：以任职生效日解析引用，不取对象的当前版本。
- * reportingOf：本次写入明确设置了直线经理时传入员工 ID，另校验不得形成循环汇报（`19` §3.1 Q-M0-58）；
+ * reporting：本次写入明确设置了直线经理时传入，另校验不得形成循环汇报（`19` §3.1 Q-M0-58）；
  * 沿用的经理不再校验，免得存量环路挡住与经理无关的业务。
  */
 export async function validateEmploymentReferences(
@@ -16,7 +22,7 @@ export async function validateEmploymentReferences(
   ctx: EmploymentContext,
   fields: PresetFields,
   effectiveDate: string,
-  reportingOf?: string,
+  reporting?: ReportingCheck,
 ): Promise<void> {
   const tenantId = ctx.tenantId;
   if (fields.departmentId) await assertOrg(tx, tenantId, fields.departmentId, effectiveDate);
@@ -56,12 +62,26 @@ export async function validateEmploymentReferences(
     );
     if (!employee) throw invalid('managerId', '经理在任职生效日必须处于在职状态');
   }
-  if (reportingOf) await assertNoReportingCycle(tx, tenantId, reportingOf, fields.directManagerId, effectiveDate);
+  if (reporting)
+    await assertNoReportingCycle(tx, tenantId, reporting.employeeId, fields.directManagerId, reporting.window);
 }
 
 /** 本次写入是否明确设置了直线经理（新增 / 申请看表单显式字段，编辑看补丁）。 */
 export function setsDirectManager(explicitFieldCodes: readonly string[]): boolean {
   return explicitFieldCodes.includes('preset:directManagerId');
+}
+
+/** 新记录明确设置了直线经理时，按它插入时间轴后的有效区间校验（DEC-108；recordId 见 insertedWindow）。 */
+export async function newRecordReporting(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  explicitFieldCodes: readonly string[],
+  date: string,
+  recordId?: string,
+): Promise<ReportingCheck | undefined> {
+  if (!setsDirectManager(explicitFieldCodes)) return undefined;
+  return { employeeId, window: await insertedWindow(tx, ctx, employeeId, date, recordId) };
 }
 
 async function validatePositionRanges(

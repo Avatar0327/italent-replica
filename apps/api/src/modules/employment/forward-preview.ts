@@ -4,8 +4,8 @@ import { emptyPresetFields, type EmploymentBusinessInput, type EmploymentContext
 import { normalizeEmploymentInput } from './fields.js';
 import { prepareInheritance, resolveEffectiveInheritance } from './inheritance.js';
 import { readEmploymentEmployee } from './record-store.js';
-import { setsDirectManager, validateEmploymentReferences } from './references.js';
-import { editedValues } from './record-edit.js';
+import { newRecordReporting, validateEmploymentReferences } from './references.js';
+import { editedRecordReporting, editedValues } from './record-edit.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { isForwardEditSupported } from './forward-rules.js';
 import { AppError } from '../../errors.js';
@@ -38,8 +38,14 @@ export async function previewEmploymentForwardUpdate(
   });
   const after = { ...resolved, fields: { ...resolved.fields, jobNumber: employee.code } };
   requireEmploymentScope(ctx, employeeId, after.fields.departmentId);
-  const reportingOf = setsDirectManager(prepared.explicitFieldCodes) ? employeeId : undefined;
-  await validateEmploymentReferences(tx, ctx, after.fields, normalized.effectiveDate, reportingOf);
+  const reporting = await newRecordReporting(
+    tx,
+    ctx,
+    employeeId,
+    prepared.explicitFieldCodes,
+    normalized.effectiveDate,
+  );
+  await validateEmploymentReferences(tx, ctx, after.fields, normalized.effectiveDate, reporting);
   const plan = await forwardUpdateEmployment(
     tx,
     ctx,
@@ -73,8 +79,8 @@ export async function previewEmploymentEditForwardUpdate(
   const record = await loadEmploymentRecord(tx, ctx.tenantId, id, today, ctx.scope);
   if (!record) throw new AppError('CONFLICT', '只能预览有效任职记录的编辑');
   const after = await editedValues(tx, ctx, record, input);
-  const reportingOf = input.fields && Object.hasOwn(input.fields, 'directManagerId') ? record.employeeId : undefined;
-  await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate, reportingOf);
+  const reporting = await editedRecordReporting(tx, ctx, record, input);
+  await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate, reporting);
   if (!isForwardEditSupported({ ...record, entry: 'import', today }))
     return { changes: [], skipped: [], wholeRecordSkips: [] };
   return forwardUpdateEmployment(

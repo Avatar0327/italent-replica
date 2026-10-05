@@ -5,7 +5,7 @@ import { loadJobObject } from '../job/read-model.js';
 import type { JobKind } from '../job/metadata.js';
 import { rowsOf } from './record-store.js';
 import type { ForwardFieldChange } from './forward-rules.js';
-import { findReportingCycle } from './reporting-cycle.js';
+import { findReportingCycle, insertedWindow, recordWindow } from './reporting-cycle.js';
 import type { EmploymentContext } from './types.js';
 
 const JOB_REFERENCES: Readonly<Record<string, JobKind>> = {
@@ -44,9 +44,26 @@ export function referenceCheckDate(target: { readonly effectiveDate: string }): 
   return target.effectiveDate;
 }
 
+/** 被向后更新的这条后续记录（循环汇报按它自己的有效区间逐条校验，PR #54 P2-B）。 */
+export interface ForwardReportingTarget {
+  readonly employeeId: string;
+  readonly businessId: string;
+  readonly effectiveDate: string;
+  /** 已生效的记录取时间轴上的有效区间；待落地的申请按落地时的插入位置（DEC-108）。 */
+  readonly effective: boolean;
+}
+
+/** 区间为空（被同日在后的记录取代）的记录经理不生效，不算成环。 */
+async function formsCycle(tx: Tx, ctx: EmploymentContext, target: ForwardReportingTarget, managerId: string) {
+  const window = target.effective
+    ? await recordWindow(tx, ctx.tenantId, target.businessId)
+    : await insertedWindow(tx, ctx, target.employeeId, target.effectiveDate, target.businessId);
+  return !!window && !!(await findReportingCycle(tx, ctx.tenantId, target.employeeId, managerId, window));
+}
+
 /**
  * 停用只排除此字段，不取消其他合法字段。每次查询按租户、对象和日期限定；targetDate 取 referenceCheckDate。
- * 传入 employeeId 时，直线经理改成新值会使该员工在这条后续记录上形成循环汇报的，同样只排除此字段（cyclic）。
+ * 传入 target 时，直线经理改成新值会使该员工在这条后续记录的有效区间内形成循环汇报的，同样只排除此字段（cyclic）。
  */
 export async function availableForwardChanges(
   tx: Tx,
@@ -54,7 +71,7 @@ export async function availableForwardChanges(
   changes: readonly ForwardFieldChange[],
   targetDate: string,
   cache: Map<string, boolean>,
-  employeeId?: string,
+  target?: ForwardReportingTarget,
 ): Promise<{ accepted: ForwardFieldChange[]; skipped: string[]; cyclic: string[] }> {
   const accepted: ForwardFieldChange[] = [];
   const skipped: string[] = [];
@@ -80,7 +97,7 @@ export async function availableForwardChanges(
       continue;
     }
     const manager = change.field === 'directManagerId' && typeof change.after === 'string' ? change.after : null;
-    if (employeeId && manager && (await findReportingCycle(tx, ctx.tenantId, employeeId, manager, targetDate))) {
+    if (target && manager && (await formsCycle(tx, ctx, target, manager))) {
       cyclic.push(change.field);
       continue;
     }

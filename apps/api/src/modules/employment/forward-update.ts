@@ -193,7 +193,12 @@ export async function forwardUpdateEmployment(
         target.payload.businessId,
       );
     const checkDate = referenceCheckDate(target.payload);
-    const available = await availableForwardChanges(tx, ctx, changes, checkDate, cache, source.employeeId);
+    const available = await availableForwardChanges(tx, ctx, changes, checkDate, cache, {
+      employeeId: source.employeeId,
+      businessId: target.payload.businessId,
+      effectiveDate: target.payload.effectiveDate,
+      effective: target.status === 'effective',
+    });
     if (available.skipped.length)
       plan.skipped.push({
         businessId: target.payload.businessId,
