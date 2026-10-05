@@ -103,7 +103,7 @@ export interface AttemptRecord {
 /**
  * 记一次生效尝试，与业务写入、审计、outbox 同事务（AGENTS.md §10）。失败 / 挂起时递增业务 revision，
  * 使 HR 重试必须基于看到的最新结果提交（409 而不是盲重试）；生效时 revision 已由状态迁移递增。
- * DEC-173 仅提醒的直接调动不改任职或头版本，仅追加尝试与通知事件。
+ * DEC-173 按期复查只追加尝试与通知；迟到改期另按 DEC-186 推进任职投影及头版本。
  */
 export async function recordActivationAttempt(
   tx: Tx,

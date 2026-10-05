@@ -135,8 +135,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('F-017 真 PostgreSQL 会
   });
 });
 
-it('F-017 会签交接合席确实会落地两笔含下属联动的调动', async () => {
-  const { w, businesses, advance } = await scene(false);
+it.each([false, true])('F-017 会签交接/接管=%s 合席确实落地两笔含下属联动调动', async (takeover) => {
+  const { w, businesses, advance } = await scene(takeover);
   await advance();
   for (const id of businesses) expect((await w.business(id)).status).toBe('effective');
 });

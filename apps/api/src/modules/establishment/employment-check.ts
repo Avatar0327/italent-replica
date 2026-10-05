@@ -36,7 +36,7 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
     targetOrgId: target.departmentId,
     sourceOrgId: previous?.fields.departmentId ?? target.departmentId,
   };
-  // 周期仍取原调动日；重试允许采用 HR 当天已生效的容量调整，不强迫回溯修改历史编制。
+  // 周期取业务生效日（迟到执行已按 DEC-186 调整）；容量读取允许采用 HR 当天已生效的调整。
   const capacityAsOf = [target.effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
   for (const capacity of await targetCapacities(tx, ctx, transfer, capacityAsOf)) {
     const scheme = await loadScheme(tx, ctx.tenantId, capacity.schemeId, capacityAsOf);
