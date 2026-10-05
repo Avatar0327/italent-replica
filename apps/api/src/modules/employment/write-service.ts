@@ -1,7 +1,7 @@
 import { personnelHooks } from './personnel-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { clearedTransferFields, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
@@ -28,11 +28,7 @@ import {
   type LockedEmploymentBusiness,
 } from './record-store.js';
 import { validateNewEmploymentReferences } from './references.js';
-import {
-  assertRequiredTransferFields,
-  patchedSubmittedFieldCodes,
-  submittedEmploymentFields,
-} from '../transfer/required-fields.js';
+import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import {
   employmentTimelineNeighbors,
   insertEmploymentTimeline,
@@ -85,7 +81,7 @@ export async function createEmploymentBusiness(
     employeeId: employee.id,
     staffId: selected?.cycle.id,
   });
-  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, normalized.fields);
+  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, { ...prepared.fields });
   await requireScopedEmploymentObject(tx, ctx, employee.id, prepared.fields.departmentId);
   await validateNewEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate);
   const id = randomUUID();
@@ -157,9 +153,8 @@ export async function updateEmploymentBusiness(
     ctx,
     { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
     before,
-    patchedSubmittedFieldCodes(before, patch),
   );
-  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, submittedEmploymentFields(prepared));
+  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, { ...prepared.fields });
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, prepared.fields.departmentId, business.id);
   await validateNewEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate);
   await bumpEmploymentBusiness(tx, ctx, business);
@@ -485,7 +480,17 @@ export async function materializeEmploymentRecord(
     selected?.predecessor
       ? { ...selected.predecessor.fields, ...customAudit(selected.predecessor.customFields) }
       : null,
-    { ...fields, ...customAudit(inherited.customFields), staffId, entryDate, effectiveDate: payload.effectiveDate },
+    {
+      ...fields,
+      ...customAudit(inherited.customFields),
+      staffId,
+      entryDate,
+      effectiveDate: payload.effectiveDate,
+      // DEC-163：留空结果与实际落地同事务发布；PR-B 按业务、字段和 effectiveDate 处理补全待办。
+      ...(payload.kind === 'transfer'
+        ? { clearedFieldCodes: clearedTransferFields(payload.formSnapshot, fields).map((field) => `preset:${field}`) }
+        : {}),
+    },
   );
   if (options.forwardUpdate !== false) {
     await forwardMaterializedRecord(tx, ctx, business, staffId, selected?.predecessor ?? null, {

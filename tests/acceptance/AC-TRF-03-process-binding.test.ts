@@ -17,7 +17,7 @@ async function configureProcessForms(world: Awaited<ReturnType<typeof approvalWo
       body: {
         name: '合成流程匹配表单',
         group: 'transfer',
-        // 流程匹配场景只调整部门；其他不带出字段按真实配置只读，独立于 DEC-162 必填验收。
+        // 流程匹配场景只调整部门；其他不带出字段按真实配置只读，独立于 DEC-163 部门必填验收。
         fieldModes: Object.fromEntries(
           ['positionId', 'directManagerId', 'dottedManagerId', 'levelId', 'gradeId'].map((field) => [
             `preset:${field}`,

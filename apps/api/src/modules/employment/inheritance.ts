@@ -34,8 +34,6 @@ interface TrustedFormSnapshot {
   readonly fieldModes: Readonly<Record<string, CustomMode>>;
   readonly autoPopulate?: boolean;
   readonly excludedAutofillFields?: readonly string[];
-  /** 用户提交的字段与 explicitFieldCodes 中的服务端派生字段分开记录（DEC-162）。 */
-  readonly submittedFieldCodes?: readonly string[];
 }
 export interface PreparedInheritance {
   readonly effectiveDate: string;
@@ -114,10 +112,6 @@ function snapshotForm(
       ]),
     autoPopulate: form.autoPopulate ?? true,
     excludedAutofillFields: form.excludedAutofillFields ?? [],
-    submittedFieldCodes: [
-      ...Object.keys(input.fields ?? {}).map((field) => `preset:${field}`),
-      ...Object.keys(input.customFields ?? {}).map((field) => `custom:${field}`),
-    ],
   };
 }
 
@@ -246,6 +240,7 @@ export async function prepareInheritance(
   for (const field of INHERITED_FIELDS) {
     if (startsNewCycle) continue;
     const mode = fieldMode(`preset:${field}`);
+    // DEC-163：场景留空始终存空，关闭自动带出也不能让它进入生效时继承队列。
     if (excluded.has(field) && mode === 'editable') continue;
     if (form.grouped && mode !== 'absent' && (metadata.autoPopulate || mode === 'readonly' || mode === 'hidden'))
       setField(fields, field, eligible?.fields[field] ?? null);
@@ -281,17 +276,9 @@ export async function prepareEmploymentPatch(
   ctx: EmploymentContext,
   input: InheritanceInput,
   previous: PreparedInheritance,
-  submittedFieldCodes?: readonly string[],
 ): Promise<PreparedInheritance> {
   // 已保存申请的字段策略随申请冻结；修改表单配置不能把原单只读字段变成可伪造写入。
-  const defaults = await prepareInheritance(tx, ctx, input, previous.formSnapshot);
-  const prepared = {
-    ...defaults,
-    formSnapshot: {
-      ...defaults.formSnapshot,
-      submittedFieldCodes: submittedFieldCodes ?? defaults.formSnapshot.submittedFieldCodes,
-    },
-  };
+  const prepared = await prepareInheritance(tx, ctx, input, previous.formSnapshot);
   if (input.effectiveDate !== previous.effectiveDate) return prepared;
   const explicit = new Set(prepared.explicitFieldCodes);
   const oldDeferred = new Set(previous.deferredFieldCodes);
@@ -312,7 +299,7 @@ export async function prepareEmploymentPatch(
     ...prepared,
     fields,
     customFields,
-    formSnapshot: { ...previous.formSnapshot, submittedFieldCodes: prepared.formSnapshot.submittedFieldCodes },
+    formSnapshot: previous.formSnapshot,
     sourceRecordId: previous.sourceRecordId,
     sourceStaffId: previous.sourceStaffId,
     deferredFieldCodes: previous.deferredFieldCodes.filter((field) => !explicit.has(field)),

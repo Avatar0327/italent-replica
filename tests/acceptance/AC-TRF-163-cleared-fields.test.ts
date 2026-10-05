@@ -109,6 +109,21 @@ describe('DEC-163 / AC-TRF：场景留空字段随实际落地事件交给 PR-B'
       const business = await create(w, path === 'direct' ? 'direct' : 'application', date);
       if (path !== 'direct') {
         expect(await recordEvents(w, business.id)).toEqual([]);
+        if (path === 'approval-scheduled') {
+          const changed = await w.session.request('PUT', `/transfers/forms/${formId}`, {
+            ifMatch: 0,
+            body: {
+              name: '后改只读表单',
+              group: 'transfer',
+              fieldModes: {
+                'preset:positionId': 'readonly',
+                'preset:directManagerId': 'readonly',
+                'preset:dottedManagerId': 'hidden',
+              },
+            },
+          });
+          expect(changed.status).toBe(200);
+        }
         await w.approve(business, '2026-10-01T02:00:00Z');
       }
       if (path === 'approval-scheduled') {
@@ -152,7 +167,7 @@ describe('DEC-163 / AC-TRF：场景留空字段随实际落地事件交给 PR-B'
     await assertCleared(w, business);
   });
 
-  it('已填写或自动带出的非空值不记留空；非调动业务不添加调动元数据', async () => {
+  it('已填写的非空值不记留空；非调动业务不添加调动元数据', async () => {
     const w = await fixture('trf163-no-cleared');
     const business = await create(w, 'direct', '2026-10-01', {
       departmentId: w.from.id,

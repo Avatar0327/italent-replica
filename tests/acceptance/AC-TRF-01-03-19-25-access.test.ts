@@ -56,7 +56,7 @@ async function fixture() {
     });
   const inside = await org('调动管理范围内部门');
   const outside = await org('调动管理范围外部门');
-  // 本组聚焦部门范围；其他场景排除字段配置只读，DEC-162 的逐字段必填另有真实表单验收。
+  // 本组聚焦部门范围；其他场景排除字段配置只读，DEC-163 的部门必填与留空另有真实表单验收。
   const configured = await setup.request('PUT', `${BASE}/forms/${STANDARD}`, {
     ...world.asAdmin,
     ifMatch: 0,

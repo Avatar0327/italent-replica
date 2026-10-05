@@ -67,7 +67,7 @@ async function queuedRequests(
 
 async function fixture(label: string) {
   const w = await activationWorld(testDb().db, label);
-  // DEC-162：这里只测并发，使用真实标准表单；本场景排除字段配置只读/隐藏，无须伪造职级职等引用。
+  // 这里只测并发，使用真实标准表单；本场景排除字段配置只读/隐藏，无须伪造职级职等引用。
   const configured = await w.session.request('PUT', `/transfers/forms/${FORM}`, {
     ifMatch: 0,
     body: {
