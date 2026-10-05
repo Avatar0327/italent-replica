@@ -2,6 +2,7 @@ export { pgErrorCode } from './pg-error.js';
 export { createPgDb, createPgliteDb, type Db, type DbHandle, migrationsFolder } from './client.js';
 export {
   type AuditEntry,
+  findPlatformCommandResult,
   IdempotencyConflictError,
   type PlatformCommandContext,
   type PlatformCommandMeta,

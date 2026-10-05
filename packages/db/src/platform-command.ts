@@ -68,10 +68,7 @@ export async function runPlatformCommand<T>(
   input: unknown,
   execute: (ctx: PlatformCommandContext) => Promise<T>,
 ): Promise<T> {
-  if (!COMMAND_ID.test(meta.commandId)) throw new TypeError('平台命令必须携带合法的 commandId');
-  const requestHash = createHash('sha256')
-    .update(JSON.stringify({ actorUserId: meta.actorUserId, op, input }))
-    .digest('hex');
+  const requestHash = platformRequestHash(meta, op, input);
   try {
     return await withPlatform(db, async (tx) => {
       const replay = await findReplay<T>(tx, meta.commandId, requestHash);
@@ -85,6 +82,28 @@ export async function runPlatformCommand<T>(
     if (!replay) throw error;
     return replay.value;
   }
+}
+
+function platformRequestHash(meta: PlatformCommandMeta, op: string, input: unknown): string {
+  if (!COMMAND_ID.test(meta.commandId)) throw new TypeError('平台命令必须携带合法的 commandId');
+  return createHash('sha256')
+    .update(JSON.stringify({ actorUserId: meta.actorUserId, op, input }))
+    .digest('hex');
+}
+
+/**
+ * 长任务（如定时生效的运维补跑，R1-T08）不能把整段工作包进一个平台事务：开工前先回查台账，同键同内容返回首次结果，
+ * 同键异内容抛 IdempotencyConflictError，未执行过返回 undefined；做完后仍经 runPlatformCommand 登记结果
+ * （并发同键时以先登记者为准）。
+ */
+export async function findPlatformCommandResult<T>(
+  db: Db,
+  meta: PlatformCommandMeta,
+  op: string,
+  input: unknown,
+): Promise<{ value: T } | undefined> {
+  const requestHash = platformRequestHash(meta, op, input);
+  return withPlatform(db, (tx) => findReplay<T>(tx, meta.commandId, requestHash));
 }
 
 async function findReplay<T>(tx: Tx, commandId: string, requestHash: string): Promise<{ value: T } | undefined> {

@@ -3,6 +3,7 @@ import { auditEvents, sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import type { TenantContext } from '../../tenant-context.js';
 import { AppError } from '../../errors.js';
+import { auditActor } from '../../system-actor.js';
 
 export type Row = Record<string, unknown>;
 export interface PersonnelContext extends TenantContext {
@@ -71,7 +72,7 @@ export async function audit(
   const deleted = after?.deleted === true;
   await tx.insert(auditEvents).values({
     tenantId: ctx.tenantId,
-    actorUserId: ctx.userId,
+    actorUserId: auditActor(ctx.userId),
     action: `personnel.${deleted ? 'delete' : before ? 'update' : 'create'}`,
     objectType,
     objectId: id,

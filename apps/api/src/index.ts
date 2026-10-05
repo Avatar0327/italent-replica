@@ -21,6 +21,20 @@ export {
   requireObjectWrite,
   setLicenseQuota,
 } from './modules/permission/index.js';
+// R1-T08 定时生效：平台路径的运维 / 调度入口；编制单一判定入口在 R1-T09 接入前暂不检查编制（DEC-145）
+export {
+  type EmploymentActivationRun,
+  type EmploymentActivationRunInput,
+  type EmploymentActivationRunResult,
+  type EmploymentActivationScheduler,
+  runEmploymentActivations,
+  startEmploymentActivationScheduler,
+} from './modules/employment/activation-scheduler.js';
+export {
+  type ActivationTarget,
+  type EmploymentActivationChecks,
+  registerEmploymentActivationChecks,
+} from './modules/employment/activation-checks.js';
 export { createPlatformRouter } from './modules/platform/routes.js';
 export { provisionTenant, type ProvisionInput, type ProvisionResult } from './modules/platform/provisioning.js';
 export { changeTenantLifecycle, issueLicense } from './modules/platform/operations.js';
