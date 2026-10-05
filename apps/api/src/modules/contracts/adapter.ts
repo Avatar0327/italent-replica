@@ -2,8 +2,17 @@ import { eq, contractRequests, type Tx } from '@italent/db';
 import { CONTRACT_OBJECT, CONTRACT_FLOW, tenantLocalDate, type ContractOperation } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { BusinessAdapter } from '../approval/adapters.js';
-import { audit, checkScope, lockEmployee, type ContractContext } from './context.js';
-import { applyRequest, businessFields, loadContract, loadRequest, prepare } from './service.js';
+import { audit, checkFields, checkScope, lockEmployee, type ContractContext } from './context.js';
+import {
+  applyRequest,
+  businessFields,
+  loadContract,
+  loadRequest,
+  prepare,
+  assertNoInFlight,
+  requestWriteFields,
+  mergeFields,
+} from './service.js';
 
 async function transition(tx: Tx, ctx: ContractContext, id: string, status: string) {
   const before = await loadRequest(tx, ctx.tenantId, id);
@@ -50,7 +59,7 @@ export const contractAdapter: BusinessAdapter = {
         (request.systemInitiated ? '（系统代发）' : ''),
       values: flattened,
       originals,
-      changedFields: Object.keys(flattened).filter(
+      changedFields: [...new Set([...Object.keys(flattened), ...Object.keys(originals ?? {})])].filter(
         (k) => JSON.stringify(flattened[k]) !== JSON.stringify(originals?.[k]),
       ),
       conditionValues: { processCode: CONTRACT_FLOW[operation], 'business.kind': operation },
@@ -77,6 +86,8 @@ export const contractAdapter: BusinessAdapter = {
   async resubmit(tx, ctx, id, corrections) {
     const request = await loadRequest(tx, ctx.tenantId, id);
     const target = request.targetId ? await loadContract(tx, ctx.tenantId, request.targetId) : null;
+    const writable = mergeFields(requestWriteFields(request), corrections);
+    await checkFields(ctx, request.operation === 'create' ? 'create' : 'update', writable);
     const input = {
       operation: request.operation,
       mode: 'application',
@@ -85,13 +96,19 @@ export const contractAdapter: BusinessAdapter = {
       fields:
         request.operation === 'terminate'
           ? { actualTerminationDate: request.actualTerminationDate, ...corrections }
-          : { ...businessFields(request), ...corrections },
+          : mergeFields(businessFields(request), corrections),
     };
-    const prepared = await prepare(tx, { ...ctx, expectedRevision: target?.revision ?? 0 }, input);
+    const prepared = await prepare(
+      tx,
+      { ...ctx, authorize: undefined, expectedRevision: target?.revision ?? 0 },
+      input,
+    );
+    await assertNoInFlight(tx, ctx, request.employeeId, prepared.data.typeId, request.operation, request.id);
     await tx
       .update(contractRequests)
       .set({
         ...prepared.data,
+        submittedFields: writable,
         targetRevision: target?.revision ?? null,
         status: 'in_review',
         revision: request.revision + 1,

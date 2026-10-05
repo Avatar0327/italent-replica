@@ -293,7 +293,7 @@ function policyFields(key: PolicyKey, body?: PolicyBody) {
     throw invalid('页面或数据源必须使用服务端登记的列表或详情编码');
   const personField =
     PERSONNEL_SCOPE_FIELDS[key.objectCode] ??
-    (key.objectCode === MODULE_OBJECTS.employmentRecord.code
+    ([MODULE_OBJECTS.employmentRecord.code, MODULE_OBJECTS.contract.code].includes(key.objectCode)
       ? 'employeeId'
       : key.objectCode === MODULE_OBJECTS.employee.code
         ? 'id'

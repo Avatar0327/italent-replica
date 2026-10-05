@@ -16,7 +16,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { tenants } from './tenancy.js';
-import { employmentEmployees } from './employment.js';
+import { employmentEmployees, employmentRecords } from './employment.js';
 
 const id = () => uuid('id').primaryKey().defaultRandom();
 const tenantId = () =>
@@ -111,6 +111,21 @@ export const contractRecords = pgTable(
       columns: [t.tenantId, t.companyId],
       foreignColumns: [contractCompanies.tenantId, contractCompanies.id],
     }),
+    foreignKey({
+      columns: [t.tenantId, t.previousContractId],
+      foreignColumns: [t.tenantId, t.id],
+      name: 'contract_records_previous_tenant_fk',
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.rootContractId],
+      foreignColumns: [t.tenantId, t.id],
+      name: 'contract_records_root_tenant_fk',
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.employmentRecordId],
+      foreignColumns: [employmentRecords.tenantId, employmentRecords.id],
+      name: 'contract_records_employment_tenant_fk',
+    }),
     index('contract_records_employee').on(t.tenantId, t.employeeId, t.effectiveDate),
     index('contract_records_due').on(t.tenantId, t.endDate),
     check('contract_records_status', sql`${t.status} IN ('valid','terminated','void')`),
@@ -126,6 +141,7 @@ export const contractRequests = pgTable(
     employeeId: uuid('employee_id').notNull(),
     ...fields(),
     operation: text('operation').notNull(),
+    submittedFields: jsonb('submitted_fields').$type<Record<string, unknown>>(),
     mode: text('mode').notNull(),
     targetId: uuid('target_id'),
     targetRevision: integer('target_revision'),
@@ -147,6 +163,16 @@ export const contractRequests = pgTable(
     foreignKey({
       columns: [t.tenantId, t.companyId],
       foreignColumns: [contractCompanies.tenantId, contractCompanies.id],
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.resultId],
+      foreignColumns: [contractRecords.tenantId, contractRecords.id],
+      name: 'contract_requests_result_tenant_fk',
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.employmentRecordId],
+      foreignColumns: [employmentRecords.tenantId, employmentRecords.id],
+      name: 'contract_requests_employment_tenant_fk',
     }),
     index('contract_requests_due').on(t.tenantId, t.status, t.effectiveDate),
     check(

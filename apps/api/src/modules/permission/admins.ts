@@ -26,11 +26,13 @@ export interface PermissionAdminView {
   readonly role: AdminRole;
   readonly status: 'active' | 'revoked';
   readonly revision: number;
+  readonly contractConfiguration: boolean;
   readonly grantableAdminRoles: AdminRole[];
   readonly grantableProfileIds: string[];
 }
 
 export interface GrantableSets {
+  readonly contractConfiguration?: boolean;
   readonly grantableAdminRoles: readonly AdminRole[];
   readonly grantableProfileIds: readonly string[];
 }
@@ -80,12 +82,19 @@ export interface NewAdmin extends GrantableSets {
 
 export async function createAdmin(tx: Tx, write: WriteContext, input: NewAdmin): Promise<PermissionAdminView> {
   await assertCanDelegate(tx, write.userId, input.role, input);
+  await assertContractConfigurationGrant(tx, write.userId, input.contractConfiguration ?? false);
   await assertActiveMember(tx, input.userId);
   let row: PermissionAdmin | undefined;
   try {
     [row] = await tx
       .insert(permissionAdmins)
-      .values({ tenantId: write.tenantId, userId: input.userId, role: input.role, createdBy: write.userId })
+      .values({
+        tenantId: write.tenantId,
+        userId: input.userId,
+        role: input.role,
+        createdBy: write.userId,
+        contractConfiguration: input.contractConfiguration ?? false,
+      })
       .returning();
   } catch (error) {
     if (pgErrorCode(error) === '23505') throw new AppError('CONFLICT', '该用户已持有此管理员身份');
@@ -115,13 +124,19 @@ export async function updateAdmin(tx: Tx, write: WriteContext, change: AdminUpda
   if (current.revision !== change.expectedRevision) throw revisionConflict(change.expectedRevision, current.revision);
   await assertCanDelegate(tx, write.userId, current.role as AdminRole, change);
 
+  if (change.contractConfiguration !== undefined && change.contractConfiguration !== current.contractConfiguration)
+    await assertContractConfigurationGrant(tx, write.userId, true);
   const before = await viewOf(tx, current);
   await tx.delete(permissionAdminGrantableRoles).where(eq(permissionAdminGrantableRoles.adminId, current.id));
   await tx.delete(permissionAdminGrantableProfiles).where(eq(permissionAdminGrantableProfiles.adminId, current.id));
   await writeGrantableSets(tx, write.tenantId, current.id, change);
   const [saved] = await tx
     .update(permissionAdmins)
-    .set({ revision: current.revision + 1, updatedAt: write.now })
+    .set({
+      revision: current.revision + 1,
+      updatedAt: write.now,
+      ...(change.contractConfiguration !== undefined ? { contractConfiguration: change.contractConfiguration } : {}),
+    })
     .where(and(eq(permissionAdmins.id, current.id), eq(permissionAdmins.revision, current.revision)))
     .returning();
   if (!saved) throw revisionConflict(change.expectedRevision, undefined);
@@ -206,6 +221,7 @@ export async function viewOf(tx: Tx, row: PermissionAdmin): Promise<PermissionAd
     id: row.id,
     userId: row.userId,
     role: row.role as AdminRole,
+    contractConfiguration: row.contractConfiguration,
     status: row.status,
     revision: row.revision,
     grantableAdminRoles: roles
@@ -214,4 +230,11 @@ export async function viewOf(tx: Tx, row: PermissionAdmin): Promise<PermissionAd
       .sort(),
     grantableProfileIds: profiles.map((p) => p.profileId).sort(),
   };
+}
+
+/** DEC-180①：只有租户管理员可以增减“合同配置”，其他管理员不能转授。 */
+async function assertContractConfigurationGrant(tx: Tx, actorUserId: string, changing: boolean) {
+  if (!changing) return;
+  if (!(await grantableSetsOf(tx, actorUserId)).heldRoles.has('tenant_admin'))
+    throw new AppError('FORBIDDEN', '只有租户管理员可以授予或撤销合同配置');
 }

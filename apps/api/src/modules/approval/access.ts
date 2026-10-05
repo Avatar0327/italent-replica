@@ -1,5 +1,5 @@
 import { CONTRACT_OBJECT, contractAction } from '@italent/domain';
-import { loadRequest, businessFields } from '../contracts/service.js';
+import { loadRequest, requestWriteFields, mergeFields } from '../contracts/service.js';
 import { checkFields, checkScope } from '../contracts/context.js';
 /**
  * 审批中心的功能权限：流程配置仅限租户级管理员（DEC-102）；管理员转交 / 干预受身份对象权限控制（DEC-080 真实字段与按钮），
@@ -168,10 +168,11 @@ export async function requireResubmitRight(
         expectedRevision: 0,
       };
       await checkScope(tx, context, request.employeeId, request.createdBy);
-      await checkFields(context, request.operation === 'create' ? 'create' : 'update', {
-        ...businessFields(request),
-        ...corrections,
-      });
+      await checkFields(
+        context,
+        request.operation === 'create' ? 'create' : 'update',
+        mergeFields(requestWriteFields(request), corrections),
+      );
     });
   }
   if (instance.businessType !== 'personnel_change') return;

@@ -5,8 +5,9 @@ import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import type { ApprovalContext } from '../approval/context.js';
 import { rowsOf } from '../approval/context.js';
-import { findCurrentRecord } from '../employment/read-model.js';
+import { loadEmploymentRecord } from '../employment/read-model.js';
 import { scopeAllowsInTransaction, type ModuleScope } from '../permission/module-access.js';
+import { personnelCreationScope } from '../permission/scope-resolver.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 export { rowsOf };
 export interface ContractContext extends ApprovalContext {
@@ -24,13 +25,30 @@ export async function lockEmployee(tx: Tx, ctx: ContractContext, id: string) {
   );
   if (!employee) throw new AppError('NOT_FOUND', '员工不存在');
 }
-export async function checkScope(tx: Tx, ctx: ContractContext, employeeId: string, creatorId = ctx.userId) {
-  const current = await findCurrentRecord(tx, ctx.tenantId, employeeId, tenantLocalDate(ctx.now, ctx.timezone));
-  const orgId = current?.fields.departmentId ?? null;
-  if (ctx.scope && !(await scopeAllowsInTransaction(tx, ctx.scope, { personId: employeeId, orgId, creatorId }))) {
+/** 合同关联只取主职，复用任职读取端口的有效时间线及更正快照。 */
+export async function currentPrimary(tx: Tx, tenantId: string, employeeId: string, asOf: string) {
+  const [current] = rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT r.id FROM employment_timeline t
+    JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+    WHERE t.tenant_id=${tenantId} AND t.employee_id=${employeeId}::uuid
+      AND r.service_type='primary' AND t.valid_during @> ${asOf}::date LIMIT 1`),
+  );
+  return current ? loadEmploymentRecord(tx, tenantId, current.id, asOf) : null;
+}
+export async function checkScope(tx: Tx, ctx: ContractContext, employeeId: string, creatorId?: string) {
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  let scope = ctx.scope;
+  // DEC-180④：没有已存在记录的创建人时，按已有人员新建范围端口解析。
+  if (scope && !creatorId)
+    scope = await personnelCreationScope(
+      tx,
+      { ...ctx, appCode: 'TenantBase', objectCode: CONTRACT_OBJECT, asOf: today },
+      scope,
+    );
+  if (scope && !(await scopeAllowsInTransaction(tx, scope, { personId: employeeId, creatorId }))) {
     throw new AppError('NOT_FOUND', '合同数据不存在');
   }
-  return current;
+  return currentPrimary(tx, ctx.tenantId, employeeId, today);
 }
 export async function checkFields(
   ctx: ContractContext,

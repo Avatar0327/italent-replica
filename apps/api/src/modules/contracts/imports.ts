@@ -30,29 +30,33 @@ export interface ImportError {
 }
 
 async function initializePeople(tx: Tx, ctx: ContractContext, input: Input, ids: string[]) {
-  if (input.mode === 'initialize') {
-    for (const employeeId of ids) {
-      if (!Object.hasOwn(input.revisions, employeeId))
-        throw new AppError('VALIDATION_FAILED', '初始化须携带每个人的合同集合版本');
-      revision(input.revisions[employeeId]!, await portfolioRevision(tx, ctx.tenantId, employeeId));
-      const records = await tx
-        .select()
-        .from(contractRecords)
-        .where(
-          and(
-            eq(contractRecords.tenantId, ctx.tenantId),
-            eq(contractRecords.employeeId, employeeId),
-            eq(contractRecords.deleted, false),
-          ),
-        );
-      for (const record of records) await deleteContract(tx, ctx, record);
-      // 未完成申请不能在初始化后悄然重新生成已删除合同。
-      const pending = await tx.execute(sql`SELECT id FROM contract_requests WHERE tenant_id=${ctx.tenantId}
-        AND employee_id=${employeeId}::uuid AND status IN ('in_review','approved','returned') LIMIT 1`);
-      const rows = rowsOf(pending);
-      if (rows.length) throw new AppError('CONFLICT', '存在未完成合同申请，不能初始化');
-    }
+  if (input.mode !== 'initialize') return;
+  const deleting: (typeof contractRecords.$inferSelect)[] = [];
+  for (const employeeId of ids) {
+    if (!Object.hasOwn(input.revisions, employeeId))
+      throw new AppError('VALIDATION_FAILED', '初始化须携带每个人的合同集合版本');
+    revision(input.revisions[employeeId]!, await portfolioRevision(tx, ctx.tenantId, employeeId));
+    const records = await tx
+      .select()
+      .from(contractRecords)
+      .where(
+        and(
+          eq(contractRecords.tenantId, ctx.tenantId),
+          eq(contractRecords.employeeId, employeeId),
+          eq(contractRecords.deleted, false),
+        ),
+      );
+    for (const record of records) await checkScope(tx, ctx, record.employeeId, record.createdBy);
+    // 未完成申请不能在初始化后悄然重新生成已删除合同。
+    const pending = rowsOf(
+      await tx.execute(sql`SELECT id FROM contract_requests WHERE tenant_id=${ctx.tenantId}
+      AND employee_id=${employeeId}::uuid AND status IN ('in_review','approved','returned') LIMIT 1`),
+    );
+    if (pending.length) throw new AppError('CONFLICT', '存在未完成合同申请，不能初始化');
+    deleting.push(...records);
   }
+  // 所有人员的整个替换集合先验权，再统一删除；后续行失败仍由外层事务整体回滚。
+  for (const record of deleting) await deleteContract(tx, ctx, record);
 }
 async function applyRows(tx: Tx, ctx: ContractContext, input: Input, errors: ImportError[]) {
   const ids = [...new Set(input.rows.map((r) => r.employeeId))].sort();

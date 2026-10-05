@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  conditionViolations,
   avoidSelfExceptionAdmin,
   blindReviewFields,
   countersignEndedReason,
@@ -751,6 +752,12 @@ async function matchProcess(tx: Tx, ctx: ApprovalContext, snapshot: BusinessSnap
     scope: 'published',
   });
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
+  if (type.startsWith('contract_')) {
+    for (const candidate of list) {
+      const [unsupported] = conditionViolations(candidate.version.conditions, APPROVAL_TYPES[type].conditionFields);
+      if (unsupported) throw approvalError('CONFLICT', 'APPROVAL_CONDITION_UNSUPPORTED', unsupported);
+    }
+  }
   const context = await conditionContext(tx, ctx.tenantId, asOf, type, snapshot.conditionValues);
   const matched = replicaMatch(evaluate(list, context), type);
   if (!matched) throw approvalError('CONFLICT', 'APPROVAL_PROCESS_NOT_MATCHED', noProcessMessage(type));

@@ -11,9 +11,17 @@ import {
 } from '@italent/db';
 import { CONTRACT_FIELDS, tenantLocalDate, addDays } from '@italent/domain';
 import { AppError } from '../../errors.js';
-import { findCurrentRecord } from '../employment/read-model.js';
 import { validateCustomValue } from '../employment/fields.js';
-import { audit, checkFields, checkScope, lockEmployee, revision, rowsOf, type ContractContext } from './context.js';
+import {
+  audit,
+  checkFields,
+  checkScope,
+  currentPrimary,
+  lockEmployee,
+  revision,
+  rowsOf,
+  type ContractContext,
+} from './context.js';
 import { settings, verifyIds } from './configuration.js';
 import { commandSchema, parse, type ContractCommand, type ContractFields } from './input.js';
 
@@ -59,33 +67,56 @@ async function assertRestorationAllowed(
   endDate: string,
   today: string,
 ) {
-  const current = await findCurrentRecord(tx, ctx.tenantId, before.employeeId, today);
-  if (current && ['leave', 'retirement'].includes(current.kind)) {
-    const [exit] = rowsOf<{ lastWorkDate: string }>(
-      await tx.execute(sql`SELECT coalesce(last_work_date,start_date-1)::text AS "lastWorkDate"
-        FROM employment_records WHERE tenant_id=${ctx.tenantId} AND id=${current.id}::uuid`),
-    );
-    if (exit && exit.lastWorkDate < endDate) {
-      throw new AppError('CONFLICT', '员工已离职，不能通过编辑导入恢复有效合同', {
-        reason: 'CONTRACT_EMPLOYEE_DEPARTED',
-        lastWorkDate: exit.lastWorkDate,
-      });
-    }
-  }
+  // DEC-167④ / F-014：有效历史（含重聘前离职）与已保存的未来离职都不可跨越；撤销/删除的不算。
+  const [exit] = rowsOf<{ lastWorkDate: string }>(
+    await tx.execute(sql`
+    SELECT last_work_date::text AS "lastWorkDate" FROM (
+      SELECT coalesce(r.last_work_date,r.start_date-1) AS last_work_date FROM employment_records r
+      JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
+      WHERE r.tenant_id=${ctx.tenantId} AND r.employee_id=${before.employeeId}::uuid
+        AND r.service_type='primary' AND r.kind IN ('leave','retirement')
+      UNION ALL
+      SELECT coalesce(p.last_work_date,p.effective_date-1) FROM employment_business_objects b
+      JOIN LATERAL (SELECT p.* FROM employment_payload_versions p
+        WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY p.version_no DESC LIMIT 1) p ON true
+      JOIN LATERAL (SELECT s.state FROM employment_state_events s
+        WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
+      WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${before.employeeId}::uuid
+        AND p.kind IN ('leave','retirement') AND p.effective_date>${today}::date AND s.state='approved'
+    ) exits WHERE last_work_date>=${before.effectiveDate}::date AND last_work_date<${endDate}::date
+    ORDER BY last_work_date LIMIT 1`),
+  );
+  if (exit)
+    throw new AppError('CONFLICT', '员工已离职或已保存未来离职，不能通过编辑导入恢复有效合同', {
+      reason: 'CONTRACT_EMPLOYEE_DEPARTED',
+      lastWorkDate: exit.lastWorkDate,
+    });
   // 日期识别后续同类型合同；同一链以签订次数识别续签，避免编辑版本号追平后绕过。
   const [newer] = rowsOf<{ id: string }>(
     await tx.execute(sql`SELECT id FROM contract_records
       WHERE tenant_id=${ctx.tenantId} AND employee_id=${before.employeeId}::uuid
         AND type_id=${before.typeId}::uuid AND id<>${before.id}::uuid
         AND NOT deleted AND status<>'void' AND approval_status='effective'
+        AND effective_date<=${endDate}::date
+        AND coalesce(actual_termination_date,end_date,'9999-12-31'::date)>=${before.effectiveDate}::date
+        AND NOT EXISTS (SELECT 1 FROM contract_changes ch
+          WHERE ch.tenant_id=contract_records.tenant_id AND ch.before_contract_id=contract_records.id)
         AND (effective_date>${before.effectiveDate}::date
           OR (root_contract_id=${before.rootContractId}::uuid AND signing_count>${before.signingCount}))
       ORDER BY effective_date DESC,signing_count DESC,id LIMIT 1`),
   );
-  if (newer) {
+  const [pending] = rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT id FROM contract_requests
+    WHERE tenant_id=${ctx.tenantId} AND employee_id=${before.employeeId}::uuid AND type_id=${before.typeId}::uuid
+      AND status IN ('in_review','approved') AND operation IN ('create','renew')
+      AND effective_date<=${endDate}::date AND (end_date IS NULL OR end_date>=${before.effectiveDate}::date)
+    LIMIT 1`),
+  );
+  if (newer || pending) {
     throw new AppError('CONFLICT', '已有更新的同类型合同，请修改续签的那份合同', {
       reason: 'CONTRACT_SUPERSEDED_BY_RENEWAL',
-      contractId: newer.id,
+      contractId: newer?.id,
+      requestId: pending?.id,
     });
   }
 }
@@ -155,7 +186,11 @@ export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown, correc
       probationStartDate: null,
       probationEndDate: null,
     });
-  const merged = { ...inherited, ...input.fields };
+  const merged = {
+    ...inherited,
+    ...input.fields,
+    customFields: { ...(before?.customFields ?? {}), ...input.fields.customFields },
+  };
   if (!merged.typeId || !merged.companyId || !merged.effectiveDate) {
     throw new AppError('VALIDATION_FAILED', '合同类型、法人公司、生效日期必填');
   }
@@ -197,7 +232,18 @@ export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown, correc
   }
   if (!number) throw new AppError('VALIDATION_FAILED', '合同编号必填');
   const data = preparedFields(input, normalized, { number, typeId, termType, effectiveDate, endDate, signingCount });
+  // CT-R18a：用租户日期处理新建、续签及变更；编辑更正由 DEC-167 的状态护栏决定。
+  if (!correction && input.operation !== 'terminate') {
+    data.actualTerminationDate = normalizedActualDate(data, tenantLocalDate(ctx.now, ctx.timezone));
+  }
   return { input, before, data };
+}
+function normalizedActualDate(
+  data: { effectiveDate: string; endDate: string | null; actualTerminationDate: string | null },
+  today: string,
+) {
+  if (data.effectiveDate > today) return null;
+  return data.endDate && data.endDate < today ? data.endDate : data.actualTerminationDate;
 }
 function preparedFields(
   input: ContractCommand,
@@ -267,7 +313,7 @@ async function validateReferences(
   }
   await checkScope(tx, ctx, input.employeeId, before?.createdBy);
   // DEC-164①：历史补录按合同生效日的任职判断，不按操作当天的离职状态判断。
-  const current = await findCurrentRecord(tx, ctx.tenantId, input.employeeId, normalized.effectiveDate!);
+  const current = await currentPrimary(tx, ctx.tenantId, input.employeeId, normalized.effectiveDate!);
   const [exit] =
     current && ['leave', 'retirement'].includes(current.kind)
       ? rowsOf<{ lastWorkDate: string }>(
@@ -284,16 +330,62 @@ async function validateReferences(
   )
     throw new AppError('VALIDATION_FAILED', '该合同类型不允许离职或退休后签订');
 }
-async function nextSigningCount(tx: Tx, ctx: ContractContext, employeeId: string, typeId: string, accumulate: boolean) {
+/** 签订事件计数，不用日期最晚合同的序号；更正/变更版本不增加一次签订。 */
+export async function nextSigningCount(
+  tx: Tx,
+  ctx: ContractContext,
+  employeeId: string,
+  typeId: string,
+  accumulate: boolean,
+) {
   const [count] = rowsOf<{ count: number }>(
-    await tx.execute(sql`SELECT coalesce(max(signing_count),0)::int AS count
-    FROM contract_records WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid
-      AND type_id=${typeId}::uuid AND NOT deleted AND status<>'void'
-      AND (${accumulate} OR effective_date >= coalesce((SELECT max(entry_date) FROM employment_cycles
+    await tx.execute(sql`SELECT count(*)::int AS count
+    FROM contract_requests q JOIN contract_records r ON r.tenant_id=q.tenant_id AND r.id=q.result_id
+    WHERE q.tenant_id=${ctx.tenantId} AND q.employee_id=${employeeId}::uuid AND q.type_id=${typeId}::uuid
+      AND q.operation IN ('create','renew') AND q.status='effective' AND NOT r.deleted
+      AND (${accumulate} OR q.effective_date >= coalesce((SELECT max(entry_date) FROM employment_cycles
         WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid
           AND entry_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date),'0001-01-01'::date))`),
   );
   return (count?.count ?? 0) + 1;
+}
+/** DEC-180②：员工锁内检查，重提排除自身。更正和终止不构成一次新签订。 */
+export async function assertNoInFlight(
+  tx: Tx,
+  ctx: ContractContext,
+  employeeId: string,
+  typeId: string,
+  operation: string,
+  excludeId?: string,
+) {
+  if (!['create', 'renew', 'change'].includes(operation)) return;
+  const [pending] = rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT id FROM contract_requests
+    WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND type_id=${typeId}::uuid
+      AND status IN ('in_review','approved') AND operation IN ('create','renew','change')
+      AND (${excludeId ?? null}::uuid IS NULL OR id<>${excludeId ?? null}::uuid) LIMIT 1`),
+  );
+  if (pending)
+    throw new AppError('CONFLICT', '请先处理该员工同类型的在途合同', {
+      reason: 'CONTRACT_IN_FLIGHT',
+      requestId: pending.id,
+    });
+}
+/** 保存实际写入载荷；旧终止申请也只需终止日期权限。 */
+export function requestWriteFields(request: ContractRequest): Record<string, unknown> {
+  if (request.operation === 'terminate') return { actualTerminationDate: request.actualTerminationDate };
+  return request.submittedFields ?? businessFields(request);
+}
+export function mergeFields(before: Record<string, unknown>, patch: Readonly<Record<string, unknown>>) {
+  return {
+    ...before,
+    ...patch,
+    ...('customFields' in patch
+      ? {
+          customFields: { ...((before.customFields as object) ?? {}), ...((patch.customFields as object) ?? {}) },
+        }
+      : {}),
+  };
 }
 /** 合同申请只保存载荷，审批通过与生效分离（DEC-125，同任职申请）。 */
 export async function createCommand(
@@ -310,6 +402,7 @@ export async function createCommand(
       await correctedState(tx, ctx, before, data, tenantLocalDate(ctx.now, ctx.timezone))
     ).actualTerminationDate;
   }
+  if (!correction) await assertNoInFlight(tx, ctx, input.employeeId, data.typeId, input.operation);
   // 同一源合同只允许一张未完成申请；员工锁将批量、单条、调度的检查串行化。
   if (before) {
     const [pending] = rowsOf(
@@ -325,6 +418,7 @@ export async function createCommand(
       tenantId: ctx.tenantId,
       employeeId: input.employeeId,
       operation: correction ? 'edit' : input.operation,
+      submittedFields: input.fields,
       mode: input.mode,
       targetId: before?.id ?? null,
       targetRevision: before?.revision ?? null,
@@ -343,6 +437,15 @@ export async function createCommand(
   const dueDate = input.operation === 'terminate' ? data.actualTerminationDate! : data.effectiveDate;
   return dueDate <= tenantLocalDate(ctx.now, ctx.timezone) ? applyRequest(tx, ctx, request!) : request!;
 }
+function appliedFields(request: ContractRequest, today: string) {
+  return {
+    ...businessFields(request),
+    signingCount: request.signingCount,
+    actualTerminationDate: ['edit', 'terminate'].includes(request.operation)
+      ? request.actualTerminationDate
+      : normalizedActualDate(request, today),
+  };
+}
 export async function applyRequest(tx: Tx, ctx: ContractContext, request: ContractRequest): Promise<Contract> {
   await lockEmployee(tx, ctx, request.employeeId);
   const latest = await loadRequest(tx, ctx.tenantId, request.id);
@@ -356,7 +459,7 @@ export async function applyRequest(tx: Tx, ctx: ContractContext, request: Contra
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const due = latest.operation === 'terminate' ? latest.actualTerminationDate! : latest.effectiveDate;
   if (due > today) throw new AppError('CONFLICT', '合同尚未到生效日期');
-  const data = { ...businessFields(latest), signingCount: latest.signingCount };
+  const data = appliedFields(latest, today);
   const correction = latest.operation === 'edit' ? await correctedState(tx, ctx, before!, latest, today) : null;
   let result: Contract;
   if (latest.operation === 'terminate') {
@@ -396,6 +499,7 @@ export async function applyRequest(tx: Tx, ctx: ContractContext, request: Contra
       targetRevision: _revision,
       resultId: _result,
       systemInitiated: _system,
+      submittedFields: _submitted,
       ...values
     } = inserted;
     const [saved] = await tx.insert(contractRecords).values(values).returning();

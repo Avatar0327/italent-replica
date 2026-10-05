@@ -1,5 +1,6 @@
 import { and, eq, sql, contractRecords, contractRequests, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
+import { currentPersons } from '../permission/scope-persons.js';
 import { scopeSql } from '../permission/module-access.js';
 import { rowsOf, type ContractContext } from './context.js';
 import { settings } from './configuration.js';
@@ -31,9 +32,9 @@ export async function listContracts(
     return rowsOf(
       await tx.execute(sql`SELECT e.id AS "employeeId",e.code,e.name FROM employment_employees e
       WHERE e.tenant_id=${ctx.tenantId} AND ${scope}
-      AND (SELECT r.kind FROM employment_records r WHERE r.tenant_id=e.tenant_id AND r.employee_id=e.id
-        AND r.start_date<=${today}::date ORDER BY r.start_date DESC,r.created_at DESC,r.id DESC LIMIT 1)
-        NOT IN ('leave','retirement')
+      AND EXISTS (SELECT 1 FROM (${currentPersons(ctx.tenantId, today)}) current
+        WHERE current.employee_id=e.id AND current.service_type='primary'
+          AND current.kind NOT IN ('leave','retirement'))
       AND NOT EXISTS (SELECT 1 FROM contract_records c WHERE c.tenant_id=e.tenant_id AND c.employee_id=e.id
         AND NOT c.deleted AND c.status='valid' AND c.approval_status='effective' AND c.effective_date<=${today}::date
         AND (c.end_date IS NULL OR c.end_date>=${today}::date)) ORDER BY e.id LIMIT ${limit} OFFSET ${offset}`),
