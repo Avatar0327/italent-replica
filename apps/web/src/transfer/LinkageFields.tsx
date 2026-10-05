@@ -1,6 +1,6 @@
 /** 调动表单的联动区块（R1-T10，`13` §7 HR 端“他人调动申请”表单）：只在 HR 入口出现，本人申请没有（`12` 附录）。 */
 import { linkageText } from './messages.js';
-import type { Choice, LinkageDraft, TransferFormProps } from './types.js';
+import type { Choice, ContractChoice, LinkageDraft, TransferFormProps } from './types.js';
 
 export function LinkageFields({ model, busy, onLinkage }: TransferFormProps) {
   const draft = model.linkage;
@@ -57,7 +57,7 @@ export function LinkageFields({ model, busy, onLinkage }: TransferFormProps) {
 
 function ContractFields(props: {
   draft: LinkageDraft;
-  contracts: readonly Choice[];
+  contracts: readonly ContractChoice[];
   change: (patch: Partial<LinkageDraft>) => void;
 }) {
   const { draft, contracts, change } = props;
@@ -84,9 +84,9 @@ function ContractFields(props: {
               onChange={(event) => change({ contractTargetId: event.target.value })}
             >
               <option value="">—</option>
-              {contracts.map((contract) => (
+              {contracts.map((contract, index) => (
                 <option key={contract.id} value={contract.id}>
-                  {contract.name}
+                  {contract.name ?? linkageText.contractOption(index + 1)}
                 </option>
               ))}
             </select>

@@ -1,6 +1,6 @@
 /** 调动联动的提交载荷与接口（R1-T10）。 */
 import { TRANSFER_API, transferRequest } from './api.js';
-import type { Choice, LinkageDraft, LinkageItemView, LinkageView, TransferFormModel } from './types.js';
+import type { ContractChoice, LinkageDraft, LinkageItemView, LinkageView, TransferFormModel } from './types.js';
 
 export const emptyLinkage: LinkageDraft = {
   changeContract: false,
@@ -54,7 +54,7 @@ export function sourceDepartment(model: TransferFormModel): string | null {
 }
 
 export function loadContractChoices(tenantId: string, employeeId: string, signal?: AbortSignal) {
-  return transferRequest<{ items: Choice[] }>(tenantId, `${TRANSFER_API}/employees/${employeeId}/contracts`, {
+  return transferRequest<{ items: ContractChoice[] }>(tenantId, `${TRANSFER_API}/employees/${employeeId}/contracts`, {
     ...(signal ? { signal } : {}),
   });
 }

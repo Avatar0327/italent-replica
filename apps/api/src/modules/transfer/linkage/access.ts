@@ -18,6 +18,7 @@ import { rowsOf } from '../../employment/record-store.js';
 import type { EmploymentContext } from '../../employment/types.js';
 import { resolveModuleScope, scopeAllowsInTransaction, type ModuleScope } from '../../permission/module-access.js';
 import { requireObjectWrite } from '../../permission/object-write.js';
+import { linkageFieldValues } from './approval.js';
 import type { DutyRelation, LinkageOptions, OrgRole } from './input.js';
 import { RELATION_FIELDS, ROLE_FIELDS } from './validation.js';
 
@@ -33,38 +34,47 @@ export async function resolveLinkageAccess(
   deps: Pick<TenantRouteDeps, 'authorize' | 'db' | 'clock'>,
   tenant: TenantContext,
   options: LinkageOptions | null,
+  before: LinkageOptions | null = null,
 ): Promise<LinkageAccess> {
-  const contractScope = options?.contract
-    ? await resolveModuleScope(deps, tenant, undefined, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`)
-    : undefined;
+  // 原选项里的合同同样要判范围：删除或改动合同联动也是在改写对该合同的变更计划（第三轮 P1-2）。
+  const contractScope =
+    options?.contract || before?.contract
+      ? await resolveModuleScope(deps, tenant, undefined, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`)
+      : undefined;
   const orgScope = options?.dutyTransfer?.orgRoles.length
     ? await resolveModuleScope(deps, tenant, undefined, ORG_OBJECT)
     : undefined;
   return { ...(contractScope ? { contractScope } : {}), ...(orgScope ? { orgScope } : {}) };
 }
 
-/** 联动选项落到任职对象上的字段编码（与审批载荷同一编码）。 */
-export function linkageFieldPayload(options: LinkageOptions): Record<string, null> {
-  const codes = [
-    ...(options.contract ? ['isChangeContract', 'contractChange'] : []),
-    ...(options.adjustSalary ? ['adjustSalary'] : []),
-    ...(options.onTrial ? ['onTrialMonths', ...(options.onTrial.startDate ? ['onTrialStartDate'] : [])] : []),
-    ...(options.handover ? ['handoverPersonId'] : []),
-    ...(options.partTimes.length ? ['partTimeEnds'] : []),
-    ...(options.dutyTransfer ? ['dutyTransfer'] : []),
-  ];
+/**
+ * 新旧选项不同的任职联动字段（与审批载荷同一编码）。清空、置 false、删掉嵌套字段同样算改动（第三轮 P1-2），
+ * 新建联动时原选项为空，即本次设置的全部字段。
+ */
+export function changedLinkageFields(before: LinkageOptions | null, after: LinkageOptions): Record<string, null> {
+  const [old, next] = [linkageFieldValues(before), linkageFieldValues(after)];
+  const codes = Object.keys(next).filter((code) => JSON.stringify(old[code]) !== JSON.stringify(next[code]));
   return Object.fromEntries(codes.map((code) => [code, null]));
+}
+
+export interface LinkageWrite {
+  readonly employeeId: string;
+  readonly operation: 'create' | 'update';
+  readonly options: LinkageOptions;
+  /** 修改前的选项（新建为 null）；按新旧差异授权。 */
+  readonly before?: LinkageOptions | null;
 }
 
 export async function authorizeLinkageWrite(
   tx: Tx,
   ctx: EmploymentContext,
   access: LinkageAccess | undefined,
-  input: { readonly employeeId: string; readonly operation: 'create' | 'update'; readonly options: LinkageOptions },
+  input: LinkageWrite,
 ): Promise<void> {
   if (!access || !ctx.authorize) return;
   const { options } = input;
-  const fields = linkageFieldPayload(options);
+  const before = input.before ?? null;
+  const fields = changedLinkageFields(before, options);
   if (Object.keys(fields).length)
     await requireObjectWrite(ctx.authorize, ctx, {
       objectCode: EMPLOYMENT_OBJECT,
@@ -75,7 +85,8 @@ export async function authorizeLinkageWrite(
     await authorizeSubordinateField(ctx, relation);
   for (const item of options.dutyTransfer?.orgRoles ?? [])
     await authorizeOrgRole(tx, ctx, access, item.orgId, item.role);
-  if (options.contract) await authorizeContractChange(tx, ctx, access, input.employeeId, options.contract);
+  if (Object.hasOwn(fields, 'contractChange'))
+    await authorizeContractChange(tx, ctx, access, input.employeeId, before?.contract ?? null, options.contract);
 }
 
 /** P1-5：职责转交原地改写下属的直线 / 虚线经理，按真实字段编辑权判定。 */
@@ -109,28 +120,67 @@ export async function authorizeOrgRole(
   });
 }
 
-/** P1-2：按目标合同的真实创建人判定合同范围（“我创建的”），并校验合同字段权限与“变更”按钮。 */
+/**
+ * P1-2：按目标合同的真实创建人判定合同范围（“我创建的”），新旧目标都要判；变动（含删掉）的合同字段按合同字段编辑权，
+ * 仍保留合同变更时校验“变更”按钮。
+ */
 async function authorizeContractChange(
   tx: Tx,
   ctx: EmploymentContext,
   access: LinkageAccess,
   employeeId: string,
-  change: NonNullable<LinkageOptions['contract']>,
+  before: LinkageOptions['contract'],
+  after: LinkageOptions['contract'],
 ) {
   const authorize: Authorizer = ctx.authorize!;
-  const [target] = rowsOf<{ createdBy: string | null; employeeId: string }>(
-    await tx.execute(sql`SELECT created_by AS "createdBy", employee_id AS "employeeId" FROM contract_records
-      WHERE tenant_id=${ctx.tenantId} AND id=${change.targetId}::uuid AND NOT deleted`),
-  );
-  if (!target || target.employeeId !== employeeId) throw new AppError('NOT_FOUND', '合同不存在');
-  const contractCtx = { ...ctx, scope: access.contractScope ?? undefined, authorize };
   if (!access.contractScope) throw new AppError('NOT_FOUND', '合同数据不存在');
-  await checkScope(tx, contractCtx, employeeId, target.createdBy ?? undefined);
-  await checkFields(contractCtx, 'update', change.fields);
-  await requirePermission(authorize, {
-    tenantId: ctx.tenantId,
-    userId: ctx.userId,
-    action: 'object.button',
-    resource: buttonResource(CONTRACT_OBJECT, contractAction('change', 'direct'), 'detail'),
-  });
+  const contractCtx = { ...ctx, scope: access.contractScope, authorize };
+  for (const targetId of new Set([before?.targetId, after?.targetId].filter((id): id is string => !!id))) {
+    const [target] = rowsOf<{ createdBy: string | null; employeeId: string }>(
+      await tx.execute(sql`SELECT created_by AS "createdBy", employee_id AS "employeeId" FROM contract_records
+        WHERE tenant_id=${ctx.tenantId} AND id=${targetId}::uuid AND NOT deleted`),
+    );
+    if (!target || target.employeeId !== employeeId) throw new AppError('NOT_FOUND', '合同不存在');
+    await checkScope(tx, contractCtx, employeeId, target.createdBy ?? undefined);
+  }
+  const changed = changedContractFields(before, after);
+  if (Object.keys(changed).length) await checkFields(contractCtx, 'update', changed);
+  if (after)
+    await requirePermission(authorize, {
+      tenantId: ctx.tenantId,
+      userId: ctx.userId,
+      action: 'object.button',
+      resource: buttonResource(CONTRACT_OBJECT, contractAction('change', 'direct'), 'detail'),
+    });
+}
+
+/** 新旧合同变更里值不同的合同字段（目标换了时两边全部字段都算）；自定义字段按 customFields 子键比较。 */
+function changedContractFields(before: LinkageOptions['contract'], after: LinkageOptions['contract']) {
+  const sameTarget = before?.targetId === after?.targetId;
+  const old = sameTarget ? (before?.fields ?? {}) : {};
+  const next = after?.fields ?? {};
+  const others = sameTarget ? {} : (before?.fields ?? {});
+  const keys = new Set([...Object.keys(old), ...Object.keys(next), ...Object.keys(others)]);
+  const result: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (key === 'customFields') {
+      const custom = changedCustom(old.customFields, next.customFields, others.customFields);
+      if (Object.keys(custom).length) result.customFields = custom;
+    } else if (
+      !sameTarget ||
+      JSON.stringify(old[key as keyof typeof old]) !== JSON.stringify(next[key as keyof typeof next])
+    )
+      result[key] = null;
+  }
+  return result;
+}
+
+function changedCustom(...sources: (Readonly<Record<string, unknown>> | undefined)[]) {
+  const [old = {}, next = {}, others = {}] = sources;
+  const ids = new Set([...Object.keys(old), ...Object.keys(next), ...Object.keys(others)]);
+  return Object.fromEntries(
+    [...ids]
+      .filter((id) => Object.hasOwn(others, id) || JSON.stringify(old[id]) !== JSON.stringify(next[id]))
+      .map((id) => [id, null]),
+  );
 }

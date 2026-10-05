@@ -35,7 +35,38 @@ interface DutyRow {
   receiverId: string;
 }
 
-export async function latestLinkage(tx: Tx, tenantId: string, businessId: string): Promise<StoredLinkage | null> {
+export function latestLinkage(tx: Tx, tenantId: string, businessId: string): Promise<StoredLinkage | null> {
+  return linkageVersion(tx, tenantId, businessId, null);
+}
+
+/**
+ * 某条修改命令写入之前的联动（第三轮 P1-2）：该命令已写过版本（幂等重放）时取其前一版本，否则取最新版本。
+ * 重放与首次请求按同一组新旧差异授权。
+ */
+export async function linkageBeforeCommand(
+  tx: Tx,
+  tenantId: string,
+  businessId: string,
+  commandId: string | undefined,
+): Promise<LinkageOptions | null> {
+  const [written] = commandId
+    ? rowsOf<{ versionNo: number }>(
+        await tx.execute(sql`SELECT version_no AS "versionNo" FROM transfer_linkage_versions
+          WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid AND command_id=${commandId}
+          ORDER BY version_no LIMIT 1`),
+      )
+    : [];
+  const stored = await linkageVersion(tx, tenantId, businessId, written ? Number(written.versionNo) - 1 : null);
+  return stored?.options ?? null;
+}
+
+async function linkageVersion(
+  tx: Tx,
+  tenantId: string,
+  businessId: string,
+  atMost: number | null,
+): Promise<StoredLinkage | null> {
+  if (atMost !== null && atMost < 1) return null;
   const [row] = rowsOf<VersionRow>(
     await tx.execute(sql`
     SELECT id, version_no AS "versionNo", contract_target_id AS "contractTargetId",
@@ -43,6 +74,7 @@ export async function latestLinkage(tx: Tx, tenantId: string, businessId: string
       on_trial_start_date::text AS "onTrialStartDate", on_trial_months AS "onTrialMonths", handover,
       handover_person_id AS "handoverPersonId", part_time_record_ids AS "partTimeRecordIds"
     FROM transfer_linkage_versions WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid
+      AND (${atMost}::int IS NULL OR version_no <= ${atMost}::int)
     ORDER BY version_no DESC LIMIT 1`),
   );
   if (!row) return null;

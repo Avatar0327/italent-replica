@@ -65,7 +65,14 @@ export async function updateTransferLinkage(
     throw new AppError('VALIDATION_FAILED', '本人调动申请不能设置联动业务', { reason: 'TRANSFER_LINKAGE_NOT_ALLOWED' });
   const executed = await linkageExecuted(tx, ctx.tenantId, businessId);
   assertLinkageMutable(business.state, business.payload.mode, executed, business.payload.effectiveDate > today);
-  await authorizeLinkageWrite(tx, ctx, access, { employeeId: business.employeeId, operation: 'update', options });
+  // 第三轮 P1-2：锁内读取原选项，按新旧差异授权（清空、置 false、删掉嵌套字段同样要有编辑权）。
+  const before = (await latestLinkage(tx, ctx.tenantId, businessId))?.options ?? null;
+  await authorizeLinkageWrite(tx, ctx, access, {
+    employeeId: business.employeeId,
+    operation: 'update',
+    options,
+    before,
+  });
   await validateLinkage(tx, ctx, business.employeeId, options);
   await appendLinkageVersion(tx, ctx, { businessId, employeeId: business.employeeId }, options);
   await bumpEmploymentBusiness(tx, ctx, business);

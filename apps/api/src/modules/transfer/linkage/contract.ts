@@ -44,10 +44,10 @@ async function assertNoInFlightContract(tx: Tx, ctx: EmploymentContext, employee
       AND operation<>'terminate' AND status IN ('in_review','returned','approved')
     ORDER BY effective_date, id LIMIT 1`),
   );
+  // 拒绝详情只给机器可读原因，不带在途申请的标识（第三轮同类出口：调动操作人未必有该申请的查看权）。
   if (pending)
     throw new AppError('CONFLICT', '员工有同类型在途的合同，请先处理在途合同后再变更合同', {
       reason: 'TRANSFER_CONTRACT_IN_FLIGHT',
-      contractRequestId: pending.id,
     });
 }
 

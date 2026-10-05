@@ -111,13 +111,8 @@ function visibleOptions(
         }
       : {}),
     ...(show('adjustSalary') ? { adjustSalary: options.adjustSalary } : {}),
-    ...(show('onTrialMonths')
-      ? {
-          onTrial: options.onTrial && {
-            months: options.onTrial.months,
-            ...(show('onTrialStartDate') ? { startDate: options.onTrial.startDate } : {}),
-          },
-        }
+    ...(show('onTrialMonths') || show('onTrialStartDate')
+      ? { onTrial: options.onTrial && trialView(options.onTrial, show) }
       : {}),
     ...(show('handoverPersonId') ? { handover: options.handover } : {}),
     ...(show('partTimeEnds') ? { partTimes: options.partTimes } : {}),
@@ -140,9 +135,10 @@ function pickContractFields(fields: Readonly<Record<string, unknown>>, viewable:
 async function linkageResults(tx: Tx, ctx: EmploymentContext, businessId: string, show: (code: string) => boolean) {
   const byBusiness = (table: typeof transferOnTrials | typeof transferHandovers) =>
     and(eq(table.tenantId, ctx.tenantId), eq(table.businessId, businessId));
-  const [trial] = show('onTrialMonths')
-    ? await tx.select().from(transferOnTrials).where(byBusiness(transferOnTrials))
-    : [];
+  const [trial] =
+    show('onTrialMonths') || show('onTrialStartDate')
+      ? await tx.select().from(transferOnTrials).where(byBusiness(transferOnTrials))
+      : [];
   const [handover] = show('handoverPersonId')
     ? await tx.select().from(transferHandovers).where(byBusiness(transferHandovers))
     : [];
@@ -152,14 +148,7 @@ async function linkageResults(tx: Tx, ctx: EmploymentContext, businessId: string
     .where(and(eq(transferLinkageItems.tenantId, ctx.tenantId), eq(transferLinkageItems.businessId, businessId)))
     .orderBy(transferLinkageItems.lineNo)) as LinkageItemRow[];
   return {
-    onTrial: trial
-      ? {
-          startDate: trial.startDate,
-          months: trial.months,
-          expectedEndDate: trial.expectedEndDate,
-          status: trial.status,
-        }
-      : null,
+    onTrial: trial ? trialView(trial, show) : null,
     handover: handover
       ? {
           handoverPersonId: handover.handoverPersonId,
@@ -182,5 +171,22 @@ function dutyTransferView(items: readonly LinkageItemRow[]) {
     orgRoleCount: duties.filter((item) => item.itemType === 'duty_org_role').length,
     failedCount: duties.filter((item) => item.status === 'failed').length,
     items: duties.map(itemView),
+  };
+}
+
+/**
+ * 试岗逐字段投影（第三轮 P2-1）：期限与状态随“试岗期限”，开始日随“试岗开始日期”；预计结束日由两者推出，
+ * 任一不可见都不返回，避免反推出隐藏的开始日。
+ */
+function trialView(
+  trial: { startDate: string | null; months: number; expectedEndDate?: string; status?: string },
+  show: (code: string) => boolean,
+) {
+  const [months, start] = [show('onTrialMonths'), show('onTrialStartDate')];
+  return {
+    ...(months ? { months: trial.months } : {}),
+    ...(months && trial.status !== undefined ? { status: trial.status } : {}),
+    ...(start ? { startDate: trial.startDate } : {}),
+    ...(months && start && trial.expectedEndDate !== undefined ? { expectedEndDate: trial.expectedEndDate } : {}),
   };
 }

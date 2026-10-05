@@ -5,6 +5,11 @@ export interface Choice {
   readonly id: string;
   readonly name: string;
 }
+/** 调动联动“变更的合同”候选：无权查看合同编号时 name 为 null（PR #74 第三轮 P2-2）。 */
+export interface ContractChoice {
+  readonly id: string;
+  readonly name: string | null;
+}
 export interface EmployeeChoice extends Choice {
   readonly code: string;
   readonly revision: number;
@@ -47,7 +52,7 @@ export interface TransferFormModel {
   /** HR 入口的联动草稿；本人申请没有联动区块。 */
   readonly linkage?: LinkageDraft;
   /** 可变更的合同（该员工当前有效、操作人可见）。 */
-  readonly contracts?: readonly Choice[];
+  readonly contracts?: readonly ContractChoice[];
 }
 export type TransferAction = 'draft' | 'submit' | 'direct';
 export interface TransferFormProps {

@@ -65,6 +65,7 @@ export const linkageText = {
   contractTermMonths: '合同期限（月）',
   contractSigningDate: '签订日期',
   noContracts: '没有可变更的有效合同或无权查看合同。',
+  contractOption: (index: number) => `合同 ${index}（无权查看合同编号）`,
   adjustSalary: '是否调整薪资',
   salaryHint: '首版只记录标志，生效时生成“待调薪”提醒（DEC-002）。',
   trialMonths: '试岗期限（月）',

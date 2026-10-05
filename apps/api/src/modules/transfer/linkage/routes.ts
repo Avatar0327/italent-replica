@@ -31,23 +31,34 @@ import {
 import { normalizeLinkage, type DutyRelation, type LinkageOptions, type OrgRole } from './input.js';
 import { loadLinkageItem, retryLinkageItem } from './items.js';
 import { updateTransferLinkage } from './service.js';
+import { linkageBeforeCommand } from './store.js';
 import { readTransferLinkage } from './view.js';
 
 type Deps = TenantRouteDeps;
 
-/** 命令外按当前权限先授权一次：幂等重放不进入命令体，同样经过这里（PR #74 第二轮 P1-2）。 */
+/**
+ * 命令外按当前权限先授权一次：幂等重放不进入命令体，同样经过这里（PR #74 第二轮 P1-2）。
+ * 修改联动按新旧差异授权（第三轮 P1-2）；重放时“旧”取该命令写入之前的版本，与首次请求同一口径。
+ */
 export async function preauthorizeLinkage(
   c: Context<TenantEnv>,
   deps: Deps,
   ctx: EmploymentContext,
-  input: { employeeId: string; operation: 'create' | 'update'; options: LinkageOptions | null },
+  input: { employeeId: string; operation: 'create' | 'update'; options: LinkageOptions | null; businessId?: string },
 ): Promise<LinkageAccess | undefined> {
-  if (!input.options) return undefined;
-  const access = await resolveLinkageAccess(deps, tenantOf(c), input.options);
+  const { businessId, ...write } = input;
+  if (!write.options) return undefined;
+  const before = businessId
+    ? await withTenant(deps.db, ctx.tenantId, (tx) =>
+        linkageBeforeCommand(tx, ctx.tenantId, businessId, c.req.header('idempotency-key')),
+      )
+    : null;
+  const access = await resolveLinkageAccess(deps, tenantOf(c), write.options, before);
   await withTenant(deps.db, ctx.tenantId, (tx) =>
     authorizeLinkageWrite(tx, { ...ctx, authorize: authorizeInTransaction(deps.authorize, tx) }, access, {
-      ...input,
-      options: input.options!,
+      ...write,
+      options: write.options!,
+      before,
     }),
   );
   return access;
@@ -78,7 +89,8 @@ export function registerTransferLinkageRoutes(router: Hono<TenantEnv>, deps: Dep
       loadEmploymentBusiness(tx, ctx.tenantId, id, tenantLocalDate(ctx.now, ctx.timezone), ctx.scope),
     );
     if (!business || business.kind !== 'transfer') throw new AppError('NOT_FOUND', '调动不存在');
-    const input = { employeeId: business.employeeId, operation: 'update' as const, options };
+    // TODO(F-017)：F-017 合并后在此接入其本人护栏（操作人不得修改本人调动的联动），与调动入口同一判定。
+    const input = { employeeId: business.employeeId, operation: 'update' as const, options, businessId: id };
     const access = await preauthorizeLinkage(c, deps, ctx, input);
     return runWrite(c, deps, ctx, raw, async (tx, context) => ({
       status: 200,
@@ -126,6 +138,8 @@ function registerContractChoices(router: Hono<TenantEnv>, deps: Deps) {
     const tenant = tenantOf(c);
     await requirePermission(deps.authorize, { ...tenant, action: 'object.view', resource: CONTRACT_OBJECT });
     const scope = await resolveModuleScope(deps, tenant, undefined, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`);
+    // 第三轮 P2-2：显示值同样服从合同字段查看权，看不到合同编号时返回 null，由前端按序号显示（DEC-045 文案在前端）。
+    const fields = await getModuleViewableFields(deps, ctx, CONTRACT_OBJECT);
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const rows = rowsOf<{ id: string; number: string; createdBy: string | null }>(
         await tx.execute(sql`SELECT id, number, created_by AS "createdBy" FROM contract_records
@@ -136,7 +150,7 @@ function registerContractChoices(router: Hono<TenantEnv>, deps: Deps) {
       for (const row of rows) {
         try {
           await checkScope(tx, { ...ctx, scope }, employeeId, row.createdBy ?? undefined);
-          visible.push({ id: row.id, name: row.number });
+          visible.push({ id: row.id, name: !fields || fields.has('number') ? row.number : null });
         } catch (error) {
           if (!(error instanceof AppError && error.code === 'NOT_FOUND')) throw error;
         }

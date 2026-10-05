@@ -1,4 +1,5 @@
 import { linkageApproval } from '../transfer/linkage/approval.js';
+import type { ForeignField } from './foreign-fields.js';
 import { lockTransferBusiness } from '../employment/transfer-locks.js';
 /**
  * 业务适配：把任职申请、人员自助变更申请转换为审批快照（表单值、变更前原值、变化字段、条件取值、路由部门），
@@ -51,6 +52,8 @@ export interface BusinessSnapshot {
   readonly values: Readonly<Row>;
   readonly originals: Readonly<Row> | null;
   readonly changedFields: readonly string[];
+  /** 嵌套的其他对象字段（R1-T10 合同变更）：披露与盲审按所属对象的权限判断（foreign-fields.ts）。 */
+  readonly foreignFields?: readonly ForeignField[];
   readonly conditionValues: Readonly<Row>;
   readonly latestDepartmentId: string | null;
   readonly recordDepartmentId: string | null;
@@ -277,6 +280,7 @@ const employmentAdapter: BusinessAdapter = {
       },
       latestDepartmentId: current?.fields.departmentId ?? null,
       recordDepartmentId: fields.departmentId,
+      ...(linkage.foreignFields.length ? { foreignFields: linkage.foreignFields } : {}),
       version: linkage.version ? `${payload.version}:${linkage.version}` : payload.version,
       processCode,
     };
