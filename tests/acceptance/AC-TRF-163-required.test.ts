@@ -131,6 +131,36 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
     });
   });
 
+  it.each([
+    ['job_level', 'TenantBase.JobLevelTransferMultiFormView'],
+    ['job_post', 'TenantBase.JobPostTransferMultiFormView'],
+  ])('DEC-165 %s 带出部门后清空仍拒绝，PATCH 同样拒绝', async (transferTypeCode, formId) => {
+    const w = await fixture(database().db, `trf165-${transferTypeCode}`);
+    const before = await w.businessCount();
+    await missing(await w.create({ transferTypeCode, formId, fields: { departmentId: null } }), ['departmentId']);
+    expect(await w.businessCount()).toBe(before);
+    const draft = await w.json<{ id: string; revision: number }>(
+      await w.create({ transferTypeCode, formId, mode: 'application', fields: {} }),
+      201,
+    );
+    await missing(
+      await w.request(w.hr.id, 'PATCH', `${base}/businesses/${draft.id}`, {
+        ifMatch: draft.revision,
+        body: { fields: { departmentId: null } },
+      }),
+      ['departmentId'],
+    );
+  });
+
+  it('AC-TRF-01/23 员工入口拒绝 HR 表单，HR 入口拒绝 Personal 表单', async () => {
+    const w = await fixture(database().db, 'trf-personal-binding');
+    const response = await w.create({ initiator: 'employee', mode: 'application' });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { details: { reason: 'TRANSFER_FORM_ENTRY_MISMATCH' } } });
+    const reversed = await w.create({ formId: 'TenantBase.PersonalCrossDepartmentTransferMultiFormView' });
+    expect(reversed.status).toBe(400);
+  });
+
   it('部门 null/空串被拒；readonly/hidden/absent 沿用冻结继承策略', async () => {
     const w = await fixture(database().db, 'trf163-modes');
     const before = await w.businessCount();
@@ -211,13 +241,12 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
       .select()
       .from(employmentPayloadVersions)
       .where(eq(employmentPayloadVersions.businessId, draft.id));
-    const { submittedFieldCodes: _submitted, ...oldSnapshot } = payload!.formSnapshot;
     await db.insert(employmentPayloadVersions).values({
       ...payload!,
       id: randomUUID(),
       versionNo: 2,
       previousVersionId: payload!.id,
-      formSnapshot: oldSnapshot,
+      formSnapshot: payload!.formSnapshot,
       explicitFieldCodes: [],
       departmentId: null,
       positionId: null,
