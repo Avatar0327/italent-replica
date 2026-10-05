@@ -111,7 +111,8 @@ export async function transitionEmployment(
   } else if (input.action === 'approve') {
     // R1-T07：只由审批中心在最后一个节点通过后同事务调用；审批通过 ≠ 生效，只有生效日已到才落地并向后更新。
     await appendEmploymentState(tx, ctx, business, 'approved');
-    await approveEmploymentBusiness(tx, ctx, business);
+    // DEC-195②：迟到审批同样按实际执行日对齐联动。
+    await approveEmploymentBusiness(tx, { ...ctx, deferredExecution: true }, business);
   } else if (input.action === 'activate') {
     if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) {
       throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
