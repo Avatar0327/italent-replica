@@ -215,6 +215,7 @@ it('P2-04 仅改经理向后更新不因既有编制超额拒绝', async () => {
 it.each(['application', 'direct'] as const)('DEC-195 %s 迟到调入和后续调出合到同日，不虚占编制', async (mode) => {
   const w = await fixture();
   const person = await w.hired();
+  const finalOrg = await w.session.org('最终调出部门', { establishedOn: '2026-01-01' });
   const save = async (date: string, departmentId: string) =>
     mode === 'application'
       ? w.approve(await w.apply(person.employee.id, date, { departmentId }), '2026-10-01T01:00:00Z')
@@ -224,7 +225,7 @@ it.each(['application', 'direct'] as const)('DEC-195 %s 迟到调入和后续调
           (await w.session.getEmployee(person.employee.id)).revision,
         );
   const first = await save('2026-10-05', w.to.id);
-  const last = await save('2026-10-06', w.from.id);
+  const last = await save('2026-10-06', finalOrg.id);
   expect(
     (
       await w.request(
@@ -235,7 +236,8 @@ it.each(['application', 'direct'] as const)('DEC-195 %s 迟到调入和后续调
       )
     ).status,
   ).toBe(200);
-  expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({
+  const run = await w.runScheduler('2026-10-08T01:00:00Z');
+  expect(run, JSON.stringify((await w.business(first.id)).activation)).toMatchObject({
     ...(mode === 'application' ? { activated: [first.id, last.id] } : {}),
     failed: [],
     errors: [],
