@@ -83,13 +83,13 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
     const org = await fixture.request('POST', '/api/tenant/org/organizations', {
       ...asA,
       ifMatch: 0,
-      body: { name: '备份前组织', startDate: '2026-01-01', parents: { admin: { parentId: a.tenant.id } } },
+      body: { name: '备份前组织', establishedOn: '2026-01-01', parents: { admin: { parentId: a.tenant.id } } },
     });
     expect(org.status, await org.clone().text()).toBe(201);
     await fixture.request('POST', '/api/tenant/org/organizations', {
       ...asB,
       ifMatch: 0,
-      body: { name: 'B 的组织', startDate: '2026-01-01', parents: { admin: { parentId: b.tenant.id } } },
+      body: { name: 'B 的组织', establishedOn: '2026-01-01', parents: { admin: { parentId: b.tenant.id } } },
     });
     const employee = await fixture.request('POST', '/api/tenant/employment/employees', {
       ...asA,
@@ -133,7 +133,7 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
     await fixture.request('POST', '/api/tenant/org/organizations', {
       ...asA,
       ifMatch: 0,
-      body: { name: '备份后组织', startDate: '2026-01-01', parents: { admin: { parentId: a.tenant.id } } },
+      body: { name: '备份后组织', establishedOn: '2026-01-01', parents: { admin: { parentId: a.tenant.id } } },
     });
   });
 
