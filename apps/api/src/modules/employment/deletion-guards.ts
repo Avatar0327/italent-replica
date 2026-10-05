@@ -136,6 +136,8 @@ export async function assertRestoredPredecessor(
   restored: { readonly previousId: string; readonly window: ReportingWindow },
 ): Promise<void> {
   const { window } = restored;
+  // 后一条与被删记录同日：前一条的区间不变（DEC-108 同日空段），没有联动改写，不检查也不记恢复。
+  if (window.to === window.from) return;
   const previous = await loadEmploymentRecord(tx, ctx.tenantId, restored.previousId, window.from);
   if (!previous) throw new AppError('SERVICE_UNAVAILABLE', '前一条任职记录不可读');
   await requireLinkedEmploymentRecord(tx, ctx, previous.employeeId, previous.fields.departmentId, previous.id);
@@ -148,7 +150,7 @@ export async function assertRestoredPredecessor(
     { validUntil: window.from },
     { validUntil: window.to },
   );
-  if (window.to === window.from || ['leave', 'retirement'].includes(previous.kind)) return;
+  if (['leave', 'retirement'].includes(previous.kind)) return;
   const { fields } = previous;
   if (fields.departmentId) {
     const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, fields.departmentId, window.from);
