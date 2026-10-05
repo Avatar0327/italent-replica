@@ -464,4 +464,12 @@ describe('AC-CT F-016 第二轮在途规则', () => {
       ).toHaveLength(1);
     });
   });
+  it('DEC-180 即时更正不产生未来申请，仍可更正与在途新建不同的原合同', async () => {
+    const w = await world('immediate-edit');
+    const c = await w.create({ endDate: '2027-09-30' });
+    expect((await pending(w)).status).toBe(201);
+    const corrected = await edit(w, c, { regularSalary: '123' });
+    expect(corrected.status, await corrected.clone().text()).toBe(200);
+    expect(await corrected.json()).toMatchObject({ items: [{ approvalStatus: 'effective', signingCount: 1 }] });
+  });
 });

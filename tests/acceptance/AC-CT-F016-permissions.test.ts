@@ -1,5 +1,5 @@
 /** P1 / P2-1：请求全部走真实授权器；仅夹具创建业务用 trusted setup。 */
-import { bootstrapTenantAdmin } from '@italent/api';
+import { bootstrapTenantAdmin, createPermissionAuthorizer } from '@italent/api';
 import { sql, withTenant, permissionScopePolicies, permissionScopePolicyRules } from '@italent/db';
 import { MODULE_OBJECTS, STANDARD_PROFILES } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vitest';
 import { contractWorld } from './AC-CT-support.js';
 import { addMember, createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 import { cmd, tenantApi, type RequestOptions } from './support/tenant-api.js';
+import { resubmit } from '../../apps/api/src/modules/approval/actions.js';
+import { requireResubmitRight } from '../../apps/api/src/modules/approval/access.js';
 import { installApprovalFallbacks } from './AC-APV-support.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
 
@@ -342,6 +344,35 @@ describe('AC-CT F-016 真实权限接入', () => {
         ),
       ).toEqual([{ status: 'returned' }]);
     });
+    // 模拟入口预检通过后撤权：锁内 hook 必须重新用真实授权器拒绝。
+    const deps = { db: w.db, clock, authorize: createPermissionAuthorizer(w.db) };
+    const lockedContext = {
+      tenantId: w.seed.tenant.id,
+      userId: w.user.id,
+      timezone: 'Asia/Shanghai',
+      now: clock(),
+      commandId: 'locked-resubmit',
+      expectedRevision: instance!.revision,
+    };
+    await expect(
+      withTenant(w.db, w.seed.tenant.id, (tx) =>
+        resubmit(
+          tx,
+          {
+            ...lockedContext,
+            recheckContractResubmit: (tx, id, corrections) =>
+              requireResubmitRight(
+                deps as Parameters<typeof requireResubmitRight>[0],
+                lockedContext,
+                id,
+                corrections,
+                tx,
+              ),
+          },
+          task!.instanceId,
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await w.scope(true, 2);
     const allowed = await retry();
     expect(allowed.status, await allowed.clone().text()).toBe(200);

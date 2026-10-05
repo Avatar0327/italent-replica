@@ -15,14 +15,26 @@ it('P2-N4 DEC-190 升级隔离整个冲突组，保留审批历史且无自动�
   const w = await legacyContractWorld(handle.db);
   const tenantId = w.session.tenant.id;
   const ids = [randomUUID(), randomUUID()];
+  const effectiveId = randomUUID();
   await installApprovalFallbacks(handle.db, tenantId, w.session.user.id);
   await withTenant(handle.db, tenantId, async (tx) => {
+    await tx.execute(sql`INSERT INTO contract_records
+      (id,tenant_id,employee_id,number,type_id,company_id,term_type,effective_date,end_date,signing_count,
+        root_contract_id,version_no,created_by)
+      VALUES (${effectiveId},${tenantId},${w.employee.id},'EFFECTIVE',${w.type.id},${w.company.id},'fixed',
+        '2025-01-01','2026-10-31',1,${effectiveId},1,${w.session.user.id})`);
+    await tx.execute(sql`INSERT INTO contract_requests
+      (tenant_id,employee_id,number,type_id,company_id,term_type,effective_date,end_date,signing_count,
+        operation,mode,status,result_id,created_by)
+      VALUES (${tenantId},${w.employee.id},'EFFECTIVE',${w.type.id},${w.company.id},'fixed',
+        '2025-01-01','2026-10-31',1,'create','direct','effective',${effectiveId},${w.session.user.id})`);
     for (const [i, id] of ids.entries()) {
       await tx.execute(sql`INSERT INTO contract_requests
         (id,tenant_id,employee_id,number,type_id,company_id,term_type,effective_date,end_date,signing_count,
           operation,mode,status,created_by)
         VALUES (${id},${tenantId},${w.employee.id},${`OLD-${i}`},${w.type.id},${w.company.id},'fixed',
-          ${i ? '2026-12-01' : '2026-11-01'}::date,'2027-10-31',2,'create','application','approved',${w.session.user.id})`);
+          ${i ? '2026-12-01' : '2026-11-01'}::date,'2027-10-31',2,
+          'create','application','approved',${w.session.user.id})`);
       await tx.execute(sql`INSERT INTO approval_instances
         (tenant_id,process_id,version_id,approval_type,object_code,business_type,business_id,
           subject_employee_id,initiator_user_id,title,status,business_version)
@@ -49,7 +61,7 @@ it('P2-N4 DEC-190 升级隔离整个冲突组，保留审批历史且无自动�
     withTenant(handle.db, tenantId, async (tx) =>
       rowsOf(await tx.execute(sql`SELECT id FROM contract_records WHERE employee_id=${w.employee.id}::uuid`)),
     );
-  expect(await records()).toHaveLength(0);
+  expect(await records()).toEqual([{ id: effectiveId }]);
   const cancel = (id: string, revision = 1) =>
     api.request('POST', `/api/tenant/contracts/requests/${id}/cancel`, {
       ...identity,
@@ -60,7 +72,7 @@ it('P2-N4 DEC-190 升级隔离整个冲突组，保留审批历史且无自动�
   expect((await cancel(ids[0]!)).status).toBe(200);
   // 只剩一份也不能自动恢复激活，必须显式重新提交。
   await runContractJobs(handle.db, { tenantId }, { clock, authorize: allowAll });
-  expect(await records()).toHaveLength(0);
+  expect(await records()).toEqual([{ id: effectiveId }]);
   expect((await cancel(ids[1]!)).status).toBe(200);
   expect(await (await failures()).json()).toMatchObject({ items: [] });
   const fresh = await api.request('POST', '/api/tenant/contracts/commands', {
@@ -74,7 +86,7 @@ it('P2-N4 DEC-190 升级隔离整个冲突组，保留审批历史且无自动�
     },
   });
   expect(fresh.status, await fresh.clone().text()).toBe(201);
-  expect(await fresh.json()).toMatchObject({ signingCount: 1, status: 'in_review' });
+  expect(await fresh.json()).toMatchObject({ signingCount: 2, status: 'in_review' });
   await withTenant(handle.db, tenantId, async (tx) => {
     expect(
       rowsOf(
