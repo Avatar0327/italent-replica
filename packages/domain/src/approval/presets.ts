@@ -6,7 +6,13 @@
  * “部门负责人审批 → HRBP 审核”，由租户调整后发布。
  */
 import { TRANSFER_FORM_FIELDS } from './transfer-view.js';
-import { APPROVAL_TYPES, type ApprovalNode, type ApprovalTypeCode, type ProcessDefinition } from './types.js';
+import {
+  APPROVAL_TYPES,
+  type ApprovalTypeCode,
+  type ApproverExpression,
+  type ProcessDefinition,
+  type SingleApprovalNode,
+} from './types.js';
 
 export interface PresetProcess {
   readonly presetKey: string;
@@ -19,7 +25,7 @@ export interface PresetProcess {
  * 相同 / 历史相同审批人自动处理默认关闭：本租户调动流程各节点都未启用（`14` §11.10 更正 §8.3，登记册 C-008），
  * 功能仍可由管理员按节点开启。
  */
-const node = (key: string, name: string, approver: ApprovalNode['approver'], extra: Partial<ApprovalNode> = {}) =>
+const node = (key: string, name: string, approver: ApproverExpression, extra: Partial<SingleApprovalNode> = {}) =>
   ({
     key,
     name,
@@ -32,13 +38,13 @@ const node = (key: string, name: string, approver: ApprovalNode['approver'], ext
     formFields: TRANSFER_FORM_FIELDS,
     editableFields: [],
     editMode: 'none',
-    actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' },
+    actions: { transfer: false, addSign: false, copySend: false, retrieve: false, reject: true, urge: 'inherit' },
     rejectCommentRequired: false,
     hideRecords: false,
     rejectResubmit: 'restart',
     messageRules: [],
     ...extra,
-  }) satisfies ApprovalNode;
+  }) satisfies SingleApprovalNode;
 
 type DraftInput = Omit<
   ProcessDefinition,
@@ -107,7 +113,7 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       nodes: [
         node('out_head', '调出部门负责人审批', 'latest_record_department_head'),
         node('in_hrbp', '调入部门HRBP审核', 'record_department_hrbp', {
-          actions: { transfer: true, addSign: true, copySend: true, retrieve: true, urge: 'inherit' },
+          actions: { transfer: true, addSign: true, copySend: true, retrieve: true, reject: true, urge: 'inherit' },
           rejectResubmit: 'rejecting_node',
           messageRules: [
             {

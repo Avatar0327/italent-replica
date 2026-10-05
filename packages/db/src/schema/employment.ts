@@ -325,9 +325,10 @@ export const employmentStateEvents = pgTable(
       .on(t.tenantId, t.businessId, t.eventNo)
       .where(sql`${t.state} = 'approved'`),
     check('employment_state_events_number_positive', sql`${t.eventNo} > 0`),
+    // disapproved：审批沿「不同意」流转到结束（DEC-144），申请办结、不生效，不能再提交（F-003 第二轮）。
     check(
       'employment_state_events_state',
-      sql`${t.state} IN ('draft', 'in_review', 'approved', 'rejected', 'effective', 'deleted')`,
+      sql`${t.state} IN ('draft', 'in_review', 'approved', 'rejected', 'disapproved', 'effective', 'deleted')`,
     ),
     check('employment_state_events_command_nonempty', sql`btrim(${t.commandId}) <> ''`),
   ],

@@ -31,7 +31,8 @@ export type EditMode = (typeof EDIT_MODES)[number];
 export const REJECT_RESUBMIT_MODES = ['restart', 'rejecting_node'] as const;
 export type RejectResubmitMode = (typeof REJECT_RESUBMIT_MODES)[number];
 
-export const MESSAGE_TRIGGERS = ['arrive', 'approve', 'reject', 'transfer'] as const;
+/** 消息触发动作：到达、同意、不同意（DEC-144 出口动作）、驳回、转交。 */
+export const MESSAGE_TRIGGERS = ['arrive', 'approve', 'disagree', 'reject', 'transfer'] as const;
 export const MESSAGE_CHANNELS = ['inbox', 'email', 'sms'] as const;
 /** 消息接收人表达式：流程所有者（发起人）/ 异动员工本人 / 本节点审批人。 */
 export const MESSAGE_RECIPIENTS = ['owner', 'subject_employee', 'assignee'] as const;
@@ -47,14 +48,63 @@ export interface MessageRule {
 export const URGE_MODES = ['inherit', 'enabled', 'disabled'] as const;
 export type UrgeMode = (typeof URGE_MODES)[number];
 
+/** 节点类型（F-003，`14` §11.4、§12）：单人审批 / 会签审批（多名审批人同时审批、无先后）。 */
+export const NODE_KINDS = ['single', 'countersign'] as const;
+export type NodeKind = (typeof NODE_KINDS)[number];
+
 /**
- * 加签类型（DEC-095，`14` §11.4 单人审批节点）：前加签 = 加签人按选择顺序依次先审、全部同意后回到原审批人；
- * 后加签 = 原审批人同意后加签人依次审批，全部完成才离开本节点。会签节点的并加签不适用（首版节点均为单人审批）。
+ * 加签类型（`14` §11.4）。单人审批节点（DEC-095）：前加签 = 加签人按选择顺序依次先审、全部同意后回到原审批人；
+ * 后加签 = 原审批人同意后加签人依次审批，全部完成才离开本节点。会签审批节点（DEC-117 / F-003）：并加签 = 加签人
+ * 与原审批人同时审批、无先后，计入节点流转规则（DEC-144）；前加签（DEC-152）按席位生效、不计入流转规则
+ * （policies.addSignerVotes）。
  */
-export const ADD_SIGN_TYPES = ['before', 'after'] as const;
+export const ADD_SIGN_TYPES = ['before', 'after', 'parallel'] as const;
 export type AddSignType = (typeof ADD_SIGN_TYPES)[number];
+/**
+ * 各类节点可用的加签类型：会签节点有并加签，另有前加签（原站 2024-06 起，组织人事 2024-07 开放，`14` §11.4；
+ * DEC-152 并入 F-003）；会签节点请求后加签、单人节点请求并加签返回明确错误。
+ */
+export const NODE_ADD_SIGN_TYPES: Readonly<Record<NodeKind, readonly AddSignType[]>> = {
+  single: ['before', 'after'],
+  countersign: ['before', 'parallel'],
+};
 /** 单次加签的人数上限（DEC-101：只限制单次操作规模）。 */
 export const MAX_ADD_SIGNERS = 10;
+
+/**
+ * 节点出口动作（出口连线上的动作，DEC-144，`14` §12.2）：「同意」「不同意」都按流转规则计数，达到规则即沿该动作的
+ * 连线流转（EXIT_TARGETS）。「驳回」是节点开关（NodeActions.reject）、不是出口动作，不进流转规则。缺省只有「同意」，
+ * R1-T07 起的节点行为不变；自定义动作的出口线首版不做。
+ */
+export const NODE_EXITS = ['approve', 'disagree'] as const;
+export type NodeExit = (typeof NODE_EXITS)[number];
+/**
+ * 出口连线的去向。复刻首版的流程是线性的：「同意」进入下一节点；「不同意」连到结束——流程结束、业务不生效，不进入
+ * 可修改重提的“退回”（原站本租户的不同意连线都连到结束，面板提示“任一审批人不同意，流程流转结束”，`14` §12.2）。
+ */
+export const EXIT_TARGETS: Readonly<Record<NodeExit, 'next' | 'end'>> = { approve: 'next', disagree: 'end' };
+export const DEFAULT_EXITS: readonly NodeExit[] = ['approve'];
+export const EXIT_LABELS: Readonly<Record<NodeExit, string>> = { approve: '同意', disagree: '不同意' };
+
+/**
+ * 会签流转规则（DEC-144，`14` §12.1）：任一人同意即可（新会签节点默认）/ 需所有人同意 / 自定义审批方式。
+ * 自定义时按出口动作逐行设“整数 N 人”或“百分比（向上取整）”；判定见 countersign.ts。
+ */
+export const TRANSITION_RULE_TYPES = ['any', 'all', 'custom'] as const;
+export type TransitionRuleType = (typeof TRANSITION_RULE_TYPES)[number];
+export const EXIT_RULE_KINDS = ['count', 'percent'] as const;
+export type ExitRuleKind = (typeof EXIT_RULE_KINDS)[number];
+export interface ExitRule {
+  readonly kind: ExitRuleKind;
+  /** 整数：≥ 1 的人数；百分比：(0, 100]，最多两位小数。 */
+  readonly value: number;
+}
+export type ExitRules = Readonly<Partial<Record<NodeExit, ExitRule>>>;
+export interface TransitionRule {
+  readonly type: TransitionRuleType;
+  /** 只有自定义审批方式逐行给出；两种预设按节点出口动作生成（countersign.exitRulesOf）。 */
+  readonly rules?: ExitRules;
+}
 
 /**
  * 相同 / 历史相同审批人自动处理的结果（DEC-106，`14` §11.6）：「同意」记为该审批人同意；「跳过」沿同意路径流转、
@@ -63,10 +113,16 @@ export const MAX_ADD_SIGNERS = 10;
 export const AUTO_RESULTS = ['approve', 'skip'] as const;
 export type AutoResult = (typeof AUTO_RESULTS)[number];
 
-/** 节点动作开关集（`14` §8.2：抄送 / 转交 / 撤回 / 加签 / 催办），随流程版本冻结（DEC-097）。 */
+/** 节点动作开关集（`14` §8.2：抄送 / 转交 / 撤回 / 加签 / 驳回 / 催办），随流程版本冻结（DEC-097）。 */
 export interface NodeActions {
   readonly transfer: boolean;
   readonly addSign: boolean;
+  /**
+   * 驳回（驳回到发起人）：节点开关（原站 `isRejectToStart`，`14` §12.2），单人与会签节点共用，加签人的驳回权限沿用
+   * 原节点开关（`14` §11.4）。缺省（未给出）即开启——R1-T07 起的节点一直可以驳回（rejectAllowed）。复刻只有
+   * “驳回到发起人”一种去向。
+   */
+  readonly reject?: boolean;
   /** 抄送：审批人手动选人抄送（`isCopySend`，原站无固定抄送对象清单）。 */
   readonly copySend: boolean;
   /** 审批人撤回：下一节点尚未处理时撤回本人的同意（`isRetrieve`）。 */
@@ -74,15 +130,19 @@ export interface NodeActions {
   readonly urge: UrgeMode;
 }
 
+/** 节点是否开启驳回：未给出即开启（NodeActions.reject）。 */
+export function rejectAllowed(node: Pick<ApprovalNode, 'actions'>): boolean {
+  return node.actions.reject !== false;
+}
+
 /** 节点最终是否允许催办：节点开启 / 关闭覆盖流程设置，继承时取流程设置（X-15）。 */
 export function urgeAllowed(processUrgeEnabled: boolean, node: Pick<ApprovalNode, 'actions'>): boolean {
   return node.actions.urge === 'inherit' ? processUrgeEnabled : node.actions.urge === 'enabled';
 }
 
-export interface ApprovalNode {
+interface ApprovalNodeBase {
   readonly key: string;
   readonly name: string;
-  readonly approver: ApproverExpression;
   readonly noAssignee: NoAssigneePolicy;
   readonly sameAssigneeSkip: boolean;
   readonly historySameAssigneeSkip: boolean;
@@ -101,6 +161,47 @@ export interface ApprovalNode {
   readonly hideRecords: boolean;
   readonly rejectResubmit: RejectResubmitMode;
   readonly messageRules: readonly MessageRule[];
+  /** 出口动作（DEC-144）；缺省只有「同意」（DEFAULT_EXITS）。 */
+  readonly exits?: readonly NodeExit[];
+}
+
+/** 单人审批节点：一个审批人表达式（R1-T07 起的节点；类型缺省即单人）。 */
+export interface SingleApprovalNode extends ApprovalNodeBase {
+  readonly kind?: 'single';
+  readonly approver: ApproverExpression;
+}
+
+/**
+ * 会签审批节点（F-003）：多个审批人表达式逐人解析，审批人同时审批、无先后；按流转规则判定沿哪个出口动作流转
+ * （DEC-144）。审批人为空、自审、相同 / 历史相同审批人自动处理都逐人生效；自动处理的结果只能是「同意」（DEC-106）。
+ */
+export interface CountersignApprovalNode extends ApprovalNodeBase {
+  readonly kind: 'countersign';
+  readonly approvers: readonly ApproverExpression[];
+  readonly transitionRule: TransitionRule;
+}
+
+export type ApprovalNode = SingleApprovalNode | CountersignApprovalNode;
+
+export function isCountersign(node: ApprovalNode): node is CountersignApprovalNode {
+  return node.kind === 'countersign';
+}
+
+export function nodeKindOf(node: ApprovalNode): NodeKind {
+  return node.kind ?? 'single';
+}
+
+/** 节点逐人解析的审批人表达式：单人节点一个，会签节点按配置顺序多个。 */
+export function approverExpressionsOf(node: ApprovalNode): readonly ApproverExpression[] {
+  return isCountersign(node) ? node.approvers : [node.approver];
+}
+
+export function nodeExits(node: Pick<ApprovalNode, 'exits'>): readonly NodeExit[] {
+  return node.exits ?? DEFAULT_EXITS;
+}
+
+export function hasExit(node: Pick<ApprovalNode, 'exits'>, exit: NodeExit): boolean {
+  return nodeExits(node).includes(exit);
 }
 
 export const CONDITION_OPERATORS = ['eq', 'ne', 'in', 'not_in', 'is_empty', 'not_empty', 'in_org_tree'] as const;

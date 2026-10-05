@@ -3,6 +3,15 @@ import { auditEvents, sql, type Tx } from '@italent/db';
 import { AppError, type ErrorCode } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 
+/**
+ * 用户 / 租户 ID 按数据库 UUID 语义规范化（与 R6-1 派单闸锁键同口径）：入参已校验为 8-4-4-4-12 的十六进制写法，
+ * 规范形式即小写。审批模块在入口统一规范化，大小写不同的同一 UUID 在比较、去重、一人一票计数时都是同一个人
+ * （F-003 第二轮 P2-1）。
+ */
+export function canonicalId(id: string): string {
+  return id.toLowerCase();
+}
+
 /** 按用户解析某业务对象的可查看字段（undefined = 全部可见）；由路由用授权器注入。 */
 export interface FieldAccess {
   viewable(tx: Tx, userId: string, objectCode: string): Promise<ReadonlySet<string> | undefined>;

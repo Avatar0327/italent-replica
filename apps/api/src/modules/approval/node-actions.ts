@@ -4,9 +4,11 @@
  */
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import { isCountersign } from '@italent/domain';
 import { assertOpen, ok, openTask, type Outcome } from './actions.js';
 import { approvalError, assertRevision, auditApproval, type ApprovalContext } from './context.js';
-import { assertBusinessUnchanged, openRun, persistRun } from './engine.js';
+import { activationOf, countersignFlowed, holdersAfterRetrieve, reopenEnded, resettle } from './countersign.js';
+import { assertBusinessUnchanged, nodeIndex, openRun, persistRun } from './engine.js';
 import { notifyCc } from './notifications.js';
 import { isActiveAccount } from './resolver.js';
 import { retrievableTask } from './rules.js';
@@ -54,7 +56,10 @@ export async function copySend(tx: Tx, ctx: ApprovalContext, input: CopySendInpu
   return ok(run);
 }
 
-/** 审批人撤回本人的同意：取消其后的待办，任务回到本人（判定见 rules.retrievableTask）。 */
+/**
+ * 审批人撤回本人的同意：取消其后的待办，任务回到本人（判定见 rules.retrievableTask）。会签节点（F-003）尚未流转时
+ * 只重开本人、其他人的待办不动；已沿同意流转时取消其后的待办，并恢复本节点因流转而结束的任务。
+ */
 export async function retrieveTask(tx: Tx, ctx: ApprovalContext, taskId: string): Promise<Outcome> {
   const run = await openRun(tx, ctx, await instanceOfTask(tx, ctx.tenantId, taskId));
   assertRevision(ctx.expectedRevision, run.instance.revision);
@@ -66,7 +71,9 @@ export async function retrieveTask(tx: Tx, ctx: ApprovalContext, taskId: string)
   if (retrievableTask(run.instance, run.version, tasks, ctx.userId)?.id !== task.id) {
     throw approvalError('CONFLICT', 'APPROVAL_NOT_RETRIEVABLE', '本节点未开启撤回或后续节点已处理，不能撤回');
   }
-  await cancelPending(tx, ctx, run.instance.id);
+  const activation = isCountersign(run.version.nodes[nodeIndex(run, task.nodeKey)]!) ? activationOf(tasks, task) : null;
+  const flowed = activation === null || countersignFlowed(activation);
+  if (flowed) await cancelPending(tx, ctx, run.instance.id);
   const reopened = await insertTask(tx, ctx, run.instance.id, {
     round: run.instance.round,
     nodeKey: task.nodeKey,
@@ -75,8 +82,14 @@ export async function retrieveTask(tx: Tx, ctx: ApprovalContext, taskId: string)
     status: 'pending',
     isExceptionAdmin: task.isExceptionAdmin,
     parentTaskId: task.id,
+    activationId: task.activationId,
   });
   run.instance = { ...run.instance, currentNodeKey: task.nodeKey };
+  if (activation && flowed) {
+    // 恢复因流转而结束的席位；异常管理员接替时若已占着一席则合并（一人一票），人数变了要重新结算。
+    const holders = holdersAfterRetrieve(activation, ctx.userId);
+    if (await reopenEnded(tx, run, activation, tasks, holders)) await resettle(tx, run, task);
+  }
   await appendLog(tx, ctx, run.instance, { event: 'retrieve', nodeKey: task.nodeKey, taskId: reopened });
   await auditApproval(tx, ctx, {
     action: 'approval.task.retrieve',

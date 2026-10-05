@@ -953,7 +953,11 @@ export const personnelChangeRequests = pgTable(
   (t) => [
     unique('personnel_change_requests_owner_id').on(t.tenantId, t.employeeId, t.id),
     employeeFk('personnel_change_requests_employee_fk', t),
-    check('personnel_change_requests_state', sql`${t.status} IN ('pending_approval','applied','withdrawn')`),
+    // disapproved：审批沿「不同意」流转到结束，申请办结、不写入子集，不能重提（F-003 第二轮，DEC-144）。
+    check(
+      'personnel_change_requests_state',
+      sql`${t.status} IN ('pending_approval','applied','withdrawn','disapproved')`,
+    ),
     check('personnel_change_requests_revision_positive', sql`${t.revision}>0 AND ${t.targetRevision}>=0`),
   ],
 );

@@ -1,6 +1,7 @@
 /** 审批实例、任务、日志的读写（全部在调用方的租户事务内，查询有界）。 */
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { actorOf, approvalError, auditApproval, rowsOf, type ApprovalContext, type Row } from './context.js';
 import type { BusinessType } from './adapters.js';
@@ -11,13 +12,42 @@ import { isAssignable } from './resolver.js';
  */
 export const MAX_PENDING = 50;
 const BATCH = 500;
+
+/** uuid[] 参数（drizzle 的数组参数会展开成列表，须显式拼成数组）。 */
+function uuidArray(values: readonly string[]): SQL {
+  return values.length
+    ? sql`ARRAY[${sql.join(
+        values.map((value) => sql`${value}::uuid`),
+        sql`, `,
+      )}]`
+    : sql`'{}'::uuid[]`;
+}
+
 /** 详情默认展示的最新记录条数；完整历史走分页接口。 */
 export const RECENT = 200;
 
-export type InstanceStatus = 'running' | 'returned' | 'approved' | 'withdrawn' | 'cancelled';
-/** queued：多人依次加签中排在后面、尚未轮到的加签任务（`14` §11.4）。 */
+/** disapproved：沿「不同意」连线流转到结束（DEC-144 / EXIT_TARGETS），流程结束、业务不生效，不能重提。 */
+export type InstanceStatus = 'running' | 'returned' | 'approved' | 'disapproved' | 'withdrawn' | 'cancelled';
+/**
+ * queued：多人依次加签中排在后面、尚未轮到的加签任务（`14` §11.4）。disagreed：点了「不同意」出口动作（DEC-144）。
+ * ended：会签节点已沿某个出口动作流转，其余未处理的任务自动结束（暂定，policies.countersignEndedReason）。
+ * merged：系统交接 / 接管让同一人在会签节点承接多席时，多出的那一席“由同一人接手、不重复计票”（一人一票）。
+ */
 export type TaskStatus =
-  'pending' | 'approved' | 'rejected' | 'transferred' | 'skipped' | 'cancelled' | 'add_signed' | 'queued';
+  | 'pending'
+  | 'approved'
+  | 'disagreed'
+  | 'rejected'
+  | 'transferred'
+  | 'skipped'
+  | 'cancelled'
+  | 'add_signed'
+  | 'queued'
+  | 'ended'
+  | 'merged';
+
+/** 仍在办的任务状态（待办、依次加签排队中、前加签挂起中）。 */
+export const OPEN_STATUSES: ReadonlySet<TaskStatus> = new Set(['pending', 'queued', 'add_signed']);
 
 export interface InstanceRow {
   readonly id: string;
@@ -51,11 +81,15 @@ export interface TaskRow {
   readonly assigneeUserId: string | null;
   /** 按表达式解析出的候选人（DEC-114）。 */
   readonly candidateUserId: string | null;
+  /** 会签合并席位时被合并的其他候选人（DEC-114，F-003 第二轮 P2-4）。 */
+  readonly mergedCandidateUserIds: readonly string[];
   readonly origin: string;
   readonly status: TaskStatus;
   readonly isExceptionAdmin: boolean;
   readonly adminSelfTransfer: boolean;
   readonly parentTaskId: string | null;
+  /** 节点的本次激活（F-003）：会签按它结算；R1-T07 时期的任务为空。 */
+  readonly activationId: string | null;
   readonly comment: string | null;
   readonly actedAt: string | null;
 }
@@ -96,11 +130,15 @@ function taskOf(row: Row): TaskRow {
     nodeKey: String(row.node_key),
     assigneeUserId: (row.assignee_user_id as string | null) ?? null,
     candidateUserId: (row.candidate_user_id as string | null) ?? null,
+    mergedCandidateUserIds: Array.isArray(row.merged_candidate_user_ids)
+      ? (row.merged_candidate_user_ids as string[])
+      : [],
     origin: String(row.origin),
     status: row.status as TaskStatus,
     isExceptionAdmin: Boolean(row.is_exception_admin),
     adminSelfTransfer: Boolean(row.admin_self_transfer),
     parentTaskId: (row.parent_task_id as string | null) ?? null,
+    activationId: (row.activation_id as string | null) ?? null,
     comment: (row.comment as string | null) ?? null,
     actedAt: iso(row.acted_at),
   };
@@ -190,11 +228,14 @@ export interface NewTask {
   readonly nodeKey: string;
   readonly assigneeUserId: string | null;
   readonly candidateUserId?: string | null;
+  readonly mergedCandidateUserIds?: readonly string[];
   readonly origin: string;
   readonly status: TaskStatus;
   readonly isExceptionAdmin?: boolean;
   readonly adminSelfTransfer?: boolean;
   readonly parentTaskId?: string | null;
+  /** 节点的本次激活：进入节点时新取，转交、加签、撤回与恢复沿用上级任务的（F-003）。 */
+  readonly activationId: string | null;
 }
 
 /** 任务字段级审计（清单 12）：创建（含自动跳过）、关闭、取消都按任务 ID 记录前后值，与写入同事务。 */
@@ -214,19 +255,22 @@ export async function insertTask(tx: Tx, ctx: ApprovalContext, instanceId: strin
     nodeKey: task.nodeKey,
     assigneeUserId: task.assigneeUserId,
     candidateUserId: task.candidateUserId ?? null,
+    mergedCandidateUserIds: task.mergedCandidateUserIds ?? [],
     origin: task.origin,
     status: task.status,
     isExceptionAdmin: task.isExceptionAdmin ?? false,
     adminSelfTransfer: task.adminSelfTransfer ?? false,
     parentTaskId: task.parentTaskId ?? null,
+    activationId: task.activationId,
   });
   await tx.execute(sql`INSERT INTO approval_tasks
-    (id,tenant_id,instance_id,seq,round,node_key,assignee_user_id,candidate_user_id,origin,status,
-     is_exception_admin,admin_self_transfer,parent_task_id,acted_at,created_at)
+    (id,tenant_id,instance_id,seq,round,node_key,assignee_user_id,candidate_user_id,merged_candidate_user_ids,
+     origin,status,is_exception_admin,admin_self_transfer,parent_task_id,activation_id,acted_at,created_at)
     SELECT ${id},${ctx.tenantId},${instanceId}::uuid,COALESCE(max(seq),0)+1,${task.round},${task.nodeKey},
-      ${task.assigneeUserId},${task.candidateUserId ?? null},${task.origin},${task.status},
-      ${task.isExceptionAdmin ?? false},${task.adminSelfTransfer ?? false},${task.parentTaskId ?? null},${actedAt},
-      ${ctx.now.toISOString()}
+      ${task.assigneeUserId},${task.candidateUserId ?? null},${uuidArray(task.mergedCandidateUserIds ?? [])},
+      ${task.origin},${task.status},
+      ${task.isExceptionAdmin ?? false},${task.adminSelfTransfer ?? false},${task.parentTaskId ?? null},
+      ${task.activationId},${actedAt},${ctx.now.toISOString()}
     FROM approval_tasks WHERE tenant_id=${ctx.tenantId} AND instance_id=${instanceId}::uuid`);
   return id;
 }
@@ -263,6 +307,30 @@ export async function activateTask(tx: Tx, ctx: ApprovalContext, instanceId: str
     await auditTask(tx, ctx, 'approval.task.activate', taskId, { status: 'queued' }, { status: 'pending' });
 }
 
+/**
+ * 会签节点前加签（DEC-152）：前加签人全部同意后回到原席位——原审批人挂起的任务恢复为待办，这一席始终只有一张任务，
+ * 不留挂起状态的旧任务。
+ */
+export async function resumeAddSigned(tx: Tx, ctx: ApprovalContext, instanceId: string, taskId: string) {
+  await assertPendingRoom(tx, ctx.tenantId, instanceId);
+  const resumed = rowsOf(
+    await tx.execute(sql`UPDATE approval_tasks SET status='pending'
+      WHERE tenant_id=${ctx.tenantId} AND id=${taskId}::uuid AND status='add_signed' RETURNING id`),
+  );
+  if (resumed.length)
+    await auditTask(tx, ctx, 'approval.task.activate', taskId, { status: 'add_signed' }, { status: 'pending' });
+}
+
+/** 会签节点前加签返回时原审批人已不可审批：挂起的任务改记为已转交，由调用方另建异常管理员任务接替这一席。 */
+export async function closeAddSigned(tx: Tx, ctx: ApprovalContext, taskId: string): Promise<void> {
+  const closed = rowsOf(
+    await tx.execute(sql`UPDATE approval_tasks SET status='transferred',acted_at=${ctx.now.toISOString()}
+      WHERE tenant_id=${ctx.tenantId} AND id=${taskId}::uuid AND status='add_signed' RETURNING id`),
+  );
+  if (closed.length)
+    await auditTask(tx, ctx, 'approval.task.close', taskId, { status: 'add_signed' }, { status: 'transferred' });
+}
+
 /** 排队中的加签人已不可审批（F8）：排队任务改记为已转交，由调用方另建异常管理员任务接替。 */
 export async function closeQueued(tx: Tx, ctx: ApprovalContext, taskId: string): Promise<void> {
   const closed = rowsOf(
@@ -286,6 +354,24 @@ export async function closeTask(
   );
   if (closed.length)
     await auditTask(tx, ctx, 'approval.task.close', taskId, { status: 'pending', comment: null }, { status, comment });
+}
+
+/**
+ * 会签节点流转后，其余仍在办的任务自动结束（暂定，DEC-144 / Q-M0-57），逐个写任务审计；返回被结束的任务。
+ * 只动传入的任务（本次激活），其他节点的任务不受影响。
+ */
+export async function endOpenTasks(tx: Tx, ctx: ApprovalContext, tasks: readonly TaskRow[]): Promise<TaskRow[]> {
+  const ended: TaskRow[] = [];
+  for (const task of tasks.filter((candidate) => OPEN_STATUSES.has(candidate.status))) {
+    const updated = rowsOf(
+      await tx.execute(sql`UPDATE approval_tasks SET status='ended',acted_at=${ctx.now.toISOString()}
+        WHERE tenant_id=${ctx.tenantId} AND id=${task.id}::uuid AND status=${task.status} RETURNING id`),
+    );
+    if (!updated.length) continue;
+    await auditTask(tx, ctx, 'approval.task.end', task.id, { status: task.status }, { status: 'ended' });
+    ended.push(task);
+  }
+  return ended;
 }
 
 /** 结束实例时取消在办与排队中的任务，逐个写任务审计（AGENTS §10「审计」）。 */
@@ -365,7 +451,7 @@ export async function updateInstance(
   >,
 ): Promise<InstanceRow> {
   const next = { ...instance, ...patch, revision: instance.revision + 1 };
-  const done = ['approved', 'withdrawn', 'cancelled'].includes(next.status);
+  const done = ['approved', 'disapproved', 'withdrawn', 'cancelled'].includes(next.status);
   await tx.execute(sql`UPDATE approval_instances SET status=${next.status},current_node_key=${next.currentNodeKey},
       returned_from_node_key=${next.returnedFromNodeKey},round=${next.round},revision=${next.revision},
       history_from_seq=${next.historyFromSeq},

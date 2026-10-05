@@ -2,15 +2,21 @@
  * 流程仿真（DEC-036，`14` §9.3）：只用虚拟数据——审批人关系（表达式 → 账号）、直线经理、组织上下级都由仿真输入给出，
  * 不读取真实人员、组织负责人或账号绑定，只有仿真权限的人拿不到范围外的真实关系（PR #35 第二轮清单 7）。
  * 只读，不建实例、不发消息、不生成待办。按对象仿真同时给出原站规则（按实体、跨审批类型按优先级）与复刻规则
- * （DEC-017）的命中流程，并对复刻命中流程继续核算能否提交（X-17）。
+ * （DEC-017）的命中流程，并对复刻命中流程继续核算能否提交（X-17）。会签节点（F-003）逐人给出审批人与处理方式，
+ * 并给出按出口动作生成的流转规则（DEC-144）。
  */
 import type { Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  approverExpressionsOf,
   avoidSelfExceptionAdmin,
   decideNode,
   evaluateCondition,
+  exitRulesOf,
+  isCountersign,
   isSelf,
+  nodeExits,
+  nodeKindOf,
   submitBlockers,
   type ApprovalNode,
   type ApprovalTypeCode,
@@ -63,12 +69,17 @@ const managerOf = (data: SimulationData, candidate: Candidate): Candidate => ({
   userId: (candidate.userId && data.managers?.[candidate.userId]) ?? null,
 });
 
-function candidateOf(node: ApprovalNode, data: SimulationData, facts: RoutingFacts): string | null {
-  return node.approver === 'owner' ? facts.initiatorUserId : (data.relations?.[node.approver] ?? null);
+function candidateOf(expression: ApproverExpression, data: SimulationData, facts: RoutingFacts): string | null {
+  return expression === 'owner' ? facts.initiatorUserId : (data.relations?.[expression] ?? null);
 }
 
-function decideVirtual(node: ApprovalNode, data: SimulationData, facts: RoutingFacts): NodeDecision {
-  const userId = candidateOf(node, data, facts);
+function decideVirtual(
+  node: ApprovalNode,
+  expression: ApproverExpression,
+  data: SimulationData,
+  facts: RoutingFacts,
+): NodeDecision {
+  const userId = candidateOf(expression, data, facts);
   const candidate: Candidate = userId ? { personId: null, userId } : NOBODY;
   const draft = decideNode(node, candidate, facts);
   if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return draft;
@@ -116,7 +127,7 @@ function virtualFacts(ctx: ApprovalContext, version: VersionView, data: Simulati
     subjectEmployeeId: null,
     subjectUserId: data.subjectUserId ?? null,
     exceptionAdminUserId: version.exceptionAdminUserId ?? '',
-    previousApproverUserId: null,
+    previousApproverUserIds: [],
     approvedUserIds: [],
     chainUserIds: [],
   };
@@ -128,7 +139,12 @@ function virtualFacts(ctx: ApprovalContext, version: VersionView, data: Simulati
  */
 function preflight(ctx: ApprovalContext, version: VersionView, data: SimulationData) {
   const facts = virtualFacts(ctx, version, data, 0);
-  const first = version.nodes[0] ? decideVirtual(version.nodes[0], data, facts) : undefined;
+  const node = version.nodes[0];
+  // 会签首节点逐人核验（F-003）：任一人为空即不可提交。
+  const decisions = node
+    ? approverExpressionsOf(node).map((expression) => decideVirtual(node, expression, data, facts))
+    : [];
+  const first = decisions.find((decision) => decision.kind === 'first_node_empty') ?? decisions[0];
   const admin: Candidate = version.exceptionAdminUserId
     ? { personId: null, userId: version.exceptionAdminUserId }
     : NOBODY;
@@ -136,37 +152,81 @@ function preflight(ctx: ApprovalContext, version: VersionView, data: SimulationD
   return submitBlockers(choice, first).map((blocker) => blocker.message);
 }
 
+type Outcome = ReturnType<typeof describe>;
+
+/** 与真实提交一致（F-003）：两个表达式解析为同一人、或落到同一接手人时只算一席。 */
+function simulatedSeats(
+  node: ApprovalNode,
+  expressions: readonly ApproverExpression[],
+  version: VersionView,
+  data: SimulationData,
+  facts: RoutingFacts,
+) {
+  const seats: (Outcome & { expression: ApproverExpression })[] = [];
+  const candidates = new Set<string>();
+  for (const expression of expressions) {
+    const candidate = candidateOf(expression, data, facts);
+    if (candidate !== null && candidates.has(candidate)) continue;
+    if (candidate !== null) candidates.add(candidate);
+    const outcome = describe(decideVirtual(node, expression, data, facts), version, data, facts);
+    if (outcome.approverUserId && seats.some((seat) => seat.approverUserId === outcome.approverUserId)) continue;
+    seats.push({ expression, ...outcome });
+  }
+  return seats;
+}
+const STATUS_RANK: Readonly<Record<string, number>> = { pass: 0, warning: 1, exception: 2 };
+
+/** 会签节点的汇总（F-003）：状态取逐人结果中最严重的，审批人逐人列在 approvers 中。 */
+function countersignSummary(node: ApprovalNode, seats: readonly (Outcome & { expression: string })[]) {
+  if (!isCountersign(node)) {
+    const { expression: _expression, ...single } = seats[0]!;
+    return single;
+  }
+  const status = seats.reduce(
+    (worst, seat) => (STATUS_RANK[seat.status]! > STATUS_RANK[worst]! ? seat.status : worst),
+    'pass',
+  );
+  const transitionRule = { type: node.transitionRule.type, rules: exitRulesOf(node.transitionRule, nodeExits(node)) };
+  const message = `会签：${seats.length} 名审批人同时审批，按流转规则流转`;
+  return { status, approverUserId: null, resolution: 'countersign', message, transitionRule };
+}
+
 /**
- * 逐节点推演：假定每个节点由解析出的审批人同意，据此计算后续节点的相同 / 历史审批人与审批链。
- * DEC-114：“与上一节点相同”比较上一节点解析出的候选人（跳过的节点也有候选人）。
+ * 逐节点推演：假定每个节点由解析出的审批人同意（会签节点假定全部审批人同意），据此计算后续节点的相同 / 历史审批人与
+ * 审批链。DEC-114：“与上一节点相同”比较上一节点解析出的候选人（跳过的节点也有候选人；会签节点有多个）。
  */
 function simulateNodes(ctx: ApprovalContext, version: VersionView, data: SimulationData) {
   const initiatorUserId = data.initiatorUserId ?? ctx.userId;
   const approved: string[] = [];
-  let previous: string | null = null;
+  let previous: string[] = [];
   return version.nodes.map((node, index) => {
     const facts: RoutingFacts = {
       ...virtualFacts(ctx, version, data, index),
-      previousApproverUserId: previous,
+      previousApproverUserIds: previous,
       approvedUserIds: approved,
       chainUserIds: approved,
     };
-    const decision = decideVirtual(node, data, facts);
-    const outcome = describe(decision, version, data, facts);
-    previous = candidateOf(node, data, facts);
-    if (outcome.approverUserId) approved.push(outcome.approverUserId);
-    const messages = node.messageRules.map((rule) => ({
-      trigger: rule.trigger,
-      channels: rule.channels,
-      template: rule.template,
-      recipientUserId:
-        rule.recipient === 'owner'
-          ? initiatorUserId
-          : rule.recipient === 'assignee'
-            ? outcome.approverUserId
-            : (data.subjectUserId ?? null),
-    }));
-    return { key: node.key, name: node.name, formFields: node.formFields, messages, ...outcome };
+    const expressions = approverExpressionsOf(node);
+    const seats = simulatedSeats(node, expressions, version, data, facts);
+    previous = [...new Set(expressions.flatMap((expression) => candidateOf(expression, data, facts) ?? []))];
+    approved.push(...seats.flatMap((seat) => seat.approverUserId ?? []));
+    const recipients = (recipient: ApprovalNode['messageRules'][number]['recipient']) =>
+      recipient === 'owner'
+        ? [initiatorUserId]
+        : recipient === 'assignee'
+          ? seats.map((seat) => seat.approverUserId)
+          : [data.subjectUserId ?? null];
+    const messages = node.messageRules.flatMap((rule) =>
+      recipients(rule.recipient).map((recipientUserId) => ({
+        trigger: rule.trigger,
+        channels: rule.channels,
+        template: rule.template,
+        recipientUserId,
+      })),
+    );
+    const base = { key: node.key, name: node.name, kind: nodeKindOf(node), exits: nodeExits(node) };
+    const countersign = isCountersign(node) ? { approvers: seats } : {};
+    return { ...base, formFields: node.formFields, messages, ...countersignSummary(node, seats), ...countersign };
   });
 }
 

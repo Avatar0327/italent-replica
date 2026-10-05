@@ -22,7 +22,7 @@ import {
   type LockedEmploymentBusiness,
 } from './record-store.js';
 import { removeLatestEmploymentTimeline } from './timeline.js';
-import type { EmploymentBusiness, EmploymentContext } from './types.js';
+import type { EmploymentBusiness, EmploymentContext, EmploymentState } from './types.js';
 import {
   appendEmploymentState,
   materializeEmploymentRecord,
@@ -30,7 +30,18 @@ import {
   requireSavedBusiness,
 } from './write-service.js';
 
-const ACTIONS = ['submit', 'approve', 'reject', 'withdraw', 'activate', 'delete'] as const;
+const ACTIONS = ['submit', 'approve', 'reject', 'disapprove', 'withdraw', 'activate', 'delete'] as const;
+/**
+ * 只追加一条状态事件的动作。撤回回到草稿（AC-TRF-28）；驳回可在同一申请上修改重提（DEC-053）；审批沿「不同意」
+ * 流转到结束则办结为“未通过”、不生效（DEC-144，F-003 第二轮）。
+ */
+const STATE_AFTER = {
+  submit: 'in_review',
+  reject: 'rejected',
+  disapprove: 'disapproved',
+  withdraw: 'draft',
+} as const satisfies Partial<Record<(typeof ACTIONS)[number], EmploymentState>>;
+
 export interface EmploymentTransitionInput {
   readonly id: string;
   readonly action: (typeof ACTIONS)[number];
@@ -90,7 +101,7 @@ export async function transitionEmployment(
     await materializeEmploymentRecord(tx, ctx, business);
     await appendEmploymentState(tx, ctx, business, 'effective');
   } else {
-    const state = input.action === 'submit' ? 'in_review' : input.action === 'reject' ? 'rejected' : 'draft';
+    const state = STATE_AFTER[input.action];
     await appendEmploymentState(tx, ctx, business, state);
   }
   // 一条命令只增加一次业务 revision；approve→effective 的两条状态事件不各自递增头版本。
@@ -130,9 +141,11 @@ function assertTransition(business: LockedEmploymentBusiness, action: Employment
     submit: business.payload.mode === 'application' && ['draft', 'rejected'].includes(business.state),
     approve: business.payload.mode === 'application' && business.state === 'in_review',
     reject: business.payload.mode === 'application' && business.state === 'in_review',
+    // F-003 第二轮（DEC-144）：审批沿「不同意」流转到结束，申请办结为“未通过”，不能再提交或撤回，只能删除。
+    disapprove: business.payload.mode === 'application' && business.state === 'in_review',
     withdraw: business.payload.mode === 'application' && ['in_review', 'rejected'].includes(business.state),
     activate: business.payload.mode === 'application' && business.state === 'approved',
-    delete: ['draft', 'rejected', 'approved', 'effective'].includes(business.state),
+    delete: ['draft', 'rejected', 'disapproved', 'approved', 'effective'].includes(business.state),
   };
   if (!permitted[action]) throw new AppError('CONFLICT', '当前状态不允许此动作', { state: business.state, action });
 }

@@ -14,6 +14,7 @@ import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../../routes.js';
 import { memberInstanceScope } from './access.js';
 import { approvalError, assertRevision, auditApproval, rowsOf, type ApprovalContext } from './context.js';
+import { mergeSeat, mergesSeat, resettle } from './countersign.js';
 import { assertExceptionAdminMember, republishWithExceptionAdmin } from './definitions.js';
 import { currentRouting, openRun, persistRun, type Run } from './engine.js';
 import { notifyTodo } from './notifications.js';
@@ -284,10 +285,20 @@ async function pendingExceptionTasks(tx: Tx, run: Run, userId: string): Promise<
   );
 }
 
+/**
+ * 逐条改派。F-003：接替的任务沿用原任务的节点激活，会签节点里这一票随之转给接手人；接手人已在本节点占着一席时，
+ * 这一席记为“由同一人接手、不重复计票”（一人一票，P2-1），改派完再按一人一票重新结算该节点。
+ */
 async function reassignAll(tx: Tx, run: Run, plan: readonly Step[], from: string, event: string, action: string) {
   const { ctx, instance } = run;
+  const merged: TaskRow[] = [];
   for (const step of plan) {
     await closeTask(tx, ctx, step.task.id, 'transferred', '异常管理员交接');
+    if (mergesSeat(run, await loadTasks(tx, ctx.tenantId, instance.id), step.task, step.userId)) {
+      await mergeSeat(tx, run, step.task, step.userId, 'handover');
+      merged.push(step.task);
+      continue;
+    }
     const next = await insertTask(tx, ctx, instance.id, {
       round: instance.round,
       nodeKey: step.task.nodeKey,
@@ -296,6 +307,7 @@ async function reassignAll(tx: Tx, run: Run, plan: readonly Step[], from: string
       status: 'pending',
       isExceptionAdmin: true,
       parentTaskId: step.task.id,
+      activationId: step.task.activationId,
     });
     await appendLog(tx, ctx, instance, {
       event,
@@ -305,6 +317,7 @@ async function reassignAll(tx: Tx, run: Run, plan: readonly Step[], from: string
     });
     await notifyTodo(tx, ctx, instance, next, step.userId);
   }
+  for (const task of merged) await resettle(tx, run, task);
   run.events.push('approval.task.transferred');
   await persistRun(tx, run, action);
 }
