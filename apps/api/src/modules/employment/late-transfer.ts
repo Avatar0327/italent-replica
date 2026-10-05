@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
+import { validateTransferReposition } from './write-service.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { auditEmployment } from './context.js';
 import { loadEmploymentRecord } from './read-model.js';
@@ -33,6 +34,15 @@ export async function postponeLateTransfer(tx: Tx, ctx: EmploymentContext, busin
     createdAt: ctx.now.toISOString(),
   });
   business.payload = next;
+  await auditEmployment(
+    tx,
+    ctx,
+    'employment.transfer.rescheduled',
+    'employment-business',
+    business.id,
+    { effectiveDate: previous.effectiveDate },
+    { originalEffectiveDate: previous.effectiveDate, effectiveDate: today },
+  );
   if (record) {
     const [point] = rowsOf<{ startDate: string; sortOrder: number }>(
       await tx.execute(sql`
@@ -60,16 +70,8 @@ export async function postponeLateTransfer(tx: Tx, ctx: EmploymentContext, busin
       await tx.execute(sql`UPDATE employment_timeline
       SET valid_during=daterange(start_date,${after?.date ?? null}::date,'[)')
       WHERE tenant_id=${ctx.tenantId} AND record_id=${before.id}::uuid`);
+    await validateTransferReposition(tx, ctx, business, record);
     await insertEmploymentTimeline(tx, ctx, business.employeeId, business.id, record.staffId, today);
   }
   if (record) await personnelHooks.sync(tx, ctx, business.employeeId, business.id, 'transfer', today);
-  await auditEmployment(
-    tx,
-    ctx,
-    'employment.transfer.rescheduled',
-    'employment-business',
-    business.id,
-    { effectiveDate: previous.effectiveDate },
-    { originalEffectiveDate: previous.effectiveDate, effectiveDate: today },
-  );
 }

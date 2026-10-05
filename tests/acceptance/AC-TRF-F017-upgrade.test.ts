@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 import { tenantLocalDate } from '@italent/domain';
 import { listCompletionTodos, remindCompletion } from '../../apps/api/src/modules/transfer/completion.js';
 import { employmentSession } from './AC-EMP-support.js';
-const database = useTestDb({ migrateBefore: '_f017_transfer_lifecycle' });
+const database = useTestDb({ migrateBefore: '_plain_the_anarchist' });
 const rows = <T>(r: unknown) => (Array.isArray(r) ? r : (r as { rows: T[] }).rows) as T[];
 it('P2-03 回填旧待补全且不重复近期提醒；F-017 DEC-188 只基线登记历史未来调动，今日及上线后到期保留复查，迁移重跑不重复', async () => {
   const handle = database();
@@ -46,8 +46,11 @@ it('P2-03 回填旧待补全且不重复近期提醒；F-017 DEC-188 只基线�
             '{"meta":{"clearedFieldCodes":["preset:directManagerId"]}}'::jsonb,'legacy-create')`);
         await tx.execute(sql`INSERT INTO employment_outbox
           (tenant_id,employee_id,business_id,object_type,object_id,event_type,payload,command_id)
-          VALUES (${tenantId},${employee.id},${business},'employment-business',${business},'employment.completion.reminder',
-            jsonb_build_object('after',jsonb_build_object('businessDate',${date},'fieldCodes',jsonb_build_array('preset:directManagerId'))),'legacy-reminder')`);
+          VALUES (${tenantId},${employee.id},${business},'employment-business',${business},
+            'employment.completion.reminder',
+            jsonb_build_object('after',jsonb_build_object('businessDate',${date},
+              'fieldCodes',jsonb_build_array('preset:directManagerId'))),
+            'legacy-reminder')`);
       }
     });
   }
@@ -68,11 +71,23 @@ it('P2-03 回填旧待补全且不重复近期提醒；F-017 DEC-188 只基线�
     await remindCompletion(tx, ctx, employees[0]!);
     const reminders = rows<{ n: number }>(
       await tx.execute(
-        sql`SELECT count(*)::int AS n FROM employment_outbox WHERE tenant_id=${tenantId} AND event_type='employment.completion.reminder'`,
+        sql`SELECT count(*)::int AS n FROM employment_outbox
+        WHERE tenant_id=${tenantId} AND event_type='employment.completion.reminder'`,
       ),
     );
     expect(reminders[0]?.n).toBe(1);
-    expect(items[0]?.effectiveDate <= tenantLocalDate(now, ctx.timezone)).toBe(true);
+    await remindCompletion(
+      tx,
+      { ...ctx, now: new Date(now.getTime() + 6 * 86400000), commandId: randomUUID() },
+      employees[0]!,
+    );
+    expect(
+      rows<{ n: number }>(
+        await tx.execute(sql`SELECT count(*)::int AS n FROM employment_outbox
+      WHERE tenant_id=${tenantId} AND event_type='employment.completion.reminder'`),
+      )[0]?.n,
+    ).toBe(2);
+    expect(items[0]!.effectiveDate <= tenantLocalDate(now, ctx.timezone)).toBe(true);
   });
   await withTenant(handle.db, tenantId, async (tx) => {
     expect(

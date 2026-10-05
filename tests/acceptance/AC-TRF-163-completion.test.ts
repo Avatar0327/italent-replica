@@ -25,6 +25,7 @@ describe('DEC-163 任职信息待补全', () => {
     expect(saved.status).toBe(201);
     const first = (await saved.json()) as { id: string };
     await w.runScheduler('2026-10-05T01:00:00Z');
+    w.session.setNow('2026-10-05T01:00:00Z');
     const current = await w.session.getEmployee(employee.id);
     await w.session.business(
       employee.id,
@@ -65,6 +66,9 @@ describe('DEC-163 任职信息待补全', () => {
     });
     expect(saved.status).toBe(201);
     const first = (await saved.json()) as { id: string };
+    // DEC-185：未来清空到期才建立开放待办；先在计划日完成调度。
+    await w.runScheduler('2026-10-05T01:00:00Z');
+    w.session.setNow('2026-10-05T01:00:00Z');
     const current = await w.session.getEmployee(employee.id);
     await w.session.business(
       employee.id,

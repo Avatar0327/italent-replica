@@ -80,17 +80,26 @@ export async function transitionEmployment(
   assertTransition(business, input.action);
   if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
-    const predecessor = await findPredecessor(tx, ctx.tenantId, business.employeeId, payload.effectiveDate);
-    const { fields } = await resolveEffectiveInheritance(tx, ctx, payload, {
-      staffId: payload.selectedStaffId ?? predecessor?.staffId ?? '',
-      predecessor,
-    });
+    const effectiveDate =
+      input.action === 'approve' && payload.kind === 'transfer'
+        ? [payload.effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!
+        : payload.effectiveDate;
+    const predecessor = await findPredecessor(tx, ctx.tenantId, business.employeeId, effectiveDate);
+    const { fields } = await resolveEffectiveInheritance(
+      tx,
+      ctx,
+      { ...payload, effectiveDate },
+      {
+        staffId: payload.selectedStaffId ?? predecessor?.staffId ?? '',
+        predecessor,
+      },
+    );
     assertRequiredTransferFields(payload.kind, payload.formSnapshot, { ...fields });
     await assertEstablishmentCapacity(tx, ctx, {
       businessId: business.id,
       employeeId: business.employeeId,
       kind: payload.kind,
-      effectiveDate: payload.effectiveDate,
+      effectiveDate,
       departmentId: fields.departmentId,
       positionId: fields.positionId,
       fields,
@@ -145,8 +154,10 @@ async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, busines
   if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) return;
   const { item, before: predecessors } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
   const before = predecessors.filter((item) => !item.reminderOnly);
+  const scheduledDate = business.payload.effectiveDate;
+  await postponeLateTransfer(tx, ctx, business);
   if (!before.length) {
-    await materializeEmploymentRecord(tx, ctx, business);
+    await materializeEmploymentRecord(tx, ctx, business, { scheduledDate });
     await appendEmploymentState(tx, ctx, business, 'effective');
     return;
   }

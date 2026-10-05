@@ -1,3 +1,4 @@
+import { affectsEstablishmentOccupancy } from '../establishment/employment-check.js';
 import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
@@ -230,20 +231,23 @@ async function writeForwardTarget(
   accepted: readonly ForwardFieldChange[],
 ) {
   if (!source.businessId) throw new TypeError('向后更新必须关联触发业务');
-  await assertEstablishmentCapacity(
-    tx,
-    ctx,
-    {
-      businessId: target.payload.businessId,
-      employeeId: source.employeeId,
-      kind: 'transfer',
-      effectiveDate: target.payload.effectiveDate,
-      fields: nextValues.fields,
-      departmentId: nextValues.fields.departmentId,
-      positionId: nextValues.fields.positionId,
-    },
-    source.establishmentWarnings,
-  );
+  if (
+    await affectsEstablishmentOccupancy(tx, ctx, target.values.fields, nextValues.fields, target.payload.effectiveDate)
+  )
+    await assertEstablishmentCapacity(
+      tx,
+      ctx,
+      {
+        businessId: target.payload.businessId,
+        employeeId: source.employeeId,
+        kind: 'transfer',
+        effectiveDate: target.payload.effectiveDate,
+        fields: nextValues.fields,
+        departmentId: nextValues.fields.departmentId,
+        positionId: nextValues.fields.positionId,
+      },
+      source.establishmentWarnings,
+    );
   const next = await appendForwardPayload(
     tx,
     ctx,

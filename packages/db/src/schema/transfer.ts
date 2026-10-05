@@ -187,6 +187,8 @@ export const transferCompletionTodos = pgTable(
     effectiveDate: date('effective_date', { mode: 'string' }).notNull(),
     createdAt: utc(),
     closedAt: timestamp('closed_at', { withTimezone: true }),
+    /** 升级回填的上一提醒业务日；新一轮待办不继承。 */
+    legacyReminderDate: date('legacy_reminder_date', { mode: 'string' }),
   },
   (t) => [
     unique('transfer_completion_todos_tenant_id').on(t.tenantId, t.id),

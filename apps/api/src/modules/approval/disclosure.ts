@@ -197,6 +197,9 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
   const hidden = recordsHidden(data, userId);
   const disclosed = disclosedFields(data, userId, viewable);
   const fields = [...disclosed];
+  // DEC-195：两项日期沿用生效日期的节点表单与字段查看权限，不扩展审批快照。
+  if (instance.status === 'approved' && disclosed.has('effectiveDate'))
+    fields.push('originalEffectiveDate', 'actualEffectiveDate');
   const names = new Map(version.nodes.map((candidate) => [candidate.key, candidate.name]));
   const originals = data.showOriginals && snapshot.originals ? { originals: pick(snapshot.originals, fields) } : {};
   return {

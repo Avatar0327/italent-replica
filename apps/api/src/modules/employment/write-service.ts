@@ -479,6 +479,30 @@ async function cycleForMaterialization(
   });
 }
 
+/** DEC-186：已物化的未来调动改期也必须重新验证实际插入点，禁止越过离职或跨任职周期。 */
+export async function validateTransferReposition(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  record: EmploymentRecord,
+) {
+  const payload = business.payload;
+  const position = await timelinePosition(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
+  await assertNotBeforeCurrentCycle(tx, ctx, business.employeeId, payload);
+  await assertBusinessSequence(tx, ctx, business.employeeId, payload, position.order);
+  await assertSuccessorSequence(tx, ctx, business.employeeId, payload.kind, position);
+  await selectEmploymentCycle(tx, ctx, business.employeeId, {
+    effectiveDate: payload.effectiveDate,
+    expectedStaffId: record.staffId,
+    beforeOrder: position.order,
+  });
+  const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
+  await validateNewEmploymentReferences(tx, ctx, record.fields, payload.effectiveDate, {
+    employeeId: business.employeeId,
+    window: windowBefore(payload.effectiveDate, next),
+  });
+}
+
 export async function materializeEmploymentRecord(
   tx: Tx,
   ctx: EmploymentContext,

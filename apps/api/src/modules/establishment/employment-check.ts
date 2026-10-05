@@ -15,6 +15,49 @@ import { membershipWindows, clipMembership, type MembershipWindow } from './memb
 import { lockEstablishment, rowsOf } from './store.js';
 import { targetCapacities } from './transfer-service.js';
 
+/** 编辑与向后更新共用：只有部门、职位、人员类型或实际配置的控编条件变化才触发容量检查。 */
+export async function affectsEstablishmentOccupancy(
+  tx: Tx,
+  ctx: EmploymentContext,
+  before: PresetFields,
+  after: PresetFields,
+  effectiveDate: string,
+): Promise<boolean> {
+  const changed = (key: string) => before[key as keyof PresetFields] !== after[key as keyof PresetFields];
+  if (['departmentId', 'positionId', 'employType'].some(changed)) return true;
+  const conditionFields = [
+    'employmentForm',
+    'employmentType',
+    'employmentSource',
+    'postId',
+    'levelId',
+    'gradeId',
+    'sequenceId',
+    'dimension1',
+    'dimension2',
+    'dimension3',
+    'dimension4',
+    'dimension5',
+  ];
+  if (!after.departmentId || !conditionFields.some(changed)) return false;
+  await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
+  const capacityAsOf = [effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
+  const capacities = await targetCapacities(
+    tx,
+    ctx,
+    {
+      targetOrgId: after.departmentId,
+      effectiveDate,
+    },
+    capacityAsOf,
+  );
+  for (const capacity of capacities) {
+    const scheme = await loadScheme(tx, ctx.tenantId, capacity.schemeId, capacityAsOf);
+    if (scheme.occupancyRanges.some((range) => Object.keys(range.conditions ?? {}).some(changed))) return true;
+  }
+  return false;
+}
+
 export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentContext, target: ActivationTarget) {
   if (target.kind !== 'transfer' || !target.departmentId) return false;
   // 人员锁在调用方已获取；编制锁只保护容量/占编读取，不在持编制锁后获取其他员工锁。

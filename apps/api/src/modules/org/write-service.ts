@@ -1,5 +1,6 @@
+import { employmentVisibilitySql } from '../employment/visibility.js';
 import type { Authorizer } from '../../authorization.js';
-import { linkedObjectScope, scopeAllowsInTransaction, type ModuleScope } from '../permission/module-access.js';
+import { linkedObjectScope, type ModuleScope } from '../permission/module-access.js';
 import { auditActor } from '../../system-actor.js';
 import { randomUUID } from 'node:crypto';
 import {
@@ -402,7 +403,7 @@ export async function assignTransferOrganizationPeople(
 }
 
 /** DEC-178：组织写范围独立于调入部门选择例外；任职可见性的并集不能扩展组织权限。
- * TODO(F-015)：接入统一联动范围判定；该判定须保留组织对象的范围语义。
+ * 复用 F-015 范围并集谓词，但组织写入没有员工当前部门这一扩展来源。
  */
 export async function requireTransferOrganizationScope(
   tx: Tx,
@@ -413,6 +414,12 @@ export async function requireTransferOrganizationScope(
   orgId: string,
 ): Promise<void> {
   const scope = await linkedObjectScope(tx, ctx, 'TenantBase.Organization');
-  if (scope && !(await scopeAllowsInTransaction(tx, scope, { orgId })))
+  const allowed = await tx.execute(
+    sql`SELECT 1 WHERE ${employmentVisibilitySql(scope, {
+      employee: sql`NULL::uuid`,
+      department: sql`${orgId}::uuid`,
+    })}`,
+  );
+  if (!(Array.isArray(allowed) ? allowed : (allowed as { rows: unknown[] }).rows).length)
     throw new AppError('LINKED_RECORD_OUT_OF_SCOPE', '联动记录不在当前数据范围，请由覆盖该范围的人员操作');
 }

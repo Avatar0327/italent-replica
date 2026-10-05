@@ -1,0 +1,1 @@
+ALTER TABLE "transfer_completion_todos" ADD COLUMN "legacy_reminder_date" date;

@@ -9,7 +9,7 @@ import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import { auditEmployment, employmentCreator, employmentScopePredicate } from './context.js';
 import { rowsOf } from './record-store.js';
-import { operationKey } from './timeline.js';
+import { operationKey, plannedEffectiveDate } from './timeline.js';
 import type { BusinessKind, EmploymentContext, EmploymentScope } from './types.js';
 
 export type ActivationOutcome = 'effective' | 'failed' | 'suspended';
@@ -72,7 +72,10 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
       WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
       AND ${pendingActivationState(ctx.timezone)}
-    ORDER BY p.effective_date, p.kind IN ('hire', 'rehire', 'retire_rehire'), ${operationKey(ctx.tenantId, sql`b.id`)}
+    ORDER BY CASE WHEN p.kind='transfer'
+      THEN greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date) ELSE p.effective_date END,
+      ${plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`)},
+      p.kind IN ('hire', 'rehire', 'retire_rehire'), ${operationKey(ctx.tenantId, sql`b.id`)}
     LIMIT ${QUEUE_LIMIT + 1}
   `),
   ).map((row) => ({ ...row, revision: Number(row.revision), lastAttemptNo: Number(row.lastAttemptNo) }));

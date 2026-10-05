@@ -1,3 +1,4 @@
+import { affectsEstablishmentOccupancy } from '../establishment/employment-check.js';
 import { reconcileCompletion } from '../transfer/completion.js';
 import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { lockTransferBusiness } from './transfer-locks.js';
@@ -83,7 +84,7 @@ export async function editEmploymentRecord(
     )
     .map(([field, value]) => ({ field, before: beforeAudit[field as keyof typeof beforeAudit] ?? null, after: value }));
   if (!changes.length) return requireSavedBusiness(tx, ctx, id);
-  if (changes.some((change) => !['directManagerId', 'dottedManagerId', 'remarks'].includes(change.field)))
+  if (await affectsEstablishmentOccupancy(tx, ctx, record.fields, after.fields, record.effectiveDate))
     await assertEstablishmentCapacity(
       tx,
       ctx,

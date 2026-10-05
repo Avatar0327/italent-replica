@@ -44,11 +44,13 @@ export interface CompletionTodo {
   readonly departmentId: string | null;
   readonly fieldCodes: string[];
   readonly todoIds?: string[];
+  readonly legacyReminderDate?: string | null;
 }
 function openTodos(ctx: EmploymentContext) {
   return sql`SELECT c.business_id AS id,c.employee_id AS "employeeId",min(c.effective_date)::text AS "effectiveDate",
     jsonb_agg(DISTINCT c.field_code ORDER BY c.field_code) AS "fieldCodes",
-    jsonb_agg(DISTINCT c.id ORDER BY c.id) AS "todoIds", latest."departmentId"
+    jsonb_agg(DISTINCT c.id ORDER BY c.id) AS "todoIds", latest."departmentId",
+    max(c.legacy_reminder_date)::text AS "legacyReminderDate"
     FROM transfer_completion_todos c JOIN (${completionQuery(ctx)}) latest
       ON latest."employeeId"=c.employee_id AND latest."fieldCodes" ? c.field_code
     WHERE c.tenant_id=${ctx.tenantId} AND c.closed_at IS NULL
@@ -63,7 +65,8 @@ export async function listCompletionTodos(tx: Tx, ctx: EmploymentContext, page: 
     employmentCreator(ctx.tenantId, sql`c.id`, true),
   );
   return rowsOf<CompletionTodo>(
-    await tx.execute(sql`SELECT c.* FROM (${openTodos(ctx)}) c
+    await tx.execute(sql`SELECT c.id,c."employeeId",c."effectiveDate",c."departmentId",c."fieldCodes",c."todoIds"
+    FROM (${openTodos(ctx)}) c
     WHERE ${scope} ORDER BY c."effectiveDate",c.id LIMIT ${page.limit} OFFSET ${page.offset}`),
   );
 }
@@ -76,14 +79,15 @@ export async function reconcileCompletion(tx: Tx, ctx: EmploymentContext, employ
   );
   const desired = new Map<string, CompletionTodo>();
   for (const item of missing) for (const code of item.fieldCodes) desired.set(code, item);
-  const open = rowsOf<{ id: string; businessId: string; fieldCode: string }>(
+  const open = rowsOf<{ id: string; businessId: string; fieldCode: string; effectiveDate: string }>(
     await tx.execute(sql`
-    SELECT id,business_id AS "businessId",field_code AS "fieldCode" FROM transfer_completion_todos
+    SELECT id,business_id AS "businessId",field_code AS "fieldCode",
+      effective_date::text AS "effectiveDate" FROM transfer_completion_todos
     WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND closed_at IS NULL
-      AND effective_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date FOR UPDATE`),
+      FOR UPDATE`),
   );
   for (const item of open) {
-    if (desired.has(item.fieldCode)) {
+    if (item.effectiveDate <= tenantLocalDate(ctx.now, ctx.timezone) && desired.has(item.fieldCode)) {
       desired.delete(item.fieldCode);
       continue;
     }
@@ -107,6 +111,7 @@ export async function openCompletion(
   fieldCode: string,
   effectiveDate: string,
 ) {
+  if (effectiveDate > tenantLocalDate(ctx.now, ctx.timezone)) return;
   const id = randomUUID();
   const inserted = rowsOf(
     await tx.execute(sql`INSERT INTO transfer_completion_todos
@@ -131,6 +136,8 @@ export function completionCandidates(ctx: EmploymentContext) {
     OR EXISTS (SELECT 1 FROM transfer_completion_todos todo WHERE todo.tenant_id=${ctx.tenantId}
       AND todo.employee_id=c."employeeId" AND todo.closed_at IS NULL
       AND todo.effective_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date
+      AND (todo.legacy_reminder_date IS NULL OR todo.legacy_reminder_date <=
+        ${tenantLocalDate(ctx.now, ctx.timezone)}::date - ${COMPLETION_REMINDER_DAYS}::int)
       AND NOT EXISTS (SELECT 1 FROM employment_outbox reminder WHERE reminder.tenant_id=${ctx.tenantId}
         AND reminder.employee_id=todo.employee_id AND reminder.event_type='employment.completion.reminder'
         AND reminder.payload->'after'->'todoIds' ? todo.id::text))
@@ -159,8 +166,11 @@ export async function remindCompletion(tx: Tx, ctx: EmploymentContext, employeeI
       ORDER BY created_at DESC,id DESC LIMIT 1
     `),
     );
-    if (previous && Date.parse(today) - Date.parse(previous.businessDate) < COMPLETION_REMINDER_DAYS * 86400000)
-      continue;
+    const lastReminder = [previous?.businessDate, item.legacyReminderDate]
+      .filter((date): date is string => !!date)
+      .sort()
+      .at(-1);
+    if (lastReminder && Date.parse(today) - Date.parse(lastReminder) < COMPLETION_REMINDER_DAYS * 86400000) continue;
     await auditEmployment(tx, ctx, 'employment.completion.reminder', 'employment-business', item.id, null, {
       title: '任职信息待补全',
       todoIds: item.todoIds ?? [],
