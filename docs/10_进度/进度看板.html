@@ -229,7 +229,7 @@ const DATA = {
     "R1-T12":{n:"人员信息与人员子集",ms:"M4",s:"done",dev:"Codex",rev:"Claude",pr:[26,27],deps:["R1-T05"]},
     "R1-T07":{n:"审批中心",ms:"M5",s:"done",dev:"Claude",rev:"Codex",pr:[35],deps:["R1-T01"],note:"7 轮审查后合并（10-04）"},
     "R1-T08":{n:"定时生效任务",ms:"M5",s:"done",dev:"Claude",rev:"Codex",pr:[53],deps:["R1-T05","R1-T07"],note:"3 轮审查后合并（10-05）；编制检查移到 R1-T09（DEC-145）"},
-    "R1-T09":{n:"调动业务",ms:"M6",s:"active",dev:"Codex",rev:"Claude",deps:["R1-T05","R1-T07","R1-T08"],note:"拆两个 PR（DEC-157）：PR-A 调动核心（Codex 开发中）→ PR-B 只做编制检查与负责人 / 店长 / 新增下属联动，不碰合同（§16）"},
+    "R1-T09":{n:"调动业务",ms:"M6",s:"review",dev:"Codex",rev:"Claude",pr:[63],deps:["R1-T05","R1-T07","R1-T08"],note:"拆两个 PR（DEC-157）：PR-A 调动核心 → PR #63（CI 中，绿后 Claude 按 cross-review 首审）；PR-B 只做编制检查与负责人 / 店长 / 新增下属联动，不碰合同（§16）"},
     "R1-T11":{n:"撤销与删除任职",ms:"M6",s:"todo",deps:["R1-T09"]},
     "R1-T10":{n:"调动跨对象联动（合同、兼职、职责转交）",ms:"M7",s:"todo",deps:["R1-T09","R2-T06"],note:"调动表单“是否变更合同”与生效时调用 R2-T06 的合同变更端口（§16）；须等 R1-T09、R2-T06 都合并"},
     "R1-T13":{n:"员工自助",ms:"M7",s:"todo",deps:["R1-T09"]},
@@ -257,6 +257,7 @@ const DATA = {
     "F-011":{n:"职位新建校验修正",parent:"R1-T04",s:"todo",deps:["F-005","F-006"],why:"DEC-151（Q-M0-60）"}
   },
   prs: {
+    63:{t:"R1-T09 PR-A 调动核心",s:"review",round:1,note:"Codex 开发；CI 运行中，绿后 Claude 首审"},
     54:{t:"F-005 + F-006",s:"review",round:3,note:"第三轮修改已交，复审中",rounds:[
       {k:"首审",t:"10-04 23:13",d:"astra Ultra：2 个 P2；登记 DEC-147、148（orderCode 延到 F-010）"},
       {k:"第二轮",t:"10-05 00:50",d:"上一轮 2 个 P2 关闭，新复现 2 个 P2"},
@@ -291,12 +292,13 @@ const DATA = {
     {nm:"R2 跨阶段", d:"你直接要求提前开工（DEC-159）；R1-T10 要等它提供的合同变更端口", steps:[["R2-T06"],["R1-T10"]]}
   ],
   attn: [
-    {k:"R1-T09 调动 PR-A",d:"Codex 开发中（主线唯一的下一步）", nx:"开出 PR 后用 cross-review skill 做 Claude 审查；合并后派 PR-B"},
+    {k:"R1-T09 调动 PR-A",d:"PR #63 已开出（Codex），CI 运行中", nx:"CI 绿后编排窗口按 cross-review 做 Claude 首审；合并后派 PR-B"},
     {k:"#54 F-005+F-006",d:"第三轮复审中；迁移从 0037 起重排", nx:"合并后编排窗口拟把 F-007、F-010、F-011 合成一个派（10-06 起 Claude 开发），并放开 R1-T16"},
     {k:"#60 R1-T17",d:"第二轮修改中；迁移从 0037 起重排", nx:"合并后 M2 完成"},
     {k:"R2-T06 合同协议",d:"Codex 开发中；与 R1 的分界已核定（§16）", nx:"Claude 审查时按 §16 核对合同变更端口"}
   ],
   log: [
+    {d:"10-05", t:"开出 PR #63：R1-T09 PR-A 调动核心（Codex 开发），CI 绿后 Claude 首审"},
     {d:"10-05", t:"合同联动分界核定（§16）：R2-T06 提供端口、R1-T09 PR-B 不碰合同、R1-T10 等 T09 与 R2-T06；看板与编排窗口的四条通信规则生效；#58（F-003）合并，迁移 0036"},
     {d:"10-05", t:"看板改版：阶段 → 子阶段 → 任务逐层穿透，修正任务挂到被修正的任务下，依赖可点击跳转；长流程 PR 只在进行中显示；自动检查阶段优先级。合并 PR #58（F-003）、#61"},
     {d:"10-05", t:"DEC-159：当天新任务全部交 Codex 开发、Claude 审查；R1-T09 PR-A 与 R2-T06 合同协议已派给 Codex；DEC-155~158 登记"},
