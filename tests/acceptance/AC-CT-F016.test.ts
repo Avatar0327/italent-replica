@@ -132,7 +132,7 @@ describe('AC-CT F-016 字段与日期', () => {
         generateContractForBusiness(
           tx,
           { ...ctx(w), now: new Date('2026-09-30T16:30:00Z') },
-          { employeeId: w.employee.id, fields: w.fields },
+          { employeeId: w.employee.id, fields: { ...w.fields, termType: 'fixed' } },
         ),
       );
     expect(result).toMatchObject({ actualTerminationDate: '2026-09-30' });
@@ -355,7 +355,8 @@ describe('AC-CT F-016 审批与失败退出', () => {
     await withTenant(w.db, w.session.tenant.id, async (tx) => {
       const fks = rowsOf<{ columns: string }>(
         await tx.execute(sql`SELECT pg_get_constraintdef(oid) AS columns
-        FROM pg_constraint WHERE contype='f' AND conrelid IN ('contract_records'::regclass,'contract_requests'::regclass)`),
+        FROM pg_constraint WHERE contype='f'
+          AND conrelid IN ('contract_records'::regclass,'contract_requests'::regclass)`),
       );
       for (const column of ['previous_contract_id', 'root_contract_id', 'employment_record_id', 'result_id'])
         expect(

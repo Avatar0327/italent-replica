@@ -12,7 +12,7 @@ import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
 const database = useTestDb();
 const object = MODULE_OBJECTS.contract;
 const clock = () => new Date('2026-10-01T01:00:00Z');
-async function fixture(label: string, dimension = 'management') {
+async function fixture(label: string, dimension: 'management' | 'using_user' | 'reporting' = 'management') {
   const w = await contractWorld(database().db, `f016-prm-${label}`);
   const api = tenantApi(w.db, { authorize: undefined, clock });
   const adminRecord = await bootstrapTenantAdmin(
