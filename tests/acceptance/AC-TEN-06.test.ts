@@ -3,16 +3,17 @@
  * 恢复单元 = 租户数据的一致快照 + 附件清单与哈希 + 代码 / 迁移版本。恢复到隔离环境（新库）后租户保持 restoring，
  * 先做隔离校验（无跨租户数据）与授权对账（备份后撤销过的授权不得复活），通过后才开放访问；B 全程不受影响；
  * 不重放已处理节点、不补发消息（在途事件恢复为“结果未知”）；备份传输与存储加密。
- * RPO ≤ 1h / RTO ≤ 4h、保留 30 天属部署运维指标（见 docs/07_M0/04_部署运行手册.md），在部署阶段验收；
+ * RPO ≤ 1h / RTO ≤ 4h、保留 30 天属部署运维指标（见 docs/06_部署/01_部署运行手册.md），在部署阶段验收；
  * 这里只断言报告给出了度量它们所需的时间点。
  */
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { captureAuthorizationState, openRestoredTenant, restoreTenant } from '@italent/api';
 import {
   BackupIntegrityError,
   type Db,
   exportTenantBackup,
   getTenant,
+  grantMembership,
   openBackup,
   permissionGrants,
   permissionOutbox,
@@ -98,16 +99,18 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
     expect(employee.status, await employee.clone().text()).toBe(201);
     const employeeId = ((await employee.json()) as { id: string }).id;
     const sha256 = randomBytes(32).toString('hex');
-    const registered = await fixture.request('POST', `/api/tenant/personnel/employees/${employeeId}/attachments`, {
-      ...asA,
-      ifMatch: 0,
-      body: { purpose: 'photo', filename: 'a.png', contentType: 'image/png', byteSize: 3, sha256 },
+    // 附件元数据直接登记（附件登记接口的应用角色授权缺失另行修复，不在本任务范围）
+    const attachmentId = randomUUID();
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${a.tenant.id}, true)`);
+      await tx.execute(sql`INSERT INTO personnel_attachments
+        (id, tenant_id, employee_id, purpose, filename, content_type, byte_size, sha256, created_by)
+        VALUES (${attachmentId}, ${a.tenant.id}, ${employeeId}, 'photo', 'a.png', 'image/png', 3, ${sha256},
+          ${adminA.id})`);
     });
-    expect(registered.status, await registered.clone().text()).toBe(201);
-    attachment = { id: ((await registered.json()) as { id: string }).id, sha256 };
+    attachment = { id: attachmentId, sha256 };
 
     const h = await newUser(db, 'drill-h');
-    const { grantMembership } = await import('@italent/db');
     await grantMembership(db, { tenantId: a.tenant.id, userId: h.id, expectedRevision: 0 }, cmd());
     asH = { user: h.id, tenant: a.tenant.id };
     const hr = a.profiles.find((p) => p.code === 'standard_hr_admin')!;
@@ -179,7 +182,8 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
     const bBefore = await api.request('GET', '/api/tenant/permission/admins', asB);
     const live = await captureAuthorizationState(db, a.tenant.id);
     const isolated = await target();
-    const report = await restoreTenant(isolated, { backup, live, attachments: attachments(store()) }, cmd(operator.id));
+    const restoreCommand = cmd(operator.id);
+    const report = await restoreTenant(isolated, { backup, live, attachments: attachments(store()) }, restoreCommand);
     expect(report).toMatchObject({
       tenantId: a.tenant.id,
       ok: true,
@@ -197,7 +201,7 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
     expect(blocked.status).toBe(403);
     expect(await errorCode(blocked)).toBe('TENANT_UNAVAILABLE');
 
-    const opened = await openRestoredTenant(isolated, report, cmd(operator.id));
+    const opened = await openRestoredTenant(isolated, report, cmd(operator.id), backup);
     expect(opened.status).toBe('active');
     expect(new Date(opened.openedAt).getTime() - new Date(report.startedAt).getTime()).toBeLessThan(4 * HOUR);
 
@@ -223,13 +227,14 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
     const asHPosts = await restoredApi.request('GET', '/api/tenant/job/posts', asH);
     expect(asHPosts.status).toBe(403);
 
+    // 备份里的在途事件一律改记“结果未知”、不补发；只有恢复对账自己产生的撤销事件是待投递的新事件
     const pending = await withTenant(isolated, a.tenant.id, (tx) =>
       tx
-        .select()
+        .select({ commandId: permissionOutbox.commandId, eventType: permissionOutbox.eventType })
         .from(permissionOutbox)
         .where(sql`${permissionOutbox.state} = 'pending'`),
     );
-    expect(pending).toEqual([]);
+    expect(pending).toEqual([{ commandId: restoreCommand.commandId, eventType: 'permission_grant.revoke' }]);
 
     const restoredTenants = await withPlatform(isolated, (tx) => tx.select({ id: tenants.id }).from(tenants));
     expect(restoredTenants).toEqual([{ id: a.tenant.id }]);

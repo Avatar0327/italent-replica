@@ -413,7 +413,7 @@ const operatorSnapshot = (o: PlatformOperator | undefined) => (o ? { status: o.s
 
 /**
  * 登记（revision 0 时新建）或重新启用平台运营身份（REQ-PLT-001 R1：租户开通、停用、许可发放、备份恢复由平台方操作）。
- * 首位平台运营由部署时的运维脚本以“系统”（actorUserId = null）登记，见 docs/07_M0/04_部署运行手册.md。
+ * 首位平台运营由部署时的运维脚本以“系统”（actorUserId = null）登记，见 docs/06_部署/01_部署运行手册.md。
  */
 export function grantPlatformOperator(db: Db, change: PlatformOperatorChange, meta: PlatformCommandMeta) {
   return changePlatformOperator(db, change, meta, 'active');

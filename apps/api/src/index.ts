@@ -21,3 +21,14 @@ export {
   requireObjectWrite,
   setLicenseQuota,
 } from './modules/permission/index.js';
+export { createPlatformRouter } from './modules/platform/routes.js';
+export { provisionTenant, type ProvisionInput, type ProvisionResult } from './modules/platform/provisioning.js';
+export { changeTenantLifecycle, issueLicense } from './modules/platform/operations.js';
+export {
+  type AuthorizationState,
+  captureAuthorizationState,
+  openRestoredTenant,
+  type ReconciliationReport,
+  type RestoreReport,
+  restoreTenant,
+} from './modules/platform/restore.js';
