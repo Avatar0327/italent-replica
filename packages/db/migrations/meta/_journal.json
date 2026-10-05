@@ -320,15 +320,22 @@
     {
       "idx": 45,
       "version": "7",
-      "when": 1791195599356,
-      "tag": "0045_transfer_establishment",
+      "when": 1791195426035,
+      "tag": "0045_personnel_order_code",
       "breakpoints": true
     },
     {
       "idx": 46,
       "version": "7",
-      "when": 1791196169073,
-      "tag": "0046_transfer_linkage",
+      "when": 1791201237084,
+      "tag": "0046_transfer_establishment",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791201238785,
+      "tag": "0047_transfer_linkage",
       "breakpoints": true
     }
   ]

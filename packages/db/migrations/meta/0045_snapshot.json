@@ -1,5 +1,5 @@
 {
-  "id": "46382b4c-0e9f-4674-b054-7843063a9a60",
+  "id": "05a04543-c55f-488b-b925-4c0bbfd18c54",
   "prevId": "6d637433-e225-4366-8511-70684d57f218",
   "version": "7",
   "dialect": "postgresql",
@@ -8677,13 +8677,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "conditions": {
-          "name": "conditions",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
         }
       },
       "indexes": {},
@@ -15790,6 +15783,114 @@
       },
       "isRLSEnabled": false
     },
+    "public.personnel_employee_order_codes": {
+      "name": "personnel_employee_order_codes",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_code": {
+          "name": "order_code",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "personnel_employee_order_codes_order": {
+          "name": "personnel_employee_order_codes_order",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "order_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "personnel_employee_order_codes_tenant_id_tenants_id_fk": {
+          "name": "personnel_employee_order_codes_tenant_id_tenants_id_fk",
+          "tableFrom": "personnel_employee_order_codes",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "personnel_employee_order_codes_employee_fk": {
+          "name": "personnel_employee_order_codes_employee_fk",
+          "tableFrom": "personnel_employee_order_codes",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "personnel_employee_order_codes_tenant_id_employee_id_pk": {
+          "name": "personnel_employee_order_codes_tenant_id_employee_id_pk",
+          "columns": [
+            "tenant_id",
+            "employee_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "personnel_employee_order_codes_positive": {
+          "name": "personnel_employee_order_codes_positive",
+          "value": "\"personnel_employee_order_codes\".\"order_code\" > 0 AND \"personnel_employee_order_codes\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.personnel_employee_versions": {
       "name": "personnel_employee_versions",
       "schema": "",
@@ -18388,6 +18489,239 @@
         "personnel_language_ability_versions_source": {
           "name": "personnel_language_ability_versions_source",
           "value": "\"personnel_language_ability_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync')\n    AND ((\"personnel_language_ability_versions\".\"source_type\" = 'hr_direct' AND \"personnel_language_ability_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_language_ability_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_language_ability_versions\".\"source_id\" IS NOT NULL))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.personnel_order_rules": {
+      "name": "personnel_order_rules",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field": {
+          "name": "field",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "direction": {
+          "name": "direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "personnel_order_rules_tenant_id_tenants_id_fk": {
+          "name": "personnel_order_rules_tenant_id_tenants_id_fk",
+          "tableFrom": "personnel_order_rules",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "personnel_order_rules_settings_fk": {
+          "name": "personnel_order_rules_settings_fk",
+          "tableFrom": "personnel_order_rules",
+          "tableTo": "personnel_order_settings",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "tenant_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "personnel_order_rules_tenant_id_field_pk": {
+          "name": "personnel_order_rules_tenant_id_field_pk",
+          "columns": [
+            "tenant_id",
+            "field"
+          ]
+        }
+      },
+      "uniqueConstraints": {
+        "personnel_order_rules_position": {
+          "name": "personnel_order_rules_position",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "position"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "personnel_order_rules_field": {
+          "name": "personnel_order_rules_field",
+          "value": "\"personnel_order_rules\".\"field\" IN ('department','post','position','level','grade','code')"
+        },
+        "personnel_order_rules_direction": {
+          "name": "personnel_order_rules_direction",
+          "value": "\"personnel_order_rules\".\"direction\" IN ('asc','desc')"
+        },
+        "personnel_order_rules_position_valid": {
+          "name": "personnel_order_rules_position_valid",
+          "value": "\"personnel_order_rules\".\"position\" BETWEEN 0 AND 5"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.personnel_order_runs": {
+      "name": "personnel_order_runs",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ran_at": {
+          "name": "ran_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "personnel_order_runs_tenant_id_tenants_id_fk": {
+          "name": "personnel_order_runs_tenant_id_tenants_id_fk",
+          "tableFrom": "personnel_order_runs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "personnel_order_runs_tenant_id_command_id_pk": {
+          "name": "personnel_order_runs_tenant_id_command_id_pk",
+          "columns": [
+            "tenant_id",
+            "command_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "personnel_order_runs_state": {
+          "name": "personnel_order_runs_state",
+          "value": "\"personnel_order_runs\".\"state\" IN ('succeeded','failed','unknown')"
+        },
+        "personnel_order_runs_attempts": {
+          "name": "personnel_order_runs_attempts",
+          "value": "\"personnel_order_runs\".\"attempts\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.personnel_order_settings": {
+      "name": "personnel_order_settings",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "personnel_order_settings_tenant_id_tenants_id_fk": {
+          "name": "personnel_order_settings_tenant_id_tenants_id_fk",
+          "tableFrom": "personnel_order_settings",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "personnel_order_settings_revision": {
+          "name": "personnel_order_settings_revision",
+          "value": "\"personnel_order_settings\".\"revision\" >= 0"
         }
       },
       "isRLSEnabled": false
