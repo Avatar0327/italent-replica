@@ -42,6 +42,7 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
   const parsed = schema.safeParse(raw);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '调动表单字段不合法', parsed.error.issues);
   const input = parsed.data;
+  // TODO(需取证 Q-M0-18)：带编转移数量与分配规则未确认，明确拒绝。
   if (input.withEstablishment)
     throw new AppError('SERVICE_UNAVAILABLE', '带编调动分配规则尚待取证', { reason: 'WITH_ESTABLISHMENT_UNAVAILABLE' });
   if (input.formId === 'standard') throw new AppError('VALIDATION_FAILED', '调动接口必须选择真实表单');

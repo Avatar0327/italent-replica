@@ -121,7 +121,20 @@ export async function queueTransferLinkage(
   fields: PresetFields,
   effectiveDate: string,
 ) {
-  if (kind !== 'transfer' || !hasTransferLinkage(fields)) return;
+  if (kind !== 'transfer') return;
+  // DEC-173：无联动的未来直接调动也必须到期复查。与联动标记分开，失败只提醒。
+  if (effectiveDate > tenantLocalDate(ctx.now, ctx.timezone)) {
+    const [queued] = rowsOf(
+      await tx.execute(sql`SELECT 1 FROM employment_outbox
+      WHERE tenant_id=${ctx.tenantId} AND business_id=${id}::uuid
+        AND event_type='employment.transfer.recheck.pending' LIMIT 1`),
+    );
+    if (!queued)
+      await auditEmployment(tx, ctx, 'employment.transfer.recheck.pending', 'employment-business', id, null, {
+        effectiveDate,
+      });
+  }
+  if (!hasTransferLinkage(fields)) return;
   const [pending] = rowsOf(
     await tx.execute(sql`SELECT 1 FROM employment_outbox
     WHERE tenant_id=${ctx.tenantId} AND business_id=${id}::uuid

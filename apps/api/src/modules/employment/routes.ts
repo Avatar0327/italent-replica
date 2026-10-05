@@ -327,7 +327,7 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await readPageContext(c, deps, 'list');
     const page = pageQuery(c);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listActivationTodos(tx, ctx.tenantId, page, ctx.scope),
+      listActivationTodos(tx, ctx.tenantId, page, ctx.scope, ctx.timezone),
     );
     return c.json({
       items: await trimEmploymentResponse(deps, ctx, items),

@@ -1,3 +1,4 @@
+import { employmentDepartmentDisable } from '../org/employment-validity.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { applyTransferLinkage } from './transfer-linkage.js';
@@ -101,6 +102,10 @@ async function precheck(tx: Tx, ctx: EmploymentContext, item: PendingActivation)
     createTxOrgHierarchyReader(tx).isEnabled({ tenantId: ctx.tenantId, orgId: orgId as OrgId, asOf: effectiveDate });
   if (departmentId && !(await orgEnabled(departmentId)))
     return { reason: 'TARGET_ORG_DISABLED', detail: { departmentId } };
+  if (item.materialized && departmentId) {
+    const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, departmentId, effectiveDate);
+    if (disabled) return { reason: 'TARGET_ORG_DISABLED', detail: { departmentId, disabledOn: disabled.disabledOn } };
+  }
   if (positionId && !(await loadJobObject(tx, ctx.tenantId, 'positions', positionId, effectiveDate)))
     return { reason: 'TARGET_POSITION_DISABLED', detail: { positionId } };
   const target = { businessId, employeeId, kind, departmentId, positionId, effectiveDate, fields: record?.fields };
@@ -120,6 +125,7 @@ export async function activateWithJudgement(
 ): Promise<ActivationFailure | null> {
   const failure = await precheck(tx, ctx, item);
   if (failure) return failure;
+  if (item.reminderOnly) return null;
   try {
     await tx.transaction(async (savepoint) => {
       await (item.materialized

@@ -27,6 +27,8 @@ export interface PendingActivation {
   readonly departmentId: string | null;
   readonly positionId: string | null;
   readonly materialized: boolean;
+  /** DEC-173：已落地且当前没有联动，仅提醒，不阻塞其后业务。 */
+  readonly reminderOnly: boolean;
   readonly lastOutcome: ActivationOutcome | null;
   readonly lastBlockedBy: string | null;
   readonly lastAttemptNo: number;
@@ -34,12 +36,17 @@ export interface PendingActivation {
 
 const QUEUE_LIMIT = 200;
 
-/** 直接未来调动已有任职记录，但联动仍要到期执行；与申请共用失败、挂起、重试协议。 */
-export const pendingActivationState = sql`(s.state='approved' AND p.mode='application' OR
-  s.state='effective' AND p.kind='transfer' AND EXISTS (
+/** 已落地的未来调动统一复查；成功尝试退出队列，失败保留 HR 待办。兼容旧版联动事件及 PR-A 未写排队事件、保存时为未来生效的记录（租户日期）。 */
+export const pendingActivationState = (timezone: string) => sql`(s.state='approved' AND p.mode='application' OR
+  s.state='effective' AND p.kind='transfer' AND (EXISTS (
     SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
-      AND o.event_type='employment.transfer.linkage.pending') AND NOT EXISTS (
-    SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
+      AND o.event_type IN ('employment.transfer.recheck.pending','employment.transfer.linkage.pending'))
+    OR EXISTS (SELECT 1 FROM employment_records original
+      WHERE original.tenant_id=b.tenant_id AND original.id=b.id
+        AND original.start_date > (original.created_at AT TIME ZONE ${timezone})::date))
+    AND NOT EXISTS (SELECT 1 FROM employment_activation_attempts done
+      WHERE done.tenant_id=b.tenant_id AND done.business_id=b.id AND done.outcome='effective')
+    AND NOT EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
       AND o.event_type='employment.transfer.linked'))`;
 
 /** 一名员工的全部待生效业务，按生效顺序排列（未到期的也在内，调用方按业务日截取）。 */
@@ -49,7 +56,10 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
     SELECT b.id, b.employee_id AS "employeeId", b.revision, p.kind, p.effective_date::text AS "effectiveDate",
       CASE WHEN 'preset:departmentId' = ANY(p.explicit_field_codes) THEN p.department_id END AS "departmentId",
       CASE WHEN 'preset:positionId' = ANY(p.explicit_field_codes) THEN p.position_id END AS "positionId",
-      (s.state='effective') AS materialized, a.outcome AS "lastOutcome", a.blocked_by_business_id AS "lastBlockedBy",
+      (s.state='effective') AS materialized,
+      (s.state='effective' AND NOT (COALESCE(p.is_department_head,false) OR COALESCE(p.is_store_manager,false)
+        OR COALESCE(cardinality(p.added_subordinate_ids),0)>0)) AS "reminderOnly",
+      a.outcome AS "lastOutcome", a.blocked_by_business_id AS "lastBlockedBy",
       COALESCE(a.attempt_no, 0) AS "lastAttemptNo"
     FROM employment_business_objects b
     JOIN LATERAL (SELECT * FROM employment_payload_versions p
@@ -61,7 +71,7 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
     LEFT JOIN LATERAL (SELECT outcome, blocked_by_business_id, attempt_no FROM employment_activation_attempts a
       WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
-      AND ${pendingActivationState}
+      AND ${pendingActivationState(ctx.timezone)}
     ORDER BY p.effective_date, p.kind IN ('hire', 'rehire', 'retire_rehire'), ${operationKey(ctx.tenantId, sql`b.id`)}
     LIMIT ${QUEUE_LIMIT + 1}
   `),
@@ -79,7 +89,7 @@ export async function activationPredecessors(tx: Tx, ctx: EmploymentContext, emp
 
 /** 失败尚未修正的前序（其后的业务按 DEC-112 一律挂起在它之后）。 */
 export function failedPredecessor(before: readonly PendingActivation[]): PendingActivation | undefined {
-  return before.find((item) => item.lastOutcome === 'failed');
+  return before.find((item) => !item.reminderOnly && item.lastOutcome === 'failed');
 }
 
 export interface AttemptRecord {
@@ -93,6 +103,7 @@ export interface AttemptRecord {
 /**
  * 记一次生效尝试，与业务写入、审计、outbox 同事务（AGENTS.md §10）。失败 / 挂起时递增业务 revision，
  * 使 HR 重试必须基于看到的最新结果提交（409 而不是盲重试）；生效时 revision 已由状态迁移递增。
+ * DEC-173 仅提醒的直接调动不改任职或头版本，仅追加尝试与通知事件。
  */
 export async function recordActivationAttempt(
   tx: Tx,
@@ -127,7 +138,7 @@ export async function recordActivationAttempt(
     commandId: ctx.commandId,
     createdAt: ctx.now,
   });
-  if (attempt.outcome !== 'effective' && options.bumpRevision !== false) {
+  if (attempt.outcome !== 'effective' && !item.reminderOnly && options.bumpRevision !== false) {
     await tx.execute(sql`UPDATE employment_business_objects SET revision=revision+1
       WHERE tenant_id=${ctx.tenantId} AND employee_id=${item.employeeId}::uuid AND id=${item.id}::uuid`);
   }
@@ -213,7 +224,8 @@ export async function listActivationTodos(
   tx: Tx,
   tenantId: string,
   page: { readonly limit: number; readonly offset: number },
-  scope?: EmploymentScope,
+  scope: EmploymentScope | undefined,
+  timezone: string,
 ): Promise<ActivationTodo[]> {
   const department = sql`COALESCE(p.department_id, current_record.department_id)`;
   const scopeFilter = employmentScopePredicate(
@@ -247,7 +259,7 @@ export async function listActivationTodos(
       JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id AND t.start_date<=p.effective_date
       ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1) current_record ON true
-    WHERE b.tenant_id=${tenantId} AND ${pendingActivationState} AND a.outcome='failed' AND ${scopeFilter}
+    WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)} AND a.outcome='failed' AND ${scopeFilter}
     ORDER BY p.effective_date, ${operationKey(tenantId, sql`b.id`)} LIMIT ${page.limit} OFFSET ${page.offset}
   `),
   );

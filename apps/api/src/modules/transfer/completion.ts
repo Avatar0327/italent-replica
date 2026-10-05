@@ -12,13 +12,18 @@ export const COMPLETION_REMINDER_DAYS = 7;
 function completionQuery(ctx: EmploymentContext) {
   return sql`
     SELECT e.business_id AS id,e.employee_id AS "employeeId",r.start_date::text AS "effectiveDate",
-      COALESCE(p.body,to_jsonb(r))->>'department_id' AS "departmentId",
+      COALESCE(p.body,to_jsonb(current_record))->>'department_id' AS "departmentId",
       jsonb_agg(code.value ORDER BY code.ordinality) AS "fieldCodes"
     FROM employment_outbox e
     JOIN employment_records r ON r.tenant_id=e.tenant_id AND r.id=e.business_id
     JOIN employment_timeline t ON t.tenant_id=r.tenant_id AND t.record_id=r.id
+    JOIN employment_timeline current_t ON current_t.tenant_id=e.tenant_id AND current_t.employee_id=e.employee_id
+      AND current_t.valid_during @> ${tenantLocalDate(ctx.now, ctx.timezone)}::date
+    JOIN employment_records current_record ON current_record.tenant_id=current_t.tenant_id
+      AND current_record.id=current_t.record_id
+      AND current_record.service_type='primary' AND current_record.kind NOT IN ('leave','retirement')
     LEFT JOIN LATERAL (SELECT to_jsonb(p) AS body FROM employment_payload_versions p
-      WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
+      WHERE p.tenant_id=current_record.tenant_id AND p.business_id=current_record.id AND p.is_record_snapshot
       ORDER BY version_no DESC LIMIT 1) p ON true
     CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(
       e.payload->'meta'->'clearedFieldCodes', e.payload->'after'->'clearedFieldCodes','[]'::jsonb
@@ -26,9 +31,9 @@ function completionQuery(ctx: EmploymentContext) {
     WHERE e.tenant_id=${ctx.tenantId} AND e.event_type='employment.record.create'
       AND r.start_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date
       AND code.value LIKE 'preset:%'
-      AND (COALESCE(p.body,to_jsonb(r))->>lower(regexp_replace(
+      AND (COALESCE(p.body,to_jsonb(current_record))->>lower(regexp_replace(
         substring(code.value FROM 8), '([A-Z])', '_\\1', 'g'))) IS NULL
-    GROUP BY e.business_id,e.employee_id,r.start_date,r.id,p.body
+    GROUP BY e.business_id,e.employee_id,r.start_date,current_record.id,p.body
   `;
 }
 export interface CompletionTodo {
@@ -51,7 +56,12 @@ export async function listCompletionTodos(tx: Tx, ctx: EmploymentContext, page: 
   );
 }
 export function completionCandidates(ctx: EmploymentContext) {
-  return sql`SELECT c."employeeId" FROM (${completionQuery(ctx)}) c`;
+  return sql`SELECT DISTINCT c."employeeId" FROM (${completionQuery(ctx)}) c
+    WHERE NOT EXISTS (SELECT 1 FROM employment_outbox reminder
+      WHERE reminder.tenant_id=${ctx.tenantId} AND reminder.business_id=c.id
+        AND reminder.event_type='employment.completion.reminder'
+        AND (reminder.payload->'after'->>'businessDate')::date >
+          ${tenantLocalDate(ctx.now, ctx.timezone)}::date - ${COMPLETION_REMINDER_DAYS}::int)`;
 }
 /** 调度器持员工锁后调用；同一员工/业务/周期只发布一次可靠提醒，接收者沿 HR 待办实时权限解析。 */
 export async function remindCompletion(tx: Tx, ctx: EmploymentContext, employeeId: string) {

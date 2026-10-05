@@ -196,7 +196,7 @@ async function dueEmployees(
       WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
     LEFT JOIN LATERAL (SELECT outcome, blocked_by_business_id FROM employment_activation_attempts a
       WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
-    WHERE b.tenant_id=${tenantId} AND ${pendingActivationState}
+    WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)}
       AND p.effective_date<=${businessDate}::date
       AND (${cursor}::uuid IS NULL OR b.employee_id>${cursor}::uuid)
       AND (a.outcome IS NULL OR (a.outcome='suspended' AND NOT (

@@ -46,7 +46,7 @@ export async function activateDueBusinesses(
   let blocker: PendingActivation | undefined;
   for (let index = 0; index < queue.length; index++) {
     const item = queue[index]!;
-    if (blocker) {
+    if (blocker && !item.reminderOnly) {
       if (item.lastOutcome !== 'suspended' || item.lastBlockedBy !== blocker.id) {
         await recordActivationAttempt(tx, ctx, item, {
           outcome: 'suspended',
@@ -60,20 +60,23 @@ export async function activateDueBusinesses(
     }
     // 失败的业务只由 HR 修正后重试（DEC-052），定时任务不自动重试，失败次数不随每次运行增加。
     if (item.lastOutcome === 'failed' && item.id !== retryBusinessId) {
-      blocker = item;
+      if (!item.reminderOnly) blocker = item;
       continue;
     }
     const failure = await activateWithJudgement(tx, ctx, item);
     if (failure) {
       await recordActivationAttempt(tx, ctx, item, { outcome: 'failed', trigger, ...failure });
       result.failed.push(item.id);
-      blocker = item;
+      if (!item.reminderOnly) blocker = item;
       continue;
     }
     await recordActivationAttempt(tx, ctx, item, { outcome: 'effective', trigger });
+    // 无联动直接业务早已落地；复查不改其他业务载荷，无需重读或再次报告为新生效。
+    if (item.reminderOnly) continue;
     result.activated.push(item.id);
     // 已生效的这条离开队列；其后申请的 revision / 载荷可能被向后更新改写，从头重读。
     queue = await dueQueue(tx, ctx, employeeId);
+    blocker = undefined;
     index = -1;
   }
   return result;
@@ -97,7 +100,7 @@ export async function retryActivation(tx: Tx, ctx: EmploymentContext, businessId
     throw new AppError('CONFLICT', '该申请没有生效失败或挂起，等待定时生效', { reason: 'NOT_FAILED' });
   if (item.effectiveDate > tenantLocalDate(ctx.now, ctx.timezone))
     throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
-  const blocker = failedPredecessor(before);
+  const blocker = item.reminderOnly ? undefined : failedPredecessor(before);
   if (blocker)
     throw new AppError('CONFLICT', '前序业务生效失败，请先处理前序业务', {
       reason: PREDECESSOR_FAILED,
