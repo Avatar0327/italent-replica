@@ -152,6 +152,20 @@ describe('AC-CT F-016 字段与日期', () => {
     );
     expect(result).toMatchObject({ actualTerminationDate: null });
   });
+  it('CT-R18a 延迟到期后的激活按实际租户日期补实际终止日', async () => {
+    const w = await world('late-activation');
+    const request = await pending(w, { effectiveDate: '2026-10-02', endDate: '2026-10-03' });
+    expect(request.status).toBe(201);
+    await runContractJobs(
+      w.db,
+      { tenantId: w.session.tenant.id },
+      {
+        clock: () => new Date('2026-10-03T16:30:00Z'),
+        authorize: allowAll,
+      },
+    );
+    expect(await w.list()).toEqual([expect.objectContaining({ actualTerminationDate: '2026-10-03' })]);
+  });
   it('P3 格式错误行仍可下载 CSV，行号准确且不回显原值', async () => {
     const w = await world('csv');
     const response = await w.request('POST', '/imports/errors', {

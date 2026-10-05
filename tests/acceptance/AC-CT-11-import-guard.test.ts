@@ -280,7 +280,7 @@ describe('AC-CT-11 / DEC-167 编辑导入终止原因护栏', () => {
 describe('F-013 调度与端口回归（AC-CT-02 / 04 / 05）', () => {
   it('未命中规则的候选连续多轮只保留一行最近尝试及累计次数', async () => {
     const w = await contractWorld(testDb().db, 'f013bounded');
-    await w.create({ typeId: w.otherType.id });
+    await w.create({ typeId: w.otherType.id, endDate: '2026-10-01' });
     await w.settings({ autoRenew: true });
     await rule(w);
     for (let i = 0; i < 4; i++) await sweep(w);
@@ -289,7 +289,7 @@ describe('F-013 调度与端口回归（AC-CT-02 / 04 / 05）', () => {
 
   it('失败重试后成功替换最近尝试并清空错误，后续调度不再追加', async () => {
     const w = await contractWorld(testDb().db, 'f013retry');
-    await w.create();
+    await w.create({ endDate: '2026-10-01' });
     await w.settings({ autoRenew: true });
     await rule(w);
     await sweep(w);
@@ -303,8 +303,8 @@ describe('F-013 调度与端口回归（AC-CT-02 / 04 / 05）', () => {
 
   it('同轮多个候选与重叠规则只展开一次组织，下轮重新读取', async () => {
     const w = await contractWorld(testDb().db, 'f013expand');
-    await w.create();
-    await w.create({ typeId: w.otherType.id });
+    await w.create({ endDate: '2026-10-01' });
+    await w.create({ typeId: w.otherType.id, endDate: '2026-10-01' });
     await w.settings({ autoRenew: true });
     await rule(w);
     await rule(w, 2);
