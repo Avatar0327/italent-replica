@@ -172,7 +172,7 @@ async function projectedMembers(
       intervals.push({ employeeId: row.employeeId, fields, from, until });
     members.set(row.employeeId, intervals);
   }
-  await projectTarget(tx, ctx, target, periodUntil, members);
+  await projectTarget(tx, ctx, target, periodUntil, members, timings.transferOut);
   for (const [id, intervals] of members) members.set(id, clipMembership(intervals, windows));
   return (matches: (fields: Partial<PresetFields>) => boolean) => maximumMembers(members, matches);
 }
@@ -240,7 +240,7 @@ async function occupancyRows(
     WHERE t.tenant_id=${ctx.tenantId} AND t.valid_during && daterange(${target.effectiveDate}::date,${end}::date+1,'[)')
       AND (COALESCE(p.body,to_jsonb(r))->>'department_id')::uuid = ANY(${`{${orgIds.join(',')}}`}::uuid[])
       AND r.service_type='primary' AND r.kind NOT IN ('leave','retirement')
-      AND r.employee_id<>${target.employeeId}::uuid
+      AND r.id<>${target.businessId}::uuid
     ORDER BY r.employee_id LIMIT 100001
   `),
   );
@@ -262,7 +262,7 @@ async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: Activati
       JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id
         AND t.valid_during @> p.effective_date AND r.service_type='primary' LIMIT 1) current_record ON true
-    WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id<>${target.employeeId}::uuid
+    WHERE b.tenant_id=${ctx.tenantId} AND b.id<>${target.businessId}::uuid
       AND p.kind='transfer' AND p.mode='application' AND s.state IN ('in_review','approved')
       AND p.effective_date BETWEEN ${start}::date AND ${end}::date
     ORDER BY p.effective_date,${operationKey(ctx.tenantId, sql`b.id`)} LIMIT 10001
@@ -278,6 +278,7 @@ async function projectTarget(
   target: ActivationTarget,
   periodUntil: string,
   members: Map<string, MemberInterval[]>,
+  transferOut: string,
 ) {
   const [existing] = rowsOf(
     await tx.execute(sql`SELECT 1 FROM employment_timeline
@@ -288,9 +289,17 @@ async function projectTarget(
     : await insertedWindow(tx, ctx, target.employeeId, target.effectiveDate, target.businessId);
   if (window) {
     const from = [window.from, target.effectiveDate].sort().at(-1)!;
-    const until = window.to && window.to < periodUntil ? window.to : periodUntil;
+    const next = await nextReservedTransfer(tx, ctx, target, transferOut);
+    const until = [window.to ?? periodUntil, next ?? periodUntil, periodUntil].sort()[0]!;
     if (from < until)
       members.set(target.employeeId, [
+        ...(members.get(target.employeeId) ?? []).flatMap((interval) => {
+          if (interval.until <= from || interval.from >= until) return [interval];
+          return [
+            ...(interval.from < from ? [{ ...interval, until: from }] : []),
+            ...(interval.until > until ? [{ ...interval, from: until }] : []),
+          ];
+        }),
         {
           employeeId: target.employeeId,
           fields: target.fields ?? {},
@@ -299,4 +308,24 @@ async function projectTarget(
         },
       ]);
   }
+}
+
+/** 本人后续申请也有占用/释放时点；审批早提交单不能覆盖同日在后的投影。 */
+async function nextReservedTransfer(tx: Tx, ctx: EmploymentContext, target: ActivationTarget, transferOut: string) {
+  const mine = operationKey(ctx.tenantId, sql`${target.businessId}::uuid`);
+  const [next] = rowsOf<{ date: string }>(
+    await tx.execute(sql`
+    SELECT p.effective_date::text AS date FROM employment_business_objects b
+    JOIN LATERAL (SELECT * FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id
+      ORDER BY version_no DESC LIMIT 1) p ON true
+    JOIN LATERAL (SELECT state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id
+      ORDER BY event_no DESC LIMIT 1) s ON true
+    WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${target.employeeId}::uuid AND b.id<>${target.businessId}::uuid
+      AND p.kind='transfer' AND p.mode='application'
+      AND (s.state='approved' OR s.state='in_review' AND ${transferOut}='submitted')
+      AND (p.effective_date>${target.effectiveDate}::date OR p.effective_date=${target.effectiveDate}::date
+        AND ${operationKey(ctx.tenantId, sql`b.id`)}>${mine})
+    ORDER BY p.effective_date,${operationKey(ctx.tenantId, sql`b.id`)} LIMIT 1`),
+  );
+  return next?.date;
 }
