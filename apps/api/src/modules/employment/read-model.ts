@@ -3,6 +3,7 @@ import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { activationSummary } from './activation-store.js';
 import { employmentScopePredicate, employmentCreator } from './context.js';
+import { employmentVisibilitySql } from './visibility.js';
 import {
   PRESET_FIELD_NAMES,
   type PresetFields,
@@ -63,12 +64,11 @@ function record(row: Record<string, unknown>): EmploymentRecord {
 function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: PageQuery, scope?: EmploymentScope): SQL {
   const department = sql`(CASE WHEN current_payload.body IS NULL THEN r.department_id::text
     ELSE current_payload.body->>'department_id' END)::uuid`;
-  const scopeFilter = employmentScopePredicate(
-    scope,
-    sql`r.employee_id`,
+  const scopeFilter = employmentVisibilitySql(scope, {
+    employee: sql`r.employee_id`,
     department,
-    employmentCreator(tenantId, sql`r.id`, true),
-  );
+    creator: employmentCreator(tenantId, sql`r.id`, true),
+  });
   return sql`
     SELECT r.*,b.revision,current_payload.body AS current_payload,
       CASE WHEN isempty(t.valid_during) THEN (t.start_date-1)::text
@@ -182,20 +182,24 @@ export async function findCurrentRecord(tx: Tx, tenantId: string, employeeId: st
   return row ? record(row) : null;
 }
 
+/**
+ * access='read' 按 DEC-177 可见口径（详情、预览）；access='write' 是写入前的取数，仍要求记录部门与员工当前任职
+ * 同时在范围内（DEC-177 只放宽“看”；可见但部门在范围外的记录能否直接改，TODO(需取证 #72)）。
+ */
 export async function loadEmploymentBusiness(
   tx: Tx,
   tenantId: string,
   id: string,
   asOf: string,
   scope?: EmploymentScope,
+  access: 'read' | 'write' = 'read',
 ): Promise<EmploymentBusiness | null> {
   const department = sql`CASE WHEN p.is_record_snapshot OR r.id IS NULL THEN p.department_id ELSE r.department_id END`;
-  const scopeFilter = employmentScopePredicate(
-    scope,
-    sql`b.employee_id`,
-    department,
-    employmentCreator(tenantId, sql`b.id`, true),
-  );
+  const creator = employmentCreator(tenantId, sql`b.id`, true);
+  const scopeFilter =
+    access === 'read'
+      ? employmentVisibilitySql(scope, { employee: sql`b.employee_id`, department, creator })
+      : employmentScopePredicate(scope, sql`b.employee_id`, department, creator);
   const [row] = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`
     SELECT b.id,b.employee_id,b.revision,e.revision AS employee_revision,p.*,s.state

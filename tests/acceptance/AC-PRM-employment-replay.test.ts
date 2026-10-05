@@ -111,7 +111,11 @@ describe('AC-PRM 任职安全重放', () => {
     };
     const first = await world.api.request('PATCH', path, request);
     expect(first.status).toBe(200);
+    // DEC-178（F-015）：收缩到员工当前部门后，范围外的后续申请按 DEC-177 仍可见，重放照常通过、不再次写入。
     await world.scope([world.inside.id], 1);
+    expect((await world.api.request('PATCH', path, request)).status).toBe(200);
+    // 再收缩到只剩后续申请的部门：源记录已不在写入范围内，重放拒绝。
+    await world.scope([world.outside.id], 2);
     const replay = await world.api.request('PATCH', path, request);
     expect(replay.status).toBe(404);
     const saved = await world.setup.request(

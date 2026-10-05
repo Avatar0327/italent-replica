@@ -10,7 +10,7 @@ import { requirePermission } from '../../authorization.js';
 import { AppError, handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { scopeAllows, getModuleViewableFields } from '../permission/module-access.js';
+import { getModuleViewableFields } from '../permission/module-access.js';
 import { provisionEmployeeUser } from '../permission/user-provisioning.js';
 import {
   readSettings,
@@ -184,7 +184,8 @@ function registerEmployeeRecords(router: Hono<TenantEnv>, deps: TenantRouteDeps)
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       if (!(await getEmployee(tx, ctx.tenantId, id, queryDate(c, ctx)))) throw new AppError('NOT_FOUND', '员工不存在');
       const rows = await listEmploymentRecords(tx, ctx.tenantId, id, queryDate(c, ctx), page, ctx.scope);
-      if (!rows.length && ctx.scope && !scopeAllows(ctx.scope, { personId: id })) {
+      // DEC-177：没有任何一条对操作人可见的记录时按员工不存在处理，不暴露范围外员工是否存在。
+      if (!rows.length && ctx.scope && !ctx.scope.all) {
         const visible =
           page.offset === 0
             ? rows
@@ -377,6 +378,7 @@ async function authorizeBusinessWrite(deps: TenantRouteDeps, ctx: EmploymentCont
       id,
       tenantLocalDate(ctx.now, ctx.timezone),
       ctx.transferTarget ? undefined : ctx.scope,
+      'write',
     ),
   );
   if (!value || (employeeId && value.employeeId !== employeeId)) throw new AppError('NOT_FOUND', '任职业务不存在');

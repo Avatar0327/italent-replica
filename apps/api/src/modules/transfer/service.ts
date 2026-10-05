@@ -168,8 +168,9 @@ export async function transferBusinessContext(
     await lockEmploymentEmployee(tx, ctx, request.employeeId);
   }
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  const visible = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope);
-  if (visible && (targetDepartmentId === undefined || targetDepartmentId === visible.fields.departmentId)) return ctx;
+  // 是否需要目标部门例外按写入口径判断；DEC-177 放宽的只是“看”（F-015），不能因可见就跳过 Switch 31 例外。
+  const writable = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope, 'write');
+  if (writable && (targetDepartmentId === undefined || targetDepartmentId === writable.fields.departmentId)) return ctx;
   const business = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today);
   if (!business) throw new AppError('NOT_FOUND', '任职业务不存在');
   const form = await resolveTransferForm(tx, ctx.tenantId, business.formId);
@@ -190,6 +191,6 @@ export async function transferBusinessContext(
       if (!(error instanceof AppError) || !['FORBIDDEN', 'NOT_FOUND'].includes(error.code)) throw error;
     }
   }
-  if (visible) return ctx;
+  if (writable || (await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope))) return ctx;
   throw new AppError('NOT_FOUND', '任职业务不存在');
 }

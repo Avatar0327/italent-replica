@@ -351,8 +351,17 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
         body: { fields: initiator === 'employee' ? { directManagerId: null } : { remarks: 'HR依自身授权核对' } },
       });
       expect(edited.status, await edited.clone().text()).toBe(200);
+      // DEC-177（F-015）：员工当前在其范围内，范围外部门的调动草稿 / 申请对同范围的人可见；
+      // 但没有 HR 调动入口时不获得目标部门例外，修改仍按写入口径拒绝。
       const noRole = await world.actor(`transfer-followup-unrelated-${initiator}`, { role: 'Transfer.Self' });
-      expect((await world.api.request('GET', path, noRole)).status).toBe(404);
+      expect((await world.api.request('GET', path, noRole)).status).toBe(200);
+      const current = (await (await world.api.request('GET', path, hr)).json()) as { revision: number };
+      const denied = await world.api.request('PATCH', path, {
+        ...noRole,
+        ifMatch: current.revision,
+        body: { fields: { remarks: '无调动入口的修改' } },
+      });
+      expect(denied.status).toBe(404);
     }
   });
 
