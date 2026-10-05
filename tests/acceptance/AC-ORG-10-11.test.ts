@@ -109,6 +109,31 @@ describe('AC-ORG-10~11 DEC-021 组织全称与生效日期', () => {
   });
 });
 
+describe('AC-ORG-11 上级失效后已停用下级的全称（PR #54 第三轮复审 P3）', () => {
+  it('上级先改名、后提前失效并级联停用下级：失效后查停用下级，全称仍是上级最后的名称，不退回旧快照', async () => {
+    const world = await orgPeopleWorld(testDb().db, 'org11-expired-parent');
+    const parent = await world.org('失效上级');
+    const child = await world.org('失效下级', parent.id);
+    const root = String(parent.fullName).split('/')[0];
+    const renamed = await world.patchOrg(parent, { name: '失效上级V2', effectiveDate: '2026-10-02' });
+    expect(renamed.status, await renamed.clone().text()).toBe(200);
+    const expired = await world.patchOrg(
+      { id: parent.id, revision: 2 },
+      { stopDate: '2026-10-09', effectiveDate: '2026-10-03' },
+    );
+    expect(expired.status, await expired.clone().text()).toBe(200);
+    expect((await world.orgsAt('2026-10-05')).get(child.id)).toMatchObject({
+      enabled: true,
+      fullName: `${root}/失效上级V2/失效下级`,
+    });
+    expect((await world.orgsAt('2026-10-10')).get(child.id)).toMatchObject({
+      enabled: false,
+      fullName: `${root}/失效上级V2/失效下级`,
+      level: 2,
+    });
+  });
+});
+
 describe('AC-ORG-10/11 人员经历快照的部门全称与组织列表同一口径', () => {
   it('上级改名前后入职，经历里的部门全称都按记录日期当天的上级名称，与组织列表一致', async () => {
     const { db } = testDb();
