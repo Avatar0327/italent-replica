@@ -23,7 +23,7 @@ it('AC-CT-11 升级压缩历史尝试、保留累计次数与成功终态，旧�
           (tenant_id,object_id,employee_id,kind,state,error,command_id,created_at)
           VALUES (${w.session.tenant.id},${id},${w.employee.id},'renew',${state},
             ${state === 'unknown' ? 'SERVICE_UNAVAILABLE' : null},${`legacy-${i}`},
-            ${new Date(now.getTime() + j * 1000)})`);
+            ${new Date(now.getTime() + j * 1000).toISOString()}::timestamptz)`);
       }
     }
   });
