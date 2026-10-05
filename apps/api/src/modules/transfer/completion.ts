@@ -21,7 +21,7 @@ function completionQuery(ctx: EmploymentContext) {
       AND current_t.valid_during @> ${tenantLocalDate(ctx.now, ctx.timezone)}::date
     JOIN employment_records current_record ON current_record.tenant_id=current_t.tenant_id
       AND current_record.id=current_t.record_id
-      AND current_record.service_type='primary' AND current_record.kind NOT IN ('leave','retirement')
+      AND current_record.service_type='primary'
     LEFT JOIN LATERAL (SELECT to_jsonb(p) AS body FROM employment_payload_versions p
       WHERE p.tenant_id=current_record.tenant_id AND p.business_id=current_record.id AND p.is_record_snapshot
       ORDER BY version_no DESC LIMIT 1) p ON true
