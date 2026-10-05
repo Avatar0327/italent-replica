@@ -4,7 +4,7 @@ import { activationWorld } from './AC-TRF-activation-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
-async function fixture(label: string, capacity = 1) {
+async function fixture(label: string, capacity = 1, occupancyRanges = [{ employmentType: 'internal' }]) {
   const w = await activationWorld(database().db, label);
   const api = tenantApi(w.db, { clock: () => new Date('2026-10-01T01:00:00Z') });
   async function request(method: string, path: string, body: object, revision = 0) {
@@ -20,7 +20,7 @@ async function fixture(label: string, capacity = 1) {
     periodType: 'annual',
     maintenanceMode: 'local',
     startDate: '2026-01-01',
-    occupancyRanges: [{ employmentType: 'internal' }],
+    occupancyRanges,
   });
   expect(schemeResponse.status).toBe(201);
   const scheme = (await schemeResponse.json()) as { id: string };
@@ -71,6 +71,28 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
       });
       expect(response.status, await response.clone().text()).toBe(201);
     }
+  });
+
+  it('Q-M0-15 同条件字段且/同字段值或/多条件并集，与雇佣关系匹配', async () => {
+    const ranges = [
+      { employmentType: 'internal', conditions: { employmentForm: ['full', 'part'], employmentType: ['engineer'] } },
+      { employmentType: 'intern', conditions: { employmentSource: ['campus'] } },
+    ];
+    const w = await fixture('trf-est-ranges', 0, ranges);
+    const { employee, hire } = await w.hired();
+    const create = (fields: object) =>
+      w.session.request('POST', `/transfers/employees/${employee.id}`, {
+        ifMatch: hire.employeeRevision,
+        body: {
+          initiator: 'hr',
+          transferTypeCode: 'cross_department',
+          mode: 'application',
+          effectiveDate: '2026-10-01',
+          fields: { departmentId: w.to.id, ...fields },
+        },
+      });
+    expect((await create({ employmentForm: 'part', employmentType: 'engineer' })).status).toBe(409);
+    expect((await create({ employmentForm: 'contract', employmentType: 'engineer' })).status).toBe(201);
   });
 
   it('申请通过后真实满编 → 到期失败 → 调整编制 → 按原日重试，幂等关闭待办', async () => {
