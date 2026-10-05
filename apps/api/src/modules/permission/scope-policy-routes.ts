@@ -16,13 +16,11 @@ import {
   getScopeApp,
   getScopePolicy,
   identityScopeBody,
-  personLinkBody,
   scopeAppBody,
   scopePolicyBody,
   scopePolicyKey,
   setDynamicOrgGrant,
   setIdentityScope,
-  setPersonLink,
   setScopeApp,
   setScopePolicy,
 } from './scope-policy-service.js';
@@ -44,14 +42,7 @@ export function registerScopePolicyRoutes(router: Hono<TenantEnv>, deps: TenantR
     get: getScopeApp,
     put: setScopeApp,
   });
-  configRoutes(router, deps, {
-    path: `${BASE}/person-links/:userId`,
-    key: (c) => idParam(c, 'userId'),
-    body: personLinkBody,
-    get: getPersonLink,
-    put: (tx, write, key, body, revision) => setPersonLink(tx, write, key, body.employeeId, revision),
-    remove: (tx, write, key, revision) => setPersonLink(tx, write, key, null, revision),
-  });
+  personLinkRoutes(router, deps);
   configRoutes(router, deps, {
     path: `${BASE}/dynamic-org-grants/:grantId`,
     key: (c) => idParam(c, 'grantId'),
@@ -67,6 +58,28 @@ export function registerScopePolicyRoutes(router: Hono<TenantEnv>, deps: TenantR
     get: getScopePolicy,
     put: setScopePolicy,
   });
+}
+
+/**
+ * 用户与人员的绑定（DEC-128，AC-PRM-32）：只由建档 / 入职写入（user-provisioning.ts），这里只读；
+ * 手工绑定、改绑、解绑一律拒绝（原站没有“先建账号、再绑人”的入口，06 §9）。
+ */
+function personLinkRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  const path = `${BASE}/person-links/:userId`;
+  router.get(path, async (c) => {
+    const ctx = await scopeAdminGuard(c, deps);
+    const userId = idParam(c, 'userId');
+    const link = await withTenant(deps.db, ctx.tenantId, (tx) => getPersonLink(tx, userId));
+    etag(c, link.revision);
+    return c.json(link);
+  });
+  const rejected = () => {
+    throw new AppError('FORBIDDEN', '用户与人员的绑定随人员档案自动产生，不能手工绑定或改绑', {
+      reason: 'USER_BINDING_BY_PROFILE',
+    });
+  };
+  router.put(path, rejected);
+  router.delete(path, rejected);
 }
 
 function policyKey(c: RouteContext) {

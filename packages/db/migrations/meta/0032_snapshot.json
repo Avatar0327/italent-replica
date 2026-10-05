@@ -1,5 +1,5 @@
 {
-  "id": "6ff11a74-92b1-4d8a-9daa-c1b3c340bb0f",
+  "id": "dda1b3a6-a2ee-46f5-981f-74cbe5fac0f4",
   "prevId": "4589b9f0-98c6-4bae-b483-dda4343fc24a",
   "version": "7",
   "dialect": "postgresql",
@@ -506,6 +506,18 @@
           "notNull": true,
           "default": "'active'"
         },
+        "user_type": {
+          "name": "user_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "business_identity": {
+          "name": "business_identity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "revision": {
           "name": "revision",
           "type": "integer",
@@ -573,6 +585,14 @@
         "tenant_memberships_status_valid": {
           "name": "tenant_memberships_status_valid",
           "value": "\"tenant_memberships\".\"status\" IN ('active', 'revoked')"
+        },
+        "tenant_memberships_user_type_valid": {
+          "name": "tenant_memberships_user_type_valid",
+          "value": "\"tenant_memberships\".\"user_type\" IN ('internal', 'external')"
+        },
+        "tenant_memberships_business_identity": {
+          "name": "tenant_memberships_business_identity",
+          "value": "(\"tenant_memberships\".\"user_type\" = 'external' AND \"tenant_memberships\".\"business_identity\" IS NOT NULL AND btrim(\"tenant_memberships\".\"business_identity\") <> '')\n    OR (\"tenant_memberships\".\"user_type\" IS DISTINCT FROM 'external' AND \"tenant_memberships\".\"business_identity\" IS NULL)"
         }
       },
       "isRLSEnabled": false
@@ -989,21 +1009,6 @@
           ],
           "columnsTo": [
             "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "license_seats_pool": {
-          "name": "license_seats_pool",
-          "tableFrom": "license_seats",
-          "tableTo": "license_pools",
-          "columnsFrom": [
-            "tenant_id",
-            "license_type"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "license_type"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -1535,6 +1540,123 @@
         "permission_grants_status_valid": {
           "name": "permission_grants_status_valid",
           "value": "\"permission_grants\".\"status\" IN ('active', 'revoked')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.permission_outbox": {
+      "name": "permission_outbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_type": {
+          "name": "object_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "permission_outbox_cursor": {
+          "name": "permission_outbox_cursor",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "permission_outbox_tenant_id_tenants_id_fk": {
+          "name": "permission_outbox_tenant_id_tenants_id_fk",
+          "tableFrom": "permission_outbox",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "permission_outbox_state": {
+          "name": "permission_outbox_state",
+          "value": "\"permission_outbox\".\"state\" IN ('pending', 'sent', 'failed', 'unknown')"
         }
       },
       "isRLSEnabled": false
@@ -21638,7 +21760,7 @@
       "checkConstraints": {
         "approval_message_rules_trigger": {
           "name": "approval_message_rules_trigger",
-          "value": "\"approval_node_message_rules\".\"trigger\" IN ('arrive','approve','disagree','reject','transfer')"
+          "value": "\"approval_node_message_rules\".\"trigger\" IN ('arrive','approve','reject','transfer')"
         },
         "approval_message_rules_recipient": {
           "name": "approval_message_rules_recipient",
@@ -22078,62 +22200,11 @@
           "primaryKey": false,
           "notNull": true
         },
-        "node_type": {
-          "name": "node_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'single'"
-        },
         "approver_expression": {
           "name": "approver_expression",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
-        },
-        "approver_expressions": {
-          "name": "approver_expressions",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::text[]"
-        },
-        "exits": {
-          "name": "exits",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{approve}'::text[]"
-        },
-        "transition_rule_type": {
-          "name": "transition_rule_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "approve_rule_kind": {
-          "name": "approve_rule_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "approve_rule_value": {
-          "name": "approve_rule_value",
-          "type": "numeric(5, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "disagree_rule_kind": {
-          "name": "disagree_rule_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "disagree_rule_value": {
-          "name": "disagree_rule_value",
-          "type": "numeric(5, 2)",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "no_assignee_policy": {
           "name": "no_assignee_policy",
@@ -22353,30 +22424,6 @@
         "approval_nodes_auto_result": {
           "name": "approval_nodes_auto_result",
           "value": "\"approval_process_nodes\".\"same_assignee_result\" IN ('approve','skip') AND \"approval_process_nodes\".\"history_same_assignee_result\" IN ('approve','skip')"
-        },
-        "approval_nodes_type": {
-          "name": "approval_nodes_type",
-          "value": "\"approval_process_nodes\".\"node_type\" IN ('single','countersign')"
-        },
-        "approval_nodes_approvers": {
-          "name": "approval_nodes_approvers",
-          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 5\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','latest_record_department_head','record_department_head',\n            'record_department_hrbp','record_first_level_org_head']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
-        },
-        "approval_nodes_exits": {
-          "name": "approval_nodes_exits",
-          "value": "cardinality(\"approval_process_nodes\".\"exits\") BETWEEN 1 AND 2 AND \"approval_process_nodes\".\"exits\" <@ ARRAY['approve','disagree']::text[]"
-        },
-        "approval_nodes_countersign_auto": {
-          "name": "approval_nodes_countersign_auto",
-          "value": "\"approval_process_nodes\".\"node_type\" = 'single'\n        OR (\"approval_process_nodes\".\"same_assignee_result\" = 'approve' AND \"approval_process_nodes\".\"history_same_assignee_result\" = 'approve')"
-        },
-        "approval_nodes_transition_rule": {
-          "name": "approval_nodes_transition_rule",
-          "value": "(\"approval_process_nodes\".\"node_type\" = 'countersign') = (\"approval_process_nodes\".\"transition_rule_type\" IS NOT NULL)\n        AND (\"approval_process_nodes\".\"transition_rule_type\" IS NULL OR \"approval_process_nodes\".\"transition_rule_type\" IN ('any','all','custom'))\n        AND CASE WHEN \"approval_process_nodes\".\"transition_rule_type\" = 'custom'\n          THEN (\"approval_process_nodes\".\"approve_rule_kind\" IS NOT NULL) = ('approve' = ANY(\"approval_process_nodes\".\"exits\"))\n            AND (\"approval_process_nodes\".\"disagree_rule_kind\" IS NOT NULL) = ('disagree' = ANY(\"approval_process_nodes\".\"exits\"))\n          ELSE \"approval_process_nodes\".\"approve_rule_kind\" IS NULL AND \"approval_process_nodes\".\"disagree_rule_kind\" IS NULL END"
-        },
-        "approval_nodes_exit_rules": {
-          "name": "approval_nodes_exit_rules",
-          "value": "(\"approval_process_nodes\".\"approve_rule_kind\" IS NULL) = (\"approval_process_nodes\".\"approve_rule_value\" IS NULL)\n        AND (\"approval_process_nodes\".\"disagree_rule_kind\" IS NULL) = (\"approval_process_nodes\".\"disagree_rule_value\" IS NULL)\n        AND (\"approval_process_nodes\".\"approve_rule_kind\" IS NULL OR \"approval_process_nodes\".\"approve_rule_kind\" = 'count'\n          AND \"approval_process_nodes\".\"approve_rule_value\" >= 1 AND \"approval_process_nodes\".\"approve_rule_value\" = trunc(\"approval_process_nodes\".\"approve_rule_value\")\n          OR \"approval_process_nodes\".\"approve_rule_kind\" = 'percent' AND \"approval_process_nodes\".\"approve_rule_value\" > 0 AND \"approval_process_nodes\".\"approve_rule_value\" <= 100)\n        AND (\"approval_process_nodes\".\"disagree_rule_kind\" IS NULL OR \"approval_process_nodes\".\"disagree_rule_kind\" = 'count'\n          AND \"approval_process_nodes\".\"disagree_rule_value\" >= 1 AND \"approval_process_nodes\".\"disagree_rule_value\" = trunc(\"approval_process_nodes\".\"disagree_rule_value\")\n          OR \"approval_process_nodes\".\"disagree_rule_kind\" = 'percent' AND \"approval_process_nodes\".\"disagree_rule_value\" > 0 AND \"approval_process_nodes\".\"disagree_rule_value\" <= 100)"
         }
       },
       "isRLSEnabled": false
@@ -22898,12 +22945,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "activation_id": {
-          "name": "activation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "comment": {
           "name": "comment",
           "type": "text",
@@ -23032,11 +23073,11 @@
         },
         "approval_tasks_status": {
           "name": "approval_tasks_status",
-          "value": "\"approval_tasks\".\"status\" IN ('pending','approved','disagreed','rejected','transferred','skipped','cancelled','add_signed',\n        'queued','ended')"
+          "value": "\"approval_tasks\".\"status\" IN ('pending','approved','rejected','transferred','skipped','cancelled','add_signed','queued')"
         },
         "approval_tasks_origin": {
           "name": "approval_tasks_origin",
-          "value": "\"approval_tasks\".\"origin\" IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',\n        'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',\n        'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve',\n        'add_sign_parallel','countersign_reopen')"
+          "value": "\"approval_tasks\".\"origin\" IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',\n        'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',\n        'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve')"
         }
       },
       "isRLSEnabled": false

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { AuthorizationRequest } from '@italent/api';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { employmentSession } from './AC-EMP-support.js';
+import { employmentSession, loginEmailOf } from './AC-EMP-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -129,7 +129,13 @@ describe('AC-PRM-22 / DEC-080 任职授权接线', () => {
     const response = await world.api.request('POST', `/api/tenant/employment/employees/${employee.id}/businesses`, {
       ...world.as,
       ifMatch: employee.revision,
-      body: { kind: 'hire', mode: 'direct', effectiveDate: '2026-10-02', fields: { place: '乙地' } },
+      body: {
+        kind: 'hire',
+        mode: 'direct',
+        effectiveDate: '2026-10-02',
+        fields: { place: '乙地' },
+        loginEmail: loginEmailOf(employee.id),
+      },
     });
     expect(response.status, await response.clone().text()).toBe(201);
     const create = world.calls.find((request) => request.action === 'object.create' && request.resource === objectCode);

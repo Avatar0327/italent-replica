@@ -229,8 +229,22 @@
     {
       "idx": 32,
       "version": "7",
-      "when": 1791136803439,
-      "tag": "0032_approval_countersign",
+      "when": 1791135163806,
+      "tag": "0032_enterprise_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791135165300,
+      "tag": "0033_enterprise_settings_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791158833901,
+      "tag": "0034_approval_countersign",
       "breakpoints": true
     }
   ]

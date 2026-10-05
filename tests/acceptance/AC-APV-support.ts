@@ -21,6 +21,7 @@ import { bootstrapTenantAdmin } from '@italent/api';
 import { APPROVAL_TYPES, MODULE_OBJECTS, type ApprovalTypeCode, type ObjectDefinition } from '@italent/domain';
 import { expect } from 'vitest';
 import { createProcess, publishProcess } from '../../apps/api/src/modules/approval/definitions.js';
+import { withLoginEmail } from './AC-EMP-support.js';
 import { createProfile, grant, makeGrantable, setObjectPermission, type PermissionWorld } from './AC-PRM-support.js';
 import { cmd, seedTenantWithMember, tenantApi, type RequestOptions } from './support/tenant-api.js';
 
@@ -285,23 +286,33 @@ export async function approvalWorld(db: Db, label: string, fixed: FixedIds = {})
   }
 
   async function hire(employeeId: string, fields: Record<string, unknown>) {
+    const body = { kind: 'hire', mode: 'direct', effectiveDate: '2020-01-01', fields };
     return json<{ id: string; employeeRevision: number }>(
       await request(hr.id, 'POST', `/api/tenant/employment/employees/${employeeId}/businesses`, {
         ifMatch: 1,
-        body: { kind: 'hire', mode: 'direct', effectiveDate: '2020-01-01', fields },
+        body: (await isBound(employeeId)) ? body : withLoginEmail(employeeId, body),
       }),
       201,
     );
+  }
+
+  /** 人员是否已绑定账号（已绑定的入职无需登录邮箱；未绑定的按 DEC-140 补合成邮箱）。 */
+  async function isBound(employeeId: string): Promise<boolean> {
+    const rows = await withTenant(db, tenant.id, (tx) =>
+      tx.select().from(permissionUserPersonLinks).where(eq(permissionUserPersonLinks.employeeId, employeeId)),
+    );
+    return rows.length > 0;
   }
 
   /** 建员工 + 入职 + 账号绑定；返回账号与人员。 */
   async function person(name: string, departmentId: string, fields: Record<string, unknown> = {}): Promise<Person> {
     const userId = await member(name);
     const created = await employee(name);
-    await hire(created.id, { departmentId, ...fields });
+    // 可信夹具：先绑定账号再入职（已绑定的人员入职无需再填登录邮箱，DEC-140），成员关系 revision 不变
     await withTenant(db, tenant.id, (tx) =>
       tx.insert(permissionUserPersonLinks).values({ tenantId: tenant.id, userId, employeeId: created.id }),
     );
+    await hire(created.id, { departmentId, ...fields });
     return { userId, employeeId: created.id, name };
   }
 

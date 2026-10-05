@@ -1,30 +1,38 @@
 /**
- * 权限接口（R1-T01）。全部在 /api/tenant/permission 之下，经租户上下文中间件；写请求带 Idempotency-Key，
- * 修改已有对象带 If-Match（revision）。企业设置类接口按 8 类管理员能力鉴权（06 §7.1）：
+ * 权限接口（R1-T01；企业设置 R1-T15）。全部在 /api/tenant/permission 之下，经租户上下文中间件；写请求带
+ * Idempotency-Key，修改已有对象带 If-Match（revision）。企业设置类接口按 8 类管理员能力鉴权（06 §7.1）：
  *   身份      GET/POST /profiles、GET /profiles/:id、PUT /profiles/:id/objects/:objectCode   profile_manage
  *   用户授权  GET /grantable-profiles、GET/POST /grants、POST /grants/:id/revoke             user_grant
  *   管理员    GET/POST /admins、GET/PUT /admins/:id                                         admin_manage
+ *   用户管理  /users…（见 user-routes.ts）                                                  user_manage
+ *   管理单元  GET /mous、GET /mous/:id；增删改见 data-scope-routes.ts                     mou_manage / other_settings
  *   许可      GET /licenses                                                                license_balance
+ *             GET /licenses/:licenseType/seats（使用明细）                                   license_usage
+ *   菜单      GET /admin-menus  当前用户可见的企业设置菜单及可操作性（06 §7.1 矩阵）
  *   本人      GET /me/objects/:objectCode  当前用户对某对象的有效功能权限（前台按它显示按钮、列与字段）
  * TODO(需取证 #4)：菜单上下文是否参与后端鉴权（AC-PRM-02 与 AC-PRM-24 冲突）；当前只按身份与管理员能力判定。
  */
 import { withTenant } from '@italent/db';
+import { visibleEnterpriseMenus } from '@italent/domain';
 import type { Hono } from 'hono';
+import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
-import { runCommand } from '../../commands.js';
+import { AppError } from '../../errors.js';
 import type { BodyLimitOverride } from '../../middleware.js';
 import type { TenantRouteDeps } from '../../routes.js';
-import { type TenantContext, type TenantEnv, tenantOf } from '../../tenant-context.js';
+import { type TenantEnv, tenantOf } from '../../tenant-context.js';
+import { adminCommand as command, adminGuard as guard } from './admin-http.js';
 import { createAdmin, getAdmin, listAdmins, updateAdmin } from './admins.js';
-import type { WriteContext } from './audit.js';
 import { registerDataScopeRoutes } from './data-scope-routes.js';
 import { objectCatalog } from './catalog.js';
 import { createGrant, grantableProfiles, listGrants, revokeGrant } from './grants.js';
 import { etag, idParam, ifMatch, objectCodeParam, parseBody } from './http.js';
-import { listBalances } from './licenses.js';
+import { listBalances, listSeats } from './licenses.js';
 import { myObjectPermission } from './me.js';
 import { createProfile, getProfileDetail, listProfiles, setObjectPermission } from './profiles.js';
 import { adminBody, adminSetsBody, grantBody, grantQuery, objectPermissionBody, profileBody } from './schemas.js';
+import { loadAdminRoles } from './subject.js';
+import { registerUserRoutes } from './user-routes.js';
 
 const BASE = '/api/tenant/permission';
 
@@ -47,12 +55,15 @@ type Router = Hono<TenantEnv>;
 
 export function registerPermissionRoutes(router: Router, deps: TenantRouteDeps): void {
   registerDataScopeRoutes(router, deps);
+  registerUserRoutes(router, deps);
   profileRoutes(router, deps);
   grantRoutes(router, deps);
   adminRoutes(router, deps);
-  router.get(`${BASE}/licenses`, async (c) => {
-    const ctx = await guard(c, deps, 'license_balance');
-    return c.json({ items: await withTenant(deps.db, ctx.tenantId, listBalances) });
+  licenseRoutes(router, deps);
+  router.get(`${BASE}/admin-menus`, async (c) => {
+    const { tenantId, userId } = tenantOf(c);
+    const roles = await withTenant(deps.db, tenantId, (tx) => loadAdminRoles(tx, userId));
+    return c.json({ items: visibleEnterpriseMenus(roles) });
   });
   router.get(`${BASE}/me/objects/:objectCode`, async (c) => {
     const { tenantId, userId } = tenantOf(c);
@@ -60,6 +71,25 @@ export function registerPermissionRoutes(router: Router, deps: TenantRouteDeps):
     return c.json(
       await withTenant(deps.db, tenantId, (tx) => myObjectPermission(tx, userId, objectCode, objectCatalog)),
     );
+  });
+}
+
+const seatPage = z.strictObject({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+});
+
+function licenseRoutes(router: Router, deps: TenantRouteDeps): void {
+  router.get(`${BASE}/licenses`, async (c) => {
+    const ctx = await guard(c, deps, 'license_balance');
+    return c.json({ items: await withTenant(deps.db, ctx.tenantId, listBalances) });
+  });
+  router.get(`${BASE}/licenses/:licenseType/seats`, async (c) => {
+    const ctx = await guard(c, deps, 'license_usage');
+    const page = seatPage.safeParse({ limit: c.req.query('limit'), offset: c.req.query('offset') });
+    if (!page.success) throw new AppError('VALIDATION_FAILED', '分页超出允许范围');
+    const licenseType = c.req.param('licenseType');
+    return c.json({ items: await withTenant(deps.db, ctx.tenantId, (tx) => listSeats(tx, licenseType, page.data)) });
   });
 }
 
@@ -150,32 +180,5 @@ function adminRoutes(router: Router, deps: TenantRouteDeps): void {
     const result = await command(c, deps, ctx, { op: 'admin.update', change }, (tx, w) => updateAdmin(tx, w, change));
     etag(c, (result.body as { revision: number }).revision);
     return c.json(result.body);
-  });
-}
-
-type RouteContext = Parameters<typeof tenantOf>[0];
-
-async function guard(c: RouteContext, deps: TenantRouteDeps, capability: string): Promise<TenantContext> {
-  const ctx = tenantOf(c);
-  await requirePermission(deps.authorize, { ...ctx, action: `admin.${capability}` });
-  return ctx;
-}
-
-/** 写命令：同一租户事务内完成业务写 + 审计 + 命令台账（runCommand）。 */
-function command(
-  c: RouteContext,
-  deps: TenantRouteDeps,
-  ctx: TenantContext,
-  fingerprint: unknown,
-  run: (tx: Parameters<Parameters<typeof runCommand>[2]['execute']>[0], write: WriteContext) => Promise<unknown>,
-  status: 200 | 201 = 200,
-) {
-  return runCommand(deps.db, ctx, {
-    id: c.req.header('idempotency-key'),
-    fingerprint,
-    execute: async (tx, commandId) => {
-      const write: WriteContext = { tenantId: ctx.tenantId, userId: ctx.userId, now: deps.clock(), commandId };
-      return { status, body: await run(tx, write) };
-    },
   });
 }

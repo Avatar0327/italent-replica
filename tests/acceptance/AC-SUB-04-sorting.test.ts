@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { personnelSession } from './AC-SUB-support.js';
+import { loginEmailOf } from './AC-EMP-support.js';
 const database = useTestDb();
 it('AC-SUB-04 职级来自当前任职及职级版本的关联查询，变更后排序不陈旧', async () => {
   const s = await personnelSession(database().db);
@@ -25,7 +26,13 @@ it('AC-SUB-04 职级来自当前任职及职级版本的关联查询，变更后
     const e = await create('employment/employees', { code: randomUUID(), name: label });
     const hire = await create(
       `employment/employees/${e.id}/businesses`,
-      { kind: 'hire', mode: 'direct', effectiveDate: '2020-01-01', fields: { levelId } },
+      {
+        kind: 'hire',
+        mode: 'direct',
+        effectiveDate: '2020-01-01',
+        fields: { levelId },
+        loginEmail: loginEmailOf(e.id),
+      },
       1,
     );
     const subset = await create(`personnel/employees/${e.id}/subsets/education`, { school: label });

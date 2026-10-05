@@ -12,6 +12,7 @@ import {
   setObjectPermission,
 } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { loginEmailOf } from './AC-EMP-support.js';
 
 const database = useTestDb();
 
@@ -46,6 +47,7 @@ describe('AC-PRM-03/22/29 任职数据范围与字段裁剪', () => {
           mode: 'direct',
           effectiveDate: '2026-01-01',
           fields: { departmentId: previousDepartment, remarks: '隐藏备注', place: '可见地点' },
+          loginEmail: loginEmailOf(employee.id),
         },
         employee.revision,
       );
@@ -315,6 +317,7 @@ describe('AC-PRM-03/22/29 任职数据范围与字段裁剪', () => {
         mode: 'direct',
         effectiveDate: '2026-01-01',
         fields: { departmentId: world.outside.id, place: '本人的任职记录' },
+        loginEmail: loginEmailOf(employee.id),
       },
     });
     expect(ownRecord.status).toBe(201);

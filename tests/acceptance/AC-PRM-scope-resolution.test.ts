@@ -26,6 +26,7 @@ import {
   setObjectPermission,
 } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { loginEmailOf } from './AC-EMP-support.js';
 
 const database = useTestDb();
 const date = '2026-10-01';
@@ -236,6 +237,10 @@ describe('AC-PRM-03~07/17/18/21 scope resolution and policy priority', () => {
     const direct = await w.employee('直线下属');
     const grandchild = await w.employee('隔级下属');
     const dotted = await w.employee('虚线下属');
+    // 被测用户就是经理本人：入职前先绑定账号（已绑定的人员入职无需再填登录邮箱，DEC-140）
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.insert(permissionUserPersonLinks).values({ tenantId: w.tenant.id, userId: w.user.id, employeeId: manager.id }),
+    );
     for (const [person, directManagerId, dottedManagerId] of [
       [manager, null, null],
       [direct, manager.id, null],
@@ -250,6 +255,7 @@ describe('AC-PRM-03~07/17/18/21 scope resolution and policy priority', () => {
           mode: 'direct',
           effectiveDate: '2026-01-01',
           fields: { departmentId: org.id, directManagerId, dottedManagerId },
+          ...(person === manager ? {} : { loginEmail: loginEmailOf(person.id) }),
         },
       });
       expect(r.status, await r.clone().text()).toBe(201);
@@ -267,9 +273,6 @@ describe('AC-PRM-03~07/17/18/21 scope resolution and policy priority', () => {
     const pageCode = `${MODULE_OBJECTS.employee.code}.list`;
     let policyId = '';
     await withTenant(w.db, w.tenant.id, async (tx) => {
-      await tx
-        .insert(permissionUserPersonLinks)
-        .values({ tenantId: w.tenant.id, userId: w.user.id, employeeId: manager.id });
       const [page] = await tx
         .insert(permissionScopePolicies)
         .values({

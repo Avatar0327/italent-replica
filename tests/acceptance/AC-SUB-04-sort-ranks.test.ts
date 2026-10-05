@@ -7,6 +7,7 @@ import { type Db, sql, type Tx, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { seedTenantWithMember, tenantApi } from './support/tenant-api.js';
+import { loginEmailOf } from './AC-EMP-support.js';
 
 const database = useTestDb();
 const TODAY = '2026-10-01';
@@ -105,7 +106,7 @@ async function world(db: Db, label: string) {
       await call(
         'POST',
         `employment/employees/${created.id}/businesses`,
-        { kind: 'hire', mode: 'direct', effectiveDate: '2020-01-01', fields },
+        { kind: 'hire', mode: 'direct', effectiveDate: '2020-01-01', fields, loginEmail: loginEmailOf(created.id) },
         1,
       ),
       201,
