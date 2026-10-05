@@ -7,7 +7,7 @@ import { sql, type Tx } from '@italent/db';
 import { isCountersign } from '@italent/domain';
 import { assertOpen, ok, openTask, type Outcome } from './actions.js';
 import { approvalError, assertRevision, auditApproval, type ApprovalContext } from './context.js';
-import { activationOf, countersignFlowed, reopenEnded } from './countersign.js';
+import { activationOf, countersignFlowed, holdersAfterRetrieve, reopenEnded, resettle } from './countersign.js';
 import { assertBusinessUnchanged, nodeIndex, openRun, persistRun } from './engine.js';
 import { notifyCc } from './notifications.js';
 import { isActiveAccount } from './resolver.js';
@@ -84,8 +84,12 @@ export async function retrieveTask(tx: Tx, ctx: ApprovalContext, taskId: string)
     parentTaskId: task.id,
     activationId: task.activationId,
   });
-  if (activation && flowed) await reopenEnded(tx, run, activation, tasks);
   run.instance = { ...run.instance, currentNodeKey: task.nodeKey };
+  if (activation && flowed) {
+    // 恢复因流转而结束的席位；异常管理员接替时若已占着一席则合并（一人一票），人数变了要重新结算。
+    const holders = holdersAfterRetrieve(activation, ctx.userId);
+    if (await reopenEnded(tx, run, activation, tasks, holders)) await resettle(tx, run, task);
+  }
   await appendLog(tx, ctx, run.instance, { event: 'retrieve', nodeKey: task.nodeKey, taskId: reopened });
   await auditApproval(tx, ctx, {
     action: 'approval.task.retrieve',

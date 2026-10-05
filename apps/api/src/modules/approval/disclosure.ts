@@ -10,7 +10,9 @@ import {
   blindReviewFields,
   disclosedFieldNames,
   hasExit,
+  isCountersign,
   recordsHiddenFor,
+  rejectAllowed,
   visibleWhenHidden,
   type ApprovalNode,
 } from '@italent/domain';
@@ -21,7 +23,7 @@ import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
 import { rowsOf, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import { userOfPerson } from './resolver.js';
-import { addSignAllowed, addSignLink, isOwnRequest, retrievableTask, urgeOpen } from './rules.js';
+import { addSignAllowed, addSignLink, isOwnRequest, retrievableTask, urgeOpen, votesInTransition } from './rules.js';
 import { displayWindow, loadInstance, loadLogs, loadTasks, type InstanceRow, type TaskRow } from './store.js';
 
 export const SHOW_ORIGINALS_SETTING = 'approval.show_original_values';
@@ -158,10 +160,12 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
   // DEC-058：发起人或异动本人不能审批；看不到本单变化字段的人（盲审，C-非4）也不显示同意 / 驳回，只能转交。
   const decide = !own && !blind;
   if (running && mine && node) {
-    // DEC-144：同意 / 不同意是出口动作，按节点配置公布；驳回是节点动作，一直可用（R1-T07 起的现状）。
+    // DEC-144：同意 / 不同意是出口动作，按节点配置公布；会签节点的前加签人不计入流转规则，不公布不同意（DEC-152）。
+    // 驳回是节点开关（F-003 第二轮），加签人沿用原节点开关。
+    const votes = !isCountersign(node) || votesInTransition(allTasks, mine);
     if (decide && hasExit(node, 'approve')) actions.push('approve');
-    if (decide && hasExit(node, 'disagree')) actions.push('disagree');
-    if (decide) actions.push('reject');
+    if (decide && votes && hasExit(node, 'disagree')) actions.push('disagree');
+    if (decide && rejectAllowed(node)) actions.push('reject');
     if (node.actions.transfer || mine.isExceptionAdmin) actions.push('transfer');
     if (decide && node.actions.addSign && addSignAllowed(allTasks, mine)) actions.push('addSign');
     // `14` §11.3：加签人不能编辑表单内容，只有本节点原审批人可以；DEC-105：员工信息类不开放编辑。

@@ -18,7 +18,7 @@ import { handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { registerEmploymentApprovalHooks } from '../employment/approval-hooks.js';
-import { pageQuery, parseBody, revision, uuidParam } from '../job/context.js';
+import { pageQuery, parseBody, revision, uuidParam as rawUuidParam } from '../job/context.js';
 import {
   getModuleViewableFields,
   getModuleViewableFieldsInTransaction,
@@ -49,7 +49,7 @@ import {
   type Outcome,
 } from './actions.js';
 import { ADAPTERS } from './adapters.js';
-import { approvalError, type ApprovalContext, type FieldAccess } from './context.js';
+import { approvalError, canonicalId, type ApprovalContext, type FieldAccess } from './context.js';
 import { approvalTypeOf, createSchema, definitionSchema, toDefinition } from './definition-input.js';
 import {
   createProcess,
@@ -96,8 +96,22 @@ function fieldAccess(deps: TenantRouteDeps, ctx: TenantContext): FieldAccess {
   };
 }
 
-function readCtx(c: C, deps: TenantRouteDeps): ApprovalContext {
+/** 本模块的租户上下文：租户与用户 ID 按数据库 UUID 语义规范化（context.canonicalId，P2-1）。 */
+function tenantCtx(c: C): TenantContext {
   const tenant = tenantOf(c);
+  return { ...tenant, tenantId: canonicalId(tenant.tenantId), userId: canonicalId(tenant.userId) };
+}
+
+/** 请求体里的用户 ID：同样按数据库 UUID 语义规范化。 */
+const userIdInput = z.uuid().transform(canonicalId);
+
+/** 路径里的实例 / 任务 / 流程 ID 同样规范化（与库里取出的 ID 按字符串比较时不因大小写错位）。 */
+function uuidParam(c: C, name?: string): string {
+  return canonicalId(rawUuidParam(c, name));
+}
+
+function readCtx(c: C, deps: TenantRouteDeps): ApprovalContext {
+  const tenant = tenantCtx(c);
   return { ...tenant, now: deps.clock(), commandId: '', expectedRevision: 0, fields: fieldAccess(deps, tenant) };
 }
 
@@ -198,7 +212,7 @@ async function trimProcess<T extends object>(deps: TenantRouteDeps, ctx: TenantC
 }
 
 async function processResponse(c: C, deps: TenantRouteDeps, result: CommandResult) {
-  return c.json(await trimProcess(deps, tenantOf(c), result.body as object), result.status);
+  return c.json(await trimProcess(deps, tenantCtx(c), result.body as object), result.status);
 }
 
 export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
@@ -241,7 +255,7 @@ function registerHooks(deps: TenantRouteDeps) {
 
 function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/types', async (c) => {
-    await requireProcessView(deps, tenantOf(c));
+    await requireProcessView(deps, tenantCtx(c));
     return c.json({ items: Object.values(APPROVAL_TYPES) });
   });
   router.get('/processes', async (c) => {
@@ -312,7 +326,7 @@ function registerTenantConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
     const ctx = writeCtx(c, deps);
     const input = await parseBody(
       c,
-      z.strictObject({ fromUserId: z.uuid(), toUserId: z.uuid(), cursor: z.uuid().nullable().optional() }),
+      z.strictObject({ fromUserId: userIdInput, toUserId: userIdInput, cursor: z.uuid().nullable().optional() }),
     );
     // F2：替换流程配置要求流程配置权（DEC-102）；改派在途实例另按实例转交按钮 + 数据范围逐单判断。
     await requireProcessButton(deps, ctx, 'publish');
@@ -346,11 +360,16 @@ function registerTenantConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
 /** 仿真只收虚拟数据（清单 7）：审批人关系、直线经理、组织上下级都由输入给出，不接受真实员工标识去查库。 */
 const simulationData = z.strictObject({
   values: z.record(z.string().max(100), z.union([z.string().max(500), z.null()])),
-  relations: z.partialRecord(z.enum(APPROVER_EXPRESSIONS), z.uuid().nullable()).optional(),
-  managers: z.record(z.uuid(), z.uuid().nullable()).optional(),
+  relations: z.partialRecord(z.enum(APPROVER_EXPRESSIONS), userIdInput.nullable()).optional(),
+  managers: z
+    .record(z.uuid(), userIdInput.nullable())
+    .transform((managers) =>
+      Object.fromEntries(Object.entries(managers).map(([userId, manager]) => [canonicalId(userId), manager])),
+    )
+    .optional(),
   orgAncestors: z.record(z.uuid(), z.array(z.uuid()).max(100)).optional(),
-  initiatorUserId: z.uuid().nullable().optional(),
-  subjectUserId: z.uuid().nullable().optional(),
+  initiatorUserId: userIdInput.nullable().optional(),
+  subjectUserId: userIdInput.nullable().optional(),
 });
 const scope = z.enum(['published', 'latest']).default('published');
 
@@ -456,7 +475,7 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   }
   router.post('/tasks/:id/transfer', async (c) => {
     const ctx = writeCtx(c, deps);
-    const input = await parseBody(c, z.strictObject({ toUserId: z.uuid(), comment }));
+    const input = await parseBody(c, z.strictObject({ toUserId: userIdInput, comment }));
     const request = { taskId: uuidParam(c), userId: input.toUserId, comment: input.comment ?? null };
     const result = await command(c, deps, ctx, request, (tx, context) => transferTask(tx, context, request));
     return respondOutcome(c, deps, result);
@@ -464,7 +483,7 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post('/tasks/:id/add-sign', async (c) => {
     const ctx = writeCtx(c, deps);
     const taskId = uuidParam(c);
-    const signers = z.array(z.uuid()).min(1).max(MAX_ADD_SIGNERS);
+    const signers = z.array(userIdInput).min(1).max(MAX_ADD_SIGNERS);
     const input = await parseBody(c, z.strictObject({ userIds: signers, type: z.enum(ADD_SIGN_TYPES), comment }));
     // 后加签含本人的同意，盲审按本人字段权限判断（DEC-095）。
     const viewable = await fieldRights(c, deps, taskId, undefined);
@@ -474,7 +493,7 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
   router.post('/tasks/:id/cc', async (c) => {
     const ctx = writeCtx(c, deps);
-    const input = await parseBody(c, z.strictObject({ userIds: z.array(z.uuid()).min(1).max(20), comment }));
+    const input = await parseBody(c, z.strictObject({ userIds: z.array(userIdInput).min(1).max(20), comment }));
     const request = { taskId: uuidParam(c), userIds: input.userIds, comment: input.comment ?? null };
     const result = await command(c, deps, ctx, request, (tx, context) => copySend(tx, context, request));
     return respondOutcome(c, deps, result);
@@ -499,7 +518,7 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 const adminBody = z.strictObject({
   kind: z.enum(['reassign', 'jump']).optional(),
   taskId: z.uuid().optional(),
-  toUserId: z.uuid().optional(),
+  toUserId: userIdInput.optional(),
   toNodeKey: z.string().max(40).optional(),
   reason: z.string().trim().max(500).nullable().optional(),
 });

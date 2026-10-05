@@ -1,5 +1,5 @@
 {
-  "id": "e97e4fe8-983e-4ec5-af3c-8d0e1f600f01",
+  "id": "5b746255-2178-4a95-be0e-060e95e8e166",
   "prevId": "5dacc02e-fff1-4f6f-9a28-998524f7de93",
   "version": "7",
   "dialect": "postgresql",
@@ -12460,7 +12460,7 @@
         },
         "employment_state_events_state": {
           "name": "employment_state_events_state",
-          "value": "\"employment_state_events\".\"state\" IN ('draft', 'in_review', 'approved', 'rejected', 'effective', 'deleted')"
+          "value": "\"employment_state_events\".\"state\" IN ('draft', 'in_review', 'approved', 'rejected', 'disapproved', 'effective', 'deleted')"
         },
         "employment_state_events_command_nonempty": {
           "name": "employment_state_events_command_nonempty",
@@ -14924,7 +14924,7 @@
       "checkConstraints": {
         "personnel_change_requests_state": {
           "name": "personnel_change_requests_state",
-          "value": "\"personnel_change_requests\".\"status\" IN ('pending_approval','applied','withdrawn')"
+          "value": "\"personnel_change_requests\".\"status\" IN ('pending_approval','applied','withdrawn','disapproved')"
         },
         "personnel_change_requests_revision_positive": {
           "name": "personnel_change_requests_revision_positive",
@@ -21922,7 +21922,7 @@
       "checkConstraints": {
         "approval_instances_status": {
           "name": "approval_instances_status",
-          "value": "\"approval_instances\".\"status\" IN ('running','returned','approved','withdrawn','cancelled')"
+          "value": "\"approval_instances\".\"status\" IN ('running','returned','approved','disapproved','withdrawn','cancelled')"
         },
         "approval_instances_business_type": {
           "name": "approval_instances_business_type",
@@ -22619,6 +22619,13 @@
           "notNull": true,
           "default": false
         },
+        "allow_reject": {
+          "name": "allow_reject",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
         "urge_mode": {
           "name": "urge_mode",
           "type": "text",
@@ -23265,6 +23272,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "merged_candidate_user_ids": {
+          "name": "merged_candidate_user_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        },
         "origin": {
           "name": "origin",
           "type": "text",
@@ -23432,7 +23446,7 @@
         },
         "approval_tasks_status": {
           "name": "approval_tasks_status",
-          "value": "\"approval_tasks\".\"status\" IN ('pending','approved','disagreed','rejected','transferred','skipped','cancelled','add_signed',\n        'queued','ended')"
+          "value": "\"approval_tasks\".\"status\" IN ('pending','approved','disagreed','rejected','transferred','skipped','cancelled','add_signed',\n        'queued','ended','merged')"
         },
         "approval_tasks_origin": {
           "name": "approval_tasks_origin",

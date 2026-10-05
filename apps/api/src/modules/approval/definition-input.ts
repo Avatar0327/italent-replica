@@ -22,7 +22,7 @@ import {
   type ProcessDefinition,
 } from '@italent/domain';
 import { z } from 'zod';
-import { approvalError } from './context.js';
+import { approvalError, canonicalId } from './context.js';
 
 const text = (max: number) => z.string().trim().min(1).max(max);
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
@@ -69,9 +69,11 @@ const node = z.strictObject({
       addSign: z.boolean().default(false),
       copySend: z.boolean().default(false),
       retrieve: z.boolean().default(false),
+      /** 驳回（驳回到发起人）开关，缺省开启（R1-T07 起的节点一直可以驳回）。 */
+      reject: z.boolean().default(true),
       urge: z.enum(URGE_MODES).default('inherit'),
     })
-    .default({ transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' }),
+    .default({ transfer: false, addSign: false, copySend: false, retrieve: false, reject: true, urge: 'inherit' }),
   rejectCommentRequired: z.boolean().default(false),
   hideRecords: z.boolean().default(false),
   rejectResubmit: z.enum(REJECT_RESUBMIT_MODES).default('restart'),
@@ -94,7 +96,7 @@ export const definitionSchema = z.strictObject({
   description: optionalText(1000),
   priority: z.number().int().min(-100000).max(100000).default(0),
   isFallback: z.boolean().default(false),
-  exceptionAdminUserId: z.uuid().nullable().default(null),
+  exceptionAdminUserId: z.uuid().transform(canonicalId).nullable().default(null),
   urgeEnabled: z.boolean().default(true),
   hideRecordsFromInitiator: z.boolean().default(false),
   conditions: z

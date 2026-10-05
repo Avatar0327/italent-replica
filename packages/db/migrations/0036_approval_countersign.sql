@@ -1,3 +1,6 @@
+ALTER TABLE "employment_state_events" DROP CONSTRAINT "employment_state_events_state";--> statement-breakpoint
+ALTER TABLE "personnel_change_requests" DROP CONSTRAINT "personnel_change_requests_state";--> statement-breakpoint
+ALTER TABLE "approval_instances" DROP CONSTRAINT "approval_instances_status";--> statement-breakpoint
 ALTER TABLE "approval_node_message_rules" DROP CONSTRAINT "approval_message_rules_trigger";--> statement-breakpoint
 ALTER TABLE "approval_tasks" DROP CONSTRAINT "approval_tasks_status";--> statement-breakpoint
 ALTER TABLE "approval_tasks" DROP CONSTRAINT "approval_tasks_origin";--> statement-breakpoint
@@ -10,7 +13,12 @@ ALTER TABLE "approval_process_nodes" ADD COLUMN "approve_rule_kind" text;--> sta
 ALTER TABLE "approval_process_nodes" ADD COLUMN "approve_rule_value" numeric(5, 2);--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD COLUMN "disagree_rule_kind" text;--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD COLUMN "disagree_rule_value" numeric(5, 2);--> statement-breakpoint
+ALTER TABLE "approval_process_nodes" ADD COLUMN "allow_reject" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "approval_tasks" ADD COLUMN "merged_candidate_user_ids" uuid[] DEFAULT '{}'::uuid[] NOT NULL;--> statement-breakpoint
 ALTER TABLE "approval_tasks" ADD COLUMN "activation_id" uuid;--> statement-breakpoint
+ALTER TABLE "employment_state_events" ADD CONSTRAINT "employment_state_events_state" CHECK ("employment_state_events"."state" IN ('draft', 'in_review', 'approved', 'rejected', 'disapproved', 'effective', 'deleted'));--> statement-breakpoint
+ALTER TABLE "personnel_change_requests" ADD CONSTRAINT "personnel_change_requests_state" CHECK ("personnel_change_requests"."status" IN ('pending_approval','applied','withdrawn','disapproved'));--> statement-breakpoint
+ALTER TABLE "approval_instances" ADD CONSTRAINT "approval_instances_status" CHECK ("approval_instances"."status" IN ('running','returned','approved','disapproved','withdrawn','cancelled'));--> statement-breakpoint
 ALTER TABLE "approval_node_message_rules" ADD CONSTRAINT "approval_message_rules_trigger" CHECK ("approval_node_message_rules"."trigger" IN ('arrive','approve','disagree','reject','transfer'));--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD CONSTRAINT "approval_nodes_type" CHECK ("approval_process_nodes"."node_type" IN ('single','countersign'));--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD CONSTRAINT "approval_nodes_approvers" CHECK (CASE WHEN "approval_process_nodes"."node_type" = 'countersign'
@@ -36,7 +44,7 @@ ALTER TABLE "approval_process_nodes" ADD CONSTRAINT "approval_nodes_exit_rules" 
           AND "approval_process_nodes"."disagree_rule_value" >= 1 AND "approval_process_nodes"."disagree_rule_value" = trunc("approval_process_nodes"."disagree_rule_value")
           OR "approval_process_nodes"."disagree_rule_kind" = 'percent' AND "approval_process_nodes"."disagree_rule_value" > 0 AND "approval_process_nodes"."disagree_rule_value" <= 100));--> statement-breakpoint
 ALTER TABLE "approval_tasks" ADD CONSTRAINT "approval_tasks_status" CHECK ("approval_tasks"."status" IN ('pending','approved','disagreed','rejected','transferred','skipped','cancelled','add_signed',
-        'queued','ended'));--> statement-breakpoint
+        'queued','ended','merged'));--> statement-breakpoint
 ALTER TABLE "approval_tasks" ADD CONSTRAINT "approval_tasks_origin" CHECK ("approval_tasks"."origin" IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',
         'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',
         'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve',

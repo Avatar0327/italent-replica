@@ -183,6 +183,11 @@ export const approvalProcessNodes = pgTable(
     /** DEC-097：抄送、审批人撤回随版本冻结。 */
     allowCopySend: boolean('allow_copy_send').notNull().default(false),
     allowRetrieve: boolean('allow_retrieve').notNull().default(false),
+    /**
+     * F-003 第二轮：驳回（驳回到发起人）是节点开关（`14` §12.2 `isRejectToStart`），单人与会签节点共用，加签人沿用；
+     * 缺省开启（R1-T07 起的节点一直可以驳回）。
+     */
+    allowReject: boolean('allow_reject').notNull().default(true),
     /** X-15：节点催办 继承 / 开启 / 关闭。 */
     urgeMode: text('urge_mode').notNull().default('inherit'),
     rejectCommentRequired: boolean('reject_comment_required').notNull().default(false),
@@ -344,7 +349,11 @@ export const approvalInstances = pgTable(
       foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
     }),
     memberFk('approval_instances_initiator_fk', t.tenantId, t.initiatorUserId),
-    check('approval_instances_status', sql`${t.status} IN ('running','returned','approved','withdrawn','cancelled')`),
+    // disapproved：沿「不同意」连线流转到结束（DEC-144，`14` §12.2），流程结束、业务不生效，不能重提（F-003 第二轮）。
+    check(
+      'approval_instances_status',
+      sql`${t.status} IN ('running','returned','approved','disapproved','withdrawn','cancelled')`,
+    ),
     check('approval_instances_business_type', sql`${t.businessType} IN ('employment','personnel_change')`),
     check('approval_instances_revision', sql`${t.revision} > 0 AND ${t.round} > 0 AND ${t.historyFromSeq} >= 0`),
   ],
@@ -363,6 +372,14 @@ export const approvalTasks = pgTable(
     assigneeUserId: uuid('assignee_user_id'),
     /** 节点按表达式解析出的候选人（DEC-114：“与上一节点相同”的比较对象）；改派、加签产生的任务为空。 */
     candidateUserId: uuid('candidate_user_id'),
+    /**
+     * F-003 第二轮（P2-4）：会签节点两个表达式落到同一接手人、合并为一席时，被合并的其他候选人，与 candidate_user_id
+     * 一起作为下一节点“与上一节点相同”的比较对象（DEC-114）。
+     */
+    mergedCandidateUserIds: uuid('merged_candidate_user_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     origin: text('origin').notNull(),
     status: text('status').notNull().default('pending'),
     isExceptionAdmin: boolean('is_exception_admin').notNull().default(false),
@@ -392,7 +409,7 @@ export const approvalTasks = pgTable(
     check(
       'approval_tasks_status',
       sql`${t.status} IN ('pending','approved','disagreed','rejected','transferred','skipped','cancelled','add_signed',
-        'queued','ended')`,
+        'queued','ended','merged')`,
     ),
     check(
       'approval_tasks_origin',

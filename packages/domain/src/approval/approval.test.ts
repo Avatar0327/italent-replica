@@ -67,7 +67,7 @@ const node = (extra: Partial<SingleApprovalNode> = {}): SingleApprovalNode => ({
   formFields: [],
   editableFields: [],
   editMode: 'none',
-  actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' },
+  actions: { transfer: false, addSign: false, copySend: false, retrieve: false, reject: true, urge: 'inherit' },
   rejectCommentRequired: false,
   hideRecords: false,
   rejectResubmit: 'restart',

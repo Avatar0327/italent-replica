@@ -103,7 +103,7 @@ describe('AC-APV-27 并加签（只在会签节点）', () => {
     expect(view.currentNodeKey).toBe('final');
   });
 
-  it('单人节点请求并加签、会签节点请求前 / 后加签：都返回明确错误，任务不动', async () => {
+  it('单人节点请求并加签、会签节点请求后加签：都返回明确错误，任务不动（会签前加签见 AC-APV-36，DEC-152）', async () => {
     const w = await approvalWorld(database().db, 'apv-ps-types');
     const s = await transferScene(w);
     const finance = await w.member('财务');
@@ -119,16 +119,14 @@ describe('AC-APV-27 并加签（只在会签节点）', () => {
       ),
     ).toEqual({ status: 409, reason: 'APPROVAL_ADD_SIGN_TYPE_UNSUPPORTED' });
     view = await w.json(await w.taskAction(s.outHead.userId, single.id, 'approve', view.revision));
-    for (const type of ['before', 'after']) {
-      expect(
-        await reasonOf(
-          await w.taskAction(s.inHead.userId, taskOf(view, s.inHead.userId).id, 'add-sign', view.revision, {
-            userIds: [finance],
-            type,
-          }),
-        ),
-      ).toEqual({ status: 409, reason: 'APPROVAL_ADD_SIGN_TYPE_UNSUPPORTED' });
-    }
+    expect(
+      await reasonOf(
+        await w.taskAction(s.inHead.userId, taskOf(view, s.inHead.userId).id, 'add-sign', view.revision, {
+          userIds: [finance],
+          type: 'after',
+        }),
+      ),
+    ).toEqual({ status: 409, reason: 'APPROVAL_ADD_SIGN_TYPE_UNSUPPORTED' });
     const unchanged = await w.detail(view.id);
     expect(unchanged.revision).toBe(view.revision);
     expect(pendingOf(unchanged)).toHaveLength(2);

@@ -11,6 +11,7 @@ import {
   nodeExits,
   PRESET_PROCESSES,
   publishViolations,
+  rejectAllowed,
   type ApprovalNode,
   type ApprovalTypeCode,
   type ApproverExpression,
@@ -165,6 +166,7 @@ function nodeOf(row: Row, rules: Row[]): ApprovalNode {
       addSign: Boolean(row.allow_add_sign),
       copySend: Boolean(row.allow_copy_send),
       retrieve: Boolean(row.allow_retrieve),
+      reject: Boolean(row.allow_reject),
       urge: row.urge_mode as ApprovalNode['actions']['urge'],
     },
     rejectCommentRequired: Boolean(row.reject_comment_required),
@@ -306,16 +308,16 @@ async function writeVersionContent(tx: Tx, tenantId: string, id: string, definit
        transition_rule_type,approve_rule_kind,approve_rule_value,disagree_rule_kind,disagree_rule_value,
        no_assignee_policy,same_assignee_skip,
        history_same_assignee_skip,same_assignee_result,history_same_assignee_result,form_fields,editable_fields,
-       edit_mode,allow_transfer,allow_add_sign,allow_copy_send,allow_retrieve,urge_mode,reject_comment_required,
-       hide_records,reject_resubmit_mode)
+       edit_mode,allow_transfer,allow_add_sign,allow_copy_send,allow_retrieve,allow_reject,urge_mode,
+       reject_comment_required,hide_records,reject_resubmit_mode)
       VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${typed.type},${typed.approver},
         ${textArray(typed.approvers)},${textArray(nodeExits(node))},${typed.rule},${approve?.kind ?? null},
         ${approve?.value ?? null},${disagree?.kind ?? null},${disagree?.value ?? null},${node.noAssignee},
         ${node.sameAssigneeSkip},${node.historySameAssigneeSkip},${node.sameAssigneeResult},
         ${node.historySameAssigneeResult},${textArray(node.formFields)},${textArray(node.editableFields)},
         ${node.editMode},${node.actions.transfer},${node.actions.addSign},${node.actions.copySend},
-        ${node.actions.retrieve},${node.actions.urge},${node.rejectCommentRequired},${node.hideRecords},
-        ${node.rejectResubmit})`);
+        ${node.actions.retrieve},${rejectAllowed(node)},${node.actions.urge},${node.rejectCommentRequired},
+        ${node.hideRecords},${node.rejectResubmit})`);
     for (const [ruleIndex, rule] of node.messageRules.entries()) {
       await tx.execute(sql`INSERT INTO approval_node_message_rules
         (tenant_id,version_id,node_key,rule_no,trigger,channels,template_code,recipient)

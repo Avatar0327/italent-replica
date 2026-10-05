@@ -2,6 +2,7 @@
  * 审批流转引擎：发起 / 重提 / 节点推进 / 结束。节点逐个激活：先按表达式解析审批人，再按 decideNode 处理
  * 审批人为空、自审、相同 / 历史相同审批人跳过；遇到需人工审批的节点即停下等待。
  * 会签节点（F-003）逐人解析与处理，按流转规则判定进入节点时是否已可流转（DEC-144）；成员处理后的结算见 countersign.ts。
+ * 节点沿出口动作的连线流转（followExit）：「同意」进入下一节点，「不同意」连到结束（DEC-144，`14` §12.2）。
  * 实例只引用发起时的版本 ID（已发布版本只读），在途实例不受新版本影响（REQ-APV-001 R2/R3）。
  */
 import { randomUUID } from 'node:crypto';
@@ -14,13 +15,14 @@ import {
   countersignOutcome,
   decideNode,
   effectiveHistory,
+  EXIT_TARGETS,
   exitRulesOf,
   isCountersign,
   isSelf,
   mayResubmit,
   nodeExits,
   previousNodeComparand,
-  STALLED_COUNTERSIGN_EXIT,
+  STALLED_COUNTERSIGN_HANDLING,
   submitBlockers,
   tenantLocalDate,
   type ApprovalNode,
@@ -28,6 +30,7 @@ import {
   type Candidate,
   type CountersignApprovalNode,
   type NodeDecision,
+  type NodeExit,
   type RoutingFacts,
   type SingleApprovalNode,
 } from '@italent/domain';
@@ -290,13 +293,14 @@ async function insertAssigned(
   run: Run,
   node: ApprovalNode,
   decision: Extract<NodeDecision, { kind: 'assign' }>,
-  routing: { candidateUserId: string | null; activationId: string },
+  routing: { candidateUserId: string | null; mergedCandidateUserIds?: readonly string[]; activationId: string },
 ) {
   const taskId = await insertTask(tx, run.ctx, run.instance.id, {
     round: run.instance.round,
     nodeKey: node.key,
     assigneeUserId: decision.userId,
     candidateUserId: routing.candidateUserId,
+    mergedCandidateUserIds: routing.mergedCandidateUserIds ?? [],
     origin: decision.origin,
     status: 'pending',
     isExceptionAdmin: decision.isExceptionAdmin,
@@ -411,13 +415,19 @@ const seatUser = (seat: Seat) =>
       ? seat.decision.userId!
       : seat.blind.admin.userId;
 
+/** 一席及合并进来的其他候选人（两个表达式落到同一接手人时，后者的候选人随这一席留存）。 */
+interface SeatEntry {
+  readonly seat: Seat;
+  readonly mergedCandidateUserIds: string[];
+}
+
 /**
  * 逐人解析会签审批人（F-003）：审批人为空（DEC-054 / 098）、自审（DEC-068）、相同 / 历史相同审批人自动同意（`14`
  * §11.6，会签只有「同意」，DEC-106）都按人处理；首节点任一人为空即拒绝提交。被自审跳过的人另行留痕，即使其接替人
- * 与其他席位重合、该席被合并。
+ * 与其他席位重合、该席被合并；被合并那一席的候选人留在保留的这一席上，下一节点按全部候选人比较（DEC-114，P2-4）。
  */
 async function countersignSeats(tx: Tx, run: Run, node: CountersignApprovalNode, entry: Entry) {
-  const seats: Seat[] = [];
+  const seats: SeatEntry[] = [];
   const selfSkips: NodeDecision[] = [];
   const candidates = new Set<string>();
   for (const expression of node.approvers) {
@@ -427,7 +437,9 @@ async function countersignSeats(tx: Tx, run: Run, node: CountersignApprovalNode,
     if (candidate.userId !== null) candidates.add(candidate.userId);
     if (decision.kind === 'assign' && decision.selfSkippedUserId) selfSkips.push(decision);
     const seat = await seatOf(tx, run, decision, candidate.userId, entry);
-    if (!seats.some((other) => seatUser(other) === seatUser(seat))) seats.push(seat);
+    const same = seats.find((other) => seatUser(other.seat) === seatUser(seat));
+    if (!same) seats.push({ seat, mergedCandidateUserIds: [] });
+    else if (candidate.userId !== null) same.mergedCandidateUserIds.push(candidate.userId);
   }
   return { seats, selfSkips };
 }
@@ -466,7 +478,7 @@ async function enterCountersign(
   const rules = exitRulesOf(node.transitionRule, nodeExits(node));
   const outcome = countersignOutcome(
     rules,
-    seats.map((seat) => (seat.kind === 'auto' ? 'approve' : 'open')),
+    seats.map(({ seat }) => (seat.kind === 'auto' ? 'approve' : 'open')),
   );
   const ended = outcome.kind === 'flow' ? countersignEndedReason(outcome.exit) : null;
   for (const seat of seats) await writeSeat(tx, run, node, seat, entry, tasks, ended);
@@ -488,7 +500,7 @@ async function enterCountersign(
     event: 'countersign_stalled',
     nodeKey: node.key,
     actorUserId: null,
-    detail: { exit: STALLED_COUNTERSIGN_EXIT, onEntry: true },
+    detail: { handling: STALLED_COUNTERSIGN_HANDLING, onEntry: true },
   });
   await returnInstance(tx, run, node.key);
   return 'returned';
@@ -499,28 +511,30 @@ async function writeSeat(
   tx: Tx,
   run: Run,
   node: CountersignApprovalNode,
-  seat: Seat,
+  { seat, mergedCandidateUserIds }: SeatEntry,
   entry: Entry,
   tasks: readonly TaskRow[],
   endedReason: string | null,
 ) {
   if (seat.kind === 'auto') {
-    await autoProcess(tx, run, node, seat.decision, tasks, entry.activationId);
+    await autoProcess(tx, run, node, seat.decision, tasks, entry.activationId, mergedCandidateUserIds);
     return;
   }
   if (seat.kind === 'blind') {
-    await blindReviewSeat(tx, run, node, seat.blind, entry, endedReason);
+    await blindReviewSeat(tx, run, node, seat.blind, entry, endedReason, mergedCandidateUserIds);
     return;
   }
+  const candidateUserId = seat.candidateUserId;
   if (!endedReason) {
-    await insertAssigned(tx, run, node, seat.decision, { ...entry, candidateUserId: seat.candidateUserId });
+    await insertAssigned(tx, run, node, seat.decision, { ...entry, candidateUserId, mergedCandidateUserIds });
     return;
   }
   const taskId = await insertTask(tx, run.ctx, run.instance.id, {
     round: run.instance.round,
     nodeKey: node.key,
     assigneeUserId: seat.decision.userId,
-    candidateUserId: seat.candidateUserId,
+    candidateUserId,
+    mergedCandidateUserIds,
     origin: seat.decision.origin,
     status: 'ended',
     isExceptionAdmin: seat.decision.isExceptionAdmin,
@@ -558,6 +572,7 @@ async function autoProcess(
   decision: Extract<NodeDecision, { kind: 'auto' }>,
   tasks: readonly TaskRow[],
   activationId: string,
+  mergedCandidateUserIds: readonly string[] = [],
 ): Promise<TaskRow> {
   const skip = decision.result === 'skip';
   const assigneeUserId = skip ? null : decision.userId;
@@ -568,6 +583,7 @@ async function autoProcess(
     nodeKey: node.key,
     assigneeUserId,
     candidateUserId: decision.userId,
+    mergedCandidateUserIds,
     origin: decision.outcome,
     status,
     activationId,
@@ -586,6 +602,7 @@ async function autoProcess(
     nodeKey: node.key,
     assigneeUserId,
     candidateUserId: decision.userId,
+    mergedCandidateUserIds,
     origin: decision.outcome,
     status,
     isExceptionAdmin: false,
@@ -618,6 +635,7 @@ async function blindReviewSeat(
   blind: BlindReview,
   entry: Entry,
   endedReason: string | null = null,
+  mergedCandidateUserIds: readonly string[] = [],
 ) {
   const { decision, hidden, admin } = blind;
   const taskId = await insertTask(tx, run.ctx, run.instance.id, {
@@ -625,6 +643,7 @@ async function blindReviewSeat(
     nodeKey: node.key,
     assigneeUserId: admin.userId,
     candidateUserId: decision.userId,
+    mergedCandidateUserIds,
     origin: 'blind_review',
     status: endedReason ? 'ended' : 'pending',
     isExceptionAdmin: true,
@@ -643,9 +662,29 @@ async function blindReviewSeat(
 }
 
 /**
- * 退回发起人（实例“退回”）：驳回、沿「不同意」流转（复刻首版的流程是线性的，不同意连线固定退回发起人；原站本租户
- * 连到“结束”，DEC-144 / `14` §12.2）与会签规则无法达成（暂定，#57）共用。在办任务取消，业务单回到可修改重提的状态，
- * 重提按本节点的「驳回后提交方式」（DEC-053 / DEC-103）。
+ * 沿出口动作的连线流转（DEC-144，types.EXIT_TARGETS）：「同意」进入下一节点；「不同意」连到结束。单人节点点了即流转，
+ * 会签节点达到该动作的规则才流转（countersign.settleCountersign）。
+ */
+export async function followExit(tx: Tx, run: Run, nodeKey: string, exit: NodeExit): Promise<void> {
+  if (EXIT_TARGETS[exit] === 'next') return advanceFrom(tx, run, nodeIndex(run, nodeKey) + 1);
+  await endDisapproved(tx, run, nodeKey);
+}
+
+/**
+ * 沿「不同意」连线流转到结束（`14` §12.2：本租户不同意连线都连到结束）：在办任务取消，流程结束、业务不生效，业务单
+ * 办结为“未通过”，不进入可修改重提的退回（与驳回不同）。
+ */
+async function endDisapproved(tx: Tx, run: Run, nodeKey: string): Promise<void> {
+  await cancelPending(tx, run.ctx, run.instance.id);
+  run.instance = { ...run.instance, status: 'disapproved', currentNodeKey: null, returnedFromNodeKey: null };
+  await appendLog(tx, run.ctx, run.instance, { event: 'disapprove', nodeKey, actorUserId: null });
+  await ADAPTERS[run.instance.businessType].disapproved(tx, run.ctx, run.instance.businessId);
+  run.events.push('approval.instance.disapproved');
+}
+
+/**
+ * 退回发起人（实例“退回”）：驳回，以及会签规则无法达成（暂定，#57）共用。在办任务取消，业务单回到可修改重提的状态，
+ * 重提按本节点的「驳回后提交方式」（DEC-053 / DEC-103）。「不同意」不走这里，见 followExit。
  */
 export async function returnInstance(tx: Tx, run: Run, nodeKey: string): Promise<void> {
   await cancelPending(tx, run.ctx, run.instance.id);

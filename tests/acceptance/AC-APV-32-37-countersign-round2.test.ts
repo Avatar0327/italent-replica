@@ -231,9 +231,7 @@ describe('AC-APV-33 「不同意」达标沿不同意连线流转到结束（P2-
     );
     expect(status).toEqual([{ status: 'disapproved' }]);
     expect(
-      await reasonOf(
-        await w.instanceAction(s.subject.userId, ended.id, 'resubmit', ended.revision, { corrections: {} }),
-      ),
+      await reasonOf(await w.instanceAction(s.subject.userId, ended.id, 'resubmit', ended.revision, { fields: {} })),
     ).toEqual({ status: 409, reason: 'APPROVAL_NOT_RETURNED' });
   });
 });
