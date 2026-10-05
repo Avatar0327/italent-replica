@@ -225,6 +225,20 @@
       "when": 1791126716373,
       "tag": "0031_employment_same_day_order",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791135163806,
+      "tag": "0032_enterprise_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791135165300,
+      "tag": "0033_enterprise_settings_guards",
+      "breakpoints": true
     }
   ]
 }

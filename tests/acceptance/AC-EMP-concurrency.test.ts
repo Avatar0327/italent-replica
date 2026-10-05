@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { employmentSession, type EmploymentBusiness } from './AC-EMP-support.js';
+import { employmentSession, type EmploymentBusiness, withLoginEmail } from './AC-EMP-support.js';
 
 const testDb = useTestDb();
 
@@ -48,7 +48,12 @@ describe('任职命令并发与当前任职唯一', () => {
     const request = {
       ifMatch: employee.revision,
       idempotencyKey: randomUUID(),
-      body: { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { employType: 'internal' } },
+      body: withLoginEmail(employee.id, {
+        kind: 'hire',
+        mode: 'direct',
+        effectiveDate: '2026-09-01',
+        fields: { employType: 'internal' },
+      }),
     };
     const responses = await Promise.all([
       session.request('POST', `/employees/${employee.id}/businesses`, request),

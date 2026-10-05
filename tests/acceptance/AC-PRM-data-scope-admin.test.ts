@@ -228,7 +228,14 @@ describe('AC-PRM-14~16 数据范围管理与共享授权生命周期', () => {
       },
     });
     expect(blocked.status).toBe(403);
-    expect((await world.api.request('GET', `${BASE}/mous`, asOperator)).status).toBe(403);
+    // R1-T15：06 §7.1 管理单元菜单对用户管理员可见（只读）；增删改仍只给租户管理员（REQ-PRM-002 配置边界）
+    expect((await world.api.request('GET', `${BASE}/mous`, asOperator)).status).toBe(200);
+    const created = await world.api.request('POST', `${BASE}/mous`, {
+      ...asOperator,
+      ifMatch: 0,
+      body: { code: 'USER_ADMIN_MOU', name: '越权新增', orgRanges: [] },
+    });
+    expect(created.status).toBe(403);
     expect(
       (
         await world.api.request('POST', `${BASE}/grants`, {

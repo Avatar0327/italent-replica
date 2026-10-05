@@ -6,7 +6,7 @@
  * R5-5（R4-5 的 SHARE 屏障）在 AC-APV-concurrency-pg.test.ts（真 PostgreSQL）。
  */
 import { bootstrapTenantAdmin } from '@italent/api';
-import { permissionUserPersonLinks, revokeMembership, sql, withPlatform, withTenant } from '@italent/db';
+import { eq, permissionUserPersonLinks, revokeMembership, sql, withPlatform, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import type { Authorizer } from '../../apps/api/src/authorization.js';
@@ -137,11 +137,13 @@ async function orderedPair(w: ApprovalWorld, s: Scene, successor: string) {
   }
   // 小写 UUID 文本的字典序与 PostgreSQL uuid 的排序一致。
   const [first, second] = pair.sort((a, b) => (a.employeeId < b.employeeId ? -1 : 1));
-  await withTenant(w.db, w.tenant.id, (tx) =>
-    tx
+  // 入职时按 DEC-140 自动建了合成账号的绑定；可信夹具把它换成替代人的账号（同一事务内先删后插）。
+  await withTenant(w.db, w.tenant.id, async (tx) => {
+    await tx.delete(permissionUserPersonLinks).where(eq(permissionUserPersonLinks.employeeId, second!.employeeId));
+    await tx
       .insert(permissionUserPersonLinks)
-      .values({ tenantId: w.tenant.id, userId: successor, employeeId: second!.employeeId }),
-  );
+      .values({ tenantId: w.tenant.id, userId: successor, employeeId: second!.employeeId });
+  });
   return { takeable: first!.view, failing: second!.view };
 }
 

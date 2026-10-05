@@ -73,7 +73,15 @@ export const users = pgTable(
 export const MEMBERSHIP_STATUSES = ['active', 'revoked'] as const;
 export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number];
 
-/** 用户 × 租户成员关系。撤销只改状态（留痕），每次请求都重新校验（AGENTS.md §10「权限」）。 */
+/** 租户内的用户类型（DEC-128，docs/02_业务建模/06 §9；原站 UserType 3 = 内部员工、2 = 外部用户）。 */
+export const USER_TYPES = ['internal', 'external'] as const;
+export type UserType = (typeof USER_TYPES)[number];
+
+/**
+ * 用户 × 租户成员关系 = 租户内的用户。撤销只改状态（留痕），每次请求都重新校验（AGENTS.md §10「权限」）。
+ * 用户类型（DEC-128）：内部员工随人员档案 / 入职产生并绑定档案；外部用户没有档案，必须带业务身份（猎头、实施顾问等）。
+ * 为空 = 平台路径授予、尚未登记类型的成员（如开通时的首位租户管理员），登记口径随 R1-T17 开通流程定。
+ */
 export const tenantMemberships = pgTable(
   'tenant_memberships',
   {
@@ -85,6 +93,8 @@ export const tenantMemberships = pgTable(
       .notNull()
       .references(() => users.id),
     status: text('status').$type<MembershipStatus>().notNull().default('active'),
+    userType: text('user_type').$type<UserType>(),
+    businessIdentity: text('business_identity'),
     revision: integer('revision').notNull().default(1),
     createdAt: utc('created_at'),
     updatedAt: utc('updated_at'),
@@ -92,6 +102,13 @@ export const tenantMemberships = pgTable(
   (t) => [
     unique('tenant_memberships_tenant_user').on(t.tenantId, t.userId),
     check('tenant_memberships_status_valid', sql`${t.status} IN ('active', 'revoked')`),
+    check('tenant_memberships_user_type_valid', sql`${t.userType} IN ('internal', 'external')`),
+    // 外部用户必须带业务身份（显式排除 NULL：CHECK 结果为 NULL 时会放行）；内部员工与未登记成员不带
+    check(
+      'tenant_memberships_business_identity',
+      sql`(${t.userType} = 'external' AND ${t.businessIdentity} IS NOT NULL AND btrim(${t.businessIdentity}) <> '')
+    OR (${t.userType} IS DISTINCT FROM 'external' AND ${t.businessIdentity} IS NULL)`,
+    ),
   ],
 );
 
