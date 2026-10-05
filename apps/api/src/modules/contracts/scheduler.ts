@@ -57,8 +57,8 @@ async function dueCandidates(db: Db, tenant: Tenant, today: string, limit: numbe
       ) candidate WHERE NOT EXISTS (SELECT 1 FROM contract_job_attempts a WHERE a.tenant_id=${tenant.id}
           AND a.object_id=candidate.id AND a.kind=candidate.kind AND a.state='succeeded')
       ORDER BY CASE WHEN kind='renew' THEN 1 ELSE 0 END,
-        (SELECT count(*) FROM contract_job_attempts a WHERE a.tenant_id=${tenant.id}
-          AND a.object_id=candidate.id AND a.kind=candidate.kind),
+        coalesce((SELECT a.attempt_count FROM contract_job_attempts a WHERE a.tenant_id=${tenant.id}
+          AND a.object_id=candidate.id AND a.kind=candidate.kind),0),
         CASE WHEN kind='activate' THEN 0 ELSE 1 END,id LIMIT ${limit + 1}`),
     );
   });
@@ -96,8 +96,14 @@ export async function runContractJobs(
     const candidates = await dueCandidates(db, tenant, today, remaining);
     const batch = candidates.slice(0, remaining);
     const outcomes = [];
+    // 缓存仅属于本轮当前租户；在首个续签候选事务中读取，下轮重新按业务日展开。
+    let expandedRules: Awaited<ReturnType<typeof rules>> | undefined;
+    const renewalRules = async (tx: Tx) => {
+      expandedRules ??= await expandRenewalRules(tx, tenant.id, today);
+      return expandedRules;
+    };
     for (const candidate of batch) {
-      outcomes.push(await runCandidate(db, tenant, candidate, now, authorize));
+      outcomes.push(await runCandidate(db, tenant, candidate, now, authorize, renewalRules));
     }
     // 游标只表示本租户仍有工作；每轮重新排到期优先级，不能让旧游标跳过新到期项。
     const nextCursor = candidates.length > batch.length ? 'pending' : null;
@@ -111,7 +117,40 @@ export async function runContractJobs(
   }
   return { runs, nextTenantCursor };
 }
-async function renewCandidate(tx: Tx, ctx: ContractContext, candidate: Candidate, today: string) {
+type RenewalRules = (tx: Tx) => Promise<Awaited<ReturnType<typeof rules>>>;
+async function expandRenewalRules(tx: Tx, tenantId: string, today: string) {
+  const enabledRules = (await rules(tx, tenantId)).filter((r) => r.enabled);
+  const descendants = new Map<string, readonly string[]>();
+  for (const rule of enabledRules) {
+    const expanded = new Set(rule.orgIds);
+    for (const orgId of rule.orgIds) {
+      let children = descendants.get(orgId);
+      if (!children) {
+        children = await listOrgDescendantsInTransaction(
+          tx,
+          {
+            tenantId,
+            orgId: orgId as OrgId,
+            dimension: 'admin',
+            asOf: today,
+          },
+          { includeDisabled: true },
+        );
+        descendants.set(orgId, children);
+      }
+      for (const id of children) expanded.add(id);
+    }
+    rule.orgIds = [...expanded];
+  }
+  return enabledRules;
+}
+async function renewCandidate(
+  tx: Tx,
+  ctx: ContractContext,
+  candidate: Candidate,
+  today: string,
+  renewalRules: RenewalRules,
+) {
   const config = await settings(tx, ctx.tenantId);
   const contracts = await tx
     .select()
@@ -126,29 +165,7 @@ async function renewCandidate(tx: Tx, ctx: ContractContext, candidate: Candidate
     .limit(10001);
   if (contracts.length > 10000) throw new AppError('PAYLOAD_TOO_LARGE', '单人合同数超过调度处理上限');
   const employment = await findCurrentRecord(tx, ctx.tenantId, candidate.employeeId, today);
-  const enabledRules = (await rules(tx, ctx.tenantId)).filter((r) => r.enabled);
-  const descendants = new Map<string, readonly string[]>();
-  for (const rule of enabledRules) {
-    const expanded = new Set(rule.orgIds);
-    for (const orgId of rule.orgIds) {
-      let children = descendants.get(orgId);
-      if (!children) {
-        children = await listOrgDescendantsInTransaction(
-          tx,
-          {
-            tenantId: ctx.tenantId,
-            orgId: orgId as OrgId,
-            dimension: 'admin',
-            asOf: today,
-          },
-          { includeDisabled: true },
-        );
-        descendants.set(orgId, children);
-      }
-      for (const id of children) expanded.add(id);
-    }
-    rule.orgIds = [...expanded];
-  }
+  const enabledRules = await renewalRules(tx);
   const plans = config.autoRenew
     ? automaticRenewalPlans(
         contracts,
@@ -188,7 +205,13 @@ async function renewCandidate(tx: Tx, ctx: ContractContext, candidate: Candidate
   }
   return false;
 }
-async function executeCandidate(tx: Tx, ctx: ContractContext, candidate: Candidate, today: string) {
+async function executeCandidate(
+  tx: Tx,
+  ctx: ContractContext,
+  candidate: Candidate,
+  today: string,
+  renewalRules: RenewalRules,
+) {
   let changed = false;
   if (candidate.kind === 'activate') {
     const request = await loadRequest(tx, ctx.tenantId, candidate.id);
@@ -204,11 +227,18 @@ async function executeCandidate(tx: Tx, ctx: ContractContext, candidate: Candida
       changed = true;
     }
   } else {
-    changed = await renewCandidate(tx, ctx, candidate, today);
+    changed = await renewCandidate(tx, ctx, candidate, today, renewalRules);
   }
   return changed;
 }
-async function runCandidate(db: Db, tenant: Tenant, candidate: Candidate, now: Date, authorize: Authorizer) {
+async function runCandidate(
+  db: Db,
+  tenant: Tenant,
+  candidate: Candidate,
+  now: Date,
+  authorize: Authorizer,
+  renewalRules: RenewalRules,
+) {
   const today = tenantLocalDate(now, tenant.timezone);
   const ctx: ContractContext = {
     tenantId: tenant.id,
@@ -247,33 +277,15 @@ async function runCandidate(db: Db, tenant: Tenant, candidate: Candidate, now: D
         throw new AppError('IDEMPOTENCY_CONFLICT', '调度命令 ID 已被其他内容使用');
       }
       // 员工锁下同一个目标 / 周期只能落地一次；失败事务不留命令结果。
-      const changed = await executeCandidate(tx, ctx, candidate, today);
+      const changed = await executeCandidate(tx, ctx, candidate, today, renewalRules);
       if (changed) {
-        await tx.insert(contractJobAttempts).values({
-          tenantId: tenant.id,
-          objectId: candidate.id,
-          employeeId: candidate.employeeId,
-          kind: candidate.kind,
-          state: 'succeeded',
-          commandId: ctx.commandId,
-          createdAt: now,
-        });
         // 同事务写调度命令台账；key 受员工锁保护，无需嵌套 runCommand 事务。
         await tx.execute(sql`INSERT INTO command_ledger(tenant_id,command_id,request_hash,response_status,response_body)
               VALUES (${tenant.id},${ctx.commandId},${commandHash(ctx.userId, candidate)},
               200,'{"succeeded":true}'::jsonb)
               ON CONFLICT (tenant_id,command_id) DO NOTHING`);
       }
-      if (!changed)
-        await tx.insert(contractJobAttempts).values({
-          tenantId: tenant.id,
-          objectId: candidate.id,
-          employeeId: candidate.employeeId,
-          kind: candidate.kind,
-          state: 'skipped',
-          commandId: ctx.commandId,
-          createdAt: now,
-        });
+      await saveAttempt(tx, ctx, candidate, changed ? 'succeeded' : 'skipped');
       return changed ? 'succeeded' : 'skipped';
     });
     return { ...candidate, state: result };
@@ -284,6 +296,9 @@ async function runCandidate(db: Db, tenant: Tenant, candidate: Candidate, now: D
 async function recoverCandidate(db: Db, ctx: ContractContext, candidate: Candidate, error: unknown) {
   // 提交结果未知时先回查成功记录；存储不可用则继续抛出，不能伪造业务失败。
   return withTenant(db, ctx.tenantId, async (tx) => {
+    // 失败事务已释放锁；重新按员工 → 业务顺序串行，避免覆盖另一实例刚写入的成功结果。
+    await tx.execute(sql`SELECT id FROM employment_employees WHERE tenant_id=${ctx.tenantId}
+      AND id=${candidate.employeeId}::uuid FOR UPDATE`);
     const [done] = rowsOf(
       await tx.execute(sql`SELECT id FROM contract_job_attempts WHERE tenant_id=${ctx.tenantId}
       AND object_id=${candidate.id}::uuid AND kind=${candidate.kind} AND state='succeeded' LIMIT 1`),
@@ -291,18 +306,35 @@ async function recoverCandidate(db: Db, ctx: ContractContext, candidate: Candida
     if (done) return { ...candidate, state: 'succeeded' };
     const state = error instanceof AppError ? 'failed' : 'unknown';
     const code = error instanceof AppError ? error.code : 'SERVICE_UNAVAILABLE';
-    await tx.insert(contractJobAttempts).values({
+    await saveAttempt(tx, ctx, candidate, state, code);
+    return { ...candidate, state, error: code };
+  });
+}
+
+/** F-013：每对象 / 任务仅保留最近尝试，次数用于公平轮转；业务历史仍由审计和 outbox 保存。 */
+async function saveAttempt(
+  tx: Tx,
+  ctx: ContractContext,
+  candidate: Candidate,
+  state: string,
+  error: string | null = null,
+) {
+  await tx
+    .insert(contractJobAttempts)
+    .values({
       tenantId: ctx.tenantId,
       objectId: candidate.id,
       employeeId: candidate.employeeId,
       kind: candidate.kind,
       state,
-      error: code,
+      error,
       commandId: ctx.commandId,
       createdAt: ctx.now,
+    })
+    .onConflictDoUpdate({
+      target: [contractJobAttempts.tenantId, contractJobAttempts.objectId, contractJobAttempts.kind],
+      set: { state, error, createdAt: ctx.now, attemptCount: sql`${contractJobAttempts.attemptCount}+1` },
     });
-    return { ...candidate, state, error: code };
-  });
 }
 
 export function startContractScheduler(
