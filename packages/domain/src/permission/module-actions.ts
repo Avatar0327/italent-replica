@@ -1,3 +1,4 @@
+import { CONTRACT_FIELDS } from '../contracts/rules.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
 import type { ButtonDefinition, DataOperation, ObjectDefinition } from './object-permission.js';
 
@@ -55,6 +56,47 @@ const job = (code: string, fields: readonly string[], system: readonly string[] 
   object(code, [...jobCommon, ...fields], jobButtons, [...system, 'kind', 'objectId']);
 
 export const MODULE_OBJECTS = {
+  contract: object(
+    'EmploymentContract',
+    [...CONTRACT_FIELDS, 'employeeId'],
+    [
+      ...crud,
+      button('renew', 'detail', 'update'),
+      button('change', 'detail', 'update'),
+      button('terminate', 'detail', 'update'),
+      button('import', 'list'),
+      button('withdraw', 'detail', 'update'),
+      button('resubmit', 'detail', 'update'),
+    ],
+    [
+      'status',
+      'approvalStatus',
+      'signingCount',
+      'previousContractId',
+      'rootContractId',
+      'versionNo',
+      'operation',
+      'mode',
+      'targetId',
+      'targetRevision',
+      'resultId',
+      'systemInitiated',
+      'rowType',
+    ],
+  ),
+  contractSettings: object('ContractSettings', [
+    'autoRenew',
+    'autoTerminate',
+    'autoNumber',
+    'accumulateRehire',
+    'postExitTypeIds',
+    'renewalTypeIds',
+    'indefiniteTypeIds',
+    'uniqueFields',
+  ]),
+  contractRules: object('ContractRenewalRule', ['name', 'priority', 'orgIds', 'personIds', 'enabled', 'details']),
+  contractType: object('ContractType', ['code', 'name', 'enabled']),
+  contractCompany: object('ContractCompany', ['code', 'name', 'enabled']),
   organization: object(
     'Organization',
     [

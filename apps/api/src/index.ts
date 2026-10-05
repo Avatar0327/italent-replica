@@ -35,3 +35,12 @@ export {
   type EmploymentActivationChecks,
   registerEmploymentActivationChecks,
 } from './modules/employment/activation-checks.js';
+
+export {
+  generateContractForBusiness,
+  changeContractForTransfer,
+  handleContractsOnExit,
+} from './modules/contracts/ports.js';
+export { runContractJobs, startContractScheduler } from './modules/contracts/scheduler.js';
+export type { ContractContext } from './modules/contracts/context.js';
+export type { ContractFields, ContractCommand } from './modules/contracts/input.js';

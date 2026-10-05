@@ -2,6 +2,7 @@
  * 业务适配：把任职申请、人员自助变更申请转换为审批快照（表单值、变更前原值、变化字段、条件取值、路由部门），
  * 并在审批结束时调用各模块已有的可信端口（任职状态机 / 申请落地），与审批写入同事务。
  */
+import { contractAdapter } from '../contracts/adapter.js';
 import { sql, type Tx } from '@italent/db';
 import {
   ageOn,
@@ -32,7 +33,7 @@ import { loadSubset } from '../personnel/subsets.js';
 import { AppError } from '../../errors.js';
 import { approvalError, rowsOf, type ApprovalContext, type Row } from './context.js';
 
-export type BusinessType = 'employment' | 'personnel_change';
+export type BusinessType = 'employment' | 'personnel_change' | 'contract';
 
 export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
@@ -375,6 +376,7 @@ const personnelAdapter: BusinessAdapter = {
 };
 
 export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
+  contract: contractAdapter,
   employment: employmentAdapter,
   personnel_change: personnelAdapter,
 };

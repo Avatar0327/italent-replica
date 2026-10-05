@@ -1,3 +1,6 @@
+import { CONTRACT_OBJECT } from '@italent/domain';
+import { loadRequest, businessFields } from '../contracts/service.js';
+import { checkFields, checkScope } from '../contracts/context.js';
 /**
  * 审批中心的功能权限：流程配置仅限租户级管理员（DEC-102）；管理员转交 / 干预受身份对象权限控制（DEC-080 真实字段与按钮），
  * 再按其数据范围限定到范围内员工的实例（数据范围默认为空，fail-closed）。
@@ -80,7 +83,9 @@ export function instanceScopeSql(ctx: TenantContext, scope: ModuleScope): SQL {
   return scopeSql(scope, {
     person: sql`i.subject_employee_id`,
     creator: sql`CASE WHEN i.business_type='employment'
-      THEN ${employmentCreator(ctx.tenantId, sql`i.business_id`, true)} END`,
+      THEN ${employmentCreator(ctx.tenantId, sql`i.business_id`, true)}
+      WHEN i.business_type='contract' THEN (SELECT created_by FROM contract_requests c
+        WHERE c.tenant_id=i.tenant_id AND c.id=i.business_id) END`,
   });
 }
 
@@ -102,12 +107,16 @@ export async function requireWithdrawRight(deps: TenantRouteDeps, ctx: TenantCon
     await requireSelfServiceSubmit(deps, ctx);
     return;
   }
-  const objectCode = MODULE_OBJECTS.employmentRecord.code;
+  const objectCode = instance.businessType === 'contract' ? CONTRACT_OBJECT : MODULE_OBJECTS.employmentRecord.code;
   await requireObjectWrite(deps.authorize, ctx, { objectCode, operation: 'update', payload: {} });
   await requirePermission(deps.authorize, {
     ...ctx,
     action: 'object.button',
-    resource: buttonResource(objectCode, 'Employment.Withdraw', 'detail'),
+    resource: buttonResource(
+      objectCode,
+      instance.businessType === 'contract' ? 'withdraw' : 'Employment.Withdraw',
+      'detail',
+    ),
   });
   const scope = await resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
   const predicate = instanceScopeSql(ctx, scope);
@@ -124,13 +133,37 @@ export async function requireWithdrawRight(deps: TenantRouteDeps, ctx: TenantCon
  * DEC-113 / F3：重提只由原发起人进行，并按首次提交复核其当前权限——员工子集变更须仍持有自助申请按钮，且账号仍绑定
  * 异动本人（自助申请的范围就是本人）。任职申请经任职模块的“提交”重提，那里按任职权限校验，审批侧命令直接拒绝。
  */
-export async function requireResubmitRight(deps: TenantRouteDeps, ctx: TenantContext, instanceId: string) {
+export async function requireResubmitRight(
+  deps: TenantRouteDeps,
+  ctx: TenantContext,
+  instanceId: string,
+  corrections: Readonly<Record<string, unknown>> = {},
+) {
   const { instance, person } = await withTenant(deps.db, ctx.tenantId, async (tx) => ({
     instance: await loadInstance(tx, ctx.tenantId, instanceId),
     person: await personOfUser(tx, ctx.tenantId, ctx.userId),
   }));
   if (!mayResubmit(instance.initiatorUserId, ctx.userId)) {
     throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有原发起人可以重新提交');
+  }
+  if (instance.businessType === 'contract') {
+    const scope = await resolveModuleScope(deps, ctx, undefined, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`);
+    await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const request = await loadRequest(tx, ctx.tenantId, instance.businessId);
+      const context = {
+        ...ctx,
+        scope,
+        authorize: deps.authorize,
+        now: deps.clock(),
+        commandId: '',
+        expectedRevision: 0,
+      };
+      await checkScope(tx, context, request.employeeId, request.createdBy);
+      await checkFields(context, request.operation === 'create' ? 'create' : 'update', {
+        ...businessFields(request),
+        ...corrections,
+      });
+    });
   }
   if (instance.businessType !== 'personnel_change') return;
   await requireSelfServiceSubmit(deps, ctx);
@@ -151,7 +184,9 @@ export async function adminScope(
   if (!allowed) return null;
   const objectCode = MODULE_OBJECTS.employmentRecord.code;
   const scope = await resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
-  return instanceScopeSql(ctx, scope);
+  const contractScope = await resolveModuleScope(deps, ctx, undefined, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`);
+  return sql`((i.business_type='contract' AND ${instanceScopeSql(ctx, contractScope)})
+    OR (i.business_type<>'contract' AND ${instanceScopeSql(ctx, scope)}))`;
 }
 
 /**
@@ -161,5 +196,13 @@ export async function adminScope(
 export async function memberInstanceScope(deps: TenantRouteDeps, ctx: TenantContext, tx: Tx): Promise<SQL> {
   const objectCode = MODULE_OBJECTS.employmentRecord.code;
   const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, objectCode, `${objectCode}.list`);
-  return instanceScopeSql(ctx, scope);
+  const contractScope = await resolveModuleScopeInTransaction(
+    deps,
+    ctx,
+    tx,
+    CONTRACT_OBJECT,
+    `${CONTRACT_OBJECT}.list`,
+  );
+  return sql`((i.business_type='contract' AND ${instanceScopeSql(ctx, contractScope)})
+    OR (i.business_type<>'contract' AND ${instanceScopeSql(ctx, scope)}))`;
 }

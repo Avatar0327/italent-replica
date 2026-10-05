@@ -19,3 +19,5 @@ export {
 export * from './permission/index.js';
 export * from './personnel/index.js';
 export * from './approval/index.js';
+
+export * from './contracts/rules.js';
