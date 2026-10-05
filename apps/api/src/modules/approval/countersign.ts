@@ -84,6 +84,9 @@ function seatHolders(activation: readonly TaskRow[]): Set<string> {
 export async function settleCountersign(tx: Tx, run: Run, node: CountersignApprovalNode, acted: TaskRow) {
   // 只结算一次：节点已流转（实例已不在本节点）时不再结算，即使调用方漏了入口校验也不会重复推进。
   if (run.instance.status !== 'running' || run.instance.currentNodeKey !== node.key) return;
+  // 旧票不能让改动后的载荷通过（P2-N1）：业务单在审批中被改动时实例已冻结，审批动作一律 APPROVAL_BUSINESS_CHANGED
+  // （engine.assertBusinessUnchanged）；系统接管合并席位后的重新结算同样不推进，由发起人撤回后重新提交。
+  if (run.snapshot.version !== run.instance.businessVersion) return;
   const activation = activationOf(await loadTasks(tx, run.ctx.tenantId, run.instance.id), acted);
   const rules = exitRulesOf(node.transitionRule, nodeExits(node));
   const outcome = countersignOutcome(rules, activationVotes(activation));
@@ -166,8 +169,8 @@ const RESTORE_ORIGINS = new Set(['countersign_reopen', 'exception_admin']);
 
 /**
  * 撤回已流转的会签节点（DEC-097）：恢复因节点流转而结束、尚未恢复过的席位，节点回到流转之前的状态；只恢复计票的
- * 席位，每人一席，进行中的前加签不恢复（原审批人重新处理即可）。原审批人已不可审批时转异常管理员（同 F8），异常
- * 管理员已占着一席时合并（P2-1）。不留无人可办的任务。
+ * 席位，每人一席。流转时还有未完成的前加签的，撤回在入口即被拒（rules.countersignRetrievable，P2-N2），不会走到这里。
+ * 原审批人已不可审批时转异常管理员（同 F8），异常管理员已占着一席时合并（P2-1）。不留无人可办的任务。
  * @param holders 撤回之后仍占着一席的人（含撤回人）
  * @returns 是否发生了席位合并（调用方据此重新结算）
  */

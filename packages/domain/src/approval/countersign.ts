@@ -52,11 +52,16 @@ export type CountersignOutcome =
   | { readonly kind: 'stalled' };
 
 /**
- * 按当前的票判定。每次点击后立即判定，一次点击只增加一个动作的计数，所以至多一个动作“先达到”；按出口动作的固定
- * 顺序检查只为结果确定。票数（百分比的分母）= 本节点本次激活中仍有效的任务数，含并加签人。
+ * 多个出口动作同时达到规则时的优先顺序（DEC-155）：“不同意”优先。逐次点击时一次只增加一个动作的计数，至多一个动作
+ * “先达到”；但系统接管合并席位会让分母变小，同意与不同意可能同时达标，此时沿“不同意”连线流转，避免系统动作意外放行。
+ */
+const EXIT_PRIORITY: readonly NodeExit[] = ['disagree', 'approve'];
+
+/**
+ * 按当前的票判定（出口动作按 EXIT_PRIORITY 检查）。票数（百分比的分母）= 本节点本次激活中按人计的有效票，含并加签人。
  */
 export function countersignOutcome(rules: ExitRules, votes: readonly CountersignVote[]): CountersignOutcome {
-  for (const exit of NODE_EXITS) {
+  for (const exit of EXIT_PRIORITY) {
     const rule = rules[exit];
     if (!rule) continue;
     const count = votes.filter((vote) => vote === exit).length;

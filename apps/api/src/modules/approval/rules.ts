@@ -51,12 +51,19 @@ export function retrievableTask(
  * 节点尚未流转（仍有在办任务）时只撤回本人的同意；已沿「同意」流转时，本次流转之后还没有人工处理才能撤回（之后恢复
  * 本节点因流转而结束的任务）。只看本次流转产生的下游任务——序号大于本次激活最后一条任务的；之前那次流转留下、已被
  * 撤回取消的下游待办不算人工处理（P2-3）。同一个同意只能撤回一次；被跳转或驳回中断的激活不能撤回。
+ * 流转时还有未完成的前加签（前加签人的任务因节点流转而结束）的也不能撤回：首版无法恢复挂起的席位与未完成的加签
+ * 义务，恢复成普通待办会让原审批人绕过前加签（P2-N2，DEC-152；同 F4）。
  */
 function countersignRetrievable(instance: InstanceRow, tasks: readonly TaskRow[], mine: TaskRow): boolean {
   if (tasks.some((task) => task.parentTaskId === mine.id && task.origin === 'retrieve')) return false;
   const activation = tasks.filter((task) => task.activationId === mine.activationId);
   if (activation.some((task) => OPEN_STATUSES.has(task.status))) return instance.currentNodeKey === mine.nodeKey;
   if (activation.some((task) => task.status === 'cancelled')) return false;
+  if (
+    activation.some((task) => task.status === 'ended' && addSignLink(activation, task)?.origin === 'add_sign_before')
+  ) {
+    return false;
+  }
   const flowedAfter = Math.max(...activation.map((task) => task.seq));
   const later = tasks.filter((task) => task.seq > flowedAfter);
   return later.length > 0 && later.every(untouchedStatus);
