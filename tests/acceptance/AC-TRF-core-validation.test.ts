@@ -98,6 +98,42 @@ describe('AC-TRF 保存校验 DEC-150 / DEC-154', () => {
     }
   });
 
+  it.each([
+    { restored: false, disabledOn: '2026-10-01' },
+    { restored: true, disabledOn: '2026-10-03' },
+  ])('DEC-150：停用后更名仍显示本次实际停用日 $disabledOn（中途复启：$restored）', async (scenario) => {
+    const w = await activationWorld(testDb().db, `trf150-disable-segment-${scenario.restored}`);
+    const { employee, hire } = await w.hired();
+    const changes: Record<string, unknown>[] = [{ enabled: false, effectiveDate: '2026-10-01' }];
+    if (scenario.restored) {
+      changes.push({ enabled: true, effectiveDate: '2026-10-02' }, { enabled: false, effectiveDate: '2026-10-03' });
+    }
+    changes.push({ name: '停用后更名部门', effectiveDate: '2026-10-04' });
+    let revision = w.to.revision;
+    for (const body of changes) {
+      const changed = await tenantApi(w.db).request('PATCH', `/api/tenant/org/organizations/${w.to.id}`, {
+        user: w.session.user.id,
+        tenant: w.session.tenant.id,
+        ifMatch: revision,
+        body,
+      });
+      expect(changed.status, await changed.clone().text()).toBe(200);
+      revision = ((await changed.json()) as { revision: number }).revision;
+    }
+    const response = await w.session.request('POST', `/employees/${employee.id}/businesses`, {
+      ifMatch: hire.employeeRevision,
+      body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { departmentId: w.to.id } },
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: {
+        message: `任职部门【停用后更名部门】已被停用（停用日期：${scenario.disabledOn}），请检查`,
+        details: { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: scenario.disabledOn },
+      },
+    });
+    expect(await w.session.records(employee.id, '2026-10-05')).toHaveLength(1);
+  });
+
   it('DEC-150：草稿修改目标部门也拒绝已排定停用，原载荷与 revision 不变', async () => {
     const w = await activationWorld(testDb().db, 'trf150-patch');
     const { employee, hire } = await w.hired();

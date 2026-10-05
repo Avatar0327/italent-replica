@@ -125,8 +125,14 @@ describe('AC-FWD-01~07/12 值匹配向后更新', () => {
     const { session, employee, nextOrg, hired } = await forwardFixture(db, 'fwd04-target-date-only');
     const later = await session.business(
       employee.id,
-      { kind: 'regularization', mode: 'direct', effectiveDate: '2026-12-01' },
+      { kind: 'regularization', mode: 'direct', effectiveDate: '2027-12-01' },
       hired.employeeRevision,
+    );
+    // 先建立源记录；编辑时它仍是当前记录，后续记录为未来记录，符合 A7 的真实传播入口。
+    const source = await session.business(
+      employee.id,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-10' },
+      later.employeeRevision,
     );
     const disabled = await tenantApi(db).request('PATCH', `/api/tenant/org/organizations/${nextOrg.id}`, {
       user: session.user.id,
@@ -135,32 +141,23 @@ describe('AC-FWD-01~07/12 值匹配向后更新', () => {
       body: { enabled: false, effectiveDate: '2027-03-01' },
     });
     expect(disabled.status).toBe(200);
-    const apiAfterDisable = tenantApi(db, { clock: () => new Date('2027-04-01T01:00:00.000Z') });
-    // DEC-150 已禁止此时新增任职；向后更新只读计划仍独立验证 DEC-079 的目标日期口径。
-    const response = await apiAfterDisable.request(
-      'POST',
-      `/api/tenant/employment/employees/${employee.id}/forward-update-preview`,
-      {
-        user: session.user.id,
-        tenant: session.tenant.id,
-        ifMatch: later.employeeRevision,
-        body: {
-          kind: 'transfer',
-          mode: 'direct',
-          effectiveDate: '2026-09-10',
-          fields: { departmentId: nextOrg.id },
-        },
-      },
-    );
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      changes: [
-        {
-          businessId: later.id,
-          fields: [expect.objectContaining({ field: 'departmentId', after: nextOrg.id })],
-        },
-      ],
+    const restored = await tenantApi(db).request('PATCH', `/api/tenant/org/organizations/${nextOrg.id}`, {
+      user: session.user.id,
+      tenant: session.tenant.id,
+      ifMatch: ((await disabled.json()) as { revision: number }).revision,
+      body: { enabled: true, effectiveDate: '2027-05-01' },
     });
+    expect(restored.status).toBe(200);
+    // 当天停用、源记录日及后续记录日启用：DEC-079 不能拿运行当天过滤后续引用。
+    // DEC-150 只限新增任职，已有记录编辑仍按记录自己的生效日校验。
+    session.setNow('2027-04-01T01:00:00.000Z');
+    const response = await session.request('PATCH', `/records/${source.id}`, {
+      ifMatch: source.revision,
+      body: { fields: { departmentId: nextOrg.id } },
+    });
+    expect(response.status).toBe(200);
+    expect((await session.record(source.id, '2027-04-01')).fields.departmentId).toBe(nextOrg.id);
+    expect((await session.record(later.id, '2027-12-01')).fields.departmentId).toBe(nextOrg.id);
   });
 
   it('AC-FWD-05 部门和职位同时变化时，两者都匹配才一起传播', async () => {

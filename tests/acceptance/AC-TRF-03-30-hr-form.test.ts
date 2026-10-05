@@ -141,3 +141,90 @@ describe('AC-TRF-30 / DEC-154：业务冲突保留精确提示', () => {
     );
   });
 });
+
+async function renderRequiredFields(
+  fields: TransferFormModel['fields'] = {},
+  modes: { levelId: 'editable' | 'readonly'; gradeId: 'editable' | 'hidden' | 'absent' } = {
+    levelId: 'editable',
+    gradeId: 'editable',
+  },
+) {
+  const base = model();
+  const scenario = {
+    ...base,
+    fields,
+    preview: {
+      ...base.preview!,
+      form: {
+        ...base.preview!.form,
+        excludedAutofillFields: ['levelId', 'gradeId'],
+        fieldModes: {
+          ...base.preview!.form.fieldModes,
+          'preset:levelId': modes.levelId,
+          'preset:gradeId': modes.gradeId,
+        },
+      },
+      // 即使预览或岗位联动带出了值，也不能代替 HR 显式选择本场景必填项。
+      fields: { ...base.preview!.fields, levelId: 'L1', gradeId: 'G1' },
+    },
+  };
+  const { TransferForm } = (await import(componentPath)) as { TransferForm: unknown };
+  return renderToStaticMarkup(createElement(TransferForm, { model: scenario }));
+}
+
+function actionDisabledStates(html: string) {
+  return Object.fromEntries(
+    [...html.matchAll(/<button([^>]*)>([^<]*)<\/button>/g)].map((match) => [match[2], /\bdisabled=""/.test(match[1]!)]),
+  );
+}
+
+describe('AC-TRF-18 / DEC-162：本场景不带出的可编辑字段必须由 HR 填写', () => {
+  it('新职级和新职等同步显示必填提示并设置原生 required，普通带出字段不误标', async () => {
+    const html = await renderRequiredFields();
+    expect(html).toMatch(/<select(?=[^>]*name="levelId")(?=[^>]*required="")[^>]*>/);
+    expect(html).toMatch(/<select(?=[^>]*name="gradeId")(?=[^>]*required="")[^>]*>/);
+    expect(html).toMatch(/<select name="levelId"[^>]*><option value="" selected=""/);
+    expect(html).toMatch(/<select name="gradeId"[^>]*><option value="" selected=""/);
+    expect(html).toMatch(/<label>新职级(?:(?!<\/label>)[^])*必填/);
+    expect(html).toMatch(/<label>新职等(?:(?!<\/label>)[^])*必填/);
+    expect(html).not.toMatch(/<select(?=[^>]*name="departmentId")(?=[^>]*required="")[^>]*>/);
+  });
+
+  it.each([
+    ['未提供字段，不能使用预览带出的值', {}],
+    ['显式清空', { levelId: null, gradeId: null }],
+    ['空字符串', { levelId: '', gradeId: '' }],
+    ['纯空白', { levelId: '   ', gradeId: '   ' }],
+    ['只填写一个必填项', { levelId: 'L1' }],
+  ] as const)('%s 时，提交、暂存和两个直接调动入口均禁用', async (_case, fields) => {
+    expect(actionDisabledStates(await renderRequiredFields(fields))).toEqual({
+      提交: true,
+      暂存: true,
+      直接调动: true,
+      为所选员工直接调动: true,
+    });
+  });
+
+  it('所有必填项显式选择有效值后，可暂存、提交和直接调动', async () => {
+    expect(actionDisabledStates(await renderRequiredFields({ levelId: 'L1', gradeId: 'G1' }))).toEqual({
+      提交: false,
+      暂存: false,
+      直接调动: false,
+      为所选员工直接调动: false,
+    });
+  });
+
+  it.each(['hidden', 'absent'] as const)('只读与 %s 字段不要求填写，也不阻断保存', async (gradeId) => {
+    const html = await renderRequiredFields({}, { levelId: 'readonly', gradeId });
+    expect(html).toMatch(/<input(?=[^>]*name="levelId")(?=[^>]*readOnly="")[^>]*>/);
+    expect(html).not.toMatch(/<input(?=[^>]*name="levelId")(?=[^>]*required="")[^>]*>/);
+    expect(html).not.toContain('name="gradeId"');
+    expect(html).not.toContain('必填');
+    expect(actionDisabledStates(html)).toEqual({
+      提交: false,
+      暂存: false,
+      直接调动: false,
+      为所选员工直接调动: false,
+    });
+  });
+});
