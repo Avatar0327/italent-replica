@@ -251,3 +251,28 @@ describe('AC-TRF-18 / DEC-163：仅新部门必填，其余不带出字段允许
     } else expect(html).not.toContain('name="departmentId"');
   });
 });
+
+describe('AC-TRF-01/23 员工人事申请表单', () => {
+  it('固定本人，隐藏异动类型与直接调动按钮，复用 Personal 字段配置', async () => {
+    const { TransferForm } = (await import(componentPath)) as { TransferForm: unknown };
+    const data = model();
+    const html = renderToStaticMarkup(
+      createElement(TransferForm, {
+        model: {
+          ...data,
+          initiator: 'employee',
+          preview: {
+            ...data.preview,
+            form: { ...data.preview!.form, id: 'TenantBase.PersonalJobLevelTransferMultiFormView' },
+          },
+        },
+      }),
+    );
+    expect(html).toContain('合成员工');
+    expect(html).not.toContain('name="employeeId"');
+    expect(html).not.toContain('name="transferTypeCode"');
+    expect(html).not.toContain('直接调动');
+    expect(html).toContain('name="effectiveDate"');
+    expect(html).toContain('name="departmentId"');
+  });
+});
