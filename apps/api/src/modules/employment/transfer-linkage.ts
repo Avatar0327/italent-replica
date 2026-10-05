@@ -2,7 +2,7 @@ import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { assignTransferOrganizationPeople, requireTransferOrganizationScope } from '../org/write-service.js';
-import { auditEmployment, requireScopedEmploymentObject } from './context.js';
+import { auditEmployment, requireLinkedEmploymentRecord, requireScopedEmploymentObject } from './context.js';
 import { ineligibleOrgPeople } from './org-people.js';
 import { editEmploymentRecord } from './record-edit.js';
 import { findCurrentRecord, loadEmploymentRecord } from './read-model.js';
@@ -100,7 +100,8 @@ async function propagateDepartmentHead(tx: Tx, ctx: EmploymentContext, source: E
     const record = await loadEmploymentRecord(tx, ctx.tenantId, target.id, source.effectiveDate);
     if (!record || record.fields.departmentId !== source.fields.departmentId || record.fields.isDepartmentHead === true)
       continue;
-    await requireScopedEmploymentObject(tx, ctx, record.employeeId, record.fields.departmentId, record.id);
+    // DEC-178：补写后续记录与向后更新同一口径（F-015）。
+    await requireLinkedEmploymentRecord(tx, ctx, record.employeeId, record.fields.departmentId, record.id);
     const business = await lockEmploymentBusiness(tx, { ...ctx, expectedRevision: record.revision }, record.id);
     const changes = [{ field: 'isDepartmentHead', before: record.fields.isDepartmentHead, after: true }];
     const next = await appendForwardPayload(

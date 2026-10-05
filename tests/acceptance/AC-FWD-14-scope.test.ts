@@ -1,4 +1,4 @@
-/** AC-FWD-14 / DEC-120：整条跳过提醒同样受数据范围与字段权限约束（真实授权器）。 */
+/** AC-FWD-14 / DEC-120：整条跳过提醒同样受数据范围（DEC-177 可见口径）与字段权限约束（真实授权器）。 */
 import { randomUUID } from 'node:crypto';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
@@ -17,7 +17,7 @@ import { loginEmailOf } from './AC-EMP-support.js';
 const database = useTestDb();
 
 describe('AC-FWD-14 DEC-120 整条跳过提醒的范围与字段裁剪', () => {
-  it('范围外的整条跳过记录不出现；隐藏字段从提醒中裁剪，可见字段照常列出', async () => {
+  it('员工当前在范围内时范围外部门的整条跳过记录也提醒（DEC-177）；隐藏字段从提醒中裁剪', async () => {
     const db = database().db;
     const seed = await seedPermissionWorld(db);
     const clock = () => new Date('2026-10-01T01:00:00.000Z');
@@ -153,7 +153,16 @@ describe('AC-FWD-14 DEC-120 整条跳过提醒的范围与字段裁剪', () => {
     expect(preview.status, text).toBe(200);
     const body = JSON.parse(text) as { changes: unknown[]; wholeRecordSkips: Record<string, unknown>[] };
     expect(body.changes).toEqual([]);
+    // DEC-177（F-015）：员工当前在范围内，09-15 范围外部门的记录对操作人可见，同样列入提醒。
     expect(body.wholeRecordSkips).toEqual([
+      {
+        businessId: outsideRecord.id,
+        staffId: expect.any(String),
+        status: 'effective',
+        effectiveDate: '2026-09-15',
+        reason: 'DEPARTMENT_POSITION_MISMATCH',
+        fields: [{ field: 'place', before: '原地点', after: '新地点' }],
+      },
       {
         businessId: insideRecord.id,
         staffId: expect.any(String),
@@ -163,7 +172,6 @@ describe('AC-FWD-14 DEC-120 整条跳过提醒的范围与字段裁剪', () => {
         fields: [{ field: 'place', before: '原地点', after: '新地点' }],
       },
     ]);
-    expect(text).not.toContain(outsideRecord.id);
     expect(text).not.toContain(managers[0]!);
     expect(text).not.toContain(managers[1]!);
   });
