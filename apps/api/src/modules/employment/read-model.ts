@@ -1,6 +1,7 @@
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
+import { activationSummary } from './activation-store.js';
 import { employmentScopePredicate, employmentCreator } from './context.js';
 import {
   PRESET_FIELD_NAMES,
@@ -142,16 +143,25 @@ export async function loadEmploymentRecord(
 }
 
 /** 新业务的插入点前一条：生效日当天及以前最后一条，同日已有多条时取最后一次操作（DEC-108）。 */
+/**
+ * 生效日当天及以前的最后一条；beforeOrder 给出时只取同日顺序号小于它的（落地插到当日中间时，前驱是插入点之前那条，
+ * DEC-108 / PR #53 第二轮 P2-2）。
+ */
 export async function findPredecessor(
   tx: Tx,
   tenantId: string,
   employeeId: string,
   effectiveDate: string,
+  beforeOrder?: number,
 ): Promise<EmploymentRecord | null> {
+  const bound =
+    beforeOrder === undefined
+      ? sql`t.start_date<=${effectiveDate}::date`
+      : sql`(t.start_date,t.sort_order)<(${effectiveDate}::date,${beforeOrder})`;
   const [previous] = rowsOf<{ record_id: string }>(
     await tx.execute(sql`
     SELECT t.record_id FROM employment_timeline t
-    WHERE t.tenant_id=${tenantId} AND t.employee_id=${employeeId} AND t.start_date<=${effectiveDate}::date
+    WHERE t.tenant_id=${tenantId} AND t.employee_id=${employeeId} AND ${bound}
     ORDER BY t.start_date DESC,t.sort_order DESC LIMIT 1
   `),
   );
@@ -200,6 +210,7 @@ export async function loadEmploymentBusiness(
   );
   if (!row) return null;
   const effectiveRecord = await loadEmploymentRecord(tx, tenantId, id, asOf, scope);
+  const activation = await activationSummary(tx, tenantId, id, String(row.state));
   return {
     id,
     employeeId: String(row.employee_id),
@@ -213,5 +224,6 @@ export async function loadEmploymentBusiness(
     fields: effectiveRecord?.fields ?? snapshotFields(row),
     customFields: effectiveRecord?.customFields ?? (row.custom_fields as CustomFields),
     record: effectiveRecord,
+    activation,
   };
 }

@@ -1,6 +1,6 @@
 {
-  "id": "f3e428ce-79e3-4db7-9f8b-847107629f7b",
-  "prevId": "cf951246-866e-44eb-8747-902b2071eb92",
+  "id": "e97e4fe8-983e-4ec5-af3c-8d0e1f600f01",
+  "prevId": "5dacc02e-fff1-4f6f-9a28-998524f7de93",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -22038,7 +22038,7 @@
       "checkConstraints": {
         "approval_message_rules_trigger": {
           "name": "approval_message_rules_trigger",
-          "value": "\"approval_node_message_rules\".\"trigger\" IN ('arrive','approve','reject','transfer')"
+          "value": "\"approval_node_message_rules\".\"trigger\" IN ('arrive','approve','disagree','reject','transfer')"
         },
         "approval_message_rules_recipient": {
           "name": "approval_message_rules_recipient",
@@ -22478,11 +22478,62 @@
           "primaryKey": false,
           "notNull": true
         },
+        "node_type": {
+          "name": "node_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'single'"
+        },
         "approver_expression": {
           "name": "approver_expression",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "approver_expressions": {
+          "name": "approver_expressions",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "exits": {
+          "name": "exits",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{approve}'::text[]"
+        },
+        "transition_rule_type": {
+          "name": "transition_rule_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approve_rule_kind": {
+          "name": "approve_rule_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "approve_rule_value": {
+          "name": "approve_rule_value",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "disagree_rule_kind": {
+          "name": "disagree_rule_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "disagree_rule_value": {
+          "name": "disagree_rule_value",
+          "type": "numeric(5, 2)",
+          "primaryKey": false,
+          "notNull": false
         },
         "no_assignee_policy": {
           "name": "no_assignee_policy",
@@ -22702,6 +22753,30 @@
         "approval_nodes_auto_result": {
           "name": "approval_nodes_auto_result",
           "value": "\"approval_process_nodes\".\"same_assignee_result\" IN ('approve','skip') AND \"approval_process_nodes\".\"history_same_assignee_result\" IN ('approve','skip')"
+        },
+        "approval_nodes_type": {
+          "name": "approval_nodes_type",
+          "value": "\"approval_process_nodes\".\"node_type\" IN ('single','countersign')"
+        },
+        "approval_nodes_approvers": {
+          "name": "approval_nodes_approvers",
+          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 5\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','latest_record_department_head','record_department_head',\n            'record_department_hrbp','record_first_level_org_head']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
+        },
+        "approval_nodes_exits": {
+          "name": "approval_nodes_exits",
+          "value": "cardinality(\"approval_process_nodes\".\"exits\") BETWEEN 1 AND 2 AND \"approval_process_nodes\".\"exits\" <@ ARRAY['approve','disagree']::text[]"
+        },
+        "approval_nodes_countersign_auto": {
+          "name": "approval_nodes_countersign_auto",
+          "value": "\"approval_process_nodes\".\"node_type\" = 'single'\n        OR (\"approval_process_nodes\".\"same_assignee_result\" = 'approve' AND \"approval_process_nodes\".\"history_same_assignee_result\" = 'approve')"
+        },
+        "approval_nodes_transition_rule": {
+          "name": "approval_nodes_transition_rule",
+          "value": "(\"approval_process_nodes\".\"node_type\" = 'countersign') = (\"approval_process_nodes\".\"transition_rule_type\" IS NOT NULL)\n        AND (\"approval_process_nodes\".\"transition_rule_type\" IS NULL OR \"approval_process_nodes\".\"transition_rule_type\" IN ('any','all','custom'))\n        AND CASE WHEN \"approval_process_nodes\".\"transition_rule_type\" = 'custom'\n          THEN (\"approval_process_nodes\".\"approve_rule_kind\" IS NOT NULL) = ('approve' = ANY(\"approval_process_nodes\".\"exits\"))\n            AND (\"approval_process_nodes\".\"disagree_rule_kind\" IS NOT NULL) = ('disagree' = ANY(\"approval_process_nodes\".\"exits\"))\n          ELSE \"approval_process_nodes\".\"approve_rule_kind\" IS NULL AND \"approval_process_nodes\".\"disagree_rule_kind\" IS NULL END"
+        },
+        "approval_nodes_exit_rules": {
+          "name": "approval_nodes_exit_rules",
+          "value": "(\"approval_process_nodes\".\"approve_rule_kind\" IS NULL) = (\"approval_process_nodes\".\"approve_rule_value\" IS NULL)\n        AND (\"approval_process_nodes\".\"disagree_rule_kind\" IS NULL) = (\"approval_process_nodes\".\"disagree_rule_value\" IS NULL)\n        AND (\"approval_process_nodes\".\"approve_rule_kind\" IS NULL OR \"approval_process_nodes\".\"approve_rule_kind\" = 'count'\n          AND \"approval_process_nodes\".\"approve_rule_value\" >= 1 AND \"approval_process_nodes\".\"approve_rule_value\" = trunc(\"approval_process_nodes\".\"approve_rule_value\")\n          OR \"approval_process_nodes\".\"approve_rule_kind\" = 'percent' AND \"approval_process_nodes\".\"approve_rule_value\" > 0 AND \"approval_process_nodes\".\"approve_rule_value\" <= 100)\n        AND (\"approval_process_nodes\".\"disagree_rule_kind\" IS NULL OR \"approval_process_nodes\".\"disagree_rule_kind\" = 'count'\n          AND \"approval_process_nodes\".\"disagree_rule_value\" >= 1 AND \"approval_process_nodes\".\"disagree_rule_value\" = trunc(\"approval_process_nodes\".\"disagree_rule_value\")\n          OR \"approval_process_nodes\".\"disagree_rule_kind\" = 'percent' AND \"approval_process_nodes\".\"disagree_rule_value\" > 0 AND \"approval_process_nodes\".\"disagree_rule_value\" <= 100)"
         }
       },
       "isRLSEnabled": false
@@ -23223,6 +23298,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "activation_id": {
+          "name": "activation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "comment": {
           "name": "comment",
           "type": "text",
@@ -23351,11 +23432,11 @@
         },
         "approval_tasks_status": {
           "name": "approval_tasks_status",
-          "value": "\"approval_tasks\".\"status\" IN ('pending','approved','rejected','transferred','skipped','cancelled','add_signed','queued')"
+          "value": "\"approval_tasks\".\"status\" IN ('pending','approved','disagreed','rejected','transferred','skipped','cancelled','add_signed',\n        'queued','ended')"
         },
         "approval_tasks_origin": {
           "name": "approval_tasks_origin",
-          "value": "\"approval_tasks\".\"origin\" IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',\n        'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',\n        'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve')"
+          "value": "\"approval_tasks\".\"origin\" IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',\n        'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',\n        'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve',\n        'add_sign_parallel','countersign_reopen')"
         }
       },
       "isRLSEnabled": false
