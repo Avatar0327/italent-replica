@@ -12,6 +12,7 @@ import { camel, rows, type Row } from './store.js';
 
 const sortColumns: Record<string, SQL> = {
   code: sql`e.code`,
+  orderCode: sql`person_rank.order_code`,
   organizationSortNumber: sql`org_rank.sort_number`,
   postSortNumber: sql`post_rank.sort_number`,
   employeeName: sql`COALESCE(v.name,e.name)`,
@@ -64,7 +65,8 @@ export async function listEmployees(
   return rows(
     await tx.execute(sql`SELECT e.id,${employeeAttributes},to_jsonb(v) AS profile
     FROM employment_employees e ${employeeJoins(ctx)} WHERE e.tenant_id=${ctx.tenantId}
-    AND ${personScope(ctx)} AND ${options.filter} ORDER BY ${options.order} e.id
+    AND ${personScope(ctx)} AND ${options.filter}
+    ORDER BY ${options.order} person_rank.order_code ASC NULLS LAST,e.code COLLATE "C",e.id
     LIMIT ${page.limit} OFFSET ${page.offset}`),
   ).map((row) => employeeDto(row, ctx));
 }
@@ -88,14 +90,16 @@ export async function listSubsets(
       r.entry_date::text AS employee_entry_date,r.last_work_date::text AS employee_last_work_date,
       cycles.first_entry_date::text AS employee_first_entry_date,
       cycles.latest_entry_date::text AS employee_latest_entry_date,
-      ${sortRankColumns},
-      jl.level AS level_sort_number,jg.grade AS grade_sort_number,jp.display_order AS position_sort_number
+      ${sortRankColumns},person_rank.order_code,
+      jl.level AS level_sort_number,jg.grade AS grade_sort_number,
+      jp.display_order AS position_sort_number
     FROM ${sql.identifier(SUBSETS[kind].table)} s JOIN employment_employees e
       ON e.tenant_id=s.tenant_id AND e.id=s.employee_id ${employeeJoins(ctx)}
     WHERE s.tenant_id=${ctx.tenantId} AND NOT s.deleted AND ${personScope(ctx, 'e', sql`s.created_by`)}
       AND ${options.filter}
     ${employeeId ? sql`AND s.employee_id=${employeeId}::uuid` : sql``}
-    ORDER BY ${options.order} e.id,s.id LIMIT ${page.limit} OFFSET ${page.offset}`),
+    ORDER BY ${options.order} person_rank.order_code ASC NULLS LAST,e.code COLLATE "C",e.id,s.id
+    LIMIT ${page.limit} OFFSET ${page.offset}`),
   ).map((row) => subsetDto(row, kind));
 }
 export async function listFieldVisibility(deps: TenantRouteDeps, ctx: AccessContext) {
