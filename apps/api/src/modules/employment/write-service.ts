@@ -507,7 +507,7 @@ export async function materializeEmploymentRecord(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
-  options: { forwardUpdate?: boolean; establishmentWarnings?: EstablishmentWarning[]; scheduledDate?: string } = {},
+  options: { forwardUpdate?: boolean; establishmentWarnings?: EstablishmentWarning[] } = {},
 ): Promise<void> {
   const payload = business.payload;
   // DEC-108：按操作先后定插入点；先提交、后落地的申请可能插在当日已有记录之前，前驱与顺序校验都以插入点为准。
@@ -620,7 +620,7 @@ async function forwardMaterializedRecord(
   staffId: string,
   predecessor: EmploymentRecord | null,
   after: ForwardValues,
-  options: { establishmentWarnings?: EstablishmentWarning[]; scheduledDate?: string } = {},
+  options: { establishmentWarnings?: EstablishmentWarning[] } = {},
 ) {
   await forwardUpdateEmployment(tx, ctx, {
     ...options,

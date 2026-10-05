@@ -131,10 +131,9 @@ export async function transitionEmployment(
         reason: 'ACTIVATION_PREDECESSOR_PENDING',
         blockedByBusinessId: before[0]!.id,
       });
-    const scheduledDate = business.payload.effectiveDate;
     await postponeLateTransfer(tx, ctx, business);
     // materialize 同事务完成向后更新、审计与 outbox。
-    await materializeEmploymentRecord(tx, ctx, business, { scheduledDate });
+    await materializeEmploymentRecord(tx, ctx, business);
     await appendEmploymentState(tx, ctx, business, 'effective');
   } else {
     const state = STATE_AFTER[input.action];
@@ -154,10 +153,9 @@ async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, busines
   if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) return;
   const { item, before: predecessors } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
   const before = predecessors.filter((item) => !item.reminderOnly);
-  const scheduledDate = business.payload.effectiveDate;
   await postponeLateTransfer(tx, ctx, business);
   if (!before.length) {
-    await materializeEmploymentRecord(tx, ctx, business, { scheduledDate });
+    await materializeEmploymentRecord(tx, ctx, business);
     await appendEmploymentState(tx, ctx, business, 'effective');
     return;
   }
