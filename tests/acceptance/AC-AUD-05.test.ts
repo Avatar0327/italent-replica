@@ -19,7 +19,18 @@ const NOW = '2026-10-01T01:00:00.000Z';
 async function tenantWithOldLog(db: Db, label: string, retention?: { queryMonths: number; retainMonths: number }) {
   const session = await employmentSession(db, label);
   session.setNow(SEVEN_MONTHS_AGO);
+  const department = await session.org('七个月前的部门', { establishedOn: '2026-01-01' });
   const employee = await session.employee('七个月前的员工');
+  const hire = await session.business(
+    employee.id,
+    { kind: 'hire', mode: 'direct', effectiveDate: '2026-03-01', fields: { departmentId: department.id } },
+    employee.revision,
+  );
+  const edited = await session.request('PATCH', `/records/${hire.id}`, {
+    ifMatch: hire.revision,
+    body: { fields: { place: '七个月前的地点' } },
+  });
+  expect(edited.status, await edited.clone().text()).toBe(200);
   if (retention) {
     const response = await tenantApi(db).request('PUT', '/api/tenant/settings/audit.retention', {
       user: session.user.id,
@@ -29,12 +40,13 @@ async function tenantWithOldLog(db: Db, label: string, retention?: { queryMonths
     });
     expect(response.status, await response.clone().text()).toBe(200);
   }
-  return { session, employee, as: { user: session.user.id, tenant: session.tenant.id } };
+  return { session, employee, hire, as: { user: session.user.id, tenant: session.tenant.id } };
 }
 
-async function oldLogCount(db: Db, tenantId: string, objectId: string): Promise<number> {
+async function logCount(db: Db, tenantId: string, objectId: string, action: string): Promise<number> {
   return withTenant(db, tenantId, async (tx) => {
-    const result = await tx.execute(sql`SELECT count(*)::int AS n FROM audit_events WHERE object_id=${objectId}`);
+    const result = await tx.execute(sql`SELECT count(*)::int AS n FROM audit_events
+      WHERE object_id=${objectId} AND action=${action}`);
     const rows = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { n: number }[];
     return rows[0]!.n;
   });
@@ -68,13 +80,17 @@ describe('AC-AUD-05 查询期与保留期按租户配置', () => {
     expect(found.items).toContainEqual(
       expect.objectContaining({ objectId: w.employee.id, operation: 'create', occurredAt: SEVEN_MONTHS_AGO }),
     );
+    expect(found.items).toContainEqual(
+      expect.objectContaining({ objectId: w.hire.id, action: 'employment.record.edit', operation: 'update' }),
+    );
   });
 
   it('定时清理按各租户保留期删除过期日志，并留下清理记录；应用角色不能直接删改审计', async () => {
     const { db } = testDb();
     const short = await tenantWithOldLog(db, 'aud05-purge-default');
     const long = await tenantWithOldLog(db, 'aud05-purge-long', { queryMonths: 3, retainMonths: 12 });
-    expect(await oldLogCount(db, short.session.tenant.id, short.employee.id)).toBeGreaterThan(0);
+    const EDIT = 'employment.record.edit';
+    expect(await logCount(db, short.session.tenant.id, short.hire.id, EDIT)).toBe(1);
 
     for (const target of [short, long]) {
       await expect(
@@ -93,8 +109,11 @@ describe('AC-AUD-05 查询期与保留期按租户配置', () => {
     expect(shortRun.runs[0]!.purged.dataChanges).toBeGreaterThan(0);
     await runAuditRetention(db, cmd(), { tenantId: long.session.tenant.id }, { clock });
 
-    expect(await oldLogCount(db, short.session.tenant.id, short.employee.id)).toBe(0);
-    expect(await oldLogCount(db, long.session.tenant.id, long.employee.id)).toBeGreaterThan(0);
+    expect(await logCount(db, short.session.tenant.id, short.hire.id, EDIT)).toBe(0);
+    expect(await logCount(db, long.session.tenant.id, long.hire.id, EDIT)).toBe(1);
+    // 每个对象的首个新增事件同时是数据范围「创建人」的判定依据（迁移 0019），清理时保留
+    const CREATE = 'employment.employee.create';
+    expect(await logCount(db, short.session.tenant.id, short.employee.id, CREATE)).toBe(1);
 
     // 清理本身留痕：操作人“系统”、来源动作“定时任务”
     const operations = await auditApi(db, NOW).operationLogs(short.as, { behavior: 'purge' });

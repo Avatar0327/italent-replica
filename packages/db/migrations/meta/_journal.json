@@ -344,6 +344,20 @@
       "when": 1791205391309,
       "tag": "0048_transfer_linkage",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791212089070,
+      "tag": "0049_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791212091113,
+      "tag": "0050_audit_log_guards",
+      "breakpoints": true
     }
   ]
 }

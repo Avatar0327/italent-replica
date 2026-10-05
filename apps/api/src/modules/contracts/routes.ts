@@ -23,6 +23,8 @@ import { batchCommands, createCommand, loadContract, loadRequest, portfolioRevis
 import { listContracts } from './queries.js';
 import { errorsCsv, importContracts, importSchema, previewImport } from './imports.js';
 import { registerMergedTodos } from './todos.js';
+import { recordOperationLog } from '../../audit/record.js';
+import { auditActor } from '../../system-actor.js';
 
 type C = Context<TenantEnv>;
 export async function routeContext(c: C, deps: TenantRouteDeps, object = CONTRACT_OBJECT, write = false) {
@@ -333,6 +335,20 @@ function registerImports(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
           previewImport(tx, ctx, input, suffix === '/preview'),
         );
         if (suffix === '/errors') {
+          // R1-T16：错误报告下载是读取，不经命令台账；下载记录单独一个事务写入对象操作日志
+          await withTenant(deps.db, ctx.tenantId, (tx) =>
+            recordOperationLog(tx, {
+              tenantId: ctx.tenantId,
+              actorUserId: auditActor(ctx.userId),
+              behavior: 'download',
+              objectType: CONTRACT_OBJECT,
+              successCount: result.errors.length,
+              failureCount: 0,
+              summary: `下载合同导入错误报告（${result.errors.length}条）`,
+              attachment: { fileName: 'contract-import-errors.csv', contentType: 'text/csv' },
+              occurredAt: deps.clock(),
+            }),
+          );
           c.header('Content-Type', 'text/csv; charset=utf-8');
           c.header('Content-Disposition', 'attachment; filename="contract-import-errors.csv"');
           return c.body(errorsCsv(result.errors));

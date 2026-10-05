@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { auditEvents, sql, type Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import { AppError, type ErrorCode } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
+import { recordAudit } from '../../audit/record.js';
 
 /**
  * 用户 / 租户 ID 按数据库 UUID 语义规范化（与 R6-1 派单闸锁键同口径）：入参已校验为 8-4-4-4-12 的十六进制写法，
@@ -62,7 +63,7 @@ export async function auditApproval(
 ): Promise<void> {
   const keys = changed(entry.before, entry.after);
   const pick = (value: Row | null) => (value ? Object.fromEntries(keys.map((key) => [key, value[key] ?? null])) : null);
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: actorOf(ctx),
     action: entry.action,

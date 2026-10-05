@@ -1,6 +1,5 @@
 import {
   and,
-  auditEvents,
   eq,
   inArray,
   orgCodeReservations,
@@ -17,6 +16,8 @@ import { AppError } from '../../errors.js';
 import { ensureOrgSetup } from './codes.js';
 import { loadOrgSnapshot } from './read-model.js';
 import { createOrganization, type OrgWriteContext, updateOrganization } from './write-service.js';
+import { recordAudit, recordImportLog } from '../../audit/record.js';
+import { auditActor } from '../../system-actor.js';
 
 export interface OrgImportRow {
   readonly sourceCode: string;
@@ -75,6 +76,7 @@ export async function importOrganizations(
       snapshot.mappings.set(row.sourceCode, result.orgId);
     }
   }
+  await recordImportLog(tx, { ...ctx, actorUserId: auditActor(ctx.userId) }, 'organization', results);
   return { results };
 }
 
@@ -220,7 +222,7 @@ async function saveReceipt(tx: Tx, ctx: OrgWriteContext, rowIndex: number, resul
     orgId: result.orgId ?? null,
     reason: result.reason ?? null,
   });
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.userId,
     objectType: 'org_import_result',

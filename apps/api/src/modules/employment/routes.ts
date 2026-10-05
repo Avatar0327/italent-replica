@@ -57,6 +57,9 @@ import type { EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
 import { requireTransferSource } from '../transfer/access.js';
 import { requireDirectTransfer, transferBusinessContext } from '../transfer/service.js';
+import { batchEditEmploymentRecords, normalizeBatchEdit } from './batch-edit.js';
+import { recordOperationLog } from '../../audit/record.js';
+import { auditActor } from '../../system-actor.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   const module = new Hono<TenantEnv>();
@@ -73,6 +76,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerBusinesses(module, deps);
   registerActivation(module, deps);
   registerForwardUpdates(module, deps);
+  registerBatchEdit(module, deps);
   registerSettings(module, deps);
   registerCustomFields(module, deps);
   router.route('/api/tenant/employment', module);
@@ -354,6 +358,27 @@ async function emptySubmitBody(c: Context<TenantEnv>): Promise<void> {
   if (c.req.header('content-type')) parse(z.strictObject({}), await jsonBody(c));
 }
 
+function registerBatchEdit(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  // R1-T16 / AC-AUD-03：批量编辑任职记录，逐条按单条编辑的权限与范围校验，整单同事务（batch-edit.ts）
+  router.post('/records/batch-edit', async (c) => {
+    const ctx = await readContext(c, deps, 'object.update');
+    const input = normalizeBatchEdit(await jsonBody(c));
+    await requireEmploymentWrite(ctx, 'update', input.patch, 'Employment.Edit');
+    const departmentId = input.patch.fields?.departmentId;
+    for (const item of input.items) {
+      const current = await authorizeBusinessWrite(deps, ctx, item.id);
+      if (departmentId !== undefined)
+        await withTenant(deps.db, ctx.tenantId, (tx) =>
+          requireScopedEmploymentObject(tx, ctx, current.employeeId, departmentId, item.id),
+        );
+    }
+    return runWrite(c, deps, ctx, input, async (tx, context) => ({
+      status: 200,
+      body: await batchEditEmploymentRecords(tx, context, input),
+    }));
+  });
+}
+
 async function authorizeBusinessWrite(deps: TenantRouteDeps, ctx: EmploymentContext, id: string, employeeId?: string) {
   // 幂等重放也重验当前范围，不能依赖可能被命令台账跳过的 execute。
   const value = await withTenant(deps.db, ctx.tenantId, (tx) =>
@@ -624,5 +649,18 @@ async function importWithTransferAuthorization(
   await lockImportParticipants(tx, ctx, employeeId, input);
   await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
   await requireImportTransferAccess(tx, ctx, employeeId, input);
-  return importEmploymentRecords(tx, ctx, employeeId, input);
+  const result = await importEmploymentRecords(tx, ctx, employeeId, input);
+  // R1-T16：导入整体提交，任务级日志与业务同事务
+  await recordOperationLog(tx, {
+    tenantId: ctx.tenantId,
+    actorUserId: auditActor(ctx.userId),
+    behavior: 'import',
+    objectType: 'employment-record',
+    objectId: employeeId,
+    successCount: input.items.length,
+    failureCount: 0,
+    commandId: ctx.commandId,
+    occurredAt: ctx.now,
+  });
+  return result;
 }

@@ -36,7 +36,11 @@ describe('AC-AUD-01 编辑员工部门：字段级数据变更日志', () => {
     });
     expect(edited.status, await edited.clone().text()).toBe(200);
 
-    const { items } = await w.audit.dataChanges(w.as, { objectId: w.hire.id, operation: 'update' });
+    const { items } = await w.audit.dataChanges(w.as, {
+      objectType: 'employment-record',
+      objectId: w.hire.id,
+      operation: 'update',
+    });
     expect(items).toHaveLength(1);
     const log = items[0]!;
     expect(log).toMatchObject({
@@ -125,7 +129,7 @@ describe('AC-AUD-02 删除任职记录：日志保留被删记录快照', () => 
     expect(detail.snapshot).toMatchObject({
       id: transfer.id,
       employeeId: w.employee.id,
-      effectiveDate: '2026-09-20',
+      startDate: '2026-09-20',
       departmentId: w.departmentB.id,
       place: '待删地点',
     });

@@ -1,9 +1,20 @@
 export { pgErrorCode } from './pg-error.js';
+export {
+  type AuditEventInput,
+  type AuditSource,
+  type CommandFailureInput,
+  insertAuditEvent,
+  insertCommandFailure,
+  insertOperationLog,
+  type OperationLogInput,
+  SCHEDULED_SOURCE_ACTION,
+} from './audit.js';
 export { createPgDb, createPgliteDb, type Db, type DbHandle, migrationsFolder } from './client.js';
 export {
   type AuditEntry,
   findPlatformCommandResult,
   IdempotencyConflictError,
+  PLATFORM_SOURCE_ACTION,
   type PlatformCommandContext,
   type PlatformCommandMeta,
   RevisionConflictError,

@@ -11,7 +11,8 @@
 import { createHash } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import type { Db } from './client.js';
-import { auditEvents, platformAuditEvents, platformCommandLedger } from './schema/index.js';
+import { insertAuditEvent } from './audit.js';
+import { platformAuditEvents, platformCommandLedger } from './schema/index.js';
 import { APP_ROLE, isUuid, type Tx, withPlatform } from './tenant-context.js';
 
 /** 平台写命令的元信息：操作人（平台方 / 系统任务为 null）与客户端命令 ID。 */
@@ -58,6 +59,8 @@ export class IdempotencyConflictError extends Error {
     this.name = 'IdempotencyConflictError';
   }
 }
+
+export const PLATFORM_SOURCE_ACTION = '平台运营';
 
 const COMMAND_ID = /^[A-Za-z0-9:_-]{1,100}$/;
 
@@ -146,7 +149,8 @@ function contextFor(tx: Tx, meta: PlatformCommandMeta): PlatformCommandContext {
     inTenant,
     auditTenant: async (tenantId, entry) => {
       await inTenant(tenantId, async (t) => {
-        await t.insert(auditEvents).values({ tenantId, ...row(entry) });
+        // 平台运营对租户的变更（开通、状态、成员、许可、恢复）：来源动作记“平台运营”，不与定时任务混淆（R1-T16）
+        await insertAuditEvent(t, { tenantId, ...row(entry), source: { sourceAction: PLATFORM_SOURCE_ACTION } });
       });
       // 在租户上下文内调用时（可重入）推迟到切回平台路径后再写，见 flushPlatform
       if (current === null) await auditPlatform(entry, tenantId);

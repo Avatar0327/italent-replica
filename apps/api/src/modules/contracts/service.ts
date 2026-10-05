@@ -9,13 +9,15 @@ import {
   sql,
   type Tx,
 } from '@italent/db';
-import { CONTRACT_FIELDS, tenantLocalDate, addDays } from '@italent/domain';
+import { CONTRACT_FIELDS, CONTRACT_OBJECT, tenantLocalDate, addDays } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { findCurrentRecord } from '../employment/read-model.js';
 import { validateCustomValue } from '../employment/fields.js';
 import { audit, checkFields, checkScope, lockEmployee, revision, rowsOf, type ContractContext } from './context.js';
 import { settings, verifyIds } from './configuration.js';
 import { commandSchema, parse, type ContractCommand, type ContractFields } from './input.js';
+import { recordOperationLog } from '../../audit/record.js';
+import { auditActor } from '../../system-actor.js';
 
 export type Contract = typeof contractRecords.$inferSelect;
 export type ContractRequest = typeof contractRequests.$inferSelect;
@@ -490,5 +492,16 @@ export async function batchCommands(
   const result = [];
   for (const row of normalized)
     result.push(await createCommand(tx, { ...ctx, expectedRevision: row.revision }, row.command));
+  // R1-T16：批量操作整体成功才提交，任务级日志与业务同事务
+  await recordOperationLog(tx, {
+    tenantId: ctx.tenantId,
+    actorUserId: auditActor(ctx.userId),
+    behavior: 'batch_update',
+    objectType: CONTRACT_OBJECT,
+    successCount: result.length,
+    failureCount: 0,
+    commandId: ctx.commandId,
+    occurredAt: ctx.now,
+  });
   return { items: result };
 }

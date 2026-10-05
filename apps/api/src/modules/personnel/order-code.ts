@@ -1,10 +1,11 @@
-import { auditEvents, sql, type Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { auditActor } from '../../system-actor.js';
 import { orderCodeProjection } from './order-code-query.js';
 import { assertRevision, rows, type PersonnelContext } from './store.js';
 import { lockOrderSettings } from './order-code-settings.js';
+import { recordAudit } from '../../audit/record.js';
 
 const columns: Record<string, SQL> = {
   department: sql`department_path`,
@@ -78,7 +79,7 @@ async function recordRun(tx: Tx, ctx: PersonnelContext, result: object, manual: 
       error=NULL,ran_at=EXCLUDED.ran_at`);
   // 即使没有名次变化也记录手动触发人；命令台账保证重放不会再执行这一写入。
   if (manual)
-    await tx.insert(auditEvents).values({
+    await recordAudit(tx, {
       tenantId: ctx.tenantId,
       actorUserId: auditActor(ctx.userId),
       action: 'personnel.order.run',

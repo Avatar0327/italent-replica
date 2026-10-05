@@ -1,4 +1,4 @@
-import { auditEvents, sql, withTenant, type Tx } from '@italent/db';
+import { sql, withTenant, type Tx } from '@italent/db';
 import { buttonResource, tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { Context } from 'hono';
@@ -22,6 +22,7 @@ import {
 import { requireObjectWrite } from '../permission/object-write.js';
 import { authorizeEmploymentResult } from '../permission/employment-replay.js';
 import { trimEmploymentManagerReferences } from '../transfer/response-disclosure.js';
+import { recordAudit } from '../../audit/record.js';
 export type { EmploymentContext } from './types.js';
 export { pageQuery, revision, uuidParam } from '../job/context.js';
 
@@ -247,7 +248,13 @@ export async function trimEmploymentResponse(
               : {}),
           };
         });
-      else if (['notice', 'hasDataPermission', 'page', 'pageSize', 'emptyReason'].includes(key) || viewable.has(key))
+      else if (
+        // total / succeeded / failed 是批量编辑回执的协议元数据（R1-T16），不是任职字段
+        ['notice', 'hasDataPermission', 'page', 'pageSize', 'emptyReason', 'total', 'succeeded', 'failed'].includes(
+          key,
+        ) ||
+        viewable.has(key)
+      )
         result[key] = field;
     }
     return result;
@@ -313,7 +320,7 @@ export async function auditEmployment(
   payloadVersionId?: string,
   meta?: Readonly<Record<string, unknown>>,
 ): Promise<void> {
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: auditActor(ctx.userId),
     action,

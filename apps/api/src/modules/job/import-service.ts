@@ -9,6 +9,8 @@ import { lockJobTenant } from './settings.js';
 import { auditJob, insertRow, rowsOf, snakeCase } from './store.js';
 import type { JobInput, JobWriteContext } from './types.js';
 import { createJobObject, updateJobObject } from './write-service.js';
+import { recordImportLog } from '../../audit/record.js';
+import { auditActor } from '../../system-actor.js';
 
 export interface JobImportRow extends JobInput {
   readonly sourceCode: string;
@@ -84,6 +86,7 @@ export async function importJobObjects(
       snapshot.codeOwners.set(result.code, owners);
     }
   }
+  await recordImportLog(tx, { ...ctx, actorUserId: auditActor(ctx.userId) }, kind, results);
   return { results };
 }
 

@@ -20,6 +20,8 @@ import { registerPersonnelRoutes } from './modules/personnel/routes.js';
 import { registerEmploymentRoutes } from './modules/employment/routes.js';
 import { registerApprovalRoutes } from './modules/approval/routes.js';
 import { createPlatformRouter } from './modules/platform/routes.js';
+import { auditRequestContext } from './audit/request-context.js';
+import { registerAuditRoutes } from './audit/routes.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
 const TENANT_MODULES: readonly TenantRouteModule[] = [
@@ -31,6 +33,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerPersonnelRoutes, // R1-T12 人员信息与子集
   registerApprovalRoutes, // R1-T07 审批中心
   registerContractRoutes, // R2-T06 合同协议
+  registerAuditRoutes, // R1-T16 审计日志
 ];
 
 export interface AppDeps {
@@ -48,6 +51,8 @@ export interface AppDeps {
 export function createApp(deps: AppDeps = {}): Hono {
   const app = new Hono();
 
+  // 审计的请求来源（IP、终端、来源页面、TraceID，R1-T16）：最先挂载，失败的请求同样带 TraceID
+  app.use('*', auditRequestContext(deps.clock ?? (() => new Date())));
   app.use('*', requireJson);
   // 默认 32KB；只有登记的个别接口放宽且仍有上限（身份对象权限整对象替换，见 permission/routes.ts）
   app.use(

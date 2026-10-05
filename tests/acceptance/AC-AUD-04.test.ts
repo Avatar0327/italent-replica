@@ -30,7 +30,9 @@ describe('AC-AUD-04 定时任务修改数据', () => {
       occurredAt: '2026-10-04T17:15:00.000Z',
       ip: null,
     });
-    expect(created!.content).toContain('部门:从【】修改为【调入部门】');
+    // 新增记录的“变更前”取版本链上一条（硬规则：变更前不单独建列）
+    expect(created!.content).toContain('部门:从【调出部门】修改为【调入部门】');
+    expect(created!.content).toContain('工作地点:从【原地点】修改为【定时地点】');
 
     const manual = items.filter((item) => item.operator.userId !== null);
     expect(manual.length).toBeGreaterThan(0);

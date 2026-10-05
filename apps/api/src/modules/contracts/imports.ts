@@ -1,10 +1,13 @@
 import { pgErrorCode, and, eq, contractRecords, sql, type Tx } from '@italent/db';
+import { CONTRACT_OBJECT } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import { checkScope, lockEmployee, revision, rowsOf, type ContractContext } from './context.js';
 import { settings } from './configuration.js';
 import { fieldsSchema, parse, uuid, type ContractCommand } from './input.js';
 import { createCommand, deleteContract, portfolioRevision } from './service.js';
+import { recordImportLog } from '../../audit/record.js';
+import { auditActor } from '../../system-actor.js';
 export const importSchema = z.strictObject({
   mode: z.enum(['add', 'edit', 'change', 'initialize']),
   rows: z
@@ -148,6 +151,8 @@ export async function importContracts(tx: Tx, ctx: ContractContext, raw: unknown
   const errors: ImportError[] = [];
   const items = await applyRows(tx, ctx, input, errors);
   if (errors.length) throw importFailure('导入失败', { errors });
+  const receipts = items.map(() => ({ status: 'imported' }));
+  await recordImportLog(tx, { ...ctx, actorUserId: auditActor(ctx.userId) }, CONTRACT_OBJECT, receipts);
   return { items, count: items.length };
 }
 function importFailure(message: string, result: { errors: ImportError[] }) {

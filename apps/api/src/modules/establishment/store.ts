@@ -1,15 +1,9 @@
-import {
-  auditEvents,
-  eq,
-  establishmentNotifications,
-  establishmentOutbox,
-  establishmentSettings,
-  type Tx,
-} from '@italent/db';
+import { eq, establishmentNotifications, establishmentOutbox, establishmentSettings, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { validIsoDate } from '../org/read-model.js';
 import { ensureDefaultScheme } from './default-scheme.js';
+import { recordAudit } from '../../audit/record.js';
 
 export interface EstablishmentContext {
   readonly tenantId: string;
@@ -80,7 +74,7 @@ export async function audit(
   before: unknown,
   after: unknown,
 ): Promise<void> {
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.userId,
     action,

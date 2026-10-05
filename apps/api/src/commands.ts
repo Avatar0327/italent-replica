@@ -4,11 +4,13 @@
  * - 同键同内容 → 返回首次结果，不再执行；同键异内容 → 409 IDEMPOTENCY_CONFLICT；
  * - 执行失败时先回查台账（结果未知先回查，DEC-067）：并发的同键同内容请求中，败者可能因行锁后 revision 已变
  *   得到 409，或在主键上冲突，只要先提交者已记录同一命令，就重放其响应而不是报错。
- * 失败的命令整体回滚、不入台账，客户端可按原键重提。
+ * 失败的命令整体回滚、不入台账，客户端可按原键重提；失败本身按“业务失败 / 存储不可写 / 结果未知”三类另记审计
+ * （R1-T16，audit/failures.ts），结果未知时返回 503 RESULT_UNKNOWN，提示按原命令 ID 回查。
  */
 import { createHash } from 'node:crypto';
 import { commandLedger, type Db, eq, type Tx, withTenant } from '@italent/db';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { classifyCommandFailure, type CommandPhase, failureResponse, recordCommandFailure } from './audit/failures.js';
 import { AppError } from './errors.js';
 import type { TenantContext } from './tenant-context.js';
 
@@ -33,6 +35,7 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
   if (!COMMAND_ID.test(commandId)) throw new AppError('VALIDATION_FAILED', 'Idempotency-Key 格式不合法');
   const requestHash = commandHash(ctx.userId, command.fingerprint);
 
+  let phase: CommandPhase = 'execute';
   try {
     return await withTenant(db, ctx.tenantId, async (tx) => {
       const replay = await findReplay(tx, commandId, requestHash);
@@ -45,10 +48,22 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
         responseStatus: result.status,
         responseBody: result.body,
       });
+      // 回调返回后由驱动提交：此后的错误可能发生在提交请求已发出之后
+      phase = 'commit';
       return result;
     });
   } catch (error) {
-    return replayAfterFailure(db, ctx.tenantId, { commandId, requestHash }, error);
+    let final: unknown = error;
+    let recheckFailed = false;
+    try {
+      return await replayAfterFailure(db, ctx.tenantId, { commandId, requestHash }, error);
+    } catch (thrown) {
+      recheckFailed = thrown !== error && !(thrown instanceof AppError);
+      if (!recheckFailed) final = thrown;
+    }
+    const failure = classifyCommandFailure(final, phase, recheckFailed);
+    await recordCommandFailure(db, ctx, commandId, failure);
+    throw failureResponse(final, failure, commandId);
   }
 }
 

@@ -64,6 +64,19 @@ describe('AC-AUD-03 批量编辑任职记录：对象操作日志', () => {
     expect(changes.items).toHaveLength(52);
     expect(new Set(changes.items.map((item) => item.objectId))).toEqual(new Set(w.hires.map((hire) => hire.id)));
     expect(changes.items.every((item) => item.sourceAction === '编辑')).toBe(true);
+
+    // 游标分页：每页 20 条，三页取完 52 条，不重不漏
+    const seen = new Set<string>();
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const query: Record<string, string> = { objectType: 'employment-record', field: 'place', limit: '20' };
+      const page = await w.audit.dataChanges(w.as, cursor ? { ...query, cursor } : query);
+      for (const item of page.items) seen.add(item.id);
+      cursor = page.nextCursor;
+      pages += 1;
+    } while (cursor);
+    expect({ pages, size: seen.size }).toEqual({ pages: 3, size: 52 });
   });
 
   it('任一条 revision 过期则整单回滚：无操作日志、无数据变更日志，失败命令记为业务失败', async () => {

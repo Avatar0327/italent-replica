@@ -1,5 +1,6 @@
-import { auditEvents, sql, type Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import type { JobWriteContext } from './types.js';
+import { recordAudit } from '../../audit/record.js';
 
 export function rowsOf<T>(result: unknown): T[] {
   return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as T[];
@@ -32,7 +33,7 @@ export async function auditJob(
   before: unknown,
   after: unknown,
 ): Promise<void> {
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.userId,
     commandId: ctx.commandId,
