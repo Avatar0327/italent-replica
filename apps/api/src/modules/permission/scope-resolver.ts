@@ -63,7 +63,7 @@ async function managementRoots(tx: Tx, q: ScopeQuery): Promise<ScopeRoot[]> {
     `),
     ).map((r) => ({ orgId: r.org_id, dimension: r.dimension, includeDescendants: r.include_descendants }));
   }
-  // TODO(需取证 Q-M0-34): 动态组织角色暂只覆盖角色所在组织本级，不隐式包含下级。
+  // DEC-168：默认管理单元的组织角色范围包含全部下级；停用根及下级按 DEC-160 / DEC-146 保留。
   // REQ-PRM-002: org-role automatic grant + default MOU + HR/attendance is an explicit branch.
   const roles = scopeRows<{ role_code: string }>(
     await tx.execute(sql`
@@ -80,7 +80,7 @@ async function managementRoots(tx: Tx, q: ScopeQuery): Promise<ScopeRoot[]> {
     tx,
     q,
     roles.map((row) => row.role_code),
-    false,
+    true,
   );
 }
 interface Rule {
