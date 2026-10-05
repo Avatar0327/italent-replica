@@ -50,6 +50,12 @@ export async function updateTransferLinkage(
   if (!visible || visible.kind !== 'transfer') throw new AppError('NOT_FOUND', '调动不存在');
   await lockTransferParticipants(tx, ctx, visible.employeeId, dutySubordinateIds(options));
   const business = await lockEmploymentBusiness(tx, ctx, businessId);
+  const [request] = rowsOf<{ initiator: string }>(
+    await tx.execute(sql`SELECT initiator FROM transfer_requests
+      WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid`),
+  );
+  if (request?.initiator === 'employee')
+    throw new AppError('VALIDATION_FAILED', '本人调动申请不能设置联动业务', { reason: 'TRANSFER_LINKAGE_NOT_ALLOWED' });
   const executed = await linkageExecuted(tx, ctx.tenantId, businessId);
   assertLinkageMutable(business.state, business.payload.mode, executed, business.payload.effectiveDate > today);
   await validateLinkage(tx, ctx, business.employeeId, options);

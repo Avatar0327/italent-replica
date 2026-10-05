@@ -18,6 +18,7 @@ import { requireTransferSource, transferDirectActions, type TransferInitiator } 
 import { readTransferCatalog, readTransferSettings, resolveTransferForm } from './configuration.js';
 import { dutySubordinateIds, normalizeLinkage, type LinkageOptions } from './linkage/input.js';
 import { saveNewTransferLinkage } from './linkage/service.js';
+import { hasLinkage } from './linkage/store.js';
 
 const schema = z.strictObject({
   initiator: z.enum(['hr', 'manager', 'employee']),
@@ -48,6 +49,9 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '调动表单字段不合法', parsed.error.issues);
   const input = parsed.data;
   const linkage = input.linkage === undefined || input.linkage === null ? null : normalizeLinkage(input.linkage);
+  // 12 附录：本人调动表单没有薪资、合同、试岗等区块，人事申请入口不能带联动。
+  if (input.initiator === 'employee' && hasLinkage(linkage))
+    throw new AppError('VALIDATION_FAILED', '本人调动申请不能设置联动业务', { reason: 'TRANSFER_LINKAGE_NOT_ALLOWED' });
   // TODO(需取证 Q-M0-18)：带编转移数量与分配规则未确认，明确拒绝。
   if (input.withEstablishment)
     throw new AppError('SERVICE_UNAVAILABLE', '带编调动分配规则尚待取证', { reason: 'WITH_ESTABLISHMENT_UNAVAILABLE' });

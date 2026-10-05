@@ -352,5 +352,9 @@ describe('联动选项的修改边界与租户隔离', () => {
     expect(inReview.status).toBe(409);
     const foreign = await other.session.request('GET', `/transfers/${draft.id}/linkage`);
     expect(foreign.status).toBe(404);
+    // 本人调动申请（人事申请入口）没有联动区块（`12` 附录）。
+    const self = await w.transfer(person, { initiator: 'employee', linkage: { adjustSalary: true } });
+    expect(self.status).toBe(400);
+    expect(await self.json()).toMatchObject({ error: { details: { reason: 'TRANSFER_LINKAGE_NOT_ALLOWED' } } });
   });
 });
