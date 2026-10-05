@@ -103,19 +103,19 @@ export { resolveModuleScope, trimModuleResponse };
 
 const requestScopes = new WeakMap<Context<TenantEnv>, Map<string, Promise<ModuleScope>>>();
 /**
- * @param dataSource 同一对象下需要单独授范围的数据集（读写同用），如编制方案（ESTABLISHMENT_SCHEME_DATASOURCE）：它与
+ * @param view 同一对象下需要单独授“看全部”的数据集（读写同用），如编制方案（ESTABLISHMENT_SCHEME_DATASOURCE）：它与
  *   组织编制共用对象 OrganizationEstablishment，DEC-121 只对无组织字段的编制方案预置看全部，不能连带放开组织编制。
- *   页面编码（列表 / 详情）不变，已配置的页面级策略照常生效。
+ *   它只作为身份看全部的附加目标；页面 / 数据源编码与其上已有的配置（含看全部与空策略）不变（PR #60 P2-7）。
  */
 export function requestScope(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   ctx: ScopeBusinessContext,
   objectCode: string,
-  dataSource?: string,
+  view?: string,
 ) {
   const pageCode = c.req.method === 'GET' ? `${objectCode}.${c.req.param('id') ? 'detail' : 'list'}` : undefined;
-  const key = `${objectCode}:${pageCode ?? ''}:${dataSource ?? ''}`;
+  const key = `${objectCode}:${pageCode ?? ''}:${view ?? ''}`;
   let scopes = requestScopes.get(c);
   if (!scopes) {
     scopes = new Map();
@@ -123,7 +123,7 @@ export function requestScope(
   }
   const cached = scopes.get(key);
   if (cached) return cached;
-  const pending = resolveModuleScope(deps, ctx, undefined, objectCode, pageCode, dataSource);
+  const pending = resolveModuleScope(deps, ctx, undefined, objectCode, pageCode, view);
   scopes.set(key, pending);
   return pending;
 }

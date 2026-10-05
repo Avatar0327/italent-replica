@@ -20,6 +20,7 @@ export {
   insertTenant,
   isActivePlatformOperator,
   type MembershipChange,
+  type MembershipRegistration,
   type MembershipRevocation,
   type MembershipRevokeHook,
   type NewTenant,

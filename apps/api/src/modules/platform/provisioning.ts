@@ -34,6 +34,10 @@ import {
   type InstalledProfile,
 } from '../permission/standard-profiles.js';
 
+/** 开通时登记的外部用户业务身份（DEC-158，符合 DEC-128）。 */
+export const FIRST_ADMIN_IDENTITY = '租户管理员';
+export const EXCEPTION_ADMIN_IDENTITY = '异常管理员';
+
 export interface ProvisionInput {
   readonly code: string;
   readonly name: string;
@@ -84,8 +88,11 @@ export async function provisionTenant(
     await assertActiveUsers(ctx.tx, [input.firstAdminUserId, input.exceptionAdminUserId]);
     const tenant = await insertTenant(ctx, input);
     const tenantId = tenant.id;
+    // DEC-158：开通时这两人尚无人员档案，登记为外部用户并带业务身份；日后以同一登录邮箱建档 / 入职时自动转内部员工
     for (const userId of new Set([input.firstAdminUserId, input.exceptionAdminUserId])) {
-      await grantMembershipIn(ctx, { tenantId, userId, expectedRevision: 0 }, meta);
+      const businessIdentity = userId === input.firstAdminUserId ? FIRST_ADMIN_IDENTITY : EXCEPTION_ADMIN_IDENTITY;
+      const registration = { userType: 'external', businessIdentity } as const;
+      await grantMembershipIn(ctx, { tenantId, userId, expectedRevision: 0 }, meta, registration);
     }
     const write: PlatformWriteContext = { tenantId, actorUserId: meta.actorUserId, now, commandId: meta.commandId };
     const profiles = await ctx.inTenant(tenantId, (tx) => installStandardProfiles(tx, write));

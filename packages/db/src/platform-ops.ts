@@ -204,13 +204,23 @@ async function changeMembership(
   return runPlatformCommand(db, meta, op, change, (ctx) => applyMembershipChange(ctx, change, meta, status));
 }
 
-/** 在已有的平台命令内授予成员关系（开通命令为首位租户管理员、异常管理员授予成员关系）。 */
+/** 新建成员关系时登记的用户类型（DEC-128：没有人员档案的账号登记为外部用户并带业务身份）。 */
+export interface MembershipRegistration {
+  readonly userType: 'external';
+  readonly businessIdentity: string;
+}
+
+/**
+ * 在已有的平台命令内授予成员关系（开通命令为首位租户管理员、异常管理员授予成员关系）。
+ * registration 只在新建成员关系时写入；已有成员关系（重新激活）保持原登记。
+ */
 export function grantMembershipIn(
   ctx: PlatformCommandContext,
   change: MembershipChange,
   meta: PlatformCommandMeta,
+  registration?: MembershipRegistration,
 ): Promise<TenantMembership> {
-  return applyMembershipChange(ctx, change, meta, 'active');
+  return applyMembershipChange(ctx, change, meta, 'active', registration);
 }
 
 async function applyMembershipChange(
@@ -218,6 +228,7 @@ async function applyMembershipChange(
   change: MembershipChange,
   meta: PlatformCommandMeta,
   status: MembershipStatus,
+  registration?: MembershipRegistration,
 ): Promise<TenantMembership> {
   const op = status === 'active' ? 'tenant_membership.grant' : 'tenant_membership.revoke';
   const timezone = status === 'revoked' ? await tenantTimezone(ctx.tx, change.tenantId) : null;
@@ -236,7 +247,9 @@ async function applyMembershipChange(
     }
     const before = await findMembership(ctx, change, true);
     assertMembershipRevision(before, change, status);
-    const after = before ? await updateMembership(ctx, before, status) : await insertMembership(ctx, change);
+    const after = before
+      ? await updateMembership(ctx, before, status)
+      : await insertMembership(ctx, change, registration);
     const entry = audit(op, 'tenant_membership', after.id, snap(before), snap(after));
     await tenantEvent(ctx, meta, change.tenantId, entry, after.revision);
     return after;
@@ -310,7 +323,15 @@ async function tenantTimezone(tx: Tx, tenantId: string): Promise<string> {
 }
 
 const snap = (m: TenantMembership | undefined) =>
-  m ? { userId: m.userId, status: m.status, revision: m.revision } : null;
+  m
+    ? {
+        userId: m.userId,
+        status: m.status,
+        userType: m.userType,
+        businessIdentity: m.businessIdentity,
+        revision: m.revision,
+      }
+    : null;
 
 /**
  * @param lock 锁住成员行以改写。授予 / 撤销只改状态、revision 等非键列（键是编号与“租户 + 用户”），UPDATE 本身只需
@@ -337,9 +358,14 @@ function assertMembershipRevision(
   if (!row && status === 'revoked') throw new RevisionConflictError('tenant_membership', 0);
 }
 
-async function insertMembership(ctx: PlatformCommandContext, change: MembershipChange) {
+async function insertMembership(
+  ctx: PlatformCommandContext,
+  change: MembershipChange,
+  registration?: MembershipRegistration,
+) {
+  const values = { tenantId: change.tenantId, userId: change.userId, ...registration };
   const [row] = await insertOnce(
-    () => ctx.tx.insert(tenantMemberships).values({ tenantId: change.tenantId, userId: change.userId }).returning(),
+    () => ctx.tx.insert(tenantMemberships).values(values).returning(),
     'tenant_membership',
   );
   return row!;

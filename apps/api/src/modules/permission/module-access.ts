@@ -34,10 +34,9 @@ export async function resolveModuleScope(
   _asOf?: string,
   objectCode?: string,
   pageCode?: string,
-  dataSourceCode?: string,
+  viewCode?: string,
 ): Promise<ModuleScope> {
   const provider = providers.get(deps.authorize);
-  const dataSource = dataSourceCode ?? pageCode;
   if (provider)
     return provider.scope({
       tenantId: ctx.tenantId,
@@ -46,9 +45,9 @@ export async function resolveModuleScope(
       asOf: tenantLocalDate(deps.clock(), ctx.timezone),
       ...(objectCode ? { objectCode } : {}),
       // This API owns both the page and its data source; neither identifier comes from query parameters.
-      // A route may name its own data source (e.g. establishment schemes, DEC-121); otherwise it equals the page.
-      ...(pageCode ? { pageCode } : {}),
-      ...(dataSource ? { dataSourceCode: dataSource } : {}),
+      ...(pageCode ? { pageCode, dataSourceCode: pageCode } : {}),
+      // Extra identity see-all target only (establishment schemes, DEC-121); never selects page/datasource policies.
+      ...(viewCode ? { viewCode } : {}),
     });
   // Explicit trusted Authorizer injection is also an authorization boundary. Unset/false is EMPTY.
   const all = await deps.authorize({ ...ctx, action: 'data.scope.all', resource: objectCode ?? ORG_EMPLOYEE_APP });

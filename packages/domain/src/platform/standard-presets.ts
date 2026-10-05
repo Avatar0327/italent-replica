@@ -10,8 +10,9 @@ import type { ObjectDefinition, ObjectPermission } from '../permission/object-pe
 import { PERSONNEL_OBJECTS } from '../personnel/catalog.js';
 
 /**
- * 编制方案的数据范围目标（数据源级）：编制方案与组织编制共用对象 OrganizationEstablishment，对象级“看全部”会连带放开
- * 有组织字段的组织编制；编制方案的读写接口另带此数据源编码解析范围（页面编码与页面级策略不变），DEC-121 只对它预置看全部。
+ * 编制方案的“看全部”目标（数据源类）：编制方案与组织编制共用对象 OrganizationEstablishment，对象级看全部会连带放开
+ * 有组织字段的组织编制。编制方案的读写接口把它作为身份看全部的附加目标（不改变页面 / 数据源编码与其上的策略），
+ * DEC-121 只对它预置看全部。
  */
 export const ESTABLISHMENT_SCHEME_DATASOURCE = `${MODULE_OBJECTS.establishment.code}.scheme`;
 
