@@ -58,17 +58,52 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
     ]);
   });
 
-  it('开通时的首位租户管理员与异常管理员按 DEC-128 登记为外部用户并带业务身份（没有人员档案）', async () => {
+  it('DEC-158：开通时的首位租户管理员与异常管理员登记为外部用户（租户管理员 / 异常管理员）', async () => {
     const res = await api.request('GET', '/api/tenant/permission/users?type=external', asAdmin);
     expect(res.status, await res.clone().text()).toBe(200);
     const { items } = (await res.json()) as {
-      items: { userId: string; userType: string; businessIdentity: string | null }[];
+      items: { userId: string; userType: string; businessIdentity: string | null; employeeId: string | null }[];
     };
-    for (const userId of [admin.id, exceptionAdmin.id]) {
-      const user = items.find((u) => u.userId === userId);
-      expect(user).toMatchObject({ userType: 'external' });
-      expect(user?.businessIdentity?.trim()).toBeTruthy();
-    }
+    expect(items.find((u) => u.userId === admin.id)).toMatchObject({
+      userType: 'external',
+      businessIdentity: '租户管理员',
+      employeeId: null,
+    });
+    expect(items.find((u) => u.userId === exceptionAdmin.id)).toMatchObject({
+      userType: 'external',
+      businessIdentity: '异常管理员',
+      employeeId: null,
+    });
+  });
+
+  it('DEC-158：以同一登录邮箱为开通管理员建档时自动转内部员工并绑定档案，授权与成员关系保留', async () => {
+    const before = await api.request('GET', '/api/tenant/permission/grants', asAdmin);
+    const grantsBefore = ((await before.json()) as { items: { userId: string; status: string }[] }).items.filter(
+      (g) => g.userId === admin.id,
+    );
+    // 建档权限与范围不是本条要验证的（新建员工须显式看全部，DEC-121），这里用全部允许的授权钩子
+    const created = await tenantApi(testDb().db).request('POST', '/api/tenant/employment/employees', {
+      ...asAdmin,
+      ifMatch: 0,
+      body: { code: 'ADM001', name: '开通管理员', loginEmail: admin.email },
+    });
+    expect(created.status, await created.clone().text()).toBe(201);
+    const employeeId = ((await created.json()) as { id: string }).id;
+    const user = await api.request('GET', `/api/tenant/permission/users/${admin.id}`, asAdmin);
+    expect(await user.json()).toMatchObject({
+      userId: admin.id,
+      userType: 'internal',
+      businessIdentity: null,
+      employeeId,
+      membershipStatus: 'active',
+    });
+    const after = await api.request('GET', '/api/tenant/permission/grants', asAdmin);
+    const grantsAfter = ((await after.json()) as { items: { userId: string; status: string }[] }).items.filter(
+      (g) => g.userId === admin.id,
+    );
+    expect(grantsAfter).toEqual(grantsBefore);
+    const admins = await api.request('GET', '/api/tenant/permission/admins', asAdmin);
+    expect(((await admins.json()) as { items: { userId: string }[] }).items.map((a) => a.userId)).toContain(admin.id);
   });
 
   it('标准业务身份已下发（source=standard），且在首位租户管理员的可授权范围内', async () => {
