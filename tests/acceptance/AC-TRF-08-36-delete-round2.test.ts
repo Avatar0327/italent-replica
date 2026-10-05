@@ -100,6 +100,13 @@ describe('P1-1 删除中间记录：前一条不在操作人范围内时整单�
 describe('P2-1 在途申请拒绝详情按范围与字段权限裁剪', () => {
   it('范围外的在途申请只计数、不给单号与日期；仍然拒绝删除。范围内按字段权限裁剪', async () => {
     const w = await scopedWorld('p21');
+    // 员工当前已在范围外的 C（DEC-177 ②不成立），其后的申请也在 C：申请对只管 A、B 的操作人不可见。
+    await w.addBusiness({
+      kind: 'transfer',
+      mode: 'direct',
+      effectiveDate: '2026-09-25',
+      fields: { departmentId: w.c.id },
+    });
     const application = await w.apply(w.subject.employee.id, '2026-10-20', { departmentId: w.c.id });
     const refused = await w.remove(w.operator([w.a.id, w.b.id]), w.toB.id);
     const text = await refused.text();
