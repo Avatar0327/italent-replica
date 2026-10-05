@@ -51,6 +51,21 @@ export async function checkScope(tx: Tx, ctx: ContractContext, employeeId: strin
   }
   return currentPrimary(tx, ctx.tenantId, employeeId, today);
 }
+/** DEC-202：续签生成新记录，走人员新建范围；维护操作只能使用目标合同的真实创建人。 */
+export async function checkOperationScope(
+  tx: Tx,
+  ctx: ContractContext,
+  input: { employeeId: string; operation: string },
+  target: { employeeId: string; createdBy: string } | null | undefined,
+) {
+  if (target && target.employeeId !== input.employeeId) throw new AppError('NOT_FOUND', '合同数据不存在');
+  return checkScope(
+    tx,
+    ctx,
+    input.employeeId,
+    input.operation === 'create' || input.operation === 'renew' ? undefined : target?.createdBy,
+  );
+}
 export async function checkFields(
   ctx: ContractContext,
   operation: 'create' | 'update',

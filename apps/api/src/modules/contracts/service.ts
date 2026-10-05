@@ -16,6 +16,7 @@ import {
   audit,
   checkFields,
   checkScope,
+  checkOperationScope,
   currentPrimary,
   lockEmployee,
   revision,
@@ -161,7 +162,7 @@ export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown, correc
   await lockEmployee(tx, ctx, input.employeeId);
   const before = input.targetId ? await loadContract(tx, ctx.tenantId, input.targetId) : null;
   if (before && before.employeeId !== input.employeeId) throw new AppError('NOT_FOUND', '合同不存在');
-  await checkScope(tx, ctx, input.employeeId, before?.createdBy);
+  await checkOperationScope(tx, ctx, input, before);
   await checkFields(ctx, input.operation === 'create' ? 'create' : 'update', input.fields);
   revision(ctx.expectedRevision, before?.revision ?? 0);
   if ((input.operation === 'create') === !!before) throw new AppError('VALIDATION_FAILED', '合同操作与目标不匹配');
@@ -312,7 +313,7 @@ async function validateReferences(
     );
     if (!record) throw new AppError('VALIDATION_FAILED', '任职记录不属于该员工');
   }
-  await checkScope(tx, ctx, input.employeeId, before?.createdBy);
+  await checkOperationScope(tx, ctx, input, before);
   // DEC-164①：历史补录按合同生效日的任职判断，不按操作当天的离职状态判断。
   const current = await currentPrimary(tx, ctx.tenantId, input.employeeId, normalized.effectiveDate!);
   const [exit] =

@@ -1,7 +1,7 @@
 import { CONTRACT_OBJECT, contractAction } from '@italent/domain';
-import { loadRequest, requestWriteFields, mergeFields } from '../contracts/service.js';
+import { loadContract, loadRequest, requestWriteFields, mergeFields } from '../contracts/service.js';
 import { fieldsSchema, parse } from '../contracts/input.js';
-import { checkFields, checkScope } from '../contracts/context.js';
+import { checkFields, checkOperationScope } from '../contracts/context.js';
 /**
  * 审批中心的功能权限：流程配置仅限租户级管理员（DEC-102）；管理员转交 / 干预受身份对象权限控制（DEC-080 真实字段与按钮），
  * 再按其数据范围限定到范围内员工的实例（数据范围默认为空，fail-closed）。
@@ -173,7 +173,8 @@ export async function requireResubmitRight(
         commandId: '',
         expectedRevision: 0,
       };
-      await checkScope(tx, context, request.employeeId, request.operation === 'create' ? undefined : request.createdBy);
+      const target = request.targetId ? await loadContract(tx, ctx.tenantId, request.targetId) : null;
+      await checkOperationScope(tx, context, request, target);
       await checkFields(
         context,
         request.operation === 'create' ? 'create' : 'update',

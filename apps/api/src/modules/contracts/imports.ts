@@ -1,7 +1,7 @@
 import { pgErrorCode, and, eq, contractRecords, sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
-import { checkScope, lockEmployee, revision, rowsOf, type ContractContext } from './context.js';
+import { checkOperationScope, checkScope, lockEmployee, revision, rowsOf, type ContractContext } from './context.js';
 import { settings } from './configuration.js';
 import { fieldsSchema, parse, uuid, type ContractCommand } from './input.js';
 import { createCommand, deleteContract, portfolioRevision } from './service.js';
@@ -99,7 +99,13 @@ export async function checkImportScope(tx: Tx, ctx: ContractContext, input: Inpu
     if (!target && ['edit', 'change'].includes(input.mode)) {
       // 未匹配的行只能按当前人员范围检查；有权时仍由预览/CSV 返回行级错误。
       await checkScope(tx, ctx, row.employeeId);
-    } else await checkScope(tx, ctx, row.employeeId, target?.createdBy);
+    } else
+      await checkOperationScope(
+        tx,
+        ctx,
+        { employeeId: row.employeeId, operation: target ? 'change' : 'create' },
+        target,
+      );
   }
 }
 

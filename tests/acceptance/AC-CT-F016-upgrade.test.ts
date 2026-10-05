@@ -8,7 +8,7 @@ import { allowAll, tenantApi } from './support/tenant-api.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
 import { runContractJobs } from '../../apps/api/src/modules/contracts/scheduler.js';
 
-// 固定从 main 的 0048 升级；按后缀定位，不依赖合并后的迁移编号。
+// 从 main 的 0049（合同校准前）升级；按后缀定位，不依赖合并后的迁移编号。
 const database = useTestDb({ migrateBefore: '_contract_calibration' });
 it('P2-N4 DEC-190 升级隔离整个冲突组，保留审批历史且无自动获胜者，受控撤销后重新提交', async () => {
   const handle = database();

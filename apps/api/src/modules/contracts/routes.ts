@@ -17,7 +17,7 @@ import {
   authorizeInTransaction,
 } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
-import { checkFields, checkScope, rowsOf, type ContractContext } from './context.js';
+import { checkFields, checkOperationScope, checkScope, rowsOf, type ContractContext } from './context.js';
 import { rules, saveMaster, saveRule, saveSettings, settings } from './configuration.js';
 import { commandSchema, parse } from './input.js';
 import { batchCommands, createCommand, loadContract, loadRequest, portfolioRevision } from './service.js';
@@ -190,7 +190,7 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
     });
     await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const target = input.targetId ? await loadContract(tx, ctx.tenantId, input.targetId) : null;
-      await checkScope(tx, ctx, input.employeeId, target?.createdBy);
+      await checkOperationScope(tx, ctx, input, target);
     });
     return write(c, deps, ctx, input, async (tx, context) => ({
       status: 201,
@@ -222,7 +222,7 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       });
       await withTenant(deps.db, ctx.tenantId, async (tx) => {
         const target = row.command.targetId ? await loadContract(tx, ctx.tenantId, row.command.targetId) : null;
-        await checkScope(tx, ctx, row.command.employeeId, target?.createdBy);
+        await checkOperationScope(tx, ctx, row.command, target);
       });
     }
     return write(c, deps, ctx, input, async (tx, context) => ({
