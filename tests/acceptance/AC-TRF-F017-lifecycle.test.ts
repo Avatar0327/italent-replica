@@ -90,9 +90,33 @@ describe('AC-TRF F-017 表单来源、在途拦截与生效日期', () => {
       await w.apply(person.employee.id, '2026-10-05', { departmentId: w.to.id }),
       '2026-10-01T01:00:00Z',
     );
-    expect((await w.runScheduler('2026-10-08T01:00:00Z')).failed).toEqual([]);
+    expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({ failed: [], errors: [] });
     expect(await w.business(business.id)).toMatchObject({ effectiveDate: '2026-10-08', status: 'effective' });
     const events = await w.auditEvents(business.id);
     expect(events.some((event) => event.after?.originalEffectiveDate === '2026-10-05')).toBe(true);
   });
+});
+
+it('F-017 DEC-185 补全后永久关闭，再清空生成新的员工字段待办', async () => {
+  const w = await activationWorld(database().db, 'f017-completion-close');
+  const person = await w.hired();
+  const manager = await w.hired('补全经理');
+  const response = await w.session.request('POST', `/transfers/employees/${person.employee.id}`, {
+    ifMatch: person.hire.employeeRevision,
+    body: { initiator: 'hr', mode: 'direct', transferTypeCode: 'cross_department', effectiveDate: '2026-10-01', fields: { departmentId: w.to.id, directManagerId: null } },
+  });
+  expect(response.status).toBe(201);
+  const business = await response.json() as { id: string; revision: number };
+  const edit = async (directManagerId: string | null) => {
+    const current = await w.business(business.id);
+    const edited = await w.session.request('PATCH', `/records/${business.id}`, { ifMatch: current.revision, body: { fields: { directManagerId } } });
+    expect(edited.status, await edited.clone().text()).toBe(200);
+  };
+  await edit(manager.employee.id);
+  await edit(null);
+  const events = await w.auditEvents(business.id);
+  const opened = events.filter((event) => event.action === 'employment.completion.opened' && event.after?.fieldCode === 'preset:directManagerId');
+  expect(opened).toHaveLength(2);
+  expect(new Set(opened.map((event) => event.after?.todoId)).size).toBe(2);
+  expect(events.some((event) => event.action === 'employment.completion.closed')).toBe(true);
 });

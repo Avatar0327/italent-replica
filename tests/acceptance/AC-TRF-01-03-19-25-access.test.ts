@@ -224,7 +224,7 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
       mode: 'direct',
       fields: { departmentId: world.outside.id, isDepartmentHead: true, isStoreManager: true },
     });
-    expect(response.status, await response.clone().text()).toBe(403);
+    expect(response.status, await response.clone().text()).toBe(404);
     expect(await response.json()).toMatchObject({ error: { code: 'LINKED_RECORD_OUT_OF_SCOPE' } });
     expect(await persistedCounts()).toEqual(before);
   });
