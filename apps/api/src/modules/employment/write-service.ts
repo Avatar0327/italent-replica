@@ -169,13 +169,16 @@ export async function updateEmploymentBusiness(
     before,
   );
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, prepared.fields.departmentId, business.id);
-  // 申请尚未进时间轴：按排在当日最后预检，到期落地时再按实际插入位置复核（materializeEmploymentRecord）。
+  // 申请尚未进时间轴，按它将来落地时的插入位置预检（到期落地时再复核，materializeEmploymentRecord）：审批中编辑不会
+  // 重新提交，落地按本次提交的操作先后插入（DEC-108，#53），与落地同一判定；草稿 / 被驳回的申请改完要重新提交，
+  // 那时是最新一次操作，排在当日最后（PR #54 第三轮复审 P2）。
   const reporting = await newRecordReporting(
     tx,
     ctx,
     business.employeeId,
     prepared.explicitFieldCodes,
     normalized.effectiveDate,
+    business.state === 'in_review' ? business.id : undefined,
   );
   await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reporting);
   await bumpEmploymentBusiness(tx, ctx, business);
