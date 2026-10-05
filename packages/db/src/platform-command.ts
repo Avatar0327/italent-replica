@@ -125,6 +125,11 @@ function contextFor(tx: Tx, meta: PlatformCommandMeta): PlatformCommandContext {
     await tx.execute(sql.raw(`SET LOCAL ROLE ${APP_ROLE.tenant}`));
     current = tenantId;
     const result = await fn(tx);
+    // 延迟约束触发器（任职时间线完整性等，均 INITIALLY DEFERRED）默认到提交时才执行，那时已切回平台角色、
+    // 读不了租户表（权限不足）。离开租户上下文前就地执行完毕，再恢复为延迟（与各约束的初始模式一致）。
+    // 例：停用异常管理员时接管合并会签席位、重新结算后批准业务（PR #60 第三轮在真 PostgreSQL 上发现）。
+    await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
+    await tx.execute(sql`SET CONSTRAINTS ALL DEFERRED`);
     await tx.execute(sql.raw(`SET LOCAL ROLE ${APP_ROLE.platform}`));
     await tx.execute(sql`SELECT set_config('app.tenant_id', '', true)`);
     current = null;

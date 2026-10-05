@@ -202,6 +202,11 @@ describe('AC-TEN-06 恢复对账：异常管理员与在途异常待办（DEC-09
         cmd(),
       );
 
+      // 现网：停用触发接管、合并席位并重新结算（会签为最后节点时业务获批并生效）。真 PostgreSQL 上这一步曾因延迟约束在切回
+      // 平台角色后才执行而失败（platform-command.ts 离开租户上下文前就地执行延迟约束）。
+      const liveBusiness = await w.business(draft.id);
+      expect(liveBusiness.status).toBe(last ? 'effective' : 'in_review');
+
       const handle = await createTestDb();
       handles.push(handle);
       const input = { backup, live: w.db, attachments: { sha256: async () => null } };
