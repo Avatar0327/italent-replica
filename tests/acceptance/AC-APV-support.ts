@@ -75,6 +75,8 @@ export interface NodeInput {
     readonly copySend?: boolean;
     readonly retrieve?: boolean;
     readonly urge?: 'inherit' | 'enabled' | 'disabled';
+    /** 驳回（驳回到发起人）开关，缺省开启（F-003 第二轮，`14` §12.2）。 */
+    readonly reject?: boolean;
   };
   readonly rejectCommentRequired?: boolean;
   /** DEC-104：审批记录查看权限——勾选后本节点审批人看不到审批记录与沟通。 */
@@ -160,7 +162,8 @@ export interface LogView {
 
 export interface InstanceView {
   readonly id: string;
-  readonly status: 'running' | 'returned' | 'approved' | 'withdrawn' | 'cancelled';
+  /** disapproved：沿「不同意」连线流转到结束（DEC-144），流程结束、业务不生效（F-003 第二轮）。 */
+  readonly status: 'running' | 'returned' | 'approved' | 'disapproved' | 'withdrawn' | 'cancelled';
   readonly approvalType: string;
   readonly processId: string;
   readonly versionNo: number;

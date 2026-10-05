@@ -238,13 +238,14 @@ describe('AC-APV-23 需所有人同意', () => {
     expect(flows(view)).toHaveLength(1);
   });
 
-  it('「不同意」= 整数 1：任一人不同意即沿不同意流转（复刻退回发起人），已同意的记录保留', async () => {
+  it('「不同意」= 整数 1：任一人不同意即沿不同意连线流转到结束——流程结束、业务不生效，已同意的记录保留', async () => {
     const w = await approvalWorld(database().db, 'apv-cs-all-disagree');
     const nodes = [{ ...JOINT, exits: BOTH_EXITS, transitionRule: { type: 'all' as const } }, FINAL];
-    const { s, view: submitted } = await started(w, nodes);
+    const { s, draft, view: submitted } = await started(w, nodes);
     let view = await act(w, submitted, s.inHead.userId, 'approve');
     view = await act(w, view, s.inHrbp.userId, 'disagree');
-    expect(view).toMatchObject({ status: 'returned', currentNodeKey: null });
+    expect(view).toMatchObject({ status: 'disapproved', currentNodeKey: null });
+    expect((await w.business(draft.id)).status).toBe('disapproved');
     expect(taskOf(view, s.inHead.userId, 'approved')).toBeDefined();
     expect(taskOf(view, s.inHrbp.userId, 'disagreed')).toBeDefined();
     expect(flows(view)).toEqual([expect.objectContaining({ detail: expect.objectContaining({ exit: 'disagree' }) })]);
@@ -286,7 +287,7 @@ describe('AC-APV-24 自定义审批方式（DEC-144）', () => {
     ]);
   });
 
-  it('「不同意」= 整数 2：第一人不同意节点不动，第二人不同意才沿不同意流转（复刻退回发起人）', async () => {
+  it('「不同意」= 整数 2：第一人不同意节点不动，第二人不同意才沿不同意连线流转到结束', async () => {
     const w = await approvalWorld(database().db, 'apv-cs-custom-count');
     const nodes = [customTrio({ approve: { kind: 'percent', value: 100 }, disagree: { kind: 'count', value: 2 } })];
     const { s, view: submitted } = await started(w, nodes);
@@ -294,7 +295,7 @@ describe('AC-APV-24 自定义审批方式（DEC-144）', () => {
     expect(view).toMatchObject({ status: 'running', currentNodeKey: 'joint' });
     expect(pendingOf(view)).toHaveLength(2);
     view = await act(w, view, s.inHrbp.userId, 'disagree');
-    expect(view).toMatchObject({ status: 'returned' });
+    expect(view).toMatchObject({ status: 'disapproved' });
     expect(taskOf(view, s.outHead.userId, 'ended')).toMatchObject({ status: 'ended' });
     expect(view.logs).toEqual(
       expect.arrayContaining([
@@ -406,9 +407,9 @@ describe('AC-APV-25 「不同意」与「驳回」（DEC-144）', () => {
     const w2 = await approvalWorld(database().db, 'apv-cs-with-disagree');
     const { s: s2, view: other } = await started(w2, [{ ...JOINT, exits: BOTH_EXITS }]);
     expect((await w2.detail(other.id, s2.inHead.userId)).actions).toContain('disagree');
-    const returned = await act(w2, other, s2.inHead.userId, 'disagree');
-    expect(returned.status).toBe('returned');
-    expect(taskOf(returned, s2.inHrbp.userId, 'ended')).toBeDefined();
+    const ended = await act(w2, other, s2.inHead.userId, 'disagree');
+    expect(ended.status).toBe('disapproved');
+    expect(taskOf(ended, s2.inHrbp.userId, 'ended')).toBeDefined();
   });
 });
 

@@ -163,7 +163,7 @@ describe('AC-APV-27 并加签（只在会签节点）', () => {
     const { s, finance, view: submitted } = await started(w, [{ ...JOINT, exits: ['approve', 'disagree'] }, FINAL]);
     let view = await w.json<InstanceView>(await parallel(w, s.inHead.userId, submitted, [finance]));
     view = await act(w, view, finance, 'disagree');
-    expect(view.status).toBe('returned');
+    expect(view.status).toBe('disapproved');
     expect(taskOf(view, s.inHead.userId, 'ended')).toBeDefined();
   });
 });
@@ -196,7 +196,7 @@ describe('AC-APV-28 节点出口动作与发布校验', () => {
     expect(vetoOnly.status).toBe(200);
   });
 
-  it('单人节点：缺省只有「同意」出口动作；配了「不同意」时一人不同意即沿不同意流转（复刻退回发起人）', async () => {
+  it('单人节点：缺省只有「同意」出口动作；配了「不同意」时一人不同意即沿不同意连线流转到结束', async () => {
     const w = await approvalWorld(database().db, 'apv-exit-single');
     const s = await transferScene(w);
     const process = await w.publishedProcess({
@@ -205,11 +205,12 @@ describe('AC-APV-28 节点出口动作与发布校验', () => {
     expect(process.currentVersion!.nodes[1]).toMatchObject({ kind: 'single', exits: ['approve'] });
     const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     expect((await w.detail(view.id, s.outHead.userId)).actions).toContain('disagree');
-    const returned = await w.json<InstanceView>(
+    const ended = await w.json<InstanceView>(
       await w.taskAction(s.outHead.userId, pendingOf(view)[0]!.id, 'disagree', view.revision, { comment: '不同意' }),
     );
-    expect(returned).toMatchObject({ status: 'returned' });
-    expect(returned.tasks.find((task) => task.nodeKey === 'out_head')).toMatchObject({
+    expect(ended).toMatchObject({ status: 'disapproved', currentNodeKey: null });
+    expect((await w.detail(view.id)).actions).not.toContain('withdraw');
+    expect(ended.tasks.find((task) => task.nodeKey === 'out_head')).toMatchObject({
       status: 'disagreed',
       comment: '不同意',
     });

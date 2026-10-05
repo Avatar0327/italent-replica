@@ -57,10 +57,10 @@ function taskOf(view: InstanceView, userId: string, status = 'pending'): TaskVie
   return task!;
 }
 
-async function scene(label: string) {
+async function scene(label: string, nodes: readonly NodeInput[] = [JOINT, FINAL]) {
   const w = await approvalWorld(database().db, label);
   const s = await transferScene(w);
-  await w.publishedProcess({ nodes: [JOINT, FINAL] });
+  await w.publishedProcess({ nodes });
   const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
   return { w, s, view, head: taskOf(view, s.inHead.userId), hrbp: taskOf(view, s.inHrbp.userId) };
 }
@@ -158,5 +158,62 @@ describe.runIf(realPostgres)('AC-APV-30 会签节点并发结算（真 PostgreSQ
         reason: 'APPROVAL_TASK_CLOSED',
       });
     }
+  });
+
+  // P3（PR #58 astra 首审）：更多竞争组合。
+  it('两人同时驳回：先排队者整单驳回，另一人 409；只退回一次', async () => {
+    const { w, s, view, head, hrbp } = await scene('apv-cs-pg-double-reject');
+    const [first, second] = await race(
+      w,
+      s.subject.employeeId,
+      (world) => world.taskAction(s.inHead.userId, head.id, 'reject', view.revision),
+      (world) => world.taskAction(s.inHrbp.userId, hrbp.id, 'reject', view.revision),
+    );
+    expect(first).toMatchObject({ status: 200 });
+    expect(second!.status).toBe(409);
+    expect(second!.reason).not.toBe('APPROVAL_CONCURRENT_CONFLICT');
+    expect(await w.detail(view.id)).toMatchObject({ status: 'returned', currentNodeKey: null });
+    expect(await settlement(w, view.id)).toEqual({ flows: 0, finals: 0, returns: 1 });
+  });
+
+  it('需所有人同意的最后两票同时提交：先排队者计票，后到者 409；刷新后再提交才流转，只结算一次', async () => {
+    const { w, s, view, head, hrbp } = await scene('apv-cs-pg-all', [
+      { ...JOINT, transitionRule: { type: 'all' } },
+      FINAL,
+    ]);
+    const [first, second] = await race(
+      w,
+      s.subject.employeeId,
+      (world) => world.taskAction(s.inHead.userId, head.id, 'approve', view.revision),
+      (world) => world.taskAction(s.inHrbp.userId, hrbp.id, 'approve', view.revision),
+    );
+    expect(first).toMatchObject({ status: 200 });
+    expect(second!.status).toBe(409);
+    const middle = await w.detail(view.id);
+    expect(middle.currentNodeKey).toBe('joint');
+    expect(await settlement(w, view.id)).toEqual({ flows: 0, finals: 0, returns: 0 });
+    expect((await w.taskAction(s.inHrbp.userId, hrbp.id, 'approve', middle.revision)).status).toBe(200);
+    expect(await w.detail(view.id)).toMatchObject({ currentNodeKey: 'final' });
+    expect(await settlement(w, view.id)).toEqual({ flows: 1, finals: 1, returns: 0 });
+  });
+
+  it('一人同意、一人不同意同时提交（DEC-144）：不同意先排队则流程沿不同意结束、同意 409；不进入下一节点', async () => {
+    const { w, s, view, head, hrbp } = await scene('apv-cs-pg-disagree', [
+      { ...JOINT, exits: ['approve', 'disagree'] },
+      FINAL,
+    ]);
+    const [disagreed, approved] = await race(
+      w,
+      s.subject.employeeId,
+      (world) => world.taskAction(s.inHrbp.userId, hrbp.id, 'disagree', view.revision),
+      (world) => world.taskAction(s.inHead.userId, head.id, 'approve', view.revision),
+    );
+    expect(disagreed).toMatchObject({ status: 200 });
+    expect(approved!.status).toBe(409);
+    expect(approved!.reason).not.toBe('APPROVAL_CONCURRENT_CONFLICT');
+    const after = await w.detail(view.id);
+    expect(after).toMatchObject({ status: 'disapproved', currentNodeKey: null });
+    expect(after.tasks.find((task) => task.id === head.id)).toMatchObject({ status: 'ended' });
+    expect(await settlement(w, view.id)).toEqual({ flows: 1, finals: 0, returns: 0 });
   });
 });

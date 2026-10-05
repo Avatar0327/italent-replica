@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { countersignOutcome, countersignVote, exitRulesOf, exitThreshold } from './countersign.js';
 import { definitionViolations, publishViolations } from './definition.js';
-import { countersignEndedReason, previousNodeComparand } from './policies.js';
+import { addSignerVotes, countersignEndedReason, previousNodeComparand } from './policies.js';
 import { decideNode, type RoutingFacts } from './routing.js';
 import {
   ADD_SIGN_TYPES,
   APPROVAL_TYPES,
+  EXIT_TARGETS,
   NODE_ADD_SIGN_TYPES,
   TRANSITION_RULE_TYPES,
   type ApprovalNode,
@@ -23,7 +24,7 @@ const base = {
   formFields: [],
   editableFields: [],
   editMode: 'none',
-  actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' },
+  actions: { transfer: false, addSign: false, copySend: false, retrieve: false, reject: true, urge: 'inherit' },
   rejectCommentRequired: false,
   hideRecords: false,
   rejectResubmit: 'restart',
@@ -127,10 +128,20 @@ describe('DEC-144 会签流转规则（`14` §12.1）', () => {
   });
 });
 
-describe('加签类型按节点类型（`14` §11.4；DEC-095 / DEC-117）', () => {
-  it('单人节点只有前 / 后加签，会签节点只有并加签', () => {
+describe('加签类型按节点类型（`14` §11.4；DEC-095 / DEC-117 / DEC-152）', () => {
+  it('单人节点有前 / 后加签；会签节点有前加签与并加签（DEC-152）', () => {
     expect(ADD_SIGN_TYPES).toEqual(['before', 'after', 'parallel']);
-    expect(NODE_ADD_SIGN_TYPES).toEqual({ single: ['before', 'after'], countersign: ['parallel'] });
+    expect(NODE_ADD_SIGN_TYPES).toEqual({ single: ['before', 'after'], countersign: ['before', 'parallel'] });
+  });
+  it('会签节点上并加签人计入流转规则，前加签人不计入（DEC-152 暂定）', () => {
+    expect(addSignerVotes('parallel')).toBe(true);
+    expect(addSignerVotes('before')).toBe(false);
+  });
+});
+
+describe('出口动作的连线去向（DEC-144，`14` §12.2）', () => {
+  it('「同意」进入下一节点，「不同意」连到结束（流程结束、业务不生效）', () => {
+    expect(EXIT_TARGETS).toEqual({ approve: 'next', disagree: 'end' });
   });
 });
 
@@ -212,6 +223,15 @@ describe('DEC-114 扩展：上一节点是会签时，比较对象是它解析�
     approvedUserIds: [],
     chainUserIds: [],
     ...extra,
+  });
+  it('合并席位时被合并的候选人同样计入（P2-4：两个表达式落到同一接手人）', () => {
+    expect(
+      previousNodeComparand([
+        { candidateUserId: 'subject', mergedCandidateUserIds: ['manager'] },
+        { candidateUserId: 'b', mergedCandidateUserIds: [] },
+        { candidateUserId: null, mergedCandidateUserIds: ['manager'] },
+      ]),
+    ).toEqual(['subject', 'manager', 'b']);
   });
   it('候选人按序去重，没有候选人的任务（转交、加签、撤回）不计', () => {
     expect(
