@@ -13,7 +13,9 @@ import {
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { employmentBusinessObjects } from './employment.js';
+import { contractRecords } from './contracts.js';
+import { employmentBusinessObjects, employmentEmployees } from './employment.js';
+import { orgObjects } from './org.js';
 import { tenants } from './tenancy.js';
 
 const tenant = () =>
@@ -214,6 +216,16 @@ export const transferLinkageVersions = pgTable(
         employmentBusinessObjects.id,
       ],
     }),
+    foreignKey({
+      name: 'transfer_linkage_versions_contract_fk',
+      columns: [t.tenantId, t.contractTargetId],
+      foreignColumns: [contractRecords.tenantId, contractRecords.id],
+    }),
+    foreignKey({
+      name: 'transfer_linkage_versions_handover_fk',
+      columns: [t.tenantId, t.handoverPersonId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
     check('transfer_linkage_versions_number_positive', sql`${t.versionNo} > 0`),
     check(
       'transfer_linkage_versions_contract',
@@ -249,6 +261,21 @@ export const transferLinkageDuties = pgTable(
       name: 'transfer_linkage_duties_version_fk',
       columns: [t.tenantId, t.versionId],
       foreignColumns: [transferLinkageVersions.tenantId, transferLinkageVersions.id],
+    }),
+    foreignKey({
+      name: 'transfer_linkage_duties_subordinate_fk',
+      columns: [t.tenantId, t.subordinateId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
+    foreignKey({
+      name: 'transfer_linkage_duties_receiver_fk',
+      columns: [t.tenantId, t.receiverId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
+    foreignKey({
+      name: 'transfer_linkage_duties_org_fk',
+      columns: [t.tenantId, t.orgId],
+      foreignColumns: [orgObjects.tenantId, orgObjects.id],
     }),
     check('transfer_linkage_duties_line_positive', sql`${t.lineNo} > 0`),
     check(
@@ -292,6 +319,16 @@ export const transferLinkageRuns = pgTable(
         employmentBusinessObjects.employeeId,
         employmentBusinessObjects.id,
       ],
+    }),
+    foreignKey({
+      name: 'transfer_linkage_runs_before_contract_fk',
+      columns: [t.tenantId, t.beforeContractId],
+      foreignColumns: [contractRecords.tenantId, contractRecords.id],
+    }),
+    foreignKey({
+      name: 'transfer_linkage_runs_after_contract_fk',
+      columns: [t.tenantId, t.afterContractId],
+      foreignColumns: [contractRecords.tenantId, contractRecords.id],
     }),
     check('transfer_linkage_runs_contract', sql`(${t.beforeContractId} IS NULL) = (${t.afterContractId} IS NULL)`),
     check(
@@ -337,6 +374,21 @@ export const transferLinkageItems = pgTable(
       name: 'transfer_linkage_items_run_fk',
       columns: [t.tenantId, t.businessId],
       foreignColumns: [transferLinkageRuns.tenantId, transferLinkageRuns.businessId],
+    }),
+    foreignKey({
+      name: 'transfer_linkage_items_subordinate_fk',
+      columns: [t.tenantId, t.subordinateId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
+    foreignKey({
+      name: 'transfer_linkage_items_receiver_fk',
+      columns: [t.tenantId, t.receiverId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    }),
+    foreignKey({
+      name: 'transfer_linkage_items_org_fk',
+      columns: [t.tenantId, t.orgId],
+      foreignColumns: [orgObjects.tenantId, orgObjects.id],
     }),
     check('transfer_linkage_items_type', sql`${t.itemType} IN ('duty_subordinate', 'duty_org_role', 'part_time_end')`),
     check('transfer_linkage_items_status', sql`${t.status} IN ('pending', 'succeeded', 'failed')`),
@@ -393,6 +445,11 @@ export const transferHandovers = pgTable(
       name: 'transfer_handovers_run_fk',
       columns: [t.tenantId, t.businessId],
       foreignColumns: [transferLinkageRuns.tenantId, transferLinkageRuns.businessId],
+    }),
+    foreignKey({
+      name: 'transfer_handovers_person_fk',
+      columns: [t.tenantId, t.handoverPersonId],
+      foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
     }),
     check('transfer_handovers_status', sql`${t.handoverStatus} IN ('not_started')`),
   ],

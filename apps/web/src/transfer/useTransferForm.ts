@@ -12,11 +12,14 @@ import {
   transferRequest,
   TransferApiError,
 } from './api.js';
+import { emptyLinkage } from './linkage-api.js';
 import { text } from './messages.js';
+import { useContractChoices } from './useLinkage.js';
 import type {
   Choice,
   EmployeeChoice,
   FieldValue,
+  LinkageDraft,
   TransferAction,
   TransferBusiness,
   TransferCatalog,
@@ -37,7 +40,11 @@ const initial: TransferFormModel = {
   preview: null,
 };
 export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' = 'hr') {
-  const [model, setModel] = useState<TransferFormModel>({ ...initial, initiator });
+  const [model, setModel] = useState<TransferFormModel>({
+    ...initial,
+    initiator,
+    ...(initiator === 'employee' ? {} : { linkage: emptyLinkage }),
+  });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -48,6 +55,9 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' =
   useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator);
   useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator);
   usePreview(tenantId, model, reload, setModel, setLoadingPreview, setError, setNotice);
+  useContractChoices(tenantId, model.employeeId, initiator, setModel);
+  const linkage = (patch: Partial<LinkageDraft>) =>
+    setModel((current) => (current.linkage ? { ...current, linkage: { ...current.linkage, ...patch } } : current));
   const selection = (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
     setError('');
     setModel((current) =>
@@ -60,6 +70,8 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' =
             fields: {},
             customFields: {},
             preview: null,
+            // 换人后联动草稿与合同候选都属于原员工，一并清空。
+            ...(field === 'employeeId' && current.linkage ? { linkage: emptyLinkage, contracts: [] } : {}),
           },
     );
   };
@@ -90,6 +102,7 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' =
     page,
     selection,
     field,
+    linkage,
     refresh,
     reset,
     setPage: (next: number) => {

@@ -1,5 +1,5 @@
 /** 联动选项的保存、修改、提交校验与查看（调动入口与 /transfers/:id/linkage 共用）。 */
-import { and, eq, sql, transferHandovers, transferLinkageItems, transferOnTrials, type Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../../errors.js';
 import { loadEmploymentBusiness } from '../../employment/read-model.js';
@@ -7,10 +7,10 @@ import { bumpEmploymentBusiness, lockEmploymentBusiness, rowsOf } from '../../em
 import { lockTransferParticipants } from '../../employment/transfer-locks.js';
 import type { EmploymentContext } from '../../employment/types.js';
 import { requireSavedBusiness } from '../../employment/write-service.js';
+import { authorizeLinkageWrite, type LinkageAccess } from './access.js';
 import { validateContractChange } from './contract.js';
 import { applyTransferCrossLinkage, assertLinkageMutable, linkageExecuted } from './execute.js';
 import { dutySubordinateIds, type LinkageOptions } from './input.js';
-import { itemView, type LinkageItemRow } from './items.js';
 import { appendLinkageVersion, hasLinkage, latestLinkage } from './store.js';
 import { validateLinkage } from './validation.js';
 
@@ -30,8 +30,14 @@ export async function saveNewTransferLinkage(
   ctx: EmploymentContext,
   target: LinkageTarget,
   options: LinkageOptions | null,
+  access?: LinkageAccess,
 ) {
   if (!hasLinkage(options)) return;
+  await authorizeLinkageWrite(tx, ctx, access, {
+    employeeId: target.employeeId,
+    operation: 'create',
+    options: options!,
+  });
   await validateLinkage(tx, ctx, target.employeeId, options!);
   await appendLinkageVersion(tx, ctx, target, options!);
   if (target.mode === 'direct' && target.effectiveDate <= tenantLocalDate(ctx.now, ctx.timezone))
@@ -44,6 +50,7 @@ export async function updateTransferLinkage(
   ctx: EmploymentContext,
   businessId: string,
   options: LinkageOptions,
+  access?: LinkageAccess,
 ) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const visible = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope);
@@ -58,6 +65,7 @@ export async function updateTransferLinkage(
     throw new AppError('VALIDATION_FAILED', '本人调动申请不能设置联动业务', { reason: 'TRANSFER_LINKAGE_NOT_ALLOWED' });
   const executed = await linkageExecuted(tx, ctx.tenantId, businessId);
   assertLinkageMutable(business.state, business.payload.mode, executed, business.payload.effectiveDate > today);
+  await authorizeLinkageWrite(tx, ctx, access, { employeeId: business.employeeId, operation: 'update', options });
   await validateLinkage(tx, ctx, business.employeeId, options);
   await appendLinkageVersion(tx, ctx, { businessId, employeeId: business.employeeId }, options);
   await bumpEmploymentBusiness(tx, ctx, business);
@@ -73,74 +81,6 @@ export async function assertTransferLinkageSubmittable(tx: Tx, ctx: EmploymentCo
       WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid`),
   );
   await validateContractChange(tx, ctx, owner!.employeeId, stored.options.contract);
-}
-
-/** 联动详情：选项（最新版本）与执行结果；子项失败明细在 dutyTransfer / partTimes 中（AC-LNK-04）。 */
-export async function readTransferLinkage(tx: Tx, ctx: EmploymentContext, businessId: string) {
-  const today = tenantLocalDate(ctx.now, ctx.timezone);
-  const business = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope);
-  if (!business || business.kind !== 'transfer') throw new AppError('NOT_FOUND', '调动不存在');
-  const stored = await latestLinkage(tx, ctx.tenantId, businessId);
-  const [run] = rowsOf<{
-    executedAt: string | Date;
-    beforeContractId: string | null;
-    afterContractId: string | null;
-    salaryReminderStatus: string | null;
-  }>(
-    await tx.execute(sql`SELECT executed_at AS "executedAt", before_contract_id AS "beforeContractId",
-      after_contract_id AS "afterContractId", salary_reminder_status AS "salaryReminderStatus"
-      FROM transfer_linkage_runs WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid`),
-  );
-  const byBusiness = (table: typeof transferOnTrials | typeof transferHandovers) =>
-    and(eq(table.tenantId, ctx.tenantId), eq(table.businessId, businessId));
-  const [trial] = await tx.select().from(transferOnTrials).where(byBusiness(transferOnTrials));
-  const [handover] = await tx.select().from(transferHandovers).where(byBusiness(transferHandovers));
-  const items = (await tx
-    .select()
-    .from(transferLinkageItems)
-    .where(and(eq(transferLinkageItems.tenantId, ctx.tenantId), eq(transferLinkageItems.businessId, businessId)))
-    .orderBy(transferLinkageItems.lineNo)) as LinkageItemRow[];
-  const executedAt = run ? new Date(run.executedAt).toISOString() : null;
-  return {
-    businessId,
-    revision: business.revision,
-    options: stored?.options ?? null,
-    executedAt,
-    contract: run?.afterContractId
-      ? { beforeContractId: run.beforeContractId, afterContractId: run.afterContractId }
-      : null,
-    onTrial: trial
-      ? {
-          startDate: trial.startDate,
-          months: trial.months,
-          expectedEndDate: trial.expectedEndDate,
-          status: trial.status,
-        }
-      : null,
-    handover: handover
-      ? {
-          handoverPersonId: handover.handoverPersonId,
-          handoverStatus: handover.handoverStatus,
-          approvalStatus: handover.approvalStatus,
-        }
-      : null,
-    salaryReminder: run?.salaryReminderStatus ? { status: run.salaryReminderStatus, createdAt: executedAt } : null,
-    dutyTransfer: dutyTransferView(items),
-    partTimes: items.filter((item) => item.itemType === 'part_time_end').map(itemView),
-  };
-}
-
-/** `21` §2 DutyTransfer：职责总数、下属员工 / 组织角色职责数、失败数，明细逐条列出。 */
-function dutyTransferView(items: readonly LinkageItemRow[]) {
-  const duties = items.filter((item) => item.itemType !== 'part_time_end');
-  if (!duties.length) return null;
-  return {
-    total: duties.length,
-    subordinateCount: duties.filter((item) => item.itemType === 'duty_subordinate').length,
-    orgRoleCount: duties.filter((item) => item.itemType === 'duty_org_role').length,
-    failedCount: duties.filter((item) => item.status === 'failed').length,
-    items: duties.map(itemView),
-  };
 }
 
 /**

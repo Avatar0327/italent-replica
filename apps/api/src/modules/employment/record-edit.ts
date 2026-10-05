@@ -51,7 +51,7 @@ export async function editEmploymentRecord(
   id: string,
   input: EmploymentBusinessPatch,
   entry: ForwardEditEntry = 'api',
-  options: { forwardUpdate?: boolean } = {},
+  options: { forwardUpdate?: boolean; linkageDate?: string } = {},
 ) {
   const patch = normalizeBusinessPatch(input);
   const business = await lockEmploymentBusiness(tx, ctx, id);
@@ -69,7 +69,8 @@ export async function editEmploymentRecord(
     throw new AppError('VALIDATION_FAILED', '任职工号必须等于员工主档工号');
   }
   const reporting = await editedRecordReporting(tx, ctx, record, patch);
-  await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate, reporting);
+  if (reporting?.window && options.linkageDate) reporting.window = { ...reporting.window, from: options.linkageDate };
+  await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate, reporting, options.linkageDate);
   const beforeAudit = { ...record.fields, ...customAudit(record.customFields) };
   const afterAudit = { ...after.fields, ...customAudit(after.customFields) };
   const changes: ForwardFieldChange[] = Object.entries(afterAudit)

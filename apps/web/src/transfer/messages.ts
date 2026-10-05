@@ -56,6 +56,41 @@ export const text = {
   referencesUnavailable: '部分任职选项无权读取，不能选择新的值。',
 } as const;
 
+/** R1-T10 调动联动区块与联动详情（`13` §7、`21` §2）。 */
+export const linkageText = {
+  section: '联动业务',
+  changeContract: '是否变更合同',
+  contractTarget: '变更的合同',
+  contractEndDate: '合同终止日期',
+  contractTermMonths: '合同期限（月）',
+  contractSigningDate: '签订日期',
+  noContracts: '没有可变更的有效合同或无权查看合同。',
+  adjustSalary: '是否调整薪资',
+  salaryHint: '首版只记录标志，生效时生成“待调薪”提醒（DEC-002）。',
+  trialMonths: '试岗期限（月）',
+  trialStartDate: '试岗开始日期',
+  handoverPerson: '交接人',
+  dutyTransfer: '职责转交',
+  dutyReceiver: '下属转交给',
+  dutySubordinates: '转交的下属（汇报给调动人）',
+  dutyDepartmentHead: '转交部门负责人',
+  detail: '联动执行情况',
+  pending: '尚未执行（调动生效时执行）',
+  executedAt: '执行时间',
+  contractChanged: '已生成新合同版本',
+  trial: '试岗期',
+  handover: '调动交接',
+  salaryReminder: '待调薪提醒已生成',
+  dutySummary: '职责转交',
+  failedCount: '失败',
+  partTimes: '结束兼职',
+  retry: '重试',
+  succeeded: '成功',
+  failed: '失败',
+  waiting: '待执行',
+  attempts: '次尝试',
+} as const;
+
 export const presetLabels: Readonly<Record<string, string>> = {
   departmentId: '部门',
   positionId: '职位',

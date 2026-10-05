@@ -13,6 +13,7 @@ import { editEmploymentRecord } from '../../employment/record-edit.js';
 import { findCurrentRecord } from '../../employment/read-model.js';
 import { lockTransferParticipants } from '../../employment/transfer-locks.js';
 import type { EmploymentContext } from '../../employment/types.js';
+import { authorizeOrgRole, authorizeSubordinateField, type LinkageAccess } from './access.js';
 import type { DutyRelation, OrgRole } from './input.js';
 import { transferPartTimePort } from './part-time.js';
 import {
@@ -117,8 +118,7 @@ async function executeItem(tx: Tx, ctx: EmploymentContext, item: LinkageItemRow)
     return;
   }
   // `30` DT-R6：接收人已离职等不再在职时报错。
-  const today = tenantLocalDate(ctx.now, ctx.timezone);
-  if ((await ineligibleOrgPeople(tx, ctx.tenantId, [item.receiverId!], today)).length)
+  if ((await ineligibleOrgPeople(tx, ctx.tenantId, [item.receiverId!], item.effectiveDate)).length)
     throw new AppError('VALIDATION_FAILED', '接收人不是在职员工', { reason: 'TRANSFER_PERSON_NOT_ELIGIBLE' });
   if (item.itemType === 'duty_org_role') {
     const role = item.orgRole as OrgRole;
@@ -137,7 +137,8 @@ async function executeItem(tx: Tx, ctx: EmploymentContext, item: LinkageItemRow)
     record.id,
     { fields: { [RELATION_FIELDS[relation]]: item.receiverId! } },
     'api',
-    { forwardUpdate: false },
+    // P2-1：新经理按联动生效日判定在职，循环汇报从联动日起校验（不按下属记录的开始日）。
+    { forwardUpdate: false, linkageDate: item.effectiveDate },
   );
 }
 
@@ -155,13 +156,21 @@ export async function loadLinkageItem(tx: Tx, tenantId: string, id: string, lock
  * HR 单独重试失败子项：F-008 先锁调动人与被改写的下属（员工 UUID 序），再锁子项行；revision 不一致 409，
  * 由客户端刷新后显式重提。操作人范围外的下属在执行前即整单拒绝（DEC-178）。
  */
-export async function retryLinkageItem(tx: Tx, ctx: EmploymentContext, id: string): Promise<LinkageItemView> {
+export async function retryLinkageItem(
+  tx: Tx,
+  ctx: EmploymentContext,
+  id: string,
+  access?: LinkageAccess,
+): Promise<LinkageItemView> {
   const planned = await loadLinkageItem(tx, ctx.tenantId, id);
   await lockTransferParticipants(tx, ctx, planned.employeeId, planned.subordinateId ? [planned.subordinateId] : []);
   const item = await loadLinkageItem(tx, ctx.tenantId, id, true);
   assertRevision(ctx.expectedRevision, item.revision);
   if (item.status !== 'failed')
     throw new AppError('CONFLICT', '只有失败的联动子项可以重试', { reason: 'LINKAGE_ITEM_NOT_FAILED' });
+  // PR #74 第二轮 P1-1 / P1-5：重试与首次执行同样按改写的真实字段与组织范围授权。
+  if (item.itemType === 'duty_subordinate') await authorizeSubordinateField(ctx, item.relation as DutyRelation);
+  if (item.itemType === 'duty_org_role') await authorizeOrgRole(tx, ctx, access, item.orgId!, item.orgRole as OrgRole);
   if (item.itemType === 'duty_subordinate') {
     const today = tenantLocalDate(ctx.now, ctx.timezone);
     const record = await findCurrentRecord(tx, ctx.tenantId, item.subordinateId!, today);

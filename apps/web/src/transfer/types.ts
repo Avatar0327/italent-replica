@@ -44,6 +44,10 @@ export interface TransferFormModel {
   readonly fields: FieldValues;
   readonly customFields: FieldValues;
   readonly preview: TransferPreview | null;
+  /** HR 入口的联动草稿；本人申请没有联动区块。 */
+  readonly linkage?: LinkageDraft;
+  /** 可变更的合同（该员工当前有效、操作人可见）。 */
+  readonly contracts?: readonly Choice[];
 }
 export type TransferAction = 'draft' | 'submit' | 'direct';
 export interface TransferFormProps {
@@ -57,10 +61,54 @@ export interface TransferFormProps {
   readonly onField?: (source: 'preset' | 'custom', code: string, value: FieldValue) => void;
   readonly onAction?: (action: TransferAction) => void;
   readonly onReferenceQuery?: (code: string, name: string, page: number) => Promise<void>;
+  readonly onLinkage?: (patch: Partial<LinkageDraft>) => void;
 }
 export interface TransferBusiness {
   readonly id: string;
   readonly revision: number;
   readonly employeeRevision: number;
   readonly status: string;
+}
+
+/** R1-T10 调动联动的表单草稿（`13` §7：是否变更合同、调整薪资、试岗、交接人；`08` §4：转交职责）。 */
+export interface LinkageDraft {
+  readonly changeContract: boolean;
+  readonly contractTargetId: string;
+  readonly contractFields: Readonly<Record<string, string | number | null>>;
+  readonly adjustSalary: boolean;
+  readonly onTrialMonths: number | null;
+  readonly onTrialStartDate: string;
+  readonly handoverPersonId: string;
+  readonly dutyReceiverId: string;
+  readonly dutySubordinateIds: readonly string[];
+  readonly transferDepartmentHead: boolean;
+}
+export interface LinkageItemView {
+  readonly id: string;
+  readonly revision: number;
+  readonly itemType: 'duty_subordinate' | 'duty_org_role' | 'part_time_end';
+  readonly subordinateId: string | null;
+  readonly orgId: string | null;
+  readonly orgRole: string | null;
+  readonly receiverId: string | null;
+  readonly partTimeRecordId: string | null;
+  readonly effectiveDate: string;
+  readonly status: 'pending' | 'succeeded' | 'failed';
+  readonly attemptCount: number;
+  readonly failure: { readonly code: string; readonly message: string; readonly rule: string | null } | null;
+}
+/** GET /transfers/:id/linkage：按权限裁剪后的联动选项与执行结果。 */
+export interface LinkageView {
+  readonly businessId: string;
+  readonly executedAt: string | null;
+  readonly contract: { readonly beforeContractId: string | null; readonly afterContractId: string } | null;
+  readonly onTrial: { readonly startDate: string; readonly months: number; readonly expectedEndDate: string } | null;
+  readonly handover: { readonly handoverStatus: string } | null;
+  readonly salaryReminder: { readonly status: string } | null;
+  readonly dutyTransfer: {
+    readonly total: number;
+    readonly failedCount: number;
+    readonly items: readonly LinkageItemView[];
+  } | null;
+  readonly partTimes: readonly LinkageItemView[];
 }

@@ -18,6 +18,7 @@ import { requireTransferSource, transferDirectActions, type TransferInitiator } 
 import { readTransferCatalog, readTransferSettings, resolveTransferForm } from './configuration.js';
 import { dutySubordinateIds, normalizeLinkage, type LinkageOptions } from './linkage/input.js';
 import { saveNewTransferLinkage } from './linkage/service.js';
+import type { LinkageAccess } from './linkage/access.js';
 import { hasLinkage } from './linkage/store.js';
 
 const schema = z.strictObject({
@@ -42,6 +43,8 @@ export interface TransferInput {
   readonly writable: Readonly<Record<string, unknown>>;
   readonly employment: NormalizedEmploymentInput;
   readonly linkage: LinkageOptions | null;
+  /** 路由按当前权限解析的联动目标范围（linkage/access.ts）；内部调用方不传即为可信端口。 */
+  readonly linkageAccess?: LinkageAccess;
 }
 
 export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw: unknown): Promise<TransferInput> {
@@ -118,7 +121,7 @@ export async function transferTargetContext(
 
 export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
   // F-008：先取员工锁，再重验关系/范围；业务写入沿用员工 → 业务 → 审批实例的顺序。
-  const { linkage } = input;
+  const { linkage, linkageAccess } = input;
   await lockTransferParticipants(tx, ctx, employeeId, [
     ...(input.employment.fields.addedSubordinateIds ?? []),
     ...dutySubordinateIds(linkage),
@@ -150,6 +153,7 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
     ctx,
     { businessId: created.id, employeeId, effectiveDate: created.effectiveDate, mode: input.employment.mode },
     linkage,
+    linkageAccess,
   );
   if (input.employment.mode === 'application' && input.submit) {
     const context = { ...ctx, expectedRevision: created.revision };

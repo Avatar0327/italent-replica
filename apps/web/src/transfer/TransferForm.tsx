@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { missingTransferRequiredFields, requiredTransferFields } from '@italent/domain';
+import { LinkageFields } from './LinkageFields.js';
 import { text, presetLabels, jobReferences } from './messages.js';
 import type { Choice, FieldValue, TransferFormModel, TransferFormProps } from './types.js';
 
@@ -35,6 +36,7 @@ export function TransferForm(props: TransferFormProps) {
         <SelectionFields {...props} />
       </fieldset>
       {props.model.preview ? <EmploymentFields {...props} /> : <p>{text.readyHint}</p>}
+      <LinkageFields {...props} />
       <TransferActions {...props} />
     </form>
   );

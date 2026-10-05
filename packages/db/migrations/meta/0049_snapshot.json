@@ -1,5 +1,5 @@
 {
-  "id": "3c4d9ae9-a6fa-46b7-bd02-a7456daac8f4",
+  "id": "793dd4c7-866d-41c6-9cda-aec17c626365",
   "prevId": "86f38203-8bee-4f93-bcf5-538c53444eb4",
   "version": "7",
   "dialect": "postgresql",
@@ -25837,6 +25837,21 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "transfer_handovers_person_fk": {
+          "name": "transfer_handovers_person_fk",
+          "tableFrom": "transfer_handovers",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "handover_person_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -25948,6 +25963,51 @@
           "columnsFrom": [
             "tenant_id",
             "version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_duties_subordinate_fk": {
+          "name": "transfer_linkage_duties_subordinate_fk",
+          "tableFrom": "transfer_linkage_duties",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "subordinate_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_duties_receiver_fk": {
+          "name": "transfer_linkage_duties_receiver_fk",
+          "tableFrom": "transfer_linkage_duties",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "receiver_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_duties_org_fk": {
+          "name": "transfer_linkage_duties_org_fk",
+          "tableFrom": "transfer_linkage_duties",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "org_id"
           ],
           "columnsTo": [
             "tenant_id",
@@ -26145,6 +26205,51 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "transfer_linkage_items_subordinate_fk": {
+          "name": "transfer_linkage_items_subordinate_fk",
+          "tableFrom": "transfer_linkage_items",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "subordinate_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_items_receiver_fk": {
+          "name": "transfer_linkage_items_receiver_fk",
+          "tableFrom": "transfer_linkage_items",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "receiver_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_items_org_fk": {
+          "name": "transfer_linkage_items_org_fk",
+          "tableFrom": "transfer_linkage_items",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -26295,6 +26400,36 @@
           "columnsTo": [
             "tenant_id",
             "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_runs_before_contract_fk": {
+          "name": "transfer_linkage_runs_before_contract_fk",
+          "tableFrom": "transfer_linkage_runs",
+          "tableTo": "contract_records",
+          "columnsFrom": [
+            "tenant_id",
+            "before_contract_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_runs_after_contract_fk": {
+          "name": "transfer_linkage_runs_after_contract_fk",
+          "tableFrom": "transfer_linkage_runs",
+          "tableTo": "contract_records",
+          "columnsFrom": [
+            "tenant_id",
+            "after_contract_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",
@@ -26458,6 +26593,36 @@
           "columnsTo": [
             "tenant_id",
             "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_versions_contract_fk": {
+          "name": "transfer_linkage_versions_contract_fk",
+          "tableFrom": "transfer_linkage_versions",
+          "tableTo": "contract_records",
+          "columnsFrom": [
+            "tenant_id",
+            "contract_target_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_versions_handover_fk": {
+          "name": "transfer_linkage_versions_handover_fk",
+          "tableFrom": "transfer_linkage_versions",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "handover_person_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "no action",

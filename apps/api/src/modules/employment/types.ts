@@ -108,6 +108,8 @@ export interface EmploymentContext {
   readonly now: Date;
   readonly commandId: string;
   readonly expectedRevision: number;
+  /** 定时生效 / HR 重试落地（R1-T08 activate 端口）：迟到执行按实际执行日对齐联动（DEC-186）。 */
+  readonly scheduledActivation?: boolean;
 }
 
 export interface EmploymentBusinessInput {

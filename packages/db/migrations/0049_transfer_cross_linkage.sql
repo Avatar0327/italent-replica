@@ -123,17 +123,29 @@ CREATE TABLE "transfer_on_trials" (
 --> statement-breakpoint
 ALTER TABLE "transfer_handovers" ADD CONSTRAINT "transfer_handovers_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transfer_handovers" ADD CONSTRAINT "transfer_handovers_run_fk" FOREIGN KEY ("tenant_id","business_id") REFERENCES "public"."transfer_linkage_runs"("tenant_id","business_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "transfer_handovers" ADD CONSTRAINT "transfer_handovers_person_fk" FOREIGN KEY ("tenant_id","handover_person_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transfer_linkage_duties" ADD CONSTRAINT "transfer_linkage_duties_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transfer_linkage_duties" ADD CONSTRAINT "transfer_linkage_duties_version_fk" FOREIGN KEY ("tenant_id","version_id") REFERENCES "public"."transfer_linkage_versions"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "transfer_linkage_duties" ADD CONSTRAINT "transfer_linkage_duties_subordinate_fk" FOREIGN KEY ("tenant_id","subordinate_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "transfer_linkage_duties" ADD CONSTRAINT "transfer_linkage_duties_receiver_fk" FOREIGN KEY ("tenant_id","receiver_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "transfer_linkage_duties" ADD CONSTRAINT "transfer_linkage_duties_org_fk" FOREIGN KEY ("tenant_id","org_id") REFERENCES "public"."org_objects"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transfer_linkage_items" ADD CONSTRAINT "transfer_linkage_items_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transfer_linkage_items" ADD CONSTRAINT "transfer_linkage_items_run_fk" FOREIGN KEY ("tenant_id","business_id") REFERENCES "public"."transfer_linkage_runs"("tenant_id","business_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "transfer_linkage_items" ADD CONSTRAINT "transfer_linkage_items_subordinate_fk" FOREIGN KEY ("tenant_id","subordinate_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "transfer_linkage_items" ADD CONSTRAINT "transfer_linkage_items_receiver_fk" FOREIGN KEY ("tenant_id","receiver_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "transfer_linkage_items" ADD CONSTRAINT "transfer_linkage_items_org_fk" FOREIGN KEY ("tenant_id","org_id") REFERENCES "public"."org_objects"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transfer_linkage_runs" ADD CONSTRAINT "transfer_linkage_runs_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transfer_linkage_runs" ADD CONSTRAINT "transfer_linkage_runs_version_fk" FOREIGN KEY ("tenant_id","version_id") REFERENCES "public"."transfer_linkage_versions"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transfer_linkage_runs" ADD CONSTRAINT "transfer_linkage_runs_business_fk" FOREIGN KEY ("tenant_id","employee_id","business_id") REFERENCES "public"."employment_business_objects"("tenant_id","employee_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "transfer_linkage_runs" ADD CONSTRAINT "transfer_linkage_runs_before_contract_fk" FOREIGN KEY ("tenant_id","before_contract_id") REFERENCES "public"."contract_records"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "transfer_linkage_runs" ADD CONSTRAINT "transfer_linkage_runs_after_contract_fk" FOREIGN KEY ("tenant_id","after_contract_id") REFERENCES "public"."contract_records"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transfer_linkage_versions" ADD CONSTRAINT "transfer_linkage_versions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transfer_linkage_versions" ADD CONSTRAINT "transfer_linkage_versions_business_fk" FOREIGN KEY ("tenant_id","employee_id","business_id") REFERENCES "public"."employment_business_objects"("tenant_id","employee_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "transfer_linkage_versions" ADD CONSTRAINT "transfer_linkage_versions_contract_fk" FOREIGN KEY ("tenant_id","contract_target_id") REFERENCES "public"."contract_records"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "transfer_linkage_versions" ADD CONSTRAINT "transfer_linkage_versions_handover_fk" FOREIGN KEY ("tenant_id","handover_person_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "transfer_on_trials" ADD CONSTRAINT "transfer_on_trials_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "transfer_on_trials" ADD CONSTRAINT "transfer_on_trials_run_fk" FOREIGN KEY ("tenant_id","business_id") REFERENCES "public"."transfer_linkage_runs"("tenant_id","business_id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "transfer_on_trials" ADD CONSTRAINT "transfer_on_trials_run_fk" FOREIGN KEY ("tenant_id","business_id") REFERENCES "public"."transfer_linkage_runs"("tenant_id","business_id") ON DELETE no action ON UPDATE no action;
+--> statement-breakpoint
 -- R1-T10：联动表全部强制租户隔离（硬规则 7）；选项版本、职责计划、执行结果只追加，子项只允许状态推进。
 SELECT enable_tenant_isolation('transfer_linkage_versions');
 --> statement-breakpoint
@@ -158,7 +170,11 @@ CREATE TRIGGER transfer_linkage_runs_append_only BEFORE UPDATE OR DELETE OR TRUN
 --> statement-breakpoint
 SELECT enable_tenant_isolation('transfer_linkage_items');
 --> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE ON transfer_linkage_items TO app_user;
+GRANT SELECT, INSERT ON transfer_linkage_items TO app_user;
+--> statement-breakpoint
+-- 子项只允许推进执行状态（P3）：业务键、所属调动与日期不可改写。
+GRANT UPDATE (status, attempt_count, failure_code, failure_message, failure_rule, revision, last_attempt_at)
+  ON transfer_linkage_items TO app_user;
 --> statement-breakpoint
 SELECT enable_tenant_isolation('transfer_on_trials');
 --> statement-breakpoint

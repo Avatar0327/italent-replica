@@ -126,6 +126,7 @@ export async function activateWithJudgement(
   const failure = await precheck(tx, ctx, item);
   if (failure) return failure;
   if (item.reminderOnly) return null;
+  ctx = { ...ctx, scheduledActivation: true };
   try {
     await tx.transaction(async (savepoint) => {
       await (item.materialized
