@@ -48,6 +48,8 @@ async function dueCandidates(db: Db, tenant: Tenant, today: string, limit: numbe
       await tx.execute(sql`SELECT candidate.* FROM (
         SELECT id,employee_id AS "employeeId",'activate'::text AS kind FROM contract_requests
           WHERE tenant_id=${tenant.id} AND status='approved'
+            AND NOT EXISTS (SELECT 1 FROM contract_job_attempts q WHERE q.tenant_id=contract_requests.tenant_id
+              AND q.object_id=contract_requests.id AND q.kind='quarantine')
             AND CASE WHEN operation='terminate' THEN actual_termination_date ELSE effective_date END<=${today}::date
         UNION ALL
         SELECT id,employee_id AS "employeeId",'renew'::text AS kind FROM contract_records

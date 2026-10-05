@@ -6,7 +6,8 @@ import { auditActor } from '../../system-actor.js';
 import type { ApprovalContext } from '../approval/context.js';
 import { rowsOf } from '../approval/context.js';
 import { loadEmploymentRecord } from '../employment/read-model.js';
-import { scopeAllowsInTransaction, type ModuleScope } from '../permission/module-access.js';
+import { type ModuleScope } from '../permission/module-access.js';
+import { isEmploymentRecordVisible } from '../employment/visibility.js';
 import { personnelCreationScope } from '../permission/scope-resolver.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 export { rowsOf };
@@ -45,7 +46,7 @@ export async function checkScope(tx: Tx, ctx: ContractContext, employeeId: strin
       { ...ctx, appCode: 'TenantBase', objectCode: CONTRACT_OBJECT, asOf: today },
       scope,
     );
-  if (scope && !(await scopeAllowsInTransaction(tx, scope, { personId: employeeId, creatorId }))) {
+  if (!(await isEmploymentRecordVisible(tx, ctx.tenantId, scope, { employeeId, departmentId: null, creatorId }))) {
     throw new AppError('NOT_FOUND', '合同数据不存在');
   }
   return currentPrimary(tx, ctx.tenantId, employeeId, today);

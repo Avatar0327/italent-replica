@@ -1,5 +1,6 @@
 import { CONTRACT_OBJECT, contractAction } from '@italent/domain';
 import { loadRequest, requestWriteFields, mergeFields } from '../contracts/service.js';
+import { fieldsSchema, parse } from '../contracts/input.js';
 import { checkFields, checkScope } from '../contracts/context.js';
 /**
  * 审批中心的功能权限：流程配置仅限租户级管理员（DEC-102）；管理员转交 / 干预受身份对象权限控制（DEC-080 真实字段与按钮），
@@ -23,6 +24,7 @@ import type { TenantContext } from '../../tenant-context.js';
 import { employmentCreator } from '../employment/context.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
 import {
+  authorizeInTransaction,
   resolveModuleScope,
   resolveModuleScopeInTransaction,
   scopeSql,
@@ -138,19 +140,23 @@ export async function requireResubmitRight(
   ctx: TenantContext,
   instanceId: string,
   corrections: Readonly<Record<string, unknown>> = {},
+  transaction?: Tx,
 ) {
-  const { instance, person } = await withTenant(deps.db, ctx.tenantId, async (tx) => ({
+  const read = async (tx: Tx) => ({
     instance: await loadInstance(tx, ctx.tenantId, instanceId),
     person: await personOfUser(tx, ctx.tenantId, ctx.userId),
-  }));
+  });
+  const { instance, person } = transaction ? await read(transaction) : await withTenant(deps.db, ctx.tenantId, read);
   if (!mayResubmit(instance.initiatorUserId, ctx.userId)) {
     throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有原发起人可以重新提交');
   }
   if (instance.businessType === 'contract') {
-    const scope = await resolveModuleScope(deps, ctx, undefined, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`);
-    await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    corrections = parse(fieldsSchema, corrections);
+    const check = async (tx: Tx) => {
+      const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`);
       const request = await loadRequest(tx, ctx.tenantId, instance.businessId);
-      await requirePermission(deps.authorize, {
+      const authorize = authorizeInTransaction(deps.authorize, tx);
+      await requirePermission(authorize, {
         ...ctx,
         action: 'object.button',
         resource: buttonResource(
@@ -162,18 +168,20 @@ export async function requireResubmitRight(
       const context = {
         ...ctx,
         scope,
-        authorize: deps.authorize,
+        authorize,
         now: deps.clock(),
         commandId: '',
         expectedRevision: 0,
       };
-      await checkScope(tx, context, request.employeeId, request.createdBy);
+      await checkScope(tx, context, request.employeeId, request.operation === 'create' ? undefined : request.createdBy);
       await checkFields(
         context,
         request.operation === 'create' ? 'create' : 'update',
         mergeFields(requestWriteFields(request), corrections),
       );
-    });
+    };
+    if (transaction) await check(transaction);
+    else await withTenant(deps.db, ctx.tenantId, check);
   }
   if (instance.businessType !== 'personnel_change') return;
   await requireSelfServiceSubmit(deps, ctx);

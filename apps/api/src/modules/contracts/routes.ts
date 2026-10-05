@@ -22,7 +22,7 @@ import { rules, saveMaster, saveRule, saveSettings, settings } from './configura
 import { commandSchema, parse } from './input.js';
 import { batchCommands, createCommand, loadContract, loadRequest, portfolioRevision } from './service.js';
 import { listContracts } from './queries.js';
-import { errorsCsv, importContracts, importSchema, previewImport } from './imports.js';
+import { errorsCsv, importContracts, importSchema, previewImport, checkImportScope } from './imports.js';
 import { cancelFailedRequest } from './recovery.js';
 import { registerMergedTodos } from './todos.js';
 
@@ -353,8 +353,8 @@ function registerImports(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const input = parse(importSchema, raw);
       for (const row of input.rows) {
         await checkFields(ctx, ['edit', 'change'].includes(input.mode) ? 'update' : 'create', row.fields);
-        await withTenant(deps.db, ctx.tenantId, (tx) => checkScope(tx, ctx, row.employeeId));
       }
+      await withTenant(deps.db, ctx.tenantId, (tx) => checkImportScope(tx, ctx, input));
       if (input.mode === 'initialize')
         await requirePermission(deps.authorize, {
           tenantId: ctx.tenantId,
@@ -403,11 +403,12 @@ function registerFailures(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   module.get('/failures', async (c) => {
     const ctx = await routeContext(c, deps);
     const page = pageQuery(c);
-    const { scopeSql } = await import('../permission/module-access.js');
+    const { employmentVisibilitySql } = await import('../employment/visibility.js');
     const predicate = ctx.scope
-      ? scopeSql(ctx.scope, {
-          person: sql`a.employee_id`,
-          creator: sql`CASE WHEN a.kind='activate' THEN (SELECT q.created_by FROM contract_requests q
+      ? employmentVisibilitySql(ctx.scope, {
+          department: sql`NULL::uuid`,
+          employee: sql`a.employee_id`,
+          creator: sql`CASE WHEN a.kind IN ('activate','quarantine') THEN (SELECT q.created_by FROM contract_requests q
         WHERE q.tenant_id=a.tenant_id AND q.id=a.object_id) ELSE (SELECT r.created_by FROM contract_records r
         WHERE r.tenant_id=a.tenant_id AND r.id=a.object_id) END`,
         })
@@ -415,8 +416,9 @@ function registerFailures(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       tx.execute(sql`SELECT a.* FROM contract_job_attempts a
       WHERE a.tenant_id=${ctx.tenantId} AND a.state IN ('failed','unknown') AND ${predicate}
-        AND (a.kind<>'activate' OR EXISTS (SELECT 1 FROM contract_requests q
-          WHERE q.tenant_id=a.tenant_id AND q.id=a.object_id AND q.status='approved'))
+        AND (a.kind NOT IN ('activate','quarantine') OR EXISTS (SELECT 1 FROM contract_requests q
+          WHERE q.tenant_id=a.tenant_id AND q.id=a.object_id
+            AND (q.status='approved' OR (a.kind='quarantine' AND q.status IN ('in_review','returned')))))
       ORDER BY a.created_at DESC LIMIT ${page.limit} OFFSET ${page.offset}`),
     );
     return c.json({ items: rowsOf(items) });

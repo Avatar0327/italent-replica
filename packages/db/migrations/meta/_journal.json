@@ -351,6 +351,13 @@
       "when": 1791210182365,
       "tag": "0049_contract_calibration",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791218024334,
+      "tag": "0050_contract_inflight_quarantine",
+      "breakpoints": true
     }
   ]
 }

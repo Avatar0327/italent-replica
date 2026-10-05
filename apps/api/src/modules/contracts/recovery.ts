@@ -3,6 +3,8 @@ import { and, eq, sql, contractRequests, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { audit, checkScope, lockEmployee, revision, rowsOf, type ContractContext } from './context.js';
+import { cancel } from '../approval/actions.js';
+import { isQuarantined } from './quarantine.js';
 import { loadRequest } from './service.js';
 
 export async function cancelFailedRequest(tx: Tx, ctx: ContractContext, id: string) {
@@ -17,8 +19,23 @@ export async function cancelFailedRequest(tx: Tx, ctx: ContractContext, id: stri
     await tx.execute(sql`SELECT id FROM contract_job_attempts
     WHERE tenant_id=${ctx.tenantId} AND object_id=${id}::uuid AND kind='activate' AND state IN ('failed','unknown')`),
   );
-  if (before.status !== 'approved' || due > tenantLocalDate(ctx.now, ctx.timezone) || !failure)
-    throw new AppError('CONFLICT', '只有到期生效失败的已批准合同申请可以撤销', { reason: 'CONTRACT_NOT_FAILED' });
+  const quarantined = await isQuarantined(tx, ctx.tenantId, id);
+  const cancellable = quarantined
+    ? ['approved', 'in_review', 'returned'].includes(before.status)
+    : before.status === 'approved' && due <= tenantLocalDate(ctx.now, ctx.timezone) && !!failure;
+  if (!cancellable)
+    throw new AppError('CONFLICT', '只有隔离冲突申请或到期生效失败的已批准申请可以撤销', {
+      reason: 'CONTRACT_NOT_FAILED',
+    });
+  if (quarantined) {
+    // 只关闭仍在运行/退回的实例并记录 cancel；已批准的历史结论保持原样，不代签。
+    const instances = rowsOf<{ id: string }>(
+      await tx.execute(sql`SELECT id FROM approval_instances
+      WHERE tenant_id=${ctx.tenantId} AND business_type='contract' AND business_id=${id}::uuid
+        AND status IN ('running','returned') ORDER BY id`),
+    );
+    for (const instance of instances) await cancel(tx, ctx, instance.id);
+  }
   const [after] = await tx
     .update(contractRequests)
     .set({ status: 'withdrawn', revision: before.revision + 1 })

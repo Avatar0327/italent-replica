@@ -1,7 +1,7 @@
 import { and, eq, sql, contractRecords, contractRequests, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { currentPersons } from '../permission/scope-persons.js';
-import { scopeSql } from '../permission/module-access.js';
+import { employmentVisibilitySql } from '../employment/visibility.js';
 import { rowsOf, type ContractContext } from './context.js';
 import { settings } from './configuration.js';
 export async function listContracts(
@@ -17,7 +17,11 @@ export async function listContracts(
   if (view === 'all') return allContracts(tx, ctx, limit, offset);
   if (view === 'in_review') {
     const scope = ctx.scope
-      ? scopeSql(ctx.scope, { person: sql`contract_requests.employee_id`, creator: sql`contract_requests.created_by` })
+      ? employmentVisibilitySql(ctx.scope, {
+          department: sql`NULL::uuid`,
+          employee: sql`contract_requests.employee_id`,
+          creator: sql`contract_requests.created_by`,
+        })
       : sql`true`;
     return tx
       .select()
@@ -28,7 +32,9 @@ export async function listContracts(
       .offset(offset);
   }
   if (view === 'missing') {
-    const scope = ctx.scope ? scopeSql(ctx.scope, { person: sql`e.id` }) : sql`true`;
+    const scope = ctx.scope
+      ? employmentVisibilitySql(ctx.scope, { department: sql`NULL::uuid`, employee: sql`e.id` })
+      : sql`true`;
     return rowsOf(
       await tx.execute(sql`SELECT e.id AS "employeeId",e.code,e.name FROM employment_employees e
       WHERE e.tenant_id=${ctx.tenantId} AND ${scope}
@@ -41,7 +47,11 @@ export async function listContracts(
     );
   }
   const scope = ctx.scope
-    ? scopeSql(ctx.scope, { person: sql`contract_records.employee_id`, creator: sql`contract_records.created_by` })
+    ? employmentVisibilitySql(ctx.scope, {
+        department: sql`NULL::uuid`,
+        employee: sql`contract_records.employee_id`,
+        creator: sql`contract_records.created_by`,
+      })
     : sql`true`;
   const c = contractRecords;
   let filter = sql`true`;
@@ -74,10 +84,18 @@ export async function listContracts(
 /** 全部视图同时包含未生效申请；申请与生效版本分别标识，分页前对两侧应用同一范围。 */
 async function allContracts(tx: Tx, ctx: ContractContext, limit: number, offset: number) {
   const recordScope = ctx.scope
-    ? scopeSql(ctx.scope, { person: sql`c.employee_id`, creator: sql`c.created_by` })
+    ? employmentVisibilitySql(ctx.scope, {
+        department: sql`NULL::uuid`,
+        employee: sql`c.employee_id`,
+        creator: sql`c.created_by`,
+      })
     : sql`true`;
   const requestScope = ctx.scope
-    ? scopeSql(ctx.scope, { person: sql`r.employee_id`, creator: sql`r.created_by` })
+    ? employmentVisibilitySql(ctx.scope, {
+        department: sql`NULL::uuid`,
+        employee: sql`r.employee_id`,
+        creator: sql`r.created_by`,
+      })
     : sql`true`;
   const rows = rowsOf<{ value: Record<string, unknown> }>(
     await tx.execute(sql`

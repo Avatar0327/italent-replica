@@ -1,5 +1,7 @@
 import { eq, contractRequests, type Tx } from '@italent/db';
 import { CONTRACT_OBJECT, CONTRACT_FLOW, tenantLocalDate, type ContractOperation } from '@italent/domain';
+import { assertNotQuarantined } from './quarantine.js';
+import { fieldsSchema, parse } from './input.js';
 import { AppError } from '../../errors.js';
 import type { BusinessAdapter } from '../approval/adapters.js';
 import { audit, checkFields, checkScope, lockEmployee, type ContractContext } from './context.js';
@@ -84,8 +86,10 @@ export const contractAdapter: BusinessAdapter = {
     await transition(tx, ctx, id, 'withdrawn');
   },
   async resubmit(tx, ctx, id, corrections) {
+    await assertNotQuarantined(tx, ctx.tenantId, id);
     const request = await loadRequest(tx, ctx.tenantId, id);
     const target = request.targetId ? await loadContract(tx, ctx.tenantId, request.targetId) : null;
+    corrections = parse(fieldsSchema, corrections);
     const writable = mergeFields(requestWriteFields(request), corrections);
     await checkFields(ctx, request.operation === 'create' ? 'create' : 'update', writable);
     const input = {

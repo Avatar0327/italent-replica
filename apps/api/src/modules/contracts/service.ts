@@ -22,6 +22,7 @@ import {
   rowsOf,
   type ContractContext,
 } from './context.js';
+import { assertNotQuarantined } from './quarantine.js';
 import { settings, verifyIds } from './configuration.js';
 import { commandSchema, parse, type ContractCommand, type ContractFields } from './input.js';
 
@@ -358,11 +359,14 @@ export async function assertNoInFlight(
   operation: string,
   excludeId?: string,
 ) {
-  if (!['create', 'renew', 'change'].includes(operation)) return;
+  if (!['create', 'renew', 'change', 'edit'].includes(operation)) return;
   const [pending] = rowsOf<{ id: string }>(
     await tx.execute(sql`SELECT id FROM contract_requests
     WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND type_id=${typeId}::uuid
-      AND status IN ('in_review','approved') AND operation IN ('create','renew','change')
+      AND (status IN ('in_review','approved') OR (status='returned' AND EXISTS (
+        SELECT 1 FROM contract_job_attempts a WHERE a.tenant_id=contract_requests.tenant_id
+          AND a.object_id=contract_requests.id AND a.kind='quarantine')))
+      AND operation IN ('create','renew','change','edit')
       AND (${excludeId ?? null}::uuid IS NULL OR id<>${excludeId ?? null}::uuid) LIMIT 1`),
   );
   if (pending)
@@ -402,7 +406,8 @@ export async function createCommand(
       await correctedState(tx, ctx, before, data, tenantLocalDate(ctx.now, ctx.timezone))
     ).actualTerminationDate;
   }
-  if (!correction) await assertNoInFlight(tx, ctx, input.employeeId, data.typeId, input.operation);
+  if (!correction || data.effectiveDate > tenantLocalDate(ctx.now, ctx.timezone))
+    await assertNoInFlight(tx, ctx, input.employeeId, data.typeId, correction ? 'edit' : input.operation);
   // 同一源合同只允许一张未完成申请；员工锁将批量、单条、调度的检查串行化。
   if (before) {
     const [pending] = rowsOf(
@@ -446,11 +451,18 @@ function appliedFields(request: ContractRequest, today: string) {
       : normalizedActualDate(request, today),
   };
 }
+async function assertActivationAllowed(tx: Tx, ctx: ContractContext, latest: ContractRequest) {
+  if (latest.status !== 'approved') throw new AppError('CONFLICT', '合同申请尚未审批通过');
+  await assertNotQuarantined(tx, ctx.tenantId, latest.id);
+  // 激活也防御旧版/恢复数据中的冲突；即时更正不占用未来合同名额。
+  if (latest.operation !== 'edit' || latest.effectiveDate > tenantLocalDate(latest.createdAt, ctx.timezone))
+    await assertNoInFlight(tx, ctx, latest.employeeId, latest.typeId, latest.operation, latest.id);
+}
 export async function applyRequest(tx: Tx, ctx: ContractContext, request: ContractRequest): Promise<Contract> {
   await lockEmployee(tx, ctx, request.employeeId);
   const latest = await loadRequest(tx, ctx.tenantId, request.id);
   if (latest.status === 'effective') return loadContract(tx, ctx.tenantId, latest.resultId!);
-  if (latest.status !== 'approved') throw new AppError('CONFLICT', '合同申请尚未审批通过');
+  await assertActivationAllowed(tx, ctx, latest);
   const before = latest.targetId ? await loadContract(tx, ctx.tenantId, latest.targetId) : null;
   if (before) {
     await assertSourceRevision(tx, ctx, latest, before);
