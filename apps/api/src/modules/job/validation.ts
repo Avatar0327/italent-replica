@@ -1,5 +1,6 @@
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
+import { employmentDepartmentDisable } from '../org/employment-validity.js';
 import { jobTables, type JobKind } from './metadata.js';
 import { loadJobObject, type JobRecord } from './read-model.js';
 import { rowsOf } from './store.js';
@@ -38,6 +39,7 @@ export async function validateJobFields(
   kind: JobKind,
   objectId: string,
   fields: JobFields,
+  previous?: JobRecord,
 ): Promise<JobFields> {
   const persisted = positionParents(fields, kind);
   const resolved = new Map<string, JobRecord>();
@@ -48,7 +50,7 @@ export async function validateJobFields(
   checkScoreRange(persisted);
   checkRanges(persisted, resolved);
   if (kind === 'positions') {
-    await validateOrganizationReference(tx, ctx, fields);
+    await validateOrganizationReference(tx, ctx, fields, previous?.orgId !== fields.orgId);
     await validatePositionHierarchy(tx, ctx, objectId, persisted);
   }
   if (kind === 'sequences' || kind === 'professional-lines') {
@@ -57,7 +59,19 @@ export async function validateJobFields(
   return persisted;
 }
 
-async function validateOrganizationReference(tx: Tx, ctx: JobWriteContext, fields: JobFields): Promise<void> {
+async function validateOrganizationReference(
+  tx: Tx,
+  ctx: JobWriteContext,
+  fields: JobFields,
+  checkWholePeriod: boolean,
+): Promise<void> {
+  // DEC-151：新建或变更所属组织时共用 DEC-139 / 150 的整段判定，未改所属组织保留原日期口径。
+  if (checkWholePeriod && typeof fields.orgId === 'string') {
+    const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, fields.orgId, fields.startDate);
+    if (disabled) {
+      throw invalid('orgId', `选中的所属组织【${disabled.name}】在（${disabled.disabledOn}）时为停用状态`);
+    }
+  }
   const [organization] = rowsOf<{ enabled: boolean; stopDate: string }>(
     await tx.execute(sql`
       SELECT enabled, stop_date::text AS "stopDate" FROM org_versions
