@@ -3,6 +3,7 @@ import { sql, type Tx } from '@italent/db';
 import { SUBSETS } from '@italent/domain';
 import type { EmploymentContext, EmploymentRecord } from '../employment/types.js';
 import { loadEmploymentRecord } from '../employment/read-model.js';
+import { resolveOrgPaths } from '../org/read-model.js';
 import { rows, camel, type Row } from './store.js';
 import { persistSubset } from './subsets.js';
 
@@ -133,16 +134,22 @@ async function referenceNames(tx: Tx, ctx: EmploymentContext, fields: Row, date:
       continue;
     }
     const id = sql.identifier(table === 'org_versions' ? 'org_id' : 'object_id');
-    const extra = table === 'org_versions' ? sql`,full_name` : sql``;
+    const extra = table === 'org_versions' ? sql`,id,full_name` : sql``;
     const [version] = rows(
       await tx.execute(sql`SELECT name${extra} FROM ${sql.identifier(table!)}
       WHERE tenant_id=${ctx.tenantId} AND ${id}=${fields[field!]}::uuid AND start_date<=${date}::date
       ORDER BY start_date DESC,version_no DESC LIMIT 1`),
     );
     result[target!] = version?.name ?? null;
-    if (table === 'org_versions') result.departmentFullName = version?.full_name ?? null;
+    if (table === 'org_versions') result.departmentFullName = await departmentFullName(tx, ctx, version, date);
   }
   return result;
+}
+/** 部门全称与组织列表同一口径：按记录日期当天的各级上级名称解析（DEC-021、`10` §16）。 */
+async function departmentFullName(tx: Tx, ctx: EmploymentContext, version: Row | undefined, date: string) {
+  if (!version) return null;
+  const paths = await resolveOrgPaths(tx, ctx.tenantId, date, [String(version.id)]);
+  return paths.get(String(version.id))?.fullName ?? version.full_name ?? null;
 }
 async function lastWorkDate(tx: Tx, tenantId: string, recordId: string) {
   const [record] = rows(

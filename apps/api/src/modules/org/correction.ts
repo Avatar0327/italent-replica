@@ -2,14 +2,15 @@
  * DEC-147（`10` §18 W-439～W-442）：组织建成后可在「编辑」（更正、不产生新版本）中修改设立日期，首版生效日随之变化，
  * DEC-130“首版生效日 = 设立日期”始终成立；「变更」中没有该字段。保存时照搬原站两条拦截——①须早于后一个版本的
  * 生效日；②不得早于上级组织的设立日——另加③不得晚于本组织最早一条任职 / 职位记录的开始日（复刻加严，与 DEC-138 同向）。
- * 组织版本只允许追加（迁移 0008 / 0009），这是唯一的原地更正：迁移 0033 只放行事务内声明后改 start_date / established_on。
+ * 组织版本只允许追加（迁移 0008 / 0009），这是唯一的原地更正：迁移 0037 只放行事务内声明后改 start_date / established_on。
+ * 更正本身不追加任何版本；全称按当天的上级名称在读取时解析（read-model 的 resolveOrgPaths），不需要派生版本。
  */
 import { and, asc, eq, orgVersions, sql, type Tx } from '@italent/db';
 import { ORG_DIMENSIONS } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { assertParentAvailable } from './deactivation.js';
-import { loadOrgSnapshot, type OrgRecord } from './read-model.js';
+import { loadOrgSnapshot, type OrgRecord, rowsOf } from './read-model.js';
 import type { OrgWriteContext } from './validation.js';
 
 export interface EstablishedOnCorrection {
@@ -22,10 +23,6 @@ export interface EstablishedOnCorrection {
 
 function rejected(reason: string, message: string, details: Record<string, unknown> = {}): AppError {
   return new AppError('VALIDATION_FAILED', message, { reason, fields: { establishedOn: message }, ...details });
-}
-
-function rowsOf<T>(value: unknown): T[] {
-  return (Array.isArray(value) ? value : (value as { rows: T[] }).rows) as T[];
 }
 
 async function earliest(tx: Tx, query: SQL): Promise<string | null> {
@@ -52,6 +49,7 @@ export async function planEstablishedOnCorrection(
   const previous = versions[0]?.startDate;
   if (!previous) throw new AppError('NOT_FOUND', '组织不存在');
   if (establishedOn === previous && versions.every((row) => row.establishedOn === establishedOn)) return null;
+  // ①的“后一条组织记录”都是本组织自己的业务版本：上级改名、移动不再给下级追加派生全称版本（PR #54 P2-A）。
   const next = versions.find((row) => row.startDate > previous)?.startDate;
   if (next && establishedOn >= next) {
     throw rejected(

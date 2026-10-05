@@ -16,7 +16,7 @@ import { assertCodeAvailable, consumeCode, ensureOrgSetup } from './codes.js';
 import { applyEstablishedOnCorrection, planEstablishedOnCorrection } from './correction.js';
 import { assertParentAvailable, type CascadeAuthorizer, planDeactivation, unavailableFrom } from './deactivation.js';
 import { assertOrgPeopleEligible, submittedPeople } from './people.js';
-import { futureBoundaries, loadOrgSnapshot, type OrgRecord } from './read-model.js';
+import { futureBoundaries, loadOrgSnapshot, type OrgPath, type OrgRecord, resolveOrgPaths } from './read-model.js';
 import {
   assertSnapshotAcyclic,
   date,
@@ -151,7 +151,7 @@ export async function updateOrganization(
   }
   await validateFutureSnapshots(tx, ctx, effectiveDate);
   await audit(tx, ctx, 'org.update', orgId, current, saved);
-  if (saved.fullName !== current.fullName) await synchronizeFullNames(tx, ctx, effectiveDate);
+  // 改名或改行政上级不给下级追加全称版本：下级全称在读取时按当天的上级名称解析（read-model 的 resolveOrgPaths）。
   return saved;
 }
 
@@ -191,6 +191,7 @@ export async function correctEstablishedOn(
     const revision = object.revision + 1;
     await tx.update(orgObjects).set({ revision }).where(objectKey(ctx.tenantId, orgId));
     await applyEstablishedOnCorrection(tx, ctx, orgId, plan);
+    // 更正不追加任何版本（PR #54 P2-A）：提前后新覆盖的那几天里上级名称可能不同，全称读取时按当天解析，无需派生版本。
     await audit(
       tx,
       ctx,
@@ -199,8 +200,6 @@ export async function correctEstablishedOn(
       plan.before,
       await recordAt(tx, { ...object, revision }, establishedOn),
     );
-    // 提前后首版覆盖到新的日期，上级在那几天的全称可能不同（DEC-021：按边界同步全称）。
-    if (establishedOn < plan.previous) await synchronizeFullNames(tx, ctx, establishedOn);
   }
   const [latest] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId));
   return recordAt(tx, latest ?? object, establishedOn);
@@ -283,8 +282,10 @@ async function recordAt(tx: Tx, object: typeof orgObjects.$inferSelect, effectiv
   const version = rows.find((row) => row.startDate <= effectiveDate);
   if (!version) throw invalid('effectiveDate', '变更生效日期不得早于组织首个版本');
   const links = await tx.select().from(orgHierarchyLinks).where(eq(orgHierarchyLinks.versionId, version.id));
+  const paths = await resolveOrgPaths(tx, object.tenantId, effectiveDate, [version.id]);
   return {
     ...version,
+    ...paths.get(version.id),
     id: object.id,
     versionId: version.id,
     code: version.code,
@@ -293,11 +294,6 @@ async function recordAt(tx: Tx, object: typeof orgObjects.$inferSelect, effectiv
       links.map((link) => [link.dimension, { parentId: link.parentOrgId, sequence: link.sequence }]),
     ),
   };
-}
-
-interface OrgPath {
-  readonly fullName: string;
-  readonly level: number;
 }
 
 function parentPath(ctx: OrgWriteContext, input: NormalizedOrganization, nodes: OrgRecord[]): OrgPath {
@@ -344,45 +340,10 @@ async function appendVersion(
   return { ...version, id: orgId, versionId: version.id, code, revision, parents };
 }
 
-/** DEC-021：本次及已排定的未来边界都追加全称版本，保留旧时点和子组织的其他业务字段。 */
-async function synchronizeFullNames(tx: Tx, ctx: OrgWriteContext, effectiveDate: string): Promise<void> {
-  const boundaries = await futureBoundaries(tx, ctx.tenantId, effectiveDate);
-  for (const boundary of boundaries) {
-    const nodes = await loadOrgSnapshot(tx, ctx.tenantId, boundary);
-    for (const node of nodes) {
-      if (node.id === ctx.tenantId) continue;
-      const path = resolvePath(ctx, node, nodes, new Set());
-      if (node.fullName === path.fullName && node.level === path.level) continue;
-      const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, node.id)).for('update');
-      if (!object) throw new AppError('SERVICE_UNAVAILABLE', '下级组织不存在');
-      const revision = object.revision + 1;
-      await tx.update(orgObjects).set({ revision }).where(objectKey(ctx.tenantId, node.id));
-      const input = normalizeOrganization(ctx, {
-        ...node,
-        startDate: boundary,
-        parents: node.parents as OrgParentsInput,
-      });
-      const saved = await appendVersion(tx, ctx, node.id, node.code, revision, input, path, node);
-      await audit(tx, ctx, 'org.full-name.synchronize', node.id, node, saved);
-    }
-  }
-}
-
 async function validateFutureSnapshots(tx: Tx, ctx: OrgWriteContext, effectiveDate: string): Promise<void> {
   for (const boundary of await futureBoundaries(tx, ctx.tenantId, effectiveDate)) {
     assertSnapshotAcyclic(await loadOrgSnapshot(tx, ctx.tenantId, boundary));
   }
-}
-
-function resolvePath(ctx: OrgWriteContext, node: OrgRecord, nodes: OrgRecord[], visited: Set<string>): OrgPath {
-  if (node.id === ctx.tenantId) return { fullName: ctx.rootName, level: 0 };
-  if (visited.has(node.id)) throw invalid('parents.admin', '组织层级不得形成循环');
-  visited.add(node.id);
-  const parentId = node.parents.admin?.parentId;
-  const parent = nodes.find((candidate) => candidate.id === parentId);
-  if (!parent) return { fullName: node.fullName, level: node.level };
-  const path = resolvePath(ctx, parent, nodes, visited);
-  return { fullName: `${path.fullName}/${node.name}`, level: path.level + 1 };
 }
 
 function auditFields(record: OrgRecord | null): unknown {
