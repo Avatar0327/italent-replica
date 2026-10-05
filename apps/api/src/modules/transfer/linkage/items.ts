@@ -7,7 +7,7 @@ import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../../errors.js';
 import { assignTransferOrganizationPeople } from '../../org/write-service.js';
 import { ruleRejection } from '../../employment/activation-checks.js';
-import { auditEmployment, assertRevision } from '../../employment/context.js';
+import { auditEmployment, assertRevision, requireLinkedEmploymentRecord } from '../../employment/context.js';
 import { ineligibleOrgPeople } from '../../employment/org-people.js';
 import { editEmploymentRecord } from '../../employment/record-edit.js';
 import { findCurrentRecord } from '../../employment/read-model.js';
@@ -16,13 +16,7 @@ import type { EmploymentContext } from '../../employment/types.js';
 import { authorizeOrgRole, authorizeSubordinateField, type LinkageAccess } from './access.js';
 import type { DutyRelation, OrgRole } from './input.js';
 import { transferPartTimePort } from './part-time.js';
-import {
-  RELATION_FIELDS,
-  ROLE_FIELDS,
-  requireLinkedRecordVisible,
-  requireReportingSubordinate,
-  requireRoleHolder,
-} from './validation.js';
+import { RELATION_FIELDS, ROLE_FIELDS, requireReportingSubordinate, requireRoleHolder } from './validation.js';
 
 export type LinkageItemRow = typeof transferLinkageItems.$inferSelect;
 
@@ -174,7 +168,8 @@ export async function retryLinkageItem(
   if (item.itemType === 'duty_subordinate') {
     const today = tenantLocalDate(ctx.now, ctx.timezone);
     const record = await findCurrentRecord(tx, ctx.tenantId, item.subordinateId!, today);
-    if (record) await requireLinkedRecordVisible(tx, ctx, item.subordinateId!, record.fields.departmentId, record.id);
+    if (record)
+      await requireLinkedEmploymentRecord(tx, ctx, item.subordinateId!, record.fields.departmentId, record.id);
   }
   return itemView(await attemptLinkageItem(tx, ctx, item));
 }

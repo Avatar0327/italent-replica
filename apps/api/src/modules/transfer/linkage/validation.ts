@@ -5,7 +5,7 @@
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../../errors.js';
-import { requireScopedEmploymentObject } from '../../employment/context.js';
+import { requireLinkedEmploymentRecord } from '../../employment/context.js';
 import { ineligibleOrgPeople } from '../../employment/org-people.js';
 import { findCurrentRecord } from '../../employment/read-model.js';
 import { rowsOf } from '../../employment/record-store.js';
@@ -77,33 +77,13 @@ export async function requireReportingSubordinate(
 ) {
   const record = await findCurrentRecord(tx, ctx.tenantId, subordinateId, tenantLocalDate(ctx.now, ctx.timezone));
   if (!record) throw notEligible();
-  await requireLinkedRecordVisible(tx, ctx, subordinateId, record.fields.departmentId, record.id);
+  // DEC-178：下属当前任职按 F-015 的 DEC-177 可见判定，可见即可改写，不可见整单拒绝（DEC-084 拒绝码）。
+  await requireLinkedEmploymentRecord(tx, ctx, subordinateId, record.fields.departmentId, record.id);
   if (record.fields[RELATION_FIELDS[relation]] !== employeeId)
     throw new AppError('VALIDATION_FAILED', '该员工当前不汇报给调动人', {
       reason: 'TRANSFER_SUBORDINATE_NOT_REPORTING',
     });
   return record;
-}
-
-/**
- * DEC-178：联动改写的记录对操作人可见就改写，不可见整单拒绝（保留 DEC-084 拒绝码）。
- * TODO(F-015)：F-015 合并后改用其单一可见判定函数（DEC-177 口径：记录所在部门或员工当前部门在范围内）；
- * 在此之前按 DEC-084 只判记录所在部门。
- */
-export async function requireLinkedRecordVisible(
-  tx: Tx,
-  ctx: EmploymentContext,
-  employeeId: string,
-  departmentId: string | null,
-  recordId: string,
-) {
-  try {
-    await requireScopedEmploymentObject(tx, ctx, employeeId, departmentId, recordId);
-  } catch (error) {
-    if (error instanceof AppError && error.code === 'NOT_FOUND')
-      throw new AppError('LINKED_RECORD_OUT_OF_SCOPE', '联动记录不在当前数据范围，请由覆盖该范围的人员操作');
-    throw error;
-  }
 }
 
 /** 组织角色转交：调动人当前须担任该组织的该角色（`30` DT-R1）。 */
