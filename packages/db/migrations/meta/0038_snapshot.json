@@ -1,6 +1,6 @@
 {
-  "id": "2e0b2035-448a-4bf4-a363-f30cfd4f5bb0",
-  "prevId": "e66b7ac4-dfe3-4d78-af6f-b78d6b0f0ed9",
+  "id": "68283d92-9f11-4940-85b2-f6a5a28cdd52",
+  "prevId": "57a032e4-81cb-441c-8612-512480adc734",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -362,9 +362,37 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "subject_tenant_id": {
+          "name": "subject_tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "platform_audit_events_subject_tenant": {
+          "name": "platform_audit_events_subject_tenant",
+          "columns": [
+            {
+              "expression": "subject_tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
       "foreignKeys": {
         "platform_audit_events_actor_user_id_users_id_fk": {
           "name": "platform_audit_events_actor_user_id_users_id_fk",
@@ -373,6 +401,19 @@
             "actor_user_id"
           ],
           "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "platform_audit_events_subject_tenant_id_tenants_id_fk": {
+          "name": "platform_audit_events_subject_tenant_id_tenants_id_fk",
+          "tableFrom": "platform_audit_events",
+          "columnsFrom": [
+            "subject_tenant_id"
+          ],
+          "tableTo": "tenants",
           "columnsTo": [
             "id"
           ],
@@ -422,6 +463,72 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.platform_operators": {
+      "name": "platform_operators",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "platform_operators_user_id_users_id_fk": {
+          "name": "platform_operators_user_id_users_id_fk",
+          "tableFrom": "platform_operators",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "platform_operators_status_valid": {
+          "name": "platform_operators_status_valid",
+          "value": "\"platform_operators\".\"status\" IN ('active', 'revoked')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.system_settings": {
@@ -23451,723 +23558,6 @@
         "approval_tasks_origin": {
           "name": "approval_tasks_origin",
           "value": "\"approval_tasks\".\"origin\" IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',\n        'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',\n        'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve',\n        'add_sign_parallel','countersign_reopen')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.transfer_form_fields": {
-      "name": "transfer_form_fields",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version_id": {
-          "name": "version_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "field_code": {
-          "name": "field_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "mode": {
-          "name": "mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "transfer_form_fields_tenant_id_tenants_id_fk": {
-          "name": "transfer_form_fields_tenant_id_tenants_id_fk",
-          "tableFrom": "transfer_form_fields",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "transfer_form_fields_version_fk": {
-          "name": "transfer_form_fields_version_fk",
-          "tableFrom": "transfer_form_fields",
-          "columnsFrom": [
-            "tenant_id",
-            "version_id"
-          ],
-          "tableTo": "transfer_form_versions",
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "transfer_form_fields_tenant_id_version_id_field_code_pk": {
-          "name": "transfer_form_fields_tenant_id_version_id_field_code_pk",
-          "columns": [
-            "tenant_id",
-            "version_id",
-            "field_code"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "transfer_form_fields_mode": {
-          "name": "transfer_form_fields_mode",
-          "value": "\"transfer_form_fields\".\"mode\" IN ('editable', 'readonly', 'hidden', 'absent')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.transfer_form_versions": {
-      "name": "transfer_form_versions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "form_id": {
-          "name": "form_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version_no": {
-          "name": "version_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "group": {
-          "name": "group",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "process_code": {
-          "name": "process_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "transfer_form_versions_tenant_id_tenants_id_fk": {
-          "name": "transfer_form_versions_tenant_id_tenants_id_fk",
-          "tableFrom": "transfer_form_versions",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "transfer_form_versions_form_fk": {
-          "name": "transfer_form_versions_form_fk",
-          "tableFrom": "transfer_form_versions",
-          "columnsFrom": [
-            "tenant_id",
-            "form_id"
-          ],
-          "tableTo": "transfer_forms",
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "transfer_form_versions_tenant_id": {
-          "name": "transfer_form_versions_tenant_id",
-          "columns": [
-            "tenant_id",
-            "id"
-          ],
-          "nullsNotDistinct": false
-        },
-        "transfer_form_versions_number": {
-          "name": "transfer_form_versions_number",
-          "columns": [
-            "tenant_id",
-            "form_id",
-            "version_no"
-          ],
-          "nullsNotDistinct": false
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "transfer_form_versions_number_positive": {
-          "name": "transfer_form_versions_number_positive",
-          "value": "\"transfer_form_versions\".\"version_no\" > 0"
-        },
-        "transfer_form_versions_group": {
-          "name": "transfer_form_versions_group",
-          "value": "\"transfer_form_versions\".\"group\" IS NULL OR \"transfer_form_versions\".\"group\" = 'transfer'"
-        },
-        "transfer_form_versions_process_nonempty": {
-          "name": "transfer_form_versions_process_nonempty",
-          "value": "btrim(\"transfer_form_versions\".\"process_code\") <> ''"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.transfer_forms": {
-      "name": "transfer_forms",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "form_id": {
-          "name": "form_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "transfer_forms_tenant_id_tenants_id_fk": {
-          "name": "transfer_forms_tenant_id_tenants_id_fk",
-          "tableFrom": "transfer_forms",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "transfer_forms_tenant_id": {
-          "name": "transfer_forms_tenant_id",
-          "columns": [
-            "tenant_id",
-            "id"
-          ],
-          "nullsNotDistinct": false
-        },
-        "transfer_forms_tenant_form": {
-          "name": "transfer_forms_tenant_form",
-          "columns": [
-            "tenant_id",
-            "form_id"
-          ],
-          "nullsNotDistinct": false
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "transfer_forms_form_nonempty": {
-          "name": "transfer_forms_form_nonempty",
-          "value": "btrim(\"transfer_forms\".\"form_id\") <> ''"
-        },
-        "transfer_forms_revision_nonnegative": {
-          "name": "transfer_forms_revision_nonnegative",
-          "value": "\"transfer_forms\".\"revision\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.transfer_reasons": {
-      "name": "transfer_reasons",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "effective_date": {
-          "name": "effective_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "display_order": {
-          "name": "display_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "transfer_type_code": {
-          "name": "transfer_type_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "transfer_reasons_tenant_id_tenants_id_fk": {
-          "name": "transfer_reasons_tenant_id_tenants_id_fk",
-          "tableFrom": "transfer_reasons",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "transfer_reasons_tenant_id_code_pk": {
-          "name": "transfer_reasons_tenant_id_code_pk",
-          "columns": [
-            "tenant_id",
-            "code"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "transfer_reasons_code_nonempty": {
-          "name": "transfer_reasons_code_nonempty",
-          "value": "btrim(\"transfer_reasons\".\"code\") <> ''"
-        },
-        "transfer_reasons_date_finite": {
-          "name": "transfer_reasons_date_finite",
-          "value": "isfinite(\"transfer_reasons\".\"effective_date\")"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.transfer_requests": {
-      "name": "transfer_requests",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_id": {
-          "name": "business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "transfer_type_code": {
-          "name": "transfer_type_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason_code": {
-          "name": "reason_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "initiator": {
-          "name": "initiator",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "process_code": {
-          "name": "process_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "transfer_requests_tenant_id_tenants_id_fk": {
-          "name": "transfer_requests_tenant_id_tenants_id_fk",
-          "tableFrom": "transfer_requests",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "transfer_requests_business_fk": {
-          "name": "transfer_requests_business_fk",
-          "tableFrom": "transfer_requests",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "business_id"
-          ],
-          "tableTo": "employment_business_objects",
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "transfer_requests_tenant_id_business_id_pk": {
-          "name": "transfer_requests_tenant_id_business_id_pk",
-          "columns": [
-            "tenant_id",
-            "business_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "transfer_requests_initiator": {
-          "name": "transfer_requests_initiator",
-          "value": "\"transfer_requests\".\"initiator\" IN ('hr', 'manager', 'employee')"
-        },
-        "transfer_requests_type_nonempty": {
-          "name": "transfer_requests_type_nonempty",
-          "value": "btrim(\"transfer_requests\".\"transfer_type_code\") <> ''"
-        },
-        "transfer_requests_process_nonempty": {
-          "name": "transfer_requests_process_nonempty",
-          "value": "btrim(\"transfer_requests\".\"process_code\") <> ''"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.transfer_setting_versions": {
-      "name": "transfer_setting_versions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version_no": {
-          "name": "version_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "unrestrict_target_department": {
-          "name": "unrestrict_target_department",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "auto_populate": {
-          "name": "auto_populate",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "transfer_setting_versions_tenant_id_tenants_id_fk": {
-          "name": "transfer_setting_versions_tenant_id_tenants_id_fk",
-          "tableFrom": "transfer_setting_versions",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "transfer_setting_versions_settings_fk": {
-          "name": "transfer_setting_versions_settings_fk",
-          "tableFrom": "transfer_setting_versions",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "transfer_settings",
-          "columnsTo": [
-            "tenant_id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "transfer_setting_versions_tenant_id": {
-          "name": "transfer_setting_versions_tenant_id",
-          "columns": [
-            "tenant_id",
-            "id"
-          ],
-          "nullsNotDistinct": false
-        },
-        "transfer_setting_versions_number": {
-          "name": "transfer_setting_versions_number",
-          "columns": [
-            "tenant_id",
-            "version_no"
-          ],
-          "nullsNotDistinct": false
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "transfer_setting_versions_number_positive": {
-          "name": "transfer_setting_versions_number_positive",
-          "value": "\"transfer_setting_versions\".\"version_no\" > 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.transfer_settings": {
-      "name": "transfer_settings",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "transfer_settings_tenant_id_tenants_id_fk": {
-          "name": "transfer_settings_tenant_id_tenants_id_fk",
-          "tableFrom": "transfer_settings",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "transfer_settings_revision_nonnegative": {
-          "name": "transfer_settings_revision_nonnegative",
-          "value": "\"transfer_settings\".\"revision\" >= 0"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.transfer_types": {
-      "name": "transfer_types",
-      "schema": "",
-      "columns": {
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "effective_date": {
-          "name": "effective_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
-        },
-        "display_order": {
-          "name": "display_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "form_id": {
-          "name": "form_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "transfer_types_tenant_id_tenants_id_fk": {
-          "name": "transfer_types_tenant_id_tenants_id_fk",
-          "tableFrom": "transfer_types",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "transfer_types_tenant_id_code_pk": {
-          "name": "transfer_types_tenant_id_code_pk",
-          "columns": [
-            "tenant_id",
-            "code"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "transfer_types_code_nonempty": {
-          "name": "transfer_types_code_nonempty",
-          "value": "btrim(\"transfer_types\".\"code\") <> ''"
-        },
-        "transfer_types_date_finite": {
-          "name": "transfer_types_date_finite",
-          "value": "isfinite(\"transfer_types\".\"effective_date\")"
         }
       },
       "isRLSEnabled": false

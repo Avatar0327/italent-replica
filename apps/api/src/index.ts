@@ -35,3 +35,15 @@ export {
   type EmploymentActivationChecks,
   registerEmploymentActivationChecks,
 } from './modules/employment/activation-checks.js';
+export { createPlatformRouter } from './modules/platform/routes.js';
+export { provisionTenant, type ProvisionInput, type ProvisionResult } from './modules/platform/provisioning.js';
+export { changeTenantLifecycle, issueLicense } from './modules/platform/operations.js';
+export {
+  type OpenInput,
+  type OpenResult,
+  openRestoredTenant,
+  type ReconciliationReport,
+  type RestoreInput,
+  type RestoreReport,
+  restoreTenant,
+} from './modules/platform/restore.js';

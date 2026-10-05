@@ -173,7 +173,8 @@ async function assertTenantMember(tx: Tx, tenantId: string, userId: string) {
  * DEC-123：记下替代人（再次交接即改写），成员停用时据此自动转派剩余异常待办。
  * R4-5：先“不存在才插入”；已存在（含并发的另一方刚插入并提交）时锁住该行读出真实旧值再改写，审计旧值即被覆盖的值。
  */
-async function designateSuccessor(tx: Tx, ctx: ApprovalContext, input: HandoverInput) {
+/** 指定替代人（DEC-123）；交接与按租户恢复的对账（以现网指定为准）共用。 */
+export async function designateSuccessor(tx: Tx, ctx: ApprovalContext, input: HandoverInput) {
   const now = ctx.now.toISOString();
   const inserted = rowsOf(
     await tx.execute(sql`INSERT INTO approval_exception_admin_successors
@@ -289,12 +290,28 @@ async function pendingExceptionTasks(tx: Tx, run: Run, userId: string): Promise<
  * 逐条改派。F-003：接替的任务沿用原任务的节点激活，会签节点里这一票随之转给接手人；接手人已在本节点占着一席时，
  * 这一席记为“由同一人接手、不重复计票”（一人一票，P2-1），改派完再按一人一票重新结算该节点。
  */
-async function reassignAll(tx: Tx, run: Run, plan: readonly Step[], from: string, event: string, action: string) {
+async function reassignAll(
+  tx: Tx,
+  run: Run,
+  plan: readonly Step[],
+  from: string,
+  event: string,
+  action: string,
+  settle = true,
+) {
   const { ctx, instance } = run;
   const merged: TaskRow[] = [];
   for (const step of plan) {
     await closeTask(tx, ctx, step.task.id, 'transferred', '异常管理员交接');
     if (mergesSeat(run, await loadTasks(tx, ctx.tenantId, instance.id), step.task, step.userId)) {
+      // 不结算模式（按租户恢复的对账）：合席会重新结算并推进流转，恢复期间不得发生，整单拒绝由调用方处理
+      if (!settle) {
+        throw approvalError(
+          'CONFLICT',
+          'APPROVAL_TAKEOVER_NEEDS_SETTLEMENT',
+          '接管会合并会签席位并重新结算，须人工处理',
+        );
+      }
       await mergeSeat(tx, run, step.task, step.userId, 'handover');
       merged.push(step.task);
       continue;
@@ -327,7 +344,12 @@ async function reassignAll(tx: Tx, run: Run, plan: readonly Step[], from: string
  * 数据范围覆盖该实例、不是发起人或异动本人）转给替代人；其余以及没有指定替代人的，转给租户管理员（DEC-098 的接管
  * 口径；租户管理员恰为本人时按 DEC-091 回避给其直线经理）。无人可接手即拒绝本次停用，保证不停顿。
  */
-export async function takeOverOnDeactivation(tx: Tx, deps: TenantRouteDeps, revocation: MembershipRevocation) {
+export async function takeOverOnDeactivation(
+  tx: Tx,
+  deps: TenantRouteDeps,
+  revocation: MembershipRevocation,
+  options: { readonly settle?: boolean } = {},
+) {
   const { tenantId, userId, timezone, actorUserId, commandId } = revocation;
   // 先关派单闸（排他，可以等）：此后的派单拿不到闸、不会再派给他；已拿到闸的派单提交后，下面的扫描能看到。
   await closeAssigneeGate(tx, tenantId, userId);
@@ -349,7 +371,9 @@ export async function takeOverOnDeactivation(tx: Tx, deps: TenantRouteDeps, revo
   let after: LockKey | null = null;
   for (;;) {
     const page = await pendingInLockOrder(tx, tenantId, userId, after);
-    for (const { id } of page) await takeOverInstance(tx, ctx, id, userId, successor, successorScope);
+    for (const { id } of page) {
+      await takeOverInstance(tx, ctx, id, userId, successor, successorScope, options.settle ?? true);
+    }
     if (page.length < BATCH) return;
     after = page.at(-1)!;
   }
@@ -407,6 +431,7 @@ async function takeOverInstance(
   leaving: string,
   successor: string | null,
   successorScope: SQL | null,
+  settle: boolean,
 ) {
   const run = await openRun(tx, ctx, instanceId);
   const pending = await pendingExceptionTasks(tx, run, leaving);
@@ -415,7 +440,8 @@ async function takeOverInstance(
   for (const task of pending) {
     plan.push({ task, ...(await takeoverTarget(tx, run, task, leaving, successor, successorScope)) });
   }
-  await reassignAll(tx, run, plan, leaving, 'exception_admin_takeover', 'approval.instance.exception_admin_takeover');
+  const action = 'approval.instance.exception_admin_takeover';
+  await reassignAll(tx, run, plan, leaving, 'exception_admin_takeover', action, settle);
 }
 
 async function takeoverTarget(

@@ -1,5 +1,6 @@
 /**
- * 平台路径上的操作（L1 平台方，REQ-PLT-001 R1；R1-T17 将在此基础上补开通预置、许可等）。
+ * 平台路径上的操作（L1 平台方，REQ-PLT-001 R1）。开通预置、许可发放、备份恢复等组合命令在 API 层
+ * modules/platform（R1-T17），经 insertTenant / grantMembershipIn 在同一平台命令事务内复用这里的写法。
  * 读：经 withPlatform。写：一律经 runPlatformCommand——带操作人与命令 ID（幂等）、更新带 expectedRevision
  * （创建除外；成员关系“尚不存在”记为 revision 0）、同一事务内写审计。
  */
@@ -17,6 +18,8 @@ import {
 import {
   type MembershipStatus,
   permissionOutbox,
+  type PlatformOperator,
+  platformOperators,
   type SystemSetting,
   systemSettings,
   type Tenant,
@@ -51,16 +54,24 @@ const userSnapshot = (u: User) => ({
   revision: u.revision,
 });
 
-/** 开通租户；审计写入新租户自己的 audit_events。 */
+/** 开通租户；审计写入新租户自己的 audit_events（及平台审计）。完整开通（预置下发）见 API 层 provisionTenant。 */
 export async function createTenant(db: Db, input: NewTenant, meta: PlatformCommandMeta): Promise<Tenant> {
+  const values = tenantValues(input);
+  return runPlatformCommand(db, meta, 'tenant.create', values, (ctx) => insertTenant(ctx, values));
+}
+
+/** 时区缺省 Asia/Shanghai，非 IANA 时区抛 RangeError（DEC-056）。 */
+export function tenantValues(input: NewTenant): { code: string; name: string; timezone: string } {
   const timezone = input.timezone ?? DEFAULT_TENANT_TIMEZONE;
   assertValidTimeZone(timezone);
-  const values = { code: input.code, name: input.name, timezone };
-  return runPlatformCommand(db, meta, 'tenant.create', values, async (ctx) => {
-    const [row] = await ctx.tx.insert(tenants).values(values).returning();
-    await ctx.auditTenant(row!.id, audit('tenant.create', 'tenant', row!.id, null, tenantSnapshot(row!)));
-    return row!;
-  });
+  return { code: input.code, name: input.name, timezone };
+}
+
+/** 在已有的平台命令内建租户行并写审计（开通命令把它与预置下发放在同一事务）。编码重复 → revision 冲突（409）。 */
+export async function insertTenant(ctx: PlatformCommandContext, input: NewTenant): Promise<Tenant> {
+  const [row] = await insertOnce(() => ctx.tx.insert(tenants).values(tenantValues(input)).returning(), 'tenant');
+  await ctx.auditTenant(row!.id, audit('tenant.create', 'tenant', row!.id, null, tenantSnapshot(row!)));
+  return row!;
 }
 
 export async function getTenant(db: Db, tenantId: string): Promise<Tenant | undefined> {
@@ -190,28 +201,58 @@ async function changeMembership(
   status: MembershipStatus,
 ): Promise<TenantMembership> {
   const op = status === 'active' ? 'tenant_membership.grant' : 'tenant_membership.revoke';
-  return runPlatformCommand(db, meta, op, change, async (ctx) => {
-    const timezone = status === 'revoked' ? await tenantTimezone(ctx.tx, change.tenantId) : null;
-    // 授予 / 重新激活与全局停用串行：先以 FOR SHARE 锁住 users 行（与停用的 NO KEY UPDATE 互斥，R1-T07 R5-2）。
-    if (status === 'active')
-      await ctx.tx.select({ id: users.id }).from(users).where(eq(users.id, change.userId)).for('share');
-    return ctx.inTenant(change.tenantId, async () => {
-      // 撤销先经挂接点接管（不持成员行锁），最后才锁成员行改状态：持成员行锁期间不再等任何业务锁（R1-T07 R5-1）。
-      // 最后这一步也不能反过来等“已引用该成员、正在等业务锁”的事务（F-008 / R6-2，如首次交接插入替代人记录时
-      // 来源成员外键已取得其成员行的 KEY SHARE）：成员行锁用 NO KEY UPDATE，见 findMembership。
-      const current = await findMembership(ctx, change);
-      assertMembershipRevision(current, change, status);
-      if (current?.status === 'active' && timezone !== null && membershipRevokeHook) {
-        const { tenantId, userId } = change;
-        await membershipRevokeHook(ctx.tx, { tenantId, userId, reason: 'membership_revoked', timezone, ...meta });
-      }
-      const before = await findMembership(ctx, change, true);
-      assertMembershipRevision(before, change, status);
-      const after = before ? await updateMembership(ctx, before, status) : await insertMembership(ctx, change);
-      const entry = audit(op, 'tenant_membership', after.id, snap(before), snap(after));
-      await tenantEvent(ctx, meta, change.tenantId, entry, after.revision);
-      return after;
-    });
+  return runPlatformCommand(db, meta, op, change, (ctx) => applyMembershipChange(ctx, change, meta, status));
+}
+
+/** 新建成员关系时登记的用户类型（DEC-128：没有人员档案的账号登记为外部用户并带业务身份）。 */
+export interface MembershipRegistration {
+  readonly userType: 'external';
+  readonly businessIdentity: string;
+}
+
+/**
+ * 在已有的平台命令内授予成员关系（开通命令为首位租户管理员、异常管理员授予成员关系）。
+ * registration 只在新建成员关系时写入；已有成员关系（重新激活）保持原登记。
+ */
+export function grantMembershipIn(
+  ctx: PlatformCommandContext,
+  change: MembershipChange,
+  meta: PlatformCommandMeta,
+  registration?: MembershipRegistration,
+): Promise<TenantMembership> {
+  return applyMembershipChange(ctx, change, meta, 'active', registration);
+}
+
+async function applyMembershipChange(
+  ctx: PlatformCommandContext,
+  change: MembershipChange,
+  meta: PlatformCommandMeta,
+  status: MembershipStatus,
+  registration?: MembershipRegistration,
+): Promise<TenantMembership> {
+  const op = status === 'active' ? 'tenant_membership.grant' : 'tenant_membership.revoke';
+  const timezone = status === 'revoked' ? await tenantTimezone(ctx.tx, change.tenantId) : null;
+  // 授予 / 重新激活与全局停用串行：先以 FOR SHARE 锁住 users 行（与停用的 NO KEY UPDATE 互斥，R1-T07 R5-2）。
+  if (status === 'active')
+    await ctx.tx.select({ id: users.id }).from(users).where(eq(users.id, change.userId)).for('share');
+  return ctx.inTenant(change.tenantId, async () => {
+    // 撤销先经挂接点接管（不持成员行锁），最后才锁成员行改状态：持成员行锁期间不再等任何业务锁（R1-T07 R5-1）。
+    // 最后这一步也不能反过来等“已引用该成员、正在等业务锁”的事务（F-008 / R6-2，如首次交接插入替代人记录时
+    // 来源成员外键已取得其成员行的 KEY SHARE）：成员行锁用 NO KEY UPDATE，见 findMembership。
+    const current = await findMembership(ctx, change);
+    assertMembershipRevision(current, change, status);
+    if (current?.status === 'active' && timezone !== null && membershipRevokeHook) {
+      const { tenantId, userId } = change;
+      await membershipRevokeHook(ctx.tx, { tenantId, userId, reason: 'membership_revoked', timezone, ...meta });
+    }
+    const before = await findMembership(ctx, change, true);
+    assertMembershipRevision(before, change, status);
+    const after = before
+      ? await updateMembership(ctx, before, status)
+      : await insertMembership(ctx, change, registration);
+    const entry = audit(op, 'tenant_membership', after.id, snap(before), snap(after));
+    await tenantEvent(ctx, meta, change.tenantId, entry, after.revision);
+    return after;
   });
 }
 
@@ -282,7 +323,15 @@ async function tenantTimezone(tx: Tx, tenantId: string): Promise<string> {
 }
 
 const snap = (m: TenantMembership | undefined) =>
-  m ? { userId: m.userId, status: m.status, revision: m.revision } : null;
+  m
+    ? {
+        userId: m.userId,
+        status: m.status,
+        userType: m.userType,
+        businessIdentity: m.businessIdentity,
+        revision: m.revision,
+      }
+    : null;
 
 /**
  * @param lock 锁住成员行以改写。授予 / 撤销只改状态、revision 等非键列（键是编号与“租户 + 用户”），UPDATE 本身只需
@@ -309,9 +358,14 @@ function assertMembershipRevision(
   if (!row && status === 'revoked') throw new RevisionConflictError('tenant_membership', 0);
 }
 
-async function insertMembership(ctx: PlatformCommandContext, change: MembershipChange) {
+async function insertMembership(
+  ctx: PlatformCommandContext,
+  change: MembershipChange,
+  registration?: MembershipRegistration,
+) {
+  const values = { tenantId: change.tenantId, userId: change.userId, ...registration };
   const [row] = await insertOnce(
-    () => ctx.tx.insert(tenantMemberships).values({ tenantId: change.tenantId, userId: change.userId }).returning(),
+    () => ctx.tx.insert(tenantMemberships).values(values).returning(),
     'tenant_membership',
   );
   return row!;
@@ -373,6 +427,75 @@ export async function upsertSystemSetting(
     await ctx.auditPlatform(audit('system_setting.upsert', 'system_setting', row.key, snapshot(before), snapshot(row)));
     return row;
   });
+}
+
+export interface PlatformOperatorChange {
+  readonly userId: string;
+  /** 当前 revision；从未登记过时为 0。 */
+  readonly expectedRevision: number;
+}
+
+const operatorSnapshot = (o: PlatformOperator | undefined) => (o ? { status: o.status, revision: o.revision } : null);
+
+/**
+ * 登记（revision 0 时新建）或重新启用平台运营身份（REQ-PLT-001 R1：租户开通、停用、许可发放、备份恢复由平台方操作）。
+ * 首位平台运营由部署时的运维脚本以“系统”（actorUserId = null）登记，见 docs/06_部署/01_部署运行手册.md。
+ */
+export function grantPlatformOperator(db: Db, change: PlatformOperatorChange, meta: PlatformCommandMeta) {
+  return changePlatformOperator(db, change, meta, 'active');
+}
+
+/** 撤销只改状态、保留行；平台接口每次请求重新读取，撤销立即生效。 */
+export function revokePlatformOperator(db: Db, change: PlatformOperatorChange, meta: PlatformCommandMeta) {
+  return changePlatformOperator(db, change, meta, 'revoked');
+}
+
+async function changePlatformOperator(
+  db: Db,
+  change: PlatformOperatorChange,
+  meta: PlatformCommandMeta,
+  status: PlatformOperator['status'],
+): Promise<PlatformOperator> {
+  const op = status === 'active' ? 'platform_operator.grant' : 'platform_operator.revoke';
+  return runPlatformCommand(db, meta, op, change, async (ctx) => {
+    const [before] = await ctx.tx
+      .select()
+      .from(platformOperators)
+      .where(eq(platformOperators.userId, change.userId))
+      .for('update');
+    if ((before?.revision ?? 0) !== change.expectedRevision || (!before && status === 'revoked')) {
+      throw new RevisionConflictError('platform_operator', change.expectedRevision);
+    }
+    const [row] = before
+      ? await ctx.tx
+          .update(platformOperators)
+          .set({ status, revision: before.revision + 1, updatedAt: sql`now()` })
+          .where(and(eq(platformOperators.userId, change.userId), eq(platformOperators.revision, before.revision)))
+          .returning()
+      : await insertOnce(
+          () => ctx.tx.insert(platformOperators).values({ userId: change.userId }).returning(),
+          'platform_operator',
+        );
+    if (!row) throw new RevisionConflictError('platform_operator', change.expectedRevision);
+    await ctx.auditPlatform(
+      audit(op, 'platform_operator', row.userId, operatorSnapshot(before), operatorSnapshot(row)),
+    );
+    return row;
+  });
+}
+
+/** 平台接口的准入判断：全局账号有效且平台运营身份有效（每次请求调用，不缓存）。 */
+export async function isActivePlatformOperator(db: Db, userId: string): Promise<boolean> {
+  const [row] = await withPlatform(db, (tx) =>
+    tx
+      .select({ userId: platformOperators.userId })
+      .from(platformOperators)
+      .innerJoin(users, eq(users.id, platformOperators.userId))
+      .where(
+        and(eq(platformOperators.userId, userId), eq(platformOperators.status, 'active'), eq(users.status, 'active')),
+      ),
+  );
+  return row !== undefined;
 }
 
 function audit(action: string, objectType: string, objectId: string, before: unknown, after: unknown) {

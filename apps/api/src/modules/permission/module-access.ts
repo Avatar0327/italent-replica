@@ -34,6 +34,7 @@ export async function resolveModuleScope(
   _asOf?: string,
   objectCode?: string,
   pageCode?: string,
+  viewCode?: string,
 ): Promise<ModuleScope> {
   const provider = providers.get(deps.authorize);
   if (provider)
@@ -45,6 +46,8 @@ export async function resolveModuleScope(
       ...(objectCode ? { objectCode } : {}),
       // This API owns both the page and its data source; neither identifier comes from query parameters.
       ...(pageCode ? { pageCode, dataSourceCode: pageCode } : {}),
+      // Extra identity see-all target only (establishment schemes, DEC-121); never selects page/datasource policies.
+      ...(viewCode ? { viewCode } : {}),
     });
   // Explicit trusted Authorizer injection is also an authorization boundary. Unset/false is EMPTY.
   const all = await deps.authorize({ ...ctx, action: 'data.scope.all', resource: objectCode ?? ORG_EMPLOYEE_APP });

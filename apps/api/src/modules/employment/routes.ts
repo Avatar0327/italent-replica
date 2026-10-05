@@ -90,7 +90,7 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     );
     const profile = { code: input.code, name: input.name };
     await requireEmploymentWrite(ctx, 'create', profile, 'Employee.Create', EMPLOYEE_OBJECT);
-    // TODO(需取证 Q-M0-28)：新员工尚无任职鉴权字段，仅显式看全部范围可创建。
+    // DEC-121（保持 DEC-081）：新员工尚无任职鉴权字段，仅显式看全部范围可创建；开通预置只覆盖职务、编制方案。
     requireEmploymentScope(ctx);
     return runWrite(c, deps, ctx, input, async (tx, context) => {
       const employee = await createEmployee(tx, context, profile);
