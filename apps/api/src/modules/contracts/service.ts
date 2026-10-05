@@ -20,9 +20,33 @@ import { commandSchema, parse, type ContractCommand, type ContractFields } from 
 export type Contract = typeof contractRecords.$inferSelect;
 export type ContractRequest = typeof contractRequests.$inferSelect;
 function assertOperationState(operation: string, before: Contract) {
-  const statuses = operation === 'renew' ? ['valid', 'terminated'] : ['valid'];
+  const statuses = ['renew', 'edit'].includes(operation) ? ['valid', 'terminated'] : ['valid'];
   if (before.approvalStatus !== 'effective' || !statuses.includes(before.status))
     throw new AppError('CONFLICT', '当前合同状态不允许该操作');
+}
+/** DEC-167：编辑是更正版本，不是续签；终止原因在版本间保留，不能用改日期抹掉护栏。 */
+function correctedState(
+  before: Contract,
+  data: { endDate: string | null; actualTerminationDate: string | null },
+  today: string,
+) {
+  const preserved = {
+    status: before.status,
+    actualTerminationDate: before.actualTerminationDate,
+    terminationReason: before.terminationReason,
+  };
+  if (before.status !== 'terminated') return { ...preserved, actualTerminationDate: data.actualTerminationDate };
+  const extended = before.endDate !== null && data.endDate !== null && data.endDate > before.endDate;
+  const restore = before.terminationReason === 'expiry' && extended && data.endDate! > today;
+  const changedActual = data.actualTerminationDate !== before.actualTerminationDate;
+  const futureEnd = data.endDate !== before.endDate && (data.endDate === null || data.endDate > today);
+  if ((!restore && (changedActual || futureEnd)) || (restore && changedActual && data.actualTerminationDate !== null)) {
+    throw new AppError('CONFLICT', '该终止原因不允许通过编辑导入改变终止状态', {
+      reason: 'CONTRACT_TERMINATION_PROTECTED',
+      terminationReason: before.terminationReason ?? 'unknown',
+    });
+  }
+  return restore ? { status: 'valid', actualTerminationDate: null, terminationReason: null } : preserved;
 }
 export async function loadContract(tx: Tx, tenantId: string, id: string) {
   const [record] = await tx
@@ -59,7 +83,7 @@ async function bumpPortfolio(tx: Tx, ctx: ContractContext, employeeId: string) {
 export function businessFields(value: Contract | ContractRequest) {
   return { ...Object.fromEntries(CONTRACT_FIELDS.map((key) => [key, value[key]])), customFields: value.customFields };
 }
-export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown) {
+export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown, correction = false) {
   const input = parse(commandSchema, raw);
   await lockEmployee(tx, ctx, input.employeeId);
   const before = input.targetId ? await loadContract(tx, ctx.tenantId, input.targetId) : null;
@@ -68,7 +92,7 @@ export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown) {
   await checkFields(ctx, input.operation === 'create' ? 'create' : 'update', input.fields);
   revision(ctx.expectedRevision, before?.revision ?? 0);
   if ((input.operation === 'create') === !!before) throw new AppError('VALIDATION_FAILED', '合同操作与目标不匹配');
-  if (before) assertOperationState(input.operation, before);
+  if (before) assertOperationState(correction ? 'edit' : input.operation, before);
   if (input.operation === 'renew' && input.fields.typeId && input.fields.typeId !== before!.typeId) {
     throw new AppError('VALIDATION_FAILED', '续签不能修改合同类型');
   }
@@ -238,8 +262,15 @@ export async function createCommand(
   systemInitiated = false,
   correction = false,
 ) {
-  const { input, before, data } = await prepare(tx, ctx, raw);
-  if (correction && before) data.number = input.fields.number ?? before.number;
+  const { input, before, data } = await prepare(tx, ctx, raw, correction);
+  if (correction && before) {
+    data.number = input.fields.number ?? before.number;
+    data.actualTerminationDate = correctedState(
+      before,
+      data,
+      tenantLocalDate(ctx.now, ctx.timezone),
+    ).actualTerminationDate;
+  }
   // 同一源合同只允许一张未完成申请；员工锁将批量、单条、调度的检查串行化。
   if (before) {
     const [pending] = rowsOf(
@@ -287,6 +318,7 @@ export async function applyRequest(tx: Tx, ctx: ContractContext, request: Contra
   const due = latest.operation === 'terminate' ? latest.actualTerminationDate! : latest.effectiveDate;
   if (due > today) throw new AppError('CONFLICT', '合同尚未到生效日期');
   const data = { ...businessFields(latest), signingCount: latest.signingCount };
+  const correction = latest.operation === 'edit' ? correctedState(before!, latest, today) : null;
   let result: Contract;
   if (latest.operation === 'terminate') {
     result = await setContractState(tx, ctx, before!, 'terminated', latest.actualTerminationDate);
@@ -297,9 +329,10 @@ export async function applyRequest(tx: Tx, ctx: ContractContext, request: Contra
         ctx,
         before!,
         latest.operation === 'edit' || latest.effectiveDate <= before!.effectiveDate ? 'void' : 'terminated',
-        latest.effectiveDate <= before!.effectiveDate
+        latest.operation === 'edit' || latest.effectiveDate <= before!.effectiveDate
           ? before!.actualTerminationDate
           : addDays(latest.effectiveDate, -1),
+        latest.operation === 'edit' ? before!.terminationReason : 'change',
       );
     }
     const id = randomUUID();
@@ -308,6 +341,8 @@ export async function applyRequest(tx: Tx, ctx: ContractContext, request: Contra
       ...data,
       id,
       status: 'valid',
+      terminationReason: null,
+      ...correction,
       approvalStatus: 'effective',
       revision: 1,
       previousContractId: before?.id ?? null,
@@ -374,10 +409,15 @@ export async function setContractState(
   before: Contract,
   status: string,
   actualTerminationDate: string | null,
+  terminationReason = status === 'terminated'
+    ? before.endDate && actualTerminationDate === before.endDate
+      ? 'expiry'
+      : 'early'
+    : before.terminationReason,
 ) {
   const [after] = await tx
     .update(contractRecords)
-    .set({ status, actualTerminationDate, revision: before.revision + 1 })
+    .set({ status, actualTerminationDate, terminationReason, revision: before.revision + 1 })
     .where(
       and(
         eq(contractRecords.tenantId, ctx.tenantId),

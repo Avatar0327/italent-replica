@@ -26,6 +26,7 @@ export interface ImportError {
   row: number;
   code: string;
   message: string;
+  details?: unknown;
 }
 
 async function initializePeople(tx: Tx, ctx: ContractContext, input: Input, ids: string[]) {
@@ -118,7 +119,7 @@ async function applyRows(tx: Tx, ctx: ContractContext, input: Input, errors: Imp
         errors.push({ row: i + 1, code: 'CONFLICT', message: '合同唯一键重复' });
       } else {
         if (!(error instanceof AppError)) throw error;
-        errors.push({ row: i + 1, code: error.code, message: error.message });
+        errors.push({ row: i + 1, code: error.code, message: error.message, details: error.details });
       }
     }
   }
@@ -143,11 +144,15 @@ export async function importContracts(tx: Tx, ctx: ContractContext, raw: unknown
   const input = parse(importSchema, raw);
   // 整批先演练并回滚，所有行通过后再写；外层命令事务保证失败时整批回滚。
   const preview = await previewImport(tx, ctx, input, false);
-  if (!preview.valid) throw new AppError('VALIDATION_FAILED', '导入校验失败', preview);
+  if (!preview.valid) throw importFailure('导入校验失败', preview);
   const errors: ImportError[] = [];
   const items = await applyRows(tx, ctx, input, errors);
-  if (errors.length) throw new AppError('VALIDATION_FAILED', '导入失败', { errors });
+  if (errors.length) throw importFailure('导入失败', { errors });
   return { items, count: items.length };
+}
+function importFailure(message: string, result: { errors: ImportError[] }) {
+  const conflict = result.errors.some((e) => ['CONFLICT', 'REVISION_CONFLICT'].includes(e.code));
+  return new AppError(conflict ? 'CONFLICT' : 'VALIDATION_FAILED', message, result);
 }
 export function errorsCsv(errors: readonly ImportError[]) {
   return (

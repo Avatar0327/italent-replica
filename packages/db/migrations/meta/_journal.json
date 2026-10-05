@@ -316,6 +316,13 @@
       "when": 1791190709182,
       "tag": "0044_org_established_on_correction",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791198177513,
+      "tag": "0045_contract_import_guard",
+      "breakpoints": true
     }
   ]
 }

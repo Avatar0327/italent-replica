@@ -108,7 +108,8 @@ describe('AC-CT-11 / DEC-167 编辑导入终止原因护栏', () => {
         expect(request).toMatchObject({ operation: 'edit' });
         const events = rowsOf(
           await tx.execute(sql`SELECT a.action, o.event_type FROM audit_events a
-        JOIN contract_outbox o ON o.tenant_id=a.tenant_id AND o.command_id=a.command_id AND o.object_id::text=a.object_id
+        JOIN contract_outbox o ON o.tenant_id=a.tenant_id AND o.command_id=a.command_id
+          AND o.object_id::text=a.object_id
         WHERE a.tenant_id=${w.session.tenant.id} AND a.object_id=${result.id}`),
         );
         expect(events).toContainEqual({ action: 'contract.create', event_type: 'contract.create' });

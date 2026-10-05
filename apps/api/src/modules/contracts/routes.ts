@@ -354,9 +354,7 @@ function registerFailures(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       tx.execute(sql`SELECT a.* FROM contract_job_attempts a
       WHERE a.tenant_id=${ctx.tenantId} AND a.state IN ('failed','unknown') AND ${predicate}
-      AND NOT EXISTS (SELECT 1 FROM contract_job_attempts n WHERE n.tenant_id=a.tenant_id AND n.object_id=a.object_id
-        AND n.kind=a.kind
-        AND n.state='succeeded') ORDER BY a.created_at DESC LIMIT ${page.limit} OFFSET ${page.offset}`),
+      ORDER BY a.created_at DESC LIMIT ${page.limit} OFFSET ${page.offset}`),
     );
     return c.json({ items: rowsOf(items) });
   });
