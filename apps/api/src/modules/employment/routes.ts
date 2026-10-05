@@ -52,6 +52,7 @@ import {
 import { retryActivation } from './activation-service.js';
 import { listActivationTodos } from './activation-store.js';
 import { transitionEmployment } from './transitions.js';
+import { disclosePendingApplications, PendingApplicationError } from './deletion-guards.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import type { EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
@@ -289,7 +290,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`,
         );
         await authorizeBusinessWrite(deps, ctx, id);
-        return runWrite(c, deps, ctx, { id, action }, async (tx, context) => {
+        const write = runWrite(c, deps, ctx, { id, action }, async (tx, context) => {
           const checked = await transferBusinessContext(tx, { ...context, transferTarget: undefined }, id, true);
           const business = await transitionEmployment(tx, checked, { id, action });
           // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 撤销 / 删除同步结束在途实例，均与状态迁移同事务。
@@ -298,8 +299,20 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           else await employmentApprovalHooks.deleted(tx, context, id);
           return { status: 200, body: business };
         });
+        return discloseDeletionBlock(deps, ctx, write);
       },
     );
+  }
+}
+
+/** DEC-126 拒绝详情按操作人当前范围与字段权限披露（PR #73 第二轮 P2-1）；不经此处的拒绝默认只给件数。 */
+async function discloseDeletionBlock<T>(deps: TenantRouteDeps, ctx: EmploymentContext, write: Promise<T>) {
+  try {
+    return await write;
+  } catch (error) {
+    if (!(error instanceof PendingApplicationError)) throw error;
+    const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
+    throw await withTenant(deps.db, ctx.tenantId, (tx) => disclosePendingApplications(tx, ctx, error, viewable));
   }
 }
 

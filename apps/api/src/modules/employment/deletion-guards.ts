@@ -9,7 +9,13 @@
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { employmentDepartmentDisable } from '../org/employment-validity.js';
+import { assertEstablishmentCapacity } from './activation-checks.js';
+import { auditEmployment, requireScopedEmploymentObject } from './context.js';
+import { loadEmploymentRecord } from './read-model.js';
 import { rowsOf } from './record-store.js';
+import { validateEmploymentReferences } from './references.js';
+import type { ReportingWindow } from './reporting-cycle.js';
 import type { EmploymentContext, EmploymentRecord } from './types.js';
 
 /** 一项仍在的联动结果；label 原样拼进提示，其余字段作为机读详情返回。 */
@@ -36,9 +42,27 @@ export function registerDeletionLinkageProbe(name: string, probe: DeletionLinkag
 
 interface PendingApplication {
   readonly id: string;
+  readonly employeeId: string;
+  readonly departmentId: string | null;
   readonly kind: string;
   readonly effectiveDate: string;
   readonly status: string;
+}
+
+const PENDING_MESSAGE = '该员工有在途申请，请先撤销或驳回后再删除';
+
+/**
+ * DEC-126 的拒绝。默认详情只给件数（PR #73 第二轮 P2-1）：申请可能在操作人范围外、字段也未必可见；
+ * HTTP 入口用 disclosePendingApplications 按当前范围与字段权限换成可披露的明细。
+ */
+export class PendingApplicationError extends AppError {
+  constructor(readonly pending: readonly PendingApplication[]) {
+    super('CONFLICT', PENDING_MESSAGE, {
+      reason: 'EMPLOYMENT_PENDING_APPLICATION_EXISTS',
+      applications: [],
+      hiddenCount: pending.length,
+    });
+  }
 }
 
 /** DEC-126：生效日不早于被删记录的申请，只要审批中或已批未生效就拦；草稿、驳回待重提的提交时会重新取原值。 */
@@ -49,9 +73,10 @@ export async function assertNoPendingApplication(
 ): Promise<void> {
   const pending = rowsOf<PendingApplication>(
     await tx.execute(sql`
-      SELECT b.id, p.kind, p.effective_date::text AS "effectiveDate", s.state AS status
+      SELECT b.id, b.employee_id AS "employeeId", p.department_id AS "departmentId", p.kind,
+        p.effective_date::text AS "effectiveDate", s.state AS status
       FROM employment_business_objects b
-      JOIN LATERAL (SELECT mode, kind, effective_date FROM employment_payload_versions
+      JOIN LATERAL (SELECT mode, kind, effective_date, department_id FROM employment_payload_versions
         WHERE tenant_id=b.tenant_id AND employee_id=b.employee_id AND business_id=b.id
         ORDER BY version_no DESC LIMIT 1) p ON true
       JOIN LATERAL (SELECT state FROM employment_state_events
@@ -63,11 +88,108 @@ export async function assertNoPendingApplication(
       ORDER BY p.effective_date, b.id LIMIT ${MAX_LISTED}
     `),
   );
-  if (!pending.length) return;
-  throw new AppError('CONFLICT', '该员工有在途申请，请先撤销或驳回后再删除', {
+  if (pending.length) throw new PendingApplicationError(pending);
+}
+
+/**
+ * 拒绝详情的披露（P2-1）：只列操作人当前范围内看得到的申请（与详情接口同一判定，DEC-193 按记录部门），
+ * 单号 / 类型 / 生效日按字段查看权裁剪（viewable 为空表示不限字段），状态是协议元数据；其余只计数。
+ * TODO(F-015)：可见判定改用 F-015 的统一函数。
+ */
+export async function disclosePendingApplications(
+  tx: Tx,
+  ctx: EmploymentContext,
+  error: PendingApplicationError,
+  viewable: ReadonlySet<string> | undefined,
+): Promise<AppError> {
+  const shown = (field: string) => viewable === undefined || viewable.has(field);
+  const applications: Record<string, string>[] = [];
+  for (const item of error.pending) {
+    if (!(await scopedAllows(tx, ctx, item.employeeId, item.departmentId, item.id))) continue;
+    applications.push({
+      ...(shown('id') ? { id: item.id } : {}),
+      ...(shown('kind') ? { kind: item.kind } : {}),
+      ...(shown('effectiveDate') ? { effectiveDate: item.effectiveDate } : {}),
+      status: item.status,
+    });
+  }
+  return new AppError('CONFLICT', PENDING_MESSAGE, {
     reason: 'EMPLOYMENT_PENDING_APPLICATION_EXISTS',
-    applications: pending,
+    applications,
+    hiddenCount: error.pending.length - applications.length,
   });
+}
+
+async function scopedAllows(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  departmentId: string | null,
+  businessId: string,
+): Promise<boolean> {
+  try {
+    await requireScopedEmploymentObject(tx, ctx, employeeId, departmentId, businessId);
+    return true;
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') return false;
+    throw error;
+  }
+}
+
+/**
+ * 删除中间记录后，前一条的有效区间从 [前一条生效日, 被删记录生效日) 接到 [.., 后一条生效日)（`07` A11）。
+ * 恢复出来的那一段等于前一条在新日期上重新生效，须过与新增 / 编辑相同的约束（PR #73 第二轮）：
+ * - P1-1：前一条是本次联动改写的对象，按 DEC-178 不可见即整单拒绝（DEC-084 拒绝码；DEC-193 直接操作按记录部门），
+ *   并写一条审计，让命令足迹复核把它纳入事务内授权；
+ * - P2-2 循环汇报、P2-3 部门在恢复区间内停用、P2-4 严格编制（按实际恢复区间，不按整个周期）。
+ * 离职 / 退休记录（删除再入职时恢复的上一周期末条）不占编、不汇报，只做范围检查。
+ */
+export async function assertRestoredPredecessor(
+  tx: Tx,
+  ctx: EmploymentContext,
+  deleted: EmploymentRecord,
+  restored: { readonly previousId: string; readonly window: ReportingWindow },
+): Promise<void> {
+  const { window } = restored;
+  const previous = await loadEmploymentRecord(tx, ctx.tenantId, restored.previousId, window.from);
+  if (!previous) throw new AppError('SERVICE_UNAVAILABLE', '前一条任职记录不可读');
+  // TODO(F-015)：联动改写的可见判定改用 F-015 的统一函数（DEC-178）。
+  if (!(await scopedAllows(tx, ctx, previous.employeeId, previous.fields.departmentId, previous.id)))
+    throw new AppError('LINKED_RECORD_OUT_OF_SCOPE', '联动记录不在当前数据范围，请由覆盖该范围的人员操作');
+  await auditEmployment(
+    tx,
+    ctx,
+    'employment.record.restore',
+    'employment-record',
+    previous.id,
+    { validUntil: window.from },
+    { validUntil: window.to },
+  );
+  if (window.to === window.from || ['leave', 'retirement'].includes(previous.kind)) return;
+  const { fields } = previous;
+  if (fields.departmentId) {
+    const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, fields.departmentId, window.from);
+    if (disabled && (window.to === null || disabled.disabledOn < window.to))
+      throw new AppError(
+        'VALIDATION_FAILED',
+        `任职部门【${disabled.name}】已被停用（停用日期：${disabled.disabledOn}），请检查`,
+        { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: disabled.disabledOn },
+      );
+  }
+  await validateEmploymentReferences(tx, ctx, fields, window.from, { employeeId: previous.employeeId, window });
+  const moved = fields.departmentId !== deleted.fields.departmentId || fields.positionId !== deleted.fields.positionId;
+  // 编制单一判定入口只按“调入”口径计算（DEC-145）；恢复区间等于前一条在恢复日重新调入其部门。
+  if (fields.departmentId && moved)
+    await assertEstablishmentCapacity(tx, ctx, {
+      businessId: previous.id,
+      employeeId: previous.employeeId,
+      kind: 'transfer',
+      departmentId: fields.departmentId,
+      positionId: fields.positionId,
+      effectiveDate: window.from,
+      until: window.to,
+      fields,
+    });
 }
 
 export async function assertNoLinkedChanges(tx: Tx, ctx: EmploymentContext, record: EmploymentRecord): Promise<void> {

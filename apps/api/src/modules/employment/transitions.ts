@@ -24,7 +24,7 @@ import {
   type LockedEmploymentBusiness,
 } from './record-store.js';
 import { removeEmploymentTimeline } from './timeline.js';
-import { assertNoLinkedChanges, assertNoPendingApplication } from './deletion-guards.js';
+import { assertNoLinkedChanges, assertNoPendingApplication, assertRestoredPredecessor } from './deletion-guards.js';
 import type { EmploymentBusiness, EmploymentContext, EmploymentState } from './types.js';
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import {
@@ -215,8 +215,11 @@ async function deleteEmploymentBusiness(
     });
     const opensCycle = NEW_CYCLE_KINDS.includes(business.payload.kind);
     const point = await removeEmploymentTimeline(tx, ctx, business.employeeId, business.id, opensCycle);
-    const kept = point && (await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, point.startDate));
-    if (kept) previous = { id: kept.id, kind: kept.kind, date: kept.effectiveDate };
+    if (point) {
+      await assertRestoredPredecessor(tx, ctx, record, { previousId: point.recordId, window: point.window });
+      const kept = await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, point.window.from);
+      if (kept) previous = { id: kept.id, kind: kept.kind, date: kept.effectiveDate };
+    }
     await auditEmployment(
       tx,
       ctx,

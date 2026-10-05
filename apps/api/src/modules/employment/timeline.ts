@@ -163,7 +163,8 @@ export async function employmentTimelineNeighbors(
 /**
  * 删除任职的时间轴部分（R1-T11，`07` A11）：允许删除非最新的记录，前一条的区间接到后一条的生效日（同日在前的记录
  * 区间仍为空，DEC-108），后续记录与同日顺序号不动、不被重算（W-013）。开新周期的记录（入职 / 再入职）其后还有
- * 同周期记录，或下一条已属另一周期时不能删除，否则周期首条或周期边界会悬空。返回前一条，供调用方同步投影。
+ * 同周期记录，或下一条已属另一周期时不能删除，否则周期首条或周期边界会悬空。返回前一条及其恢复出的有效段，
+ * 供调用方校验约束（deletion-guards.ts）并同步投影。
  */
 export async function removeEmploymentTimeline(
   tx: Tx,
@@ -171,7 +172,7 @@ export async function removeEmploymentTimeline(
   employeeId: string,
   recordId: string,
   opensCycle: boolean,
-): Promise<{ recordId: string; startDate: string } | null> {
+): Promise<{ recordId: string; window: { from: string; to: string | null } } | null> {
   const [point] = rowsOf<TimelinePoint>(
     await tx.execute(sql`
     SELECT record_id AS "recordId", staff_id AS "staffId", start_date::text AS "startDate", sort_order AS "sortOrder"
@@ -190,5 +191,6 @@ export async function removeEmploymentTimeline(
   const until = next?.startDate ?? null;
   await tx.execute(sql`UPDATE employment_timeline SET valid_during=daterange(start_date,${until}::date,'[)')
     WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND record_id=${previous.recordId}::uuid`);
-  return { recordId: previous.recordId, startDate: previous.startDate };
+  // 前一条新增的有效段：从被删记录的生效日到后一条的生效日（后一条同日时为空段）。
+  return { recordId: previous.recordId, window: { from: point.startDate, to: until } };
 }

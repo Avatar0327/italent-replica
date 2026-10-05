@@ -132,6 +132,27 @@ describe('AC-TRF-07 未审批完成的调动可撤销', () => {
 
     const directTransfer = await w.direct('2026-09-20', { departmentId: w.to.id });
     expect(await errorOf(await w.action(directTransfer.id, 'revoke'))).toMatchObject({ status: 409 });
+
+    // 驳回到发起人（DEC-053，审批中心经可信端口推进）：流程未办结，HR 仍可撤销为作废。
+    const rejected = await w.apply(w.subject.employee.id, '2026-10-25', { departmentId: w.to.id });
+    const { runEmploymentTransition } = await import('../../apps/api/src/modules/employment/transitions.js');
+    const result = await runEmploymentTransition(
+      w.db,
+      {
+        tenantId: w.session.tenant.id,
+        userId: w.session.user.id,
+        timezone: w.session.tenant.timezone,
+        now: new Date('2026-10-01T03:00:00Z'),
+        commandId: randomUUID(),
+        expectedRevision: (await w.business(rejected.id)).revision,
+      },
+      { id: rejected.id, action: 'reject' },
+    );
+    expect(result.status).toBe(200);
+    expect((await w.business(rejected.id)).status).toBe('rejected');
+    const revoked = await w.action(rejected.id, 'revoke');
+    expect(revoked.status, await revoked.clone().text()).toBe(200);
+    expect(await revoked.json()).toMatchObject({ status: 'voided', record: null });
   });
 
   it('发起人撤回回到草稿（W-010），草稿可直接删除（W-011），员工当前任职不变', async () => {
@@ -351,6 +372,9 @@ describe('AC-TRF-36 其后有在途申请时拒绝删除（DEC-126）', () => {
       { kind: 'transfer', mode: 'application', effectiveDate: '2026-10-25', fields: { departmentId: w.third.id } },
       employee.revision,
     );
+    // 生效日早于被删记录（9/15 < 9/20）的审批中申请不拦：它不以被删记录为“变更前”。
+    const earlier = await w.apply(w.subject.employee.id, '2026-09-15', { departmentId: w.third.id });
+    expect(earlier.status).toBe('in_review');
     const deleted = await w.remove(transfer.id);
     expect(deleted.status, await deleted.clone().text()).toBe(200);
   });

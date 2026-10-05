@@ -27,11 +27,11 @@ async function scopedWorld(label: string) {
   const b = await w.session.org('B部门', { establishedOn: '2026-01-01' });
   const c = await w.session.org('C部门', { establishedOn: '2026-01-01' });
   const subject = await w.hired('删除范围员工');
-  async function business(body: Record<string, unknown>) {
+  async function addBusiness(body: Record<string, unknown>) {
     const employee = await w.session.getEmployee(subject.employee.id);
     return w.session.business(subject.employee.id, body, employee.revision);
   }
-  const toB = await business({
+  const toB = await addBusiness({
     kind: 'transfer',
     mode: 'direct',
     effectiveDate: '2026-09-10',
@@ -62,13 +62,13 @@ async function scopedWorld(label: string) {
       ifMatch: (await w.business(id)).revision,
     });
   }
-  return { ...w, a: w.from, b, c, subject, toB, business, operator, timeline, remove };
+  return { ...w, a: w.from, b, c, subject, toB, addBusiness, operator, timeline, remove };
 }
 
 describe('P1-1 删除中间记录：前一条不在操作人范围内时整单拒绝', () => {
   it('只管 B 的操作人删除 9/10 的 B 记录被拒（前一条在 A）；时间轴不变。A、B 都管时可删', async () => {
     const w = await scopedWorld('p1');
-    await w.business({
+    await w.addBusiness({
       kind: 'transfer',
       mode: 'direct',
       effectiveDate: '2026-09-25',

@@ -90,19 +90,22 @@ async function projectedMembers(
   end: string,
   orgIds: readonly string[],
 ) {
-  // P2-1：读取目标日到周期末的真实主职区间，在变化点取人数峰值。
+  // P2-1：读取目标日到周期末（给了 target.until 则到它为止，R1-T11 恢复区间）的真实主职区间，在变化点取人数峰值。
+  const periodEnd = new Date(Date.parse(end) + 86400000).toISOString().slice(0, 10);
+  const windowEnd = target.until && target.until < periodEnd ? target.until : periodEnd;
   // SQL 先按目标子树裁剪；时间轴区间天然包含直接调入、调出、入职、离职等已落地业务。
   // 排除本人后由调用方加本次一人；同人多单按区间并集计数，不重复占编。
   const rows = rowsOf<{ employeeId: string; fields: Record<string, unknown>; from: string; until: string }>(
     await tx.execute(sql`
     SELECT r.employee_id AS "employeeId", COALESCE(p.body,to_jsonb(r)) AS fields,
       GREATEST(lower(t.valid_during),${target.effectiveDate}::date)::text AS "from",
-      LEAST(upper(t.valid_during),${end}::date+1)::text AS until
+      LEAST(upper(t.valid_during),${windowEnd}::date)::text AS until
     FROM employment_timeline t JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
     LEFT JOIN LATERAL (SELECT to_jsonb(p) AS body FROM employment_payload_versions p
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1) p ON true
-    WHERE t.tenant_id=${ctx.tenantId} AND t.valid_during && daterange(${target.effectiveDate}::date,${end}::date+1,'[)')
+    WHERE t.tenant_id=${ctx.tenantId}
+      AND t.valid_during && daterange(${target.effectiveDate}::date,${windowEnd}::date,'[)')
       AND (COALESCE(p.body,to_jsonb(r))->>'department_id')::uuid = ANY(${`{${orgIds.join(',')}}`}::uuid[])
       AND r.service_type='primary' AND r.kind NOT IN ('leave','retirement')
       AND r.employee_id<>${target.employeeId}::uuid
@@ -133,7 +136,6 @@ async function projectedMembers(
   if (pending.length > 10000) throw new AppError('SERVICE_UNAVAILABLE', '编制占用申请超过处理上限');
   const { readSettings } = await import('./settings.js');
   const timings = await readSettings(tx, ctx.tenantId, target.effectiveDate);
-  const periodUntil = new Date(Date.parse(end) + 86400000).toISOString().slice(0, 10);
   const members = new Map<string, MemberInterval[]>();
   for (const row of rows) {
     const intervals = members.get(row.employeeId) ?? [];
@@ -149,7 +151,7 @@ async function projectedMembers(
         employeeId: row.employeeId,
         fields: camelFields(row.fields),
         from: target.effectiveDate,
-        until: periodUntil,
+        until: windowEnd,
       });
     }
     members.set(row.employeeId, intervals);
