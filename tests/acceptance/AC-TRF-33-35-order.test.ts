@@ -110,32 +110,38 @@ describe('AC-TRF-33 DEC-108 同日申请与直接业务混合的先后', () => {
     });
   });
 
-  it('先提交离职申请 A、后保存同日直接调动 B：A 插入会形成“离职→同周期调动”，记生效失败，版本链不变', async () => {
-    const { w, employee, hire, direct } = await scene('trf33-leave-then-direct');
-    const draft = await w.session.business(
-      employee.id,
-      { kind: 'leave', mode: 'application', lastWorkDate: '2026-10-04' },
-      (await w.session.getEmployee(employee.id)).revision,
-    );
-    const submitted = await w.session.request('POST', `/businesses/${draft.id}/submit`, {
-      ifMatch: draft.revision,
-      body: {},
-    });
-    expect(submitted.status).toBe(200);
-    const a = await w.approve(draft, '2026-10-02T02:00:00Z');
-    expect(a).toMatchObject({ status: 'approved', effectiveDate: '2026-10-05' });
-    const b = await direct({ place: 'B 地点' });
+  it.each([
+    ['离职', 'leave'],
+    ['退休', 'retirement'],
+  ] as const)(
+    '先提交%s申请 A、后保存同日直接调动 B：A 插入会形成“终止任职→同周期调动”，记生效失败，版本链不变',
+    async (_label, kind) => {
+      const { w, employee, hire, direct } = await scene(`trf33-${kind}-then-direct`);
+      const draft = await w.session.business(
+        employee.id,
+        { kind, mode: 'application', lastWorkDate: '2026-10-04' },
+        (await w.session.getEmployee(employee.id)).revision,
+      );
+      const submitted = await w.session.request('POST', `/businesses/${draft.id}/submit`, {
+        ifMatch: draft.revision,
+        body: {},
+      });
+      expect(submitted.status).toBe(200);
+      const a = await w.approve(draft, '2026-10-02T02:00:00Z');
+      expect(a).toMatchObject({ status: 'approved', effectiveDate: '2026-10-05' });
+      const b = await direct({ place: 'B 地点' });
 
-    expect(await w.runScheduler('2026-10-04T17:15:00Z')).toMatchObject({ activated: [], failed: [a.id] });
-    expect(await w.business(a.id)).toMatchObject({
-      status: 'approved',
-      record: null,
-      activation: { status: 'failed', failureReason: 'RULE_REJECTED' },
-    });
-    const records = await w.session.records(employee.id, '2026-10-05');
-    expect(records.map((record) => record.id)).toEqual([hire.record!.id, b.id]);
-    expect(records.filter((record) => record.isCurrent)).toEqual([expect.objectContaining({ id: b.id })]);
-  });
+      expect(await w.runScheduler('2026-10-04T17:15:00Z')).toMatchObject({ activated: [], failed: [a.id] });
+      expect(await w.business(a.id)).toMatchObject({
+        status: 'approved',
+        record: null,
+        activation: { status: 'failed', failureReason: 'RULE_REJECTED' },
+      });
+      const records = await w.session.records(employee.id, '2026-10-05');
+      expect(records.map((record) => record.id)).toEqual([hire.record!.id, b.id]);
+      expect(records.filter((record) => record.isCurrent)).toEqual([expect.objectContaining({ id: b.id })]);
+    },
+  );
 
   it('暂定口径：同日较早提交、尚未落地的申请 A 不接受之后保存的直接业务 B 的向后更新', async () => {
     const { w, employee, hire, direct } = await scene('trf33-no-forward-to-earlier');
