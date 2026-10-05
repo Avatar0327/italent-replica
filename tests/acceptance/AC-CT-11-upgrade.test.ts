@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant, type Db } from '@italent/db';
+import { sql, withPlatform, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
-import { employmentSession } from './AC-EMP-support.js';
 import { tenantApi, type RequestOptions } from './support/tenant-api.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
 
@@ -61,14 +60,31 @@ it('AC-CT-11 升级压缩历史尝试、保留累计次数与成功终态，旧�
 const now = new Date('2026-10-01T01:00:00Z');
 
 /** F-013 升级夹具固定使用 0046 之前的任职列；不能调用已依赖 0048 新列的当前入职 API。
- * 只构造同样的在职员工、合同类型和法人公司，历史合同/尝试及升级后的断言保持原样。
+ * 租户、成员、组织、员工也直接按旧结构写入：当前的平台 / 组织 / 任职接口会写 R1-T16（迁移 0049）新增的审计列，
+ * 旧结构里还没有这些列。只构造同样的在职员工、合同类型和法人公司，历史合同/尝试及升级后的断言保持原样。
  */
 async function legacyContractWorld(db: Db) {
-  const session = await employmentSession(db, 'f013upgrade');
-  const org = await session.org('合同部门', { establishedOn: '2025-01-01' });
-  const employee = await session.employee();
+  const suffix = randomUUID().slice(0, 8);
+  const session = { tenant: { id: randomUUID() }, user: { id: randomUUID() } };
+  await withPlatform(db, async (tx) => {
+    await tx.execute(sql`INSERT INTO tenants (id,code,name) VALUES (${session.tenant.id},${`f013upgrade-${suffix}`},
+      '租户f013upgrade')`);
+    await tx.execute(sql`INSERT INTO users (id,email,display_name)
+      VALUES (${session.user.id},${`f013upgrade-${suffix}@example.com`},'f013upgrade 管理员')`);
+  });
+  const org = { id: randomUUID() };
+  const employee = { id: randomUUID() };
   const type = { id: randomUUID() };
   const company = { id: randomUUID() };
+  await withTenant(db, session.tenant.id, async (tx) => {
+    const tenantId = session.tenant.id;
+    await tx.execute(sql`INSERT INTO tenant_memberships (tenant_id,user_id) VALUES (${tenantId},${session.user.id})`);
+    await tx.execute(sql`INSERT INTO org_objects (id,tenant_id) VALUES (${org.id},${tenantId})`);
+    await tx.execute(sql`INSERT INTO org_versions (tenant_id,org_id,version_no,start_date,code,name,full_name)
+      VALUES (${tenantId},${org.id},1,'2025-01-01','LEGACY-ORG','合同部门','合同部门')`);
+    await tx.execute(sql`INSERT INTO employment_employees (id,tenant_id,code,name)
+      VALUES (${employee.id},${tenantId},${`EMP_${suffix}`},'合成员工')`);
+  });
   const [staffId, businessId, payloadId] = [randomUUID(), randomUUID(), randomUUID()];
   await withTenant(db, session.tenant.id, async (tx) => {
     const tenantId = session.tenant.id;
