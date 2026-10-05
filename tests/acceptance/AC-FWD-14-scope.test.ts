@@ -29,7 +29,11 @@ describe('AC-FWD-14 DEC-120 整条跳过提醒的范围与字段裁剪', () => {
       return (await response.json()) as { id: string; revision: number; employeeRevision: number };
     }
     const org = async (name: string) =>
-      create('org/organizations', { name, startDate: '2025-01-01', parents: { admin: { parentId: seed.tenant.id } } });
+      create('org/organizations', {
+        name,
+        establishedOn: '2025-01-01',
+        parents: { admin: { parentId: seed.tenant.id } },
+      });
     const job = (kind: string, extra: Record<string, unknown> = {}) =>
       create(`job/${kind}`, {
         name: `合成${kind}-${randomUUID()}`,

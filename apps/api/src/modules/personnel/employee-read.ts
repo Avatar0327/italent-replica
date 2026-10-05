@@ -44,7 +44,8 @@ export function employeeDto(row: Row, ctx: PersonnelContext): Row {
   const attrs = camel(row);
   delete attrs.profile;
   delete attrs.employeeName;
-  // TODO(需取证 Q-M0-36)：长整数排序编码的分段宽度及溢出无规格，暂不伪造编码。
+  // DEC-148：人员组合排序编码（规则项依次比较后的名次，`15` §12、DEC-037 / DEC-089）延期到后续任务 F-010，
+  // 在此之前 orderCode 一律返回 null，不现算、不伪造；各规则项名次（organizationSortNumber 等）已预计算并存储。
   return {
     ...Object.fromEntries(EMPLOYEE_FIELDS.map((f) => [f.code, null])),
     ...dto,

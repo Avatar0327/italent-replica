@@ -73,8 +73,8 @@ describe('AC-SUB 人员读取有界：语句数与行数无关', () => {
       return (await r.json()) as { id: string; revision: number };
     };
     const parent = { admin: { parentId: seed.tenant.id } };
-    const org = await create('org/organizations', { name: '批量部门', startDate: '2020-01-01', parents: parent });
-    const late = await create('org/organizations', { name: '后排部门', startDate: '2020-01-01', parents: parent });
+    const org = await create('org/organizations', { name: '批量部门', establishedOn: '2020-01-01', parents: parent });
+    const late = await create('org/organizations', { name: '后排部门', establishedOn: '2020-01-01', parents: parent });
     const person = await create('employment/employees', { code: 'BULK-0001', name: '合成员工' });
     await create(
       `employment/employees/${person.id}/businesses`,

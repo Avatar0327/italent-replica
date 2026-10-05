@@ -51,7 +51,7 @@ async function fixture() {
   const org = (name: string) =>
     create('org/organizations', {
       name,
-      startDate: '2025-01-01',
+      establishedOn: '2025-01-01',
       parents: { admin: { parentId: world.tenant.id } },
     });
   const inside = await org('调动管理范围内部门');

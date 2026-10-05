@@ -37,7 +37,7 @@ async function world(db: Db) {
   const org = (name: string) =>
     create('org/organizations', {
       name,
-      startDate: '2025-01-01',
+      establishedOn: '2025-01-01',
       parents: { admin: { parentId: w.tenant.id } },
     });
   const inside = await org('生命周期范围内部门');

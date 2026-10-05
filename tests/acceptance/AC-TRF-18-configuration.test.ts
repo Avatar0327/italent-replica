@@ -116,7 +116,7 @@ describe('AC-TRF-18：真实调动表单配置、字典与 R1-T05 继承矩阵',
   it('职级调整不带出职级/职等；跨部门表单不带出部门；其它任职字段继续带出', async () => {
     const { db } = testDb();
     const session = await inheritanceFixture(db, 'trfstandard');
-    const department = await session.org('调动前合成部门', { startDate: '2026-01-01' });
+    const department = await session.org('调动前合成部门', { establishedOn: '2026-01-01' });
     const api = tenantApi(db);
     const job = async (kind: string, fields: Record<string, unknown>) => {
       const response = await api.request('POST', `/api/tenant/job/${kind}`, {

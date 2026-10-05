@@ -25,7 +25,7 @@ it('datasource replaces entity rules and datasource seeAll still takes identity 
     const response = await setup.request('POST', '/api/tenant/org/organizations', {
       ...w.asAdmin,
       ifMatch: 0,
-      body: { name, startDate: '2025-01-01', parents: { admin: { parentId: w.tenant.id } } },
+      body: { name, establishedOn: '2025-01-01', parents: { admin: { parentId: w.tenant.id } } },
     });
     expect(response.status).toBe(201);
     ids.push(((await response.json()) as { id: string }).id);

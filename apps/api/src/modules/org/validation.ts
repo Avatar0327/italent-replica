@@ -20,10 +20,10 @@ export interface OrgParentInput {
 
 export type OrgParentsInput = { readonly admin: OrgParentInput } & Partial<Record<OrgDimension, OrgParentInput>>;
 
+/** 新建组织的输入：DEC-130 不再单独收生效日期，首个版本自设立日期起生效。 */
 export interface OrganizationInput {
   readonly name: string;
   readonly parents: OrgParentsInput;
-  readonly startDate?: string;
   readonly stopDate?: string;
   readonly code?: string;
   readonly reservationId?: string;
@@ -33,6 +33,7 @@ export interface OrganizationInput {
   readonly establishedOn?: string | null;
   readonly personInChargeId?: string | null;
   readonly hrbpId?: string | null;
+  readonly shopOwnerId?: string | null;
   readonly costCenterId?: string | null;
   readonly location?: string | null;
   readonly remarks?: string | null;
@@ -41,10 +42,20 @@ export interface OrganizationInput {
   readonly confirmed?: boolean;
 }
 
-export type OrganizationPatch = Partial<Omit<OrganizationInput, 'reservationId' | 'startDate' | 'parents'>> & {
+/** 某个版本的完整输入（服务端内部使用）：startDate 由设立日期或变更单的生效日期确定。 */
+export interface OrganizationVersionInput extends Omit<OrganizationInput, 'establishedOn'> {
+  readonly startDate: string;
+  readonly establishedOn?: string | null;
+}
+
+export type OrganizationPatch = Partial<Omit<OrganizationInput, 'reservationId' | 'parents'>> & {
   readonly effectiveDate: string;
   readonly parents?: Partial<Record<OrgDimension, OrgParentInput>>;
 };
+
+/** DEC-135：组织上引用员工的三个字段（负责人、HRBP、店长）。 */
+export const ORG_PERSON_FIELDS = ['personInChargeId', 'hrbpId', 'shopOwnerId'] as const;
+export type OrgPersonField = (typeof ORG_PERSON_FIELDS)[number];
 
 export interface NormalizedOrganization {
   readonly name: string;
@@ -57,6 +68,7 @@ export interface NormalizedOrganization {
   readonly establishedOn: string | null;
   readonly personInChargeId: string | null;
   readonly hrbpId: string | null;
+  readonly shopOwnerId: string | null;
   readonly costCenterId: string | null;
   readonly location: string | null;
   readonly remarks: string | null;
@@ -68,24 +80,28 @@ export function invalid(field: string, message: string): AppError {
   return new AppError('VALIDATION_FAILED', message, { fields: { [field]: message } });
 }
 
+/**
+ * DEC-130（`10` §11）：新建时“设立日期”必填，缺省为租户当天（DEC-056），可倒填或填未来；首个版本的生效日期
+ * 就是设立日期，新建不再单独收生效日期。显式传 null 视为未填写必填项。
+ */
+export function normalizeCreation(ctx: OrgWriteContext, input: OrganizationInput): NormalizedOrganization {
+  if (!input || typeof input !== 'object') throw invalid('organization', '组织信息必须是对象');
+  if (Object.hasOwn(input, 'startDate')) throw invalid('startDate', '新建组织不单独设置生效日期，以设立日期为准');
+  if (input.establishedOn === null) throw invalid('establishedOn', '设立日期必填');
+  const establishedOn = date(input.establishedOn ?? tenantLocalDate(ctx.now, ctx.timezone), 'establishedOn');
+  return normalizeOrganization(ctx, { ...input, establishedOn, startDate: establishedOn });
+}
+
 /** 不信任 HTTP 输入；结构化人员引用不能拿平台账号冒充员工主数据。 */
-export function normalizeOrganization(ctx: OrgWriteContext, input: OrganizationInput): NormalizedOrganization {
+export function normalizeOrganization(ctx: OrgWriteContext, input: OrganizationVersionInput): NormalizedOrganization {
   if (!input || typeof input !== 'object') throw invalid('organization', '组织信息必须是对象');
   const name = requiredText(input.name, 'name');
-  // TODO(需取证 Q-M0-10): 确认最小创建的缺省生效日；暂按 DEC-056 使用租户业务日。
-  const startDate = date(input.startDate ?? tenantLocalDate(ctx.now, ctx.timezone), 'startDate');
+  const startDate = date(input.startDate, 'startDate');
   const stopDate = date(input.stopDate ?? '9999-12-31', 'stopDate');
   if (stopDate < startDate) throw invalid('stopDate', '失效日期不得早于生效日期');
   validateCodeFields(input);
-  const personInChargeId = reference(input.personInChargeId, 'personInChargeId');
-  const hrbpId = reference(input.hrbpId, 'hrbpId');
   const costCenterId = reference(input.costCenterId, 'costCenterId');
-  // TODO(需取证 Q-M0-11): 员工主数据落地后验证人员存在性、租户与当前访问权限。
-  if (personInChargeId || hrbpId) {
-    throw new AppError('SERVICE_UNAVAILABLE', '员工主数据验证尚未接入，暂不能保存负责人或 HRBP');
-  }
-  // TODO(需取证 Q-M0-13): 成本中心独立对象接入后验证对象存在性及租户归属。
-  if (costCenterId) throw new AppError('SERVICE_UNAVAILABLE', '成本中心主数据验证尚未接入，暂不能保存引用');
+  if (costCenterId) throw costCenterNotEnabled();
   return {
     name,
     startDate,
@@ -95,14 +111,27 @@ export function normalizeOrganization(ctx: OrgWriteContext, input: OrganizationI
     broadType: requiredText(input.broadType ?? '部门', 'broadType'),
     shortName: optionalText(input.shortName, 'shortName'),
     establishedOn: input.establishedOn == null ? null : date(input.establishedOn, 'establishedOn'),
-    personInChargeId,
-    hrbpId,
+    // 人员引用在这里只校验格式；在职与租户由 org/people.ts 按 DEC-135 在保存时校验本次填写的值。
+    personInChargeId: reference(input.personInChargeId, 'personInChargeId'),
+    hrbpId: reference(input.hrbpId, 'hrbpId'),
+    shopOwnerId: reference(input.shopOwnerId, 'shopOwnerId'),
     costCenterId,
     location: optionalText(input.location, 'location'),
     remarks: optionalText(input.remarks, 'remarks'),
     displayOrder: integer(input.displayOrder, 'displayOrder'),
     isVirtual: flag(input.isVirtual, 'isVirtual', false),
   };
+}
+
+/**
+ * DEC-134（`10` §13）：组织上的标准成本中心引用不纳入 R1，随薪酬模块实现；R1 中一律视为未启用，
+ * 带引用即 400 并给出可机读原因，不再返回 503。本租户的自定义“成本中心”下拉迁移时按普通扩展字段处理。
+ */
+function costCenterNotEnabled(): AppError {
+  return new AppError('VALIDATION_FAILED', '成本中心未启用', {
+    reason: 'COST_CENTER_NOT_ENABLED',
+    fields: { costCenterId: '成本中心未启用' },
+  });
 }
 
 export async function validateHierarchy(
@@ -175,7 +204,7 @@ function normalizeParents(value: OrgParentsInput): NormalizedOrganization['paren
   return result;
 }
 
-function validateCodeFields(input: OrganizationInput): void {
+function validateCodeFields(input: Pick<OrganizationInput, 'code' | 'reservationId' | 'confirmed'>): void {
   if (input.code !== undefined) requiredText(input.code, 'code');
   if (input.reservationId !== undefined && (typeof input.reservationId !== 'string' || !isUuid(input.reservationId))) {
     throw invalid('reservationId', '编码预占 ID 必须是 UUID');

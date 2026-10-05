@@ -92,7 +92,7 @@ describe('PR #64 第二轮 P2 / DEC-164 回归', () => {
   it('P2-1 / AC-CT-04 父组织含下级，整个人只使用最高优先级规则', async () => {
     const w = await contractWorld(testDb().db, 'ctr2org');
     const child = await w.session.org('下级部门', {
-      startDate: '2025-01-01',
+      establishedOn: '2025-01-01',
       parents: { admin: { parentId: w.org.id } },
     });
     const employee = await w.session.getEmployee(w.employee.id);

@@ -59,7 +59,7 @@ export function hrApi(world: PermissionWorld) {
     const response = await api.request('POST', '/api/tenant/org/organizations', {
       ...as,
       ifMatch: 0,
-      body: { name, startDate: '2020-01-01', parents: { admin: { parentId: world.tenant.id } } },
+      body: { name, establishedOn: '2020-01-01', parents: { admin: { parentId: world.tenant.id } } },
     });
     expect(response.status, await response.clone().text()).toBe(201);
     return ((await response.json()) as { id: string }).id;

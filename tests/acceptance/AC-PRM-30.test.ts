@@ -46,12 +46,12 @@ describe('AC-PRM-30 标准 HR 身份预置无组织字段对象的看全部', ()
     const root = { admin: { parentId: result.tenant.id } };
     ids.inside = await create('/api/tenant/org/organizations', {
       name: 'H 的组织',
-      startDate: '2026-01-01',
+      establishedOn: '2026-01-01',
       parents: root,
     });
     ids.outside = await create('/api/tenant/org/organizations', {
       name: '范围外',
-      startDate: '2026-01-01',
+      establishedOn: '2026-01-01',
       parents: root,
     });
     for (const name of ['职务甲', '职务乙']) {

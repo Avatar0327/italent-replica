@@ -185,6 +185,14 @@ function kindRule(name: string, kind: AnyPgColumn) {
   );
 }
 
+/**
+ * “变动类型”（原站与业务类型、异动类型并列的分类，W-416）。目前只有职位变更同步直线经理写入“职位调整”；
+ * 其余业务与存量记录没有原站依据，保持空值，不回填（F-006）。
+ */
+function changeTypeRule(name: string, changeType: AnyPgColumn) {
+  return check(name, sql`${changeType} IN ('position_adjustment')`);
+}
+
 export const employmentPayloadVersions = pgTable(
   'employment_payload_versions',
   {
@@ -198,6 +206,7 @@ export const employmentPayloadVersions = pgTable(
     triggerBusinessId: uuid('trigger_business_id'),
     isRecordSnapshot: boolean('is_record_snapshot').notNull().default(false),
     kind: text('kind').notNull(),
+    changeType: text('change_type'),
     mode: text('mode').notNull(),
     effectiveDate: day('effective_date').notNull(),
     lastWorkDate: day('last_work_date'),
@@ -277,6 +286,7 @@ export const employmentPayloadVersions = pgTable(
     }),
     ...presetRules('employment_payload_versions', t),
     kindRule('employment_payload_versions_kind', t.kind),
+    changeTypeRule('employment_payload_versions_change_type', t.changeType),
     check('employment_payload_versions_version_positive', sql`${t.versionNo} > 0`),
     check('employment_payload_versions_previous_not_self', sql`${t.previousVersionId} <> ${t.id}`),
     check('employment_payload_versions_command_pair', sql`(${t.commandId} IS NULL) = (${t.triggerBusinessId} IS NULL)`),
@@ -344,6 +354,7 @@ export const employmentRecords = pgTable(
     staffId: uuid('staff_id').notNull(),
     entryDate: day('entry_date').notNull(),
     kind: text('kind').notNull(),
+    changeType: text('change_type'),
     startDate: day('start_date').notNull(),
     lastWorkDate: day('last_work_date'),
     serviceType: text('service_type').notNull().default('primary'),
@@ -387,6 +398,7 @@ export const employmentRecords = pgTable(
     }),
     ...presetRules('employment_records', t),
     kindRule('employment_records_kind', t.kind),
+    changeTypeRule('employment_records_change_type', t.changeType),
     check('employment_records_primary_only', sql`${t.serviceType} = 'primary'`),
     check('employment_records_start_valid', sql`isfinite(${t.startDate}) AND ${t.startDate} >= ${t.entryDate}`),
     check('employment_records_source_not_self', sql`${t.inheritanceSourceId} <> ${t.id}`),

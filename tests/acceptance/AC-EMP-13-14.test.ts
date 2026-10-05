@@ -8,8 +8,8 @@ const testDb = useTestDb();
 
 async function sameDayFixture(label: string) {
   const session = await employmentSession(testDb().db, label);
-  const org = await session.org('原部门', { startDate: '2026-01-01' });
-  const nextOrg = await session.org('调入部门', { startDate: '2026-01-01' });
+  const org = await session.org('原部门', { establishedOn: '2026-01-01' });
+  const nextOrg = await session.org('调入部门', { establishedOn: '2026-01-01' });
   const employee = await session.employee('同日多业务合成员工');
   const hire = await session.business(
     employee.id,

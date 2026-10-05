@@ -8,8 +8,8 @@ import { tenantApi } from './support/tenant-api.js';
 export async function forwardFixture(db: Db, label: string) {
   const session = await employmentSession(db, label);
   const employee = await session.employee('向后更新合成员工');
-  const org = await session.org('原部门', { startDate: '2026-01-01' });
-  const nextOrg = await session.org('新部门', { startDate: '2026-01-01' });
+  const org = await session.org('原部门', { establishedOn: '2026-01-01' });
+  const nextOrg = await session.org('新部门', { establishedOn: '2026-01-01' });
   const hired = await session.business(
     employee.id,
     {

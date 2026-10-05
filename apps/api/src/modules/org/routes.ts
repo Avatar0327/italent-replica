@@ -20,17 +20,20 @@ import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { type TenantEnv, tenantOf } from '../../tenant-context.js';
+import { listOrgPersonCandidates } from '../employment/org-people.js';
+import { pageQuery } from '../job/context.js';
 import { releaseCode, reserveCode } from './codes.js';
 import { authorizeOrgImportRows, importOrganizations, type OrgImportRow } from './import-service.js';
-import {
-  displayOrganization,
-  loadOrgSnapshot,
-  orderOrganizations,
-  type OrgRecord,
-  validIsoDate,
-} from './read-model.js';
+import { displayOrganization, loadOrgSnapshot, type OrgRecord, validIsoDate } from './read-model.js';
 import { readOrgSettings, writeOrgSettings } from './settings.js';
-import { createOrganization, updateOrganization, validateOrganization, type OrgWriteContext } from './write-service.js';
+import { ORG_PERSON_FIELDS } from './validation.js';
+import {
+  correctEstablishedOn,
+  createOrganization,
+  updateOrganization,
+  validateOrganization,
+  type OrgWriteContext,
+} from './write-service.js';
 
 const BASE = '/api/tenant/org';
 const OBJECT = MODULE_OBJECTS.organization.code;
@@ -51,6 +54,7 @@ const fields = {
   establishedOn: date.nullable().optional(),
   personInChargeId: z.uuid().nullable().optional(),
   hrbpId: z.uuid().nullable().optional(),
+  shopOwnerId: z.uuid().nullable().optional(),
   costCenterId: z.uuid().nullable().optional(),
   location: z.string().max(500).nullable().optional(),
   remarks: z.string().max(4000).nullable().optional(),
@@ -60,10 +64,10 @@ const fields = {
   enabled: z.boolean().optional(),
   code: z.string().min(1).max(64).optional(),
 };
+// DEC-130：新建不再单独收生效日期（startDate），首个版本自设立日期 establishedOn 起生效。
 const creation = z.strictObject({
   ...fields,
   parents,
-  startDate: date.optional(),
   reservationId: z.uuid().optional(),
   confirmed: z.boolean().optional(),
 });
@@ -71,6 +75,8 @@ const update = z
   .strictObject({ ...fields, parents: parents.partial().optional() })
   .partial()
   .extend({ effectiveDate: date });
+// DEC-147：「编辑」（更正、不产生新版本）目前只开放设立日期，首版生效日随之变化。
+const correction = z.strictObject({ establishedOn: date });
 const settings = z.strictObject({
   enabledDimensions: z.array(z.enum(ORG_DIMENSIONS)).max(5),
   fullNameStartLevel: z.number().int().min(0).max(9),
@@ -87,8 +93,10 @@ const importRow = z.strictObject({
 
 export function registerOrgRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerQueries(router, deps);
+  registerPersonCandidates(router, deps);
   registerReservations(router, deps);
   registerWrites(router, deps);
+  registerCorrection(router, deps);
   registerOrgImport(router, deps);
 }
 
@@ -118,9 +126,7 @@ function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
             name: c.req.query('name'),
           },
         )
-      )
-        .sort(orderOrganizations)
-        .map((org) => displayOrganization(org, config.fullNameStartLevel));
+      ).map((org) => displayOrganization(org, config.fullNameStartLevel));
     });
     return c.json({
       items: await trimModuleResponse(deps, ctx, OBJECT, items),
@@ -164,6 +170,38 @@ function registerQueries(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   });
 }
 
+/**
+ * DEC-135（`10` §14）：负责人 / HRBP / 店长的人员选择器——全租户生效日在职的内部员工，不按操作人数据范围过滤；
+ * 只返回姓名、工号、部门（DEC-057 最少字段）。只有能填写这三个字段之一的人（组织新增或编辑权限 + 字段编辑权）可用。
+ */
+function registerPersonCandidates(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  router.get(`${BASE}/person-candidates`, async (c) => {
+    const ctx = tenantOf(c);
+    const allowed = await anyPersonFieldEditable(deps, ctx);
+    if (!allowed) throw new AppError('FORBIDDEN', '无权填写组织负责人、HRBP 或店长');
+    const now = deps.clock();
+    const asOf = c.req.query('asOf') ?? tenantLocalDate(now, ctx.timezone);
+    if (!validIsoDate(asOf)) throw new AppError('VALIDATION_FAILED', '查询时点必须为合法日期');
+    const keyword = c.req.query('keyword');
+    if (keyword !== undefined && keyword.length > 100) throw new AppError('VALIDATION_FAILED', '关键字过长');
+    const page = pageQuery(c);
+    const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      listOrgPersonCandidates(tx, { tenantId: ctx.tenantId, asOf, keyword, limit: page.limit, offset: page.offset }),
+    );
+    return c.json({ items, page: page.page, pageSize: page.pageSize });
+  });
+}
+
+async function anyPersonFieldEditable(deps: TenantRouteDeps, ctx: ReturnType<typeof tenantOf>): Promise<boolean> {
+  for (const operation of ['create', 'update'] as const) {
+    for (const field of ORG_PERSON_FIELDS) {
+      const request = { ...ctx, action: `object.${operation}`, resource: OBJECT, fields: [field] };
+      if (await deps.authorize(request)) return true;
+    }
+  }
+  return false;
+}
+
 function queryInteger(c: Context, name: string, fallback: number, minimum: number, maximum: number): number {
   const raw = c.req.query(name);
   if (raw === undefined) return fallback;
@@ -193,6 +231,41 @@ function registerReservations(router: Hono<TenantEnv>, deps: TenantRouteDeps): v
       status: 200,
       body: await releaseCode(tx, writeCtx, id),
     }));
+  });
+}
+
+/** DEC-147：「编辑」（更正、不产生新版本）改设立日期，首版生效日随之变化；权限与范围同「变更」。 */
+function registerCorrection(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  router.patch(`${BASE}/organizations/:id/correction`, async (c) => {
+    const ctx = await context(c, deps, 'update', revision(c));
+    const id = orgId(c);
+    const input = await body(c, correction);
+    await writeFields(deps, ctx, OBJECT, 'update', input);
+    const scope = await requestScope(c, deps, ctx, OBJECT);
+    await withTenant(deps.db, ctx.tenantId, async (tx) =>
+      visible(
+        scope,
+        id,
+        '组织不存在',
+        hasCreatorScope(scope) ? await creatorOf(tx, ctx.tenantId, id, 'org.create', 'organization') : undefined,
+      ),
+    );
+    return write(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, writeCtx) => ({
+        status: 200,
+        body: await organizationResponse(
+          tx,
+          writeCtx,
+          await correctEstablishedOn(tx, writeCtx, id, input.establishedOn),
+        ),
+      }),
+      true,
+      scope,
+    );
   });
 }
 
@@ -247,10 +320,14 @@ function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
       deps,
       ctx,
       input,
-      async (tx, writeCtx) => ({
-        status: 200,
-        body: await organizationResponse(tx, writeCtx, await updateOrganization(tx, writeCtx, id, input)),
-      }),
+      async (tx, writeCtx) => {
+        // DEC-129：级联停用的每个下级都须在操作人当前数据范围内；范围外按不存在处理，不列名称。
+        const authorizeCascade = async (cascadeTx: Tx, ids: readonly string[]) => {
+          for (const descendant of ids) await authorizeOrgResult(cascadeTx, ctx, scope, descendant, false);
+        };
+        const saved = await updateOrganization(tx, writeCtx, id, input, { authorizeCascade });
+        return { status: 200, body: await organizationResponse(tx, writeCtx, saved) };
+      },
       true,
       scope,
     );

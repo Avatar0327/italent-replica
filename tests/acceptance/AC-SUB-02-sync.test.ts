@@ -151,7 +151,7 @@ describe('AC-SUB-02 实际任职生效联动', () => {
   });
   it('任职编辑与删除维护同一履历链接，原版本与删除快照保留', async () => {
     const f = await fixture(['EntrySyncJobHistory']);
-    const org = await f.s.org('变更后部门', { startDate: '2020-01-01' });
+    const org = await f.s.org('变更后部门', { establishedOn: '2020-01-01' });
     const first = (await f.history())[0]!;
     const changed = await f.s.api.request('PATCH', `/api/tenant/employment/records/${f.hire.id}`, {
       ...f.s.as,

@@ -44,7 +44,7 @@ export async function establishmentSession(db: Db, label: string) {
       tenant: organization.tenant.id,
     });
   const create = (name: string, extra: Record<string, unknown> = {}) =>
-    organization.create(name, { startDate: '2026-01-01', ...extra });
+    organization.create(name, { establishedOn: '2026-01-01', ...extra });
 
   async function scheme(extra: Record<string, unknown> = {}): Promise<EstablishmentScheme> {
     const response = await request('POST', '/schemes', {
