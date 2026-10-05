@@ -267,6 +267,21 @@ describe('AC-CT F-016 真实权限接入', () => {
       },
     });
     expect(imported.status, await imported.clone().text()).toBe(200);
+    const unmatched = await w.real('POST', '/imports/preview', {
+      ifMatch: 0,
+      body: {
+        mode,
+        rows: [
+          {
+            employeeId: w.employee.id,
+            revision: 1,
+            originalEffectiveDate: '2099-01-01',
+            fields: { number: 'not-a-contract', typeId: w.type.id, effectiveDate: '2099-02-01' },
+          },
+        ],
+      },
+    });
+    expect(unmatched.status).toBe(404);
     // 同一权限仍不能给此人新增合同，也不能初始化重建。
     expect(
       (
