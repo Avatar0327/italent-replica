@@ -119,7 +119,7 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
       `/capacities/${w.cap.id}`,
       {
         localCapacity: 2,
-        effectiveDate: '2026-10-01',
+        effectiveDate: '2026-10-11',
       },
       w.cap.revision,
     );
