@@ -7,7 +7,6 @@ import { approvalWorld } from './AC-APV-support.js';
 const database = useTestDb();
 const base = '/api/tenant/employment';
 const formId = 'TenantBase.TransferMultiFormView';
-const excluded = ['departmentId', 'positionId', 'directManagerId', 'dottedManagerId'];
 
 async function fixture(db: Db, label: string) {
   const world = await approvalWorld(db, label);
@@ -73,29 +72,34 @@ async function missing(response: Response, fields: readonly string[]) {
   });
 }
 
-describe('DEC-162 / AC-TRF：场景不带出的可编辑字段保存必填，预览不受限', () => {
-  it.each(['direct', 'application'])('%s 只填经理拒绝且整单不写入；完整值保存保留所填部门/职位', async (mode) => {
-    const w = await fixture(database().db, `trf162-${mode}`);
+describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可存空', () => {
+  it.each(['direct', 'application'])('%s 只填经理拒绝；有部门且其它未填允许保存空值', async (mode) => {
+    const w = await fixture(database().db, `trf163-${mode}`);
     const before = await w.businessCount();
     const revision = await w.currentRevision();
-    await missing(await w.create({ mode, fields: { directManagerId: w.manager.employeeId } }), [
-      'departmentId',
-      'positionId',
-      'dottedManagerId',
-    ]);
+    await missing(await w.create({ mode, fields: { directManagerId: w.manager.employeeId } }), ['departmentId']);
     expect(await w.businessCount()).toBe(before);
     expect(await w.currentRevision()).toBe(revision);
-    // 目标部门负责人会自动派生，但不能冒充 HR 显式填写来满足 DEC-162。
-    const { directManagerId: _manager, ...withoutManager } = w.fields;
-    await missing(await w.create({ mode, fields: withoutManager }), ['directManagerId']);
-    expect(await w.businessCount()).toBe(before);
-    const saved = await w.create({ mode });
+    const saved = await w.create({ mode, fields: { departmentId: w.target } });
     expect(saved.status, await saved.clone().text()).toBe(201);
-    expect(await saved.json()).toMatchObject({ fields: w.fields });
+    expect(await saved.json()).toMatchObject({
+      fields: {
+        departmentId: w.target,
+        positionId: null,
+        directManagerId: w.manager.employeeId,
+        dottedManagerId: null,
+      },
+    });
+    // 明确清空经理时不触发负责人带出。
+    const cleared = await w.create({ mode, fields: { departmentId: w.target, directManagerId: null } });
+    expect(cleared.status, await cleared.clone().text()).toBe(201);
+    expect(await cleared.json()).toMatchObject({
+      fields: { departmentId: w.target, positionId: null, directManagerId: null, dottedManagerId: null },
+    });
   });
 
-  it('职务职位调整只填职位不能把其余场景字段写空', async () => {
-    const w = await fixture(database().db, 'trf162-jobpost');
+  it('职务职位调整只填职位，原部门带出，其余场景字段存空', async () => {
+    const w = await fixture(database().db, 'trf163-jobpost');
     const position = await w.json<{ id: string }>(
       await w.request(w.hr.id, 'POST', '/api/tenant/job/positions', {
         ifMatch: 0,
@@ -109,23 +113,29 @@ describe('DEC-162 / AC-TRF：场景不带出的可编辑字段保存必填，预
       }),
       201,
     );
-    const before = await w.businessCount();
-    await missing(
-      await w.create({
-        transferTypeCode: 'job_post',
-        formId: 'TenantBase.JobPostTransferMultiFormView',
-        fields: { positionId: position.id },
-      }),
-      ['postId', 'levelId', 'gradeId', 'sequenceId'],
-    );
-    expect(await w.businessCount()).toBe(before);
+    const saved = await w.create({
+      transferTypeCode: 'job_post',
+      formId: 'TenantBase.JobPostTransferMultiFormView',
+      fields: { positionId: position.id },
+    });
+    expect(saved.status, await saved.clone().text()).toBe(201);
+    expect(await saved.json()).toMatchObject({
+      fields: {
+        departmentId: w.original,
+        positionId: position.id,
+        postId: null,
+        levelId: null,
+        gradeId: null,
+        sequenceId: null,
+      },
+    });
   });
 
-  it('null 和空串不算填写；readonly/hidden/absent 场景字段不要求显式提交', async () => {
-    const w = await fixture(database().db, 'trf162-modes');
+  it('部门 null/空串被拒；readonly/hidden/absent 沿用冻结继承策略', async () => {
+    const w = await fixture(database().db, 'trf163-modes');
     const before = await w.businessCount();
-    await missing(await w.create({ fields: { ...w.fields, dottedManagerId: null } }), ['dottedManagerId']);
-    const blank = await w.create({ fields: { ...w.fields, dottedManagerId: '' } });
+    await missing(await w.create({ fields: { ...w.fields, departmentId: null } }), ['departmentId']);
+    const blank = await w.create({ fields: { ...w.fields, departmentId: '' } });
     expect(blank.status).toBe(400);
     expect(await w.businessCount()).toBe(before);
     const configured = await w.request(w.hr.id, 'PUT', `${base}/transfers/forms/${formId}`, {
@@ -158,8 +168,8 @@ describe('DEC-162 / AC-TRF：场景不带出的可编辑字段保存必填，预
     expect(patch.status, await patch.clone().text()).toBe(200);
   });
 
-  it('PATCH 合并草稿原有显式字段，清空必填字段被拒且保持 revision', async () => {
-    const w = await fixture(database().db, 'trf162-patch');
+  it('PATCH 保留部门，允许清空非必填场景字段；清空部门拒绝', async () => {
+    const w = await fixture(database().db, 'trf163-patch');
     const created = await w.create({ mode: 'application' });
     expect(created.status).toBe(201);
     const draft = (await created.json()) as { id: string; revision: number };
@@ -170,19 +180,28 @@ describe('DEC-162 / AC-TRF：场景不带出的可编辑字段保存必填，预
     expect(patched.status, await patched.clone().text()).toBe(200);
     const after = (await patched.json()) as { revision: number; fields: object };
     expect(after.fields).toMatchObject(w.fields);
+    const cleared = await w.request(w.hr.id, 'PATCH', `${base}/businesses/${draft.id}`, {
+      ifMatch: after.revision,
+      body: { fields: { dottedManagerId: null } },
+    });
+    expect(cleared.status, await cleared.clone().text()).toBe(200);
+    const blank = (await cleared.json()) as { revision: number };
     await missing(
       await w.request(w.hr.id, 'PATCH', `${base}/businesses/${draft.id}`, {
-        ifMatch: after.revision,
-        body: { fields: { dottedManagerId: null } },
+        ifMatch: blank.revision,
+        body: { fields: { departmentId: null } },
       }),
-      ['dottedManagerId'],
+      ['departmentId'],
     );
-    expect(await w.business(draft.id)).toMatchObject({ revision: after.revision, fields: w.fields });
+    expect(await w.business(draft.id)).toMatchObject({
+      revision: blank.revision,
+      fields: { ...w.fields, dottedManagerId: null },
+    });
   });
 
   it('旧草稿提交重新校验缺失字段，不能绕过升级后的保存规则', async () => {
     const { db } = database();
-    const w = await fixture(db, 'trf162-old-draft');
+    const w = await fixture(db, 'trf163-old-draft');
     await w.publishedProcess({ nodes: [{ key: 'review', approver: 'owner' }] });
     const created = await w.create({ mode: 'application' });
     expect(created.status).toBe(201);
@@ -213,13 +232,13 @@ describe('DEC-162 / AC-TRF：场景不带出的可编辑字段保存必填，预
       await w.request(w.hr.id, 'POST', `${base}/businesses/${draft.id}/submit`, {
         ifMatch: draft.revision + 1,
       }),
-      excluded,
+      ['departmentId'],
     );
     expect(await w.business(draft.id)).toMatchObject({ status: 'draft', revision: draft.revision + 1 });
   });
 
-  it('PATCH 改职务后自动派生的新序列不能沿用旧序列的显式填写标记', async () => {
-    const w = await fixture(database().db, 'trf162-derived-sequence');
+  it('PATCH 改职务允许自动带出新序列，也允许明确清空序列', async () => {
+    const w = await fixture(database().db, 'trf163-derived-sequence');
     const job = async (kind: string, fields: object = {}) =>
       w.json<{ id: string }>(
         await w.request(w.hr.id, 'POST', `/api/tenant/job/${kind}`, {
@@ -239,7 +258,7 @@ describe('DEC-162 / AC-TRF：场景不带出的可编辑字段保存必填，预
       {
         ifMatch: 0,
         body: {
-          name: '合成序列必填表单',
+          name: '合成序列调整表单',
           group: 'transfer',
           fieldModes: { 'preset:levelId': 'hidden', 'preset:gradeId': 'hidden' },
         },
@@ -255,26 +274,43 @@ describe('DEC-162 / AC-TRF：场景不带出的可编辑字段保存必填，预
       }),
       201,
     );
-    await missing(
-      await w.request(w.hr.id, 'PATCH', `${base}/businesses/${draft.id}`, {
-        ifMatch: draft.revision,
-        body: { fields: { postId: post.id, positionId: position.id } },
-      }),
-      ['sequenceId'],
-    );
-    expect(await w.business(draft.id)).toMatchObject({
-      revision: draft.revision,
-      fields: { sequenceId: firstSequence.id },
-    });
-    const confirmed = await w.request(w.hr.id, 'PATCH', `${base}/businesses/${draft.id}`, {
+    const derived = await w.request(w.hr.id, 'PATCH', `${base}/businesses/${draft.id}`, {
       ifMatch: draft.revision,
-      body: { fields: { postId: post.id, positionId: position.id, sequenceId: nextSequence.id } },
+      body: { fields: { postId: post.id, positionId: position.id } },
     });
-    expect(confirmed.status, await confirmed.clone().text()).toBe(200);
+    expect(derived.status, await derived.clone().text()).toBe(200);
+    const changed = (await derived.json()) as { revision: number };
+    expect(await w.business(draft.id)).toMatchObject({ fields: { sequenceId: nextSequence.id } });
+    const cleared = await w.request(w.hr.id, 'PATCH', `${base}/businesses/${draft.id}`, {
+      ifMatch: changed.revision,
+      body: { fields: { sequenceId: null } },
+    });
+    expect(cleared.status, await cleared.clone().text()).toBe(200);
+    expect(await w.business(draft.id)).toMatchObject({ fields: { sequenceId: null } });
+  });
+
+  it.each([true, false])('自动带出开关 %s：不带出字段省略仍存空，不通过生效时继承回填', async (autoPopulate) => {
+    const w = await fixture(database().db, `trf163-autopop-${autoPopulate}`);
+    const prior = await w.request(w.hr.id, 'POST', `${base}/employees/${w.person.employeeId}/businesses`, {
+      ifMatch: await w.currentRevision(),
+      body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-09-01', formId: 'standard', fields: w.fields },
+    });
+    expect(prior.status).toBe(201);
+    const configured = await w.request(w.hr.id, 'PUT', `${base}/transfers/settings`, {
+      ifMatch: 0,
+      body: { unrestrictTargetDepartment: true, autoPopulate },
+    });
+    expect(configured.status).toBe(200);
+    const saved = await w.create({ fields: { departmentId: w.target, directManagerId: null } });
+    expect(saved.status, await saved.clone().text()).toBe(201);
+    expect(await saved.json()).toMatchObject({
+      fields: { departmentId: w.target, positionId: null, directManagerId: null, dottedManagerId: null },
+      record: { fields: { positionId: null, dottedManagerId: null } },
+    });
   });
 
   it('预览允许未填字段；legacy standard 通用任职入口不新增场景必填要求', async () => {
-    const w = await fixture(database().db, 'trf162-preview');
+    const w = await fixture(database().db, 'trf163-preview');
     const preview = await w.request(w.hr.id, 'POST', `${base}/transfers/employees/${w.person.employeeId}/preview`, {
       body: {
         initiator: 'hr',

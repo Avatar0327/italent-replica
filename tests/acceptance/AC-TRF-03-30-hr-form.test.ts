@@ -1,7 +1,7 @@
 /** HR 真实表单：按服务端配置展示字段；租户关闭直接调动后，两个入口一并消失（DEC-051）。 */
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
-import type { TransferFormModel } from '../../apps/web/src/transfer/types.js';
+import type { FieldMode, TransferFormModel } from '../../apps/web/src/transfer/types.js';
 
 // React 已是 web 工作区依赖；验收使用其真实 SSR 渲染，不给根工作区引入第二份运行时。
 const webRequire = createRequire(new URL('../../apps/web/package.json', import.meta.url));
@@ -143,32 +143,46 @@ describe('AC-TRF-30 / DEC-154：业务冲突保留精确提示', () => {
   });
 });
 
-async function renderRequiredFields(
+function departmentScenario(
   fields: TransferFormModel['fields'] = {},
-  modes: { levelId: 'editable' | 'readonly'; gradeId: 'editable' | 'hidden' | 'absent' } = {
-    levelId: 'editable',
-    gradeId: 'editable',
-  },
-) {
+  departmentMode: FieldMode = 'editable',
+): TransferFormModel {
   const base = model();
-  const scenario = {
+  return {
     ...base,
     fields,
+    transferTypeCode: 'cross_unit',
+    catalog: {
+      ...base.catalog,
+      types: [{ code: 'cross_unit', name: '跨单位调动', formId: 'TenantBase.InterOrgTransferMultiFormView' }],
+    },
+    employees: [...base.employees, { id: 'manager-1', name: '部门负责人', code: 'M001', revision: 1 }],
     preview: {
       ...base.preview!,
       form: {
         ...base.preview!.form,
-        excludedAutofillFields: ['levelId', 'gradeId'],
+        id: 'TenantBase.InterOrgTransferMultiFormView',
+        name: '机构间调入申请',
+        excludedAutofillFields: ['departmentId', 'levelId', 'gradeId', 'directManagerId'],
         fieldModes: {
           ...base.preview!.form.fieldModes,
-          'preset:levelId': modes.levelId,
-          'preset:gradeId': modes.gradeId,
+          'preset:departmentId': departmentMode,
+          'preset:directManagerId': 'editable',
         },
       },
-      // 即使预览或岗位联动带出了值，也不能代替 HR 显式选择本场景必填项。
-      fields: { ...base.preview!.fields, levelId: 'L1', gradeId: 'G1' },
+      fields: {
+        ...base.preview!.fields,
+        departmentId: departmentMode === 'editable' ? null : 'department-2',
+        levelId: null,
+        gradeId: null,
+        // 新部门负责人可以派生带出，不是所有“不带出”字段都需要 HR 再次确认。
+        directManagerId: 'manager-1',
+      },
     },
   };
+}
+
+async function renderScenario(scenario: TransferFormModel) {
   const { TransferForm } = (await import(componentPath)) as { TransferForm: unknown };
   return renderToStaticMarkup(createElement(TransferForm, { model: scenario }));
 }
@@ -179,26 +193,27 @@ function actionDisabledStates(html: string) {
   );
 }
 
-describe('AC-TRF-18 / DEC-162：本场景不带出的可编辑字段必须由 HR 填写', () => {
-  it('新职级和新职等同步显示必填提示并设置原生 required，普通带出字段不误标', async () => {
-    const html = await renderRequiredFields();
-    expect(html).toMatch(/<select(?=[^>]*name="levelId")(?=[^>]*required="")[^>]*>/);
-    expect(html).toMatch(/<select(?=[^>]*name="gradeId")(?=[^>]*required="")[^>]*>/);
+const enabledActions = { 提交: false, 暂存: false, 直接调动: false, 为所选员工直接调动: false };
+
+describe('AC-TRF-18 / DEC-163：仅新部门必填，其余不带出字段允许留空', () => {
+  it('仅新部门标必填并设置 required，职级、职等、直线经理不误标', async () => {
+    const html = await renderScenario(departmentScenario());
+    expect(html).toMatch(/<select(?=[^>]*name="departmentId")(?=[^>]*required="")[^>]*>/);
+    expect(html).toMatch(/<label>新部门(?:(?!<\/label>)[^])*必填/);
+    for (const name of ['levelId', 'gradeId', 'directManagerId']) {
+      expect(html).not.toMatch(new RegExp(`<select(?=[^>]*name="${name}")(?=[^>]*required="")[^>]*>`));
+    }
     expect(html).toMatch(/<select name="levelId"[^>]*><option value="" selected=""/);
     expect(html).toMatch(/<select name="gradeId"[^>]*><option value="" selected=""/);
-    expect(html).toMatch(/<label>新职级(?:(?!<\/label>)[^])*必填/);
-    expect(html).toMatch(/<label>新职等(?:(?!<\/label>)[^])*必填/);
-    expect(html).not.toMatch(/<select(?=[^>]*name="departmentId")(?=[^>]*required="")[^>]*>/);
   });
 
   it.each([
-    ['未提供字段，不能使用预览带出的值', {}],
-    ['显式清空', { levelId: null, gradeId: null }],
-    ['空字符串', { levelId: '', gradeId: '' }],
-    ['纯空白', { levelId: '   ', gradeId: '   ' }],
-    ['只填写一个必填项', { levelId: 'L1' }],
+    ['未提供新部门', {}],
+    ['显式清空新部门', { departmentId: null }],
+    ['新部门为空字符串', { departmentId: '' }],
+    ['新部门为纯空白', { departmentId: '   ' }],
   ] as const)('%s 时，提交、暂存和两个直接调动入口均禁用', async (_case, fields) => {
-    expect(actionDisabledStates(await renderRequiredFields(fields))).toEqual({
+    expect(actionDisabledStates(await renderScenario(departmentScenario(fields)))).toEqual({
       提交: true,
       暂存: true,
       直接调动: true,
@@ -206,26 +221,33 @@ describe('AC-TRF-18 / DEC-162：本场景不带出的可编辑字段必须由 HR
     });
   });
 
-  it('所有必填项显式选择有效值后，可暂存、提交和直接调动', async () => {
-    expect(actionDisabledStates(await renderRequiredFields({ levelId: 'L1', gradeId: 'G1' }))).toEqual({
-      提交: false,
-      暂存: false,
-      直接调动: false,
-      为所选员工直接调动: false,
-    });
+  it.each([
+    ['只选择部门，其他字段不填', { departmentId: 'department-2' }],
+    ['其余字段显式留空', { departmentId: 'department-2', levelId: null, gradeId: null, directManagerId: null }],
+  ] as const)('%s 时可以暂存、提交和直接调动', async (_case, fields) => {
+    expect(actionDisabledStates(await renderScenario(departmentScenario(fields)))).toEqual(enabledActions);
   });
 
-  it.each(['hidden', 'absent'] as const)('只读与 %s 字段不要求填写，也不阻断保存', async (gradeId) => {
-    const html = await renderRequiredFields({}, { levelId: 'readonly', gradeId });
-    expect(html).toMatch(/<input(?=[^>]*name="levelId")(?=[^>]*readOnly="")[^>]*>/);
-    expect(html).not.toMatch(/<input(?=[^>]*name="levelId")(?=[^>]*required="")[^>]*>/);
-    expect(html).not.toContain('name="gradeId"');
+  it('非必填直线经理展示部门联动带出的值，显式清空后展示空并原样提交 null', async () => {
+    const derived = departmentScenario({ departmentId: 'department-2' });
+    const html = await renderScenario(derived);
+    expect(html).toMatch(/<option value="manager-1" selected="">部门负责人<\/option>/);
+    expect(actionDisabledStates(html)).toEqual(enabledActions);
+    const cleared = departmentScenario({ departmentId: 'department-2', directManagerId: null });
+    expect(await renderScenario(cleared)).toMatch(/<select name="directManagerId"[^>]*><option value="" selected=""/);
+    const apiPath = new URL('../../apps/web/src/transfer/api.ts', import.meta.url).pathname;
+    const { previewInput } = (await import(apiPath)) as {
+      previewInput: (value: TransferFormModel) => { fields: TransferFormModel['fields'] };
+    };
+    expect(previewInput(cleared).fields).toEqual({ departmentId: 'department-2', directManagerId: null });
+  });
+
+  it.each(['readonly', 'hidden', 'absent'] as const)('部门为 %s 时沿继承矩阵，不增加可编辑必填项', async (mode) => {
+    const html = await renderScenario(departmentScenario({}, mode));
     expect(html).not.toContain('必填');
-    expect(actionDisabledStates(html)).toEqual({
-      提交: false,
-      暂存: false,
-      直接调动: false,
-      为所选员工直接调动: false,
-    });
+    expect(actionDisabledStates(html)).toEqual(enabledActions);
+    if (mode === 'readonly') {
+      expect(html).toMatch(/<input(?=[^>]*name="departmentId")(?=[^>]*readOnly="")[^>]*>/);
+    } else expect(html).not.toContain('name="departmentId"');
   });
 });
