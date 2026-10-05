@@ -5,6 +5,32 @@ import { invalid, requiredJob, validateJobAssignment } from '../job/validation.j
 import { rowsOf } from './read-model.js';
 import { assertNoReportingCycle, insertedWindow, type ReportingWindow } from './reporting-cycle.js';
 import type { EmploymentContext, PresetFields } from './types.js';
+import { AppError } from '../../errors.js';
+import { employmentDepartmentDisable } from '../org/employment-validity.js';
+
+/**
+ * DEC-150：只扩展新增任职业务及申请修改；历史记录编辑、向后引用判定保留各自已有日期口径。
+ * reporting 原样交给 validateEmploymentReferences 校验循环汇报。
+ */
+export async function validateNewEmploymentReferences(
+  tx: Tx,
+  ctx: EmploymentContext,
+  fields: PresetFields,
+  effectiveDate: string,
+  reporting?: ReportingCheck,
+): Promise<void> {
+  if (fields.departmentId) {
+    const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, fields.departmentId, effectiveDate);
+    if (disabled) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        `任职部门【${disabled.name}】已被停用（停用日期：${disabled.disabledOn}），请检查`,
+        { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: disabled.disabledOn },
+      );
+    }
+  }
+  await validateEmploymentReferences(tx, ctx, fields, effectiveDate, reporting);
+}
 
 /** 循环汇报校验的对象：哪名员工，被校验的记录在时间轴上实际生效的区间（为空则不校验）。 */
 export interface ReportingCheck {

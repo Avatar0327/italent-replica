@@ -1,3 +1,4 @@
+import { CONTRACT_FIELDS } from '../contracts/rules.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
 import type { ButtonDefinition, DataOperation, ObjectDefinition } from './object-permission.js';
 
@@ -55,6 +56,50 @@ const job = (code: string, fields: readonly string[], system: readonly string[] 
   object(code, [...jobCommon, ...fields], jobButtons, [...system, 'kind', 'objectId']);
 
 export const MODULE_OBJECTS = {
+  contract: object(
+    'EmploymentContract',
+    [...CONTRACT_FIELDS, 'employeeId'],
+    [
+      ...crud,
+      button('renew', 'detail', 'update'),
+      button('change', 'detail', 'update'),
+      button('terminate', 'detail', 'update'),
+      button('import', 'list'),
+      button('withdraw', 'detail', 'update'),
+      button('createApplication', 'list', 'create'),
+      button('renewApplication', 'detail', 'update'),
+      button('changeApplication', 'detail', 'update'),
+      button('terminateApplication', 'detail', 'update'),
+    ],
+    [
+      'status',
+      'approvalStatus',
+      'signingCount',
+      'previousContractId',
+      'rootContractId',
+      'versionNo',
+      'operation',
+      'mode',
+      'targetId',
+      'targetRevision',
+      'resultId',
+      'systemInitiated',
+      'rowType',
+    ],
+  ),
+  contractSettings: object('ContractSettings', [
+    'autoRenew',
+    'autoTerminate',
+    'autoNumber',
+    'accumulateRehire',
+    'postExitTypeIds',
+    'renewalTypeIds',
+    'indefiniteTypeIds',
+    'uniqueFields',
+  ]),
+  contractRules: object('ContractRenewalRule', ['name', 'priority', 'orgIds', 'personIds', 'enabled', 'details']),
+  contractType: object('ContractType', ['code', 'name', 'enabled']),
+  contractCompany: object('ContractCompany', ['code', 'name', 'enabled']),
   organization: object(
     'Organization',
     [
@@ -172,7 +217,11 @@ export const MODULE_OBJECTS = {
       'attempt',
     ],
   ),
-  employmentSettings: object('EmploymentSettings', ['allowDirectTransfer']),
+  employmentSettings: object('EmploymentSettings', [
+    'allowDirectTransfer',
+    'unrestrictTargetDepartment',
+    'autoPopulate',
+  ]),
   employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [
     'code',
   ]),
@@ -182,6 +231,9 @@ export const MODULE_OBJECTS = {
     [
       'kind',
       'mode',
+      'initiator',
+      'transferTypeCode',
+      'reasonCode',
       'effectiveDate',
       'lastWorkDate',
       'formId',
@@ -212,6 +264,11 @@ export const MODULE_OBJECTS = {
     ],
     [
       button('Employment.Create', 'detail', 'create'),
+      button('Transfer.Hr', 'detail', 'create'),
+      button('Transfer.Manager', 'detail', 'create'),
+      button('Transfer.Self', 'detail', 'create'),
+      button('EmploymentRecord.LineOp.Transfer', 'list_row', 'create'),
+      button('Employment.Tranfer', 'list', 'create'),
       button('Employment.Edit', 'detail', 'update'),
       button('Employment.Delete', 'detail', 'delete'),
       button('Employment.Submit', 'detail', 'update'),

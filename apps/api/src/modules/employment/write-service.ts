@@ -1,7 +1,7 @@
 import { personnelHooks } from './personnel-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { clearedTransferFields, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { readEmploymentSettings } from './configuration.js';
 import { auditEmployment, requireScopedEmploymentObject } from './context.js';
@@ -27,8 +27,9 @@ import {
   type EmploymentPayloadRow,
   type LockedEmploymentBusiness,
 } from './record-store.js';
-import { newRecordReporting, setsDirectManager, validateEmploymentReferences } from './references.js';
+import { newRecordReporting, setsDirectManager, validateNewEmploymentReferences } from './references.js';
 import { windowBefore } from './reporting-cycle.js';
+import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import {
   employmentTimelineNeighbors,
   insertEmploymentTimeline,
@@ -79,7 +80,7 @@ export async function createEmploymentBusiness(
   await assertNotBeforeCurrentCycle(tx, ctx, employee.id, normalized);
   await assertBusinessSequence(tx, ctx, employee.id, normalized);
   assertEmployTypeUsage(normalized);
-  await assertDirectTransferAllowed(tx, ctx, normalized);
+  await assertDirectTransferAllowed(tx, ctx, employee.id, normalized);
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
     ? undefined
     : await selectEmploymentCycle(tx, ctx, employee.id, normalized);
@@ -88,6 +89,7 @@ export async function createEmploymentBusiness(
     employeeId: employee.id,
     staffId: selected?.cycle.id,
   });
+  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, { ...prepared.fields });
   await requireScopedEmploymentObject(tx, ctx, employee.id, prepared.fields.departmentId);
   const reporting = await newRecordReporting(
     tx,
@@ -96,7 +98,7 @@ export async function createEmploymentBusiness(
     prepared.explicitFieldCodes,
     normalized.effectiveDate,
   );
-  await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reporting);
+  await validateNewEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reporting);
   const id = randomUUID();
   await insertEmploymentRow(tx, 'employment_business_objects', {
     id,
@@ -168,6 +170,7 @@ export async function updateEmploymentBusiness(
     { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
     before,
   );
+  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, { ...prepared.fields });
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, prepared.fields.departmentId, business.id);
   // 申请尚未进时间轴，按它将来落地时的插入位置预检（到期落地时再复核，materializeEmploymentRecord）：审批中编辑不会
   // 重新提交，落地按本次提交的操作先后插入（DEC-108，#53），与落地同一判定；草稿 / 被驳回的申请改完要重新提交，
@@ -180,7 +183,7 @@ export async function updateEmploymentBusiness(
     normalized.effectiveDate,
     business.state === 'in_review' ? business.id : undefined,
   );
-  await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reporting);
+  await validateNewEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reporting);
   await bumpEmploymentBusiness(tx, ctx, business);
   business.payload = await appendEmploymentPayload(
     tx,
@@ -312,11 +315,33 @@ async function assertSuccessorSequence(
   }
 }
 
-async function assertDirectTransferAllowed(tx: Tx, ctx: EmploymentContext, input: NormalizedEmploymentInput) {
+async function assertDirectTransferAllowed(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: NormalizedEmploymentInput,
+) {
   if (input.mode !== 'direct' || input.kind !== 'transfer') return;
   const settings = await readEmploymentSettings(tx, ctx.tenantId);
   if (!settings.allowDirectTransfer) {
-    throw new AppError('CONFLICT', '租户已关闭允许直接调动', { reason: 'DIRECT_TRANSFER_DISABLED' });
+    throw new AppError('CONFLICT', '本租户调动须走审批', { reason: 'DIRECT_TRANSFER_DISABLED' });
+  }
+  // DEC-154：调用方已锁员工，提交申请 / 审批 / 直接调动均在同一员工锁下复核最新状态（F-008）。
+  const [pending] = rowsOf(
+    await tx.execute(sql`
+      SELECT 1 FROM employment_business_objects b
+      JOIN LATERAL (SELECT kind, mode FROM employment_payload_versions p
+        WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY p.version_no DESC LIMIT 1) p ON true
+      JOIN LATERAL (SELECT state FROM employment_state_events s
+        WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
+      WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
+        AND p.kind='transfer' AND p.mode='application' AND s.state='in_review' LIMIT 1
+    `),
+  );
+  if (pending) {
+    throw new AppError('CONFLICT', '当前存在审批中的调动记录，无法进行此操作', {
+      reason: 'TRANSFER_IN_REVIEW',
+    });
   }
 }
 
@@ -459,7 +484,9 @@ export async function materializeEmploymentRecord(
   const reporting = setsDirectManager(payload.explicitFieldCodes)
     ? { employeeId: business.employeeId, window: windowBefore(payload.effectiveDate, next) }
     : undefined;
-  await validateEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting);
+  // DEC-161：审批通过后仍可能新增停用排期，落地前按 DEC-150 重查整个时段。
+  // 拒绝后由生效端口记失败与 HR 待办、按 DEC-112 挂起后序；不能截断任职或改期绕过。
+  await validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
   await insertEmploymentRow(tx, 'employment_records', {
     ...fields,
@@ -489,7 +516,17 @@ export async function materializeEmploymentRecord(
     selected?.predecessor
       ? { ...selected.predecessor.fields, ...customAudit(selected.predecessor.customFields) }
       : null,
-    { ...fields, ...customAudit(inherited.customFields), staffId, entryDate, effectiveDate: payload.effectiveDate },
+    {
+      ...fields,
+      ...customAudit(inherited.customFields),
+      staffId,
+      entryDate,
+      effectiveDate: payload.effectiveDate,
+      // DEC-163：留空结果与实际落地同事务发布；PR-B 按业务、字段和 effectiveDate 处理补全待办。
+      ...(payload.kind === 'transfer'
+        ? { clearedFieldCodes: clearedTransferFields(payload.formSnapshot, fields).map((field) => `preset:${field}`) }
+        : {}),
+    },
   );
   if (options.forwardUpdate !== false) {
     await forwardMaterializedRecord(tx, ctx, business, staffId, selected?.predecessor ?? null, {

@@ -1,3 +1,4 @@
+import { CONTRACT_FIELDS } from '../contracts/rules.js';
 /**
  * 出厂预置流程（DEC-018 / DEC-094 / DEC-116）：全部审批类型都有草稿预置，租户开通时配置异常管理员后发布（R1-T17）。
  * 有标准流程编码的类型都带“流程编码 = 标准编码”发起条件（`14` §11.1）。调动按本租户已取证的节点结构（`14` §2、§8.2、
@@ -73,6 +74,7 @@ const GENERIC_FORM = ['effectiveDate', 'departmentId', 'postId', 'positionId', '
 type GenericType = Exclude<ApprovalTypeCode, 'transfer' | 'leave' | 'personnel_change' | 'emp_info_change'>;
 function genericPreset(type: GenericType): PresetProcess {
   const name = APPROVAL_TYPES[type].name;
+  const form = type.startsWith('contract_') ? CONTRACT_FIELDS : GENERIC_FORM;
   return {
     presetKey: `standard_${type}`,
     code: `Standard_${type}`,
@@ -83,8 +85,8 @@ function genericPreset(type: GenericType): PresetProcess {
       priority: 0,
       ...standardCondition(type),
       nodes: [
-        node('department_head', '部门负责人审批', 'latest_record_department_head', { formFields: GENERIC_FORM }),
-        node('hrbp', 'HRBP审核', 'record_department_hrbp', { formFields: GENERIC_FORM }),
+        node('department_head', '部门负责人审批', 'latest_record_department_head', { formFields: form }),
+        node('hrbp', 'HRBP审核', 'record_department_hrbp', { formFields: form }),
       ],
     }),
   };
@@ -149,9 +151,20 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       ],
     }),
   },
-  ...(['regularization', 'intern_regularization', 'hire', 'retirement', 'org_adjustment', 'add_employee'] as const).map(
-    genericPreset,
-  ),
+  ...(
+    [
+      'regularization',
+      'intern_regularization',
+      'hire',
+      'retirement',
+      'org_adjustment',
+      'add_employee',
+      'contract_create',
+      'contract_renew',
+      'contract_change',
+      'contract_terminate',
+    ] as const
+  ).map(genericPreset),
   {
     // DEC-116：个人信息变更的发起入口未接入；节点结构未取证（TODO(需取证 #38)），表单待租户按需勾选员工信息字段。
     presetKey: 'standard_emp_info_change',

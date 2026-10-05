@@ -2,6 +2,7 @@
  * 业务适配：把任职申请、人员自助变更申请转换为审批快照（表单值、变更前原值、变化字段、条件取值、路由部门），
  * 并在审批结束时调用各模块已有的可信端口（任职状态机 / 申请落地），与审批写入同事务。
  */
+import { contractAdapter } from '../contracts/adapter.js';
 import { sql, type Tx } from '@italent/db';
 import {
   ageOn,
@@ -19,6 +20,7 @@ import { lockEmploymentEmployee } from '../employment/record-store.js';
 import { transitionEmployment } from '../employment/transitions.js';
 import { PRESET_FIELD_NAMES, type PresetFields } from '../employment/types.js';
 import { updateEmploymentBusiness } from '../employment/write-service.js';
+import { resolveTransferForm } from '../transfer/configuration.js';
 import {
   applyApprovedChangeInTransaction,
   disapproveChangeInTransaction,
@@ -32,7 +34,7 @@ import { loadSubset } from '../personnel/subsets.js';
 import { AppError } from '../../errors.js';
 import { approvalError, rowsOf, type ApprovalContext, type Row } from './context.js';
 
-export type BusinessType = 'employment' | 'personnel_change';
+export type BusinessType = 'employment' | 'personnel_change' | 'contract';
 
 export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
@@ -54,8 +56,8 @@ export interface BusinessSnapshot {
   readonly version: string;
   /**
    * 流程编码由服务端按业务与发起入口派生，不由发起人指定（PR #35 第二轮清单 14），取原站标准编码（`14` §11.1）：
-   * 任职业务取审批类型的标准编码，员工子集变更按子集取各自的编码。
-   * TODO(R1-T09)：调动类型等多入口接通后按入口派生（如 Customized{n}TransferFlow）；在此之前固定为类型标准编码。
+   * 调动取创建时冻结的入口编码（如 Customized{n}TransferFlow），其他任职业务取审批类型的标准编码，
+   * 员工子集变更按子集取各自的编码。客户端提交参数不能覆盖这份绑定。
    */
   readonly processCode: string | null;
 }
@@ -134,6 +136,16 @@ async function latestPayload(tx: Tx, tenantId: string, businessId: string) {
   return { version: row.id, lastWorkDate: row.last_work_date ?? null };
 }
 
+/** 13 §6.3：类型字典与入口不是一一对应；以可信入口绑定匹配，不从类型序号拼接编码。 */
+async function transferProcessCode(tx: Tx, tenantId: string, businessId: string, formId: string) {
+  const [entry] = rowsOf<{ processCode: string }>(
+    await tx.execute(sql`SELECT process_code AS "processCode" FROM transfer_requests
+      WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid`),
+  );
+  // 已存业务保留创建时的绑定；旧任职业务没有入口元数据时，按它的服务端表单定义解析。
+  return entry?.processCode ?? (await resolveTransferForm(tx, tenantId, formId)).processCode;
+}
+
 /** 自定义字段以权限字段编码 `custom:<id>` 出现在审批载荷里，与任职字段权限一致。 */
 const customValues = (values: Readonly<Record<string, unknown>> | undefined): Row =>
   Object.fromEntries(Object.entries(values ?? {}).map(([id, value]) => [`custom:${id}`, value]));
@@ -176,7 +188,10 @@ const employmentAdapter: BusinessAdapter = {
     const approvalType = approvalTypeOfBusiness(business.kind);
     if (!approvalType) throw approvalError('CONFLICT', 'APPROVAL_TYPE_UNKNOWN', '该业务没有审批类型');
     const type = APPROVAL_TYPES[approvalType];
-    const processCode = type.defaultProcessCode;
+    const processCode =
+      business.kind === 'transfer'
+        ? await transferProcessCode(tx, ctx.tenantId, businessId, business.formId)
+        : type.defaultProcessCode;
     const before = await findPredecessor(tx, ctx.tenantId, business.employeeId, business.effectiveDate);
     const current = await findCurrentRecord(tx, ctx.tenantId, business.employeeId, asOf);
     const employee = await employeeHeader(tx, ctx.tenantId, business.employeeId);
@@ -375,6 +390,7 @@ const personnelAdapter: BusinessAdapter = {
 };
 
 export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
+  contract: contractAdapter,
   employment: employmentAdapter,
   personnel_change: personnelAdapter,
 };

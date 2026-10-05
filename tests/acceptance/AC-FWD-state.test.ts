@@ -79,7 +79,8 @@ describe('AC-FWD-01/02 状态、周期与并发边界', () => {
       const before = await reach(await application('原地点'));
       const source = await session.business(
         employee.id,
-        { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { place: '同步地点' } },
+        // DEC-154 禁止在途调动后再直接调动；用转正保留同日其他直接业务的向后更新验收。
+        { kind: 'regularization', mode: 'direct', effectiveDate: '2026-10-05', fields: { place: '同步地点' } },
         (await session.getEmployee(employee.id)).revision,
       );
       expect(await stored(session, before.id)).toMatchObject({

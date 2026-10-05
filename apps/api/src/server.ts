@@ -1,3 +1,4 @@
+import { startContractScheduler } from './modules/contracts/scheduler.js';
 import { serve } from '@hono/node-server';
 import { createPgDb } from '@italent/db';
 import { createApp } from './app.js';
@@ -20,3 +21,5 @@ if (handle && process.env.EMPLOYMENT_ACTIVATION_SCHEDULER !== 'off') {
   const interval = Number(process.env.EMPLOYMENT_ACTIVATION_INTERVAL_MS || 300_000);
   startEmploymentActivationScheduler(handle.db, { intervalMs: interval });
 }
+
+if (handle && process.env.CONTRACT_SCHEDULER !== 'off') startContractScheduler(handle.db);
