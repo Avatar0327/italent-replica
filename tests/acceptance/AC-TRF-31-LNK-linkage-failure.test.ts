@@ -28,7 +28,7 @@ async function contractInstance(w: LinkageWorld) {
 }
 
 describe('AC-TRF-31 联动段：DEC-183 到期时遇在途合同整单不执行', () => {
-  it('记 failed 与待办，合同、职责、试岗、提醒都不落地；处理在途合同后重试按原生效日一并执行', async () => {
+  it('记 failed 与待办，合同、职责、试岗、提醒都不落地；处理在途合同后重试，联动按实际执行日一并执行（DEC-186）', async () => {
     const w = await linkageWorld(database().db, 'lnk-trf31');
     const person = await w.hire('到期冲突员工');
     const subordinate = await w.hire('下属', { directManagerId: person.employee.id });
@@ -86,11 +86,11 @@ describe('AC-TRF-31 联动段：DEC-183 到期时遇在途合同整单不执行'
     expect(retried.status, await retried.clone().text()).toBe(200);
     const done = await w.linkage(business.id);
     expect(done.contract).not.toBeNull();
-    expect(done.onTrial).toMatchObject({ startDate: D });
+    expect(done.onTrial).toMatchObject({ startDate: '2026-10-11' });
     expect(done.salaryReminder).toMatchObject({ status: 'pending' });
     expect(done.dutyTransfer).toMatchObject({ total: 1, failedCount: 0 });
     const contracts = await w.contracts(person.employee.id);
-    expect(contracts.find((c) => c.previousContractId === current.id)).toMatchObject({ effectiveDate: D });
+    expect(contracts.find((c) => c.previousContractId === current.id)).toMatchObject({ effectiveDate: '2026-10-11' });
     expect(await w.managerOf(subordinate.hire.id)).toBe(receiver.employee.id);
     expect(await w.todos()).toEqual([]);
     // 同一幂等键重放不重复执行；新键重试 409（已生效）。
