@@ -152,6 +152,22 @@ describe('AC-CT F-016 字段与日期', () => {
     );
     expect(result).toMatchObject({ actualTerminationDate: null });
   });
+  it('DEC-180 / DEC-183 调动端口保留签名和 CONFLICT 失败码，拒绝已有同类型在途', async () => {
+    const w = await world('port-flight');
+    const source = await w.create();
+    expect((await pending(w)).status).toBe(201);
+    await expect(
+      withTenant(w.db, w.session.tenant.id, (tx) =>
+        changeContractForTransfer(tx, ctx(w), {
+          employeeId: w.employee.id,
+          targetId: source.id,
+          revision: source.revision,
+          fields: { effectiveDate: '2026-11-01', endDate: '2027-10-31' },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'CONFLICT', details: { reason: 'CONTRACT_IN_FLIGHT' } });
+    expect(await w.list()).toHaveLength(2);
+  });
   it('CT-R18a 延迟到期后的激活按实际租户日期补实际终止日', async () => {
     const w = await world('late-activation');
     const request = await pending(w, { effectiveDate: '2026-10-02', endDate: '2026-10-03' });
