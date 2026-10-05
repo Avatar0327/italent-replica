@@ -41,8 +41,8 @@ export async function activationWorld(
   session.setNow(`${options.today ?? '2026-10-01'}T01:00:00.000Z`);
   // R1-T07：提交申请须匹配已发布流程（DEC-017）；本组验收只验证生效阶段，安装兜底流程。
   await installApprovalFallbacks(db, session.tenant.id, session.user.id);
-  const from = await session.org('调出部门', { startDate: '2026-01-01' });
-  const to = await session.org('调入部门', { startDate: '2026-01-01' });
+  const from = await session.org('调出部门', { establishedOn: '2026-01-01' });
+  const to = await session.org('调入部门', { establishedOn: '2026-01-01' });
   return { db, session, from, to, ...helpers(db, session, options.hireDate ?? '2026-09-01', from.id) };
 }
 

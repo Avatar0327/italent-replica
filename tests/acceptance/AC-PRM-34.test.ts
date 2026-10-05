@@ -1,6 +1,6 @@
 /** AC-PRM-34：数据范围内的组织停用后范围不收缩（DEC-146，`11` §18）；不含下级与跨租户隔离不变。 */
 import { randomUUID } from 'node:crypto';
-import { withTenant } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS, type OrgId } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -38,10 +38,26 @@ async function tenantFixture() {
     return (await response.json()) as Created;
   }
   const org = (name: string, parentId = world.tenant.id) =>
-    send('POST', 'org/organizations', { name, startDate: '2025-01-01', parents: { admin: { parentId } } }, 0);
-  // 走真实的组织修改接口：停用产生一条新的组织版本，而不是建档时直接停用。
-  const disable = (organization: Created) =>
-    send('PATCH', `org/organizations/${organization.id}`, { effectiveDate: '2026-09-01', enabled: false }, 1);
+    send('POST', 'org/organizations', { name, establishedOn: '2025-01-01', parents: { admin: { parentId } } }, 0);
+  // 停用产生一条新的组织版本，而不是建档时直接停用。DEC-129 下整支仍有在职人员时接口拒绝停用（AC-ORG-14），
+  // “停用组织下仍挂着在职员工”只会来自存量 / 导入数据（`11` §18 原站样本即此情形），所以这里与
+  // AC-SUB-04-sort-ranks 同法直接写库追加停用版本，层级链接照抄原版本（下级不随之停用）。
+  async function disable(organization: Created) {
+    await withTenant(db, world.tenant.id, async (tx) => {
+      const result = await tx.execute(sql`SELECT id FROM org_versions WHERE org_id=${organization.id}::uuid
+        ORDER BY start_date DESC, version_no DESC LIMIT 1`);
+      const [old] = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { id: string }[];
+      const versionId = randomUUID();
+      await tx.execute(sql`INSERT INTO org_versions
+        SELECT (jsonb_populate_record(NULL::org_versions, to_jsonb(v) || jsonb_build_object(
+          'id',${versionId}::uuid,'version_no',v.version_no+1,'previous_version_id',v.id,
+          'start_date','2026-09-01'::date,'enabled',false))).*
+        FROM org_versions v WHERE v.id=${old!.id}::uuid`);
+      await tx.execute(sql`INSERT INTO org_hierarchy_links(tenant_id,version_id,dimension,parent_org_id,sequence)
+        SELECT tenant_id, ${versionId}::uuid, dimension, parent_org_id, sequence
+        FROM org_hierarchy_links WHERE version_id=${old!.id}::uuid`);
+    });
+  }
   async function employee(departmentId: string) {
     const created = await send('POST', 'employment/employees', { code: `E_${randomUUID()}`, name: '停用组织员工' }, 0);
     const hire = await send(

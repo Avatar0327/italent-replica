@@ -12,7 +12,7 @@ import { tenantApi } from './support/tenant-api.js';
 const testDb = useTestDb();
 
 async function positionReferences(db: Db, session: EmploymentSession, label: string) {
-  const org = await session.org(`${label}部门`, { startDate: '2026-01-01' });
+  const org = await session.org(`${label}部门`, { establishedOn: '2026-01-01' });
   const api = tenantApi(db, { clock: () => new Date('2026-10-01T01:00:00.000Z') });
   const create = async (kind: string, extra: Record<string, unknown> = {}) => {
     const response = await api.request('POST', `/api/tenant/job/${kind}`, {

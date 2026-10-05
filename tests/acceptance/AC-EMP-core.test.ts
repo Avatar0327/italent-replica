@@ -7,8 +7,8 @@ const testDb = useTestDb();
 describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
   it('AC-EMP-01 一次调动新增任职记录，未改字段继承且旧业务记录保持原值', async () => {
     const session = await employmentSession(testDb().db, 'empcore01');
-    const firstOrg = await session.org('调动原部门', { startDate: '2026-01-01' });
-    const secondOrg = await session.org('调动后部门', { startDate: '2026-01-01' });
+    const firstOrg = await session.org('调动原部门', { establishedOn: '2026-01-01' });
+    const secondOrg = await session.org('调动后部门', { establishedOn: '2026-01-01' });
     const employee = await session.employee('版本链合成员工', 'SYNTHETIC_EMP_01');
     const fields = {
       employType: 'internal',
@@ -46,7 +46,7 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
 
   it('AC-EMP-06 离职后重聘开始新 StaffID 周期，不继承旧周期可选任职字段', async () => {
     const session = await employmentSession(testDb().db, 'empcore06');
-    const org = await session.org('重聘部门', { startDate: '2026-01-01' });
+    const org = await session.org('重聘部门', { establishedOn: '2026-01-01' });
     const employee = await session.employee('重聘合成员工');
     const hire = await session.business(
       employee.id,

@@ -38,6 +38,7 @@ export async function runWrite(
   objectCode?: string,
   preflight?: (tx: Tx) => Promise<void>,
   checkResult?: (tx: Tx, body: unknown) => Promise<void>,
+  trimReceipt?: (receipt: unknown) => Promise<unknown>,
 ) {
   if (preflight) await withTenant(deps.db, ctx.tenantId, preflight);
   if (objectCode === MODULE_OBJECTS.establishment.code) {
@@ -66,8 +67,10 @@ export async function runWrite(
   if (checkResult) await withTenant(deps.db, ctx.tenantId, (tx) => checkResult(tx, result.body));
   const payload = result.body as { revision?: number } | null;
   if (payload?.revision !== undefined) c.header('ETag', `"${payload.revision}"`);
-  // 职位变更的同步回执（DEC-131）是结果信封，不是可配置的业务字段，不参与字段裁剪。
-  const { managerSync, ...value } = { ...(result.body as Record<string, unknown>) };
+  // 职位变更的同步回执（DEC-131）是结果信封，不按职位字段裁剪；回执里的员工由调用方按任职范围与字段查看权
+  // 另行裁剪，首次执行与幂等重放都按操作人当前权限（PR #41 复审遗留）。没有裁剪函数时不返回回执（fail-closed）。
+  const { managerSync: receipt, ...value } = { ...(result.body as Record<string, unknown>) };
+  const managerSync = receipt === undefined || !trimReceipt ? undefined : await trimReceipt(receipt);
   if (objectCode && Array.isArray(value.subdivisions)) {
     value.subdivisions = await trimModuleResponse(deps, ctx, objectCode, value.subdivisions);
   }

@@ -1,6 +1,8 @@
-import { sql, withTenant } from '@italent/db';
+import { randomUUID } from 'node:crypto';
+import { sql, upsertSystemSetting, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { orgPeopleWorld } from './AC-ORG-people-support.js';
 import { orgSession, type Organization, resultRows } from './AC-ORG-support.js';
 
 const testDb = useTestDb();
@@ -37,6 +39,30 @@ describe('AC-ORG-10~11 DEC-021 组织全称与生效日期', () => {
     expect((await session.list('团队B', '2026-10-02'))[0]?.fullName).toBe(`${session.tenant.name}/集团X/部门A/团队B`);
     expect((await session.list('集团', '2026-10-01'))[0]?.id).toBe(group.id);
     expect(await session.list('集团', '2026-10-02')).toEqual([]);
+  });
+
+  it('AC-ORG-11 上级排定未来改名不给下级追加版本：下级在改名日之前的「变更」照常保存（`10` §15 / §16）', async () => {
+    const session = await orgSession(testDb().db, 'org11future');
+    const group = await session.create('未来改名集团');
+    const child = await session.create('未来改名部门', { parents: { admin: { parentId: group.id } } });
+    const rename = await session.request('PATCH', `/organizations/${group.id}`, {
+      ifMatch: group.revision,
+      body: { name: '未来改名集团V2', effectiveDate: '2026-10-20' },
+    });
+    expect(rename.status).toBe(200);
+    const changed = await session.request('PATCH', `/organizations/${child.id}`, {
+      ifMatch: child.revision,
+      body: { remarks: '改名日之前的变更', effectiveDate: '2026-10-05' },
+    });
+    expect(changed.status, await changed.clone().text()).toBe(200);
+    expect(await changed.json()).toMatchObject({
+      revision: 2,
+      fullName: `${session.tenant.name}/未来改名集团/未来改名部门`,
+    });
+    expect((await session.list('未来改名部门', '2026-10-20'))[0]).toMatchObject({
+      fullName: `${session.tenant.name}/未来改名集团V2/未来改名部门`,
+      remarks: '改名日之前的变更',
+    });
   });
 
   it('AC-ORG-10 显示起始层级统一用于 POST、PATCH、GET 与列表，存储仍保留租户根全路径', async () => {
@@ -80,5 +106,70 @@ describe('AC-ORG-10~11 DEC-021 组织全称与生效日期', () => {
       `${session.tenant.name}/集团/部门A`,
       `${session.tenant.name}/集团/部门X`,
     ]);
+  });
+});
+
+describe('AC-ORG-11 上级失效后已停用下级的全称（PR #54 第三轮复审 P3）', () => {
+  it('上级先改名、后提前失效并级联停用下级：失效后查停用下级，全称仍是上级最后的名称，不退回旧快照', async () => {
+    const world = await orgPeopleWorld(testDb().db, 'org11-expired-parent');
+    const parent = await world.org('失效上级');
+    const child = await world.org('失效下级', parent.id);
+    const root = String(parent.fullName).split('/')[0];
+    const renamed = await world.patchOrg(parent, { name: '失效上级V2', effectiveDate: '2026-10-02' });
+    expect(renamed.status, await renamed.clone().text()).toBe(200);
+    const expired = await world.patchOrg(
+      { id: parent.id, revision: 2 },
+      { stopDate: '2026-10-09', effectiveDate: '2026-10-03' },
+    );
+    expect(expired.status, await expired.clone().text()).toBe(200);
+    expect((await world.orgsAt('2026-10-05')).get(child.id)).toMatchObject({
+      enabled: true,
+      fullName: `${root}/失效上级V2/失效下级`,
+    });
+    expect((await world.orgsAt('2026-10-10')).get(child.id)).toMatchObject({
+      enabled: false,
+      fullName: `${root}/失效上级V2/失效下级`,
+      level: 2,
+    });
+  });
+});
+
+describe('AC-ORG-10/11 人员经历快照的部门全称与组织列表同一口径', () => {
+  it('上级改名前后入职，经历里的部门全称都按记录日期当天的上级名称，与组织列表一致', async () => {
+    const { db } = testDb();
+    await upsertSystemSetting(
+      db,
+      {
+        key: 'EntrySyncJobHistory',
+        value: false,
+        description: '入职同步工作经历',
+        overridable: true,
+        expectedVersion: 0,
+      },
+      { actorUserId: null, commandId: randomUUID() },
+    );
+    const world = await orgPeopleWorld(db, 'org10-history');
+    await withTenant(db, world.tenant.id, (tx) =>
+      tx.execute(sql`INSERT INTO tenant_setting_overrides (tenant_id, key, value, active, revision, updated_by)
+        VALUES (${world.tenant.id}, 'EntrySyncJobHistory', 'true'::jsonb, true, 1, ${world.user.id})`),
+    );
+    const parent = await world.org('经历上级', world.tenant.id, { establishedOn: '2026-09-01' });
+    const department = await world.org('经历部门', parent.id, { establishedOn: '2026-09-01' });
+    const renamed = await world.patchOrg(parent, { name: '经历上级V2', effectiveDate: '2026-09-20' });
+    expect(renamed.status, await renamed.clone().text()).toBe(200);
+    for (const [name, date] of [
+      ['改名前入职', '2026-09-10'],
+      ['改名后入职', '2026-09-25'],
+    ] as const) {
+      const hired = await world.hire(name, { departmentId: department.id }, date);
+      const response = await world.call('GET', `personnel/employees/${hired.id}/subsets/jobhistory`);
+      expect(response.status, await response.clone().text()).toBe(200);
+      const [history] = ((await response.json()) as { items: Record<string, unknown>[] }).items;
+      const listed = (await world.orgsAt(date)).get(department.id);
+      expect(listed?.fullName).toBe(
+        `${String(parent.fullName).split('/')[0]}/${date < '2026-09-20' ? '经历上级' : '经历上级V2'}/经历部门`,
+      );
+      expect(history).toMatchObject({ department: '经历部门', departmentFullName: listed?.fullName });
+    }
   });
 });

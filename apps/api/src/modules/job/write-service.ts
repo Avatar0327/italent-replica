@@ -3,7 +3,8 @@ import { isUuid, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { jobCreationSchema, jobPatchSchema, normalizeFields } from './fields.js';
 import { jobTables, type JobKind } from './metadata.js';
-import { applyPositionPersonnelRules, unavailableJobPersonnel } from './personnel.js';
+import { employmentJobPersonnel } from './employment-port.js';
+import { applyPositionPersonnelRules } from './personnel.js';
 import { latestJobObject, loadJobObject, type JobRecord } from './read-model.js';
 import { lockJobTenant } from './settings.js';
 import { auditJob, insertRow, rowsOf } from './store.js';
@@ -25,7 +26,7 @@ export async function createJobObject(
   ctx: JobWriteContext,
   kind: JobKind,
   input: JobInput,
-  _personnel: JobPersonnelGateway = unavailableJobPersonnel,
+  _personnel?: JobPersonnelGateway,
 ): Promise<JobRecord> {
   assertRevision(ctx.expectedRevision, 0);
   const id = randomUUID();
@@ -52,7 +53,8 @@ export async function updateJobObject(
   kind: JobKind,
   id: string,
   patch: JobPatch,
-  personnel: JobPersonnelGateway = unavailableJobPersonnel,
+  // 缺省只读真实在岗人（停用校验）；同步直线经理须由路由传入带操作人授权的端口，否则 fail-closed。
+  personnel: JobPersonnelGateway = employmentJobPersonnel(),
 ): Promise<JobRecord> {
   if (!isUuid(id)) throw invalid('id', '对象 ID 必须是 UUID');
   const parsed = jobPatchSchema(kind).safeParse(patch);
@@ -114,11 +116,16 @@ function mergeInput(
   return input;
 }
 
+/**
+ * 对象头只改 revision（非键列），取 FOR NO KEY UPDATE 即可串行化同一对象的写入；它与外键检查取的 KEY SHARE 相容。
+ * 用 FOR UPDATE 时，职位变更同步直线经理（先锁职位头、再锁员工）与普通任职（先锁员工、写入时经外键取职位头
+ * KEY SHARE）会成环死锁（PR #54 首审 P3，AC-JOB-05-lock-order-pg）。
+ */
 async function lockObject(tx: Tx, ctx: JobWriteContext, kind: JobKind, id: string): Promise<JobRecord> {
   const head = rowsOf(
     await tx.execute(sql`
       SELECT id FROM ${sql.identifier(jobTables(kind).objectTable)}
-      WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid FOR UPDATE
+      WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid FOR NO KEY UPDATE
     `),
   );
   if (!head.length) throw new AppError('NOT_FOUND', '职务体系对象不存在');

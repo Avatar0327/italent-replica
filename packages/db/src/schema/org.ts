@@ -46,7 +46,10 @@ export const orgObjects = pgTable(
   ],
 );
 
-/** 组织按生效日期保存历史；负责人、HRBP、成本中心保留结构化 ID，待各自模块提供引用校验。 */
+/**
+ * 组织按生效日期保存历史。负责人、HRBP、店长存员工 ID，保存时由服务端按 DEC-135 校验（同租户、生效日在职）；
+ * 成本中心引用不纳入 R1（DEC-134），列保留给薪酬模块。
+ */
 export const orgVersions = pgTable(
   'org_versions',
   {
@@ -65,6 +68,7 @@ export const orgVersions = pgTable(
     establishedOn: date('established_on', { mode: 'string' }),
     personInChargeId: uuid('person_in_charge_id'),
     hrbpId: uuid('hrbp_id'),
+    shopOwnerId: uuid('shop_owner_id'),
     costCenterId: uuid('cost_center_id'),
     location: text('location'),
     remarks: text('remarks'),

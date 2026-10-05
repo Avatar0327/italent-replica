@@ -2,7 +2,13 @@ import { isUuid, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { assertRevision } from './context.js';
 import type { PreparedInheritance } from './inheritance.js';
-import { PRESET_FIELD_NAMES, type EmploymentBusiness, type EmploymentContext, type PresetFields } from './types.js';
+import {
+  PRESET_FIELD_NAMES,
+  type ChangeType,
+  type EmploymentBusiness,
+  type EmploymentContext,
+  type PresetFields,
+} from './types.js';
 
 export interface EmploymentEmployeeRow {
   id: string;
@@ -23,6 +29,7 @@ export interface EmploymentPayloadRow extends PreparedInheritance {
   triggerBusinessId?: string | null;
   isRecordSnapshot?: boolean;
   kind: EmploymentBusiness['kind'];
+  changeType?: ChangeType | null;
   mode: 'direct' | 'application';
   effectiveDate: string;
   lastWorkDate: string | null;

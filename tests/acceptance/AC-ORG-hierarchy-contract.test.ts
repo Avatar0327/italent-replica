@@ -36,12 +36,12 @@ async function fixture(label: string) {
   async function create(
     name: string,
     parents: Parents = { admin: { parentId: tenant.id } },
-    dates: { startDate?: string; stopDate?: string } = {},
+    dates: { establishedOn?: string; stopDate?: string } = {},
   ): Promise<Organization> {
     const response = await api.request('POST', '/api/tenant/org/organizations', {
       ...identity,
       ifMatch: 0,
-      body: { name, startDate: '2026-01-01', parents, ...dates },
+      body: { name, establishedOn: '2026-01-01', parents, ...dates },
     });
     expect(response.status).toBe(201);
     return (await response.json()) as Organization;
@@ -93,8 +93,16 @@ describe('OrgHierarchyReader 真实实现契约（AC-ORG-07、组织有效期、
     const hierarchy = await reader();
     const f = await fixture('contract-disabled');
     const parent = await f.create('上级');
-    const disabled = await f.create('停用分支', { admin: { parentId: parent.id } });
-    const child = await f.create('停用分支的启用下级', { admin: { parentId: disabled.id } });
+    const disabled = await f.create('停用分支', {
+      admin: { parentId: parent.id },
+      business: { parentId: parent.id },
+    });
+    const child = await f.create('停用分支的行政下级', { admin: { parentId: disabled.id } });
+    // DEC-129 只沿行政维度级联停用；业务维度挂在停用节点下、自身仍启用的组织也必须被剪掉。
+    const businessChild = await f.create('停用分支的业务下级', {
+      admin: { parentId: f.tenant.id },
+      business: { parentId: disabled.id },
+    });
     const sibling = await f.create('启用分支', { admin: { parentId: parent.id } });
     await f.update(disabled, { effectiveDate: '2026-09-01', enabled: false });
 
@@ -109,7 +117,13 @@ describe('OrgHierarchyReader 真实实现契约（AC-ORG-07、组织有效期、
       child.id,
     ]);
     expect(await hierarchy.isEnabled(query(f.tenant.id, disabled.id))).toBe(false);
-    expect(await hierarchy.isEnabled(query(f.tenant.id, child.id))).toBe(true);
+    expect(await hierarchy.isEnabled(query(f.tenant.id, child.id))).toBe(false);
+    expect(await hierarchy.isEnabled(query(f.tenant.id, businessChild.id))).toBe(true);
+    const business = query(f.tenant.id, parent.id, 'business');
+    expect(await hierarchy.listDescendantIds(business, { includeDisabled: false })).toEqual([]);
+    expect([...(await hierarchy.listDescendantIds(business, { includeDisabled: true }))].sort()).toEqual(
+      [disabled.id, businessChild.id].sort(),
+    );
     expectTypeOf(hierarchy.listDescendantIds).parameter(1).toEqualTypeOf<{ readonly includeDisabled: boolean }>();
   });
 
@@ -140,8 +154,8 @@ describe('OrgHierarchyReader 真实实现契约（AC-ORG-07、组织有效期、
   it('启用状态也按 asOf 读取，失效日期当天有效，生效前与失效后均 fail-closed', async () => {
     const hierarchy = await reader();
     const f = await fixture('contract-dates');
-    const expired = await f.create('有效期组织', undefined, { startDate: '2026-03-01', stopDate: '2026-09-30' });
-    const future = await f.create('未来组织', undefined, { startDate: '2026-11-01' });
+    const expired = await f.create('有效期组织', undefined, { establishedOn: '2026-03-01', stopDate: '2026-09-30' });
+    const future = await f.create('未来组织', undefined, { establishedOn: '2026-11-01' });
     const disabled = await f.create('停用历史组织');
     const endedVersion = await f.create('旧版本不能复活');
     await f.update(disabled, { effectiveDate: '2026-09-01', enabled: false });

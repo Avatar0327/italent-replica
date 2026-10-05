@@ -34,7 +34,7 @@ describe('AC-EST 被引用编制方案的生命周期', () => {
 
   it('仅被历史周期引用的方案可停用，历史编制仍能读取', async () => {
     const session = await establishmentSession(testDb().db, 'est-scheme-history');
-    const org = await session.create('历史方案部门', { startDate: '2025-01-01' });
+    const org = await session.create('历史方案部门', { establishedOn: '2025-01-01' });
     const scheme = await session.scheme({ startDate: '2025-01-01' });
     const historical = await session.capacity(org.id, scheme.id, { periodStart: '2025-01-01' });
     const disabled = await session.request('PATCH', `/schemes/${scheme.id}`, {

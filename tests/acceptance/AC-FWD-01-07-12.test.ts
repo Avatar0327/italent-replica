@@ -21,7 +21,7 @@ describe('AC-FWD-01~07/12 值匹配向后更新', () => {
       },
       hired.employeeRevision,
     );
-    const otherOrg = await session.org('独立后续部门', { startDate: '2026-01-01' });
+    const otherOrg = await session.org('独立后续部门', { establishedOn: '2026-01-01' });
     const different = await session.business(
       employee.id,
       {

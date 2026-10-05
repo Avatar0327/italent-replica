@@ -46,12 +46,12 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     org = await create(paths.organization, {
       name: '范围内组织',
       remarks: '隐藏组织备注',
-      startDate: '2026-01-01',
+      establishedOn: '2026-01-01',
       parents: { admin: { parentId: world.tenant.id } },
     });
     secondOrg = await create(paths.organization, {
       name: '范围外组织',
-      startDate: '2026-01-01',
+      establishedOn: '2026-01-01',
       parents: { admin: { parentId: world.tenant.id } },
     });
     post = await create(paths.jobPost, {
@@ -438,7 +438,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
   it('子部门范围不能通过 syncParents 修改无权父部门，整单回滚', async () => {
     const child = await fixtureCreate(paths.organization, {
       name: '仅有权子部门',
-      startDate: '2026-01-01',
+      establishedOn: '2026-01-01',
       parents: { admin: { parentId: org.id } },
     });
     const ownScheme = await fixtureCreate(paths.establishment, {
@@ -488,7 +488,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
   it('原同步父级命令即使入口子级仍有权，收窄为子级后也不能重放', async () => {
     const child = await fixtureCreate(paths.organization, {
       name: '重放子部门',
-      startDate: '2026-01-01',
+      establishedOn: '2026-01-01',
       parents: { admin: { parentId: org.id } },
     });
     const ownScheme = await fixtureCreate(paths.establishment, {

@@ -108,7 +108,7 @@ describe('AC-ORG-07/11 组织历史版本与结构化引用安全', () => {
     expect(forbidden.status).toBe(400);
   });
 
-  it('成本中心尚未有真实租户引用验证时拒绝任意 UUID，避免接受其他租户对象', async () => {
+  it('DEC-134：成本中心未启用，任意 UUID 一律 400 拒绝，不会接受其他租户对象', async () => {
     const session = await orgSession(testDb().db, 'org-cost-center-ref');
     const response = await session.request('POST', '/organizations', {
       ifMatch: 0,
@@ -118,7 +118,8 @@ describe('AC-ORG-07/11 组织历史版本与结构化引用安全', () => {
         costCenterId: randomUUID(),
       },
     });
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { details: { reason: 'COST_CENTER_NOT_ENABLED' } } });
     expect(await session.list('未验证引用')).toEqual([]);
   });
 

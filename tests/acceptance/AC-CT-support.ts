@@ -29,7 +29,7 @@ export async function contractWorld(db: Db, label: string) {
       user: session.user.id,
       tenant: session.tenant.id,
     });
-  const org = await session.org('合同部门', { startDate: '2025-01-01' });
+  const org = await session.org('合同部门', { establishedOn: '2025-01-01' });
   const employee = await session.employee();
   await session.business(
     employee.id,

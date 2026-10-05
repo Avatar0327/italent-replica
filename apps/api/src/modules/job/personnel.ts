@@ -12,16 +12,10 @@ import type {
   PositionChangeOptions,
 } from './types.js';
 
-// TODO(需取证 Q-M0-15): 员工主数据和任职版本链未接入前，不得把未知人数假定为零。
-export const unavailableJobPersonnel: JobPersonnelGateway = {
-  async listIncumbents() {
-    throw new AppError('SERVICE_UNAVAILABLE', '职位在岗人员的真实数据端口尚未接入');
-  },
-  async appendManagerVersion() {
-    throw new AppError('SERVICE_UNAVAILABLE', '任职经理版本写入端口尚未接入');
-  },
-};
-
+/**
+ * DEC-074 已解除：人员数据端口（job/employment-port.ts）接入后，停用职位与按职位树同步直线经理都按真实任职判定，
+ * 在岗口径为生效日主职、生效、非离职 / 退休的任职（Q-M0-15，`18` §11）。
+ */
 export async function applyPositionPersonnelRules(
   tx: Tx,
   ctx: JobWriteContext,
@@ -32,8 +26,10 @@ export async function applyPositionPersonnelRules(
 ): Promise<ManagerSyncResult | undefined> {
   if (current.enabled && (!fields.enabled || fields.stopDate < current.stopDate)) {
     const asOf = !fields.enabled ? fields.startDate : dayAfter(fields.stopDate);
-    const incumbents = await gateway.listIncumbents(tx, { tenantId: ctx.tenantId, positionId: current.id, asOf });
+    const query = { tenantId: ctx.tenantId, positionId: current.id, asOf, limit: 1 };
+    const incumbents = await gateway.listIncumbents(tx, query);
     assertIncumbents(incumbents);
+    // DEC-016：有在岗人员的职位禁止停用，不做自动转岗。
     if (incumbents.length) {
       throw new AppError('CONFLICT', '职位有在岗人员，禁止停用', { reason: 'POSITION_HAS_INCUMBENTS' });
     }
@@ -61,6 +57,7 @@ async function synchronizeManagers(
     tenantId: ctx.tenantId,
     positionId: fields.directParentId,
     asOf: fields.startDate,
+    limit: 2,
   });
   assertIncumbents(source);
   if (source.length !== 1) return undefined;
@@ -75,6 +72,7 @@ async function synchronizeManagers(
   const skipped: ManagerSyncSkip[] = [];
   for (const assignment of targets) {
     // DEC-131：员工本人就是唯一在岗人时跳过（不新增、不自任经理），并在保存结果逐人告知。原站未实测。
+    // R1 只有主职任职，同一员工不能同时在本职位和新上级职位，真实端口下此分支要到兼职（R2）后才会出现。
     if (assignment.employeeId === directManagerId) {
       skipped.push({
         employeeId: assignment.employeeId,
@@ -84,7 +82,7 @@ async function synchronizeManagers(
       continue;
     }
     // DEC-132：经理本来就是此人也照样新增（AC-JOB-05“各新增一条”、原站“是否新增任职”锁定为是）。
-    // 该边界原站未实测，属规格解释。
+    // 该边界原站未实测，属规格解释。范围外的员工由端口判定后跳过（P2-1），不写任职也不写同步审计。
     const change = {
       assignmentId: assignment.assignmentId,
       employeeId: assignment.employeeId,
@@ -93,7 +91,15 @@ async function synchronizeManagers(
       directManagerId,
       ...POSITION_MANAGER_SYNC_RECORD,
     };
-    await gateway.appendManagerVersion(tx, ctx, change);
+    const outcome = await gateway.appendManagerVersion(tx, ctx, change);
+    if (outcome?.skipped) {
+      skipped.push({
+        employeeId: assignment.employeeId,
+        assignmentId: assignment.assignmentId,
+        reason: outcome.skipped,
+      });
+      continue;
+    }
     await auditJob(
       tx,
       ctx,

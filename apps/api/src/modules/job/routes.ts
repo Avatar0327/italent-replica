@@ -39,6 +39,7 @@ import { jobCandidates, latestJobObject, listJobObjects, loadJobObject } from '.
 import { jobSettingsCommandSchema, readJobSettings, writeJobSettings } from './settings.js';
 import type { JobInput, JobPatch } from './types.js';
 import { validateJobAssignment } from './validation.js';
+import { employmentJobPersonnel, trimManagerSync } from './employment-port.js';
 import { createJobObject, updateJobObject } from './write-service.js';
 
 const BASE = '/api/tenant/job';
@@ -269,10 +270,15 @@ function registerObjectWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await objectContext(c, deps, objectCode, 'update', revision(c));
     const id = uuidParam(c);
     const input = await parseBody(c, jobPatchSchema(kind));
-    // 「调整员工直线经理」是本次变更的选项而非职位字段；同步任职由人员端口在事务内另行验权。
-    const { adjustEmployeeDirectManager: _option, ...fields } = input as JobPatch;
+    // 「调整员工直线经理」是本次变更的选项而非职位字段；同步任职由人员端口在事务内按任职对象另行验权。
+    const { adjustEmployeeDirectManager: option, ...fields } = input as JobPatch;
     await writeFields(deps, ctx, objectCode, 'update', fields);
     const scope = await requestScope(c, deps, ctx, objectCode);
+    const employmentScope =
+      option === true ? await resolveModuleScope(deps, ctx, undefined, MODULE_OBJECTS.employmentRecord.code) : null;
+    const personnel = employmentJobPersonnel(
+      employmentScope ? { scope: employmentScope, authorize: deps.authorize } : undefined,
+    );
     return runWrite(
       c,
       deps,
@@ -282,7 +288,7 @@ function registerObjectWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         if (!scope.all) await visibleJob(tx, ctx, scope, kind, id, input.effectiveDate);
         if ((input as JobPatch).orgId)
           visible(scope, (input as JobPatch).orgId as string, '职务体系对象不存在或已失效');
-        return { status: 200, body: await updateJobObject(tx, writeCtx, kind, id, input as JobPatch) };
+        return { status: 200, body: await updateJobObject(tx, writeCtx, kind, id, input as JobPatch, personnel) };
       },
       objectCode,
       async (tx) => {
@@ -291,6 +297,7 @@ function registerObjectWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           visible(scope, (input as JobPatch).orgId as string, '职务体系对象不存在或已失效');
       },
       (tx, body) => authorizeJobResult(tx, ctx, scope, kind, body),
+      (receipt) => trimManagerSync(deps, ctx, receipt),
     );
   });
 }

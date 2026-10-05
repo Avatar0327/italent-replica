@@ -306,8 +306,22 @@
     {
       "idx": 43,
       "version": "7",
-      "when": 1791191563706,
-      "tag": "0043_transfer_establishment",
+      "when": 1791190701441,
+      "tag": "0043_org_shop_owner_employment_change_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791190709182,
+      "tag": "0044_org_established_on_correction",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791195599356,
+      "tag": "0045_transfer_establishment",
       "breakpoints": true
     }
   ]
