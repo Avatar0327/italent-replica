@@ -16,7 +16,7 @@ import {
   sql,
   type Tx,
 } from '@italent/db';
-import { MODULE_OBJECTS } from '@italent/domain';
+import { ESTABLISHMENT_SCHEME_DATASOURCE, MODULE_OBJECTS } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import type { WriteContext } from './audit.js';
@@ -37,6 +37,10 @@ export interface IdentityScopeKey extends IdentityTarget {
   appCode: string;
 }
 const invalid = (message: string) => new AppError('VALIDATION_FAILED', message);
+/** 业务模块按数据源编码单独解析范围的内置数据源 → 所属对象（module-route-access.ts 的 requestScope dataSource 参数）。 */
+const BUILTIN_SCOPE_DATASOURCES: Readonly<Record<string, string>> = {
+  [ESTABLISHMENT_SCHEME_DATASOURCE]: MODULE_OBJECTS.establishment.code,
+};
 
 async function lock(tx: Tx, write: WriteContext, key: string) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${write.tenantId + ':' + key},0))`);
@@ -57,6 +61,12 @@ async function identityTarget(tx: Tx, key: IdentityScopeKey) {
   if (key.targetKind === 'entity') {
     const entity = objectCatalog.get(key.targetCode);
     if (!entity || entity.application !== key.appCode) throw invalid('目标对象不属于该应用');
+    return;
+  }
+  // 模块内置的数据源（如编制方案，DEC-121 开通预置的目标）直接按所属对象校验
+  const builtin = key.targetKind === 'datasource' ? BUILTIN_SCOPE_DATASOURCES[key.targetCode] : undefined;
+  if (builtin) {
+    if (objectCatalog.get(builtin)?.application !== key.appCode) throw invalid('目标对象不属于该应用');
     return;
   }
   // R1 尚无页面元数据模块：已登记的消费策略提供可校验的页面/数据源所属应用与对象。

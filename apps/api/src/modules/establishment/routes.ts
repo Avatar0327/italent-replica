@@ -8,7 +8,7 @@ import {
   withTenant,
   type Tx,
 } from '@italent/db';
-import { MODULE_OBJECTS } from '@italent/domain';
+import { ESTABLISHMENT_SCHEME_DATASOURCE, MODULE_OBJECTS } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
@@ -96,7 +96,7 @@ function registerSchemes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     const ctx = await objectContext(c, deps, OBJECT);
     const asOf = queryDate(c, ctx);
     const page = pageQuery(c);
-    const scope = await requestScope(c, deps, ctx, OBJECT);
+    const scope = await requestScope(c, deps, ctx, OBJECT, ESTABLISHMENT_SCHEME_DATASOURCE);
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const result = await tx.execute(sql`
         WITH current_versions AS (
@@ -132,7 +132,7 @@ function registerSchemes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
     const ctx = await objectContext(c, deps, OBJECT);
     const id = uuidParam(c);
     const asOf = queryDate(c, ctx);
-    const scope = await requestScope(c, deps, ctx, OBJECT);
+    const scope = await requestScope(c, deps, ctx, OBJECT, ESTABLISHMENT_SCHEME_DATASOURCE);
     return c.json(
       await trimModuleResponse(
         deps,
@@ -149,7 +149,12 @@ function registerSchemeWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): v
     const ctx = await objectContext(c, deps, OBJECT, 'create', revision(c));
     const input = await parseBody(c, scheme);
     await writeFields(deps, ctx, OBJECT, 'create', input);
-    visible(await requestScope(c, deps, ctx, OBJECT), undefined, '编制方案在该时点不存在', ctx.userId);
+    visible(
+      await requestScope(c, deps, ctx, OBJECT, ESTABLISHMENT_SCHEME_DATASOURCE),
+      undefined,
+      '编制方案在该时点不存在',
+      ctx.userId,
+    );
     return runWrite(
       c,
       deps,
@@ -167,7 +172,7 @@ function registerSchemeWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): v
     const id = uuidParam(c);
     const input = await parseBody(c, schemePatch);
     await writeFields(deps, ctx, OBJECT, 'update', input);
-    const scope = await requestScope(c, deps, ctx, OBJECT);
+    const scope = await requestScope(c, deps, ctx, OBJECT, ESTABLISHMENT_SCHEME_DATASOURCE);
     await withTenant(deps.db, ctx.tenantId, (tx) => checkScheme(tx, ctx, scope, id));
     return runWrite(
       c,
@@ -185,7 +190,7 @@ function registerSchemeWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps): v
     const ctx = await objectContext(c, deps, OBJECT, 'delete', revision(c));
     const id = uuidParam(c);
     await button(deps, ctx, OBJECT, 'delete', 'detail');
-    const scope = await requestScope(c, deps, ctx, OBJECT);
+    const scope = await requestScope(c, deps, ctx, OBJECT, ESTABLISHMENT_SCHEME_DATASOURCE);
     await withTenant(deps.db, ctx.tenantId, (tx) => checkScheme(tx, ctx, scope, id));
     return runWrite(
       c,

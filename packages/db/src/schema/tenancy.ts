@@ -193,21 +193,49 @@ export const commandLedger = pgTable(
 );
 
 /**
- * 平台审计：没有租户归属的平台级变更（用户、系统预置）。不带 tenant_id，故不受 RLS 约束（guard-rls 中列为豁免）；
- * 只有 app_platform 可读写，只追加（迁移 0006 触发器）。与租户相关的平台变更（开租户、改租户状态、成员关系）
- * 写入该租户的 audit_events，租户管理员可见。
+ * 平台审计：所有平台命令都写这里（R1-T17）。不带 tenant_id，故不受 RLS 约束（guard-rls 中列为豁免）；
+ * 只有 app_platform 可读写，只追加（迁移 0006 触发器）。与租户相关的平台变更（开租户、改租户状态、成员关系、
+ * 许可发放、备份恢复）另在该租户的 audit_events 写一份，租户管理员可见；这里用 subject_tenant_id 标出所涉租户，
+ * 平台方按租户追查时不依赖租户库内的审计（按租户恢复会把租户审计带回备份时点）。
  */
-export const platformAuditEvents = pgTable('platform_audit_events', {
-  id: id(),
-  actorUserId: uuid('actor_user_id').references(() => users.id),
-  action: text('action').notNull(),
-  objectType: text('object_type').notNull(),
-  objectId: text('object_id').notNull(),
-  before: jsonb('before'),
-  after: jsonb('after'),
-  occurredAt: utc('occurred_at'),
-  commandId: text('command_id').notNull(),
-});
+export const platformAuditEvents = pgTable(
+  'platform_audit_events',
+  {
+    id: id(),
+    actorUserId: uuid('actor_user_id').references(() => users.id),
+    action: text('action').notNull(),
+    objectType: text('object_type').notNull(),
+    objectId: text('object_id').notNull(),
+    before: jsonb('before'),
+    after: jsonb('after'),
+    occurredAt: utc('occurred_at'),
+    commandId: text('command_id').notNull(),
+    subjectTenantId: uuid('subject_tenant_id').references(() => tenants.id),
+  },
+  (t) => [index('platform_audit_events_subject_tenant').on(t.subjectTenantId, t.occurredAt)],
+);
+
+export const PLATFORM_OPERATOR_STATUSES = ['active', 'revoked'] as const;
+export type PlatformOperatorStatus = (typeof PLATFORM_OPERATOR_STATUSES)[number];
+
+/**
+ * 平台运营身份（REQ-PLT-001 R1、R4）：只有登记在这里且有效的全局账号才能调用 /api/platform/*。
+ * 与租户内权限完全分开——租户管理员不因任何租户内身份获得平台能力，平台运营也不因此成为任何租户的成员。
+ * 撤销只改状态（留痕），每次请求都重新读取。
+ */
+export const platformOperators = pgTable(
+  'platform_operators',
+  {
+    userId: uuid('user_id')
+      .primaryKey()
+      .references(() => users.id),
+    status: text('status').$type<PlatformOperatorStatus>().notNull().default('active'),
+    revision: integer('revision').notNull().default(1),
+    createdAt: utc('created_at'),
+    updatedAt: utc('updated_at'),
+  },
+  (t) => [check('platform_operators_status_valid', sql`${t.status} IN ('active', 'revoked')`)],
+);
 
 /** 平台命令台账：平台写命令的幂等键全局唯一（AGENTS.md §10「幂等」）。 */
 export const platformCommandLedger = pgTable('platform_command_ledger', {
@@ -223,3 +251,4 @@ export type TenantMembership = typeof tenantMemberships.$inferSelect;
 export type SystemSetting = typeof systemSettings.$inferSelect;
 export type TenantSettingOverride = typeof tenantSettingOverrides.$inferSelect;
 export type AuditEvent = typeof auditEvents.$inferSelect;
+export type PlatformOperator = typeof platformOperators.$inferSelect;

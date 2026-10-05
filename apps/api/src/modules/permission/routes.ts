@@ -13,7 +13,7 @@
  * TODO(需取证 #4)：菜单上下文是否参与后端鉴权（AC-PRM-02 与 AC-PRM-24 冲突）；当前只按身份与管理员能力判定。
  */
 import { withTenant } from '@italent/db';
-import { visibleEnterpriseMenus } from '@italent/domain';
+import { ADMIN_ROLE_NAMES, ADMIN_ROLES, visibleEnterpriseMenus } from '@italent/domain';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
@@ -60,6 +60,11 @@ export function registerPermissionRoutes(router: Router, deps: TenantRouteDeps):
   grantRoutes(router, deps);
   adminRoutes(router, deps);
   licenseRoutes(router, deps);
+  // AC-TEN-04：8 类企业管理员身份是平台预置的固定身份（06 §7.1），管理员管理页据此列出
+  router.get(`${BASE}/admin-roles`, async (c) => {
+    await guard(c, deps, 'admin_manage');
+    return c.json({ items: ADMIN_ROLES.map((role) => ({ role, name: ADMIN_ROLE_NAMES[role] })) });
+  });
   router.get(`${BASE}/admin-menus`, async (c) => {
     const { tenantId, userId } = tenantOf(c);
     const roles = await withTenant(deps.db, tenantId, (tx) => loadAdminRoles(tx, userId));
