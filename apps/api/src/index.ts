@@ -35,6 +35,15 @@ export {
   type EmploymentActivationChecks,
   registerEmploymentActivationChecks,
 } from './modules/employment/activation-checks.js';
+
+export {
+  generateContractForBusiness,
+  changeContractForTransfer,
+  handleContractsOnExit,
+} from './modules/contracts/ports.js';
+export { runContractJobs, startContractScheduler } from './modules/contracts/scheduler.js';
+export type { ContractContext } from './modules/contracts/context.js';
+export type { ContractFields, ContractCommand } from './modules/contracts/input.js';
 export { createPlatformRouter } from './modules/platform/routes.js';
 export { provisionTenant, type ProvisionInput, type ProvisionResult } from './modules/platform/provisioning.js';
 export { changeTenantLifecycle, issueLicense } from './modules/platform/operations.js';

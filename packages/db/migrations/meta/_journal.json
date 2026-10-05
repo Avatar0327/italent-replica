@@ -288,6 +288,20 @@
       "when": 1791187058355,
       "tag": "0040_transfer_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791189634245,
+      "tag": "0041_workable_mandarin",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791189642116,
+      "tag": "0042_contract_isolation",
+      "breakpoints": true
     }
   ]
 }

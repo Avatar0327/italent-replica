@@ -1,3 +1,4 @@
+import { CONTRACT_FIELDS, CONTRACT_OBJECT } from '../contracts/rules.js';
 /**
  * 审批中心领域模型（R1-T07；docs/02_业务建模/14、REQ-APV-001~004）。
  * 流程按审批类型隔离（DEC-017）；节点是动作开关集 + 消息规则数组（`14` §8.2）；时效字段只预留（DEC-035）。
@@ -286,7 +287,7 @@ const personnelFormFields = [...new Set(Object.values(SUBSETS).flatMap((subset) 
 const employeeInfoFormFields = EMPLOYEE_EDITABLE_FIELDS.filter((f) => !f.system).map((f) => f.code);
 
 /** employee_info：个人信息变更（员工信息主表），发起入口留待后续业务接入（DEC-116），尚无运行时适配器。 */
-export type ApprovalAdapterKind = 'employment' | 'personnel_change' | 'employee_info';
+export type ApprovalAdapterKind = 'employment' | 'personnel_change' | 'employee_info' | 'contract';
 export interface ApprovalTypeDefinition {
   readonly code: string;
   readonly name: string;
@@ -320,7 +321,24 @@ const employmentType = (code: string, name: string, defaultProcessCode: string |
  * 重聘入职、退休返聘是「入职」的异动类型（`07` §2），走入职审批（approvalTypeOfBusiness）。
  * 原站「组织调整」审批类型挂在组织调整申请对象上（`33`），任职记录上的组织调整异动没有对应的标准流程编码。
  */
+const contractType = (code: string, name: string, defaultProcessCode: string) =>
+  ({
+    code,
+    name,
+    defaultProcessCode,
+    objectCode: CONTRACT_OBJECT,
+    adapter: 'contract',
+    conditionFields: EMPLOYMENT_CONDITION_FIELDS,
+    formFields: CONTRACT_FIELDS,
+    readonlyFields: [],
+    approvalEdit: false,
+  }) as const satisfies ApprovalTypeDefinition;
+
 export const APPROVAL_TYPES = {
+  contract_create: contractType('contract_create', '新建合同', 'AddContractApproval'),
+  contract_renew: contractType('contract_renew', '续签合同', 'RenewContractProcess'),
+  contract_change: contractType('contract_change', '变更合同', 'ChangeContractProcess'),
+  contract_terminate: contractType('contract_terminate', '终止合同', 'TerminateContractProcess'),
   transfer: employmentType('transfer', '调动', 'TransferProcessNew'),
   leave: employmentType('leave', '离职', 'DimissionProcessNew'),
   regularization: employmentType('regularization', '转正', 'ProbationProcessNew'),
