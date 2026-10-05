@@ -7,7 +7,12 @@ import { withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { isEmploymentRecordVisible } from '../../apps/api/src/modules/employment/visibility.js';
+import {
+  isEmploymentRecordVisible,
+  visibleEmploymentRecords,
+} from '../../apps/api/src/modules/employment/visibility.js';
+import { employmentRecordVisibleTo } from '../../apps/api/src/modules/employment/context.js';
+import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import {
   addMember,
   createProfile,
@@ -42,22 +47,25 @@ async function tenantFixture(label: string) {
   const outside = await org(`${label}范围外部门`);
   const outside2 = await org(`${label}范围外部门二`);
   /** 依次办理入职与调动；返回每一步的业务。 */
-  async function employee(steps: { date: string; departmentId: string; mode?: 'direct' | 'application' }[]) {
+  type Step = { date: string; departmentId: string; mode?: 'direct' | 'application' };
+  type Exit = { date: string; kind: 'leave' | 'retirement' };
+  async function employee(steps: (Step | Exit)[]) {
     const person = await send('employment/employees', { code: `V_${randomUUID()}`, name: '可见口径合成员工' });
     const created: Created[] = [];
     let revision = person.revision;
     for (const [index, step] of steps.entries()) {
-      const business = await send(
-        `employment/employees/${person.id}/businesses`,
-        {
-          kind: index === 0 ? 'hire' : 'transfer',
-          mode: step.mode ?? 'direct',
-          effectiveDate: step.date,
-          fields: { departmentId: step.departmentId, place: `地点${index}` },
-          ...(index === 0 ? { loginEmail: loginEmailOf(person.id) } : {}),
-        },
-        revision,
-      );
+      // 离职 / 退休按最后工作日办理，部门沿用上一条（DEC-192 的“最后一条任职部门”）。
+      const body =
+        'kind' in step
+          ? { kind: step.kind, mode: 'direct', lastWorkDate: step.date, fields: {} }
+          : {
+              kind: index === 0 ? 'hire' : 'transfer',
+              mode: step.mode ?? 'direct',
+              effectiveDate: step.date,
+              fields: { departmentId: step.departmentId, place: `地点${index}` },
+              ...(index === 0 ? { loginEmail: loginEmailOf(person.id) } : {}),
+            };
+      const business = await send(`employment/employees/${person.id}/businesses`, body, revision);
       revision = business.employeeRevision;
       created.push(business);
     }
@@ -96,6 +104,9 @@ describe('AC-PRM-36 DEC-177 任职记录可见口径：记录部门 ∪ 员工�
   let stayer: Awaited<ReturnType<typeof a.employee>>;
   let leaver: Awaited<ReturnType<typeof a.employee>>;
   let stranger: Awaited<ReturnType<typeof a.employee>>;
+  let leftInside: Awaited<ReturnType<typeof a.employee>>;
+  let retiredInside: Awaited<ReturnType<typeof a.employee>>;
+  let leftOutside: Awaited<ReturnType<typeof a.employee>>;
   let pending: Created;
 
   beforeAll(async () => {
@@ -134,6 +145,22 @@ describe('AC-PRM-36 DEC-177 任职记录可见口径：记录部门 ∪ 员工�
       { date: '2026-11-01', departmentId: a.outside2.id },
     ]);
     stranger = await a.employee([{ date: '2026-01-01', departmentId: a.outside.id }]);
+    // DEC-192：离职 / 退休员工以最后一条任职部门为“当前部门”。
+    leftInside = await a.employee([
+      { date: '2026-01-01', departmentId: a.outside.id },
+      { date: '2026-06-01', departmentId: a.inside.id },
+      { date: '2026-08-31', kind: 'leave' },
+    ]);
+    retiredInside = await a.employee([
+      { date: '2026-01-01', departmentId: a.outside.id },
+      { date: '2026-06-01', departmentId: a.inside.id },
+      { date: '2026-08-31', kind: 'retirement' },
+    ]);
+    leftOutside = await a.employee([
+      { date: '2026-01-01', departmentId: a.inside.id },
+      { date: '2026-06-01', departmentId: a.outside.id },
+      { date: '2026-08-31', kind: 'leave' },
+    ]);
   });
 
   const get = (path: string, as: Identity = a.reader) => a.api.request('GET', `/api/tenant/employment${path}`, as);
@@ -210,5 +237,70 @@ describe('AC-PRM-36 DEC-177 任职记录可见口径：记录部门 ∪ 员工�
       isEmploymentRecordVisible(tx, a.seed.tenant.id, forged, { employeeId: stayer.id, departmentId: a.inside.id }),
     );
     expect(visibleInA).toBe(true);
+  });
+  it('DEC-192：离职 / 退休员工最后一条任职部门在范围内时整链可见，在范围外时只见范围内期间', async () => {
+    for (const person of [leftInside, retiredInside]) {
+      const ids = person.businesses.map((business) => business.id);
+      expect(await recordIds(person.id)).toEqual(ids);
+      for (const id of ids) expect((await get(`/records/${id}`)).status).toBe(200);
+    }
+    const [inScope, movedOut, left] = leftOutside.businesses.map((business) => business.id);
+    expect(await recordIds(leftOutside.id)).toEqual([inScope]);
+    for (const id of [movedOut, left]) expect((await get(`/records/${id}`)).status).toBe(404);
+  });
+
+  it('P2-1：看全部范围与可信系统调用同样校验员工属于本租户；不存在的员工不可见', async () => {
+    const all = { orgIds: [], personIds: [], all: true, hasDataPermission: true, terms: [] };
+    const [history] = stayer.businesses.map((business) => business.id);
+    const foreign = { employeeId: stayer.id, departmentId: a.inside.id };
+    const missing = { employeeId: randomUUID(), departmentId: a.inside.id };
+    const own = (await b.employee([{ date: '2026-01-01', departmentId: b.inside.id }])).id;
+    const local = { employeeId: own, departmentId: b.inside.id };
+    const tenantB = b.seed.tenant.id;
+    await withTenant(b.db, tenantB, async (tx) => {
+      for (const scope of [all, undefined]) {
+        expect(await isEmploymentRecordVisible(tx, tenantB, scope, foreign)).toBe(false);
+        expect(await isEmploymentRecordVisible(tx, tenantB, scope, missing)).toBe(false);
+        expect(await isEmploymentRecordVisible(tx, tenantB, scope, local)).toBe(true);
+        expect(await visibleEmploymentRecords(tx, tenantB, scope, [foreign, local, missing])).toEqual([
+          false,
+          true,
+          false,
+        ]);
+        const ctx = { tenantId: tenantB, userId: b.reader.user, scope } as unknown as EmploymentContext;
+        expect(await employmentRecordVisibleTo(tx, ctx, stayer.id, a.inside.id, history)).toBe(false);
+        expect(await employmentRecordVisibleTo(tx, ctx, own, b.inside.id)).toBe(true);
+      }
+    });
+  });
+
+  it('P3-1：“使用用户”范围下本人创建的前驱照常显示，他人创建的前驱仍裁成 null', async () => {
+    const c = await tenantFixture('丙');
+    const objectCode = MODULE_OBJECTS.employmentRecord.code;
+    const policy = await c.api.request(
+      'PUT',
+      `/api/tenant/permission/scope-policies/TenantBase/${objectCode}/entity/${objectCode}`,
+      { ...c.seed.asAdmin, ifMatch: 0, body: { rules: [{ dimension: 'using_user' }] } },
+    );
+    expect(policy.status, await policy.clone().text()).toBe(200);
+    const person = await c.employee([{ date: '2026-01-01', departmentId: c.inside.id }]);
+    const create = async (date: string, revision: number) => {
+      const response = await c.setup.request('POST', `/api/tenant/employment/employees/${person.id}/businesses`, {
+        ...c.reader,
+        ifMatch: revision,
+        body: { kind: 'transfer', mode: 'direct', effectiveDate: date, fields: { departmentId: c.inside.id } },
+      });
+      expect(response.status, await response.clone().text()).toBe(201);
+      return (await response.json()) as Created;
+    };
+    const first = await create('2026-03-01', person.businesses[0]!.employeeRevision);
+    const second = await create('2026-06-01', first.employeeRevision);
+    const read = async (id: string) =>
+      (await (await c.api.request('GET', `/api/tenant/employment/records/${id}`, c.reader)).json()) as {
+        previousRecordId: string | null;
+        before: unknown;
+      };
+    expect(await read(second.id)).toMatchObject({ previousRecordId: first.id, before: { fields: expect.any(Object) } });
+    expect(await read(first.id)).toMatchObject({ previousRecordId: null, before: null });
   });
 });
