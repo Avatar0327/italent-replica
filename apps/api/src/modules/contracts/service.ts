@@ -25,7 +25,9 @@ function assertOperationState(operation: string, before: Contract) {
     throw new AppError('CONFLICT', '当前合同状态不允许该操作');
 }
 /** DEC-167：编辑是更正版本，不是续签；终止原因在版本间保留，不能用改日期抹掉护栏。 */
-function correctedState(
+async function correctedState(
+  tx: Tx,
+  ctx: ContractContext,
   before: Contract,
   data: { endDate: string | null; actualTerminationDate: string | null },
   today: string,
@@ -46,7 +48,46 @@ function correctedState(
       terminationReason: before.terminationReason ?? 'unknown',
     });
   }
+  if (restore) await assertRestorationAllowed(tx, ctx, before, data.endDate!, today);
   return restore ? { status: 'valid', actualTerminationDate: null, terminationReason: null } : preserved;
+}
+/** DEC-167④⑤：调用方已持员工锁；提交与延迟生效都重新检查，避免两份有效合同。 */
+async function assertRestorationAllowed(
+  tx: Tx,
+  ctx: ContractContext,
+  before: Contract,
+  endDate: string,
+  today: string,
+) {
+  const current = await findCurrentRecord(tx, ctx.tenantId, before.employeeId, today);
+  if (current && ['leave', 'retirement'].includes(current.kind)) {
+    const [exit] = rowsOf<{ lastWorkDate: string }>(
+      await tx.execute(sql`SELECT coalesce(last_work_date,start_date-1)::text AS "lastWorkDate"
+        FROM employment_records WHERE tenant_id=${ctx.tenantId} AND id=${current.id}::uuid`),
+    );
+    if (exit && exit.lastWorkDate < endDate) {
+      throw new AppError('CONFLICT', '员工已离职，不能通过编辑导入恢复有效合同', {
+        reason: 'CONTRACT_EMPLOYEE_DEPARTED',
+        lastWorkDate: exit.lastWorkDate,
+      });
+    }
+  }
+  // 日期识别后续同类型合同；同一链以签订次数识别续签，避免编辑版本号追平后绕过。
+  const [newer] = rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT id FROM contract_records
+      WHERE tenant_id=${ctx.tenantId} AND employee_id=${before.employeeId}::uuid
+        AND type_id=${before.typeId}::uuid AND id<>${before.id}::uuid
+        AND NOT deleted AND status<>'void' AND approval_status='effective'
+        AND (effective_date>${before.effectiveDate}::date
+          OR (root_contract_id=${before.rootContractId}::uuid AND signing_count>${before.signingCount}))
+      ORDER BY effective_date DESC,signing_count DESC,id LIMIT 1`),
+  );
+  if (newer) {
+    throw new AppError('CONFLICT', '已有更新的同类型合同，请修改续签的那份合同', {
+      reason: 'CONTRACT_SUPERSEDED_BY_RENEWAL',
+      contractId: newer.id,
+    });
+  }
 }
 export async function loadContract(tx: Tx, tenantId: string, id: string) {
   const [record] = await tx
@@ -265,10 +306,8 @@ export async function createCommand(
   const { input, before, data } = await prepare(tx, ctx, raw, correction);
   if (correction && before) {
     data.number = input.fields.number ?? before.number;
-    data.actualTerminationDate = correctedState(
-      before,
-      data,
-      tenantLocalDate(ctx.now, ctx.timezone),
+    data.actualTerminationDate = (
+      await correctedState(tx, ctx, before, data, tenantLocalDate(ctx.now, ctx.timezone))
     ).actualTerminationDate;
   }
   // 同一源合同只允许一张未完成申请；员工锁将批量、单条、调度的检查串行化。
@@ -318,7 +357,7 @@ export async function applyRequest(tx: Tx, ctx: ContractContext, request: Contra
   const due = latest.operation === 'terminate' ? latest.actualTerminationDate! : latest.effectiveDate;
   if (due > today) throw new AppError('CONFLICT', '合同尚未到生效日期');
   const data = { ...businessFields(latest), signingCount: latest.signingCount };
-  const correction = latest.operation === 'edit' ? correctedState(before!, latest, today) : null;
+  const correction = latest.operation === 'edit' ? await correctedState(tx, ctx, before!, latest, today) : null;
   let result: Contract;
   if (latest.operation === 'terminate') {
     result = await setContractState(tx, ctx, before!, 'terminated', latest.actualTerminationDate);
