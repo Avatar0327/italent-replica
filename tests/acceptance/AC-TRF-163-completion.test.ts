@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { tenantApi } from './support/tenant-api.js';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -50,12 +52,31 @@ describe('DEC-163 任职信息待补全', () => {
     expect(await events('employment.completion.reminder')).toHaveLength(1);
     await w.runScheduler('2026-10-17T02:00:00Z');
     expect(await events('employment.completion.reminder')).toHaveLength(2);
-    // 表单可编辑字段改为只追踪经理，职位由真实任职编辑补全前仍未关闭。
+    // 部分补全保持待办；剩余职位通过同一编辑任职入口补全后自动结束。
     const edited = await w.session.request('PATCH', `/records/${business.id}`, {
       ifMatch: business.revision,
       body: { fields: { directManagerId: manager.employee.id, dottedManagerId: manager.employee.id } },
     });
     expect(edited.status, await edited.clone().text()).toBe(200);
     expect((await todos('2026-10-17T02:00:00Z'))[0]!.fieldCodes).toEqual(['preset:positionId']);
+    const api = tenantApi(w.db, { clock: () => new Date('2026-10-17T02:00:00Z') });
+    async function job(kind: string, fields: object = {}) {
+      const response = await api.request('POST', `/api/tenant/job/${kind}`, {
+        user: w.session.user.id, tenant: w.session.tenant.id, ifMatch: 0,
+        body: { name: '合成补全职位', code: randomUUID(), startDate: '2026-01-01', ...fields },
+      });
+      expect(response.status, await response.clone().text()).toBe(201);
+      return await response.json() as { id: string };
+    }
+    const post = await job('posts');
+    const position = await job('positions', { postId: post.id, orgId: w.to.id });
+    const current = await edited.json() as { revision: number };
+    const completed = await w.session.request('PATCH', `/records/${business.id}`, {
+      ifMatch: current.revision, body: { fields: { positionId: position.id } },
+    });
+    expect(completed.status, await completed.clone().text()).toBe(200);
+    expect(await todos('2026-10-17T02:00:00Z')).toEqual([]);
+    await w.runScheduler('2026-10-24T02:00:00Z');
+    expect(await events('employment.completion.reminder')).toHaveLength(2);
   });
 });

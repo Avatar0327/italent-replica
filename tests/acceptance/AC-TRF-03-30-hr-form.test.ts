@@ -276,3 +276,18 @@ describe('AC-TRF-01/23 员工人事申请表单', () => {
     expect(html).toContain('name="departmentId"');
   });
 });
+
+it('DEC-165 带出的非空部门显示且允许提交；清空后阻止提交', async () => {
+  const data = departmentScenario();
+  const scenario = { ...data, preview: { ...data.preview!, fields: { ...data.preview!.fields, departmentId: 'department-2' } } };
+  expect(await renderScenario(scenario)).toMatch(/<option value="department-2" selected=""/);
+  expect(actionDisabledStates(await renderScenario(scenario))).toEqual(enabledActions);
+  expect(actionDisabledStates(await renderScenario({ ...scenario, fields: { departmentId: null } })).提交).toBe(true);
+});
+it('隐藏必填项无值时使用通用配置提示并阻止提交，不泄漏字段名', async () => {
+  const data = departmentScenario();
+  const scenario = { ...data, preview: { ...data.preview!, requiredFieldsUnavailable: true, form: { ...data.preview!.form, fieldModes: {} } } };
+  const html = await renderScenario(scenario);
+  expect(html).toContain('表单必填项不可用，请联系 HR 检查表单或字段权限');
+  expect(actionDisabledStates(html).提交).toBe(true);
+});
