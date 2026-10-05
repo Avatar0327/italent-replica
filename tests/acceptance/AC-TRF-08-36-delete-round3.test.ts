@@ -50,6 +50,23 @@ describe('第三轮 1：可见前驱的恢复不被误拒（DEC-177 / 178）', (
   });
 });
 
+describe('自查：同日后一条时前一条区间不变，不按联动复核', () => {
+  it('只管 B：删除 9/10 当日较早的 B 记录（当日还有一条 B），A 的前驱不可见但区间不变，允许删除', async () => {
+    const w = await scopedWorld(database().db, 'r3-same-day');
+    const later = await w.addBusiness({
+      kind: 'transfer',
+      mode: 'direct',
+      effectiveDate: '2026-09-10',
+      fields: { departmentId: w.b.id, place: '当日第二条' },
+    });
+    const before = (await w.timeline()).find((item) => item.id === w.subject.hire.id);
+    const onlyB = w.operator([w.b.id]);
+    const deleted = await w.remove(onlyB, w.toB.id);
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    expect(await w.timeline()).toEqual([before, { id: later.id, stopDate: '9999-12-31' }]);
+  });
+});
+
 describe('第三轮 2：恢复区间跨编制周期时每期都校验严格编制', () => {
   async function monthlyWorld(label: string) {
     const w = await activationWorld(database().db, label);
