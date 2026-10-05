@@ -10,6 +10,7 @@ import {
   permissionScopePolicies,
   permissionScopePolicyRules,
   permissionUserPersonLinks,
+  sql,
   withTenant,
 } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
@@ -237,6 +238,7 @@ describe('AC-PRM-03~07/17/18/21 scope resolution and policy priority', () => {
     const direct = await w.employee('直线下属');
     const grandchild = await w.employee('隔级下属');
     const dotted = await w.employee('虚线下属');
+    const hires = new Map<string, string>();
     for (const [person, directManagerId, dottedManagerId] of [
       [manager, null, null],
       [direct, manager.id, null],
@@ -254,6 +256,7 @@ describe('AC-PRM-03~07/17/18/21 scope resolution and policy priority', () => {
         },
       });
       expect(r.status, await r.clone().text()).toBe(201);
+      hires.set(person.id, ((await r.json()) as { id: string }).id);
     }
     await setObjectPermission(
       w,
@@ -327,7 +330,20 @@ describe('AC-PRM-03~07/17/18/21 scope resolution and policy priority', () => {
         fields: { directManagerId: direct.id, dottedManagerId: dotted.id },
       },
     });
-    expect(cycle.status, await cycle.clone().text()).toBe(201);
+    // 原站拒绝形成循环汇报（`19` §3.1 Q-M0-58），接口现在 400；存量 / 导入数据里仍可能有环，解析器必须照常收敛：
+    // 按向后更新同一追加路径给经理的任职补一条记录快照，构造与原用例相同的直线 / 虚线环。
+    expect(cycle.status, await cycle.clone().text()).toBe(400);
+    expect(await cycle.json()).toMatchObject({ error: { details: { reason: 'REPORTING_CYCLE' } } });
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx.execute(sql`INSERT INTO employment_payload_versions
+        SELECT (jsonb_populate_record(NULL::employment_payload_versions, to_jsonb(p) || jsonb_build_object(
+          'id', gen_random_uuid(), 'version_no', p.version_no + 1, 'previous_version_id', p.id,
+          'is_record_snapshot', true, 'command_id', 'legacy-import', 'trigger_business_id', p.business_id,
+          'direct_manager_id', ${direct.id}::uuid, 'dotted_manager_id', ${dotted.id}::uuid))).*
+        FROM employment_payload_versions p
+        WHERE p.tenant_id=${w.tenant.id} AND p.business_id=${hires.get(manager.id)!}::uuid
+        ORDER BY p.version_no DESC LIMIT 1`),
+    );
     await policy({ dimension: 'reporting', relationMode: 'direct_mixed' });
     expect(await ids()).toEqual([direct.id, grandchild.id].sort());
     await policy({ dimension: 'reporting', relationMode: 'dotted_mixed' });
