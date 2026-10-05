@@ -344,6 +344,20 @@
       "when": 1791205391309,
       "tag": "0048_transfer_linkage",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1791212393009,
+      "tag": "0049_plain_the_anarchist",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1791212452092,
+      "tag": "0050_f017_transfer_lifecycle",
+      "breakpoints": true
     }
   ]
 }

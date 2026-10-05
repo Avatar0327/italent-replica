@@ -1,3 +1,5 @@
+import type { Authorizer } from '../../authorization.js';
+import { linkedObjectScope, scopeAllowsInTransaction, type ModuleScope } from '../permission/module-access.js';
 import { auditActor } from '../../system-actor.js';
 import { randomUUID } from 'node:crypto';
 import {
@@ -379,11 +381,12 @@ async function audit(
  */
 export async function assignTransferOrganizationPeople(
   tx: Tx,
-  context: Omit<OrgWriteContext, 'rootName' | 'expectedRevision'>,
+  context: Omit<OrgWriteContext, 'rootName' | 'expectedRevision'> & { scope?: ModuleScope; authorize?: Authorizer },
   orgId: string,
   effectiveDate: string,
   people: { personInChargeId?: string; shopOwnerId?: string },
 ): Promise<OrgRecord> {
+  await requireTransferOrganizationScope(tx, context, orgId);
   const [root] = await tx
     .select({ name: orgVersions.name })
     .from(orgVersions)
@@ -396,4 +399,20 @@ export async function assignTransferOrganizationPeople(
   const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('no key update');
   if (!object) throw new AppError('NOT_FOUND', '组织不存在');
   return updateOrganization(tx, { ...ctx, expectedRevision: object.revision }, orgId, { effectiveDate, ...people });
+}
+
+/** DEC-178：组织写范围独立于调入部门选择例外；任职可见性的并集不能扩展组织权限。
+ * TODO(F-015)：接入统一联动范围判定；该判定须保留组织对象的范围语义。
+ */
+export async function requireTransferOrganizationScope(
+  tx: Tx,
+  ctx: Pick<OrgWriteContext, 'tenantId' | 'userId' | 'timezone' | 'now'> & {
+    scope?: ModuleScope;
+    authorize?: Authorizer;
+  },
+  orgId: string,
+): Promise<void> {
+  const scope = await linkedObjectScope(tx, ctx, 'TenantBase.Organization');
+  if (scope && !(await scopeAllowsInTransaction(tx, scope, { orgId })))
+    throw new AppError('LINKED_RECORD_OUT_OF_SCOPE', '联动记录不在当前数据范围，请由覆盖该范围的人员操作');
 }

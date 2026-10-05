@@ -70,7 +70,7 @@ function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: Pag
     employmentCreator(tenantId, sql`r.id`, true),
   );
   return sql`
-    SELECT r.*,b.revision,current_payload.body AS current_payload,
+    SELECT r.*,t.start_date::text AS start_date,b.revision,current_payload.body AS current_payload,
       CASE WHEN isempty(t.valid_during) THEN (t.start_date-1)::text
         WHEN upper_inf(t.valid_during) THEN '9999-12-31' ELSE (upper(t.valid_during)-1)::text END AS stop_date,
       t.valid_during @> ${asOf}::date AS is_current,
@@ -102,7 +102,7 @@ function recordsQuery(tenantId: string, asOf: string, predicates: SQL, page: Pag
     ) previous ON true
     WHERE r.tenant_id=${tenantId} AND ${predicates}
       AND ${scopeFilter}
-    ORDER BY r.start_date ASC,t.sort_order ASC,r.id LIMIT ${page.limit} OFFSET ${page.offset}
+    ORDER BY t.start_date ASC,t.sort_order ASC,r.id LIMIT ${page.limit} OFFSET ${page.offset}
   `;
 }
 

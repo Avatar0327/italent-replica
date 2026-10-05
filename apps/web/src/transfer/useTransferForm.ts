@@ -47,7 +47,7 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' =
   const commands = useTransferCommand(tenantId, model, loadingPreview, setModel, setError, setNotice);
   useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator);
   useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator);
-  usePreview(tenantId, model, reload, setModel, setLoadingPreview, setError, setNotice);
+  usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice);
   const selection = (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
     setError('');
     setModel((current) =>
@@ -78,6 +78,7 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' =
   };
   const reset = () => {
     commands.setSaved(null);
+    commands.resetConflict();
     setNotice('');
     refresh();
   };
@@ -116,9 +117,11 @@ function useTransferCommand(
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<TransferBusiness | null>(null);
   const [unknownCommand, setUnknownCommand] = useState('');
+  const [needsReload, setNeedsReload] = useState(false);
   const requestInProgress = useRef(false);
   const submit = async (action: TransferAction) => {
     if (
+      needsReload ||
       !model.preview ||
       model.preview.requiredFieldsUnavailable ||
       requestInProgress.current ||
@@ -138,29 +141,49 @@ function useTransferCommand(
         : await saveTransfer(tenantId, model, action, commandId);
       if (!result.id || !Number.isInteger(result.revision) || !result.status) throw new Error(text.unknown);
       setSaved(result);
-      setNotice(
-        result.status === 'draft'
-          ? text.draftSaved
-          : action === 'direct'
-            ? result.status === 'effective'
-              ? text.effective
-              : text.scheduled
-            : text.submitted,
-      );
+      setNotice(savedNotice(result, action));
     } catch (cause) {
       if (!(cause instanceof TransferApiError) || cause.status >= 500) {
         setUnknownCommand(commandId);
         setError(text.unknown);
       } else setError(requestError(cause));
-      if (cause instanceof TransferApiError && cause.status === 409) {
-        setModel((current) => ({ ...current, preview: null }));
+      if (cause instanceof TransferApiError && cause.code === 'REVISION_CONFLICT') {
+        if (saved) setNeedsReload(true);
+        else setModel((current) => ({ ...current, preview: null }));
       }
     } finally {
       setBusy(false);
       requestInProgress.current = false;
     }
   };
-  return { busy, saved, unknownCommand, submit, setSaved };
+  const reloadSaved = async () => {
+    if (!saved || requestInProgress.current) return;
+    requestInProgress.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      const { latest, refreshed } = await reloadSavedModel(tenantId, model, saved);
+      setModel(refreshed);
+      setSaved(latest);
+      setNeedsReload(false);
+      setNotice(text.draftReloaded);
+    } catch (cause) {
+      setError(requestError(cause));
+    } finally {
+      setBusy(false);
+      requestInProgress.current = false;
+    }
+  };
+  return {
+    busy,
+    saved,
+    unknownCommand,
+    submit,
+    setSaved,
+    needsReload,
+    reloadSaved,
+    resetConflict: () => setNeedsReload(false),
+  };
 }
 
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;
@@ -230,6 +253,7 @@ function useEmployees(
 function usePreview(
   tenantId: string,
   model: TransferFormModel,
+  saved: TransferBusiness | null,
   reload: number,
   setModel: SetModel,
   setBusy: React.Dispatch<React.SetStateAction<boolean>>,
@@ -238,7 +262,7 @@ function usePreview(
 ) {
   const input = JSON.stringify(previewInput(model));
   useEffect(() => {
-    if (!model.employeeId || !model.effectiveDate || !model.transferTypeCode) {
+    if (saved || !model.employeeId || !model.effectiveDate || !model.transferTypeCode) {
       setBusy(false);
       return;
     }
@@ -267,7 +291,7 @@ function usePreview(
       controller.abort();
     };
     // input covers the scalar selection and explicit edits; returned defaults never trigger another request.
-  }, [tenantId, model.employeeId, input, reload, setModel, setBusy, setError, setNotice]);
+  }, [tenantId, model.employeeId, input, saved, reload, setModel, setBusy, setError, setNotice]);
 }
 async function loadPreview(tenantId: string, model: TransferFormModel, signal: AbortSignal) {
   const preview = await transferRequest<TransferPreview>(
@@ -302,4 +326,30 @@ function referenceQuery(tenantId: string, model: TransferFormModel, setModel: Se
       setError(requestError(cause));
     }
   };
+}
+
+async function reloadSavedModel(tenantId: string, model: TransferFormModel, saved: TransferBusiness) {
+  const latest = await transferRequest<TransferBusiness>(tenantId, `${EMPLOYMENT_API}/businesses/${saved.id}`);
+  if (latest.id !== saved.id || !Number.isInteger(latest.revision) || !latest.fields) throw new Error(text.failed);
+  const modelWithDate = {
+    ...model,
+    effectiveDate: latest.effectiveDate ?? model.effectiveDate,
+    fields: {},
+    customFields: {},
+  };
+  const loaded = await loadPreview(tenantId, modelWithDate, new AbortController().signal);
+  return {
+    latest,
+    refreshed: {
+      ...modelWithDate,
+      ...loaded,
+      preview: { ...loaded.preview, fields: latest.fields, customFields: latest.customFields ?? {} },
+    },
+  };
+}
+
+function savedNotice(result: TransferBusiness, action: TransferAction) {
+  if (result.status === 'draft') return text.draftSaved;
+  if (action === 'direct') return result.status === 'effective' ? text.effective : text.scheduled;
+  return text.submitted;
 }

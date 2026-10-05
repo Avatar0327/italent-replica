@@ -311,14 +311,18 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const items = await withTenant(deps.db, ctx.tenantId, (tx) => listCompletionTodos(tx, ctx, page));
     const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
     return c.json({
-      items: items.map((item) => ({
-        id: item.id,
-        employeeId: item.employeeId,
-        effectiveDate: item.effectiveDate,
-        fieldCodes: item.fieldCodes.filter(
-          (code) => viewable === undefined || viewable.has(code.replace(/^preset:/, '')),
-        ),
-      })),
+      items: await Promise.all(
+        items.map(async (item) => ({
+          ...((await trimEmploymentResponse(deps, ctx, {
+            id: item.id,
+            employeeId: item.employeeId,
+            effectiveDate: item.effectiveDate,
+          })) as object),
+          fieldCodes: item.fieldCodes.filter(
+            (code) => viewable === undefined || viewable.has(code.replace(/^preset:/, '')),
+          ),
+        })),
+      ),
       page: page.page,
       pageSize: page.pageSize,
     });

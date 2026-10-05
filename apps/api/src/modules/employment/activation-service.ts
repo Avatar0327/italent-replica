@@ -84,7 +84,7 @@ export async function activateDueBusinesses(
 
 /**
  * HR 重试（DEC-052 / DEC-112）：只适用于已到期、生效失败或被挂起的申请，且前面没有失败未修正的业务；
- * 按原生效日落地，并让其后到期的业务依次生效。expectedRevision 由 lockEmploymentBusiness 在状态迁移时校验。
+ * 调动按 DEC-186 改为实际执行日，并让其后到期的业务依次生效。expectedRevision 由 lockEmploymentBusiness 在状态迁移时校验。
  */
 export async function retryActivation(tx: Tx, ctx: EmploymentContext, businessId: string, employeeId: string) {
   await lockTransferParticipants(tx, ctx, employeeId);

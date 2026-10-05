@@ -182,13 +182,13 @@ function employmentPatch(input: Readonly<Row>) {
 }
 
 const employmentAdapter: BusinessAdapter = {
-  async lock(tx, ctx, businessId, sourceOnly = false) {
+  async lock(tx, ctx, businessId) {
     const [owner] = rowsOf<{ employee_id: string }>(
       await tx.execute(sql`SELECT employee_id FROM employment_business_objects
         WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid`),
     );
     if (!owner) throw new AppError('NOT_FOUND', '任职业务不存在');
-    if (!sourceOnly) await lockTransferBusiness(tx, ctx, businessId);
+    await lockTransferBusiness(tx, ctx, businessId);
     await lockEmploymentEmployee(tx, ctx, owner.employee_id);
     await tx.execute(sql`SELECT 1 FROM employment_business_objects
       WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE`);

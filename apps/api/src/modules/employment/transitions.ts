@@ -1,3 +1,4 @@
+import { postponeLateTransfer } from './late-transfer.js';
 import { assertEstablishmentCapacity } from './activation-checks.js';
 import { lockTransferBusiness } from './transfer-locks.js';
 import { personnelHooks } from './personnel-hooks.js';
@@ -77,7 +78,7 @@ export async function transitionEmployment(
   if (['submit', 'approve', 'activate'].includes(input.action)) await lockTransferBusiness(tx, ctx, input.id);
   const business = await lockEmploymentBusiness(tx, ctx, input.id);
   assertTransition(business, input.action);
-  if (input.action === 'submit') {
+  if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
     const predecessor = await findPredecessor(tx, ctx.tenantId, business.employeeId, payload.effectiveDate);
     const { fields } = await resolveEffectiveInheritance(tx, ctx, payload, {
@@ -121,8 +122,10 @@ export async function transitionEmployment(
         reason: 'ACTIVATION_PREDECESSOR_PENDING',
         blockedByBusinessId: before[0]!.id,
       });
+    const scheduledDate = business.payload.effectiveDate;
+    await postponeLateTransfer(tx, ctx, business);
     // materialize 同事务完成向后更新、审计与 outbox。
-    await materializeEmploymentRecord(tx, ctx, business);
+    await materializeEmploymentRecord(tx, ctx, business, { scheduledDate });
     await appendEmploymentState(tx, ctx, business, 'effective');
   } else {
     const state = STATE_AFTER[input.action];

@@ -1,3 +1,4 @@
+import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
@@ -21,6 +22,8 @@ import { operationKey } from './timeline.js';
 import type { EmploymentContext, EmploymentState } from './types.js';
 
 export interface ForwardSource {
+  readonly scheduledDate?: string;
+  readonly establishmentWarnings?: EstablishmentWarning[];
   readonly employeeId: string;
   readonly businessId?: string;
   readonly staffId: string;
@@ -118,6 +121,7 @@ function sameDayPendingAfterSource(ctx: EmploymentContext, source: ForwardSource
 
 async function candidates(tx: Tx, ctx: EmploymentContext, source: ForwardSource): Promise<ForwardTarget[]> {
   const order = await sourceOrder(tx, ctx, source);
+  const pendingFrom = source.scheduledDate ?? source.effectiveDate;
   const laterEffective =
     order === null
       ? sql`t.start_date>${source.effectiveDate}::date`
@@ -138,8 +142,8 @@ async function candidates(tx: Tx, ctx: EmploymentContext, source: ForwardSource)
       AND (r.staff_id=${source.staffId}::uuid OR (r.id IS NULL AND p.selected_staff_id=${source.staffId}::uuid))
       AND ((s.state='effective' AND ${laterEffective})
         OR (s.state IN ('draft','in_review','approved','rejected')
-          AND (p.effective_date>${source.effectiveDate}::date
-            OR (p.effective_date=${source.effectiveDate}::date AND ${sameDayPendingAfterSource(ctx, source)}))))
+          AND (p.effective_date>${pendingFrom}::date
+            OR (p.effective_date=${pendingFrom}::date AND ${sameDayPendingAfterSource(ctx, source)}))))
     ORDER BY p.effective_date,t.sort_order NULLS LAST,b.created_at,b.id LIMIT ${TARGET_LIMIT + 1}
   `),
   );
@@ -224,17 +228,7 @@ export async function forwardUpdateEmployment(
       fields: available.accepted,
     });
     if (!dryRun) {
-      if (!source.businessId) throw new TypeError('向后更新必须关联触发业务');
-      const next = await appendForwardPayload(
-        tx,
-        ctx,
-        target.payload,
-        applyForwardChanges(target.values, available.accepted),
-        source.businessId,
-        target.status === 'effective',
-        available.accepted,
-      );
-      await auditForwardTarget(tx, ctx, next, available.accepted);
+      await writeForwardTarget(tx, ctx, source, target, nextValues, available.accepted);
     }
   }
   return plan;
@@ -262,4 +256,39 @@ async function remindWholeRecordSkip(
     reason: 'DEPARTMENT_POSITION_MISMATCH',
     fields: available.accepted,
   });
+}
+
+async function writeForwardTarget(
+  tx: Tx,
+  ctx: EmploymentContext,
+  source: ForwardSource,
+  target: ForwardTarget,
+  nextValues: ForwardValues,
+  accepted: readonly ForwardFieldChange[],
+) {
+  if (!source.businessId) throw new TypeError('向后更新必须关联触发业务');
+  await assertEstablishmentCapacity(
+    tx,
+    ctx,
+    {
+      businessId: target.payload.businessId,
+      employeeId: source.employeeId,
+      kind: 'transfer',
+      effectiveDate: target.payload.effectiveDate,
+      fields: nextValues.fields,
+      departmentId: nextValues.fields.departmentId,
+      positionId: nextValues.fields.positionId,
+    },
+    source.establishmentWarnings,
+  );
+  const next = await appendForwardPayload(
+    tx,
+    ctx,
+    target.payload,
+    nextValues,
+    source.businessId,
+    target.status === 'effective',
+    accepted,
+  );
+  await auditForwardTarget(tx, ctx, next, accepted);
 }
