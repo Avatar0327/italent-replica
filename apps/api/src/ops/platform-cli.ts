@@ -2,8 +2,11 @@
  * 平台运维命令行（R1-T17；docs/06_部署/01_部署运行手册.md）。只做参数解析与文件读写，业务全部委托给已测试的函数：
  *   grant-operator  --email <登录邮箱>                                   登记首位 / 新增平台运营身份（以“系统”记账）
  *   export          --tenant <租户ID> --out <文件>                       按租户导出加密备份（DATABASE_URL = 迁移角色）
- *   restore         --in <文件> --target-url <隔离库> [--hashes <json>]  导入隔离环境、隔离校验、授权对账（不开放）
- *   open            --in <文件> --target-url <隔离库>                    校验通过后开放访问
+ *   restore         --in <文件> --target-url <隔离库> [--hashes <json>] [--command-id <ID>]
+ *                   导入隔离环境、隔离校验、授权对账（不开放）
+ *   open            --in <文件> --target-url <隔离库> [--command-id <ID>]  开放前再次对账现网，通过后开放访问
+ * 恢复与开放可带 --command-id：结果未知时用同一 ID 重试，已完成的阶段直接返回首次结果（不重复执行）。
+ * 连接角色必须是迁移角色（表属主），非超级用户、不带 BYPASSRLS（受 FORCE RLS 约束），否则拒绝执行。
  * 环境变量：DATABASE_URL（现网，迁移角色）、BACKUP_ENCRYPTION_KEY（base64 的 32 字节密钥）、APP_VERSION（代码版本）。
  * 构建后运行：node apps/api/dist/ops/platform-cli.js <命令> ...
  */
@@ -15,15 +18,16 @@ import {
   type DbHandle,
   eq,
   exportTenantBackup,
+  sql,
   grantPlatformOperator,
   openBackup,
   sealBackup,
   users,
   withPlatform,
 } from '@italent/db';
-import { captureAuthorizationState, openRestoredTenant, restoreTenant } from '../modules/platform/restore.js';
+import { openRestoredTenant, restoreTenant } from '../modules/platform/restore.js';
 
-const meta = () => ({ actorUserId: null, commandId: `cli-${randomUUID()}` });
+const meta = (commandId?: string) => ({ actorUserId: null, commandId: commandId ?? `cli-${randomUUID()}` });
 
 function required(name: string, value: string | undefined): string {
   if (!value) throw new Error(`缺少 ${name}`);
@@ -36,9 +40,19 @@ function backupKey(): Buffer {
   return key;
 }
 
+/** 恢复 / 导出只用迁移角色：超级用户或 BYPASSRLS 会绕过租户隔离的数据库兜底，一律拒绝。 */
+async function assertRestrictedRole(handle: DbHandle) {
+  const result = await handle.db.execute(
+    sql`SELECT rolsuper OR rolbypassrls AS privileged FROM pg_roles WHERE rolname = current_user`,
+  );
+  const [row] = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { privileged: boolean }[];
+  if (row?.privileged !== false) throw new Error('连接角色是超级用户或带 BYPASSRLS，拒绝执行；请改用迁移角色');
+}
+
 async function withDb<T>(url: string, fn: (handle: DbHandle) => Promise<T>): Promise<T> {
   const handle = createPgDb(url, { max: 2 });
   try {
+    await assertRestrictedRole(handle);
     return await fn(handle);
   } finally {
     await handle.close();
@@ -62,6 +76,7 @@ async function main(argv: string[]) {
       in: { type: 'string' },
       'target-url': { type: 'string' },
       hashes: { type: 'string' },
+      'command-id': { type: 'string' },
     },
   });
   const live = () => required('DATABASE_URL', process.env.DATABASE_URL);
@@ -87,15 +102,26 @@ async function main(argv: string[]) {
       });
     case 'restore': {
       const backup = sealed();
-      const state = await withDb(live(), ({ db }) => captureAuthorizationState(db, backup.manifest.tenantId));
-      return withDb(required('--target-url', values['target-url']), ({ db }) =>
-        restoreTenant(db, { backup, live: state, attachments: hashStore(values.hashes) }, meta()),
+      return withDb(live(), (source) =>
+        withDb(required('--target-url', values['target-url']), ({ db }) =>
+          restoreTenant(
+            db,
+            { backup, live: source.db, attachments: hashStore(values.hashes) },
+            meta(values['command-id']),
+          ),
+        ),
       );
     }
     case 'open': {
       const backup = sealed();
-      return withDb(required('--target-url', values['target-url']), ({ db }) =>
-        openRestoredTenant(db, { tenantId: backup.manifest.tenantId }, meta(), backup),
+      return withDb(live(), (source) =>
+        withDb(required('--target-url', values['target-url']), ({ db }) =>
+          openRestoredTenant(
+            db,
+            { tenantId: backup.manifest.tenantId, live: source.db, backup },
+            meta(values['command-id']),
+          ),
+        ),
       );
     }
     default:

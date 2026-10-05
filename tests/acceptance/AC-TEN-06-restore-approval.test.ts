@@ -2,12 +2,20 @@
  * AC-TEN-06 恢复对账与审批（PR #60 astra 复审 P2-6，DEC-098 / DEC-123）：备份里有指派给异常管理员的在途异常待办；
  * 现网随后交接并停用该异常管理员。恢复对账不得让流程继续指向停用账号，也不得把异常待办留给停用账号——
  * 流程改指现网的异常管理员，待办按 DEC-123 接管；做不到的列入 problems 并阻止开放。
+ * 同一场景另验 P2-4：导入时显式写入的 employment_state_events.event_seq 之后，序列已推进（同日排序依赖它）。
  */
 import { openRestoredTenant, restoreTenant } from '@italent/api';
 import { exportTenantBackup, getUser, setUserStatus, sql, withTenant } from '@italent/db';
 import { createTestDb, useTestDb } from '@italent/testkit';
 import { afterAll, describe, expect, it } from 'vitest';
-import { approvalWorld, TRANSFER_NODES, transferScene, type InstanceView } from './AC-APV-support.js';
+import {
+  approvalWorld,
+  grantFieldAccess,
+  permissionAdmin,
+  TRANSFER_NODES,
+  transferScene,
+  type InstanceView,
+} from './AC-APV-support.js';
 import { cmd } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -36,6 +44,20 @@ describe('AC-TEN-06 恢复对账：异常管理员与在途异常待办（DEC-09
     const backup = await exportTenantBackup(w.db, { tenantId: w.tenant.id, codeVersion: 'approval' }, cmd());
 
     const successor = await w.member('现网接任的异常管理员');
+    // 真实授权器下替代人须能覆盖该实例（任职记录的查看与数据范围）才接得了手；授权在备份之后、只存在于现网
+    const world = await permissionAdmin(w);
+    await grantFieldAccess(world, successor, { view: ['employeeId', 'departmentId', 'effectiveDate'] });
+    const profiles = (await (
+      await world.api.request('GET', '/api/tenant/permission/profiles', world.asAdmin)
+    ).json()) as {
+      items: { id: string }[];
+    };
+    const seeAll = await world.api.request(
+      'PUT',
+      `/api/tenant/permission/profiles/${profiles.items.at(-1)!.id}/data-scopes/TenantBase`,
+      { ...world.asAdmin, ifMatch: 0, body: { targetKind: 'app', targetCode: '', seeAll: true } },
+    );
+    expect(seeAll.status, await seeAll.clone().text()).toBe(200);
     const handed = await w.request(w.hr.id, 'POST', '/api/tenant/approval/exception-admins/handover', {
       ifMatch: 0,
       body: { fromUserId: w.exceptionAdmin, toUserId: successor },
@@ -74,7 +96,53 @@ describe('AC-TEN-06 恢复对账：异常管理员与在途异常待办（DEC-09
     expect(state.tasks).toHaveLength(1);
     expect(state.tasks[0]!.assignee_user_id).not.toBe(w.exceptionAdmin);
 
+    // P2-4：导入时显式写入了 event_seq（同日任职排序依赖它），序列须推进到已导入最大值之后
+    const [seq] = await isolated.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
+      return rowsOf<{ max: string | null; next: string }>(
+        await tx.execute(sql`SELECT (SELECT max(event_seq) FROM employment_state_events)::text AS max,
+          nextval(pg_get_serial_sequence('employment_state_events', 'event_seq'))::text AS next`),
+      );
+    });
+    expect(seq?.max).not.toBeNull();
+    expect(BigInt(seq!.next)).toBeGreaterThan(BigInt(seq!.max!));
+
     const opened = await openRestoredTenant(isolated, { tenantId: w.tenant.id, live: w.db, backup }, cmd(), w.clock);
     expect(opened.status).toBe('active');
+  });
+
+  it('接不了手（现网替代人在真实授权下覆盖不了该实例）：列入 problems，租户保持隔离，不能开放', async () => {
+    const w = await approvalWorld(database().db, 'restore-exception-blocked');
+    const s = await transferScene(w);
+    await w.setOrgRoles(s.to, { hrbp: null });
+    await w.publishedProcess({ nodes: [TRANSFER_NODES[0]!, TRANSFER_NODES[1]!] });
+    const submitted = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    const first = submitted.tasks.find((t) => t.status === 'pending')!;
+    await w.json(await w.taskAction(s.outHead.userId, first.id, 'approve', submitted.revision));
+    const backup = await exportTenantBackup(w.db, { tenantId: w.tenant.id, codeVersion: 'approval' }, cmd());
+    const successor = await w.member('没有授权的接任人');
+    const handed = await w.request(w.hr.id, 'POST', '/api/tenant/approval/exception-admins/handover', {
+      ifMatch: 0,
+      body: { fromUserId: w.exceptionAdmin, toUserId: successor },
+    });
+    expect(handed.status, await handed.clone().text()).toBe(200);
+    const account = await getUser(w.db, w.exceptionAdmin);
+    await setUserStatus(
+      w.db,
+      { userId: w.exceptionAdmin, status: 'disabled', expectedRevision: account!.revision },
+      cmd(),
+    );
+
+    const handle = await createTestDb();
+    handles.push(handle);
+    const input = { backup, live: w.db, attachments: { sha256: async () => null } };
+    const report = await restoreTenant(handle.db, input, cmd(), w.clock);
+    expect(report.ok).toBe(false);
+    expect(report.reconciliation.problems).toEqual([
+      expect.objectContaining({ reason: 'EXCEPTION_TASK_TAKEOVER_FAILED', userId: w.exceptionAdmin }),
+    ]);
+    await expect(
+      openRestoredTenant(handle.db, { tenantId: w.tenant.id, live: w.db, backup }, cmd(), w.clock),
+    ).rejects.toEqual(expect.objectContaining({ reason: 'RESTORE_NOT_VERIFIED' }));
   });
 });

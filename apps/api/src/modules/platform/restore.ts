@@ -1,96 +1,53 @@
 /**
- * 按租户恢复的业务编排（DEC-061；AGENTS.md §10「恢复」；R1-T17）：
- *   导入隔离环境（租户 restoring）→ 隔离校验（无跨租户数据、行数与清单一致）→ 附件清单与哈希核对
- *   → 授权对账（以现网的撤销事实为准：备份之后撤销过的授权、管理员身份、成员关系、停用的账号不得因恢复复活）
- *   → 校验全部通过才可开放访问（openRestoredTenant 以隔离环境里记录的校验结论为准，不信任调用方传入的报告）。
- * 恢复不重放审批节点（审批数据按快照原样恢复，不推进流转）、不补发消息（在途事件改记“结果未知”，见 tenant-backup.ts）。
+ * 按租户恢复的业务编排（DEC-061；AGENTS.md §10「恢复」「幂等」「审计」；R1-T17，PR #60 第二轮）：
+ *   导入（restoring，写入前校验、同事务隔离校验，见 tenant-restore.ts）
+ *   → 附件清单与哈希核对 → 授权对账（镜像现网当前授权子图，P2-2）→ 审批对账（DEC-098 / 123，P2-6）→ 记录校验结论
+ *   → 开放：开放前**重新读取现网并再次对账**（P2-3），全部通过才把租户改回 active。
+ * 每个阶段的业务变更、审计与命令台账同一事务提交；同一命令 ID 重试返回首次结果（P2-9）。
+ * 恢复不重放审批节点（审批数据按快照原样恢复，不推进流转）、不补发消息（在途事件改记“结果未知”）。
  */
 import {
-  and,
   type AttachmentReport,
   type AttachmentStore,
   BackupIntegrityError,
+  captureAuthorization,
   type Db,
-  desc,
-  eq,
-  getTenant,
+  findLedger,
   importTenantBackup,
-  inArray,
+  isolationIn,
   type IsolationReport,
-  permissionAdmins,
-  permissionGrants,
-  permissionProfiles,
-  platformAudit,
-  platformAuditEvents,
+  ledgerRecord,
+  ledgerReplay,
+  type MirrorProblem,
+  mirrorAuthorization,
+  phaseKey,
+  platformAuditIn,
   type PlatformCommandMeta,
-  setTenantStatus,
   sql,
   type TenantBackup,
-  tenantMemberships,
   type Tx,
-  users,
   verifyAttachments,
-  verifyTenantIsolation,
-  withPlatform,
   withTenant,
 } from '@italent/db';
-import { auditAs, type PlatformWriteContext } from '../permission/audit.js';
-import { releaseSeat } from '../permission/licenses.js';
-
-/** 现网（源库）在恢复开始时的授权撤销事实；只取“已撤销 / 已停用”的一面，恢复只会收紧、不会放宽授权。 */
-export interface AuthorizationState {
-  readonly tenantId: string;
-  readonly capturedAt: string;
-  readonly revokedGrantIds: string[];
-  readonly revokedAdminIds: string[];
-  readonly revokedMemberUserIds: string[];
-  readonly disabledUserIds: string[];
-}
-
-export async function captureAuthorizationState(db: Db, tenantId: string): Promise<AuthorizationState> {
-  const tenant = await withTenant(db, tenantId, async (tx) => ({
-    revokedGrantIds: (
-      await tx.select({ id: permissionGrants.id }).from(permissionGrants).where(eq(permissionGrants.status, 'revoked'))
-    ).map((r) => r.id),
-    revokedAdminIds: (
-      await tx.select({ id: permissionAdmins.id }).from(permissionAdmins).where(eq(permissionAdmins.status, 'revoked'))
-    ).map((r) => r.id),
-    memberIds: (await tx
-      .select({ userId: tenantMemberships.userId, status: tenantMemberships.status })
-      .from(tenantMemberships)) as { userId: string; status: string }[],
-  }));
-  const memberIds = tenant.memberIds.map((m) => m.userId);
-  const disabled =
-    memberIds.length === 0
-      ? []
-      : await withPlatform(db, (tx) =>
-          tx
-            .select({ id: users.id })
-            .from(users)
-            .where(and(inArray(users.id, memberIds), eq(users.status, 'disabled'))),
-        );
-  return {
-    tenantId,
-    capturedAt: new Date().toISOString(),
-    revokedGrantIds: tenant.revokedGrantIds.sort(),
-    revokedAdminIds: tenant.revokedAdminIds.sort(),
-    revokedMemberUserIds: tenant.memberIds
-      .filter((m) => m.status === 'revoked')
-      .map((m) => m.userId)
-      .sort(),
-    disabledUserIds: disabled.map((u) => u.id).sort(),
-  };
-}
+import type { ApprovalContext } from '../approval/context.js';
+import { republishWithExceptionAdmin } from '../approval/definitions.js';
+import { designateSuccessor, takeOverOnDeactivation } from '../approval/handover.js';
+import { auditAs } from '../permission/audit.js';
+import { createPermissionAuthorizer } from '../permission/authorizer.js';
 
 export interface ReconciliationReport {
-  readonly revokedGrants: string[];
-  readonly revokedAdmins: string[];
-  readonly revokedMembers: string[];
-  readonly disabledUsers: string[];
+  /** 授权子图各表按现网改动的行数。 */
+  readonly changed: Record<string, number>;
+  /** 现网有、但引用的业务对象在备份时点不存在而未补入的授权行（只会更窄）。 */
+  readonly skipped: number;
+  /** 改指现网异常管理员的流程数（DEC-098）。 */
+  readonly republishedProcesses: number;
+  /** 由不可用账号名下接管走的在途异常待办所在实例数（DEC-123）。 */
+  readonly takenOver: number;
   /** 恢复时改记为“结果未知”的在途事件 / 通知（不补发）。 */
   readonly unknownEvents: number;
-  /** 无法自动对账、须人工处理后才能开放的事项。 */
-  readonly problems: { reason: string; userId: string }[];
+  /** 无法自动对账、须人工处理后才能开放的事项；非空即不开放。 */
+  readonly problems: MirrorProblem[];
 }
 
 export interface RestoreReport {
@@ -108,221 +65,319 @@ export interface RestoreReport {
 
 export interface RestoreInput {
   readonly backup: TenantBackup;
-  readonly live: AuthorizationState;
+  /** 现网库（源库）：读取该租户当前的授权子图与流程异常管理员，对账以它为准。 */
+  readonly live: Db;
   readonly attachments: AttachmentStore;
 }
 
-/** 导入、校验、对账；租户保持 restoring。校验结论记入隔离环境的平台审计，开放时以它为准。 */
+/** 现网当前状态：授权子图 + 各流程当前生效版本的异常管理员（DEC-098 交接以现网为准）。 */
+async function captureLive(live: Db, tenantId: string) {
+  const authorization = await captureAuthorization(live, tenantId);
+  const rows = await withTenant(live, tenantId, (tx) =>
+    tx.execute(sql`SELECT p.id::text AS id, v.exception_admin_user_id::text AS admin FROM approval_processes p
+      JOIN approval_process_versions v ON v.tenant_id = p.tenant_id AND v.id = p.current_version_id
+      WHERE p.status = 'active'`),
+  );
+  const list = (Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows) as { id: string; admin: string }[];
+  const successors = await withTenant(live, tenantId, async (tx) =>
+    rowsOf<{ user_id: string; successor: string }>(
+      await tx.execute(sql`SELECT user_id::text, successor_user_id::text AS successor
+        FROM approval_exception_admin_successors`),
+    ),
+  );
+  return {
+    authorization,
+    exceptionAdmins: new Map(list.map((r) => [r.id, r.admin])),
+    successors: new Map(successors.map((r) => [r.user_id, r.successor])),
+  };
+}
+type LiveState = Awaited<ReturnType<typeof captureLive>>;
+
+/** 导入、核对、对账；租户保持 restoring。校验结论与对账结果同事务记入隔离库，开放时以它为前提。 */
 export async function restoreTenant(
   target: Db,
   input: RestoreInput,
   meta: PlatformCommandMeta,
   clock: () => Date = () => new Date(),
 ): Promise<RestoreReport> {
-  const { backup, live } = input;
+  const { backup } = input;
   const tenantId = backup.manifest.tenantId;
-  if (live.tenantId !== tenantId) throw new TypeError('授权状态与备份不是同一租户');
+  const request = { tenantId, checksum: backup.manifest.checksum };
+  const done = await findLedger<RestoreReport>(target, phaseKey(meta, 'verify'), request);
+  if (done) return done;
   const startedAt = clock().toISOString();
-  const imported = await importTenantBackup(target, backup);
-  const audit = (action: string, after: Record<string, unknown>) =>
-    platformAudit(target, meta, action, tenantId, after, { actorInTarget: false });
-  await audit('tenant.restore.import', { dataAsOf: backup.manifest.takenAt, rowCounts: imported.rowCounts });
-
-  const isolation = await verifyTenantIsolation(target, backup);
+  const imported = await importTenantBackup(target, backup, meta);
   const attachments = await verifyAttachments(backup.manifest.attachments, input.attachments);
-  const reconciled = await reconcileAuthorization(target, live, { commandId: meta.commandId, now: clock() });
-  const reconciliation = { ...reconciled, unknownEvents: imported.unknownEvents };
-  await audit('tenant.restore.reconcile', { ...reconciliation });
-
-  const report: RestoreReport = {
-    tenantId,
-    ok: isolation.ok && attachments.ok && reconciliation.problems.length === 0,
-    startedAt,
-    verifiedAt: clock().toISOString(),
-    dataAsOf: backup.manifest.takenAt,
-    codeVersion: backup.manifest.codeVersion,
-    isolation,
-    attachments,
-    reconciliation,
-  };
-  await audit('tenant.restore.verify', { ok: report.ok, isolation, attachments });
-  return report;
+  const live = await captureLive(input.live, tenantId);
+  return target.transaction(async (tx) => {
+    const replay = await ledgerReplay<RestoreReport>(tx, phaseKey(meta, 'verify'), request);
+    if (replay) return replay;
+    const reconciled = await reconcile(tx, target, live, meta, clock);
+    const reconciliation = { ...reconciled, unknownEvents: imported.unknownEvents };
+    const isolation = await isolationIn(tx, tenantId, backup, false);
+    const report: RestoreReport = {
+      tenantId,
+      ok: imported.isolation.ok && isolation.ok && attachments.ok && reconciliation.problems.length === 0,
+      startedAt,
+      verifiedAt: clock().toISOString(),
+      dataAsOf: backup.manifest.takenAt,
+      codeVersion: backup.manifest.codeVersion,
+      isolation: imported.isolation,
+      attachments,
+      reconciliation,
+    };
+    await platformAuditIn(
+      tx,
+      meta,
+      'tenant.restore.reconcile',
+      tenantId,
+      { ...reconciliation },
+      { actorInTarget: false },
+    );
+    await platformAuditIn(
+      tx,
+      meta,
+      'tenant.restore.verify',
+      tenantId,
+      { ok: report.ok, isolation, attachments },
+      {
+        actorInTarget: false,
+      },
+    );
+    await ledgerRecord(tx, phaseKey(meta, 'verify'), request, report);
+    return report;
+  });
 }
+
+/** 授权对账（镜像现网授权子图）+ 审批对账；调用方事务内执行，返回仍须人工处理的问题。 */
+async function reconcile(tx: Tx, target: Db, live: LiveState, meta: PlatformCommandMeta, clock: () => Date) {
+  const tenantId = live.authorization.tenantId;
+  const mirrored = await mirrorAuthorization(tx, live.authorization);
+  const problems = [...mirrored.problems];
+  const timezone = await tenantTimezone(tx, tenantId);
+  const republished = await reconcileExceptionAdmins(tx, live, meta, clock, problems);
+  const takenOver = await takeOverUnavailable(tx, target, { tenantId, timezone, meta, clock, live }, problems);
+  await auditAs(
+    tx,
+    { tenantId, actorUserId: null, now: clock(), commandId: meta.commandId },
+    {
+      action: 'tenant.restore.reconcile',
+      objectType: 'tenant',
+      objectId: tenantId,
+      before: null,
+      after: { changed: mirrored.changed, skipped: mirrored.skipped, republished, takenOver, problems },
+    },
+  );
+  return {
+    changed: mirrored.changed,
+    skipped: mirrored.skipped,
+    republishedProcesses: republished,
+    takenOver,
+    problems,
+  };
+}
+
+async function tenantTimezone(tx: Tx, tenantId: string): Promise<string> {
+  const rows = await tx.execute(sql`SELECT timezone FROM tenants WHERE id = ${tenantId}::uuid`);
+  const list = (Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows) as { timezone: string }[];
+  return list[0]!.timezone;
+}
+
+/** 问题明细：业务错误取机器可读原因，其他取错误信息首行（不含堆栈）。 */
+function describe(error: unknown): string {
+  const details = (error as { details?: { reason?: string } }).details;
+  if (details?.reason) return details.reason;
+  return String((error as Error)?.message ?? error)
+    .split('\n')[0]!
+    .slice(0, 200);
+}
+
+function rowsOf<T>(result: unknown): T[] {
+  return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
+}
+
+/** 账号在隔离库可派：成员关系有效、全局账号未停用（与 approval/resolver.ts 的 isActiveAccount 同一口径）。 */
+const assignable = (user: ReturnType<typeof sql>) => sql`EXISTS (SELECT 1 FROM tenant_memberships m
+  WHERE m.user_id = ${user} AND m.status = 'active' AND tenant_account_active(m.user_id))`;
 
 /**
- * 授权对账：现网已撤销的授权 / 管理员身份 / 成员关系、已停用的账号，在恢复出的数据里同样撤销（备份之后发生的撤销
- * 不得因恢复而复活）。撤销授权按 DEC-141 归还许可名额。仍是可用流程异常管理员的成员不能直接撤销（DEC-098），
- * 记为待人工处理的问题，租户不开放。
+ * DEC-098：对账后不可用的账号若仍是可用流程的异常管理员，改指现网该流程当前的异常管理员（以现网交接结果为准）；
+ * 现网的也不可用、或流程有未发布草稿无法交接的，列入 problems。
  */
-async function reconcileAuthorization(
-  target: Db,
-  live: AuthorizationState,
-  options: { readonly commandId: string; readonly now: Date },
-): Promise<Omit<ReconciliationReport, 'unknownEvents'>> {
-  const tenantId = live.tenantId;
-  const write: PlatformWriteContext = { tenantId, actorUserId: null, ...options };
-  const result = await withTenant(target, tenantId, async (tx) => ({
-    revokedGrants: await revokeGrants(tx, write, live.revokedGrantIds),
-    revokedAdmins: await revokeRows(tx, write, 'permission_admins', 'permission_admin', live.revokedAdminIds),
-    ...(await revokeMembers(tx, write, live.revokedMemberUserIds)),
-  }));
-  const disabledUsers = await disableUsers(target, live.disabledUserIds);
-  return { ...result, disabledUsers };
-}
-
-async function revokeGrants(tx: Tx, write: PlatformWriteContext, ids: readonly string[]): Promise<string[]> {
-  if (ids.length === 0) return [];
-  const active = await tx
-    .select({ grant: permissionGrants, licenseType: permissionProfiles.licenseType })
-    .from(permissionGrants)
-    .innerJoin(permissionProfiles, eq(permissionProfiles.id, permissionGrants.profileId))
-    .where(and(inArray(permissionGrants.id, [...ids]), eq(permissionGrants.status, 'active')));
-  const revoked: string[] = [];
-  for (const { grant, licenseType } of active) {
-    await tx
-      .update(permissionGrants)
-      .set({ status: 'revoked', revision: grant.revision + 1, updatedAt: write.now })
-      .where(eq(permissionGrants.id, grant.id));
-    const released = licenseType
-      ? await releaseSeat(tx, { tenantId: write.tenantId, licenseType, userId: grant.userId })
-      : false;
-    await auditAs(tx, write, {
-      action: 'permission_grant.revoke',
-      objectType: 'permission_grant',
-      objectId: grant.id,
-      before: { status: grant.status, revision: grant.revision },
-      after: {
-        status: 'revoked',
-        revision: grant.revision + 1,
-        reason: 'restore_reconcile',
-        licenseSeatReleased: released,
-      },
-    });
-    revoked.push(grant.id);
-  }
-  return revoked.sort();
-}
-
-async function revokeRows(
+async function reconcileExceptionAdmins(
   tx: Tx,
-  write: PlatformWriteContext,
-  table: 'permission_admins',
-  objectType: string,
-  ids: readonly string[],
-): Promise<string[]> {
-  if (ids.length === 0) return [];
-  const rows = await tx
-    .select({ id: permissionAdmins.id, revision: permissionAdmins.revision })
-    .from(permissionAdmins)
-    .where(and(inArray(permissionAdmins.id, [...ids]), eq(permissionAdmins.status, 'active')));
-  for (const row of rows) {
-    await tx
-      .update(permissionAdmins)
-      .set({ status: 'revoked', revision: row.revision + 1, updatedAt: write.now })
-      .where(eq(permissionAdmins.id, row.id));
-    await auditAs(tx, write, {
-      action: `${objectType}.revoke`,
-      objectType,
-      objectId: row.id,
-      before: { status: 'active', revision: row.revision },
-      after: { status: 'revoked', revision: row.revision + 1, reason: 'restore_reconcile', table },
-    });
-  }
-  return rows.map((r) => r.id).sort();
-}
-
-async function revokeMembers(tx: Tx, write: PlatformWriteContext, userIds: readonly string[]) {
-  const revokedMembers: string[] = [];
-  const problems: { reason: string; userId: string }[] = [];
-  if (userIds.length === 0) return { revokedMembers, problems };
-  const rows = await tx
-    .select()
-    .from(tenantMemberships)
-    .where(and(inArray(tenantMemberships.userId, [...userIds]), eq(tenantMemberships.status, 'active')));
-  for (const row of rows) {
-    if (await isExceptionAdmin(tx, row.userId)) {
-      problems.push({ reason: 'EXCEPTION_ADMIN_HANDOVER_REQUIRED', userId: row.userId });
+  live: LiveState,
+  meta: PlatformCommandMeta,
+  clock: () => Date,
+  problems: MirrorProblem[],
+): Promise<number> {
+  const tenantId = live.authorization.tenantId;
+  const stale = rowsOf<{ id: string; admin: string }>(
+    await tx.execute(sql`SELECT p.id::text AS id, v.exception_admin_user_id::text AS admin FROM approval_processes p
+      JOIN approval_process_versions v ON v.tenant_id = p.tenant_id AND v.id = p.current_version_id
+      WHERE p.status = 'active' AND NOT ${assignable(sql`v.exception_admin_user_id`)} ORDER BY p.id`),
+  );
+  let republished = 0;
+  for (const process of stale) {
+    const successor = live.exceptionAdmins.get(process.id);
+    const usable =
+      successor && rowsOf(await tx.execute(sql`SELECT 1 WHERE ${assignable(sql`${successor}::uuid`)}`)).length > 0;
+    if (!successor || !usable) {
+      problems.push({ reason: 'EXCEPTION_ADMIN_UNAVAILABLE', key: process.id, userId: process.admin });
       continue;
     }
-    await tx
-      .update(tenantMemberships)
-      .set({ status: 'revoked', revision: row.revision + 1, updatedAt: write.now })
-      .where(eq(tenantMemberships.id, row.id));
-    await auditAs(tx, write, {
-      action: 'tenant_membership.revoke',
-      objectType: 'tenant_membership',
-      objectId: row.id,
-      before: { userId: row.userId, status: row.status, revision: row.revision },
-      after: { userId: row.userId, status: 'revoked', revision: row.revision + 1, reason: 'restore_reconcile' },
-    });
-    revokedMembers.push(row.userId);
+    const ctx: ApprovalContext = {
+      tenantId,
+      userId: successor,
+      actorUserId: null,
+      timezone: await tenantTimezone(tx, tenantId),
+      now: clock(),
+      commandId: meta.commandId,
+      expectedRevision: 0,
+    };
+    const error = await tx
+      .transaction((sp) => republishWithExceptionAdmin(sp, ctx, process.id, successor))
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    if (error) {
+      problems.push({
+        reason: 'EXCEPTION_ADMIN_HANDOVER_FAILED',
+        key: process.id,
+        userId: process.admin,
+        detail: describe(error),
+      });
+    } else republished++;
   }
-  return { revokedMembers: revokedMembers.sort(), problems };
-}
-
-async function isExceptionAdmin(tx: Tx, userId: string): Promise<boolean> {
-  const result = await tx.execute(sql`SELECT 1 FROM approval_processes p
-    JOIN approval_process_versions v ON v.tenant_id = p.tenant_id AND v.id = p.current_version_id
-    WHERE p.status = 'active' AND v.exception_admin_user_id = ${userId}::uuid LIMIT 1`);
-  const rows = Array.isArray(result) ? result : (result as { rows: unknown[] }).rows;
-  return rows.length > 0;
-}
-
-async function disableUsers(target: Db, ids: readonly string[]): Promise<string[]> {
-  if (ids.length === 0) return [];
-  const rows = await withPlatform(target, (tx) =>
-    tx
-      .update(users)
-      .set({ status: 'disabled', revision: sql`${users.revision} + 1`, updatedAt: sql`now()` })
-      .where(and(inArray(users.id, [...ids]), eq(users.status, 'active')))
-      .returning({ id: users.id }),
-  );
-  return rows.map((r) => r.id).sort();
+  return republished;
 }
 
 /**
- * 开放访问：只有隔离环境里最近一次恢复校验通过、租户仍处于 restoring 时才开放；开放前再做一次隔离校验。
- * 开放经平台命令（revision、幂等、审计）把租户状态改回 active。
+ * DEC-123：对账后不可用的账号名下的在途异常待办，按停用时的既有路径接管（替代人 / 租户管理员，DEC-091 回避）；
+ * 接管不了的列入 problems。普通审批待办与现网一致：不自动撤销，由管理员转交（`14` §11.7）。
+ */
+async function takeOverUnavailable(
+  tx: Tx,
+  target: Db,
+  scope: { tenantId: string; timezone: string; meta: PlatformCommandMeta; clock: () => Date; live: LiveState },
+  problems: MirrorProblem[],
+): Promise<number> {
+  const leaving = rowsOf<{ user_id: string }>(
+    await tx.execute(sql`SELECT DISTINCT t.assignee_user_id::text AS user_id FROM approval_tasks t
+      JOIN approval_instances i ON i.tenant_id = t.tenant_id AND i.id = t.instance_id
+      WHERE t.status = 'pending' AND t.is_exception_admin AND i.status = 'running'
+        AND NOT ${assignable(sql`t.assignee_user_id`)} ORDER BY 1`),
+  );
+  const deps = { db: target, authorize: createPermissionAuthorizer(target), clock: scope.clock };
+  let instances = 0;
+  for (const { user_id: userId } of leaving) {
+    const revocation = {
+      tenantId: scope.tenantId,
+      userId,
+      reason: 'user_disabled' as const,
+      timezone: scope.timezone,
+      actorUserId: null,
+      commandId: scope.meta.commandId,
+    };
+    // 现网为该账号指定过替代人（交接时，DEC-123）的，以现网为准；恢复出的数据可能早于那次交接
+    const successor = scope.live.successors.get(userId);
+    const error = await tx
+      .transaction(async (sp) => {
+        if (successor && rowsOf(await sp.execute(sql`SELECT 1 WHERE ${assignable(sql`${successor}::uuid`)}`)).length) {
+          const ctx: ApprovalContext = {
+            tenantId: scope.tenantId,
+            userId: successor,
+            actorUserId: null,
+            timezone: scope.timezone,
+            now: scope.clock(),
+            commandId: scope.meta.commandId,
+            expectedRevision: 0,
+          };
+          await designateSuccessor(sp, ctx, { fromUserId: userId, toUserId: successor });
+        }
+        await takeOverOnDeactivation(sp, deps, revocation);
+      })
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    if (error) problems.push({ reason: 'EXCEPTION_TASK_TAKEOVER_FAILED', userId, detail: describe(error) });
+    const remaining = rowsOf<{ n: number }>(
+      await tx.execute(sql`SELECT count(DISTINCT t.instance_id)::int AS n FROM approval_tasks t
+        WHERE t.status = 'pending' AND t.is_exception_admin AND t.assignee_user_id = ${userId}::uuid`),
+    )[0]!.n;
+    if (!error && remaining > 0) problems.push({ reason: 'EXCEPTION_TASK_TAKEOVER_INCOMPLETE', userId });
+    if (!error) instances++;
+  }
+  return instances;
+}
+
+export interface OpenInput {
+  readonly tenantId: string;
+  readonly live: Db;
+  readonly backup: TenantBackup;
+}
+
+export interface OpenResult {
+  readonly status: 'active';
+  readonly openedAt: string;
+  readonly revision: number;
+}
+
+/**
+ * 开放访问：最近一次恢复校验通过、租户仍处于 restoring，且**开放前重新读取现网再次对账**无遗留问题、无跨租户数据，
+ * 才把租户改回 active。整个开放一个事务（对账、状态、审计、台账）；同一命令 ID 重试返回首次结果。
  */
 export async function openRestoredTenant(
   target: Db,
-  report: Pick<RestoreReport, 'tenantId'>,
+  input: OpenInput,
   meta: PlatformCommandMeta,
-  backup?: TenantBackup,
   clock: () => Date = () => new Date(),
-): Promise<{ status: 'active'; openedAt: string; revision: number }> {
-  const tenantId = report.tenantId;
-  const [verified] = await withPlatform(target, (tx) =>
-    tx
-      .select({ after: platformAuditEvents.after })
-      .from(platformAuditEvents)
-      .where(
-        and(eq(platformAuditEvents.subjectTenantId, tenantId), eq(platformAuditEvents.action, 'tenant.restore.verify')),
-      )
-      .orderBy(desc(platformAuditEvents.occurredAt))
-      .limit(1),
-  );
-  if ((verified?.after as { ok?: boolean } | undefined)?.ok !== true) {
-    throw new BackupIntegrityError('RESTORE_NOT_VERIFIED', '恢复校验未通过，租户保持隔离');
-  }
-  if (backup) {
-    // 对账本身会追加审计与 outbox 行，行数不再与清单相同；开放前只复核跨租户数据
-    const again = await verifyTenantIsolation(target, backup);
-    if (again.foreignRows !== 0 || again.tenants !== 1 || again.foreignUsers !== 0) {
-      throw new BackupIntegrityError('RESTORE_NOT_VERIFIED', '开放前隔离校验未通过');
+): Promise<OpenResult> {
+  const { tenantId, backup } = input;
+  const key = phaseKey(meta, 'open');
+  const request = { tenantId, checksum: backup.manifest.checksum };
+  const done = await findLedger<OpenResult>(target, key, request);
+  if (done) return done;
+  const live = await captureLive(input.live, tenantId);
+  return target.transaction(async (tx) => {
+    const replay = await ledgerReplay<OpenResult>(tx, key, request);
+    if (replay) return replay;
+    const [verified] = rowsOf<{ ok: boolean | null }>(
+      await tx.execute(sql`SELECT (after->>'ok')::boolean AS ok FROM platform_audit_events
+        WHERE subject_tenant_id = ${tenantId}::uuid AND action = 'tenant.restore.verify'
+        ORDER BY occurred_at DESC, id DESC LIMIT 1`),
+    );
+    if (verified?.ok !== true) throw new BackupIntegrityError('RESTORE_NOT_VERIFIED', '恢复校验未通过，租户保持隔离');
+    const [tenant] = rowsOf<{ status: string; revision: number }>(
+      await tx.execute(sql`SELECT status, revision FROM tenants WHERE id = ${tenantId}::uuid FOR UPDATE`),
+    );
+    if (tenant?.status !== 'restoring') {
+      throw new BackupIntegrityError('RESTORE_NOT_VERIFIED', '租户不在恢复隔离状态');
     }
-  }
-  const tenant = await getTenant(target, tenantId);
-  if (tenant?.status !== 'restoring') {
-    throw new BackupIntegrityError('RESTORE_NOT_VERIFIED', '租户不在恢复隔离状态');
-  }
-  // 平台运营账号不在隔离环境的账号表里：状态变更以“系统”记账，操作人记在平台审计 after 中
-  const opened = await setTenantStatus(
-    target,
-    { tenantId, status: 'active', expectedRevision: tenant.revision },
-    { actorUserId: null, commandId: meta.commandId },
-  );
-  const openedAt = clock().toISOString();
-  await platformAudit(target, meta, 'tenant.restore.open', tenantId, { openedAt }, { actorInTarget: false });
-  return { status: 'active', openedAt, revision: opened.revision };
+    const reconciled = await reconcile(tx, target, live, meta, clock);
+    if (reconciled.problems.length > 0) {
+      throw new BackupIntegrityError(
+        'RESTORE_NOT_VERIFIED',
+        `开放前对账有待处理事项：${JSON.stringify(reconciled.problems)}`,
+      );
+    }
+    const isolation = await isolationIn(tx, tenantId, backup, false);
+    if (!isolation.ok) throw new BackupIntegrityError('RESTORE_NOT_VERIFIED', '开放前隔离校验未通过');
+    const revision = Number(tenant.revision) + 1;
+    await tx.execute(sql`UPDATE tenants SET status = 'active', revision = ${revision}, updated_at = now()
+      WHERE id = ${tenantId}::uuid`);
+    const openedAt = clock().toISOString();
+    const after = { status: 'active', revision, openedAt, changed: reconciled.changed };
+    await auditAs(
+      tx,
+      { tenantId, actorUserId: null, now: clock(), commandId: meta.commandId },
+      { action: 'tenant.set_status', objectType: 'tenant', objectId: tenantId, before: tenant, after },
+    );
+    await platformAuditIn(tx, meta, 'tenant.restore.open', tenantId, after, { actorInTarget: false });
+    const result: OpenResult = { status: 'active', openedAt, revision };
+    await ledgerRecord(tx, key, request, result);
+    return result;
+  });
 }

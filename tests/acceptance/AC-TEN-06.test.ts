@@ -202,7 +202,8 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
     expect(blocked.status).toBe(403);
     expect(await errorCode(blocked)).toBe('TENANT_UNAVAILABLE');
 
-    const opened = await openRestoredTenant(isolated, { tenantId: a.tenant.id, live: db, backup }, cmd(operator.id));
+    const openCommand = cmd(operator.id);
+    const opened = await openRestoredTenant(isolated, { tenantId: a.tenant.id, live: db, backup }, openCommand);
     expect(opened.status).toBe('active');
     expect(new Date(opened.openedAt).getTime() - new Date(report.startedAt).getTime()).toBeLessThan(4 * HOUR);
 
@@ -236,7 +237,7 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
         .where(sql`${permissionOutbox.state} = 'pending'`),
     );
     expect(pending.length).toBeGreaterThan(0);
-    expect(pending.every((p) => p.commandId === restoreCommand.commandId)).toBe(true);
+    expect(pending.every((p) => [restoreCommand.commandId, openCommand.commandId].includes(p.commandId))).toBe(true);
 
     const restoredTenants = await withPlatform(isolated, (tx) => tx.select({ id: tenants.id }).from(tenants));
     expect(restoredTenants).toEqual([{ id: a.tenant.id }]);
@@ -260,6 +261,13 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
     );
     expect(report.ok).toBe(false);
     expect(report.attachments.mismatched).toEqual([attachment.id]);
+    expect(report.attachments.missing).toEqual([]);
+
+    // 对象存储里根本没有这个附件：同样不通过
+    const empty = await target();
+    const missing = await restoreTenant(empty, { backup, live, attachments: attachments(new Map()) }, cmd(operator.id));
+    expect(missing.ok).toBe(false);
+    expect(missing.attachments).toMatchObject({ missing: [attachment.id], mismatched: [] });
     await expect(
       openRestoredTenant(isolated, { tenantId: a.tenant.id, live, backup }, cmd(operator.id)),
     ).rejects.toThrow(BackupIntegrityError);

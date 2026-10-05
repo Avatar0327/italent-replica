@@ -3,7 +3,6 @@
  * - P2-1 构造的备份（他租户行、重算校验和）或非空目标：写入前即拒绝，目标保持为空；
  * - P2-2 授权对账以现网当前有效权限为准：备份后关闭的身份数据权限（看全部）恢复后同样关闭；
  * - P2-3 恢复校验之后、开放之前的现网撤权，开放时再次对账，不复活；
- * - P2-4 导入后推进 identity / 序列，恢复后新事件排在历史事件之后（#53 同日排序依赖它）；
  * - P2-5 系统预置按备份时点恢复（含没有租户覆盖的键），覆盖隔离库的默认值；
  * - P2-6 现网已交接并停用的异常管理员：恢复库的流程改指现网的异常管理员（DEC-098 / 123），不指向停用账号；
  * - P2-9 同一命令 ID 重试恢复与开放：重放首次结果，不报“租户已存在”或“不在恢复隔离状态”。
@@ -177,19 +176,6 @@ describe('AC-TEN-06 恢复安全与对账（astra 复审回归）', () => {
         .where(sql`${users.id} = ${exceptionAdmin.id}`),
     );
     expect(account?.status).toBe('disabled');
-  });
-
-  it('P2-4：导入后推进序列，恢复后的新事件序号大于历史最大值', async () => {
-    const isolated = await target();
-    await restoreTenant(isolated, { backup, live: testDb().db, attachments: noAttachments }, cmd(operator.id));
-    const [row] = await withTenant(isolated, a.tenant.id, async (tx) =>
-      rowsOf<{ max: number | null; next: number }>(
-        await tx.execute(sql`SELECT (SELECT max(event_seq) FROM employment_state_events)::bigint AS max,
-          nextval(pg_get_serial_sequence('employment_state_events', 'event_seq'))::bigint AS next`),
-      ),
-    );
-    expect(row?.max).not.toBeNull();
-    expect(Number(row!.next)).toBeGreaterThan(Number(row!.max));
   });
 
   it('P2-5：系统预置按备份时点恢复，覆盖隔离库的默认值', async () => {

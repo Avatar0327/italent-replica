@@ -49,7 +49,7 @@ export interface BackupManifest {
 
 export interface TenantBackup {
   manifest: BackupManifest;
-  /** 平台级表中该租户引用到的行：租户本身、引用到的全局账号、引用到的系统预置。 */
+  /** 平台级表的行：租户本身、该租户引用到的全局账号、全部系统预置（租户依赖的有效值）。 */
   platform: { tenants: BackupRow[]; users: BackupRow[]; systemSettings: BackupRow[] };
   /** 每张带 tenant_id 的表中该租户的全部行（列名即数据库列名）。 */
   tables: Record<string, BackupRow[]>;
@@ -57,6 +57,8 @@ export interface TenantBackup {
 
 export type BackupIntegrityReason =
   | 'TENANT_NOT_FOUND'
+  | 'TARGET_NOT_EMPTY'
+  | 'COUNT_MISMATCH'
   | 'FORMAT_UNSUPPORTED'
   | 'CHECKSUM_MISMATCH'
   | 'MIGRATION_VERSION_MISMATCH'
@@ -77,14 +79,13 @@ export class BackupIntegrityError extends Error {
 }
 
 const PAGE = 1000;
-const INSERT_BATCH = 500;
 
-function rowsOf<T>(result: unknown): T[] {
+export function rowsOf<T>(result: unknown): T[] {
   return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 }
 
-const ident = (name: string) => sql.identifier(name);
-const textArray = (values: readonly string[]) =>
+export const ident = (name: string) => sql.identifier(name);
+export const textArray = (values: readonly string[]) =>
   values.length === 0
     ? sql`ARRAY[]::text[]`
     : sql`ARRAY[${sql.join(
@@ -116,12 +117,12 @@ export async function migrationVersion(tx: Tx): Promise<MigrationVersion> {
   return { count: row?.count ?? 0, lastHash: row?.last_hash ?? '' };
 }
 
-async function setTenant(tx: Tx, tenantId: string) {
+export async function setTenant(tx: Tx, tenantId: string) {
   await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
 }
 
 /** 按 ctid 分页读出一张表中该租户的全部行（同一快照内 ctid 稳定），不一次读入整表。 */
-async function readTable(tx: Tx, table: string, tenantId: string): Promise<BackupRow[]> {
+export async function readTable(tx: Tx, table: string, tenantId: string): Promise<BackupRow[]> {
   const out: BackupRow[] = [];
   let after: string | null = null;
   for (;;) {
@@ -140,7 +141,7 @@ async function readTable(tx: Tx, table: string, tenantId: string): Promise<Backu
   }
 }
 
-interface ForeignKey {
+export interface ForeignKey {
   readonly table: string;
   readonly name: string;
   readonly definition: string;
@@ -149,7 +150,7 @@ interface ForeignKey {
 }
 
 /** 指定子表上的外键定义（恢复时卸下再原样加回；导出时用于找出引用到的平台级行）。 */
-async function foreignKeys(tx: Tx, tables: readonly string[]): Promise<ForeignKey[]> {
+export async function foreignKeys(tx: Tx, tables: readonly string[]): Promise<ForeignKey[]> {
   if (tables.length === 0) return [];
   return rowsOf<ForeignKey>(
     await tx.execute(sql`
@@ -166,7 +167,7 @@ async function foreignKeys(tx: Tx, tables: readonly string[]): Promise<ForeignKe
 }
 
 /** 子表行中引用到某平台级表（单列外键）的值。 */
-function referencedValues(tables: Record<string, BackupRow[]>, fks: readonly ForeignKey[], target: string) {
+export function referencedValues(tables: Record<string, BackupRow[]>, fks: readonly ForeignKey[], target: string) {
   const values = new Set<string>();
   for (const fk of fks.filter((f) => f.target === target && f.columns.length === 1)) {
     for (const row of tables[fk.table] ?? []) {
@@ -177,7 +178,7 @@ function referencedValues(tables: Record<string, BackupRow[]>, fks: readonly For
   return [...values].sort();
 }
 
-async function platformRows(tx: Tx, table: 'users' | 'system_settings', column: string, values: string[]) {
+export async function platformRows(tx: Tx, table: 'users' | 'system_settings', column: string, values: string[]) {
   if (values.length === 0) return [];
   return rowsOf<{ r: BackupRow }>(
     await tx.execute(sql`
@@ -188,7 +189,7 @@ async function platformRows(tx: Tx, table: 'users' | 'system_settings', column: 
 }
 
 /** 键排序后的 JSON：校验和不受对象键顺序影响。 */
-function canonical(value: unknown): string {
+export function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (value && typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
@@ -233,12 +234,10 @@ export async function exportTenantBackup(db: Db, options: BackupOptions, meta: P
       const platform = {
         tenants: [tenant.r],
         users: await platformRows(tx, 'users', 'id', referencedValues(tables, fks, 'users')),
-        systemSettings: await platformRows(
-          tx,
-          'system_settings',
-          'key',
-          referencedValues(tables, fks, 'system_settings'),
-        ),
+        // P2-5：系统预置整表导出（租户依赖的有效值，含没有租户覆盖的键），恢复时按备份值写回
+        systemSettings: rowsOf<{ r: BackupRow }>(
+          await tx.execute(sql`SELECT to_jsonb(x) AS r FROM system_settings x ORDER BY x.key`),
+        ).map((x) => x.r),
       };
       const manifest: BackupManifest = {
         format: 'italent-tenant-backup',
@@ -309,197 +308,38 @@ export async function verifyAttachments(
   return { ok: missing.length === 0 && mismatched.length === 0, checked: live.length, missing, mismatched };
 }
 
-/** 在途事件 / 通知的状态列：恢复不补发消息（AGENTS.md §10「恢复」），pending 一律改记 unknown，由人工核对。 */
-const MESSAGE_TABLE = /(_outbox|_outbox_attempts|_delivery_attempts|_notifications)$/;
-
-function withoutPendingMessages(table: string, rows: BackupRow[]): { rows: BackupRow[]; changed: number } {
-  if (!MESSAGE_TABLE.test(table)) return { rows, changed: 0 };
-  let changed = 0;
-  const out = rows.map((row) => {
-    for (const column of ['state', 'status'] as const) {
-      if (row[column] === 'pending') {
-        changed++;
-        return { ...row, [column]: 'unknown' };
-      }
-    }
-    return row;
-  });
-  return { rows: out, changed };
-}
-
-async function insertRows(tx: Tx, table: string, rows: readonly BackupRow[]) {
-  for (let i = 0; i < rows.length; i += INSERT_BATCH) {
-    const batch = JSON.stringify(rows.slice(i, i + INSERT_BATCH));
-    await tx.execute(sql`
-      INSERT INTO ${ident(table)} SELECT * FROM jsonb_populate_recordset(NULL::${ident(table)}, ${batch}::jsonb)`);
-  }
-}
-
-export interface ImportReport {
-  readonly tenantId: string;
-  readonly rowCounts: Record<string, number>;
-  /** 恢复时由 pending 改记为 unknown 的在途事件 / 通知条数（不补发）。 */
-  readonly unknownEvents: number;
-}
-
-/** 导入前的完整性校验：格式、迁移版本（必须与目标库完全一致）、校验和、目标库中尚无该租户。 */
-async function assertImportable(tx: Tx, backup: TenantBackup) {
-  const { manifest } = backup;
-  if (manifest.format !== 'italent-tenant-backup' || manifest.formatVersion !== 1) {
-    throw new BackupIntegrityError('FORMAT_UNSUPPORTED', '不支持的备份格式');
-  }
-  const target = await migrationVersion(tx);
-  if (target.count !== manifest.migration.count || target.lastHash !== manifest.migration.lastHash) {
-    throw new BackupIntegrityError(
-      'MIGRATION_VERSION_MISMATCH',
-      `备份的迁移版本（${manifest.migration.count}）与目标库（${target.count}）不一致，须先把隔离环境迁移到同一版本`,
-    );
-  }
-  if (backupChecksum(backup) !== manifest.checksum) {
-    throw new BackupIntegrityError('CHECKSUM_MISMATCH', '备份内容与校验和不符');
-  }
-  const [exists] = rowsOf(
-    await tx.execute(sql`SELECT 1 FROM tenants WHERE id = ${manifest.tenantId}::uuid
-      OR code = ${String(backup.platform.tenants[0]?.code ?? '')}`),
-  );
-  if (exists) throw new BackupIntegrityError('TENANT_EXISTS', '目标库已有该租户，恢复只导入到隔离环境（新库）');
-}
-
 /**
- * 把备份导入隔离环境：租户状态一律置为 restoring（除平台方外拒绝访问，DEC-061），由业务层完成隔离校验与授权对账后
- * 再开放。整个导入是一个事务，任何一步失败即回滚，隔离环境保持为空。
+ * 平台审计（备份 / 恢复各步骤）。恢复写在隔离环境里，平台运营账号不在那里，操作人记在 after 中、actor 为空。
+ * 传入 tx 时与该步骤的业务变更同事务写入（AGENTS.md §10「审计」）。
  */
-export async function importTenantBackup(db: Db, backup: TenantBackup): Promise<ImportReport> {
-  const tenantId = backup.manifest.tenantId;
-  return db.transaction(async (tx) => {
-    await assertImportable(tx, backup);
-    await setTenant(tx, tenantId);
-    const names = await tenantTables(tx);
-    for (const table of Object.keys(backup.tables)) {
-      if (!names.includes(table)) throw new BackupIntegrityError('FORMAT_UNSUPPORTED', `目标库没有表 ${table}`);
-    }
-    const fks = await foreignKeys(tx, names);
-    for (const fk of fks) await tx.execute(sql`ALTER TABLE ${ident(fk.table)} DROP CONSTRAINT ${ident(fk.name)}`);
-    for (const table of names) await tx.execute(sql`ALTER TABLE ${ident(table)} DISABLE TRIGGER USER`);
-
-    const accounts = JSON.stringify(backup.platform.users);
-    await tx.execute(sql`
-      INSERT INTO users SELECT * FROM jsonb_populate_recordset(NULL::users, ${accounts}::jsonb)
-      ON CONFLICT (id) DO NOTHING`);
-    await tx.execute(sql`
-      INSERT INTO system_settings SELECT * FROM jsonb_populate_recordset(NULL::system_settings,
-        ${JSON.stringify(backup.platform.systemSettings)}::jsonb)
-      ON CONFLICT (key) DO NOTHING`);
-    const restoring = backup.platform.tenants.map((t) => ({
-      ...t,
-      status: 'restoring',
-      revision: Number(t.revision) + 1,
-    }));
-    await insertRows(tx, 'tenants', restoring);
-
-    let unknownEvents = 0;
-    const rowCounts: Record<string, number> = {};
-    for (const table of names) {
-      const { rows, changed } = withoutPendingMessages(table, backup.tables[table] ?? []);
-      unknownEvents += changed;
-      await insertRows(tx, table, rows);
-      rowCounts[table] = rows.length;
-    }
-
-    for (const table of names) await tx.execute(sql`ALTER TABLE ${ident(table)} ENABLE TRIGGER USER`);
-    // 原样加回外键：ADD CONSTRAINT 会对全部已导入行重新校验引用完整性，引用缺失即整笔回滚
-    for (const fk of fks) {
-      await tx.execute(sql`ALTER TABLE ${ident(fk.table)} ADD CONSTRAINT ${ident(fk.name)} ${sql.raw(fk.definition)}`);
-    }
-    return { tenantId, rowCounts, unknownEvents };
-  });
-}
-
-export interface IsolationReport {
-  readonly ok: boolean;
-  /** 不属于该租户的行数（任何租户表）。 */
-  readonly foreignRows: number;
-  /** 隔离环境中的租户数（应为 1）。 */
-  readonly tenants: number;
-  /** 不在备份引用清单内的全局账号数。 */
-  readonly foreignUsers: number;
-  /** 行数与备份清单不一致的表。 */
-  readonly countMismatches: string[];
-}
-
-class Rollback extends Error {
-  constructor(readonly report: IsolationReport) {
-    super('rollback');
-  }
-}
-
-/**
- * 隔离校验：在隔离环境里确认只有该租户的数据（无跨租户数据）且行数与备份清单一致。为了看见“不属于该租户”的行，
- * 事务内临时对表属主取消 FORCE RLS，读完整体回滚（不改动任何结构或数据）。
- */
-export async function verifyTenantIsolation(db: Db, backup: TenantBackup): Promise<IsolationReport> {
-  const tenantId = backup.manifest.tenantId;
-  try {
-    await db.transaction(async (tx) => {
-      const names = await tenantTables(tx);
-      let foreignRows = 0;
-      const countMismatches: string[] = [];
-      for (const table of names) {
-        await tx.execute(sql`ALTER TABLE ${ident(table)} NO FORCE ROW LEVEL SECURITY`);
-        const [row] = rowsOf<{ foreign: number; own: number }>(
-          await tx.execute(sql`
-            SELECT count(*) FILTER (WHERE tenant_id IS DISTINCT FROM ${tenantId}::uuid)::int AS "foreign",
-                   count(*) FILTER (WHERE tenant_id = ${tenantId}::uuid)::int AS "own"
-              FROM ${ident(table)}`),
-        );
-        foreignRows += row!.foreign;
-        if (row!.own !== (backup.manifest.rowCounts[table] ?? 0)) countMismatches.push(table);
-      }
-      const [counts] = rowsOf<{ tenants: number; users: number }>(
-        await tx.execute(sql`
-          SELECT (SELECT count(*)::int FROM tenants) AS tenants,
-                 (SELECT count(*)::int FROM users
-                   WHERE NOT (id::text = ANY(${textArray(backup.platform.users.map((u) => String(u.id)))})))
-                   AS users`),
-      );
-      const report: IsolationReport = {
-        ok: foreignRows === 0 && counts!.tenants === 1 && counts!.users === 0 && countMismatches.length === 0,
-        foreignRows,
-        tenants: counts!.tenants,
-        foreignUsers: counts!.users,
-        countMismatches,
-      };
-      throw new Rollback(report);
-    });
-  } catch (error) {
-    if (error instanceof Rollback) return error.report;
-    throw error;
-  }
-  throw new Error('隔离校验未产出结果');
-}
-
-/** 平台审计（备份 / 恢复各步骤）。恢复写在隔离环境里，平台运营账号可能不在那里，操作人记在 after 中。 */
-export async function platformAudit(
-  db: Db,
+export async function platformAuditIn(
+  tx: Tx,
   meta: PlatformCommandMeta,
   action: string,
   tenantId: string,
   after: Record<string, unknown>,
   options: { readonly actorInTarget?: boolean } = {},
 ): Promise<void> {
-  const actorInTarget = options.actorInTarget ?? true;
-  await withPlatform(db, async (tx) => {
-    await tx.insert(platformAuditEvents).values({
-      actorUserId: actorInTarget ? meta.actorUserId : null,
-      action,
-      objectType: 'tenant',
-      objectId: tenantId,
-      before: null,
-      after: { ...after, operatorUserId: meta.actorUserId },
-      commandId: meta.commandId,
-      subjectTenantId: tenantId,
-    });
+  await tx.insert(platformAuditEvents).values({
+    actorUserId: (options.actorInTarget ?? true) ? meta.actorUserId : null,
+    action,
+    objectType: 'tenant',
+    objectId: tenantId,
+    before: null,
+    after: { ...after, operatorUserId: meta.actorUserId },
+    commandId: meta.commandId,
+    subjectTenantId: tenantId,
   });
+}
+
+export async function platformAudit(
+  db: Db,
+  meta: PlatformCommandMeta,
+  action: string,
+  tenantId: string,
+  after: Record<string, unknown>,
+): Promise<void> {
+  await withPlatform(db, (tx) => platformAuditIn(tx, meta, action, tenantId, after));
 }
 
 const CIPHER = 'aes-256-gcm';

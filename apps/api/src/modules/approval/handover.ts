@@ -172,7 +172,8 @@ async function assertTenantMember(tx: Tx, tenantId: string, userId: string) {
  * DEC-123：记下替代人（再次交接即改写），成员停用时据此自动转派剩余异常待办。
  * R4-5：先“不存在才插入”；已存在（含并发的另一方刚插入并提交）时锁住该行读出真实旧值再改写，审计旧值即被覆盖的值。
  */
-async function designateSuccessor(tx: Tx, ctx: ApprovalContext, input: HandoverInput) {
+/** 指定替代人（DEC-123）；交接与按租户恢复的对账（以现网指定为准）共用。 */
+export async function designateSuccessor(tx: Tx, ctx: ApprovalContext, input: HandoverInput) {
   const now = ctx.now.toISOString();
   const inserted = rowsOf(
     await tx.execute(sql`INSERT INTO approval_exception_admin_successors
