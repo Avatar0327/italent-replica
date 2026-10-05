@@ -255,10 +255,11 @@ const DATA = {
     "F-009":{n:"下级组织停用不缩数据范围",parent:"R1-T02",s:"done",dev:"Claude",rev:"Codex",pr:[59],why:"DEC-146"},
     "F-012":{n:"组织角色取得的数据范围含全部下级、不因组织停用而收缩",parent:"R1-T02",s:"review",dev:"Codex",rev:"Claude",pr:[66],why:"DEC-160 + DEC-168；PR #66 标题已含“含全部下级”，审查时核对 roleRoots 的 expand"},
     "F-013":{n:"合同编辑导入护栏 + #64 遗留 P3（调度记录表只增不删优先）",parent:"R2-T06",s:"active",dev:"Codex",rev:"Claude",why:"DEC-167（D-050）"},
-    "F-010":{n:"人员组合排序编码 orderCode（独立存储表，定时重算）",parent:"R1-T12",s:"active",dev:"Codex",rev:"Claude",why:"DEC-148；Q-M0-07 / 36 已结案；提示词 §17.4"},
+    "F-010":{n:"人员组合排序编码 orderCode（独立存储表，定时重算）",parent:"R1-T12",s:"review",dev:"Codex",rev:"Claude",pr:[67],why:"DEC-148；PR #67：19 个文件，迁移 0045（与 PR-B 撞号，后合并者顺延），Claude 首审中"},
     "F-011":{n:"新建职位 / 改所属组织按整段校验组织停用",parent:"R1-T04",s:"review",dev:"Codex",rev:"Claude",pr:[65],why:"DEC-151（Q-M0-60）；PR #65：4 个文件、无迁移，CI 中，Claude 首审进行中"}
   },
   prs: {
+    67:{t:"F-010 排序编码",s:"review",round:1,note:"Codex 开发；19 个文件、迁移 0045；Claude 首审进行中"},
     66:{t:"F-012 组织角色范围",s:"review",round:1,note:"Codex 开发；4 个文件、无迁移；Claude 首审进行中"},
     65:{t:"F-011 职位整段校验",s:"review",round:1,note:"Codex 开发；4 个文件、无迁移；Claude 首审进行中"},
   },
@@ -287,6 +288,7 @@ const DATA = {
     {k:"取证",d:"取证窗口为 local_0ec8cf97；Q-M0-34 结案 → D-051", nx:"下一项 Q-M0-33"}
   ],
   log: [
+    {d:"10-05", t:"开出 PR #67（F-010 排序编码，迁移 0045），Claude 首审中"},
     {d:"10-05", t:"开出 PR #66（F-012，含 DEC-168 含全部下级），Claude 首审中"},
     {d:"10-05", t:"开出 PR #65（F-011，Codex 开发），Claude 首审中"},
     {d:"10-05", t:"R1-T09 PR-B 恢复开发（Codex 曾停在等 #54）；DEC-169：待补全通过编辑任职补全、每 7 天提醒、补全自动关闭"},
