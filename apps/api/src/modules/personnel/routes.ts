@@ -1,3 +1,4 @@
+import { registerOrderCodeRoutes } from './order-code-routes.js';
 import { sql, withTenant } from '@italent/db';
 import { PERSONNEL_OBJECT, SUBSETS, tenantLocalDate, type SubsetKind } from '@italent/domain';
 import type { Hono } from 'hono';
@@ -23,6 +24,7 @@ import { z } from 'zod';
 
 const base = '/api/tenant/personnel/employees';
 export function registerPersonnelRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  registerOrderCodeRoutes(router, deps);
   registerPersonnelHooks({ currentName: currentPersonName, sync: syncEmploymentHistory });
   router.get(base, (c) =>
     safe(async () => {

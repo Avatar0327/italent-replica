@@ -1,6 +1,6 @@
 {
-  "id": "05a04543-c55f-488b-b925-4c0bbfd18c54",
-  "prevId": "6d637433-e225-4366-8511-70684d57f218",
+  "id": "530f741f-3597-4389-a935-2b6854795cb6",
+  "prevId": "05a04543-c55f-488b-b925-4c0bbfd18c54",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -24169,6 +24169,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "attempt_count": {
+          "name": "attempt_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
         "state": {
           "name": "state",
           "type": "text",
@@ -24195,35 +24202,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "contract_job_lookup": {
-          "name": "contract_job_lookup",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "object_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "contract_job_attempts_tenant_id_tenants_id_fk": {
           "name": "contract_job_attempts_tenant_id_tenants_id_fk",
@@ -24240,7 +24219,17 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "contract_job_lookup": {
+          "name": "contract_job_lookup",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "object_id",
+            "kind"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -24557,6 +24546,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'valid'"
+        },
+        "termination_reason": {
+          "name": "termination_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "approval_status": {
           "name": "approval_status",
