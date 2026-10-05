@@ -277,6 +277,8 @@ export const MODULE_OBJECTS = {
       button('Employment.Delete', 'detail', 'delete'),
       button('Employment.Submit', 'detail', 'update'),
       button('Employment.Withdraw', 'detail', 'update'),
+      // R1-T11：调动管理视图「撤销」未审批完成的申请（`08` §6，AC-TRF-07）
+      button('Employment.Revoke', 'detail', 'update'),
       button('Employment.Import', 'list'),
       button('Employment.Preview', 'detail'),
       // R1-T08：生效失败 / 挂起的申请修正后重试（DEC-052）

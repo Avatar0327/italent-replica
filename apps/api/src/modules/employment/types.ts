@@ -19,8 +19,12 @@ export type BusinessKind = (typeof BUSINESS_KINDS)[number];
  */
 export const CHANGE_TYPES = ['position_adjustment'] as const;
 export type ChangeType = (typeof CHANGE_TYPES)[number];
-/** disapproved：审批沿「不同意」流转到结束，申请办结、不生效（F-003 第二轮，DEC-144）。 */
-export type EmploymentState = 'draft' | 'in_review' | 'approved' | 'rejected' | 'disapproved' | 'effective' | 'deleted';
+/**
+ * disapproved：审批沿「不同意」流转到结束，申请办结、不生效（F-003 第二轮，DEC-144）。
+ * voided：HR 撤销未审批完成的申请，作废、不生效，只能删除（R1-T11，AC-TRF-07）。
+ */
+export type EmploymentState =
+  'draft' | 'in_review' | 'approved' | 'rejected' | 'disapproved' | 'voided' | 'effective' | 'deleted';
 export type EmployType = 'internal' | 'intern' | 'external';
 export type CustomValue = string | number | boolean | null;
 export type CustomFields = Readonly<Record<string, CustomValue>>;

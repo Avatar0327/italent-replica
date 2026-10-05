@@ -11,7 +11,7 @@ export interface EmploymentApprovalHooks {
   submitted(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<void>;
   /** 发起人撤回：结束在途实例（AC-TRF-28）。 */
   withdrawn(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<void>;
-  /** 删除被驳回的申请：作废退回中的实例。 */
+  /** 删除被驳回的申请、HR 撤销未审批完成的申请（R1-T11）：作废在途或退回中的实例。 */
   deleted(tx: Tx, ctx: EmploymentContext, businessId: string): Promise<void>;
 }
 

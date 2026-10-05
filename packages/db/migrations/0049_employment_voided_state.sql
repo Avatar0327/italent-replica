@@ -1,0 +1,2 @@
+ALTER TABLE "employment_state_events" DROP CONSTRAINT "employment_state_events_state";--> statement-breakpoint
+ALTER TABLE "employment_state_events" ADD CONSTRAINT "employment_state_events_state" CHECK ("employment_state_events"."state" IN ('draft', 'in_review', 'approved', 'rejected', 'disapproved', 'voided', 'effective', 'deleted'));
