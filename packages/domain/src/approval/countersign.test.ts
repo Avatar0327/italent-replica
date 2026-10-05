@@ -65,6 +65,18 @@ const definition = (nodes: readonly ApprovalNode[]): ProcessDefinition => ({
 const count = (value: number) => ({ kind: 'count', value }) as const;
 const percent = (value: number) => ({ kind: 'percent', value }) as const;
 
+describe('DEC-155：多个出口动作同时达标时“不同意”优先', () => {
+  it('席位合并使分母减少、同意与不同意同时达到规则时沿不同意流转', () => {
+    const rules = { approve: { kind: 'percent', value: 50 }, disagree: { kind: 'percent', value: 50 } } as const;
+    expect(countersignOutcome(rules, ['approve', 'disagree'])).toEqual({
+      kind: 'flow',
+      exit: 'disagree',
+      count: 1,
+      threshold: 1,
+    });
+  });
+});
+
 describe('DEC-144 会签流转规则（`14` §12.1）', () => {
   it('三种：任一人同意即可（默认）/ 需所有人同意 / 自定义审批方式', () => {
     expect(TRANSITION_RULE_TYPES).toEqual(['any', 'all', 'custom']);
