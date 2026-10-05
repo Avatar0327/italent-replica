@@ -6,6 +6,7 @@ import { requirePermission } from '../../authorization.js';
 import { runCommand, type CommandResult } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
+import { auditActor } from '../../system-actor.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
 import { businessDate } from './fields.js';
 import type { EmploymentContext, EmploymentScope } from './types.js';
@@ -159,7 +160,8 @@ export async function requireEmploymentWrite(
         Object.entries((customFields ?? {}) as Record<string, unknown>).map(([id, value]) => [`custom:${id}`, value]),
       ),
     };
-    if (!Object.keys(actual).length && !['Employment.Submit', 'Employment.Withdraw'].includes(button ?? '')) {
+    const commandButtons = ['Employment.Submit', 'Employment.Withdraw', 'Employment.RetryActivation'];
+    if (!Object.keys(actual).length && !commandButtons.includes(button ?? '')) {
       throw new AppError('VALIDATION_FAILED', '必须提供要写入的业务字段');
     }
     await requireObjectWrite(ctx.authorize, ctx, { objectCode, operation, payload: actual });
@@ -305,7 +307,7 @@ export async function auditEmployment(
 ): Promise<void> {
   await tx.insert(auditEvents).values({
     tenantId: ctx.tenantId,
-    actorUserId: ctx.userId,
+    actorUserId: auditActor(ctx.userId),
     action,
     objectType,
     objectId,

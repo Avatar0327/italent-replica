@@ -239,6 +239,20 @@
       "when": 1791135165300,
       "tag": "0033_enterprise_settings_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791159176341,
+      "tag": "0034_employment_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791159177663,
+      "tag": "0035_employment_activation_isolation",
+      "breakpoints": true
     }
   ]
 }
