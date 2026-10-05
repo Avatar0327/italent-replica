@@ -66,7 +66,7 @@ export async function updateJobObject(
   const effectiveDate = changes.effectiveDate;
   assertTemporalOrder(current, effectiveDate);
   const input = mergeInput(kind, current, changes, effectiveDate);
-  const fields = await validateJobFields(tx, ctx, kind, id, normalizeFields(ctx, kind, input));
+  const fields = await validateJobFields(tx, ctx, kind, id, normalizeFields(ctx, kind, input), current);
   await assertJobCodeAvailable(tx, ctx, kind, fields, id);
   let managerSync: ManagerSyncResult | undefined;
   if (kind === 'positions') {

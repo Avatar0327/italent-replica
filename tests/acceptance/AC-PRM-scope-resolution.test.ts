@@ -191,9 +191,8 @@ describe('AC-PRM-03~07/17/18/21 scope resolution and policy priority', () => {
         allowedKinds: ['default', 'mou', 'org_range'],
       });
     });
-    expect((await w.resolve()).orgIds).toEqual([org.id]);
-    expect((await w.resolve()).orgIds).not.toContain(child.id);
-    expect((await w.resolve({ appCode: 'Attendance' })).orgIds).toEqual([org.id]);
+    expect([...(await w.resolve()).orgIds].sort()).toEqual([org.id, child.id].sort());
+    expect([...(await w.resolve({ appCode: 'Attendance' })).orgIds].sort()).toEqual([org.id, child.id].sort());
     expect((await w.resolve({ appCode: 'Other' })).orgIds).toEqual([]);
     await w.assign([{ orgId: manual.id, includeDescendants: false }]);
     expect((await w.resolve()).orgIds).toEqual([manual.id]);
@@ -215,7 +214,7 @@ describe('AC-PRM-03~07/17/18/21 scope resolution and policy priority', () => {
         .insert(permissionScopePolicyRules)
         .values({ tenantId: w.tenant.id, policyId: page!.id, dimension: 'organization', roleCode: 'head' });
     });
-    // A page organization-relation rule explicitly includes all descendants, unlike dynamic default-MOU grants.
+    // DEC-168: page organization rules and dynamic default-MOU grants both include all descendants.
     expect([...(await w.resolve({ pageCode })).orgIds].sort()).toEqual([org.id, child.id].sort());
     await withTenant(w.db, w.tenant.id, async (tx) => {
       const [old] = await tx
