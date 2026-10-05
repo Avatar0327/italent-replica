@@ -117,6 +117,90 @@ describe('AC-CT-11 / DEC-167 编辑导入终止原因护栏', () => {
     },
   );
 
+  it.each(['expiry', 'auto'] as const)(
+    'DEC-167④ %s 到期后员工已离职，延期复活 409，日期更正仍可保持终止',
+    async (reason) => {
+      const w = await contractWorld(testDb().db, `f013departed${reason}`);
+      const source = await terminate(w, reason);
+      const employee = await w.session.getEmployee(w.employee.id);
+      await w.session.business(
+        employee.id,
+        {
+          kind: 'leave',
+          mode: 'direct',
+          effectiveDate: '2026-10-01',
+          lastWorkDate: '2026-09-30',
+          fields: {},
+        },
+        employee.revision,
+      );
+      const body = editBody(w, source, { endDate: '2026-12-31' });
+      const response = await w.request('POST', '/imports', { ifMatch: 0, body });
+      expect(response.status, await response.clone().text()).toBe(409);
+      expect(await response.json()).toMatchObject({
+        error: {
+          code: 'CONFLICT',
+          details: {
+            errors: [{ details: { reason: 'CONTRACT_EMPLOYEE_DEPARTED' } }],
+          },
+        },
+      });
+      expect(await record(w, source.id)).toMatchObject({ status: 'terminated', revision: source.revision });
+      expect((await w.list()).filter((c) => c.status === 'valid')).toHaveLength(0);
+      const corrected = await edit(w, source, { endDate: '2026-10-01' });
+      expect(corrected).toMatchObject({ status: 'terminated', actualTerminationDate: '2026-09-30' });
+    },
+  );
+
+  it.each(['2026-10-01', '2025-01-01'])(
+    'DEC-167⑤ 已续签（生效日 %s）不得复活旧合同，提示修改续签合同',
+    async (effectiveDate) => {
+      const w = await contractWorld(testDb().db, `f013renewed${effectiveDate}`);
+      const source = await terminate(w, 'expiry');
+      const renewedResponse = await w.change(source, 'renew', { effectiveDate, endDate: '2027-09-30' });
+      expect(renewedResponse.status, await renewedResponse.clone().text()).toBe(201);
+      const renewed = (await renewedResponse.json()) as ContractView;
+      const response = await w.request('POST', '/imports', {
+        ifMatch: 0,
+        body: editBody(w, source, { endDate: '2026-12-31' }),
+      });
+      expect(response.status, await response.clone().text()).toBe(409);
+      expect(await response.json()).toMatchObject({
+        error: {
+          code: 'CONFLICT',
+          details: {
+            errors: [
+              {
+                message: expect.stringContaining('续签'),
+                details: {
+                  reason: 'CONTRACT_SUPERSEDED_BY_RENEWAL',
+                  contractId: renewed.id,
+                },
+              },
+            ],
+          },
+        },
+      });
+      expect(await record(w, source.id)).toMatchObject({ status: 'terminated', revision: source.revision });
+      expect((await w.list()).filter((c) => c.status === 'valid').map((c) => c.id)).toEqual([renewed.id]);
+      const corrected = await edit(w, source, { endDate: '2026-10-01' });
+      expect(corrected).toMatchObject({ status: 'terminated', actualTerminationDate: '2026-09-30' });
+      // 更正产生新版本后仍不能绕过已续签护栏。
+      const retry = await w.request('POST', '/imports', {
+        ifMatch: 0,
+        body: editBody(w, corrected, { endDate: '2026-12-31' }),
+      });
+      expect(retry.status).toBe(409);
+    },
+  );
+
+  it('DEC-167⑤ 不把其他类型的新合同当作同类型续签', async () => {
+    const w = await contractWorld(testDb().db, 'f013othertype');
+    const source = await terminate(w, 'expiry');
+    await w.create({ typeId: w.otherType.id, effectiveDate: '2026-10-01', endDate: '2027-09-30' });
+    expect(await edit(w, source, { endDate: '2026-12-31' })).toMatchObject({ status: 'valid' });
+  });
+
   it('不晚于租户今天的延期保持终止，再次延期仍能识别原到期原因', async () => {
     const w = await contractWorld(testDb().db, 'f013past');
     const source = await terminate(w, 'expiry');
