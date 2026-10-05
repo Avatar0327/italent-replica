@@ -7,7 +7,8 @@ import { and, auditEvents, createTenant, eq, getTenant, sql, withTenant } from '
 import { isEffectiveDue, tenantLocalDate } from '@italent/domain';
 import { pgErrorCode, useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { cmd, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
+import { newUser, provision, provisioned, seedOperator } from './support/platform-api.js';
+import { cmd, errorCode, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 const RUN_AT = new Date('2026-09-30T17:00:00Z'); // 北京时间 10-01 01:00
@@ -87,5 +88,22 @@ describe('AC-TEN-05 租户时区', () => {
   });
 
   it.todo('定时任务在 UTC 09-30 17:00 运行：A 的调动已生效，B 仍为「审批通过」，UTC 10-01 后生效（R1-T08 完成后补全）');
-  it.todo('租户管理员修改时区只影响之后的日期判定，不改写已生效数据（REQ-PLT-001 R5，待确认口径，R1-T17）');
+  it.todo('租户管理员修改时区只影响之后的日期判定，不改写已生效数据（REQ-PLT-001 R5；企业设置“语言与时区”尚未派发）');
+});
+
+describe('AC-TEN-05 平台开通时设定租户时区（R1-T17，REQ-PLT-001 R5）', () => {
+  it('经平台开通命令：未指定时默认 Asia/Shanghai，可指定 IANA 时区，非法时区 400 且不建租户', async () => {
+    const { db } = testDb();
+    const api = tenantApi(db, { authorize: undefined });
+    const operator = await seedOperator(db);
+    const admin = await newUser(db, 'tz-admin');
+    const base = { firstAdminUserId: admin.id, exceptionAdminUserId: admin.id };
+    const byDefault = await provisioned(api, operator, base);
+    expect(byDefault.tenant.timezone).toBe('Asia/Shanghai');
+    const utc = await provisioned(api, operator, { ...base, timezone: 'UTC' });
+    expect((await getTenant(db, utc.tenant.id))?.timezone).toBe('UTC');
+    const bad = await provision(api, operator, { ...base, timezone: 'Mars/Olympus' });
+    expect(bad.status).toBe(400);
+    expect(await errorCode(bad)).toBe('VALIDATION_FAILED');
+  });
 });
