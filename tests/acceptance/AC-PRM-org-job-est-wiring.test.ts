@@ -1,5 +1,6 @@
 /** DEC-080 / AC-PRM-03,04,22：真实权限授权器覆盖组织、职务、编制的每层边界。 */
 import { randomUUID } from 'node:crypto';
+import { sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -483,6 +484,68 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
         await (await fixture.request('GET', `/api/tenant/establishment/capacities/${record.id}`, world.asAdmin)).json(),
       ).toMatchObject({ revision: 1, inclusiveCapacity: expected });
     }
+  });
+
+  it('AC-PRM-37 / DEC-178：同步上级编制碰到可见上级即改写并写审计，不可见整单拒绝并保留联动拒绝码', async () => {
+    const child = await fixtureCreate(paths.organization, {
+      name: '联动口径子部门',
+      establishedOn: '2026-01-01',
+      parents: { admin: { parentId: org.id } },
+    });
+    const ownScheme = await fixtureCreate(paths.establishment, {
+      name: '联动口径方案',
+      periodType: 'annual',
+      maintenanceMode: 'inclusive',
+      startDate: '2026-01-01',
+    });
+    const parentCap = await fixtureCreate('/api/tenant/establishment/capacities', {
+      orgId: org.id,
+      schemeId: ownScheme.id,
+      periodStart: '2026-01-01',
+      inclusiveCapacity: 10,
+    });
+    const childCap = await fixtureCreate('/api/tenant/establishment/capacities', {
+      orgId: child.id,
+      schemeId: ownScheme.id,
+      periodStart: '2026-01-01',
+      inclusiveCapacity: 1,
+    });
+    const scoped = async (orgId: string, includeDescendants: boolean) => {
+      const as = await actor('establishment');
+      const scope = await world.api.request('PUT', `/api/tenant/permission/scopes/${as.user}/TenantBase`, {
+        ...world.asAdmin,
+        ifMatch: 0,
+        body: { kind: 'org_range', orgRanges: [{ orgId, includeDescendants }] },
+      });
+      expect(scope.status, await scope.clone().text()).toBe(200);
+      return as;
+    };
+    const denied = await world.api.request('PATCH', `/api/tenant/establishment/capacities/${childCap.id}`, {
+      ...(await scoped(child.id, false)),
+      ifMatch: 1,
+      body: { effectiveDate: TODAY, inclusiveCapacity: 2, syncParents: true },
+    });
+    expect(denied.status).toBe(404);
+    expect(await denied.json()).toMatchObject({ error: { code: 'LINKED_RECORD_OUT_OF_SCOPE' } });
+    const visible = await scoped(org.id, true);
+    const changed = await world.api.request('PATCH', `/api/tenant/establishment/capacities/${childCap.id}`, {
+      ...visible,
+      ifMatch: 1,
+      body: { effectiveDate: TODAY, inclusiveCapacity: 2, syncParents: true },
+    });
+    expect(changed.status, await changed.clone().text()).toBe(200);
+    expect(
+      await (
+        await fixture.request('GET', `/api/tenant/establishment/capacities/${parentCap.id}`, world.asAdmin)
+      ).json(),
+    ).toMatchObject({ inclusiveCapacity: 11 });
+    const audits = await withTenant(world.db, world.tenant.id, async (tx) => {
+      const result = await tx.execute(sql`SELECT actor_user_id AS actor FROM audit_events
+        WHERE tenant_id=${world.tenant.id} AND object_id=${parentCap.id}
+          AND action='establishment.capacity.sync-parent'`);
+      return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { actor: string }[];
+    });
+    expect(audits).toEqual([{ actor: visible.user }]);
   });
 
   it('原同步父级命令即使入口子级仍有权，收窄为子级后也不能重放', async () => {

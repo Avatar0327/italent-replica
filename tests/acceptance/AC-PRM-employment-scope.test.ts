@@ -1,4 +1,4 @@
-/** AC-PRM-03/22/29：真实授权器、当前管理人员与各条任职部门的 AND，以及嵌套响应裁剪。 */
+/** AC-PRM-03/22/29/36：真实授权器、任职可见口径（DEC-177：记录部门 ∪ 员工当前部门），以及嵌套响应裁剪。 */
 import { randomUUID } from 'node:crypto';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
@@ -172,15 +172,20 @@ describe('AC-PRM-03/22/29 任职数据范围与字段裁剪', () => {
     return { ...seed, setup, movedIn, movedOut, as, approver, asWriter, future, inScope, allowedFuture, outside };
   }
 
-  it('当前人员范围与历史记录部门必须同时命中；历史 asOf 不能恢复调出人员范围', async () => {
+  it('DEC-177：记录部门或员工当前部门在范围内即可见；历史 asOf 不能恢复调出后的记录', async () => {
     const get = (path: string) => world.api.request('GET', `/api/tenant/employment${path}`, world.as);
     expect((await get(`/employees/${world.movedIn.employee.id}`)).status).toBe(200);
-    expect((await get(`/records/${world.movedIn.hire.id}`)).status).toBe(404);
-    expect((await get(`/records/${world.movedOut.hire.id}?asOf=2026-01-01`)).status).toBe(404);
-    expect((await get(`/businesses/${world.movedOut.hire.id}`)).status).toBe(404);
+    // 调入员工：当前在范围内，范围外部门的历史记录也可见（原为 AND 口径下 404）。
+    expect((await get(`/records/${world.movedIn.hire.id}`)).status).toBe(200);
+    // 调出员工：在范围内期间的记录仍可见；调出后的记录即使按调出前的 asOf 查也不可见。
+    expect((await get(`/records/${world.movedOut.hire.id}?asOf=2026-01-01`)).status).toBe(200);
+    expect((await get(`/businesses/${world.movedOut.hire.id}`)).status).toBe(200);
+    expect((await get(`/records/${world.movedOut.current.id}?asOf=2026-08-01`)).status).toBe(404);
+    expect((await get(`/businesses/${world.movedOut.current.id}`)).status).toBe(404);
     const records = await get(`/employees/${world.movedIn.employee.id}/records`);
     expect(records.status).toBe(200);
     expect(((await records.json()) as { items: { id: string }[] }).items.map((record) => record.id)).toEqual([
+      world.movedIn.hire.id,
       world.movedIn.current.id,
     ]);
   });
@@ -282,33 +287,26 @@ describe('AC-PRM-03/22/29 任职数据范围与字段裁剪', () => {
     expect(await after.json()).toEqual(snapshot);
   });
 
-  it('自动向后更新不越过未来记录的部门范围，失败时原记录编辑整体回滚', async () => {
+  it('DEC-178：员工当前在范围内时，范围外部门的未来记录按可见口径随向后更新改写', async () => {
     const path = `/api/tenant/employment/records/${world.movedIn.current.id}`;
     const preview = await world.api.request('POST', `${path}/forward-update-preview`, {
       ...world.as,
       body: { fields: { place: '新的地点' } },
     });
-    expect(preview.status).toBe(404);
-    expect(await preview.json()).toMatchObject({ error: { code: 'LINKED_RECORD_OUT_OF_SCOPE' } });
+    expect(preview.status, await preview.clone().text()).toBe(200);
+    expect(await preview.json()).toMatchObject({ changes: [{ businessId: world.future.id }] });
     const changed = await world.api.request('PATCH', path, {
       ...world.asWriter,
       ifMatch: world.movedIn.current.revision,
       body: { fields: { place: '新的地点' } },
     });
-    expect(changed.status).toBe(404);
-    expect(await changed.json()).toMatchObject({ error: { code: 'LINKED_RECORD_OUT_OF_SCOPE' } });
-    const actual = await world.setup.request('GET', path, world.asAdmin);
-    expect(actual.status).toBe(200);
-    expect(await actual.json()).toMatchObject({
-      fields: { place: '可见地点' },
-      revision: world.movedIn.current.revision,
-    });
+    expect(changed.status, await changed.clone().text()).toBe(200);
     const future = await world.setup.request(
       'GET',
       `/api/tenant/employment/businesses/${world.future.id}`,
       world.asAdmin,
     );
-    expect(await future.json()).toMatchObject({ fields: { place: '可见地点' } });
+    expect(await future.json()).toMatchObject({ fields: { place: '新的地点' } });
   });
   it('有范围的 forward 写入在同一事务内重验字段权限；预览 changes 不泄露隐藏字段', async () => {
     const path = `/api/tenant/employment/records/${world.inScope.current.id}`;

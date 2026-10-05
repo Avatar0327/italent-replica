@@ -25,7 +25,8 @@ export function capacityContext(
         visible(scope, change.orgId, '编制在该时点不存在', creator);
       } catch (error) {
         if (change.linked && error instanceof AppError && error.code === 'NOT_FOUND') {
-          // TODO(需取证 Q-M0-33): 原站联动越权提示及引导文案待取证。
+          // DEC-178：联动改写的上级编制对操作人可见（组织在范围内）即改写，否则整单拒绝并保留 DEC-084 拒绝码。
+          // 编制记录没有员工维度，DEC-177 的“员工当前部门”一支不适用，可见即上面 visible() 的组织判断。
           throw new AppError('LINKED_RECORD_OUT_OF_SCOPE', '联动记录不在当前数据范围，请由覆盖该范围的人员操作');
         }
         throw error;
