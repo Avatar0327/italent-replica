@@ -1,6 +1,8 @@
-import { sql, withTenant } from '@italent/db';
+import { randomUUID } from 'node:crypto';
+import { sql, upsertSystemSetting, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { orgPeopleWorld } from './AC-ORG-people-support.js';
 import { orgSession, type Organization, resultRows } from './AC-ORG-support.js';
 
 const testDb = useTestDb();
@@ -80,5 +82,45 @@ describe('AC-ORG-10~11 DEC-021 组织全称与生效日期', () => {
       `${session.tenant.name}/集团/部门A`,
       `${session.tenant.name}/集团/部门X`,
     ]);
+  });
+});
+
+describe('AC-ORG-10/11 人员经历快照的部门全称与组织列表同一口径', () => {
+  it('上级改名前后入职，经历里的部门全称都按记录日期当天的上级名称，与组织列表一致', async () => {
+    const { db } = testDb();
+    await upsertSystemSetting(
+      db,
+      {
+        key: 'EntrySyncJobHistory',
+        value: false,
+        description: '入职同步工作经历',
+        overridable: true,
+        expectedVersion: 0,
+      },
+      { actorUserId: null, commandId: randomUUID() },
+    );
+    const world = await orgPeopleWorld(db, 'org10-history');
+    await withTenant(db, world.tenant.id, (tx) =>
+      tx.execute(sql`INSERT INTO tenant_setting_overrides (tenant_id, key, value, active, revision, updated_by)
+        VALUES (${world.tenant.id}, 'EntrySyncJobHistory', 'true'::jsonb, true, 1, ${world.user.id})`),
+    );
+    const parent = await world.org('经历上级', world.tenant.id, { establishedOn: '2026-09-01' });
+    const department = await world.org('经历部门', parent.id, { establishedOn: '2026-09-01' });
+    const renamed = await world.patchOrg(parent, { name: '经历上级V2', effectiveDate: '2026-09-20' });
+    expect(renamed.status, await renamed.clone().text()).toBe(200);
+    for (const [name, date] of [
+      ['改名前入职', '2026-09-10'],
+      ['改名后入职', '2026-09-25'],
+    ] as const) {
+      const hired = await world.hire(name, { departmentId: department.id }, date);
+      const response = await world.call('GET', `personnel/employees/${hired.id}/subsets/jobhistory`);
+      expect(response.status, await response.clone().text()).toBe(200);
+      const [history] = ((await response.json()) as { items: Record<string, unknown>[] }).items;
+      const listed = (await world.orgsAt(date)).get(department.id);
+      expect(listed?.fullName).toBe(
+        `${String(parent.fullName).split('/')[0]}/${date < '2026-09-20' ? '经历上级' : '经历上级V2'}/经历部门`,
+      );
+      expect(history).toMatchObject({ department: '经历部门', departmentFullName: listed?.fullName });
+    }
   });
 });

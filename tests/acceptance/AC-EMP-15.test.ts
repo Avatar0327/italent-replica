@@ -23,6 +23,36 @@ async function revisionOf(world: OrgPeopleWorld, employeeId: string) {
   return (await world.getEmployee(employeeId)).revision;
 }
 
+async function businessRevision(world: OrgPeopleWorld, businessId: string) {
+  const response = await world.request('GET', `/businesses/${businessId}`);
+  expect(response.status).toBe(200);
+  return ((await response.json()) as { revision: number }).revision;
+}
+
+function editManager(world: OrgPeopleWorld, recordId: string, revision: number, managerId: string) {
+  return world.request('PATCH', `/records/${recordId}`, {
+    ifMatch: revision,
+    body: { fields: { directManagerId: managerId } },
+  });
+}
+
+/** E 在 10-02 先后有 A、B 两条记录（A 被同日在后的 B 取代、有效区间为空）；M 自 10-03 起汇报给 E。 */
+async function sameDayChain(label: string, managerOfB: 'x' | 'none') {
+  const { world, hire } = await people(label);
+  const x = await hire('经理X');
+  const m = await hire('下属M');
+  const e = await hire('员工E');
+  const created = async (target: HiredEmployee, effectiveDate: string, fields: Record<string, unknown>) => {
+    const response = await transfer(world, target, await revisionOf(world, target.id), { effectiveDate, fields });
+    expect(response.status, await response.clone().text()).toBe(201);
+    return ((await response.json()) as { id: string }).id;
+  };
+  const a = await created(e, '2026-10-02', { remarks: '同日在前A' });
+  const b = await created(e, '2026-10-02', managerOfB === 'x' ? { directManagerId: x.id } : { remarks: '同日在后B' });
+  await created(m, '2026-10-03', { directManagerId: e.id });
+  return { world, x, m, e, a, b };
+}
+
 function transfer(world: OrgPeopleWorld, employee: HiredEmployee, revision: number, body: Record<string, unknown>) {
   return world.request('POST', `/employees/${employee.id}/businesses`, {
     ifMatch: revision,
@@ -203,5 +233,37 @@ describe('AC-EMP-15 调整直线经理不得形成循环汇报', () => {
       directManagerId: m.id,
     });
     expect((await world.record(futureRecordId, '2026-10-20')).fields).toMatchObject({ directManagerId: x.id });
+  });
+});
+
+describe('AC-EMP-15 按记录在时间轴上的真实位置与有效区间判断（DEC-108，PR #54 P2-B）', () => {
+  it('编辑被同日后继取代的 A（有效区间为空）改经理不误拒；当天生效的 B 改同一经理仍按其区间拒绝', async () => {
+    const { world, x, m, a, b } = await sameDayChain('emp15sameday', 'x');
+    const edited = await editManager(world, a, await businessRevision(world, a), m.id);
+    expect(edited.status, await edited.clone().text()).toBe(200);
+    expect((await world.record(a, '2026-10-02')).fields).toMatchObject({ directManagerId: m.id });
+    expect((await world.record(b, '2026-10-02')).fields).toMatchObject({ directManagerId: x.id });
+    await expectCycle(
+      await editManager(world, b, await businessRevision(world, b), m.id),
+      '存在以下循环汇报，请修改。员工E 的直线经理汇报线循环：员工E→下属M→员工E（自 2026-10-03 起）',
+    );
+    expect((await world.record(b, '2026-10-03')).fields).toMatchObject({ directManagerId: x.id });
+  });
+
+  it('编辑 A 时实际被向后修改的同日后继 B 按 B 自己的有效区间逐条校验：成环只跳过 B 的该字段', async () => {
+    const { world, m, a, b } = await sameDayChain('emp15samedayforward', 'none');
+    const preview = await world.request('POST', `/records/${a}/forward-update-preview`, {
+      body: { fields: { directManagerId: m.id } },
+    });
+    expect(preview.status, await preview.clone().text()).toBe(200);
+    expect(((await preview.json()) as { skipped: unknown[] }).skipped).toContainEqual({
+      businessId: b,
+      reason: 'REPORTING_CYCLE',
+      fields: ['directManagerId'],
+    });
+    const edited = await editManager(world, a, await businessRevision(world, a), m.id);
+    expect(edited.status, await edited.clone().text()).toBe(200);
+    expect((await world.record(a, '2026-10-02')).fields).toMatchObject({ directManagerId: m.id });
+    expect((await world.record(b, '2026-10-02')).fields).toMatchObject({ directManagerId: null });
   });
 });

@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { auditActions, orgPeopleWorld, type OrgPeopleWorld } from './AC-ORG-people-support.js';
+import { auditActions, orgPeopleWorld, type OrgPeopleWorld, resultRows } from './AC-ORG-people-support.js';
 
 const testDb = useTestDb();
 
@@ -28,6 +28,16 @@ async function rejected(response: Response, reason: string, message: string) {
   const body = (await response.json()) as { error: { message: string; details: Record<string, unknown> } };
   expect(body.error).toMatchObject({ details: { reason, fields: { establishedOn: expect.any(String) } } });
   expect(body.error.message).toBe(message);
+}
+
+/** 直接数库里的版本行：更正只改首版日期，不得多出任何版本（DEC-147）。 */
+async function versionCount(world: OrgPeopleWorld, orgId: string): Promise<number> {
+  const [row] = await withTenant(testDb().db, world.tenant.id, async (tx) =>
+    resultRows<{ count: number }>(
+      await tx.execute(sql`SELECT count(*)::int AS count FROM org_versions WHERE org_id = ${orgId}::uuid`),
+    ),
+  );
+  return row!.count;
 }
 
 async function versioned(label: string) {
@@ -186,7 +196,7 @@ describe('AC-ORG-20 在「编辑」中修改设立日期（DEC-147）', () => {
     }
   });
 
-  it('组织版本仍只允许追加：未声明更正、或声明后改其他列都被数据库拒绝（迁移 0033）', async () => {
+  it('组织版本仍只允许追加：未声明更正、或声明后改其他列都被数据库拒绝（迁移 0037）', async () => {
     const { world, org } = await versioned('org20guarddb');
     const db = testDb().db;
     const update = (statement: ReturnType<typeof sql>) =>
@@ -220,5 +230,79 @@ describe('AC-ORG-20 在「编辑」中修改设立日期（DEC-147）', () => {
     const response = await correct(world, child, '2026-08-20');
     expect(response.status, await response.clone().text()).toBe(400);
     expect(await response.json()).toMatchObject({ error: { details: { reason: 'PARENT_UNAVAILABLE' } } });
+  });
+});
+
+describe('AC-ORG-20 更正不产生派生全称版本，全称按当天的上级名称解析（PR #54 P2-A，`10` §16）', () => {
+  it('上级在区间内改名：改早不新增版本、全称按日期解析；再改晚、改回都不被挡，版本数始终为 1', async () => {
+    const world = await orgPeopleWorld(testDb().db, 'org20rename');
+    const parent = await world.org('区间上级', world.tenant.id, { establishedOn: '2026-08-01' });
+    const renamed = await world.patchOrg(parent, { name: '区间上级V2', effectiveDate: '2026-09-01' });
+    expect(renamed.status, await renamed.clone().text()).toBe(200);
+    const child = await world.org('区间下级', parent.id, { establishedOn: '2026-09-01' });
+    const root = String(parent.fullName).split('/')[0];
+    const oldPath = `${root}/区间上级/区间下级`;
+    const newPath = `${root}/区间上级V2/区间下级`;
+    expect(child.fullName).toBe(newPath);
+    expect(await versionCount(world, child.id)).toBe(1);
+
+    const earlier = await correct(world, child, '2026-08-20');
+    expect(earlier.status, await earlier.clone().text()).toBe(200);
+    expect(await earlier.json()).toMatchObject({ revision: 2, startDate: '2026-08-20', fullName: oldPath, level: 2 });
+    expect(await versionCount(world, child.id)).toBe(1);
+    expect((await world.orgsAt('2026-08-25')).get(child.id)).toMatchObject({ fullName: oldPath, level: 2 });
+    expect((await world.orgsAt('2026-09-05')).get(child.id)).toMatchObject({ fullName: newPath, revision: 2 });
+
+    const later = await correct(world, { id: child.id, revision: 2 }, '2026-09-05');
+    expect(later.status, await later.clone().text()).toBe(200);
+    expect(await versionCount(world, child.id)).toBe(1);
+    expect((await world.orgsAt('2026-09-04')).has(child.id)).toBe(false);
+    expect((await world.orgsAt('2026-09-05')).get(child.id)).toMatchObject({
+      fullName: newPath,
+      startDate: '2026-09-05',
+      revision: 3,
+    });
+
+    const back = await correct(world, { id: child.id, revision: 3 }, '2026-09-01');
+    expect(back.status, await back.clone().text()).toBe(200);
+    expect(await versionCount(world, child.id)).toBe(1);
+    expect((await world.orgsAt('2026-09-01')).get(child.id)).toMatchObject({
+      fullName: newPath,
+      establishedOn: '2026-09-01',
+      revision: 4,
+    });
+  });
+
+  it('上级改名不给下级追加版本（原站下级只有一个版本）；拦截①只认本组织自己的后续业务版本', async () => {
+    const world = await orgPeopleWorld(testDb().db, 'org20derived');
+    const parent = await world.org('改名上级', world.tenant.id, { establishedOn: '2026-08-01' });
+    const child = await world.org('先设下级', parent.id, { establishedOn: '2026-08-15' });
+    const root = String(parent.fullName).split('/')[0];
+    const renamed = await world.patchOrg(parent, { name: '改名上级V2', effectiveDate: '2026-09-01' });
+    expect(renamed.status, await renamed.clone().text()).toBe(200);
+    expect(await versionCount(world, child.id)).toBe(1);
+    expect((await world.orgsAt('2026-08-20')).get(child.id)).toMatchObject({
+      fullName: `${root}/改名上级/先设下级`,
+      revision: 1,
+    });
+    expect((await world.orgsAt('2026-09-01')).get(child.id)).toMatchObject({
+      fullName: `${root}/改名上级V2/先设下级`,
+      revision: 1,
+    });
+
+    const later = await correct(world, child, '2026-09-05');
+    expect(later.status, await later.clone().text()).toBe(200);
+    expect(await versionCount(world, child.id)).toBe(1);
+    const own = await world.patchOrg(
+      { id: child.id, revision: 2 },
+      { name: '先设下级V2', effectiveDate: '2026-10-08' },
+    );
+    expect(own.status, await own.clone().text()).toBe(200);
+    await rejected(
+      await correct(world, { id: child.id, revision: 3 }, '2026-10-08'),
+      'ESTABLISHED_ON_NOT_BEFORE_NEXT_VERSION',
+      '请将设立日期调整至 2026-10-08 之前——设立日期须早于后一条组织记录的生效日期（2026-10-08）',
+    );
+    expect(await versionCount(world, child.id)).toBe(2);
   });
 });

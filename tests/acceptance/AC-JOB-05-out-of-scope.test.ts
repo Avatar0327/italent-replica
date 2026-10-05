@@ -53,8 +53,9 @@ async function scenario(label: string) {
   const seed = await seedPermissionWorld(db);
   const world: PermissionWorld = { ...seed, api: tenantApi(db, { authorize: undefined, clock }) };
   const setup = tenantApi(db, { clock });
-  const create = async (path: string, body: object, ifMatch = 0): Promise<Created> => {
-    const response = await setup.request('POST', `/api/tenant/${path}`, { ...world.asAdmin, ifMatch, body });
+  /** 以 as 的身份（缺省管理员）走全允许授权器写入：审计里的创建者就是该用户。 */
+  const create = async (path: string, body: object, ifMatch = 0, as = world.asAdmin): Promise<Created> => {
+    const response = await setup.request('POST', `/api/tenant/${path}`, { ...as, ifMatch, body });
     expect(response.status, await response.clone().text()).toBe(201);
     return (await response.json()) as Created;
   };
@@ -95,14 +96,14 @@ async function scenario(label: string) {
         boundUser ? body : withLoginEmail(employee.id, body),
         employee.revision,
       );
-      return { id: employee.id, recordId: hired.id };
+      return { id: employee.id, recordId: hired.id, employeeRevision: hired.employeeRevision };
     } finally {
       uuidPrefix.value = null;
     }
   };
   const newParent = await position('新上级职位');
   const target = await position('本职位');
-  return { db, world, setup, department, position, hire, newParent, target };
+  return { db, world, setup, create, department, position, hire, newParent, target };
 }
 
 type Scenario = Awaited<ReturnType<typeof scenario>>;
@@ -236,5 +237,63 @@ describe('AC-JOB-05 同步直线经理不得绕过任职数据范围（真实授
       ...s.world.asAdmin,
     });
     expect(await position.json()).toMatchObject({ revision: 1, directParentId: null });
+  });
+});
+
+describe('AC-JOB-05 “仅本人创建”下源任职创建者与员工创建者分别生效（PR #54 第二轮复审 P3）', () => {
+  it('源任职是操作人建、员工不是：跳过；员工是操作人建、源任职不是：跳过；两者都是：同步', async () => {
+    const s = await scenario('创建者组合');
+    await s.hire('新上级唯一在岗', { positionId: s.newParent.id });
+    const as = await operator(s, [{ dimension: 'using_user' }]);
+    const actor = { user: as.user, tenant: as.tenant };
+    const inTarget = { kind: 'hire', mode: 'direct', effectiveDate: TODAY } as const;
+    const fields = { employType: 'internal', departmentId: s.department.id, positionId: s.target.id };
+    // ① 管理员建档并入职，操作人随后同日再建一条任职（成为生效日的源任职）：源任职可读，但不能为该员工新增任职。
+    const byAdmin = await s.hire('管理员建档员工', { positionId: s.target.id });
+    const sourceByOperator = await s.create(
+      `employment/employees/${byAdmin.id}/businesses`,
+      { kind: 'transfer', mode: 'direct', effectiveDate: TODAY, fields: { remarks: '操作人创建的源任职' } },
+      byAdmin.employeeRevision,
+      actor,
+    );
+    // ② 操作人建档，管理员办入职：员工创建者是操作人，但源任职（入职）读不到。
+    const profiledByOperator = await s.create(
+      'employment/employees',
+      { code: `E${randomUUID().slice(0, 8)}`, name: '操作人建档员工' },
+      0,
+      actor,
+    );
+    await s.create(
+      `employment/employees/${profiledByOperator.id}/businesses`,
+      withLoginEmail(profiledByOperator.id, { ...inTarget, fields }),
+      profiledByOperator.revision,
+    );
+    // ③ 建档与入职都是操作人：范围内，照常同步。
+    const own = await s.create(
+      'employment/employees',
+      { code: `E${randomUUID().slice(0, 8)}`, name: '操作人自己的员工' },
+      0,
+      actor,
+    );
+    await s.create(
+      `employment/employees/${own.id}/businesses`,
+      withLoginEmail(own.id, { ...inTarget, fields }),
+      own.revision,
+      actor,
+    );
+    const response = await synchronize(s, as);
+    expect(response.status, await response.clone().text()).toBe(200);
+    const body = (await response.json()) as { managerSync: { skipped: Record<string, unknown>[] } };
+    expect(body.managerSync.skipped).toHaveLength(2);
+    expect(body.managerSync.skipped).toEqual(
+      expect.arrayContaining([
+        { employeeId: byAdmin.id, assignmentId: sourceByOperator.id, reason: 'OUT_OF_SCOPE' },
+        { reason: 'OUT_OF_SCOPE' },
+      ]),
+    );
+    expect(JSON.stringify(body)).not.toContain(profiledByOperator.id);
+    expect(await kinds(s, byAdmin.id)).toEqual(['hire', 'transfer']);
+    expect(await kinds(s, profiledByOperator.id)).toEqual(['hire']);
+    expect(await kinds(s, own.id)).toEqual(['hire', 'org_adjustment']);
   });
 });
