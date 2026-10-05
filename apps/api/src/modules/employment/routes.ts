@@ -272,7 +272,8 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return { status: 200, body: await updateEmploymentBusiness(tx, checked, id, input) };
     });
   });
-  for (const action of ['submit', 'withdraw', 'delete'] as const) {
+  // R1-T11：revoke = HR 撤销未审批完成的申请（置作废、作废流程，AC-TRF-07）；withdraw 是发起人撤回到草稿（AC-TRF-28）。
+  for (const action of ['submit', 'withdraw', 'revoke', 'delete'] as const) {
     router.on(
       action === 'delete' ? 'DELETE' : 'POST',
       `/businesses/:id${action === 'delete' ? '' : `/${action}`}`,
@@ -291,7 +292,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         return runWrite(c, deps, ctx, { id, action }, async (tx, context) => {
           const checked = await transferBusinessContext(tx, { ...context, transferTarget: undefined }, id, true);
           const business = await transitionEmployment(tx, checked, { id, action });
-          // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 删除同步结束在途实例，均与状态迁移同事务。
+          // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 撤销 / 删除同步结束在途实例，均与状态迁移同事务。
           if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
           else if (action === 'withdraw') await employmentApprovalHooks.withdrawn(tx, context, id);
           else await employmentApprovalHooks.deleted(tx, context, id);

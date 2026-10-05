@@ -114,11 +114,11 @@ describe('AC-TRF-07 未审批完成的调动可撤销', () => {
     expect(await deleted.json()).toMatchObject({ status: 'deleted' });
     const audit = await w.auditEvents(application.id);
     expect(audit.map((event) => event.action)).toEqual(
-      expect.arrayContaining(['employment.business.revoke', 'employment.business.delete']),
+      expect.arrayContaining(['employment.business.state.voided', 'employment.business.delete']),
     );
     const outbox = await w.outboxEvents(application.id);
     expect(outbox.map((event) => event.eventType)).toEqual(
-      expect.arrayContaining(['employment.business.revoke', 'employment.business.delete']),
+      expect.arrayContaining(['employment.business.state.voided', 'employment.business.delete']),
     );
   });
 
@@ -181,10 +181,10 @@ describe('AC-TRF-07 未审批完成的调动可撤销', () => {
     const misuse = await w.remove(application.id, { key, revision: application.revision });
     expect(await errorOf(misuse)).toMatchObject({ status: 409, code: 'IDEMPOTENCY_CONFLICT' });
     expect(await w.auditEvents(application.id)).toEqual(
-      expect.arrayContaining([expect.objectContaining({ action: 'employment.business.revoke' })]),
+      expect.arrayContaining([expect.objectContaining({ action: 'employment.business.state.voided' })]),
     );
     expect(
-      (await w.auditEvents(application.id)).filter((event) => event.action === 'employment.business.revoke'),
+      (await w.auditEvents(application.id)).filter((event) => event.action === 'employment.business.state.voided'),
     ).toHaveLength(1);
   });
 });
