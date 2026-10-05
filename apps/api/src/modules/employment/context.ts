@@ -21,6 +21,7 @@ import {
 } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { authorizeEmploymentResult } from '../permission/employment-replay.js';
+import { trimEmploymentManagerReferences } from '../transfer/response-disclosure.js';
 export type { EmploymentContext } from './types.js';
 export { pageQuery, revision, uuidParam } from '../job/context.js';
 
@@ -136,6 +137,12 @@ export async function requireScopedEmploymentObject(
   businessId?: string,
 ) {
   if (!ctx.scope || ctx.scope.all) return;
+  if (
+    ctx.transferTarget?.employeeId === employeeId &&
+    ctx.transferTarget.departmentId === departmentId &&
+    (businessId === undefined || ctx.transferTarget.businessId === businessId)
+  )
+    return;
   const creatorId = businessId ? await employmentCreatorId(tx, ctx, businessId, true) : ctx.userId;
   if (!(await scopeAllowsInTransaction(tx, ctx.scope, { personId: employeeId, orgId: departmentId, creatorId })))
     throw new AppError('NOT_FOUND', '任职数据不存在');
@@ -247,7 +254,7 @@ export async function trimEmploymentResponse(
   };
   // Flat employee/configuration DTOs use the shared helper; nested employment DTOs require field-level traversal.
   return objectCode === EMPLOYMENT_OBJECT
-    ? trim(value)
+    ? trimEmploymentManagerReferences(deps, ctx, trim(value))
     : trimModuleResponse(deps, ctx, objectCode, value as Record<string, unknown>);
 }
 

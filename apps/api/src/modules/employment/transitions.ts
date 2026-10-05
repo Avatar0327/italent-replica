@@ -23,6 +23,7 @@ import {
 } from './record-store.js';
 import { removeLatestEmploymentTimeline } from './timeline.js';
 import type { EmploymentBusiness, EmploymentContext, EmploymentState } from './types.js';
+import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import {
   appendEmploymentState,
   materializeEmploymentRecord,
@@ -72,6 +73,8 @@ export async function transitionEmployment(
   if (!input || !ACTIONS.includes(input.action)) throw new AppError('VALIDATION_FAILED', '任职状态动作不合法');
   const business = await lockEmploymentBusiness(tx, ctx, input.id);
   assertTransition(business, input.action);
+  if (input.action === 'submit')
+    assertRequiredTransferFields(business.payload.kind, business.payload.formSnapshot, { ...business.payload.fields });
   if (input.action === 'delete') {
     await deleteEmploymentBusiness(tx, ctx, business);
     await personnelHooks.sync(

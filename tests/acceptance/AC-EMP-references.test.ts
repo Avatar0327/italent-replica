@@ -78,7 +78,7 @@ describe('任职在生效日期验证组织、职务与职位引用', () => {
     expect(hired.record!.fields).toMatchObject({ departmentId: historicalOrg.id, postId: historicalPost.id });
   });
 
-  it('组织和职务当前已停用，补录仍可引用任职生效日启用中的历史版本', async () => {
+  it('DEC-139/150 部门后来停用阻止新增任职；职务仍可引用生效日启用中的历史版本', async () => {
     const { db } = testDb();
     const session = await employmentSession(db, 'emprefhistorical');
     const jobs = jobApi(db, session);
@@ -100,17 +100,18 @@ describe('任职在生效日期验证组织、职务与职位引用', () => {
     );
     expect(disabledPost.status).toBe(200);
     const employee = await session.employee('历史版本引用合成员工');
+    await expectRejectedHire(session, employee.id, employee.revision, { departmentId: org.id, postId: post.id });
     const hired = await session.business(
       employee.id,
       {
         kind: 'hire',
         mode: 'direct',
         effectiveDate: '2026-09-01',
-        fields: { employType: 'internal', departmentId: org.id, postId: post.id },
+        fields: { employType: 'internal', postId: post.id },
       },
       employee.revision,
     );
-    expect(hired.record!.fields).toMatchObject({ departmentId: org.id, postId: post.id });
+    expect(hired.record!.fields).toMatchObject({ departmentId: null, postId: post.id });
   });
 
   it('不能引用其他租户的组织或职务，失败不创建任职且不泄露引用 ID', async () => {

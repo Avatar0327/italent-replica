@@ -19,6 +19,8 @@ export {
 export * from './permission/index.js';
 export * from './personnel/index.js';
 export * from './approval/index.js';
+export * from './transfer/catalog.js';
+export * from './transfer/required.js';
 export {
   ESTABLISHMENT_SCHEME_DATASOURCE,
   FIRST_ADMIN_PROFILE,

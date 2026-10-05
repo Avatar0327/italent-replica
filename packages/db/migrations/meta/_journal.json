@@ -274,6 +274,20 @@
       "when": 1791178202077,
       "tag": "0038_platform_ops_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791187045359,
+      "tag": "0039_transfer_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791187058355,
+      "tag": "0040_transfer_isolation",
+      "breakpoints": true
     }
   ]
 }

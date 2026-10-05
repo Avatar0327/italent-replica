@@ -4,6 +4,28 @@ import type { JobRecord } from '../job/read-model.js';
 import { invalid, requiredJob, validateJobAssignment } from '../job/validation.js';
 import { rowsOf } from './read-model.js';
 import type { EmploymentContext, PresetFields } from './types.js';
+import { AppError } from '../../errors.js';
+import { employmentDepartmentDisable } from '../org/employment-validity.js';
+
+/** DEC-150：只扩展新增任职业务及申请修改；历史记录编辑、向后引用判定保留各自已有日期口径。 */
+export async function validateNewEmploymentReferences(
+  tx: Tx,
+  ctx: EmploymentContext,
+  fields: PresetFields,
+  effectiveDate: string,
+): Promise<void> {
+  if (fields.departmentId) {
+    const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, fields.departmentId, effectiveDate);
+    if (disabled) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        `任职部门【${disabled.name}】已被停用（停用日期：${disabled.disabledOn}），请检查`,
+        { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: disabled.disabledOn },
+      );
+    }
+  }
+  await validateEmploymentReferences(tx, ctx, fields, effectiveDate);
+}
 
 /** docs/02_业务建模/15 §8：以任职生效日解析引用，不取对象的当前版本。 */
 export async function validateEmploymentReferences(

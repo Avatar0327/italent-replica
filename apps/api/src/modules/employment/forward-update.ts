@@ -109,7 +109,7 @@ async function sourceOrder(tx: Tx, ctx: EmploymentContext, source: ForwardSource
  * 同日未落地的申请只接受操作先后排在来源之后的向后更新（PR #53 第三轮清单第 3 项，暂定口径）：较早提交的申请
  * 落地时插在来源之前（DEC-108），不应被之后的直接业务改写。来源尚未写状态事件（正在保存的直接业务、预览）时视为
  * 最新一次操作，同日申请一律不更新。
- * TODO(需取证 Q-M0-61)：原站同日较早提交的申请是否接受之后业务的向后更新。
+ * DEC-154：审批中的调动会拦截后续直接调动，因此该组合不再触发；其他直接业务仍保留此暂定顺序规则。
  */
 function sameDayPendingAfterSource(ctx: EmploymentContext, source: ForwardSource): SQL {
   const sourceKey = source.businessId ? operationKey(ctx.tenantId, sql`${source.businessId}::uuid`) : sql`NULL`;
