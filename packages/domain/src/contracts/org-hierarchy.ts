@@ -35,11 +35,11 @@ export interface OrgDescendantsQuery {
 }
 
 /**
- * 是否展开已停用的组织。必填、不设默认值：docs/02_业务建模/11 D-6（范围内组织停用后范围是否收缩）未决，
- * 契约不替规格做决定，调用方须显式选择。
+ * 是否展开已停用的组织。必填、不设默认值，调用方须按用途显式选择。
  * - false：已停用的组织及其整棵子树都不展开（若 orgId 本身已停用则返回空数组）；
  * - true：按层级全部展开，不看启用状态。
- * R1-T02 在 D-6 定论前一律传 false（fail-closed），并在调用处留 TODO(需取证 D-6)。
+ * 数据范围展开（R1-T02）按 DEC-146（D-6 已决，`11` §18）一律传 true：范围内组织停用不使数据范围收缩；
+ * 选择器等“能否选这个组织”的场景按各自规则过滤停用组织，与数据范围无关。
  */
 export interface OrgDescendantsOptions {
   readonly includeDisabled: boolean;
