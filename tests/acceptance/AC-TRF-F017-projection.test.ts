@@ -15,7 +15,7 @@ vi.mock('node:crypto', async (original) => {
     },
   };
 });
-async function fixture(conditions = false) {
+async function fixture(conditions = false, inclusive = false) {
   const w = await activationWorld(database().db, 'f017-projection');
   const api = tenantApi(w.db, { clock: () => new Date('2026-10-01T01:00:00Z') });
   const request = (method: string, path: string, body: object, revision = 0) =>
@@ -28,7 +28,7 @@ async function fixture(conditions = false) {
   const schemeResponse = await request('POST', 'establishment/schemes', {
     name: '条件编制',
     periodType: 'annual',
-    maintenanceMode: 'local',
+    maintenanceMode: inclusive ? 'both' : 'local',
     startDate: '2026-01-01',
     occupancyRanges: [
       { employmentType: 'internal', ...(conditions ? { conditions: { employmentForm: ['正式'] } } : {}) },
@@ -41,6 +41,7 @@ async function fixture(conditions = false) {
     schemeId: scheme.id,
     periodStart: '2026-01-01',
     localCapacity: 1,
+    ...(inclusive ? { inclusiveCapacity: 1 } : {}),
     strictControl: true,
   });
   expect(capacityResponse.status).toBe(201);
@@ -112,4 +113,60 @@ it('F-017 未来审批通过占编时重新检查容量，拒绝时仍在审批�
     details: { reason: 'ESTABLISHMENT_EXCEEDED' },
   });
   expect((await w.business(submitted.id)).status).toBe('in_review');
+});
+
+it('F-017 周期内组织后来挂入目标子树，联合峰值不能使用生效日固定子树', async () => {
+  const w = await fixture(false, true);
+  const occupied = await w.hired('未来子组织人员');
+  expect(occupied.hire.status).toBe('effective');
+  const moved = await w.request(
+    'PATCH',
+    `org/organizations/${w.from.id}`,
+    {
+      effectiveDate: '2026-10-20',
+      parents: { admin: { parentId: w.to.id } },
+    },
+    w.from.revision,
+  );
+  expect(moved.status, await moved.clone().text()).toBe(200);
+  const other = await w.hired('调入员工');
+  const rejected = await w.save(other.employee.id, w.to.id);
+  expect(rejected.status, await rejected.clone().text()).toBe(409);
+});
+it('F-017 向后更新条件字段也检查编制；DEC-015 导入编辑保留警告并完成同一更新', async () => {
+  const w = await fixture(true);
+  const person = await w.hired();
+  const future = await w.session.business(
+    person.employee.id,
+    { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-10', fields: { departmentId: w.to.id } },
+    person.hire.employeeRevision,
+  );
+  expect(
+    (
+      await w.request(
+        'PATCH',
+        `establishment/capacities/${w.capacity.id}`,
+        { localCapacity: 0, effectiveDate: '2026-10-01' },
+        w.capacity.revision,
+      )
+    ).status,
+  ).toBe(200);
+  const before = await w.business(person.hire.id);
+  const patch = { fields: { employmentForm: '正式' } };
+  const blocked = await w.session.request('PATCH', `/records/${person.hire.id}`, {
+    ifMatch: before.revision,
+    body: patch,
+  });
+  expect(blocked.status).toBe(409);
+  expect((await w.business(person.hire.id)).fields.employmentForm).toBeNull();
+  expect((await w.business(future.id)).fields.employmentForm).toBeNull();
+  const imported = await w.session.request('POST', `/employees/${person.employee.id}/import`, {
+    ifMatch: (await w.session.getEmployee(person.employee.id)).revision,
+    body: { items: [{ operation: 'edit', id: person.hire.id, revision: before.revision, patch }] },
+  });
+  expect(imported.status, await imported.clone().text()).toBe(200);
+  expect(await imported.json()).toMatchObject({
+    warnings: [{ businessId: future.id, reason: 'ESTABLISHMENT_EXCEEDED' }],
+  });
+  expect((await w.business(future.id)).fields.employmentForm).toBe('正式');
 });

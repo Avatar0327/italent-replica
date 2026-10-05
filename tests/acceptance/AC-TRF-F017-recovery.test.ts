@@ -84,7 +84,7 @@ it.each(['REVISION_CONFLICT', 'CONFLICT'])('F-017 暂存提交 %s 后恢复同�
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
   const click = async (label: string) => {
-    const button = [...container.querySelectorAll('button')].find((item) => item.textContent === label);
+    const button = Array.from(container.querySelectorAll('button')).find((item) => item.textContent === label);
     expect(button, label).toBeTruthy();
     expect(button!.disabled).toBe(false);
     await act(async () => {

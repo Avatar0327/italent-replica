@@ -98,7 +98,10 @@ async function fixture() {
     return { id: employee.id, revision: hire.employeeRevision };
   }
 
-  async function actor(label: string, options: { empty?: boolean; role?: string; direct?: boolean } = {}) {
+  async function actor(
+    label: string,
+    options: { empty?: boolean; role?: string; direct?: boolean; hidden?: string[] } = {},
+  ) {
     const user = await addMember(world, label);
     const profile = await createProfile(world, `${label.slice(0, 26)}-${randomUUID()}`);
     const definition = MODULE_OBJECTS.employmentRecord;
@@ -112,7 +115,11 @@ async function fixture() {
       profile,
       {
         dataOperations: { create: true, update: true, delete: false },
-        fields: definition.fields.map((field) => ({ fieldCode: field.code, view: true, edit: !field.system })),
+        fields: definition.fields.map((field) => ({
+          fieldCode: field.code,
+          view: !options.hidden?.includes(field.code),
+          edit: !field.system && !options.hidden?.includes(field.code),
+        })),
         buttons,
       },
       definition.code,
@@ -367,6 +374,17 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
         expect.objectContaining({ id: business.id, fieldCodes: expect.arrayContaining(['preset:positionId']) }),
       ]),
     });
+    const masked = await world.actor('completion-identifiers-hidden', {
+      hidden: ['id', 'employeeId', 'effectiveDate'],
+    });
+    const trimmed = await world.api.request('GET', path, masked);
+    const dto = (await trimmed.json()) as { items: Record<string, unknown>[] };
+    expect(dto.items.length).toBeGreaterThan(0);
+    for (const item of dto.items) {
+      expect(item).not.toHaveProperty('id');
+      expect(item).not.toHaveProperty('employeeId');
+      expect(item).not.toHaveProperty('effectiveDate');
+    }
     const empty = await world.actor('completion-scope-empty', { empty: true });
     const hidden = await world.api.request('GET', path, empty);
     expect(hidden.status).toBe(200);

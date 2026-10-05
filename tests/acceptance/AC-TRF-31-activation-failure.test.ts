@@ -34,7 +34,7 @@ describe('AC-TRF-31（R1-T08 段，DEC-145）DEC-052 定时生效失败、HR 待
     // 更晚的直接业务（10-20）在调动生效前已存在：生效时调动后的部门须向后更新到它。
     const later = await w.session.business(
       employee.id,
-      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-20', fields: { remarks: '后续直接调动' } },
+      { kind: 'regularization', mode: 'direct', effectiveDate: '2026-10-20', fields: { remarks: '后续直接调动' } },
       (await w.session.getEmployee(employee.id)).revision,
     );
     expect(later.record!.fields.departmentId).toBe(w.from.id);

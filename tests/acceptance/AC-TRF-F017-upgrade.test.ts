@@ -16,13 +16,15 @@ it('F-017 DEC-188 只基线登记历史未来调动，今日及上线后到期�
     ids.push(business);
     await withTenant(handle.db, tenantId, async (tx) => {
       const date = sql`(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date + ${offset}::int`;
-      await tx.execute(sql`INSERT INTO employment_cycles (id,tenant_id,employee_id,entry_date,entry_type,employ_type)
+      await tx.execute(sql`INSERT INTO employment_cycles
+        (id,tenant_id,employee_id,entry_date,entry_type,employ_type)
         VALUES (${staff},${tenantId},${employee.id},'2020-01-01','hire','internal')`);
       await tx.execute(sql`INSERT INTO employment_business_objects (id,tenant_id,employee_id)
         VALUES (${business},${tenantId},${employee.id})`);
       await tx.execute(sql`INSERT INTO employment_payload_versions
         (id,tenant_id,employee_id,business_id,version_no,kind,mode,effective_date,form_id,employ_type)
-        VALUES (${payload},${tenantId},${employee.id},${business},1,'transfer','direct',${date},'standard','internal')`);
+        VALUES (${payload},${tenantId},${employee.id},${business},1,'transfer','direct',${date},
+          'standard','internal')`);
       await tx.execute(sql`INSERT INTO employment_state_events
         (tenant_id,employee_id,business_id,payload_version_id,event_no,state,command_id)
         VALUES (${tenantId},${employee.id},${business},${payload},1,'effective','legacy-transfer')`);
@@ -40,7 +42,7 @@ it('F-017 DEC-188 只基线登记历史未来调动，今日及上线后到期�
   await withTenant(handle.db, tenantId, async (tx) => {
     expect(
       rows(
-        await tx.execute(sql`SELECT business_id,reason,outcome FROM employment_activation_attempts
+        await tx.execute(sql`SELECT business_id,detail->>'reason' AS reason,outcome FROM employment_activation_attempts
       WHERE tenant_id=${tenantId}`),
       ),
     ).toEqual([{ business_id: ids[0], reason: 'DEPLOYMENT_BASELINE', outcome: 'effective' }]);

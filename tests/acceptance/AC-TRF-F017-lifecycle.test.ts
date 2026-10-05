@@ -131,3 +131,32 @@ it('F-017 DEC-185 补全后永久关闭，再清空生成新的员工字段待�
   expect(new Set(opened.map((event) => event.after?.todoId)).size).toBe(2);
   expect(events.some((event) => event.action === 'employment.completion.closed')).toBe(true);
 });
+
+it.each([false, true])('DEC-186 直接未来调动迟到且店长联动=%s：时间轴和联动采用执行日', async (linked) => {
+  const w = await activationWorld(database().db, `f017-direct-late-${linked}`);
+  const person = await w.hired();
+  const direct = await w.session.business(
+    person.employee.id,
+    {
+      kind: 'transfer',
+      mode: 'direct',
+      effectiveDate: '2026-10-05',
+      fields: { departmentId: w.to.id, isStoreManager: linked },
+    },
+    person.hire.employeeRevision,
+  );
+  const result = await w.runScheduler('2026-10-08T01:00:00Z');
+  expect(result).toMatchObject({ failed: [], errors: [] });
+  const latest = await w.business(direct.id);
+  expect(latest).toMatchObject({ effectiveDate: '2026-10-08', record: { effectiveDate: '2026-10-08' } });
+  expect(latest.revision).toBeGreaterThan(direct.revision);
+  expect((await w.session.records(person.employee.id, '2026-10-06')).find((r) => r.isCurrent)?.id).toBe(person.hire.id);
+  const events = await w.auditEvents(direct.id);
+  expect(events.filter((e) => e.action === 'employment.transfer.rescheduled')).toHaveLength(1);
+  if (linked)
+    expect(events.find((e) => e.action === 'employment.transfer.linked')?.after).toMatchObject({
+      effectiveDate: '2026-10-08',
+    });
+  expect((await w.runScheduler('2026-10-09T01:00:00Z')).errors).toEqual([]);
+  expect((await w.business(direct.id)).effectiveDate).toBe('2026-10-08');
+});
