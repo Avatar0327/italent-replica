@@ -22,6 +22,7 @@ import {
 import { requireObjectWrite } from '../permission/object-write.js';
 import { authorizeEmploymentResult } from '../permission/employment-replay.js';
 import { trimEmploymentManagerReferences } from '../transfer/response-disclosure.js';
+import { isEmploymentRecordVisible, visibleEmploymentRecords } from './visibility.js';
 export type { EmploymentContext } from './types.js';
 export { pageQuery, revision, uuidParam } from '../job/context.js';
 
@@ -129,6 +130,10 @@ async function employmentCreatorId(tx: Tx, ctx: EmploymentContext, id: string, b
   return rows[0]?.creator ?? null;
 }
 
+/**
+ * 写入口径：记录部门与员工当前任职须同时在范围内（新建业务、改部门、直接编辑）。DEC-177 只放宽“看”
+ * （visibility.ts），不放宽写到范围外部门；可见但部门在范围外的记录能否直接编辑，TODO(需取证 #72)。
+ */
 export async function requireScopedEmploymentObject(
   tx: Tx,
   ctx: EmploymentContext,
@@ -146,6 +151,34 @@ export async function requireScopedEmploymentObject(
   const creatorId = businessId ? await employmentCreatorId(tx, ctx, businessId, true) : ctx.userId;
   if (!(await scopeAllowsInTransaction(tx, ctx.scope, { personId: employeeId, orgId: departmentId, creatorId })))
     throw new AppError('NOT_FOUND', '任职数据不存在');
+}
+
+/** DEC-177 单条可见判定的上下文封装；businessId 给出时按该业务的创建者判断“使用用户”维度。 */
+export async function employmentRecordVisibleTo(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  departmentId: string | null,
+  businessId?: string,
+): Promise<boolean> {
+  if (!ctx.scope || ctx.scope.all) return true;
+  const creatorId = businessId ? await employmentCreatorId(tx, ctx, businessId, true) : ctx.userId;
+  return isEmploymentRecordVisible(tx, ctx.tenantId, ctx.scope, { employeeId, departmentId, creatorId });
+}
+
+/**
+ * DEC-178：联动（向后更新、负责人标志补写等）改写后续记录前调用。记录按 DEC-177 对操作人可见即可改写，
+ * 不可见整单拒绝，保留 DEC-084 的拒绝码，提示由覆盖该范围的人员操作。
+ */
+export async function requireLinkedEmploymentRecord(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  departmentId: string | null,
+  businessId: string,
+): Promise<void> {
+  if (!(await employmentRecordVisibleTo(tx, ctx, employeeId, departmentId, businessId)))
+    throw new AppError('LINKED_RECORD_OUT_OF_SCOPE', '联动记录不在当前数据范围，请由覆盖该范围的人员操作');
 }
 
 export async function requireEmploymentWrite(
@@ -194,6 +227,7 @@ export async function trimEmploymentResponse(
   const objectCode = ctx.objectCode ?? EMPLOYMENT_OBJECT;
   const viewable = await getModuleViewableFields(deps, ctx, objectCode);
   if (viewable === undefined) return value;
+  const visibleBefore = await visiblePreviousRecords(deps, ctx, value);
   const trim = (record: unknown): unknown => {
     if (Array.isArray(record)) return record.map(trim);
     if (!record || typeof record !== 'object') return record;
@@ -212,12 +246,7 @@ export async function trimEmploymentResponse(
       else if (key === 'record') result.record = trim(field);
       else if (key === 'before') {
         const before = field as { fields?: { departmentId?: string | null } } | null;
-        const allowed =
-          !ctx.scope ||
-          scopeAllows(ctx.scope, {
-            personId: source.employeeId as string | undefined,
-            orgId: before?.fields?.departmentId,
-          });
+        const allowed = visibleBefore(source.employeeId, before?.fields?.departmentId);
         result.before = allowed ? trim(field) : null;
         if (!allowed && Object.hasOwn(source, 'previousRecordId')) result.previousRecordId = null;
       } else if ((key === 'changes' || key === 'wholeRecordSkips') && Array.isArray(field))
@@ -256,6 +285,41 @@ export async function trimEmploymentResponse(
   return objectCode === EMPLOYMENT_OBJECT
     ? trimEmploymentManagerReferences(deps, ctx, trim(value))
     : trimModuleResponse(deps, ctx, objectCode, value as Record<string, unknown>);
+}
+
+/** 链上一条与本条同属一名员工，按 DEC-177 判断（员工当前在范围内即可见）；整份响应一次批量查询。 */
+async function visiblePreviousRecords(deps: TenantRouteDeps, ctx: EmploymentContext, value: unknown) {
+  const scope = ctx.scope;
+  const key = (employeeId: unknown, departmentId: string | null | undefined) =>
+    `${String(employeeId)}|${departmentId ?? ''}`;
+  if (!scope || scope.all) return () => true;
+  const targets = new Map<string, { employeeId: string; departmentId: string | null }>();
+  const collect = (node: unknown): void => {
+    if (Array.isArray(node)) return node.forEach(collect);
+    if (!node || typeof node !== 'object') return;
+    const record = node as Record<string, unknown>;
+    const before = record.before as { fields?: { departmentId?: string | null } } | null | undefined;
+    if (before && typeof record.employeeId === 'string') {
+      const departmentId = before.fields?.departmentId ?? null;
+      targets.set(key(record.employeeId, departmentId), { employeeId: record.employeeId, departmentId });
+    }
+    collect(record.items);
+    collect(record.record);
+  };
+  collect(value);
+  const list = [...targets.entries()];
+  const visible = list.length
+    ? await withTenant(deps.db, ctx.tenantId, (tx) =>
+        visibleEmploymentRecords(
+          tx,
+          ctx.tenantId,
+          scope,
+          list.map(([, target]) => target),
+        ),
+      )
+    : [];
+  const allowed = new Set(list.filter((_, index) => visible[index]).map(([id]) => id));
+  return (employeeId: unknown, departmentId: string | null | undefined) => allowed.has(key(employeeId, departmentId));
 }
 
 export function queryDate(c: Context, ctx: EmploymentContext): string {

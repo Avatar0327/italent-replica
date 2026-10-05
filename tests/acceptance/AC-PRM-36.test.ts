@@ -16,6 +16,7 @@ import {
   seedPermissionWorld,
   setObjectPermission,
 } from './AC-PRM-support.js';
+import { installApprovalFallbacks } from './AC-APV-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { loginEmailOf } from './AC-EMP-support.js';
 
@@ -28,6 +29,7 @@ async function tenantFixture(label: string) {
   const db = database().db;
   const seed = await seedPermissionWorld(db);
   const api = tenantApi(db, { authorize: undefined, clock });
+  await installApprovalFallbacks(db, seed.tenant.id, seed.admin.id);
   const setup = tenantApi(db, { clock });
   async function send(path: string, body: unknown, revision = 0, status = 201) {
     const response = await setup.request('POST', `/api/tenant/${path}`, { ...seed.asAdmin, ifMatch: revision, body });
