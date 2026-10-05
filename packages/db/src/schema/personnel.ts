@@ -1037,3 +1037,67 @@ function sortRankTable(name: 'personnel_org_sort_ranks' | 'personnel_post_sort_r
 }
 export const personnelOrgSortRanks = sortRankTable('personnel_org_sort_ranks', 'org_id');
 export const personnelPostSortRanks = sortRankTable('personnel_post_sort_ranks', 'post_id');
+
+/** F-010 / DEC-148：独立的租户人员排序配置与派生名次，不改任职版本链。 */
+export const personnelOrderSettings = pgTable(
+  'personnel_order_settings',
+  {
+    tenantId: tenantId().primaryKey(),
+    enabled: boolean('enabled').notNull().default(true),
+    revision: integer('revision').notNull().default(0),
+  },
+  (t) => [check('personnel_order_settings_revision', sql`${t.revision} >= 0`)],
+);
+export const personnelOrderRules = pgTable(
+  'personnel_order_rules',
+  {
+    tenantId: tenantId(),
+    field: text('field').notNull(),
+    position: integer('position').notNull(),
+    direction: text('direction').notNull(),
+    enabled: boolean('enabled').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.field] }),
+    unique('personnel_order_rules_position').on(t.tenantId, t.position),
+    foreignKey({
+      name: 'personnel_order_rules_settings_fk',
+      columns: [t.tenantId],
+      foreignColumns: [personnelOrderSettings.tenantId],
+    }),
+    check('personnel_order_rules_field', sql`${t.field} IN ('department','post','position','level','grade','code')`),
+    check('personnel_order_rules_direction', sql`${t.direction} IN ('asc','desc')`),
+    check('personnel_order_rules_position_valid', sql`${t.position} BETWEEN 0 AND 5`),
+  ],
+);
+export const personnelEmployeeOrderCodes = pgTable(
+  'personnel_employee_order_codes',
+  {
+    tenantId: tenantId(),
+    employeeId: uuid('employee_id').notNull(),
+    orderCode: integer('order_code'),
+    revision: integer('revision').notNull().default(1),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.employeeId] }),
+    employeeFk('personnel_employee_order_codes_employee_fk', t),
+    index('personnel_employee_order_codes_order').on(t.tenantId, t.orderCode, t.employeeId),
+    check('personnel_employee_order_codes_positive', sql`${t.orderCode} > 0 AND ${t.revision} > 0`),
+  ],
+);
+export const personnelOrderRuns = pgTable(
+  'personnel_order_runs',
+  {
+    tenantId: tenantId(),
+    commandId: text('command_id').notNull(),
+    state: text('state').notNull(),
+    attempts: integer('attempts').notNull(),
+    error: text('error'),
+    ranAt: timestamp('ran_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.commandId] }),
+    check('personnel_order_runs_state', sql`${t.state} IN ('succeeded','failed','unknown')`),
+    check('personnel_order_runs_attempts', sql`${t.attempts} > 0`),
+  ],
+);

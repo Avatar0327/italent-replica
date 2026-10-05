@@ -26,7 +26,7 @@ export const EMPLOYEE_ATTRIBUTE_FIELDS = [
   'positionSortNumber',
   'levelSortNumber',
   'gradeSortNumber',
-  // DEC-148：人员组合排序编码延期到 F-010，接口暂返回 null。
+  // DEC-148 / 15 §12：人员组合名次由 F-010 周期重算后存储。
   'orderCode',
 ];
 export const SUBSET_EMPLOYEE_ATTRIBUTES: Readonly<Record<string, string>> = {

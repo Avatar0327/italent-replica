@@ -27,6 +27,8 @@ export function employeeJoins(ctx: PersonnelContext): SQL {
     ${jobJoin('job_position_versions', 'jp', 'position_id', asOf)}
     ${jobJoin('job_post_versions', 'jpost', 'post_id', asOf)}
     ${sortRankJoins(asOf)}
+    LEFT JOIN personnel_employee_order_codes person_rank ON person_rank.tenant_id=e.tenant_id
+      AND person_rank.employee_id=e.id
   `;
 }
 function jobJoin(table: string, alias: string, field: string, date: string) {
@@ -36,7 +38,7 @@ function jobJoin(table: string, alias: string, field: string, date: string) {
 }
 export const employeeAttributes = sql`e.code,COALESCE(v.name,e.name) AS employee_name,u.user_id,
   cycles.first_entry_date::text,cycles.latest_entry_date::text,r.entry_date::text,r.last_work_date::text,
-  ${sortRankColumns},
+  ${sortRankColumns},person_rank.order_code,
   jl.level AS level_sort_number,jg.grade AS grade_sort_number,jp.display_order AS position_sort_number`;
 export function employeeDto(row: Row, ctx: PersonnelContext): Row {
   const profile = (row.profile ?? {}) as Row;
@@ -44,8 +46,7 @@ export function employeeDto(row: Row, ctx: PersonnelContext): Row {
   const attrs = camel(row);
   delete attrs.profile;
   delete attrs.employeeName;
-  // DEC-148：人员组合排序编码（规则项依次比较后的名次，`15` §12、DEC-037 / DEC-089）延期到后续任务 F-010，
-  // 在此之前 orderCode 一律返回 null，不现算、不伪造；各规则项名次（organizationSortNumber 等）已预计算并存储。
+  // DEC-148 / 15 §12：orderCode 读取周期重算后存储的组合名次；首次计算前为 null。
   return {
     ...Object.fromEntries(EMPLOYEE_FIELDS.map((f) => [f.code, null])),
     ...dto,
@@ -54,7 +55,7 @@ export function employeeDto(row: Row, ctx: PersonnelContext): Row {
     name: profile.name ?? row.employee_name,
     displayName: profile.display_name ?? profile.name ?? row.employee_name,
     revision: Number(profile.revision ?? 0),
-    orderCode: null,
+    orderCode: row.order_code ?? null,
     age: ageOn(profile.birthday as string | null, tenantLocalDate(ctx.now, ctx.timezone)),
   };
 }

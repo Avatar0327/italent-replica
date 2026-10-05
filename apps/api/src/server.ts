@@ -1,3 +1,4 @@
+import { startOrderCodeScheduler } from './modules/personnel/order-code-scheduler.js';
 import { startContractScheduler } from './modules/contracts/scheduler.js';
 import { serve } from '@hono/node-server';
 import { createPgDb } from '@italent/db';
@@ -23,3 +24,10 @@ if (handle && process.env.EMPLOYMENT_ACTIVATION_SCHEDULER !== 'off') {
 }
 
 if (handle && process.env.CONTRACT_SCHEDULER !== 'off') startContractScheduler(handle.db);
+
+// F-010 / 15 §12：默认每 3 小时重算，所有实例通过租户 + 周期命令去重。
+if (handle && process.env.PERSONNEL_ORDER_CODE_SCHEDULER !== 'off') {
+  startOrderCodeScheduler(handle.db, {
+    intervalMs: Number(process.env.PERSONNEL_ORDER_CODE_INTERVAL_MS || 10_800_000),
+  });
+}
