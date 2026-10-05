@@ -200,7 +200,12 @@ export async function requireEmploymentWrite(
         Object.entries((customFields ?? {}) as Record<string, unknown>).map(([id, value]) => [`custom:${id}`, value]),
       ),
     };
-    const commandButtons = ['Employment.Submit', 'Employment.Withdraw', 'Employment.RetryActivation'];
+    const commandButtons = [
+      'Employment.Submit',
+      'Employment.Withdraw',
+      'Employment.Revoke',
+      'Employment.RetryActivation',
+    ];
     if (!Object.keys(actual).length && !commandButtons.includes(button ?? '')) {
       throw new AppError('VALIDATION_FAILED', '必须提供要写入的业务字段');
     }

@@ -79,18 +79,19 @@ export async function authorizeEmploymentResult(
     });
 }
 
+/** 联动改写事件：向后更新、负责人标志补写，以及删除中间任职时恢复前一条的有效区间（R1-T11）。 */
+const LINKED_ACTIONS = new Set(['employment.forward-update', 'employment.record.restore']);
+
 /**
- * 本命令只经联动改写（向后更新、负责人标志补写）的记录：DEC-178 按 DEC-177 可见口径复查；
+ * 本命令只经联动改写的记录：DEC-178 按 DEC-177 可见口径复查；
  * 命令直接写入或在响应中返回的记录仍按写入口径（记录部门与员工当前任职同时在范围内）。
  */
 function linkedOnly(events: Footprint[], snapshots: Snapshot[]): Set<string> {
   const direct = new Set([
-    ...events.filter((event) => !['employment.forward-update', 'snapshot'].includes(event.action)).map((e) => e.id),
+    ...events.filter((event) => !LINKED_ACTIONS.has(event.action) && event.action !== 'snapshot').map((e) => e.id),
     ...snapshots.map((snapshot) => snapshot.id),
   ]);
-  return new Set(
-    events.filter((event) => event.action === 'employment.forward-update' && !direct.has(event.id)).map((e) => e.id),
-  );
+  return new Set(events.filter((event) => LINKED_ACTIONS.has(event.action) && !direct.has(event.id)).map((e) => e.id));
 }
 
 async function assertScope(

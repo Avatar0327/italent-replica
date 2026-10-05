@@ -34,6 +34,8 @@ export interface ActivationTarget {
   readonly departmentId: string | null;
   readonly positionId: string | null;
   readonly effectiveDate: string;
+  /** 占编只到这一天之前（不含）；不给则到编制周期末。删除任职恢复前一条区间时按实际区间判断（R1-T11）。 */
+  readonly until?: string | null;
 }
 
 /** 编制单一判定入口：定时生效与调动保存（R1-T09）共用同一口径，按严格控制判定调入是否超编。 */
