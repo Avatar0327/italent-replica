@@ -271,15 +271,19 @@ describe('P1-6 联动进入审批快照与盲审检查', () => {
     expect(snapshot.changedFields).toEqual(
       expect.arrayContaining([
         'isChangeContract',
-        'contractChange',
+        // 第三轮 P1-1：合同字段逐项进入变化字段，按合同对象的字段权限做盲审，不再以容器整体出现。
+        'contractChange.targetId',
+        'contractChange.endDate',
         'adjustSalary',
         'onTrialMonths',
         'handoverPersonId',
       ]),
     );
+    expect(snapshot.values).not.toHaveProperty('contractChange');
     expect(snapshot.values).toMatchObject({
       isChangeContract: true,
-      contractChange: { targetId: contract.id, endDate: '2029-10-09' },
+      'contractChange.targetId': contract.id,
+      'contractChange.endDate': '2029-10-09',
       adjustSalary: true,
       onTrialMonths: 3,
       handoverPersonId: handover.employee.id,

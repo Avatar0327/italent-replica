@@ -4,7 +4,11 @@
  */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant, type Db } from '@italent/db';
+import { MODULE_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
+import type { Authorizer } from '@italent/api';
+import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
+import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 import { activationWorld } from './AC-TRF-activation-support.js';
 import { tenantApi, type RequestOptions } from './support/tenant-api.js';
 
@@ -253,4 +257,35 @@ function helpers(
     managerOf,
     linkageEvents,
   };
+}
+
+/** 受控权限替身：授权、各对象范围与可见字段分别可控（未限制的对象返回其登记的全部字段）。 */
+export interface ControlledGrants {
+  readonly deny?: (request: Parameters<Authorizer>[0]) => boolean;
+  readonly scopes?: Readonly<Record<string, ModuleScope>>;
+  readonly fields?: Readonly<Record<string, readonly string[]>>;
+}
+
+export function everyField(objectCode: string): string[] {
+  const definition = Object.values(MODULE_OBJECTS).find((object) => object.code === objectCode);
+  return definition ? definition.fields.map((field) => field.code) : [];
+}
+
+export function controlledApi(db: Db, tenantId: string, userId: string, grants: ControlledGrants, at: string) {
+  const authorize: Authorizer = (request) => !grants.deny?.(request);
+  const all: ModuleScope = { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
+  registerScopeProvider(authorize, {
+    scope: async (query) => grants.scopes?.[query.objectCode ?? ''] ?? all,
+    authorize: async (request) => authorize(request),
+    fields: async (_tenant, _user, objectCode) => new Set(grants.fields?.[objectCode] ?? everyField(objectCode)),
+  });
+  const api = tenantApi(db, { authorize, clock: () => new Date(at) });
+  return (method: string, path: string, options: { body?: object; ifMatch?: number; key?: string } = {}) =>
+    api.request(method, path, {
+      user: userId,
+      tenant: tenantId,
+      ...(options.ifMatch === undefined ? {} : { ifMatch: options.ifMatch }),
+      ...(options.body ? { body: options.body } : {}),
+      ...(options.key ? { idempotencyKey: options.key } : {}),
+    });
 }
