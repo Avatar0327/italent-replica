@@ -88,7 +88,7 @@ describe('AC-CT-11 / DEC-167 编辑导入终止原因护栏', () => {
       const w = await contractWorld(testDb().db, `f013${reason}`);
       const source = await terminate(w, reason);
       const body = editBody(w, source, { endDate: '2026-12-31' });
-      const preview = await w.request('POST', '/imports/preview', { body });
+      const preview = await w.request('POST', '/imports/preview', { ifMatch: 0, body });
       expect(await preview.json()).toMatchObject({ valid: true, errors: [] });
       expect(await record(w, source.id)).toMatchObject({ status: 'terminated', revision: source.revision });
       const result = await edit(w, source, { endDate: '2026-12-31' });
@@ -108,8 +108,8 @@ describe('AC-CT-11 / DEC-167 编辑导入终止原因护栏', () => {
         expect(request).toMatchObject({ operation: 'edit' });
         const events = rowsOf(
           await tx.execute(sql`SELECT a.action, o.event_type FROM audit_events a
-        JOIN contract_outbox o ON o.tenant_id=a.tenant_id AND o.command_id=a.command_id AND o.object_id=a.object_id
-        WHERE a.tenant_id=${w.session.tenant.id} AND a.object_id=${result.id}::uuid`),
+        JOIN contract_outbox o ON o.tenant_id=a.tenant_id AND o.command_id=a.command_id AND o.object_id::text=a.object_id
+        WHERE a.tenant_id=${w.session.tenant.id} AND a.object_id=${result.id}`),
         );
         expect(events).toContainEqual({ action: 'contract.create', event_type: 'contract.create' });
       });
@@ -187,7 +187,7 @@ describe('AC-CT-11 / DEC-167 编辑导入终止原因护栏', () => {
     });
     expect(await stale.json()).toMatchObject({ error: { details: { errors: [{ code: 'REVISION_CONFLICT' }] } } });
     const other = await contractWorld(testDb().db, 'f013tenant');
-    const cross = await other.request('POST', '/imports/preview', { body: editBody(other, result, {}) });
+    const cross = await other.request('POST', '/imports/preview', { ifMatch: 0, body: editBody(other, result, {}) });
     expect(await cross.json()).toMatchObject({ valid: false });
   });
 });
