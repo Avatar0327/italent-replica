@@ -79,6 +79,8 @@ export const presetLabels: Readonly<Record<string, string>> = {
   jobNumber: '工号',
   remarks: '备注',
   isDepartmentHead: '是否部门负责人',
+  isStoreManager: '是否店长',
+  addedSubordinateIds: '新增下属',
   employType: '用工类型',
 };
 export const jobReferences: Readonly<Record<string, string>> = {

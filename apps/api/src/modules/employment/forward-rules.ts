@@ -8,8 +8,8 @@ export interface ForwardValues {
 }
 export interface ForwardFieldChange {
   readonly field: string;
-  readonly before: CustomValue;
-  readonly after: CustomValue;
+  readonly before: CustomValue | readonly string[];
+  readonly after: CustomValue | readonly string[];
 }
 
 /** REQ-EMP-003 / 07 A7：历史、兼职、批量编辑仍可保存自身，但不传播。 */
@@ -98,7 +98,7 @@ export function applyForwardChanges(value: ForwardValues, changes: readonly Forw
   const fields = { ...value.fields };
   const customFields = { ...value.customFields };
   for (const change of changes) {
-    if (change.field.startsWith('custom:')) customFields[change.field.slice(7)] = change.after;
+    if (change.field.startsWith('custom:')) customFields[change.field.slice(7)] = change.after as CustomValue;
     else Object.assign(fields, { [change.field]: change.after });
   }
   return { fields, customFields };

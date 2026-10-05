@@ -73,7 +73,7 @@ export async function lockEmploymentEmployee(
   const [row] = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`
       SELECT id, tenant_id, code, name, revision FROM employment_employees
-      WHERE tenant_id = ${ctx.tenantId} AND id = ${employeeId}::uuid FOR UPDATE
+      WHERE tenant_id = ${ctx.tenantId} AND id = ${employeeId}::uuid FOR NO KEY UPDATE
     `),
   );
   if (!row) throw new AppError('NOT_FOUND', '员工不存在');
@@ -185,6 +185,10 @@ export async function insertEmploymentRow(tx: Tx, table: string, values: Record<
   );
   const parameters = sql.join(
     keys.map((key) => {
+      if (key === 'addedSubordinateIds') {
+        const ids = values[key] as readonly string[] | null;
+        return sql`${ids === null ? null : `{${ids.join(',')}}`}::uuid[]`;
+      }
       if (JSON_COLUMNS.has(key)) return sql`${JSON.stringify(values[key])}::jsonb`;
       if (ARRAY_COLUMNS.has(key)) {
         const entries = values[key] as readonly string[];

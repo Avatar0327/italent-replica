@@ -13,7 +13,7 @@ describe('DEC-118 / DEC-057 调动详情映射', () => {
         {
           key: 'review',
           approver: 'latest_record_department_head',
-          formFields: ['departmentId', 'effectiveDate', 'transferTypeCode'],
+          formFields: ['departmentId', 'effectiveDate', 'transferTypeCode', 'isStoreManager'],
           editableFields: [],
         },
       ],
@@ -33,7 +33,7 @@ describe('DEC-118 / DEC-057 调动详情映射', () => {
           reasonCode: 'lateral',
           mode: 'application',
           effectiveDate: '2026-10-10',
-          fields: { departmentId: s.to },
+          fields: { departmentId: s.to, isStoreManager: true, addedSubordinateIds: [s.outHead.employeeId] },
         },
       },
     );
@@ -42,6 +42,12 @@ describe('DEC-118 / DEC-057 调动详情映射', () => {
     const detail = await w.detail(submitted.id, s.outHead.userId);
     expect(detail.form.values).toHaveProperty('transferTypeCode', 'cross_department');
     expect(detail.form.values).not.toHaveProperty('reasonCode');
+    expect(detail.form.values).toHaveProperty('isStoreManager', true);
+    expect(detail.form.values).not.toHaveProperty('addedSubordinateIds');
+    expect(TRANSFER_DETAIL_VIEW.find((item) => item.code === 'AddSubordinate')).toMatchObject({
+      status: 'delivered',
+      field: 'addedSubordinateIds',
+    });
     expect(TRANSFER_DETAIL_VIEW.find((item) => item.code === 'ChangeReason')).toMatchObject({
       status: 'delivered',
       field: 'reasonCode',

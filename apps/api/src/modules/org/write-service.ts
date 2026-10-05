@@ -1,3 +1,4 @@
+import { auditActor } from '../../system-actor.js';
 import { randomUUID } from 'node:crypto';
 import {
   and,
@@ -127,7 +128,7 @@ export async function updateOrganization(
   }
   const effectiveDate = date(patch.effectiveDate, 'effectiveDate');
   await ensureOrgSetup(tx, ctx);
-  const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('update');
+  const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('no key update');
   if (!object) throw new AppError('NOT_FOUND', '组织不存在');
   assertRevision(ctx.expectedRevision, object.revision);
   await rejectEarlierThanFutureVersion(tx, ctx, orgId, effectiveDate);
@@ -183,7 +184,7 @@ export async function correctEstablishedOn(
   if (!isUuid(orgId)) throw invalid('orgId', '组织 ID 必须是 UUID');
   if (orgId === ctx.tenantId) throw new AppError('FORBIDDEN', '租户根组织不可修改');
   const establishedOn = date(value, 'establishedOn');
-  const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('update');
+  const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('no key update');
   if (!object) throw new AppError('NOT_FOUND', '组织不存在');
   assertRevision(ctx.expectedRevision, object.revision);
   const plan = await planEstablishedOnCorrection(tx, ctx, orgId, establishedOn);
@@ -208,7 +209,7 @@ export async function correctEstablishedOn(
 /** DEC-129：下级按停用日当天的状态原样追加一个停用版本，各自 revision 前进并留审计。 */
 async function disableDescendants(tx: Tx, ctx: OrgWriteContext, nodes: readonly OrgRecord[], from: string) {
   for (const node of nodes) {
-    const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, node.id)).for('update');
+    const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, node.id)).for('no key update');
     if (!object) throw new AppError('SERVICE_UNAVAILABLE', '下级组织不存在');
     const revision = object.revision + 1;
     await tx.update(orgObjects).set({ revision }).where(objectKey(ctx.tenantId, node.id));
@@ -362,7 +363,7 @@ async function audit(
 ): Promise<void> {
   await tx.insert(auditEvents).values({
     tenantId: ctx.tenantId,
-    actorUserId: ctx.userId,
+    actorUserId: auditActor(ctx.userId),
     action,
     objectType: 'organization',
     objectId: orgId,
@@ -371,4 +372,28 @@ async function audit(
     commandId: ctx.commandId,
     occurredAt: ctx.now,
   });
+}
+
+/** R1-T09：可信调动联动端口。复用组织完整写入与 DEC-135 校验，调用者负责同事务 outbox。
+ * 先沿组织端口的设置锁 → 对象锁顺序读 revision，不在任职模块直接写组织表。
+ */
+export async function assignTransferOrganizationPeople(
+  tx: Tx,
+  context: Omit<OrgWriteContext, 'rootName' | 'expectedRevision'>,
+  orgId: string,
+  effectiveDate: string,
+  people: { personInChargeId?: string; shopOwnerId?: string },
+): Promise<OrgRecord> {
+  const [root] = await tx
+    .select({ name: orgVersions.name })
+    .from(orgVersions)
+    .where(and(eq(orgVersions.tenantId, context.tenantId), eq(orgVersions.orgId, context.tenantId)))
+    .orderBy(desc(orgVersions.versionNo))
+    .limit(1);
+  if (!root) throw new AppError('SERVICE_UNAVAILABLE', '组织根尚未初始化');
+  const ctx = { ...context, rootName: root.name, expectedRevision: 0 };
+  await ensureOrgSetup(tx, ctx);
+  const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('no key update');
+  if (!object) throw new AppError('NOT_FOUND', '组织不存在');
+  return updateOrganization(tx, { ...ctx, expectedRevision: object.revision }, orgId, { effectiveDate, ...people });
 }

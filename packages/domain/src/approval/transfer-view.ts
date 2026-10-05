@@ -68,7 +68,8 @@ export const TRANSFER_DETAIL_VIEW: readonly TransferViewItem[] = [
   form('用工形式', 'EmploymentForm', 'employmentForm'),
   form('人员类别', 'EmploymentType', 'employmentType'),
   form('调动后是否部门负责人', 'IsCharge', 'isDepartmentHead'),
-  later('新增下属', 'AddSubordinate', 'R1-T10', `${NO_MODEL}（新增下属联动）`),
+  form('新增下属', 'AddSubordinate', 'addedSubordinateIds'),
+  form('调动后是否店长', null, 'isStoreManager'),
   // 其余区块
   later('兼职调整', 'ParttimeJobInfo', 'R1-T10', `${NO_MODEL}（兼职调整联动）`),
   later('薪资调整', null, 'R1-T10', `${NO_MODEL}（薪资只记标志，DEC-002）`),

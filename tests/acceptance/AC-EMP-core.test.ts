@@ -135,7 +135,7 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
   it('AC-EMP-11 多条任职含未来直接生效记录时恰有一条当前，最新与当前标志分别计算', async () => {
     const session = await employmentSession(testDb().db, 'empcore11');
     const employee = await session.employee('未来任职合成员工');
-    const org = await session.org('合成在职部门', { startDate: '2026-01-01' });
+    const org = await session.org('合成在职部门', { establishedOn: '2026-01-01' });
     const hire = await session.business(
       employee.id,
       {
@@ -170,7 +170,7 @@ describe('AC-EMP-01/06/07/09/11 任职记录、周期与时间轴', () => {
   it('DEC-041 补录继承插入点前一条，后续匹配字段追加更新且独立值保留', async () => {
     const session = await employmentSession(testDb().db, 'empbackfill');
     const employee = await session.employee('补录合成员工');
-    const org = await session.org('合成在职部门', { startDate: '2026-01-01' });
+    const org = await session.org('合成在职部门', { establishedOn: '2026-01-01' });
     const hire = await session.business(
       employee.id,
       {

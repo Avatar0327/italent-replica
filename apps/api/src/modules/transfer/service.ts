@@ -1,3 +1,4 @@
+import { lockTransferParticipants } from '../employment/transfer-locks.js';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { tenantLocalDate } from '@italent/domain';
@@ -104,6 +105,7 @@ export async function transferTargetContext(
 
 export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
   // F-008：先取员工锁，再重验关系/范围；业务写入沿用员工 → 业务 → 审批实例的顺序。
+  await lockTransferParticipants(tx, ctx, employeeId, input.employment.fields.addedSubordinateIds ?? []);
   await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
   input = await normalizeTransferInput(tx, ctx, { ...input.writable, submit: input.submit });
   const prepared = await prepareInheritance(tx, ctx, { ...input.employment, employeeId });
@@ -160,7 +162,10 @@ export async function transferBusinessContext(
   );
   if (!request) return ctx;
   // F-008：等员工锁完成后才重验源范围，避免锁等待期间调出员工后沿用此前目标例外。
-  if (write) await lockEmploymentEmployee(tx, ctx, request.employeeId);
+  if (write) {
+    await lockTransferParticipants(tx, ctx, request.employeeId);
+    await lockEmploymentEmployee(tx, ctx, request.employeeId);
+  }
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const visible = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope);
   if (visible && (targetDepartmentId === undefined || targetDepartmentId === visible.fields.departmentId)) return ctx;

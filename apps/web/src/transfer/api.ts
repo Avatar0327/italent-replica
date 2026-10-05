@@ -96,7 +96,7 @@ export function queryReferences(tenantId: string, model: TransferFormModel, code
   }
   query.set('name', name);
   query.set('asOf', model.effectiveDate);
-  if (code === 'directManagerId' || code === 'dottedManagerId') {
+  if (code === 'directManagerId' || code === 'dottedManagerId' || code === 'addedSubordinateIds') {
     query.set('status', 'employed');
     return transferRequest<{ items: Choice[] }>(tenantId, `${EMPLOYMENT_API}/employees?${query}`);
   }

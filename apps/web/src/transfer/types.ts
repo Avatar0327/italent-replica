@@ -1,4 +1,4 @@
-export type FieldValue = string | number | boolean | null;
+export type FieldValue = string | number | boolean | readonly string[] | null;
 export type FieldValues = Readonly<Record<string, FieldValue>>;
 export type FieldMode = 'editable' | 'readonly' | 'hidden' | 'absent';
 export interface Choice {

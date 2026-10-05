@@ -1,3 +1,4 @@
+import { lockTransferBusiness } from './transfer-locks.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Db, type Tx } from '@italent/db';
@@ -71,6 +72,7 @@ export async function transitionEmployment(
   input: EmploymentTransitionInput,
 ): Promise<EmploymentBusiness> {
   if (!input || !ACTIONS.includes(input.action)) throw new AppError('VALIDATION_FAILED', '任职状态动作不合法');
+  if (['submit', 'approve', 'activate'].includes(input.action)) await lockTransferBusiness(tx, ctx, input.id);
   const business = await lockEmploymentBusiness(tx, ctx, input.id);
   assertTransition(business, input.action);
   if (input.action === 'submit')

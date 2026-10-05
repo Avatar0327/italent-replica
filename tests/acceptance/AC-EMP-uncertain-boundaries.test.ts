@@ -69,7 +69,7 @@ describe('AC-EMP-11 周期和时间轴边界（Q-M0-19/20 已由 DEC-111/108 定
     const { db } = testDb();
     const session = await employmentSession(db, 'empsamedaybusiness');
     const employee = await session.employee('同日业务合成员工');
-    const department = await session.org('合成同日部门', { startDate: '2026-01-01' });
+    const department = await session.org('合成同日部门', { establishedOn: '2026-01-01' });
     const hire = await session.business(
       employee.id,
       {

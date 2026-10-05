@@ -37,7 +37,7 @@ async function rehiredFixture(label: string) {
   const { db } = testDb();
   const session = await employmentSession(db, label);
   const employee = await session.employee('重聘合成员工');
-  const org = await session.org('合成重聘部门', { startDate: '2026-01-01' });
+  const org = await session.org('合成重聘部门', { establishedOn: '2026-01-01' });
   const hire = await session.business(
     employee.id,
     {

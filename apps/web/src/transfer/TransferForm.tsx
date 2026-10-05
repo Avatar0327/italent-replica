@@ -5,6 +5,7 @@ import type { Choice, FieldValue, TransferFormModel, TransferFormProps } from '.
 
 function valueText(value: FieldValue | undefined, choices?: readonly Choice[]): string {
   if (value == null || value === '') return text.empty;
+  if (Array.isArray(value)) return value.map((id) => valueText(id, choices)).join('、');
   if (typeof value === 'boolean') return value ? text.yes : text.no;
   const choice = choices?.find((item) => item.id === value);
   if (choice) return choice.name;
@@ -18,6 +19,7 @@ function choicesFor(model: TransferFormModel, code: string): readonly Choice[] |
       { id: 'intern', name: text.intern },
       { id: 'external', name: text.external },
     ];
+  if (code === 'addedSubordinateIds') return model.references?.[code] ?? model.employees;
   if (code === 'directManagerId' || code === 'dottedManagerId') return model.references?.[code] ?? model.employees;
   return code in jobReferences ? (model.references?.[code] ?? []) : undefined;
 }
@@ -182,7 +184,8 @@ function FieldPair(props: PairProps) {
 function FieldControl(props: PairProps & { value: FieldValue; choices?: readonly Choice[] }) {
   const { code, source, value, readonly, required, onField, valueType, choices } = props;
   const onChange = (next: FieldValue) => onField?.(source, code, next);
-  const boolean = valueType === 'boolean' || code === 'isDepartmentHead' || code === 'isKeyPerson';
+  const boolean =
+    valueType === 'boolean' || code === 'isDepartmentHead' || code === 'isStoreManager' || code === 'isKeyPerson';
   if (!readonly && choices) return <ReferenceControl {...props} choices={choices} />;
   if (!readonly && boolean)
     return (
@@ -215,7 +218,7 @@ function FieldControl(props: PairProps & { value: FieldValue; choices?: readonly
 }
 
 function ReferenceControl(props: PairProps & { value: FieldValue; choices: readonly Choice[] }) {
-  const { code, source, value, choices, onField, onReferenceQuery, label, required } = props;
+  const { code, choices, onReferenceQuery, label } = props;
   const [name, setName] = useState('');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -231,24 +234,7 @@ function ReferenceControl(props: PairProps & { value: FieldValue; choices: reado
   };
   return (
     <div className="transfer-reference">
-      <select
-        name={code}
-        required={required}
-        aria-label={`${text.updated}${label}`}
-        value={value == null ? '' : String(value)}
-        disabled={loading}
-        onChange={(event) => onField?.(source, code, event.target.value || null)}
-      >
-        <option value="">{text.choose}</option>
-        {value && !choices.some((item) => item.id === value) ? (
-          <option value={String(value)}>{valueText(value)}</option>
-        ) : null}
-        {choices.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.name}
-          </option>
-        ))}
-      </select>
+      <ReferenceSelect {...props} loading={loading} />
       {onReferenceQuery && code !== 'employType' && (
         <div className="transfer-reference-search">
           {code !== 'departmentId' && (
@@ -335,5 +321,40 @@ function TransferActions({ model, onAction, busy, actionsDisabled }: TransferFor
         </button>
       ) : null}
     </div>
+  );
+}
+
+function ReferenceSelect(props: PairProps & { value: FieldValue; choices: readonly Choice[]; loading: boolean }) {
+  const { code, source, value, choices, onField, label, required, loading } = props;
+  return (
+    <select
+      name={code}
+      required={required}
+      aria-label={`${text.updated}${label}`}
+      multiple={code === 'addedSubordinateIds'}
+      value={code === 'addedSubordinateIds' ? (Array.isArray(value) ? value : []) : value == null ? '' : String(value)}
+      disabled={loading}
+      onChange={(event) =>
+        onField?.(
+          source,
+          code,
+          code === 'addedSubordinateIds'
+            ? Array.from(event.target.selectedOptions, (option) => option.value)
+            : event.target.value || null,
+        )
+      }
+    >
+      {code !== 'addedSubordinateIds' && <option value="">{text.choose}</option>}
+      {value && !Array.isArray(value) && !choices.some((item) => item.id === value) ? (
+        <option value={String(value)}>{valueText(value)}</option>
+      ) : null}
+      {choices
+        .filter((item) => code !== 'addedSubordinateIds' || item.id !== props.model.employeeId)
+        .map((item) => (
+          <option key={item.id} value={item.id}>
+            {item.name}
+          </option>
+        ))}
+    </select>
   );
 }

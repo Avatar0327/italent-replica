@@ -1,3 +1,4 @@
+import { queueTransferLinkage, validateTransferSubordinates } from './transfer-linkage.js';
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { type Tx } from '@italent/db';
@@ -58,6 +59,8 @@ export async function editEmploymentRecord(
   const record = await loadEmploymentRecord(tx, ctx.tenantId, id, today);
   if (business.state !== 'effective' || !record) throw new AppError('CONFLICT', '只能编辑有效任职记录');
   const after = await editedValues(tx, ctx, record, patch);
+  if (record.kind === 'transfer' && patch.fields && Object.hasOwn(patch.fields, 'addedSubordinateIds'))
+    await validateTransferSubordinates(tx, ctx, record.employeeId, after.fields, record.effectiveDate);
   assertRequiredTransferFields(record.kind, business.payload.formSnapshot, after.fields);
   if (
     after.fields.jobNumber !== null &&
@@ -70,7 +73,9 @@ export async function editEmploymentRecord(
   const beforeAudit = { ...record.fields, ...customAudit(record.customFields) };
   const afterAudit = { ...after.fields, ...customAudit(after.customFields) };
   const changes: ForwardFieldChange[] = Object.entries(afterAudit)
-    .filter(([field, value]) => beforeAudit[field as keyof typeof beforeAudit] !== value)
+    .filter(
+      ([field, value]) => JSON.stringify(beforeAudit[field as keyof typeof beforeAudit]) !== JSON.stringify(value),
+    )
     .map(([field, value]) => ({ field, before: beforeAudit[field as keyof typeof beforeAudit] ?? null, after: value }));
   if (!changes.length) return requireSavedBusiness(tx, ctx, id);
   business.payload = await appendForwardPayload(tx, ctx, business.payload, after, id, true, changes);
@@ -85,6 +90,8 @@ export async function editEmploymentRecord(
       after,
     });
   }
+  if (record.effectiveDate > today)
+    await queueTransferLinkage(tx, ctx, id, record.kind, after.fields, record.effectiveDate);
   await personnelHooks.sync(tx, ctx, business.employeeId, id, record.kind, record.effectiveDate);
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, id);

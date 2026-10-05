@@ -12,7 +12,7 @@ describe('DEC-019 任职字段审计与 outbox 原子提交', () => {
     const { db } = testDb();
     const session = await employmentSession(db, 'emp-audit-before');
     const employee = await session.employee();
-    const department = await session.org('合成审计部门', { startDate: '2026-01-01' });
+    const department = await session.org('合成审计部门', { establishedOn: '2026-01-01' });
     const hire = await session.business(
       employee.id,
       {

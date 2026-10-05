@@ -12,7 +12,7 @@ const changedFields = { place: '追溯后地点', employmentType: '追溯后类�
 async function fixture(db: Db, label: string) {
   const session = await employmentSession(db, label);
   const employee = await session.employee();
-  const org = await session.org('合成在职部门', { startDate: '2026-01-01' });
+  const org = await session.org('合成在职部门', { establishedOn: '2026-01-01' });
   const hire = await session.business(
     employee.id,
     {

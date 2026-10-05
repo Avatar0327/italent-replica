@@ -1,3 +1,4 @@
+import { lockTransferParticipants } from './transfer-locks.js';
 /**
  * 到期待生效业务的落地（R1-T08）：定时任务与 HR 重试共用同一条按序推进逻辑。
  * - DEC-108：同员工到期业务按队列顺序逐条经 activate 端口生效，每条生效后重读队列（向后更新会改写其后申请的载荷）；
@@ -83,6 +84,7 @@ export async function activateDueBusinesses(
  * 按原生效日落地，并让其后到期的业务依次生效。expectedRevision 由 lockEmploymentBusiness 在状态迁移时校验。
  */
 export async function retryActivation(tx: Tx, ctx: EmploymentContext, businessId: string, employeeId: string) {
+  await lockTransferParticipants(tx, ctx, employeeId);
   await lockEmploymentEmployee(tx, ctx, employeeId);
   const { item, before } = await activationPredecessors(tx, ctx, employeeId, businessId);
   if (!item) throw new AppError('CONFLICT', '只有审批通过、尚未生效的申请可以重试生效', { reason: 'NOT_PENDING' });

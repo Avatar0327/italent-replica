@@ -143,6 +143,8 @@ function presetFields() {
     jobNumber: text('job_number'),
     remarks: text('remarks'),
     isDepartmentHead: boolean('is_department_head'),
+    isStoreManager: boolean('is_store_manager'),
+    addedSubordinateIds: uuid('added_subordinate_ids').array(),
   };
 }
 

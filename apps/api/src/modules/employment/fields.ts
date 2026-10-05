@@ -12,7 +12,9 @@ import {
 } from './types.js';
 
 export const PRESET_FIELDS = PRESET_FIELD_NAMES;
-export const INHERITED_FIELDS = PRESET_FIELDS.filter((field) => field !== 'isDepartmentHead' && field !== 'employType');
+export const INHERITED_FIELDS = PRESET_FIELDS.filter(
+  (field) => !['isDepartmentHead', 'isStoreManager', 'addedSubordinateIds', 'employType'].includes(field),
+);
 export const emptyFields = emptyPresetFields;
 const uuid = z.uuid().nullable().optional();
 const text = z.string().max(2000).nullable().optional();
@@ -39,6 +41,13 @@ export const presetFieldsSchema = z.strictObject({
   remarks: text,
   isKeyPerson: z.boolean().nullable().optional(),
   isDepartmentHead: z.boolean().nullable().optional(),
+  isStoreManager: z.boolean().nullable().optional(),
+  addedSubordinateIds: z
+    .array(z.uuid())
+    .max(100)
+    .refine((ids) => new Set(ids).size === ids.length)
+    .nullable()
+    .optional(),
   employType: z.enum(['internal', 'intern', 'external']).nullable().optional(),
 });
 const date = z.string().refine(validIsoDate, '日期必须为合法 YYYY-MM-DD');

@@ -26,12 +26,21 @@ export interface PendingActivation {
   /** 申请单上显式填写的调入部门 / 职位（含向后更新同步过来的值）；未填时为空，继承值由生效时解析。 */
   readonly departmentId: string | null;
   readonly positionId: string | null;
+  readonly materialized: boolean;
   readonly lastOutcome: ActivationOutcome | null;
   readonly lastBlockedBy: string | null;
   readonly lastAttemptNo: number;
 }
 
 const QUEUE_LIMIT = 200;
+
+/** 直接未来调动已有任职记录，但联动仍要到期执行；与申请共用失败、挂起、重试协议。 */
+export const pendingActivationState = sql`(s.state='approved' AND p.mode='application' OR
+  s.state='effective' AND p.kind='transfer' AND EXISTS (
+    SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
+      AND o.event_type='employment.transfer.linkage.pending') AND NOT EXISTS (
+    SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id AND o.business_id=b.id
+      AND o.event_type='employment.transfer.linked'))`;
 
 /** 一名员工的全部待生效业务，按生效顺序排列（未到期的也在内，调用方按业务日截取）。 */
 export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employeeId: string) {
@@ -40,7 +49,7 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
     SELECT b.id, b.employee_id AS "employeeId", b.revision, p.kind, p.effective_date::text AS "effectiveDate",
       CASE WHEN 'preset:departmentId' = ANY(p.explicit_field_codes) THEN p.department_id END AS "departmentId",
       CASE WHEN 'preset:positionId' = ANY(p.explicit_field_codes) THEN p.position_id END AS "positionId",
-      a.outcome AS "lastOutcome", a.blocked_by_business_id AS "lastBlockedBy",
+      (s.state='effective') AS materialized, a.outcome AS "lastOutcome", a.blocked_by_business_id AS "lastBlockedBy",
       COALESCE(a.attempt_no, 0) AS "lastAttemptNo"
     FROM employment_business_objects b
     JOIN LATERAL (SELECT * FROM employment_payload_versions p
@@ -52,7 +61,7 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
     LEFT JOIN LATERAL (SELECT outcome, blocked_by_business_id, attempt_no FROM employment_activation_attempts a
       WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
-      AND s.state='approved' AND p.mode='application'
+      AND ${pendingActivationState}
     ORDER BY p.effective_date, p.kind IN ('hire', 'rehire', 'retire_rehire'), ${operationKey(ctx.tenantId, sql`b.id`)}
     LIMIT ${QUEUE_LIMIT + 1}
   `),
@@ -179,7 +188,13 @@ export async function activationSummary(
     };
   }
   if (state !== 'effective' || !row?.outcome) return null;
-  return { status: 'effective', failureCount, failureReason: null, blockedByBusinessId: null, lastAttemptAt };
+  return {
+    status: row.outcome,
+    failureCount,
+    failureReason: row.reason,
+    blockedByBusinessId: row.blockedBy,
+    lastAttemptAt,
+  };
 }
 
 export interface ActivationTodo {
@@ -232,7 +247,7 @@ export async function listActivationTodos(
       JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id AND t.start_date<=p.effective_date
       ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1) current_record ON true
-    WHERE b.tenant_id=${tenantId} AND s.state='approved' AND a.outcome='failed' AND ${scopeFilter}
+    WHERE b.tenant_id=${tenantId} AND ${pendingActivationState} AND a.outcome='failed' AND ${scopeFilter}
     ORDER BY p.effective_date, ${operationKey(tenantId, sql`b.id`)} LIMIT ${page.limit} OFFSET ${page.offset}
   `),
   );

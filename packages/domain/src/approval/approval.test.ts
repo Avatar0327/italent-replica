@@ -282,6 +282,7 @@ describe('PR #35 第三轮：预置与目录按规格核对', () => {
       '人员类别',
       '调动后是否部门负责人',
       '新增下属',
+      '调动后是否店长',
       '兼职调整',
       '薪资调整',
       '合同变更',
@@ -312,6 +313,8 @@ describe('PR #35 第三轮：预置与目录按规格核对', () => {
       用工形式: 'employmentForm',
       人员类别: 'employmentType',
       调动后是否部门负责人: 'isDepartmentHead',
+      调动后是否店长: 'isStoreManager',
+      新增下属: 'addedSubordinateIds',
     };
     const byLabel = new Map(TRANSFER_DETAIL_VIEW.map((item) => [item.label, item]));
     for (const [label, field] of Object.entries(mustDeliver)) {

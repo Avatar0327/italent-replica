@@ -1,3 +1,5 @@
+import { loadEmploymentRecord } from './read-model.js';
+import { applyTransferLinkage } from './transfer-linkage.js';
 /**
  * 定时生效的失败判定（DEC-052），全部集中在此：先按生效日校验调入部门 / 职位，再经编制单一判定入口（DEC-145：
  * 保存与到期使用真实任职占编投影），然后在保存点内经 activate 端口落地；
@@ -75,6 +77,7 @@ const RULE_REJECTIONS = new Set<ErrorCode>([
   'NOT_FOUND',
   'LINKED_RECORD_OUT_OF_SCOPE',
   'PAYLOAD_TOO_LARGE',
+  'ORG_FUTURE_VERSION_EXISTS',
 ]);
 
 function ruleRejection(error: unknown): ActivationFailure | null {
@@ -89,14 +92,17 @@ function ruleRejection(error: unknown): ActivationFailure | null {
 }
 
 async function precheck(tx: Tx, ctx: EmploymentContext, item: PendingActivation): Promise<ActivationFailure | null> {
-  const { id: businessId, employeeId, kind, departmentId, positionId, effectiveDate } = item;
+  const { id: businessId, employeeId, kind, effectiveDate } = item;
+  const record = item.materialized ? await loadEmploymentRecord(tx, ctx.tenantId, businessId, effectiveDate) : null;
+  const departmentId = record ? record.fields.departmentId : item.departmentId;
+  const positionId = record ? record.fields.positionId : item.positionId;
   const orgEnabled = (orgId: string) =>
     createTxOrgHierarchyReader(tx).isEnabled({ tenantId: ctx.tenantId, orgId: orgId as OrgId, asOf: effectiveDate });
   if (departmentId && !(await orgEnabled(departmentId)))
     return { reason: 'TARGET_ORG_DISABLED', detail: { departmentId } };
   if (positionId && !(await loadJobObject(tx, ctx.tenantId, 'positions', positionId, effectiveDate)))
     return { reason: 'TARGET_POSITION_DISABLED', detail: { positionId } };
-  const target = { businessId, employeeId, kind, departmentId, positionId, effectiveDate };
+  const target = { businessId, employeeId, kind, departmentId, positionId, effectiveDate, fields: record?.fields };
   if (departmentId && (await establishmentExceeded(tx, ctx, target)))
     return { reason: 'ESTABLISHMENT_EXCEEDED', detail: { departmentId } };
   return null;
@@ -114,9 +120,15 @@ export async function activateWithJudgement(
   const failure = await precheck(tx, ctx, item);
   if (failure) return failure;
   try {
-    await tx.transaction((savepoint) =>
-      transitionEmployment(savepoint, { ...ctx, expectedRevision: item.revision }, { id: item.id, action: 'activate' }),
-    );
+    await tx.transaction(async (savepoint) => {
+      await (item.materialized
+        ? applyTransferLinkage(savepoint, ctx, item.id)
+        : transitionEmployment(
+            savepoint,
+            { ...ctx, expectedRevision: item.revision },
+            { id: item.id, action: 'activate' },
+          ));
+    });
     return null;
   } catch (error) {
     const rejected = ruleRejection(error);

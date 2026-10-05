@@ -25,7 +25,7 @@ describe('AC-SUB-02 DEC-108 同日多条任职的工作履历同步', () => {
         tx.execute(sql`INSERT INTO tenant_setting_overrides (tenant_id,key,value,active,revision,updated_by)
         VALUES(${s.tenant.id},${key},'true'::jsonb,true,1,${s.user.id})`),
       );
-    const department = await s.org('合成履历部门', { startDate: '2026-01-01' });
+    const department = await s.org('合成履历部门', { establishedOn: '2026-01-01' });
     const hire = await s.business(
       s.employee.id,
       { kind: 'hire', mode: 'direct', effectiveDate: '2026-01-01', fields: { departmentId: department.id } },

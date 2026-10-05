@@ -1,3 +1,5 @@
+import { lockImportParticipants } from './forward-import.js';
+import { lockTransferParticipants } from './transfer-locks.js';
 import { listCompletionTodos } from '../transfer/completion.js';
 import { requireTransferButton } from '../transfer/access.js';
 import { type Tx, withTenant } from '@italent/db';
@@ -160,6 +162,7 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
     if (input.fields.departmentId !== undefined) requireEmploymentScope(ctx, id, input.fields.departmentId);
     return runWrite(c, deps, ctx, { ...input, loginEmail: email }, async (tx, context) => {
       if (input.kind === 'transfer') {
+        await lockTransferParticipants(tx, context, id, input.fields.addedSubordinateIds ?? []);
         await lockEmploymentEmployee(tx, context, id, context.expectedRevision);
         await requireTransferSource(tx, context, id, 'hr');
         if (input.mode === 'direct') await requireDirectTransfer(tx, context);
@@ -618,6 +621,7 @@ async function importWithTransferAuthorization(
   input: ReturnType<typeof normalizeEmploymentImport>,
 ) {
   // 导入与单笔采用相同员工锁；批内先重验发起权限，再进入原来的整体提交端口。
+  await lockImportParticipants(tx, ctx, employeeId, input);
   await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
   await requireImportTransferAccess(tx, ctx, employeeId, input);
   return importEmploymentRecords(tx, ctx, employeeId, input);

@@ -87,7 +87,7 @@ it('AC-EMP-12 HTTP 从真实任职版本链计算 A→B→A；主档日期从有
     expect(r.status, await r.clone().text()).toBe(201);
     return ((await r.json()) as { id: string }).id;
   };
-  const department = await s.org('合成工龄部门', { startDate: '2020-01-01' });
+  const department = await s.org('合成工龄部门', { establishedOn: '2020-01-01' });
   const a = await post('POST_A');
   const b = await post('POST_B');
   const hire = await s.business(

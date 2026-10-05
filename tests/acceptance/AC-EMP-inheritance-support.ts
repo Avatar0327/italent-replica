@@ -62,7 +62,7 @@ export async function inheritanceFixture(db: Db, label: string, inherit = true, 
     }
   });
   const employee = await session.employee();
-  const department = await session.org('合成继承部门', { startDate: '2026-01-01' });
+  const department = await session.org('合成继承部门', { establishedOn: '2026-01-01' });
   const hired = await session.business(
     employee.id,
     {

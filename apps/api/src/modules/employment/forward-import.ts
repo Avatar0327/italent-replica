@@ -1,3 +1,4 @@
+import { lockTransferParticipants } from './transfer-locks.js';
 import type { EstablishmentWarning } from './activation-checks.js';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
@@ -78,6 +79,7 @@ export async function previewEmploymentImport(tx: Tx, ctx: EmploymentContext, em
 /** 07 A6/A7：结构化导入核心端口；模板/人员导入界面接入时复用，批次整体提交。 */
 export async function importEmploymentRecords(tx: Tx, ctx: EmploymentContext, employeeId: string, raw: unknown) {
   const input = normalizeEmploymentImport(raw);
+  await lockImportParticipants(tx, ctx, employeeId, input);
   await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
   await validateImportRevisions(tx, ctx, employeeId, input);
   const warnings: EstablishmentWarning[] = [];
@@ -141,4 +143,19 @@ async function validateImportRevisions(
       assertRevision(item.revision, await importRecordRevision(tx, ctx, employeeId, item.id));
     }
   }
+}
+
+/** 批内各行可能分别新增下属，整批取同一组锁，不能等处理到下一行再倒序追加。 */
+export async function lockImportParticipants(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  input: ReturnType<typeof normalizeEmploymentImport>,
+) {
+  const ids = input.items.flatMap((item) =>
+    item.operation === 'create'
+      ? (normalizeEmploymentInput(ctx, item.business).fields.addedSubordinateIds ?? [])
+      : (normalizeBusinessPatch(item.patch).fields?.addedSubordinateIds ?? []),
+  );
+  await lockTransferParticipants(tx, ctx, employeeId, ids);
 }
