@@ -92,8 +92,9 @@ export async function loadOrgSnapshot(
 
 /**
  * DEC-021、`10` §16：全称与层级按查询日当天各级行政上级的名称逐级解析（原站下级不随上级改名分版本，按当天的上级名称
- * 显示），所以上级改名、移动或设立日期更正（DEC-147）都不给下级追加派生版本。版本上存的全称只是写入时的路径，
- * 当天行政上级链不完整时（上级当天不存在）才退回用它。按版本 ID 返回。
+ * 显示），所以上级改名、移动或设立日期更正（DEC-147）都不给下级追加派生版本。上级当天已失效（只剩停用的下级挂着）时
+ * 取它最后一个版本的名称，与失效前显示的一致（PR #54 第三轮复审 P3）。版本上存的全称只是写入时的路径，当天行政上级
+ * 链不完整时（上级当天还不存在）才退回用它。按版本 ID 返回。
  */
 export async function resolveOrgPaths(
   tx: Tx,
@@ -114,11 +115,11 @@ export async function resolveOrgPaths(
         JOIN org_hierarchy_links l
           ON l.tenant_id=${tenantId} AND l.version_id=c.node_version_id AND l.dimension='admin'
         CROSS JOIN LATERAL (
-          SELECT s.id, s.org_id, s.name, s.stop_date FROM org_versions s
+          SELECT s.id, s.org_id, s.name FROM org_versions s
           WHERE s.tenant_id=${tenantId} AND s.org_id=l.parent_org_id AND s.start_date <= ${asOf}::date
           ORDER BY s.start_date DESC, s.version_no DESC LIMIT 1
         ) p
-        WHERE c.node_id <> ${tenantId}::uuid AND c.depth < ${MAX_PATH_DEPTH} AND p.stop_date >= ${asOf}::date
+        WHERE c.node_id <> ${tenantId}::uuid AND c.depth < ${MAX_PATH_DEPTH}
       )
       SELECT version_id AS "versionId", array_to_string(names, '/') AS "fullName", depth AS level
       FROM chain WHERE node_id=${tenantId}::uuid
