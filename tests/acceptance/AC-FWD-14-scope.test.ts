@@ -12,6 +12,7 @@ import {
   setObjectPermission,
 } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { loginEmailOf } from './AC-EMP-support.js';
 
 const database = useTestDb();
 
@@ -48,7 +49,13 @@ describe('AC-FWD-14 DEC-120 整条跳过提醒的范围与字段裁剪', () => {
       const manager = await create('employment/employees', { code: `M_${randomUUID()}`, name });
       await create(
         `employment/employees/${manager.id}/businesses`,
-        { kind: 'hire', mode: 'direct', effectiveDate: '2025-01-01', fields: { employType: 'internal' } },
+        {
+          kind: 'hire',
+          mode: 'direct',
+          effectiveDate: '2025-01-01',
+          fields: { employType: 'internal' },
+          loginEmail: loginEmailOf(manager.id),
+        },
         manager.revision,
       );
       managers.push(manager.id);
@@ -61,6 +68,7 @@ describe('AC-FWD-14 DEC-120 整条跳过提醒的范围与字段裁剪', () => {
         mode: 'direct',
         effectiveDate: '2026-01-01',
         fields: { departmentId: inside.id, place: '原地点', directManagerId: managers[0] },
+        loginEmail: loginEmailOf(employee.id),
       },
       employee.revision,
     );

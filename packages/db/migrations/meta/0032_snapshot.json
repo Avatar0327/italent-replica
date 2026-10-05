@@ -1,5 +1,5 @@
 {
-  "id": "33d543f3-aa7f-4a4e-96eb-729070418724",
+  "id": "dda1b3a6-a2ee-46f5-981f-74cbe5fac0f4",
   "prevId": "4589b9f0-98c6-4bae-b483-dda4343fc24a",
   "version": "7",
   "dialect": "postgresql",
@@ -506,6 +506,18 @@
           "notNull": true,
           "default": "'active'"
         },
+        "user_type": {
+          "name": "user_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "business_identity": {
+          "name": "business_identity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "revision": {
           "name": "revision",
           "type": "integer",
@@ -573,6 +585,14 @@
         "tenant_memberships_status_valid": {
           "name": "tenant_memberships_status_valid",
           "value": "\"tenant_memberships\".\"status\" IN ('active', 'revoked')"
+        },
+        "tenant_memberships_user_type_valid": {
+          "name": "tenant_memberships_user_type_valid",
+          "value": "\"tenant_memberships\".\"user_type\" IN ('internal', 'external')"
+        },
+        "tenant_memberships_business_identity": {
+          "name": "tenant_memberships_business_identity",
+          "value": "(\"tenant_memberships\".\"user_type\" = 'external' AND \"tenant_memberships\".\"business_identity\" IS NOT NULL AND btrim(\"tenant_memberships\".\"business_identity\") <> '')\n    OR (\"tenant_memberships\".\"user_type\" IS DISTINCT FROM 'external' AND \"tenant_memberships\".\"business_identity\" IS NULL)"
         }
       },
       "isRLSEnabled": false
@@ -989,21 +1009,6 @@
           ],
           "columnsTo": [
             "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "license_seats_pool": {
-          "name": "license_seats_pool",
-          "tableFrom": "license_seats",
-          "tableTo": "license_pools",
-          "columnsFrom": [
-            "tenant_id",
-            "license_type"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "license_type"
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -1535,6 +1540,123 @@
         "permission_grants_status_valid": {
           "name": "permission_grants_status_valid",
           "value": "\"permission_grants\".\"status\" IN ('active', 'revoked')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.permission_outbox": {
+      "name": "permission_outbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_type": {
+          "name": "object_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "permission_outbox_cursor": {
+          "name": "permission_outbox_cursor",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "permission_outbox_tenant_id_tenants_id_fk": {
+          "name": "permission_outbox_tenant_id_tenants_id_fk",
+          "tableFrom": "permission_outbox",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "permission_outbox_state": {
+          "name": "permission_outbox_state",
+          "value": "\"permission_outbox\".\"state\" IN ('pending', 'sent', 'failed', 'unknown')"
         }
       },
       "isRLSEnabled": false
@@ -9274,238 +9396,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.employment_activation_attempts": {
-      "name": "employment_activation_attempts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "business_id": {
-          "name": "business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "attempt_no": {
-          "name": "attempt_no",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "outcome": {
-          "name": "outcome",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "detail": {
-          "name": "detail",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "blocked_by_business_id": {
-          "name": "blocked_by_business_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "business_date": {
-          "name": "business_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "trigger": {
-          "name": "trigger",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "actor_user_id": {
-          "name": "actor_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "employment_activation_attempts_employee": {
-          "name": "employment_activation_attempts_employee",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "business_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "employment_activation_attempts_tenant_id_tenants_id_fk": {
-          "name": "employment_activation_attempts_tenant_id_tenants_id_fk",
-          "tableFrom": "employment_activation_attempts",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "employment_activation_attempts_actor_user_id_users_id_fk": {
-          "name": "employment_activation_attempts_actor_user_id_users_id_fk",
-          "tableFrom": "employment_activation_attempts",
-          "tableTo": "users",
-          "columnsFrom": [
-            "actor_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "employment_activation_attempts_business_fk": {
-          "name": "employment_activation_attempts_business_fk",
-          "tableFrom": "employment_activation_attempts",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "employment_activation_attempts_blocked_by_fk": {
-          "name": "employment_activation_attempts_blocked_by_fk",
-          "tableFrom": "employment_activation_attempts",
-          "tableTo": "employment_business_objects",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "blocked_by_business_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "employment_activation_attempts_tenant_id": {
-          "name": "employment_activation_attempts_tenant_id",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "id"
-          ]
-        },
-        "employment_activation_attempts_number": {
-          "name": "employment_activation_attempts_number",
-          "nullsNotDistinct": false,
-          "columns": [
-            "tenant_id",
-            "business_id",
-            "attempt_no"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "employment_activation_attempts_number_positive": {
-          "name": "employment_activation_attempts_number_positive",
-          "value": "\"employment_activation_attempts\".\"attempt_no\" > 0"
-        },
-        "employment_activation_attempts_outcome": {
-          "name": "employment_activation_attempts_outcome",
-          "value": "\"employment_activation_attempts\".\"outcome\" IN ('effective', 'failed', 'suspended')"
-        },
-        "employment_activation_attempts_reason": {
-          "name": "employment_activation_attempts_reason",
-          "value": "(\"employment_activation_attempts\".\"outcome\" = 'effective') = (\"employment_activation_attempts\".\"reason\" IS NULL)\n        AND (\"employment_activation_attempts\".\"outcome\" = 'suspended') = (\"employment_activation_attempts\".\"blocked_by_business_id\" IS NOT NULL)"
-        },
-        "employment_activation_attempts_trigger": {
-          "name": "employment_activation_attempts_trigger",
-          "value": "\"employment_activation_attempts\".\"trigger\" IN ('scheduler', 'retry', 'approval')"
-        },
-        "employment_activation_attempts_detail_object": {
-          "name": "employment_activation_attempts_detail_object",
-          "value": "jsonb_typeof(\"employment_activation_attempts\".\"detail\") = 'object'"
-        },
-        "employment_activation_attempts_command_nonempty": {
-          "name": "employment_activation_attempts_command_nonempty",
-          "value": "btrim(\"employment_activation_attempts\".\"command_id\") <> ''"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.employment_business_objects": {
       "name": "employment_business_objects",
       "schema": "",
@@ -12227,55 +12117,9 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "event_seq": {
-          "name": "event_seq",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "identity": {
-            "type": "byDefault",
-            "name": "employment_state_events_event_seq_seq",
-            "schema": "public",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "9223372036854775807",
-            "cache": "1",
-            "cycle": false
-          }
         }
       },
-      "indexes": {
-        "employment_state_events_approved": {
-          "name": "employment_state_events_approved",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "business_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "event_no",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"employment_state_events\".\"state\" = 'approved'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "employment_state_events_tenant_id_tenants_id_fk": {
           "name": "employment_state_events_tenant_id_tenants_id_fk",

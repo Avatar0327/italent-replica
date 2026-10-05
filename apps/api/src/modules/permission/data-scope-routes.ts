@@ -78,14 +78,24 @@ export function registerDataScopeRoutes(router: Hono<TenantEnv>, deps: TenantRou
   assignmentRoutes(router, deps);
 }
 
+/**
+ * 企业设置 · 管理单元（R1-T15，06 §7.1）：租户 / 系统 / 用户 / 权限管理员可查看（mou_manage）；
+ * 增删改首版只开放给租户管理员（REQ-PRM-002「配置边界」，other_settings）。
+ */
+async function mouViewGuard(c: RouteContext, deps: TenantRouteDeps): Promise<TenantContext> {
+  const ctx = tenantOf(c);
+  await requirePermission(deps.authorize, { ...ctx, action: 'admin.mou_manage' });
+  return ctx;
+}
+
 function mouRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get(`${BASE}/mous`, async (c) => {
-    const ctx = await scopeAdminGuard(c, deps);
+    const ctx = await mouViewGuard(c, deps);
     const paging = page(c);
     return c.json({ items: await withTenant(deps.db, ctx.tenantId, (tx) => listMous(tx, paging)) });
   });
   router.get(`${BASE}/mous/:id`, async (c) => {
-    const ctx = await scopeAdminGuard(c, deps);
+    const ctx = await mouViewGuard(c, deps);
     const mou = await withTenant(deps.db, ctx.tenantId, (tx) => getMou(tx, idParam(c, 'id')));
     etag(c, mou.revision);
     return c.json(mou);

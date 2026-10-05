@@ -3,7 +3,6 @@ import { PERSONNEL_SCOPE_FIELDS } from '@italent/domain';
 import {
   and,
   desc,
-  employmentEmployees,
   eq,
   permissionDynamicOrgGrants,
   permissionGrants,
@@ -14,7 +13,6 @@ import {
   permissionScopePolicyRules,
   permissionScopeVersions,
   permissionUserPersonLinks,
-  pgErrorCode,
   sql,
   type Tx,
 } from '@italent/db';
@@ -183,55 +181,11 @@ async function lastRevision(tx: Tx, objectType: string, objectId: string) {
   return version?.revision ?? 0;
 }
 
-export const personLinkBody = z.strictObject({ employeeId: z.uuid() });
+/** 用户与人员的绑定只读（DEC-128）：写入只在建档 / 入职的同一事务里经 user-provisioning.ts 进行。 */
 export async function getPersonLink(tx: Tx, userId: string) {
   await assertActiveMember(tx, userId);
   const [row] = await tx.select().from(permissionUserPersonLinks).where(eq(permissionUserPersonLinks.userId, userId));
   return row ?? { userId, employeeId: null, revision: await lastRevision(tx, 'permission_person_link', userId) };
-}
-
-export async function setPersonLink(
-  tx: Tx,
-  write: WriteContext,
-  userId: string,
-  employeeId: string | null,
-  expectedRevision: number,
-) {
-  await lock(tx, write, `person-link:${userId}`);
-  const before = await getPersonLink(tx, userId);
-  if (before.revision !== expectedRevision) throw revisionConflict(expectedRevision, before.revision);
-  const revision = before.revision + 1;
-  if (employeeId) {
-    const [employee] = await tx
-      .select({ id: employmentEmployees.id })
-      .from(employmentEmployees)
-      .where(eq(employmentEmployees.id, employeeId));
-    if (!employee) throw new AppError('NOT_FOUND', '人员不存在');
-    try {
-      await tx
-        .insert(permissionUserPersonLinks)
-        .values({ tenantId: write.tenantId, userId, employeeId, revision })
-        .onConflictDoUpdate({
-          target: [permissionUserPersonLinks.tenantId, permissionUserPersonLinks.userId],
-          set: { employeeId, revision },
-        });
-    } catch (error) {
-      if (pgErrorCode(error) === '23505') throw new AppError('CONFLICT', '该人员已关联另一用户');
-      throw error;
-    }
-  } else {
-    if (!before.employeeId) throw new AppError('NOT_FOUND', '用户人员关联不存在');
-    await tx.delete(permissionUserPersonLinks).where(eq(permissionUserPersonLinks.userId, userId));
-  }
-  const after = { userId, employeeId, revision };
-  await recordScopeChange(tx, write, {
-    objectType: 'permission_person_link',
-    objectId: userId,
-    revision,
-    before,
-    after,
-  });
-  return after;
 }
 
 export const dynamicOrgBody = z.strictObject({ roleCode: z.enum(['head', 'hrbp']) });

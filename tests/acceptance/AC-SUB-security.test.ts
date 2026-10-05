@@ -11,6 +11,7 @@ import {
   setObjectPermission,
 } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { loginEmailOf } from './AC-EMP-support.js';
 
 const database = useTestDb();
 describe('AC-SUB DEC-080/081 人员范围与敏感字段', () => {
@@ -71,7 +72,13 @@ describe('AC-SUB DEC-080/081 人员范围与敏感字段', () => {
       const person = await create('employment/employees', { code, name: '保密姓名' });
       await create(
         `employment/employees/${person.id}/businesses`,
-        { kind: 'hire', mode: 'direct', effectiveDate: '2020-01-01', fields: { departmentId: org } },
+        {
+          kind: 'hire',
+          mode: 'direct',
+          effectiveDate: '2020-01-01',
+          fields: { departmentId: org },
+          loginEmail: loginEmailOf(person.id),
+        },
         1,
       );
       const changed = await setup.request('PATCH', `/api/tenant/personnel/employees/${person.id}`, {

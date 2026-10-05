@@ -16,6 +16,7 @@ import {
   setObjectPermission,
 } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { loginEmailOf } from './AC-EMP-support.js';
 
 const database = useTestDb();
 const ROWS = 200;
@@ -77,7 +78,13 @@ describe('AC-SUB 人员读取有界：语句数与行数无关', () => {
     const person = await create('employment/employees', { code: 'BULK-0001', name: '合成员工' });
     await create(
       `employment/employees/${person.id}/businesses`,
-      { kind: 'hire', mode: 'direct', effectiveDate: '2020-01-01', fields: { departmentId: org.id } },
+      {
+        kind: 'hire',
+        mode: 'direct',
+        effectiveDate: '2020-01-01',
+        fields: { departmentId: org.id },
+        loginEmail: loginEmailOf(person.id),
+      },
       1,
     );
     const patched = await setup.request('PATCH', `/api/tenant/personnel/employees/${person.id}`, {
@@ -210,7 +217,13 @@ describe('AC-SUB 人员读取有界：语句数与行数无关', () => {
     const person = await world.create('employment/employees', { code: `LATE-${randomUUID()}`, name: '后排员工' });
     await world.create(
       `employment/employees/${person.id}/businesses`,
-      { kind: 'hire', mode: 'direct', effectiveDate: '2020-01-01', fields: { departmentId: world.late.id } },
+      {
+        kind: 'hire',
+        mode: 'direct',
+        effectiveDate: '2020-01-01',
+        fields: { departmentId: world.late.id },
+        loginEmail: loginEmailOf(person.id),
+      },
       1,
     );
     const read = async (query: string) => {
