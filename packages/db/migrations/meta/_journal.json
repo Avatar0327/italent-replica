@@ -239,6 +239,20 @@
       "when": 1791135165300,
       "tag": "0033_enterprise_settings_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1791160564724,
+      "tag": "0034_platform_ops",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1791160566008,
+      "tag": "0035_platform_ops_grants",
+      "breakpoints": true
     }
   ]
 }

@@ -20,9 +20,18 @@ export interface AuditInput {
 }
 
 export async function audit(tx: Tx, write: WriteContext, entry: AuditInput): Promise<void> {
+  await auditAs(tx, { ...write, actorUserId: write.userId }, entry);
+}
+
+/** 平台命令在租户内的写入（R1-T17 开通预置）：操作人是平台运营身份，系统任务为空，不必是租户成员。 */
+export interface PlatformWriteContext extends Omit<WriteContext, 'userId'> {
+  readonly actorUserId: string | null;
+}
+
+export async function auditAs(tx: Tx, write: PlatformWriteContext, entry: AuditInput): Promise<void> {
   await tx.insert(auditEvents).values({
     tenantId: write.tenantId,
-    actorUserId: write.userId,
+    actorUserId: write.actorUserId,
     occurredAt: write.now,
     commandId: write.commandId,
     ...entry,

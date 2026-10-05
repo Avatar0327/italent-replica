@@ -4,8 +4,9 @@
  *   查平台命令台账 → 执行（更新带 revision 条件）→ 写审计 → 登记台账。
  * - 同 commandId 同内容 → 重放首次结果；同 commandId 异内容 → IdempotencyConflictError；
  * - 执行失败后先回查台账（结果未知先回查，DEC-067）：并发的同键同内容请求中败者重放先提交者的结果；
- * - 审计：与租户相关的变更经 ctx.auditTenant 写入该租户的 audit_events（事务内显式切到租户路径），
- *   无租户归属的变更经 ctx.auditPlatform 写入 platform_audit_events。
+ * - 审计：每个平台命令都写 platform_audit_events（R1-T17）。与租户相关的变更经 ctx.auditTenant 同时写入该租户的
+ *   audit_events（事务内显式切到租户路径，租户管理员可见）与平台审计（标出所涉租户）；无租户归属的变更经
+ *   ctx.auditPlatform 只写平台审计。
  */
 import { createHash } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
@@ -31,8 +32,10 @@ export interface PlatformCommandContext {
   readonly tx: Tx;
   /** 在同一事务内临时切到租户路径（app_user + app.tenant_id），结束后切回平台角色。 */
   inTenant<T>(tenantId: string, fn: (tx: Tx) => Promise<T>): Promise<T>;
+  /** 写该租户的审计，并在平台审计留一份（subject_tenant_id = 该租户）。 */
   auditTenant(tenantId: string, entry: AuditEntry): Promise<void>;
-  auditPlatform(entry: AuditEntry): Promise<void>;
+  /** 只写平台审计；subjectTenantId 标出所涉租户（如开通、备份恢复），无租户归属时省略。 */
+  auditPlatform(entry: AuditEntry, subjectTenantId?: string): Promise<void>;
 }
 
 /** revision 不一致（AGENTS.md §10「并发」）；API 层映射为 409 REVISION_CONFLICT。 */
@@ -93,6 +96,8 @@ async function findReplay<T>(tx: Tx, commandId: string, requestHash: string): Pr
 
 function contextFor(tx: Tx, meta: PlatformCommandMeta): PlatformCommandContext {
   let current: string | null = null; // 当前所处的租户上下文；可重入，但同一时刻只允许一个租户
+  // 租户上下文内写的租户审计，其平台审计副本要在切回平台角色后写（app_user 无权写平台审计）
+  const deferred: { entry: AuditEntry; tenantId: string }[] = [];
   const inTenant = async <R>(tenantId: string, fn: (tx: Tx) => Promise<R>): Promise<R> => {
     if (!isUuid(tenantId)) throw new TypeError('inTenant：租户 ID 必须是 UUID');
     if (current === tenantId) return fn(tx);
@@ -104,19 +109,26 @@ function contextFor(tx: Tx, meta: PlatformCommandMeta): PlatformCommandContext {
     await tx.execute(sql.raw(`SET LOCAL ROLE ${APP_ROLE.platform}`));
     await tx.execute(sql`SELECT set_config('app.tenant_id', '', true)`);
     current = null;
+    for (const pending of deferred.splice(0)) await auditPlatform(pending.entry, pending.tenantId);
     return result;
   };
   const row = (entry: AuditEntry) => ({ ...entry, actorUserId: meta.actorUserId, commandId: meta.commandId });
+  const auditPlatform = async (entry: AuditEntry, subjectTenantId?: string) => {
+    if (current !== null) throw new Error('auditPlatform：须在平台路径上调用，不能在租户上下文内');
+    await tx.insert(platformAuditEvents).values({ ...row(entry), subjectTenantId: subjectTenantId ?? null });
+  };
   return {
     tx,
     inTenant,
-    auditTenant: (tenantId, entry) =>
-      inTenant(tenantId, async (t) => {
+    auditTenant: async (tenantId, entry) => {
+      await inTenant(tenantId, async (t) => {
         await t.insert(auditEvents).values({ tenantId, ...row(entry) });
-      }),
-    auditPlatform: async (entry) => {
-      await tx.insert(platformAuditEvents).values(row(entry));
+      });
+      // 在租户上下文内调用时（可重入）推迟到切回平台路径后再写，见 flushPlatform
+      if (current === null) await auditPlatform(entry, tenantId);
+      else deferred.push({ entry, tenantId });
     },
+    auditPlatform,
   };
 }
 

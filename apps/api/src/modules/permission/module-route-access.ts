@@ -79,7 +79,8 @@ export function visible(
   creatorId?: string | null,
 ): void {
   if (scopeAllows(scope, { orgId, creatorId })) return;
-  // TODO(需取证 Q-M0-28)：无组织字段的字典/全局方案须显式看全部或命中已登记的创建人规则。
+  // DEC-121（保持 DEC-081）：无组织字段的字典 / 全局方案默认不可见，须显式看全部或命中已登记的创建人规则；
+  // 标准 HR 身份的“看全部”由开通租户时预置（R1-T17，permission/standard-profiles.ts）。
   throw new AppError('NOT_FOUND', message);
 }
 
@@ -101,14 +102,20 @@ export async function visibleJob(
 export { resolveModuleScope, trimModuleResponse };
 
 const requestScopes = new WeakMap<Context<TenantEnv>, Map<string, Promise<ModuleScope>>>();
+/**
+ * @param dataSource 同一对象下需要单独授范围的数据集（读写同用），如编制方案（ESTABLISHMENT_SCHEME_DATASOURCE）：它与
+ *   组织编制共用对象 OrganizationEstablishment，DEC-121 只对无组织字段的编制方案预置看全部，不能连带放开组织编制。
+ *   页面编码（列表 / 详情）不变，已配置的页面级策略照常生效。
+ */
 export function requestScope(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   ctx: ScopeBusinessContext,
   objectCode: string,
+  dataSource?: string,
 ) {
   const pageCode = c.req.method === 'GET' ? `${objectCode}.${c.req.param('id') ? 'detail' : 'list'}` : undefined;
-  const key = `${objectCode}:${pageCode ?? ''}`;
+  const key = `${objectCode}:${pageCode ?? ''}:${dataSource ?? ''}`;
   let scopes = requestScopes.get(c);
   if (!scopes) {
     scopes = new Map();
@@ -116,7 +123,7 @@ export function requestScope(
   }
   const cached = scopes.get(key);
   if (cached) return cached;
-  const pending = resolveModuleScope(deps, ctx, undefined, objectCode, pageCode);
+  const pending = resolveModuleScope(deps, ctx, undefined, objectCode, pageCode, dataSource);
   scopes.set(key, pending);
   return pending;
 }

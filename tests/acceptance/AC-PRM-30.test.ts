@@ -5,7 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { grantMembership } from '@italent/db';
-import { ESTABLISHMENT_SCHEME_PAGE, MODULE_OBJECTS } from '@italent/domain';
+import { ESTABLISHMENT_SCHEME_DATASOURCE, MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { newUser, provisioned, type ProvisionResult, seedOperator } from './support/platform-api.js';
@@ -154,7 +154,8 @@ describe('AC-PRM-30 标准 HR 身份预置无组织字段对象的看全部', ()
     expect(posts.items.map((p) => p.id).sort()).toEqual([ids['职务甲'], ids['职务乙']].sort());
     const schemes = await list(asH, '/api/tenant/establishment/schemes');
     expect(schemes.hasDataPermission).toBe(true);
-    expect(schemes.items.map((s) => s.id).sort()).toEqual([ids['方案一'], ids['方案二']].sort());
+    // 建组织编制时会自动补一个默认方案（establishment/default-scheme.ts），同样可见
+    expect(schemes.items.map((s) => s.id)).toEqual(expect.arrayContaining([ids['方案一'], ids['方案二']]));
     const detail = await api.request('GET', `/api/tenant/establishment/schemes/${ids['方案二']}?asOf=${TODAY}`, asH);
     expect(detail.status).toBe(200);
   });
@@ -176,7 +177,7 @@ describe('AC-PRM-30 标准 HR 身份预置无组织字段对象的看全部', ()
 
   it('X（自定义身份，只勾选职务、未配置看全部）看到 0 条，并提示无数据权限', async () => {
     const posts = await list(asX, '/api/tenant/job/posts');
-    expect(posts).toEqual({ items: [], hasDataPermission: false });
+    expect(posts).toMatchObject({ items: [], hasDataPermission: false });
   });
 
   it('预置的看全部可在数据权限中查看（租户管理员可调整）', async () => {
@@ -189,7 +190,11 @@ describe('AC-PRM-30 标准 HR 身份预置无组织字段对象的看全部', ()
     );
     expect(post.status, await post.clone().text()).toBe(200);
     expect(await post.json()).toMatchObject({ seeAll: true, revision: 1 });
-    const scheme = await api.request('GET', `${base}?targetKind=page&targetCode=${ESTABLISHMENT_SCHEME_PAGE}`, asAdmin);
+    const scheme = await api.request(
+      'GET',
+      `${base}?targetKind=datasource&targetCode=${ESTABLISHMENT_SCHEME_DATASOURCE}`,
+      asAdmin,
+    );
     expect(scheme.status, await scheme.clone().text()).toBe(200);
     expect(await scheme.json()).toMatchObject({ seeAll: true, revision: 1 });
     const position = await api.request(
@@ -198,10 +203,11 @@ describe('AC-PRM-30 标准 HR 身份预置无组织字段对象的看全部', ()
       asAdmin,
     );
     expect(await position.json()).toMatchObject({ seeAll: false });
-    const custom = result.profiles.find((p) => p.code === 'standard_manager')!;
+    const managerProfile = result.profiles.find((p) => p.code === 'standard_manager')!;
+    const managerBase = `/api/tenant/permission/profiles/${managerProfile.id}/data-scopes/TenantBase`;
     const manager = await api.request(
       'GET',
-      `/api/tenant/permission/profiles/${custom.id}/data-scopes/TenantBase?targetKind=entity&targetCode=${MODULE_OBJECTS.jobPost.code}`,
+      `${managerBase}?targetKind=entity&targetCode=${MODULE_OBJECTS.jobPost.code}`,
       asAdmin,
     );
     expect(await manager.json()).toMatchObject({ seeAll: false });

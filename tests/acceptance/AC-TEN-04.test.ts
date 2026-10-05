@@ -54,7 +54,7 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
     const admins = await api.request('GET', '/api/tenant/permission/admins', asAdmin);
     const records = ((await admins.json()) as { items: ProvisionResult['admin'][] }).items;
     expect(records).toEqual([
-      expect.objectContaining({ userId: admin.id, role: 'tenant_admin', grantableAdminRoles: [...ADMIN_ROLES] }),
+      expect.objectContaining({ userId: admin.id, role: 'tenant_admin', grantableAdminRoles: [...ADMIN_ROLES].sort() }),
     ]);
   });
 

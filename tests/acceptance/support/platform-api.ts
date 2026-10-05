@@ -4,7 +4,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { createUser, type Db, grantPlatformOperator, type User } from '@italent/db';
-import { cmd, tenantApi } from './tenant-api.js';
+import { cmd, type tenantApi } from './tenant-api.js';
 
 export const PLATFORM = '/api/platform';
 
