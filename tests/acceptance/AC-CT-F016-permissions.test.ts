@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { contractWorld } from './AC-CT-support.js';
 import { addMember, createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 import { cmd, tenantApi, type RequestOptions } from './support/tenant-api.js';
+import { installApprovalFallbacks } from './AC-APV-support.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
 
 const database = useTestDb();
@@ -229,5 +230,121 @@ describe('AC-CT F-016 真实权限接入', () => {
     await withTenant(w.db, w.seed.tenant.id, async (tx) => {
       expect(rowsOf(await tx.execute(sql`SELECT id FROM contract_types WHERE code='REPLAY'`))).toHaveLength(1);
     });
+  });
+  it.each(['edit', 'change'])('P2-N2 %s 导入按本人合同维护范围，撤销人员新建范围仍可维护', async (mode) => {
+    const w = await fixture(`import-${mode}`, 'using_user');
+    await w.scope(true);
+    const response = await w.real('POST', '/commands', {
+      ifMatch: 0,
+      body: {
+        operation: 'create',
+        mode: 'direct',
+        employeeId: w.employee.id,
+        fields: { ...w.fields, endDate: '2027-09-30' },
+      },
+    });
+    expect(response.status).toBe(201);
+    const c = (await response.json()) as { id: string; number: string; revision: number };
+    await w.scope(false, 1);
+    expect((await w.real('GET', `/records/${c.id}`)).status).toBe(200);
+    const imported = await w.real('POST', '/imports', {
+      ifMatch: 0,
+      body: {
+        mode,
+        rows: [
+          {
+            employeeId: w.employee.id,
+            revision: c.revision,
+            originalEffectiveDate: w.fields.effectiveDate,
+            fields:
+              mode === 'edit'
+                ? { number: c.number, regularSalary: '100' }
+                : { typeId: w.type.id, effectiveDate: '2026-10-01', regularSalary: '100' },
+          },
+        ],
+      },
+    });
+    expect(imported.status, await imported.clone().text()).toBe(200);
+    // 同一权限仍不能给此人新增合同，也不能初始化重建。
+    expect(
+      (
+        await w.real('POST', '/imports', {
+          ifMatch: 0,
+          body: { mode: 'add', rows: [{ employeeId: w.employee.id, fields: w.fields }] },
+        })
+      ).status,
+    ).toBe(404);
+  });
+  it.each(['approval', 'todos'])('P2-N1 %s 新建重提复核当前人员范围（真实授权器）', async (entry) => {
+    const w = await fixture(`resubmit-${entry}`, 'using_user');
+    await installApprovalFallbacks(w.db, w.seed.tenant.id, w.seed.admin.id);
+    await w.scope(true);
+    const response = await w.real('POST', '/commands', {
+      ifMatch: 0,
+      body: {
+        operation: 'create',
+        mode: 'application',
+        employeeId: w.employee.id,
+        fields: { ...w.fields, effectiveDate: '2026-11-01', endDate: '2027-10-31' },
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    const request = (await response.json()) as { id: string };
+    const [task] = await withTenant(w.db, w.seed.tenant.id, async (tx) =>
+      rowsOf<{
+        id: string;
+        userId: string;
+        instanceId: string;
+        revision: number;
+      }>(
+        await tx.execute(sql`SELECT t.id,t.assignee_user_id AS "userId",i.id AS "instanceId",i.revision
+      FROM approval_tasks t JOIN approval_instances i ON i.tenant_id=t.tenant_id AND i.id=t.instance_id
+      WHERE i.business_id=${request.id}::uuid AND t.status='pending'`),
+      ),
+    );
+    const trusted = tenantApi(w.db, { clock });
+    expect(
+      (
+        await trusted.request('POST', `/api/tenant/approval/tasks/${task!.id}/reject`, {
+          tenant: w.seed.tenant.id,
+          user: task!.userId,
+          ifMatch: task!.revision,
+          body: {},
+        })
+      ).status,
+    ).toBe(200);
+    const [instance] = await withTenant(w.db, w.seed.tenant.id, async (tx) =>
+      rowsOf<{ revision: number }>(
+        await tx.execute(sql`SELECT revision FROM approval_instances WHERE id=${task!.instanceId}::uuid`),
+      ),
+    );
+    await w.scope(false, 1);
+    const retry = () =>
+      entry === 'approval'
+        ? w.api.request('POST', `/api/tenant/approval/instances/${task!.instanceId}/resubmit`, {
+            tenant: w.seed.tenant.id,
+            user: w.user.id,
+            ifMatch: instance!.revision,
+            body: {},
+          })
+        : w.real('POST', '/todos/batch', {
+            ifMatch: 0,
+            body: { action: 'resubmit', items: [{ id: task!.instanceId, revision: instance!.revision }] },
+          });
+    const denied = await retry();
+    if (entry === 'approval') expect(denied.status).toBe(404);
+    else expect(await denied.json()).toMatchObject({ items: [{ status: 404 }] });
+    await withTenant(w.db, w.seed.tenant.id, async (tx) => {
+      expect(
+        rowsOf(
+          await tx.execute(sql`SELECT status FROM approval_instances
+        WHERE id=${task!.instanceId}::uuid`),
+        ),
+      ).toEqual([{ status: 'returned' }]);
+    });
+    await w.scope(true, 2);
+    const allowed = await retry();
+    expect(allowed.status, await allowed.clone().text()).toBe(200);
+    if (entry === 'todos') expect(await allowed.json()).toMatchObject({ items: [{ status: 200 }] });
   });
 });

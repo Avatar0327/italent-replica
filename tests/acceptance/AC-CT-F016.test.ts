@@ -444,3 +444,24 @@ describe('AC-CT F-016 审批与失败退出', () => {
     });
   });
 });
+
+describe('AC-CT F-016 第二轮在途规则', () => {
+  it.each(['create-first', 'edit-first'])('P2-N3 %s 未来编辑与新建共用唯一在途', async (order) => {
+    const w = await world(order);
+    const c = await w.create({ endDate: '2027-09-30' });
+    const futureEdit = () => edit(w, c, { effectiveDate: '2026-10-15' });
+    const first = await (order === 'create-first' ? pending(w) : futureEdit());
+    expect(first.status).toBe(order === 'create-first' ? 201 : 200);
+    const second = await (order === 'create-first' ? futureEdit() : pending(w));
+    expect(second.status, await second.clone().text()).toBe(409);
+    expect(await second.text()).toContain('CONTRACT_IN_FLIGHT');
+    await withTenant(w.db, w.session.tenant.id, async (tx) => {
+      expect(
+        rowsOf(
+          await tx.execute(sql`SELECT id FROM contract_requests
+        WHERE employee_id=${w.employee.id}::uuid AND status='approved'`),
+        ),
+      ).toHaveLength(1);
+    });
+  });
+});
