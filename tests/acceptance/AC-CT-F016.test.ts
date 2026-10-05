@@ -307,6 +307,39 @@ describe('AC-CT F-016 审批与失败退出', () => {
     await expect(
       requireResubmitRight(deps as Parameters<typeof requireResubmitRight>[0], ctx(w), instance.id),
     ).resolves.toBeUndefined();
+    const api = tenantApi(w.db, { clock });
+    const task = await withTenant(
+      w.db,
+      w.session.tenant.id,
+      async (tx) =>
+        rowsOf<{ id: string; userId: string; revision: number }>(
+          await tx.execute(sql`
+        SELECT t.id,t.assignee_user_id AS "userId",i.revision FROM approval_tasks t
+        JOIN approval_instances i ON i.tenant_id=t.tenant_id AND i.id=t.instance_id
+        WHERE t.instance_id=${instance.id}::uuid AND t.status='pending'`),
+        )[0]!,
+    );
+    const rejected = await api.request('POST', `/api/tenant/approval/tasks/${task.id}/reject`, {
+      tenant: w.session.tenant.id,
+      user: task.userId,
+      ifMatch: task.revision,
+      body: {},
+    });
+    expect(rejected.status).toBe(200);
+    const [returned] = await withTenant(w.db, w.session.tenant.id, async (tx) =>
+      rowsOf<{ revision: number }>(
+        await tx.execute(sql`SELECT revision FROM approval_instances
+        WHERE id=${instance.id}::uuid`),
+      ),
+    );
+    const restricted = tenantApi(w.db, { clock, authorize: deps.authorize });
+    const endpoint = `/api/tenant/approval/instances/${instance.id}/resubmit`;
+    const identity = { tenant: w.session.tenant.id, user: w.session.user.id, ifMatch: returned!.revision };
+    expect(
+      (await restricted.request('POST', endpoint, { ...identity, body: { fields: { regularSalary: '123' } } })).status,
+    ).toBe(403);
+    const resubmitted = await restricted.request('POST', endpoint, { ...identity, body: {} });
+    expect(resubmitted.status, await resubmitted.clone().text()).toBe(200);
   });
   it('P2-9 条件目录中的每个字段必须存在于实际快照', async () => {
     const w = await world('conditions');
@@ -341,10 +374,25 @@ describe('AC-CT F-016 审批与失败退出', () => {
         ifMatch: revision,
         body: {},
       });
+    const noButton = tenantApi(w.db, {
+      clock: () => new Date('2026-10-02T01:00:00Z'),
+      authorize: (r) => r.action !== 'object.button',
+    });
+    const denied = await noButton.request('POST', `/api/tenant/contracts/requests/${request.id}/cancel`, {
+      tenant: w.session.tenant.id,
+      user: w.session.user.id,
+      ifMatch: request.revision,
+      body: {},
+    });
+    expect(denied.status).toBe(403);
     expect((await cancel(0)).status).toBe(409);
     const response = await cancel(request.revision);
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ status: 'withdrawn' });
+    expect(await (await w.request('GET', '/failures')).json()).toMatchObject({ items: [] });
+    const retry = await w.change({ ...c, revision: c.revision + 1 }, 'change', { effectiveDate: '2026-10-03' });
+    expect(retry.status, await retry.clone().text()).toBe(201);
+    expect((await cancel(request.revision)).status).toBe(409);
     await withTenant(w.db, w.session.tenant.id, async (tx) => {
       expect(
         rowsOf(

@@ -36,7 +36,8 @@ it('P2-9 旧草稿含未实现的合同条件也不能发布，旧已发布流�
   // 升级前已发布的配置：不能把不提供的 employee.name 当成真正的空值选中它。
   await withTenant(w.db, ctx.tenantId, async (tx) => {
     await tx.execute(
-      sql`UPDATE approval_process_versions SET status='published', published_by=${ctx.userId}, published_at=now() WHERE id=${draft.latestVersion.id}::uuid`,
+      sql`UPDATE approval_process_versions SET status='published',
+        published_by=${ctx.userId}, published_at=now() WHERE id=${draft.latestVersion.id}::uuid`,
     );
     await tx.execute(sql`UPDATE approval_processes SET current_version_id=${draft.latestVersion.id}::uuid
       WHERE id=${draft.id}::uuid`);
