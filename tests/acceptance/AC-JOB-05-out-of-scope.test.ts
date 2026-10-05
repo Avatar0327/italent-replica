@@ -19,6 +19,7 @@ import {
   setObjectPermission,
   type PermissionWorld,
 } from './AC-PRM-support.js';
+import { withLoginEmail } from './AC-EMP-support.js';
 import { TODAY } from './AC-ORG-people-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -74,18 +75,24 @@ async function scenario(label: string) {
       postId: post.id,
       startDate: TODAY,
     });
-  const hire = async (name: string, fields: object = {}, prefix?: string) => {
+  /** boundUser：入职前先把该账号绑定到此人（已绑定的人员入职无需登录邮箱，DEC-140）。 */
+  const hire = async (name: string, fields: object = {}, prefix?: string, boundUser?: string) => {
     uuidPrefix.value = prefix ?? null;
     try {
       const employee = await create('employment/employees', { code: `E${randomUUID().slice(0, 8)}`, name });
+      if (boundUser) {
+        const link = { tenantId: world.tenant.id, userId: boundUser, employeeId: employee.id };
+        await withTenant(db, world.tenant.id, (tx) => tx.insert(permissionUserPersonLinks).values(link));
+      }
+      const body = {
+        kind: 'hire',
+        mode: 'direct',
+        effectiveDate: TODAY,
+        fields: { employType: 'internal', departmentId: department.id, ...fields },
+      };
       const hired = await create(
         `employment/employees/${employee.id}/businesses`,
-        {
-          kind: 'hire',
-          mode: 'direct',
-          effectiveDate: TODAY,
-          fields: { employType: 'internal', departmentId: department.id, ...fields },
-        },
+        boundUser ? body : withLoginEmail(employee.id, body),
         employee.revision,
       );
       return { id: employee.id, recordId: hired.id };
@@ -197,13 +204,8 @@ describe('AC-JOB-05 同步直线经理不得绕过任职数据范围（真实授
   it('范围内的员工照常同步、范围外的跳过；范围外员工的标识不出现在回执里', async () => {
     const s = await scenario('汇报范围');
     const manager = await s.hire('新上级唯一在岗', { positionId: s.newParent.id });
-    const lead = await s.hire('操作人本人');
     const as = await operator(s, [{ dimension: 'reporting', relationMode: 'direct' }]);
-    await withTenant(s.db, s.world.tenant.id, (tx) =>
-      tx
-        .insert(permissionUserPersonLinks)
-        .values({ tenantId: s.world.tenant.id, userId: as.user, employeeId: lead.id }),
-    );
+    const lead = await s.hire('操作人本人', {}, undefined, as.user);
     const report = await s.hire('直接下属', { positionId: s.target.id, directManagerId: lead.id });
     const outsider = await s.hire('非下属', { positionId: s.target.id });
     const response = await synchronize(s, as);

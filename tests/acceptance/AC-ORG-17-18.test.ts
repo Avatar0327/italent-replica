@@ -16,6 +16,7 @@ import {
   setObjectPermission,
   type PermissionWorld,
 } from './AC-PRM-support.js';
+import { withLoginEmail } from './AC-EMP-support.js';
 import { orgPeopleWorld, TODAY } from './AC-ORG-people-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -195,12 +196,12 @@ describe('AC-ORG-17/18 不按操作人数据范围过滤（真实授权器）', 
     });
     await create(
       `employment/employees/${employee.id}/businesses`,
-      {
+      withLoginEmail(employee.id, {
         kind: 'hire',
         mode: 'direct',
         effectiveDate: TODAY,
         fields: { employType: 'internal', departmentId: outside.id },
-      },
+      }),
       employee.revision,
     );
     const operator = await scopedOperator(world, managed.id, [...PEOPLE_FIELDS, 'effectiveDate']);

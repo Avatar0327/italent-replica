@@ -20,6 +20,7 @@ import {
   setObjectPermission,
   type PermissionWorld,
 } from './AC-PRM-support.js';
+import { withLoginEmail } from './AC-EMP-support.js';
 import { TODAY } from './AC-ORG-people-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -93,7 +94,12 @@ describe('AC-JOB-05 同步直线经理的人员权限与范围（真实授权器
       const employee = await create('employment/employees', { code: `E${randomUUID().slice(0, 8)}`, name });
       const hired = await create(
         `employment/employees/${employee.id}/businesses`,
-        { kind: 'hire', mode: 'direct', effectiveDate: TODAY, fields: { employType: 'internal', ...fields } },
+        withLoginEmail(employee.id, {
+          kind: 'hire',
+          mode: 'direct',
+          effectiveDate: TODAY,
+          fields: { employType: 'internal', ...fields },
+        }),
         employee.revision,
       );
       return { id: employee.id, recordId: hired.id };
