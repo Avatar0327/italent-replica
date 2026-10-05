@@ -6,3 +6,4 @@ export * from './catalog.js';
 export * from './presets.js';
 export * from './policies.js';
 export * from './transfer-view.js';
+export * from './countersign.js';

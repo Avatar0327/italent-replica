@@ -180,6 +180,25 @@ export async function withdrawChangeInTransaction(tx: Tx, ctx: PersonnelContext,
   await audit(tx, ctx, PERSONNEL_REQUEST_OBJECT, String(before.employeeId), id, after.revision, before, after);
   return after;
 }
+/**
+ * 审批沿「不同意」连线流转到结束（DEC-144，F-003 第二轮）：申请办结为“未通过”，不写入子集，也不能在原单重提
+ * （resubmitChangeInTransaction 只接受待审批与已撤回）。只由审批中心同事务调用。
+ */
+export async function disapproveChangeInTransaction(tx: Tx, ctx: PersonnelContext, id: string) {
+  const initial = await loadChange(tx, ctx, id);
+  await lockPerson(tx, ctx, String(initial.employeeId));
+  const before = await loadChange(tx, ctx, id);
+  if (before.status !== 'pending_approval') throw new AppError('CONFLICT', '申请不在待审批状态');
+  const after = { ...before, status: 'disapproved', revision: Number(before.revision) + 1 };
+  await update(
+    tx,
+    'personnel_change_requests',
+    { status: 'disapproved', revision: after.revision },
+    sql`tenant_id=${ctx.tenantId} AND id=${id}::uuid`,
+  );
+  await audit(tx, ctx, PERSONNEL_REQUEST_OBJECT, String(before.employeeId), id, after.revision, before, after);
+  return after;
+}
 export async function applyApprovedChange(db: Db, ctx: PersonnelContext, id: string) {
   return runCommand(db, ctx, {
     id: ctx.commandId,

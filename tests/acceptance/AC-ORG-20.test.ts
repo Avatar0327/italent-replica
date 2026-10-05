@@ -196,7 +196,7 @@ describe('AC-ORG-20 在「编辑」中修改设立日期（DEC-147）', () => {
     }
   });
 
-  it('组织版本仍只允许追加：未声明更正、或声明后改其他列都被数据库拒绝（迁移 0037）', async () => {
+  it('组织版本仍只允许追加：未声明更正、或声明后改其他列都被数据库拒绝（迁移 0038）', async () => {
     const { world, org } = await versioned('org20guarddb');
     const db = testDb().db;
     const update = (statement: ReturnType<typeof sql>) =>

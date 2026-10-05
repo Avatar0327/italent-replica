@@ -95,7 +95,7 @@ export async function listAdminLogs(
     await tx.execute(sql`SELECT l.* FROM approval_instance_logs l
       JOIN approval_instances i ON i.tenant_id=l.tenant_id AND i.id=l.instance_id
       WHERE l.tenant_id=${tenantId} AND ${scope}
-        AND l.event IN ('admin_transfer','admin_intervene','approve','reject')
+        AND l.event IN ('admin_transfer','admin_intervene','approve','disagree','reject')
         ${filter.adminSelfTransfer === undefined ? sql`` : sql`AND l.admin_self_transfer=${filter.adminSelfTransfer}`}
       ORDER BY l.created_at DESC,l.id LIMIT ${page.limit} OFFSET ${page.offset}`),
   );
