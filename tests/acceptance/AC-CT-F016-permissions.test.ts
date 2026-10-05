@@ -15,7 +15,7 @@ import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
 const database = useTestDb();
 const object = MODULE_OBJECTS.contract;
 const clock = () => new Date('2026-10-01T01:00:00Z');
-async function fixture(label: string, dimension: 'management' | 'using_user' | 'reporting' = 'management') {
+async function fixture(label: string, dimension: 'management' | 'using_user' | 'reporting' | 'mixed' = 'management') {
   const w = await contractWorld(database().db, `f016-prm-${label}`);
   const api = tenantApi(w.db, { authorize: undefined, clock });
   const adminRecord = await bootstrapTenantAdmin(
@@ -81,9 +81,15 @@ async function fixture(label: string, dimension: 'management' | 'using_user' | '
       await tx.insert(permissionScopePolicyRules).values({
         tenantId: seed.tenant.id,
         policyId: p!.id,
-        dimension,
+        dimension: dimension === 'mixed' ? 'using_user' : dimension,
         relationMode: dimension === 'reporting' ? 'direct' : null,
       });
+      if (dimension === 'mixed')
+        await tx.insert(permissionScopePolicyRules).values({
+          tenantId: seed.tenant.id,
+          policyId: p!.id,
+          dimension: 'management',
+        });
     });
   const request = (method: string, path: string, opts: RequestOptions = {}) =>
     api.request(method, `/api/tenant/contracts${path}`, { ...opts, tenant: seed.tenant.id, user: user.id });
@@ -292,17 +298,28 @@ describe('AC-CT F-016 真实权限接入', () => {
       ).status,
     ).toBe(404);
   });
-  it.each(['approval', 'todos'])('P2-N1 %s 新建重提复核当前人员范围（真实授权器）', async (entry) => {
-    const w = await fixture(`resubmit-${entry}`, 'using_user');
+  it.each(
+    (['create', 'renew', 'change', 'terminate'] as const).flatMap((operation) =>
+      ['approval', 'todos'].map((entry) => ({ operation, entry })),
+    ),
+  )('DEC-202 $operation / $entry 重提复核人员范围或目标真实创建人', async ({ operation, entry }) => {
+    const w = await fixture(`resubmit-${operation}-${entry}`, 'mixed');
+    const target = operation === 'create' ? null : await w.create({ endDate: '2027-09-30' });
     await installApprovalFallbacks(w.db, w.seed.tenant.id, w.seed.admin.id);
     await w.scope(true);
     const response = await w.real('POST', '/commands', {
-      ifMatch: 0,
+      ifMatch: target?.revision ?? 0,
       body: {
-        operation: 'create',
+        operation,
+        targetId: target?.id,
         mode: 'application',
         employeeId: w.employee.id,
-        fields: { ...w.fields, effectiveDate: '2026-11-01', endDate: '2027-10-31' },
+        fields:
+          operation === 'terminate'
+            ? { actualTerminationDate: '2026-10-01' }
+            : operation === 'change'
+              ? { companyId: w.company.id }
+              : { ...w.fields, effectiveDate: '2027-10-01', endDate: '2028-09-30' },
       },
     });
     expect(response.status, await response.clone().text()).toBe(201);
@@ -391,7 +408,7 @@ describe('AC-CT F-016 真实权限接入', () => {
     await w.scope(true, 2);
     let corrections = {};
     let customId: string | undefined;
-    if (entry === 'approval') {
+    if (entry === 'approval' && operation === 'create') {
       const field = await w.session.request('POST', '/custom-fields', {
         ifMatch: 0,
         body: { name: '重提备注', objectType: 'contract', valueType: 'text' },
@@ -429,5 +446,42 @@ describe('AC-CT F-016 真实权限接入', () => {
           ),
         ).toEqual([{ custom_fields: { [customId]: '规范化后鉴权' } }]);
       });
+  });
+  it.each(['commands', 'batch'])('DEC-202 %s 续签本人合同仍需人员新建范围', async (entry) => {
+    const w = await fixture(`own-renew-${entry}`, 'mixed');
+    await w.scope(true);
+    const created = await w.real('POST', '/commands', {
+      ifMatch: 0,
+      body: {
+        operation: 'create',
+        mode: 'direct',
+        employeeId: w.employee.id,
+        fields: { ...w.fields, endDate: '2027-09-30' },
+      },
+    });
+    expect(created.status).toBe(201);
+    const target = (await created.json()) as { id: string; revision: number };
+    await w.scope(false, 1);
+    expect((await w.real('GET', `/records/${target.id}`)).status).toBe(200);
+    const command = {
+      operation: 'renew',
+      mode: 'direct',
+      employeeId: w.employee.id,
+      targetId: target.id,
+      fields: { effectiveDate: '2027-10-01', endDate: '2028-09-30' },
+    };
+    const denied = await w.real('POST', `/${entry}`, {
+      ifMatch: entry === 'commands' ? target.revision : 0,
+      body: entry === 'commands' ? command : { items: [{ revision: target.revision, command }] },
+    });
+    expect(denied.status).toBe(404);
+    await withTenant(w.db, w.seed.tenant.id, async (tx) => {
+      expect(
+        rowsOf(
+          await tx.execute(sql`SELECT id FROM contract_records
+        WHERE employee_id=${w.employee.id}::uuid`),
+        ),
+      ).toEqual([{ id: target.id }]);
+    });
   });
 });
