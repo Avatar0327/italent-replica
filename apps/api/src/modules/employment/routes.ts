@@ -52,7 +52,12 @@ import {
 import { retryActivation } from './activation-service.js';
 import { listActivationTodos } from './activation-store.js';
 import { transitionEmployment } from './transitions.js';
-import { disclosePendingApplications, PendingApplicationError } from './deletion-guards.js';
+import {
+  disclosePendingApplications,
+  PendingApplicationError,
+  ReportingCycleDeletionError,
+} from './deletion-guards.js';
+import { visibleEmploymentRecords } from './visibility.js';
 import { employmentApprovalHooks } from './approval-hooks.js';
 import type { EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
@@ -306,14 +311,24 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   }
 }
 
-/** DEC-126 拒绝详情按操作人当前范围与字段权限披露（PR #73 第二轮 P2-1）；不经此处的拒绝默认只给件数。 */
+/**
+ * 删除拒绝详情按操作人当前范围与字段权限披露（PR #73 第二轮 P2-1、第三轮 3）；不经此处的拒绝默认不带明细：
+ * DEC-126 在途申请只给件数；循环汇报只在路径上的人都可见（DEC-177）且经理字段可看时才给完整路径。
+ */
 async function discloseDeletionBlock<T>(deps: TenantRouteDeps, ctx: EmploymentContext, write: Promise<T>) {
   try {
     return await write;
   } catch (error) {
-    if (!(error instanceof PendingApplicationError)) throw error;
+    if (!(error instanceof PendingApplicationError) && !(error instanceof ReportingCycleDeletionError)) throw error;
     const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
-    throw await withTenant(deps.db, ctx.tenantId, (tx) => disclosePendingApplications(tx, ctx, error, viewable));
+    if (error instanceof PendingApplicationError)
+      throw await withTenant(deps.db, ctx.tenantId, (tx) => disclosePendingApplications(tx, ctx, error, viewable));
+    if (viewable !== undefined && !viewable.has('directManagerId')) throw error;
+    const people = error.path.map((employeeId) => ({ employeeId, departmentId: null }));
+    const visible = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      visibleEmploymentRecords(tx, ctx.tenantId, ctx.scope, people),
+    );
+    throw visible.every(Boolean) ? error.disclosed : error;
   }
 }
 

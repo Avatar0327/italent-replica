@@ -9,13 +9,14 @@
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { establishmentPeriodStartsWithin } from '../establishment/employment-check.js';
 import { employmentDepartmentDisable } from '../org/employment-validity.js';
 import { assertEstablishmentCapacity } from './activation-checks.js';
 import { auditEmployment, employmentRecordVisibleTo, requireLinkedEmploymentRecord } from './context.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { rowsOf } from './record-store.js';
 import { validateEmploymentReferences } from './references.js';
-import type { ReportingWindow } from './reporting-cycle.js';
+import { findReportingCycle, type ReportingWindow } from './reporting-cycle.js';
 import type { EmploymentContext, EmploymentRecord } from './types.js';
 
 /** 一项仍在的联动结果；label 原样拼进提示，其余字段作为机读详情返回。 */
@@ -125,7 +126,7 @@ export async function disclosePendingApplications(
  * - P1-1：前一条是本次联动改写的对象，按 DEC-178（F-015 统一可见判定）不可见即整单拒绝，保留 DEC-084 拒绝码；
  *   被删记录本身是直接操作，仍按写入口径（DEC-193）；
  *   并写一条审计，让命令足迹复核把它纳入事务内授权；
- * - P2-2 循环汇报、P2-3 部门在恢复区间内停用、P2-4 严格编制（按实际恢复区间，不按整个周期）。
+ * - P2-2 循环汇报、P2-3 部门在恢复区间内停用、P2-4 严格编制（按实际恢复区间逐个编制周期校验，第三轮 2）。
  * 离职 / 退休记录（删除再入职时恢复的上一周期末条）不占编、不汇报，只做范围检查。
  */
 export async function assertRestoredPredecessor(
@@ -158,19 +159,67 @@ export async function assertRestoredPredecessor(
         { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: disabled.disabledOn },
       );
   }
-  await validateEmploymentReferences(tx, ctx, fields, window.from, { employeeId: previous.employeeId, window });
+  await validateRestoredReferences(tx, ctx, previous, window);
   const moved = fields.departmentId !== deleted.fields.departmentId || fields.positionId !== deleted.fields.positionId;
-  // 编制单一判定入口只按“调入”口径计算（DEC-145）；恢复区间等于前一条在恢复日重新调入其部门。
-  if (fields.departmentId && moved)
+  if (fields.departmentId && moved) await assertRestoredEstablishment(tx, ctx, previous, window);
+}
+
+/**
+ * 循环汇报的拒绝（第三轮 3）。默认只给通用提示，不带路径、姓名、成环日期：链上的人可能在操作人范围外，
+ * 经理字段也可能不可见；HTTP 入口确认路径上的人都可见且经理字段可看时才换成 disclosed 的完整提示。
+ */
+export class ReportingCycleDeletionError extends AppError {
+  constructor(
+    readonly path: readonly string[],
+    readonly disclosed: AppError,
+  ) {
+    super('VALIDATION_FAILED', '删除后前一条任职的直线经理会形成循环汇报，请先调整相关人员的直线经理后再删除', {
+      reason: 'REPORTING_CYCLE',
+      fields: { directManagerId: '直线经理会形成循环汇报' },
+    });
+  }
+}
+
+/** 恢复段按前一条在恢复日重新生效复核引用与循环汇报（按实际区间，含他人变化点；第二轮 P2-2）。 */
+async function validateRestoredReferences(
+  tx: Tx,
+  ctx: EmploymentContext,
+  previous: EmploymentRecord,
+  window: ReportingWindow,
+): Promise<void> {
+  const { employeeId, fields } = previous;
+  try {
+    await validateEmploymentReferences(tx, ctx, fields, window.from, { employeeId, window });
+  } catch (error) {
+    const reason = error instanceof AppError && (error.details as { reason?: string } | undefined)?.reason;
+    if (reason !== 'REPORTING_CYCLE' || !fields.directManagerId) throw error;
+    const cycle = await findReportingCycle(tx, ctx.tenantId, employeeId, fields.directManagerId, window);
+    throw new ReportingCycleDeletionError(cycle?.path ?? [employeeId], error as AppError);
+  }
+}
+
+/**
+ * 严格编制（第二轮 P2-4、第三轮 2）：编制单一判定入口只按“调入”口径计算（DEC-145），恢复段等于前一条在恢复日
+ * 重新调入其部门。在恢复日以及恢复段内每个编制周期的起点各判一次，每次只统计到恢复段结束（until），
+ * 使与恢复段相交的每个周期都按其自身容量校验。
+ */
+async function assertRestoredEstablishment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  previous: EmploymentRecord,
+  window: ReportingWindow,
+): Promise<void> {
+  const starts = await establishmentPeriodStartsWithin(tx, ctx.tenantId, window.from, window.to);
+  for (const effectiveDate of [window.from, ...starts])
     await assertEstablishmentCapacity(tx, ctx, {
       businessId: previous.id,
       employeeId: previous.employeeId,
       kind: 'transfer',
-      departmentId: fields.departmentId,
-      positionId: fields.positionId,
-      effectiveDate: window.from,
+      departmentId: previous.fields.departmentId,
+      positionId: previous.fields.positionId,
+      effectiveDate,
       until: window.to,
-      fields,
+      fields: previous.fields,
     });
 }
 

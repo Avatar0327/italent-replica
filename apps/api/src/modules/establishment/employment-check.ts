@@ -62,6 +62,31 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
   return false;
 }
 
+/**
+ * R1-T11（PR #73 第三轮）：[from, until) 内落下的编制周期起点（不含 from，until 为空表示不设上限），按日期升序。
+ * 删除任职恢复前一条的有效段跨越多个周期时，调用方在 from 与每个起点各判一次，使每个相交周期都按严格控编校验；
+ * 取全租户周期边界的并集，多判几个日期不影响结果。
+ */
+export async function establishmentPeriodStartsWithin(
+  tx: Tx,
+  tenantId: string,
+  from: string,
+  until: string | null,
+): Promise<string[]> {
+  const rows = rowsOf<{ day: string }>(
+    await tx.execute(sql`
+    SELECT DISTINCT day::text AS day FROM (
+      SELECT period_start AS day FROM establishment_objects WHERE tenant_id=${tenantId}
+      UNION SELECT period_end+1 FROM establishment_objects WHERE tenant_id=${tenantId}
+    ) boundaries
+    WHERE day>${from}::date AND (${until}::date IS NULL OR day<${until}::date)
+    ORDER BY day LIMIT 1001
+  `),
+  );
+  if (rows.length > 1000) throw new AppError('PAYLOAD_TOO_LARGE', '恢复区间跨越的编制周期超过处理上限');
+  return rows.map((row) => row.day);
+}
+
 export function matchesOccupancy(fields: Partial<PresetFields>, ranges: readonly OccupancyRange[]): boolean {
   return (
     !ranges.length ||
