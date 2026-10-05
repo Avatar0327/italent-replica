@@ -35,12 +35,14 @@ async function roleRoots(tx: Tx, q: ScopeQuery, roles: readonly string[], expand
   const person = await linkedPerson(tx, q);
   if (!person || !roles.length) return [];
   // DEC-128（06 §9）：用户与人员一一对应、由建档 / 入职绑定（user-provisioning.ts）；按绑定取人员，绝不假定两者 UUID 相同。
+  // DEC-160：停用 / 失效不收缩角色范围；取该日之前最后一版启用记录上的人员（停用前最后任职者）。
+  // 先选版本再匹配人员，避免恢复已撤销的角色；含下级仍由 DEC-146 展开。
   return scopeRows<{ org_id: string }>(
     await tx.execute(sql`
-    SELECT org_id FROM (SELECT DISTINCT ON (org_id) org_id,enabled,stop_date,person_in_charge_id,hrbp_id
-      FROM org_versions WHERE tenant_id=${q.tenantId} AND start_date<=${q.asOf}::date
-      ORDER BY org_id,start_date DESC,version_no DESC) v WHERE enabled AND stop_date>=${q.asOf}::date
-      AND ((${roles.includes('head')} AND person_in_charge_id=${person}::uuid)
+    SELECT org_id FROM (SELECT DISTINCT ON (org_id) org_id,person_in_charge_id,hrbp_id
+      FROM org_versions WHERE tenant_id=${q.tenantId} AND start_date<=${q.asOf}::date AND enabled
+      ORDER BY org_id,start_date DESC,version_no DESC) v
+      WHERE ((${roles.includes('head')} AND person_in_charge_id=${person}::uuid)
         OR (${roles.includes('hrbp')} AND hrbp_id=${person}::uuid)) LIMIT 201
   `),
   ).map((row) => ({ orgId: row.org_id, dimension: 'admin', includeDescendants: expand }));

@@ -71,7 +71,8 @@ async function fixture(role: Role) {
       await tx.execute(sql`INSERT INTO org_versions
         SELECT (jsonb_populate_record(NULL::org_versions,to_jsonb(v) || jsonb_build_object(
           'id',${versionId}::uuid,'version_no',v.version_no+1,'previous_version_id',v.id,
-          'start_date',${startDate}::date,'stop_date',${stopDate}::date,'enabled',${enabled}::boolean,${field}::text,${holder}::uuid))).*
+          'start_date',${startDate}::date,'stop_date',${stopDate}::date,
+          'enabled',${enabled}::boolean,${field}::text,${holder}::uuid))).*
         FROM org_versions v WHERE v.tenant_id=${world.tenant.id} AND v.id=${old!.id}::uuid`);
       await tx.execute(sql`INSERT INTO org_hierarchy_links(tenant_id,version_id,dimension,parent_org_id,sequence)
         SELECT tenant_id,${versionId}::uuid,dimension,parent_org_id,sequence FROM org_hierarchy_links
