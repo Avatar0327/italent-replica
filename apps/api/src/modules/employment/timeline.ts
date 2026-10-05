@@ -15,7 +15,7 @@ interface TimelinePoint {
  * 操作先后键（DEC-108；PR #53 第二轮 P2-2）：申请取最近一次提交的状态事件序号（原站提交即写入版本链，W-417），
  * 直接业务取保存时的状态事件序号。正在落地的直接业务尚未写状态事件，键为空，视为最新一次操作。
  * 撤回 / 驳回后重新提交的申请按最近一次提交排序（PR #53 第三轮清单第 4 项，暂定口径）。
- * TODO(需取证：PR #53 第三轮清单第 4 项，取证窗口已登记)：原站重新提交后同日顺序取首次还是最近一次提交。
+ * TODO(需取证 Q-M0-62)：原站重新提交后同日顺序取首次还是最近一次提交。
  */
 export function operationKey(tenantId: string, businessId: SQL): SQL {
   return sql`(SELECT COALESCE(max(e.event_seq) FILTER (WHERE e.state = 'in_review'), min(e.event_seq))

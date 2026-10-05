@@ -49,7 +49,7 @@ async function stored(session: EmploymentSession, id: string) {
 }
 
 describe('AC-FWD-01/02 状态、周期与并发边界', () => {
-  // PR #53 第三轮清单第 3 项（暂定口径，待取证）：同日申请只接受操作先后排在来源之后的向后更新；
+  // PR #53 第三轮清单第 3 项（暂定口径，待取证 Q-M0-61）：同日申请只接受操作先后排在来源之后的向后更新；
   // 较早提交的同日申请落地时插在来源之前（DEC-108），不被之后的直接业务改写。
   it.each(['draft', 'in_review', 'approved', 'rejected'] as const)(
     '同日%s申请：操作在来源之后的是传播目标（保持原状态并追加payload），之前的与早于源日期的申请不变',
