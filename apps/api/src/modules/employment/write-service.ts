@@ -29,6 +29,11 @@ import {
 } from './record-store.js';
 import { validateNewEmploymentReferences } from './references.js';
 import {
+  assertRequiredTransferFields,
+  patchedSubmittedFieldCodes,
+  submittedEmploymentFields,
+} from '../transfer/required-fields.js';
+import {
   employmentTimelineNeighbors,
   insertEmploymentTimeline,
   timelinePosition,
@@ -80,6 +85,7 @@ export async function createEmploymentBusiness(
     employeeId: employee.id,
     staffId: selected?.cycle.id,
   });
+  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, normalized.fields);
   await requireScopedEmploymentObject(tx, ctx, employee.id, prepared.fields.departmentId);
   await validateNewEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate);
   const id = randomUUID();
@@ -151,7 +157,9 @@ export async function updateEmploymentBusiness(
     ctx,
     { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
     before,
+    patchedSubmittedFieldCodes(before, patch),
   );
+  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, submittedEmploymentFields(prepared));
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, prepared.fields.departmentId, business.id);
   await validateNewEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate);
   await bumpEmploymentBusiness(tx, ctx, business);
@@ -445,6 +453,8 @@ export async function materializeEmploymentRecord(
   const employType = effectiveEmployType(payload, selected);
   const fields = { ...inherited.fields, employType, jobNumber: business.employee.code };
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, fields.departmentId);
+  // DEC-161：审批通过后仍可能新增停用排期，落地前按 DEC-150 重查整个时段。
+  // 拒绝后由生效端口记失败与 HR 待办、按 DEC-112 挂起后序；不能截断任职或改期绕过。
   await validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate);
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });

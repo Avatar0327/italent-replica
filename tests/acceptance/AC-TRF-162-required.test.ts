@@ -60,7 +60,7 @@ async function fixture(db: Db, label: string) {
       WHERE tenant_id=${world.tenant.id} AND employee_id=${person.employeeId}`);
     return (Array.isArray(result) ? result : (result as { rows: { count: number }[] }).rows)[0]!.count;
   };
-  return { ...world, person, manager, target, fields, create, businessCount, currentRevision };
+  return { ...world, person, manager, original, post, target, fields, create, businessCount, currentRevision };
 }
 
 async function missing(response: Response, fields: readonly string[]) {
@@ -96,12 +96,25 @@ describe('DEC-162 / AC-TRF：场景不带出的可编辑字段保存必填，预
 
   it('职务职位调整只填职位不能把其余场景字段写空', async () => {
     const w = await fixture(database().db, 'trf162-jobpost');
+    const position = await w.json<{ id: string }>(
+      await w.request(w.hr.id, 'POST', '/api/tenant/job/positions', {
+        ifMatch: 0,
+        body: {
+          name: '合成部门内职位',
+          code: randomUUID(),
+          postId: w.post.id,
+          orgId: w.original,
+          startDate: '2020-01-01',
+        },
+      }),
+      201,
+    );
     const before = await w.businessCount();
     await missing(
       await w.create({
         transferTypeCode: 'job_post',
         formId: 'TenantBase.JobPostTransferMultiFormView',
-        fields: { positionId: w.fields.positionId, departmentId: w.target },
+        fields: { positionId: position.id },
       }),
       ['postId', 'levelId', 'gradeId', 'sequenceId'],
     );
@@ -129,8 +142,20 @@ describe('DEC-162 / AC-TRF：场景不带出的可编辑字段保存必填，预
       },
     });
     expect(configured.status, await configured.clone().text()).toBe(200);
-    const saved = await w.create({ fields: {} });
+    const saved = await w.create({ fields: {}, mode: 'application' });
     expect(saved.status, await saved.clone().text()).toBe(201);
+    const draft = (await saved.json()) as { id: string; revision: number };
+    const changedConfig = await w.request(w.hr.id, 'PUT', `${base}/transfers/forms/${formId}`, {
+      ifMatch: 1,
+      body: { name: '后改可编辑配置', group: 'transfer', fieldModes: {} },
+    });
+    expect(changedConfig.status).toBe(200);
+    const patch = await w.request(w.hr.id, 'PATCH', `${base}/businesses/${draft.id}`, {
+      ifMatch: draft.revision,
+      body: { fields: { place: '配置改变后仅修改工作地' } },
+    });
+    // 已存单按冻结字段模式校验，后来放开编辑不能把旧单的隐藏字段变成必填。
+    expect(patch.status, await patch.clone().text()).toBe(200);
   });
 
   it('PATCH 合并草稿原有显式字段，清空必填字段被拒且保持 revision', async () => {
@@ -167,11 +192,13 @@ describe('DEC-162 / AC-TRF：场景不带出的可编辑字段保存必填，预
       .select()
       .from(employmentPayloadVersions)
       .where(eq(employmentPayloadVersions.businessId, draft.id));
+    const { submittedFieldCodes: _submitted, ...oldSnapshot } = payload!.formSnapshot;
     await db.insert(employmentPayloadVersions).values({
       ...payload!,
       id: randomUUID(),
       versionNo: 2,
       previousVersionId: payload!.id,
+      formSnapshot: oldSnapshot,
       explicitFieldCodes: [],
       departmentId: null,
       positionId: null,
@@ -189,6 +216,61 @@ describe('DEC-162 / AC-TRF：场景不带出的可编辑字段保存必填，预
       excluded,
     );
     expect(await w.business(draft.id)).toMatchObject({ status: 'draft', revision: draft.revision + 1 });
+  });
+
+  it('PATCH 改职务后自动派生的新序列不能沿用旧序列的显式填写标记', async () => {
+    const w = await fixture(database().db, 'trf162-derived-sequence');
+    const job = async (kind: string, fields: object = {}) =>
+      w.json<{ id: string }>(
+        await w.request(w.hr.id, 'POST', `/api/tenant/job/${kind}`, {
+          ifMatch: 0,
+          body: { name: `合成${kind}`, code: randomUUID(), startDate: '2020-01-01', ...fields },
+        }),
+        201,
+      );
+    const firstSequence = await job('sequences');
+    const nextSequence = await job('sequences');
+    const post = await job('posts', { sequenceId: nextSequence.id });
+    const position = await job('positions', { orgId: w.target, postId: post.id });
+    const configured = await w.request(
+      w.hr.id,
+      'PUT',
+      `${base}/transfers/forms/TenantBase.JobPostTransferMultiFormView`,
+      {
+        ifMatch: 0,
+        body: {
+          name: '合成序列必填表单',
+          group: 'transfer',
+          fieldModes: { 'preset:levelId': 'hidden', 'preset:gradeId': 'hidden' },
+        },
+      },
+    );
+    expect(configured.status).toBe(200);
+    const draft = await w.json<{ id: string; revision: number }>(
+      await w.create({
+        mode: 'application',
+        transferTypeCode: 'job_post',
+        formId: 'TenantBase.JobPostTransferMultiFormView',
+        fields: { ...w.fields, postId: w.post.id, sequenceId: firstSequence.id },
+      }),
+      201,
+    );
+    await missing(
+      await w.request(w.hr.id, 'PATCH', `${base}/businesses/${draft.id}`, {
+        ifMatch: draft.revision,
+        body: { fields: { postId: post.id, positionId: position.id } },
+      }),
+      ['sequenceId'],
+    );
+    expect(await w.business(draft.id)).toMatchObject({
+      revision: draft.revision,
+      fields: { sequenceId: firstSequence.id },
+    });
+    const confirmed = await w.request(w.hr.id, 'PATCH', `${base}/businesses/${draft.id}`, {
+      ifMatch: draft.revision,
+      body: { fields: { postId: post.id, positionId: position.id, sequenceId: nextSequence.id } },
+    });
+    expect(confirmed.status, await confirmed.clone().text()).toBe(200);
   });
 
   it('预览允许未填字段；legacy standard 通用任职入口不新增场景必填要求', async () => {

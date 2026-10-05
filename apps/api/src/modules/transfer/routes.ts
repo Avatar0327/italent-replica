@@ -25,6 +25,7 @@ import {
   updateTransferSettings,
   resolveTransferForm,
   saveTransferForm,
+  type ResolvedTransferForm,
 } from './configuration.js';
 import { previewTransfer } from './preview.js';
 import { createTransfer, normalizeTransferInput, requireTransferWrite, requireDirectTransfer } from './service.js';
@@ -80,10 +81,7 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
     const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
     return c.json({
       ...((await trimEmploymentResponse(deps, ctx, preview.value)) as object),
-      form: {
-        ...form,
-        customFields: form.customFields.filter((field) => viewable === undefined || viewable.has(`custom:${field.id}`)),
-      },
+      form: visibleTransferForm(form, viewable),
       employeeRevision,
       allowDirectTransfer,
       allowedActions,
@@ -106,6 +104,18 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
     }));
   });
   registerTransferConfiguration(router, deps);
+}
+
+function visibleTransferForm(form: ResolvedTransferForm, viewable: ReadonlySet<string> | undefined) {
+  if (viewable === undefined) return form;
+  return {
+    ...form,
+    fieldModes: Object.fromEntries(
+      Object.entries(form.fieldModes).filter(([code]) => viewable.has(code.replace(/^preset:/, ''))),
+    ),
+    excludedAutofillFields: form.excludedAutofillFields.filter((code) => viewable.has(code)),
+    customFields: form.customFields.filter((field) => viewable.has(`custom:${field.id}`)),
+  };
 }
 
 function registerTransferConfiguration(router: Hono<TenantEnv>, deps: TenantRouteDeps) {

@@ -10,9 +10,30 @@ async function employeeRevision(world: Awaited<ReturnType<typeof approvalWorld>>
   return ((await response.json()) as { revision: number }).revision;
 }
 
+async function configureProcessForms(world: Awaited<ReturnType<typeof approvalWorld>>) {
+  for (const formId of ['TenantBase.JobLevelTransferMultiFormView', 'TenantBase.Customized5TransferMultiFormView']) {
+    const response = await world.request(world.hr.id, 'PUT', `${base}/forms/${formId}`, {
+      ifMatch: 0,
+      body: {
+        name: '合成流程匹配表单',
+        group: 'transfer',
+        // 流程匹配场景只调整部门；其他不带出字段按真实配置只读，独立于 DEC-162 必填验收。
+        fieldModes: Object.fromEntries(
+          ['positionId', 'directManagerId', 'dottedManagerId', 'levelId', 'gradeId'].map((field) => [
+            `preset:${field}`,
+            'readonly',
+          ]),
+        ),
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+  }
+}
+
 describe('AC-TRF-03：调动类型、原因与服务端流程绑定', () => {
   it('标准与 Customized5 入口分别匹配本类型流程，客户端不能指定 processCode', async () => {
     const world = await approvalWorld(database().db, 'transfer-process');
+    await configureProcessForms(world);
     const department = await world.org('合成调动部门');
     const person = await world.person('合成调动人员', department);
     const standard = await world.publishedProcess({ nodes: [{ key: 'review', approver: 'owner' }] });
@@ -57,6 +78,7 @@ describe('AC-TRF-03：调动类型、原因与服务端流程绑定', () => {
 
   it('无匹配流程时业务、metadata与审计整体回滚；类型/原因绑定不能跨类型伪造', async () => {
     const world = await approvalWorld(database().db, 'transfer-no-flow');
+    await configureProcessForms(world);
     const department = await world.org('合成部门');
     const person = await world.person('合成员工', department);
     const revision = await employeeRevision(world, person.employeeId);

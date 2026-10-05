@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { missingTransferRequiredFields } from '@italent/domain';
 import {
   EMPLOYMENT_API,
   TRANSFER_API,
@@ -118,6 +119,7 @@ function useTransferCommand(
   const requestInProgress = useRef(false);
   const submit = async (action: TransferAction) => {
     if (!model.preview || requestInProgress.current || unknownCommand || loadingPreview) return;
+    if (missingTransferRequiredFields(model.preview.form, model.fields).length > 0) return;
     requestInProgress.current = true;
     setBusy(true);
     setError('');

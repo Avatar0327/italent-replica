@@ -33,6 +33,7 @@ function model(allowDirectTransfer = true): TransferFormModel {
         id: 'TenantBase.JobLevelTransferMultiFormView',
         name: '职级调整多表单',
         isStandard: true,
+        excludedAutofillFields: ['levelId', 'gradeId'],
         fieldModes: {
           'preset:departmentId': 'editable',
           'preset:levelId': 'editable',

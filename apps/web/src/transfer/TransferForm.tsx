@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { missingTransferRequiredFields, requiredTransferFields } from '@italent/domain';
 import { text, presetLabels, jobReferences } from './messages.js';
 import type { Choice, FieldValue, TransferFormModel, TransferFormProps } from './types.js';
 
@@ -103,6 +104,7 @@ function SelectionFields({ model, onSelection }: TransferFormProps) {
 
 function EmploymentFields(props: TransferFormProps) {
   const form = props.model.preview!.form;
+  const required = new Set(requiredTransferFields(form));
   return (
     <fieldset disabled={props.busy}>
       <legend>{text.adjustment}</legend>
@@ -123,6 +125,7 @@ function EmploymentFields(props: TransferFormProps) {
               code={code}
               label={label}
               readonly={mode === 'readonly'}
+              required={source === 'preset' && required.has(code)}
               valueType={custom?.valueType}
             />
           );
@@ -137,13 +140,14 @@ interface PairProps extends TransferFormProps {
   code: string;
   label: string;
   readonly: boolean;
+  required: boolean;
   valueType?: string;
 }
 function FieldPair(props: PairProps) {
-  const { model, source, code, label } = props;
+  const { model, source, code, label, required } = props;
   const preview = model.preview!;
   const key = source === 'preset' ? 'fields' : 'customFields';
-  const value = Object.hasOwn(model[key], code) ? model[key][code] : preview[key][code];
+  const value = required || Object.hasOwn(model[key], code) ? model[key][code] : preview[key][code];
   const choices = source === 'preset' ? choicesFor(model, code) : undefined;
   return (
     <div className="transfer-field-pair">
@@ -157,6 +161,7 @@ function FieldPair(props: PairProps) {
       <label>
         {text.updated}
         {label}
+        {required && text.required}
         <FieldControl {...props} value={value ?? null} choices={choices} />
       </label>
     </div>
@@ -164,7 +169,7 @@ function FieldPair(props: PairProps) {
 }
 
 function FieldControl(props: PairProps & { value: FieldValue; choices?: readonly Choice[] }) {
-  const { code, source, value, readonly, onField, valueType, choices } = props;
+  const { code, source, value, readonly, required, onField, valueType, choices } = props;
   const onChange = (next: FieldValue) => onField?.(source, code, next);
   const boolean = valueType === 'boolean' || code === 'isDepartmentHead' || code === 'isKeyPerson';
   if (!readonly && choices) return <ReferenceControl {...props} choices={choices} />;
@@ -172,6 +177,7 @@ function FieldControl(props: PairProps & { value: FieldValue; choices?: readonly
     return (
       <select
         name={code}
+        required={required}
         value={value == null ? '' : String(value)}
         onChange={(event) => onChange(event.target.value === '' ? null : event.target.value === 'true')}
       >
@@ -184,6 +190,7 @@ function FieldControl(props: PairProps & { value: FieldValue; choices?: readonly
   return (
     <input
       name={code}
+      required={required}
       readOnly={readonly}
       aria-readonly={readonly || undefined}
       type={valueType === 'date' ? 'date' : numeric ? 'number' : 'text'}
@@ -197,7 +204,7 @@ function FieldControl(props: PairProps & { value: FieldValue; choices?: readonly
 }
 
 function ReferenceControl(props: PairProps & { value: FieldValue; choices: readonly Choice[] }) {
-  const { code, source, value, choices, onField, onReferenceQuery, label } = props;
+  const { code, source, value, choices, onField, onReferenceQuery, label, required } = props;
   const [name, setName] = useState('');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -215,6 +222,7 @@ function ReferenceControl(props: PairProps & { value: FieldValue; choices: reado
     <div className="transfer-reference">
       <select
         name={code}
+        required={required}
         aria-label={`${text.updated}${label}`}
         value={value == null ? '' : String(value)}
         disabled={loading}
@@ -280,27 +288,21 @@ function TransferActions({ model, onAction, busy, actionsDisabled }: TransferFor
   const preview = model.preview;
   const allowed = preview?.allowedActions;
   const direct = preview?.allowDirectTransfer;
+  const blocked =
+    busy || actionsDisabled || !preview || missingTransferRequiredFields(preview.form, model.fields).length > 0;
   return (
     <div className="transfer-actions">
-      <button
-        type="button"
-        disabled={busy || actionsDisabled || !preview || allowed?.application !== true}
-        onClick={() => onAction?.('submit')}
-      >
+      <button type="button" disabled={blocked || allowed?.application !== true} onClick={() => onAction?.('submit')}>
         {text.submit}
       </button>
-      <button
-        type="button"
-        disabled={busy || actionsDisabled || !preview || allowed?.application !== true}
-        onClick={() => onAction?.('draft')}
-      >
+      <button type="button" disabled={blocked || allowed?.application !== true} onClick={() => onAction?.('draft')}>
         {text.draft}
       </button>
       {direct && allowed?.directList === true ? (
         <button
           type="button"
           data-button-code="Employment.Tranfer"
-          disabled={busy || actionsDisabled || !preview}
+          disabled={blocked}
           onClick={() => onAction?.('direct')}
         >
           {text.direct}
@@ -310,7 +312,7 @@ function TransferActions({ model, onAction, busy, actionsDisabled }: TransferFor
         <button
           type="button"
           data-button-code="EmploymentRecord.LineOp.Transfer"
-          disabled={busy || actionsDisabled || !preview}
+          disabled={blocked}
           onClick={() => onAction?.('direct')}
         >
           {text.directRow}

@@ -42,6 +42,24 @@ async function world(db: Db) {
     });
   const inside = await org('生命周期范围内部门');
   const outside = await org('生命周期范围外部门');
+  const configured = await setup.request(
+    'PUT',
+    '/api/tenant/employment/transfers/forms/TenantBase.CrossDepartmentTransferMultiFormView',
+    {
+      ...w.asAdmin,
+      ifMatch: 0,
+      body: {
+        name: '合成生命周期部门调动',
+        group: 'transfer',
+        fieldModes: {
+          'preset:positionId': 'readonly',
+          'preset:directManagerId': 'readonly',
+          'preset:dottedManagerId': 'readonly',
+        },
+      },
+    },
+  );
+  expect(configured.status, await configured.clone().text()).toBe(200);
   const employee = await create('employment/employees', { name: '合成交错员工', code: `TRF_${randomUUID()}` });
   const hire = await create(
     `employment/employees/${employee.id}/businesses`,

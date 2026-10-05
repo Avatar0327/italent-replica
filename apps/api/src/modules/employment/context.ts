@@ -21,6 +21,7 @@ import {
 } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { authorizeEmploymentResult } from '../permission/employment-replay.js';
+import { trimEmploymentManagerReferences } from '../transfer/response-disclosure.js';
 export type { EmploymentContext } from './types.js';
 export { pageQuery, revision, uuidParam } from '../job/context.js';
 
@@ -253,7 +254,7 @@ export async function trimEmploymentResponse(
   };
   // Flat employee/configuration DTOs use the shared helper; nested employment DTOs require field-level traversal.
   return objectCode === EMPLOYMENT_OBJECT
-    ? trim(value)
+    ? trimEmploymentManagerReferences(deps, ctx, trim(value))
     : trimModuleResponse(deps, ctx, objectCode, value as Record<string, unknown>);
 }
 

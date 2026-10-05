@@ -19,6 +19,7 @@ export interface TransferPreview {
     readonly id: string;
     readonly name: string;
     readonly isStandard: boolean;
+    readonly excludedAutofillFields: readonly string[];
     readonly fieldModes: Readonly<Record<string, FieldMode>>;
     readonly customFields: readonly { id: string; name: string; valueType: string }[];
   };

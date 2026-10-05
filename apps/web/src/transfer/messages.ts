@@ -44,6 +44,7 @@ export const text = {
   scheduled: '直接调动已保存，将按调动日期生效。',
   requestReference: '本次操作编号',
   readonly: '只读',
+  required: '（必填）',
   internal: '内部员工',
   intern: '实习生',
   external: '外部人员',

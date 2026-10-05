@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@italent/domain": "workspace:*",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
