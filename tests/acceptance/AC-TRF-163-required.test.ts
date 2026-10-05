@@ -98,6 +98,19 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
     });
   });
 
+  it('部门负责人自动带出的非空经理不记为留空字段', async () => {
+    const db = database().db;
+    const w = await fixture(db, 'trf-auto-nonempty');
+    const saved = await w.json<{ id: string }>(await w.create({ fields: { departmentId: w.target } }), 201);
+    const result = await db.execute(sql`SELECT payload FROM employment_outbox
+      WHERE tenant_id=${w.tenant.id} AND business_id=${saved.id}::uuid AND event_type='employment.record.create'`);
+    const rows = Array.isArray(result)
+      ? result
+      : (result as { rows: { payload: { meta: { clearedFieldCodes: string[] } } }[] }).rows;
+    expect(rows[0]!.payload.meta.clearedFieldCodes).not.toContain('preset:directManagerId');
+    expect(rows[0]!.payload.meta.clearedFieldCodes).toContain('preset:positionId');
+  });
+
   it('职务职位调整只填职位，原部门带出，其余场景字段存空', async () => {
     const w = await fixture(database().db, 'trf163-jobpost');
     const position = await w.json<{ id: string }>(
@@ -196,6 +209,22 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
     });
     // 已存单按冻结字段模式校验，后来放开编辑不能把旧单的隐藏字段变成必填。
     expect(patch.status, await patch.clone().text()).toBe(200);
+  });
+
+  it('隐藏部门仍继承非空原部门时，预览不泄漏值，也不误报必填项不可用', async () => {
+    const w = await fixture(database().db, 'trf-required-hidden-preview');
+    const configured = await w.request(w.hr.id, 'PUT', `${base}/transfers/forms/${formId}`, {
+      ifMatch: 0, body: { name: '合成隐藏部门', group: 'transfer', fieldModes: { 'preset:departmentId': 'hidden' } },
+    });
+    expect(configured.status).toBe(200);
+    const response = await w.request(w.hr.id, 'POST', `${base}/transfers/employees/${w.person.employeeId}/preview`, {
+      body: { initiator: 'hr', transferTypeCode: 'cross_department', formId,
+        mode: 'application', effectiveDate: '2026-10-01', fields: {} },
+    });
+    expect(response.status).toBe(200);
+    const preview = await response.json() as { fields: object; requiredFieldsUnavailable: boolean };
+    expect(preview.fields).not.toHaveProperty('departmentId');
+    expect(preview.requiredFieldsUnavailable).toBe(false);
   });
 
   it('PATCH 保留部门，允许清空非必填场景字段；清空部门拒绝', async () => {
