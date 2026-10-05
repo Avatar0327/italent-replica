@@ -72,6 +72,7 @@ export {
   ledgerRecord,
   ledgerReplay,
   phaseKey,
+  priorImport,
 } from './tenant-restore.js';
 export {
   AUTHORIZATION_TABLES,

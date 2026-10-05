@@ -23,6 +23,7 @@ import {
   phaseKey,
   platformAuditIn,
   type PlatformCommandMeta,
+  priorImport,
   sql,
   type TenantBackup,
   type Tx,
@@ -106,7 +107,7 @@ export async function restoreTenant(
   const done = await findLedger<RestoreReport>(target, phaseKey(meta, 'verify'), request);
   if (done) return done;
   const startedAt = clock().toISOString();
-  const imported = await importTenantBackup(target, backup, meta);
+  const imported = await importOrReuse(target, backup, meta);
   const attachments = await verifyAttachments(backup.manifest.attachments, input.attachments);
   const live = await captureLive(input.live, tenantId);
   return target.transaction(async (tx) => {
@@ -147,6 +148,21 @@ export async function restoreTenant(
     await ledgerRecord(tx, phaseKey(meta, 'verify'), request, report);
     return report;
   });
+}
+
+/**
+ * 导入；隔离库已有同一份备份的导入且租户仍在恢复隔离中（上次校验未通过）时沿用那次导入，以新命令 ID 重新校验
+ * （P2-N4）。成功的命令仍按台账重放；已开放或不是同一份备份的照常拒绝（TARGET_NOT_EMPTY）。
+ */
+async function importOrReuse(target: Db, backup: TenantBackup, meta: PlatformCommandMeta) {
+  try {
+    return await importTenantBackup(target, backup, meta);
+  } catch (error) {
+    if (!(error instanceof BackupIntegrityError) || error.reason !== 'TARGET_NOT_EMPTY') throw error;
+    const prior = await priorImport(target, backup);
+    if (!prior) throw error;
+    return prior;
+  }
 }
 
 /** 授权对账（镜像现网授权子图）+ 审批对账；调用方事务内执行，返回仍须人工处理的问题。 */
@@ -296,7 +312,8 @@ async function takeOverUnavailable(
           };
           await designateSuccessor(sp, ctx, { fromUserId: userId, toUserId: successor });
         }
-        await takeOverOnDeactivation(sp, deps, revocation);
+        // 恢复期间只改派待办、不结算（合席会推进流转甚至批准业务），需要结算的列入 problems（P2-N2）
+        await takeOverOnDeactivation(sp, deps, revocation, { settle: false });
       })
       .then(
         () => null,

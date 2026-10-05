@@ -69,10 +69,12 @@ export async function provisionEmployeeUser(
     .where(eq(tenantMemberships.userId, account.userId))
     .for('update');
   // DEC-158：外部用户以同一登录邮箱建档 / 入职时自动转为内部员工并绑定档案；成员关系、授权、管理员身份原样保留。
-  // 这是外部用户转内部员工的唯一途径（不提供手工改类型入口）。
+  // 这是外部用户转内部员工的唯一途径（不提供手工改类型入口）。转换只改用户类型与档案绑定，成员状态保持原样——
+  // 已停用的仍停用，重新启用只能经有用户管理权限的入口（PR #60 P2-N1）。
   const internal = { userType: 'internal' as const, businessIdentity: null, updatedAt: write.now };
   const before = membership ? memberSnapshot(membership) : null;
   if (!membership) await insertMembership(tx, write, account.userId, internal);
+  else if (membership.userType === 'external') await updateMembership(tx, membership, internal);
   else await updateMembership(tx, membership, { ...internal, status: 'active' });
   try {
     await tx.insert(permissionUserPersonLinks).values({

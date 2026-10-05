@@ -33,9 +33,20 @@ import type { Tx } from './tenant-context.js';
 
 const INSERT_BATCH = 500;
 
-/** 恢复各阶段在隔离库命令台账中的键：同一命令 ID 的导入、校验、开放互不覆盖。 */
+const COMMAND_ID = /^[A-Za-z0-9:_-]{1,100}$/;
+
+/** 命令 ID 与平台命令同一规则（1～100 位字母数字与 : _ -），不合法直接拒绝，绝不截断（PR #60 P2-N5）。 */
+export function assertCommandId(meta: PlatformCommandMeta): void {
+  if (!COMMAND_ID.test(meta.commandId)) throw new TypeError('恢复命令必须携带合法的 commandId（1～100 位）');
+}
+
+/**
+ * 恢复各阶段在隔离库命令台账中的键：阶段名 + 命令 ID 的 SHA-256，定长、不截断，同一命令 ID 的导入、校验、
+ * 开放互不覆盖（PR #60 P2-N5：此前整体截断到 100 位，长命令 ID 会丢掉阶段后缀）。
+ */
 export function phaseKey(meta: PlatformCommandMeta, phase: 'import' | 'verify' | 'open'): string {
-  return `${meta.commandId}:${phase}`.slice(0, 100);
+  assertCommandId(meta);
+  return `restore-${phase}:${createHash('sha256').update(meta.commandId).digest('hex')}`;
 }
 
 const hashOf = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -192,6 +203,8 @@ export async function importTenantBackup(
         dataAsOf: backup.manifest.takenAt,
         checksum: backup.manifest.checksum,
         unknownEvents,
+        // 导入报告随审计保存：校验失败后以新命令重新校验时据此沿用这次导入（不重复导入，P2-N4）
+        report,
       },
       { actorInTarget: false },
     );
@@ -305,4 +318,25 @@ export async function isolationIn(
     throw error;
   }
   throw new Error('隔离校验未产出结果');
+}
+
+/**
+ * 已导入、仍处于恢复隔离中的同一份备份（按校验和认定）的导入报告；没有则 undefined。
+ * 供“校验失败 → 修复（如补齐附件）→ 以新命令 ID 重新校验”使用：不重复导入，也不放宽已开放租户（P2-N4）。
+ */
+export async function priorImport(db: Db, backup: TenantBackup): Promise<ImportReport | undefined> {
+  const tenantId = backup.manifest.tenantId;
+  return db.transaction(async (tx) => {
+    const [tenant] = rowsOf<{ status: string }>(
+      await tx.execute(sql`SELECT status FROM tenants WHERE id = ${tenantId}::uuid`),
+    );
+    if (tenant?.status !== 'restoring') return undefined;
+    const [row] = rowsOf<{ report: ImportReport | null }>(
+      await tx.execute(sql`SELECT after->'report' AS report FROM platform_audit_events
+        WHERE subject_tenant_id = ${tenantId}::uuid AND action = 'tenant.restore.import'
+          AND after->>'checksum' = ${backup.manifest.checksum}
+        ORDER BY occurred_at DESC, id DESC LIMIT 1`),
+    );
+    return row?.report ?? undefined;
+  });
 }

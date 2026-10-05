@@ -167,7 +167,7 @@ export async function mirrorAuthorization(tx: Tx, snapshot: AuthorizationSnapsho
   for (const table of names) await tx.execute(sql`ALTER TABLE ${ident(table)} DISABLE TRIGGER USER`);
 
   const changed: Record<string, number> = {};
-  const plans = new Map<string, { pk: string[]; live: Map<string, BackupRow>; restored: Map<string, BackupRow> }>();
+  const plans: Plans = new Map();
   for (const table of names) {
     const pk = await primaryKey(tx, table);
     const index = (rows: BackupRow[]) => new Map(rows.map((r) => [keyOf(r, pk), r]));
@@ -177,17 +177,57 @@ export async function mirrorAuthorization(tx: Tx, snapshot: AuthorizationSnapsho
       restored: index(await readTable(tx, table, snapshot.tenantId)),
     });
   }
-  // 先删（子表在前），再改，最后补（父表在前，自引用多轮）
+  // 删（子表在前）、改、补（父表在前）一起反复尝试，直到一轮里没有任何一步还能成功（PR #60 P2-N3）：
+  // 改可能要等新补的父行（如许可名额指向重授后的新授权），补可能要等旧行先改掉（如同一身份的有效授权唯一），
+  // 固定先后都会误判。最后仍做不到的：删 / 改列入 problems，补算作跳过（只会更窄）。
+  const ops = planOperations(names, plans);
+  let pending = ops;
+  for (let progress = true; progress && pending.length > 0;) {
+    progress = false;
+    const left: MirrorOperation[] = [];
+    for (const op of pending) {
+      if (await attempt(tx, (sp) => sp.execute(op.statement))) left.push(op);
+      else {
+        progress = true;
+        changed[op.table] = (changed[op.table] ?? 0) + 1;
+      }
+    }
+    pending = left;
+  }
+  let skipped = 0;
+  for (const op of pending) {
+    if (op.kind === 'insert') skipped++;
+    else
+      problems.push({
+        reason: op.kind === 'delete' ? 'DELETE_BLOCKED' : 'UPDATE_BLOCKED',
+        table: op.table,
+        key: op.key,
+      });
+  }
+  for (const table of names) await tx.execute(sql`ALTER TABLE ${ident(table)} ENABLE TRIGGER USER`);
+  return { changed, skipped, problems };
+}
+
+interface MirrorOperation {
+  readonly kind: 'delete' | 'update' | 'insert';
+  readonly table: string;
+  readonly key: string;
+  readonly statement: ReturnType<typeof sql>;
+}
+
+type Plans = Map<string, { pk: string[]; live: Map<string, BackupRow>; restored: Map<string, BackupRow> }>;
+
+/** 现网与隔离库逐行比对出的待办：删按子表在前、补按父表在前排列，减少重试轮数。 */
+function planOperations(names: readonly string[], plans: Plans): MirrorOperation[] {
+  const ops: MirrorOperation[] = [];
+  const record = (table: string, row: BackupRow) =>
+    sql`jsonb_populate_record(NULL::${ident(table)}, ${JSON.stringify(row)}::jsonb)`;
   for (const table of [...names].reverse()) {
     const { pk, live, restored } = plans.get(table)!;
     for (const [key, row] of restored) {
       if (live.has(key)) continue;
-      const error = await attempt(tx, (sp) =>
-        sp.execute(sql`DELETE FROM ${ident(table)} x USING jsonb_populate_record(NULL::${ident(table)},
-          ${JSON.stringify(row)}::jsonb) r WHERE ${match(pk)}`),
-      );
-      if (error) problems.push({ reason: 'DELETE_BLOCKED', table, key });
-      else changed[table] = (changed[table] ?? 0) + 1;
+      const statement = sql`DELETE FROM ${ident(table)} x USING ${record(table, row)} r WHERE ${match(pk)}`;
+      ops.push({ kind: 'delete', table, key, statement });
     }
   }
   for (const table of names) {
@@ -195,43 +235,29 @@ export async function mirrorAuthorization(tx: Tx, snapshot: AuthorizationSnapsho
     for (const [key, row] of live) {
       const current = restored.get(key);
       if (!current || canonical(current) === canonical(row)) continue;
-      const columns = Object.keys(row).filter((c) => !pk.includes(c));
       const set = sql.join(
-        columns.map((c) => sql`${ident(c)} = r.${ident(c)}`),
+        Object.keys(row)
+          .filter((c) => !pk.includes(c))
+          .map((c) => sql`${ident(c)} = r.${ident(c)}`),
         sql`, `,
       );
-      const error = await attempt(tx, (sp) =>
-        sp.execute(sql`UPDATE ${ident(table)} x SET ${set} FROM jsonb_populate_record(NULL::${ident(table)},
-          ${JSON.stringify(row)}::jsonb) r WHERE ${match(pk)}`),
-      );
-      if (error) problems.push({ reason: 'UPDATE_BLOCKED', table, key });
-      else changed[table] = (changed[table] ?? 0) + 1;
+      const statement = sql`UPDATE ${ident(table)} x SET ${set} FROM ${record(table, row)} r WHERE ${match(pk)}`;
+      ops.push({ kind: 'update', table, key, statement });
     }
   }
-  let skipped = 0;
   for (const table of names) {
     const { live, restored } = plans.get(table)!;
-    let missing = [...live].filter(([key]) => !restored.has(key)).map(([, row]) => row);
-    for (let progress = true; progress && missing.length > 0;) {
-      progress = false;
-      const left: BackupRow[] = [];
-      for (const row of missing) {
-        const error = await attempt(tx, (sp) =>
-          sp.execute(sql`INSERT INTO ${ident(table)} SELECT * FROM jsonb_populate_record(NULL::${ident(table)},
-            ${JSON.stringify(row)}::jsonb)`),
-        );
-        if (error) left.push(row);
-        else {
-          progress = true;
-          changed[table] = (changed[table] ?? 0) + 1;
-        }
-      }
-      missing = left;
+    for (const [key, row] of live) {
+      if (restored.has(key)) continue;
+      ops.push({
+        kind: 'insert',
+        table,
+        key,
+        statement: sql`INSERT INTO ${ident(table)} SELECT * FROM ${record(table, row)}`,
+      });
     }
-    skipped += missing.length;
   }
-  for (const table of names) await tx.execute(sql`ALTER TABLE ${ident(table)} ENABLE TRIGGER USER`);
-  return { changed, skipped, problems };
+  return ops;
 }
 
 /** 全局账号：现网的资料与状态覆盖隔离库（停用的不复活）；授权子图新引用的账号补入。 */
