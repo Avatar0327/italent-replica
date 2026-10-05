@@ -379,3 +379,42 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
     ).toHaveLength(1);
   });
 });
+
+it('F-017 编辑已生效任职不能绕过严格编制，拒绝后任职不变', async () => {
+  const w = await fixture('f017-edit-capacity', 0);
+  const person = await w.hired();
+  const response = await w.session.request('PATCH', `/records/${person.hire.id}`, {
+    ifMatch: person.hire.revision,
+    body: { fields: { departmentId: w.to.id } },
+  });
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHMENT_EXCEEDED' } } });
+  expect((await w.business(person.hire.id)).fields.departmentId).toBe(w.from.id);
+});
+
+it('F-017 本次只占编到实际调出日，与后来调入的人不重叠即可保存', async () => {
+  const w = await fixture('f017-interval', 1);
+  const first = await w.hired('晚调入');
+  const second = await w.hired('早调入早调出');
+  await w.session.business(
+    first.employee.id,
+    { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-20', fields: { departmentId: w.to.id } },
+    first.hire.employeeRevision,
+  );
+  const exit = await w.session.org('不匹配的后续部门', { establishedOn: '2026-01-01' });
+  const later = await w.session.business(
+    second.employee.id,
+    {
+      kind: 'transfer',
+      mode: 'direct',
+      effectiveDate: '2026-10-10',
+      fields: { departmentId: exit.id, positionId: null },
+    },
+    second.hire.employeeRevision,
+  );
+  const response = await w.session.request('POST', `/employees/${second.employee.id}/businesses`, {
+    ifMatch: later.employeeRevision,
+    body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { departmentId: w.to.id } },
+  });
+  expect(response.status, await response.clone().text()).toBe(201);
+});

@@ -1,6 +1,6 @@
 /** AC-TRF-01/02/03/19/20/24/25：真实授权器校验发起方、源员工范围和目标部门范围。 */
 import { randomUUID } from 'node:crypto';
-import { permissionUserPersonLinks, withTenant } from '@italent/db';
+import { permissionUserPersonLinks, sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -171,6 +171,62 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
   let world: Awaited<ReturnType<typeof fixture>>;
   beforeAll(async () => {
     world = await fixture();
+  });
+
+  async function persistedCounts() {
+    return withTenant(database().db, world.tenant.id, async (tx) => {
+      const result = await tx.execute(sql`SELECT
+        (SELECT count(*) FROM employment_business_objects WHERE tenant_id=${world.tenant.id}) AS businesses,
+        (SELECT count(*) FROM employment_records WHERE tenant_id=${world.tenant.id}) AS records,
+        (SELECT count(*) FROM org_versions WHERE tenant_id=${world.tenant.id}) AS organizations,
+        (SELECT count(*) FROM audit_events WHERE tenant_id=${world.tenant.id}) AS audits`);
+      return Array.isArray(result) ? result : result.rows;
+    });
+  }
+
+  it('F-017 P1：大小写本人 ID 均拒绝 HR 调动，任职、组织和审计不产生副作用', async () => {
+    const hr = await world.actor('f017-self-hr');
+    const self = await world.person(world.inside.id, hr);
+    const before = await persistedCounts();
+    for (const id of [self.id, self.id.toUpperCase()]) {
+      const response = await world.transfer(
+        hr,
+        { ...self, id },
+        {
+          mode: 'direct',
+          fields: { departmentId: world.inside.id, isStoreManager: true },
+        },
+      );
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect(await persistedCounts()).toEqual(before);
+    }
+  });
+
+  it('F-017 P1：员工自助接受大写的合法本人 ID', async () => {
+    const actor = await world.actor('f017-self-personal', { role: 'Transfer.Self' });
+    const self = await world.person(world.inside.id, actor);
+    const response = await world.transfer(
+      actor,
+      { ...self, id: self.id.toUpperCase() },
+      {
+        initiator: 'employee',
+        fields: { departmentId: world.inside.id },
+      },
+    );
+    expect(response.status, await response.clone().text()).toBe(201);
+  });
+
+  it('F-017 P1：目标部门例外不能授予范围外组织角色写权，整单回滚', async () => {
+    const hr = await world.actor('f017-linked-org');
+    const employee = await world.person();
+    const before = await persistedCounts();
+    const response = await world.transfer(hr, employee, {
+      mode: 'direct',
+      fields: { departmentId: world.outside.id, isDepartmentHead: true, isStoreManager: true },
+    });
+    expect(response.status, await response.clone().text()).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: 'LINKED_RECORD_OUT_OF_SCOPE' } });
+    expect(await persistedCounts()).toEqual(before);
   });
 
   it('AC-TRF-03/19/24：标准表单默认放开目标部门，预览及保存仍只允许范围内员工', async () => {
