@@ -230,7 +230,7 @@ describe('AC-PRM-33 没有人员档案的账号登记为外部用户', () => {
     expect(again.status).toBe(409);
   });
 
-  it('外部用户不出现在人员档案与任职列表中；也不能再为其建档', async () => {
+  it('外部用户不出现在人员档案与任职列表中；以同一登录邮箱建档时自动转内部员工（DEC-158）', async () => {
     const email = syntheticEmail('vendor');
     const saved = await createUserCall({
       email,
@@ -247,8 +247,11 @@ describe('AC-PRM-33 没有人员档案的账号登记为外部用户', () => {
     const employees = await hr.api.request('GET', '/api/tenant/employment/employees?name=外部供应商', world.asAdmin);
     expect(((await employees.json()) as { items: unknown[] }).items).toEqual([]);
 
+    // DEC-158（取代此前“外部用户不能建档”的口径）：建档即自动转为内部员工并绑定档案，不另开手工改类型入口
     const profile = await hr.createEmployee({ name: '外部供应商', loginEmail: email });
-    expect(await reasonOf(profile)).toMatchObject({ status: 409, reason: 'EXTERNAL_USER_HAS_NO_PROFILE' });
+    expect(profile.status, await profile.clone().text()).toBe(201);
+    expect((await listUsers(world, 'internal')).map((u) => u.email)).toContain(email);
+    expect((await listUsers(world, 'external')).map((u) => u.email)).not.toContain(email);
   });
 
   it('修改外部用户的业务身份须带 revision；内部员工的用户类型不能改', async () => {

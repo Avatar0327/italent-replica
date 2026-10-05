@@ -165,9 +165,14 @@ describe('AC-TRF-33 DEC-108 同日申请与直接业务混合的先后', () => {
   });
 
   it('审批通过时生效日已到（立即生效）也按提交先后插入：先提交 A、后保存 B、再审批 A，当前任职仍为 B', async () => {
-    const { w, employee, hire, direct } = await scene('trf33-immediate-approval');
+    const { w, employee, hire } = await scene('trf33-immediate-approval');
     const submitted = await w.apply(employee.id, '2026-10-05', { place: 'A 地点' });
-    const b = await direct({ place: 'B 地点' });
+    // DEC-154 禁止审批中的调动后再直接调动；其他直接业务仍须遵守 DEC-108 的统一插入顺序。
+    const b = await w.session.business(
+      employee.id,
+      { kind: 'regularization', mode: 'direct', effectiveDate: '2026-10-05', fields: { place: 'B 地点' } },
+      (await w.session.getEmployee(employee.id)).revision,
+    );
     const a = await w.approve(submitted, '2026-10-05T02:00:00Z');
     expect(a).toMatchObject({ status: 'effective', record: { previousRecordId: hire.record!.id } });
     const records = await w.session.records(employee.id, '2026-10-05');

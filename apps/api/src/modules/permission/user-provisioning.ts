@@ -32,7 +32,8 @@ const conflict = (reason: string, message: string) => new AppError('CONFLICT', m
 
 /**
  * 确保该人员有绑定的租户用户：已绑定 → 不改绑（给了不同的登录邮箱即 409），成员关系已被移出的在（重新）入职时恢复；
- * 未绑定且给了登录邮箱 → 找到或新建全局账号、建 / 恢复成员关系（用户类型 = 内部员工）并绑定；
+ * 未绑定且给了登录邮箱 → 找到或新建全局账号、建 / 恢复成员关系（用户类型 = 内部员工；原为外部用户的自动转换，
+ * DEC-158）并绑定；
  * 未绑定也没给登录邮箱 → 建档时暂不建用户，入职时拒绝（DEC-140）。
  * @returns 绑定的用户；建档时未绑定且没有登录邮箱为 null
  */
@@ -67,12 +68,13 @@ export async function provisionEmployeeUser(
     .from(tenantMemberships)
     .where(eq(tenantMemberships.userId, account.userId))
     .for('update');
-  if (membership?.userType === 'external') {
-    throw conflict('EXTERNAL_USER_HAS_NO_PROFILE', '该登录邮箱的账号在本租户是外部用户，不能建立人员档案');
-  }
+  // DEC-158：外部用户以同一登录邮箱建档 / 入职时自动转为内部员工并绑定档案；成员关系、授权、管理员身份原样保留。
+  // 这是外部用户转内部员工的唯一途径（不提供手工改类型入口）。转换只改用户类型与档案绑定，成员状态保持原样——
+  // 已停用的仍停用，重新启用只能经有用户管理权限的入口（PR #60 P2-N1）。
   const internal = { userType: 'internal' as const, businessIdentity: null, updatedAt: write.now };
   const before = membership ? memberSnapshot(membership) : null;
   if (!membership) await insertMembership(tx, write, account.userId, internal);
+  else if (membership.userType === 'external') await updateMembership(tx, membership, internal);
   else await updateMembership(tx, membership, { ...internal, status: 'active' });
   try {
     await tx.insert(permissionUserPersonLinks).values({

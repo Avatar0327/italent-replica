@@ -3,7 +3,7 @@ import { sql, type Tx } from '@italent/db';
 import type { Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { EmploymentContext } from '../employment/types.js';
-import { authorizeInTransaction, scopeAllows } from './module-access.js';
+import { authorizeInTransaction, scopeAllowsInTransaction } from './module-access.js';
 import { requireObjectWrite } from './object-write.js';
 
 const OBJECT = 'TenantBase.EmploymentRecord';
@@ -42,23 +42,24 @@ export async function authorizeEmploymentResult(
   const snapshots = responseSnapshots(body);
   const ids = [...new Set([...events.map((event) => event.id), ...snapshots.map((snapshot) => snapshot.id)])];
   if (!ids.length) return;
+  const transferId = await transferException(tx, ctx, commandId);
   const targets = await currentTargets(tx, ctx.tenantId, ids);
   const byId = new Map(targets.map((target) => [target.id, target]));
   for (const id of ids) {
     const target = byId.get(id);
     if (!target) throw new AppError('NOT_FOUND', '任职数据不存在');
-    assertScope(ctx, target, target.departmentId);
+    await assertScope(tx, ctx, target, target.departmentId, transferId);
   }
   for (const event of events) {
     const target = byId.get(event.id)!;
     if (event.after && Object.hasOwn(event.after, 'departmentId'))
-      assertScope(ctx, target, event.after.departmentId as string | null);
-    if (event.hasSnapshot) assertScope(ctx, target, event.snapshotDepartment);
+      await assertScope(tx, ctx, target, event.after.departmentId as string | null, transferId);
+    if (event.hasSnapshot) await assertScope(tx, ctx, target, event.snapshotDepartment, transferId);
   }
   for (const snapshot of snapshots) {
     const target = byId.get(snapshot.id)!;
     if (target.employeeId !== snapshot.employeeId) throw new AppError('NOT_FOUND', '任职数据不存在');
-    assertScope(ctx, target, snapshot.departmentId);
+    await assertScope(tx, ctx, target, snapshot.departmentId, transferId);
   }
   const fields = [
     ...new Set(
@@ -75,16 +76,43 @@ export async function authorizeEmploymentResult(
     });
 }
 
-function assertScope(ctx: EmploymentContext, target: Target, departmentId: string | null) {
+async function assertScope(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: Target,
+  departmentId: string | null,
+  transferId: string | undefined,
+) {
+  if (
+    transferId === target.id &&
+    ctx.transferTarget?.employeeId === target.employeeId &&
+    ctx.transferTarget.departmentId === departmentId
+  )
+    return;
   if (
     ctx.scope &&
-    !scopeAllows(ctx.scope, {
+    !(await scopeAllowsInTransaction(tx, ctx.scope, {
       personId: target.employeeId,
       orgId: departmentId,
       creatorId: target.creatorId,
-    })
+    }))
   )
     throw new AppError('NOT_FOUND', '任职数据不存在');
+}
+
+async function transferException(tx: Tx, ctx: EmploymentContext, commandId: string): Promise<string | undefined> {
+  if (!ctx.transferTarget) return undefined;
+  if (ctx.transferTarget.businessId) return ctx.transferTarget.businessId;
+  // 新建例外只能绑定本命令新建且有可信调动元数据的业务，不能覆盖本命令联动的后续记录。
+  const [created] = rows<{ id: string }>(
+    await tx.execute(sql`
+    SELECT r.business_id AS id FROM transfer_requests r JOIN audit_events a
+      ON a.tenant_id=r.tenant_id AND a.object_id=r.business_id::text
+    WHERE r.tenant_id=${ctx.tenantId} AND r.employee_id=${ctx.transferTarget.employeeId}::uuid
+      AND a.command_id=${commandId} AND a.action='employment.business.create' LIMIT 1
+  `),
+  );
+  return created?.id;
 }
 
 async function footprints(tx: Tx, tenantId: string, commandId: string) {

@@ -264,15 +264,43 @@
     {
       "idx": 37,
       "version": "7",
-      "when": 1791178929307,
-      "tag": "0037_workable_mandarin",
+      "when": 1791178200334,
+      "tag": "0037_platform_ops",
       "breakpoints": true
     },
     {
       "idx": 38,
       "version": "7",
-      "when": 1791178930479,
-      "tag": "0038_contract_isolation",
+      "when": 1791178202077,
+      "tag": "0038_platform_ops_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791187045359,
+      "tag": "0039_transfer_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791187058355,
+      "tag": "0040_transfer_isolation",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1791189634245,
+      "tag": "0041_workable_mandarin",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791189642116,
+      "tag": "0042_contract_isolation",
       "breakpoints": true
     }
   ]

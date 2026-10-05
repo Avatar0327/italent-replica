@@ -1,0 +1,196 @@
+:root {
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  color: #182a41;
+  background: #f3f5f8;
+  font-synthesis: none;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+select {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+  border: 1px solid #bac8d8;
+  border-radius: 6px;
+  padding: 9px 16px;
+  background: #fff;
+  color: #173c66;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+button:hover:enabled {
+  background: #edf4fb;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #2574c5;
+  outline-offset: 2px;
+}
+input,
+select {
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 1px solid #bac8d8;
+  border-radius: 5px;
+  background: white;
+  color: #182a41;
+  min-height: 40px;
+  width: 100%;
+}
+input[readonly] {
+  background: #f3f5f8;
+  color: #65768b;
+}
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+.transfer-page {
+  margin: 0 auto;
+  max-width: 1240px;
+  padding: 28px 36px 64px;
+}
+.transfer-header {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  border-bottom: 1px solid #d9e0e8;
+  margin-bottom: 24px;
+}
+.transfer-brand {
+  color: #1966b3;
+  font-size: 24px;
+  font-weight: 750;
+}
+h1 {
+  font-size: 23px;
+  font-weight: 600;
+}
+.transfer-content,
+.transfer-tenant {
+  background: white;
+  padding: 28px;
+  border: 1px solid #dce3ec;
+  border-radius: 10px;
+}
+.transfer-tenant {
+  max-width: 430px;
+}
+.transfer-tenant p,
+.transfer-before {
+  color: #65768b;
+  font-size: 14px;
+}
+.transfer-tenant-change {
+  margin-bottom: 16px;
+}
+.transfer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+fieldset {
+  border: 0;
+  border-bottom: 1px solid #e3e8ef;
+  padding: 20px 0 28px;
+  margin: 0 0 20px;
+  min-width: 0;
+}
+legend {
+  padding: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.transfer-field-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.transfer-before {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.transfer-before output {
+  padding: 10px 0;
+  overflow-wrap: anywhere;
+}
+.transfer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+.transfer-actions button:first-child {
+  background: #1769b5;
+  color: white;
+  border-color: #1769b5;
+}
+.transfer-search,
+.transfer-search form {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.transfer-search {
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.transfer-search form {
+  flex: 1;
+  min-width: 250px;
+}
+.transfer-search input {
+  max-width: 350px;
+}
+.transfer-error,
+.transfer-notice {
+  padding: 12px 16px;
+  border-radius: 6px;
+  line-height: 1.6;
+}
+.transfer-error {
+  color: #972b24;
+  background: #fff0ee;
+}
+.transfer-notice {
+  color: #165a42;
+  background: #eaf6f0;
+}
+@media (max-width: 850px) {
+  .transfer-page {
+    padding: 16px;
+  }
+  .transfer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.transfer-reference-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.transfer-reference-search input {
+  width: 100%;
+  font-size: 12px;
+  min-height: 32px;
+}
+.transfer-reference-search button {
+  font-size: 12px;
+  padding: 4px 8px;
+}

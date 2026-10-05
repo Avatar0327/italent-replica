@@ -17,7 +17,8 @@ async function identityAll(tx: Tx, q: ScopeQuery): Promise<boolean> {
     WHERE d.tenant_id=${q.tenantId} AND d.app_code=${q.appCode} AND d.see_all AND
       (d.target_kind='app' OR (d.target_kind='entity' AND d.target_code=${q.objectCode ?? ''})
         OR (d.target_kind='page' AND d.target_code=${q.pageCode ?? ''})
-        OR (d.target_kind='datasource' AND d.target_code=${q.dataSourceCode ?? ''})) LIMIT 1
+        OR (d.target_kind='datasource' AND d.target_code IN (${q.dataSourceCode ?? ''}, ${q.viewCode ?? ''})))
+      LIMIT 1
   `),
   );
   return rows.length > 0;

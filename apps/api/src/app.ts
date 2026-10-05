@@ -19,6 +19,7 @@ import { registerJobEstablishmentRoutes } from './modules/job/register.js';
 import { registerPersonnelRoutes } from './modules/personnel/routes.js';
 import { registerEmploymentRoutes } from './modules/employment/routes.js';
 import { registerApprovalRoutes } from './modules/approval/routes.js';
+import { createPlatformRouter } from './modules/platform/routes.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
 const TENANT_MODULES: readonly TenantRouteModule[] = [
@@ -73,7 +74,11 @@ export function createApp(deps: AppDeps = {}): Hono {
     return c.json({ status: 'ok' as const });
   });
 
-  if (deps.db) app.route('/', createTenantRouter(deps.db, deps));
+  if (deps.db) {
+    app.route('/', createTenantRouter(deps.db, deps));
+    // 平台运营层（R1-T17）：只认平台运营身份，与租户上下文和租户内权限互不相通
+    app.route('/', createPlatformRouter(deps.db, deps.identity ?? denyAllIdentity, deps.clock ?? (() => new Date())));
+  }
 
   app.notFound((c) => errorResponse(c, 'NOT_FOUND', '接口不存在'));
   app.onError(handleError);

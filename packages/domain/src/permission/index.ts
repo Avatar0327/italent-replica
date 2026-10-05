@@ -1,5 +1,6 @@
 export {
   ADMIN_CAPABILITIES,
+  ADMIN_ROLE_NAMES,
   ADMIN_ROLES,
   type AdminCapability,
   type AdminRole,
