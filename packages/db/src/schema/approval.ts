@@ -11,6 +11,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -148,7 +149,26 @@ export const approvalProcessNodes = pgTable(
     nodeKey: text('node_key').notNull(),
     seq: integer('seq').notNull(),
     name: text('name').notNull(),
-    approverExpression: text('approver_expression').notNull(),
+    /** F-003：节点类型——单人审批 / 会签审批（`14` §11.4、§12）。 */
+    nodeType: text('node_type').notNull().default('single'),
+    /** 单人审批节点的审批人表达式；会签节点为空。 */
+    approverExpression: text('approver_expression'),
+    /** F-003：会签节点的审批人表达式（按配置顺序逐人解析）；单人节点为空数组。 */
+    approverExpressions: textArray('approver_expressions'),
+    /** F-003：出口动作（同意 / 不同意，DEC-144）；驳回是节点动作，不在其中。缺省只有同意。 */
+    exits: text('exits')
+      .array()
+      .notNull()
+      .default(sql`'{approve}'::text[]`),
+    /**
+     * DEC-144：会签流转规则 任一人同意即可 / 需所有人同意 / 自定义审批方式。只有自定义审批方式按出口动作逐个保存条件
+     * （整数 = 人数，百分比 = 向上取整），两种预设按出口动作生成，不落库。
+     */
+    transitionRuleType: text('transition_rule_type'),
+    approveRuleKind: text('approve_rule_kind'),
+    approveRuleValue: numeric('approve_rule_value', { precision: 5, scale: 2 }),
+    disagreeRuleKind: text('disagree_rule_kind'),
+    disagreeRuleValue: numeric('disagree_rule_value', { precision: 5, scale: 2 }),
     noAssigneePolicy: text('no_assignee_policy').notNull().default('exception_admin'),
     sameAssigneeSkip: boolean('same_assignee_skip').notNull().default(false),
     historySameAssigneeSkip: boolean('history_same_assignee_skip').notNull().default(false),
@@ -163,6 +183,11 @@ export const approvalProcessNodes = pgTable(
     /** DEC-097：抄送、审批人撤回随版本冻结。 */
     allowCopySend: boolean('allow_copy_send').notNull().default(false),
     allowRetrieve: boolean('allow_retrieve').notNull().default(false),
+    /**
+     * F-003 第二轮：驳回（驳回到发起人）是节点开关（`14` §12.2 `isRejectToStart`），单人与会签节点共用，加签人沿用；
+     * 缺省开启（R1-T07 起的节点一直可以驳回）。
+     */
+    allowReject: boolean('allow_reject').notNull().default(true),
     /** X-15：节点催办 继承 / 开启 / 关闭。 */
     urgeMode: text('urge_mode').notNull().default('inherit'),
     rejectCommentRequired: boolean('reject_comment_required').notNull().default(false),
@@ -198,6 +223,45 @@ export const approvalProcessNodes = pgTable(
       'approval_nodes_auto_result',
       sql`${t.sameAssigneeResult} IN ('approve','skip') AND ${t.historySameAssigneeResult} IN ('approve','skip')`,
     ),
+    check('approval_nodes_type', sql`${t.nodeType} IN ('single','countersign')`),
+    check(
+      'approval_nodes_approvers',
+      sql`CASE WHEN ${t.nodeType} = 'countersign'
+        THEN ${t.approverExpression} IS NULL AND cardinality(${t.approverExpressions}) BETWEEN 1 AND 5
+          AND ${t.approverExpressions} <@ ARRAY['owner','latest_record_department_head','record_department_head',
+            'record_department_hrbp','record_first_level_org_head']::text[]
+        ELSE ${t.approverExpression} IS NOT NULL AND cardinality(${t.approverExpressions}) = 0 END`,
+    ),
+    check(
+      'approval_nodes_exits',
+      sql`cardinality(${t.exits}) BETWEEN 1 AND 2 AND ${t.exits} <@ ARRAY['approve','disagree']::text[]`,
+    ),
+    // DEC-106：自动处理的「跳过」仅单人审批节点可选。
+    check(
+      'approval_nodes_countersign_auto',
+      sql`${t.nodeType} = 'single'
+        OR (${t.sameAssigneeResult} = 'approve' AND ${t.historySameAssigneeResult} = 'approve')`,
+    ),
+    check(
+      'approval_nodes_transition_rule',
+      sql`(${t.nodeType} = 'countersign') = (${t.transitionRuleType} IS NOT NULL)
+        AND (${t.transitionRuleType} IS NULL OR ${t.transitionRuleType} IN ('any','all','custom'))
+        AND CASE WHEN ${t.transitionRuleType} = 'custom'
+          THEN (${t.approveRuleKind} IS NOT NULL) = ('approve' = ANY(${t.exits}))
+            AND (${t.disagreeRuleKind} IS NOT NULL) = ('disagree' = ANY(${t.exits}))
+          ELSE ${t.approveRuleKind} IS NULL AND ${t.disagreeRuleKind} IS NULL END`,
+    ),
+    check(
+      'approval_nodes_exit_rules',
+      sql`(${t.approveRuleKind} IS NULL) = (${t.approveRuleValue} IS NULL)
+        AND (${t.disagreeRuleKind} IS NULL) = (${t.disagreeRuleValue} IS NULL)
+        AND (${t.approveRuleKind} IS NULL OR ${t.approveRuleKind} = 'count'
+          AND ${t.approveRuleValue} >= 1 AND ${t.approveRuleValue} = trunc(${t.approveRuleValue})
+          OR ${t.approveRuleKind} = 'percent' AND ${t.approveRuleValue} > 0 AND ${t.approveRuleValue} <= 100)
+        AND (${t.disagreeRuleKind} IS NULL OR ${t.disagreeRuleKind} = 'count'
+          AND ${t.disagreeRuleValue} >= 1 AND ${t.disagreeRuleValue} = trunc(${t.disagreeRuleValue})
+          OR ${t.disagreeRuleKind} = 'percent' AND ${t.disagreeRuleValue} > 0 AND ${t.disagreeRuleValue} <= 100)`,
+    ),
   ],
 );
 
@@ -221,7 +285,7 @@ export const approvalNodeMessageRules = pgTable(
       columns: [t.tenantId, t.versionId, t.nodeKey],
       foreignColumns: [approvalProcessNodes.tenantId, approvalProcessNodes.versionId, approvalProcessNodes.nodeKey],
     }),
-    check('approval_message_rules_trigger', sql`${t.trigger} IN ('arrive','approve','reject','transfer')`),
+    check('approval_message_rules_trigger', sql`${t.trigger} IN ('arrive','approve','disagree','reject','transfer')`),
     check('approval_message_rules_recipient', sql`${t.recipient} IN ('owner','subject_employee','assignee')`),
     check(
       'approval_message_rules_channels',
@@ -285,7 +349,11 @@ export const approvalInstances = pgTable(
       foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
     }),
     memberFk('approval_instances_initiator_fk', t.tenantId, t.initiatorUserId),
-    check('approval_instances_status', sql`${t.status} IN ('running','returned','approved','withdrawn','cancelled')`),
+    // disapproved：沿「不同意」连线流转到结束（DEC-144，`14` §12.2），流程结束、业务不生效，不能重提（F-003 第二轮）。
+    check(
+      'approval_instances_status',
+      sql`${t.status} IN ('running','returned','approved','disapproved','withdrawn','cancelled')`,
+    ),
     check('approval_instances_business_type', sql`${t.businessType} IN ('employment','personnel_change')`),
     check('approval_instances_revision', sql`${t.revision} > 0 AND ${t.round} > 0 AND ${t.historyFromSeq} >= 0`),
   ],
@@ -304,12 +372,25 @@ export const approvalTasks = pgTable(
     assigneeUserId: uuid('assignee_user_id'),
     /** 节点按表达式解析出的候选人（DEC-114：“与上一节点相同”的比较对象）；改派、加签产生的任务为空。 */
     candidateUserId: uuid('candidate_user_id'),
+    /**
+     * F-003 第二轮（P2-4）：会签节点两个表达式落到同一接手人、合并为一席时，被合并的其他候选人，与 candidate_user_id
+     * 一起作为下一节点“与上一节点相同”的比较对象（DEC-114）。
+     */
+    mergedCandidateUserIds: uuid('merged_candidate_user_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     origin: text('origin').notNull(),
     status: text('status').notNull().default('pending'),
     isExceptionAdmin: boolean('is_exception_admin').notNull().default(false),
     /** DEC-070：管理员转交给自己后审批，醒目标注并可筛选。 */
     adminSelfTransfer: boolean('admin_self_transfer').notNull().default(false),
     parentTaskId: uuid('parent_task_id'),
+    /**
+     * F-003：节点的本次激活。同一次进入节点产生的任务，以及它们的转交、加签、撤回与恢复，共用一个编号；会签按它结算
+     * （DEC-144），管理员跳转或重提再次进入节点时换新编号。R1-T07 时期的任务为空。
+     */
+    activationId: uuid('activation_id'),
     comment: text('comment'),
     actedAt: utc('acted_at'),
     createdAt: utc('created_at').notNull().defaultNow(),
@@ -327,13 +408,15 @@ export const approvalTasks = pgTable(
     check('approval_tasks_pending_assignee', sql`${t.status} <> 'pending' OR ${t.assigneeUserId} IS NOT NULL`),
     check(
       'approval_tasks_status',
-      sql`${t.status} IN ('pending','approved','rejected','transferred','skipped','cancelled','add_signed','queued')`,
+      sql`${t.status} IN ('pending','approved','disagreed','rejected','transferred','skipped','cancelled','add_signed',
+        'queued','ended','merged')`,
     ),
     check(
       'approval_tasks_origin',
       sql`${t.origin} IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',
         'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',
-        'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve')`,
+        'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve',
+        'add_sign_parallel','countersign_reopen')`,
     ),
   ],
 );

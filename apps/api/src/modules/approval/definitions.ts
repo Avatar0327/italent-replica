@@ -6,12 +6,21 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  exitRulesOf,
+  isCountersign,
+  nodeExits,
   PRESET_PROCESSES,
   publishViolations,
+  rejectAllowed,
   type ApprovalNode,
   type ApprovalTypeCode,
+  type ApproverExpression,
   type ConditionItem,
+  type ExitRule,
+  type ExitRules,
+  type NodeExit,
   type ProcessDefinition,
+  type TransitionRule,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
@@ -111,11 +120,39 @@ export function conditionItem(row: Row): ConditionItem {
   };
 }
 
+function exitRuleOf(kind: unknown, value: unknown): ExitRule | undefined {
+  return kind === null || kind === undefined ? undefined : { kind: kind as ExitRule['kind'], value: Number(value) };
+}
+
+/** DEC-144：只有自定义审批方式逐行落库；两种预设按出口动作生成，读出时一并给出，便于展示与判定。 */
+function transitionRuleOf(row: Row, exits: readonly NodeExit[]): TransitionRule {
+  const type = row.transition_rule_type as TransitionRule['type'];
+  const stored: Partial<Record<NodeExit, ExitRule>> = {};
+  const approve = exitRuleOf(row.approve_rule_kind, row.approve_rule_value);
+  const disagree = exitRuleOf(row.disagree_rule_kind, row.disagree_rule_value);
+  if (approve) stored.approve = approve;
+  if (disagree) stored.disagree = disagree;
+  return { type, rules: exitRulesOf({ type, rules: stored }, exits) };
+}
+
+/** 节点类型与审批人（F-003）：单人节点一个表达式，会签节点逐人解析的表达式列表与流转规则。 */
+function approversOf(row: Row, exits: readonly NodeExit[]) {
+  if (row.node_type !== 'countersign')
+    return { kind: 'single' as const, approver: row.approver_expression as ApproverExpression };
+  return {
+    kind: 'countersign' as const,
+    approvers: row.approver_expressions as ApproverExpression[],
+    transitionRule: transitionRuleOf(row, exits),
+  };
+}
+
 function nodeOf(row: Row, rules: Row[]): ApprovalNode {
+  const exits = row.exits as NodeExit[];
   return {
     key: String(row.node_key),
     name: String(row.name),
-    approver: row.approver_expression as ApprovalNode['approver'],
+    ...approversOf(row, exits),
+    exits,
     noAssignee: row.no_assignee_policy as ApprovalNode['noAssignee'],
     sameAssigneeSkip: Boolean(row.same_assignee_skip),
     historySameAssigneeSkip: Boolean(row.history_same_assignee_skip),
@@ -129,6 +166,7 @@ function nodeOf(row: Row, rules: Row[]): ApprovalNode {
       addSign: Boolean(row.allow_add_sign),
       copySend: Boolean(row.allow_copy_send),
       retrieve: Boolean(row.allow_retrieve),
+      reject: Boolean(row.allow_reject),
       urge: row.urge_mode as ApprovalNode['actions']['urge'],
     },
     rejectCommentRequired: Boolean(row.reject_comment_required),
@@ -239,6 +277,21 @@ export async function listProcesses(
   }));
 }
 
+/** 节点类型相关的列（F-003）：会签的自定义审批方式逐行落库，预设只存类型（DEC-144）。 */
+function nodeTypeColumns(node: ApprovalNode) {
+  if (!isCountersign(node)) {
+    return { type: 'single', approver: node.approver, approvers: [] as string[], rule: null, custom: {} as ExitRules };
+  }
+  const custom = node.transitionRule.type === 'custom' ? (node.transitionRule.rules ?? {}) : {};
+  return {
+    type: 'countersign',
+    approver: null,
+    approvers: [...node.approvers],
+    rule: node.transitionRule.type,
+    custom,
+  };
+}
+
 async function writeVersionContent(tx: Tx, tenantId: string, id: string, definition: ProcessDefinition) {
   for (const item of definition.conditions.items) {
     const list = Array.isArray(item.value) ? textArray(item.value as string[]) : sql`NULL`;
@@ -248,17 +301,23 @@ async function writeVersionContent(tx: Tx, tenantId: string, id: string, definit
       VALUES (${tenantId},${id}::uuid,${item.no},${item.field},${item.operator},${single},${list})`);
   }
   for (const [index, node] of definition.nodes.entries()) {
+    const typed = nodeTypeColumns(node);
+    const { approve, disagree } = typed.custom;
     await tx.execute(sql`INSERT INTO approval_process_nodes
-      (tenant_id,version_id,node_key,seq,name,approver_expression,no_assignee_policy,same_assignee_skip,
+      (tenant_id,version_id,node_key,seq,name,node_type,approver_expression,approver_expressions,exits,
+       transition_rule_type,approve_rule_kind,approve_rule_value,disagree_rule_kind,disagree_rule_value,
+       no_assignee_policy,same_assignee_skip,
        history_same_assignee_skip,same_assignee_result,history_same_assignee_result,form_fields,editable_fields,
-       edit_mode,allow_transfer,allow_add_sign,allow_copy_send,allow_retrieve,urge_mode,reject_comment_required,
-       hide_records,reject_resubmit_mode)
-      VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${node.approver},${node.noAssignee},
+       edit_mode,allow_transfer,allow_add_sign,allow_copy_send,allow_retrieve,allow_reject,urge_mode,
+       reject_comment_required,hide_records,reject_resubmit_mode)
+      VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${typed.type},${typed.approver},
+        ${textArray(typed.approvers)},${textArray(nodeExits(node))},${typed.rule},${approve?.kind ?? null},
+        ${approve?.value ?? null},${disagree?.kind ?? null},${disagree?.value ?? null},${node.noAssignee},
         ${node.sameAssigneeSkip},${node.historySameAssigneeSkip},${node.sameAssigneeResult},
         ${node.historySameAssigneeResult},${textArray(node.formFields)},${textArray(node.editableFields)},
         ${node.editMode},${node.actions.transfer},${node.actions.addSign},${node.actions.copySend},
-        ${node.actions.retrieve},${node.actions.urge},${node.rejectCommentRequired},${node.hideRecords},
-        ${node.rejectResubmit})`);
+        ${node.actions.retrieve},${rejectAllowed(node)},${node.actions.urge},${node.rejectCommentRequired},
+        ${node.hideRecords},${node.rejectResubmit})`);
     for (const [ruleIndex, rule] of node.messageRules.entries()) {
       await tx.execute(sql`INSERT INTO approval_node_message_rules
         (tenant_id,version_id,node_key,rule_no,trigger,channels,template_code,recipient)

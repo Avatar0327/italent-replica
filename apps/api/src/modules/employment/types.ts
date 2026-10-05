@@ -13,7 +13,8 @@ export const BUSINESS_KINDS = [
   'intern_regularization',
 ] as const;
 export type BusinessKind = (typeof BUSINESS_KINDS)[number];
-export type EmploymentState = 'draft' | 'in_review' | 'approved' | 'rejected' | 'effective' | 'deleted';
+/** disapproved：审批沿「不同意」流转到结束，申请办结、不生效（F-003 第二轮，DEC-144）。 */
+export type EmploymentState = 'draft' | 'in_review' | 'approved' | 'rejected' | 'disapproved' | 'effective' | 'deleted';
 export type EmployType = 'internal' | 'intern' | 'external';
 export type CustomValue = string | number | boolean | null;
 export type CustomFields = Readonly<Record<string, CustomValue>>;

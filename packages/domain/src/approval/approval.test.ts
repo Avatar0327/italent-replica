@@ -8,7 +8,7 @@ import {
   APPROVAL_TYPES,
   approvalTypeOfBusiness,
   subsetProcessCode,
-  type ApprovalNode,
+  type SingleApprovalNode,
   type ConditionItem,
 } from './types.js';
 
@@ -55,7 +55,7 @@ describe('发起条件（`14` §1.1）', () => {
   });
 });
 
-const node = (extra: Partial<ApprovalNode> = {}): ApprovalNode => ({
+const node = (extra: Partial<SingleApprovalNode> = {}): SingleApprovalNode => ({
   key: 'n',
   name: '节点',
   approver: 'record_department_head',
@@ -67,7 +67,7 @@ const node = (extra: Partial<ApprovalNode> = {}): ApprovalNode => ({
   formFields: [],
   editableFields: [],
   editMode: 'none',
-  actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' },
+  actions: { transfer: false, addSign: false, copySend: false, retrieve: false, reject: true, urge: 'inherit' },
   rejectCommentRequired: false,
   hideRecords: false,
   rejectResubmit: 'restart',
@@ -80,7 +80,7 @@ const facts = (extra: Partial<RoutingFacts> = {}): RoutingFacts => ({
   subjectEmployeeId: 'subject-person',
   subjectUserId: 'subject-user',
   exceptionAdminUserId: 'admin',
-  previousApproverUserId: null,
+  previousApproverUserIds: [],
   approvedUserIds: [],
   chainUserIds: [],
   ...extra,
@@ -112,7 +112,7 @@ describe('节点审批人决策（DEC-054 / DEC-068）', () => {
   });
   it('自审优先于相同审批人跳过：转直线经理；经理为空 / 本人 / 已在链上转异常管理员', () => {
     const self = person('initiator');
-    const previous = facts({ previousApproverUserId: 'initiator' });
+    const previous = facts({ previousApproverUserIds: ['initiator'] });
     expect(decideNode(node(), self, previous, person('boss'))).toMatchObject({
       origin: 'self_skip_manager',
       userId: 'boss',
@@ -127,7 +127,7 @@ describe('节点审批人决策（DEC-054 / DEC-068）', () => {
     });
   });
   it('相同 / 历史相同审批人自动处理：结果按节点配置为「同意」或「跳过」（DEC-106）', () => {
-    expect(decideNode(node(), person('a'), facts({ previousApproverUserId: 'a' }))).toMatchObject({
+    expect(decideNode(node(), person('a'), facts({ previousApproverUserIds: ['a'] }))).toMatchObject({
       outcome: 'same_skip',
       result: 'approve',
     });
@@ -136,7 +136,7 @@ describe('节点审批人决策（DEC-054 / DEC-068）', () => {
       result: 'approve',
     });
     const skipping = node({ sameAssigneeResult: 'skip', historySameAssigneeResult: 'skip' });
-    expect(decideNode(skipping, person('a'), facts({ previousApproverUserId: 'a' }))).toMatchObject({
+    expect(decideNode(skipping, person('a'), facts({ previousApproverUserIds: ['a'] }))).toMatchObject({
       outcome: 'same_skip',
       result: 'skip',
     });
@@ -146,7 +146,7 @@ describe('节点审批人决策（DEC-054 / DEC-068）', () => {
     });
     // 自审规则优先（DEC-068）：结果配置为「跳过」也不影响自审转直线经理。
     expect(
-      decideNode(skipping, person('initiator'), facts({ previousApproverUserId: 'initiator' }), person('boss')),
+      decideNode(skipping, person('initiator'), facts({ previousApproverUserIds: ['initiator'] }), person('boss')),
     ).toMatchObject({ origin: 'self_skip_manager' });
     expect(
       decideNode(

@@ -21,6 +21,7 @@ import { PRESET_FIELD_NAMES, type PresetFields } from '../employment/types.js';
 import { updateEmploymentBusiness } from '../employment/write-service.js';
 import {
   applyApprovedChangeInTransaction,
+  disapproveChangeInTransaction,
   currentChangeValues,
   loadChange,
   resubmitChangeInTransaction,
@@ -65,6 +66,8 @@ export interface BusinessAdapter {
   snapshot(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<BusinessSnapshot>;
   approved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   rejected(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
+  /** 沿「不同意」连线流转到结束（DEC-144）：业务单办结为“未通过”、不生效，不能修改重提。 */
+  disapproved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   /** 审批侧发起的撤回（业务侧撤回已由业务模块自己迁移状态）。 */
   withdrawn(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   /**
@@ -116,7 +119,7 @@ async function employmentTransition(
   tx: Tx,
   ctx: ApprovalContext,
   id: string,
-  action: 'approve' | 'reject' | 'withdraw',
+  action: 'approve' | 'reject' | 'disapprove' | 'withdraw',
 ) {
   const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
   await transitionEmployment(tx, { ...ctx, expectedRevision }, { id, action });
@@ -246,6 +249,7 @@ const employmentAdapter: BusinessAdapter = {
   },
   approved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'approve'),
   rejected: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'reject'),
+  disapproved: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'disapprove'),
   withdrawn: (tx, ctx, id) => employmentTransition(tx, ctx, id, 'withdraw'),
   resubmit: () => {
     throw approvalError('CONFLICT', 'APPROVAL_RESUBMIT_VIA_BUSINESS', '任职申请请在申请单上修改后重新提交');
@@ -354,6 +358,9 @@ const personnelAdapter: BusinessAdapter = {
   },
   // 驳回到发起人：申请保持待审批，可在同一实例上重提或撤回（DEC-053）。
   rejected: async () => undefined,
+  async disapproved(tx, ctx, id) {
+    await disapproveChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id);
+  },
   async withdrawn(tx, ctx, id) {
     await withdrawChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id);
   },
