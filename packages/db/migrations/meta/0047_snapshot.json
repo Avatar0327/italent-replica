@@ -1,6 +1,6 @@
 {
-  "id": "0516eb5c-ead3-4dd7-8fe3-4f3151349e28",
-  "prevId": "6cd41e7c-7912-49ea-862a-a60fa1487e22",
+  "id": "d1aafb99-6197-43b4-a090-4f3ec22e71ef",
+  "prevId": "530f741f-3597-4389-a935-2b6854795cb6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -11124,18 +11124,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "is_store_manager": {
-          "name": "is_store_manager",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "added_subordinate_ids": {
-          "name": "added_subordinate_ids",
-          "type": "uuid[]",
-          "primaryKey": false,
-          "notNull": false
-        },
         "custom_fields": {
           "name": "custom_fields",
           "type": "jsonb",
@@ -11939,18 +11927,6 @@
         "is_department_head": {
           "name": "is_department_head",
           "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_store_manager": {
-          "name": "is_store_manager",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "added_subordinate_ids": {
-          "name": "added_subordinate_ids",
-          "type": "uuid[]",
           "primaryKey": false,
           "notNull": false
         },
@@ -24200,6 +24176,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "attempt_count": {
+          "name": "attempt_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
         "state": {
           "name": "state",
           "type": "text",
@@ -24226,35 +24209,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "contract_job_lookup": {
-          "name": "contract_job_lookup",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "object_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "contract_job_attempts_tenant_id_tenants_id_fk": {
           "name": "contract_job_attempts_tenant_id_tenants_id_fk",
@@ -24271,7 +24226,17 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "contract_job_lookup": {
+          "name": "contract_job_lookup",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "object_id",
+            "kind"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -24588,6 +24553,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'valid'"
+        },
+        "termination_reason": {
+          "name": "termination_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "approval_status": {
           "name": "approval_status",

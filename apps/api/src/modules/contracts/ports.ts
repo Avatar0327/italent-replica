@@ -28,7 +28,7 @@ export async function handleContractsOnExit(
     if (config.postExitTypeIds.includes(record.typeId) || record.status === 'void') continue;
     if (record.effectiveDate > input.lastWorkDate) await deleteContract(tx, ctx, record);
     else if ((!record.endDate || record.endDate > input.lastWorkDate) && record.status === 'valid') {
-      await setContractState(tx, ctx, record, 'terminated', input.lastWorkDate);
+      await setContractState(tx, ctx, record, 'terminated', input.lastWorkDate, 'exit');
     }
   }
 }
@@ -37,7 +37,7 @@ export function generateContractForBusiness(
   ctx: ContractContext,
   input: { employeeId: string; fields: ContractFields },
 ) {
-  return portCommand(tx, ctx, { ...input, operation: 'create', mode: 'direct' });
+  return portCommand(tx, { ...ctx, expectedRevision: 0 }, { ...input, operation: 'create', mode: 'direct' });
 }
 export function changeContractForTransfer(
   tx: Tx,
@@ -83,7 +83,20 @@ async function portCommand(tx: Tx, ctx: ContractContext, input: unknown) {
     // 保存点将数据库唯一约束失败回滚后转换为端口错误，外层业务事务仍由调用方控制。
     return await tx.transaction((sub) => createCommand(sub, ctx, input));
   } catch (error) {
-    if (pgErrorCode(error) === '23505') throw new AppError('CONFLICT', '合同编号已存在');
+    if (pgErrorCode(error) === '23505' && constraintName(error) === 'contract_records_number')
+      throw new AppError('CONFLICT', '合同编号已存在');
     throw error;
   }
+}
+
+// postgres-js 使用 constraint_name，PGlite 使用 constraint；Drizzle 会包在 cause 内。
+function constraintName(error: unknown): string | undefined {
+  let current = error;
+  for (let depth = 0; depth < 5 && current; depth++) {
+    const cause = current as { constraint?: string; constraint_name?: string; cause?: unknown };
+    const name = cause.constraint_name ?? cause.constraint;
+    if (name) return name;
+    current = cause.cause;
+  }
+  return undefined;
 }

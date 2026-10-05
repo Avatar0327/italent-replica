@@ -91,6 +91,7 @@ export const contractRecords = pgTable(
     versionNo: integer('version_no').notNull(),
     revision: integer('revision').notNull().default(1),
     status: text('status').notNull().default('valid'),
+    terminationReason: text('termination_reason'),
     approvalStatus: text('approval_status').notNull().default('effective'),
     deleted: boolean('deleted').notNull().default(false),
     createdBy: uuid('created_by').notNull(),
@@ -236,12 +237,13 @@ export const contractJobAttempts = pgTable(
     objectId: uuid('object_id').notNull(),
     employeeId: uuid('employee_id').notNull(),
     kind: text('kind').notNull(),
+    attemptCount: integer('attempt_count').notNull().default(1),
     state: text('state').notNull(),
     error: text('error'),
     commandId: text('command_id').notNull(),
     createdAt: utc(),
   },
-  (t) => [index('contract_job_lookup').on(t.tenantId, t.objectId, t.kind)],
+  (t) => [unique('contract_job_lookup').on(t.tenantId, t.objectId, t.kind)],
 );
 export const contractOutbox = pgTable('contract_outbox', {
   id: id(),

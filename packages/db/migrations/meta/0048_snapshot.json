@@ -1,6 +1,6 @@
 {
-  "id": "530f741f-3597-4389-a935-2b6854795cb6",
-  "prevId": "05a04543-c55f-488b-b925-4c0bbfd18c54",
+  "id": "86f38203-8bee-4f93-bcf5-538c53444eb4",
+  "prevId": "d1aafb99-6197-43b4-a090-4f3ec22e71ef",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -8677,6 +8677,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "conditions": {
+          "name": "conditions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         }
       },
       "indexes": {},
@@ -11117,6 +11124,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "is_store_manager": {
+          "name": "is_store_manager",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "added_subordinate_ids": {
+          "name": "added_subordinate_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": false
+        },
         "custom_fields": {
           "name": "custom_fields",
           "type": "jsonb",
@@ -11920,6 +11939,18 @@
         "is_department_head": {
           "name": "is_department_head",
           "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_store_manager": {
+          "name": "is_store_manager",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "added_subordinate_ids": {
+          "name": "added_subordinate_ids",
+          "type": "uuid[]",
           "primaryKey": false,
           "notNull": false
         },
