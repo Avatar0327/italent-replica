@@ -49,26 +49,46 @@ async function stored(session: EmploymentSession, id: string) {
 }
 
 describe('AC-FWD-01/02 状态、周期与并发边界', () => {
+  // PR #53 第三轮清单第 3 项（暂定口径，待取证）：同日申请只接受操作先后排在来源之后的向后更新；
+  // 较早提交的同日申请落地时插在来源之前（DEC-108），不被之后的直接业务改写。
   it.each(['draft', 'in_review', 'approved', 'rejected'] as const)(
-    '同日%s申请是传播目标，保持原状态并追加payload，早于源日期的申请不变',
+    '同日%s申请：操作在来源之后的是传播目标（保持原状态并追加payload），之前的与早于源日期的申请不变',
     async (state) => {
       const { db } = testDb();
       const { session, employee, hire } = await fixture(db, `fwd-state-${state}`);
+      const reach = async (business: EmploymentBusiness) => {
+        let current = business;
+        if (state !== 'draft') current = await transition(db, session, current, 'submit');
+        if (state === 'approved' || state === 'rejected') {
+          current = await transition(db, session, current, state === 'approved' ? 'approve' : 'reject');
+        }
+        expect(current.status).toBe(state);
+        return current;
+      };
+      const application = async (place: string) =>
+        session.business(
+          employee.id,
+          { kind: 'transfer', mode: 'application', effectiveDate: '2026-10-05', fields: { place } },
+          (await session.getEmployee(employee.id)).revision,
+        );
       const earlier = await session.business(
         employee.id,
         { kind: 'transfer', mode: 'application', effectiveDate: '2026-10-04', fields: { place: '原地点' } },
         hire.employeeRevision,
       );
-      let target = await session.business(
+      const before = await reach(await application('原地点'));
+      const source = await session.business(
         employee.id,
-        { kind: 'transfer', mode: 'application', effectiveDate: '2026-10-05', fields: { place: '原地点' } },
-        earlier.employeeRevision,
+        { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { place: '同步地点' } },
+        (await session.getEmployee(employee.id)).revision,
       );
-      if (state !== 'draft') target = await transition(db, session, target, 'submit');
-      if (state === 'approved' || state === 'rejected') {
-        target = await transition(db, session, target, state === 'approved' ? 'approve' : 'reject');
-      }
-      expect(target.status).toBe(state);
+      expect(await stored(session, before.id)).toMatchObject({
+        status: state,
+        revision: before.revision,
+        fields: { place: '原地点' },
+      });
+
+      const target = await reach(await application('同步地点'));
       const beforeVersion = await withTenant(
         db,
         session.tenant.id,
@@ -78,15 +98,20 @@ describe('AC-FWD-01/02 状态、周期与并发边界', () => {
           WHERE tenant_id=${session.tenant.id} AND business_id=${target.id} ORDER BY version_no DESC LIMIT 1`),
           )[0]!,
       );
-      const source = await session.business(
-        employee.id,
-        { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { place: '同步地点' } },
-        (await session.getEmployee(employee.id)).revision,
-      );
+      const edited = await session.request('PATCH', `/records/${source.id}`, {
+        ifMatch: source.revision,
+        body: { fields: { place: '编辑同步地点' } },
+      });
+      expect(edited.status).toBe(200);
       const changed = await stored(session, target.id);
-      expect(changed).toMatchObject({ status: state, revision: target.revision + 1, fields: { place: '同步地点' } });
+      expect(changed).toMatchObject({
+        status: state,
+        revision: target.revision + 1,
+        fields: { place: '编辑同步地点' },
+      });
       expect(changed.record).toBeNull();
       expect((await stored(session, earlier.id)).fields.place).toBe('原地点');
+      expect((await stored(session, before.id)).fields.place).toBe('原地点');
       const latest = await withTenant(db, session.tenant.id, async (tx) =>
         resultRows(
           await tx.execute(sql`SELECT previous_version_id,version_no,trigger_business_id,is_record_snapshot

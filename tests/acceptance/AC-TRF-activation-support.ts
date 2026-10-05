@@ -18,7 +18,10 @@ export interface ActivationView {
   readonly lastAttemptAt: string | null;
 }
 
-export type ActivationBusiness = EmploymentBusiness & { readonly activation: ActivationView | null };
+export type ActivationBusiness = EmploymentBusiness & {
+  readonly activation: ActivationView | null;
+  readonly fields: Readonly<Record<string, unknown>>;
+};
 
 /** 生效失败待办：业务单标识 + 生效结果（与业务详情的 activation 同形）。 */
 export interface ActivationTodo {

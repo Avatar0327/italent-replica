@@ -241,14 +241,47 @@ async function assertBusinessSequence(
     ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1
   `),
   );
-  const terminal = latest && ['leave', 'retirement'].includes(latest.kind);
-  let reason: string | undefined;
-  if (input.kind === 'hire' && latest && !terminal) reason = 'EMPLOYEE_ALREADY_EMPLOYED';
-  else if (input.kind === 'rehire' && latest?.kind !== 'leave') reason = 'REHIRE_REQUIRES_LEAVE';
-  else if (input.kind === 'retire_rehire' && latest?.kind !== 'retirement')
-    reason = 'RETIRE_REHIRE_REQUIRES_RETIREMENT';
-  else if (!NEW_CYCLE_KINDS.includes(input.kind) && (!latest || terminal)) reason = 'ACTIVE_EMPLOYMENT_REQUIRED';
+  const reason = sequenceViolation(latest?.kind, input.kind);
   if (reason) throw new AppError('CONFLICT', '任职业务前后顺序不合法', { reason });
+}
+
+/** 前一条为 previous 时能否接 kind：终止任职后只能开新周期，在职时不能再入职（`07` §2、DEC-077）。 */
+function sequenceViolation(previous: BusinessKind | undefined, kind: BusinessKind): string | undefined {
+  const terminal = previous !== undefined && ['leave', 'retirement'].includes(previous);
+  if (kind === 'hire' && previous && !terminal) return 'EMPLOYEE_ALREADY_EMPLOYED';
+  if (kind === 'rehire' && previous !== 'leave') return 'REHIRE_REQUIRES_LEAVE';
+  if (kind === 'retire_rehire' && previous !== 'retirement') return 'RETIRE_REHIRE_REQUIRES_RETIREMENT';
+  if (!NEW_CYCLE_KINDS.includes(kind) && (!previous || terminal)) return 'ACTIVE_EMPLOYMENT_REQUIRED';
+  return undefined;
+}
+
+/**
+ * 插到当日中间时，原位置上的那条（随后后移）将以新记录为前一条，也须合法：例如离职申请插到同日直接调动之前
+ * 会形成“离职 → 同周期调动”（PR #53 P2-R2-2）。不合法时整条拒绝，定时生效据此记生效失败（DEC-052）。
+ */
+async function assertSuccessorSequence(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  kind: BusinessKind,
+  position: TimelinePosition,
+): Promise<void> {
+  if (!position.shifted) return;
+  const [successor] = rowsOf<{ kind: BusinessKind }>(
+    await tx.execute(sql`
+    SELECT r.kind FROM employment_timeline t
+    JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+    WHERE t.tenant_id=${ctx.tenantId} AND t.employee_id=${employeeId}::uuid
+      AND t.start_date=${position.date}::date AND t.sort_order=${position.order}
+  `),
+  );
+  const reason = successor && sequenceViolation(kind, successor.kind);
+  if (reason) {
+    throw new AppError('CONFLICT', '任职业务前后顺序不合法', {
+      reason: 'SUCCESSOR_SEQUENCE_INVALID',
+      successor: reason,
+    });
+  }
 }
 
 async function assertDirectTransferAllowed(tx: Tx, ctx: EmploymentContext, input: NormalizedEmploymentInput) {
@@ -378,6 +411,7 @@ export async function materializeEmploymentRecord(
   const position = await timelinePosition(tx, ctx, business.employeeId, payload.effectiveDate, business.id);
   await assertNotBeforeCurrentCycle(tx, ctx, business.employeeId, payload);
   await assertBusinessSequence(tx, ctx, business.employeeId, payload, position.order);
+  await assertSuccessorSequence(tx, ctx, business.employeeId, payload.kind, position);
   const newCycle = NEW_CYCLE_KINDS.includes(payload.kind);
   const selected = await cycleForMaterialization(tx, ctx, business, newCycle, position);
   const staffId = selected?.cycle.id ?? randomUUID();

@@ -14,6 +14,8 @@ interface TimelinePoint {
 /**
  * 操作先后键（DEC-108；PR #53 第二轮 P2-2）：申请取最近一次提交的状态事件序号（原站提交即写入版本链，W-417），
  * 直接业务取保存时的状态事件序号。正在落地的直接业务尚未写状态事件，键为空，视为最新一次操作。
+ * 撤回 / 驳回后重新提交的申请按最近一次提交排序（PR #53 第三轮清单第 4 项，暂定口径）。
+ * TODO(需取证：PR #53 第三轮清单第 4 项，取证窗口已登记)：原站重新提交后同日顺序取首次还是最近一次提交。
  */
 export function operationKey(tenantId: string, businessId: SQL): SQL {
   return sql`(SELECT COALESCE(max(e.event_seq) FILTER (WHERE e.state = 'in_review'), min(e.event_seq))
@@ -87,18 +89,34 @@ async function neighborsAt(tx: Tx, ctx: EmploymentContext, employeeId: string, p
 
 /**
  * 当日操作更晚的记录依次后移一位，给新记录腾出位置。投影只允许改区间（触发器），故删除后按原值重插、只改顺序号；
- * 不重叠与连续覆盖为延迟约束，事务提交时校验；当日顺序唯一约束因先删后插不会冲突。
+ * 不重叠与连续覆盖为延迟约束，事务提交时校验。当日顺序唯一约束是即时约束，所以分两条语句：先删完全部要后移的行，
+ * 再一次插入（同一语句里 DELETE…RETURNING 接 INSERT 会边删边插，后移两条以上时撞唯一约束，PR #53 P2-R2-1）。
  */
 async function shiftSameDay(tx: Tx, ctx: EmploymentContext, employeeId: string, position: TimelinePosition) {
+  const moved = rowsOf<{
+    recordId: string;
+    staffId: string;
+    sortOrder: number;
+    validDuring: string;
+    createdAt: string;
+  }>(
+    await tx.execute(sql`
+    DELETE FROM employment_timeline WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid
+      AND start_date=${position.date}::date AND sort_order >= ${position.order}
+    RETURNING record_id AS "recordId", staff_id AS "staffId", sort_order AS "sortOrder",
+      valid_during::text AS "validDuring", created_at::text AS "createdAt"
+  `),
+  );
+  if (!moved.length) return;
+  const values = moved.map(
+    (row) => sql`(${ctx.tenantId}::uuid, ${employeeId}::uuid, ${row.recordId}::uuid, ${row.staffId}::uuid,
+      ${Number(row.sortOrder) + 1}, ${position.date}::date, ${row.validDuring}::daterange,
+      ${row.createdAt}::timestamptz)`,
+  );
   await tx.execute(sql`
-    WITH moved AS (
-      DELETE FROM employment_timeline WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid
-        AND start_date=${position.date}::date AND sort_order >= ${position.order}
-      RETURNING tenant_id, employee_id, record_id, staff_id, sort_order, start_date, valid_during, created_at
-    )
     INSERT INTO employment_timeline
       (tenant_id, employee_id, record_id, staff_id, sort_order, start_date, valid_during, created_at)
-    SELECT tenant_id, employee_id, record_id, staff_id, sort_order + 1, start_date, valid_during, created_at FROM moved
+    VALUES ${sql.join(values, sql`, `)}
   `);
 }
 
