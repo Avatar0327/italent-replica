@@ -41,6 +41,30 @@ describe('AC-ORG-10~11 DEC-021 组织全称与生效日期', () => {
     expect(await session.list('集团', '2026-10-02')).toEqual([]);
   });
 
+  it('AC-ORG-11 上级排定未来改名不给下级追加版本：下级在改名日之前的「变更」照常保存（`10` §15 / §16）', async () => {
+    const session = await orgSession(testDb().db, 'org11future');
+    const group = await session.create('未来改名集团');
+    const child = await session.create('未来改名部门', { parents: { admin: { parentId: group.id } } });
+    const rename = await session.request('PATCH', `/organizations/${group.id}`, {
+      ifMatch: group.revision,
+      body: { name: '未来改名集团V2', effectiveDate: '2026-10-20' },
+    });
+    expect(rename.status).toBe(200);
+    const changed = await session.request('PATCH', `/organizations/${child.id}`, {
+      ifMatch: child.revision,
+      body: { remarks: '改名日之前的变更', effectiveDate: '2026-10-05' },
+    });
+    expect(changed.status, await changed.clone().text()).toBe(200);
+    expect(await changed.json()).toMatchObject({
+      revision: 2,
+      fullName: `${session.tenant.name}/未来改名集团/未来改名部门`,
+    });
+    expect((await session.list('未来改名部门', '2026-10-20'))[0]).toMatchObject({
+      fullName: `${session.tenant.name}/未来改名集团V2/未来改名部门`,
+      remarks: '改名日之前的变更',
+    });
+  });
+
   it('AC-ORG-10 显示起始层级统一用于 POST、PATCH、GET 与列表，存储仍保留租户根全路径', async () => {
     const { db } = testDb();
     const session = await orgSession(db, 'org10-write-display');
