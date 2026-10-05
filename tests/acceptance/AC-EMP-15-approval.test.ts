@@ -2,6 +2,7 @@
  * AC-EMP-15（PR #54 第三轮复审 P2）：审批中编辑申请的循环汇报预检，按申请将来落地时的真实插入位置判断（DEC-108：
  * 按最近一次提交的操作先后，#53 timeline.ts），与到期落地同一口径。先提交的申请 A 会插在同日后保存的直接业务 B
  * 之前、当天就被 B 取代，A 的经理不生效；B 的经理若会被向后改成成环的值，只跳过该字段。
+ * DEC-154：调动申请审批中不能再直接调动，同日在后的 B 用直接组织调整（其他直接业务仍按操作先后排序）。
  */
 import { runEmploymentActivations } from '@italent/api';
 import { useTestDb } from '@italent/testkit';
@@ -32,10 +33,16 @@ async function revisionOf(w: ApprovalWorld, employeeId: string) {
   ).revision;
 }
 
-async function direct(w: ApprovalWorld, employeeId: string, effectiveDate: string, fields: Record<string, unknown>) {
+async function direct(
+  w: ApprovalWorld,
+  employeeId: string,
+  effectiveDate: string,
+  fields: Record<string, unknown>,
+  kind: 'transfer' | 'org_adjustment' = 'transfer',
+) {
   const response = await w.request(w.hr.id, 'POST', `/api/tenant/employment/employees/${employeeId}/businesses`, {
     ifMatch: await revisionOf(w, employeeId),
-    body: { kind: 'transfer', mode: 'direct', effectiveDate, fields },
+    body: { kind, mode: 'direct', effectiveDate, fields },
   });
   return w.json<{ id: string }>(response, 201);
 }
@@ -77,10 +84,10 @@ async function scene(label: string) {
 describe('AC-EMP-15 审批中编辑申请：按申请落地时的真实插入位置判断循环汇报（PR #54 第三轮复审 P2）', () => {
   it('审批编辑＋同日后续直接业务＋到期落地：先提交的 A 被同日在后的 B 取代，改经理为 M 不误拒，落地后链不成环', async () => {
     const { w, head, x, m, e, editManager } = await scene('emp15-approval-edit');
-    // A：先提交的申请，D 日生效、明确清空直线经理；B：之后保存的同日直接业务，经理为 X。
+    // A：先提交的调动申请，D 日生效、明确清空直线经理；B：之后保存的同日直接组织调整，经理为 X。
     const a = await w.application(e.employeeId, { directManagerId: null }, { effectiveDate: D });
     let view = await w.submit(a);
-    const b = await direct(w, e.employeeId, D, { directManagerId: x.employeeId });
+    const b = await direct(w, e.employeeId, D, { directManagerId: x.employeeId }, 'org_adjustment');
     // M 自 D+1 起汇报给 E：实际链 M→E→X。
     await direct(w, m.employeeId, '2026-10-06', { directManagerId: e.employeeId });
 
