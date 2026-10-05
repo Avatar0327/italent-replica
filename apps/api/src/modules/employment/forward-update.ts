@@ -1,7 +1,7 @@
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
-import { requireScopedEmploymentObject, requireEmploymentWrite } from './context.js';
+import { employmentRecordVisibleTo, requireEmploymentWrite, requireLinkedEmploymentRecord } from './context.js';
 import { AppError } from '../../errors.js';
 import { getCustomFieldsForInheritance } from './configuration.js';
 import { currentEmploymentCycle } from './cycles.js';
@@ -51,40 +51,6 @@ export interface ForwardPlan {
   readonly wholeRecordSkips: WholeRecordSkip[];
 }
 const TARGET_LIMIT = 1000;
-
-async function requireLinkedScope(
-  tx: Tx,
-  ctx: EmploymentContext,
-  employeeId: string,
-  departmentId: string | null,
-  businessId: string,
-): Promise<void> {
-  try {
-    await requireScopedEmploymentObject(tx, ctx, employeeId, departmentId, businessId);
-  } catch (error) {
-    if (error instanceof AppError && error.code === 'NOT_FOUND') {
-      // TODO(需取证 Q-M0-33): 原站联动越权提示及引导文案待取证。
-      throw new AppError('LINKED_RECORD_OUT_OF_SCOPE', '联动记录不在当前数据范围，请由覆盖该范围的人员操作');
-    }
-    throw error;
-  }
-}
-
-async function linkedScopeAllows(
-  tx: Tx,
-  ctx: EmploymentContext,
-  employeeId: string,
-  departmentId: string | null,
-  businessId: string,
-): Promise<boolean> {
-  try {
-    await requireScopedEmploymentObject(tx, ctx, employeeId, departmentId, businessId);
-    return true;
-  } catch (error) {
-    if (error instanceof AppError && error.code === 'NOT_FOUND') return false;
-    throw error;
-  }
-}
 
 /** 已落地的源记录（生效、编辑）按其时间轴位置比较；尚未落地（预览新增）视为生效日当天最后一条。 */
 async function sourceOrder(tx: Tx, ctx: EmploymentContext, source: ForwardSource): Promise<number | null> {
@@ -184,14 +150,10 @@ export async function forwardUpdateEmployment(
       continue;
     }
     const changes = matchingForwardChanges(source.before, source.after, target.values, custom);
-    if (changes.length)
-      await requireLinkedScope(
-        tx,
-        ctx,
-        source.employeeId,
-        target.values.fields.departmentId,
-        target.payload.businessId,
-      );
+    // DEC-178：后续记录按 DEC-177 对操作人可见即改写，不可见整单拒绝（改写前后各判一次）。
+    const linked = (departmentId: string | null) =>
+      requireLinkedEmploymentRecord(tx, ctx, source.employeeId, departmentId, target.payload.businessId);
+    if (changes.length) await linked(target.values.fields.departmentId);
     const checkDate = referenceCheckDate(target.payload);
     const available = await availableForwardChanges(tx, ctx, changes, checkDate, cache, {
       employeeId: source.employeeId,
@@ -210,7 +172,7 @@ export async function forwardUpdateEmployment(
       plan.skipped.push({ businessId: target.payload.businessId, reason: 'REPORTING_CYCLE', fields: available.cyclic });
     if (!available.accepted.length) continue;
     const nextValues = applyForwardChanges(target.values, available.accepted);
-    await requireLinkedScope(tx, ctx, source.employeeId, nextValues.fields.departmentId, target.payload.businessId);
+    await linked(nextValues.fields.departmentId);
     if (!dryRun)
       await requireEmploymentWrite(
         ctx,
@@ -240,7 +202,7 @@ export async function forwardUpdateEmployment(
   return plan;
 }
 
-/** 不写入任何数据；只提醒当前数据范围内的记录，范围外的与无改动时一样静默跳过，不暴露其字段值。 */
+/** 不写入任何数据；只提醒对操作人可见（DEC-177）的记录，不可见的与无改动时一样静默跳过，不暴露其字段值。 */
 async function remindWholeRecordSkip(
   tx: Tx,
   ctx: EmploymentContext,
@@ -251,7 +213,8 @@ async function remindWholeRecordSkip(
   plan: ForwardPlan,
 ): Promise<void> {
   const { businessId, effectiveDate } = target.payload;
-  if (!(await linkedScopeAllows(tx, ctx, source.employeeId, target.values.fields.departmentId, businessId))) return;
+  if (!(await employmentRecordVisibleTo(tx, ctx, source.employeeId, target.values.fields.departmentId, businessId)))
+    return;
   const reminders = wholeRecordSkipReminder(source.before, source.after, target.values, custom);
   const available = await availableForwardChanges(tx, ctx, reminders, referenceCheckDate(target.payload), cache);
   plan.wholeRecordSkips.push({
