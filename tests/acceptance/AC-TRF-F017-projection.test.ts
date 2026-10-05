@@ -211,3 +211,34 @@ it('P2-04 仅改经理向后更新不因既有编制超额拒绝', async () => {
   expect(response.status, await response.clone().text()).toBe(200);
   expect((await w.business(future.id)).fields.directManagerId).toBe(manager.employee.id);
 });
+
+it.each(['application', 'direct'] as const)('DEC-195 %s 迟到调入和后续调出合到同日，不虚占编制', async (mode) => {
+  const w = await fixture();
+  const person = await w.hired();
+  const save = async (date: string, departmentId: string) =>
+    mode === 'application'
+      ? w.approve(await w.apply(person.employee.id, date, { departmentId }), '2026-10-01T01:00:00Z')
+      : w.session.business(
+          person.employee.id,
+          { kind: 'transfer', mode, effectiveDate: date, fields: { departmentId } },
+          (await w.session.getEmployee(person.employee.id)).revision,
+        );
+  const first = await save('2026-10-05', w.to.id);
+  const last = await save('2026-10-06', w.from.id);
+  expect(
+    (
+      await w.request(
+        'PATCH',
+        `establishment/capacities/${w.capacity.id}`,
+        { localCapacity: 0, effectiveDate: '2026-10-01' },
+        w.capacity.revision,
+      )
+    ).status,
+  ).toBe(200);
+  expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({
+    ...(mode === 'application' ? { activated: [first.id, last.id] } : {}),
+    failed: [],
+    errors: [],
+  });
+  expect((await w.session.records(person.employee.id, '2026-10-08')).find((r) => r.isCurrent)?.id).toBe(last.id);
+});
