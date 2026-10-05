@@ -293,6 +293,32 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
     expect((await world.api.request('GET', `${BASE}/self`, unbound)).status).toBe(403);
   });
 
+  it('DEC-163 补全待办仅 HR 可查，数据范围为空时不暴露业务', async () => {
+    const hr = await world.actor('completion-scope-hr');
+    const employee = await world.person();
+    const saved = await world.transfer(hr, employee, {
+      mode: 'direct',
+      formId: 'TenantBase.TransferMultiFormView',
+      fields: { departmentId: world.inside.id },
+    });
+    expect(saved.status, await saved.clone().text()).toBe(201);
+    const business = (await saved.json()) as { id: string };
+    const path = '/api/tenant/employment/completion-todos';
+    const own = await world.api.request('GET', path, hr);
+    expect(own.status).toBe(200);
+    expect(await own.json()).toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ id: business.id, fieldCodes: expect.arrayContaining(['preset:positionId']) }),
+      ]),
+    });
+    const empty = await world.actor('completion-scope-empty', { empty: true });
+    const hidden = await world.api.request('GET', path, empty);
+    expect(hidden.status).toBe(200);
+    expect(await hidden.json()).toMatchObject({ items: [] });
+    const self = await world.actor('completion-scope-self', { role: 'Transfer.Self' });
+    expect((await world.api.request('GET', path, self)).status).toBe(403);
+  });
+
   it('AC-TRF-02：经理绑定本人后只可为其团队发起，组织范围不能替代团队关系', async () => {
     const managerActor = await world.actor('transfer-manager', { role: 'Transfer.Manager' });
     const manager = await world.person(world.inside.id, managerActor);
