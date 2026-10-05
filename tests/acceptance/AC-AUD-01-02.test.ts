@@ -3,6 +3,7 @@
  * 组织员工的单条编辑进入统一的字段级数据变更日志，格式「字段:从【旧】修改为【新】」，带操作人、时间、
  * 来源动作、来源页面、终端、IP、TraceID；删除任职记录时日志保留被删记录的完整快照。
  */
+import { insertAuditEvent, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { employmentSession, EMP_TODAY } from './AC-EMP-support.js';
@@ -136,5 +137,72 @@ describe('AC-AUD-02 删除任职记录：日志保留被删记录快照', () => 
     expect(detail.after).toBeNull();
     // 删除记录的变更内容逐字段写出被删值（新值为空）
     expect(recordLog!.content).toContain('工作地点:从【待删地点】修改为【】');
+  });
+});
+
+describe('P2-5 引用名称按审计时点（租户时区）取有效版本，同日多版本取最新', () => {
+  it('同日改名两次、次日再改名：编辑任职时冻结的是审计当天最后一个版本的名称', async () => {
+    const w = await hiredWorld('aud01-same-day-name');
+    const api = auditApi(w.db, NOW).api;
+    const as = { user: w.session.user.id, tenant: w.session.tenant.id };
+    let revision = w.departmentB.revision;
+    for (const [name, effectiveDate] of [
+      ['旧部门名', '2026-10-01'],
+      ['新部门名', '2026-10-01'],
+      ['明日部门名', '2026-10-02'],
+    ] as const) {
+      const renamed = await api.request('PATCH', `/api/tenant/org/organizations/${w.departmentB.id}`, {
+        ...as,
+        ifMatch: revision,
+        body: { name, effectiveDate },
+      });
+      expect(renamed.status, await renamed.clone().text()).toBe(200);
+      revision = ((await renamed.json()) as { revision: number }).revision;
+    }
+    const edited = await w.session.request('PATCH', `/records/${w.hire.id}`, {
+      ifMatch: w.hire.revision,
+      body: { fields: { departmentId: w.departmentB.id } },
+    });
+    expect(edited.status, await edited.clone().text()).toBe(200);
+    const { items } = await w.audit.dataChanges(w.as, { objectId: w.hire.id, action: 'employment.record.edit' });
+    expect(items[0]!.content).toContain('部门:从【合成部门甲】修改为【新部门名】');
+  });
+});
+
+describe('P2-4 对象 UUID 大小写不影响写入与查询', () => {
+  it('统一入口写入大写对象 ID 时按小写保存；大写、小写查询结果一致；非 UUID 复合标识保持原样', async () => {
+    const w = await hiredWorld('aud01-uuid-case');
+    const upper = w.hire.id.toUpperCase();
+    await withTenant(w.db, w.session.tenant.id, (tx) =>
+      insertAuditEvent(tx, {
+        tenantId: w.session.tenant.id,
+        actorUserId: w.session.user.id,
+        action: 'employment.record.edit',
+        objectType: 'employment-record',
+        objectId: upper,
+        before: { place: '大写前' },
+        after: { place: '大写后' },
+        occurredAt: new Date(NOW),
+      }),
+    );
+    const lower = await w.audit.dataChanges(w.as, { objectId: w.hire.id, field: 'place' });
+    const shouted = await w.audit.dataChanges(w.as, { objectId: upper, field: 'place' });
+    expect(lower.items.map((item) => item.id)).toEqual(shouted.items.map((item) => item.id));
+    expect(lower.items).toContainEqual(expect.objectContaining({ objectId: w.hire.id }));
+    await withTenant(w.db, w.session.tenant.id, (tx) =>
+      insertAuditEvent(tx, {
+        tenantId: w.session.tenant.id,
+        actorUserId: w.session.user.id,
+        action: 'license_seat.release',
+        objectType: 'license_seat',
+        objectId: 'PA:AbC',
+        before: { seat: 1 },
+        after: null,
+      }),
+    );
+    const composite = await withTenant(w.db, w.session.tenant.id, (tx) =>
+      tx.execute(sql`SELECT object_id FROM audit_events WHERE action='license_seat.release'`),
+    );
+    expect(JSON.stringify(composite)).toContain('PA:AbC');
   });
 });

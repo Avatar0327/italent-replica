@@ -5,12 +5,13 @@
  * 保留期由定时清理执行：只删本租户超过保留期的日志；审计表对应用角色仍只追加（不能直接 DELETE / TRUNCATE）。
  */
 import { runAuditRetention } from '@italent/api';
-import { sql, withTenant, type Db } from '@italent/db';
+import { sql, withPlatform, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { employmentSession } from './AC-EMP-support.js';
 import { auditApi } from './AC-AUD-support.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
+import { creatorOf } from '../../apps/api/src/modules/permission/scope-audit.js';
 
 const testDb = useTestDb();
 const SEVEN_MONTHS_AGO = '2026-03-01T01:00:00.000Z';
@@ -111,9 +112,22 @@ describe('AC-AUD-05 查询期与保留期按租户配置', () => {
 
     expect(await logCount(db, short.session.tenant.id, short.hire.id, EDIT)).toBe(0);
     expect(await logCount(db, long.session.tenant.id, long.hire.id, EDIT)).toBe(1);
-    // 每个对象的首个新增事件同时是数据范围「创建人」的判定依据（迁移 0019），清理时保留
+    // DEC-198：保留期严格执行，首个新增事件同样清理；「创建人」只以最小元数据（对象、创建人、创建时间）另存
     const CREATE = 'employment.employee.create';
-    expect(await logCount(db, short.session.tenant.id, short.employee.id, CREATE)).toBe(1);
+    expect(await logCount(db, short.session.tenant.id, short.employee.id, CREATE)).toBe(0);
+    await withTenant(db, short.session.tenant.id, async (tx) => {
+      const creator = await creatorOf(tx, short.session.tenant.id, short.employee.id, CREATE, 'employment_employee');
+      expect(creator).toBe(short.session.user.id);
+      const result = await tx.execute(sql`SELECT * FROM audit_object_creators WHERE object_id=${short.employee.id}`);
+      const rows = (Array.isArray(result) ? result : (result as { rows: Record<string, unknown>[] }).rows) as Record<
+        string,
+        unknown
+      >[];
+      expect(rows).toHaveLength(1);
+      expect(Object.keys(rows[0]!).sort()).toEqual(
+        ['action', 'created_at', 'creator_user_id', 'object_id', 'object_type', 'tenant_id'].sort(),
+      );
+    });
 
     // 清理本身留痕：操作人“系统”、来源动作“定时任务”
     const operations = await auditApi(db, NOW).operationLogs(short.as, { behavior: 'purge' });
@@ -124,5 +138,35 @@ describe('AC-AUD-05 查询期与保留期按租户配置', () => {
         successCount: shortRun.runs[0]!.purged.total,
       }),
     ]);
+  });
+
+  it('P2-2：清理函数不对业务角色开放；保留月数只取租户配置；直接调用也原子留痕', async () => {
+    const { db } = testDb();
+    const short = await tenantWithOldLog(db, 'aud05-guard-default');
+    const long = await tenantWithOldLog(db, 'aud05-guard-long', { queryMonths: 3, retainMonths: 12 });
+    const tenantId = short.session.tenant.id;
+    await expect(
+      withTenant(db, tenantId, (tx) =>
+        tx.execute(sql`SELECT * FROM purge_expired_audit(${tenantId}::uuid, ${NOW}::timestamptz, 1000)`),
+      ),
+    ).rejects.toThrow(/permission denied/);
+    // 旧签名（调用方传保留月数）不再存在
+    await expect(
+      withPlatform(db, (tx) => tx.execute(sql`SELECT * FROM purge_expired_audit(${tenantId}::uuid, 1, now())`)),
+    ).rejects.toThrow();
+    const purge = (id: string) =>
+      withPlatform(db, async (tx) => {
+        const result = await tx.execute(sql`SELECT * FROM purge_expired_audit(${id}::uuid, ${NOW}::timestamptz, 1000)`);
+        return (
+          (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as Record<string, unknown>[]
+        )[0]!;
+      });
+    expect(await purge(long.session.tenant.id)).toMatchObject({ retain_months: 12, data_changes: 0 });
+    expect(await logCount(db, long.session.tenant.id, long.hire.id, 'employment.record.edit')).toBe(1);
+    const purged = await purge(tenantId);
+    expect(purged).toMatchObject({ retain_months: 6, cutoff: '2026-04-01' });
+    expect(Number(purged.data_changes)).toBeGreaterThan(0);
+    const operations = await auditApi(db, NOW).operationLogs(short.as, { behavior: 'purge' });
+    expect(operations.items).toHaveLength(1);
   });
 });
