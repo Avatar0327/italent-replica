@@ -1,5 +1,6 @@
 import { useTestDb } from '@italent/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as linkage from '../../apps/api/src/modules/employment/transfer-linkage.js';
 import { activationWorld } from './AC-TRF-activation-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -57,6 +58,58 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
     const blocked = await save(second, '2026-10-05', mode);
     expect(blocked.status).toBe(409);
     expect(await blocked.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHMENT_EXCEEDED' } } });
+  });
+
+  it.each([1, 2])('P2-1 同人多笔未来任职只计一人，周期末调出仍保留期间峰值（编制 %i）', async (capacity) => {
+    const w = await fixture(`trf-est-peak-${capacity}`, capacity);
+    const first = await w.hired('未来多单');
+    for (const [date, departmentId] of [
+      ['2026-10-20', w.to.id],
+      ['2026-10-22', w.to.id],
+      ['2026-10-25', w.from.id],
+    ]) {
+      const current = await w.session.getEmployee(first.employee.id);
+      await w.session.business(
+        first.employee.id,
+        { kind: 'transfer', mode: 'direct', effectiveDate: date!, fields: { departmentId: departmentId! } },
+        current.revision,
+      );
+    }
+    const second = await w.hired('较早调入');
+    const response = await w.session.request('POST', `/transfers/employees/${second.employee.id}`, {
+      ifMatch: second.hire.employeeRevision,
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
+        mode: 'direct',
+        effectiveDate: '2026-10-05',
+        fields: { departmentId: w.to.id },
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(capacity === 1 ? 409 : 201);
+  });
+
+  it('P2-1 周期内已落地的未来入职也计入，不仅限于直接调动', async () => {
+    const w = await fixture('trf-est-future-hire');
+    const first = await w.session.employee('未来入职');
+    await w.session.business(
+      first.id,
+      { kind: 'hire', mode: 'direct', effectiveDate: '2026-10-20', fields: { departmentId: w.to.id } },
+      first.revision,
+    );
+    const second = await w.hired('较早调入');
+    const response = await w.session.request('POST', `/transfers/employees/${second.employee.id}`, {
+      ifMatch: second.hire.employeeRevision,
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
+        mode: 'direct',
+        effectiveDate: '2026-10-05',
+        fields: { departmentId: w.to.id },
+      },
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHMENT_EXCEEDED' } } });
   });
 
   it('P3-1 草稿保存后容量被占满，提交时重新检查', async () => {
@@ -149,6 +202,40 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
       expect((await w.business(direct.id)).activation?.failureCount).toBe(1);
     },
   );
+
+  it('DEC-173 PR-A 已保存且没有新排队事件的未来直接调动也会复查', async () => {
+    const w = await fixture('trf-recheck-existing');
+    const { employee, hire } = await w.hired();
+    // 模拟 PR-A 只落地任职、没有 PR-B 新事件的存量记录；不改写历史数据。
+    const queue = vi.spyOn(linkage, 'queueTransferLinkage').mockResolvedValue(undefined);
+    let direct;
+    try {
+      direct = await w.session.business(
+        employee.id,
+        { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { departmentId: w.to.id } },
+        hire.employeeRevision,
+      );
+    } finally {
+      queue.mockRestore();
+    }
+    expect((await w.outboxEvents(direct.id)).some((e) => e.eventType.endsWith('.pending'))).toBe(false);
+    expect(
+      (
+        await w.request(
+          'PATCH',
+          `/capacities/${w.cap.id}`,
+          { localCapacity: 0, effectiveDate: '2026-10-04' },
+          w.cap.revision,
+        )
+      ).status,
+    ).toBe(200);
+    expect(await w.runScheduler('2026-10-05T01:00:00Z')).toMatchObject({
+      failed: [direct.id],
+      suspended: [],
+      errors: [],
+    });
+    expect(await w.todos()).toMatchObject([{ id: direct.id }]);
+  });
 
   it('P3-4 带编调动明确拒绝且不写业务', async () => {
     const w = await fixture('trf-with-establishment');
