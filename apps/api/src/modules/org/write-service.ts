@@ -13,6 +13,7 @@ import {
 } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { assertCodeAvailable, consumeCode, ensureOrgSetup } from './codes.js';
+import { applyEstablishedOnCorrection, planEstablishedOnCorrection } from './correction.js';
 import { assertParentAvailable, type CascadeAuthorizer, planDeactivation, unavailableFrom } from './deactivation.js';
 import { assertOrgPeopleEligible, submittedPeople } from './people.js';
 import { futureBoundaries, loadOrgSnapshot, type OrgRecord } from './read-model.js';
@@ -155,9 +156,8 @@ export async function updateOrganization(
 }
 
 /**
- * DEC-130：设立日期就是首个版本的生效日期，变更中不能改成其他日期或清空；只允许原样提交
- * （历史数据缺设立日期时可按首版生效日补齐）。
- * TODO(需取证 #52): 原站建成后能否在「变更 / 编辑」中改设立日期未取证，先按不可改处理。
+ * DEC-147（`10` §18）：「变更」中没有设立日期字段；原样提交（整表提交的客户端）放行，改动或清空一律 400，
+ * 到「编辑」（PATCH …/correction）中修改，首版生效日随之变化（DEC-130）。存量缺设立日期的可按首版生效日补齐。
  */
 async function assertEstablishedOnUnchanged(tx: Tx, ctx: OrgWriteContext, orgId: string, value: string | null) {
   const [first] = await tx
@@ -167,10 +167,43 @@ async function assertEstablishedOnUnchanged(tx: Tx, ctx: OrgWriteContext, orgId:
     .orderBy(orgVersions.startDate)
     .limit(1);
   if (value !== null && value === first?.startDate) return;
-  throw new AppError('VALIDATION_FAILED', '设立日期即组织首个版本的生效日期，不能在变更中修改或清空', {
-    reason: 'ESTABLISHED_ON_IMMUTABLE',
-    fields: { establishedOn: '设立日期不能在变更中修改' },
+  throw new AppError('VALIDATION_FAILED', '「变更」中不能修改设立日期，请在「编辑」中修改', {
+    reason: 'ESTABLISHED_ON_EDIT_ONLY',
+    fields: { establishedOn: '设立日期请在「编辑」中修改' },
   });
+}
+
+/** DEC-147：「编辑」更正设立日期，首版生效日随之变化，不产生新版本；拦截规则与原地更正见 correction.ts。 */
+export async function correctEstablishedOn(
+  tx: Tx,
+  ctx: OrgWriteContext,
+  orgId: string,
+  value: string,
+): Promise<OrgRecord> {
+  if (!isUuid(orgId)) throw invalid('orgId', '组织 ID 必须是 UUID');
+  if (orgId === ctx.tenantId) throw new AppError('FORBIDDEN', '租户根组织不可修改');
+  const establishedOn = date(value, 'establishedOn');
+  const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('update');
+  if (!object) throw new AppError('NOT_FOUND', '组织不存在');
+  assertRevision(ctx.expectedRevision, object.revision);
+  const plan = await planEstablishedOnCorrection(tx, ctx, orgId, establishedOn);
+  if (plan) {
+    const revision = object.revision + 1;
+    await tx.update(orgObjects).set({ revision }).where(objectKey(ctx.tenantId, orgId));
+    await applyEstablishedOnCorrection(tx, ctx, orgId, plan);
+    await audit(
+      tx,
+      ctx,
+      'org.established-on.correct',
+      orgId,
+      plan.before,
+      await recordAt(tx, { ...object, revision }, establishedOn),
+    );
+    // 提前后首版覆盖到新的日期，上级在那几天的全称可能不同（DEC-021：按边界同步全称）。
+    if (establishedOn < plan.previous) await synchronizeFullNames(tx, ctx, establishedOn);
+  }
+  const [latest] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId));
+  return recordAt(tx, latest ?? object, establishedOn);
 }
 
 /** DEC-129：下级按停用日当天的状态原样追加一个停用版本，各自 revision 前进并留审计。 */

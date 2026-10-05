@@ -1,15 +1,16 @@
 /**
  * 职务模块的真实人员数据端口（F-006，接 DEC-074）：在岗人读自任职版本链，同步直线经理经任职模块的写入函数
  * createEmploymentBusiness 追加版本——与职位变更同一事务，审计与 outbox 随之写入，员工 revision 不符返回 409，
- * 幂等由职位变更命令的台账保证。
+ * 幂等由职位变更命令的台账保证。操作人范围外的员工跳过并在回执中记 OUT_OF_SCOPE（P2-1）。
  */
-import { type Db, isUuid, withTenant } from '@italent/db';
+import { type Db, isUuid, sql, type Tx, withTenant } from '@italent/db';
 import { MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
 import { type Authorizer, requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
+import { employmentCreator } from '../employment/context.js';
 import { readPositionAssignments } from '../employment/personnel-reader.js';
-import { loadEmploymentRecord } from '../employment/read-model.js';
+import { loadEmploymentRecord, rowsOf } from '../employment/read-model.js';
 import { createEmploymentBusiness } from '../employment/write-service.js';
 import {
   authorizeInTransaction,
@@ -70,14 +71,7 @@ export function employmentJobPersonnel(access?: EmploymentWriteAccess): JobPerso
       if (await authorize({ ...ctx, action: 'data.scope.all' })) {
         await requirePermission(authorize, { ...ctx, action: 'tenant.employment.write', resource: change.employeeId });
       }
-      const record = await loadEmploymentRecord(tx, ctx.tenantId, change.assignmentId, change.effectiveDate);
-      const target = { personId: change.employeeId, orgId: record?.fields.departmentId ?? null, creatorId: ctx.userId };
-      if (!record || !(await scopeAllowsInTransaction(tx, access.scope, target))) {
-        throw new AppError(
-          'LINKED_RECORD_OUT_OF_SCOPE',
-          '职位在岗员工的任职不在当前数据范围，请由覆盖该范围的人员操作',
-        );
-      }
+      if (!(await withinEmploymentScope(tx, ctx.tenantId, access.scope, change))) return { skipped: 'OUT_OF_SCOPE' };
       const employmentCtx = {
         ...ctx,
         expectedRevision: change.expectedRevision,
@@ -85,11 +79,35 @@ export function employmentJobPersonnel(access?: EmploymentWriteAccess): JobPerso
         authorize,
         objectCode: EMPLOYMENT_OBJECT,
       };
-      // TODO(需取证 #51): 与普通新增业务同一路径——其后已有未来记录时按 `07` A7 向后更新，
-      // 生效日当天已有记录时再新增一条排在当日最后（DEC-108）；W-416 实测未覆盖这两种情况。
+      // `19` §3.1 Q-M0-58（W-443、W-444）：与普通新增业务同一路径——其后已有未来记录时按 `07` A7 向后更新，
+      // 生效日当天已有记录时再新增一条排在当日最后（DEC-108）；会形成循环汇报时整单拒绝（见 employment/reporting-cycle.ts）。
       await createEmploymentBusiness(tx, employmentCtx, change.employeeId, input, { changeType: change.changeType });
     },
   };
+}
+
+/**
+ * PR #54 首审 P2-1：按源任职的真实创建者判断它是否在操作人当前范围内可读，并按人员档案的真实创建者判断能否为该员工
+ * 新增任职（与 POST /employees/:id/businesses 同一口径）；不能拿操作人自己当创建者，否则“仅本人创建”恒成立。
+ */
+async function withinEmploymentScope(
+  tx: Tx,
+  tenantId: string,
+  scope: ModuleScope,
+  change: { readonly assignmentId: string; readonly employeeId: string; readonly effectiveDate: string },
+): Promise<boolean> {
+  if (scope.all) return true;
+  const record = await loadEmploymentRecord(tx, tenantId, change.assignmentId, change.effectiveDate, scope);
+  if (!record || record.employeeId !== change.employeeId) return false;
+  const [creator] = rowsOf<{ creator: string | null }>(
+    await tx.execute(sql`SELECT ${employmentCreator(tenantId, sql`${change.employeeId}::uuid`)} AS creator`),
+  );
+  const target = {
+    personId: change.employeeId,
+    orgId: record.fields.departmentId,
+    creatorId: creator?.creator ?? null,
+  };
+  return scopeAllowsInTransaction(tx, scope, target);
 }
 
 type Deps = { readonly db: Db; readonly authorize: Authorizer; readonly clock: () => Date };

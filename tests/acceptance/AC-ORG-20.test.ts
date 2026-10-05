@@ -4,6 +4,7 @@
  * ②不得早于上级组织的设立日——另加③不得晚于本组织最早一条任职 / 职位记录的开始日（复刻加严）。
  */
 import { randomUUID } from 'node:crypto';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { auditActions, orgPeopleWorld, type OrgPeopleWorld } from './AC-ORG-people-support.js';
@@ -183,6 +184,26 @@ describe('AC-ORG-20 在「编辑」中修改设立日期（DEC-147）', () => {
       expect(changed.status).toBe(400);
       expect(await changed.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHED_ON_EDIT_ONLY' } } });
     }
+  });
+
+  it('组织版本仍只允许追加：未声明更正、或声明后改其他列都被数据库拒绝（迁移 0033）', async () => {
+    const { world, org } = await versioned('org20guarddb');
+    const db = testDb().db;
+    const update = (statement: ReturnType<typeof sql>) =>
+      withTenant(db, world.tenant.id, async (tx) => {
+        await tx.execute(sql`SELECT set_config('italent.org_correction', 'established_on', true)`);
+        await tx.execute(statement);
+      });
+    await expect(
+      withTenant(db, world.tenant.id, (tx) =>
+        tx.execute(sql`UPDATE org_versions SET established_on='2026-08-01' WHERE org_id=${org.id}::uuid`),
+      ),
+    ).rejects.toThrow();
+    await expect(update(sql`UPDATE org_versions SET name='改名' WHERE org_id=${org.id}::uuid`)).rejects.toThrow();
+    await expect(
+      withTenant(db, world.tenant.id, (tx) => tx.execute(sql`DELETE FROM org_versions WHERE org_id=${org.id}::uuid`)),
+    ).rejects.toThrow();
+    expect((await world.orgsAt('2026-09-01')).get(org.id)).toMatchObject({ establishedOn: '2026-09-01', revision: 2 });
   });
 
   it('改早不得落入上级停用期（DEC-129：启用组织不能挂在不可用的上级下）', async () => {

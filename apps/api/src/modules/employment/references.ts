@@ -3,14 +3,20 @@ import { assertOrg } from '../establishment/org-reader.js';
 import type { JobRecord } from '../job/read-model.js';
 import { invalid, requiredJob, validateJobAssignment } from '../job/validation.js';
 import { rowsOf } from './read-model.js';
+import { assertNoReportingCycle } from './reporting-cycle.js';
 import type { EmploymentContext, PresetFields } from './types.js';
 
-/** docs/02_业务建模/15 §8：以任职生效日解析引用，不取对象的当前版本。 */
+/**
+ * docs/02_业务建模/15 §8：以任职生效日解析引用，不取对象的当前版本。
+ * reportingOf：本次写入明确设置了直线经理时传入员工 ID，另校验不得形成循环汇报（`19` §3.1 Q-M0-58）；
+ * 沿用的经理不再校验，免得存量环路挡住与经理无关的业务。
+ */
 export async function validateEmploymentReferences(
   tx: Tx,
   ctx: EmploymentContext,
   fields: PresetFields,
   effectiveDate: string,
+  reportingOf?: string,
 ): Promise<void> {
   const tenantId = ctx.tenantId;
   if (fields.departmentId) await assertOrg(tx, tenantId, fields.departmentId, effectiveDate);
@@ -50,6 +56,12 @@ export async function validateEmploymentReferences(
     );
     if (!employee) throw invalid('managerId', '经理在任职生效日必须处于在职状态');
   }
+  if (reportingOf) await assertNoReportingCycle(tx, tenantId, reportingOf, fields.directManagerId, effectiveDate);
+}
+
+/** 本次写入是否明确设置了直线经理（新增 / 申请看表单显式字段，编辑看补丁）。 */
+export function setsDirectManager(explicitFieldCodes: readonly string[]): boolean {
+  return explicitFieldCodes.includes('preset:directManagerId');
 }
 
 async function validatePositionRanges(

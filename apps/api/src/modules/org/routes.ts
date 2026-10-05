@@ -27,7 +27,13 @@ import { authorizeOrgImportRows, importOrganizations, type OrgImportRow } from '
 import { displayOrganization, loadOrgSnapshot, type OrgRecord, validIsoDate } from './read-model.js';
 import { readOrgSettings, writeOrgSettings } from './settings.js';
 import { ORG_PERSON_FIELDS } from './validation.js';
-import { createOrganization, updateOrganization, validateOrganization, type OrgWriteContext } from './write-service.js';
+import {
+  correctEstablishedOn,
+  createOrganization,
+  updateOrganization,
+  validateOrganization,
+  type OrgWriteContext,
+} from './write-service.js';
 
 const BASE = '/api/tenant/org';
 const OBJECT = MODULE_OBJECTS.organization.code;
@@ -69,6 +75,8 @@ const update = z
   .strictObject({ ...fields, parents: parents.partial().optional() })
   .partial()
   .extend({ effectiveDate: date });
+// DEC-147：「编辑」（更正、不产生新版本）目前只开放设立日期，首版生效日随之变化。
+const correction = z.strictObject({ establishedOn: date });
 const settings = z.strictObject({
   enabledDimensions: z.array(z.enum(ORG_DIMENSIONS)).max(5),
   fullNameStartLevel: z.number().int().min(0).max(9),
@@ -88,6 +96,7 @@ export function registerOrgRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
   registerPersonCandidates(router, deps);
   registerReservations(router, deps);
   registerWrites(router, deps);
+  registerCorrection(router, deps);
   registerOrgImport(router, deps);
 }
 
@@ -222,6 +231,41 @@ function registerReservations(router: Hono<TenantEnv>, deps: TenantRouteDeps): v
       status: 200,
       body: await releaseCode(tx, writeCtx, id),
     }));
+  });
+}
+
+/** DEC-147：「编辑」（更正、不产生新版本）改设立日期，首版生效日随之变化；权限与范围同「变更」。 */
+function registerCorrection(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  router.patch(`${BASE}/organizations/:id/correction`, async (c) => {
+    const ctx = await context(c, deps, 'update', revision(c));
+    const id = orgId(c);
+    const input = await body(c, correction);
+    await writeFields(deps, ctx, OBJECT, 'update', input);
+    const scope = await requestScope(c, deps, ctx, OBJECT);
+    await withTenant(deps.db, ctx.tenantId, async (tx) =>
+      visible(
+        scope,
+        id,
+        '组织不存在',
+        hasCreatorScope(scope) ? await creatorOf(tx, ctx.tenantId, id, 'org.create', 'organization') : undefined,
+      ),
+    );
+    return write(
+      c,
+      deps,
+      ctx,
+      input,
+      async (tx, writeCtx) => ({
+        status: 200,
+        body: await organizationResponse(
+          tx,
+          writeCtx,
+          await correctEstablishedOn(tx, writeCtx, id, input.establishedOn),
+        ),
+      }),
+      true,
+      scope,
+    );
   });
 }
 

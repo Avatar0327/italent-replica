@@ -44,9 +44,8 @@ export function employeeDto(row: Row, ctx: PersonnelContext): Row {
   const attrs = camel(row);
   delete attrs.profile;
   delete attrs.employeeName;
-  // DEC-089 / DEC-037（`15` §12，Q-M0-36 已取证）：排序编码按名次口径——规则项（所属部门 → 工号 → 职级）依次比较
-  // 预计算并存储的名次（organizationSortNumber 等），不拼长整数分段编码，读取时也不现算全租户名次（AC-SUB-04）。
-  // 组合成单一名次需随任职变动重排全租户，目前没有存储，字段保持为空，不伪造数值。
+  // DEC-148：人员组合排序编码（规则项依次比较后的名次，`15` §12、DEC-037 / DEC-089）延期到后续任务 F-010，
+  // 在此之前 orderCode 一律返回 null，不现算、不伪造；各规则项名次（organizationSortNumber 等）已预计算并存储。
   return {
     ...Object.fromEntries(EMPLOYEE_FIELDS.map((f) => [f.code, null])),
     ...dto,

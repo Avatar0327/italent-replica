@@ -82,7 +82,7 @@ async function synchronizeManagers(
       continue;
     }
     // DEC-132：经理本来就是此人也照样新增（AC-JOB-05“各新增一条”、原站“是否新增任职”锁定为是）。
-    // 该边界原站未实测，属规格解释。
+    // 该边界原站未实测，属规格解释。范围外的员工由端口判定后跳过（P2-1），不写任职也不写同步审计。
     const change = {
       assignmentId: assignment.assignmentId,
       employeeId: assignment.employeeId,
@@ -91,7 +91,15 @@ async function synchronizeManagers(
       directManagerId,
       ...POSITION_MANAGER_SYNC_RECORD,
     };
-    await gateway.appendManagerVersion(tx, ctx, change);
+    const outcome = await gateway.appendManagerVersion(tx, ctx, change);
+    if (outcome?.skipped) {
+      skipped.push({
+        employeeId: assignment.employeeId,
+        assignmentId: assignment.assignmentId,
+        reason: outcome.skipped,
+      });
+      continue;
+    }
     await auditJob(
       tx,
       ctx,

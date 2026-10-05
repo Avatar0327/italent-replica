@@ -62,7 +62,8 @@ export async function editEmploymentRecord(
   ) {
     throw new AppError('VALIDATION_FAILED', '任职工号必须等于员工主档工号');
   }
-  await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate);
+  const reportingOf = patch.fields && Object.hasOwn(patch.fields, 'directManagerId') ? record.employeeId : undefined;
+  await validateEmploymentReferences(tx, ctx, after.fields, record.effectiveDate, reportingOf);
   const beforeAudit = { ...record.fields, ...customAudit(record.customFields) };
   const afterAudit = { ...after.fields, ...customAudit(after.customFields) };
   const changes: ForwardFieldChange[] = Object.entries(afterAudit)

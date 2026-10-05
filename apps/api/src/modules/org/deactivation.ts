@@ -143,7 +143,16 @@ async function assertSubtreeVacant(
  * DEC-129 的另一面：启用的组织不能挂在停用（或之后排定停用、失效）的行政上级下——新建、改上级、重新启用
  * 都按本版本有效期内上级的每个版本判断。级联停用之后，下级须在上级重新启用后再逐个启用。
  */
-export async function assertParentAvailable(tx: Tx, ctx: OrgWriteContext, input: NormalizedOrganization) {
+export async function assertParentAvailable(
+  tx: Tx,
+  ctx: OrgWriteContext,
+  input: {
+    readonly parents: { readonly admin?: { readonly parentId: string | null } };
+    readonly enabled: boolean;
+    readonly startDate: string;
+    readonly stopDate: string;
+  },
+) {
   const parentId = input.parents.admin?.parentId;
   if (!input.enabled || !parentId || parentId === ctx.tenantId) return;
   const versions = await tx

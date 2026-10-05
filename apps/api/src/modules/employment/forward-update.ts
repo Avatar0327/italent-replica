@@ -177,13 +177,17 @@ export async function forwardUpdateEmployment(
         target.values.fields.departmentId,
         target.payload.businessId,
       );
-    const available = await availableForwardChanges(tx, ctx, changes, referenceCheckDate(target.payload), cache);
+    const checkDate = referenceCheckDate(target.payload);
+    const available = await availableForwardChanges(tx, ctx, changes, checkDate, cache, source.employeeId);
     if (available.skipped.length)
       plan.skipped.push({
         businessId: target.payload.businessId,
         reason: 'REFERENCE_UNAVAILABLE',
         fields: available.skipped,
       });
+    // `19` §3.1 Q-M0-58：后续记录改成新经理会形成循环汇报时只跳过该字段，主记录照常保存（同引用不可用的处理）。
+    if (available.cyclic.length)
+      plan.skipped.push({ businessId: target.payload.businessId, reason: 'REPORTING_CYCLE', fields: available.cyclic });
     if (!available.accepted.length) continue;
     const nextValues = applyForwardChanges(target.values, available.accepted);
     await requireLinkedScope(tx, ctx, source.employeeId, nextValues.fields.departmentId, target.payload.businessId);

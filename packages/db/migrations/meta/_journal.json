@@ -232,6 +232,13 @@
       "when": 1791129849195,
       "tag": "0032_org_shop_owner_employment_change_type",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791158531315,
+      "tag": "0033_org_established_on_correction",
+      "breakpoints": true
     }
   ]
 }

@@ -27,7 +27,7 @@ import {
   type EmploymentPayloadRow,
   type LockedEmploymentBusiness,
 } from './record-store.js';
-import { validateEmploymentReferences } from './references.js';
+import { setsDirectManager, validateEmploymentReferences } from './references.js';
 import { employmentTimelineNeighbors, insertEmploymentTimeline } from './timeline.js';
 import {
   type BusinessKind,
@@ -83,7 +83,8 @@ export async function createEmploymentBusiness(
     staffId: selected?.cycle.id,
   });
   await requireScopedEmploymentObject(tx, ctx, employee.id, prepared.fields.departmentId);
-  await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate);
+  const reportingOf = setsDirectManager(prepared.explicitFieldCodes) ? employee.id : undefined;
+  await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reportingOf);
   const id = randomUUID();
   await insertEmploymentRow(tx, 'employment_business_objects', {
     id,
@@ -156,7 +157,8 @@ export async function updateEmploymentBusiness(
     before,
   );
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, prepared.fields.departmentId, business.id);
-  await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate);
+  const reportingOf = setsDirectManager(prepared.explicitFieldCodes) ? business.employeeId : undefined;
+  await validateEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reportingOf);
   await bumpEmploymentBusiness(tx, ctx, business);
   business.payload = await appendEmploymentPayload(
     tx,
@@ -386,7 +388,9 @@ export async function materializeEmploymentRecord(
   const employType = effectiveEmployType(payload, selected);
   const fields = { ...inherited.fields, employType, jobNumber: business.employee.code };
   await requireScopedEmploymentObject(tx, ctx, business.employeeId, fields.departmentId);
-  await validateEmploymentReferences(tx, ctx, fields, payload.effectiveDate);
+  // 申请到生效日落地时按当日的汇报链再判一次循环汇报（审批期间他人的任职可能已变）。
+  const reportingOf = setsDirectManager(payload.explicitFieldCodes) ? business.employeeId : undefined;
+  await validateEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reportingOf);
   const { next } = await employmentTimelineNeighbors(tx, ctx, business.employeeId, payload.effectiveDate);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
   await insertEmploymentRow(tx, 'employment_records', {

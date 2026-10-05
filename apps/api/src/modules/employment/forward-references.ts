@@ -5,6 +5,7 @@ import { loadJobObject } from '../job/read-model.js';
 import type { JobKind } from '../job/metadata.js';
 import { rowsOf } from './record-store.js';
 import type { ForwardFieldChange } from './forward-rules.js';
+import { findReportingCycle } from './reporting-cycle.js';
 import type { EmploymentContext } from './types.js';
 
 const JOB_REFERENCES: Readonly<Record<string, JobKind>> = {
@@ -43,16 +44,21 @@ export function referenceCheckDate(target: { readonly effectiveDate: string }): 
   return target.effectiveDate;
 }
 
-/** 停用只排除此字段，不取消其他合法字段。每次查询按租户、对象和日期限定；targetDate 取 referenceCheckDate。 */
+/**
+ * 停用只排除此字段，不取消其他合法字段。每次查询按租户、对象和日期限定；targetDate 取 referenceCheckDate。
+ * 传入 employeeId 时，直线经理改成新值会使该员工在这条后续记录上形成循环汇报的，同样只排除此字段（cyclic）。
+ */
 export async function availableForwardChanges(
   tx: Tx,
   ctx: EmploymentContext,
   changes: readonly ForwardFieldChange[],
   targetDate: string,
   cache: Map<string, boolean>,
-): Promise<{ accepted: ForwardFieldChange[]; skipped: string[] }> {
+  employeeId?: string,
+): Promise<{ accepted: ForwardFieldChange[]; skipped: string[]; cyclic: string[] }> {
   const accepted: ForwardFieldChange[] = [];
   const skipped: string[] = [];
+  const cyclic: string[] = [];
   for (const change of changes) {
     let available = true;
     const reference =
@@ -69,8 +75,16 @@ export async function availableForwardChanges(
       }
       available = result;
     }
-    if (available) accepted.push(change);
-    else skipped.push(change.field);
+    if (!available) {
+      skipped.push(change.field);
+      continue;
+    }
+    const manager = change.field === 'directManagerId' && typeof change.after === 'string' ? change.after : null;
+    if (employeeId && manager && (await findReportingCycle(tx, ctx.tenantId, employeeId, manager, targetDate))) {
+      cyclic.push(change.field);
+      continue;
+    }
+    accepted.push(change);
   }
-  return { accepted, skipped };
+  return { accepted, skipped, cyclic };
 }
