@@ -321,13 +321,13 @@ describe('AC-CT F-016 真实权限接入', () => {
       ),
     );
     await w.scope(false, 1);
-    const retry = () =>
+    const retry = (fields: Record<string, unknown> = {}) =>
       entry === 'approval'
         ? w.api.request('POST', `/api/tenant/approval/instances/${task!.instanceId}/resubmit`, {
             tenant: w.seed.tenant.id,
             user: w.user.id,
             ifMatch: instance!.revision,
-            body: {},
+            body: { fields },
           })
         : w.real('POST', '/todos/batch', {
             ifMatch: 0,
@@ -374,8 +374,45 @@ describe('AC-CT F-016 真实权限接入', () => {
       ),
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await w.scope(true, 2);
-    const allowed = await retry();
+    let corrections = {};
+    let customId: string | undefined;
+    if (entry === 'approval') {
+      const field = await w.session.request('POST', '/custom-fields', {
+        ifMatch: 0,
+        body: { name: '重提备注', objectType: 'contract', valueType: 'text' },
+      });
+      expect(field.status).toBe(201);
+      customId = ((await field.json()) as { id: string }).id;
+      expect(
+        (
+          await setObjectPermission(
+            w.seed,
+            w.profile,
+            {
+              dataOperations: { create: true, update: true, delete: true },
+              fields: [
+                ...object.fields.map((f) => ({ fieldCode: f.code, view: true, edit: !f.system })),
+                { fieldCode: `custom:${customId}`, view: true, edit: true },
+              ],
+              buttons: object.buttons.map((b) => ({ buttonCode: b.code, level: b.level })),
+            },
+            object.code,
+          )
+        ).status,
+      ).toBe(200);
+      corrections = { customFields: { [customId.toUpperCase()]: '规范化后鉴权' } };
+    }
+    const allowed = await retry(corrections);
     expect(allowed.status, await allowed.clone().text()).toBe(200);
     if (entry === 'todos') expect(await allowed.json()).toMatchObject({ items: [{ status: 200 }] });
+    if (customId)
+      await withTenant(w.db, w.seed.tenant.id, async (tx) => {
+        expect(
+          rowsOf(
+            await tx.execute(sql`SELECT custom_fields FROM contract_requests
+        WHERE id=${request.id}::uuid`),
+          ),
+        ).toEqual([{ custom_fields: { [customId]: '规范化后鉴权' } }]);
+      });
   });
 });
