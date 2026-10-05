@@ -1,6 +1,6 @@
 import { AppError, handleError } from '../../errors.js';
 import { pgErrorCode, sql, withTenant, contractTypes, contractCompanies, type Tx } from '@italent/db';
-import { CONTRACT_OBJECT, buttonResource } from '@italent/domain';
+import { CONTRACT_OBJECT, buttonResource, contractAction } from '@italent/domain';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { requirePermission } from '../../authorization.js';
@@ -165,7 +165,11 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       tenantId: ctx.tenantId,
       userId: ctx.userId,
       action: 'object.button',
-      resource: buttonResource(CONTRACT_OBJECT, input.operation, input.operation === 'create' ? 'list' : 'detail'),
+      resource: buttonResource(
+        CONTRACT_OBJECT,
+        contractAction(input.operation, input.mode),
+        input.operation === 'create' ? 'list' : 'detail',
+      ),
     });
     await withTenant(deps.db, ctx.tenantId, (tx) => checkScope(tx, ctx, input.employeeId));
     return write(c, deps, ctx, input, async (tx, context) => ({
@@ -192,7 +196,7 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
         action: 'object.button',
         resource: buttonResource(
           CONTRACT_OBJECT,
-          row.command.operation,
+          contractAction(row.command.operation, row.command.mode),
           row.command.operation === 'create' ? 'list' : 'detail',
         ),
       });

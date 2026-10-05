@@ -24,6 +24,9 @@ export const CONTRACT_FLOW = {
   terminate: 'TerminateContractProcess',
 } as const;
 export type ContractOperation = keyof typeof CONTRACT_FLOW;
+export function contractAction(operation: string, mode: string): string {
+  return mode === 'application' ? `${operation}Application` : operation;
+}
 export function addDays(date: string, days: number): string {
   const value = new Date(`${date}T00:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);

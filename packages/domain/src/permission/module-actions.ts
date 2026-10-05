@@ -66,7 +66,10 @@ export const MODULE_OBJECTS = {
       button('terminate', 'detail', 'update'),
       button('import', 'list'),
       button('withdraw', 'detail', 'update'),
-      button('resubmit', 'detail', 'update'),
+      button('createApplication', 'list', 'create'),
+      button('renewApplication', 'detail', 'update'),
+      button('changeApplication', 'detail', 'update'),
+      button('terminateApplication', 'detail', 'update'),
     ],
     [
       'status',

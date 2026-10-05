@@ -3,14 +3,14 @@ import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import { checkScope, lockEmployee, revision, rowsOf, type ContractContext } from './context.js';
 import { settings } from './configuration.js';
-import { fieldsSchema, parse, type ContractCommand } from './input.js';
+import { fieldsSchema, parse, uuid, type ContractCommand } from './input.js';
 import { createCommand, deleteContract, portfolioRevision } from './service.js';
 export const importSchema = z.strictObject({
   mode: z.enum(['add', 'edit', 'change', 'initialize']),
   rows: z
     .array(
       z.strictObject({
-        employeeId: z.uuid(),
+        employeeId: uuid,
         fields: fieldsSchema,
         originalEffectiveDate: z.iso.date().optional(),
         revision: z.int().min(1).optional(),
@@ -18,7 +18,7 @@ export const importSchema = z.strictObject({
     )
     .min(1)
     .max(10000),
-  revisions: z.record(z.uuid(), z.int().min(0)).default({}),
+  revisions: z.record(uuid, z.int().min(0)).default({}),
 });
 type Input = z.infer<typeof importSchema>;
 class PreviewRollback extends Error {}

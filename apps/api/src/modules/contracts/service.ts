@@ -9,8 +9,9 @@ import {
   sql,
   type Tx,
 } from '@italent/db';
-import { CONTRACT_FIELDS, tenantLocalDate } from '@italent/domain';
+import { CONTRACT_FIELDS, tenantLocalDate, addDays } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { findCurrentRecord } from '../employment/read-model.js';
 import { validateCustomValue } from '../employment/fields.js';
 import { audit, checkFields, checkScope, lockEmployee, revision, rowsOf, type ContractContext } from './context.js';
 import { settings, verifyIds } from './configuration.js';
@@ -18,6 +19,11 @@ import { commandSchema, parse, type ContractCommand, type ContractFields } from 
 
 export type Contract = typeof contractRecords.$inferSelect;
 export type ContractRequest = typeof contractRequests.$inferSelect;
+function assertOperationState(operation: string, before: Contract) {
+  const statuses = operation === 'renew' ? ['valid', 'terminated'] : ['valid'];
+  if (before.approvalStatus !== 'effective' || !statuses.includes(before.status))
+    throw new AppError('CONFLICT', '当前合同状态不允许该操作');
+}
 export async function loadContract(tx: Tx, tenantId: string, id: string) {
   const [record] = await tx
     .select()
@@ -62,9 +68,7 @@ export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown) {
   await checkFields(ctx, input.operation === 'create' ? 'create' : 'update', input.fields);
   revision(ctx.expectedRevision, before?.revision ?? 0);
   if ((input.operation === 'create') === !!before) throw new AppError('VALIDATION_FAILED', '合同操作与目标不匹配');
-  if (before && (before.approvalStatus !== 'effective' || !['valid', 'terminated'].includes(before.status))) {
-    throw new AppError('VALIDATION_FAILED', '只能操作已生效且有效或终止的合同');
-  }
+  if (before) assertOperationState(input.operation, before);
   if (input.operation === 'renew' && input.fields.typeId && input.fields.typeId !== before!.typeId) {
     throw new AppError('VALIDATION_FAILED', '续签不能修改合同类型');
   }
@@ -78,7 +82,15 @@ export async function prepare(tx: Tx, ctx: ContractContext, raw: unknown) {
     throw new AppError('VALIDATION_FAILED', '实际终止时间不能早于合同生效日期');
   }
   const config = await settings(tx, ctx.tenantId);
-  const merged = { ...(before ? businessFields(before) : {}), ...input.fields };
+  const inherited = before ? businessFields(before) : {};
+  // 新的一次签订不沿用上一次的签订日与试用期，调用方明确填写的值仍保留。
+  if (input.operation === 'renew')
+    Object.assign(inherited, {
+      signingDate: null,
+      probationStartDate: null,
+      probationEndDate: null,
+    });
+  const merged = { ...inherited, ...input.fields };
   if (!merged.typeId || !merged.companyId || !merged.effectiveDate) {
     throw new AppError('VALIDATION_FAILED', '合同类型、法人公司、生效日期必填');
   }
@@ -188,9 +200,20 @@ async function validateReferences(
     );
     if (!record) throw new AppError('VALIDATION_FAILED', '任职记录不属于该员工');
   }
-  const current = await checkScope(tx, ctx, input.employeeId, before?.createdBy);
+  await checkScope(tx, ctx, input.employeeId, before?.createdBy);
+  // DEC-164①：历史补录按合同生效日的任职判断，不按操作当天的离职状态判断。
+  const current = await findCurrentRecord(tx, ctx.tenantId, input.employeeId, normalized.effectiveDate!);
+  const [exit] =
+    current && ['leave', 'retirement'].includes(current.kind)
+      ? rowsOf<{ lastWorkDate: string }>(
+          await tx.execute(sql`SELECT
+        coalesce(last_work_date,start_date-1)::text AS "lastWorkDate" FROM employment_records
+        WHERE tenant_id=${ctx.tenantId} AND id=${current.id}::uuid`),
+        )
+      : [];
   if (
-    ['leave', 'retirement'].includes(current?.kind ?? '') &&
+    exit &&
+    normalized.effectiveDate! > exit.lastWorkDate &&
     !config.postExitTypeIds.includes(typeId) &&
     input.operation !== 'terminate'
   )
@@ -256,7 +279,10 @@ export async function applyRequest(tx: Tx, ctx: ContractContext, request: Contra
   if (latest.status === 'effective') return loadContract(tx, ctx.tenantId, latest.resultId!);
   if (latest.status !== 'approved') throw new AppError('CONFLICT', '合同申请尚未审批通过');
   const before = latest.targetId ? await loadContract(tx, ctx.tenantId, latest.targetId) : null;
-  if (before) await assertSourceRevision(tx, ctx, latest, before);
+  if (before) {
+    await assertSourceRevision(tx, ctx, latest, before);
+    assertOperationState(latest.operation, before);
+  }
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const due = latest.operation === 'terminate' ? latest.actualTerminationDate! : latest.effectiveDate;
   if (due > today) throw new AppError('CONFLICT', '合同尚未到生效日期');
@@ -271,7 +297,9 @@ export async function applyRequest(tx: Tx, ctx: ContractContext, request: Contra
         ctx,
         before!,
         latest.operation === 'edit' || latest.effectiveDate <= before!.effectiveDate ? 'void' : 'terminated',
-        latest.effectiveDate <= before!.effectiveDate ? before!.actualTerminationDate : latest.effectiveDate,
+        latest.effectiveDate <= before!.effectiveDate
+          ? before!.actualTerminationDate
+          : addDays(latest.effectiveDate, -1),
       );
     }
     const id = randomUUID();
@@ -377,10 +405,11 @@ export async function batchCommands(
   entries: { revision: number; command: ContractCommand }[],
 ) {
   if (!entries.length || entries.length > 100) throw new AppError('VALIDATION_FAILED', '批量合同操作限 1～100 条');
-  const sorted = [...entries].sort((a, b) => a.command.employeeId.localeCompare(b.command.employeeId));
-  for (const row of sorted) await lockEmployee(tx, ctx, row.command.employeeId);
+  const normalized = entries.map((row) => ({ ...row, command: parse(commandSchema, row.command) }));
+  const ids = [...new Set(normalized.map((row) => row.command.employeeId))].sort();
+  for (const id of ids) await lockEmployee(tx, ctx, id);
   const result = [];
-  for (const row of entries)
+  for (const row of normalized)
     result.push(await createCommand(tx, { ...ctx, expectedRevision: row.revision }, row.command));
   return { items: result };
 }

@@ -264,6 +264,19 @@ describe('PR #64 第二轮 P2 / DEC-164 回归', () => {
     expect((await sweep(w, 1)).runs[0]?.outcomes).toEqual([]);
   });
 
+  it('P2-6 无游标重复调用越过 skipped 候选，继续处理其他到期合同', async () => {
+    const w = await contractWorld(testDb().db, 'ctr2rotation');
+    const sources = [await w.create(), await w.create({ typeId: w.otherType.id })].sort((a, b) =>
+      a.id.localeCompare(b.id),
+    );
+    await installApprovalFallbacks(w.db, w.session.tenant.id, w.session.user.id);
+    await w.settings({ autoRenew: true });
+    await rule(w, [w.org.id], 1, sources[1]!.typeId);
+    expect((await sweep(w, 1)).runs[0]?.outcomes).toMatchObject([{ id: sources[0]!.id, state: 'skipped' }]);
+    expect((await sweep(w, 1)).runs[0]?.outcomes).toMatchObject([{ id: sources[1]!.id, state: 'succeeded' }]);
+    expect(await w.list('in_review')).toHaveLength(1);
+  });
+
   it.each(['direct', 'import'])('DEC-164① 离职员工可通过 %s 补录最后工作日及之前的合同，之后受限', async (mode) => {
     const w = await contractWorld(testDb().db, `ctr2exit${mode}`);
     const employee = await w.session.getEmployee(w.employee.id);

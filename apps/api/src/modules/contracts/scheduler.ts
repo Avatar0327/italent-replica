@@ -9,13 +9,14 @@ import {
   type Db,
   type Tx,
 } from '@italent/db';
-import { automaticRenewalPlans, tenantLocalDate } from '@italent/domain';
+import { automaticRenewalPlans, tenantLocalDate, type OrgId } from '@italent/domain';
 import { commandHash } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { Authorizer } from '../../authorization.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { createPermissionAuthorizer } from '../permission/index.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
+import { listOrgDescendantsInTransaction } from '../org/hierarchy-reader.js';
 import { findCurrentRecord } from '../employment/read-model.js';
 import { rowsOf, type ContractContext } from './context.js';
 import { rules, settings } from './configuration.js';
@@ -28,16 +29,17 @@ interface Candidate {
 }
 export interface ContractSchedulerInput {
   tenantId?: string;
+  /** 兼容旧调用方；工作队列改为持久尝试数轮转，游标不再过滤候选。 */
   cursor?: string;
   tenantCursor?: string;
   limit?: number;
 }
 type Tenant = { id: string; timezone: string };
-async function dueCandidates(db: Db, tenant: Tenant, today: string, input: ContractSchedulerInput, limit: number) {
+async function dueCandidates(db: Db, tenant: Tenant, today: string, limit: number) {
   return withTenant(db, tenant.id, async (tx) => {
     const config = await settings(tx, tenant.id);
     return rowsOf<Candidate>(
-      await tx.execute(sql`SELECT * FROM (
+      await tx.execute(sql`SELECT candidate.* FROM (
         SELECT id,employee_id AS "employeeId",'activate'::text AS kind FROM contract_requests
           WHERE tenant_id=${tenant.id} AND status='approved'
             AND CASE WHEN operation='terminate' THEN actual_termination_date ELSE effective_date END<=${today}::date
@@ -45,17 +47,24 @@ async function dueCandidates(db: Db, tenant: Tenant, today: string, input: Contr
         SELECT id,employee_id AS "employeeId",'renew'::text AS kind FROM contract_records
           WHERE tenant_id=${tenant.id} AND ${config.autoRenew} AND NOT deleted AND status='valid'
             AND actual_termination_date IS NULL AND end_date IS NOT NULL
+            AND end_date<=${today}::date+(SELECT max(d.days_before) FROM contract_renewal_details d
+              JOIN contract_renewal_rules r ON r.tenant_id=d.tenant_id AND r.id=d.rule_id
+              WHERE r.tenant_id=${tenant.id} AND r.enabled)
         UNION ALL
         SELECT id,employee_id AS "employeeId",'expire'::text AS kind FROM contract_records
           WHERE tenant_id=${tenant.id} AND ${config.autoTerminate} AND NOT deleted AND status='valid'
         AND end_date<${today}::date
-      ) candidate WHERE (${input.cursor ?? null}::text IS NULL OR id::text||':'||kind>${input.cursor ?? null})
-        AND NOT EXISTS (SELECT 1 FROM contract_job_attempts a WHERE a.tenant_id=${tenant.id}
+      ) candidate WHERE NOT EXISTS (SELECT 1 FROM contract_job_attempts a WHERE a.tenant_id=${tenant.id}
           AND a.object_id=candidate.id AND a.kind=candidate.kind AND a.state='succeeded')
-      ORDER BY id::text||':'||kind LIMIT ${limit + 1}`),
+      ORDER BY CASE WHEN kind='renew' THEN 1 ELSE 0 END,
+        (SELECT count(*) FROM contract_job_attempts a WHERE a.tenant_id=${tenant.id}
+          AND a.object_id=candidate.id AND a.kind=candidate.kind),
+        CASE WHEN kind='activate' THEN 0 ELSE 1 END,id LIMIT ${limit + 1}`),
     );
   });
 }
+// 平台角色只读租户目录，业务查询始终在 withTenant 内；无显式游标的调用在进程内继续租户轮转。
+const tenantCursors = new WeakMap<Db, string>();
 /** R1-T08 模式：租户时区、员工 SKIP LOCKED、每次有界、唯一业务命令去重，失败尝试可见并在下一轮重试。 */
 export async function runContractJobs(
   db: Db,
@@ -66,31 +75,41 @@ export async function runContractJobs(
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500)
     throw new AppError('VALIDATION_FAILED', '单次处理量须为 1～500');
   const now = (options.clock ?? (() => new Date()))();
+  const tenantCursor = input.tenantCursor ?? (input.tenantId ? undefined : tenantCursors.get(db));
   const tenants = await withPlatform(db, async (tx) =>
-    rowsOf<{ id: string; timezone: string }>(
+    rowsOf<Tenant>(
       await tx.execute(sql`
     SELECT id,timezone FROM tenants WHERE status='active'
-        AND (${input.tenantId ?? null}::uuid IS NULL OR id=${input.tenantId ?? null}::uuid)
-    AND (${input.tenantCursor ?? null}::uuid IS NULL OR id>${input.tenantCursor ?? null}::uuid) ORDER BY id LIMIT 21`),
+      AND (${input.tenantId ?? null}::uuid IS NULL OR id=${input.tenantId ?? null}::uuid)
+      AND (${tenantCursor ?? null}::uuid IS NULL OR id>${tenantCursor ?? null}::uuid)
+    ORDER BY id LIMIT 21
+  `),
     ),
   );
+
   const authorize = options.authorize ?? createPermissionAuthorizer(db);
   const runs = [];
   let remaining = limit;
   for (const tenant of tenants.slice(0, 20)) {
     if (remaining === 0) break;
     const today = tenantLocalDate(now, tenant.timezone);
-    const candidates = await dueCandidates(db, tenant, today, input, remaining);
+    const candidates = await dueCandidates(db, tenant, today, remaining);
     const batch = candidates.slice(0, remaining);
     const outcomes = [];
     for (const candidate of batch) {
       outcomes.push(await runCandidate(db, tenant, candidate, now, authorize));
     }
-    const nextCursor = candidates.length > batch.length ? `${batch.at(-1)!.id}:${batch.at(-1)!.kind}` : null;
+    // 游标只表示本租户仍有工作；每轮重新排到期优先级，不能让旧游标跳过新到期项。
+    const nextCursor = candidates.length > batch.length ? 'pending' : null;
     runs.push({ tenantId: tenant.id, businessDate: today, outcomes, nextCursor });
     remaining -= batch.length;
   }
-  return { runs, nextTenantCursor: tenants.length > runs.length ? (runs.at(-1)?.tenantId ?? null) : null };
+  const nextTenantCursor = tenants.length > runs.length ? (runs.at(-1)?.tenantId ?? null) : null;
+  if (!input.tenantId && !input.tenantCursor) {
+    if (nextTenantCursor) tenantCursors.set(db, nextTenantCursor);
+    else tenantCursors.delete(db);
+  }
+  return { runs, nextTenantCursor };
 }
 async function renewCandidate(tx: Tx, ctx: ContractContext, candidate: Candidate, today: string) {
   const config = await settings(tx, ctx.tenantId);
@@ -107,10 +126,33 @@ async function renewCandidate(tx: Tx, ctx: ContractContext, candidate: Candidate
     .limit(10001);
   if (contracts.length > 10000) throw new AppError('PAYLOAD_TOO_LARGE', '单人合同数超过调度处理上限');
   const employment = await findCurrentRecord(tx, ctx.tenantId, candidate.employeeId, today);
+  const enabledRules = (await rules(tx, ctx.tenantId)).filter((r) => r.enabled);
+  const descendants = new Map<string, readonly string[]>();
+  for (const rule of enabledRules) {
+    const expanded = new Set(rule.orgIds);
+    for (const orgId of rule.orgIds) {
+      let children = descendants.get(orgId);
+      if (!children) {
+        children = await listOrgDescendantsInTransaction(
+          tx,
+          {
+            tenantId: ctx.tenantId,
+            orgId: orgId as OrgId,
+            dimension: 'admin',
+            asOf: today,
+          },
+          { includeDisabled: true },
+        );
+        descendants.set(orgId, children);
+      }
+      for (const id of children) expanded.add(id);
+    }
+    rule.orgIds = [...expanded];
+  }
   const plans = config.autoRenew
     ? automaticRenewalPlans(
         contracts,
-        (await rules(tx, ctx.tenantId)).filter((r) => r.enabled),
+        enabledRules,
         candidate.employeeId,
         employment?.fields.departmentId ?? null,
         today,
@@ -118,6 +160,12 @@ async function renewCandidate(tx: Tx, ctx: ContractContext, candidate: Candidate
     : [];
   const plan = plans.find((p) => p.targetId === candidate.id);
   if (plan) {
+    const [pending] = rowsOf(
+      await tx.execute(sql`SELECT id FROM contract_requests
+      WHERE tenant_id=${ctx.tenantId} AND target_id=${candidate.id}::uuid
+        AND status IN ('in_review','approved','returned') LIMIT 1`),
+    );
+    if (pending) return false;
     const current = contracts.find((c) => c.id === plan.targetId)!;
     await createCommand(
       tx,
@@ -216,6 +264,16 @@ async function runCandidate(db: Db, tenant: Tenant, candidate: Candidate, now: D
               200,'{"succeeded":true}'::jsonb)
               ON CONFLICT (tenant_id,command_id) DO NOTHING`);
       }
+      if (!changed)
+        await tx.insert(contractJobAttempts).values({
+          tenantId: tenant.id,
+          objectId: candidate.id,
+          employeeId: candidate.employeeId,
+          kind: candidate.kind,
+          state: 'skipped',
+          commandId: ctx.commandId,
+          createdAt: now,
+        });
       return changed ? 'succeeded' : 'skipped';
     });
     return { ...candidate, state: result };
@@ -254,19 +312,10 @@ export function startContractScheduler(
   const interval = options.intervalMs ?? 300_000;
   if (!Number.isSafeInteger(interval) || interval < 1000) throw new RangeError('合同调度间隔须至少 1000ms');
   let running: Promise<unknown> | null = null;
-  let cursor: ContractSchedulerInput = {};
   const tick = () => {
     if (running) return;
-    running = runContractJobs(db, cursor)
+    running = runContractJobs(db)
       .then((result) => {
-        const last = result.runs.at(-1);
-        cursor = last?.nextCursor
-          ? { tenantId: last.tenantId, cursor: last.nextCursor }
-          : result.nextTenantCursor
-            ? { tenantCursor: result.nextTenantCursor }
-            : cursor.tenantId
-              ? { tenantCursor: cursor.tenantId }
-              : {};
         const failures = result.runs.flatMap((r) => r.outcomes.filter((o) => ['failed', 'unknown'].includes(o.state)));
         if (failures.length) options.onError?.(new Error(`合同任务失败 ${failures.length} 条，请查看失败列表`));
       })

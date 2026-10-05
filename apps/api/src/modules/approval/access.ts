@@ -1,4 +1,4 @@
-import { CONTRACT_OBJECT } from '@italent/domain';
+import { CONTRACT_OBJECT, contractAction } from '@italent/domain';
 import { loadRequest, businessFields } from '../contracts/service.js';
 import { checkFields, checkScope } from '../contracts/context.js';
 /**
@@ -150,6 +150,15 @@ export async function requireResubmitRight(
     const scope = await resolveModuleScope(deps, ctx, undefined, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`);
     await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const request = await loadRequest(tx, ctx.tenantId, instance.businessId);
+      await requirePermission(deps.authorize, {
+        ...ctx,
+        action: 'object.button',
+        resource: buttonResource(
+          CONTRACT_OBJECT,
+          contractAction(request.operation, request.mode),
+          request.operation === 'create' ? 'list' : 'detail',
+        ),
+      });
       const context = {
         ...ctx,
         scope,

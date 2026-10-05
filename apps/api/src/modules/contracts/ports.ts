@@ -1,5 +1,6 @@
 /** 对外事务端口：由调用方统一命令台账、权限、业务事务，合同侧仍写审计与 outbox。 */
-import { and, eq, contractRecords, contractRequests, type Tx } from '@italent/db';
+import { pgErrorCode, and, eq, contractRecords, contractRequests, type Tx } from '@italent/db';
+import { AppError } from '../../errors.js';
 import { settings } from './configuration.js';
 import { audit, checkScope, lockEmployee, type ContractContext } from './context.js';
 import { createCommand, deleteContract, setContractState } from './service.js';
@@ -36,14 +37,15 @@ export function generateContractForBusiness(
   ctx: ContractContext,
   input: { employeeId: string; fields: ContractFields },
 ) {
-  return createCommand(tx, ctx, { ...input, operation: 'create', mode: 'direct' });
+  return portCommand(tx, ctx, { ...input, operation: 'create', mode: 'direct' });
 }
 export function changeContractForTransfer(
   tx: Tx,
   ctx: ContractContext,
-  input: { employeeId: string; targetId: string; fields: ContractFields },
+  input: { employeeId: string; targetId: string; revision: number; fields: ContractFields },
 ) {
-  return createCommand(tx, ctx, { ...input, operation: 'change', mode: 'direct' });
+  const { revision, ...command } = input;
+  return portCommand(tx, { ...ctx, expectedRevision: revision }, { ...command, operation: 'change', mode: 'direct' });
 }
 
 async function cancelExitRequests(
@@ -73,5 +75,15 @@ async function cancelExitRequests(
       .set({ status: 'withdrawn', revision: request.revision + 1 })
       .where(eq(contractRequests.id, request.id));
     await audit(tx, ctx, 'contract.request.exit_delete', request.id, request, null);
+  }
+}
+
+async function portCommand(tx: Tx, ctx: ContractContext, input: unknown) {
+  try {
+    // 保存点将数据库唯一约束失败回滚后转换为端口错误，外层业务事务仍由调用方控制。
+    return await tx.transaction((sub) => createCommand(sub, ctx, input));
+  } catch (error) {
+    if (pgErrorCode(error) === '23505') throw new AppError('CONFLICT', '合同编号已存在');
+    throw error;
   }
 }

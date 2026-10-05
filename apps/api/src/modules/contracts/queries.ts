@@ -50,7 +50,11 @@ export async function listContracts(
   if (view === 'expiring')
     filter = sql`${c.status}='valid' AND ${c.endDate} BETWEEN ${today}::date AND ${today}::date+${expiringDays}`;
   if (view === 'expired_unrenewed') {
-    filter = sql`${c.status}<>'void' AND ${c.endDate}<${today}::date AND NOT EXISTS (
+    filter = sql`${c.status}<>'void' AND ${c.endDate}<${today}::date
+      AND (${c.actualTerminationDate} IS NULL OR ${c.actualTerminationDate}>=${c.endDate})
+      AND NOT EXISTS (SELECT 1 FROM contract_changes change
+        WHERE change.tenant_id=${c.tenantId} AND change.before_contract_id=${c.id})
+      AND NOT EXISTS (
       SELECT 1 FROM contract_records next WHERE next.tenant_id=${c.tenantId} AND next.employee_id=${c.employeeId}
         AND NOT next.deleted AND next.status<>'void' AND next.approval_status='effective'
         AND next.effective_date=${c.endDate}+1 AND (next.type_id=${c.typeId} OR

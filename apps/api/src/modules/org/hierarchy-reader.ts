@@ -14,7 +14,11 @@ function validQuery(query: OrgEnabledQuery): boolean {
   return isUuid(query.tenantId) && validIsoDate(query.asOf);
 }
 
-async function descendantIds(tx: Tx, query: OrgDescendantsQuery, options: OrgDescendantsOptions) {
+export async function listOrgDescendantsInTransaction(
+  tx: Tx,
+  query: OrgDescendantsQuery,
+  options: OrgDescendantsOptions,
+) {
   const result = await tx.execute(sql`
     WITH RECURSIVE current_versions AS (
       SELECT DISTINCT ON (org_id) id, org_id, enabled, stop_date
@@ -65,7 +69,7 @@ export function createOrgHierarchyReader(db: Db): OrgHierarchyReader {
       return withTenant(db, query.tenantId, async (tx) => {
         const [settings] = await tx.select().from(orgSettings).where(eq(orgSettings.tenantId, query.tenantId));
         if (!extensionEnabled(settings, query.dimension)) return [];
-        return descendantIds(tx, query, options);
+        return listOrgDescendantsInTransaction(tx, query, options);
       });
     },
     async isEnabled(query) {
