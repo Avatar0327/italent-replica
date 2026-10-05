@@ -1,5 +1,6 @@
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
+import type { SQL } from 'drizzle-orm';
 import { requireScopedEmploymentObject, requireEmploymentWrite } from './context.js';
 import { AppError } from '../../errors.js';
 import { getCustomFieldsForInheritance } from './configuration.js';
@@ -16,6 +17,7 @@ import {
 } from './forward-rules.js';
 import { availableForwardChanges, referenceCheckDate } from './forward-references.js';
 import { appendForwardPayload, auditForwardTarget } from './forward-store.js';
+import { operationKey } from './timeline.js';
 import type { EmploymentContext, EmploymentState } from './types.js';
 
 export interface ForwardSource {
@@ -103,6 +105,17 @@ async function sourceOrder(tx: Tx, ctx: EmploymentContext, source: ForwardSource
  * 也算；未生效的申请取生效日不早于源日期的（07 A2），同日排在生效记录之后、按发起先后。
  * TODO(需取证 #44)：编辑同日在前的记录时，原站是否也更新同日在后的生效记录未实测（新增业务总在当日最后，不受影响）。
  */
+/**
+ * 同日未落地的申请只接受操作先后排在来源之后的向后更新（PR #53 第三轮清单第 3 项，暂定口径）：较早提交的申请
+ * 落地时插在来源之前（DEC-108），不应被之后的直接业务改写。来源尚未写状态事件（正在保存的直接业务、预览）时视为
+ * 最新一次操作，同日申请一律不更新。
+ * TODO(需取证 Q-M0-61)：原站同日较早提交的申请是否接受之后业务的向后更新。
+ */
+function sameDayPendingAfterSource(ctx: EmploymentContext, source: ForwardSource): SQL {
+  const sourceKey = source.businessId ? operationKey(ctx.tenantId, sql`${source.businessId}::uuid`) : sql`NULL`;
+  return sql`${operationKey(ctx.tenantId, sql`b.id`)} > ${sourceKey}`;
+}
+
 async function candidates(tx: Tx, ctx: EmploymentContext, source: ForwardSource): Promise<ForwardTarget[]> {
   const order = await sourceOrder(tx, ctx, source);
   const laterEffective =
@@ -124,7 +137,9 @@ async function candidates(tx: Tx, ctx: EmploymentContext, source: ForwardSource)
       ${source.businessId ? sql`AND b.id<>${source.businessId}::uuid` : sql``}
       AND (r.staff_id=${source.staffId}::uuid OR (r.id IS NULL AND p.selected_staff_id=${source.staffId}::uuid))
       AND ((s.state='effective' AND ${laterEffective})
-        OR (s.state IN ('draft','in_review','approved','rejected') AND p.effective_date>=${source.effectiveDate}::date))
+        OR (s.state IN ('draft','in_review','approved','rejected')
+          AND (p.effective_date>${source.effectiveDate}::date
+            OR (p.effective_date=${source.effectiveDate}::date AND ${sameDayPendingAfterSource(ctx, source)}))))
     ORDER BY p.effective_date,t.sort_order NULLS LAST,b.created_at,b.id LIMIT ${TARGET_LIMIT + 1}
   `),
   );

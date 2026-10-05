@@ -243,15 +243,29 @@
     {
       "idx": 34,
       "version": "7",
-      "when": 1791159418373,
-      "tag": "0034_org_shop_owner_employment_change_type",
+      "when": 1791159176341,
+      "tag": "0034_employment_activation",
       "breakpoints": true
     },
     {
       "idx": 35,
       "version": "7",
-      "when": 1791159424218,
-      "tag": "0035_org_established_on_correction",
+      "when": 1791159177663,
+      "tag": "0035_employment_activation_isolation",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1791160992285,
+      "tag": "0036_org_shop_owner_employment_change_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1791160993592,
+      "tag": "0037_org_established_on_correction",
       "breakpoints": true
     }
   ]

@@ -218,6 +218,8 @@ export const MODULE_OBJECTS = {
       button('Employment.Withdraw', 'detail', 'update'),
       button('Employment.Import', 'list'),
       button('Employment.Preview', 'detail'),
+      // R1-T08：生效失败 / 挂起的申请修正后重试（DEC-052）
+      button('Employment.RetryActivation', 'detail', 'update'),
     ],
     [
       'employeeId',
@@ -232,6 +234,7 @@ export const MODULE_OBJECTS = {
       'isInserted',
       // 变动类型由系统联动写入（F-006，W-416），不是可编辑字段。
       'changeType',
+      'activation',
     ],
   ),
 } as const satisfies Record<string, ObjectDefinition>;
