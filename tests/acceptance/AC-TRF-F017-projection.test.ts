@@ -179,3 +179,35 @@ it('F-017 同员工同日在后申请调出后，审批在前调入不能虚占�
   await w.apply(other.employee.id, '2026-10-10', { departmentId: w.to.id });
   expect((await w.approve(first, '2026-10-02T01:00:00Z')).status).toBe('approved');
 });
+
+it('P2-04 仅改经理向后更新不因既有编制超额拒绝', async () => {
+  const w = await fixture();
+  const person = await w.hired();
+  const manager = await w.hired('新经理');
+  const future = await w.session.business(
+    person.employee.id,
+    {
+      kind: 'transfer',
+      mode: 'direct',
+      effectiveDate: '2026-10-10',
+      fields: { departmentId: w.to.id },
+    },
+    person.hire.employeeRevision,
+  );
+  expect(
+    (
+      await w.request(
+        'PATCH',
+        `establishment/capacities/${w.capacity.id}`,
+        { localCapacity: 0, effectiveDate: '2026-10-01' },
+        w.capacity.revision,
+      )
+    ).status,
+  ).toBe(200);
+  const response = await w.session.request('PATCH', `/records/${person.hire.id}`, {
+    ifMatch: (await w.business(person.hire.id)).revision,
+    body: { fields: { directManagerId: manager.employee.id } },
+  });
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect((await w.business(future.id)).fields.directManagerId).toBe(manager.employee.id);
+});
