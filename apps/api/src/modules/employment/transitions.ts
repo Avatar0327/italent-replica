@@ -1,3 +1,5 @@
+import { assertEstablishmentCapacity } from './activation-checks.js';
+import { lockTransferBusiness } from './transfer-locks.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Db, type Tx } from '@italent/db';
@@ -12,7 +14,8 @@ import {
 } from './activation-store.js';
 import { auditEmployment } from './context.js';
 import { EmploymentError } from './errors.js';
-import { loadEmploymentRecord } from './read-model.js';
+import { findPredecessor, loadEmploymentRecord } from './read-model.js';
+import { resolveEffectiveInheritance } from './inheritance.js';
 import {
   bumpEmploymentBusiness,
   camelRow,
@@ -71,10 +74,27 @@ export async function transitionEmployment(
   input: EmploymentTransitionInput,
 ): Promise<EmploymentBusiness> {
   if (!input || !ACTIONS.includes(input.action)) throw new AppError('VALIDATION_FAILED', '任职状态动作不合法');
+  if (['submit', 'approve', 'activate'].includes(input.action)) await lockTransferBusiness(tx, ctx, input.id);
   const business = await lockEmploymentBusiness(tx, ctx, input.id);
   assertTransition(business, input.action);
-  if (input.action === 'submit')
-    assertRequiredTransferFields(business.payload.kind, business.payload.formSnapshot, { ...business.payload.fields });
+  if (input.action === 'submit') {
+    const { payload } = business;
+    const predecessor = await findPredecessor(tx, ctx.tenantId, business.employeeId, payload.effectiveDate);
+    const { fields } = await resolveEffectiveInheritance(tx, ctx, payload, {
+      staffId: payload.selectedStaffId ?? predecessor?.staffId ?? '',
+      predecessor,
+    });
+    assertRequiredTransferFields(payload.kind, payload.formSnapshot, { ...fields });
+    await assertEstablishmentCapacity(tx, ctx, {
+      businessId: business.id,
+      employeeId: business.employeeId,
+      kind: payload.kind,
+      effectiveDate: payload.effectiveDate,
+      departmentId: fields.departmentId,
+      positionId: fields.positionId,
+      fields,
+    });
+  }
   if (input.action === 'delete') {
     await deleteEmploymentBusiness(tx, ctx, business);
     await personnelHooks.sync(
@@ -94,7 +114,8 @@ export async function transitionEmployment(
       throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
     }
     // R1-T08：定时任务与 HR 重试经此端口按队列逐条落地（activation-service.ts）；前序未落地时不得越过它（DEC-108 / 112）。
-    const { before } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
+    const predecessors = await activationPredecessors(tx, ctx, business.employeeId, business.id);
+    const before = predecessors.before.filter((item) => !item.reminderOnly);
     if (before.length)
       throw new AppError('CONFLICT', '前序待生效业务尚未生效', {
         reason: 'ACTIVATION_PREDECESSOR_PENDING',
@@ -119,7 +140,8 @@ export async function transitionEmployment(
  */
 async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
   if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) return;
-  const { item, before } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
+  const { item, before: predecessors } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
+  const before = predecessors.filter((item) => !item.reminderOnly);
   if (!before.length) {
     await materializeEmploymentRecord(tx, ctx, business);
     await appendEmploymentState(tx, ctx, business, 'effective');

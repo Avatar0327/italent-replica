@@ -4,21 +4,24 @@ import { text } from './messages.js';
 import { useTransferForm } from './useTransferForm.js';
 import './transfer.css';
 
-export function TransferPage() {
+export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employee' }) {
   const [tenantId, setTenantId] = useState('');
   const [activeTenant, setActiveTenant] = useState('');
   return (
     <main className="transfer-page">
       <header className="transfer-header">
         <span className="transfer-brand">iTalent</span>
-        <h1>{text.title}</h1>
+        <h1>{initiator === 'employee' ? text.personalTitle : text.title}</h1>
+        <a href={initiator === 'employee' ? '/' : '/self/transfers'}>
+          {initiator === 'employee' ? text.hrEntry : text.personalEntry}
+        </a>
       </header>
       {activeTenant ? (
         <>
           <button className="transfer-tenant-change" type="button" onClick={() => setActiveTenant('')}>
             {text.tenantChange}
           </button>
-          <TransferManager key={activeTenant} tenantId={activeTenant} />
+          <TransferManager key={activeTenant} tenantId={activeTenant} initiator={initiator} />
         </>
       ) : (
         <form
@@ -46,12 +49,16 @@ export function TransferPage() {
   );
 }
 
-function TransferManager({ tenantId }: { tenantId: string }) {
-  const state = useTransferForm(tenantId);
+function TransferManager({ tenantId, initiator }: { tenantId: string; initiator: 'hr' | 'employee' }) {
+  const state = useTransferForm(tenantId, initiator);
   const locked = state.busy || !!state.saved || !!state.unknownCommand;
   return (
     <section className="transfer-content" aria-busy={state.busy || state.loadingPreview}>
-      <EmployeeSearch state={state} locked={locked} />
+      {initiator === 'hr' ? (
+        <EmployeeSearch state={state} locked={locked} />
+      ) : (
+        <PersonalScenarios state={state} locked={locked} />
+      )}
       {state.error && (
         <p role="alert" className="transfer-error">
           {state.error}
@@ -140,5 +147,23 @@ function EmployeeSearch({ state, locked }: { state: ReturnType<typeof useTransfe
         {text.next}
       </button>
     </div>
+  );
+}
+
+function PersonalScenarios({ state, locked }: { state: ReturnType<typeof useTransferForm>; locked: boolean }) {
+  return (
+    <nav aria-label={text.personalScenario} className="transfer-actions">
+      {state.model.catalog.types.map((type) => (
+        <button
+          key={type.code}
+          type="button"
+          disabled={locked}
+          aria-pressed={state.model.transferTypeCode === type.code}
+          onClick={() => state.selection('transferTypeCode', type.code)}
+        >
+          {type.name}
+        </button>
+      ))}
+    </nav>
   );
 }

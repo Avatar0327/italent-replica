@@ -11,9 +11,10 @@ const testDb = useTestDb();
 async function fixture(db: Db, label: string, future = true) {
   const session = await employmentSession(db, label);
   const employee = await session.employee();
+  const org = await session.org('合成在职部门', { establishedOn: '2026-01-01' });
   const current = await session.business(
     employee.id,
-    { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { place: '原地点' } },
+    { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { departmentId: org.id, place: '原地点' } },
     employee.revision,
   );
   const later = await session.business(

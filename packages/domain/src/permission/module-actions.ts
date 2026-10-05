@@ -260,6 +260,10 @@ export const MODULE_OBJECTS = {
       'jobNumber',
       'remarks',
       'isDepartmentHead',
+      'isStoreManager',
+      'addedSubordinateIds',
+      'transferTypeCode',
+      'reasonCode',
       'employType',
     ],
     [

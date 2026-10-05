@@ -49,6 +49,8 @@ export const PRESET_FIELD_NAMES = [
   'jobNumber',
   'remarks',
   'isDepartmentHead',
+  'isStoreManager',
+  'addedSubordinateIds',
   'employType',
 ] as const;
 export type PresetField = (typeof PRESET_FIELD_NAMES)[number];
@@ -76,6 +78,8 @@ export interface PresetFields {
   readonly jobNumber: string | null;
   readonly remarks: string | null;
   readonly isDepartmentHead: boolean | null;
+  readonly isStoreManager: boolean | null;
+  readonly addedSubordinateIds: readonly string[] | null;
   readonly employType: EmployType | null;
 }
 

@@ -98,6 +98,19 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
     });
   });
 
+  it('部门负责人自动带出的非空经理不记为留空字段', async () => {
+    const db = database().db;
+    const w = await fixture(db, 'trf-auto-nonempty');
+    const saved = await w.json<{ id: string }>(await w.create({ fields: { departmentId: w.target } }), 201);
+    const result = await db.execute(sql`SELECT payload FROM employment_outbox
+      WHERE tenant_id=${w.tenant.id} AND business_id=${saved.id}::uuid AND event_type='employment.record.create'`);
+    const rows = Array.isArray(result)
+      ? result
+      : (result as { rows: { payload: { meta: { clearedFieldCodes: string[] } } }[] }).rows;
+    expect(rows[0]!.payload.meta.clearedFieldCodes).not.toContain('preset:directManagerId');
+    expect(rows[0]!.payload.meta.clearedFieldCodes).toContain('preset:positionId');
+  });
+
   it('职务职位调整只填职位，原部门带出，其余场景字段存空', async () => {
     const w = await fixture(database().db, 'trf163-jobpost');
     const position = await w.json<{ id: string }>(
@@ -129,6 +142,36 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
         sequenceId: null,
       },
     });
+  });
+
+  it.each([
+    ['job_level', 'TenantBase.JobLevelTransferMultiFormView'],
+    ['job_post', 'TenantBase.JobPostTransferMultiFormView'],
+  ])('DEC-165 %s 带出部门后清空仍拒绝，PATCH 同样拒绝', async (transferTypeCode, formId) => {
+    const w = await fixture(database().db, `trf165-${transferTypeCode}`);
+    const before = await w.businessCount();
+    await missing(await w.create({ transferTypeCode, formId, fields: { departmentId: null } }), ['departmentId']);
+    expect(await w.businessCount()).toBe(before);
+    const draft = await w.json<{ id: string; revision: number }>(
+      await w.create({ transferTypeCode, formId, mode: 'application', fields: {} }),
+      201,
+    );
+    await missing(
+      await w.request(w.hr.id, 'PATCH', `${base}/businesses/${draft.id}`, {
+        ifMatch: draft.revision,
+        body: { fields: { departmentId: null } },
+      }),
+      ['departmentId'],
+    );
+  });
+
+  it('AC-TRF-01/23 员工入口拒绝 HR 表单，HR 入口拒绝 Personal 表单', async () => {
+    const w = await fixture(database().db, 'trf-personal-binding');
+    const response = await w.create({ initiator: 'employee', mode: 'application' });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { details: { reason: 'TRANSFER_FORM_ENTRY_MISMATCH' } } });
+    const reversed = await w.create({ formId: 'TenantBase.PersonalCrossDepartmentTransferMultiFormView' });
+    expect(reversed.status).toBe(400);
   });
 
   it('部门 null/空串被拒；readonly/hidden/absent 沿用冻结继承策略', async () => {
@@ -166,6 +209,29 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
     });
     // 已存单按冻结字段模式校验，后来放开编辑不能把旧单的隐藏字段变成必填。
     expect(patch.status, await patch.clone().text()).toBe(200);
+  });
+
+  it('隐藏部门仍继承非空原部门时，预览不泄漏值，也不误报必填项不可用', async () => {
+    const w = await fixture(database().db, 'trf-required-hidden-preview');
+    const configured = await w.request(w.hr.id, 'PUT', `${base}/transfers/forms/${formId}`, {
+      ifMatch: 0,
+      body: { name: '合成隐藏部门', group: 'transfer', fieldModes: { 'preset:departmentId': 'hidden' } },
+    });
+    expect(configured.status).toBe(200);
+    const response = await w.request(w.hr.id, 'POST', `${base}/transfers/employees/${w.person.employeeId}/preview`, {
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
+        formId,
+        mode: 'application',
+        effectiveDate: '2026-10-01',
+        fields: {},
+      },
+    });
+    expect(response.status).toBe(200);
+    const preview = (await response.json()) as { fields: object; requiredFieldsUnavailable: boolean };
+    expect(preview.fields).not.toHaveProperty('departmentId');
+    expect(preview.requiredFieldsUnavailable).toBe(false);
   });
 
   it('PATCH 保留部门，允许清空非必填场景字段；清空部门拒绝', async () => {
@@ -211,13 +277,12 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
       .select()
       .from(employmentPayloadVersions)
       .where(eq(employmentPayloadVersions.businessId, draft.id));
-    const { submittedFieldCodes: _submitted, ...oldSnapshot } = payload!.formSnapshot;
     await db.insert(employmentPayloadVersions).values({
       ...payload!,
       id: randomUUID(),
       versionNo: 2,
       previousVersionId: payload!.id,
-      formSnapshot: oldSnapshot,
+      formSnapshot: payload!.formSnapshot,
       explicitFieldCodes: [],
       departmentId: null,
       positionId: null,

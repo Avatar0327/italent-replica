@@ -37,9 +37,15 @@ async function rehiredFixture(label: string) {
   const { db } = testDb();
   const session = await employmentSession(db, label);
   const employee = await session.employee('重聘合成员工');
+  const org = await session.org('合成重聘部门', { establishedOn: '2026-01-01' });
   const hire = await session.business(
     employee.id,
-    { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { place: '旧周期地点' } },
+    {
+      kind: 'hire',
+      mode: 'direct',
+      effectiveDate: '2026-09-01',
+      fields: { departmentId: org.id, place: '旧周期地点' },
+    },
     employee.revision,
   );
   const leave = await session.business(
@@ -49,7 +55,12 @@ async function rehiredFixture(label: string) {
   );
   const rehire = await session.business(
     employee.id,
-    { kind: 'rehire', mode: 'direct', effectiveDate: '2026-09-28', fields: { place: '新周期地点' } },
+    {
+      kind: 'rehire',
+      mode: 'direct',
+      effectiveDate: '2026-09-28',
+      fields: { departmentId: org.id, place: '新周期地点' },
+    },
     leave.employeeRevision,
   );
   return { db, session, employee, hire, leave, rehire };

@@ -168,7 +168,7 @@ export async function readEstablishmentStats(
   };
 }
 
-async function targetCapacities(
+export async function targetCapacities(
   tx: Tx,
   ctx: EstablishmentContext,
   transfer: VerifiedTransfer,

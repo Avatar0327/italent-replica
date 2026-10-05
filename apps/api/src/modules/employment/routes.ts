@@ -1,3 +1,7 @@
+import { lockImportParticipants } from './forward-import.js';
+import { lockTransferParticipants } from './transfer-locks.js';
+import { listCompletionTodos } from '../transfer/completion.js';
+import { requireTransferButton } from '../transfer/access.js';
 import { type Tx, withTenant } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { Hono, type Context } from 'hono';
@@ -6,7 +10,7 @@ import { requirePermission } from '../../authorization.js';
 import { AppError, handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { scopeAllows } from '../permission/module-access.js';
+import { scopeAllows, getModuleViewableFields } from '../permission/module-access.js';
 import { provisionEmployeeUser } from '../permission/user-provisioning.js';
 import {
   readSettings,
@@ -158,6 +162,7 @@ function registerEmployeeBusinessCreate(router: Hono<TenantEnv>, deps: TenantRou
     if (input.fields.departmentId !== undefined) requireEmploymentScope(ctx, id, input.fields.departmentId);
     return runWrite(c, deps, ctx, { ...input, loginEmail: email }, async (tx, context) => {
       if (input.kind === 'transfer') {
+        await lockTransferParticipants(tx, context, id, input.fields.addedSubordinateIds ?? []);
         await lockEmploymentEmployee(tx, context, id, context.expectedRevision);
         await requireTransferSource(tx, context, id, 'hr');
         if (input.mode === 'direct') await requireDirectTransfer(tx, context);
@@ -299,11 +304,30 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 
 /** R1-T08：生效失败待办与 HR 重试（DEC-052 / DEC-112）；定时任务本身只经平台路径运行，租户接口上没有触发入口。 */
 function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get('/completion-todos', async (c) => {
+    const ctx = await readPageContext(c, deps, 'list');
+    await requireTransferButton(ctx, 'hr');
+    const page = pageQuery(c);
+    const items = await withTenant(deps.db, ctx.tenantId, (tx) => listCompletionTodos(tx, ctx, page));
+    const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
+    return c.json({
+      items: items.map((item) => ({
+        id: item.id,
+        employeeId: item.employeeId,
+        effectiveDate: item.effectiveDate,
+        fieldCodes: item.fieldCodes.filter(
+          (code) => viewable === undefined || viewable.has(code.replace(/^preset:/, '')),
+        ),
+      })),
+      page: page.page,
+      pageSize: page.pageSize,
+    });
+  });
   router.get('/activation-todos', async (c) => {
     const ctx = await readPageContext(c, deps, 'list');
     const page = pageQuery(c);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listActivationTodos(tx, ctx.tenantId, page, ctx.scope),
+      listActivationTodos(tx, ctx.tenantId, page, ctx.scope, ctx.timezone),
     );
     return c.json({
       items: await trimEmploymentResponse(deps, ctx, items),
@@ -597,6 +621,7 @@ async function importWithTransferAuthorization(
   input: ReturnType<typeof normalizeEmploymentImport>,
 ) {
   // 导入与单笔采用相同员工锁；批内先重验发起权限，再进入原来的整体提交端口。
+  await lockImportParticipants(tx, ctx, employeeId, input);
   await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
   await requireImportTransferAccess(tx, ctx, employeeId, input);
   return importEmploymentRecords(tx, ctx, employeeId, input);

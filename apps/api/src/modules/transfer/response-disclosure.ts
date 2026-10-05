@@ -18,11 +18,16 @@ function mapManagerReferences(value: unknown, map: (id: string) => string | null
   return Object.fromEntries(
     Object.entries(source).map(([key, field]) => [
       key,
-      (MANAGERS.has(key) || (change && (key === 'before' || key === 'after'))) &&
-      typeof field === 'string' &&
-      isUuid(field)
-        ? map(field)
-        : mapManagerReferences(field, map),
+      key === 'addedSubordinateIds' && Array.isArray(field)
+        ? field
+            .filter((id): id is string => typeof id === 'string' && isUuid(id))
+            .map(map)
+            .filter(Boolean)
+        : (MANAGERS.has(key) || (change && (key === 'before' || key === 'after'))) &&
+            typeof field === 'string' &&
+            isUuid(field)
+          ? map(field)
+          : mapManagerReferences(field, map),
     ]),
   );
 }

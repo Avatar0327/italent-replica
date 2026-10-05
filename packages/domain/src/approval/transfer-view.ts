@@ -35,15 +35,14 @@ const later = (label: string, code: string | null, deferredTo: string, reason: s
   reason,
 });
 
-const NO_FIELD = '任职记录尚无该字段';
 const NO_MODEL = '尚无业务模型';
 
 export const TRANSFER_DETAIL_VIEW: readonly TransferViewItem[] = [
   // 调动信息
   { label: '调动人员', code: 'UserID', status: 'delivered', place: 'header', field: 'subjectEmployeeId' },
   form('调动日期', 'StartDate', 'effectiveDate'),
-  later('异动类型', 'TransitionTypeOID', 'R1-T09', `${NO_FIELD}（调动类型字典随调动业务接入）`),
-  later('调动原因', 'ChangeReason', 'R1-T09', `${NO_FIELD}（变动原因字典随调动业务接入）`),
+  form('异动类型', 'TransitionTypeOID', 'transferTypeCode'),
+  form('调动原因', 'ChangeReason', 'reasonCode'),
   later('交接人', 'HandoverPerson', 'R1-T10', `${NO_MODEL}（调动交接）`),
   form('工号', null, 'jobNumber'),
   // DEC-122：员工档案已有性别与出生日期，本期交付（只读带出，按员工信息对象的字段查看权裁剪）。
@@ -52,7 +51,7 @@ export const TRANSFER_DETAIL_VIEW: readonly TransferViewItem[] = [
   later('是否调整薪资', 'AdjustSalary', 'R1-T10', `${NO_MODEL}（薪资只记标志，DEC-002）`),
   later('是否变更合同', 'IsChangeContract', 'R1-T10', `${NO_MODEL}（合同变更联动）`),
   later('是否同步履历', 'TransferSyncToJobHistory', 'R1-T10', `${NO_MODEL}（工作履历联动）`),
-  later('是否带编制调动', 'IsTranferWithEstablish', 'R1-T09', NO_FIELD),
+  later('是否带编制调动', 'IsTranferWithEstablish', 'Q-M0-18', 'DEC-073：带编调动未取证，明确拒绝'),
   later('试岗方式', 'OnTrialMode', 'R1-T10', `${NO_MODEL}（试岗）`),
   later('试岗开始日期', null, 'R1-T10', `${NO_MODEL}（试岗）`),
   later('预计试岗结束日期', null, 'R1-T10', `${NO_MODEL}（试岗）`),
@@ -69,7 +68,8 @@ export const TRANSFER_DETAIL_VIEW: readonly TransferViewItem[] = [
   form('用工形式', 'EmploymentForm', 'employmentForm'),
   form('人员类别', 'EmploymentType', 'employmentType'),
   form('调动后是否部门负责人', 'IsCharge', 'isDepartmentHead'),
-  later('新增下属', 'AddSubordinate', 'R1-T10', `${NO_MODEL}（新增下属联动）`),
+  form('新增下属', 'AddSubordinate', 'addedSubordinateIds'),
+  form('调动后是否店长', null, 'isStoreManager'),
   // 其余区块
   later('兼职调整', 'ParttimeJobInfo', 'R1-T10', `${NO_MODEL}（兼职调整联动）`),
   later('薪资调整', null, 'R1-T10', `${NO_MODEL}（薪资只记标志，DEC-002）`),

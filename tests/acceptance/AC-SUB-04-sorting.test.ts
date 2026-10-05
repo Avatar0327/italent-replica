@@ -20,6 +20,7 @@ it('AC-SUB-04 职级来自当前任职及职级版本的关联查询，变更后
       levelTypeId: type.id,
       startDate: '2020-01-01',
     });
+  const department = await s.org('合成排序部门', { establishedOn: '2020-01-01' });
   const low = await level(1);
   const high = await level(9);
   const make = async (levelId: string, label: string) => {
@@ -30,7 +31,7 @@ it('AC-SUB-04 职级来自当前任职及职级版本的关联查询，变更后
         kind: 'hire',
         mode: 'direct',
         effectiveDate: '2020-01-01',
-        fields: { levelId },
+        fields: { departmentId: department.id, levelId },
         loginEmail: loginEmailOf(e.id),
       },
       1,

@@ -88,11 +88,11 @@ async function assertActorUsable(tx: Tx, ctx: ApprovalContext): Promise<void> {
  * 锁序与业务入口一致：先按业务侧顺序锁员工 / 业务单，再锁实例（清单 11）；业务入口（提交、撤回、删除）
  * 也是先锁业务再经挂接端口锁实例，两条路径不会互相等待成环。派单闸只试取、不排队（R4-2 / R5-1）。
  */
-export async function openRun(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<Run> {
+export async function openRun(tx: Tx, ctx: ApprovalContext, instanceId: string, sourceOnly = false): Promise<Run> {
   await assertActorUsable(tx, ctx);
   const peek = await loadInstance(tx, ctx.tenantId, instanceId);
   const adapter = ADAPTERS[peek.businessType];
-  await adapter.lock(tx, ctx, peek.businessId);
+  await adapter.lock(tx, ctx, peek.businessId, sourceOnly);
   const instance = await loadInstance(tx, ctx.tenantId, instanceId, true);
   const version = await loadVersion(tx, ctx.tenantId, instance.versionId);
   const snapshot = await adapter.snapshot(tx, ctx, instance.businessId);

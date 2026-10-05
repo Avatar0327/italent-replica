@@ -24,7 +24,8 @@ async function employeeWaiters(db: Db, expected: number): Promise<Waiter[]> {
       await db.execute(sql`
         SELECT pid,pg_blocking_pids(pid) AS blockers FROM pg_stat_activity
         WHERE datname=current_database() AND wait_event_type='Lock'
-          AND query ILIKE '%employment_employees%' AND query ILIKE '%FOR UPDATE%'
+          AND query ILIKE '%employment_employees%'
+          AND (query ILIKE '%FOR UPDATE%' OR query ILIKE '%FOR NO KEY UPDATE%')
         ORDER BY pid
       `),
     );

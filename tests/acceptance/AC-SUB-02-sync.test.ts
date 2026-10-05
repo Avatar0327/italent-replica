@@ -23,9 +23,10 @@ async function fixture(enabled: string[]) {
       tx.execute(sql`INSERT INTO tenant_setting_overrides
     (tenant_id,key,value,active,revision,updated_by) VALUES(${s.tenant.id},${key},'true'::jsonb,true,1,${s.user.id})`),
     );
+  const org = await s.org('合成经历部门', { establishedOn: '2026-01-01' });
   const hire = await s.business(
     s.employee.id,
-    { kind: 'hire', mode: 'direct', effectiveDate: '2026-01-01', fields: {} },
+    { kind: 'hire', mode: 'direct', effectiveDate: '2026-01-01', fields: { departmentId: org.id } },
     1,
   );
   const history = async () => {

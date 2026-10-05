@@ -1,3 +1,6 @@
+import { queueTransferLinkage, validateTransferSubordinates } from './transfer-linkage.js';
+import { lockTransferParticipants } from './transfer-locks.js';
+import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
@@ -46,6 +49,7 @@ import {
   type EmploymentContext,
   type EmploymentRecord,
   type NormalizedEmploymentInput,
+  type PresetFields,
 } from './types.js';
 
 export const NEW_CYCLE_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
@@ -66,6 +70,7 @@ export interface CreateEmploymentOptions {
   readonly forwardUpdate?: boolean;
   /** 变动类型只由可信的系统联动传入（如职位变更同步直线经理，F-006），不开放给请求体。 */
   readonly changeType?: ChangeType;
+  readonly establishmentWarnings?: EstablishmentWarning[];
 }
 
 export async function createEmploymentBusiness(
@@ -76,6 +81,8 @@ export async function createEmploymentBusiness(
   options: CreateEmploymentOptions = {},
 ): Promise<EmploymentBusiness> {
   const normalized = normalizeEmploymentInput(ctx, input);
+  if (normalized.kind === 'transfer')
+    await lockTransferParticipants(tx, ctx, employeeId, normalized.fields.addedSubordinateIds ?? []);
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
   await assertNotBeforeCurrentCycle(tx, ctx, employee.id, normalized);
   await assertBusinessSequence(tx, ctx, employee.id, normalized);
@@ -89,17 +96,26 @@ export async function createEmploymentBusiness(
     employeeId: employee.id,
     staffId: selected?.cycle.id,
   });
-  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, { ...prepared.fields });
-  await requireScopedEmploymentObject(tx, ctx, employee.id, prepared.fields.departmentId);
-  const reporting = await newRecordReporting(
+  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
+    staffId: selected?.cycle.id ?? '',
+    predecessor: selected?.predecessor ?? null,
+  });
+  await validatePreparedEmployment(tx, ctx, employee.id, normalized.kind, prepared, effective.fields);
+  const id = randomUUID();
+  await assertEstablishmentCapacity(
     tx,
     ctx,
-    employee.id,
-    prepared.explicitFieldCodes,
-    normalized.effectiveDate,
+    {
+      businessId: id,
+      employeeId: employee.id,
+      kind: normalized.kind,
+      effectiveDate: normalized.effectiveDate,
+      fields: effective.fields,
+      departmentId: effective.fields.departmentId,
+      positionId: effective.fields.positionId,
+    },
+    options.establishmentWarnings,
   );
-  await validateNewEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reporting);
-  const id = randomUUID();
   await insertEmploymentRow(tx, 'employment_business_objects', {
     id,
     tenantId: ctx.tenantId,
@@ -170,20 +186,20 @@ export async function updateEmploymentBusiness(
     { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
     before,
   );
-  assertRequiredTransferFields(normalized.kind, prepared.formSnapshot, { ...prepared.fields });
-  await requireScopedEmploymentObject(tx, ctx, business.employeeId, prepared.fields.departmentId, business.id);
-  // 申请尚未进时间轴，按它将来落地时的插入位置预检（到期落地时再复核，materializeEmploymentRecord）：审批中编辑不会
-  // 重新提交，落地按本次提交的操作先后插入（DEC-108，#53），与落地同一判定；草稿 / 被驳回的申请改完要重新提交，
-  // 那时是最新一次操作，排在当日最后（PR #54 第三轮复审 P2）。
-  const reporting = await newRecordReporting(
-    tx,
-    ctx,
-    business.employeeId,
-    prepared.explicitFieldCodes,
-    normalized.effectiveDate,
-    business.state === 'in_review' ? business.id : undefined,
-  );
-  await validateNewEmploymentReferences(tx, ctx, prepared.fields, normalized.effectiveDate, reporting);
+  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
+    staffId: selected?.cycle.id ?? '',
+    predecessor: selected?.predecessor ?? null,
+  });
+  await validatePreparedEmployment(tx, ctx, business.employeeId, normalized.kind, prepared, effective.fields, business);
+  await assertEstablishmentCapacity(tx, ctx, {
+    businessId: id,
+    employeeId: business.employeeId,
+    kind: normalized.kind,
+    effectiveDate: normalized.effectiveDate,
+    fields: effective.fields,
+    departmentId: effective.fields.departmentId,
+    positionId: effective.fields.positionId,
+  });
   await bumpEmploymentBusiness(tx, ctx, business);
   business.payload = await appendEmploymentPayload(
     tx,
@@ -459,7 +475,7 @@ export async function materializeEmploymentRecord(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
-  options: { forwardUpdate?: boolean } = {},
+  options: { forwardUpdate?: boolean; establishmentWarnings?: EstablishmentWarning[] } = {},
 ): Promise<void> {
   const payload = business.payload;
   // DEC-108：按操作先后定插入点；先提交、后落地的申请可能插在当日已有记录之前，前驱与顺序校验都以插入点为准。
@@ -487,6 +503,8 @@ export async function materializeEmploymentRecord(
   // DEC-161：审批通过后仍可能新增停用排期，落地前按 DEC-150 重查整个时段。
   // 拒绝后由生效端口记失败与 HR 待办、按 DEC-112 挂起后序；不能截断任职或改期绕过。
   await validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting);
+  assertRequiredTransferFields(payload.kind, payload.formSnapshot, fields);
+  await checkMaterializedCapacity(tx, ctx, business, fields, options.establishmentWarnings);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
   await insertEmploymentRow(tx, 'employment_records', {
     ...fields,
@@ -522,11 +540,11 @@ export async function materializeEmploymentRecord(
       staffId,
       entryDate,
       effectiveDate: payload.effectiveDate,
-      // DEC-163：留空结果与实际落地同事务发布；PR-B 按业务、字段和 effectiveDate 处理补全待办。
-      ...(payload.kind === 'transfer'
-        ? { clearedFieldCodes: clearedTransferFields(payload.formSnapshot, fields).map((field) => `preset:${field}`) }
-        : {}),
     },
+    undefined,
+    payload.kind === 'transfer'
+      ? { clearedFieldCodes: clearedTransferFields(payload.formSnapshot, fields).map((field) => `preset:${field}`) }
+      : undefined,
   );
   if (options.forwardUpdate !== false) {
     await forwardMaterializedRecord(tx, ctx, business, staffId, selected?.predecessor ?? null, {
@@ -534,6 +552,7 @@ export async function materializeEmploymentRecord(
       customFields: inherited.customFields,
     });
   }
+  await queueTransferLinkage(tx, ctx, business.id, payload.kind, fields, payload.effectiveDate);
   await personnelHooks.sync(tx, ctx, business.employeeId, business.id, payload.kind, payload.effectiveDate);
 }
 
@@ -596,4 +615,52 @@ async function insertNewEmploymentCycle(
     employType: cycle.employType,
     createdAt: ctx.now.toISOString(),
   });
+}
+
+async function checkMaterializedCapacity(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  fields: PresetFields,
+  warnings?: EstablishmentWarning[],
+) {
+  await assertEstablishmentCapacity(
+    tx,
+    ctx,
+    {
+      businessId: business.id,
+      employeeId: business.employeeId,
+      kind: business.payload.kind,
+      effectiveDate: business.payload.effectiveDate,
+      fields,
+      departmentId: fields.departmentId,
+      positionId: fields.positionId,
+    },
+    warnings,
+  );
+}
+
+async function validatePreparedEmployment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  kind: BusinessKind,
+  prepared: PreparedInheritance,
+  effectiveFields: PresetFields,
+  existing?: LockedEmploymentBusiness,
+) {
+  assertRequiredTransferFields(kind, prepared.formSnapshot, { ...effectiveFields });
+  if (kind === 'transfer')
+    await validateTransferSubordinates(tx, ctx, employeeId, effectiveFields, prepared.effectiveDate);
+  await requireScopedEmploymentObject(tx, ctx, employeeId, prepared.fields.departmentId, existing?.id);
+  // DEC-108 / PR #54：审批中编辑保留原提交操作顺序；草稿/驳回单重提时排在同日最后。
+  const reporting = await newRecordReporting(
+    tx,
+    ctx,
+    employeeId,
+    prepared.explicitFieldCodes,
+    prepared.effectiveDate,
+    existing?.state === 'in_review' ? existing.id : undefined,
+  );
+  await validateNewEmploymentReferences(tx, ctx, prepared.fields, prepared.effectiveDate, reporting);
 }

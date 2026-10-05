@@ -1,3 +1,4 @@
+import { lockTransferBusiness } from '../employment/transfer-locks.js';
 /**
  * 业务适配：把任职申请、人员自助变更申请转换为审批快照（表单值、变更前原值、变化字段、条件取值、路由部门），
  * 并在审批结束时调用各模块已有的可信端口（任职状态机 / 申请落地），与审批写入同事务。
@@ -64,7 +65,7 @@ export interface BusinessSnapshot {
 
 export interface BusinessAdapter {
   /** 按业务侧既有顺序加锁（员工 → 业务单），审批命令随后再锁实例，与业务入口的锁序一致（清单 11）。 */
-  lock(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
+  lock(tx: Tx, ctx: ApprovalContext, businessId: string, sourceOnly?: boolean): Promise<void>;
   snapshot(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<BusinessSnapshot>;
   approved(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
   rejected(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<void>;
@@ -146,6 +147,16 @@ async function transferProcessCode(tx: Tx, tenantId: string, businessId: string,
   return entry?.processCode ?? (await resolveTransferForm(tx, tenantId, formId)).processCode;
 }
 
+async function transferMetadata(tx: Tx, tenantId: string, businessId: string) {
+  const [row] = rowsOf<{ transferTypeCode: string; reasonCode: string | null }>(
+    await tx.execute(sql`
+    SELECT transfer_type_code AS "transferTypeCode",reason_code AS "reasonCode" FROM transfer_requests
+    WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid
+  `),
+  );
+  return row ?? {};
+}
+
 /** 自定义字段以权限字段编码 `custom:<id>` 出现在审批载荷里，与任职字段权限一致。 */
 const customValues = (values: Readonly<Record<string, unknown>> | undefined): Row =>
   Object.fromEntries(Object.entries(values ?? {}).map(([id, value]) => [`custom:${id}`, value]));
@@ -171,12 +182,13 @@ function employmentPatch(input: Readonly<Row>) {
 }
 
 const employmentAdapter: BusinessAdapter = {
-  async lock(tx, ctx, businessId) {
+  async lock(tx, ctx, businessId, sourceOnly = false) {
     const [owner] = rowsOf<{ employee_id: string }>(
       await tx.execute(sql`SELECT employee_id FROM employment_business_objects
         WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid`),
     );
     if (!owner) throw new AppError('NOT_FOUND', '任职业务不存在');
+    if (!sourceOnly) await lockTransferBusiness(tx, ctx, businessId);
     await lockEmploymentEmployee(tx, ctx, owner.employee_id);
     await tx.execute(sql`SELECT 1 FROM employment_business_objects
       WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE`);
@@ -210,6 +222,7 @@ const employmentAdapter: BusinessAdapter = {
       : null;
     const values: Row = {
       ...fields,
+      ...(business.kind === 'transfer' ? await transferMetadata(tx, ctx.tenantId, businessId) : {}),
       ...customValues(business.customFields),
       effectiveDate: business.effectiveDate,
       lastWorkDate: payload.lastWorkDate,

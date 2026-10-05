@@ -17,9 +17,10 @@ describe('AC-EMP 配置权限、直接调动开关及列表边界', () => {
     expect(defaults.status).toBe(200);
     expect(await defaults.json()).toEqual({ revision: 0, allowDirectTransfer: true });
     const employee = await session.employee();
+    const org = await session.org('合成在职部门', { establishedOn: '2026-01-01' });
     const hired = await session.business(
       employee.id,
-      { kind: 'hire', mode: 'direct', effectiveDate: '2026-01-01' },
+      { kind: 'hire', mode: 'direct', effectiveDate: '2026-01-01', fields: { departmentId: org.id } },
       employee.revision,
     );
     const closed = await session.request('PUT', '/settings', { ifMatch: 0, body: { allowDirectTransfer: false } });

@@ -233,8 +233,8 @@ export async function trimEmploymentResponse(
             fields: current.fields?.filter((entry) => viewable.has(entry.field.replace(/^preset:/, ''))),
           };
         });
-      else if (key === 'skipped' && Array.isArray(field))
-        result.skipped = field.map((entry) => {
+      else if ((key === 'skipped' || key === 'warnings') && Array.isArray(field))
+        result[key] = field.map((entry) => {
           const current = entry as Record<string, unknown> & { fields?: string[] };
           return {
             ...Object.fromEntries(
@@ -311,6 +311,7 @@ export async function auditEmployment(
   before: unknown,
   after: unknown,
   payloadVersionId?: string,
+  meta?: Readonly<Record<string, unknown>>,
 ): Promise<void> {
   await tx.insert(auditEvents).values({
     tenantId: ctx.tenantId,
@@ -333,7 +334,8 @@ export async function auditEmployment(
         payload_version_id,created_at
       )
       SELECT ${ctx.tenantId},ownership.employee_id,ownership.business_id,${action},${objectType},${objectId},
-        ${ctx.commandId},${JSON.stringify({ before, after })}::jsonb,${payloadVersionId ?? null}::uuid,
+        ${ctx.commandId},${JSON.stringify({ before, after, ...(meta ? { meta } : {}) })}::jsonb,
+        ${payloadVersionId ?? null}::uuid,
         ${ctx.now.toISOString()}::timestamptz
       FROM (SELECT 1) seed LEFT JOIN ownership ON true RETURNING id
     )

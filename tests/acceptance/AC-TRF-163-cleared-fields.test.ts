@@ -56,7 +56,7 @@ async function recordEvents(w: ActivationWorld, businessId: string) {
     `);
     return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as {
       employeeId: string;
-      payload: { after: { clearedFieldCodes: string[]; effectiveDate: string } };
+      payload: { after: { effectiveDate: string }; meta: { clearedFieldCodes: string[] } };
       state: string;
     }[];
   });
@@ -95,7 +95,7 @@ async function assertCleared(w: World, business: EmploymentBusiness) {
   expect(events[0]).toMatchObject({
     employeeId: w.employee.id,
     state: 'pending',
-    payload: { after: { effectiveDate: business.effectiveDate, clearedFieldCodes: cleared } },
+    payload: { after: { effectiveDate: business.effectiveDate }, meta: { clearedFieldCodes: cleared } },
   });
   expect(await w.todos()).toEqual([]);
 }
@@ -175,7 +175,7 @@ describe('DEC-163 / AC-TRF：场景留空字段随实际落地事件交给 PR-B'
       directManagerId: w.manager.employee.id,
       dottedManagerId: w.manager.employee.id,
     });
-    expect((await recordEvents(w, business.id))[0]!.payload.after.clearedFieldCodes).toEqual([]);
+    expect((await recordEvents(w, business.id))[0]!.payload.meta.clearedFieldCodes).toEqual([]);
     expect((await recordEvents(w, w.hire.id))[0]!.payload.after).not.toHaveProperty('clearedFieldCodes');
   });
 });

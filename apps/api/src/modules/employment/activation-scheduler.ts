@@ -1,3 +1,6 @@
+import { lockTransferParticipants } from './transfer-locks.js';
+import { pendingActivationState } from './activation-store.js';
+import { completionCandidates, remindCompletion } from '../transfer/completion.js';
 /**
  * 定时生效调度（R1-T08，`08` §12 / §16；REQ-TRF-004）。按各租户时区判定业务日（DEC-056，事件时间存 UTC），
  * 把到期的「审批通过」申请经 activate 端口落地。原站 W-013 观察到生效日 01:15 由系统执行；这里每个间隔扫描一次，
@@ -133,7 +136,7 @@ async function sweepTenant(
 ): Promise<EmploymentActivationRun> {
   const businessDate = tenantLocalDate(now, tenant.timezone);
   const candidates = await withTenant(db, tenant.id, (tx) =>
-    dueEmployees(tx, tenant.id, businessDate, input.cursor, input.limit + 1),
+    dueEmployees(tx, tenant.id, businessDate, input.cursor, input.limit + 1, now, tenant.timezone),
   );
   const batch = candidates.slice(0, input.limit);
   const run = { activated: [] as string[], failed: [] as string[], suspended: [] as string[], skippedLocked: 0 };
@@ -149,8 +152,10 @@ async function sweepTenant(
   for (const employeeId of batch) {
     try {
       const outcome = await withTenant(db, tenant.id, async (tx) => {
-        if (!(await lockEmployeeOrSkip(tx, tenant.id, employeeId))) return null;
-        return activateDueBusinesses(tx, ctx, employeeId, 'scheduler');
+        if (!(await lockTransferParticipants(tx, ctx, employeeId, [], { skipLocked: true }))) return null;
+        const outcome = await activateDueBusinesses(tx, ctx, employeeId, 'scheduler');
+        await remindCompletion(tx, ctx, employeeId);
+        return outcome;
       });
       if (!outcome) {
         run.skippedLocked += 1;
@@ -169,14 +174,6 @@ async function sweepTenant(
   return { tenantId: tenant.id, businessDate, ranAt: now.toISOString(), ...run, errors, nextCursor };
 }
 
-async function lockEmployeeOrSkip(tx: Tx, tenantId: string, employeeId: string): Promise<boolean> {
-  const locked = rowsOf(
-    await tx.execute(sql`SELECT id FROM employment_employees
-      WHERE tenant_id=${tenantId} AND id=${employeeId}::uuid FOR UPDATE SKIP LOCKED`),
-  );
-  return locked.length > 0;
-}
-
 /**
  * 有事可做的员工：有到期的审批通过申请，且它不是“失败待 HR 重试”，也不是“挂起且所等前序仍失败未修正”。
  * 只从审批通过的状态事件出发（部分索引），再确认它仍是该业务的最新状态。
@@ -187,24 +184,35 @@ async function dueEmployees(
   businessDate: string,
   cursor: string | null,
   limit: number,
+  now: Date,
+  timezone: string,
 ): Promise<string[]> {
   const rows = rowsOf<{ employeeId: string }>(
     await tx.execute(sql`
-    SELECT DISTINCT s.employee_id::text AS "employeeId" FROM employment_state_events s
-    JOIN LATERAL (SELECT mode, effective_date FROM employment_payload_versions p
-      WHERE p.tenant_id=s.tenant_id AND p.business_id=s.business_id ORDER BY p.version_no DESC LIMIT 1) p ON true
+    SELECT DISTINCT b.employee_id::text AS "employeeId" FROM employment_business_objects b
+    JOIN LATERAL (SELECT mode, kind, effective_date FROM employment_payload_versions p
+      WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY p.version_no DESC LIMIT 1) p ON true
+    JOIN LATERAL (SELECT state FROM employment_state_events s
+      WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY s.event_no DESC LIMIT 1) s ON true
     LEFT JOIN LATERAL (SELECT outcome, blocked_by_business_id FROM employment_activation_attempts a
-      WHERE a.tenant_id=s.tenant_id AND a.business_id=s.business_id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
-    WHERE s.tenant_id=${tenantId} AND s.state='approved'
-      AND NOT EXISTS (SELECT 1 FROM employment_state_events n
-        WHERE n.tenant_id=s.tenant_id AND n.business_id=s.business_id AND n.event_no>s.event_no)
-      AND p.mode='application' AND p.effective_date<=${businessDate}::date
-      AND (${cursor}::uuid IS NULL OR s.employee_id>${cursor}::uuid)
+      WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
+    WHERE b.tenant_id=${tenantId} AND ${pendingActivationState(timezone)}
+      AND p.effective_date<=${businessDate}::date
+      AND (${cursor}::uuid IS NULL OR b.employee_id>${cursor}::uuid)
       AND (a.outcome IS NULL OR (a.outcome='suspended' AND NOT (
-        (SELECT x.state FROM employment_state_events x WHERE x.tenant_id=s.tenant_id
-          AND x.business_id=a.blocked_by_business_id ORDER BY x.event_no DESC LIMIT 1) = 'approved'
-        AND (SELECT y.outcome FROM employment_activation_attempts y WHERE y.tenant_id=s.tenant_id
+        (SELECT x.state FROM employment_state_events x WHERE x.tenant_id=b.tenant_id
+          AND x.business_id=a.blocked_by_business_id ORDER BY x.event_no DESC LIMIT 1) IN ('approved','effective')
+        AND (SELECT y.outcome FROM employment_activation_attempts y WHERE y.tenant_id=b.tenant_id
           AND y.business_id=a.blocked_by_business_id ORDER BY y.attempt_no DESC LIMIT 1) = 'failed')))
+    UNION SELECT "employeeId"::text FROM (${completionCandidates({
+      tenantId,
+      timezone,
+      now,
+      userId: SYSTEM_USER_ID,
+      commandId: '',
+      expectedRevision: 0,
+    })}) c
+      WHERE (${cursor}::uuid IS NULL OR c."employeeId">${cursor}::uuid)
     ORDER BY 1 LIMIT ${limit}
   `),
   );

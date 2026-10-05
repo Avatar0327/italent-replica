@@ -1,5 +1,10 @@
 /** DEC-045：首版简体中文文案集中到资源文件。 */
 export const text = {
+  requiredUnavailable: '表单必填项不可用，请联系 HR 检查表单或字段权限',
+  personalScenario: '选择人事申请',
+  personalTitle: '本人调动申请',
+  personalEntry: '人事申请',
+  hrEntry: '调动管理',
   title: '调动管理',
   subtitle: '他人调动申请',
   tenant: '租户',
@@ -74,6 +79,8 @@ export const presetLabels: Readonly<Record<string, string>> = {
   jobNumber: '工号',
   remarks: '备注',
   isDepartmentHead: '是否部门负责人',
+  isStoreManager: '是否店长',
+  addedSubordinateIds: '新增下属',
   employType: '用工类型',
 };
 export const jobReferences: Readonly<Record<string, string>> = {

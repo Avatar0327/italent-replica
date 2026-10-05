@@ -138,6 +138,7 @@ export const establishmentSchemeRanges = pgTable(
     versionId: uuid('version_id').notNull(),
     ordinal: integer('ordinal').notNull(),
     employmentType: text('employment_type').notNull(),
+    conditions: jsonb('conditions').$type<Record<string, string[]>>().notNull().default({}),
   },
   (t) => [
     primaryKey({ columns: [t.tenantId, t.versionId, t.ordinal] }),

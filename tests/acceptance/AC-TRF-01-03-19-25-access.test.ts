@@ -148,7 +148,10 @@ async function fixture() {
       body: {
         initiator: 'hr',
         transferTypeCode: 'cross_department',
-        formId: STANDARD,
+        formId:
+          (extra as { initiator?: string }).initiator === 'employee'
+            ? 'TenantBase.PersonalCrossDepartmentTransferMultiFormView'
+            : STANDARD,
         effectiveDate: EFFECTIVE_DATE,
         mode: 'application',
         fields: { departmentId: outside.id },
@@ -264,6 +267,58 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
     expect(await world.currentRevision(emptySelf)).toBe(emptySelf.revision);
   });
 
+  it('AC-TRF-01/23：本人端点只返回绑定人员；入口与 Personal 表单强绑定，禁止直接调动', async () => {
+    const actor = await world.actor('transfer-personal-page', { role: 'Transfer.Self' });
+    const self = await world.person(world.inside.id, actor);
+    const response = await world.api.request('GET', `${BASE}/self`, actor);
+    expect(response.status).toBe(200);
+    const items = ((await response.json()) as { items: Person[] }).items;
+    expect(items.map((item) => item.id)).toEqual([self.id]);
+    const catalog = await world.api.request('GET', `${BASE}/catalog?initiator=employee`, actor);
+    expect(catalog.status).toBe(200);
+    for (const type of ((await catalog.json()) as { types: { formId: string }[] }).types)
+      expect(type.formId).toMatch(/^TenantBase.Personal/);
+    for (const preview of [true, false]) {
+      expect((await world.transfer(actor, self, { initiator: 'employee', formId: STANDARD }, preview)).status).toBe(
+        400,
+      );
+      expect((await world.transfer(actor, self, { initiator: 'employee', mode: 'direct' }, preview)).status).toBe(400);
+    }
+    const hr = await world.actor('transfer-personal-hr');
+    expect((await world.api.request('GET', `${BASE}/self`, hr)).status).toBe(403);
+    expect(
+      (await world.transfer(hr, self, { formId: 'TenantBase.PersonalCrossDepartmentTransferMultiFormView' })).status,
+    ).toBe(400);
+    const unbound = await world.actor('transfer-personal-unbound', { role: 'Transfer.Self' });
+    expect((await world.api.request('GET', `${BASE}/self`, unbound)).status).toBe(403);
+  });
+
+  it('DEC-163 补全待办仅 HR 可查，数据范围为空时不暴露业务', async () => {
+    const hr = await world.actor('completion-scope-hr');
+    const employee = await world.person();
+    const saved = await world.transfer(hr, employee, {
+      mode: 'direct',
+      formId: 'TenantBase.TransferMultiFormView',
+      fields: { departmentId: world.inside.id },
+    });
+    expect(saved.status, await saved.clone().text()).toBe(201);
+    const business = (await saved.json()) as { id: string };
+    const path = '/api/tenant/employment/completion-todos';
+    const own = await world.api.request('GET', path, hr);
+    expect(own.status).toBe(200);
+    expect(await own.json()).toMatchObject({
+      items: expect.arrayContaining([
+        expect.objectContaining({ id: business.id, fieldCodes: expect.arrayContaining(['preset:positionId']) }),
+      ]),
+    });
+    const empty = await world.actor('completion-scope-empty', { empty: true });
+    const hidden = await world.api.request('GET', path, empty);
+    expect(hidden.status).toBe(200);
+    expect(await hidden.json()).toMatchObject({ items: [] });
+    const self = await world.actor('completion-scope-self', { role: 'Transfer.Self' });
+    expect((await world.api.request('GET', path, self)).status).toBe(403);
+  });
+
   it('AC-TRF-02：经理绑定本人后只可为其团队发起，组织范围不能替代团队关系', async () => {
     const managerActor = await world.actor('transfer-manager', { role: 'Transfer.Manager' });
     const manager = await world.person(world.inside.id, managerActor);
@@ -293,7 +348,7 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
       const edited = await world.api.request('PATCH', path, {
         ...hr,
         ifMatch: business.revision,
-        body: { fields: { remarks: 'HR依自身授权核对' } },
+        body: { fields: initiator === 'employee' ? { directManagerId: null } : { remarks: 'HR依自身授权核对' } },
       });
       expect(edited.status, await edited.clone().text()).toBe(200);
       const noRole = await world.actor(`transfer-followup-unrelated-${initiator}`, { role: 'Transfer.Self' });

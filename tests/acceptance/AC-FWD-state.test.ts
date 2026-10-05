@@ -11,12 +11,13 @@ const testDb = useTestDb();
 async function fixture(db: Db, label: string) {
   const session = await employmentSession(db, label);
   const employee = await session.employee();
+  const org = await session.org('合成在职部门', { establishedOn: '2026-01-01' });
   const hire = await session.business(
     employee.id,
-    { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { place: '原地点' } },
+    { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { departmentId: org.id, place: '原地点' } },
     employee.revision,
   );
-  return { session, employee, hire };
+  return { session, employee, hire, org };
 }
 
 async function transition(
@@ -194,7 +195,12 @@ describe('AC-FWD-01/02 状态、周期与并发边界', () => {
     );
     const rehire = await session.business(
       employee.id,
-      { kind: 'retire_rehire', mode: 'direct', effectiveDate: '2026-09-20', fields: { place: '原地点' } },
+      {
+        kind: 'retire_rehire',
+        mode: 'direct',
+        effectiveDate: '2026-09-20',
+        fields: { departmentId: hire.record!.fields.departmentId, place: '原地点' },
+      },
       retired.employeeRevision,
     );
     const later = await session.business(
