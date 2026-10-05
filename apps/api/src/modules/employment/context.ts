@@ -131,8 +131,8 @@ async function employmentCreatorId(tx: Tx, ctx: EmploymentContext, id: string, b
 }
 
 /**
- * 写入口径：记录部门与员工当前任职须同时在范围内（新建业务、改部门、直接编辑）。DEC-177 只放宽“看”
- * （visibility.ts），不放宽写到范围外部门；可见但部门在范围外的记录能否直接编辑，TODO(需取证 #72)。
+ * 写入口径：记录部门与员工当前任职须同时在范围内（新建业务、改部门、直接编辑 / 删除 / 撤回 / 重试）。
+ * DEC-193：直接操作不随 DEC-177 的可见放宽；#72 取证结论后再定是否调整（TODO(需取证 #72)）。
  */
 export async function requireScopedEmploymentObject(
   tx: Tx,
@@ -161,7 +161,7 @@ export async function employmentRecordVisibleTo(
   departmentId: string | null,
   businessId?: string,
 ): Promise<boolean> {
-  if (!ctx.scope || ctx.scope.all) return true;
+  // 看全部 / 可信端口同样经 isEmploymentRecordVisible 校验员工属于本租户，不提前放行（PR #76 P2-1）。
   const creatorId = businessId ? await employmentCreatorId(tx, ctx, businessId, true) : ctx.userId;
   return isEmploymentRecordVisible(tx, ctx.tenantId, ctx.scope, { employeeId, departmentId, creatorId });
 }
@@ -245,8 +245,7 @@ export async function trimEmploymentResponse(
         );
       else if (key === 'record') result.record = trim(field);
       else if (key === 'before') {
-        const before = field as { fields?: { departmentId?: string | null } } | null;
-        const allowed = visibleBefore(source.employeeId, before?.fields?.departmentId);
+        const allowed = visibleBefore(source);
         result.before = allowed ? trim(field) : null;
         if (!allowed && Object.hasOwn(source, 'previousRecordId')) result.previousRecordId = null;
       } else if ((key === 'changes' || key === 'wholeRecordSkips') && Array.isArray(field))
@@ -287,39 +286,65 @@ export async function trimEmploymentResponse(
     : trimModuleResponse(deps, ctx, objectCode, value as Record<string, unknown>);
 }
 
-/** 链上一条与本条同属一名员工，按 DEC-177 判断（员工当前在范围内即可见）；整份响应一次批量查询。 */
+/**
+ * 链上一条与本条同属一名员工，按 DEC-177 判断（员工当前在范围内即可见）；“使用用户”维度按前驱记录自己的创建者
+ * 判断（PR #76 P3-1）。整份响应批量查询一次，不逐条回表。
+ */
 async function visiblePreviousRecords(deps: TenantRouteDeps, ctx: EmploymentContext, value: unknown) {
+  type Before = { fields?: { departmentId?: string | null } } | null | undefined;
   const scope = ctx.scope;
-  const key = (employeeId: unknown, departmentId: string | null | undefined) =>
-    `${String(employeeId)}|${departmentId ?? ''}`;
+  const key = (record: Record<string, unknown>) =>
+    `${String(record.employeeId)}|${String(record.previousRecordId ?? '')}|${
+      (record.before as Before)?.fields?.departmentId ?? ''
+    }`;
   if (!scope || scope.all) return () => true;
-  const targets = new Map<string, { employeeId: string; departmentId: string | null }>();
+  const targets = new Map<string, { employeeId: string; departmentId: string | null; previousId: string | null }>();
   const collect = (node: unknown): void => {
     if (Array.isArray(node)) return node.forEach(collect);
     if (!node || typeof node !== 'object') return;
     const record = node as Record<string, unknown>;
-    const before = record.before as { fields?: { departmentId?: string | null } } | null | undefined;
-    if (before && typeof record.employeeId === 'string') {
-      const departmentId = before.fields?.departmentId ?? null;
-      targets.set(key(record.employeeId, departmentId), { employeeId: record.employeeId, departmentId });
-    }
+    const before = record.before as Before;
+    if (before && typeof record.employeeId === 'string')
+      targets.set(key(record), {
+        employeeId: record.employeeId,
+        departmentId: before.fields?.departmentId ?? null,
+        previousId: typeof record.previousRecordId === 'string' ? record.previousRecordId : null,
+      });
     collect(record.items);
     collect(record.record);
   };
   collect(value);
   const list = [...targets.entries()];
-  const visible = list.length
-    ? await withTenant(deps.db, ctx.tenantId, (tx) =>
-        visibleEmploymentRecords(
-          tx,
-          ctx.tenantId,
-          scope,
-          list.map(([, target]) => target),
-        ),
-      )
-    : [];
+  if (!list.length) return () => false;
+  const visible = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const creators = await previousCreators(
+      tx,
+      ctx,
+      list.map(([, target]) => target.previousId),
+    );
+    const subjects = list.map(([, target]) => ({
+      ...target,
+      creatorId: target.previousId ? (creators.get(target.previousId) ?? null) : null,
+    }));
+    return visibleEmploymentRecords(tx, ctx.tenantId, scope, subjects);
+  });
   const allowed = new Set(list.filter((_, index) => visible[index]).map(([id]) => id));
-  return (employeeId: unknown, departmentId: string | null | undefined) => allowed.has(key(employeeId, departmentId));
+  return (record: Record<string, unknown>) => allowed.has(key(record));
+}
+
+/** 只有范围含“使用用户”维度时才需要前驱创建者。 */
+async function previousCreators(tx: Tx, ctx: EmploymentContext, ids: (string | null)[]) {
+  const unique = [...new Set(ids.filter((id): id is string => !!id))];
+  if (!unique.length || !ctx.scope?.terms?.some((term) => term.dimension === 'using_user')) return new Map();
+  const result = await tx.execute(sql`
+    SELECT p.id::text AS id, ${employmentCreator(ctx.tenantId, sql`p.id`, true)} AS creator
+    FROM unnest(${`{${unique.join(',')}}`}::uuid[]) AS p(id)
+  `);
+  const rows = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as {
+    id: string;
+    creator: string | null;
+  }[];
+  return new Map(rows.map((row) => [row.id, row.creator]));
 }
 
 export function queryDate(c: Context, ctx: EmploymentContext): string {

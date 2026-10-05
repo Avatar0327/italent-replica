@@ -11,10 +11,11 @@
  * - 列表 / 导出（SQL 分页前过滤）：`employmentVisibilitySql(scope, { employee, department, creator })`；
  * - 单条判断（详情、联动目标）：`isEmploymentRecordVisible(tx, tenantId, scope, target)`；
  * - 批量判断（嵌套响应、导出回执）：`visibleEmploymentRecords(tx, tenantId, scope, targets)`。
- * scope 为 undefined（可信系统端口）或“看全部”时一律可见；范围为空时一律不可见（fail-closed）。
+ * scope 为 undefined（可信系统端口）或“看全部”时范围不设限，但单条 / 批量判断仍要求员工属于 tenantId；
+ * 范围为空时一律不可见（fail-closed）。
  *
- * 只管“看”。写入新部门值（新建业务、改部门）仍按 `context.ts` requireScopedEmploymentObject 的写入口径，
- * DEC-177 不放宽写到范围外部门；联动改写后续记录按 DEC-178 用本判定（forward-update.ts）。
+ * 只管“看”（DEC-193）：直接编辑 / 删除 / 撤回 / 重试与写入新部门值仍按 `context.ts` requireScopedEmploymentObject
+ * 的写入口径，不随可见放宽；联动改写后续记录按 DEC-178 用本判定（forward-update.ts）。
  */
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
@@ -64,7 +65,7 @@ export async function visibleEmploymentRecords(
   targets: readonly EmploymentVisibilityTarget[],
 ): Promise<boolean[]> {
   if (!targets.length) return [];
-  if (!scope || scope.all) return targets.map(() => true);
+  // 看全部 / 可信端口也不提前返回：范围谓词为 true，员工归属本租户的 JOIN 照常生效（PR #76 P2-1）。
   const input = targets.map((target, index) => ({
     ord: index,
     employee: target.employeeId,
