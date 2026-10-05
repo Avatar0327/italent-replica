@@ -212,4 +212,88 @@ describe('AC-PRM-30 标准 HR 身份预置无组织字段对象的看全部', ()
     );
     expect(await manager.json()).toMatchObject({ seeAll: false });
   });
+
+  describe('P2-7：编制方案的既有页面 / 数据源配置在升级后语义不变', () => {
+    const est = MODULE_OBJECTS.establishment;
+    const listCode = `${est.code}.list`;
+    const member = async (label: string) => {
+      const user = await newUser(testDb().db, label);
+      await grantMembership(testDb().db, { tenantId: result.tenant.id, userId: user.id, expectedRevision: 0 }, cmd());
+      const created = await api.request('POST', '/api/tenant/permission/profiles', {
+        ...asAdmin,
+        body: { code: `legacy_${label}`, name: label, apps: ['TenantBase'], licenseType: null },
+      });
+      const profile = (await created.json()) as { id: string; revision: number };
+      const configured = await api.request('PUT', `/api/tenant/permission/profiles/${profile.id}/objects/${est.code}`, {
+        ...asAdmin,
+        ifMatch: profile.revision,
+        body: {
+          dataOperations: { create: true, update: false, delete: false },
+          fields: est.fields.map((f) => ({ fieldCode: f.code, view: true, edit: !f.system })),
+          buttons: [],
+        },
+      });
+      expect(configured.status, await configured.clone().text()).toBe(200);
+      const admins = await api.request('GET', '/api/tenant/permission/admins', asAdmin);
+      const record = (
+        (await admins.json()) as { items: { id: string; revision: number; grantableProfileIds: string[] }[] }
+      ).items[0]!;
+      await api.request('PUT', `/api/tenant/permission/admins/${record.id}`, {
+        ...asAdmin,
+        ifMatch: record.revision,
+        body: {
+          grantableAdminRoles: ['tenant_admin'],
+          grantableProfileIds: [...record.grantableProfileIds, profile.id],
+        },
+      });
+      const granted = await api.request('POST', '/api/tenant/permission/grants', {
+        ...asAdmin,
+        body: { userId: user.id, profileId: profile.id },
+      });
+      expect(granted.status, await granted.clone().text()).toBe(201);
+      return { as: { user: user.id, tenant: result.tenant.id }, profile };
+    };
+    const policy = async (kind: 'entity' | 'datasource', target: string, body: object) => {
+      const res = await api.request(
+        'PUT',
+        `/api/tenant/permission/scope-policies/TenantBase/${est.code}/${kind}/${target}`,
+        {
+          ...asAdmin,
+          ifMatch: 0,
+          body,
+        },
+      );
+      expect(res.status, await res.clone().text()).toBe(200);
+    };
+
+    it('列表数据源（.list）上配置的看全部仍对编制方案生效', async () => {
+      await policy('datasource', listCode, { rules: [] });
+      const y = await member('legacy-y');
+      const seeAll = await api.request(
+        'PUT',
+        `/api/tenant/permission/profiles/${y.profile.id}/data-scopes/TenantBase`,
+        {
+          ...asAdmin,
+          ifMatch: 0,
+          body: { targetKind: 'datasource', targetCode: listCode, seeAll: true },
+        },
+      );
+      expect(seeAll.status, await seeAll.clone().text()).toBe(200);
+      const schemes = await list(y.as, '/api/tenant/establishment/schemes');
+      expect(schemes.items.map((s) => s.id)).toEqual(expect.arrayContaining([ids['方案一'], ids['方案二']]));
+    });
+
+    it('列表数据源（.list）上的空策略仍覆盖实体级“本人创建”规则', async () => {
+      await policy('entity', est.code, { creatorField: 'createdBy', rules: [{ dimension: 'using_user' }] });
+      const z = await member('legacy-z');
+      const made = await fixture.request('POST', '/api/tenant/establishment/schemes', {
+        ...z.as,
+        ifMatch: 0,
+        body: { name: 'Z 的方案', periodType: 'annual', maintenanceMode: 'local', startDate: '2026-01-01' },
+      });
+      expect(made.status, await made.clone().text()).toBe(201);
+      const schemes = await list(z.as, '/api/tenant/establishment/schemes');
+      expect(schemes).toMatchObject({ items: [], hasDataPermission: false });
+    });
+  });
 });

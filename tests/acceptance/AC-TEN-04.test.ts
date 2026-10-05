@@ -58,6 +58,19 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
     ]);
   });
 
+  it('开通时的首位租户管理员与异常管理员按 DEC-128 登记为外部用户并带业务身份（没有人员档案）', async () => {
+    const res = await api.request('GET', '/api/tenant/permission/users?type=external', asAdmin);
+    expect(res.status, await res.clone().text()).toBe(200);
+    const { items } = (await res.json()) as {
+      items: { userId: string; userType: string; businessIdentity: string | null }[];
+    };
+    for (const userId of [admin.id, exceptionAdmin.id]) {
+      const user = items.find((u) => u.userId === userId);
+      expect(user).toMatchObject({ userType: 'external' });
+      expect(user?.businessIdentity?.trim()).toBeTruthy();
+    }
+  });
+
   it('标准业务身份已下发（source=standard），且在首位租户管理员的可授权范围内', async () => {
     const res = await api.request('GET', '/api/tenant/permission/profiles', asAdmin);
     expect(res.status).toBe(200);

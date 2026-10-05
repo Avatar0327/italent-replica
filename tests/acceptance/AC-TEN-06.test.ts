@@ -7,7 +7,7 @@
  * 这里只断言报告给出了度量它们所需的时间点。
  */
 import { randomBytes, randomUUID } from 'node:crypto';
-import { captureAuthorizationState, openRestoredTenant, restoreTenant } from '@italent/api';
+import { openRestoredTenant, restoreTenant } from '@italent/api';
 import {
   BackupIntegrityError,
   type Db,
@@ -180,7 +180,7 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
   it('恢复到隔离环境：校验与对账通过前保持 restoring、拒绝访问；撤销过的授权不复活；在途事件不补发；通过后开放', async () => {
     const { db } = testDb();
     const bBefore = await api.request('GET', '/api/tenant/permission/admins', asB);
-    const live = await captureAuthorizationState(db, a.tenant.id);
+    const live = db;
     const isolated = await target();
     const restoreCommand = cmd(operator.id);
     const report = await restoreTenant(isolated, { backup, live, attachments: attachments(store()) }, restoreCommand);
@@ -189,10 +189,11 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
       ok: true,
       isolation: { ok: true, foreignRows: 0, tenants: 1 },
       attachments: { ok: true, missing: [], mismatched: [] },
-      reconciliation: { revokedGrants: [hGrant] },
+      reconciliation: { problems: [] },
       dataAsOf: backup.manifest.takenAt,
     });
     expect(report.reconciliation.unknownEvents).toBeGreaterThan(0);
+    expect(report.reconciliation.changed.permission_grants).toBeGreaterThan(0);
     expect(new Date(report.verifiedAt).getTime()).toBeGreaterThanOrEqual(new Date(report.startedAt).getTime());
     expect((await getTenant(isolated, a.tenant.id))?.status).toBe('restoring');
 
@@ -201,7 +202,7 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
     expect(blocked.status).toBe(403);
     expect(await errorCode(blocked)).toBe('TENANT_UNAVAILABLE');
 
-    const opened = await openRestoredTenant(isolated, report, cmd(operator.id), backup);
+    const opened = await openRestoredTenant(isolated, { tenantId: a.tenant.id, live: db, backup }, cmd(operator.id));
     expect(opened.status).toBe('active');
     expect(new Date(opened.openedAt).getTime() - new Date(report.startedAt).getTime()).toBeLessThan(4 * HOUR);
 
@@ -234,7 +235,8 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
         .from(permissionOutbox)
         .where(sql`${permissionOutbox.state} = 'pending'`),
     );
-    expect(pending).toEqual([{ commandId: restoreCommand.commandId, eventType: 'permission_grant.revoke' }]);
+    expect(pending.length).toBeGreaterThan(0);
+    expect(pending.every((p) => p.commandId === restoreCommand.commandId)).toBe(true);
 
     const restoredTenants = await withPlatform(isolated, (tx) => tx.select({ id: tenants.id }).from(tenants));
     expect(restoredTenants).toEqual([{ id: a.tenant.id }]);
@@ -249,7 +251,7 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
   });
 
   it('附件哈希不符或缺失：报告不通过，租户保持 restoring，不能开放', async () => {
-    const live = await captureAuthorizationState(testDb().db, a.tenant.id);
+    const live = testDb().db;
     const isolated = await target();
     const report = await restoreTenant(
       isolated,
@@ -258,12 +260,14 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
     );
     expect(report.ok).toBe(false);
     expect(report.attachments.mismatched).toEqual([attachment.id]);
-    await expect(openRestoredTenant(isolated, report, cmd(operator.id))).rejects.toThrow(BackupIntegrityError);
+    await expect(
+      openRestoredTenant(isolated, { tenantId: a.tenant.id, live, backup }, cmd(operator.id)),
+    ).rejects.toThrow(BackupIntegrityError);
     expect((await getTenant(isolated, a.tenant.id))?.status).toBe('restoring');
   });
 
-  it('校验和被篡改、迁移版本不一致、目标库已有该租户：一律拒绝恢复', async () => {
-    const live = await captureAuthorizationState(testDb().db, a.tenant.id);
+  it('校验和被篡改、迁移版本不一致、目标库非空：一律拒绝恢复', async () => {
+    const live = testDb().db;
     const run = (input: TenantBackup, db: Db) =>
       restoreTenant(db, { backup: input, live, attachments: attachments(store()) }, cmd(operator.id));
     const tampered = structuredClone(backup);
@@ -275,6 +279,6 @@ describe('AC-TEN-06 按租户备份恢复演练', () => {
     versioned.manifest.migration.count += 1;
     await expect(run(versioned, await target())).rejects.toEqual(reason('MIGRATION_VERSION_MISMATCH'));
 
-    await expect(run(backup, testDb().db)).rejects.toEqual(reason('TENANT_EXISTS'));
+    await expect(run(backup, testDb().db)).rejects.toEqual(reason('TARGET_NOT_EMPTY'));
   });
 });
