@@ -67,8 +67,9 @@ CREATE FUNCTION audit_blank(value jsonb) RETURNS boolean
   LANGUAGE sql IMMUTABLE
   AS $$ SELECT value IS NULL OR value = 'null'::jsonb OR value = '""'::jsonb $$;
 --> statement-breakpoint
+-- 行数估计取 20（默认 1000 会让差异函数的计划代价越过 JIT 阈值，触发器里逐行 JIT 编译，万人重算会慢上千倍）
 CREATE FUNCTION audit_flatten(value jsonb) RETURNS TABLE (path text, val jsonb)
-  LANGUAGE sql IMMUTABLE
+  LANGUAGE sql IMMUTABLE ROWS 20
   AS $$
     SELECT 'value', value WHERE value IS NOT NULL AND jsonb_typeof(value) NOT IN ('object', 'null')
     UNION ALL
@@ -81,8 +82,9 @@ CREATE FUNCTION audit_flatten(value jsonb) RETURNS TABLE (path text, val jsonb)
      CROSS JOIN LATERAL jsonb_each(CASE WHEN jsonb_typeof(e.value) = 'object' THEN e.value ELSE '{}'::jsonb END) n
   $$;
 --> statement-breakpoint
+-- 逐行触发器里调用：关闭 JIT，单次调用不应承担 JIT 编译开销
 CREATE FUNCTION audit_jsonb_diff(before jsonb, after jsonb) RETURNS jsonb
-  LANGUAGE sql IMMUTABLE
+  LANGUAGE sql IMMUTABLE SET jit = off
   AS $$
     WITH l AS (SELECT * FROM audit_flatten(before)), r AS (SELECT * FROM audit_flatten(after)),
     k AS (SELECT path FROM l UNION SELECT path FROM r)
