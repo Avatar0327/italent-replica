@@ -96,5 +96,17 @@ export async function carriedWorld(db: Db, label: string, options: { matched?: b
       AND action LIKE 'establishment.transfer.%' ORDER BY occurred_at,id`),
       ),
     );
-  return { ...w, hired, save, capacities, history, sourcePosition, targetPosition, sourceCapacity, targetCapacity };
+  return {
+    ...w,
+    hired,
+    save,
+    capacities,
+    history,
+    sourcePosition,
+    targetPosition,
+    sourceCapacity,
+    targetCapacity,
+    write,
+    scheme,
+  };
 }

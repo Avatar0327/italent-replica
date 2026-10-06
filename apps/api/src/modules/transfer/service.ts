@@ -42,9 +42,6 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
   const parsed = schema.safeParse(raw);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '调动表单字段不合法', parsed.error.issues);
   const input = parsed.data;
-  // TODO(需取证 Q-M0-18)：带编转移数量与分配规则未确认，明确拒绝。
-  if (input.withEstablishment)
-    throw new AppError('SERVICE_UNAVAILABLE', '带编调动分配规则尚待取证', { reason: 'WITH_ESTABLISHMENT_UNAVAILABLE' });
   if (input.formId === 'standard') throw new AppError('VALIDATION_FAILED', '调动接口必须选择真实表单');
   const catalog = await readTransferCatalog(tx, ctx.tenantId, input.effectiveDate);
   const type = catalog.types.find((item) => item.code === input.transferTypeCode);
@@ -115,18 +112,21 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
   await requireTransferWrite(ctx, input);
   if (input.employment.mode === 'direct') await requireDirectTransfer(tx, ctx);
   const form = await resolveTransferForm(tx, ctx.tenantId, input.employment.formId);
-  const created = await createEmploymentBusiness(tx, ctx, employeeId, input.employment);
+  const created = await createEmploymentBusiness(tx, ctx, employeeId, input.employment, {
+    withEstablishment: input.writable.withEstablishment === true,
+  });
   const metadata = {
     initiator: input.initiator,
     transferTypeCode: input.transferTypeCode,
     reasonCode: input.reasonCode ?? null,
     processCode: form.processCode,
+    withEstablishment: input.writable.withEstablishment === true,
   };
   await tx.execute(sql`
     INSERT INTO transfer_requests(
-      tenant_id,business_id,employee_id,initiator,transfer_type_code,reason_code,process_code)
+      tenant_id,business_id,employee_id,initiator,transfer_type_code,reason_code,process_code,with_establishment)
     VALUES (${ctx.tenantId},${created.id}::uuid,${employeeId}::uuid,${metadata.initiator},
-      ${metadata.transferTypeCode},${metadata.reasonCode},${metadata.processCode})
+      ${metadata.transferTypeCode},${metadata.reasonCode},${metadata.processCode},${metadata.withEstablishment})
   `);
   await auditEmployment(tx, ctx, 'transfer.request.create', 'transfer-request', created.id, null, metadata);
   if (input.employment.mode === 'application' && input.submit) {

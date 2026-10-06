@@ -44,3 +44,29 @@ describe('AC-TRF-38 带编调动沿已有撤销/删除路径反向调整', () =>
     }
   });
 });
+
+it('已转入的额度被其他员工占用：回退严格超编时，业务、容量与审计整体保持原状', async () => {
+  const w = await carriedWorld(database().db, 'carried-consumed');
+  const response = await w.save(await w.hired());
+  expect(response.status).toBe(201);
+  const business = (await response.json()) as { id: string; revision: number };
+  const occupant = await w.session.employee('合成后来占编员工');
+  await w.session.business(
+    occupant.id,
+    {
+      kind: 'hire',
+      mode: 'direct',
+      effectiveDate: '2026-10-01',
+      fields: { departmentId: w.to.id, positionId: w.targetPosition },
+    },
+    occupant.revision,
+  );
+  const before = await w.capacities();
+  const history = await w.history();
+  const result = await w.session.request('DELETE', `/businesses/${business.id}`, { ifMatch: business.revision });
+  expect(result.status, await result.clone().text()).toBe(409);
+  expect(await result.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHMENT_EXCEEDED' } } });
+  expect(await w.capacities()).toEqual(before);
+  expect(await w.history()).toEqual(history);
+  expect(await w.business(business.id)).toMatchObject({ status: 'effective' });
+});

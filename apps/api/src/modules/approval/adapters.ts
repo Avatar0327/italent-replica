@@ -149,9 +149,10 @@ async function transferProcessCode(tx: Tx, tenantId: string, businessId: string,
 }
 
 async function transferMetadata(tx: Tx, tenantId: string, businessId: string) {
-  const [row] = rowsOf<{ transferTypeCode: string; reasonCode: string | null }>(
+  const [row] = rowsOf<{ transferTypeCode: string; reasonCode: string | null; withEstablishment: boolean }>(
     await tx.execute(sql`
-    SELECT transfer_type_code AS "transferTypeCode",reason_code AS "reasonCode" FROM transfer_requests
+    SELECT transfer_type_code AS "transferTypeCode",reason_code AS "reasonCode",
+      with_establishment AS "withEstablishment" FROM transfer_requests
     WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid
   `),
   );
@@ -253,6 +254,7 @@ const employmentAdapter: BusinessAdapter = {
       // 业务日期是本单新内容，审批人必须看得到；最后工作日只在离职 / 退休单上出现。
       'effectiveDate',
       ...(payload.lastWorkDate ? ['lastWorkDate'] : []),
+      ...(values.withEstablishment === true ? ['withEstablishment'] : []),
     ];
     const ref = (prefix: 'before' | 'record', source: Partial<PresetFields> | undefined) =>
       Object.fromEntries(

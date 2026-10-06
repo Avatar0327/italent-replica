@@ -221,6 +221,7 @@ async function assertRestoredEstablishment(
       positionId: previous.fields.positionId,
       effectiveDate,
       until: window.to,
+      reconcileCarried: false,
       fields: previous.fields,
     });
 }

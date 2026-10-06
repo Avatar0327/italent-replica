@@ -1,3 +1,4 @@
+import { reverseCarriedEstablishment, assertReleasedEstablishment } from '../establishment/carried-transfer.js';
 import { postponeLateTransfer } from './late-transfer.js';
 import { assertEstablishmentCapacity } from './activation-checks.js';
 import { lockTransferBusiness } from './transfer-locks.js';
@@ -107,6 +108,9 @@ export async function transitionEmployment(
       fields,
     });
   }
+  const released = ['delete', 'withdraw', 'revoke', 'reject', 'disapprove'].includes(input.action)
+    ? await reverseCarriedEstablishment(tx, ctx, business.id)
+    : [];
   if (input.action === 'delete') {
     const previous = await deleteEmploymentBusiness(tx, ctx, business);
     const { kind, effectiveDate } = business.payload;
@@ -137,6 +141,7 @@ export async function transitionEmployment(
     const state = STATE_AFTER[input.action];
     await appendEmploymentState(tx, ctx, business, state);
   }
+  await assertReleasedEstablishment(tx, ctx, business.id, business.employeeId, released);
   // 一条命令只增加一次业务 revision；approve→effective 的两条状态事件不各自递增头版本。
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, business.id);

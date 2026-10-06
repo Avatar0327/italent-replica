@@ -29,6 +29,9 @@ export interface ActivationFailure {
 }
 
 export interface ActivationTarget {
+  /** 回退调编时只验证剩余占用，不把被删除业务再次投影为调入。 */
+  readonly occupancyOnly?: boolean;
+  readonly reconcileCarried?: boolean;
   readonly fields?: Partial<PresetFields>;
   readonly businessId: string;
   readonly employeeId: string;

@@ -232,6 +232,7 @@ export const MODULE_OBJECTS = {
       'kind',
       'mode',
       'initiator',
+      'withEstablishment',
       'transferTypeCode',
       'reasonCode',
       'effectiveDate',
