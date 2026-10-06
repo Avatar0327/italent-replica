@@ -18,7 +18,7 @@ import {
 } from '@italent/domain';
 import { sql } from 'drizzle-orm';
 import { auditCommandFailures, auditEvents, auditOperationLogs } from './schema/index.js';
-import type { Tx } from './tenant-context.js';
+import { isUuid, type Tx } from './tenant-context.js';
 
 /** 请求来源（20 §2）；系统任务没有请求，来源动作记“定时任务”。 */
 export interface AuditSource {
@@ -101,6 +101,19 @@ export interface OperationLogInput {
   readonly source?: AuditSource;
   /** 任务针对某个人员时（如单人任职导入）显式给出所属人员，供 DEC-197 范围裁剪。 */
   readonly scopeEmployeeId?: string | null;
+  /**
+   * 跨人员 / 组织的任务逐行归属（PR #75 第三轮 P1-2）：每行的结果与所属人员 / 组织 / 对象编号，不含字段值。
+   * 查询按查看人当前范围逐行判断，汇总与错误报告只按可见行计算。
+   */
+  readonly items?: readonly OperationLogItem[];
+}
+
+export interface OperationLogItem {
+  readonly rowIndex: number;
+  readonly outcome: 'succeeded' | 'failed';
+  readonly objectId?: string | null;
+  readonly employeeId?: string | null;
+  readonly orgId?: string | null;
 }
 
 export async function insertOperationLog(tx: Tx, entry: OperationLogInput): Promise<void> {
@@ -123,7 +136,19 @@ export async function insertOperationLog(tx: Tx, entry: OperationLogInput): Prom
     ...(entry.occurredAt ? { occurredAt: entry.occurredAt } : {}),
     ...sourceValues(entry.source, entry.actorUserId),
     scopeEmployeeId: entry.scopeEmployeeId ?? null,
+    items: entry.items?.length ? entry.items.map(normalizeItem) : null,
   });
+}
+
+function normalizeItem(item: OperationLogItem) {
+  const id = (value: string | null | undefined) => (value && isUuid(value) ? value.toLowerCase() : null);
+  return {
+    rowIndex: item.rowIndex,
+    outcome: item.outcome,
+    objectId: item.objectId ? (isUuid(item.objectId) ? item.objectId.toLowerCase() : item.objectId) : null,
+    employeeId: id(item.employeeId),
+    orgId: id(item.orgId),
+  };
 }
 
 export interface CommandFailureInput {

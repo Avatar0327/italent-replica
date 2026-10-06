@@ -152,7 +152,8 @@ export async function importContracts(tx: Tx, ctx: ContractContext, raw: unknown
   const items = await applyRows(tx, ctx, input, errors);
   if (errors.length) throw importFailure('导入失败', { errors });
   const receipts = items.map(() => ({ status: 'imported' }));
-  await recordImportLog(tx, { ...ctx, actorUserId: auditActor(ctx.userId) }, CONTRACT_OBJECT, receipts);
+  const anchors = input.rows.map((row) => ({ employeeId: row.employeeId }));
+  await recordImportLog(tx, { ...ctx, actorUserId: auditActor(ctx.userId) }, CONTRACT_OBJECT, receipts, anchors);
   return { items, count: items.length };
 }
 function importFailure(message: string, result: { errors: ImportError[] }) {

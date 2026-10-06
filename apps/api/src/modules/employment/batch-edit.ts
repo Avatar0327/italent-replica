@@ -70,11 +70,24 @@ export async function batchEditEmploymentRecords(tx: Tx, ctx: EmploymentContext,
     objectType: 'employment-record',
     successCount: input.items.length,
     failureCount: 0,
+    // 逐行归属（PR #75 第三轮 P1-2）：所属人员与记录部门，查询端按 DEC-177 逐行裁剪
+    items: input.items.map((item, rowIndex) => ({
+      rowIndex,
+      outcome: 'succeeded' as const,
+      objectId: item.id,
+      employeeId: owners.get(item.id.toLowerCase()) ?? null,
+      orgId: departmentOf(saved.get(item.id)),
+    })),
     commandId: ctx.commandId,
     occurredAt: ctx.now,
   });
   const total = input.items.length;
   return { total, succeeded: total, failed: 0, items: input.items.map((item) => saved.get(item.id)) };
+}
+
+function departmentOf(record: unknown): string | null {
+  const fields = (record as { fields?: { departmentId?: unknown } } | undefined)?.fields;
+  return typeof fields?.departmentId === 'string' ? fields.departmentId : null;
 }
 
 async function recordOwners(tx: Tx, tenantId: string, ids: readonly string[]): Promise<Map<string, string>> {

@@ -66,7 +66,7 @@ import { requireDirectTransfer, transferBusinessContext } from '../transfer/serv
 import { batchEditEmploymentRecords, normalizeBatchEdit } from './batch-edit.js';
 import { recordOperationLog } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
-import { withFailedImportLog } from '../../audit/record.js';
+import { rawImportRows, withFailedImportLog } from '../../audit/record.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   const module = new Hono<TenantEnv>();
@@ -606,19 +606,28 @@ function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       body: await editEmploymentRecord(tx, context, id, input),
     }));
   });
-  router.post('/employees/:id/import', async (c) => {
-    const id = uuidParam(c);
-    const ctx = await readContext(c, deps, 'object.view', revision(c), id);
-    const input = normalizeEmploymentImport(await jsonBody(c));
+  router.post('/employees/:id/import', (c) => importEmployment(c, deps));
+}
+
+async function importEmployment(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  const id = uuidParam(c);
+  const ctx = await readContext(c, deps, 'object.view', revision(c), id);
+  const raw = await jsonBody(c);
+  // DEC-199 / PR #75 第三轮 P2-3：格式与授权校验失败同样是导入任务失败，整批留任务级日志（单人导入，归属即该员工）
+  const task = {
+    ...ctx,
+    commandId: c.req.header('idempotency-key'),
+    objectType: 'employment-record',
+    total: rawImportRows(raw, 'items').length,
+    scopeEmployeeId: id,
+  };
+  return withFailedImportLog(deps.db, task, async () => {
+    const input = normalizeEmploymentImport(raw);
     await authorizeImport(deps, ctx, id, input);
-    // DEC-199：整批失败也留任务级日志
-    const task = { ...ctx, commandId: c.req.header('idempotency-key'), objectType: 'employment-record' };
-    return withFailedImportLog(deps.db, { ...task, total: input.items.length, scopeEmployeeId: id }, () =>
-      runWrite(c, deps, ctx, input, async (tx, context) => ({
-        status: 200,
-        body: await importWithTransferAuthorization(tx, context, id, input),
-      })),
-    );
+    return runWrite(c, deps, ctx, input, async (tx, context) => ({
+      status: 200,
+      body: await importWithTransferAuthorization(tx, context, id, input),
+    }));
   });
 }
 

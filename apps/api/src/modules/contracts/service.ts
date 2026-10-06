@@ -500,6 +500,12 @@ export async function batchCommands(
     objectType: CONTRACT_OBJECT,
     successCount: result.length,
     failureCount: 0,
+    // 逐行归属（PR #75 第三轮 P1-2）：查询端按查看人当前范围逐行裁剪
+    items: normalized.map((row, rowIndex) => ({
+      rowIndex,
+      outcome: 'succeeded' as const,
+      employeeId: row.command.employeeId,
+    })),
     commandId: ctx.commandId,
     occurredAt: ctx.now,
   });

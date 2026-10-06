@@ -9,6 +9,7 @@ import {
   insertAuditEvent,
   insertOperationLog,
   type OperationLogInput,
+  type OperationLogItem,
   type Tx,
   withTenant,
 } from '@italent/db';
@@ -39,6 +40,13 @@ export interface ImportReceipt {
   readonly reason?: string | null;
 }
 
+/** 导入行的归属（PR #75 第三轮 P1-2）：所属人员 / 组织 / 对象编号，供查询端逐行按当前范围裁剪。 */
+export interface ImportRowAnchor {
+  readonly objectId?: string | null;
+  readonly employeeId?: string | null;
+  readonly orgId?: string | null;
+}
+
 /**
  * 导入的任务级日志（20 §5 第 3 条）：逐行回执里 status = conflict 的行计为失败，失败行的行号、来源编码与原因
  * 作为错误报告随日志保存（不含其他字段值）；与导入写入同事务。
@@ -53,6 +61,7 @@ export async function recordImportLog(
   },
   objectType: string,
   receipts: readonly ImportReceipt[],
+  anchors: readonly ImportRowAnchor[] = [],
 ): Promise<void> {
   const failures = receipts
     .map((receipt, rowIndex) => ({ rowIndex, ...receipt }))
@@ -73,6 +82,11 @@ export async function recordImportLog(
     successCount: receipts.length - failures.length,
     failureCount: failures.length,
     errorReport: failures.length ? failures : null,
+    items: receipts.map((receipt, rowIndex) => ({
+      rowIndex,
+      outcome: receipt.status === 'conflict' ? 'failed' : 'succeeded',
+      ...anchors[rowIndex],
+    })),
     commandId: ctx.commandId,
     occurredAt: ctx.now,
   });
@@ -86,7 +100,27 @@ interface FailedImport {
   /** 本次导入的总行数（整批回滚时全部计为失败）。 */
   readonly total: number;
   readonly scopeEmployeeId?: string;
+  /** 逐行归属（取自原始请求，格式校验失败时也能识别）；整批失败时每行都计为失败。 */
+  readonly anchors?: readonly ImportRowAnchor[];
 }
+
+/**
+ * 原始请求里的导入行（PR #75 第三轮 P2-3）：格式校验之前就要识别导入任务，只取行数与可识别的归属编号，
+ * 不保存其他输入值。请求体不是对象或没有行数组时返回空数组。
+ */
+export function rawImportRows(body: unknown, key = 'rows'): Record<string, unknown>[] {
+  const rows = body && typeof body === 'object' ? (body as Record<string, unknown>)[key] : undefined;
+  return Array.isArray(rows)
+    ? rows.map((row) => (row && typeof row === 'object' && !Array.isArray(row) ? (row as Record<string, unknown>) : {}))
+    : [];
+}
+
+/** 原始值是 UUID 时才作为归属保存（其余输入值一律不落库）。 */
+export function rawUuid(value: unknown): string | null {
+  return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : null;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * DEC-199：失败的导入任务同样持久保存任务级日志（条数、结果、错误报告，20 §3 / §5 第 3 条）。导入整批回滚，
@@ -96,7 +130,8 @@ export async function withFailedImportLog<T>(db: Db, task: FailedImport, run: ()
   try {
     return await run();
   } catch (error) {
-    if (!(error instanceof CommandFailureError && error.failure.outcome === 'unknown')) {
+    // 原始请求里没有导入行的不是可识别的导入任务（只留失败命令审计）
+    if (task.total > 0 && !(error instanceof CommandFailureError && error.failure.outcome === 'unknown')) {
       await recordFailedImport(db, task, error).catch((logError: unknown) => {
         console.error(JSON.stringify({ type: 'audit.failed_import.unwritable', ...task, error: String(logError) }));
       });
@@ -106,20 +141,12 @@ export async function withFailedImportLog<T>(db: Db, task: FailedImport, run: ()
 }
 
 async function recordFailedImport(db: Db, task: FailedImport, error: unknown): Promise<void> {
-  const code = error instanceof AppError ? error.code : 'INTERNAL_ERROR';
-  const rows = ((error as { details?: { errors?: unknown } } | null)?.details?.errors ?? []) as {
-    row?: number;
-    code?: string;
-    details?: { reason?: string };
-  }[];
-  const errorReport =
-    Array.isArray(rows) && rows.length
-      ? rows.map((row) => ({
-          rowIndex: typeof row.row === 'number' ? row.row - 1 : null,
-          errorCode: row.code ?? code,
-          reason: row.details?.reason ?? null,
-        }))
-      : [{ rowIndex: null, errorCode: code, reason: (error as AppError).details ? reasonOf(error) : null }];
+  const errorReport = failedImportReport(error);
+  const items: OperationLogItem[] = Array.from({ length: task.total }, (_, rowIndex) => ({
+    rowIndex,
+    outcome: 'failed',
+    ...task.anchors?.[rowIndex],
+  }));
   await withTenant(db, task.tenantId, (tx) =>
     recordOperationLog(tx, {
       tenantId: task.tenantId,
@@ -130,9 +157,48 @@ async function recordFailedImport(db: Db, task: FailedImport, error: unknown): P
       successCount: 0,
       failureCount: task.total,
       errorReport,
+      items,
       commandId: task.commandId ?? null,
       occurredAt: currentAuditRequest()?.clock() ?? new Date(),
     }),
+  );
+}
+
+/**
+ * 错误报告只存行号、错误码、原因（与出错字段的编码，查询时按字段权限裁剪），不存输入值：
+ * 执行阶段的逐行错误取 details.errors；格式校验失败取 zod issues 的路径（rows / items 下标即行号）。
+ */
+function failedImportReport(error: unknown) {
+  const code = error instanceof AppError ? error.code : 'INTERNAL_ERROR';
+  const details = (error as { details?: unknown } | null)?.details;
+  const rowErrors = (details as { errors?: unknown } | undefined)?.errors;
+  if (Array.isArray(rowErrors) && rowErrors.length) {
+    return (rowErrors as { row?: number; code?: string; details?: { reason?: string } }[]).map((row) => ({
+      rowIndex: typeof row.row === 'number' ? row.row - 1 : null,
+      errorCode: row.code ?? code,
+      reason: row.details?.reason ?? null,
+    }));
+  }
+  if (Array.isArray(details) && details.length && details.every(isIssue)) {
+    return details.map((issue) => {
+      const [first, second, ...rest] = issue.path;
+      // 行数组本身被校验时路径以下标开头；整个请求体被校验时以 rows / items 开头
+      const nested = (first === 'rows' || first === 'items') && typeof second === 'number';
+      const rowIndex = typeof first === 'number' ? first : nested ? second : null;
+      const tail = typeof first === 'number' ? issue.path.slice(1) : nested ? rest : issue.path;
+      const path = tail.map(String).join('.');
+      return { rowIndex, errorCode: code, reason: issue.code, ...(path ? { field: path } : {}) };
+    });
+  }
+  return [{ rowIndex: null, errorCode: code, reason: details ? reasonOf(error) : null }];
+}
+
+function isIssue(value: unknown): value is { code: string; path: (string | number)[] } {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    typeof (value as { code?: unknown }).code === 'string' &&
+    Array.isArray((value as { path?: unknown }).path)
   );
 }
 

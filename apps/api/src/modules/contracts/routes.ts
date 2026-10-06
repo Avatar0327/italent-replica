@@ -23,9 +23,8 @@ import { batchCommands, createCommand, loadContract, loadRequest, portfolioRevis
 import { listContracts } from './queries.js';
 import { errorsCsv, importContracts, importSchema, previewImport } from './imports.js';
 import { registerMergedTodos } from './todos.js';
-import { recordOperationLog } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
-import { withFailedImportLog } from '../../audit/record.js';
+import { rawImportRows, rawUuid, recordOperationLog, withFailedImportLog } from '../../audit/record.js';
 
 type C = Context<TenantEnv>;
 export async function routeContext(c: C, deps: TenantRouteDeps, object = CONTRACT_OBJECT, write = false) {
@@ -313,58 +312,83 @@ function registerImports(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   for (const suffix of ['', '/preview', '/errors'])
     module.post(`/imports${suffix}`, async (c) => {
       const ctx = await routeContext(c, deps, CONTRACT_OBJECT, true);
-      const input = parse(importSchema, await jsonBody(c));
-      await requirePermission(deps.authorize, {
-        tenantId: ctx.tenantId,
-        userId: ctx.userId,
-        action: 'object.button',
-        resource: buttonResource(CONTRACT_OBJECT, 'import', 'list'),
-      });
-      for (const row of input.rows) {
-        await checkFields(ctx, ['edit', 'change'].includes(input.mode) ? 'update' : 'create', row.fields);
-        await withTenant(deps.db, ctx.tenantId, (tx) => checkScope(tx, ctx, row.employeeId));
-      }
-      if (input.mode === 'initialize')
-        await requirePermission(deps.authorize, {
-          tenantId: ctx.tenantId,
-          userId: ctx.userId,
-          action: 'object.delete',
-          resource: CONTRACT_OBJECT,
-        });
-      if (suffix) {
-        const result = await withTenant(deps.db, ctx.tenantId, (tx) =>
-          previewImport(tx, ctx, input, suffix === '/preview'),
-        );
-        if (suffix === '/errors') {
-          // R1-T16：错误报告下载是读取，不经命令台账；下载记录单独一个事务写入对象操作日志
-          await withTenant(deps.db, ctx.tenantId, (tx) =>
-            recordOperationLog(tx, {
-              tenantId: ctx.tenantId,
-              actorUserId: auditActor(ctx.userId),
-              behavior: 'download',
-              objectType: CONTRACT_OBJECT,
-              successCount: result.errors.length,
-              failureCount: 0,
-              summary: `下载合同导入错误报告（${result.errors.length}条）`,
-              attachment: { fileName: 'contract-import-errors.csv', contentType: 'text/csv' },
-              occurredAt: deps.clock(),
-            }),
-          );
-          c.header('Content-Type', 'text/csv; charset=utf-8');
-          c.header('Content-Disposition', 'attachment; filename="contract-import-errors.csv"');
-          return c.body(errorsCsv(result.errors));
-        }
-        return c.json(result);
-      }
-      // DEC-199：整批失败也留任务级日志
-      const task = { ...ctx, commandId: c.req.header('idempotency-key'), objectType: CONTRACT_OBJECT };
-      return withFailedImportLog(deps.db, { ...task, total: input.rows.length }, () =>
-        write(c, deps, ctx, input, async (tx, ctx) => ({
+      const raw = await jsonBody(c);
+      if (suffix) return importPreview(c, deps, ctx, raw, suffix);
+      // DEC-199 / PR #75 第三轮 P2-3：格式、字段权限与范围校验失败同样是导入任务失败，整批留任务级日志
+      const rows = rawImportRows(raw);
+      const task = {
+        ...ctx,
+        commandId: c.req.header('idempotency-key'),
+        objectType: CONTRACT_OBJECT,
+        total: rows.length,
+        anchors: rows.map((row) => ({ employeeId: rawUuid(row.employeeId) })),
+      };
+      return withFailedImportLog(deps.db, task, async () => {
+        const input = await authorizeImport(deps, ctx, raw);
+        return write(c, deps, ctx, input, async (tx, ctx) => ({
           status: 200,
           body: await importContracts(tx, ctx, input),
-        })),
-      );
+        }));
+      });
     });
+}
+
+type RouteContext = Awaited<ReturnType<typeof routeContext>>;
+
+async function authorizeImport(deps: TenantRouteDeps, ctx: RouteContext, raw: unknown) {
+  const input = parse(importSchema, raw);
+  await requirePermission(deps.authorize, {
+    tenantId: ctx.tenantId,
+    userId: ctx.userId,
+    action: 'object.button',
+    resource: buttonResource(CONTRACT_OBJECT, 'import', 'list'),
+  });
+  for (const row of input.rows) {
+    await checkFields(ctx, ['edit', 'change'].includes(input.mode) ? 'update' : 'create', row.fields);
+    await withTenant(deps.db, ctx.tenantId, (tx) => checkScope(tx, ctx, row.employeeId));
+  }
+  if (input.mode === 'initialize')
+    await requirePermission(deps.authorize, {
+      tenantId: ctx.tenantId,
+      userId: ctx.userId,
+      action: 'object.delete',
+      resource: CONTRACT_OBJECT,
+    });
+  return input;
+}
+
+async function importPreview(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  ctx: RouteContext,
+  raw: unknown,
+  suffix: string,
+) {
+  const input = await authorizeImport(deps, ctx, raw);
+  const result = await withTenant(deps.db, ctx.tenantId, (tx) => previewImport(tx, ctx, input, suffix === '/preview'));
+  if (suffix !== '/errors') return c.json(result);
+  // R1-T16：错误报告下载是读取，不经命令台账；下载记录单独一个事务写入对象操作日志（逐行归属见第三轮 P1-2）
+  await withTenant(deps.db, ctx.tenantId, (tx) =>
+    recordOperationLog(tx, {
+      tenantId: ctx.tenantId,
+      actorUserId: auditActor(ctx.userId),
+      behavior: 'download',
+      objectType: CONTRACT_OBJECT,
+      successCount: result.errors.length,
+      failureCount: 0,
+      summary: `下载合同导入错误报告（${result.errors.length}条）`,
+      attachment: { fileName: 'contract-import-errors.csv', contentType: 'text/csv' },
+      items: result.errors.map((error, rowIndex) => ({
+        rowIndex,
+        outcome: 'succeeded' as const,
+        employeeId: input.rows[error.row - 1]?.employeeId ?? null,
+      })),
+      occurredAt: deps.clock(),
+    }),
+  );
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header('Content-Disposition', 'attachment; filename="contract-import-errors.csv"');
+  return c.body(errorsCsv(result.errors));
 }
 function registerFailures(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   module.get('/failures', async (c) => {

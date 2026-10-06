@@ -32,6 +32,7 @@ export async function auditJob(
   objectId: string,
   before: unknown,
   after: unknown,
+  scope?: { readonly orgId?: string | null },
 ): Promise<void> {
   await recordAudit(tx, {
     tenantId: ctx.tenantId,
@@ -43,5 +44,6 @@ export async function auditJob(
     objectId,
     before,
     after,
+    ...(scope ? { scope } : {}),
   });
 }

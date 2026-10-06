@@ -42,9 +42,15 @@ export const auditOperationLogs = pgTable(
     // DEC-197：可见性依据（同 audit_events，由迁移 0055 的触发器推导）
     scopeObject: text('scope_object'),
     scopeEmployeeId: uuid('scope_employee_id'),
+    scopeOrgId: uuid('scope_org_id'),
+    // 跨人员 / 组织的任务逐行归属（PR #75 第三轮 P1-2）：[{ rowIndex, outcome, objectId?, employeeId?, orgId? }]，
+    // 不含字段值。查询按查看人当前范围逐行判断：任务至少有一行可见才返回，汇总与错误报告只按可见行计算。
+    items: jsonb('items'),
   },
   (t) => [
     index('audit_operation_logs_tenant_occurred').on(t.tenantId, t.occurredAt),
+    // 查询端按对象类型逐个解析权限（松散索引扫描，P3）
+    index('audit_operation_logs_tenant_object_type').on(t.tenantId, t.objectType, t.occurredAt),
     check(
       'audit_operation_logs_behavior_valid',
       sql`${t.behavior} IN ('batch_update', 'import', 'export', 'download', 'print', 'purge')`,

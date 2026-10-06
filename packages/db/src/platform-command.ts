@@ -96,8 +96,30 @@ export async function runPlatformCommand<T>(
     }
     // DEC-199：平台命令失败写平台层受限通道（仅平台运营可读），原错误照常抛给调用方
     await recordPlatformFailure(db, meta, op, input, classifyCommandFailure(final, phase, recheckFailed));
+    if (final !== null && typeof final === 'object') recorded.add(final);
     throw final;
   }
+}
+
+/** 已由执行器写过平台失败通道的错误；入口兜底（平台路由中间件）据此去重（PR #75 第三轮 P2-2）。 */
+const recorded = new WeakSet<object>();
+
+export function isPlatformFailureRecorded(error: unknown): boolean {
+  return error !== null && typeof error === 'object' && recorded.has(error);
+}
+
+/**
+ * 平台命令进入执行器之前就失败（请求体、If-Match、参数校验）时由入口记录（PR #75 第三轮 P2-2）：分类与执行器相同，
+ * 只在可信平台身份确认之后调用；租户读不到这条通道（DEC-199）。
+ */
+export async function recordPlatformEntryFailure(
+  db: Db,
+  meta: PlatformCommandMeta,
+  op: string,
+  subjectTenantId: string | null,
+  error: unknown,
+): Promise<void> {
+  await recordPlatformFailure(db, meta, op, { tenantId: subjectTenantId }, classifyCommandFailure(error, 'execute'));
 }
 
 async function recordPlatformFailure(

@@ -67,7 +67,7 @@ export async function importOrganizations(
     const result = reason
       ? conflict(row, reason)
       : await importRow(tx, ctx, row, targetId, snapshot.mappings.has(row.sourceCode));
-    await saveReceipt(tx, ctx, rowIndex, result);
+    await saveReceipt(tx, ctx, rowIndex, result, result.orgId ?? targetId ?? row.parentId);
     results.push(result);
     if (result.orgId && result.status !== 'conflict') {
       // 保留旧编码占用，新增成功行的编码和映射也立即禁止在本批次重用。
@@ -76,7 +76,10 @@ export async function importOrganizations(
       snapshot.mappings.set(row.sourceCode, result.orgId);
     }
   }
-  await recordImportLog(tx, { ...ctx, actorUserId: auditActor(ctx.userId) }, 'organization', results);
+  const anchors = rows.map((row, rowIndex) => ({
+    orgId: results[rowIndex]?.orgId ?? snapshot.mappings.get(row.sourceCode) ?? row.orgId ?? row.parentId,
+  }));
+  await recordImportLog(tx, { ...ctx, actorUserId: auditActor(ctx.userId) }, 'organization', results, anchors);
   return { results };
 }
 
@@ -211,7 +214,8 @@ function conflict(row: OrgImportRow, reason: string): OrgImportReceipt {
   return { sourceCode: row.sourceCode, code: row.code, status: 'conflict', reason };
 }
 
-async function saveReceipt(tx: Tx, ctx: OrgWriteContext, rowIndex: number, result: OrgImportReceipt) {
+/** 逐行回执的归属：导入的组织；冲突行还没有组织时取上级组织（与导入时按上级授权一致，PR #75 第三轮 P1-2）。 */
+async function saveReceipt(tx: Tx, ctx: OrgWriteContext, rowIndex: number, result: OrgImportReceipt, orgId: string) {
   await tx.insert(orgImportResults).values({
     tenantId: ctx.tenantId,
     commandId: ctx.commandId,
@@ -232,6 +236,7 @@ async function saveReceipt(tx: Tx, ctx: OrgWriteContext, rowIndex: number, resul
     occurredAt: ctx.now,
     before: null,
     after: { rowIndex, ...result },
+    scope: { orgId },
   });
 }
 

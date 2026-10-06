@@ -9,14 +9,16 @@ import {
   type Db,
   desc,
   eq,
+  isPlatformFailureRecorded,
   isUuid,
   pgErrorCode,
   platformCommandFailures,
   type PlatformCommandMeta,
+  recordPlatformEntryFailure,
   withPlatform,
 } from '@italent/db';
 import { isValidTimeZone } from '@italent/domain';
-import { type Context, Hono } from 'hono';
+import { type Context, Hono, type MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import type { IdentityResolver } from '../../identity.js';
@@ -54,6 +56,31 @@ function meta(c: Context<PlatformEnv>): PlatformCommandMeta {
   return { actorUserId: operatorOf(c).userId, commandId };
 }
 
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * DEC-199 / PR #75 第三轮 P2-2：平台写命令在进入执行器之前就失败（请求体、If-Match、参数校验）也写平台失败通道。
+ * 挂在平台身份中间件之后（可信平台运营才记录）；只认携带合法命令 ID 的写请求；执行器已记过的同一错误不再重复。
+ */
+function capturePlatformFailures(db: Db): MiddlewareHandler<PlatformEnv> {
+  return async (c, next) => {
+    await next();
+    const error = c.error;
+    const commandId = c.req.header('idempotency-key');
+    if (!error || !WRITE_METHODS.has(c.req.method) || !commandId || !COMMAND_ID.test(commandId)) return;
+    if (isPlatformFailureRecorded(error)) return;
+    const tenantId = c.req.param('tenantId');
+    const operation = `${c.req.method} ${c.req.routePath}`;
+    await recordPlatformEntryFailure(
+      db,
+      { actorUserId: operatorOf(c).userId, commandId },
+      operation,
+      tenantId && isUuid(tenantId) ? tenantId.toLowerCase() : null,
+      error,
+    );
+  };
+}
+
 function tenantParam(c: Context): string {
   const id = c.req.param('tenantId') ?? '';
   if (!isUuid(id)) throw new AppError('NOT_FOUND', '租户不存在');
@@ -63,6 +90,7 @@ function tenantParam(c: Context): string {
 export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: () => Date): Hono<PlatformEnv> {
   const router = new Hono<PlatformEnv>();
   router.use('/api/platform/*', platformContext(db, identity));
+  router.use('/api/platform/*', capturePlatformFailures(db));
 
   router.post('/api/platform/users', async (c) => {
     const body = await parseBody(c, userBody);

@@ -1,5 +1,5 @@
 /**
- * DEC-197 字段裁剪的单元行为，以及迁移 0055 的 SQL 差异函数与 @italent/domain diffAuditFields 口径一致
+ * DEC-197 字段裁剪的单元行为、对象类型登记的完整性，以及迁移 0055 的 SQL 差异函数与 @italent/domain diffAuditFields 口径一致
  * （集合 SQL 写入与历史行回填走 SQL，统一入口走 TypeScript，两边必须得出相同的字段差异）。
  */
 import { randomUUID } from 'node:crypto';
@@ -7,7 +7,7 @@ import { createTenant, sql, withTenant } from '@italent/db';
 import { diffAuditFields } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
+import { auditObjectRegistered, visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
 
 const testDb = useTestDb();
 
@@ -38,12 +38,27 @@ describe('字段裁剪', () => {
     expect(visibleValue(value, undefined)).toBe(value);
   });
 
-  it('任务错误报告只留行号、错误码、原因与可见字段', () => {
+  it('任务错误报告只留行号、错误码、原因与可见字段；出错字段编码按该字段的查看权限保留', () => {
     const report = [{ rowIndex: 0, errorCode: 'CONFLICT', reason: 'X', code: 'ORG-1', sourceCode: 'S-1' }];
     expect(visibleErrorReport(report, fields)).toEqual([{ rowIndex: 0, errorCode: 'CONFLICT', reason: 'X' }]);
     expect(visibleErrorReport(report, new Set(['code']))).toEqual([
       { rowIndex: 0, errorCode: 'CONFLICT', reason: 'X', code: 'ORG-1' },
     ]);
+    const invalid = [{ rowIndex: 0, errorCode: 'VALIDATION_FAILED', reason: 'invalid_type', field: 'fields.place' }];
+    expect(visibleErrorReport(invalid, fields)).toEqual(invalid);
+    expect(visibleErrorReport(invalid, new Set(['remarks']))).toEqual([
+      { rowIndex: 0, errorCode: 'VALIDATION_FAILED', reason: 'invalid_type' },
+    ]);
+  });
+
+  it('错误报告按可见行裁剪（逐行归属的任务，PR #75 第三轮 P1-2）', () => {
+    const report = [
+      { rowIndex: 0, errorCode: 'CONFLICT', reason: 'A' },
+      { rowIndex: 1, errorCode: 'CONFLICT', reason: 'B' },
+      { rowIndex: null, errorCode: 'INTERNAL_ERROR', reason: null },
+    ];
+    expect(visibleErrorReport(report, undefined, new Set([1]))).toEqual([report[1]]);
+    expect(visibleErrorReport(report, undefined)).toEqual(report);
   });
 });
 
@@ -72,16 +87,91 @@ describe('SQL 与 TypeScript 的字段差异口径一致', () => {
   });
 });
 
+describe('写入审计的对象类型都已登记查看规则（PR #75 第三轮：同类路径一次查全）', () => {
+  // 全量测试中实际写入 audit_events / audit_operation_logs 的对象类型（含平台写入租户审计的部分）
+  const written = [
+    ...['Awards', 'Certificate', 'Education', 'EmployeeInformation', 'EmploymentContract', 'EstimationResult'],
+    ...['Family', 'Languageability', 'PersonalInformationChange', 'ProfessionalTechnicalPostInfo'],
+    ...['ProjectExperience', 'Punish', 'Skill', 'Training', 'VocationalQualificationInfo', 'jobhistory'],
+  ]
+    .map((code) => `TenantBase.${code}`)
+    .concat([
+      'approval-exception-admin',
+      'approval-instance',
+      'approval-process',
+      'approval-task',
+      'audit_retention',
+      'employment-business',
+      'employment-record',
+      'employment_assignment',
+      'employment_custom_field',
+      'employment_employee',
+      'employment_settings',
+      'establishment-capacity',
+      'establishment-copy-job',
+      'establishment-movement',
+      'establishment-notification',
+      'establishment-scheme',
+      'establishment-settings',
+      'grades',
+      'job_setting',
+      'layers',
+      'level-types',
+      'levels',
+      'license_pool',
+      'license_seat',
+      'org_code_reservation',
+      'org_import_result',
+      'org_setting',
+      'organization',
+      'permission_admin',
+      'permission_dynamic_org_grant',
+      'permission_grant',
+      'permission_identity_scope',
+      'permission_mou',
+      'permission_profile',
+      'permission_scope_app',
+      'permission_scope_policy',
+      'permission_user_app_scope',
+      'personnel-order-code',
+      'personnel-order-run',
+      'personnel-order-settings',
+      'positions',
+      'posts',
+      'professional-lines',
+      'sequences',
+      'tenant',
+      'tenant_membership',
+      'tenant_setting',
+      'tenant_user',
+      'transfer-request',
+      'transfer_form',
+      'transfer_settings',
+    ]);
+
+  it.each(written)('%s', (objectType) => {
+    expect(auditObjectRegistered(objectType)).toBe(true);
+  });
+
+  it('未登记的对象类型不放行', () => {
+    expect(auditObjectRegistered('unregistered-object')).toBe(false);
+  });
+});
+
 describe('归属推导的每个分支都能执行（plpgsql 只在首次执行时检查列名）', () => {
   const types = [
     'employment-record',
     'employment-business',
+    'employment_assignment',
     'transfer-request',
     'employment_employee',
     'personnel-order-code',
     'TenantBase.EmploymentContract',
+    'TenantBase.EmployeeInformation',
     'TenantBase.Education',
+    'TenantBase.PersonalInformationChange',
     'organization',
+    'org_import_result',
     'establishment-capacity',
     'positions',
     'posts',

@@ -54,6 +54,8 @@ CREATE TABLE "audit_operation_logs" (
 	"trace_id" text,
 	"scope_object" text,
 	"scope_employee_id" uuid,
+	"scope_org_id" uuid,
+	"items" jsonb,
 	CONSTRAINT "audit_operation_logs_behavior_valid" CHECK ("audit_operation_logs"."behavior" IN ('batch_update', 'import', 'export', 'download', 'print', 'purge')),
 	CONSTRAINT "audit_operation_logs_result_valid" CHECK ("audit_operation_logs"."result" IN ('succeeded', 'partial', 'failed')),
 	CONSTRAINT "audit_operation_logs_counts_valid" CHECK ("audit_operation_logs"."success_count" >= 0 AND "audit_operation_logs"."failure_count" >= 0
@@ -96,6 +98,7 @@ ALTER TABLE "platform_command_failures" ADD CONSTRAINT "platform_command_failure
 CREATE INDEX "audit_command_failures_tenant_occurred" ON "audit_command_failures" USING btree ("tenant_id","occurred_at");--> statement-breakpoint
 CREATE INDEX "audit_command_failures_tenant_command" ON "audit_command_failures" USING btree ("tenant_id","command_id");--> statement-breakpoint
 CREATE INDEX "audit_operation_logs_tenant_occurred" ON "audit_operation_logs" USING btree ("tenant_id","occurred_at");--> statement-breakpoint
+CREATE INDEX "audit_operation_logs_tenant_object_type" ON "audit_operation_logs" USING btree ("tenant_id","object_type","occurred_at");--> statement-breakpoint
 CREATE INDEX "platform_command_failures_occurred" ON "platform_command_failures" USING btree ("occurred_at");--> statement-breakpoint
 CREATE INDEX "audit_events_tenant_object_type" ON "audit_events" USING btree ("tenant_id","object_type","occurred_at");--> statement-breakpoint
 CREATE INDEX "audit_events_tenant_scope_object" ON "audit_events" USING btree ("tenant_id","scope_object","occurred_at");--> statement-breakpoint

@@ -8,6 +8,7 @@ export {
   insertCommandFailure,
   insertOperationLog,
   type OperationLogInput,
+  type OperationLogItem,
   SCHEDULED_SOURCE_ACTION,
 } from './audit.js';
 export {
@@ -24,7 +25,9 @@ export {
   type AuditEntry,
   findPlatformCommandResult,
   IdempotencyConflictError,
+  isPlatformFailureRecorded,
   PLATFORM_SOURCE_ACTION,
+  recordPlatformEntryFailure,
   type PlatformCommandContext,
   type PlatformCommandMeta,
   RevisionConflictError,

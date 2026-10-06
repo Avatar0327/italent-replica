@@ -279,8 +279,16 @@ describe('PR #75 第三轮：审计查询复用业务权限规则', () => {
       after: { code: 'labor', name: '劳动合同' },
     });
     expect((await audit(w.db).dataChanges(w.auditOnly.as, { objectId: typeId })).items).toHaveLength(1);
-    const members = await audit(w.db).dataChanges(w.auditOnly.as, { objectType: 'tenant_membership', limit: '1' });
-    expect(members.items.length).toBeGreaterThan(0);
+    // 租户成员变更由平台操作写入（DEC-203 配置对象）
+    const membershipId = randomUUID();
+    await rawEvent(w.db, w.world, {
+      action: 'tenant_membership.update',
+      objectType: 'tenant_membership',
+      objectId: membershipId,
+      before: { status: 'active' },
+      after: { status: 'revoked' },
+    });
+    expect((await audit(w.db).dataChanges(w.auditOnly.as, { objectId: membershipId })).items).toHaveLength(1);
   });
 
   it('P2-1 “使用用户”范围：本人创建的组织日志可见、他人创建的不可见；创建日志被保留期清理后结果不变', async () => {

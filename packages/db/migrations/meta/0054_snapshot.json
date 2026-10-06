@@ -1,5 +1,5 @@
 {
-  "id": "fd5f541a-a58c-4ecc-9d02-9b74bfbb63d3",
+  "id": "9f135da4-b9ec-45f5-981e-b737b80efc09",
   "prevId": "46c7d424-8cf6-43e7-a0ce-f9f5ca3d231e",
   "version": "7",
   "dialect": "postgresql",
@@ -26889,6 +26889,18 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "scope_org_id": {
+          "name": "scope_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "items": {
+          "name": "items",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -26897,6 +26909,33 @@
           "columns": [
             {
               "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_operation_logs_tenant_object_type": {
+          "name": "audit_operation_logs_tenant_object_type",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "object_type",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

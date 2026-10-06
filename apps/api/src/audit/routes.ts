@@ -6,7 +6,7 @@
  *   GET /api/tenant/audit/command-failures    失败命令审计（业务失败 / 存储不可写 / 结果未知）
  * 入口按 8 类管理员矩阵：只有租户管理员、审计管理员（能力 audit_log，06 §7.1；AC-AUD-06），每次请求重验。
  * 入口之内按 DEC-197 裁剪（visibility.ts）：每条日志按查看人当前的数据范围与字段权限决定是否返回、返回哪些字段，
- * 在分页之前完成；配置类对象按对应的企业设置能力判断。失败命令审计不含业务字段值，路径里的对象编号打码。
+ * 在分页之前完成；配置类对象（DEC-203）持日志审计即可见。失败命令审计不含业务字段值，路径里的对象编号打码。
  * 时间条件为租户时区的业务日期，受租户保留期约束（一次最多查 queryMonths 个月，最远 retainMonths 个月）。
  */
 import { auditCommandFailures, auditEvents, auditOperationLogs, and, desc, eq, sql, withTenant } from '@italent/db';
@@ -21,13 +21,14 @@ import {
   auditObjectMeta,
   type AuditOperation,
   auditOperationOf,
+  auditTaskSummary,
   COMMAND_FAILURE_LABELS,
   COMMAND_FAILURE_OUTCOMES,
   type CommandFailureOutcome,
   diffAuditFields,
   renderAuditChanges,
 } from '@italent/domain';
-import type { SQL } from 'drizzle-orm';
+import { getTableColumns, type SQL } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import { requirePermission } from '../authorization.js';
 import { AppError } from '../errors.js';
@@ -78,7 +79,9 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
         const page = paginate(rows, limit);
         const operator = await operatorNames(tx, page.items);
         return {
-          items: page.items.map((row) => dataChangeView(row, operator(row), viewer.fieldsOf(row.scopeObject))),
+          items: page.items.map((row) =>
+            dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action)),
+          ),
           nextCursor: page.nextCursor,
           window,
         };
@@ -106,7 +109,7 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
           );
         // 超出保留期、范围外或只涉及隐藏字段的日志与不存在同样处理（原站“最远只能查 6 个月内”；DEC-197）
         if (!row) throw new AppError('NOT_FOUND', '日志不存在或已超出保留期');
-        const fields = viewer.fieldsOf(row.scopeObject);
+        const fields = viewer.fieldsOf(row.objectType, row.action);
         const view = dataChangeView(row, (await operatorNames(tx, [row]))(row), fields);
         return {
           ...view,
@@ -130,7 +133,7 @@ function registerTaskLogs(router: Hono<TenantEnv>, deps: TenantRouteDeps): void 
         const limit = pageLimit(c);
         const t = auditOperationLogs;
         const rows = await tx
-          .select()
+          .select({ ...getTableColumns(t), visibleRows: sql<number[] | null>`${viewer.visibleRows}` })
           .from(t)
           .where(and(...filters, viewer.operationLogs, ...pageConditions(c, t, window, ctx)))
           .orderBy(desc(t.occurredAt), desc(t.id))
@@ -138,7 +141,7 @@ function registerTaskLogs(router: Hono<TenantEnv>, deps: TenantRouteDeps): void 
         const page = paginate(rows, limit);
         const operator = await operatorNames(tx, page.items);
         return {
-          items: page.items.map((row) => operationView(row, operator(row), viewer.fieldsOf(row.scopeObject))),
+          items: page.items.map((row) => operationView(row, operator(row), viewer.fieldsOf(row.objectType))),
           nextCursor: page.nextCursor,
           window,
         };
@@ -290,10 +293,11 @@ function dataChangeView(
 }
 
 function operationView(
-  row: typeof auditOperationLogs.$inferSelect,
+  row: typeof auditOperationLogs.$inferSelect & { visibleRows: number[] | null },
   operator: { userId: string | null; name: string },
   fields: ReadonlySet<string> | undefined,
 ) {
+  const task = visibleTask(row);
   return {
     id: row.id,
     occurredAt: new Date(row.occurredAt).toISOString(),
@@ -303,15 +307,45 @@ function operationView(
     objectType: row.objectType,
     objectLabel: auditObjectMeta(row.objectType).label,
     objectId: row.objectId,
+    ...task.counts,
+    errorReport: visibleErrorReport(row.errorReport, fields, task.rows),
+    attachment: row.attachment,
+    ...sourceView(row),
+    commandId: row.commandId,
+  };
+}
+
+/**
+ * 逐行归属的任务（PR #75 第三轮 P1-2）：只按查看人可见的行汇总——条数、结果与文案都不暴露范围外的行；
+ * 全部可见时保留原汇总（含原文案）。
+ */
+function visibleTask(row: typeof auditOperationLogs.$inferSelect & { visibleRows: number[] | null }) {
+  const original = {
     summary: row.summary,
     totalCount: row.totalCount,
     successCount: row.successCount,
     failureCount: row.failureCount,
     result: row.result,
-    errorReport: visibleErrorReport(row.errorReport, fields),
-    attachment: row.attachment,
-    ...sourceView(row),
-    commandId: row.commandId,
+  };
+  const items = Array.isArray(row.items) ? (row.items as { rowIndex: number; outcome: string }[]) : [];
+  if (!items.length || row.visibleRows === null) return { counts: original, rows: undefined };
+  const rows = new Set(row.visibleRows);
+  if (rows.size >= items.length) return { counts: original, rows: undefined };
+  const visible = items.filter((item) => rows.has(item.rowIndex));
+  const counts = {
+    success: visible.filter((item) => item.outcome === 'succeeded').length,
+    failure: visible.filter((item) => item.outcome !== 'succeeded').length,
+  };
+  const summary = auditTaskSummary(row.behavior as AuditBehavior, counts);
+  return {
+    counts: {
+      summary: summary.summary,
+      totalCount: counts.success + counts.failure,
+      successCount: counts.success,
+      failureCount: counts.failure,
+      result: summary.result,
+    },
+    rows,
   };
 }
 

@@ -114,7 +114,8 @@ CREATE FUNCTION audit_operation_of(action text, before jsonb, after jsonb) RETUR
 --> statement-breakpoint
 -- 5) DEC-197 归属：对象类型 → 权限对象编码（字段权限）、所属人员、所属组织。只读本租户（调用方的 RLS + 显式租户条件）。
 --    任职以“记录部门 ∪ 员工当前部门”判断（DEC-177），合同 / 人员信息以人员判断，组织 / 编制 / 职位以组织判断；
---    其余职务体系对象只有权限对象编码；配置类对象全部为空，由查询端按企业设置能力判断。
+--    其余职务体系对象只有权限对象编码。推导不出归属时保持为空，查询端对需要归属的对象按 fail-closed 处理
+--    （PR #75 第三轮 P1-1：“推导失败”不等于“无归属”）；对象类型与查看规则的完整登记在 apps/api/src/audit/visibility.ts。
 CREATE FUNCTION audit_json_uuid(before jsonb, after jsonb, key text) RETURNS uuid
   LANGUAGE sql IMMUTABLE
   AS $$
@@ -138,7 +139,8 @@ DECLARE
   target uuid := CASE WHEN audit_is_uuid(object_id) THEN object_id::uuid END;
 BEGIN
   scope_object := NULL; employee := NULL; org := NULL;
-  IF object_type IN ('employment-record', 'employment-business') THEN
+  IF object_type IN ('employment-record', 'employment-business', 'employment_assignment') THEN
+    -- 职位同步经理写的 employment_assignment 以任职记录编号（即任职业务编号）为对象编号
     scope_object := 'TenantBase.EmploymentRecord';
     SELECT b.employee_id INTO employee FROM employment_business_objects b
      WHERE b.tenant_id = tenant AND b.id = target;
@@ -155,7 +157,8 @@ BEGIN
   ELSIF object_type = 'employment_employee' THEN
     scope_object := 'TenantBase.Employee';
     employee := target;
-  ELSIF object_type = 'personnel-order-code' THEN
+  ELSIF object_type IN ('TenantBase.EmployeeInformation', 'personnel-order-code') THEN
+    -- 员工信息的对象编号就是员工编号（旧版只存变化字段，前后值里没有 employeeId）
     scope_object := 'TenantBase.EmployeeInformation';
     employee := target;
   ELSIF object_type = 'TenantBase.EmploymentContract' THEN
@@ -164,12 +167,25 @@ BEGIN
     IF employee IS NULL THEN
       SELECT c.employee_id INTO employee FROM contract_records c WHERE c.tenant_id = tenant AND c.id = target;
     END IF;
+    IF employee IS NULL THEN
+      SELECT r.employee_id INTO employee FROM contract_requests r WHERE r.tenant_id = tenant AND r.id = target;
+    END IF;
   ELSIF object_type LIKE 'TenantBase.%' THEN
+    -- 人员子集与个人信息变更申请：旧版审计只存变化字段，所属人员取同事务写入的 personnel_outbox
     scope_object := object_type;
     employee := audit_json_uuid(before, after, 'employeeId');
+    IF employee IS NULL AND target IS NOT NULL THEN
+      SELECT o.employee_id INTO employee FROM personnel_outbox o
+       WHERE o.tenant_id = tenant AND o.object_type = audit_scope_anchor.object_type AND o.object_id = target
+       ORDER BY o.created_at LIMIT 1;
+    END IF;
   ELSIF object_type = 'organization' THEN
     scope_object := 'TenantBase.Organization';
     org := target;
+  ELSIF object_type = 'org_import_result' THEN
+    -- 逐行回执：新写入显式给出（导入的组织 ?? 上级组织）；历史行只能取回执里的组织编号，冲突行推导不出
+    scope_object := 'TenantBase.Organization';
+    org := audit_json_uuid(before, after, 'orgId');
   ELSIF object_type = 'establishment-capacity' THEN
     scope_object := 'TenantBase.OrganizationEstablishment';
     org := audit_json_uuid(before, after, 'orgId');
@@ -179,6 +195,10 @@ BEGIN
   ELSIF object_type = 'positions' THEN
     scope_object := 'TenantBase.JobPosition';
     org := audit_json_uuid(before, after, 'orgId');
+    IF org IS NULL THEN
+      SELECT v.org_id INTO org FROM job_position_versions v WHERE v.tenant_id = tenant AND v.object_id = target
+       ORDER BY v.start_date DESC, v.version_no DESC LIMIT 1;
+    END IF;
   ELSIF object_type IN ('layers', 'grades', 'level-types', 'levels', 'sequences', 'professional-lines', 'posts') THEN
     scope_object := 'TenantBase.' || CASE object_type
       WHEN 'layers' THEN 'JobLayer' WHEN 'grades' THEN 'JobGrade' WHEN 'level-types' THEN 'JobLevelType'
@@ -230,6 +250,7 @@ BEGIN
     SELECT * INTO anchor FROM audit_scope_anchor(NEW.object_type, NEW.object_id, NULL, NULL);
     NEW.scope_object := anchor.scope_object;
     NEW.scope_employee_id := COALESCE(NEW.scope_employee_id, anchor.employee);
+    NEW.scope_org_id := COALESCE(NEW.scope_org_id, anchor.org);
   END IF;
   IF NEW.actor_user_id IS NULL AND NEW.source_action IS NULL AND NEW.trace_id IS NULL THEN
     NEW.source_action := '定时任务';
@@ -260,18 +281,18 @@ DECLARE
 BEGIN
   FOR t IN SELECT id FROM tenants LOOP
     PERFORM set_config('app.tenant_id', t.id::text, true);
-    UPDATE audit_events SET object_id = lower(object_id)
-     WHERE tenant_id = t.id AND audit_is_uuid(object_id) AND object_id <> lower(object_id);
-    UPDATE audit_events
-       SET operation = COALESCE(operation, audit_operation_of(action, before, after)),
-           changes = COALESCE(changes, audit_jsonb_diff(before, after))
-     WHERE tenant_id = t.id AND (operation IS NULL OR changes IS NULL);
+    -- 一次 UPDATE 补齐全部推导列（每行只重写一遍，WAL 与耗时约为分步回填的一半；实测见部署手册 §6）
     UPDATE audit_events a
-       SET scope_object = x.scope_object, scope_employee_id = x.employee, scope_org_id = x.org
-      FROM (SELECT e.id, s.* FROM audit_events e
-              CROSS JOIN LATERAL audit_scope_anchor(e.object_type, e.object_id, e.before, e.after) s
-             WHERE e.tenant_id = t.id AND e.scope_object IS NULL) x
-     WHERE a.tenant_id = t.id AND a.id = x.id AND x.scope_object IS NOT NULL;
+       SET object_id = CASE WHEN audit_is_uuid(a.object_id) THEN lower(a.object_id) ELSE a.object_id END,
+           operation = COALESCE(a.operation, audit_operation_of(a.action, a.before, a.after)),
+           changes = COALESCE(a.changes, audit_jsonb_diff(a.before, a.after)),
+           (scope_object, scope_employee_id, scope_org_id) = (
+             SELECT COALESCE(a.scope_object, s.scope_object), COALESCE(a.scope_employee_id, s.employee),
+                    COALESCE(a.scope_org_id, s.org)
+               FROM audit_scope_anchor(a.object_type, a.object_id, a.before, a.after) s)
+     WHERE a.tenant_id = t.id
+       AND (a.operation IS NULL OR a.changes IS NULL OR a.scope_object IS NULL
+         OR (audit_is_uuid(a.object_id) AND a.object_id <> lower(a.object_id)));
     INSERT INTO audit_object_creators (tenant_id, object_type, object_id, action, creator_user_id, created_at)
     SELECT DISTINCT ON (e.object_id, e.action, e.object_type)
            e.tenant_id, e.object_type, e.object_id, e.action, e.actor_user_id, e.occurred_at

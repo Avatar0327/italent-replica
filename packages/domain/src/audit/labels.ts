@@ -153,16 +153,17 @@ export function auditReferenceKind(field: string): AuditReferenceKind | undefine
 }
 
 /**
- * DEC-203（补充 DEC-197）：没有人员 / 组织归属的配置类对象，持有「日志审计」的查看人均可查看，不按“能否管理该配置”
- * 裁剪。只有登记在这里的配置对象类型才按此放行；未登记、又没有归属的对象一律不可见（fail-closed）——
- * 例如没有所属人员的审批实例 / 任务属于业务单据，不是配置，不在此列。
+ * DEC-203（补充 DEC-197）：真正没有人员 / 组织归属的配置类对象，持有「日志审计」的查看人均可查看，不按“能否管理该配置”
+ * 裁剪。只有登记在这里的配置对象类型才按此放行；有独立业务权限规则的对象（编制方案、复制任务、组织导入回执、
+ * 组织编码预占、审批实例等）不在此列，按业务规则判断（apps/api/src/audit/visibility.ts）；未登记的一律不可见（fail-closed）。
  */
 export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'tenant',
   'tenant_setting',
+  'tenant_user',
+  'tenant_membership',
   'audit_retention',
   'employment-activation-run',
-  'tenant_user',
   'permission_admin',
   'permission_profile',
   'permission_grant',
@@ -181,15 +182,24 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'personnel-order-settings',
   'personnel-order-run',
   'org_setting',
-  'org_code_reservation',
-  'org_import_result',
   'job_setting',
-  'establishment-scheme',
-  'establishment-copy-job',
-  'establishment-notification',
+  'establishment-settings',
   'approval-process',
   'approval-exception-admin',
 ]);
+
+/**
+ * 与业务对象共用对象类型、但实为配置的写入（按动作区分）：合同主数据（合同类型、法人公司、规则、设置）
+ * 以合同对象类型写审计，没有所属人员，属于 DEC-203 的配置类日志。
+ */
+export const AUDIT_CONFIG_ACTIONS: Readonly<Record<string, readonly string[]>> = {
+  'TenantBase.EmploymentContract': [
+    'contract.types.save',
+    'contract.companies.save',
+    'contract.rule.save',
+    'contract.settings.update',
+  ],
+};
 
 /** 审计字段路径 → 字段权限编码：取末段；自定义字段两种写法（customFields.<id> 与 custom:<id>）都映射为 custom:<id>。 */
 export function auditFieldCode(path: string): string {
