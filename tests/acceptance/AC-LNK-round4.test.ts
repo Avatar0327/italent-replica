@@ -8,7 +8,7 @@ import { sql, withTenant } from '@italent/db';
 import { CONTRACT_OBJECT } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { approvalWorld, transferScene, type InstanceView } from './AC-APV-support.js';
+import { approvalWorld, transferScene, type InstanceView, type NodeInput } from './AC-APV-support.js';
 import { controlledApi, D, everyField, linkageWorld, type LinkageWorld } from './AC-LNK-support.js';
 
 const database = useTestDb();
@@ -27,7 +27,7 @@ const CLEARINGS = [
 const visibleExcept = (custom: string, hidden: string) =>
   [...everyField(CONTRACT_OBJECT), `custom:${custom}`].filter((field) => field !== hidden);
 
-async function approvalScene(label: string, clearing: (typeof CLEARINGS)[number], nodes: object[]) {
+async function approvalScene(label: string, clearing: (typeof CLEARINGS)[number], nodes: NodeInput[]) {
   const w = await approvalWorld(database().db, label);
   const s = await transferScene(w);
   await w.publishedProcess({ nodes });
@@ -124,7 +124,8 @@ describe('P1 显式清空隐藏合同字段：同人自动跳过前也做盲审'
       { key: 'in_hrbp', approver: 'record_department_hrbp', formFields: FORM },
       { key: 'recheck', approver: 'latest_record_department_head', historySameAssigneeSkip: true },
     ]);
-    const first = controlledApi(w.db, w.tenant.id, s.outHead.userId, {}, AT);
+    const all = { [CONTRACT_OBJECT]: visibleExcept(custom, '') };
+    const first = controlledApi(w.db, w.tenant.id, s.outHead.userId, { fields: all }, AT);
     const outTask = instance.tasks.find((t) => t.status === 'pending')!;
     const approved = await first('POST', `/api/tenant/approval/tasks/${outTask.id}/approve`, {
       ifMatch: instance.revision,
@@ -138,7 +139,7 @@ describe('P1 显式清空隐藏合同字段：同人自动跳过前也做盲审'
       w.db,
       w.tenant.id,
       s.inHrbp.userId,
-      { userFields: { [s.outHead.userId]: { [CONTRACT_OBJECT]: visibleExcept(custom, hidden) } } },
+      { fields: all, userFields: { [s.outHead.userId]: { [CONTRACT_OBJECT]: visibleExcept(custom, hidden) } } },
       AT,
     );
     const response = await second('POST', `/api/tenant/approval/tasks/${hrbpTask.id}/approve`, {
@@ -240,7 +241,13 @@ describe('P2 职责转交仍在时拒绝删除调动（DEC-012，真实任职 / 
     await refused(w, business.id, ['dutyOrgRole', 'dutySubordinate', 'dutySubordinate']);
 
     // HR 手工调整后的不再拦截：组织负责人换人、两名下属的经理改掉，逐项解除。
-    await w.setHead(w.from, other.employee.id);
+    const org = await w.api.request('GET', `/api/tenant/org/organizations/${w.from.id}`, w.as);
+    const head = await w.api.request('PATCH', `/api/tenant/org/organizations/${w.from.id}`, {
+      ...w.as,
+      ifMatch: ((await org.json()) as { revision: number }).revision,
+      body: { effectiveDate: '2026-10-01', personInChargeId: other.employee.id },
+    });
+    expect(head.status, await head.clone().text()).toBe(200);
     await refused(w, business.id, ['dutySubordinate', 'dutySubordinate']);
     const edit = async (record: { id: string }, fields: object) => {
       const current = await w.business(record.id);

@@ -32,6 +32,7 @@ import { normalizeLinkage, type DutyRelation, type LinkageOptions, type OrgRole 
 import { loadLinkageItem, retryLinkageItem } from './items.js';
 import { updateTransferLinkage } from './service.js';
 import { linkageBeforeCommand } from './store.js';
+import { registerTransferDeletionProbes } from './deletion-probes.js';
 import { readTransferLinkage } from './view.js';
 
 type Deps = TenantRouteDeps;
@@ -65,6 +66,7 @@ export async function preauthorizeLinkage(
 }
 
 export function registerTransferLinkageRoutes(router: Hono<TenantEnv>, deps: Deps) {
+  registerTransferDeletionProbes();
   router.get('/transfers/:id/linkage', async (c) => {
     const id = uuidParam(c);
     const ctx = await readContext(c, deps, 'object.view');

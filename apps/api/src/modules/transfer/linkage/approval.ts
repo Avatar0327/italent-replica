@@ -69,9 +69,14 @@ export async function linkageApproval(
     ? entries.map(([code, field]) => ({ code, container: CONTAINER, objectCode: CONTRACT_OBJECT, field, ...target }))
     : [];
   const values = { ...own, ...Object.fromEntries(entries.map(([code, , value]) => [code, value])) };
-  const changedFields = Object.entries(values)
-    .filter(([, value]) => value !== null && value !== false && !(Array.isArray(value) && !value.length))
-    .map(([field]) => field);
+  // 任职侧联动字段为空 / false 即“未设置该联动”，不改变任何对象；合同变更里明确给出的字段一律是变化，
+  // 显式 null / false 是清空或置否，同样改写合同（第四轮 P1，DEC-057 / 058）。
+  const changedFields = [
+    ...Object.entries(own)
+      .filter(([, value]) => value !== null && value !== false && !(Array.isArray(value) && !value.length))
+      .map(([field]) => field),
+    ...entries.map(([code]) => code),
+  ];
   return { values, changedFields, foreignFields, version: stored.versionId };
 }
 
