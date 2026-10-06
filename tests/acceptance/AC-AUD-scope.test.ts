@@ -5,6 +5,7 @@
  * 没有人员 / 组织归属的配置对象（权限、管理员等）按对应的企业设置能力判断（持有该能力才可见）。
  */
 import { randomUUID } from 'node:crypto';
+import { type Db, sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -130,9 +131,8 @@ describe('DEC-197 审计查询按当前数据范围与字段权限裁剪', () =>
   it('仅持审计管理员身份、没有任职对象权限与数据范围：看不到任何任职日志，详情 404', async () => {
     const { items } = await w.audit.dataChanges(w.auditOnly.as, { objectType: 'employment-record', limit: '100' });
     expect(items).toEqual([]);
-    const all = await w.audit.dataChanges(w.world.asAdmin, { objectType: 'employment-record', limit: '100' });
-    const one = all.items.find((item) => item.objectId === w.mine.hire.id)!;
-    expect((await w.audit.get(`/data-changes/${one.id}`, w.auditOnly.as)).status).toBe(404);
+    const [one] = await auditIds(w.db, w.world.tenant.id, w.mine.hire.id);
+    expect((await w.audit.get(`/data-changes/${one}`, w.auditOnly.as)).status).toBe(404);
   });
 
   it('范围外人员的日志不返回；范围内照常返回', async () => {
@@ -158,12 +158,8 @@ describe('DEC-197 审计查询按当前数据范围与字段权限裁剪', () =>
     expect(detail.after).not.toHaveProperty('remarks');
     // 字段筛选不能用来探测隐藏字段
     expect((await w.audit.dataChanges(w.viewer.as, { objectId: w.mine.hire.id, field: 'remarks' })).items).toEqual([]);
-    // 管理员（看全部）仍能看到这两次编辑
-    const admin = await w.audit.dataChanges(w.world.asAdmin, {
-      objectId: w.mine.hire.id,
-      action: 'employment.record.edit',
-    });
-    expect(admin.items).toHaveLength(2);
+    // 库里确有两次编辑（第二次只改隐藏字段）
+    expect(await auditIds(w.db, w.world.tenant.id, w.mine.hire.id, 'employment.record.edit')).toHaveLength(2);
   });
 
   it('配置对象按企业设置能力判断：租户管理员能看管理员变更，只持审计身份的看不到', async () => {
@@ -179,3 +175,14 @@ describe('DEC-197 审计查询按当前数据范围与字段权限裁剪', () =>
     expect((await w.audit.get('/data-changes', { user: w.plain.id, tenant: w.world.tenant.id })).status).toBe(403);
   });
 });
+
+/** 直接按库查日志编号（租户管理员没有隐含的数据范围，DEC-080，不能用它的查询结果当“全量”）。 */
+async function auditIds(db: Db, tenantId: string, objectId: string, action?: string): Promise<string[]> {
+  return withTenant(db, tenantId, async (tx) => {
+    const result = await tx.execute(sql`SELECT id FROM audit_events WHERE object_id=${objectId}
+      AND (${action ?? null}::text IS NULL OR action=${action ?? null}) ORDER BY occurred_at, id`);
+    return ((Array.isArray(result) ? result : (result as { rows: { id: string }[] }).rows) as { id: string }[]).map(
+      (row) => row.id,
+    );
+  });
+}

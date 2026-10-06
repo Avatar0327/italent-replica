@@ -81,6 +81,8 @@ export async function audit(
     after: select(after),
     commandId: ctx.commandId,
     occurredAt: ctx.now,
+    // DEC-197：只存变化字段时前后值里不一定有 employeeId，所属人员显式给出
+    scope: { employeeId },
   });
   await insert(tx, 'personnel_outbox', {
     id: randomUUID(),

@@ -60,6 +60,7 @@ import { requireDirectTransfer, transferBusinessContext } from '../transfer/serv
 import { batchEditEmploymentRecords, normalizeBatchEdit } from './batch-edit.js';
 import { recordOperationLog } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
+import { withFailedImportLog } from '../../audit/record.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   const module = new Hono<TenantEnv>();
@@ -577,10 +578,14 @@ function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     const ctx = await readContext(c, deps, 'object.view', revision(c), id);
     const input = normalizeEmploymentImport(await jsonBody(c));
     await authorizeImport(deps, ctx, id, input);
-    return runWrite(c, deps, ctx, input, async (tx, context) => ({
-      status: 200,
-      body: await importWithTransferAuthorization(tx, context, id, input),
-    }));
+    // DEC-199：整批失败也留任务级日志
+    const task = { ...ctx, commandId: c.req.header('idempotency-key'), objectType: 'employment-record' };
+    return withFailedImportLog(deps.db, { ...task, total: input.items.length, scopeEmployeeId: id }, () =>
+      runWrite(c, deps, ctx, input, async (tx, context) => ({
+        status: 200,
+        body: await importWithTransferAuthorization(tx, context, id, input),
+      })),
+    );
   });
 }
 
@@ -659,6 +664,7 @@ async function importWithTransferAuthorization(
     behavior: 'import',
     objectType: 'employment-record',
     objectId: employeeId,
+    scopeEmployeeId: employeeId,
     successCount: input.items.length,
     failureCount: 0,
     commandId: ctx.commandId,

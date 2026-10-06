@@ -34,6 +34,7 @@ import {
   validateOrganization,
   type OrgWriteContext,
 } from './write-service.js';
+import { withFailedImportLog } from '../../audit/record.js';
 
 const BASE = '/api/tenant/org';
 const OBJECT = MODULE_OBJECTS.organization.code;
@@ -387,17 +388,21 @@ function registerOrgImport(router: Hono<TenantEnv>, deps: TenantRouteDeps): void
     await withTenant(deps.db, ctx.tenantId, (tx) =>
       authorizeOrgImportRows(tx, ctx, input.rows, (row, target) => guard(tx, row, target)),
     );
-    return write(
-      c,
-      deps,
-      ctx,
-      input,
-      async (tx, writeCtx) => ({
-        status: 200,
-        body: await importOrganizations(tx, writeCtx, input.rows, (row, target) => guard(tx, row, target)),
-      }),
-      true,
-      scope,
+    // DEC-199：整批失败也留任务级日志
+    const task = { ...ctx, commandId: c.req.header('idempotency-key'), objectType: 'organization' };
+    return withFailedImportLog(deps.db, { ...task, total: input.rows.length }, () =>
+      write(
+        c,
+        deps,
+        ctx,
+        input,
+        async (tx, writeCtx) => ({
+          status: 200,
+          body: await importOrganizations(tx, writeCtx, input.rows, (row, target) => guard(tx, row, target)),
+        }),
+        true,
+        scope,
+      ),
     );
   });
 }

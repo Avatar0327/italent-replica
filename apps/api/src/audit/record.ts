@@ -5,11 +5,16 @@
  */
 import {
   type AuditEventInput,
+  type Db,
   insertAuditEvent,
   insertOperationLog,
   type OperationLogInput,
   type Tx,
+  withTenant,
 } from '@italent/db';
+import { AppError } from '../errors.js';
+import { auditActor } from '../system-actor.js';
+import { CommandFailureError } from './failures.js';
 import { currentAuditRequest } from './request-context.js';
 
 export type RecordAuditInput = Omit<AuditEventInput, 'source'>;
@@ -52,7 +57,14 @@ export async function recordImportLog(
   const failures = receipts
     .map((receipt, rowIndex) => ({ rowIndex, ...receipt }))
     .filter((receipt) => receipt.status === 'conflict')
-    .map(({ rowIndex, sourceCode, code, reason }) => ({ rowIndex, sourceCode, code, reason: reason ?? null }));
+    // 错误报告统一为行号、错误码、原因（来源编码 / 编码随行保存，查询时按字段权限裁剪，DEC-197）
+    .map(({ rowIndex, sourceCode, code, reason }) => ({
+      rowIndex,
+      errorCode: 'CONFLICT',
+      reason: reason ?? null,
+      sourceCode,
+      code,
+    }));
   await recordOperationLog(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.actorUserId,
@@ -64,4 +76,67 @@ export async function recordImportLog(
     commandId: ctx.commandId,
     occurredAt: ctx.now,
   });
+}
+
+interface FailedImport {
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly commandId: string | undefined;
+  readonly objectType: string;
+  /** 本次导入的总行数（整批回滚时全部计为失败）。 */
+  readonly total: number;
+  readonly scopeEmployeeId?: string;
+}
+
+/**
+ * DEC-199：失败的导入任务同样持久保存任务级日志（条数、结果、错误报告，20 §3 / §5 第 3 条）。导入整批回滚，
+ * 日志在独立事务里写入；错误报告只存行号、错误码与原因，不存字段值。结果未知时可能已生效，不记“失败”。
+ */
+export async function withFailedImportLog<T>(db: Db, task: FailedImport, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (!(error instanceof CommandFailureError && error.failure.outcome === 'unknown')) {
+      await recordFailedImport(db, task, error).catch((logError: unknown) => {
+        console.error(JSON.stringify({ type: 'audit.failed_import.unwritable', ...task, error: String(logError) }));
+      });
+    }
+    throw error;
+  }
+}
+
+async function recordFailedImport(db: Db, task: FailedImport, error: unknown): Promise<void> {
+  const code = error instanceof AppError ? error.code : 'INTERNAL_ERROR';
+  const rows = ((error as { details?: { errors?: unknown } } | null)?.details?.errors ?? []) as {
+    row?: number;
+    code?: string;
+    details?: { reason?: string };
+  }[];
+  const errorReport =
+    Array.isArray(rows) && rows.length
+      ? rows.map((row) => ({
+          rowIndex: typeof row.row === 'number' ? row.row - 1 : null,
+          errorCode: row.code ?? code,
+          reason: row.details?.reason ?? null,
+        }))
+      : [{ rowIndex: null, errorCode: code, reason: (error as AppError).details ? reasonOf(error) : null }];
+  await withTenant(db, task.tenantId, (tx) =>
+    recordOperationLog(tx, {
+      tenantId: task.tenantId,
+      actorUserId: auditActor(task.userId),
+      behavior: 'import',
+      objectType: task.objectType,
+      ...(task.scopeEmployeeId ? { objectId: task.scopeEmployeeId, scopeEmployeeId: task.scopeEmployeeId } : {}),
+      successCount: 0,
+      failureCount: task.total,
+      errorReport,
+      commandId: task.commandId ?? null,
+      occurredAt: currentAuditRequest()?.clock() ?? new Date(),
+    }),
+  );
+}
+
+function reasonOf(error: unknown): string | null {
+  const reason = (error as { details?: { reason?: unknown } }).details?.reason;
+  return typeof reason === 'string' ? reason : null;
 }

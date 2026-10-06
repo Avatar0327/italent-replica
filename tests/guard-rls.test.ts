@@ -109,6 +109,7 @@ describe('守卫：带 tenant_id 的表必须启用并强制 RLS', () => {
       platform_meta: '平台元数据（M0）',
       platform_audit_events: '平台命令审计（全部平台命令，含所涉租户标记），只追加',
       platform_command_ledger: '平台写命令幂等台账',
+      platform_command_failures: '平台命令失败审计（R1-T16，DEC-199），平台层受限通道，只追加',
       platform_operators: '平台运营身份（R1-T17），与租户内权限隔离，不属于任何租户',
     };
     const result = await testDb().db.execute(sql`

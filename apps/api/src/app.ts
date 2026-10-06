@@ -22,6 +22,7 @@ import { registerApprovalRoutes } from './modules/approval/routes.js';
 import { createPlatformRouter } from './modules/platform/routes.js';
 import { auditRequestContext } from './audit/request-context.js';
 import { registerAuditRoutes } from './audit/routes.js';
+import { captureCommandFailures } from './audit/capture.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
 const TENANT_MODULES: readonly TenantRouteModule[] = [
@@ -99,6 +100,8 @@ function createTenantRouter(db: Db, deps: AppDeps): Hono<TenantEnv> {
   const router = new Hono<TenantEnv>();
   // 所有租户接口都在 /api/tenant/ 之下，每次请求都重验身份、成员关系与租户状态
   router.use('/api/tenant/*', tenantContext(db, deps.identity ?? denyAllIdentity));
+  // 身份与租户确认后，兜底记录执行器之前被拒绝的写命令（R1-T16 第二轮 P2-7）
+  router.use('/api/tenant/*', captureCommandFailures(db));
   for (const register of [...TENANT_MODULES, ...(deps.tenantRoutes ?? [])]) register(router, routeDeps);
   return router;
 }

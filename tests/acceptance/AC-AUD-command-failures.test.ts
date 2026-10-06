@@ -53,7 +53,8 @@ describe('失败命令三类审计', () => {
         outcomeLabel: '业务失败',
         errorCode: 'REVISION_CONFLICT',
         method: 'POST',
-        path: `/api/tenant/employment/employees/${employee.id}/businesses`,
+        // 路径里的对象编号打码（DEC-197）
+        path: '/api/tenant/employment/employees/:id/businesses',
         operator: { userId: session.user.id, name: session.user.displayName },
         occurredAt: NOW,
       }),

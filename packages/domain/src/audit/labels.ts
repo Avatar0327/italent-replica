@@ -1,3 +1,5 @@
+import type { AdminCapability } from '../permission/admin-roles.js';
+
 /**
  * 审计日志的显示元数据（docs/02_业务建模/20 §2：数据变更日志列「应用」「对象」「变更内容」）。
  * 字段中文名照搬原站任职记录字段（docs/02_业务建模/07 §3.1、15），未登记的字段按编码原样显示，不猜中文名。
@@ -150,4 +152,50 @@ const REFERENCE_FIELDS: Readonly<Record<string, AuditReferenceKind>> = {
 
 export function auditReferenceKind(field: string): AuditReferenceKind | undefined {
   return REFERENCE_FIELDS[field];
+}
+
+/**
+ * DEC-197：没有人员 / 组织归属的配置类对象，审计按“当前能否管理该配置”判断——持有对应的企业设置能力才可见
+ * （06 §7.1 能力矩阵）。未登记的对象类型一律不可见（fail-closed）。
+ */
+export const AUDIT_CONFIG_CAPABILITIES: Readonly<Record<string, AdminCapability>> = {
+  tenant: 'other_settings',
+  tenant_setting: 'other_settings',
+  audit_retention: 'other_settings',
+  'employment-activation-run': 'other_settings',
+  tenant_user: 'user_manage',
+  permission_admin: 'admin_manage',
+  permission_profile: 'profile_manage',
+  permission_grant: 'user_grant',
+  permission_mou: 'mou_manage',
+  permission_identity_scope: 'mou_manage',
+  permission_user_app_scope: 'mou_manage',
+  permission_scope_policy: 'other_settings',
+  permission_scope_app: 'other_settings',
+  permission_dynamic_org_grant: 'other_settings',
+  license_pool: 'license_balance',
+  license_seat: 'license_balance',
+  employment_settings: 'other_settings',
+  employment_custom_field: 'other_settings',
+  transfer_settings: 'other_settings',
+  transfer_form: 'other_settings',
+  'personnel-order-settings': 'other_settings',
+  'personnel-order-run': 'other_settings',
+  org_setting: 'org_structure',
+  org_code_reservation: 'org_structure',
+  org_import_result: 'org_structure',
+  job_setting: 'org_structure',
+  'establishment-scheme': 'org_structure',
+  'establishment-copy-job': 'org_structure',
+  'establishment-notification': 'org_structure',
+  'approval-process': 'process_matrix',
+  'approval-exception-admin': 'process_matrix',
+  'approval-instance': 'process_matrix',
+  'approval-task': 'process_matrix',
+};
+
+/** 审计字段路径 → 字段权限编码：取末段；自定义字段两种写法（customFields.<id> 与 custom:<id>）都映射为 custom:<id>。 */
+export function auditFieldCode(path: string): string {
+  if (path.startsWith('customFields.')) return `custom:${path.slice('customFields.'.length)}`;
+  return path.split('.').at(-1) ?? path;
 }

@@ -3,7 +3,18 @@
  * 租户上下文与权限模型互不相通。写请求必须带 Idempotency-Key（平台命令台账，同键同内容重放、异内容 409）；
  * 改已有对象必须带 If-Match revision（409 后由客户端刷新显式重提，AGENTS.md §10）。
  */
-import { createUser, type Db, isUuid, pgErrorCode, type PlatformCommandMeta } from '@italent/db';
+import {
+  and,
+  createUser,
+  type Db,
+  desc,
+  eq,
+  isUuid,
+  pgErrorCode,
+  platformCommandFailures,
+  type PlatformCommandMeta,
+  withPlatform,
+} from '@italent/db';
 import { isValidTimeZone } from '@italent/domain';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
@@ -67,6 +78,9 @@ export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: 
     return c.json(await provisionTenant(db, body, meta(c), clock()), 201);
   });
 
+  // DEC-199：平台命令失败的受限通道，只对平台运营开放（租户审计查询里看不到）
+  router.get('/api/platform/command-failures', async (c) => c.json(await platformFailures(db, c)));
+
   router.get('/api/platform/tenants/:tenantId', async (c) => {
     const tenant = tenantView(await requireTenant(db, tenantParam(c)));
     etag(c, tenant.revision);
@@ -98,4 +112,31 @@ export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: 
   });
 
   return router;
+}
+
+const failureQuery = z.strictObject({
+  commandId: z.string().regex(COMMAND_ID).optional(),
+  subjectTenantId: z.uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+async function platformFailures(db: Db, c: Context<PlatformEnv>) {
+  const parsed = failureQuery.safeParse(c.req.query());
+  if (!parsed.success) throw new AppError('VALIDATION_FAILED', '查询条件不合法', parsed.error.issues);
+  const { commandId, subjectTenantId, limit } = parsed.data;
+  const t = platformCommandFailures;
+  const items = await withPlatform(db, (tx) =>
+    tx
+      .select()
+      .from(t)
+      .where(
+        and(
+          commandId ? eq(t.commandId, commandId) : undefined,
+          subjectTenantId ? eq(t.subjectTenantId, subjectTenantId) : undefined,
+        ),
+      )
+      .orderBy(desc(t.occurredAt), desc(t.id))
+      .limit(limit),
+  );
+  return { items: items.map((row) => ({ ...row, occurredAt: new Date(row.occurredAt).toISOString() })) };
 }

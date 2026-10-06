@@ -25,6 +25,7 @@ import { errorsCsv, importContracts, importSchema, previewImport } from './impor
 import { registerMergedTodos } from './todos.js';
 import { recordOperationLog } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
+import { withFailedImportLog } from '../../audit/record.js';
 
 type C = Context<TenantEnv>;
 export async function routeContext(c: C, deps: TenantRouteDeps, object = CONTRACT_OBJECT, write = false) {
@@ -355,10 +356,14 @@ function registerImports(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
         }
         return c.json(result);
       }
-      return write(c, deps, ctx, input, async (tx, ctx) => ({
-        status: 200,
-        body: await importContracts(tx, ctx, input),
-      }));
+      // DEC-199：整批失败也留任务级日志
+      const task = { ...ctx, commandId: c.req.header('idempotency-key'), objectType: CONTRACT_OBJECT };
+      return withFailedImportLog(deps.db, { ...task, total: input.rows.length }, () =>
+        write(c, deps, ctx, input, async (tx, ctx) => ({
+          status: 200,
+          body: await importContracts(tx, ctx, input),
+        })),
+      );
     });
 }
 function registerFailures(module: Hono<TenantEnv>, deps: TenantRouteDeps) {

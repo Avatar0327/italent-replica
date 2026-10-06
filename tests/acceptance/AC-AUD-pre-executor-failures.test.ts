@@ -124,12 +124,15 @@ describe('DEC-199 失败的导入任务留痕', () => {
       body: {
         mode: 'edit',
         rows: [
-          { employeeId: w.employee.id, revision: 0, fields: { number: 'NOT-EXIST-1' } },
-          { employeeId: w.employee.id, revision: 0, fields: { number: 'NOT-EXIST-2' } },
+          { employeeId: w.employee.id, revision: 1, fields: { number: 'NOT-EXIST-1' } },
+          { employeeId: w.employee.id, revision: 1, fields: { number: 'NOT-EXIST-2' } },
         ],
       },
     });
-    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(response.status, await response.clone().text()).toBeGreaterThanOrEqual(400);
+    expect(
+      ((await response.clone().json()) as { error: { details?: { errors?: unknown[] } } }).error.details?.errors,
+    ).toHaveLength(2);
     const as = { user: w.session.user.id, tenant: w.session.tenant.id };
     const logs = await auditApi(db, NOW).operationLogs(as, { behavior: 'import', commandId });
     expect(logs.items).toEqual([

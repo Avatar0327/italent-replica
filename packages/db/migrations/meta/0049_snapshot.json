@@ -1,5 +1,5 @@
 {
-  "id": "9d88cfa8-0e6a-4c56-81eb-9430625c3268",
+  "id": "56f470bc-e58b-4582-9129-4d3374e7db26",
   "prevId": "86f38203-8bee-4f93-bcf5-538c53444eb4",
   "version": "7",
   "dialect": "postgresql",
@@ -193,6 +193,24 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "scope_object": {
+          "name": "scope_object",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope_employee_id": {
+          "name": "scope_employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope_org_id": {
+          "name": "scope_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -261,6 +279,33 @@
             },
             {
               "expression": "object_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "audit_events_tenant_scope_object": {
+          "name": "audit_events_tenant_scope_object",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scope_object",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -26466,6 +26511,92 @@
       },
       "isRLSEnabled": false
     },
+    "public.audit_object_creators": {
+      "name": "audit_object_creators",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_type": {
+          "name": "object_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creator_user_id": {
+          "name": "creator_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "audit_object_creators_tenant_id_tenants_id_fk": {
+          "name": "audit_object_creators_tenant_id_tenants_id_fk",
+          "tableFrom": "audit_object_creators",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "audit_object_creators_creator_user_id_users_id_fk": {
+          "name": "audit_object_creators_creator_user_id_users_id_fk",
+          "tableFrom": "audit_object_creators",
+          "tableTo": "users",
+          "columnsFrom": [
+            "creator_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "audit_object_creators_tenant_id_object_id_action_object_type_pk": {
+          "name": "audit_object_creators_tenant_id_object_id_action_object_type_pk",
+          "columns": [
+            "tenant_id",
+            "object_id",
+            "action",
+            "object_type"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.audit_operation_logs": {
       "name": "audit_operation_logs",
       "schema": "",
@@ -26603,6 +26734,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "scope_object": {
+          "name": "scope_object",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope_employee_id": {
+          "name": "scope_employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -26671,6 +26814,123 @@
         "audit_operation_logs_counts_valid": {
           "name": "audit_operation_logs_counts_valid",
           "value": "\"audit_operation_logs\".\"success_count\" >= 0 AND \"audit_operation_logs\".\"failure_count\" >= 0\n        AND \"audit_operation_logs\".\"total_count\" = \"audit_operation_logs\".\"success_count\" + \"audit_operation_logs\".\"failure_count\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.platform_command_failures": {
+      "name": "platform_command_failures",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operation": {
+          "name": "operation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_tenant_id": {
+          "name": "subject_tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "platform_command_failures_occurred": {
+          "name": "platform_command_failures_occurred",
+          "columns": [
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "platform_command_failures_actor_user_id_users_id_fk": {
+          "name": "platform_command_failures_actor_user_id_users_id_fk",
+          "tableFrom": "platform_command_failures",
+          "tableTo": "users",
+          "columnsFrom": [
+            "actor_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "platform_command_failures_subject_tenant_id_tenants_id_fk": {
+          "name": "platform_command_failures_subject_tenant_id_tenants_id_fk",
+          "tableFrom": "platform_command_failures",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "subject_tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "platform_command_failures_outcome_valid": {
+          "name": "platform_command_failures_outcome_valid",
+          "value": "\"platform_command_failures\".\"outcome\" IN ('business_failed', 'storage_unwritable', 'unknown')"
         }
       },
       "isRLSEnabled": false

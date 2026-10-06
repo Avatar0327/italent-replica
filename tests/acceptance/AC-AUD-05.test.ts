@@ -5,7 +5,7 @@
  * 保留期由定时清理执行：只删本租户超过保留期的日志；审计表对应用角色仍只追加（不能直接 DELETE / TRUNCATE）。
  */
 import { runAuditRetention } from '@italent/api';
-import { sql, withPlatform, withTenant, type Db } from '@italent/db';
+import { pgErrorCode, sql, withPlatform, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { employmentSession } from './AC-EMP-support.js';
@@ -145,11 +145,10 @@ describe('AC-AUD-05 查询期与保留期按租户配置', () => {
     const short = await tenantWithOldLog(db, 'aud05-guard-default');
     const long = await tenantWithOldLog(db, 'aud05-guard-long', { queryMonths: 3, retainMonths: 12 });
     const tenantId = short.session.tenant.id;
-    await expect(
-      withTenant(db, tenantId, (tx) =>
-        tx.execute(sql`SELECT * FROM purge_expired_audit(${tenantId}::uuid, ${NOW}::timestamptz, 1000)`),
-      ),
-    ).rejects.toThrow(/permission denied/);
+    const denied = await withTenant(db, tenantId, (tx) =>
+      tx.execute(sql`SELECT * FROM purge_expired_audit(${tenantId}::uuid, ${NOW}::timestamptz, 1000)`),
+    ).catch((error: unknown) => error);
+    expect(pgErrorCode(denied)).toBe('42501');
     // 旧签名（调用方传保留月数）不再存在
     await expect(
       withPlatform(db, (tx) => tx.execute(sql`SELECT * FROM purge_expired_audit(${tenantId}::uuid, 1, now())`)),

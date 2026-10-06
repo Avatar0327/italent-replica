@@ -5,7 +5,7 @@
  * 字段级数据变更日志仍是 tenancy.ts 的 audit_events。
  */
 import { sql } from 'drizzle-orm';
-import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { auditSourceColumns, tenants, users } from './tenancy.js';
 
 const id = () =>
@@ -39,6 +39,9 @@ export const auditOperationLogs = pgTable(
     commandId: text('command_id'),
     occurredAt: utc('occurred_at'),
     ...auditSourceColumns(),
+    // DEC-197：可见性依据（同 audit_events，由迁移 0050 的触发器推导）
+    scopeObject: text('scope_object'),
+    scopeEmployeeId: uuid('scope_employee_id'),
   },
   (t) => [
     index('audit_operation_logs_tenant_occurred').on(t.tenantId, t.occurredAt),
@@ -76,6 +79,49 @@ export const auditCommandFailures = pgTable(
     index('audit_command_failures_tenant_command').on(t.tenantId, t.commandId),
     check(
       'audit_command_failures_outcome_valid',
+      sql`${t.outcome} IN ('business_failed', 'storage_unwritable', 'unknown')`,
+    ),
+  ],
+);
+
+/**
+ * DEC-198：数据范围「创建人」判定所需的最小元数据（对象、创建人、创建时间），由 audit_events 的新增事件触发写入，
+ * 每个对象只留首个；不含任何字段值。审计保留期清理不碰这张表，审计本身因此可以严格按期整条清理。
+ */
+export const auditObjectCreators = pgTable(
+  'audit_object_creators',
+  {
+    tenantId: tenantId(),
+    objectType: text('object_type').notNull(),
+    objectId: text('object_id').notNull(),
+    action: text('action').notNull(),
+    creatorUserId: uuid('creator_user_id').references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.objectId, t.action, t.objectType] })],
+);
+
+/**
+ * DEC-199：平台运营命令（runPlatformCommand）的失败审计。平台层受限通道：不带 tenant_id、只授予平台角色，
+ * 只有平台运营经 /api/platform/command-failures 可读，不进租户审计查询；只追加。
+ */
+export const platformCommandFailures = pgTable(
+  'platform_command_failures',
+  {
+    id: id(),
+    commandId: text('command_id').notNull(),
+    operation: text('operation').notNull(),
+    actorUserId: uuid('actor_user_id').references(() => users.id),
+    subjectTenantId: uuid('subject_tenant_id').references(() => tenants.id),
+    outcome: text('outcome').notNull(),
+    errorCode: text('error_code').notNull(),
+    reason: text('reason'),
+    occurredAt: utc('occurred_at'),
+  },
+  (t) => [
+    index('platform_command_failures_occurred').on(t.occurredAt),
+    check(
+      'platform_command_failures_outcome_valid',
       sql`${t.outcome} IN ('business_failed', 'storage_unwritable', 'unknown')`,
     ),
   ],

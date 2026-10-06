@@ -2,6 +2,7 @@ export { pgErrorCode } from './pg-error.js';
 export {
   type AuditEventInput,
   type AuditSource,
+  auditSourceSql,
   type CommandFailureInput,
   insertAuditEvent,
   insertCommandFailure,
@@ -9,6 +10,15 @@ export {
   type OperationLogInput,
   SCHEDULED_SOURCE_ACTION,
 } from './audit.js';
+export {
+  type ClassifiedFailure,
+  classifyCommandFailure,
+  type CommandFailure,
+  type CommandFailureOutcome,
+  type CommandPhase,
+  connectionCode,
+  isClassifiedFailure,
+} from './command-failure.js';
 export { createPgDb, createPgliteDb, type Db, type DbHandle, migrationsFolder } from './client.js';
 export {
   type AuditEntry,

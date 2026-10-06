@@ -1,27 +1,27 @@
 /**
  * 日志保留期的定时清理（docs/02_业务建模/20 §5 第 4 条；REQ-AUD-001 R5；AGENTS.md §10「定时任务」）。
- * - 只经平台路径触发（与定时生效同一形态）：遍历启用中的租户，逐租户切到租户路径，按该租户的 audit.retention
- *   调用迁移 0050 的 purge_expired_audit；租户接口上没有触发入口；
+ * - 只经平台路径触发（与定时生效同一形态）：遍历启用中的租户，逐租户分批调用迁移 0050 的 purge_expired_audit
+ *   （只授予平台角色；保留月数由函数读取租户配置，调用方无法缩短，PR #75 第二轮 P2-2）；租户接口上没有触发入口；
  * - 可重复执行：截止日由“业务日期 − 保留月数”确定，重跑只会删到同一截止日；同一命令 ID 重放首次结果（平台台账）；
- * - 留痕：本租户有日志被清理时，在对象操作日志记一条「日志清理」（操作人“系统”、来源动作“定时任务”），
- *   平台审计记整轮汇总；某个租户失败不影响其他租户，返回错误码，下一轮重试。
+ * - 留痕：每批有日志被清理时，函数在同一事务里写一条「日志清理」对象操作日志（操作人“系统”、来源动作“定时任务”），
+ *   平台审计记整轮汇总；某个租户失败不影响其他租户，返回错误码，下一轮重试；
+ * - DEC-198：到期整条清理，首个新增事件不例外；数据范围「创建人」所需的最小元数据另存，不随之删除。
  */
 import {
   findPlatformCommandResult,
-  insertOperationLog,
   isUuid,
   type PlatformCommandMeta,
   runPlatformCommand,
   sql,
   type Db,
   withPlatform,
-  withTenant,
   pgErrorCode,
 } from '@italent/db';
 import { AppError } from '../errors.js';
-import { tenantRetention } from './query.js';
 
 const RUN_OPERATION = 'audit.retention.run';
+const BATCH_SIZE = 5000;
+const MAX_BATCHES = 200;
 const TENANT_PAGE = 100;
 
 export interface AuditRetentionRunInput {
@@ -91,41 +91,37 @@ export async function runAuditRetention(
   });
 }
 
+/**
+ * 一个租户按批清理到截止日：每批一个平台路径事务（迁移 0050 的 purge_expired_audit 只授予平台角色，保留月数在
+ * 函数内读取租户配置，本批的「日志清理」操作日志在同一事务写入），控制单事务锁持有时长；批数设上限防失控。
+ */
 async function purgeTenant(db: Db, meta: PlatformCommandMeta, tenantId: string, now: Date): Promise<AuditRetentionRun> {
-  return withTenant(db, tenantId, async (tx) => {
-    const { retainMonths } = await tenantRetention(tx, tenantId);
-    const result = await tx.execute(sql`SELECT cutoff::text AS cutoff, data_changes AS "dataChanges",
-        operation_logs AS "operationLogs", command_failures AS "commandFailures"
-      FROM purge_expired_audit(${tenantId}::uuid, ${retainMonths}, ${now.toISOString()}::timestamptz)`);
-    const [row] = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as {
-      cutoff: string;
-      dataChanges: number;
-      operationLogs: number;
-      commandFailures: number;
-    }[];
-    const counts = {
-      dataChanges: row!.dataChanges,
-      operationLogs: row!.operationLogs,
-      commandFailures: row!.commandFailures,
-    };
-    const total = counts.dataChanges + counts.operationLogs + counts.commandFailures;
-    if (total > 0) {
-      await insertOperationLog(tx, {
-        tenantId,
-        actorUserId: null,
-        behavior: 'purge',
-        objectType: 'audit_retention',
-        successCount: total,
-        failureCount: 0,
-        summary: `清理 ${row!.cutoff} 之前的日志 ${total} 条（保留 ${retainMonths} 个月）`,
-        errorReport: null,
-        attachment: null,
-        commandId: meta.commandId,
-        occurredAt: now,
-      });
-    }
-    return { tenantId, retainMonths, cutoff: row!.cutoff, purged: { ...counts, total } };
-  });
+  const purged = { dataChanges: 0, operationLogs: 0, commandFailures: 0 };
+  let batch: PurgeBatch | undefined;
+  for (let round = 0; round < MAX_BATCHES && (!batch || batch.remaining); round += 1) {
+    batch = await withPlatform(db, async (tx) => {
+      const result = await tx.execute(sql`SELECT cutoff::text AS cutoff, retain_months AS "retainMonths",
+          data_changes AS "dataChanges", operation_logs AS "operationLogs", command_failures AS "commandFailures",
+          remaining
+        FROM purge_expired_audit(${tenantId}::uuid, ${now.toISOString()}::timestamptz, ${BATCH_SIZE},
+          ${meta.commandId})`);
+      return ((Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as PurgeBatch[])[0]!;
+    });
+    purged.dataChanges += batch.dataChanges;
+    purged.operationLogs += batch.operationLogs;
+    purged.commandFailures += batch.commandFailures;
+  }
+  const total = purged.dataChanges + purged.operationLogs + purged.commandFailures;
+  return { tenantId, retainMonths: batch!.retainMonths, cutoff: batch!.cutoff, purged: { ...purged, total } };
+}
+
+interface PurgeBatch {
+  readonly cutoff: string;
+  readonly retainMonths: number;
+  readonly dataChanges: number;
+  readonly operationLogs: number;
+  readonly commandFailures: number;
+  readonly remaining: boolean;
 }
 
 /** 只清理启用中的租户：停用租户的数据冻结，恢复隔离中的租户（DEC-061）不做任何写入。 */

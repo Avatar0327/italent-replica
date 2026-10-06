@@ -43,13 +43,16 @@ export interface AuditEventInput {
   readonly commandId?: string | null;
   readonly occurredAt?: Date;
   readonly source?: AuditSource;
+  /** DEC-197 归属：写入方确知时显式给出（如人员子集记录的所属人员）；未给的由迁移 0050 的触发器按对象类型推导。 */
+  readonly scope?: { readonly employeeId?: string | null; readonly orgId?: string | null };
 }
 
 export const SCHEDULED_SOURCE_ACTION = '定时任务';
 
 export async function insertAuditEvent(tx: Tx, entry: AuditEventInput): Promise<void> {
   const operation = auditOperationOf(entry.action, entry.before, entry.after);
-  const changes = await resolveReferences(tx, entry.tenantId, diffAuditFields(entry.before, entry.after));
+  const occurredAt = entry.occurredAt ?? new Date();
+  const changes = await resolveReferences(tx, entry.tenantId, occurredAt, diffAuditFields(entry.before, entry.after));
   await tx.insert(auditEvents).values({
     tenantId: entry.tenantId,
     actorUserId: entry.actorUserId,
@@ -59,11 +62,26 @@ export async function insertAuditEvent(tx: Tx, entry: AuditEventInput): Promise<
     before: entry.before ?? null,
     after: entry.after ?? null,
     commandId: entry.commandId ?? null,
-    ...(entry.occurredAt ? { occurredAt: entry.occurredAt } : {}),
+    occurredAt,
     operation,
     changes,
     ...sourceValues(entry.source, entry.actorUserId),
+    scopeEmployeeId: entry.scope?.employeeId ?? null,
+    scopeOrgId: entry.scope?.orgId ?? null,
   });
+}
+
+/**
+ * 集合 SQL 直接写 audit_events 时（如人员序码重算，一条语句写多行），来源列取同一请求上下文；操作类型、字段差异、
+ * 归属与“定时任务”来源由迁移 0050 的触发器按统一规则补齐（PR #75 第二轮 P2-6）。返回列清单与值，按此顺序拼接。
+ */
+export function auditSourceSql(source: AuditSource | undefined) {
+  const values = sourceValues(source, source ? 'request' : null);
+  return {
+    columns: sql`source_action,source_page_type,source_page,terminal,client_version,ip,trace_id`,
+    values: sql`${values.sourceAction},${values.sourcePageType},${values.sourcePage},${values.terminal},
+      ${values.clientVersion},${values.ip},${values.traceId}`,
+  };
 }
 
 export interface OperationLogInput {
@@ -81,6 +99,8 @@ export interface OperationLogInput {
   readonly commandId?: string | null;
   readonly occurredAt?: Date;
   readonly source?: AuditSource;
+  /** 任务针对某个人员时（如单人任职导入）显式给出所属人员，供 DEC-197 范围裁剪。 */
+  readonly scopeEmployeeId?: string | null;
 }
 
 export async function insertOperationLog(tx: Tx, entry: OperationLogInput): Promise<void> {
@@ -102,10 +122,13 @@ export async function insertOperationLog(tx: Tx, entry: OperationLogInput): Prom
     commandId: entry.commandId ?? null,
     ...(entry.occurredAt ? { occurredAt: entry.occurredAt } : {}),
     ...sourceValues(entry.source, entry.actorUserId),
+    scopeEmployeeId: entry.scopeEmployeeId ?? null,
   });
 }
 
 export interface CommandFailureInput {
+  /** 预先生成的事件编号：写库失败转兜底通道时沿用，便于去重（PR #75 第二轮 P3）。 */
+  readonly id?: string;
   readonly tenantId: string;
   readonly actorUserId: string | null;
   readonly commandId: string;
@@ -120,6 +143,7 @@ export interface CommandFailureInput {
 
 export async function insertCommandFailure(tx: Tx, entry: CommandFailureInput): Promise<void> {
   await tx.insert(auditCommandFailures).values({
+    ...(entry.id ? { id: entry.id } : {}),
     tenantId: entry.tenantId,
     actorUserId: entry.actorUserId,
     commandId: entry.commandId,
@@ -133,7 +157,7 @@ export async function insertCommandFailure(tx: Tx, entry: CommandFailureInput): 
   });
 }
 
-function sourceValues(source: AuditSource | undefined, actorUserId: string | null) {
+function sourceValues(source: AuditSource | undefined, actorUserId: string | null | undefined) {
   // 没有请求上下文的系统写入（定时生效、合同定时任务、日志清理）来源动作记“定时任务”（20 §2、AC-AUD-04）
   const scheduled = !source && actorUserId === null;
   return {
@@ -167,6 +191,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 async function resolveReferences(
   tx: Tx,
   tenantId: string,
+  occurredAt: Date,
   changes: readonly AuditFieldChange[],
 ): Promise<AuditFieldChange[]> {
   const wanted = new Map<AuditReferenceKind, Set<string>>();
@@ -184,7 +209,9 @@ async function resolveReferences(
   for (const kind of AUDIT_REFERENCE_KINDS) {
     const ids = wanted.get(kind);
     if (!ids?.size) continue;
-    for (const [id, name] of await referenceNames(tx, tenantId, kind, [...ids])) names.set(`${kind}:${id}`, name);
+    for (const [id, name] of await referenceNames(tx, tenantId, occurredAt, kind, [...ids])) {
+      names.set(`${kind}:${id}`, name);
+    }
   }
   return changes.map((change) => {
     const kind = kindOf(change.field);
@@ -197,9 +224,14 @@ async function resolveReferences(
   });
 }
 
+/**
+ * 有效版本与各模块读取口径一致（P2-5）：业务日期取审计时点在租户时区的日期，生效日不晚于该日的版本中
+ * 生效日最新、同日 version_no 最大者；对象在该日尚未生效时取最早的版本。
+ */
 async function referenceNames(
   tx: Tx,
   tenantId: string,
+  occurredAt: Date,
   kind: AuditReferenceKind,
   ids: readonly string[],
 ): Promise<[string, string][]> {
@@ -210,10 +242,12 @@ async function referenceNames(
     ids.map((id) => sql`${id}`),
     sql`, `,
   )}]::uuid[]`;
+  const day = sql`(${occurredAt.toISOString()}::timestamptz AT TIME ZONE current_tenant_timezone())::date`;
   const result = source.dated
     ? await tx.execute(sql`SELECT DISTINCT ON (${key}) ${key}::text AS id, name FROM ${table}
         WHERE tenant_id = ${tenantId} AND ${key} = ANY(${list})
-        ORDER BY ${key}, (start_date <= current_date) DESC, start_date DESC`)
+        ORDER BY ${key}, (start_date <= ${day}) DESC,
+          CASE WHEN start_date <= ${day} THEN start_date END DESC NULLS LAST, start_date, version_no DESC`)
     : await tx.execute(sql`SELECT ${key}::text AS id, name FROM ${table}
         WHERE tenant_id = ${tenantId} AND ${key} = ANY(${list})`);
   const rows = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as {

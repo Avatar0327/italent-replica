@@ -8,7 +8,7 @@
  * （R1-T16，audit/failures.ts），结果未知时返回 503 RESULT_UNKNOWN，提示按原命令 ID 回查。
  */
 import { createHash } from 'node:crypto';
-import { commandLedger, type Db, eq, type Tx, withTenant } from '@italent/db';
+import { commandLedger, type Db, eq, IdempotencyConflictError, type Tx, withTenant } from '@italent/db';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { classifyCommandFailure, type CommandPhase, failureResponse, recordCommandFailure } from './audit/failures.js';
 import { AppError } from './errors.js';
@@ -58,7 +58,8 @@ export async function runCommand(db: Db, ctx: TenantContext, command: Command): 
     try {
       return await replayAfterFailure(db, ctx.tenantId, { commandId, requestHash }, error);
     } catch (thrown) {
-      recheckFailed = thrown !== error && !(thrown instanceof AppError);
+      recheckFailed =
+        thrown !== error && !(thrown instanceof AppError) && !(thrown instanceof IdempotencyConflictError);
       if (!recheckFailed) final = thrown;
     }
     const failure = classifyCommandFailure(final, phase, recheckFailed);

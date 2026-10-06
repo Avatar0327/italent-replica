@@ -18,6 +18,8 @@ export interface AuditRequest {
   readonly path: string;
   /** 与业务写入同一个时钟（测试注入），失败命令审计的事件时间与业务时间口径一致。 */
   readonly clock: () => Date;
+  /** 同一请求只记一次失败命令审计：执行器记过后，入口兜底（capture.ts）不再重复记录。 */
+  readonly state: { failureRecorded: boolean };
 }
 
 const storage = new AsyncLocalStorage<AuditRequest>();
@@ -45,7 +47,8 @@ export function auditRequestContext(clock: () => Date): MiddlewareHandler {
         ip(socket?.remoteAddress),
       traceId,
     };
-    await storage.run({ source, method: c.req.method, path: c.req.path, clock }, () => next());
+    const state = { failureRecorded: false };
+    await storage.run({ source, method: c.req.method, path: c.req.path, clock, state }, () => next());
   };
 }
 

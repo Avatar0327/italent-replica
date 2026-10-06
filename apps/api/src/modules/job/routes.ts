@@ -41,6 +41,7 @@ import type { JobInput, JobPatch } from './types.js';
 import { validateJobAssignment } from './validation.js';
 import { employmentJobPersonnel, trimManagerSync } from './employment-port.js';
 import { createJobObject, updateJobObject } from './write-service.js';
+import { withFailedImportLog } from '../../audit/record.js';
 
 const BASE = '/api/tenant/job';
 registerJobScopeReader({ load: loadJobObject, latest: latestJobObject });
@@ -191,18 +192,22 @@ function registerImport(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         await visibleJob(tx, ctx, scope, input.kind, targetId, row.startDate ?? queryDate(c, ctx));
     };
     const rows = parsed.data as JobImportRow[];
-    return runWrite(
-      c,
-      deps,
-      ctx,
-      input,
-      async (tx, writeCtx) => ({
-        status: 200,
-        body: await importJobObjects(tx, writeCtx, input.kind, rows, (row, target) => guard(tx, row, target)),
-      }),
-      objectCode,
-      (tx) => authorizeJobImportRows(tx, ctx, input.kind, rows, (row, target) => guard(tx, row, target)),
-      (tx, body) => authorizeJobResult(tx, ctx, scope, input.kind, body),
+    // DEC-199：整批失败也留任务级日志
+    const task = { ...ctx, commandId: c.req.header('idempotency-key'), objectType: input.kind, total: rows.length };
+    return withFailedImportLog(deps.db, task, () =>
+      runWrite(
+        c,
+        deps,
+        ctx,
+        input,
+        async (tx, writeCtx) => ({
+          status: 200,
+          body: await importJobObjects(tx, writeCtx, input.kind, rows, (row, target) => guard(tx, row, target)),
+        }),
+        objectCode,
+        (tx) => authorizeJobImportRows(tx, ctx, input.kind, rows, (row, target) => guard(tx, row, target)),
+        (tx, body) => authorizeJobResult(tx, ctx, scope, input.kind, body),
+      ),
     );
   });
 }
