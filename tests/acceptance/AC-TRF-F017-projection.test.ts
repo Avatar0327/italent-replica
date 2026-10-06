@@ -123,6 +123,7 @@ it('F-017 周期内组织后来挂入目标子树，联合峰值不能使用生�
     'PATCH',
     `org/organizations/${w.from.id}`,
     {
+      addEmployment: false,
       effectiveDate: '2026-10-20',
       parents: { admin: { parentId: w.to.id } },
     },

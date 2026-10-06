@@ -256,11 +256,7 @@ describe('AC-EMP-16 / AC-SUB-05 人员组合排序编码', () => {
       await w.api.request('PATCH', `/api/tenant/org/organizations/${a.id}`, {
         ...w.as,
         ifMatch: a.revision,
-        body: {
-          addEmployment: false,
-          effectiveDate: '2026-10-01',
-          parents: { admin: { parentId: w.tenant.id, sequence: 20 } },
-        },
+        body: { effectiveDate: '2026-10-01', parents: { admin: { parentId: w.tenant.id, sequence: 20 } } },
       }),
     );
     expect((await w.list()).map((r) => r.id)).toEqual([first, second]);

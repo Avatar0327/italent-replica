@@ -708,7 +708,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
           await fixture.request('PATCH', `${paths.organization}/${id}`, {
             ...world.asAdmin,
             ifMatch: 1,
-            body: { effectiveDate: TODAY, parents: { admin: { parentId: secondOrg.id } } },
+            body: { addEmployment: false, effectiveDate: TODAY, parents: { admin: { parentId: secondOrg.id } } },
           })
         ).status,
       ).toBe(200);
@@ -872,7 +872,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
         await world.api.request('PATCH', `${paths.organization}/${own.id}`, {
           ...as,
           ifMatch: own.revision,
-          body: { effectiveDate: TODAY, name: '本人可维护' },
+          body: { addEmployment: false, effectiveDate: TODAY, name: '本人可维护' },
         })
       ).status,
     ).toBe(200);
@@ -881,7 +881,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
         await world.api.request('PATCH', `${paths.organization}/${org.id}`, {
           ...as,
           ifMatch: org.revision,
-          body: { effectiveDate: TODAY, name: '无权维护' },
+          body: { addEmployment: false, effectiveDate: TODAY, name: '无权维护' },
         })
       ).status,
     ).toBe(404);

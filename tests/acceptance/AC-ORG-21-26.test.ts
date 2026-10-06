@@ -164,3 +164,25 @@ describe('AC-ORG-21～26 组织调整任职联动', () => {
     expect(await b.world.records(b.employee.id)).toHaveLength(1);
   });
 });
+
+it('AC-ORG-22 按变更生效日归属选人：未来调入者追加，提前调出者不追加', async () => {
+  const { world, root, other, employee } = await setup('org22asof');
+  const incoming = await world.hire('未来调入员工', { departmentId: other.id });
+  for (const [person, departmentId] of [
+    [employee, other.id],
+    [incoming, root.id],
+  ] as const) {
+    await world.business(
+      person.id,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { departmentId } },
+      person.revision,
+    );
+  }
+  const response = await world.patchOrg(root, { effectiveDate: DATE, name: '按日期改名', addEmployment: true });
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect((await world.records(employee.id, DATE)).some((r) => r.kind === 'org_adjustment')).toBe(false);
+  expect((await world.records(incoming.id, DATE)).find((r) => r.kind === 'org_adjustment')).toMatchObject({
+    effectiveDate: DATE,
+    fields: { departmentId: root.id },
+  });
+});

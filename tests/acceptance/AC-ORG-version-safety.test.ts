@@ -56,7 +56,6 @@ describe('AC-ORG-07/11 组织历史版本与结构化引用安全', () => {
     const cyclic = await session.request('PATCH', `/organizations/${a.id}`, {
       ifMatch: a.revision,
       body: {
-        addEmployment: false,
         effectiveDate: '2026-10-02',
         parents: { admin: { parentId: session.tenant.id }, business: { parentId: b.id } },
       },
