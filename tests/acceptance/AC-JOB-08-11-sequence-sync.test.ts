@@ -529,3 +529,27 @@ it('AC-JOB-08 共用编辑服务的导入映射更新透传任职授权，不回
   expect(await worker(db, s.world.tenant.id)).toMatchObject({ completed: 1, failed: 0 });
   expect((await s.world.record(s.current.id)).fields.sequenceId).toBe(s.nextSequence.id);
 });
+
+it('AC-JOB-09 序列 UUID 大小写等价，不把同一引用误判为换序列', async () => {
+  const { db } = testDb();
+  const s = await scenario(db);
+  const response = await s.call(
+    'PATCH',
+    `posts/${s.target.id}`,
+    {
+      sequenceId: s.oldSequence.id.toUpperCase(),
+      effectiveDate: '2026-10-05',
+    },
+    1,
+  );
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ sequenceId: s.oldSequence.id, syncSequenceToAssignments: false });
+  await withTenant(db, s.world.tenant.id, async (tx) => {
+    expect(
+      resultRows(
+        await tx.execute(sql`SELECT id FROM employment_outbox
+      WHERE event_type='job.sequence-sync.requested'`),
+      ),
+    ).toEqual([]);
+  });
+});
