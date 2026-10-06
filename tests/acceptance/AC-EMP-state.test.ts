@@ -71,7 +71,7 @@ async function transition(
 }
 
 describe('AC-EMP-01/11 REQ-EMP-004 申请状态与当前任职分离', () => {
-  it('审批日已晚于生效日时立即生成任职，草稿与审批中始终不增加生效记录', async () => {
+  it('DEC-195 迟到审批按批准日立即生成任职，草稿与审批中不增加生效记录', async () => {
     const { db } = testDb();
     const { session, employee, hire } = await hired(db, 'emp-state-past');
     const draft = await application(session, employee.id, '2026-10-02');
@@ -85,8 +85,9 @@ describe('AC-EMP-01/11 REQ-EMP-004 申请状态与当前任职分离', () => {
     expect(effective).toMatchObject({
       status: 'effective',
       revision: reviewing.revision + 1,
-      record: { effectiveDate: '2026-10-02', previousRecordId: hire.record!.id, fields: { place: '申请地点' } },
+      record: { effectiveDate: '2026-10-03', previousRecordId: hire.record!.id, fields: { place: '申请地点' } },
     });
+    expect((await session.records(employee.id, '2026-10-02')).find((record) => record.isCurrent)?.id).toBe(hire.id);
     const records = await session.records(employee.id, '2026-10-03');
     expect(records).toHaveLength(2);
     expect(records.filter((record) => record.isCurrent)).toEqual([

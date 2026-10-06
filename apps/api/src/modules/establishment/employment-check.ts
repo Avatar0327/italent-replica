@@ -1,3 +1,8 @@
+import { pendingActivationState } from '../employment/activation-store.js';
+import { insertedWindow, recordWindow } from '../employment/reporting-cycle.js';
+import { camelRow, snapshotFields, type EmploymentPayloadRow } from '../employment/record-store.js';
+import { resolveEffectiveInheritance } from '../employment/inheritance.js';
+import { employmentTimelineNeighbors, operationKey, plannedEffectiveDate } from '../employment/timeline.js';
 /** DEC-145 / 18 §11：真实任职投影，条件内且、条件间或；外部人员计数但不拦其调入。 */
 import { auditActor } from '../../system-actor.js';
 import { AppError } from '../../errors.js';
@@ -5,11 +10,54 @@ import { tenantLocalDate } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import type { ActivationTarget } from '../employment/activation-checks.js';
 import type { EmploymentContext, PresetFields } from '../employment/types.js';
-import { findPredecessor, loadEmploymentBusiness } from '../employment/read-model.js';
+import { findPredecessor, loadEmploymentBusiness, loadEmploymentRecord } from '../employment/read-model.js';
 import { loadScheme, type OccupancyRange } from './schemes.js';
-import { subtreeIds } from './org-reader.js';
+import { membershipWindows, clipMembership, type MembershipWindow } from './membership-windows.js';
 import { lockEstablishment, rowsOf } from './store.js';
 import { targetCapacities } from './transfer-service.js';
+
+/** 编辑与向后更新共用：只有部门、职位、人员类型或实际配置的控编条件变化才触发容量检查。 */
+export async function affectsEstablishmentOccupancy(
+  tx: Tx,
+  ctx: EmploymentContext,
+  before: PresetFields,
+  after: PresetFields,
+  effectiveDate: string,
+): Promise<boolean> {
+  const changed = (key: string) => before[key as keyof PresetFields] !== after[key as keyof PresetFields];
+  if (['departmentId', 'positionId', 'employType'].some(changed)) return true;
+  const conditionFields = [
+    'employmentForm',
+    'employmentType',
+    'employmentSource',
+    'postId',
+    'levelId',
+    'gradeId',
+    'sequenceId',
+    'dimension1',
+    'dimension2',
+    'dimension3',
+    'dimension4',
+    'dimension5',
+  ];
+  if (!after.departmentId || !conditionFields.some(changed)) return false;
+  await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
+  const capacityAsOf = [effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
+  const capacities = await targetCapacities(
+    tx,
+    ctx,
+    {
+      targetOrgId: after.departmentId,
+      effectiveDate,
+    },
+    capacityAsOf,
+  );
+  for (const capacity of capacities) {
+    const scheme = await loadScheme(tx, ctx.tenantId, capacity.schemeId, capacityAsOf);
+    if (scheme.occupancyRanges.some((range) => Object.keys(range.conditions ?? {}).some(changed))) return true;
+  }
+  return false;
+}
 
 export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentContext, target: ActivationTarget) {
   if (target.kind !== 'transfer' || !target.departmentId) return false;
@@ -24,7 +72,7 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
     ...(target.fields ?? business?.fields),
     departmentId: target.departmentId,
     positionId: target.positionId,
-    employType: previous?.fields.employType ?? 'internal',
+    employType: target.fields?.employType ?? previous?.fields.employType ?? 'internal',
   };
   if (fields.employType === 'external') return false;
   const transfer = {
@@ -32,15 +80,29 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
     targetOrgId: target.departmentId,
     sourceOrgId: previous?.fields.departmentId ?? target.departmentId,
   };
-  // 周期仍取原调动日；重试允许采用 HR 当天已生效的容量调整，不强迫回溯修改历史编制。
+  // 周期取业务生效日（迟到执行已按 DEC-186 调整）；容量读取允许采用 HR 当天已生效的调整。
   const capacityAsOf = [target.effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
   for (const capacity of await targetCapacities(tx, ctx, transfer, capacityAsOf)) {
     const scheme = await loadScheme(tx, ctx.tenantId, capacity.schemeId, capacityAsOf);
     if (!matchesOccupancy(fields, scheme.occupancyRanges)) continue;
-    const ids = (await subtreeIds(tx, ctx.tenantId, capacity.orgId, target.effectiveDate)).filter(
-      (id) => !scheme.excludedOrgIds.includes(id),
+    const windows = await membershipWindows(
+      tx,
+      ctx.tenantId,
+      capacity.orgId,
+      target.effectiveDate,
+      capacity.periodEnd,
+      scheme.excludedOrgIds,
     );
-    const members = await projectedMembers(tx, ctx, target, capacity.periodStart, capacity.periodEnd, ids);
+    const ids = [...new Set(windows.flatMap((window) => window.orgIds))];
+    const members = await projectedMembers(
+      tx,
+      ctx,
+      { ...target, fields },
+      capacity.periodStart,
+      capacity.periodEnd,
+      ids,
+      windows,
+    );
     const count = (inclusive: boolean, positionId?: string) =>
       members(
         (person) =>
@@ -49,8 +111,8 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
           matchesOccupancy(person, scheme.occupancyRanges),
       );
     const exceeds = (local: number | null, inclusive: number | null, positionId?: string) =>
-      (capacity.orgId === target.departmentId && local !== null && count(false, positionId) + 1 > local) ||
-      (inclusive !== null && count(true, positionId) + 1 > inclusive);
+      (capacity.orgId === target.departmentId && local !== null && count(false, positionId) > local) ||
+      (inclusive !== null && count(true, positionId) > inclusive);
     if (capacity.strictControl && exceeds(capacity.localCapacity, capacity.inclusiveCapacity)) return true;
     if (scheme.subdivision === 'position') {
       const part = capacity.subdivisions.find((item) => item.positionId === target.positionId);
@@ -114,51 +176,15 @@ async function projectedMembers(
   start: string,
   end: string,
   orgIds: readonly string[],
+  windows: readonly MembershipWindow[],
 ) {
   // P2-1：读取目标日到周期末（给了 target.until 则到它为止，R1-T11 恢复区间）的真实主职区间，在变化点取人数峰值。
   const periodEnd = new Date(Date.parse(end) + 86400000).toISOString().slice(0, 10);
   const windowEnd = target.until && target.until < periodEnd ? target.until : periodEnd;
-  // SQL 先按目标子树裁剪；时间轴区间天然包含直接调入、调出、入职、离职等已落地业务。
-  // 排除本人后由调用方加本次一人；同人多单按区间并集计数，不重复占编。
-  const rows = rowsOf<{ employeeId: string; fields: Record<string, unknown>; from: string; until: string }>(
-    await tx.execute(sql`
-    SELECT r.employee_id AS "employeeId", COALESCE(p.body,to_jsonb(r)) AS fields,
-      GREATEST(lower(t.valid_during),${target.effectiveDate}::date)::text AS "from",
-      LEAST(upper(t.valid_during),${windowEnd}::date)::text AS until
-    FROM employment_timeline t JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-    LEFT JOIN LATERAL (SELECT to_jsonb(p) AS body FROM employment_payload_versions p
-      WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
-      ORDER BY p.version_no DESC LIMIT 1) p ON true
-    WHERE t.tenant_id=${ctx.tenantId}
-      AND t.valid_during && daterange(${target.effectiveDate}::date,${windowEnd}::date,'[)')
-      AND (COALESCE(p.body,to_jsonb(r))->>'department_id')::uuid = ANY(${`{${orgIds.join(',')}}`}::uuid[])
-      AND r.service_type='primary' AND r.kind NOT IN ('leave','retirement')
-      AND r.employee_id<>${target.employeeId}::uuid
-    ORDER BY r.employee_id LIMIT 100001
-  `),
-  );
-  if (rows.length > 100000) throw new AppError('SERVICE_UNAVAILABLE', '编制实有人员超过处理上限');
-  // 申请单只在指定占用/释放时机后参与；撤回/驳回自动退出，已落地单不重复统计。
-  const pending = rowsOf<{ employeeId: string; fields: Record<string, unknown>; state: string }>(
-    await tx.execute(sql`
-    SELECT b.employee_id AS "employeeId",
-      to_jsonb(p) || jsonb_build_object('employ_type',COALESCE(current_record.employ_type,'internal')) AS fields,s.state
-    FROM employment_business_objects b
-    JOIN LATERAL (SELECT * FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id
-      ORDER BY version_no DESC LIMIT 1) p ON true
-    JOIN LATERAL (SELECT state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id
-      ORDER BY event_no DESC LIMIT 1) s ON true
-    LEFT JOIN LATERAL (SELECT r.employ_type FROM employment_timeline t
-      JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-      WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id
-        AND t.valid_during @> p.effective_date AND r.service_type='primary' LIMIT 1) current_record ON true
-    WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id<>${target.employeeId}::uuid
-      AND p.kind='transfer' AND p.mode='application' AND s.state IN ('in_review','approved')
-      AND p.effective_date BETWEEN ${start}::date AND ${end}::date
-    ORDER BY p.effective_date,b.id LIMIT 10001
-  `),
-  );
-  if (pending.length > 10000) throw new AppError('SERVICE_UNAVAILABLE', '编制占用申请超过处理上限');
+  // 本次按实际区间并入同一端点扫描，不能把本人当成永久占编的常量。
+  const rows = await occupancyRows(tx, ctx, target, windowEnd, orgIds);
+  // DEC-195：迟到申请及待复查的直接调动按实际执行日投影，原计划日决定同日顺序。
+  // 已落地单用冻结字段替换其旧区间，不重复占编；撤回/驳回自动退出。
   const { readSettings } = await import('./settings.js');
   const timings = await readSettings(tx, ctx.tenantId, target.effectiveDate);
   const members = new Map<string, MemberInterval[]>();
@@ -167,20 +193,65 @@ async function projectedMembers(
     intervals.push({ employeeId: row.employeeId, fields: camelFields(row.fields), from: row.from, until: row.until });
     members.set(row.employeeId, intervals);
   }
-  // 申请仍按方案占用/释放时机投影整个周期；按日期处理同人多单，不重复叠加预占。
-  for (const row of pending) {
-    const previous = members.get(row.employeeId) ?? [];
-    const intervals = timings.transferOut === 'submitted' || row.state === 'approved' ? [] : previous;
-    if (timings.transferIn === 'submitted' || row.state === 'approved') {
-      intervals.push({
-        employeeId: row.employeeId,
-        fields: camelFields(row.fields),
-        from: target.effectiveDate,
-        until: windowEnd,
+  // DEC-108：同日按最近提交的实际操作序号投影，不能按 UUID 排序。
+  const projectedPredecessors = new Map<string, Awaited<ReturnType<typeof findPredecessor>>>();
+  for (const row of await pendingTransfers(tx, ctx, target, start, end)) {
+    const raw = camelRow(row.fields);
+    const payload = { ...raw, fields: snapshotFields(raw) } as unknown as EmploymentPayloadRow;
+    const window = await insertedWindow(tx, ctx, row.employeeId, payload.effectiveDate, payload.businessId);
+    if (!window) continue;
+    const { previous: point } = await employmentTimelineNeighbors(
+      tx,
+      ctx,
+      row.employeeId,
+      payload.effectiveDate,
+      payload.businessId,
+    );
+    const original = point ? await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, payload.effectiveDate) : null;
+    const projected = projectedPredecessors.get(row.employeeId);
+    const predecessor =
+      projected && (!original || projected.effectiveDate >= original.effectiveDate) ? projected : original;
+    const materialized =
+      row.state === 'effective'
+        ? await loadEmploymentRecord(tx, ctx.tenantId, payload.businessId, payload.effectiveDate)
+        : null;
+    const resolved =
+      materialized ??
+      (await resolveEffectiveInheritance(tx, ctx, payload, {
+        staffId: payload.selectedStaffId ?? predecessor?.staffId ?? '',
+        predecessor,
+      }));
+    const fields = {
+      ...resolved.fields,
+      employType: resolved.fields.employType ?? predecessor?.fields.employType ?? 'internal',
+    };
+    if (predecessor)
+      projectedPredecessors.set(row.employeeId, {
+        ...predecessor,
+        id: payload.businessId,
+        fields,
+        effectiveDate: payload.effectiveDate,
       });
-    }
+    const from = [payload.effectiveDate, target.effectiveDate].sort().at(-1)!;
+    const until = window?.to && window.to < windowEnd ? window.to : windowEnd;
+    if (!window || from >= until) continue;
+    const previous = members.get(row.employeeId) ?? [];
+    const intervals =
+      timings.transferOut === 'submitted' || row.state !== 'in_review'
+        ? previous.flatMap((interval) => {
+            if (interval.until <= from || interval.from >= until) return [interval];
+            return [
+              ...(interval.from < from ? [{ ...interval, until: from }] : []),
+              ...(interval.until > until ? [{ ...interval, from: until }] : []),
+            ];
+          })
+        : previous;
+    if (timings.transferIn === 'submitted' || row.state !== 'in_review')
+      intervals.push({ employeeId: row.employeeId, fields, from, until });
     members.set(row.employeeId, intervals);
   }
+  await projectTarget(tx, ctx, target, windowEnd, members, timings.transferOut);
+  for (const [id, intervals] of members) members.set(id, clipMembership(intervals, windows));
   return (matches: (fields: Partial<PresetFields>) => boolean) => maximumMembers(members, matches);
 }
 
@@ -226,4 +297,133 @@ function camelFields(fields: Record<string, unknown>): Partial<PresetFields> {
       value,
     ]),
   );
+}
+
+async function occupancyRows(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget,
+  until: string,
+  orgIds: readonly string[],
+) {
+  const rows = rowsOf<{ employeeId: string; fields: Record<string, unknown>; from: string; until: string }>(
+    await tx.execute(sql`
+    SELECT r.employee_id AS "employeeId", COALESCE(p.body,to_jsonb(r)) AS fields,
+      GREATEST(lower(t.valid_during),${target.effectiveDate}::date)::text AS "from",
+      LEAST(upper(t.valid_during),${until}::date)::text AS until
+    FROM employment_timeline t JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+    LEFT JOIN LATERAL (SELECT to_jsonb(p) AS body FROM employment_payload_versions p
+      WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
+      ORDER BY p.version_no DESC LIMIT 1) p ON true
+    WHERE t.tenant_id=${ctx.tenantId} AND t.valid_during && daterange(${target.effectiveDate}::date,${until}::date,'[)')
+      AND (COALESCE(p.body,to_jsonb(r))->>'department_id')::uuid = ANY(${`{${orgIds.join(',')}}`}::uuid[])
+      AND r.service_type='primary' AND r.kind NOT IN ('leave','retirement')
+      AND r.id<>${target.businessId}::uuid
+    ORDER BY r.employee_id LIMIT 100001
+  `),
+  );
+  if (rows.length > 100000) throw new AppError('SERVICE_UNAVAILABLE', '编制实有人员超过处理上限');
+  return rows;
+}
+
+/** 删除恢复校验先于 deleted 状态事件，已写墓碑的业务不能再占编或截断恢复区间（P2-M1）。 */
+async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: ActivationTarget, start: string, end: string) {
+  const date = sql`greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date)`;
+  const pending = rowsOf<{ employeeId: string; fields: Record<string, unknown>; state: string }>(
+    await tx.execute(sql`
+    SELECT b.employee_id AS "employeeId",
+      to_jsonb(p) || jsonb_build_object('employ_type',COALESCE(current_record.employ_type,'internal'),
+        'effective_date',${date}) AS fields,s.state
+    FROM employment_business_objects b
+    JOIN LATERAL (SELECT * FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id
+      ORDER BY version_no DESC LIMIT 1) p ON true
+    JOIN LATERAL (SELECT state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id
+      ORDER BY event_no DESC LIMIT 1) s ON true
+    LEFT JOIN LATERAL (SELECT r.employ_type FROM employment_timeline t
+      JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+      WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id
+        AND t.valid_during @> p.effective_date AND r.service_type='primary' LIMIT 1) current_record ON true
+    WHERE b.tenant_id=${ctx.tenantId} AND b.id<>${target.businessId}::uuid
+      AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones tombstone
+        WHERE tombstone.tenant_id=b.tenant_id AND tombstone.employee_id=b.employee_id AND tombstone.record_id=b.id)
+      AND p.kind='transfer' AND (p.mode='application' AND s.state IN ('in_review','approved')
+        OR s.state='effective' AND p.effective_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date
+          AND ${pendingActivationState(ctx.timezone)})
+      AND ${date} BETWEEN ${start}::date AND ${end}::date
+    ORDER BY ${date},${plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`)},
+      ${operationKey(ctx.tenantId, sql`b.id`)} LIMIT 10001
+  `),
+  );
+  if (pending.length > 10000) throw new AppError('SERVICE_UNAVAILABLE', '编制占用申请超过处理上限');
+  return pending;
+}
+
+async function projectTarget(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget,
+  periodUntil: string,
+  members: Map<string, MemberInterval[]>,
+  transferOut: string,
+) {
+  const [existing] = rowsOf(
+    await tx.execute(sql`SELECT 1 FROM employment_timeline
+    WHERE tenant_id=${ctx.tenantId} AND record_id=${target.businessId}::uuid`),
+  );
+  const window = existing
+    ? await recordWindow(tx, ctx.tenantId, target.businessId)
+    : await insertedWindow(tx, ctx, target.employeeId, target.effectiveDate, target.businessId);
+  if (window) {
+    const from = [window.from, target.effectiveDate].sort().at(-1)!;
+    const next = await nextReservedTransfer(tx, ctx, target, transferOut);
+    const until = [window.to ?? periodUntil, next ?? periodUntil, periodUntil].sort()[0]!;
+    if (from < until)
+      members.set(target.employeeId, [
+        ...(members.get(target.employeeId) ?? []).flatMap((interval) => {
+          if (interval.until <= from || interval.from >= until) return [interval];
+          return [
+            ...(interval.from < from ? [{ ...interval, until: from }] : []),
+            ...(interval.until > until ? [{ ...interval, from: until }] : []),
+          ];
+        }),
+        {
+          employeeId: target.employeeId,
+          fields: target.fields ?? {},
+          from,
+          until,
+        },
+      ]);
+  }
+}
+
+/** 本人后续申请也有占用/释放时点；审批早提交单不能覆盖同日在后的投影。 */
+async function nextReservedTransfer(tx: Tx, ctx: EmploymentContext, target: ActivationTarget, transferOut: string) {
+  const mine = operationKey(ctx.tenantId, sql`${target.businessId}::uuid`);
+  const date = sql`greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date)`;
+  const planned = plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`);
+  const minePlanned = plannedEffectiveDate(
+    ctx.tenantId,
+    sql`${target.businessId}::uuid`,
+    sql`${target.effectiveDate}::date`,
+  );
+  const [next] = rowsOf<{ date: string }>(
+    await tx.execute(sql`
+    SELECT ${date}::text AS date FROM employment_business_objects b
+    JOIN LATERAL (SELECT * FROM employment_payload_versions p WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id
+      ORDER BY version_no DESC LIMIT 1) p ON true
+    JOIN LATERAL (SELECT state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id
+      ORDER BY event_no DESC LIMIT 1) s ON true
+    WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${target.employeeId}::uuid AND b.id<>${target.businessId}::uuid
+      AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones tombstone
+        WHERE tombstone.tenant_id=b.tenant_id AND tombstone.employee_id=b.employee_id AND tombstone.record_id=b.id)
+      AND p.kind='transfer'
+      AND (p.mode='application' AND (s.state='approved' OR s.state='in_review' AND ${transferOut}='submitted')
+        OR s.state='effective' AND p.effective_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date
+          AND ${pendingActivationState(ctx.timezone)})
+      AND (${date}>${target.effectiveDate}::date OR ${date}=${target.effectiveDate}::date
+        AND (${planned}>${minePlanned} OR ${planned}=${minePlanned}
+          AND ${operationKey(ctx.tenantId, sql`b.id`)}>${mine}))
+    ORDER BY ${date},${planned},${operationKey(ctx.tenantId, sql`b.id`)} LIMIT 1`),
+  );
+  return next?.date;
 }

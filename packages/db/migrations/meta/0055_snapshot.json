@@ -1,6 +1,6 @@
 {
-  "id": "a50da3cc-8747-468f-8557-39e13a2a8388",
-  "prevId": "e285ac47-ffa0-4c0f-874b-b3c4b2d24e84",
+  "id": "23887fa4-526b-4023-a3a0-bbb5be316093",
+  "prevId": "614987db-33e0-4496-93be-32b2787f3fc2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1320,6 +1320,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "contract_configuration": {
+          "name": "contract_configuration",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "status": {
           "name": "status",
@@ -24742,6 +24749,51 @@
           ],
           "onUpdate": "no action",
           "onDelete": "no action"
+        },
+        "contract_records_previous_tenant_fk": {
+          "name": "contract_records_previous_tenant_fk",
+          "tableFrom": "contract_records",
+          "columnsFrom": [
+            "tenant_id",
+            "previous_contract_id"
+          ],
+          "tableTo": "contract_records",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "contract_records_root_tenant_fk": {
+          "name": "contract_records_root_tenant_fk",
+          "tableFrom": "contract_records",
+          "columnsFrom": [
+            "tenant_id",
+            "root_contract_id"
+          ],
+          "tableTo": "contract_records",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "contract_records_employment_tenant_fk": {
+          "name": "contract_records_employment_tenant_fk",
+          "tableFrom": "contract_records",
+          "columnsFrom": [
+            "tenant_id",
+            "employment_record_id"
+          ],
+          "tableTo": "employment_records",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -25110,6 +25162,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "submitted_fields": {
+          "name": "submitted_fields",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "mode": {
           "name": "mode",
           "type": "text",
@@ -25264,6 +25322,36 @@
             "company_id"
           ],
           "tableTo": "contract_companies",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "contract_requests_result_tenant_fk": {
+          "name": "contract_requests_result_tenant_fk",
+          "tableFrom": "contract_requests",
+          "columnsFrom": [
+            "tenant_id",
+            "result_id"
+          ],
+          "tableTo": "contract_records",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "contract_requests_employment_tenant_fk": {
+          "name": "contract_requests_employment_tenant_fk",
+          "tableFrom": "contract_requests",
+          "columnsFrom": [
+            "tenant_id",
+            "employment_record_id"
+          ],
+          "tableTo": "employment_records",
           "columnsTo": [
             "tenant_id",
             "id"
@@ -25522,6 +25610,12 @@
         "closed_at": {
           "name": "closed_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "legacy_reminder_date": {
+          "name": "legacy_reminder_date",
+          "type": "date",
           "primaryKey": false,
           "notNull": false
         }

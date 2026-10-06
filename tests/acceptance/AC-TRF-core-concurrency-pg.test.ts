@@ -85,7 +85,7 @@ describe.runIf(realPostgres)('AC-TRF 核心真 PG 交错', () => {
     expect((await w.runScheduler('2026-10-05T02:10:00Z')).activated).toEqual([]);
   });
 
-  it('直接调动持员工锁时调度跳过；下轮落地较早申请并插入直接调动之前，不重复生效', async () => {
+  it('直接转正持员工锁时调度跳过；下轮落地较早申请并插入直接转正之前，不重复生效', async () => {
     const w = await activationWorld(testDb().db, 'trf-core-pg-direct-first');
     const { employee, hire } = await w.hired();
     const approved = await w.approve(
@@ -95,11 +95,16 @@ describe.runIf(realPostgres)('AC-TRF 核心真 PG 交错', () => {
     w.session.setNow('2026-10-05T02:00:00Z');
     const revision = (await w.session.getEmployee(employee.id)).revision;
     const [request, scheduled] = await w.db.transaction(async (barrier) => {
-      // SHARE 允许调度读取候选，阻塞直接调动持员工锁后的业务 INSERT。
+      // SHARE 允许调度读取候选，阻塞直接转正持员工锁后的业务 INSERT。
       await barrier.execute(sql`LOCK TABLE employment_business_objects IN SHARE MODE`);
       const direct = w.session.request('POST', `/employees/${employee.id}/businesses`, {
         ifMatch: revision,
-        body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { place: '直接调动地点' } },
+        body: {
+          kind: 'regularization',
+          mode: 'direct',
+          effectiveDate: '2026-10-05',
+          fields: { place: '直接转正地点' },
+        },
       });
       await waitForBlocked(w.db, 1);
       const run = await w.runScheduler('2026-10-05T02:00:00Z');

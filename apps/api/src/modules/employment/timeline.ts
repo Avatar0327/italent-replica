@@ -23,6 +23,15 @@ export function operationKey(tenantId: string, businessId: SQL): SQL {
     FROM employment_state_events e WHERE e.tenant_id = ${tenantId} AND e.business_id = ${businessId})`;
 }
 
+/** DEC-195：改到同日后仍按原计划日排序；无改期事件则使用当前业务日期。 */
+export function plannedEffectiveDate(tenantId: string, businessId: SQL, fallback: SQL): SQL {
+  return sql`COALESCE((SELECT (e.payload->'after'->>'originalEffectiveDate')::date
+    FROM employment_outbox e WHERE e.tenant_id=${tenantId} AND e.business_id=${businessId}
+      AND e.event_type='employment.transfer.rescheduled' ORDER BY e.created_at,e.id LIMIT 1),
+    (SELECT p.effective_date FROM employment_payload_versions p
+      WHERE p.tenant_id=${tenantId} AND p.business_id=${businessId} ORDER BY p.version_no DESC LIMIT 1), ${fallback})`;
+}
+
 /** 新记录在时间轴上的位置；shifted 表示当日已有操作更晚的记录，新记录插在它们之前（它们依次后移一位）。 */
 export interface TimelinePosition {
   readonly date: string;
@@ -43,12 +52,17 @@ export async function timelinePosition(
   recordId?: string,
 ): Promise<TimelinePosition> {
   const mine = recordId ? operationKey(ctx.tenantId, sql`${recordId}::uuid`) : sql`NULL::bigint`;
+  const planned = recordId
+    ? plannedEffectiveDate(ctx.tenantId, sql`${recordId}::uuid`, sql`${date}::date`)
+    : sql`${date}::date`;
   const [row] = rowsOf<{ before: number | null; append: number }>(
     await tx.execute(sql`
     SELECT
       (SELECT min(t.sort_order) FROM employment_timeline t
         WHERE t.tenant_id=${ctx.tenantId} AND t.employee_id=${employeeId}::uuid AND t.start_date=${date}::date
-          AND ${operationKey(ctx.tenantId, sql`t.record_id`)} > ${mine})::int AS before,
+          AND (${plannedEffectiveDate(ctx.tenantId, sql`t.record_id`, sql`t.start_date`)} > ${planned}
+            OR (${plannedEffectiveDate(ctx.tenantId, sql`t.record_id`, sql`t.start_date`)} = ${planned}
+              AND ${operationKey(ctx.tenantId, sql`t.record_id`)} > ${mine})))::int AS before,
       (SELECT COALESCE(max(sort_order) + 1, 0) FROM employment_timeline
         WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND start_date=${date}::date)::int AS append
   `),

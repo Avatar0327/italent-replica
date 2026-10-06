@@ -209,7 +209,7 @@ describe('AC-TRF 保存校验 DEC-150 / DEC-154', () => {
     expect(direct.status).toBe('effective');
   });
 
-  it('DEC-154：别人的在途调动不拦截本员工，自己的草稿与审批通过也不误拦', async () => {
+  it('DEC-154：别人的在途调动不拦截本员工，自己的草稿不误拦，DEC-182 已批准未生效拒绝', async () => {
     const w = await activationWorld(testDb().db, 'trf154-boundaries');
     const first = await w.hired('在途员工');
     const second = await w.hired('可直接调动员工');
@@ -230,15 +230,12 @@ describe('AC-TRF 保存校验 DEC-150 / DEC-154', () => {
       '2026-10-02T02:00:00Z',
     );
     expect(approved.status).toBe('approved');
-    expect(
-      (
-        await w.session.business(
-          second.employee.id,
-          { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-01', fields: { place: '审批后允许' } },
-          (await w.session.getEmployee(second.employee.id)).revision,
-        )
-      ).status,
-    ).toBe('effective');
+    const blocked = await w.session.request('POST', `/employees/${second.employee.id}/businesses`, {
+      ifMatch: (await w.session.getEmployee(second.employee.id)).revision,
+      body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-01', fields: { place: '审批后拒绝' } },
+    });
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({ error: { details: { reason: 'TRANSFER_APPROVED_PENDING' } } });
   });
 });
 

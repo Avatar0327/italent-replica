@@ -1,5 +1,5 @@
 {
-  "id": "ece02fad-d1bb-4893-8d2d-0374c383ea15",
+  "id": "e285ac47-ffa0-4c0f-874b-b3c4b2d24e84",
   "prevId": "845c9f21-b8f9-42b5-a1e3-fe7a759fcd89",
   "version": "7",
   "dialect": "postgresql",
@@ -1320,13 +1320,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "contract_configuration": {
-          "name": "contract_configuration",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "status": {
           "name": "status",
@@ -24749,51 +24742,6 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "contract_records_previous_tenant_fk": {
-          "name": "contract_records_previous_tenant_fk",
-          "tableFrom": "contract_records",
-          "tableTo": "contract_records",
-          "columnsFrom": [
-            "tenant_id",
-            "previous_contract_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "contract_records_root_tenant_fk": {
-          "name": "contract_records_root_tenant_fk",
-          "tableFrom": "contract_records",
-          "tableTo": "contract_records",
-          "columnsFrom": [
-            "tenant_id",
-            "root_contract_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "contract_records_employment_tenant_fk": {
-          "name": "contract_records_employment_tenant_fk",
-          "tableFrom": "contract_records",
-          "tableTo": "employment_records",
-          "columnsFrom": [
-            "tenant_id",
-            "employment_record_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -25162,12 +25110,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "submitted_fields": {
-          "name": "submitted_fields",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "mode": {
           "name": "mode",
           "type": "text",
@@ -25321,36 +25263,6 @@
           "columnsFrom": [
             "tenant_id",
             "company_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "contract_requests_result_tenant_fk": {
-          "name": "contract_requests_result_tenant_fk",
-          "tableFrom": "contract_requests",
-          "tableTo": "contract_records",
-          "columnsFrom": [
-            "tenant_id",
-            "result_id"
-          ],
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "contract_requests_employment_tenant_fk": {
-          "name": "contract_requests_employment_tenant_fk",
-          "tableFrom": "contract_requests",
-          "tableTo": "employment_records",
-          "columnsFrom": [
-            "tenant_id",
-            "employment_record_id"
           ],
           "columnsTo": [
             "tenant_id",
@@ -25557,6 +25469,143 @@
       },
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.transfer_completion_todos": {
+      "name": "transfer_completion_todos",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "field_code": {
+          "name": "field_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "effective_date": {
+          "name": "effective_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "transfer_completion_todos_open_field": {
+          "name": "transfer_completion_todos_open_field",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "field_code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"transfer_completion_todos\".\"closed_at\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "transfer_completion_todos_tenant_id_tenants_id_fk": {
+          "name": "transfer_completion_todos_tenant_id_tenants_id_fk",
+          "tableFrom": "transfer_completion_todos",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_completion_todos_business_fk": {
+          "name": "transfer_completion_todos_business_fk",
+          "tableFrom": "transfer_completion_todos",
+          "tableTo": "employment_business_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "business_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "transfer_completion_todos_tenant_id": {
+          "name": "transfer_completion_todos_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "transfer_completion_todos_field": {
+          "name": "transfer_completion_todos_field",
+          "value": "\"transfer_completion_todos\".\"field_code\" LIKE 'preset:%'"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.transfer_form_fields": {

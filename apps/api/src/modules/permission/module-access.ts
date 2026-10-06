@@ -19,7 +19,10 @@ export function registerScopeProvider(authorize: Authorizer, provider: AccessPro
 }
 export function authorizeInTransaction(authorize: Authorizer, tx: Tx): Authorizer {
   const provider = providers.get(authorize);
-  return provider ? (request) => provider.authorize(request, tx) : authorize;
+  if (!provider) return authorize;
+  const bound: Authorizer = (request) => provider.authorize(request, tx);
+  providers.set(bound, provider);
+  return bound;
 }
 
 type Deps = Pick<TenantRouteDeps, 'authorize' | 'db' | 'clock'>;
@@ -204,4 +207,25 @@ export async function scopeAllowsInTransaction(tx: Tx, scope: ModuleScope, targe
     allowed: boolean;
   }[];
   return rows[0]?.allowed === true;
+}
+
+/** DEC-178：联动对象独立解析当前范围，不能沿用源对象的看全部权限或选择例外。 */
+export async function linkedObjectScope(
+  tx: Tx,
+  ctx: TenantContext & { authorize?: Authorizer; now: Date; scope?: ModuleScope },
+  objectCode: string,
+) {
+  const provider = ctx.authorize && providers.get(ctx.authorize);
+  return provider
+    ? provider.scope(
+        {
+          tenantId: ctx.tenantId,
+          userId: ctx.userId,
+          appCode: ORG_EMPLOYEE_APP,
+          asOf: tenantLocalDate(ctx.now, ctx.timezone),
+          objectCode,
+        },
+        tx,
+      )
+    : ctx.scope;
 }
