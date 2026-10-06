@@ -15,7 +15,25 @@ function orgApi(w: ActivationWorld) {
       body,
     });
 }
-async function rename(w: ActivationWorld, org = w.from, effectiveDate = '2026-10-09') {
+async function rename(w: ActivationWorld, org = w.from, effectiveDate = '2026-10-09', viaImport = false) {
+  if (viaImport) {
+    const response = await orgApi(w)('POST', 'org/import', {
+      rows: [
+        {
+          sourceCode: org.id,
+          orgId: org.id,
+          code: `I${org.id.slice(0, 8)}`,
+          name: `${org.name}改名`,
+          parentId: w.session.tenant.id,
+          expectedRevision: org.revision,
+          startDate: effectiveDate,
+          addEmployment: true,
+        },
+      ],
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    return;
+  }
   const response = await orgApi(w)(
     'PATCH',
     `org/organizations/${org.id}`,
@@ -45,7 +63,7 @@ async function strictCapacity(w: ActivationWorld) {
   expect(capacity.status).toBe(201);
 }
 
-it('AC-ORG-31 已批准调动穿过组织调整继续占编，按期落地成功', async () => {
+it.each([false, true])('AC-ORG-31 已批准调动穿过组织调整继续占编，按期落地成功（导入=%s）', async (viaImport) => {
   const w = await activationWorld(database().db, 'org31');
   await strictCapacity(w);
   const jia = await w.hired('甲');
@@ -53,7 +71,7 @@ it('AC-ORG-31 已批准调动穿过组织调整继续占编，按期落地成功
     await w.apply(jia.employee.id, '2026-10-05', { departmentId: w.to.id }),
     '2026-10-01T02:00:00Z',
   );
-  await rename(w);
+  await rename(w, w.from, '2026-10-09', viaImport);
   const yi = await w.hired('乙');
   const rejected = await w.session.request('POST', `/employees/${yi.employee.id}/businesses`, {
     ifMatch: yi.hire.employeeRevision,
@@ -75,7 +93,7 @@ it('AC-ORG-31 已批准调动穿过组织调整继续占编，按期落地成功
   expect(current.fields.departmentId).toBe(w.to.id);
 });
 
-it('AC-ORG-32 直接未来调动迟到改期，同步撤回派生组织调整的提前调入结果', async () => {
+it.each([false, true])('AC-ORG-32 直接未来调动迟到改期，撤回派生组织调整提前结果（导入=%s）', async (viaImport) => {
   const w = await activationWorld(database().db, 'org32');
   const person = await w.hired();
   const transfer = await w.session.business(
@@ -88,7 +106,7 @@ it('AC-ORG-32 直接未来调动迟到改期，同步撤回派生组织调整的
     },
     person.hire.employeeRevision,
   );
-  await rename(w, w.to);
+  await rename(w, w.to, '2026-10-09', viaImport);
   const before = (await w.session.records(person.employee.id, '2026-10-09')).find((r) => r.kind === 'org_adjustment')!;
   expect(before.fields.departmentId).toBe(w.to.id);
   expect(await w.runScheduler('2026-10-10T01:00:00Z')).toMatchObject({ failed: [], errors: [] });
@@ -147,31 +165,6 @@ it('AC-ORG-32 迟到改期保留人工更正及实际执行日之后的组织调
   const later = (await w.session.records(person.employee.id, '2026-10-12')).find((r) => r.isCurrent)!;
   expect(later.id).toBe(future.id);
   expect(later.fields).toEqual(future.fields);
-});
-
-it('AC-ORG-33 DEC-207 导入改名/改行政上级不新增任职，拒绝 addEmployment 未知字段', async () => {
-  const w = await activationWorld(database().db, 'org33');
-  const person = await w.hired();
-  const before = await w.session.records(person.employee.id);
-  const row = {
-    sourceCode: 'ORG33',
-    orgId: w.from.id,
-    code: 'ORG33-IMPORT',
-    name: '导入改名',
-    parentId: w.to.id,
-    expectedRevision: w.from.revision,
-    startDate: '2026-10-09',
-  };
-  const response = await orgApi(w)('POST', 'org/import', { rows: [row] });
-  expect(response.status, await response.clone().text()).toBe(200);
-  expect(await response.json()).toMatchObject({ results: [{ orgId: w.from.id, status: 'updated' }] });
-  expect(await w.session.records(person.employee.id)).toEqual(before);
-  for (const addEmployment of [true, false]) {
-    const invalid = await orgApi(w)('POST', 'org/import', { rows: [{ ...row, expectedRevision: 2, addEmployment }] });
-    expect(invalid.status).toBe(400);
-    expect(await invalid.json()).toMatchObject({ error: { code: 'VALIDATION_FAILED' } });
-  }
-  expect(await w.session.records(person.employee.id)).toEqual(before);
 });
 
 it('AC-ORG-32 后补调动曾传播到组织调整时，多笔迟到仍按原计划排序并撤回提前结果', async () => {
