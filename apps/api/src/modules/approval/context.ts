@@ -3,6 +3,7 @@ import { sql, type Tx } from '@italent/db';
 import { AppError, type ErrorCode } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { recordAudit } from '../../audit/record.js';
+import type { ForeignField } from './foreign-fields.js';
 
 /**
  * 用户 / 租户 ID 按数据库 UUID 语义规范化（与 R6-1 派单闸锁键同口径）：入参已校验为 8-4-4-4-12 的十六进制写法，
@@ -16,6 +17,8 @@ export function canonicalId(id: string): string {
 /** 按用户解析某业务对象的可查看字段（undefined = 全部可见）；由路由用授权器注入。 */
 export interface FieldAccess {
   viewable(tx: Tx, userId: string, objectCode: string): Promise<ReadonlySet<string> | undefined>;
+  /** 载荷中嵌套的其他对象字段（foreign-fields.ts）；未提供时按看不到处理。 */
+  foreignVisible?(tx: Tx, userId: string, field: ForeignField): Promise<boolean>;
 }
 
 /** 审批命令上下文：时钟与命令 ID 由路由注入，事件时间存 UTC（DEC-056）。 */

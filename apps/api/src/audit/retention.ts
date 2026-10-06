@@ -1,6 +1,6 @@
 /**
  * 日志保留期的定时清理（docs/02_业务建模/20 §5 第 4 条；REQ-AUD-001 R5；AGENTS.md §10「定时任务」）。
- * - 只经平台路径触发（与定时生效同一形态）：遍历启用中的租户，逐租户分批调用迁移 0057 的 purge_expired_audit
+ * - 只经平台路径触发（与定时生效同一形态）：遍历启用中的租户，逐租户分批调用迁移 0058 的 purge_expired_audit
  *   （只授予平台角色；保留月数由函数读取租户配置，调用方无法缩短，PR #75 第二轮 P2-2）；租户接口上没有触发入口；
  * - 可重复执行：截止日由“业务日期 − 保留月数”确定，重跑只会删到同一截止日；同一命令 ID 重放首次结果（平台台账）；
  * - 留痕：每批有日志被清理时，函数在同一事务里写一条「日志清理」对象操作日志（操作人“系统”、来源动作“定时任务”），
@@ -92,7 +92,7 @@ export async function runAuditRetention(
 }
 
 /**
- * 一个租户按批清理到截止日：每批一个平台路径事务（迁移 0057 的 purge_expired_audit 只授予平台角色，保留月数在
+ * 一个租户按批清理到截止日：每批一个平台路径事务（迁移 0058 的 purge_expired_audit 只授予平台角色，保留月数在
  * 函数内读取租户配置，本批的「日志清理」操作日志在同一事务写入），控制单事务锁持有时长；批数设上限防失控。
  */
 async function purgeTenant(db: Db, meta: PlatformCommandMeta, tenantId: string, now: Date): Promise<AuditRetentionRun> {

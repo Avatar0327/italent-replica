@@ -58,7 +58,9 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
       CASE WHEN 'preset:positionId' = ANY(p.explicit_field_codes) THEN p.position_id END AS "positionId",
       (s.state='effective') AS materialized,
       (s.state='effective' AND NOT (COALESCE(p.is_department_head,false) OR COALESCE(p.is_store_manager,false)
-        OR COALESCE(cardinality(p.added_subordinate_ids),0)>0)) AS "reminderOnly",
+        OR COALESCE(cardinality(p.added_subordinate_ids),0)>0
+        OR EXISTS (SELECT 1 FROM transfer_linkage_versions v
+          WHERE v.tenant_id=b.tenant_id AND v.business_id=b.id))) AS "reminderOnly",
       a.outcome AS "lastOutcome", a.blocked_by_business_id AS "lastBlockedBy",
       COALESCE(a.attempt_no, 0) AS "lastAttemptNo"
     FROM employment_business_objects b

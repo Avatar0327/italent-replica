@@ -49,7 +49,7 @@ export async function recomputeOrderCodes(tx: Tx, ctx: PersonnelContext, checkRe
       RETURNING employee_id,order_code,revision
     ), audited AS (
       -- 集合写入同样走统一审计口径（P2-6）：来源取本请求上下文；操作类型、字段差异、归属与“定时任务”来源
-      -- 由迁移 0057 的触发器按同一规则补齐
+      -- 由迁移 0058 的触发器按同一规则补齐
       INSERT INTO audit_events(tenant_id,actor_user_id,action,object_type,object_id,
         "before","after",command_id,occurred_at,${source.columns})
       SELECT ${ctx.tenantId},${auditActor(ctx.userId)}::uuid,'personnel.order.recompute','personnel-order-code',

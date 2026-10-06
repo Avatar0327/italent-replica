@@ -43,7 +43,7 @@ export interface AuditEventInput {
   readonly commandId?: string | null;
   readonly occurredAt?: Date;
   readonly source?: AuditSource;
-  /** DEC-197 归属：写入方确知时显式给出（如人员子集记录的所属人员）；未给的由迁移 0057 的触发器按对象类型推导。 */
+  /** DEC-197 归属：写入方确知时显式给出（如人员子集记录的所属人员）；未给的由迁移 0058 的触发器按对象类型推导。 */
   readonly scope?: { readonly employeeId?: string | null; readonly orgId?: string | null };
 }
 
@@ -73,7 +73,7 @@ export async function insertAuditEvent(tx: Tx, entry: AuditEventInput): Promise<
 
 /**
  * 集合 SQL 直接写 audit_events 时（如人员序码重算，一条语句写多行），来源列取同一请求上下文；操作类型、字段差异、
- * 归属与“定时任务”来源由迁移 0057 的触发器按统一规则补齐（PR #75 第二轮 P2-6）。返回列清单与值，按此顺序拼接。
+ * 归属与“定时任务”来源由迁移 0058 的触发器按统一规则补齐（PR #75 第二轮 P2-6）。返回列清单与值，按此顺序拼接。
  */
 export function auditSourceSql(source: AuditSource | undefined) {
   const values = sourceValues(source, source ? 'request' : null);
