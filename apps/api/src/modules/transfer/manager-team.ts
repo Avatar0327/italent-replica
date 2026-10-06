@@ -33,7 +33,8 @@ export async function managerTeamQuery(tx: Tx, ctx: EmploymentContext): Promise<
       person.email,person.mobile_phone AS "mobilePhone",
       COALESCE(t.record_id IS NOT NULL AND r.kind NOT IN ('leave','retirement'),false) AS active,
       (p.kind IN ('hire','rehire') AND p.effective_date>${asOf}::date) AS pending,
-      EXISTS (SELECT 1 FROM latest l WHERE l.employee_id=e.id AND l.kind='leave') AS leaving,
+      EXISTS (SELECT 1 FROM latest l JOIN states s ON s.business_id=l.business_id
+        WHERE l.employee_id=e.id AND l.kind='leave' AND s.state<>'deleted') AS leaving,
       CASE WHEN p.effective_date>${asOf}::date THEN 'pending'
         WHEN r.kind IN ('leave','retirement') THEN 'leaving' ELSE 'active' END AS category
     FROM employment_employees e

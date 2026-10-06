@@ -1,3 +1,4 @@
+import { requireManagerBusinessReferences } from './manager-business-references.js';
 import { requireManagerReferenceValues } from './manager-references.js';
 import { lockTransferParticipants } from '../employment/transfer-locks.js';
 import { sql, type Tx } from '@italent/db';
@@ -13,7 +14,7 @@ import { loadEmploymentBusiness } from '../employment/read-model.js';
 import { transitionEmployment } from '../employment/transitions.js';
 import { prepareInheritance } from '../employment/inheritance.js';
 import { createEmploymentBusiness, requireSavedBusiness } from '../employment/write-service.js';
-import type { EmploymentContext, NormalizedEmploymentInput } from '../employment/types.js';
+import type { EmploymentBusinessPatch, EmploymentContext, NormalizedEmploymentInput } from '../employment/types.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
 import {
   requireTransferSource,
@@ -163,6 +164,7 @@ export async function transferBusinessContext(
   businessId: string,
   write = false,
   targetDepartmentId?: string | null,
+  referenceChange?: EmploymentBusinessPatch,
 ) {
   const [request] = rowsOf<{ employeeId: string }>(
     await tx.execute(sql`
@@ -177,7 +179,10 @@ export async function transferBusinessContext(
     await lockEmploymentEmployee(tx, ctx, request.employeeId);
   }
   // 每次同单请求（包括命令缓存重放）都验权；首次执行仍在员工锁后复验。
-  await requireManagerBusinessSource(tx, ctx, request.employeeId);
+  const manager = await requireManagerBusinessSource(tx, ctx, request.employeeId);
+  // PATCH / submit 的缓存前检查与员工锁后复验共用此处；读取、撤回、删除不因目标撤权而受阻。
+  if (manager && referenceChange !== undefined)
+    await requireManagerBusinessReferences(tx, ctx, businessId, referenceChange);
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   // 是否需要目标部门例外按写入口径判断；DEC-177 放宽的只是“看”（F-015），不能因可见就跳过 Switch 31 例外。
   const writable = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope, 'write');

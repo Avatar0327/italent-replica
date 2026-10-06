@@ -104,7 +104,7 @@ async function inTeam(
 
 /** 纯经理即使另有宽泛数据范围，同单写入仍须重验当前负责组织；HR / 本人入口保留既有规则。 */
 export async function requireManagerBusinessSource(tx: Tx, ctx: EmploymentContext, employeeId: string) {
-  if (!ctx.authorize) return;
+  if (!ctx.authorize) return false;
   const authorize = authorizeInTransaction(ctx.authorize, tx);
   const allowed = (button: string) =>
     authorize({
@@ -119,7 +119,10 @@ export async function requireManagerBusinessSource(tx: Tx, ctx: EmploymentContex
       WHERE tenant_id=${ctx.tenantId} AND user_id=${ctx.userId}::uuid
     `),
     );
-    if (binding?.id !== employeeId || !(await allowed('Transfer.Self')))
+    if (binding?.id !== employeeId || !(await allowed('Transfer.Self'))) {
       await requireTransferSource(tx, ctx, employeeId, 'manager');
+      return true;
+    }
   }
+  return false;
 }

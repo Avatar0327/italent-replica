@@ -255,7 +255,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     let ctx = await readContext(c, deps, 'object.update', revision(c));
     const input = normalizeBusinessPatch(await jsonBody(c));
     ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      transferBusinessContext(tx, ctx, id, false, input.fields?.departmentId),
+      transferBusinessContext(tx, ctx, id, false, input.fields?.departmentId, input),
     );
     const current = await authorizeBusinessWrite(deps, ctx, id);
     await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit');
@@ -273,12 +273,17 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         id,
         true,
         departmentId,
+        input,
       );
       if (departmentId !== undefined && checked.transferTarget)
         checked = { ...checked, transferTarget: { ...checked.transferTarget, departmentId } };
       return { status: 200, body: await updateEmploymentBusiness(tx, checked, id, input) };
     });
   });
+  registerBusinessTransitions(router, deps);
+}
+
+function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // R1-T11：revoke = HR 撤销未审批完成的申请（置作废、作废流程，AC-TRF-07）；withdraw 是发起人撤回到草稿（AC-TRF-28）。
   for (const action of ['submit', 'withdraw', 'revoke', 'delete'] as const) {
     router.on(
@@ -287,7 +292,9 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       async (c) => {
         const id = uuidParam(c);
         let ctx = await readContext(c, deps, action === 'delete' ? 'object.delete' : 'object.update', revision(c));
-        ctx = await withTenant(deps.db, ctx.tenantId, (tx) => transferBusinessContext(tx, ctx, id));
+        ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
+          transferBusinessContext(tx, ctx, id, false, undefined, action === 'submit' ? {} : undefined),
+        );
         if (action === 'submit') await emptySubmitBody(c);
         await requireEmploymentWrite(
           ctx,
@@ -297,7 +304,14 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         );
         await authorizeBusinessWrite(deps, ctx, id);
         const write = runWrite(c, deps, ctx, { id, action }, async (tx, context) => {
-          const checked = await transferBusinessContext(tx, { ...context, transferTarget: undefined }, id, true);
+          const checked = await transferBusinessContext(
+            tx,
+            { ...context, transferTarget: undefined },
+            id,
+            true,
+            undefined,
+            action === 'submit' ? {} : undefined,
+          );
           const business = await transitionEmployment(tx, checked, { id, action });
           // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 撤销 / 删除同步结束在途实例，均与状态迁移同事务。
           if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
