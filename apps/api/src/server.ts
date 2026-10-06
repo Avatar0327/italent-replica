@@ -1,3 +1,4 @@
+import { startSequenceSyncScheduler } from './modules/job/sequence-worker.js';
 import { startOrderCodeScheduler } from './modules/personnel/order-code-scheduler.js';
 import { startContractScheduler } from './modules/contracts/scheduler.js';
 import { serve } from '@hono/node-server';
@@ -31,3 +32,5 @@ if (handle && process.env.PERSONNEL_ORDER_CODE_SCHEDULER !== 'off') {
     intervalMs: Number(process.env.PERSONNEL_ORDER_CODE_INTERVAL_MS || 10_800_000),
   });
 }
+
+if (handle && process.env.JOB_SEQUENCE_SYNC_SCHEDULER !== 'off') startSequenceSyncScheduler(handle.db);

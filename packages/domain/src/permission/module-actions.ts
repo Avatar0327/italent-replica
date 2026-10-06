@@ -54,7 +54,12 @@ const assignment = [
 ];
 const jobButtons = [...crud, button('import', 'list'), button('validate', 'detail')];
 const job = (code: string, fields: readonly string[], system: readonly string[] = []) =>
-  object(code, [...jobCommon, ...fields], jobButtons, [...system, 'kind', 'objectId']);
+  object(
+    code,
+    [...jobCommon, ...fields],
+    ['JobPost', 'JobPosition'].includes(code) ? [...jobButtons, button('syncSequence', 'list', 'update')] : jobButtons,
+    [...system, 'kind', 'objectId'],
+  );
 
 export const MODULE_OBJECTS = {
   contract: object(

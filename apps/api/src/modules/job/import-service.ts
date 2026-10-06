@@ -1,3 +1,4 @@
+import type { EmploymentWriteAccess } from './employment-port.js';
 import { pgErrorCode, sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { z } from 'zod';
@@ -36,6 +37,7 @@ export async function importJobObjects(
   kind: JobKind,
   inputRows: readonly JobImportRow[],
   authorizeRow?: (row: JobImportRow, targetId: string | undefined, rowIndex: number) => Promise<void>,
+  sequenceAccess?: EmploymentWriteAccess,
 ) {
   assertRows(inputRows);
   const parsed = z
@@ -63,7 +65,7 @@ export async function importJobObjects(
     codes.add(row.code);
     const result = reason
       ? { sourceCode: row.sourceCode, code: row.code, status: 'conflict' as const, reason }
-      : await importRow(tx, ctx, kind, row, target, snapshot.mappings.has(row.sourceCode));
+      : await importRow(tx, ctx, kind, row, target, snapshot.mappings.has(row.sourceCode), sequenceAccess);
     await insertRow(tx, 'job_import_results', {
       tenantId: ctx.tenantId,
       commandId: ctx.commandId,
@@ -174,12 +176,13 @@ async function importRow(
   row: JobImportRow,
   target: string | undefined,
   mapped: boolean,
+  sequenceAccess?: EmploymentWriteAccess,
 ): Promise<Receipt> {
   try {
     return await tx.transaction(async (savepoint) => {
       const { sourceCode, objectId: _objectId, expectedRevision, ...input } = row;
       const object = target
-        ? await updateMapped(savepoint, ctx, kind, target, input, expectedRevision!)
+        ? await updateMapped(savepoint, ctx, kind, target, input, expectedRevision!, sequenceAccess)
         : await createJobObject(savepoint, { ...ctx, expectedRevision: 0 }, kind, input);
       if (!mapped) {
         const mapping = { tenantId: ctx.tenantId, kind, sourceCode, [jobTables(kind).importTarget]: object.id };
@@ -204,13 +207,22 @@ async function updateMapped(
   id: string,
   input: JobInput,
   expectedRevision: number,
+  sequenceAccess?: EmploymentWriteAccess,
 ) {
   if (!(await latestJobObject(tx, ctx.tenantId, kind, id))) throw new AppError('NOT_FOUND', '映射对象不存在');
   const { startDate, ...patch } = input;
-  return updateJobObject(tx, { ...ctx, expectedRevision }, kind, id, {
-    ...patch,
-    effectiveDate: startDate ?? tenantLocalDate(ctx.now, ctx.timezone),
-  });
+  return updateJobObject(
+    tx,
+    { ...ctx, expectedRevision },
+    kind,
+    id,
+    {
+      ...patch,
+      effectiveDate: startDate ?? tenantLocalDate(ctx.now, ctx.timezone),
+    },
+    undefined,
+    sequenceAccess,
+  );
 }
 
 export async function authorizeJobImportRows(

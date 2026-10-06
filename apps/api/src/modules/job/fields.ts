@@ -99,8 +99,4 @@ function rejectUnsupported(data: Record<string, unknown>): void {
   if (data.qualificationId || data.competencyModelId) {
     throw new AppError('SERVICE_UNAVAILABLE', '任职资格或胜任力模型的租户引用验证尚未接入');
   }
-  // TODO(需取证 Q-M0-16): 取得 SyncSeqToRecord 的同步范围与后续版本规则后接入真实任职版本链。
-  if (data.syncSequenceToAssignments === true) {
-    throw new AppError('SERVICE_UNAVAILABLE', '同步序列到任职的规则尚未取证');
-  }
 }

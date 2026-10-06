@@ -1,3 +1,7 @@
+import { MODULE_OBJECTS } from '@italent/domain';
+import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
+import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
+import { runEmploymentActivations } from '@italent/api';
 import { randomUUID } from 'node:crypto';
 import { type Db, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -199,7 +203,8 @@ describe('AC-JOB-08～11 F-021 序列同步', () => {
       },
       1,
     );
-    expect(response.status, await response.clone().text()).toBe(403);
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ error: { code: 'LINKED_RECORD_OUT_OF_SCOPE' } });
     const other = await orgPeopleWorld(db, 'seqother');
     expect(
       (
@@ -223,4 +228,293 @@ describe('AC-JOB-08～11 F-021 序列同步', () => {
       ).status,
     ).toBe(400);
   });
+});
+
+it('AC-JOB-10 第二条写入失败回滚第一条，修复后并发消费者只追加一次', async () => {
+  const { db } = testDb();
+  const s = await scenario(db);
+  const before = await versions(db, s.world.tenant.id, s.employee.id);
+  expect(
+    (
+      await s.call(
+        'PATCH',
+        `posts/${s.target.id}`,
+        {
+          sequenceId: s.nextSequence.id,
+          effectiveDate: '2026-10-05',
+        },
+        1,
+      )
+    ).status,
+  ).toBe(200);
+  await db.execute(
+    sql.raw(`CREATE FUNCTION f021_fail_second() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN IF NEW.business_id = '${s.future.id}'::uuid AND NEW.sequence_id = '${s.nextSequence.id}'::uuid
+      THEN RAISE EXCEPTION 'synthetic storage failure'; END IF; RETURN NEW; END $$`),
+  );
+  await db.execute(sql`CREATE TRIGGER f021_fail_second BEFORE INSERT ON employment_payload_versions
+    FOR EACH ROW EXECUTE FUNCTION f021_fail_second()`);
+  try {
+    expect(await worker(db, s.world.tenant.id)).toMatchObject({ failed: 1 });
+    expect(await versions(db, s.world.tenant.id, s.employee.id)).toEqual(before);
+    await withTenant(db, s.world.tenant.id, async (tx) => {
+      expect(
+        resultRows(await tx.execute(sql`SELECT id FROM audit_events WHERE action='employment.sequence-sync'`)),
+      ).toEqual([]);
+    });
+  } finally {
+    await db.execute(sql`DROP TRIGGER f021_fail_second ON employment_payload_versions`);
+    await db.execute(sql`DROP FUNCTION f021_fail_second()`);
+  }
+  await Promise.all([worker(db, s.world.tenant.id), worker(db, s.world.tenant.id)]);
+  const after = await versions(db, s.world.tenant.id, s.employee.id);
+  expect(after.reduce((n, r) => n + r.count, 0)).toBe(before.reduce((n, r) => n + r.count, 0) + 2);
+});
+
+for (const kind of ['posts', 'positions'] as const)
+  it(`AC-JOB-10 ${kind} 列表按引用覆盖不同旧值，其他引用不变`, async () => {
+    const { db } = testDb();
+    const s = await scenario(db, kind);
+    const otherPost = await s.world.job('posts', '其他职务', { sequenceId: s.oldSequence.id });
+    const otherPosition = await s.world.job('positions', '其他职位', { orgId: s.org.id, postId: otherPost.id });
+    const other = await s.world.hire('对照员工', {
+      departmentId: s.org.id,
+      postId: otherPost.id,
+      positionId: otherPosition.id,
+      sequenceId: s.nextSequence.id,
+    });
+    const mismatch = await s.world.request('PATCH', `/records/${s.future.id}`, {
+      ifMatch: s.future.revision,
+      body: { fields: { sequenceId: s.nextSequence.id } },
+    });
+    expect(mismatch.status, await mismatch.clone().text()).toBe(200);
+    expect((await s.call('POST', `${kind}/sync-sequence`, { items: [{ id: s.target.id, revision: 1 }] })).status).toBe(
+      202,
+    );
+    await worker(db, s.world.tenant.id);
+    expect((await s.world.record(s.future.id)).fields.sequenceId).toBe(s.oldSequence.id);
+    expect((await s.world.record(other.recordId)).fields.sequenceId).toBe(s.nextSequence.id);
+    const messages = await s.call('GET', 'sequence-sync/messages');
+    expect(((await messages.json()) as { items: unknown[] }).items).toHaveLength(1);
+    const foreign = await orgPeopleWorld(db, 'seqnoticeforeign');
+    const hidden = await callAt(db, foreign)('GET', 'sequence-sync/messages');
+    expect(((await hidden.json()) as { items: unknown[] }).items).toEqual([]);
+  });
+
+it('AC-JOB-08 审批中和作废不改；已批未来、同日多条及迟到调动保持排序和序列', async () => {
+  const { db } = testDb();
+  const s = await scenario(db);
+  async function action(id: string, action: 'submit' | 'approve' | 'revoke') {
+    const response = await s.world.request('GET', `/businesses/${id}`);
+    const record = (await response.json()) as { revision: number };
+    const result = await runEmploymentTransition(
+      db,
+      {
+        tenantId: s.world.tenant.id,
+        userId: s.world.user.id,
+        timezone: s.world.tenant.timezone,
+        now,
+        commandId: randomUUID(),
+        expectedRevision: record.revision,
+      },
+      { id, action },
+    );
+    expect(result.status).toBe(200);
+  }
+  async function application(date: string, state: 'approved' | 'in_review' | 'voided', place: string) {
+    const employee = await s.world.getEmployee(s.employee.id);
+    const draft = await s.world.business(
+      s.employee.id,
+      {
+        kind: 'transfer',
+        mode: 'application',
+        effectiveDate: date,
+        fields: { postId: s.target.id, sequenceId: s.oldSequence.id, place },
+      },
+      employee.revision,
+    );
+    await action(draft.id, 'submit');
+    if (state === 'approved') await action(draft.id, 'approve');
+    if (state === 'voided') await action(draft.id, 'revoke');
+    return draft;
+  }
+  const first = await application('2026-10-06', 'approved', '前序地点');
+  const second = await application('2026-10-07', 'approved', '后序地点');
+  const sameDay = await application('2026-10-07', 'approved', '同日末条地点');
+  const review = await application('2026-10-15', 'in_review', '审批中');
+  const voided = await application('2026-10-16', 'voided', '已作废');
+  const before = await versions(db, s.world.tenant.id, s.employee.id);
+  expect(
+    (await s.call('PATCH', `posts/${s.target.id}`, { sequenceId: s.nextSequence.id, effectiveDate: '2026-10-05' }, 1))
+      .status,
+  ).toBe(200);
+  await worker(db, s.world.tenant.id);
+  const after = await versions(db, s.world.tenant.id, s.employee.id);
+  for (const id of [review.id, voided.id])
+    expect(after.find((r) => r.businessId === id)).toEqual(before.find((r) => r.businessId === id));
+  const run = await runEmploymentActivations(
+    db,
+    { actorUserId: null, commandId: randomUUID() },
+    { tenantId: s.world.tenant.id },
+    { clock: () => new Date('2026-10-09T01:00:00Z') },
+  );
+  expect(run.runs[0]).toMatchObject({ failed: [], errors: [] });
+  const records = await s.world.records(s.employee.id, '2026-10-09');
+  expect(records.map((r) => r.id)).toEqual([
+    s.employee.recordId,
+    s.current.id,
+    first.id,
+    second.id,
+    sameDay.id,
+    s.future.id,
+  ]);
+  for (const id of [first.id, second.id, sameDay.id]) {
+    expect(records.find((r) => r.id === id)).toMatchObject({
+      effectiveDate: '2026-10-09',
+      fields: { sequenceId: s.nextSequence.id },
+    });
+  }
+  expect(records.find((r) => r.id === sameDay.id)?.fields.place).toBe('同日末条地点');
+});
+
+it('AC-JOB-11 当前部门可见时范围外未来可写，任一不可见则职务和队列整体回滚', async () => {
+  const { db } = testDb();
+  const s = await scenario(db);
+  const outside = await s.world.org('范围外部门');
+  expect(
+    (
+      await s.world.request('PATCH', `/records/${s.future.id}`, {
+        ifMatch: s.future.revision,
+        body: { fields: { departmentId: outside.id, positionId: null } },
+      })
+    ).status,
+  ).toBe(200);
+  const authorize: Authorizer = () => true;
+  registerScopeProvider(authorize, {
+    authorize: async () => true,
+    fields: async () =>
+      new Set(Object.values(MODULE_OBJECTS).flatMap((object) => object.fields.map((field) => field.code))),
+    scope: async (query) =>
+      query.objectCode === MODULE_OBJECTS.employmentRecord.code
+        ? {
+            all: false,
+            hasDataPermission: true,
+            orgIds: [s.org.id],
+            personIds: [],
+            terms: [
+              {
+                dimension: 'organization',
+                orgIds: [s.org.id],
+                personIds: [],
+                personQuery: { kind: 'organization', tenantId: s.world.tenant.id, asOf: query.asOf },
+              },
+            ],
+          }
+        : { all: true, hasDataPermission: true, orgIds: [], personIds: [] },
+  });
+  const scoped = callAt(db, s.world, authorize);
+  expect(
+    (
+      await scoped(
+        'PATCH',
+        `posts/${s.target.id}`,
+        {
+          sequenceId: s.nextSequence.id,
+          effectiveDate: '2026-10-05',
+        },
+        1,
+      )
+    ).status,
+  ).toBe(200);
+  expect(await worker(db, s.world.tenant.id, authorize)).toMatchObject({ failed: 0 });
+  expect((await s.world.record(s.future.id)).fields.sequenceId).toBe(s.nextSequence.id);
+  const hidden = await s.world.hire('范围外员工', {
+    departmentId: outside.id,
+    postId: s.target.id,
+    sequenceId: s.nextSequence.id,
+  });
+  const snapshot = await versions(db, s.world.tenant.id, s.employee.id);
+  const response = await scoped(
+    'PATCH',
+    `posts/${s.target.id}`,
+    {
+      sequenceId: s.oldSequence.id,
+      effectiveDate: '2026-10-05',
+    },
+    2,
+  );
+  expect(response.status).toBe(404);
+  expect(await response.json()).toMatchObject({ error: { code: 'LINKED_RECORD_OUT_OF_SCOPE' } });
+  expect(await versions(db, s.world.tenant.id, s.employee.id)).toEqual(snapshot);
+  expect((await s.world.record(hidden.recordId)).fields.sequenceId).toBe(s.nextSequence.id);
+  const job = await s.call('GET', `posts/${s.target.id}?asOf=2026-10-05`);
+  expect(await job.json()).toMatchObject({ revision: 2, sequenceId: s.nextSequence.id });
+  await withTenant(db, s.world.tenant.id, async (tx) => {
+    expect(
+      resultRows(
+        await tx.execute(sql`SELECT id FROM employment_outbox
+      WHERE event_type='job.sequence-sync.requested'`),
+      ),
+    ).toHaveLength(1);
+  });
+});
+
+it('AC-JOB-10 连续 A→B→A 入队仍按引用处理，末单不能被入队时的相同值过滤掉', async () => {
+  const { db } = testDb();
+  const s = await scenario(db);
+  const before = await versions(db, s.world.tenant.id, s.employee.id);
+  expect(
+    (
+      await s.call(
+        'PATCH',
+        `posts/${s.target.id}`,
+        {
+          sequenceId: s.nextSequence.id,
+          effectiveDate: '2026-10-05',
+        },
+        1,
+      )
+    ).status,
+  ).toBe(200);
+  expect(
+    (
+      await s.call(
+        'PATCH',
+        `posts/${s.target.id}`,
+        {
+          sequenceId: s.oldSequence.id,
+          effectiveDate: '2026-10-05',
+        },
+        2,
+      )
+    ).status,
+  ).toBe(200);
+  expect(await worker(db, s.world.tenant.id)).toMatchObject({ completed: 2, failed: 0 });
+  const records = await s.world.records(s.employee.id);
+  expect(records.every((r) => r.fields.sequenceId === s.oldSequence.id)).toBe(true);
+  const after = await versions(db, s.world.tenant.id, s.employee.id);
+  expect(after.reduce((n, r) => n + r.count, 0)).toBe(before.reduce((n, r) => n + r.count, 0) + 4);
+});
+
+it('AC-JOB-08 共用编辑服务的导入映射更新透传任职授权，不回退为缺失授权 403', async () => {
+  const { db } = testDb();
+  const s = await scenario(db);
+  const response = await s.call('POST', 'import', {
+    kind: 'posts',
+    rows: [
+      {
+        sourceCode: 'F021_IMPORT',
+        objectId: s.target.id,
+        expectedRevision: 1,
+        code: s.target.code,
+        name: s.target.name,
+        startDate: '2026-10-05',
+        sequenceId: s.nextSequence.id,
+      },
+    ],
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ results: [{ status: 'updated' }] });
+  expect(await worker(db, s.world.tenant.id)).toMatchObject({ completed: 1, failed: 0 });
+  expect((await s.world.record(s.current.id)).fields.sequenceId).toBe(s.nextSequence.id);
 });
