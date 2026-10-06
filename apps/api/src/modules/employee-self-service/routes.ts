@@ -107,7 +107,8 @@ function registerTransferRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) 
     const raw = await jsonBody(c);
     // 首次与幂等重放都按当前字段权限检查，事务中再次检查本人绑定。
     await withTenant(deps.db, self.ctx.tenantId, (tx) => ownTransferInput(tx, self.ctx, raw));
-    return runWrite(c, self.deps, self.ctx, raw, async (tx, ctx) => {
+    const commandInput = { employeeId: self.employee.id, input: raw };
+    return runWrite(c, self.deps, self.ctx, commandInput, async (tx, ctx) => {
       await self.check(tx);
       const input = await ownTransferInput(tx, ctx, raw);
       return { status: 201, body: await createTransfer(tx, ctx, self.employee.id, input) };
