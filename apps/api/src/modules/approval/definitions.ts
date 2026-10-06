@@ -11,6 +11,7 @@ import {
   nodeExits,
   PRESET_PROCESSES,
   publishViolations,
+  conditionViolations,
   rejectAllowed,
   type ApprovalNode,
   type ApprovalTypeCode,
@@ -446,6 +447,10 @@ export async function publishProcess(tx: Tx, ctx: ApprovalContext, id: string) {
   const { before } = await lockedForChange(tx, ctx, id);
   const draft = before.latestVersion;
   if (draft.status !== 'draft') throw approvalError('CONFLICT', 'APPROVAL_VERSION_PUBLISHED', '最新版本已发布');
+  if (before.approvalType.startsWith('contract_')) {
+    const [unsupported] = conditionViolations(draft.conditions, APPROVAL_TYPES[before.approvalType].conditionFields);
+    if (unsupported) throw approvalError('VALIDATION_FAILED', 'APPROVAL_CONDITION_UNSUPPORTED', unsupported);
+  }
   const [violation] = publishViolations(draft);
   if (violation) throw approvalError('VALIDATION_FAILED', violation.reason, violation.message);
   await assertExceptionAdminMember(tx, ctx.tenantId, draft.exceptionAdminUserId!);

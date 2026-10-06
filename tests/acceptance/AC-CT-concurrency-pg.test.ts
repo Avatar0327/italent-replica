@@ -23,7 +23,9 @@ async function blocked(db: Db, expected: number) {
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('R2-T06 PostgreSQL 16 强制交错', () => {
   it.each(['renew', 'expire'] as const)('%s 多实例：第一实例持员工锁后阻塞，第二实例 SKIP LOCKED', async (kind) => {
     const w = await contractWorld(testDb().db, `ctpg${kind}`);
+    w.setNow('2026-09-30T01:00:00Z');
     const contract = await w.create();
+    w.setNow('2026-10-01T01:00:00Z');
     if (kind === 'renew') {
       await installApprovalFallbacks(w.db, w.session.tenant.id, w.session.user.id);
       await w.settings({ autoRenew: true });
@@ -113,5 +115,36 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('R2-T06 PostgreSQL 16 强
     expect(responses[1]!.status).toBe(409);
     const final = await w.list();
     expect(final.find((c) => c.id === second.id)?.status).toBe(order === 'batch-first' ? 'terminated' : 'valid');
+  });
+  it('DEC-180② 两个未来新建命令争用员工锁，仅一份在途合同获准', async () => {
+    const w = await contractWorld(testDb().db, 'f016pgflight');
+    await w.create();
+    const submit = () =>
+      w.request('POST', '/commands', {
+        ifMatch: 0,
+        body: {
+          operation: 'create',
+          mode: 'direct',
+          employeeId: w.employee.id,
+          fields: { ...w.fields, effectiveDate: '2026-11-01', endDate: '2027-10-31' },
+        },
+      });
+    const requests = await withTenant(w.db, w.session.tenant.id, async (tx) => {
+      await tx.execute(sql`SELECT id FROM employment_employees WHERE id=${w.employee.id}::uuid FOR UPDATE`);
+      const first = submit();
+      await blocked(w.db, 1);
+      const second = submit();
+      await blocked(w.db, 2);
+      return [first, second];
+    });
+    const results = await Promise.all(requests);
+    expect(results.map((r) => r.status)).toEqual([201, 409]);
+    await withTenant(w.db, w.session.tenant.id, async (tx) => {
+      const pending = rowsOf(
+        await tx.execute(sql`SELECT signing_count FROM contract_requests
+        WHERE employee_id=${w.employee.id}::uuid AND status='approved'`),
+      );
+      expect(pending).toEqual([{ signing_count: 2 }]);
+    });
   });
 });

@@ -1,0 +1,7 @@
+ALTER TABLE "permission_admins" ADD COLUMN "contract_configuration" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "contract_requests" ADD COLUMN "submitted_fields" jsonb;--> statement-breakpoint
+ALTER TABLE "contract_records" ADD CONSTRAINT "contract_records_previous_tenant_fk" FOREIGN KEY ("tenant_id","previous_contract_id") REFERENCES "public"."contract_records"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "contract_records" ADD CONSTRAINT "contract_records_root_tenant_fk" FOREIGN KEY ("tenant_id","root_contract_id") REFERENCES "public"."contract_records"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "contract_records" ADD CONSTRAINT "contract_records_employment_tenant_fk" FOREIGN KEY ("tenant_id","employment_record_id") REFERENCES "public"."employment_records"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "contract_requests" ADD CONSTRAINT "contract_requests_result_tenant_fk" FOREIGN KEY ("tenant_id","result_id") REFERENCES "public"."contract_records"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "contract_requests" ADD CONSTRAINT "contract_requests_employment_tenant_fk" FOREIGN KEY ("tenant_id","employment_record_id") REFERENCES "public"."employment_records"("tenant_id","id") ON DELETE no action ON UPDATE no action;

@@ -45,6 +45,8 @@ export interface StandardProfile {
 const CONFIG_OBJECTS = new Set<string>([
   MODULE_OBJECTS.employmentSettings.code,
   MODULE_OBJECTS.employmentCustomField.code,
+  MODULE_OBJECTS.contractSettings.code,
+  MODULE_OBJECTS.contractRules.code,
 ]);
 
 const BUSINESS_OBJECTS: readonly ObjectDefinition[] = [
