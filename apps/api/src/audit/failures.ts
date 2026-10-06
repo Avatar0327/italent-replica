@@ -71,7 +71,7 @@ export function setAuditFallbackSink(sink: (record: AuditFallbackRecord) => void
 
 export async function recordCommandFailure(
   db: Db,
-  ctx: { readonly tenantId: string; readonly userId: string },
+  ctx: { readonly tenantId: string; readonly userId: string; readonly now?: Date },
   commandId: string,
   failure: CommandFailure,
 ): Promise<void> {
@@ -85,7 +85,7 @@ export async function recordCommandFailure(
     ...failure,
     method: request?.method ?? null,
     path: request?.path ?? null,
-    occurredAt: request?.clock() ?? new Date(),
+    occurredAt: request?.clock() ?? ctx.now ?? new Date(),
     ...(request ? { source: request.source } : {}),
   };
   try {

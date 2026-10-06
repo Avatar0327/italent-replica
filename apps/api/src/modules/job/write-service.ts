@@ -1,3 +1,5 @@
+import { queueSequenceSync } from './sequence-sync.js';
+import type { EmploymentWriteAccess } from './employment-port.js';
 import { randomUUID } from 'node:crypto';
 import { isUuid, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
@@ -30,7 +32,11 @@ export async function createJobObject(
 ): Promise<JobRecord> {
   assertRevision(ctx.expectedRevision, 0);
   const id = randomUUID();
-  const normalized = normalizeFields(ctx, kind, input);
+  const normalized = normalizeFields(
+    ctx,
+    kind,
+    kind === 'posts' || kind === 'positions' ? { ...input, syncSequenceToAssignments: false } : input,
+  );
   await lockJobTenant(tx, ctx);
   const fields = await validateJobFields(tx, ctx, kind, id, normalized);
   await assertJobCodeAvailable(tx, ctx, kind, fields);
@@ -55,6 +61,7 @@ export async function updateJobObject(
   patch: JobPatch,
   // 缺省只读真实在岗人（停用校验）；同步直线经理须由路由传入带操作人授权的端口，否则 fail-closed。
   personnel: JobPersonnelGateway = employmentJobPersonnel(),
+  sequenceAccess?: EmploymentWriteAccess,
 ): Promise<JobRecord> {
   if (!isUuid(id)) throw invalid('id', '对象 ID 必须是 UUID');
   const parsed = jobPatchSchema(kind).safeParse(patch);
@@ -65,7 +72,11 @@ export async function updateJobObject(
   const { adjustEmployeeDirectManager = false, ...changes } = parsed.data as JobPatch;
   const effectiveDate = changes.effectiveDate;
   assertTemporalOrder(current, effectiveDate);
-  const input = mergeInput(kind, current, changes, effectiveDate);
+  const merged = mergeInput(kind, current, changes, effectiveDate);
+  const input =
+    kind === 'posts' || kind === 'positions'
+      ? { ...merged, syncSequenceToAssignments: !!merged.sequenceId && merged.sequenceId !== current.sequenceId }
+      : merged;
   const fields = await validateJobFields(tx, ctx, kind, id, normalizeFields(ctx, kind, input), current);
   await assertJobCodeAvailable(tx, ctx, kind, fields, id);
   let managerSync: ManagerSyncResult | undefined;
@@ -78,6 +89,15 @@ export async function updateJobObject(
   const saved = await appendVersion(tx, ctx, kind, id, current.revision + 1, fields, current.versionId);
   await assertFutureHierarchy(tx, ctx, kind, id, fields);
   await auditJob(tx, ctx, 'job.update', kind, id, current, saved);
+  // Q-M0-52 / DEC-208：非空序列发生变化即强制同步；false 不能绕过，清空与新建均不排队。
+  if ((kind === 'posts' || kind === 'positions') && fields.sequenceId && fields.sequenceId !== current.sequenceId) {
+    await queueSequenceSync(
+      tx,
+      ctx,
+      [{ kind, id, sequenceId: String(fields.sequenceId), revision: saved.revision }],
+      sequenceAccess,
+    );
+  }
   if ((kind === 'sequences' || kind === 'professional-lines') && fields.parentId !== current.parentId) {
     await synchronizeDescendantTrees(tx, ctx, kind, id, effectiveDate);
   }
