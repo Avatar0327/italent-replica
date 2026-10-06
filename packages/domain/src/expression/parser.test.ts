@@ -69,7 +69,11 @@ describe('语法：四则优先级、逻辑、if 多段、Def', () => {
 
   it('函数调用参数保留原始语法树（供惰性求值）', () => {
     const program = ok('PerformanceCent(考核结果.年度="2026", 考核结果.周期名称="年度")');
-    expect(program.body).toMatchObject({ type: 'call', name: 'PerformanceCent', args: [{ type: 'binary' }, { type: 'binary' }] });
+    expect(program.body).toMatchObject({
+      type: 'call',
+      name: 'PerformanceCent',
+      args: [{ type: 'binary' }, { type: 'binary' }],
+    });
   });
 });
 

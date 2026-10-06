@@ -17,12 +17,18 @@ describe('AC-EXP-04 空值参与比较 / 平均 → 计算失败；ToNumber 兜�
   });
 
   it('空值参与大小比较：失败原因码 EMPTY_IN_COMPARISON，文案与原站一致', () => {
-    const result = evaluateFormula('如果 盘点对象.绩效得分 > 80 那么 1 否则 0', contextFor({ '盘点对象.绩效得分': null }));
+    const result = evaluateFormula(
+      '如果 盘点对象.绩效得分 > 80 那么 1 否则 0',
+      contextFor({ '盘点对象.绩效得分': null }),
+    );
     expect(failureOf(result)).toMatchObject({ code: 'EMPTY_IN_COMPARISON', message: expect.stringContaining('空值') });
   });
 
   it('空值参与平均：失败原因码 EMPTY_IN_AGGREGATE', () => {
-    const result = evaluateFormula('Average(盘点对象.a, 盘点对象.b)', contextFor({ '盘点对象.a': 80, '盘点对象.b': null }));
+    const result = evaluateFormula(
+      'Average(盘点对象.a, 盘点对象.b)',
+      contextFor({ '盘点对象.a': 80, '盘点对象.b': null }),
+    );
     expect(failureOf(result)?.code).toBe('EMPTY_IN_AGGREGATE');
   });
 
@@ -48,7 +54,9 @@ describe('AC-EXP-04 空值参与比较 / 平均 → 计算失败；ToNumber 兜�
 
   it('是否为空() 可以显式判空，空值 = 空值 为真', () => {
     const fields = { '盘点对象.绩效得分': null };
-    expect(evaluateFormula('是否为空(盘点对象.绩效得分)', contextFor(fields))).toMatchObject({ value: { value: true } });
+    expect(evaluateFormula('是否为空(盘点对象.绩效得分)', contextFor(fields))).toMatchObject({
+      value: { value: true },
+    });
     expect(evaluateFormula('IsEmpty(1)', contextFor({}))).toMatchObject({ value: { value: false } });
   });
 
@@ -89,10 +97,14 @@ describe('AC-EXP-06 百分比按小数、DateFormat 支持 .NET 格式符、toda
     expect(evaluateFormula('DateFormat(today(), "yyyy/MM/dd")', contextFor({}))).toMatchObject({
       value: { value: '2026/10/06' },
     });
-    expect(evaluateFormula('盘点对象.入职日期 < "2020/01/01"', contextFor({ '盘点对象.入职日期': '2019/12/31' }))).toMatchObject({
+    expect(
+      evaluateFormula('盘点对象.入职日期 < "2020/01/01"', contextFor({ '盘点对象.入职日期': '2019/12/31' })),
+    ).toMatchObject({
       value: { value: true },
     });
-    expect(evaluateFormula('today() > "2020/01/01 00:00:00"', contextFor({}))).toMatchObject({ value: { value: true } });
+    expect(evaluateFormula('today() > "2020/01/01 00:00:00"', contextFor({}))).toMatchObject({
+      value: { value: true },
+    });
   });
 
   it('Date 瞬时按租户时区转为业务日期（DEC-056）', () => {

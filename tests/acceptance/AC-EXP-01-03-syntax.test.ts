@@ -68,7 +68,10 @@ describe('AC-EXP-02 缺“否则”的多段 if', () => {
 
   it('没有任何分支命中且没有 否则 时结果为空', () => {
     const noElse = '如果 盘点对象.得分 > 90 那么 3 如果 盘点对象.得分 > 80 那么 2';
-    expect(evaluateFormula(noElse, contextFor({ '盘点对象.得分': 70 }))).toEqual({ ok: true, value: { kind: 'empty' } });
+    expect(evaluateFormula(noElse, contextFor({ '盘点对象.得分': 70 }))).toEqual({
+      ok: true,
+      value: { kind: 'empty' },
+    });
   });
 });
 

@@ -47,6 +47,7 @@ describe('AC-EXP-12 计算优先级与依赖顺序', () => {
     expect(ordered.ok).toBe(false);
     if (ordered.ok) return;
     expect(ordered.failure.code).toBe('CYCLIC_DEPENDENCY');
+    if (ordered.failure.code !== 'CYCLIC_DEPENDENCY') return;
     expect(ordered.failure.cycle).toEqual(['盘点对象.a', '盘点对象.b', '盘点对象.c', '盘点对象.a']);
   });
 

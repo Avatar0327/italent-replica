@@ -7,7 +7,13 @@ import { describe, expect, it } from 'vitest';
 import { contextFor } from './AC-EXP-support.js';
 
 const valueOf = (result: EvaluationResult) => (result.ok ? result.value : result.failure);
-const perf = (year: number | string, period: string, score: number | null, grade: string | null, modifiedAt: string) => ({
+const perf = (
+  year: number | string,
+  period: string,
+  score: number | null,
+  grade: string | null,
+  modifiedAt: string,
+) => ({
   fields: { 年度: year, 周期名称: period, 得分: score, 等级: grade },
   modifiedAt: new Date(modifiedAt),
 });
@@ -24,10 +30,14 @@ describe('AC-EXP-07 绩效取数：同年同周期取最后修改；PerformanceL
       ],
     },
   };
-  const run = (formula: string, subjectId = 'emp-1') => valueOf(evaluateFormula(formula, contextFor({}, { ports, subjectId })));
+  const run = (formula: string, subjectId = 'emp-1') =>
+    valueOf(evaluateFormula(formula, contextFor({}, { ports, subjectId })));
 
   it('PerformanceCent / PerformanceGrade：年度、周期必填，其他过滤选填，同年同周期多条取最后修改', () => {
-    expect(run('PerformanceCent(考核结果.年度="2026", 考核结果.周期名称="年度")')).toEqual({ kind: 'number', value: 88 });
+    expect(run('PerformanceCent(考核结果.年度="2026", 考核结果.周期名称="年度")')).toEqual({
+      kind: 'number',
+      value: 88,
+    });
     expect(run('获取指定年度指定周期的绩效等级(考核结果.年度=2026, 考核结果.周期名称="年度")')).toEqual({
       kind: 'text',
       value: 'A',
@@ -57,7 +67,10 @@ describe('AC-EXP-07 绩效取数：同年同周期取最后修改；PerformanceL
 });
 
 describe('AC-EXP-08 360 与测评：最近一次的时间口径', () => {
-  const row = (startAt: string, fields: Record<string, string | number | null>) => ({ startAt: new Date(startAt), fields });
+  const row = (startAt: string, fields: Record<string, string | number | null>) => ({
+    startAt: new Date(startAt),
+    fields,
+  });
   const assessment = (testedAt: string, fields: Record<string, string | number | null>) => ({
     testedAt: new Date(testedAt),
     fields,
@@ -65,16 +78,52 @@ describe('AC-EXP-08 360 与测评：最近一次的时间口径', () => {
   const ports: InMemoryPortData = {
     survey360: {
       'emp-1': [
-        row('2026-03-01T00:00:00Z', { 套卷名称: 'GLD套卷', 活动名称: '春季', 角色名称: '上级', 角色得分: 3.5, '问卷-他评总分': 3.8 }),
-        row('2026-09-10T00:00:00Z', { 套卷名称: 'GLD套卷', 活动名称: '秋季', 角色名称: '上级', 角色得分: 4.2, '问卷-他评总分': 4.0 }),
-        row('2026-09-10T00:00:00Z', { 套卷名称: 'GLD套卷', 活动名称: '秋季', 角色名称: '同事', 角色得分: 4.6, '问卷-他评总分': 4.0 }),
-        row('2026-10-02T00:00:00Z', { 套卷名称: 'GLD套卷', 活动名称: '冬季', 角色名称: '上级', 角色得分: 4.9, '问卷-他评总分': 4.9 }),
+        row('2026-03-01T00:00:00Z', {
+          套卷名称: 'GLD套卷',
+          活动名称: '春季',
+          角色名称: '上级',
+          角色得分: 3.5,
+          '问卷-他评总分': 3.8,
+        }),
+        row('2026-09-10T00:00:00Z', {
+          套卷名称: 'GLD套卷',
+          活动名称: '秋季',
+          角色名称: '上级',
+          角色得分: 4.2,
+          '问卷-他评总分': 4.0,
+        }),
+        row('2026-09-10T00:00:00Z', {
+          套卷名称: 'GLD套卷',
+          活动名称: '秋季',
+          角色名称: '同事',
+          角色得分: 4.6,
+          '问卷-他评总分': 4.0,
+        }),
+        row('2026-10-02T00:00:00Z', {
+          套卷名称: 'GLD套卷',
+          活动名称: '冬季',
+          角色名称: '上级',
+          角色得分: 4.9,
+          '问卷-他评总分': 4.9,
+        }),
       ],
     },
     assessment: {
       'emp-1': [
-        assessment('2026-08-15T00:00:00Z', { 测验名称: '职业性格', 维度名称: '总体', 总分: 0.82, 维度得分: 0.82, 来源: '导入' }),
-        assessment('2026-09-15T00:00:00Z', { 测验名称: '职业性格', 维度名称: '总体', 总分: 0.9, 维度得分: 0.9, 来源: '导入' }),
+        assessment('2026-08-15T00:00:00Z', {
+          测验名称: '职业性格',
+          维度名称: '总体',
+          总分: 0.82,
+          维度得分: 0.82,
+          来源: '导入',
+        }),
+        assessment('2026-09-15T00:00:00Z', {
+          测验名称: '职业性格',
+          维度名称: '总体',
+          总分: 0.9,
+          维度得分: 0.9,
+          来源: '导入',
+        }),
       ],
     },
   };
@@ -105,10 +154,18 @@ describe('AC-EXP-09 Ranking：百分位 / 排序号、排序字段、人员范�
     fields: { '盘点对象.综合得分': score, '任职记录.职级': grade },
   });
   const ports: InMemoryPortData = {
-    ranking: [member('a', 90, 'P7'), member('b', 80, 'P7'), member('c', 80, 'P7'), member('d', 70, 'P7'), member('e', 99, 'P8')],
+    ranking: [
+      member('a', 90, 'P7'),
+      member('b', 80, 'P7'),
+      member('c', 80, 'P7'),
+      member('d', 70, 'P7'),
+      member('e', 99, 'P8'),
+    ],
   };
   const run = (formula: string, subjectId: string) =>
-    valueOf(evaluateFormula(formula, contextFor({ '盘点对象.综合得分': 80, '任职记录.职级': 'P7' }, { ports, subjectId })));
+    valueOf(
+      evaluateFormula(formula, contextFor({ '盘点对象.综合得分': 80, '任职记录.职级': 'P7' }, { ports, subjectId })),
+    );
 
   it('排序号：降序、并列同名次；分组字段按组内排名', () => {
     expect(run('Ranking("排序号", 盘点对象.综合得分)', 'b')).toEqual({ kind: 'number', value: 3 });
@@ -116,7 +173,10 @@ describe('AC-EXP-09 Ranking：百分位 / 排序号、排序字段、人员范�
       kind: 'number',
       value: 2,
     });
-    expect(run('获取某个结果在指定人员范围内的排名("排序号", 盘点对象.综合得分)', 'e')).toEqual({ kind: 'number', value: 1 });
+    expect(run('获取某个结果在指定人员范围内的排名("排序号", 盘点对象.综合得分)', 'e')).toEqual({
+      kind: 'number',
+      value: 1,
+    });
   });
 
   it('百分位：按小数返回（名次之后占比）', () => {
@@ -125,17 +185,29 @@ describe('AC-EXP-09 Ranking：百分位 / 排序号、排序字段、人员范�
   });
 
   it('范围外人员：失败原因 OUT_OF_SCOPE', () => {
-    expect(run('Ranking("排序号", 盘点对象.综合得分, 任职记录.职级 = "P8")', 'b')).toMatchObject({ code: 'OUT_OF_SCOPE' });
+    expect(run('Ranking("排序号", 盘点对象.综合得分, 任职记录.职级 = "P8")', 'b')).toMatchObject({
+      code: 'OUT_OF_SCOPE',
+    });
     expect(run('Ranking("排序号", 盘点对象.综合得分)', 'zz')).toMatchObject({ code: 'OUT_OF_SCOPE' });
   });
 });
 
 describe('AC-EXP-10 盘点与评定专用函数（EV-R8：弃权评委不参与）', () => {
-  const judge = (id: string, score: number | null, result: string | null, abstained = false) => ({ id, score, result, abstained });
+  const judge = (id: string, score: number | null, result: string | null, abstained = false) => ({
+    id,
+    score,
+    result,
+    abstained,
+  });
   const ports: InMemoryPortData = {
     review: {
       'emp-1': [
-        { name: '专业能力', score: 85, result: '通过', judges: [judge('j1', 90, '通过'), judge('j2', 80, '通过'), judge('j3', null, null, true)] },
+        {
+          name: '专业能力',
+          score: 85,
+          result: '通过',
+          judges: [judge('j1', 90, '通过'), judge('j2', 80, '通过'), judge('j3', null, null, true)],
+        },
         { name: '通用能力', score: 55, result: '不通过', judges: [judge('j1', 60, '通过'), judge('j2', 50, '不通过')] },
       ],
     },
@@ -171,11 +243,15 @@ describe('AC-EXP-11 端口无权 / 取不到：返回空或明确失败原因，
 
   it('端口拒绝（无权）与不可用分别给出 DATA_FORBIDDEN / DATA_UNAVAILABLE', () => {
     const forbidden = contextFor({}, { ports: { performance: {}, forbidden: { performance: ['emp-1'] } } });
-    expect(valueOf(evaluateFormula('PerformanceCent(考核结果.年度=2026, 考核结果.周期名称="年度")', forbidden))).toMatchObject({
+    expect(
+      valueOf(evaluateFormula('PerformanceCent(考核结果.年度=2026, 考核结果.周期名称="年度")', forbidden)),
+    ).toMatchObject({
       code: 'DATA_FORBIDDEN',
     });
     const unavailable = contextFor({}, { ports: { unavailable: ['survey360'] } });
-    expect(valueOf(evaluateFormula('Lastest360Cent(360结果.角色得分)', unavailable))).toMatchObject({ code: 'DATA_UNAVAILABLE' });
+    expect(valueOf(evaluateFormula('Lastest360Cent(360结果.角色得分)', unavailable))).toMatchObject({
+      code: 'DATA_UNAVAILABLE',
+    });
   });
 
   it('没有接入对应端口：DATA_UNAVAILABLE 而不是异常', () => {
