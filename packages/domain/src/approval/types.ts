@@ -328,7 +328,7 @@ const contractType = (code: string, name: string, defaultProcessCode: string) =>
     defaultProcessCode,
     objectCode: CONTRACT_OBJECT,
     adapter: 'contract',
-    conditionFields: EMPLOYMENT_CONDITION_FIELDS,
+    conditionFields: EMPLOYMENT_CONDITION_FIELDS.filter((f) => ['processCode', 'business.kind'].includes(f.path)),
     formFields: CONTRACT_FIELDS,
     readonlyFields: [],
     approvalEdit: false,

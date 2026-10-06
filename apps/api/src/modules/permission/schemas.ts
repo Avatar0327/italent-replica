@@ -32,6 +32,7 @@ export const grantBody = z.strictObject({
 });
 
 export const adminSetsBody = z.strictObject({
+  contractConfiguration: z.boolean().optional(),
   grantableAdminRoles: z.array(z.enum(ADMIN_ROLES)).max(ADMIN_ROLES.length),
   grantableProfileIds: z.array(z.uuid()).max(MAX_ITEMS),
 });

@@ -535,7 +535,18 @@ function registerInstanceRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     const input = c.req.header('content-type') ? await parseBody(c, z.strictObject({ fields: fields.optional() })) : {};
     // DEC-113 / F3：只有原发起人能重提，并按首次提交复核其当前的自助权限与本人绑定。
     await requireResubmitRight(deps, ctx, id, input.fields);
-    const result = await command(c, deps, ctx, { id, input }, (tx, context) => resubmit(tx, context, id, input.fields));
+    const result = await command(c, deps, ctx, { id, input }, (tx, context) =>
+      resubmit(
+        tx,
+        {
+          ...context,
+          recheckContractResubmit: (tx, instanceId, corrections) =>
+            requireResubmitRight(deps, ctx, instanceId, corrections, tx),
+        },
+        id,
+        input.fields,
+      ),
+    );
     return respondOutcome(c, deps, result);
   });
   for (const [path, act] of own) {

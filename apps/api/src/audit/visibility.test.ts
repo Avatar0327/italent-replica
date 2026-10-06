@@ -1,5 +1,5 @@
 /**
- * DEC-197 字段裁剪的单元行为、对象类型登记的完整性，以及迁移 0055 的 SQL 差异函数与 @italent/domain diffAuditFields 口径一致
+ * DEC-197 字段裁剪的单元行为、对象类型登记的完整性，以及迁移 0057 的 SQL 差异函数与 @italent/domain diffAuditFields 口径一致
  * （集合 SQL 写入与历史行回填走 SQL，统一入口走 TypeScript，两边必须得出相同的字段差异）。
  */
 import { randomUUID } from 'node:crypto';

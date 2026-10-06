@@ -11,6 +11,7 @@ import { jsonBody } from '../employment/context.js';
 import { approveTask, rejectTask, disagreeTask, resubmit } from '../approval/actions.js';
 import { requireResubmitRight } from '../approval/access.js';
 import { loadInstance, instanceOfTask } from '../approval/store.js';
+import { authorizeInTransaction } from '../permission/module-access.js';
 import { rowsOf } from './context.js';
 import { routeContext } from './routes.js';
 import { parse } from './input.js';
@@ -63,7 +64,18 @@ export function registerMergedTodos(module: Hono<TenantEnv>, deps: TenantRouteDe
           id: `${key}:${i}`,
           fingerprint: { input, index: i },
           execute: async (tx, commandId) => {
-            const context = { ...ctx, scope: undefined, commandId, expectedRevision: item.revision };
+            const context = {
+              ...ctx,
+              scope: undefined,
+              commandId,
+              expectedRevision: item.revision,
+              authorize: authorizeInTransaction(deps.authorize, tx),
+              recheckContractResubmit: (
+                tx: Parameters<typeof resubmit>[0],
+                id: string,
+                corrections: Record<string, unknown>,
+              ) => requireResubmitRight(deps, ctx, id, corrections, tx),
+            };
             if (input.action === 'resubmit') return resubmit(tx, context, instanceId);
             const viewable = await ctx.fields!.viewable(tx, ctx.userId, CONTRACT_OBJECT);
             const decision = { taskId: item.id, comment: item.comment };
@@ -77,15 +89,15 @@ export function registerMergedTodos(module: Hono<TenantEnv>, deps: TenantRouteDe
         receipts.push({ id: item.id, status: result.status, result: result.body });
       } catch (error) {
         if (!(error instanceof AppError)) throw error;
-        // 结果未知 / 存储不可写也逐条回执，但带机器可读原因，客户端按原命令 ID 回查（PR #75 第二轮 P2-8）
-        const reason = (error.details as { reason?: string } | undefined)?.reason;
-        receipts.push({
-          id: item.id,
-          status: error.status,
-          error: { code: error.code, message: error.message, ...(isDefiniteFailure(error) ? {} : { reason }) },
-        });
+        receipts.push({ id: item.id, status: error.status, error: receiptError(error) });
       }
     }
     return c.json({ items: receipts });
   });
+}
+
+/** 结果未知 / 存储不可写也逐条回执，但带机器可读原因，客户端按原命令 ID 回查（PR #75 第二轮 P2-8）。 */
+function receiptError(error: AppError) {
+  const reason = (error.details as { reason?: string } | undefined)?.reason;
+  return { code: error.code, message: error.message, ...(isDefiniteFailure(error) ? {} : { reason }) };
 }

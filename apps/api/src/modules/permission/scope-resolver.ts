@@ -136,6 +136,7 @@ export async function resolveDataScope(tx: Tx, query: ScopeQuery): Promise<Modul
   const usesPersonnelScope = [
     'TenantBase.Employee',
     'TenantBase.EmploymentRecord',
+    'TenantBase.EmploymentContract',
     ...Object.keys(PERSONNEL_SCOPE_FIELDS),
   ].includes(query.objectCode ?? '');
   const orgIds = new Set<string>();

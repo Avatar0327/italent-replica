@@ -1,47 +1,22 @@
 import { randomUUID } from 'node:crypto';
-import { type Db, sql, withPlatform, withTenant } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { tenantLocalDate } from '@italent/domain';
 import { listCompletionTodos, remindCompletion } from '../../apps/api/src/modules/transfer/completion.js';
+import { employmentSession } from './AC-EMP-support.js';
+import { withPreAuditSchema } from './support/pre-audit-schema.js';
 const database = useTestDb({ migrateBefore: '_plain_the_anarchist' });
 const rows = <T>(r: unknown) => (Array.isArray(r) ? r : (r as { rows: T[] }).rows) as T[];
-
-/** 租户、成员、员工直接按旧结构写入：当前的平台 / 任职接口会写 R1-T16（迁移 0054）新增的审计列，
- * 0050 之前的结构里还没有这些列（与 AC-CT-11-upgrade 同一做法）；历史调动数据与升级后的断言保持原样。 */
-async function legacySession(db: Db) {
-  const suffix = randomUUID().slice(0, 8);
-  const tenant = { id: randomUUID(), timezone: 'Asia/Shanghai' };
-  const user = { id: randomUUID() };
-  await withPlatform(db, async (tx) => {
-    await tx.execute(sql`INSERT INTO tenants (id,code,name,timezone)
-      VALUES (${tenant.id},${`f017upgrade-${suffix}`},'租户f017upgrade',${tenant.timezone})`);
-    await tx.execute(sql`INSERT INTO users (id,email,display_name)
-      VALUES (${user.id},${`f017upgrade-${suffix}@example.com`},'f017upgrade 管理员')`);
-  });
-  await withTenant(db, tenant.id, (tx) =>
-    tx.execute(sql`INSERT INTO tenant_memberships (tenant_id,user_id) VALUES (${tenant.id},${user.id})`),
-  );
-  let sequence = 0;
-  const employee = async () => {
-    const id = randomUUID();
-    sequence += 1;
-    await withTenant(db, tenant.id, (tx) =>
-      tx.execute(sql`INSERT INTO employment_employees (id,tenant_id,code,name)
-        VALUES (${id},${tenant.id},${`EMP_${suffix}_${sequence}`},${`合成员工${sequence}`})`),
-    );
-    return { id };
-  };
-  return { tenant, user, employee };
-}
 it('P2-03 回填旧待补全且不重复近期提醒；F-017 DEC-188 只基线登记历史未来调动，今日及上线后到期保留复查，迁移重跑不重复', async () => {
   const handle = database();
-  const session = await legacySession(handle.db);
+  // 当前任职接口会写 R1-T16 新增的审计列，旧结构上临时补出（只影响夹具，断言不变）
+  const session = await withPreAuditSchema(handle.db, () => employmentSession(handle.db, 'f017upgrade'));
   const tenantId = session.tenant.id;
   const ids: string[] = [];
   const employees: string[] = [];
   for (const offset of [-1, 0, 1]) {
-    const employee = await session.employee();
+    const employee = await withPreAuditSchema(handle.db, () => session.employee());
     const [staff, business, payload] = [randomUUID(), randomUUID(), randomUUID()];
     ids.push(business);
     employees.push(employee.id);

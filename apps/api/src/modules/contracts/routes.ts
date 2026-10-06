@@ -11,17 +11,26 @@ import { pageQuery, revision, uuidParam } from '../job/context.js';
 import { jsonBody } from '../employment/context.js';
 import {
   resolveModuleScope,
+  resolveModuleScopeInTransaction,
   getModuleViewableFields,
   getModuleViewableFieldsInTransaction,
   authorizeInTransaction,
 } from '../permission/module-access.js';
 import { requireObjectWrite } from '../permission/object-write.js';
-import { checkFields, checkScope, rowsOf, type ContractContext } from './context.js';
+import { checkFields, checkOperationScope, checkScope, rowsOf, type ContractContext } from './context.js';
 import { rules, saveMaster, saveRule, saveSettings, settings } from './configuration.js';
 import { commandSchema, parse } from './input.js';
 import { batchCommands, createCommand, loadContract, loadRequest, portfolioRevision } from './service.js';
 import { listContracts } from './queries.js';
-import { errorsCsv, importContracts, importSchema, previewImport } from './imports.js';
+import {
+  checkImportScope,
+  errorsCsv,
+  type ImportError,
+  importContracts,
+  importSchema,
+  previewImport,
+} from './imports.js';
+import { cancelFailedRequest } from './recovery.js';
 import { registerMergedTodos } from './todos.js';
 import { auditActor } from '../../system-actor.js';
 import { rawImportRows, rawUuid, recordOperationLog, withFailedImportLog } from '../../audit/record.js';
@@ -70,6 +79,10 @@ async function trim(deps: TenantRouteDeps, ctx: ContractContext, object: string,
   }
   return project(value);
 }
+function requireMasterScope(ctx: ContractContext, object: string) {
+  if (['TenantBase.ContractType', 'TenantBase.ContractCompany'].includes(object) && !ctx.scope?.all)
+    throw new AppError('NOT_FOUND', '合同主数据不存在');
+}
 export async function write(
   c: C,
   deps: TenantRouteDeps,
@@ -78,12 +91,23 @@ export async function write(
   execute: (tx: Tx, ctx: ContractContext) => Promise<CommandResult>,
   object = CONTRACT_OBJECT,
 ) {
+  requireMasterScope(ctx, object);
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, revision: ctx.expectedRevision, input },
-    execute: (tx, commandId) =>
-      execute(tx, { ...ctx, commandId, authorize: authorizeInTransaction(deps.authorize, tx) }),
+    execute: async (tx, commandId) => {
+      const current = {
+        ...ctx,
+        commandId,
+        authorize: authorizeInTransaction(deps.authorize, tx),
+        scope: await resolveModuleScopeInTransaction(deps, ctx, tx, object, `${object}.list`),
+      };
+      requireMasterScope(current, object);
+      return execute(tx, current);
+    },
   });
+  ctx = { ...ctx, scope: await resolveModuleScope(deps, ctx, undefined, object, `${object}.list`) };
+  requireMasterScope(ctx, object);
   // 台账重放按当前权限裁剪，并重新验证每个结果的员工范围。
   if (object === CONTRACT_OBJECT)
     await withTenant(deps.db, ctx.tenantId, async (tx) => {
@@ -173,7 +197,10 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
         input.operation === 'create' ? 'list' : 'detail',
       ),
     });
-    await withTenant(deps.db, ctx.tenantId, (tx) => checkScope(tx, ctx, input.employeeId));
+    await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const target = input.targetId ? await loadContract(tx, ctx.tenantId, input.targetId) : null;
+      await checkOperationScope(tx, ctx, input, target);
+    });
     return write(c, deps, ctx, input, async (tx, context) => ({
       status: 201,
       body: await createCommand(tx, context, input),
@@ -202,7 +229,10 @@ function registerCommands(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
           row.command.operation === 'create' ? 'list' : 'detail',
         ),
       });
-      await withTenant(deps.db, ctx.tenantId, (tx) => checkScope(tx, ctx, row.command.employeeId));
+      await withTenant(deps.db, ctx.tenantId, async (tx) => {
+        const target = row.command.targetId ? await loadContract(tx, ctx.tenantId, row.command.targetId) : null;
+        await checkOperationScope(tx, ctx, row.command, target);
+      });
     }
     return write(c, deps, ctx, input, async (tx, context) => ({
       status: 200,
@@ -313,6 +343,12 @@ function registerImports(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
     module.post(`/imports${suffix}`, async (c) => {
       const ctx = await routeContext(c, deps, CONTRACT_OBJECT, true);
       const raw = await jsonBody(c);
+      await requirePermission(deps.authorize, {
+        tenantId: ctx.tenantId,
+        userId: ctx.userId,
+        action: 'object.button',
+        resource: buttonResource(CONTRACT_OBJECT, 'import', 'list'),
+      });
       if (suffix) return importPreview(c, deps, ctx, raw, suffix);
       // DEC-199 / PR #75 第三轮 P2-3：格式、字段权限与范围校验失败同样是导入任务失败，整批留任务级日志
       const rows = rawImportRows(raw);
@@ -335,18 +371,13 @@ function registerImports(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
 
 type RouteContext = Awaited<ReturnType<typeof routeContext>>;
 
+/** 导入按钮之后的校验（格式、字段权限、批量范围、初始化的删除权），预览、下载错误报告与导入共用。 */
 async function authorizeImport(deps: TenantRouteDeps, ctx: RouteContext, raw: unknown) {
   const input = parse(importSchema, raw);
-  await requirePermission(deps.authorize, {
-    tenantId: ctx.tenantId,
-    userId: ctx.userId,
-    action: 'object.button',
-    resource: buttonResource(CONTRACT_OBJECT, 'import', 'list'),
-  });
   for (const row of input.rows) {
     await checkFields(ctx, ['edit', 'change'].includes(input.mode) ? 'update' : 'create', row.fields);
-    await withTenant(deps.db, ctx.tenantId, (tx) => checkScope(tx, ctx, row.employeeId));
   }
+  await withTenant(deps.db, ctx.tenantId, (tx) => checkImportScope(tx, ctx, input));
   if (input.mode === 'initialize')
     await requirePermission(deps.authorize, {
       tenantId: ctx.tenantId,
@@ -364,41 +395,89 @@ async function importPreview(
   raw: unknown,
   suffix: string,
 ) {
+  const envelope = parse(importSchema.extend({ rows: z.array(z.unknown()).min(1).max(10000) }), raw);
+  const formatting = envelope.rows.flatMap((row, index) => {
+    const result = importSchema.shape.rows.element.safeParse(row);
+    return result.success ? [] : [{ row: index + 1, code: 'VALIDATION_FAILED', message: '行格式或字段值不合法' }];
+  });
+  if (suffix === '/errors' && formatting.length) return downloadErrors(c, deps, ctx, formatting, rawImportRows(raw));
   const input = await authorizeImport(deps, ctx, raw);
   const result = await withTenant(deps.db, ctx.tenantId, (tx) => previewImport(tx, ctx, input, suffix === '/preview'));
   if (suffix !== '/errors') return c.json(result);
-  // R1-T16：错误报告下载是读取，不经命令台账；下载记录单独一个事务写入对象操作日志（逐行归属见第三轮 P1-2）
+  return downloadErrors(c, deps, ctx, result.errors, input.rows);
+}
+
+/** R1-T16：错误报告下载是读取，不经命令台账；下载记录单独一个事务写入对象操作日志（逐行归属见第三轮 P1-2）。 */
+async function downloadErrors(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  ctx: RouteContext,
+  errors: readonly ImportError[],
+  rows: readonly { readonly employeeId?: unknown }[],
+) {
   await withTenant(deps.db, ctx.tenantId, (tx) =>
     recordOperationLog(tx, {
       tenantId: ctx.tenantId,
       actorUserId: auditActor(ctx.userId),
       behavior: 'download',
       objectType: CONTRACT_OBJECT,
-      successCount: result.errors.length,
+      successCount: errors.length,
       failureCount: 0,
-      summary: `下载合同导入错误报告（${result.errors.length}条）`,
+      summary: `下载合同导入错误报告（${errors.length}条）`,
       attachment: { fileName: 'contract-import-errors.csv', contentType: 'text/csv' },
-      items: result.errors.map((error, rowIndex) => ({
+      items: errors.map((error, rowIndex) => ({
         rowIndex,
         outcome: 'succeeded' as const,
-        employeeId: input.rows[error.row - 1]?.employeeId ?? null,
+        employeeId: rawUuid(rows[error.row - 1]?.employeeId),
       })),
       occurredAt: deps.clock(),
     }),
   );
   c.header('Content-Type', 'text/csv; charset=utf-8');
   c.header('Content-Disposition', 'attachment; filename="contract-import-errors.csv"');
-  return c.body(errorsCsv(result.errors));
+  return c.body(errorsCsv(errors));
 }
+
 function registerFailures(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  module.post('/requests/:id/cancel', async (c) => {
+    const ctx = await routeContext(c, deps, CONTRACT_OBJECT, true);
+    const id = uuidParam(c);
+    const input = parse(z.strictObject({}), await jsonBody(c));
+    await requireObjectWrite(deps.authorize, ctx, { objectCode: CONTRACT_OBJECT, operation: 'update', payload: {} });
+    await requirePermission(deps.authorize, {
+      tenantId: ctx.tenantId,
+      userId: ctx.userId,
+      action: 'object.button',
+      resource: buttonResource(CONTRACT_OBJECT, 'withdraw', 'detail'),
+    });
+    await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const request = await loadRequest(tx, ctx.tenantId, id);
+      await checkScope(tx, ctx, request.employeeId, request.createdBy);
+    });
+    return write(c, deps, ctx, input, async (tx, context) => ({
+      status: 200,
+      body: await cancelFailedRequest(tx, context, id),
+    }));
+  });
   module.get('/failures', async (c) => {
     const ctx = await routeContext(c, deps);
     const page = pageQuery(c);
-    const { scopeSql } = await import('../permission/module-access.js');
-    const predicate = ctx.scope ? scopeSql(ctx.scope, { person: sql`a.employee_id` }) : sql`false`;
+    const { employmentVisibilitySql } = await import('../employment/visibility.js');
+    const predicate = ctx.scope
+      ? employmentVisibilitySql(ctx.scope, {
+          department: sql`NULL::uuid`,
+          employee: sql`a.employee_id`,
+          creator: sql`CASE WHEN a.kind IN ('activate','quarantine') THEN (SELECT q.created_by FROM contract_requests q
+        WHERE q.tenant_id=a.tenant_id AND q.id=a.object_id) ELSE (SELECT r.created_by FROM contract_records r
+        WHERE r.tenant_id=a.tenant_id AND r.id=a.object_id) END`,
+        })
+      : sql`false`;
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       tx.execute(sql`SELECT a.* FROM contract_job_attempts a
       WHERE a.tenant_id=${ctx.tenantId} AND a.state IN ('failed','unknown') AND ${predicate}
+        AND (a.kind NOT IN ('activate','quarantine') OR EXISTS (SELECT 1 FROM contract_requests q
+          WHERE q.tenant_id=a.tenant_id AND q.id=a.object_id
+            AND (q.status='approved' OR (a.kind='quarantine' AND q.status IN ('in_review','returned')))))
       ORDER BY a.created_at DESC LIMIT ${page.limit} OFFSET ${page.offset}`),
     );
     return c.json({ items: rowsOf(items) });
