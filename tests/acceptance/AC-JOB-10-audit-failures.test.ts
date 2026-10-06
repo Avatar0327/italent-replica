@@ -114,3 +114,23 @@ for (const committed of [false, true])
     expect((await api.dataChanges(as, { objectType: 'employment-record', commandId: s.key })).items).toHaveLength(2);
     expect((await api.operationLogs(as, { objectType: 'job-sequence-sync', commandId: s.key })).items).toHaveLength(1);
   });
+it('AC-JOB-10 消费事务尚未开始即断连，仍保留原命令关联的存储失败审计', async () => {
+  const { db } = testDb();
+  const s = await queue(db);
+  let n = 0;
+  const wrapper = Object.create(db) as Db;
+  wrapper.transaction = (async (fn: Parameters<Db['transaction']>[0]) => {
+    if (++n === 3) throw Object.assign(new Error('Connection terminated unexpectedly'), { code: 'ECONNRESET' });
+    return db.transaction(fn);
+  }) as Db['transaction'];
+  expect(await worker(wrapper, s.world.tenant.id)).toMatchObject({ failed: 1 });
+  const as = { user: s.world.user.id, tenant: s.world.tenant.id };
+  expect((await auditApi(db, now.toISOString()).commandFailures(as, { commandId: s.key })).items).toEqual([
+    expect.objectContaining({ outcome: 'storage_unwritable', commandId: s.key }),
+  ]);
+  await worker(db, s.world.tenant.id);
+  expect(
+    (await auditApi(db, now.toISOString()).operationLogs(as, { objectType: 'job-sequence-sync', commandId: s.key }))
+      .items,
+  ).toHaveLength(1);
+});
