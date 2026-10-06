@@ -67,9 +67,9 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
     fields: input.fields,
     customFields: input.customFields,
   });
-  // 08 §10 / AC-TRF-23：人事申请入口只能使用 Personal 表单，不能借用 HR 按钮。
+  // DEC-205：本人入口复用 HR 表单；旧 Personal 标识保持兼容，但不能用于他人入口或直接调动。
   if (
-    employment.formId.startsWith('TenantBase.Personal') !== (input.initiator === 'employee') ||
+    (employment.formId.startsWith('TenantBase.Personal') && input.initiator !== 'employee') ||
     (input.initiator === 'employee' && input.mode !== 'application')
   )
     throw new AppError('VALIDATION_FAILED', '表单与调动入口不匹配', { reason: 'TRANSFER_FORM_ENTRY_MISMATCH' });

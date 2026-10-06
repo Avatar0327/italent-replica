@@ -41,43 +41,26 @@ export function TransferForm(props: TransferFormProps) {
 }
 
 function SelectionFields({ model, onSelection }: TransferFormProps) {
+  const basic = model.preview?.basicFieldModes;
   const reasons = model.catalog.reasons.filter(
-    (reason) => reason.transferTypeCode === null || reason.transferTypeCode === model.transferTypeCode,
+    (r) => !r.transferTypeCode || r.transferTypeCode === model.transferTypeCode,
   );
   return (
     <div className="transfer-grid">
-      {model.initiator === 'employee' ? (
-        <p>
-          {text.employee}：{model.employees.find((e) => e.id === model.employeeId)?.name}
-        </p>
-      ) : (
+      <EmployeeSelection model={model} onSelection={onSelection} />
+      {basic?.effectiveDate !== 'hidden' && (
         <label>
-          {text.employee}
-          <select
-            name="employeeId"
-            value={model.employeeId}
-            onChange={(event) => onSelection?.('employeeId', event.target.value)}
+          {text.date}
+          <input
+            readOnly={basic?.effectiveDate === 'readonly'}
+            name="effectiveDate"
+            type="date"
+            value={model.effectiveDate}
+            onChange={(event) => onSelection?.('effectiveDate', event.target.value)}
             required
-          >
-            <option value="">{text.employeePlaceholder}</option>
-            {model.employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.name} · {employee.code}
-              </option>
-            ))}
-          </select>
+          />
         </label>
       )}
-      <label>
-        {text.date}
-        <input
-          name="effectiveDate"
-          type="date"
-          value={model.effectiveDate}
-          onChange={(event) => onSelection?.('effectiveDate', event.target.value)}
-          required
-        />
-      </label>
       {model.initiator !== 'employee' && (
         <label>
           {text.type}
@@ -96,22 +79,50 @@ function SelectionFields({ model, onSelection }: TransferFormProps) {
           </select>
         </label>
       )}
-      <label>
-        {text.reason}
-        <select
-          name="reasonCode"
-          value={model.reasonCode}
-          onChange={(event) => onSelection?.('reasonCode', event.target.value)}
-        >
-          <option value="">{text.choose}</option>
-          {reasons.map((reason) => (
-            <option key={reason.code} value={reason.code}>
-              {reason.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      {basic?.reasonCode !== 'hidden' && (
+        <label>
+          {text.reason}
+          <select
+            disabled={basic?.reasonCode === 'readonly'}
+            name="reasonCode"
+            value={model.reasonCode}
+            onChange={(event) => onSelection?.('reasonCode', event.target.value)}
+          >
+            <option value="">{text.choose}</option>
+            {reasons.map((reason) => (
+              <option key={reason.code} value={reason.code}>
+                {reason.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
     </div>
+  );
+}
+
+function EmployeeSelection({ model, onSelection }: TransferFormProps) {
+  return model.initiator === 'employee' ? (
+    <p>
+      {text.employee}：{model.employees.find((e) => e.id === model.employeeId)?.name}
+    </p>
+  ) : (
+    <label>
+      {text.employee}
+      <select
+        name="employeeId"
+        value={model.employeeId}
+        onChange={(event) => onSelection?.('employeeId', event.target.value)}
+        required
+      >
+        <option value="">{text.employeePlaceholder}</option>
+        {model.employees.map((employee) => (
+          <option key={employee.id} value={employee.id}>
+            {employee.name} · {employee.code}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -281,7 +292,7 @@ function ReferenceControl(props: PairProps & { value: FieldValue; choices: reado
   );
 }
 
-function TransferActions({ model, onAction, busy, actionsDisabled }: TransferFormProps) {
+function TransferActions({ model, onAction, busy, actionsDisabled, submitOnly }: TransferFormProps) {
   const preview = model.preview;
   const allowed = preview?.allowedActions;
   const direct = model.initiator !== 'employee' && preview?.allowDirectTransfer;
@@ -297,9 +308,11 @@ function TransferActions({ model, onAction, busy, actionsDisabled }: TransferFor
       <button type="button" disabled={blocked || allowed?.application !== true} onClick={() => onAction?.('submit')}>
         {text.submit}
       </button>
-      <button type="button" disabled={blocked || allowed?.application !== true} onClick={() => onAction?.('draft')}>
-        {text.draft}
-      </button>
+      {!submitOnly && (
+        <button type="button" disabled={blocked || allowed?.application !== true} onClick={() => onAction?.('draft')}>
+          {text.draft}
+        </button>
+      )}
       {direct && allowed?.directList === true ? (
         <button
           type="button"

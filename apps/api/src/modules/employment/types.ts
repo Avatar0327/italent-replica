@@ -94,6 +94,8 @@ export function emptyPresetFields(): PresetFields {
 export type EmploymentScope = Awaited<ReturnType<typeof resolveModuleScope>>;
 
 export interface EmploymentContext {
+  /** 本人自助路由重验账号绑定后设置；仅用于同表单的字段权限继承策略。 */
+  readonly selfServiceEmployeeId?: string;
   readonly scope?: EmploymentScope;
   readonly scopeEmployeeId?: string;
   readonly scopeEmployeeCreatorId?: string | null;

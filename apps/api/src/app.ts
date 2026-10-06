@@ -1,4 +1,5 @@
 import { registerContractRoutes } from './modules/contracts/routes.js';
+import { registerEmployeeSelfServiceRoutes } from './modules/employee-self-service/routes.js';
 import type { Db } from '@italent/db';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -31,6 +32,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerPersonnelRoutes, // R1-T12 人员信息与子集
   registerApprovalRoutes, // R1-T07 审批中心
   registerContractRoutes, // R2-T06 合同协议
+  registerEmployeeSelfServiceRoutes, // R1-T13 员工自助，仅本人
 ];
 
 export interface AppDeps {

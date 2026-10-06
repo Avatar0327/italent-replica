@@ -15,6 +15,7 @@ export interface TransferCatalog {
   readonly reasons: readonly { code: string; name: string; transferTypeCode: string | null }[];
 }
 export interface TransferPreview {
+  readonly basicFieldModes?: Readonly<Record<'effectiveDate' | 'reasonCode', FieldMode>>;
   readonly requiredFieldsUnavailable?: boolean;
   readonly form: {
     readonly id: string;
@@ -48,6 +49,7 @@ export interface TransferFormModel {
 }
 export type TransferAction = 'draft' | 'submit' | 'direct';
 export interface TransferFormProps {
+  readonly submitOnly?: boolean;
   readonly model: TransferFormModel;
   readonly busy?: boolean;
   readonly actionsDisabled?: boolean;
