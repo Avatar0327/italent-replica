@@ -1,6 +1,6 @@
 /** DEC-052：持久 outbox 消费，追加尝试日志；整批在保存点中成功或回滚，失败下次调度可重试。 */
 import { randomUUID } from 'node:crypto';
-import { sql, type Db, type Tx, withPlatform, withTenant } from '@italent/db';
+import { isUuid, sql, type Db, type Tx, withPlatform, withTenant } from '@italent/db';
 import { MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
 import { type Authorizer, requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
@@ -30,12 +30,14 @@ interface Options {
   readonly clock?: () => Date;
   readonly authorize?: Authorizer;
   readonly limit?: number;
+  readonly cursor?: string;
 }
 const EMPLOYMENT = MODULE_OBJECTS.employmentRecord.code;
 
 export async function runSequenceSyncJobs(db: Db, tenantId: string, options: Options = {}) {
   const limit = options.limit ?? 100;
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) throw new RangeError('同步任务上限须为 1～200');
+  if (options.cursor && !isUuid(options.cursor)) throw new RangeError('同步任务游标须为 UUID');
   const clock = options.clock ?? (() => new Date());
   const authorize = options.authorize ?? createPermissionAuthorizer(db);
   const tenant = await withPlatform(
@@ -46,17 +48,21 @@ export async function runSequenceSyncJobs(db: Db, tenantId: string, options: Opt
     SELECT timezone FROM tenants WHERE id=${tenantId}::uuid AND status='active'`),
       )[0],
   );
-  if (!tenant) return { completed: 0, failed: 0 };
+  if (!tenant) return { completed: 0, failed: 0, nextCursor: null as string | null };
   const jobs = await withTenant(db, tenantId, async (tx) =>
     rowsOf<{ id: string }>(
       await tx.execute(sql`
     SELECT o.id FROM employment_outbox o WHERE o.tenant_id=${tenantId} AND o.event_type=${SEQUENCE_REQUESTED}
-      AND ${pendingJob(sql`o`)} ORDER BY o.created_at,o.id LIMIT ${limit}`),
+      AND ${pendingJob(sql`o`)}
+      AND (${options.cursor ?? null}::uuid IS NULL OR (o.created_at,o.id) > (
+        SELECT created_at,id FROM employment_outbox WHERE tenant_id=${tenantId} AND id=${options.cursor ?? null}::uuid))
+      ORDER BY o.created_at,o.id LIMIT ${limit + 1}`),
     ),
   );
-  const result = { completed: 0, failed: 0 };
+  const batch = jobs.slice(0, limit);
+  const result = { completed: 0, failed: 0, nextCursor: jobs.length > limit ? batch.at(-1)!.id : null };
   // 每单单独提交释放员工锁；失败只挂起有相同来源或任职目标的后继，其他同步任务仍可执行。
-  for (const job of jobs) {
+  for (const job of batch) {
     const outcome = await consumeJob(db, tenantId, tenant.timezone, job.id, clock, authorize);
     if (outcome) result[outcome]++;
   }
@@ -252,7 +258,13 @@ async function sweep(db: Db) {
       ORDER BY id LIMIT 100`),
       ),
     );
-    for (const tenant of tenants) await runSequenceSyncJobs(db, tenant.id);
+    for (const tenant of tenants) {
+      let cursor: string | undefined;
+      do {
+        const result = await runSequenceSyncJobs(db, tenant.id, { cursor });
+        cursor = result.nextCursor ?? undefined;
+      } while (cursor);
+    }
     if (tenants.length < 100) return;
     cursor = tenants.at(-1)!.id;
   }

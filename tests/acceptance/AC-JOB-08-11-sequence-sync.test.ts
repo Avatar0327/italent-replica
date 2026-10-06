@@ -12,10 +12,15 @@ import type { Authorizer } from '../../apps/api/src/authorization.js';
 
 const testDb = useTestDb();
 const now = new Date('2026-10-05T01:00:00Z');
-async function worker(db: Db, tenantId: string, authorize: Authorizer = allowAll) {
+async function worker(
+  db: Db,
+  tenantId: string,
+  authorize: Authorizer = allowAll,
+  options: { limit?: number; cursor?: string } = {},
+) {
   const path = '../../apps/api/src/modules/job/sequence-worker.js';
   const module = await import(path);
-  return module.runSequenceSyncJobs(db, tenantId, { clock: () => now, authorize });
+  return module.runSequenceSyncJobs(db, tenantId, { clock: () => now, authorize, ...options });
 }
 function callAt(db: Db, world: OrgPeopleWorld, authorize: Authorizer = allowAll) {
   const api = tenantApi(db, { clock: () => now, authorize });
@@ -489,7 +494,13 @@ it('AC-JOB-10 连续 A→B→A 入队仍按引用处理，末单不能被入队�
       )
     ).status,
   ).toBe(200);
-  expect(await worker(db, s.world.tenant.id)).toMatchObject({ completed: 2, failed: 0 });
+  const firstPage = await worker(db, s.world.tenant.id, allowAll, { limit: 1 });
+  expect(firstPage).toMatchObject({ completed: 1, failed: 0, nextCursor: expect.any(String) });
+  expect(await worker(db, s.world.tenant.id, allowAll, { cursor: firstPage.nextCursor })).toMatchObject({
+    completed: 1,
+    failed: 0,
+    nextCursor: null,
+  });
   const records = await s.world.records(s.employee.id);
   expect(records.every((r) => r.fields.sequenceId === s.oldSequence.id)).toBe(true);
   const after = await versions(db, s.world.tenant.id, s.employee.id);
