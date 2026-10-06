@@ -7,7 +7,13 @@ import { createTenant, sql, withTenant } from '@italent/db';
 import { diffAuditFields } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { auditObjectRegistered, visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
+import {
+  APPROVAL_FLOW_FIELDS,
+  auditObjectRegistered,
+  visibleChanges,
+  visibleErrorReport,
+  visibleValue,
+} from './visibility.js';
 
 const testDb = useTestDb();
 
@@ -49,6 +55,17 @@ describe('字段裁剪', () => {
     expect(visibleErrorReport(invalid, new Set(['remarks']))).toEqual([
       { rowIndex: 0, errorCode: 'VALIDATION_FAILED', reason: 'invalid_type' },
     ]);
+  });
+
+  it('审批日志只展示流程字段白名单：业务字段值（如将来写入的业务快照）不展示（第四轮口径）', () => {
+    const flow = new Set(APPROVAL_FLOW_FIELDS);
+    const after = { status: 'approved', comment: '同意', regularSalary: 9000, fields: ['regularSalary'] };
+    expect(visibleValue(after, flow)).toEqual({ status: 'approved', comment: '同意' });
+    const changes = [
+      { field: 'status', from: 'pending', to: 'approved' },
+      { field: 'regularSalary', from: 8000, to: 9000 },
+    ];
+    expect(visibleChanges(changes, flow).map((change) => change.field)).toEqual(['status']);
   });
 
   it('错误报告按可见行裁剪（逐行归属的任务，PR #75 第三轮 P1-2）', () => {

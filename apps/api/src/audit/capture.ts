@@ -4,7 +4,7 @@
  * 未登录 / 非成员的请求不进租户审计。只认携带合法命令 ID（Idempotency-Key）的写请求；执行器已记过的不再重复。
  * 这些失败都发生在任何写入之前，判为执行阶段（确定未生效）。
  */
-import type { Db } from '@italent/db';
+import { type Db, platformFailureOf } from '@italent/db';
 import type { MiddlewareHandler } from 'hono';
 import { type TenantEnv, tenantOf } from '../tenant-context.js';
 import { classifyCommandFailure, recordCommandFailure } from './failures.js';
@@ -20,6 +20,9 @@ export function captureCommandFailures(db: Db): MiddlewareHandler<TenantEnv> {
     const commandId = c.req.header('idempotency-key');
     if (!error || !WRITE_METHODS.has(c.req.method) || !commandId || !COMMAND_ID.test(commandId)) return;
     if (currentAuditRequest()?.state.failureRecorded) return;
-    await recordCommandFailure(db, tenantOf(c), commandId, classifyCommandFailure(error, 'execute'));
+    // 租户路径上经平台命令执行的写入（如成员授予 / 撤销）：沿用平台执行器的分类（含提交阶段的结果未知），
+    // 租户审计与平台受限通道各记一条、口径一致（第四轮：平台入口同类路径）
+    const failure = platformFailureOf(error) ?? classifyCommandFailure(error, 'execute');
+    await recordCommandFailure(db, tenantOf(c), commandId, failure);
   };
 }

@@ -154,8 +154,8 @@ export function auditReferenceKind(field: string): AuditReferenceKind | undefine
 
 /**
  * DEC-203（补充 DEC-197）：真正没有人员 / 组织归属的配置类对象，持有「日志审计」的查看人均可查看，不按“能否管理该配置”
- * 裁剪。只有登记在这里的配置对象类型才按此放行；有独立业务权限规则的对象（编制方案、复制任务、组织导入回执、
- * 组织编码预占、审批实例等）不在此列，按业务规则判断（apps/api/src/audit/visibility.ts）；未登记的一律不可见（fail-closed）。
+ * 裁剪（字段权限照常裁剪，第四轮口径）。只有登记在这里的配置对象类型才按此放行；有独立业务权限规则的对象（编制方案、复制任务、组织导入回执、
+ * 组织编码预占、审批实例、人员序码重算汇总等）不在此列，按业务规则判断（apps/api/src/audit/visibility.ts）；未登记的一律不可见（fail-closed）。
  */
 export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'tenant',
@@ -180,7 +180,6 @@ export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
   'transfer_settings',
   'transfer_form',
   'personnel-order-settings',
-  'personnel-order-run',
   'org_setting',
   'job_setting',
   'establishment-settings',

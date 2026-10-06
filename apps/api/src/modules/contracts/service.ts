@@ -606,7 +606,7 @@ export async function batchCommands(
   const normalized = entries.map((row) => ({ ...row, command: parse(commandSchema, row.command) }));
   const ids = [...new Set(normalized.map((row) => row.command.employeeId))].sort();
   for (const id of ids) await lockEmployee(tx, ctx, id);
-  const result = [];
+  const result: Awaited<ReturnType<typeof createCommand>>[] = [];
   for (const row of normalized)
     result.push(await createCommand(tx, { ...ctx, expectedRevision: row.revision }, row.command));
   // R1-T16：批量操作整体成功才提交，任务级日志与业务同事务
@@ -622,6 +622,7 @@ export async function batchCommands(
       rowIndex,
       outcome: 'succeeded' as const,
       employeeId: row.command.employeeId,
+      objectId: result[rowIndex]?.id ?? null,
     })),
     commandId: ctx.commandId,
     occurredAt: ctx.now,

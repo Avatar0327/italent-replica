@@ -76,9 +76,11 @@ export async function importOrganizations(
       snapshot.mappings.set(row.sourceCode, result.orgId);
     }
   }
-  const anchors = rows.map((row, rowIndex) => ({
-    orgId: results[rowIndex]?.orgId ?? snapshot.mappings.get(row.sourceCode) ?? row.orgId ?? row.parentId,
-  }));
+  // 逐行归属（第三轮 P1-2）与真实业务对象编号（第四轮 N2：按对象判断创建人；冲突行没有对象，回退为执行人）
+  const anchors = rows.map((row, rowIndex) => {
+    const objectId = results[rowIndex]?.orgId ?? snapshot.mappings.get(row.sourceCode) ?? row.orgId ?? null;
+    return { objectId, orgId: objectId ?? row.parentId };
+  });
   await recordImportLog(tx, { ...ctx, actorUserId: auditActor(ctx.userId) }, 'organization', results, anchors);
   return { results };
 }

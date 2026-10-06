@@ -8,6 +8,7 @@
  *   audit_events（事务内显式切到租户路径，租户管理员可见）与平台审计（标出所涉租户）；无租户归属的变更经
  *   ctx.auditPlatform 只写平台审计。
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash, randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import type { Db } from './client.js';
@@ -95,17 +96,35 @@ export async function runPlatformCommand<T>(
       else recheckFailed = true;
     }
     // DEC-199：平台命令失败写平台层受限通道（仅平台运营可读），原错误照常抛给调用方
-    await recordPlatformFailure(db, meta, op, input, classifyCommandFailure(final, phase, recheckFailed));
-    if (final !== null && typeof final === 'object') recorded.add(final);
+    const failure = classifyCommandFailure(final, phase, recheckFailed);
+    await recordPlatformFailure(db, meta, op, input, failure);
+    const scope = requestScope.getStore();
+    if (scope) scope.recorded = true;
+    if (final !== null && typeof final === 'object') classified.set(final, failure);
     throw final;
   }
 }
 
-/** 已由执行器写过平台失败通道的错误；入口兜底（平台路由中间件）据此去重（PR #75 第三轮 P2-2）。 */
-const recorded = new WeakSet<object>();
+/**
+ * 请求级的“已记录”状态（PR #75 第四轮 N3）：平台路由在一次请求内运行命令，执行器记过失败后入口兜底不再记录——
+ * 路由把原错误转换成新的应用错误（如唯一约束 → 409 EMAIL_TAKEN）时也能识别。只在本次请求内有效，
+ * 不按命令编号永久去重，同一命令编号的后续失败尝试照常记录。
+ */
+export interface PlatformFailureScope {
+  recorded: boolean;
+}
 
-export function isPlatformFailureRecorded(error: unknown): boolean {
-  return error !== null && typeof error === 'object' && recorded.has(error);
+const requestScope = new AsyncLocalStorage<PlatformFailureScope>();
+
+export function runInPlatformFailureScope<T>(scope: PlatformFailureScope, run: () => Promise<T>): Promise<T> {
+  return requestScope.run(scope, run);
+}
+
+/** 执行器对原错误的分类（含提交阶段的“结果未知”）；租户入口兜底记录同一失败时沿用，避免两条通道分类不一致。 */
+const classified = new WeakMap<object, CommandFailure>();
+
+export function platformFailureOf(error: unknown): CommandFailure | undefined {
+  return error !== null && typeof error === 'object' ? classified.get(error) : undefined;
 }
 
 /**

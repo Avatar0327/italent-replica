@@ -182,7 +182,11 @@ export async function importContracts(tx: Tx, ctx: ContractContext, raw: unknown
   const items = await applyRows(tx, ctx, input, errors);
   if (errors.length) throw importFailure('导入失败', { errors });
   const receipts = items.map(() => ({ status: 'imported' }));
-  const anchors = input.rows.map((row) => ({ employeeId: row.employeeId }));
+  // 逐行归属与真实业务对象编号（合同记录 / 申请，第四轮 N2：“使用用户”维度按对象创建人判断）
+  const anchors = input.rows.map((row, rowIndex) => ({
+    employeeId: row.employeeId,
+    objectId: (items[rowIndex] as { id?: string } | undefined)?.id ?? null,
+  }));
   await recordImportLog(tx, { ...ctx, actorUserId: auditActor(ctx.userId) }, CONTRACT_OBJECT, receipts, anchors);
   return { items, count: items.length };
 }

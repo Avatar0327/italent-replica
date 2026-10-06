@@ -54,7 +54,7 @@ const BASE = '/api/tenant/audit';
 const CODE = /^[A-Za-z0-9_.:#-]{1,200}$/;
 const FIELD = /^[A-Za-z0-9_.:-]{1,100}$/;
 
-type AuditEventRow = typeof auditEvents.$inferSelect;
+type AuditEventRow = typeof auditEvents.$inferSelect & { visibleCount: number | null };
 
 export function registerAuditRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerDataChanges(router, deps);
@@ -71,7 +71,7 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
         const window = queryWindow(c, deps.clock(), ctx.timezone, await tenantRetention(tx, ctx.tenantId));
         const limit = pageLimit(c);
         const rows = await tx
-          .select()
+          .select(eventColumns(viewer))
           .from(auditEvents)
           .where(and(...filters, viewer.dataChanges, ...pageConditions(c, auditEvents, window, ctx)))
           .orderBy(desc(auditEvents.occurredAt), desc(auditEvents.id))
@@ -79,9 +79,9 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
         const page = paginate(rows, limit);
         const operator = await operatorNames(tx, page.items);
         return {
-          items: page.items.map((row) =>
-            dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action)),
-          ),
+          items: page.items
+            .map(recounted)
+            .map((row) => dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action))),
           nextCursor: page.nextCursor,
           window,
         };
@@ -97,8 +97,8 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
     return c.json(
       await withTenant(deps.db, ctx.tenantId, async (tx) => {
         const earliest = queryWindow(c, deps.clock(), ctx.timezone, await tenantRetention(tx, ctx.tenantId)).earliest;
-        const [row] = await tx
-          .select()
+        const [found] = await tx
+          .select(eventColumns(viewer))
           .from(auditEvents)
           .where(
             and(
@@ -108,7 +108,8 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
             ),
           );
         // 超出保留期、范围外或只涉及隐藏字段的日志与不存在同样处理（原站“最远只能查 6 个月内”；DEC-197）
-        if (!row) throw new AppError('NOT_FOUND', '日志不存在或已超出保留期');
+        if (!found) throw new AppError('NOT_FOUND', '日志不存在或已超出保留期');
+        const row = recounted(found);
         const fields = viewer.fieldsOf(row.objectType, row.action);
         const view = dataChangeView(row, (await operatorNames(tx, [row]))(row), fields);
         return {
@@ -263,6 +264,20 @@ function sourceView(row: {
     ip: row.ip,
     traceId: row.traceId,
   };
+}
+
+function eventColumns(viewer: Awaited<ReturnType<typeof auditViewer>>) {
+  return { ...getTableColumns(auditEvents), visibleCount: sql<number | null>`${viewer.visibleCount}` };
+}
+
+/**
+ * 人员派生计数按可见行重算（第四轮 N4）：序码重算汇总的变化人数换成查看人可见的逐人序码日志条数，
+ * 差异按重算后的值重新计算（看全部的查看人 visibleCount 为空，保持原值）。
+ */
+function recounted(row: AuditEventRow): AuditEventRow {
+  if (row.visibleCount === null || row.objectType !== 'personnel-order-run') return row;
+  const after = { ...(row.after as Record<string, unknown>), changed: row.visibleCount };
+  return { ...row, after, changes: diffAuditFields(row.before, after) };
 }
 
 function dataChangeView(

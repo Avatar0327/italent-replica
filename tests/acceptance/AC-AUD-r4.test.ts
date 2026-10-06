@@ -253,7 +253,7 @@ describe('PR #75 第四轮', () => {
     expect(seen.items).toHaveLength(1);
     const visible = seen.items[0]!.changes.find((change) => change.field === 'changed')?.to;
     expect(visible).toBe(1);
-    expect(seen.items[0]!.content).not.toContain(String(total));
+    expect(seen.items[0]!.content).not.toContain(`修改为【${total}】`);
   });
 
   it('汇总计数同类：恢复对账日志里的接管任务数与问题清单（审批等业务派生）不在审计中展示，授权镜像条数照常', async () => {

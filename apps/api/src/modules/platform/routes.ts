@@ -9,12 +9,12 @@ import {
   type Db,
   desc,
   eq,
-  isPlatformFailureRecorded,
   isUuid,
   pgErrorCode,
   platformCommandFailures,
   type PlatformCommandMeta,
   recordPlatformEntryFailure,
+  runInPlatformFailureScope,
   withPlatform,
 } from '@italent/db';
 import { isValidTimeZone } from '@italent/domain';
@@ -60,15 +60,18 @@ const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 /**
  * DEC-199 / PR #75 第三轮 P2-2：平台写命令在进入执行器之前就失败（请求体、If-Match、参数校验）也写平台失败通道。
- * 挂在平台身份中间件之后（可信平台运营才记录）；只认携带合法命令 ID 的写请求；执行器已记过的同一错误不再重复。
+ * 挂在平台身份中间件之后（可信平台运营才记录）；只认携带合法命令 ID 的写请求；本次请求内执行器已记过的不再重复（请求级状态，第四轮 N3）。
  */
 function capturePlatformFailures(db: Db): MiddlewareHandler<PlatformEnv> {
   return async (c, next) => {
-    await next();
+    // 请求级“已记录”状态（第四轮 N3）：执行器在本次请求内记过失败，路由再把错误转换成别的应用错误也不重复记录
+    const scope = { recorded: false };
+    await runInPlatformFailureScope(scope, () => next());
     const error = c.error;
     const commandId = c.req.header('idempotency-key');
-    if (!error || !WRITE_METHODS.has(c.req.method) || !commandId || !COMMAND_ID.test(commandId)) return;
-    if (isPlatformFailureRecorded(error)) return;
+    if (!error || scope.recorded || !WRITE_METHODS.has(c.req.method) || !commandId || !COMMAND_ID.test(commandId)) {
+      return;
+    }
     const tenantId = c.req.param('tenantId');
     const operation = `${c.req.method} ${c.req.routePath}`;
     await recordPlatformEntryFailure(
