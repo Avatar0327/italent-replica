@@ -1,3 +1,4 @@
+import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
 import { lockImportParticipants } from './forward-import.js';
 import { lockTransferParticipants } from './transfer-locks.js';
 import { listCompletionTodos } from '../transfer/completion.js';
@@ -264,6 +265,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       transferBusinessContext(tx, ctx, id, 'before-command', input.fields?.departmentId, input),
     );
     const current = await authorizeBusinessWrite(deps, ctx, id);
+    await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id, input));
     await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit');
     const departmentId = input.fields?.departmentId;
     if (departmentId !== undefined && ctx.transferTarget)
@@ -309,6 +311,8 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
           `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`,
         );
         await authorizeBusinessWrite(deps, ctx, id);
+        if (action === 'submit')
+          await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id));
         const write = runWrite(c, deps, ctx, { id, action }, async (tx, context) => {
           const checked = await transferBusinessContext(
             tx,
@@ -680,6 +684,7 @@ async function authorizeImport(
     } else {
       const patch = normalizeBusinessPatch(item.patch);
       await authorizeBusinessWrite(deps, ctx, item.id, employeeId);
+      await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, item.id, patch));
       if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit');
       const departmentId = patch.fields?.departmentId;
       if (departmentId !== undefined)

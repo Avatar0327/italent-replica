@@ -29,6 +29,7 @@ import { removeEmploymentTimeline } from './timeline.js';
 import { assertNoLinkedChanges, assertNoPendingApplication, assertRestoredPredecessor } from './deletion-guards.js';
 import type { EmploymentBusiness, EmploymentContext, EmploymentState } from './types.js';
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
+import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
 import { assertTransferLinkageSubmittable } from '../transfer/linkage/service.js';
 import {
   appendEmploymentState,
@@ -82,6 +83,7 @@ export async function transitionEmployment(
   if (['submit', 'approve', 'activate'].includes(input.action)) await lockTransferBusiness(tx, ctx, input.id);
   const business = await lockEmploymentBusiness(tx, ctx, input.id);
   assertTransition(business, input.action);
+  if (input.action === 'submit') await requireEmployeeTransferBusiness(tx, ctx, input.id);
   if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
     const effectiveDate =
