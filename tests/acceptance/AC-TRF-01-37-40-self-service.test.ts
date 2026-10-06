@@ -257,6 +257,31 @@ describe('R1-T13 员工自助（真实授权器、无员工授权行）', () => 
     expect((await world.business(saved.id)).status).toBe('approved');
   });
 
+  it('AC-TRF-37/40：账号改绑后，旧幂等命令不能重放原员工的数据', async () => {
+    const actor = await world.person('改绑前员工', department);
+    const replacement = await world.person('改绑后员工', department);
+    const profile = await world.json<{ employee: { revision: number } }>(
+      await request('/profile', 'GET', undefined, undefined, actor.userId),
+    );
+    const options = {
+      ...world.as(actor.userId),
+      body: input(),
+      ifMatch: profile.employee.revision,
+      idempotencyKey: randomUUID(),
+    };
+    await world.json(await api.request('POST', `${BASE}/transfer`, options), 201);
+    await withTenant(database().db, world.tenant.id, async (tx) => {
+      await tx.execute(sql`DELETE FROM permission_user_person_links
+        WHERE tenant_id=${world.tenant.id} AND user_id IN (${replacement.userId}::uuid,${actor.userId}::uuid)`);
+      await tx.execute(sql`INSERT INTO permission_user_person_links(tenant_id,user_id,employee_id)
+        VALUES(${world.tenant.id},${actor.userId}::uuid,${replacement.employeeId}::uuid)`);
+    });
+    expect(await world.json(await request('/profile', 'GET', undefined, undefined, actor.userId))).toMatchObject({
+      employee: { id: replacement.employeeId },
+    });
+    expect((await api.request('POST', `${BASE}/transfer`, options)).status).toBe(409);
+  });
+
   it('AC-TRF-39：自动员工身份可配置，未授权员工同样实时采用收紧后的字段权限', async () => {
     const profile = await createProfile(admin, 'employee_self_service');
     await world.json(
