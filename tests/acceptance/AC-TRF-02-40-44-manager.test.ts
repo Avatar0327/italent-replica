@@ -168,7 +168,12 @@ describe('AC-TRF-02/40–44 经理自助', () => {
             edit: !field.system && !['remarks', 'departmentId'].includes(field.code),
           })),
           buttons:
-            definition === MODULE_OBJECTS.employmentRecord ? [{ buttonCode: 'Transfer.Manager', level: 'detail' }] : [],
+            definition === MODULE_OBJECTS.employmentRecord
+              ? [
+                  { buttonCode: 'Transfer.Manager', level: 'detail' },
+                  { buttonCode: 'Employment.Submit', level: 'detail' },
+                ]
+              : [],
         },
         definition.code,
       );
