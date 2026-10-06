@@ -96,12 +96,23 @@ function TransferManager({ tenantId, initiator }: { tenantId: string; initiator:
           {state.saved?.status === 'draft' && (
             <button
               type="button"
-              disabled={state.busy}
+              disabled={state.busy || state.needsReload || state.loadingPreview}
               onClick={() => {
                 void state.submit('submit');
               }}
             >
               {text.submitDraft}
+            </button>
+          )}
+          {state.saved?.status === 'draft' && (
+            <button
+              type="button"
+              disabled={state.busy}
+              onClick={() => {
+                void state.reloadSaved();
+              }}
+            >
+              {text.reloadDraft}
             </button>
           )}
           {state.saved ? (

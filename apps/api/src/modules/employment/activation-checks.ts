@@ -1,3 +1,5 @@
+import { postponeLateTransfer } from './late-transfer.js';
+import { tenantLocalDate } from '@italent/domain';
 import { employmentDepartmentDisable } from '../org/employment-validity.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
 import { loadEmploymentRecord } from './read-model.js';
@@ -96,7 +98,8 @@ export function ruleRejection(error: unknown): ActivationFailure | null {
 }
 
 async function precheck(tx: Tx, ctx: EmploymentContext, item: PendingActivation): Promise<ActivationFailure | null> {
-  const { id: businessId, employeeId, kind, effectiveDate } = item;
+  const { id: businessId, employeeId, kind } = item;
+  const effectiveDate = kind === 'transfer' ? tenantLocalDate(ctx.now, ctx.timezone) : item.effectiveDate;
   const record = item.materialized ? await loadEmploymentRecord(tx, ctx.tenantId, businessId, effectiveDate) : null;
   const departmentId = record ? record.fields.departmentId : item.departmentId;
   const positionId = record ? record.fields.positionId : item.positionId;
@@ -125,22 +128,36 @@ export async function activateWithJudgement(
   ctx: EmploymentContext,
   item: PendingActivation,
 ): Promise<ActivationFailure | null> {
-  const failure = await precheck(tx, ctx, item);
-  if (failure) return failure;
-  if (item.reminderOnly) return null;
+  // 定时生效与重试都属于迟到执行：联动按实际执行日对齐（DEC-186，transfer/linkage/execute.ts）。
   ctx = { ...ctx, deferredExecution: true };
   try {
-    await tx.transaction(async (savepoint) => {
-      await (item.materialized
-        ? activateMaterializedLinkage(savepoint, ctx, item)
-        : transitionEmployment(
-            savepoint,
-            { ...ctx, expectedRevision: item.revision },
-            { id: item.id, action: 'activate' },
-          ));
+    return await tx.transaction(async (savepoint) => {
+      if (item.materialized && item.kind === 'transfer') {
+        const business = await lockEmploymentBusiness(savepoint, { ...ctx, expectedRevision: item.revision }, item.id);
+        await postponeLateTransfer(savepoint, ctx, business);
+        if (item.reminderOnly && item.effectiveDate < tenantLocalDate(ctx.now, ctx.timezone))
+          await bumpEmploymentBusiness(savepoint, ctx, business);
+      }
+      const failure = await precheck(savepoint, ctx, item);
+      if (failure) throw new AppError('CONFLICT', '生效条件不满足', { activationFailure: failure });
+      if (!item.reminderOnly)
+        await (item.materialized
+          ? activateMaterializedLinkage(savepoint, ctx, item)
+          : transitionEmployment(
+              savepoint,
+              { ...ctx, expectedRevision: item.revision },
+              { id: item.id, action: 'activate' },
+            ));
+      return null;
     });
-    return null;
   } catch (error) {
+    if (
+      error instanceof AppError &&
+      error.details &&
+      typeof error.details === 'object' &&
+      'activationFailure' in error.details
+    )
+      return error.details.activationFailure as ActivationFailure;
     const rejected = ruleRejection(error);
     if (!rejected) throw error;
     return rejected;

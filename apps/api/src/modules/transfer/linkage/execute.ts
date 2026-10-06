@@ -16,6 +16,7 @@ import {
 import { addDays, tenantLocalDate, termEnd } from '@italent/domain';
 import { AppError } from '../../../errors.js';
 import { auditEmployment } from '../../employment/context.js';
+import { plannedEffectiveDate } from '../../employment/timeline.js';
 import { rowsOf } from '../../employment/record-store.js';
 import type { EmploymentContext } from '../../employment/types.js';
 import { changeContractOnActivation } from './contract.js';
@@ -39,11 +40,17 @@ export async function linkageExecuted(tx: Tx, tenantId: string, businessId: stri
 /**
  * DEC-186 / DEC-195②：定时调度延迟、失败后重试或审批晚于计划日，联动按实际执行日（租户当日）对齐，
  * 原计划日记审计。补录过去日期的直接调动不属于迟到执行，仍按业务生效日。
- * TODO(F-017)：F-017 合并后任职记录本身也改到实际执行日，届时两者取同一日期，本函数保持一致即可。
+ * F-017 已把迟到的任职本身改到实际执行日（late-transfer.ts），两者取同一日期；这里保持一致，作为同口径兜底。
  */
 function executionDate(ctx: EmploymentContext, planned: string): string {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   return ctx.deferredExecution && today > planned ? today : planned;
+}
+
+async function originalPlannedDate(tx: Tx, tenantId: string, transfer: ActivatedTransfer): Promise<string> {
+  const planned = plannedEffectiveDate(tenantId, sql`${transfer.id}::uuid`, sql`${transfer.effectiveDate}::date`);
+  const [row] = rowsOf<{ date: string }>(await tx.execute(sql`SELECT ${planned}::text AS date`));
+  return row?.date && row.date < transfer.effectiveDate ? row.date : transfer.effectiveDate;
 }
 
 /** 可重复执行：已有执行结果即返回（多实例、重试、审批即生效与直接调动共用同一入口）。 */
@@ -51,8 +58,9 @@ export async function applyTransferCrossLinkage(tx: Tx, ctx: EmploymentContext, 
   if (await linkageExecuted(tx, ctx.tenantId, transfer.id)) return;
   const stored = await latestLinkage(tx, ctx.tenantId, transfer.id);
   if (!stored) return;
-  const plannedEffectiveDate = transfer.effectiveDate;
-  transfer = { ...transfer, effectiveDate: executionDate(ctx, plannedEffectiveDate) };
+  // F-017 改期后任职已是实际执行日；审计里的原计划日取改期前的日期（DEC-195，timeline.ts）。
+  const plannedEffectiveDate = await originalPlannedDate(tx, ctx.tenantId, transfer);
+  transfer = { ...transfer, effectiveDate: executionDate(ctx, transfer.effectiveDate) };
   const { options } = stored;
   const contract = options.contract
     ? await changeContractOnActivation(tx, ctx, {

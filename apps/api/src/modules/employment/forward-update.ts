@@ -1,3 +1,5 @@
+import { affectsEstablishmentOccupancy } from '../establishment/employment-check.js';
+import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
@@ -17,10 +19,11 @@ import {
 } from './forward-rules.js';
 import { availableForwardChanges, referenceCheckDate } from './forward-references.js';
 import { appendForwardPayload, auditForwardTarget } from './forward-store.js';
-import { operationKey } from './timeline.js';
+import { operationKey, plannedEffectiveDate } from './timeline.js';
 import type { EmploymentContext, EmploymentState } from './types.js';
 
 export interface ForwardSource {
+  readonly establishmentWarnings?: EstablishmentWarning[];
   readonly employeeId: string;
   readonly businessId?: string;
   readonly staffId: string;
@@ -67,19 +70,23 @@ async function sourceOrder(tx: Tx, ctx: EmploymentContext, source: ForwardSource
 
 /**
  * 候选查询只访问已锁定员工的周期；超预算整体拒绝，绝不静默截断。
- * 后续记录按“生效日 + 同日操作先后”排序（DEC-108、AC-FWD-13）：生效记录取时间轴上排在源记录之后的，同日在后的
- * 也算；未生效的申请取生效日不早于源日期的（07 A2），同日排在生效记录之后、按发起先后。
+ * 已生效记录取时间轴上排在源记录之后的（DEC-108、AC-FWD-13）；未落地申请按 DEC-195 投影比较实际执行日、
+ * 原计划日与操作序号，避免重复迟到改期丢失后续申请（07 A2）。
  * TODO(需取证 #44)：编辑同日在前的记录时，原站是否也更新同日在后的生效记录未实测（新增业务总在当日最后，不受影响）。
  */
-/**
- * 同日未落地的申请只接受操作先后排在来源之后的向后更新（PR #53 第三轮清单第 3 项，暂定口径）：较早提交的申请
- * 落地时插在来源之前（DEC-108），不应被之后的直接业务改写。来源尚未写状态事件（正在保存的直接业务、预览）时视为
- * 最新一次操作，同日申请一律不更新。
- * DEC-154：审批中的调动会拦截后续直接调动，因此该组合不再触发；其他直接业务仍保留此暂定顺序规则。
- */
-function sameDayPendingAfterSource(ctx: EmploymentContext, source: ForwardSource): SQL {
+/** DEC-195：未落地调动投影到实际执行日，重复改期始终取最早审计中的原计划日，再按操作序号比较。 */
+function pendingAfterSource(ctx: EmploymentContext, source: ForwardSource): SQL {
+  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const executionDate = sql`CASE WHEN p.kind='transfer'
+    THEN greatest(p.effective_date,${today}::date) ELSE p.effective_date END`;
+  const planned = plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`);
+  const sourcePlanned = source.businessId
+    ? plannedEffectiveDate(ctx.tenantId, sql`${source.businessId}::uuid`, sql`${source.effectiveDate}::date`)
+    : sql`${source.effectiveDate}::date`;
+  // 正在保存的直接业务 / 预览尚无操作事件，仍视为同日最新操作，不能改写在前的申请。
   const sourceKey = source.businessId ? operationKey(ctx.tenantId, sql`${source.businessId}::uuid`) : sql`NULL`;
-  return sql`${operationKey(ctx.tenantId, sql`b.id`)} > ${sourceKey}`;
+  return sql`(${executionDate},${planned},${operationKey(ctx.tenantId, sql`b.id`)})
+    > (${source.effectiveDate}::date,${sourcePlanned},${sourceKey})`;
 }
 
 async function candidates(tx: Tx, ctx: EmploymentContext, source: ForwardSource): Promise<ForwardTarget[]> {
@@ -104,8 +111,7 @@ async function candidates(tx: Tx, ctx: EmploymentContext, source: ForwardSource)
       AND (r.staff_id=${source.staffId}::uuid OR (r.id IS NULL AND p.selected_staff_id=${source.staffId}::uuid))
       AND ((s.state='effective' AND ${laterEffective})
         OR (s.state IN ('draft','in_review','approved','rejected')
-          AND (p.effective_date>${source.effectiveDate}::date
-            OR (p.effective_date=${source.effectiveDate}::date AND ${sameDayPendingAfterSource(ctx, source)}))))
+          AND ${pendingAfterSource(ctx, source)}))
     ORDER BY p.effective_date,t.sort_order NULLS LAST,b.created_at,b.id LIMIT ${TARGET_LIMIT + 1}
   `),
   );
@@ -186,17 +192,7 @@ export async function forwardUpdateEmployment(
       fields: available.accepted,
     });
     if (!dryRun) {
-      if (!source.businessId) throw new TypeError('向后更新必须关联触发业务');
-      const next = await appendForwardPayload(
-        tx,
-        ctx,
-        target.payload,
-        applyForwardChanges(target.values, available.accepted),
-        source.businessId,
-        target.status === 'effective',
-        available.accepted,
-      );
-      await auditForwardTarget(tx, ctx, next, available.accepted);
+      await writeForwardTarget(tx, ctx, source, target, nextValues, available.accepted);
     }
   }
   return plan;
@@ -225,4 +221,42 @@ async function remindWholeRecordSkip(
     reason: 'DEPARTMENT_POSITION_MISMATCH',
     fields: available.accepted,
   });
+}
+
+async function writeForwardTarget(
+  tx: Tx,
+  ctx: EmploymentContext,
+  source: ForwardSource,
+  target: ForwardTarget,
+  nextValues: ForwardValues,
+  accepted: readonly ForwardFieldChange[],
+) {
+  if (!source.businessId) throw new TypeError('向后更新必须关联触发业务');
+  if (
+    await affectsEstablishmentOccupancy(tx, ctx, target.values.fields, nextValues.fields, target.payload.effectiveDate)
+  )
+    await assertEstablishmentCapacity(
+      tx,
+      ctx,
+      {
+        businessId: target.payload.businessId,
+        employeeId: source.employeeId,
+        kind: 'transfer',
+        effectiveDate: target.payload.effectiveDate,
+        fields: nextValues.fields,
+        departmentId: nextValues.fields.departmentId,
+        positionId: nextValues.fields.positionId,
+      },
+      source.establishmentWarnings,
+    );
+  const next = await appendForwardPayload(
+    tx,
+    ctx,
+    target.payload,
+    nextValues,
+    source.businessId,
+    target.status === 'effective',
+    accepted,
+  );
+  await auditForwardTarget(tx, ctx, next, accepted);
 }

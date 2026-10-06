@@ -35,6 +35,8 @@ export const text = {
   directRow: '为所选员工直接调动',
   submit: '提交',
   draft: '暂存',
+  reloadDraft: '重新读取已暂存申请',
+  draftReloaded: '已读取最新申请，请核对字段后主动提交。',
   submitDraft: '提交暂存申请',
   newApplication: '新建调动申请',
   refresh: '重新读取表单',

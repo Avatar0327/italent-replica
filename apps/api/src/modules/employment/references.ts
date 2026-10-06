@@ -49,7 +49,6 @@ export async function validateEmploymentReferences(
   fields: PresetFields,
   effectiveDate: string,
   reporting?: ReportingCheck,
-  // 联动原地改写下属当前任职时，经理按联动生效日判定在职（与 F-017 新增下属同一签名）。
   managerAsOf = effectiveDate,
 ): Promise<void> {
   const tenantId = ctx.tenantId;

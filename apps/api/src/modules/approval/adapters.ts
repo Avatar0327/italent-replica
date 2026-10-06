@@ -1,5 +1,6 @@
 import { linkageApproval } from '../transfer/linkage/approval.js';
 import type { ForeignField } from './foreign-fields.js';
+import { plannedEffectiveDate } from '../employment/timeline.js';
 import { lockTransferBusiness } from '../employment/transfer-locks.js';
 /**
  * 业务适配：把任职申请、人员自助变更申请转换为审批快照（表单值、变更前原值、变化字段、条件取值、路由部门），
@@ -194,14 +195,25 @@ const ref = (prefix: 'before' | 'record', source: Partial<PresetFields> | undefi
     ]),
   );
 
+async function completedTransferDates(
+  tx: Tx,
+  ctx: ApprovalContext,
+  business: NonNullable<Awaited<ReturnType<typeof loadEmploymentBusiness>>>,
+): Promise<Row> {
+  if (business.kind !== 'transfer' || business.status !== 'effective') return {};
+  const planned = plannedEffectiveDate(ctx.tenantId, sql`${business.id}::uuid`, sql`${business.effectiveDate}::date`);
+  const [dates] = rowsOf<Row>(await tx.execute(sql`SELECT ${planned}::text AS "originalEffectiveDate"`));
+  return { ...dates, actualEffectiveDate: business.effectiveDate };
+}
+
 const employmentAdapter: BusinessAdapter = {
-  async lock(tx, ctx, businessId, sourceOnly = false) {
+  async lock(tx, ctx, businessId) {
     const [owner] = rowsOf<{ employee_id: string }>(
       await tx.execute(sql`SELECT employee_id FROM employment_business_objects
         WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid`),
     );
     if (!owner) throw new AppError('NOT_FOUND', '任职业务不存在');
-    if (!sourceOnly) await lockTransferBusiness(tx, ctx, businessId);
+    await lockTransferBusiness(tx, ctx, businessId);
     await lockEmploymentEmployee(tx, ctx, owner.employee_id);
     await tx.execute(sql`SELECT 1 FROM employment_business_objects
       WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE`);
@@ -240,6 +252,7 @@ const employmentAdapter: BusinessAdapter = {
       ...linkage.values,
       ...customValues(business.customFields),
       effectiveDate: business.effectiveDate,
+      ...(await completedTransferDates(tx, ctx, business)),
       lastWorkDate: payload.lastWorkDate,
       kind: business.kind,
       mode: business.mode,

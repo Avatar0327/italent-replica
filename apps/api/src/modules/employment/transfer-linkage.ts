@@ -1,7 +1,7 @@
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
-import { assignTransferOrganizationPeople } from '../org/write-service.js';
+import { assignTransferOrganizationPeople, requireTransferOrganizationScope } from '../org/write-service.js';
 import { auditEmployment, requireLinkedEmploymentRecord, requireScopedEmploymentObject } from './context.js';
 import { ineligibleOrgPeople } from './org-people.js';
 import { editEmploymentRecord } from './record-edit.js';
@@ -24,7 +24,10 @@ export async function validateTransferSubordinates(
   fields: PresetFields,
   asOf: string,
 ) {
-  const ids = fields.addedSubordinateIds ?? [];
+  if ((fields.isDepartmentHead || fields.isStoreManager) && fields.departmentId)
+    await requireTransferOrganizationScope(tx, ctx, fields.departmentId);
+  employeeId = employeeId.toLowerCase();
+  const ids = [...new Set((fields.addedSubordinateIds ?? []).map((id) => id.toLowerCase()))];
   if (!ids.length) return;
   if (ids.includes(employeeId) || (await ineligibleOrgPeople(tx, ctx.tenantId, ids, asOf)).length)
     throw new AppError('VALIDATION_FAILED', '新增下属须为本租户在职员工且不能为本人', {
@@ -68,7 +71,7 @@ export async function applyTransferLinkage(tx: Tx, ctx: EmploymentContext, busin
       current.id,
       { fields: { directManagerId: employeeId } },
       'api',
-      { forwardUpdate: false },
+      { forwardUpdate: false, linkageDate: effectiveDate },
     );
   }
   if (fields.isDepartmentHead) await propagateDepartmentHead(tx, ctx, record);

@@ -171,7 +171,7 @@ function FieldPair(props: PairProps) {
           {text.original}
           {label}
         </span>
-        <output>{valueText(preview.before?.[key]?.[code], choices)}</output>
+        <output>{valueText(preview.before?.[key]?.[code], model.beforeReferences?.[code] ?? choices)}</output>
       </div>
       <label>
         {text.updated}

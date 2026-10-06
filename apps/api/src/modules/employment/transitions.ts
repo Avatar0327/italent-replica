@@ -1,3 +1,4 @@
+import { postponeLateTransfer } from './late-transfer.js';
 import { assertEstablishmentCapacity } from './activation-checks.js';
 import { lockTransferBusiness } from './transfer-locks.js';
 import { personnelHooks } from './personnel-hooks.js';
@@ -80,13 +81,22 @@ export async function transitionEmployment(
   if (['submit', 'approve', 'activate'].includes(input.action)) await lockTransferBusiness(tx, ctx, input.id);
   const business = await lockEmploymentBusiness(tx, ctx, input.id);
   assertTransition(business, input.action);
-  if (input.action === 'submit') {
+  if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
-    const predecessor = await findPredecessor(tx, ctx.tenantId, business.employeeId, payload.effectiveDate);
-    const { fields } = await resolveEffectiveInheritance(tx, ctx, payload, {
-      staffId: payload.selectedStaffId ?? predecessor?.staffId ?? '',
-      predecessor,
-    });
+    const effectiveDate =
+      input.action === 'approve' && payload.kind === 'transfer'
+        ? [payload.effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!
+        : payload.effectiveDate;
+    const predecessor = await findPredecessor(tx, ctx.tenantId, business.employeeId, effectiveDate);
+    const { fields } = await resolveEffectiveInheritance(
+      tx,
+      ctx,
+      { ...payload, effectiveDate },
+      {
+        staffId: payload.selectedStaffId ?? predecessor?.staffId ?? '',
+        predecessor,
+      },
+    );
     assertRequiredTransferFields(payload.kind, payload.formSnapshot, { ...fields });
     // DEC-183：变更合同遇同类型在途未来合同，提交即 409。
     if (payload.kind === 'transfer') await assertTransferLinkageSubmittable(tx, ctx, business.id);
@@ -94,7 +104,7 @@ export async function transitionEmployment(
       businessId: business.id,
       employeeId: business.employeeId,
       kind: payload.kind,
-      effectiveDate: payload.effectiveDate,
+      effectiveDate,
       departmentId: fields.departmentId,
       positionId: fields.positionId,
       fields,
@@ -123,6 +133,7 @@ export async function transitionEmployment(
         reason: 'ACTIVATION_PREDECESSOR_PENDING',
         blockedByBusinessId: before[0]!.id,
       });
+    await postponeLateTransfer(tx, ctx, business);
     // materialize 同事务完成向后更新、审计与 outbox。
     await materializeEmploymentRecord(tx, ctx, business);
     await appendEmploymentState(tx, ctx, business, 'effective');
@@ -144,6 +155,7 @@ async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, busines
   if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) return;
   const { item, before: predecessors } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
   const before = predecessors.filter((item) => !item.reminderOnly);
+  await postponeLateTransfer(tx, ctx, business);
   if (!before.length) {
     await materializeEmploymentRecord(tx, ctx, business);
     await appendEmploymentState(tx, ctx, business, 'effective');

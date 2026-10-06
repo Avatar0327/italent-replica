@@ -1,3 +1,7 @@
+import { affectsEstablishmentOccupancy } from '../establishment/employment-check.js';
+import { reconcileCompletion } from '../transfer/completion.js';
+import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
+import { lockTransferBusiness } from './transfer-locks.js';
 import { queueTransferLinkage, validateTransferSubordinates } from './transfer-linkage.js';
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import { personnelHooks } from './personnel-hooks.js';
@@ -51,9 +55,10 @@ export async function editEmploymentRecord(
   id: string,
   input: EmploymentBusinessPatch,
   entry: ForwardEditEntry = 'api',
-  options: { forwardUpdate?: boolean; linkageDate?: string } = {},
+  options: { forwardUpdate?: boolean; linkageDate?: string; establishmentWarnings?: EstablishmentWarning[] } = {},
 ) {
   const patch = normalizeBusinessPatch(input);
+  await lockTransferBusiness(tx, ctx, id);
   const business = await lockEmploymentBusiness(tx, ctx, id);
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const record = await loadEmploymentRecord(tx, ctx.tenantId, id, today);
@@ -79,6 +84,21 @@ export async function editEmploymentRecord(
     )
     .map(([field, value]) => ({ field, before: beforeAudit[field as keyof typeof beforeAudit] ?? null, after: value }));
   if (!changes.length) return requireSavedBusiness(tx, ctx, id);
+  if (await affectsEstablishmentOccupancy(tx, ctx, record.fields, after.fields, record.effectiveDate))
+    await assertEstablishmentCapacity(
+      tx,
+      ctx,
+      {
+        businessId: id,
+        employeeId: record.employeeId,
+        kind: 'transfer',
+        effectiveDate: record.effectiveDate,
+        fields: after.fields,
+        departmentId: after.fields.departmentId,
+        positionId: after.fields.positionId,
+      },
+      entry === 'import' ? (options.establishmentWarnings ?? []) : undefined,
+    );
   business.payload = await appendForwardPayload(tx, ctx, business.payload, after, id, true, changes);
   await auditEmployment(tx, ctx, 'employment.record.edit', 'employment-record', id, beforeAudit, afterAudit);
   if (options.forwardUpdate !== false && isForwardEditSupported({ ...record, entry, today })) {
@@ -89,11 +109,13 @@ export async function editEmploymentRecord(
       effectiveDate: record.effectiveDate,
       before: record,
       after,
+      establishmentWarnings: entry === 'import' ? (options.establishmentWarnings ?? []) : undefined,
     });
   }
   if (record.effectiveDate > today)
     await queueTransferLinkage(tx, ctx, id, record.kind, after.fields, record.effectiveDate);
   await personnelHooks.sync(tx, ctx, business.employeeId, id, record.kind, record.effectiveDate);
+  await reconcileCompletion(tx, ctx, business.employeeId);
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, id);
 }

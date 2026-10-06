@@ -124,5 +124,5 @@ function queryInteger(c: Context, name: string, fallback: number, maximum: numbe
 export function uuidParam(c: Context, name = 'id'): string {
   const value = c.req.param(name) ?? '';
   if (!isUuid(value)) throw new AppError('VALIDATION_FAILED', '对象标识必须为 UUID');
-  return value;
+  return value.toLowerCase();
 }

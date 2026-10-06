@@ -1,6 +1,7 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import type { EmploymentBusiness } from './AC-EMP-support.js';
+import { tenantApi } from './support/tenant-api.js';
 import { forwardFixture, forwardJobApi, preview } from './AC-FWD-support.js';
 
 const testDb = useTestDb();
@@ -192,4 +193,28 @@ describe('AC-FWD-06 DEC-107 选了新职务而未传职务序列时由服务端�
     );
     expect(unsequenced.record!.fields).toMatchObject({ postId: unsequencedPost.id, sequenceId: oldSequence.id });
   });
+});
+
+it.each(['readonly', 'hidden'] as const)('F-017 DEC-187 新职务派生 %s 序列且拒绝人工传序列', async (mode) => {
+  const { session, employee, newPost, newSequence, otherSequence, before } = await sequenceFixture(`f017-${mode}`);
+  const formId = `f017-sequence-${mode}`;
+  const configured = await tenantApi(testDb().db).request('PUT', `/api/tenant/employment/transfers/forms/${formId}`, {
+    user: session.user.id,
+    tenant: session.tenant.id,
+    ifMatch: 0,
+    body: { name: '序列派生表单', group: 'transfer', fieldModes: { 'preset:sequenceId': mode } },
+  });
+  expect(configured.status, await configured.clone().text()).toBe(200);
+  const draft = await session.business(
+    employee.id,
+    { kind: 'transfer', mode: 'application', effectiveDate: '2026-10-05', formId, fields: { postId: newPost.id } },
+    before.employeeRevision,
+  );
+  const stored = await session.request('GET', `/businesses/${draft.id}`);
+  expect(await stored.json()).toMatchObject({ fields: { postId: newPost.id, sequenceId: newSequence.id } });
+  const forged = await session.request('PATCH', `/businesses/${draft.id}`, {
+    ifMatch: draft.revision,
+    body: { fields: { sequenceId: otherSequence.id } },
+  });
+  expect(forged.status).toBe(400);
 });

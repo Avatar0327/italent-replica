@@ -1,6 +1,6 @@
 {
-  "id": "e285ac47-ffa0-4c0f-874b-b3c4b2d24e84",
-  "prevId": "845c9f21-b8f9-42b5-a1e3-fe7a759fcd89",
+  "id": "41101fd5-890d-462d-8c27-9ade271e0737",
+  "prevId": "a50da3cc-8747-468f-8557-39e13a2a8388",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -25522,6 +25522,12 @@
         "closed_at": {
           "name": "closed_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "legacy_reminder_date": {
+          "name": "legacy_reminder_date",
+          "type": "date",
           "primaryKey": false,
           "notNull": false
         }

@@ -40,6 +40,7 @@ export interface TransferFormModel {
   readonly initiator?: 'hr' | 'employee';
   readonly employees: readonly EmployeeChoice[];
   readonly departments: readonly Choice[];
+  readonly beforeReferences?: Readonly<Record<string, readonly Choice[]>>;
   readonly references?: Readonly<Record<string, readonly Choice[]>>;
   readonly catalog: TransferCatalog;
   readonly employeeId: string;
@@ -69,6 +70,9 @@ export interface TransferFormProps {
   readonly onLinkage?: (patch: Partial<LinkageDraft>) => void;
 }
 export interface TransferBusiness {
+  readonly fields?: FieldValues;
+  readonly customFields?: FieldValues;
+  readonly effectiveDate?: string;
   readonly id: string;
   readonly revision: number;
   readonly employeeRevision: number;

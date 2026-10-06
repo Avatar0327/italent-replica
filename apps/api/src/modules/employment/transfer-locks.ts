@@ -11,7 +11,7 @@ const SETTING = 'italent.transfer_employee_locks';
 const array = (ids: readonly string[]) => sql`${`{${ids.join(',')}}`}::uuid[]`;
 
 async function participants(tx: Tx, ctx: EmploymentContext, employeeId: string, extra: readonly string[]) {
-  const ids = new Set([employeeId, ...extra]);
+  const ids = new Set([employeeId, ...extra].map((id) => id.toLowerCase()));
   for (;;) {
     const rows = rowsOf<{ ids: string[] | null }>(
       await tx.execute(sql`
@@ -45,6 +45,8 @@ export async function lockTransferParticipants(
   options: { skipLocked?: boolean } = {},
 ): Promise<boolean> {
   if (![employeeId, ...extra].every(isUuid)) throw new AppError('VALIDATION_FAILED', '员工标识必须是 UUID');
+  employeeId = employeeId.toLowerCase();
+  extra = [...new Set(extra.map((id) => id.toLowerCase()))];
   const planned = await participants(tx, ctx, employeeId, extra);
   const [setting] = rowsOf<{ value: string | null }>(
     await tx.execute(sql`SELECT current_setting(${SETTING}, true) AS value`),
@@ -82,7 +84,7 @@ export async function lockTransferParticipants(
   return true;
 }
 
-/** 审批适配器须在实例锁之前调用；批量交接不推进业务，不扩大 F-008 的原有锁集合。 */
+/** 审批适配器须在实例锁之前调用；批量交接会签合席可推进业务，批次须先锁整个参与员工闭包。 */
 export async function lockTransferBusiness(tx: Tx, ctx: EmploymentContext, businessId: string) {
   if (!isUuid(businessId)) throw new AppError('VALIDATION_FAILED', '业务标识必须是 UUID');
   const [row] = rowsOf<{ employeeId: string; kind: string }>(
