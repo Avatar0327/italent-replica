@@ -6,6 +6,7 @@ import { lockTransferBusiness } from '../employment/transfer-locks.js';
  * 业务适配：把任职申请、人员自助变更申请转换为审批快照（表单值、变更前原值、变化字段、条件取值、路由部门），
  * 并在审批结束时调用各模块已有的可信端口（任职状态机 / 申请落地），与审批写入同事务。
  */
+import { lockEstablishment } from '../establishment/store.js';
 import { contractAdapter } from '../contracts/adapter.js';
 import { sql, type Tx } from '@italent/db';
 import {
@@ -220,15 +221,18 @@ async function completedTransferDates(
 
 const employmentAdapter: BusinessAdapter = {
   async lock(tx, ctx, businessId) {
-    const [owner] = rowsOf<{ employee_id: string }>(
-      await tx.execute(sql`SELECT employee_id FROM employment_business_objects
-        WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid`),
+    const [owner] = rowsOf<{ employee_id: string; kind: string }>(
+      await tx.execute(sql`SELECT employee_id, (SELECT kind FROM employment_payload_versions p
+        WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) AS kind
+        FROM employment_business_objects b WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid`),
     );
     if (!owner) throw new AppError('NOT_FOUND', '任职业务不存在');
     await lockTransferBusiness(tx, ctx, businessId);
     await lockEmploymentEmployee(tx, ctx, owner.employee_id);
     await tx.execute(sql`SELECT 1 FROM employment_business_objects
       WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE`);
+    // org/locks.ts：员工 / 业务 → 组织 → 编制 → 实例；审批推进时只重入资源锁。
+    if (owner.kind === 'transfer') await lockEstablishment(tx, ctx, { initializeDefault: false });
   },
   async snapshot(tx, ctx, businessId) {
     const asOf = tenantLocalDate(ctx.now, ctx.timezone);
