@@ -64,12 +64,13 @@ describe('AC-AUD-06 日志审计的可见性', () => {
     expect(login).toMatchObject({ implemented: false, editable: false });
   });
 
-  it('管理员授权的变更日志按「管理员」能力可见（DEC-197）；审计管理员撤销身份后立即 403', async () => {
+  it('管理员授权的变更日志对审计管理员可见（DEC-203）；审计管理员撤销身份后立即 403', async () => {
     const auditor = await memberWithAdminRole(world, 'audit_admin', 'aud06-revoked');
     const { items } = await audit.dataChanges(world.asAdmin, { objectType: 'permission_admin', limit: '100' });
     expect(items.some((item) => item.operation === 'create' && item.operator.userId === world.admin.id)).toBe(true);
-    // 只持审计管理员身份：能进入查询，但没有「管理员」能力，看不到这类配置变更
-    expect((await audit.dataChanges(auditor.as, { objectType: 'permission_admin', limit: '100' })).items).toEqual([]);
+    // 只持审计管理员身份、没有「管理员」能力：配置类日志没有人员 / 组织归属，持日志审计即可查看
+    const seen = await audit.dataChanges(auditor.as, { objectType: 'permission_admin', limit: '100' });
+    expect(seen.items.map((item) => item.id).sort()).toEqual(items.map((item) => item.id).sort());
 
     // 管理员记录没有撤销接口（R1-T15 未提供），这里在租户路径上直接把记录置为撤销，验证每次请求都重验身份
     await withTenant(world.db, world.tenant.id, (tx) =>

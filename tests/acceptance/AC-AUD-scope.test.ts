@@ -2,7 +2,7 @@
  * PR #75 第二轮 P1-1 / DEC-197：审计查询按查看人**当前**的数据范围（对象所属人员 / 组织）与字段权限裁剪，
  * 不设全量读取特权。持有「日志审计」只代表能进入查询；范围外对象不返回，隐藏字段不出现在差异、渲染文本、
  * 前后值与快照里，全部在分页前完成（字段筛选不能用来探测隐藏字段）。
- * 没有人员 / 组织归属的配置对象（权限、管理员等）按对应的企业设置能力判断（持有该能力才可见）。
+ * 没有人员 / 组织归属的配置对象（权限、管理员等）对持有「日志审计」的查看人都可见（DEC-203，补充 DEC-197）。
  */
 import { randomUUID } from 'node:crypto';
 import { type Db, sql, withTenant } from '@italent/db';
@@ -162,13 +162,25 @@ describe('DEC-197 审计查询按当前数据范围与字段权限裁剪', () =>
     expect(await auditIds(w.db, w.world.tenant.id, w.mine.hire.id, 'employment.record.edit')).toHaveLength(2);
   });
 
-  it('配置对象按企业设置能力判断：租户管理员能看管理员变更，只持审计身份的看不到', async () => {
+  it('配置对象（无人员 / 组织归属）持日志审计者均可见，不按管理能力裁剪（DEC-203）', async () => {
     // 管理员记录经权限接口按真实时钟写入，这里也按真实时钟查询
     const live = auditApi(w.db, () => new Date(), { authorize: undefined });
     const admin = await live.dataChanges(w.world.asAdmin, { objectType: 'permission_admin', limit: '100' });
     expect(admin.items.length).toBeGreaterThan(0);
     const auditor = await live.dataChanges(w.auditOnly.as, { objectType: 'permission_admin', limit: '100' });
-    expect(auditor.items).toEqual([]);
+    expect(auditor.items.map((item) => item.id).sort()).toEqual(admin.items.map((item) => item.id).sort());
+  });
+
+  it('未登记为配置对象、又没有归属的日志仍不返回（fail-closed）', async () => {
+    const objectId = randomUUID();
+    await withTenant(w.db, w.world.tenant.id, (tx) =>
+      tx.execute(sql`INSERT INTO audit_events (tenant_id,actor_user_id,action,object_type,object_id,after,occurred_at)
+        VALUES (${w.world.tenant.id},${w.world.admin.id},'unknown.create','unregistered-object',${objectId},
+          '{"name":"合成"}'::jsonb,${NOW})`),
+    );
+    for (const as of [w.world.asAdmin, w.auditOnly.as]) {
+      expect((await w.audit.dataChanges(as, { objectId })).items).toEqual([]);
+    }
   });
 
   it('普通成员没有日志审计入口：403', async () => {
