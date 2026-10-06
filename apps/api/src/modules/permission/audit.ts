@@ -2,7 +2,8 @@
  * 权限模块的审计与领域事件：与业务写在同一租户事务内写入（AGENTS.md §10「审计」「事件」）。
  * 权限模块的每一次写都经 audit()，因此审计与 outbox 不会只写一边；消费者按游标拉取 permission_outbox。
  */
-import { auditEvents, permissionOutbox, type Tx } from '@italent/db';
+import { permissionOutbox, type Tx } from '@italent/db';
+import { recordAudit } from '../../audit/record.js';
 
 export interface WriteContext {
   readonly tenantId: string;
@@ -29,7 +30,7 @@ export interface PlatformWriteContext extends Omit<WriteContext, 'userId'> {
 }
 
 export async function auditAs(tx: Tx, write: PlatformWriteContext, entry: AuditInput): Promise<void> {
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: write.tenantId,
     actorUserId: write.actorUserId,
     occurredAt: write.now,

@@ -15,6 +15,8 @@ export interface EmployeeChoice extends Choice {
   readonly revision: number;
 }
 export interface TransferCatalog {
+  readonly viewableFields?: readonly string[];
+  readonly editableFields?: readonly string[];
   readonly today?: string;
   readonly types: readonly { code: string; name: string; formId: string }[];
   readonly reasons: readonly { code: string; name: string; transferTypeCode: string | null }[];
@@ -37,7 +39,7 @@ export interface TransferPreview {
   readonly allowedActions?: { application: boolean; directList: boolean; directRow: boolean };
 }
 export interface TransferFormModel {
-  readonly initiator?: 'hr' | 'employee';
+  readonly initiator?: 'hr' | 'employee' | 'manager';
   readonly employees: readonly EmployeeChoice[];
   readonly departments: readonly Choice[];
   readonly beforeReferences?: Readonly<Record<string, readonly Choice[]>>;

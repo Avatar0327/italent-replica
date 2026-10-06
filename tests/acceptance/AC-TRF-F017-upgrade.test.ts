@@ -5,16 +5,18 @@ import { expect, it } from 'vitest';
 import { tenantLocalDate } from '@italent/domain';
 import { listCompletionTodos, remindCompletion } from '../../apps/api/src/modules/transfer/completion.js';
 import { employmentSession } from './AC-EMP-support.js';
+import { withPreAuditSchema } from './support/pre-audit-schema.js';
 const database = useTestDb({ migrateBefore: '_plain_the_anarchist' });
 const rows = <T>(r: unknown) => (Array.isArray(r) ? r : (r as { rows: T[] }).rows) as T[];
 it('P2-03 回填旧待补全且不重复近期提醒；F-017 DEC-188 只基线登记历史未来调动，今日及上线后到期保留复查，迁移重跑不重复', async () => {
   const handle = database();
-  const session = await employmentSession(handle.db, 'f017upgrade');
+  // 当前任职接口会写 R1-T16 新增的审计列，旧结构上临时补出（只影响夹具，断言不变）
+  const session = await withPreAuditSchema(handle.db, () => employmentSession(handle.db, 'f017upgrade'));
   const tenantId = session.tenant.id;
   const ids: string[] = [];
   const employees: string[] = [];
   for (const offset of [-1, 0, 1]) {
-    const employee = await session.employee();
+    const employee = await withPreAuditSchema(handle.db, () => session.employee());
     const [staff, business, payload] = [randomUUID(), randomUUID(), randomUUID()];
     ids.push(business);
     employees.push(employee.id);
