@@ -94,6 +94,7 @@ export function emptyPresetFields(): PresetFields {
 export type EmploymentScope = Awaited<ReturnType<typeof resolveModuleScope>>;
 
 export interface EmploymentContext {
+  readonly managerTransfer?: boolean;
   readonly scope?: EmploymentScope;
   readonly scopeEmployeeId?: string;
   readonly scopeEmployeeCreatorId?: string | null;

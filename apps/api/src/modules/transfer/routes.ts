@@ -1,3 +1,5 @@
+import { readManagerReferences } from './manager-references.js';
+import { registerManagerRoutes } from './manager-routes.js';
 import { rowsOf } from '../employment/record-store.js';
 import { requireTransferSource, requireTransferButton } from './access.js';
 import { TRANSFER_FORMS } from '@italent/domain';
@@ -20,7 +22,7 @@ import {
   pageQuery,
 } from '../employment/context.js';
 import { businessDate } from '../employment/fields.js';
-import { getModuleViewableFields } from '../permission/module-access.js';
+import { getModuleViewableFields, editableModuleFields, authorizeInTransaction } from '../permission/module-access.js';
 import { loadOrgSnapshot } from '../org/read-model.js';
 import {
   readTransferCatalog,
@@ -36,35 +38,8 @@ import { createTransfer, normalizeTransferInput, requireTransferWrite, requireDi
 
 export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerPersonalEntry(router, deps);
-  router.get('/transfers/departments', async (c) => {
-    const ctx = await readPageContext(c, deps, 'detail');
-    const permitted = await Promise.all(
-      ['Transfer.Hr', 'Transfer.Manager', 'Transfer.Self'].map((button) =>
-        deps.authorize({
-          ...ctx,
-          action: 'object.button',
-          resource: buttonResource('TenantBase.EmploymentRecord', button, 'detail'),
-        }),
-      ),
-    );
-    if (!ctx.scope?.hasDataPermission || !permitted.some(Boolean)) throw new AppError('FORBIDDEN', '无权选择调动部门');
-    const effectiveDate = businessDate(c.req.query('effectiveDate') ?? tenantLocalDate(ctx.now, ctx.timezone));
-    const page = pageQuery(c);
-    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const form = await resolveTransferForm(
-        tx,
-        ctx.tenantId,
-        c.req.query('formId') ?? 'TenantBase.TransferMultiFormView',
-      );
-      const settings = await readTransferSettings(tx, ctx.tenantId);
-      const organizations = await loadOrgSnapshot(tx, ctx.tenantId, effectiveDate, page, {
-        includeDisabled: false,
-        ...(form.isStandard && settings.unrestrictTargetDepartment ? {} : { scope: ctx.scope }),
-      });
-      return organizations.map(({ id, name, code }) => ({ id, name, code }));
-    });
-    return c.json({ items, page: page.page, pageSize: page.pageSize });
-  });
+  registerManagerRoutes(router, deps);
+  registerDepartmentChoices(router, deps);
   router.post('/transfers/employees/:id/preview', async (c) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
@@ -75,16 +50,17 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
     });
     const { form, employeeRevision, allowDirectTransfer, allowedActions } = preview.value;
     const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
+    const visibleForm = await visibleTransferForm(form, viewable, ctx, deps);
     return c.json({
       ...((await trimEmploymentResponse(deps, ctx, preview.value)) as object),
-      form: visibleTransferForm(form, viewable),
+      form: visibleForm,
       employeeRevision,
       allowDirectTransfer,
       allowedActions,
       // 不返回不可见字段名或值；仅给前端一个不可提交的配置状态（PR-A P3）。
       requiredFieldsUnavailable:
         preview.requiredDepartmentMissing &&
-        (form.fieldModes['preset:departmentId'] !== 'editable' ||
+        (visibleForm.fieldModes['preset:departmentId'] !== 'editable' ||
           (viewable !== undefined && !viewable.has('departmentId'))),
     });
   });
@@ -94,6 +70,8 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
     const raw = await jsonBody(c);
     const prepared = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const input = await normalizeTransferInput(tx, ctx, raw);
+      await requireTransferSource(tx, ctx, id, input.initiator);
+      await requireTransferWrite({ ...ctx, authorize: authorizeInTransaction(deps.authorize, tx) }, input);
       const preview = await previewTransfer(tx, ctx, id, input);
       if (input.employment.mode === 'direct') await requireDirectTransfer(tx, preview.context);
       return { input, context: preview.context };
@@ -113,13 +91,72 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
   registerTransferConfiguration(router, deps);
 }
 
-function visibleTransferForm(form: ResolvedTransferForm, viewable: ReadonlySet<string> | undefined) {
+function registerDepartmentChoices(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get('/transfers/departments', async (c) => {
+    const ctx = await readPageContext(c, deps, 'detail');
+    const permitted = await Promise.all(
+      ['Transfer.Hr', 'Transfer.Manager', 'Transfer.Self'].map((button) =>
+        deps.authorize({
+          ...ctx,
+          action: 'object.button',
+          resource: buttonResource('TenantBase.EmploymentRecord', button, 'detail'),
+        }),
+      ),
+    );
+    if (!ctx.scope?.hasDataPermission || !permitted.some(Boolean)) throw new AppError('FORBIDDEN', '无权选择调动部门');
+    const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
+    if (viewable && !viewable.has('departmentId')) throw new AppError('FORBIDDEN', '无权查看调动部门');
+    const effectiveDate = businessDate(c.req.query('effectiveDate') ?? tenantLocalDate(ctx.now, ctx.timezone));
+    const page = pageQuery(c);
+    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const form = await resolveTransferForm(
+        tx,
+        ctx.tenantId,
+        c.req.query('formId') ?? 'TenantBase.TransferMultiFormView',
+      );
+      const settings = await readTransferSettings(tx, ctx.tenantId);
+      if (permitted[1] && !permitted[0]) return readManagerReferences(tx, ctx, 'departmentId', { effectiveDate }, page);
+      const organizations = await loadOrgSnapshot(tx, ctx.tenantId, effectiveDate, page, {
+        includeDisabled: false,
+        ...(form.isStandard && settings.unrestrictTargetDepartment ? {} : { scope: ctx.scope }),
+      });
+      return organizations.map(({ id, name, code }) => ({ id, name, code }));
+    });
+    return c.json({ items, page: page.page, pageSize: page.pageSize });
+  });
+}
+
+async function visibleTransferForm(
+  form: ResolvedTransferForm,
+  viewable: ReadonlySet<string> | undefined,
+  ctx: Awaited<ReturnType<typeof readPageContext>>,
+  deps: TenantRouteDeps,
+) {
   if (viewable === undefined) return form;
+  const editable = await withTenant(deps.db, ctx.tenantId, (tx) =>
+    editableModuleFields(deps.authorize, tx, ctx, 'TenantBase.EmploymentRecord'),
+  );
+  const modes = await Promise.all(
+    Object.entries(form.fieldModes)
+      .filter(([code]) => viewable.has(code.replace(/^preset:/, '')))
+      .map(async ([code, mode]) => [
+        code,
+        mode === 'editable' &&
+        !(editable
+          ? editable.has(code.replace(/^preset:/, ''))
+          : await deps.authorize({
+              ...ctx,
+              action: 'object.create',
+              resource: 'TenantBase.EmploymentRecord',
+              fields: [code.replace(/^preset:/, '')],
+            }))
+          ? 'readonly'
+          : mode,
+      ]),
+  );
   return {
     ...form,
-    fieldModes: Object.fromEntries(
-      Object.entries(form.fieldModes).filter(([code]) => viewable.has(code.replace(/^preset:/, ''))),
-    ),
+    fieldModes: Object.fromEntries(modes),
     excludedAutofillFields: form.excludedAutofillFields.filter((code) => viewable.has(code)),
     customFields: form.customFields.filter((field) => viewable.has(`custom:${field.id}`)),
   };
@@ -214,6 +251,15 @@ function registerPersonalEntry(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         }),
       });
     }
-    return c.json({ ...catalog, today });
+    const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
+    const editable = await withTenant(deps.db, ctx.tenantId, (tx) =>
+      editableModuleFields(deps.authorize, tx, ctx, 'TenantBase.EmploymentRecord'),
+    );
+    return c.json({
+      ...catalog,
+      today,
+      ...(viewable ? { viewableFields: [...viewable] } : {}),
+      ...(editable ? { editableFields: [...editable] } : {}),
+    });
   });
 }

@@ -1,3 +1,5 @@
+import { requireManagerBusinessReferences } from './manager-business-references.js';
+import { requireManagerReferenceValues } from './manager-references.js';
 import { lockTransferParticipants } from '../employment/transfer-locks.js';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
@@ -12,9 +14,14 @@ import { loadEmploymentBusiness } from '../employment/read-model.js';
 import { transitionEmployment } from '../employment/transitions.js';
 import { prepareInheritance } from '../employment/inheritance.js';
 import { createEmploymentBusiness, requireSavedBusiness } from '../employment/write-service.js';
-import type { EmploymentContext, NormalizedEmploymentInput } from '../employment/types.js';
+import type { EmploymentBusinessPatch, EmploymentContext, NormalizedEmploymentInput } from '../employment/types.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
-import { requireTransferSource, transferDirectActions, type TransferInitiator } from './access.js';
+import {
+  requireTransferSource,
+  requireManagerBusinessSource,
+  transferDirectActions,
+  type TransferInitiator,
+} from './access.js';
 import { readTransferCatalog, readTransferSettings, resolveTransferForm } from './configuration.js';
 import { dutySubordinateIds, normalizeLinkage, type LinkageOptions } from './linkage/input.js';
 import { saveNewTransferLinkage } from './linkage/service.js';
@@ -83,7 +90,7 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
   // 08 §10 / AC-TRF-23：人事申请入口只能使用 Personal 表单，不能借用 HR 按钮。
   if (
     employment.formId.startsWith('TenantBase.Personal') !== (input.initiator === 'employee') ||
-    (input.initiator === 'employee' && input.mode !== 'application')
+    (input.initiator !== 'hr' && input.mode !== 'application')
   )
     throw new AppError('VALIDATION_FAILED', '表单与调动入口不匹配', { reason: 'TRANSFER_FORM_ENTRY_MISMATCH' });
   await resolveTransferForm(tx, ctx.tenantId, employment.formId);
@@ -112,6 +119,8 @@ export async function transferTargetContext(
   departmentId: string | null,
 ): Promise<EmploymentContext> {
   await requireTransferSource(tx, ctx, employeeId, input.initiator);
+  if (input.initiator === 'manager')
+    await requireManagerReferenceValues(tx, ctx, input.employment.effectiveDate, input.employment.fields);
   const form = await resolveTransferForm(tx, ctx.tenantId, input.employment.formId);
   const settings = await readTransferSettings(tx, ctx.tenantId);
   return form.isStandard && settings.unrestrictTargetDepartment
@@ -120,6 +129,7 @@ export async function transferTargetContext(
 }
 
 export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
+  ctx = { ...ctx, managerTransfer: input.initiator === 'manager' };
   // F-008：先取员工锁，再重验关系/范围；业务写入沿用员工 → 业务 → 审批实例的顺序。
   const { linkage, linkageAccess } = input;
   await lockTransferParticipants(tx, ctx, employeeId, [
@@ -178,8 +188,9 @@ export async function transferBusinessContext(
   tx: Tx,
   ctx: EmploymentContext,
   businessId: string,
-  write = false,
+  phase: 'read' | 'before-command' | 'command' = 'read',
   targetDepartmentId?: string | null,
+  referenceChange?: EmploymentBusinessPatch,
 ) {
   const [request] = rowsOf<{ employeeId: string }>(
     await tx.execute(sql`
@@ -189,10 +200,15 @@ export async function transferBusinessContext(
   );
   if (!request) return ctx;
   // F-008：等员工锁完成后才重验源范围，避免锁等待期间调出员工后沿用此前目标例外。
-  if (write) {
+  if (phase === 'command') {
     await lockTransferParticipants(tx, ctx, request.employeeId);
     await lockEmploymentEmployee(tx, ctx, request.employeeId);
   }
+  // 每次同单请求（包括命令缓存重放）都验权；首次执行仍在员工锁后复验。
+  const manager = await requireManagerBusinessSource(tx, ctx, request.employeeId, phase !== 'read');
+  // PATCH / submit 的缓存前检查与员工锁后复验共用此处；读取、撤回、删除不因目标撤权而受阻。
+  if (manager && referenceChange !== undefined)
+    await requireManagerBusinessReferences(tx, ctx, businessId, referenceChange);
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   // 是否需要目标部门例外按写入口径判断；DEC-177 放宽的只是“看”（F-015），不能因可见就跳过 Switch 31 例外。
   const writable = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope, 'write');
