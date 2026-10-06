@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
-import { activationWorld, type ActivationWorld } from './AC-TRF-activation-support.js';
+import { activationWorld, seedLegacyOrgDeactivation, type ActivationWorld } from './AC-TRF-activation-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -170,4 +170,71 @@ it('AC-ORG-21 跨租户隔离：另一租户同名组织的在途不拦截、不
   expect((await a.disable()).status).toBe(200);
   await expectBlocked(await b.disable(), 2);
   await b.assertEnabled(true);
+});
+
+// PR #82 P2：HTTP 标识的大小写不能改变范围判断、子树遍历或占用计数。
+describe.each([false, true])('AC-ORG-21 UUID 等价形式（级联：%s）', (cascade) => {
+  it.each(['upper', 'mixed'])('%s UUID 停用仍拒绝在途调入', async (style) => {
+    const w = await world(`uuid-${cascade}-${style}`, cascade);
+    await w.pending();
+    const id =
+      style === 'upper'
+        ? w.to.id.toUpperCase()
+        : w.to.id.replace(/[a-f]/g, (c, i: number) => (i % 2 ? c : c.toUpperCase()));
+    await expectBlocked(await w.orgRequest('PATCH', `/${id}`, { enabled: false, effectiveDate: '2026-10-03' }), 1);
+    await w.assertEnabled(true);
+  });
+});
+
+it('AC-ORG-21 草稿保存后部门已停用：提交复查并拒绝，不产生审批实例或状态事件', async () => {
+  const w = await world('draft-disabled');
+  const { employee, hire } = await w.hired();
+  const draft = await w.session.business(
+    employee.id,
+    {
+      kind: 'transfer',
+      mode: 'application',
+      effectiveDate: '2026-10-05',
+      fields: { departmentId: w.to.id },
+    },
+    hire.employeeRevision,
+  );
+  expect((await w.disable()).status).toBe(200);
+  const response = await w.session.request('POST', `/businesses/${draft.id}/submit`, {
+    ifMatch: draft.revision,
+    body: {},
+  });
+  expect(response.status, await response.clone().text()).toBe(400);
+  expect(await response.json()).toMatchObject({ error: { details: { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED' } } });
+  expect(await w.business(draft.id)).toMatchObject({ status: 'draft', revision: draft.revision, record: null });
+  expect((await w.auditEvents(draft.id)).filter((event) => event.action === 'employment.business.submit')).toHaveLength(
+    0,
+  );
+});
+
+it('AC-ORG-21 历史遗留停用排期：未来申请审批通过前复查部门，拒绝并保留审批中', async () => {
+  const w = await world('approve-disabled');
+  const application = await w.pending();
+  await seedLegacyOrgDeactivation(w, '2026-10-03');
+  const response = runEmploymentTransition(
+    w.db,
+    {
+      tenantId: w.session.tenant.id,
+      userId: w.session.user.id,
+      timezone: w.session.tenant.timezone,
+      now: new Date('2026-10-02T01:00:00Z'),
+      commandId: randomUUID(),
+      expectedRevision: application.revision,
+    },
+    { id: application.id, action: 'approve' },
+  );
+  await expect(response).rejects.toMatchObject({
+    code: 'VALIDATION_FAILED',
+    details: { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED' },
+  });
+  expect(await w.business(application.id)).toMatchObject({
+    status: 'in_review',
+    revision: application.revision,
+    record: null,
+  });
 });
