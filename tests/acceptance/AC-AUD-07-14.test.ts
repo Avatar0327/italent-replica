@@ -208,6 +208,58 @@ describe('F-023 调动联动审计可见性 AC-AUD-07～14', () => {
     expect((await r.get(f.hiddenOnlyId)).status).toBe(404);
   });
 
+  it.each([true, false])('AC-AUD-09 合同联动开启=%s：独立标志可见，合同内容仍按合同字段权裁剪', async (enabled) => {
+    const contract = { targetId: f.contract.id, fields: { endDate: '2029-10-09' } };
+    const r = reader({ fields: { [EMP]: ['isChangeContract'], [CONTRACT_OBJECT]: [] } });
+    // 首次保存的 null、历史省略 contract、显式清空均表示未开启。
+    for (const absent of [null, {}, { contract: null }]) {
+      const id = randomUUID();
+      await withTenant(f.w.db, f.w.as.tenant, (tx) =>
+        tx.insert(auditEvents).values({
+          id,
+          tenantId: f.w.as.tenant,
+          actorUserId: null,
+          action: 'transfer.linkage.save',
+          objectType: 'transfer-linkage',
+          objectId: f.business.id,
+          before: enabled ? absent : { contract },
+          after: enabled ? { contract } : absent,
+          occurredAt: new Date(NOW),
+        }),
+      );
+      const response = await r.get(id);
+      expect(response.status).toBe(200);
+      const detail = (await response.json()) as DataChangeDetail;
+      expect(detail.before).toEqual({ isChangeContract: !enabled });
+      expect(detail.after).toEqual({ isChangeContract: enabled });
+      expect(detail.changes).toEqual([
+        expect.objectContaining({ field: 'isChangeContract', from: !enabled, to: enabled }),
+      ]);
+      const page = await r.list({ field: 'isChangeContract' });
+      expect(page.items.filter((row) => row.id === id)).toHaveLength(1);
+      expect(page.items.find((row) => row.id === id)?.changes).toEqual(detail.changes);
+      expect(ids((await r.list()).items)).toContain(id);
+      for (const field of ['contract', 'contract.targetId', 'contract.fields.endDate'])
+        expect((await r.list({ field })).items).toEqual([]);
+      expect(JSON.stringify(detail)).not.toContain(f.contract.id);
+      expect(JSON.stringify(detail)).not.toContain('2029-10-09');
+      // 完整权限仍保留合同 ID、内容及逐字段差异。
+      const full = (await (await reader().get(id)).json()) as DataChangeDetail;
+      expect(enabled ? full.after : full.before).toMatchObject({ contract, isChangeContract: true });
+      expect(full.changes).toContainEqual(
+        expect.objectContaining({
+          field: 'contract.fields.endDate',
+          from: enabled ? null : '2029-10-09',
+          to: enabled ? '2029-10-09' : null,
+        }),
+      );
+      expect(ids((await reader().list({ field: 'contract.fields.endDate' })).items)).toContain(id);
+    }
+    // 仅修改合同内容、标志未变，不能作为标志变化返回或计数。
+    expect(ids((await r.list({ field: 'isChangeContract' })).items)).not.toContain(f.historicalId);
+    expect((await r.get(f.historicalId)).status).toBe(404);
+  });
+
   it('AC-AUD-09 合同另验对象权与范围；仅任职看全部不放行合同字段', async () => {
     for (const grants of [
       {
