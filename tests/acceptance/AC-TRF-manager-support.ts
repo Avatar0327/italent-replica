@@ -1,6 +1,6 @@
 /** AC-TRF-01/02/03/19/20/24/25：真实授权器校验发起方、源员工范围和目标部门范围。 */
 import { randomUUID } from 'node:crypto';
-import { permissionUserPersonLinks, sql, withTenant } from '@italent/db';
+import { permissionUserPersonLinks, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import type { Db } from '@italent/db';
 import { expect } from 'vitest';
@@ -69,7 +69,12 @@ export async function transferWorld(db: Db) {
   });
   expect(configured.status, await configured.clone().text()).toBe(200);
 
-  async function person(departmentId = inside.id, binding?: Actor, directManagerId?: string): Promise<Person> {
+  async function person(
+    departmentId = inside.id,
+    binding?: Actor,
+    directManagerId?: string,
+    options: { effectiveDate?: string; employType?: string } = {},
+  ): Promise<Person> {
     const employee = await create('employment/employees', { name: '合成调动员工', code: `TRF_${randomUUID()}` });
     if (binding) {
       // 已绑定用户的可信夹具；账号绑定自身的业务验收在 AC-PRM-31/32。
@@ -86,8 +91,12 @@ export async function transferWorld(db: Db) {
       {
         kind: 'hire',
         mode: 'direct',
-        effectiveDate: '2026-01-01',
-        fields: { departmentId, ...(directManagerId ? { directManagerId } : {}) },
+        effectiveDate: options.effectiveDate ?? '2026-01-01',
+        fields: {
+          departmentId,
+          ...(directManagerId ? { directManagerId } : {}),
+          ...(options.employType ? { employType: options.employType } : {}),
+        },
         ...(binding ? {} : { loginEmail: loginEmailOf(employee.id) }),
       },
       employee.revision,

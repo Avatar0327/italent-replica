@@ -1,12 +1,13 @@
+import { MODULE_OBJECTS } from '@italent/domain';
 /** Q-M0-71：纯经理自动身份、当前组织范围、字段裁剪、工作台与租户隔离。 */
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { addMember } from './AC-PRM-support.js';
+import { addMember, createProfile, setObjectPermission } from './AC-PRM-support.js';
 import { transferWorld } from './AC-TRF-manager-support.js';
 
 const database = useTestDb();
 const BASE = '/api/tenant/employment/transfers';
-describe('AC-TRF-02/37–41 经理自助', () => {
+describe('AC-TRF-02/40–44 经理自助', () => {
   let world: Awaited<ReturnType<typeof transferWorld>>;
   let manager: { user: string; tenant: string };
   let self: { id: string; revision: number };
@@ -54,7 +55,7 @@ describe('AC-TRF-02/37–41 经理自助', () => {
     expect(await saved.json()).toMatchObject({ status: 'draft', initiator: 'manager' });
   });
 
-  it('AC-TRF-37：候选默认空；按工号搜索包含下级；不包含范围外汇报下属、历史在范围内者', async () => {
+  it('AC-TRF-40：候选默认空；按工号搜索包含下级；不包含范围外汇报下属、历史在范围内者', async () => {
     const outsider = await world.person(world.outside.id, undefined, self.id);
     const moved = await world.person(world.inside.id);
     const move = await world.setup.request('POST', `/api/tenant/employment/employees/${moved.id}/businesses`, {
@@ -105,7 +106,7 @@ describe('AC-TRF-02/37–41 经理自助', () => {
     ).toBe(403);
   });
 
-  it('AC-TRF-38：字段模式与返回值裁剪；伪造不可编辑字段整单拒绝', async () => {
+  it('AC-TRF-41：字段模式与返回值裁剪；伪造不可编辑字段整单拒绝', async () => {
     const preview = await world.transfer(
       manager,
       member,
@@ -128,13 +129,19 @@ describe('AC-TRF-02/37–41 经理自助', () => {
     expect(denied.status).toBe(403);
   });
 
-  it('AC-TRF-39/40：只读工作台仅负责组织；无 HR 无汇报关系页；待办三页签', async () => {
+  it('AC-TRF-42/43：只读工作台仅负责组织；无 HR 无汇报关系页；待办三页签', async () => {
     const result = await world.api.request('GET', `${BASE}/manager/team?category=active`, manager);
     expect(result.status).toBe(200);
     const dto = (await result.json()) as { items: { id: string }[]; counts: object };
     expect(dto.items.map((x) => x.id)).toContain(member.id);
     expect(dto.items.map((x) => x.id)).not.toContain(self.id);
-    expect(dto.counts).toMatchObject({ active: expect.any(Number), probation: 0, intern: 0, pending: 0, leaving: 0 });
+    expect(dto.counts).toMatchObject({
+      active: expect.any(Number),
+      probation: null,
+      intern: 0,
+      pending: 0,
+      leaving: 0,
+    });
     for (const tab of ['pending', 'processed', 'initiated']) {
       const response = await world.api.request('GET', `${BASE}/manager/todos?tab=${tab}`, manager);
       expect(response.status, await response.clone().text()).toBe(200);
@@ -142,7 +149,117 @@ describe('AC-TRF-02/37–41 经理自助', () => {
     expect((await world.api.request('GET', `${BASE}/manager/reporting`, manager)).status).toBe(403);
   });
 
-  it('AC-TRF-41：跨租户拒绝；撤销负责人后下一请求即失效', async () => {
+  it('AC-TRF-41：租户配置自动身份字段权限后，只读字段保留原值且后端拒绝显式改写', async () => {
+    const profile = await createProfile(world, 'department_manager_self_service');
+    for (const definition of [MODULE_OBJECTS.employmentRecord, MODULE_OBJECTS.employee]) {
+      const response = await setObjectPermission(
+        world,
+        profile,
+        {
+          dataOperations: {
+            create: definition === MODULE_OBJECTS.employmentRecord,
+            update: definition === MODULE_OBJECTS.employmentRecord,
+            delete: false,
+          },
+          fields: definition.fields.map((field) => ({
+            fieldCode: field.code,
+            view: field.code !== 'remarks',
+            edit: !field.system && !['remarks', 'departmentId'].includes(field.code),
+          })),
+          buttons:
+            definition === MODULE_OBJECTS.employmentRecord ? [{ buttonCode: 'Transfer.Manager', level: 'detail' }] : [],
+        },
+        definition.code,
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+    }
+    const preview = await world.transfer(
+      manager,
+      member,
+      { initiator: 'manager', formId: 'TenantBase.TransferMultiFormView', fields: {} },
+      true,
+    );
+    expect(preview.status, await preview.clone().text()).toBe(200);
+    expect(await preview.json()).toMatchObject({
+      fields: { departmentId: child.id },
+      form: { fieldModes: { 'preset:departmentId': 'readonly' } },
+    });
+    const denied = await world.transfer(manager, member, {
+      initiator: 'manager',
+      formId: 'TenantBase.TransferMultiFormView',
+      fields: { departmentId: world.outside.id },
+    });
+    expect(denied.status).toBe(403);
+  });
+
+  it('AC-TRF-42：实习、未来入职与离职中按负责组织统计，未来入职不成为调动候选', async () => {
+    const intern = await world.person(child.id, undefined, undefined, { employType: 'intern' });
+    const pending = await world.person(child.id, undefined, undefined, { effectiveDate: '2026-11-01' });
+    const leaving = await world.person(child.id);
+    const leave = await world.setup.request('POST', `/api/tenant/employment/employees/${leaving.id}/businesses`, {
+      ...world.asAdmin,
+      ifMatch: leaving.revision,
+      body: { kind: 'leave', mode: 'direct', effectiveDate: '2026-11-01', lastWorkDate: '2026-10-31', fields: {} },
+    });
+    expect(leave.status, await leave.clone().text()).toBe(201);
+    for (const [category, expected] of [
+      ['intern', intern.id],
+      ['pending', pending.id],
+      ['leaving', leaving.id],
+    ]) {
+      const response = await world.api.request('GET', `${BASE}/manager/team?category=${category}`, manager);
+      expect(response.status, await response.clone().text()).toBe(200);
+      const dto = (await response.json()) as { items: { id: string }[]; counts: Record<string, number> };
+      expect(
+        dto.items.map((row) => row.id),
+        category,
+      ).toContain(expected);
+      expect(dto.counts[category!]).toBeGreaterThan(0);
+    }
+    const candidates = await world.api.request('GET', `${BASE}/manager/employees?search=TRF_`, manager);
+    expect(((await candidates.json()) as { items: { id: string }[] }).items.map((row) => row.id)).not.toContain(
+      pending.id,
+    );
+  });
+
+  it('AC-TRF-40：旧草稿提交也重验当前组织，宽泛显式范围不能绕过负责人限制', async () => {
+    const employee = await world.person(child.id);
+    const saved = await world.transfer(manager, employee, {
+      initiator: 'manager',
+      formId: 'TenantBase.TransferMultiFormView',
+      fields: {},
+    });
+    expect(saved.status, await saved.clone().text()).toBe(201);
+    const draft = (await saved.json()) as { id: string; revision: number };
+    const moved = await world.setup.request('POST', `/api/tenant/employment/employees/${employee.id}/businesses`, {
+      ...world.asAdmin,
+      ifMatch: await world.currentRevision(employee),
+      body: {
+        kind: 'transfer',
+        mode: 'direct',
+        effectiveDate: '2026-02-01',
+        fields: { departmentId: world.outside.id },
+      },
+    });
+    expect(moved.status, await moved.clone().text()).toBe(201);
+    const broad = await world.setup.request('PUT', `/api/tenant/permission/scopes/${manager.user}/TenantBase`, {
+      ...world.asAdmin,
+      ifMatch: 0,
+      body: {
+        kind: 'org_range',
+        orgRanges: [world.inside.id, world.outside.id].map((orgId) => ({ orgId, includeDescendants: true })),
+      },
+    });
+    expect(broad.status, await broad.clone().text()).toBe(200);
+    const submit = await world.api.request('POST', `/api/tenant/employment/businesses/${draft.id}/submit`, {
+      ...manager,
+      ifMatch: draft.revision,
+      body: {},
+    });
+    expect([403, 404]).toContain(submit.status);
+  });
+
+  it('AC-TRF-44：跨租户拒绝；撤销负责人后下一请求即失效', async () => {
     const foreign = await transferWorld(database().db);
     const employee = await foreign.person();
     expect([403, 404]).toContain(

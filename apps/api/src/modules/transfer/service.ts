@@ -14,7 +14,12 @@ import { prepareInheritance } from '../employment/inheritance.js';
 import { createEmploymentBusiness, requireSavedBusiness } from '../employment/write-service.js';
 import type { EmploymentContext, NormalizedEmploymentInput } from '../employment/types.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
-import { requireTransferSource, transferDirectActions, type TransferInitiator } from './access.js';
+import {
+  requireTransferSource,
+  requireManagerBusinessSource,
+  transferDirectActions,
+  type TransferInitiator,
+} from './access.js';
 import { readTransferCatalog, readTransferSettings, resolveTransferForm } from './configuration.js';
 
 const schema = z.strictObject({
@@ -70,7 +75,7 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
   // 08 §10 / AC-TRF-23：人事申请入口只能使用 Personal 表单，不能借用 HR 按钮。
   if (
     employment.formId.startsWith('TenantBase.Personal') !== (input.initiator === 'employee') ||
-    (input.initiator === 'employee' && input.mode !== 'application')
+    (input.initiator !== 'hr' && input.mode !== 'application')
   )
     throw new AppError('VALIDATION_FAILED', '表单与调动入口不匹配', { reason: 'TRANSFER_FORM_ENTRY_MISMATCH' });
   await resolveTransferForm(tx, ctx.tenantId, employment.formId);
@@ -105,6 +110,7 @@ export async function transferTargetContext(
 }
 
 export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
+  ctx = { ...ctx, managerTransfer: input.initiator === 'manager' };
   // F-008：先取员工锁，再重验关系/范围；业务写入沿用员工 → 业务 → 审批实例的顺序。
   await lockTransferParticipants(tx, ctx, employeeId, input.employment.fields.addedSubordinateIds ?? []);
   await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
@@ -166,6 +172,7 @@ export async function transferBusinessContext(
   if (write) {
     await lockTransferParticipants(tx, ctx, request.employeeId);
     await lockEmploymentEmployee(tx, ctx, request.employeeId);
+    await requireManagerBusinessSource(tx, ctx, request.employeeId);
   }
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   // 是否需要目标部门例外按写入口径判断；DEC-177 放宽的只是“看”（F-015），不能因可见就跳过 Switch 31 例外。

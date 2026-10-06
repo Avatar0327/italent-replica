@@ -6,8 +6,8 @@ import { EMPLOYMENT_OBJECT, employmentCreator } from '../employment/context.js';
 import { rowsOf } from '../employment/record-store.js';
 import type { EmploymentContext } from '../employment/types.js';
 import { scopeAllowsInTransaction, authorizeInTransaction } from '../permission/module-access.js';
-import { currentPersons, reportingPersonsSql } from '../permission/scope-persons.js';
-import { loadOrgSnapshot } from '../org/read-model.js';
+import { currentPersons } from '../permission/scope-persons.js';
+import { managerIdentity } from '../permission/manager-identity.js';
 
 export type TransferInitiator = 'hr' | 'manager' | 'employee';
 const ROLE_BUTTONS = { hr: 'Transfer.Hr', manager: 'Transfer.Manager', employee: 'Transfer.Self' } as const;
@@ -57,9 +57,9 @@ export async function requireTransferSource(
   if (initiator !== 'employee' && binding?.employeeId === employeeId)
     throw new AppError('FORBIDDEN', '不能通过他人调动入口为本人发起调动');
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  const [source] = rowsOf<{ departmentId: string | null; creatorId: string | null }>(
+  const [source] = rowsOf<{ departmentId: string | null; creatorId: string | null; kind: string | null }>(
     await tx.execute(sql`
-    SELECT p.department_id AS "departmentId",
+    SELECT p.department_id AS "departmentId", p.kind,
       ${employmentCreator(ctx.tenantId, sql`e.id`)} AS "creatorId"
     FROM employment_employees e
     LEFT JOIN (${currentPersons(ctx.tenantId, today)}) p ON p.employee_id=e.id
@@ -91,22 +91,35 @@ async function inTeam(
   departmentId: string | null,
   today: string,
 ): Promise<boolean> {
-  const [report] = rowsOf<{ allowed: boolean }>(
+  const identity = await managerIdentity(tx, { ...ctx, asOf: today });
+  if (!departmentId || !identity.orgIds.includes(departmentId)) return false;
+  const [current] = rowsOf<{ kind: string }>(
     await tx.execute(sql`
-    SELECT ${reportingPersonsSql(ctx.tenantId, today, managerId, 'all_direct', sql`${employeeId}::uuid`)} AS allowed
+    SELECT kind FROM (${currentPersons(ctx.tenantId, today)}) p
+    WHERE p.employee_id=${employeeId}::uuid AND p.service_type='primary' LIMIT 1
   `),
   );
-  if (report?.allowed) return true;
-  const visited = new Set<string>();
-  while (departmentId && !visited.has(departmentId) && visited.size < 100) {
-    visited.add(departmentId);
-    const [org] = await loadOrgSnapshot(tx, ctx.tenantId, today, undefined, {
-      id: departmentId,
-      includeDisabled: false,
+  return identity.employeeId === managerId && !!current && !['leave', 'retirement'].includes(current.kind);
+}
+
+/** 纯经理即使另有宽泛数据范围，同单写入仍须重验当前负责组织；HR / 本人入口保留既有规则。 */
+export async function requireManagerBusinessSource(tx: Tx, ctx: EmploymentContext, employeeId: string) {
+  if (!ctx.authorize) return;
+  const authorize = authorizeInTransaction(ctx.authorize, tx);
+  const allowed = (button: string) =>
+    authorize({
+      ...ctx,
+      action: 'object.button',
+      resource: buttonResource(EMPLOYMENT_OBJECT, button, 'detail'),
     });
-    if (!org) return false;
-    if (org.personInChargeId === managerId) return true;
-    departmentId = org.parents.admin?.parentId ?? null;
+  if (!(await allowed('Transfer.Hr')) && (await allowed('Transfer.Manager'))) {
+    const [binding] = rowsOf<{ id: string }>(
+      await tx.execute(sql`
+      SELECT employee_id AS id FROM permission_user_person_links
+      WHERE tenant_id=${ctx.tenantId} AND user_id=${ctx.userId}::uuid
+    `),
+    );
+    if (binding?.id !== employeeId || !(await allowed('Transfer.Self')))
+      await requireTransferSource(tx, ctx, employeeId, 'manager');
   }
-  return false;
 }

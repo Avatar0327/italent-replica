@@ -1,3 +1,4 @@
+import { tenantLocalDate } from '@italent/domain';
 /**
  * 权限接口（R1-T01；企业设置 R1-T15）。全部在 /api/tenant/permission 之下，经租户上下文中间件；写请求带
  * Idempotency-Key，修改已有对象带 If-Match（revision）。企业设置类接口按 8 类管理员能力鉴权（06 §7.1）：
@@ -74,7 +75,13 @@ export function registerPermissionRoutes(router: Router, deps: TenantRouteDeps):
     const { tenantId, userId } = tenantOf(c);
     const objectCode = objectCodeParam(c);
     return c.json(
-      await withTenant(deps.db, tenantId, (tx) => myObjectPermission(tx, userId, objectCode, objectCatalog)),
+      await withTenant(deps.db, tenantId, (tx) =>
+        myObjectPermission(tx, userId, objectCode, objectCatalog, {
+          tenantId,
+          userId,
+          asOf: tenantLocalDate(deps.clock(), tenantOf(c).timezone),
+        }),
+      ),
     );
   });
 }

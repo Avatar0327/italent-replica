@@ -171,7 +171,17 @@ async function fixture() {
     expect(response.status).toBe(200);
     return ((await response.json()) as { revision: number }).revision;
   }
-  return { ...world, setup, inside, outside, actor, person, settings, transfer, currentRevision };
+  let orgRevision = inside.revision;
+  async function setHead(employeeId: string) {
+    const result = await setup.request('PATCH', `/api/tenant/org/organizations/${inside.id}`, {
+      ...world.asAdmin,
+      ifMatch: orgRevision,
+      body: { effectiveDate: `2026-01-${String(orgRevision + 1).padStart(2, '0')}`, personInChargeId: employeeId },
+    });
+    expect(result.status, await result.clone().text()).toBe(200);
+    orgRevision = ((await result.json()) as { revision: number }).revision;
+  }
+  return { ...world, setup, inside, outside, actor, person, settings, transfer, currentRevision, setHead };
 }
 
 describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
@@ -393,14 +403,15 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
     expect((await world.api.request('GET', path, self)).status).toBe(403);
   });
 
-  it('AC-TRF-02：经理绑定本人后只可为其团队发起，组织范围不能替代团队关系', async () => {
+  it('AC-TRF-02：经理负责组织后可为组织内下属发起，汇报关系不扩大范围', async () => {
     const managerActor = await world.actor('transfer-manager', { role: 'Transfer.Manager' });
     const manager = await world.person(world.inside.id, managerActor);
     const subordinate = await world.person(world.inside.id, undefined, manager.id);
-    const unrelated = await world.person();
+    const unrelated = await world.person(world.outside.id, undefined, manager.id);
+    await world.setHead(manager.id);
     const saved = await world.transfer(managerActor, subordinate, { initiator: 'manager' });
     expect(saved.status, await saved.clone().text()).toBe(201);
-    expect((await world.transfer(managerActor, unrelated, { initiator: 'manager' })).status).toBe(403);
+    expect([403, 404]).toContain((await world.transfer(managerActor, unrelated, { initiator: 'manager' })).status);
     expect((await world.transfer(managerActor, manager, { initiator: 'manager' })).status).toBe(403);
     expect(await world.currentRevision(unrelated)).toBe(unrelated.revision);
   });
@@ -413,6 +424,7 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
       });
       const own = await world.person(world.inside.id, actor);
       const employee = initiator === 'employee' ? own : await world.person(world.inside.id, undefined, own.id);
+      if (initiator === 'manager') await world.setHead(own.id);
       const saved = await world.transfer(actor, employee, { initiator });
       expect(saved.status, await saved.clone().text()).toBe(201);
       const business = (await saved.json()) as { id: string; revision: number };

@@ -1,26 +1,23 @@
-import { TransferApplication } from '../self-service/shared/TransferApplication.js';
-import { useState } from 'react';
-import { text } from './messages.js';
-import './transfer.css';
+import { useState, type ReactNode } from 'react';
+import { text } from '../../transfer/messages.js';
+import '../../transfer/transfer.css';
 
-export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employee' | 'manager' }) {
+/** 员工 / 经理页面只提供租户内内容；会话租户选择与刷新生命周期共用。 */
+export function SelfServiceShell({ title, children }: { title: string; children: (tenantId: string) => ReactNode }) {
   const [tenantId, setTenantId] = useState('');
   const [activeTenant, setActiveTenant] = useState('');
   return (
     <main className="transfer-page">
       <header className="transfer-header">
         <span className="transfer-brand">iTalent</span>
-        <h1>{initiator === 'employee' ? text.personalTitle : text.title}</h1>
-        <a href={initiator === 'employee' ? '/' : '/self/transfers'}>
-          {initiator === 'employee' ? text.hrEntry : text.personalEntry}
-        </a>
+        <h1>{title}</h1>
       </header>
       {activeTenant ? (
         <>
-          <button className="transfer-tenant-change" type="button" onClick={() => setActiveTenant('')}>
+          <button type="button" className="transfer-tenant-change" onClick={() => setActiveTenant('')}>
             {text.tenantChange}
           </button>
-          <TransferApplication key={activeTenant} tenantId={activeTenant} initiator={initiator} />
+          {children(activeTenant)}
         </>
       ) : (
         <form
@@ -34,8 +31,8 @@ export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employe
             {text.tenant}
             <input
               name="tenantId"
-              value={tenantId}
               required
+              value={tenantId}
               onChange={(event) => setTenantId(event.target.value)}
               autoComplete="off"
             />
@@ -47,5 +44,3 @@ export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employe
     </main>
   );
 }
-
-export { TransferApplication as TransferManager } from '../self-service/shared/TransferApplication.js';
