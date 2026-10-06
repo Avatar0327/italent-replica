@@ -129,3 +129,28 @@ it.each(['范围', '字段'])('AC-JOB-12 完成后撤销%s权限，两接口按�
   ).toBe(200);
   await s.receipts(0, []);
 });
+
+it('AC-JOB-12 任职 ID 查看字段撤权后，相同序列的跳过回执也不得暴露记录标识', async () => {
+  const s = await reader();
+  await s.scope([s.org.id]);
+  await s.submit();
+  const definition = MODULE_OBJECTS.employmentRecord;
+  expect(
+    (
+      await setObjectPermission(
+        s.w,
+        s.p,
+        {
+          dataOperations: { create: false, update: false, delete: false },
+          fields: definition.fields
+            .filter((f) => f.code !== 'id')
+            .map((f) => ({ fieldCode: f.code, view: true, edit: false })),
+          buttons: [],
+        },
+        definition.code,
+      )
+    ).status,
+  ).toBe(200);
+  const text = await s.receipts(0, []);
+  for (const id of [s.current.id, s.future.id]) expect(text).not.toContain(id);
+});
