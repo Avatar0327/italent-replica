@@ -50,7 +50,7 @@ export async function validateLinkage(
     if (item.receiverId === item.employeeId) throw notEligible();
     await requireReportingSubordinate(tx, ctx, employeeId, item.employeeId, item.relation);
   }
-  // TODO(F-017)：组织角色转交改写组织版本，F-017 合并后接入其组织联动范围授权；目前只校验调动人担任该角色。
+  // 组织范围授权在 access.ts authorizeOrgRole（F-017 requireTransferOrganizationScope）；这里只校验调动人担任该角色。
   for (const item of options.dutyTransfer?.orgRoles ?? [])
     await requireRoleHolder(tx, ctx, employeeId, item.orgId, item.role);
 }

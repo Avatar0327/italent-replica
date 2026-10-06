@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { AppError } from '../../../errors.js';
 import { fieldsSchema as contractFieldsSchema, type ContractFields } from '../../contracts/input.js';
 
-// TODO(F-017)：F-017 合并后改用其统一的 UUID 规范化。
+// DEC-194：与 F-017 同一口径，UUID 一律按小写规范化（路径参数由 uuidParam、员工锁由 transfer-locks 规范化）。
 const uuid = z.uuid().transform((value) => value.toLowerCase());
 const day = z.iso.date();
 

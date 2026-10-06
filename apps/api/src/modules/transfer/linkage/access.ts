@@ -16,7 +16,8 @@ import { checkFields, checkScope } from '../../contracts/context.js';
 import { EMPLOYMENT_OBJECT } from '../../employment/context.js';
 import { rowsOf } from '../../employment/record-store.js';
 import type { EmploymentContext } from '../../employment/types.js';
-import { resolveModuleScope, scopeAllowsInTransaction, type ModuleScope } from '../../permission/module-access.js';
+import { requireTransferOrganizationScope } from '../../org/write-service.js';
+import { resolveModuleScope, type ModuleScope } from '../../permission/module-access.js';
 import { requireObjectWrite } from '../../permission/object-write.js';
 import { linkageFieldValues } from './approval.js';
 import type { DutyRelation, LinkageOptions, OrgRole } from './input.js';
@@ -27,7 +28,6 @@ const ORG_OBJECT = MODULE_OBJECTS.organization.code;
 /** 操作人对联动目标对象的范围，在路由里按当前权限解析（不信任请求体）。 */
 export interface LinkageAccess {
   readonly contractScope?: ModuleScope;
-  readonly orgScope?: ModuleScope;
 }
 
 export async function resolveLinkageAccess(
@@ -41,10 +41,7 @@ export async function resolveLinkageAccess(
     options?.contract || before?.contract
       ? await resolveModuleScope(deps, tenant, undefined, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`)
       : undefined;
-  const orgScope = options?.dutyTransfer?.orgRoles.length
-    ? await resolveModuleScope(deps, tenant, undefined, ORG_OBJECT)
-    : undefined;
-  return { ...(contractScope ? { contractScope } : {}), ...(orgScope ? { orgScope } : {}) };
+  return contractScope ? { contractScope } : {};
 }
 
 /**
@@ -100,8 +97,8 @@ export async function authorizeSubordinateField(ctx: EmploymentContext, relation
 }
 
 /**
- * P1-1：组织角色转交改写组织版本。组织不在操作人组织范围内整单拒绝（DEC-178，保留 DEC-084 拒绝码）。
- * TODO(F-017)：F-017 合并后改用其 requireTransferOrganizationScope（同一组织联动授权，DEC-194）。
+ * P1-1：组织角色转交改写组织版本。组织范围按 F-017 的组织联动授权判定（DEC-178 / DEC-194，与调动设负责人 /
+ * 店长同一函数），不可见即整单拒绝（保留 DEC-084 拒绝码）；再按组织字段编辑权判定。
  */
 export async function authorizeOrgRole(
   tx: Tx,
@@ -111,8 +108,7 @@ export async function authorizeOrgRole(
   role: OrgRole,
 ) {
   if (!access || !ctx.authorize) return;
-  if (!access.orgScope || !(await scopeAllowsInTransaction(tx, access.orgScope, { orgId })))
-    throw new AppError('LINKED_RECORD_OUT_OF_SCOPE', '联动记录不在当前数据范围，请由覆盖该范围的人员操作');
+  await requireTransferOrganizationScope(tx, ctx, orgId);
   await requireObjectWrite(ctx.authorize, ctx, {
     objectCode: ORG_OBJECT,
     operation: 'update',

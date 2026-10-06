@@ -7,6 +7,7 @@ import { bumpEmploymentBusiness, lockEmploymentBusiness, rowsOf } from '../../em
 import { lockTransferParticipants } from '../../employment/transfer-locks.js';
 import type { EmploymentContext } from '../../employment/types.js';
 import { requireSavedBusiness } from '../../employment/write-service.js';
+import { requireTransferSource, type TransferInitiator } from '../access.js';
 import { authorizeLinkageWrite, type LinkageAccess } from './access.js';
 import { validateContractChange } from './contract.js';
 import { applyTransferCrossLinkage, assertLinkageMutable, linkageExecuted } from './execute.js';
@@ -57,12 +58,7 @@ export async function updateTransferLinkage(
   if (!visible || visible.kind !== 'transfer') throw new AppError('NOT_FOUND', '调动不存在');
   await lockTransferParticipants(tx, ctx, visible.employeeId, dutySubordinateIds(options));
   const business = await lockEmploymentBusiness(tx, ctx, businessId);
-  const [request] = rowsOf<{ initiator: string }>(
-    await tx.execute(sql`SELECT initiator FROM transfer_requests
-      WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid`),
-  );
-  if (request?.initiator === 'employee')
-    throw new AppError('VALIDATION_FAILED', '本人调动申请不能设置联动业务', { reason: 'TRANSFER_LINKAGE_NOT_ALLOWED' });
+  await requireLinkageSource(tx, ctx, businessId, business.employeeId);
   const executed = await linkageExecuted(tx, ctx.tenantId, businessId);
   assertLinkageMutable(business.state, business.payload.mode, executed, business.payload.effectiveDate > today);
   // 第三轮 P1-2：锁内读取原选项，按新旧差异授权（清空、置 false、删掉嵌套字段同样要有编辑权）。
@@ -77,6 +73,20 @@ export async function updateTransferLinkage(
   await appendLinkageVersion(tx, ctx, { businessId, employeeId: business.employeeId }, options);
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, businessId);
+}
+
+/**
+ * DEC-194：修改联动与调动入口用同一护栏（F-017 requireTransferSource：发起按钮、不得为本人、源员工范围），
+ * 按单据的发起方式判定；本人调动申请不能带联动（`12` 附录）。命令内与命令外（幂等重放）都调用。
+ */
+export async function requireLinkageSource(tx: Tx, ctx: EmploymentContext, businessId: string, employeeId: string) {
+  const [request] = rowsOf<{ initiator: TransferInitiator }>(
+    await tx.execute(sql`SELECT initiator FROM transfer_requests
+      WHERE tenant_id=${ctx.tenantId} AND business_id=${businessId}::uuid`),
+  );
+  if (request?.initiator === 'employee')
+    throw new AppError('VALIDATION_FAILED', '本人调动申请不能设置联动业务', { reason: 'TRANSFER_LINKAGE_NOT_ALLOWED' });
+  if (ctx.authorize) await requireTransferSource(tx, ctx, employeeId, request?.initiator ?? 'hr');
 }
 
 /** DEC-183：提交时重查合同（保存后才出现的同类型在途合同同样 409）。 */

@@ -30,7 +30,7 @@ import {
 } from './access.js';
 import { normalizeLinkage, type DutyRelation, type LinkageOptions, type OrgRole } from './input.js';
 import { loadLinkageItem, retryLinkageItem } from './items.js';
-import { updateTransferLinkage } from './service.js';
+import { requireLinkageSource, updateTransferLinkage } from './service.js';
 import { linkageBeforeCommand } from './store.js';
 import { registerTransferDeletionProbes } from './deletion-probes.js';
 import { readTransferLinkage } from './view.js';
@@ -91,7 +91,8 @@ export function registerTransferLinkageRoutes(router: Hono<TenantEnv>, deps: Dep
       loadEmploymentBusiness(tx, ctx.tenantId, id, tenantLocalDate(ctx.now, ctx.timezone), ctx.scope),
     );
     if (!business || business.kind !== 'transfer') throw new AppError('NOT_FOUND', '调动不存在');
-    // TODO(F-017)：F-017 合并后在此接入其本人护栏（操作人不得修改本人调动的联动），与调动入口同一判定。
+    // DEC-194：本人护栏与调动入口同一判定（F-017）；命令外先判，幂等重放同样经过。
+    await withTenant(deps.db, ctx.tenantId, (tx) => requireLinkageSource(tx, ctx, id, business.employeeId));
     const input = { employeeId: business.employeeId, operation: 'update' as const, options, businessId: id };
     const access = await preauthorizeLinkage(c, deps, ctx, input);
     return runWrite(c, deps, ctx, raw, async (tx, context) => ({
@@ -109,9 +110,7 @@ function registerRetry(router: Hono<TenantEnv>, deps: Deps) {
     const ctx = await readContext(c, deps, 'object.update', revision(c));
     if (c.req.header('content-type')) parse(z.strictObject({}), await jsonBody(c));
     await requireEmploymentWrite(ctx, 'update', {}, 'Employment.RetryActivation');
-    const access: LinkageAccess = {
-      orgScope: await resolveModuleScope(deps, tenantOf(c), undefined, 'TenantBase.Organization'),
-    };
+    const access: LinkageAccess = {};
     // 子项所属调动须对当前操作人可见，改写的字段 / 组织按当前权限判定（每次请求重验，幂等重放同样经此）。
     await withTenant(deps.db, ctx.tenantId, (tx) => authorizeRetry(tx, deps, ctx, id, access));
     return runWrite(c, deps, ctx, { id, action: 'retry-linkage-item' }, async (tx, context) => ({
