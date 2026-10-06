@@ -1,4 +1,5 @@
 import { useTestDb } from '@italent/testkit';
+import { sql, withTenant } from '@italent/db';
 import { expect, it } from 'vitest';
 import { activationWorld, type ActivationWorld } from './AC-TRF-activation-support.js';
 import { tenantApi } from './support/tenant-api.js';
@@ -101,6 +102,50 @@ it('AC-ORG-32 直接未来调动迟到改期，同步撤回派生组织调整的
     effectiveDate: '2026-10-10',
     fields: { departmentId: w.to.id, place: '新地点' },
   });
+  const history = () =>
+    withTenant(w.db, w.session.tenant.id, async (tx) => {
+      const result = await tx.execute(sql`SELECT r.department_id AS original,
+      (SELECT count(*)::int FROM employment_payload_versions p WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id) AS versions,
+      (SELECT count(*)::int FROM audit_events a WHERE a.tenant_id=r.tenant_id AND a.object_id=r.id::text
+        AND a.action='employment.org-adjustment.rebased') AS audits,
+      (SELECT count(*)::int FROM employment_outbox o WHERE o.tenant_id=r.tenant_id AND o.object_id=r.id::text
+        AND o.event_type='employment.org-adjustment.rebased') AS events
+      FROM employment_records r WHERE r.tenant_id=${w.session.tenant.id} AND r.id=${before.id}::uuid`);
+      return Array.isArray(result) ? result : (result as { rows: unknown[] }).rows;
+    });
+  expect(await history()).toEqual([{ original: w.to.id, versions: 2, audits: 1, events: 1 }]);
+  expect(await w.runScheduler('2026-10-10T02:00:00Z')).toMatchObject({ failed: [], errors: [] });
+  expect(await history()).toEqual([{ original: w.to.id, versions: 2, audits: 1, events: 1 }]);
+});
+
+it('AC-ORG-32 迟到改期保留人工更正及实际执行日之后的组织调整快照', async () => {
+  const w = await activationWorld(database().db, 'org32preserve');
+  const person = await w.hired();
+  await w.session.business(
+    person.employee.id,
+    {
+      kind: 'transfer',
+      mode: 'direct',
+      effectiveDate: '2026-10-05',
+      fields: { departmentId: w.to.id, place: '调动地点' },
+    },
+    person.hire.employeeRevision,
+  );
+  await rename(w, w.to);
+  const first = (await w.session.records(person.employee.id, '2026-10-09')).find((r) => r.kind === 'org_adjustment')!;
+  const corrected = await w.session.request('PATCH', `/records/${first.id}`, {
+    ifMatch: (await w.business(first.id)).revision,
+    body: { fields: { place: '人工更正' } },
+  });
+  expect(corrected.status, await corrected.clone().text()).toBe(200);
+  await rename(w, { ...w.to, revision: 2, name: '第二次改名' }, '2026-10-12');
+  const future = (await w.session.records(person.employee.id, '2026-10-12')).find((r) => r.isCurrent)!;
+  expect(await w.runScheduler('2026-10-10T01:00:00Z')).toMatchObject({ failed: [], errors: [] });
+  const early = (await w.session.records(person.employee.id, '2026-10-09')).find((r) => r.isCurrent)!;
+  expect(early.fields).toMatchObject({ departmentId: w.from.id, place: '人工更正' });
+  const later = (await w.session.records(person.employee.id, '2026-10-12')).find((r) => r.isCurrent)!;
+  expect(later.id).toBe(future.id);
+  expect(later.fields).toEqual(future.fields);
 });
 
 it('AC-ORG-33 DEC-207 导入改名/改行政上级不新增任职，拒绝 addEmployment 未知字段', async () => {
@@ -126,4 +171,35 @@ it('AC-ORG-33 DEC-207 导入改名/改行政上级不新增任职，拒绝 addEm
     expect(await invalid.json()).toMatchObject({ error: { code: 'VALIDATION_FAILED' } });
   }
   expect(await w.session.records(person.employee.id)).toEqual(before);
+});
+
+it('AC-ORG-32 后补调动曾传播到组织调整时，多笔迟到仍按原计划排序并撤回提前结果', async () => {
+  const w = await activationWorld(database().db, 'org32propagated');
+  const person = await w.hired();
+  const finalOrg = await w.session.org('最终部门', { establishedOn: '2026-01-01' });
+  const transfer = async (date: string, departmentId: string) =>
+    w.session.business(
+      person.employee.id,
+      {
+        kind: 'transfer',
+        mode: 'direct',
+        effectiveDate: date,
+        fields: { departmentId },
+      },
+      (await w.session.getEmployee(person.employee.id)).revision,
+    );
+  await transfer('2026-10-05', w.to.id);
+  await rename(w, w.to);
+  const last = await transfer('2026-10-06', finalOrg.id);
+  expect(
+    (await w.session.records(person.employee.id, '2026-10-09')).find((r) => r.isCurrent)?.fields.departmentId,
+  ).toBe(finalOrg.id);
+  expect(await w.runScheduler('2026-10-10T01:00:00Z')).toMatchObject({ failed: [], errors: [] });
+  expect(
+    (await w.session.records(person.employee.id, '2026-10-09')).find((r) => r.isCurrent)?.fields.departmentId,
+  ).toBe(w.from.id);
+  expect((await w.session.records(person.employee.id, '2026-10-10')).find((r) => r.isCurrent)).toMatchObject({
+    id: last.id,
+    fields: { departmentId: finalOrg.id },
+  });
 });
