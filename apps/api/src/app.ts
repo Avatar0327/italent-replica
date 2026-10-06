@@ -94,7 +94,7 @@ export function createApp(deps: AppDeps = {}): Hono {
 function createTenantRouter(db: Db, deps: AppDeps): Hono<TenantEnv> {
   const routeDeps: TenantRouteDeps = {
     db,
-    authorize: deps.authorize ?? createPermissionAuthorizer(db),
+    authorize: deps.authorize ?? createPermissionAuthorizer(db, undefined, deps.clock),
     clock: deps.clock ?? (() => new Date()),
   };
   const router = new Hono<TenantEnv>();

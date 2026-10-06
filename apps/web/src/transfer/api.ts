@@ -52,10 +52,20 @@ export async function loadReferences(
     const query = new URLSearchParams({ asOf: model.effectiveDate, enabled: 'true', pageSize: '100' });
     const department = model.fields.departmentId ?? preview.fields.departmentId;
     if (kind === 'positions' && typeof department === 'string') query.set('orgId', department);
-    const result = await transferRequest<{ items: Choice[] }>(tenantId, `/api/tenant/job/${kind}?${query}`, { signal });
+    const result = await transferRequest<{ items: Choice[] }>(
+      tenantId,
+      model.initiator === 'manager'
+        ? managerReferencePath(model, preview, code, '', 1)
+        : `/api/tenant/job/${kind}?${query}`,
+      { signal },
+    );
     const originalId = preview.before?.fields[code];
     let originals = result.items;
-    if (typeof originalId === 'string' && !originals.some((item) => item.id === originalId)) {
+    if (
+      model.initiator !== 'manager' &&
+      typeof originalId === 'string' &&
+      !originals.some((item) => item.id === originalId)
+    ) {
       try {
         const original = await transferRequest<Choice>(
           tenantId,
@@ -116,6 +126,11 @@ export function requestError(error: unknown) {
 }
 
 export function queryReferences(tenantId: string, model: TransferFormModel, code: string, name: string, page: number) {
+  if (model.initiator === 'manager')
+    return transferRequest<{ items: Choice[] }>(
+      tenantId,
+      managerReferencePath(model, model.preview!, code, name, page),
+    );
   const query = new URLSearchParams({ page: String(page), pageSize: '100' });
   if (code === 'departmentId') {
     query.set('formId', model.preview!.form.id);
@@ -133,4 +148,31 @@ export function queryReferences(tenantId: string, model: TransferFormModel, code
   const department = model.fields.departmentId ?? model.preview!.fields.departmentId;
   if (kind === 'positions' && typeof department === 'string') query.set('orgId', department);
   return transferRequest<{ items: Choice[] }>(tenantId, `/api/tenant/job/${kind}?${query}`);
+}
+
+export function managerReferencePath(
+  model: TransferFormModel,
+  preview: TransferPreview,
+  code: string,
+  name = '',
+  page = 1,
+) {
+  const query = new URLSearchParams({
+    employeeId: model.employeeId,
+    formId: preview.form.id,
+    effectiveDate: model.effectiveDate,
+    name,
+    page: String(page),
+    pageSize: '100',
+  });
+  // 部门列表不应被表单中的旧部门 / 职务值锁定；职务选择也不能依赖原职务仍可选。
+  if (code !== 'departmentId') {
+    const department = model.fields.departmentId ?? preview.fields.departmentId;
+    if (typeof department === 'string') query.set('departmentId', department);
+  }
+  if (['levelId', 'gradeId', 'sequenceId', 'professionalLineId'].includes(code)) {
+    const post = model.fields.postId;
+    if (typeof post === 'string') query.set('postId', post);
+  }
+  return `${TRANSFER_API}/manager/references/${code}?${query}`;
 }

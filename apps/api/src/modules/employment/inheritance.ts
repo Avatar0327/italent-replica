@@ -1,3 +1,4 @@
+import { applyInitiatorFieldModes } from '../transfer/initiator-fields.js';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { loadJobObject } from '../job/read-model.js';
@@ -205,7 +206,9 @@ export async function prepareInheritance(
 ): Promise<PreparedInheritance> {
   businessDate(input.effectiveDate);
   const configured =
-    input.kind === 'transfer' ? await resolveTransferForm(tx, ctx.tenantId, input.formId) : resolveForm(input.formId);
+    input.kind === 'transfer'
+      ? await applyInitiatorFieldModes(tx, ctx, await resolveTransferForm(tx, ctx.tenantId, input.formId))
+      : resolveForm(input.formId);
   const form = frozenForm
     ? {
         grouped: frozenForm.group !== null,

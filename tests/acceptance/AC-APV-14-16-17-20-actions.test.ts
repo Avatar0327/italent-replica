@@ -15,6 +15,7 @@ import {
   transferScene,
   type InstanceView,
 } from './AC-APV-support.js';
+import { createProfile } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -266,6 +267,8 @@ async function blindScene(db: Db, label: string) {
   const w = await approvalWorld(db, label);
   const s = await transferScene(w);
   const world = await permissionAdmin(w);
+  // DEC-205：本夹具显式替代自动经理后备字段，确保被测审批人确实没有职级查看权。
+  await createProfile(world, 'department_manager_self_service');
   await grantVisibleFields(world, s.outHead.userId, ['id', 'departmentId', 'effectiveDate', 'place']);
   const exceptionAdmin = await w.member('异常管理员');
   const levelType = await w.json<{ id: string }>(

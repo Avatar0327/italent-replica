@@ -1,3 +1,4 @@
+import { managerIdentity } from './manager-identity.js';
 import { PERSONNEL_SCOPE_FIELDS } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
@@ -76,12 +77,20 @@ async function managementRoots(tx: Tx, q: ScopeQuery): Promise<ScopeRoot[]> {
       IN ('hr','attendance') LIMIT 200
   `),
   );
-  return roleRoots(
+  const automatic =
+    q.appCode === 'TenantBase' && ['TenantBase.Employee', 'TenantBase.EmploymentRecord'].includes(q.objectCode ?? '')
+      ? await managerIdentity(tx, q)
+      : undefined;
+  const inherited = await roleRoots(
     tx,
     q,
     roles.map((row) => row.role_code),
     true,
   );
+  return [
+    ...inherited,
+    ...(automatic?.rootIds ?? []).map((orgId) => ({ orgId, dimension: 'admin', includeDescendants: true })),
+  ];
 }
 interface Rule {
   dimension: ScopeTerm['dimension'];
