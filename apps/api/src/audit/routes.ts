@@ -49,6 +49,7 @@ import {
   tenantRetention,
 } from './query.js';
 import { auditViewer, visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
+import { linkageSnapshot } from './transfer-linkage.js';
 
 const BASE = '/api/tenant/audit';
 const CODE = /^[A-Za-z0-9_.:#-]{1,200}$/;
@@ -272,6 +273,8 @@ function sourceView(row: {
 function eventColumns(viewer: Awaited<ReturnType<typeof auditViewer>>) {
   return {
     ...getTableColumns(auditEvents),
+    before: linkageSnapshot(sql`${auditEvents.before}`),
+    after: linkageSnapshot(sql`${auditEvents.after}`),
     visibleCount: sql<number | null>`${viewer.visibleCount}`,
     linkagePaths: sql<string[] | null>`${viewer.linkagePaths}`,
     changes: sql<AuditFieldChange[] | null>`${viewer.eventChanges}`,

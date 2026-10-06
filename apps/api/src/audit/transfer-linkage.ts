@@ -36,6 +36,14 @@ const textArray = (values: readonly string[]) =>
 /** 完整路径集合，不允许任职的同名末段字段放行合同字段。 */
 export class ExactAuditFields extends Set<string> {}
 
+/** #74：保存选项中的合同开关是独立任职字段；执行结果的 contract 不代表选项变更。 */
+export function linkageSnapshot(value: SQL): SQL {
+  return sql`(CASE WHEN ${event}.object_type=${TRANSFER_LINKAGE} AND ${event}.action='transfer.linkage.save'
+    THEN ${object(value)} || jsonb_build_object('isChangeContract',
+      COALESCE(jsonb_typeof(${value}->'contract')='object', false))
+    ELSE ${value} END)`;
+}
+
 export function transferEmployee(tenantId: string, objectId: SQL): SQL {
   return sql`(SELECT b.employee_id FROM employment_business_objects b
     JOIN employment_employees e ON e.tenant_id=b.tenant_id AND e.id=b.employee_id
@@ -108,7 +116,7 @@ async function objectAccess(deps: TenantRouteDeps, ctx: TenantContext, code: str
 /** SQL / 快照共用完整路径；递归展开 contract.fields.customFields，数组作为一个业务字段保留。 */
 function leaves(): SQL {
   return sql`WITH RECURSIVE tree(path, old_value, new_value) AS (
-    SELECT ''::text, ${event}.before, ${event}.after
+    SELECT ''::text, ${linkageSnapshot(sql`${event}.before`)}, ${linkageSnapshot(sql`${event}.after`)}
     UNION ALL
     SELECT CASE WHEN path='' THEN k.key ELSE path || '.' || k.key END,
       tree.old_value->k.key, tree.new_value->k.key
@@ -249,7 +257,7 @@ function pathVisible(a: LinkageAccess): SQL {
       AND ${dutiesVisible(a, 'subordinates')}
     WHEN path='dutyTransfer.orgRoles' THEN ${can(a.employment, 'dutyTransfer')}
       AND ${dutiesVisible(a, 'orgRoles')}
-    WHEN path='contract' THEN ${can(a.employment, 'isChangeContract')}
+    WHEN path='isChangeContract' THEN ${can(a.employment, 'isChangeContract')}
     WHEN path='onTrial' THEN ${can(a.employment, 'onTrialMonths') && can(a.employment, 'onTrialStartDate')}
     WHEN path='handover' THEN ${can(a.employment, 'handoverPersonId')}
     WHEN path='dutyTransfer' THEN ${can(a.employment, 'dutyTransfer')}
