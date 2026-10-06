@@ -70,3 +70,28 @@ it('AC-ORG-27 已保存的未来任职按日期提示；晚于变更日的不提
   }
   expect(await w.session.records(person.employee.id)).toHaveLength(2);
 });
+
+it('AC-ORG-27 已过计划日仍待复查的直接调动提示；复查成功后不再提示', async () => {
+  const w = await activationWorld(database().db, 'org27overdue');
+  const person = await w.hired();
+  await w.session.business(
+    person.employee.id,
+    {
+      kind: 'transfer',
+      mode: 'direct',
+      effectiveDate: '2026-10-05',
+      fields: { departmentId: w.to.id },
+    },
+    person.hire.employeeRevision,
+  );
+  const api = tenantApi(w.db, { clock: () => new Date('2026-10-08T01:00:00Z') });
+  const preview = () =>
+    api.request('POST', `/api/tenant/org/organizations/${w.to.id}/employment-preview`, {
+      user: w.session.user.id,
+      tenant: w.session.tenant.id,
+      body: { name: '逾期调动提醒', effectiveDate: '2026-10-09', addEmployment: true },
+    });
+  expect(await (await preview()).json()).toEqual({ hasPendingEmployment: true });
+  expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({ failed: [], errors: [] });
+  expect(await (await preview()).json()).toEqual({ hasPendingEmployment: false });
+});
