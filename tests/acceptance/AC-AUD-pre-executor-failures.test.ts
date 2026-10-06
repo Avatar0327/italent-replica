@@ -147,3 +147,118 @@ describe('DEC-199 失败的导入任务留痕', () => {
     ]);
   });
 });
+
+describe('PR #75 第三轮 P2-2 平台命令进入执行器之前的失败', () => {
+  it('非法请求体（400）同样写平台受限通道，与执行器共用分类；租户读不到', async () => {
+    const { db } = testDb();
+    const api = tenantApi(db, { authorize: undefined, clock: () => new Date(NOW) });
+    const operator = await seedOperator(db, 'aud-ops-pre');
+    const admin = await newUser(db, 'aud-ops-pre-admin');
+    const { tenant } = await provisioned(api, operator, { firstAdminUserId: admin.id, exceptionAdminUserId: admin.id });
+    const commandId = randomUUID();
+    const invalid = await api.request('POST', `${PLATFORM}/tenants/${tenant.id}/status`, {
+      user: operator.id,
+      ifMatch: tenant.revision,
+      idempotencyKey: commandId,
+      body: { status: 'archived' },
+    });
+    expect(invalid.status).toBe(400);
+    const read = await api.request('GET', `${PLATFORM}/command-failures?commandId=${commandId}`, { user: operator.id });
+    expect(((await read.json()) as { items: unknown[] }).items).toEqual([
+      expect.objectContaining({
+        commandId,
+        outcome: 'business_failed',
+        errorCode: 'VALIDATION_FAILED',
+        subjectTenantId: tenant.id,
+      }),
+    ]);
+    const asAdmin = { user: admin.id, tenant: tenant.id };
+    expect((await auditApi(db, NOW, { authorize: undefined }).commandFailures(asAdmin, { commandId })).items).toEqual(
+      [],
+    );
+  });
+});
+
+describe('PR #75 第三轮 P2-3 格式校验失败的导入同样持久化任务结果（不存输入值）', () => {
+  async function failedImport(db: Parameters<typeof auditApi>[0], as: { user: string; tenant: string }, id: string) {
+    const logs = await auditApi(db, NOW).operationLogs(as, { behavior: 'import', commandId: id });
+    expect(logs.items).toHaveLength(1);
+    return logs.items[0]!;
+  }
+
+  it('合同导入：金额格式不合法 → 400，任务日志记总数、失败数、行号与错误码，不含输入值', async () => {
+    const { db } = testDb();
+    const w = await contractWorld(db, 'aud-import-format');
+    const commandId = randomUUID();
+    const response = await w.request('POST', '/imports', {
+      ifMatch: 0,
+      idempotencyKey: commandId,
+      body: {
+        mode: 'edit',
+        rows: [{ employeeId: w.employee.id, revision: 1, fields: { regularSalary: 'not-money' } }],
+      },
+    });
+    expect(response.status).toBe(400);
+    const log = await failedImport(db, { user: w.session.user.id, tenant: w.session.tenant.id }, commandId);
+    expect(log).toMatchObject({ result: 'failed', totalCount: 1, failureCount: 1, successCount: 0 });
+    expect(log.errorReport).toEqual([expect.objectContaining({ rowIndex: 0, errorCode: 'VALIDATION_FAILED' })]);
+    expect(JSON.stringify(log)).not.toContain('not-money');
+  });
+
+  it('组织导入：行格式不合法 → 400，任务日志同样留痕', async () => {
+    const { db } = testDb();
+    const world = await seedPermissionWorld(db);
+    const api = tenantApi(db, { clock: () => new Date(NOW) });
+    const commandId = randomUUID();
+    const response = await api.request('POST', '/api/tenant/org/import', {
+      ...world.asAdmin,
+      ifMatch: 0,
+      idempotencyKey: commandId,
+      body: { rows: [{ sourceCode: 'S-1', code: 'C-1', name: '合成部门', parentId: 'secret-parent' }] },
+    });
+    expect(response.status).toBe(400);
+    const log = await failedImport(db, world.asAdmin, commandId);
+    expect(log).toMatchObject({ objectType: 'organization', result: 'failed', totalCount: 1, failureCount: 1 });
+    expect(log.errorReport).toEqual([expect.objectContaining({ rowIndex: 0, errorCode: 'VALIDATION_FAILED' })]);
+    expect(JSON.stringify(log)).not.toContain('secret-parent');
+  });
+
+  it('职务体系导入：行字段不合法 → 400，任务日志同样留痕', async () => {
+    const { db } = testDb();
+    const world = await seedPermissionWorld(db);
+    const api = tenantApi(db, { clock: () => new Date(NOW) });
+    const commandId = randomUUID();
+    const response = await api.request('POST', '/api/tenant/job/import', {
+      ...world.asAdmin,
+      ifMatch: 0,
+      idempotencyKey: commandId,
+      body: {
+        kind: 'levels',
+        rows: [
+          { name: '合成职级', code: 'L-1' },
+          { sourceCode: '', name: 'x' },
+        ],
+      },
+    });
+    expect(response.status).toBe(400);
+    const log = await failedImport(db, world.asAdmin, commandId);
+    expect(log).toMatchObject({ objectType: 'levels', result: 'failed', totalCount: 2, failureCount: 2 });
+    expect(log.errorReport).toEqual(expect.arrayContaining([expect.objectContaining({ rowIndex: 0 })]));
+  });
+
+  it('任职导入：条目格式不合法 → 400，任务日志同样留痕', async () => {
+    const { db } = testDb();
+    const session = await employmentSession(db, 'aud-import-emp-format');
+    const employee = await session.employee();
+    const commandId = randomUUID();
+    const response = await session.request('POST', `/employees/${employee.id}/import`, {
+      ifMatch: employee.revision,
+      idempotencyKey: commandId,
+      body: { items: [{ operation: 'nonsense', secret: 'secret-value' }] },
+    });
+    expect(response.status).toBe(400);
+    const log = await failedImport(db, { user: session.user.id, tenant: session.tenant.id }, commandId);
+    expect(log).toMatchObject({ objectType: 'employment-record', result: 'failed', totalCount: 1, failureCount: 1 });
+    expect(JSON.stringify(log)).not.toContain('secret-value');
+  });
+});
