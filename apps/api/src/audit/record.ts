@@ -102,6 +102,8 @@ interface FailedImport {
   readonly scopeEmployeeId?: string;
   /** 逐行归属（取自原始请求，格式校验失败时也能识别）；整批失败时每行都计为失败。 */
   readonly anchors?: readonly ImportRowAnchor[];
+  /** 需要回查现有记录的逐行归属（任职导入，PR #75 第五轮）：失败时在写日志的同一事务里解析。 */
+  readonly resolveAnchors?: (tx: Tx) => Promise<readonly ImportRowAnchor[]>;
 }
 
 /**
@@ -142,13 +144,14 @@ export async function withFailedImportLog<T>(db: Db, task: FailedImport, run: ()
 
 async function recordFailedImport(db: Db, task: FailedImport, error: unknown): Promise<void> {
   const errorReport = failedImportReport(error);
-  const items: OperationLogItem[] = Array.from({ length: task.total }, (_, rowIndex) => ({
-    rowIndex,
-    outcome: 'failed',
-    ...task.anchors?.[rowIndex],
-  }));
-  await withTenant(db, task.tenantId, (tx) =>
-    recordOperationLog(tx, {
+  await withTenant(db, task.tenantId, async (tx) => {
+    const anchors = task.resolveAnchors ? await task.resolveAnchors(tx) : task.anchors;
+    const items: OperationLogItem[] = Array.from({ length: task.total }, (_, rowIndex) => ({
+      rowIndex,
+      outcome: 'failed',
+      ...anchors?.[rowIndex],
+    }));
+    await recordOperationLog(tx, {
       tenantId: task.tenantId,
       actorUserId: auditActor(task.userId),
       behavior: 'import',
@@ -160,8 +163,8 @@ async function recordFailedImport(db: Db, task: FailedImport, error: unknown): P
       items,
       commandId: task.commandId ?? null,
       occurredAt: currentAuditRequest()?.clock() ?? new Date(),
-    }),
-  );
+    });
+  });
 }
 
 /**

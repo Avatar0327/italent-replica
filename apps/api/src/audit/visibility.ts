@@ -13,7 +13,7 @@
  * - 跨人员 / 组织的任务日志按逐行归属判断（第三轮 P1-2）：至少一行可见才返回，汇总与错误报告只按可见行计算。
  * 行级判断全部在 SQL 里、分页之前完成；字段按该对象当前查看字段裁剪，至少一个可见字段变化的日志才返回。
  */
-import { sql, type Tx, withTenant } from '@italent/db';
+import { AUTHORIZATION_TABLES, sql, type Tx, withTenant } from '@italent/db';
 import {
   APPROVAL_INSTANCE_OBJECT,
   AUDIT_CONFIG_ACTIONS,
@@ -367,7 +367,10 @@ const CONFIG_FIELDS_BY_ACTION: Readonly<Record<string, ConfigFields>> = {
   'contract.companies.save': { code: MODULE_OBJECTS.contractCompany.code },
   'contract.rule.save': { code: MODULE_OBJECTS.contractRules.code },
   'contract.settings.update': { code: MODULE_OBJECTS.contractSettings.code },
-  'tenant.restore.reconcile': { fixed: ['changed', 'skipped', 'republished'] },
+  // 恢复对账只展示授权镜像各表的改动条数（按明确路径 changed.<授权表>）、跳过数与流程重新发布数（第五轮 P3）
+  'tenant.restore.reconcile': {
+    fixed: [...AUTHORIZATION_TABLES.map((table) => `changed.${table}`), 'skipped', 'republished'],
+  },
 };
 
 export interface AuditViewer {
@@ -513,11 +516,13 @@ function rowOf(table: string): Row {
   };
 }
 
+/** 逐行归属；行里没有的取任务顶层归属（单人任务的顶层员工即每行的员工，PR #75 第五轮）。 */
 function itemRow(): Row {
+  const task = (name: string) => sql`${sql.identifier(TASK)}.${sql.identifier(name)}`;
   return {
     objectId: sql`COALESCE(item->>'objectId', '')`,
-    employee: sql`NULLIF(item->>'employeeId', '')::uuid`,
-    org: sql`NULLIF(item->>'orgId', '')::uuid`,
+    employee: sql`COALESCE(NULLIF(item->>'employeeId', '')::uuid, ${task('scope_employee_id')})`,
+    org: sql`COALESCE(NULLIF(item->>'orgId', '')::uuid, ${task('scope_org_id')})`,
     after: sql`NULL::jsonb`,
     commandId: sql`${sql.identifier(TASK)}.command_id`,
     actor: sql`${sql.identifier(TASK)}.actor_user_id`,
@@ -553,7 +558,7 @@ function configPredicate(config: ReadonlyMap<string, ResolvedConfig>, field: str
   const isConfig = sql`(${sql.join([configTypes(EVENT), ...actions], sql` OR `)})`;
   if (field === undefined) return isConfig;
   const hidden = [...config.values()]
-    .filter((entry) => entry.fields !== undefined && !entry.fields.has(auditFieldCode(field)))
+    .filter((entry) => entry.fields !== undefined && !fieldVisible(entry.fields, field))
     .map((entry) => entry.match);
   return hidden.length ? sql`(${isConfig} AND NOT (${sql.join(hidden, sql` OR `)}))` : isConfig;
 }
@@ -561,7 +566,7 @@ function configPredicate(config: ReadonlyMap<string, ResolvedConfig>, field: str
 /** 至少一个可见字段发生变化；带字段筛选时该字段本身也必须可见。 */
 function fieldScope(fields: ReadonlySet<string> | undefined, field: string | undefined): SQL {
   if (fields === undefined) return sql`true`;
-  if (field !== undefined && !fields.has(auditFieldCode(field))) return sql`false`;
+  if (field !== undefined && !fieldVisible(fields, field)) return sql`false`;
   return changedVisible(EVENT, fields);
 }
 
@@ -572,7 +577,13 @@ function changedVisible(table: string, fields: ReadonlySet<string> | undefined):
       visible_change
     WHERE (CASE WHEN visible_change->>'field' LIKE 'customFields.%'
       THEN 'custom:' || substr(visible_change->>'field', 14)
-      ELSE regexp_replace(visible_change->>'field', '^.*\\.', '') END) = ANY(${textArray([...fields])}))`;
+      ELSE regexp_replace(visible_change->>'field', '^.*\\.', '') END) = ANY(${textArray([...fields])})
+      OR visible_change->>'field' = ANY(${textArray([...fields])}))`;
+}
+
+/** 字段可见：按字段编码（路径末段）判断，或可见集合里登记了完整路径（如 changed.permission_admins）。 */
+function fieldVisible(fields: ReadonlySet<string>, path: string): boolean {
+  return fields.has(auditFieldCode(path)) || fields.has(path);
 }
 
 /** 本租户日志里出现过的对象类型（松散索引扫描，按 (tenant_id, object_type) 索引逐个跳读）。 */
@@ -606,7 +617,7 @@ export function visibleChanges(
   changes: readonly AuditFieldChange[],
   fields: ReadonlySet<string> | undefined,
 ): AuditFieldChange[] {
-  return fields === undefined ? [...changes] : changes.filter((change) => fields.has(auditFieldCode(change.field)));
+  return fields === undefined ? [...changes] : changes.filter((change) => fieldVisible(fields, change.field));
 }
 
 /** 前后值 / 快照只留可见字段；嵌套的 fields / customFields 等容器逐层裁剪，空容器去掉。 */
@@ -618,7 +629,7 @@ export function visibleValue(value: unknown, fields: ReadonlySet<string> | undef
     if (inner !== null && typeof inner === 'object' && !Array.isArray(inner) && !prefix) {
       const nested = visibleValue(inner, fields, path) as Record<string, unknown>;
       if (Object.keys(nested).length) kept[key] = nested;
-    } else if (fields.has(auditFieldCode(path))) {
+    } else if (fieldVisible(fields, path)) {
       kept[key] = inner;
     }
   }
@@ -648,7 +659,7 @@ export function visibleErrorReport(
           Object.entries(entry as Record<string, unknown>).filter(
             ([key, value]) =>
               protocol.has(key) ||
-              (key === 'field' ? typeof value === 'string' && fields.has(auditFieldCode(value)) : fields.has(key)),
+              (key === 'field' ? typeof value === 'string' && fieldVisible(fields, value) : fields.has(key)),
           ),
         )
       : entry,

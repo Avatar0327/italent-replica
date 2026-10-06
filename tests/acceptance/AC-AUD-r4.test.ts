@@ -265,7 +265,14 @@ describe('PR #75 第四轮', () => {
         objectType: 'tenant',
         objectId: w.world.tenant.id,
         before: null,
-        after: { changed: 4, skipped: 1, republished: 2, takenOver: 3, problems: [{ kind: 'task', id: 'R4-PROBLEM' }] },
+        after: {
+          // 真实结构：授权子图各表的改动条数（第五轮 P3 订正夹具）
+          changed: { permission_grants: 4 },
+          skipped: 1,
+          republished: 2,
+          takenOver: 3,
+          problems: [{ kind: 'task', id: 'R4-PROBLEM' }],
+        },
         occurredAt: new Date(NOW),
       }),
     );
@@ -273,7 +280,7 @@ describe('PR #75 第四轮', () => {
     const { items } = await w.audit.dataChanges(only.as, { action: 'tenant.restore.reconcile' });
     expect(items).toHaveLength(1);
     const fields = items[0]!.changes.map((change) => change.field);
-    expect(fields).toEqual(expect.arrayContaining(['changed', 'skipped', 'republished']));
+    expect(fields).toEqual(expect.arrayContaining(['changed.permission_grants', 'skipped', 'republished']));
     expect(fields).not.toContain('takenOver');
     expect(JSON.stringify(items)).not.toContain('R4-PROBLEM');
   });

@@ -67,6 +67,7 @@ import { batchEditEmploymentRecords, normalizeBatchEdit } from './batch-edit.js'
 import { recordOperationLog } from '../../audit/record.js';
 import { auditActor } from '../../system-actor.js';
 import { rawImportRows, withFailedImportLog } from '../../audit/record.js';
+import { failedImportAnchors, importedItems } from './import-audit.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   const module = new Hono<TenantEnv>();
@@ -613,13 +614,15 @@ async function importEmployment(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   const id = uuidParam(c);
   const ctx = await readContext(c, deps, 'object.view', revision(c), id);
   const raw = await jsonBody(c);
-  // DEC-199 / PR #75 第三轮 P2-3：格式与授权校验失败同样是导入任务失败，整批留任务级日志（单人导入，归属即该员工）
+  // DEC-199 / PR #75 第三轮 P2-3：格式与授权校验失败同样是导入任务失败，整批留任务级日志（单人导入，归属即该员工）；
+  // 第五轮：逐行补任职业务编号与记录部门
   const task = {
     ...ctx,
     commandId: c.req.header('idempotency-key'),
     objectType: 'employment-record',
     total: rawImportRows(raw, 'items').length,
     scopeEmployeeId: id,
+    resolveAnchors: (tx: Tx) => failedImportAnchors(tx, ctx, id, raw),
   };
   return withFailedImportLog(deps.db, task, async () => {
     const input = normalizeEmploymentImport(raw);
@@ -709,6 +712,8 @@ async function importWithTransferAuthorization(
     scopeEmployeeId: employeeId,
     successCount: input.items.length,
     failureCount: 0,
+    // 逐行保存任职业务编号、员工与记录部门（PR #75 第五轮）
+    items: importedItems(result.items),
     commandId: ctx.commandId,
     occurredAt: ctx.now,
   });
