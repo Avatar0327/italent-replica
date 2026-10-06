@@ -1,85 +1,19 @@
+import { now, worker, callAt, scenario, versions } from './AC-JOB-sequence-support.js';
+import { installApprovalFallbacks } from './AC-APV-support.js';
 import { auditApi } from './AC-AUD-support.js';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
 import { runEmploymentActivations } from '@italent/api';
 import { randomUUID } from 'node:crypto';
-import { type Db, sql, withTenant } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { orgPeopleWorld, resultRows, type OrgPeopleWorld } from './AC-ORG-people-support.js';
-import { allowAll, tenantApi } from './support/tenant-api.js';
+import { orgPeopleWorld, resultRows } from './AC-ORG-people-support.js';
+import { allowAll } from './support/tenant-api.js';
 import type { Authorizer } from '../../apps/api/src/authorization.js';
 
 const testDb = useTestDb();
-const now = new Date('2026-10-05T01:00:00Z');
-async function worker(
-  db: Db,
-  tenantId: string,
-  authorize: Authorizer = allowAll,
-  options: { limit?: number; cursor?: string; clock?: () => Date } = {},
-) {
-  const path = '../../apps/api/src/modules/job/sequence-worker.js';
-  const module = await import(path);
-  return module.runSequenceSyncJobs(db, tenantId, { clock: () => now, authorize, ...options });
-}
-function callAt(db: Db, world: OrgPeopleWorld, authorize: Authorizer = allowAll) {
-  const api = tenantApi(db, { clock: () => now, authorize });
-  return (method: string, path: string, body?: unknown, revision = 0, key = randomUUID()) =>
-    api.request(method, `/api/tenant/job/${path}`, {
-      user: world.user.id,
-      tenant: world.tenant.id,
-      body,
-      ifMatch: revision,
-      idempotencyKey: key,
-    });
-}
-async function scenario(db: Db, kind: 'posts' | 'positions' = 'posts') {
-  const world = await orgPeopleWorld(db, `seq${randomUUID().slice(0, 8)}`);
-  const org = await world.org('同步部门');
-  const oldSequence = await world.job('sequences', '原序列');
-  const nextSequence = await world.job('sequences', '新序列');
-  const post = await world.job('posts', '同步职务', { sequenceId: oldSequence.id });
-  const position = await world.job('positions', '同步职位', {
-    orgId: org.id,
-    postId: post.id,
-    sequenceId: oldSequence.id,
-  });
-  const target = kind === 'posts' ? post : position;
-  const fields = { departmentId: org.id, postId: post.id, positionId: position.id, sequenceId: oldSequence.id };
-  const employee = await world.hire('同步员工', fields);
-  const current = await world.business(
-    employee.id,
-    {
-      kind: 'org_adjustment',
-      mode: 'direct',
-      effectiveDate: '2026-10-03',
-      fields,
-    },
-    employee.revision,
-  );
-  const future = await world.business(
-    employee.id,
-    {
-      kind: 'org_adjustment',
-      mode: 'direct',
-      effectiveDate: '2026-10-12',
-      fields,
-    },
-    current.employeeRevision,
-  );
-  return { world, org, target, employee, current, future, oldSequence, nextSequence, call: callAt(db, world) };
-}
-async function versions(db: Db, tenantId: string, employeeId: string) {
-  return withTenant(db, tenantId, async (tx) =>
-    resultRows<{ businessId: string; count: number }>(
-      await tx.execute(sql`SELECT business_id AS "businessId",count(*)::int AS count
-      FROM employment_payload_versions WHERE tenant_id=${tenantId} AND employee_id=${employeeId}::uuid
-      GROUP BY business_id ORDER BY business_id`),
-    ),
-  );
-}
-
 describe('AC-JOB-08～11 F-021 序列同步', () => {
   for (const kind of ['posts', 'positions'] as const) {
     it(`AC-JOB-08 ${kind} 编辑按引用异步追加当前/未来版本，历史与原始记录不变`, async () => {
@@ -310,6 +244,7 @@ for (const kind of ['posts', 'positions'] as const)
 it('AC-JOB-08 审批中追加版本、作废不改；已批未来、同日多条及迟到调动保持排序和序列', async () => {
   const { db } = testDb();
   const s = await scenario(db);
+  await installApprovalFallbacks(db, s.world.tenant.id, s.world.user.id);
   async function action(id: string, action: 'submit' | 'approve' | 'revoke') {
     const response = await s.world.request('GET', `/businesses/${id}`);
     const record = (await response.json()) as { revision: number };
@@ -339,7 +274,13 @@ it('AC-JOB-08 审批中追加版本、作废不改；已批未来、同日多条
       },
       employee.revision,
     );
-    await action(draft.id, 'submit');
+    if (state === 'in_review') {
+      const response = await s.world.request('POST', `/businesses/${draft.id}/submit`, {
+        ifMatch: draft.revision,
+        body: {},
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+    } else await action(draft.id, 'submit');
     if (state === 'approved') await action(draft.id, 'approve');
     if (state === 'voided') await action(draft.id, 'revoke');
     return draft;
@@ -349,6 +290,15 @@ it('AC-JOB-08 审批中追加版本、作废不改；已批未来、同日多条
   const sameDay = await application('2026-10-07', 'approved', '同日末条地点');
   const review = await application('2026-10-15', 'in_review', '审批中');
   const voided = await application('2026-10-16', 'voided', '已作废');
+  const instanceSnapshot = () =>
+    withTenant(db, s.world.tenant.id, async (tx) =>
+      resultRows(
+        await tx.execute(sql`
+    SELECT to_jsonb(i) AS instance FROM approval_instances i WHERE business_id=${review.id}::uuid`),
+      ),
+    );
+  const originalInstance = await instanceSnapshot();
+  expect(originalInstance).toHaveLength(1);
   const before = await versions(db, s.world.tenant.id, s.employee.id);
   expect(
     (await s.call('PATCH', `posts/${s.target.id}`, { sequenceId: s.nextSequence.id, effectiveDate: '2026-10-05' }, 1))
@@ -361,9 +311,10 @@ it('AC-JOB-08 审批中追加版本、作废不改；已批未来、同日多条
     before.find((r) => r.businessId === review.id)!.count + 1,
   );
   expect(await (await s.world.request('GET', `/businesses/${review.id}`)).json()).toMatchObject({
-    state: 'in_review',
+    status: 'in_review',
     fields: { sequenceId: s.nextSequence.id },
   });
+  expect(await instanceSnapshot()).toEqual(originalInstance);
   const run = await runEmploymentActivations(
     db,
     { actorUserId: null, commandId: randomUUID() },
@@ -608,8 +559,14 @@ it('AC-JOB-10 DEC-219 执行时已成历史的目标保留旧值，结果和通�
   expect((await s.world.record(s.current.id)).fields.sequenceId).toBe(s.oldSequence.id);
   expect((await s.world.record(s.future.id)).fields.sequenceId).toBe(s.nextSequence.id);
   const response = await s.call('GET', 'sequence-sync/messages');
-  expect(await response.json()).toMatchObject({
+  const completion = (await response.json()) as { items: { message: { taskId: string } }[] };
+  expect(completion).toMatchObject({
     items: [{ message: { count: 1, skipped: [{ recordId: s.current.id, reason: 'BECAME_HISTORICAL' }] } }],
+  });
+  const task = await s.call('GET', `sequence-sync/tasks/${completion.items[0]!.message.taskId}`);
+  expect(await task.json()).toMatchObject({
+    state: 'sent',
+    result: { count: 1, skipped: [{ recordId: s.current.id, reason: 'BECAME_HISTORICAL' }] },
   });
 });
 

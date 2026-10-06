@@ -64,3 +64,43 @@ it('AC-JOB-09 新建职位所需的组织403独立失败，序列仍可选择', 
   expect(host.querySelector('select[name="sequenceId"]')?.textContent).toContain('可选序列');
   expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('org/organizations'))).toBe(true);
 });
+it('AC-JOB-09 第201条候选也可选择，完成消息显示历史跳过原因', async () => {
+  const original = fetch;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string, options?: RequestInit) => {
+      if (input.includes('job/sequences'))
+        return new Response(
+          JSON.stringify({
+            items: input.includes('page=2')
+              ? [{ id: 'last', name: '第201条序列' }]
+              : Array.from({ length: 200 }, (_, i) => ({ id: String(i), name: `序列${i}` })),
+          }),
+        );
+      if (input.includes('sequence-sync/messages'))
+        return new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'done',
+                createdAt: '2026-10-13',
+                message: { count: 1, skipped: [{ recordId: 'historical-record', reason: 'BECAME_HISTORICAL' }] },
+              },
+            ],
+          }),
+        );
+      return original(input, options);
+    }),
+  );
+  await open();
+  await click('编辑');
+  const select = host.querySelector<HTMLSelectElement>('select[name="sequenceId"]')!;
+  expect(select.textContent).toContain('第201条序列');
+  await act(async () => {
+    select.value = 'last';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  expect(select.value).toBe('last');
+  expect(host.textContent).toContain('同步序列到任职');
+  expect(host.textContent).toContain('historical-record：执行时已成为历史，未同步');
+});
