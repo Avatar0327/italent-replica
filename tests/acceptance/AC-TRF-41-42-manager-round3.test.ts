@@ -85,7 +85,7 @@ async function fixture() {
         201,
       )
     ).id;
-  return { ...w, api, actor, admin, a, b, outside, employee, manager, draft, revision, job };
+  return { ...w, api, actor, admin, profile, a, b, outside, employee, manager, draft, revision, job };
 }
 
 describe('AC-TRF-41/42 第三轮：同单参照与删除统计', () => {
@@ -217,5 +217,75 @@ describe('AC-TRF-41/42 第三轮：同单参照与删除统计', () => {
     expect(after.counts.leaving).toBe(0);
     expect(after.items.map((e) => e.id)).not.toContain(w.employee.employeeId);
     expect((await team('active')).items.find((e) => e.id === w.employee.employeeId)?.leaving).toBe(false);
+  });
+});
+
+async function removeManagerEntry(w: Awaited<ReturnType<typeof fixture>>) {
+  const result = await setObjectPermission(
+    w.admin,
+    w.profile,
+    {
+      dataOperations: { create: true, update: true, delete: false },
+      fields: MODULE_OBJECTS.employmentRecord.fields.map((f) => ({ fieldCode: f.code, view: true, edit: !f.system })),
+      buttons: ['Employment.Preview', 'Employment.Submit', 'Employment.Edit'].map((buttonCode) => ({
+        buttonCode,
+        level: 'detail' as const,
+      })),
+    },
+    MODULE_OBJECTS.employmentRecord.code,
+  );
+  expect(result.status).toBe(200);
+  expect(await w.json(await w.api.request('GET', `${BASE}/transfers/manager`, w.actor))).toMatchObject({
+    identity: 'department_manager',
+    canApply: false,
+    canViewReporting: false,
+  });
+}
+
+describe('AC-TRF-41 第四轮：撤除经理入口不能关闭范围检查', () => {
+  it('只移除 Transfer.Manager 后，越界 PATCH 仍拒绝且单据不变', async () => {
+    const w = await fixture();
+    const saved = await w.draft();
+    const path = `${BASE}/businesses/${saved.id}`;
+    const options = { ...w.actor, ifMatch: saved.revision, body: { fields: { departmentId: w.outside } } };
+    expect((await w.api.request('PATCH', path, options)).status).toBe(403);
+    await removeManagerEntry(w);
+    const result = await w.api.request('PATCH', path, options);
+    expect(result.status, await result.clone().text()).toBe(403);
+    expect(await w.business(saved.id)).toMatchObject({ revision: saved.revision, fields: { departmentId: w.b } });
+  });
+
+  it.each(['a', 'b'] as const)('移除按钮并撤销组织 %s 负责关系，来源或目标越界的提交均拒绝', async (org) => {
+    const w = await fixture();
+    const saved = await w.draft();
+    await w.setOrgRoles(w[org], { head: null });
+    await removeManagerEntry(w);
+    const result = await w.api.request('POST', `${BASE}/businesses/${saved.id}/submit`, {
+      ...w.actor,
+      ifMatch: saved.revision,
+      body: {},
+    });
+    expect(result.status, await result.clone().text()).toBe(403);
+    expect(await w.business(saved.id)).toMatchObject({ revision: saved.revision, status: 'draft' });
+  });
+
+  it.each(['PATCH', 'submit'] as const)('成功 %s 原键重放在移除经理入口后拒绝', async (action) => {
+    const w = await fixture();
+    const saved = await w.draft({ departmentId: w.a });
+    const method = action === 'PATCH' ? 'PATCH' : 'POST';
+    const path = `${BASE}/businesses/${saved.id}${action === 'submit' ? '/submit' : ''}`;
+    const options = {
+      ...w.actor,
+      ifMatch: saved.revision,
+      body: action === 'PATCH' ? { fields: { departmentId: w.b } } : {},
+      idempotencyKey: randomUUID(),
+    };
+    expect((await w.api.request(method, path, options)).status).toBe(200);
+    expect((await w.api.request(method, path, options)).status).toBe(200);
+    const before = await w.business(saved.id);
+    await removeManagerEntry(w);
+    const replay = await w.api.request(method, path, options);
+    expect(replay.status, await replay.clone().text()).toBe(403);
+    expect(await w.business(saved.id)).toEqual(before);
   });
 });
