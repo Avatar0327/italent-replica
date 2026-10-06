@@ -1,6 +1,7 @@
 import { postponeLateTransfer } from './late-transfer.js';
 import { assertEstablishmentCapacity } from './activation-checks.js';
 import { lockTransferBusiness } from './transfer-locks.js';
+import { assertEmploymentDepartmentAvailable } from './references.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Db, type Tx } from '@italent/db';
@@ -97,6 +98,9 @@ export async function transitionEmployment(
         predecessor,
       },
     );
+    // DEC-196：保存草稿之后组织可能已停用；提交与审批须在停用共用锁内复查。
+    if (payload.kind === 'transfer')
+      await assertEmploymentDepartmentAvailable(tx, ctx, fields.departmentId, effectiveDate);
     assertRequiredTransferFields(payload.kind, payload.formSnapshot, { ...fields });
     // DEC-183：变更合同遇同类型在途未来合同，提交即 409。
     if (payload.kind === 'transfer') await assertTransferLinkageSubmittable(tx, ctx, business.id);

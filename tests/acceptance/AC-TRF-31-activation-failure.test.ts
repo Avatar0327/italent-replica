@@ -11,7 +11,7 @@ import { desc, eq, jobPositionVersions, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { errorCode, tenantApi } from './support/tenant-api.js';
-import { activationWorld, type ActivationBusiness } from './AC-TRF-activation-support.js';
+import { activationWorld, seedLegacyOrgDeactivation, type ActivationBusiness } from './AC-TRF-activation-support.js';
 
 const testDb = useTestDb();
 
@@ -111,7 +111,7 @@ describe('AC-TRF-31（R1-T08 段，DEC-145）DEC-052 定时生效失败、HR 待
     expect(await w.session.records(employee.id, '2026-10-20')).toHaveLength(3);
   });
 
-  it('目标组织在生效日已停用：failed 原因为目标组织停用；重新启用后重试生效', async () => {
+  it('历史遗留的目标组织在生效日已停用：failed 原因为目标组织停用；重新启用后重试生效', async () => {
     const w = await activationWorld(testDb().db, 'trf31-org-disabled');
     const { employee } = await w.hired();
     const approved = await w.approve(
@@ -126,8 +126,7 @@ describe('AC-TRF-31（R1-T08 段，DEC-145）DEC-052 定时生效失败、HR 待
         ifMatch: revision,
         body,
       });
-    const disabled = await orgRequest(w.to.revision, { enabled: false, effectiveDate: '2026-10-05' });
-    expect(disabled.status).toBe(200);
+    const disabled = await seedLegacyOrgDeactivation(w, '2026-10-05');
 
     const run = await w.runScheduler('2026-10-04T17:15:00Z');
     expect(run.failed).toEqual([approved.id]);
@@ -136,7 +135,7 @@ describe('AC-TRF-31（R1-T08 段，DEC-145）DEC-052 定时生效失败、HR 待
       failureReason: 'TARGET_ORG_DISABLED',
     });
 
-    const enabled = await orgRequest(((await disabled.json()) as { revision: number }).revision, {
+    const enabled = await orgRequest(disabled.revision, {
       enabled: true,
       effectiveDate: '2026-10-05',
     });
