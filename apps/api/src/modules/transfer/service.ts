@@ -188,7 +188,7 @@ export async function transferBusinessContext(
   tx: Tx,
   ctx: EmploymentContext,
   businessId: string,
-  write = false,
+  phase: 'read' | 'before-command' | 'command' = 'read',
   targetDepartmentId?: string | null,
   referenceChange?: EmploymentBusinessPatch,
 ) {
@@ -200,12 +200,12 @@ export async function transferBusinessContext(
   );
   if (!request) return ctx;
   // F-008：等员工锁完成后才重验源范围，避免锁等待期间调出员工后沿用此前目标例外。
-  if (write) {
+  if (phase === 'command') {
     await lockTransferParticipants(tx, ctx, request.employeeId);
     await lockEmploymentEmployee(tx, ctx, request.employeeId);
   }
   // 每次同单请求（包括命令缓存重放）都验权；首次执行仍在员工锁后复验。
-  const manager = await requireManagerBusinessSource(tx, ctx, request.employeeId);
+  const manager = await requireManagerBusinessSource(tx, ctx, request.employeeId, phase !== 'read');
   // PATCH / submit 的缓存前检查与员工锁后复验共用此处；读取、撤回、删除不因目标撤权而受阻。
   if (manager && referenceChange !== undefined)
     await requireManagerBusinessReferences(tx, ctx, businessId, referenceChange);

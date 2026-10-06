@@ -255,7 +255,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     let ctx = await readContext(c, deps, 'object.update', revision(c));
     const input = normalizeBusinessPatch(await jsonBody(c));
     ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      transferBusinessContext(tx, ctx, id, false, input.fields?.departmentId, input),
+      transferBusinessContext(tx, ctx, id, 'before-command', input.fields?.departmentId, input),
     );
     const current = await authorizeBusinessWrite(deps, ctx, id);
     await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit');
@@ -271,7 +271,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         tx,
         { ...context, transferTarget: undefined },
         id,
-        true,
+        'command',
         departmentId,
         input,
       );
@@ -293,7 +293,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
         const id = uuidParam(c);
         let ctx = await readContext(c, deps, action === 'delete' ? 'object.delete' : 'object.update', revision(c));
         ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
-          transferBusinessContext(tx, ctx, id, false, undefined, action === 'submit' ? {} : undefined),
+          transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
         );
         if (action === 'submit') await emptySubmitBody(c);
         await requireEmploymentWrite(
@@ -308,7 +308,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
             tx,
             { ...context, transferTarget: undefined },
             id,
-            true,
+            'command',
             undefined,
             action === 'submit' ? {} : undefined,
           );

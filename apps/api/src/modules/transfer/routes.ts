@@ -39,38 +39,7 @@ import { createTransfer, normalizeTransferInput, requireTransferWrite, requireDi
 export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   registerPersonalEntry(router, deps);
   registerManagerRoutes(router, deps);
-  router.get('/transfers/departments', async (c) => {
-    const ctx = await readPageContext(c, deps, 'detail');
-    const permitted = await Promise.all(
-      ['Transfer.Hr', 'Transfer.Manager', 'Transfer.Self'].map((button) =>
-        deps.authorize({
-          ...ctx,
-          action: 'object.button',
-          resource: buttonResource('TenantBase.EmploymentRecord', button, 'detail'),
-        }),
-      ),
-    );
-    if (!ctx.scope?.hasDataPermission || !permitted.some(Boolean)) throw new AppError('FORBIDDEN', '无权选择调动部门');
-    const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
-    if (viewable && !viewable.has('departmentId')) throw new AppError('FORBIDDEN', '无权查看调动部门');
-    const effectiveDate = businessDate(c.req.query('effectiveDate') ?? tenantLocalDate(ctx.now, ctx.timezone));
-    const page = pageQuery(c);
-    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-      const form = await resolveTransferForm(
-        tx,
-        ctx.tenantId,
-        c.req.query('formId') ?? 'TenantBase.TransferMultiFormView',
-      );
-      const settings = await readTransferSettings(tx, ctx.tenantId);
-      if (permitted[1] && !permitted[0]) return readManagerReferences(tx, ctx, 'departmentId', { effectiveDate }, page);
-      const organizations = await loadOrgSnapshot(tx, ctx.tenantId, effectiveDate, page, {
-        includeDisabled: false,
-        ...(form.isStandard && settings.unrestrictTargetDepartment ? {} : { scope: ctx.scope }),
-      });
-      return organizations.map(({ id, name, code }) => ({ id, name, code }));
-    });
-    return c.json({ items, page: page.page, pageSize: page.pageSize });
-  });
+  registerDepartmentChoices(router, deps);
   router.post('/transfers/employees/:id/preview', async (c) => {
     const id = uuidParam(c);
     const ctx = await readPageContext(c, deps, 'detail');
@@ -120,6 +89,41 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
   });
   registerTransferLinkageRoutes(router, deps);
   registerTransferConfiguration(router, deps);
+}
+
+function registerDepartmentChoices(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get('/transfers/departments', async (c) => {
+    const ctx = await readPageContext(c, deps, 'detail');
+    const permitted = await Promise.all(
+      ['Transfer.Hr', 'Transfer.Manager', 'Transfer.Self'].map((button) =>
+        deps.authorize({
+          ...ctx,
+          action: 'object.button',
+          resource: buttonResource('TenantBase.EmploymentRecord', button, 'detail'),
+        }),
+      ),
+    );
+    if (!ctx.scope?.hasDataPermission || !permitted.some(Boolean)) throw new AppError('FORBIDDEN', '无权选择调动部门');
+    const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
+    if (viewable && !viewable.has('departmentId')) throw new AppError('FORBIDDEN', '无权查看调动部门');
+    const effectiveDate = businessDate(c.req.query('effectiveDate') ?? tenantLocalDate(ctx.now, ctx.timezone));
+    const page = pageQuery(c);
+    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const form = await resolveTransferForm(
+        tx,
+        ctx.tenantId,
+        c.req.query('formId') ?? 'TenantBase.TransferMultiFormView',
+      );
+      const settings = await readTransferSettings(tx, ctx.tenantId);
+      if (permitted[1] && !permitted[0]) return readManagerReferences(tx, ctx, 'departmentId', { effectiveDate }, page);
+      const organizations = await loadOrgSnapshot(tx, ctx.tenantId, effectiveDate, page, {
+        includeDisabled: false,
+        ...(form.isStandard && settings.unrestrictTargetDepartment ? {} : { scope: ctx.scope }),
+      });
+      return organizations.map(({ id, name, code }) => ({ id, name, code }));
+    });
+    return c.json({ items, page: page.page, pageSize: page.pageSize });
+  });
 }
 
 async function visibleTransferForm(

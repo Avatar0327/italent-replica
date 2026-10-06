@@ -458,7 +458,8 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
         ifMatch: current.revision,
         body: { fields: { remarks: '无调动入口的修改' } },
       });
-      expect(denied.status).toBe(404);
+      // 缺少合法调动写入口在命令前直接拒绝，不能因只读可见而取得写权限。
+      expect(denied.status).toBe(403);
     }
   });
 

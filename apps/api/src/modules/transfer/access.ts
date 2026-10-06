@@ -103,8 +103,13 @@ async function inTeam(
 }
 
 /** 纯经理即使另有宽泛数据范围，同单写入仍须重验当前负责组织；HR / 本人入口保留既有规则。 */
-export async function requireManagerBusinessSource(tx: Tx, ctx: EmploymentContext, employeeId: string) {
-  if (!ctx.authorize) return false;
+export async function requireManagerBusinessSource(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  requireEntry: boolean,
+) {
+  if (!ctx.authorize) throw new AppError('FORBIDDEN', '无权操作调动');
   const authorize = authorizeInTransaction(ctx.authorize, tx);
   const allowed = (button: string) =>
     authorize({
@@ -112,17 +117,15 @@ export async function requireManagerBusinessSource(tx: Tx, ctx: EmploymentContex
       action: 'object.button',
       resource: buttonResource(EMPLOYMENT_OBJECT, button, 'detail'),
     });
-  if (!(await allowed('Transfer.Hr')) && (await allowed('Transfer.Manager'))) {
-    const [binding] = rowsOf<{ id: string }>(
-      await tx.execute(sql`
-      SELECT employee_id AS id FROM permission_user_person_links
-      WHERE tenant_id=${ctx.tenantId} AND user_id=${ctx.userId}::uuid
-    `),
-    );
-    if (binding?.id !== employeeId || !(await allowed('Transfer.Self'))) {
-      await requireTransferSource(tx, ctx, employeeId, 'manager');
-      return true;
-    }
+  if (await allowed('Transfer.Hr')) return false;
+  const identity = await managerIdentity(tx, { ...ctx, asOf: tenantLocalDate(ctx.now, ctx.timezone) });
+  if (identity.employeeId === employeeId.toLowerCase() && (await allowed('Transfer.Self'))) return false;
+  if (!identity.active) {
+    if (requireEntry) throw new AppError('FORBIDDEN', '需要经理自助身份');
+    // DEC-177：普通只读查询仍由任职读取范围裁剪，不要求调动发起入口。
+    return false;
   }
-  return false;
+  // 按真实身份进入经理限制；撤除入口按钮必须拒绝，不能退回无经理限制的通用任职路径。
+  await requireTransferSource(tx, ctx, employeeId, 'manager');
+  return true;
 }
