@@ -1,3 +1,5 @@
+import { linkageApproval } from '../transfer/linkage/approval.js';
+import type { ForeignField } from './foreign-fields.js';
 import { plannedEffectiveDate } from '../employment/timeline.js';
 import { lockTransferBusiness } from '../employment/transfer-locks.js';
 /**
@@ -51,6 +53,8 @@ export interface BusinessSnapshot {
   readonly values: Readonly<Row>;
   readonly originals: Readonly<Row> | null;
   readonly changedFields: readonly string[];
+  /** 嵌套的其他对象字段（R1-T10 合同变更）：披露与盲审按所属对象的权限判断（foreign-fields.ts）。 */
+  readonly foreignFields?: readonly ForeignField[];
   readonly conditionValues: Readonly<Row>;
   readonly latestDepartmentId: string | null;
   readonly recordDepartmentId: string | null;
@@ -182,6 +186,15 @@ function employmentPatch(input: Readonly<Row>) {
   };
 }
 
+/** 流程发起条件里的任职引用（调动前 / 本单）。 */
+const ref = (prefix: 'before' | 'record', source: Partial<PresetFields> | undefined) =>
+  Object.fromEntries(
+    (['departmentId', 'postId', 'positionId', 'levelId'] as const).map((key) => [
+      `${prefix}.${key}`,
+      source?.[key] ?? null,
+    ]),
+  );
+
 async function completedTransferDates(
   tx: Tx,
   ctx: ApprovalContext,
@@ -223,6 +236,7 @@ const employmentAdapter: BusinessAdapter = {
     const employType = business.kind === 'intern_regularization' ? 'internal' : before?.fields.employType;
     const fields: PresetFields = { ...business.fields, employType: business.fields.employType ?? employType ?? null };
     const payload = await latestPayload(tx, ctx.tenantId, businessId);
+    const linkage = await linkageApproval(tx, ctx.tenantId, businessId, business.kind); // R1-T10 P1-6
     // 清单 3：载荷、原值与变化检测覆盖预置字段、自定义字段、业务日期与最后工作日。
     const originals: Row | null = before
       ? {
@@ -235,6 +249,7 @@ const employmentAdapter: BusinessAdapter = {
     const values: Row = {
       ...fields,
       ...(business.kind === 'transfer' ? await transferMetadata(tx, ctx.tenantId, businessId) : {}),
+      ...linkage.values,
       ...customValues(business.customFields),
       effectiveDate: business.effectiveDate,
       ...(await completedTransferDates(tx, ctx, business)),
@@ -253,14 +268,8 @@ const employmentAdapter: BusinessAdapter = {
       // 业务日期是本单新内容，审批人必须看得到；最后工作日只在离职 / 退休单上出现。
       'effectiveDate',
       ...(payload.lastWorkDate ? ['lastWorkDate'] : []),
+      ...linkage.changedFields,
     ];
-    const ref = (prefix: 'before' | 'record', source: Partial<PresetFields> | undefined) =>
-      Object.fromEntries(
-        (['departmentId', 'postId', 'positionId', 'levelId'] as const).map((key) => [
-          `${prefix}.${key}`,
-          source?.[key] ?? null,
-        ]),
-      );
     return {
       approvalType,
       businessType: 'employment',
@@ -284,7 +293,8 @@ const employmentAdapter: BusinessAdapter = {
       },
       latestDepartmentId: current?.fields.departmentId ?? null,
       recordDepartmentId: fields.departmentId,
-      version: payload.version,
+      ...(linkage.foreignFields.length ? { foreignFields: linkage.foreignFields } : {}),
+      version: linkage.version ? `${payload.version}:${linkage.version}` : payload.version,
       processCode,
     };
   },

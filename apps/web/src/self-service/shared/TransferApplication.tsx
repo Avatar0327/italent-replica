@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { LinkagePanel } from '../../transfer/LinkagePanel.js';
+import { useLinkageDetail } from '../../transfer/useLinkage.js';
 import { TransferForm } from './TransferForm.js';
 import { text } from '../../transfer/messages.js';
 import { useTransferForm } from './useTransferForm.js';
@@ -32,10 +34,12 @@ export function TransferApplication({ tenantId, initiator }: TransferApplication
         onSelection={state.selection}
         onField={state.field}
         onReferenceQuery={state.referenceQuery}
+        onLinkage={state.linkage}
         onAction={(action) => {
           void state.submit(action);
         }}
       />
+      {state.saved && initiator === 'hr' && <LinkageDetail tenantId={tenantId} businessId={state.saved.id} />}
       {state.unknownCommand && (
         <p>
           {text.requestReference}：<code>{state.unknownCommand}</code>
@@ -77,6 +81,28 @@ export function TransferApplication({ tenantId, initiator }: TransferApplication
         </div>
       )}
     </section>
+  );
+}
+
+function LinkageDetail({ tenantId, businessId }: { tenantId: string; businessId: string }) {
+  const detail = useLinkageDetail(tenantId, businessId);
+  return (
+    <>
+      {detail.error && (
+        <p role="alert" className="transfer-error">
+          {detail.error}
+        </p>
+      )}
+      {detail.view && (
+        <LinkagePanel
+          view={detail.view}
+          busy={detail.busy}
+          onRetry={(item) => {
+            void detail.retry(item);
+          }}
+        />
+      )}
+    </>
   );
 }
 

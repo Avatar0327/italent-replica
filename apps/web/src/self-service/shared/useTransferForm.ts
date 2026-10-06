@@ -14,10 +14,13 @@ import {
   TransferApiError,
 } from '../../transfer/api.js';
 import { text } from '../../transfer/messages.js';
+import { emptyLinkage } from '../../transfer/linkage-api.js';
+import { useContractChoices } from '../../transfer/useLinkage.js';
 import type {
   Choice,
   EmployeeChoice,
   FieldValue,
+  LinkageDraft,
   TransferAction,
   TransferBusiness,
   TransferCatalog,
@@ -38,7 +41,11 @@ const initial: TransferFormModel = {
   preview: null,
 };
 export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' | 'manager' = 'hr') {
-  const [model, setModel] = useState<TransferFormModel>({ ...initial, initiator });
+  const [model, setModel] = useState<TransferFormModel>({
+    ...initial,
+    initiator,
+    ...(initiator === 'hr' ? { linkage: emptyLinkage } : {}),
+  });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loadingPreview, setLoadingPreview] = useState(false);
@@ -49,6 +56,10 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' |
   useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator);
   useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator);
   usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice);
+  // R1-T10 的联动仅接入 HR；经理自助本轮仍不提供跨对象联动。
+  useContractChoices(tenantId, initiator === 'hr' ? model.employeeId : '', initiator, setModel);
+  const linkage = (patch: Partial<LinkageDraft>) =>
+    setModel((current) => (current.linkage ? { ...current, linkage: { ...current.linkage, ...patch } } : current));
   const selection = (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
     setError('');
     setModel((current) =>
@@ -61,6 +72,8 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' |
             fields: {},
             customFields: {},
             preview: null,
+            // 换人后清空原员工的联动草稿与合同候选。
+            ...(field === 'employeeId' && current.linkage ? { linkage: emptyLinkage, contracts: [] } : {}),
           },
     );
   };
@@ -92,6 +105,7 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' |
     page,
     selection,
     field,
+    linkage,
     refresh,
     reset,
     setPage: (next: number) => {

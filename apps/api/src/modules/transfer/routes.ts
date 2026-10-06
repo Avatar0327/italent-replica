@@ -33,6 +33,7 @@ import {
   type ResolvedTransferForm,
 } from './configuration.js';
 import { previewTransfer } from './preview.js';
+import { preauthorizeLinkage, registerTransferLinkageRoutes } from './linkage/routes.js';
 import { createTransfer, normalizeTransferInput, requireTransferWrite, requireDirectTransfer } from './service.js';
 
 export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -107,11 +108,17 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
       return { input, context: preview.context };
     });
     await requireTransferWrite(prepared.context, prepared.input);
+    const linkageAccess = await preauthorizeLinkage(c, deps, prepared.context, {
+      employeeId: id,
+      operation: 'create',
+      options: prepared.input.linkage,
+    });
     return runWrite(c, deps, prepared.context, raw, async (tx, context) => ({
       status: 201,
-      body: await createTransfer(tx, context, id, prepared.input),
+      body: await createTransfer(tx, context, id, { ...prepared.input, linkageAccess }),
     }));
   });
+  registerTransferLinkageRoutes(router, deps);
   registerTransferConfiguration(router, deps);
 }
 

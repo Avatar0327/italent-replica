@@ -3,7 +3,7 @@ import { pgErrorCode, and, eq, contractRecords, contractRequests, type Tx } from
 import { AppError } from '../../errors.js';
 import { settings } from './configuration.js';
 import { audit, checkScope, lockEmployee, type ContractContext } from './context.js';
-import { createCommand, deleteContract, setContractState } from './service.js';
+import { assertNoInFlight, createCommand, deleteContract, setContractState } from './service.js';
 import type { ContractFields } from './input.js';
 export async function handleContractsOnExit(
   tx: Tx,
@@ -46,6 +46,13 @@ export function changeContractForTransfer(
 ) {
   const { revision, ...command } = input;
   return portCommand(tx, { ...ctx, expectedRevision: revision }, { ...command, operation: 'change', mode: 'direct' });
+}
+/**
+ * 调动保存 / 提交 / 生效前查同类型在途合同：复用合同模块的统一判定（DEC-180② / F-016），调动侧不另写一套。
+ * 拒绝时抛合同模块的 CONTRACT_IN_FLIGHT，由调用方映射为自己的机读原因。
+ */
+export function assertNoInFlightForTransfer(tx: Tx, ctx: ContractContext, employeeId: string, typeId: string) {
+  return assertNoInFlight(tx, ctx, employeeId, typeId, 'change');
 }
 
 async function cancelExitRequests(

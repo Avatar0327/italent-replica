@@ -1,3 +1,4 @@
+import { linkagePayload, sourceDepartment } from './linkage-api.js';
 import { jobReferences, text } from './messages.js';
 import type { Choice, TransferAction, TransferBusiness, TransferFormModel, TransferPreview } from './types.js';
 
@@ -93,13 +94,19 @@ export async function loadReferences(
     unavailable: results.some((result) => result.status === 'rejected'),
   };
 }
-export function saveTransfer(tenantId: string, model: TransferFormModel, action: TransferAction, commandId: string) {
-  const body = {
+/** 保存载荷：HR 入口带联动（R1-T10），本人申请不带（`12` 附录）。 */
+export function transferBody(model: TransferFormModel, action: TransferAction) {
+  const linkage = model.initiator === 'employee' ? undefined : linkagePayload(model.linkage, sourceDepartment(model));
+  return {
     ...previewInput(model),
     formId: model.preview!.form.id,
     mode: action === 'direct' ? 'direct' : 'application',
     submit: action === 'submit',
+    ...(linkage ? { linkage } : {}),
   };
+}
+export function saveTransfer(tenantId: string, model: TransferFormModel, action: TransferAction, commandId: string) {
+  const body = transferBody(model, action);
   return transferRequest<TransferBusiness>(tenantId, `${TRANSFER_API}/employees/${model.employeeId}`, {
     method: 'POST',
     body: JSON.stringify(body),
