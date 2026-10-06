@@ -7,7 +7,7 @@ export const hasCreatorScope = (scope: ModuleScope) =>
 
 /**
  * 没有物理 created_by 列的版本化实体，创建人取对象的首个新增事件。DEC-198 起改读最小元数据表 audit_object_creators
- * （对象、创建人、创建时间；由审计新增事件触发写入，迁移 0050 回填历史），审计本身可按保留期整条清理。
+ * （对象、创建人、创建时间；由审计新增事件触发写入，迁移 0051 回填历史），审计本身可按保留期整条清理。
  */
 export function creatorSql(tenantId: string, id: SQL, action: string, objectType: string): SQL {
   return sql`(SELECT a.creator_user_id FROM audit_object_creators a WHERE a.tenant_id=${tenantId}

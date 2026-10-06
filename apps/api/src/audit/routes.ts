@@ -199,7 +199,7 @@ function dataChangeFilters(c: Context): SQL[] {
   if (actor) conditions.push(sql`${t.actorUserId} = ${actor}::uuid`);
   if (commandId) conditions.push(sql`${t.commandId} = ${commandId}`);
   if (sourceAction) conditions.push(sql`${t.sourceAction} = ${sourceAction.slice(0, 100)}`);
-  // 升级前的历史行已在迁移 0050 回填 operation / changes（P2-3），筛选与展示口径一致
+  // 升级前的历史行已在迁移 0051 回填 operation / changes（P2-3），筛选与展示口径一致
   if (operation) conditions.push(sql`${t.operation} = ${operation}`);
   // 字段可以是展开后的 a.b 形式，按末段匹配
   if (field) {
@@ -225,7 +225,7 @@ function operationFilters(c: Context): SQL[] {
   return conditions;
 }
 
-/** UUID 对象编号写入时统一小写（迁移 0050 触发器），查询端同样规范化；非 UUID 的复合编号原样比较（P2-4）。 */
+/** UUID 对象编号写入时统一小写（迁移 0051 触发器），查询端同样规范化；非 UUID 的复合编号原样比较（P2-4）。 */
 function normalizeObjectId(value: string): string {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) ? value.toLowerCase() : value;
 }

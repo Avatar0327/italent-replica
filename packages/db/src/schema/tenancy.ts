@@ -163,10 +163,10 @@ export const auditSourceColumns = () => ({
 
 /**
  * 统一字段级数据变更日志（DEC-019；docs/02_业务建模/20 §5；R1-T16）：业务写与审计同事务写入（AGENTS.md §10「审计」），
- * 只追加（触发器禁止 UPDATE/DELETE/TRUNCATE，唯一例外是按租户保留期的定时清理，迁移 0050）。
+ * 只追加（触发器禁止 UPDATE/DELETE/TRUNCATE，唯一例外是按租户保留期的定时清理，迁移 0051）。
  * before / after 是写入方给出的前后值（删除时 before 即被删记录的完整快照）；changes 是写入时算出的字段级差异，
  * 引用字段带当时解析的名称（fromText / toText）。任何写入路径（含集合 SQL）漏填的 operation / changes / 归属
- * 由迁移 0050 的 BEFORE INSERT 触发器按同一规则补齐，R1-T16 之前的历史行在迁移时回填（PR #75 第二轮 P2-3、P2-6）。
+ * 由迁移 0051 的 BEFORE INSERT 触发器按同一规则补齐，R1-T16 之前的历史行在迁移时回填（PR #75 第二轮 P2-3、P2-6）。
  */
 export const auditEvents = pgTable(
   'audit_events',
@@ -188,7 +188,7 @@ export const auditEvents = pgTable(
     operation: text('operation'),
     changes: jsonb('changes'),
     ...auditSourceColumns(),
-    // DEC-197：查询按查看人当前的数据范围与字段权限裁剪所依据的归属（写入时由迁移 0050 的触发器按对象类型推导）：
+    // DEC-197：查询按查看人当前的数据范围与字段权限裁剪所依据的归属（写入时由迁移 0051 的触发器按对象类型推导）：
     // 权限对象编码（字段权限）、所属人员、所属组织；配置类对象三者为空，按企业设置能力判断
     scopeObject: text('scope_object'),
     scopeEmployeeId: uuid('scope_employee_id'),

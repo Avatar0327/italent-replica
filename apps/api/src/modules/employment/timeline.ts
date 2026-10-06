@@ -7,6 +7,7 @@ import type { EmploymentContext } from './types.js';
 
 interface TimelinePoint {
   recordId: string;
+  staffId: string;
   startDate: string;
   sortOrder: number;
 }
@@ -62,7 +63,7 @@ async function neighbor(tx: Tx, ctx: EmploymentContext, employeeId: string, comp
   const direction = previous ? sql`DESC` : sql`ASC`;
   const [point] = rowsOf<TimelinePoint>(
     await tx.execute(sql`
-    SELECT record_id AS "recordId", start_date::text AS "startDate", sort_order AS "sortOrder"
+    SELECT record_id AS "recordId", staff_id AS "staffId", start_date::text AS "startDate", sort_order AS "sortOrder"
     FROM employment_timeline WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND ${comparison}
     ORDER BY start_date ${direction}, sort_order ${direction} LIMIT 1
   `),
@@ -159,28 +160,37 @@ export async function employmentTimelineNeighbors(
   return neighborsAt(tx, ctx, employeeId, await timelinePosition(tx, ctx, employeeId, date, recordId));
 }
 
-export async function removeLatestEmploymentTimeline(
+/**
+ * 删除任职的时间轴部分（R1-T11，`07` A11）：允许删除非最新的记录，前一条的区间接到后一条的生效日（同日在前的记录
+ * 区间仍为空，DEC-108），后续记录与同日顺序号不动、不被重算（W-013）。开新周期的记录（入职 / 再入职）其后还有
+ * 同周期记录，或下一条已属另一周期时不能删除，否则周期首条或周期边界会悬空。返回前一条及其恢复出的有效段，
+ * 供调用方校验约束（deletion-guards.ts）并同步投影。
+ */
+export async function removeEmploymentTimeline(
   tx: Tx,
   ctx: EmploymentContext,
   employeeId: string,
   recordId: string,
-): Promise<void> {
+  opensCycle: boolean,
+): Promise<{ recordId: string; window: { from: string; to: string | null } } | null> {
   const [point] = rowsOf<TimelinePoint>(
     await tx.execute(sql`
-    SELECT record_id AS "recordId", start_date::text AS "startDate", sort_order AS "sortOrder"
+    SELECT record_id AS "recordId", staff_id AS "staffId", start_date::text AS "startDate", sort_order AS "sortOrder"
     FROM employment_timeline
     WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND record_id=${recordId}::uuid
   `),
   );
   if (!point) throw new AppError('SERVICE_UNAVAILABLE', '任职记录缺少日期投影');
   const { previous, next } = await neighbors(tx, ctx, employeeId, point.startDate, point.sortOrder);
-  if (next) {
-    // TODO(R1-T11, DEC-012)：有联动变更时阻止删除；复杂历史回滚由 T11 处理。
+  if (next && (opensCycle || next.staffId !== point.staffId)) {
     throw new EmploymentError('EMPLOYMENT_FUTURE_VERSION_EXISTS', '存在后续任职记录，不能删除历史记录');
   }
   await tx.execute(sql`DELETE FROM employment_timeline WHERE tenant_id=${ctx.tenantId}
     AND employee_id=${employeeId}::uuid AND record_id=${recordId}::uuid`);
-  if (previous)
-    await tx.execute(sql`UPDATE employment_timeline SET valid_during=daterange(start_date,NULL,'[)')
+  if (!previous) return null;
+  const until = next?.startDate ?? null;
+  await tx.execute(sql`UPDATE employment_timeline SET valid_during=daterange(start_date,${until}::date,'[)')
     WHERE tenant_id=${ctx.tenantId} AND employee_id=${employeeId}::uuid AND record_id=${previous.recordId}::uuid`);
+  // 前一条新增的有效段：从被删记录的生效日到后一条的生效日（后一条同日时为空段）。
+  return { recordId: previous.recordId, window: { from: point.startDate, to: until } };
 }
