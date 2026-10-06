@@ -326,6 +326,7 @@ async function occupancyRows(
   return rows;
 }
 
+/** 删除恢复校验先于 deleted 状态事件，已写墓碑的业务不能再占编或截断恢复区间（P2-M1）。 */
 async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: ActivationTarget, start: string, end: string) {
   const date = sql`greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date)`;
   const pending = rowsOf<{ employeeId: string; fields: Record<string, unknown>; state: string }>(
@@ -343,6 +344,8 @@ async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: Activati
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id
         AND t.valid_during @> p.effective_date AND r.service_type='primary' LIMIT 1) current_record ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.id<>${target.businessId}::uuid
+      AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones tombstone
+        WHERE tombstone.tenant_id=b.tenant_id AND tombstone.employee_id=b.employee_id AND tombstone.record_id=b.id)
       AND p.kind='transfer' AND (p.mode='application' AND s.state IN ('in_review','approved')
         OR s.state='effective' AND p.effective_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date
           AND ${pendingActivationState(ctx.timezone)})
@@ -411,6 +414,8 @@ async function nextReservedTransfer(tx: Tx, ctx: EmploymentContext, target: Acti
     JOIN LATERAL (SELECT state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id
       ORDER BY event_no DESC LIMIT 1) s ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${target.employeeId}::uuid AND b.id<>${target.businessId}::uuid
+      AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones tombstone
+        WHERE tombstone.tenant_id=b.tenant_id AND tombstone.employee_id=b.employee_id AND tombstone.record_id=b.id)
       AND p.kind='transfer'
       AND (p.mode='application' AND (s.state='approved' OR s.state='in_review' AND ${transferOut}='submitted')
         OR s.state='effective' AND p.effective_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date
