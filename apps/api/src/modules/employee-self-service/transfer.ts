@@ -9,8 +9,6 @@ import { normalizeTransferInput, requireTransferWrite } from '../transfer/servic
 import { previewTransfer } from '../transfer/preview.js';
 import { readTransferCatalog } from '../transfer/configuration.js';
 import { transferFieldAccess } from './access.js';
-import { findPredecessor } from '../employment/read-model.js';
-import { requireManagerCandidate } from './managers.js';
 import { referenceLabels } from './references.js';
 import { visibleFields } from './field-disclosure.js';
 
@@ -46,20 +44,6 @@ export async function ownTransferInput(tx: Tx, ctx: EmploymentContext, raw: unkn
     submit: true,
   });
   await requireTransferWrite({ ...ctx, authorize: ctx.authorize && authorizeInTransaction(ctx.authorize, tx) }, input);
-  const { directManagerId, departmentId } = input.employment.fields;
-  if (directManagerId) {
-    const previous =
-      departmentId === undefined
-        ? await findPredecessor(tx, ctx.tenantId, ctx.selfServiceEmployeeId!, input.employment.effectiveDate)
-        : null;
-    await requireManagerCandidate(
-      tx,
-      ctx,
-      input.employment.effectiveDate,
-      departmentId ?? previous?.fields.departmentId ?? undefined,
-      directManagerId,
-    );
-  }
   return input;
 }
 

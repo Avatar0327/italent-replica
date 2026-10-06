@@ -1,3 +1,4 @@
+import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
 import { lockImportParticipants } from './forward-import.js';
 import { lockTransferParticipants } from './transfer-locks.js';
 import { listCompletionTodos } from '../transfer/completion.js';
@@ -258,6 +259,7 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       transferBusinessContext(tx, ctx, id, false, input.fields?.departmentId),
     );
     const current = await authorizeBusinessWrite(deps, ctx, id);
+    await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id, input));
     await requireEmploymentWrite(ctx, 'update', input, 'Employment.Edit');
     const departmentId = input.fields?.departmentId;
     if (departmentId !== undefined && ctx.transferTarget)
@@ -279,6 +281,10 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return { status: 200, body: await updateEmploymentBusiness(tx, checked, id, input) };
     });
   });
+  registerBusinessActions(router, deps);
+}
+
+function registerBusinessActions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   // R1-T11：revoke = HR 撤销未审批完成的申请（置作废、作废流程，AC-TRF-07）；withdraw 是发起人撤回到草稿（AC-TRF-28）。
   for (const action of ['submit', 'withdraw', 'revoke', 'delete'] as const) {
     router.on(
@@ -296,6 +302,8 @@ function registerBusinesses(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           `Employment.${action[0]!.toUpperCase()}${action.slice(1)}`,
         );
         await authorizeBusinessWrite(deps, ctx, id);
+        if (action === 'submit')
+          await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id));
         const write = runWrite(c, deps, ctx, { id, action }, async (tx, context) => {
           const checked = await transferBusinessContext(tx, { ...context, transferTarget: undefined }, id, true);
           const business = await transitionEmployment(tx, checked, { id, action });
@@ -624,6 +632,7 @@ async function authorizeImport(
     } else {
       const patch = normalizeBusinessPatch(item.patch);
       await authorizeBusinessWrite(deps, ctx, item.id, employeeId);
+      await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, item.id, patch));
       if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit');
       const departmentId = patch.fields?.departmentId;
       if (departmentId !== undefined)

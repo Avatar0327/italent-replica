@@ -4,6 +4,7 @@ import { authorizeInTransaction } from '../permission/module-access.js';
 import { loadJobObject } from '../job/read-model.js';
 import { resolveTransferForm } from '../transfer/configuration.js';
 import { managerForTransferDepartment } from '../transfer/preview-defaults.js';
+import { EMPLOYEE_READONLY_FIELDS } from '../transfer/employee-policy.js';
 import { getCustomFieldsForInheritance, type CustomFieldDefinition } from './configuration.js';
 import {
   businessDate,
@@ -211,6 +212,7 @@ async function selfServiceForm(
     for (const [code, mode] of Object.entries(fieldModes)) {
       if (mode !== 'editable') continue;
       if (
+        EMPLOYEE_READONLY_FIELDS.has(code.replace(/^preset:/, '')) ||
         !(await authorize({
           ...ctx,
           action: 'object.create',

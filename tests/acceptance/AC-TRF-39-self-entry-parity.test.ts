@@ -169,7 +169,7 @@ describe('AC-TRF-39 第三轮：新旧员工入口的 DEC-209 一致性', () => 
     }
   });
 
-  it('员工草稿不能经任职 PATCH 修改职务或范围外经理；HR/经理入口仍可正常填写', async () => {
+  it('员工草稿不能经任职 PATCH 修改职务或范围外经理', async () => {
     const self = await actor('合成草稿');
     const draft = await w.json<{ id: string; revision: number }>(await legacy(self, {}, false, false), 201);
     for (const fields of [{ postId: newPostId }, { directManagerId: outsider.employeeId }]) {
@@ -252,5 +252,23 @@ describe('AC-TRF-39 第三轮：新旧员工入口的 DEC-209 一致性', () => 
     await w.json(await api.request('POST', path, options));
     await leave(candidate);
     expect((await api.request('POST', path, options)).status).toBe(403);
+  });
+
+  it('PATCH 命令重放仍按当前候选校验，不返回此前修改结果', async () => {
+    const self = await actor('合成修改重放');
+    const candidate = await w.person('合成修改后离职经理', target);
+    const draft = await w.json<{ id: string; revision: number }>(await legacy(self, {}, false, false), 201);
+    const path = `${BASE}/businesses/${draft.id}`;
+    const options = {
+      ...w.as(self.userId),
+      ifMatch: draft.revision,
+      idempotencyKey: randomUUID(),
+      body: { fields: { directManagerId: candidate.employeeId.toUpperCase() } },
+    };
+    await w.json(await api.request('PATCH', path, options));
+    const before = await w.business(draft.id);
+    await leave(candidate);
+    expect((await api.request('PATCH', path, options)).status).toBe(403);
+    expect((await w.business(draft.id)).revision).toBe(before.revision);
   });
 });

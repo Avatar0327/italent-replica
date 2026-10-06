@@ -11,7 +11,7 @@ import { loadOrgSnapshot } from '../org/read-model.js';
 import { resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import { readTransferSettings } from '../transfer/configuration.js';
 import { transferFieldAccess } from './access.js';
-import { managerChoices } from './managers.js';
+import { managerChoices } from '../transfer/employee-managers.js';
 import { EMPLOYEE_READONLY_FIELDS } from './policy.js';
 
 const JOB_FIELDS: Record<string, JobKind> = {

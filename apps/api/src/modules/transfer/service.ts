@@ -16,6 +16,7 @@ import type { EmploymentContext, NormalizedEmploymentInput } from '../employment
 import { authorizeInTransaction } from '../permission/module-access.js';
 import { requireTransferSource, transferDirectActions, type TransferInitiator } from './access.js';
 import { readTransferCatalog, readTransferSettings, resolveTransferForm } from './configuration.js';
+import { requireEmployeeTransferFields } from './employee-policy.js';
 
 const schema = z.strictObject({
   initiator: z.enum(['hr', 'manager', 'employee']),
@@ -74,6 +75,14 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
   )
     throw new AppError('VALIDATION_FAILED', '表单与调动入口不匹配', { reason: 'TRANSFER_FORM_ENTRY_MISMATCH' });
   await resolveTransferForm(tx, ctx.tenantId, employment.formId);
+  if (input.initiator === 'employee')
+    await requireEmployeeTransferFields(
+      tx,
+      ctx,
+      employment.effectiveDate,
+      employment.fields,
+      ctx.selfServiceEmployeeId,
+    );
   const writable = Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'submit'));
   return {
     writable,
@@ -105,6 +114,7 @@ export async function transferTargetContext(
 }
 
 export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
+  if (input.initiator === 'employee') ctx = { ...ctx, selfServiceEmployeeId: employeeId };
   // F-008：先取员工锁，再重验关系/范围；业务写入沿用员工 → 业务 → 审批实例的顺序。
   await lockTransferParticipants(tx, ctx, employeeId, input.employment.fields.addedSubordinateIds ?? []);
   await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
