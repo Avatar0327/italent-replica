@@ -33,7 +33,7 @@ const signature = (rows: readonly Delta[]) =>
     .sort()
     .join('|');
 
-/** DEC-181：保存即调编；调用者先锁员工/业务，之后容量读写与严格控编共用租户编制锁。 */
+/** DEC-181：保存即调编；调用者先锁员工/业务，之后按 org/locks.ts 取组织→编制锁，与严格控编共用。 */
 export async function carryEstablishment(
   tx: Tx,
   ctx: EmploymentContext,

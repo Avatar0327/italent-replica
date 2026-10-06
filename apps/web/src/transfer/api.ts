@@ -102,6 +102,9 @@ export function transferBody(model: TransferFormModel, action: TransferAction) {
     formId: model.preview!.form.id,
     mode: action === 'direct' ? 'direct' : 'application',
     submit: action === 'submit',
+    ...(!model.catalog.editableFields || model.catalog.editableFields.includes('withEstablishment')
+      ? { withEstablishment: model.withEstablishment === true }
+      : {}),
     ...(linkage ? { linkage } : {}),
   };
 }

@@ -57,4 +57,23 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-EST-12 带编增减�
     expect((await w.capacities())[0]).toMatchObject({ localCapacity: 2, reservedLocal: 0 });
     expect(await w.history()).toHaveLength(2);
   });
+  it('带编保存等待组织锁时尚未占住编制锁，释放后完成保存', async () => {
+    const w = await carriedWorld(database().db, 'carried-global-lock-order');
+    const person = await w.hired();
+    const [pending] = await withTenant(w.db, w.session.tenant.id, async (barrier) => {
+      await barrier.execute(sql`SELECT tenant_id FROM org_settings
+        WHERE tenant_id=${w.session.tenant.id} FOR UPDATE`);
+      const saving = w.save(person);
+      await blocked(w.db, 1);
+      // NOWAIT 是反向取锁的判别：若带编先占编制再等组织，这里立即报 55P03。
+      await withTenant(w.db, w.session.tenant.id, (probe) =>
+        probe.execute(sql`
+        SELECT tenant_id FROM establishment_settings WHERE tenant_id=${w.session.tenant.id} FOR UPDATE NOWAIT`),
+      );
+      return [saving];
+    });
+    const result = await pending!;
+    expect(result.status, await result.clone().text()).toBe(201);
+    expect((await w.capacities()).map((row) => row.localCapacity)).toEqual([2, 1]);
+  });
 });

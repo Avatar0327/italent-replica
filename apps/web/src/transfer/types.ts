@@ -49,6 +49,7 @@ export interface TransferFormModel {
   readonly effectiveDate: string;
   readonly transferTypeCode: string;
   readonly reasonCode: string;
+  readonly withEstablishment?: boolean;
   readonly fields: FieldValues;
   readonly customFields: FieldValues;
   readonly preview: TransferPreview | null;
@@ -69,6 +70,7 @@ export interface TransferFormProps {
   readonly onField?: (source: 'preset' | 'custom', code: string, value: FieldValue) => void;
   readonly onAction?: (action: TransferAction) => void;
   readonly onReferenceQuery?: (code: string, name: string, page: number) => Promise<void>;
+  readonly onWithEstablishment?: (value: boolean) => void;
   readonly onLinkage?: (patch: Partial<LinkageDraft>) => void;
 }
 export interface TransferBusiness {

@@ -36,6 +36,7 @@ export function TransferForm(props: TransferFormProps) {
         <SelectionFields {...props} />
       </fieldset>
       {props.model.preview ? <EmploymentFields {...props} /> : <p>{text.readyHint}</p>}
+      <CarriedEstablishment {...props} />
       <LinkageFields {...props} />
       <TransferActions {...props} />
     </form>
@@ -376,5 +377,24 @@ function ReferenceSelect(props: PairProps & { value: FieldValue; choices: readon
           </option>
         ))}
     </select>
+  );
+}
+
+/** 共用 HR / 自助表单按同一字段权限展示；编制对象写权仍由保存事务单独判断。 */
+function CarriedEstablishment({ model, busy, onWithEstablishment }: TransferFormProps) {
+  if (!model.preview || (model.catalog.viewableFields && !model.catalog.viewableFields.includes('withEstablishment')))
+    return null;
+  const editable = !model.catalog.editableFields || model.catalog.editableFields.includes('withEstablishment');
+  return (
+    <label>
+      <input
+        type="checkbox"
+        name="withEstablishment"
+        disabled={busy || !editable}
+        checked={model.withEstablishment === true}
+        onChange={(event) => onWithEstablishment?.(event.target.checked)}
+      />
+      {text.withEstablishment}
+    </label>
   );
 }

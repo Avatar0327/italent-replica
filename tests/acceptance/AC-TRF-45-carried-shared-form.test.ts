@@ -42,7 +42,7 @@ it('AC-TRF-45 共用调动表单按字段权限显示带编开关，隐藏或只
   expect(render(model([]))).not.toContain('name="withEstablishment"');
   const readonly = model();
   const html = render({ ...readonly, catalog: { ...readonly.catalog, editableFields: [] } });
-  expect(html).toMatch(/<input[^>]*name="withEstablishment"[^>]*disabled=""/);
+  expect(html).toMatch(/<input(?=[^>]*name="withEstablishment")(?=[^>]*disabled="")[^>]*>/);
 });
 it('AC-TRF-45 共用保存载荷保留带编选项；无编辑权不提交该字段，显式 false 保留', async () => {
   const { transferBody } = (await import(web('transfer/api.ts'))) as {

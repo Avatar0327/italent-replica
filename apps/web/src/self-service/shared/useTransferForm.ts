@@ -36,6 +36,7 @@ const initial: TransferFormModel = {
   effectiveDate: '',
   transferTypeCode: '',
   reasonCode: '',
+  withEstablishment: false,
   fields: {},
   customFields: {},
   preview: null,
@@ -58,8 +59,6 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' |
   usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice);
   // R1-T10 的联动仅接入 HR；经理自助本轮仍不提供跨对象联动。
   useContractChoices(tenantId, initiator === 'hr' ? model.employeeId : '', initiator, setModel);
-  const linkage = (patch: Partial<LinkageDraft>) =>
-    setModel((current) => (current.linkage ? { ...current, linkage: { ...current.linkage, ...patch } } : current));
   const selection = (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
     setError('');
     setModel((current) =>
@@ -72,6 +71,7 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' |
             fields: {},
             customFields: {},
             preview: null,
+            ...(field === 'employeeId' ? { withEstablishment: false } : {}),
             // 换人后清空原员工的联动草稿与合同候选。
             ...(field === 'employeeId' && current.linkage ? { linkage: emptyLinkage, contracts: [] } : {}),
           },
@@ -92,6 +92,7 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' |
   };
   const reset = () => {
     commands.setSaved(null);
+    setModel((current) => ({ ...current, withEstablishment: false }));
     commands.resetConflict();
     setNotice('');
     refresh();
@@ -105,7 +106,9 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' |
     page,
     selection,
     field,
-    linkage,
+    linkage: (patch: Partial<LinkageDraft>) =>
+      setModel((current) => (current.linkage ? { ...current, linkage: { ...current.linkage, ...patch } } : current)),
+    withEstablishment: (value: boolean) => setModel((current) => ({ ...current, withEstablishment: value })),
     refresh,
     reset,
     setPage: (next: number) => {
