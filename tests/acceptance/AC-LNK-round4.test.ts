@@ -264,3 +264,29 @@ describe('P2 职责转交仍在时拒绝删除调动（DEC-012，真实任职 / 
     expect((await remove(w, business.id, current.revision)).status).toBe(200);
   });
 });
+
+describe('DEC-194：PUT 联动入口接入 F-017 的 UUID 规范化与本人护栏', () => {
+  const put = (w: LinkageWorld, id: string, revision: number, body: object) =>
+    w.session.request('PUT', `/transfers/${id}/linkage`, { ifMatch: revision, body });
+
+  it('大写调动 ID 与小写同样定位单据；操作人绑定为调动本人后，大小写 ID 都拒绝修改联动', async () => {
+    const w = await linkageWorld(database().db, 'lnk4-self-put');
+    const person = await w.hire('本人调动员工');
+    const draft = await w.saved(await w.transfer(person, { submit: false, linkage: { adjustSalary: true } }));
+    const upper = await put(w, draft.id.toUpperCase(), draft.revision, { adjustSalary: true, onTrial: { months: 1 } });
+    expect(upper.status, await upper.clone().text()).toBe(200);
+    const { revision } = (await upper.json()) as { revision: number };
+
+    await withTenant(w.db, w.session.tenant.id, async (tx) => {
+      await tx.execute(sql`DELETE FROM permission_user_person_links WHERE tenant_id=${w.session.tenant.id}
+        AND (user_id=${w.session.user.id}::uuid OR employee_id=${person.employee.id}::uuid)`);
+      await tx.execute(sql`INSERT INTO permission_user_person_links (tenant_id, user_id, employee_id)
+        VALUES (${w.session.tenant.id}, ${w.session.user.id}::uuid, ${person.employee.id}::uuid)`);
+    });
+    for (const id of [draft.id, draft.id.toUpperCase()]) {
+      const response = await put(w, id, revision, {});
+      expect(response.status, await response.clone().text()).toBe(403);
+    }
+    expect((await w.linkage(draft.id)).options).toMatchObject({ adjustSalary: true, onTrial: { months: 1 } });
+  });
+});
