@@ -1,3 +1,4 @@
+import { SelfServiceShell, EmploymentList as SharedEmploymentList } from '../self-service/shared/index.js';
 import { useEffect, useState } from 'react';
 import { requestError, transferRequest } from '../transfer/api.js';
 import { presetLabels } from '../transfer/messages.js';
@@ -9,35 +10,10 @@ import './employee.css';
 
 const BASE = '/api/tenant/self-service';
 export function EmployeePage() {
-  const [tenant, setTenant] = useState('');
-  const [active, setActive] = useState('');
   return (
-    <main className="transfer-page employee-page">
-      <header className="transfer-header">
-        <span className="transfer-brand">iTalent</span>
-        <h1>{text.title}</h1>
-      </header>
-      {active ? (
-        <>
-          <button onClick={() => setActive('')}>{text.changeTenant}</button>
-          <Workspace key={active} tenantId={active} />
-        </>
-      ) : (
-        <form
-          className="transfer-tenant"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setActive(tenant.trim());
-          }}
-        >
-          <label>
-            {text.tenant}
-            <input required value={tenant} onChange={(event) => setTenant(event.target.value)} />
-          </label>
-          <button type="submit">{text.enter}</button>
-        </form>
-      )}
-    </main>
+    <SelfServiceShell title={text.title}>
+      {(tenantId) => <Workspace key={tenantId} tenantId={tenantId} />}
+    </SelfServiceShell>
   );
 }
 
@@ -163,41 +139,32 @@ function display(record: OwnRecord, code: string) {
   return record.fieldLabels[code] || (typeof value === 'string' && !/^[0-9a-f-]{36}$/i.test(value) ? value : text.none);
 }
 export function EmploymentList({ records, name }: { records: OwnRecord[]; name: string }) {
-  const columns = ['departmentId', 'positionId', 'postId'].filter((code) =>
+  const fields = ['departmentId', 'positionId', 'postId'].filter((code) =>
     records.some((row) => Object.hasOwn(row.fields, code)),
   );
+  const columns = [
+    { key: 'name', label: text.name },
+    ...fields.map((key) => ({ key, label: presetLabels[key]! })),
+    { key: 'effectiveDate', label: text.start },
+    { key: 'stopDate', label: text.end },
+    { key: 'approvalStatus', label: text.approval },
+  ];
+  const items = records.map((record) => ({
+    id: record.id,
+    name,
+    effectiveDate: record.effectiveDate,
+    stopDate: record.stopDate,
+    approvalStatus: record.approvalStatus,
+    ...Object.fromEntries(fields.map((code) => [code, display(record, code)])),
+  }));
   return (
     <div className="employee-table">
-      <table>
-        <thead>
-          <tr>
-            <th>{text.name}</th>
-            {columns.map((code) => (
-              <th key={code}>{presetLabels[code]}</th>
-            ))}
-            <th>{text.start}</th>
-            <th>{text.end}</th>
-            <th>{text.approval}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {records.map((record) => (
-            <tr key={record.id}>
-              <td>{name}</td>
-              {columns.map((code) => (
-                <td key={code}>{display(record, code)}</td>
-              ))}
-              <td>{record.effectiveDate}</td>
-              <td>{record.stopDate && record.stopDate !== '9999-12-31' ? record.stopDate : text.none}</td>
-              <td>{record.approvalStatus}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <SharedEmploymentList items={items} columns={columns} />
       {!records.length && <p>{text.empty}</p>}
     </div>
   );
 }
+
 export function RecordDetails({ record }: { record: OwnRecord }) {
   return (
     <dl className="employee-details">
@@ -224,46 +191,42 @@ export function ApplicationList({
   timezone?: string;
   onDetail?: (item: Application) => void;
 }) {
+  const columns = [
+    { key: 'title', label: text.applicationTitle },
+    { key: 'category', label: text.category },
+    { key: 'initiator', label: text.initiator },
+    { key: 'currentHandlers', label: text.handlers },
+    { key: 'status', label: text.approval },
+    { key: 'reason', label: text.reason },
+    { key: 'createdAt', label: text.submittedAt },
+  ];
+  const items = applications.map((item) => ({
+    ...item,
+    currentHandlers: item.currentHandlers.join('、') || text.none,
+    reason: item.reason || text.none,
+  }));
   return (
     <div className="employee-table">
-      <table>
-        <thead>
-          <tr>
-            {[
-              text.applicationTitle,
-              text.category,
-              text.initiator,
-              text.handlers,
-              text.approval,
-              text.reason,
-              text.submittedAt,
-            ].map((label) => (
-              <th key={label}>{label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {applications.map((item) => (
-            <tr key={item.id}>
-              <td>
-                <button className="employee-title-link" onClick={() => onDetail?.(item)}>
-                  {item.title}
-                </button>
-              </td>
-              <td>{item.category}</td>
-              <td>{item.initiator}</td>
-              <td>{item.currentHandlers.join('、') || text.none}</td>
-              <td>{item.status}</td>
-              <td>{item.reason || text.none}</td>
-              <td>
-                <time dateTime={item.createdAt}>
-                  {new Date(item.createdAt).toLocaleString('zh-CN', { timeZone: timezone })}
-                </time>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <SharedEmploymentList
+        items={items}
+        columns={columns}
+        renderCell={(item, key) =>
+          key === 'title' ? (
+            <button
+              className="employee-title-link"
+              onClick={() => onDetail?.(applications.find((row) => row.id === item.id)!)}
+            >
+              {item.title}
+            </button>
+          ) : key === 'createdAt' ? (
+            <time dateTime={item.createdAt}>
+              {new Date(item.createdAt).toLocaleString('zh-CN', { timeZone: timezone })}
+            </time>
+          ) : (
+            String(item[key as keyof typeof item] ?? text.none)
+          )
+        }
+      />
       {!applications.length && <p>{text.empty}</p>}
     </div>
   );

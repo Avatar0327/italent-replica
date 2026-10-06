@@ -189,6 +189,24 @@ describe('AC-TRF-39 第三轮：新旧员工入口的 DEC-209 一致性', () => 
     for (const initiator of ['hr', 'manager']) {
       const actorPerson = await actor(`合成${initiator}`, initiator === 'hr' ? 'Transfer.Hr' : 'Transfer.Manager');
       const subject = await w.person(`合成被调动${initiator}`, source, { directManagerId: actorPerson.employeeId });
+      if (initiator === 'manager') {
+        // R1-T14：经理需负责源/目标组织，职务候选须由负责组织内职位关联。
+        await w.setOrgRoles(source, { head: actorPerson.employeeId });
+        await w.setOrgRoles(target, { head: actorPerson.employeeId });
+        await w.json(
+          await w.request(w.hr.id, 'POST', '/api/tenant/job/positions', {
+            ifMatch: 0,
+            body: {
+              code: 'manager-target-position',
+              name: '合成经理可选职位',
+              startDate: '2020-01-01',
+              orgId: target,
+              postId: newPostId,
+            },
+          }),
+          201,
+        );
+      }
       const response = await api.request('POST', `${BASE}/transfers/employees/${subject.employeeId}`, {
         ...w.as(actorPerson.userId),
         ifMatch: await revision(subject),

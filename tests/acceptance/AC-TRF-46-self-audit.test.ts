@@ -1,3 +1,4 @@
+import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -62,7 +63,7 @@ describe('AC-TRF-46 / DEC-216 员工调动审计接入', () => {
     const rows = await withTenant(database().db, w.tenant.id, async (tx) => {
       const result = await tx.execute(sql`SELECT action FROM audit_events
         WHERE tenant_id=${w.tenant.id} AND command_id=${mine.command}`);
-      return (Array.isArray(result) ? result : result.rows) as { action: string }[];
+      return rowsOf<{ action: string }>(result);
     });
     for (const action of [
       'employment.business.create',
@@ -80,7 +81,7 @@ describe('AC-TRF-46 / DEC-216 员工调动审计接入', () => {
     expect((await audit.dataChanges(viewer.as, { objectId: theirs.id })).items).toEqual([]);
     const id = await withTenant(database().db, w.tenant.id, async (tx) => {
       const result = await tx.execute(sql`SELECT id FROM audit_events WHERE object_id=${theirs.id} LIMIT 1`);
-      return ((Array.isArray(result) ? result : result.rows) as { id: string }[])[0]!.id;
+      return rowsOf<{ id: string }>(result)[0]!.id;
     });
     expect((await audit.get(`/data-changes/${id}`, viewer.as)).status).toBe(404);
   });

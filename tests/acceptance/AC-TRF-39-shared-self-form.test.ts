@@ -19,6 +19,7 @@ const model: TransferFormModel = {
   customFields: {},
   catalog: { types: [], reasons: [] },
   preview: {
+    before: null,
     employeeRevision: 1,
     allowDirectTransfer: false,
     allowedActions: { application: true, directList: false, directRow: false },

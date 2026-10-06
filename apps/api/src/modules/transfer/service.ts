@@ -139,7 +139,7 @@ export async function transferTargetContext(
 export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
   if (input.initiator === 'employee') ctx = { ...ctx, selfServiceEmployeeId: employeeId };
   ctx = { ...ctx, managerTransfer: input.initiator === 'manager' };
-  // F-008：先取员工锁，再重验关系/范围；业务写入沿用员工 → 业务 → 审批实例的顺序。
+  // org/locks.ts：参与员工闭包 → 业务 → 组织 → 编制 → 审批实例；先取员工锁再重验关系/范围。
   const { linkage, linkageAccess } = input;
   await lockTransferParticipants(tx, ctx, employeeId, [
     ...(input.employment.fields.addedSubordinateIds ?? []),
