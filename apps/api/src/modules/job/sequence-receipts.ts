@@ -39,8 +39,8 @@ export async function visibleSequenceReceipts(
     fields: [],
   });
   const visible = new Map<string, Set<string>>();
-  // UNCHANGED 同样揭示序列关系；字段撤权后既不能保留原因，也不能保留变更计数。
-  if (canView && (!fields || fields.has('sequenceId'))) {
+  // UNCHANGED 同样揭示序列关系，recordId 也须任职 id 查看权；不完整可见的回执行整体裁剪。
+  if (canView && (!fields || (fields.has('sequenceId') && fields.has('id')))) {
     const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, code);
     const taskIds = [...new Set(receipts.map((receipt) => receipt.taskId))];
     const rows = rowsOf<{ taskId: string; recordId: string }>(
