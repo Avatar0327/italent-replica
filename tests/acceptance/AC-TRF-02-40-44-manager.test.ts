@@ -1,3 +1,4 @@
+import { sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 /** Q-M0-71：纯经理自动身份、当前组织范围、字段裁剪、工作台与租户隔离。 */
 import { useTestDb } from '@italent/testkit';
@@ -220,6 +221,29 @@ describe('AC-TRF-02/40–44 经理自助', () => {
     expect(((await candidates.json()) as { items: { id: string }[] }).items.map((row) => row.id)).not.toContain(
       pending.id,
     );
+  });
+
+  it('AC-TRF-40/42：候选和工作台使用已生效记录快照，不读取尚未生效的业务载荷', async () => {
+    const employee = await world.person(child.id);
+    // 可信夹具追加未落地的修订载荷：当前任职快照不变，不能因此把人员移出团队。
+    await withTenant(world.db, world.tenant.id, (tx) =>
+      tx.execute(sql`
+      INSERT INTO employment_payload_versions
+      SELECT (jsonb_populate_record(NULL::employment_payload_versions, to_jsonb(p) || jsonb_build_object(
+        'id', gen_random_uuid(), 'version_no', p.version_no + 1, 'previous_version_id', p.id,
+        'is_record_snapshot', false, 'command_id', 'pending-manager-fixture', 'trigger_business_id', p.business_id,
+        'department_id', ${world.outside.id}::uuid))).*
+      FROM employment_payload_versions p WHERE p.tenant_id=${world.tenant.id} AND p.employee_id=${employee.id}::uuid
+      ORDER BY p.version_no DESC LIMIT 1
+    `),
+    );
+    for (const path of ['employees?search=TRF_', 'team?category=active']) {
+      const response = await world.api.request('GET', `${BASE}/manager/${path}`, manager);
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(((await response.json()) as { items: { id: string }[] }).items.map((row) => row.id)).toContain(
+        employee.id,
+      );
+    }
   });
 
   it('AC-TRF-40：旧草稿提交也重验当前组织，宽泛显式范围不能绕过负责人限制', async () => {

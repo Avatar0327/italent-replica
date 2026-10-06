@@ -16,6 +16,11 @@ export async function managerTeamQuery(tx: Tx, ctx: EmploymentContext): Promise<
   return sql`WITH latest AS (
     SELECT DISTINCT ON (p.business_id) p.* FROM employment_payload_versions p
     WHERE p.tenant_id=${ctx.tenantId} ORDER BY p.business_id,p.version_no DESC
+  ), snapshots AS (
+    SELECT DISTINCT ON (p.business_id) p.* FROM employment_payload_versions p
+    WHERE p.tenant_id=${ctx.tenantId} AND (p.is_record_snapshot OR EXISTS (
+      SELECT 1 FROM employment_records original WHERE original.tenant_id=p.tenant_id
+        AND original.payload_version_id=p.id)) ORDER BY p.business_id,p.version_no DESC
   ), states AS (
     SELECT DISTINCT ON (s.business_id) s.business_id,s.state FROM employment_state_events s
     WHERE s.tenant_id=${ctx.tenantId} ORDER BY s.business_id,s.event_no DESC
@@ -38,13 +43,14 @@ export async function managerTeamQuery(tx: Tx, ctx: EmploymentContext): Promise<
       AND t.valid_during @> ${asOf}::date
     LEFT JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
     JOIN LATERAL (
+      SELECT current.* FROM snapshots current WHERE current.employee_id=e.id
+        AND current.business_id=r.id AND r.kind NOT IN ('leave','retirement')
+      UNION ALL
       SELECT l.* FROM latest l JOIN states s ON s.business_id=l.business_id
-      WHERE l.employee_id=e.id AND (
-        (l.business_id=r.id AND r.kind NOT IN ('leave','retirement')) OR
-        ((r.id IS NULL OR r.kind IN ('leave','retirement'))
-          AND l.kind IN ('hire','rehire','retire_rehire')
-          AND l.effective_date>${asOf}::date AND s.state IN ('approved','effective')))
-      ORDER BY l.effective_date,l.business_id LIMIT 1
+      WHERE l.employee_id=e.id AND (r.id IS NULL OR r.kind IN ('leave','retirement'))
+        AND l.kind IN ('hire','rehire','retire_rehire')
+        AND l.effective_date>${asOf}::date AND s.state IN ('approved','effective')
+      ORDER BY effective_date,business_id LIMIT 1
     ) p ON true
     LEFT JOIN employment_cycles cycle ON cycle.tenant_id=e.tenant_id
       AND cycle.id=COALESCE(p.selected_staff_id,r.staff_id)
