@@ -9,6 +9,8 @@ import { findCurrentRecord, loadEmploymentRecord } from './read-model.js';
 import { lockEmploymentBusiness, rowsOf } from './record-store.js';
 import { appendForwardPayload, auditForwardTarget } from './forward-store.js';
 import type { BusinessKind, EmploymentContext, EmploymentRecord, PresetFields } from './types.js';
+import { applyTransferCrossLinkage } from '../transfer/linkage/execute.js';
+import { hasPendingCrossLinkage } from '../transfer/linkage/store.js';
 
 export function hasTransferLinkage(fields: PresetFields): boolean {
   return fields.isDepartmentHead === true || fields.isStoreManager === true || !!fields.addedSubordinateIds?.length;
@@ -73,6 +75,8 @@ export async function applyTransferLinkage(tx: Tx, ctx: EmploymentContext, busin
     );
   }
   if (fields.isDepartmentHead) await propagateDepartmentHead(tx, ctx, record);
+  // R1-T10：合同、兼职、职责转交、试岗、交接、待调薪提醒与组织联动同一事务执行（整单失败一起回滚，DEC-052）。
+  await applyTransferCrossLinkage(tx, ctx, { id: businessId, employeeId, effectiveDate });
   await auditEmployment(tx, ctx, 'employment.transfer.linked', 'employment-business', businessId, null, {
     departmentId: fields.departmentId,
     isDepartmentHead: fields.isDepartmentHead,
@@ -138,7 +142,7 @@ export async function queueTransferLinkage(
         effectiveDate,
       });
   }
-  if (!hasTransferLinkage(fields)) return;
+  if (!hasTransferLinkage(fields) && !(await hasPendingCrossLinkage(tx, ctx.tenantId, id))) return;
   const [pending] = rowsOf(
     await tx.execute(sql`SELECT 1 FROM employment_outbox
     WHERE tenant_id=${ctx.tenantId} AND business_id=${id}::uuid

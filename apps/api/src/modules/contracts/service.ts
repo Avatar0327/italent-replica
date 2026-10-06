@@ -9,7 +9,7 @@ import {
   sql,
   type Tx,
 } from '@italent/db';
-import { CONTRACT_FIELDS, tenantLocalDate, addDays } from '@italent/domain';
+import { CONTRACT_FIELDS, CONTRACT_OBJECT, tenantLocalDate, addDays } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { validateCustomValue } from '../employment/fields.js';
 import {
@@ -26,6 +26,8 @@ import {
 import { assertNotQuarantined } from './quarantine.js';
 import { settings, verifyIds } from './configuration.js';
 import { commandSchema, parse, type ContractCommand, type ContractFields } from './input.js';
+import { recordOperationLog } from '../../audit/record.js';
+import { auditActor } from '../../system-actor.js';
 
 export type Contract = typeof contractRecords.$inferSelect;
 export type ContractRequest = typeof contractRequests.$inferSelect;
@@ -604,8 +606,26 @@ export async function batchCommands(
   const normalized = entries.map((row) => ({ ...row, command: parse(commandSchema, row.command) }));
   const ids = [...new Set(normalized.map((row) => row.command.employeeId))].sort();
   for (const id of ids) await lockEmployee(tx, ctx, id);
-  const result = [];
+  const result: Awaited<ReturnType<typeof createCommand>>[] = [];
   for (const row of normalized)
     result.push(await createCommand(tx, { ...ctx, expectedRevision: row.revision }, row.command));
+  // R1-T16：批量操作整体成功才提交，任务级日志与业务同事务
+  await recordOperationLog(tx, {
+    tenantId: ctx.tenantId,
+    actorUserId: auditActor(ctx.userId),
+    behavior: 'batch_update',
+    objectType: CONTRACT_OBJECT,
+    successCount: result.length,
+    failureCount: 0,
+    // 逐行归属（PR #75 第三轮 P1-2）：查询端按查看人当前范围逐行裁剪
+    items: normalized.map((row, rowIndex) => ({
+      rowIndex,
+      outcome: 'succeeded' as const,
+      employeeId: row.command.employeeId,
+      objectId: result[rowIndex]?.id ?? null,
+    })),
+    commandId: ctx.commandId,
+    occurredAt: ctx.now,
+  });
   return { items: result };
 }

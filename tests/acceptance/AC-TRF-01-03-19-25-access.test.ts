@@ -171,7 +171,17 @@ async function fixture() {
     expect(response.status).toBe(200);
     return ((await response.json()) as { revision: number }).revision;
   }
-  return { ...world, setup, inside, outside, actor, person, settings, transfer, currentRevision };
+  let orgRevision = inside.revision;
+  async function setHead(employeeId: string) {
+    const result = await setup.request('PATCH', `/api/tenant/org/organizations/${inside.id}`, {
+      ...world.asAdmin,
+      ifMatch: orgRevision,
+      body: { effectiveDate: `2026-01-${String(orgRevision + 1).padStart(2, '0')}`, personInChargeId: employeeId },
+    });
+    expect(result.status, await result.clone().text()).toBe(200);
+    orgRevision = ((await result.json()) as { revision: number }).revision;
+  }
+  return { ...world, setup, inside, outside, actor, person, settings, transfer, currentRevision, setHead };
 }
 
 describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
@@ -393,14 +403,18 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
     expect((await world.api.request('GET', path, self)).status).toBe(403);
   });
 
-  it('AC-TRF-02：经理绑定本人后只可为其团队发起，组织范围不能替代团队关系', async () => {
+  it('AC-TRF-02：经理负责组织后可为组织内下属发起，汇报关系不扩大范围', async () => {
     const managerActor = await world.actor('transfer-manager', { role: 'Transfer.Manager' });
     const manager = await world.person(world.inside.id, managerActor);
     const subordinate = await world.person(world.inside.id, undefined, manager.id);
-    const unrelated = await world.person();
-    const saved = await world.transfer(managerActor, subordinate, { initiator: 'manager' });
+    const unrelated = await world.person(world.outside.id, undefined, manager.id);
+    await world.setHead(manager.id);
+    const saved = await world.transfer(managerActor, subordinate, {
+      initiator: 'manager',
+      fields: { departmentId: world.inside.id },
+    });
     expect(saved.status, await saved.clone().text()).toBe(201);
-    expect((await world.transfer(managerActor, unrelated, { initiator: 'manager' })).status).toBe(403);
+    expect([403, 404]).toContain((await world.transfer(managerActor, unrelated, { initiator: 'manager' })).status);
     expect((await world.transfer(managerActor, manager, { initiator: 'manager' })).status).toBe(403);
     expect(await world.currentRevision(unrelated)).toBe(unrelated.revision);
   });
@@ -413,7 +427,11 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
       });
       const own = await world.person(world.inside.id, actor);
       const employee = initiator === 'employee' ? own : await world.person(world.inside.id, undefined, own.id);
-      const saved = await world.transfer(actor, employee, { initiator });
+      if (initiator === 'manager') await world.setHead(own.id);
+      const saved = await world.transfer(actor, employee, {
+        initiator,
+        ...(initiator === 'manager' ? { fields: { departmentId: world.inside.id } } : {}),
+      });
       expect(saved.status, await saved.clone().text()).toBe(201);
       const business = (await saved.json()) as { id: string; revision: number };
       const path = `/api/tenant/employment/businesses/${business.id}`;
@@ -422,7 +440,12 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
       const edited = await world.api.request('PATCH', path, {
         ...hr,
         ifMatch: business.revision,
-        body: { fields: initiator === 'employee' ? { directManagerId: null } : { remarks: 'HR依自身授权核对' } },
+        body: {
+          fields:
+            initiator === 'employee'
+              ? { directManagerId: null }
+              : { departmentId: world.outside.id, remarks: 'HR依自身授权核对' },
+        },
       });
       expect(edited.status, await edited.clone().text()).toBe(200);
       // DEC-177（F-015）：员工当前在其范围内，范围外部门的调动草稿 / 申请对同范围的人可见；
@@ -435,7 +458,8 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
         ifMatch: current.revision,
         body: { fields: { remarks: '无调动入口的修改' } },
       });
-      expect(denied.status).toBe(404);
+      // 缺少合法调动写入口在命令前直接拒绝，不能因只读可见而取得写权限。
+      expect(denied.status).toBe(403);
     }
   });
 

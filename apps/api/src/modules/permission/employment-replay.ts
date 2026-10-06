@@ -170,8 +170,8 @@ async function currentTargets(tx: Tx, tenantId: string, ids: string[]) {
     await tx.execute(sql`
     SELECT b.id,b.employee_id AS "employeeId",
       CASE WHEN p.is_record_snapshot OR r.id IS NULL THEN p.department_id ELSE r.department_id END AS "departmentId",
-      (SELECT a.actor_user_id FROM audit_events a WHERE a.tenant_id=b.tenant_id AND a.object_id=b.id::text
-        AND a.action='employment.business.create' ORDER BY a.occurred_at,a.id LIMIT 1) AS "creatorId"
+      (SELECT a.creator_user_id FROM audit_object_creators a WHERE a.tenant_id=b.tenant_id AND a.object_id=b.id::text
+        AND a.action='employment.business.create' ORDER BY a.created_at LIMIT 1) AS "creatorId"
     FROM employment_business_objects b
     JOIN LATERAL (SELECT department_id,is_record_snapshot FROM employment_payload_versions p
       WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) p ON true

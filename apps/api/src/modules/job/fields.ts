@@ -30,7 +30,15 @@ const ranges = {
   minGradeId: reference,
   maxGradeId: reference,
 };
-const associations = { sequenceId: reference, professionalLineId: reference };
+const associations = {
+  // PostgreSQL UUID 按大小写等价比较；触发同步前也必须先归一，不能把同一引用当成非空变更。
+  sequenceId: z
+    .uuid()
+    .transform((id) => id.toLowerCase())
+    .nullable()
+    .optional(),
+  professionalLineId: reference,
+};
 const characteristics = {
   isKey: z.boolean().optional(),
   isConfidential: z.boolean().optional(),
@@ -98,9 +106,5 @@ function rejectUnsupported(data: Record<string, unknown>): void {
   // TODO(需取证 Q-M0-17): 接入真实任职资格与胜任力模型后验证引用对象、租户与可用状态。
   if (data.qualificationId || data.competencyModelId) {
     throw new AppError('SERVICE_UNAVAILABLE', '任职资格或胜任力模型的租户引用验证尚未接入');
-  }
-  // TODO(需取证 Q-M0-16): 取得 SyncSeqToRecord 的同步范围与后续版本规则后接入真实任职版本链。
-  if (data.syncSequenceToAssignments === true) {
-    throw new AppError('SERVICE_UNAVAILABLE', '同步序列到任职的规则尚未取证');
   }
 }

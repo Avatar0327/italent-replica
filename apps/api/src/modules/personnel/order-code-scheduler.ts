@@ -1,5 +1,6 @@
 import { sql, withPlatform, withTenant, type Db } from '@italent/db';
 import { runCommand } from '../../commands.js';
+import { isDefiniteFailure } from '../../audit/failures.js';
 import { AppError } from '../../errors.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { recomputeOrderCodes } from './order-code.js';
@@ -47,8 +48,9 @@ export async function runOrderCodeJobs(
         });
         succeeded += 1;
       } catch (error) {
-        // runCommand 已先回查成功台账；存储错误只能记 unknown，不能伪造业务失败。
-        const state = error instanceof AppError ? 'failed' : 'unknown';
+        // runCommand 已先回查成功台账；结果未知与存储错误只能记 unknown，不能伪造业务失败（它们虽是 503 应用错误，
+        // 但带着分类，见 audit/failures.ts，PR #75 第二轮 P2-8）。
+        const state = isDefiniteFailure(error) ? 'failed' : 'unknown';
         const code = error instanceof AppError ? error.code : 'SERVICE_UNAVAILABLE';
         try {
           await withTenant(db, tenant.id, async (tx) => {

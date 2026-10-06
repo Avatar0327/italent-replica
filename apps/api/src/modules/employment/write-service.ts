@@ -251,7 +251,7 @@ export async function updateEmploymentBusiness(
   return requireSavedBusiness(tx, ctx, id);
 }
 
-function normalizePatchedInput(
+export function normalizePatchedInput(
   ctx: EmploymentContext,
   before: EmploymentPayloadRow,
   patch: EmploymentBusinessPatch,

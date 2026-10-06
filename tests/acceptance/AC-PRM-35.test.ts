@@ -235,8 +235,8 @@ describe.each<Role>(['head', 'hrbp'])('AC-PRM-35 %s 停用组织角色范围', (
     const staff = await dynamic.employee(subordinate.id, manager.id);
     const nestedStaff = await dynamic.employee(descendant.id, manager.id);
     await dynamic.version(parent, '2026-02-01', true, actor.personId);
-    // 未配置管理单元 / 枚举范围；普通手动身份仍为空，只有组织角色动态授权才取得范围。
-    expect((await dynamic.resolve(actor.as)).hasDataPermission).toBe(false);
+    // Q-M0-71：负责人自动取得经理自助范围；HRBP 仍需组织角色动态授权。
+    expect((await dynamic.resolve(actor.as)).hasDataPermission).toBe(role === 'head');
     await dynamic.autoGrant(actor.as);
     expect(await dynamic.visibility(actor.as, staff)).toEqual(visible(staff));
     expect(await dynamic.visibility(actor.as, nestedStaff)).toEqual(visible(nestedStaff));

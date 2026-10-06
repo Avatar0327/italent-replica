@@ -22,9 +22,18 @@ import { rules, saveMaster, saveRule, saveSettings, settings } from './configura
 import { commandSchema, parse } from './input.js';
 import { batchCommands, createCommand, loadContract, loadRequest, portfolioRevision } from './service.js';
 import { listContracts } from './queries.js';
-import { errorsCsv, importContracts, importSchema, previewImport, checkImportScope } from './imports.js';
+import {
+  checkImportScope,
+  errorsCsv,
+  type ImportError,
+  importContracts,
+  importSchema,
+  previewImport,
+} from './imports.js';
 import { cancelFailedRequest } from './recovery.js';
 import { registerMergedTodos } from './todos.js';
+import { auditActor } from '../../system-actor.js';
+import { rawImportRows, rawUuid, recordOperationLog, withFailedImportLog } from '../../audit/record.js';
 
 type C = Context<TenantEnv>;
 export async function routeContext(c: C, deps: TenantRouteDeps, object = CONTRACT_OBJECT, write = false) {
@@ -340,45 +349,95 @@ function registerImports(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
         action: 'object.button',
         resource: buttonResource(CONTRACT_OBJECT, 'import', 'list'),
       });
-      const envelope = parse(importSchema.extend({ rows: z.array(z.unknown()).min(1).max(10000) }), raw);
-      const formatting = envelope.rows.flatMap((row, index) => {
-        const result = importSchema.shape.rows.element.safeParse(row);
-        return result.success ? [] : [{ row: index + 1, code: 'VALIDATION_FAILED', message: '行格式或字段值不合法' }];
+      if (suffix) return importPreview(c, deps, ctx, raw, suffix);
+      // DEC-199 / PR #75 第三轮 P2-3：格式、字段权限与范围校验失败同样是导入任务失败，整批留任务级日志
+      const rows = rawImportRows(raw);
+      const task = {
+        ...ctx,
+        commandId: c.req.header('idempotency-key'),
+        objectType: CONTRACT_OBJECT,
+        total: rows.length,
+        anchors: rows.map((row) => ({ employeeId: rawUuid(row.employeeId) })),
+      };
+      return withFailedImportLog(deps.db, task, async () => {
+        const input = await authorizeImport(deps, ctx, raw);
+        return write(c, deps, ctx, input, async (tx, ctx) => ({
+          status: 200,
+          body: await importContracts(tx, ctx, input),
+        }));
       });
-      if (suffix === '/errors' && formatting.length) {
-        c.header('Content-Type', 'text/csv; charset=utf-8');
-        c.header('Content-Disposition', 'attachment; filename="contract-import-errors.csv"');
-        return c.body(errorsCsv(formatting));
-      }
-      const input = parse(importSchema, raw);
-      for (const row of input.rows) {
-        await checkFields(ctx, ['edit', 'change'].includes(input.mode) ? 'update' : 'create', row.fields);
-      }
-      await withTenant(deps.db, ctx.tenantId, (tx) => checkImportScope(tx, ctx, input));
-      if (input.mode === 'initialize')
-        await requirePermission(deps.authorize, {
-          tenantId: ctx.tenantId,
-          userId: ctx.userId,
-          action: 'object.delete',
-          resource: CONTRACT_OBJECT,
-        });
-      if (suffix) {
-        const result = await withTenant(deps.db, ctx.tenantId, (tx) =>
-          previewImport(tx, ctx, input, suffix === '/preview'),
-        );
-        if (suffix === '/errors') {
-          c.header('Content-Type', 'text/csv; charset=utf-8');
-          c.header('Content-Disposition', 'attachment; filename="contract-import-errors.csv"');
-          return c.body(errorsCsv(result.errors));
-        }
-        return c.json(result);
-      }
-      return write(c, deps, ctx, input, async (tx, ctx) => ({
-        status: 200,
-        body: await importContracts(tx, ctx, input),
-      }));
     });
 }
+
+type RouteContext = Awaited<ReturnType<typeof routeContext>>;
+
+/** 导入按钮之后的校验（格式、字段权限、批量范围、初始化的删除权），预览、下载错误报告与导入共用。 */
+async function authorizeImport(deps: TenantRouteDeps, ctx: RouteContext, raw: unknown) {
+  const input = parse(importSchema, raw);
+  for (const row of input.rows) {
+    await checkFields(ctx, ['edit', 'change'].includes(input.mode) ? 'update' : 'create', row.fields);
+  }
+  await withTenant(deps.db, ctx.tenantId, (tx) => checkImportScope(tx, ctx, input));
+  if (input.mode === 'initialize')
+    await requirePermission(deps.authorize, {
+      tenantId: ctx.tenantId,
+      userId: ctx.userId,
+      action: 'object.delete',
+      resource: CONTRACT_OBJECT,
+    });
+  return input;
+}
+
+async function importPreview(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  ctx: RouteContext,
+  raw: unknown,
+  suffix: string,
+) {
+  const envelope = parse(importSchema.extend({ rows: z.array(z.unknown()).min(1).max(10000) }), raw);
+  const formatting = envelope.rows.flatMap((row, index) => {
+    const result = importSchema.shape.rows.element.safeParse(row);
+    return result.success ? [] : [{ row: index + 1, code: 'VALIDATION_FAILED', message: '行格式或字段值不合法' }];
+  });
+  if (suffix === '/errors' && formatting.length) return downloadErrors(c, deps, ctx, formatting, rawImportRows(raw));
+  const input = await authorizeImport(deps, ctx, raw);
+  const result = await withTenant(deps.db, ctx.tenantId, (tx) => previewImport(tx, ctx, input, suffix === '/preview'));
+  if (suffix !== '/errors') return c.json(result);
+  return downloadErrors(c, deps, ctx, result.errors, input.rows);
+}
+
+/** R1-T16：错误报告下载是读取，不经命令台账；下载记录单独一个事务写入对象操作日志（逐行归属见第三轮 P1-2）。 */
+async function downloadErrors(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  ctx: RouteContext,
+  errors: readonly ImportError[],
+  rows: readonly { readonly employeeId?: unknown }[],
+) {
+  await withTenant(deps.db, ctx.tenantId, (tx) =>
+    recordOperationLog(tx, {
+      tenantId: ctx.tenantId,
+      actorUserId: auditActor(ctx.userId),
+      behavior: 'download',
+      objectType: CONTRACT_OBJECT,
+      successCount: errors.length,
+      failureCount: 0,
+      summary: `下载合同导入错误报告（${errors.length}条）`,
+      attachment: { fileName: 'contract-import-errors.csv', contentType: 'text/csv' },
+      items: errors.map((error, rowIndex) => ({
+        rowIndex,
+        outcome: 'succeeded' as const,
+        employeeId: rawUuid(rows[error.row - 1]?.employeeId),
+      })),
+      occurredAt: deps.clock(),
+    }),
+  );
+  c.header('Content-Type', 'text/csv; charset=utf-8');
+  c.header('Content-Disposition', 'attachment; filename="contract-import-errors.csv"');
+  return c.body(errorsCsv(errors));
+}
+
 function registerFailures(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   module.post('/requests/:id/cancel', async (c) => {
     const ctx = await routeContext(c, deps, CONTRACT_OBJECT, true);

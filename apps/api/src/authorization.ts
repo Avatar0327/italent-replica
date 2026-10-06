@@ -8,6 +8,7 @@ import { AppError } from './errors.js';
 export interface AuthorizationRequest {
   readonly userId: string;
   readonly tenantId: string;
+  readonly timezone?: string;
   /** 形如 `tenant.settings.read` / `tenant.settings.write`。 */
   readonly action: string;
   readonly resource?: string;

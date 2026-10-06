@@ -6,7 +6,6 @@
  */
 import {
   and,
-  auditEvents,
   eq,
   pgErrorCode,
   type SystemSetting,
@@ -16,6 +15,7 @@ import {
   type Tx,
 } from '@italent/db';
 import { AppError } from '../../errors.js';
+import { recordAudit } from '../../audit/record.js';
 
 export interface EffectiveSetting {
   readonly key: string;
@@ -137,7 +137,7 @@ function snapshot(row: TenantSettingOverride | undefined) {
 }
 
 async function audit(tx: Tx, write: SettingWrite, action: string, before: unknown, after: unknown): Promise<void> {
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: write.tenantId,
     actorUserId: write.userId,
     action,

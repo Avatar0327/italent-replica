@@ -19,8 +19,7 @@ export async function requireObjectWrite(
   write: ObjectWrite,
 ): Promise<void> {
   await requirePermission(authorizer, {
-    tenantId: ctx.tenantId,
-    userId: ctx.userId,
+    ...ctx,
     action: `object.${write.operation}`,
     resource: write.objectCode,
     fields: Object.keys(write.payload),

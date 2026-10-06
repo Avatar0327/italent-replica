@@ -36,7 +36,7 @@ export type DeletionLinkageProbe = (
 const MAX_LISTED = 50;
 const probes = new Map<string, DeletionLinkageProbe>([['organization', organizationLinkage]]);
 
-/** 同名重复登记时替换，便于装配幂等。TODO(R1-T10)：登记合同变更、职责转交两个探针。 */
+/** 同名重复登记时替换，便于装配幂等。合同变更、职责转交的探针见 transfer/linkage/deletion-probes.ts。 */
 export function registerDeletionLinkageProbe(name: string, probe: DeletionLinkageProbe): void {
   probes.set(name, probe);
 }

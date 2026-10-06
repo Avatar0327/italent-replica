@@ -93,9 +93,10 @@ export function personScope(ctx: AccessContext, alias = 'e', creator?: SQL) {
     creator:
       creator ??
       subsetCreator ??
-      sql`(SELECT a.actor_user_id FROM audit_events a WHERE a.tenant_id=${ctx.tenantId}
+      // DEC-198：创建人取最小元数据表（不随审计保留期清理）
+      sql`(SELECT a.creator_user_id FROM audit_object_creators a WHERE a.tenant_id=${ctx.tenantId}
       AND a.object_id=${sql.identifier(alias)}.id::text AND a.action='employment.employee.create'
-      ORDER BY a.occurred_at,a.id LIMIT 1)`,
+      ORDER BY a.created_at LIMIT 1)`,
   });
 }
 export async function requirePerson(tx: Tx, ctx: AccessContext, id: string) {

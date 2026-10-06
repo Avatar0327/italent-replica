@@ -1,5 +1,17 @@
+import { ManagerPage } from './transfer/ManagerPage.js';
+import { text as jobText } from './job/messages.js';
+import { JobPage } from './job/JobPage.js';
 import { TransferPage } from './transfer/TransferPage.js';
 
 export function App() {
-  return <TransferPage initiator={window.location.pathname === '/self/transfers' ? 'employee' : 'hr'} />;
+  if (window.location.pathname.startsWith('/manager')) return <ManagerPage />;
+  if (window.location.pathname === '/jobs') return <JobPage />;
+  return (
+    <>
+      <nav>
+        <a href="/jobs">{jobText.title}</a>
+      </nav>
+      <TransferPage initiator={window.location.pathname === '/self/transfers' ? 'employee' : 'hr'} />
+    </>
+  );
 }

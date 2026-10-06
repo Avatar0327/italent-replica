@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { runEmploymentActivations, type EmploymentActivationRun } from '@italent/api';
-import { sql, withTenant, type Db } from '@italent/db';
+import { and, desc, eq, orgHierarchyLinks, orgObjects, orgVersions, sql, withTenant, type Db } from '@italent/db';
 import { expect } from 'vitest';
 import { installApprovalFallbacks } from './AC-APV-support.js';
 import { employmentSession, type EmploymentBusiness, type EmploymentSession } from './AC-EMP-support.js';
@@ -47,6 +47,38 @@ export async function activationWorld(
 }
 
 export type ActivationWorld = Awaited<ReturnType<typeof activationWorld>>;
+
+/** DEC-196 后正常停用入口会拒绝在途调入；仅造历史遗留数据，保留 DEC-052 / 161 兜底失败分支覆盖。 */
+export async function seedLegacyOrgDeactivation(w: ActivationWorld, effectiveDate: string) {
+  return withTenant(w.db, w.session.tenant.id, async (tx) => {
+    const [latest] = await tx
+      .select()
+      .from(orgVersions)
+      .where(and(eq(orgVersions.tenantId, w.session.tenant.id), eq(orgVersions.orgId, w.to.id)))
+      .orderBy(desc(orgVersions.versionNo))
+      .limit(1);
+    const revision = latest!.versionNo + 1;
+    const versionId = randomUUID();
+    await tx.insert(orgVersions).values({
+      ...latest!,
+      id: versionId,
+      previousVersionId: latest!.id,
+      versionNo: revision,
+      startDate: effectiveDate,
+      enabled: false,
+    });
+    const links = await tx
+      .select()
+      .from(orgHierarchyLinks)
+      .where(and(eq(orgHierarchyLinks.tenantId, w.session.tenant.id), eq(orgHierarchyLinks.versionId, latest!.id)));
+    await tx.insert(orgHierarchyLinks).values(links.map((link) => ({ ...link, versionId })));
+    await tx
+      .update(orgObjects)
+      .set({ revision })
+      .where(and(eq(orgObjects.tenantId, w.session.tenant.id), eq(orgObjects.id, w.to.id)));
+    return { revision };
+  });
+}
 
 function helpers(db: Db, session: EmploymentSession, hireDate: string, departmentId: string) {
   async function hired(name = '定时生效员工') {

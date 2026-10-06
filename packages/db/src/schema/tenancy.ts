@@ -148,8 +148,25 @@ export const tenantSettingOverrides = pgTable(
 );
 
 /**
- * 最小审计事件表：业务写与审计同事务写入（AGENTS.md §10「审计」），只追加（触发器禁止 UPDATE/DELETE/TRUNCATE）。
- * R1-T16 将扩展为统一字段级变更日志（DEC-019，docs/02_业务建模/20 §5：来源动作、终端、IP、TraceID、按月分区等）。
+ * 请求来源列（docs/02_业务建模/20 §2 数据变更日志列：来源动作、来源页面类型、来源页面、终端内核、前端版本、IP、TraceID）。
+ * 由 API 层按请求取值（apps/api/src/audit/request-context.ts）；系统任务没有请求，来源动作记“定时任务”。
+ */
+export const auditSourceColumns = () => ({
+  sourceAction: text('source_action'),
+  sourcePageType: text('source_page_type'),
+  sourcePage: text('source_page'),
+  terminal: text('terminal'),
+  clientVersion: text('client_version'),
+  ip: text('ip'),
+  traceId: text('trace_id'),
+});
+
+/**
+ * 统一字段级数据变更日志（DEC-019；docs/02_业务建模/20 §5；R1-T16）：业务写与审计同事务写入（AGENTS.md §10「审计」），
+ * 只追加（触发器禁止 UPDATE/DELETE/TRUNCATE，唯一例外是按租户保留期的定时清理，迁移 0058）。
+ * before / after 是写入方给出的前后值（删除时 before 即被删记录的完整快照）；changes 是写入时算出的字段级差异，
+ * 引用字段带当时解析的名称（fromText / toText）。任何写入路径（含集合 SQL）漏填的 operation / changes / 归属
+ * 由迁移 0058 的 BEFORE INSERT 触发器按同一规则补齐，R1-T16 之前的历史行在迁移时回填（PR #75 第二轮 P2-3、P2-6）。
  */
 export const auditEvents = pgTable(
   'audit_events',
@@ -168,11 +185,22 @@ export const auditEvents = pgTable(
     // 事件时间存 UTC（timestamptz 内部即 UTC 瞬时），按租户时区显示（DEC-056）
     occurredAt: utc('occurred_at'),
     commandId: text('command_id'),
+    operation: text('operation'),
+    changes: jsonb('changes'),
+    ...auditSourceColumns(),
+    // DEC-197：查询按查看人当前的数据范围与字段权限裁剪所依据的归属（写入时由迁移 0058 的触发器按对象类型推导）：
+    // 权限对象编码（字段权限）、所属人员、所属组织；配置类对象三者为空，按企业设置能力判断
+    scopeObject: text('scope_object'),
+    scopeEmployeeId: uuid('scope_employee_id'),
+    scopeOrgId: uuid('scope_org_id'),
   },
   (t) => [
     index('audit_events_tenant_occurred').on(t.tenantId, t.occurredAt),
     // 数据范围“创建人”判定按对象回查创建事件（迁移 0019）
     index('audit_events_scope_creator_lookup').on(t.tenantId, t.objectId, t.action, t.occurredAt),
+    index('audit_events_tenant_object_type').on(t.tenantId, t.objectType, t.occurredAt),
+    index('audit_events_tenant_scope_object').on(t.tenantId, t.scopeObject, t.occurredAt),
+    check('audit_events_operation_valid', sql`${t.operation} IN ('create', 'update', 'delete', 'other')`),
   ],
 );
 

@@ -1,9 +1,12 @@
+import { linkageApproval } from '../transfer/linkage/approval.js';
+import type { ForeignField } from './foreign-fields.js';
 import { plannedEffectiveDate } from '../employment/timeline.js';
 import { lockTransferBusiness } from '../employment/transfer-locks.js';
 /**
  * 业务适配：把任职申请、人员自助变更申请转换为审批快照（表单值、变更前原值、变化字段、条件取值、路由部门），
  * 并在审批结束时调用各模块已有的可信端口（任职状态机 / 申请落地），与审批写入同事务。
  */
+import { lockEstablishment } from '../establishment/store.js';
 import { contractAdapter } from '../contracts/adapter.js';
 import { sql, type Tx } from '@italent/db';
 import {
@@ -51,6 +54,8 @@ export interface BusinessSnapshot {
   readonly values: Readonly<Row>;
   readonly originals: Readonly<Row> | null;
   readonly changedFields: readonly string[];
+  /** 嵌套的其他对象字段（R1-T10 合同变更）：披露与盲审按所属对象的权限判断（foreign-fields.ts）。 */
+  readonly foreignFields?: readonly ForeignField[];
   readonly conditionValues: Readonly<Row>;
   readonly latestDepartmentId: string | null;
   readonly recordDepartmentId: string | null;
@@ -130,9 +135,21 @@ async function employmentTransition(
 }
 
 async function latestPayload(tx: Tx, tenantId: string, businessId: string) {
+  // DEC-218：后台序列同步不改实例。并发令牌仅越过同事务 outbox 证明的序列同步版本，
+  // 普通更正仍使用新的载荷编号、使旧审批409；表单值仍由 loadEmploymentBusiness 读取最新载荷。
   const [row] = rowsOf<{ id: string; last_work_date: string | null }>(
-    await tx.execute(sql`SELECT id,last_work_date::text FROM employment_payload_versions
-      WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid ORDER BY version_no DESC LIMIT 1`),
+    await tx.execute(sql`WITH RECURSIVE versions AS (
+      (SELECT p.* FROM employment_payload_versions p WHERE tenant_id=${tenantId}
+        AND business_id=${businessId}::uuid ORDER BY version_no DESC LIMIT 1)
+      UNION ALL
+      SELECT previous.* FROM versions current
+      JOIN employment_payload_versions previous ON previous.tenant_id=current.tenant_id
+        AND previous.business_id=current.business_id AND previous.id=current.previous_version_id
+        AND previous.version_no<current.version_no
+      WHERE EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=current.tenant_id
+        AND o.business_id=current.business_id AND o.payload_version_id=current.id
+        AND o.event_type='employment.sequence-sync' AND o.command_id=current.command_id)
+    ) SELECT id,last_work_date::text FROM versions ORDER BY version_no LIMIT 1`),
   );
   if (!row) throw new AppError('SERVICE_UNAVAILABLE', '任职业务版本链不完整');
   return { version: row.id, lastWorkDate: row.last_work_date ?? null };
@@ -183,6 +200,15 @@ function employmentPatch(input: Readonly<Row>) {
   };
 }
 
+/** 流程发起条件里的任职引用（调动前 / 本单）。 */
+const ref = (prefix: 'before' | 'record', source: Partial<PresetFields> | undefined) =>
+  Object.fromEntries(
+    (['departmentId', 'postId', 'positionId', 'levelId'] as const).map((key) => [
+      `${prefix}.${key}`,
+      source?.[key] ?? null,
+    ]),
+  );
+
 async function completedTransferDates(
   tx: Tx,
   ctx: ApprovalContext,
@@ -196,15 +222,18 @@ async function completedTransferDates(
 
 const employmentAdapter: BusinessAdapter = {
   async lock(tx, ctx, businessId) {
-    const [owner] = rowsOf<{ employee_id: string }>(
-      await tx.execute(sql`SELECT employee_id FROM employment_business_objects
-        WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid`),
+    const [owner] = rowsOf<{ employee_id: string; kind: string }>(
+      await tx.execute(sql`SELECT employee_id, (SELECT kind FROM employment_payload_versions p
+        WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) AS kind
+        FROM employment_business_objects b WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid`),
     );
     if (!owner) throw new AppError('NOT_FOUND', '任职业务不存在');
     await lockTransferBusiness(tx, ctx, businessId);
     await lockEmploymentEmployee(tx, ctx, owner.employee_id);
     await tx.execute(sql`SELECT 1 FROM employment_business_objects
       WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE`);
+    // org/locks.ts：员工 / 业务 → 组织 → 编制 → 实例；审批推进时只重入资源锁。
+    if (owner.kind === 'transfer') await lockEstablishment(tx, ctx, { initializeDefault: false });
   },
   async snapshot(tx, ctx, businessId) {
     const asOf = tenantLocalDate(ctx.now, ctx.timezone);
@@ -224,6 +253,7 @@ const employmentAdapter: BusinessAdapter = {
     const employType = business.kind === 'intern_regularization' ? 'internal' : before?.fields.employType;
     const fields: PresetFields = { ...business.fields, employType: business.fields.employType ?? employType ?? null };
     const payload = await latestPayload(tx, ctx.tenantId, businessId);
+    const linkage = await linkageApproval(tx, ctx.tenantId, businessId, business.kind); // R1-T10 P1-6
     // 清单 3：载荷、原值与变化检测覆盖预置字段、自定义字段、业务日期与最后工作日。
     const originals: Row | null = before
       ? {
@@ -236,6 +266,7 @@ const employmentAdapter: BusinessAdapter = {
     const values: Row = {
       ...fields,
       ...(business.kind === 'transfer' ? await transferMetadata(tx, ctx.tenantId, businessId) : {}),
+      ...linkage.values,
       ...customValues(business.customFields),
       effectiveDate: business.effectiveDate,
       ...(await completedTransferDates(tx, ctx, business)),
@@ -255,14 +286,8 @@ const employmentAdapter: BusinessAdapter = {
       'effectiveDate',
       ...(payload.lastWorkDate ? ['lastWorkDate'] : []),
       ...(values.withEstablishment === true ? ['withEstablishment'] : []),
+      ...linkage.changedFields,
     ];
-    const ref = (prefix: 'before' | 'record', source: Partial<PresetFields> | undefined) =>
-      Object.fromEntries(
-        (['departmentId', 'postId', 'positionId', 'levelId'] as const).map((key) => [
-          `${prefix}.${key}`,
-          source?.[key] ?? null,
-        ]),
-      );
     return {
       approvalType,
       businessType: 'employment',
@@ -286,7 +311,8 @@ const employmentAdapter: BusinessAdapter = {
       },
       latestDepartmentId: current?.fields.departmentId ?? null,
       recordDepartmentId: fields.departmentId,
-      version: payload.version,
+      ...(linkage.foreignFields.length ? { foreignFields: linkage.foreignFields } : {}),
+      version: linkage.version ? `${payload.version}:${linkage.version}` : payload.version,
       processCode,
     };
   },

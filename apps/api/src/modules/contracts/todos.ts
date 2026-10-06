@@ -3,6 +3,7 @@ import { CONTRACT_OBJECT } from '@italent/domain';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import { runCommand } from '../../commands.js';
+import { isDefiniteFailure } from '../../audit/failures.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
@@ -88,9 +89,15 @@ export function registerMergedTodos(module: Hono<TenantEnv>, deps: TenantRouteDe
         receipts.push({ id: item.id, status: result.status, result: result.body });
       } catch (error) {
         if (!(error instanceof AppError)) throw error;
-        receipts.push({ id: item.id, status: error.status, error: { code: error.code, message: error.message } });
+        receipts.push({ id: item.id, status: error.status, error: receiptError(error) });
       }
     }
     return c.json({ items: receipts });
   });
+}
+
+/** 结果未知 / 存储不可写也逐条回执，但带机器可读原因，客户端按原命令 ID 回查（PR #75 第二轮 P2-8）。 */
+function receiptError(error: AppError) {
+  const reason = (error.details as { reason?: string } | undefined)?.reason;
+  return { code: error.code, message: error.message, ...(isDefiniteFailure(error) ? {} : { reason }) };
 }

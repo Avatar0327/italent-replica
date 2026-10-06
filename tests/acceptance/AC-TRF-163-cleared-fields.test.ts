@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { activationWorld, type ActivationWorld } from './AC-TRF-activation-support.js';
+import { activationWorld, seedLegacyOrgDeactivation, type ActivationWorld } from './AC-TRF-activation-support.js';
 import type { EmploymentBusiness } from './AC-EMP-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -157,7 +157,7 @@ describe('DEC-163 / AC-TRF：场景留空字段随实际落地事件交给 PR-B'
       expect(response.status, await response.clone().text()).toBe(200);
       return ((await response.json()) as { revision: number }).revision;
     }
-    const disabledRevision = await enabled(false, w.to.revision);
+    const { revision: disabledRevision } = await seedLegacyOrgDeactivation(w, '2026-10-10');
     expect(await w.runScheduler('2026-10-05T01:00:00Z')).toMatchObject({ failed: [business.id] });
     expect(await recordEvents(w, business.id)).toEqual([]);
     expect((await w.business(business.id)).record).toBeNull();

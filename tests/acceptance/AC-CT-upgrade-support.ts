@@ -2,15 +2,19 @@ import { randomUUID } from 'node:crypto';
 import { sql, withTenant, type Db } from '@italent/db';
 import { employmentSession } from './AC-EMP-support.js';
 import { tenantApi, type RequestOptions } from './support/tenant-api.js';
+import { withPreAuditSchema } from './support/pre-audit-schema.js';
 const now = new Date('2026-10-01T01:00:00Z');
 
 /** F-013 升级夹具固定使用 0046 之前的任职列；不能调用已依赖 0048 新列的当前入职 API。
  * 只构造同样的在职员工、合同类型和法人公司，历史合同/尝试及升级后的断言保持原样。
  */
 export async function legacyContractWorld(db: Db) {
-  const session = await employmentSession(db, 'f013upgrade');
-  const org = await session.org('合同部门', { establishedOn: '2025-01-01' });
-  const employee = await session.employee();
+  // 当前接口会写 R1-T16 新增的审计列，旧结构上临时补出（只影响夹具，升级后的断言不变）
+  const { session, org, employee } = await withPreAuditSchema(db, async () => {
+    const session = await employmentSession(db, 'f013upgrade');
+    const org = await session.org('合同部门', { establishedOn: '2025-01-01' });
+    return { session, org, employee: await session.employee() };
+  });
   const type = { id: randomUUID() };
   const company = { id: randomUUID() };
   const [staffId, businessId, payloadId] = [randomUUID(), randomUUID(), randomUUID()];
