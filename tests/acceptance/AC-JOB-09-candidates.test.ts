@@ -35,7 +35,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 async function click(text: string) {
-  const button = [...host.querySelectorAll('button')].find((b) => b.textContent === text);
+  const button = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === text);
   expect(button).toBeTruthy();
   await act(async () => button!.click());
 }
