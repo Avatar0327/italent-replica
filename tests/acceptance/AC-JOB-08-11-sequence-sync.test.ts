@@ -1,3 +1,4 @@
+import { auditApi } from './AC-AUD-support.js';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
@@ -16,7 +17,7 @@ async function worker(
   db: Db,
   tenantId: string,
   authorize: Authorizer = allowAll,
-  options: { limit?: number; cursor?: string } = {},
+  options: { limit?: number; cursor?: string; clock?: () => Date } = {},
 ) {
   const path = '../../apps/api/src/modules/job/sequence-worker.js';
   const module = await import(path);
@@ -306,7 +307,7 @@ for (const kind of ['posts', 'positions'] as const)
     expect(((await hidden.json()) as { items: unknown[] }).items).toEqual([]);
   });
 
-it('AC-JOB-08 审批中和作废不改；已批未来、同日多条及迟到调动保持排序和序列', async () => {
+it('AC-JOB-08 审批中追加版本、作废不改；已批未来、同日多条及迟到调动保持排序和序列', async () => {
   const { db } = testDb();
   const s = await scenario(db);
   async function action(id: string, action: 'submit' | 'approve' | 'revoke') {
@@ -355,8 +356,14 @@ it('AC-JOB-08 审批中和作废不改；已批未来、同日多条及迟到调
   ).toBe(200);
   await worker(db, s.world.tenant.id);
   const after = await versions(db, s.world.tenant.id, s.employee.id);
-  for (const id of [review.id, voided.id])
-    expect(after.find((r) => r.businessId === id)).toEqual(before.find((r) => r.businessId === id));
+  expect(after.find((r) => r.businessId === voided.id)).toEqual(before.find((r) => r.businessId === voided.id));
+  expect(after.find((r) => r.businessId === review.id)?.count).toBe(
+    before.find((r) => r.businessId === review.id)!.count + 1,
+  );
+  expect(await (await s.world.request('GET', `/businesses/${review.id}`)).json()).toMatchObject({
+    state: 'in_review',
+    fields: { sequenceId: s.nextSequence.id },
+  });
   const run = await runEmploymentActivations(
     db,
     { actorUserId: null, commandId: randomUUID() },
@@ -380,6 +387,14 @@ it('AC-JOB-08 审批中和作废不改；已批未来、同日多条及迟到调
     });
   }
   expect(records.find((r) => r.id === sameDay.id)?.fields.place).toBe('同日末条地点');
+  await action(review.id, 'approve');
+  await runEmploymentActivations(
+    db,
+    { actorUserId: null, commandId: randomUUID() },
+    { tenantId: s.world.tenant.id },
+    { clock: () => new Date('2026-10-15T01:00:00Z') },
+  );
+  expect((await s.world.record(review.id)).fields.sequenceId).toBe(s.nextSequence.id);
 });
 
 it('AC-JOB-11 当前部门可见时范围外未来可写，任一不可见则职务和队列整体回滚', async () => {
@@ -552,4 +567,82 @@ it('AC-JOB-09 序列 UUID 大小写等价，不把同一引用误判为换序列
       ),
     ).toEqual([]);
   });
+});
+
+it('AC-JOB-08 大写来源 objectId 的导入同步当前与未来，不得静默漏目标', async () => {
+  const { db } = testDb();
+  const s = await scenario(db);
+  const before = await versions(db, s.world.tenant.id, s.employee.id);
+  const response = await s.call('POST', 'import', {
+    kind: 'posts',
+    rows: [
+      {
+        sourceCode: 'UPPER_SOURCE',
+        objectId: s.target.id.toUpperCase(),
+        expectedRevision: 1,
+        code: 'UPPER_UPDATED',
+        name: s.target.name,
+        startDate: '2026-10-05',
+        sequenceId: s.nextSequence.id,
+      },
+    ],
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ results: [{ status: 'updated' }] });
+  expect(await worker(db, s.world.tenant.id)).toMatchObject({ completed: 1, failed: 0 });
+  const after = await versions(db, s.world.tenant.id, s.employee.id);
+  for (const id of [s.current.id, s.future.id]) {
+    expect((await s.world.record(id)).fields.sequenceId).toBe(s.nextSequence.id);
+    expect(after.find((r) => r.businessId === id)?.count).toBe(before.find((r) => r.businessId === id)!.count + 1);
+  }
+});
+
+it('AC-JOB-10 DEC-219 执行时已成历史的目标保留旧值，结果和通知列出跳过原因', async () => {
+  const { db } = testDb();
+  const s = await scenario(db);
+  expect(
+    (await s.call('PATCH', `posts/${s.target.id}`, { sequenceId: s.nextSequence.id, effectiveDate: '2026-10-05' }, 1))
+      .status,
+  ).toBe(200);
+  await worker(db, s.world.tenant.id, allowAll, { clock: () => new Date('2026-10-13T01:00:00Z') });
+  expect((await s.world.record(s.current.id)).fields.sequenceId).toBe(s.oldSequence.id);
+  expect((await s.world.record(s.future.id)).fields.sequenceId).toBe(s.nextSequence.id);
+  const response = await s.call('GET', 'sequence-sync/messages');
+  expect(await response.json()).toMatchObject({
+    items: [{ message: { count: 1, skipped: [{ recordId: s.current.id, reason: 'BECAME_HISTORICAL' }] } }],
+  });
+});
+
+it('AC-JOB-10 DEC-216 逐条审计字段差异、任务日志与失败审计可查，重试不重复', async () => {
+  const { db } = testDb();
+  const s = await scenario(db);
+  const commandId = randomUUID();
+  expect(
+    (
+      await s.call(
+        'PATCH',
+        `posts/${s.target.id}`,
+        { sequenceId: s.nextSequence.id, effectiveDate: '2026-10-05' },
+        1,
+        commandId,
+      )
+    ).status,
+  ).toBe(200);
+  expect(await worker(db, s.world.tenant.id, () => false)).toMatchObject({ failed: 1 });
+  const audit = auditApi(db, now.toISOString());
+  const as = { tenant: s.world.tenant.id, user: s.world.user.id };
+  expect((await audit.commandFailures(as, { commandId })).items).toEqual([
+    expect.objectContaining({ outcome: 'business_failed', commandId }),
+  ]);
+  expect((await audit.dataChanges(as, { commandId, objectType: 'employment-record' })).items).toEqual([]);
+  await worker(db, s.world.tenant.id);
+  await worker(db, s.world.tenant.id);
+  const rows = (await audit.dataChanges(as, { commandId, objectType: 'employment-record', field: 'sequenceId' })).items;
+  expect(rows).toHaveLength(2);
+  expect(rows[0]).toMatchObject({
+    sourceAction: '定时任务',
+    changes: [expect.objectContaining({ field: 'sequenceId', from: s.oldSequence.id, to: s.nextSequence.id })],
+  });
+  const tasks = (await audit.operationLogs(as, { commandId, objectType: 'job-sequence-sync' })).items;
+  expect(tasks).toEqual([expect.objectContaining({ successCount: 2, failureCount: 0, commandId })]);
 });
