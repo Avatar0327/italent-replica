@@ -1,6 +1,8 @@
 export const managerText = {
   employTypes: { internal: '正式员工', intern: '实习生', external: '外部人员' },
   statuses: {
+    running: '审批中',
+    returned: '已退回',
     in_review: '审批中',
     approved: '通过',
     effective: '已生效',
