@@ -9,6 +9,7 @@ import type { Authorizer } from '@italent/api';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { tenantApi } from './support/tenant-api.js';
+import { seedLegacyOrgDeactivation } from './AC-TRF-activation-support.js';
 import { D, linkageWorld, type LinkageWorld } from './AC-LNK-support.js';
 
 const database = useTestDb();
@@ -111,12 +112,8 @@ describe('AC-TRF-31 联动段：DEC-183 到期时遇在途合同整单不执行'
       await w.transfer(person, { linkage: { adjustSalary: true, onTrial: { months: 1 } } }),
     );
     await w.approve(business, '2026-10-02T01:00:00Z');
-    const disabled = await w.api.request('PATCH', `/api/tenant/org/organizations/${w.to.id}`, {
-      ...w.as,
-      ifMatch: w.to.revision,
-      body: { enabled: false, effectiveDate: D },
-    });
-    expect(disabled.status, await disabled.clone().text()).toBe(200);
+    // DEC-196：正常入口已拦截在途调入，只构造历史遗留状态验证 DEC-052 联动失败兜底。
+    await seedLegacyOrgDeactivation(w, D);
     const run = await w.runScheduler('2026-10-10T01:00:00Z');
     expect(run.failed).toEqual([business.id]);
     expect(await w.linkage(business.id)).toMatchObject({ executedAt: null, onTrial: null, salaryReminder: null });

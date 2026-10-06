@@ -481,7 +481,8 @@ function requireNew(ctx: OrgWriteContext): void {
 function orgId(c: Context): string {
   const id = c.req.param('id') ?? '';
   if (!isUuid(id)) throw new AppError('VALIDATION_FAILED', '组织标识必须为 UUID');
-  return id;
+  // F-017 同口径：在范围判断之前规范化 UUID，避免等价标识影响权限与子树遍历。
+  return id.toLowerCase();
 }
 
 function queryDate(c: Context, ctx: OrgWriteContext): string {

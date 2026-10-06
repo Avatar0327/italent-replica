@@ -45,6 +45,8 @@ export async function planDeactivation(
   from: string,
   authorize: CascadeAuthorizer | undefined,
 ): Promise<OrgRecord[]> {
+  // 可信内部调用也统一标识；HTTP 入口已在权限判断前规范化。
+  root = { ...root, id: root.id.toLowerCase() };
   const descendants = new Set<string>();
   let atFrom: OrgRecord[] = [];
   for (const boundary of await futureBoundaries(tx, ctx.tenantId, from)) {
@@ -116,6 +118,8 @@ async function assertSubtreeVacant(
   atFrom: readonly OrgRecord[],
 ) {
   const ids = [root.id, ...descendants];
+  // updateOrganization 已由 ensureOrgSetup 持有租户 org_settings 排他锁。
+  // 调入提交 / 审批 / 落地的 assertEmploymentDepartmentAvailable 持同一锁，两个统计间不能迁移状态。
   const staff = await countDepartmentStaff(tx, ctx.tenantId, ids, from);
   const pending = await countPendingTransfers(tx, ctx.tenantId, ids);
   const positions = await countEnabledPositions(tx, ctx.tenantId, ids, from);

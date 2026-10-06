@@ -1,4 +1,4 @@
-import { sql, type Tx } from '@italent/db';
+import { eq, orgSettings, sql, type Tx } from '@italent/db';
 import { assertOrg } from '../establishment/org-reader.js';
 import type { JobRecord } from '../job/read-model.js';
 import { invalid, requiredJob, validateJobAssignment } from '../job/validation.js';
@@ -19,8 +19,30 @@ export async function validateNewEmploymentReferences(
   effectiveDate: string,
   reporting?: ReportingCheck,
 ): Promise<void> {
-  if (fields.departmentId) {
-    const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, fields.departmentId, effectiveDate);
+  await assertEmploymentDepartmentAvailable(tx, ctx, fields.departmentId, effectiveDate);
+  await validateEmploymentReferences(tx, ctx, fields, effectiveDate, reporting);
+}
+
+/**
+ * DEC-196 / PR #82 P1：与组织写入 ensureOrgSetup 共用租户设置行锁，并持有到事务结束。
+ * 不按目标组织逐个加锁：级联子树和未来层级也须在同一互斥区间内读取，且组织负责人联动会写组织设置。
+ * 调用方已锁全部参与员工；组织侧不反向锁员工。员工 → 业务 → 实例的相对顺序保持 F-008 不变。
+ * 同租户任职写入在此串行；不能换成共享锁，后续负责人联动升级为排他锁会形成互相等待。
+ */
+export async function assertEmploymentDepartmentAvailable(
+  tx: Tx,
+  ctx: EmploymentContext,
+  departmentId: string | null,
+  effectiveDate: string,
+): Promise<void> {
+  if (departmentId) {
+    await tx
+      .select({ tenantId: orgSettings.tenantId })
+      .from(orgSettings)
+      .where(eq(orgSettings.tenantId, ctx.tenantId))
+      .for('update');
+    // 等待锁期间可能已提交停用版本；必须在获得锁之后重新读取。
+    const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, departmentId, effectiveDate);
     if (disabled) {
       throw new AppError(
         'VALIDATION_FAILED',
@@ -28,8 +50,8 @@ export async function validateNewEmploymentReferences(
         { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: disabled.disabledOn },
       );
     }
+    await assertOrg(tx, ctx.tenantId, departmentId, effectiveDate);
   }
-  await validateEmploymentReferences(tx, ctx, fields, effectiveDate, reporting);
 }
 
 /** 循环汇报校验的对象：哪名员工，被校验的记录在时间轴上实际生效的区间（为空则不校验）。 */

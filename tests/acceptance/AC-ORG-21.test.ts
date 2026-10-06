@@ -1,5 +1,6 @@
 /** AC-ORG-21 / DEC-196：组织停用合计已落地任职与最新状态仍在途的调入申请。 */
 import { randomUUID } from 'node:crypto';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { runEmploymentTransition } from '../../apps/api/src/modules/employment/transitions.js';
@@ -207,9 +208,17 @@ it('AC-ORG-21 草稿保存后部门已停用：提交复查并拒绝，不产生
   expect(response.status, await response.clone().text()).toBe(400);
   expect(await response.json()).toMatchObject({ error: { details: { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED' } } });
   expect(await w.business(draft.id)).toMatchObject({ status: 'draft', revision: draft.revision, record: null });
-  expect((await w.auditEvents(draft.id)).filter((event) => event.action === 'employment.business.submit')).toHaveLength(
-    0,
+  const persisted = await withTenant(w.db, w.session.tenant.id, (tx) =>
+    tx.execute(sql`
+    SELECT
+      (SELECT count(*)::int FROM approval_instances WHERE tenant_id=${w.session.tenant.id}
+        AND business_id=${draft.id}::uuid) AS instances,
+      (SELECT count(*)::int FROM employment_state_events WHERE tenant_id=${w.session.tenant.id}
+        AND business_id=${draft.id}::uuid) AS events
+  `),
   );
+  const rows = Array.isArray(persisted) ? persisted : (persisted as { rows: unknown[] }).rows;
+  expect(rows).toEqual([{ instances: 0, events: 1 }]);
 });
 
 it('AC-ORG-21 历史遗留停用排期：未来申请审批通过前复查部门，拒绝并保留审批中', async () => {
