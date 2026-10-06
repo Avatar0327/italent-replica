@@ -130,6 +130,14 @@ it('AC-ORG-21 申请计划日早于停用日也计入；缩短失效日期同样
   await w.assertEnabled(true);
 });
 
+it('AC-ORG-21 同一员工多条在途调入按申请条数计，不按员工去重', async () => {
+  const w = await world('same-employee');
+  const { employee } = await w.hired();
+  await w.approve(await w.apply(employee.id, '2026-10-05', { departmentId: w.to.id }), '2026-10-02T01:00:00Z');
+  await w.apply(employee.id, '2026-10-06', { departmentId: w.to.id });
+  await expectBlocked(await w.disable(), 2);
+});
+
 it('AC-ORG-21 以最新载荷目标部门计数，旧目标与载荷历史不重复计入', async () => {
   const w = await world('payload');
   const application = await w.pending();
