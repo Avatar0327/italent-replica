@@ -36,6 +36,7 @@ import {
   type SingleApprovalNode,
 } from '@italent/domain';
 import { ADAPTERS, type BusinessSnapshot, type BusinessType } from './adapters.js';
+import { viewableWithForeign } from './foreign-fields.js';
 import { approvalError, auditApproval, emitOutbox, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import { candidates, conditionContext, evaluate, noProcessMessage, replicaMatch } from './matching.js';
@@ -622,9 +623,15 @@ async function autoProcess(
  */
 async function hiddenForAuto(tx: Tx, run: Run, entry: Entry, userId: string): Promise<string[]> {
   const fields = run.ctx.fields;
-  const viewable = fields
+  const base = fields
     ? await memo(entry.subject, `viewable:${userId}`, () => fields.viewable(tx, userId, run.snapshot.fieldObjectCode))
     : new Set<string>();
+  const foreign = fields?.foreignVisible;
+  const viewable = await viewableWithForeign(
+    run.snapshot,
+    base,
+    foreign ? (field) => foreign.call(fields, tx, userId, field) : undefined,
+  );
   return blindReviewFields(run.snapshot.changedFields, viewable);
 }
 

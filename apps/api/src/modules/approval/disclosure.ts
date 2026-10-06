@@ -20,6 +20,7 @@ import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { readEffectiveSetting } from '../tenant-settings/service.js';
 import { ADAPTERS, type BusinessSnapshot } from './adapters.js';
+import { formFieldsWithForeign } from './foreign-fields.js';
 import { rowsOf, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import { userOfPerson } from './resolver.js';
@@ -140,7 +141,10 @@ export function viewerNode(data: DetailData, userId: string): ApprovalNode | nul
 
 /** DEC-119：本查看人可见的字段名（节点表单 ∩ 字段查看权），表单值、原值与日志字段名共用。 */
 export function disclosedFields(data: DetailData, userId: string, viewable: ReadonlySet<string> | undefined) {
-  return disclosedFieldNames(viewerNode(data, userId)?.formFields ?? [], viewable);
+  return disclosedFieldNames(
+    formFieldsWithForeign(viewerNode(data, userId)?.formFields ?? [], data.snapshot),
+    viewable,
+  );
 }
 
 function pick(source: Readonly<Row>, fields: readonly string[]): Row {

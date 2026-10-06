@@ -2,6 +2,7 @@
  * 审批中心路由（R1-T07）：/api/tenant/approval/*。写请求带 If-Match 与 Idempotency-Key，业务 + 审计 + outbox 同事务；
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
  */
+import { foreignVisibility, viewableWithForeign } from './foreign-fields.js';
 import { pgErrorCode, registerMembershipRevokeHook, type Tx, withTenant } from '@italent/db';
 import {
   ADD_SIGN_TYPES,
@@ -93,6 +94,7 @@ function fieldAccess(deps: TenantRouteDeps, ctx: TenantContext): FieldAccess {
   return {
     viewable: (tx, userId, objectCode) =>
       getModuleViewableFieldsInTransaction(deps, { ...ctx, userId }, objectCode, tx),
+    foreignVisible: (tx, userId, field) => foreignVisibility(deps, { ...ctx, userId }, tx)(field),
   };
 }
 
@@ -157,6 +159,14 @@ async function viewerOf(deps: TenantRouteDeps, ctx: TenantContext): Promise<View
  * undefined = 不受字段权限约束。
  */
 async function detailViewable(deps: TenantRouteDeps, ctx: TenantContext, data: DetailData) {
+  // R1-T10：嵌套的合同字段按合同对象、范围与字段判断（PR #74 第三轮 P1-1）。
+  const viewable = await ownViewable(deps, ctx, data);
+  return withTenant(deps.db, ctx.tenantId, (tx) =>
+    viewableWithForeign(data.snapshot, viewable, foreignVisibility(deps, ctx, tx)),
+  );
+}
+
+async function ownViewable(deps: TenantRouteDeps, ctx: TenantContext, data: DetailData) {
   const base = await getModuleViewableFields(deps, ctx, data.snapshot.fieldObjectCode);
   const profileFields = data.snapshot.profileFields;
   if (!profileFields.length) return base;
@@ -432,12 +442,12 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 }
 
-/** 任务所属业务对象（人员子集各有对象）：盲审与编辑都按查看人对该对象的字段权限判断。 */
-async function objectOfTask(c: C, deps: TenantRouteDeps, taskId: string) {
+/** 任务所属业务的快照（人员子集各有对象）：盲审与编辑都按查看人对该对象的字段权限判断。 */
+async function snapshotOfTask(c: C, deps: TenantRouteDeps, taskId: string) {
   const ctx = readCtx(c, deps);
   return withTenant(deps.db, ctx.tenantId, async (tx) => {
     const instance = await loadInstance(tx, ctx.tenantId, await instanceOfTask(tx, ctx.tenantId, taskId));
-    return (await ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId)).fieldObjectCode;
+    return ADAPTERS[instance.businessType].snapshot(tx, ctx, instance.businessId);
   });
 }
 
@@ -447,10 +457,14 @@ async function objectOfTask(c: C, deps: TenantRouteDeps, taskId: string) {
  */
 async function fieldRights(c: C, deps: TenantRouteDeps, taskId: string, edits: Record<string, unknown> | undefined) {
   const ctx = readCtx(c, deps);
-  const objectCode = await objectOfTask(c, deps, taskId);
+  const snapshot = await snapshotOfTask(c, deps, taskId);
+  const objectCode = snapshot.fieldObjectCode;
   if (edits && Object.keys(edits).length)
     await requireObjectWrite(deps.authorize, ctx, { objectCode, operation: 'update', payload: edits });
-  return getModuleViewableFields(deps, ctx, objectCode);
+  const base = await getModuleViewableFields(deps, ctx, objectCode);
+  return withTenant(deps.db, ctx.tenantId, (tx) =>
+    viewableWithForeign(snapshot, base, foreignVisibility(deps, ctx, tx)),
+  );
 }
 
 const comment = z.string().trim().max(2000).nullable().optional();
