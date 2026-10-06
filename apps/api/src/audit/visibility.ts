@@ -41,6 +41,13 @@ import {
 } from '../modules/permission/module-access.js';
 import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
+import {
+  ExactAuditFields,
+  resolveLinkageAudit,
+  transferEmployee,
+  TRANSFER_LINKAGE,
+  type LinkageAudit,
+} from './transfer-linkage.js';
 
 /**
  * 一条日志（或任务的一行）在规则里可用的列：对象编号（text）、所属人员 / 组织（uuid）、写入后的值（jsonb）、
@@ -141,6 +148,20 @@ function orgRule(types: readonly string[], objectCode: string, creator: (row: Ro
   };
 }
 
+/** DEC-197：业务编号解析到当前员工范围；创建人仍取调动业务，不取联动日志执行人。 */
+function transferLinkageRule(): Rule {
+  const person = personRule([TRANSFER_LINKAGE], EMPLOYMENT, (row, viewer) =>
+    employmentCreator(viewer.tenantId, sql`lower(${row.objectId})`, true),
+  );
+  return {
+    ...person,
+    visible: (scope, row, viewer, inputs) => {
+      const employee = transferEmployee(viewer.tenantId, row.objectId);
+      return sql`(${employee} IS NOT NULL AND ${person.visible(scope, { ...row, employee }, viewer, inputs)})`;
+    },
+  };
+}
+
 /** 审批日志的流程字段白名单（状态、节点、任务、审批人、意见等）；不含被隐藏字段清单等其他键。 */
 export const APPROVAL_FLOW_FIELDS = [
   'status',
@@ -196,6 +217,7 @@ const RULES: readonly Rule[] = [
       return anchored(scope, row.employee, visible, owner);
     },
   },
+  transferLinkageRule(),
   personRule(['employment_employee'], 'TenantBase.Employee', (row, viewer) =>
     employmentCreator(viewer.tenantId, row.employee),
   ),
@@ -340,6 +362,7 @@ export function auditObjectRegistered(objectType: string): boolean {
 }
 
 interface ResolvedRule {
+  readonly linkage?: LinkageAudit;
   readonly rule: Rule;
   readonly scope: ModuleScope;
   readonly inputs: RuleInputs;
@@ -396,8 +419,15 @@ export interface AuditViewer {
   readonly visibleRows: SQL;
   /** 人员派生计数按可见行重新计算的结果（序码重算汇总的变化人数，第四轮 N4）；不需要重算的为 NULL。 */
   readonly visibleCount: SQL;
+  /** 联动逐条解析的完整可见路径与展开差异；其他对象保持原始 changes。 */
+  readonly linkagePaths: SQL;
+  readonly eventChanges: SQL;
   /** 该日志适用的查看字段；undefined = 不限字段。 */
-  fieldsOf(objectType: string, action?: string | null): ReadonlySet<string> | undefined;
+  fieldsOf(
+    objectType: string,
+    action?: string | null,
+    paths?: readonly string[] | null,
+  ): ReadonlySet<string> | undefined;
 }
 
 const EVENT = 'audit_events';
@@ -418,19 +448,23 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
   const events = [...resolved.values()].map(
     (entry) => sql`(${eventTypes(entry.rule)}
       AND ${entry.rule.visible(entry.scope, rowOf(EVENT), viewer, entry.inputs)}
-      AND ${fieldScope(entry.fields, field)})`,
+      AND ${entry.linkage?.visible ?? sql`true`}
+      AND ${entry.linkage?.matches(field) ?? fieldScope(entry.fields, field)})`,
   );
   const item = itemRow();
-  const tasks = [...resolved.values()].map((entry) => {
-    const types = sql`${sql.identifier(TASK)}.object_type = ANY(${textArray(entry.rule.types)})`;
-    const itemVisible = entry.rule.visible(entry.scope, item, viewer, entry.inputs);
-    return {
-      whole: sql`(${types} AND (CASE WHEN ${hasItems()}
+  // transfer-linkage 目前只写数据变更事件；未来新增任务写入须单独登记逐行字段规则。
+  const tasks = [...resolved.values()]
+    .filter((entry) => !entry.linkage)
+    .map((entry) => {
+      const types = sql`${sql.identifier(TASK)}.object_type = ANY(${textArray(entry.rule.types)})`;
+      const itemVisible = entry.rule.visible(entry.scope, item, viewer, entry.inputs);
+      return {
+        whole: sql`(${types} AND (CASE WHEN ${hasItems()}
         THEN EXISTS (SELECT 1 FROM jsonb_array_elements(${sql.identifier(TASK)}.items) item WHERE ${itemVisible})
         ELSE ${entry.rule.visible(entry.scope, rowOf(TASK), viewer, entry.inputs)} END))`,
-      rows: sql`WHEN ${types} THEN ${itemVisible}`,
-    };
-  });
+        rows: sql`WHEN ${types} THEN ${itemVisible}`,
+      };
+    });
   const rowsCase = tasks.length
     ? sql`CASE ${sql.join(
         tasks.map((task) => task.rows),
@@ -439,13 +473,22 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
     : sql`false`;
   const orderRun = RULE_BY_TYPE.get('personnel-order-run')!;
   const run = resolved.get(orderRun);
+  const linkage = [...resolved.values()].find((entry) => entry.linkage)?.linkage;
   return {
+    linkagePaths: linkage
+      ? sql`CASE WHEN audit_events.object_type=${TRANSFER_LINKAGE} THEN ${linkage.paths} END`
+      : sql`NULL::text[]`,
+    eventChanges: linkage
+      ? sql`CASE WHEN audit_events.object_type=${TRANSFER_LINKAGE} THEN ${linkage.changes}
+          ELSE audit_events.changes END`
+      : sql`audit_events.changes`,
     dataChanges: sql`(${sql.join([...events, configPredicate(config, field)], sql` OR `)})`,
     operationLogs: sql`(${sql.join([...tasks.map((task) => task.whole), configTypes(TASK)], sql` OR `)})`,
     visibleRows: sql`(CASE WHEN ${hasItems()} THEN (SELECT COALESCE(jsonb_agg(item->'rowIndex'), '[]'::jsonb)
       FROM jsonb_array_elements(${sql.identifier(TASK)}.items) item WHERE ${rowsCase}) END)`,
     visibleCount: run && !run.scope.all ? orderRunCount(run, viewer) : sql`NULL::int`,
-    fieldsOf: (objectType, action) => {
+    fieldsOf: (objectType, action, paths) => {
+      if (objectType === TRANSFER_LINKAGE) return new ExactAuditFields(paths ?? []);
       const configured = config.get(configKey(objectType, action));
       if (configured) return configured.fields;
       if (isConfigLog(objectType, action)) return undefined;
@@ -475,7 +518,16 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
   if (!canView) return undefined;
   const scope = await resolveModuleScope(deps, ctx, undefined, rule.objectCode, undefined, rule.view);
   const objectFields = await getModuleViewableFields(deps, ctx, rule.objectCode);
-  return { rule, scope, inputs: { extra: null, objectFields }, fields: fixed ?? objectFields };
+  const linkage = rule.types.includes(TRANSFER_LINKAGE)
+    ? await resolveLinkageAudit(deps, ctx, scope, objectFields)
+    : undefined;
+  return {
+    rule,
+    scope,
+    inputs: { extra: null, objectFields },
+    fields: fixed ?? objectFields,
+    ...(linkage ? { linkage } : {}),
+  };
 }
 
 interface ResolvedConfig {
@@ -597,7 +649,7 @@ function changedVisible(table: string, fields: ReadonlySet<string> | undefined):
 
 /** 字段可见：按字段编码（路径末段）判断，或可见集合里登记了完整路径（如 changed.permission_admins）。 */
 function fieldVisible(fields: ReadonlySet<string>, path: string): boolean {
-  return fields.has(auditFieldCode(path)) || fields.has(path);
+  return fields.has(path) || (!(fields instanceof ExactAuditFields) && fields.has(auditFieldCode(path)));
 }
 
 /** 本租户日志里出现过的对象类型（松散索引扫描，按 (tenant_id, object_type) 索引逐个跳读）。 */
@@ -640,7 +692,12 @@ export function visibleValue(value: unknown, fields: ReadonlySet<string> | undef
   const kept: Record<string, unknown> = {};
   for (const [key, inner] of Object.entries(value)) {
     const path = prefix ? `${prefix}.${key}` : key;
-    if (inner !== null && typeof inner === 'object' && !Array.isArray(inner) && !prefix) {
+    if (
+      inner !== null &&
+      typeof inner === 'object' &&
+      !Array.isArray(inner) &&
+      (!prefix || fields instanceof ExactAuditFields)
+    ) {
       const nested = visibleValue(inner, fields, path) as Record<string, unknown>;
       if (Object.keys(nested).length) kept[key] = nested;
     } else if (fieldVisible(fields, path)) {

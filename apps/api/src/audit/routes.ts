@@ -49,12 +49,13 @@ import {
   tenantRetention,
 } from './query.js';
 import { auditViewer, visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
+import { linkageSnapshot } from './transfer-linkage.js';
 
 const BASE = '/api/tenant/audit';
 const CODE = /^[A-Za-z0-9_.:#-]{1,200}$/;
 const FIELD = /^[A-Za-z0-9_.:-]{1,100}$/;
 
-type AuditEventRow = typeof auditEvents.$inferSelect & { visibleCount: number | null };
+type AuditEventRow = typeof auditEvents.$inferSelect & { visibleCount: number | null; linkagePaths: string[] | null };
 
 export function registerAuditRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerDataChanges(router, deps);
@@ -81,7 +82,9 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
         return {
           items: page.items
             .map(recounted)
-            .map((row) => dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action))),
+            .map((row) =>
+              dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action, row.linkagePaths)),
+            ),
           nextCursor: page.nextCursor,
           window,
         };
@@ -110,7 +113,7 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
         // 超出保留期、范围外或只涉及隐藏字段的日志与不存在同样处理（原站“最远只能查 6 个月内”；DEC-197）
         if (!found) throw new AppError('NOT_FOUND', '日志不存在或已超出保留期');
         const row = recounted(found);
-        const fields = viewer.fieldsOf(row.objectType, row.action);
+        const fields = viewer.fieldsOf(row.objectType, row.action, row.linkagePaths);
         const view = dataChangeView(row, (await operatorNames(tx, [row]))(row), fields);
         return {
           ...view,
@@ -205,10 +208,11 @@ function dataChangeFilters(c: Context): SQL[] {
   if (sourceAction) conditions.push(sql`${t.sourceAction} = ${sourceAction.slice(0, 100)}`);
   // 升级前的历史行已在迁移 0058 回填 operation / changes（P2-3），筛选与展示口径一致
   if (operation) conditions.push(sql`${t.operation} = ${operation}`);
-  // 字段可以是展开后的 a.b 形式，按末段匹配
+  // 字段可以是展开后的 a.b 形式，按末段匹配；联动由 viewer 对展开后的可见变化筛选。
   if (field) {
-    conditions.push(sql`EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(${t.changes}, '[]'::jsonb)) change
-      WHERE change->>'field' = ${field} OR right(change->>'field', ${field.length + 1}) = ${`.${field}`})`);
+    conditions.push(sql`(${t.objectType} = 'transfer-linkage' OR EXISTS (SELECT 1
+      FROM jsonb_array_elements(COALESCE(${t.changes}, '[]'::jsonb)) change
+      WHERE change->>'field' = ${field} OR right(change->>'field', ${field.length + 1}) = ${`.${field}`}))`);
   }
   return conditions;
 }
@@ -267,7 +271,14 @@ function sourceView(row: {
 }
 
 function eventColumns(viewer: Awaited<ReturnType<typeof auditViewer>>) {
-  return { ...getTableColumns(auditEvents), visibleCount: sql<number | null>`${viewer.visibleCount}` };
+  return {
+    ...getTableColumns(auditEvents),
+    before: linkageSnapshot(sql`${auditEvents.before}`),
+    after: linkageSnapshot(sql`${auditEvents.after}`),
+    visibleCount: sql<number | null>`${viewer.visibleCount}`,
+    linkagePaths: sql<string[] | null>`${viewer.linkagePaths}`,
+    changes: sql<AuditFieldChange[] | null>`${viewer.eventChanges}`,
+  };
 }
 
 /**
