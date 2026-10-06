@@ -50,6 +50,7 @@ export interface OrganizationVersionInput extends Omit<OrganizationInput, 'estab
 
 export type OrganizationPatch = Partial<Omit<OrganizationInput, 'reservationId' | 'parents'>> & {
   readonly effectiveDate: string;
+  readonly addEmployment?: boolean;
   readonly parents?: Partial<Record<OrgDimension, OrgParentInput>>;
 };
 

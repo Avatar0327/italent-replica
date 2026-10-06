@@ -1,3 +1,4 @@
+import { requiresEmploymentChoice } from './employment-linkage.js';
 import {
   and,
   auditEvents,
@@ -151,10 +152,18 @@ async function importRow(
     // 一行失败须撤销该行的版本、层级、审计和映射，随后仍可在同一命令事务内继续其它行。
     return await tx.transaction(async (savepoint) => {
       const input = { name: row.name, code: row.code, parents: { admin: { parentId: row.parentId } } };
+      const effectiveDate = row.startDate ?? tenantLocalDate(ctx.now, ctx.timezone);
+      const [current] = targetId
+        ? await loadOrgSnapshot(savepoint, ctx.tenantId, effectiveDate, undefined, { id: targetId })
+        : [];
+      const choice =
+        current && requiresEmploymentChoice(current, { ...input, effectiveDate }) ? { addEmployment: false } : {};
+      // DEC-060 原站组织导入只对账组织，不隐式补造任职；交互式变更仍必须显式选择。
       const organization = targetId
         ? await updateOrganization(savepoint, { ...ctx, expectedRevision: row.expectedRevision! }, targetId, {
             ...input,
-            effectiveDate: row.startDate ?? tenantLocalDate(ctx.now, ctx.timezone),
+            ...choice,
+            effectiveDate,
           })
         : await createOrganization(
             savepoint,

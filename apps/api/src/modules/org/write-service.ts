@@ -1,3 +1,4 @@
+import { applyOrgEmploymentLinkage, lockOrgEmploymentTargets, validateEmploymentChoice } from './employment-linkage.js';
 import { employmentVisibilitySql } from '../employment/visibility.js';
 import type { Authorizer } from '../../authorization.js';
 import { linkedObjectScope, type ModuleScope } from '../permission/module-access.js';
@@ -113,6 +114,7 @@ export async function createOrganization(
 export interface OrgUpdateOptions {
   /** DEC-129 级联停用前，按操作人当前数据范围逐个校验下级组织（路由提供）。 */
   readonly authorizeCascade?: CascadeAuthorizer;
+  readonly employmentScope?: ModuleScope;
 }
 
 /** 业务字段全部追加版本；对象头只保存稳定标识、可修改的业务编码及全局 revision。 */
@@ -130,6 +132,9 @@ export async function updateOrganization(
     throw invalid('parents', '上级信息必须是对象');
   }
   const effectiveDate = date(patch.effectiveDate, 'effectiveDate');
+  const employmentCtx = { ...ctx, scope: options.employmentScope };
+  const lockedEmployees =
+    patch.addEmployment === true ? await lockOrgEmploymentTargets(tx, employmentCtx, orgId, effectiveDate) : [];
   await ensureOrgSetup(tx, ctx);
   const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('no key update');
   if (!object) throw new AppError('NOT_FOUND', '组织不存在');
@@ -137,6 +142,7 @@ export async function updateOrganization(
   await rejectEarlierThanFutureVersion(tx, ctx, orgId, effectiveDate);
   if (patch.establishedOn !== undefined) await assertEstablishedOnUnchanged(tx, ctx, orgId, patch.establishedOn);
   const current = await recordAt(tx, object, effectiveDate);
+  const addEmployment = validateEmploymentChoice(current, patch);
   const normalized = normalizeOrganization(ctx, mergePatch(current, patch, effectiveDate));
   const nodes = await validateHierarchy(tx, ctx, normalized, orgId, current.parents);
   await assertParentAvailable(tx, ctx, normalized);
@@ -154,6 +160,7 @@ export async function updateOrganization(
     await disableDescendants(tx, ctx, descendants, from);
   }
   await validateFutureSnapshots(tx, ctx, effectiveDate);
+  if (addEmployment) await applyOrgEmploymentLinkage(tx, employmentCtx, orgId, effectiveDate, lockedEmployees);
   await audit(tx, ctx, 'org.update', orgId, current, saved);
   // 改名或改行政上级不给下级追加全称版本：下级全称在读取时按当天的上级名称解析（read-model 的 resolveOrgPaths）。
   return saved;

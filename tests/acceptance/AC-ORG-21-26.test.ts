@@ -33,7 +33,11 @@ describe('AC-ORG-21～26 组织调整任职联动', () => {
   it('AC-ORG-22 是：本组织与下级各追加直接生效的组织调整，原记录截至前一天；离职/外部门不追加', async () => {
     const { world, root, other, employee, subordinate } = await setup('org22');
     const left = await world.hire('离职员工', { departmentId: root.id });
-    await world.business(left.id, { kind: 'leave', mode: 'direct', effectiveDate: '2026-10-07' }, left.revision);
+    await world.business(
+      left.id,
+      { kind: 'leave', mode: 'direct', effectiveDate: '2026-10-07', lastWorkDate: '2026-10-06' },
+      left.revision,
+    );
     const outside = await world.hire('外部门员工', { departmentId: other.id });
     const response = await world.patchOrg(root, { effectiveDate: DATE, name: '组织甲新', addEmployment: true });
     expect(response.status, await response.clone().text()).toBe(200);
