@@ -6,6 +6,7 @@ import { createPgDb } from '@italent/db';
 import { createApp } from './app.js';
 import { identityResolverFromEnv } from './identity.js';
 import { startEmploymentActivationScheduler } from './modules/employment/activation-scheduler.js';
+import { startAuditRetentionScheduler } from './audit/retention.js';
 
 // 生产环境未接入真实登录（B-01）时，这里直接抛错阻止启动，不回退到不安全的身份实现。
 // 授权不在此注入：createApp 缺省使用权限模型授权器（R1-T01），默认拒绝。
@@ -34,3 +35,9 @@ if (handle && process.env.PERSONNEL_ORDER_CODE_SCHEDULER !== 'off') {
 }
 
 if (handle && process.env.JOB_SEQUENCE_SYNC_SCHEDULER !== 'off') startSequenceSyncScheduler(handle.db);
+// R1-T16 日志保留期：默认每天按各租户 audit.retention 清理一次过期日志（docs/02_业务建模/20 §5 第 4 条）。
+if (handle && process.env.AUDIT_RETENTION_SCHEDULER !== 'off') {
+  startAuditRetentionScheduler(handle.db, {
+    intervalMs: Number(process.env.AUDIT_RETENTION_INTERVAL_MS || 86_400_000),
+  });
+}

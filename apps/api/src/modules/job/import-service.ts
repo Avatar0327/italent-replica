@@ -10,6 +10,8 @@ import { lockJobTenant } from './settings.js';
 import { auditJob, insertRow, rowsOf, snakeCase } from './store.js';
 import type { JobInput, JobWriteContext } from './types.js';
 import { createJobObject, updateJobObject } from './write-service.js';
+import { recordImportLog } from '../../audit/record.js';
+import { auditActor } from '../../system-actor.js';
 
 export interface JobImportRow extends JobInput {
   readonly sourceCode: string;
@@ -77,7 +79,9 @@ export async function importJobObjects(
       reason: result.reason ?? null,
       ...(result.objectId ? { [jobTables(kind).importTarget]: result.objectId } : {}),
     });
-    await auditJob(tx, ctx, 'job.import.result', kind, `${ctx.commandId}:${rowIndex}`, null, result);
+    // DEC-197 / PR #75 第三轮：逐行回执按所属组织（职位）裁剪，其余职务体系对象按回执里的对象编号判断创建人
+    const orgId = kind === 'positions' ? ((row.orgId as string | undefined) ?? null) : null;
+    await auditJob(tx, ctx, 'job.import.result', kind, `${ctx.commandId}:${rowIndex}`, null, result, { orgId });
     results.push(result);
     if (result.objectId) {
       snapshot.mappings.set(result.sourceCode, result.objectId);
@@ -86,6 +90,11 @@ export async function importJobObjects(
       snapshot.codeOwners.set(result.code, owners);
     }
   }
+  const anchors = rows.map((row, rowIndex) => ({
+    objectId: results[rowIndex]?.objectId ?? row.objectId ?? null,
+    orgId: kind === 'positions' ? ((row.orgId as string | undefined) ?? null) : null,
+  }));
+  await recordImportLog(tx, { ...ctx, actorUserId: auditActor(ctx.userId) }, kind, results, anchors);
   return { results };
 }
 

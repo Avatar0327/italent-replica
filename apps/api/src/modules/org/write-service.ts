@@ -2,19 +2,9 @@ import { employmentVisibilitySql } from '../employment/visibility.js';
 import type { Authorizer } from '../../authorization.js';
 import { linkedObjectScope, type ModuleScope } from '../permission/module-access.js';
 import { auditActor } from '../../system-actor.js';
+import { recordAudit } from '../../audit/record.js';
 import { randomUUID } from 'node:crypto';
-import {
-  and,
-  auditEvents,
-  desc,
-  eq,
-  isUuid,
-  orgHierarchyLinks,
-  orgObjects,
-  orgVersions,
-  sql,
-  type Tx,
-} from '@italent/db';
+import { and, desc, eq, isUuid, orgHierarchyLinks, orgObjects, orgVersions, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { assertCodeAvailable, consumeCode, ensureOrgSetup } from './codes.js';
 import { applyEstablishedOnCorrection, planEstablishedOnCorrection } from './correction.js';
@@ -364,7 +354,7 @@ async function audit(
   before: OrgRecord | null,
   after: OrgRecord,
 ): Promise<void> {
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: auditActor(ctx.userId),
     action,

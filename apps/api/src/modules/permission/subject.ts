@@ -1,3 +1,11 @@
+import { sql } from '@italent/db';
+import { scopeRows } from './scope-hierarchy.js';
+import {
+  managerIdentity,
+  defaultManagerPermissions,
+  MANAGER_PROFILE_CODE,
+  type ManagerQuery,
+} from './manager-identity.js';
 /**
  * 读取一个用户在当前租户的权限主体：有效的管理员身份（L2）+ 有效授权所对应身份的对象权限（L3）。
  * 每次请求都从库里重新读取（AGENTS.md §10「权限」：每次请求重验，撤权即生效，无缓存）。
@@ -81,22 +89,41 @@ export async function loadGrantedObjectPermissions(
   tx: Tx,
   userId: string,
   objectCode?: string,
+  managerQuery?: ManagerQuery,
 ): Promise<GrantedObjectPermission[]> {
   const profileIds = await loadActiveProfileIds(tx, userId);
-  if (profileIds.length === 0) return [];
+  let defaults: GrantedObjectPermission[] = [];
+  if (managerQuery && (await managerIdentity(tx, managerQuery)).active) {
+    const [profile] = scopeRows<{ id: string }>(
+      await tx.execute(sql`
+      SELECT id FROM permission_profiles WHERE tenant_id=${managerQuery.tenantId} AND code=${MANAGER_PROFILE_CODE}
+    `),
+    );
+    if (profile) profileIds.push(profile.id);
+    else defaults = defaultManagerPermissions().filter((p) => !objectCode || p.objectCode === objectCode);
+  }
+  if (profileIds.length === 0) return defaults;
   const permissions = await loadObjectPermissionRows(tx, profileIds, objectCode);
   const apps = await tx
     .select({ profileId: permissionProfileApps.profileId, appCode: permissionProfileApps.appCode })
     .from(permissionProfileApps)
     .where(inArray(permissionProfileApps.profileId, profileIds));
-  return permissions.map(({ profileId, ...permission }) => ({
-    ...permission,
-    profileApps: apps.filter((a) => a.profileId === profileId).map((a) => a.appCode),
-  }));
+  return [
+    ...defaults,
+    ...permissions.map(({ profileId, ...permission }) => ({
+      ...permission,
+      profileApps: apps.filter((a) => a.profileId === profileId).map((a) => a.appCode),
+    })),
+  ];
 }
 
-export async function loadSubject(tx: Tx, userId: string, objectCode?: string): Promise<PermissionSubject> {
+export async function loadSubject(
+  tx: Tx,
+  userId: string,
+  objectCode?: string,
+  managerQuery?: ManagerQuery,
+): Promise<PermissionSubject> {
   const adminRoles = await loadAdminRoles(tx, userId);
-  const objectPermissions = await loadGrantedObjectPermissions(tx, userId, objectCode);
+  const objectPermissions = await loadGrantedObjectPermissions(tx, userId, objectCode, managerQuery);
   return { adminRoles, objectPermissions };
 }

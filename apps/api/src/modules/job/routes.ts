@@ -42,6 +42,7 @@ import type { JobInput, JobPatch } from './types.js';
 import { validateJobAssignment } from './validation.js';
 import { employmentJobPersonnel, trimManagerSync } from './employment-port.js';
 import { createJobObject, updateJobObject } from './write-service.js';
+import { rawImportRows, rawUuid, withFailedImportLog } from '../../audit/record.js';
 
 const BASE = '/api/tenant/job';
 registerJobScopeReader({ load: loadJobObject, latest: latestJobObject });
@@ -156,71 +157,91 @@ function registerImport(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.post(`${BASE}/import`, async (c) => {
     const ctx = { ...tenantOf(c), expectedRevision: revision(c), commandId: '', now: deps.clock() };
     requireNew(ctx);
-    const input = await parseBody(
-      c,
-      z.strictObject({
-        kind: z.enum(JOB_KINDS),
-        rows: z.array(z.record(z.string(), z.unknown())).min(1).max(100),
-      }),
-    );
-    const objectCode = JOB_OBJECT_CODES[input.kind];
-    await objectContext(c, deps, objectCode);
-    await button(deps, ctx, objectCode, 'import', 'list');
-    const scope = await requestScope(c, deps, ctx, objectCode);
-    const row = jobCreationSchema(input.kind).extend({
-      sourceCode: z.string().trim().min(1).max(100),
-      objectId: z.uuid().optional(),
-      expectedRevision: z.number().int().min(1).optional(),
-    });
-    const parsed = z.array(row).safeParse(input.rows);
-    if (!parsed.success) throw new AppError('VALIDATION_FAILED', '导入行字段不合法', parsed.error.issues);
-    const guard = async (tx: Tx, row: JobImportRow, targetId: string | undefined) => {
-      const { objectId: _id, expectedRevision: _revision, ...payload } = row;
-      await writeFields(
-        { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) },
-        ctx,
-        objectCode,
-        targetId ? 'update' : 'create',
-        payload,
-      );
-      visible(
-        scope,
-        input.kind === 'positions' ? (row.orgId as string) : undefined,
-        '职务体系对象不存在或已失效',
-        input.kind === 'positions' ? undefined : ctx.userId,
-      );
-      if (targetId && !scope.all)
-        await visibleJob(tx, ctx, scope, input.kind, targetId, row.startDate ?? queryDate(c, ctx));
+    // DEC-199 / PR #75 第三轮 P2-3：格式、按钮、字段与范围校验失败同样是导入任务失败，整批留任务级日志；
+    // 对象类型不合法的请求识别不出是哪类导入，只留失败命令审计
+    const raw = await c.req.json().catch(() => undefined);
+    const kind = (raw as { kind?: unknown } | undefined)?.kind;
+    const known = typeof kind === 'string' && (JOB_KINDS as readonly string[]).includes(kind) ? kind : undefined;
+    const rows = known ? rawImportRows(raw) : [];
+    const task = {
+      ...ctx,
+      commandId: c.req.header('idempotency-key'),
+      objectType: known ?? 'job',
+      total: rows.length,
+      anchors: rows.map((row) => ({
+        objectId: rawUuid(row.objectId),
+        orgId: known === 'positions' ? rawUuid(row.orgId) : null,
+      })),
     };
-    const rows = parsed.data as JobImportRow[];
-    const sequenceAccess =
-      input.kind === 'posts' || input.kind === 'positions'
-        ? {
-            scope: await resolveModuleScope(deps, ctx, undefined, MODULE_OBJECTS.employmentRecord.code),
-            authorize: deps.authorize,
-          }
-        : undefined;
-    return runWrite(
-      c,
-      deps,
-      ctx,
-      input,
-      async (tx, writeCtx) => ({
-        status: 200,
-        body: await importJobObjects(
-          tx,
-          writeCtx,
-          input.kind,
-          rows,
-          (row, target) => guard(tx, row, target),
-          sequenceAccess,
-        ),
-      }),
-      objectCode,
-      (tx) => authorizeJobImportRows(tx, ctx, input.kind, rows, (row, target) => guard(tx, row, target)),
-      (tx, body) => authorizeJobResult(tx, ctx, scope, input.kind, body),
-    );
+    return withFailedImportLog(deps.db, task, () => importJobRows(c, deps, ctx));
   });
+}
+
+async function importJobRows(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: BusinessContext) {
+  const input = await parseBody(
+    c,
+    z.strictObject({
+      kind: z.enum(JOB_KINDS),
+      rows: z.array(z.record(z.string(), z.unknown())).min(1).max(100),
+    }),
+  );
+  const objectCode = JOB_OBJECT_CODES[input.kind];
+  await objectContext(c, deps, objectCode);
+  await button(deps, ctx, objectCode, 'import', 'list');
+  const scope = await requestScope(c, deps, ctx, objectCode);
+  const row = jobCreationSchema(input.kind).extend({
+    sourceCode: z.string().trim().min(1).max(100),
+    objectId: z.uuid().optional(),
+    expectedRevision: z.number().int().min(1).optional(),
+  });
+  const parsed = z.array(row).safeParse(input.rows);
+  if (!parsed.success) throw new AppError('VALIDATION_FAILED', '导入行字段不合法', parsed.error.issues);
+  const guard = async (tx: Tx, row: JobImportRow, targetId: string | undefined) => {
+    const { objectId: _id, expectedRevision: _revision, ...payload } = row;
+    await writeFields(
+      { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) },
+      ctx,
+      objectCode,
+      targetId ? 'update' : 'create',
+      payload,
+    );
+    visible(
+      scope,
+      input.kind === 'positions' ? (row.orgId as string) : undefined,
+      '职务体系对象不存在或已失效',
+      input.kind === 'positions' ? undefined : ctx.userId,
+    );
+    if (targetId && !scope.all)
+      await visibleJob(tx, ctx, scope, input.kind, targetId, row.startDate ?? queryDate(c, ctx));
+  };
+  const rows = parsed.data as JobImportRow[];
+  const sequenceAccess =
+    input.kind === 'posts' || input.kind === 'positions'
+      ? {
+          scope: await resolveModuleScope(deps, ctx, undefined, MODULE_OBJECTS.employmentRecord.code),
+          authorize: deps.authorize,
+        }
+      : undefined;
+  return runWrite(
+    c,
+    deps,
+    ctx,
+    input,
+    async (tx, writeCtx) => ({
+      status: 200,
+      body: await importJobObjects(
+        tx,
+        writeCtx,
+        input.kind,
+        rows,
+        (row, target) => guard(tx, row, target),
+        sequenceAccess,
+      ),
+    }),
+    objectCode,
+    (tx) => authorizeJobImportRows(tx, ctx, input.kind, rows, (row, target) => guard(tx, row, target)),
+    (tx, body) => authorizeJobResult(tx, ctx, scope, input.kind, body),
+  );
 }
 
 function registerObjects(router: Hono<TenantEnv>, deps: TenantRouteDeps) {

@@ -1,7 +1,8 @@
-import { auditEvents, eq, orgSettings, type Tx } from '@italent/db';
+import { eq, orgSettings, type Tx } from '@italent/db';
 import type { OrgDimension } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { ensureOrgSetup, type OrgSetupContext } from './codes.js';
+import { recordAudit } from '../../audit/record.js';
 
 export async function readOrgSettings(tx: Tx, tenantId: string) {
   const [row] = await tx.select().from(orgSettings).where(eq(orgSettings.tenantId, tenantId));
@@ -33,7 +34,7 @@ export async function writeOrgSettings(
     })
     .where(eq(orgSettings.tenantId, ctx.tenantId));
   const after = await readOrgSettings(tx, ctx.tenantId);
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.userId,
     action: 'org.settings.update',

@@ -1,4 +1,4 @@
-import { auditEvents, contractOutbox, sql, type Tx } from '@italent/db';
+import { contractOutbox, sql, type Tx } from '@italent/db';
 import { CONTRACT_OBJECT, tenantLocalDate } from '@italent/domain';
 import type { Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
@@ -10,6 +10,7 @@ import { type ModuleScope } from '../permission/module-access.js';
 import { isEmploymentRecordVisible } from '../employment/visibility.js';
 import { personnelCreationScope } from '../permission/scope-resolver.js';
 import { requireObjectWrite } from '../permission/object-write.js';
+import { recordAudit } from '../../audit/record.js';
 export { rowsOf };
 export interface ContractContext extends ApprovalContext {
   readonly scope?: ModuleScope;
@@ -83,7 +84,7 @@ export async function checkFields(
   });
 }
 export async function audit(tx: Tx, ctx: ContractContext, action: string, id: string, before: unknown, after: unknown) {
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: auditActor(ctx.userId),
     action,

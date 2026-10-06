@@ -3,9 +3,22 @@
  * 租户上下文与权限模型互不相通。写请求必须带 Idempotency-Key（平台命令台账，同键同内容重放、异内容 409）；
  * 改已有对象必须带 If-Match revision（409 后由客户端刷新显式重提，AGENTS.md §10）。
  */
-import { createUser, type Db, isUuid, pgErrorCode, type PlatformCommandMeta } from '@italent/db';
+import {
+  and,
+  createUser,
+  type Db,
+  desc,
+  eq,
+  isUuid,
+  pgErrorCode,
+  platformCommandFailures,
+  type PlatformCommandMeta,
+  recordPlatformEntryFailure,
+  runInPlatformFailureScope,
+  withPlatform,
+} from '@italent/db';
 import { isValidTimeZone } from '@italent/domain';
-import { type Context, Hono } from 'hono';
+import { type Context, Hono, type MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import type { IdentityResolver } from '../../identity.js';
@@ -43,6 +56,34 @@ function meta(c: Context<PlatformEnv>): PlatformCommandMeta {
   return { actorUserId: operatorOf(c).userId, commandId };
 }
 
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/**
+ * DEC-199 / PR #75 第三轮 P2-2：平台写命令在进入执行器之前就失败（请求体、If-Match、参数校验）也写平台失败通道。
+ * 挂在平台身份中间件之后（可信平台运营才记录）；只认携带合法命令 ID 的写请求；本次请求内执行器已记过的不再重复（请求级状态，第四轮 N3）。
+ */
+function capturePlatformFailures(db: Db): MiddlewareHandler<PlatformEnv> {
+  return async (c, next) => {
+    // 请求级“已记录”状态（第四轮 N3）：执行器在本次请求内记过失败，路由再把错误转换成别的应用错误也不重复记录
+    const scope = { recorded: false };
+    await runInPlatformFailureScope(scope, () => next());
+    const error = c.error;
+    const commandId = c.req.header('idempotency-key');
+    if (!error || scope.recorded || !WRITE_METHODS.has(c.req.method) || !commandId || !COMMAND_ID.test(commandId)) {
+      return;
+    }
+    const tenantId = c.req.param('tenantId');
+    const operation = `${c.req.method} ${c.req.routePath}`;
+    await recordPlatformEntryFailure(
+      db,
+      { actorUserId: operatorOf(c).userId, commandId },
+      operation,
+      tenantId && isUuid(tenantId) ? tenantId.toLowerCase() : null,
+      error,
+    );
+  };
+}
+
 function tenantParam(c: Context): string {
   const id = c.req.param('tenantId') ?? '';
   if (!isUuid(id)) throw new AppError('NOT_FOUND', '租户不存在');
@@ -52,6 +93,7 @@ function tenantParam(c: Context): string {
 export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: () => Date): Hono<PlatformEnv> {
   const router = new Hono<PlatformEnv>();
   router.use('/api/platform/*', platformContext(db, identity));
+  router.use('/api/platform/*', capturePlatformFailures(db));
 
   router.post('/api/platform/users', async (c) => {
     const body = await parseBody(c, userBody);
@@ -66,6 +108,9 @@ export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: 
     const body = await parseBody(c, provisionBody);
     return c.json(await provisionTenant(db, body, meta(c), clock()), 201);
   });
+
+  // DEC-199：平台命令失败的受限通道，只对平台运营开放（租户审计查询里看不到）
+  router.get('/api/platform/command-failures', async (c) => c.json(await platformFailures(db, c)));
 
   router.get('/api/platform/tenants/:tenantId', async (c) => {
     const tenant = tenantView(await requireTenant(db, tenantParam(c)));
@@ -98,4 +143,31 @@ export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: 
   });
 
   return router;
+}
+
+const failureQuery = z.strictObject({
+  commandId: z.string().regex(COMMAND_ID).optional(),
+  subjectTenantId: z.uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+async function platformFailures(db: Db, c: Context<PlatformEnv>) {
+  const parsed = failureQuery.safeParse(c.req.query());
+  if (!parsed.success) throw new AppError('VALIDATION_FAILED', '查询条件不合法', parsed.error.issues);
+  const { commandId, subjectTenantId, limit } = parsed.data;
+  const t = platformCommandFailures;
+  const items = await withPlatform(db, (tx) =>
+    tx
+      .select()
+      .from(t)
+      .where(
+        and(
+          commandId ? eq(t.commandId, commandId) : undefined,
+          subjectTenantId ? eq(t.subjectTenantId, subjectTenantId) : undefined,
+        ),
+      )
+      .orderBy(desc(t.occurredAt), desc(t.id))
+      .limit(limit),
+  );
+  return { items: items.map((row) => ({ ...row, occurredAt: new Date(row.occurredAt).toISOString() })) };
 }

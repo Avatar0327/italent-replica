@@ -35,10 +35,10 @@ export async function authorizeEstablishmentReplay(
 ): Promise<void> {
   const result = await tx.execute(sql`
     SELECT a.action,a.before,a.after,o.org_id AS "orgId",
-      (SELECT original.actor_user_id FROM audit_events original
+      (SELECT original.creator_user_id FROM audit_object_creators original
        WHERE original.tenant_id=a.tenant_id AND original.object_id=a.object_id
          AND original.action='establishment.capacity.create'
-       ORDER BY original.occurred_at,original.id LIMIT 1) AS "creatorId"
+       ORDER BY original.created_at LIMIT 1) AS "creatorId"
     FROM audit_events a LEFT JOIN establishment_objects o
       ON o.tenant_id=a.tenant_id AND o.id::text=a.object_id
     WHERE a.tenant_id=${ctx.tenantId} AND a.command_id=${commandId}
