@@ -21,6 +21,7 @@ import { latestJobObject } from './read-model.js';
 import { lockJobTenant } from './settings.js';
 import { queueSequenceSync } from './sequence-sync.js';
 import type { SequenceSource } from './sequence-targets.js';
+import { visibleSequenceReceipts, type SequenceReceipt } from './sequence-receipts.js';
 const inputSchema = z.strictObject({
   items: z
     .array(
@@ -32,44 +33,54 @@ const inputSchema = z.strictObject({
     .min(1)
     .max(100),
 });
-export function registerSequenceSyncRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+function registerSequenceReceiptRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/api/tenant/job/sequence-sync/messages', async (c) => {
     const ctx = tenantOf(c);
-    const items = await withTenant(deps.db, ctx.tenantId, async (tx) =>
-      rowsOf(
+    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const stored = rowsOf<{ id: string; createdAt: string; message: SequenceReceipt }>(
         await tx.execute(sql`
       SELECT id,created_at AS "createdAt",payload->'after' AS message FROM employment_outbox
       WHERE tenant_id=${ctx.tenantId} AND event_type='job.sequence-sync.completed'
         AND payload->'after'->>'recipientUserId'=${ctx.userId}
       ORDER BY created_at DESC,id DESC LIMIT 20`),
-      ),
-    );
+      );
+      const messages = await visibleSequenceReceipts(
+        tx,
+        deps,
+        ctx,
+        stored.map((item) => item.message),
+      );
+      return stored.map((item, index) => ({ ...item, message: messages[index] }));
+    });
     return c.json({ items });
   });
   router.get('/api/tenant/job/sequence-sync/tasks/:id', async (c) => {
     const ctx = tenantOf(c);
     const parsed = z.uuid().safeParse(c.req.param('id'));
     if (!parsed.success) throw new AppError('VALIDATION_FAILED', '任务 ID 不合法');
-    const task = await withTenant(
-      deps.db,
-      ctx.tenantId,
-      async (tx) =>
-        rowsOf(
-          await tx.execute(sql`
+    const task = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const [stored] = rowsOf<{ id: string; state: string; result: SequenceReceipt | null }>(
+        await tx.execute(sql`
       SELECT o.id, (SELECT state FROM employment_outbox_attempts a WHERE a.tenant_id=o.tenant_id AND a.outbox_id=o.id
         ORDER BY attempt_no DESC LIMIT 1) AS state,
         (SELECT payload->'after' FROM employment_outbox done WHERE done.tenant_id=o.tenant_id
-
-      AND done.event_type='job.sequence-sync.completed'
+          AND done.event_type='job.sequence-sync.completed'
           AND done.payload->'after'->>'taskId'=o.id::text LIMIT 1) AS result
       FROM employment_outbox o WHERE o.tenant_id=${ctx.tenantId} AND o.id=${parsed.data}::uuid
         AND o.event_type='job.sequence-sync.requested' AND o.payload->'after'->>'recipientUserId'=${ctx.userId}
     `),
-        )[0],
-    );
+      );
+      if (!stored || !stored.result) return stored;
+      const [result] = await visibleSequenceReceipts(tx, deps, ctx, [stored.result]);
+      return { ...stored, result };
+    });
     if (!task) throw new AppError('NOT_FOUND', '任务不存在');
     return c.json(task);
   });
+}
+
+export function registerSequenceSyncRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  registerSequenceReceiptRoutes(router, deps);
   for (const kind of ['posts', 'positions'] as const) {
     router.post(`/api/tenant/job/${kind}/sync-sequence`, async (c) => {
       const code = JOB_OBJECT_CODES[kind];

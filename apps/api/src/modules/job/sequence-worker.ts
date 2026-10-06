@@ -219,7 +219,8 @@ async function executeSequenceJob(tx: Tx, ctx: EmploymentContext, job: QueuedJob
   const results = await sequenceResults(tx, ctx, request, candidates);
   for (const target of targets) await appendSequenceVersion(tx, ctx, target);
   await auditSequenceResult(tx, ctx, job.id, results);
-  // 审批通知要求 instance_id；站内消息复用 outbox，由仅发起人可读的消息接口与页面展示，不伪造审批实例。
+  // 审批通知要求 instance_id；站内消息复用 outbox，不伪造审批实例。
+  // 此载荷是内部执行证据，两个读取接口必须经 visibleSequenceReceipts 按当前权限裁剪。
   await auditEmployment(
     tx,
     { ...ctx, userId: SYSTEM_USER_ID },
