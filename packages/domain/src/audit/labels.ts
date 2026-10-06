@@ -1,5 +1,3 @@
-import type { AdminCapability } from '../permission/admin-roles.js';
-
 /**
  * 审计日志的显示元数据（docs/02_业务建模/20 §2：数据变更日志列「应用」「对象」「变更内容」）。
  * 字段中文名照搬原站任职记录字段（docs/02_业务建模/07 §3.1、15），未登记的字段按编码原样显示，不猜中文名。
@@ -155,44 +153,43 @@ export function auditReferenceKind(field: string): AuditReferenceKind | undefine
 }
 
 /**
- * DEC-197：没有人员 / 组织归属的配置类对象，审计按“当前能否管理该配置”判断——持有对应的企业设置能力才可见
- * （06 §7.1 能力矩阵）。未登记的对象类型一律不可见（fail-closed）。
+ * DEC-203（补充 DEC-197）：没有人员 / 组织归属的配置类对象，持有「日志审计」的查看人均可查看，不按“能否管理该配置”
+ * 裁剪。只有登记在这里的配置对象类型才按此放行；未登记、又没有归属的对象一律不可见（fail-closed）——
+ * 例如没有所属人员的审批实例 / 任务属于业务单据，不是配置，不在此列。
  */
-export const AUDIT_CONFIG_CAPABILITIES: Readonly<Record<string, AdminCapability>> = {
-  tenant: 'other_settings',
-  tenant_setting: 'other_settings',
-  audit_retention: 'other_settings',
-  'employment-activation-run': 'other_settings',
-  tenant_user: 'user_manage',
-  permission_admin: 'admin_manage',
-  permission_profile: 'profile_manage',
-  permission_grant: 'user_grant',
-  permission_mou: 'mou_manage',
-  permission_identity_scope: 'mou_manage',
-  permission_user_app_scope: 'mou_manage',
-  permission_scope_policy: 'other_settings',
-  permission_scope_app: 'other_settings',
-  permission_dynamic_org_grant: 'other_settings',
-  license_pool: 'license_balance',
-  license_seat: 'license_balance',
-  employment_settings: 'other_settings',
-  employment_custom_field: 'other_settings',
-  transfer_settings: 'other_settings',
-  transfer_form: 'other_settings',
-  'personnel-order-settings': 'other_settings',
-  'personnel-order-run': 'other_settings',
-  org_setting: 'org_structure',
-  org_code_reservation: 'org_structure',
-  org_import_result: 'org_structure',
-  job_setting: 'org_structure',
-  'establishment-scheme': 'org_structure',
-  'establishment-copy-job': 'org_structure',
-  'establishment-notification': 'org_structure',
-  'approval-process': 'process_matrix',
-  'approval-exception-admin': 'process_matrix',
-  'approval-instance': 'process_matrix',
-  'approval-task': 'process_matrix',
-};
+export const AUDIT_CONFIG_OBJECT_TYPES: ReadonlySet<string> = new Set([
+  'tenant',
+  'tenant_setting',
+  'audit_retention',
+  'employment-activation-run',
+  'tenant_user',
+  'permission_admin',
+  'permission_profile',
+  'permission_grant',
+  'permission_mou',
+  'permission_identity_scope',
+  'permission_user_app_scope',
+  'permission_scope_policy',
+  'permission_scope_app',
+  'permission_dynamic_org_grant',
+  'license_pool',
+  'license_seat',
+  'employment_settings',
+  'employment_custom_field',
+  'transfer_settings',
+  'transfer_form',
+  'personnel-order-settings',
+  'personnel-order-run',
+  'org_setting',
+  'org_code_reservation',
+  'org_import_result',
+  'job_setting',
+  'establishment-scheme',
+  'establishment-copy-job',
+  'establishment-notification',
+  'approval-process',
+  'approval-exception-admin',
+]);
 
 /** 审计字段路径 → 字段权限编码：取末段；自定义字段两种写法（customFields.<id> 与 custom:<id>）都映射为 custom:<id>。 */
 export function auditFieldCode(path: string): string {

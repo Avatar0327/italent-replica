@@ -4,12 +4,12 @@
  * - 有权限对象编码的（任职、员工、人员信息、合同、组织、编制、职务体系）：按该对象的当前数据范围判断——
  *   任职按 DEC-177（记录部门 ∪ 员工当前部门），人员类按所属人员，组织类按所属组织，无归属的按“有该对象数据权限”；
  *   字段按该对象的当前查看字段裁剪，至少有一个可见字段变化的日志才返回（隐藏字段不能被字段筛选探测出来）；
- * - 配置类对象（无人员 / 组织归属）：按管理该配置的企业设置能力判断（AUDIT_CONFIG_CAPABILITIES），未登记的不返回。
+ * - 配置类对象（无人员 / 组织归属）：持「日志审计」者均可见（DEC-203，AUDIT_CONFIG_OBJECT_TYPES），未登记的不返回。
  * 行级判断全部在 SQL 里、分页之前完成；字段裁剪在返回前对差异、前后值、快照与任务错误报告逐项执行。
  * 创建人维度（使用用户）不参与审计可见判断（fail-closed）。
  */
 import { sql, type Tx, withTenant } from '@italent/db';
-import { AUDIT_CONFIG_CAPABILITIES, auditFieldCode, type AuditFieldChange, MODULE_OBJECTS } from '@italent/domain';
+import { AUDIT_CONFIG_OBJECT_TYPES, auditFieldCode, type AuditFieldChange, MODULE_OBJECTS } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../routes.js';
 import type { TenantContext } from '../tenant-context.js';
@@ -49,17 +49,8 @@ export async function auditViewer(
     const scope = await resolveModuleScope(deps, ctx, undefined, code);
     access.set(code, { scope, fields: await getModuleViewableFields(deps, ctx, code) });
   }
-  const configTypes: string[] = [];
-  const held = new Map<string, boolean>();
-  for (const [objectType, capability] of Object.entries(AUDIT_CONFIG_CAPABILITIES)) {
-    if (!held.has(capability)) {
-      held.set(capability, await deps.authorize({ ...ctx, action: `admin.${capability}` }));
-    }
-    if (held.get(capability)) configTypes.push(objectType);
-  }
-  const config = configTypes.length
-    ? sql`(scope_object IS NULL AND object_type = ANY(${`{${configTypes.map(quote).join(',')}}`}::text[]))`
-    : sql`false`;
+  const configTypes = [...AUDIT_CONFIG_OBJECT_TYPES];
+  const config = sql`(scope_object IS NULL AND object_type = ANY(${`{${configTypes.map(quote).join(',')}}`}::text[]))`;
   const objectPredicates = (withFields: boolean) =>
     [...access].map(
       ([code, entry]) => sql`(scope_object = ${code} AND ${rowScope(code, entry.scope, withFields)}
