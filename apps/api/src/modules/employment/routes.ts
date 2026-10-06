@@ -63,6 +63,11 @@ import type { EmploymentContext } from './types.js';
 import { registerTransferRoutes } from '../transfer/routes.js';
 import { requireTransferSource } from '../transfer/access.js';
 import { requireDirectTransfer, transferBusinessContext } from '../transfer/service.js';
+import { batchEditEmploymentRecords, normalizeBatchEdit } from './batch-edit.js';
+import { recordOperationLog } from '../../audit/record.js';
+import { auditActor } from '../../system-actor.js';
+import { rawImportRows, withFailedImportLog } from '../../audit/record.js';
+import { failedImportAnchors, importedItems } from './import-audit.js';
 
 export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   const module = new Hono<TenantEnv>();
@@ -79,6 +84,7 @@ export const registerEmploymentRoutes: TenantRouteModule = (router, deps) => {
   registerBusinesses(module, deps);
   registerActivation(module, deps);
   registerForwardUpdates(module, deps);
+  registerBatchEdit(module, deps);
   registerSettings(module, deps);
   registerCustomFields(module, deps);
   router.route('/api/tenant/employment', module);
@@ -402,6 +408,27 @@ async function emptySubmitBody(c: Context<TenantEnv>): Promise<void> {
   if (c.req.header('content-type')) parse(z.strictObject({}), await jsonBody(c));
 }
 
+function registerBatchEdit(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  // R1-T16 / AC-AUD-03：批量编辑任职记录，逐条按单条编辑的权限与范围校验，整单同事务（batch-edit.ts）
+  router.post('/records/batch-edit', async (c) => {
+    const ctx = await readContext(c, deps, 'object.update');
+    const input = normalizeBatchEdit(await jsonBody(c));
+    await requireEmploymentWrite(ctx, 'update', input.patch, 'Employment.Edit');
+    const departmentId = input.patch.fields?.departmentId;
+    for (const item of input.items) {
+      const current = await authorizeBusinessWrite(deps, ctx, item.id);
+      if (departmentId !== undefined)
+        await withTenant(deps.db, ctx.tenantId, (tx) =>
+          requireScopedEmploymentObject(tx, ctx, current.employeeId, departmentId, item.id),
+        );
+    }
+    return runWrite(c, deps, ctx, input, async (tx, context) => ({
+      status: 200,
+      body: await batchEditEmploymentRecords(tx, context, input),
+    }));
+  });
+}
+
 async function authorizeBusinessWrite(deps: TenantRouteDeps, ctx: EmploymentContext, id: string, employeeId?: string) {
   // 幂等重放也重验当前范围，不能依赖可能被命令台账跳过的 execute。
   const value = await withTenant(deps.db, ctx.tenantId, (tx) =>
@@ -594,10 +621,25 @@ function registerForwardUpdates(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       body: await editEmploymentRecord(tx, context, id, input),
     }));
   });
-  router.post('/employees/:id/import', async (c) => {
-    const id = uuidParam(c);
-    const ctx = await readContext(c, deps, 'object.view', revision(c), id);
-    const input = normalizeEmploymentImport(await jsonBody(c));
+  router.post('/employees/:id/import', (c) => importEmployment(c, deps));
+}
+
+async function importEmployment(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  const id = uuidParam(c);
+  const ctx = await readContext(c, deps, 'object.view', revision(c), id);
+  const raw = await jsonBody(c);
+  // DEC-199 / PR #75 第三轮 P2-3：格式与授权校验失败同样是导入任务失败，整批留任务级日志（单人导入，归属即该员工）；
+  // 第五轮：逐行补任职业务编号与记录部门
+  const task = {
+    ...ctx,
+    commandId: c.req.header('idempotency-key'),
+    objectType: 'employment-record',
+    total: rawImportRows(raw, 'items').length,
+    scopeEmployeeId: id,
+    resolveAnchors: (tx: Tx) => failedImportAnchors(tx, ctx, id, raw),
+  };
+  return withFailedImportLog(deps.db, task, async () => {
+    const input = normalizeEmploymentImport(raw);
     await authorizeImport(deps, ctx, id, input);
     return runWrite(c, deps, ctx, input, async (tx, context) => ({
       status: 200,
@@ -673,5 +715,21 @@ async function importWithTransferAuthorization(
   await lockImportParticipants(tx, ctx, employeeId, input);
   await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
   await requireImportTransferAccess(tx, ctx, employeeId, input);
-  return importEmploymentRecords(tx, ctx, employeeId, input);
+  const result = await importEmploymentRecords(tx, ctx, employeeId, input);
+  // R1-T16：导入整体提交，任务级日志与业务同事务
+  await recordOperationLog(tx, {
+    tenantId: ctx.tenantId,
+    actorUserId: auditActor(ctx.userId),
+    behavior: 'import',
+    objectType: 'employment-record',
+    objectId: employeeId,
+    scopeEmployeeId: employeeId,
+    successCount: input.items.length,
+    failureCount: 0,
+    // 逐行保存任职业务编号、员工与记录部门（PR #75 第五轮）
+    items: importedItems(result.items),
+    commandId: ctx.commandId,
+    occurredAt: ctx.now,
+  });
+  return result;
 }

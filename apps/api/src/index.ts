@@ -56,3 +56,13 @@ export {
   type RestoreReport,
   restoreTenant,
 } from './modules/platform/restore.js';
+// R1-T16 审计日志：保留期定时清理（平台路径）与失败命令审计的兜底通道
+export {
+  type AuditRetentionResult,
+  type AuditRetentionRun,
+  type AuditRetentionRunInput,
+  type AuditRetentionScheduler,
+  runAuditRetention,
+  startAuditRetentionScheduler,
+} from './audit/retention.js';
+export { type AuditFallbackRecord, setAuditFallbackSink } from './audit/failures.js';

@@ -5,7 +5,7 @@
  * - view：读接口能力，其持有者必须与 holders 完全一致（可见 ⇔ 后端可读，单测守护）；
  * - edit：写接口能力，其持有者必须是 holders 的子集。可以更窄：管理单元的增删改首版只开放给租户管理员
  *   （REQ-PRM-002「配置边界」），系统 / 用户 / 权限管理员可见但只读。
- * 未登记 view 的菜单只保留入口定义（企业安全、日志审计见 OPEN-007；余额分配组等待取证），不可操作。
+ * 未登记 view 的菜单只保留入口定义（企业安全、日志审计其余子菜单见 OPEN-007 / G-043；余额分配组等待取证），不可操作。
  */
 import { type AdminCapability, type AdminRole, hasAdminCapability } from './admin-roles.js';
 
@@ -76,7 +76,8 @@ const ROWS: readonly Row[] = [
   ['security.field_masking', '企业安全/字段脱敏设置', [T]],
   ['security.personal_data_purge', '企业安全/人员数据清除', [T]],
   ['audit.login', '日志审计/登录日志', [T, A]],
-  ['audit.business', '日志审计/业务操作日志', [T, A]],
+  // R1-T16：数据变更日志、对象操作日志、失败命令审计的只读查询挂在这里（20 §5 第 5 条）；其余日志审计子菜单原站未取证（G-043）
+  ['audit.business', '日志审计/业务操作日志', [T, A], 'audit_log'],
   ['audit.app_config', '日志审计/应用配置日志', [T, A]],
   ['audit.message', '日志审计/消息发送日志', [T, A]],
   ['audit.masked_field_view', '日志审计/脱敏字段查看日志', [T, A]],

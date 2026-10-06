@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { auditEvents, sql, type Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import { AppError, type ErrorCode } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
+import { recordAudit } from '../../audit/record.js';
 import type { ForeignField } from './foreign-fields.js';
 
 /**
@@ -67,7 +68,7 @@ export async function auditApproval(
 ): Promise<void> {
   const keys = changed(entry.before, entry.after);
   const pick = (value: Row | null) => (value ? Object.fromEntries(keys.map((key) => [key, value[key] ?? null])) : null);
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: actorOf(ctx),
     action: entry.action,

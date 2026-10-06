@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { auditEvents, sql, type Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import type { TenantContext } from '../../tenant-context.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
+import { recordAudit } from '../../audit/record.js';
 
 export type Row = Record<string, unknown>;
 export interface PersonnelContext extends TenantContext {
@@ -70,7 +71,7 @@ export async function audit(
   const select = (value: Row | null) =>
     value === null ? null : Object.fromEntries(changed.map((key) => [key, value[key] ?? null]));
   const deleted = after?.deleted === true;
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: auditActor(ctx.userId),
     action: `personnel.${deleted ? 'delete' : before ? 'update' : 'create'}`,
@@ -80,6 +81,8 @@ export async function audit(
     after: select(after),
     commandId: ctx.commandId,
     occurredAt: ctx.now,
+    // DEC-197：只存变化字段时前后值里不一定有 employeeId，所属人员显式给出
+    scope: { employeeId },
   });
   await insert(tx, 'personnel_outbox', {
     id: randomUUID(),

@@ -1,10 +1,12 @@
-import { auditEvents, sql, type Tx } from '@italent/db';
+import { auditSourceSql, sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { auditActor } from '../../system-actor.js';
 import { orderCodeProjection } from './order-code-query.js';
 import { assertRevision, rows, type PersonnelContext } from './store.js';
 import { lockOrderSettings } from './order-code-settings.js';
+import { recordAudit } from '../../audit/record.js';
+import { currentAuditRequest } from '../../audit/request-context.js';
 
 const columns: Record<string, SQL> = {
   department: sql`department_path`,
@@ -24,6 +26,7 @@ export async function recomputeOrderCodes(tx: Tx, ctx: PersonnelContext, checkRe
   const enabled = config.enabled && items.length > 0;
   const order = items.map((i) => sql`${columns[i.field]!} ${i.direction === 'asc' ? sql`ASC` : sql`DESC`} NULLS LAST`);
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
+  const source = auditSourceSql(currentAuditRequest()?.source);
   // 全租户窗口在数据库内计算；一个 SQL 快照读取主职与组织 / 职务版本，原子发布，避免分批产生局部名次。
   // NULL 仅按 SQL 比较顺序放末尾，不转为占位数字；没有当前主职的人员不参与名次。
   const [result] = rows<{ changed: number }>(
@@ -45,12 +48,15 @@ export async function recomputeOrderCodes(tx: Tx, ctx: PersonnelContext, checkRe
         WHERE target.order_code IS DISTINCT FROM EXCLUDED.order_code
       RETURNING employee_id,order_code,revision
     ), audited AS (
+      -- 集合写入同样走统一审计口径（P2-6）：来源取本请求上下文；操作类型、字段差异、归属与“定时任务”来源
+      -- 由迁移 0058 的触发器按同一规则补齐
       INSERT INTO audit_events(tenant_id,actor_user_id,action,object_type,object_id,
-        "before","after",command_id,occurred_at)
+        "before","after",command_id,occurred_at,${source.columns})
       SELECT ${ctx.tenantId},${auditActor(ctx.userId)}::uuid,'personnel.order.recompute','personnel-order-code',
         c.employee_id::text,
         CASE WHEN p.employee_id IS NULL THEN NULL ELSE jsonb_build_object('orderCode',p.order_code) END,
-        jsonb_build_object('orderCode',c.order_code),${ctx.commandId},${ctx.now.toISOString()}::timestamptz
+        jsonb_build_object('orderCode',c.order_code),${ctx.commandId},${ctx.now.toISOString()}::timestamptz,
+        ${source.values}
       FROM changed c LEFT JOIN previous p USING (employee_id)
     ), emitted AS (
       INSERT INTO personnel_outbox(tenant_id,employee_id,object_type,object_id,event_type,revision,command_id)
@@ -78,7 +84,7 @@ async function recordRun(tx: Tx, ctx: PersonnelContext, result: object, manual: 
       error=NULL,ran_at=EXCLUDED.ran_at`);
   // 即使没有名次变化也记录手动触发人；命令台账保证重放不会再执行这一写入。
   if (manual)
-    await tx.insert(auditEvents).values({
+    await recordAudit(tx, {
       tenantId: ctx.tenantId,
       actorUserId: auditActor(ctx.userId),
       action: 'personnel.order.run',
