@@ -145,7 +145,9 @@ BEGIN
     scope_object := 'TenantBase.EmploymentRecord';
     employee := audit_json_uuid(before, after, 'employeeId');
     IF employee IS NULL THEN
-      SELECT r.employee_id INTO employee FROM transfer_requests r WHERE r.tenant_id = tenant AND r.id = target;
+      -- 调动申请的对象编号即任职业务编号（transfer_requests 以 business_id 为键）
+      SELECT b.employee_id INTO employee FROM employment_business_objects b
+       WHERE b.tenant_id = tenant AND b.id = target;
     END IF;
     org := audit_json_uuid(before, after, 'departmentId');
   ELSIF object_type = 'employment_employee' THEN

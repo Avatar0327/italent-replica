@@ -2,7 +2,8 @@
  * DEC-197 字段裁剪的单元行为，以及迁移 0050 的 SQL 差异函数与 @italent/domain diffAuditFields 口径一致
  * （集合 SQL 写入与历史行回填走 SQL，统一入口走 TypeScript，两边必须得出相同的字段差异）。
  */
-import { sql } from '@italent/db';
+import { randomUUID } from 'node:crypto';
+import { createTenant, sql, withTenant } from '@italent/db';
 import { diffAuditFields } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -68,5 +69,39 @@ describe('SQL 与 TypeScript 的字段差异口径一致', () => {
     );
     const rows = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { diff: unknown }[];
     expect(rows[0]!.diff).toEqual(diffAuditFields(before, after));
+  });
+});
+
+describe('归属推导的每个分支都能执行（plpgsql 只在首次执行时检查列名）', () => {
+  const types = [
+    'employment-record',
+    'employment-business',
+    'transfer-request',
+    'employment_employee',
+    'personnel-order-code',
+    'TenantBase.EmploymentContract',
+    'TenantBase.Education',
+    'organization',
+    'establishment-capacity',
+    'positions',
+    'posts',
+    'approval-instance',
+    'approval-task',
+    'tenant_setting',
+  ];
+
+  it.each(types)('%s', async (objectType) => {
+    const { db } = testDb();
+    const meta = { actorUserId: null, commandId: `anchor-${objectType.replace(/[^A-Za-z0-9]/g, '-')}` };
+    const code = `anchor-${objectType.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+    const tenant = await createTenant(db, { code, name: '归属推导租户' }, meta);
+    const id = randomUUID();
+    const rows = await withTenant(db, tenant.id, async (tx) => {
+      const result = await tx.execute(
+        sql`SELECT * FROM audit_scope_anchor(${objectType}, ${id}, NULL, ${JSON.stringify({ employeeId: id })}::jsonb)`,
+      );
+      return (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as Record<string, unknown>[];
+    });
+    expect(rows).toHaveLength(1);
   });
 });
