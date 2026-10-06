@@ -25,7 +25,7 @@ async function participants(tx: Tx, ctx: EmploymentContext, employeeId: string, 
       JOIN LATERAL (SELECT state FROM employment_state_events s
         WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id ORDER BY event_no DESC LIMIT 1) s ON true
       WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=ANY(${array([...ids])})
-        AND p.kind='transfer' AND s.state NOT IN ('deleted','disapproved')
+        AND p.kind='transfer' AND s.state NOT IN ('deleted','disapproved','voided')
         AND NOT EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=b.tenant_id
           AND o.business_id=b.id AND o.event_type='employment.transfer.linked')
     `),
