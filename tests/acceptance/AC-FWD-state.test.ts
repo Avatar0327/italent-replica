@@ -236,14 +236,15 @@ describe('AC-FWD-01/02 状态、周期与并发边界', () => {
   it('两笔不同业务并发批准，传播与另一业务生效串行一致；过期目标显式刷新重提不丢更新', async () => {
     const { db } = testDb();
     const { session, employee, hire } = await fixture(db, 'fwd-concurrent-approval');
+    // DEC-195：本例只测并发传播，使用批准当天；迟到改期另由 F-017 专项覆盖。
     const sourceDraft = await session.business(
       employee.id,
-      { kind: 'transfer', mode: 'application', effectiveDate: '2026-09-10', fields: { place: '并发同步地点' } },
+      { kind: 'transfer', mode: 'application', effectiveDate: '2026-10-01', fields: { place: '并发同步地点' } },
       hire.employeeRevision,
     );
     const laterDraft = await session.business(
       employee.id,
-      { kind: 'regularization', mode: 'application', effectiveDate: '2026-09-20', fields: { place: '原地点' } },
+      { kind: 'regularization', mode: 'application', effectiveDate: '2026-10-01', fields: { place: '原地点' } },
       sourceDraft.employeeRevision,
     );
     const source = await transition(db, session, sourceDraft, 'submit');

@@ -39,7 +39,7 @@ export const auditOperationLogs = pgTable(
     commandId: text('command_id'),
     occurredAt: utc('occurred_at'),
     ...auditSourceColumns(),
-    // DEC-197：可见性依据（同 audit_events，由迁移 0051 的触发器推导）
+    // DEC-197：可见性依据（同 audit_events，由迁移 0055 的触发器推导）
     scopeObject: text('scope_object'),
     scopeEmployeeId: uuid('scope_employee_id'),
   },

@@ -1,3 +1,4 @@
+import { lockTransferParticipants } from '../employment/transfer-locks.js';
 /**
  * 异常管理员交接（DEC-098）：异常管理员停用前必须指定替代人——引用其为异常管理员的流程以当前版本为底稿重新发布，
  * 记下替代人，其名下在办的异常任务转给替代人；之后才允许撤销其成员关系（迁移 0030 触发器把关）。
@@ -107,6 +108,7 @@ export async function handoverExceptionAdmin(
   const processes = await republishProcesses(tx, ctx, input);
   const instances = scope ? await transferableInstances(tx, ctx, input, scope) : [];
   const batch = instances.slice(0, BATCH);
+  await lockHandoverParticipants(tx, ctx, batch);
   let tasks = 0;
   const skipped: SkippedInstance[] = [];
   // R6-3：选批与游标仍按实例编号（对外不变）；批内按全局取锁顺序逐单处理（一批一个事务，批与批之间锁已释放）。
@@ -367,16 +369,18 @@ export async function takeOverOnDeactivation(
   const successorScope = successor
     ? await memberInstanceScope(deps, { tenantId, userId: successor, timezone }, tx)
     : null;
-  // R6-3：整个停用在一个事务里、已取的锁不释放，按全局取锁顺序逐页接管，游标按同一顺序跨页延续（不能只在页内排序）。
+  // F-017：会签合席可能推进业务。跨页先收齐参与闭包，不能在持实例锁后追加较小员工锁。
   let after: LockKey | null = null;
+  const instances: LockKey[] = [];
   for (;;) {
     const page = await pendingInLockOrder(tx, tenantId, userId, after);
-    for (const { id } of page) {
-      await takeOverInstance(tx, ctx, id, userId, successor, successorScope, options.settle ?? true);
-    }
-    if (page.length < BATCH) return;
+    instances.push(...page);
+    if (page.length < BATCH) break;
     after = page.at(-1)!;
   }
+  await lockHandoverParticipants(tx, ctx, instances);
+  for (const { id } of instances)
+    await takeOverInstance(tx, ctx, id, userId, successor, successorScope, options.settle ?? true);
 }
 
 /**
@@ -472,4 +476,11 @@ async function takeoverTarget(
     throw approvalError('CONFLICT', 'APPROVAL_EXCEPTION_ADMIN_UNAVAILABLE', `异常待办无人可接手，不能停用：${why}`);
   }
   return { userId: takeover.userId, reason: `原异常管理员停用，替代人不能接手，转租户管理员；${takeover.reason}` };
+}
+
+async function lockHandoverParticipants(tx: Tx, ctx: ApprovalContext, batch: readonly LockKey[]) {
+  const employees = [...new Set(batch.map((item) => item.employee_id))]
+    .filter((id) => id !== '00000000-0000-0000-0000-000000000000')
+    .sort();
+  if (employees.length) await lockTransferParticipants(tx, ctx, employees[0]!, employees.slice(1));
 }

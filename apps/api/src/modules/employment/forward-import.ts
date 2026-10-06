@@ -112,7 +112,7 @@ export async function importEmploymentRecords(tx: Tx, ctx: EmploymentContext, em
           normalizeBusinessPatch(item.patch),
           'import',
           // 07 A7.1 / AC-FWD-10：编辑模式始终向后更新，新增开关不影响它。
-          { forwardUpdate: true },
+          { forwardUpdate: true, establishmentWarnings: warnings },
         ),
       );
     }

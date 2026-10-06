@@ -123,6 +123,7 @@ async function applyExplicitPresetFields(
   metadata: TrustedFormSnapshot,
   fields: PresetFields,
   explicitFieldCodes: string[],
+  derivedFieldCodes: string[],
   employeeCode: string,
 ): Promise<void> {
   const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
@@ -132,13 +133,14 @@ async function applyExplicitPresetFields(
     setField(fields, field as PresetField, value ?? null);
     explicitFieldCodes.push(`preset:${field}`);
   }
+  // DEC-187：只读/隐藏限制人工输入，不限制系统派生。
   const derivedSequence =
-    input.kind !== 'transfer' || fieldMode('preset:sequenceId') === 'editable'
+    input.kind !== 'transfer' || fieldMode('preset:sequenceId') !== 'absent'
       ? await sequenceForNewPost(tx, ctx.tenantId, parsedFields, input.effectiveDate)
       : null;
   if (derivedSequence) {
     setField(fields, 'sequenceId', derivedSequence);
-    explicitFieldCodes.push('preset:sequenceId');
+    derivedFieldCodes.push('preset:sequenceId');
   }
   if (
     input.kind === 'transfer' &&
@@ -151,7 +153,7 @@ async function applyExplicitPresetFields(
     const manager = await managerForTransferDepartment(tx, ctx.tenantId, parsedFields, input.effectiveDate);
     if (manager !== undefined) {
       setField(fields, 'directManagerId', manager);
-      explicitFieldCodes.push('preset:directManagerId');
+      derivedFieldCodes.push('preset:directManagerId');
     }
   }
   if (owns(parsedFields, 'jobNumber') && parsedFields.jobNumber !== null) {
@@ -228,6 +230,7 @@ export async function prepareInheritance(
   }));
   const customFields: Record<string, CustomValue> = Object.fromEntries(definitions.map((field) => [field.id, null]));
   const explicitFieldCodes: string[] = [];
+  const derivedFieldCodes: string[] = [];
   const deferredFieldCodes: string[] = [];
   const startsNewCycle = NEW_CYCLES.includes(input.kind);
   const previous = startsNewCycle
@@ -254,10 +257,11 @@ export async function prepareInheritance(
     metadata,
     fields,
     explicitFieldCodes,
+    derivedFieldCodes,
     employee.code,
   );
   applyCustomInheritance(input, metadata, definitions, eligible, customFields, explicitFieldCodes, deferredFieldCodes);
-  const explicit = new Set(explicitFieldCodes);
+  const explicit = new Set([...explicitFieldCodes, ...derivedFieldCodes]);
   return {
     effectiveDate: input.effectiveDate,
     fields,
@@ -288,7 +292,12 @@ export async function prepareEmploymentPatch(
   for (const field of INHERITED_FIELDS) {
     const code = `preset:${field}`;
     // 只恢复创建时冻结的默认值；上一版显式填写、本次被放弃的值（DEC-107 改选职务时的序列）改取当前默认值。
-    if (!explicit.has(code) && !oldDeferred.has(code) && !oldExplicit.has(code))
+    const rederived =
+      (field === 'directManagerId' &&
+        owns(input.fields ?? {}, 'departmentId') &&
+        input.fields?.departmentId !== previous.fields.departmentId) ||
+      (field === 'sequenceId' && owns(input.fields ?? {}, 'postId') && input.fields?.postId !== previous.fields.postId);
+    if (!rederived && !explicit.has(code) && !oldDeferred.has(code) && !oldExplicit.has(code))
       setField(fields, field, previous.fields[field]);
   }
   for (const id of Object.keys(customFields)) {
@@ -302,7 +311,7 @@ export async function prepareEmploymentPatch(
     formSnapshot: previous.formSnapshot,
     sourceRecordId: previous.sourceRecordId,
     sourceStaffId: previous.sourceStaffId,
-    deferredFieldCodes: previous.deferredFieldCodes.filter((field) => !explicit.has(field)),
+    deferredFieldCodes: prepared.deferredFieldCodes,
   };
 }
 

@@ -52,7 +52,8 @@ describe('AC-TRF-33 DEC-108 同日申请与直接业务混合的先后', () => {
     const direct = async (fields: Record<string, unknown>) =>
       w.session.business(
         employee.id,
-        { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields },
+        // DEC-182：使用转正保留混合排序覆盖，已批准调动之后不能直接调动。
+        { kind: 'regularization', mode: 'direct', effectiveDate: '2026-10-05', fields },
         (await w.session.getEmployee(employee.id)).revision,
       );
     return { w, employee, hire, direct };
@@ -114,7 +115,7 @@ describe('AC-TRF-33 DEC-108 同日申请与直接业务混合的先后', () => {
     ['离职', 'leave'],
     ['退休', 'retirement'],
   ] as const)(
-    '先提交%s申请 A、后保存同日直接调动 B：A 插入会形成“终止任职→同周期调动”，记生效失败，版本链不变',
+    '先提交%s申请 A、后保存同日直接转正 B：A 插入会形成“终止任职→同周期转正”，记生效失败，版本链不变',
     async (_label, kind) => {
       const { w, employee, hire, direct } = await scene(`trf33-${kind}-then-direct`);
       const draft = await w.session.business(
@@ -216,7 +217,7 @@ describe('AC-TRF-35 DEC-112 前序业务生效失败时其后业务挂起', () =
     expect(second).toMatchObject({
       status: 'effective',
       record: {
-        effectiveDate: '2026-10-10',
+        effectiveDate: '2026-10-11',
         previousRecordId: a.id,
         fields: { departmentId: w.to.id, place: 'B 地点' },
       },

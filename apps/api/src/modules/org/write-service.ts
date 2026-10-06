@@ -1,3 +1,6 @@
+import { employmentVisibilitySql } from '../employment/visibility.js';
+import type { Authorizer } from '../../authorization.js';
+import { linkedObjectScope, type ModuleScope } from '../permission/module-access.js';
 import { auditActor } from '../../system-actor.js';
 import { recordAudit } from '../../audit/record.js';
 import { randomUUID } from 'node:crypto';
@@ -369,11 +372,12 @@ async function audit(
  */
 export async function assignTransferOrganizationPeople(
   tx: Tx,
-  context: Omit<OrgWriteContext, 'rootName' | 'expectedRevision'>,
+  context: Omit<OrgWriteContext, 'rootName' | 'expectedRevision'> & { scope?: ModuleScope; authorize?: Authorizer },
   orgId: string,
   effectiveDate: string,
   people: { personInChargeId?: string; shopOwnerId?: string },
 ): Promise<OrgRecord> {
+  await requireTransferOrganizationScope(tx, context, orgId);
   const [root] = await tx
     .select({ name: orgVersions.name })
     .from(orgVersions)
@@ -386,4 +390,26 @@ export async function assignTransferOrganizationPeople(
   const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('no key update');
   if (!object) throw new AppError('NOT_FOUND', '组织不存在');
   return updateOrganization(tx, { ...ctx, expectedRevision: object.revision }, orgId, { effectiveDate, ...people });
+}
+
+/** DEC-178：组织写范围独立于调入部门选择例外；任职可见性的并集不能扩展组织权限。
+ * 复用 F-015 范围并集谓词，但组织写入没有员工当前部门这一扩展来源。
+ */
+export async function requireTransferOrganizationScope(
+  tx: Tx,
+  ctx: Pick<OrgWriteContext, 'tenantId' | 'userId' | 'timezone' | 'now'> & {
+    scope?: ModuleScope;
+    authorize?: Authorizer;
+  },
+  orgId: string,
+): Promise<void> {
+  const scope = await linkedObjectScope(tx, ctx, 'TenantBase.Organization');
+  const allowed = await tx.execute(
+    sql`SELECT 1 WHERE ${employmentVisibilitySql(scope, {
+      employee: sql`NULL::uuid`,
+      department: sql`${orgId}::uuid`,
+    })}`,
+  );
+  if (!(Array.isArray(allowed) ? allowed : (allowed as { rows: unknown[] }).rows).length)
+    throw new AppError('LINKED_RECORD_OUT_OF_SCOPE', '联动记录不在当前数据范围，请由覆盖该范围的人员操作');
 }
