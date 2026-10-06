@@ -1,11 +1,13 @@
 /** F-023 / DEC-197：真实联动写入，读取走受控权限提供器与统一范围 SQL。 */
 import { randomUUID } from 'node:crypto';
+import { runAuditRetention } from '@italent/api';
 import { auditEvents, sql, withTenant } from '@italent/db';
 import { CONTRACT_OBJECT, MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 import { controlledApi, everyField, linkageWorld, type ControlledGrants } from './AC-LNK-support.js';
+import { cmd } from './support/tenant-api.js';
 import type { DataChangeDetail, DataChangeLog } from './AC-AUD-support.js';
 
 const database = useTestDb();
@@ -45,7 +47,7 @@ async function fixture() {
   const hiddenOnlyId = randomUUID();
   const before = {
     contract: {
-      targetId: contract.id,
+      targetId: contract.id.toUpperCase(),
       fields: {
         endDate: '2028-08-31',
         signingDate: '2026-08-25',
@@ -56,7 +58,7 @@ async function fixture() {
   };
   const after = {
     contract: {
-      targetId: contract.id,
+      targetId: contract.id.toUpperCase(),
       fields: {
         endDate: '2029-10-09',
         signingDate: '2026-08-26',
@@ -288,5 +290,150 @@ describe('F-023 调动联动审计可见性 AC-AUD-07～14', () => {
     const page = await reader({ scopes: { [ORG]: EMPTY_SCOPE, [EMP]: ALL } }).list({ action, limit: '1' });
     expect(page.items).toHaveLength(1);
     expect(page.nextCursor).toBeNull();
+  });
+  it('AC-AUD-09 新旧目标都要授权，外租户/缺失合同不能借目标切换披露旧值；清空合同仍逐字段裁剪', async () => {
+    const write = async (targetId: string, cleared: boolean) => {
+      const id = randomUUID();
+      await withTenant(f.w.db, f.w.as.tenant, (tx) =>
+        tx.insert(auditEvents).values({
+          id,
+          tenantId: f.w.as.tenant,
+          actorUserId: null,
+          objectType: 'transfer-linkage',
+          objectId: f.business.id,
+          action: 'transfer.linkage.save',
+          occurredAt: new Date(NOW),
+          before: {
+            onTrial: { months: 2 },
+            contract: { targetId, fields: { endDate: '2028-08-31', signingDate: '2026-08-25' } },
+          },
+          after: {
+            onTrial: { months: 3 },
+            contract: cleared
+              ? null
+              : {
+                  targetId: f.contract.id,
+                  fields: { endDate: '2029-10-09' },
+                },
+          },
+        }),
+      );
+      return id;
+    };
+    const otherPerson = await f.other.hire('其他租户合同员工');
+    const foreign = await f.other.contract(otherPerson.employee.id);
+    for (const targetId of [foreign.id, randomUUID()]) {
+      const response = await reader().get(await write(targetId, false));
+      expect(response.status).toBe(200);
+      const detail = (await response.json()) as DataChangeDetail;
+      expect(detail.before).not.toHaveProperty('contract');
+      expect(detail.after).not.toHaveProperty('contract');
+      expect(detail.changes.some((change) => change.field.startsWith('contract'))).toBe(false);
+    }
+    const cleared = await write(f.contract.id, true);
+    const r = reader({ fields: { [EMP]: ['onTrialMonths'], [CONTRACT_OBJECT]: ['endDate'] } });
+    const detail = (await (await r.get(cleared)).json()) as DataChangeDetail;
+    expect(detail.before).toEqual({ onTrial: { months: 2 }, contract: { fields: { endDate: '2028-08-31' } } });
+    expect(detail.after).toEqual({ onTrial: { months: 3 } });
+    expect(detail.changes).toContainEqual(
+      expect.objectContaining({ field: 'contract.fields.endDate', from: '2028-08-31', to: null }),
+    );
+  });
+
+  it('AC-AUD-07/09/14 每次请求重验当前授权，保存日志的职责数组也按目标权限裁剪', async () => {
+    const fields: Record<string, string[]> = { [EMP]: everyField(EMP), [ORG]: everyField(ORG) };
+    const scopes: Record<string, ModuleScope> = { [EMP]: ALL, [ORG]: ALL };
+    const r = reader({ fields, scopes });
+    const saved = f.logs.find(
+      (log) => log.action === 'transfer.linkage.save' && log.id !== f.historicalId && log.id !== f.hiddenOnlyId,
+    )!;
+    const full = (await (await r.get(saved.id)).json()) as DataChangeDetail;
+    expect(full.after).toHaveProperty('dutyTransfer.subordinates');
+    fields[EMP] = everyField(EMP).filter((field) => field !== 'directManagerId');
+    scopes[ORG] = EMPTY_SCOPE;
+    const trimmed = (await (await r.get(saved.id)).json()) as DataChangeDetail;
+    expect(trimmed.after).not.toHaveProperty('dutyTransfer');
+    expect((await r.list({ field: 'dutyTransfer.subordinates' })).items).toEqual([]);
+    scopes[EMP] = EMPTY_SCOPE;
+    expect((await r.get(saved.id)).status).toBe(404);
+    expect((await r.list()).items).toEqual([]);
+  });
+
+  it('AC-AUD-14 下属范围使用当前有效快照，不能被尚未生效的业务载荷放宽', async () => {
+    await withTenant(f.w.db, f.w.as.tenant, (tx) =>
+      tx.execute(sql`
+      INSERT INTO employment_payload_versions
+      SELECT (jsonb_populate_record(NULL::employment_payload_versions,
+        to_jsonb(p) || jsonb_build_object('id',${randomUUID()}::uuid,
+          'version_no',p.version_no+1,'previous_version_id',p.id,'is_record_snapshot',false,
+          'department_id',${f.w.to.id}::uuid,'command_id',${randomUUID()}::text))).*
+      FROM employment_payload_versions p WHERE p.tenant_id=${f.w.as.tenant}
+        AND p.business_id=${f.subordinate.hire.id}::uuid ORDER BY p.version_no DESC LIMIT 1
+    `),
+    );
+    const r = reader({ scopes: { [EMP]: f.own, [ORG]: EMPTY_SCOPE } });
+    expect((await r.list({ action: 'transfer.linkage.item.succeeded' })).items).toEqual([]);
+  });
+
+  it('AC-AUD-10 新增日志被保留期清理后仍按独立创建人元数据授权', async () => {
+    f.w.session.setNow('2026-03-01T01:00:00Z');
+    const employee = await f.w.session.employee('旧调动创建人测试');
+    await f.w.session.business(
+      employee.id,
+      { kind: 'hire', mode: 'direct', effectiveDate: '2026-01-01', fields: { departmentId: f.w.from.id } },
+      employee.revision,
+    );
+    const business = await f.w.saved(
+      await f.w.transfer(
+        { employee },
+        {
+          submit: false,
+          linkage: { adjustSalary: true },
+        },
+      ),
+    );
+    f.w.session.setNow(NOW);
+    const recentId = randomUUID();
+    await withTenant(f.w.db, f.w.as.tenant, (tx) =>
+      tx.insert(auditEvents).values({
+        id: recentId,
+        tenantId: f.w.as.tenant,
+        actorUserId: null,
+        objectType: 'transfer-linkage',
+        objectId: business.id,
+        action: 'transfer.linkage.save',
+        occurredAt: new Date(NOW),
+        before: { adjustSalary: false },
+        after: { adjustSalary: true },
+      }),
+    );
+    const result = await runAuditRetention(
+      f.w.db,
+      cmd(),
+      { tenantId: f.w.as.tenant },
+      {
+        clock: () => new Date('2026-10-01T01:00:00Z'),
+      },
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.runs[0]!.purged.dataChanges).toBeGreaterThan(0);
+    await withTenant(f.w.db, f.w.as.tenant, async (tx) => {
+      const result = await tx.execute(sql`SELECT id FROM audit_events
+        WHERE object_id=${business.id} AND action='employment.business.create'`);
+      expect(Array.isArray(result) ? result : (result as { rows: unknown[] }).rows).toEqual([]);
+    });
+    const scope: ModuleScope = {
+      ...EMPTY_SCOPE,
+      hasDataPermission: true,
+      terms: [
+        {
+          dimension: 'using_user',
+          creatorId: f.w.as.user,
+          orgIds: [],
+          personIds: [],
+        },
+      ],
+    };
+    expect((await reader({ scopes: { [EMP]: scope } }).get(recentId)).status).toBe(200);
   });
 });
