@@ -2,6 +2,7 @@
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
+import { pendingActivationState } from '../employment/activation-store.js';
 import { auditEmployment, employmentCreator, requireLinkedEmploymentRecord } from '../employment/context.js';
 import { loadEmploymentRecord } from '../employment/read-model.js';
 import { appendOrgAdjustment } from '../employment/org-adjustment.js';
@@ -97,7 +98,7 @@ export async function hasPendingOrgEmployment(tx: Tx, ctx: EmploymentContext, or
     await tx.execute(sql`
     ${subtree(ctx.tenantId, orgId, date)}
     SELECT 1 FROM employment_business_objects b
-    JOIN LATERAL (SELECT department_id,effective_date FROM employment_payload_versions p
+    JOIN LATERAL (SELECT * FROM employment_payload_versions p
       WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) p ON true
     JOIN LATERAL (SELECT state FROM employment_state_events s WHERE s.tenant_id=b.tenant_id AND s.business_id=b.id
       ORDER BY event_no DESC LIMIT 1) s ON true
@@ -109,7 +110,7 @@ export async function hasPendingOrgEmployment(tx: Tx, ctx: EmploymentContext, or
         AND current_payload.is_record_snapshot ORDER BY version_no DESC LIMIT 1) current_payload ON true
     WHERE b.tenant_id=${ctx.tenantId} AND p.effective_date<${date}::date
       AND (s.state IN ('draft','in_review','approved','rejected')
-        OR (s.state='effective' AND p.effective_date>${today}::date))
+        OR (s.state='effective' AND (p.effective_date>${today}::date OR ${pendingActivationState(ctx.timezone)})))
       AND (p.department_id IN (SELECT org_id FROM tree)
         OR (CASE WHEN current_payload.id IS NULL THEN r.department_id ELSE current_payload.department_id END)
           IN (SELECT org_id FROM tree))

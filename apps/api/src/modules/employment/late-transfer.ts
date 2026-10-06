@@ -4,6 +4,7 @@ import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { validateTransferReposition } from './write-service.js';
 import { personnelHooks } from './personnel-hooks.js';
+import { rebaseDerivedOrgAdjustments } from './org-adjustment-rebase.js';
 import { auditEmployment } from './context.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { insertEmploymentRow, rowsOf, type LockedEmploymentBusiness } from './record-store.js';
@@ -70,6 +71,7 @@ export async function postponeLateTransfer(tx: Tx, ctx: EmploymentContext, busin
       await tx.execute(sql`UPDATE employment_timeline
       SET valid_during=daterange(start_date,${after?.date ?? null}::date,'[)')
       WHERE tenant_id=${ctx.tenantId} AND record_id=${before.id}::uuid`);
+    await rebaseDerivedOrgAdjustments(tx, ctx, record, today);
     await validateTransferReposition(tx, ctx, business, record);
     await insertEmploymentTimeline(tx, ctx, business.employeeId, business.id, record.staffId, today);
   }

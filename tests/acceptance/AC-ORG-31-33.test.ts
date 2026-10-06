@@ -209,13 +209,14 @@ it('AC-ORG-31 同员工后续已批准调出可释放组织调整之后的占编
   const w = await activationWorld(database().db, 'org31out');
   await strictCapacity(w);
   const jia = await w.hired('甲');
+  const finalOrg = await w.session.org('第三部门', { establishedOn: '2026-01-01' });
   const incoming = await w.approve(
     await w.apply(jia.employee.id, '2026-10-05', { departmentId: w.to.id }),
     '2026-10-01T02:00:00Z',
   );
   await rename(w);
   const outgoing = await w.approve(
-    await w.apply(jia.employee.id, '2026-10-06', { departmentId: w.from.id }),
+    await w.apply(jia.employee.id, '2026-10-06', { departmentId: finalOrg.id }),
     '2026-10-01T02:00:00Z',
   );
   const yi = await w.hired('乙');
@@ -232,6 +233,6 @@ it('AC-ORG-31 同员工后续已批准调出可释放组织调整之后的占编
     errors: [],
   });
   expect((await w.session.records(jia.employee.id, '2026-10-09')).find((r) => r.isCurrent)?.fields.departmentId).toBe(
-    w.from.id,
+    finalOrg.id,
   );
 });

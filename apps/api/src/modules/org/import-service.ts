@@ -158,7 +158,7 @@ async function importRow(
         : [];
       const choice =
         current && requiresEmploymentChoice(current, { ...input, effectiveDate }) ? { addEmployment: false } : {};
-      // DEC-060 原站组织导入只对账组织，不隐式补造任职；交互式变更仍必须显式选择。
+      // DEC-207：组织导入是 DEC-137 的有意例外，一律不新增任职；模板不接受该控制项。
       const organization = targetId
         ? await updateOrganization(savepoint, { ...ctx, expectedRevision: row.expectedRevision! }, targetId, {
             ...input,
