@@ -63,6 +63,9 @@ describe('AC-TRF-42/43 经理工作台入口与只读边界', () => {
     await vi.waitFor(() => expect(host.querySelector('[role="dialog"]')?.textContent).toContain('合成员工'));
     expect(Array.from(host.querySelectorAll('th')).map((th) => th.textContent)).not.toContain('操作');
     expect(host.querySelector('[role="dialog"]')?.textContent).not.toContain('调动');
+    await click('试用中');
+    await vi.waitFor(() => expect(host.querySelector('[role="dialog"]')?.textContent).toContain('待接入人员状态'));
+    expect(host.querySelector('[role="dialog"]')?.textContent).not.toContain('暂无数据');
     await click('人事申请');
     await click('他人调动申请');
     await vi.waitFor(() =>

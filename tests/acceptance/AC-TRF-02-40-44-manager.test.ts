@@ -222,6 +222,31 @@ describe('AC-TRF-02/40–44 经理自助', () => {
       ).toContain(expected);
       expect(dto.counts[category!]).toBeGreaterThan(0);
     }
+    const external = await world.person(child.id, undefined, undefined, { employType: 'external' });
+    const outside = await world.person(world.outside.id, undefined, self.id);
+    const draftLeaver = await world.person(child.id);
+    const draft = await world.setup.request('POST', `/api/tenant/employment/employees/${draftLeaver.id}/businesses`, {
+      ...world.asAdmin,
+      ifMatch: draftLeaver.revision,
+      body: { kind: 'leave', mode: 'application', effectiveDate: '2026-12-01', lastWorkDate: '2026-11-30', fields: {} },
+    });
+    expect(draft.status, await draft.clone().text()).toBe(201);
+    for (const category of ['active', 'probation', 'intern', 'pending', 'leaving']) {
+      const response = await world.api.request('GET', `${BASE}/manager/team?category=${category}`, manager);
+      const dto = (await response.json()) as {
+        items: { id: string; leaving?: boolean }[];
+        counts: Record<string, number | null>;
+      };
+      const ids = dto.items.map((row) => row.id);
+      expect(ids).not.toContain(external.id);
+      expect(ids).not.toContain(outside.id);
+      expect(dto.counts.probation).toBeNull(); // 缺独立人员状态，不从日期 / 转正事件推断。
+      if (category === 'active') {
+        expect(ids).toEqual(expect.arrayContaining([intern.id, leaving.id, draftLeaver.id]));
+        expect(dto.items.find((row) => row.id === leaving.id)?.leaving).toBe(true);
+      }
+      if (category === 'leaving') expect(ids).toContain(draftLeaver.id);
+    }
     const candidates = await world.api.request('GET', `${BASE}/manager/employees?search=TRF_`, manager);
     expect(((await candidates.json()) as { items: { id: string }[] }).items.map((row) => row.id)).not.toContain(
       pending.id,
