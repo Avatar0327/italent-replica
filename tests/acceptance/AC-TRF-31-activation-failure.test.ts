@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('AC-TRF-31（R1-T08 段，DEC-145）DEC-052 定时生效失败、HR 待办与重试', () => {
-  it('编制不足（替身判定）：仍为审批通过、failed 1 次、原因编制不足、HR 待办；修正后重试按原日期生效并向后更新', async () => {
+  it('编制不足（替身判定）：仍为审批通过、failed 1 次、原因编制不足、HR 待办；修正后重试按执行日期生效并向后更新', async () => {
     const w = await activationWorld(testDb().db, 'trf31-establishment');
     const { employee, hire } = await w.hired();
     const approved = await w.approve(
@@ -34,7 +34,7 @@ describe('AC-TRF-31（R1-T08 段，DEC-145）DEC-052 定时生效失败、HR 待
     // 更晚的直接业务（10-20）在调动生效前已存在：生效时调动后的部门须向后更新到它。
     const later = await w.session.business(
       employee.id,
-      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-20', fields: { remarks: '后续直接调动' } },
+      { kind: 'regularization', mode: 'direct', effectiveDate: '2026-10-20', fields: { remarks: '后续直接调动' } },
       (await w.session.getEmployee(employee.id)).revision,
     );
     expect(later.record!.fields.departmentId).toBe(w.from.id);
@@ -80,7 +80,7 @@ describe('AC-TRF-31（R1-T08 段，DEC-145）DEC-052 定时生效失败、HR 待
       failureCount: 2,
     });
 
-    // HR 调整编制后重试：按原调动日期 10-05 生效，前一条止于 10-04，后续记录部门被向后更新，待办关闭。
+    // HR 调整编制后重试：按执行日期 10-06 生效，前一条止于 10-05，后续记录部门被向后更新，待办关闭。
     fullDepartments.delete(w.to.id);
     const key = randomUUID();
     const beforeRetry = await w.business(approved.id);
@@ -89,10 +89,10 @@ describe('AC-TRF-31（R1-T08 段，DEC-145）DEC-052 定时生效失败、HR 待
     const effective = (await retried.json()) as ActivationBusiness;
     expect(effective).toMatchObject({
       status: 'effective',
-      record: { effectiveDate: '2026-10-05', previousRecordId: hire.record!.id, fields: { departmentId: w.to.id } },
+      record: { effectiveDate: '2026-10-06', previousRecordId: hire.record!.id, fields: { departmentId: w.to.id } },
       activation: { status: 'effective', failureCount: 2, failureReason: null },
     });
-    expect((await w.session.record(hire.record!.id, '2026-10-06')).stopDate).toBe('2026-10-04');
+    expect((await w.session.record(hire.record!.id, '2026-10-06')).stopDate).toBe('2026-10-05');
     expect((await w.session.record(later.id, '2026-10-20')).fields.departmentId).toBe(w.to.id);
     expect(await w.todos()).toEqual([]);
     expect(

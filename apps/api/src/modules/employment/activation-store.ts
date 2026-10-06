@@ -9,7 +9,7 @@ import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
 import { auditEmployment, employmentCreator, employmentScopePredicate } from './context.js';
 import { rowsOf } from './record-store.js';
-import { operationKey } from './timeline.js';
+import { operationKey, plannedEffectiveDate } from './timeline.js';
 import type { BusinessKind, EmploymentContext, EmploymentScope } from './types.js';
 
 export type ActivationOutcome = 'effective' | 'failed' | 'suspended';
@@ -72,7 +72,10 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
       WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
       AND ${pendingActivationState(ctx.timezone)}
-    ORDER BY p.effective_date, p.kind IN ('hire', 'rehire', 'retire_rehire'), ${operationKey(ctx.tenantId, sql`b.id`)}
+    ORDER BY CASE WHEN p.kind='transfer'
+      THEN greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date) ELSE p.effective_date END,
+      ${plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`)},
+      p.kind IN ('hire', 'rehire', 'retire_rehire'), ${operationKey(ctx.tenantId, sql`b.id`)}
     LIMIT ${QUEUE_LIMIT + 1}
   `),
   ).map((row) => ({ ...row, revision: Number(row.revision), lastAttemptNo: Number(row.lastAttemptNo) }));
@@ -103,7 +106,7 @@ export interface AttemptRecord {
 /**
  * 记一次生效尝试，与业务写入、审计、outbox 同事务（AGENTS.md §10）。失败 / 挂起时递增业务 revision，
  * 使 HR 重试必须基于看到的最新结果提交（409 而不是盲重试）；生效时 revision 已由状态迁移递增。
- * DEC-173 仅提醒的直接调动不改任职或头版本，仅追加尝试与通知事件。
+ * DEC-173 按期复查只追加尝试与通知；迟到改期另按 DEC-186 推进任职投影及头版本。
  */
 export async function recordActivationAttempt(
   tx: Tx,

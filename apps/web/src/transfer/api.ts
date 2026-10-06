@@ -52,12 +52,33 @@ export async function loadReferences(
     const department = model.fields.departmentId ?? preview.fields.departmentId;
     if (kind === 'positions' && typeof department === 'string') query.set('orgId', department);
     const result = await transferRequest<{ items: Choice[] }>(tenantId, `/api/tenant/job/${kind}?${query}`, { signal });
-    return [code, result.items] as const;
+    const originalId = preview.before?.fields[code];
+    let originals = result.items;
+    if (typeof originalId === 'string' && !originals.some((item) => item.id === originalId)) {
+      try {
+        const original = await transferRequest<Choice>(
+          tenantId,
+          `/api/tenant/job/${kind}/${encodeURIComponent(originalId)}?asOf=${encodeURIComponent(model.effectiveDate)}`,
+          { signal },
+        );
+        originals = [original];
+      } catch {
+        originals = [];
+      }
+    }
+    return [code, result.items, originals] as const;
   });
   const results = await Promise.allSettled(requests);
   return {
     references: Object.fromEntries(
-      results.map((result, index) => (result.status === 'fulfilled' ? result.value : [entries[index]![0], []])),
+      results.map((result, index) =>
+        result.status === 'fulfilled' ? [result.value[0], result.value[1]] : [entries[index]![0], []],
+      ),
+    ),
+    beforeReferences: Object.fromEntries(
+      results.map((result, index) =>
+        result.status === 'fulfilled' ? [result.value[0], result.value[2]] : [entries[index]![0], []],
+      ),
     ),
     unavailable: results.some((result) => result.status === 'rejected'),
   };

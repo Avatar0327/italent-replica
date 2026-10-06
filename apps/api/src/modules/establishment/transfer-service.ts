@@ -171,7 +171,7 @@ export async function readEstablishmentStats(
 export async function targetCapacities(
   tx: Tx,
   ctx: EstablishmentContext,
-  transfer: VerifiedTransfer,
+  transfer: Pick<VerifiedTransfer, 'targetOrgId' | 'effectiveDate'>,
   asOf: string,
 ): Promise<CapacityRecord[]> {
   // 只读取目标行政链中的周期对象，不把全租户方案或编制对象装入内存。

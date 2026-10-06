@@ -16,7 +16,8 @@ export const INHERITED_FIELDS = PRESET_FIELDS.filter(
   (field) => !['isDepartmentHead', 'isStoreManager', 'addedSubordinateIds', 'employType'].includes(field),
 );
 export const emptyFields = emptyPresetFields;
-const uuid = z.uuid().nullable().optional();
+const normalizedUuid = z.uuid().transform((value) => value.toLowerCase());
+const uuid = normalizedUuid.nullable().optional();
 const text = z.string().max(2000).nullable().optional();
 export const presetFieldsSchema = z.strictObject({
   departmentId: uuid,
@@ -43,7 +44,7 @@ export const presetFieldsSchema = z.strictObject({
   isDepartmentHead: z.boolean().nullable().optional(),
   isStoreManager: z.boolean().nullable().optional(),
   addedSubordinateIds: z
-    .array(z.uuid())
+    .array(normalizedUuid)
     .max(100)
     .refine((ids) => new Set(ids).size === ids.length)
     .nullable()

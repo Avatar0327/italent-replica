@@ -43,6 +43,7 @@ export async function requireTransferSource(
   employeeId: string,
   initiator: TransferInitiator,
 ): Promise<void> {
+  employeeId = employeeId.toLowerCase();
   ctx = { ...ctx, authorize: ctx.authorize ? authorizeInTransaction(ctx.authorize, tx) : undefined };
   await requireTransferButton(ctx, initiator);
   const [binding] = rowsOf<{ employeeId: string }>(

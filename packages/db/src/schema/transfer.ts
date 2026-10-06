@@ -10,6 +10,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { employmentBusinessObjects } from './employment.js';
@@ -171,5 +172,38 @@ export const transferRequests = pgTable(
     check('transfer_requests_initiator', sql`${t.initiator} IN ('hr', 'manager', 'employee')`),
     check('transfer_requests_type_nonempty', sql`btrim(${t.transferTypeCode}) <> ''`),
     check('transfer_requests_process_nonempty', sql`btrim(${t.processCode}) <> ''`),
+  ],
+);
+
+/** DEC-185：每次字段缺失各有独立待办；关闭只能从空到非空，旧待办不复活。 */
+export const transferCompletionTodos = pgTable(
+  'transfer_completion_todos',
+  {
+    id: id(),
+    tenantId: tenant(),
+    employeeId: uuid('employee_id').notNull(),
+    businessId: uuid('business_id').notNull(),
+    fieldCode: text('field_code').notNull(),
+    effectiveDate: date('effective_date', { mode: 'string' }).notNull(),
+    createdAt: utc(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    /** 升级回填的上一提醒业务日；新一轮待办不继承。 */
+    legacyReminderDate: date('legacy_reminder_date', { mode: 'string' }),
+  },
+  (t) => [
+    unique('transfer_completion_todos_tenant_id').on(t.tenantId, t.id),
+    uniqueIndex('transfer_completion_todos_open_field')
+      .on(t.tenantId, t.employeeId, t.fieldCode)
+      .where(sql`${t.closedAt} IS NULL`),
+    foreignKey({
+      name: 'transfer_completion_todos_business_fk',
+      columns: [t.tenantId, t.employeeId, t.businessId],
+      foreignColumns: [
+        employmentBusinessObjects.tenantId,
+        employmentBusinessObjects.employeeId,
+        employmentBusinessObjects.id,
+      ],
+    }),
+    check('transfer_completion_todos_field', sql`${t.fieldCode} LIKE 'preset:%'`),
   ],
 );
