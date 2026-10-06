@@ -1,7 +1,7 @@
 import { and, eq, sql, transferEstablishmentAllocations, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
-import { auditActor } from '../../system-actor.js';
+import { employmentCapacityContext } from '../permission/module-capacity-authorization.js';
 import type { EmploymentContext, PresetFields } from '../employment/types.js';
 import { validateCapacity } from './constraints.js';
 import { employmentTimelineNeighbors } from '../employment/timeline.js';
@@ -42,7 +42,7 @@ export async function carryEstablishment(
   source: Partial<PresetFields>,
   target: Partial<PresetFields>,
 ) {
-  const context = { ...ctx, userId: auditActor(ctx.userId) };
+  const context = await employmentCapacityContext(tx, ctx);
   await lockEstablishment(tx, context, { initializeDefault: false });
   if (!source.departmentId || !target.departmentId)
     throw new AppError('VALIDATION_FAILED', '带编调动必须有调出和调入部门');
@@ -57,9 +57,14 @@ export async function carryEstablishment(
   if (records.length > 1000) throw new AppError('PAYLOAD_TOO_LARGE', '带编调动涉及的编制超过单次处理上限');
   const capacities: { record: CapacityRecord; scheme: SchemeRecord }[] = [];
   for (const { id } of records) {
-    const record = await readCapacity(tx, ctx.tenantId, id, today);
-    const scheme = await loadScheme(tx, ctx.tenantId, record.schemeId, today);
-    if (scheme.enabled && !scheme.excludedOrgIds.includes(record.orgId)) capacities.push({ record, scheme });
+    try {
+      const record = await readCapacity(tx, ctx.tenantId, id, today);
+      const scheme = await loadScheme(tx, ctx.tenantId, record.schemeId, today);
+      if (scheme.enabled && !scheme.excludedOrgIds.includes(record.orgId)) capacities.push({ record, scheme });
+    } catch (error) {
+      // 与 targetCapacities 同口径：尚未生效的对象不参与有效方案唯一性判断。
+      if (!(error instanceof AppError && error.code === 'NOT_FOUND')) throw error;
+    }
   }
   const sources = capacities.filter(({ record }) => record.orgId === source.departmentId);
   const targets = capacities.filter(({ record }) => record.orgId === target.departmentId);
@@ -213,7 +218,7 @@ export async function carriedAllocations(tx: Tx, tenantId: string, businessId: s
 
 /** 删除/撤销反向追加原分配；不删除旧版本，不重新匹配可能已改变的职位细分。 */
 export async function reverseCarriedEstablishment(tx: Tx, ctx: EmploymentContext, businessId: string) {
-  const context = { ...ctx, userId: auditActor(ctx.userId) };
+  const context = await employmentCapacityContext(tx, ctx);
   // 无带编分配的普通业务无需额外取得编制锁。
   if (!(await carriedAllocations(tx, ctx.tenantId, businessId)).length) return [];
   await lockEstablishment(tx, context, { initializeDefault: false });

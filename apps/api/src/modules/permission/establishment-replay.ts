@@ -27,7 +27,7 @@ const MAX_FOOTPRINTS = 20_000;
 
 export async function authorizeEstablishmentReplay(
   tx: Tx,
-  deps: TenantRouteDeps,
+  deps: Pick<TenantRouteDeps, 'authorize'>,
   ctx: ScopeBusinessContext,
   scope: ModuleScope,
   commandId: string,

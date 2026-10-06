@@ -21,7 +21,10 @@ function restricted(w: World, grant: Grant) {
   const authorize: Authorizer = (request) => {
     if (request.resource !== OBJECT || request.action !== 'object.update') return true;
     writes++;
-    return grant.editable !== false && writes <= (grant.revokeAfterWrites ?? Infinity);
+    return (
+      !(grant.editable === false && request.fields?.includes('localCapacity')) &&
+      writes <= (grant.revokeAfterWrites ?? Infinity)
+    );
   };
   registerScopeProvider(authorize, {
     scope: async (query) => {

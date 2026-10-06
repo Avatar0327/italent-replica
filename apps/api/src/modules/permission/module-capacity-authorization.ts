@@ -1,14 +1,17 @@
+import type { Tx } from '@italent/db';
+import type { EmploymentContext } from '../employment/types.js';
+import { auditActor } from '../../system-actor.js';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { creatorOf, hasCreatorScope, visible, writeFields, type ModuleScope } from './module-route-access.js';
 import type { ScopeBusinessContext } from './module-contracts.js';
-import { authorizeInTransaction } from './module-access.js';
+import { authorizeInTransaction, resolveModuleScopeInTransaction } from './module-access.js';
 import type { EstablishmentContext } from '../establishment/store.js';
 
 /** HTTP 提供事务内钩子；自动补月、跨期调整、复制和同步祖先不能越过发起人的范围/字段权限。 */
 export function capacityContext(
-  deps: TenantRouteDeps,
+  deps: Pick<TenantRouteDeps, 'authorize'>,
   ctx: ScopeBusinessContext,
   scope: ModuleScope,
 ): EstablishmentContext {
@@ -40,4 +43,18 @@ export function capacityContext(
       );
     },
   };
+}
+
+/** 带编写入独立解析编制对象范围，不能继承任职范围或调入选择例外。 */
+export async function employmentCapacityContext(tx: Tx, ctx: EmploymentContext): Promise<EstablishmentContext> {
+  const actor = { ...ctx, userId: auditActor(ctx.userId) };
+  // 无授权器的内部调度/审批端口沿用已有可信服务上下文；任职 HTTP 写入口始终注入授权器。
+  if (!ctx.authorize) return actor;
+  const scope = await resolveModuleScopeInTransaction(
+    { authorize: ctx.authorize, clock: () => ctx.now },
+    ctx,
+    tx,
+    MODULE_OBJECTS.establishment.code,
+  );
+  return { ...capacityContext({ authorize: ctx.authorize }, ctx, scope), userId: actor.userId };
 }
