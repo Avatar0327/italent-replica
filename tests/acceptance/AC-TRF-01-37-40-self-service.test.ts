@@ -14,7 +14,7 @@ let self: Person;
 let other: Person;
 const request = (path: string, method = 'GET', body?: unknown, revision?: number, user = self.userId) =>
   api.request(method, `${BASE}${path}`, { ...world.as(user), body, ifMatch: revision });
-const input = { effectiveDate: '2026-10-19', fields: {} };
+const input = () => ({ effectiveDate: '2026-10-19', fields: { departmentId: department } });
 
 beforeAll(async () => {
   world = await approvalWorld(database().db, 'employee-self-service');
@@ -68,26 +68,44 @@ describe('R1-T13 员工自助（真实授权器、无员工授权行）', () => 
     expect(applications.items.some((item) => item.businessId === draft.id)).toBe(false);
   });
 
-  it('AC-TRF-01/39：同一 HR 表单按身份裁剪；唯一必填日期，拒绝越权字段与直接调动', async () => {
+  it('AC-TRF-01/39：同一 HR 表单按身份裁剪；日期与新部门必填，拒绝越权字段与直接调动', async () => {
     const preview = await world.json<{ form: { id: string; fieldModes: Record<string, string> }; fields: object }>(
-      await request('/transfer/preview', 'POST', input),
+      await request('/transfer/preview', 'POST', input()),
     );
     expect(preview.form.id).toBe('TenantBase.TransferMultiFormView');
-    expect(Object.keys(preview.form.fieldModes).sort()).toEqual(['preset:directManagerId', 'preset:postId']);
-    expect(preview.fields).not.toHaveProperty('departmentId');
+    expect(Object.keys(preview.form.fieldModes).sort()).toEqual([
+      'preset:departmentId',
+      'preset:directManagerId',
+      'preset:levelId',
+      'preset:postId',
+      'preset:sequenceId',
+    ]);
+    expect(preview.fields).toHaveProperty('departmentId', department);
     for (const body of [
-      { ...input, fields: { departmentId: department } },
-      { ...input, fields: { remarks: '越权写入' } },
-      { ...input, mode: 'direct' },
-      { ...input, employeeId: other.employeeId },
+      { ...input(), fields: {} },
+      { ...input(), fields: { remarks: '越权写入' } },
+      { ...input(), mode: 'direct' },
+      { ...input(), employeeId: other.employeeId },
       { fields: {} },
     ]) {
       expect([400, 403]).toContain(
-        (await request('/transfer', 'POST', body, await world.revisionOf(self.employeeId))).status,
+        (
+          await request(
+            '/transfer',
+            'POST',
+            body,
+            (await world.json<{ employee: { revision: number } }>(await request('/profile'))).employee.revision,
+          )
+        ).status,
       );
     }
     const saved = await world.json<{ id: string; status: string }>(
-      await request('/transfer', 'POST', input, await world.revisionOf(self.employeeId)),
+      await request(
+        '/transfer',
+        'POST',
+        input(),
+        (await world.json<{ employee: { revision: number } }>(await request('/profile'))).employee.revision,
+      ),
       201,
     );
     expect(saved.status).toBe('in_review');
@@ -98,21 +116,30 @@ describe('R1-T13 员工自助（真实授权器、无员工授权行）', () => 
     expect(instance.tasks.some((task) => task.isExceptionAdmin)).toBe(true);
   });
 
-  it('AC-TRF-40：我的申请为本人发起；撤回沿用审批规则并显示已终止', async () => {
+  it('AC-TRF-40：我的申请表格列、只读详情；HR撤销后已终止且无当前处理人', async () => {
     const list = await world.json<{
-      items: { id: string; businessId: string; status: string; revision: number; canWithdraw: boolean }[];
+      items: { id: string; businessId: string; revision: number; currentHandlers: string[] }[];
     }>(await request('/applications'));
     expect(list.items).toHaveLength(1);
     const item = list.items[0]!;
-    expect(item).toMatchObject({ status: '审批中', canWithdraw: true });
-    expect((await request(`/applications/${item.id}/withdraw`, 'POST', {}, item.revision, other.userId)).status).toBe(
-      404,
+    expect(item).toMatchObject({ status: '审批中', category: '人事变动', initiator: '本人', reason: '' });
+    expect(item).toHaveProperty('title');
+    expect(item.currentHandlers).not.toHaveLength(0);
+    expect(item).not.toHaveProperty('canWithdraw');
+    expect((await request(`/applications/${item.id}/withdraw`, 'POST', {}, item.revision)).status).toBe(404);
+    expect((await request(`/applications/${item.id}`, 'GET', undefined, undefined, other.userId)).status).toBe(404);
+    expect(await world.json(await request(`/applications/${item.id}`))).not.toHaveProperty('actions');
+    const current = await world.business(item.businessId);
+    await world.json(
+      await world.request(world.hr.id, 'POST', `/api/tenant/employment/businesses/${item.businessId}/revoke`, {
+        ifMatch: current.revision,
+        body: {},
+      }),
     );
-    await world.json(await request(`/applications/${item.id}/withdraw`, 'POST', {}, item.revision));
     expect(await world.json(await request('/applications'))).toMatchObject({
-      items: [{ status: '已终止', canWithdraw: false }],
+      items: [{ status: '已终止', currentHandlers: [] }],
     });
-    expect((await world.business(item.businessId)).status).toBe('draft');
+    expect((await world.business(item.businessId)).status).toBe('voided');
   });
 
   it('AC-TRF-37/40：跨租户、解除绑定与未知业务一律拒绝', async () => {
