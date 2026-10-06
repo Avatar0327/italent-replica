@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
   and,
-  auditEvents,
   eq,
   establishmentOutbox,
   establishmentSchemeObjects,
@@ -10,6 +9,7 @@ import {
 } from '@italent/db';
 import { AppError } from '../../errors.js';
 import type { EstablishmentContext } from './store.js';
+import { recordAudit } from '../../audit/record.js';
 
 export const DEFAULT_SCHEME_CODE = 'DEFAULT';
 const action = 'establishment.scheme.default.create';
@@ -64,7 +64,7 @@ export async function ensureDefaultScheme(tx: Tx, ctx: EstablishmentContext): Pr
     excludedOrgIds: [],
     occupancyRanges: [],
   };
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.userId,
     action,

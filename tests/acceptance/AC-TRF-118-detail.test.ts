@@ -5,7 +5,7 @@ import { approvalWorld, transferScene } from './AC-APV-support.js';
 
 const database = useTestDb();
 describe('DEC-118 / DEC-057 调动详情映射', () => {
-  it('类型原因来自业务元数据，只出现在节点白名单中，合同仍延期', async () => {
+  it('类型原因来自业务元数据，只出现在节点白名单中，合同变更由 R1-T10 交付', async () => {
     const w = await approvalWorld(database().db, 'trfb-detail');
     const s = await transferScene(w);
     await w.publishedProcess({
@@ -52,9 +52,11 @@ describe('DEC-118 / DEC-057 调动详情映射', () => {
       status: 'delivered',
       field: 'reasonCode',
     });
+    // R1-T10（PR #74 第二轮 P1-6）交付联动字段；不在节点白名单中的联动字段同样不披露。
     expect(TRANSFER_DETAIL_VIEW.find((item) => item.code === 'IsChangeContract')).toMatchObject({
-      status: 'deferred',
-      deferredTo: 'R1-T10',
+      status: 'delivered',
+      field: 'isChangeContract',
     });
+    expect(detail.form.values).not.toHaveProperty('isChangeContract');
   });
 });

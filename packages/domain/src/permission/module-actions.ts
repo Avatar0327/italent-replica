@@ -1,4 +1,5 @@
 import { CONTRACT_FIELDS } from '../contracts/rules.js';
+import { TRANSFER_LINKAGE_FIELDS } from '../approval/transfer-view.js';
 /** Real schema/DTO catalogs for DEC-080. Functional rights never imply a data scope. */
 import type { ButtonDefinition, DataOperation, ObjectDefinition } from './object-permission.js';
 
@@ -53,7 +54,12 @@ const assignment = [
 ];
 const jobButtons = [...crud, button('import', 'list'), button('validate', 'detail')];
 const job = (code: string, fields: readonly string[], system: readonly string[] = []) =>
-  object(code, [...jobCommon, ...fields], jobButtons, [...system, 'kind', 'objectId']);
+  object(
+    code,
+    [...jobCommon, ...fields],
+    ['JobPost', 'JobPosition'].includes(code) ? [...jobButtons, button('syncSequence', 'list', 'update')] : jobButtons,
+    [...system, 'kind', 'objectId'],
+  );
 
 export const MODULE_OBJECTS = {
   contract: object(
@@ -265,6 +271,8 @@ export const MODULE_OBJECTS = {
       'transferTypeCode',
       'reasonCode',
       'employType',
+      // R1-T10 调动联动（`13` §7 表单区块）：审批披露、盲审与字段权限共用这些编码。
+      ...TRANSFER_LINKAGE_FIELDS,
     ],
     [
       button('Employment.Create', 'detail', 'create'),

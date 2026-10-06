@@ -3,6 +3,7 @@ import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { legacyContractWorld } from './AC-CT-upgrade-support.js';
+import { withPreAuditSchema } from './support/pre-audit-schema.js';
 import { installApprovalFallbacks } from './AC-APV-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
@@ -15,7 +16,8 @@ it('DEC-190 混合审批中/未来编辑全组隔离，越权不可撤销，关�
   const tenantId = w.session.tenant.id;
   const ids = [randomUUID(), randomUUID()];
   const target = randomUUID();
-  await installApprovalFallbacks(handle.db, tenantId, w.session.user.id);
+  // 当前审批 / 平台接口会写 R1-T16 新增的审计列，旧结构上临时补出（只影响夹具，断言不变）
+  await withPreAuditSchema(handle.db, () => installApprovalFallbacks(handle.db, tenantId, w.session.user.id));
   await withTenant(handle.db, tenantId, async (tx) => {
     await tx.execute(sql`INSERT INTO contract_records
       (id,tenant_id,employee_id,number,type_id,company_id,term_type,effective_date,end_date,

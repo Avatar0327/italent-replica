@@ -12,6 +12,7 @@ import {
   transferScene,
   type InstanceView,
 } from './AC-APV-support.js';
+import { createProfile } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -22,9 +23,18 @@ describe('AC-PRM-29 审批人最小披露', () => {
     const w = await approvalWorld(db, 'apv-disclosure');
     const s = await transferScene(w);
     const world = await permissionAdmin(w);
+    // DEC-205：显式空经理配置替代后备字段；本例仅使用下方授予的可见字段，保留职级隐藏断言。
+    await createProfile(world, 'department_manager_self_service');
     // B = 调入部门负责人：能看 部门、生效日期、地点、备注 字段，但没有任何数据范围。
     // 业务日期是本单新内容，看不到即为盲审（PR #35 第二轮清单 3）。
     await grantVisibleFields(world, s.inHead.userId, ['id', 'departmentId', 'effectiveDate', 'place', 'remarks']);
+    // Q-M0-71：负责人默认派生经理范围；本用例明确配置空范围，继续验证审批不会突破它。
+    const emptyScope = await world.api.request('PUT', `/api/tenant/permission/scopes/${s.inHead.userId}/TenantBase`, {
+      ...world.asAdmin,
+      ifMatch: 0,
+      body: { kind: 'org_range', orgRanges: [] },
+    });
+    expect(emptyScope.status, await emptyScope.clone().text()).toBe(200);
     await w.publishedProcess({
       nodes: [
         { key: 'in_head', approver: 'record_department_head', formFields: ['departmentId', 'levelId', 'place'] },

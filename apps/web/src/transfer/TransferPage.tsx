@@ -1,10 +1,9 @@
+import { TransferApplication } from '../self-service/shared/TransferApplication.js';
 import { useState } from 'react';
-import { TransferForm } from './TransferForm.js';
 import { text } from './messages.js';
-import { useTransferForm } from './useTransferForm.js';
 import './transfer.css';
 
-export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employee' }) {
+export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employee' | 'manager' }) {
   const [tenantId, setTenantId] = useState('');
   const [activeTenant, setActiveTenant] = useState('');
   return (
@@ -21,7 +20,7 @@ export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employe
           <button className="transfer-tenant-change" type="button" onClick={() => setActiveTenant('')}>
             {text.tenantChange}
           </button>
-          <TransferManager key={activeTenant} tenantId={activeTenant} initiator={initiator} />
+          <TransferApplication key={activeTenant} tenantId={activeTenant} initiator={initiator} />
         </>
       ) : (
         <form
@@ -49,132 +48,4 @@ export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employe
   );
 }
 
-function TransferManager({ tenantId, initiator }: { tenantId: string; initiator: 'hr' | 'employee' }) {
-  const state = useTransferForm(tenantId, initiator);
-  const locked = state.busy || !!state.saved || !!state.unknownCommand;
-  return (
-    <section className="transfer-content" aria-busy={state.busy || state.loadingPreview}>
-      {initiator === 'hr' ? (
-        <EmployeeSearch state={state} locked={locked} />
-      ) : (
-        <PersonalScenarios state={state} locked={locked} />
-      )}
-      {state.error && (
-        <p role="alert" className="transfer-error">
-          {state.error}
-        </p>
-      )}
-      {state.notice && (
-        <p role="status" className="transfer-notice">
-          {state.notice}
-        </p>
-      )}
-      {state.loadingPreview && <p role="status">{text.loading}</p>}
-      {!state.model.employees.length && state.model.catalog.today && <p>{text.noEmployees}</p>}
-      <TransferForm
-        model={state.model}
-        busy={locked}
-        actionsDisabled={state.loadingPreview}
-        onSelection={state.selection}
-        onField={state.field}
-        onReferenceQuery={state.referenceQuery}
-        onAction={(action) => {
-          void state.submit(action);
-        }}
-      />
-      {state.unknownCommand && (
-        <p>
-          {text.requestReference}：<code>{state.unknownCommand}</code>
-        </p>
-      )}
-      {!state.unknownCommand && (
-        <div className="transfer-actions">
-          {state.saved?.status === 'draft' && (
-            <button
-              type="button"
-              disabled={state.busy || state.needsReload || state.loadingPreview}
-              onClick={() => {
-                void state.submit('submit');
-              }}
-            >
-              {text.submitDraft}
-            </button>
-          )}
-          {state.saved?.status === 'draft' && (
-            <button
-              type="button"
-              disabled={state.busy}
-              onClick={() => {
-                void state.reloadSaved();
-              }}
-            >
-              {text.reloadDraft}
-            </button>
-          )}
-          {state.saved ? (
-            <button type="button" disabled={state.busy} onClick={state.reset}>
-              {text.newApplication}
-            </button>
-          ) : (
-            <button type="button" disabled={state.busy || state.loadingPreview} onClick={state.refresh}>
-              {text.refresh}
-            </button>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function EmployeeSearch({ state, locked }: { state: ReturnType<typeof useTransferForm>; locked: boolean }) {
-  const [search, setSearch] = useState('');
-  return (
-    <div className="transfer-search">
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          state.search(search);
-        }}
-      >
-        <input
-          aria-label={text.employeeSearch}
-          placeholder={text.employeeSearch}
-          value={search}
-          disabled={locked}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-        <button type="submit" disabled={locked}>
-          {text.search}
-        </button>
-      </form>
-      <button type="button" disabled={locked || state.page === 1} onClick={() => state.setPage(state.page - 1)}>
-        {text.previous}
-      </button>
-      <button
-        type="button"
-        disabled={locked || state.model.employees.length < 50}
-        onClick={() => state.setPage(state.page + 1)}
-      >
-        {text.next}
-      </button>
-    </div>
-  );
-}
-
-function PersonalScenarios({ state, locked }: { state: ReturnType<typeof useTransferForm>; locked: boolean }) {
-  return (
-    <nav aria-label={text.personalScenario} className="transfer-actions">
-      {state.model.catalog.types.map((type) => (
-        <button
-          key={type.code}
-          type="button"
-          disabled={locked}
-          aria-pressed={state.model.transferTypeCode === type.code}
-          onClick={() => state.selection('transferTypeCode', type.code)}
-        >
-          {type.name}
-        </button>
-      ))}
-    </nav>
-  );
-}
+export { TransferApplication as TransferManager } from '../self-service/shared/TransferApplication.js';

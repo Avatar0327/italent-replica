@@ -11,7 +11,14 @@ export type { ModuleScope } from './scope-types.js';
 interface AccessProvider {
   scope(query: ScopeQuery, tx?: Tx): Promise<ModuleScope>;
   authorize(request: Parameters<Authorizer>[0], tx: Tx): Promise<boolean>;
-  fields(tenantId: string, userId: string, objectCode: string, tx?: Tx): Promise<ReadonlySet<string>>;
+  fields(tenantId: string, userId: string, objectCode: string, tx?: Tx, asOf?: string): Promise<ReadonlySet<string>>;
+  editableFields?(
+    tenantId: string,
+    userId: string,
+    objectCode: string,
+    tx: Tx,
+    asOf: string,
+  ): Promise<ReadonlySet<string>>;
 }
 const providers = new WeakMap<Authorizer, AccessProvider>();
 export function registerScopeProvider(authorize: Authorizer, provider: AccessProvider): void {
@@ -66,13 +73,13 @@ export async function resolveModuleScopeInTransaction(
   ctx: TenantContext,
   tx: Tx,
   objectCode: string,
-  pageCode: string,
+  pageCode?: string,
 ): Promise<ModuleScope> {
   const provider = providers.get(deps.authorize);
   if (provider) {
     const asOf = tenantLocalDate(deps.clock(), ctx.timezone);
     const query = { tenantId: ctx.tenantId, userId: ctx.userId, appCode: ORG_EMPLOYEE_APP, asOf, objectCode };
-    return provider.scope({ ...query, pageCode, dataSourceCode: pageCode }, tx);
+    return provider.scope({ ...query, ...(pageCode ? { pageCode, dataSourceCode: pageCode } : {}) }, tx);
   }
   const all = await deps.authorize({ ...ctx, action: 'data.scope.all', resource: objectCode });
   return all ? { ...EMPTY_SCOPE, all: true, hasDataPermission: true, source: 'identity' } : EMPTY_SCOPE;
@@ -84,7 +91,14 @@ export async function getModuleViewableFields(
   objectCode: string,
 ): Promise<ReadonlySet<string> | undefined> {
   const provider = providers.get(deps.authorize);
-  if (provider) return provider.fields(ctx.tenantId, ctx.userId, objectCode);
+  if (provider)
+    return provider.fields(
+      ctx.tenantId,
+      ctx.userId,
+      objectCode,
+      undefined,
+      tenantLocalDate(deps.clock(), ctx.timezone),
+    );
   return (await deps.authorize({ ...ctx, action: 'data.scope.all', resource: objectCode })) ? undefined : new Set();
 }
 
@@ -96,7 +110,8 @@ export async function getModuleViewableFieldsInTransaction(
   tx: Tx,
 ): Promise<ReadonlySet<string> | undefined> {
   const provider = providers.get(deps.authorize);
-  if (provider) return provider.fields(ctx.tenantId, ctx.userId, objectCode, tx);
+  if (provider)
+    return provider.fields(ctx.tenantId, ctx.userId, objectCode, tx, tenantLocalDate(deps.clock(), ctx.timezone));
   return (await deps.authorize({ ...ctx, action: 'data.scope.all', resource: objectCode })) ? undefined : new Set();
 }
 
@@ -228,4 +243,16 @@ export async function linkedObjectScope(
         tx,
       )
     : ctx.scope;
+}
+
+/** 当前事务内解析完整可编辑字段集合，避免按字段重复查询身份与组织树。 */
+export async function editableModuleFields(
+  authorize: Authorizer,
+  tx: Tx,
+  ctx: TenantContext & { now: Date },
+  objectCode: string,
+) {
+  return providers
+    .get(authorize)
+    ?.editableFields?.(ctx.tenantId, ctx.userId, objectCode, tx, tenantLocalDate(ctx.now, ctx.timezone));
 }

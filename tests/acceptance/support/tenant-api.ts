@@ -31,6 +31,8 @@ export interface RequestOptions {
   readonly ifMatch?: string | number;
   /** 写请求缺省自动生成；传 null 表示故意不带（验证 400）。 */
   readonly idempotencyKey?: string | null;
+  /** 额外请求头（审计来源：X-Forwarded-For、User-Agent、X-Source-Page 等，R1-T16）。 */
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -45,7 +47,7 @@ export function tenantApi(db: Db, deps: Omit<AppDeps, 'db' | 'identity'> = {}) {
   });
 
   function request(method: string, path: string, options: RequestOptions = {}): Promise<Response> {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...options.headers };
     if (options.user) Object.assign(headers, devIdentityHeaders(secret, options.user));
     if (options.tenant) headers['x-tenant-id'] = options.tenant;
     if (options.ifMatch !== undefined) headers['if-match'] = `"${options.ifMatch}"`;

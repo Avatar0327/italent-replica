@@ -1,11 +1,13 @@
 /**
  * DEC-129（`10` §9）：组织自某日起不可用（停用，或失效日期提前）时，整支下级（行政维度各级）同日级联停用；
  * 整支（含本组织）自该日起仍有在职人员或启用中的职位时拒绝，列出所在组织与人数 / 职位数。
+ * DEC-196：审批中、审批通过未生效的调入申请同样计入；只读最新载荷与状态，不重复计已落地申请。
  * 原站停用时可把整支人员、职位转入替换组织（强推断）；复刻有意不做自动转移，与 DEC-016 一致。
  */
 import { and, asc, eq, orgVersions, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { countDepartmentStaff } from '../employment/org-people.js';
+import { rowsOf } from '../employment/read-model.js';
 import { countEnabledPositions } from '../job/read-model.js';
 import { futureBoundaries, loadOrgSnapshot, type OrgRecord } from './read-model.js';
 import type { NormalizedOrganization, OrgWriteContext } from './validation.js';
@@ -43,6 +45,8 @@ export async function planDeactivation(
   from: string,
   authorize: CascadeAuthorizer | undefined,
 ): Promise<OrgRecord[]> {
+  // 可信内部调用也统一标识；HTTP 入口已在权限判断前规范化。
+  root = { ...root, id: root.id.toLowerCase() };
   const descendants = new Set<string>();
   let atFrom: OrgRecord[] = [];
   for (const boundary of await futureBoundaries(tx, ctx.tenantId, from)) {
@@ -114,7 +118,10 @@ async function assertSubtreeVacant(
   atFrom: readonly OrgRecord[],
 ) {
   const ids = [root.id, ...descendants];
+  // updateOrganization 已由 ensureOrgSetup 持有租户 org_settings 排他锁。
+  // 调入提交 / 审批 / 落地的 assertEmploymentDepartmentAvailable 持同一锁，两个统计间不能迁移状态。
   const staff = await countDepartmentStaff(tx, ctx.tenantId, ids, from);
+  const pending = await countPendingTransfers(tx, ctx.tenantId, ids);
   const positions = await countEnabledPositions(tx, ctx.tenantId, ids, from);
   const byId = new Map(atFrom.map((node) => [node.id, node]));
   const occupied: SubtreeOccupancy[] = ids
@@ -124,19 +131,48 @@ async function assertSubtreeVacant(
         orgId: id,
         code: node?.code ?? '',
         name: node?.name ?? '',
-        employeeCount: staff.get(id) ?? 0,
+        employeeCount: (staff.get(id) ?? 0) + (pending.get(id) ?? 0),
         positionCount: positions.get(id) ?? 0,
       };
     })
     .filter((row) => row.employeeCount > 0 || row.positionCount > 0)
     .sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
   if (!occupied.length) return;
-  throw new AppError('CONFLICT', '组织及其下级组织仍有在职人员或启用中的职位，请先调出人员、处理职位后再停用', {
+  const count = occupied.reduce((sum, row) => sum + row.employeeCount, 0);
+  const message = count
+    ? `当前组织或下级组织中存在待入职或在职员工任职记录${count}条，不能被停用`
+    : '组织及其下级组织仍有在职人员或启用中的职位，请先调出人员、处理职位后再停用';
+  throw new AppError('CONFLICT', message, {
     reason: 'ORG_SUBTREE_NOT_EMPTY',
     effectiveDate: from,
     organizations: occupied.slice(0, REPORT_LIMIT),
     ...(occupied.length > REPORT_LIMIT ? { truncated: true, organizationCount: occupied.length } : {}),
   });
+}
+
+/** DEC-196：在途按申请单计数，不按员工去重；计划日在停用日前也可能继续占用，不能按日期过滤。 */
+async function countPendingTransfers(
+  tx: Tx,
+  tenantId: string,
+  orgIds: readonly string[],
+): Promise<Map<string, number>> {
+  const rows = rowsOf<{ orgId: string; count: number }>(
+    await tx.execute(sql`
+      SELECT p.department_id AS "orgId", count(*)::int AS count
+      FROM employment_business_objects b
+      JOIN LATERAL (SELECT mode, kind, department_id FROM employment_payload_versions
+        WHERE tenant_id=b.tenant_id AND employee_id=b.employee_id AND business_id=b.id
+        ORDER BY version_no DESC LIMIT 1) p ON true
+      JOIN LATERAL (SELECT state FROM employment_state_events
+        WHERE tenant_id=b.tenant_id AND employee_id=b.employee_id AND business_id=b.id
+        ORDER BY event_no DESC LIMIT 1) s ON true
+      WHERE b.tenant_id=${tenantId} AND p.mode='application' AND p.kind='transfer'
+        AND s.state IN ('in_review','approved')
+        AND p.department_id = ANY(${`{${orgIds.join(',')}}`}::uuid[])
+      GROUP BY p.department_id
+    `),
+  );
+  return new Map(rows.map((row) => [row.orgId, Number(row.count)]));
 }
 
 /**

@@ -94,6 +94,7 @@ export function emptyPresetFields(): PresetFields {
 export type EmploymentScope = Awaited<ReturnType<typeof resolveModuleScope>>;
 
 export interface EmploymentContext {
+  readonly managerTransfer?: boolean;
   readonly scope?: EmploymentScope;
   readonly scopeEmployeeId?: string;
   readonly scopeEmployeeCreatorId?: string | null;
@@ -112,6 +113,8 @@ export interface EmploymentContext {
   readonly now: Date;
   readonly commandId: string;
   readonly expectedRevision: number;
+  /** 非保存当时落地（定时生效、HR 重试、审批通过）：迟到执行按实际执行日对齐联动（DEC-186 / DEC-195②）。 */
+  readonly deferredExecution?: boolean;
 }
 
 export interface EmploymentBusinessInput {

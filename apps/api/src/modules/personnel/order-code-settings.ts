@@ -1,7 +1,8 @@
-import { auditEvents, sql, type Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { auditActor } from '../../system-actor.js';
 import { assertRevision, rows, type PersonnelContext } from './store.js';
+import { recordAudit } from '../../audit/record.js';
 
 export const orderSettingsInput = z
   .object({
@@ -53,7 +54,7 @@ export async function saveOrderSettings(tx: Tx, ctx: PersonnelContext, input: z.
     await tx.execute(sql`INSERT INTO personnel_order_rules(tenant_id,field,position,direction,enabled)
       VALUES (${ctx.tenantId},${item.field},${position},${item.direction},${item.enabled})`);
   }
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: auditActor(ctx.userId),
     action: 'personnel.order.settings',

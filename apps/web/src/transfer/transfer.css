@@ -194,3 +194,16 @@ legend {
   font-size: 12px;
   padding: 4px 8px;
 }
+
+/* R1-T10 联动区块与执行情况 */
+.transfer-linkage {
+  margin-top: 16px;
+}
+.transfer-linkage h3,
+.transfer-linkage h4 {
+  margin: 12px 0 6px;
+  font-size: 14px;
+}
+.transfer-linkage li button {
+  margin-left: 8px;
+}

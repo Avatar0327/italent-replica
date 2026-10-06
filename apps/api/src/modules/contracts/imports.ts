@@ -1,10 +1,13 @@
 import { pgErrorCode, and, eq, contractRecords, sql, type Tx } from '@italent/db';
+import { CONTRACT_OBJECT } from '@italent/domain';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import { checkOperationScope, checkScope, lockEmployee, revision, rowsOf, type ContractContext } from './context.js';
 import { settings } from './configuration.js';
 import { fieldsSchema, parse, uuid, type ContractCommand } from './input.js';
 import { createCommand, deleteContract, portfolioRevision } from './service.js';
+import { recordImportLog } from '../../audit/record.js';
+import { auditActor } from '../../system-actor.js';
 export const importSchema = z.strictObject({
   mode: z.enum(['add', 'edit', 'change', 'initialize']),
   rows: z
@@ -178,6 +181,13 @@ export async function importContracts(tx: Tx, ctx: ContractContext, raw: unknown
   const errors: ImportError[] = [];
   const items = await applyRows(tx, ctx, input, errors);
   if (errors.length) throw importFailure('导入失败', { errors });
+  const receipts = items.map(() => ({ status: 'imported' }));
+  // 逐行归属与真实业务对象编号（合同记录 / 申请，第四轮 N2：“使用用户”维度按对象创建人判断）
+  const anchors = input.rows.map((row, rowIndex) => ({
+    employeeId: row.employeeId,
+    objectId: (items[rowIndex] as { id?: string } | undefined)?.id ?? null,
+  }));
+  await recordImportLog(tx, { ...ctx, actorUserId: auditActor(ctx.userId) }, CONTRACT_OBJECT, receipts, anchors);
   return { items, count: items.length };
 }
 function importFailure(message: string, result: { errors: ImportError[] }) {

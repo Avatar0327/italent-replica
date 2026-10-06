@@ -17,8 +17,8 @@ async function setup(label: string) {
   return { world, root, child, other, employee, subordinate };
 }
 
-describe('AC-ORG-21～26 组织调整任职联动', () => {
-  it('AC-ORG-21 改名/行政上级必须显式选择；其他变更不接受该选项', async () => {
+describe('AC-ORG-22～26、35 组织调整任职联动', () => {
+  it('AC-ORG-35 改名/行政上级必须显式选择；其他变更不接受该选项', async () => {
     const { world, root, other } = await setup('org21');
     for (const patch of [{ name: '新名称' }, { parents: { admin: { parentId: other.id } } }]) {
       const response = await world.patchOrg(root, { effectiveDate: DATE, ...patch });
