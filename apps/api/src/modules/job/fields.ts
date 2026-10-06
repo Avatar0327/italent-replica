@@ -30,7 +30,15 @@ const ranges = {
   minGradeId: reference,
   maxGradeId: reference,
 };
-const associations = { sequenceId: reference, professionalLineId: reference };
+const associations = {
+  // PostgreSQL UUID 按大小写等价比较；触发同步前也必须先归一，不能把同一引用当成非空变更。
+  sequenceId: z
+    .uuid()
+    .transform((id) => id.toLowerCase())
+    .nullable()
+    .optional(),
+  professionalLineId: reference,
+};
 const characteristics = {
   isKey: z.boolean().optional(),
   isConfidential: z.boolean().optional(),
