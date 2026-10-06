@@ -244,3 +244,35 @@ it.each(['application', 'direct'] as const)('DEC-195 %s 迟到调入和后续调
   });
   expect((await w.session.records(person.employee.id, '2026-10-08')).find((r) => r.isCurrent)?.id).toBe(last.id);
 });
+
+it('F-017 / AC-TRF-08 删除迟到待复查调出单不能截断恢复占编，超编整单回滚', async () => {
+  const w = await fixture();
+  const jia = await w.session.employee('甲');
+  await w.session.business(
+    jia.id,
+    { kind: 'hire', mode: 'direct', effectiveDate: '2026-09-01', fields: { departmentId: w.to.id } },
+    jia.revision,
+  );
+  const transfer = async (employeeId: string, effectiveDate: string, departmentId: string) => {
+    const employee = await w.session.getEmployee(employeeId);
+    return w.session.business(
+      employeeId,
+      { kind: 'transfer', mode: 'direct', effectiveDate, fields: { departmentId } },
+      employee.revision,
+    );
+  };
+  const out = await transfer(jia.id, '2026-10-05', w.from.id);
+  const yi = await w.hired('乙');
+  await transfer(yi.employee.id, '2026-10-09', w.to.id);
+  // 不跑到期调度：被删调出仍是 effective 且等待到期复查，但已有墓碑时不能再参与投影。
+  w.session.setNow('2026-10-08T01:00:00Z');
+  const before = await w.session.records(jia.id);
+  const businessBefore = await w.business(out.id);
+  const response = await w.session.request('DELETE', `/businesses/${out.id}`, {
+    ifMatch: businessBefore.revision,
+  });
+  expect(response.status, await response.clone().text()).toBe(409);
+  expect(await response.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHMENT_EXCEEDED' } } });
+  expect(await w.session.records(jia.id)).toEqual(before);
+  expect(await w.business(out.id)).toEqual(businessBefore);
+});
