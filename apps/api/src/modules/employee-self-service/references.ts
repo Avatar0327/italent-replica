@@ -11,6 +11,8 @@ import { loadOrgSnapshot } from '../org/read-model.js';
 import { resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import { readTransferSettings } from '../transfer/configuration.js';
 import { transferFieldAccess } from './access.js';
+import { managerChoices } from './managers.js';
+import { EMPLOYEE_READONLY_FIELDS } from './policy.js';
 
 const JOB_FIELDS: Record<string, JobKind> = {
   positionId: 'positions',
@@ -22,7 +24,7 @@ const JOB_FIELDS: Record<string, JobKind> = {
 };
 const PERSON_FIELDS = new Set(['directManagerId', 'dottedManagerId', 'addedSubordinateIds']);
 
-/** 只解析本人任职中已有的引用；不提供按任意 ID 读取他人档案的端点。 */
+/** 仅接受可信原值、服务端带出值或已通过候选校验的值，不能直接传入客户端字段。 */
 export async function referenceLabels(tx: Tx, ctx: EmploymentContext, fields: Record<string, unknown>, date: string) {
   const labels: Record<string, string> = {};
   for (const [field, value] of Object.entries(fields)) {
@@ -36,7 +38,7 @@ export async function referenceLabels(tx: Tx, ctx: EmploymentContext, fields: Re
   return labels;
 }
 
-/** TODO(需取证 #81)：纯员工选择器范围尚未确证，沿用当前 HR 候选范围；默认空，不授予全租户人员范围。 */
+/** DEC-209：经理走新部门上级链；员工只读职务字典不开放候选。 */
 export async function referenceChoices(
   tx: Tx,
   deps: TenantRouteDeps,
@@ -45,9 +47,12 @@ export async function referenceChoices(
   date: string,
   name: string,
   page: PageQuery,
+  departmentId?: string,
 ) {
   businessDate(date);
   if (!(await transferFieldAccess(tx, deps, ctx)).has(code)) throw new AppError('FORBIDDEN', '无权查看此字段');
+  if (EMPLOYEE_READONLY_FIELDS.has(code)) return [];
+  if (code === 'directManagerId') return managerChoices(tx, ctx, date, departmentId, name, page);
   const objectCode = EMPLOYMENT_OBJECT;
   const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, objectCode, `${objectCode}.detail`);
   if (PERSON_FIELDS.has(code)) {

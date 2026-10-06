@@ -9,6 +9,10 @@ import { normalizeTransferInput, requireTransferWrite } from '../transfer/servic
 import { previewTransfer } from '../transfer/preview.js';
 import { readTransferCatalog } from '../transfer/configuration.js';
 import { transferFieldAccess } from './access.js';
+import { findPredecessor } from '../employment/read-model.js';
+import { requireManagerCandidate } from './managers.js';
+import { referenceLabels } from './references.js';
+import { visibleFields } from './field-disclosure.js';
 
 const inputSchema = z.strictObject({
   effectiveDate: z.string(),
@@ -18,9 +22,21 @@ const inputSchema = z.strictObject({
 });
 
 /** 本人入口固定业务类型与提交动作，客户端不能借 mode/initiator/employeeId 提权。 */
-export async function ownTransferInput(tx: Tx, ctx: EmploymentContext, raw: unknown) {
+export async function ownTransferInput(tx: Tx, ctx: EmploymentContext, raw: unknown, deps: TenantRouteDeps) {
   const parsed = inputSchema.safeParse(raw);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '本人调动表单字段不合法');
+  const visible = await transferFieldAccess(tx, deps, ctx);
+  const authorize = authorizeInTransaction(ctx.authorize!, tx);
+  if (
+    !visible.has('effectiveDate') ||
+    !(await authorize({
+      ...ctx,
+      action: 'object.create',
+      resource: EMPLOYMENT_OBJECT,
+      fields: ['effectiveDate'],
+    }))
+  )
+    throw new AppError('SELF_TRANSFER_DATE_UNAVAILABLE', '调动日期无查看或编辑权限，无法发起本人调动');
   const input = await normalizeTransferInput(tx, ctx, {
     ...parsed.data,
     initiator: 'employee',
@@ -30,6 +46,20 @@ export async function ownTransferInput(tx: Tx, ctx: EmploymentContext, raw: unkn
     submit: true,
   });
   await requireTransferWrite({ ...ctx, authorize: ctx.authorize && authorizeInTransaction(ctx.authorize, tx) }, input);
+  const { directManagerId, departmentId } = input.employment.fields;
+  if (directManagerId) {
+    const previous =
+      departmentId === undefined
+        ? await findPredecessor(tx, ctx.tenantId, ctx.selfServiceEmployeeId!, input.employment.effectiveDate)
+        : null;
+    await requireManagerCandidate(
+      tx,
+      ctx,
+      input.employment.effectiveDate,
+      departmentId ?? previous?.fields.departmentId ?? undefined,
+      directManagerId,
+    );
+  }
   return input;
 }
 
@@ -40,7 +70,7 @@ export async function ownTransferPreview(
   raw: unknown,
   originalDeps: TenantRouteDeps,
 ) {
-  const input = await ownTransferInput(tx, ctx, raw);
+  const input = await ownTransferInput(tx, ctx, raw, originalDeps);
   const preview = await previewTransfer(tx, ctx, employeeId, input);
   const visible = await transferFieldAccess(tx, originalDeps, ctx);
   const authorize = authorizeInTransaction(ctx.authorize!, tx);
@@ -62,7 +92,21 @@ export async function ownTransferPreview(
     Object.fromEntries(Object.entries(fields).filter(([key]) => Object.hasOwn(fieldModes, `${prefix}:${key}`)));
   const catalog = await readTransferCatalog(tx, ctx.tenantId, input.employment.effectiveDate);
   return {
-    ...preview.value,
+    employeeId: preview.value.employeeId,
+    employeeRevision: preview.value.employeeRevision,
+    allowDirectTransfer: preview.value.allowDirectTransfer,
+    allowedActions: preview.value.allowedActions,
+    ...visibleFields({ staffId: preview.value.staffId, previousRecordId: preview.value.previousRecordId }, visible),
+    ...(await previewLabels(
+      tx,
+      ctx,
+      input.employment.fields,
+      {
+        fields: trim(preview.value.fields),
+        before: trim(preview.value.before?.fields ?? {}),
+      },
+      input.employment.effectiveDate,
+    )),
     basicFieldModes: {
       effectiveDate: visible.has('effectiveDate') ? 'editable' : 'hidden',
       reasonCode: visible.has('reasonCode')
@@ -91,5 +135,28 @@ export async function ownTransferPreview(
     ),
     // DEC-191：兼职由 R2 提供适配器；此处只声明能力端口，不提供伪操作。
     partTimeAdjustment: { available: false },
+  };
+}
+
+async function previewLabels(
+  tx: Tx,
+  ctx: EmploymentContext,
+  explicit: object,
+  preview: { fields: Record<string, unknown>; before: Record<string, unknown> },
+  date: string,
+) {
+  // 原值与服务端带出值可信；客户端新填引用仅部门和已按 DEC-209 校验的经理可回显。
+  // 其他额外身份的引用字段可用自身候选接口，不能借本接口按任意 UUID 查名称。
+  const trusted = Object.fromEntries(
+    Object.entries(preview.fields).filter(
+      ([code, value]) =>
+        !Object.hasOwn(explicit, code) ||
+        value === preview.before[code] ||
+        ['departmentId', 'directManagerId'].includes(code),
+    ),
+  );
+  return {
+    valueLabels: await referenceLabels(tx, ctx, trusted, date),
+    beforeLabels: await referenceLabels(tx, ctx, preview.before, date),
   };
 }

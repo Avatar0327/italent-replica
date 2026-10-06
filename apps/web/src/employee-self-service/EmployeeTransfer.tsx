@@ -58,7 +58,7 @@ export function EmployeeTransfer({
           onAction={() => {
             void submit();
           }}
-          onReferenceQuery={referenceQuery(tenantId, date, setReferences, setError)}
+          onReferenceQuery={referenceQuery(tenantId, date, preview?.fields.departmentId, setReferences, setError)}
         />
       )}
       <p>{text.referenceBoundary}</p>
@@ -119,15 +119,15 @@ async function loadChoices(tenantId: string, body: string, result: OwnPreview, s
   ];
   const choices = await Promise.all(
     referenceCodes
-      .filter((code) => result.form.fieldModes[`preset:${code}`])
+      .filter((code) => result.form.fieldModes[`preset:${code}`] === 'editable')
       .map(async (code) => {
-        const query = new URLSearchParams({ asOf: JSON.parse(body).effectiveDate as string, pageSize: '100' });
-        const list = await transferRequest<{ items: Choice[] }>(
+        const query = choiceQuery(JSON.parse(body).effectiveDate as string, result.fields.departmentId);
+        const list = await transferRequest<{ items: ManagerChoice[] }>(
           tenantId,
           `${BASE}/transfer/references/${code}?${query}`,
           { signal: signal },
         );
-        return [code, list.items] as const;
+        return [code, choiceLabels(list.items)] as const;
       }),
   );
   return choices;
@@ -207,19 +207,36 @@ function useSubmit(
 function referenceQuery(
   tenantId: string,
   date: string,
+  departmentId: unknown,
   setReferences: React.Dispatch<React.SetStateAction<Record<string, Choice[]>>>,
   setError: (value: string) => void,
 ) {
   return async (code: string, name: string, page: number) => {
     try {
-      const query = new URLSearchParams({ asOf: date, name, page: String(page), pageSize: '100' });
-      const result = await transferRequest<{ items: Choice[] }>(
+      const query = choiceQuery(date, departmentId, name, page);
+      const result = await transferRequest<{ items: ManagerChoice[] }>(
         tenantId,
         `${BASE}/transfer/references/${code}?${query}`,
       );
-      setReferences((old) => ({ ...old, [code]: result.items }));
+      setReferences((old) => ({ ...old, [code]: choiceLabels(result.items) }));
     } catch (cause) {
       setError(requestError(cause));
     }
   };
+}
+
+interface ManagerChoice extends Choice {
+  orgPath?: string;
+}
+function choiceLabels(items: ManagerChoice[]): Choice[] {
+  return items.map(({ id, name, orgPath }) => ({ id, name: orgPath ? `${name} · ${orgPath}` : name }));
+}
+function choiceQuery(date: string, departmentId: unknown, name = '', page = 1) {
+  return new URLSearchParams({
+    asOf: date,
+    name,
+    page: String(page),
+    pageSize: '100',
+    ...(typeof departmentId === 'string' ? { departmentId } : {}),
+  });
 }

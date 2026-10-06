@@ -2,7 +2,7 @@ import type { EmployeeChoice, FieldValues, TransferPreview, TransferCatalog } fr
 export interface OwnRecord {
   id: string;
   kind?: string;
-  effectiveDate: string;
+  effectiveDate?: string;
   stopDate?: string | null;
   approvalStatus?: string;
   fields: FieldValues;
@@ -20,7 +20,7 @@ export interface Application {
   revision: number;
   status: string;
   createdAt: string;
-  effectiveDate: string;
+  effectiveDate?: string;
   title: string;
   category: string;
   initiator: string;

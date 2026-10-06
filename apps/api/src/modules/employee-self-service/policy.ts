@@ -5,16 +5,10 @@ import { loadObjectPermissions } from '../permission/subject.js';
 
 // DEC-205：这是自动员工身份的出厂权限，不是表单白名单。租户可用现有身份配置接口覆盖，另有身份按并集合并。
 export const EMPLOYEE_PROFILE_CODE = 'employee_self_service';
-const DEFAULT_EDIT = [
-  'effectiveDate',
-  'reasonCode',
-  'departmentId',
-  'directManagerId',
-  'postId',
-  'levelId',
-  'sequenceId',
-];
-const DEFAULT_READ = DEFAULT_EDIT;
+// DEC-209：员工入口的只读上限，不因其他身份的编辑权而放开。
+export const EMPLOYEE_READONLY_FIELDS = new Set(['postId', 'levelId', 'sequenceId']);
+const DEFAULT_EDIT = ['effectiveDate', 'reasonCode', 'departmentId', 'directManagerId'];
+const DEFAULT_READ = [...DEFAULT_EDIT, ...EMPLOYEE_READONLY_FIELDS];
 export const PROTOCOL_FIELDS = [
   'id',
   'employeeId',

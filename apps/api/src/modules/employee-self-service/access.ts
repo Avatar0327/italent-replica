@@ -14,7 +14,7 @@ import {
   resolveModuleScopeInTransaction,
 } from '../permission/module-access.js';
 import { EMPTY_SCOPE } from '../permission/scope-types.js';
-import { employeeFieldPolicy, PROTOCOL_FIELDS } from './policy.js';
+import { employeeFieldPolicy, EMPLOYEE_READONLY_FIELDS, PROTOCOL_FIELDS } from './policy.js';
 
 const COMMAND_FIELDS = new Set(['initiator', 'transferTypeCode', 'formId', 'mode', 'kind', 'submit']);
 const BUTTONS = new Set(['Transfer.Self', 'Employment.Create', 'Employment.Submit']);
@@ -58,6 +58,7 @@ export async function selfAccess(c: Context<TenantEnv>, deps: TenantRouteDeps, e
       const policy = await employeeFieldPolicy(tx, tenant.tenantId);
       if (!policy.create && !(await base({ ...request, fields: [] }))) return false;
       for (const field of request.fields) {
+        if (EMPLOYEE_READONLY_FIELDS.has(field)) return false;
         if ((policy.create && policy.edit.has(field)) || COMMAND_FIELDS.has(field)) continue;
         if (!(await base({ ...request, fields: [field] }))) return false;
       }

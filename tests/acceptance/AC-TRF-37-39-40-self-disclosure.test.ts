@@ -14,6 +14,7 @@ let head: Person;
 let ancestor: Person;
 let outsider: Person;
 let child: Person;
+let leaver: Person;
 let target: string;
 let postId: string;
 let newPostId: string;
@@ -42,7 +43,7 @@ const configure = async (dateMode: 'editable' | 'readonly' | 'hidden', extra: st
           ...['departmentId', 'directManagerId', 'postId', 'levelId', 'sequenceId', ...extra].map((fieldCode) => ({
             fieldCode,
             view: true,
-            edit: true,
+            edit: !extra.includes(fieldCode),
           })),
         ],
         buttons: [],
@@ -62,6 +63,17 @@ beforeAll(async () => {
   ancestor = await world.person('合成上级经理', parent);
   outsider = await world.person('范围外经理秘密姓名', sibling);
   child = await world.person('合成下级经理', await world.org('合成下级', target));
+  leaver = await world.person('合成已离职经理', target);
+  const current = await world.json<{ revision: number }>(
+    await world.request(world.hr.id, 'GET', `/api/tenant/employment/employees/${leaver.employeeId}`),
+  );
+  await world.json(
+    await world.request(world.hr.id, 'POST', `/api/tenant/employment/employees/${leaver.employeeId}/businesses`, {
+      ifMatch: current.revision,
+      body: { kind: 'leave', mode: 'direct', lastWorkDate: '2026-09-30' },
+    }),
+    201,
+  );
   await world.setOrgRoles(target, { head: head.employeeId });
   const job = async (code: string, name: string) =>
     (
@@ -82,13 +94,19 @@ beforeAll(async () => {
 
 describe('AC-TRF-37/39/40 第二轮：DEC-209 与响应披露', () => {
   it('P2-1：客户端范围外经理不能预览名称或提交；改部门后重新校验', async () => {
-    for (const manager of [outsider, child]) {
+    for (const manager of [outsider, child, leaver]) {
       const body = input({ directManagerId: manager.employeeId });
       const preview = await request('/transfer/preview', body);
       expect(preview.status).toBe(403);
       expect(await preview.text()).not.toContain(manager === outsider ? '范围外经理秘密姓名' : '合成下级经理');
       expect((await request('/transfer', body, await revision())).status).toBe(403);
     }
+    const changedDepartment = input({
+      departmentId: await world.org('合成切换目标'),
+      directManagerId: head.employeeId,
+    });
+    expect((await request('/transfer/preview', changedDepartment)).status).toBe(403);
+    expect((await request('/transfer', changedDepartment, await revision())).status).toBe(403);
   });
 
   it('DEC-209：候选仅新部门及其上级链在职人员，含组织路径，不含邮箱', async () => {
@@ -104,6 +122,15 @@ describe('AC-TRF-37/39/40 第二轮：DEC-209 与响应披露', () => {
     expect(await world.json(await request(`/transfer/references/directManagerId?departmentId=${org}`))).toEqual({
       items: [],
     });
+    const foreignPerson = await foreign.person('外租户经理秘密姓名', org);
+    expect((await request('/transfer/preview', input({ directManagerId: foreignPerson.employeeId }))).status).toBe(403);
+    expect(
+      await world.json(
+        await request(
+          `/transfer/references/directManagerId?asOf=2026-10-19&departmentId=${target}&name=上级经理&pageSize=1`,
+        ),
+      ),
+    ).toMatchObject({ items: [{ id: ancestor.employeeId }] });
   });
 
   it('P2-1：职务/职级/序列只读，不提供候选；范围外 postId 不回显名称', async () => {
