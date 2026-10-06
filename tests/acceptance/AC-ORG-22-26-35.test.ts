@@ -186,3 +186,25 @@ it('AC-ORG-22 按变更生效日归属选人：未来调入者追加，提前调
     fields: { departmentId: root.id },
   });
 });
+
+it('AC-ORG-35 导入混合大小写 UUID 统一规范化，不将同一上级误判为变更', async () => {
+  const { world, root, employee } = await setup('org35uuid');
+  const response = await world.call('POST', 'org/import', {
+    ifMatch: 0,
+    body: {
+      rows: [
+        {
+          sourceCode: 'UUID35',
+          orgId: root.id.toUpperCase(),
+          code: root.code,
+          name: root.name,
+          parentId: world.tenant.id.toUpperCase(),
+          expectedRevision: root.revision,
+          startDate: '2026-10-08',
+        },
+      ],
+    },
+  });
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect(await world.records(employee.id)).toHaveLength(1);
+});
