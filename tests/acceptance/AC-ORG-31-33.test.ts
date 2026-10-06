@@ -105,10 +105,11 @@ it('AC-ORG-32 直接未来调动迟到改期，同步撤回派生组织调整的
   const history = () =>
     withTenant(w.db, w.session.tenant.id, async (tx) => {
       const result = await tx.execute(sql`SELECT r.department_id AS original,
-      (SELECT count(*)::int FROM employment_payload_versions p WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id) AS versions,
+      (SELECT count(*)::int FROM employment_payload_versions p
+        WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id) AS versions,
       (SELECT count(*)::int FROM audit_events a WHERE a.tenant_id=r.tenant_id AND a.object_id=r.id::text
         AND a.action='employment.org-adjustment.rebased') AS audits,
-      (SELECT count(*)::int FROM employment_outbox o WHERE o.tenant_id=r.tenant_id AND o.object_id=r.id::text
+      (SELECT count(*)::int FROM employment_outbox o WHERE o.tenant_id=r.tenant_id AND o.object_id=r.id
         AND o.event_type='employment.org-adjustment.rebased') AS events
       FROM employment_records r WHERE r.tenant_id=${w.session.tenant.id} AND r.id=${before.id}::uuid`);
       return Array.isArray(result) ? result : (result as { rows: unknown[] }).rows;
@@ -155,7 +156,7 @@ it('AC-ORG-33 DEC-207 导入改名/改行政上级不新增任职，拒绝 addEm
   const row = {
     sourceCode: 'ORG33',
     orgId: w.from.id,
-    code: w.from.code,
+    code: 'ORG33-IMPORT',
     name: '导入改名',
     parentId: w.to.id,
     expectedRevision: w.from.revision,
@@ -202,4 +203,35 @@ it('AC-ORG-32 后补调动曾传播到组织调整时，多笔迟到仍按原计
     id: last.id,
     fields: { departmentId: finalOrg.id },
   });
+});
+
+it('AC-ORG-31 同员工后续已批准调出可释放组织调整之后的占编，不得虚占', async () => {
+  const w = await activationWorld(database().db, 'org31out');
+  await strictCapacity(w);
+  const jia = await w.hired('甲');
+  const incoming = await w.approve(
+    await w.apply(jia.employee.id, '2026-10-05', { departmentId: w.to.id }),
+    '2026-10-01T02:00:00Z',
+  );
+  await rename(w);
+  const outgoing = await w.approve(
+    await w.apply(jia.employee.id, '2026-10-06', { departmentId: w.from.id }),
+    '2026-10-01T02:00:00Z',
+  );
+  const yi = await w.hired('乙');
+  const other = await w.apply(yi.employee.id, '2026-10-10', { departmentId: w.to.id });
+  expect(other.status).toBe('in_review');
+  expect(await w.runScheduler('2026-10-05T01:00:00Z')).toMatchObject({
+    activated: [incoming.id],
+    failed: [],
+    errors: [],
+  });
+  expect(await w.runScheduler('2026-10-06T01:00:00Z')).toMatchObject({
+    activated: [outgoing.id],
+    failed: [],
+    errors: [],
+  });
+  expect((await w.session.records(jia.employee.id, '2026-10-09')).find((r) => r.isCurrent)?.fields.departmentId).toBe(
+    w.from.id,
+  );
 });
