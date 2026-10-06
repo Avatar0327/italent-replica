@@ -134,9 +134,21 @@ async function employmentTransition(
 }
 
 async function latestPayload(tx: Tx, tenantId: string, businessId: string) {
+  // DEC-218：后台序列同步不改实例。并发令牌仅越过同事务 outbox 证明的序列同步版本，
+  // 普通更正仍使用新的载荷编号、使旧审批409；表单值仍由 loadEmploymentBusiness 读取最新载荷。
   const [row] = rowsOf<{ id: string; last_work_date: string | null }>(
-    await tx.execute(sql`SELECT id,last_work_date::text FROM employment_payload_versions
-      WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid ORDER BY version_no DESC LIMIT 1`),
+    await tx.execute(sql`WITH RECURSIVE versions AS (
+      (SELECT p.* FROM employment_payload_versions p WHERE tenant_id=${tenantId}
+        AND business_id=${businessId}::uuid ORDER BY version_no DESC LIMIT 1)
+      UNION ALL
+      SELECT previous.* FROM versions current
+      JOIN employment_payload_versions previous ON previous.tenant_id=current.tenant_id
+        AND previous.business_id=current.business_id AND previous.id=current.previous_version_id
+        AND previous.version_no<current.version_no
+      WHERE EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=current.tenant_id
+        AND o.business_id=current.business_id AND o.payload_version_id=current.id
+        AND o.event_type='employment.sequence-sync' AND o.command_id=current.command_id)
+    ) SELECT id,last_work_date::text FROM versions ORDER BY version_no LIMIT 1`),
   );
   if (!row) throw new AppError('SERVICE_UNAVAILABLE', '任职业务版本链不完整');
   return { version: row.id, lastWorkDate: row.last_work_date ?? null };

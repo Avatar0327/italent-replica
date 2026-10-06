@@ -62,9 +62,16 @@ function JobManager({ tenantId }: { tenantId: string }) {
       )}
       <aside aria-live="polite">
         {messages.map((item) => (
-          <p key={item.id}>
-            {text.completed} <time>{item.createdAt}</time>
-          </p>
+          <div key={item.id}>
+            <p>
+              {text.completed} {text.updatedCount(item.message.count)} <time>{item.createdAt}</time>
+            </p>
+            {item.message.skipped?.map((row) => (
+              <p key={row.recordId}>
+                {row.recordId}：{text.skipReason(row.reason)}
+              </p>
+            ))}
+          </div>
         ))}
       </aside>
     </section>

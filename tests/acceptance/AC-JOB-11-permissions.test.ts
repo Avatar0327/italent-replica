@@ -14,7 +14,7 @@ import {
 import { memberWithAdminRole } from './AC-PRM-users-support.js';
 import { auditApi } from './AC-AUD-support.js';
 import { scenario, worker, versions, now } from './AC-JOB-sequence-support.js';
-import { cmd, tenantApi } from './support/tenant-api.js';
+import { allowAll, cmd, tenantApi } from './support/tenant-api.js';
 import { runSequenceSyncJobs } from '../../apps/api/src/modules/job/sequence-worker.js';
 const testDb = useTestDb();
 async function fixture() {
@@ -130,7 +130,21 @@ it('AC-JOB-10 真实审计查看：按逐条归属裁剪任务计数，隐藏序
   const s = await fixture();
   const w = s.permissions;
   const outside = await s.world.org('不可见归属');
-  await s.world.hire('不可见员工', { departmentId: outside.id, postId: s.target.id, sequenceId: s.oldSequence.id });
+  const hidden = await s.world.hire('不可见员工', {
+    departmentId: outside.id,
+    postId: s.target.id,
+    sequenceId: s.oldSequence.id,
+  });
+  await s.world.business(
+    hidden.id,
+    {
+      kind: 'org_adjustment',
+      mode: 'direct',
+      effectiveDate: '2026-10-12',
+      fields: { departmentId: outside.id, postId: s.target.id, sequenceId: s.oldSequence.id },
+    },
+    hidden.revision,
+  );
   const key = randomUUID();
   expect(
     (
@@ -143,7 +157,7 @@ it('AC-JOB-10 真实审计查看：按逐条归属裁剪任务计数，隐藏序
       )
     ).status,
   ).toBe(200);
-  await worker(s.db, w.tenant.id);
+  await worker(s.db, w.tenant.id, allowAll, { clock: () => new Date('2026-10-13T01:00:00Z') });
   const viewer = await memberWithAdminRole(w, 'audit_admin', '日志查看人');
   const p = await profile(w);
   expect((await grant(w, viewer.user.id, p.id)).status).toBe(201);
@@ -156,15 +170,21 @@ it('AC-JOB-10 真实审计查看：按逐条归属裁剪任务计数，隐藏序
       })
     ).status,
   ).toBe(200);
-  const api = auditApi(s.db, now.toISOString(), { authorize: undefined });
+  const api = auditApi(s.db, '2026-10-13T01:00:00Z', { authorize: undefined });
   const as = { user: viewer.user.id, tenant: w.tenant.id };
   const query = { commandId: key, objectType: 'job-sequence-sync' };
   expect((await api.operationLogs(as, query)).items).toEqual([
-    expect.objectContaining({ totalCount: 2, successCount: 2, failureCount: 0 }),
+    expect.objectContaining({
+      totalCount: 2,
+      successCount: 1,
+      failureCount: 1,
+      objectLabel: '任职序列同步任务',
+      errorReport: [expect.objectContaining({ errorCode: 'BECAME_HISTORICAL' })],
+    }),
   ]);
   expect(
     (await api.dataChanges(as, { commandId: key, objectType: 'employment-record', field: 'sequenceId' })).items,
-  ).toHaveLength(2);
+  ).toHaveLength(1);
   // 请求/完成事件的全量目标数组不能通过数据变更接口泄露。
   expect((await api.dataChanges(as, query)).items).toEqual([]);
   const definition = MODULE_OBJECTS.employmentRecord;

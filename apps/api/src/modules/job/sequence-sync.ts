@@ -5,7 +5,12 @@ import { authorizeInTransaction } from '../permission/module-access.js';
 import type { EmploymentWriteAccess } from './employment-port.js';
 import { auditJob } from './store.js';
 import type { JobWriteContext } from './types.js';
-import { authorizeSequenceTargets, sequenceTargets, type SequenceSource } from './sequence-targets.js';
+import {
+  authorizeSequenceTargets,
+  normalizeSequenceSources,
+  sequenceTargets,
+  type SequenceSource,
+} from './sequence-targets.js';
 
 export const SEQUENCE_REQUESTED = 'job.sequence-sync.requested';
 export interface SequenceRequest {
@@ -21,6 +26,7 @@ export async function queueSequenceSync(
   sources: readonly SequenceSource[],
   access?: EmploymentWriteAccess,
 ): Promise<string> {
+  sources = normalizeSequenceSources(sources);
   // 冻结引用集合而非“现在不同值”的集合；连续 A→B→A 入队时，第二单执行前可能已被第一单改成 B。
   const targets = await sequenceTargets(tx, ctx, sources, undefined, true);
   const changed = targets.filter((target) => target.fields.sequenceId !== target.source.sequenceId);

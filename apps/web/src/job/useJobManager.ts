@@ -62,7 +62,7 @@ function useMutation(tenantId: string, saved: () => Promise<void>) {
   };
 }
 
-function useChoices(tenantId: string, onError: (message: string) => void) {
+function useChoices(tenantId: string, mode: 'none' | 'sequence' | 'position', onError: (message: string) => void) {
   const [choices, setChoices] = useState({
     sequences: [] as Choice[],
     organizations: [] as Choice[],
@@ -70,29 +70,48 @@ function useChoices(tenantId: string, onError: (message: string) => void) {
   });
   useEffect(() => {
     let active = true;
-    const load = async () => {
-      const values = await Promise.all(
-        ['job/sequences', 'org/organizations', 'job/posts'].map((path) =>
-          request<{ items: Choice[] }>(tenantId, `${path}?pageSize=200`),
-        ),
-      );
-      if (active) setChoices({ sequences: values[0]!.items, organizations: values[1]!.items, posts: values[2]!.items });
+    setChoices({ sequences: [], organizations: [], posts: [] });
+    const paths =
+      mode === 'none'
+        ? []
+        : mode === 'sequence'
+          ? ['job/sequences']
+          : ['job/sequences', 'org/organizations', 'job/posts'];
+    const keys = ['sequences', 'organizations', 'posts'] as const;
+    // 每种候选独立加载并逐页累积；某一候选403不抹掉其它成功结果。
+    const load = async (path: string, key: (typeof keys)[number]) => {
+      const items: Choice[] = [];
+      for (let page = 1; active; page++) {
+        const result = await request<{ items: Choice[] }>(tenantId, `${path}?pageSize=200&page=${page}`);
+        items.push(...result.items);
+        if (active) setChoices((previous) => ({ ...previous, [key]: [...items] }));
+        if (result.items.length < 200) break;
+      }
     };
-    void load().catch((cause: unknown) => {
-      if (active) onError(String(cause));
-    });
+    for (const [i, path] of paths.entries())
+      void load(path, keys[i]!).catch((cause: unknown) => {
+        if (active) onError(String(cause));
+      });
     return () => {
       active = false;
     };
-  }, [tenantId, onError]);
+  }, [tenantId, mode, onError]);
   return choices;
 }
 export function useMessages(tenantId: string) {
-  const [messages, setMessages] = useState<{ id: string; createdAt: string }[]>([]);
+  const [messages, setMessages] = useState<
+    { id: string; createdAt: string; message: { count: number; skipped?: { recordId: string; reason: string }[] } }[]
+  >([]);
   useEffect(() => {
     let active = true;
     const poll = () => {
-      void request<{ items: { id: string; createdAt: string }[] }>(tenantId, 'job/sequence-sync/messages')
+      void request<{
+        items: {
+          id: string;
+          createdAt: string;
+          message: { count: number; skipped?: { recordId: string; reason: string }[] };
+        }[];
+      }>(tenantId, 'job/sequence-sync/messages')
         .then((result) => {
           if (active) setMessages(result.items);
         })
@@ -124,7 +143,11 @@ export function useJobManager(tenantId: string) {
     setEditor(null);
     await load();
   });
-  const choices = useChoices(tenantId, mutation.setError);
+  const choices = useChoices(
+    tenantId,
+    !editor ? 'none' : kind === 'positions' && !editor.original ? 'position' : 'sequence',
+    mutation.setError,
+  );
   useEffect(() => {
     let active = true;
     void request<JobList>(tenantId, `job/${kind}?page=${page}`)

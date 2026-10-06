@@ -7,7 +7,6 @@ import { scenario, worker, versions, now } from './AC-JOB-sequence-support.js';
 import { auditApi } from './AC-AUD-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
 const testDb = useTestDb();
-
 async function queue(db: Db) {
   const s = await scenario(db);
   const key = randomUUID();
@@ -34,11 +33,13 @@ for (const unwritableAudit of [false, true])
     await db.execute(sql`CREATE FUNCTION f021_storage_failure() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN RAISE EXCEPTION 'synthetic' USING ERRCODE='53100'; END $$`);
     await db.execute(
-      sql`CREATE TRIGGER f021_fail BEFORE INSERT ON employment_payload_versions FOR EACH ROW EXECUTE FUNCTION f021_storage_failure()`,
+      sql`CREATE TRIGGER f021_fail BEFORE INSERT ON employment_payload_versions
+      FOR EACH ROW EXECUTE FUNCTION f021_storage_failure()`,
     );
     if (unwritableAudit)
       await db.execute(
-        sql`CREATE TRIGGER f021_audit_fail BEFORE INSERT ON audit_command_failures FOR EACH ROW EXECUTE FUNCTION f021_storage_failure()`,
+        sql`CREATE TRIGGER f021_audit_fail BEFORE INSERT ON audit_command_failures
+      FOR EACH ROW EXECUTE FUNCTION f021_storage_failure()`,
       );
     try {
       expect(await worker(db, s.world.tenant.id)).toMatchObject({ failed: 1 });
@@ -65,7 +66,6 @@ for (const unwritableAudit of [false, true])
     expect((await api.operationLogs(as, { objectType: 'job-sequence-sync', commandId: s.key })).items).toHaveLength(1);
     expect((await api.dataChanges(as, { objectType: 'employment-record', commandId: s.key })).items).toHaveLength(2);
   });
-
 /** 第三个事务是单任务消费（前两个为租户及队列读取）；模拟提交响应丢失。 */
 function lostCommit(db: Db, committed: boolean): Db {
   let n = 0;
@@ -102,7 +102,8 @@ for (const committed of [false, true])
       expect(
         await withTenant(db, s.world.tenant.id, async (tx) =>
           resultRows(
-            await tx.execute(sql`SELECT a.state FROM employment_outbox_attempts a JOIN employment_outbox o ON o.id=a.outbox_id AND o.tenant_id=a.tenant_id
+            await tx.execute(sql`SELECT a.state
+      FROM employment_outbox_attempts a JOIN employment_outbox o ON o.id=a.outbox_id AND o.tenant_id=a.tenant_id
     WHERE o.command_id=${s.key} AND o.event_type='job.sequence-sync.requested' ORDER BY attempt_no DESC LIMIT 1`),
           ),
         ),

@@ -1,4 +1,14 @@
 export const text = {
+  updatedCount: (count: number) => `已同步 ${count} 条。`,
+  skipReason: (reason: string) =>
+    ({
+      BECAME_HISTORICAL: '执行时已成为历史，未同步',
+      VOIDED: '执行时已作废，未同步',
+      REFERENCE_CHANGED: '执行时已不再引用该职务或职位，未同步',
+      UNCHANGED: '序列已相同，无需同步',
+      STATE_INELIGIBLE: '执行时状态不支持同步',
+      MISSING: '记录已不存在，未同步',
+    })[reason as 'BECAME_HISTORICAL'] ?? '未同步',
   retry: '重试原请求',
   title: '职务与职位',
   tenant: '租户标识',

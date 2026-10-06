@@ -174,6 +174,20 @@ export const APPROVAL_FLOW_FIELDS = [
 
 const RULES: readonly Rule[] = [
   {
+    // DEC-216 / F-021：任务回执只走逐条归属的操作日志，不公开 outbox 请求/完成载荷里的全量目标数组。
+    types: ['job-sequence-sync'],
+    objectCode: EMPLOYMENT,
+    visible: (scope, row, viewer, inputs) => {
+      if (inputs.objectFields && !inputs.objectFields.has('sequenceId')) return sql`false`;
+      const owner = employmentCreator(viewer.tenantId, row.objectId, true);
+      return sql`(${row.after} IS NULL AND ${row.employee} IS NOT NULL AND ${employmentVisibilitySql(scope, {
+        employee: row.employee,
+        department: row.org,
+        creator: owner,
+      })})`;
+    },
+  },
+  {
     types: ['employment-record', 'employment-business', 'transfer-request', 'employment_assignment'],
     objectCode: EMPLOYMENT,
     visible: (scope, row, viewer) => {

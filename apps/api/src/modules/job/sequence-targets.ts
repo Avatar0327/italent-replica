@@ -24,6 +24,15 @@ export interface SequenceTarget {
 }
 export const SEQUENCE_TARGET_LIMIT = 1000;
 
+/** DEC-194：公共来源入口规范化，涵盖导入、列表、编辑和已入队任务。 */
+export function normalizeSequenceSources(sources: readonly SequenceSource[]): SequenceSource[] {
+  return sources.map((source) => ({
+    ...source,
+    id: source.id.toLowerCase(),
+    sequenceId: source.sequenceId.toLowerCase(),
+  }));
+}
+
 /** 已落地快照优先于原始 record；未落地审批通过申请保留 deferred 字段供生效时解析。 */
 export async function sequenceTargets(
   tx: Tx,
@@ -32,6 +41,7 @@ export async function sequenceTargets(
   targetIds?: readonly string[],
   includeUnchanged = false,
 ): Promise<SequenceTarget[]> {
+  sources = normalizeSequenceSources(sources);
   if (!sources.length || targetIds?.length === 0) return [];
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const references = sources.map((s) => {
@@ -49,7 +59,7 @@ export async function sequenceTargets(
     LEFT JOIN employment_timeline t ON t.tenant_id=b.tenant_id AND t.record_id=b.id
     WHERE b.tenant_id=${ctx.tenantId}
       AND ((s.state='effective' AND (t.valid_during @> ${today}::date OR t.start_date>${today}::date))
-        OR (s.state='approved' AND r.id IS NULL))
+        OR (s.state IN ('approved','in_review') AND r.id IS NULL))
       AND (${sql.join(references, sql` OR `)})
       ${targetIds ? sql`AND b.id=ANY(${`{${targetIds.join(',')}}`}::uuid[])` : sql``}
     ORDER BY b.employee_id, COALESCE(t.start_date,greatest(p.effective_date,${today}::date)),
