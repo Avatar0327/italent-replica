@@ -1,3 +1,4 @@
+import { lockDerivedOrgAdjustmentHeads } from './org-adjustment-locks.js';
 import { isUuid, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { assertRevision } from './context.js';
@@ -114,6 +115,7 @@ export async function lockEmploymentBusiness(
   );
   if (!owner) throw new AppError('NOT_FOUND', '任职业务不存在');
   const employee = await lockEmploymentEmployee(tx, ctx, owner.employeeId);
+  await lockDerivedOrgAdjustmentHeads(tx, ctx, owner.employeeId, id);
   const [head] = rowsOf<{ id: string; revision: number }>(
     await tx.execute(sql`
       SELECT id, revision FROM employment_business_objects

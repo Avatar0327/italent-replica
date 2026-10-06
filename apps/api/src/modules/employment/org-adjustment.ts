@@ -12,7 +12,13 @@ import { appendEmploymentPayload, appendEmploymentState } from './write-service.
 import type { EmploymentContext, EmploymentRecord } from './types.js';
 
 /** 调用方已按 UUID 锁住整个批次的员工，再锁组织；此端口不启动独立事务。 */
-export async function appendOrgAdjustment(tx: Tx, ctx: EmploymentContext, employeeId: string, effectiveDate: string) {
+export async function appendOrgAdjustment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  effectiveDate: string,
+  organizationId: string,
+) {
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId);
   const previous = await findPredecessor(tx, ctx.tenantId, employeeId, effectiveDate);
   if (!previous || ['leave', 'retirement'].includes(previous.kind))
@@ -76,7 +82,21 @@ export async function appendOrgAdjustment(tx: Tx, ctx: EmploymentContext, employ
   await bumpEmploymentEmployee(tx, ctx, employee);
   const after = { ...previous.fields, customFields: previous.customFields, kind: 'org_adjustment', effectiveDate };
   await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, after);
-  await auditEmployment(tx, ctx, 'employment.record.create', 'employment-record', id, null, after);
+  await auditEmployment(tx, ctx, 'employment.record.create', 'employment-record', id, null, after, payload.id, {
+    organizationId,
+  });
+  await auditAdjustmentInterval(tx, ctx, id, previous, effectiveDate);
+  await personnelHooks.sync(tx, ctx, employeeId, id, 'org_adjustment', effectiveDate);
+  await personnelHooks.sync(tx, ctx, employeeId, previous.id, previous.kind, previous.effectiveDate);
+}
+
+async function auditAdjustmentInterval(
+  tx: Tx,
+  ctx: EmploymentContext,
+  id: string,
+  previous: EmploymentRecord,
+  effectiveDate: string,
+) {
   await auditEmployment(
     tx,
     ctx,
@@ -86,8 +106,6 @@ export async function appendOrgAdjustment(tx: Tx, ctx: EmploymentContext, employ
     { stopDate: previous.stopDate },
     { stopDate: addDays(effectiveDate, -1), triggerBusinessId: id },
   );
-  await personnelHooks.sync(tx, ctx, employeeId, id, 'org_adjustment', effectiveDate);
-  await personnelHooks.sync(tx, ctx, employeeId, previous.id, previous.kind, previous.effectiveDate);
 }
 
 function adjustmentSnapshot(previous: EmploymentRecord, effectiveDate: string) {

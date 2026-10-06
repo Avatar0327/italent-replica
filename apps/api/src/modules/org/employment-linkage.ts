@@ -1,3 +1,4 @@
+import { lockTransferParticipants } from '../employment/transfer-locks.js';
 /** DEC-137：按组织变更生效日的行政树和已生效任职选人；同事务、有界、整体成功或失败。 */
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
@@ -76,9 +77,11 @@ export interface OrgEmploymentBatch {
 }
 
 export async function lockOrgEmploymentEmployees(tx: Tx, ctx: EmploymentContext, ids: readonly string[]) {
-  if (ids.length)
-    await tx.execute(sql`SELECT id FROM employment_employees
-    WHERE tenant_id=${ctx.tenantId} AND id=ANY(${idsSql(ids)}) ORDER BY id FOR NO KEY UPDATE`);
+  if (!ids.length) return;
+  // org/locks.ts：先复用 F-017 取得全部参与员工闭包，再预锁已有业务；随后才允许取组织资源锁。
+  await lockTransferParticipants(tx, ctx, ids[0]!, ids.slice(1));
+  await tx.execute(sql`SELECT id FROM employment_business_objects
+    WHERE tenant_id=${ctx.tenantId} AND employee_id=ANY(${idsSql(ids)}) ORDER BY employee_id,id FOR UPDATE`);
 }
 
 export async function lockOrgEmploymentTargets(
@@ -109,8 +112,8 @@ export async function applyOrgEmploymentLinkage(
   const current = await orgEmploymentTargets(tx, ctx, orgId, date);
   if (current.length !== locked.length || current.some((id, index) => id !== locked[index]))
     throw new AppError('CONFLICT', '组织联动人员已变化，请刷新后显式重提', { reason: 'ORG_EMPLOYMENT_PLAN_CHANGED' });
-  for (const employeeId of current) await appendOrgAdjustment(tx, ctx, employeeId, date);
-  await auditEmployment(tx, ctx, 'org.employment.adjusted', 'organization', orgId, null, {
+  for (const employeeId of current) await appendOrgAdjustment(tx, ctx, employeeId, date, orgId);
+  await auditEmployment(tx, ctx, 'org.employment.adjusted', 'org-adjustment-run', orgId, null, {
     effectiveDate: date,
     employeeCount: current.length,
   });

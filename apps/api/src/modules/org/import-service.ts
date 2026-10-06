@@ -76,8 +76,7 @@ export async function importOrganizations(
     const reason = preflightConflict(row, targetId, snapshot, seenSources, seenCodes);
     seenSources.add(row.sourceCode);
     seenCodes.add(row.code);
-    if (reason)
-      throw new AppError('CONFLICT', '导入行冲突，整批未保存', { rowIndex, sourceCode: row.sourceCode, reason });
+    if (reason) throw rowError(new AppError('CONFLICT', '导入行冲突，整批未保存', { reason }), row, rowIndex);
     let result: OrgImportReceipt;
     try {
       result = await importRow(tx, ctx, row, targetId, snapshot.mappings.has(row.sourceCode), {
@@ -225,6 +224,8 @@ function rowError(error: unknown, row: OrgImportRow, rowIndex: number): unknown 
     return new AppError(error.code, error.message, {
       ...(typeof error.details === 'object' && error.details !== null ? error.details : {}),
       ...details,
+      // 审计任务沿用统一导入错误契约（row 从 1 起）；API 同时保留原来的 0 起 rowIndex。
+      errors: [{ row: rowIndex + 1, code: error.code, details: error.details }],
     });
   const code = pgErrorCode(error);
   if (code === '23505') return new AppError('CONFLICT', '导入编码或映射冲突', details);

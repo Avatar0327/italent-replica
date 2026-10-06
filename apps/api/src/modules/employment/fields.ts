@@ -16,7 +16,7 @@ export const INHERITED_FIELDS = PRESET_FIELDS.filter(
   (field) => !['isDepartmentHead', 'isStoreManager', 'addedSubordinateIds', 'employType'].includes(field),
 );
 export const emptyFields = emptyPresetFields;
-const normalizedUuid = z.uuid().transform((value) => value.toLowerCase());
+export const normalizedUuid = z.uuid().transform((value) => value.toLowerCase());
 const uuid = normalizedUuid.nullable().optional();
 const text = z.string().max(2000).nullable().optional();
 export const presetFieldsSchema = z.strictObject({

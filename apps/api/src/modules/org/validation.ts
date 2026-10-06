@@ -238,7 +238,7 @@ function optionalText(value: string | null | undefined, field: string): string |
 function reference(value: string | null | undefined, field: string): string | null {
   if (value == null) return null;
   if (typeof value !== 'string' || !isUuid(value)) throw invalid(field, '引用 ID 必须是 UUID');
-  return value;
+  return value.toLowerCase();
 }
 
 function integer(value: number | null | undefined, field: string): number | null {

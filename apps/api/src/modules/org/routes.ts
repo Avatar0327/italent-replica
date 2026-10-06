@@ -1,3 +1,4 @@
+import { normalizedUuid } from '../employment/fields.js';
 import {
   authorizeOrgEmploymentReplay,
   hasPendingOrgEmployment,
@@ -45,7 +46,7 @@ const BASE = '/api/tenant/org';
 const OBJECT = MODULE_OBJECTS.organization.code;
 const date = z.string().refine(validIsoDate, '日期必须为合法 YYYY-MM-DD');
 const order = z.number().int().min(-2_147_483_648).max(2_147_483_647).nullable().optional();
-const parent = z.strictObject({ parentId: z.uuid(), sequence: order });
+const parent = z.strictObject({ parentId: normalizedUuid, sequence: order });
 const parents = z.strictObject({
   admin: parent,
   business: parent.optional(),
@@ -58,10 +59,10 @@ const fields = {
   shortName: z.string().max(100).nullable().optional(),
   broadType: z.string().min(1).max(100).optional(),
   establishedOn: date.nullable().optional(),
-  personInChargeId: z.uuid().nullable().optional(),
-  hrbpId: z.uuid().nullable().optional(),
-  shopOwnerId: z.uuid().nullable().optional(),
-  costCenterId: z.uuid().nullable().optional(),
+  personInChargeId: normalizedUuid.nullable().optional(),
+  hrbpId: normalizedUuid.nullable().optional(),
+  shopOwnerId: normalizedUuid.nullable().optional(),
+  costCenterId: normalizedUuid.nullable().optional(),
   location: z.string().max(500).nullable().optional(),
   remarks: z.string().max(4000).nullable().optional(),
   displayOrder: order,
@@ -74,7 +75,7 @@ const fields = {
 const creation = z.strictObject({
   ...fields,
   parents,
-  reservationId: z.uuid().optional(),
+  reservationId: normalizedUuid.optional(),
   confirmed: z.boolean().optional(),
 });
 const update = z
@@ -91,8 +92,8 @@ const importRow = z.strictObject({
   sourceCode: z.string().min(1).max(100),
   code: z.string().min(1).max(64),
   name: fields.name,
-  parentId: z.uuid(),
-  orgId: z.uuid().optional(),
+  parentId: normalizedUuid,
+  orgId: normalizedUuid.optional(),
   expectedRevision: z.number().int().min(0).optional(),
   startDate: date.optional(),
   addEmployment: z.boolean().optional(),

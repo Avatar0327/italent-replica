@@ -195,6 +195,14 @@ export const APPROVAL_FLOW_FIELDS = [
 
 const RULES: readonly Rule[] = [
   {
+    // DEC-216 / F-007：联动汇总按任职查看规则判定，人数按本组织本次联动的可见逐条审计重算。
+    types: ['org-adjustment-run'],
+    objectCode: EMPLOYMENT,
+    fixedFields: ['effectiveDate', 'employeeCount'],
+    visible: (scope, row, viewer, inputs) =>
+      sql`EXISTS (${orgAdjustmentChildren(scope, row, viewer, inputs.objectFields)})`,
+  },
+  {
     // DEC-216 / F-021：任务回执只走逐条归属的操作日志，不公开 outbox 请求/完成载荷里的全量目标数组。
     types: ['job-sequence-sync'],
     objectCode: EMPLOYMENT,
@@ -323,6 +331,21 @@ function orderCodeChildren(scope: ModuleScope, row: Row, viewer: Viewer, fields?
   return sql`SELECT 1 FROM audit_events p WHERE p.tenant_id = ${viewer.tenantId}
     AND p.object_type = 'personnel-order-code' AND p.command_id = ${row.commandId}
     AND ${anchored(scope, child.employee, person)} AND ${changedVisible('p', fields)}`;
+}
+
+/** 通过同事务 outbox 的组织归属区分同一导入命令里的多行，不能把整批人数算给每个组织。 */
+function orgAdjustmentChildren(scope: ModuleScope, row: Row, viewer: Viewer, fields?: ReadonlySet<string>): SQL {
+  const visible = employmentVisibilitySql(scope, {
+    employee: sql`p.scope_employee_id`,
+    department: sql`p.scope_org_id`,
+    creator: employmentCreator(viewer.tenantId, sql`p.object_id`, true),
+  });
+  return sql`SELECT 1 FROM audit_events p WHERE p.tenant_id=${viewer.tenantId}
+    AND p.command_id=${row.commandId} AND p.object_type='employment-record' AND p.action='employment.record.create'
+    AND EXISTS (SELECT 1 FROM employment_outbox o WHERE o.tenant_id=p.tenant_id AND o.command_id=p.command_id
+      AND o.object_id=${uuidOf(sql`p.object_id`)} AND o.event_type=p.action
+      AND o.payload->'meta'->>'organizationId'=${row.objectId})
+    AND p.scope_employee_id IS NOT NULL AND ${visible} AND ${changedVisible('p', fields)}`;
 }
 
 /** 复制任务：所有编制都在范围内（或任务由本人创建），与 visibleCopyJob 一致。 */
@@ -473,6 +496,7 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
     : sql`false`;
   const orderRun = RULE_BY_TYPE.get('personnel-order-run')!;
   const run = resolved.get(orderRun);
+  const orgRun = resolved.get(RULE_BY_TYPE.get('org-adjustment-run')!);
   const linkage = [...resolved.values()].find((entry) => entry.linkage)?.linkage;
   return {
     linkagePaths: linkage
@@ -486,7 +510,8 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
     operationLogs: sql`(${sql.join([...tasks.map((task) => task.whole), configTypes(TASK)], sql` OR `)})`,
     visibleRows: sql`(CASE WHEN ${hasItems()} THEN (SELECT COALESCE(jsonb_agg(item->'rowIndex'), '[]'::jsonb)
       FROM jsonb_array_elements(${sql.identifier(TASK)}.items) item WHERE ${rowsCase}) END)`,
-    visibleCount: run && !run.scope.all ? orderRunCount(run, viewer) : sql`NULL::int`,
+    visibleCount: sql`COALESCE(${run && !run.scope.all ? orderRunCount(run, viewer) : sql`NULL::int`},
+      ${orgRun ? orgAdjustmentCount(orgRun, viewer) : sql`NULL::int`})`,
     fieldsOf: (objectType, action, paths) => {
       if (objectType === TRANSFER_LINKAGE) return new ExactAuditFields(paths ?? []);
       const configured = config.get(configKey(objectType, action));
@@ -496,6 +521,12 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
       return rule ? resolved.get(rule)?.fields : undefined;
     },
   };
+}
+
+function orgAdjustmentCount(run: ResolvedRule, viewer: Viewer): SQL {
+  const children = orgAdjustmentChildren(run.scope, rowOf(EVENT), viewer, run.inputs.objectFields);
+  return sql`(CASE WHEN audit_events.object_type='org-adjustment-run'
+    THEN (SELECT count(*)::int FROM (${children}) visible_child) END)`;
 }
 
 /** 序码重算汇总里查看人可见的逐人序码日志条数（第四轮 N4）。 */

@@ -123,6 +123,7 @@ export async function updateOrganization(
   options: OrgUpdateOptions = {},
 ): Promise<OrgRecord> {
   if (!isUuid(orgId)) throw invalid('orgId', '组织 ID 必须是 UUID');
+  orgId = orgId.toLowerCase();
   if (orgId === ctx.tenantId) throw new AppError('FORBIDDEN', '租户根组织不可修改');
   if (!patch || typeof patch !== 'object') throw invalid('organization', '组织变更必须是对象');
   if (patch.parents !== undefined && (!patch.parents || typeof patch.parents !== 'object')) {
@@ -191,6 +192,7 @@ export async function correctEstablishedOn(
   value: string,
 ): Promise<OrgRecord> {
   if (!isUuid(orgId)) throw invalid('orgId', '组织 ID 必须是 UUID');
+  orgId = orgId.toLowerCase();
   if (orgId === ctx.tenantId) throw new AppError('FORBIDDEN', '租户根组织不可修改');
   const establishedOn = date(value, 'establishedOn');
   const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('no key update');
