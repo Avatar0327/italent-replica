@@ -690,6 +690,7 @@ export async function resubmit(tx: Tx, ctx: ApprovalContext, instanceId: string,
     run.instance.status === 'returned' ||
     (run.instance.status === 'withdrawn' && run.instance.businessType === 'personnel_change');
   if (!reopenable) throw approvalError('CONFLICT', 'APPROVAL_NOT_RETURNED', '只有被驳回或已撤回的申请可以重提');
+  if (run.instance.businessType === 'contract') await ctx.recheckContractResubmit?.(tx, instanceId, corrections ?? {});
   // 业务单回到待审批、修正追加为新版本，并按完整载荷复核当前自助字段白名单（DEC-099 / DEC-113 / N1）。
   await ADAPTERS[run.instance.businessType].resubmit(tx, ctx, run.instance.businessId, corrections ?? {});
   // DEC-103：重提沿用原实例与原流程版本，不重新匹配。

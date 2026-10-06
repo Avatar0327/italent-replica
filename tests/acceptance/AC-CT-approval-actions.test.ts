@@ -71,7 +71,7 @@ async function world(label: string) {
 describe('R2-T06 四种申请和合并待办', () => {
   it('两条续签申请为独立实例；非审批人拒绝；驳回、发起人重提、不同意复用逐单审批动作', async () => {
     const w = await world('cttodos');
-    const sources = [await w.create(), await w.create()];
+    const sources = [await w.create(), await w.create({ typeId: w.otherType.id })];
     const result = await w.request('POST', '/batch', {
       ifMatch: 0,
       body: {

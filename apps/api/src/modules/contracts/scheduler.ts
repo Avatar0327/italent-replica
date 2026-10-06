@@ -9,7 +9,7 @@ import {
   type Db,
   type Tx,
 } from '@italent/db';
-import { automaticRenewalPlans, tenantLocalDate, type OrgId } from '@italent/domain';
+import { automaticRenewalPlans, termEnd, tenantLocalDate, type OrgId } from '@italent/domain';
 import { commandHash } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { Authorizer } from '../../authorization.js';
@@ -17,10 +17,16 @@ import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { createPermissionAuthorizer } from '../permission/index.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { listOrgDescendantsInTransaction } from '../org/hierarchy-reader.js';
-import { findCurrentRecord } from '../employment/read-model.js';
-import { rowsOf, type ContractContext } from './context.js';
+import { rowsOf, currentPrimary, type ContractContext } from './context.js';
 import { rules, settings } from './configuration.js';
-import { applyRequest, createCommand, loadContract, loadRequest, setContractState } from './service.js';
+import {
+  applyRequest,
+  createCommand,
+  loadContract,
+  loadRequest,
+  nextSigningCount,
+  setContractState,
+} from './service.js';
 
 interface Candidate {
   id: string;
@@ -42,6 +48,8 @@ async function dueCandidates(db: Db, tenant: Tenant, today: string, limit: numbe
       await tx.execute(sql`SELECT candidate.* FROM (
         SELECT id,employee_id AS "employeeId",'activate'::text AS kind FROM contract_requests
           WHERE tenant_id=${tenant.id} AND status='approved'
+            AND NOT EXISTS (SELECT 1 FROM contract_job_attempts q WHERE q.tenant_id=contract_requests.tenant_id
+              AND q.object_id=contract_requests.id AND q.kind='quarantine')
             AND CASE WHEN operation='terminate' THEN actual_termination_date ELSE effective_date END<=${today}::date
         UNION ALL
         SELECT id,employee_id AS "employeeId",'renew'::text AS kind FROM contract_records
@@ -164,7 +172,7 @@ async function renewCandidate(
     )
     .limit(10001);
   if (contracts.length > 10000) throw new AppError('PAYLOAD_TOO_LARGE', '单人合同数超过调度处理上限');
-  const employment = await findCurrentRecord(tx, ctx.tenantId, candidate.employeeId, today);
+  const employment = await currentPrimary(tx, ctx.tenantId, candidate.employeeId, today);
   const enabledRules = await renewalRules(tx);
   const plans = config.autoRenew
     ? automaticRenewalPlans(
@@ -184,6 +192,9 @@ async function renewCandidate(
     );
     if (pending) return false;
     const current = contracts.find((c) => c.id === plan.targetId)!;
+    const count = await nextSigningCount(tx, ctx, current.employeeId, current.typeId, config.accumulateRehire);
+    const termType = count > 2 ? 'indefinite' : 'fixed';
+    const detail = enabledRules.find((r) => r.id === plan.ruleId)!.details.find((d) => d.typeId === current.typeId)!;
     await createCommand(
       tx,
       { ...ctx, userId: plan.initiatorId, expectedRevision: current.revision },
@@ -194,9 +205,9 @@ async function renewCandidate(
         targetId: current.id,
         fields: {
           effectiveDate: plan.effectiveDate,
-          endDate: plan.endDate,
-          termType: plan.termType,
-          termMonths: plan.termMonths,
+          endDate: termType === 'fixed' ? termEnd(plan.effectiveDate, detail.months) : null,
+          termType,
+          termMonths: termType === 'fixed' ? detail.months : null,
         },
       },
       true,

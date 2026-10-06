@@ -27,6 +27,8 @@ export interface ApprovalContext extends TenantContext {
   readonly expectedRevision: number;
   /** 同人自动跳过前要按候选审批人的当前字段权限做盲审（清单 5）；未注入时按看不到处理（fail-closed）。 */
   readonly fields?: FieldAccess;
+  /** 合同重提在 openOwn 已按员工→业务→实例加锁后，再复核当前功能/人员/字段权限。 */
+  readonly recheckContractResubmit?: (tx: Tx, instanceId: string, corrections: Row) => Promise<void>;
   /** 审计与日志记录的操作人；系统自动处理（如成员停用时的接管，DEC-123）可为平台操作人或空。缺省为 userId。 */
   readonly actorUserId?: string | null;
 }

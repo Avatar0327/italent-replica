@@ -1,5 +1,5 @@
 /** Real functional authorizer plus its data-scope/field provider (DEC-080). No implicit admin data bypass. */
-import { type Db, type Tx, withTenant } from '@italent/db';
+import { type Db, type Tx, withTenant, permissionAdmins, and, eq } from '@italent/db';
 import { decide, MODULE_ACTIONS, MODULE_OBJECTS, type ObjectCatalog, resolveObjectPermission } from '@italent/domain';
 import type { Authorizer } from '../../authorization.js';
 import { objectCatalog } from './catalog.js';
@@ -11,6 +11,8 @@ import { tenantObjectCatalog } from './tenant-catalog.js';
 const CONFIG_OBJECTS = new Set<string>([
   MODULE_OBJECTS.employmentSettings.code,
   MODULE_OBJECTS.employmentCustomField.code,
+  MODULE_OBJECTS.contractSettings.code,
+  MODULE_OBJECTS.contractRules.code,
 ]);
 export function createPermissionAuthorizer(db: Db, catalog: ObjectCatalog = objectCatalog): Authorizer {
   const evaluate = async (request: Parameters<Authorizer>[0], tx: Tx): Promise<boolean> => {
@@ -18,7 +20,7 @@ export function createPermissionAuthorizer(db: Db, catalog: ObjectCatalog = obje
     const subject = await loadSubject(tx, request.userId, objectCode);
     const currentCatalog = await tenantObjectCatalog(tx, catalog, objectCode);
     if (objectCode && CONFIG_OBJECTS.has(objectCode)) {
-      if (!decide(subject, { action: 'admin.other_settings' }, currentCatalog)) return false;
+      if (!(await configAllowed(tx, request.userId, objectCode, subject, currentCatalog))) return false;
       if (request.action === 'object.view') return true;
       if (!['object.create', 'object.update'].includes(request.action) || !request.fields) return false;
       const writable = new Set(
@@ -45,7 +47,7 @@ export function createPermissionAuthorizer(db: Db, catalog: ObjectCatalog = obje
   async function viewableFields(tx: Tx, userId: string, objectCode: string): Promise<ReadonlySet<string>> {
     const subject = await loadSubject(tx, userId, objectCode);
     const currentCatalog = await tenantObjectCatalog(tx, catalog, objectCode);
-    if (CONFIG_OBJECTS.has(objectCode) && decide(subject, { action: 'admin.other_settings' }, currentCatalog)) {
+    if (CONFIG_OBJECTS.has(objectCode) && (await configAllowed(tx, userId, objectCode, subject, currentCatalog))) {
       return new Set(currentCatalog.get(objectCode)?.fields.map((f) => f.code));
     }
     return (
@@ -59,4 +61,28 @@ function objectOf(action: string, resource: string | undefined): string | undefi
   if (action.startsWith('object.')) return resource?.split('#')[0];
   const mapped = MODULE_ACTIONS[action];
   return mapped?.kind === 'object' ? mapped.objectCode : undefined;
+}
+
+async function configAllowed(
+  tx: Tx,
+  userId: string,
+  objectCode: string,
+  subject: Awaited<ReturnType<typeof loadSubject>>,
+  catalog: ObjectCatalog,
+) {
+  if (![MODULE_OBJECTS.contractSettings.code, MODULE_OBJECTS.contractRules.code].includes(objectCode))
+    return decide(subject, { action: 'admin.other_settings' }, catalog);
+  if (subject.adminRoles.includes('tenant_admin')) return true;
+  const records = await tx
+    .select({ id: permissionAdmins.id })
+    .from(permissionAdmins)
+    .where(
+      and(
+        eq(permissionAdmins.userId, userId),
+        eq(permissionAdmins.status, 'active'),
+        eq(permissionAdmins.contractConfiguration, true),
+      ),
+    )
+    .limit(1);
+  return records.length > 0;
 }

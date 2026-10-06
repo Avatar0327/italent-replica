@@ -1,7 +1,7 @@
 import { pgErrorCode, and, eq, contractRecords, sql, type Tx } from '@italent/db';
 import { z } from 'zod';
 import { AppError } from '../../errors.js';
-import { checkScope, lockEmployee, revision, rowsOf, type ContractContext } from './context.js';
+import { checkOperationScope, checkScope, lockEmployee, revision, rowsOf, type ContractContext } from './context.js';
 import { settings } from './configuration.js';
 import { fieldsSchema, parse, uuid, type ContractCommand } from './input.js';
 import { createCommand, deleteContract, portfolioRevision } from './service.js';
@@ -30,36 +30,91 @@ export interface ImportError {
 }
 
 async function initializePeople(tx: Tx, ctx: ContractContext, input: Input, ids: string[]) {
-  if (input.mode === 'initialize') {
-    for (const employeeId of ids) {
-      if (!Object.hasOwn(input.revisions, employeeId))
-        throw new AppError('VALIDATION_FAILED', '初始化须携带每个人的合同集合版本');
-      revision(input.revisions[employeeId]!, await portfolioRevision(tx, ctx.tenantId, employeeId));
-      const records = await tx
-        .select()
-        .from(contractRecords)
-        .where(
-          and(
-            eq(contractRecords.tenantId, ctx.tenantId),
-            eq(contractRecords.employeeId, employeeId),
-            eq(contractRecords.deleted, false),
-          ),
-        );
-      for (const record of records) await deleteContract(tx, ctx, record);
-      // 未完成申请不能在初始化后悄然重新生成已删除合同。
-      const pending = await tx.execute(sql`SELECT id FROM contract_requests WHERE tenant_id=${ctx.tenantId}
-        AND employee_id=${employeeId}::uuid AND status IN ('in_review','approved','returned') LIMIT 1`);
-      const rows = rowsOf(pending);
-      if (rows.length) throw new AppError('CONFLICT', '存在未完成合同申请，不能初始化');
-    }
+  if (input.mode !== 'initialize') return;
+  const deleting: (typeof contractRecords.$inferSelect)[] = [];
+  for (const employeeId of ids) {
+    if (!Object.hasOwn(input.revisions, employeeId))
+      throw new AppError('VALIDATION_FAILED', '初始化须携带每个人的合同集合版本');
+    revision(input.revisions[employeeId]!, await portfolioRevision(tx, ctx.tenantId, employeeId));
+    const records = await tx
+      .select()
+      .from(contractRecords)
+      .where(
+        and(
+          eq(contractRecords.tenantId, ctx.tenantId),
+          eq(contractRecords.employeeId, employeeId),
+          eq(contractRecords.deleted, false),
+        ),
+      );
+    for (const record of records) await checkScope(tx, ctx, record.employeeId, record.createdBy);
+    // 未完成申请不能在初始化后悄然重新生成已删除合同。
+    const pending = rowsOf(
+      await tx.execute(sql`SELECT id FROM contract_requests WHERE tenant_id=${ctx.tenantId}
+      AND employee_id=${employeeId}::uuid AND status IN ('in_review','approved','returned') LIMIT 1`),
+    );
+    if (pending.length) throw new AppError('CONFLICT', '存在未完成合同申请，不能初始化');
+    deleting.push(...records);
+  }
+  // 所有人员的整个替换集合先验权，再统一删除；后续行失败仍由外层事务整体回滚。
+  for (const record of deleting) await deleteContract(tx, ctx, record);
+}
+/** 编辑/变更必须先定位原合同；不能用人员新建范围替代合同维护范围。 */
+async function importTarget(
+  tx: Tx,
+  ctx: ContractContext,
+  input: Input,
+  row: Input['rows'][number],
+  config: Awaited<ReturnType<typeof settings>>,
+) {
+  if (input.mode !== 'edit' && input.mode !== 'change') return undefined;
+  const candidates = await tx
+    .select()
+    .from(contractRecords)
+    .where(
+      and(
+        eq(contractRecords.tenantId, ctx.tenantId),
+        eq(contractRecords.employeeId, row.employeeId),
+        eq(contractRecords.deleted, false),
+        sql`status<>'void'`,
+      ),
+    );
+  const keys = input.mode === 'change' ? ['typeId', 'effectiveDate'] : config.uniqueFields;
+  const matches = candidates.filter((c) =>
+    keys.every((k) => {
+      const value =
+        k === 'employeeId'
+          ? row.employeeId
+          : k === 'effectiveDate' && input.mode === 'change'
+            ? row.originalEffectiveDate
+            : row.fields[k as keyof typeof row.fields];
+      return value !== undefined && c[k as keyof typeof c] === value;
+    }),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+export async function checkImportScope(tx: Tx, ctx: ContractContext, input: Input) {
+  const config = await settings(tx, ctx.tenantId);
+  for (const row of input.rows) {
+    const target = await importTarget(tx, ctx, input, row, config);
+    if (!target && ['edit', 'change'].includes(input.mode)) {
+      // 未匹配的行只能按当前人员范围检查；有权时仍由预览/CSV 返回行级错误。
+      await checkScope(tx, ctx, row.employeeId);
+    } else
+      await checkOperationScope(
+        tx,
+        ctx,
+        { employeeId: row.employeeId, operation: target ? 'change' : 'create' },
+        target,
+      );
   }
 }
+
 async function applyRows(tx: Tx, ctx: ContractContext, input: Input, errors: ImportError[]) {
   const ids = [...new Set(input.rows.map((r) => r.employeeId))].sort();
   for (const id of ids) {
     await lockEmployee(tx, ctx, id);
-    await checkScope(tx, ctx, id);
   }
+  await checkImportScope(tx, ctx, input);
   await initializePeople(tx, ctx, input, ids);
   const config = await settings(tx, ctx.tenantId);
   const results = [];
@@ -68,36 +123,11 @@ async function applyRows(tx: Tx, ctx: ContractContext, input: Input, errors: Imp
     try {
       results.push(
         await tx.transaction(async (sub) => {
-          let target: typeof contractRecords.$inferSelect | undefined;
-          if (input.mode === 'edit' || input.mode === 'change') {
-            const candidates = await sub
-              .select()
-              .from(contractRecords)
-              .where(
-                and(
-                  eq(contractRecords.tenantId, ctx.tenantId),
-                  eq(contractRecords.employeeId, row.employeeId),
-                  eq(contractRecords.deleted, false),
-                  sql`status<>'void'`,
-                ),
-              );
-            const keys = input.mode === 'change' ? ['typeId', 'effectiveDate'] : config.uniqueFields;
-            const matches = candidates.filter((c) =>
-              keys.every((k) => {
-                const value =
-                  k === 'employeeId'
-                    ? row.employeeId
-                    : k === 'effectiveDate' && input.mode === 'change'
-                      ? row.originalEffectiveDate
-                      : row.fields[k as keyof typeof row.fields];
-                return value !== undefined && c[k as keyof typeof c] === value;
-              }),
-            );
-            if (matches.length !== 1) throw new AppError('VALIDATION_FAILED', '唯一键未匹配到唯一原合同');
-            target = matches[0]!;
-            if (row.revision === undefined)
-              throw new AppError('VALIDATION_FAILED', '编辑与变更导入须携带原合同 revision');
-          }
+          const target = await importTarget(sub, ctx, input, row, config);
+          if (!target && ['edit', 'change'].includes(input.mode))
+            throw new AppError('VALIDATION_FAILED', '唯一键未匹配到唯一原合同');
+          if (target && row.revision === undefined)
+            throw new AppError('VALIDATION_FAILED', '编辑与变更导入须携带原合同 revision');
           const command: ContractCommand = {
             operation: target ? 'change' : 'create',
             mode: 'direct',

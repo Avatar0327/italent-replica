@@ -1,6 +1,6 @@
 {
-  "id": "614987db-33e0-4496-93be-32b2787f3fc2",
-  "prevId": "46c7d424-8cf6-43e7-a0ce-f9f5ca3d231e",
+  "id": "8db01a6c-c9a8-4985-95e3-afb365795d18",
+  "prevId": "23887fa4-526b-4023-a3a0-bbb5be316093",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -25980,6 +25980,1055 @@
         "transfer_forms_revision_nonnegative": {
           "name": "transfer_forms_revision_nonnegative",
           "value": "\"transfer_forms\".\"revision\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.transfer_handovers": {
+      "name": "transfer_handovers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "handover_person_id": {
+          "name": "handover_person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handover_status": {
+          "name": "handover_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "approval_status": {
+          "name": "approval_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transfer_handovers_tenant_id_tenants_id_fk": {
+          "name": "transfer_handovers_tenant_id_tenants_id_fk",
+          "tableFrom": "transfer_handovers",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_handovers_run_fk": {
+          "name": "transfer_handovers_run_fk",
+          "tableFrom": "transfer_handovers",
+          "tableTo": "transfer_linkage_runs",
+          "columnsFrom": [
+            "tenant_id",
+            "business_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "business_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_handovers_person_fk": {
+          "name": "transfer_handovers_person_fk",
+          "tableFrom": "transfer_handovers",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "handover_person_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "transfer_handovers_tenant_id": {
+          "name": "transfer_handovers_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "transfer_handovers_business": {
+          "name": "transfer_handovers_business",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "business_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "transfer_handovers_status": {
+          "name": "transfer_handovers_status",
+          "value": "\"transfer_handovers\".\"handover_status\" IN ('not_started')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.transfer_linkage_duties": {
+      "name": "transfer_linkage_duties",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_id": {
+          "name": "version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "line_no": {
+          "name": "line_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_type": {
+          "name": "item_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subordinate_id": {
+          "name": "subordinate_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "relation": {
+          "name": "relation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "org_role": {
+          "name": "org_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receiver_id": {
+          "name": "receiver_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transfer_linkage_duties_tenant_id_tenants_id_fk": {
+          "name": "transfer_linkage_duties_tenant_id_tenants_id_fk",
+          "tableFrom": "transfer_linkage_duties",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_duties_version_fk": {
+          "name": "transfer_linkage_duties_version_fk",
+          "tableFrom": "transfer_linkage_duties",
+          "tableTo": "transfer_linkage_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_duties_subordinate_fk": {
+          "name": "transfer_linkage_duties_subordinate_fk",
+          "tableFrom": "transfer_linkage_duties",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "subordinate_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_duties_receiver_fk": {
+          "name": "transfer_linkage_duties_receiver_fk",
+          "tableFrom": "transfer_linkage_duties",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "receiver_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_duties_org_fk": {
+          "name": "transfer_linkage_duties_org_fk",
+          "tableFrom": "transfer_linkage_duties",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "transfer_linkage_duties_tenant_id_version_id_line_no_pk": {
+          "name": "transfer_linkage_duties_tenant_id_version_id_line_no_pk",
+          "columns": [
+            "tenant_id",
+            "version_id",
+            "line_no"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "transfer_linkage_duties_line_positive": {
+          "name": "transfer_linkage_duties_line_positive",
+          "value": "\"transfer_linkage_duties\".\"line_no\" > 0"
+        },
+        "transfer_linkage_duties_shape": {
+          "name": "transfer_linkage_duties_shape",
+          "value": "\"transfer_linkage_duties\".\"item_type\" = 'duty_subordinate' AND \"transfer_linkage_duties\".\"subordinate_id\" IS NOT NULL\n          AND \"transfer_linkage_duties\".\"relation\" IN ('direct', 'dotted') AND \"transfer_linkage_duties\".\"org_id\" IS NULL AND \"transfer_linkage_duties\".\"org_role\" IS NULL\n        OR \"transfer_linkage_duties\".\"item_type\" = 'duty_org_role' AND \"transfer_linkage_duties\".\"org_id\" IS NOT NULL\n          AND \"transfer_linkage_duties\".\"org_role\" IN ('person_in_charge', 'shop_owner', 'hrbp')\n          AND \"transfer_linkage_duties\".\"subordinate_id\" IS NULL AND \"transfer_linkage_duties\".\"relation\" IS NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.transfer_linkage_items": {
+      "name": "transfer_linkage_items",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "line_no": {
+          "name": "line_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_type": {
+          "name": "item_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subordinate_id": {
+          "name": "subordinate_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "relation": {
+          "name": "relation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "org_role": {
+          "name": "org_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receiver_id": {
+          "name": "receiver_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "part_time_record_id": {
+          "name": "part_time_record_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "effective_date": {
+          "name": "effective_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "attempt_count": {
+          "name": "attempt_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "failure_code": {
+          "name": "failure_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_message": {
+          "name": "failure_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_rule": {
+          "name": "failure_rule",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "last_attempt_at": {
+          "name": "last_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transfer_linkage_items_tenant_id_tenants_id_fk": {
+          "name": "transfer_linkage_items_tenant_id_tenants_id_fk",
+          "tableFrom": "transfer_linkage_items",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_items_run_fk": {
+          "name": "transfer_linkage_items_run_fk",
+          "tableFrom": "transfer_linkage_items",
+          "tableTo": "transfer_linkage_runs",
+          "columnsFrom": [
+            "tenant_id",
+            "business_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "business_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_items_subordinate_fk": {
+          "name": "transfer_linkage_items_subordinate_fk",
+          "tableFrom": "transfer_linkage_items",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "subordinate_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_items_receiver_fk": {
+          "name": "transfer_linkage_items_receiver_fk",
+          "tableFrom": "transfer_linkage_items",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "receiver_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_items_org_fk": {
+          "name": "transfer_linkage_items_org_fk",
+          "tableFrom": "transfer_linkage_items",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "transfer_linkage_items_tenant_id": {
+          "name": "transfer_linkage_items_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "transfer_linkage_items_line": {
+          "name": "transfer_linkage_items_line",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "business_id",
+            "line_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "transfer_linkage_items_type": {
+          "name": "transfer_linkage_items_type",
+          "value": "\"transfer_linkage_items\".\"item_type\" IN ('duty_subordinate', 'duty_org_role', 'part_time_end')"
+        },
+        "transfer_linkage_items_status": {
+          "name": "transfer_linkage_items_status",
+          "value": "\"transfer_linkage_items\".\"status\" IN ('pending', 'succeeded', 'failed')"
+        },
+        "transfer_linkage_items_failure": {
+          "name": "transfer_linkage_items_failure",
+          "value": "(\"transfer_linkage_items\".\"status\" = 'failed') = (\"transfer_linkage_items\".\"failure_code\" IS NOT NULL)"
+        },
+        "transfer_linkage_items_counts": {
+          "name": "transfer_linkage_items_counts",
+          "value": "\"transfer_linkage_items\".\"attempt_count\" >= 0 AND \"transfer_linkage_items\".\"revision\" > 0 AND \"transfer_linkage_items\".\"line_no\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.transfer_linkage_runs": {
+      "name": "transfer_linkage_runs",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_id": {
+          "name": "version_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "effective_date": {
+          "name": "effective_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "before_contract_id": {
+          "name": "before_contract_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "after_contract_id": {
+          "name": "after_contract_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "salary_reminder_status": {
+          "name": "salary_reminder_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "executed_at": {
+          "name": "executed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transfer_linkage_runs_tenant_id_tenants_id_fk": {
+          "name": "transfer_linkage_runs_tenant_id_tenants_id_fk",
+          "tableFrom": "transfer_linkage_runs",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_runs_version_fk": {
+          "name": "transfer_linkage_runs_version_fk",
+          "tableFrom": "transfer_linkage_runs",
+          "tableTo": "transfer_linkage_versions",
+          "columnsFrom": [
+            "tenant_id",
+            "version_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_runs_business_fk": {
+          "name": "transfer_linkage_runs_business_fk",
+          "tableFrom": "transfer_linkage_runs",
+          "tableTo": "employment_business_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "business_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_runs_before_contract_fk": {
+          "name": "transfer_linkage_runs_before_contract_fk",
+          "tableFrom": "transfer_linkage_runs",
+          "tableTo": "contract_records",
+          "columnsFrom": [
+            "tenant_id",
+            "before_contract_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_runs_after_contract_fk": {
+          "name": "transfer_linkage_runs_after_contract_fk",
+          "tableFrom": "transfer_linkage_runs",
+          "tableTo": "contract_records",
+          "columnsFrom": [
+            "tenant_id",
+            "after_contract_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "transfer_linkage_runs_tenant_id_business_id_pk": {
+          "name": "transfer_linkage_runs_tenant_id_business_id_pk",
+          "columns": [
+            "tenant_id",
+            "business_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "transfer_linkage_runs_contract": {
+          "name": "transfer_linkage_runs_contract",
+          "value": "(\"transfer_linkage_runs\".\"before_contract_id\" IS NULL) = (\"transfer_linkage_runs\".\"after_contract_id\" IS NULL)"
+        },
+        "transfer_linkage_runs_salary": {
+          "name": "transfer_linkage_runs_salary",
+          "value": "\"transfer_linkage_runs\".\"salary_reminder_status\" IS NULL OR \"transfer_linkage_runs\".\"salary_reminder_status\" = 'pending'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.transfer_linkage_versions": {
+      "name": "transfer_linkage_versions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version_no": {
+          "name": "version_no",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "change_contract": {
+          "name": "change_contract",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "contract_target_id": {
+          "name": "contract_target_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "contract_fields": {
+          "name": "contract_fields",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "adjust_salary": {
+          "name": "adjust_salary",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "on_trial_start_date": {
+          "name": "on_trial_start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "on_trial_months": {
+          "name": "on_trial_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "handover": {
+          "name": "handover",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "handover_person_id": {
+          "name": "handover_person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "part_time_record_ids": {
+          "name": "part_time_record_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transfer_linkage_versions_tenant_id_tenants_id_fk": {
+          "name": "transfer_linkage_versions_tenant_id_tenants_id_fk",
+          "tableFrom": "transfer_linkage_versions",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_versions_business_fk": {
+          "name": "transfer_linkage_versions_business_fk",
+          "tableFrom": "transfer_linkage_versions",
+          "tableTo": "employment_business_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id",
+            "business_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "employee_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_versions_contract_fk": {
+          "name": "transfer_linkage_versions_contract_fk",
+          "tableFrom": "transfer_linkage_versions",
+          "tableTo": "contract_records",
+          "columnsFrom": [
+            "tenant_id",
+            "contract_target_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_linkage_versions_handover_fk": {
+          "name": "transfer_linkage_versions_handover_fk",
+          "tableFrom": "transfer_linkage_versions",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "handover_person_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "transfer_linkage_versions_tenant_id": {
+          "name": "transfer_linkage_versions_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "transfer_linkage_versions_number": {
+          "name": "transfer_linkage_versions_number",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "business_id",
+            "version_no"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "transfer_linkage_versions_number_positive": {
+          "name": "transfer_linkage_versions_number_positive",
+          "value": "\"transfer_linkage_versions\".\"version_no\" > 0"
+        },
+        "transfer_linkage_versions_contract": {
+          "name": "transfer_linkage_versions_contract",
+          "value": "\"transfer_linkage_versions\".\"change_contract\" = (\"transfer_linkage_versions\".\"contract_target_id\" IS NOT NULL AND \"transfer_linkage_versions\".\"contract_fields\" IS NOT NULL)"
+        },
+        "transfer_linkage_versions_trial": {
+          "name": "transfer_linkage_versions_trial",
+          "value": "\"transfer_linkage_versions\".\"on_trial_months\" IS NULL AND \"transfer_linkage_versions\".\"on_trial_start_date\" IS NULL\n        OR \"transfer_linkage_versions\".\"on_trial_months\" BETWEEN 1 AND 60 AND (\"transfer_linkage_versions\".\"on_trial_start_date\" IS NULL OR isfinite(\"transfer_linkage_versions\".\"on_trial_start_date\"))"
+        },
+        "transfer_linkage_versions_handover": {
+          "name": "transfer_linkage_versions_handover",
+          "value": "\"transfer_linkage_versions\".\"handover\" OR \"transfer_linkage_versions\".\"handover_person_id\" IS NULL"
+        },
+        "transfer_linkage_versions_part_times": {
+          "name": "transfer_linkage_versions_part_times",
+          "value": "cardinality(\"transfer_linkage_versions\".\"part_time_record_ids\") <= 50"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.transfer_on_trials": {
+      "name": "transfer_on_trials",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "months": {
+          "name": "months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expected_end_date": {
+          "name": "expected_end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "transfer_on_trials_tenant_id_tenants_id_fk": {
+          "name": "transfer_on_trials_tenant_id_tenants_id_fk",
+          "tableFrom": "transfer_on_trials",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transfer_on_trials_run_fk": {
+          "name": "transfer_on_trials_run_fk",
+          "tableFrom": "transfer_on_trials",
+          "tableTo": "transfer_linkage_runs",
+          "columnsFrom": [
+            "tenant_id",
+            "business_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "business_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "transfer_on_trials_tenant_id": {
+          "name": "transfer_on_trials_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "transfer_on_trials_business": {
+          "name": "transfer_on_trials_business",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "business_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "transfer_on_trials_months": {
+          "name": "transfer_on_trials_months",
+          "value": "\"transfer_on_trials\".\"months\" BETWEEN 1 AND 60"
+        },
+        "transfer_on_trials_dates": {
+          "name": "transfer_on_trials_dates",
+          "value": "\"transfer_on_trials\".\"expected_end_date\" >= \"transfer_on_trials\".\"start_date\""
+        },
+        "transfer_on_trials_status": {
+          "name": "transfer_on_trials_status",
+          "value": "\"transfer_on_trials\".\"status\" IN ('in_trial')"
         }
       },
       "isRLSEnabled": false
