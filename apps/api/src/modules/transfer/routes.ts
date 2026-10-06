@@ -1,3 +1,4 @@
+import { readManagerReferences } from './manager-references.js';
 import { registerManagerRoutes } from './manager-routes.js';
 import { rowsOf } from '../employment/record-store.js';
 import { requireTransferSource, requireTransferButton } from './access.js';
@@ -60,6 +61,7 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
         c.req.query('formId') ?? 'TenantBase.TransferMultiFormView',
       );
       const settings = await readTransferSettings(tx, ctx.tenantId);
+      if (permitted[1] && !permitted[0]) return readManagerReferences(tx, ctx, 'departmentId', { effectiveDate }, page);
       const organizations = await loadOrgSnapshot(tx, ctx.tenantId, effectiveDate, page, {
         includeDisabled: false,
         ...(form.isStandard && settings.unrestrictTargetDepartment ? {} : { scope: ctx.scope }),

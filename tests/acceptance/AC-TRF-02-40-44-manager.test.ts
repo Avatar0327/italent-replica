@@ -50,7 +50,7 @@ describe('AC-TRF-02/40–44 经理自助', () => {
     const saved = await world.transfer(manager, member, {
       initiator: 'manager',
       formId: 'TenantBase.TransferMultiFormView',
-      fields: {},
+      fields: { departmentId: child.id },
     });
     expect(saved.status, await saved.clone().text()).toBe(201);
     expect(await saved.json()).toMatchObject({ status: 'draft', initiator: 'manager' });
@@ -164,8 +164,8 @@ describe('AC-TRF-02/40–44 经理自助', () => {
           },
           fields: definition.fields.map((field) => ({
             fieldCode: field.code,
-            view: field.code !== 'remarks',
-            edit: !field.system && !['remarks', 'departmentId'].includes(field.code),
+            view: !['remarks', 'levelId'].includes(field.code),
+            edit: !field.system && !['remarks', 'departmentId', 'levelId'].includes(field.code),
           })),
           buttons:
             definition === MODULE_OBJECTS.employmentRecord
@@ -190,6 +190,12 @@ describe('AC-TRF-02/40–44 经理自助', () => {
       fields: { departmentId: child.id },
       form: { fieldModes: { 'preset:departmentId': 'readonly' } },
     });
+    const hiddenReference = await world.api.request(
+      'GET',
+      `${BASE}/manager/references/levelId?employeeId=${member.id}&formId=TenantBase.TransferMultiFormView`,
+      manager,
+    );
+    expect(hiddenReference.status).toBe(403);
     const denied = await world.transfer(manager, member, {
       initiator: 'manager',
       formId: 'TenantBase.TransferMultiFormView',
@@ -238,6 +244,7 @@ describe('AC-TRF-02/40–44 经理自助', () => {
         counts: Record<string, number | null>;
       };
       const ids = dto.items.map((row) => row.id);
+      if (category !== 'probation') expect(dto.counts[category]).toBe(ids.length);
       expect(ids).not.toContain(external.id);
       expect(ids).not.toContain(outside.id);
       expect(dto.counts.probation).toBeNull(); // 缺独立人员状态，不从日期 / 转正事件推断。

@@ -1,3 +1,7 @@
+import { readManagerReferences } from './manager-references.js';
+import { businessDate } from '../employment/fields.js';
+import { requireTransferSource } from './access.js';
+import { resolveTransferForm } from './configuration.js';
 import { trimEmploymentManagerReferences } from './response-disclosure.js';
 import { sql, withTenant } from '@italent/db';
 import { tenantLocalDate, buttonResource } from '@italent/domain';
@@ -56,7 +60,7 @@ export function registerManagerRoutes(router: Hono<TenantEnv>, deps: TenantRoute
               : ['email', 'mobilePhone'].includes(key)
                 ? personFields
                 : fields;
-            return key === 'category' || permissions === undefined || permissions.has(key);
+            return ['category', 'leaving'].includes(key) || permissions === undefined || permissions.has(key);
           }),
         ),
       );
@@ -65,6 +69,7 @@ export function registerManagerRoutes(router: Hono<TenantEnv>, deps: TenantRoute
         kind === 'employees' ? safe : await withTenant(deps.db, ctx.tenantId, (tx) => managerRowLabels(tx, ctx, safe));
       return c.json({ ...result, items: displayItems, page: page.page, pageSize: page.pageSize });
     });
+  registerManagerReferences(router, deps);
   registerManagerTodos(router, deps);
   router.get('/transfers/manager/reporting', async (c) => {
     const ctx = await managerContext(c, deps);
@@ -119,6 +124,50 @@ function registerManagerTodos(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           AND l.event IN ('approve','reject','disagree','transfer')
         ORDER BY i.created_at DESC,i.id LIMIT ${page.limit} OFFSET ${page.offset}
       `),
+      );
+    });
+    return c.json({ items, page: page.page, pageSize: page.pageSize });
+  });
+}
+
+function registerManagerReferences(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.get('/transfers/manager/references/:field', async (c) => {
+    const ctx = await managerContext(c, deps);
+    const field = c.req.param('field');
+    const fields = await getModuleViewableFields(deps, ctx, EMPLOYMENT_OBJECT);
+    if (fields && !fields.has(field)) throw new AppError('FORBIDDEN', '无权查看调动参照');
+    const parsed = z
+      .object({
+        employeeId: z.uuid().transform((v) => v.toLowerCase()),
+        departmentId: z
+          .uuid()
+          .transform((v) => v.toLowerCase())
+          .optional(),
+        postId: z
+          .uuid()
+          .transform((v) => v.toLowerCase())
+          .optional(),
+        formId: z.string().min(1),
+      })
+      .safeParse(c.req.query());
+    if (!parsed.success) throw new AppError('VALIDATION_FAILED', '调动参照参数不合法');
+    const effectiveDate = businessDate(c.req.query('effectiveDate') ?? tenantLocalDate(ctx.now, ctx.timezone));
+    const page = pageQuery(c);
+    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      await requireTransferSource(tx, ctx, parsed.data.employeeId, 'manager');
+      const form = await resolveTransferForm(tx, ctx.tenantId, parsed.data.formId);
+      if (!['editable', 'readonly'].includes(form.fieldModes[`preset:${field}`] ?? 'absent'))
+        throw new AppError('FORBIDDEN', '无权查看调动参照');
+      return readManagerReferences(
+        tx,
+        ctx,
+        field,
+        {
+          ...parsed.data,
+          effectiveDate,
+          name: c.req.query('name')?.slice(0, 200),
+        },
+        page,
       );
     });
     return c.json({ items, page: page.page, pageSize: page.pageSize });

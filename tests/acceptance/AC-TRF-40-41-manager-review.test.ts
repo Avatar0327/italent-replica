@@ -119,6 +119,23 @@ describe('AC-TRF-40/41 astra 第二轮回归', () => {
     expect((await refs('levelId', { postId: foreignPost })).status).toBe(403);
     expect((await refs('postId', { employeeId: randomUUID() })).status).toBe(404);
     expect((await refs('remarks')).status).toBe(403);
+    const foreign = await approvalWorld(database().db, 'reference-other-tenant');
+    const foreignEmployee = await foreign.person('其他租户员工', await foreign.org('其他租户组织'));
+    expect((await refs('postId', { employeeId: foreignEmployee.employeeId })).status).toBe(404);
+    const legacyDepartments = await w.json<{ items: { id: string }[] }>(
+      await api.request('GET', `${BASE}/departments?formId=${formId}&effectiveDate=2026-11-01`, actor),
+    );
+    expect(legacyDepartments.items.map((item) => item.id)).not.toContain(outside);
+    const forgedPost = await api.request('POST', `${BASE}/employees/${employeeId}`, {
+      ...actor,
+      ifMatch: (
+        await w.json<{ revision: number }>(
+          await w.request(w.hr.id, 'GET', `/api/tenant/employment/employees/${employeeId}`),
+        )
+      ).revision,
+      body: input({ departmentId: target, postId: foreignPost }),
+    });
+    expect(forgedPost.status, await forgedPost.clone().text()).toBe(403);
     const denied = await api.request('POST', `${BASE}/employees/${employeeId}`, {
       ...actor,
       ifMatch: (
@@ -141,7 +158,7 @@ describe('AC-TRF-40/41 astra 第二轮回归', () => {
     const saved = await api.request('POST', `${BASE}/employees/${person.employeeId}`, {
       ...actor,
       ifMatch: revision,
-      body: input(),
+      body: { ...input(), formId: 'TenantBase.JobLevelTransferMultiFormView', transferTypeCode: 'job_level' },
     });
     const business = await w.json<{ id: string; revision: number }>(saved, 201);
     const options = { ...actor, ifMatch: business.revision, idempotencyKey: randomUUID(), body: {} };

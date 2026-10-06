@@ -28,35 +28,34 @@ export async function managerTeamQuery(tx: Tx, ctx: EmploymentContext): Promise<
     SELECT e.id,e.code,COALESCE(person.name,e.name) AS name,e.revision,
       p.department_id AS "departmentId",p.post_id AS "postId",p.level_id AS "levelId",
       p.direct_manager_id AS "directManagerId",p.dotted_manager_id AS "dottedManagerId",
-      COALESCE(p.employ_type,cycle.employ_type) AS "employType",
+      COALESCE(p.employ_type,cycle.employ_type,'internal') AS "employType",
       COALESCE(cycle.entry_date,p.effective_date) AS "entryDate",
       person.email,person.mobile_phone AS "mobilePhone",
-      CASE WHEN t.record_id IS NULL OR r.kind IN ('leave','retirement') THEN 'pending'
-        WHEN EXISTS (SELECT 1 FROM latest l JOIN states s ON s.business_id=l.business_id
-          WHERE l.employee_id=e.id AND l.kind IN ('leave','retirement')
-          AND s.state IN ('in_review','approved','effective')
-          AND l.effective_date>=${asOf}::date) THEN 'leaving'
-        WHEN COALESCE(p.employ_type,cycle.employ_type)='intern' THEN 'intern'
-        ELSE 'active' END AS category
+      COALESCE(t.record_id IS NOT NULL AND r.kind NOT IN ('leave','retirement'),false) AS active,
+      (p.kind IN ('hire','rehire') AND p.effective_date>${asOf}::date) AS pending,
+      EXISTS (SELECT 1 FROM latest l WHERE l.employee_id=e.id AND l.kind='leave') AS leaving,
+      CASE WHEN p.effective_date>${asOf}::date THEN 'pending'
+        WHEN r.kind IN ('leave','retirement') THEN 'leaving' ELSE 'active' END AS category
     FROM employment_employees e
     LEFT JOIN employment_timeline t ON t.tenant_id=e.tenant_id AND t.employee_id=e.id
       AND t.valid_during @> ${asOf}::date
     LEFT JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
     JOIN LATERAL (
       SELECT current.* FROM snapshots current WHERE current.employee_id=e.id
-        AND current.business_id=r.id AND r.kind NOT IN ('leave','retirement')
+        AND current.business_id=r.id
       UNION ALL
       SELECT l.* FROM latest l JOIN states s ON s.business_id=l.business_id
       WHERE l.employee_id=e.id AND (r.id IS NULL OR r.kind IN ('leave','retirement'))
-        AND l.kind IN ('hire','rehire','retire_rehire')
+        AND l.kind IN ('hire','rehire')
         AND l.effective_date>${asOf}::date AND s.state IN ('approved','effective')
-      ORDER BY effective_date,business_id LIMIT 1
+      ORDER BY effective_date DESC,business_id LIMIT 1
     ) p ON true
     LEFT JOIN employment_cycles cycle ON cycle.tenant_id=e.tenant_id
       AND cycle.id=COALESCE(p.selected_staff_id,r.staff_id)
     LEFT JOIN LATERAL (SELECT name,email,mobile_phone FROM personnel_employee_versions
       WHERE tenant_id=e.tenant_id AND employee_id=e.id ORDER BY revision DESC LIMIT 1) person ON true
     WHERE e.tenant_id=${ctx.tenantId} AND e.id<>${identity.employeeId}::uuid
+      AND COALESCE(p.employ_type,cycle.employ_type,'internal') IN ('internal','intern')
       AND p.department_id=ANY(${orgs}::uuid[])
       AND ${ctx.scope ? scopeSql(ctx.scope, { org: sql`p.department_id` }) : sql`false`}
   )`;
@@ -76,10 +75,12 @@ export async function readManagerTeam(
   },
 ) {
   const query = await managerTeamQuery(tx, ctx);
-  const counts = scopeRows<{ category: string; count: number }>(
-    await tx.execute(sql`
-    ${query} SELECT category,count(*)::integer AS count FROM people GROUP BY category
-  `),
+  const [counts] = scopeRows<{ active: number; intern: number; pending: number; leaving: number }>(
+    await tx.execute(sql`${query} SELECT
+      count(*) FILTER (WHERE active)::integer AS active,
+      count(*) FILTER (WHERE active AND "employType"='intern')::integer AS intern,
+      count(*) FILTER (WHERE pending)::integer AS pending,
+      count(*) FILTER (WHERE leaving)::integer AS leaving FROM people`),
   );
   const search = options.search?.trim() ?? '';
   const filter = search
@@ -87,15 +88,22 @@ export async function readManagerTeam(
       OR (${options.codeSearch !== false} AND code ILIKE ${`%${search}%`})
     ${options.emailSearch ? sql`OR email ILIKE ${`%${search}%`}` : sql``})`
     : sql``;
-  // TODO(需取证 #80)：现有模型无人员试用状态，不能从合同试用期推断。
+  // Q-M0-76 已取证；模型仍缺独立人员状态，试用栏目等待人员 / 任职模块补齐，不按日期推断。
+  const categories: Record<string, SQL> = {
+    active: sql`active`,
+    probation: sql`false`,
+    intern: sql`active AND "employType"='intern'`,
+    pending: sql`pending`,
+    leaving: sql`leaving`,
+  };
   const items =
     options.candidates && !search
       ? []
       : scopeRows<Record<string, unknown>>(
           await tx.execute(sql`
     ${query} SELECT * FROM people WHERE true
-    ${options.candidates ? sql`AND category<>'pending'` : sql``}
-    ${options.category ? sql`AND category=${options.category}` : sql``}
+    ${options.candidates ? sql`AND active` : sql``}
+    ${options.category ? sql`AND (${categories[options.category] ?? sql`false`})` : sql``}
     ${filter} ORDER BY code,id LIMIT ${page.limit} OFFSET ${page.offset}
   `),
         );
@@ -107,7 +115,7 @@ export async function readManagerTeam(
       intern: 0,
       pending: 0,
       leaving: 0,
-      ...Object.fromEntries(counts.map((row) => [row.category, row.count])),
+      ...counts,
     },
   };
 }

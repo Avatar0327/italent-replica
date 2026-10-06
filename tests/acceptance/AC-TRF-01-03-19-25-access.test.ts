@@ -409,7 +409,10 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
     const subordinate = await world.person(world.inside.id, undefined, manager.id);
     const unrelated = await world.person(world.outside.id, undefined, manager.id);
     await world.setHead(manager.id);
-    const saved = await world.transfer(managerActor, subordinate, { initiator: 'manager' });
+    const saved = await world.transfer(managerActor, subordinate, {
+      initiator: 'manager',
+      fields: { departmentId: world.inside.id },
+    });
     expect(saved.status, await saved.clone().text()).toBe(201);
     expect([403, 404]).toContain((await world.transfer(managerActor, unrelated, { initiator: 'manager' })).status);
     expect((await world.transfer(managerActor, manager, { initiator: 'manager' })).status).toBe(403);
@@ -425,7 +428,10 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
       const own = await world.person(world.inside.id, actor);
       const employee = initiator === 'employee' ? own : await world.person(world.inside.id, undefined, own.id);
       if (initiator === 'manager') await world.setHead(own.id);
-      const saved = await world.transfer(actor, employee, { initiator });
+      const saved = await world.transfer(actor, employee, {
+        initiator,
+        ...(initiator === 'manager' ? { fields: { departmentId: world.inside.id } } : {}),
+      });
       expect(saved.status, await saved.clone().text()).toBe(201);
       const business = (await saved.json()) as { id: string; revision: number };
       const path = `/api/tenant/employment/businesses/${business.id}`;
@@ -434,7 +440,12 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
       const edited = await world.api.request('PATCH', path, {
         ...hr,
         ifMatch: business.revision,
-        body: { fields: initiator === 'employee' ? { directManagerId: null } : { remarks: 'HR依自身授权核对' } },
+        body: {
+          fields:
+            initiator === 'employee'
+              ? { directManagerId: null }
+              : { departmentId: world.outside.id, remarks: 'HR依自身授权核对' },
+        },
       });
       expect(edited.status, await edited.clone().text()).toBe(200);
       // DEC-177（F-015）：员工当前在其范围内，范围外部门的调动草稿 / 申请对同范围的人可见；

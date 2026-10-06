@@ -61,6 +61,13 @@ export function defaultManagerPermissions(): GrantedObjectPermission[] {
     'formId',
     'directManagerId',
     'postId',
+    'departmentId',
+    'positionId',
+    'levelId',
+    'gradeId',
+    'sequenceId',
+    'professionalLineId',
+    'dottedManagerId',
   ]);
   const viewable = new Set([
     ...editable,

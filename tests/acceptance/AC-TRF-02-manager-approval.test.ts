@@ -27,7 +27,7 @@ describe('AC-TRF-02 经理复用审批安全', () => {
         effectiveDate: '2026-11-01',
         formId: 'TenantBase.TransferMultiFormView',
         mode: 'application',
-        fields: {},
+        fields: { departmentId: org },
         submit: true,
       },
     });
@@ -44,7 +44,8 @@ describe('AC-TRF-02 经理复用审批安全', () => {
     expect(detail.status, await detail.clone().text()).toBe(200);
     const view = (await detail.json()) as { form: { values: object }; actions: string[] };
     expect(view.actions).not.toContain('approve');
-    expect(view.form.values).not.toHaveProperty('departmentId');
+    expect(view.form.values).not.toHaveProperty('departmentId'); // 节点本单字段为空，身份可见不扩大本单披露。
+    expect(view.form.values).not.toHaveProperty('remarks');
     const applied = await api.request('GET', '/api/tenant/employment/transfers/manager/todos?tab=initiated', actor);
     expect(await applied.json()).toMatchObject({ items: [expect.objectContaining({ id: instance.id })] });
     const generic = await api.request('POST', `/api/tenant/employment/employees/${employee.employeeId}/businesses`, {

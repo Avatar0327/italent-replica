@@ -5,7 +5,7 @@ import { transferRequest, requestError, TRANSFER_API } from './api.js';
 import { text } from './messages.js';
 import './transfer.css';
 
-type Row = { [key: string]: string | number | null | Record<string, unknown> };
+type Row = { [key: string]: string | number | boolean | null | Record<string, unknown> };
 type Result = { items: Row[]; counts?: Record<string, number | null>; pageSize?: number };
 type Entry = { canApply: boolean; canViewReporting: boolean };
 
@@ -94,7 +94,11 @@ function Dashboard({ tenantId }: { tenantId: string }) {
         <section role="dialog" aria-label={labels.categories[category as keyof typeof labels.categories]}>
           <h3>{labels.categories[category as keyof typeof labels.categories]}</h3>
           <button onClick={() => setCategory(null)}>{labels.close}</button>
-          <ReadList key={category} tenantId={tenantId} path={`team?category=${category}`} />
+          {data?.counts?.[category] === null ? (
+            <p role="status">{labels.statusPending}</p>
+          ) : (
+            <ReadList key={category} tenantId={tenantId} path={`team?category=${category}`} />
+          )}
         </section>
       )}
       <section>
@@ -177,6 +181,7 @@ function displayCell(row: Row, key: string) {
   const display = row.display && typeof row.display === 'object' ? row.display : row;
   const value = key === 'tenure' ? row.tenure : display[key];
   if (value == null) return '—';
+  if (key === 'leaving') return value ? labels.leavingYes : labels.leavingNo;
   if (key === 'employType')
     return labels.employTypes[String(value) as keyof typeof labels.employTypes] ?? String(value);
   return String(value);

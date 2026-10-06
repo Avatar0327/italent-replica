@@ -1,3 +1,4 @@
+import { requireManagerReferenceValues } from './manager-references.js';
 import { lockTransferParticipants } from '../employment/transfer-locks.js';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
@@ -102,6 +103,8 @@ export async function transferTargetContext(
   departmentId: string | null,
 ): Promise<EmploymentContext> {
   await requireTransferSource(tx, ctx, employeeId, input.initiator);
+  if (input.initiator === 'manager')
+    await requireManagerReferenceValues(tx, ctx, input.employment.effectiveDate, input.employment.fields);
   const form = await resolveTransferForm(tx, ctx.tenantId, input.employment.formId);
   const settings = await readTransferSettings(tx, ctx.tenantId);
   return form.isStandard && settings.unrestrictTargetDepartment
@@ -172,8 +175,9 @@ export async function transferBusinessContext(
   if (write) {
     await lockTransferParticipants(tx, ctx, request.employeeId);
     await lockEmploymentEmployee(tx, ctx, request.employeeId);
-    await requireManagerBusinessSource(tx, ctx, request.employeeId);
   }
+  // 每次同单请求（包括命令缓存重放）都验权；首次执行仍在员工锁后复验。
+  await requireManagerBusinessSource(tx, ctx, request.employeeId);
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   // 是否需要目标部门例外按写入口径判断；DEC-177 放宽的只是“看”（F-015），不能因可见就跳过 Switch 31 例外。
   const writable = await loadEmploymentBusiness(tx, ctx.tenantId, businessId, today, ctx.scope, 'write');

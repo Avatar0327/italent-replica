@@ -4,6 +4,7 @@ import {
   EMPLOYMENT_API,
   TRANSFER_API,
   loadReferences,
+  managerReferencePath,
   previewInput,
   queryReferences,
   requestError,
@@ -307,7 +308,13 @@ async function loadPreview(tenantId: string, model: TransferFormModel, signal: A
   const [departments, references] = await Promise.all([
     preview.form.fieldModes['preset:departmentId'] &&
     !['hidden', 'absent'].includes(preview.form.fieldModes['preset:departmentId'])
-      ? transferRequest<{ items: Choice[] }>(tenantId, `${TRANSFER_API}/departments?${query}`, { signal })
+      ? transferRequest<{ items: Choice[] }>(
+          tenantId,
+          model.initiator === 'manager'
+            ? managerReferencePath(model, preview, 'departmentId')
+            : `${TRANSFER_API}/departments?${query}`,
+          { signal },
+        )
       : Promise.resolve({ items: [] }),
     loadReferences(tenantId, preview, model, signal),
   ]);

@@ -12,6 +12,7 @@ import {
   transferScene,
   type InstanceView,
 } from './AC-APV-support.js';
+import { createProfile } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -22,6 +23,8 @@ describe('AC-PRM-29 审批人最小披露', () => {
     const w = await approvalWorld(db, 'apv-disclosure');
     const s = await transferScene(w);
     const world = await permissionAdmin(w);
+    // DEC-205：显式空经理配置替代后备字段；本例仅使用下方授予的可见字段，保留职级隐藏断言。
+    await createProfile(world, 'department_manager_self_service');
     // B = 调入部门负责人：能看 部门、生效日期、地点、备注 字段，但没有任何数据范围。
     // 业务日期是本单新内容，看不到即为盲审（PR #35 第二轮清单 3）。
     await grantVisibleFields(world, s.inHead.userId, ['id', 'departmentId', 'effectiveDate', 'place', 'remarks']);
