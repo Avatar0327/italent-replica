@@ -1,10 +1,11 @@
+import { registerSequenceSyncRoutes } from './sequence-routes.js';
 import { authorizeJobResult } from '../permission/job-result-scope.js';
 import { registerJobScopeReader } from '../permission/module-contracts.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
 import { withTenant, type Tx } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import { z } from 'zod';
-import { MODULE_OBJECTS } from '@italent/domain';
+import { MODULE_OBJECTS, tenantLocalDate } from '@italent/domain';
 import {
   button,
   hasCreatorScope,
@@ -56,6 +57,7 @@ export function registerJobRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
   registerSettings(router, deps);
   registerCandidates(router, deps);
   registerImport(router, deps);
+  registerSequenceSyncRoutes(router, deps);
   registerObjects(router, deps);
   registerObjectWrites(router, deps);
 }
@@ -213,6 +215,13 @@ async function importJobRows(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: 
       await visibleJob(tx, ctx, scope, input.kind, targetId, row.startDate ?? queryDate(c, ctx));
   };
   const rows = parsed.data as JobImportRow[];
+  const sequenceAccess =
+    input.kind === 'posts' || input.kind === 'positions'
+      ? {
+          scope: await resolveModuleScope(deps, ctx, undefined, MODULE_OBJECTS.employmentRecord.code),
+          authorize: deps.authorize,
+        }
+      : undefined;
   return runWrite(
     c,
     deps,
@@ -220,7 +229,14 @@ async function importJobRows(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: 
     input,
     async (tx, writeCtx) => ({
       status: 200,
-      body: await importJobObjects(tx, writeCtx, input.kind, rows, (row, target) => guard(tx, row, target)),
+      body: await importJobObjects(
+        tx,
+        writeCtx,
+        input.kind,
+        rows,
+        (row, target) => guard(tx, row, target),
+        sequenceAccess,
+      ),
     }),
     objectCode,
     (tx) => authorizeJobImportRows(tx, ctx, input.kind, rows, (row, target) => guard(tx, row, target)),
@@ -242,6 +258,7 @@ function registerObjects(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const items = await withTenant(deps.db, ctx.tenantId, (tx) => listJobObjects(tx, ctx.tenantId, kind, query));
     return c.json({
       items: await trimModuleResponse(deps, ctx, objectCode, items),
+      today: tenantLocalDate(ctx.now, ctx.timezone),
       page: page.page,
       pageSize: page.pageSize,
       hasDataPermission: kind === 'positions' ? scope.hasDataPermission : scope.all || hasCreatorScope(scope),
@@ -292,11 +309,13 @@ function registerObjectWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const id = uuidParam(c);
     const input = await parseBody(c, jobPatchSchema(kind));
     // 「调整员工直线经理」是本次变更的选项而非职位字段；同步任职由人员端口在事务内按任职对象另行验权。
-    const { adjustEmployeeDirectManager: option, ...fields } = input as JobPatch;
+    const { adjustEmployeeDirectManager: option, syncSequenceToAssignments: _sync, ...fields } = input as JobPatch;
     await writeFields(deps, ctx, objectCode, 'update', fields);
     const scope = await requestScope(c, deps, ctx, objectCode);
     const employmentScope =
-      option === true ? await resolveModuleScope(deps, ctx, undefined, MODULE_OBJECTS.employmentRecord.code) : null;
+      option === true || kind === 'posts' || kind === 'positions'
+        ? await resolveModuleScope(deps, ctx, undefined, MODULE_OBJECTS.employmentRecord.code)
+        : null;
     const personnel = employmentJobPersonnel(
       employmentScope ? { scope: employmentScope, authorize: deps.authorize } : undefined,
     );
@@ -309,7 +328,18 @@ function registerObjectWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         if (!scope.all) await visibleJob(tx, ctx, scope, kind, id, input.effectiveDate);
         if ((input as JobPatch).orgId)
           visible(scope, (input as JobPatch).orgId as string, '职务体系对象不存在或已失效');
-        return { status: 200, body: await updateJobObject(tx, writeCtx, kind, id, input as JobPatch, personnel) };
+        return {
+          status: 200,
+          body: await updateJobObject(
+            tx,
+            writeCtx,
+            kind,
+            id,
+            input as JobPatch,
+            personnel,
+            employmentScope ? { scope: employmentScope, authorize: deps.authorize } : undefined,
+          ),
+        };
       },
       objectCode,
       async (tx) => {

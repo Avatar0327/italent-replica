@@ -13,6 +13,7 @@ const APPROVAL = '审批中心';
 const ENTERPRISE = '企业设置';
 
 const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
+  'job-sequence-sync': { label: '任职序列同步任务', app: ORG_PEOPLE },
   'employment-record': { label: '任职记录', app: ORG_PEOPLE },
   'employment-business': { label: '任职业务', app: ORG_PEOPLE },
   employment_employee: { label: '员工信息', app: ORG_PEOPLE },
