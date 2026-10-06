@@ -132,8 +132,9 @@ export async function activateWithJudgement(
   ctx = { ...ctx, deferredExecution: true };
   try {
     return await tx.transaction(async (savepoint) => {
+      // org/locks.ts：预检可能取组织 / 编制锁，先锁已有业务；员工闭包已由调度 / 重试入口锁定。
+      const business = await lockEmploymentBusiness(savepoint, { ...ctx, expectedRevision: item.revision }, item.id);
       if (item.materialized && item.kind === 'transfer') {
-        const business = await lockEmploymentBusiness(savepoint, { ...ctx, expectedRevision: item.revision }, item.id);
         await postponeLateTransfer(savepoint, ctx, business);
         if (item.reminderOnly && item.effectiveDate < tenantLocalDate(ctx.now, ctx.timezone))
           await bumpEmploymentBusiness(savepoint, ctx, business);
