@@ -266,9 +266,10 @@ describe('PR #64 第二轮 P2 / DEC-164 回归', () => {
 
   it('P2-6 无游标重复调用越过 skipped 候选，继续处理其他到期合同', async () => {
     const w = await contractWorld(testDb().db, 'ctr2rotation');
-    const sources = [await w.create(), await w.create({ typeId: w.otherType.id })].sort((a, b) =>
-      a.id.localeCompare(b.id),
-    );
+    const sources = [
+      await w.create({ endDate: '2026-10-01' }),
+      await w.create({ typeId: w.otherType.id, endDate: '2026-10-01' }),
+    ].sort((a, b) => a.id.localeCompare(b.id));
     await installApprovalFallbacks(w.db, w.session.tenant.id, w.session.user.id);
     await w.settings({ autoRenew: true });
     await rule(w, [w.org.id], 1, sources[1]!.typeId);

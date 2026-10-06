@@ -183,6 +183,7 @@ export const permissionAdmins = pgTable(
       .notNull()
       .references(() => users.id),
     role: text('role').notNull(),
+    contractConfiguration: boolean('contract_configuration').notNull().default(false),
     status: text('status').$type<GrantStatus>().notNull().default('active'),
     revision: integer('revision').notNull().default(1),
     createdBy: uuid('created_by').references(() => users.id),
