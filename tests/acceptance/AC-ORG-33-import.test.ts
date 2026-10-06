@@ -119,7 +119,9 @@ it('AC-ORG-33 缺填返回行级错误并回滚此前组织版本、任职、审
   expect(await world.records(person.id)).toHaveLength(1);
   await withTenant(database().db, world.tenant.id, async (tx) => {
     for (const table of ['audit_events', 'employment_outbox', 'org_import_results']) {
-      expect(resultRows(await tx.execute(sql`SELECT id FROM ${sql.raw(table)} WHERE command_id=${key}`))).toEqual([]);
+      expect(
+        resultRows(await tx.execute(sql`SELECT command_id FROM ${sql.raw(table)} WHERE command_id=${key}`)),
+      ).toEqual([]);
     }
     expect(resultRows(await tx.execute(sql`SELECT source_code FROM org_import_mappings`))).toEqual([]);
   });
@@ -135,4 +137,32 @@ it('AC-ORG-33 同批先迁入子树再更名，联动人员在组织锁之前统
   expect(response.status, await response.clone().text()).toBe(200);
   for (const employee of [person, subordinate]) expect(await world.records(employee.id)).toHaveLength(2);
   expect((await world.orgsAt('2026-10-09')).get(child.id)?.name).toBe(child.name);
+});
+
+it('AC-ORG-33 导入组织调整插入未来记录之前，同日再导入沿 DEC-108 排序', async () => {
+  const { world, person, row, send } = await setup('org33timeline');
+  const other = await world.org('未来部门');
+  const future = await world.business(
+    person.id,
+    {
+      kind: 'transfer',
+      mode: 'direct',
+      effectiveDate: '2026-10-12',
+      fields: { departmentId: other.id, place: '未来地点' },
+    },
+    person.revision,
+  );
+  const original = (await world.records(person.id, '2026-10-12')).find((r) => r.id === future.id)!;
+  const first = await send([{ ...row, addEmployment: true }]);
+  expect(first.status, await first.clone().text()).toBe(200);
+  const inserted = (await world.records(person.id, '2026-10-09')).find((r) => r.isCurrent)!;
+  expect(inserted).toMatchObject({ kind: 'org_adjustment', stopDate: '2026-10-11' });
+  const second = await send([{ ...row, name: '同日再次更名', expectedRevision: 2, addEmployment: true }]);
+  expect(second.status, await second.clone().text()).toBe(200);
+  const records = await world.records(person.id, '2026-10-09');
+  expect(records.filter((r) => r.kind === 'org_adjustment')).toHaveLength(2);
+  expect(records.find((r) => r.id === inserted.id)?.stopDate).toBe('2026-10-08');
+  expect(records.find((r) => r.isCurrent)?.id).not.toBe(inserted.id);
+  const later = (await world.records(person.id, '2026-10-12')).find((r) => r.id === future.id)!;
+  expect(later).toEqual({ ...original, previousRecordId: records.find((r) => r.isCurrent)!.id });
 });

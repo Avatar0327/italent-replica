@@ -18,7 +18,7 @@ async function waitForBoth(db: Db) {
 }
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-ORG-34 真实 PG 交错', () => {
-  it('同一员工的组织调整与调动串行；失败方无部分写入且不死锁', async () => {
+  it.each([false, true])('组织调整与调动串行，失败方回滚且不死锁（导入=%s）', async (viaImport) => {
     const w = await activationWorld(database().db, 'org34pg');
     const person = await w.hired();
     const api = tenantApi(w.db, { clock: () => new Date('2026-10-01T01:00:00Z') });
@@ -27,12 +27,31 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-ORG-34 真实 PG 交�
       await barrier.execute(sql`SELECT id FROM employment_employees
         WHERE tenant_id=${w.session.tenant.id} AND id=${person.employee.id}::uuid FOR UPDATE`);
       pending = [
-        api.request('PATCH', `/api/tenant/org/organizations/${w.from.id}`, {
-          user: w.session.user.id,
-          tenant: w.session.tenant.id,
-          ifMatch: w.from.revision,
-          body: { name: '交错改名', effectiveDate: '2026-10-09', addEmployment: true },
-        }),
+        api.request(
+          viaImport ? 'POST' : 'PATCH',
+          viaImport ? '/api/tenant/org/import' : `/api/tenant/org/organizations/${w.from.id}`,
+          {
+            user: w.session.user.id,
+            tenant: w.session.tenant.id,
+            ifMatch: viaImport ? 0 : w.from.revision,
+            body: viaImport
+              ? {
+                  rows: [
+                    {
+                      sourceCode: w.from.id,
+                      orgId: w.from.id,
+                      code: 'INTERLEAVE',
+                      name: '交错改名',
+                      parentId: w.session.tenant.id,
+                      expectedRevision: w.from.revision,
+                      startDate: '2026-10-09',
+                      addEmployment: true,
+                    },
+                  ],
+                }
+              : { name: '交错改名', effectiveDate: '2026-10-09', addEmployment: true },
+          },
+        ),
         w.session.request('POST', `/employees/${person.employee.id}/businesses`, {
           ifMatch: person.hire.employeeRevision,
           body: { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { departmentId: w.to.id } },

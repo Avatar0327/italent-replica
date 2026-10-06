@@ -1,4 +1,9 @@
-import { applyOrgEmploymentLinkage, lockOrgEmploymentTargets, validateEmploymentChoice } from './employment-linkage.js';
+import {
+  applyOrgEmploymentLinkage,
+  lockOrgEmploymentTargets,
+  validateEmploymentChoice,
+  type OrgEmploymentBatch,
+} from './employment-linkage.js';
 import { employmentVisibilitySql } from '../employment/visibility.js';
 import type { Authorizer } from '../../authorization.js';
 import { linkedObjectScope, type ModuleScope } from '../permission/module-access.js';
@@ -115,6 +120,8 @@ export interface OrgUpdateOptions {
   /** DEC-129 级联停用前，按操作人当前数据范围逐个校验下级组织（路由提供）。 */
   readonly authorizeCascade?: CascadeAuthorizer;
   readonly employmentScope?: ModuleScope;
+  /** 导入已在组织锁之前取得全批员工锁，行内只能使用该集合。 */
+  readonly employmentBatch?: OrgEmploymentBatch;
 }
 
 /** 业务字段全部追加版本；对象头只保存稳定标识、可修改的业务编码及全局 revision。 */
@@ -134,7 +141,9 @@ export async function updateOrganization(
   const effectiveDate = date(patch.effectiveDate, 'effectiveDate');
   const employmentCtx = { ...ctx, scope: options.employmentScope };
   const lockedEmployees =
-    patch.addEmployment === true ? await lockOrgEmploymentTargets(tx, employmentCtx, orgId, effectiveDate) : [];
+    patch.addEmployment === true
+      ? await lockOrgEmploymentTargets(tx, employmentCtx, orgId, effectiveDate, options.employmentBatch)
+      : [];
   await ensureOrgSetup(tx, ctx);
   const [object] = await tx.select().from(orgObjects).where(objectKey(ctx.tenantId, orgId)).for('no key update');
   if (!object) throw new AppError('NOT_FOUND', '组织不存在');

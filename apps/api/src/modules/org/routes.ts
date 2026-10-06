@@ -94,6 +94,7 @@ const importRow = z.strictObject({
   orgId: z.uuid().optional(),
   expectedRevision: z.number().int().min(0).optional(),
   startDate: date.optional(),
+  addEmployment: z.boolean().optional(),
 });
 
 export function registerOrgRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
@@ -331,6 +332,9 @@ function registerOrgImport(router: Hono<TenantEnv>, deps: TenantRouteDeps): void
     const input = await body(c, z.strictObject({ rows: z.array(importRow).min(1).max(100) }));
     await button(deps, ctx, OBJECT, 'import', 'list');
     const scope = await requestScope(c, deps, ctx, OBJECT);
+    const employmentScope = input.rows.some((row) => row.addEmployment === true)
+      ? await resolveModuleScope(deps, ctx, undefined, 'TenantBase.EmploymentRecord')
+      : undefined;
     const originalRows = await withTenant(deps.db, ctx.tenantId, (tx) =>
       originalOrgImportRows(tx, ctx.tenantId, c.req.header('idempotency-key') ?? ''),
     );
@@ -341,7 +345,7 @@ function registerOrgImport(router: Hono<TenantEnv>, deps: TenantRouteDeps): void
           (original) =>
             original.orgId === targetId && original.sourceCode === row.sourceCode && original.status === 'created',
         );
-      const { orgId: _id, expectedRevision: _revision, ...payload } = row;
+      const { orgId: _id, expectedRevision: _revision, addEmployment: _choice, ...payload } = row;
       await writeFields(
         { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) },
         ctx,
@@ -369,7 +373,9 @@ function registerOrgImport(router: Hono<TenantEnv>, deps: TenantRouteDeps): void
       input,
       async (tx, writeCtx) => ({
         status: 200,
-        body: await importOrganizations(tx, writeCtx, input.rows, (row, target) => guard(tx, row, target)),
+        body: await importOrganizations(tx, writeCtx, input.rows, (row, target) => guard(tx, row, target), {
+          employmentScope,
+        }),
       }),
       true,
       scope,
@@ -405,7 +411,8 @@ async function write(
     ? (resolvedScope ?? (await resolveModuleScope(deps, ctx, undefined, OBJECT)))
     : undefined;
   const linkedScope =
-    (input as { addEmployment?: boolean }).addEmployment === true
+    (input as { addEmployment?: boolean }).addEmployment === true ||
+    (input as { rows?: OrgImportRow[] }).rows?.some((row) => row.addEmployment === true)
       ? await resolveModuleScope(deps, ctx, undefined, 'TenantBase.EmploymentRecord')
       : undefined;
   const checkResult = async (tx: Tx, value: Record<string, unknown>, status: number) => {

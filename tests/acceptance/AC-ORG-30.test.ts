@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 import { orgPeopleWorld, resultRows } from './AC-ORG-people-support.js';
 const database = useTestDb();
 
-it('AC-ORG-30 1001 人联动超限，组织/任职/审计/outbox 整体不写入', async () => {
+it.each([false, true])('AC-ORG-30 1001 人联动超限，整单不写入（导入=%s）', async (viaImport) => {
   const db = database().db;
   const w = await orgPeopleWorld(db, 'org30');
   const root = await w.org('批量部门');
@@ -55,11 +55,30 @@ it('AC-ORG-30 1001 人联动超限，组织/任职/审计/outbox 整体不写入
       FROM employment_timeline s CROSS JOIN ${rows}
       WHERE s.tenant_id=${w.tenant.id} AND s.record_id=${seed.recordId}::uuid`);
   });
-  const response = await w.call('PATCH', `org/organizations/${root.id}`, {
-    ifMatch: root.revision,
-    idempotencyKey: key,
-    body: { name: '不应保存', effectiveDate: '2026-10-08', addEmployment: true },
-  });
+  const response = await w.call(
+    viaImport ? 'POST' : 'PATCH',
+    viaImport ? 'org/import' : `org/organizations/${root.id}`,
+    {
+      ifMatch: viaImport ? 0 : root.revision,
+      idempotencyKey: key,
+      body: viaImport
+        ? {
+            rows: [
+              {
+                sourceCode: root.id,
+                orgId: root.id,
+                code: root.code,
+                name: '不应保存',
+                parentId: w.tenant.id,
+                expectedRevision: root.revision,
+                startDate: '2026-10-08',
+                addEmployment: true,
+              },
+            ],
+          }
+        : { name: '不应保存', effectiveDate: '2026-10-08', addEmployment: true },
+    },
+  );
   expect(response.status, await response.clone().text()).toBe(413);
   expect((await w.orgsAt('2026-10-08')).get(root.id)).toMatchObject({ revision: 1, name: '批量部门' });
   await withTenant(db, w.tenant.id, async (tx) => {

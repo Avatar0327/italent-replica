@@ -10,7 +10,7 @@ import { orgPeopleWorld, resultRows } from './AC-ORG-people-support.js';
 import { tenantApi } from './support/tenant-api.js';
 const database = useTestDb();
 
-it('AC-ORG-28 部门在范围外但员工当前可见则联动；撤权后幂等重放拒绝', async () => {
+it.each([false, true])('AC-ORG-28 当前可见则联动，撤权后幂等重放拒绝（导入=%s）', async (viaImport) => {
   const db = database().db;
   const w = await orgPeopleWorld(db, 'org28visible');
   const inside = await w.org('当前可见');
@@ -47,13 +47,32 @@ it('AC-ORG-28 部门在范围外但员工当前可见则联动；撤权后幂等
   const api = tenantApi(db, { authorize, clock: () => new Date('2026-10-01T01:00:00Z') });
   const key = randomUUID();
   const send = () =>
-    api.request('PATCH', `/api/tenant/org/organizations/${outside.id}`, {
-      user: w.user.id,
-      tenant: w.tenant.id,
-      ifMatch: outside.revision,
-      idempotencyKey: key,
-      body: { name: '可见联动成功', effectiveDate: '2026-10-08', addEmployment: true },
-    });
+    api.request(
+      viaImport ? 'POST' : 'PATCH',
+      viaImport ? '/api/tenant/org/import' : `/api/tenant/org/organizations/${outside.id}`,
+      {
+        user: w.user.id,
+        tenant: w.tenant.id,
+        ifMatch: viaImport ? 0 : outside.revision,
+        idempotencyKey: key,
+        body: viaImport
+          ? {
+              rows: [
+                {
+                  sourceCode: outside.id,
+                  orgId: outside.id,
+                  code: outside.code,
+                  name: '可见联动成功',
+                  parentId: w.tenant.id,
+                  expectedRevision: outside.revision,
+                  startDate: '2026-10-08',
+                  addEmployment: true,
+                },
+              ],
+            }
+          : { name: '可见联动成功', effectiveDate: '2026-10-08', addEmployment: true },
+      },
+    );
   const saved = await send();
   expect(saved.status, await saved.clone().text()).toBe(200);
   expect(await w.records(person.id)).toHaveLength(3);
@@ -64,7 +83,7 @@ it('AC-ORG-28 部门在范围外但员工当前可见则联动；撤权后幂等
   expect(await w.records(person.id)).toHaveLength(3);
 });
 
-it('AC-ORG-28 任一员工不可见则组织、所有任职、审计及 outbox 整单回滚', async () => {
+it.each([false, true])('AC-ORG-28 任一员工不可见则组织及所有联动整单回滚（导入=%s）', async (viaImport) => {
   const db = database().db;
   const w = await orgPeopleWorld(db, 'org28rollback');
   const root = await w.org('主部门');
@@ -92,13 +111,32 @@ it('AC-ORG-28 任一员工不可见则组织、所有任职、审计及 outbox �
   });
   const api = tenantApi(db, { authorize, clock: () => new Date('2026-10-01T01:00:00Z') });
   const key = randomUUID();
-  const response = await api.request('PATCH', `/api/tenant/org/organizations/${root.id}`, {
-    user: w.user.id,
-    tenant: w.tenant.id,
-    ifMatch: root.revision,
-    idempotencyKey: key,
-    body: { name: '不应保存', effectiveDate: '2026-10-08', addEmployment: true },
-  });
+  const response = await api.request(
+    viaImport ? 'POST' : 'PATCH',
+    viaImport ? '/api/tenant/org/import' : `/api/tenant/org/organizations/${root.id}`,
+    {
+      user: w.user.id,
+      tenant: w.tenant.id,
+      ifMatch: viaImport ? 0 : root.revision,
+      idempotencyKey: key,
+      body: viaImport
+        ? {
+            rows: [
+              {
+                sourceCode: root.id,
+                orgId: root.id,
+                code: root.code,
+                name: '不应保存',
+                parentId: w.tenant.id,
+                expectedRevision: root.revision,
+                startDate: '2026-10-08',
+                addEmployment: true,
+              },
+            ],
+          }
+        : { name: '不应保存', effectiveDate: '2026-10-08', addEmployment: true },
+    },
+  );
   expect(response.status).toBe(404);
   expect(await response.json()).toMatchObject({ error: { code: 'LINKED_RECORD_OUT_OF_SCOPE' } });
   expect(await w.records(a.id)).toHaveLength(1);

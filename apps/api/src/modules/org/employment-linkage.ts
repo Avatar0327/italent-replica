@@ -33,19 +33,24 @@ export function validateEmploymentChoice(current: OrgRecord, patch: Organization
 }
 
 /** 单个 SQL 快照内选中生效日的整支行政树，不随当前树误选；最新任职字段快照含后续更正。 */
-function subtree(tenantId: string, orgId: string, date: string) {
+function subtree(tenantId: string, orgId: string | readonly string[], date: string) {
   return sql`WITH RECURSIVE versions AS (
     SELECT DISTINCT ON (org_id) id,org_id FROM org_versions
     WHERE tenant_id=${tenantId} AND start_date<=${date}::date ORDER BY org_id,start_date DESC,version_no DESC
   ), tree AS (
-    SELECT org_id FROM versions WHERE org_id=${orgId}::uuid
+    SELECT org_id FROM versions WHERE org_id=ANY(${idsSql(typeof orgId === 'string' ? [orgId] : orgId)})
     UNION
     SELECT v.org_id FROM tree t JOIN org_hierarchy_links h ON h.tenant_id=${tenantId}
       AND h.dimension='admin' AND h.parent_org_id=t.org_id JOIN versions v ON v.id=h.version_id
   )`;
 }
 
-export async function orgEmploymentTargets(tx: Tx, ctx: EmploymentContext, orgId: string, date: string) {
+export async function orgEmploymentTargets(
+  tx: Tx,
+  ctx: EmploymentContext,
+  orgId: string | readonly string[],
+  date: string,
+) {
   const rows = rowsOf<{ id: string }>(
     await tx.execute(sql`
     ${subtree(ctx.tenantId, orgId, date)}
@@ -65,11 +70,31 @@ export async function orgEmploymentTargets(tx: Tx, ctx: EmploymentContext, orgId
 }
 
 /** F-008：全部员工按 UUID 在组织设置/对象和业务锁之前取锁；等待期间集合变化则整单 409，不能补锁倒序。 */
-export async function lockOrgEmploymentTargets(tx: Tx, ctx: EmploymentContext, orgId: string, date: string) {
-  const ids = await orgEmploymentTargets(tx, ctx, orgId, date);
+export interface OrgEmploymentBatch {
+  readonly employeeIds: ReadonlySet<string>;
+  remaining: number;
+}
+
+export async function lockOrgEmploymentEmployees(tx: Tx, ctx: EmploymentContext, ids: readonly string[]) {
   if (ids.length)
     await tx.execute(sql`SELECT id FROM employment_employees
     WHERE tenant_id=${ctx.tenantId} AND id=ANY(${idsSql(ids)}) ORDER BY id FOR NO KEY UPDATE`);
+}
+
+export async function lockOrgEmploymentTargets(
+  tx: Tx,
+  ctx: EmploymentContext,
+  orgId: string,
+  date: string,
+  batch?: OrgEmploymentBatch,
+) {
+  const ids = await orgEmploymentTargets(tx, ctx, orgId, date);
+  if (batch) {
+    if (ids.some((id) => !batch.employeeIds.has(id)))
+      throw new AppError('CONFLICT', '组织联动人员已变化，请刷新后显式重提', { reason: 'ORG_EMPLOYMENT_PLAN_CHANGED' });
+    if (ids.length > batch.remaining) throw new AppError('PAYLOAD_TOO_LARGE', '整批组织联动任职超过单次处理上限');
+    batch.remaining -= ids.length;
+  } else await lockOrgEmploymentEmployees(tx, ctx, ids);
   return ids;
 }
 
