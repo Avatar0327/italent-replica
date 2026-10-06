@@ -11,6 +11,7 @@ import {
   type Tx,
 } from '@italent/db';
 import { AppError } from '../../errors.js';
+import { lockOrganizationSettings } from './locks.js';
 
 export interface OrgSetupContext {
   readonly tenantId: string;
@@ -23,8 +24,7 @@ export interface OrgSetupContext {
 
 /** 全部编码写入先锁同一租户设置行，避免跨“实体/预占”两表抢码（REQ-ORG-002）。 */
 export async function ensureOrgSetup(tx: Tx, ctx: OrgSetupContext): Promise<void> {
-  await tx.insert(orgSettings).values({ tenantId: ctx.tenantId }).onConflictDoNothing();
-  await tx.select().from(orgSettings).where(eq(orgSettings.tenantId, ctx.tenantId)).for('update');
+  await lockOrganizationSettings(tx, ctx.tenantId);
   const [existing] = await tx.select().from(orgObjects).where(eq(orgObjects.id, ctx.tenantId));
   if (existing) return;
   await tx.insert(orgObjects).values({ id: ctx.tenantId, tenantId: ctx.tenantId });
