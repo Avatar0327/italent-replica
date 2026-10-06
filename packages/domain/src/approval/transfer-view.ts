@@ -43,20 +43,20 @@ export const TRANSFER_DETAIL_VIEW: readonly TransferViewItem[] = [
   form('调动日期', 'StartDate', 'effectiveDate'),
   form('异动类型', 'TransitionTypeOID', 'transferTypeCode'),
   form('调动原因', 'ChangeReason', 'reasonCode'),
-  later('交接人', 'HandoverPerson', 'R1-T10', `${NO_MODEL}（调动交接）`),
+  form('交接人', 'HandoverPerson', 'handoverPersonId'),
   form('工号', null, 'jobNumber'),
   // DEC-122：员工档案已有性别与出生日期，本期交付（只读带出，按员工信息对象的字段查看权裁剪）。
   form('性别', null, 'gender'),
   form('年龄', null, 'age'),
-  later('是否调整薪资', 'AdjustSalary', 'R1-T10', `${NO_MODEL}（薪资只记标志，DEC-002）`),
-  later('是否变更合同', 'IsChangeContract', 'R1-T10', `${NO_MODEL}（合同变更联动）`),
-  later('是否同步履历', 'TransferSyncToJobHistory', 'R1-T10', `${NO_MODEL}（工作履历联动）`),
+  form('是否调整薪资', 'AdjustSalary', 'adjustSalary'),
+  form('是否变更合同', 'IsChangeContract', 'isChangeContract'),
+  later('是否同步履历', 'TransferSyncToJobHistory', '工作履历', `${NO_MODEL}（工作履历联动未列入 R1-T10）`),
   later('是否带编制调动', 'IsTranferWithEstablish', 'Q-M0-18', 'DEC-073：带编调动未取证，明确拒绝'),
-  later('试岗方式', 'OnTrialMode', 'R1-T10', `${NO_MODEL}（试岗）`),
-  later('试岗开始日期', null, 'R1-T10', `${NO_MODEL}（试岗）`),
-  later('预计试岗结束日期', null, 'R1-T10', `${NO_MODEL}（试岗）`),
-  later('试岗期限（月）', null, 'R1-T10', `${NO_MODEL}（试岗）`),
-  later('是否调整目标', 'IsAdjustTarget', 'R1-T10', `${NO_MODEL}（目标调整未列入任务书范围，派发时确认）`),
+  later('试岗方式', 'OnTrialMode', 'R2-T02', '试岗方式取值随试岗模块取证；R1-T10 以试岗期限表示设置试岗'),
+  form('试岗开始日期', null, 'onTrialStartDate'),
+  later('预计试岗结束日期', null, 'R1-T10', '由开始日期与期限推导，生效后见试岗期信息'),
+  form('试岗期限（月）', null, 'onTrialMonths'),
+  later('是否调整目标', 'IsAdjustTarget', '未排期', `${NO_MODEL}（目标调整未列入任务书范围）`),
   // 任职调整
   form('新部门', 'OIdDepartment', 'departmentId'),
   form('新职务', 'OIdJobPost', 'postId'),
@@ -71,12 +71,24 @@ export const TRANSFER_DETAIL_VIEW: readonly TransferViewItem[] = [
   form('新增下属', 'AddSubordinate', 'addedSubordinateIds'),
   form('调动后是否店长', null, 'isStoreManager'),
   // 其余区块
-  later('兼职调整', 'ParttimeJobInfo', 'R1-T10', `${NO_MODEL}（兼职调整联动）`),
-  later('薪资调整', null, 'R1-T10', `${NO_MODEL}（薪资只记标志，DEC-002）`),
-  later('合同变更', null, 'R1-T10', `${NO_MODEL}（合同变更联动）`),
-  later('职责转交', null, 'R1-T10', `${NO_MODEL}（职责转交，原站隐藏）`),
-  later('目标调整', null, 'R1-T10', `${NO_MODEL}（目标调整未列入任务书范围，派发时确认）`),
+  form('兼职调整', 'ParttimeJobInfo', 'partTimeEnds'),
+  later('薪资调整', null, '薪酬模块', '社保缴交等薪资明细暂缓（DEC-002），只记“是否调整薪资”'),
+  form('合同变更', null, 'contractChange'),
+  form('职责转交', null, 'dutyTransfer'),
+  later('目标调整', null, '未排期', `${NO_MODEL}（目标调整未列入任务书范围）`),
 ];
+
+/** R1-T10 联动字段（审批载荷、变化检测与字段权限的编码；值见 transfer/linkage/approval.ts）。 */
+export const TRANSFER_LINKAGE_FIELDS = [
+  'isChangeContract',
+  'contractChange',
+  'adjustSalary',
+  'onTrialStartDate',
+  'onTrialMonths',
+  'handoverPersonId',
+  'partTimeEnds',
+  'dutyTransfer',
+] as const;
 
 /** 预置调动流程的节点表单：已交付且在审批表单上的字段（顺序同原站视图）。 */
 export const TRANSFER_FORM_FIELDS: readonly string[] = TRANSFER_DETAIL_VIEW.flatMap((item) =>

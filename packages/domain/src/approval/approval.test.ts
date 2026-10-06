@@ -315,6 +315,15 @@ describe('PR #35 第三轮：预置与目录按规格核对', () => {
       调动后是否部门负责人: 'isDepartmentHead',
       调动后是否店长: 'isStoreManager',
       新增下属: 'addedSubordinateIds',
+      // R1-T10（PR #74 第二轮 P1-6）：联动进入审批表单。
+      交接人: 'handoverPersonId',
+      是否调整薪资: 'adjustSalary',
+      是否变更合同: 'isChangeContract',
+      试岗开始日期: 'onTrialStartDate',
+      '试岗期限（月）': 'onTrialMonths',
+      兼职调整: 'partTimeEnds',
+      合同变更: 'contractChange',
+      职责转交: 'dutyTransfer',
     };
     const byLabel = new Map(TRANSFER_DETAIL_VIEW.map((item) => [item.label, item]));
     for (const [label, field] of Object.entries(mustDeliver)) {

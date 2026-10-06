@@ -34,6 +34,7 @@ import {
   validateOrganization,
   type OrgWriteContext,
 } from './write-service.js';
+import { rawImportRows, rawUuid, withFailedImportLog } from '../../audit/record.js';
 
 const BASE = '/api/tenant/org';
 const OBJECT = MODULE_OBJECTS.organization.code;
@@ -353,53 +354,66 @@ function registerOrgImport(router: Hono<TenantEnv>, deps: TenantRouteDeps): void
   router.post(`${BASE}/import`, async (c) => {
     const ctx = await context(c, deps, 'read', revision(c));
     requireNew(ctx);
-    const input = await body(c, z.strictObject({ rows: z.array(importRow).min(1).max(100) }));
-    await button(deps, ctx, OBJECT, 'import', 'list');
-    const scope = await requestScope(c, deps, ctx, OBJECT);
-    const originalRows = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      originalOrgImportRows(tx, ctx.tenantId, c.req.header('idempotency-key') ?? ''),
-    );
-    const guard = async (tx: Tx, row: OrgImportRow, targetId: string | undefined) => {
-      const replayCreated =
-        !!targetId &&
-        originalRows.some(
-          (original) =>
-            original.orgId === targetId && original.sourceCode === row.sourceCode && original.status === 'created',
-        );
-      const { orgId: _id, expectedRevision: _revision, ...payload } = row;
-      await writeFields(
-        { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) },
-        ctx,
-        OBJECT,
-        targetId && !replayCreated ? 'update' : 'create',
-        payload,
-      );
-      visible(
-        scope,
-        row.parentId,
-        '组织不存在',
-        hasCreatorScope(scope)
-          ? await creatorOf(tx, ctx.tenantId, row.parentId, 'org.create', 'organization')
-          : undefined,
-      );
-      if (targetId) await authorizeOrgResult(tx, ctx, scope, targetId, replayCreated);
+    // DEC-199 / PR #75 第三轮 P2-3：格式、按钮、字段与范围校验失败同样是导入任务失败，整批留任务级日志
+    const rows = rawImportRows(await c.req.json().catch(() => undefined));
+    const task = {
+      ...ctx,
+      commandId: c.req.header('idempotency-key'),
+      objectType: 'organization',
+      total: rows.length,
+      anchors: rows.map((row) => ({ orgId: rawUuid(row.orgId) ?? rawUuid(row.parentId) })),
     };
-    await withTenant(deps.db, ctx.tenantId, (tx) =>
-      authorizeOrgImportRows(tx, ctx, input.rows, (row, target) => guard(tx, row, target)),
-    );
-    return write(
-      c,
-      deps,
-      ctx,
-      input,
-      async (tx, writeCtx) => ({
-        status: 200,
-        body: await importOrganizations(tx, writeCtx, input.rows, (row, target) => guard(tx, row, target)),
-      }),
-      true,
-      scope,
-    );
+    return withFailedImportLog(deps.db, task, () => importOrgRows(c, deps, ctx));
   });
+}
+
+async function importOrgRows(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: Awaited<ReturnType<typeof context>>) {
+  const input = await body(c, z.strictObject({ rows: z.array(importRow).min(1).max(100) }));
+  await button(deps, ctx, OBJECT, 'import', 'list');
+  const scope = await requestScope(c, deps, ctx, OBJECT);
+  const originalRows = await withTenant(deps.db, ctx.tenantId, (tx) =>
+    originalOrgImportRows(tx, ctx.tenantId, c.req.header('idempotency-key') ?? ''),
+  );
+  const guard = async (tx: Tx, row: OrgImportRow, targetId: string | undefined) => {
+    const replayCreated =
+      !!targetId &&
+      originalRows.some(
+        (original) =>
+          original.orgId === targetId && original.sourceCode === row.sourceCode && original.status === 'created',
+      );
+    const { orgId: _id, expectedRevision: _revision, ...payload } = row;
+    await writeFields(
+      { ...deps, authorize: authorizeInTransaction(deps.authorize, tx) },
+      ctx,
+      OBJECT,
+      targetId && !replayCreated ? 'update' : 'create',
+      payload,
+    );
+    visible(
+      scope,
+      row.parentId,
+      '组织不存在',
+      hasCreatorScope(scope)
+        ? await creatorOf(tx, ctx.tenantId, row.parentId, 'org.create', 'organization')
+        : undefined,
+    );
+    if (targetId) await authorizeOrgResult(tx, ctx, scope, targetId, replayCreated);
+  };
+  await withTenant(deps.db, ctx.tenantId, (tx) =>
+    authorizeOrgImportRows(tx, ctx, input.rows, (row, target) => guard(tx, row, target)),
+  );
+  return write(
+    c,
+    deps,
+    ctx,
+    input,
+    async (tx, writeCtx) => ({
+      status: 200,
+      body: await importOrganizations(tx, writeCtx, input.rows, (row, target) => guard(tx, row, target)),
+    }),
+    true,
+    scope,
+  );
 }
 
 async function context(
@@ -481,7 +495,8 @@ function requireNew(ctx: OrgWriteContext): void {
 function orgId(c: Context): string {
   const id = c.req.param('id') ?? '';
   if (!isUuid(id)) throw new AppError('VALIDATION_FAILED', '组织标识必须为 UUID');
-  return id;
+  // F-017 同口径：在范围判断之前规范化 UUID，避免等价标识影响权限与子树遍历。
+  return id.toLowerCase();
 }
 
 function queryDate(c: Context, ctx: OrgWriteContext): string {

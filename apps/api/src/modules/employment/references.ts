@@ -6,6 +6,7 @@ import { rowsOf } from './read-model.js';
 import { assertNoReportingCycle, insertedWindow, type ReportingWindow } from './reporting-cycle.js';
 import type { EmploymentContext, PresetFields } from './types.js';
 import { AppError } from '../../errors.js';
+import { lockOrganizationSettings } from '../org/locks.js';
 import { employmentDepartmentDisable } from '../org/employment-validity.js';
 
 /**
@@ -19,8 +20,21 @@ export async function validateNewEmploymentReferences(
   effectiveDate: string,
   reporting?: ReportingCheck,
 ): Promise<void> {
-  if (fields.departmentId) {
-    const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, fields.departmentId, effectiveDate);
+  await assertEmploymentDepartmentAvailable(tx, ctx, fields.departmentId, effectiveDate);
+  await validateEmploymentReferences(tx, ctx, fields, effectiveDate, reporting);
+}
+
+/** DEC-196：与停用共用组织锁，整段可用性在锁内复查；完整锁序见 org/locks.ts。 */
+export async function assertEmploymentDepartmentAvailable(
+  tx: Tx,
+  ctx: EmploymentContext,
+  departmentId: string | null,
+  effectiveDate: string,
+): Promise<void> {
+  if (departmentId) {
+    await lockOrganizationSettings(tx, ctx.tenantId);
+    // 等待锁期间可能已提交停用版本；必须在获得锁之后重新读取。
+    const disabled = await employmentDepartmentDisable(tx, ctx.tenantId, departmentId, effectiveDate);
     if (disabled) {
       throw new AppError(
         'VALIDATION_FAILED',
@@ -28,8 +42,8 @@ export async function validateNewEmploymentReferences(
         { reason: 'EMPLOYMENT_DEPARTMENT_DISABLED', disabledOn: disabled.disabledOn },
       );
     }
+    await assertOrg(tx, ctx.tenantId, departmentId, effectiveDate);
   }
-  await validateEmploymentReferences(tx, ctx, fields, effectiveDate, reporting);
 }
 
 /** 循环汇报校验的对象：哪名员工，被校验的记录在时间轴上实际生效的区间（为空则不校验）。 */

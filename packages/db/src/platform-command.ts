@@ -8,10 +8,14 @@
  *   audit_events（事务内显式切到租户路径，租户管理员可见）与平台审计（标出所涉租户）；无租户归属的变更经
  *   ctx.auditPlatform 只写平台审计。
  */
-import { createHash } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash, randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import type { Db } from './client.js';
-import { auditEvents, platformAuditEvents, platformCommandLedger } from './schema/index.js';
+import { insertAuditEvent } from './audit.js';
+import { classifyCommandFailure, type CommandFailure, type CommandPhase, connectionCode } from './command-failure.js';
+import { pgErrorCode } from './pg-error.js';
+import { platformAuditEvents, platformCommandFailures, platformCommandLedger } from './schema/index.js';
 import { APP_ROLE, isUuid, type Tx, withPlatform } from './tenant-context.js';
 
 /** 平台写命令的元信息：操作人（平台方 / 系统任务为 null）与客户端命令 ID。 */
@@ -59,6 +63,8 @@ export class IdempotencyConflictError extends Error {
   }
 }
 
+export const PLATFORM_SOURCE_ACTION = '平台运营';
+
 const COMMAND_ID = /^[A-Za-z0-9:_-]{1,100}$/;
 
 export async function runPlatformCommand<T>(
@@ -69,18 +75,100 @@ export async function runPlatformCommand<T>(
   execute: (ctx: PlatformCommandContext) => Promise<T>,
 ): Promise<T> {
   const requestHash = platformRequestHash(meta, op, input);
+  let phase: CommandPhase = 'execute';
   try {
     return await withPlatform(db, async (tx) => {
       const replay = await findReplay<T>(tx, meta.commandId, requestHash);
       if (replay) return replay.value;
       const result = await execute(contextFor(tx, meta));
       await tx.insert(platformCommandLedger).values({ commandId: meta.commandId, requestHash, response: result });
+      phase = 'commit';
       return result;
     });
   } catch (error) {
-    const replay = await withPlatform(db, (tx) => findReplay<T>(tx, meta.commandId, requestHash));
-    if (!replay) throw error;
-    return replay.value;
+    let final: unknown = error;
+    let recheckFailed = false;
+    try {
+      const replay = await withPlatform(db, (tx) => findReplay<T>(tx, meta.commandId, requestHash));
+      if (replay) return replay.value;
+    } catch (recheck) {
+      if (recheck instanceof IdempotencyConflictError) final = recheck;
+      else recheckFailed = true;
+    }
+    // DEC-199：平台命令失败写平台层受限通道（仅平台运营可读），原错误照常抛给调用方
+    const failure = classifyCommandFailure(final, phase, recheckFailed);
+    await recordPlatformFailure(db, meta, op, input, failure);
+    const scope = requestScope.getStore();
+    if (scope) scope.recorded = true;
+    if (final !== null && typeof final === 'object') classified.set(final, failure);
+    throw final;
+  }
+}
+
+/**
+ * 请求级的“已记录”状态（PR #75 第四轮 N3）：平台路由在一次请求内运行命令，执行器记过失败后入口兜底不再记录——
+ * 路由把原错误转换成新的应用错误（如唯一约束 → 409 EMAIL_TAKEN）时也能识别。只在本次请求内有效，
+ * 不按命令编号永久去重，同一命令编号的后续失败尝试照常记录。
+ */
+export interface PlatformFailureScope {
+  recorded: boolean;
+}
+
+const requestScope = new AsyncLocalStorage<PlatformFailureScope>();
+
+export function runInPlatformFailureScope<T>(scope: PlatformFailureScope, run: () => Promise<T>): Promise<T> {
+  return requestScope.run(scope, run);
+}
+
+/** 执行器对原错误的分类（含提交阶段的“结果未知”）；租户入口兜底记录同一失败时沿用，避免两条通道分类不一致。 */
+const classified = new WeakMap<object, CommandFailure>();
+
+export function platformFailureOf(error: unknown): CommandFailure | undefined {
+  return error !== null && typeof error === 'object' ? classified.get(error) : undefined;
+}
+
+/**
+ * 平台命令进入执行器之前就失败（请求体、If-Match、参数校验）时由入口记录（PR #75 第三轮 P2-2）：分类与执行器相同，
+ * 只在可信平台身份确认之后调用；租户读不到这条通道（DEC-199）。
+ */
+export async function recordPlatformEntryFailure(
+  db: Db,
+  meta: PlatformCommandMeta,
+  op: string,
+  subjectTenantId: string | null,
+  error: unknown,
+): Promise<void> {
+  await recordPlatformFailure(db, meta, op, { tenantId: subjectTenantId }, classifyCommandFailure(error, 'execute'));
+}
+
+async function recordPlatformFailure(
+  db: Db,
+  meta: PlatformCommandMeta,
+  op: string,
+  input: unknown,
+  failure: CommandFailure,
+): Promise<void> {
+  const tenantId = (input as { tenantId?: unknown } | null)?.tenantId;
+  const entry = {
+    id: randomUUID(),
+    commandId: meta.commandId,
+    operation: op,
+    actorUserId: meta.actorUserId,
+    subjectTenantId: typeof tenantId === 'string' && isUuid(tenantId) ? tenantId : null,
+    ...failure,
+    occurredAt: new Date(),
+  };
+  try {
+    await withPlatform(db, (tx) => tx.insert(platformCommandFailures).values(entry));
+  } catch (storageError) {
+    // 平台审计库也写不进去：落到进程日志兜底（同一事件编号），不丢、不伪造
+    console.error(
+      JSON.stringify({
+        type: 'audit.platform_command_failure.fallback',
+        ...entry,
+        storageError: pgErrorCode(storageError) ?? connectionCode(storageError) ?? 'UNKNOWN',
+      }),
+    );
   }
 }
 
@@ -146,7 +234,8 @@ function contextFor(tx: Tx, meta: PlatformCommandMeta): PlatformCommandContext {
     inTenant,
     auditTenant: async (tenantId, entry) => {
       await inTenant(tenantId, async (t) => {
-        await t.insert(auditEvents).values({ tenantId, ...row(entry) });
+        // 平台运营对租户的变更（开通、状态、成员、许可、恢复）：来源动作记“平台运营”，不与定时任务混淆（R1-T16）
+        await insertAuditEvent(t, { tenantId, ...row(entry), source: { sourceAction: PLATFORM_SOURCE_ACTION } });
       });
       // 在租户上下文内调用时（可重入）推迟到切回平台路径后再写，见 flushPlatform
       if (current === null) await auditPlatform(entry, tenantId);

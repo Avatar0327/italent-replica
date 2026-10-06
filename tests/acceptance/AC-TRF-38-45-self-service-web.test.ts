@@ -40,7 +40,7 @@ describe('R1-T13 本人自助页面', () => {
     expect(html).not.toContain('<button');
   });
 
-  it('AC-TRF-40：我的申请为七列表格，终止后处理人为空，没有撤回/撤销/审批按钮', async () => {
+  it('AC-TRF-45：我的申请为七列表格，终止后处理人为空，没有撤回/撤销/审批按钮', async () => {
     const { ApplicationList } = (await import(path)) as { ApplicationList: unknown };
     const html = renderToStaticMarkup(
       createElement(ApplicationList, {

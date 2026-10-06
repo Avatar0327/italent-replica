@@ -1,6 +1,7 @@
 import { postponeLateTransfer } from './late-transfer.js';
 import { assertEstablishmentCapacity } from './activation-checks.js';
 import { lockTransferBusiness } from './transfer-locks.js';
+import { assertEmploymentDepartmentAvailable } from './references.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Db, type Tx } from '@italent/db';
@@ -29,6 +30,7 @@ import { assertNoLinkedChanges, assertNoPendingApplication, assertRestoredPredec
 import type { EmploymentBusiness, EmploymentContext, EmploymentState } from './types.js';
 import { assertRequiredTransferFields } from '../transfer/required-fields.js';
 import { requireEmployeeTransferBusiness } from '../transfer/employee-policy.js';
+import { assertTransferLinkageSubmittable } from '../transfer/linkage/service.js';
 import {
   appendEmploymentState,
   materializeEmploymentRecord,
@@ -98,7 +100,12 @@ export async function transitionEmployment(
         predecessor,
       },
     );
+    // DEC-196：保存草稿之后组织可能已停用；提交与审批须在停用共用锁内复查。
+    if (payload.kind === 'transfer')
+      await assertEmploymentDepartmentAvailable(tx, ctx, fields.departmentId, effectiveDate);
     assertRequiredTransferFields(payload.kind, payload.formSnapshot, { ...fields });
+    // DEC-183：变更合同遇同类型在途未来合同，提交即 409。
+    if (payload.kind === 'transfer') await assertTransferLinkageSubmittable(tx, ctx, business.id);
     await assertEstablishmentCapacity(tx, ctx, {
       businessId: business.id,
       employeeId: business.employeeId,
@@ -118,7 +125,8 @@ export async function transitionEmployment(
   } else if (input.action === 'approve') {
     // R1-T07：只由审批中心在最后一个节点通过后同事务调用；审批通过 ≠ 生效，只有生效日已到才落地并向后更新。
     await appendEmploymentState(tx, ctx, business, 'approved');
-    await approveEmploymentBusiness(tx, ctx, business);
+    // DEC-195②：迟到审批同样按实际执行日对齐联动。
+    await approveEmploymentBusiness(tx, { ...ctx, deferredExecution: true }, business);
   } else if (input.action === 'activate') {
     if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) {
       throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });

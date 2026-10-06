@@ -118,7 +118,7 @@ describe('R1-T13 员工自助（真实授权器、无员工授权行）', () => 
     expect(instance.tasks.some((task) => task.isExceptionAdmin)).toBe(true);
   });
 
-  it('AC-TRF-40：我的申请表格列、只读详情；HR撤销后已终止且无当前处理人', async () => {
+  it('AC-TRF-45：我的申请表格列、只读详情；HR撤销后已终止且无当前处理人', async () => {
     const list = await world.json<{
       items: { id: string; businessId: string; revision: number; currentHandlers: string[] }[];
     }>(await request('/applications'));
@@ -231,7 +231,7 @@ describe('R1-T13 员工自助（真实授权器、无员工授权行）', () => 
     expect(JSON.stringify(await world.json(await request('/profile')))).not.toContain('权限外地址');
   });
 
-  it('AC-TRF-40：审批通过未到生效日显示通过；重复命令不新增申请，旧revision拒绝', async () => {
+  it('AC-TRF-45：审批通过未到生效日显示通过；重复命令不新增申请，旧revision拒绝', async () => {
     const actor = await world.person('通过申请员工', department);
     const own = await world.json<{ employee: { revision: number } }>(
       await request('/profile', 'GET', undefined, undefined, actor.userId),

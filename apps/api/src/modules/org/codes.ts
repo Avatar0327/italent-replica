@@ -1,6 +1,5 @@
 import {
   and,
-  auditEvents,
   eq,
   orgCodeReservations,
   orgHierarchyLinks,
@@ -11,6 +10,8 @@ import {
   type Tx,
 } from '@italent/db';
 import { AppError } from '../../errors.js';
+import { recordAudit } from '../../audit/record.js';
+import { lockOrganizationSettings } from './locks.js';
 
 export interface OrgSetupContext {
   readonly tenantId: string;
@@ -23,8 +24,7 @@ export interface OrgSetupContext {
 
 /** 全部编码写入先锁同一租户设置行，避免跨“实体/预占”两表抢码（REQ-ORG-002）。 */
 export async function ensureOrgSetup(tx: Tx, ctx: OrgSetupContext): Promise<void> {
-  await tx.insert(orgSettings).values({ tenantId: ctx.tenantId }).onConflictDoNothing();
-  await tx.select().from(orgSettings).where(eq(orgSettings.tenantId, ctx.tenantId)).for('update');
+  await lockOrganizationSettings(tx, ctx.tenantId);
   const [existing] = await tx.select().from(orgObjects).where(eq(orgObjects.id, ctx.tenantId));
   if (existing) return;
   await tx.insert(orgObjects).values({ id: ctx.tenantId, tenantId: ctx.tenantId });
@@ -43,7 +43,7 @@ export async function ensureOrgSetup(tx: Tx, ctx: OrgSetupContext): Promise<void
     .returning();
   if (!version) throw new AppError('SERVICE_UNAVAILABLE', '无法初始化租户组织根');
   await tx.insert(orgHierarchyLinks).values({ tenantId: ctx.tenantId, versionId: version.id, dimension: 'admin' });
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.userId,
     objectType: 'organization',
@@ -208,7 +208,7 @@ async function reservationAudit(
   before: unknown,
   after: unknown,
 ) {
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.userId,
     action,

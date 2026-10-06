@@ -12,6 +12,7 @@ import { transferTargetContext, type TransferInput } from './service.js';
 import { requireEmployeeTransferFields } from './employee-policy.js';
 
 export async function previewTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
+  ctx = { ...ctx, managerTransfer: input.initiator === 'manager' };
   const accessContext = { ...ctx, authorize: ctx.authorize ? authorizeInTransaction(ctx.authorize, tx) : undefined };
   await requireTransferSource(tx, ctx, employeeId, input.initiator);
   if (input.initiator === 'employee') {
@@ -52,10 +53,10 @@ export async function previewTransfer(tx: Tx, ctx: EmploymentContext, employeeId
         ? { fields: visible('preset', before.fields), customFields: visible('custom', before.customFields) }
         : null,
       employeeRevision: employee.revision,
-      allowDirectTransfer: input.initiator !== 'employee' && settings.allowDirectTransfer,
+      allowDirectTransfer: input.initiator === 'hr' && settings.allowDirectTransfer,
       allowedActions: {
         application: true,
-        ...(await transferDirectActions(accessContext, input.initiator !== 'employee' && settings.allowDirectTransfer)),
+        ...(await transferDirectActions(accessContext, input.initiator === 'hr' && settings.allowDirectTransfer)),
       },
     },
   };

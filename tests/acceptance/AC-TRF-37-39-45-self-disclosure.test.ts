@@ -92,7 +92,7 @@ beforeAll(async () => {
   admin = await permissionAdmin(world);
 });
 
-describe('AC-TRF-37/39/40 第二轮：DEC-209 与响应披露', () => {
+describe('AC-TRF-37/39/45 第二轮：DEC-209 与响应披露', () => {
   it('P2-1：客户端范围外经理不能预览名称或提交；改部门后重新校验', async () => {
     for (const manager of [outsider, child, leaver]) {
       const body = input({ directManagerId: manager.employeeId });

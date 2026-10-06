@@ -21,6 +21,9 @@ import { registerPersonnelRoutes } from './modules/personnel/routes.js';
 import { registerEmploymentRoutes } from './modules/employment/routes.js';
 import { registerApprovalRoutes } from './modules/approval/routes.js';
 import { createPlatformRouter } from './modules/platform/routes.js';
+import { auditRequestContext } from './audit/request-context.js';
+import { registerAuditRoutes } from './audit/routes.js';
+import { captureCommandFailures } from './audit/capture.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
 const TENANT_MODULES: readonly TenantRouteModule[] = [
@@ -33,6 +36,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerApprovalRoutes, // R1-T07 审批中心
   registerContractRoutes, // R2-T06 合同协议
   registerEmployeeSelfServiceRoutes, // R1-T13 员工自助，仅本人
+  registerAuditRoutes, // R1-T16 审计日志
 ];
 
 export interface AppDeps {
@@ -50,6 +54,8 @@ export interface AppDeps {
 export function createApp(deps: AppDeps = {}): Hono {
   const app = new Hono();
 
+  // 审计的请求来源（IP、终端、来源页面、TraceID，R1-T16）：最先挂载，失败的请求同样带 TraceID
+  app.use('*', auditRequestContext(deps.clock ?? (() => new Date())));
   app.use('*', requireJson);
   // 默认 32KB；只有登记的个别接口放宽且仍有上限（身份对象权限整对象替换，见 permission/routes.ts）
   app.use(
@@ -90,12 +96,14 @@ export function createApp(deps: AppDeps = {}): Hono {
 function createTenantRouter(db: Db, deps: AppDeps): Hono<TenantEnv> {
   const routeDeps: TenantRouteDeps = {
     db,
-    authorize: deps.authorize ?? createPermissionAuthorizer(db),
+    authorize: deps.authorize ?? createPermissionAuthorizer(db, undefined, deps.clock),
     clock: deps.clock ?? (() => new Date()),
   };
   const router = new Hono<TenantEnv>();
   // 所有租户接口都在 /api/tenant/ 之下，每次请求都重验身份、成员关系与租户状态
   router.use('/api/tenant/*', tenantContext(db, deps.identity ?? denyAllIdentity));
+  // 身份与租户确认后，兜底记录执行器之前被拒绝的写命令（R1-T16 第二轮 P2-7）
+  router.use('/api/tenant/*', captureCommandFailures(db));
   for (const register of [...TENANT_MODULES, ...(deps.tenantRoutes ?? [])]) register(router, routeDeps);
   return router;
 }

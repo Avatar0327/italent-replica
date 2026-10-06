@@ -1,15 +1,10 @@
-import {
-  auditEvents,
-  eq,
-  establishmentNotifications,
-  establishmentOutbox,
-  establishmentSettings,
-  type Tx,
-} from '@italent/db';
+import { eq, establishmentNotifications, establishmentOutbox, establishmentSettings, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
+import { lockOrganizationSettings } from '../org/locks.js';
 import { AppError } from '../../errors.js';
 import { validIsoDate } from '../org/read-model.js';
 import { ensureDefaultScheme } from './default-scheme.js';
+import { recordAudit } from '../../audit/record.js';
 
 export interface EstablishmentContext {
   readonly tenantId: string;
@@ -36,6 +31,8 @@ export async function lockEstablishment(
   ctx: EstablishmentContext,
   options: { initializeDefault?: boolean } = {},
 ): Promise<void> {
+  // 全局 org → establishment 顺序见 org/locks.ts；预检、落地、重试、编制携带不得各自倒序。
+  await lockOrganizationSettings(tx, ctx.tenantId);
   await tx.insert(establishmentSettings).values({ tenantId: ctx.tenantId }).onConflictDoNothing();
   await tx.select().from(establishmentSettings).where(eq(establishmentSettings.tenantId, ctx.tenantId)).for('update');
   if (options.initializeDefault !== false) await ensureDefaultScheme(tx, ctx);
@@ -80,7 +77,7 @@ export async function audit(
   before: unknown,
   after: unknown,
 ): Promise<void> {
-  await tx.insert(auditEvents).values({
+  await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.userId,
     action,

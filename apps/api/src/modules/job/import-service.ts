@@ -1,3 +1,4 @@
+import type { EmploymentWriteAccess } from './employment-port.js';
 import { pgErrorCode, sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { z } from 'zod';
@@ -9,6 +10,8 @@ import { lockJobTenant } from './settings.js';
 import { auditJob, insertRow, rowsOf, snakeCase } from './store.js';
 import type { JobInput, JobWriteContext } from './types.js';
 import { createJobObject, updateJobObject } from './write-service.js';
+import { recordImportLog } from '../../audit/record.js';
+import { auditActor } from '../../system-actor.js';
 
 export interface JobImportRow extends JobInput {
   readonly sourceCode: string;
@@ -36,6 +39,7 @@ export async function importJobObjects(
   kind: JobKind,
   inputRows: readonly JobImportRow[],
   authorizeRow?: (row: JobImportRow, targetId: string | undefined, rowIndex: number) => Promise<void>,
+  sequenceAccess?: EmploymentWriteAccess,
 ) {
   assertRows(inputRows);
   const parsed = z
@@ -63,7 +67,7 @@ export async function importJobObjects(
     codes.add(row.code);
     const result = reason
       ? { sourceCode: row.sourceCode, code: row.code, status: 'conflict' as const, reason }
-      : await importRow(tx, ctx, kind, row, target, snapshot.mappings.has(row.sourceCode));
+      : await importRow(tx, ctx, kind, row, target, snapshot.mappings.has(row.sourceCode), sequenceAccess);
     await insertRow(tx, 'job_import_results', {
       tenantId: ctx.tenantId,
       commandId: ctx.commandId,
@@ -75,7 +79,9 @@ export async function importJobObjects(
       reason: result.reason ?? null,
       ...(result.objectId ? { [jobTables(kind).importTarget]: result.objectId } : {}),
     });
-    await auditJob(tx, ctx, 'job.import.result', kind, `${ctx.commandId}:${rowIndex}`, null, result);
+    // DEC-197 / PR #75 第三轮：逐行回执按所属组织（职位）裁剪，其余职务体系对象按回执里的对象编号判断创建人
+    const orgId = kind === 'positions' ? ((row.orgId as string | undefined) ?? null) : null;
+    await auditJob(tx, ctx, 'job.import.result', kind, `${ctx.commandId}:${rowIndex}`, null, result, { orgId });
     results.push(result);
     if (result.objectId) {
       snapshot.mappings.set(result.sourceCode, result.objectId);
@@ -84,6 +90,11 @@ export async function importJobObjects(
       snapshot.codeOwners.set(result.code, owners);
     }
   }
+  const anchors = rows.map((row, rowIndex) => ({
+    objectId: results[rowIndex]?.objectId ?? row.objectId ?? null,
+    orgId: kind === 'positions' ? ((row.orgId as string | undefined) ?? null) : null,
+  }));
+  await recordImportLog(tx, { ...ctx, actorUserId: auditActor(ctx.userId) }, kind, results, anchors);
   return { results };
 }
 
@@ -174,12 +185,13 @@ async function importRow(
   row: JobImportRow,
   target: string | undefined,
   mapped: boolean,
+  sequenceAccess?: EmploymentWriteAccess,
 ): Promise<Receipt> {
   try {
     return await tx.transaction(async (savepoint) => {
       const { sourceCode, objectId: _objectId, expectedRevision, ...input } = row;
       const object = target
-        ? await updateMapped(savepoint, ctx, kind, target, input, expectedRevision!)
+        ? await updateMapped(savepoint, ctx, kind, target, input, expectedRevision!, sequenceAccess)
         : await createJobObject(savepoint, { ...ctx, expectedRevision: 0 }, kind, input);
       if (!mapped) {
         const mapping = { tenantId: ctx.tenantId, kind, sourceCode, [jobTables(kind).importTarget]: object.id };
@@ -204,13 +216,22 @@ async function updateMapped(
   id: string,
   input: JobInput,
   expectedRevision: number,
+  sequenceAccess?: EmploymentWriteAccess,
 ) {
   if (!(await latestJobObject(tx, ctx.tenantId, kind, id))) throw new AppError('NOT_FOUND', '映射对象不存在');
   const { startDate, ...patch } = input;
-  return updateJobObject(tx, { ...ctx, expectedRevision }, kind, id, {
-    ...patch,
-    effectiveDate: startDate ?? tenantLocalDate(ctx.now, ctx.timezone),
-  });
+  return updateJobObject(
+    tx,
+    { ...ctx, expectedRevision },
+    kind,
+    id,
+    {
+      ...patch,
+      effectiveDate: startDate ?? tenantLocalDate(ctx.now, ctx.timezone),
+    },
+    undefined,
+    sequenceAccess,
+  );
 }
 
 export async function authorizeJobImportRows(
