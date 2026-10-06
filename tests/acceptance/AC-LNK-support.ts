@@ -264,6 +264,8 @@ export interface ControlledGrants {
   readonly deny?: (request: Parameters<Authorizer>[0]) => boolean;
   readonly scopes?: Readonly<Record<string, ModuleScope>>;
   readonly fields?: Readonly<Record<string, readonly string[]>>;
+  /** 按用户覆盖可见字段（审批自动跳过时按被跳过的审批人判定，第四轮）。 */
+  readonly userFields?: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>>;
 }
 
 export function everyField(objectCode: string): string[] {
@@ -277,7 +279,8 @@ export function controlledApi(db: Db, tenantId: string, userId: string, grants: 
   registerScopeProvider(authorize, {
     scope: async (query) => grants.scopes?.[query.objectCode ?? ''] ?? all,
     authorize: async (request) => authorize(request),
-    fields: async (_tenant, _user, objectCode) => new Set(grants.fields?.[objectCode] ?? everyField(objectCode)),
+    fields: async (_tenant, user, objectCode) =>
+      new Set(grants.userFields?.[user]?.[objectCode] ?? grants.fields?.[objectCode] ?? everyField(objectCode)),
   });
   const api = tenantApi(db, { authorize, clock: () => new Date(at) });
   return (method: string, path: string, options: { body?: object; ifMatch?: number; key?: string } = {}) =>
