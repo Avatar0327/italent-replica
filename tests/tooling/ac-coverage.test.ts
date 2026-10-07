@@ -28,6 +28,7 @@ interface ReportEntry {
   status: string;
   category?: string;
   conditional: string[];
+  conditionalTests: number;
   tests: number;
   mapped: number;
 }
@@ -170,11 +171,11 @@ describe('F-030 AC 覆盖运行时采集：写法变体（夹具 variants）', (
     expectStatus('未覆盖', ids(106));
   });
 
-  it('条件执行：只在一档运行的用例计覆盖并标出所在档', () => {
+  it('条件执行：只在一档运行的用例计覆盖并标出所在档；部分用例条件执行时计数', () => {
     expectStatus('已覆盖', ids(90, 91, 92));
     expect(report.entries['AC-DEMO-90']?.conditional).toEqual(['pg']);
     expect(report.entries['AC-DEMO-91']?.conditional).toEqual(['pglite']);
-    expect(report.entries['AC-DEMO-92']?.conditional).toEqual([]);
+    expect(report.entries['AC-DEMO-92']).toMatchObject({ conditional: [], conditionalTests: 1, tests: 2 });
   });
 
   it('人工层：备注改状态、人工映射校验用例存在，映射失效列为问题', () => {

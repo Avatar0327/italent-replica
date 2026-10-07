@@ -1,0 +1,20 @@
+{
+  "title": "R3 人才链路（范围口径待总编排确认：追溯表 K 节模块）",
+  "groups": [
+    {
+      "name": "追溯表 K 节模块",
+      "include": [
+        "AC-TC-*",
+        "AC-QL-*",
+        "AC-EV-*",
+        "AC-360-*",
+        "AC-TR-*",
+        "AC-SC-*",
+        "AC-TP-*",
+        "AC-IDP-*",
+        "AC-EXP-*"
+      ]
+    }
+  ],
+  "notes": {}
+}
