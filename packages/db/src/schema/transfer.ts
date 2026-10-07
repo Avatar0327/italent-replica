@@ -18,6 +18,7 @@ import { contractRecords } from './contracts.js';
 import { employmentBusinessObjects, employmentEmployees } from './employment.js';
 import { orgObjects } from './org.js';
 import { tenants } from './tenancy.js';
+import { establishmentObjects } from './establishment.js';
 
 const tenant = () =>
   uuid('tenant_id')
@@ -156,6 +157,7 @@ export const transferRequests = pgTable(
     businessId: uuid('business_id').notNull(),
     employeeId: uuid('employee_id').notNull(),
     transferTypeCode: text('transfer_type_code').notNull(),
+    withEstablishment: boolean('with_establishment').notNull().default(false),
     reasonCode: text('reason_code'),
     initiator: text('initiator').notNull(),
     processCode: text('process_code').notNull(),
@@ -211,6 +213,41 @@ export const transferCompletionTodos = pgTable(
   ],
 );
 
+/** DEC-181：业务每次实际增减的分配，回退按此记录反向追加编制版本，不依赖可变职位匹配。 */
+export const transferEstablishmentAllocations = pgTable(
+  'transfer_establishment_allocations',
+  {
+    id: id(),
+    tenantId: tenant(),
+    businessId: uuid('business_id').notNull(),
+    capacityId: uuid('capacity_id').notNull(),
+    positionId: uuid('position_id'),
+    localDelta: integer('local_delta').notNull(),
+    inclusiveDelta: integer('inclusive_delta').notNull(),
+    reservedLocalDelta: integer('reserved_local_delta').notNull(),
+    reservedInclusiveDelta: integer('reserved_inclusive_delta').notNull(),
+    reversed: boolean('reversed').notNull().default(false),
+    createdAt: utc(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'transfer_establishment_allocations_business_fk',
+      columns: [t.tenantId, t.businessId],
+      foreignColumns: [employmentBusinessObjects.tenantId, employmentBusinessObjects.id],
+    }),
+    foreignKey({
+      name: 'transfer_establishment_allocations_capacity_fk',
+      columns: [t.tenantId, t.capacityId],
+      foreignColumns: [establishmentObjects.tenantId, establishmentObjects.id],
+    }),
+    check(
+      'transfer_establishment_allocations_unit',
+      sql`${t.localDelta} BETWEEN -1 AND 1
+      AND ${t.inclusiveDelta} BETWEEN -1 AND 1 AND ${t.reservedLocalDelta} BETWEEN -1 AND 1
+      AND ${t.reservedInclusiveDelta} BETWEEN -1 AND 1`,
+    ),
+  ],
+);
 /**
  * R1-T10 调动跨对象联动（`21`，REQ-LNK-001）：调动表单上的联动选项。随表单保存追加版本，不原地改写；
  * 合同字段只保存合同端口（R2-T06 changeContractForTransfer）的入参快照，合同规则与合同对象由合同模块负责。
