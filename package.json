@@ -14,7 +14,10 @@
     "test:pg": "bash scripts/test-pg.sh",
     "build": "pnpm -r run build",
     "db:generate": "pnpm --filter @italent/db run db:generate",
-    "db:migrate": "pnpm --filter @italent/db run db:migrate"
+    "db:migrate": "pnpm --filter @italent/db run db:migrate",
+    "demo": "node scripts/demo.mjs",
+    "demo:seed": "node scripts/demo.mjs seed",
+    "demo:reset": "node scripts/demo.mjs reset"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

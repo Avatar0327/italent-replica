@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { initialTenantId as demoInitialTenantId } from '../../demo/tenant.js';
 import { text } from '../../transfer/messages.js';
 import '../../transfer/transfer.css';
 import { normalizeUuid } from '@italent/domain';
@@ -15,8 +16,11 @@ export function SelfServiceShell({
   children: (tenantId: string) => ReactNode;
   initialTenantId?: string;
 }) {
-  const [tenantId, setTenantId] = useState(initialTenantId);
-  const [activeTenant, setActiveTenant] = useState('');
+  const [tenantId, setTenantId] = useState(() => initialTenantId || demoInitialTenantId());
+  const [activeTenant, setActiveTenant] = useState(() => {
+    const demoTenantId = demoInitialTenantId();
+    return demoTenantId ? initialTenantId || demoTenantId : '';
+  });
   return (
     <main className="transfer-page">
       <header className="transfer-header">

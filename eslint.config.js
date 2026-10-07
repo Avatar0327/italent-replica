@@ -19,6 +19,7 @@ export default tseslint.config(
       'reference/**',
       '_private/**',
       '99_临时/**',
+      '.demo/**',
     ],
   },
   js.configs.recommended,
