@@ -13,6 +13,11 @@ import {
 } from './types.js';
 
 export type RecordEditPatch = Pick<EmploymentBusinessPatch, 'fields' | 'customFields'>;
+/** 事件里实际写入的字段值；两部分总是存在。 */
+export interface RetainedValues {
+  readonly fields: Partial<PresetFields>;
+  readonly customFields: Record<string, CustomFields[string]>;
+}
 export type AdjustmentCommand =
   | { readonly type: 'initial' }
   | { readonly type: 'manual'; readonly patch: RecordEditPatch; readonly derivations: readonly FieldDerivation[] }
@@ -27,7 +32,7 @@ export type AdjustmentCommand =
       readonly sourceId: string;
       readonly sourceVersionNo: number | null;
       /** 传播当时实际改写的字段：来源删除后这些值视为意图（DEC-244②）。 */
-      readonly retained: RecordEditPatch;
+      readonly retained: RetainedValues;
       /** 传播当时参与值匹配的自定义字段，按传播时的继承配置固定（DEC-244③）；存量无记录时为 null。 */
       readonly customFieldIds: readonly string[] | null;
     }
@@ -125,7 +130,7 @@ function classifyCommand(
 }
 
 /** 事件 after 里的预置 / 自定义字段值。 */
-function patchOf(after: Record<string, unknown>): RecordEditPatch {
+function patchOf(after: Record<string, unknown>): RetainedValues {
   const fields: Partial<PresetFields> = {};
   const customFields: Record<string, CustomFields[string]> = {};
   for (const [field, value] of Object.entries(after)) {

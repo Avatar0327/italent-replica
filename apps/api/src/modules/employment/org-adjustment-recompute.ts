@@ -16,7 +16,7 @@ import {
 } from './forward-rules.js';
 import { availableForwardChanges } from './forward-references.js';
 import { predecessorInheritance } from './inheritance.js';
-import { effectiveInput, type AdjustmentHistory } from './org-adjustment-history.js';
+import { effectiveInput, type AdjustmentHistory, type RetainedValues } from './org-adjustment-history.js';
 import { PRESET_FIELD_NAMES, type EmploymentContext, type EmploymentRecord, type PresetField } from './types.js';
 
 export interface RecalculatedSource {
@@ -115,10 +115,7 @@ export async function calculateOrgAdjustment(
 }
 
 /** 来源删除后传播当时写入的值按意图保留。 */
-function retainedValues(
-  values: ForwardValues,
-  retained: AdjustmentHistory['command'] extends infer C ? Extract<C, { type: 'forward' }>['retained'] : never,
-): ForwardValues {
+function retainedValues(values: ForwardValues, retained: RetainedValues): ForwardValues {
   return {
     fields: { ...values.fields, ...retained.fields },
     customFields: { ...values.customFields, ...retained.customFields },
