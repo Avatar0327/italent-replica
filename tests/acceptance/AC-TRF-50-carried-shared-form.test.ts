@@ -1,6 +1,8 @@
 import { createRequire } from 'node:module';
 import { expect, it } from 'vitest';
 import type { TransferFormModel } from '../../apps/web/src/transfer/types.js';
+import type { Profile } from '../../apps/web/src/employee-self-service/types.js';
+import type { TransferFormAdapter } from '../../apps/web/src/self-service/shared/transfer-adapter.js';
 const require = createRequire(new URL('../../apps/web/package.json', import.meta.url));
 const { createElement } = require('react') as { createElement: (component: unknown, props: unknown) => unknown };
 const { renderToStaticMarkup } = require('react-dom/server') as { renderToStaticMarkup: (element: unknown) => string };
@@ -53,4 +55,19 @@ it('AC-TRF-50 共用保存载荷保留带编选项；无编辑权不提交该字
     withEstablishment: false,
   });
   expect(transferBody(model([]), 'submit')).not.toHaveProperty('withEstablishment');
+});
+
+it('AC-TRF-50 真实员工适配器的共享表单不展示员工端不支持的带编开关', async () => {
+  const { employeeTransferAdapter } = (await import(web('employee-self-service/transfer-adapter.ts'))) as {
+    employeeTransferAdapter: (profile: Profile) => TransferFormAdapter;
+  };
+  const { TransferForm } = (await import(web('self-service/shared/TransferForm.tsx'))) as { TransferForm: unknown };
+  const adapter = employeeTransferAdapter({
+    employee: { id: 'synthetic-employee', name: '合成员工', code: 'E001', revision: 1 },
+    today: '2026-10-01',
+    timezone: 'Asia/Shanghai',
+    record: null,
+  });
+  const own = { ...adapter.initialModel, preview: model().preview };
+  expect(renderToStaticMarkup(createElement(TransferForm, { model: own }))).not.toContain('name="withEstablishment"');
 });
