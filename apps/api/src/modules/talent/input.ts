@@ -39,7 +39,7 @@ const question = z.strictObject({
   displayOrder: order.optional(),
 });
 
-// TODO(需取证 #103): 所属管理单元（所属人）能否修改 / 转移未取证，暂按建后不可改。
+// TODO(需取证 #109): 所属管理单元（所属人）新建缺省与能否修改 / 转移未取证，暂按新建时选择、建后不可改。
 export const libraryCreate = z.strictObject({
   name,
   type: z.enum(TALENT_DIMENSION_TYPES),

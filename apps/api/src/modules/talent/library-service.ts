@@ -62,7 +62,10 @@ export async function updateLibrary(tx: Tx, ctx: WriteContext, id: string, patch
   return after;
 }
 
-/** TC-R5：还有指标的指标库不能删除（指标是硬删除，删掉的不再计入）；库里还有分类同样不能删除。 */
+/**
+ * TC-R5：还有指标的指标库不能删除（指标是硬删除，删掉的不再计入）；库里还有分类同样不能删除
+ * （TODO(需取证 #109): 原站有分类的库能否删除未取证）。
+ */
 export async function deleteLibrary(tx: Tx, ctx: WriteContext, id: string) {
   await lockOwned(tx, ctx, 'library', id);
   await rejectInUse(tx, ctx, {
@@ -113,7 +116,7 @@ export async function updateDimensionCategory(tx: Tx, ctx: WriteContext, id: str
   return after;
 }
 
-/** 被指标引用的分类不能删除（指标的分类查找字段会悬空）。TODO(需取证 #103): 原站删除被引用分类的行为未取证。 */
+/** 被指标引用的分类不能删除（指标的分类查找字段会悬空）。TODO(需取证 #109): 原站删除被引用分类的行为未取证。 */
 export async function deleteDimensionCategory(tx: Tx, ctx: WriteContext, id: string) {
   await lockOwned(tx, ctx, 'dimensionCategory', id);
   await rejectInUse(tx, ctx, {

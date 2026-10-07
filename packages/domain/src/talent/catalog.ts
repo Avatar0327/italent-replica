@@ -16,7 +16,8 @@ export const TALENT_DUPLICATE_MESSAGE = '名称或者编码重复，请重新输
 /** DEC-281②：新增能力指标引用时权重的缺省值。 */
 export const TALENT_DEFAULT_WEIGHT = 1;
 /**
- * DEC-281④：开通时预置的发展建议类型。原站样本只见到“行动建议”，完整选项未取到（🟡），租户可自行增改。
+ * DEC-281④：开通时预置的发展建议类型。原站样本只见到“行动建议”，租户可自行增改。
+ * TODO(需取证 #109): 完整选项与配置入口未取到（🟡）。
  */
 export const TALENT_DESCRIPTION_TYPE_PRESETS = [{ name: '行动建议', displayOrder: 1 }] as const;
 

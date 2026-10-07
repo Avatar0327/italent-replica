@@ -159,7 +159,10 @@ export const trimTalentList = <T extends object>(
   value: T[],
 ): Promise<Partial<T>[]> => trimModuleResponse(deps, ctx, codeOf(object), value) as Promise<Partial<T>[]>;
 
-/** DEC-281⑪：标准的指标列表只显示 名称、定义、指标类别（另有引用行上的目标、权重），不显示库名称与库状态。 */
+/**
+ * DEC-281⑪：标准的指标列表只显示 名称、定义、指标类别（另有引用行上的目标、权重），不显示库名称与库状态。
+ * TODO(需取证 #109): “指标类别”暂取指标的库内分类名称；原站关系对象另有标准内分组（「设置指标类别」），未做。
+ */
 const NESTED_DIMENSION_FIELDS = ['name', 'definition', 'categoryName'] as const;
 type NestedDimension = Partial<Record<(typeof NESTED_DIMENSION_FIELDS)[number], unknown>>;
 
