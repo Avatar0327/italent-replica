@@ -10,7 +10,8 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { changePendingEntryStatus } from '../../apps/api/src/modules/employment/employee-status.js';
 import { transitionEmployment } from '../../apps/api/src/modules/employment/transitions.js';
-import { addMember } from './AC-PRM-support.js';
+import { MODULE_OBJECTS } from '@italent/domain';
+import { addMember, createProfile, setObjectPermission } from './AC-PRM-support.js';
 import { transferWorld } from './AC-TRF-manager-support.js';
 
 const database = useTestDb();
@@ -89,11 +90,11 @@ describe('AC-TRF-42（F-022）试用中 / 待入职按人员状态精确统计',
     for (const id of [regular.id, external.id, outside.id]) expect(ids).not.toContain(id);
     expect(dto.counts.probation).toBe(ids.length);
     expect(dto.items.every((row) => row.probation === true)).toBe(true);
-    // 默认经理身份未授“人员状态”查看：标记列照常返回，字段值按字段权限裁剪
-    expect(dto.items.every((row) => !('employeeStatus' in row) && !('entryStatus' in row))).toBe(true);
+    // DEC-225：系统默认经理身份可查看下属的人员状态、入职状态（只读），列表显示这两列
+    expect(dto.items.every((row) => row.employeeStatus === 2 && row.entryStatus === null)).toBe(true);
     const active = await team(world, manager, 'active');
     expect(active.items.map((row) => row.id)).toEqual(expect.arrayContaining([probation.id, regular.id]));
-    expect(active.items.find((row) => row.id === regular.id)).toMatchObject({ probation: false });
+    expect(active.items.find((row) => row.id === regular.id)).toMatchObject({ probation: false, employeeStatus: 3 });
     expect(active.items.find((row) => row.id === probation.id)?.probation).toBe(true);
   });
 
@@ -158,6 +159,38 @@ describe('AC-TRF-42（F-022）试用中 / 待入职按人员状态精确统计',
     const trimmed = await read(hidden);
     expect(trimmed).not.toHaveProperty('employeeStatus');
     expect(trimmed).not.toHaveProperty('entryStatus');
+  });
+
+  it('DEC-225：默认经理可见待入职的入职状态；租户收回查看权后两列不再返回，标记与计数不变', async () => {
+    const pending = await other.person(other.inside.id, undefined, undefined, {
+      effectiveDate: '2026-11-01',
+      entry: { pendingEntry: true },
+    });
+    const otherManager = await managed(other);
+    const visible = await team(other, otherManager, 'pending');
+    expect(visible.items.find((row) => row.id === pending.id)).toMatchObject({ employeeStatus: 1, entryStatus: 0 });
+    // 租户创建同编码经理身份后完全使用其字段配置（manager-identity.ts）：收回两字段的查看权
+    const profile = await createProfile(other, 'department_manager_self_service');
+    const hidden = new Set(['employeeStatus', 'entryStatus']);
+    for (const definition of [MODULE_OBJECTS.employmentRecord, MODULE_OBJECTS.employee]) {
+      const response = await setObjectPermission(
+        other,
+        profile,
+        {
+          dataOperations: { create: false, update: false, delete: false },
+          fields: definition.fields.map((f) => ({ fieldCode: f.code, view: !hidden.has(f.code), edit: false })),
+          buttons: [],
+        },
+        definition.code,
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+    }
+    const revoked = await team(other, otherManager, 'pending');
+    expect(revoked.counts.pending).toBe(visible.counts.pending);
+    const row = revoked.items.find((item) => item.id === pending.id);
+    expect(row).toBeTruthy();
+    expect(row).not.toHaveProperty('employeeStatus');
+    expect(row).not.toHaveProperty('entryStatus');
   });
 
   it('跨租户：另一租户的试用、待入职人员不进入本租户统计；本租户经理请求另一租户被拒', async () => {
