@@ -21,6 +21,7 @@ export * from './personnel/index.js';
 export * from './approval/index.js';
 
 export * from './contracts/rules.js';
+export * from './employment/employee-status.js';
 export * from './transfer/catalog.js';
 export * from './transfer/required.js';
 export {
