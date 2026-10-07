@@ -1918,7 +1918,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 12:32",
+"liveUpdated": "10-07 12:33",
 "chains": [
 {
 "g": "exit",
@@ -2096,8 +2096,8 @@
 "o": 1,
 "k": "run",
 "n": "人才标准与指标库",
-"seg": "ev:d ds:n dev:a2 rev:d1 mg:w",
-"now": "第 2 轮修改（1 个权限 P2：按钮权限）",
+"seg": "ev:d ds:n dev:d2 rev:w2 mg:w",
+"now": "第 2 轮已推送，待发起审查",
 "pr": 106
 },
 {
