@@ -1,6 +1,7 @@
 /** AC-TRF-01/02/03/19/20/24/25：真实授权器校验发起方、源员工范围和目标部门范围。 */
 import { randomUUID } from 'node:crypto';
 import { permissionUserPersonLinks, withTenant } from '@italent/db';
+import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/write-service.js';
 import { MODULE_OBJECTS } from '@italent/domain';
 import type { Db } from '@italent/db';
 import { expect } from 'vitest';
@@ -73,7 +74,12 @@ export async function transferWorld(db: Db) {
     departmentId = inside.id,
     binding?: Actor,
     directManagerId?: string,
-    options: { effectiveDate?: string; employType?: string } = {},
+    options: {
+      effectiveDate?: string;
+      employType?: string;
+      /** F-022 入职写入端口（R2-T01 接线前由可信夹具调用）：待入职、是否有试用期。 */
+      entry?: { pendingEntry?: boolean; probation?: boolean };
+    } = {},
   ): Promise<Person> {
     const employee = await create('employment/employees', { name: '合成调动员工', code: `TRF_${randomUUID()}` });
     if (binding) {
@@ -85,6 +91,34 @@ export async function transferWorld(db: Db) {
           employeeId: employee.id,
         }),
       );
+    }
+    if (options.entry) {
+      const business = await withTenant(db, world.tenant.id, (tx) =>
+        createEmploymentBusiness(
+          tx,
+          {
+            tenantId: world.tenant.id,
+            userId: world.asAdmin.user,
+            timezone: world.tenant.timezone,
+            now: clock(),
+            commandId: randomUUID(),
+            expectedRevision: employee.revision,
+          },
+          employee.id,
+          {
+            kind: 'hire',
+            mode: 'direct',
+            effectiveDate: options.effectiveDate ?? '2026-01-01',
+            fields: {
+              departmentId,
+              ...(directManagerId ? { directManagerId } : {}),
+              ...(options.employType ? { employType: options.employType as 'internal' } : {}),
+            },
+          },
+          { entry: options.entry },
+        ),
+      );
+      return { id: employee.id, revision: business.employeeRevision };
     }
     const hire = await create(
       `employment/employees/${employee.id}/businesses`,

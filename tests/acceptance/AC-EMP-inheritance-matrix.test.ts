@@ -16,8 +16,8 @@ const cells = [
 ] as const;
 
 describe('REQ-EMP-002 R7 每格继承规则覆盖六类非入职业务', () => {
-  for (const kind of kinds) {
-    it.each(cells)(`${kind}：$ac，表单$formId，继承设置$inherit`, async ({ inherit, formId, expected }) => {
+  describe.each(kinds)('%s', (kind) => {
+    it.each(cells)('$ac，表单$formId，继承设置$inherit', async ({ inherit, formId, expected }) => {
       const fixture = await inheritanceFixture(
         testDb().db,
         `inherit-${kind}-${formId}-${inherit}`,
@@ -52,5 +52,5 @@ describe('REQ-EMP-002 R7 每格继承规则覆盖六类非入职业务', () => {
       const saved = await fixture.record(created.record!.id);
       expect(saved.customFields[fixture.field.id] ?? null).toBe(expected);
     });
-  }
+  });
 });

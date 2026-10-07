@@ -5,6 +5,7 @@ import { tenantLocalDate } from '@italent/domain';
 import { validateTransferReposition } from './write-service.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { rebaseDerivedOrgAdjustments } from './org-adjustment-rebase.js';
+import { rederiveRepositionedStatus } from './employee-status.js';
 import { auditEmployment } from './context.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { insertEmploymentRow, rowsOf, type LockedEmploymentBusiness } from './record-store.js';
@@ -74,6 +75,8 @@ export async function postponeLateTransfer(tx: Tx, ctx: EmploymentContext, busin
     await rebaseDerivedOrgAdjustments(tx, ctx, record, today);
     await validateTransferReposition(tx, ctx, business, record);
     await insertEmploymentTimeline(tx, ctx, business.employeeId, business.id, record.staffId, today);
+    // F-022：移到当天后按新位置的前一条重新确定人员状态（跨过转正时取正式，不沿用原日期下的试用）
+    await rederiveRepositionedStatus(tx, ctx, business);
   }
   if (record) await personnelHooks.sync(tx, ctx, business.employeeId, business.id, 'transfer', today);
 }

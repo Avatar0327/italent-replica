@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react';
+import { initialTenantId } from '../../demo/tenant.js';
 import { text } from '../../transfer/messages.js';
 import '../../transfer/transfer.css';
 
 /** 员工 / 经理页面只提供租户内内容；会话租户选择与刷新生命周期共用。 */
 export function SelfServiceShell({ title, children }: { title: string; children: (tenantId: string) => ReactNode }) {
-  const [tenantId, setTenantId] = useState('');
-  const [activeTenant, setActiveTenant] = useState('');
+  const [tenantId, setTenantId] = useState(initialTenantId);
+  const [activeTenant, setActiveTenant] = useState(initialTenantId);
   return (
     <main className="transfer-page">
       <header className="transfer-header">

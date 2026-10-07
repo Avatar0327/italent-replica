@@ -80,6 +80,9 @@ export function defaultManagerPermissions(): GrantedObjectPermission[] {
     'serviceType',
     'createdAt',
     'updatedAt',
+    // DEC-225：默认可查看下属的人员状态、入职状态（系统字段，只读）；租户建同编码身份后可收回
+    'employeeStatus',
+    'entryStatus',
   ]);
   return [
     {

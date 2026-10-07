@@ -1,11 +1,12 @@
 import { TransferApplication } from '../self-service/shared/TransferApplication.js';
 import { useState } from 'react';
+import { initialTenantId } from '../demo/tenant.js';
 import { text } from './messages.js';
 import './transfer.css';
 
 export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employee' | 'manager' }) {
-  const [tenantId, setTenantId] = useState('');
-  const [activeTenant, setActiveTenant] = useState('');
+  const [tenantId, setTenantId] = useState(initialTenantId);
+  const [activeTenant, setActiveTenant] = useState(initialTenantId);
   return (
     <main className="transfer-page">
       <header className="transfer-header">

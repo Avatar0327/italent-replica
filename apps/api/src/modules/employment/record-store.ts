@@ -3,6 +3,7 @@ import { isUuid, sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { assertRevision } from './context.js';
 import type { PreparedInheritance } from './inheritance.js';
+import type { VersionStatus } from './employee-status.js';
 import {
   PRESET_FIELD_NAMES,
   type ChangeType,
@@ -36,6 +37,9 @@ export interface EmploymentPayloadRow extends PreparedInheritance {
   lastWorkDate: string | null;
   formId: string;
   selectedStaffId: string | null;
+  /** 读自库；写入时由 insertEmploymentRow 丢弃，只经显式状态流转或触发器继承（F-022）。 */
+  employeeStatus?: number;
+  entryStatus?: number | null;
 }
 
 export interface LockedEmploymentBusiness {
@@ -174,12 +178,23 @@ const TABLES = new Set([
   'employment_records',
   'employment_record_tombstones',
 ]);
+const VERSION_TABLES = new Set(['employment_payload_versions', 'employment_records']);
 const JSON_COLUMNS = new Set(['customFields', 'formSnapshot']);
 const ARRAY_COLUMNS = new Set(['deferredFieldCodes', 'explicitFieldCodes']);
 
-/** 表名固定于本模块；字段名由服务构造，业务值全部绑定为参数。 */
-export async function insertEmploymentRow(tx: Tx, table: string, values: Record<string, unknown>): Promise<void> {
+/**
+ * 表名固定于本模块；字段名由服务构造，业务值全部绑定为参数。
+ * 任职版本（载荷、记录）的人员状态 / 入职状态是所有追加路径共用的继承点（F-022）：调用方展开旧载荷带来的值一律丢弃，
+ * 只有业务流转端口经 status 显式给出新状态；未给出时由插入触发器按版本链继承（迁移 0062）。
+ */
+export async function insertEmploymentRow(
+  tx: Tx,
+  table: string,
+  input: Record<string, unknown>,
+  status?: VersionStatus,
+): Promise<void> {
   if (!TABLES.has(table)) throw new TypeError('非任职模块写入表');
+  const values = VERSION_TABLES.has(table) ? versionValues(input, status) : input;
   const keys = Object.keys(values).filter((key) => values[key] !== undefined);
   const columns = sql.join(
     keys.map((key) => sql.identifier(key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`))),
@@ -204,4 +219,9 @@ export async function insertEmploymentRow(tx: Tx, table: string, values: Record<
     sql`, `,
   );
   await tx.execute(sql`INSERT INTO ${sql.identifier(table)} (${columns}) VALUES (${parameters})`);
+}
+
+function versionValues(input: Record<string, unknown>, status?: VersionStatus): Record<string, unknown> {
+  const { employeeStatus: _employeeStatus, entryStatus: _entryStatus, ...values } = input;
+  return status ? { ...values, employeeStatus: status.employeeStatus, entryStatus: status.entryStatus } : values;
 }

@@ -4,6 +4,13 @@ import { queueTransferLinkage, validateTransferSubordinates } from './transfer-l
 import { lockTransferParticipants } from './transfer-locks.js';
 import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { personnelHooks } from './personnel-hooks.js';
+import {
+  entryStatusFor,
+  inheritedStatus,
+  propagateEmployeeStatus,
+  type EntryOptions,
+  type VersionStatus,
+} from './employee-status.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { clearedTransferFields, tenantLocalDate } from '@italent/domain';
@@ -77,6 +84,8 @@ export interface CreateEmploymentOptions {
   /** F-006 系统派生，不能由请求体指定。 */
   readonly positionManagerDerivation?: boolean;
   readonly establishmentWarnings?: EstablishmentWarning[];
+  /** F-022 入职写入端口（R2-T01 接线）：添加待入职、是否有试用期；不开放给请求体。 */
+  readonly entry?: EntryOptions;
 }
 
 export async function createEmploymentBusiness(
@@ -139,6 +148,7 @@ export async function createEmploymentBusiness(
     null,
     selected?.cycle.id,
     options.changeType,
+    entryStatusFor(normalized.kind, options.entry),
   );
   const business: LockedEmploymentBusiness = {
     id,
@@ -254,6 +264,8 @@ export async function updateEmploymentBusiness(
     before.id,
     selected?.cycle.id,
     before.changeType ?? undefined,
+    // 改期后按新生效日的前一条重新确定继承的人员状态（PR #93 首审 P2-1），不沿用原日期下的值
+    inheritedStatus(normalized.kind, selected?.predecessor ?? null),
   );
   // 申请修改是人工意图：事件绑定新载荷版本，迟到重建据此把它当作新的初始输入（R6-P2-01）。
   await auditEmployment(
@@ -450,6 +462,7 @@ export async function appendEmploymentPayload(
   previousVersionId: string | null,
   selectedStaffId?: string,
   changeType?: ChangeType,
+  status?: VersionStatus,
 ): Promise<EmploymentPayloadRow> {
   const payload: EmploymentPayloadRow = {
     ...prepared,
@@ -468,12 +481,22 @@ export async function appendEmploymentPayload(
     selectedStaffId: selectedStaffId ?? null,
   };
   const { fields, ...metadata } = payload;
-  await insertEmploymentRow(tx, 'employment_payload_versions', {
-    ...fields,
-    ...metadata,
-    createdAt: ctx.now.toISOString(),
-  });
-  return payload;
+  await insertEmploymentRow(
+    tx,
+    'employment_payload_versions',
+    { ...fields, ...metadata, createdAt: ctx.now.toISOString() },
+    status,
+  );
+  // 未显式给出时由插入触发器继承（迁移 0062），以库中的值为准
+  return { ...payload, ...(await storedStatus(tx, ctx, payload.id)) };
+}
+
+async function storedStatus(tx: Tx, ctx: EmploymentContext, payloadId: string) {
+  const [row] = rowsOf<{ employeeStatus: number; entryStatus: number | null }>(
+    await tx.execute(sql`SELECT employee_status AS "employeeStatus", entry_status AS "entryStatus"
+      FROM employment_payload_versions WHERE tenant_id=${ctx.tenantId} AND id=${payloadId}::uuid`),
+  );
+  return row ?? {};
 }
 
 export async function appendEmploymentState(
@@ -601,6 +624,7 @@ export async function materializeEmploymentRecord(
     createdAt: ctx.now.toISOString(),
   });
   await insertEmploymentTimeline(tx, ctx, business.employeeId, business.id, staffId, payload.effectiveDate);
+  const status = await propagateMaterializedStatus(tx, ctx, business, staffId, selected?.predecessor ?? null);
   await auditMaterialization(
     tx,
     ctx,
@@ -610,6 +634,7 @@ export async function materializeEmploymentRecord(
     inherited.customFields,
     staffId,
     entryDate,
+    status,
   );
   if (options.forwardUpdate !== false) {
     await forwardMaterializedRecord(
@@ -630,6 +655,33 @@ export async function materializeEmploymentRecord(
   await personnelHooks.sync(tx, ctx, business.employeeId, business.id, payload.kind, payload.effectiveDate);
 }
 
+/**
+ * 落地记录的人员状态由插入触发器决定（入职类取载荷、转正 / 离职 / 退休取本身、其余继承插入点前一条）。
+ * 与同周期前一条不同时（如转正把试用改为正式），晚于它的后续版本一并更新（29 PB-R7），不受“是否向后更新”选项影响。
+ */
+async function propagateMaterializedStatus(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  staffId: string,
+  predecessor: EmploymentRecord | null,
+): Promise<VersionStatus> {
+  const [row] = rowsOf<VersionStatus>(
+    await tx.execute(sql`SELECT employee_status AS "employeeStatus", entry_status AS "entryStatus"
+      FROM employment_records WHERE tenant_id=${ctx.tenantId} AND id=${business.id}::uuid`),
+  );
+  if (!row) throw new AppError('SERVICE_UNAVAILABLE', '任职记录保存结果不可用');
+  if (predecessor && predecessor.staffId === staffId)
+    await propagateEmployeeStatus(
+      tx,
+      ctx,
+      { id: business.id, employeeId: business.employeeId, staffId, effectiveDate: business.payload.effectiveDate },
+      predecessor.employeeStatus,
+      row.employeeStatus,
+    );
+  return row;
+}
+
 function effectiveEmployType(payload: EmploymentPayloadRow, selected?: SelectedEmploymentCycle): EmployType {
   if (payload.kind === 'intern_regularization') return 'internal';
   if (NEW_CYCLE_KINDS.includes(payload.kind)) return payload.fields.employType ?? 'internal';
@@ -647,6 +699,9 @@ function payloadAudit(payload: EmploymentPayloadRow): Record<string, unknown> {
     ...customAudit(payload.customFields),
     kind: payload.kind,
     effectiveDate: payload.effectiveDate,
+    ...(payload.employeeStatus === undefined
+      ? {}
+      : { employeeStatus: payload.employeeStatus, entryStatus: payload.entryStatus ?? null }),
   };
 }
 
@@ -769,6 +824,7 @@ async function auditMaterialization(
   customFields: Readonly<Record<string, unknown>>,
   staffId: string,
   entryDate: string,
+  status: VersionStatus,
 ) {
   const payload = business.payload;
   await auditEmployment(
@@ -777,10 +833,19 @@ async function auditMaterialization(
     'employment.record.create',
     'employment-record',
     business.id,
-    predecessor ? { ...predecessor.fields, ...customAudit(predecessor.customFields) } : null,
+    predecessor
+      ? {
+          ...predecessor.fields,
+          ...customAudit(predecessor.customFields),
+          employeeStatus: predecessor.employeeStatus,
+          entryStatus: predecessor.entryStatus,
+        }
+      : null,
     {
       ...fields,
       ...customAudit(customFields),
+      employeeStatus: status.employeeStatus,
+      entryStatus: status.entryStatus,
       staffId,
       entryDate,
       effectiveDate: payload.effectiveDate,

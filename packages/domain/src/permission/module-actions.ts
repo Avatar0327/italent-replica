@@ -231,7 +231,13 @@ export const MODULE_OBJECTS = {
   employmentCustomField: object('EmploymentCustomField', ['name', 'objectType', 'valueType', 'inherit'], crud, [
     'code',
   ]),
-  employee: object('Employee', ['code', 'name'], [button('Employee.Create', 'list', 'create')], ['status']),
+  // F-022：人员状态 / 入职状态取当前生效主职版本，只读（系统字段：可授查看，不可授编辑）
+  employee: object(
+    'Employee',
+    ['code', 'name'],
+    [button('Employee.Create', 'list', 'create')],
+    ['status', 'employeeStatus', 'entryStatus'],
+  ),
   employmentRecord: object(
     'EmploymentRecord',
     [
@@ -306,6 +312,9 @@ export const MODULE_OBJECTS = {
       'isInserted',
       // 变动类型由系统联动写入（F-006，W-416），不是可编辑字段。
       'changeType',
+      // 人员状态 / 入职状态只经业务流转写入（F-022，15 §9.3）：可授查看，不可授编辑。
+      'employeeStatus',
+      'entryStatus',
       'activation',
     ],
   ),
