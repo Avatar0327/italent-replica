@@ -3,7 +3,7 @@
 "stats": {
 "merged": 52,
 "open": 9,
-"dec": 286,
+"dec": 287,
 "ev": "18/110"
 },
 "tasks": {
@@ -1968,7 +1968,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 13:47",
+"liveUpdated": "10-07 13:54",
 "chains": [
 {
 "g": "exit",
@@ -2185,8 +2185,8 @@
 "k": "run",
 "pr": 102,
 "n": "AC 覆盖运行时统计",
-"seg": "ev:n ds:n dev:a3 rev:d2 mg:w",
-"now": "第 3 轮修改（2 个 P2：身份配对、only 漏报）",
+"seg": "ev:n ds:n dev:d3 rev:w3 mg:w",
+"now": "第 3 轮已推送，待发起审查",
 "up": "10-07 第 3 轮调到 Max"
 },
 {
