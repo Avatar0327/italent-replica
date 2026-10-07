@@ -358,7 +358,7 @@ describe('AC-APV-UI-04 并发、未知结果与权限失败', () => {
       if (call.options.method !== 'POST') return undefined;
       if (writes().length === 1) {
         current = detail({ revision: 8 });
-        return response({ error: { code: 'CONFLICT', message: 'revision已变化' } }, 409);
+        return response({ error: { code: 'REVISION_CONFLICT', message: 'revision已变化' } }, 409);
       }
       return response(detail({ revision: 9, status: 'approved', actions: [] }));
     };
@@ -419,7 +419,7 @@ describe('AC-APV-UI-04 并发、未知结果与权限失败', () => {
     );
   });
 
-  it.each([403, 404])('%i清除旧单和历史，显示统一权限提示', async (status) => {
+  it.each([403, 404])('%i清除旧单详情和历史，保留列表且显示统一权限提示', async (status) => {
     handler = (call) =>
       call.options.method === 'POST'
         ? response({ error: { code: 'FORBIDDEN', message: '不应把接口敏感文案当提示' } }, status)
@@ -428,9 +428,10 @@ describe('AC-APV-UI-04 并发、未知结果与权限失败', () => {
     await click('同意');
     await click('确认提交');
     expect(host.textContent).toContain('无权访问');
-    expect(host.textContent).not.toContain('合成调动申请');
+    expect(host.querySelector('.approval-detail')?.textContent).not.toContain('合成调动申请');
+    expect(host.querySelector('.approval-list')?.textContent).toContain('合成调动申请');
     expect(host.textContent).not.toContain('不应把接口敏感文案当提示');
-    expect(host.textContent).not.toContain('经理审批');
+    expect(host.querySelector('.approval-detail')?.textContent).not.toContain('经理审批');
   });
 
   it('列表刷新403时，已打开的旧详情、历史和编辑草稿同样被清除', async () => {
@@ -542,7 +543,7 @@ describe('AC-APV-UI-05 审批中编辑', () => {
     handler = (call) => {
       if (call.options.method === 'POST' && writes().length === 1) {
         current = detail({ revision: 8 });
-        return response({ error: { code: 'CONFLICT' } }, 409);
+        return response({ error: { code: 'REVISION_CONFLICT' } }, 409);
       }
       return undefined;
     };
@@ -553,5 +554,160 @@ describe('AC-APV-UI-05 审批中编辑', () => {
     expect(host.querySelector('[aria-label="contractFields.number"]')).toBeNull();
     await click('确认重新提交');
     expect(body(writes()[1]!)).toEqual({ comment: null });
+  });
+});
+
+describe('AC-APV-UI-04 第二轮恢复与单据权限隔离', () => {
+  it.each([400, 413])('未知结果重放得到确定的%i时退出恢复、保留意见，并允许显式修正后用新命令提交', async (status) => {
+    handler = (call) => {
+      if (call.options.method !== 'POST') return undefined;
+      if (writes().length === 1) throw new TypeError('synthetic lost response');
+      if (writes().length === 2)
+        return response({ error: { code: 'VALIDATION_FAILED', message: '合成请求内容需要修正' } }, status);
+      return undefined;
+    };
+    await mount();
+    await click('同意');
+    await input('审批意见', '合成原意见');
+    await click('确认提交');
+    expect(host.textContent).toContain('结果待确认');
+    await click('重试原命令');
+    expect(host.textContent).toContain('合成请求内容需要修正');
+    expect(host.textContent).not.toContain('重试原命令');
+    expect(host.textContent).not.toContain('操作编号');
+    expect(host.querySelector<HTMLTextAreaElement>('[aria-label="审批意见"]')?.value).toBe('合成原意见');
+    expect(writes()).toHaveLength(2);
+    await input('审批意见', '合成修正意见');
+    await click('确认提交');
+    expect(writes()).toHaveLength(3);
+    expect(body(writes()[2]!)).toEqual({ comment: '合成修正意见' });
+    expect(new Headers(writes()[2]!.options.headers).get('idempotency-key')).not.toBe(
+      new Headers(writes()[1]!.options.headers).get('idempotency-key'),
+    );
+  });
+
+  it.each([
+    { reason: 'APPROVAL_URGE_TOO_FREQUENT', message: '催办过于频繁，请 30 分钟后再试' },
+    { reason: 'APPROVAL_TASK_CLOSED', message: '该任务已处理或流程已结束' },
+    { reason: 'APPROVAL_ACTION_DISABLED', message: '本节点没有该出口动作' },
+  ])('业务409 $reason显示服务端原因，不伪装revision变化、不自动重提', async ({ reason, message }) => {
+    handler = (call) =>
+      call.options.method === 'POST'
+        ? response({ error: { code: 'CONFLICT', message, details: { reason } } }, 409)
+        : undefined;
+    await mount();
+    await click('同意');
+    await input('审批意见', '合成业务冲突意见');
+    await click('确认提交');
+    expect(host.textContent).toContain(message);
+    expect(host.textContent).not.toContain('单据已变化');
+    expect(host.textContent).not.toContain('确认重新提交');
+    expect(writes()).toHaveLength(1);
+    expect(calls.filter(({ url }) => url === `${API}/instances/${INSTANCE}`)).toHaveLength(1);
+    expect(host.querySelector<HTMLTextAreaElement>('[aria-label="审批意见"]')?.value).toBe('合成业务冲突意见');
+  });
+
+  it('并发锁409仍回查revision，用户确认前不自动重提', async () => {
+    handler = (call) => {
+      if (call.options.method !== 'POST') return undefined;
+      current = detail({ revision: 8 });
+      return response(
+        {
+          error: {
+            code: 'CONFLICT',
+            message: '单据正被他人处理，请刷新后重试',
+            details: { reason: 'APPROVAL_CONCURRENT_CONFLICT' },
+          },
+        },
+        409,
+      );
+    };
+    await mount();
+    await click('同意');
+    await click('确认提交');
+    expect(host.textContent).toContain('显式重提');
+    expect(writes()).toHaveLength(1);
+    expect(calls.filter(({ url }) => url === `${API}/instances/${INSTANCE}`)).toHaveLength(2);
+  });
+
+  it('未知结果重放得到业务409时退出unknown并显示真实原因', async () => {
+    handler = (call) => {
+      if (call.options.method !== 'POST') return undefined;
+      if (writes().length === 1) throw new TypeError('synthetic lost response');
+      return response(
+        {
+          error: {
+            code: 'CONFLICT',
+            message: '该任务已处理或流程已结束',
+            details: { reason: 'APPROVAL_TASK_CLOSED' },
+          },
+        },
+        409,
+      );
+    };
+    await mount();
+    await click('同意');
+    await click('确认提交');
+    await click('重试原命令');
+    expect(host.textContent).toContain('该任务已处理或流程已结束');
+    expect(host.textContent).not.toContain('单据已变化');
+    expect(host.textContent).not.toContain('重试原命令');
+    expect(host.textContent).not.toContain('操作编号');
+    expect(writes()).toHaveLength(2);
+  });
+
+  it.each([
+    { kind: 'detail', status: 403 },
+    { kind: 'detail', status: 404 },
+    { kind: 'history', status: 403 },
+    { kind: 'history', status: 404 },
+    { kind: 'action', status: 403 },
+    { kind: 'action', status: 404 },
+  ])('单据 $kind 失败 $status ：清除该单草稿和历史，保留其他列表项与分页', async ({ kind, status }) => {
+    const otherInstance = '10000000-0000-4000-8000-000000000002';
+    let fail = false;
+    handler = (call) => {
+      const deniedResponse = response({ error: { code: 'FORBIDDEN', message: '合成禁止泄漏的详情错误' } }, status);
+      if (call.url.includes('/todos?'))
+        return response({
+          items: Array.from({ length: 20 }, (_, index) => ({
+            instanceId: index === 0 ? INSTANCE : otherInstance,
+            taskId: `${TASK}:${index}`,
+            title: index === 0 ? '合成当前列表项' : `合成其他列表项 ${index}`,
+          })),
+        });
+      if (call.url === `${API}/instances/${otherInstance}`)
+        return response(detail({ id: otherInstance, title: '合成另一张可读单据', tasks: [], logs: [] }));
+      if (call.options.method === 'POST' && fail && kind === 'action') return deniedResponse;
+      if (call.url.includes('/logs?'))
+        return fail && kind === 'history'
+          ? deniedResponse
+          : response({ items: [{ event: 'approve', detail: { comment: '合成该单旧分页秘密' } }] });
+      if (call.url === `${API}/instances/${INSTANCE}` && fail && kind === 'detail') return deniedResponse;
+      return undefined;
+    };
+    await mount();
+    await click('查看日志历史');
+    expect(host.textContent).toContain('合成该单旧分页秘密');
+    await click('同意');
+    await input('审批意见', '合成该单未提交草稿');
+    fail = true;
+    await click(kind === 'detail' ? '刷新详情' : kind === 'history' ? '查看日志历史' : '确认提交');
+    expect(host.textContent).toContain('无权访问');
+    expect(host.textContent).not.toContain('合成禁止泄漏的详情错误');
+    expect(host.textContent).not.toContain('合成该单旧分页秘密');
+    expect(host.querySelector('[aria-label="审批意见"]')).toBeNull();
+    expect(host.querySelector('.approval-list')?.textContent).toContain('合成其他列表项 1');
+    expect(host.querySelector('.approval-detail')?.textContent).not.toContain('合成调动申请');
+    expect(host.querySelectorAll('.approval-row-link')).toHaveLength(20);
+    await click('下一页');
+    expect(calls.some(({ url }) => url.includes('/todos?') && url.includes('page=2'))).toBe(true);
+    const otherRow = Array.from(host.querySelectorAll<HTMLButtonElement>('.approval-row-link')).find((button) =>
+      button.textContent?.includes('合成其他列表项 1'),
+    );
+    expect(otherRow).toBeTruthy();
+    await act(async () => otherRow!.click());
+    expect(host.querySelector('.approval-detail')?.textContent).toContain('合成另一张可读单据');
+    expect(host.querySelector('.approval-detail')?.textContent).not.toContain('无权访问');
   });
 });

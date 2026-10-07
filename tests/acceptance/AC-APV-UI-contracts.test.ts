@@ -1,6 +1,6 @@
-/** DEC-233：审批中心只读契约；不改变审批参与人的详情权限或既有写入口。 */
+/** DEC-233 / DEC-242：审批中心只读契约；不改变审批参与人的详情权限或既有写入口。 */
 import { randomUUID } from 'node:crypto';
-import { revokeMembership, sql, withTenant } from '@italent/db';
+import { grantMembership, revokeMembership, sql, withTenant } from '@italent/db';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -101,7 +101,120 @@ async function processed(w: ApprovalWorld, userId: string, query = '', api = w.a
   );
 }
 
-describe('AC-APV-UI-01 / DEC-233：全身份已处理分页', () => {
+describe('AC-APV-UI-01 / DEC-242：全身份按本人处理记录分页', () => {
+  it('生产授权器：无任职范围普通员工接受转交并处理后可见最小已处理字段，待办/抄送/未参与与跨租户隔离', async () => {
+    const w = await approvalWorld(database().db, 'apv-ui-processed-real');
+    const s = await transferScene(w);
+    const employeeApprover = await w.member('无任职范围普通员工审批人');
+    const ccUser = await w.member('仅被抄送员工');
+    const stranger = await w.member('未参与员工');
+    const world = await permissionAdmin(w);
+    for (const userId of [s.outHead.userId, employeeApprover]) {
+      await grantFieldAccess(world, userId, { view: FIELDS });
+    }
+    const api = tenantApi(w.db, { authorize: undefined, clock: w.clock });
+    await w.publishedProcess({
+      nodes: [
+        { key: 'manager', approver: 'latest_record_department_head', actions: { transfer: true, copySend: true } },
+      ],
+    });
+    let view = await w.submit(
+      await w.application(s.subject.employeeId, { departmentId: s.to, place: '不得进入已处理列表的任职字段' }),
+    );
+    view = await w.json(
+      await api.request('POST', `${BASE}/tasks/${pending(view).id}/cc`, {
+        ...w.as(s.outHead.userId),
+        ifMatch: view.revision,
+        body: { userIds: [ccUser] },
+      }),
+    );
+    view = await w.json(
+      await api.request('POST', `${BASE}/tasks/${pending(view).id}/transfer`, {
+        ...w.as(s.outHead.userId),
+        ifMatch: view.revision,
+        body: { toUserId: employeeApprover },
+      }),
+    );
+    expect((await processed(w, employeeApprover, '', api)).items).toEqual([]);
+    const outside = await api.request(
+      'GET',
+      `/api/tenant/employment/businesses/${view.businessId}`,
+      w.as(employeeApprover),
+    );
+    expect(outside.status).toBe(404);
+    view = await w.json(
+      await api.request('POST', `${BASE}/tasks/${pending(view).id}/approve`, {
+        ...w.as(employeeApprover),
+        ifMatch: view.revision,
+        body: { comment: '本人处理意见也不得进入最小列表' },
+      }),
+    );
+    expect(await w.business(view.businessId)).toMatchObject({ status: 'effective', fields: { departmentId: s.to } });
+    const list = await processed(w, employeeApprover, '', api);
+    expect(list.items).toEqual([
+      {
+        id: view.id,
+        title: '调动申请',
+        status: 'approved',
+        approvalType: 'transfer',
+        businessId: view.businessId,
+        currentNodeKey: null,
+        revision: view.revision,
+        createdAt: expect.any(String),
+      },
+    ]);
+    expect(JSON.stringify(list)).not.toContain('不得进入');
+    for (const userId of [ccUser, stranger, w.hr.id]) {
+      expect((await processed(w, userId, '', api)).items).toEqual([]);
+    }
+    expect((await api.request('GET', `${BASE}/instances/${view.id}`, w.as(stranger))).status).toBe(404);
+    const other = await approvalWorld(database().db, 'apv-ui-processed-other');
+    await grantMembership(w.db, { tenantId: other.tenant.id, userId: employeeApprover, expectedRevision: 0 }, cmd());
+    const foreign = { user: employeeApprover, tenant: other.tenant.id };
+    const foreignList = await w.json<{ items: unknown[] }>(
+      await api.request('GET', `${BASE}/instances?role=processed&businessId=${view.businessId}`, foreign),
+    );
+    expect(foreignList.items).toEqual([]);
+    expect((await api.request('GET', `${BASE}/instances/${view.id}`, foreign)).status).toBe(404);
+    const detail = await w.json<EditableView>(
+      await api.request('GET', `${BASE}/instances/${view.id}`, w.as(employeeApprover)),
+    );
+    expect(detail.form.values).toMatchObject({ departmentId: s.to, place: '不得进入已处理列表的任职字段' });
+    expect(detail.form.values).not.toHaveProperty('remarks');
+  });
+
+  it('生产授权器：调出负责人审批并生效后脱离当前范围，审批中心与经理已处理仍收录本人的记录', async () => {
+    const w = await approvalWorld(database().db, 'apv-ui-processed-moved');
+    const s = await transferScene(w);
+    const world = await permissionAdmin(w);
+    await grantFieldAccess(world, s.outHead.userId, { view: FIELDS });
+    await scope(world, s.outHead.userId, [s.from]);
+    await w.publishedProcess({ nodes: [{ key: 'out_head', approver: 'latest_record_department_head' }] });
+    const api = tenantApi(w.db, { authorize: undefined, clock: w.clock });
+    let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    expect(
+      (await api.request('GET', `/api/tenant/employment/businesses/${view.businessId}`, w.as(s.outHead.userId))).status,
+    ).toBe(200);
+    view = await w.json(
+      await api.request('POST', `${BASE}/tasks/${pending(view).id}/approve`, {
+        ...w.as(s.outHead.userId),
+        ifMatch: view.revision,
+        body: {},
+      }),
+    );
+    expect(await w.business(view.businessId)).toMatchObject({ status: 'effective', fields: { departmentId: s.to } });
+    expect(
+      (await api.request('GET', `/api/tenant/employment/businesses/${view.businessId}`, w.as(s.outHead.userId))).status,
+    ).toBe(404);
+    expect((await processed(w, s.outHead.userId, '', api)).items).toEqual([
+      expect.objectContaining({ id: view.id, title: '调动申请', status: 'approved' }),
+    ]);
+    const manager = await w.json<{ items: unknown[] }>(
+      await api.request('GET', '/api/tenant/employment/transfers/manager/todos?tab=processed', w.as(s.outHead.userId)),
+    );
+    expect(manager.items).toEqual([expect.objectContaining({ id: view.id, title: '调动申请', status: 'approved' })]);
+  });
+
   it('员工、经理、HR 本人 approve / transfer 算已处理，当前待办与抄送不算', async () => {
     const w = await approvalWorld(database().db, 'apv-ui-processed');
     const s = await transferScene(w);
@@ -140,7 +253,7 @@ describe('AC-APV-UI-01 / DEC-233：全身份已处理分页', () => {
     for (const userId of [s.inHead.userId, ccUser, w.hr.id]) expect((await processed(w, userId)).items).toEqual([]);
   });
 
-  it('范围过滤先于分页；撤销范围后历史不再出现，业务单与实例不变', async () => {
+  it('本人已处理记录分页不按当前范围过滤；撤销范围后仍保留且业务单与实例不变', async () => {
     const w = await approvalWorld(database().db, 'apv-ui-range');
     const s = await transferScene(w);
     const outside = await w.org('范围外部门');
@@ -172,17 +285,24 @@ describe('AC-APV-UI-01 / DEC-233：全身份已处理分页', () => {
     await scope(world, s.outHead.userId, [s.from]);
     const api = tenantApi(w.db, { authorize: undefined, clock: w.clock });
     expect(await processed(w, s.outHead.userId, '&page=1&pageSize=1', api)).toMatchObject({
-      items: [expect.objectContaining({ id: ids[1], title: '调动申请' })],
+      items: [expect.objectContaining({ id: ids[2], title: '调动申请' })],
       page: 1,
       pageSize: 1,
     });
     expect((await processed(w, s.outHead.userId, '&page=2&pageSize=1', api)).items).toEqual([
+      expect.objectContaining({ id: ids[1], title: '调动申请' }),
+    ]);
+    expect((await processed(w, s.outHead.userId, '&page=3&pageSize=1', api)).items).toEqual([
       expect.objectContaining({ id: ids[0], title: '调动申请' }),
     ]);
     const before = await w.business(businesses[0]!);
     const beforeInstance = await w.detail(ids[0]!);
     await scope(world, s.outHead.userId, [], 1);
-    expect((await processed(w, s.outHead.userId, '', api)).items).toEqual([]);
+    expect((await processed(w, s.outHead.userId, '', api)).items.map((item) => item.id)).toEqual([
+      ids[2],
+      ids[1],
+      ids[0],
+    ]);
     expect(await w.business(businesses[0]!)).toEqual(before);
     expect(await w.detail(ids[0]!)).toEqual(beforeInstance);
   });
@@ -301,18 +421,31 @@ describe('AC-APV-UI-04 / DEC-233：实例节点编辑元数据与写校验一致
     expect(await w.business(instance.businessId)).toEqual(business);
   });
 
-  it('范围撤回不剥夺本单最小披露，但不再公布可编辑元数据；发起人没有他人的任务目标', async () => {
-    const { w, s, world, instance, detail } = await editableScene();
+  it('DEC-242 范围撤回不剥夺本单最小披露或编辑权，元数据与写入口一致；发起人没有他人的任务目标', async () => {
+    const { w, s, world, api, instance, detail } = await editableScene();
     expect((await detail()).form.editableFields).toEqual(['place']);
     const before = await w.business(instance.businessId);
     await scope(world, s.outHead.userId, [], 1);
     const read = await detail();
-    expect(read.form).toMatchObject({ editMode: 'none', editableFields: [], values: { place: '当前地点' } });
+    expect(read.form).toMatchObject({ editMode: 'separate', editableFields: ['place'], values: { place: '当前地点' } });
     expect(read.taskId).toBe(pending(instance).id);
     expect(await w.business(instance.businessId)).toEqual(before);
     const initiator = await detail(w.hr.id);
     expect(initiator).toMatchObject({ taskId: null, retrieveTaskId: null });
     expect(initiator.form).toMatchObject({ editMode: 'none', editableFields: [] });
+    const denied = await api.request(
+      'GET',
+      `/api/tenant/employment/businesses/${instance.businessId}`,
+      w.as(s.outHead.userId),
+    );
+    expect(denied.status).toBe(404);
+    const edited = await api.request('POST', `${BASE}/tasks/${read.taskId}/edit`, {
+      ...w.as(s.outHead.userId),
+      ifMatch: read.revision,
+      body: { fields: { place: null } },
+    });
+    expect(edited.status, await edited.clone().text()).toBe(200);
+    expect((await w.business(instance.businessId)).fields.place).toBeNull();
   });
 
   it('加签人只能审批，不获得原审批人的编辑配置；跨租户/非参与人404且业务未变', async () => {
