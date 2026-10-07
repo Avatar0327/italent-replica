@@ -230,7 +230,13 @@ export interface ComputationItem {
 }
 
 export type OrderingFailure =
-  | { readonly code: 'CYCLIC_DEPENDENCY'; readonly message: string; readonly cycle: readonly string[] }
+  | {
+      readonly code: 'CYCLIC_DEPENDENCY';
+      readonly message: string;
+      /** 第一个环；全部环见 cycles。 */
+      readonly cycle: readonly string[];
+      readonly cycles: readonly (readonly string[])[];
+    }
   | ({ readonly code: SyntaxIssue['code']; readonly message: string; readonly field: string } & Pick<
       SyntaxIssue,
       'line' | 'column' | 'offset'
@@ -253,6 +259,12 @@ export type OrderingResult =
       readonly entries: readonly OrderedItem[];
       readonly bindings: FieldBindings;
       readonly warnings: readonly string[];
+      /**
+       * 循环依赖的路径（如 [A, B, A]），每个环一条（DEC-274）：保存时只提示、不拦截；计算时整次失败。
+       */
+      readonly cycles: readonly (readonly string[])[];
+      /** 成环或依赖成环项目、因而无法计算的项目（按原顺序），排在 order 末尾。 */
+      readonly blocked: readonly string[];
     }
   | { readonly ok: false; readonly failure: OrderingFailure };
 
@@ -334,8 +346,54 @@ function findCycle(entries: readonly OrderedItem[], remaining: ReadonlySet<strin
   return [];
 }
 
+/** 在 within 范围内沿依赖能否从 from 走到 to（至少走一步）。 */
+function reaches(
+  byField: ReadonlyMap<string, OrderedItem>,
+  from: string,
+  to: string,
+  within: ReadonlySet<string>,
+): boolean {
+  const seen = new Set<string>();
+  const stack = [...(byField.get(from)?.dependsOn ?? [])];
+  while (stack.length) {
+    const field = stack.pop()!;
+    if (field === to) return true;
+    if (!within.has(field) || seen.has(field)) continue;
+    seen.add(field);
+    stack.push(...(byField.get(field)?.dependsOn ?? []));
+  }
+  return false;
+}
+
+/** 无法排序的项目里的全部环：按强连通分量分组，每组给出一条路径（如 A→B→A），按原顺序排列。 */
+function cyclesAmong(entries: readonly OrderedItem[], blocked: readonly string[]): string[][] {
+  const byField = new Map(entries.map((entry) => [entry.item.field, entry]));
+  const within = new Set(blocked);
+  const assigned = new Set<string>();
+  const cycles: string[][] = [];
+  for (const field of blocked) {
+    if (assigned.has(field) || !reaches(byField, field, field, within)) continue;
+    const component = new Set(
+      blocked.filter(
+        (other) =>
+          other === field || (reaches(byField, field, other, within) && reaches(byField, other, field, within)),
+      ),
+    );
+    component.forEach((member) => assigned.add(member));
+    cycles.push(findCycle(entries, component));
+  }
+  return cycles;
+}
+
+interface Topology {
+  readonly order: OrderedItem[];
+  readonly warnings: string[];
+  /** 成环或依赖成环项目、排不出顺序的项目（按原顺序）。 */
+  readonly blocked: OrderedItem[];
+}
+
 /** Kahn 拓扑排序：可算的项目里先取优先级小、再取原顺序靠前的；有依赖矛盾时以依赖为准并给出提示。 */
-function topologicalOrder(entries: readonly OrderedItem[]): { order: OrderedItem[]; warnings: string[] } | string[] {
+function topologicalOrder(entries: readonly OrderedItem[]): Topology {
   const byField = new Map(entries.map((entry) => [entry.item.field, entry]));
   const index = new Map(entries.map((entry, i) => [entry.item.field, i]));
   const remaining = new Set(entries.map((entry) => entry.item.field));
@@ -347,7 +405,7 @@ function topologicalOrder(entries: readonly OrderedItem[]): { order: OrderedItem
       .filter((entry) => entry.dependsOn.every((dependency) => !remaining.has(dependency)))
       .sort((a, b) => a.item.priority - b.item.priority || index.get(a.item.field)! - index.get(b.item.field)!);
     const next = ready[0];
-    if (!next) return findCycle(entries, remaining);
+    if (!next) break;
     for (const dependency of next.dependsOn) {
       const upstream = byField.get(dependency)!.item;
       if (upstream.priority > next.item.priority) {
@@ -358,12 +416,15 @@ function topologicalOrder(entries: readonly OrderedItem[]): { order: OrderedItem
     remaining.delete(next.item.field);
     order.push(next);
   }
-  return { order, warnings };
+  return { order, warnings, blocked: entries.filter((entry) => remaining.has(entry.item.field)) };
 }
 
+const cyclePath = (cycle: readonly string[]) => cycle.join('→');
+
 /**
- * 计算项目排序（计算规则保存时调用）：先优先级，再按引用依赖拓扑；循环依赖报错并列出环；
- * 传入字段目录时同保存校验报未知字段（TODO(需取证 Q-M0-84)：原站同优先级 / 循环时的处理）。
+ * 计算项目排序（计算规则保存 / 启用时调用）：先优先级，同优先级内按引用依赖拓扑（`26` §8.9 原站实测）；
+ * 传入字段目录时同保存校验报未知字段。循环依赖不拦截保存（DEC-274）：在 cycles / warnings 里列出成环的项目与
+ * 依赖路径，成环与受牵连的项目排在 order 末尾；计算时由 evaluateBatch 整次失败。
  */
 export function orderComputationItems(
   items: readonly ComputationItem[],
@@ -373,16 +434,22 @@ export function orderComputationItems(
   const parsed = parseItems(items, { registry, isKnownField: options.isKnownField });
   if (!('entries' in parsed)) return { ok: false, failure: parsed };
   const sorted = topologicalOrder(parsed.entries);
-  if (Array.isArray(sorted)) {
-    const message = `计算项目之间存在循环依赖：${sorted.join(' → ')}`;
-    return { ok: false, failure: { code: 'CYCLIC_DEPENDENCY', message, cycle: sorted } };
-  }
+  const blocked = sorted.blocked.map((entry) => entry.item.field);
+  const cycles = cyclesAmong(parsed.entries, blocked);
+  const inCycle = new Set(cycles.flat());
+  const cycleWarnings = [
+    ...cycles.map((cycle) => `检测到循环依赖：${cyclePath(cycle)}（允许保存，计算时将整次失败、不写入任何值）`),
+    ...blocked.filter((field) => !inCycle.has(field)).map((field) => `${field} 依赖成环的项目，计算时同样无法计算`),
+  ];
+  const entries = [...sorted.order, ...sorted.blocked];
   return {
     ok: true,
-    order: sorted.order.map((entry) => entry.item),
-    entries: sorted.order,
+    order: entries.map((entry) => entry.item),
+    entries,
     bindings: parsed.bindings,
-    warnings: sorted.warnings,
+    warnings: [...sorted.warnings, ...cycleWarnings],
+    cycles,
+    blocked,
   };
 }
 
@@ -445,6 +512,12 @@ export function evaluateBatch(
   const registry = context.registry ?? createDefaultRegistry();
   const ordered = orderComputationItems(items, { registry });
   if (!ordered.ok) return ordered;
+  if (ordered.cycles.length) {
+    // DEC-274：存在循环时整次计算不写入任何值（原站同样整次跳过），但明确报失败而不是“计算成功”
+    const message = `计算失败：循环依赖 ${ordered.cycles.map(cyclePath).join('；')}`;
+    const failure = { code: 'CYCLIC_DEPENDENCY', message, cycle: ordered.cycles[0]!, cycles: ordered.cycles } as const;
+    return { ok: false, failure };
+  }
   const computed = new Map(subjects.map((subject) => [subject.id, {} as Record<string, ExprValue>]));
   const results: Record<string, Record<string, EvaluationResult>> = Object.fromEntries(
     subjects.map((subject) => [subject.id, {}]),
