@@ -22,7 +22,7 @@ import {
 import { TALENT_DUPLICATE_MESSAGE } from '@italent/domain';
 import { or } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
-import { requireVisible } from './access.js';
+import { requireCreatable } from './access.js';
 import type { DimensionCreate, DimensionPatch, SuggestionInput } from './input.js';
 import { loadDimension } from './read-model.js';
 import {
@@ -42,10 +42,10 @@ type Details = Pick<DimensionPatch, 'grades' | 'behaviors' | 'suggestions' | 'qu
 
 export async function createDimension(tx: Tx, ctx: WriteContext, input: DimensionCreate) {
   const library = await referenced(tx, ctx, 'library', input.libraryId);
-  requireVisible(ctx.scope, 'dimension', { orgId: library.orgId, ownerId: ctx.userId });
+  requireCreatable(ctx.scope, 'dimension', library.orgId);
   if (input.categoryId) await referencedCategory(tx, ctx, input.libraryId, input.categoryId);
   await requireUnique(tx, ctx.tenantId, input.libraryId, { code: input.code, name: input.name });
-  await checkSuggestionTypes(tx, ctx, input.suggestions, new Set());
+  await checkSuggestionTypes(tx, ctx, input.suggestions, []);
   const { grades, behaviors, suggestions, questions, ...fields } = input;
   const [row] = await duplicate(() =>
     tx
@@ -69,7 +69,7 @@ export async function updateDimension(tx: Tx, ctx: WriteContext, id: string, pat
   if (fields.name !== undefined && fields.name !== before.name) {
     await requireUnique(tx, ctx.tenantId, before.libraryId, { name: fields.name }, id);
   }
-  await checkSuggestionTypes(tx, ctx, suggestions, new Set(before.suggestions.map((item) => item.typeId)));
+  await checkSuggestionTypes(tx, ctx, suggestions, before.suggestions);
   await duplicate(() =>
     tx
       .update(D)
@@ -140,29 +140,39 @@ async function duplicate<T>(write: () => Promise<T>): Promise<T> {
 }
 
 /**
- * 发展建议的类型（DEC-281④）：须是本租户类型数据源里的类型；新选用的类型须已启用，指标上已有的类型即使停用也可保留。
- * 共享锁与删除类型串行（被引用的类型不能删除）。类型是下拉选项，不按类型字典的数据范围裁剪。
+ * 发展建议的类型（DEC-281④）：须是本租户类型数据源里的类型；新增行不能选用已停用的类型，已有行即使类型停用也可保留
+ * （#109③ 暂定口径）。发展建议按整组提交、行不带 ID，所以按“行数”区分新旧：某个停用类型在提交里的行数
+ * 不得超过指标上原有的该类型行数，多出来的就是新增行。共享锁与删除类型串行（被引用的类型不能删除）。
+ * 类型是下拉选项，不按类型字典的数据范围裁剪。
  */
 async function checkSuggestionTypes(
   tx: Tx,
   ctx: WriteContext,
   suggestions: readonly SuggestionInput[] | undefined,
-  existing: ReadonlySet<string>,
+  existing: readonly { readonly typeId: string }[],
 ) {
-  const ids = [...new Set((suggestions ?? []).map((item) => item.typeId))];
-  if (!ids.length) return;
+  const submitted = countByType(suggestions ?? []);
+  if (!submitted.size) return;
+  const ids = [...submitted.keys()];
   const result = await tx.execute(sql`SELECT id, enabled FROM talent_description_types
     WHERE tenant_id = ${ctx.tenantId} AND id = ANY(${`{${ids.join(',')}}`}::uuid[]) ORDER BY id FOR SHARE`);
   const found = new Map(rowsOf<{ id: string; enabled: boolean }>(result).map((row) => [row.id, row.enabled]));
-  for (const id of ids) {
+  const kept = countByType(existing);
+  for (const [id, count] of submitted) {
     const enabled = found.get(id);
-    if (enabled === undefined || (!enabled && !existing.has(id))) {
+    if (enabled === undefined || (!enabled && count > (kept.get(id) ?? 0))) {
       throw new AppError('VALIDATION_FAILED', '发展建议类型不存在或已停用', {
         reason: 'DESCRIPTION_TYPE_INVALID',
         typeId: id,
       });
     }
   }
+}
+
+function countByType(rows: readonly { readonly typeId: string }[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const row of rows) counts.set(row.typeId, (counts.get(row.typeId) ?? 0) + 1);
+  return counts;
 }
 
 /** 指标的四类明细：提交了哪组就整组替换哪组，未提交的保持不变。 */

@@ -13,6 +13,7 @@ import {
   isDictionary,
   type ModuleScope,
   type Owner,
+  requireCreatable,
   requireVisible,
   TALENT_AUDIT_ACTIONS,
   TALENT_LABELS,
@@ -84,15 +85,15 @@ export async function referenced(tx: Tx, ctx: WriteContext, object: TalentObject
 }
 
 /**
- * 新建对象的所属管理单元（DEC-281⑨）：组织须存在，且在操作人对该对象的管理单元范围内（范围外按不存在 404）；
- * 所属人为操作人本人。
+ * 新建对象的所属管理单元（DEC-281⑨）：组织须存在，且在操作人对该对象的管理单元范围内（范围外按不存在 404，
+ * 不因“使用用户”规则放行，DEC-082）；所属人为操作人本人。
  */
 export async function requireOwnerOrg(tx: Tx, ctx: WriteContext, object: TalentObject, orgId: string) {
   // 组织不做物理删除（停用只是新版本），存在性即可；外键兜底
   const result = await tx.execute(sql`SELECT id FROM org_objects WHERE tenant_id = ${ctx.tenantId}
     AND id = ${orgId}::uuid`);
   if (!rowsOf(result).length) throw new AppError('NOT_FOUND', '所属管理单元不存在');
-  requireVisible(ctx.scope, object, { orgId, ownerId: ctx.userId });
+  requireCreatable(ctx.scope, object, orgId);
 }
 
 /** 删除前的“还在使用”判断：有引用即 409，数据不变。 */

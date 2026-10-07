@@ -117,6 +117,14 @@ export function requireVisible(scope: ModuleScope, object: TalentObject, owner: 
   visible(scope, owner.orgId ?? undefined, `${TALENT_LABELS[object]}不存在`, owner.ownerId ?? null);
 }
 
+/**
+ * 新建授权（DEC-082，与职务模块新建同口径）：只按目标所属管理单元（组织）判定，不带所属人——“使用用户”规则只放行
+ * 本人已有记录的查看与修改，不放行新建；字典对象没有组织，只有看全部才能新建。范围外按不存在 404。
+ */
+export function requireCreatable(scope: ModuleScope, object: TalentObject, orgId: string | null | undefined): void {
+  visible(scope, orgId ?? undefined, `${TALENT_LABELS[object]}不存在`);
+}
+
 /** 同 requireVisible，但不抛错（嵌套内容按范围省略而不是整单 404）。 */
 function canSee(scope: ModuleScope, owner: Owner): boolean {
   try {

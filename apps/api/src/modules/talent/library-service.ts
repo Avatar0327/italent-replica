@@ -13,7 +13,7 @@ import {
   type Tx,
 } from '@italent/db';
 import { AppError } from '../../errors.js';
-import { requireVisible } from './access.js';
+import { requireCreatable } from './access.js';
 import type {
   DescriptionTypeCreate,
   DescriptionTypePatch,
@@ -93,7 +93,8 @@ export async function deleteLibrary(tx: Tx, ctx: WriteContext, id: string) {
 
 export async function createDimensionCategory(tx: Tx, ctx: WriteContext, input: DimensionCategoryCreate) {
   const library = await referenced(tx, ctx, 'library', input.libraryId);
-  requireVisible(ctx.scope, 'dimensionCategory', { orgId: library.orgId, ownerId: ctx.userId });
+  // 随所属库的管理单元：新建须在操作人分类范围内（DEC-082，不因“使用用户”放行）
+  requireCreatable(ctx.scope, 'dimensionCategory', library.orgId);
   const [row] = await tx
     .insert(talentDimensionCategories)
     .values({ tenantId: ctx.tenantId, ...input, ...owned(ctx, library.orgId!), ...created(ctx) })
@@ -136,7 +137,8 @@ export async function deleteDimensionCategory(tx: Tx, ctx: WriteContext, id: str
 // ---- 发展建议类型（字典：只认看全部或创建人） ----
 
 export async function createDescriptionType(tx: Tx, ctx: WriteContext, input: DescriptionTypeCreate) {
-  requireVisible(ctx.scope, 'descriptionType', { ownerId: ctx.userId });
+  // 字典没有组织：只有看全部才能新建（DEC-082 / DEC-121，与职务字典同口径）
+  requireCreatable(ctx.scope, 'descriptionType', null);
   const [row] = await uniqueName(() =>
     tx
       .insert(talentDescriptionTypes)
