@@ -858,7 +858,7 @@
 "prs": {
 "83": {
 "s": "active",
-"r": 8,
+"r": 3,
 "n": "DEC-246：第 8 轮先出设计（astra High 审）再结构性重写（astra Ultra 审）；DEC-247 #93 先合",
 "h": [
 [
@@ -2005,7 +2005,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 17:52",
+"liveUpdated": "10-07 17:55",
 "chains": [
 {
 "g": "exit",
@@ -2050,8 +2050,8 @@
 "k": "run",
 "pr": 83,
 "n": "组织变更联动任职",
-"seg": "ev:d ds:d4 dev:d2 rev:a2 mg:w",
-"now": "第 2 轮审查出结论，待读取",
+"seg": "ev:d ds:d4 dev:d3 rev:w3 mg:w",
+"now": "第 3 轮已推送（第 2 轮 5 组里 3 组已关闭），待开发报到 / 审查",
 "wait": "来源模型放哪由审查合并窗口判断",
 "fable": "1",
 "up": "10-07 调到 Max"
