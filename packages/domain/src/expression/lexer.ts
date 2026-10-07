@@ -1,6 +1,6 @@
 /**
  * 词法分析（REQ-EXP-001）：兼容原站公式文本——中文函数名与字段名、全角比较符 / 括号 / 逗号、
- * 以数字开头的对象名（360结果）、带连字符的字段名（问卷-他评总分）、百分比字面量（82%）。
+ * 以数字开头的对象名（360结果）、成员位置带连字符的字段名（问卷-他评总分）、百分比字面量（82%）。
  * 中文引号与无法识别的字符在这里报错并给出行列（复刻改进，`26` §8.1）。
  */
 import type { SourcePosition } from './failures.js';
@@ -209,16 +209,21 @@ class Scanner {
     this.push('number', text, Number(percent ? text.slice(0, -1) : text), start, percent || undefined);
   }
 
-  /** 标识符内的连字符：前后都是字母 / 汉字时算名字的一部分（问卷-他评总分），否则是减号（年度-1）。 */
+  /**
+   * 标识符内的连字符：只在对象成员位置（前一个 token 是“.”）且前后都是汉字时算名字的一部分
+   * （原站字段 360结果.问卷-他评总分）；其余位置一律是减号（a-b、年度-1、盘点对象.a-盘点对象.b）。
+   * 汉字成员名之间无空格相减（盘点对象.得分-盘点对象.基准）会被读成一个字段名，求值时提示加空格。
+   */
   private scanIdentifier(): void {
     const start = this.position();
+    const memberPosition = this.tokens.at(-1)?.kind === 'dot';
     let end = this.offset;
     while (end < this.source.length) {
       const ch = this.source[end]!;
       if (isIdentPart(ch)) end++;
-      else if (ch === '-' && isIdentStart(this.source[end - 1] ?? '') && isIdentStart(this.source[end + 1] ?? ''))
+      else if (ch === '-' && memberPosition && isCjk(this.source[end - 1] ?? '') && isCjk(this.source[end + 1] ?? '')) {
         end++;
-      else break;
+      } else break;
     }
     const text = this.source.slice(this.offset, end);
     this.advance(text.length);

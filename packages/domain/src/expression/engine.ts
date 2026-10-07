@@ -3,9 +3,11 @@
  * 失败一律以结构化结果返回（`26` §8.4），不抛未捕获异常。
  */
 import { walkProgram, type Program } from './ast.js';
-import type { BatchContext, EvaluationContext } from './context.js';
+import { isValidTimeZone } from '../tenant-time.js';
+import type { BatchContext, EvaluationCalendar, EvaluationContext } from './context.js';
+import { parseDateText } from './dates.js';
 import { Evaluator } from './evaluator.js';
-import { ComputationError, PARSER_MESSAGE, type ComputationFailure } from './failures.js';
+import { ComputationError, FAILURE_PREFIX, PARSER_MESSAGE, type ComputationFailure } from './failures.js';
 import { parseFormula } from './parser.js';
 import type { SyntaxIssue } from './lexer.js';
 import type { SubjectReader } from './ports.js';
@@ -86,12 +88,26 @@ export function evaluateFormula(formula: string | Program, context: EvaluationCo
   } else {
     program = formula;
   }
+  const invalidContext = validateContext(context.calendar);
+  if (invalidContext) return { ok: false, failure: invalidContext };
   try {
     return { ok: true, value: new Evaluator(context).run(program) };
   } catch (error) {
     if (error instanceof ComputationError) return { ok: false, failure: error.failure };
-    throw error;
+    // 兜底（astra 首审 P2-5）：任何未预期异常都只给结构化结果，不透出异常内容
+    return { ok: false, failure: { code: 'INTERNAL_ERROR', message: `${FAILURE_PREFIX}：内部错误` } };
   }
+}
+
+/** 计算上下文校验：时区须是合法 IANA 名，“今天”须是合法业务日期（DEC-056）。 */
+export function validateContext(calendar: EvaluationCalendar): ComputationFailure | undefined {
+  if (!isValidTimeZone(calendar.timeZone)) {
+    return { code: 'CONTEXT_INVALID', message: `${FAILURE_PREFIX}：计算上下文的时区不合法` };
+  }
+  if (parseDateText(calendar.today)?.precision !== 'date') {
+    return { code: 'CONTEXT_INVALID', message: `${FAILURE_PREFIX}：计算上下文的“今天”不是合法日期` };
+  }
+  return undefined;
 }
 
 // ---------- 计算项目：优先级 + 依赖拓扑（`26` §3.5 TR-R27） ----------
@@ -130,6 +146,18 @@ export type OrderingResult =
 
 const lastSegment = (path: string) => path.slice(path.lastIndexOf('.') + 1);
 
+/**
+ * 公式里的字段引用 → 计算项目的目标字段：完整路径精确匹配；不带对象前缀的短名只在**唯一**一个目标字段
+ * 以它结尾时匹配，有歧义则不匹配。依赖排序与批量求值的结果叠加共用本规则（astra 首审 P2-3）。
+ */
+export function resolveComputedField(ref: string, targets: Iterable<string>): string | undefined {
+  const all = [...targets];
+  if (all.includes(ref)) return ref;
+  if (ref.includes('.')) return undefined;
+  const candidates = all.filter((target) => lastSegment(target) === ref);
+  return candidates.length === 1 ? candidates[0] : undefined;
+}
+
 function parseItems(items: readonly ComputationItem[], registry: FunctionRegistry): OrderedItem[] | OrderingFailure {
   const targets = new Map(items.map((item) => [item.field, item]));
   const entries: OrderedItem[] = [];
@@ -146,13 +174,10 @@ function parseItems(items: readonly ComputationItem[], registry: FunctionRegistr
         offset: issue.offset,
       };
     }
+    // 自引用也保留：盘点对象.a = 盘点对象.a + 1 是循环依赖（astra 首审 P2-4）
     const dependsOn = validated.fields
-      .map((ref) =>
-        targets.has(ref)
-          ? ref
-          : [...targets.keys()].find((target) => lastSegment(target) === ref && !ref.includes('.')),
-      )
-      .filter((ref): ref is string => ref !== undefined && ref !== item.field);
+      .map((ref) => resolveComputedField(ref, targets.keys()))
+      .filter((ref): ref is string => ref !== undefined);
     entries.push({ item, program: validated.program, dependsOn: [...new Set(dependsOn)] });
   }
   return entries;
@@ -254,8 +279,10 @@ function toPlain(value: ExprValue): PlainValue {
 function withComputed(subject: SubjectReader, computed: Readonly<Record<string, ExprValue>>): SubjectReader {
   return {
     id: subject.id,
-    resolveField: (path) =>
-      Object.hasOwn(computed, path) ? { status: 'found', value: toPlain(computed[path]!) } : subject.resolveField(path),
+    resolveField: (path) => {
+      const target = resolveComputedField(path, Object.keys(computed));
+      return target === undefined ? subject.resolveField(path) : { status: 'found', value: toPlain(computed[target]!) };
+    },
   };
 }
 
@@ -297,6 +324,7 @@ export function evaluateBatch(
       const reader = withComputed(subject, computed.get(subject.id)!);
       const result = evaluateFormula(entry.program, {
         ...context,
+        registry,
         subject: reader,
         ports: { ...context.ports, ranking },
       });

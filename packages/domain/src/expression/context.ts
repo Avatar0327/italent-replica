@@ -19,14 +19,17 @@ export interface ProjectWindow {
   readonly endAt?: Date;
 }
 
-/** “最近一次”的时间口径（DEC-031）：默认盘点项目结束时间前，可改为开始时间前。 */
-export type LatestWindow = 'before_project_end' | 'before_project_start';
+/**
+ * 测评取数“最近一次”的时间口径（DEC-031）：默认盘点项目结束时间前，可改为开始时间前。
+ * 只作用于 LastestAssessmentCent；360 固定取项目结束时间前最近开始的活动（`26` §3.5 TR-R28）。
+ */
+export type AssessmentLatestWindow = 'before_project_end' | 'before_project_start';
 
 export interface EvaluationContext {
   readonly subject: SubjectReader;
   readonly calendar: EvaluationCalendar;
   readonly project?: ProjectWindow;
-  readonly latestWindow?: LatestWindow;
+  readonly assessmentLatestWindow?: AssessmentLatestWindow;
   readonly ports?: DataSourcePorts;
   readonly registry?: FunctionRegistry;
   readonly semantics?: ExpressionSemantics;

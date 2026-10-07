@@ -20,6 +20,10 @@ export const FAILURE_CODES = [
   'OUT_OF_SCOPE',
   'CYCLIC_DEPENDENCY',
   'DEPENDENCY_FAILED',
+  /** 计算上下文本身不合法（时区、今天）。 */
+  'CONTEXT_INVALID',
+  /** 公共边界兜底：未预期的异常，不透出内容。 */
+  'INTERNAL_ERROR',
 ] as const;
 
 export type FailureCode = (typeof FAILURE_CODES)[number];

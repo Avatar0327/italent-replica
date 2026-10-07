@@ -18,6 +18,12 @@ function numericText(raw: string, semantics: ExpressionSemantics): number | unde
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/** ToNumber(值) 函数的结果：空值按配置给 0 / 空 / 失败（待 Q-M0-95），其余同 toNumber。 */
+export function toNumberValue(value: ExprValue, semantics: ExpressionSemantics): ExprValue {
+  if (value.kind === 'empty' && semantics.toNumberOfEmpty === 'empty') return EMPTY;
+  return { kind: 'number', value: toNumber(value, semantics) };
+}
+
 /** ToNumber 语义：文本 / 百分比 / 是否 / 单选值可转，空值按配置，转不了报“转换出错”。 */
 export function toNumber(value: ExprValue, semantics: ExpressionSemantics): number {
   switch (value.kind) {
@@ -131,6 +137,11 @@ function comparable(value: ExprValue, other: ExprValue, semantics: ExpressionSem
       : value;
   const otherKind = other.kind === 'option' ? (typeof other.value === 'number' ? 'number' : 'text') : other.kind;
   if (plain.kind === 'text') {
+    // 两侧都是原站日期格式的文本（"2020/1/31"、"2020/01/01 00:00:00"、"2020/01"）时按日期比较（`26` §8.3）
+    if (other.kind === 'text' && parseDateText(other.value)) {
+      const parsed = parseDateText(plain.value);
+      if (parsed) return { kind: 'date', value: dateOrdinal(parsed) };
+    }
     if (otherKind === 'number' && semantics.textNumberEquality === 'loose') {
       const parsed = numericText(plain.value, semantics);
       if (parsed !== undefined) return { kind: 'number', value: parsed };

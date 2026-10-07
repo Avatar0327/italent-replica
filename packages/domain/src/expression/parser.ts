@@ -19,8 +19,14 @@ export type ParseResult =
 const DEF_NAMES = new Set(['def', '定义']);
 const COMPARISONS = new Set(['=', '!=', '<', '>', '<=', '>=']);
 
+/** 公式规模上限（astra 首审 P2-5）：超出直接报语法错误，避免解析 / 求值递归栈溢出。 */
+export const MAX_FORMULA_LENGTH = 4000;
+export const MAX_FORMULA_TOKENS = 800;
+export const MAX_NESTING_DEPTH = 100;
+
 class Parser {
   private index = 0;
+  private depth = 0;
 
   constructor(private readonly tokens: readonly Token[]) {}
 
@@ -92,8 +98,18 @@ class Parser {
     return { name: String(nameToken.value), value, pos: this.pos(start) };
   }
 
+  /** 括号、函数参数、如果、一元运算每进一层计一次深度。 */
+  private nested<T>(parse: () => T): T {
+    if (++this.depth > MAX_NESTING_DEPTH) this.error(`公式嵌套过深（超过 ${MAX_NESTING_DEPTH} 层）`);
+    try {
+      return parse();
+    } finally {
+      this.depth--;
+    }
+  }
+
   private parseExpr(): ExprNode {
-    return this.atKeyword('if') ? this.parseIf() : this.parseOr();
+    return this.nested(() => (this.atKeyword('if') ? this.parseIf() : this.parseOr()));
   }
 
   private parseIf(): ExprNode {
@@ -143,7 +159,7 @@ class Parser {
   private parseNot(): ExprNode {
     if (!this.atKeyword('not')) return this.parseComparison();
     const token = this.next();
-    return { type: 'logical', operator: 'not', operand: this.parseNot(), pos: this.pos(token) };
+    return { type: 'logical', operator: 'not', operand: this.nested(() => this.parseNot()), pos: this.pos(token) };
   }
 
   private parseComparison(): ExprNode {
@@ -177,7 +193,8 @@ class Parser {
   private parseUnary(): ExprNode {
     if (this.at('operator', '-') || this.at('operator', '+')) {
       const token = this.next();
-      return { type: 'unary', operator: token.value as '-' | '+', operand: this.parseUnary(), pos: this.pos(token) };
+      const operand = this.nested(() => this.parseUnary());
+      return { type: 'unary', operator: token.value as '-' | '+', operand, pos: this.pos(token) };
     }
     return this.parsePrimary();
   }
@@ -246,10 +263,25 @@ class Parser {
 
 /** 解析公式文本；语法错误以结构化结果返回（含行 / 列），不抛异常。 */
 export function parseFormula(source: string): ParseResult {
+  const origin = { line: 1, column: 1, offset: 0, length: 1 } as const;
+  if (source.length > MAX_FORMULA_LENGTH) {
+    return {
+      ok: false,
+      errors: [{ code: 'SYNTAX_ERROR', message: `公式过长（超过 ${MAX_FORMULA_LENGTH} 字符）`, ...origin }],
+    };
+  }
   try {
-    return { ok: true, program: new Parser(tokenize(source)).parseProgram() };
+    const tokens = tokenize(source);
+    if (tokens.length > MAX_FORMULA_TOKENS) {
+      return {
+        ok: false,
+        errors: [{ code: 'SYNTAX_ERROR', message: `公式过长（超过 ${MAX_FORMULA_TOKENS} 个词）`, ...origin }],
+      };
+    }
+    return { ok: true, program: new Parser(tokens).parseProgram() };
   } catch (error) {
     if (error instanceof SyntaxIssueError) return { ok: false, errors: [error.issue] };
-    throw error;
+    // 兜底（astra 首审 P2-5）：解析器不应再抛其他异常；万一出现也只给结构化结果，不透出内容
+    return { ok: false, errors: [{ code: 'SYNTAX_ERROR', message: '公式无法解析', ...origin }] };
   }
 }

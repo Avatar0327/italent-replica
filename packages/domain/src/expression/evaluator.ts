@@ -7,7 +7,7 @@ import type { EvaluationContext } from './context.js';
 import { instantToParts } from './dates.js';
 import { ComputationError, fail, type FailureCode } from './failures.js';
 import { arithmetic, compare, operandNumber, toCondition, toDate, toNumber, toText } from './operators.js';
-import { plainToValue, type SubjectReader } from './ports.js';
+import { plainToValue, type FieldLookup, type SubjectReader } from './ports.js';
 import {
   arityOf,
   createDefaultRegistry,
@@ -133,10 +133,20 @@ export class Evaluator {
       const record = scope.records[i]!;
       if (Object.hasOwn(record, path)) return record[path]!;
     }
-    const found = this.context.subject.resolveField(path);
+    const found = this.readSubjectField(path);
     if (found.status === 'found') return this.fromPlain(found.value);
     if (found.status === 'forbidden') return fail('FIELD_FORBIDDEN', `当前查看人无权读取字段 ${path}`);
-    return fail('UNKNOWN_FIELD', `找不到字段或变量 ${path}`);
+    const hint = path.includes('-') ? '（字段名含“-”；如果是减法，请在“-”两侧加空格）' : '';
+    return fail('UNKNOWN_FIELD', `找不到字段或变量 ${path}${hint}`);
+  }
+
+  /** 对象读取器是使用方代码：抛出的异常转成不透出内容的失败原因（astra 首审 P2-5）。 */
+  private readSubjectField(path: string): FieldLookup {
+    try {
+      return this.context.subject.resolveField(path);
+    } catch {
+      return fail('DATA_UNAVAILABLE', `读取字段 ${path} 时数据源出错`);
+    }
   }
 
   private call(node: CallNode, scope: Scope): ExprValue {
@@ -186,7 +196,7 @@ export class Evaluator {
       subjectId: this.context.subject.id,
       calendar: this.context.calendar,
       project: this.context.project,
-      latestWindow: this.context.latestWindow ?? 'before_project_end',
+      assessmentLatestWindow: this.context.assessmentLatestWindow ?? 'before_project_end',
       semantics: this.semantics,
       ports: this.context.ports,
       fromPlain: (value) => this.fromPlain(value),

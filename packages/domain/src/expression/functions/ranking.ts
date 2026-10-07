@@ -65,7 +65,7 @@ function ranking(call: FunctionCall): ExprValue {
   if (call.rawArgs[1]?.type !== 'field' && call.rawArgs[1]?.type !== 'identifier') {
     return call.fail('ARGUMENT_TYPE', '排序字段须是字段引用');
   }
-  const population = unwrapPort(call, 'ranking', call.env.ports?.ranking?.population());
+  const population = unwrapPort(call, 'ranking', () => call.env.ports?.ranking?.population());
   const self = population.find((subject) => subject.id === call.env.subjectId);
   if (!self) return call.fail('OUT_OF_SCOPE', '本人不在本次计算的人员范围内');
   const members = collectMembers(call, population);

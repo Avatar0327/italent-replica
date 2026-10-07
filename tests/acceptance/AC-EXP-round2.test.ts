@@ -16,7 +16,7 @@ import {
   type SubjectReader,
 } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
-import { CALENDAR, contextFor, PROJECT } from './AC-EXP-support.js';
+import { CALENDAR, contextFor } from './AC-EXP-support.js';
 
 const valueOf = (result: EvaluationResult) => (result.ok ? result.value : result.failure);
 const num = (value: number) => ({ kind: 'number', value });
@@ -68,9 +68,8 @@ describe('P2-2 两侧都是原站日期格式的文本时按日期比较（`26` 
 
   it('字段里的日期文本与字面量比较、与 Date 瞬时比较', () => {
     expect(run('盘点对象.入职日期 >= "2019/12/01"', { '盘点对象.入职日期': '2019/12/5' })).toEqual(bool(true));
-    expect(run('盘点对象.入职日期 = "2020/01/02"', { '盘点对象.入职日期': new Date('2020-01-01T20:00:00Z') })).toEqual(
-      bool(true),
-    );
+    const instant = { '盘点对象.入职日期': new Date('2020-01-01T20:00:00Z') };
+    expect(run('盘点对象.入职日期 >= "2020/01/02" 且 盘点对象.入职日期 < "2020/01/03"', instant)).toEqual(bool(true));
   });
 
   it('只有一侧是日期格式时仍按文本比较', () => {
@@ -134,15 +133,24 @@ describe('P2-4 直接自引用是循环依赖', () => {
 });
 
 describe('P2-5 公共边界只返回结构化结果，不抛异常、不透出内部错误', () => {
-  const deep = '('.repeat(3000) + '1' + ')'.repeat(3000);
+  const huge = '('.repeat(3000) + '1' + ')'.repeat(3000);
+  const deep = '('.repeat(150) + '1' + ')'.repeat(150);
 
-  it('嵌套过深：校验与求值都返回 SYNTAX_ERROR 并说明原因', () => {
-    const validated = validateFormula(deep);
-    expect(validated.ok).toBe(false);
-    if (!validated.ok)
-      expect(validated.errors[0]).toMatchObject({ code: 'SYNTAX_ERROR', message: expect.stringContaining('嵌套') });
-    expect(valueOf(evaluateFormula(deep, contextFor({})))).toMatchObject({ code: 'SYNTAX_ERROR' });
-    expect(orderComputationItems([item('盘点对象.a', 1, deep)])).toMatchObject({
+  it('嵌套过深 / 公式过长：校验与求值都返回 SYNTAX_ERROR 并说明原因', () => {
+    for (const [formula, reason] of [
+      [deep, '嵌套'],
+      [huge, '过长'],
+      ['-'.repeat(150) + '1', '嵌套'],
+      ['1' + ' + 1'.repeat(1000), '过长'],
+    ] as const) {
+      const validated = validateFormula(formula);
+      expect(validated.ok).toBe(false);
+      if (!validated.ok) {
+        expect(validated.errors[0]).toMatchObject({ code: 'SYNTAX_ERROR', message: expect.stringContaining(reason) });
+      }
+      expect(valueOf(evaluateFormula(formula, contextFor({})))).toMatchObject({ code: 'SYNTAX_ERROR' });
+    }
+    expect(orderComputationItems([item('盘点对象.a', 1, huge)])).toMatchObject({
       ok: false,
       failure: { code: 'SYNTAX_ERROR' },
     });

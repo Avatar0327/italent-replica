@@ -42,7 +42,7 @@ export interface FunctionEnvironment {
   readonly subjectId: string;
   readonly calendar: { readonly today: string; readonly timeZone: string };
   readonly project?: { readonly startAt?: Date; readonly endAt?: Date };
-  readonly latestWindow: 'before_project_end' | 'before_project_start';
+  readonly assessmentLatestWindow: 'before_project_end' | 'before_project_start';
   readonly semantics: ExpressionSemantics;
   readonly ports?: DataSourcePorts;
   readonly fromPlain: (value: PlainValue) => ExprValue;

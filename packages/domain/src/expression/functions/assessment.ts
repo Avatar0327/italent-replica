@@ -12,8 +12,8 @@ export const ASSESSMENT_OBJECTS = ['测验信息', '测验结果'] as const;
 function latestAssessment(call: FunctionCall): ExprValue {
   const scoreField = requireFieldOf(call, call.rawArgs[0], ASSESSMENT_OBJECTS, '分数字段');
   const filters = call.rawArgs.slice(1);
-  const rows = unwrapPort(call, 'assessment', call.env.ports?.assessment?.records(call.env.subjectId));
-  const boundary = latestBoundary(call);
+  const rows = unwrapPort(call, 'assessment', () => call.env.ports?.assessment?.records(call.env.subjectId));
+  const boundary = latestBoundary(call, 'assessment');
   const candidates = rows
     .map((row) => ({ row, record: prefixedFields(call, ASSESSMENT_OBJECTS, row.fields) }))
     .filter(({ row, record }) => withinBoundary(row.testedAt, boundary) && matchesAll(call, filters, record))

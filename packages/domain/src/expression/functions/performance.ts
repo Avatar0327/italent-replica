@@ -23,7 +23,7 @@ const PREFIXES = [PERFORMANCE_FIELDS.object] as const;
 const filterParam = (name: string, required: boolean, variadic = false) => ({ name, required, variadic });
 
 function records(call: FunctionCall): readonly PerformanceRecord[] {
-  return unwrapPort(call, 'performance', call.env.ports?.performance?.records(call.env.subjectId));
+  return unwrapPort(call, 'performance', () => call.env.ports?.performance?.records(call.env.subjectId));
 }
 
 function lastModified(rows: readonly PerformanceRecord[]): PerformanceRecord | undefined {

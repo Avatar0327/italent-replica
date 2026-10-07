@@ -11,7 +11,7 @@ import { average, unwrapPort } from './shared.js';
 const param = (name: string, required = true) => ({ name, required });
 
 function modules(call: FunctionCall): readonly ReviewModule[] {
-  return unwrapPort(call, 'review', call.env.ports?.review?.modules(call.env.subjectId));
+  return unwrapPort(call, 'review', () => call.env.ports?.review?.modules(call.env.subjectId));
 }
 
 function moduleNamed(call: FunctionCall, index: number): ReviewModule | undefined {

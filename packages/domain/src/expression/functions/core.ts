@@ -1,7 +1,7 @@
 /**
  * 通用函数（`26` §8.1）：类型转换、判空、聚合、数值与文本。
  */
-import { operandNumber } from '../operators.js';
+import { operandNumber, toNumberValue } from '../operators.js';
 import type { FunctionCall, FunctionSpec } from '../registry.js';
 import { EMPTY, type ExprValue } from '../values.js';
 import { average } from './shared.js';
@@ -37,7 +37,7 @@ export const CORE_FUNCTIONS: readonly FunctionSpec[] = [
     aliases: ['转换为数字', '转换为数值'],
     params: [param('值')],
     description: '文本 / 百分比 / 是否 / 单选值转数值；空值按语义配置（待 Q-M0-95）',
-    implement: (call) => ({ kind: 'number', value: call.toNumber(call.args[0] ?? EMPTY) }),
+    implement: (call) => toNumberValue(call.args[0] ?? EMPTY, call.env.semantics),
   },
   {
     name: 'ToText',

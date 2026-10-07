@@ -1,6 +1,6 @@
 /**
  * 360 取数（`26` §3.5 TR-R28、§8.1）：Lastest360Cent(分数字段, 过滤表达式…)。
- * “最近一次” = 时间上界前最近开始的 360 活动（默认盘点项目结束时间前，DEC-031 口径参数）。
+ * “最近一次” = 盘点项目结束时间前最近开始的 360 活动（TR-R28，固定口径；DEC-031 的窗口参数只作用于测评）。
  */
 import type { FunctionCall, FunctionSpec } from '../registry.js';
 import type { Survey360Record } from '../ports.js';
@@ -13,8 +13,8 @@ const PREFIXES = [SURVEY360_OBJECT] as const;
 function latest360(call: FunctionCall): ExprValue {
   const scoreField = requireFieldOf(call, call.rawArgs[0], PREFIXES, '分数字段');
   const filters = call.rawArgs.slice(1);
-  const rows = unwrapPort(call, 'survey360', call.env.ports?.survey360?.records(call.env.subjectId));
-  const boundary = latestBoundary(call);
+  const rows = unwrapPort(call, 'survey360', () => call.env.ports?.survey360?.records(call.env.subjectId));
+  const boundary = latestBoundary(call, 'survey360');
   const candidates = rows
     .map((row) => ({ row, record: prefixedFields(call, PREFIXES, row.fields) }))
     .filter(({ row, record }) => withinBoundary(row.startAt, boundary) && matchesAll(call, filters, record));

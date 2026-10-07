@@ -14,7 +14,13 @@ export type {
   Program,
 } from './ast.js';
 export { walk, walkProgram } from './ast.js';
-export type { BatchContext, EvaluationCalendar, EvaluationContext, LatestWindow, ProjectWindow } from './context.js';
+export type {
+  AssessmentLatestWindow,
+  BatchContext,
+  EvaluationCalendar,
+  EvaluationContext,
+  ProjectWindow,
+} from './context.js';
 export { dateAdd, dateDiff, formatDate, instantToParts, parseDateText, type DateUnit } from './dates.js';
 export {
   evaluateBatch,
