@@ -68,8 +68,11 @@ describe('AC-EXP-07 绩效取数：同年同周期取最后修改；PerformanceL
 });
 
 describe('AC-EXP-08 360 与测评：最近一次的时间口径', () => {
+  /** DEC-262②：360 行须带结束时间与报告生成时间（已结束、报告已生成）；这里统一取开始后 7 天结束、第 8 天出报告。 */
   const row = (startAt: string, fields: Record<string, string | number | null>) => ({
     startAt: new Date(startAt),
+    endAt: new Date(new Date(startAt).getTime() + 7 * 86_400_000),
+    reportGeneratedAt: new Date(new Date(startAt).getTime() + 8 * 86_400_000),
     fields,
   });
   const assessment = (testedAt: string, fields: Record<string, string | number | null>) => ({
@@ -131,7 +134,7 @@ describe('AC-EXP-08 360 与测评：最近一次的时间口径', () => {
   const run = (formula: string, extra: Partial<EvaluationContext> = {}) =>
     valueOf(evaluateFormula(formula, { ...contextFor({}, { ports }), ...extra }));
 
-  it('Lastest360Cent：取盘点项目结束时间前最近开始的活动，分数字段 + 过滤表达式', () => {
+  it('Lastest360Cent：取盘点项目结束时间前已结束且报告已生成的最近一次活动（DEC-262②），分数字段 + 过滤表达式', () => {
     expect(run('获取最近一次360总分(360结果.角色得分, 360结果.套卷名称="GLD套卷", 360结果.角色名称="上级")')).toEqual({
       kind: 'number',
       value: 4.2,
@@ -180,9 +183,9 @@ describe('AC-EXP-09 Ranking：百分位 / 排序号、排序字段、人员范�
     });
   });
 
-  it('百分位：按小数返回（名次之后占比）', () => {
-    expect(run('Ranking("百分位", 盘点对象.综合得分)', 'd')).toEqual({ kind: 'number', value: 0.2 });
-    expect(run('Ranking("百分位", 盘点对象.综合得分)', 'e')).toEqual({ kind: 'number', value: 1 });
+  it('百分位：名次 ÷ 范围人数 × 100，越靠前越小（🟡 DEC-262①，本租户 ToNumber(aa)<=20 → 3 的写法；#105）', () => {
+    expect(run('Ranking("百分位", 盘点对象.综合得分)', 'd')).toEqual({ kind: 'number', value: 100 });
+    expect(run('Ranking("百分位", 盘点对象.综合得分)', 'e')).toEqual({ kind: 'number', value: 20 });
   });
 
   it('范围外人员：失败原因 OUT_OF_SCOPE', () => {

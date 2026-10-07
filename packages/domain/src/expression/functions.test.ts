@@ -37,7 +37,7 @@ describe('函数注册表', () => {
       expect.arrayContaining([
         'Abs',
         'Average',
-        'Concat',
+        'Concatenate',
         'Contains',
         'CountJudgesWithResult',
         'CountModulesWithResult',
@@ -91,7 +91,8 @@ describe('类型转换', () => {
     expect(run('ToNumber(真)')).toEqual(num(1));
     expect(run('ToNumber(盘点对象.x)', { '盘点对象.x': { optionValue: '3', label: '高' } })).toEqual(num(3));
     expect(run('ToNumber(盘点对象.x)', { '盘点对象.x': null })).toEqual(num(0));
-    expect(run('ToNumber("abc")')).toMatchObject({ code: 'TYPE_CONVERSION' });
+    // DEC-265：原站 ToNumber("abc") = 0（`26` §8.7）
+    expect(run('ToNumber("abc")')).toEqual(num(0));
   });
   it('ToText / 转换为文本（别名 ToString）', () => {
     expect(run('ToText(12)')).toEqual(text('12'));
@@ -140,7 +141,7 @@ describe('数值与聚合', () => {
 });
 
 describe('文本', () => {
-  it('Length / 长度、Contains / 包含、Concat / 连接', () => {
+  it('Length / 长度、Contains / 包含、Concatenate / Concat / 连接', () => {
     expect(run('Length("北森")')).toEqual(num(2));
     expect(run('长度("")')).toEqual(num(0));
     expect(run('Contains("人才盘点", "盘点")')).toEqual(bool(true));

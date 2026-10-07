@@ -226,13 +226,24 @@ describe('P2-5 公共边界只返回结构化结果，不抛异常、不透出�
   });
 });
 
-describe('P2-6 360 固定取项目结束时间前最近开始的活动；DEC-031 的窗口参数只作用于测评', () => {
+describe('P2-6 360 固定取项目结束时间前最近一次（DEC-262② 起按结束时间）；DEC-031 的窗口参数只作用于测评', () => {
   const project = { startAt: new Date('2026-08-31T16:00:00Z'), endAt: new Date('2026-09-30T16:00:00Z') };
   const ports: InMemoryPortData = {
     survey360: {
       'emp-1': [
-        { startAt: new Date('2026-08-10T00:00:00Z'), fields: { 套卷名称: 'S', 角色名称: '上级', 角色得分: 60 } },
-        { startAt: new Date('2026-09-15T00:00:00Z'), fields: { 套卷名称: 'S', 角色名称: '上级', 角色得分: 90 } },
+        // DEC-262②：只取已结束且报告已生成的活动
+        {
+          startAt: new Date('2026-08-10T00:00:00Z'),
+          endAt: new Date('2026-08-20T00:00:00Z'),
+          reportGeneratedAt: new Date('2026-08-21T00:00:00Z'),
+          fields: { 套卷名称: 'S', 角色名称: '上级', 角色得分: 60 },
+        },
+        {
+          startAt: new Date('2026-09-15T00:00:00Z'),
+          endAt: new Date('2026-09-25T00:00:00Z'),
+          reportGeneratedAt: new Date('2026-09-26T00:00:00Z'),
+          fields: { 套卷名称: 'S', 角色名称: '上级', 角色得分: 90 },
+        },
       ],
     },
     assessment: {

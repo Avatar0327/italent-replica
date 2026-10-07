@@ -123,7 +123,14 @@ describe('原站连字符字段按完整字段读取，不误报循环', () => {
   it('360结果.问卷-他评总分 在取数函数里按记录字段读取，保存校验不按对象字段目录误报', () => {
     const data: InMemoryPortData = {
       survey360: {
-        e1: [{ startAt: new Date('2026-09-10T00:00:00Z'), fields: { '问卷-他评总分': 4.2, 角色名称: '上级' } }],
+        e1: [
+          {
+            startAt: new Date('2026-09-10T00:00:00Z'),
+            endAt: new Date('2026-09-20T00:00:00Z'),
+            reportGeneratedAt: new Date('2026-09-21T00:00:00Z'),
+            fields: { '问卷-他评总分': 4.2, 角色名称: '上级' },
+          },
+        ],
       },
     };
     const formula = 'Lastest360Cent(360结果.问卷-他评总分, 360结果.角色名称="上级")';
