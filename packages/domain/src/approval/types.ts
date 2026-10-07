@@ -7,9 +7,10 @@ import { MODULE_OBJECTS } from '../permission/module-actions.js';
 import { PERSONNEL_OBJECT } from '../personnel/catalog.js';
 import { EMPLOYEE_EDITABLE_FIELDS, SUBSETS, type SubsetKind } from '../personnel/fields.js';
 
-/** 首版五种审批人表达式（REQ-APV-002「首版最小表达式集」）。 */
+/** 审批人表达式（REQ-APV-002；F-028 / DEC-230 新增「直接上级」）。 */
 export const APPROVER_EXPRESSIONS = [
   'owner', // 流程所有者（发起人）
+  'direct_manager', // 直接上级：流程主体员工 → 最新生效主职任职记录 → 直线经理（DEC-230）
   'latest_record_department_head', // 人员 → 最新任职记录 → 部门 → 负责人（调出方）
   'record_department_head', // 本条任职记录 → 部门 → 负责人（调入方）
   'record_department_hrbp', // 本条任职记录 → 部门 → HRBP

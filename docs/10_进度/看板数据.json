@@ -1,9 +1,9 @@
 {
 "updated": "2026-10-07",
 "stats": {
-"merged": 47,
-"open": 8,
-"dec": 234,
+"merged": 48,
+"open": 7,
+"dec": 240,
 "ev": "19/102"
 },
 "tasks": {
@@ -654,7 +654,7 @@
 "F-026": {
 "n": "非严格控编下重叠调入超编时提示（R1 验收 OBS-03，违反 AC-EST-02）",
 "p": "R1-T09",
-"s": "review",
+"s": "active",
 "dev": "Codex",
 "rev": "Codex",
 "pr": [
@@ -668,27 +668,35 @@
 "F-027": {
 "n": "审批中心前端：我的待办 / 已办、单据详情（按节点盲审裁剪）、同意 / 驳回 / 转交 / 加签 / 催办",
 "p": "R1-T07",
-"s": "active",
+"s": "review",
 "dev": "Codex",
-"rev": "Codex",
-"note": "Codex 开发（GPT-6.1 Sol，Ultra，DEC-233 已投递）；DEC-233 本 PR 补两个只读接口；DEC-229；F-025 发现复刻前端缺审批中心页面"
+"rev": "Opus",
+"note": "Codex 开发（GPT-6.1 Sol，Ultra，DEC-233 已投递）；DEC-233 本 PR 补两个只读接口；DEC-229；F-025 发现复刻前端缺审批中心页面",
+"pr": [
+97
+]
 },
 "F-028": {
 "n": "审批人表达式新增“直接上级”（无经理时按 DEC-098 处理）",
 "p": "R1-T07",
-"s": "review",
+"s": "done",
 "dev": "Codex",
 "rev": "Codex",
 "pr": [
 98
 ],
-"note": "Codex 开发中（GPT-6 Astra High）；DEC-230；演示流程暂用部门负责人近似直接上级"
+"note": "DEC-230；astra High 首审可以合并 + Sol Ultra 最终复查后合并（449afc1）"
 },
 "F-029": {
 "n": "员工本人跨部门调动时，新记录的职位自动置空（照原站）",
 "p": "R1-T13",
-"s": "todo",
-"note": "待你定开发方（总编排会问）；DEC-232（D-061，Q-M0-101）"
+"s": "review",
+"note": "待你定开发方（总编排会问）；DEC-232（D-061，Q-M0-101）",
+"pr": [
+99
+],
+"dev": "Codex",
+"rev": "Opus"
 },
 "F-011": {
 "n": "新建职位 / 改所属组织按整段校验组织停用",
@@ -750,17 +758,38 @@
 "n": "首审 3 P2（改期跨过转正；待入职记录混用当前任职；删除审计用了初始状态）；第二轮修改中，含 DEC-231（转正记录禁止删除，有意差异）、DEC-234（实习生人员状态照原站：实习转正按入职处理默认正式，存量实习生回填为正式）、迁移顺延到 0061；排在 #83 之后合并"
 },
 "96": {
-"s": "review",
-"r": 1,
-"n": "Codex 开发（Astra High）；f3a76cd astra 首审中"
+"s": "active",
+"r": 2,
+"n": "第二轮已推送 c19d2fb，CI 中；停下后开「F-026 审查」会话做 Opus 第 2 轮"
 },
-"98": {
+"97": {
 "s": "review",
 "r": 1,
-"n": "Codex 开发（Astra High）；a62eab5 astra 首审中"
+"n": "Codex-Sol（Sol Ultra）开发；首轮 Opus 5.5 High 在「F-027 审查」会话（claude.ai/code session_01CdJqvz…）"
+},
+"99": {
+"s": "review",
+"r": 1,
+"n": "Codex-Sol（Sol High）开发；首轮 Opus 5.5 High 在「F-029 审查」会话（claude.ai/code session_01APQqcc…）"
 }
 },
 "log": [
+[
+"10-07",
+"合并 PR #98（F-028 审批人“直接上级”，astra 首审 + Sol Ultra 最终复查）"
+],
+[
+"10-07",
+"DEC-240：Opus 审查改为 claude.ai/code 单开「编号 审查」会话、多轮续审，删除 reviewer-opus；F-027、F-029 审查会话已开"
+],
+[
+"10-07",
+"DEC-235～239 审查与流程整包登记（派发规则 §7）；#98 F-028 astra 首审可以合并，待 Sol Ultra 最终复查；#96 F-026 首审 2 P2 进入第二轮"
+],
+[
+"10-07",
+"审查规则改为模型错开（Opus→Sol Ultra、Fable→astra Ultra、Astra→Opus），合并前复查用 astra Ultra；默认决策规则生效；进度窗口启用 GitHub 自动监控；F-027 开出 #97、F-029 开出 #99"
+],
 [
 "10-07",
 "看板改版：全景依赖图置顶、任务明细改为可折叠多维表、统计口径说明、动态改为密排小字；待处理事项改为随更新发到进度窗口"
