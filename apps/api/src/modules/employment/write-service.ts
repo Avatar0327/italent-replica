@@ -94,6 +94,7 @@ export async function createEmploymentBusiness(
   options: CreateEmploymentOptions = {},
 ): Promise<EmploymentBusiness> {
   const normalized = normalizeEmploymentInput(ctx, input);
+  ctx = { ...ctx, establishmentConfirmed: normalized.confirmed ?? false };
   if (normalized.kind === 'transfer')
     await lockTransferParticipants(tx, ctx, employeeId, normalized.fields.addedSubordinateIds ?? []);
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
@@ -170,7 +171,7 @@ async function initializeEmploymentBusiness(
     createdAt: ctx.now.toISOString(),
   });
   if (options.withEstablishment && normalized.kind === 'transfer')
-    await carryEstablishment(tx, ctx, id, normalized.effectiveDate, source, fields);
+    await carryEstablishment(tx, ctx, id, normalized.effectiveDate, source, fields, options.establishmentWarnings);
   await assertEstablishmentCapacity(
     tx,
     ctx,
@@ -196,6 +197,11 @@ export async function updateEmploymentBusiness(
   options: { readonly approvalEdit?: boolean } = {},
 ): Promise<EmploymentBusiness> {
   const patch = normalizeBusinessPatch(input);
+  ctx = {
+    ...ctx,
+    establishmentConfirmed: patch.confirmed ?? false,
+    establishmentConfirmationExempt: options.approvalEdit === true,
+  };
   const business = await lockEmploymentBusiness(tx, ctx, id);
   await requireEmployeeTransferBusiness(tx, ctx, id, patch);
   // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。

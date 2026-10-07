@@ -58,6 +58,7 @@ const customFields = z
   .refine((value) => Object.keys(value).length <= 200, '自定义字段最多 200 项');
 const formId = z.string().trim().min(1).max(100);
 const businessSchema = z.strictObject({
+  confirmed: z.boolean().optional(),
   kind: z.enum(BUSINESS_KINDS),
   mode: z.enum(['direct', 'application']),
   effectiveDate: date.optional(),
@@ -67,6 +68,7 @@ const businessSchema = z.strictObject({
   customFields: customFields.default({}),
 });
 const patchSchema = z.strictObject({
+  confirmed: z.boolean().optional(),
   effectiveDate: date.optional(),
   lastWorkDate: date.nullable().optional(),
   fields: presetFieldsSchema.optional(),

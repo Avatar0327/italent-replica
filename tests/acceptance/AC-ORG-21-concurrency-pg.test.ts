@@ -169,9 +169,10 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-ORG-21 真 PG 停用�
     const release = signal();
     const original = capacity.assertEstablishmentCapacity;
     vi.spyOn(capacity, 'assertEstablishmentCapacity').mockImplementationOnce(async (...args) => {
-      await original(...args);
+      const assessment = await original(...args);
       reached.resolve();
       await release.promise;
+      return assessment;
     });
     const [submitted, disabled] = await interleave(w.db, w.submit, w.disable, reached, release);
     expect(submitted.status, await submitted.clone().text()).toBe(200);

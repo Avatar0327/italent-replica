@@ -58,6 +58,8 @@ export async function editEmploymentRecord(
   options: { forwardUpdate?: boolean; linkageDate?: string; establishmentWarnings?: EstablishmentWarning[] } = {},
 ) {
   const patch = normalizeBusinessPatch(input);
+  ctx = { ...ctx, establishmentConfirmed: patch.confirmed ?? ctx.establishmentConfirmed ?? false };
+  const warnings = options.establishmentWarnings ?? (entry === 'import' ? [] : undefined);
   await lockTransferBusiness(tx, ctx, id);
   const business = await lockEmploymentBusiness(tx, ctx, id);
   const today = tenantLocalDate(ctx.now, ctx.timezone);
@@ -84,7 +86,13 @@ export async function editEmploymentRecord(
     )
     .map(([field, value]) => ({ field, before: beforeAudit[field as keyof typeof beforeAudit] ?? null, after: value }));
   if (!changes.length) return requireSavedBusiness(tx, ctx, id);
-  if (await affectsEstablishmentOccupancy(tx, ctx, record.fields, after.fields, record.effectiveDate))
+  if (
+    await affectsEstablishmentOccupancy(tx, ctx, record.fields, after.fields, {
+      businessId: id,
+      employeeId: record.employeeId,
+      effectiveDate: record.effectiveDate,
+    })
+  )
     await assertEstablishmentCapacity(
       tx,
       ctx,
@@ -97,7 +105,7 @@ export async function editEmploymentRecord(
         departmentId: after.fields.departmentId,
         positionId: after.fields.positionId,
       },
-      entry === 'import' ? (options.establishmentWarnings ?? []) : undefined,
+      warnings,
     );
   business.payload = await appendForwardPayload(tx, ctx, business.payload, after, id, true, changes);
   await auditEmployment(tx, ctx, 'employment.record.edit', 'employment-record', id, beforeAudit, afterAudit);
@@ -109,7 +117,7 @@ export async function editEmploymentRecord(
       effectiveDate: record.effectiveDate,
       before: record,
       after,
-      establishmentWarnings: entry === 'import' ? (options.establishmentWarnings ?? []) : undefined,
+      establishmentWarnings: warnings,
     });
   }
   if (record.effectiveDate > today)

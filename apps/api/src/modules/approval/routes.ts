@@ -19,6 +19,7 @@ import { handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { registerEmploymentApprovalHooks } from '../employment/approval-hooks.js';
+import { reversalWarning, type ReversalWarning } from '../establishment/reversal-hints.js';
 import { pageQuery, parseBody, revision, uuidParam as rawUuidParam } from '../job/context.js';
 import {
   getModuleViewableFields,
@@ -346,15 +347,19 @@ function registerTenantConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
       toUserId: input.toUserId,
       ...(input.cursor ? { cursor: input.cursor } : {}),
     };
-    const result = await command(c, deps, ctx, input, async (tx, context) => ({
-      status: 200,
-      body: await handoverExceptionAdmin(tx, context, handover, scopeSql),
-    }));
-    // R4-1：幂等重放返回台账里的首次结果，其中的实例编号按调用者当前的范围重新裁剪（不重新执行交接）。
+    // DEC-284②：台账只存处理状态；超编提示在本次实际执行时才附加（通用文案），重放不再带首次提示。
+    let warning: ReversalWarning | null = null;
+    const result = await command(c, deps, ctx, input, async (tx, context) => {
+      const body = await handoverExceptionAdmin(tx, context, handover, scopeSql);
+      // DEC-273 / 284①：合席结算回退造成超编时附一条不阻断的通用提示，不带任何具体信息。
+      warning = await reversalWarning(tx, context, context.commandId);
+      return { status: 200, body };
+    });
+    // R4-1：幂等重放返回台账里的处理状态，其中的实例编号按调用者当前的范围重新裁剪（不重新执行交接）。
     const body = await withTenant(deps.db, ctx.tenantId, (tx) =>
       discloseHandover(tx, ctx, result.body as HandoverResult, scopeSql),
     );
-    return c.json(body, result.status);
+    return c.json(warning ? { ...body, establishmentWarning: warning } : body, result.status);
   });
   router.post('/presets/install', async (c) => {
     const ctx = writeCtx(c, deps);
@@ -470,8 +475,14 @@ async function fieldRights(c: C, deps: TenantRouteDeps, taskId: string, edits: R
 const comment = z.string().trim().max(2000).nullable().optional();
 const fields = z.record(z.string().max(100), z.unknown());
 
+/** DEC-258：驳回 / 不同意 / 撤回使原部门超编时按现有确认协议重提；confirmed 只透传到任职状态机，不改审批规则。 */
+const establishmentConfirmation = z.boolean().optional();
+function confirmedCtx(ctx: ApprovalContext, confirmed: boolean | undefined): ApprovalContext {
+  return confirmed === undefined ? ctx : { ...ctx, establishmentConfirmed: confirmed };
+}
+
 function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  const decision = z.strictObject({ comment, fields: fields.optional() });
+  const decision = z.strictObject({ comment, fields: fields.optional(), confirmed: establishmentConfirmation });
   for (const [path, act] of [
     ['approve', approveTask],
     ['disagree', disagreeTask],
@@ -483,7 +494,13 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const input = await parseBody(c, decision);
       const viewable = await fieldRights(c, deps, taskId, input.fields);
       const request = { taskId, comment: input.comment ?? null, ...(input.fields ? { fields: input.fields } : {}) };
-      const result = await command(c, deps, ctx, request, (tx, context) => act(tx, context, request, viewable));
+      const result = await command(
+        c,
+        deps,
+        confirmedCtx(ctx, input.confirmed),
+        { ...request, ...(input.confirmed === undefined ? {} : { confirmed: input.confirmed }) },
+        (tx, context) => act(tx, context, request, viewable),
+      );
       return respondOutcome(c, deps, result);
     });
   }
@@ -568,7 +585,14 @@ function registerInstanceRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       const ctx = writeCtx(c, deps);
       const id = uuidParam(c);
       if (path === 'withdraw') await requireWithdrawRight(deps, ctx, id);
-      const result = await command(c, deps, ctx, { id }, (tx, context) => act(tx, context, id));
+      // DEC-258：发起人撤回使原部门超编时可带 confirmed 重提；催办不接受请求体参数。
+      const input =
+        path === 'withdraw' && c.req.header('content-type')
+          ? await parseBody(c, z.strictObject({ confirmed: establishmentConfirmation }))
+          : {};
+      const result = await command(c, deps, confirmedCtx(ctx, input.confirmed), { id, ...input }, (tx, context) =>
+        act(tx, context, id),
+      );
       return respondOutcome(c, deps, result);
     });
   }

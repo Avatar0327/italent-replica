@@ -45,6 +45,11 @@ it.each([false, true])('DEC-195 两笔迟到带编调动按原计划日、操作
 
 it('DEC-186 迟到跨年：原周期反向调整，实际执行日所属周期增减', async () => {
   const w = await carriedWorld(database().db, 'carried-cross-year');
+  // F-026：先保存/审批，再配置下一年容量；验证迟到跨期时重新调编，不绕过保存时区间检查。
+  const response = await w.save(await w.hired(), { mode: 'application', submit: true, effectiveDate: '2026-12-31' });
+  expect(response.status, await response.clone().text()).toBe(201);
+  const business = (await response.json()) as { id: string };
+  await w.approve(business, '2026-10-02T01:00:00Z');
   const nextCapacities: string[] = [];
   for (const [orgId, positionId, localCapacity] of [
     [w.from.id, w.sourcePosition, 2],
@@ -61,10 +66,6 @@ it('DEC-186 迟到跨年：原周期反向调整，实际执行日所属周期�
     expect(response.status, await response.clone().text()).toBe(201);
     nextCapacities.push(((await response.json()) as { id: string }).id);
   }
-  const response = await w.save(await w.hired(), { mode: 'application', submit: true, effectiveDate: '2026-12-31' });
-  expect(response.status, await response.clone().text()).toBe(201);
-  const business = (await response.json()) as { id: string };
-  await w.approve(business, '2026-10-02T01:00:00Z');
   expect(await w.runScheduler('2027-01-02T01:00:00Z')).toMatchObject({
     activated: [business.id],
     failed: [],

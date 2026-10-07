@@ -95,6 +95,8 @@ export async function handoverExceptionAdmin(
   scope: SQL | null,
 ): Promise<HandoverResult> {
   assertRevision(ctx.expectedRevision, 0);
+  // DEC-273：交接合席重新结算属服务端间接触发，回退超编只记警告、不要求确认。
+  ctx = { ...ctx, establishmentReversalOrigin: 'admin-handover' };
   if (input.fromUserId === input.toUserId) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '替代人不能是原异常管理员本人');
   }
@@ -364,6 +366,8 @@ export async function takeOverOnDeactivation(
     now: deps.clock(),
     commandId,
     expectedRevision: 0,
+    // DEC-273：撤权立即生效；接管合席结算的回退超编只记警告、不要求确认。
+    establishmentReversalOrigin: 'membership-revocation',
   };
   const successor = await designatedSuccessor(tx, tenantId, userId);
   const successorScope = successor

@@ -94,7 +94,18 @@ export function emptyPresetFields(): PresetFields {
 
 export type EmploymentScope = Awaited<ReturnType<typeof resolveModuleScope>>;
 
+export type EstablishmentReversalOrigin = 'membership-revocation' | 'admin-handover';
+
 export interface EmploymentContext {
+  /** 单次交互命令的确认；缺省未确认，不放宽严格控编及权限检查。 */
+  readonly establishmentConfirmed?: boolean;
+  /** 仅可信审批编辑/推进设置；调度另由 deferredExecution 标记。客户端不能传入。 */
+  readonly establishmentConfirmationExempt?: boolean;
+  /**
+   * DEC-273：服务端间接触发的回退来源（撤权 / 停用 / 移出成员的接管合席、异常管理员交接合席）。设置后回退造成的
+   * 超编不要求确认、不阻断，只记超编警告审计并由调用方附不阻断提示；显式入口不得设置。
+   */
+  readonly establishmentReversalOrigin?: EstablishmentReversalOrigin;
   /** 本人自助路由重验账号绑定后设置；仅用于同表单的字段权限继承策略。 */
   readonly selfServiceEmployeeId?: string;
   readonly managerTransfer?: boolean;
@@ -121,6 +132,7 @@ export interface EmploymentContext {
 }
 
 export interface EmploymentBusinessInput {
+  readonly confirmed?: boolean;
   readonly kind: BusinessKind;
   readonly mode: 'direct' | 'application';
   readonly effectiveDate?: string;
@@ -139,6 +151,7 @@ export interface NormalizedEmploymentInput extends EmploymentBusinessInput {
 }
 
 export interface EmploymentBusinessPatch {
+  readonly confirmed?: boolean;
   readonly effectiveDate?: string;
   readonly lastWorkDate?: string | null;
   readonly fields?: Partial<PresetFields>;

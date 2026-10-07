@@ -195,6 +195,8 @@ export async function requireEmploymentWrite(
     await requirePermission(ctx.authorize, { ...ctx, action: 'object.delete', resource: objectCode });
   } else {
     const { fields, customFields, ...metadata } = payload as Record<string, unknown>;
+    // confirmed 是命令元数据，不是可编辑业务字段。
+    delete metadata.confirmed;
     const actual = {
       ...metadata,
       ...(fields as Record<string, unknown> | undefined),

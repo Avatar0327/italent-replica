@@ -23,6 +23,7 @@ export const text = {
   type: '异动类型',
   reason: '调动原因',
   withEstablishment: '带编调动',
+  confirmOverstaff: '已超出设定编制，是否确认继续？',
   choose: '请选择',
   adjustment: '任职调整',
   custom: '其他任职信息',

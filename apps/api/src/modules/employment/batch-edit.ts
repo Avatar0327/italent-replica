@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { recordOperationLog } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
+import type { EstablishmentWarning } from './activation-checks.js';
 import { normalizeBusinessPatch } from './fields.js';
 import { editEmploymentRecord } from './record-edit.js';
 import { rowsOf } from './record-store.js';
@@ -57,10 +58,14 @@ export async function batchEditEmploymentRecords(tx: Tx, ctx: EmploymentContext,
     return left === right ? a.id.localeCompare(b.id) : left.localeCompare(right);
   });
   const saved = new Map<string, unknown>();
+  // DEC-015：与导入共用逐行警告，不依赖 undefined 的确认状态静默放行。
+  const warnings: EstablishmentWarning[] = [];
   for (const item of ordered) {
     saved.set(
       item.id,
-      await editEmploymentRecord(tx, { ...ctx, expectedRevision: item.revision }, item.id, input.patch),
+      await editEmploymentRecord(tx, { ...ctx, expectedRevision: item.revision }, item.id, input.patch, 'api', {
+        establishmentWarnings: warnings,
+      }),
     );
   }
   await recordOperationLog(tx, {
@@ -82,7 +87,7 @@ export async function batchEditEmploymentRecords(tx: Tx, ctx: EmploymentContext,
     occurredAt: ctx.now,
   });
   const total = input.items.length;
-  return { total, succeeded: total, failed: 0, items: input.items.map((item) => saved.get(item.id)) };
+  return { total, succeeded: total, failed: 0, items: input.items.map((item) => saved.get(item.id)), warnings };
 }
 
 function departmentOf(record: unknown): string | null {

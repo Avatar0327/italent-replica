@@ -137,25 +137,23 @@ function useTransferCommand(
   const [needsReload, setNeedsReload] = useState(false);
   const requestInProgress = useRef(false);
   const submit = async (action: TransferAction) => {
-    if (
-      needsReload ||
-      !model.preview ||
-      model.preview.requiredFieldsUnavailable ||
-      requestInProgress.current ||
-      unknownCommand ||
-      loadingPreview
-    )
-      return;
+    const blocked = needsReload || requestInProgress.current || unknownCommand || loadingPreview;
+    if (blocked || !model.preview || model.preview.requiredFieldsUnavailable) return;
     if (missingTransferRequiredFields(model.preview.form, { ...model.preview.fields, ...model.fields }).length > 0)
       return;
     requestInProgress.current = true;
     setBusy(true);
     setError('');
-    const commandId = crypto.randomUUID();
+    let commandId = crypto.randomUUID();
+    const send = (confirmed = false) =>
+      saved
+        ? submitSavedTransfer(tenantId, saved, commandId, confirmed)
+        : (adapter?.save ?? saveTransfer)(tenantId, model, action, commandId, confirmed);
     try {
-      const result = saved
-        ? await submitSavedTransfer(tenantId, saved, commandId)
-        : await (adapter?.save ?? saveTransfer)(tenantId, model, action, commandId);
+      const result = await withOverstaffConfirmation(send, () => {
+        commandId = crypto.randomUUID();
+      });
+      if (!result) return;
       if (!result.id || !Number.isInteger(result.revision) || !result.status) throw new Error(text.unknown);
       setSaved(result);
       setNotice(savedNotice(result, action));
@@ -201,6 +199,26 @@ function useTransferCommand(
     reloadSaved,
     resetConflict: () => setNeedsReload(false),
   };
+}
+
+async function withOverstaffConfirmation(
+  send: (confirmed?: boolean) => Promise<TransferBusiness>,
+  newCommand: () => void,
+) {
+  try {
+    return await send();
+  } catch (cause) {
+    if (
+      !(cause instanceof TransferApiError) ||
+      cause.status !== 409 ||
+      cause.details?.reason !== 'CONFIRMATION_REQUIRED'
+    )
+      throw cause;
+    if (!window.confirm(text.confirmOverstaff)) return null;
+    // 明确确认产生新命令；不自动重试 revision 冲突或结果未知。
+    newCommand();
+    return send(true);
+  }
 }
 
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;

@@ -35,10 +35,10 @@ export function employeeTransferAdapter(profile: Profile): TransferFormAdapter {
     },
     loadPreview,
     queryReferences,
-    save: (tenantId, model, _action, commandId) =>
+    save: (tenantId, model, _action, commandId, confirmed = false) =>
       transferRequest<TransferBusiness>(tenantId, BASE, {
         method: 'POST',
-        body: JSON.stringify(input(model)),
+        body: JSON.stringify({ ...input(model), ...(confirmed ? { confirmed: true } : {}) }),
         headers: { 'if-match': String(model.preview!.employeeRevision), 'idempotency-key': commandId },
       }),
   };

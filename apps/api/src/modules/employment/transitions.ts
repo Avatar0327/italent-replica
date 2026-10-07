@@ -1,6 +1,7 @@
+import { captureReservedOccupancy, assertRestoredReservation } from '../establishment/restored-occupancy.js';
 import { reverseCarriedEstablishment, assertReleasedEstablishment } from '../establishment/carried-transfer.js';
 import { postponeLateTransfer } from './late-transfer.js';
-import { assertEstablishmentCapacity } from './activation-checks.js';
+import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { lockTransferBusiness } from './transfer-locks.js';
 import { assertEmploymentDepartmentAvailable } from './references.js';
 import { personnelHooks } from './personnel-hooks.js';
@@ -55,6 +56,7 @@ const STATE_AFTER = {
 } as const satisfies Partial<Record<(typeof ACTIONS)[number], EmploymentState>>;
 
 export interface EmploymentTransitionInput {
+  readonly confirmed?: boolean;
   readonly id: string;
   readonly action: (typeof ACTIONS)[number];
 }
@@ -82,6 +84,13 @@ export async function transitionEmployment(
   input: EmploymentTransitionInput,
 ): Promise<EmploymentBusiness> {
   if (!input || !ACTIONS.includes(input.action)) throw new AppError('VALIDATION_FAILED', '任职状态动作不合法');
+  // DEC-258：驳回 / 不同意不再服务端豁免非严格确认，由审批中心把审批人的 confirmed 透传进来；
+  // 审批通过与到期生效仍是可信后台动作，只按严格控编兜底。
+  ctx = {
+    ...ctx,
+    establishmentConfirmed: input.confirmed ?? false,
+    establishmentConfirmationExempt: ['approve', 'activate'].includes(input.action),
+  };
   if (['submit', 'approve', 'activate'].includes(input.action)) await lockTransferBusiness(tx, ctx, input.id);
   const business = await lockEmploymentBusiness(tx, ctx, input.id);
   assertTransition(business, input.action);
@@ -118,9 +127,11 @@ export async function transitionEmployment(
       fields,
     });
   }
-  const released = ['delete', 'withdraw', 'revoke', 'reject', 'disapprove'].includes(input.action)
-    ? await reverseCarriedEstablishment(tx, ctx, business.id)
-    : [];
+  const reverses = ['delete', 'withdraw', 'revoke', 'reject', 'disapprove'].includes(input.action);
+  // DEC-273：服务端间接触发（接管 / 交接合席）的回退用警告收集器代替确认协议：超编只记警告与审计、不阻断。
+  const indirect: EstablishmentWarning[] | undefined = ctx.establishmentReversalOrigin ? [] : undefined;
+  const reserved = reverses ? await captureReservedOccupancy(tx, ctx, business) : [];
+  const released = reverses ? await reverseCarriedEstablishment(tx, ctx, business.id) : [];
   if (input.action === 'delete') {
     const previous = await deleteEmploymentBusiness(tx, ctx, business);
     const { kind, effectiveDate } = business.payload;
@@ -152,7 +163,8 @@ export async function transitionEmployment(
     const state = STATE_AFTER[input.action];
     await appendEmploymentState(tx, ctx, business, state);
   }
-  await assertReleasedEstablishment(tx, ctx, business.id, business.employeeId, released);
+  await assertReleasedEstablishment(tx, ctx, business.id, business.employeeId, released, indirect);
+  await assertRestoredReservation(tx, ctx, business, reserved, input.action, indirect);
   // 一条命令只增加一次业务 revision；approve→effective 的两条状态事件不各自递增头版本。
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, business.id);

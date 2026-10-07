@@ -18,6 +18,7 @@ export interface SequenceReceipt {
   taskId: string;
   count: number;
   skipped: { recordId: string; reason: string }[];
+  warnings?: { recordId: string; reason: 'ESTABLISHMENT_EXCEEDED' }[];
 }
 
 export async function visibleSequenceReceipts(
@@ -86,6 +87,7 @@ export async function visibleSequenceReceipts(
       taskId: receipt.taskId,
       count: [...ids].filter((id) => !skippedIds.has(id)).length,
       skipped,
+      ...(receipt.warnings ? { warnings: receipt.warnings.filter((row) => ids.has(row.recordId)) } : {}),
     };
   });
 }
