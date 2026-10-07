@@ -904,7 +904,7 @@
 },
 "102": {
 "s": "active",
-"r": 4,
+"r": 5,
 "n": "Draft 开发中"
 },
 "106": {
@@ -2001,7 +2001,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 16:05",
+"liveUpdated": "10-07 16:06",
 "chains": [
 {
 "g": "exit",
@@ -2156,8 +2156,8 @@
 "o": 3,
 "k": "run",
 "n": "函数库补齐 63 个",
-"seg": "ev:d ds:n dev:d4 rev:w4 mg:w",
-"now": "第 4 轮出结论，待读取",
+"seg": "ev:d ds:n dev:d4 rev:d4 mg:w",
+"now": "审查已通过，等 F033-Q1～Q3 登记 DEC 后合并",
 "pr": 108,
 "up": "10-07 调到 Max"
 },
@@ -2223,9 +2223,10 @@
 "k": "run",
 "pr": 102,
 "n": "AC 覆盖运行时统计",
-"seg": "ev:n ds:n dev:d4 rev:a4 mg:w",
-"now": "第 4 轮出结论，待读取",
-"up": "10-07 调到 Max"
+"seg": "ev:n ds:n dev:w5 rev:d4 mg:w",
+"now": "第 4 轮还剩 3 个 P2，等你定第 5 轮",
+"up": "10-07 调到 Max",
+"need": "1"
 },
 {
 "id": "F-025",
