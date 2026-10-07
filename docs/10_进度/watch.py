@@ -14,7 +14,9 @@ STALL = 90  # 分钟（审查发起时编排会在 PR 贴一行评论，据此�
 
 def gh(args):
     r = subprocess.run(["gh"] + args, capture_output=True, text=True, cwd=os.path.expanduser("~/Code/wt-progress"))
-    return json.loads(r.stdout or "[]")
+    if r.returncode or not r.stdout.strip():
+        raise RuntimeError(r.stderr.strip()[:200] or "gh 无输出")
+    return json.loads(r.stdout)
 
 
 def snapshot():
@@ -43,7 +45,14 @@ def main():
         old = json.load(open(STATE))
     prev, stalled = old.get("prs"), set(old.get("stalled", []))
     while True:
-        cur = snapshot()
+        try:
+            cur = snapshot()
+        except Exception:
+            time.sleep(INTERVAL)  # gh 临时失败：跳过本轮，避免误报“全部已关闭”
+            continue
+        if prev and not cur and len(prev) > 2:
+            time.sleep(INTERVAL)  # 一次性全部消失视为接口异常，下一轮再确认
+            continue
         ev = []
         if prev is not None:
             for n, p in cur.items():
