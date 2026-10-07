@@ -836,7 +836,7 @@
 },
 "97": {
 "s": "active",
-"r": 4,
+"r": 5,
 "n": "#92 合并后与 main 冲突（SelfServiceShell.tsx），Codex 合并 main 中；之后 astra Ultra"
 },
 "99": {
@@ -1885,7 +1885,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 12:14",
+"liveUpdated": "10-07 12:15",
 "chains": [
 {
 "g": "exit",
@@ -1982,10 +1982,11 @@
 "k": "run",
 "pr": 97,
 "n": "审批中心前端",
-"seg": "ev:n ds:n dev:d4 rev:a4 mg:w",
-"now": "第 4 轮审查出结论，待读取",
+"seg": "ev:n ds:n dev:w5 rev:d4 mg:w",
+"now": "第 4 轮 2 个泄露 P2（同类第 3 次），等你定是否结构性简化",
 "fable": "1",
-"up": "10-07 第 4 轮调到 Max"
+"up": "10-07 第 4 轮调到 Max",
+"need": "1"
 },
 {
 "id": "F-029",
