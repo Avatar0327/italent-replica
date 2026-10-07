@@ -274,6 +274,8 @@ async function prepareEmployeePosition(
         ? prepared.fields
         : { ...prepared.fields, positionId: sourcePositionId },
     };
+  // 部门已明确时，这里只按当前前驱算出预览与引用校验用的职位；职位单独延迟继承（未分组表单）仍保留标记，
+  // 到期按落地时的前驱继承后再按 DEC-232 判断（resolveEffectiveInheritance），不在建单 / 改单时提前固定。
   return {
     ...prepared,
     fields: prepared.explicitFieldCodes.includes('preset:positionId')
@@ -282,7 +284,6 @@ async function prepareEmployeePosition(
           ...prepared.fields,
           positionId: sourcePositionId,
         }),
-    deferredFieldCodes: prepared.deferredFieldCodes.filter((field) => field !== 'preset:positionId'),
   };
 }
 

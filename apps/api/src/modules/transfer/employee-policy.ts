@@ -59,14 +59,8 @@ export async function requireEmployeeTransferBusiness(
   const codes = payload.explicitFieldCodes as string[];
   // DEC-209/232：explicitFieldCodes 还记录 HR 编辑与向后传播，不能当作本次客户端输入。
   // 旧显式草稿也属于已保存值；本次员工写入仍按请求体拒绝，提交/重放继续复验当前范围。
-  // DEC-209 既有升级防线：未经过本人只读上限、也没有系统传播来源的旧职务/职级/序列草稿不能重提。
-  // DEC-232 的旧职位兼容单独处理；可信本人快照及传播版本的显式代码不代表员工输入。
-  if (
-    !(payload.formSnapshot as { employeeTransfer?: boolean }).employeeTransfer &&
-    !payload.triggerBusinessId &&
-    codes.some((code) => ['preset:postId', 'preset:levelId', 'preset:sequenceId'].includes(code))
-  )
-    throw new AppError('FORBIDDEN', '旧员工调动草稿包含不可编辑的任职字段');
+  // DEC-232 的旧职位兼容单独处理；职务/职级/序列按字段追溯写入来源（PR #99 第 4 轮 P2-1）。
+  await requireTrustedReadonlyFields(tx, ctx.tenantId, businessId, codes);
   if (patch?.fields && Object.hasOwn(patch.fields, 'positionId')) {
     const [binding] = rowsOf<{ employeeId: string }>(
       await tx.execute(sql`
@@ -99,6 +93,47 @@ export async function requireEmployeeTransferBusiness(
       saved.departmentId ?? undefined,
       saved.directManagerId,
     );
+}
+
+const GUARDED_FIELDS = ['postId', 'levelId', 'sequenceId'] as const;
+type GuardedField = (typeof GUARDED_FIELDS)[number];
+type VersionSource = Record<GuardedField, string | null> & {
+  readonly triggerBusinessId: string | null;
+  readonly explicitFieldCodes: string[];
+};
+// 有界查询：单张调动单的载荷版本远少于此；超出时无法追溯到写入者，按不可信拒绝（fail-closed）。
+const SOURCE_SCAN_LIMIT = 500;
+
+/**
+ * DEC-209 升级防线：员工业务上保存的职务 / 职级 / 序列显式值，逐字段追溯最后一次实际写入该字段的版本。
+ * 本人与 HR 入口都不能为员工业务写入这三个字段（requireEmployeeTransferFields），因此只有系统传播
+ * （向后更新、序列同步等带 triggerBusinessId 的版本）实际写入的值可信；整份载荷带传播来源或 employeeTransfer
+ * 标记都不能为其他字段背书——传播只覆盖它改动的字段，PATCH 追加的标记也不改变沿用值的来源。
+ */
+async function requireTrustedReadonlyFields(tx: Tx, tenantId: string, businessId: string, codes: string[]) {
+  const guarded = GUARDED_FIELDS.filter((field) => codes.includes(`preset:${field}`));
+  if (!guarded.length) return;
+  const versions = rowsOf<VersionSource>(
+    await tx.execute(sql`
+    SELECT trigger_business_id AS "triggerBusinessId", explicit_field_codes AS "explicitFieldCodes",
+      post_id AS "postId", level_id AS "levelId", sequence_id AS "sequenceId"
+    FROM employment_payload_versions WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid
+    ORDER BY version_no DESC LIMIT ${SOURCE_SCAN_LIMIT + 1}
+  `),
+  );
+  if (guarded.some((field) => !lastWriter(versions, field)?.triggerBusinessId))
+    throw new AppError('FORBIDDEN', '旧员工调动草稿包含不可编辑的任职字段');
+}
+
+/** 版本按新到旧排列；字段值与显式状态都未变的版本只是沿用，继续向前找到真正写入它的版本。 */
+function lastWriter(versions: readonly VersionSource[], field: GuardedField): VersionSource | undefined {
+  const code = `preset:${field}`;
+  for (const [index, version] of versions.entries()) {
+    const older = versions[index + 1];
+    if (!older) return versions.length > SOURCE_SCAN_LIMIT ? undefined : version;
+    if (!older.explicitFieldCodes.includes(code) || older[field] !== version[field]) return version;
+  }
+  return undefined;
 }
 
 /** DEC-232：只处理可信继承职位；HR 显式补充仍交由原有任职引用校验，不自动替换或清空。 */
