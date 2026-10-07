@@ -1,4 +1,4 @@
-// 按配置的各档（如 pglite / pg）并行起子进程收集，再按“文件 + 标题层级 + 同名序号”合并成每个用例在各档的状态。
+// 按配置的各档（如 pglite / pg）并行起子进程收集，再按用例身份把各档结果 join 成每个用例在各档的状态（DEC-282）。
 // 真 PG 专属用例（describe.runIf(TEST_DATABASE_URL)）在 pg 档为 run、在 pglite 档为 skip；收集不执行钩子，不连库。
 import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -29,53 +29,89 @@ function runWorker(config, name, profile, out) {
   });
 }
 
+const identityKey = (test) => JSON.stringify([test.file, test.names, test.location]);
+const describeTest = (test) => `${test.file}：${test.names.join(' > ')}（${test.location ?? '未知位置'}）`;
+
 /**
- * 跨档配对：同一注册点 = 文件 + 注册位置（行:列）+ 完整标题层级。只在某一档注册的用例只带该档状态。
- * 同一注册点在各档注册次数不同（如循环里按条件注册同名用例）时无法可靠配对，列为问题。
+ * 一个身份在各档的注册无法确认是同一个用例时返回问题说明，否则返回 null：
+ * - 身份冲突：任一档内该身份（或其祖先 suite）注册多次，或缺少注册位置；
+ * - 各档对不上：只在部分档注册，或各档的祖先 suite 注册位置不同。
  */
-function mergeProfiles(names, results) {
+function identityProblem(profiles, byProfile) {
+  const registrations = [...byProfile].flatMap(([profile, tests]) => tests.map((test) => [profile, test]));
+  const [, first] = registrations[0];
+  const conflicts = registrations.filter(([, t]) => t.conflict).map(([profile, t]) => `${profile} 档：${t.conflict}`);
+  if (first.location === null) conflicts.push('缺少注册位置');
+  if (conflicts.length) return `${describeTest(first)} 身份冲突（${[...new Set(conflicts)].join('；')}），不跨档合并`;
+  if (byProfile.size < profiles.length) {
+    return `${describeTest(first)} 各档对不上：只在 ${[...byProfile.keys()].join(' / ')} 档注册，不跨档合并`;
+  }
+  const ancestries = registrations.map(([profile, t]) => `${profile} 档 ${t.ancestors.join(' > ') || '顶层'}`);
+  if (new Set(registrations.map(([, t]) => JSON.stringify(t.ancestors))).size > 1) {
+    return `${describeTest(first)} 各档对不上：祖先 suite 注册位置不同（${ancestries.join('；')}），不跨档合并`;
+  }
+  return null;
+}
+
+const recordOf = (test, modes, only) => ({
+  file: test.file,
+  names: test.names,
+  location: test.location,
+  ancestors: test.ancestors,
+  modes,
+  only,
+});
+
+/**
+ * 跨档 join（DEC-282）：用例身份 = 文件 + 完整名称路径 + 注册位置（行:列），各档按身份 join，祖先 suite 的注册位置也须一致。
+ * 认不出同一个用例时不按注册顺序或序号配对：每个注册各自计入它所在的档，并列为 identity 问题，--check 失败。
+ */
+function joinProfiles(profiles, results) {
   const groups = new Map();
   results.forEach((result, index) => {
     for (const test of result.tests) {
-      const key = JSON.stringify([test.file, test.location, test.names]);
-      if (!groups.has(key)) groups.set(key, { file: test.file, names: test.names, location: test.location, modes: {} });
-      (groups.get(key).modes[names[index]] ??= []).push(test.mode);
+      if (!groups.has(identityKey(test))) groups.set(identityKey(test), new Map());
+      const byProfile = groups.get(identityKey(test));
+      byProfile.set(profiles[index], [...(byProfile.get(profiles[index]) ?? []), test]);
     }
   });
   const tests = [];
-  const pairing = [];
-  for (const group of groups.values()) {
-    const counts = Object.entries(group.modes).map(([profile, modes]) => `${profile} ${modes.length} 次`);
-    if (group.location === null || new Set(Object.values(group.modes).map((m) => m.length)).size > 1) {
-      const where = group.location ?? '未知位置';
-      pairing.push({
-        file: group.file,
-        message: `${group.names.join(' > ')}（${where}）无法跨档配对：${counts.join('、')}`,
-      });
-    }
-    const times = Math.max(...Object.values(group.modes).map((m) => m.length));
-    for (let i = 0; i < times; i++) {
-      const modes = Object.entries(group.modes).filter(([, list]) => i < list.length);
-      tests.push({ ...group, modes: Object.fromEntries(modes.map(([profile, list]) => [profile, list[i]])) });
+  const identity = [];
+  for (const byProfile of groups.values()) {
+    const problem = identityProblem(profiles, byProfile);
+    const entries = [...byProfile];
+    if (problem) {
+      identity.push({ file: entries[0][1][0].file, message: problem });
+      for (const [profile, list] of entries)
+        for (const t of list) tests.push(recordOf(t, { [profile]: t.mode }, t.only));
+    } else {
+      const modes = Object.fromEntries(entries.map(([profile, [t]]) => [profile, t.mode]));
+      tests.push(
+        recordOf(
+          entries[0][1][0],
+          modes,
+          entries.some(([, [t]]) => t.only),
+        ),
+      );
     }
   }
-  return { tests, pairing, errors: mergeErrors(names, results) };
+  return { tests, identity };
 }
 
-function mergeErrors(names, results) {
-  const errors = new Map();
+/** 各档报出的同一问题（收集错误或 only 注册）合并为一条，记下出现在哪些档。 */
+function mergeAcrossProfiles(profiles, results, field, keyOf) {
+  const merged = new Map();
   results.forEach((result, index) => {
-    for (const error of result.errors) {
-      const key = `${error.file}\u0000${error.message}`;
-      if (!errors.has(key)) errors.set(key, { ...error, profiles: [] });
-      errors.get(key).profiles.push(names[index]);
+    for (const item of result[field] ?? []) {
+      if (!merged.has(keyOf(item))) merged.set(keyOf(item), { ...item, profiles: [] });
+      merged.get(keyOf(item)).profiles.push(profiles[index]);
     }
   });
-  return [...errors.values()];
+  return [...merged.values()];
 }
 
 function profileStats(result) {
-  const stats = { files: result.files, run: 0, skip: 0, todo: 0 };
+  const stats = { files: result.files, run: 0, skip: 0, todo: 0, only: (result.onlyNodes ?? []).length };
   for (const test of result.tests) stats[test.mode] += 1;
   return stats;
 }
@@ -88,7 +124,13 @@ export async function collectProfiles(config) {
       names.map((name, i) => runWorker(config, name, config.profiles[name], join(dir, `${i}.json`))),
     );
     const stats = Object.fromEntries(names.map((name, i) => [name, profileStats(results[i])]));
-    return { profiles: names, stats, ...mergeProfiles(names, results) };
+    return {
+      profiles: names,
+      stats,
+      ...joinProfiles(names, results),
+      errors: mergeAcrossProfiles(names, results, 'errors', (e) => `${e.file}\u0000${e.message}`),
+      onlyNodes: mergeAcrossProfiles(names, results, 'onlyNodes', (n) => JSON.stringify([n.file, n.names, n.location])),
+    };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

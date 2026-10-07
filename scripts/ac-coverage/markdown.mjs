@@ -71,8 +71,9 @@ function detailTable(report, group) {
 }
 
 function statsTable(report) {
-  const lines = header(['收集档', '文件', 'run', 'skip', 'todo']);
-  for (const [name, s] of Object.entries(report.profiles)) lines.push(row([name, s.files, s.run, s.skip, s.todo]));
+  const lines = header(['收集档', '文件', 'run', 'skip', 'todo', '注册的 only']);
+  for (const [name, s] of Object.entries(report.profiles))
+    lines.push(row([name, s.files, s.run, s.skip, s.todo, s.only]));
   return lines;
 }
 

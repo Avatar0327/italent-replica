@@ -138,14 +138,32 @@ function references(tests, definitions, ignore) {
   return { unknownReferences: list(unknown), ignoredReferences: list(ignored) };
 }
 
-// .only 会让同文件其他用例被标为 skip；收集按 allowOnly: false 进行，Vitest 把它记为该用例的收集失败。
+/**
+ * 收集阶段的问题：收集错误；只要注册了 .only 一律报 only（含挂在 skip / todo 祖先下、Vitest 不再检查的，
+ * only 还会把同文件其他用例压成 skip）；认不出同一个用例的跨档身份报 identity（DEC-282）。
+ */
 function runtimeProblems(collected) {
+  const where = (item) => `（档：${item.profiles.join(' / ')}）`;
   const problems = collected.errors.map((e) => ({
-    kind: e.message.includes('.only') ? 'only' : 'collect',
-    message: `收集失败${e.file ? `（${e.file}）` : ''}：${e.message}（档：${e.profiles.join(' / ')}）`,
+    kind: 'collect',
+    message: `收集失败${e.file ? `（${e.file}）` : ''}：${e.message}${where(e)}`,
   }));
-  for (const p of collected.pairing ?? []) problems.push({ kind: 'pairing', message: `${p.file}：${p.message}` });
+  for (const node of collected.onlyNodes ?? []) {
+    const title = `${node.names.join(' > ')}（${node.location ?? '未知位置'}）`;
+    problems.push({ kind: 'only', message: `${node.file}：${title} 注册了 .only${where(node)}` });
+  }
+  for (const item of collected.identity ?? []) problems.push({ kind: 'identity', message: item.message });
   return problems;
+}
+
+/** DEC-282 ③：人工改判只放行覆盖缺口，不放行 .only。 */
+function onlyUnderNotes(entries, notes, tests, problems) {
+  for (const [id, note] of Object.entries(notes)) {
+    if (note.status === undefined || !entries[id]) continue;
+    for (const test of tests.filter((t) => t.only && t.ids.includes(id))) {
+      problems.push({ kind: 'only', message: `${id}：人工改判不能放行 .only（${test.file}：${titleOf(test)}）` });
+    }
+  }
 }
 
 // 同一 each 行重复注册等情况会产生内容相同的问题，只保留一条
@@ -168,6 +186,7 @@ export function computeReport({ config, stageNames, collected, definitions, dupl
   validateNotes(notes, new Set(scopeIds), problems);
   const context = { tests, notes, definitions, profiles: collected.profiles, problems };
   const entries = Object.fromEntries(scopeIds.map((id) => [id, buildEntry(id, context)]));
+  onlyUnderNotes(entries, notes, tests, problems);
   const gaps = scopeIds.filter((id) => entries[id].gap);
   const refs = references(tests, definitions, config.ignore);
   return {

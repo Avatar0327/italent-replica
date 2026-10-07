@@ -187,7 +187,7 @@ pnpm ac:coverage --stage all --check        # 各阶段合并
 
 | 项 | 方案稿 | 实现 | 原因 |
 |---|---|---|---|
-| `.only` 识别 | 读 `options.mode === 'only'` | 收集时设 `allowOnly: false`（与 CI 默认一致），Vitest 把 `.only` 记为该用例的收集失败（公开 API `TestCase.result()`），工具归为 `only` 问题 | 实测 Vitest 在收集阶段就把 only 归一为 run、把同文件其他用例改成 skip，`mode` 里看不到 only；`containsOnly` 只在内部 task 上 |
+| `.only` 识别 | 读 `options.mode === 'only'` | 已由第 3 轮（DEC-282）取代，见本节末“第 3 轮” | — |
 | 收集复用 | `--collect-cache` | `--save-collected` / `--from-collected` 两个显式参数 | 避免隐式缓存在代码改动后被误用 |
 | 人工映射匹配 | 完整标题精确匹配 | 同左：用例自身标题或“各级标题 > 连接”的完整标题须完全相等 | 旧脚本按“包含”匹配；R1 配置中 5 处映射标题因此改写为用例完整标题，指向的用例不变 |
 | 条件执行 | 只标“仅 pg”等 | 另加 `conditionalTests`：覆盖该编号、但只在部分档运行的用例数，Markdown 显示“含 n 个条件执行用例” | 与 R1 报告“含条件执行”的口径对齐 |
@@ -198,9 +198,42 @@ pnpm ac:coverage --stage all --check        # 各阶段合并
 | 项 | 修正 |
 |---|---|
 | P2-1 多层 skip / todo | 叶子自身为 run、祖先 suite 为 skip / todo 时，Vitest 不改写叶子 mode 也不执行（reporter 报 pending）；收集端沿祖先链判定，记为 skip |
-| P2-2 跨档配对 | 收集开启 `includeTaskLocation`，跨档按“文件 + 注册位置（行:列）+ 完整标题层级”配对；只在一档注册的用例只带该档状态；同一注册点在各档注册次数不同时列为 `pairing` 问题 |
+| P2-2 跨档配对 | 收集开启 `includeTaskLocation`，跨档按“文件 + 注册位置（行:列）+ 完整标题层级”配对（第 3 轮已按 DEC-282 改为身份 join，见下） |
 | P2-3 逆序区间 | 配置里的逆序区间（如 `AC-DEMO-04~01`）报配置问题；标题里的逆序区间报 `title` 问题，均不展开、不猜测 |
 | 同类自查 | 配置里的 `AC-<模块>-*` 匹配不到任何定义（模块写错）时同样报配置问题，避免范围被静默缩小 |
 | P2-4 人工映射 | `evidence` 改用 `names`（完整标题层级数组，逐级精确相等）；只写 `title` 时按末级标题匹配。必须恰好命中一个注册用例且该用例运行，否则列为问题；R1 配置 5 处映射已改为 `names` |
 
-实测（本容器）：两档并行收集 `tests/acceptance` 约 4 分钟；工具自身测试 19 项约 16 秒。
+### 第 3 轮：DEC-282 用例身份与状态（#102 第 2 轮审查 2 个 P2）
+
+**① 用例身份与跨档 join**
+- 身份 = 文件路径 + 完整名称路径 + 注册位置（`includeTaskLocation` 的行:列），全部取自 Vitest 任务对象。
+- 各档按身份 join，**不再按注册顺序或序号配对**。认不出同一个用例时，列为 `identity` 问题，`--check` 失败；涉及的每个注册只计入它所在的那一档。
+- 认不出的情况有三种：
+
+| 情况 | 判定 | 夹具 |
+|---|---|---|
+| 同一档内，两个注册（用例或其祖先 suite）的“文件 + 名称路径 + 位置”相同 | 身份冲突；其下所有用例都无法确认 | 03 同点循环、04 文件内 helper、05 `describe.each` 同名行、12 三档、13 常量标题 `test.each`、15 导入 helper 循环、17 同名父套件 + 同一 helper；另加 05 的变体（叶子分两处注册，只有父套件重复） |
+| 某个身份只在部分档注册 | 各档对不上 | #102 第 1 轮的 `pairing.fixture.js` |
+| 各档身份相同，但祖先 suite 的注册位置不同 | 各档对不上 | 18 |
+
+- 与 DEC-282 字面的差异——**each 的“参数下标”未纳入身份**：
+  - Vitest 不提供参数下标。实测 `TaskOptions` 只有 `each: true`，`id` 是注册顺序。下标只能按注册顺序推出，而按下标 join 正好会把 05（行序相反）和 13（两档参数行不同、标题相同）错配。
+  - 因此 each 行靠格式化后的标题区分；标题相同的行按身份冲突报错。
+  - 真实仓库只有一处：AC-EMP-08 的 `'$entering开启新周期…'`。Vitest 把紧跟的中文也当成变量名，两行都渲染成 `undefined…`。已把标题改为 `'$entering 开启新周期…'`；修正前该文件报身份冲突，`--check` 退出 1。
+- 夹具 17 判身份冲突，与 DEC-282 的举例一致。由于身份比较也覆盖祖先位置，夹具 18 判“对不上”。
+
+**② 有效状态与 only 门禁**
+- 有效状态：用例自身与全部祖先 suite 在收集完成后的 `mode` 都是 run，且 `result().state` / `state()` 未被 Vitest 标为 skipped / failed，才算运行。
+  - 必须连祖先一起读：实测 `describe.skip > describe.skip > it` 与 `describe.todo > describe.skip > it` 收集后叶子仍是 `mode=run`、`state=pending`，与普通可运行用例完全相同；只读叶子会让第 1 轮 P2-1 回归。
+  - 这里只做“全部为 run”的合取，不解释 only / skip / todo 的语义。
+- only 门禁：独立遍历所有已注册的 suite 与用例。以下两种情况一律报 `only` 问题，不依赖祖先是否被跳过：
+  - `mode` 为 only（挂在 skip / todo 祖先下面、Vitest 不再检查的残留 only）；
+  - Vitest 以 `Unexpected .only` 拒绝（allowOnly: false）。
+- ③ 人工改判覆盖的编号若有用例带 only，另报“人工改判不能放行 .only”。收集统计新增 `only` 计数，均为整数。
+
+**测试**：
+- 用例体写执行 marker；
+- 断言核对父注册位置与实际执行档（夹具 17、18）、每档运行条数与 marker 一致（全部冲突夹具），以及被跳过的 only 用例从未执行；
+- 真值统一以 `allowOnly=false` 运行。
+
+实测（本容器）：两档并行收集 `tests/acceptance` 约 4 分钟；工具自身测试 52 项约 36 秒。
