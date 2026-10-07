@@ -55,35 +55,33 @@ describe('已上线模块的路由动作接入真实授权器', () => {
     return profile;
   }
 
-  for (const module of MODULES) {
-    it(`${module.name}：无身份 403；只读身份可读不可写；仅编辑身份不可新增`, async () => {
-      const as = (userId: string) => ({ user: userId, tenant: world.tenant.id });
-      const write = WRITES[module.name];
-      const tag = module.object.split('.')[1]!.toLowerCase();
+  it.each(MODULES)('$name：无身份 403；只读身份可读不可写；仅编辑身份不可新增', async (module) => {
+    const as = (userId: string) => ({ user: userId, tenant: world.tenant.id });
+    const write = WRITES[module.name];
+    const tag = module.object.split('.')[1]!.toLowerCase();
 
-      const nobody = await addMember(world, `${tag}-nobody`);
-      expect((await world.api.request('GET', module.settings, as(nobody.id))).status).toBe(403);
-      expect(
-        (await world.api.request(write.method, write.path, { ...as(nobody.id), ifMatch: 0, body: {} })).status,
-      ).toBe(403);
-      // 租户管理员只有企业设置能力，没有业务身份 → 同样 403（不存在“管理员看全部”）
-      expect((await world.api.request('GET', module.settings, world.asAdmin)).status).toBe(403);
+    const nobody = await addMember(world, `${tag}-nobody`);
+    expect((await world.api.request('GET', module.settings, as(nobody.id))).status).toBe(403);
+    expect((await world.api.request(write.method, write.path, { ...as(nobody.id), ifMatch: 0, body: {} })).status).toBe(
+      403,
+    );
+    // 租户管理员只有企业设置能力，没有业务身份 → 同样 403（不存在“管理员看全部”）
+    expect((await world.api.request('GET', module.settings, world.asAdmin)).status).toBe(403);
 
-      const viewer = await addMember(world, `${tag}-viewer`);
-      await grant(world, viewer.id, (await profileFor(`${tag}-view`, module.object, false)).id);
-      expect((await world.api.request('GET', module.settings, as(viewer.id))).status).toBe(200);
-      expect(
-        (await world.api.request(write.method, write.path, { ...as(viewer.id), ifMatch: 0, body: {} })).status,
-      ).toBe(403);
+    const viewer = await addMember(world, `${tag}-viewer`);
+    await grant(world, viewer.id, (await profileFor(`${tag}-view`, module.object, false)).id);
+    expect((await world.api.request('GET', module.settings, as(viewer.id))).status).toBe(200);
+    expect((await world.api.request(write.method, write.path, { ...as(viewer.id), ifMatch: 0, body: {} })).status).toBe(
+      403,
+    );
 
-      const editor = await addMember(world, `${tag}-editor`);
-      await grant(world, editor.id, (await profileFor(`${tag}-edit`, module.object, true)).id);
-      const res = await world.api.request(write.method, write.path, { ...as(editor.id), ifMatch: 0, body: {} });
-      // DEC-080：create 不再错误地由 update 开关放行，保留原用例并纠正旧占位接线预期。
-      expect(res.status).toBe(403);
-      expect(await errorCode(res)).toBe('FORBIDDEN');
-    });
-  }
+    const editor = await addMember(world, `${tag}-editor`);
+    await grant(world, editor.id, (await profileFor(`${tag}-edit`, module.object, true)).id);
+    const res = await world.api.request(write.method, write.path, { ...as(editor.id), ifMatch: 0, body: {} });
+    // DEC-080：create 不再错误地由 update 开关放行，保留原用例并纠正旧占位接线预期。
+    expect(res.status).toBe(403);
+    expect(await errorCode(res)).toBe('FORBIDDEN');
+  });
 
   it('身份未登记组织员工应用时，即便库里有该对象也不放行（应用边界）', async () => {
     const outsider = await addMember(world, 'outsider');
