@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iTalent 复刻进度</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* 由 board.py 生成：只改 看板数据.json，不手改本文件 */
+:root{
+  --bg:#f7f8fa;--panel:#fff;--sunk:#f1f3f6;--ink:#111827;--ink2:#374151;--muted:#6b7280;--faint:#9ca3af;--line:#e5e7eb;--line2:#d1d5db;
+  --accent:#0f4c81;--accent-soft:#e8f0f8;
+  --done:#3f8f5f;--active:#c27a12;--review:#2563eb;--todo:#9ca3af;--blocked:#c2410c;
+  --done-bg:#ecf6ef;--active-bg:#fdf3e2;--review-bg:#e8effd;--todo-bg:#f3f4f6;--blocked-bg:#fdeee6;
+  --f:"Inter","Noto Sans SC","PingFang SC",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1116;--panel:#151a21;--sunk:#1b212a;--ink:#e6e9ee;--ink2:#c3c9d2;--muted:#8b95a3;--faint:#5f6b7a;--line:#262d37;--line2:#323b47;
+  --accent:#6ea8dc;--accent-soft:#17283a;
+  --done:#6cc08a;--active:#e3a54a;--review:#7aa6f5;--todo:#6b7280;--blocked:#f08a5d;
+  --done-bg:#16281e;--active-bg:#2e2412;--review-bg:#172238;--todo-bg:#1d232b;--blocked-bg:#2f1d14;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1116;--panel:#151a21;--sunk:#1b212a;--ink:#e6e9ee;--ink2:#c3c9d2;--muted:#8b95a3;--faint:#5f6b7a;--line:#262d37;--line2:#323b47;
+  --accent:#6ea8dc;--accent-soft:#17283a;
+  --done:#6cc08a;--active:#e3a54a;--review:#7aa6f5;--todo:#6b7280;--blocked:#f08a5d;
+  --done-bg:#16281e;--active-bg:#2e2412;--review-bg:#172238;--todo-bg:#1d232b;--blocked-bg:#2f1d14;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.55 var(--f);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1360px;margin:0 auto;padding:28px 32px 40px;display:grid;gap:28px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{display:grid;gap:16px}
+.ttl{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+h1{margin:0;font-size:20px;font-weight:600;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:12px}
+.stats{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+.st{padding:12px 14px;border-left:1px solid var(--line)}
+.st:first-child{border-left:0}
+.st b{display:block;font:600 22px/1.15 var(--mono);letter-spacing:-.02em}
+.st .l{font-size:12px;color:var(--ink2);margin-top:2px}
+.st .c{font-size:11px;color:var(--faint);margin-top:1px}
+h2{margin:0;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
+.sec-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.lg{display:flex;gap:14px;align-items:center;font-size:11.5px;color:var(--muted)}
+.lg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px}
+/* 全景图 */
+#graph{overflow-x:auto;padding:6px 0}
+#graph svg{display:block}
+.node{cursor:pointer}
+.node rect.bx{fill:var(--panel);stroke:var(--line2)}
+.node:hover rect.bx{stroke:var(--accent)}
+.node text{font-family:var(--f);fill:var(--ink)}
+.node .id{font-family:var(--mono);font-weight:600;font-size:11.5px}
+.node .nm{font-size:11.5px;fill:var(--ink2)}
+.node .meta{font-size:10.5px;fill:var(--muted);font-family:var(--mono)}
+.lane-lbl{font-size:11px;font-weight:600;fill:var(--muted);letter-spacing:.05em}
+.lane-bg{fill:var(--sunk)}
+.edge{fill:none;stroke:var(--line2);stroke-width:1.3}
+.edge.dep{stroke:var(--accent);opacity:.55}
+.edge.fix{stroke-dasharray:4 3}
+.backlog{padding:4px 16px 12px;display:flex;flex-wrap:wrap;gap:6px 10px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--line)}
+.backlog b{color:var(--ink2);font-weight:600;margin-right:4px}
+.chip{border:1px solid var(--line);border-radius:4px;padding:0 6px;background:var(--panel);cursor:pointer;white-space:nowrap}
+.chip:hover{border-color:var(--accent)}
+/* 明细表 */
+details.grp{border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+details.grp+details.grp{margin-top:10px}
+details.grp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:12px;padding:10px 14px;font-weight:600}
+details.grp>summary::-webkit-details-marker{display:none}
+details.grp>summary::before{content:"▸";color:var(--accent);font-size:11px;transition:transform .15s}
+details.grp[open]>summary::before{transform:rotate(90deg)}
+details.grp>summary:hover{background:var(--sunk)}
+.gm{font-weight:400;font-size:12px;color:var(--muted)}
+.bar{width:120px;height:4px;border-radius:2px;background:var(--todo-bg);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--done)}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th{font-size:11px;font-weight:600;color:var(--muted);text-align:left;padding:7px 10px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:var(--sunk);letter-spacing:.04em}
+td{padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top;font-size:12.5px}
+tr:last-child td{border-bottom:0}
+tr.sub td{background:var(--sunk);font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.05em;padding:5px 10px}
+tr.fx td:first-child{padding-left:26px}
+tr.fx td:first-child::before{content:"↳ ";color:var(--faint)}
+tr.flash td{animation:fl 1.6s ease}
+@keyframes fl{0%,40%{background:var(--accent-soft)}100%{background:transparent}}
+td.id{font-family:var(--mono);font-weight:600;white-space:nowrap}
+td.nt{color:var(--muted);font-size:12px}
+td.nt div{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pill{display:inline-block;font-size:11px;font-weight:500;padding:0 7px;border-radius:3px;white-space:nowrap}
+.s-done{color:var(--done);background:var(--done-bg)}.s-active{color:var(--active);background:var(--active-bg)}
+.s-review{color:var(--review);background:var(--review-bg)}.s-todo{color:var(--todo);background:var(--todo-bg)}
+.s-blocked{color:var(--blocked);background:var(--blocked-bg)}
+.who{font-size:12px;color:var(--ink2);white-space:nowrap}
+.dep{font-family:var(--mono);font-size:11.5px;margin-right:6px;cursor:pointer;white-space:nowrap}
+.dep.ok{color:var(--faint)}.dep.wait{color:var(--active)}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+/* 动态与说明 */
+.log{font-size:11.5px;line-height:1.75;color:var(--faint)}
+.log span.e{margin-right:4px}
+.log span.e b{color:var(--muted);font-weight:500;font-family:var(--mono);margin-right:4px}
+.log em{font-style:normal;color:var(--ink);font-weight:500}
+.log .sep{color:var(--line2);margin:0 6px}
+.more{font:inherit;font-size:11.5px;color:var(--accent);background:none;border:0;padding:0;cursor:pointer}
+.foot{font-size:11px;color:var(--faint);line-height:1.7;display:grid;gap:4px}
+.foot b{color:var(--muted);font-weight:500}
+</style></head><body>
+<div class="wrap">
+  <header>
+    <div class="ttl"><h1>北森 iTalent 复刻 · 开发进度</h1><span class="sub">更新于 <span class="mono" id="upd"></span> · Avatar0327/italent-replica · 进度窗口维护</span></div>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <section>
+    <div class="sec-h"><h2>全景 · 依赖关系</h2>
+      <div class="lg"><span><i style="background:var(--active)"></i>开发 / 修改中</span><span><i style="background:var(--review)"></i>审查中</span><span><i style="background:var(--todo)"></i>待派</span><span><i style="background:var(--blocked)"></i>受阻</span><span><i style="background:var(--done)"></i>已完成</span><span>── 依赖　- - 修正所属</span></div></div>
+    <div class="panel"><div id="graph"></div><div class="backlog" id="backlog"></div></div>
+  </section>
+
+  <section>
+    <div class="sec-h"><h2>任务明细</h2><span class="sub">点击全景节点可定位到对应行</span></div>
+    <div id="table"></div>
+  </section>
+
+  <section>
+    <div class="sec-h"><h2>最近动态</h2><button class="more" id="logmore" type="button">展开全部</button></div>
+    <div class="log" id="log"></div>
+  </section>
+
+  <div class="foot" id="foot"></div>
+</div>
+<script>
+const DATA = __DATA__;
+const T = DATA.tasks, P = DATA.prs || {}, S = DATA.stats || {};
+const ST = {done:["已完成","s-done"],review:["审查中","s-review"],active:["开发 / 修改中","s-active"],todo:["待派","s-todo"],blocked:["受阻","s-blocked"]};
+const COL = {done:"var(--done)",review:"var(--review)",active:"var(--active)",todo:"var(--todo)",blocked:"var(--blocked)"};
+const MS = {M0:"底座与决策",M1:"多租户隔离",M2:"权限与平台",M3:"组织与职务编制",M4:"任职版本链",M5:"审批与定时生效",M6:"调动业务",M7:"联动 · 自助 · 审计"};
+const STAGES = {R1:"R1 底座",R2:"R2 人事完整化",R3:"R3 人才链路"};
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const isFix = id => !!T[id].p;
+const stg = id => { const t = T[id]; if (t.p) return stg(t.p); return (t.ms || "").startsWith("M") ? "R1" : t.ms; };
+const st = id => (T[id].ev && T[id].s === "todo") ? "blocked" : T[id].s;
+const pill = s => `<span class="pill ${ST[s][1]}">${ST[s][0]}</span>`;
+const prOf = id => (T[id].pr || []).filter(n => P[n]);
+const mains = st0 => Object.keys(T).filter(id => !isFix(id) && stg(id) === st0);
+const fixes = () => Object.keys(T).filter(isFix);
+const short = (s, n) => { s = s.replace(/（.*?）/g, ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+
+/* 统计 */
+document.getElementById("upd").textContent = DATA.updated;
+const cnt = ids => [ids.filter(i => T[i].s === "done").length, ids.length];
+const [r1d, r1n] = cnt(mains("R1")), [r2d, r2n] = cnt(mains("R2")), [r3d, r3n] = cnt(mains("R3"));
+const fx = fixes(), fxd = fx.filter(i => T[i].s === "done").length, fxa = fx.filter(i => ["active","review"].includes(T[i].s)).length;
+const longPR = Object.values(P).filter(p => p.r >= 3).length;
+const stats = [
+  [`${r1d}/${r1n}`, "R1 底座", "主任务（含 M0）完成数"],
+  [`${r2d}/${r2n}`, "R2 人事完整化", "主任务完成数"],
+  [`${r3d}/${r3n}`, "R3 人才链路", "主任务完成数"],
+  [`${fxd}/${fx.length}`, "修正任务", `F 任务完成数 · 进行中 ${fxa}`],
+  [S.open ?? Object.keys(P).length, "在途 PR", `GitHub 未关闭 · ≥3 轮 ${longPR}`],
+  [S.merged ?? "—", "已合并 PR", "main 累计，含文档 / CI"],
+  [S.dec ?? "—", "已确认决策", "最新 DEC 编号"],
+  [S.ev ?? "—", "待取证", "未完成 / 清单总数"]
+];
+document.getElementById("stats").innerHTML = stats.map(([v, l, c]) => `<div class="st"><b>${esc(v)}</b><div class="l">${esc(l)}</div><div class="c">${esc(c)}</div></div>`).join("");
+
+/* 全景：已完成的 R1 收为一个节点；未开工且无依赖关系的任务列为“未排期” */
+const AGG = "R1";
+const notDone = Object.keys(T).filter(i => T[i].s !== "done");
+const depOn = new Set(); notDone.forEach(i => (T[i].deps || []).forEach(d => depOn.add(d)));
+const show = new Set(notDone.filter(i => isFix(i) || T[i].s !== "todo" || (T[i].deps || []).length || T[i].ev || depOn.has(i)));
+const backlog = notDone.filter(i => !show.has(i));
+const mapDone = d => (T[d].s === "done" && stg(d) === "R1") ? AGG : d;
+const edges = [];
+[...show].forEach(i => {
+  (T[i].deps || []).forEach(d => { const m = mapDone(d); if (m !== AGG) show.add(m); edges.push([m, i, "dep"]); });
+  if (T[i].p) { const m = mapDone(T[i].p); if (m !== AGG) show.add(m); if (!(T[i].deps || []).map(mapDone).includes(m)) edges.push([m, i, "fix"]); }
+});
+const nodes = [AGG, ...show];
+const depth = {}; nodes.forEach(n => depth[n] = 0);
+for (let k = 0; k < nodes.length; k++) edges.forEach(([a, b]) => { if (depth[b] < depth[a] + 1) depth[b] = depth[a] + 1; });
+const laneOf = n => n === AGG ? "R1" : stg(n);
+const lanes = ["R1", "R2", "R3"].filter(l => nodes.some(n => laneOf(n) === l));
+const NW = 168, NH = 50, CW = 200, GY = 10, LW = 96, PADY = 14;
+const pos = {}; let y = 6; const laneBox = [];
+lanes.forEach(l => {
+  const byCol = {}; nodes.filter(n => laneOf(n) === l).sort((a, b) => a.localeCompare(b)).forEach(n => (byCol[depth[n]] ||= []).push(n));
+  const rows = Math.max(...Object.values(byCol).map(a => a.length));
+  const h = rows * (NH + GY) - GY + PADY * 2;
+  Object.entries(byCol).forEach(([c, arr]) => arr.forEach((n, i) => pos[n] = [LW + c * CW, y + PADY + i * (NH + GY)]));
+  laneBox.push([l, y, h]); y += h + 6;
+});
+const W = LW + (Math.max(...Object.values(depth)) + 1) * CW, H = y;
+const nodeSvg = n => {
+  const [x, yy] = pos[n];
+  if (n === AGG) return `<g class="node" data-go="grp-R1"><rect class="bx" x="${x}" y="${yy}" width="${NW}" height="${NH}" rx="6"/><rect x="${x}" y="${yy}" width="4" height="${NH}" rx="2" fill="var(--done)"/><text x="${x + 12}" y="${yy + 18}" class="id">R1 底座</text><text x="${x + 12}" y="${yy + 34}" class="nm">${r1d}/${r1n} 主任务已完成</text><text x="${x + 12}" y="${yy + 46}" class="meta">修正 ${fx.filter(i => stg(i) === "R1" && T[i].s === "done").length} 项已合并</text></g>`;
+  const t = T[n], s = st(n), pr = prOf(n).map(k => `#${k}·R${P[k].r}`).join(" ");
+  const who = t.dev ? `${t.dev}${t.rev ? " → " + (t.rev === "Codex" ? "astra" : t.rev) : ""}` : (t.ev ? "取证未完" : "未定开发方");
+  return `<g class="node" data-go="${esc(n)}"><title>${esc(n + " " + t.n)}</title><rect class="bx" x="${x}" y="${yy}" width="${NW}" height="${NH}" rx="6"/><rect x="${x}" y="${yy}" width="4" height="${NH}" rx="2" fill="${COL[s]}"/><text x="${x + 12}" y="${yy + 16}" class="id">${esc(n)}</text><text x="${x + NW - 8}" y="${yy + 16}" class="meta" text-anchor="end">${esc(pr)}</text><text x="${x + 12}" y="${yy + 31}" class="nm">${esc(short(t.n, 12))}</text><text x="${x + 12}" y="${yy + 44}" class="meta">${esc(who)}</text></g>`;
+};
+const edgeSvg = ([a, b, k]) => { const [x1, y1] = pos[a], [x2, y2] = pos[b]; const sx = x1 + NW, sy = y1 + NH / 2, ex = x2, ey = y2 + NH / 2, m = (sx + ex) / 2;
+  return `<path class="edge ${k}" d="M${sx},${sy} C${m},${sy} ${m},${ey} ${ex - 3},${ey}" marker-end="url(#ar)"/>`; };
+document.getElementById("graph").innerHTML = `<svg width="${W + 16}" height="${H}" viewBox="0 0 ${W + 16} ${H}"><defs><marker id="ar" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L6,3L0,6z" fill="var(--line2)"/></marker></defs>
+${laneBox.map(([l, yy, h]) => `<rect class="lane-bg" x="0" y="${yy}" width="${W + 16}" height="${h}" rx="4" opacity=".55"/><text class="lane-lbl" x="14" y="${yy + 22}">${esc(STAGES[l])}</text>`).join("")}
+${edges.map(edgeSvg).join("")}${nodes.map(nodeSvg).join("")}</svg>`;
+const bl = {}; backlog.forEach(i => (bl[stg(i)] ||= []).push(i));
+document.getElementById("backlog").innerHTML = Object.keys(bl).length ? Object.entries(bl).map(([l, a]) => `<span><b>${esc(STAGES[l])} 未排期</b>${a.map(i => `<span class="chip" data-go="${i}">${i} ${esc(short(T[i].n, 10))}</span>`).join(" ")}</span>`).join("") : "";
+
+/* 明细表 */
+const head = `<tr><th style="width:84px">编号</th><th style="width:19%">名称</th><th style="width:104px">所属</th><th style="width:94px">状态</th><th style="width:84px">开发</th><th style="width:66px">审查</th><th style="width:96px">PR · 轮次</th><th style="width:150px">依赖</th><th>说明</th></tr>`;
+const row = (id, cls = "") => { const t = T[id], s = st(id);
+  const pr = (t.pr || []).map(n => { const p = P[n]; const hist = p && p.h ? p.h.map(([k, d]) => k + "：" + d).join("\n") : ""; return `<a href="https://github.com/Avatar0327/italent-replica/pull/${n}" target="_blank" rel="noopener" title="${esc(hist)}">#${n}</a>${p ? ` · ${p.r} 轮` : ""}`; }).join("<br>");
+  const deps = (t.deps || []).map(d => `<span class="dep ${T[d] && T[d].s === "done" ? "ok" : "wait"}" data-go="${esc(d)}">${esc(d)}</span>`).join("");
+  const own = t.p ? `修正 ${t.p}` : (MS[t.ms] ? t.ms : (t.ms || ""));
+  const note = [t.ev, P[(t.pr || []).at(-1)]?.s !== "done" && prOf(id).length ? P[prOf(id).at(-1)].n : "", t.note].filter(Boolean).join("；");
+  return `<tr id="row-${esc(id)}" class="${cls}"><td class="id">${esc(id)}</td><td>${esc(t.n)}</td><td class="mono" style="font-size:11.5px;color:var(--muted);white-space:nowrap">${esc(own)}</td><td>${pill(s)}</td><td class="who">${esc(t.dev || "—")}</td><td class="who">${esc(t.rev ? (t.rev === "Codex" ? "astra" : t.rev) : "—")}</td><td class="mono" style="font-size:11.5px">${pr || "—"}</td><td>${deps || '<span style="color:var(--faint)">—</span>'}</td><td class="nt"><div title="${esc(note)}">${esc(note)}</div></td></tr>`; };
+const kids = id => Object.keys(T).filter(k => T[k].p === id);
+const grp = (key, title, rowsHtml, done, total, open, extra = "") => `<details class="grp" id="grp-${key}"${open ? " open" : ""}><summary>${esc(title)}<span class="bar"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></span><span class="gm mono">${done}/${total}</span><span class="gm">${extra}</span></summary><table>${head}${rowsHtml}</table></details>`;
+let html = "";
+{ // R1：按子阶段，已完成修正挂在被修正任务下
+  const r = Object.keys(MS).map(m => { const ts = mains("R1").filter(i => T[i].ms === m); if (!ts.length) return "";
+    return `<tr class="sub"><td colspan="9">${m} · ${esc(MS[m])}</td></tr>` + ts.map(i => row(i) + kids(i).filter(k => T[k].s === "done").map(k => row(k, "fx")).join("")).join(""); }).join("");
+  html += grp("R1", "R1 底座", r, r1d, r1n, r1d < r1n, `修正已合并 ${fx.filter(i => stg(i) === "R1" && T[i].s === "done").length} 项`);
+}
+{ const open = fx.filter(i => stg(i) === "R1" && T[i].s !== "done").sort();
+  html += grp("R1fix", "R1 后续修正与收尾（未完成）", open.map(i => row(i)).join(""), 0, open.length, true, `进行中 ${open.filter(i => ["active","review"].includes(T[i].s)).length} · 待派 ${open.filter(i => T[i].s === "todo").length}`); }
+["R2", "R3"].forEach(l => { const ms = mains(l); const r = ms.map(i => row(i) + kids(i).map(k => row(k, "fx")).join("")).join("");
+  html += grp(l, STAGES[l], r, ms.filter(i => T[i].s === "done").length, ms.length, true); });
+document.getElementById("table").innerHTML = html;
+
+/* 动态：浅灰密排，编号类关键词加深 */
+const kw = s => esc(s).replace(/(#\d+|R\d-T\d\d|F-\d{3}|DEC-\d+(?:[～~\-]\d+)?|Q-M0-\d+(?:[～~]\d+)?|合并|可以合并|已派|开出)/g, "<em>$1</em>");
+const logEl = document.getElementById("log"), more = document.getElementById("logmore");
+const drawLog = all => { logEl.innerHTML = (DATA.log || []).slice(0, all ? undefined : 40).map(([d, t]) => `<span class="e"><b>${esc(d)}</b>${kw(t)}</span>`).join('<span class="sep">/</span>'); more.hidden = all || (DATA.log || []).length <= 40; };
+drawLog(false); more.onclick = () => drawLog(true);
+
+document.getElementById("foot").innerHTML = [
+  "<b>统计口径</b>　R1 / R2 / R3：各阶段路线图主任务（R1 含 M0），修正任务 F-xxx 不计入；修正任务：后续任务.md 登记的 F 任务；在途 PR：GitHub 未关闭的 PR；已合并 PR：main 上累计合并数（含文档、CI 小 PR）；已确认决策：02_已确认决策.md 最新 DEC 编号；待取证：evidence-gate 未完成项 / 需取证清单总数。",
+  "<b>规则</b>　合并以 astra“可以合并”为准（DEC-179）；待你决定的事项由总编排统一提问并登记 DEC；派发规则见 docs/09_派发/派发规则.md。看板只展示进度，待处理事项随每次更新以文字发到进度窗口。"
+].map(x => `<div>${x}</div>`).join("");
+
+/* 定位 */
+document.addEventListener("click", e => { const g = e.target.closest("[data-go]"); if (!g) return; const id = g.dataset.go;
+  if (id.startsWith("grp-")) { const d = document.getElementById(id); d.open = true; d.scrollIntoView({behavior:"smooth", block:"start"}); return; }
+  const r = document.getElementById("row-" + id); if (!r) return; const d = r.closest("details"); if (d) d.open = true;
+  r.scrollIntoView({behavior:"smooth", block:"center"}); r.classList.remove("flash"); void r.offsetWidth; r.classList.add("flash"); });
+</script>
+</body></html>
