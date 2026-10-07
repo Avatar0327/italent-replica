@@ -100,12 +100,20 @@ export async function employeeTransferPosition(
 ): Promise<PresetFields> {
   if (!fields.positionId) return fields;
   const position = await loadJobObject(tx, ctx.tenantId, 'positions', fields.positionId, effectiveDate, true);
+  // 生效日没有职位版本时无法判断所属部门，保留既有值交由引用校验拒绝失效引用，不以清空掩盖错误。
   return position && position.orgId !== fields.departmentId ? { ...fields, positionId: null } : fields;
 }
 
 /** 老申请的冻结快照没有 DEC-232 标记时，以服务器保存的入口来源判断，不信任客户端。 */
 export async function isEmployeeTransferPayload(tx: Tx, tenantId: string, prepared: object) {
-  if (!('businessId' in prepared) || typeof prepared.businessId !== 'string') return false;
+  // 编制投影也解析其他任职业务；非调动不需要逐行查询入口来源。
+  if (
+    !('kind' in prepared) ||
+    prepared.kind !== 'transfer' ||
+    !('businessId' in prepared) ||
+    typeof prepared.businessId !== 'string'
+  )
+    return false;
   const [request] = rowsOf(
     await tx.execute(sql`
     SELECT 1 FROM transfer_requests WHERE tenant_id=${tenantId}

@@ -324,7 +324,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     );
     if (action === 'reject') await w.json(await w.taskAction(task.assigneeUserId!, task.id, 'reject', view.revision));
     else await w.json(await w.instanceAction(person.userId, view.id, 'withdraw', view.revision));
-    let saved = await payload(created.id);
+    let saved: Pick<Business, 'revision'> = await payload(created.id);
     expect(saved).toMatchObject({
       status: action === 'reject' ? 'rejected' : 'draft',
       fields: { departmentId: target, positionId: targetPosition },
@@ -357,9 +357,11 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
       await patch({ fields: { departmentId: target.toUpperCase() } });
       expect(await payload(created.id)).toMatchObject({ fields: { positionId: targetPosition } });
     }
-    await patch({ fields: { departmentId: third.toUpperCase() } });
-    expect(await payload(created.id)).toMatchObject({ fields: { departmentId: third, positionId: null } });
-    // 自动清空后继续改期、重提、审批及到期落地，不能被上一版的 HR 标记还原。
+    if (change === 'department') {
+      await patch({ fields: { departmentId: third.toUpperCase() } });
+      expect(await payload(created.id)).toMatchObject({ fields: { departmentId: third, positionId: null } });
+    }
+    // 保留或自动清空后继续改期、重提、审批及到期落地，不能丢掉或还原上一版的 HR 职位。
     await patch({ effectiveDate: '2026-10-21' });
     const options = { ...w.as(person.userId), ifMatch: saved.revision, idempotencyKey: randomUUID(), body: {} };
     const submitted = await w.json<Business>(
@@ -378,7 +380,12 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     );
     expect(await payload(created.id)).toMatchObject({
       status: 'effective',
-      record: { fields: { departmentId: third, positionId: null } },
+      record: {
+        fields: {
+          departmentId: change === 'department' ? third : target,
+          positionId: change === 'department' ? null : targetPosition,
+        },
+      },
     });
     w.setNow('2026-10-01T01:00:00Z');
   });

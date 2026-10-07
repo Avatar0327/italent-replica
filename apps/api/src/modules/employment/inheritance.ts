@@ -278,6 +278,36 @@ async function prepareEmployeePosition(
   };
 }
 
+/** DEC-232 / AC-TRF-53：HR 补的职位随单保留；员工换部门或改期后重新验证所属部门。 */
+async function retainEmployeePositionByHr(
+  tx: Tx,
+  ctx: EmploymentContext,
+  input: InheritanceInput,
+  previous: PreparedInheritance,
+  prepared: PreparedInheritance,
+): Promise<PreparedInheritance> {
+  if (
+    !prepared.formSnapshot.employeeTransfer ||
+    !previous.formSnapshot.employeePositionByHr ||
+    input.allowEmployeePositionEdit ||
+    owns(input.fields ?? {}, 'positionId')
+  )
+    return prepared;
+  const fields = await employeeTransferPosition(tx, ctx, prepared.effectiveDate, {
+    ...prepared.fields,
+    positionId: previous.fields.positionId,
+  });
+  const cleared = previous.fields.positionId !== null && fields.positionId === null;
+  const explicit = prepared.explicitFieldCodes.filter((code) => code !== 'preset:positionId');
+  // 自动清空不能再以 HR 显式填写跳过后续继承判断；仍匹配的保存值继续作为显式值落地。
+  return {
+    ...prepared,
+    fields,
+    explicitFieldCodes: cleared ? explicit : [...explicit, 'preset:positionId'],
+    formSnapshot: { ...prepared.formSnapshot, employeePositionByHr: !cleared },
+  };
+}
+
 export async function prepareInheritance(
   tx: Tx,
   ctx: EmploymentContext,
@@ -370,7 +400,13 @@ export async function prepareEmploymentPatch(
   const employeeTransfer =
     previous.formSnapshot.employeeTransfer || (await isEmployeeTransferPayload(tx, ctx.tenantId, previous));
   const snapshot = { ...previous.formSnapshot, ...(employeeTransfer ? { employeeTransfer: true } : {}) };
-  const prepared = await prepareInheritance(tx, ctx, input, snapshot);
+  const prepared = await retainEmployeePositionByHr(
+    tx,
+    ctx,
+    input,
+    previous,
+    await prepareInheritance(tx, ctx, input, snapshot),
+  );
   if (input.effectiveDate !== previous.effectiveDate) return prepared;
   const explicit = new Set(prepared.explicitFieldCodes);
   const oldDeferred = new Set(previous.deferredFieldCodes);

@@ -197,7 +197,7 @@ export async function updateEmploymentBusiness(
     throw new AppError('CONFLICT', '审批中的申请只能由当前审批节点修改', { reason: 'APPROVAL_IN_PROGRESS' });
   }
   const before = business.payload;
-  const normalized = normalizePatchedInput(ctx, before, patch);
+  const normalized = normalizePatchedInput(ctx, before, patch, options);
   await assertNotBeforeCurrentCycle(tx, ctx, business.employeeId, normalized);
   await assertBusinessSequence(tx, ctx, business.employeeId, normalized);
   assertEmployTypeUsage(normalized);
@@ -262,6 +262,7 @@ export function normalizePatchedInput(
   ctx: EmploymentContext,
   before: EmploymentPayloadRow,
   patch: EmploymentBusinessPatch,
+  options: { readonly approvalEdit?: boolean } = {},
 ): NormalizedEmploymentInput {
   const fields: Partial<Record<keyof typeof before.fields, unknown>> = Object.fromEntries(
     before.explicitFieldCodes
@@ -271,6 +272,14 @@ export function normalizePatchedInput(
         return [field, before.fields[field]];
       }),
   );
+  // DEC-232：审批人补的职位是保存值，不冒充员工本次输入；prepareEmploymentPatch 单独保留或清空。
+  if (
+    before.kind === 'transfer' &&
+    before.formSnapshot.employeePositionByHr &&
+    !options.approvalEdit &&
+    !Object.hasOwn(patch.fields ?? {}, 'positionId')
+  )
+    delete fields.positionId;
   if (patch.fields && Object.hasOwn(patch.fields, 'departmentId') && !Object.hasOwn(patch.fields, 'directManagerId'))
     delete fields.directManagerId;
   // DEC-107：本次改选了职务而未传序列时，丢弃按旧职务带出（或旧填写）的序列，交由新职务重新带出。
