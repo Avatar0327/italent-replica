@@ -9,6 +9,7 @@ export class TransferApiError extends Error {
     readonly code: string,
     message: string,
     readonly status: number,
+    readonly details?: { reason?: string },
   ) {
     super(message);
   }
@@ -19,12 +20,15 @@ export async function transferRequest<T>(tenantId: string, path: string, options
     credentials: 'same-origin',
     headers: { 'content-type': 'application/json', 'x-tenant-id': tenantId, ...options.headers },
   });
-  const body = (await response.json()) as T & { error?: { code: string; message: string } };
+  const body = (await response.json()) as T & {
+    error?: { code: string; message: string; details?: { reason?: string } };
+  };
   if (!response.ok)
     throw new TransferApiError(
       body.error?.code ?? 'REQUEST_FAILED',
       body.error?.message ?? text.failed,
       response.status,
+      body.error?.details,
     );
   return body;
 }
@@ -108,18 +112,29 @@ export function transferBody(model: TransferFormModel, action: TransferAction) {
     ...(linkage ? { linkage } : {}),
   };
 }
-export function saveTransfer(tenantId: string, model: TransferFormModel, action: TransferAction, commandId: string) {
-  const body = transferBody(model, action);
+export function saveTransfer(
+  tenantId: string,
+  model: TransferFormModel,
+  action: TransferAction,
+  commandId: string,
+  confirmed = false,
+) {
+  const body = { ...transferBody(model, action), ...(confirmed ? { confirmed: true } : {}) };
   return transferRequest<TransferBusiness>(tenantId, `${TRANSFER_API}/employees/${model.employeeId}`, {
     method: 'POST',
     body: JSON.stringify(body),
     headers: { 'if-match': String(model.preview!.employeeRevision), 'idempotency-key': commandId },
   });
 }
-export function submitSavedTransfer(tenantId: string, business: TransferBusiness, commandId: string) {
+export function submitSavedTransfer(
+  tenantId: string,
+  business: TransferBusiness,
+  commandId: string,
+  confirmed = false,
+) {
   return transferRequest<TransferBusiness>(tenantId, `${EMPLOYMENT_API}/businesses/${business.id}/submit`, {
     method: 'POST',
-    body: '{}',
+    body: JSON.stringify(confirmed ? { confirmed: true } : {}),
     headers: { 'if-match': String(business.revision), 'idempotency-key': commandId },
   });
 }

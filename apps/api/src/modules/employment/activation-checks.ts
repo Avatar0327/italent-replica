@@ -12,7 +12,7 @@ import { applyTransferLinkage } from './transfer-linkage.js';
  * TODO(需取证 Q-M0-48)：原站到期当天是否再校验（目标组织 / 职位停用、编制不足）、失败如何表现，待 10-10 回查；
  * 原站很可能没有失败分支（`08` §17），本判定为复刻自定，取证后只需调整本文件。
  */
-import { employmentEstablishmentExceeded } from '../establishment/employment-check.js';
+import { assessEmploymentEstablishment, employmentEstablishmentExceeded } from '../establishment/employment-check.js';
 import type { Tx } from '@italent/db';
 import type { OrgId } from '@italent/domain';
 import { AppError, type ErrorCode } from '../../errors.js';
@@ -69,14 +69,25 @@ export async function assertEstablishmentCapacity(
   target: ActivationTarget,
   warnings?: EstablishmentWarning[],
 ) {
-  if (!(await establishmentExceeded(tx, ctx, target))) return;
+  const assessment =
+    checks === DEFAULT_ESTABLISHMENT_CHECKS
+      ? await assessEmploymentEstablishment(tx, ctx, target)
+      : { exceeded: await establishmentExceeded(tx, ctx, target), strict: true };
+  if (!assessment.exceeded) return;
   // DEC-015 仅内部导入端口提供警告收集器；HTTP 单笔保存与定时生效不能关闭严格校验。
   if (warnings) {
     if (!warnings.some((item) => item.businessId === target.businessId))
       warnings.push({ businessId: target.businessId, reason: 'ESTABLISHMENT_EXCEEDED' });
     return;
   }
-  throw new AppError('CONFLICT', '已超出设定编制，不可继续操作', { reason: 'ESTABLISHMENT_EXCEEDED' });
+  if (assessment.strict)
+    throw new AppError('CONFLICT', '已超出设定编制，不可继续操作', { reason: 'ESTABLISHMENT_EXCEEDED' });
+  // 确认只属于本次交互命令，不持久化为跳过以后复查的授权；到期/审批继续按严格控编兜底。
+  if (ctx.establishmentConfirmed === false && !ctx.deferredExecution)
+    throw new AppError('CONFLICT', '已超出设定编制，请确认后继续', {
+      reason: 'CONFIRMATION_REQUIRED',
+      warnings: [{ reason: 'ESTABLISHMENT_EXCEEDED' }],
+    });
 }
 
 /** 业务规则拒绝：按租户数据确定的结果，重跑也不会变，记为失败交 HR 修正。 */

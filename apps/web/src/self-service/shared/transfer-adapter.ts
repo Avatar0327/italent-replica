@@ -13,6 +13,7 @@ export interface TransferFormAdapter {
     model: TransferFormModel,
     action: TransferAction,
     commandId: string,
+    confirmed?: boolean,
   ) => Promise<TransferBusiness>;
   readonly queryReferences: (
     tenantId: string,

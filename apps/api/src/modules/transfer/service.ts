@@ -30,6 +30,7 @@ import type { LinkageAccess } from './linkage/access.js';
 import { hasLinkage } from './linkage/store.js';
 
 const schema = z.strictObject({
+  confirmed: z.boolean().optional(),
   initiator: z.enum(['hr', 'manager', 'employee']),
   transferTypeCode: z.string().trim().min(1).max(100),
   reasonCode: z.string().trim().min(1).max(100).optional(),
@@ -77,6 +78,7 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
     throw new AppError('VALIDATION_FAILED', '调动原因不适用于所选类型');
   const employment = normalizeEmploymentInput(ctx, {
     kind: 'transfer',
+    confirmed: input.confirmed,
     mode: input.mode,
     effectiveDate: input.effectiveDate,
     formId:
@@ -135,7 +137,11 @@ export async function transferTargetContext(
 
 export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
   if (input.initiator === 'employee') ctx = { ...ctx, selfServiceEmployeeId: employeeId };
-  ctx = { ...ctx, managerTransfer: input.initiator === 'manager' };
+  ctx = {
+    ...ctx,
+    managerTransfer: input.initiator === 'manager',
+    establishmentConfirmed: input.employment.confirmed ?? false,
+  };
   // F-008 / org/locks.ts：参与员工闭包 → 业务 → 组织 → 编制 → 审批实例；锁内重验关系/范围。
   const { linkage, linkageAccess } = input;
   await lockTransferParticipants(tx, ctx, employeeId, [
@@ -176,7 +182,11 @@ export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId:
   );
   if (input.employment.mode === 'application' && input.submit) {
     const context = { ...ctx, expectedRevision: created.revision };
-    await transitionEmployment(tx, context, { id: created.id, action: 'submit' });
+    await transitionEmployment(tx, context, {
+      id: created.id,
+      action: 'submit',
+      confirmed: input.employment.confirmed,
+    });
     await employmentApprovalHooks.submitted(tx, context, created.id);
     return { ...(await requireSavedBusiness(tx, context, created.id)), ...metadata };
   }

@@ -54,6 +54,7 @@ const STATE_AFTER = {
 } as const satisfies Partial<Record<(typeof ACTIONS)[number], EmploymentState>>;
 
 export interface EmploymentTransitionInput {
+  readonly confirmed?: boolean;
   readonly id: string;
   readonly action: (typeof ACTIONS)[number];
 }
@@ -80,6 +81,7 @@ export async function transitionEmployment(
   ctx: EmploymentContext,
   input: EmploymentTransitionInput,
 ): Promise<EmploymentBusiness> {
+  if (input.action === 'submit') ctx = { ...ctx, establishmentConfirmed: input.confirmed ?? false };
   if (!input || !ACTIONS.includes(input.action)) throw new AppError('VALIDATION_FAILED', '任职状态动作不合法');
   if (['submit', 'approve', 'activate'].includes(input.action)) await lockTransferBusiness(tx, ctx, input.id);
   const business = await lockEmploymentBusiness(tx, ctx, input.id);

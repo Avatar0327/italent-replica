@@ -85,6 +85,7 @@ export async function createEmploymentBusiness(
   options: CreateEmploymentOptions = {},
 ): Promise<EmploymentBusiness> {
   const normalized = normalizeEmploymentInput(ctx, input);
+  ctx = { ...ctx, establishmentConfirmed: normalized.confirmed ?? false };
   if (normalized.kind === 'transfer')
     await lockTransferParticipants(tx, ctx, employeeId, normalized.fields.addedSubordinateIds ?? []);
   const employee = await lockEmploymentEmployee(tx, ctx, employeeId, ctx.expectedRevision);
@@ -186,6 +187,7 @@ export async function updateEmploymentBusiness(
   options: { readonly approvalEdit?: boolean } = {},
 ): Promise<EmploymentBusiness> {
   const patch = normalizeBusinessPatch(input);
+  ctx = { ...ctx, establishmentConfirmed: options.approvalEdit ? undefined : (patch.confirmed ?? false) };
   const business = await lockEmploymentBusiness(tx, ctx, id);
   await requireEmployeeTransferBusiness(tx, ctx, id, patch);
   // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。

@@ -94,6 +94,8 @@ export function emptyPresetFields(): PresetFields {
 export type EmploymentScope = Awaited<ReturnType<typeof resolveModuleScope>>;
 
 export interface EmploymentContext {
+  /** 仅交互保存/提交设置；确认不放宽严格控编及权限检查。 */
+  readonly establishmentConfirmed?: boolean;
   /** 本人自助路由重验账号绑定后设置；仅用于同表单的字段权限继承策略。 */
   readonly selfServiceEmployeeId?: string;
   readonly managerTransfer?: boolean;
@@ -120,6 +122,7 @@ export interface EmploymentContext {
 }
 
 export interface EmploymentBusinessInput {
+  readonly confirmed?: boolean;
   readonly kind: BusinessKind;
   readonly mode: 'direct' | 'application';
   readonly effectiveDate?: string;
@@ -138,6 +141,7 @@ export interface NormalizedEmploymentInput extends EmploymentBusinessInput {
 }
 
 export interface EmploymentBusinessPatch {
+  readonly confirmed?: boolean;
   readonly effectiveDate?: string;
   readonly lastWorkDate?: string | null;
   readonly fields?: Partial<PresetFields>;

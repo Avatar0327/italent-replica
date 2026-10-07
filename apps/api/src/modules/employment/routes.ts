@@ -303,7 +303,10 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
         ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
           transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
         );
-        if (action === 'submit') await emptySubmitBody(c);
+        const confirmation =
+          action === 'submit' && c.req.header('content-type')
+            ? parse(z.strictObject({ confirmed: z.boolean().optional() }), await jsonBody(c))
+            : {};
         await requireEmploymentWrite(
           ctx,
           action === 'delete' ? 'delete' : 'update',
@@ -313,7 +316,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
         await authorizeBusinessWrite(deps, ctx, id);
         if (action === 'submit')
           await withTenant(deps.db, ctx.tenantId, (tx) => requireEmployeeTransferBusiness(tx, ctx, id));
-        const write = runWrite(c, deps, ctx, { id, action }, async (tx, context) => {
+        const write = runWrite(c, deps, ctx, { id, action, ...confirmation }, async (tx, context) => {
           const checked = await transferBusinessContext(
             tx,
             { ...context, transferTarget: undefined },
@@ -322,7 +325,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
             undefined,
             action === 'submit' ? {} : undefined,
           );
-          const business = await transitionEmployment(tx, checked, { id, action });
+          const business = await transitionEmployment(tx, checked, { id, action, ...confirmation });
           // R1-T07：提交即按审批类型匹配流程并发起；撤回 / 撤销 / 删除同步结束在途实例，均与状态迁移同事务。
           if (action === 'submit') await employmentApprovalHooks.submitted(tx, context, id);
           else if (action === 'withdraw') await employmentApprovalHooks.withdrawn(tx, context, id);
@@ -407,7 +410,7 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 }
 
-/** 提交不接受客户端参数：流程编码由审批中心按业务派生（PR #35 第二轮清单 14），带任何字段一律 400。 */
+/** 重试生效不接受客户端业务参数；提交申请另只接受 confirmed，流程编码仍由审批中心派生。 */
 async function emptySubmitBody(c: Context<TenantEnv>): Promise<void> {
   if (c.req.header('content-type')) parse(z.strictObject({}), await jsonBody(c));
 }

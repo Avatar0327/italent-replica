@@ -13,6 +13,7 @@ import { referenceLabels } from './references.js';
 import { visibleFields } from './field-disclosure.js';
 
 const inputSchema = z.strictObject({
+  confirmed: z.boolean().optional(),
   effectiveDate: z.string(),
   reasonCode: z.string().trim().min(1).max(100).optional(),
   fields: z.record(z.string(), z.unknown()).optional(),

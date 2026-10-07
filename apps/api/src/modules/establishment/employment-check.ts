@@ -1,3 +1,5 @@
+import { assessmentDates } from './assessment-windows.js';
+import { readSettings } from './settings.js';
 import { reconcileCarriedEstablishment } from './carried-transfer.js';
 import { pendingActivationState } from '../employment/activation-store.js';
 import { insertedWindow, recordWindow } from '../employment/reporting-cycle.js';
@@ -60,8 +62,23 @@ export async function affectsEstablishmentOccupancy(
   return false;
 }
 
+export interface EstablishmentAssessment {
+  readonly exceeded: boolean;
+  readonly strict: boolean;
+}
+
 export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentContext, target: ActivationTarget) {
-  if (target.kind !== 'transfer' || !target.departmentId) return false;
+  return (await assessEmploymentEstablishment(tx, ctx, target)).strict;
+}
+
+/** 同一投影同时提供严格拒绝与非严格提示，结果不携带范围外组织、人数或额度。 */
+export async function assessEmploymentEstablishment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget,
+): Promise<EstablishmentAssessment> {
+  const clear = { exceeded: false, strict: false };
+  if (target.kind !== 'transfer' || !target.departmentId) return clear;
   // 人员锁在调用方已获取；编制锁只保护容量/占编读取，不在持编制锁后获取其他员工锁。
   await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
   const previous = await findPredecessor(tx, ctx.tenantId, target.employeeId, target.effectiveDate);
@@ -76,11 +93,38 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
     employType: target.fields?.employType ?? previous?.fields.employType ?? 'internal',
   };
   await reconcileCarriedEstablishment(tx, ctx, { ...target, fields });
-  if (!target.occupancyOnly && fields.employType === 'external') return false;
+  if (!target.occupancyOnly && fields.employType === 'external') return clear;
+  const timings = await readSettings(tx, ctx.tenantId, target.effectiveDate);
+  const window = target.occupancyOnly ? null : await targetWindow(tx, ctx, target);
+  if (!target.occupancyOnly && !window) return clear;
+  const next = target.occupancyOnly ? null : await nextReservedTransfer(tx, ctx, target, timings.transferOut);
+  const until = [target.until, window?.to, next].filter((day): day is string => Boolean(day)).sort()[0] ?? null;
+  if (until && until <= target.effectiveDate) return clear;
+  const dates = await assessmentDates(tx, ctx.tenantId, target.effectiveDate, until);
+  let exceeded = false;
+  for (const [index, date] of dates.entries()) {
+    const assessment = await assessSegment(tx, ctx, {
+      ...target,
+      fields,
+      effectiveDate: date,
+      until: dates[index + 1] ?? until,
+    });
+    if (assessment.strict) return assessment;
+    exceeded ||= assessment.exceeded;
+  }
+  return { exceeded, strict: false };
+}
+
+async function assessSegment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget & { fields: Partial<PresetFields> },
+): Promise<EstablishmentAssessment> {
+  const fields = target.fields;
+  let exceeded = false;
   const transfer = {
     ...target,
-    targetOrgId: target.departmentId,
-    sourceOrgId: previous?.fields.departmentId ?? target.departmentId,
+    targetOrgId: target.departmentId!,
   };
   // 周期取业务生效日（迟到执行已按 DEC-186 调整）；容量读取允许采用 HR 当天已生效的调整。
   const capacityAsOf = [target.effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
@@ -96,15 +140,7 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
       scheme.excludedOrgIds,
     );
     const ids = [...new Set(windows.flatMap((window) => window.orgIds))];
-    const members = await projectedMembers(
-      tx,
-      ctx,
-      { ...target, fields },
-      capacity.periodStart,
-      capacity.periodEnd,
-      ids,
-      windows,
-    );
+    const members = await projectedMembers(tx, ctx, { ...target, fields }, capacity.periodEnd, ids, windows);
     const count = (inclusive: boolean, positionId?: string) =>
       members(
         (person) =>
@@ -115,15 +151,20 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
     const exceeds = (local: number | null, inclusive: number | null, positionId?: string) =>
       (capacity.orgId === target.departmentId && local !== null && count(false, positionId) > local) ||
       (inclusive !== null && count(true, positionId) > inclusive);
-    if (capacity.strictControl && exceeds(capacity.localCapacity, capacity.inclusiveCapacity)) return true;
+    if (exceeds(capacity.localCapacity, capacity.inclusiveCapacity)) {
+      if (capacity.strictControl) return { exceeded: true, strict: true };
+      exceeded = true;
+    }
     if (scheme.subdivision === 'position') {
       const part = capacity.subdivisions.find((item) => item.positionId === target.positionId);
-      if (!part && scheme.unmatchedPolicy === 'reject') return true;
-      if (part && capacity.strictControl && exceeds(part.localCapacity, part.inclusiveCapacity, part.positionId))
-        return true;
+      if (!part && scheme.unmatchedPolicy === 'reject') return { exceeded: true, strict: true };
+      if (part && exceeds(part.localCapacity, part.inclusiveCapacity, part.positionId)) {
+        if (capacity.strictControl) return { exceeded: true, strict: true };
+        exceeded = true;
+      }
     }
   }
-  return false;
+  return { exceeded, strict: false };
 }
 
 /**
@@ -175,7 +216,6 @@ async function projectedMembers(
   tx: Tx,
   ctx: EmploymentContext,
   target: ActivationTarget,
-  start: string,
   end: string,
   orgIds: readonly string[],
   windows: readonly MembershipWindow[],
@@ -187,7 +227,6 @@ async function projectedMembers(
   const rows = await occupancyRows(tx, ctx, target, windowEnd, orgIds);
   // DEC-195：迟到申请及待复查的直接调动按实际执行日投影，原计划日决定同日顺序。
   // 已落地单用冻结字段替换其旧区间，不重复占编；撤回/驳回自动退出。
-  const { readSettings } = await import('./settings.js');
   const timings = await readSettings(tx, ctx.tenantId, target.effectiveDate);
   const members = new Map<string, MemberInterval[]>();
   for (const row of rows) {
@@ -197,7 +236,7 @@ async function projectedMembers(
   }
   // DEC-108：同日按最近提交的实际操作序号投影，不能按 UUID 排序。
   const projectedPredecessors = new Map<string, Awaited<ReturnType<typeof findPredecessor>>>();
-  for (const row of await pendingTransfers(tx, ctx, target, start, end)) {
+  for (const row of await pendingTransfers(tx, ctx, target, end)) {
     const raw = camelRow(row.fields);
     const payload = { ...raw, fields: snapshotFields(raw) } as unknown as EmploymentPayloadRow;
     const window = await insertedWindow(tx, ctx, row.employeeId, payload.effectiveDate, payload.businessId);
@@ -329,7 +368,7 @@ async function occupancyRows(
 }
 
 /** 删除恢复校验先于 deleted 状态事件，已写墓碑的业务不能再占编或截断恢复区间（P2-M1）。 */
-async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: ActivationTarget, start: string, end: string) {
+async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: ActivationTarget, end: string) {
   const date = sql`greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date)`;
   const pending = rowsOf<{ employeeId: string; fields: Record<string, unknown>; state: string }>(
     await tx.execute(sql`
@@ -351,7 +390,7 @@ async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: Activati
       AND p.kind='transfer' AND (p.mode='application' AND s.state IN ('in_review','approved')
         OR s.state='effective' AND p.effective_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date
           AND ${pendingActivationState(ctx.timezone)})
-      AND ${date} BETWEEN ${start}::date AND ${end}::date
+      AND ${date}<=${end}::date
     ORDER BY ${date},${plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`)},
       ${operationKey(ctx.tenantId, sql`b.id`)} LIMIT 10001
   `),
@@ -368,13 +407,7 @@ async function projectTarget(
   members: Map<string, MemberInterval[]>,
   transferOut: string,
 ) {
-  const [existing] = rowsOf(
-    await tx.execute(sql`SELECT 1 FROM employment_timeline
-    WHERE tenant_id=${ctx.tenantId} AND record_id=${target.businessId}::uuid`),
-  );
-  const window = existing
-    ? await recordWindow(tx, ctx.tenantId, target.businessId)
-    : await insertedWindow(tx, ctx, target.employeeId, target.effectiveDate, target.businessId);
+  const window = await targetWindow(tx, ctx, target);
   if (window) {
     const from = [window.from, target.effectiveDate].sort().at(-1)!;
     const next = await nextReservedTransfer(tx, ctx, target, transferOut);
@@ -396,6 +429,16 @@ async function projectTarget(
         },
       ]);
   }
+}
+
+async function targetWindow(tx: Tx, ctx: EmploymentContext, target: ActivationTarget) {
+  const [existing] = rowsOf(
+    await tx.execute(sql`SELECT 1 FROM employment_timeline
+    WHERE tenant_id=${ctx.tenantId} AND record_id=${target.businessId}::uuid`),
+  );
+  return existing
+    ? await recordWindow(tx, ctx.tenantId, target.businessId)
+    : await insertedWindow(tx, ctx, target.employeeId, target.effectiveDate, target.businessId);
 }
 
 /** 本人后续申请也有占用/释放时点；审批早提交单不能覆盖同日在后的投影。 */
