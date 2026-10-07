@@ -218,3 +218,60 @@ describe('AC-PER-01（第二轮）人员信息列表的状态筛选校验编码'
     expect((await api.request('GET', '/api/tenant/personnel/employees?employeeStatus=2', as)).status).toBe(200);
   });
 });
+
+describe('AC-EMP-17（DEC-234）实习转正按入职处理', () => {
+  async function intern(session: EmploymentSession, entry: { probation?: boolean } = {}) {
+    const org = await session.org(`实习部门${randomUUID().slice(0, 6)}`, { establishedOn: '2026-01-01' });
+    const employee = await session.employee();
+    await withTenant(testDb().db, session.tenant.id, (tx) =>
+      createEmploymentBusiness(
+        tx,
+        context(session, employee.revision),
+        employee.id,
+        {
+          kind: 'hire',
+          mode: 'direct',
+          effectiveDate: '2026-09-01',
+          fields: { departmentId: org.id, employType: 'intern' },
+        },
+        { entry },
+      ),
+    );
+    return employee;
+  }
+
+  async function regularize(session: EmploymentSession, employeeId: string, entry?: { probation?: boolean }) {
+    const revision = (await session.getEmployee(employeeId)).revision;
+    return withTenant(testDb().db, session.tenant.id, (tx) =>
+      createEmploymentBusiness(
+        tx,
+        context(session, revision),
+        employeeId,
+        { kind: 'intern_regularization', mode: 'direct', effectiveDate: '2026-09-20', fields: {} },
+        entry ? { entry } : {},
+      ),
+    );
+  }
+
+  it('实习生在职为正式；实习转正默认正式，不继承实习期的状态', async () => {
+    const session = await employmentSession(testDb().db, 'f022-intern-default');
+    const plain = await intern(session);
+    expect((await statuses(session, plain.id, '2026-10-01'))[0]).toMatchObject({ employeeStatus: 3 });
+    // 即使实习期版本被可信端口写成试用，实习转正也按入职处理，默认正式
+    const odd = await intern(session, { probation: true });
+    const regularized = await regularize(session, odd.id);
+    expect(regularized.record).toMatchObject({
+      employeeStatus: 3,
+      entryStatus: null,
+      fields: { employType: 'internal' },
+    });
+  });
+
+  it('实习转正经可信端口传入“有试用期”时为试用（R2 接线，同 DEC-224）', async () => {
+    const session = await employmentSession(testDb().db, 'f022-intern-probation');
+    const employee = await intern(session);
+    const regularized = await regularize(session, employee.id, { probation: true });
+    expect(regularized.record).toMatchObject({ employeeStatus: 2 });
+    expect((await statuses(session, employee.id, '2026-10-01')).map((row) => row.employeeStatus)).toEqual([3, 2]);
+  });
+});

@@ -17,6 +17,7 @@ interface Step {
   readonly date: string;
   readonly staff: string;
   readonly entry: string;
+  readonly employType?: 'internal' | 'intern';
 }
 
 async function legacyChain(tx: Tx, tenantId: string, employeeId: string, steps: readonly Step[]) {
@@ -24,23 +25,24 @@ async function legacyChain(tx: Tx, tenantId: string, employeeId: string, steps: 
   let order = 0;
   for (const step of steps) {
     const [business, payload] = [randomUUID(), randomUUID()];
+    const employType = step.employType ?? 'internal';
     ids.push(business);
     if (['hire', 'rehire', 'retire_rehire'].includes(step.kind))
       await tx.execute(sql`INSERT INTO employment_cycles (id,tenant_id,employee_id,entry_date,entry_type,employ_type)
-        VALUES (${step.staff},${tenantId},${employeeId},${step.date},${step.kind},'internal')`);
+        VALUES (${step.staff},${tenantId},${employeeId},${step.date},${step.kind},${employType})`);
     await tx.execute(sql`INSERT INTO employment_business_objects (id,tenant_id,employee_id)
       VALUES (${business},${tenantId},${employeeId})`);
     await tx.execute(sql`INSERT INTO employment_payload_versions
       (id,tenant_id,employee_id,business_id,version_no,kind,mode,effective_date,form_id,employ_type,remarks)
       VALUES (${payload},${tenantId},${employeeId},${business},1,${step.kind},'direct',${step.date},
-        'standard','internal',${`备注-${step.kind}-${step.date}`})`);
+        'standard',${employType},${`备注-${step.kind}-${step.date}`})`);
     await tx.execute(sql`INSERT INTO employment_state_events
       (tenant_id,employee_id,business_id,payload_version_id,event_no,state,command_id)
       VALUES (${tenantId},${employeeId},${business},${payload},1,'effective',${`legacy-${business}`})`);
     await tx.execute(sql`INSERT INTO employment_records
       (id,tenant_id,employee_id,payload_version_id,staff_id,entry_date,kind,start_date,employ_type,remarks)
       VALUES (${business},${tenantId},${employeeId},${payload},${step.staff},${step.entry},${step.kind},${step.date},
-        'internal',${`备注-${step.kind}-${step.date}`})`);
+        ${employType},${`备注-${step.kind}-${step.date}`})`);
     order += 1;
     await tx.execute(sql`INSERT INTO employment_timeline
       (tenant_id,employee_id,record_id,staff_id,start_date,sort_order,valid_during)
@@ -71,12 +73,14 @@ it('AC-EMP-20 回填：有试用期且未转正为试用、转正及之后为正
   const handle = database();
   const { session, people } = await withPreAuditSchema(handle.db, async () => {
     const session = await employmentSession(handle.db, 'empbackfill');
-    const people = [await session.employee(), await session.employee(), await session.employee()];
+    const people = [];
+    for (let i = 0; i < 5; i += 1) people.push(await session.employee());
     return { session, people };
   });
   const tenantId = session.tenant.id;
-  const [a, b, c] = people.map((person) => person.id) as [string, string, string];
+  const [a, b, c, d, e] = people.map((person) => person.id) as [string, string, string, string, string];
   const [aStaff, bStaff, bStaff2, cStaff] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+  const [dStaff, eStaff] = [randomUUID(), randomUUID()];
   const ids = await withTenant(handle.db, tenantId, async (tx) => {
     const aIds = await legacyChain(tx, tenantId, a, [
       { kind: 'hire', date: '2025-01-01', staff: aStaff, entry: '2025-01-01' },
@@ -92,6 +96,17 @@ it('AC-EMP-20 回填：有试用期且未转正为试用、转正及之后为正
     const cIds = await legacyChain(tx, tenantId, c, [
       { kind: 'hire', date: '2025-01-01', staff: cStaff, entry: '2025-01-01' },
       { kind: 'retirement', date: '2026-02-01', staff: cStaff, entry: '2025-01-01' },
+    ]);
+    // DEC-234：D、E 先以实习生入职，再实习转正（按入职处理）
+    const dIds = await legacyChain(tx, tenantId, d, [
+      { kind: 'hire', date: '2025-01-01', staff: dStaff, entry: '2025-01-01', employType: 'intern' },
+      { kind: 'transfer', date: '2025-02-01', staff: dStaff, entry: '2025-01-01', employType: 'intern' },
+      { kind: 'intern_regularization', date: '2025-07-01', staff: dStaff, entry: '2025-01-01' },
+      { kind: 'transfer', date: '2025-08-01', staff: dStaff, entry: '2025-01-01' },
+    ]);
+    const eIds = await legacyChain(tx, tenantId, e, [
+      { kind: 'hire', date: '2025-01-01', staff: eStaff, entry: '2025-01-01', employType: 'intern' },
+      { kind: 'intern_regularization', date: '2025-07-01', staff: eStaff, entry: '2025-01-01' },
     ]);
     // A 的 2025-03-01 调动被向后更新改写过：追加的记录快照
     await tx.execute(sql`INSERT INTO employment_payload_versions
@@ -120,7 +135,19 @@ it('AC-EMP-20 回填：有试用期且未转正为试用、转正及之后为正
        probation_end_date,signing_count,root_contract_id,version_no,created_by)
       VALUES (${contract},${tenantId},${a},'HT-BACKFILL-1',${type},${company},'fixed','2025-01-01','2028-01-01',
         '2025-01-01','2025-06-30',1,${contract},1,${session.user.id})`);
-    return { aIds, bIds, cIds, pending };
+    // D：实习期合同带试用期（实习生仍记正式）；实习转正后签的合同带试用期（转正记录按入职处理为试用）
+    for (const [number, start, end, probationEnd] of [
+      ['HT-INTERN-D', '2025-01-01', '2025-06-30', '2025-03-31'],
+      ['HT-REGULAR-D', '2025-07-01', '2028-06-30', '2025-12-31'],
+    ] as const) {
+      const id = randomUUID();
+      await tx.execute(sql`INSERT INTO contract_records
+        (id,tenant_id,employee_id,number,type_id,company_id,term_type,effective_date,end_date,probation_start_date,
+         probation_end_date,signing_count,root_contract_id,version_no,created_by)
+        VALUES (${id},${tenantId},${d},${number},${type},${company},'fixed',${start},${end},${start},
+          ${probationEnd},1,${id},1,${session.user.id})`);
+    }
+    return { aIds, bIds, cIds, dIds, eIds, pending };
   });
   const before = await withTenant(handle.db, tenantId, (tx) => snapshot(tx, tenantId));
   await handle.migrate();
@@ -141,6 +168,9 @@ it('AC-EMP-20 回填：有试用期且未转正为试用、转正及之后为正
   expect(ids.aIds.map(record)).toEqual([2, 2, 3, 3]);
   expect(ids.bIds.map(record)).toEqual([3, 8, 3]);
   expect(ids.cIds.map(record)).toEqual([3, 6]);
+  // DEC-234 ②：实习生一律记正式；① 实习转正按入职处理（有试用期合同为试用，否则正式），之后继承
+  expect(ids.dIds.map(record)).toEqual([3, 3, 2, 2]);
+  expect(ids.eIds.map(record)).toEqual([3, 3]);
   expect([...statuses.records.values()].every((r) => r.e === null)).toBe(true);
   const payload = (business: string, v: number) =>
     statuses.payloads.find((row) => row.business === business && row.v === v)?.s;
