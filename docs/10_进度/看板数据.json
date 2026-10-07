@@ -1872,7 +1872,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 11:42",
+"liveUpdated": "10-07 11:43",
 "chains": [
 {
 "g": "exit",
@@ -1982,11 +1982,10 @@
 "k": "run",
 "pr": 99,
 "n": "本人跨部门调动职位置空",
-"seg": "ev:d ds:n dev:d4 rev:w4 mg:w",
-"now": "第 4 轮待审：等你批准审查合并窗口的前台操作",
+"seg": "ev:d ds:n dev:d4 rev:a4 mg:w",
+"now": "第 4 轮 Astra Ultra 审查中",
 "wait": "同类第 3 次，第 5 轮仍有则问你",
-"up": "10-07 第 4 轮调到 Max（Opus）",
-"need": "1"
+"up": "10-07 第 4 轮调到 Max（Opus）"
 },
 {
 "id": "R3-T00",
