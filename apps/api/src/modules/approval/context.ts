@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
+import { canonicalUuid } from '@italent/domain';
 import { AppError, type ErrorCode } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { recordAudit } from '../../audit/record.js';
@@ -11,7 +12,7 @@ import type { ForeignField } from './foreign-fields.js';
  * （F-003 第二轮 P2-1）。
  */
 export function canonicalId(id: string): string {
-  return id.toLowerCase();
+  return canonicalUuid(id);
 }
 
 /** 按用户解析某业务对象的可查看字段（undefined = 全部可见）；由路由用授权器注入。 */

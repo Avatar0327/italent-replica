@@ -2,6 +2,9 @@ import { TransferApplication } from '../self-service/shared/TransferApplication.
 import { useState } from 'react';
 import { text } from './messages.js';
 import './transfer.css';
+import { normalizeUuid } from '@italent/domain';
+import { approvalHref } from '../approval/navigation.js';
+import { text as approvalText } from '../approval/messages.js';
 
 export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employee' | 'manager' }) {
   const [tenantId, setTenantId] = useState('');
@@ -11,6 +14,7 @@ export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employe
       <header className="transfer-header">
         <span className="transfer-brand">iTalent</span>
         <h1>{initiator === 'employee' ? text.personalTitle : text.title}</h1>
+        <a href={approvalHref({ tenantId: activeTenant })}>{approvalText.title}</a>
         <a href={initiator === 'employee' ? '/' : '/self/transfers'}>
           {initiator === 'employee' ? text.hrEntry : text.personalEntry}
         </a>
@@ -27,7 +31,7 @@ export function TransferPage({ initiator = 'hr' }: { initiator?: 'hr' | 'employe
           className="transfer-tenant"
           onSubmit={(event) => {
             event.preventDefault();
-            setActiveTenant(tenantId.trim());
+            setActiveTenant(normalizeUuid(tenantId) ?? tenantId.trim());
           }}
         >
           <label>

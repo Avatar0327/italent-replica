@@ -75,7 +75,9 @@ import {
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
 import { discloseHandover, handoverExceptionAdmin, takeOverOnDeactivation, type HandoverResult } from './handover.js';
-import { listAdminLogs, listInstances, listNotifications, listTodos } from './queries.js';
+import { listAdminLogs, listInstances, listNotifications, listProcessedInstances, listTodos } from './queries.js';
+import { currentReadScope } from './read-access.js';
+import { readNodeEditing } from './editing.js';
 import { simulateByObject, simulateProcess } from './simulation.js';
 import {
   activeInstanceOf,
@@ -180,7 +182,9 @@ async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
   const ctx = readCtx(c, deps);
   const viewer = await viewerOf(deps, ctx);
   const data = await withTenant(deps.db, ctx.tenantId, (tx) => readDetail(tx, ctx, instanceId, viewer));
-  return c.json(detailView(data, ctx.userId, await detailViewable(deps, ctx, data)));
+  const viewable = await detailViewable(deps, ctx, data);
+  const editing = await withTenant(deps.db, ctx.tenantId, (tx) => readNodeEditing(tx, deps, ctx, data, viewable));
+  return c.json(detailView(data, ctx.userId, viewable, editing));
 }
 
 /** DEC-101 / X-19：完整任务与日志历史分页读取（最新在前），权限与披露同详情。 */
@@ -418,12 +422,21 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/instances', async (c) => {
     const ctx = readCtx(c, deps);
     const page = pageQuery(c);
-    const role = z.enum(['initiated', 'participated']).parse(c.req.query('role') ?? 'initiated');
+    const role = z.enum(['initiated', 'participated', 'processed']).parse(c.req.query('role') ?? 'initiated');
     const businessId = c.req.query('businessId');
     if (businessId !== undefined) z.uuid().parse(businessId);
-    const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listInstances(tx, ctx.tenantId, ctx.userId, { role, ...(businessId ? { businessId } : {}) }, page),
-    );
+    const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+      if (role === 'processed')
+        return listProcessedInstances(
+          tx,
+          ctx.tenantId,
+          ctx.userId,
+          await currentReadScope(tx, deps, ctx),
+          businessId ? canonicalId(businessId) : undefined,
+          page,
+        );
+      return listInstances(tx, ctx.tenantId, ctx.userId, { role, ...(businessId ? { businessId } : {}) }, page);
+    });
     return c.json({ items, page: page.page, pageSize: page.pageSize });
   });
   router.get('/instances/:id', (c) => respondDetail(c, deps, uuidParam(c)));

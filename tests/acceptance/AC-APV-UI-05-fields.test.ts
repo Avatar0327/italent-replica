@@ -195,7 +195,7 @@ describe('AC-APV-UI-05 审批字段编辑边界', () => {
 
   it('生效日期不提供清空按钮，伪造null或非法日期不能静默丢弃', async () => {
     const values = { effectiveDate: '2026-11-01' };
-    for (const value of [null, '', '2026-02-29', '2026-13-01', '2026-1-01', 'invalid'])
+    for (const value of [null, '', '0000-01-01', '2026-02-29', '2026-13-01', '2026-1-01', 'invalid'])
       expect(() =>
         buildFieldEdits(values, { [fieldKey(['effectiveDate'])]: { path: ['effectiveDate'], value } }, [
           'effectiveDate',

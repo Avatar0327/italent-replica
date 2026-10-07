@@ -83,6 +83,36 @@ export async function listInstances(
   }));
 }
 
+/** DEC-233：已处理不等于参与；沿用经理已办日志语义，范围在 SQL 分页之前过滤。 */
+export async function listProcessedInstances(
+  tx: Tx,
+  tenantId: string,
+  userId: string,
+  scope: SQL,
+  businessId: string | undefined,
+  page: Page,
+) {
+  const rows = rowsOf(
+    await tx.execute(sql`SELECT i.* FROM approval_instances i
+    WHERE i.tenant_id=${tenantId} AND ${scope}
+      AND EXISTS (SELECT 1 FROM approval_instance_logs l
+        WHERE l.tenant_id=i.tenant_id AND l.instance_id=i.id AND l.actor_user_id=${userId}::uuid
+          AND l.event IN ('approve','reject','disagree','transfer'))
+      ${businessId ? sql`AND i.business_id=${businessId}::uuid` : sql``}
+    ORDER BY i.created_at DESC,i.id LIMIT ${page.limit} OFFSET ${page.offset}`),
+  );
+  return rows.map((row) => ({
+    id: String(row.id),
+    title: String(row.title),
+    status: String(row.status),
+    approvalType: String(row.approval_type),
+    businessId: String(row.business_id),
+    currentNodeKey: (row.current_node_key as string | null) ?? null,
+    revision: Number(row.revision),
+    createdAt: iso(row.created_at),
+  }));
+}
+
 /** DEC-070：按“管理员转交自审”筛选实例日志；只看管理员数据范围内员工的实例。 */
 export async function listAdminLogs(
   tx: Tx,

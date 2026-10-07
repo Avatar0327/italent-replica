@@ -4,6 +4,7 @@ import { TransferApplication, SelfServiceShell, EmploymentList } from '../self-s
 import { transferRequest, requestError, TRANSFER_API } from './api.js';
 import { text } from './messages.js';
 import './transfer.css';
+import { approvalHref } from '../approval/navigation.js';
 
 type Row = { [key: string]: string | number | boolean | null | Record<string, unknown> };
 type Result = { items: Row[]; counts?: Record<string, number | null>; pageSize?: number };
@@ -150,8 +151,10 @@ function ReadList({ tenantId, path, todos = false }: { tenantId: string; path: s
           <ul>
             {data.items.map((row, index) => (
               <li key={String(row.id ?? row.taskId ?? index)}>
-                {String(row.title)} ·{' '}
-                {labels.statuses[String(row.status) as keyof typeof labels.statuses] ?? String(row.nodeName ?? '')}
+                <a href={approvalHref({ tenantId, instanceId: String(row.instanceId ?? row.id ?? '') })}>
+                  {String(row.title)}
+                </a>{' '}
+                · {labels.statuses[String(row.status) as keyof typeof labels.statuses] ?? String(row.nodeName ?? '')}
               </li>
             ))}
           </ul>

@@ -15,6 +15,7 @@ import {
   rejectAllowed,
   visibleWhenHidden,
   type ApprovalNode,
+  type EditMode,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
@@ -195,7 +196,15 @@ function initiatorActions({ instance, version }: DetailData): string[] {
   return actions;
 }
 
-export function detailView(data: DetailData, userId: string, viewable: ReadonlySet<string> | undefined) {
+export function detailView(
+  data: DetailData,
+  userId: string,
+  viewable: ReadonlySet<string> | undefined,
+  editing: { readonly editMode: EditMode; readonly editableFields: readonly string[] } = {
+    editMode: 'none',
+    editableFields: [],
+  },
+) {
   const { instance, version, snapshot } = data;
   const node = viewerNode(data, userId);
   const hidden = recordsHidden(data, userId);
@@ -222,6 +231,11 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
     subjectEmployeeId: instance.subjectEmployeeId,
     createdAt: instance.createdAt,
     completedAt: instance.completedAt,
+    taskId:
+      instance.status === 'running'
+        ? (data.allTasks.find((task) => task.status === 'pending' && task.assigneeUserId === userId)?.id ?? null)
+        : null,
+    retrieveTaskId: retrievableTask(instance, version, data.allTasks, userId)?.id ?? null,
     tasks: visibleTasks(data, userId, data.tasks).map((task) => ({
       ...task,
       nodeName: names.get(task.nodeKey) ?? task.nodeKey,
@@ -229,7 +243,7 @@ export function detailView(data: DetailData, userId: string, viewable: ReadonlyS
     logs: hidden ? [] : data.logs.map((log) => projectLog(log, disclosed)),
     recordsHidden: hidden,
     commentNotice: COMMENT_NOTICE,
-    form: { nodeKey: node?.key ?? null, values: pick(snapshot.values, fields), ...originals },
+    form: { nodeKey: node?.key ?? null, values: pick(snapshot.values, fields), ...originals, ...editing },
     actions: [...new Set(actionsFor(data, userId, blindReviewFields(snapshot.changedFields, viewable).length > 0))],
   };
 }
