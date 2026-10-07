@@ -23,6 +23,8 @@ const paths = {
   jobPost: '/api/tenant/job/posts',
   establishment: '/api/tenant/establishment/schemes',
 } as const;
+// 参数表写成顶层字面量；类型上限定为 paths 的键。
+const PATH_KEYS = ['organization', 'jobPost', 'establishment'] as const satisfies readonly (keyof typeof paths)[];
 
 describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
   let world: PermissionWorld;
@@ -149,8 +151,8 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     return { user: user.id, tenant: world.tenant.id, profile };
   }
 
-  for (const key of Object.keys(paths) as (keyof typeof paths)[]) {
-    it(`${key}：canCreate=false 时新建拒绝`, async () => {
+  describe.each(PATH_KEYS)('%s', (key) => {
+    it('canCreate=false 时新建拒绝', async () => {
       const as = await actor(key, { create: false });
       const body =
         key === 'organization'
@@ -162,7 +164,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
       expect(response.status).toBe(403);
     });
 
-    it(`${key}：不可编辑字段整单拒绝`, async () => {
+    it('不可编辑字段整单拒绝', async () => {
       const as = await actor(key, { editable: [], scope: key === 'organization' ? true : 'all' });
       const object = key === 'organization' ? org : key === 'jobPost' ? post : scheme;
       const response = await world.api.request('PATCH', `${paths[key]}/${object.id}`, {
@@ -173,7 +175,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
       expect(response.status).toBe(403);
     });
 
-    it(`${key}：默认空范围列表返回无数据权限，详情同不存在`, async () => {
+    it('默认空范围列表返回无数据权限，详情同不存在', async () => {
       const as = await actor(key);
       const object = key === 'organization' ? org : key === 'jobPost' ? post : scheme;
       const response = await world.api.request('GET', `${paths[key]}?asOf=${TODAY}`, as);
@@ -182,7 +184,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
       expect((await world.api.request('GET', `${paths[key]}/${object.id}?asOf=${TODAY}`, as)).status).toBe(404);
     });
 
-    it(`${key}：列表与详情隐藏字段一致`, async () => {
+    it('列表与详情隐藏字段一致', async () => {
       const hidden = key === 'organization' ? 'remarks' : key === 'jobPost' ? 'responsibilities' : 'name';
       const as = await actor(key, { hidden: [hidden], scope: key === 'organization' ? true : 'all' });
       const object = key === 'organization' ? org : key === 'jobPost' ? post : scheme;
@@ -195,7 +197,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
       expect(detail.status).toBe(200);
       expect(await detail.json()).not.toHaveProperty(hidden);
     });
-  }
+  });
 
   it('职位按所属组织在SQL分页前过滤，范围外详情/修改不可见', async () => {
     const as = await actor('jobPosition', { scope: true, hidden: ['workLocation'] });
@@ -690,69 +692,71 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     ).toBe(403);
   });
 
-  for (const imported of [false, true]) {
-    it(`组织${imported ? '导入新增' : '直接新增'}同键重放必须按现行父级权限检查`, async () => {
-      const as = await actor('organization', { scope: true, buttons: [{ buttonCode: 'import', level: 'list' }] });
-      const body = imported
-        ? { rows: [{ sourceCode: randomUUID(), code: randomUUID(), name: '导入创建后移出', parentId: org.id }] }
-        : { name: '直接创建后移出', parents: { admin: { parentId: org.id } } };
-      const path = imported ? '/api/tenant/org/import' : paths.organization;
-      const input = { ...as, ifMatch: 0, idempotencyKey: randomUUID(), body };
-      const first = await world.api.request('POST', path, input);
-      expect(first.status, await first.clone().text()).toBe(imported ? 200 : 201);
-      const data = (await first.json()) as { id: string; results: { orgId: string }[] };
-      const id = imported ? data.results[0]!.orgId : data.id;
-      expect((await world.api.request('POST', path, input)).status).toBe(imported ? 200 : 201);
-      expect(
-        (
-          await fixture.request('PATCH', `${paths.organization}/${id}`, {
-            ...world.asAdmin,
-            ifMatch: 1,
-            body: { effectiveDate: TODAY, parents: { admin: { parentId: secondOrg.id } } },
-          })
-        ).status,
-      ).toBe(200);
-      expect((await world.api.request('GET', `${paths.organization}/${id}`, as)).status).toBe(404);
-      expect((await world.api.request('POST', path, input)).status).toBe(404);
-    });
-  }
+  it.each([
+    ['直接新增', false],
+    ['导入新增', true],
+  ] as const)('组织%s同键重放必须按现行父级权限检查', async (_entry, imported) => {
+    const as = await actor('organization', { scope: true, buttons: [{ buttonCode: 'import', level: 'list' }] });
+    const body = imported
+      ? { rows: [{ sourceCode: randomUUID(), code: randomUUID(), name: '导入创建后移出', parentId: org.id }] }
+      : { name: '直接创建后移出', parents: { admin: { parentId: org.id } } };
+    const path = imported ? '/api/tenant/org/import' : paths.organization;
+    const input = { ...as, ifMatch: 0, idempotencyKey: randomUUID(), body };
+    const first = await world.api.request('POST', path, input);
+    expect(first.status, await first.clone().text()).toBe(imported ? 200 : 201);
+    const data = (await first.json()) as { id: string; results: { orgId: string }[] };
+    const id = imported ? data.results[0]!.orgId : data.id;
+    expect((await world.api.request('POST', path, input)).status).toBe(imported ? 200 : 201);
+    expect(
+      (
+        await fixture.request('PATCH', `${paths.organization}/${id}`, {
+          ...world.asAdmin,
+          ifMatch: 1,
+          body: { effectiveDate: TODAY, parents: { admin: { parentId: secondOrg.id } } },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await world.api.request('GET', `${paths.organization}/${id}`, as)).status).toBe(404);
+    expect((await world.api.request('POST', path, input)).status).toBe(404);
+  });
 
-  for (const imported of [false, true]) {
-    it(`职位${imported ? '导入新增' : '直接新增'}同键重放不能绕过当前组织范围`, async () => {
-      const as = await actor('jobPosition', { scope: true, buttons: [{ buttonCode: 'import', level: 'list' }] });
-      const row = {
-        name: `职位创建后移出-${randomUUID()}`,
-        code: randomUUID(),
-        orgId: org.id,
-        postId: post.id,
-        startDate: '2026-01-01',
-      };
-      const body = imported ? { kind: 'positions', rows: [{ ...row, sourceCode: randomUUID() }] } : row;
-      const path = imported ? '/api/tenant/job/import' : '/api/tenant/job/positions';
-      const input = { ...as, ifMatch: 0, idempotencyKey: randomUUID(), body };
-      const first = await world.api.request('POST', path, input);
-      expect(first.status, await first.clone().text()).toBe(imported ? 200 : 201);
-      const data = (await first.json()) as { id: string; results: { objectId: string }[] };
-      const raw = await (await fixture.request('POST', path, input)).json();
-      if (imported) expect(raw, JSON.stringify(raw)).toMatchObject({ results: [{ status: 'created' }] });
-      const current = (await (
-        await fixture.request('GET', `/api/tenant/job/positions?name=${encodeURIComponent(row.name)}`, world.asAdmin)
-      ).json()) as { items: { id: string; code: string }[] };
-      const id = imported ? current.items.find((item) => item.code === row.code)!.id : data.id;
-      expect((await world.api.request('POST', path, input)).status).toBe(imported ? 200 : 201);
-      expect(
-        (
-          await fixture.request('PATCH', `/api/tenant/job/positions/${id}`, {
-            ...world.asAdmin,
-            ifMatch: 1,
-            body: { effectiveDate: TODAY, orgId: secondOrg.id },
-          })
-        ).status,
-      ).toBe(200);
-      expect((await world.api.request('GET', `/api/tenant/job/positions/${id}`, as)).status).toBe(404);
-      expect((await world.api.request('POST', path, input)).status).toBe(404);
-    });
-  }
+  it.each([
+    ['直接新增', false],
+    ['导入新增', true],
+  ] as const)('职位%s同键重放不能绕过当前组织范围', async (_entry, imported) => {
+    const as = await actor('jobPosition', { scope: true, buttons: [{ buttonCode: 'import', level: 'list' }] });
+    const row = {
+      name: `职位创建后移出-${randomUUID()}`,
+      code: randomUUID(),
+      orgId: org.id,
+      postId: post.id,
+      startDate: '2026-01-01',
+    };
+    const body = imported ? { kind: 'positions', rows: [{ ...row, sourceCode: randomUUID() }] } : row;
+    const path = imported ? '/api/tenant/job/import' : '/api/tenant/job/positions';
+    const input = { ...as, ifMatch: 0, idempotencyKey: randomUUID(), body };
+    const first = await world.api.request('POST', path, input);
+    expect(first.status, await first.clone().text()).toBe(imported ? 200 : 201);
+    const data = (await first.json()) as { id: string; results: { objectId: string }[] };
+    const raw = await (await fixture.request('POST', path, input)).json();
+    if (imported) expect(raw, JSON.stringify(raw)).toMatchObject({ results: [{ status: 'created' }] });
+    const current = (await (
+      await fixture.request('GET', `/api/tenant/job/positions?name=${encodeURIComponent(row.name)}`, world.asAdmin)
+    ).json()) as { items: { id: string; code: string }[] };
+    const id = imported ? current.items.find((item) => item.code === row.code)!.id : data.id;
+    expect((await world.api.request('POST', path, input)).status).toBe(imported ? 200 : 201);
+    expect(
+      (
+        await fixture.request('PATCH', `/api/tenant/job/positions/${id}`, {
+          ...world.asAdmin,
+          ifMatch: 1,
+          body: { effectiveDate: TODAY, orgId: secondOrg.id },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await world.api.request('GET', `/api/tenant/job/positions/${id}`, as)).status).toBe(404);
+    expect((await world.api.request('POST', path, input)).status).toBe(404);
+  });
 
   async function addObjectView(as: Awaited<ReturnType<typeof actor>>, key: keyof typeof MODULE_OBJECTS) {
     const definition = MODULE_OBJECTS[key];
@@ -791,63 +795,59 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     );
   });
 
-  for (const [kind, key, field] of [
+  it.each([
     ['levels', 'jobLevel', 'levelId'],
     ['grades', 'jobGrade', 'gradeId'],
-  ] as const) {
-    it(`任职校验不能探测范围外 ${key}`, async () => {
-      const as = await actor('jobPost', { buttons: [{ buttonCode: 'validate', level: 'detail' }] });
-      await addObjectView(as, key);
-      await objectAll(as, 'jobPost');
-      const reference = await fixtureCreate(`/api/tenant/job/${kind}`, {
-        name: '隐藏的关联对象',
-        startDate: '2026-01-01',
-        [kind === 'levels' ? 'level' : 'grade']: 1,
-      });
-      expect(
-        (
-          await world.api.request('POST', '/api/tenant/job/validate-assignment', {
-            ...as,
-            body: { postId: post.id, [field]: reference.id, asOf: TODAY },
-          })
-        ).status,
-      ).toBe(404);
+  ] as const)('任职校验不能探测范围外 $1', async (kind, key, field) => {
+    const as = await actor('jobPost', { buttons: [{ buttonCode: 'validate', level: 'detail' }] });
+    await addObjectView(as, key);
+    await objectAll(as, 'jobPost');
+    const reference = await fixtureCreate(`/api/tenant/job/${kind}`, {
+      name: '隐藏的关联对象',
+      startDate: '2026-01-01',
+      [kind === 'levels' ? 'level' : 'grade']: 1,
     });
-  }
+    expect(
+      (
+        await world.api.request('POST', '/api/tenant/job/validate-assignment', {
+          ...as,
+          body: { postId: post.id, [field]: reference.id, asOf: TODAY },
+        })
+      ).status,
+    ).toBe(404);
+  });
 
-  for (const key of Object.keys(paths) as (keyof typeof paths)[]) {
-    it(`${key}：页面使用用户规则覆盖默认空范围，只读本人创建记录`, async () => {
-      const as = await actor(key);
-      const body =
-        key === 'organization'
-          ? { name: '本人创建组织', parents: { admin: { parentId: world.tenant.id } } }
-          : key === 'jobPost'
-            ? { name: '本人创建职务', code: `P${randomUUID().slice(0, 8)}` }
-            : { name: '本人创建方案', periodType: 'annual', maintenanceMode: 'local' };
-      const made = await fixture.request('POST', paths[key], { ...as, ifMatch: 0, body });
-      expect(made.status).toBe(201);
-      const own = (await made.json()) as { id: string };
-      const objectCode = MODULE_OBJECTS[key].code;
-      for (const page of ['list', 'detail']) {
-        const configured = await world.api.request(
-          'PUT',
-          `/api/tenant/permission/scope-policies/TenantBase/${objectCode}/page/${objectCode}.${page}`,
-          {
-            ...world.asAdmin,
-            ifMatch: 0,
-            body: { creatorField: 'createdBy', rules: [{ dimension: 'using_user' }] },
-          },
-        );
-        expect(configured.status, await configured.clone().text()).toBe(200);
-      }
-      const list = await world.api.request('GET', `${paths[key]}?asOf=${TODAY}`, as);
-      expect(list.status).toBe(200);
-      expect(await list.json()).toMatchObject({ items: [{ id: own.id }], hasDataPermission: true });
-      expect((await world.api.request('GET', `${paths[key]}/${own.id}?asOf=${TODAY}`, as)).status).toBe(200);
-      const other = key === 'organization' ? org : key === 'jobPost' ? post : scheme;
-      expect((await world.api.request('GET', `${paths[key]}/${other.id}?asOf=${TODAY}`, as)).status).toBe(404);
-    });
-  }
+  it.each(PATH_KEYS)('%s：页面使用用户规则覆盖默认空范围，只读本人创建记录', async (key) => {
+    const as = await actor(key);
+    const body =
+      key === 'organization'
+        ? { name: '本人创建组织', parents: { admin: { parentId: world.tenant.id } } }
+        : key === 'jobPost'
+          ? { name: '本人创建职务', code: `P${randomUUID().slice(0, 8)}` }
+          : { name: '本人创建方案', periodType: 'annual', maintenanceMode: 'local' };
+    const made = await fixture.request('POST', paths[key], { ...as, ifMatch: 0, body });
+    expect(made.status).toBe(201);
+    const own = (await made.json()) as { id: string };
+    const objectCode = MODULE_OBJECTS[key].code;
+    for (const page of ['list', 'detail']) {
+      const configured = await world.api.request(
+        'PUT',
+        `/api/tenant/permission/scope-policies/TenantBase/${objectCode}/page/${objectCode}.${page}`,
+        {
+          ...world.asAdmin,
+          ifMatch: 0,
+          body: { creatorField: 'createdBy', rules: [{ dimension: 'using_user' }] },
+        },
+      );
+      expect(configured.status, await configured.clone().text()).toBe(200);
+    }
+    const list = await world.api.request('GET', `${paths[key]}?asOf=${TODAY}`, as);
+    expect(list.status).toBe(200);
+    expect(await list.json()).toMatchObject({ items: [{ id: own.id }], hasDataPermission: true });
+    expect((await world.api.request('GET', `${paths[key]}/${own.id}?asOf=${TODAY}`, as)).status).toBe(200);
+    const other = key === 'organization' ? org : key === 'jobPost' ? post : scheme;
+    expect((await world.api.request('GET', `${paths[key]}/${other.id}?asOf=${TODAY}`, as)).status).toBe(404);
+  });
   it('组织 using_user 实体范围允许修改本人创建记录，拒绝他人记录', async () => {
     const as = await actor('organization');
     const created = await fixture.request('POST', paths.organization, {

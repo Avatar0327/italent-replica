@@ -108,6 +108,11 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
   </header>
 
   <section>
+    <div class="sec-h"><h2>正在进行</h2><span class="sub">会话命名：#PR号 编号 开发 / 审查 / 其他 具体任务</span></div>
+    <div class="panel" id="run"></div>
+  </section>
+
+  <section>
     <div class="sec-h"><h2>全景 · 依赖关系</h2>
       <div class="lg"><span><i style="background:var(--active)"></i>开发 / 修改中</span><span><i style="background:var(--review)"></i>审查中</span><span><i style="background:var(--todo)"></i>待派</span><span><i style="background:var(--blocked)"></i>受阻</span><span><i style="background:var(--done)"></i>已完成</span><span>── 依赖　- - 修正所属</span></div></div>
     <div class="panel"><div id="graph"></div><div class="backlog" id="backlog"></div></div>
@@ -132,6 +137,8 @@ const ST = {done:["已完成","s-done"],review:["审查中","s-review"],active:[
 const COL = {done:"var(--done)",review:"var(--review)",active:"var(--active)",todo:"var(--todo)",blocked:"var(--blocked)"};
 const MS = {M0:"底座与决策",M1:"多租户隔离",M2:"权限与平台",M3:"组织与职务编制",M4:"任职版本链",M5:"审批与定时生效",M6:"调动业务",M7:"联动 · 自助 · 审计"};
 const STAGES = {R1:"R1 底座",R2:"R2 人事完整化",R3:"R3 人才链路"};
+const esc0 = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+document.getElementById("run").innerHTML = '<table><colgroup><col style="width:34%"><col style="width:24%"><col style="width:70px"><col></colgroup><thead><tr><th>会话名（#PR 编号 任务）</th><th>当前在做</th><th>轮次</th><th>谁在做</th></tr></thead><tbody>' + (DATA.run || []).map(r => `<tr><td><span class="mono">${r[0] ? "#" + r[0] + " " : ""}${esc0(r[1])}</span> ${esc0(r[2])}</td><td><b>${esc0(r[3])}</b></td><td>${esc0(r[4])}</td><td>${esc0(r[5])}</td></tr>`).join("") + '</tbody></table>';
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const isFix = id => !!T[id].p;
 const stg = id => { const t = T[id]; if (t.p) return stg(t.p); return (t.ms || "").startsWith("M") ? "R1" : t.ms; };
