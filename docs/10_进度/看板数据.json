@@ -1936,7 +1936,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 12:54",
+"liveUpdated": "10-07 12:55",
 "chains": [
 {
 "g": "exit",
@@ -2114,8 +2114,8 @@
 "o": 1,
 "k": "run",
 "n": "人才标准与指标库",
-"seg": "ev:d ds:n dev:d2 rev:a2 mg:w",
-"now": "第 2 轮审查出结论，待读取",
+"seg": "ev:w ds:n dev:d2 rev:d2 mg:w",
+"now": "审查已通过；合并等 Q-M0-107 门禁（先取证或按暂定口径先合）",
 "pr": 106
 },
 {
