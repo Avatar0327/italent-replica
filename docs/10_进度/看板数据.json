@@ -3,7 +3,7 @@
 "stats": {
 "merged": 50,
 "open": 6,
-"dec": 258,
+"dec": 259,
 "ev": "19/103"
 },
 "tasks": {
@@ -351,8 +351,10 @@
 "R3-T01": {
 "n": "人才标准与指标库",
 "ms": "R3",
-"s": "todo",
-"note": "第一批：Opus 5.5 High → Sol Ultra（用户 10-07 同意分批）"
+"s": "active",
+"note": "第一批：Opus 5.5 High → Sol Ultra（用户 10-07 同意分批）",
+"dev": "Claude Opus 5.5 High",
+"rev": "Sol Ultra"
 },
 "R3-T02": {
 "n": "任职资格与人才评定",
@@ -366,8 +368,10 @@
 "R3-T03": {
 "n": "360 度评估",
 "ms": "R3",
-"s": "todo",
-"note": "第一批：Opus 5.5 High → Sol Ultra；匿名阈值 DEC-065"
+"s": "active",
+"note": "第一批：Opus 5.5 High → Sol Ultra；匿名阈值 DEC-065",
+"dev": "Claude Opus 5.5 High",
+"rev": "Sol Ultra"
 },
 "R3-T04": {
 "n": "人才盘点",
@@ -730,12 +734,14 @@
 },
 "F-030": {
 "n": "AC 覆盖统计改为 Vitest 运行时采集（替代静态解析脚本）",
-"s": "todo",
+"s": "active",
 "p": "F-024",
 "deps": [
 "F-024"
 ],
-"note": "DEC-254；第一批派：Opus 5.5 High → Sol Ultra"
+"note": "DEC-254；第一批派：Opus 5.5 High → Sol Ultra",
+"dev": "Claude Opus 5.5 High",
+"rev": "Sol Ultra"
 },
 "F-031": {
 "n": "删除来源后提示被固定为人工的记录与字段",
@@ -809,6 +815,10 @@
 }
 },
 "log": [
+[
+"10-07",
+"R3 第一批派发：R3-T01、R3-T03、F-030；#83 设计 v2 复审发起"
+],
 [
 "10-07",
 "R3 分批派发方案获用户同意：第一批 T01 / T03 / F-030 + 取证 Q-M0-81 / 82"
@@ -1795,9 +1805,9 @@
 83,
 "F-007",
 "组织变更联动任职",
-"设计 v2 修订中（v1 设计审未过，6 组 P2）",
+"设计 v2 复审中",
 "第 8 轮",
-"开发：Claude Fable 5.1；设计复审：Codex Astra Ultra"
+"审查：Codex Astra Ultra；开发：Claude Fable 5.1"
 ],
 [
 91,
@@ -1844,6 +1854,30 @@ null,
 "F-032",
 "表达式语义按原站校准",
 "开发",
+"第 1 轮",
+"开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
+],
+[
+null,
+"R3-T01",
+"人才标准与指标库",
+"开发",
+"第 1 轮",
+"开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
+],
+[
+null,
+"R3-T03",
+"360 度评估（PR-A 先）",
+"开发",
+"第 1 轮",
+"开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
+],
+[
+null,
+"F-030",
+"AC 覆盖统计运行时采集",
+"写方案（#91 合并后写代码）",
 "第 1 轮",
 "开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
 ]
