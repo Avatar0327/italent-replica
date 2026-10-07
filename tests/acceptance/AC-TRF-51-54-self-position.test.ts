@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { approvalWorld, permissionAdmin, type InstanceView, type Person } from './AC-APV-support.js';
 import { createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { resolveTransferForm } from '../../apps/api/src/modules/transfer/configuration.js';
 
 const database = useTestDb();
 const BASE = '/api/tenant/employment';
@@ -421,5 +422,62 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     expect(await denied.text()).not.toContain(originalPosition);
     expect(await payload(saved.id)).toEqual(beforeReplay);
     expect(await payload(saved.id)).toMatchObject({ fields: { positionId: null } });
+  });
+
+  it.each([false, true])('AC-TRF-56 部门延迟继承完成后保留或清空原职位：部门后来变化=%s', async (changed) => {
+    const formId = 'TenantBase.TransferMultiFormView';
+    const form = () => withTenant(database().db, w.tenant.id, (tx) => resolveTransferForm(tx, w.tenant.id, formId));
+    const original = await form();
+    const configure = async (fieldModes: Record<string, string>) => {
+      const current = await form();
+      await w.json(
+        await w.request(w.hr.id, 'PUT', `${BASE}/transfers/forms/${formId}`, {
+          ifMatch: current.revision,
+          body: { name: original.name, group: 'transfer', fieldModes },
+        }),
+      );
+    };
+    await configure({ ...original.fieldModes, 'preset:departmentId': 'absent' });
+    try {
+      const person = await actor(`合成延迟部门-${changed}`);
+      const created = await w.json<Business>(
+        await api.request('POST', SELF, {
+          ...w.as(person.userId),
+          ifMatch: await revision(person),
+          body: { effectiveDate: date, fields: {} },
+        }),
+        201,
+      );
+      await approve(person, created.id);
+      if (changed) {
+        // 在创建与落地之间追加更早的任职；部门到期才解析，不按新部门的职位自动匹配。
+        await w.json(
+          await w.request(w.hr.id, 'POST', `${BASE}/employees/${person.employeeId}/businesses`, {
+            ifMatch: await revision(person),
+            body: {
+              kind: 'org_adjustment',
+              mode: 'direct',
+              effectiveDate: '2026-10-18',
+              fields: { departmentId: target, positionId: targetPosition },
+            },
+          }),
+          201,
+        );
+      }
+      w.setNow(`${date}T01:00:00Z`);
+      await runEmploymentActivations(
+        database().db,
+        { commandId: randomUUID(), actorUserId: w.hr.id },
+        { tenantId: w.tenant.id },
+        { clock: w.clock },
+      );
+      expect(await payload(created.id)).toMatchObject({
+        status: 'effective',
+        record: { fields: { departmentId: changed ? target : source, positionId: changed ? null : originalPosition } },
+      });
+    } finally {
+      w.setNow('2026-10-01T01:00:00Z');
+      await configure(original.fieldModes);
+    }
   });
 });
