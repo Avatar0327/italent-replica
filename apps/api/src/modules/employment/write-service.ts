@@ -74,6 +74,8 @@ export interface CreateEmploymentOptions {
   readonly forwardUpdate?: boolean;
   /** 变动类型只由可信的系统联动传入（如职位变更同步直线经理，F-006），不开放给请求体。 */
   readonly changeType?: ChangeType;
+  /** F-006 系统派生，不能由请求体指定。 */
+  readonly positionManagerDerivation?: boolean;
   readonly establishmentWarnings?: EstablishmentWarning[];
 }
 
@@ -95,11 +97,23 @@ export async function createEmploymentBusiness(
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
     ? undefined
     : await selectEmploymentCycle(tx, ctx, employee.id, normalized);
-  const prepared = await prepareInheritance(tx, ctx, {
+  let prepared = await prepareInheritance(tx, ctx, {
     ...normalized,
     employeeId: employee.id,
     staffId: selected?.cycle.id,
   });
+  if (options.positionManagerDerivation) {
+    prepared = {
+      ...prepared,
+      formSnapshot: {
+        ...prepared.formSnapshot,
+        fieldDerivations: [
+          ...(prepared.formSnapshot.fieldDerivations ?? []),
+          { rule: 'position-manager', referenceId: prepared.fields.positionId },
+        ],
+      },
+    };
+  }
   const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
     staffId: selected?.cycle.id ?? '',
     predecessor: selected?.predecessor ?? null,

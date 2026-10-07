@@ -81,7 +81,10 @@ export function employmentJobPersonnel(access?: EmploymentWriteAccess): JobPerso
       };
       // `19` §3.1 Q-M0-58（W-443、W-444）：与普通新增业务同一路径——其后已有未来记录时按 `07` A7 向后更新，
       // 生效日当天已有记录时再新增一条排在当日最后（DEC-108）；会形成循环汇报时整单拒绝（见 employment/reporting-cycle.ts）。
-      await createEmploymentBusiness(tx, employmentCtx, change.employeeId, input, { changeType: change.changeType });
+      await createEmploymentBusiness(tx, employmentCtx, change.employeeId, input, {
+        changeType: change.changeType,
+        positionManagerDerivation: true,
+      });
     },
   };
 }

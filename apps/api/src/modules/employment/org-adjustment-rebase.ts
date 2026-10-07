@@ -3,6 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { auditEmployment, requireLinkedEmploymentRecord } from './context.js';
+import {
+  derivePresetFields,
+  derivationFields,
+  presetFieldOrigin,
+  resolveDerivation,
+  type FieldDerivation,
+} from './field-derivations.js';
 import { applyForwardChanges, type ForwardFieldChange } from './forward-rules.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { loadEmploymentRecord } from './read-model.js';
@@ -52,7 +59,7 @@ async function rebaseRecord(
 ) {
   const history = await orgAdjustmentHistory(tx, ctx, record);
   const latest = history.at(-1)!.payload;
-  const changes = inheritedChanges(record, history, previous);
+  const changes = await inheritedChanges(tx, ctx, record, history, previous);
   if (!changes.length) return;
   const values = applyForwardChanges(record, changes);
   await requireLinkedEmploymentRecord(tx, ctx, record.employeeId, record.fields.departmentId, record.id);
@@ -92,20 +99,25 @@ async function rebaseRecord(
   await personnelHooks.sync(tx, ctx, record.employeeId, record.id, record.kind, record.effectiveDate);
 }
 
-function inheritedChanges(
+async function inheritedChanges(
+  tx: Tx,
+  ctx: EmploymentContext,
   record: EmploymentRecord,
   history: readonly AdjustmentHistory[],
   previous: EmploymentRecord,
-): ForwardFieldChange[] {
+): Promise<ForwardFieldChange[]> {
   const initial = history[0]!.payload;
   const explicit = new Set(initial.explicitFieldCodes);
-  // F-006 首个载荷已含本业务主动设置的经理；F-007 纯复制的显式字段为空，只重建其继承值。
+  const origins = await initialDerivations(tx, ctx, initial);
   let values = applyForwardChanges(
     previous,
     valueChanges(previous, initial).filter((change) =>
-      explicit.has(change.field.startsWith('custom:') ? change.field : `preset:${change.field}`),
+      change.field.startsWith('custom:')
+        ? explicit.has(change.field)
+        : presetFieldOrigin(change.field as keyof typeof initial.fields, explicit, origins) !== 'predecessor',
     ),
   );
+  values = await refreshDerivations(tx, ctx, record, previous, values, origins);
   // 按版本顺序重放有效来源和人工更正；已改期/移出时间线的来源、此前重建均不能恢复提前值。
   for (let index = 1; index < history.length; index++) {
     const item = history[index]!;
@@ -113,9 +125,58 @@ function inheritedChanges(
     const source = item.sequenceSource;
     // F-021 的同事务事件区分自动同步和人工更正，无须增加载荷列或修改同步写入口。
     if (source && values.fields[source.sourceKind === 'posts' ? 'postId' : 'positionId'] !== source.sourceId) continue;
-    values = applyForwardChanges(values, valueChanges(history[index - 1]!.payload, item.payload));
+    const prior = history[index - 1]!.payload;
+    const changes = valueChanges(prior, item.payload);
+    // 人工更正取得字段所有权；依赖引用的系统同步仍按引用决定有效性。
+    if (!source && (!item.payload.triggerBusinessId || item.payload.triggerBusinessId === record.id)) {
+      for (let index = origins.length - 1; index >= 0; index--) {
+        const { field } = derivationFields(origins[index]!);
+        if (
+          changes.some((change) => change.field === field) ||
+          (item.payload.explicitFieldCodes.includes(`preset:${field}`) &&
+            !prior.explicitFieldCodes.includes(`preset:${field}`))
+        )
+          origins.splice(index, 1);
+      }
+    }
+    values = applyForwardChanges(values, changes);
+    values = await refreshDerivations(tx, ctx, record, previous, values, origins);
   }
   return valueChanges(record, values);
+}
+
+async function initialDerivations(tx: Tx, ctx: EmploymentContext, initial: AdjustmentHistory['payload']) {
+  if (initial.formSnapshot.fieldDerivations) return [...initial.formSnapshot.fieldDerivations];
+  // 老载荷没有来源元数据：从服务端冻结的显式字段与表单调用同一派生规则，不能按值差猜来源。
+  const fields = Object.fromEntries(
+    Object.entries(initial.fields).filter(([field]) => initial.explicitFieldCodes.includes(`preset:${field}`)),
+  );
+  const { origins } = await derivePresetFields(tx, ctx.tenantId, initial, fields, initial.formSnapshot);
+  if (initial.changeType === 'position_adjustment')
+    origins.push({ rule: 'position-manager', referenceId: initial.fields.positionId });
+  return origins;
+}
+
+async function refreshDerivations(
+  tx: Tx,
+  ctx: EmploymentContext,
+  record: EmploymentRecord,
+  previous: EmploymentRecord,
+  values: Pick<EmploymentRecord, 'fields' | 'customFields'>,
+  origins: FieldDerivation[],
+) {
+  for (const [index, origin] of origins.entries()) {
+    const { field, reference } = derivationFields(origin);
+    const referenceId = values.fields[reference];
+    if (referenceId === origin.referenceId) continue; // 引用未变，保留初始带出或有效 F-021 同步的快照。
+    const next = { ...origin, referenceId };
+    const derived = await resolveDerivation(tx, ctx.tenantId, record.employeeId, record.effectiveDate, next);
+    values = applyForwardChanges(values, [
+      { field, before: values.fields[field], after: derived === undefined ? previous.fields[field] : derived },
+    ]);
+    origins[index] = next;
+  }
+  return values;
 }
 
 function valueChanges(
