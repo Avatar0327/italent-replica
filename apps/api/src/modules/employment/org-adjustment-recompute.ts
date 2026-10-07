@@ -15,6 +15,7 @@ import {
   type ForwardValues,
 } from './forward-rules.js';
 import { availableForwardChanges } from './forward-references.js';
+import { predecessorInheritance } from './inheritance.js';
 import { effectiveInput, type AdjustmentHistory } from './org-adjustment-history.js';
 import { PRESET_FIELD_NAMES, type EmploymentContext, type EmploymentRecord, type PresetField } from './types.js';
 
@@ -47,9 +48,11 @@ export async function calculateOrgAdjustment(
   // 本业务派生值以创建当时算出的结果为准；只有引用改变才按同一规则重算（R6-P2-02，DEC-208 清空序列不回写）。
   const rules = new Map<PresetField, FieldDerivation>();
   for (const origin of origins) rules.set(derivationFields(origin).field, origin);
+  // 前驱继承只覆盖矩阵允许继承的字段：不继承的预置 / 自定义字段保留创建时的空值（R6-P2-03）。
+  const inherited = predecessorInheritance(initial, previous);
   let values: ForwardValues = {
-    fields: { ...previous.fields, ...derivedValues(initial.fields, rules), ...fields },
-    customFields: { ...previous.customFields, ...custom },
+    fields: { ...inherited.fields, ...derivedValues(initial.fields, rules), ...fields },
+    customFields: { ...inherited.customFields, ...custom },
   };
   const finalReferences = await calculateReferences(tx, ctx, record, values, history, resolveSource);
   values = await refreshDerivations(tx, ctx, record, values, previous, rules);

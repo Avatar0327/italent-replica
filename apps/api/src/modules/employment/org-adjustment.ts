@@ -124,6 +124,7 @@ function adjustmentSnapshot(previous: EmploymentRecord, effectiveDate: string) {
       customMode: 'readonly' as const,
       customInheritance: {},
       fieldModes: {},
+      copiesPredecessor: true,
     },
   };
 }
