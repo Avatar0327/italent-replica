@@ -1,6 +1,7 @@
 import { useTestDb } from '@italent/testkit';
 import { sql, withTenant } from '@italent/db';
 import { expect, it } from 'vitest';
+import { versions } from './AC-JOB-sequence-support.js';
 import { activationWorld, type ActivationWorld } from './AC-TRF-activation-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -73,6 +74,13 @@ it.each([false, true])('AC-ORG-31 已批准调动穿过组织调整继续占编�
   );
   await rename(w, w.from, '2026-10-09', viaImport);
   const yi = await w.hired('乙');
+  // 第 6 轮 P3：负向用例前后各读一次，证明控编拒绝没有写入任何业务数据（派发规则 §1）。
+  const snapshot = async () => ({
+    yi: { employee: await w.session.getEmployee(yi.employee.id), records: await w.session.records(yi.employee.id) },
+    jia: { business: await w.business(pending.id), records: await w.session.records(jia.employee.id, '2026-10-09') },
+    versions: await versions(w.db, w.session.tenant.id, yi.employee.id),
+  });
+  const before = await snapshot();
   const rejected = await w.session.request('POST', `/employees/${yi.employee.id}/businesses`, {
     ifMatch: yi.hire.employeeRevision,
     body: {
@@ -83,6 +91,8 @@ it.each([false, true])('AC-ORG-31 已批准调动穿过组织调整继续占编�
     },
   });
   expect.soft(rejected.status, await rejected.clone().text()).toBe(409);
+  expect(await rejected.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHMENT_EXCEEDED' } } });
+  expect(await snapshot()).toEqual(before);
   expect(await w.runScheduler('2026-10-05T01:00:00Z')).toMatchObject({
     activated: [pending.id],
     failed: [],
