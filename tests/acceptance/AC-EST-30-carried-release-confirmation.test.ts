@@ -94,10 +94,10 @@ it.each([false, true])('AC-EST-30 携编草稿改配释放旧额度 strict=%s', 
 
 for (const strict of [false, true])
   for (const action of ['reject', 'disapprove'] as const)
-    it(`AC-EST-30 后台审批 ${action} 明确豁免非严格确认但不豁免严格控编 strict=${strict}`, async () => {
+    it(`AC-EST-30 审批 ${action} 透传确认：非严格需确认、严格仍拒绝、未确认整体回滚 strict=${strict}`, async () => {
       const w = await draftWorld(strict, true);
       const before = await snapshot(w, w.id, w.a.employee.id);
-      const run = () =>
+      const run = (confirmed?: boolean) =>
         runEmploymentTransition(
           w.db,
           {
@@ -108,13 +108,23 @@ for (const strict of [false, true])
             commandId: randomUUID(),
             expectedRevision: w.revision,
           },
-          { id: w.id, action },
+          { id: w.id, action, ...(confirmed === undefined ? {} : { confirmed }) },
         );
+      // DEC-258：驳回 / 不同意不再服务端豁免非严格确认，改由审批中心透传 confirmed；携编严格回退照旧拒绝。
+      await expect(run()).rejects.toMatchObject({
+        code: 'CONFLICT',
+        details: { reason: strict ? 'ESTABLISHMENT_EXCEEDED' : 'CONFIRMATION_REQUIRED' },
+      });
+      expect(await snapshot(w, w.id, w.a.employee.id)).toEqual(before);
       if (strict) {
-        await expect(run()).rejects.toMatchObject({ code: 'CONFLICT', details: { reason: 'ESTABLISHMENT_EXCEEDED' } });
+        await expect(run(true)).rejects.toMatchObject({
+          code: 'CONFLICT',
+          details: { reason: 'ESTABLISHMENT_EXCEEDED' },
+        });
         expect(await snapshot(w, w.id, w.a.employee.id)).toEqual(before);
       } else {
-        expect((await run()).status).toBe(200);
+        expect((await run(true)).status).toBe(200);
+        expect((await w.business(w.id)).status).toBe(action === 'reject' ? 'rejected' : 'disapproved');
         expect((await w.capacities())[1]?.localCapacity).toBe(0);
         expect(await w.history()).toHaveLength(4);
       }

@@ -57,9 +57,18 @@ it.each([false, true])('AC-EST-31 删除同部门记录恢复未来占编条件 
   else expect(response.status, await response.clone().text()).toBe(200);
 });
 
+const CONFIRMED_AUDIT = 'employment.establishment.exceeded-confirmed';
+const STATE_AFTER = {
+  withdraw: 'draft',
+  revoke: 'voided',
+  delete: 'deleted',
+  reject: 'rejected',
+  disapprove: 'disapproved',
+} as const;
+
 for (const strict of [false, true])
   for (const action of ['withdraw', 'revoke', 'delete', 'reject', 'disapprove'] as const)
-    it(`AC-EST-31 普通调出申请 ${action} 恢复原部门未来占编 strict=${strict}`, async () => {
+    it(`AC-EST-31 普通调出申请 ${action} 恢复原部门未来占编只确认不拦截 strict=${strict}`, async () => {
       const w = await world(strict);
       const saved = await w.save(w.a, {
         withEstablishment: false,
@@ -72,10 +81,18 @@ for (const strict of [false, true])
       if (action === 'delete') business = await w.approve(business, '2026-10-01T01:00:00Z');
       const incoming = await w.save(w.b, { withEstablishment: false, fields: w.fields });
       expect(incoming.status, await incoming.clone().text()).toBe(201);
-      const before = await w.session.records(w.a.employee.id);
-      const employee = await w.session.getEmployee(w.a.employee.id);
+      const state = async () => ({
+        business: (await w.business(business.id)).status,
+        records: await w.session.records(w.a.employee.id),
+        employee: await w.session.getEmployee(w.a.employee.id),
+        occupant: await w.session.records(w.b.employee.id),
+        audit: (await w.auditEvents(business.id)).map((event) => event.action),
+        outbox: await w.outboxEvents(business.id),
+      });
+      const before = await state();
+      // DEC-258：严格与非严格都只要求确认；驳回 / 不同意是可信审批端口，确认同样经参数透传。
       if (action === 'reject' || action === 'disapprove') {
-        const run = () =>
+        const run = (confirmed?: boolean) =>
           runEmploymentTransition(
             w.db,
             {
@@ -86,10 +103,11 @@ for (const strict of [false, true])
               commandId: randomUUID(),
               expectedRevision: business.revision,
             },
-            { id: business.id, action },
+            { id: business.id, action, ...(confirmed === undefined ? {} : { confirmed }) },
           );
-        if (strict) await expect(run()).rejects.toMatchObject({ details: { reason: 'ESTABLISHMENT_EXCEEDED' } });
-        else expect((await run()).status).toBe(200);
+        await expect(run()).rejects.toMatchObject({ code: 'CONFLICT', details: { reason: 'CONFIRMATION_REQUIRED' } });
+        expect(await state()).toEqual(before);
+        expect((await run(true)).status).toBe(200);
       } else {
         const request = (confirmed?: boolean) =>
           w.session.request(
@@ -100,17 +118,18 @@ for (const strict of [false, true])
               body: confirmed === undefined ? {} : { confirmed },
             },
           );
-        await warning(await request(), strict);
-        expect(await w.session.records(w.a.employee.id)).toEqual(before);
-        expect(await w.session.getEmployee(w.a.employee.id)).toEqual(employee);
+        await warning(await request(), false);
+        expect(await state()).toEqual(before);
         const response = await request(true);
-        if (strict) await warning(response, true);
-        else expect(response.status, await response.clone().text()).toBe(200);
+        expect(response.status, await response.clone().text()).toBe(200);
       }
-      if (strict) {
-        expect(await w.session.records(w.a.employee.id)).toEqual(before);
-        expect(await w.session.getEmployee(w.a.employee.id)).toEqual(employee);
-      }
+      const after = await state();
+      expect(after.business).toBe(STATE_AFTER[action]);
+      expect(after.occupant).toEqual(before.occupant);
+      expect(after.audit.filter((item) => item === CONFIRMED_AUDIT)).toHaveLength(1);
+      expect(after.outbox.map((item) => item.eventType)).toContain(CONFIRMED_AUDIT);
+      const audit = (await w.auditEvents(business.id)).find((event) => event.action === CONFIRMED_AUDIT);
+      expect(audit?.after).toMatchObject({ reason: 'ESTABLISHMENT_EXCEEDED', action, strictControl: strict });
     });
 
 it.each([false, true])('AC-EST-31 未预减原部门的撤回不误报原有超编 strict=%s', async (strict) => {
