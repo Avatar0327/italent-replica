@@ -192,6 +192,7 @@ export interface ModelEvent {
  * 独立参考模型只读取合成业务输入，不读取载荷来源/版本差值，也不调用生产派生或重建函数。
  * 先按最终日期与 DEC-108 操作先后排序，再从 hire 从头计算；两笔迟到调动按原计划日排序（DEC-195）。
  * F-021 只对仍引用职务 B 的结果应用 C；人工更正属于输入，即使旧引用的自动同步在其后写入也保留。
+ * 每条记录完整比较 MODEL_FIELDS 六个字段，不以部分匹配掩盖差异；其余任职字段沿用已有 28 项回归。
  */
 export function referenceTimeline(s: TimelineWorld, events: readonly ModelEvent[]) {
   let fields: ModelFields = {
@@ -231,7 +232,10 @@ function permutations<T>(items: readonly T[]): T[][] {
   );
 }
 
-/** 固定种子洗牌合法排列；既覆盖全逆序，也保证更正对象先存在，没有 catch/skip 筛选。 */
+/**
+ * 穷举五种操作的 5! 保存排列，仅排除更正在其对象创建前的不合法排列，得到完整的 60 种。
+ * 固定种子只决定运行顺序，没有抽样、catch 或 skip；首笔调动必须先存在，F-006 才有同一业务集合的目标。
+ */
 export function propertySaveOrders() {
   const all = permutations<SaveOperation>(['transfer2', 'F-006', 'F-007', 'F-021', 'manual']).filter(
     (order) => order.indexOf('F-007') < order.indexOf('manual'),
@@ -242,5 +246,5 @@ export function propertySaveOrders() {
     const other = seed % (index + 1);
     [all[index], all[other]] = [all[other]!, all[index]!];
   }
-  return all.slice(0, 12);
+  return all;
 }

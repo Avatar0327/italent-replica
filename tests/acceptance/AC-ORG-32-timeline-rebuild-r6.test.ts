@@ -138,7 +138,7 @@ it.each([false, true])('AC-ORG-32 有效来源只使用曾传播的事件版本�
     });
 });
 
-// 12 个固定种子保存排列 × 正/逆两种执行次序 = 24 组；一半使用同日 F-006/F-007（DEC-108）。
+// 完整 60 个合法保存排列 × 正/逆两种执行次序 = 120 组；一半使用同日 F-006/F-007（DEC-108）。
 const propertyCases = propertySaveOrders().flatMap((saveOrder, index) =>
   [false, true].map((reverse) => ({
     saveOrder,
