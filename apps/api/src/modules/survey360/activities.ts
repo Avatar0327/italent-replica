@@ -10,13 +10,14 @@ import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext, TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
-import { activityView, activityVisibleSql, type ActivityRow, requireActivity, requireObject } from './access.js';
+import { activityView, activityVisibleSql, type ActivityRow, requireActivity, requireVisibleObject } from './access.js';
 import {
   actor,
   type Admin,
+  allActivitiesOf,
+  asIs,
   audit360,
   fail,
-  loadAdmin,
   optionalText,
   read,
   requireNewObject,
@@ -39,11 +40,12 @@ const base = {
   showAppraiserName: z.boolean(),
   roleDisplay: z.enum(survey360.ROLE_DISPLAY_MODES),
 };
-// DEC-280④：作答页默认显示评价者姓名、默认显示评价角色名称（原站新增活动页的默认值）
+// DEC-280④：作答页默认显示评价者姓名、默认显示评价角色名称（原站新增活动页的默认值）；默认值在命令内补，
+// 不算请求写入的字段（字段编辑权按实际载荷判，第 3 轮）
 const createSchema = z.strictObject({
   ...base,
-  showAppraiserName: base.showAppraiserName.default(true),
-  roleDisplay: base.roleDisplay.default('name'),
+  showAppraiserName: base.showAppraiserName.optional(),
+  roleDisplay: base.roleDisplay.optional(),
 });
 const updateSchema = z.strictObject(base).partial();
 
@@ -125,6 +127,9 @@ export async function issueAnswerLinks(tx: Tx, ctx: Survey360Context, activityId
 
 const VIEW = { object: 'activity' } as const;
 const guarded = (id: string) => async (tx: Tx, admin: Admin) => void (await requireActivity(tx, admin, id));
+/** 删除命令的命令前校验（含重放）：已删除的活动按删除前的行判定可见。 */
+const deletable = (id: string) => async (tx: Tx, admin: Admin) =>
+  void (await requireActivity(tx, admin, id, false, true));
 
 export function registerActivityRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerActivityCrud(module, deps);
@@ -134,21 +139,15 @@ export function registerActivityRoutes(module: Hono<TenantEnv>, deps: TenantRout
 
 function registerActivityCrud(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/activities', (c) =>
-    read(
-      c,
-      deps,
-      VIEW,
-      async (tx, admin) => ({
-        items: rows<ActivityRow>(
-          await tx.execute(sql`SELECT a.* FROM survey360_activities a WHERE NOT a.deleted
+    read(c, deps, VIEW, async (tx, admin) => ({
+      items: rows<ActivityRow>(
+        await tx.execute(sql`SELECT a.* FROM survey360_activities a WHERE NOT a.deleted
             AND ${activityVisibleSql(admin)} ORDER BY a.created_at, a.id LIMIT 500`),
-        ).map(activityView),
-      }),
-      'activity',
-    ),
+      ).map(activityView),
+    })),
   );
   module.get('/activities/:id', (c) =>
-    read(c, deps, VIEW, async (tx, admin) => activityView(await requireActivity(tx, admin, uuidParam(c))), 'activity'),
+    read(c, deps, VIEW, async (tx, admin) => activityView(await requireActivity(tx, admin, uuidParam(c)))),
   );
   module.post('/activities', (c) =>
     write(
@@ -165,8 +164,8 @@ function registerActivityCrud(module: Hono<TenantEnv>, deps: TenantRouteDeps): v
             scene: input.scene ?? null,
             form: input.form,
             welcome: input.welcome ?? null,
-            showAppraiserName: input.showAppraiserName,
-            roleDisplay: input.roleDisplay,
+            showAppraiserName: input.showAppraiserName ?? true,
+            roleDisplay: input.roleDisplay ?? 'name',
             ownerUserId: ctx.userId,
             createdBy: ctx.userId,
           })
@@ -175,7 +174,7 @@ function registerActivityCrud(module: Hono<TenantEnv>, deps: TenantRouteDeps): v
         await auditActivity(tx, ctx, 'survey360.activity.create', null, saved);
         return activityView(saved);
       },
-      { need: { object: 'activity', operation: 'create' }, fields: (input) => input, status: 201 },
+      { need: { object: 'activity', operation: 'create' }, fields: 'body', status: 201 },
     ),
   );
 }
@@ -203,7 +202,7 @@ function registerActivityLifecycle(module: Hono<TenantEnv>, deps: TenantRouteDep
         await auditActivity(tx, ctx, 'survey360.activity.update', activityView(current), saved);
         return activityView(saved);
       },
-      { need: { object: 'activity', operation: 'update' }, guard: guarded(id), fields: (input) => input },
+      { need: { object: 'activity', operation: 'update' }, fields: 'body', guard: guarded(id) },
     );
   });
   module.delete('/activities/:id', (c) => {
@@ -220,7 +219,7 @@ function registerActivityLifecycle(module: Hono<TenantEnv>, deps: TenantRouteDep
         await auditActivity(tx, ctx, 'survey360.activity.delete', activityView(current), saved);
         return { id, deleted: true };
       },
-      { need: { object: 'activity', operation: 'delete' }, guard: guarded(id) },
+      { need: { object: 'activity', operation: 'delete' }, fields: 'none', guard: deletable(id) },
     );
   });
   for (const action of ['enable', 'disable'] as const)
@@ -248,7 +247,8 @@ function registerActivityLifecycle(module: Hono<TenantEnv>, deps: TenantRouteDep
           await auditActivity(tx, ctx, `survey360.activity.${action}`, activityView(current), saved);
           return activityView(saved);
         },
-        { need: { object: 'activity', operation: 'update', button: action }, guard: guarded(id) },
+        // 状态流转，不写活动字段
+        { need: { object: 'activity', operation: 'update', button: action }, fields: 'none', guard: guarded(id) },
       );
     });
 }
@@ -256,17 +256,12 @@ function registerActivityLifecycle(module: Hono<TenantEnv>, deps: TenantRouteDep
 function registerActivityExtras(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerGrants(module, deps);
   module.get('/activities/:id/objects/:objectId/scores', (c) =>
-    read(
-      c,
-      deps,
-      { object: 'result' },
-      async (tx, admin) => {
-        const activity = await requireActivity(tx, admin, uuidParam(c));
-        await requireObject(tx, activity.id, uuidParam(c, 'objectId'));
-        return { items: await objectScores(tx, activity.score_batch_id, uuidParam(c, 'objectId')) };
-      },
-      'result',
-    ),
+    read(c, deps, { object: 'result' }, async (tx, admin) => {
+      const activity = await requireActivity(tx, admin, uuidParam(c));
+      // 精细化权限下评价对象的人员看不到时按不存在处理（DEC-289①）
+      await requireVisibleObject(tx, admin, activity.id, uuidParam(c, 'objectId'));
+      return { items: await objectScores(tx, activity.score_batch_id, uuidParam(c, 'objectId')) };
+    }),
   );
 }
 
@@ -309,7 +304,7 @@ async function grantsView(tx: Tx, deps: TenantRouteDeps, tenant: TenantContext, 
   const unauthorized: { userId: string; displayName: string | null }[] = [];
   for (const h of await holders(tx)) {
     const creator = h.user_id === activity.owner_user_id;
-    const systemAdmin = (await loadAdmin(tx, deps, { ...tenant, userId: h.user_id })).allActivities;
+    const systemAdmin = await allActivitiesOf(tx, deps, { ...tenant, userId: h.user_id });
     if (creator || systemAdmin || explicit.has(h.user_id))
       authorized.push({ userId: h.user_id, displayName: h.display_name, creator, systemAdmin });
     else unauthorized.push({ userId: h.user_id, displayName: h.display_name });
@@ -332,11 +327,16 @@ async function auditGrants(tx: Tx, ctx: Survey360Context, id: string, before: st
 }
 
 function registerGrants(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  // 授权区是活动基本信息的一部分：能编辑该活动的人就能改授权（DEC-280③）
+  // 授权区是活动基本信息的一部分：能编辑该活动的人就能改授权（DEC-280③）。两栏是账号信息（用户 ID、标记、
+  // 显示名），不是 360 对象字段，不按对象字段裁剪（asIs）；授权名单也不是活动字段，写入不走字段编辑校验
   const EDIT = { object: 'activity', operation: 'update' } as const;
   module.get('/activities/:id/grants', (c) =>
-    read(c, deps, VIEW, async (tx, admin, tenant) =>
-      grantsView(tx, deps, tenant, await requireActivity(tx, admin, uuidParam(c))),
+    read(
+      c,
+      deps,
+      VIEW,
+      async (tx, admin, tenant) => grantsView(tx, deps, tenant, await requireActivity(tx, admin, uuidParam(c))),
+      asIs,
     ),
   );
   module.post('/activities/:id/grants', (c) => {
@@ -364,7 +364,7 @@ function registerGrants(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
         await auditGrants(tx, ctx, id, before, after);
         return grantsView(tx, deps, ctx, current);
       },
-      { need: EDIT, guard: guarded(id) },
+      { need: EDIT, fields: 'none', guard: guarded(id), present: asIs },
     );
   });
   module.delete('/activities/:id/grants/:userId', (c) => {
@@ -377,8 +377,7 @@ function registerGrants(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
       async (tx, ctx) => {
         const current = await requireActivity(tx, ctx.admin, id, true);
         requireRevision(current.revision, ctx.expectedRevision);
-        const implicit =
-          userId === current.owner_user_id || (await loadAdmin(tx, deps, { ...ctx, userId })).allActivities;
+        const implicit = userId === current.owner_user_id || (await allActivitiesOf(tx, deps, { ...ctx, userId }));
         if (implicit) fail('CONFLICT', '创建者与系统管理员默认已授权，不能移除', 'IMPLICIT_GRANT');
         const before = await explicitGrants(tx, id);
         if (!before.includes(userId)) fail('NOT_FOUND', '该用户未被授权');
@@ -389,7 +388,7 @@ function registerGrants(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
         await auditGrants(tx, ctx, id, before, await explicitGrants(tx, id));
         return grantsView(tx, deps, ctx, current);
       },
-      { need: EDIT, guard: guarded(id) },
+      { need: EDIT, fields: 'none', guard: guarded(id), present: asIs },
     );
   });
 }

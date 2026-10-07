@@ -54,8 +54,10 @@ async function loadSettings(tx: Tx) {
   return { finePermission: row?.finePermission ?? false, revision: row?.revision ?? 0 };
 }
 
+const VIEW = { object: 'settings' } as const;
+
 export function registerSettingsRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  module.get('/settings', (c) => read(c, deps, 'holder', (tx) => loadSettings(tx)));
+  module.get('/settings', (c) => read(c, deps, VIEW, (tx) => loadSettings(tx)));
   module.put('/settings', (c) =>
     write(
       c,
@@ -85,19 +87,16 @@ export function registerSettingsRoutes(module: Hono<TenantEnv>, deps: TenantRout
         });
         return after;
       },
-      {
-        need: { object: 'settings', operation: 'update', button: BUTTONS.finePermission },
-        fields: (input) => input,
-      },
+      { need: { object: 'settings', operation: 'update', button: BUTTONS.finePermission }, fields: 'body' },
     ),
   );
   registerRoleRoutes(module, deps);
 }
 
 function registerRoleRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  // 选角色（设套卷、评价关系）只要持有任一 360 身份；新增 / 修改走“设置”对象的权限
+  // 评价角色属“设置”对象：查看要设置的查看权并按其字段裁剪（第 3 轮取消“持有人即可读”的选择器例外）
   module.get('/roles', (c) =>
-    read(c, deps, 'holder', async (tx, _admin, tenant) => {
+    read(c, deps, VIEW, async (tx, _admin, tenant) => {
       await ensureBuiltinRoles(tx, tenant.tenantId);
       const items = await tx.select().from(survey360Roles).orderBy(survey360Roles.sort, survey360Roles.createdAt);
       return { items: items.map(roleView) };
@@ -129,7 +128,7 @@ function registerRoleRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): voi
         });
         return view;
       },
-      { need: { object: 'settings', operation: 'create' }, fields: (input) => input, status: 201 },
+      { need: { object: 'settings', operation: 'create' }, fields: 'body', status: 201 },
     ),
   );
   module.put('/roles/:id', (c) => {
@@ -162,7 +161,7 @@ function registerRoleRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): voi
         });
         return roleView(saved!);
       },
-      { need: { object: 'settings', operation: 'update' }, fields: (input) => input },
+      { need: { object: 'settings', operation: 'update' }, fields: 'body' },
     );
   });
 }

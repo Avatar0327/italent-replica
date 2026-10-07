@@ -3,13 +3,12 @@
  * 已同步人员的邮箱锁定（DEC-030 ③，AC-360-14），其余字段 360 端可改；与组织员工的同步见 sync.ts。
  */
 import { and, eq, inArray, sql, survey360PersonLinkLogs, survey360People, type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import type { SQL } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
-import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
-import { resolveModuleScopeInTransaction, scopeSql } from '../permission/module-access.js';
-import { finePermission } from './access.js';
+import type { TenantEnv } from '../../tenant-context.js';
+import { scopeAllowsInTransaction, scopeSql } from '../permission/module-access.js';
 import { pageQuery, uuidParam } from '../job/context.js';
 import {
   actor,
@@ -19,12 +18,12 @@ import {
   email,
   fail,
   optionalText,
+  type Present,
   read,
   requireNewObject,
   requireRevision,
   type Survey360Context,
   type Writer,
-  OBJECTS,
   rows,
   text,
   uuid,
@@ -77,10 +76,13 @@ export async function findPersonByEmail(tx: Tx, value: string): Promise<PersonRo
   return row;
 }
 
-async function requireSuperior(tx: Tx, id: string | null | undefined, self?: string) {
+/** 上级须存在；精细化权限下还须可见（看不到与不存在同一结果，不暴露存在性）。 */
+async function requireSuperior(tx: Tx, id: string | null | undefined, self?: string, admin?: Admin) {
   if (!id) return;
   if (id === self) fail('VALIDATION_FAILED', '上级不能是本人', 'SUPERIOR_SELF');
-  await loadPerson(tx, id).catch(() => fail('VALIDATION_FAILED', '上级人员不存在', 'SUPERIOR_NOT_FOUND'));
+  const missing = () => fail('VALIDATION_FAILED', '上级人员不存在', 'SUPERIOR_NOT_FOUND');
+  const superior = await loadPerson(tx, id).catch(missing);
+  if (admin && !(await personVisible(tx, admin, superior))) missing();
 }
 
 /** 手工 / 导入新建人员（外部或未同步的人员）。邮箱重复由唯一索引拒绝（409）。 */
@@ -131,7 +133,7 @@ export async function updatePerson(
     const other = await findPersonByEmail(tx, patch.email);
     if (other && other.id !== current.id) fail('CONFLICT', '邮箱已被其他人员使用', 'EMAIL_TAKEN');
   }
-  await requireSuperior(tx, patch.superiorPersonId, current.id);
+  await requireSuperior(tx, patch.superiorPersonId, current.id, ctx.admin);
   const values = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
   const [saved] = await tx
     .update(survey360People)
@@ -150,48 +152,52 @@ export async function updatePerson(
 }
 
 /**
- * 人员表可见范围（DEC-280⑤）：默认对有人员查看权的 360 身份全部可见（手机号不单独脱敏，只按字段权限裁剪）；
- * 开启“精细化权限”后，没有“全部活动”按钮的人只看挂接员工在其（用户 × Survey360 应用）数据范围内的人员，
- * 未挂接员工的外部人员看不到。返回 null 表示不限制。
+ * 人员可见（DEC-280⑤、DEC-289①）：默认对有人员查看权的 360 身份全部可见（手机号不单独脱敏，只按字段权限裁剪）；
+ * 精细化权限生效时（admin.people 非空，路由层 requestScope 取得并按 360 人员改写，见 context.ts）只看挂接员工在
+ * 范围内的人员，未挂接员工的外部人员看不到；活动内的评价对象 / 评价者同此口径。列表与点查同一 SQL 谓词。
  */
-async function peopleScope(tx: Tx, deps: TenantRouteDeps, tenant: TenantContext, admin: Admin, page?: string) {
-  if (admin.allActivities || !(await finePermission(tx))) return null;
-  const code = OBJECTS.person.code;
-  const scope = await resolveModuleScopeInTransaction(deps, tenant, tx, code, page && `${code}.${page}`);
-  if (scope.all) return null;
-  // 360 人员按挂接的员工判断：组织类条件取员工当前任职组织（与员工信息同一套 SQL，scope-persons.ts）
-  const personQuery = {
-    kind: 'organization' as const,
-    tenantId: tenant.tenantId,
-    asOf: tenantLocalDate(deps.clock(), tenant.timezone),
-  };
-  const terms = (scope.terms ?? []).map((term) =>
-    term.dimension === 'management' || term.dimension === 'organization' ? { ...term, personQuery } : term,
-  );
-  // 汇报关系维度：360 人员不是员工信息对象，解析器不给出汇报线人员查询，按 fail-closed 不放行
-  const columns = { person: sql`p.employee_id`, creator: sql`p.created_by` };
-  return sql`(p.employee_id IS NOT NULL AND ${scopeSql({ ...scope, terms }, columns)})`;
+export function personFilter(admin: Admin, alias: SQL = sql`p`): SQL | null {
+  if (!admin.people) return null;
+  const columns = { person: sql`${alias}.employee_id`, creator: sql`${alias}.created_by` };
+  return sql`(${alias}.employee_id IS NOT NULL AND ${scopeSql(admin.people, columns)})`;
+}
+
+export async function personVisible(tx: Tx, admin: Admin, person: PersonRow): Promise<boolean> {
+  if (!admin.people) return true;
+  if (!person.employeeId) return false;
+  return scopeAllowsInTransaction(tx, admin.people, { personId: person.employeeId, creatorId: person.createdBy });
+}
+
+/** 尚未建 360 人员的员工（自动添加的候选）：只按员工判断，不按将来的创建人放行。 */
+export async function employeeVisible(tx: Tx, admin: Admin, employeeId: string): Promise<boolean> {
+  return !admin.people || scopeAllowsInTransaction(tx, admin.people, { personId: employeeId });
 }
 
 /** 当前操作人可见的人员；看不到按不存在处理（404）。 */
-export async function visiblePerson(
-  tx: Tx,
-  deps: TenantRouteDeps,
-  tenant: TenantContext,
-  admin: Admin,
-  id: string,
-  page?: string,
-): Promise<PersonRow> {
-  const person = await loadPerson(tx, id);
-  const filter = await peopleScope(tx, deps, tenant, admin, page);
-  if (filter) {
-    const [row] = rows<{ id: string }>(
-      await tx.execute(sql`SELECT p.id FROM survey360_people p WHERE p.id = ${id}::uuid AND ${filter}`),
-    );
-    if (!row) fail('NOT_FOUND', '人员不存在');
-  }
+export async function visiblePerson(tx: Tx, admin: Admin, id: string, message = '人员不存在'): Promise<PersonRow> {
+  const person = await loadPerson(tx, id).catch(() => fail('NOT_FOUND', message));
+  if (!(await personVisible(tx, admin, person))) fail('NOT_FOUND', message);
   return person;
 }
+
+/**
+ * 精细化权限生效时不新建 360 人员（第 3 轮 R2-P2-7）：不论邮箱是否已被看不到的人员占用都同一结果，不暴露存在性；
+ * 录入邮箱属于可见人员时照常复用（调用方先查）。
+ */
+export function requireCreatable(admin: Admin): void {
+  if (admin.people) fail('FORBIDDEN', '开启精细化权限后只能选择可见的人员，不能新建人员', 'PERSON_NOT_AVAILABLE');
+}
+
+/** 关联日志：员工挂接字段按查看人的人员字段裁剪，其余是日志协议字段。 */
+const linkLogs: Present = async (viewer, body: { items: Record<string, unknown>[] }) => {
+  const fields = await viewer.fields('person');
+  const linkage = ['employeeId', 'previousEmployeeId'];
+  return {
+    items: body.items.map((row) =>
+      Object.fromEntries(Object.entries(row).filter(([key]) => !linkage.includes(key) || !fields || fields.has(key))),
+    ),
+  };
+};
 
 const VIEW = { object: 'person' } as const;
 
@@ -203,42 +209,30 @@ export function registerPeopleRoutes(module: Hono<TenantEnv>, deps: TenantRouteD
 
 function registerPeopleLists(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/people', (c) =>
-    read(
-      c,
-      deps,
-      VIEW,
-      async (tx, admin, tenant) => {
-        const page = pageQuery(c);
-        const q = c.req.query('q')?.trim();
-        const search = q ? sql`(p.name ILIKE ${`%${q}%`} OR p.email ILIKE ${`%${q}%`})` : sql`true`;
-        const scope = (await peopleScope(tx, deps, tenant, admin, 'list')) ?? sql`true`;
-        const ids = rows<{ id: string }>(
-          await tx.execute(sql`SELECT p.id FROM survey360_people p WHERE ${search} AND ${scope}
+    read(c, deps, VIEW, async (tx, admin) => {
+      const page = pageQuery(c);
+      const q = c.req.query('q')?.trim();
+      const search = q ? sql`(p.name ILIKE ${`%${q}%`} OR p.email ILIKE ${`%${q}%`})` : sql`true`;
+      const scope = personFilter(admin) ?? sql`true`;
+      const ids = rows<{ id: string }>(
+        await tx.execute(sql`SELECT p.id FROM survey360_people p WHERE ${search} AND ${scope}
             ORDER BY p.created_at, p.id LIMIT ${page.limit} OFFSET ${page.offset}`),
-        ).map((r) => r.id);
-        const items = ids.length
-          ? await tx
-              .select()
-              .from(survey360People)
-              .where(inArray(survey360People.id, ids))
-              .orderBy(survey360People.createdAt, survey360People.id)
-          : [];
-        return { items: items.map(personView), page: page.page, pageSize: page.pageSize };
-      },
-      'person',
-    ),
+      ).map((r) => r.id);
+      const items = ids.length
+        ? await tx
+            .select()
+            .from(survey360People)
+            .where(inArray(survey360People.id, ids))
+            .orderBy(survey360People.createdAt, survey360People.id)
+        : [];
+      return { items: items.map(personView), page: page.page, pageSize: page.pageSize };
+    }),
   );
 }
 
 function registerPersonReads(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/people/:id', (c) =>
-    read(
-      c,
-      deps,
-      VIEW,
-      async (tx, admin, tenant) => personView(await visiblePerson(tx, deps, tenant, admin, uuidParam(c), 'detail')),
-      'person',
-    ),
+    read(c, deps, VIEW, async (tx, admin) => personView(await visiblePerson(tx, admin, uuidParam(c)))),
   );
   module.get('/people/:id/link-logs', (c) =>
     read(
@@ -246,8 +240,8 @@ function registerPersonReads(module: Hono<TenantEnv>, deps: TenantRouteDeps): vo
       deps,
       // 关联日志属“从系统管理中同步人员信息”（DEC-280①：一般管理员看不到）
       { object: 'person', button: BUTTONS.sync },
-      async (tx, admin, tenant) => {
-        const person = await visiblePerson(tx, deps, tenant, admin, uuidParam(c), 'detail');
+      async (tx, admin) => {
+        const person = await visiblePerson(tx, admin, uuidParam(c));
         const items = await tx
           .select()
           .from(survey360PersonLinkLogs)
@@ -265,6 +259,7 @@ function registerPersonReads(module: Hono<TenantEnv>, deps: TenantRouteDeps): vo
           })),
         };
       },
+      linkLogs,
     ),
   );
 }
@@ -279,12 +274,16 @@ function registerPeopleWrites(module: Hono<TenantEnv>, deps: TenantRouteDeps): v
         requireNewObject(ctx);
         return personView(await createPerson(tx, ctx, input));
       },
-      { need: { object: 'person', operation: 'create' }, fields: (input) => input, status: 201 },
+      {
+        need: { object: 'person', operation: 'create' },
+        fields: 'body',
+        guard: async (_tx, admin) => requireCreatable(admin),
+        status: 201,
+      },
     ),
   );
   module.put('/people/:id', (c) => {
     const id = uuidParam(c);
-    const tenant = tenantOf(c);
     return write(
       c,
       deps,
@@ -296,8 +295,8 @@ function registerPeopleWrites(module: Hono<TenantEnv>, deps: TenantRouteDeps): v
       },
       {
         need: { object: 'person', operation: 'update' },
-        guard: async (tx, admin) => void (await visiblePerson(tx, deps, tenant, admin, id)),
-        fields: (input) => input,
+        fields: 'body',
+        guard: async (tx, admin) => void (await visiblePerson(tx, admin, id)),
       },
     );
   });

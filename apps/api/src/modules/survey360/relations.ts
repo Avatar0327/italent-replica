@@ -28,16 +28,21 @@ import type { TenantRouteDeps } from '../../routes.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
 import { findCurrentRecord } from '../employment/read-model.js';
 import { uuidParam } from '../job/context.js';
-import { type ActivityRow, requireActivity, requireObject } from './access.js';
+import type { SQL } from 'drizzle-orm';
+import { type ActivityRow, requireActivity, requireObject, requireVisibleObject } from './access.js';
 import { roleIdOf } from './settings.js';
 import {
   actor,
   type Admin,
+  type Also,
+  asIs,
   audit360,
   email,
   fail,
   jsonOrEmpty,
   optionalText,
+  pick,
+  type Present,
   read,
   requireNewObject,
   requireRevision,
@@ -45,12 +50,32 @@ import {
   type Survey360Context,
   text,
   uuid,
+  type Viewer,
   write,
   type Writer,
 } from './context.js';
 import { ensureAnswerLink, issueConfirmLink } from './links.js';
-import { createPerson, findPersonByEmail, loadPerson, personInput, type PersonRow, updatePerson } from './people.js';
-import { employeeInScope, personForEmployee, refreshFromOrg, routeEmployeeScope, syncAccess } from './sync.js';
+import {
+  createPerson,
+  employeeVisible,
+  findPersonByEmail,
+  loadPerson,
+  personFilter,
+  personInput,
+  type PersonRow,
+  personVisible,
+  requireCreatable,
+  updatePerson,
+  visiblePerson,
+} from './people.js';
+import {
+  employeeInScope,
+  linkedPerson,
+  personForEmployee,
+  refreshFromOrg,
+  routeEmployeeScope,
+  syncAccess,
+} from './sync.js';
 import type { ModuleScope } from '../permission/module-access.js';
 import { loadQuestionnaire, markUsed } from './questionnaires.js';
 
@@ -81,16 +106,24 @@ async function auditRelation(tx: Tx, ctx: Writer, action: string, before: Relati
   });
 }
 
-/** 选已有人员或手动录入（邮箱已存在时复用该人员）。 */
-async function resolvePerson(
-  tx: Tx,
-  ctx: Writer,
-  ref: { personId?: string | undefined; person?: z.infer<typeof personInput> | undefined },
-): Promise<PersonRow> {
-  if (ref.personId) return loadPerson(tx, ref.personId);
+type PersonRef = { personId?: string | undefined; person?: z.infer<typeof personInput> | undefined };
+
+/**
+ * 选已有人员或手动录入（邮箱已存在时复用该人员）。精细化权限下只能用可见人员：选到看不到的人员 404；录入的邮箱
+ * 属于看不到的人员或是新邮箱都一样 403 PERSON_NOT_AVAILABLE（不新建、不暴露存在性，第 3 轮 R2-P2-7）。
+ */
+async function resolvePerson(tx: Tx, ctx: Survey360Context, ref: PersonRef): Promise<PersonRow> {
+  if (ref.personId) return visiblePerson(tx, ctx.admin, ref.personId);
   if (!ref.person) fail('VALIDATION_FAILED', '须选择人员或录入姓名与邮箱', 'PERSON_REQUIRED');
-  return (await findPersonByEmail(tx, ref.person.email)) ?? createPerson(tx, ctx, ref.person);
+  const existing = await findPersonByEmail(tx, ref.person.email);
+  if (existing && (await personVisible(tx, ctx.admin, existing))) return existing;
+  requireCreatable(ctx.admin);
+  return existing ?? createPerson(tx, ctx, ref.person);
 }
+
+/** 录入 person 即隐式新建 360 人员：不论邮箱是否已存在都先判人员新增权限与字段（不暴露存在性）。 */
+const personAlso = (ref: PersonRef): readonly Also[] =>
+  ref.person ? [{ need: { object: 'person', operation: 'create' }, fields: Object.keys(ref.person) }] : [];
 
 async function requireQuestionnaires(tx: Tx, ids: readonly string[]): Promise<void> {
   if (ids.length < 1 || ids.length > LIMITS.questionnairesPerObject)
@@ -186,7 +219,13 @@ export async function removeRelation(tx: Tx, ctx: Writer, relation: RelationRow)
   return saved!;
 }
 
-export async function loadRelation(tx: Tx, objectId: string, id: string, lock = false): Promise<RelationRow> {
+export async function loadRelation(
+  tx: Tx,
+  objectId: string,
+  id: string,
+  lock = false,
+  removed = false,
+): Promise<RelationRow> {
   const query = tx
     .select()
     .from(survey360Relations)
@@ -194,7 +233,7 @@ export async function loadRelation(tx: Tx, objectId: string, id: string, lock = 
       and(
         eq(survey360Relations.id, id),
         eq(survey360Relations.objectId, objectId),
-        eq(survey360Relations.removed, false),
+        removed ? undefined : eq(survey360Relations.removed, false),
       ),
     );
   const [row] = lock ? await query.for('update') : await query;
@@ -202,8 +241,23 @@ export async function loadRelation(tx: Tx, objectId: string, id: string, lock = 
   return row;
 }
 
-/** 某评价对象的评价者列表与各角色人数（「设置评价者」页）。 */
-export async function appraiserList(tx: Tx, objectId: string) {
+/** 精细化权限下评价者（其人员）须可见：看不到与不存在同一结果（DEC-289①）。 */
+async function requireVisibleAppraiser(tx: Tx, admin: Admin, relation: RelationRow): Promise<void> {
+  if (admin.people && !(await personVisible(tx, admin, await loadPerson(tx, relation.appraiserPersonId))))
+    fail('NOT_FOUND', '评价关系不存在');
+}
+
+/** 列表 SQL 的人员谓词（别名 p），精细化未生效时为空。 */
+function filterOf(admin: Admin): SQL {
+  const filter = personFilter(admin);
+  return filter ? sql`AND ${filter}` : sql``;
+}
+
+/**
+ * 某评价对象的评价者列表与各角色人数（「设置评价者」页）。filter = 精细化权限下的人员谓词（别名 p）：只列可见的
+ * 评价者，各角色人数只按列出的计（DEC-289①）。
+ */
+export async function appraiserList(tx: Tx, objectId: string, filter: SQL | null = null) {
   const items = rows<{
     id: string;
     activity_id: string;
@@ -220,7 +274,8 @@ export async function appraiserList(tx: Tx, objectId: string) {
     await tx.execute(sql`SELECT r.*, ro.name AS role_name, p.name, p.email, p.employee_id FROM survey360_relations r
       JOIN survey360_roles ro ON ro.tenant_id = r.tenant_id AND ro.id = r.role_id
       JOIN survey360_people p ON p.tenant_id = r.tenant_id AND p.id = r.appraiser_person_id
-      WHERE r.object_id = ${objectId}::uuid AND NOT r.removed ORDER BY ro.sort, r.created_at, r.id`),
+      WHERE r.object_id = ${objectId}::uuid AND NOT r.removed ${filter ? sql`AND ${filter}` : sql``}
+      ORDER BY ro.sort, r.created_at, r.id`),
   ).map((r) => ({
     id: r.id,
     activityId: r.activity_id,
@@ -237,8 +292,44 @@ export async function appraiserList(tx: Tx, objectId: string) {
   return { items, roleCounts, hint: survey360.ANONYMITY_HINT };
 }
 
+/** 嵌套人员的键 → 人员对象字段（internal 由挂接员工推得，随 employeeId）。 */
+const NESTED_PERSON = { internal: 'employeeId' };
+
+/**
+ * 行按评价关系字段裁剪；嵌套人员（person / appraiser）要评价关系上该字段可见，且键按查看人的人员字段裁剪——没有
+ * 人员对象时一个键都不给（不因权限更少而看到更多，第 3 轮 R2-P2-3）。
+ */
+async function withNested(viewer: Viewer, rows: readonly Record<string, unknown>[], key: 'person' | 'appraiser') {
+  const relation = await viewer.fields('relation');
+  const person = await viewer.fields('person');
+  return rows.map((row) => {
+    const trimmed = pick(row, relation);
+    const inner = trimmed[key] ? pick(trimmed[key] as object, person, NESTED_PERSON) : {};
+    const { [key]: _nested, ...rest } = trimmed;
+    return Object.keys(inner).length ? { ...rest, [key]: inner } : rest;
+  });
+}
+
+const objectList: Present = async (viewer, body: { items: Record<string, unknown>[] }) => ({
+  items: await withNested(viewer, body.items, 'person'),
+});
+
+/** 评价者列表：roleCounts 以角色 ID 为键，只在查看人能看评价关系的 roleId 时返回（第 3 轮 R2-P2-3）。 */
+const appraiserListView: Present = async (viewer, body: Awaited<ReturnType<typeof appraiserList>>) => {
+  const relation = await viewer.fields('relation');
+  const items = await withNested(viewer, body.items, 'appraiser');
+  return { items, ...(!relation || relation.has('roleId') ? { roleCounts: body.roleCounts } : {}), hint: body.hint };
+};
+
 const VIEW = { object: 'relation' } as const;
 const guarded = (id: string) => async (tx: Tx, admin: Admin) => void (await requireActivity(tx, admin, id));
+/** 活动可见 + 评价对象（其人员）可见；removed = 移除命令的命令前校验（含重放）。 */
+const objectGuard =
+  (id: string, objectId: string, removed = false) =>
+  async (tx: Tx, admin: Admin) => {
+    await requireActivity(tx, admin, id);
+    await requireVisibleObject(tx, admin, id, objectId, false, removed);
+  };
 
 function registerAppraiserList(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/activities/:id/objects/:objectId/appraisers', (c) =>
@@ -248,10 +339,10 @@ function registerAppraiserList(module: Hono<TenantEnv>, deps: TenantRouteDeps): 
       VIEW,
       async (tx, admin) => {
         const activity = await requireActivity(tx, admin, uuidParam(c));
-        const object = await requireObject(tx, activity.id, uuidParam(c, 'objectId'));
-        return appraiserList(tx, object.id);
+        const object = await requireVisibleObject(tx, admin, activity.id, uuidParam(c, 'objectId'));
+        return appraiserList(tx, object.id, personFilter(admin));
       },
-      'relation',
+      appraiserListView,
     ),
   );
 }
@@ -269,11 +360,18 @@ export function registerRelationRoutes(module: Hono<TenantEnv>, deps: TenantRout
       async (tx, ctx, input) => {
         requireNewObject(ctx);
         const activity = await requireActivity(tx, ctx.admin, id, true);
-        await requireObject(tx, id, objectId);
+        await requireVisibleObject(tx, ctx.admin, id, objectId);
         const appraiser = await resolvePerson(tx, ctx, input);
         return relationView(await addRelation(tx, ctx, activity, objectId, appraiser, input.roleId, 'manual'));
       },
-      { need: { object: 'relation', operation: 'create' }, guard: guarded(id), status: 201 },
+      {
+        need: { object: 'relation', operation: 'create' },
+        // 选人写 appraiserPersonId，录入写 appraiser（并隐式新建人员）
+        fields: (input) => [input.personId ? 'appraiserPersonId' : 'appraiser', 'roleId'],
+        also: personAlso,
+        guard: objectGuard(id, objectId),
+        status: 201,
+      },
     );
   });
   module.delete('/activities/:id/objects/:objectId/appraisers/:relationId', (c) => {
@@ -286,18 +384,33 @@ export function registerRelationRoutes(module: Hono<TenantEnv>, deps: TenantRout
       z.object({}).passthrough(),
       async (tx, ctx) => {
         await requireActivity(tx, ctx.admin, id, true);
-        await requireObject(tx, id, objectId);
+        await requireVisibleObject(tx, ctx.admin, id, objectId);
         const relation = await loadRelation(tx, objectId, relationId, true);
+        await requireVisibleAppraiser(tx, ctx.admin, relation);
         requireRevision(relation.revision, ctx.expectedRevision);
         return relationView(await removeRelation(tx, ctx, relation));
       },
-      { need: { object: 'relation', operation: 'delete' }, guard: guarded(id) },
+      {
+        need: { object: 'relation', operation: 'delete' },
+        fields: 'none',
+        guard: async (tx, admin) => {
+          await objectGuard(id, objectId, true)(tx, admin);
+          await requireVisibleAppraiser(tx, admin, await loadRelation(tx, objectId, relationId, false, true));
+        },
+      },
     );
   });
+  registerAutoAdd(module, deps);
+  registerImport(module, deps);
+  registerConfirmationInvite(module, deps);
+}
+
+function registerAutoAdd(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.post('/activities/:id/objects/:objectId/appraisers/auto', (c) => {
     const id = uuidParam(c);
     const objectId = uuidParam(c, 'objectId');
     const ORG_ROLES = ['superior', 'peer', 'subordinate'] as const;
+    let employees: ModuleScope | undefined;
     return write(
       c,
       deps,
@@ -308,33 +421,37 @@ export function registerRelationRoutes(module: Hono<TenantEnv>, deps: TenantRout
       async (tx, ctx, input) => {
         requireNewObject(ctx);
         const activity = await requireActivity(tx, ctx.admin, id, true);
-        const object = await requireObject(tx, id, objectId);
+        const object = await requireVisibleObject(tx, ctx.admin, id, objectId);
         return autoAdd(tx, deps, ctx, activity, object, input);
       },
       {
-        // 命令前（含幂等重放）同样校验评价对象的员工仍在操作人范围内（第 1 轮审查 P2-2 / P2-4）
         need: { object: 'relation', operation: 'create', button: 'autoAdd' },
-        guard: guarded(id),
+        fields: () => ['appraiserPersonId', 'roleId'],
+        // 未同步的员工按同步规则新建 360 人员：先判人员新增权限与同步写入的字段
+        also: () => [{ need: { object: 'person', operation: 'create' }, fields: SYNCED_PERSON_FIELDS }],
+        guard: objectGuard(id, objectId),
+        // 命令前（含幂等重放）同样校验评价对象的员工仍在操作人范围内（第 1 轮审查 P2-2 / P2-4）
         preflight: async (admin) => {
-          const scope = await routeEmployeeScope(c, deps);
+          employees = await routeEmployeeScope(c, deps);
           await withTenant(deps.db, tenantOf(c).tenantId, async (tx) => {
             await requireActivity(tx, admin, id);
-            await requireTargetInScope(tx, scope, (await requireObject(tx, id, objectId)).person_id);
+            await requireTargetInScope(tx, employees!, (await requireObject(tx, id, objectId)).person_id);
           });
         },
+        // 返回前（新请求与重放同一路径）按当前员工范围与精细化范围去掉范围外的新增与跳过（第 3 轮 R2-P2-1）
+        present: async (viewer, body: AutoAddResult) => autoAddView(viewer, employees!, body),
       },
     );
   });
-  registerImport(module, deps);
-  registerConfirmationInvite(module, deps);
 }
 
 function registerObjects(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerObjectList(module, deps);
   registerObjectCreation(module, deps);
   registerObjectChanges(module, deps);
 }
 
-function registerObjectCreation(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+function registerObjectList(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/activities/:id/objects', (c) =>
     read(
       c,
@@ -354,7 +471,8 @@ function registerObjectCreation(module: Hono<TenantEnv>, deps: TenantRouteDeps):
             (SELECT array_agg(oq.questionnaire_id ORDER BY oq.id) FROM survey360_object_questionnaires oq
               WHERE oq.tenant_id = o.tenant_id AND oq.object_id = o.id) AS questionnaire_ids
           FROM survey360_objects o JOIN survey360_people p ON p.tenant_id = o.tenant_id AND p.id = o.person_id
-          WHERE o.activity_id = ${activity.id}::uuid AND NOT o.removed ORDER BY o.sort, o.created_at, o.id`),
+          WHERE o.activity_id = ${activity.id}::uuid AND NOT o.removed ${filterOf(admin)}
+          ORDER BY o.sort, o.created_at, o.id`),
         );
         return {
           items: items.map((o) => ({
@@ -366,9 +484,12 @@ function registerObjectCreation(module: Hono<TenantEnv>, deps: TenantRouteDeps):
           })),
         };
       },
-      'relation',
+      objectList,
     ),
   );
+}
+
+function registerObjectCreation(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.post('/activities/:id/objects', (c) => {
     const id = uuidParam(c);
     return write(
@@ -407,7 +528,13 @@ function registerObjectCreation(module: Hono<TenantEnv>, deps: TenantRouteDeps):
         });
         return view;
       },
-      { need: { object: 'relation', operation: 'create' }, guard: guarded(id), status: 201 },
+      {
+        need: { object: 'relation', operation: 'create' },
+        fields: 'body', // personId / person、questionnaireIds
+        also: personAlso,
+        guard: guarded(id),
+        status: 201,
+      },
     );
   });
 }
@@ -427,7 +554,7 @@ function registerObjectQuestionnaires(module: Hono<TenantEnv>, deps: TenantRoute
       z.strictObject({ questionnaireIds: z.array(uuid).max(10) }),
       async (tx, ctx, input) => {
         const activity = await requireActivity(tx, ctx.admin, id, true);
-        const object = await requireObject(tx, id, objectId, true);
+        const object = await requireVisibleObject(tx, ctx.admin, id, objectId, true);
         requireRevision(object.revision, ctx.expectedRevision);
         await requireQuestionnaires(tx, input.questionnaireIds);
         // 替换套卷会清空已有作答（E3-R2）——首版不做，已有答卷时拒绝
@@ -458,7 +585,7 @@ function registerObjectQuestionnaires(module: Hono<TenantEnv>, deps: TenantRoute
         });
         return view;
       },
-      { need: { object: 'relation', operation: 'update' }, guard: guarded(id) },
+      { need: { object: 'relation', operation: 'update' }, fields: 'body', guard: objectGuard(id, objectId) },
     );
   });
 }
@@ -473,7 +600,7 @@ function registerObjectRemoval(module: Hono<TenantEnv>, deps: TenantRouteDeps): 
       z.object({}).passthrough(),
       async (tx, ctx) => {
         await requireActivity(tx, ctx.admin, id, true);
-        const object = await requireObject(tx, id, objectId, true);
+        const object = await requireVisibleObject(tx, ctx.admin, id, objectId, true);
         requireRevision(object.revision, ctx.expectedRevision);
         const relations = await tx
           .select()
@@ -510,7 +637,7 @@ function registerObjectRemoval(module: Hono<TenantEnv>, deps: TenantRouteDeps): 
         });
         return { id: objectId, removed: true };
       },
-      { need: { object: 'relation', operation: 'delete' }, guard: guarded(id) },
+      { need: { object: 'relation', operation: 'delete' }, fields: 'none', guard: objectGuard(id, objectId, true) },
     );
   });
 }
@@ -549,6 +676,48 @@ async function requireTargetInScope(tx: Tx, scope: ModuleScope, personId: string
     fail('NOT_FOUND', '评价对象的员工不存在或不在你的数据范围内');
 }
 
+/** 自动添加为未同步员工新建 360 人员时写入的人员字段（同步规则，只写操作人可见的组织值）。 */
+const SYNCED_PERSON_FIELDS = ['name', 'email', 'mobile', 'staffCode', 'department', 'position', 'superiorPersonId'];
+
+interface AutoAddResult {
+  readonly added: ReturnType<typeof relationView>[];
+  readonly skipped: { employeeId: string; reason: string }[];
+}
+
+/** 候选员工在精细化权限下是否可见：已有 360 人员按人员判，尚未同步的按员工判（DEC-289①）。 */
+async function candidateVisible(tx: Tx, admin: Admin, employeeId: string): Promise<boolean> {
+  if (!admin.people) return true;
+  const linked = await linkedPerson(tx, employeeId);
+  return linked ? personVisible(tx, admin, linked) : employeeVisible(tx, admin, employeeId);
+}
+
+/**
+ * 自动添加回执：返回前（新请求与重放同一路径）按当前员工范围与精细化范围复核，移出范围的员工的新增关系与跳过
+ * 原因都去掉（第 3 轮 R2-P2-1）；新增关系按评价关系字段裁剪。
+ */
+async function autoAddView(viewer: Viewer, employees: ModuleScope, body: AutoAddResult) {
+  const inScope = async (employeeId: string | null) =>
+    !!employeeId &&
+    (await employeeInScope(viewer.tx, employees, employeeId)) &&
+    (await candidateVisible(viewer.tx, viewer.admin, employeeId));
+  const added = [];
+  for (const relation of body.added)
+    if (await inScope((await loadPerson(viewer.tx, relation.appraiserPersonId)).employeeId)) added.push(relation);
+  const skipped = [];
+  for (const entry of body.skipped) if (await inScope(entry.employeeId)) skipped.push(entry);
+  const fields = await viewer.fields('relation');
+  return { added: added.map((row) => pick(row, fields)), skipped };
+}
+
+/** 邀请上级确认的回执：按评价关系字段裁剪；精细化权限下确认人（上级）看不到时去掉 confirmerPersonId。 */
+const confirmationPresent: Present = async (viewer, body: ReturnType<typeof confirmationView>) => {
+  const view = pick(body, await viewer.fields('relation'));
+  if (!viewer.admin.people || !('confirmerPersonId' in view)) return view;
+  if (await personVisible(viewer.tx, viewer.admin, await loadPerson(viewer.tx, body.confirmerPersonId))) return view;
+  const { confirmerPersonId: _hidden, ...rest } = view;
+  return rest;
+};
+
 async function autoAdd(
   tx: Tx,
   deps: TenantRouteDeps,
@@ -556,7 +725,7 @@ async function autoAdd(
   activity: ActivityRow,
   object: { id: string; person_id: string },
   input: { roles: ('superior' | 'peer' | 'subordinate')[]; limits?: Partial<Record<string, number>> | undefined },
-) {
+): Promise<AutoAddResult> {
   const target = await loadPerson(tx, object.person_id);
   if (!target.employeeId) fail('VALIDATION_FAILED', '评价对象未与组织员工挂接，不能按组织架构添加', 'NOT_LINKED');
   const access = await syncAccess(tx, deps, ctx);
@@ -570,7 +739,7 @@ async function autoAdd(
     peer: manager ? (await reportsOf(tx, ctx.tenantId, manager, asOf)).filter((e) => e !== target.employeeId) : [],
     subordinate: await reportsOf(tx, ctx.tenantId, target.employeeId, asOf),
   };
-  const added = [];
+  const added: ReturnType<typeof relationView>[] = [];
   const skipped: { employeeId: string; reason: string }[] = [];
   for (const code of input.roles) {
     const roleId = await roleIdOf(tx, code);
@@ -578,6 +747,8 @@ async function autoAdd(
     const limit = input.limits?.[code];
     for (const employeeId of candidates[code]!) {
       if (limit !== undefined && taken >= limit) break;
+      // 精细化权限下候选员工另须在 360 范围内：范围外不建人员、不加关系、不出现在结果里（DEC-289①）
+      if (!(await candidateVisible(tx, ctx.admin, employeeId))) continue;
       const person = await personForEmployee(tx, ctx, access, employeeId);
       if (typeof person === 'string') {
         // 范围外的员工不同步，也不在结果里出现
@@ -613,6 +784,47 @@ const importRow = z.strictObject({
   position: optionalText(200),
 });
 
+type ImportInput = { sync: boolean; rows: z.infer<typeof importRow>[] };
+
+/** 导入行里的人员字段（行内除评价对象邮箱、角色外的键）。 */
+const importedPersonFields = (input: ImportInput) =>
+  [...new Set(input.rows.flatMap((row) => Object.keys(row)))].filter((key) => !['objectEmail', 'roleId'].includes(key));
+
+/**
+ * 导入隐式写人员：新邮箱新建人员（人员新增）；不同步时已有人员以上传值覆盖（人员编辑，邮箱不变）。不论邮箱是否
+ * 已存在都先判，不暴露存在性。
+ */
+function importAlso(input: ImportInput): readonly Also[] {
+  const fields = importedPersonFields(input);
+  const create: Also = { need: { object: 'person', operation: 'create' }, fields };
+  if (input.sync) return [create];
+  return [create, { need: { object: 'person', operation: 'update' }, fields: fields.filter((f) => f !== 'email') }];
+}
+
+/** 整批校验（AGENTS.md §10「批量」）：评价对象须在活动内且可见；精细化权限下行内人员须是可见的已有人员。 */
+async function importErrors(tx: Tx, admin: Admin, activityId: string, input: ImportInput) {
+  const errors: { row: number; code: string; details: { reason: string } }[] = [];
+  const objects = new Map<number, string>();
+  const error = (index: number, reason: string) =>
+    errors.push({ row: index + 1, code: 'VALIDATION_FAILED', details: { reason } });
+  for (const [index, row] of input.rows.entries()) {
+    const [object] = rows<{ id: string }>(
+      await tx.execute(sql`SELECT o.id FROM survey360_objects o JOIN survey360_people p
+        ON p.tenant_id = o.tenant_id AND p.id = o.person_id
+        WHERE o.activity_id = ${activityId}::uuid AND NOT o.removed AND lower(p.email) = lower(${row.objectEmail})
+          ${filterOf(admin)}`),
+    );
+    if (!object) error(index, 'OBJECT_NOT_FOUND');
+    else objects.set(index, object.id);
+    // 看不到的已有人员与新邮箱同一原因（不新建、不暴露存在性，第 3 轮 R2-P2-7）
+    if (admin.people) {
+      const existing = await findPersonByEmail(tx, row.email);
+      if (!existing || !(await personVisible(tx, admin, existing))) error(index, 'PERSON_NOT_AVAILABLE');
+    }
+  }
+  return { errors, objects };
+}
+
 function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.post('/activities/:id/appraisers/import', (c) => {
     const id = uuidParam(c);
@@ -624,18 +836,7 @@ function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
         requireNewObject(ctx);
         const activity = await requireActivity(tx, ctx.admin, id, true);
         // 先整批校验，再写入：任一行不合法整批失败（AGENTS.md §10「批量」）
-        const errors: { row: number; code: string; details: { reason: string } }[] = [];
-        const objects = new Map<number, string>();
-        for (const [index, row] of input.rows.entries()) {
-          const [object] = rows<{ id: string }>(
-            await tx.execute(sql`SELECT o.id FROM survey360_objects o JOIN survey360_people p
-              ON p.tenant_id = o.tenant_id AND p.id = o.person_id
-              WHERE o.activity_id = ${id}::uuid AND NOT o.removed AND lower(p.email) = lower(${row.objectEmail})`),
-          );
-          if (!object)
-            errors.push({ row: index + 1, code: 'VALIDATION_FAILED', details: { reason: 'OBJECT_NOT_FOUND' } });
-          else objects.set(index, object.id);
-        }
+        const { errors, objects } = await importErrors(tx, ctx.admin, id, input);
         if (errors.length) fail('VALIDATION_FAILED', '导入数据有误，整批未导入', 'IMPORT_INVALID', { errors });
         const receipts = [];
         let access: Awaited<ReturnType<typeof syncAccess>> | undefined;
@@ -659,13 +860,16 @@ function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
         return { receipts };
       },
       {
-        // 选择“同步”时需要员工信息查看权：命令前（含幂等重放）同样校验
         need: { object: 'relation', operation: 'create', button: 'import' },
+        fields: () => ['appraiser', 'roleId'],
+        also: importAlso,
         guard: guarded(id),
+        // 选择“同步”时需要员工信息查看权：命令前（含幂等重放）同样校验
         preflight: async () => {
           const body = (await jsonOrEmpty(c)) as { sync?: unknown } | null;
           if (body?.sync === true) await routeEmployeeScope(c, deps);
         },
+        present: asIs, // 回执只有行号、状态、关系 ID
       },
     );
   });
@@ -683,7 +887,7 @@ function registerConfirmationInvite(module: Hono<TenantEnv>, deps: TenantRouteDe
         requireNewObject(ctx);
         const activity = await requireActivity(tx, ctx.admin, id, true);
         if (activity.status === 'disabled') fail('CONFLICT', '活动已停用', 'ACTIVITY_DISABLED');
-        const object = await requireObject(tx, id, objectId, true);
+        const object = await requireVisibleObject(tx, ctx.admin, id, objectId, true);
         const target = await loadPerson(tx, object.person_id);
         if (!target.superiorPersonId) fail('VALIDATION_FAILED', '评价对象没有上级，不能邀请上级确认', 'NO_SUPERIOR');
         const superior = await loadPerson(tx, target.superiorPersonId);
@@ -712,7 +916,13 @@ function registerConfirmationInvite(module: Hono<TenantEnv>, deps: TenantRouteDe
         });
         return view;
       },
-      { need: { object: 'relation', operation: 'update', button: 'invite' }, guard: guarded(id), status: 201 },
+      {
+        need: { object: 'relation', operation: 'update', button: 'invite' },
+        fields: () => ['confirmerPersonId'], // 邀请即设置确认人（评价对象的上级）
+        guard: objectGuard(id, objectId),
+        present: confirmationPresent,
+        status: 201,
+      },
     );
   });
 }

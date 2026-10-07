@@ -251,12 +251,17 @@ export function questionnaireView(q: LoadedQuestionnaire) {
 /**
  * 修改权（DEC-280①）：套卷创建人，或持“编辑他人套卷”按钮者（360 系统管理员）。命令前（含重放）与命令事务内各判一次。
  */
-function editableBy(deps: TenantRouteDeps, tenant: TenantContext, id: string) {
+function editableBy(deps: TenantRouteDeps, tenant: TenantContext, id: string, deleted = false) {
+  // deleted：删除命令的命令前校验（含重放）按删除前的行判定本人 / 编辑他人套卷，重放返回原回执
   return async (tx: Tx, admin: Admin): Promise<void> => {
     const [row] = await tx
       .select({ createdBy: survey360Questionnaires.createdBy })
       .from(survey360Questionnaires)
-      .where(and(eq(survey360Questionnaires.id, id), eq(survey360Questionnaires.deleted, false)));
+      .where(
+        deleted
+          ? eq(survey360Questionnaires.id, id)
+          : and(eq(survey360Questionnaires.id, id), eq(survey360Questionnaires.deleted, false)),
+      );
     if (!row) fail('NOT_FOUND', '套卷不存在');
     if (row.createdBy === admin.userId) return;
     if (!(await can(tx, deps, tenant, 'questionnaire', 'update', BUTTONS.editOthers)))
@@ -522,32 +527,26 @@ const VIEW = { object: 'questionnaire' } as const;
 
 function registerQuestionnaireReads(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/questionnaires', (c) =>
-    read(
-      c,
-      deps,
-      VIEW,
-      async (tx) => ({
-        items: (
-          await tx
-            .select()
-            .from(survey360Questionnaires)
-            .where(eq(survey360Questionnaires.deleted, false))
-            .orderBy(survey360Questionnaires.createdAt)
-            .limit(500)
-        ).map((r) => ({
-          id: r.id,
-          name: r.name,
-          type: r.type,
-          status: r.status,
-          createdBy: r.createdBy,
-          revision: r.revision,
-        })),
-      }),
-      'questionnaire',
-    ),
+    read(c, deps, VIEW, async (tx) => ({
+      items: (
+        await tx
+          .select()
+          .from(survey360Questionnaires)
+          .where(eq(survey360Questionnaires.deleted, false))
+          .orderBy(survey360Questionnaires.createdAt)
+          .limit(500)
+      ).map((r) => ({
+        id: r.id,
+        name: r.name,
+        type: r.type,
+        status: r.status,
+        createdBy: r.createdBy,
+        revision: r.revision,
+      })),
+    })),
   );
   module.get('/questionnaires/:id', (c) =>
-    read(c, deps, VIEW, async (tx) => questionnaireView(await loadQuestionnaire(tx, uuidParam(c))), 'questionnaire'),
+    read(c, deps, VIEW, async (tx) => questionnaireView(await loadQuestionnaire(tx, uuidParam(c)))),
   );
   module.post('/questionnaires', (c) =>
     write(
@@ -573,7 +572,7 @@ function registerQuestionnaireReads(module: Hono<TenantEnv>, deps: TenantRouteDe
         await auditQuestionnaire(tx, ctx, 'survey360.questionnaire.create', null, loaded);
         return questionnaireView(loaded);
       },
-      { need: { object: 'questionnaire', operation: 'create' }, fields: (input) => input, status: 201 },
+      { need: { object: 'questionnaire', operation: 'create' }, fields: 'body', status: 201 },
     ),
   );
 }
@@ -584,11 +583,11 @@ function registerQuestionnaireUpdate(module: Hono<TenantEnv>, deps: TenantRouteD
     const options = {
       need: { object: 'questionnaire', operation: 'update' },
       guard: editableBy(deps, tenantOf(c), id),
-      fields: ({ content, ...header }: z.infer<typeof updateSchema>) => ({
-        ...header,
-        ...(content ? { roles: content.roles, scales: content.scales, dimensions: content.dimensions } : {}),
-        ...(content ? { questions: content.questions } : {}),
-      }),
+      // 整卷保存的 content 写的是角色、量表、指标、题目四个字段
+      fields: ({ content, ...header }: z.infer<typeof updateSchema>) => [
+        ...Object.keys(header),
+        ...(content ? ['roles', 'scales', 'dimensions', 'questions'] : []),
+      ],
     } as const;
     return write(
       c,
@@ -652,6 +651,7 @@ function registerQuestionnaireLifecycle(module: Hono<TenantEnv>, deps: TenantRou
       },
       {
         need: { object: 'questionnaire', operation: 'update', button: 'enable' },
+        fields: 'none', // 状态流转，不写套卷字段
         guard: editableBy(deps, tenantOf(c), id),
       },
     );
@@ -686,7 +686,11 @@ function registerQuestionnaireLifecycle(module: Hono<TenantEnv>, deps: TenantRou
         });
         return { id, deleted: true };
       },
-      { need: { object: 'questionnaire', operation: 'delete' }, guard: editableBy(deps, tenantOf(c), id) },
+      {
+        need: { object: 'questionnaire', operation: 'delete' },
+        fields: 'none',
+        guard: editableBy(deps, tenantOf(c), id, true),
+      },
     );
   });
 }

@@ -606,13 +606,23 @@ function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   );
   module.delete('/confirmation/appraisers/:relationId', (c) => {
     const relationId = uuidParam(c, 'relationId');
-    return linkWrite(deps, 'confirm', z.object({}).passthrough(), async (tx, ctx, link, activity) => {
-      const confirmation = await openConfirmation(tx, ctx, link, activity);
-      const relation = await loadRelation(tx, confirmation.objectId, relationId, true);
-      await removeRelation(tx, ctx, relation);
-      await bumpConfirmation(tx, ctx, confirmation);
-      return { id: relationId, removed: true };
-    })(c);
+    // 关系须属于确认单的评价对象：先于状态与 revision 校验；命令前（含重放）同样校验，已移除的关系照认归属
+    const owned = async (tx: Tx, link: LinkRow, removed = false) =>
+      loadRelation(tx, (await loadConfirmation(tx, link)).objectId, relationId, false, removed);
+    return linkWrite(
+      deps,
+      'confirm',
+      z.object({}).passthrough(),
+      async (tx, ctx, link, activity) => {
+        await owned(tx, link);
+        const confirmation = await openConfirmation(tx, ctx, link, activity);
+        const relation = await loadRelation(tx, confirmation.objectId, relationId, true);
+        await removeRelation(tx, ctx, relation);
+        await bumpConfirmation(tx, ctx, confirmation);
+        return { id: relationId, removed: true };
+      },
+      { guard: (tx, link) => owned(tx, link, true) },
+    )(c);
   });
   module.post('/confirmation/submit', (c) =>
     linkWrite(deps, 'confirm', z.object({}).passthrough(), async (tx, ctx, link, activity) => {

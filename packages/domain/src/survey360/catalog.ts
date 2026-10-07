@@ -66,6 +66,8 @@ export const SURVEY360_OBJECTS = {
     ['questionnaireId', 'level', 'itemId', 'scope', 'roleId', 'roleName', 'score', 'raterCount'],
     [],
   ),
+  // 答卷：只查看（审计按真实对象判定，第 3 轮 R2-P2-4；PR-B 进程监控）
+  answer: object('Answer', [], ['activityId', 'relationId', 'questionnaireId', 'status', 'answers', 'suggestion'], []),
   questionnaire: object(
     'Questionnaire',
     ['name', 'type', 'scoreMethod', 'guide', 'excellence', 'roles', 'scales', 'dimensions', 'questions'],

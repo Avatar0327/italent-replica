@@ -10,12 +10,21 @@
  * （姓名、工号、邮箱、手机）与任职记录（部门、职位、直线经理）的查看权限裁剪——看不到的字段不写入 360，
  * 已有的 360 值保持不变；姓名或邮箱看不到的员工不建人员（FIELD_HIDDEN）。登录邮箱兜底同样要求能看邮箱。
  */
-import { and, eq, sql, survey360PersonLinkLogs, survey360People, survey360SyncConflicts, type Tx } from '@italent/db';
+import {
+  and,
+  eq,
+  sql,
+  survey360PersonLinkLogs,
+  survey360People,
+  survey360SyncConflicts,
+  type Tx,
+  withTenant,
+} from '@italent/db';
 import { PERSONNEL_OBJECT, tenantLocalDate } from '@italent/domain';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
-import type { TenantContext, TenantEnv } from '../../tenant-context.js';
+import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
 import { findCurrentRecord } from '../employment/read-model.js';
 import {
@@ -28,18 +37,23 @@ import {
 import { objectContext, requestScope } from '../permission/module-route-access.js';
 import {
   actor,
+  type Admin,
   audit360,
   type C,
   fail,
+  jsonOrEmpty,
+  pick,
+  type Present,
   read,
   requireRevision,
   rows,
   type Survey360Context,
   BUTTONS,
   uuid,
+  type Viewer,
   write,
 } from './context.js';
-import { findPersonByEmail, loadPerson, type PersonRow, personView } from './people.js';
+import { findPersonByEmail, loadPerson, type PersonRow, personView, personVisible } from './people.js';
 
 const EMPLOYMENT_RECORD_OBJECT = 'TenantBase.EmploymentRecord';
 /** 一次同步最多处理的员工数（有界查询）；超出部分返回游标，按游标续同步。 */
@@ -383,7 +397,35 @@ export async function syncPeople(
     if (saved === 'EMAIL_TAKEN') result.skipped.push({ employeeId: snapshot.employeeId, reason: 'EMAIL_TAKEN' });
     else if (saved && existed) result.updated.push({ personId, employeeId: snapshot.employeeId });
   }
+  if (nextCursor === null) await backfillSuperiors(tx, ctx, access, new Set(items.map((i) => i.employeeId)), result);
   return result;
+}
+
+/**
+ * 末页后回补跨页上级（第 3 轮 R2-P2-8）：按游标分页时下属可能在经理之前的页里同步，当时经理还没有 360 人员、上级
+ * 留空。最后一页处理完后，回补员工范围内上级仍为空、直线经理已挂接的人员——与同步同一写入（推进 revision、写字段级
+ * 审计、计入 updated）。本页刚处理过的人员已按本页结果写入，不重复；有界（SYNC_LIMIT）。
+ */
+async function backfillSuperiors(
+  tx: Tx,
+  ctx: Survey360Context,
+  access: SyncAccess,
+  handled: ReadonlySet<string>,
+  result: SyncResult,
+) {
+  const pending = rows<{ id: string; employee_id: string }>(
+    await tx.execute(sql`SELECT p.id, p.employee_id FROM survey360_people p
+      WHERE p.employee_id IS NOT NULL AND p.superior_person_id IS NULL
+        AND ${scopeSql(access.scope, { person: sql`p.employee_id` })}
+      ORDER BY p.employee_id LIMIT ${SYNC_LIMIT}`),
+  );
+  for (const row of pending) {
+    if (handled.has(row.employee_id)) continue;
+    const [snapshot] = (await employeeSnapshots(tx, ctx, access, { only: row.employee_id })).items;
+    if (!snapshot?.managerId || !(await linkedPerson(tx, snapshot.managerId))) continue;
+    const saved = await refreshLinked(tx, ctx, await loadPerson(tx, row.id, true), snapshot);
+    if (saved && saved !== 'EMAIL_TAKEN') result.updated.push({ personId: row.id, employeeId: row.employee_id });
+  }
 }
 
 export async function linkedPerson(tx: Tx, employeeId: string): Promise<PersonRow | undefined> {
@@ -489,10 +531,12 @@ async function linkConflict(
   snapshot: EmployeeSnapshot,
   personId: string | undefined,
 ): Promise<string> {
-  if (!personId || !conflict.candidatePersonIds.includes(personId))
-    fail('VALIDATION_FAILED', '只能挂接到查重命中的人员', 'NOT_A_CANDIDATE');
+  const notCandidate = () => fail('VALIDATION_FAILED', '只能挂接到查重命中的人员', 'NOT_A_CANDIDATE');
+  if (!personId || !conflict.candidatePersonIds.includes(personId)) notCandidate();
   if (await linkedPerson(tx, conflict.employeeId)) fail('CONFLICT', '该员工已挂接其他人员', 'EMPLOYEE_LINKED');
-  const person = await loadPerson(tx, personId, true);
+  const person = await loadPerson(tx, personId!, true);
+  // 精细化权限下看不到的候选不列出，也不可挂接（与不是候选同一结果）
+  if (!(await personVisible(tx, ctx.admin, person))) notCandidate();
   await logLink(tx, ctx, person, conflict.employeeId, 'admin_confirm', conflict.matchedBy);
   const [saved] = await tx
     .update(survey360People)
@@ -525,21 +569,36 @@ async function linkConflict(
 const SYNC = { object: 'person', button: BUTTONS.sync } as const;
 
 export function registerSyncRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  const preflight = (c: C) => async () => void (await routeEmployeeScope(c, deps));
   module.get('/people/sync-conflicts', (c) =>
-    read(c, deps, SYNC, async (tx, _admin, tenant) => ({
-      items: await pendingConflicts(tx, await syncAccess(tx, deps, tenant, `${PERSONNEL_OBJECT}.list`)),
-    })),
+    read(
+      c,
+      deps,
+      SYNC,
+      async (tx, admin, tenant) => ({
+        items: await pendingConflicts(tx, await syncAccess(tx, deps, tenant, `${PERSONNEL_OBJECT}.list`), admin),
+      }),
+      conflictList,
+    ),
   );
-  module.post('/people/sync', (c) =>
-    write(
+  module.post('/people/sync', (c) => {
+    let employees: ModuleScope | undefined;
+    return write(
       c,
       deps,
       z.strictObject({ after: uuid.optional(), limit: z.int().min(1).max(SYNC_LIMIT).optional() }),
       async (tx, ctx, input) => syncPeople(tx, ctx, await syncAccess(tx, deps, ctx), input),
-      { need: SYNC, revisionFree: true, preflight: preflight(c) },
-    ),
-  );
+      {
+        need: SYNC,
+        fields: 'none', // 值取自组织员工（按操作人可见字段），after / limit 是协议参数
+        revisionFree: true,
+        preflight: async () => void (employees = await routeEmployeeScope(c, deps)),
+        present: async (viewer, body: SyncResult) => {
+          const after = ((await jsonOrEmpty(c)) as { after?: string }).after?.toLowerCase();
+          return syncView(viewer, employees!, body, after);
+        },
+      },
+    );
+  });
   module.post('/people/sync-conflicts/:id/resolve', (c) => {
     const id = uuidParam(c);
     return write(
@@ -547,12 +606,91 @@ export function registerSyncRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
       deps,
       z.strictObject({ action: z.enum(['link', 'create', 'ignore']), personId: uuid.optional() }),
       async (tx, ctx, input) => resolveConflict(tx, ctx, await syncAccess(tx, deps, ctx), id, input),
-      { need: SYNC, preflight: preflight(c) },
+      {
+        need: SYNC,
+        fields: 'none', // 处理选择（挂接 / 新建 / 忽略），人员值取自组织员工
+        // 命令前（含命中台账的重放）按当前员工范围复核冲突员工：撤回范围后原键重放 404（第 3 轮 R2-P2-1）
+        preflight: async () => {
+          const scope = await routeEmployeeScope(c, deps);
+          await withTenant(deps.db, tenantOf(c).tenantId, (tx) => requireConflictInScope(tx, scope, id));
+        },
+        present: conflictPresent,
+      },
     );
   });
 }
 
-async function pendingConflicts(tx: Tx, access: SyncAccess) {
+async function requireConflictInScope(tx: Tx, scope: ModuleScope, id: string): Promise<void> {
+  const [conflict] = await tx
+    .select({ employeeId: survey360SyncConflicts.employeeId })
+    .from(survey360SyncConflicts)
+    .where(eq(survey360SyncConflicts.id, id));
+  if (!conflict || !(await employeeInScope(tx, scope, conflict.employeeId))) fail('NOT_FOUND', '冲突记录不存在');
+}
+
+/** 冲突清单：嵌套候选按查看人的人员字段裁剪（候选的 personId 对应人员 id）；冲突本身是协议字段。 */
+const conflictList: Present = async (viewer, body: { items: { candidates: object[] }[] }) => {
+  const fields = await viewer.fields('person');
+  return {
+    items: body.items.map((item) => ({
+      ...item,
+      candidates: item.candidates.map((candidate) => pick(candidate, fields, { personId: 'id' })),
+    })),
+  };
+};
+
+/** 冲突处理回执：冲突协议字段；精细化权限下看不到的候选 / 处理结果人员 ID 去掉。 */
+const conflictPresent: Present = async (viewer, body: ReturnType<typeof conflictView>) => {
+  const visible = async (id: string) => personVisible(viewer.tx, viewer.admin, await loadPerson(viewer.tx, id));
+  const candidates = [];
+  for (const id of body.candidatePersonIds) if (await visible(id)) candidates.push(id);
+  const resolved = body.resolvedPersonId && (await visible(body.resolvedPersonId)) ? body.resolvedPersonId : null;
+  return { ...body, candidatePersonIds: candidates, resolvedPersonId: resolved };
+};
+
+/**
+ * 同步回执：返回前（新请求与重放同一路径）按当前员工范围复核（第 3 轮 R2-P2-1），范围外员工的新建 / 更新 / 冲突 /
+ * 跳过条目去掉；人员条目另按精细化范围与人员字段裁剪。游标员工不在范围内时退回到回执里最后一个范围内员工（或请求的
+ * after），不带出范围外员工 ID。
+ */
+async function syncView(viewer: Viewer, employees: ModuleScope, body: SyncResult, after: string | undefined) {
+  const { tx, admin } = viewer;
+  const inScope = (employeeId: string) => employeeInScope(tx, employees, employeeId);
+  const fields = await viewer.fields('person');
+  const people = async (list: SyncResult['created']) => {
+    const kept = [];
+    for (const entry of list)
+      if ((await inScope(entry.employeeId)) && (await personVisible(tx, admin, await loadPerson(tx, entry.personId))))
+        kept.push(pick(entry, fields, { personId: 'id' }));
+    return kept;
+  };
+  const conflicts = [];
+  for (const id of body.conflicts) {
+    const [row] = await tx
+      .select({ employeeId: survey360SyncConflicts.employeeId })
+      .from(survey360SyncConflicts)
+      .where(eq(survey360SyncConflicts.id, id));
+    if (row && (await inScope(row.employeeId))) conflicts.push({ id, employeeId: row.employeeId });
+  }
+  const skipped = [];
+  for (const entry of body.skipped) if (await inScope(entry.employeeId)) skipped.push(entry);
+  const seen = [...body.created, ...body.updated, ...skipped, ...conflicts].map((e) => e.employeeId);
+  let nextCursor = body.nextCursor;
+  if (nextCursor && !(await inScope(nextCursor))) {
+    const kept: string[] = [];
+    for (const id of seen) if (await inScope(id)) kept.push(id);
+    nextCursor = kept.sort().at(-1) ?? after ?? null;
+  }
+  return {
+    created: await people(body.created),
+    updated: await people(body.updated),
+    conflicts: conflicts.map((c) => c.id),
+    skipped,
+    nextCursor,
+  };
+}
+
+async function pendingConflicts(tx: Tx, access: SyncAccess, admin: Admin) {
   const list = rows<{
     id: string;
     employee_id: string;
@@ -573,6 +711,8 @@ async function pendingConflicts(tx: Tx, access: SyncAccess) {
     const candidates = [];
     for (const personId of row.candidate_person_ids) {
       const person = await loadPerson(tx, personId);
+      // 精细化权限下只列可见候选（DEC-289①）
+      if (!(await personVisible(tx, admin, person))) continue;
       candidates.push({ personId, name: person.name, email: person.email, employeeId: person.employeeId });
     }
     items.push({
