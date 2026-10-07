@@ -870,7 +870,7 @@
 },
 "96": {
 "s": "active",
-"r": 3,
+"r": 6,
 "n": "Opus 第 3 轮审查中（「F-026 审查」续审，D 档穷举占编入口）→ Sol Ultra 最终复查"
 },
 "97": {
@@ -1949,7 +1949,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 13:22",
+"liveUpdated": "10-07 13:23",
 "chains": [
 {
 "g": "exit",
@@ -2035,9 +2035,10 @@
 "k": "run",
 "pr": 96,
 "n": "重叠调入超编确认",
-"seg": "ev:d ds:n dev:d5 rev:a5 mg:w",
-"now": "第 5 轮审查出结论，待读取",
-"fable": "1"
+"seg": "ev:d ds:n dev:w6 rev:d5 mg:w",
+"now": "第 5 轮 3 个权限 P2（新提示和审计裁剪），等你定第 6 轮",
+"fable": "1",
+"need": "1"
 },
 {
 "id": "F-027",
