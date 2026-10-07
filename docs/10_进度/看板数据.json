@@ -1861,7 +1861,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 11:11",
+"liveUpdated": "10-07 11:12",
 "chains": [
 {
 "g": "exit",
@@ -1920,7 +1920,7 @@
 "pr": 100,
 "n": "离职管理",
 "seg": "ev:d ds:a2 dev:w rev:w mg:w",
-"now": "设计 v1.2 已提交，待复审",
+"now": "设计 v1.2 复审中",
 "wait": "#83 合并后写代码",
 "fable": "1"
 },
@@ -2050,8 +2050,8 @@
 "o": 1,
 "k": "run",
 "n": "360 度评估（PR-A）",
-"seg": "ev:d ds:n dev:d1 rev:w1 mg:w",
-"now": "PR-A 已完成，待发起审查",
+"seg": "ev:d ds:n dev:d1 rev:a1 mg:w",
+"now": "PR-A Sol Ultra 第 1 轮审查中",
 "pr": 107
 },
 {
@@ -2078,8 +2078,8 @@
 "k": "run",
 "pr": 102,
 "n": "AC 覆盖运行时统计",
-"seg": "ev:n ds:n dev:d1 rev:w1 mg:w",
-"now": "已转 Ready，待发起审查"
+"seg": "ev:n ds:n dev:d1 rev:a1 mg:w",
+"now": "Sol Ultra 第 1 轮审查中；R1 数字复核一致"
 }
 ]
 }
