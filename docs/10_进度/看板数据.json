@@ -858,7 +858,7 @@
 "prs": {
 "83": {
 "s": "active",
-"r": 3,
+"r": 4,
 "n": "DEC-246：第 8 轮先出设计（astra High 审）再结构性重写（astra Ultra 审）；DEC-247 #93 先合",
 "h": [
 [
@@ -894,7 +894,7 @@
 },
 "97": {
 "s": "active",
-"r": 7,
+"r": 8,
 "n": "#92 合并后与 main 冲突（SelfServiceShell.tsx），Codex 合并 main 中；之后 astra Ultra"
 },
 "99": {
@@ -2005,7 +2005,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 18:06",
+"liveUpdated": "10-07 18:08",
 "chains": [
 {
 "g": "exit",
@@ -2050,8 +2050,8 @@
 "k": "run",
 "pr": 83,
 "n": "组织变更联动任职",
-"seg": "ev:d ds:d4 dev:d3 rev:w3 mg:w",
-"now": "第 3 轮开发完成，待发起审查",
+"seg": "ev:d ds:d4 dev:a4 rev:d3 mg:w",
+"now": "拆分后第 4 轮修改（剩 2 个 P2）",
 "wait": "来源模型放哪由审查合并窗口判断",
 "fable": "1",
 "up": "10-07 调到 Max"
@@ -2104,10 +2104,11 @@
 "k": "run",
 "pr": 97,
 "n": "审批中心前端",
-"seg": "ev:n ds:n dev:d7 rev:a7 mg:w",
-"now": "第 7 轮出结论，待读取",
+"seg": "ev:n ds:n dev:w8 rev:d7 mg:w",
+"now": "第 7 轮 3 个新 P2（恢复机制），等你定第 8 轮",
 "fable": "1",
-"up": "10-07 调到 Max"
+"up": "10-07 调到 Max",
+"need": "1"
 },
 {
 "id": "F-029",
@@ -2325,10 +2326,11 @@
 "n": "权限框架强制",
 "u": "已核对，待开会话",
 "fable": "1",
-"seg": "ev:n ds:d4 dev:w rev:a4 mg:w",
-"now": "设计 v4 复审出结论，待读取",
+"seg": "ev:n ds:w5 dev:w rev:d4 mg:w",
+"now": "v4 剩 2 处 P2，等你定第 5 轮和 PR-A 拆分",
 "pr": 110,
-"up": "10-07 调到 Max"
+"up": "10-07 调到 Max",
+"need": "1"
 },
 {
 "id": "F-040",
