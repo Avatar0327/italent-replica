@@ -1949,7 +1949,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 13:18",
+"liveUpdated": "10-07 13:22",
 "chains": [
 {
 "g": "exit",
@@ -2101,8 +2101,8 @@
 "o": 3,
 "k": "run",
 "n": "函数库补齐 63 个",
-"seg": "ev:d ds:n dev:d2 rev:w2 mg:w",
-"now": "第 2 轮已推送，待发起审查",
+"seg": "ev:d ds:n dev:d2 rev:a2 mg:w",
+"now": "Sol Ultra 第 2 轮审查中（只审修复点）",
 "pr": 108
 },
 {
