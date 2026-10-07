@@ -458,15 +458,15 @@
 "n": "组织改名 / 改行政上级时联动任职",
 "p": "R1-T03",
 "s": "active",
-"dev": "Claude",
-"rev": "Codex",
+"dev": "Claude Fable 5.1",
+"rev": "astra High（设计）",
 "pr": [
 83
 ],
 "deps": [
 "R1-T09"
 ],
-"note": "PR #83 已开出，astra 首审 3 P2 + DEC-207，astra 第二轮审查中；DEC-137；复用 F-015 的可见判定（DEC-178）"
+"note": "DEC-246 第 8 轮：设计 v1 已贴，待 astra High 设计审查，之后结构性重写（astra Ultra）"
 },
 "F-008": {
 "n": "审批取锁顺序（两个并发死锁）",
@@ -608,16 +608,16 @@
 "F-022": {
 "n": "人员状态（待入职 / 试用 / 正式）、入职状态（正常 / 延期）补字段并接入工作台精确统计",
 "p": "R1-T14",
-"s": "active",
-"dev": "Claude",
-"rev": "Codex",
+"s": "review",
+"dev": "Claude Opus 5.5",
+"rev": "Sol（已通过）",
 "pr": [
 93
 ],
 "deps": [
 "R1-T14"
 ],
-"note": "PR #93（Opus 5.5，§25）；DEC-223 未来入职写目标状态、DEC-224 入职默认正式、DEC-225 经理默认只读可见；排在 #83 之后合并；Q-M0-76 与 #85 披露的缺口"
+"note": "已过审；合并 main 迁移顺延 0062，待核对与合并（DEC-247 先于 #83）"
 },
 "F-023": {
 "n": "为调动联动审计日志登记查看规则",
@@ -634,12 +634,12 @@
 "n": "R1 端到端验收与 AC 覆盖报告（员工发起调动 → 审批 → HR 执行 → 定时生效 → 版本链与向后更新 → 员工与经理侧可见）",
 "p": "R1-T16",
 "s": "active",
-"dev": "Claude",
-"rev": "Codex",
+"dev": "Claude Fable 5.1",
+"rev": "astra Ultra",
 "pr": [
 91
 ],
-"note": "DEC-221③；编排窗口另做界面走查；Claude 开发中（Fable 5.1 High，§28）；报告注明基线提交、未含 #79 / #83，相关用例待其合并后补跑（§28 已补，已发进会话）"
+"note": "第 5 轮已推送（abe83ba），待 astra Ultra"
 },
 "F-025": {
 "n": "本地演示环境：后端可用 PGlite 本地启动、合成演示种子、仅开发环境可用的签名身份切换、一条命令起前后端",
@@ -657,22 +657,22 @@
 "p": "R1-T09",
 "s": "active",
 "dev": "Codex",
-"rev": "Codex",
+"rev": "Opus 5.5 → Sol Ultra 终审",
 "pr": [
 96
 ],
 "deps": [
 "F-018"
 ],
-"note": "F-024 端到端验收发现，astra 评 P2"
+"note": "Opus 第 3 轮审查中（D 档穷举占编入口）"
 },
 "F-027": {
 "n": "审批中心前端：我的待办 / 已办、单据详情（按节点盲审裁剪）、同意 / 驳回 / 转交 / 加签 / 催办",
 "p": "R1-T07",
 "s": "active",
-"dev": "Codex",
-"rev": "Opus",
-"note": "Codex 开发（GPT-6.1 Sol，Ultra，DEC-233 已投递）；DEC-233 本 PR 补两个只读接口；DEC-229；F-025 发现复刻前端缺审批中心页面",
+"dev": "Codex Sol",
+"rev": "Astra Ultra",
+"note": "合并 main 完成、CI 绿，排队待 Astra Ultra（复审 + 终审合一）",
 "pr": [
 97
 ]
@@ -691,13 +691,13 @@
 "F-029": {
 "n": "员工本人跨部门调动时，新记录的职位自动置空（照原站）",
 "p": "R1-T13",
-"s": "review",
-"note": "待你定开发方（总编排会问）；DEC-232（D-061，Q-M0-101）",
+"s": "active",
+"note": "第 3 轮修改中（穷举可信值 vs 员工输入入口）",
 "pr": [
 99
 ],
-"dev": "Codex",
-"rev": "Opus"
+"dev": "Codex Sol",
+"rev": "Astra Ultra"
 },
 "F-011": {
 "n": "新建职位 / 改所属组织按整段校验组织停用",
@@ -744,9 +744,9 @@
 ]
 },
 "91": {
-"s": "active",
+"s": "review",
 "r": 5,
-"n": "DEC-245：覆盖率脚本改为认不出就报错；第 5 轮修改中，之后 astra Ultra"
+"n": "第 5 轮已推送，待 astra Ultra"
 },
 "93": {
 "s": "review",
@@ -759,12 +759,12 @@
 "n": "Opus 第 3 轮审查中（「F-026 审查」续审，D 档穷举占编入口）→ Sol Ultra 最终复查"
 },
 "97": {
-"s": "active",
+"s": "review",
 "r": 2,
-"n": "#92 合并后与 main 冲突（SelfServiceShell.tsx），Codex 合并 main 中；之后 astra Ultra"
+"n": "CI 绿，排队待 Astra Ultra"
 },
 "99": {
-"s": "review",
+"s": "active",
 "r": 3,
 "n": "第 2 轮 Astra Ultra 2 P2（可信值 vs 员工输入，连续同类）→ 第 3 轮修改中；下轮 Astra Ultra 列全同类"
 }
