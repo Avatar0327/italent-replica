@@ -51,6 +51,7 @@ export const LOGIC_FUNCTIONS: readonly FunctionSpec[] = [
     params: [param('条件'), param('条件为真时的值'), param('条件为假时的值', false)],
     description: '缺第三个参数且条件为假时结果为空（同缺“否则”的 如果）',
     lazy: true,
+    returnsFromArgs: [1, 2],
     implement: (call) => {
       const branch = call.rawArgs[condition(call, 0) ? 1 : 2];
       return branch ? call.evaluate(branch) : EMPTY;

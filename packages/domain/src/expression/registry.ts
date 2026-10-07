@@ -74,6 +74,8 @@ export interface FunctionSpec {
   readonly skipInTodoTrigger?: boolean;
   /** 返回值类型；不确定（取决于字段或分支）时不写。 */
   readonly returns?: StaticKind;
+  /** 返回值取这些参数的共同类型（IF 的两个分支）；各参数类型都确定且相同时保存检查才据此判断。 */
+  readonly returnsFromArgs?: readonly number[];
   /** 须是日期的参数下标：保存检查时静态可知不是日期的直接拦截（DEC-270，`26` §8.8）。 */
   readonly dateParams?: readonly number[];
   readonly implement: (call: FunctionCall) => ExprValue;

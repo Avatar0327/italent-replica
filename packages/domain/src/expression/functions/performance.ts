@@ -54,14 +54,17 @@ interface RecencyArgs {
   readonly dateField?: FieldNode;
 }
 
+const isRecordField = (node: ExprNode) => node.type === 'field' && node.path[0] === PERFORMANCE_FIELDS.object;
+
 const isFilterShaped = (node: ExprNode) =>
   node.type === 'logical' ||
   node.type === 'boolean' ||
   (node.type === 'binary' && !['+', '-', '*', '/'].includes(node.operator));
 
 /**
- * 按参数形态识别：比较 / 且或 / 是否值是过滤条件；考核结果的字段引用（第 N 次时第一个）是排序用的日期字段；
- * 其余（数字、变量、算式）是 N，必须恰好一个。
+ * 按参数形态识别：比较 / 且或 / 是否值是过滤条件；考核结果的字段引用（第 N 次时第一个）是排序用的日期字段，
+ * 其余是过滤条件；其他一切（数字、变量、算式、盘点对象等非考核结果字段）是 N，必须恰好一个，经公共取参取值
+ * （PR #108 审查 P2-2：盘点对象.N 不能被当成过滤条件）。
  */
 function recencyArgs(call: FunctionCall, withDateField: boolean): RecencyArgs {
   const filters: ExprNode[] = [];
@@ -70,7 +73,7 @@ function recencyArgs(call: FunctionCall, withDateField: boolean): RecencyArgs {
   for (const node of call.rawArgs) {
     if (withDateField && !dateField && node.type === 'field' && node.path[0] === PERFORMANCE_FIELDS.object) {
       dateField = node;
-    } else if (isFilterShaped(node) || node.type === 'field') {
+    } else if (isFilterShaped(node) || isRecordField(node)) {
       filters.push(node);
     } else {
       counts.push(node);

@@ -45,6 +45,11 @@ export interface ValidationOptions {
    * “如需相减，请在减号两侧加空格”，DEC-228）；不传时只查语法、函数名、参数个数，引用到的字段在结果的 fields 里。
    */
   readonly isKnownField?: (path: string) => boolean;
+  /**
+   * 字段类型目录：完整字段路径或短字段名的静态类型，不确定时返回 undefined。传入时日期函数的日期参数按字段类型
+   * 检查（DEC-270②，如 AddDays(盘点对象.得分, 1) 拦截）；取数函数参数里的记录字段不按它检查。
+   */
+  readonly fieldKind?: (path: string) => StaticKind | undefined;
 }
 
 const NO_RECORDS: ReadonlySet<string> = new Set();
@@ -58,15 +63,22 @@ class ReferenceCollector {
   readonly functions = new Set<string>();
   readonly issues: SyntaxIssue[] = [];
   private readonly defined = new Set<string>();
+  /** Def 变量的静态类型（定义值能确定时），日期参数检查据此判断（PR #108 审查 P2-1）。 */
+  private readonly defKinds = new Map<string, StaticKind | undefined>();
+  private readonly registry: FunctionRegistry;
+  private readonly isKnownField?: (path: string) => boolean;
+  private readonly fieldKind?: (path: string) => StaticKind | undefined;
 
-  constructor(
-    private readonly registry: FunctionRegistry,
-    private readonly isKnownField?: (path: string) => boolean,
-  ) {}
+  constructor(registry: FunctionRegistry, options: Omit<ValidationOptions, 'registry'> = {}) {
+    this.registry = registry;
+    this.isKnownField = options.isKnownField;
+    this.fieldKind = options.fieldKind;
+  }
 
   collect(program: Program): this {
     for (const definition of program.definitions) {
       this.visit(definition.value, NO_RECORDS);
+      this.defKinds.set(definition.name, this.staticKind(definition.value, NO_RECORDS));
       this.defined.add(definition.name);
     }
     this.visit(program.body, NO_RECORDS);
@@ -99,12 +111,12 @@ class ReferenceCollector {
 
   /**
    * 日期函数的日期参数静态可知不是日期时拦截（DEC-270，`26` §8.8 原站【检查】：
-   * “AddDays(,)函数的第1个参数应为日期或日期时间字段或常量”）；字段、变量等运行期才知道类型的不拦截。
+   * “AddDays(,)函数的第1个参数应为日期或日期时间字段或常量”）；类型要到运行期才知道的不拦截。
    */
-  private checkDateParams(node: CallNode, spec: FunctionSpec): void {
+  private checkDateParams(node: CallNode, spec: FunctionSpec, records: ReadonlySet<string>): void {
     for (const index of spec.dateParams ?? []) {
       const arg = node.args[index];
-      const kind = arg ? staticKind(arg, this.registry) : undefined;
+      const kind = arg ? this.staticKind(arg, records) : undefined;
       if (kind === undefined || kind === 'date') continue;
       const message = `${node.name}函数的第${index + 1}个参数应为日期或日期时间字段或常量`;
       this.issues.push({ code: 'ARGUMENT_TYPE', message, length: node.name.length, ...node.pos });
@@ -124,30 +136,63 @@ class ReferenceCollector {
         const message = `函数 ${node.name} 的参数个数不对：需要 ${min}${expected}`;
         this.issues.push({ code: 'ARGUMENT_COUNT', message, length, ...node.pos });
       }
-      this.checkDateParams(node, spec);
+      this.checkDateParams(node, spec, records);
     }
     const inner = spec?.recordObjects?.length ? new Set([...records, ...spec.recordObjects]) : records;
     for (const arg of node.args) this.visit(arg, inner);
   }
-}
 
-/** 能静态确定的值类型；字段、变量、如果 / IF 等取决于数据的返回 undefined。 */
-function staticKind(node: ExprNode, registry: FunctionRegistry): StaticKind | undefined {
-  switch (node.type) {
-    case 'number':
-    case 'unary':
-      return 'number';
-    case 'string':
-      return parseDateText(node.value) ? 'date' : 'text';
-    case 'boolean':
-    case 'logical':
-      return 'boolean';
-    case 'binary':
-      return ['+', '-', '*', '/'].includes(node.operator) ? 'number' : 'boolean';
-    case 'call':
-      return registry.resolve(node.name)?.returns;
-    default:
+  /**
+   * 能静态确定的值类型，不确定时 undefined：Def 变量取定义值的类型；字段按字段类型目录（取数函数的记录字段除外）；
+   * 如果 / IF 各分支类型都确定且相同时取该类型。
+   */
+  private staticKind(node: ExprNode, records: ReadonlySet<string>): StaticKind | undefined {
+    switch (node.type) {
+      case 'number':
+      case 'unary':
+        return 'number';
+      case 'string':
+        return parseDateText(node.value) ? 'date' : 'text';
+      case 'boolean':
+      case 'logical':
+        return 'boolean';
+      case 'binary':
+        return ['+', '-', '*', '/'].includes(node.operator) ? 'number' : 'boolean';
+      case 'identifier':
+        return this.defined.has(node.name) ? this.defKinds.get(node.name) : this.catalogKind(node.name);
+      case 'field':
+        return records.has(node.path[0]!) ? undefined : this.catalogKind(node.text);
+      case 'if':
+        if (!node.otherwise) return undefined;
+        return this.commonKind([...node.branches.map((branch) => branch.then), node.otherwise], records);
+      case 'call':
+        return this.callKind(node, records);
+    }
+  }
+
+  private callKind(node: CallNode, records: ReadonlySet<string>): StaticKind | undefined {
+    const spec = this.registry.resolve(node.name);
+    if (!spec?.returnsFromArgs) return spec?.returns;
+    if (spec.returnsFromArgs.some((index) => index >= node.args.length)) return undefined;
+    return this.commonKind(
+      spec.returnsFromArgs.map((index) => node.args[index]!),
+      records,
+    );
+  }
+
+  private commonKind(nodes: readonly ExprNode[], records: ReadonlySet<string>): StaticKind | undefined {
+    const kinds = nodes.map((child) => this.staticKind(child, records));
+    const [first] = kinds;
+    return first !== undefined && kinds.every((kind) => kind === first) ? first : undefined;
+  }
+
+  /** 字段类型目录是使用方代码：出错时按类型未知处理（不拦截，运行期再按实际值判断）。 */
+  private catalogKind(path: string): StaticKind | undefined {
+    try {
+      return this.fieldKind?.(path);
+    } catch {
       return undefined;
+    }
   }
 }
 
@@ -156,7 +201,7 @@ export function validateFormula(source: string, options: ValidationOptions = {})
   const parsed = parseFormula(source);
   if (!parsed.ok) return parsed;
   const registry = options.registry ?? createDefaultRegistry();
-  const collected = new ReferenceCollector(registry, options.isKnownField).collect(parsed.program);
+  const collected = new ReferenceCollector(registry, options).collect(parsed.program);
   if (collected.issues.length) return { ok: false, errors: collected.issues.sort((a, b) => a.offset - b.offset) };
   return { ok: true, program: parsed.program, fields: [...collected.fields], functions: [...collected.functions] };
 }
@@ -290,6 +335,7 @@ interface ParsedItems {
 interface ItemValidation {
   readonly registry: FunctionRegistry;
   readonly isKnownField?: (path: string) => boolean;
+  readonly fieldKind?: (path: string) => StaticKind | undefined;
 }
 
 /** 解析全部公式，再用全部目标字段一次性确定每个引用的绑定，依赖关系由绑定推出。 */
@@ -302,7 +348,11 @@ function parseItems(items: readonly ComputationItem[], options: ItemValidation):
     : undefined;
   const parsed: { item: ComputationItem; program: Program; refs: readonly string[] }[] = [];
   for (const item of items) {
-    const validated = validateFormula(item.formula, { registry: options.registry, isKnownField });
+    const validated = validateFormula(item.formula, {
+      registry: options.registry,
+      isKnownField,
+      fieldKind: options.fieldKind,
+    });
     if (!validated.ok) {
       const issue = validated.errors[0]!;
       const { line, column, offset } = issue;
@@ -321,29 +371,6 @@ function parseItems(items: readonly ComputationItem[], options: ItemValidation):
     return { item, program, dependsOn: [...new Set(dependsOn)] };
   });
   return { entries, bindings };
-}
-
-function findCycle(entries: readonly OrderedItem[], remaining: ReadonlySet<string>): string[] {
-  const byField = new Map(entries.map((entry) => [entry.item.field, entry]));
-  const path: string[] = [];
-  const visit = (field: string): string[] | undefined => {
-    const seen = path.indexOf(field);
-    if (seen >= 0) return [...path.slice(seen), field];
-    path.push(field);
-    for (const dependency of byField.get(field)?.dependsOn ?? []) {
-      if (!remaining.has(dependency)) continue;
-      const cycle = visit(dependency);
-      if (cycle) return cycle;
-    }
-    path.pop();
-    return undefined;
-  };
-  for (const entry of entries) {
-    if (!remaining.has(entry.item.field)) continue;
-    const cycle = visit(entry.item.field);
-    if (cycle) return cycle;
-  }
-  return [];
 }
 
 /** 在 within 范围内沿依赖能否从 from 走到 to（至少走一步）。 */
@@ -365,7 +392,39 @@ function reaches(
   return false;
 }
 
-/** 无法排序的项目里的全部环：按强连通分量分组，每组给出一条路径（如 A→B→A），按原顺序排列。 */
+/** 环提示最多列出的条数：强连通分量里的简单环数可能随项目数指数增长。 */
+const MAX_REPORTED_CYCLES = 20;
+
+/**
+ * 一个强连通分量里的全部简单环（PR #108 审查 P3-1：A = B + C、B = A、C = A 要同时给出 A→B→A 与 A→C→A）。
+ * 每个环只从其中原顺序最靠前的项目出发报一次，路径按依赖书写顺序展开。
+ */
+function simpleCycles(
+  byField: ReadonlyMap<string, OrderedItem>,
+  members: readonly string[],
+  limit: number,
+): string[][] {
+  const rank = new Map(members.map((field, i) => [field, i]));
+  const cycles: string[][] = [];
+  for (const start of members) {
+    const path = [start];
+    const walk = (field: string): void => {
+      for (const next of byField.get(field)?.dependsOn ?? []) {
+        if (cycles.length >= limit) return;
+        if (next === start) cycles.push([...path, start]);
+        else if (rank.has(next) && rank.get(next)! > rank.get(start)! && !path.includes(next)) {
+          path.push(next);
+          walk(next);
+          path.pop();
+        }
+      }
+    };
+    walk(start);
+  }
+  return cycles;
+}
+
+/** 无法排序的项目里的全部环：按强连通分量分组，按原顺序列出每组里的全部简单环（DEC-274）。 */
 function cyclesAmong(entries: readonly OrderedItem[], blocked: readonly string[]): string[][] {
   const byField = new Map(entries.map((entry) => [entry.item.field, entry]));
   const within = new Set(blocked);
@@ -373,14 +432,11 @@ function cyclesAmong(entries: readonly OrderedItem[], blocked: readonly string[]
   const cycles: string[][] = [];
   for (const field of blocked) {
     if (assigned.has(field) || !reaches(byField, field, field, within)) continue;
-    const component = new Set(
-      blocked.filter(
-        (other) =>
-          other === field || (reaches(byField, field, other, within) && reaches(byField, other, field, within)),
-      ),
+    const component = blocked.filter(
+      (other) => other === field || (reaches(byField, field, other, within) && reaches(byField, other, field, within)),
     );
     component.forEach((member) => assigned.add(member));
-    cycles.push(findCycle(entries, component));
+    cycles.push(...simpleCycles(byField, component, MAX_REPORTED_CYCLES - cycles.length));
   }
   return cycles;
 }
@@ -431,7 +487,7 @@ export function orderComputationItems(
   options: ValidationOptions = {},
 ): OrderingResult {
   const registry = options.registry ?? createDefaultRegistry();
-  const parsed = parseItems(items, { registry, isKnownField: options.isKnownField });
+  const parsed = parseItems(items, { registry, isKnownField: options.isKnownField, fieldKind: options.fieldKind });
   if (!('entries' in parsed)) return { ok: false, failure: parsed };
   const sorted = topologicalOrder(parsed.entries);
   const blocked = sorted.blocked.map((entry) => entry.item.field);

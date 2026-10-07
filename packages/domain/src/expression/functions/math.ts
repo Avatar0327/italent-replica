@@ -13,10 +13,23 @@ const num = (value: number): ExprValue => ({ kind: 'number', value });
 const digitsArg = (call: FunctionCall, index: number) =>
   call.args.length > index ? Math.trunc(call.numberArg(call.args, index)) : 0;
 
-/** 放大到整数位后先按 15 位有效数字规整，避免 1.1 * 3 = 3.3000000000000003 被向上舍入成 3.4。 */
+/** x 处相邻两个双精度数的间距（ULP）。 */
+const ulp = (x: number) => 2 ** (Math.floor(Math.log2(x)) - 52);
+
+/**
+ * 放大到整数位后只纠正浮点表示误差：按 15 位有效数字规整后的值与原值相差不超过 1 个 ULP 时才采用，
+ * 避免 1.1 * 3 = 3.3000000000000003 被向上舍入成 3.4；输入本身有 16 位有效数字时（2.999999999999999、
+ * 1234567890123456）保持原值（PR #108 审查 P3-2）。
+ */
+function normalizeScaled(scaled: number): number {
+  if (scaled === 0 || !Number.isFinite(scaled)) return scaled;
+  const compact = Number(scaled.toPrecision(15));
+  return Math.abs(compact - scaled) <= ulp(scaled) ? compact : scaled;
+}
+
 function roundWith(mode: (scaled: number) => number, value: number, digits: number): number {
   const factor = 10 ** digits;
-  const scaled = Number((Math.abs(value) * factor).toPrecision(15));
+  const scaled = normalizeScaled(Math.abs(value) * factor);
   const rounded = (Math.sign(value) * mode(scaled)) / factor;
   return rounded === 0 ? 0 : rounded;
 }
