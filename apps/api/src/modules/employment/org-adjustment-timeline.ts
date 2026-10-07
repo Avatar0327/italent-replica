@@ -22,6 +22,7 @@ interface TimelineReader {
   record(id: string): Promise<EmploymentRecord | null>;
   point(id: string): Promise<Point | null>;
   history(record: EmploymentRecord): Promise<readonly AdjustmentHistory[]>;
+  deleted(id: string): Promise<boolean>;
 }
 
 export async function calculateAdjustmentTimeline(
@@ -63,6 +64,7 @@ function timelineReader(
   const records = new Map<string, EmploymentRecord | null>();
   const histories = new Map<string, readonly AdjustmentHistory[]>();
   const points = new Map<string, Point | null>(targets.map((point) => [point.id, point]));
+  const tombstones = new Map<string, boolean>();
   return {
     async record(id) {
       if (!records.has(id)) records.set(id, await loadEmploymentRecord(tx, ctx.tenantId, id, date));
@@ -84,6 +86,16 @@ function timelineReader(
       if (!histories.has(record.id)) histories.set(record.id, await orgAdjustmentHistory(tx, ctx, record));
       return histories.get(record.id)!;
     },
+    async deleted(id) {
+      if (!tombstones.has(id)) {
+        const [row] = rowsOf<{ id: string }>(
+          await tx.execute(sql`SELECT id FROM employment_record_tombstones
+          WHERE tenant_id=${ctx.tenantId} AND employee_id=${source.employeeId}::uuid AND record_id=${id}::uuid`),
+        );
+        tombstones.set(id, !!row);
+      }
+      return tombstones.get(id)!;
+    },
   };
 }
 
@@ -101,18 +113,21 @@ function timelineCalculator(tx: Tx, ctx: EmploymentContext, reader: TimelineRead
       if (previous) {
         const history = (await reader.history(record)).filter((item) => item.payload.versionNo <= versionNo);
         if (history.length)
-          values = await calculateOrgAdjustment(tx, ctx, record, history, await compute(previous), async (id, cut) => {
-            const targetPoint = await reader.point(record.id);
-            const sourcePoint = await reader.point(id);
-            if (!targetPoint || !sourcePoint || !pointBefore(sourcePoint, targetPoint) || cut === null) return null;
-            const source = await reader.record(id);
-            if (!source) return null;
-            const sourceHistory = (await reader.history(source)).filter((item) => item.payload.versionNo <= cut);
-            const command = sourceHistory.at(-1)?.command.type;
-            const previousSource = source.previousRecordId ? await reader.record(source.previousRecordId) : null;
-            const edit = command === 'manual' || command === 'forward' || command === 'sequence-sync';
-            const before = edit ? await compute(source, cut - 1) : previousSource && (await compute(previousSource));
-            return before ? { before, after: await compute(source, cut) } : null;
+          values = await calculateOrgAdjustment(tx, ctx, record, history, await compute(previous), {
+            deleted: (id) => reader.deleted(id),
+            resolve: async (id, cut) => {
+              const targetPoint = await reader.point(record.id);
+              const sourcePoint = await reader.point(id);
+              if (!targetPoint || !sourcePoint || !pointBefore(sourcePoint, targetPoint) || cut === null) return null;
+              const source = await reader.record(id);
+              if (!source) return null;
+              const sourceHistory = (await reader.history(source)).filter((item) => item.payload.versionNo <= cut);
+              const command = sourceHistory.at(-1)?.command.type;
+              const previousSource = source.previousRecordId ? await reader.record(source.previousRecordId) : null;
+              const edit = command === 'manual' || command === 'forward' || command === 'sequence-sync';
+              const before = edit ? await compute(source, cut - 1) : previousSource && (await compute(previousSource));
+              return before ? { before, after: await compute(source, cut) } : null;
+            },
           });
       }
     }

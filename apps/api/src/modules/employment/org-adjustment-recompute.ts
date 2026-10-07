@@ -24,6 +24,11 @@ export interface RecalculatedSource {
   readonly after: ForwardValues;
 }
 type SourceResolver = (sourceId: string, versionNo: number | null) => Promise<RecalculatedSource | null>;
+export interface SourceReader {
+  readonly resolve: SourceResolver;
+  /** 来源记录是否已删除（墓碑）；删除不级联、不重算，保留的值视为意图（DEC-244②）。 */
+  readonly deleted: (sourceId: string) => Promise<boolean>;
+}
 
 export async function calculateOrgAdjustment(
   tx: Tx,
@@ -31,7 +36,7 @@ export async function calculateOrgAdjustment(
   record: EmploymentRecord,
   history: readonly AdjustmentHistory[],
   previous: ForwardValues,
-  resolveSource: SourceResolver,
+  sources: SourceReader,
 ): Promise<ForwardValues> {
   const { initial, commands } = effectiveInput(history);
   const origins = await initialDerivations(tx, ctx, initial);
@@ -49,12 +54,16 @@ export async function calculateOrgAdjustment(
   const rules = new Map<PresetField, FieldDerivation>();
   for (const origin of origins) rules.set(derivationFields(origin).field, origin);
   // 前驱继承只覆盖矩阵允许继承的字段：不继承的预置 / 自定义字段保留创建时的空值（R6-P2-03）。
-  const inherited = predecessorInheritance(initial, previous);
+  // 创建时复制 / 继承的来源记录已删除：保留下来的值是意图，不再从新前驱重取（DEC-244②）。
+  const inherited =
+    initial.sourceRecordId && (await sources.deleted(initial.sourceRecordId))
+      ? { fields: initial.fields, customFields: initial.customFields }
+      : predecessorInheritance(initial, previous);
   let values: ForwardValues = {
     fields: { ...inherited.fields, ...derivedValues(initial.fields, rules), ...fields },
     customFields: { ...inherited.customFields, ...custom },
   };
-  const finalReferences = await calculateReferences(tx, ctx, record, values, history, resolveSource);
+  const finalReferences = await calculateReferences(tx, ctx, record, values, history, sources);
   values = await refreshDerivations(tx, ctx, record, values, previous, rules);
   const customIds = (await getCustomFieldsForInheritance(tx, ctx.tenantId))
     .filter((field) => field.inherit)
@@ -80,9 +89,15 @@ export async function calculateOrgAdjustment(
         rules.delete('sequenceId');
       }
     } else if (command.type === 'forward') {
-      const source = await resolveSource(command.sourceId, command.sourceVersionNo);
+      if (await sources.deleted(command.sourceId)) {
+        values = retainedValues(values, command.retained);
+        for (const field of Object.keys(command.retained.fields)) rules.delete(field as PresetField);
+        continue;
+      }
+      const source = await sources.resolve(command.sourceId, command.sourceVersionNo);
       if (!source) continue;
-      const matched = matchingForwardChanges(source.before, source.after, values, customIds);
+      // 自定义字段按传播当时的继承配置参与匹配，之后的配置变更不改写历史（DEC-244③）。
+      const matched = matchingForwardChanges(source.before, source.after, values, command.customFieldIds ?? customIds);
       const { accepted: changes } = await availableForwardChanges(
         tx,
         ctx,
@@ -97,6 +112,17 @@ export async function calculateOrgAdjustment(
     }
   }
   return values;
+}
+
+/** 来源删除后传播当时写入的值按意图保留。 */
+function retainedValues(
+  values: ForwardValues,
+  retained: AdjustmentHistory['command'] extends infer C ? Extract<C, { type: 'forward' }>['retained'] : never,
+): ForwardValues {
+  return {
+    fields: { ...values.fields, ...retained.fields },
+    customFields: { ...values.customFields, ...retained.customFields },
+  };
 }
 
 /** 派生命令当时写入的字段值（载荷里保存的结果），作为引用未变时的派生结果。 */
@@ -148,7 +174,7 @@ async function calculateReferences(
   record: EmploymentRecord,
   initial: ForwardValues,
   history: readonly AdjustmentHistory[],
-  resolveSource: SourceResolver,
+  sources: SourceReader,
 ) {
   let values = initial;
   const referenceFields = new Set(['departmentId', 'positionId', 'postId']);
@@ -157,7 +183,11 @@ async function calculateReferences(
   for (const { command } of effectiveInput(history).commands) {
     if (command.type === 'manual') values = { ...values, fields: { ...values.fields, ...command.patch.fields } };
     if (command.type !== 'forward') continue;
-    const source = await resolveSource(command.sourceId, command.sourceVersionNo);
+    if (await sources.deleted(command.sourceId)) {
+      values = { ...values, fields: { ...values.fields, ...command.retained.fields } };
+      continue;
+    }
+    const source = await sources.resolve(command.sourceId, command.sourceVersionNo);
     if (!source) continue;
     const matched = matchingForwardChanges(source.before, source.after, values, []).filter((change) =>
       referenceFields.has(change.field),

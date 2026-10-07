@@ -26,6 +26,10 @@ export type AdjustmentCommand =
       readonly type: 'forward';
       readonly sourceId: string;
       readonly sourceVersionNo: number | null;
+      /** 传播当时实际改写的字段：来源删除后这些值视为意图（DEC-244②）。 */
+      readonly retained: RecordEditPatch;
+      /** 传播当时参与值匹配的自定义字段，按传播时的继承配置固定（DEC-244③）；存量无记录时为 null。 */
+      readonly customFieldIds: readonly string[] | null;
     }
   | { readonly type: 'output' };
 export interface AdjustmentHistory {
@@ -107,24 +111,36 @@ function classifyCommand(
       sourceId: meta.sourceId,
       sequenceId: typeof after.sequenceId === 'string' ? after.sequenceId : null,
     };
-  if (event.eventType === 'employment.forward-update' && payload.triggerBusinessId)
+  if (event.eventType === 'employment.forward-update' && payload.triggerBusinessId) {
+    const retained = patchOf(after);
     return {
       type: 'forward',
       sourceId: payload.triggerBusinessId,
       sourceVersionNo: meta.sourceVersionNo ?? sourceVersionNo,
+      retained,
+      customFieldIds: event.payload.after ? Object.keys(retained.customFields) : null,
     };
+  }
   return { type: 'output' };
 }
 
-/** 兼容未保存 patch 的人工编辑事件；只提取该命令明确改动的输入，不读取载荷版本差值。 */
-function legacyEditPatch(before: Record<string, unknown>, after: Record<string, unknown>): RecordEditPatch {
+/** 事件 after 里的预置 / 自定义字段值。 */
+function patchOf(after: Record<string, unknown>): RecordEditPatch {
   const fields: Partial<PresetFields> = {};
   const customFields: Record<string, CustomFields[string]> = {};
   for (const [field, value] of Object.entries(after)) {
-    if (JSON.stringify(value) === JSON.stringify(before[field])) continue;
     if (field.startsWith('custom:')) customFields[field.slice(7)] = value as CustomFields[string];
     else if (PRESET_FIELD_NAMES.includes(field as (typeof PRESET_FIELD_NAMES)[number]))
       Object.assign(fields, { [field]: value });
   }
   return { fields, customFields };
+}
+
+/** 兼容未保存 patch 的人工编辑事件；只提取该命令明确改动的输入，不读取载荷版本差值。 */
+function legacyEditPatch(before: Record<string, unknown>, after: Record<string, unknown>): RecordEditPatch {
+  return patchOf(
+    Object.fromEntries(
+      Object.entries(after).filter(([field, value]) => JSON.stringify(value) !== JSON.stringify(before[field])),
+    ),
+  );
 }
