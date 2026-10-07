@@ -1,6 +1,6 @@
 {
-  "id": "2c4803cc-6253-4a07-b5c7-61d97572b017",
-  "prevId": "bab029e7-fa24-4f4e-a353-d89bba1d8406",
+  "id": "c3053507-dc8e-406a-b7ca-775d5af10645",
+  "prevId": "043eec4d-bed4-4159-b51b-f4598a386249",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -11274,6 +11274,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "employee_status": {
+          "name": "employee_status",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entry_status": {
+          "name": "entry_status",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "custom_fields": {
           "name": "custom_fields",
           "type": "jsonb",
@@ -11707,6 +11719,14 @@
           "name": "employment_payload_versions_custom_object",
           "value": "jsonb_typeof(\"employment_payload_versions\".\"custom_fields\") = 'object'"
         },
+        "employment_payload_versions_employee_status": {
+          "name": "employment_payload_versions_employee_status",
+          "value": "\"employment_payload_versions\".\"employee_status\" IN (1, 2, 3, 4, 5, 6, 8, 12)"
+        },
+        "employment_payload_versions_entry_status": {
+          "name": "employment_payload_versions_entry_status",
+          "value": "\"employment_payload_versions\".\"entry_status\" IN (0, 1, 2)"
+        },
         "employment_payload_versions_kind": {
           "name": "employment_payload_versions_kind",
           "value": "\"employment_payload_versions\".\"kind\" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',\n      'org_adjustment', 'leave', 'retirement', 'intern_regularization')"
@@ -12092,6 +12112,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "employee_status": {
+          "name": "employee_status",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entry_status": {
+          "name": "entry_status",
+          "type": "smallint",
+          "primaryKey": false,
+          "notNull": false
+        },
         "custom_fields": {
           "name": "custom_fields",
           "type": "jsonb",
@@ -12396,6 +12428,14 @@
         "employment_records_custom_object": {
           "name": "employment_records_custom_object",
           "value": "jsonb_typeof(\"employment_records\".\"custom_fields\") = 'object'"
+        },
+        "employment_records_employee_status": {
+          "name": "employment_records_employee_status",
+          "value": "\"employment_records\".\"employee_status\" IN (1, 2, 3, 4, 5, 6, 8, 12)"
+        },
+        "employment_records_entry_status": {
+          "name": "employment_records_entry_status",
+          "value": "\"employment_records\".\"entry_status\" IN (0, 1, 2)"
         },
         "employment_records_kind": {
           "name": "employment_records_kind",

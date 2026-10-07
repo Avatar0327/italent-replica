@@ -1,3 +1,4 @@
+import { reconcileCarriedEstablishment } from './carried-transfer.js';
 import { pendingActivationState } from '../employment/activation-store.js';
 import { insertedWindow, recordWindow } from '../employment/reporting-cycle.js';
 import { camelRow, snapshotFields, type EmploymentPayloadRow } from '../employment/record-store.js';
@@ -74,7 +75,8 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
     positionId: target.positionId,
     employType: target.fields?.employType ?? previous?.fields.employType ?? 'internal',
   };
-  if (fields.employType === 'external') return false;
+  await reconcileCarriedEstablishment(tx, ctx, { ...target, fields });
+  if (!target.occupancyOnly && fields.employType === 'external') return false;
   const transfer = {
     ...target,
     targetOrgId: target.departmentId,
@@ -84,7 +86,7 @@ export async function employmentEstablishmentExceeded(tx: Tx, ctx: EmploymentCon
   const capacityAsOf = [target.effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
   for (const capacity of await targetCapacities(tx, ctx, transfer, capacityAsOf)) {
     const scheme = await loadScheme(tx, ctx.tenantId, capacity.schemeId, capacityAsOf);
-    if (!matchesOccupancy(fields, scheme.occupancyRanges)) continue;
+    if (!target.occupancyOnly && !matchesOccupancy(fields, scheme.occupancyRanges)) continue;
     const windows = await membershipWindows(
       tx,
       ctx.tenantId,
@@ -250,7 +252,7 @@ async function projectedMembers(
       intervals.push({ employeeId: row.employeeId, fields, from, until });
     members.set(row.employeeId, intervals);
   }
-  await projectTarget(tx, ctx, target, windowEnd, members, timings.transferOut);
+  if (!target.occupancyOnly) await projectTarget(tx, ctx, target, windowEnd, members, timings.transferOut);
   for (const [id, intervals] of members) members.set(id, clipMembership(intervals, windows));
   return (matches: (fields: Partial<PresetFields>) => boolean) => maximumMembers(members, matches);
 }

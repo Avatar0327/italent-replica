@@ -1,3 +1,4 @@
+import { carryEstablishment } from '../establishment/carried-transfer.js';
 import { reconcileCompletion, openCompletion } from '../transfer/completion.js';
 import { queueTransferLinkage, validateTransferSubordinates } from './transfer-linkage.js';
 import { lockTransferParticipants } from './transfer-locks.js';
@@ -70,6 +71,7 @@ interface SelectedEmploymentCycle {
 }
 
 export interface CreateEmploymentOptions {
+  readonly withEstablishment?: boolean;
   readonly forwardUpdate?: boolean;
   /** 变动类型只由可信的系统联动传入（如职位变更同步直线经理，F-006），不开放给请求体。 */
   readonly changeType?: ChangeType;
@@ -106,28 +108,15 @@ export async function createEmploymentBusiness(
     predecessor: selected?.predecessor ?? null,
   });
   await validatePreparedEmployment(tx, ctx, employee.id, normalized.kind, prepared, effective.fields);
-  const id = randomUUID();
-  await assertEstablishmentCapacity(
+  const id = await initializeEmploymentBusiness(
     tx,
     ctx,
-    {
-      businessId: id,
-      employeeId: employee.id,
-      kind: normalized.kind,
-      effectiveDate: normalized.effectiveDate,
-      fields: effective.fields,
-      departmentId: effective.fields.departmentId,
-      positionId: effective.fields.positionId,
-    },
-    options.establishmentWarnings,
+    employee.id,
+    normalized,
+    selected?.predecessor?.fields ?? {},
+    effective.fields,
+    options,
   );
-  await insertEmploymentRow(tx, 'employment_business_objects', {
-    id,
-    tenantId: ctx.tenantId,
-    employeeId: employee.id,
-    revision: 1,
-    createdAt: ctx.now.toISOString(),
-  });
   const payload = await appendEmploymentPayload(
     tx,
     ctx,
@@ -155,6 +144,42 @@ export async function createEmploymentBusiness(
   await bumpEmploymentEmployee(tx, ctx, employee);
   await auditEmployment(tx, ctx, 'employment.business.create', 'employment-business', id, null, payloadAudit(payload));
   return requireSavedBusiness(tx, ctx, id);
+}
+
+async function initializeEmploymentBusiness(
+  tx: Tx,
+  ctx: EmploymentContext,
+  employeeId: string,
+  normalized: NormalizedEmploymentInput,
+  source: Partial<PresetFields>,
+  fields: PresetFields,
+  options: CreateEmploymentOptions,
+) {
+  const id = randomUUID();
+  await insertEmploymentRow(tx, 'employment_business_objects', {
+    id,
+    tenantId: ctx.tenantId,
+    employeeId: employeeId,
+    revision: 1,
+    createdAt: ctx.now.toISOString(),
+  });
+  if (options.withEstablishment && normalized.kind === 'transfer')
+    await carryEstablishment(tx, ctx, id, normalized.effectiveDate, source, fields);
+  await assertEstablishmentCapacity(
+    tx,
+    ctx,
+    {
+      businessId: id,
+      employeeId: employeeId,
+      kind: normalized.kind,
+      effectiveDate: normalized.effectiveDate,
+      fields: fields,
+      departmentId: fields.departmentId,
+      positionId: fields.positionId,
+    },
+    options.establishmentWarnings,
+  );
+  return id;
 }
 
 export async function updateEmploymentBusiness(
@@ -438,7 +463,7 @@ export async function appendEmploymentPayload(
     { ...fields, ...metadata, createdAt: ctx.now.toISOString() },
     status,
   );
-  // 未显式给出时由插入触发器继承（迁移 0059），以库中的值为准
+  // 未显式给出时由插入触发器继承（迁移 0061），以库中的值为准
   return { ...payload, ...(await storedStatus(tx, ctx, payload.id)) };
 }
 
