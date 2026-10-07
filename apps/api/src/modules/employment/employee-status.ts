@@ -38,13 +38,15 @@ export interface VersionStatus {
 export interface EntryOptions {
   /** 添加待入职：待入职 + 入职状态正常。 */
   readonly pendingEntry?: boolean;
-  /** 办理入职时是否有试用期：有为试用，否则正式（34 EN-R11）。 */
+  /** 办理入职 / 实习转正时是否有试用期：有为试用，否则正式（34 EN-R11；DEC-234 实习转正同入职）。 */
   readonly probation?: boolean;
 }
 
 const ENTRY_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
-/** 本身决定人员状态的业务（与迁移 0061 employment_kind_status 一致）；其余业务继承插入点前一条。 */
-const STATUS_SETTING_KINDS: readonly BusinessKind[] = [...ENTRY_KINDS, 'regularization', 'leave', 'retirement'];
+/** DEC-234：实习转正按入职处理（原站变动类型为“入职”，15 §9.5）——按是否有试用期取试用 / 正式，默认正式。 */
+const ENTRY_LIKE_KINDS: readonly BusinessKind[] = [...ENTRY_KINDS, 'intern_regularization'];
+/** 本身决定人员状态的业务（与迁移 0061 的触发器、employment_kind_status 一致）；其余业务继承插入点前一条。 */
+const STATUS_SETTING_KINDS: readonly BusinessKind[] = [...ENTRY_LIKE_KINDS, 'regularization', 'leave', 'retirement'];
 
 export function inheritsEmployeeStatus(kind: BusinessKind): boolean {
   return !STATUS_SETTING_KINDS.includes(kind);
@@ -67,8 +69,10 @@ export type EntryTarget = keyof typeof ENTRY_TARGETS;
  * 其他继承前一条）由触发器统一决定，避免两处口径。
  */
 export function entryStatusFor(kind: BusinessKind, entry?: EntryOptions): VersionStatus | undefined {
-  if (!entry || !ENTRY_KINDS.includes(kind)) return undefined;
-  if (entry.pendingEntry) return { employeeStatus: EMPLOYEE_STATUS.pendingEntry, entryStatus: ENTRY_STATUS.normal };
+  if (!entry || !ENTRY_LIKE_KINDS.includes(kind)) return undefined;
+  // 待入职只属于新增 / 重聘入职（Q-M0-99）；实习转正只取是否有试用期
+  if (entry.pendingEntry && ENTRY_KINDS.includes(kind))
+    return { employeeStatus: EMPLOYEE_STATUS.pendingEntry, entryStatus: ENTRY_STATUS.normal };
   return { employeeStatus: entry.probation ? EMPLOYEE_STATUS.probation : EMPLOYEE_STATUS.regular, entryStatus: null };
 }
 

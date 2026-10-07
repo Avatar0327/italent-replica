@@ -37,7 +37,7 @@ CREATE FUNCTION employment_timeline_predecessor(p_tenant uuid, p_employee uuid, 
   ORDER BY t.start_date DESC, t.sort_order DESC LIMIT 1
 $$;
 --> statement-breakpoint
--- 本身决定人员状态的业务（15 §9.2）：转正 → 正式；离职 → 离职；退休 → 退休。入职类由入职端口决定（默认正式）。
+-- 本身决定人员状态的业务（15 §9.2）：转正 → 正式；离职 → 离职；退休 → 退休。入职类（含实习转正）由入职端口决定（默认正式）。
 CREATE FUNCTION employment_kind_status(p_kind text) RETURNS smallint
   LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, public
   AS $$
@@ -45,7 +45,8 @@ CREATE FUNCTION employment_kind_status(p_kind text) RETURNS smallint
 $$;
 --> statement-breakpoint
 -- 载荷版本未显式给出状态时（应用层只在入职端口、状态流转端口显式给出）：
--- 记录快照 → 继承该记录当前值；同一业务的后续版本 → 继承上一版本；首版 → 入职类正式、转正 / 离职 / 退休取本身状态，
+-- 记录快照 → 继承该记录当前值；同一业务的后续版本 → 继承上一版本；首版 → 入职类（含实习转正，DEC-234）正式、
+-- 转正 / 离职 / 退休取本身状态，
 -- 其余继承时间轴前一条（入职状态一律继承）。都取不到时保持空，由 NOT NULL 拒绝写入（fail-closed）。
 CREATE FUNCTION employment_payload_status_inherit() RETURNS trigger
   LANGUAGE plpgsql SET search_path = pg_catalog, public
@@ -66,7 +67,7 @@ BEGIN
       WHERE p.tenant_id = NEW.tenant_id AND p.id = NEW.previous_version_id;
   END IF;
   IF v_status IS NULL THEN
-    IF NEW.kind IN ('hire', 'rehire', 'retire_rehire') THEN
+    IF NEW.kind IN ('hire', 'rehire', 'retire_rehire', 'intern_regularization') THEN
       v_status := 3;
       v_entry := NULL;
     ELSE
@@ -81,7 +82,7 @@ BEGIN
   RETURN NEW;
 END $$;
 --> statement-breakpoint
--- 任职记录落地：入职类取承载它的载荷版本（入职端口写入的待入职 / 试用 / 正式）；其余以前一条（继承来源，
+-- 任职记录落地：入职类（含实习转正，DEC-234）取承载它的载荷版本（入职端口写入的待入职 / 试用 / 正式）；其余以前一条（继承来源，
 -- 即 DEC-108 实际插入点之前那条；缺省按时间轴）为准，转正 / 离职 / 退休再取本身状态。
 CREATE FUNCTION employment_record_status_inherit() RETURNS trigger
   LANGUAGE plpgsql SET search_path = pg_catalog, public
@@ -93,7 +94,7 @@ BEGIN
   IF NEW.employee_status IS NOT NULL THEN
     RETURN NEW;
   END IF;
-  IF NEW.kind IN ('hire', 'rehire', 'retire_rehire') THEN
+  IF NEW.kind IN ('hire', 'rehire', 'retire_rehire', 'intern_regularization') THEN
     SELECT p.employee_status, p.entry_status INTO v_status, v_entry FROM employment_payload_versions p
       WHERE p.tenant_id = NEW.tenant_id AND p.id = NEW.payload_version_id;
   ELSE
@@ -108,11 +109,13 @@ BEGIN
 END $$;
 --> statement-breakpoint
 -- 存量回填（迁移属主执行；两表强制 RLS，按租户设置 app.tenant_id 并显式按租户过滤；临时卸下只追加触发器，只写两个新列）：
--- 记录：按（员工, 周期）在时间轴上排序。入职类 = 本周期有试用期结束日的有效合同（未删除、未作废、已生效，签于本周期内）
---   → 试用，否则正式；转正 → 正式；离职 → 离职；退休 → 退休；调动 / 组织调整 / 实习转正 → 继承前一条（因此转正及之后
---   为正式，转正之前为试用）。已删除（不在时间轴上）的记录：本身决定的取本身，其余取同周期生效日不晚于它的最后一条。
---   R1 没有“添加待入职”入口，存量没有待入职记录（DEC 待登记：未来日期的办理入职写目标状态）；入职状态全部为空。
--- 载荷：记录快照与已落地业务的各版本 = 该记录的值；未落地的申请：入职类正式、转正 / 离职 / 退休取本身状态，
+-- 记录：按（员工, 周期）在时间轴上排序。入职类（新增 / 重聘 / 退休返聘入职，及按入职处理的实习转正，DEC-234 ①）
+--   = 有试用期结束日的有效合同（未删除、未作废、已生效、签于本周期内；实习转正只看转正生效日及以后签的）→ 试用，否则正式；
+--   雇佣关系为实习生的一律正式（DEC-234 ②）；转正 → 正式；离职 → 离职；退休 → 退休；调动 / 组织调整 → 继承前一条
+--   （因此转正之前为试用、转正及之后为正式）。已删除（不在时间轴上）的记录：本身决定的取本身，其余取同周期生效日
+--   不晚于它的最后一条。R1 没有“添加待入职”入口，存量没有待入职记录（DEC-223：未来日期的办理入职写目标状态）；
+--   入职状态全部为空。
+-- 载荷：记录快照与已落地业务的各版本 = 该记录的值；未落地的申请：入职类（含实习转正）正式、转正 / 离职 / 退休取本身状态，
 --   其余取生效日前一条（同周期）的值；都取不到时按正式。
 ALTER TABLE employment_records DISABLE TRIGGER employment_records_append_only;
 --> statement-breakpoint
@@ -126,12 +129,13 @@ BEGIN
     PERFORM set_config('app.tenant_id', t.id::text, true);
     WITH base AS (
       SELECT r.id, r.employee_id, r.staff_id, r.start_date, tl.sort_order, r.created_at,
-        COALESCE(employment_kind_status(r.kind), CASE WHEN r.kind IN ('hire', 'rehire', 'retire_rehire') THEN
-          CASE WHEN EXISTS (
+        COALESCE(employment_kind_status(r.kind),
+          CASE WHEN r.kind IN ('hire', 'rehire', 'retire_rehire', 'intern_regularization') THEN
+          CASE WHEN r.employ_type = 'intern' THEN 3 WHEN EXISTS (
             SELECT 1 FROM contract_records c
             WHERE c.tenant_id = r.tenant_id AND c.employee_id = r.employee_id AND NOT c.deleted
               AND c.status <> 'void' AND c.approval_status = 'effective' AND c.probation_end_date IS NOT NULL
-              AND c.effective_date >= r.entry_date
+              AND c.effective_date >= CASE WHEN r.kind = 'intern_regularization' THEN r.start_date ELSE r.entry_date END
               AND NOT EXISTS (SELECT 1 FROM employment_cycles n WHERE n.tenant_id = r.tenant_id
                 AND n.employee_id = r.employee_id AND n.entry_date > r.entry_date AND n.entry_date <= c.effective_date)
           ) THEN 2 ELSE 3 END END)::smallint AS own
@@ -148,7 +152,7 @@ BEGIN
     UPDATE employment_records r SET employee_status = COALESCE(resolved.status, 3)
     FROM resolved WHERE r.tenant_id = t.id AND r.id = resolved.id;
     UPDATE employment_records r SET employee_status = COALESCE(employment_kind_status(r.kind),
-        CASE WHEN r.kind IN ('hire', 'rehire', 'retire_rehire') THEN 3 END,
+        CASE WHEN r.kind IN ('hire', 'rehire', 'retire_rehire', 'intern_regularization') THEN 3 END,
         (SELECT p.employee_status FROM employment_records p
           JOIN employment_timeline pt ON pt.tenant_id = p.tenant_id AND pt.record_id = p.id
           WHERE p.tenant_id = r.tenant_id AND p.employee_id = r.employee_id AND p.staff_id = r.staff_id
@@ -159,7 +163,7 @@ BEGIN
     FROM employment_records r
     WHERE p.tenant_id = t.id AND r.tenant_id = p.tenant_id AND r.id = p.business_id;
     UPDATE employment_payload_versions p SET employee_status = COALESCE(employment_kind_status(p.kind),
-        CASE WHEN p.kind IN ('hire', 'rehire', 'retire_rehire') THEN 3 END,
+        CASE WHEN p.kind IN ('hire', 'rehire', 'retire_rehire', 'intern_regularization') THEN 3 END,
         (SELECT r.employee_status FROM employment_records r
           WHERE r.tenant_id = p.tenant_id AND r.id = employment_timeline_predecessor(
             p.tenant_id, p.employee_id, p.effective_date, p.selected_staff_id)), 3)
