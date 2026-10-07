@@ -266,7 +266,7 @@ const actionCases = [
   },
   { action: 'cc', label: '抄送', path: `/tasks/${TASK}/cc`, payload: { userIds: [USER], comment: '合成意见' } },
   { action: 'retrieve', label: '撤回我的审批', path: `/tasks/${RETRIEVE}/retrieve`, payload: {} },
-  { action: 'withdraw', label: '撤销申请', path: `/instances/${INSTANCE}/withdraw`, payload: {} },
+  { action: 'withdraw', label: '撤回申请', path: `/instances/${INSTANCE}/withdraw`, payload: {} },
   { action: 'urge', label: '催办', path: `/instances/${INSTANCE}/urge`, payload: {} },
   { action: 'resubmit', label: '重新提交', path: `/instances/${INSTANCE}/resubmit`, payload: {} },
   {
