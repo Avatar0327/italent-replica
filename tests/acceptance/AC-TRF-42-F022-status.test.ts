@@ -10,6 +10,7 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { changePendingEntryStatus } from '../../apps/api/src/modules/employment/employee-status.js';
 import { transitionEmployment } from '../../apps/api/src/modules/employment/transitions.js';
+import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/write-service.js';
 import { MODULE_OBJECTS } from '@italent/domain';
 import { addMember, createProfile, setObjectPermission } from './AC-PRM-support.js';
 import { transferWorld } from './AC-TRF-manager-support.js';
@@ -50,6 +51,31 @@ function context(world: World, expectedRevision: number) {
     commandId: randomUUID(),
     expectedRevision,
   };
+}
+
+/** 当前任职已排 11-30 离职，再在 12-15 添加待入职重聘（入职写入端口，R2-T01 接线）。 */
+async function pendingRehire(
+  world: World,
+  person: { id: string; revision: number },
+  departmentId: string,
+  employType: 'internal' | 'external',
+) {
+  const leave = await world.setup.request('POST', `/api/tenant/employment/employees/${person.id}/businesses`, {
+    ...world.asAdmin,
+    ifMatch: person.revision,
+    body: { kind: 'leave', mode: 'direct', lastWorkDate: '2026-11-30', fields: {} },
+  });
+  expect(leave.status, await leave.clone().text()).toBe(201);
+  const { employeeRevision } = (await leave.json()) as { employeeRevision: number };
+  await withTenant(database().db, world.tenant.id, (tx) =>
+    createEmploymentBusiness(
+      tx,
+      context(world, employeeRevision),
+      person.id,
+      { kind: 'rehire', mode: 'direct', effectiveDate: '2026-12-15', fields: { departmentId, employType } },
+      { entry: { pendingEntry: true } },
+    ),
+  );
 }
 
 async function hireRecord(world: World, employeeId: string) {
@@ -191,6 +217,27 @@ describe('AC-TRF-42（F-022）试用中 / 待入职按人员状态精确统计',
     expect(row).toBeTruthy();
     expect(row).not.toHaveProperty('employeeStatus');
     expect(row).not.toHaveProperty('entryStatus');
+  });
+
+  it('待入职以命中的待入职记录为准：部门范围、人员类型、状态与展示都取该记录（P2-2）', async () => {
+    // 当前在经理范围外部门在职、已排未来离职，在负责部门有待入职重聘记录
+    const movingIn = await world.person(world.outside.id);
+    await pendingRehire(world, movingIn, world.inside.id, 'internal');
+    // 当前为内部员工，待入职重聘记录为外部人员：不计入待入职
+    const toExternal = await world.person(world.inside.id);
+    await pendingRehire(world, toExternal, world.inside.id, 'external');
+    // 当前为外部人员，待入职重聘记录为内部员工：计入待入职
+    const toInternal = await world.person(world.inside.id, undefined, undefined, { employType: 'external' });
+    await pendingRehire(world, toInternal, world.inside.id, 'internal');
+    const dto = await team(world, manager, 'pending');
+    const ids = dto.items.map((row) => row.id);
+    expect(ids).toEqual(expect.arrayContaining([movingIn.id, toInternal.id]));
+    expect(ids).not.toContain(toExternal.id);
+    expect(dto.counts.pending).toBe(ids.length);
+    const row = dto.items.find((item) => item.id === movingIn.id) as Record<string, unknown> | undefined;
+    expect(row).toMatchObject({ employeeStatus: 1, entryStatus: 0, departmentId: world.inside.id });
+    // 当前任职仍在范围外：不进入在岗
+    expect((await team(world, manager, 'active')).items.map((item) => item.id)).not.toContain(movingIn.id);
   });
 
   it('跨租户：另一租户的试用、待入职人员不进入本租户统计；本租户经理请求另一租户被拒', async () => {
