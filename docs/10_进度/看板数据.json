@@ -1949,7 +1949,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 13:05",
+"liveUpdated": "10-07 13:12",
 "chains": [
 {
 "g": "exit",
@@ -2035,8 +2035,8 @@
 "k": "run",
 "pr": 96,
 "n": "重叠调入超编确认",
-"seg": "ev:d ds:n dev:d5 rev:w5 mg:w",
-"now": "第 5 轮已推送，待发起审查",
+"seg": "ev:d ds:n dev:d5 rev:a5 mg:w",
+"now": "第 5 轮 Astra Ultra 审查中（复审 + 终审）",
 "fable": "1"
 },
 {
