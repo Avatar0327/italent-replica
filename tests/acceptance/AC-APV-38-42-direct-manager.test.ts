@@ -80,10 +80,15 @@ describe('AC-APV-39 不可用经理按空处理', () => {
       }
       if (reason === 'disabled') {
         const user = await getUser(w.db, s.manager.userId);
-        await setUserStatus(w.db, s.manager.userId, 'disabled', user!.revision, cmd());
+        await setUserStatus(
+          w.db,
+          { userId: s.manager.userId, status: 'disabled', expectedRevision: user!.revision },
+          cmd(),
+        );
       }
       await w.publishedProcess({ nodes: [DIRECT], priority: 0 });
-      const draft = await w.application(subject.employeeId, { departmentId: s.to });
+      // 申请显式清空新经理，避免任职写入资格校验先于审批解析拦截已离职经理。
+      const draft = await w.application(subject.employeeId, { departmentId: s.to, directManagerId: null });
       const before = await effects(w);
       const failed = await w.submitRaw(draft);
       expect(failed.status).toBe(409);
@@ -151,6 +156,16 @@ describe('AC-APV-41 流程匹配、虚拟仿真、UUID 规范化与租户隔离'
       conditions: { items: [] },
       nodes: [DIRECT],
     });
+    const joint = await w.publishedProcess({
+      priority: 5,
+      nodes: [
+        {
+          key: 'joint',
+          kind: 'countersign',
+          approvers: ['direct_manager', 'record_department_head'],
+        },
+      ],
+    });
     const before = await effects(w);
     const data = {
       values: { processCode: 'TransferProcessNew' },
@@ -184,16 +199,6 @@ describe('AC-APV-41 流程匹配、虚拟仿真、UUID 规范化与租户隔离'
       replica: { processId: process.id },
       originalSite: { processId: otherType.id },
       replicaStartable: true,
-    });
-    const joint = await w.publishedProcess({
-      priority: 5,
-      nodes: [
-        {
-          key: 'joint',
-          kind: 'countersign',
-          approvers: ['direct_manager', 'record_department_head'],
-        },
-      ],
     });
     const jointResult = await w.json(
       await w.request(w.hr.id, 'POST', `${BASE}/processes/${joint.id}/simulate`, {
