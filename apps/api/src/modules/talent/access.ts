@@ -14,6 +14,7 @@ import type { TenantEnv } from '../../tenant-context.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
 import { getModuleViewableFields, scopeAllows, scopeSql } from '../permission/module-access.js';
 import {
+  button,
   objectContext,
   requestScope,
   trimModuleResponse,
@@ -45,6 +46,30 @@ export function talentContext(
   expectedRevision = 0,
 ): Promise<TalentContext> {
   return objectContext(c, deps, codeOf(object), operation, expectedRevision);
+}
+
+/** 写入口对应的按钮（目录登记 create@list / update@detail / delete@detail）。 */
+const WRITE_BUTTONS = {
+  create: ['create', 'list'],
+  update: ['update', 'detail'],
+  delete: ['delete', 'detail'],
+} as const;
+
+/**
+ * 写入口的功能权限：数据操作权（objectContext）之外再叠加按钮权限（REQ-PRM-001 R6）。在进入命令台账之前校验，
+ * 首次执行与幂等重放都经过这里，撤掉按钮后重放同样 403。
+ */
+export async function talentWriteContext(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  object: TalentObject,
+  operation: keyof typeof WRITE_BUTTONS,
+  expectedRevision: number,
+): Promise<TalentContext> {
+  const ctx = await talentContext(c, deps, object, operation, expectedRevision);
+  const [code, level] = WRITE_BUTTONS[operation];
+  await button(deps, ctx, codeOf(object), code, level);
+  return ctx;
 }
 
 export const talentScope = (c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: TalentContext, object: TalentObject) =>

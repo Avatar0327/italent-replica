@@ -19,6 +19,7 @@ import {
   requireVisible,
   talentContext,
   talentScope,
+  talentWriteContext,
   trimTalentList,
   visibleSql,
   type ModuleScope,
@@ -190,21 +191,21 @@ function registerObject<View extends Tracked, Create extends object, Patch exten
     return c.json((await present(c, ctx, [found]))[0]);
   });
   router.post(path, async (c) => {
-    const ctx = await talentContext(c, deps, spec.object, 'create', revision(c));
+    const ctx = await talentWriteContext(c, deps, spec.object, 'create', revision(c));
     requireNew(ctx.expectedRevision);
     const body = await parseBody(c, spec.createSchema);
     await checkWriteFields(deps, ctx, spec.object, 'create', body as Record<string, unknown>);
     return runTalentWrite(c, deps, ctx, spec, body, 201, (tx, w) => spec.create(tx, w, body));
   });
   router.patch(`${path}/:id`, async (c) => {
-    const ctx = await talentContext(c, deps, spec.object, 'update', revision(c));
+    const ctx = await talentWriteContext(c, deps, spec.object, 'update', revision(c));
     const id = uuidParam(c);
     const body = await parseBody(c, spec.patchSchema);
     await checkWriteFields(deps, ctx, spec.object, 'update', body as Record<string, unknown>);
     return runTalentWrite(c, deps, ctx, spec, body, 200, (tx, w) => spec.update(tx, w, id, body));
   });
   router.delete(`${path}/:id`, async (c) => {
-    const ctx = await talentContext(c, deps, spec.object, 'delete', revision(c));
+    const ctx = await talentWriteContext(c, deps, spec.object, 'delete', revision(c));
     const id = uuidParam(c);
     return runTalentWrite(c, deps, ctx, spec, { id }, 200, (tx, w) => spec.remove(tx, w, id));
   });
