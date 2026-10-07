@@ -14,9 +14,9 @@ import { normalizeBusinessPatch, validateCustomValue } from './fields.js';
 import { isForwardEditSupported, type ForwardEditEntry, type ForwardFieldChange } from './forward-rules.js';
 import { appendForwardPayload } from './forward-store.js';
 import { forwardUpdateEmployment } from './forward-update.js';
-import { sequenceForNewPost } from './inheritance.js';
+import { sequenceForNewPost, type FieldDerivation } from './field-derivations.js';
 import { loadEmploymentRecord } from './read-model.js';
-import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
+import { bumpEmploymentBusiness, lockEmploymentBusiness, type EmploymentPayloadRow } from './record-store.js';
 import { validateEmploymentReferences } from './references.js';
 import { recordWindow } from './reporting-cycle.js';
 import { requireSavedBusiness } from './write-service.js';
@@ -83,7 +83,10 @@ export async function editEmploymentRecord(
       ([field, value]) => JSON.stringify(beforeAudit[field as keyof typeof beforeAudit]) !== JSON.stringify(value),
     )
     .map(([field, value]) => ({ field, before: beforeAudit[field as keyof typeof beforeAudit] ?? null, after: value }));
-  if (!changes.length) return requireSavedBusiness(tx, ctx, id);
+  const inputCodes = recordEditCodes(patch);
+  // 显式同值更正也有命令意图；迟到重建时不能将其误作前驱继承。
+  if (!changes.length && !(record.kind === 'org_adjustment' && inputCodes.length))
+    return requireSavedBusiness(tx, ctx, id);
   if (await affectsEstablishmentOccupancy(tx, ctx, record.fields, after.fields, record.effectiveDate))
     await assertEstablishmentCapacity(
       tx,
@@ -99,8 +102,7 @@ export async function editEmploymentRecord(
       },
       entry === 'import' ? (options.establishmentWarnings ?? []) : undefined,
     );
-  business.payload = await appendForwardPayload(tx, ctx, business.payload, after, id, true, changes);
-  await auditEmployment(tx, ctx, 'employment.record.edit', 'employment-record', id, beforeAudit, afterAudit);
+  business.payload = await appendEditedPayload(tx, ctx, business.payload, record, patch, after, changes);
   if (options.forwardUpdate !== false && isForwardEditSupported({ ...record, entry, today })) {
     await forwardUpdateEmployment(tx, ctx, {
       employeeId: business.employeeId,
@@ -118,6 +120,54 @@ export async function editEmploymentRecord(
   await reconcileCompletion(tx, ctx, business.employeeId);
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, id);
+}
+
+function recordEditCodes(patch: EmploymentBusinessPatch) {
+  return [
+    ...Object.keys(patch.fields ?? {}).map((field) => `preset:${field}`),
+    ...Object.keys(patch.customFields ?? {}).map((field) => `custom:${field}`),
+  ];
+}
+
+async function appendEditedPayload(
+  tx: Tx,
+  ctx: EmploymentContext,
+  payload: EmploymentPayloadRow,
+  record: EmploymentRecord,
+  patch: EmploymentBusinessPatch,
+  after: Pick<EmploymentRecord, 'fields' | 'customFields'>,
+  changes: readonly ForwardFieldChange[],
+) {
+  const explicitFieldCodes = [...new Set([...payload.explicitFieldCodes, ...recordEditCodes(patch)])];
+  const next = await appendForwardPayload(tx, ctx, { ...payload, explicitFieldCodes }, after, record.id, true, changes);
+  await auditEmployment(
+    tx,
+    ctx,
+    'employment.record.edit',
+    'employment-record',
+    record.id,
+    { ...record.fields, ...customAudit(record.customFields) },
+    { ...after.fields, ...customAudit(after.customFields) },
+    next.id,
+    await recordEditIntent(tx, ctx, record, patch),
+  );
+  return next;
+}
+
+/** 人工输入与本次职务派生分别保存，不能靠最终值与旧载荷的差异恢复命令。 */
+async function recordEditIntent(
+  tx: Tx,
+  ctx: EmploymentContext,
+  record: EmploymentRecord,
+  patch: EmploymentBusinessPatch,
+) {
+  const derivations: FieldDerivation[] = [];
+  const sequenceId = await sequenceForNewPost(tx, ctx.tenantId, patch.fields ?? {}, record.effectiveDate);
+  if (sequenceId) derivations.push({ rule: 'post-sequence', referenceId: patch.fields?.postId ?? null });
+  return {
+    patch: { fields: patch.fields ?? {}, customFields: patch.customFields ?? {} },
+    fieldDerivations: derivations,
+  };
 }
 
 /**

@@ -1,20 +1,11 @@
-/** DEC-186 / 195：调动移出旧区间时，派生的组织调整按新前驱重建继承字段，历史载荷不可改写。 */
+/** DEC-186 / 195：调动移出旧区间后按最终时间轴重算，再同事务追加组织调整快照。 */
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
-import { AppError } from '../../errors.js';
 import { auditEmployment, requireLinkedEmploymentRecord } from './context.js';
-import {
-  derivePresetFields,
-  derivationFields,
-  presetFieldOrigin,
-  resolveDerivation,
-  type FieldDerivation,
-} from './field-derivations.js';
-import { applyForwardChanges, type ForwardFieldChange } from './forward-rules.js';
+import { calculatedChanges } from './org-adjustment-recompute.js';
+import { calculateAdjustmentTimeline, type AdjustmentCalculation } from './org-adjustment-timeline.js';
 import { personnelHooks } from './personnel-hooks.js';
-import { loadEmploymentRecord } from './read-model.js';
-import { insertEmploymentRow, rowsOf } from './record-store.js';
-import { orgAdjustmentHistory, type AdjustmentHistory } from './org-adjustment-history.js';
+import { insertEmploymentRow } from './record-store.js';
 import { validateNewEmploymentReferences } from './references.js';
 import { recordWindow } from './reporting-cycle.js';
 import type { EmploymentContext, EmploymentRecord } from './types.js';
@@ -25,43 +16,20 @@ export async function rebaseDerivedOrgAdjustments(
   source: EmploymentRecord,
   actualDate: string,
 ) {
-  // 沿创建来源和字段传播来源找派生链；另一笔独立业务不是组织调整，不能顺便改写。
-  const targets = rowsOf<{ id: string }>(
-    await tx.execute(sql`
-    WITH RECURSIVE derived AS (
-      SELECT r.id FROM employment_records r WHERE r.tenant_id=${ctx.tenantId}
-        AND r.employee_id=${source.employeeId}::uuid AND r.kind='org_adjustment'
-        AND (r.inheritance_source_id=${source.id}::uuid OR EXISTS (
-          SELECT 1 FROM employment_payload_versions p WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id
-            AND p.trigger_business_id=${source.id}::uuid))
-      UNION
-      SELECT r.id FROM employment_records r JOIN derived d ON r.inheritance_source_id=d.id
-        WHERE r.tenant_id=${ctx.tenantId} AND r.employee_id=${source.employeeId}::uuid AND r.kind='org_adjustment'
-    ) SELECT t.record_id AS id FROM derived d JOIN employment_timeline t
-      ON t.tenant_id=${ctx.tenantId} AND t.record_id=d.id
-    WHERE t.start_date<${actualDate}::date ORDER BY t.start_date,t.sort_order LIMIT 1001`),
-  );
-  if (targets.length > 1000) throw new AppError('PAYLOAD_TOO_LARGE', '派生组织调整超过单次处理上限');
-  for (const target of targets) {
-    const record = await loadEmploymentRecord(tx, ctx.tenantId, target.id, actualDate);
-    if (!record?.previousRecordId || record.staffId !== source.staffId) continue;
-    const previous = await loadEmploymentRecord(tx, ctx.tenantId, record.previousRecordId, record.effectiveDate);
-    if (previous?.staffId === record.staffId) await rebaseRecord(tx, ctx, record, previous, source.id);
-  }
+  // 先完成计算，后条总是读取重算后的前驱；计算输出不再成为后续重建的业务输入。
+  const plan = await calculateAdjustmentTimeline(tx, ctx, source, actualDate);
+  for (const item of plan) await appendCalculation(tx, ctx, item, source.id);
 }
 
-async function rebaseRecord(
+async function appendCalculation(
   tx: Tx,
   ctx: EmploymentContext,
-  record: EmploymentRecord,
-  previous: EmploymentRecord,
+  { record, history, values }: AdjustmentCalculation,
   triggerBusinessId: string,
 ) {
-  const history = await orgAdjustmentHistory(tx, ctx, record);
-  const latest = history.at(-1)!.payload;
-  const changes = await inheritedChanges(tx, ctx, record, history, previous);
+  const changes = calculatedChanges(record, values);
   if (!changes.length) return;
-  const values = applyForwardChanges(record, changes);
+  const latest = history.at(-1)!.payload;
   await requireLinkedEmploymentRecord(tx, ctx, record.employeeId, record.fields.departmentId, record.id);
   await requireLinkedEmploymentRecord(tx, ctx, record.employeeId, values.fields.departmentId, record.id);
   await validateNewEmploymentReferences(tx, ctx, values.fields, record.effectiveDate, {
@@ -97,86 +65,4 @@ async function rebaseRecord(
     next.id,
   );
   await personnelHooks.sync(tx, ctx, record.employeeId, record.id, record.kind, record.effectiveDate);
-}
-
-async function inheritedChanges(
-  tx: Tx,
-  ctx: EmploymentContext,
-  record: EmploymentRecord,
-  history: readonly AdjustmentHistory[],
-  previous: EmploymentRecord,
-): Promise<ForwardFieldChange[]> {
-  const initial = history[0]!.payload;
-  const explicit = new Set(initial.explicitFieldCodes);
-  const origins = await initialDerivations(tx, ctx, initial);
-  let values = applyForwardChanges(
-    previous,
-    valueChanges(previous, initial).filter((change) =>
-      change.field.startsWith('custom:')
-        ? explicit.has(change.field)
-        : presetFieldOrigin(change.field as keyof typeof initial.fields, explicit, origins) !== 'predecessor',
-    ),
-  );
-  values = await refreshDerivations(tx, ctx, record, previous, values, origins);
-  // 按版本顺序重放有效来源和人工更正；已改期/移出时间线的来源、此前重建均不能恢复提前值。
-  for (let index = 1; index < history.length; index++) {
-    const item = history[index]!;
-    if (!item.replay) continue;
-    const source = item.sequenceSource;
-    // F-021 的同事务事件区分自动同步和人工更正，无须增加载荷列或修改同步写入口。
-    if (source && values.fields[source.sourceKind === 'posts' ? 'postId' : 'positionId'] !== source.sourceId) continue;
-    // 有效历史已包含当时显式输入 / 派生结果；不能再次默认带出，覆盖来源明确指定的序列等值。
-    values = applyForwardChanges(values, valueChanges(history[index - 1]!.payload, item.payload));
-  }
-  return valueChanges(record, values);
-}
-
-async function initialDerivations(tx: Tx, ctx: EmploymentContext, initial: AdjustmentHistory['payload']) {
-  if (initial.formSnapshot.fieldDerivations) return [...initial.formSnapshot.fieldDerivations];
-  // 老载荷没有来源元数据：从服务端冻结的显式字段与表单调用同一派生规则，不能按值差猜来源。
-  const fields = Object.fromEntries(
-    Object.entries(initial.fields).filter(([field]) => initial.explicitFieldCodes.includes(`preset:${field}`)),
-  );
-  const { origins } = await derivePresetFields(tx, ctx.tenantId, initial, fields, initial.formSnapshot);
-  if (initial.changeType === 'position_adjustment')
-    origins.push({ rule: 'position-manager', referenceId: initial.fields.positionId });
-  return origins;
-}
-
-async function refreshDerivations(
-  tx: Tx,
-  ctx: EmploymentContext,
-  record: EmploymentRecord,
-  previous: EmploymentRecord,
-  values: Pick<EmploymentRecord, 'fields' | 'customFields'>,
-  origins: FieldDerivation[],
-) {
-  for (const [index, origin] of origins.entries()) {
-    const { field, reference } = derivationFields(origin);
-    const referenceId = values.fields[reference];
-    if (referenceId === origin.referenceId) continue; // 引用未变，保留初始带出或有效 F-021 同步的快照。
-    const next = { ...origin, referenceId };
-    const derived = await resolveDerivation(tx, ctx.tenantId, record.employeeId, record.effectiveDate, next);
-    values = applyForwardChanges(values, [
-      { field, before: values.fields[field], after: derived === undefined ? previous.fields[field] : derived },
-    ]);
-    origins[index] = next;
-  }
-  return values;
-}
-
-function valueChanges(
-  before: Pick<EmploymentRecord, 'fields' | 'customFields'>,
-  after: Pick<EmploymentRecord, 'fields' | 'customFields'>,
-): ForwardFieldChange[] {
-  const changes: ForwardFieldChange[] = [];
-  const add = (field: string, oldValue: ForwardFieldChange['before'], newValue: ForwardFieldChange['after']) => {
-    if (JSON.stringify(oldValue) !== JSON.stringify(newValue))
-      changes.push({ field, before: oldValue, after: newValue });
-  };
-  for (const field of Object.keys(before.fields) as (keyof typeof before.fields)[])
-    add(field, before.fields[field], after.fields[field]);
-  for (const id of new Set([...Object.keys(before.customFields), ...Object.keys(after.customFields)]))
-    add(`custom:${id}`, before.customFields[id] ?? null, after.customFields[id] ?? null);
-  return changes;
 }
