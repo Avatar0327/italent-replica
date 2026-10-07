@@ -74,7 +74,7 @@ export async function assertEstablishmentCapacity(
       ? await assessEmploymentEstablishment(tx, ctx, target)
       : { exceeded: await establishmentExceeded(tx, ctx, target), strict: true };
   if (!assessment.exceeded) return;
-  // DEC-015 仅内部导入端口提供警告收集器；HTTP 单笔保存与定时生效不能关闭严格校验。
+  // DEC-015 仅内部导入/批量端口提供警告收集器；HTTP 单笔保存与定时生效不能关闭严格校验。
   if (warnings) {
     if (!warnings.some((item) => item.businessId === target.businessId))
       warnings.push({ businessId: target.businessId, reason: 'ESTABLISHMENT_EXCEEDED' });
@@ -83,7 +83,7 @@ export async function assertEstablishmentCapacity(
   if (assessment.strict)
     throw new AppError('CONFLICT', '已超出设定编制，不可继续操作', { reason: 'ESTABLISHMENT_EXCEEDED' });
   // 确认只属于本次交互命令，不持久化为跳过以后复查的授权；到期/审批继续按严格控编兜底。
-  if (ctx.establishmentConfirmed === false && !ctx.deferredExecution)
+  if (ctx.establishmentConfirmed !== true && !ctx.establishmentConfirmationExempt && !ctx.deferredExecution)
     throw new AppError('CONFLICT', '已超出设定编制，请确认后继续', {
       reason: 'CONFIRMATION_REQUIRED',
       warnings: [{ reason: 'ESTABLISHMENT_EXCEEDED' }],

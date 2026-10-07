@@ -304,7 +304,7 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
           transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
         );
         const confirmation =
-          action === 'submit' && c.req.header('content-type')
+          (action === 'submit' || action === 'delete') && c.req.header('content-type')
             ? parse(z.strictObject({ confirmed: z.boolean().optional() }), await jsonBody(c))
             : {};
         await requireEmploymentWrite(

@@ -94,20 +94,22 @@ export async function assessEmploymentEstablishment(
   };
   await reconcileCarriedEstablishment(tx, ctx, { ...target, fields });
   if (!target.occupancyOnly && fields.employType === 'external') return clear;
-  const timings = await readSettings(tx, ctx.tenantId, target.effectiveDate);
   const window = target.occupancyOnly ? null : await targetWindow(tx, ctx, target);
   if (!target.occupancyOnly && !window) return clear;
-  const next = target.occupancyOnly ? null : await nextReservedTransfer(tx, ctx, target, timings.transferOut);
-  const until = [target.until, window?.to, next].filter((day): day is string => Boolean(day)).sort()[0] ?? null;
+  const until = [target.until, window?.to].filter((day): day is string => Boolean(day)).sort()[0] ?? null;
   if (until && until <= target.effectiveDate) return clear;
   const dates = await assessmentDates(tx, ctx.tenantId, target.effectiveDate, until);
   let exceeded = false;
   for (const [index, date] of dates.entries()) {
+    // F-026 R2：释放时机可在区间内变化，不能用起点的旧时机永久截断后续各段。
+    const timings = await readSettings(tx, ctx.tenantId, date);
+    const next = target.occupancyOnly ? null : await nextReservedTransfer(tx, ctx, target, timings.transferOut);
+    if (next && next <= date) continue;
     const assessment = await assessSegment(tx, ctx, {
       ...target,
       fields,
       effectiveDate: date,
-      until: dates[index + 1] ?? until,
+      until: [dates[index + 1], until, next].filter((day): day is string => Boolean(day)).sort()[0] ?? null,
     });
     if (assessment.strict) return assessment;
     exceeded ||= assessment.exceeded;

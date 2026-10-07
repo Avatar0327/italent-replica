@@ -81,8 +81,12 @@ export async function transitionEmployment(
   ctx: EmploymentContext,
   input: EmploymentTransitionInput,
 ): Promise<EmploymentBusiness> {
-  if (input.action === 'submit') ctx = { ...ctx, establishmentConfirmed: input.confirmed ?? false };
   if (!input || !ACTIONS.includes(input.action)) throw new AppError('VALIDATION_FAILED', '任职状态动作不合法');
+  ctx = {
+    ...ctx,
+    establishmentConfirmed: input.confirmed ?? false,
+    establishmentConfirmationExempt: ['approve', 'activate', 'reject', 'disapprove'].includes(input.action),
+  };
   if (['submit', 'approve', 'activate'].includes(input.action)) await lockTransferBusiness(tx, ctx, input.id);
   const business = await lockEmploymentBusiness(tx, ctx, input.id);
   assertTransition(business, input.action);

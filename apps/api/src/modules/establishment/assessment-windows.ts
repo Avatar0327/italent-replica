@@ -2,7 +2,7 @@ import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { rowsOf } from './store.js';
 
-/** F-026：按有效区间内已配置的周期、容量/方案版本及行政树边界分段；各段再扫描人员峰值。 */
+/** F-026：按有效区间内的周期、容量/方案/占编时机版本及行政树边界分段；各段再扫描人员峰值。 */
 export async function assessmentDates(tx: Tx, tenantId: string, from: string, until: string | null) {
   const rows = rowsOf<{ day: string }>(
     await tx.execute(sql`
@@ -10,6 +10,7 @@ export async function assessmentDates(tx: Tx, tenantId: string, from: string, un
       SELECT period_start AS day FROM establishment_objects WHERE tenant_id=${tenantId}
       UNION SELECT period_end+1 FROM establishment_objects WHERE tenant_id=${tenantId}
       UNION SELECT start_date FROM establishment_versions WHERE tenant_id=${tenantId}
+      UNION SELECT start_date FROM establishment_timing_versions WHERE tenant_id=${tenantId}
       UNION SELECT start_date FROM establishment_scheme_versions WHERE tenant_id=${tenantId}
       UNION SELECT stop_date+1 FROM establishment_scheme_versions WHERE tenant_id=${tenantId} AND stop_date<'9999-12-31'
       UNION SELECT start_date FROM org_versions WHERE tenant_id=${tenantId}

@@ -94,8 +94,10 @@ export function emptyPresetFields(): PresetFields {
 export type EmploymentScope = Awaited<ReturnType<typeof resolveModuleScope>>;
 
 export interface EmploymentContext {
-  /** 仅交互保存/提交设置；确认不放宽严格控编及权限检查。 */
+  /** 单次交互命令的确认；缺省未确认，不放宽严格控编及权限检查。 */
   readonly establishmentConfirmed?: boolean;
+  /** 仅可信审批编辑/推进设置；调度另由 deferredExecution 标记。客户端不能传入。 */
+  readonly establishmentConfirmationExempt?: boolean;
   /** 本人自助路由重验账号绑定后设置；仅用于同表单的字段权限继承策略。 */
   readonly selfServiceEmployeeId?: string;
   readonly managerTransfer?: boolean;

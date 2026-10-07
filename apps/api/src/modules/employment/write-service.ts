@@ -187,7 +187,11 @@ export async function updateEmploymentBusiness(
   options: { readonly approvalEdit?: boolean } = {},
 ): Promise<EmploymentBusiness> {
   const patch = normalizeBusinessPatch(input);
-  ctx = { ...ctx, establishmentConfirmed: options.approvalEdit ? undefined : (patch.confirmed ?? false) };
+  ctx = {
+    ...ctx,
+    establishmentConfirmed: patch.confirmed ?? false,
+    establishmentConfirmationExempt: options.approvalEdit === true,
+  };
   const business = await lockEmploymentBusiness(tx, ctx, id);
   await requireEmployeeTransferBusiness(tx, ctx, id, patch);
   // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。
