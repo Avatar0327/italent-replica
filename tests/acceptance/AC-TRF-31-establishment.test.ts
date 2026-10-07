@@ -237,7 +237,7 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
     expect(await w.todos()).toMatchObject([{ id: direct.id }]);
   });
 
-  it('P3-4 带编调动明确拒绝且不写业务', async () => {
+  it('F-018 调出方未配置对应编制时整单拒绝且不写业务', async () => {
     const w = await fixture('trf-with-establishment');
     const { employee, hire } = await w.hired();
     const response = await w.session.request('POST', `/transfers/employees/${employee.id}`, {
@@ -251,8 +251,8 @@ describe('AC-TRF-31 / DEC-145 真实任职人员与严格编制', () => {
         withEstablishment: true,
       },
     });
-    expect(response.status).toBe(503);
-    expect(await response.json()).toMatchObject({ error: { details: { reason: 'WITH_ESTABLISHMENT_UNAVAILABLE' } } });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { details: { reason: 'ESTABLISHMENT_PAIR_REQUIRED' } } });
     expect((await w.session.records(employee.id, '2026-10-05')).map((r) => r.id)).toEqual([hire.id]);
   });
 
