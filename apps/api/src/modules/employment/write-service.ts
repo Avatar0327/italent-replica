@@ -211,7 +211,12 @@ export async function updateEmploymentBusiness(
   const prepared = await prepareEmploymentPatch(
     tx,
     ctx,
-    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
+    {
+      ...normalized,
+      employeeId: business.employeeId,
+      staffId: selected?.cycle.id,
+      allowEmployeePositionEdit: options.approvalEdit === true,
+    },
     before,
   );
   const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {

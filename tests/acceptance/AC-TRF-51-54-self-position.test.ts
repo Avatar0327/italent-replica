@@ -149,6 +149,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
       await api.request('POST', `${path}/preview`, { ...w.as(person.userId), body }),
     );
     expect(preview.form.fieldModes['preset:positionId']).not.toBe('editable');
+    expect(preview.fields).not.toHaveProperty('positionId');
     const options = { ...w.as(person.userId), ifMatch: await revision(person), idempotencyKey: randomUUID(), body };
     const created = await w.json<Business>(await api.request('POST', path, options), 201);
     expect(await payload(created.id)).toMatchObject({
@@ -166,6 +167,22 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
       { clock: w.clock },
     );
     expect(await payload(created.id)).toMatchObject({ status: 'effective', record: { fields: { positionId: null } } });
+    const effective = await payload(created.id);
+    expect(
+      (
+        await w.request(w.hr.id, 'PATCH', `${BASE}/records/${created.id}`, {
+          ifMatch: effective.revision,
+          body: { fields: { positionId: originalPosition } },
+        })
+      ).status,
+    ).toBe(400);
+    await w.json(
+      await w.request(w.hr.id, 'PATCH', `${BASE}/records/${created.id}`, {
+        ifMatch: effective.revision,
+        body: { fields: { positionId: targetPosition.toUpperCase() } },
+      }),
+    );
+    expect(await payload(created.id)).toMatchObject({ record: { fields: { positionId: targetPosition } } });
     w.setNow('2026-10-01T01:00:00Z');
   });
 
@@ -254,6 +271,18 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     expect(await payload(created.id)).toMatchObject({ fields: { positionId: targetPosition } });
     await w.json(await w.taskAction(task.assigneeUserId!, task.id, 'approve', view.revision));
     expect(await payload(created.id)).toMatchObject({ fields: { positionId: targetPosition }, status: 'approved' });
+    w.setNow(`${date}T01:00:00Z`);
+    await runEmploymentActivations(
+      database().db,
+      { commandId: randomUUID(), actorUserId: w.hr.id },
+      { tenantId: w.tenant.id },
+      { clock: w.clock },
+    );
+    expect(await payload(created.id)).toMatchObject({
+      status: 'effective',
+      record: { fields: { positionId: targetPosition } },
+    });
+    w.setNow('2026-10-01T01:00:00Z');
   });
 
   it('AC-TRF-54 他人越界与解除本人绑定后重放均拒绝，不泄漏原职位', async () => {

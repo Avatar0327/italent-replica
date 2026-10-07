@@ -30,6 +30,7 @@ export const text = {
   partTime: '兼职调整',
   partTimeHint: '暂不支持调整兼职。',
   unknown: '操作结果待确认，请刷新我的申请核对后再操作。操作编号：',
+  positionByHr: '职位由 HR 补充',
   referenceBoundary: '新直线经理可从新部门及其上级链的在职员工中选择；职务、职级和职务序列只读。',
   none: '—',
 } as const;

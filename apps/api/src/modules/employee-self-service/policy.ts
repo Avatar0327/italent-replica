@@ -1,4 +1,3 @@
-import { EMPLOYEE_READONLY_FIELDS } from '../transfer/employee-policy.js';
 import { sql, type Tx } from '@italent/db';
 import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { rowsOf } from '../employment/read-model.js';
@@ -8,7 +7,7 @@ import { loadObjectPermissions } from '../permission/subject.js';
 export const EMPLOYEE_PROFILE_CODE = 'employee_self_service';
 export { EMPLOYEE_READONLY_FIELDS } from '../transfer/employee-policy.js';
 const DEFAULT_EDIT = ['effectiveDate', 'reasonCode', 'departmentId', 'directManagerId'];
-const DEFAULT_READ = [...DEFAULT_EDIT, ...EMPLOYEE_READONLY_FIELDS];
+const DEFAULT_READ = [...DEFAULT_EDIT, 'postId', 'levelId', 'sequenceId'];
 export const PROTOCOL_FIELDS = [
   'id',
   'employeeId',
