@@ -3,7 +3,7 @@
 "stats": {
 "merged": 47,
 "open": 8,
-"dec": 234,
+"dec": 239,
 "ev": "19/102"
 },
 "tasks": {
@@ -654,7 +654,7 @@
 "F-026": {
 "n": "非严格控编下重叠调入超编时提示（R1 验收 OBS-03，违反 AC-EST-02）",
 "p": "R1-T09",
-"s": "review",
+"s": "active",
 "dev": "Codex",
 "rev": "Codex",
 "pr": [
@@ -670,7 +670,7 @@
 "p": "R1-T07",
 "s": "review",
 "dev": "Codex",
-"rev": "Codex",
+"rev": "Opus",
 "note": "Codex 开发（GPT-6.1 Sol，Ultra，DEC-233 已投递）；DEC-233 本 PR 补两个只读接口；DEC-229；F-025 发现复刻前端缺审批中心页面",
 "pr": [
 97
@@ -694,7 +694,9 @@
 "note": "待你定开发方（总编排会问）；DEC-232（D-061，Q-M0-101）",
 "pr": [
 99
-]
+],
+"dev": "Codex",
+"rev": "Opus"
 },
 "F-011": {
 "n": "新建职位 / 改所属组织按整段校验组织停用",
@@ -756,27 +758,31 @@
 "n": "首审 3 P2（改期跨过转正；待入职记录混用当前任职；删除审计用了初始状态）；第二轮修改中，含 DEC-231（转正记录禁止删除，有意差异）、DEC-234（实习生人员状态照原站：实习转正按入职处理默认正式，存量实习生回填为正式）、迁移顺延到 0061；排在 #83 之后合并"
 },
 "96": {
-"s": "review",
-"r": 1,
-"n": "Codex 开发（Astra High）；f3a76cd，已发起 astra 首审但 90 分钟无结论，已请总编排确认"
+"s": "active",
+"r": 2,
+"n": "首审 2 P2（区间分段漏了占编时机版本边界；任职编辑绕过超编确认）；第二轮修改中，下一轮 Opus 5.5 High 审"
 },
 "98": {
 "s": "review",
 "r": 1,
-"n": "Codex 开发（Astra High）；a62eab5，已发起 astra 首审但 80 分钟无结论，已请总编排确认"
+"n": "Codex-Astra 开发；astra High 首审可以合并；按 DEC-235 合并前做 Sol Ultra 最终复查"
 },
 "97": {
 "s": "review",
 "r": 1,
-"n": "Codex 开发（GPT-6.1 Sol Ultra）；已开出，待审（按新规则用 astra Ultra）"
+"n": "Codex-Sol（Sol Ultra）开发；停下后首轮 Opus 5.5 High 审"
 },
 "99": {
 "s": "review",
 "r": 1,
-"n": "已开出；开发方待总编排确认"
+"n": "Codex-Sol（Sol High）开发；停下后首轮 Opus 5.5 High 审"
 }
 },
 "log": [
+[
+"10-07",
+"DEC-235～239 审查与流程整包登记（派发规则 §7）；#98 F-028 astra 首审可以合并，待 Sol Ultra 最终复查；#96 F-026 首审 2 P2 进入第二轮"
+],
 [
 "10-07",
 "审查规则改为模型错开（Opus→Sol Ultra、Fable→astra Ultra、Astra→Opus），合并前复查用 astra Ultra；默认决策规则生效；进度窗口启用 GitHub 自动监控；F-027 开出 #97、F-029 开出 #99"
