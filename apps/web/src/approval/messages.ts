@@ -82,7 +82,7 @@ export const tabLabels: Readonly<Record<ApprovalTab, string>> = {
 export const actionLabels: Readonly<Record<ApprovalAction, string>> = {
   approve: '同意',
   disagree: '不同意',
-  reject: '驳回',
+  reject: '驳回到发起人',
   transfer: '转交',
   addSign: '加签',
   cc: '抄送',

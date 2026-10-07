@@ -83,18 +83,18 @@ export async function listInstances(
   }));
 }
 
-/** DEC-233：已处理不等于参与；沿用经理已办日志语义，范围在 SQL 分页之前过滤。 */
+/** DEC-242：本人处理事件即收录；与经理已处理同口径，不用当前业务范围过滤本人历史。 */
 export async function listProcessedInstances(
   tx: Tx,
   tenantId: string,
   userId: string,
-  scope: SQL,
   businessId: string | undefined,
   page: Page,
 ) {
   const rows = rowsOf(
-    await tx.execute(sql`SELECT i.* FROM approval_instances i
-    WHERE i.tenant_id=${tenantId} AND ${scope}
+    await tx.execute(sql`SELECT i.id,i.title,i.status,i.approval_type,i.business_id,
+      i.current_node_key,i.revision,i.created_at
+    FROM approval_instances i WHERE i.tenant_id=${tenantId}
       AND EXISTS (SELECT 1 FROM approval_instance_logs l
         WHERE l.tenant_id=i.tenant_id AND l.instance_id=i.id AND l.actor_user_id=${userId}::uuid
           AND l.event IN ('approve','reject','disagree','transfer'))

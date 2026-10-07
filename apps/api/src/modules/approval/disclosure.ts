@@ -7,6 +7,7 @@
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  NODE_ADD_SIGN_TYPES,
   blindReviewFields,
   disclosedFieldNames,
   hasExit,
@@ -215,6 +216,11 @@ export function detailView(
     fields.push('originalEffectiveDate', 'actualEffectiveDate');
   const names = new Map(version.nodes.map((candidate) => [candidate.key, candidate.name]));
   const originals = data.showOriginals && snapshot.originals ? { originals: pick(snapshot.originals, fields) } : {};
+  const actions = [
+    ...new Set(actionsFor(data, userId, blindReviewFields(snapshot.changedFields, viewable).length > 0)),
+  ];
+  const ownTask = data.allTasks.find((task) => task.status === 'pending' && task.assigneeUserId === userId);
+  const actionNode = version.nodes.find((candidate) => candidate.key === ownTask?.nodeKey);
   return {
     id: instance.id,
     status: instance.status,
@@ -244,7 +250,12 @@ export function detailView(
     recordsHidden: hidden,
     commentNotice: COMMENT_NOTICE,
     form: { nodeKey: node?.key ?? null, values: pick(snapshot.values, fields), ...originals, ...editing },
-    actions: [...new Set(actionsFor(data, userId, blindReviewFields(snapshot.changedFields, viewable).length > 0))],
+    // 只披露本人可行动节点的加签选项，复用既有节点类型规则，不暴露流程配置（DEC-057 / DEC-144）。
+    addSignTypes:
+      actions.includes('addSign') && actionNode
+        ? NODE_ADD_SIGN_TYPES[isCountersign(actionNode) ? 'countersign' : 'single']
+        : [],
+    actions,
   };
 }
 

@@ -100,9 +100,10 @@ describe('AC-APV-UI-02 / 03：租户时区、驳回文案与绑定节点加签�
     expect(host.querySelector('.approval-log time')?.textContent).toBe('2026-10-08 00:34:56 Asia/Shanghai');
   });
   it('租户采用有夏令时的时区时按事件日期换算，不能依赖浏览器时区', async () => {
-    current = detail({ timezone: 'America/New_York' });
+    current = detail({ timezone: 'America/New_York', completedAt: '2026-12-07T12:34:56.000Z' });
     await mount();
     expect(host.querySelector('.approval-summary')?.textContent).toContain('2026-10-07 08:34:56 America/New_York');
+    expect(host.querySelector('.approval-summary')?.textContent).toContain('2026-12-07 07:34:56 America/New_York');
   });
   it('驳回动作按钮使用原站文案 驳回到发起人', async () => {
     await mount();

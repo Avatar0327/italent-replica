@@ -68,6 +68,15 @@ export function requireUuid(value: string): string {
 export function permissionFailure(error: unknown) {
   return error instanceof ApprovalApiError && [401, 403, 404].includes(error.status);
 }
+export function revisionConflict(error: unknown): error is ApprovalApiError {
+  return (
+    error instanceof ApprovalApiError &&
+    error.status === 409 &&
+    (error.code === 'REVISION_CONFLICT' ||
+      error.reason === 'APPROVAL_BUSINESS_CHANGED' ||
+      error.reason === 'APPROVAL_CONCURRENT_CONFLICT')
+  );
+}
 export function unknownResult(error: unknown) {
   if (!(error instanceof ApprovalApiError)) return true;
   return error.reason === 'RESULT_UNKNOWN' || (error.status >= 500 && error.reason !== 'STORAGE_UNWRITABLE');

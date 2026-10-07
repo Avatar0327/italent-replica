@@ -1,13 +1,30 @@
+import { isValidTimeZone } from '@italent/domain';
 import { useEffect, useRef, useState } from 'react';
 import { approvalRequest, PAGE_SIZE, permissionFailure, requestMessage } from './api.js';
 import { displayValue } from './fields.js';
 import { eventLabels, statusLabels, text } from './messages.js';
 import type { ApprovalDetail, ApprovalLog, ApprovalPageResult, ApprovalTask } from './types.js';
 
-export function formatUtc(value: string | null | undefined) {
+/** 事件存 UTC，显示按接口租户时区；旧响应缺少时区时明确退回 UTC，不读取浏览器时区。 */
+export function formatApprovalTime(value: string | null | undefined, tenantTimezone = 'UTC') {
   if (!value) return text.none;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? text.none : `${date.toISOString().replace('T', ' ').slice(0, 19)} UTC`;
+  if (Number.isNaN(date.getTime())) return text.none;
+  const timeZone = isValidTimeZone(tenantTimezone) ? tenantTimezone : 'UTC';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? '';
+  const day = ['year', 'month', 'day'].map(part).join('-');
+  const time = ['hour', 'minute', 'second'].map(part).join(':');
+  return `${day} ${time} ${timeZone}`;
 }
 function useApprovalHistory({
   tenantId,
@@ -70,6 +87,7 @@ export function ApprovalHistory(props: { tenantId: string; detail: ApprovalDetai
       <h3>{text.progress}</h3>
       {hidden ? <p>{text.hidden}</p> : <p className="approval-hint">{text.currentWindow}</p>}
       <TaskRows
+        timezone={detail.timezone}
         tasks={
           hidden
             ? detail.tasks.filter((task) => ['pending', 'queued', 'add_signed'].includes(task.status))
@@ -81,7 +99,7 @@ export function ApprovalHistory(props: { tenantId: string; detail: ApprovalDetai
       {!hidden && (
         <>
           <h3>{text.logs}</h3>
-          <LogRows logs={kind === 'logs' ? (rows as readonly ApprovalLog[]) : detail.logs} />
+          <LogRows logs={kind === 'logs' ? (rows as readonly ApprovalLog[]) : detail.logs} timezone={detail.timezone} />
           <div className="approval-button-row">
             <button type="button" disabled={busy} onClick={() => void load('tasks', 1)}>
               {text.tasksHistory}
@@ -114,7 +132,7 @@ export function ApprovalHistory(props: { tenantId: string; detail: ApprovalDetai
     </section>
   );
 }
-function TaskRows({ tasks }: { tasks: readonly ApprovalTask[] }) {
+function TaskRows({ tasks, timezone }: { tasks: readonly ApprovalTask[]; timezone?: string }) {
   return (
     <ol className="approval-progress">
       {tasks.map((task) => (
@@ -124,19 +142,20 @@ function TaskRows({ tasks }: { tasks: readonly ApprovalTask[] }) {
           {task.origin && eventLabels[task.origin] && <span> · {eventLabels[task.origin]}</span>}
           {task.isExceptionAdmin && <span className="approval-badge">{text.exceptionAdmin}</span>}
           {task.adminSelfTransfer && <span className="approval-badge">{text.adminSelf}</span>}
-          {task.actedAt && <time>{formatUtc(task.actedAt)}</time>}
+          {task.actedAt && <time>{formatApprovalTime(task.actedAt, timezone)}</time>}
           {task.comment && <p>{task.comment}</p>}
         </li>
       ))}
     </ol>
   );
 }
-function LogRows({ logs }: { logs: readonly ApprovalLog[] }) {
+function LogRows({ logs, timezone }: { logs: readonly ApprovalLog[]; timezone?: string }) {
   return (
     <ol className="approval-log">
       {logs.map((log, index) => (
         <li key={log.id ?? log.seq ?? index}>
-          <strong>{eventLabels[log.event] ?? log.event}</strong> <time>{formatUtc(log.createdAt)}</time>
+          <strong>{eventLabels[log.event] ?? log.event}</strong>{' '}
+          <time>{formatApprovalTime(log.createdAt, timezone)}</time>
           {log.nodeKey && <span> · {log.nodeKey}</span>}
           {log.adminSelfTransfer && <span className="approval-badge">{text.adminSelf}</span>}
           <dl>

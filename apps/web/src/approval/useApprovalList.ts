@@ -9,20 +9,18 @@ export function useApprovalList(tenantId: string, initialTab: ApprovalTab, initi
   const [filter, setFilter] = useState(initialBusinessId);
   const [businessId, setBusinessId] = useState(initialBusinessId);
   const [items, setItems] = useState<readonly ApprovalListItem[]>([]);
+  const [timezone, setTimezone] = useState('UTC');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
   const [blocked, setBlocked] = useState(false);
-  const [denied, setDenied] = useState(false);
   const clear = useCallback(() => {
     setItems([]);
     setBlocked(true);
-    setDenied(true);
     setError(text.forbidden);
   }, []);
   const refresh = useCallback(() => {
     setBlocked(false);
-    setDenied(false);
     setVersion((value) => value + 1);
   }, []);
   useEffect(() => {
@@ -36,7 +34,10 @@ export function useApprovalList(tenantId: string, initialTab: ApprovalTab, initi
     setError('');
     void loadApprovalList(tenantId, tab, page, businessId, controller.signal)
       .then((result) => {
-        if (!controller.signal.aborted) setItems(result.items);
+        if (!controller.signal.aborted) {
+          setItems(result.items);
+          setTimezone(result.timezone ?? 'UTC');
+        }
       })
       .catch((failure: unknown) => {
         if (controller.signal.aborted) return;
@@ -52,7 +53,6 @@ export function useApprovalList(tenantId: string, initialTab: ApprovalTab, initi
     setTab(next);
     setPage(1);
     setBlocked(false);
-    setDenied(false);
   }
   function applyFilter() {
     try {
@@ -68,9 +68,10 @@ export function useApprovalList(tenantId: string, initialTab: ApprovalTab, initi
     page,
     filter,
     items,
+    timezone,
     loading,
     error,
-    denied,
+    denied: blocked,
     setFilter,
     setPage,
     selectTab,

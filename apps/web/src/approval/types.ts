@@ -1,4 +1,5 @@
 export type ApprovalTab = 'todos' | 'processed' | 'initiated';
+export type ApprovalSignType = 'before' | 'after' | 'parallel';
 export type ApprovalAction =
   | 'approve'
   | 'disagree'
@@ -57,6 +58,8 @@ export interface ApprovalDetail {
   readonly round?: number;
   readonly taskId: string | null;
   readonly retrieveTaskId: string | null;
+  readonly timezone?: string;
+  readonly addSignTypes?: readonly ApprovalSignType[];
   readonly createdAt?: string | null;
   readonly completedAt?: string | null;
   readonly tasks: readonly ApprovalTask[];
@@ -72,6 +75,7 @@ export interface ApprovalDetail {
   readonly actions: readonly string[];
 }
 export interface ApprovalPageResult<T> {
+  readonly timezone?: string;
   readonly items: readonly T[];
   readonly page?: number;
   readonly pageSize?: number;
@@ -81,7 +85,7 @@ export interface ActionDraft {
   readonly comment: string;
   readonly toUserId: string;
   readonly userIds: string;
-  readonly signType: 'before' | 'after' | 'parallel';
+  readonly signType: ApprovalSignType;
   readonly taskId: string;
   readonly adminKind: 'reassign' | 'jump';
   readonly nodeKey: string;

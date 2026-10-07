@@ -7,7 +7,6 @@ import { rowsOf } from './context.js';
 import { disclosedFields, type DetailData } from './disclosure.js';
 import { authorizeInTransaction } from '../permission/module-access.js';
 import { PRESET_FIELD_NAMES } from '../employment/types.js';
-import { currentReadScope } from './read-access.js';
 import { addSignLink, isOwnRequest } from './rules.js';
 
 export interface NodeEditing {
@@ -73,12 +72,7 @@ export async function readNodeEditing(
     (node.editMode === 'with_approve' && !hasExit(node, 'approve'))
   )
     return NO_NODE_EDITING;
-  const scope = await currentReadScope(tx, deps, ctx);
-  const [covered] = rowsOf(
-    await tx.execute(sql`SELECT 1 FROM approval_instances i
-    WHERE i.tenant_id=${ctx.tenantId} AND i.id=${instance.id}::uuid AND ${scope}`),
-  );
-  if (!covered) return NO_NODE_EDITING;
+  // DEC-242：节点编辑与既有 edit 写入口一致，按本人任务与当前字段权限判断，不另加业务数据范围。
   const supported = await employmentEditingFields(tx, ctx, data);
   const disclosed = disclosedFields(data, ctx.userId, viewable);
   const authorize = authorizeInTransaction(deps.authorize, tx);

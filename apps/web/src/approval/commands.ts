@@ -2,8 +2,18 @@ import { MAX_ADD_SIGNERS } from '@italent/domain';
 import { requireUuid } from './api.js';
 import { buildFieldEdits } from './fields.js';
 import { text } from './messages.js';
-import type { ActionDraft, ApprovalAction, ApprovalCommand, ApprovalDetail, FieldDraft } from './types.js';
+import type {
+  ActionDraft,
+  ApprovalAction,
+  ApprovalCommand,
+  ApprovalDetail,
+  FieldDraft,
+  ApprovalSignType,
+} from './types.js';
 
+export function allowedAddSignTypes(detail: ApprovalDetail): readonly ApprovalSignType[] {
+  return detail.addSignTypes ?? ['before', 'after'];
+}
 export function initialActionDraft(detail: ApprovalDetail): ActionDraft {
   return {
     comment: '',
@@ -35,6 +45,8 @@ export function makeApprovalCommand(
   fieldDraft: FieldDraft,
 ): ApprovalCommand {
   if (!detail.actions.includes(action)) throw new Error(text.actionUnavailable);
+  if (action === 'addSign' && !allowedAddSignTypes(detail).includes(draft.signType))
+    throw new Error(text.actionUnavailable);
   const comment = draft.comment.trim() || null;
   const editsAllowed = action === 'edit' || (action === 'approve' && detail.form.editMode === 'with_approve');
   const fields = editsAllowed ? buildFieldEdits(detail.form.values, fieldDraft, detail.form.editableFields) : {};

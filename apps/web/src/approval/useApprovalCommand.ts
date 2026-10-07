@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApprovalApiError, executeApprovalCommand, permissionFailure, requestMessage, unknownResult } from './api.js';
+import { executeApprovalCommand, permissionFailure, requestMessage, revisionConflict, unknownResult } from './api.js';
 import { initialActionDraft, makeApprovalCommand } from './commands.js';
 import { editableLeaf, fieldLeaves } from './fields.js';
 import { text } from './messages.js';
@@ -66,6 +66,10 @@ function useMounted() {
   }, []);
   return active;
 }
+function recoveryMessage(mode: 'normal' | 'conflict' | 'unknown', readable: boolean, reason: string) {
+  if (mode === 'unknown') return readable ? text.unknown : text.unknownUnread;
+  return `${reason}${readable ? text.conflict : text.conflictUnread}`;
+}
 function useCommandRecovery(props: RecoveryProps) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -74,12 +78,18 @@ function useCommandRecovery(props: RecoveryProps) {
   const [pending, setPending] = useState<ApprovalCommand | null>(null);
   const active = useMounted();
   const busyRef = useRef(false);
-  function denied() {
-    props.reset();
+  const conflictReason = useRef('');
+  function resetMode(message = '') {
+    conflictReason.current = '';
     setPending(null);
     setMode('normal');
+    setChecked(false);
+    setMessage(message);
+  }
+  function denied() {
+    props.reset();
+    resetMode(text.forbidden);
     props.onDenied();
-    setMessage(text.forbidden);
   }
   async function recheck(nextMode = mode) {
     try {
@@ -87,12 +97,12 @@ function useCommandRecovery(props: RecoveryProps) {
       if (!active.current) return;
       props.prune(fresh);
       setChecked(true);
-      setMessage(nextMode === 'unknown' ? text.unknown : text.conflict);
+      setMessage(recoveryMessage(nextMode, true, conflictReason.current));
     } catch (failure) {
       if (!active.current) return;
       if (permissionFailure(failure)) return denied();
       setChecked(false);
-      setMessage(nextMode === 'unknown' ? text.unknownUnread : text.conflictUnread);
+      setMessage(recoveryMessage(nextMode, false, conflictReason.current));
     }
   }
   async function execute(command: ApprovalCommand) {
@@ -104,14 +114,13 @@ function useCommandRecovery(props: RecoveryProps) {
       if (!active.current) return;
       props.onResult(result);
       props.reset();
-      setPending(null);
-      setMode('normal');
-      setMessage(text.succeeded);
+      resetMode(text.succeeded);
       props.onDone();
     } catch (failure) {
       if (!active.current) return;
       if (permissionFailure(failure)) denied();
-      else if (failure instanceof ApprovalApiError && failure.status === 409) {
+      else if (revisionConflict(failure)) {
+        conflictReason.current = failure.reason === 'APPROVAL_CONCURRENT_CONFLICT' ? `${requestMessage(failure)} ` : '';
         setPending(null);
         setMode('conflict');
         setChecked(false);
@@ -121,7 +130,7 @@ function useCommandRecovery(props: RecoveryProps) {
         setMode('unknown');
         setChecked(false);
         await recheck('unknown');
-      } else setMessage(requestMessage(failure));
+      } else resetMode(requestMessage(failure));
     } finally {
       busyRef.current = false;
       if (active.current) setBusy(false);
@@ -136,10 +145,6 @@ function useCommandRecovery(props: RecoveryProps) {
     pending,
     execute,
     recheck,
-    resetMode: () => {
-      setMode('normal');
-      setMessage('');
-      setPending(null);
-    },
+    resetMode,
   };
 }

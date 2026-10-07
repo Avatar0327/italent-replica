@@ -76,7 +76,6 @@ import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
 import { discloseHandover, handoverExceptionAdmin, takeOverOnDeactivation, type HandoverResult } from './handover.js';
 import { listAdminLogs, listInstances, listNotifications, listProcessedInstances, listTodos } from './queries.js';
-import { currentReadScope } from './read-access.js';
 import { readNodeEditing } from './editing.js';
 import { simulateByObject, simulateProcess } from './simulation.js';
 import {
@@ -184,7 +183,7 @@ async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
   const data = await withTenant(deps.db, ctx.tenantId, (tx) => readDetail(tx, ctx, instanceId, viewer));
   const viewable = await detailViewable(deps, ctx, data);
   const editing = await withTenant(deps.db, ctx.tenantId, (tx) => readNodeEditing(tx, deps, ctx, data, viewable));
-  return c.json(detailView(data, ctx.userId, viewable, editing));
+  return c.json({ ...detailView(data, ctx.userId, viewable, editing), timezone: ctx.timezone });
 }
 
 /** DEC-101 / X-19：完整任务与日志历史分页读取（最新在前），权限与披露同详情。 */
@@ -211,7 +210,7 @@ async function respondHistory(c: C, deps: TenantRouteDeps, kind: 'tasks' | 'logs
       : hidden
         ? []
         : (rows as LogView[]).map((log) => projectLog(log, disclosed));
-  return c.json({ items, recordsHidden: hidden, page: page.page, pageSize: page.pageSize });
+  return c.json({ items, recordsHidden: hidden, page: page.page, pageSize: page.pageSize, timezone: ctx.timezone });
 }
 
 async function respondOutcome(c: C, deps: TenantRouteDeps, result: CommandResult) {
@@ -409,7 +408,7 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = readCtx(c, deps);
     const page = pageQuery(c);
     const items = await withTenant(deps.db, ctx.tenantId, (tx) => listTodos(tx, ctx.tenantId, ctx.userId, page));
-    return c.json({ items, page: page.page, pageSize: page.pageSize });
+    return c.json({ items, page: page.page, pageSize: page.pageSize, timezone: ctx.timezone });
   });
   router.get('/notifications', async (c) => {
     const ctx = readCtx(c, deps);
@@ -431,13 +430,12 @@ function registerReadRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           tx,
           ctx.tenantId,
           ctx.userId,
-          await currentReadScope(tx, deps, ctx),
           businessId ? canonicalId(businessId) : undefined,
           page,
         );
       return listInstances(tx, ctx.tenantId, ctx.userId, { role, ...(businessId ? { businessId } : {}) }, page);
     });
-    return c.json({ items, page: page.page, pageSize: page.pageSize });
+    return c.json({ items, page: page.page, pageSize: page.pageSize, timezone: ctx.timezone });
   });
   router.get('/instances/:id', (c) => respondDetail(c, deps, uuidParam(c)));
   router.get('/instances/:id/tasks', (c) => respondHistory(c, deps, 'tasks'));

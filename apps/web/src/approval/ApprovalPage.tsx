@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { SelfServiceShell } from '../self-service/shared/SelfServiceShell.js';
 import { ApprovalActions } from './ApprovalActions.js';
 import { ApprovalFields } from './ApprovalFields.js';
-import { ApprovalHistory, formatUtc } from './ApprovalHistory.js';
+import { ApprovalHistory, formatApprovalTime } from './ApprovalHistory.js';
 import { PAGE_SIZE, requireUuid, requestMessage } from './api.js';
 import { statusLabels, tabLabels, text } from './messages.js';
 import type { ApprovalDetail, ApprovalListItem, ApprovalTab } from './types.js';
@@ -70,7 +70,11 @@ function TenantWorkspace({ tenantId, instanceId, initialTab = 'todos', businessI
           tenantId={tenantId}
           instanceId={selectedId}
           onClose={() => setSelectedId(null)}
-          onDenied={list.clear}
+          onDenied={() => {
+            setSelectedId(null);
+            setLocked(false);
+            setError(text.forbidden);
+          }}
           onDone={list.refresh}
           onLockChange={setLocked}
         />
@@ -132,7 +136,7 @@ function ApprovalList({
         </p>
       )}
       {!list.loading && !list.items.length && <p>{text.empty}</p>}
-      <ApprovalRows items={list.items} onSelect={onSelect} disabled={locked} />
+      <ApprovalRows items={list.items} timezone={list.timezone} onSelect={onSelect} disabled={locked} />
       <div className="approval-button-row">
         <button type="button" disabled={list.loading || list.page === 1} onClick={() => list.setPage(list.page - 1)}>
           {text.previous}
@@ -156,10 +160,12 @@ function ApprovalList({
 }
 function ApprovalRows({
   items,
+  timezone,
   onSelect,
   disabled,
 }: {
   items: readonly ApprovalListItem[];
+  timezone: string;
   onSelect: (item: ApprovalListItem) => void;
   disabled: boolean;
 }) {
@@ -173,7 +179,7 @@ function ApprovalRows({
               {item.nodeName ?? item.currentNodeKey ?? text.none}
               {item.status && ` · ${statusLabels[item.status] ?? item.status}`}
             </span>
-            {item.createdAt && <time>{formatUtc(item.createdAt)}</time>}
+            {item.createdAt && <time>{formatApprovalTime(item.createdAt, timezone)}</time>}
           </button>
         </li>
       ))}
@@ -252,12 +258,12 @@ function DetailContents(
         </div>
         <div>
           <dt>{text.createdAt}</dt>
-          <dd>{formatUtc(props.detail.createdAt)}</dd>
+          <dd>{formatApprovalTime(props.detail.createdAt, props.detail.timezone)}</dd>
         </div>
         {props.detail.completedAt && (
           <div>
             <dt>{text.completedAt}</dt>
-            <dd>{formatUtc(props.detail.completedAt)}</dd>
+            <dd>{formatApprovalTime(props.detail.completedAt, props.detail.timezone)}</dd>
           </div>
         )}
       </dl>

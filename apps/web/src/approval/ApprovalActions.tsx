@@ -1,3 +1,4 @@
+import { allowedAddSignTypes } from './commands.js';
 import { actionLabels, text } from './messages.js';
 import { editableLeaf, editableValue, fieldLeaves } from './fields.js';
 import type { ActionDraft, ApprovalAction, ApprovalDetail } from './types.js';
@@ -130,9 +131,11 @@ function ActionInputs({ detail, command }: { detail: ApprovalDetail; command: Ac
             value={command.draft.signType}
             onChange={(event) => update({ signType: event.target.value as ActionDraft['signType'] })}
           >
-            <option value="before">{text.before}</option>
-            <option value="after">{text.after}</option>
-            <option value="parallel">{text.parallel}</option>
+            {allowedAddSignTypes(detail).map((type) => (
+              <option key={type} value={type}>
+                {text[type]}
+              </option>
+            ))}
           </select>
           <span className="approval-hint">{text.signHint}</span>
         </label>

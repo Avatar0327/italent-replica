@@ -178,7 +178,7 @@ describe('AC-APV-UI-01 审批中心列表', () => {
 });
 
 describe('AC-APV-UI-02 最小字段披露、进度与历史', () => {
-  it('仅展示接口返回的嵌套值和原值，不补拉档案、业务单、流程配置；UTC展示事件时间', async () => {
+  it('仅展示接口返回的嵌套值和原值，不补拉档案、业务单、流程配置；旧响应缺少租户时区时明确展示UTC事件时间', async () => {
     current = detail({
       form: {
         values: { contractFields: { number: '合成合同编号' }, effectiveDate: '2026-11-01' },
@@ -215,7 +215,7 @@ describe('AC-APV-UI-02 最小字段披露、进度与历史', () => {
     current = detail({ recordsHidden: true, actions: ['transfer'], logs: [] });
     await mount();
     expect(host.textContent).toContain('审批记录已隐藏');
-    for (const value of ['查看任务历史', '查看日志历史', '同意', '驳回', '管理员干预'])
+    for (const value of ['查看任务历史', '查看日志历史', '同意', '驳回到发起人', '管理员干预'])
       expect(Array.from(host.querySelectorAll('button')).some((button) => button.textContent === value)).toBe(false);
     expect(calls.some(({ url }) => /\/(tasks|logs)\?/.test(url))).toBe(false);
   });
@@ -251,7 +251,7 @@ describe('AC-APV-UI-02 最小字段披露、进度与历史', () => {
 const actionCases = [
   { action: 'approve', label: '同意', path: `/tasks/${TASK}/approve`, payload: { comment: '合成意见' } },
   { action: 'disagree', label: '不同意', path: `/tasks/${TASK}/disagree`, payload: { comment: '合成意见' } },
-  { action: 'reject', label: '驳回', path: `/tasks/${TASK}/reject`, payload: { comment: '合成意见' } },
+  { action: 'reject', label: '驳回到发起人', path: `/tasks/${TASK}/reject`, payload: { comment: '合成意见' } },
   {
     action: 'transfer',
     label: '转交',
@@ -342,7 +342,7 @@ describe('AC-APV-UI-03 既有动作与账号输入', () => {
         ? response({ error: { code: 'VALIDATION_FAILED', message: '驳回意见必填' } }, 400)
         : undefined;
     await mount();
-    await click('驳回');
+    await click('驳回到发起人');
     await click('确认提交');
     expect(host.textContent).toContain('驳回意见必填');
     expect(host.textContent).toContain('合成调动申请');
