@@ -837,8 +837,10 @@
 },
 "F-039": {
 "n": "权限框架强制（路由声明 + CI 反向测试）",
-"s": "todo",
-"note": "DEC-285；C 档先出设计；Fable High → Astra Ultra；先告警 + 白名单再强制"
+"s": "active",
+"note": "DEC-285；C 档先出设计；Fable High → Astra Ultra；先告警 + 白名单再强制",
+"dev": "Claude Fable 5.1",
+"rev": "Astra Ultra"
 }
 },
 "prs": {
@@ -1962,7 +1964,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 13:32",
+"liveUpdated": "10-07 13:34",
 "chains": [
 {
 "g": "exit",
@@ -2279,9 +2281,12 @@
 "id": "F-039",
 "g": "r1fix",
 "o": 3,
-"k": "todo",
+"k": "run",
 "n": "权限框架强制",
-"u": "已核对，待开会话"
+"u": "已核对，待开会话",
+"fable": "1",
+"seg": "ev:n ds:a1 dev:w rev:w mg:w",
+"now": "设计中（先告警 + 白名单，再强制）"
 }
 ]
 }
