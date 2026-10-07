@@ -1,0 +1,287 @@
+import { randomUUID } from 'node:crypto';
+import { runEmploymentActivations } from '@italent/api';
+import { sql, withTenant } from '@italent/db';
+import { MODULE_OBJECTS } from '@italent/domain';
+import { useTestDb } from '@italent/testkit';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { approvalWorld, permissionAdmin, type InstanceView, type Person } from './AC-APV-support.js';
+import { createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
+import { tenantApi } from './support/tenant-api.js';
+
+const database = useTestDb();
+const BASE = '/api/tenant/employment';
+const SELF = '/api/tenant/self-service/transfer';
+const date = '2026-10-19';
+let w: Awaited<ReturnType<typeof approvalWorld>>;
+let api: ReturnType<typeof tenantApi>;
+let admin: Awaited<ReturnType<typeof permissionAdmin>>;
+let source: string;
+let target: string;
+let postId: string;
+let originalPosition: string;
+let targetPosition: string;
+
+interface Business {
+  id: string;
+  revision: number;
+  status: string;
+  fields: { positionId: string | null; departmentId: string };
+}
+async function actor(label: string, positionEditable = false) {
+  const person = await w.person(label, source, { positionId: originalPosition, postId });
+  const profile = await createProfile(admin, `position-${randomUUID()}`);
+  const def = MODULE_OBJECTS.employmentRecord;
+  await w.json(
+    await setObjectPermission(
+      admin,
+      profile,
+      {
+        dataOperations: { create: true, update: true, delete: false },
+        fields: def.fields.map((field) => ({
+          fieldCode: field.code,
+          view: true,
+          edit: !field.system && (field.code !== 'positionId' || positionEditable),
+        })),
+        buttons: def.buttons
+          .filter((button) => !button.code.startsWith('Transfer.') || button.code === 'Transfer.Self')
+          .map((button) => ({ buttonCode: button.code, level: button.level })),
+      },
+      def.code,
+    ),
+  );
+  await makeGrantable(admin, [profile.id]);
+  await w.json(await grant(admin, person.userId, profile.id), 201);
+  await w.json(
+    await admin.api.request('PUT', `/api/tenant/permission/scopes/${person.userId}/TenantBase`, {
+      ...admin.asAdmin,
+      ifMatch: 0,
+      body: { kind: 'org_range', orgRanges: [source, target].map((orgId) => ({ orgId, includeDescendants: false })) },
+    }),
+  );
+  return person;
+}
+async function revision(person: Person) {
+  const profile = await w.json<{ employee: { revision: number } }>(
+    await api.request('GET', '/api/tenant/self-service/profile', w.as(person.userId)),
+  );
+  return profile.employee.revision;
+}
+function legacyBody(departmentId: string, submit = false, fields: object = {}) {
+  return {
+    initiator: 'employee',
+    transferTypeCode: 'in_department',
+    formId: 'TenantBase.TransferMultiFormView',
+    effectiveDate: date,
+    mode: 'application',
+    submit,
+    fields: { departmentId, ...fields },
+  };
+}
+async function draft(person: Person, departmentId = source) {
+  return w.json<Business>(
+    await api.request('POST', `${BASE}/transfers/employees/${person.employeeId.toUpperCase()}`, {
+      ...w.as(person.userId),
+      ifMatch: await revision(person),
+      body: legacyBody(departmentId.toUpperCase()),
+    }),
+    201,
+  );
+}
+async function payload(id: string) {
+  return w.business(id);
+}
+async function approve(person: Person, id: string) {
+  const view = await w.instanceOf(id, person.userId);
+  const task = w.pending(view)[0]!;
+  return w.json<InstanceView>(await w.taskAction(task.assigneeUserId!, task.id, 'approve', view.revision));
+}
+
+beforeAll(async () => {
+  w = await approvalWorld(database().db, 'self-position');
+  api = tenantApi(database().db, { authorize: undefined, clock: w.clock });
+  admin = await permissionAdmin(w);
+  source = await w.org('合成职位原部门');
+  target = await w.org('合成职位新部门');
+  postId = (
+    await w.json<{ id: string }>(
+      await w.request(w.hr.id, 'POST', '/api/tenant/job/posts', {
+        ifMatch: 0,
+        body: { code: 'SELF_POST', name: '合成职务', startDate: '2020-01-01' },
+      }),
+      201,
+    )
+  ).id;
+  async function position(orgId: string) {
+    return (
+      await w.json<{ id: string }>(
+        await w.request(w.hr.id, 'POST', '/api/tenant/job/positions', {
+          ifMatch: 0,
+          body: { code: `P-${randomUUID()}`, name: '合成职位', startDate: '2020-01-01', orgId, postId },
+        }),
+        201,
+      )
+    ).id;
+  }
+  originalPosition = await position(source);
+  targetPosition = await position(target);
+  await w.publishedProcess({
+    nodes: [
+      {
+        key: 'review',
+        approver: 'owner',
+        formFields: ['departmentId', 'positionId'],
+        editableFields: ['positionId'],
+        editMode: 'separate',
+      },
+    ],
+  });
+});
+
+describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
+  it.each(['legacy', 'self-service'])('AC-TRF-51 占职位员工跨部门预览、提交及到期生效：%s', async (entry) => {
+    const person = await actor(`合成跨部门-${entry}`);
+    const body =
+      entry === 'legacy'
+        ? legacyBody(target.toUpperCase(), true)
+        : { effectiveDate: date, fields: { departmentId: target.toUpperCase() } };
+    const path = entry === 'legacy' ? `${BASE}/transfers/employees/${person.employeeId.toUpperCase()}` : SELF;
+    const preview = await w.json<{ fields: object; form: { fieldModes: Record<string, string> } }>(
+      await api.request('POST', `${path}/preview`, { ...w.as(person.userId), body }),
+    );
+    expect(preview.form.fieldModes['preset:positionId']).not.toBe('editable');
+    const options = { ...w.as(person.userId), ifMatch: await revision(person), idempotencyKey: randomUUID(), body };
+    const created = await w.json<Business>(await api.request('POST', path, options), 201);
+    expect(await payload(created.id)).toMatchObject({
+      status: 'in_review',
+      fields: { departmentId: target, positionId: null },
+    });
+    expect(await w.json(await api.request('POST', path, options), 201)).toEqual(created);
+    await approve(person, created.id);
+    expect(await payload(created.id)).toMatchObject({ status: 'approved', record: null });
+    w.setNow(`${date}T01:00:00Z`);
+    await runEmploymentActivations(
+      database().db,
+      { commandId: randomUUID(), actorUserId: w.hr.id },
+      { tenantId: w.tenant.id },
+      { clock: w.clock },
+    );
+    expect(await payload(created.id)).toMatchObject({ status: 'effective', record: { fields: { positionId: null } } });
+    w.setNow('2026-10-01T01:00:00Z');
+  });
+
+  it('AC-TRF-51 同部门保留；草稿换部门、改期、换回原部门、提交与重放一致', async () => {
+    const person = await actor('合成草稿位置');
+    let saved = await draft(person);
+    expect(await payload(saved.id)).toMatchObject({ fields: { positionId: originalPosition, postId } });
+    const patch = async (body: object) => {
+      const options = { ...w.as(person.userId), ifMatch: saved.revision, idempotencyKey: randomUUID(), body };
+      const path = `${BASE}/businesses/${saved.id.toUpperCase()}`;
+      saved = await w.json<Business>(await api.request('PATCH', path, options));
+      expect(await w.json(await api.request('PATCH', path, options))).toEqual(saved);
+    };
+    await patch({ fields: { departmentId: target.toUpperCase() } });
+    expect(await payload(saved.id)).toMatchObject({ fields: { positionId: null, departmentId: target } });
+    await patch({ effectiveDate: '2026-10-20' });
+    expect(await payload(saved.id)).toMatchObject({ fields: { positionId: null } });
+    await patch({ fields: { departmentId: source.toUpperCase() } });
+    expect(await payload(saved.id)).toMatchObject({ fields: { positionId: originalPosition, postId } });
+    const options = { ...w.as(person.userId), ifMatch: saved.revision, idempotencyKey: randomUUID(), body: {} };
+    const path = `${BASE}/businesses/${saved.id}/submit`;
+    const submitted = await w.json<Business>(await api.request('POST', path, options));
+    expect(await w.json(await api.request('POST', path, options))).toEqual(submitted);
+    expect(await payload(saved.id)).toMatchObject({
+      fields: { positionId: originalPosition, postId },
+      status: 'in_review',
+    });
+  });
+
+  it.each([null, 'original', 'target'])('AC-TRF-52 本人显式 positionId=%s 即使有编辑权也拒绝', async (value) => {
+    const person = await actor(`合成显式-${value}`, true);
+    const fields = {
+      positionId: value === null ? null : (value === 'original' ? originalPosition : targetPosition).toUpperCase(),
+    };
+    for (const preview of [false, true]) {
+      expect(
+        (
+          await api.request('POST', `${SELF}${preview ? '/preview' : ''}`, {
+            ...w.as(person.userId),
+            ifMatch: await revision(person),
+            body: { effectiveDate: date, fields: { departmentId: target, ...fields } },
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await api.request('POST', `${BASE}/transfers/employees/${person.employeeId}${preview ? '/preview' : ''}`, {
+            ...w.as(person.userId),
+            ifMatch: await revision(person),
+            body: legacyBody(target, false, fields),
+          })
+        ).status,
+      ).toBe(403);
+    }
+    const saved = await draft(person);
+    expect(
+      (
+        await api.request('PATCH', `${BASE}/businesses/${saved.id}`, {
+          ...w.as(person.userId),
+          ifMatch: saved.revision,
+          body: { fields },
+        })
+      ).status,
+    ).toBe(403);
+    expect(await payload(saved.id)).toMatchObject({ revision: saved.revision });
+  });
+
+  it('AC-TRF-53 HR 审批中补目标部门职位，错误部门拒绝，正确值通过后保留', async () => {
+    const person = await actor('合成HR补职位');
+    const created = await w.json<Business>(
+      await api.request('POST', SELF, {
+        ...w.as(person.userId),
+        ifMatch: await revision(person),
+        body: { effectiveDate: date, fields: { departmentId: target } },
+      }),
+      201,
+    );
+    let view = await w.instanceOf(created.id, person.userId);
+    const task = w.pending(view)[0]!;
+    const edit = (positionId: string) =>
+      w.taskAction(task.assigneeUserId!, task.id, 'edit', view.revision, {
+        fields: { positionId: positionId.toUpperCase() },
+      });
+    expect((await edit(originalPosition)).status).toBe(400);
+    view = await w.json<InstanceView>(await edit(targetPosition));
+    expect(await payload(created.id)).toMatchObject({ fields: { positionId: targetPosition } });
+    await w.json(await w.taskAction(task.assigneeUserId!, task.id, 'approve', view.revision));
+    expect(await payload(created.id)).toMatchObject({ fields: { positionId: targetPosition }, status: 'approved' });
+  });
+
+  it('AC-TRF-54 他人越界与解除本人绑定后重放均拒绝，不泄漏原职位', async () => {
+    const person = await actor('合成撤权重放');
+    const other = await actor('合成范围外员工');
+    expect(
+      (
+        await api.request('POST', `${BASE}/transfers/employees/${other.employeeId}/preview`, {
+          ...w.as(person.userId),
+          body: legacyBody(target),
+        })
+      ).status,
+    ).toBe(403);
+    const options = {
+      ...w.as(person.userId),
+      ifMatch: await revision(person),
+      idempotencyKey: randomUUID(),
+      body: { effectiveDate: date, fields: { departmentId: target.toUpperCase() } },
+    };
+    const saved = await w.json<Business>(await api.request('POST', SELF, options), 201);
+    await withTenant(database().db, w.tenant.id, (tx) =>
+      tx.execute(sql`
+      DELETE FROM permission_user_person_links WHERE tenant_id=${w.tenant.id} AND user_id=${person.userId}::uuid
+    `),
+    );
+    const denied = await api.request('POST', SELF, options);
+    expect(denied.status).toBe(403);
+    expect(await denied.text()).not.toContain(originalPosition);
+    expect(await payload(saved.id)).toMatchObject({ fields: { positionId: null } });
+  });
+});
