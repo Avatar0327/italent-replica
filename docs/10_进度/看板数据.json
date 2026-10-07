@@ -1872,7 +1872,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 11:40",
+"liveUpdated": "10-07 11:42",
 "chains": [
 {
 "g": "exit",
@@ -1969,10 +1969,11 @@
 "k": "run",
 "pr": 97,
 "n": "审批中心前端",
-"seg": "ev:n ds:n dev:a4 rev:d3 mg:w",
-"now": "第 4 轮修改",
+"seg": "ev:n ds:n dev:d4 rev:w4 mg:w",
+"now": "第 4 轮已推送，待发起审查",
 "fable": "1",
-"up": "10-07 第 4 轮调到 Max"
+"up": "10-07 第 4 轮调到 Max",
+"need": "1"
 },
 {
 "id": "F-029",
@@ -2053,7 +2054,7 @@
 "k": "run",
 "n": "人才标准与指标库",
 "seg": "ev:d ds:n dev:d1 rev:a1 mg:w",
-"now": "Sol Ultra 第 1 轮审查中；CI 红 1 例（PGlite 排序）待修",
+"now": "第 1 轮出结论，待读取",
 "pr": 106
 },
 {
@@ -2064,7 +2065,8 @@
 "n": "360 度评估（PR-A）",
 "seg": "ev:d ds:n dev:d1 rev:a1 mg:w",
 "now": "PR-A 第 1 轮出结论，待读取",
-"pr": 107
+"pr": 107,
+"need": "1"
 },
 {
 "id": "R3-T02",
