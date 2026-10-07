@@ -668,7 +668,7 @@
 "F-027": {
 "n": "审批中心前端：我的待办 / 已办、单据详情（按节点盲审裁剪）、同意 / 驳回 / 转交 / 加签 / 催办",
 "p": "R1-T07",
-"s": "review",
+"s": "active",
 "dev": "Codex",
 "rev": "Opus",
 "note": "Codex 开发（GPT-6.1 Sol，Ultra，DEC-233 已投递）；DEC-233 本 PR 补两个只读接口；DEC-229；F-025 发现复刻前端缺审批中心页面",
@@ -714,7 +714,7 @@
 "83": {
 "s": "review",
 "r": 7,
-"n": "Fable 第 7 轮已推送 3b2bb4b（CI 绿），待 astra Ultra 审查",
+"n": "astra Ultra 第 7 轮审查中（3b2bb4b）",
 "h": [
 [
 "首审",
@@ -745,7 +745,7 @@
 "91": {
 "s": "review",
 "r": 4,
-"n": "第四轮已推送 eb437f7（CI 绿），待 Sol High 审查"
+"n": "Sol High 第 4 轮审查中（eb437f7）"
 },
 "93": {
 "s": "review",
@@ -755,17 +755,17 @@
 "96": {
 "s": "active",
 "r": 3,
-"n": "第三轮已推送 914ef35（CI 绿），待 Opus 第 3 轮（「F-026 审查」续审）→ Sol Ultra 最终复查；Opus 漏报校准第 1 例"
+"n": "Opus 第 3 轮审查中（「F-026 审查」续审，D 档穷举占编入口）→ Sol Ultra 最终复查"
 },
 "97": {
-"s": "review",
+"s": "active",
 "r": 2,
-"n": "DEC-242 返工已推送 1a29bf8（CI 绿），待 astra Ultra 审查"
+"n": "#92 合并后与 main 冲突（SelfServiceShell.tsx），Codex 合并 main 中；之后 astra Ultra"
 },
 "99": {
 "s": "review",
 "r": 2,
-"n": "ba683a2 CI 绿，待 astra Ultra（DEC-242② 合并复审与最终复查）"
+"n": "排队待审：需你批准前台切换到 GPT-6 Astra Ultra"
 }
 },
 "log": [
