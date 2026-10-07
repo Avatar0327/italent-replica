@@ -2,6 +2,7 @@
 
 > 状态：已实现（2026-10-07，F-030 开发会话）。方案稿写于 #91 合并前；#91 合并（cb823b6）后按本方案实现，
 > 实现中与方案稿不同之处见第 9 节。第 7 节的待定事项已由用户按建议默认值确定（DEC-271），见第 7 节末尾。
+> 第 4 轮起按 DEC-282 补充“收窄支持面、不支持即报错”，支持的写法清单见第 10 节。
 
 ## 1. 要解决的问题
 
@@ -112,10 +113,11 @@ PR #91 的 `scripts/ac-coverage.mjs` 从源码静态推测注册了哪些用例�
 
 报告**同时列出运行时状态和人工核对后状态**，两者不同的行一眼可见。
 
-**以下情况一律列为问题（problems），`--check` 失败**：
+**以下情况一律列为问题（problems），`--check` 失败**（完整清单见第 10 节）：
 
-- 收集错误：文件加载失败、语法错误、`describe` 回调抛错；
+- 收集错误：文件加载失败、语法错误、`describe` 回调抛错，以及 Vitest 拒绝生效的 `.only`，一律原样报出；
 - 出现 `only`：会让同文件其他用例被 Vitest 标成 skip，统计失真；
+- 身份无法确认的注册（第 9 节第 3、4 轮）；
 - 映射失效；
 - 配置里的编号区间写错。
 
@@ -229,7 +231,7 @@ pnpm ac:coverage --stage all --check        # 各阶段合并
 
 **① 用例身份与跨档 join**
 - 身份 = 文件路径 + 完整名称路径 + 注册位置（`includeTaskLocation` 的行:列），全部取自 Vitest 任务对象。
-- 各档按身份 join，**不再按注册顺序或序号配对**。认不出同一个用例时，列为 `identity` 问题，`--check` 失败；涉及的每个注册只计入它所在的那一档。
+- 各档按身份 join，**不再按注册顺序或序号配对**。认不出同一个用例时，列为 `identity` 问题，`--check` 失败；涉及的每个注册只计入它所在的那一档（第 4 轮起改为不计入覆盖，见下）。
 - 认不出的情况有三种：
 
 | 情况 | 判定 | 夹具 |
@@ -248,9 +250,9 @@ pnpm ac:coverage --stage all --check        # 各阶段合并
 - 有效状态：用例自身与全部祖先 suite 在收集完成后的 `mode` 都是 run，且 `result().state` / `state()` 未被 Vitest 标为 skipped / failed，才算运行。
   - 必须连祖先一起读：实测 `describe.skip > describe.skip > it` 与 `describe.todo > describe.skip > it` 收集后叶子仍是 `mode=run`、`state=pending`，与普通可运行用例完全相同；只读叶子会让第 1 轮 P2-1 回归。
   - 这里只做“全部为 run”的合取，不解释 only / skip / todo 的语义。
-- only 门禁：独立遍历所有已注册的 suite 与用例。以下两种情况一律报 `only` 问题，不依赖祖先是否被跳过：
+- only 门禁：独立遍历所有已注册的 suite 与用例。以下两种情况一律报问题，不依赖祖先是否被跳过：
   - `mode` 为 only（挂在 skip / todo 祖先下面、Vitest 不再检查的残留 only）；
-  - Vitest 以 `Unexpected .only` 拒绝（allowOnly: false）。
+  - Vitest 以 `Unexpected .only` 拒绝（allowOnly: false）。第 4 轮起不再按这段报错文本认成 only，而是原样作为收集错误报出，见下。
 - ③ 人工改判覆盖的编号若有用例带 only，另报“人工改判不能放行 .only”。收集统计新增 `only` 计数，均为整数。
 
 **测试**：
@@ -259,3 +261,57 @@ pnpm ac:coverage --stage all --check        # 各阶段合并
 - 真值统一以 `allowOnly=false` 运行。
 
 实测（本容器）：两档并行收集 `tests/acceptance` 约 4 分钟；工具自身测试 52 项约 36 秒。
+
+### 第 4 轮：DEC-282 补充，收窄支持面（#102 第 3 轮审查 3 个 P2 + P3）
+
+原则（总编排定，DEC-282 补充）：不支持的写法一律报错，不合并，也不推断；工具要么算对，要么报错，不悄悄给出错误的覆盖结果。
+
+| 项 | 第 3 轮做法的缺口 | 第 4 轮做法 | 夹具 |
+|---|---|---|---|
+| P2-1 模块收集错误 | 按消息是否含 `.only` 过滤错误，模块顶层抛出 `Error('configuration for .only failed')` 被吞掉，`--check` 退出 0 | 收集错误一律原样报 `collect`，不按消息文本分辨来源；only 门禁只认 `mode` 仍为 only 的注册。生效的 `.only` 被 Vitest 拒绝时 `mode` 已改回 run、挂一条错误，这条错误作为收集错误报出（带用例标题与位置）。两条路径都让 `--check` 失败 | `module-errors`（顶层抛错、describe 回调抛出与 Vitest 拒绝 only 逐字相同的消息）；`only/o10`、`o09`、`problems/only` |
+| P2-2 位置未知 | 只检查叶子位置；祖先位置 `[null]` 与 `[null]` 被当成相同 | 叶子或任一祖先 suite 位置未知（null / 缺失），即报 `identity`（位置未知）；顶层用例（祖先为空）照常 | `unknown-location`：19 单层未知祖先、22 两档不同 async 父注册函数、29 用例位置未知、31 已知外层 + 未知中间层；`control` 对照 |
+| P2-3 跨 project 同档重复 | 只在单个 module 内查重；join 时取同档第一条，第二条注册被丢掉 | worker 在整档范围（跨 module）统计父套件 / 用例重复；join 层再按“同档注册数 > 1”查重；注册来自不同 project 时另报“跨 project 同名” | `projects`：33 两个具名 project 收集同一文件（含父套件下的用例）；`only-a` 单 project 对照 |
+| 身份无法确认的注册如何计 | 各自计入所在档 | **不计入覆盖**：汇总与明细的计数都不含；在 `identity` 问题里逐条列出（文件、名称路径、位置、档、project、祖先位置、状态），JSON 的 `problems[].registrations` 同样给出。收集统计另列“身份无法确认（不计入覆盖）”与“收集错误”数 | 以上全部；原有 identity / pairing 夹具的断言同步改为“列出、不计入” |
+| P3 旧缓存 | `--from-collected` 读旧格式时读不到旧的 `pairing` 问题，退出码从 1 变 0 | 采集结果带 `formatVersion`；版本不符（含无版本号的旧缓存）拒绝，退出码 2，提示重新采集 | CLI 测试 |
+
+受影响的原有结论：`variants/pairing` 的 AC-DEMO-117 只在 PG 档注册的那条运行用例不再计入，剩下两档都 skip 的那条，判“仅 skip / todo”（同时报 identity）；AC-DEMO-116 只在 PG 档注册的 skip 不再计入。
+
+## 10. 支持的写法清单（采集契约，DEC-282 补充）
+
+清单内的写法工具算对；清单外的写法一律报错（`--check` 退出 1）。夹具都在 `tests/tooling/fixtures/ac-coverage/`。
+
+**支持的写法**
+
+| 写法 | 工具行为 | 夹具 |
+|---|---|---|
+| 普通 `it` / `test`，任意层 `describe` 嵌套；`test.describe` / `test.suite`、别名、对象属性上的 `it`、动态 `import('vitest')`、回调里注册 | 按 Vitest 实际注册与格式化后的标题计；编号 = 各级标题与自身标题逐段提取的并集 | `variants`：functions、suites、nested、dynamic |
+| `it.each` / `test.each` / `describe.each` / `.for` / `concurrent.each`，各行格式化后的标题互不相同（`%s`、`$name`、`$0`、`%#` 等） | 每行一个用例，按格式化后的标题计；`%d` 得 `NaN` 等也按真实标题计 | `variants/format`、`variants/suites`、`identity/stable` |
+| 循环、函数返回的表、展开、拼接、模板表、被修改的常量表、getter、原型属性 | 按运行时最终值计 | `variants`：functions、mutated |
+| `skip` / `todo` / `skipIf` / `runIf` / `{ skip: true }` / `{ todo: true }` / 无回调用例，任意层祖先 skip / todo | 不计覆盖，判“仅 skip / todo” | `variants`：skip-todo、nested |
+| 条件执行：两档都注册、只在一档运行（如 `runIf(TEST_DATABASE_URL)`） | 计覆盖，标出所在档 | `variants/conditional`、`identity/stable` |
+| 空 each 表、从未执行的注册回调 | 不注册，判未覆盖 | `variants/empty` |
+| 被导入的 helper 在测试文件里**同步**调用注册 | 位置记在调用行，不同调用行可区分 | `identity/stable`（第 2 轮夹具 14） |
+| 多个 Vitest project，每个文件只属于一个 project | 照常计，记录所属 project | `projects/only-a` |
+| AC 编号：单号、`~` / `～` 区间、`/` 并列、多段编号（`AC-PRM-FW-01`）、数字开头的模块（`AC-360-*`） | 见 §3.1，按完整编号聚合 | `variants/range`、`multiseg` |
+| 人工层：`notes` 改判（含分类与原因）、`evidence` 按完整标题层级映射 | 改判放行缺口；映射须恰好命中一个运行用例 | `variants/evidence`、`clean` |
+
+**清单外，一律报错**
+
+| 写法 | 报错 | 夹具 |
+|---|---|---|
+| 任何 `.only`：挂在 skip / todo 祖先下的，或已被 Vitest 拒绝的 | `only`（`mode` 仍为 only）或 `collect`（Vitest 的拒绝原样报出） | `only/o01～o10`、`problems/only` |
+| 模块加载、`describe` 回调抛错（不论消息内容） | `collect` | `module-errors`、`problems/throws` |
+| 同一档内“文件 + 名称路径 + 位置”相同的注册：循环 / helper 在同一点注册同名用例、each 各行标题相同、同名父套件、同一文件被多个 project 收集 | `identity`（身份冲突 / 跨 project 同名），逐条列出、不计入覆盖 | `identity` 各夹具、`identity3`、`projects/same-file` |
+| 用例或任一祖先 suite 注册位置未知（async 注册：`setTimeout` 等之后才调用 `describe` / `it`） | `identity`（位置未知），同上 | `unknown-location/u19`、`u22`、`u29`、`u31` |
+| 只在部分档注册（如 `if (env) it(…)`）、各档祖先 suite 位置不同 | `identity`（各档对不上），同上 | `variants/pairing`、`identity/parent-per-profile` |
+| 标题里的非法编号写法：逆序区间、位数不对、空段、连写、小写、区间终点写全称 | `title` | `variants/range`、`multiseg` |
+| 配置范围认不出、逆序、通配匹配不到定义 | `config` | `variants/REVERSE`、`multiseg/BAD` |
+| 人工映射找不到、命中多个、指向未运行的用例；备注缺分类或不在范围 | `evidence` / `note` | `variants/evidence`、`problems` |
+| 测试引用了定义来源里不存在的编号 | 未定义引用 | `variants` |
+| `--from-collected` 的收集结果格式版本不符 | 退出码 2 | CLI 测试 |
+
+**已知边界（按公开字段计，不推断；不是静默误算）**
+
+- 用例身份只看公开字段（文件、名称路径、位置）。each 各行只靠 `%#` 等行号区分时，两档参数不同也视为同一用例：覆盖按标题里的编号计，结论不受影响，但不能据此证明两档跑的是同一组参数（第 3 轮报告夹具 08 / 16 / 32）。需要区分时把稳定的行标识写进标题。
+- 用例体内的 `ctx.skip()` 与用例失败，收集阶段看不到，由 CI 全绿兜底（全仓 `ctx.skip()` 0 处）。
+- 第 3 轮列出的存量问题转 F 任务，本轮不改：空范围配置可零项通过、非数组 `evidence.names` 回退、映射文件只认 basename。
