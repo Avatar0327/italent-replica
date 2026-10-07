@@ -82,8 +82,10 @@ export const VALUES = [1, 2, 3, 3.5, 4, 4.3, 5] as const;
 export async function world360(db: Db, label: string, options: { authorize?: Authorizer } = {}) {
   const session = await employmentSession(db, label);
   let now = new Date('2026-10-01T01:00:00Z');
-  const api = tenantApi(db, { clock: () => now, ...(options.authorize ? { authorize: options.authorize } : {}) });
   const admin = session.user.id;
+  // 业务权限全部放行；企业设置的“管理员”管理能力只给租户首位成员（企业管理员），其他成员没有
+  const enterprise: Authorizer = (request) => request.action !== 'admin.admin_manage' || request.userId === admin;
+  const api = tenantApi(db, { clock: () => now, authorize: options.authorize ?? enterprise });
   const tenantId = session.tenant.id;
 
   const as =
@@ -119,7 +121,7 @@ export async function world360(db: Db, label: string, options: { authorize?: Aut
     return ok<PersonView>(
       request('POST', '/people', {
         ifMatch: 0,
-        body: { name, email: `${name}-${randomUUID().slice(0, 8)}@example.com`, ...extra },
+        body: { name, email: `p-${randomUUID().slice(0, 8)}@example.com`, ...extra },
       }),
       201,
     );

@@ -23,6 +23,7 @@ import { registerApprovalRoutes } from './modules/approval/routes.js';
 import { createPlatformRouter } from './modules/platform/routes.js';
 import { auditRequestContext } from './audit/request-context.js';
 import { registerAuditRoutes } from './audit/routes.js';
+import { registerSurvey360Routes } from './modules/survey360/routes.js';
 import { captureCommandFailures } from './audit/capture.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
@@ -37,6 +38,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerContractRoutes, // R2-T06 合同协议
   registerEmployeeSelfServiceRoutes, // R1-T13 员工自助，仅本人
   registerAuditRoutes, // R1-T16 审计日志
+  registerSurvey360Routes, // R3-T03 360 度评估（含 /api/survey360/link 链接作答）
 ];
 
 export interface AppDeps {

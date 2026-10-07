@@ -44,7 +44,9 @@ async function orgWorld(w: World360) {
 
 async function setup(w: World360) {
   const o = await orgWorld(w);
-  const q = await w.enableQuestionnaire(await w.keyBehavior());
+  const q = await w.enableQuestionnaire(
+    await w.keyBehavior({ self: 0, superior: 5, peer: 3, subordinate: 2, customer: 1 }),
+  );
   const activity = await w.activity();
   const object = await w.object(activity.id, o.personOf(o.ids.E), [q.id]);
   return { ...o, q, activity, object };

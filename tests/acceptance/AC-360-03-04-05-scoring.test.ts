@@ -15,7 +15,7 @@ async function scenario(w: World360, raters: { role: string; picks: [string, str
   const object = await w.object(activity.id, target.id, [q.id]);
   const relations = [];
   for (const [index, rater] of raters.entries()) {
-    const person = await w.person(`评价者${index}`);
+    const person = rater.role === 'self' ? target : await w.person(`评价者${index}`);
     relations.push({ person, relation: await w.appraiser(activity.id, object.id, person.id, rater.role), rater });
   }
   await w.transition(activity.id, 'enable');

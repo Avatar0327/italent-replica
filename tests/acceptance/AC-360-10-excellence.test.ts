@@ -55,4 +55,38 @@ describe('AC-360-10 优秀率控制', () => {
       expect(((await w.answer(token, relation.id, q, ['v5', 'v5'])) as Response).status).toBe(200);
     }
   });
+
+  it('并发提交：两份同时达到优秀线的答卷只有一份能过上限（按评价者串行判定）', async () => {
+    const w = await world360(testDb().db, 'x10c');
+    const q = await w.enableQuestionnaire(
+      await w.keyBehavior({ self: 0, superior: 1 }, { excellence: { linePercent: 90, maxRate: 20 } }),
+    );
+    const activity = await w.activity({ form: 'multiple' });
+    const boss = await w.person('评价者');
+    const relations = [];
+    for (let i = 0; i < 5; i++) {
+      const object = await w.object(activity.id, (await w.person(`对象${i}`)).id, [q.id]);
+      relations.push(await w.appraiser(activity.id, object.id, boss.id, 'superior'));
+    }
+    await w.transition(activity.id, 'enable');
+    const token = await w.token(activity.id, boss.id);
+    const call = w.link(token);
+    const options = q.scales[0]!.options;
+    const full = q.questions.map((question) => ({ itemId: question.id, optionId: options.at(-2)!.id }));
+    const saved: { revision: number }[] = [];
+    for (const relation of relations.slice(0, 2))
+      saved.push(
+        await w.ok<{ revision: number }>(
+          call('PUT', `/tasks/${relation.id}/questionnaires/${q.id}`, { ifMatch: 0, body: { answers: full } }),
+        ),
+      );
+    const results = await Promise.all(
+      relations
+        .slice(0, 2)
+        .map((relation, i) =>
+          call('POST', `/tasks/${relation.id}/questionnaires/${q.id}/submit`, { ifMatch: saved[i]!.revision }),
+        ),
+    );
+    expect(results.map((r) => r.status).sort()).toEqual([200, 400]);
+  });
 });

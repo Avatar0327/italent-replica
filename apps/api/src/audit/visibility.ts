@@ -42,6 +42,7 @@ import {
 } from '../modules/permission/module-access.js';
 import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
+import { survey360AuditScope } from '../modules/survey360/access.js';
 import {
   ExactAuditFields,
   resolveLinkageAudit,
@@ -194,7 +195,41 @@ export const APPROVAL_FLOW_FIELDS = [
   'origin',
 ];
 
+/**
+ * R3-T03：360 日志按 360 管理员身份与活动授权裁剪（DEC-027，不走组织员工对象权限）。活动内对象的写入
+ * 一律在 after 里带 activityId；权限对象编码只作占位，查看规则全部由 resolve 给出。
+ */
+const SURVEY360_OBJECT = 'Survey360';
+const survey360Rules: readonly Rule[] = [
+  {
+    types: [
+      'survey360-activity',
+      'survey360-object',
+      'survey360-relation',
+      'survey360-confirmation',
+      'survey360-sheet',
+    ],
+    objectCode: SURVEY360_OBJECT,
+    resolve: survey360AuditScope('activity'),
+    visible: (_scope, row, _viewer, { extra }) =>
+      extra ? sql`COALESCE(${row.after}->>'activityId', '') IN (${extra})` : sql`false`,
+  },
+  {
+    types: ['survey360-admin', 'survey360-person', 'survey360-role', 'survey360-sync-conflict'],
+    objectCode: SURVEY360_OBJECT,
+    resolve: survey360AuditScope('system'),
+    visible: (_scope, _row, _viewer, { extra }) => extra ?? sql`false`,
+  },
+  {
+    types: ['survey360-questionnaire'],
+    objectCode: SURVEY360_OBJECT,
+    resolve: survey360AuditScope('any'),
+    visible: (_scope, _row, _viewer, { extra }) => extra ?? sql`false`,
+  },
+];
+
 const RULES: readonly Rule[] = [
+  ...survey360Rules,
   {
     // DEC-216 / F-021：任务回执只走逐条归属的操作日志，不公开 outbox 请求/完成载荷里的全量目标数组。
     types: ['job-sequence-sync'],

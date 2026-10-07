@@ -1,0 +1,661 @@
+/**
+ * 评价对象与评价关系（docs/02_业务建模/25 §3.3）：
+ * - 评价对象：手动录入（姓名 + 邮箱）或选已有人员，1–3 个已启用套卷（E3-R3）；一个活动最多 30,000 个（E3-R16）；
+ * - 评价者：每个对象最多 500 个、每个活动最多 50,000 个（E3-R17）；自评的评价者只能是对象本人；
+ * - 按组织架构自动添加：上级 = 直线经理、同事 = 同一直线经理的人、下级 = 直接下属，可设各角色人数上限（E3-R18）；
+ * - 批量导入评价者：整批成功或整批失败；可选“不同步”（DEC-030 ④）；
+ * - 请上级确认（E3-R19）：邀请对象的上级经确认链接设置评价者，确认后前台不可再改，只能管理员后台调整。
+ * 「设置评价者」页常驻不拦截提示（DEC-149，AC-360-16）：不按人数拦截，也不隐藏任何角色。
+ */
+import {
+  and,
+  eq,
+  inArray,
+  sql,
+  survey360Confirmations,
+  survey360ObjectQuestionnaires,
+  survey360Objects,
+  survey360Relations,
+  survey360Roles,
+  type Tx,
+} from '@italent/db';
+import { survey360, tenantLocalDate } from '@italent/domain';
+import type { Hono } from 'hono';
+import { z } from 'zod';
+import type { TenantRouteDeps } from '../../routes.js';
+import type { TenantEnv } from '../../tenant-context.js';
+import { findCurrentRecord } from '../employment/read-model.js';
+import { uuidParam } from '../job/context.js';
+import { type ActivityRow, requireActivity, requireObject } from './access.js';
+import { roleIdOf } from './admins.js';
+import {
+  actor,
+  type Admin,
+  audit360,
+  email,
+  fail,
+  optionalText,
+  read,
+  requireNewObject,
+  requireRevision,
+  rows,
+  type Survey360Context,
+  text,
+  uuid,
+  write,
+  type Writer,
+} from './context.js';
+import { ensureAnswerLink, issueConfirmLink } from './links.js';
+import {
+  createPerson,
+  findPersonByEmail,
+  loadPerson,
+  personForEmployee,
+  personInput,
+  type PersonRow,
+  syncAccess,
+  updatePerson,
+} from './people.js';
+import { loadQuestionnaire, markUsed } from './questionnaires.js';
+
+const LIMITS = survey360.SURVEY360_LIMITS;
+const personRef = { personId: uuid.optional(), person: personInput.optional() };
+
+type RelationRow = typeof survey360Relations.$inferSelect;
+
+export function relationView(row: RelationRow) {
+  return {
+    id: row.id,
+    activityId: row.activityId,
+    objectId: row.objectId,
+    appraiserPersonId: row.appraiserPersonId,
+    roleId: row.roleId,
+    source: row.source,
+    revision: row.revision,
+  };
+}
+
+async function auditRelation(tx: Tx, ctx: Writer, action: string, before: RelationRow | null, after: RelationRow) {
+  await audit360(tx, actor(ctx), {
+    action,
+    objectType: 'survey360-relation',
+    objectId: after.id,
+    before: before ? relationView(before) : null,
+    after: { ...relationView(after), removed: after.removed },
+  });
+}
+
+/** 选已有人员或手动录入（邮箱已存在时复用该人员）。 */
+async function resolvePerson(
+  tx: Tx,
+  ctx: Writer,
+  ref: { personId?: string | undefined; person?: z.infer<typeof personInput> | undefined },
+): Promise<PersonRow> {
+  if (ref.personId) return loadPerson(tx, ref.personId);
+  if (!ref.person) fail('VALIDATION_FAILED', '须选择人员或录入姓名与邮箱', 'PERSON_REQUIRED');
+  return (await findPersonByEmail(tx, ref.person.email)) ?? createPerson(tx, ctx, ref.person);
+}
+
+async function requireQuestionnaires(tx: Tx, ids: readonly string[]): Promise<void> {
+  if (ids.length < 1 || ids.length > LIMITS.questionnairesPerObject)
+    fail('VALIDATION_FAILED', '一个评价对象须选 1～3 个套卷', 'TOO_MANY_QUESTIONNAIRES');
+  if (new Set(ids).size !== ids.length) fail('VALIDATION_FAILED', '套卷重复', 'DUPLICATE_QUESTIONNAIRE');
+  for (const id of ids) {
+    const q = await loadQuestionnaire(tx, id);
+    // E3-R3：只能选“已启用”的套卷（已使用的同样可用）
+    if (q.row.status === 'draft') fail('CONFLICT', '只能选已启用的套卷', 'QUESTIONNAIRE_NOT_ENABLED');
+  }
+}
+
+async function objectQuestionnaires(tx: Tx, objectId: string): Promise<string[]> {
+  return (
+    await tx
+      .select({ id: survey360ObjectQuestionnaires.questionnaireId })
+      .from(survey360ObjectQuestionnaires)
+      .where(eq(survey360ObjectQuestionnaires.objectId, objectId))
+  ).map((r) => r.id);
+}
+
+async function count(tx: Tx, query: ReturnType<typeof sql>): Promise<number> {
+  return rows<{ n: number }>(await tx.execute(query))[0]!.n;
+}
+
+/** 新增一条评价关系（管理员、导入、自动添加、上级确认共用）：角色、自评、上限与重复校验。 */
+export async function addRelation(
+  tx: Tx,
+  ctx: Writer,
+  activity: ActivityRow,
+  objectId: string,
+  appraiser: PersonRow,
+  roleId: string,
+  source: 'manual' | 'import' | 'org' | 'confirm',
+): Promise<RelationRow> {
+  const object = await requireObject(tx, activity.id, objectId);
+  const [role] = await tx.select().from(survey360Roles).where(eq(survey360Roles.id, roleId));
+  if (!role) fail('VALIDATION_FAILED', '评价角色不存在', 'ROLE_NOT_FOUND');
+  const self = role.code === survey360.SELF_ROLE;
+  if (self !== (appraiser.id === object.person_id))
+    fail('VALIDATION_FAILED', '自评的评价者只能是评价对象本人，本人只能作自评', 'SELF_ROLE_MISMATCH');
+  const roles = new Set<string>();
+  for (const id of await objectQuestionnaires(tx, objectId))
+    (await loadQuestionnaire(tx, id)).model.roles.forEach((r) => roles.add(r.roleId));
+  if (!roles.has(roleId)) fail('VALIDATION_FAILED', '评价角色不在评价对象的套卷中', 'ROLE_NOT_IN_QUESTIONNAIRE');
+  const perObject = await count(
+    tx,
+    sql`SELECT count(*)::int AS n FROM survey360_relations WHERE object_id = ${objectId}::uuid AND NOT removed`,
+  );
+  if (perObject >= LIMITS.appraisersPerObject)
+    fail('VALIDATION_FAILED', '一个评价对象最多 500 个评价者', 'TOO_MANY_APPRAISERS');
+  const perActivity = await count(
+    tx,
+    sql`SELECT count(*)::int AS n FROM survey360_relations WHERE activity_id = ${activity.id}::uuid AND NOT removed`,
+  );
+  if (perActivity >= LIMITS.appraisersPerActivity)
+    fail('VALIDATION_FAILED', '一个活动最多 50,000 个评价者', 'TOO_MANY_APPRAISERS');
+  const [existing] = await tx
+    .select({ id: survey360Relations.id })
+    .from(survey360Relations)
+    .where(
+      and(
+        eq(survey360Relations.objectId, objectId),
+        eq(survey360Relations.appraiserPersonId, appraiser.id),
+        eq(survey360Relations.removed, false),
+      ),
+    );
+  if (existing) fail('CONFLICT', '该评价者已在评价关系中', 'RELATION_EXISTS');
+  const [row] = await tx
+    .insert(survey360Relations)
+    .values({
+      tenantId: ctx.tenantId,
+      activityId: activity.id,
+      objectId,
+      appraiserPersonId: appraiser.id,
+      roleId,
+      source,
+    })
+    .returning();
+  // 启用中的活动新加评价者：发放（或沿用）作答链接
+  if (activity.status === 'enabled') await ensureAnswerLink(tx, ctx, activity.id, appraiser);
+  await auditRelation(tx, ctx, 'survey360.relation.create', null, row!);
+  return row!;
+}
+
+export async function removeRelation(tx: Tx, ctx: Writer, relation: RelationRow): Promise<RelationRow> {
+  const [saved] = await tx
+    .update(survey360Relations)
+    .set({ removed: true, revision: relation.revision + 1 })
+    .where(eq(survey360Relations.id, relation.id))
+    .returning();
+  await auditRelation(tx, ctx, 'survey360.relation.remove', relation, saved!);
+  return saved!;
+}
+
+export async function loadRelation(tx: Tx, objectId: string, id: string, lock = false): Promise<RelationRow> {
+  const query = tx
+    .select()
+    .from(survey360Relations)
+    .where(
+      and(
+        eq(survey360Relations.id, id),
+        eq(survey360Relations.objectId, objectId),
+        eq(survey360Relations.removed, false),
+      ),
+    );
+  const [row] = lock ? await query.for('update') : await query;
+  if (!row) fail('NOT_FOUND', '评价关系不存在');
+  return row;
+}
+
+/** 某评价对象的评价者列表与各角色人数（「设置评价者」页）。 */
+export async function appraiserList(tx: Tx, objectId: string) {
+  const items = rows<{
+    id: string;
+    activity_id: string;
+    object_id: string;
+    appraiser_person_id: string;
+    role_id: string;
+    role_name: string;
+    source: string;
+    revision: number;
+    name: string;
+    email: string;
+    employee_id: string | null;
+  }>(
+    await tx.execute(sql`SELECT r.*, ro.name AS role_name, p.name, p.email, p.employee_id FROM survey360_relations r
+      JOIN survey360_roles ro ON ro.tenant_id = r.tenant_id AND ro.id = r.role_id
+      JOIN survey360_people p ON p.tenant_id = r.tenant_id AND p.id = r.appraiser_person_id
+      WHERE r.object_id = ${objectId}::uuid AND NOT r.removed ORDER BY ro.sort, r.created_at, r.id`),
+  ).map((r) => ({
+    id: r.id,
+    activityId: r.activity_id,
+    objectId: r.object_id,
+    appraiserPersonId: r.appraiser_person_id,
+    appraiser: { name: r.name, email: r.email, internal: r.employee_id !== null },
+    roleId: r.role_id,
+    roleName: r.role_name,
+    source: r.source,
+    revision: r.revision,
+  }));
+  const roleCounts: Record<string, number> = {};
+  for (const item of items) roleCounts[item.roleId] = (roleCounts[item.roleId] ?? 0) + 1;
+  return { items, roleCounts, hint: survey360.ANONYMITY_HINT };
+}
+
+const guarded = (id: string) => async (tx: Tx, admin: Admin) => void (await requireActivity(tx, admin, id));
+
+export function registerRelationRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerObjects(module, deps);
+  module.get('/activities/:id/objects/:objectId/appraisers', (c) =>
+    read(c, deps, async (tx, admin) => {
+      const activity = await requireActivity(tx, admin, uuidParam(c));
+      const object = await requireObject(tx, activity.id, uuidParam(c, 'objectId'));
+      return appraiserList(tx, object.id);
+    }),
+  );
+  module.post('/activities/:id/objects/:objectId/appraisers', (c) => {
+    const id = uuidParam(c);
+    const objectId = uuidParam(c, 'objectId');
+    return write(
+      c,
+      deps,
+      z.strictObject({ ...personRef, roleId: uuid }),
+      async (tx, ctx, input) => {
+        requireNewObject(ctx);
+        const activity = await requireActivity(tx, ctx.admin, id, true);
+        await requireObject(tx, id, objectId);
+        const appraiser = await resolvePerson(tx, ctx, input);
+        return relationView(await addRelation(tx, ctx, activity, objectId, appraiser, input.roleId, 'manual'));
+      },
+      { guard: guarded(id), status: 201 },
+    );
+  });
+  module.delete('/activities/:id/objects/:objectId/appraisers/:relationId', (c) => {
+    const id = uuidParam(c);
+    const objectId = uuidParam(c, 'objectId');
+    const relationId = uuidParam(c, 'relationId');
+    return write(
+      c,
+      deps,
+      z.object({}).passthrough(),
+      async (tx, ctx) => {
+        await requireActivity(tx, ctx.admin, id, true);
+        await requireObject(tx, id, objectId);
+        const relation = await loadRelation(tx, objectId, relationId, true);
+        requireRevision(relation.revision, ctx.expectedRevision);
+        return relationView(await removeRelation(tx, ctx, relation));
+      },
+      { guard: guarded(id) },
+    );
+  });
+  module.post('/activities/:id/objects/:objectId/appraisers/auto', (c) => {
+    const id = uuidParam(c);
+    const objectId = uuidParam(c, 'objectId');
+    const ORG_ROLES = ['superior', 'peer', 'subordinate'] as const;
+    return write(
+      c,
+      deps,
+      z.strictObject({
+        roles: z.array(z.enum(ORG_ROLES)).min(1).max(3),
+        limits: z.partialRecord(z.enum(ORG_ROLES), z.int().min(0).max(LIMITS.appraisersPerObject)).optional(),
+      }),
+      async (tx, ctx, input) => {
+        requireNewObject(ctx);
+        const activity = await requireActivity(tx, ctx.admin, id, true);
+        const object = await requireObject(tx, id, objectId);
+        return autoAdd(tx, deps, ctx, activity, object, input);
+      },
+      { guard: guarded(id) },
+    );
+  });
+  registerImport(module, deps);
+  registerConfirmationInvite(module, deps);
+}
+
+function registerObjects(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerObjectCreation(module, deps);
+  registerObjectChanges(module, deps);
+}
+
+function registerObjectCreation(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  module.get('/activities/:id/objects', (c) =>
+    read(c, deps, async (tx, admin) => {
+      const activity = await requireActivity(tx, admin, uuidParam(c));
+      const items = rows<{
+        id: string;
+        person_id: string;
+        name: string;
+        email: string;
+        questionnaire_ids: string[] | null;
+        revision: number;
+      }>(
+        await tx.execute(sql`SELECT o.id, o.person_id, o.revision, p.name, p.email,
+            (SELECT array_agg(oq.questionnaire_id ORDER BY oq.id) FROM survey360_object_questionnaires oq
+              WHERE oq.tenant_id = o.tenant_id AND oq.object_id = o.id) AS questionnaire_ids
+          FROM survey360_objects o JOIN survey360_people p ON p.tenant_id = o.tenant_id AND p.id = o.person_id
+          WHERE o.activity_id = ${activity.id}::uuid AND NOT o.removed ORDER BY o.sort, o.created_at, o.id`),
+      );
+      return {
+        items: items.map((o) => ({
+          id: o.id,
+          personId: o.person_id,
+          person: { name: o.name, email: o.email },
+          questionnaireIds: (o.questionnaire_ids ?? []).sort(),
+          revision: o.revision,
+        })),
+      };
+    }),
+  );
+  module.post('/activities/:id/objects', (c) => {
+    const id = uuidParam(c);
+    return write(
+      c,
+      deps,
+      z.strictObject({ ...personRef, questionnaireIds: z.array(uuid).max(10) }),
+      async (tx, ctx, input) => {
+        requireNewObject(ctx);
+        const activity = await requireActivity(tx, ctx.admin, id, true);
+        const count = rows<{ n: number }>(
+          await tx.execute(
+            sql`SELECT count(*)::int AS n FROM survey360_objects WHERE activity_id = ${id}::uuid AND NOT removed`,
+          ),
+        )[0]!.n;
+        if (count >= LIMITS.objectsPerActivity)
+          fail('VALIDATION_FAILED', '一个活动最多 30,000 个评价对象', 'TOO_MANY_OBJECTS');
+        await requireQuestionnaires(tx, input.questionnaireIds);
+        const person = await resolvePerson(tx, ctx, input);
+        const [row] = await tx
+          .insert(survey360Objects)
+          .values({ tenantId: ctx.tenantId, activityId: id, personId: person.id, sort: count })
+          .returning();
+        await tx
+          .insert(survey360ObjectQuestionnaires)
+          .values(
+            input.questionnaireIds.map((q) => ({ tenantId: ctx.tenantId, objectId: row!.id, questionnaireId: q })),
+          );
+        if (activity.status === 'enabled') await markUsed(tx, input.questionnaireIds);
+        const view = objectView(row!, input.questionnaireIds);
+        await audit360(tx, actor(ctx), {
+          action: 'survey360.object.create',
+          objectType: 'survey360-object',
+          objectId: row!.id,
+          before: null,
+          after: { ...view, activityId: id },
+        });
+        return view;
+      },
+      { guard: guarded(id), status: 201 },
+    );
+  });
+}
+
+function registerObjectChanges(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  module.put('/activities/:id/objects/:objectId/questionnaires', (c) => {
+    const id = uuidParam(c);
+    const objectId = uuidParam(c, 'objectId');
+    return write(
+      c,
+      deps,
+      z.strictObject({ questionnaireIds: z.array(uuid).max(10) }),
+      async (tx, ctx, input) => {
+        const activity = await requireActivity(tx, ctx.admin, id, true);
+        const object = await requireObject(tx, id, objectId, true);
+        requireRevision(object.revision, ctx.expectedRevision);
+        await requireQuestionnaires(tx, input.questionnaireIds);
+        // 替换套卷会清空已有作答（E3-R2）——首版不做，已有答卷时拒绝
+        const sheets = await count(
+          tx,
+          sql`SELECT count(*)::int AS n FROM survey360_sheets s JOIN survey360_relations r
+            ON r.tenant_id = s.tenant_id AND r.id = s.relation_id WHERE r.object_id = ${objectId}::uuid`,
+        );
+        if (sheets > 0) fail('CONFLICT', '评价对象已有作答，不能更换套卷', 'ANSWERS_EXIST');
+        const before = await objectQuestionnaires(tx, objectId);
+        await tx.delete(survey360ObjectQuestionnaires).where(eq(survey360ObjectQuestionnaires.objectId, objectId));
+        await tx
+          .insert(survey360ObjectQuestionnaires)
+          .values(input.questionnaireIds.map((q) => ({ tenantId: ctx.tenantId, objectId, questionnaireId: q })));
+        if (activity.status === 'enabled') await markUsed(tx, input.questionnaireIds);
+        const [saved] = await tx
+          .update(survey360Objects)
+          .set({ revision: object.revision + 1 })
+          .where(eq(survey360Objects.id, objectId))
+          .returning();
+        const view = objectView(saved!, input.questionnaireIds);
+        await audit360(tx, actor(ctx), {
+          action: 'survey360.object.questionnaires',
+          objectType: 'survey360-object',
+          objectId,
+          before: { questionnaireIds: before.sort(), activityId: id },
+          after: { ...view, activityId: id },
+        });
+        return view;
+      },
+      { guard: guarded(id) },
+    );
+  });
+  module.delete('/activities/:id/objects/:objectId', (c) => {
+    const id = uuidParam(c);
+    const objectId = uuidParam(c, 'objectId');
+    return write(
+      c,
+      deps,
+      z.object({}).passthrough(),
+      async (tx, ctx) => {
+        await requireActivity(tx, ctx.admin, id, true);
+        const object = await requireObject(tx, id, objectId, true);
+        requireRevision(object.revision, ctx.expectedRevision);
+        const relations = await tx
+          .select()
+          .from(survey360Relations)
+          .where(and(eq(survey360Relations.objectId, objectId), eq(survey360Relations.removed, false)));
+        for (const relation of relations) await removeRelation(tx, ctx, relation);
+        await tx
+          .update(survey360Objects)
+          .set({ removed: true, revision: object.revision + 1 })
+          .where(eq(survey360Objects.id, objectId));
+        await audit360(tx, actor(ctx), {
+          action: 'survey360.object.remove',
+          objectType: 'survey360-object',
+          objectId,
+          before: { id: objectId, personId: object.person_id, activityId: id },
+          after: { id: objectId, removed: true, activityId: id },
+        });
+        return { id: objectId, removed: true };
+      },
+      { guard: guarded(id) },
+    );
+  });
+}
+
+function objectView(row: typeof survey360Objects.$inferSelect, questionnaireIds: readonly string[]) {
+  return {
+    id: row.id,
+    activityId: row.activityId,
+    personId: row.personId,
+    questionnaireIds: [...questionnaireIds].sort(),
+    revision: row.revision,
+  };
+}
+
+/** 任职记录上当前直线经理为 managerId 的员工（同事 / 下级）。 */
+async function reportsOf(tx: Tx, tenantId: string, managerId: string, asOf: string): Promise<string[]> {
+  return rows<{ employee_id: string }>(
+    await tx.execute(sql`SELECT t.employee_id FROM employment_timeline t
+      JOIN employment_records r ON r.tenant_id = t.tenant_id AND r.id = t.record_id
+      JOIN employment_employees e ON e.tenant_id = t.tenant_id AND e.id = t.employee_id
+      LEFT JOIN LATERAL (SELECT p.id, p.direct_manager_id FROM employment_payload_versions p
+        WHERE p.tenant_id = r.tenant_id AND p.employee_id = r.employee_id AND p.business_id = r.id
+          AND p.is_record_snapshot ORDER BY p.version_no DESC LIMIT 1) latest ON true
+      WHERE t.tenant_id = ${tenantId}::uuid AND t.valid_during @> ${asOf}::date
+        AND r.kind NOT IN ('leave', 'retirement') AND r.service_type = 'primary'
+        AND (CASE WHEN latest.id IS NULL THEN r.direct_manager_id ELSE latest.direct_manager_id END)
+          = ${managerId}::uuid
+      ORDER BY e.code, e.id`),
+  ).map((r) => r.employee_id);
+}
+
+async function autoAdd(
+  tx: Tx,
+  deps: TenantRouteDeps,
+  ctx: Survey360Context,
+  activity: ActivityRow,
+  object: { id: string; person_id: string },
+  input: { roles: ('superior' | 'peer' | 'subordinate')[]; limits?: Partial<Record<string, number>> | undefined },
+) {
+  const target = await loadPerson(tx, object.person_id);
+  if (!target.employeeId) fail('VALIDATION_FAILED', '评价对象未与组织员工挂接，不能按组织架构添加', 'NOT_LINKED');
+  const access = await syncAccess(tx, deps, ctx);
+  const asOf = tenantLocalDate(ctx.now, ctx.timezone);
+  const record = await findCurrentRecord(tx, ctx.tenantId, target.employeeId, asOf);
+  const managerId = (record?.fields as unknown as Record<string, unknown> | undefined)?.directManagerId;
+  const manager = typeof managerId === 'string' ? managerId : null;
+  const candidates: Record<string, string[]> = {
+    superior: manager ? [manager] : [],
+    peer: manager ? (await reportsOf(tx, ctx.tenantId, manager, asOf)).filter((e) => e !== target.employeeId) : [],
+    subordinate: await reportsOf(tx, ctx.tenantId, target.employeeId, asOf),
+  };
+  const added = [];
+  const skipped: { employeeId: string; reason: string }[] = [];
+  for (const code of input.roles) {
+    const roleId = await roleIdOf(tx, code);
+    let taken = 0;
+    const limit = input.limits?.[code];
+    for (const employeeId of candidates[code]!) {
+      if (limit !== undefined && taken >= limit) break;
+      const person = await personForEmployee(tx, ctx, access, employeeId);
+      if (typeof person === 'string') {
+        // 范围外的员工不同步，也不在结果里出现
+        if (person !== 'OUT_OF_SCOPE') skipped.push({ employeeId, reason: person });
+        continue;
+      }
+      const [existing] = await tx
+        .select({ id: survey360Relations.id })
+        .from(survey360Relations)
+        .where(
+          and(
+            eq(survey360Relations.objectId, object.id),
+            eq(survey360Relations.appraiserPersonId, person.id),
+            eq(survey360Relations.removed, false),
+          ),
+        );
+      if (existing) continue;
+      added.push(relationView(await addRelation(tx, ctx, activity, object.id, person, roleId, 'org')));
+      taken += 1;
+    }
+  }
+  return { added, skipped };
+}
+
+const importRow = z.strictObject({
+  objectEmail: email,
+  roleId: uuid,
+  name: text(100),
+  email,
+  mobile: optionalText(50),
+  staffCode: optionalText(100),
+  department: optionalText(200),
+  position: optionalText(200),
+});
+
+function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  module.post('/activities/:id/appraisers/import', (c) => {
+    const id = uuidParam(c);
+    return write(
+      c,
+      deps,
+      z.strictObject({ sync: z.boolean(), rows: z.array(importRow).min(1).max(LIMITS.importRows) }),
+      async (tx, ctx, input) => {
+        requireNewObject(ctx);
+        const activity = await requireActivity(tx, ctx.admin, id, true);
+        // 先整批校验，再写入：任一行不合法整批失败（AGENTS.md §10「批量」）
+        const errors: { row: number; code: string; details: { reason: string } }[] = [];
+        const objects = new Map<number, string>();
+        for (const [index, row] of input.rows.entries()) {
+          const [object] = rows<{ id: string }>(
+            await tx.execute(sql`SELECT o.id FROM survey360_objects o JOIN survey360_people p
+              ON p.tenant_id = o.tenant_id AND p.id = o.person_id
+              WHERE o.activity_id = ${id}::uuid AND NOT o.removed AND lower(p.email) = lower(${row.objectEmail})`),
+          );
+          if (!object)
+            errors.push({ row: index + 1, code: 'VALIDATION_FAILED', details: { reason: 'OBJECT_NOT_FOUND' } });
+          else objects.set(index, object.id);
+        }
+        if (errors.length) fail('VALIDATION_FAILED', '导入数据有误，整批未导入', 'IMPORT_INVALID', { errors });
+        const receipts = [];
+        for (const [index, row] of input.rows.entries()) {
+          const { objectEmail: _object, roleId, ...fields } = row;
+          void _object;
+          let person = await findPersonByEmail(tx, fields.email);
+          if (!person) person = await createPerson(tx, ctx, fields, 'import');
+          // 不同步：以上传信息为准（DEC-030 ④）；同步：已有人员保持现有（已挂接的以组织员工为准）
+          else if (!input.sync) {
+            const current = await loadPerson(tx, person.id, true);
+            const { email: _email, ...rest } = fields;
+            void _email;
+            person = await updatePerson(tx, ctx, current, rest, 'survey360.person.import_update');
+          }
+          const relation = await addRelation(tx, ctx, activity, objects.get(index)!, person, roleId, 'import');
+          receipts.push({ row: index + 1, status: 'created', relationId: relation.id });
+        }
+        return { receipts };
+      },
+      { guard: guarded(id) },
+    );
+  });
+}
+
+function registerConfirmationInvite(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  module.post('/activities/:id/objects/:objectId/confirmation', (c) => {
+    const id = uuidParam(c);
+    const objectId = uuidParam(c, 'objectId');
+    return write(
+      c,
+      deps,
+      z.strictObject({}),
+      async (tx, ctx) => {
+        requireNewObject(ctx);
+        const activity = await requireActivity(tx, ctx.admin, id, true);
+        if (activity.status === 'disabled') fail('CONFLICT', '活动已停用', 'ACTIVITY_DISABLED');
+        const object = await requireObject(tx, id, objectId, true);
+        const target = await loadPerson(tx, object.person_id);
+        if (!target.superiorPersonId) fail('VALIDATION_FAILED', '评价对象没有上级，不能邀请上级确认', 'NO_SUPERIOR');
+        const superior = await loadPerson(tx, target.superiorPersonId);
+        const [open] = await tx
+          .select({ id: survey360Confirmations.id })
+          .from(survey360Confirmations)
+          .where(
+            and(
+              eq(survey360Confirmations.objectId, objectId),
+              inArray(survey360Confirmations.status, ['pending', 'confirmed']),
+            ),
+          );
+        if (open) fail('CONFLICT', '已邀请确认', 'CONFIRMATION_EXISTS');
+        const [row] = await tx
+          .insert(survey360Confirmations)
+          .values({ tenantId: ctx.tenantId, activityId: id, objectId, confirmerPersonId: superior.id })
+          .returning();
+        await issueConfirmLink(tx, ctx, id, row!.id, superior);
+        const view = confirmationView(row!);
+        await audit360(tx, actor(ctx), {
+          action: 'survey360.confirmation.create',
+          objectType: 'survey360-confirmation',
+          objectId: row!.id,
+          before: null,
+          after: { ...view, activityId: id },
+        });
+        return view;
+      },
+      { guard: guarded(id), status: 201 },
+    );
+  });
+}
+
+export function confirmationView(row: typeof survey360Confirmations.$inferSelect) {
+  return {
+    id: row.id,
+    activityId: row.activityId,
+    objectId: row.objectId,
+    confirmerPersonId: row.confirmerPersonId,
+    status: row.status,
+    revision: row.revision,
+  };
+}
