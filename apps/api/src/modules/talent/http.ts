@@ -6,6 +6,8 @@ import type { z } from 'zod';
 import { AppError } from '../../errors.js';
 import type { TenantEnv } from '../../tenant-context.js';
 
+export const TALENT_BASE = '/api/tenant/talent';
+
 export function revision(c: Context): number {
   const match = /^(?:W\/)?"?(\d{1,9})"?$/.exec(c.req.header('if-match')?.trim() ?? '');
   if (!match) throw new AppError('REVISION_REQUIRED', '写请求必须在 If-Match 中携带 revision');

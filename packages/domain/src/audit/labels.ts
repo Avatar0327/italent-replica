@@ -46,6 +46,8 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   license_pool: { label: '许可', app: ENTERPRISE },
   audit_retention: { label: '日志保留期', app: ENTERPRISE },
   'TalentCenter.DimensionLibrary': { label: '指标库', app: TALENT },
+  'TalentCenter.Category': { label: '指标库分类', app: TALENT },
+  'TalentCenter.DescriptionType': { label: '发展建议类型', app: TALENT },
   'TalentCenter.Dimension': { label: '指标', app: TALENT },
   'TalentCenter.TalentCriterionCategory': { label: '人才标准分类', app: TALENT },
   'TalentCenter.TalentCriterion': { label: '人才标准', app: TALENT },
@@ -123,7 +125,9 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   // R3-T01 人才标准（`23` §2.1 字段名）
   libraryId: '指标库',
   definition: '定义',
-  category: '分类',
+  categoryId: '分类',
+  ownerId: '所属人',
+  ownerOrgId: '所属管理单元',
   grades: '等级描述',
   behaviors: '行为描述',
   suggestions: '发展建议',
@@ -154,6 +158,7 @@ export type AuditReferenceKind = (typeof AUDIT_REFERENCE_KINDS)[number];
 const REFERENCE_FIELDS: Readonly<Record<string, AuditReferenceKind>> = {
   departmentId: 'org',
   orgId: 'org',
+  ownerOrgId: 'org',
   positionId: 'position',
   postId: 'post',
   levelId: 'level',

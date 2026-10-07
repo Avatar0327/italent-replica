@@ -1,6 +1,7 @@
 /**
- * 人才标准的读取（docs/02_业务建模/23 §2.1）。人才标准里的指标只存引用，读取时取指标库**当前**内容（TC-R2）；
- * 指标的类型、指标库启用状态取自所属指标库。列表的范围谓词在 SQL 里、分页之前生效。
+ * 人才标准的读取（docs/02_业务建模/23 §2.1、§7）。人才标准里的指标只存引用，读取时取指标库**当前**内容（TC-R2）；
+ * 指标的类型取自所属指标库，分类名称、发展建议类型名称是查找字段的显示值。列表的范围谓词在 SQL 里、分页之前生效。
+ * 指标库启用状态只给可信端口（DimensionRecord），HTTP 视图与审计快照不投影（DEC-281⑪）。
  */
 import {
   and,
@@ -11,7 +12,9 @@ import {
   talentCriteria,
   talentCriterionCategories,
   talentCriterionDimensions,
+  talentDescriptionTypes,
   talentDimensionBehaviors,
+  talentDimensionCategories,
   talentDimensionGrades,
   talentDimensionLibraries,
   talentDimensionQuestions,
@@ -31,11 +34,34 @@ export interface Tracked {
   readonly updatedAt: Date;
 }
 
-export interface LibraryView extends Tracked {
+/** DEC-281⑨：所属人与所属管理单元（组织）。 */
+export interface Owned extends Tracked {
+  readonly ownerId: string;
+  readonly ownerOrgId: string;
+}
+
+export interface LibraryView extends Owned {
   readonly name: string;
   readonly type: TalentDimensionType;
   readonly enabled: boolean;
   readonly displayOrder: number;
+}
+
+export interface DimensionCategoryView extends Owned {
+  readonly libraryId: string;
+  readonly name: string;
+  readonly displayOrder: number;
+}
+
+export interface DescriptionTypeView {
+  readonly id: string;
+  readonly revision: number;
+  readonly name: string;
+  readonly enabled: boolean;
+  readonly displayOrder: number;
+  readonly createdBy: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
 }
 
 export interface GradeView {
@@ -49,7 +75,8 @@ export interface BehaviorView {
   readonly displayOrder: number;
 }
 export interface SuggestionView {
-  readonly suggestionType: string | null;
+  readonly typeId: string;
+  readonly typeName: string;
   readonly description: string;
   readonly displayOrder: number;
 }
@@ -59,15 +86,14 @@ export interface QuestionView {
   readonly displayOrder: number;
 }
 
-export interface DimensionView extends Tracked {
+export interface DimensionView extends Owned {
   readonly libraryId: string;
-  readonly libraryName: string;
   readonly type: TalentDimensionType;
-  readonly libraryEnabled: boolean;
   readonly code: string;
   readonly name: string;
   readonly definition: string | null;
-  readonly category: string | null;
+  readonly categoryId: string | null;
+  readonly categoryName: string | null;
   readonly displayOrder: number;
   readonly enabled: boolean;
   readonly grades: GradeView[];
@@ -76,7 +102,12 @@ export interface DimensionView extends Tracked {
   readonly questions: QuestionView[];
 }
 
-export interface CategoryView extends Tracked {
+/** 可信端口用：另带指标库启用状态（调用方据此判断能否新引用，TC-R4）。 */
+export interface DimensionRecord extends DimensionView {
+  readonly libraryEnabled: boolean;
+}
+
+export interface CategoryView extends Owned {
   readonly name: string;
   readonly displayOrder: number;
 }
@@ -87,10 +118,10 @@ export interface CriterionDimensionView {
   readonly weight: number | null;
   readonly target: number | null;
   readonly displayOrder: number;
-  readonly dimension: DimensionView;
+  readonly dimension: DimensionRecord;
 }
 
-export interface CriterionView extends Tracked {
+export interface CriterionView extends Owned {
   readonly categoryId: string;
   readonly name: string;
   readonly enabled: boolean;
@@ -107,8 +138,31 @@ export interface Page {
 }
 
 const L = talentDimensionLibraries;
+const K = talentDimensionCategories;
+const T = talentDescriptionTypes;
 const D = talentDimensions;
+const N = talentCriterionCategories;
 const C = talentCriteria;
+
+const owned = (table: typeof L | typeof K | typeof N | typeof C) => ({
+  id: table.id,
+  revision: table.revision,
+  ownerId: table.ownerId,
+  ownerOrgId: table.ownerOrgId,
+  createdBy: table.createdBy,
+  createdAt: table.createdAt,
+  updatedAt: table.updatedAt,
+});
+
+// ---- 指标库 ----
+
+const libraryColumns = {
+  ...owned(L),
+  name: L.name,
+  type: L.type,
+  enabled: L.enabled,
+  displayOrder: L.displayOrder,
+};
 
 export async function listLibraries(
   tx: Tx,
@@ -131,18 +185,6 @@ export async function listLibraries(
     .offset(query.offset);
 }
 
-const libraryColumns = {
-  id: L.id,
-  revision: L.revision,
-  name: L.name,
-  type: L.type,
-  enabled: L.enabled,
-  displayOrder: L.displayOrder,
-  createdBy: L.createdBy,
-  createdAt: L.createdAt,
-  updatedAt: L.updatedAt,
-};
-
 export async function loadLibrary(tx: Tx, tenantId: string, id: string): Promise<LibraryView | undefined> {
   const [row] = await tx
     .select(libraryColumns)
@@ -151,26 +193,107 @@ export async function loadLibrary(tx: Tx, tenantId: string, id: string): Promise
   return row;
 }
 
+// ---- 指标库内分类 ----
+
+const dimensionCategoryColumns = { ...owned(K), libraryId: K.libraryId, name: K.name, displayOrder: K.displayOrder };
+
+export async function listDimensionCategories(
+  tx: Tx,
+  tenantId: string,
+  query: Page & { libraryId?: string; visible: SQL },
+): Promise<DimensionCategoryView[]> {
+  return tx
+    .select(dimensionCategoryColumns)
+    .from(K)
+    .where(and(eq(K.tenantId, tenantId), query.libraryId ? eq(K.libraryId, query.libraryId) : undefined, query.visible))
+    .orderBy(asc(K.displayOrder), asc(K.createdAt), asc(K.id))
+    .limit(query.limit)
+    .offset(query.offset);
+}
+
+export async function loadDimensionCategory(
+  tx: Tx,
+  tenantId: string,
+  id: string,
+): Promise<DimensionCategoryView | undefined> {
+  const [row] = await tx
+    .select(dimensionCategoryColumns)
+    .from(K)
+    .where(and(eq(K.tenantId, tenantId), eq(K.id, id)));
+  return row;
+}
+
+// ---- 发展建议类型 ----
+
+const descriptionTypeColumns = {
+  id: T.id,
+  revision: T.revision,
+  name: T.name,
+  enabled: T.enabled,
+  displayOrder: T.displayOrder,
+  createdBy: T.createdBy,
+  createdAt: T.createdAt,
+  updatedAt: T.updatedAt,
+};
+
+export async function listDescriptionTypes(
+  tx: Tx,
+  tenantId: string,
+  query: Page & { enabled?: boolean; visible: SQL },
+): Promise<DescriptionTypeView[]> {
+  return tx
+    .select(descriptionTypeColumns)
+    .from(T)
+    .where(
+      and(
+        eq(T.tenantId, tenantId),
+        query.enabled === undefined ? undefined : eq(T.enabled, query.enabled),
+        query.visible,
+      ),
+    )
+    .orderBy(asc(T.displayOrder), asc(T.name), asc(T.id))
+    .limit(query.limit)
+    .offset(query.offset);
+}
+
+export async function loadDescriptionType(
+  tx: Tx,
+  tenantId: string,
+  id: string,
+): Promise<DescriptionTypeView | undefined> {
+  const [row] = await tx
+    .select(descriptionTypeColumns)
+    .from(T)
+    .where(and(eq(T.tenantId, tenantId), eq(T.id, id)));
+  return row;
+}
+
+// ---- 指标 ----
+
+// 联表查询里列的可空性按所属表推断，这里逐列写出指标表的列
 const dimensionColumns = {
   id: D.id,
   revision: D.revision,
+  ownerId: D.ownerId,
+  ownerOrgId: D.ownerOrgId,
+  createdBy: D.createdBy,
+  createdAt: D.createdAt,
+  updatedAt: D.updatedAt,
   libraryId: D.libraryId,
-  libraryName: L.name,
   type: L.type,
   libraryEnabled: L.enabled,
   code: D.code,
   name: D.name,
   definition: D.definition,
-  category: D.category,
+  categoryId: D.categoryId,
+  categoryName: K.name,
   displayOrder: D.displayOrder,
   enabled: D.enabled,
-  createdBy: D.createdBy,
-  createdAt: D.createdAt,
-  updatedAt: D.updatedAt,
 };
 
 export interface DimensionQuery extends Page {
   readonly libraryId?: string;
+  readonly categoryId?: string;
   readonly type?: TalentDimensionType;
   readonly enabled?: boolean;
   /** 只列可被新引用的指标：指标与指标库都已启用（TC-R4）。 */
@@ -179,15 +302,25 @@ export interface DimensionQuery extends Page {
   readonly visible: SQL;
 }
 
-export async function listDimensions(tx: Tx, tenantId: string, query: DimensionQuery): Promise<DimensionView[]> {
-  const rows = await tx
+function dimensionsFrom(tx: Tx) {
+  return tx
     .select(dimensionColumns)
     .from(D)
     .innerJoin(L, and(eq(L.tenantId, D.tenantId), eq(L.id, D.libraryId)))
+    .leftJoin(K, and(eq(K.tenantId, D.tenantId), eq(K.id, D.categoryId)));
+}
+
+export async function listDimensionRecords(
+  tx: Tx,
+  tenantId: string,
+  query: DimensionQuery,
+): Promise<DimensionRecord[]> {
+  const rows = await dimensionsFrom(tx)
     .where(
       and(
         eq(D.tenantId, tenantId),
         query.libraryId ? eq(D.libraryId, query.libraryId) : undefined,
+        query.categoryId ? eq(D.categoryId, query.categoryId) : undefined,
         query.type ? eq(L.type, query.type) : undefined,
         query.enabled === undefined ? undefined : eq(D.enabled, query.enabled),
         query.referenceable ? and(eq(D.enabled, true), eq(L.enabled, true)) : undefined,
@@ -201,27 +334,38 @@ export async function listDimensions(tx: Tx, tenantId: string, query: DimensionQ
   return withDetails(tx, tenantId, rows);
 }
 
-export async function loadDimensions(tx: Tx, tenantId: string, ids: readonly string[]): Promise<DimensionView[]> {
+export async function listDimensions(tx: Tx, tenantId: string, query: DimensionQuery): Promise<DimensionView[]> {
+  return (await listDimensionRecords(tx, tenantId, query)).map(dimensionView);
+}
+
+export async function loadDimensionRecords(
+  tx: Tx,
+  tenantId: string,
+  ids: readonly string[],
+): Promise<DimensionRecord[]> {
   if (!ids.length) return [];
-  const rows = await tx
-    .select(dimensionColumns)
-    .from(D)
-    .innerJoin(L, and(eq(L.tenantId, D.tenantId), eq(L.id, D.libraryId)))
+  const rows = await dimensionsFrom(tx)
     .where(and(eq(D.tenantId, tenantId), inArray(D.id, [...ids])))
     .orderBy(asc(D.id));
   return withDetails(tx, tenantId, rows);
 }
 
 export async function loadDimension(tx: Tx, tenantId: string, id: string): Promise<DimensionView | undefined> {
-  return (await loadDimensions(tx, tenantId, [id]))[0];
+  const [record] = await loadDimensionRecords(tx, tenantId, [id]);
+  return record && dimensionView(record);
 }
 
-type DimensionRow = Omit<DimensionView, 'grades' | 'behaviors' | 'suggestions' | 'questions'>;
+/** HTTP 视图与审计快照：去掉指标库启用状态（DEC-281⑪ / Q5 投影一并去掉）。 */
+export function dimensionView({ libraryEnabled: _state, ...view }: DimensionRecord): DimensionView {
+  return view;
+}
 
-async function withDetails(tx: Tx, tenantId: string, rows: DimensionRow[]): Promise<DimensionView[]> {
+type DimensionRow = Omit<DimensionRecord, 'grades' | 'behaviors' | 'suggestions' | 'questions'>;
+
+async function withDetails(tx: Tx, tenantId: string, rows: DimensionRow[]): Promise<DimensionRecord[]> {
   if (!rows.length) return [];
   const ids = rows.map((row) => row.id);
-  const of = <T extends { dimensionId: string }>(items: T[], id: string) =>
+  const of = <R extends { dimensionId: string }>(items: R[], id: string) =>
     items.filter((item) => item.dimensionId === id).map(({ dimensionId: _id, ...rest }) => rest);
   const scoped = (table: { tenantId: AnyPgColumn; dimensionId: AnyPgColumn }) =>
     and(eq(table.tenantId, tenantId), inArray(table.dimensionId, ids));
@@ -247,11 +391,13 @@ async function withDetails(tx: Tx, tenantId: string, rows: DimensionRow[]): Prom
   const suggestions = await tx
     .select({
       dimensionId: S.dimensionId,
-      suggestionType: S.suggestionType,
+      typeId: S.typeId,
+      typeName: T.name,
       description: S.description,
       displayOrder: S.displayOrder,
     })
     .from(S)
+    .innerJoin(T, and(eq(T.tenantId, S.tenantId), eq(T.id, S.typeId)))
     .where(scoped(S))
     .orderBy(asc(S.displayOrder), asc(S.id));
   const questions = await tx
@@ -268,39 +414,32 @@ async function withDetails(tx: Tx, tenantId: string, rows: DimensionRow[]): Prom
   }));
 }
 
-const categoryColumns = {
-  id: talentCriterionCategories.id,
-  revision: talentCriterionCategories.revision,
-  name: talentCriterionCategories.name,
-  displayOrder: talentCriterionCategories.displayOrder,
-  createdBy: talentCriterionCategories.createdBy,
-  createdAt: talentCriterionCategories.createdAt,
-  updatedAt: talentCriterionCategories.updatedAt,
-};
+// ---- 人才标准分类 ----
+
+const categoryColumns = { ...owned(N), name: N.name, displayOrder: N.displayOrder };
 
 export async function listCategories(tx: Tx, tenantId: string, query: Page & { visible: SQL }) {
-  const K = talentCriterionCategories;
   return tx
     .select(categoryColumns)
-    .from(K)
-    .where(and(eq(K.tenantId, tenantId), query.visible))
-    .orderBy(asc(K.displayOrder), asc(K.createdAt), asc(K.id))
+    .from(N)
+    .where(and(eq(N.tenantId, tenantId), query.visible))
+    .orderBy(asc(N.displayOrder), asc(N.createdAt), asc(N.id))
     .limit(query.limit)
     .offset(query.offset);
 }
 
 export async function loadCategory(tx: Tx, tenantId: string, id: string): Promise<CategoryView | undefined> {
-  const K = talentCriterionCategories;
   const [row] = await tx
     .select(categoryColumns)
-    .from(K)
-    .where(and(eq(K.tenantId, tenantId), eq(K.id, id)));
+    .from(N)
+    .where(and(eq(N.tenantId, tenantId), eq(N.id, id)));
   return row;
 }
 
+// ---- 人才标准 ----
+
 const criterionColumns = {
-  id: C.id,
-  revision: C.revision,
+  ...owned(C),
   categoryId: C.categoryId,
   name: C.name,
   enabled: C.enabled,
@@ -308,9 +447,6 @@ const criterionColumns = {
   potentialNote: C.potentialNote,
   experienceNote: C.experienceNote,
   achievementNote: C.achievementNote,
-  createdBy: C.createdBy,
-  createdAt: C.createdAt,
-  updatedAt: C.updatedAt,
 };
 
 export async function listCriteria(
@@ -369,9 +505,8 @@ async function withReferences(tx: Tx, tenantId: string, rows: CriterionRow[]): P
       ),
     )
     .orderBy(asc(R.displayOrder), asc(R.id));
-  const dimensions = new Map(
-    (await loadDimensions(tx, tenantId, [...new Set(relations.map((r) => r.dimensionId))])).map((d) => [d.id, d]),
-  );
+  const ids = [...new Set(relations.map((relation) => relation.dimensionId))];
+  const dimensions = new Map((await loadDimensionRecords(tx, tenantId, ids)).map((d) => [d.id, d]));
   return rows.map((row) => ({
     ...row,
     dimensions: relations
@@ -390,17 +525,44 @@ async function withReferences(tx: Tx, tenantId: string, rows: CriterionRow[]): P
   }));
 }
 
-/** 引用某指标的人才标准数（删除前判断，TC-R5）。 */
-export async function dimensionReferenceCount(tx: Tx, tenantId: string, dimensionId: string): Promise<number> {
-  const R = talentCriterionDimensions;
-  const [row] = await tx
-    .select({ count: sql<number>`count(*)::int` })
-    .from(R)
-    .where(and(eq(R.tenantId, tenantId), eq(R.dimensionId, dimensionId)));
-  return row?.count ?? 0;
+/**
+ * 删除前的“是否还在使用”计数（TC-R5 同口径）：表与列都是本模块的固定名称，调用方已持被引用行的行锁。
+ * 例：引用某指标的标准关系数、库下的指标 / 分类数、引用某分类的指标数、引用某类型的发展建议数。
+ */
+export async function usageCount(tx: Tx, table: string, column: string, tenantId: string, id: string) {
+  const result = await tx.execute(sql`SELECT count(*)::int AS count FROM ${sql.identifier(table)}
+    WHERE tenant_id = ${tenantId} AND ${sql.identifier(column)} = ${id}::uuid`);
+  const rows = (Array.isArray(result) ? result : (result as { rows: { count: number }[] }).rows) as {
+    count: number;
+  }[];
+  return rows[0]?.count ?? 0;
+}
+
+export interface OwnerOrgOption {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+}
+
+/**
+ * 可选的所属管理单元（DEC-281⑨）：asOf 当天有效且启用的组织，范围谓词（查看人的管理单元）在分页之前生效。
+ * 组织当前版本的取法与数据范围解析一致（permission/scope-hierarchy.ts）。
+ */
+export async function listOwnerOrgs(
+  tx: Tx,
+  tenantId: string,
+  query: Page & { asOf: string; name?: string; visible: SQL },
+): Promise<OwnerOrgOption[]> {
+  const result = await tx.execute(sql`SELECT v.org_id AS id, v.code, v.name FROM (
+      SELECT DISTINCT ON (org_id) org_id, code, name, enabled FROM org_versions
+      WHERE tenant_id = ${tenantId} AND start_date <= ${query.asOf}::date
+      ORDER BY org_id, start_date DESC, version_no DESC) v
+    WHERE v.enabled AND ${query.visible} ${query.name ? sql`AND ${nameLike(sql`v.name`, query.name)}` : sql``}
+    ORDER BY v.code, v.org_id LIMIT ${query.limit} OFFSET ${query.offset}`);
+  return (Array.isArray(result) ? result : (result as { rows: OwnerOrgOption[] }).rows) as OwnerOrgOption[];
 }
 
 /** 名称模糊查询：转义通配符，按字面匹配。 */
-function nameLike(column: AnyPgColumn, value: string): SQL {
+function nameLike(column: AnyPgColumn | SQL, value: string): SQL {
   return sql`${column} ILIKE ${`%${value.replace(/[\\%_]/g, (char) => `\\${char}`)}%`}`;
 }

@@ -1,9 +1,11 @@
 /**
- * R3-T01 人才标准与指标库接口（docs/02_业务建模/23 §2；REQ-TC-001）。挂在 /api/tenant/talent/ 之下：
- * 指标库 libraries、指标 dimensions、人才标准分类 criterion-categories、人才标准 criteria，以及新建 / 编辑人才标准时的
- * 可引用指标候选 candidates/dimensions（TC-R4）。写入走命令台账（幂等、revision 409），首次执行与幂等重放都按当前范围复核。
+ * R3-T01 人才标准与指标库接口（docs/02_业务建模/23 §2、§7；REQ-TC-001；DEC-281）。挂在 /api/tenant/talent/ 之下：
+ * 指标库 libraries、指标库内分类 dimension-categories、发展建议类型 description-types、指标 dimensions、
+ * 人才标准分类 criterion-categories、人才标准 criteria，以及候选：可引用指标 candidates/dimensions（TC-R4）、
+ * 发展建议类型下拉 candidates/description-types、可选所属管理单元 candidates/owner-orgs。
+ * 写入走命令台账（幂等、revision 409），首次执行与幂等重放都按当前功能权限、按钮与范围复核。
  */
-import { sql, withTenant, type Tx } from '@italent/db';
+import { withTenant, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
 import type { Context, Hono } from 'hono';
 import type { z } from 'zod';
@@ -11,12 +13,14 @@ import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { hasCreatorScope } from '../permission/module-route-access.js';
 import {
   checkWriteFields,
   codeOf,
+  listEnvelope,
   nestedDimensionReader,
+  type Owner,
   requireVisible,
+  scopeColumns,
   talentContext,
   talentScope,
   talentWriteContext,
@@ -26,6 +30,9 @@ import {
   type TalentContext,
   type TalentObject,
 } from './access.js';
+import { registerCandidates } from './candidates.js';
+import * as criteria from './criterion-service.js';
+import * as dimensions from './dimension-service.js';
 import {
   booleanQuery,
   nameQuery,
@@ -33,19 +40,18 @@ import {
   parseBody,
   requireNew,
   revision,
+  TALENT_BASE,
   typeQuery,
   uuidParam,
   uuidQuery,
 } from './http.js';
 import * as input from './input.js';
+import * as libraries from './library-service.js';
 import * as read from './read-model.js';
-import * as write from './service.js';
-
-const BASE = '/api/tenant/talent';
+import type { WriteContext } from './write-support.js';
 
 interface Tracked {
   readonly id: string;
-  readonly createdBy: string;
   readonly revision: number;
 }
 
@@ -55,16 +61,21 @@ interface ObjectRoutes<View extends Tracked, Create, Patch> {
   readonly table: string;
   readonly createSchema: z.ZodType<Create>;
   readonly patchSchema: z.ZodType<Patch>;
+  /** 范围锚点：所属管理单元与所属人；字典只有创建人。 */
+  owner(view: View): Owner;
   /** 写入时引用的其他对象（须各自可见）。 */
-  readonly references: (body: Create | Patch) => readonly TalentObject[];
+  references(body: Create | Patch): readonly TalentObject[];
   list(tx: Tx, tenantId: string, c: Context, page: read.Page, visible: SQL): Promise<View[]>;
   load(tx: Tx, tenantId: string, id: string): Promise<View | undefined>;
-  create(tx: Tx, ctx: write.WriteContext, body: Create): Promise<View>;
-  update(tx: Tx, ctx: write.WriteContext, id: string, body: Patch): Promise<View>;
-  remove(tx: Tx, ctx: write.WriteContext, id: string): Promise<View>;
+  create(tx: Tx, ctx: WriteContext, body: Create): Promise<View>;
+  update(tx: Tx, ctx: WriteContext, id: string, body: Patch): Promise<View>;
+  remove(tx: Tx, ctx: WriteContext, id: string): Promise<View>;
 }
 
-const creatorOf = (table: string) => sql`${sql.identifier(table)}.created_by`;
+const ownedBy = (view: { ownerOrgId: string; ownerId: string }): Owner => ({
+  orgId: view.ownerOrgId,
+  ownerId: view.ownerId,
+});
 
 const LIBRARIES: ObjectRoutes<read.LibraryView, input.LibraryCreate, input.LibraryPatch> = {
   object: 'library',
@@ -72,13 +83,54 @@ const LIBRARIES: ObjectRoutes<read.LibraryView, input.LibraryCreate, input.Libra
   table: 'talent_dimension_libraries',
   createSchema: input.libraryCreate,
   patchSchema: input.libraryPatch,
+  owner: ownedBy,
   references: () => [],
   list: (tx, tenantId, c, page, visible) =>
     read.listLibraries(tx, tenantId, { ...page, type: typeQuery(c), enabled: booleanQuery(c, 'enabled'), visible }),
   load: read.loadLibrary,
-  create: write.createLibrary,
-  update: write.updateLibrary,
-  remove: write.deleteLibrary,
+  create: libraries.createLibrary,
+  update: libraries.updateLibrary,
+  remove: libraries.deleteLibrary,
+};
+
+const DIMENSION_CATEGORIES: ObjectRoutes<
+  read.DimensionCategoryView,
+  input.DimensionCategoryCreate,
+  input.DimensionCategoryPatch
+> = {
+  object: 'dimensionCategory',
+  path: 'dimension-categories',
+  table: 'talent_dimension_categories',
+  createSchema: input.dimensionCategoryCreate,
+  patchSchema: input.dimensionCategoryPatch,
+  owner: ownedBy,
+  references: (body) => ('libraryId' in body ? ['library'] : []),
+  list: (tx, tenantId, c, page, visible) =>
+    read.listDimensionCategories(tx, tenantId, { ...page, libraryId: uuidQuery(c, 'libraryId'), visible }),
+  load: read.loadDimensionCategory,
+  create: libraries.createDimensionCategory,
+  update: libraries.updateDimensionCategory,
+  remove: libraries.deleteDimensionCategory,
+};
+
+const DESCRIPTION_TYPES: ObjectRoutes<
+  read.DescriptionTypeView,
+  input.DescriptionTypeCreate,
+  input.DescriptionTypePatch
+> = {
+  object: 'descriptionType',
+  path: 'description-types',
+  table: 'talent_description_types',
+  createSchema: input.descriptionTypeCreate,
+  patchSchema: input.descriptionTypePatch,
+  owner: (view) => ({ ownerId: view.createdBy }),
+  references: () => [],
+  list: (tx, tenantId, c, page, visible) =>
+    read.listDescriptionTypes(tx, tenantId, { ...page, enabled: booleanQuery(c, 'enabled'), visible }),
+  load: read.loadDescriptionType,
+  create: libraries.createDescriptionType,
+  update: libraries.updateDescriptionType,
+  remove: libraries.deleteDescriptionType,
 };
 
 const DIMENSIONS: ObjectRoutes<read.DimensionView, input.DimensionCreate, input.DimensionPatch> = {
@@ -87,20 +139,25 @@ const DIMENSIONS: ObjectRoutes<read.DimensionView, input.DimensionCreate, input.
   table: 'talent_dimensions',
   createSchema: input.dimensionCreate,
   patchSchema: input.dimensionPatch,
-  references: (body) => ('libraryId' in body ? ['library'] : []),
+  owner: ownedBy,
+  references: (body) => [
+    ...('libraryId' in body ? (['library'] as const) : []),
+    ...(body.categoryId ? (['dimensionCategory'] as const) : []),
+  ],
   list: (tx, tenantId, c, page, visible) =>
     read.listDimensions(tx, tenantId, {
       ...page,
       libraryId: uuidQuery(c, 'libraryId'),
+      categoryId: uuidQuery(c, 'categoryId'),
       type: typeQuery(c),
       enabled: booleanQuery(c, 'enabled'),
       name: nameQuery(c),
       visible,
     }),
   load: read.loadDimension,
-  create: write.createDimension,
-  update: write.updateDimension,
-  remove: write.deleteDimension,
+  create: dimensions.createDimension,
+  update: dimensions.updateDimension,
+  remove: dimensions.deleteDimension,
 };
 
 const CATEGORIES: ObjectRoutes<read.CategoryView, input.CategoryCreate, input.CategoryPatch> = {
@@ -109,12 +166,13 @@ const CATEGORIES: ObjectRoutes<read.CategoryView, input.CategoryCreate, input.Ca
   table: 'talent_criterion_categories',
   createSchema: input.categoryCreate,
   patchSchema: input.categoryPatch,
+  owner: ownedBy,
   references: () => [],
   list: (tx, tenantId, _c, page, visible) => read.listCategories(tx, tenantId, { ...page, visible }),
   load: read.loadCategory,
-  create: write.createCategory,
-  update: write.updateCategory,
-  remove: write.deleteCategory,
+  create: criteria.createCategory,
+  update: criteria.updateCategory,
+  remove: criteria.deleteCategory,
 };
 
 const CRITERIA: ObjectRoutes<read.CriterionView, input.CriterionCreate, input.CriterionPatch> = {
@@ -123,6 +181,7 @@ const CRITERIA: ObjectRoutes<read.CriterionView, input.CriterionCreate, input.Cr
   table: 'talent_criteria',
   createSchema: input.criterionCreate,
   patchSchema: input.criterionPatch,
+  owner: ownedBy,
   references: (body) => [
     ...(body.categoryId !== undefined ? (['criterionCategory'] as const) : []),
     ...(body.dimensions?.length ? (['dimension'] as const) : []),
@@ -136,31 +195,19 @@ const CRITERIA: ObjectRoutes<read.CriterionView, input.CriterionCreate, input.Cr
       visible,
     }),
   load: read.loadCriterion,
-  create: write.createCriterion,
-  update: write.updateCriterion,
-  remove: write.deleteCriterion,
+  create: criteria.createCriterion,
+  update: criteria.updateCriterion,
+  remove: criteria.deleteCriterion,
 };
 
 export function registerTalentRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerCandidates(router, deps);
   registerObject(router, deps, LIBRARIES);
+  registerObject(router, deps, DIMENSION_CATEGORIES);
+  registerObject(router, deps, DESCRIPTION_TYPES);
   registerObject(router, deps, DIMENSIONS);
   registerObject(router, deps, CATEGORIES);
   registerObject(router, deps, CRITERIA);
-}
-
-/** 新建 / 编辑人才标准时的可引用指标：指标与指标库都已启用（TC-R4），按查看人的指标范围与字段权限。 */
-function registerCandidates(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  router.get(`${BASE}/candidates/dimensions`, async (c) => {
-    const ctx = await talentContext(c, deps, 'dimension');
-    const page = pageQuery(c);
-    const scope = await talentScope(c, deps, ctx, 'dimension');
-    const query = { ...page, type: typeQuery(c), name: nameQuery(c), referenceable: true };
-    const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      read.listDimensions(tx, ctx.tenantId, { ...query, visible: visibleSql(scope, creatorOf('talent_dimensions')) }),
-    );
-    return c.json({ ...listEnvelope(page, scope), items: await trimTalentList(deps, ctx, 'dimension', items) });
-  });
 }
 
 function registerObject<View extends Tracked, Create extends object, Patch extends object>(
@@ -168,17 +215,16 @@ function registerObject<View extends Tracked, Create extends object, Patch exten
   deps: TenantRouteDeps,
   spec: ObjectRoutes<View, Create, Patch>,
 ) {
-  const path = `${BASE}/${spec.path}`;
+  const path = `${TALENT_BASE}/${spec.path}`;
   const present = presenter(deps, spec.object);
   router.get(path, async (c) => {
     const ctx = await talentContext(c, deps, spec.object);
     const page = pageQuery(c);
     const scope = await talentScope(c, deps, ctx, spec.object);
-    const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      spec.list(tx, ctx.tenantId, c, page, visibleSql(scope, creatorOf(spec.table))),
-    );
+    const visible = visibleSql(scope, scopeColumns(spec.object, spec.table));
+    const items = await withTenant(deps.db, ctx.tenantId, (tx) => spec.list(tx, ctx.tenantId, c, page, visible));
     const shown = await present(c, ctx, items);
-    return c.json({ ...listEnvelope(page, scope), items: shown });
+    return c.json({ ...listEnvelope(page, scope, spec.object), items: shown });
   });
   router.get(`${path}/:id`, async (c) => {
     const ctx = await talentContext(c, deps, spec.object);
@@ -186,7 +232,7 @@ function registerObject<View extends Tracked, Create extends object, Patch exten
     const scope = await talentScope(c, deps, ctx, spec.object);
     const found = await withTenant(deps.db, ctx.tenantId, (tx) => spec.load(tx, ctx.tenantId, id));
     if (!found) throw new AppError('NOT_FOUND', '对象不存在');
-    requireVisible(scope, spec.object, found.createdBy);
+    requireVisible(scope, spec.object, spec.owner(found));
     c.header('ETag', `"${found.revision}"`);
     return c.json((await present(c, ctx, [found]))[0]);
   });
@@ -222,10 +268,10 @@ async function runTalentWrite<View extends Tracked, Create, Patch>(
   spec: ObjectRoutes<View, Create, Patch>,
   body: object,
   status: 200 | 201,
-  execute: (tx: Tx, ctx: write.WriteContext) => Promise<View>,
+  execute: (tx: Tx, ctx: WriteContext) => Promise<View>,
 ) {
   const scope = await talentScope(c, deps, ctx, spec.object);
-  const references: Record<string, ModuleScope | null> = {};
+  const references: Partial<Record<TalentObject, ModuleScope | null>> = {};
   for (const object of spec.references(body as Create | Patch)) {
     references[object] = await referenceScope(c, deps, ctx, object);
   }
@@ -238,7 +284,7 @@ async function runTalentWrite<View extends Tracked, Create, Patch>(
     }),
   });
   const view = result.body as View;
-  requireVisible(scope, spec.object, view.createdBy);
+  requireVisible(scope, spec.object, spec.owner(view));
   if (c.req.method !== 'DELETE') c.header('ETag', `"${view.revision}"`);
   return c.json((await presenter(deps, spec.object)(c, ctx, [view]))[0], result.status);
 }
@@ -248,7 +294,7 @@ async function referenceScope(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx:
   return canView ? talentScope(c, deps, ctx, object) : null;
 }
 
-/** 按字段权限裁剪；人才标准里嵌套的指标内容另按指标对象的查看权、范围与字段权限。 */
+/** 按字段权限裁剪；人才标准里嵌套的指标内容另按指标对象的查看权、范围与字段权限，只投影三项（DEC-281⑪）。 */
 function presenter(deps: TenantRouteDeps, object: TalentObject) {
   return async <T extends object>(c: Context<TenantEnv>, ctx: TalentContext, items: T[]) => {
     if (object !== 'criterion') return trimTalentList(deps, ctx, object, items);
@@ -262,8 +308,4 @@ function presenter(deps: TenantRouteDeps, object: TalentObject) {
     }));
     return trimTalentList(deps, ctx, object, shaped);
   };
-}
-
-function listEnvelope(page: { page: number; pageSize: number }, scope: ModuleScope) {
-  return { page: page.page, pageSize: page.pageSize, hasDataPermission: scope.all || hasCreatorScope(scope) };
 }

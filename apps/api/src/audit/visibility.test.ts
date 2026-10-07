@@ -166,6 +166,8 @@ describe('写入审计的对象类型都已登记查看规则（PR #75 第三轮
       'transfer_settings',
       // R3-T01 人才标准
       'TalentCenter.DimensionLibrary',
+      'TalentCenter.Category',
+      'TalentCenter.DescriptionType',
       'TalentCenter.Dimension',
       'TalentCenter.TalentCriterionCategory',
       'TalentCenter.TalentCriterion',

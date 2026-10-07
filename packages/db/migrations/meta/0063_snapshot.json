@@ -1,5 +1,5 @@
 {
-  "id": "275548d8-5093-4ec1-b400-23560468930e",
+  "id": "ab9a650b-3103-4687-90b7-1e96216b3238",
   "prevId": "8697c5d8-9629-46b4-b102-6d86b7cf8030",
   "version": "7",
   "dialect": "postgresql",
@@ -28492,6 +28492,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "revision": {
           "name": "revision",
           "type": "integer",
@@ -28541,6 +28553,27 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "talent_criteria_owner_org": {
+          "name": "talent_criteria_owner_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -28564,6 +28597,21 @@
           "columnsFrom": [
             "tenant_id",
             "category_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "talent_criteria_owner_org_fk": {
+          "name": "talent_criteria_owner_org_fk",
+          "tableFrom": "talent_criteria",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
           ],
           "columnsTo": [
             "tenant_id",
@@ -28618,6 +28666,18 @@
           "notNull": true,
           "default": 0
         },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "revision": {
           "name": "revision",
           "type": "integer",
@@ -28646,7 +28706,29 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "talent_criterion_categories_owner_org": {
+          "name": "talent_criterion_categories_owner_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "talent_criterion_categories_tenant_id_tenants_id_fk": {
           "name": "talent_criterion_categories_tenant_id_tenants_id_fk",
@@ -28659,6 +28741,21 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_criterion_categories_owner_org_fk": {
+          "name": "talent_criterion_categories_owner_org_fk",
+          "tableFrom": "talent_criterion_categories",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
@@ -28708,13 +28805,13 @@
         },
         "weight": {
           "name": "weight",
-          "type": "numeric(5, 2)",
+          "type": "numeric(10, 1)",
           "primaryKey": false,
           "notNull": false
         },
         "target": {
           "name": "target",
-          "type": "numeric(8, 2)",
+          "type": "numeric(10, 1)",
           "primaryKey": false,
           "notNull": false
         },
@@ -28807,16 +28904,111 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "talent_criterion_dimensions_weight": {
-          "name": "talent_criterion_dimensions_weight",
-          "value": "\"talent_criterion_dimensions\".\"weight\" BETWEEN 0 AND 100"
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.talent_description_types": {
+      "name": "talent_description_types",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
         },
-        "talent_criterion_dimensions_target": {
-          "name": "talent_criterion_dimensions_target",
-          "value": "\"talent_criterion_dimensions\".\"target\" >= 0"
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
+      "indexes": {},
+      "foreignKeys": {
+        "talent_description_types_tenant_id_tenants_id_fk": {
+          "name": "talent_description_types_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_description_types",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "talent_description_types_tenant_id": {
+          "name": "talent_description_types_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "talent_description_types_name": {
+          "name": "talent_description_types_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.talent_dimension_behaviors": {
@@ -28917,6 +29109,173 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.talent_dimension_categories": {
+      "name": "talent_dimension_categories",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "library_id": {
+          "name": "library_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "talent_dimension_categories_owner_org": {
+          "name": "talent_dimension_categories_owner_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "talent_dimension_categories_tenant_id_tenants_id_fk": {
+          "name": "talent_dimension_categories_tenant_id_tenants_id_fk",
+          "tableFrom": "talent_dimension_categories",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_dimension_categories_library_fk": {
+          "name": "talent_dimension_categories_library_fk",
+          "tableFrom": "talent_dimension_categories",
+          "tableTo": "talent_dimension_libraries",
+          "columnsFrom": [
+            "tenant_id",
+            "library_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "talent_dimension_categories_owner_org_fk": {
+          "name": "talent_dimension_categories_owner_org_fk",
+          "tableFrom": "talent_dimension_categories",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "talent_dimension_categories_tenant_id": {
+          "name": "talent_dimension_categories_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "talent_dimension_categories_library_id": {
+          "name": "talent_dimension_categories_library_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "library_id",
+            "id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -29058,6 +29417,18 @@
           "notNull": true,
           "default": 0
         },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "revision": {
           "name": "revision",
           "type": "integer",
@@ -29086,7 +29457,29 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "talent_dimension_libraries_owner_org": {
+          "name": "talent_dimension_libraries_owner_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "talent_dimension_libraries_tenant_id_tenants_id_fk": {
           "name": "talent_dimension_libraries_tenant_id_tenants_id_fk",
@@ -29099,6 +29492,21 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_dimension_libraries_owner_org_fk": {
+          "name": "talent_dimension_libraries_owner_org_fk",
+          "tableFrom": "talent_dimension_libraries",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
@@ -29247,11 +29655,11 @@
           "primaryKey": false,
           "notNull": true
         },
-        "suggestion_type": {
-          "name": "suggestion_type",
-          "type": "text",
+        "type_id": {
+          "name": "type_id",
+          "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "description": {
           "name": "description",
@@ -29263,8 +29671,7 @@
           "name": "display_order",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "default": 0
+          "notNull": true
         }
       },
       "indexes": {
@@ -29279,6 +29686,27 @@
             },
             {
               "expression": "dimension_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "talent_dimension_suggestions_type": {
+          "name": "talent_dimension_suggestions_type",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -29317,6 +29745,21 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "talent_dimension_suggestions_type_fk": {
+          "name": "talent_dimension_suggestions_type_fk",
+          "tableFrom": "talent_dimension_suggestions",
+          "tableTo": "talent_description_types",
+          "columnsFrom": [
+            "tenant_id",
+            "type_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },
@@ -29367,9 +29810,9 @@
           "primaryKey": false,
           "notNull": false
         },
-        "category": {
-          "name": "category",
-          "type": "text",
+        "category_id": {
+          "name": "category_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -29386,6 +29829,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
         },
         "revision": {
           "name": "revision",
@@ -29416,8 +29871,8 @@
         }
       },
       "indexes": {
-        "talent_dimensions_library": {
-          "name": "talent_dimensions_library",
+        "talent_dimensions_category": {
+          "name": "talent_dimensions_category",
           "columns": [
             {
               "expression": "tenant_id",
@@ -29426,7 +29881,28 @@
               "nulls": "last"
             },
             {
-              "expression": "library_id",
+              "expression": "category_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "talent_dimensions_owner_org": {
+          "name": "talent_dimensions_owner_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -29466,6 +29942,38 @@
           ],
           "onDelete": "restrict",
           "onUpdate": "no action"
+        },
+        "talent_dimensions_category_fk": {
+          "name": "talent_dimensions_category_fk",
+          "tableFrom": "talent_dimensions",
+          "tableTo": "talent_dimension_categories",
+          "columnsFrom": [
+            "tenant_id",
+            "library_id",
+            "category_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "library_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "talent_dimensions_owner_org_fk": {
+          "name": "talent_dimensions_owner_org_fk",
+          "tableFrom": "talent_dimensions",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -29483,12 +29991,27 @@
           "nullsNotDistinct": false,
           "columns": [
             "tenant_id",
+            "library_id",
             "code"
+          ]
+        },
+        "talent_dimensions_name": {
+          "name": "talent_dimensions_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "library_id",
+            "name"
           ]
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "talent_dimensions_code_format": {
+          "name": "talent_dimensions_code_format",
+          "value": "\"talent_dimensions\".\"code\" ~ '^[A-Za-z][A-Za-z0-9_]{0,49}$'"
+        }
+      },
       "isRLSEnabled": false
     }
   },
