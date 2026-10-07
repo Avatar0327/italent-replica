@@ -266,7 +266,7 @@ const DATA = {
     "F-021":{n:"实现「同步序列到任职」：改序列同步当前与未来记录（审批中追加载荷版本），清空序列不同步",parent:"R1-T04",s:"done",dev:"Codex",rev:"Codex",pr:[86],why:"DEC-127、208、218、219；3 轮 astra 审查后合并（380ce53，无迁移）"},
     "F-022":{n:"人员状态（待入职 / 试用 / 正式）、入职状态（正常 / 延期）补字段并接入工作台精确统计",parent:"R1-T14",s:"active",dev:"Claude",rev:"Codex",deps:["R1-T14"],why:"Claude 开发中（Opus 5.5 High，§25）；排在 #83 之后合并；Q-M0-76 与 #85 披露的缺口"},
     "F-023":{n:"为调动联动审计日志登记查看规则",parent:"R1-T16",s:"done",dev:"Codex",rev:"Codex",pr:[88],why:"#75 遗留 ⑦；2 轮 astra 审查后合并（5034a52，无迁移）"},
-    "F-024":{n:"R1 端到端验收与 AC 覆盖报告（员工发起调动 → 审批 → HR 执行 → 定时生效 → 版本链与向后更新 → 员工与经理侧可见）",parent:"R1-T16",s:"active",dev:"Claude",rev:"Codex",note:"Claude 开发中（Fable 5.1 High，§28）；建议报告注明未含 #79 / #83，相关用例待其合并后补跑",why:"DEC-221③；编排窗口另做界面走查"},
+    "F-024":{n:"R1 端到端验收与 AC 覆盖报告（员工发起调动 → 审批 → HR 执行 → 定时生效 → 版本链与向后更新 → 员工与经理侧可见）",parent:"R1-T16",s:"active",dev:"Claude",rev:"Codex",note:"Claude 开发中（Fable 5.1 High，§28）；报告注明基线提交、未含 #79 / #83，相关用例待其合并后补跑（§28 已补，已发进会话）",why:"DEC-221③；编排窗口另做界面走查"},
     "F-025":{n:"本地演示环境：后端可用 PGlite 本地启动、合成演示种子、仅开发环境可用的签名身份切换、一条命令起前后端",parent:"R1-T16",s:"active",dev:"Claude",rev:"Codex",note:"Claude 开发中（Opus 5.5 High，§29）；界面走查等它合并后再做；生产环境下开发身份与 PGlite 回退均不可用（有负向测试）",why:"总编排做 R1 界面走查时发现本地跑不起系统"},
     "F-011":{n:"新建职位 / 改所属组织按整段校验组织停用",parent:"R1-T04",s:"done",dev:"Codex",rev:"Claude",pr:[65],why:"DEC-151（Q-M0-60）；首审通过即合并（8e56e87）"}
   },
