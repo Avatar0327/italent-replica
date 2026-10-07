@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defaultClientConditions, defineConfig, loadEnv } from 'vite';
-import { demoIdentityPlugin } from './dev/demo-identity';
+import { demoIdentityPlugin } from './dev/demo-identity.ts';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 

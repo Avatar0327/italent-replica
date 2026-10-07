@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const envFile = `${root}.env.local`;
 const apiDir = `${root}apps/api`;
+const webDir = `${root}apps/web`;
 const nodeArgs = ['--conditions=@italent/source', '--import', 'tsx'];
 
 function prepareEnv() {
@@ -56,14 +57,22 @@ function reset() {
 }
 
 function serveAll() {
-  // 后端：定时生效间隔缩短到 30 秒，便于演示“到期生效”；前端：vite 开发服务器（/api 代理按所选演示身份签名）
+  // 后端：定时生效间隔缩短到 30 秒，便于演示“到期生效”；前端：vite 开发服务器（/api 代理按所选演示身份签名）。
+  // 两个都直接用 node 起（不经 pnpm 包一层），保证 Ctrl+C / 任一退出时能一起停干净。
   process.env.EMPLOYMENT_ACTIVATION_INTERVAL_MS ||= '30000';
   const children = [
     run(process.execPath, [...nodeArgs, 'src/server.ts'], { cwd: apiDir }),
-    run('pnpm', ['--filter', '@italent/web', 'dev'], { cwd: root }),
+    run(process.execPath, [`${webDir}/node_modules/vite/bin/vite.js`], { cwd: webDir }),
   ];
+  let exitCode = 0;
   const stop = () => children.forEach((child) => child.exitCode === null && child.kill('SIGINT'));
-  for (const child of children) child.on('exit', stop);
+  for (const child of children) {
+    child.on('exit', (code) => {
+      exitCode ||= code ?? 0;
+      stop();
+      if (children.every((c) => c.exitCode !== null || c.signalCode !== null)) process.exit(exitCode);
+    });
+  }
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
 }

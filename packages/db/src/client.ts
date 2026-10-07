@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { PGlite } from '@electric-sql/pglite';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
@@ -43,6 +44,7 @@ export async function openPgliteDir(dataDir: string): Promise<DbHandle> {
     import('@electric-sql/pglite'),
     import('@electric-sql/pglite/contrib/btree_gist'),
   ]);
+  mkdirSync(dataDir, { recursive: true });
   return createPgliteDb(await PGlite.create(dataDir, { extensions: { btree_gist } }));
 }
 
