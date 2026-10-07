@@ -14,8 +14,8 @@ import {
 } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { DEMO_PEOPLE } from '../../apps/api/src/demo/data.js';
-import { type DemoManifest, seedDemo } from '../../apps/api/src/demo/seed.js';
+import { DEMO_PEOPLE, DEMO_TRANSFER_PROCESS_CODE } from '../../apps/api/src/demo/data.js';
+import { type DemoManifest, DemoSeedIncompleteError, seedDemo } from '../../apps/api/src/demo/seed.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -151,5 +151,17 @@ describe('F-025 演示种子', () => {
     );
     expect(audit.items.length).toBeGreaterThan(0);
     expect((await api.request('GET', '/api/tenant/audit/data-changes', employee)).status).toBe(403);
+  });
+
+  // P3（#92 第二轮）：演示流程已建但未发布（发布前中断）时，重跑不能误报完成
+  it('演示流程未发布视为不完整：重跑报错并提示重置，而不是返回已完成', async () => {
+    const db = database().db;
+    await withTenant(db, manifest.tenantId, (tx) =>
+      tx
+        .update(approvalProcesses)
+        .set({ currentVersionId: null })
+        .where(eq(approvalProcesses.code, DEMO_TRANSFER_PROCESS_CODE)),
+    );
+    await expect(seedDemo(db, { clock, nodeEnv: 'test' })).rejects.toBeInstanceOf(DemoSeedIncompleteError);
   });
 });
