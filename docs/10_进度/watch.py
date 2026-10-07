@@ -203,7 +203,12 @@ def main():
                     ev.append(f"Opus 审查待收 #{n} {p['t']}：claude.ai/code 审查会话发起 {m} 分钟，PR 上仍无审查原文 / 结论，请审查合并窗口看会话是否已完成或卡住")
                     stalled.add(k)
         ev_t = last_evidence_commit()
-        if ev_t:
+        pause = os.path.expanduser("~/.cache/italent-evidence-pause")  # 内容为 ISO 日期：取证窗口按计划停到该日，期间不报停顿
+        try:
+            paused = os.path.exists(pause) and datetime.date.today().isoformat() < open(pause).read().strip()
+        except Exception:
+            paused = False
+        if ev_t and not paused:
             m = int(mins_since(ev_t))
             k3 = f"evidence-idle@{ev_t}@{m // EVIDENCE_IDLE}"
             if m >= EVIDENCE_IDLE and k3 not in stalled:
