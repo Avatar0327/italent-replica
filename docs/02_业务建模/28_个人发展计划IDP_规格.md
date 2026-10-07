@@ -116,3 +116,18 @@
   - 子流程名称可以改（如“JDB制定计划”），名称与类别不必一致（有一条“期末回顾”的类别是“制定计划”）。
 - 开关参数 `IDP.SwitchParameter`：新建目标时允许从胜任力库中选择（是 / 否）、胜任力对标数据（`IDP.CompRelaDataType`）。
 - 未做：模块配置 JSON 的结构、流程干预的限制（需写入）。
+
+### 模板模块配置结构（Q-M0-115 ④，2026-10-08，A0，只读）
+- 接口：`IDPMRest/…/IDPTemplate/GetIDPTemplate?templateId=` 返回模板（id、名称、流程、moduleList）；`IDPTemplateModule/GetTemplateModule?moduleId=` 返回单个模块。样本模板“DENSO-育成计划模板-3”（流程 DZ-IDP流程）共 9 个模块。
+- **模块类型 `moduleType`**：0 基本信息、2 发展目标、3 回顾（中期回顾）、4 总结（年度总结）、6 综述（个人信息综述、未来职业规划等）。
+- **`goalSourceSettings`（目标来源与展示）**：
+  - `canDefinition` 允许自定义目标；`canRefFromLibrary` 允许从胜任力库引用；`compencyLibrarySource` 引用来源（样本为 3）。
+  - `show360Lastest` / `showAssessmentLastest` / `show3TargetValue`，以及测评结果设置 `assessmentResultSetting`（测评类别、方案、名称）、360 结果设置 `i360ResultSetting`（活动、套卷）。
+  - `goalListSetting`：PC 列表、移动列表、移动详情、目标表单的视图名。
+  - `goalReviewSetting`：`enableGoalReview` 目标回顾开关、`title`、`goalReviewEdit`。
+  - `taskSetting.isEnable` 制定任务；`checkNoneGoal` 无目标校验；`coachPlanSetting` 辅导计划（开关与列表视图）。
+- **`settings.activitySettings`（权限，按审批流节点，不按角色）**：每个流程节点（如“制定发展目标”“审批发展计划”…）一项，含 `enable`、`viewCode`、`enableButtonList`（可用按钮），以及 `buttonList`（候选按钮）。
+  - 候选按钮：新增目标 `RowAddIdpGoal`、编辑目标 `RowEditIdpGoal`、删除目标 `RowDeleteIdpGoal`、编辑学习计划 `UpdateLearning`、发布学习计划 `PublishLearning`（提示：“勾选后，该节点提交时，会将学习计划发布，员工将收到学习通知。”）。
+  - 另有 `goalReviewNode`、`evaluationSetting`（活动时间类型、IDP 时间类型、分类）、`metaObjectFieldSettings`、`analysisSetting`。
+- 对复刻：IDP-R 中“按步骤角色设可见 / 新增 / 编辑 / 删除”应改为“按流程节点设可用按钮”。
+- 未做：流程干预的限制（需写入）。
