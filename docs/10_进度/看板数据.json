@@ -885,7 +885,7 @@
 },
 "102": {
 "s": "active",
-"r": 2,
+"r": 3,
 "n": "Draft 开发中"
 },
 "106": {
@@ -1949,7 +1949,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 13:02",
+"liveUpdated": "10-07 13:04",
 "chains": [
 {
 "g": "exit",
@@ -2165,8 +2165,9 @@
 "k": "run",
 "pr": 102,
 "n": "AC 覆盖运行时统计",
-"seg": "ev:n ds:n dev:d2 rev:a2 mg:w",
-"now": "第 2 轮审查出结论，待读取"
+"seg": "ev:n ds:n dev:a3 rev:d2 mg:w",
+"now": "第 3 轮修改（2 个 P2：身份配对、only 漏报）",
+"up": "10-07 第 3 轮调到 Max"
 },
 {
 "id": "F-025",
