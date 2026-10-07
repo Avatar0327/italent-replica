@@ -60,7 +60,10 @@ export function registerManagerRoutes(router: Hono<TenantEnv>, deps: TenantRoute
               : ['email', 'mobilePhone'].includes(key)
                 ? personFields
                 : fields;
-            return ['category', 'leaving'].includes(key) || permissions === undefined || permissions.has(key);
+            // 离职中、试用中是工作台标记列，与计数同一谓词（Q-M0-76 / F-022）
+            return (
+              ['category', 'leaving', 'probation'].includes(key) || permissions === undefined || permissions.has(key)
+            );
           }),
         ),
       );
