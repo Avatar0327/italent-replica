@@ -1,0 +1,5 @@
+{
+  "title": "夹具：全部通过",
+  "groups": [{ "name": "通过", "include": ["AC-DEMO-01~02"] }],
+  "notes": { "AC-DEMO-02": { "status": "未覆盖", "category": "已有 DEC", "note": "夹具：按决策不做" } }
+}

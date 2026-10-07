@@ -1,0 +1,15 @@
+{
+  "title": "夹具：写法变体",
+  "groups": [
+    { "name": "变体", "include": ["AC-DEMO-*", "AC-DEMO-98"] },
+    { "name": "数字模块", "include": ["AC-360-01"] }
+  ],
+  "notes": {
+    "AC-DEMO-93": { "status": "未覆盖", "category": "已有 DEC", "note": "夹具：按决策不做" },
+    "AC-DEMO-95": {
+      "note": "夹具：标题未写编号，人工映射",
+      "evidence": [{ "file": "format.fixture.js", "title": "控制用例" }]
+    },
+    "AC-DEMO-96": { "evidence": [{ "file": "format.fixture.js", "title": "不存在的用例" }] }
+  }
+}
