@@ -102,10 +102,12 @@ describe('R3-T01 只读端口', () => {
     const loaded = await withTenant(db, f.w.tenant.id, (tx) =>
       loadTalentDimensions(tx, f.w.tenant.id, [f.p1.id, f.a2.id]),
     );
-    expect(loaded.map((item: DimensionView) => [item.id, item.enabled, item.libraryEnabled])).toEqual([
+    // 端口按 ID 排序返回；ID 是随机 UUID，预期同样按 ID 排序
+    const expected = [
       [f.a2.id, false, true],
       [f.p1.id, true, false],
-    ]);
+    ].sort(([a], [b]) => (String(a) < String(b) ? -1 : 1));
+    expect(loaded.map((item: DimensionView) => [item.id, item.enabled, item.libraryEnabled])).toEqual(expected);
   });
 
   it('人才标准可被引用 = 存在、同租户且启用', async () => {
