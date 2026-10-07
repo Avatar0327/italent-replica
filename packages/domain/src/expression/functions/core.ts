@@ -36,7 +36,7 @@ export const CORE_FUNCTIONS: readonly FunctionSpec[] = [
     name: 'ToNumber',
     aliases: ['转换为数字', '转换为数值'],
     params: [param('值')],
-    description: '文本 / 百分比 / 是否 / 单选值转数值；空值按语义配置（待 Q-M0-95）',
+    description: '文本 / 百分比 / 是否 / 单选值转数值；空值转为 0（DEC-257）',
     implement: (call) => toNumberValue(call.args[0] ?? EMPTY, call.env.semantics),
   },
   {

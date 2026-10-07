@@ -1,0 +1,109 @@
+<title>iTalent 进行中</title>
+<style>
+/* 由 board.py 生成：只改 看板数据.json 的 items / chains。
+   布局：每条依赖链一行，从左到右是前序 → 当前 → 后续；同一列上下排列的是并行任务。
+   配色：麦肯锡系（深蓝 / 电光蓝 / 青蓝 / 灰阶），与总体看板一致 */
+:root{
+  --bg:#f5f6f8;--panel:#fff;--sunk:#eef1f5;--ink:#051c2c;--ink2:#2b3a4a;--muted:#5f6b7a;--faint:#9aa5b1;--line:#e1e5ea;
+  --ev:#5c7c99;--ds:#00a9f4;--dev:#2251ff;--rev:#051c2c;--mg:#7f93a8;--need:#d0453a;
+  --ev-bg:#e9eef3;--ds-bg:#e1f5fd;--dev-bg:#e6ecff;--rev-bg:#e3e8ee;--mg-bg:#eef1f5;--need-bg:#fbe9e7;
+  --on:#fff;
+  --f:Arial,"Helvetica Neue","Noto Sans SC","PingFang SC",system-ui,sans-serif;--serif:Georgia,"Noto Serif SC","Songti SC",serif;--mono:ui-monospace,Menlo,"SF Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#071722;--panel:#0d2231;--sunk:#12293a;--ink:#e8eef4;--ink2:#c3cfdb;--muted:#8a9bab;--faint:#5b6d7e;--line:#1d3446;
+  --ev:#8fa9c2;--ds:#3cc4ff;--dev:#6f8dff;--rev:#c9d6e3;--mg:#7d93a8;--need:#f0796c;
+  --ev-bg:#16293a;--ds-bg:#0f2f40;--dev-bg:#16264a;--rev-bg:#1a2c3c;--mg-bg:#12293a;--need-bg:#3a1c1a;
+  --on:#071722;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#071722;--panel:#0d2231;--sunk:#12293a;--ink:#e8eef4;--ink2:#c3cfdb;--muted:#8a9bab;--faint:#5b6d7e;--line:#1d3446;
+  --ev:#8fa9c2;--ds:#3cc4ff;--dev:#6f8dff;--rev:#c9d6e3;--mg:#7d93a8;--need:#f0796c;
+  --ev-bg:#16293a;--ds-bg:#0f2f40;--dev-bg:#16264a;--rev-bg:#1a2c3c;--mg-bg:#12293a;--need-bg:#3a1c1a;
+  --on:#071722;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.45 var(--f);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1400px;margin:0 auto;padding-block:22px 32px;padding-inline:16px;display:grid;gap:18px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 20px;border-bottom:2px solid var(--ink);padding-bottom:12px}
+h1{margin:0;font:400 24px/1.15 var(--serif);letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:12px;margin-top:4px}
+.sub a{color:var(--muted)}
+.tally{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--ink2)}
+.tally span{display:inline-flex;align-items:center;gap:6px}
+.tally i{width:10px;height:10px;display:inline-block}
+.tally b{font:700 16px var(--mono)}
+.chains{display:grid;gap:10px}
+.chain{background:var(--panel);border:1px solid var(--line);display:grid;grid-template-columns:150px minmax(0,1fr)}
+.ct{padding:12px 12px;border-right:1px solid var(--line);display:grid;align-content:start;gap:3px}
+.ct b{font:400 15px/1.25 var(--serif)}
+.ct span{font-size:11px;color:var(--muted)}
+.flow{display:flex;align-items:center;gap:0;overflow-x:auto;padding:10px 12px}
+.col{display:grid;gap:6px;flex:none}
+.arr{flex:none;width:26px;height:2px;background:var(--faint);position:relative;margin:0 4px}
+.arr::after{content:"";position:absolute;right:-1px;top:-4px;border-left:7px solid var(--faint);border-top:5px solid transparent;border-bottom:5px solid transparent}
+.it{width:178px;border:1px solid var(--line);background:var(--panel);padding:7px 8px 8px;display:grid;gap:5px}
+.it.need{border:2px solid var(--need);padding:6px 7px 7px}
+.it.done{background:var(--sunk);border-color:transparent;width:150px;gap:2px}
+.it.todo{border-style:dashed;width:150px;gap:2px}
+.hd{display:flex;align-items:baseline;gap:6px;min-width:0}
+.id{font:700 12px var(--mono);white-space:nowrap}
+.done .id{color:var(--muted)}
+.tg{margin-left:auto;font:700 9.5px/1.5 var(--mono);padding:0 4px;border:1px solid currentColor;white-space:nowrap}
+.tg.fb{color:var(--ink)}
+.tg.up{color:var(--dev)}
+.nm{font-size:11.5px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.done .nm,.todo .nm{color:var(--muted)}
+.bar{display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
+.sg{height:26px;display:flex;align-items:center;justify-content:center;font:700 15px var(--mono)}
+.sg.n{background:repeating-linear-gradient(90deg,transparent 0 3px,var(--line) 3px 4px);opacity:.6}
+.sg.w{border:1px dashed var(--faint);color:var(--faint);font-size:12px}
+.sg.d{font-size:12px}
+.now{font-size:11.5px;line-height:1.35;color:var(--ink)}
+.need .now{color:var(--need);font-weight:700}
+.wait{font-size:10.5px;color:var(--muted)}
+.u{font-size:10.5px;color:var(--muted)}
+.lg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11px;color:var(--muted)}
+.lg span{display:inline-flex;align-items:center;gap:5px}
+.lg i{width:18px;height:12px;display:inline-block}
+@media (max-width:640px){.chain{grid-template-columns:1fr}.ct{border-right:0;border-bottom:1px solid var(--line)}}
+@media (prefers-reduced-motion:no-preference){.sg.a{animation:pulse 2.4s ease-in-out infinite}@keyframes pulse{50%{opacity:.82}}}
+</style>
+<div class="wrap">
+  <header>
+    <div><h1>进行中</h1><div class="sub">更新于 <span class="mono" id="upd"></span> · 每行一条依赖链：前序 → 当前 → 后续 · <a href="https://claude.ai/artifact/Cv4XHGHSRYu1JAW96C2dtK">总体看板</a></div></div>
+    <div class="tally" id="tally"></div>
+  </header>
+  <div class="lg" id="lg"></div>
+  <div class="chains" id="chains"></div>
+</div>
+<script>
+const DATA = {"items": [{"id": "F-022", "g": "exit", "o": 1, "k": "done", "pr": 93, "n": "人员 / 入职状态", "u": "10-07 合并"}, {"id": "F-007", "g": "exit", "o": 2, "k": "run", "pr": 83, "n": "组织变更联动任职", "seg": "ev:d ds:a4 dev:w rev:w8 mg:w", "now": "设计 v4 修订中（v3 剩 4 组 P2）", "wait": "v4 仍有核心 P2 则问你收缩 / Ultracode", "fable": "1", "up": "10-07 第 8 轮后调到 Max"}, {"id": "R2-T03", "g": "exit", "o": 3, "k": "run", "pr": 100, "n": "离职管理", "seg": "ev:d ds:a2 dev:w rev:w mg:w", "now": "设计 v1.2 复审出结论，待读取", "wait": "#83 合并后写代码", "fable": "1"}, {"id": "R2-T02", "g": "exit", "o": 4, "k": "todo", "n": "试用期与转正", "u": "R2-T03 之后"}, {"id": "R1", "g": "r1fix", "o": 1, "k": "done", "n": "R1 底座 19/19", "u": "主任务已完成"}, {"id": "F-026", "g": "r1fix", "o": 2, "k": "run", "pr": 96, "n": "重叠调入超编确认", "seg": "ev:d ds:n dev:w5 rev:d4 mg:w", "now": "第 4 轮主体通过，2 个新 P2 → 第 5 轮", "fable": "1", "up": "10-07 第 4 轮调到 Max"}, {"id": "F-027", "g": "acc", "o": 2, "k": "run", "pr": 97, "n": "审批中心前端", "seg": "ev:n ds:n dev:a4 rev:d3 mg:w", "now": "第 4 轮修改", "fable": "1", "up": "10-07 第 4 轮调到 Max"}, {"id": "F-029", "g": "acc", "o": 2, "k": "run", "pr": 99, "n": "本人跨部门调动职位置空", "seg": "ev:d ds:n dev:d4 rev:w4 mg:w", "now": "第 4 轮已推送，待发起审查", "wait": "同类第 3 次，第 5 轮仍有则问你", "up": "10-07 第 4 轮调到 Max（Opus）"}, {"id": "R3-T00", "g": "expr", "o": 1, "k": "done", "n": "表达式引擎", "u": "已合并"}, {"id": "F-032", "g": "expr", "o": 2, "k": "done", "pr": 101, "n": "表达式语义校准", "u": "10-07 合并"}, {"id": "Q-M0-81", "g": "expr", "o": 2, "k": "done", "n": "函数口径取证", "u": "10-07 完成"}, {"id": "Q-M0-82", "g": "expr", "o": 2, "k": "done", "n": "继任规则取证", "u": "10-07 完成"}, {"id": "F-033", "g": "expr", "o": 3, "k": "run", "n": "函数库补齐 63 个", "seg": "ev:d ds:n dev:a1 rev:w mg:w", "now": "开发中（Draft）", "pr": 108}, {"id": "R3-T05", "g": "expr", "o": 3, "k": "todo", "n": "继任管理", "u": "可派，第二批"}, {"id": "R3-T04", "g": "expr", "o": 4, "k": "todo", "n": "人才盘点", "u": "等 F-033 合并"}, {"id": "R3-T01", "g": "r3a", "o": 1, "k": "run", "n": "人才标准与指标库", "seg": "ev:d ds:n dev:d1 rev:a1 mg:w", "now": "Sol Ultra 第 1 轮审查中；CI 红 1 例（PGlite 排序）待修", "pr": 106}, {"id": "R3-T03", "g": "r3a", "o": 1, "k": "run", "n": "360 度评估（PR-A）", "seg": "ev:d ds:n dev:d1 rev:a1 mg:w", "now": "PR-A Sol Ultra 第 1 轮审查中", "pr": 107}, {"id": "R3-T02", "g": "r3a", "o": 2, "k": "todo", "n": "任职资格 + 人才评定", "u": "等 R3-T01 合并"}, {"id": "F-024", "g": "acc", "o": 1, "k": "done", "pr": 91, "n": "R1 端到端验收", "u": "10-07 合并"}, {"id": "F-030", "g": "acc", "o": 3, "k": "run", "pr": 102, "n": "AC 覆盖运行时统计", "seg": "ev:n ds:n dev:d1 rev:a1 mg:w", "now": "Sol Ultra 第 1 轮出结论，待读取"}, {"id": "F-025", "g": "acc", "o": 1, "k": "done", "pr": 92, "n": "本地演示环境（pnpm demo）", "u": "10-07 合并 · 可点击走查"}, {"id": "UI-R1", "g": "acc", "o": 2, "k": "todo", "n": "R1 界面点击走查", "u": "审批步骤等 #97，本人调动等 #99"}], "chains": [{"g": "exit", "t": "R2 离职主线", "d": "R2-T03 及其前序修正"}, {"g": "r1fix", "t": "R1 修正收尾", "d": "调动 / 审批 / 编制"}, {"g": "expr", "t": "R3 表达式 → 盘点 / 继任", "d": "R3-T00 的后续修正"}, {"g": "r3a", "t": "R3 第一批", "d": "标准、360"}, {"g": "acc", "t": "R1 验收", "d": "端到端测试 + 界面走查"}], "liveUpdated": "10-07 11:28", "updated": "2026-10-07"};
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ST = [["ev","取证"],["ds","设计"],["dev","开发"],["rev","审查"],["mg","合并"]];
+const parse = s => Object.fromEntries((s || "").split(/\s+/).filter(Boolean).map(x => { const [k, v] = x.split(":"); return [k, {s: v[0], r: v.slice(1)}]; }));
+const items = DATA.items || [];
+const byId = Object.fromEntries(items.map(i => [i.id, i]));
+const cur = it => { const p = parse(it.seg); const a = ST.find(([k]) => p[k] && p[k].s === "a"); return a ? a[0] : null; };
+const seg = (k, x) => {
+  if (!x || x.s === "n") return `<div class="sg n" title="不适用"></div>`;
+  if (x.s === "w") return `<div class="sg w">${esc(x.r)}</div>`;
+  const style = x.s === "a" ? `background:var(--${k});color:var(--on)` : `background:var(--${k}-bg);color:var(--${k})`;
+  return `<div class="sg ${x.s}" style="${style}" title="${ST.find(s => s[0] === k)[1]}${x.r ? " 第 " + x.r + " 轮" : ""}">${x.s === "d" && !x.r ? "✓" : esc(x.r)}</div>`;
+};
+const card = it => {
+  const head = `<div class="hd"><span class="id">${it.pr ? "#" + it.pr + " " : ""}${esc(it.id)}</span>${it.fable ? '<span class="tg fb">Fable</span>' : ""}${it.up ? `<span class="tg up" title="${esc(it.up)}">强度↑</span>` : ""}</div><div class="nm" title="${esc(it.n)}">${esc(it.n)}</div>`;
+  if (it.k === "done") return `<div class="it done">${head}<div class="u">✓ ${esc(it.u)}</div></div>`;
+  if (it.k === "todo") return `<div class="it todo">${head}<div class="u">${esc(it.u)}</div></div>`;
+  const p = parse(it.seg);
+  return `<div class="it${it.need ? " need" : ""}">${head}<div class="bar">${ST.map(([k]) => seg(k, p[k])).join("")}</div><div class="now">${esc(it.now)}</div>${it.wait ? `<div class="wait">等：${esc(it.wait)}</div>` : ""}</div>`;
+};
+document.getElementById("upd").textContent = DATA.liveUpdated || DATA.updated || "";
+const run = items.filter(i => i.k === "run"), cnt = {}; run.forEach(i => { const c = cur(i); if (c) cnt[c] = (cnt[c] || 0) + 1; });
+document.getElementById("tally").innerHTML = ST.map(([k, l]) => `<span><i style="background:var(--${k})"></i>${l}<b>${cnt[k] || 0}</b></span>`).join("") + `<span style="color:var(--need)"><i style="background:var(--need)"></i>等你处理<b>${run.filter(i => i.need).length}</b></span>`;
+document.getElementById("lg").innerHTML = ST.map(([k, l]) => `<span><i style="background:var(--${k})"></i>${l}进行中</span>`).join("") + `<span><i style="background:var(--dev-bg)"></i>已完成（浅色）</span><span><i style="border:1px dashed var(--faint)"></i>待做</span><span>数字 = 第几轮</span><span><span class="tg fb" style="margin:0">Fable</span> Fable 5.1 开发</span><span><span class="tg up" style="margin:0">强度↑</span> 超过 3 轮已升强度</span>`;
+document.getElementById("chains").innerHTML = (DATA.chains || []).map(ch => {
+  const cols = {}; items.filter(i => i.g === ch.g).forEach(i => (cols[i.o || 1] ||= []).push(i));
+  const keys = Object.keys(cols).map(Number).sort((a, b) => a - b);
+  return `<section class="chain"><div class="ct"><b>${esc(ch.t)}</b><span>${esc(ch.d || "")}</span></div><div class="flow">${keys.map(k => `<div class="col">${cols[k].map(card).join("")}</div>`).join('<div class="arr"></div>')}</div></section>`;
+}).join("");
+</script>
