@@ -103,14 +103,9 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 </style></head><body>
 <div class="wrap">
   <header>
-    <div class="ttl"><h1>北森 iTalent 复刻 · 开发进度</h1><span class="sub">更新于 <span class="mono" id="upd"></span> · Avatar0327/italent-replica · 进度窗口维护</span></div>
+    <div class="ttl"><h1>北森 iTalent 复刻 · 开发进度</h1><span class="sub">更新于 <span class="mono" id="upd"></span> · <a href="https://claude.ai/artifact/FaqkRF7fwT9YLcBXMY5Psx" style="color:inherit">进行中看板</a> · Avatar0327/italent-replica · 进度窗口维护</span></div>
     <div class="stats" id="stats"></div>
   </header>
-
-  <section>
-    <div class="sec-h"><h2>正在进行</h2><span class="sub">会话命名：#PR号 编号 开发 / 审查 / 其他 具体任务</span></div>
-    <div class="panel" id="run"></div>
-  </section>
 
   <section>
     <div class="sec-h"><h2>全景 · 依赖关系</h2>
@@ -137,8 +132,6 @@ const ST = {done:["已完成","s-done"],review:["审查中","s-review"],active:[
 const COL = {done:"var(--done)",review:"var(--review)",active:"var(--active)",todo:"var(--todo)",blocked:"var(--blocked)"};
 const MS = {M0:"底座与决策",M1:"多租户隔离",M2:"权限与平台",M3:"组织与职务编制",M4:"任职版本链",M5:"审批与定时生效",M6:"调动业务",M7:"联动 · 自助 · 审计"};
 const STAGES = {R1:"R1 底座",R2:"R2 人事完整化",R3:"R3 人才链路"};
-const esc0 = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-document.getElementById("run").innerHTML = '<table><colgroup><col style="width:34%"><col style="width:24%"><col style="width:70px"><col></colgroup><thead><tr><th>会话名（#PR 编号 任务）</th><th>当前在做</th><th>轮次</th><th>谁在做</th></tr></thead><tbody>' + (DATA.run || []).map(r => `<tr><td><span class="mono">${r[0] ? "#" + r[0] + " " : ""}${esc0(r[1])}</span> ${esc0(r[2])}</td><td><b>${esc0(r[3])}</b></td><td>${esc0(r[4])}</td><td>${esc0(r[5])}</td></tr>`).join("") + '</tbody></table>';
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const isFix = id => !!T[id].p;
 const stg = id => { const t = T[id]; if (t.p) return stg(t.p); return (t.ms || "").startsWith("M") ? "R1" : t.ms; };

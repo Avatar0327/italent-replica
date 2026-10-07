@@ -1845,78 +1845,147 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"run": [
-[
-83,
-"F-007",
-"组织变更联动任职",
-"设计 v3 修订中（v2 未过，5 组 P2）",
-"第 8 轮",
-"审查：Codex Astra Ultra；开发：Claude Fable 5.1"
+"cards": [
+{
+"id": "F-032",
+"pr": 101,
+"n": "表达式语义校准",
+"now": "审查通过，等你定 F032-Q1 并授权合并",
+"seg": "ev:d ds:n dev:d1 rev:d1 mg:a",
+"dev": "Claude Opus 5.5 High",
+"rev": "Codex Sol Ultra",
+"wait": "F032-Q1 函数参数空值口径（推荐按 0 + 补取证）",
+"need": "1"
+},
+{
+"id": "F-007",
+"pr": 83,
+"n": "组织变更联动任职",
+"now": "设计 v3 修订中",
+"seg": "ev:d ds:a3 dev:w rev:w8 mg:w",
+"dev": "Claude Fable 5.1",
+"rev": "Codex Astra Ultra",
+"wait": "v3 仍有数据正确性 P2 则问你是否收缩范围"
+},
+{
+"id": "R2-T03",
+"pr": 100,
+"n": "离职管理",
+"now": "设计 v1.2 修订中（含 DEC-263）",
+"seg": "ev:d ds:a2 dev:w rev:w mg:w",
+"dev": "Claude Fable 5.1",
+"rev": "Codex Astra Ultra",
+"wait": "设计通过后，#83 合并才写代码"
+},
+{
+"id": "F-026",
+"pr": 96,
+"n": "重叠调入超编确认",
+"now": "第 4 轮修改（DEC-258 一律弹确认）",
+"seg": "ev:d ds:n dev:a4 rev:d3 mg:w",
+"dev": "Claude Fable 5.1",
+"rev": "Codex Astra Ultra"
+},
+{
+"id": "F-027",
+"pr": 97,
+"n": "审批中心前端",
+"now": "第 4 轮修改（列全同类问题）",
+"seg": "ev:n ds:n dev:a4 rev:d3 mg:w",
+"dev": "Claude Fable 5.1",
+"rev": "Codex Astra Ultra"
+},
+{
+"id": "F-029",
+"pr": 99,
+"n": "本人跨部门调动职位置空",
+"now": "第 4 轮修改（同类第 3 次 + 1 权限）",
+"seg": "ev:d ds:n dev:a4 rev:d3 mg:w",
+"dev": "Claude Opus 5.5 High",
+"rev": "Codex Astra Ultra",
+"wait": "第 4 轮仍报同类则第 5 轮问你"
+},
+{
+"id": "F-030",
+"pr": 102,
+"n": "AC 覆盖运行时统计",
+"now": "开发中（Draft）",
+"seg": "ev:n ds:n dev:a1 rev:w mg:w",
+"dev": "Claude Opus 5.5 High",
+"rev": "Codex Sol Ultra"
+},
+{
+"id": "R3-T01",
+"n": "人才标准与指标库",
+"now": "开发中",
+"seg": "ev:d ds:n dev:a1 rev:w mg:w",
+"dev": "Claude Opus 5.5 High",
+"rev": "Codex Sol Ultra"
+},
+{
+"id": "R3-T03",
+"n": "360 度评估（PR-A）",
+"now": "开发中",
+"seg": "ev:d ds:n dev:a1 rev:w mg:w",
+"dev": "Claude Opus 5.5 High",
+"rev": "Codex Sol Ultra"
+}
 ],
-[
-96,
-"F-026",
-"重叠调入超编提示",
-"开发（修改）",
-"第 4 轮",
-"开发：Claude Fable 5.1；审查：Codex Astra Ultra"
+"recent": [
+{
+"id": "F-024",
+"pr": 91,
+"n": "R1 端到端验收",
+"u": "10-07 合并 · R1 验收完成，解锁 F-030 写代码"
+},
+{
+"id": "F-022",
+"pr": 93,
+"n": "人员状态 / 入职状态",
+"u": "10-07 合并 · 解锁 R2-T03 开工"
+},
+{
+"id": "Q-M0-81",
+"n": "函数参数与口径取证",
+"u": "10-07 完成 · 产出 F-033、DEC-262"
+},
+{
+"id": "Q-M0-82",
+"n": "继任规则取证",
+"u": "10-07 完成 · 产出 DEC-261，解锁 R3-T05"
+},
+{
+"id": "Q-M0-104",
+"n": "回退超编取证",
+"u": "10-07 完成 · DEC-258，解锁 #96 第 4 轮"
+}
 ],
-[
-97,
-"F-027",
-"审批中心前端",
-"第 4 轮修改（D 档列全同类）",
-"第 4 轮",
-"开发：Claude Fable 5.1（接手 Codex）；审查：Codex Astra Ultra"
+"queue": [
+{
+"id": "F-033",
+"n": "函数库补齐 63 个",
+"u": "等 #101 合并"
+},
+{
+"id": "R3-T02",
+"n": "任职资格 + 人才评定",
+"u": "等 R3-T01 合并"
+},
+{
+"id": "R3-T04",
+"n": "人才盘点",
+"u": "等 F-032、F-033 合并"
+},
+{
+"id": "R3-T05",
+"n": "继任管理",
+"u": "等 F-032 合并"
+},
+{
+"id": "R2-T02",
+"n": "试用期与转正",
+"u": "排在 R2-T03 之后"
+}
 ],
-[
-99,
-"F-029",
-"本人跨部门调动清空职位",
-"第 4 轮修改（D 档，同类第 3 次 + 1 权限）",
-"第 4 轮",
-"开发：Claude Opus 5.5 High（接手 Codex）；审查：Codex Astra Ultra"
-],
-[
-100,
-"R2-T03",
-"离职管理",
-"设计 v1.2 修订中（6 组 P2 + 3 个产品问题待定）",
-"第 1 轮",
-"开发：Claude Fable 5.1；设计审：Codex Astra Ultra"
-],
-[
-101,
-"F-032",
-"表达式语义按原站校准",
-"Sol Ultra 第 1 轮出结论，待读取",
-"第 1 轮",
-"开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
-],
-[
-102,
-"F-030",
-"AC 覆盖统计运行时采集",
-"开发（#91 已合并，可写代码）",
-"第 1 轮",
-"开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
-],
-[
-null,
-"R3-T01",
-"人才标准与指标库",
-"开发",
-"第 1 轮",
-"开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
-],
-[
-null,
-"R3-T03",
-"360 度评估（PR-A 先）",
-"开发",
-"第 1 轮",
-"开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
-]
-]
+"liveUpdated": "10-07 10:27"
 }

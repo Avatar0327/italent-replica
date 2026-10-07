@@ -1,0 +1,106 @@
+<title>iTalent 进行中</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+/* 由 board.py 生成：只改 看板数据.json 的 cards / recent / queue。
+   布局：一屏卡片墙；每张卡一条五段流程条（取证 → 设计 → 开发 → 审查 → 合并），段内数字为轮次 */
+:root{
+  --bg:#f6f7f9;--panel:#fff;--sunk:#eef1f5;--ink:#121826;--ink2:#3a4352;--muted:#6a7383;--faint:#a0a8b5;--line:#e3e6eb;
+  --ev:#7c4dbe;--ds:#0f8a8a;--dev:#c27a12;--rev:#2563eb;--mg:#3f8f5f;--warn:#c2410c;
+  --ev-bg:#f1ebfa;--ds-bg:#e3f4f3;--dev-bg:#fcf1de;--rev-bg:#e7eefd;--mg-bg:#e8f4ec;--warn-bg:#fdece4;
+  --on:#fff;
+  --f:"Inter","Noto Sans SC","PingFang SC",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0d1015;--panel:#151a21;--sunk:#1b2129;--ink:#e7eaef;--ink2:#c2c8d1;--muted:#8a94a2;--faint:#5c6776;--line:#252c36;
+  --ev:#ab85e6;--ds:#4cc2c0;--dev:#e6a64a;--rev:#7ea8f6;--mg:#6cc08a;--warn:#f08a5d;
+  --ev-bg:#241b33;--ds-bg:#12292a;--dev-bg:#2d2312;--rev-bg:#16213a;--mg-bg:#15271c;--warn-bg:#2f1c13;
+  --on:#0d1015;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d1015;--panel:#151a21;--sunk:#1b2129;--ink:#e7eaef;--ink2:#c2c8d1;--muted:#8a94a2;--faint:#5c6776;--line:#252c36;
+  --ev:#ab85e6;--ds:#4cc2c0;--dev:#e6a64a;--rev:#7ea8f6;--mg:#6cc08a;--warn:#f08a5d;
+  --ev-bg:#241b33;--ds-bg:#12292a;--dev-bg:#2d2312;--rev-bg:#16213a;--mg-bg:#15271c;--warn-bg:#2f1c13;
+  --on:#0d1015;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 var(--f);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1280px;margin:0 auto;padding-block:24px 36px;padding-inline:16px;display:grid;gap:22px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:10px 20px}
+h1{margin:0;font-size:19px;font-weight:600;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:12px}
+.tally{display:flex;flex-wrap:wrap;gap:6px}
+.tally span{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font-size:12px;color:var(--ink2)}
+.tally i{width:8px;height:8px;border-radius:2px;display:inline-block}
+.tally b{font:600 12px var(--mono)}
+h2{margin:0 0 10px;font-size:12px;font-weight:600;letter-spacing:.08em;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 14px 12px;display:grid;gap:10px;min-width:0}
+.card.need{border-color:var(--warn)}
+.top{display:flex;gap:8px;align-items:baseline;min-width:0}
+.id{font:600 13px var(--mono);white-space:nowrap}
+.nm{font-weight:500;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.now{font-size:13.5px;font-weight:600;line-height:1.4}
+.need .now{color:var(--warn)}
+.bar{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+.sg{height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font:600 11.5px var(--mono);border:1px solid transparent}
+.sg.n{background:transparent;border-color:transparent}
+.sg.n::after{content:"";width:60%;height:1px;background:var(--line)}
+.sg.w{background:transparent;border:1px dashed var(--faint);color:var(--faint)}
+.lbl{display:grid;grid-template-columns:repeat(5,1fr);gap:3px;font-size:10.5px;color:var(--faint);text-align:center;margin-top:-6px}
+.lbl .on{color:var(--ink2);font-weight:600}
+.meta{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--muted)}
+.meta b{color:var(--ink2);font-weight:500}
+.wait{font-size:11.5px;color:var(--ink2);background:var(--sunk);border-radius:6px;padding:4px 8px}
+.strip{display:flex;flex-wrap:wrap;gap:8px}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;display:grid;gap:2px;min-width:0;max-width:100%}
+.chip .t{font-size:12.5px}
+.chip .t .id{font-size:12px;margin-right:6px}
+.chip .u{font-size:11px;color:var(--muted)}
+.chip.ok .id{color:var(--mg)}
+.chip.q{border-style:dashed}
+.foot{font-size:11px;color:var(--faint);line-height:1.7}
+.foot a{color:var(--muted)}
+.empty{color:var(--muted);font-size:12px}
+@media (prefers-reduced-motion:no-preference){.sg.a{animation:pulse 2.4s ease-in-out infinite}@keyframes pulse{50%{filter:brightness(1.12)}}}
+</style>
+<div class="wrap">
+  <header>
+    <div><h1>进行中</h1><div class="sub">更新于 <span class="mono" id="upd"></span> · 每张卡一条流程条，段内数字是轮次 · <a href="https://claude.ai/artifact/Cv4XHGHSRYu1JAW96C2dtK" class="sub">总体看板</a></div></div>
+    <div class="tally" id="tally"></div>
+  </header>
+  <section><h2>正在进行</h2><div class="grid" id="cards"></div></section>
+  <section><h2>最近完成 · 作为输入或前序</h2><div class="strip" id="recent"></div></section>
+  <section><h2>即将开始</h2><div class="strip" id="queue"></div></section>
+  <div class="foot">流程条：实色 = 正在做，浅色 = 已完成，虚线 = 待做，横线 = 不适用；数字 = 该环节已到第几轮。橙色边框 = 等你处理。开发与审查方见卡片底部，会话名与卡片标题一致（#PR号 编号 开发 / 审查 具体任务）。</div>
+</div>
+<script>
+const DATA = __DATA__;
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ST = [["ev","取证"],["ds","设计"],["dev","开发"],["rev","审查"],["mg","合并"]];
+const parse = s => Object.fromEntries((s || "").split(/\s+/).filter(Boolean).map(x => { const [k, v] = x.split(":"); return [k, {s: v[0], r: v.slice(1)}]; }));
+const seg = (k, x) => {
+  if (!x || x.s === "n") return `<div class="sg n" title="不适用"></div>`;
+  if (x.s === "w") return `<div class="sg w">${esc(x.r)}</div>`;
+  const style = x.s === "a" ? `background:var(--${k});color:var(--on)` : x.s === "b" ? `background:var(--warn-bg);color:var(--warn);border-color:var(--warn)` : `background:var(--${k}-bg);color:var(--${k})`;
+  return `<div class="sg ${x.s}" style="${style}">${x.s === "d" && !x.r ? "✓" : esc(x.r)}</div>`;
+};
+const cards = DATA.cards || [];
+const cur = c => { const p = parse(c.seg); const a = ST.find(([k]) => p[k] && (p[k].s === "a" || p[k].s === "b")); return a ? a[0] : "mg"; };
+const count = {}; cards.forEach(c => count[cur(c)] = (count[cur(c)] || 0) + 1);
+document.getElementById("upd").textContent = DATA.liveUpdated || DATA.updated || "";
+document.getElementById("tally").innerHTML = ST.map(([k, l]) => `<span><i style="background:var(--${k})"></i>${l}<b>${count[k] || 0}</b></span>`).join("") + (cards.some(c => c.need) ? `<span style="border-color:var(--warn);color:var(--warn)">等你处理<b>${cards.filter(c => c.need).length}</b></span>` : "");
+document.getElementById("cards").innerHTML = cards.length ? cards.map(c => {
+  const p = parse(c.seg), on = cur(c);
+  return `<article class="card${c.need ? " need" : ""}">
+    <div class="top"><span class="id">${c.pr ? "#" + c.pr + " " : ""}${esc(c.id)}</span><span class="nm">${esc(c.n)}</span></div>
+    <div class="now">${esc(c.now)}</div>
+    <div class="bar">${ST.map(([k]) => seg(k, p[k])).join("")}</div>
+    <div class="lbl">${ST.map(([k, l]) => `<span class="${k === on ? "on" : ""}">${l}</span>`).join("")}</div>
+    ${c.wait ? `<div class="wait">等：${esc(c.wait)}</div>` : ""}
+    <div class="meta">${c.dev ? `<span>开发 <b>${esc(c.dev)}</b></span>` : ""}${c.rev ? `<span>审查 <b>${esc(c.rev)}</b></span>` : ""}</div>
+  </article>`;
+}).join("") : `<div class="empty">当前没有进行中的任务。</div>`;
+const chip = (r, cls) => `<div class="chip ${cls}"><div class="t"><span class="id mono">${r.pr ? "#" + r.pr + " " : ""}${esc(r.id)}</span>${esc(r.n)}</div><div class="u">${esc(r.u)}</div></div>`;
+document.getElementById("recent").innerHTML = (DATA.recent || []).map(r => chip(r, "ok")).join("") || `<div class="empty">近期没有完成项。</div>`;
+document.getElementById("queue").innerHTML = (DATA.queue || []).map(r => chip(r, "q")).join("") || `<div class="empty">暂无排队任务。</div>`;
+</script>
