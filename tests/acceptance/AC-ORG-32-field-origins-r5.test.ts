@@ -241,3 +241,73 @@ it.each([false, true].flatMap((explicit) => [false, true].map((chain) => ({ expl
     );
   },
 );
+
+it.each([false, true])('AC-ORG-32 有效历史已明确序列时不二次派生覆盖 / 后续F-007=%s', async (chain) => {
+  const db = database().db;
+  const w = await orgPeopleWorld(db, `validSequence${chain}`);
+  const org = await w.org('部门');
+  const b = await w.job('sequences', 'S_B');
+  const c = await w.job('sequences', 'S_C');
+  const x = await w.job('sequences', '人工 S_X');
+  const postB = await w.job('posts', '职务 B', { sequenceId: b.id });
+  const postC = await w.job('posts', '职务 C', { sequenceId: c.id });
+  const person = await w.hire('员工', { departmentId: org.id, postId: postB.id, place: '原地点' });
+  await w.business(
+    person.id,
+    {
+      kind: 'transfer',
+      mode: 'direct',
+      effectiveDate: '2026-10-05',
+      fields: { place: '迟到地点' },
+    },
+    person.revision,
+  );
+  await w.business(
+    person.id,
+    {
+      kind: 'org_adjustment',
+      mode: 'direct',
+      effectiveDate: '2026-10-09',
+      fields: { postId: postB.id },
+    },
+    (await w.getEmployee(person.id)).revision,
+  );
+  if (chain) {
+    expect((await w.patchOrg(org, { name: '新名称', effectiveDate: '2026-10-09', addEmployment: true })).status).toBe(
+      200,
+    );
+  }
+  // 第二笔在计划日直接执行；第一笔仍未执行，不能把第二笔的有效传播也撤回或重新自动带出。
+  w.setNow('2026-10-06T01:00:00Z');
+  await w.business(
+    person.id,
+    {
+      kind: 'transfer',
+      mode: 'direct',
+      effectiveDate: '2026-10-06',
+      fields: { postId: postC.id, sequenceId: x.id },
+    },
+    (await w.getEmployee(person.id)).revision,
+  );
+  for (const record of (await w.records(person.id, '2026-10-09')).filter((r) => r.kind === 'org_adjustment'))
+    expect(record.fields).toMatchObject({ postId: postC.id, sequenceId: x.id });
+  expect(
+    (
+      await runEmploymentActivations(
+        db,
+        cmd(),
+        { tenantId: w.tenant.id },
+        {
+          clock: () => new Date('2026-10-10T01:00:00Z'),
+        },
+      )
+    ).runs[0],
+  ).toMatchObject({ failed: [], errors: [] });
+  const adjustments = (await w.records(person.id, '2026-10-09')).filter((r) => r.kind === 'org_adjustment');
+  expect(adjustments).toHaveLength(chain ? 2 : 1);
+  for (const record of adjustments)
+    expect.soft(record.fields).toMatchObject({
+      postId: postC.id,
+      sequenceId: x.id,
+    });
+});
