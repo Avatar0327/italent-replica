@@ -1,22 +1,22 @@
 /**
- * 空值与类型转换的语义配置（`26` §8.2 / §8.3，手册口径 🟡）。
+ * 空值与类型转换的语义配置（`26` §8.2 / §8.3）。
  *
- * ⚠️ 待 Q-M0-95 原站试算核对：空值参与四则的结果、ToNumber(空) 是否为 0、Average 是否跳过空、
- * 字符串与数字比较的结果。结论回来后只改本文件的 DEFAULT_SEMANTICS，不改求值器。
+ * 默认值依据 DEC-257（取证 Q-M0-95 原站试算，`26` §8.5）照原站：空 + 1 = 1、ToNumber(空) = 0、
+ * Average(空, 4) 计算失败、"5" + 1 = 6、空 > 3 为假。文本比较大小一律失败写在 operators.ts 的 compare。
  */
 
 export interface ExpressionSemantics {
-  /** ToNumber(空)：手册推定为 0（`26` §8.2）。 */
+  /** ToNumber(空)：原站实测为 0（`26` §8.5）。 */
   readonly toNumberOfEmpty: 'zero' | 'empty' | 'fail';
-  /** 空值参与加减乘除：取数函数取不到返回空、不自动当 0，参与计算按失败处理（`26` §8.2）。 */
+  /** 空值参与加减乘除（含函数的数值参数）：原站实测按 0，空 + 1 = 1（`26` §8.5）。 */
   readonly emptyInArithmetic: 'fail' | 'empty' | 'zero';
-  /** 空值参与大于 / 小于比较：计算失败（207126957 问题 1）。 */
+  /** 空值参与大于 / 小于比较：原站实测结果为假、不报错，与手册 207126957 不符（`26` §8.5）。 */
   readonly emptyInOrdering: 'fail' | 'false';
   /** 空值参与 = / ≠：按值比较（空 = 空 为真），不视为失败。 */
   readonly emptyInEquality: 'compare' | 'fail';
-  /** 空值参与 Average / Sum / Max / Min：计算失败（210929396 §4）。 */
+  /** 空值参与 Average / Sum / Max / Min：计算失败，不跳过空值（`26` §8.5 实测 Average(空, 4)）。 */
   readonly emptyInAggregate: 'fail' | 'skip';
-  /** 字符串参与四则：无结果（`26` §8.3）。 */
+  /** 字符串参与四则：数字字符串按数值（"5" + 1 = 6），非数字文本仍失败（`26` §8.5 修正 §8.3）。 */
   readonly textInArithmetic: 'fail' | 'coerce';
   /** 文本与数字比较相等：本租户年度既有 "2026" 也有 2026 的写法，按数值宽松比较。 */
   readonly textNumberEquality: 'loose' | 'strict';
@@ -28,11 +28,11 @@ export interface ExpressionSemantics {
 
 export const DEFAULT_SEMANTICS: ExpressionSemantics = Object.freeze({
   toNumberOfEmpty: 'zero',
-  emptyInArithmetic: 'fail',
-  emptyInOrdering: 'fail',
+  emptyInArithmetic: 'zero',
+  emptyInOrdering: 'false',
   emptyInEquality: 'compare',
   emptyInAggregate: 'fail',
-  textInArithmetic: 'fail',
+  textInArithmetic: 'coerce',
   textNumberEquality: 'loose',
   emptyCondition: 'false',
   percentAsDecimal: true,
