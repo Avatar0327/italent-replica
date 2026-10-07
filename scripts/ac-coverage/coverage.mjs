@@ -20,6 +20,9 @@ function withIds(tests, problems) {
     for (const text of parsed.flatMap((p) => p.reversed)) {
       problems.push({ kind: 'title', message: `${test.file}：${titleOf(test)} 的编号区间逆序「${text}」` });
     }
+    for (const text of parsed.flatMap((p) => p.malformed)) {
+      problems.push({ kind: 'title', message: `${test.file}：${titleOf(test)} 的编号写法无法识别「${text}」` });
+    }
     return { ...test, ids: [...new Set(parsed.flatMap((p) => p.ids))].sort(compareIds) };
   });
 }
