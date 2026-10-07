@@ -133,3 +133,100 @@ describe('ac-coverage 统计规则', () => {
     expect(run('--unknown', 'x').status).toBe(2);
   });
 });
+
+/** 第四轮 P2：参数表标识符按使用位置的词法作用域解析；无法静态确定时报 problems，不静默择一。 */
+describe('ac-coverage 参数表按词法作用域解析', () => {
+  const scoped = mkdtempSync(join(tmpdir(), 'ac-coverage-scope-'));
+  afterAll(() => rmSync(scoped, { recursive: true, force: true }));
+  const put = (path: string, text: string) => {
+    mkdirSync(join(scoped, path, '..'), { recursive: true });
+    writeFileSync(join(scoped, path), text);
+  };
+  const ids = ['01', '02', '03', '04', '05', '06', '07'].map((n) => `AC-DEMO-${n}`);
+  put('docs/trace.md', ['| 编号 | 场景 |', '|---|---|', ...ids.map((id) => `| ${id} | 合成 |`)].join('\n'));
+  // 审查原文夹具：两个 describe 各自声明同名 rows。
+  put(
+    'tests/same-name.test.ts',
+    `import { describe, it } from 'vitest';
+describe('one', () => {
+  const rows = [{ ac: 'AC-DEMO-01' }];
+  it.each(rows)('$ac', () => {});
+});
+describe('two', () => {
+  const rows = [{ ac: 'AC-DEMO-02' }];
+  it.each(rows)('$ac', () => {});
+});
+`,
+  );
+  // 嵌套遮蔽：内层 describe 用内层 rows，外层用外层 rows（就近优先）。
+  put(
+    'tests/shadow.test.ts',
+    `import { describe, it } from 'vitest';
+const rows = [{ ac: 'AC-DEMO-03' }];
+describe('outer', () => {
+  it.each(rows)('$ac', () => {});
+  describe('inner', () => {
+    const rows = [{ ac: 'AC-DEMO-04' }];
+    for (const kind of ['a', 'b']) it.each(rows)(\`\${kind} $ac\`, () => {});
+  });
+});
+`,
+  );
+  // 无法静态确定：let 被重新赋值、同一作用域重复 var 声明 → 报 problems，两份都不计。
+  put(
+    'tests/ambiguous.test.ts',
+    `import { it } from 'vitest';
+let reassigned = [{ ac: 'AC-DEMO-05' }];
+reassigned = [{ ac: 'AC-DEMO-06' }];
+it.each(reassigned)('$ac', () => {});
+var twice = [{ ac: 'AC-DEMO-07' }];
+var twice = [{ ac: 'AC-DEMO-07' }];
+it.each(twice)('$ac', () => {});
+`,
+  );
+  put(
+    'config.json',
+    JSON.stringify({
+      title: '作用域',
+      root: '.',
+      tests: ['tests'],
+      definitions: ['docs'],
+      groups: [{ name: '全部', include: ['AC-DEMO-01~07'] }],
+    }),
+  );
+
+  function scopedResult() {
+    const output = execFileSync(
+      process.execPath,
+      [SCRIPT, '--config', join(scoped, 'config.json'), '--format', 'json'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+    const result = JSON.parse(output) as {
+      groups: { rows: { id: string; status: string; cases: number }[] }[];
+      problems: string[];
+    };
+    return { ...result, byId: new Map(result.groups[0]!.rows.map((r) => [r.id, r])) };
+  }
+
+  it('两个 describe 同名 rows：AC-DEMO-01、AC-DEMO-02 各 1 个用例且均已覆盖', () => {
+    const { byId } = scopedResult();
+    expect(byId.get('AC-DEMO-01')).toMatchObject({ status: '已覆盖', cases: 1 });
+    expect(byId.get('AC-DEMO-02')).toMatchObject({ status: '已覆盖', cases: 1 });
+  });
+
+  it('内层同名声明遮蔽外层：外层用例只计 AC-DEMO-03，内层循环两次只计 AC-DEMO-04', () => {
+    const { byId } = scopedResult();
+    expect(byId.get('AC-DEMO-03')).toMatchObject({ status: '已覆盖', cases: 1 });
+    expect(byId.get('AC-DEMO-04')).toMatchObject({ status: '已覆盖', cases: 1 });
+  });
+
+  it('被重新赋值或重复声明的参数表无法静态确定：报 problems，不计入任何一份', () => {
+    const { byId, problems } = scopedResult();
+    for (const id of ['AC-DEMO-05', 'AC-DEMO-06', 'AC-DEMO-07'])
+      expect(byId.get(id)).toMatchObject({ status: '未覆盖', cases: 0 });
+    expect(problems).toEqual([
+      expect.stringMatching(/ambiguous\.test\.ts:4.*reassigned.*无法静态确定/),
+      expect.stringMatching(/ambiguous\.test\.ts:7.*twice.*无法静态确定/),
+    ]);
+  });
+});
