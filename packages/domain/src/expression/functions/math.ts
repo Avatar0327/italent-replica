@@ -1,6 +1,6 @@
 /**
  * 数学函数（`26` §8.6 面板 9 个）：Round、RoundUP、RoundDown、四舍五入、INT、Floor、Ceiling、Abs、Mod。
- * 数值参数一律经公共取参 call.numberArg（DEC-264：空值按 semantics 配置按 0 或计算失败，数字字符串按数值）。
+ * 数值参数一律经公共取参 call.numberArg（DEC-270①：空值按 semantics 配置计算失败或按 0，数字字符串按数值）。
  * 中文别名除“四舍五入”外为复刻命名。
  */
 import type { FunctionCall, FunctionSpec } from '../registry.js';
@@ -9,37 +9,54 @@ import type { ExprValue } from '../values.js';
 const param = (name: string, required = true) => ({ name, required });
 const num = (value: number): ExprValue => ({ kind: 'number', value });
 
-/** 小数位参数：省略为 0，按整数截断。 */
-const digitsArg = (call: FunctionCall, index: number) =>
-  call.args.length > index ? Math.trunc(call.numberArg(call.args, index)) : 0;
+/** 小数位数的范围：超出时计算失败，避免构造过大的十进制数。 */
+const MAX_DIGITS = 300;
 
-/** x 处相邻两个双精度数的间距（ULP）。 */
-const ulp = (x: number) => 2 ** (Math.floor(Math.log2(x)) - 52);
+/** 小数位参数：省略为 0，按整数截断（经公共取参，DEC-270①）。 */
+function digitsArg(call: FunctionCall, index: number): number {
+  if (call.args.length <= index) return 0;
+  const digits = Math.trunc(call.numberArg(call.args, index));
+  if (Math.abs(digits) > MAX_DIGITS)
+    return call.fail('ARGUMENT_TYPE', `小数位数须在 -${MAX_DIGITS}～${MAX_DIGITS} 之间`);
+  return digits;
+}
+
+/** 按绝对值舍入的方式：四舍五入（远离 0）、远离 0 进位、趋向 0 舍去。 */
+type Rounding = 'half-up' | 'up' | 'down';
 
 /**
- * 放大到整数位后只纠正浮点表示误差：按 15 位有效数字规整后的值与原值相差不超过 1 个 ULP 时才采用，
- * 避免 1.1 * 3 = 3.3000000000000003 被向上舍入成 3.4；输入本身有 16 位有效数字时（2.999999999999999、
- * 1234567890123456）保持原值（PR #108 审查 P3-2）。
+ * 按输入值的十进制表示精确舍入（PR #108 第 3 轮清单 P3）：取能精确还原该双精度数的最短十进制写法（toExponential），
+ * 用 BigInt 定点舍入，不做任何浮点误差修正。因此 RoundDown(0.9999999999999999) = 0、RoundUP(1.0000000000000002) = 2；
+ * 运算产生的尾差也按输入值计算，如 1.1 * 3 的输入值是 3.3000000000000003，RoundUP(1.1 * 3, 1) = 3.4。
  */
-function normalizeScaled(scaled: number): number {
-  if (scaled === 0 || !Number.isFinite(scaled)) return scaled;
-  const compact = Number(scaled.toPrecision(15));
-  return Math.abs(compact - scaled) <= ulp(scaled) ? compact : scaled;
+function roundDecimal(value: number, digits: number, mode: Rounding): number {
+  if (value === 0 || !Number.isFinite(value)) return value;
+  const [mantissa = '', exponent = '0'] = Math.abs(value).toExponential().split('e');
+  const significand = mantissa.replace('.', '');
+  // 值 = significand × 10^(exponent − (位数 − 1))；保留 digits 位小数需去掉 dropped 位
+  const dropped = significand.length - 1 - Number(exponent) - digits;
+  if (dropped <= 0) return value;
+  let kept: bigint;
+  if (dropped > significand.length + 1) {
+    // 舍入位在全部有效数字之前：四舍五入与舍去都为 0，进位为 1 个最小单位
+    kept = mode === 'up' ? 1n : 0n;
+  } else {
+    const scale = 10n ** BigInt(dropped);
+    const whole = BigInt(significand);
+    const rest = whole % scale;
+    kept = whole / scale;
+    if (mode === 'up' ? rest > 0n : mode === 'half-up' && rest * 2n >= scale) kept += 1n;
+  }
+  if (kept === 0n) return 0;
+  return Math.sign(value) * Number(`${kept}e${-digits}`);
 }
 
-function roundWith(mode: (scaled: number) => number, value: number, digits: number): number {
-  const factor = 10 ** digits;
-  const scaled = normalizeScaled(Math.abs(value) * factor);
-  const rounded = (Math.sign(value) * mode(scaled)) / factor;
-  return rounded === 0 ? 0 : rounded;
-}
-
-const rounding = (name: string, aliases: string[], mode: (scaled: number) => number): FunctionSpec => ({
+const rounding = (name: string, aliases: string[], mode: Rounding): FunctionSpec => ({
   name,
   aliases,
   params: [param('数值'), param('小数位数', false)],
   returns: 'number',
-  implement: (call) => num(roundWith(mode, call.numberArg(call.args, 0), digitsArg(call, 1))),
+  implement: (call) => num(roundDecimal(call.numberArg(call.args, 0), digitsArg(call, 1), mode)),
 });
 
 const unary = (name: string, aliases: string[], apply: (value: number) => number): FunctionSpec => ({
@@ -60,9 +77,9 @@ function mod(call: FunctionCall): ExprValue {
 
 export const MATH_FUNCTIONS: readonly FunctionSpec[] = [
   // 四舍五入、远离 0（DEC-265：Round(2.5, 0) = 3；面板的“四舍五入”同义）
-  rounding('Round', ['四舍五入'], (scaled) => Math.floor(scaled + 0.5)),
-  rounding('RoundUP', ['向上舍入'], Math.ceil),
-  rounding('RoundDown', ['向下舍入'], Math.floor),
+  rounding('Round', ['四舍五入'], 'half-up'),
+  rounding('RoundUP', ['向上舍入'], 'up'),
+  rounding('RoundDown', ['向下舍入'], 'down'),
   // TODO(需取证 #105)：INT 对负数向下取整（Excel，INT(-2.5) = -3）还是截断；Floor / Ceiling 是否有基数参数
   unary('INT', ['取整'], Math.floor),
   unary('Floor', ['向下取整'], Math.floor),

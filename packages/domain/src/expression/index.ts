@@ -36,6 +36,7 @@ export {
   type OrderingResult,
   type ValidationOptions,
   type ValidationResult,
+  type ValidationWarning,
 } from './engine.js';
 export {
   CONVERSION_MESSAGE,
@@ -91,6 +92,7 @@ export {
   arityOf,
   createDefaultRegistry,
   FunctionRegistry,
+  type ArgumentIssue,
   type FunctionCall,
   type FunctionEnvironment,
   type FunctionParam,
@@ -99,8 +101,19 @@ export {
 } from './registry.js';
 export { DEFAULT_SEMANTICS, type ExpressionSemantics } from './semantics.js';
 export {
+  declaredType,
+  isDefinitely,
+  mayBe,
+  mergeTypes,
+  TypeInference,
+  verdictFor,
+  type InferredType,
+  type TypeInferenceOptions,
+} from './typing.js';
+export {
   describeValue,
   EMPTY,
+  emptyOf,
   formatIsoLike,
   isOptionValue,
   KIND_LABELS,

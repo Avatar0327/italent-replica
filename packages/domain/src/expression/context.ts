@@ -5,6 +5,7 @@ import type { IsoDate } from '../tenant-time.js';
 import type { DataSourcePorts, SubjectReader } from './ports.js';
 import type { FunctionRegistry } from './registry.js';
 import type { ExpressionSemantics } from './semantics.js';
+import type { StaticKind } from './values.js';
 
 export interface EvaluationCalendar {
   /** 租户时区下的业务日期“今天”（YYYY-MM-DD）。 */
@@ -38,6 +39,11 @@ export interface EvaluationContext {
   readonly ports?: DataSourcePorts;
   readonly registry?: FunctionRegistry;
   readonly semantics?: ExpressionSemantics;
+  /**
+   * 字段类型目录（同保存校验的 ValidationOptions.fieldKind）：公式文本求值前的静态检查、函数参数的类型推导，
+   * 以及字段为空时的来源类型都按它（DEC-287）；使用方应与保存时传入同一目录。
+   */
+  readonly fieldKind?: (path: string) => StaticKind | undefined;
 }
 
 /** 批量求值的公共上下文：对象逐个注入。 */

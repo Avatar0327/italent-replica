@@ -350,7 +350,8 @@ describe('P3 舍入按输入值的十进制表示精确舍入', () => {
     ['RoundUP(1201, -2)', 1300],
     ['RoundDown(-1299, -2)', -1200],
     ['RoundUP(0.000001, 3)', 0.001],
-    ['Round(1e21, 2)', 1e21],
+    // 公式不支持科学计数法字面量，直接写 22 位整数
+    ['Round(1000000000000000000000, 2)', 1e21],
   ] as const)('%s = %s', (formula, expected) => {
     expect(run(formula)).toEqual(num(expected));
   });

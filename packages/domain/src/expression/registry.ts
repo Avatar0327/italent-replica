@@ -7,7 +7,10 @@ import type { FailureCode } from './failures.js';
 import { BUILTIN_FUNCTIONS } from './functions/index.js';
 import type { DataSourcePorts, SubjectReader } from './ports.js';
 import type { ExpressionSemantics } from './semantics.js';
-import type { DateParts, ExprValue, PlainValue } from './values.js';
+import type { InferredType } from './typing.js';
+import type { DateParts, ExprValue, PlainValue, StaticKind } from './values.js';
+
+export type { StaticKind } from './values.js';
 
 export interface FunctionParam {
   readonly name: string;
@@ -37,7 +40,18 @@ export interface FunctionCall {
   readonly toText: (value: ExprValue) => string;
   readonly toDate: (value: ExprValue) => DateParts;
   readonly toBoolean: (value: ExprValue) => boolean;
+  /**
+   * 参数节点的静态类型（统一类型推导，DEC-287）：Def 变量、字段类型目录与保存检查同一口径；
+   * 本函数的记录对象字段（如 考核结果.*）按不确定处理。
+   */
+  readonly inferType: (node: ExprNode) => InferredType;
   readonly env: FunctionEnvironment;
+}
+
+/** 函数自己的保存检查结果（如第 N 年 / 第 N 次的参数角色）：error 拒绝保存，warning 只提示。 */
+export interface ArgumentIssue {
+  readonly severity: 'error' | 'warning';
+  readonly message: string;
 }
 
 /** 函数可见的上下文切片（不含求值器内部状态）。 */
@@ -50,9 +64,6 @@ export interface FunctionEnvironment {
   readonly ports?: DataSourcePorts;
   readonly fromPlain: (value: PlainValue) => ExprValue;
 }
-
-/** 保存检查时能静态确定的值类型（DEC-270：日期函数的日期参数做类型检查）。 */
-export type StaticKind = 'number' | 'text' | 'boolean' | 'date';
 
 export interface FunctionSpec {
   /** 规范英文名。 */
@@ -72,12 +83,21 @@ export interface FunctionSpec {
    * 在待办中触发计算时，含该函数的计算项目不计算（面板原文，`26` §8.6；排名函数）。引擎只标记，调度由 R3-T04 落实。
    */
   readonly skipInTodoTrigger?: boolean;
-  /** 返回值类型；不确定（取决于字段或分支）时不写。 */
-  readonly returns?: StaticKind;
-  /** 返回值取这些参数的共同类型（IF 的两个分支）；各参数类型都确定且相同时保存检查才据此判断。 */
+  /**
+   * 返回值类型（统一类型推导，DEC-287）：一种为确定类型，多种为“不确定、只可能是其中之一”（如 Sum 遇文本拼接，
+   * 数值或文本）；取决于数据（取数字段、未知结构）时不写，推导为不确定。
+   * 函数取不到值时返回的空值按它标来源类型（只有一种、或几种都不是日期时）。
+   */
+  readonly returns?: StaticKind | readonly StaticKind[];
+  /** 返回值取这些参数的合并类型（IF 的两个分支，缺的分支不参与合并），见 typing.ts mergeTypes。 */
   readonly returnsFromArgs?: readonly number[];
-  /** 须是日期的参数下标：保存检查时静态可知不是日期的直接拦截（DEC-270，`26` §8.8）。 */
+  /**
+   * 须是日期的参数下标（DEC-270②）：推导为确定的非日期时保存报错，不确定时保存提示（不阻断），
+   * 计算时非日期值与非日期来源的空值计算失败。
+   */
   readonly dateParams?: readonly number[];
+  /** 函数自己的保存检查（参数下标之外的规则），按统一类型推导的结果判断。 */
+  readonly checkArgs?: (args: readonly ExprNode[], infer: (node: ExprNode) => InferredType) => readonly ArgumentIssue[];
   readonly implement: (call: FunctionCall) => ExprValue;
 }
 

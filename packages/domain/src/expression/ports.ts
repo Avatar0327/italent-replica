@@ -6,11 +6,16 @@
  * 失败信息不包含被隐藏字段的取数结果。
  * 端口实现方负责：只返回查看人有权读取的数据；已删除 / 作废 / 撤销的记录不返回（AGENTS.md §10 的裁剪与统计口径在数据源一侧落实）。
  */
-import { EMPTY, isOptionValue, option, type ExprValue, type PlainValue } from './values.js';
+import { EMPTY, isOptionValue, option, type ExprValue, type PlainValue, type StaticKind } from './values.js';
 
 /** 字段读取结果：未知字段与无权字段分开，便于给出不同的失败原因。 */
 export type FieldLookup =
-  | { readonly status: 'found'; readonly value: PlainValue }
+  | {
+      readonly status: 'found';
+      readonly value: PlainValue;
+      /** 值为空时的来源类型（批量求值叠加先算项目的结果时带上，日期参数据此区分真正的空日期，DEC-270②）。 */
+      readonly emptyOf?: StaticKind;
+    }
   | { readonly status: 'unknown' }
   | { readonly status: 'forbidden' };
 

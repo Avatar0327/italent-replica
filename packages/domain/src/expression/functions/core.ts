@@ -88,6 +88,8 @@ export const CORE_FUNCTIONS: readonly FunctionSpec[] = [
     name: 'Sum',
     aliases: ['求和', '合计'],
     params: [param('数值', true, true)],
+    // 遇文本按拼接（DEC-270③），结果是数值或文本：不可能是日期
+    returns: ['number', 'text'],
     implement: sum,
   },
   aggregate('Max', ['最大值'], (numbers) => (numbers.length ? { kind: 'number', value: Math.max(...numbers) } : EMPTY)),
