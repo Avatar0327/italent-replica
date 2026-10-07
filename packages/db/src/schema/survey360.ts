@@ -371,8 +371,10 @@ export const survey360Activities = pgTable(
     /** 匿名开关一（DEC-149）：作答页评价角色显示方式——角色名称 / 固定文字 / 不显示。 */
     roleDisplay: text('role_display').notNull(),
     ownerUserId: uuid('owner_user_id').notNull(),
-    /** 首次启用时间：Lastest360Cent 的“活动开始时间”。 */
+    /** 首次启用时间。 */
     startedAt: at('started_at'),
+    /** 最近一次停用（结束）时间：DEC-262 的“最近一次”按此倒序。 */
+    endedAt: at('ended_at'),
     scoreBatchId: uuid('score_batch_id'),
     scoredAt: at('scored_at'),
     deleted: boolean('deleted').notNull().default(false),
@@ -424,6 +426,8 @@ export const survey360Objects = pgTable(
     personId: uuid('person_id').notNull(),
     sort: integer('sort').notNull().default(0),
     removed: boolean('removed').notNull().default(false),
+    /** 个人报告生成时间（PR-B 报告生成时写入）；DEC-262 只取报告晚于本次结束时间的活动。 */
+    reportGeneratedAt: at('report_generated_at'),
     revision: revision(),
     createdAt: createdAt(),
   },

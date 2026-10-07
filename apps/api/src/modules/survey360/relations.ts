@@ -13,6 +13,7 @@ import {
   inArray,
   sql,
   survey360Confirmations,
+  survey360Links,
   survey360ObjectQuestionnaires,
   survey360Objects,
   survey360Relations,
@@ -23,7 +24,7 @@ import { survey360, tenantLocalDate } from '@italent/domain';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
-import type { TenantEnv } from '../../tenant-context.js';
+import { tenantOf, type TenantEnv } from '../../tenant-context.js';
 import { findCurrentRecord } from '../employment/read-model.js';
 import { uuidParam } from '../job/context.js';
 import { type ActivityRow, requireActivity, requireObject } from './access.js';
@@ -34,6 +35,7 @@ import {
   audit360,
   email,
   fail,
+  jsonOrEmpty,
   optionalText,
   read,
   requireNewObject,
@@ -46,16 +48,8 @@ import {
   type Writer,
 } from './context.js';
 import { ensureAnswerLink, issueConfirmLink } from './links.js';
-import {
-  createPerson,
-  findPersonByEmail,
-  loadPerson,
-  personForEmployee,
-  personInput,
-  type PersonRow,
-  syncAccess,
-  updatePerson,
-} from './people.js';
+import { createPerson, findPersonByEmail, loadPerson, personInput, type PersonRow, updatePerson } from './people.js';
+import { employeeInScope, personForEmployee, refreshFromOrg, syncAccess } from './sync.js';
 import { loadQuestionnaire, markUsed } from './questionnaires.js';
 
 const LIMITS = survey360.SURVEY360_LIMITS;
@@ -304,7 +298,14 @@ export function registerRelationRoutes(module: Hono<TenantEnv>, deps: TenantRout
         const object = await requireObject(tx, id, objectId);
         return autoAdd(tx, deps, ctx, activity, object, input);
       },
-      { guard: guarded(id) },
+      {
+        // 命令前（含幂等重放）同样校验评价对象的员工仍在操作人范围内（第 1 轮审查 P2-2 / P2-4）
+        guard: async (tx, admin) => {
+          await requireActivity(tx, admin, id);
+          const object = await requireObject(tx, id, objectId);
+          await requireTargetInScope(tx, await syncAccess(tx, deps, tenantOf(c)), object.person_id);
+        },
+      },
     );
   });
   registerImport(module, deps);
@@ -389,6 +390,11 @@ function registerObjectCreation(module: Hono<TenantEnv>, deps: TenantRouteDeps):
 }
 
 function registerObjectChanges(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerObjectQuestionnaires(module, deps);
+  registerObjectRemoval(module, deps);
+}
+
+function registerObjectQuestionnaires(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.put('/activities/:id/objects/:objectId/questionnaires', (c) => {
     const id = uuidParam(c);
     const objectId = uuidParam(c, 'objectId');
@@ -432,6 +438,9 @@ function registerObjectChanges(module: Hono<TenantEnv>, deps: TenantRouteDeps): 
       { guard: guarded(id) },
     );
   });
+}
+
+function registerObjectRemoval(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.delete('/activities/:id/objects/:objectId', (c) => {
     const id = uuidParam(c);
     const objectId = uuidParam(c, 'objectId');
@@ -448,6 +457,23 @@ function registerObjectChanges(module: Hono<TenantEnv>, deps: TenantRouteDeps): 
           .from(survey360Relations)
           .where(and(eq(survey360Relations.objectId, objectId), eq(survey360Relations.removed, false)));
         for (const relation of relations) await removeRelation(tx, ctx, relation);
+        // 对象移除后，邀请上级确认的确认单作废、确认链接失效
+        await tx
+          .update(survey360Confirmations)
+          .set({ status: 'cancelled', revision: sql`${survey360Confirmations.revision} + 1` })
+          .where(
+            and(eq(survey360Confirmations.objectId, objectId), sql`${survey360Confirmations.status} <> 'cancelled'`),
+          );
+        await tx
+          .update(survey360Links)
+          .set({ revoked: true })
+          .where(
+            and(
+              eq(survey360Links.kind, 'confirm'),
+              sql`${survey360Links.confirmationId} IN (SELECT id FROM
+            survey360_confirmations WHERE object_id = ${objectId}::uuid)`,
+            ),
+          );
         await tx
           .update(survey360Objects)
           .set({ removed: true, revision: object.revision + 1 })
@@ -493,6 +519,13 @@ async function reportsOf(tx: Tx, tenantId: string, managerId: string, asOf: stri
   ).map((r) => r.employee_id);
 }
 
+/** 按组织架构添加以评价对象的员工为起点：该员工须在操作人当前员工范围内，否则按不存在处理（404）。 */
+async function requireTargetInScope(tx: Tx, access: Awaited<ReturnType<typeof syncAccess>>, personId: string) {
+  const target = await loadPerson(tx, personId);
+  if (!target.employeeId || !(await employeeInScope(tx, access, target.employeeId)))
+    fail('NOT_FOUND', '评价对象的员工不存在或不在你的数据范围内');
+}
+
 async function autoAdd(
   tx: Tx,
   deps: TenantRouteDeps,
@@ -504,6 +537,7 @@ async function autoAdd(
   const target = await loadPerson(tx, object.person_id);
   if (!target.employeeId) fail('VALIDATION_FAILED', '评价对象未与组织员工挂接，不能按组织架构添加', 'NOT_LINKED');
   const access = await syncAccess(tx, deps, ctx);
+  await requireTargetInScope(tx, access, target.id);
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
   const record = await findCurrentRecord(tx, ctx.tenantId, target.employeeId, asOf);
   const managerId = (record?.fields as unknown as Record<string, unknown> | undefined)?.directManagerId;
@@ -581,13 +615,16 @@ function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
         }
         if (errors.length) fail('VALIDATION_FAILED', '导入数据有误，整批未导入', 'IMPORT_INVALID', { errors });
         const receipts = [];
+        let access: Awaited<ReturnType<typeof syncAccess>> | undefined;
         for (const [index, row] of input.rows.entries()) {
           const { objectEmail: _object, roleId, ...fields } = row;
           void _object;
           let person = await findPersonByEmail(tx, fields.email);
           if (!person) person = await createPerson(tx, ctx, fields, 'import');
-          // 不同步：以上传信息为准（DEC-030 ④）；同步：已有人员保持现有（已挂接的以组织员工为准）
-          else if (!input.sync) {
+          // 同步：已挂接人员按组织员工刷新（DEC-030 ④，第 1 轮审查 P2-6）；不同步：以上传信息为准
+          else if (input.sync)
+            person = await refreshFromOrg(tx, ctx, (access ??= await syncAccess(tx, deps, ctx)), person);
+          else {
             const current = await loadPerson(tx, person.id, true);
             const { email: _email, ...rest } = fields;
             void _email;
@@ -598,7 +635,14 @@ function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
         }
         return { receipts };
       },
-      { guard: guarded(id) },
+      {
+        // 选择“同步”时需要员工信息查看权：命令前（含幂等重放）同样校验
+        guard: async (tx, admin) => {
+          await requireActivity(tx, admin, id);
+          const body = (await jsonOrEmpty(c)) as { sync?: unknown };
+          if (body?.sync === true) await syncAccess(tx, deps, tenantOf(c));
+        },
+      },
     );
   });
 }

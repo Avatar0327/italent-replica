@@ -1,6 +1,6 @@
 {
-  "id": "a2665aa7-5fcf-4535-ab00-027b25e3a51c",
-  "prevId": "0088f575-282f-4cc0-8073-2e57d7eb16d9",
+  "id": "3c45780f-54a3-4f88-88f2-7185d670a856",
+  "prevId": "b8b5c972-b38f-4296-ac58-2fa3f7a26c17",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -28504,6 +28504,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "score_batch_id": {
           "name": "score_batch_id",
           "type": "uuid",
@@ -29568,6 +29574,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "report_generated_at": {
+          "name": "report_generated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "revision": {
           "name": "revision",

@@ -13,11 +13,14 @@ import { mapDbError } from './context.js';
 import { registerPeopleRoutes } from './people.js';
 import { registerQuestionnaireRoutes } from './questionnaires.js';
 import { registerRelationRoutes } from './relations.js';
+import { registerSyncRoutes } from './sync.js';
 
 export const registerSurvey360Routes: TenantRouteModule = (router, deps) => {
   const module = new Hono<TenantEnv>();
   module.onError((error, c) => handleError(mapDbError(error) ?? error, c));
   registerAdminRoutes(module, deps);
+  // 同步路由先于 /people/:id 注册（/people/sync-conflicts 不能被当作人员编号）
+  registerSyncRoutes(module, deps);
   registerPeopleRoutes(module, deps);
   registerQuestionnaireRoutes(module, deps);
   registerActivityRoutes(module, deps);

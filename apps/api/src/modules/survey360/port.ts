@@ -2,7 +2,11 @@
  * Lastest360Cent 的真实数据源（R3-T00 端口 Survey360Port；`26` §3.5 TR-R28、§8.1）。
  * 使用方（盘点、继任等）按批次预读：传入本次计算的员工与查看人对员工的数据范围，返回同步读取器。
  * - 员工 → 挂接的 360 人员（DEC-030：换挂邮箱不换人员，历史结果仍归属该人，AC-360-12）；
- * - 只取已计分的活动（停用时计分，E3-R15）的最新批次；已删除活动、已移除的评价对象不返回；
+ * - “最近一次”按 DEC-262：只取**已结束（停用）且该对象的报告已生成**的活动（报告生成时间不早于本次结束时间），
+ *   进行中或重新启用的活动不计；按结束时间倒序，结束时间相同按报告生成时间倒序。引擎按记录的 startAt 取最近，
+ *   故 startAt 填活动结束时间，同一结束时间的记录按报告生成时间倒序排在前面（引擎取同值中第一个有分的）；
+ *   R3-T00 的“盘点项目结束时间前”边界同样作用于结束时间。PR-A 尚无报告生成能力，端口按资格条件返回空；
+ * - 用最新计分批次；已删除活动、已移除的评价对象不返回；
  * - 只有聚合分（问卷 / 维度 / 题目 × 自评 / 他评 / 角色），没有任何评价者标识与逐人分数；
  * - 查看人范围外、或未预读的员工返回 forbidden（不回落为“无数据”）。空值语义以 semantics.ts 为准（本任务不改）。
  */
@@ -19,7 +23,7 @@ interface ScoreRow {
   employee_id: string;
   activity_id: string;
   activity_name: string;
-  started_at: Date | string;
+  ended_at: Date | string;
   questionnaire_id: string;
   questionnaire_name: string;
   level: 'questionnaire' | 'dimension' | 'question';
@@ -47,7 +51,7 @@ function recordsOf(scores: readonly ScoreRow[]): Survey360Record[] {
   const records: Survey360Record[] = [];
   for (const group of groups.values()) {
     const first = group[0]!;
-    const startAt = first.started_at instanceof Date ? first.started_at : new Date(first.started_at);
+    const startAt = first.ended_at instanceof Date ? first.ended_at : new Date(first.ended_at);
     const base = {
       ...EMPTY_RECORD,
       [F.activityName]: first.activity_name,
@@ -97,13 +101,14 @@ export async function loadSurvey360Port(tx: Tx, input: Survey360PortInput): Prom
   const visible = [...allowed];
   const scores = visible.length
     ? rows<ScoreRow>(
-        await tx.execute(sql`SELECT p.employee_id, a.id AS activity_id, a.name AS activity_name, a.started_at,
+        await tx.execute(sql`SELECT p.employee_id, a.id AS activity_id, a.name AS activity_name, a.ended_at,
             q.id AS questionnaire_id, q.name AS questionnaire_name, sc.level, sc.item_id,
             COALESCE(d.name, qu.text) AS item_name, sc.scope, ro.name AS role_name, sc.score
           FROM survey360_people p
           JOIN survey360_objects o ON o.tenant_id = p.tenant_id AND o.person_id = p.id AND NOT o.removed
           JOIN survey360_activities a ON a.tenant_id = o.tenant_id AND a.id = o.activity_id AND NOT a.deleted
-            AND a.score_batch_id IS NOT NULL AND a.started_at IS NOT NULL
+            AND a.status = 'disabled' AND a.ended_at IS NOT NULL AND a.score_batch_id IS NOT NULL
+            AND o.report_generated_at IS NOT NULL AND o.report_generated_at >= a.ended_at
           JOIN survey360_scores sc ON sc.tenant_id = a.tenant_id AND sc.batch_id = a.score_batch_id
             AND sc.object_id = o.id
           JOIN survey360_questionnaires q ON q.tenant_id = sc.tenant_id AND q.id = sc.questionnaire_id
@@ -113,7 +118,7 @@ export async function loadSurvey360Port(tx: Tx, input: Survey360PortInput): Prom
             AND qu.id = sc.item_id
           LEFT JOIN survey360_roles ro ON ro.tenant_id = sc.tenant_id AND ro.id = sc.role_id
           WHERE p.employee_id = ANY(${`{${visible.join(',')}}`}::uuid[])
-          ORDER BY a.started_at, a.id, q.id, ro.sort NULLS FIRST`),
+          ORDER BY a.ended_at DESC, o.report_generated_at DESC, a.id, q.id, ro.sort NULLS FIRST`),
       )
     : [];
   const byEmployee = new Map<string, ScoreRow[]>();

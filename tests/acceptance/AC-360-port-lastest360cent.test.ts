@@ -2,9 +2,9 @@
  * R3-T00 Lastest360Cent 端口的真实数据源（REQ-EXP-001 第 4 条；`26` §3.5 TR-R28）：
  * - 按员工挂接的 360 人员取已计分活动的聚合分（问卷他评 / 自评总分、角色得分、维度与题目分）；
  * - 按查看人的数据范围裁剪：范围外的员工返回 forbidden；记录里没有任何评价者标识；
- * - 未计分（未停用）的活动不返回。
+ * - 未计分（未停用）的活动不返回；DEC-262 的结束 / 报告资格与排序见 AC-360-R2-data.test.ts。
  */
-import { withTenant } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import { evaluateFormula, inMemorySubject } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -57,6 +57,15 @@ async function scored(w: World360) {
   return { E, F, q, activity, object };
 }
 
+/** DEC-262 只取报告已生成的活动；报告生成属 PR-B，这里直接写报告生成时间模拟。 */
+async function reported(w: World360, objectId: string) {
+  await withTenant(w.db, w.tenantId, (tx) =>
+    tx.execute(
+      sql`UPDATE survey360_objects SET report_generated_at = '2026-10-02T00:00:00Z' WHERE id = ${objectId}::uuid`,
+    ),
+  );
+}
+
 function evaluate(formula: string, port: Awaited<ReturnType<typeof loadSurvey360Port>>, subjectId: string) {
   return evaluateFormula(formula, {
     subject: inMemorySubject(subjectId, {}),
@@ -76,6 +85,7 @@ describe('Lastest360Cent 数据源', () => {
     // 活动未停用（未计分）时没有记录
     expect(before.records(s.E)).toEqual({ ok: true, data: [] });
     await w.transition(s.activity.id, 'disable');
+    await reported(w, s.object.id);
     const port = await withTenant(w.db, w.tenantId, (tx) =>
       loadSurvey360Port(tx, { tenantId: w.tenantId, employeeIds: [s.E, s.F], scope: ALL }),
     );
@@ -105,6 +115,7 @@ describe('Lastest360Cent 数据源', () => {
     const w = await world360(testDb().db, 'p2');
     const s = await scored(w);
     await w.transition(s.activity.id, 'disable');
+    await reported(w, s.object.id);
     const port = await withTenant(w.db, w.tenantId, (tx) =>
       loadSurvey360Port(tx, { tenantId: w.tenantId, employeeIds: [s.E], scope: ALL }),
     );
@@ -134,6 +145,7 @@ describe('Lastest360Cent 数据源', () => {
     const w = await world360(testDb().db, 'p3');
     const s = await scored(w);
     await w.transition(s.activity.id, 'disable');
+    await reported(w, s.object.id);
     const scopedToF = await withTenant(w.db, w.tenantId, (tx) =>
       loadSurvey360Port(tx, { tenantId: w.tenantId, employeeIds: [s.E, s.F], scope: only(s.F) }),
     );

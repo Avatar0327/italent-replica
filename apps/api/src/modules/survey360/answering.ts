@@ -65,6 +65,15 @@ async function resolve(tx: Tx, token: string, kind: LinkRow['kind']) {
     await tx.execute(sql`SELECT * FROM survey360_activities WHERE id = ${link!.activityId}::uuid AND NOT deleted`),
   );
   if (!activity) notFound();
+  // 确认链接：确认单已取消或评价对象已移除即失效，主页、候选人员与写入一律 404（第 1 轮审查 P2-3）
+  if (kind === 'confirm') {
+    const [open] = rows<{ id: string }>(
+      await tx.execute(sql`SELECT k.id FROM survey360_confirmations k
+        JOIN survey360_objects o ON o.tenant_id = k.tenant_id AND o.id = k.object_id AND NOT o.removed
+        WHERE k.id = ${link!.confirmationId}::uuid AND k.status <> 'cancelled'`),
+    );
+    if (!open) notFound();
+  }
   return { link: link!, activity: activity! };
 }
 
@@ -83,7 +92,7 @@ function linkRead<T>(
   };
 }
 
-/** 链接写命令：命令前与命令事务内都重新解析链接；指纹含链接，跨链接不会互相重放。 */
+/** 链接写命令：命令前与命令事务内都重新解析链接并校验任务；指纹含链接，跨链接不会互相重放。 */
 function linkWrite<T>(
   deps: TenantRouteDeps,
   kind: LinkRow['kind'],
@@ -95,11 +104,17 @@ function linkWrite<T>(
     a: ActivityRow,
     input: T,
   ) => Promise<unknown>,
-  status: 200 | 201 = 200,
+  options: { status?: 200 | 201; guard?: (tx: Tx, link: LinkRow, a: ActivityRow) => Promise<unknown> } = {},
 ) {
+  const status = options.status ?? 200;
   return async (c: C) => {
     const { tenant, token } = await linkTenant(c, deps);
-    const link = await withTenant(deps.db, tenant.tenantId, async (tx) => (await resolve(tx, token, kind)).link);
+    // 命令前（含幂等重放）先按当前状态校验链接与任务归属（第 1 轮审查 P2-4）
+    const link = await withTenant(deps.db, tenant.tenantId, async (tx) => {
+      const current = await resolve(tx, token, kind);
+      await options.guard?.(tx, current.link, current.activity);
+      return current.link;
+    });
     const expectedRevision = revision(c);
     const input = parse(schema, await jsonOrEmpty(c));
     const result = await runCommand(deps.db, tenant, {
@@ -189,6 +204,14 @@ async function answerPage(tx: Tx, link: LinkRow, activity: ActivityRow) {
     },
     ...(await appraiserLabel(tx, activity, link.personId)),
     tasks: items,
+  };
+}
+
+/** 写入答卷前的任务归属校验（命令前与重放前同样执行）。 */
+function taskGuard(relationId: string, questionnaireId: string) {
+  return {
+    guard: (tx: Tx, link: LinkRow, activity: ActivityRow) =>
+      requireTask(tx, link, activity, relationId, questionnaireId),
   };
 }
 
@@ -391,77 +414,97 @@ function registerAnswerRead(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
 }
 
 function registerAnswerWrites(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  registerAnswerSave(module, deps);
+  registerAnswerSubmit(module, deps);
+}
+
+function registerAnswerSave(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   module.put(task, (c) => {
     const relationId = uuidParam(c, 'relationId');
     const qid = uuidParam(c, 'questionnaireId');
-    return linkWrite(deps, 'answer', answersSchema, async (tx, ctx, link, activity, input) => {
-      const { task: t, questionnaire, sheet } = await openSheet(tx, ctx, activity, link, relationId, qid);
-      requireRevision(sheet?.revision ?? 0, ctx.expectedRevision);
-      checkAnswers(questionnaire, t.role_id, input.answers);
-      const before = sheet ? await sheetView(tx, sheet) : null;
-      let saved: SheetRow;
-      if (sheet) {
-        [saved] = (await tx
-          .update(survey360Sheets)
-          .set({
-            revision: sheet.revision + 1,
-            savedAt: ctx.now,
-            ...(input.suggestion !== undefined ? { suggestion: input.suggestion } : {}),
-          })
-          .where(eq(survey360Sheets.id, sheet.id))
-          .returning()) as [SheetRow];
-        await tx.delete(survey360Answers).where(eq(survey360Answers.sheetId, sheet.id));
-      } else {
-        [saved] = (await tx
-          .insert(survey360Sheets)
-          .values({
-            tenantId: ctx.tenantId,
-            activityId: activity.id,
-            relationId,
-            questionnaireId: qid,
-            suggestion: input.suggestion ?? null,
-            savedAt: ctx.now,
-          })
-          .returning()) as [SheetRow];
-      }
-      if (input.answers.length)
-        await tx.insert(survey360Answers).values(
-          input.answers.map((a) => ({
-            tenantId: ctx.tenantId,
-            sheetId: saved.id,
-            itemId: a.itemId,
-            optionId: a.optionId,
-            remark: a.remark ?? null,
-          })),
-        );
-      await auditSheet(tx, ctx, 'survey360.sheet.save', activity, before, saved);
-      return sheetView(tx, saved);
-    })(c);
+    return linkWrite(
+      deps,
+      'answer',
+      answersSchema,
+      async (tx, ctx, link, activity, input) => {
+        const { task: t, questionnaire, sheet } = await openSheet(tx, ctx, activity, link, relationId, qid);
+        requireRevision(sheet?.revision ?? 0, ctx.expectedRevision);
+        checkAnswers(questionnaire, t.role_id, input.answers);
+        const before = sheet ? await sheetView(tx, sheet) : null;
+        let saved: SheetRow;
+        if (sheet) {
+          [saved] = (await tx
+            .update(survey360Sheets)
+            .set({
+              revision: sheet.revision + 1,
+              savedAt: ctx.now,
+              ...(input.suggestion !== undefined ? { suggestion: input.suggestion } : {}),
+            })
+            .where(eq(survey360Sheets.id, sheet.id))
+            .returning()) as [SheetRow];
+          await tx.delete(survey360Answers).where(eq(survey360Answers.sheetId, sheet.id));
+        } else {
+          [saved] = (await tx
+            .insert(survey360Sheets)
+            .values({
+              tenantId: ctx.tenantId,
+              activityId: activity.id,
+              relationId,
+              questionnaireId: qid,
+              suggestion: input.suggestion ?? null,
+              savedAt: ctx.now,
+            })
+            .returning()) as [SheetRow];
+        }
+        if (input.answers.length)
+          await tx.insert(survey360Answers).values(
+            input.answers.map((a) => ({
+              tenantId: ctx.tenantId,
+              sheetId: saved.id,
+              itemId: a.itemId,
+              optionId: a.optionId,
+              remark: a.remark ?? null,
+            })),
+          );
+        await auditSheet(tx, ctx, 'survey360.sheet.save', activity, before, saved);
+        return sheetView(tx, saved);
+      },
+      taskGuard(relationId, qid),
+    )(c);
   });
+}
+
+function registerAnswerSubmit(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   module.post(`${task}/submit`, (c) => {
     const relationId = uuidParam(c, 'relationId');
     const qid = uuidParam(c, 'questionnaireId');
-    return linkWrite(deps, 'answer', z.object({}).passthrough(), async (tx, ctx, link, activity) => {
-      const { task: t, questionnaire, sheet } = await openSheet(tx, ctx, activity, link, relationId, qid);
-      if (!sheet) fail('VALIDATION_FAILED', '答卷未作答', 'INCOMPLETE');
-      requireRevision(sheet!.revision, ctx.expectedRevision);
-      const answers = await answersOf(tx, sheet!.id);
-      const answered = new Map(answers.map((a) => [a.itemId, a]));
-      const missing = survey360.answerableItems(questionnaire.model, t.role_id).filter((id) => !answered.has(id));
-      if (missing.length) fail('VALIDATION_FAILED', '还有题目未作答', 'INCOMPLETE', { itemIds: missing });
-      for (const a of answers) {
-        const option = questionnaire.options.find((o) => o.id === a.optionId);
-        if (option?.remarkRequired && !a.remark) fail('VALIDATION_FAILED', '所选选项须补充说明', 'REMARK_REQUIRED');
-      }
-      await excellenceCheck(tx, activity, link, questionnaire, t.role_id, sheet!);
-      const [saved] = (await tx
-        .update(survey360Sheets)
-        .set({ status: 'submitted', submittedAt: ctx.now, revision: sheet!.revision + 1 })
-        .where(eq(survey360Sheets.id, sheet!.id))
-        .returning()) as [SheetRow];
-      await auditSheet(tx, ctx, 'survey360.sheet.submit', activity, await sheetView(tx, sheet), saved);
-      return sheetView(tx, saved);
-    })(c);
+    return linkWrite(
+      deps,
+      'answer',
+      z.object({}).passthrough(),
+      async (tx, ctx, link, activity) => {
+        const { task: t, questionnaire, sheet } = await openSheet(tx, ctx, activity, link, relationId, qid);
+        if (!sheet) fail('VALIDATION_FAILED', '答卷未作答', 'INCOMPLETE');
+        requireRevision(sheet!.revision, ctx.expectedRevision);
+        const answers = await answersOf(tx, sheet!.id);
+        const answered = new Map(answers.map((a) => [a.itemId, a]));
+        const missing = survey360.answerableItems(questionnaire.model, t.role_id).filter((id) => !answered.has(id));
+        if (missing.length) fail('VALIDATION_FAILED', '还有题目未作答', 'INCOMPLETE', { itemIds: missing });
+        for (const a of answers) {
+          const option = questionnaire.options.find((o) => o.id === a.optionId);
+          if (option?.remarkRequired && !a.remark) fail('VALIDATION_FAILED', '所选选项须补充说明', 'REMARK_REQUIRED');
+        }
+        await excellenceCheck(tx, activity, link, questionnaire, t.role_id, sheet!);
+        const [saved] = (await tx
+          .update(survey360Sheets)
+          .set({ status: 'submitted', submittedAt: ctx.now, revision: sheet!.revision + 1 })
+          .where(eq(survey360Sheets.id, sheet!.id))
+          .returning()) as [SheetRow];
+        await auditSheet(tx, ctx, 'survey360.sheet.submit', activity, await sheetView(tx, sheet), saved);
+        return sheetView(tx, saved);
+      },
+      taskGuard(relationId, qid),
+    )(c);
   });
 }
 
@@ -558,7 +601,7 @@ function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
         await bumpConfirmation(tx, ctx, confirmation);
         return { id: relation.id, appraiserPersonId: relation.appraiserPersonId, roleId: relation.roleId };
       },
-      201,
+      { status: 201 },
     )(c),
   );
   module.delete('/confirmation/appraisers/:relationId', (c) => {

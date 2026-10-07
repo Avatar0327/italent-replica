@@ -10,6 +10,7 @@ CREATE TABLE "survey360_activities" (
 	"role_display" text NOT NULL,
 	"owner_user_id" uuid NOT NULL,
 	"started_at" timestamp with time zone,
+	"ended_at" timestamp with time zone,
 	"score_batch_id" uuid,
 	"scored_at" timestamp with time zone,
 	"deleted" boolean DEFAULT false NOT NULL,
@@ -114,6 +115,7 @@ CREATE TABLE "survey360_objects" (
 	"person_id" uuid NOT NULL,
 	"sort" integer DEFAULT 0 NOT NULL,
 	"removed" boolean DEFAULT false NOT NULL,
+	"report_generated_at" timestamp with time zone,
 	"revision" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "survey360_objects_tenant_id" UNIQUE("tenant_id","id")

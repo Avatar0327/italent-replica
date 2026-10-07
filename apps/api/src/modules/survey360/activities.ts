@@ -236,7 +236,7 @@ function registerActivityLifecycle(module: Hono<TenantEnv>, deps: TenantRouteDep
             await issueAnswerLinks(tx, ctx, id);
           } else {
             if (current.status !== 'enabled') fail('CONFLICT', '只有启用中的活动可以停用', 'NOT_ENABLED');
-            saved = await bump(tx, current, { status: 'disabled' });
+            saved = await bump(tx, current, { status: 'disabled', endedAt: ctx.now });
             await computeScores(tx, ctx, id);
             saved = await reload(tx, id);
           }

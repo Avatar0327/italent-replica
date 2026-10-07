@@ -27,6 +27,7 @@ export interface ActivityRow {
   readonly role_display: 'name' | 'fixed_text' | 'hidden';
   readonly owner_user_id: string;
   readonly started_at: Date | string | null;
+  readonly ended_at: Date | string | null;
   readonly score_batch_id: string | null;
   readonly scored_at: Date | string | null;
   readonly revision: number;
@@ -61,6 +62,7 @@ export function activityView(row: ActivityRow) {
     roleDisplay: row.role_display,
     ownerUserId: row.owner_user_id,
     startedAt: iso(row.started_at),
+    endedAt: iso(row.ended_at),
     scoredAt: iso(row.scored_at),
     revision: row.revision,
   };
@@ -93,4 +95,21 @@ export function survey360AuditScope(kind: 'activity' | 'system' | 'any') {
     return sql`SELECT a.id::text FROM survey360_activities a WHERE a.tenant_id = ${ctx.tenantId}::uuid
       AND ${activityVisibleSql(admin)}`;
   };
+}
+
+/**
+ * 失败命令审计的 360 裁剪（第 1 轮审查 P2-5）：失败记录带请求来源（IP、终端、时间、命令 ID、TraceID），
+ * 匿名作答链接的失败只给 360 系统管理员，360 管理端命令的失败只给 360 管理员；其他查看人（含只持日志审计
+ * 能力者）看不到，无法据此关联评价者身份。谓词作用于 audit_command_failures 的 path 列。
+ */
+export async function survey360FailureVisibility(
+  deps: { db: Db },
+  ctx: { tenantId: string; userId: string },
+  path: SQL,
+) {
+  const admin = await withTenant(deps.db, ctx.tenantId, (tx) => loadAdmin(tx, ctx.userId));
+  const link = admin?.role === 'system' ? sql`true` : sql`false`;
+  const manage = admin ? sql`true` : sql`false`;
+  return sql`(CASE WHEN ${path} LIKE '/api/survey360/%' THEN ${link}
+    WHEN ${path} LIKE '/api/tenant/survey360/%' THEN ${manage} ELSE true END)`;
 }
