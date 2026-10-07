@@ -83,6 +83,36 @@ export async function listInstances(
   }));
 }
 
+/** DEC-242：本人处理事件即收录；与经理已处理同口径，不用当前业务范围过滤本人历史。 */
+export async function listProcessedInstances(
+  tx: Tx,
+  tenantId: string,
+  userId: string,
+  businessId: string | undefined,
+  page: Page,
+) {
+  const rows = rowsOf(
+    await tx.execute(sql`SELECT i.id,i.title,i.status,i.approval_type,i.business_id,
+      i.current_node_key,i.revision,i.created_at
+    FROM approval_instances i WHERE i.tenant_id=${tenantId}
+      AND EXISTS (SELECT 1 FROM approval_instance_logs l
+        WHERE l.tenant_id=i.tenant_id AND l.instance_id=i.id AND l.actor_user_id=${userId}::uuid
+          AND l.event IN ('approve','reject','disagree','transfer'))
+      ${businessId ? sql`AND i.business_id=${businessId}::uuid` : sql``}
+    ORDER BY i.created_at DESC,i.id LIMIT ${page.limit} OFFSET ${page.offset}`),
+  );
+  return rows.map((row) => ({
+    id: String(row.id),
+    title: String(row.title),
+    status: String(row.status),
+    approvalType: String(row.approval_type),
+    businessId: String(row.business_id),
+    currentNodeKey: (row.current_node_key as string | null) ?? null,
+    revision: Number(row.revision),
+    createdAt: iso(row.created_at),
+  }));
+}
+
 /** DEC-070：按“管理员转交自审”筛选实例日志；只看管理员数据范围内员工的实例。 */
 export async function listAdminLogs(
   tx: Tx,

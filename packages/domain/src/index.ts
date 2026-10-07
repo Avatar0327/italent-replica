@@ -1,4 +1,5 @@
 export { type DateRange, rangesOverlap } from './date-range.js';
+export { canonicalUuid, normalizeUuid } from './uuid.js';
 export {
   assertValidTimeZone,
   DEFAULT_TENANT_TIMEZONE,

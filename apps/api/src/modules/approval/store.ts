@@ -416,6 +416,20 @@ export async function loadLogs(tx: Tx, tenantId: string, instanceId: string) {
   ).map(logOf);
 }
 
+/**
+ * 全部日志里出现过的字段名（不限最近 200 条，X-13 的编辑 / 盲审字段名）：披露版本按它与当前可见字段求交集，
+ * 保证分页历史的任何一页都受同一指纹保护（DEC-288 止损）。字段名种类有限，单条语句有界。
+ */
+export async function loadLogFieldNames(tx: Tx, tenantId: string, instanceId: string): Promise<Set<string>> {
+  const rows = rowsOf<{ field: string }>(
+    await tx.execute(sql`SELECT DISTINCT f.field FROM (
+        SELECT detail->'fields' AS fields FROM approval_instance_logs
+        WHERE tenant_id=${tenantId} AND instance_id=${instanceId}::uuid AND jsonb_typeof(detail->'fields')='array'
+      ) l, jsonb_array_elements_text(l.fields) AS f(field) LIMIT ${BATCH}`),
+  );
+  return new Set(rows.map((row) => row.field));
+}
+
 /** 完整日志分页（最新在前）。 */
 export async function pageLogs(tx: Tx, tenantId: string, instanceId: string, page: { limit: number; offset: number }) {
   return rowsOf(

@@ -1,0 +1,117 @@
+.approval-workspace {
+  display: grid;
+  grid-template-columns: minmax(290px, 0.8fr) minmax(0, 1.6fr);
+  gap: 24px;
+  align-items: start;
+}
+.approval-list {
+  padding: 20px;
+}
+.approval-tabs,
+.approval-button-row,
+.approval-detail-heading {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.approval-tabs button[aria-selected='true'],
+.approval-actions button[aria-pressed='true'] {
+  color: white;
+  background: #1769b5;
+  border-color: #1769b5;
+}
+.approval-list-rows,
+.approval-progress,
+.approval-log {
+  list-style: none;
+  padding: 0;
+}
+.approval-list-rows li,
+.approval-progress li,
+.approval-log li {
+  border-bottom: 1px solid #e3e8ef;
+  padding: 14px 0;
+  overflow-wrap: anywhere;
+}
+.approval-row-link {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  padding: 8px;
+}
+.approval-row-link span,
+.approval-row-link time,
+.approval-progress time {
+  display: block;
+  font-size: 13px;
+  color: #65768b;
+  margin-top: 8px;
+}
+.approval-filter {
+  margin-top: 20px;
+}
+.approval-filter button,
+.approval-button-row {
+  margin-top: 12px;
+}
+.approval-detail-heading {
+  justify-content: space-between;
+}
+.approval-detail h2 {
+  font-size: 20px;
+}
+.approval-summary,
+.approval-log dl {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.approval-summary dt,
+.approval-log dt {
+  font-size: 13px;
+  color: #65768b;
+}
+.approval-summary dd,
+.approval-log dd {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+.approval-hint {
+  color: #65768b;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.approval-action-form,
+.approval-command-recovery,
+.approval-fields {
+  margin-top: 20px;
+}
+.approval-action-form textarea,
+.approval-fields textarea {
+  font: inherit;
+  color: #182a41;
+  border: 1px solid #bac8d8;
+  border-radius: 5px;
+  padding: 9px 11px;
+  box-sizing: border-box;
+  width: 100%;
+}
+.approval-form-grid {
+  display: grid;
+  gap: 16px;
+}
+.approval-badge {
+  display: inline-block;
+  color: #8b490e;
+  background: #fff4df;
+  border-radius: 4px;
+  padding: 3px 7px;
+  margin: 0 5px;
+  font-size: 12px;
+}
+@media (max-width: 960px) {
+  .approval-workspace {
+    grid-template-columns: 1fr;
+  }
+}
