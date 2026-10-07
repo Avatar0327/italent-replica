@@ -15,7 +15,7 @@ import { REBUILD_REQUIRED } from './activation-store.js';
 import { auditEmployment } from './context.js';
 import { loadEmploymentRecord } from './read-model.js';
 import { insertEmploymentRow, rowsOf, type LockedEmploymentBusiness } from './record-store.js';
-import { insertEmploymentTimeline, plannedEffectiveDate, timelinePosition } from './timeline.js';
+import { insertEmploymentTimeline, operationKey, plannedEffectiveDate, timelinePosition } from './timeline.js';
 import type { EmploymentContext } from './types.js';
 
 export { REBUILD_REQUIRED };
@@ -57,20 +57,22 @@ async function lateWindowPoint(
 }
 
 /**
- * [计划日, 实际执行日) 内、排在迟到调动之后的其他任职版本（组织调整、其他调动、离职等，不分 kind），以及生效日落在
- * 区间内、尚未落地的其他申请单（草稿 / 审批中 / 已批准 / 已驳回都算，DEC-278 补登）。同日排在它前面的记录不随它移动，
- * 不算区间内。limit 只供测试缩小上限。
+ * [计划日, 实际执行日) 内、排在迟到调动 L 之后的其他任职版本（组织调整、其他调动、离职等，不分 kind），以及尚未落地、
+ * 原计划日落在区间内且排在 L 之后的其他申请单（草稿 / 审批中 / 已批准 / 已驳回都算，DEC-278 补登）。“之后”用 C-3 的
+ * 同日规则：原计划日更晚，或同日而操作序号更晚（与 timelinePosition 同一口径）；排在 L 之前的记录不随它移动，不算区间内。
+ * limit 只供测试缩小上限。
  */
 export async function lateWindowBlockers(
   tx: Tx,
   ctx: EmploymentContext,
   business: Pick<LockedEmploymentBusiness, 'id' | 'employeeId'>,
-  plannedEffectiveDate: string,
+  planned: string,
   executionDate: string,
   limit = LATE_WINDOW_LIMIT,
 ): Promise<LateWindow> {
-  const point = await lateWindowPoint(tx, ctx, business, plannedEffectiveDate);
+  const point = await lateWindowPoint(tx, ctx, business, planned);
   const after = point.inclusive ? sql`>=` : sql`>`;
+  const plannedOf = plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`);
   const rows = rowsOf<LateWindowBlocker>(
     await tx.execute(sql`
     SELECT t.record_id AS id, r.kind, t.start_date::text AS "effectiveDate", true AS materialized
@@ -89,7 +91,9 @@ export async function lateWindowBlockers(
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${business.employeeId}::uuid AND b.id<>${business.id}::uuid
       AND s.state IN ('draft','in_review','approved','rejected')
       AND NOT EXISTS (SELECT 1 FROM employment_records r WHERE r.tenant_id=b.tenant_id AND r.id=b.id)
-      AND p.effective_date>=${plannedEffectiveDate}::date AND p.effective_date<${executionDate}::date
+      AND ${plannedOf}>=${planned}::date AND ${plannedOf}<${executionDate}::date
+      AND (${plannedOf}>${planned}::date
+        OR ${operationKey(ctx.tenantId, sql`b.id`)}>${operationKey(ctx.tenantId, sql`${business.id}::uuid`)})
     ORDER BY 3, 1 LIMIT ${limit + 1}`),
   );
   return { blockers: rows.slice(0, limit), truncated: rows.length > limit };
@@ -99,17 +103,17 @@ async function assertNoRebuildRequired(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
-  plannedEffectiveDate: string,
+  planned: string,
   executionDate: string,
 ) {
-  const { blockers, truncated } = await lateWindowBlockers(tx, ctx, business, plannedEffectiveDate, executionDate);
+  const { blockers, truncated } = await lateWindowBlockers(tx, ctx, business, planned, executionDate);
   if (!blockers.length) return;
   // activation-checks.ts / transitions.ts 把 activationFailure 记为生效失败（DEC-052）：审计 + HR 待办，任职不写入。
   throw new AppError('CONFLICT', '迟到执行需重建，待 HR 处理', {
     reason: REBUILD_REQUIRED,
     activationFailure: {
       reason: REBUILD_REQUIRED,
-      detail: { plannedEffectiveDate, executionDate, blockers, truncated },
+      detail: { plannedEffectiveDate: planned, executionDate, blockers, truncated },
     },
   });
 }

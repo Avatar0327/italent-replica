@@ -321,7 +321,18 @@ it('AC-JOB-08 审批中追加版本、作废不改；已批未来、同日多条
     { tenantId: s.world.tenant.id },
     { clock: () => new Date('2026-10-09T01:00:00Z') },
   );
-  expect(run.runs[0]).toMatchObject({ failed: [], errors: [] });
+  // DEC-278（第 2 轮，不豁免未落地申请）：三笔已批准申请都迟到，前序的区间含后序 → 前两笔记需重建、同日末条先落地；
+  // HR 依次重试后两者按原计划日 / 操作序号排在前，最终顺序与如期执行一致。
+  expect(run.runs[0]).toMatchObject({ failed: [first.id, second.id], activated: [sameDay.id], errors: [] });
+  s.world.setNow('2026-10-09T02:00:00Z');
+  for (const late of [second, first]) {
+    const current = (await (await s.world.request('GET', `/businesses/${late.id}`)).json()) as { revision: number };
+    const retried = await s.world.request('POST', `/businesses/${late.id}/activation/retry`, {
+      ifMatch: current.revision,
+      body: {},
+    });
+    expect(retried.status, await retried.clone().text()).toBe(200);
+  }
   const records = await s.world.records(s.employee.id, '2026-10-09');
   expect(records.map((r) => r.id)).toEqual([
     s.employee.recordId,

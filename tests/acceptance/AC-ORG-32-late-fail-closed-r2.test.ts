@@ -15,6 +15,7 @@ import { transitionEmployment } from '../../apps/api/src/modules/employment/tran
 import { versions } from './AC-JOB-sequence-support.js';
 import { resultRows } from './AC-ORG-people-support.js';
 import { activationWorld, type ActivationWorld } from './AC-TRF-activation-support.js';
+import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
 const REBUILD_REQUIRED = 'REBUILD_REQUIRED';
@@ -98,6 +99,31 @@ async function linkedTransfer(
     expect(response.status, await response.clone().text()).toBe(200);
   }
   return business;
+}
+
+const WINDOW_KINDS = ['org_adjustment', 'transfer', 'regularization', 'leave'] as const;
+type WindowKind = (typeof WINDOW_KINDS)[number];
+const ENTRIES = ['approval', 'scheduler'] as const;
+
+/** 区间 [10-05, 10-10) 内的其他已落地任职版本：F-007 组织调整 / 其他直接调动 / 转正 / 离职（最后工作日 10-07）。 */
+async function windowRecord(w: ActivationWorld, employeeId: string, kind: WindowKind): Promise<{ id: string }> {
+  if (kind === 'org_adjustment') {
+    const api = tenantApi(w.db, { clock: () => new Date('2026-10-01T01:00:00Z') });
+    const response = await api.request('PATCH', `/api/tenant/org/organizations/${w.from.id}`, {
+      user: w.session.user.id,
+      tenant: w.session.tenant.id,
+      ifMatch: w.from.revision,
+      body: { name: `${w.from.name}改名`, effectiveDate: '2026-10-08', addEmployment: true },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    return (await w.session.records(employeeId, '2026-10-08')).find((r) => r.kind === 'org_adjustment')!;
+  }
+  const other = kind === 'transfer' ? await w.session.org('其他部门', { establishedOn: '2026-01-01' }) : null;
+  const body =
+    kind === 'leave'
+      ? { kind, mode: 'direct', lastWorkDate: '2026-10-07', fields: {} }
+      : { kind, mode: 'direct', effectiveDate: '2026-10-08', fields: other ? { departmentId: other.id } : {} };
+  return w.session.business(employeeId, body, await revisionOf(w, employeeId));
 }
 
 /** 任职、载荷版本、时间轴（区间与顺序号）、人员状态、调编占用：被拒绝的迟到执行不得写入任何任职数据。 */
@@ -281,6 +307,37 @@ it('反例：区间为空的简单迟到审批落地：改到批准当天生效�
   });
   expect(events.some((event) => event.action === 'employment.activation.failed')).toBe(false);
 });
+
+const KIND_ENTRIES = WINDOW_KINDS.flatMap((kind) => ENTRIES.map((entry) => [kind, entry] as const));
+it.each(KIND_ENTRIES)(
+  'S1-P2-01 未落地申请迟到执行，区间内有已落地的%s（%s 入口）→ 记需重建待 HR，任职不变',
+  async (kind, entry) => {
+    const w = await activationWorld(database().db, `org32r2kind-${kind}-${entry}`);
+    const person = await w.hired();
+    // 有在途调动申请时不能再保存直接调动（TRANSFER_IN_REVIEW / APPROVED_PENDING）：其他直接调动先于申请保存。
+    const direct = kind === 'transfer' ? await windowRecord(w, person.employee.id, kind) : null;
+    const submitted = await lateApplication(w, person.employee.id);
+    const late = entry === 'scheduler' ? await w.approve(submitted, '2026-10-01T02:00:00Z') : submitted;
+    const other = direct ?? (await windowRecord(w, person.employee.id, kind));
+    const before = await snapshot(w, person.employee.id);
+    if (entry === 'approval') expect((await w.approve(late, '2026-10-10T01:00:00Z')).status).toBe('approved');
+    else expect(await w.runScheduler('2026-10-10T01:00:00Z')).toMatchObject({ failed: [late.id], errors: [] });
+    await expectRebuildRequired(w, late, [other.id], { planned: '2026-10-05', execution: '2026-10-10' });
+    if (kind === 'transfer' && entry === 'scheduler') {
+      // 区间内的直接调动本身也迟到：它是前一笔的 blocker、区间为空照常顺延；HR 重试前一笔后按原计划日排在前。
+      expect(await w.session.record(other.id, '2026-10-10')).toMatchObject({ effectiveDate: '2026-10-10' });
+      const retried = await w.retry(late, '2026-10-10T02:00:00Z');
+      expect(retried.status, await retried.clone().text()).toBe(200);
+      const sameDay = (await w.session.records(person.employee.id, '2026-10-10')).filter(
+        (r) => r.effectiveDate === '2026-10-10',
+      );
+      expect(sameDay.map((r) => r.id)).toEqual([late.id, other.id]);
+      return;
+    }
+    expect(await snapshot(w, person.employee.id)).toEqual(before);
+    expect(await w.session.record(other.id, '2026-10-10')).toMatchObject({ id: other.id, isCurrent: true });
+  },
+);
 
 const MATRIX = LINKS.flatMap((first) => LINKS.map((second) => [first, second] as const));
 it.each(MATRIX)(

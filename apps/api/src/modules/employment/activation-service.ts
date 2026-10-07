@@ -20,6 +20,7 @@ import {
   failureBlockerIds,
   pendingActivations,
   PREDECESSOR_FAILED,
+  REBUILD_REQUIRED,
   recordActivationAttempt,
   type ActivationTrigger,
   type PendingActivation,
@@ -48,6 +49,9 @@ export async function activateDueBusinesses(
   const result: ActivationResult = { activated: [], failed: [], suspended: [] };
   let queue = await dueQueue(tx, ctx, employeeId);
   let blocker: PendingActivation | undefined;
+  // 一次运行里每条业务最多尝试一次：后序成功后从头重读队列时，已失败的重试目标不再重复尝试、不重复记失败。
+  // 例外：重试目标因区间内记录记 REBUILD_REQUIRED 时，其 blockers 在本轮落地后再试一次（HR 一次重试即可推进两笔）。
+  const attempted = new Set<string>();
   for (let index = 0; index < queue.length; index++) {
     const item = queue[index]!;
     if (blocker && !item.reminderOnly && !exemptsBlocker(blocker, item.id)) {
@@ -63,7 +67,7 @@ export async function activateDueBusinesses(
       continue;
     }
     // 失败的业务只由 HR 修正后重试（DEC-052），定时任务不自动重试，失败次数不随每次运行增加。
-    if (item.lastOutcome === 'failed' && item.id !== retryBusinessId) {
+    if (item.lastOutcome === 'failed' && (item.id !== retryBusinessId || attempted.has(item.id))) {
       if (!item.reminderOnly) blocker = item;
       continue;
     }
@@ -71,6 +75,7 @@ export async function activateDueBusinesses(
     if (failure) {
       await recordActivationAttempt(tx, ctx, item, { outcome: 'failed', trigger, ...failure });
       result.failed.push(item.id);
+      if (item.id !== retryBusinessId || failure.reason !== REBUILD_REQUIRED) attempted.add(item.id);
       // 队列项是失败前读出的：带上本次失败原因与 blockers，后序才能按设计 §2.5 判断是否豁免。
       if (!item.reminderOnly)
         blocker = {
