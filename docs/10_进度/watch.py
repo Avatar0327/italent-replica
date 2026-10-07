@@ -44,6 +44,8 @@ def codex_results():
             txt = open(f, encoding="utf8", errors="ignore").read()
         except OSError:
             continue
+        if "thread_spawn" in txt.split("\n", 1)[0]:
+            continue  # 子代理线程，不算结论（只认主线程）
         n = txt.count('"task_complete"')
         m = re.search(r"italent-replica/pull/(\d+)|wt-(\d+)", txt)
         pr = (m.group(1) or m.group(2)) if m else "?"
