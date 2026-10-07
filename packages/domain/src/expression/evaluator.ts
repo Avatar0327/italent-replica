@@ -88,7 +88,8 @@ export class Evaluator {
       case 'unary': {
         if (node.operator === '+') return this.evaluate(node.operand, scope);
         const value = this.operand(node.operand, scope);
-        return value === undefined ? EMPTY : { kind: 'number', value: -value };
+        // 0 - value 而不是 -value：空值按 0 参与时（DEC-257）结果是 0 而不是 -0
+        return value === undefined ? EMPTY : { kind: 'number', value: 0 - value };
       }
       case 'binary': {
         if (node.operator === '+' || node.operator === '-' || node.operator === '*' || node.operator === '/') {
