@@ -1993,7 +1993,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 15:31",
+"liveUpdated": "10-07 15:35",
 "chains": [
 {
 "g": "exit",
@@ -2092,7 +2092,7 @@
 "pr": 97,
 "n": "审批中心前端",
 "seg": "ev:n ds:n dev:d6 rev:w6 mg:w",
-"now": "第 6 轮已推送，待发起审查",
+"now": "第 6 轮出结论，待读取",
 "fable": "1"
 },
 {
@@ -2173,8 +2173,8 @@
 "o": 1,
 "k": "run",
 "n": "人才标准与指标库",
-"seg": "ev:w ds:n dev:a4 rev:d3 mg:w",
-"now": "第 4 轮修改；合并还要等 Q-M0-113 取证和 DEC",
+"seg": "ev:d ds:n dev:d4 rev:w4 mg:w",
+"now": "第 4 轮完成，待发起审查（合并还要等 Q-M0-113 的 DEC）",
 "pr": 106
 },
 {
