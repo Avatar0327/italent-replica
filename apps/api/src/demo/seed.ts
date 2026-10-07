@@ -87,15 +87,16 @@ async function findDemoTenant(db: Db): Promise<string | null> {
   return row?.id ?? null;
 }
 
-/** 演示调动流程是最后一步写入的：它在，说明整套种子已完成。 */
+/** 演示调动流程的发布是最后一步：已发布，说明整套种子已完成。 */
 async function isComplete(db: Db, tenantId: string): Promise<boolean> {
   const rows = await withTenant(db, tenantId, (tx) =>
     tx
-      .select({ id: approvalProcesses.id })
+      .select({ published: approvalProcesses.currentVersionId })
       .from(approvalProcesses)
       .where(eq(approvalProcesses.code, DEMO_TRANSFER_PROCESS_CODE)),
   );
-  return rows.length > 0;
+  // 只建了草稿、发布前中断的也算不完整（#92 第二轮 P3）：发布是种子的最后一步
+  return rows.some((row) => row.published !== null);
 }
 
 async function buildManifest(db: Db, tenantId: string): Promise<DemoManifest> {

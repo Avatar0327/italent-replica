@@ -18,7 +18,7 @@
 |---|---|
 | 写入演示数据（幂等）并同时启动后端 `:3000` 与前端 `http://localhost:5173` | `pnpm demo` |
 | 只写入演示数据（已存在则不重复写） | `pnpm demo:seed` |
-| 重置：删除本地 PGlite 与演示清单后重新写入（**先 Ctrl+C 停掉 `pnpm demo`**） | `pnpm demo:reset` |
+| 重置：删除本地 PGlite 与演示清单后重新写入（**先 Ctrl+C 停掉 `pnpm demo`**；只删除 `.demo/` 下带 PGlite 标记的目录） | `pnpm demo:reset` |
 
 打开 http://localhost:5173 ，页面顶部的黄色“本地演示”条里有“切换演示身份”下拉；选人后自动跳到该角色的入口，各页面的租户已预填。浏览器只记住“选了谁”（Cookie），身份头由本地 vite 开发代理用 `.env.local` 里的密钥签名后转发，密钥不进浏览器。
 

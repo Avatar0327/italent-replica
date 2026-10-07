@@ -2,7 +2,8 @@
  * 本地演示的开发身份切换（F-025），只在 vite 开发服务器（serve + development）里存在：
  * 浏览器只在 Cookie 里记“选了哪个演示用户”，由本插件在 /api 代理上按 identity.ts 的 HMAC 方案签名身份头。
  * 签名密钥 DEV_IDENTITY_SECRET 只在本地 vite 进程里（来自未入库的 .env.local），不下发到浏览器；
- * 浏览器自带的身份头一律剥掉；只给种子清单里的演示用户签名。生产构建不挂本插件（apply）。
+ * 浏览器自带的身份头一律剥掉；只给种子清单里的演示用户签名。生产构建不挂本插件；preview、非 development 模式、
+ * NODE_ENV≠development 时只剥头不签名（#92 第二轮 P2-2）。
  */
 import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -74,9 +75,16 @@ export interface DemoIdentityOptions {
 }
 
 export function demoIdentityPlugin(options: DemoIdentityOptions) {
+  // 只有 vite 开发服务器会调用 configureServer（preview 走 configurePreviewServer），由它置位；见 #92 第二轮 P2-2
+  let devServer = false;
+  let mode = '';
+  const canSign = () => devServer && mode === 'development' && process.env.NODE_ENV === 'development';
+
+  /** 先剥掉浏览器带来的身份头；只有开发服务器 + development 模式 + NODE_ENV=development 才按清单签名。 */
   function signProxyRequest(proxyReq: ProxyRequestLike, req: Pick<IncomingMessage, 'headers'>): void {
     proxyReq.removeHeader(USER_HEADER);
     proxyReq.removeHeader(SIGNATURE_HEADER);
+    if (!canSign()) return;
     const headers = demoIdentityHeaders(req.headers.cookie ?? '', readManifest(options.manifestPath), options.secret);
     for (const [name, value] of Object.entries(headers ?? {})) proxyReq.setHeader(name, value);
   }
@@ -88,22 +96,26 @@ export function demoIdentityPlugin(options: DemoIdentityOptions) {
     res.end(JSON.stringify({ ...(manifest ?? { tenantId: null, personas: [] }), current }));
   }
 
+  // 开发服务器与 preview 的 /api 代理都挂上：preview 里只剥头不签名
+  const apiProxy = {
+    '/api': {
+      target: options.apiTarget ?? 'http://localhost:3000',
+      configure: (proxy: { on(event: 'proxyReq', listener: typeof signProxyRequest): void }) =>
+        proxy.on('proxyReq', signProxyRequest),
+    },
+  };
+
   const plugin = {
     name: 'italent-demo-identity',
-    apply: (_config: object, env: { command: string; mode: string }) =>
-      env.command === 'serve' && env.mode === 'development',
-    config: () => ({
-      server: {
-        proxy: {
-          '/api': {
-            target: options.apiTarget ?? 'http://localhost:3000',
-            configure: (proxy: { on(event: 'proxyReq', listener: typeof signProxyRequest): void }) =>
-              proxy.on('proxyReq', signProxyRequest),
-          },
-        },
-      },
-    }),
+    // 构建不挂；serve（含 preview）挂上以便剥掉伪造身份头，是否签名由 canSign 在每次请求时判定
+    apply: (_config: object, env: { command: string }) => env.command === 'serve',
+    config: () => ({ server: { proxy: apiProxy }, preview: { proxy: apiProxy } }),
+    configResolved(config: { mode: string }) {
+      mode = config.mode;
+    },
     configureServer(server: { middlewares: { use(path: string, handler: typeof servePersonas): void } }) {
+      devServer = true;
+      if (!canSign()) return;
       if (!options.secret || options.secret.length < MIN_SECRET_LENGTH)
         console.warn('[demo] 缺少 DEV_IDENTITY_SECRET（≥32 字符，见 .env.example），/api 请求将不带身份（401）');
       server.middlewares.use(DEMO_PERSONAS_PATH, servePersonas);

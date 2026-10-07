@@ -4,7 +4,7 @@
 // 只用于开发机：强制 NODE_ENV=development；密钥写在被 .gitignore 忽略的 .env.local，不入库。
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { appendFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -44,16 +44,10 @@ async function seed() {
   if (code !== 0) process.exit(code);
 }
 
-function reset() {
-  // 只删演示目录下的本地库与清单；设了 DATABASE_URL（真 PG）时不动数据库，提示手工处理
-  if (process.env.DATABASE_URL) {
-    console.error('[demo] 设置了 DATABASE_URL：重置不会清空真 PostgreSQL，请自行重建该库后再运行 pnpm demo:seed');
-    process.exit(1);
-  }
-  const dir = process.env.LOCAL_PGLITE_DIR || `${root}.demo/pglite`;
-  rmSync(dir, { recursive: true, force: true });
-  rmSync(`${root}.demo/personas.json`, { force: true });
-  console.log(`[demo] 已删除本地演示数据：${dir}`);
+// 重置交给 apps/api 的 CLI：与启动 / 种子同一路径解析与安全校验（只删 .demo/ 下带 PGlite 标记的目录）
+async function reset() {
+  const code = await waitFor(run(process.execPath, [...nodeArgs, 'src/demo/cli.ts', 'reset'], { cwd: apiDir }));
+  if (code !== 0) process.exit(code);
 }
 
 function serveAll() {
@@ -79,6 +73,6 @@ function serveAll() {
 
 prepareEnv();
 const mode = process.argv[2] ?? 'serve';
-if (mode === 'reset') reset();
+if (mode === 'reset') await reset();
 await seed();
 if (mode === 'serve') serveAll();
