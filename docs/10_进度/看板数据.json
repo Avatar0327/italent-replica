@@ -2,9 +2,9 @@
 "updated": "2026-10-07",
 "stats": {
 "merged": 52,
-"open": 6,
-"dec": 264,
-"ev": "18/104"
+"open": 9,
+"dec": 274,
+"ev": "16/105"
 },
 "tasks": {
 "M0": {
@@ -775,14 +775,26 @@
 },
 "F-033": {
 "n": "表达式函数库按原站补齐（63 个函数）",
-"s": "active",
+"s": "review",
 "p": "R3-T00",
 "deps": [
 "F-032"
 ],
 "note": "DEC-260；B 档 Opus 5.5 High → Sol Ultra；F-032 合并后开工；R3-T04 前完成",
 "dev": "Claude Opus 5.5 High",
-"rev": "Sol Ultra"
+"rev": "Sol Ultra",
+"pr": [
+108
+]
+},
+"F-034": {
+"n": "360 有作答时替换套卷：清空作答（确认后执行）",
+"s": "todo",
+"p": "R3-T03",
+"deps": [
+"R3-T03"
+],
+"note": "#107 可后补 P2-9（DEC-249）；#107 合并后"
 }
 },
 "prs": {
@@ -834,7 +846,7 @@
 },
 "102": {
 "s": "active",
-"r": 1,
+"r": 2,
 "n": "Draft 开发中"
 },
 "106": {
@@ -844,6 +856,14 @@
 }
 },
 "log": [
+[
+"10-07",
+"DEC-274 循环依赖：保存提示、计算整次不写并报失败（影响 R3-T04）；新登记 F-034、Q-M0-106"
+],
+[
+"10-07",
+"DEC-273：#96 第 5 轮 A + 甲；升档改为按难度由审查合并窗口判断（修订 DEC-268）"
+],
 [
 "10-07",
 "DEC-269 #83 迟到重建按 C'（补录 + 值匹配向后更新）；DEC-270 函数空值 / 文本 / 空日期照原站（取代 DEC-264）"
@@ -1865,7 +1885,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 11:14",
+"liveUpdated": "10-07 11:52",
 "chains": [
 {
 "g": "exit",
@@ -1890,7 +1910,7 @@
 {
 "g": "acc",
 "t": "R1 验收",
-"d": "F-024 的后续"
+"d": "端到端测试 + 界面走查"
 }
 ],
 "items": [
@@ -1910,9 +1930,9 @@
 "k": "run",
 "pr": 83,
 "n": "组织变更联动任职",
-"seg": "ev:d ds:a3 dev:w rev:w8 mg:w",
-"now": "设计 v3 复审中",
-"wait": "DEC-269 已定 C'；v3 复审中",
+"seg": "ev:d ds:a4 dev:w rev:w8 mg:w",
+"now": "设计 v4 修订中（v3 剩 4 组 P2）",
+"wait": "v4 仍有核心 P2 则问你收缩 / Ultracode",
 "fable": "1",
 "up": "10-07 第 8 轮后调到 Max"
 },
@@ -1924,7 +1944,7 @@
 "pr": 100,
 "n": "离职管理",
 "seg": "ev:d ds:a2 dev:w rev:w mg:w",
-"now": "设计 v1.2 复审中",
+"now": "设计 v1.2 复审出结论，待读取",
 "wait": "#83 合并后写代码",
 "fable": "1"
 },
@@ -1951,32 +1971,32 @@
 "k": "run",
 "pr": 96,
 "n": "重叠调入超编确认",
-"seg": "ev:d ds:n dev:d4 rev:a4 mg:w",
-"now": "第 4 轮审查中（复审 + 终审合一）",
-"fable": "1",
-"up": "10-07 第 4 轮调到 Max"
+"seg": "ev:d ds:n dev:a5 rev:d4 mg:w",
+"now": "第 5 轮修改（Fable High，DEC-273）",
+"fable": "1"
 },
 {
 "id": "F-027",
-"g": "r1fix",
+"g": "acc",
 "o": 2,
 "k": "run",
 "pr": 97,
 "n": "审批中心前端",
-"seg": "ev:n ds:n dev:a4 rev:d3 mg:w",
-"now": "第 4 轮修改",
+"seg": "ev:n ds:n dev:d4 rev:w4 mg:w",
+"now": "第 4 轮已推送，待发起审查",
 "fable": "1",
-"up": "10-07 第 4 轮调到 Max"
+"up": "10-07 第 4 轮调到 Max",
+"need": "1"
 },
 {
 "id": "F-029",
-"g": "r1fix",
+"g": "acc",
 "o": 2,
 "k": "run",
 "pr": 99,
 "n": "本人跨部门调动职位置空",
-"seg": "ev:d ds:n dev:a4 rev:d3 mg:w",
-"now": "第 4 轮修改",
+"seg": "ev:d ds:n dev:d4 rev:a4 mg:w",
+"now": "第 4 轮 Astra Ultra 审查中",
 "wait": "同类第 3 次，第 5 轮仍有则问你",
 "up": "10-07 第 4 轮调到 Max（Opus）"
 },
@@ -2019,8 +2039,9 @@
 "o": 3,
 "k": "run",
 "n": "函数库补齐 63 个",
-"seg": "ev:d ds:n dev:a1 rev:w mg:w",
-"now": "开发中（并入 DEC-270：Round / Abs 遇空失败）"
+"seg": "ev:d ds:n dev:d1 rev:w1 mg:w",
+"now": "已转 Ready，待发起审查",
+"pr": 108
 },
 {
 "id": "R3-T05",
@@ -2045,7 +2066,7 @@
 "k": "run",
 "n": "人才标准与指标库",
 "seg": "ev:d ds:n dev:d1 rev:a1 mg:w",
-"now": "Sol Ultra 第 1 轮审查中；CI 红 1 例（PGlite 排序）待修",
+"now": "第 1 轮出结论，待读取",
 "pr": 106
 },
 {
@@ -2055,8 +2076,9 @@
 "k": "run",
 "n": "360 度评估（PR-A）",
 "seg": "ev:d ds:n dev:d1 rev:a1 mg:w",
-"now": "PR-A Sol Ultra 第 1 轮审查中",
-"pr": 107
+"now": "PR-A 第 1 轮出结论，待读取",
+"pr": 107,
+"need": "1"
 },
 {
 "id": "R3-T02",
@@ -2078,12 +2100,46 @@
 {
 "id": "F-030",
 "g": "acc",
-"o": 2,
+"o": 3,
 "k": "run",
 "pr": 102,
 "n": "AC 覆盖运行时统计",
-"seg": "ev:n ds:n dev:d1 rev:a1 mg:w",
-"now": "Sol Ultra 第 1 轮审查中；R1 数字复核一致"
+"seg": "ev:n ds:n dev:a2 rev:d1 mg:w",
+"now": "第 2 轮修改（4 个 P2，R1 数字已一致）"
+},
+{
+"id": "F-025",
+"g": "acc",
+"o": 1,
+"k": "done",
+"pr": 92,
+"n": "本地演示环境（pnpm demo）",
+"u": "10-07 合并 · 可点击走查"
+},
+{
+"id": "UI-R1",
+"g": "acc",
+"o": 2,
+"k": "todo",
+"n": "R1 界面点击走查",
+"u": "审批步骤等 #97，本人调动等 #99"
+},
+{
+"id": "F-034",
+"g": "r3a",
+"o": 2,
+"k": "todo",
+"n": "360 替换套卷清空作答",
+"u": "#107 合并后（可后补）"
+},
+{
+"id": "Q-M0-106",
+"g": "r3a",
+"o": 1,
+"k": "run",
+"n": "360 管理员 / 授权口径取证",
+"seg": "ev:a ds:n dev:n rev:n mg:n",
+"now": "取证中"
 }
 ]
 }
