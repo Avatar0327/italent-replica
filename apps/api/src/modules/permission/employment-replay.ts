@@ -1,10 +1,12 @@
 /** DEC-080：统一命令台账返回后重验，涵盖首次成功、直接重放和失败回查重放。 */
+import { MODULE_OBJECTS } from '@italent/domain';
+import { authorizeEstablishmentReplay } from './establishment-replay.js';
 import { sql, type Tx } from '@italent/db';
 import type { Authorizer } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { EmploymentContext } from '../employment/types.js';
 import { isEmploymentRecordVisible } from '../employment/visibility.js';
-import { authorizeInTransaction, scopeAllowsInTransaction } from './module-access.js';
+import { authorizeInTransaction, scopeAllowsInTransaction, resolveModuleScopeInTransaction } from './module-access.js';
 import { requireObjectWrite } from './object-write.js';
 
 const OBJECT = 'TenantBase.EmploymentRecord';
@@ -39,6 +41,13 @@ export async function authorizeEmploymentResult(
   body: unknown,
 ): Promise<void> {
   if (ctx.objectCode !== OBJECT) return;
+  const capacityScope = await resolveModuleScopeInTransaction(
+    { authorize, clock: () => ctx.now },
+    ctx,
+    tx,
+    MODULE_OBJECTS.establishment.code,
+  );
+  await authorizeEstablishmentReplay(tx, { authorize }, ctx, capacityScope, commandId, false);
   const events = await footprints(tx, ctx.tenantId, commandId);
   const snapshots = responseSnapshots(body);
   const ids = [...new Set([...events.map((event) => event.id), ...snapshots.map((snapshot) => snapshot.id)])];

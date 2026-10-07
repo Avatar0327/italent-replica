@@ -69,7 +69,7 @@ export async function resolveModuleScope(
  * 数据范围（DEC-123）时使用。
  */
 export async function resolveModuleScopeInTransaction(
-  deps: Deps,
+  deps: Pick<Deps, 'authorize' | 'clock'>,
   ctx: TenantContext,
   tx: Tx,
   objectCode: string,

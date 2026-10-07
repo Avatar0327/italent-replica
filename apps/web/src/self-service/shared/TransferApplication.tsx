@@ -35,6 +35,7 @@ export function TransferApplication({ tenantId, initiator }: TransferApplication
         onField={state.field}
         onReferenceQuery={state.referenceQuery}
         onLinkage={state.linkage}
+        onWithEstablishment={state.withEstablishment}
         onAction={(action) => {
           void state.submit(action);
         }}
