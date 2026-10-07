@@ -19,6 +19,8 @@ const ESTABLISHMENT = MODULE_OBJECTS.establishment.code;
 const ESTABLISHMENT_KEYS = ['strictControl', 'segments'];
 /** 查看者对任职业务审计的字段权：含本审计的全部键，裁剪只能来自编制范围。 */
 const FIELDS = ['reason', 'action', 'origin', 'confirmed', ...ESTABLISHMENT_KEYS];
+/** 编制对象上与回退审计分段对应的字段编码：orgId ↔ departmentId、positionId、strictControl、periodStart / periodEnd ↔ from / until。 */
+const ALL_ESTABLISHMENT_FIELDS = ['orgId', 'positionId', 'strictControl', 'periodStart', 'periodEnd', 'localCapacity'];
 let w: Awaited<ReturnType<typeof carriedWorld>>;
 let businessId: string;
 
@@ -46,8 +48,11 @@ beforeAll(async () => {
   expect((await w.auditEvents(application.id)).map((event) => event.action)).toContain(AUDIT);
 });
 
-/** 任职看全部；编制范围按参数：null = 无编制数据范围，数组 = 组织范围。 */
-function viewer(establishmentOrgIds: string[] | null) {
+/**
+ * 任职看全部；编制范围按参数：null = 无编制数据范围，数组 = 组织范围；
+ * establishmentFields = 编制对象可见字段（缺省全部，DEC-284③：编制详情按编制字段权限投影）。
+ */
+function viewer(establishmentOrgIds: string[] | null, establishmentFields: string[] = ALL_ESTABLISHMENT_FIELDS) {
   const authorize: Authorizer = () => true;
   const establishment: ModuleScope = establishmentOrgIds
     ? {
@@ -61,7 +66,8 @@ function viewer(establishmentOrgIds: string[] | null) {
     scope: async (query) =>
       query.objectCode === ESTABLISHMENT ? establishment : { ...EMPTY_SCOPE, all: true, hasDataPermission: true },
     authorize: async () => true,
-    fields: async () => new Set(FIELDS),
+    fields: async (_tenantId, _userId, objectCode) =>
+      new Set(objectCode === ESTABLISHMENT ? establishmentFields : FIELDS),
   });
   return auditApi(w.db, '2026-10-01T01:00:00Z', { authorize });
 }
@@ -108,4 +114,17 @@ it('AC-EST-35 编制范围覆盖该部门：列表变更值与详情都带编制
   expect(row.changes.find((change) => change.field === 'strictControl')?.to).toBe(false);
   expect(detail.after).toMatchObject({ strictControl: false });
   expect((detail.after as { segments: unknown[] }).segments).toHaveLength(1);
+});
+
+it('AC-EST-35 编制范围全部、编制可见字段只有 orgId：列表、详情、变更值只看到部门', async () => {
+  const { row, detail } = await reversalLog(viewer([w.from.id, w.to.id], ['orgId']));
+  const segments = row.changes.find((change) => change.field === 'segments');
+  expect(segments?.to).toEqual([{ departmentId: w.to.id }]);
+  expect(segments?.toText).toContain(w.to.id);
+  expect(segments?.toText).not.toContain(w.targetPosition);
+  expect(row.changes.find((change) => change.field === 'strictControl')).toBeUndefined();
+  expect(JSON.stringify(row)).not.toContain(w.targetPosition);
+  expect(JSON.stringify(row)).not.toMatch(/strictControl|2026-10-/);
+  expect(detail.after).not.toHaveProperty('strictControl');
+  expect((detail.after as { segments: unknown[] }).segments).toEqual([{ departmentId: w.to.id }]);
 });

@@ -1,10 +1,13 @@
 /**
  * AC-EST-34（DEC-273）：撤权 / 停用 / 移出成员、异常管理员交接合席等**服务端间接触发**的会签结算回退，使原部门超编时
- * 不要求确认、不阻断：照常完成，记超编警告审计（带来源标记），响应附一条不阻断的提示。显式入口（审批人自己点不同意）
- * 不带 confirmed 仍须 409 CONFIRMATION_REQUIRED（严格 / 非严格两档）。
+ * 不要求确认、不阻断：照常完成，记超编警告审计（带来源标记），响应附一条不阻断的通用提示（DEC-284：不带任何
+ * 具体信息，对所有操作人相同；幂等重放只返回处理状态）。显式入口（审批人自己点不同意）不带 confirmed 仍须
+ * 409 CONFIRMATION_REQUIRED（严格 / 非严格两档）。
  */
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createUser, eq, grantMembership, orgHierarchyLinks, orgVersions, sql, withTenant, type Db } from '@italent/db';
+import type { Authorizer } from '@italent/api';
+import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import type { InstanceView } from './AC-APV-support.js';
@@ -17,6 +20,12 @@ const NOW = '2026-10-01T01:00:00Z';
 const AUDIT = 'employment.establishment.exceeded-confirmed';
 const APPROVAL = '/api/tenant/approval';
 const USERS = '/api/tenant/permission/users';
+const GENERIC_WARNING = {
+  reason: 'ESTABLISHMENT_EXCEEDED',
+  message: '此操作导致编制超编，已记录警告，可在编制管理中查看（按你的权限）',
+};
+const EMPLOYMENT = MODULE_OBJECTS.employmentRecord.code;
+const ESTABLISHMENT = MODULE_OBJECTS.establishment.code;
 
 /** 可信夹具：追加一条组织版本写入负责人（人员 ID），与 AC-APV-support.setOrgRoles 相同。 */
 async function setOrgHead(db: Db, tenantId: string, orgId: string, personId: string) {
@@ -164,9 +173,12 @@ async function countersignWorld(strict: boolean) {
   expect(pendingOf(view, admin.id)).toBeDefined();
 
   async function snapshot() {
+    const view = await instance();
     return {
       business: await w.business(application.id),
-      instance: (await instance()).status,
+      instance: view.status,
+      tasks: view.tasks.map((task) => [task.nodeKey, task.assigneeUserId, task.status, task.origin]),
+      logs: view.logs.map((log) => log.event),
       employee: await w.session.getEmployee(a.employee.id),
       records: await w.session.records(a.employee.id, '2026-10-05'),
       occupant: await w.session.records(b.employee.id, '2026-10-05'),
@@ -203,21 +215,33 @@ function helpers(w: Indirect) {
   return { handover, member, auditOf };
 }
 
-interface Hint {
-  reason: string;
-  businessId: string | null;
-  departmentIds: string[];
-}
+type Snapshot = Awaited<ReturnType<Indirect['snapshot']>>;
 
-async function expectDisapproved(w: Indirect, origin: string) {
+/** 单据 / 实例办结为不同意；合席、会签流转与不同意日志新增；待办清空；业务与员工 revision 各递增一次。 */
+async function expectDisapproved(w: Indirect, origin: string, before: Snapshot) {
   const after = await w.snapshot();
   expect(after.business.status).toBe('disapproved');
   expect(after.instance).toBe('disapproved');
+  expect(after.tasks.filter((task) => task[2] === 'pending')).toEqual([]);
+  expect(after.tasks).toContainEqual(['joint', w.approverUserId, 'merged', 'handover']);
+  expect(after.logs.slice(before.logs.length)).toEqual(
+    expect.arrayContaining(['countersign_merge', 'countersign_flow', 'disapprove']),
+  );
+  expect(after.business.revision).toBe(before.business.revision + 1);
+  expect(after.employee.revision).toBe(before.employee.revision + 1);
+  expect(after.occupant).toEqual(before.occupant);
   const audits = await helpers(w).auditOf();
   expect(audits).toHaveLength(1);
   expect(audits[0]!.after).toMatchObject({ reason: 'ESTABLISHMENT_EXCEEDED', action: 'disapprove', origin });
   expect(audits[0]!.after).toMatchObject({ confirmed: false });
   return after;
+}
+
+/** 响应里的提示只有通用文案：不含部门 / 职位 / 业务 / 员工 ID（DEC-284①）。 */
+function expectGenericOnly(w: Indirect, body: unknown) {
+  const text = JSON.stringify(body);
+  for (const id of [w.to.id, w.from.id, w.targetPosition, w.application.id, w.a.employee.id])
+    expect(text).not.toContain(id);
 }
 
 for (const strict of [false, true])
@@ -227,15 +251,45 @@ for (const strict of [false, true])
     const before = await w.snapshot();
     const response = await handover({ fromUserId: w.admin, toUserId: w.approverUserId });
     expect(response.status, await response.clone().text()).toBe(200);
-    const body = (await response.json()) as { tasks: number; establishmentWarnings: Hint[] };
+    const body = (await response.json()) as { tasks: number; establishmentWarning: unknown };
     expect(body.tasks).toBe(1);
-    expect(body.establishmentWarnings).toEqual([
-      { reason: 'ESTABLISHMENT_EXCEEDED', businessId: w.application.id, departmentIds: [w.to.id] },
-    ]);
-    const after = await expectDisapproved(w, 'admin-handover');
-    expect(after.business.revision).toBeGreaterThan(before.business.revision);
-    expect(after.occupant).toEqual(before.occupant);
+    expect(body.establishmentWarning).toEqual(GENERIC_WARNING);
+    expectGenericOnly(w, body);
+    await expectDisapproved(w, 'admin-handover', before);
   });
+
+it('AC-EST-34 交接幂等重放只返回处理状态：撤去编制查看权后同键重放不带提示，状态与日志不变', async () => {
+  const w = await countersignWorld(false);
+  const before = await w.snapshot();
+  const key = `handover-replay-${w.application.id.slice(0, 8)}`;
+  const body = { fromUserId: w.admin, toUserId: w.approverUserId };
+  const first = await w.api.request('POST', `${APPROVAL}/exception-admins/handover`, {
+    ...w.as(w.operator),
+    ifMatch: 0,
+    idempotencyKey: key,
+    body,
+  });
+  expect(first.status, await first.clone().text()).toBe(200);
+  expect(((await first.json()) as { establishmentWarning: unknown }).establishmentWarning).toEqual(GENERIC_WARNING);
+  const after = await expectDisapproved(w, 'admin-handover', before);
+  // 撤去操作人的编制查看权后重放：只返回处理状态，不再带首次的提示。
+  const authorize: Authorizer = (request) =>
+    !(request.userId === w.operator && request.resource === ESTABLISHMENT && request.action === 'object.view');
+  const revokedApi = tenantApi(w.db, { clock: () => new Date(NOW), authorize });
+  const replay = await revokedApi.request('POST', `${APPROVAL}/exception-admins/handover`, {
+    ...w.as(w.operator),
+    ifMatch: 0,
+    idempotencyKey: key,
+    body,
+  });
+  expect(replay.status, await replay.clone().text()).toBe(200);
+  const replayed = (await replay.json()) as Record<string, unknown>;
+  expect(replayed).toMatchObject({ processes: 1, tasks: 1 });
+  expect(replayed).not.toHaveProperty('establishmentWarning');
+  expect(replayed).not.toHaveProperty('establishmentWarnings');
+  expectGenericOnly(w, replayed);
+  expect(await w.snapshot()).toEqual(after);
+});
 
 for (const strict of [false, true])
   for (const path of ['status', 'remove'] as const)
@@ -256,19 +310,44 @@ for (const strict of [false, true])
         ...(path === 'status' ? { body: { status: 'disabled' } } : {}),
       });
       expect(revoked.status, await revoked.clone().text()).toBe(200);
-      expect(await revoked.json()).toEqual({
+      const receipt = await revoked.json();
+      expect(receipt).toEqual({
         userId: w.admin,
         membershipStatus: 'revoked',
         membershipRevision: membership.membershipRevision + 1,
-        establishmentWarnings: [
-          { reason: 'ESTABLISHMENT_EXCEEDED', businessId: w.application.id, departmentIds: [w.to.id] },
-        ],
+        establishmentWarning: GENERIC_WARNING,
       });
+      expectGenericOnly(w, receipt);
       expect((await member(w.admin)).membershipStatus).toBe('revoked');
-      const after = await expectDisapproved(w, 'membership-revocation');
-      expect(after.business.revision).toBeGreaterThan(before.business.revision);
-      expect(after.occupant).toEqual(before.occupant);
+      await expectDisapproved(w, 'membership-revocation', before);
     });
+
+it('AC-EST-34 负向：无任职查看权、有编制范围的操作人停用成员：停用成功，提示只有通用文案', async () => {
+  const w = await countersignWorld(false);
+  const { handover, member } = helpers(w);
+  const view = await w.instance();
+  expect((await handover({ fromUserId: w.admin, toUserId: w.approverUserId, cursor: view.id })).status).toBe(200);
+  const before = await w.snapshot();
+  const membership = await member(w.admin);
+  const authorize: Authorizer = (request) =>
+    !(request.userId === w.operator && request.resource === EMPLOYMENT && request.action === 'object.view');
+  const restricted = tenantApi(w.db, { clock: () => new Date(NOW), authorize });
+  const revoked = await restricted.request('POST', `${USERS}/${w.admin}/status`, {
+    ...w.as(w.operator),
+    ifMatch: membership.membershipRevision,
+    body: { status: 'disabled' },
+  });
+  expect(revoked.status, await revoked.clone().text()).toBe(200);
+  const receipt = await revoked.json();
+  expect(receipt).toEqual({
+    userId: w.admin,
+    membershipStatus: 'revoked',
+    membershipRevision: membership.membershipRevision + 1,
+    establishmentWarning: GENERIC_WARNING,
+  });
+  expectGenericOnly(w, receipt);
+  await expectDisapproved(w, 'membership-revocation', before);
+});
 
 for (const strict of [false, true])
   it(`AC-EST-34 负向：异常管理员本人点不同意仍须确认 strict=${strict}`, async () => {
