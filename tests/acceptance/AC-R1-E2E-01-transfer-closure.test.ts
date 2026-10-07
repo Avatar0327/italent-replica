@@ -228,26 +228,39 @@ describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 
 
   it('步骤 5（R1-T13 / T14 / T02）：员工自助、调入部门经理工作台、范围内 HR 都看到变更；调出经理与范围外 HR 看不到', async () => {
     // 员工自助：任职列表含补录与同日业务；我的申请仍只列本人发起的那一单。
-    const selfRecords = await w.json<{ items: { id: string }[] }>(
+    type SelfRecord = { id: string; approvalStatus: string; fields: Record<string, unknown> };
+    const selfRecords = await w.json<{ items: SelfRecord[] }>(
       await w.request(self, 'GET', `${SELF}/employees/${employeeId}/records`),
     );
     expect(selfRecords.items.map((item) => item.id)).toEqual(
       expect.arrayContaining([hireRecordId, backfillId, applicationId, sameDayId]),
     );
-    const mine = await w.json<{ items: { businessId: string }[] }>(
+    // 员工看到的是变更后的值（DEC-205 默认可见字段：新部门、新直线经理）；地点不在员工默认可见字段内，不返回。
+    const byId = new Map(selfRecords.items.map((item) => [item.id, item]));
+    expect(byId.get(applicationId)).toMatchObject({
+      approvalStatus: '通过',
+      fields: { departmentId: w.to, directManagerId: w.inHead.employeeId },
+    });
+    expect(byId.get(applicationId)!.fields).not.toHaveProperty('place');
+    expect(byId.get(backfillId)!.fields).toMatchObject({ departmentId: w.from });
+    expect(byId.get(sameDayId)!.fields).toMatchObject({ departmentId: w.to });
+    expect(byId.get(hireRecordId)!.fields).toMatchObject({ departmentId: w.from });
+    const mine = await w.json<{ items: { businessId: string; status: string }[] }>(
       await w.request(self, 'GET', `${SELF}/applications`),
     );
-    expect(mine.items.map((item) => item.businessId)).toEqual([applicationId]);
+    expect(mine.items).toEqual([expect.objectContaining({ businessId: applicationId, status: '通过' })]);
 
-    // 经理工作台（R1-T14）：调入部门负责人的团队成员含该员工；调出部门负责人的团队不再含。
+    // 经理工作台（R1-T14）：调入部门负责人的团队成员含该员工，且显示其变更后的部门与经理；调出部门负责人的团队不再含。
+    type TeamRow = { id: string; departmentId?: string; directManagerId?: string };
     const team = async (manager: Actor) =>
       (
-        await w.json<{ items: { id: string }[] }>(
+        await w.json<{ items: TeamRow[] }>(
           await w.request(manager, 'GET', '/api/tenant/employment/transfers/manager/team?category=active'),
         )
-      ).items.map((item) => item.id);
-    expect(await team(w.as(w.inHead))).toContain(employeeId);
-    expect(await team(w.as(w.outHead))).not.toContain(employeeId);
+      ).items;
+    const seenByInHead = (await team(w.as(w.inHead))).find((row) => row.id === employeeId);
+    expect(seenByInHead).toMatchObject({ departmentId: w.to, directManagerId: w.inHead.employeeId });
+    expect((await team(w.as(w.outHead))).map((row) => row.id)).not.toContain(employeeId);
 
     // HR 列表（AC-PRM-04 / 12）：范围内 HR 可见员工与整条版本链；范围外 HR 一律不可见且不泄露存在。
     const listed = await w.json<{ items: { id: string }[]; hasDataPermission: boolean }>(
@@ -255,6 +268,8 @@ describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 
     );
     expect(listed.hasDataPermission).toBe(true);
     expect(listed.items.map((item) => item.id)).toContain(employeeId);
+    const current = (await w.records(w.hr, employeeId)).find((record) => record.isCurrent)!;
+    expect(current.fields).toMatchObject({ departmentId: w.to, directManagerId: w.inHead.employeeId, place: '新地点' });
     const hidden = await w.json<{ items: { id: string }[] }>(
       await w.request(w.outsider, 'GET', '/api/tenant/employment/employees?pageSize=200'),
     );
@@ -266,9 +281,17 @@ describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 
       `/api/tenant/employment/records/${applicationId}`,
     ])
       expect((await w.request(w.outsider, 'GET', path)).status, path).toBe(404);
-    // 范围外 HR 也不能借调动入口写该员工。
-    const denied = await w.hrTransfer(w.outsider, employeeId, { effectiveDate: '2026-11-01' }).catch(() => null);
-    expect(denied === null || [403, 404].includes(denied.status)).toBe(true);
+    // 范围外 HR 也不能借调动入口写该员工：用有权 HR 取到有效 revision，再以范围外身份直接 POST，被拒且不留业务数据。
+    const revision = await w.employeeRevision(w.hr, employeeId);
+    const before = chain(await w.records(w.hr, employeeId));
+    const denied = await w.hrTransfer(w.outsider, employeeId, { effectiveDate: '2026-11-01' }, revision);
+    expect([403, 404], await denied.clone().text()).toContain(denied.status);
+    expect(chain(await w.records(w.hr, employeeId))).toEqual(before);
+    expect(await w.employeeRevision(w.hr, employeeId)).toBe(revision);
+    const applications = await w.json<{ items: unknown[] }>(
+      await w.request(w.outsider, 'GET', '/api/tenant/approval/instances?role=initiated'),
+    );
+    expect(applications.items).toEqual([]);
   });
 
   it('步骤 6（R1-T16）：审计员按范围看到员工发起、系统生效与向后更新的日志；范围外审计员看不到', async () => {

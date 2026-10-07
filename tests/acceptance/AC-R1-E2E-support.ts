@@ -251,10 +251,10 @@ export async function e2eWorld(db: Db, label: string) {
     });
   }
 
-  /** HR 调动管理入口（R1-T09 `/transfers/employees/:id`）：缺省为跨部门调动申请并提交。 */
-  async function hrTransfer(actor: Actor, employeeId: string, body: Record<string, unknown>) {
+  /** HR 调动管理入口（R1-T09 `/transfers/employees/:id`）：缺省为跨部门调动申请并提交；revision 可由有权角色代取（范围外写入用例）。 */
+  async function hrTransfer(actor: Actor, employeeId: string, body: Record<string, unknown>, revision?: number) {
     return request(actor, 'POST', `/api/tenant/employment/transfers/employees/${employeeId}`, {
-      ifMatch: await employeeRevision(actor, employeeId),
+      ifMatch: revision ?? (await employeeRevision(actor, employeeId)),
       body: {
         initiator: 'hr',
         transferTypeCode: 'cross_department',

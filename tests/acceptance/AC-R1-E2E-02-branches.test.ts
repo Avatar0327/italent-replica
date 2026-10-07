@@ -152,7 +152,7 @@ describe('E2E-02 分支二：带联动的调动（R1-T09 / R1-T10）', () => {
 });
 
 describe('E2E-02 分支三：驳回后撤回、修改再提交（R1-T07 / R1-T11）', () => {
-  it('调入负责人驳回 → 申请退回；HR 撤回到草稿、修改后再提交生成新实例，重新走完审批', async () => {
+  it('调入负责人驳回 → 申请退回；HR 撤回到草稿、修改后再提交沿用原实例从首节点重走（DEC-103）', async () => {
     w.setNow('2026-10-01T01:00:00Z');
     const subject = await w.person('被驳回员工', w.from, { place: '原地点' });
     const saved = await w.json<{ id: string }>(
@@ -186,7 +186,7 @@ describe('E2E-02 分支三：驳回后撤回、修改再提交（R1-T07 / R1-T11
       await w.request(w.hr, 'POST', `${BUSINESSES}/${saved.id}/submit`, { ifMatch: patched.revision, body: {} }),
     );
     expect(resubmitted.status).toBe('in_review');
-    // DEC-053：驳回后同单重提——撤回再提交仍是同一实例，从首节点重新流转；驳回与撤回都留在实例日志里。
+    // DEC-103：驳回 / 撤回后重提一律沿用原实例与原流程版本，从首节点重新流转；驳回与撤回都留在实例日志里。
     const fresh = await w.instanceOf(w.hr, saved.id);
     expect(fresh).toMatchObject({ id: view.id, status: 'running', currentNodeKey: 'out_head' });
     expect(fresh.logs.map((log) => log.event)).toEqual(expect.arrayContaining(['reject', 'withdraw']));
@@ -328,6 +328,55 @@ describe('E2E-02 分支五：迟到执行与迟到审批按实际执行日（DEC
       saved.id,
     );
     expect((await w.runScheduler('2026-10-08T02:00:00Z')).activated).toEqual([]);
+  });
+});
+
+describe('E2E-02 分支七：经理自助身份随汇报关系自动取得与回收（AC-PRM-27 / 28，DEC-020）', () => {
+  it('首次获得汇报下属即取得经理身份；最后一名下属调走后身份回收，显式授予的身份不受影响', async () => {
+    w.setNow('2026-10-01T01:00:00Z');
+    const lead = await w.person('普通员工甲', w.from);
+    const report = await w.person('唯一下属', w.from);
+    const other = await w.person('其他经理', w.from);
+    const workbench = (actor: Person) => w.request(w.as(actor), 'GET', `${TRANSFERS}/manager`);
+    const myObject = (actor: Person) =>
+      w.request(w.as(actor), 'GET', '/api/tenant/permission/me/objects/TenantBase.EmploymentRecord');
+    // 显式授予甲一个任职字段可见身份，用于证明回收经理身份不连带撤销显式身份。
+    await w.grantVisible(lead.userId);
+    const explicitBefore = await w.json<{ viewableFields: string[] }>(await myObject(lead));
+    expect(explicitBefore.viewableFields).not.toHaveLength(0);
+    // 甲既不是组织负责人也没有下属：没有经理自助身份。
+    expect((await workbench(lead)).status).toBe(403);
+
+    // AC-PRM-27：下属的直线经理改为甲并生效 → 甲自动获得经理身份，团队成员含该下属。
+    const gained = await w.directBusiness(w.hr, report.employeeId, {
+      kind: 'transfer',
+      effectiveDate: '2026-10-01',
+      fields: { departmentId: w.from, directManagerId: lead.employeeId },
+    });
+    expect(gained.record?.fields.directManagerId).toBe(lead.employeeId);
+    expect(await w.json(await workbench(lead))).toMatchObject({ identity: 'department_manager' });
+    // AC-TRF-44 口径：仅有汇报下属的经理保留工作台入口，但团队成员按负责组织范围取数（甲没有负责组织 → 空）。
+    const team = await w.json<{ items: { id: string }[] }>(
+      await w.request(w.as(lead), 'GET', `${TRANSFERS}/manager/team?category=active`),
+    );
+    expect(team.items).toEqual([]);
+    expect((await w.records(w.hr, report.employeeId)).find((record) => record.isCurrent)?.fields.directManagerId).toBe(
+      lead.employeeId,
+    );
+
+    // AC-PRM-28：最后一名下属改由他人管理并生效 → 甲的经理身份自动回收；显式身份仍在。
+    await w.directBusiness(w.hr, report.employeeId, {
+      kind: 'transfer',
+      effectiveDate: '2026-10-02',
+      fields: { departmentId: w.from, directManagerId: other.employeeId },
+    });
+    w.setNow('2026-10-02T01:00:00Z');
+    expect((await workbench(lead)).status).toBe(403);
+    expect((await w.request(w.as(lead), 'GET', `${TRANSFERS}/manager/team?category=active`)).status).toBe(403);
+    expect(await w.json(await workbench(other))).toMatchObject({ identity: 'department_manager' });
+    expect(await w.json<{ viewableFields: string[] }>(await myObject(lead))).toMatchObject({
+      viewableFields: explicitBefore.viewableFields,
+    });
   });
 });
 
