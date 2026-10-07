@@ -4,12 +4,13 @@
  * - 列出可被新引用的指标（TC-R4：指标与指标库都已启用）；按 ID 批量取指标；
  * - 人才标准是否可被引用（启用、同租户；Q-M0-17）；
  * - 外部引用守卫：后续模块登记“是否被我引用”，删除人才标准时一并拦截（TC-R5 同口径）。
- * 端口是可信端口，不做权限判断：调用方按自己的业务权限决定能否读取（如盘点评估人不需要人才标准管理权限）。
+ * 端口是可信端口，不做权限判断：调用方按自己的业务权限决定能否读取（如盘点评估人不需要人才标准管理权限）；
+ * 因此端口返回指标的完整当前内容（含指标库启用状态），HTTP 视图的投影收窄（DEC-281⑪）不影响端口。
  */
 import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { type DimensionView, talentWorld } from './AC-TC-support.js';
+import { talentWorld } from './AC-TC-support.js';
 import type * as TalentPort from '../../apps/api/src/modules/talent/port.js';
 
 const testDb = useTestDb();
@@ -89,7 +90,7 @@ describe('R3-T01 只读端口', () => {
     const list = await withTenant(db, f.w.tenant.id, (tx) =>
       listReferenceableDimensions(tx, f.w.tenant.id, { type: 'ability', limit: 50, offset: 0 }),
     );
-    expect(list.map((item: DimensionView) => item.id)).toEqual([f.a1.id]);
+    expect(list.map((item) => item.id)).toEqual([f.a1.id]);
     const libraryOff = await f.w.request('PATCH', `/libraries/${f.potential.id}`, {
       ifMatch: f.potential.revision,
       body: { enabled: false },
@@ -98,7 +99,7 @@ describe('R3-T01 只读端口', () => {
     const all = await withTenant(db, f.w.tenant.id, (tx) =>
       listReferenceableDimensions(tx, f.w.tenant.id, { limit: 50, offset: 0 }),
     );
-    expect(all.map((item: DimensionView) => item.id)).toEqual([f.a1.id]);
+    expect(all.map((item) => item.id)).toEqual([f.a1.id]);
     const loaded = await withTenant(db, f.w.tenant.id, (tx) =>
       loadTalentDimensions(tx, f.w.tenant.id, [f.p1.id, f.a2.id]),
     );
@@ -107,7 +108,7 @@ describe('R3-T01 只读端口', () => {
       [f.a2.id, false, true],
       [f.p1.id, true, false],
     ].sort(([a], [b]) => (String(a) < String(b) ? -1 : 1));
-    expect(loaded.map((item: DimensionView) => [item.id, item.enabled, item.libraryEnabled])).toEqual(expected);
+    expect(loaded.map((item) => [item.id, item.enabled, item.libraryEnabled])).toEqual(expected);
   });
 
   it('人才标准可被引用 = 存在、同租户且启用', async () => {

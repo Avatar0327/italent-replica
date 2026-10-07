@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { criterionDimensionViolation, type ReferencedDimension } from './rules.js';
+import { criterionDimensionValues, criterionDimensionViolation, type ReferencedDimension } from './rules.js';
 
 const dim = (id: string, type: ReferencedDimension['type'], enabled = true, libraryEnabled = true) =>
   [id, { id, type, enabled, libraryEnabled }] as const;
@@ -48,5 +48,31 @@ describe('人才标准引用指标规则（23 §2.2）', () => {
       reason: 'DUPLICATE_DIMENSION',
       dimensionId: 'a',
     });
+  });
+});
+
+describe('引用行的权重与目标取值（DEC-281②）', () => {
+  it('新增的能力指标引用缺省权重 1；潜力 / 经历不套用缺省；显式 null 保持为空', () => {
+    expect(
+      criterionDimensionValues(
+        [{ dimensionId: 'a' }, { dimensionId: 'p' }, { dimensionId: 'off', weight: null, target: -2.5 }],
+        referenced,
+        new Map(),
+      ),
+    ).toEqual([
+      { dimensionId: 'a', weight: 1, target: null },
+      { dimensionId: 'p', weight: null, target: null },
+      { dimensionId: 'off', weight: null, target: -2.5 },
+    ]);
+  });
+
+  it('已有引用没传权重 / 目标时保持原值，传了就用新值', () => {
+    const existing = new Map([['a', { weight: 40, target: 3 }]]);
+    expect(criterionDimensionValues([{ dimensionId: 'a' }], referenced, existing)).toEqual([
+      { dimensionId: 'a', weight: 40, target: 3 },
+    ]);
+    expect(criterionDimensionValues([{ dimensionId: 'a', weight: 2.5, target: null }], referenced, existing)).toEqual([
+      { dimensionId: 'a', weight: 2.5, target: null },
+    ]);
   });
 });
