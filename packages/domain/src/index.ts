@@ -31,3 +31,4 @@ export {
   type StandardProfile,
 } from './platform/standard-presets.js';
 export * from './audit/index.js';
+export * from './expression/index.js';
