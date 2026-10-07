@@ -3,7 +3,7 @@
 "stats": {
 "merged": 52,
 "open": 10,
-"dec": 289,
+"dec": 290,
 "ev": "19/111"
 },
 "tasks": {
@@ -919,6 +919,10 @@
 }
 },
 "log": [
+[
+"10-07",
+"DEC-286 试点通过：审查一律改为 codex exec 后台发起"
+],
 [
 "10-07",
 "DEC-288 #97 第 6 轮 Fable High；DEC-289 #107 三项（同口径裁剪、回补身份）+ F-040、Q-M0-112"
@@ -1984,7 +1988,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 14:15",
+"liveUpdated": "10-07 14:18",
 "chains": [
 {
 "g": "exit",
@@ -2306,8 +2310,8 @@
 "n": "权限框架强制",
 "u": "已核对，待开会话",
 "fable": "1",
-"seg": "ev:n ds:a1 dev:w rev:w mg:w",
-"now": "设计审出结论，待读取（codex exec 试点）",
+"seg": "ev:n ds:a2 dev:w rev:w mg:w",
+"now": "设计 v2 修订中（v1 有 9 类 P2）",
 "pr": 110
 },
 {
