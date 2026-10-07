@@ -6,7 +6,7 @@ import { assertEmploymentDepartmentAvailable } from './references.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Db, type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
+import { resolveLateExecution, tenantLocalDate } from '@italent/domain';
 import { runCommand, type CommandResult } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import { assertRegularizationNotPropagated } from './employee-status.js';
@@ -88,9 +88,13 @@ export async function transitionEmployment(
   if (input.action === 'submit') await requireEmployeeTransferBusiness(tx, ctx, input.id);
   if (input.action === 'submit' || input.action === 'approve') {
     const { payload } = business;
+    // DEC-195② / DEC-272：审批通过时已过计划生效日的调动改到批准当天（共用判定函数）。
     const effectiveDate =
       input.action === 'approve' && payload.kind === 'transfer'
-        ? [payload.effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!
+        ? resolveLateExecution({
+            plannedEffectiveDate: payload.effectiveDate,
+            executionDate: tenantLocalDate(ctx.now, ctx.timezone),
+          }).effectiveDate
         : payload.effectiveDate;
     const predecessor = await findPredecessor(tx, ctx.tenantId, business.employeeId, effectiveDate);
     const { fields } = await resolveEffectiveInheritance(

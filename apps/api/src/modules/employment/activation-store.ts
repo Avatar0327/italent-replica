@@ -75,6 +75,7 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
       AND ${pendingActivationState(ctx.timezone)}
     ORDER BY CASE WHEN p.kind='transfer'
+      -- resolveLateExecution（DEC-272）的 SQL 投影：迟到调动按实际执行日排队
       THEN greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date) ELSE p.effective_date END,
       ${plannedEffectiveDate(ctx.tenantId, sql`b.id`, sql`p.effective_date`)},
       p.kind IN ('hire', 'rehire', 'retire_rehire'), ${operationKey(ctx.tenantId, sql`b.id`)}
