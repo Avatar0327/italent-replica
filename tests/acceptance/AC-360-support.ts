@@ -8,6 +8,9 @@ import { createUser, type Db, grantMembership, sql, withTenant } from '@italent/
 import { expect } from 'vitest';
 import { employmentSession } from './AC-EMP-support.js';
 import { cmd, tenantApi, type RequestOptions } from './support/tenant-api.js';
+import { PERSONNEL_OBJECT } from '@italent/domain';
+import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
+import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 
 export const BASE = '/api/tenant/survey360';
 export const LINK = '/api/survey360/link';
@@ -79,13 +82,48 @@ export interface ScoreRow {
 /** 关键行为套卷的选项分值：含 3.5 / 4.3 便于直接构造规格里的角色分（AC-360-03）。 */
 export const VALUES = [1, 2, 3, 3.5, 4, 4.3, 5] as const;
 
-export async function world360(db: Db, label: string, options: { authorize?: Authorizer } = {}) {
+/** 组织员工侧可查看的字段（同步按此裁剪）；未列出的对象视为全部字段可见。 */
+export const FULL_EMPLOYEE_FIELDS = new Set(['name', 'code', 'email', 'workEmail', 'mobilePhone']);
+export const FULL_RECORD_FIELDS = new Set(['departmentId', 'positionId', 'directManagerId']);
+
+/**
+ * 可调的员工数据范围与字段权限（替身权限提供方，模拟操作人在组织员工侧的当前权限）：
+ * 测试中途改 scope / fields 即模拟撤权、收窄字段。
+ */
+export interface EmployeeAccess {
+  scope: ModuleScope;
+  fields: Record<string, ReadonlySet<string>>;
+  /** 是否有员工信息的查看权限（object.view）。 */
+  canView: boolean;
+}
+
+export function fullAccess(): EmployeeAccess {
+  return {
+    scope: { ...EMPTY_SCOPE, all: true, hasDataPermission: true },
+    fields: { [PERSONNEL_OBJECT]: FULL_EMPLOYEE_FIELDS, 'TenantBase.EmploymentRecord': FULL_RECORD_FIELDS },
+    canView: true,
+  };
+}
+
+export async function world360(db: Db, label: string, options: { access?: EmployeeAccess } = {}) {
   const session = await employmentSession(db, label);
   let now = new Date('2026-10-01T01:00:00Z');
   const admin = session.user.id;
   // 业务权限全部放行；企业设置的“管理员”管理能力只给租户首位成员（企业管理员），其他成员没有
-  const enterprise: Authorizer = (request) => request.action !== 'admin.admin_manage' || request.userId === admin;
-  const api = tenantApi(db, { clock: () => now, authorize: options.authorize ?? enterprise });
+  const enterprise: Authorizer = (request) => {
+    if (request.action === 'admin.admin_manage') return request.userId === admin;
+    if (options.access && request.action === 'object.view' && request.resource === PERSONNEL_OBJECT)
+      return options.access.canView;
+    return true;
+  };
+  const access = options.access;
+  if (access)
+    registerScopeProvider(enterprise, {
+      authorize: async (request) => enterprise(request),
+      scope: async () => access.scope,
+      fields: async (_tenant, _user, objectCode) => access.fields[objectCode] ?? new Set<string>(),
+    });
+  const api = tenantApi(db, { clock: () => now, authorize: enterprise });
   const tenantId = session.tenant.id;
 
   const as =

@@ -145,3 +145,70 @@ describe('作答页匿名开关（活动级，DEC-149）× 查看人', () => {
     }
   });
 });
+
+describe('作答页匿名开关穷举：姓名两态 × 角色三模式（DEC-149）', () => {
+  const modes = ['name', 'fixed_text', 'hidden'] as const;
+  for (const showName of [true, false])
+    for (const roleDisplay of modes)
+      it(`姓名${showName ? '显示' : '不显示'} × 角色${roleDisplay}：作答页与作答详情一致`, async () => {
+        const w = await world360(testDb().db, `n6${showName ? 'y' : 'n'}${roleDisplay.slice(0, 2)}`);
+        // 固定文字取角色上的“显示固定文字时展示的内容”
+        const peer = w.roles.find((r) => r.code === 'peer')!;
+        const current = (
+          await w.ok<{ items: { id: string; revision: number }[] }>(w.request('GET', '/roles'))
+        ).items.find((r) => r.id === peer.id)!;
+        await w.ok(w.request('PUT', `/roles/${peer.id}`, { ifMatch: current.revision, body: { displayText: '同行' } }));
+        const s = await setup(w, { showAppraiserName: showName, roleDisplay });
+        await w.transition(s.activity.id, 'enable');
+        const call = w.link(await w.token(s.activity.id, s.peer.id));
+        const view = await w.ok<LinkView>(call('GET', ''));
+        const detail = await w.ok<Record<string, unknown>>(
+          call('GET', `/tasks/${s.peerRelation.id}/questionnaires/${s.q.id}`),
+        );
+        const expectedRole =
+          roleDisplay === 'name' ? { name: '同事' } : roleDisplay === 'fixed_text' ? { name: '同行' } : undefined;
+        for (const page of [view, detail] as Record<string, unknown>[]) {
+          if (showName) expect(page.appraiser).toEqual({ name: '同事甲' });
+          else expect(page).not.toHaveProperty('appraiser');
+        }
+        if (expectedRole) {
+          expect(view.tasks[0]!.role).toEqual(expectedRole);
+          expect(detail.role).toEqual(expectedRole);
+        } else {
+          expect(view.tasks[0]).not.toHaveProperty('role');
+          expect(detail).not.toHaveProperty('role');
+        }
+        // 无论开关如何，作答页都不出现其他评价者
+        expect(JSON.stringify(view)).not.toContain('下级0');
+      });
+});
+
+describe('身份重叠', () => {
+  it('确认人兼评价者：确认令牌只能走确认接口，作答令牌只能走作答接口（互访 404）；作答页只见本人任务', async () => {
+    const w = await world360(testDb().db, 'n16o');
+    const q = await w.enableQuestionnaire(await w.keyBehavior());
+    const activity = await w.activity({ showAppraiserName: false, roleDisplay: 'hidden' });
+    const boss = await w.person('上级兼评价者');
+    const target = await w.person('被评价人', { superiorPersonId: boss.id });
+    const object = await w.object(activity.id, target.id, [q.id]);
+    const peer = await w.person('同事乙');
+    await w.appraiser(activity.id, object.id, peer.id, 'peer');
+    const bossRel = await w.appraiser(activity.id, object.id, boss.id, 'superior');
+    await w.ok(
+      w.request('POST', `/activities/${activity.id}/objects/${object.id}/confirmation`, { ifMatch: 0, body: {} }),
+      201,
+    );
+    await w.transition(activity.id, 'enable');
+    const confirm = w.link(await w.token(activity.id, boss.id, 'survey360.confirm_invitation'));
+    const answer = w.link(await w.token(activity.id, boss.id));
+    // 确认页按设计列出该对象全部评价者（确认人负责设置评价关系），不受作答页匿名开关影响
+    const confirmView = await w.ok<{ appraisers: { appraiserPersonId: string }[] }>(confirm('GET', ''));
+    expect(confirmView.appraisers.map((a) => a.appraiserPersonId).sort()).toEqual([boss.id, peer.id].sort());
+    // 作答页只见本人任务，匿名开关关闭时没有姓名与角色
+    const answerView = await w.ok<LinkView>(answer('GET', ''));
+    expect(answerView.tasks.map((t) => t.relationId)).toEqual([bossRel.id]);
+    expect(JSON.stringify(answerView)).not.toContain('同事乙');
+    expect((await confirm('GET', `/tasks/${bossRel.id}/questionnaires/${q.id}`)).status).toBe(404);
+    expect((await answer('GET', '/confirmation/candidates')).status).toBe(404);
+  });
+});
