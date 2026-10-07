@@ -9,6 +9,7 @@ import { sql, type Db, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { runCommand, type CommandResult } from '../../commands.js';
 import { AppError } from '../../errors.js';
+import { assertRegularizationNotPropagated } from './employee-status.js';
 import {
   activationPredecessors,
   failedPredecessor,
@@ -232,6 +233,7 @@ async function deleteEmploymentBusiness(
     if (!raw) throw new AppError('SERVICE_UNAVAILABLE', '任职记录删除快照不可用');
     await assertNoPendingApplication(tx, ctx, { ...record, id: business.id });
     await assertNoLinkedChanges(tx, ctx, record);
+    await assertRegularizationNotPropagated(tx, ctx, business);
     await insertEmploymentRow(tx, 'employment_record_tombstones', {
       id: randomUUID(),
       tenantId: ctx.tenantId,
@@ -257,6 +259,9 @@ async function deleteEmploymentBusiness(
         ...deletionSnapshot(raw),
         payloadVersionId: business.payload.id,
         ...record.fields,
+        // 删除前镜像取最新记录快照上的状态（DEC-216；底表行只是首个版本，PR #93 首审 P2-3）
+        employeeStatus: record.employeeStatus,
+        entryStatus: record.entryStatus,
         ...Object.fromEntries(Object.entries(record.customFields).map(([key, value]) => [`custom:${key}`, value])),
       },
       null,

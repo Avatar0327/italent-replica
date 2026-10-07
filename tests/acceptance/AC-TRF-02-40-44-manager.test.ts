@@ -138,7 +138,7 @@ describe('AC-TRF-02/40–44 经理自助', () => {
     expect(dto.items.map((x) => x.id)).not.toContain(self.id);
     expect(dto.counts).toMatchObject({
       active: expect.any(Number),
-      probation: null,
+      probation: 0,
       intern: 0,
       pending: 0,
       leaving: 0,
@@ -204,9 +204,14 @@ describe('AC-TRF-02/40–44 经理自助', () => {
     expect(denied.status).toBe(403);
   });
 
-  it('AC-TRF-42：实习、未来入职与离职中按负责组织统计，未来入职不成为调动候选', async () => {
+  it('AC-TRF-42：实习、试用、待入职与离职中按负责组织统计，待入职不成为调动候选', async () => {
     const intern = await world.person(child.id, undefined, undefined, { employType: 'intern' });
-    const pending = await world.person(child.id, undefined, undefined, { effectiveDate: '2026-11-01' });
+    // F-022（Q-M0-76 / 99）：待入职按人员状态 = 待入职，试用中按人员状态 = 试用
+    const pending = await world.person(child.id, undefined, undefined, {
+      effectiveDate: '2026-11-01',
+      entry: { pendingEntry: true },
+    });
+    const probation = await world.person(child.id, undefined, undefined, { entry: { probation: true } });
     const leaving = await world.person(child.id);
     const leave = await world.setup.request('POST', `/api/tenant/employment/employees/${leaving.id}/businesses`, {
       ...world.asAdmin,
@@ -216,6 +221,7 @@ describe('AC-TRF-02/40–44 经理自助', () => {
     expect(leave.status, await leave.clone().text()).toBe(201);
     for (const [category, expected] of [
       ['intern', intern.id],
+      ['probation', probation.id],
       ['pending', pending.id],
       ['leaving', leaving.id],
     ]) {
@@ -244,10 +250,9 @@ describe('AC-TRF-02/40–44 经理自助', () => {
         counts: Record<string, number | null>;
       };
       const ids = dto.items.map((row) => row.id);
-      if (category !== 'probation') expect(dto.counts[category]).toBe(ids.length);
+      expect(dto.counts[category]).toBe(ids.length);
       expect(ids).not.toContain(external.id);
       expect(ids).not.toContain(outside.id);
-      expect(dto.counts.probation).toBeNull(); // 缺独立人员状态，不从日期 / 转正事件推断。
       if (category === 'active') {
         expect(ids).toEqual(expect.arrayContaining([intern.id, leaving.id, draftLeaver.id]));
         expect(dto.items.find((row) => row.id === leaving.id)?.leaving).toBe(true);

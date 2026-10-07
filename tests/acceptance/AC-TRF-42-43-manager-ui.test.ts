@@ -22,8 +22,8 @@ beforeEach(() => {
         ? { canApply: true, canViewReporting: false }
         : input.includes('/team')
           ? {
-              items: [{ id: 'synthetic', name: '合成员工' }],
-              counts: { active: 1, probation: null, intern: 0, pending: 0, leaving: 0 },
+              items: [{ id: 'synthetic', name: '合成员工', employeeStatus: 2, probation: true }],
+              counts: { active: 1, probation: 1, intern: 0, pending: 0, leaving: 0 },
             }
           : input.includes('/catalog')
             ? { today: '2026-10-01', types: [], reasons: [] }
@@ -63,9 +63,13 @@ describe('AC-TRF-42/43 经理工作台入口与只读边界', () => {
     await vi.waitFor(() => expect(host.querySelector('[role="dialog"]')?.textContent).toContain('合成员工'));
     expect(Array.from(host.querySelectorAll('th')).map((th) => th.textContent)).not.toContain('操作');
     expect(host.querySelector('[role="dialog"]')?.textContent).not.toContain('调动');
+    // F-022：试用中按人员状态精确统计，不再显示“待接入人员状态”；人员状态列展示中文
+    expect(host.textContent).toContain('试用中：1');
     await click('试用中');
-    await vi.waitFor(() => expect(host.querySelector('[role="dialog"]')?.textContent).toContain('待接入人员状态'));
-    expect(host.querySelector('[role="dialog"]')?.textContent).not.toContain('暂无数据');
+    await vi.waitFor(() => expect(host.querySelector('[role="dialog"]')?.textContent).toContain('合成员工'));
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain('试用');
+    expect(Array.from(host.querySelectorAll('th')).map((th) => th.textContent)).toContain('人员状态');
+    expect(host.textContent).not.toContain('待接入人员状态');
     await click('人事申请');
     await click('他人调动申请');
     await vi.waitFor(() =>

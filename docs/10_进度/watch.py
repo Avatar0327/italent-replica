@@ -2,6 +2,7 @@
 """进度窗口的 GitHub 监控：每 3 分钟查一次在途 PR，有事件就打印并退出（由进度窗口处理后重启）。
 
 事件：新开 PR、转 Ready、CI 变红、合并或关闭、停摆、本机 ChatGPT 审查会话出结论 → 退出提醒；新推送、CI 变绿、新评论只记到 ~/.cache/italent-progress-watch.log（省 token）。
+Opus 审查待收：PR 上有“审查已发起”（Opus / claude.ai/code）评论、其后 OPUS_REMIND 分钟无审查原文 / 结论 → 提醒（本机看不到云端会话）。
 停摆：CI 全绿 + 最新提交与最新评论都早于 STALL 分钟 → 视为“开发方已停、没人送审或没人处理结论”。
 状态存在 STATE 文件里，重启不丢基线；已报过的停摆同一 head 只报一次。
 """
@@ -10,6 +11,7 @@ import json, os, subprocess, sys, time, datetime
 STATE = os.path.expanduser("~/.cache/italent-progress-watch.json")
 INTERVAL = 180
 STALL = 90  # 分钟（审查发起时编排会在 PR 贴一行评论，据此区分在审与停摆）
+OPUS_REMIND = 60  # 分钟：claude.ai/code 的 Opus 审查会话本机看不到，发起后这么久 PR 上仍无“审查原文 / 结论”就提醒去看会话，之后每 60 分钟再提醒
 
 
 def gh(args):
@@ -27,7 +29,14 @@ def snapshot():
         ci = "green" if checks and all(c == "SUCCESS" for c in checks) else ("red" if any(c in ("FAILURE", "CANCELLED", "TIMED_OUT") for c in checks) else "running")
         last_commit = p["commits"][-1]["committedDate"] if p["commits"] else ""
         last_comment = p["comments"][-1]["createdAt"] if p["comments"] else ""
-        out[str(p["number"])] = {"t": p["title"][:40], "head": p["headRefOid"][:7], "draft": p["isDraft"], "ci": ci,
+        opus = ""  # 最近一次 Opus（claude.ai/code）审查发起时间；其后出现审查原文 / 结论评论即清空
+        for c in p["comments"]:
+            b = c.get("body", "")
+            if "审查已发起" in b and ("claude.ai/code" in b or "Opus" in b):
+                opus = c["createdAt"]
+            elif opus and ("审查原文" in b or "结论" in b[:200]):
+                opus = ""
+        out[str(p["number"])] = {"opus": opus, "t": p["title"][:40], "head": p["headRefOid"][:7], "draft": p["isDraft"], "ci": ci,
                                  "commit": last_commit, "comment": last_comment, "nc": len(p["comments"])}
     return out
 
@@ -104,6 +113,12 @@ def main():
             if p["ci"] == "green" and not p["draft"] and mins_since(p["commit"]) > STALL and mins_since(p["comment"]) > STALL and key not in stalled:
                 ev.append(f"停摆 #{n} {p['t']}：CI 绿，最新提交 {int(mins_since(p['commit']))} 分钟前，{STALL} 分钟内无评论")
                 stalled.add(key)
+            if p.get("opus"):
+                m = int(mins_since(p["opus"]))
+                k = f"{n}@opus@{p['opus']}@{m // OPUS_REMIND}"
+                if m >= OPUS_REMIND and k not in stalled:
+                    ev.append(f"Opus 审查待收 #{n} {p['t']}：claude.ai/code 审查会话发起 {m} 分钟，PR 上仍无审查原文 / 结论，请审查合并窗口看会话是否已完成或卡住")
+                    stalled.add(k)
         open(os.path.expanduser("~/.cache/italent-progress-watch.beat"), "w").write(datetime.datetime.now().isoformat())
         json.dump({"prs": cur, "stalled": sorted(stalled)[-200:], "codex": cprev}, open(STATE, "w"))
         quiet = [e for e in ev if (" 新推送 " in e or " CI green" in e or " 新评论 " in e)]

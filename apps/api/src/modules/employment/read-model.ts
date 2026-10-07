@@ -1,5 +1,6 @@
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
+import type { EmployeeStatusCode, EntryStatusCode } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { activationSummary } from './activation-store.js';
 import { employmentScopePredicate, employmentCreator } from './context.js';
@@ -32,6 +33,10 @@ export function snapshotFields(row: Record<string, unknown>): PresetFields {
   ) as unknown as PresetFields;
 }
 
+function statusCode(value: unknown): number | null {
+  return value === null || value === undefined ? null : Number(value);
+}
+
 function record(row: Record<string, unknown>): EmploymentRecord {
   const previous = row.previous as Record<string, unknown> | null;
   // 旧 payload 尚未解析延迟继承；只有完整生效快照才能替代原 records 中的最终字段。
@@ -51,6 +56,8 @@ function record(row: Record<string, unknown>): EmploymentRecord {
     previousRecordId: (row.previous_record_id as string | null) ?? null,
     fields: snapshotFields(current),
     customFields: current.custom_fields as CustomFields,
+    employeeStatus: Number(current.employee_status) as EmployeeStatusCode,
+    entryStatus: statusCode(current.entry_status) as EntryStatusCode | null,
     isCurrent: Boolean(row.is_current),
     isLatest: Boolean(row.is_latest),
     status: 'effective',
@@ -230,6 +237,10 @@ export async function loadEmploymentBusiness(
     effectiveDate: String(row.effective_date),
     fields: effectiveRecord?.fields ?? snapshotFields(row),
     customFields: effectiveRecord?.customFields ?? (row.custom_fields as CustomFields),
+    employeeStatus: effectiveRecord?.employeeStatus ?? (Number(row.employee_status) as EmployeeStatusCode),
+    entryStatus: effectiveRecord
+      ? effectiveRecord.entryStatus
+      : (statusCode(row.entry_status) as EntryStatusCode | null),
     record: effectiveRecord,
     activation,
   };

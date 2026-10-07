@@ -86,7 +86,7 @@ function Dashboard({ tenantId }: { tenantId: string }) {
         <div className="transfer-actions">
           {Object.entries(labels.categories).map(([key, name]) => (
             <button key={key} onClick={() => setCategory(key)}>
-              {name}：{data?.counts?.[key] === null ? labels.statusPending : (data?.counts?.[key] ?? '—')}
+              {name}：{data?.counts?.[key] ?? '—'}
             </button>
           ))}
         </div>
@@ -95,11 +95,7 @@ function Dashboard({ tenantId }: { tenantId: string }) {
         <section role="dialog" aria-label={labels.categories[category as keyof typeof labels.categories]}>
           <h3>{labels.categories[category as keyof typeof labels.categories]}</h3>
           <button onClick={() => setCategory(null)}>{labels.close}</button>
-          {data?.counts?.[category] === null ? (
-            <p role="status">{labels.statusPending}</p>
-          ) : (
-            <ReadList key={category} tenantId={tenantId} path={`team?category=${category}`} />
-          )}
+          <ReadList key={category} tenantId={tenantId} path={`team?category=${category}`} />
         </section>
       )}
       <section>
@@ -185,6 +181,8 @@ function displayCell(row: Row, key: string) {
   const value = key === 'tenure' ? row.tenure : display[key];
   if (value == null) return '—';
   if (key === 'leaving') return value ? labels.leavingYes : labels.leavingNo;
+  if (key === 'employeeStatus') return labels.employeeStatuses[String(value)] ?? String(value);
+  if (key === 'entryStatus') return labels.entryStatuses[String(value)] ?? String(value);
   if (key === 'employType')
     return labels.employTypes[String(value) as keyof typeof labels.employTypes] ?? String(value);
   return String(value);
