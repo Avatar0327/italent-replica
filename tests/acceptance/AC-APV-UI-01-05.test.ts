@@ -219,6 +219,33 @@ describe('AC-APV-UI-02 最小字段披露、进度与历史', () => {
       expect(Array.from(host.querySelectorAll('button')).some((button) => button.textContent === value)).toBe(false);
     expect(calls.some(({ url }) => /\/(tasks|logs)\?/.test(url))).toBe(false);
   });
+
+  it('相同revision下刷新隐藏历史会清除已加载的旧分页记录', async () => {
+    handler = ({ url }) =>
+      url.includes('/logs?')
+        ? response({ items: [{ event: 'approve', detail: { comment: '合成旧分页意见' } }] })
+        : undefined;
+    await mount();
+    await click('查看日志历史');
+    expect(host.textContent).toContain('合成旧分页意见');
+    current = detail({ recordsHidden: true, logs: [] });
+    await click('刷新详情');
+    expect(host.textContent).toContain('审批记录已隐藏');
+    expect(host.textContent).not.toContain('合成旧分页意见');
+  });
+
+  it('刷新撤权后，旧分页请求的迟到响应不能恢复旧日志', async () => {
+    let finish!: (value: Response) => void;
+    handler = ({ url }) =>
+      url.includes('/logs?') ? new Promise<Response>((resolve) => (finish = resolve)) : undefined;
+    await mount();
+    await click('查看日志历史');
+    current = detail({ recordsHidden: true });
+    await click('刷新详情');
+    await act(async () => finish(response({ items: [{ event: 'approve', detail: { comment: '合成迟到秘密' } }] })));
+    expect(host.textContent).not.toContain('合成迟到秘密');
+    expect(host.textContent).toContain('审批记录已隐藏');
+  });
 });
 
 const actionCases = [
@@ -297,6 +324,32 @@ describe('AC-APV-UI-03 既有动作与账号输入', () => {
     expect(writes()).toHaveLength(0);
     expect(calls.some(({ url }) => url.includes('/employees'))).toBe(false);
   });
+
+  it('旧动作仍返回edit但节点编辑元数据撤权时，不公布不可执行的编辑按钮', async () => {
+    current = detail({
+      actions: ['edit'],
+      form: { values: { reason: '只读理由' }, editMode: 'none', editableFields: [] },
+    });
+    await mount();
+    expect(Array.from(host.querySelectorAll('button')).some((button) => button.textContent === '编辑')).toBe(false);
+    expect(host.querySelector('[aria-label="reason"]')).toBeNull();
+  });
+
+  it('服务端意见必填错误保留详情，修改意见后显式重新提交', async () => {
+    current = detail({ actions: ['reject'] });
+    handler = (call) =>
+      call.options.method === 'POST' && writes().length === 1
+        ? response({ error: { code: 'VALIDATION_FAILED', message: '驳回意见必填' } }, 400)
+        : undefined;
+    await mount();
+    await click('驳回');
+    await click('确认提交');
+    expect(host.textContent).toContain('驳回意见必填');
+    expect(host.textContent).toContain('合成调动申请');
+    await input('审批意见', '合成补填意见');
+    await click('确认提交');
+    expect(body(writes()[1]!)).toEqual({ comment: '合成补填意见' });
+  });
 });
 
 describe('AC-APV-UI-04 并发、未知结果与权限失败', () => {
@@ -346,6 +399,26 @@ describe('AC-APV-UI-04 并发、未知结果与权限失败', () => {
       );
   });
 
+  it('服务端503 RESULT_UNKNOWN即使回查原单已更新，仍只能用同命令幂等回查提交结果', async () => {
+    handler = (call) => {
+      if (call.options.method === 'POST' && writes().length === 1) {
+        current = detail({ revision: 8, status: 'approved', actions: [] });
+        return response({ error: { code: 'SERVICE_UNAVAILABLE', details: { reason: 'RESULT_UNKNOWN' } } }, 503);
+      }
+      return undefined;
+    };
+    await mount();
+    await click('同意');
+    await click('确认提交');
+    expect(host.textContent).toContain('结果待确认');
+    await click('重试原命令');
+    expect(writes()).toHaveLength(2);
+    expect(writes()[1]!.options.body).toEqual(writes()[0]!.options.body);
+    expect(new Headers(writes()[1]!.options.headers).get('idempotency-key')).toEqual(
+      new Headers(writes()[0]!.options.headers).get('idempotency-key'),
+    );
+  });
+
   it.each([403, 404])('%i清除旧单和历史，显示统一权限提示', async (status) => {
     handler = (call) =>
       call.options.method === 'POST'
@@ -358,6 +431,18 @@ describe('AC-APV-UI-04 并发、未知结果与权限失败', () => {
     expect(host.textContent).not.toContain('合成调动申请');
     expect(host.textContent).not.toContain('不应把接口敏感文案当提示');
     expect(host.textContent).not.toContain('经理审批');
+  });
+
+  it('列表刷新403时，已打开的旧详情、历史和编辑草稿同样被清除', async () => {
+    await mount();
+    await click('同意');
+    await input('审批意见', '合成撤权意见');
+    handler = ({ url }) => (url.includes('/todos?') ? response({ error: { code: 'FORBIDDEN' } }, 403) : undefined);
+    await click('刷新');
+    expect(host.textContent).toContain('无权访问');
+    expect(host.textContent).not.toContain('合成调动申请');
+    expect(host.textContent).not.toContain('经理审批');
+    expect(host.querySelector('[aria-label="审批意见"]')).toBeNull();
   });
 
   it('同一个提交按钮双击只产生一个写命令', async () => {
@@ -378,6 +463,7 @@ describe('AC-APV-UI-04 并发、未知结果与权限失败', () => {
   it('租户切换时清除旧单；旧租户迟到响应不会恢复旧数据', async () => {
     let finish!: (value: Response) => void;
     handler = (call) => {
+      if (new Headers(call.options.headers).get('x-tenant-id') === 'second-tenant') return response({ items: [] });
       if (call.url === `${API}/instances/${INSTANCE}`) return new Promise<Response>((resolve) => (finish = resolve));
       return undefined;
     };
@@ -385,6 +471,22 @@ describe('AC-APV-UI-04 并发、未知结果与权限失败', () => {
     await act(async () => root.render(createElement(ApprovalWorkspace, { tenantId: TENANT, instanceId: INSTANCE })));
     await act(async () => root.render(createElement(ApprovalWorkspace, { tenantId: 'second-tenant' })));
     await act(async () => finish(response(current)));
+    expect(host.textContent).not.toContain('合成调动申请');
+  });
+
+  it('租户切换后的迟到写响应不会回填旧详情或列表', async () => {
+    let finish!: (value: Response) => void;
+    handler = (call) => {
+      if (new Headers(call.options.headers).get('x-tenant-id') === 'second-tenant') return response({ items: [] });
+      return call.options.method === 'POST' ? new Promise<Response>((resolve) => (finish = resolve)) : undefined;
+    };
+    await mount();
+    await click('同意');
+    await click('确认提交');
+    const { ApprovalWorkspace } = await import(path);
+    await act(async () => root.render(createElement(ApprovalWorkspace, { tenantId: 'second-tenant' })));
+    await act(async () => finish(response(detail({ title: '合成旧租户写结果', revision: 8 }))));
+    expect(host.textContent).not.toContain('合成旧租户写结果');
     expect(host.textContent).not.toContain('合成调动申请');
   });
 });
@@ -427,5 +529,29 @@ describe('AC-APV-UI-05 审批中编辑', () => {
     await click('确认提交');
     expect(body(writes()[0]!)).toEqual({ comment: null, fields: { reason: null } });
     expect(writes()[0]!.url).toBe(`${API}/tasks/${TASK}/approve`);
+  });
+
+  it('409刷新后收回嵌套字段查看/编辑权，旧显式清空草稿不会重新提交', async () => {
+    current = detail({
+      form: {
+        values: { contractFields: { number: '合成撤权字段' } },
+        editMode: 'with_approve',
+        editableFields: ['contractFields'],
+      },
+    });
+    handler = (call) => {
+      if (call.options.method === 'POST' && writes().length === 1) {
+        current = detail({ revision: 8 });
+        return response({ error: { code: 'CONFLICT' } }, 409);
+      }
+      return undefined;
+    };
+    await mount();
+    await click('清空 contractFields.number');
+    await click('同意');
+    await click('确认提交');
+    expect(host.querySelector('[aria-label="contractFields.number"]')).toBeNull();
+    await click('确认重新提交');
+    expect(body(writes()[1]!)).toEqual({ comment: null });
   });
 });
