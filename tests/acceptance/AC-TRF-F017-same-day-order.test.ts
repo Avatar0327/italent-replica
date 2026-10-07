@@ -65,14 +65,22 @@ it('正常离职 + 同日稍后批准、原计划日更早的迟到调动：排�
   expect(departmentBefore(await w.session.record(exit.id, '2026-10-10'))).toBe(w.to.id);
 });
 
-it('离职生效后才批准、最终生效日晚于离职生效日的调动：批准被拒，离职与申请状态不变', async () => {
+it('离职生效后才批准、最终生效日晚于离职生效日的调动：批准通过但不落地，记需重建待 HR；离职不变', async () => {
+  // 第 2 轮（DEC-278 不豁免未落地申请）：区间 [10-05, 10-12) 内含已落地的离职 → 不再按顺序校验 409，
+  // 而是与已落地迟到调动同一口径：申请停在审批通过、记 REBUILD_REQUIRED 并进入 HR 待办。
   const w = await activationWorld(database().db, 'samedayleaveafter');
   const person = await w.hired();
   const transfer = await w.apply(person.employee.id, '2026-10-05', { departmentId: w.to.id });
   const exit = await leave(w, person.employee.id, '2026-10-09');
   const before = await w.session.records(person.employee.id, '2026-10-12');
-  await expect(approveAt(w, transfer, '2026-10-12T02:00:00Z')).rejects.toMatchObject({ code: 'CONFLICT' });
-  expect((await w.business(transfer.id)).status).toBe('in_review');
+  const approved = await approveAt(w, transfer, '2026-10-12T02:00:00Z');
+  expect(approved.status).toBe(200);
+  expect((approved.body as { status: string }).status).toBe('approved');
+  expect((await w.business(transfer.id)).activation).toMatchObject({
+    status: 'failed',
+    failureReason: 'REBUILD_REQUIRED',
+  });
+  expect((await w.todos()).map((item) => item.id)).toContain(transfer.id);
   expect(await w.session.records(person.employee.id, '2026-10-12')).toEqual(before);
   expect((await w.session.record(exit.id, '2026-10-12')).isCurrent).toBe(true);
 });
