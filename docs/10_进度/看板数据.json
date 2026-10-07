@@ -2001,7 +2001,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 16:35",
+"liveUpdated": "10-07 16:39",
 "chains": [
 {
 "g": "exit",
@@ -2046,8 +2046,8 @@
 "k": "run",
 "pr": 83,
 "n": "组织变更联动任职",
-"seg": "ev:d ds:d4 dev:a2 rev:d1 mg:w",
-"now": "第 2 轮 5 个 P2 已改完，本地全量测试中，通过后推送",
+"seg": "ev:d ds:d4 dev:d2 rev:w2 mg:w",
+"now": "第 2 轮已推送（CI 绿），待开发报到 / 发起审查",
 "wait": "来源模型放哪由审查合并窗口判断",
 "fable": "1",
 "up": "10-07 调到 Max"
