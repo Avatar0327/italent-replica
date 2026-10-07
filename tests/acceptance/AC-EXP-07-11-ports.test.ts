@@ -142,7 +142,7 @@ describe('AC-EXP-08 360 与测评：最近一次的时间口径', () => {
   it('LastestAssessmentCent：过滤必填；默认取项目结束时间前最近一次，可改为开始时间前（DEC-031）', () => {
     const formula = 'LastestAssessmentCent(测验信息.总分, 测验信息.测验名称="职业性格")';
     expect(run(formula)).toEqual({ kind: 'number', value: 0.9 });
-    expect(run(formula, { latestWindow: 'before_project_start' })).toEqual({ kind: 'number', value: 0.82 });
+    expect(run(formula, { assessmentLatestWindow: 'before_project_start' })).toEqual({ kind: 'number', value: 0.82 });
     expect(run('获取最近一次的测评总分(测验信息.维度得分, 测验信息.维度名称="不存在")')).toEqual({ kind: 'empty' });
     expect(run('LastestAssessmentCent(测验信息.总分)')).toMatchObject({ code: 'ARGUMENT_COUNT' });
   });

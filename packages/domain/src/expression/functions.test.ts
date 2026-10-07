@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { evaluateFormula } from './engine.js';
 import { createDefaultRegistry } from './registry.js';
-import { inMemorySubject } from './ports.js';
+import { createInMemoryPorts, inMemorySubject } from './ports.js';
 import type { EvaluationContext, PlainValue } from './index.js';
 
 const context = (fields: Record<string, PlainValue> = {}): EvaluationContext => ({
@@ -192,5 +192,37 @@ describe('运算符语义', () => {
   });
   it('失败带上出错位置', () => {
     expect(run('1 +\n盘点对象.x', { '盘点对象.x': 'abc' })).toMatchObject({ code: 'TEXT_IN_ARITHMETIC', line: 2 });
+  });
+});
+
+describe('绩效取数：英文名与中文名各自实际求值（astra 首审 P3-2）', () => {
+  const record = (year: number, score: number, grade: string, modifiedAt: string) => ({
+    fields: { 年度: year, 周期名称: '年度', 得分: score, 等级: grade },
+    modifiedAt: new Date(modifiedAt),
+  });
+  const ports = createInMemoryPorts({
+    performance: { s: [record(2026, 92, 'A', '2026-07-01T00:00:00Z'), record(2024, 75, 'C', '2025-01-01T00:00:00Z')] },
+  });
+  const runWithPorts = (formula: string) => {
+    const result = evaluateFormula(formula, { ...context(), ports });
+    return result.ok ? result.value : result.failure;
+  };
+
+  it('PerformanceCent / PerformanceGrade 与中文名', () => {
+    expect(runWithPorts('PerformanceCent(考核结果.年度=2026, 考核结果.周期名称="年度")')).toEqual(num(92));
+    expect(runWithPorts('PerformanceGrade(考核结果.年度=2026, 考核结果.周期名称="年度")')).toEqual(text('A'));
+    expect(runWithPorts('获取指定年度指定周期的绩效得分(考核结果.年度=2024, 考核结果.周期名称="年度")')).toEqual(
+      num(75),
+    );
+    expect(runWithPorts('获取指定年度指定周期的绩效等级(考核结果.年度=2024, 考核结果.周期名称="年度")')).toEqual(
+      text('C'),
+    );
+  });
+
+  it('PerformanceLastCent / PerformanceLastGrade 与中文名（参考年 = 今天所在年 2026）', () => {
+    expect(runWithPorts('PerformanceLastCent(1)')).toEqual(num(92));
+    expect(runWithPorts('PerformanceLastGrade(2)')).toEqual(text('C'));
+    expect(runWithPorts('获取最近第N年度的绩效得分(2)')).toEqual(num(75));
+    expect(runWithPorts('获取最近第N年度的绩效等级(1)')).toEqual(text('A'));
   });
 });
