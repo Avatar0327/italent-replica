@@ -126,9 +126,16 @@ describe('数值与聚合', () => {
     expect(run('Abs(-3)')).toEqual(num(3));
     expect(run('绝对值(3)')).toEqual(num(3));
   });
-  it('聚合遇到空值按语义配置失败（待 Q-M0-95）', () => {
+  it('聚合遇到空值失败、不跳过（DEC-257）；数字字符串按数值，非数字文本失败', () => {
     expect(run('Sum(1, 盘点对象.x)', { '盘点对象.x': null })).toMatchObject({ code: 'EMPTY_IN_AGGREGATE' });
     expect(run('Average(1, "a")')).toMatchObject({ code: 'TEXT_IN_ARITHMETIC' });
+    expect(run('Average(1, "5")')).toEqual(num(3));
+  });
+  it('函数的数值参数与四则同一口径（DEC-257）：空值按 0、数字字符串按数值', () => {
+    expect(run('Round(盘点对象.x)', { '盘点对象.x': null })).toEqual(num(0));
+    expect(run('Abs(盘点对象.x)', { '盘点对象.x': null })).toEqual(num(0));
+    expect(run('Round("2.5")')).toEqual(num(3));
+    expect(run('Abs("甲")')).toMatchObject({ code: 'TEXT_IN_ARITHMETIC' });
   });
 });
 
@@ -173,10 +180,15 @@ describe('日期（🟡 待 Q-M0-83：业务日按租户时区）', () => {
 });
 
 describe('运算符语义', () => {
-  it('比较：文本与数字宽松相等、单选按值、日期按时间顺序、是否', () => {
+  it('比较：文本与数字宽松相等、文本不能比较大小（DEC-257）、单选按值、日期按时间顺序、是否', () => {
     expect(run('"2026" = 2026')).toEqual(bool(true));
     expect(run('"2026" ≠ 2027')).toEqual(bool(true));
-    expect(run('"b" > "a"')).toEqual(bool(true));
+    expect(run('"b" > "a"')).toMatchObject({
+      code: 'TYPE_CONVERSION',
+      message: expect.stringContaining('比较【b>a】'),
+    });
+    expect(run('"2026" >= 2026')).toMatchObject({ code: 'TYPE_CONVERSION' });
+    expect(run('真 > 假')).toMatchObject({ code: 'TYPE_CONVERSION', message: expect.stringContaining('不能比较大小') });
     expect(run('"2020/01/02" > "2020/01/01 23:00:00"')).toEqual(bool(true));
     expect(run('真 = 真 且 非 假')).toEqual(bool(true));
     expect(run('1 <> 1 或 2 >= 2')).toEqual(bool(true));

@@ -6,29 +6,32 @@
 <style>
 /* 由 board.py 生成：只改 看板数据.json，不手改本文件 */
 :root{
-  --bg:#f7f8fa;--panel:#fff;--sunk:#f1f3f6;--ink:#111827;--ink2:#374151;--muted:#6b7280;--faint:#9ca3af;--line:#e5e7eb;--line2:#d1d5db;
-  --accent:#0f4c81;--accent-soft:#e8f0f8;
-  --done:#3f8f5f;--active:#c27a12;--review:#2563eb;--todo:#9ca3af;--blocked:#c2410c;
-  --done-bg:#ecf6ef;--active-bg:#fdf3e2;--review-bg:#e8effd;--todo-bg:#f3f4f6;--blocked-bg:#fdeee6;
-  --f:"Inter","Noto Sans SC","PingFang SC",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --bg:#f5f6f8;--panel:#fff;--sunk:#eef1f5;--ink:#051c2c;--ink2:#2b3a4a;--muted:#5f6b7a;--faint:#9aa5b1;--line:#e1e5ea;--line2:#c9d0d8;
+  --accent:#2251ff;--accent-soft:#e6ecff;
+  --done:#7f93a8;--active:#2251ff;--review:#00a9f4;--todo:#b8c2cc;--blocked:#d0453a;
+  --done-bg:#eef1f5;--active-bg:#e6ecff;--review-bg:#e1f5fd;--todo-bg:#f3f5f7;--blocked-bg:#fbe9e7;
+  --fable:#051c2c;
+  --f:Arial,"Helvetica Neue","Noto Sans SC","PingFang SC",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#0e1116;--panel:#151a21;--sunk:#1b212a;--ink:#e6e9ee;--ink2:#c3c9d2;--muted:#8b95a3;--faint:#5f6b7a;--line:#262d37;--line2:#323b47;
-  --accent:#6ea8dc;--accent-soft:#17283a;
-  --done:#6cc08a;--active:#e3a54a;--review:#7aa6f5;--todo:#6b7280;--blocked:#f08a5d;
-  --done-bg:#16281e;--active-bg:#2e2412;--review-bg:#172238;--todo-bg:#1d232b;--blocked-bg:#2f1d14;color-scheme:dark}}
+  --bg:#071722;--panel:#0d2231;--sunk:#12293a;--ink:#e8eef4;--ink2:#c3cfdb;--muted:#8a9bab;--faint:#5b6d7e;--line:#1d3446;--line2:#2a4459;
+  --accent:#6f8dff;--accent-soft:#16264a;
+  --done:#7d93a8;--active:#6f8dff;--review:#3cc4ff;--todo:#4a5d6e;--blocked:#f0796c;
+  --done-bg:#12293a;--active-bg:#16264a;--review-bg:#0f2f40;--todo-bg:#102434;--blocked-bg:#3a1c1a;
+  --fable:#e8eef4;color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0e1116;--panel:#151a21;--sunk:#1b212a;--ink:#e6e9ee;--ink2:#c3c9d2;--muted:#8b95a3;--faint:#5f6b7a;--line:#262d37;--line2:#323b47;
-  --accent:#6ea8dc;--accent-soft:#17283a;
-  --done:#6cc08a;--active:#e3a54a;--review:#7aa6f5;--todo:#6b7280;--blocked:#f08a5d;
-  --done-bg:#16281e;--active-bg:#2e2412;--review-bg:#172238;--todo-bg:#1d232b;--blocked-bg:#2f1d14;color-scheme:dark}
+  --bg:#071722;--panel:#0d2231;--sunk:#12293a;--ink:#e8eef4;--ink2:#c3cfdb;--muted:#8a9bab;--faint:#5b6d7e;--line:#1d3446;--line2:#2a4459;
+  --accent:#6f8dff;--accent-soft:#16264a;
+  --done:#7d93a8;--active:#6f8dff;--review:#3cc4ff;--todo:#4a5d6e;--blocked:#f0796c;
+  --done-bg:#12293a;--active-bg:#16264a;--review-bg:#0f2f40;--todo-bg:#102434;--blocked-bg:#3a1c1a;
+  --fable:#e8eef4;color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.55 var(--f);-webkit-font-smoothing:antialiased}
 .wrap{max-width:1360px;margin:0 auto;padding:28px 32px 40px;display:grid;gap:28px}
 .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
 header{display:grid;gap:16px}
 .ttl{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
-h1{margin:0;font-size:20px;font-weight:600;letter-spacing:-.01em}
+h1{margin:0;font:400 22px/1.2 Georgia,"Noto Serif SC","Songti SC",serif;letter-spacing:-.01em;color:var(--ink)}
 .sub{color:var(--muted);font-size:12px}
 .stats{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
 .st{padding:12px 14px;border-left:1px solid var(--line)}
@@ -98,19 +101,15 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 .log em{font-style:normal;color:var(--ink);font-weight:500}
 .log .sep{color:var(--line2);margin:0 6px}
 .more{font:inherit;font-size:11.5px;color:var(--accent);background:none;border:0;padding:0;cursor:pointer}
+.fb{display:inline-block;font:600 10px/1.6 var(--mono);padding:0 5px;border-radius:3px;border:1px solid var(--fable);color:var(--fable);margin-left:4px;vertical-align:1px}
 .foot{font-size:11px;color:var(--faint);line-height:1.7;display:grid;gap:4px}
 .foot b{color:var(--muted);font-weight:500}
 </style></head><body>
 <div class="wrap">
   <header>
-    <div class="ttl"><h1>北森 iTalent 复刻 · 开发进度</h1><span class="sub">更新于 <span class="mono" id="upd"></span> · Avatar0327/italent-replica · 进度窗口维护</span></div>
+    <div class="ttl"><h1>北森 iTalent 复刻 · 开发进度</h1><span class="sub">更新于 <span class="mono" id="upd"></span> · <a href="https://claude.ai/artifact/FaqkRF7fwT9YLcBXMY5Psx" style="color:inherit">进行中看板</a> · Avatar0327/italent-replica · 进度窗口维护</span></div>
     <div class="stats" id="stats"></div>
   </header>
-
-  <section>
-    <div class="sec-h"><h2>正在进行</h2><span class="sub">会话命名：#PR号 编号 开发 / 审查 / 其他 具体任务</span></div>
-    <div class="panel" id="run"></div>
-  </section>
 
   <section>
     <div class="sec-h"><h2>全景 · 依赖关系</h2>
@@ -137,8 +136,6 @@ const ST = {done:["已完成","s-done"],review:["审查中","s-review"],active:[
 const COL = {done:"var(--done)",review:"var(--review)",active:"var(--active)",todo:"var(--todo)",blocked:"var(--blocked)"};
 const MS = {M0:"底座与决策",M1:"多租户隔离",M2:"权限与平台",M3:"组织与职务编制",M4:"任职版本链",M5:"审批与定时生效",M6:"调动业务",M7:"联动 · 自助 · 审计"};
 const STAGES = {R1:"R1 底座",R2:"R2 人事完整化",R3:"R3 人才链路"};
-const esc0 = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-document.getElementById("run").innerHTML = '<table><colgroup><col style="width:34%"><col style="width:24%"><col style="width:70px"><col></colgroup><thead><tr><th>会话名（#PR 编号 任务）</th><th>当前在做</th><th>轮次</th><th>谁在做</th></tr></thead><tbody>' + (DATA.run || []).map(r => `<tr><td><span class="mono">${r[0] ? "#" + r[0] + " " : ""}${esc0(r[1])}</span> ${esc0(r[2])}</td><td><b>${esc0(r[3])}</b></td><td>${esc0(r[4])}</td><td>${esc0(r[5])}</td></tr>`).join("") + '</tbody></table>';
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const isFix = id => !!T[id].p;
 const stg = id => { const t = T[id]; if (t.p) return stg(t.p); return (t.ms || "").startsWith("M") ? "R1" : t.ms; };
@@ -147,6 +144,8 @@ const pill = s => `<span class="pill ${ST[s][1]}">${ST[s][0]}</span>`;
 const prOf = id => (T[id].pr || []).filter(n => P[n]);
 const mains = st0 => Object.keys(T).filter(id => !isFix(id) && stg(id) === st0);
 const fixes = () => Object.keys(T).filter(isFix);
+const fable = id => /fable/i.test(T[id].dev || "");
+const kids = id => Object.keys(T).filter(k => T[k].p === id);
 const short = (s, n) => { s = s.replace(/（.*?）/g, ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
 
 /* 统计 */
@@ -171,13 +170,12 @@ document.getElementById("stats").innerHTML = stats.map(([v, l, c]) => `<div clas
 const AGG = "R1";
 const notDone = Object.keys(T).filter(i => T[i].s !== "done");
 const depOn = new Set(); notDone.forEach(i => (T[i].deps || []).forEach(d => depOn.add(d)));
-const show = new Set(notDone.filter(i => isFix(i) || T[i].s !== "todo" || (T[i].deps || []).length || T[i].ev || depOn.has(i)));
-const backlog = notDone.filter(i => !show.has(i));
+const show = new Set(notDone.filter(i => !isFix(i)).filter(i => T[i].s !== "todo" || (T[i].deps || []).length || T[i].ev || depOn.has(i)));
+const backlog = notDone.filter(i => !isFix(i) && !show.has(i));
 const mapDone = d => (T[d].s === "done" && stg(d) === "R1") ? AGG : d;
 const edges = [];
 [...show].forEach(i => {
-  (T[i].deps || []).forEach(d => { const m = mapDone(d); if (m !== AGG) show.add(m); edges.push([m, i, "dep"]); });
-  if (T[i].p) { const m = mapDone(T[i].p); if (m !== AGG) show.add(m); if (!(T[i].deps || []).map(mapDone).includes(m)) edges.push([m, i, "fix"]); }
+  (T[i].deps || []).filter(d => T[d] && !isFix(d)).forEach(d => { const m = mapDone(d); if (m !== AGG) show.add(m); edges.push([m, i, "dep"]); });
 });
 const nodes = [AGG, ...show];
 const depth = {}; nodes.forEach(n => depth[n] = 0);
@@ -198,7 +196,8 @@ const nodeSvg = n => {
   const [x, yy] = pos[n];
   if (n === AGG) return `<g class="node" data-go="grp-R1"><rect class="bx" x="${x}" y="${yy}" width="${NW}" height="${NH}" rx="6"/><rect x="${x}" y="${yy}" width="4" height="${NH}" rx="2" fill="var(--done)"/><text x="${x + 12}" y="${yy + 18}" class="id">R1 底座</text><text x="${x + 12}" y="${yy + 34}" class="nm">${r1d}/${r1n} 主任务已完成</text><text x="${x + 12}" y="${yy + 46}" class="meta">修正 ${fx.filter(i => stg(i) === "R1" && T[i].s === "done").length} 项已合并</text></g>`;
   const t = T[n], s = st(n), pr = prOf(n).map(k => `#${k}·R${P[k].r}`).join(" ");
-  const who = t.dev ? `${t.dev}${t.rev ? " → " + (t.rev === "Codex" ? "astra" : t.rev) : ""}` : (t.ev ? "取证未完" : "未定开发方");
+  const fxOpen = kids(n).filter(k => T[k].s !== "done").length, waitF = (t.deps || []).filter(d => T[d] && isFix(d) && T[d].s !== "done");
+  const who = [waitF.length ? "等 " + waitF.join("、") : "", fxOpen ? `修正中 ${fxOpen}` : "", t.ev ? "取证未完" : "", fable(n) ? "Fable" : ""].filter(Boolean).join(" · ") || (t.s === "todo" ? "待派" : "");
   return `<g class="node" data-go="${esc(n)}"><title>${esc(n + " " + t.n)}</title><rect class="bx" x="${x}" y="${yy}" width="${NW}" height="${NH}" rx="6"/><rect x="${x}" y="${yy}" width="4" height="${NH}" rx="2" fill="${COL[s]}"/><text x="${x + 12}" y="${yy + 16}" class="id">${esc(n)}</text><text x="${x + NW - 8}" y="${yy + 16}" class="meta" text-anchor="end">${esc(pr)}</text><text x="${x + 12}" y="${yy + 31}" class="nm">${esc(short(t.n, 12))}</text><text x="${x + 12}" y="${yy + 44}" class="meta">${esc(who)}</text></g>`;
 };
 const edgeSvg = ([a, b, k]) => { const [x1, y1] = pos[a], [x2, y2] = pos[b]; const sx = x1 + NW, sy = y1 + NH / 2, ex = x2, ey = y2 + NH / 2, m = (sx + ex) / 2;
@@ -210,19 +209,18 @@ const bl = {}; backlog.forEach(i => (bl[stg(i)] ||= []).push(i));
 document.getElementById("backlog").innerHTML = Object.keys(bl).length ? Object.entries(bl).map(([l, a]) => `<span><b>${esc(STAGES[l])} 未排期</b>${a.map(i => `<span class="chip" data-go="${i}">${i} ${esc(short(T[i].n, 10))}</span>`).join(" ")}</span>`).join("") : "";
 
 /* 明细表 */
-const head = `<tr><th style="width:84px">编号</th><th style="width:19%">名称</th><th style="width:104px">所属</th><th style="width:94px">状态</th><th style="width:84px">开发</th><th style="width:66px">审查</th><th style="width:96px">PR · 轮次</th><th style="width:150px">依赖</th><th>说明</th></tr>`;
+const head = `<tr><th style="width:84px">编号</th><th style="width:19%">名称</th><th style="width:104px">所属</th><th style="width:94px">状态</th><th style="width:96px">PR · 轮次</th><th style="width:150px">依赖</th><th>说明</th></tr>`;
 const row = (id, cls = "") => { const t = T[id], s = st(id);
   const pr = (t.pr || []).map(n => { const p = P[n]; const hist = p && p.h ? p.h.map(([k, d]) => k + "：" + d).join("\n") : ""; return `<a href="https://github.com/Avatar0327/italent-replica/pull/${n}" target="_blank" rel="noopener" title="${esc(hist)}">#${n}</a>${p ? ` · ${p.r} 轮` : ""}`; }).join("<br>");
   const deps = (t.deps || []).map(d => `<span class="dep ${T[d] && T[d].s === "done" ? "ok" : "wait"}" data-go="${esc(d)}">${esc(d)}</span>`).join("");
   const own = t.p ? `修正 ${t.p}` : (MS[t.ms] ? t.ms : (t.ms || ""));
   const note = [t.ev, P[(t.pr || []).at(-1)]?.s !== "done" && prOf(id).length ? P[prOf(id).at(-1)].n : "", t.note].filter(Boolean).join("；");
-  return `<tr id="row-${esc(id)}" class="${cls}"><td class="id">${esc(id)}</td><td>${esc(t.n)}</td><td class="mono" style="font-size:11.5px;color:var(--muted);white-space:nowrap">${esc(own)}</td><td>${pill(s)}</td><td class="who">${esc(t.dev || "—")}</td><td class="who">${esc(t.rev ? (t.rev === "Codex" ? "astra" : t.rev) : "—")}</td><td class="mono" style="font-size:11.5px">${pr || "—"}</td><td>${deps || '<span style="color:var(--faint)">—</span>'}</td><td class="nt"><div title="${esc(note)}">${esc(note)}</div></td></tr>`; };
-const kids = id => Object.keys(T).filter(k => T[k].p === id);
+  return `<tr id="row-${esc(id)}" class="${cls}"><td class="id">${esc(id)}</td><td>${esc(t.n)}${fable(id) ? ' <span class="fb">Fable 5.1</span>' : ""}</td><td class="mono" style="font-size:11.5px;color:var(--muted);white-space:nowrap">${esc(own)}</td><td>${pill(s)}</td><td class="mono" style="font-size:11.5px">${pr || "—"}</td><td>${deps || '<span style="color:var(--faint)">—</span>'}</td><td class="nt"><div title="${esc(note)}">${esc(note)}</div></td></tr>`; };
 const grp = (key, title, rowsHtml, done, total, open, extra = "") => `<details class="grp" id="grp-${key}"${open ? " open" : ""}><summary>${esc(title)}<span class="bar"><i style="width:${total ? Math.round(done / total * 100) : 0}%"></i></span><span class="gm mono">${done}/${total}</span><span class="gm">${extra}</span></summary><table>${head}${rowsHtml}</table></details>`;
 let html = "";
 { // R1：按子阶段，已完成修正挂在被修正任务下
   const r = Object.keys(MS).map(m => { const ts = mains("R1").filter(i => T[i].ms === m); if (!ts.length) return "";
-    return `<tr class="sub"><td colspan="9">${m} · ${esc(MS[m])}</td></tr>` + ts.map(i => row(i) + kids(i).filter(k => T[k].s === "done").map(k => row(k, "fx")).join("")).join(""); }).join("");
+    return `<tr class="sub"><td colspan="7">${m} · ${esc(MS[m])}</td></tr>` + ts.map(i => row(i) + kids(i).filter(k => T[k].s === "done").map(k => row(k, "fx")).join("")).join(""); }).join("");
   html += grp("R1", "R1 底座", r, r1d, r1n, r1d < r1n, `修正已合并 ${fx.filter(i => stg(i) === "R1" && T[i].s === "done").length} 项`);
 }
 { const open = fx.filter(i => stg(i) === "R1" && T[i].s !== "done").sort();
