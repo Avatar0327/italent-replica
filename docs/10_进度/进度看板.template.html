@@ -137,7 +137,7 @@ const COL = {done:"var(--done)",review:"var(--review)",active:"var(--active)",to
 const MS = {M0:"底座与决策",M1:"多租户隔离",M2:"权限与平台",M3:"组织与职务编制",M4:"任职版本链",M5:"审批与定时生效",M6:"调动业务",M7:"联动 · 自助 · 审计"};
 const STAGES = {R1:"R1 底座",R2:"R2 人事完整化",R3:"R3 人才链路"};
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const isFix = id => !!T[id].p;
+const isFix = id => !!T[id].p || id.startsWith("F-");
 const stg = id => { const t = T[id]; if (t.p) return stg(t.p); return (t.ms || "").startsWith("M") ? "R1" : t.ms; };
 const st = id => (T[id].ev && T[id].s === "todo") ? "blocked" : T[id].s;
 const pill = s => `<span class="pill ${ST[s][1]}">${ST[s][0]}</span>`;
@@ -193,6 +193,7 @@ lanes.forEach(l => {
 });
 const W = LW + (Math.max(...Object.values(depth)) + 1) * CW, H = y;
 const nodeSvg = n => {
+  if (!pos[n]) return "";
   const [x, yy] = pos[n];
   if (n === AGG) return `<g class="node" data-go="grp-R1"><rect class="bx" x="${x}" y="${yy}" width="${NW}" height="${NH}" rx="6"/><rect x="${x}" y="${yy}" width="4" height="${NH}" rx="2" fill="var(--done)"/><text x="${x + 12}" y="${yy + 18}" class="id">R1 底座</text><text x="${x + 12}" y="${yy + 34}" class="nm">${r1d}/${r1n} 主任务已完成</text><text x="${x + 12}" y="${yy + 46}" class="meta">修正 ${fx.filter(i => stg(i) === "R1" && T[i].s === "done").length} 项已合并</text></g>`;
   const t = T[n], s = st(n), pr = prOf(n).map(k => `#${k}·R${P[k].r}`).join(" ");
@@ -200,7 +201,7 @@ const nodeSvg = n => {
   const who = [waitF.length ? "等 " + waitF.join("、") : "", fxOpen ? `修正中 ${fxOpen}` : "", t.ev ? "取证未完" : "", fable(n) ? "Fable" : ""].filter(Boolean).join(" · ") || (t.s === "todo" ? "待派" : "");
   return `<g class="node" data-go="${esc(n)}"><title>${esc(n + " " + t.n)}</title><rect class="bx" x="${x}" y="${yy}" width="${NW}" height="${NH}" rx="6"/><rect x="${x}" y="${yy}" width="4" height="${NH}" rx="2" fill="${COL[s]}"/><text x="${x + 12}" y="${yy + 16}" class="id">${esc(n)}</text><text x="${x + NW - 8}" y="${yy + 16}" class="meta" text-anchor="end">${esc(pr)}</text><text x="${x + 12}" y="${yy + 31}" class="nm">${esc(short(t.n, 12))}</text><text x="${x + 12}" y="${yy + 44}" class="meta">${esc(who)}</text></g>`;
 };
-const edgeSvg = ([a, b, k]) => { const [x1, y1] = pos[a], [x2, y2] = pos[b]; const sx = x1 + NW, sy = y1 + NH / 2, ex = x2, ey = y2 + NH / 2, m = (sx + ex) / 2;
+const edgeSvg = ([a, b, k]) => { if (!pos[a] || !pos[b]) return ""; const [x1, y1] = pos[a], [x2, y2] = pos[b]; const sx = x1 + NW, sy = y1 + NH / 2, ex = x2, ey = y2 + NH / 2, m = (sx + ex) / 2;
   return `<path class="edge ${k}" d="M${sx},${sy} C${m},${sy} ${m},${ey} ${ex - 3},${ey}" marker-end="url(#ar)"/>`; };
 document.getElementById("graph").innerHTML = `<svg width="${W + 16}" height="${H}" viewBox="0 0 ${W + 16} ${H}"><defs><marker id="ar" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0L6,3L0,6z" fill="var(--line2)"/></marker></defs>
 ${laneBox.map(([l, yy, h]) => `<rect class="lane-bg" x="0" y="${yy}" width="${W + 16}" height="${h}" rx="4" opacity=".55"/><text class="lane-lbl" x="14" y="${yy + 22}">${esc(STAGES[l])}</text>`).join("")}
