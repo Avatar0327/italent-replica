@@ -31,6 +31,7 @@ export const ASSESSMENT_FUNCTIONS: readonly FunctionSpec[] = [
       { name: '过滤表达式', required: true, variadic: true },
     ],
     lazy: true,
+    recordObjects: ASSESSMENT_OBJECTS,
     implement: latestAssessment,
   },
 ];

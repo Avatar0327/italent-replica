@@ -5,7 +5,7 @@
 import type { CallNode, ExprNode, FieldNode, IdentifierNode, Program } from './ast.js';
 import type { EvaluationContext } from './context.js';
 import { instantToParts } from './dates.js';
-import { ComputationError, fail, type FailureCode } from './failures.js';
+import { ComputationError, fail, hyphenHint, type FailureCode } from './failures.js';
 import { arithmetic, compare, operandNumber, toCondition, toDate, toNumber, toText } from './operators.js';
 import { plainToValue, type FieldLookup, type SubjectReader } from './ports.js';
 import {
@@ -136,8 +136,7 @@ export class Evaluator {
     const found = this.readSubjectField(path);
     if (found.status === 'found') return this.fromPlain(found.value);
     if (found.status === 'forbidden') return fail('FIELD_FORBIDDEN', `当前查看人无权读取字段 ${path}`);
-    const hint = path.includes('-') ? '（字段名含“-”；如果是减法，请在“-”两侧加空格）' : '';
-    return fail('UNKNOWN_FIELD', `找不到字段或变量 ${path}${hint}`);
+    return fail('UNKNOWN_FIELD', `找不到字段或变量 ${path}${hyphenHint(path)}`);
   }
 
   /** 对象读取器是使用方代码：抛出的异常转成不透出内容的失败原因（astra 首审 P2-5）。 */

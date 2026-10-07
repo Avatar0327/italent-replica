@@ -86,6 +86,7 @@ export const PERFORMANCE_FUNCTIONS: readonly FunctionSpec[] = [
     aliases: ['获取指定年度指定周期的绩效得分'],
     params: FILTER_PARAMS,
     lazy: true,
+    recordObjects: PREFIXES,
     implement: (call) => byFilters(call, PERFORMANCE_FIELDS.score),
   },
   {
@@ -93,6 +94,7 @@ export const PERFORMANCE_FUNCTIONS: readonly FunctionSpec[] = [
     aliases: ['获取指定年度指定周期的绩效等级'],
     params: FILTER_PARAMS,
     lazy: true,
+    recordObjects: PREFIXES,
     implement: (call) => byFilters(call, PERFORMANCE_FIELDS.grade),
   },
   {

@@ -104,6 +104,7 @@ describe('语法错误：位置与原因', () => {
       message: expect.stringContaining('如需相减，请在减号两侧加空格'),
     });
     expect(fail('1 2').message).not.toContain('减号');
+    expect(fail('Lastest360Cent(360结果.问卷-他评总分').message).not.toContain('减号');
   });
   it('空公式', () => {
     expect(fail('   ')).toMatchObject({ code: 'SYNTAX_ERROR' });

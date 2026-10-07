@@ -57,6 +57,11 @@ export interface FunctionSpec {
   readonly description?: string;
   /** 为真时参数不预先求值，由实现按需在记录作用域求值。 */
   readonly lazy?: boolean;
+  /**
+   * 取数函数在记录作用域里求值参数时用到的对象名（如 考核结果）：这些对象下的字段来自端口记录，
+   * 保存校验在该函数的参数里不按对象字段目录检查它们。
+   */
+  readonly recordObjects?: readonly string[];
   readonly implement: (call: FunctionCall) => ExprValue;
 }
 

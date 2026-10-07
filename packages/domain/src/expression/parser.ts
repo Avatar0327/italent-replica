@@ -10,15 +10,8 @@
  *   primary := 数字 | 字符串 | 真 | 假 | '(' expr ')' | 调用 | 字段引用 | 标识符
  */
 import type { BinaryOperator, CallNode, Definition, ExprNode, IfBranch, Program } from './ast.js';
-import type { SourcePosition } from './failures.js';
-import {
-  SyntaxIssueError,
-  tokenize,
-  type Keyword,
-  type SyntaxIssue,
-  type Token,
-  type TokenizeOptions,
-} from './lexer.js';
+import { HYPHEN_SUBTRACTION_HINT, type SourcePosition } from './failures.js';
+import { SyntaxIssueError, tokenize, type Keyword, type SyntaxIssue, type Token } from './lexer.js';
 
 export type ParseResult =
   { readonly ok: true; readonly program: Program } | { readonly ok: false; readonly errors: SyntaxIssue[] };
@@ -34,12 +27,8 @@ export const MAX_NESTING_DEPTH = 100;
 class Parser {
   private index = 0;
   private depth = 0;
-  private ambiguous = false;
 
-  constructor(
-    private readonly tokens: readonly Token[],
-    private readonly source: string,
-  ) {}
+  constructor(private readonly tokens: readonly Token[]) {}
 
   parseProgram(): Program {
     const definitions: Definition[] = [];
@@ -51,7 +40,7 @@ class Parser {
     const body = this.parseExpr();
     if (this.peek().kind === 'semicolon') this.index++;
     if (this.peek().kind !== 'eof') this.error(`多余的内容“${this.peek().text}”`);
-    return { definitions, body, source: this.source, hasAmbiguousHyphen: this.ambiguous };
+    return { definitions, body };
   }
 
   private peek(ahead = 0): Token {
@@ -76,7 +65,17 @@ class Parser {
   private error(message: string, token: Token = this.peek()): never {
     const length = Math.max(token.text.length, 1);
     const position: SourcePosition = { line: token.line, column: token.column, offset: token.offset };
-    throw new SyntaxIssueError({ code: 'SYNTAX_ERROR', message, length, ...position });
+    const detail = this.callAfterHyphenatedField(token) ? `${message}${HYPHEN_SUBTRACTION_HINT}` : message;
+    throw new SyntaxIssueError({ code: 'SYNTAX_ERROR', message: detail, length, ...position });
+  }
+
+  /**
+   * 报错处是紧跟在含“-”字段名后面的括号（只有成员位置的名字会带连字符，DEC-228）：
+   * 多半是想减去一个函数调用却没加空格，如 盘点对象.得分-转换为数字("2")。
+   */
+  private callAfterHyphenatedField(token: Token): boolean {
+    const previous = this.tokens[this.index - 1];
+    return token.kind === 'lparen' && previous?.kind === 'identifier' && previous.text.includes('-');
   }
 
   private expect(kind: Token['kind'], message: string): Token {
@@ -263,23 +262,17 @@ class Parser {
   private parseReference(): ExprNode {
     const first = this.next();
     const path = [String(first.value)];
-    let ambiguous = false;
     while (this.at('dot')) {
       this.next();
-      const segment = this.expect('identifier', '“.”后面缺少字段名');
-      path.push(String(segment.value));
-      ambiguous = segment.ambiguousHyphen === true;
+      path.push(String(this.expect('identifier', '“.”后面缺少字段名').value));
     }
     if (path.length === 1) return { type: 'identifier', name: path[0]!, pos: this.pos(first) };
-    const node = { type: 'field', path, text: path.join('.'), pos: this.pos(first) } as const;
-    if (!ambiguous) return node;
-    this.ambiguous = true;
-    return { ...node, hyphenAmbiguous: true };
+    return { type: 'field', path, text: path.join('.'), pos: this.pos(first) };
   }
 }
 
 /** 解析公式文本；语法错误以结构化结果返回（含行 / 列），不抛异常。 */
-export function parseFormula(source: string, options: TokenizeOptions = {}): ParseResult {
+export function parseFormula(source: string): ParseResult {
   const origin = { line: 1, column: 1, offset: 0, length: 1 } as const;
   if (source.length > MAX_FORMULA_LENGTH) {
     return {
@@ -288,14 +281,14 @@ export function parseFormula(source: string, options: TokenizeOptions = {}): Par
     };
   }
   try {
-    const tokens = tokenize(source, options);
+    const tokens = tokenize(source);
     if (tokens.length > MAX_FORMULA_TOKENS) {
       return {
         ok: false,
         errors: [{ code: 'SYNTAX_ERROR', message: `公式过长（超过 ${MAX_FORMULA_TOKENS} 个词）`, ...origin }],
       };
     }
-    return { ok: true, program: new Parser(tokens, source).parseProgram() };
+    return { ok: true, program: new Parser(tokens).parseProgram() };
   } catch (error) {
     if (error instanceof SyntaxIssueError) return { ok: false, errors: [error.issue] };
     // 兜底（astra 首审 P2-5）：解析器不应再抛其他异常；万一出现也只给结构化结果，不透出内容

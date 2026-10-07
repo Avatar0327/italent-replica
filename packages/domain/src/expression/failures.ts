@@ -4,6 +4,8 @@
 
 export const FAILURE_CODES = [
   'SYNTAX_ERROR',
+  /** 字符串用了中文引号（`26` §8.3）；三条入口同一失败码。 */
+  'CHINESE_QUOTE',
   'UNKNOWN_FUNCTION',
   'ARGUMENT_COUNT',
   'ARGUMENT_TYPE',
@@ -46,6 +48,13 @@ export interface ComputationFailure extends Partial<SourcePosition> {
 export const FAILURE_PREFIX = '计算失败';
 export const CONVERSION_MESSAGE = '公式无法计算，提示转换出错';
 export const PARSER_MESSAGE = '公式解析器异常，使用了无效的公式文本。';
+
+/** DEC-228：字段名内的连字符一律属于字段名，两个字段相减须在减号两侧加空格。 */
+export const HYPHEN_SUBTRACTION_HINT = '（字段名含“-”；如需相减，请在减号两侧加空格）';
+
+export function hyphenHint(path: string): string {
+  return path.includes('-') ? HYPHEN_SUBTRACTION_HINT : '';
+}
 
 /** 求值过程内部用异常传递失败，在 evaluateFormula 边界统一转成结构化结果。 */
 export class ComputationError extends Error {

@@ -41,6 +41,7 @@ export const SURVEY360_FUNCTIONS: readonly FunctionSpec[] = [
       { name: '过滤表达式', required: false, variadic: true },
     ],
     lazy: true,
+    recordObjects: PREFIXES,
     implement: latest360,
   },
 ];

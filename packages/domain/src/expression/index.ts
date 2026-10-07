@@ -13,7 +13,7 @@ export type {
   IfNode,
   Program,
 } from './ast.js';
-export { walk, walkProgram } from './ast.js';
+export { childrenOf, walk, walkProgram } from './ast.js';
 export type {
   AssessmentLatestWindow,
   BatchContext,
@@ -41,26 +41,14 @@ export {
   CONVERSION_MESSAGE,
   FAILURE_CODES,
   FAILURE_PREFIX,
+  HYPHEN_SUBTRACTION_HINT,
   PARSER_MESSAGE,
   type ComputationFailure,
   type FailureCode,
   type SourcePosition,
 } from './failures.js';
-export {
-  ASSESSMENT_OBJECTS,
-  BUILTIN_FUNCTIONS,
-  PERFORMANCE_FIELDS,
-  RECORD_OBJECTS,
-  SURVEY360_OBJECT,
-} from './functions/index.js';
-export {
-  tokenize,
-  type SyntaxIssue,
-  type SyntaxIssueCode,
-  type Token,
-  type TokenizeOptions,
-  type TokenKind,
-} from './lexer.js';
+export { ASSESSMENT_OBJECTS, BUILTIN_FUNCTIONS, PERFORMANCE_FIELDS, SURVEY360_OBJECT } from './functions/index.js';
+export { tokenize, type SyntaxIssue, type SyntaxIssueCode, type Token, type TokenKind } from './lexer.js';
 export { parseFormula, type ParseResult } from './parser.js';
 export {
   createInMemoryPorts,
