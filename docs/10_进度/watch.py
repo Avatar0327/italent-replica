@@ -14,6 +14,7 @@ STATE = os.path.expanduser("~/.cache/italent-progress-watch.json")
 INTERVAL = 180
 STALL = 90  # 分钟（审查发起时编排会在 PR 贴一行评论，据此区分在审与停摆）
 READY = 10  # 分钟：提交后这么久、CI 绿（或无 CI）且无送审评论 → 提醒审查合并窗口
+READY_DRAFT = 45  # Draft 多为开发中，门槛放宽
 OPUS_REMIND = 60  # 分钟：claude.ai/code 的 Opus 审查会话本机看不到，发起后这么久 PR 上仍无“审查原文 / 结论”就提醒去看会话，之后每 60 分钟再提醒
 
 
@@ -145,7 +146,7 @@ def main():
                 ev.append(f"停摆 #{n} {p['t']}：CI 绿，最新提交 {int(mins_since(p['commit']))} 分钟前，{STALL} 分钟内无评论")
                 stalled.add(key)
             k2 = f"{n}@ready@{p['head']}"
-            if p["ci"] in ("green", "none") and mins_since(p["commit"]) >= READY and not p.get("handled") and k2 not in stalled:
+            if p["ci"] in ("green", "none") and mins_since(p["commit"]) >= (READY_DRAFT if p["draft"] else READY) and not p.get("handled") and k2 not in stalled:
                 ev.append(f"待送审 #{n} {p['t']}：最新提交 {p['head']} 已 {int(mins_since(p['commit']))} 分钟、CI {'绿' if p['ci'] == 'green' else '无'}，提交后 PR 上没有审查发起 / 排队 / 修改清单评论——开发方可能已完成，请确认并发起审查")
                 stalled.add(k2)
             if p.get("opus"):
