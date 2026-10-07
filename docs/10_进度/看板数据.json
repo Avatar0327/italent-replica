@@ -2,7 +2,7 @@
 "updated": "2026-10-07",
 "stats": {
 "merged": 52,
-"open": 9,
+"open": 10,
 "dec": 287,
 "ev": "18/110"
 },
@@ -840,7 +840,10 @@
 "s": "active",
 "note": "DEC-285；C 档先出设计；Fable High → Astra Ultra；先告警 + 白名单再强制",
 "dev": "Claude Fable 5.1",
-"rev": "Astra Ultra"
+"rev": "Astra Ultra",
+"pr": [
+110
+]
 }
 },
 "prs": {
@@ -1968,7 +1971,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 13:54",
+"liveUpdated": "10-07 13:57",
 "chains": [
 {
 "g": "exit",
@@ -2157,8 +2160,8 @@
 "o": 1,
 "k": "run",
 "n": "360 度评估（PR-A）",
-"seg": "ev:d ds:n dev:a2 rev:d1 mg:w",
-"now": "PR-A 第 2 轮修改（按 DEC-280 补改，C 档）",
+"seg": "ev:d ds:n dev:d2 rev:w2 mg:w",
+"now": "PR-A 第 2 轮已推送，待发起审查（C 档）",
 "pr": 107
 },
 {
@@ -2291,7 +2294,8 @@
 "u": "已核对，待开会话",
 "fable": "1",
 "seg": "ev:n ds:a1 dev:w rev:w mg:w",
-"now": "设计中（先告警 + 白名单，再强制）"
+"now": "设计 v1 已提交，待设计审（codex exec 试点）",
+"pr": 110
 }
 ]
 }
