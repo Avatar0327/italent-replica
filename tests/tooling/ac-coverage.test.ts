@@ -301,6 +301,16 @@ describe('ac-coverage 白名单（DEC-245）', () => {
       [/:1：从 vitest 以别名导入“it”/],
     ],
     [
+      'namespace-import',
+      ["import * as vitest from 'vitest';", "vitest.it('AC-DEMO-01', () => {});"],
+      [/:1：以命名空间导入 vitest/],
+    ],
+    [
+      'aliased-value',
+      ["import { it } from 'vitest';", 'const check = it;', "check('AC-DEMO-01', () => {});"],
+      [/:2：用例函数“it”被当作值引用/],
+    ],
+    [
       'extended-test',
       ["import { it } from 'vitest';", 'const custom = it.extend({});', "custom('AC-DEMO-01', () => {});"],
       [/:2：自定义用例函数（it\.extend）/],
@@ -317,7 +327,7 @@ describe('ac-coverage 白名单（DEC-245）', () => {
     expect(status).toBe(1);
     expect(stderr).toContain(problems[0]);
     expect(byId.get('AC-DEMO-02')).toMatchObject({ status: '未覆盖', cases: 0 });
-    if (name !== 'helper-function') expect(byId.get('AC-DEMO-01')).toMatchObject({ status: '未覆盖', cases: 0 });
+    expect(byId.get('AC-DEMO-01')).toMatchObject({ status: '未覆盖', cases: 0 });
   });
 
   put('accepted/whitelist.test.ts', [
@@ -333,6 +343,7 @@ describe('ac-coverage 白名单（DEC-245）', () => {
     "it.each([{ ac: 'AC-DEMO-24', note: 'AC-DEMO-25', run: () => 1 }])('$ac 只计标题引用的字段', () => {});",
     "it.each([['AC-DEMO-26', 'AC-DEMO-27']])('%s 按位置只计第一个', () => {});",
     "it.each(Array.from({ length: 2 }))('AC-DEMO-28 标题无占位时不读参数表', () => {});",
+    "suite('AC-DEMO-27 suite 与 describe 同等对待', () => it('子用例', () => {}));",
   ]);
   put('accepted/other-file.test.ts', [
     "import { it } from 'vitest';",
@@ -344,9 +355,10 @@ describe('ac-coverage 白名单（DEC-245）', () => {
     const { problems, byId, status } = check('accepted', ['accepted']);
     expect(problems).toEqual([]);
     expect(status).toBe(0);
-    const covered = { 20: 1, 21: 1, 22: 1, 23: 2, 24: 1, 26: 1, 28: 1, 29: 1 };
+    // AC-DEMO-27 只在 %s 行的第二个参数里出现，不进入标题，只由 suite 标题计入 1 个用例。
+    const covered = { 20: 1, 21: 1, 22: 1, 23: 2, 24: 1, 26: 1, 27: 1, 28: 1, 29: 1 };
     for (const [n, cases] of Object.entries(covered))
       expect(byId.get(`AC-DEMO-${n}`)).toMatchObject({ status: '已覆盖', cases });
-    for (const n of ['25', '27']) expect(byId.get(`AC-DEMO-${n}`)).toMatchObject({ status: '未覆盖', cases: 0 });
+    expect(byId.get('AC-DEMO-25')).toMatchObject({ status: '未覆盖', cases: 0 });
   });
 });
