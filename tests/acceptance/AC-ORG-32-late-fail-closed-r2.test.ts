@@ -339,6 +339,42 @@ it.each(KIND_ENTRIES)(
   },
 );
 
+const managerOf = async (w: ActivationWorld, hireId: string) => (await w.business(hireId)).fields.directManagerId;
+/** 组织当前版本上的负责人 / 店长（联动 isDepartmentHead / isStoreManager 的跨对象结果）。 */
+async function orgRoles(w: ActivationWorld, orgId: string) {
+  return withTenant(
+    w.db,
+    w.session.tenant.id,
+    async (tx) =>
+      resultRows<{ head: string | null; shop: string | null }>(
+        await tx.execute(sql`SELECT person_in_charge_id AS head, shop_owner_id AS shop FROM org_versions
+        WHERE tenant_id=${w.session.tenant.id} AND org_id=${orgId} ORDER BY version_no DESC LIMIT 1`),
+      )[0]!,
+  );
+}
+/** 跨对象最终结果与按期执行一致：负责人 / 店长 / 下属经理 / 待调薪提醒都已按该笔调动落到对方对象上。 */
+async function expectLinkageApplied(
+  w: ActivationWorld,
+  link: Link,
+  business: { id: string },
+  orgId: string,
+  employeeId: string,
+  subordinateHireId: string,
+) {
+  if (link === 'head') expect((await orgRoles(w, orgId)).head).toBe(employeeId);
+  if (link === 'store') expect((await orgRoles(w, orgId)).shop).toBe(employeeId);
+  if (link === 'subordinate') expect(await managerOf(w, subordinateHireId)).toBe(employeeId);
+  if (link === 'cross') {
+    const response = await w.session.request('GET', `/transfers/${business.id}/linkage`);
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { salaryReminder: unknown }).salaryReminder).toMatchObject({
+      status: 'pending',
+    });
+  }
+}
+/** 两笔触及同一个下属 → 有跨对象联动依赖，不豁免（设计 §2.5）。 */
+const dependent = (first: Link, second: Link) => first === 'subordinate' && second === 'subordinate';
+
 const MATRIX = LINKS.flatMap((first) => LINKS.map((second) => [first, second] as const));
 it.each(MATRIX)(
   'S1-P2-02 两笔带联动的迟到调动（前 %s / 后 %s）：后笔不被挂起、区间为空先顺延；重试前笔成功并按原计划日排序',
@@ -351,6 +387,21 @@ it.each(MATRIX)(
     const two = await linkedTransfer(w, person.employee.id, finalOrg.id, '2026-10-07', second, subordinate.employee.id);
     const run = await w.runScheduler('2026-10-10T01:00:00Z');
     expect(run).toMatchObject({ failed: [one.id], errors: [] });
+    if (dependent(first, second)) {
+      // S2-P2-02：同一下属上的联动有先后依赖，后笔不先顺延——维持 DEC-112 门禁挂起，下属经理不变，交 HR 处理。
+      expect(run).toMatchObject({ activated: [], suspended: [two.id] });
+      expect((await w.business(two.id)).activation).toMatchObject({
+        status: 'suspended',
+        failureReason: 'PREDECESSOR_FAILED',
+        blockedByBusinessId: one.id,
+      });
+      expect(await managerOf(w, subordinate.hire.id)).toBeNull();
+      expect((await w.retry(two, '2026-10-10T02:00:00Z')).status).toBe(409);
+      expect((await w.retry(one, '2026-10-10T03:00:00Z')).status).toBe(200);
+      await expectRebuildRequired(w, one, [two.id], { planned: '2026-10-05', execution: '2026-10-10' }, 2);
+      expect(await managerOf(w, subordinate.hire.id)).toBeNull();
+      return;
+    }
     // 带联动的后笔不是 reminderOnly：不因前序失败挂起，顺延落地后计入 activated。
     expect(run.activated).toEqual([two.id]);
     await expectRebuildRequired(w, one, [two.id], { planned: '2026-10-05', execution: '2026-10-10' });
@@ -368,6 +419,9 @@ it.each(MATRIX)(
     expect(sameDay.map((r) => r.id)).toEqual([one.id, two.id]);
     expect(sameDay.find((r) => r.isCurrent)).toMatchObject({ id: two.id, fields: { departmentId: finalOrg.id } });
     expect(departmentBefore(await w.session.record(two.id, '2026-10-10'))).toBe(w.to.id);
+    // 跨对象最终结果与按期执行一致（S2-P2-02 补充断言）。
+    await expectLinkageApplied(w, first, one, w.to.id, person.employee.id, subordinate.hire.id);
+    await expectLinkageApplied(w, second, two, finalOrg.id, person.employee.id, subordinate.hire.id);
   },
 );
 
