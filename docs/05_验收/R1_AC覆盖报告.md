@@ -1,15 +1,15 @@
 # R1 底座 AC 覆盖报告与端到端验收（F-024，DEC-221③）
 
-> 版本：v1.2（2026-10-07，Claude 开发窗口；第三轮按 astra 第二轮审查修订：合并 main 补跑带编调动，AC 覆盖数改由脚本生成）。
+> 版本：v1.3（2026-10-07，Claude 开发窗口；第四轮修订：覆盖脚本按词法作用域解析参数表，合并 main 纳入 #98 F-028 的 AC-APV-38～42）。
 > 本报告只核对覆盖情况，**不改变任何 AC 口径**；AC 原文以 `docs/05_验收/01_验收场景与追溯表.md` 及各规格 §AC 节为准。
 
 ## 1. 验收基线与范围
 
 | 项目 | 内容 |
 |---|---|
-| 基线提交 | 首轮 `origin/main` 0dd7af5（RP-068，R1 底座 19/19）；第二轮合并 0504d88（仅文档）；**第三轮合并 main 962e1c8**，含 #79 F-018 带编调动（fd226c7）、#90 R3-T00 表达式引擎（7f27667）及文档 |
+| 基线提交 | 首轮 `origin/main` 0dd7af5（RP-068，R1 底座 19/19）；第二轮合并 0504d88（仅文档）；第三轮合并 main 962e1c8，含 #79 F-018 带编调动（fd226c7）、#90 R3-T00 表达式引擎（7f27667）；**第四轮合并 main 95c57f2**，另含 #98 F-028 审批人“直接上级”（449afc1）及文档 |
 | **未包含的在途 PR** | **#83 F-007**（组织改名 / 改行政上级联动任职，DEC-137）。组织联动用例在 §2.3 标为“待 #83 合并后补跑”，合并后本 PR 合并 main、重跑端到端用例并更新本报告 |
-| 对象 | 路线图 R1 阶段“对应验收”所列 AC，以及 R1 各任务与 F 任务新增的 AC（含 F-018 新增的 AC-TRF-47～50、AC-EST-08～19）；范围清单见脚本配置 `docs/05_验收/ac-coverage/R1.json` |
+| 对象 | 路线图 R1 阶段“对应验收”所列 AC，以及 R1 各任务与已合并 F 任务新增的 AC（含 F-018 的 AC-TRF-47～50、AC-EST-08～19，F-028 的 AC-APV-38～42）；范围清单见脚本配置 `docs/05_验收/ac-coverage/R1.json` |
 | 自动化证据来源 | `tests/acceptance/*.test.ts`（PGlite 离线全量；真 PostgreSQL 16 以 CI 的 `test:pg` 作业为准）；本任务新增 `AC-R1-E2E-*.test.ts` |
 | 执行方式 | `pnpm test`（PGlite）全量；`bash scripts/test-pg.sh tests/acceptance/AC-R1-E2E-*.test.ts`（容器内 PG 16） |
 
@@ -62,7 +62,7 @@
 | 环境 | 结果 |
 |---|---|
 | PGlite（`pnpm vitest run tests/acceptance/AC-R1-E2E-0`） | 3 个文件 19 项通过，1 项 todo（#83） |
-| 真 PostgreSQL 16（容器内 `scripts/test-pg.sh`，三个端到端文件） | 19 项通过、1 项 todo（2026-10-07 本地 PG 16，第三轮）；CI 的 `test:pg` 作业为准 |
+| 真 PostgreSQL 16（容器内 `scripts/test-pg.sh`，三个端到端文件） | 19 项通过、1 项 todo（2026-10-07 本地 PG 16，第四轮合并 main 95c57f2 后重跑）；CI 的 `test:pg` 作业为准 |
 | 全量 | 见 PR 描述“验证结果”（CI 两项） |
 
 ## 3. AC 覆盖核对（脚本生成）
@@ -84,14 +84,16 @@ node scripts/ac-coverage.mjs --config docs/05_验收/ac-coverage/R1.json --check
 
 与第二轮人工核对的差异：总数 222 → 238，新增的 16 条是 F-018 的 AC-TRF-47～50 与 AC-EST-08～19；其中 AC-EST-13 的分配规则待取证（#78），记部分覆盖。其余 222 条的状态与第二轮一致。
 
+第四轮：脚本改为按词法作用域解析参数表后，原 238 条的状态与用例数不变（238 / 217 / 13 / 8 / 0），只有规格 `14` 新增内容导致 AC-APV-01～12、18、19 的定义行号后移；另按同一口径纳入已合并的 F-028 新增 AC-APV-38～42，5 条均由其用例按编号覆盖，合计变为 243 条。
+
 <!-- ac-coverage:begin -->
 > 由脚本生成，请勿手改：`node scripts/ac-coverage.mjs --config docs/05_验收/ac-coverage/R1.json --write docs/05_验收/R1_AC覆盖报告.md`
 
 | 分组 | AC 条数 | 已覆盖 | 部分覆盖 | 未覆盖 | 未定义 |
 |---|---|---|---|---|---|
 | 路线图 R1“对应验收” | 80 | 71 | 3 | 6 | 0 |
-| R1 任务新增（含 F 任务） | 158 | 146 | 10 | 2 | 0 |
-| **合计** | **238** | **217** | **13** | **8** | **0** |
+| R1 任务新增（含 F 任务） | 163 | 151 | 10 | 2 | 0 |
+| **合计** | **243** | **222** | **13** | **8** | **0** |
 
 | 状态 · 分类 | 条数 |
 |---|---|
@@ -192,20 +194,20 @@ node scripts/ac-coverage.mjs --config docs/05_验收/ac-coverage/R1.json --check
 
 | 编号 | 状态 | 用例数（标题含编号 / 人工映射） | 测试文件 | 定义位置 | 备注 |
 |---|---|---|---|---|---|
-| AC-APV-01 | 已覆盖 | 3 / 0 | AC-APV-01-04-13-15-routing.test.ts、AC-R1-E2E-01-transfer-closure.test.ts | 14_审批流模型_实测.md:199 | — |
-| AC-APV-02 | 已覆盖 | 3 / 0 | AC-APV-01-04-13-15-routing.test.ts、AC-R1-E2E-01-transfer-closure.test.ts | 14_审批流模型_实测.md:200 | — |
-| AC-APV-03 | 已覆盖 | 1 / 0 | AC-APV-01-04-13-15-routing.test.ts | 14_审批流模型_实测.md:201 | — |
-| AC-APV-04 | 已覆盖 | 2 / 0 | AC-APV-01-04-13-15-routing.test.ts、AC-R1-E2E-02-branches.test.ts | 14_审批流模型_实测.md:202 | — |
-| AC-APV-05 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:203 | — |
-| AC-APV-06 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:204 | — |
-| AC-APV-07 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:205 | — |
-| AC-APV-08 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:206 | — |
-| AC-APV-09 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:207 | — |
-| AC-APV-10 | 未覆盖 | 0 / 0 | — | 14_审批流模型_实测.md:208 | 已有 DEC：DEC-035：首版不做审批时效 |
-| AC-APV-11 | 已覆盖 | 2 / 0 | AC-APV-11-12-simulation.test.ts | 14_审批流模型_实测.md:209 | — |
-| AC-APV-12 | 已覆盖 | 3 / 0 | AC-APV-11-12-simulation.test.ts | 14_审批流模型_实测.md:210 | — |
-| AC-APV-18 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:292 | — |
-| AC-APV-19 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:293 | — |
+| AC-APV-01 | 已覆盖 | 3 / 0 | AC-APV-01-04-13-15-routing.test.ts、AC-R1-E2E-01-transfer-closure.test.ts | 14_审批流模型_实测.md:209 | — |
+| AC-APV-02 | 已覆盖 | 3 / 0 | AC-APV-01-04-13-15-routing.test.ts、AC-R1-E2E-01-transfer-closure.test.ts | 14_审批流模型_实测.md:210 | — |
+| AC-APV-03 | 已覆盖 | 1 / 0 | AC-APV-01-04-13-15-routing.test.ts | 14_审批流模型_实测.md:211 | — |
+| AC-APV-04 | 已覆盖 | 2 / 0 | AC-APV-01-04-13-15-routing.test.ts、AC-R1-E2E-02-branches.test.ts | 14_审批流模型_实测.md:212 | — |
+| AC-APV-05 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:213 | — |
+| AC-APV-06 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:214 | — |
+| AC-APV-07 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:215 | — |
+| AC-APV-08 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:216 | — |
+| AC-APV-09 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:217 | — |
+| AC-APV-10 | 未覆盖 | 0 / 0 | — | 14_审批流模型_实测.md:218 | 已有 DEC：DEC-035：首版不做审批时效 |
+| AC-APV-11 | 已覆盖 | 2 / 0 | AC-APV-11-12-simulation.test.ts | 14_审批流模型_实测.md:219 | — |
+| AC-APV-12 | 已覆盖 | 3 / 0 | AC-APV-11-12-simulation.test.ts | 14_审批流模型_实测.md:220 | — |
+| AC-APV-18 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:302 | — |
+| AC-APV-19 | 已覆盖 | 1 / 0 | AC-APV-05-09-18-19-versions.test.ts | 14_审批流模型_实测.md:303 | — |
 | AC-APV-20 | 已覆盖 | 1 / 0 | AC-APV-14-16-17-20-actions.test.ts | 01_验收场景与追溯表.md:313 | — |
 | AC-APV-21 | 已覆盖 | 2 / 0 | AC-APV-21-26-countersign.test.ts | 01_验收场景与追溯表.md:319 | — |
 | AC-APV-22 | 部分覆盖 | 2 / 0 | AC-APV-21-26-countersign.test.ts | 01_验收场景与追溯表.md:320 | 待取证：其余待办的收回方式为暂定口径（Q-M0-57，#56） |
@@ -224,6 +226,11 @@ node scripts/ac-coverage.mjs --config docs/05_验收/ac-coverage/R1.json --check
 | AC-APV-35 | 已覆盖 | 1 / 0 | AC-APV-32-37-countersign-round2.test.ts | 01_验收场景与追溯表.md:333 | — |
 | AC-APV-36 | 部分覆盖 | 7 / 0 | AC-APV-27-28-parallel-add-sign.test.ts、AC-APV-32-36-countersign-round3.test.ts、AC-APV-32-37-countersign-round2.test.ts | 01_验收场景与追溯表.md:334 | 待取证：会签前加签细节为暂定口径（DEC-152，代码留 TODO(需取证 DEC-152)） |
 | AC-APV-37 | 已覆盖 | 1 / 0 | AC-APV-32-37-countersign-round2.test.ts | 01_验收场景与追溯表.md:335 | — |
+| AC-APV-38 | 已覆盖 | 1 / 0 | AC-APV-38-42-direct-manager.test.ts | 01_验收场景与追溯表.md:336 | F-028 按复刻指定口径实现；原站来源待取证（#95），不影响复刻验收 |
+| AC-APV-39 | 已覆盖 | 1 / 0 | AC-APV-38-42-direct-manager.test.ts | 01_验收场景与追溯表.md:337 | — |
+| AC-APV-40 | 已覆盖 | 1 / 0 | AC-APV-38-42-direct-manager.test.ts | 01_验收场景与追溯表.md:338 | — |
+| AC-APV-41 | 已覆盖 | 2 / 0 | AC-APV-38-42-direct-manager.test.ts | 01_验收场景与追溯表.md:339 | — |
+| AC-APV-42 | 已覆盖 | 1 / 0 | AC-APV-38-42-direct-manager.test.ts | 01_验收场景与追溯表.md:340 | — |
 | AC-AUD-01 | 已覆盖 | 3 / 0 | AC-AUD-01-02.test.ts | 20_审计日志_规格.md:56 | — |
 | AC-AUD-02 | 已覆盖 | 3 / 0 | AC-AUD-01-02.test.ts、AC-R1-E2E-02-branches.test.ts | 20_审计日志_规格.md:57 | — |
 | AC-AUD-03 | 已覆盖 | 4 / 0 | AC-AUD-03.test.ts | 20_审计日志_规格.md:58 | — |
@@ -368,6 +375,6 @@ node scripts/ac-coverage.mjs --config docs/05_验收/ac-coverage/R1.json --check
 
 ## 5. 结论
 
-- R1 出口标准“员工发起调动申请 → 审批 → HR 执行 → 生效 → 任职记录版本链与向后更新正确 → 员工与经理侧可见变更”在 main 962e1c8 上以真实权限端到端跑通。另外验证了七个分支：经理发起、联动、驳回重提、撤销删除、迟到执行、跨租户隔离、经理身份自动取得与回收；并补跑了 #79 带编调动的保存调编、审批、定时生效与回退。
+- R1 出口标准“员工发起调动申请 → 审批 → HR 执行 → 生效 → 任职记录版本链与向后更新正确 → 员工与经理侧可见变更”在 main 95c57f2 上以真实权限端到端跑通。另外验证了七个分支：经理发起、联动、驳回重提、撤销删除、迟到执行、跨租户隔离、经理身份自动取得与回收；并补跑了 #79 带编调动的保存调编、审批、定时生效与回退。
 - AC 覆盖以 §3 脚本结果为准，未改变任何 AC 口径。
 - 组织改名 / 改行政上级联动任职待 #83 合并后补跑。

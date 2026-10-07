@@ -10,7 +10,9 @@
 //
 // 规则：
 // - “用例”= describe / it / test（含 .each / .runIf / .skipIf / .concurrent）；用例标题 = 各级 describe 标题 + 自身标题。
-//   it.each 标题含 $x / %s 占位时，参数表中字符串字面量里的 AC 编号也计入（可跟随同文件内的常量）。
+//   it.each 标题含 $x / %s 占位时，参数表中字符串字面量里的 AC 编号也计入；参数表里的标识符按使用位置的
+//   词法作用域解析（就近声明优先）。同一作用域多处声明或 let / var 被重新赋值时无法静态确定，记入“需人工处理”，
+//   不计入任何一份。
 //   it.todo / .skip 不计覆盖；runIf / skipIf 计覆盖并标“条件执行”（如只在真 PostgreSQL 上运行）。
 // - 标题里的写法 AC-TRF-01/37/45、AC-PRM-03~07/17、AC-TRF-13 / 14 都会展开。
 // - 人工备注（配置 notes）可把状态改为“部分覆盖 / 未覆盖”并写原因与分类；evidence 把标题里没写编号的用例
@@ -94,37 +96,156 @@ function testCallee(expression) {
 }
 
 /** 标题文本：字符串 / 模板（插值处记为 ${…}）；其他表达式取其中的字符串字面量。 */
-function titleText(node) {
+function titleText(node, resolver) {
   if (!node) return '';
   if (ts.isStringLiteralLike(node)) return node.text;
   if (ts.isTemplateExpression(node))
     return node.head.text + node.templateSpans.map((span) => '${…}' + span.literal.text).join('');
-  return literals(node, new Map()).join(' ');
+  return literals(node, resolver).join(' ');
 }
 
-/** 表达式中可达的字符串字面量；标识符跟随同文件的常量声明（防循环）。 */
-function literals(node, constants, seen = new Set()) {
+/** 词法作用域：文件、块、函数（参数）、for 循环头、switch 的 case 块。 */
+const isScope = (node) =>
+  ts.isSourceFile(node) ||
+  ts.isBlock(node) ||
+  ts.isModuleBlock(node) ||
+  ts.isCaseBlock(node) ||
+  ts.isFunctionLike(node) ||
+  ts.isForStatement(node) ||
+  ts.isForOfStatement(node) ||
+  ts.isForInStatement(node);
+
+const OPAQUE = { opaque: true };
+const isVar = (list) => (list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) === 0;
+
+/** 某个作用域直接声明的同名绑定：有初值的变量声明返回声明节点，参数 / 解构 / 导入 / 函数等记为不可读取初值。 */
+function declarationsIn(scope, name) {
   const found = [];
-  const visit = (current) => {
-    if (ts.isStringLiteralLike(current)) found.push(current.text);
-    else if (ts.isIdentifier(current) && constants.has(current.text) && !seen.has(current.text)) {
-      seen.add(current.text);
-      visit(constants.get(current.text));
-    } else ts.forEachChild(current, visit);
+  const bind = (nameNode, declaration) => {
+    if (ts.isIdentifier(nameNode)) return void (nameNode.text === name && found.push(declaration ?? OPAQUE));
+    for (const element of nameNode.elements ?? []) if (!ts.isOmittedExpression(element)) bind(element.name, null);
   };
-  visit(node);
+  const fromList = (list) => list.declarations.forEach((d) => bind(d.name, ts.isIdentifier(d.name) ? d : null));
+  if (ts.isFunctionLike(scope)) scope.parameters?.forEach((parameter) => bind(parameter.name, null));
+  const head = scope.initializer;
+  if ((ts.isForStatement(scope) || ts.isForOfStatement(scope) || ts.isForInStatement(scope)) && head)
+    if (ts.isVariableDeclarationList(head)) head.declarations.forEach((d) => bind(d.name, null));
+  const statements = ts.isCaseBlock(scope) ? scope.clauses.flatMap((c) => c.statements) : (scope.statements ?? []);
+  for (const statement of statements) {
+    if (ts.isVariableStatement(statement)) fromList(statement.declarationList);
+    else if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) && statement.name)
+      bind(statement.name, null);
+    else if (ts.isImportDeclaration(statement)) importNames(statement).forEach((n) => bind(n, null));
+  }
+  if (ts.isSourceFile(scope) || (ts.isBlock(scope) && ts.isFunctionLike(scope.parent)))
+    hoistedVars(scope).forEach((list) => fromList(list));
   return found;
 }
 
-function fileConstants(source) {
-  const constants = new Map();
+function importNames(statement) {
+  const clause = statement.importClause;
+  if (!clause) return [];
+  const names = clause.name ? [clause.name] : [];
+  const bindings = clause.namedBindings;
+  if (bindings && ts.isNamespaceImport(bindings)) names.push(bindings.name);
+  if (bindings && ts.isNamedImports(bindings)) names.push(...bindings.elements.map((e) => e.name));
+  return names;
+}
+
+/** 嵌套块里的 var 声明提升到函数 / 文件作用域（不进入内层函数；直接语句已由调用方处理）。 */
+function hoistedVars(scope) {
+  const lists = [];
+  const visit = (node, depth) => {
+    if (ts.isFunctionLike(node)) return;
+    if (depth > 0 && ts.isVariableDeclarationList(node) && isVar(node)) lists.push(node);
+    ts.forEachChild(node, (child) => visit(child, ts.isBlock(child) || isScope(child) ? depth + 1 : depth));
+  };
+  ts.forEachChild(scope, (child) => visit(child, isScope(child) ? 1 : 0));
+  return lists;
+}
+
+/** 从使用位置向外找声明：就近作用域优先；返回 { scope, declarations }，找不到返回 null。 */
+function lookup(identifier) {
+  for (let node = identifier.parent; node; node = node.parent) {
+    if (!isScope(node)) continue;
+    const declarations = declarationsIn(node, identifier.text);
+    if (declarations.length) return { scope: node, declarations };
+  }
+  return null;
+}
+
+const ASSIGNMENTS = new Set([
+  ts.SyntaxKind.EqualsToken,
+  ts.SyntaxKind.PlusEqualsToken,
+  ts.SyntaxKind.MinusEqualsToken,
+  ts.SyntaxKind.QuestionQuestionEqualsToken,
+  ts.SyntaxKind.BarBarEqualsToken,
+  ts.SyntaxKind.AmpersandAmpersandEqualsToken,
+]);
+
+/** let / var 在其作用域内被重新赋值（按同一声明判断，不算内层同名遮蔽）。 */
+function reassigned(scope, declaration) {
+  let hit = false;
   const visit = (node) => {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer)
-      constants.set(node.name.text, node.initializer);
+    if (hit) return;
+    const target = ts.isBinaryExpression(node) && ASSIGNMENTS.has(node.operatorToken.kind) ? node.left : null;
+    if (target && ts.isIdentifier(target) && target.text === declaration.name.text)
+      hit = lookup(target)?.declarations[0] === declaration;
     ts.forEachChild(node, visit);
   };
-  visit(source);
-  return constants;
+  visit(scope);
+  return hit;
+}
+
+/** 标识符解析器：返回声明的初值；无法静态确定（多处声明、被重新赋值）时记 problems 并返回 null。 */
+function scopeResolver(source, relativeFile, problems) {
+  return (identifier) => {
+    const found = lookup(identifier);
+    if (!found) return null;
+    const [declaration] = found.declarations;
+    let reason = null;
+    if (found.declarations.length > 1) reason = `同一作用域有 ${found.declarations.length} 处声明`;
+    else if (declaration === OPAQUE || !declaration.initializer) return null;
+    else if (isVar(declaration.parent) || !(declaration.parent.flags & ts.NodeFlags.Const))
+      if (reassigned(found.scope, declaration)) reason = '被重新赋值';
+    if (!reason) return declaration;
+    const line = source.getLineAndCharacterOfPosition(identifier.getStart(source)).line + 1;
+    problems.push(
+      `${relativeFile}:${line}：参数表标识符“${identifier.text}”无法静态确定（${reason}），其中的 AC 编号未计入`,
+    );
+    return null;
+  };
+}
+
+/** 标识符是否为对变量的引用（排除属性名、声明名等）。 */
+function isReference(identifier) {
+  const parent = identifier.parent;
+  if (!parent) return false;
+  if ((ts.isPropertyAccessExpression(parent) || ts.isPropertyAssignment(parent)) && parent.name === identifier)
+    return false;
+  if (ts.isBindingElement(parent) || ts.isParameter(parent) || ts.isVariableDeclaration(parent))
+    return parent.initializer === identifier;
+  return !(ts.isMethodDeclaration(parent) || ts.isFunctionDeclaration(parent) || ts.isPropertySignature(parent));
+}
+
+/** 表达式中可达的字符串字面量；标识符按词法作用域跟随其声明初值（防循环）。 */
+function literals(node, resolver, seen = new Set()) {
+  const found = [];
+  const visit = (current) => {
+    if (ts.isStringLiteralLike(current)) return void found.push(current.text);
+    if (ts.isIdentifier(current) && isReference(current)) {
+      const declaration = resolver(current);
+      if (declaration && !seen.has(declaration)) {
+        seen.add(declaration);
+        visit(declaration.initializer);
+      }
+      return undefined;
+    }
+    ts.forEachChild(current, visit);
+    return undefined;
+  };
+  visit(node);
+  return found;
 }
 
 const modeOf = (mods, inherited) => {
@@ -135,18 +256,18 @@ const modeOf = (mods, inherited) => {
 };
 
 /** 一个测试文件里的全部用例：完整标题、AC 编号、执行方式。 */
-export function scanTestFile(file, root = ROOT) {
+export function scanTestFile(file, root = ROOT, problems = []) {
   const text = readFileSync(file, 'utf8');
   const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const constants = fileConstants(source);
   const cases = [];
   const relativeFile = relative(root, file);
+  const resolver = scopeResolver(source, relativeFile, problems);
   const visit = (node, stack) => {
     const callee = ts.isCallExpression(node) ? testCallee(node.expression) : null;
     if (!callee) return ts.forEachChild(node, (child) => visit(child, stack));
-    const own = titleText(node.arguments[0]);
+    const own = titleText(node.arguments[0], resolver);
     const placeholders = /\$\w|%[sidfjo#]|\$\{…\}/.test(own);
-    const tableIds = callee.table && placeholders ? extractIds(literals(callee.table, constants).join(' ')) : [];
+    const tableIds = callee.table && placeholders ? extractIds(literals(callee.table, resolver).join(' ')) : [];
     const frame = { title: own, ids: [...extractIds(own), ...tableIds], mode: modeOf(callee.mods, stack.mode) };
     if (callee.base === 'describe') {
       const next = { titles: [...stack.titles, own], ids: [...stack.ids, ...frame.ids], mode: frame.mode };
@@ -161,10 +282,10 @@ export function scanTestFile(file, root = ROOT) {
   return cases;
 }
 
-export function scanTests(paths, root = ROOT) {
+export function scanTests(paths, root = ROOT, problems = []) {
   return paths
     .flatMap((p) => listFiles(resolve(root, p), (f) => /\.test\.(ts|tsx|mts|js|mjs)$/.test(f)))
-    .flatMap((file) => scanTestFile(file, root));
+    .flatMap((file) => scanTestFile(file, root, problems));
 }
 
 /** 展开配置里的分组范围；后面的分组不重复计入前面已有的编号。 */
@@ -205,9 +326,9 @@ function statusOf(id, defined, auto, mapped, note, problems) {
 /** 计算每条 AC 的覆盖结论；problems 收集映射失效、状态矛盾等需要人工处理的问题。 */
 export function computeCoverage(config, root = ROOT) {
   const definitions = scanDefinitions(config.definitions, root);
-  const cases = scanTests(config.tests, root);
-  const notes = config.notes ?? {};
   const problems = [];
+  const cases = scanTests(config.tests, root, problems);
+  const notes = config.notes ?? {};
   const groups = expandGroups(config.groups).map((group) => ({
     name: group.name,
     rows: group.ids.map((id) => {
