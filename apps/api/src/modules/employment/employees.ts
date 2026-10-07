@@ -2,12 +2,22 @@ import { personnelHooks } from './personnel-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { z } from 'zod';
+import {
+  EMPLOYEE_STATUS_CODES,
+  ENTRY_STATUS_CODES,
+  type EmployeeStatusCode,
+  type EntryStatusCode,
+} from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { assertRevision, auditEmployment, employmentScopePredicate, employmentCreator } from './context.js';
 import { businessDate } from './fields.js';
 import { checkPage, rowsOf } from './read-model.js';
 import type { EmploymentContext, EmploymentScope, PageQuery } from './types.js';
 
+/**
+ * 员工概要状态（R1 既有口径），F-022 起由当前生效主职版本的人员状态派生（同一口径，不另判业务类型）：
+ * 无当前记录或待入职 → pending；离职 → left；退休 → retired；其余 → employed。
+ */
 export type EmployeeStatus = 'pending' | 'employed' | 'left' | 'retired';
 export interface Employee {
   readonly id: string;
@@ -15,6 +25,16 @@ export interface Employee {
   readonly name: string;
   readonly revision: number;
   readonly status: EmployeeStatus;
+  /** 当前生效主职版本的人员状态 / 入职状态；无当前记录为空。 */
+  readonly employeeStatus: EmployeeStatusCode | null;
+  readonly entryStatus: EntryStatusCode | null;
+}
+export interface EmployeeFilters {
+  readonly status?: EmployeeStatus;
+  readonly employeeStatus?: number;
+  readonly entryStatus?: number;
+  readonly code?: string;
+  readonly name?: string;
 }
 const inputSchema = z
   .object({ code: z.string().trim().min(1).max(100), name: z.string().trim().min(1).max(200) })
@@ -41,7 +61,14 @@ export async function createEmployee(tx: Tx, ctx: EmploymentContext, input: { co
   `),
   );
   if (!inserted.length) throw new AppError('CONFLICT', '工号在当前租户已存在');
-  const after: Employee = { id, ...parsed.data, revision: 1, status: 'pending' };
+  const after: Employee = {
+    id,
+    ...parsed.data,
+    revision: 1,
+    status: 'pending',
+    employeeStatus: null,
+    entryStatus: null,
+  };
   await auditEmployment(tx, ctx, 'employment.employee.create', 'employment_employee', id, null, after);
   return after;
 }
@@ -68,12 +95,14 @@ function employeeQuery(tenantId: string, asOf: string, scope?: EmploymentScope) 
   );
   return sql`
     SELECT e.id,e.code,${personnelHooks.currentName(tenantId, sql`e.id`, sql`e.name`)} AS name,e.revision,
-      CASE WHEN r.id IS NULL THEN 'pending' WHEN r.kind='leave' THEN 'left'
-        WHEN r.kind='retirement' THEN 'retired' ELSE 'employed' END AS status
+      CASE WHEN r.id IS NULL OR s.employee_status=1 THEN 'pending' WHEN s.employee_status=8 THEN 'left'
+        WHEN s.employee_status=6 THEN 'retired' ELSE 'employed' END AS status,
+      s.employee_status::integer AS "employeeStatus",s.entry_status::integer AS "entryStatus"
     FROM employment_employees e
     LEFT JOIN employment_timeline t ON t.tenant_id=e.tenant_id AND t.employee_id=e.id
       AND t.valid_during @> ${asOf}::date
     LEFT JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+    LEFT JOIN LATERAL employment_record_status(e.tenant_id, r.id) s ON true
     WHERE e.tenant_id=${tenantId} AND ${predicate}
   `;
 }
@@ -96,17 +125,23 @@ export async function listEmployees(
   tenantId: string,
   asOf: string,
   page: PageQuery,
-  filters: { status?: EmployeeStatus; code?: string; name?: string } = {},
+  filters: EmployeeFilters = {},
   scope?: EmploymentScope,
 ): Promise<Employee[]> {
   checkPage(page);
   if (filters.status && !['pending', 'employed', 'left', 'retired'].includes(filters.status)) {
     throw new AppError('VALIDATION_FAILED', '员工状态不合法');
   }
+  if (filters.employeeStatus !== undefined && !EMPLOYEE_STATUS_CODES.includes(filters.employeeStatus as never))
+    throw new AppError('VALIDATION_FAILED', '人员状态不合法');
+  if (filters.entryStatus !== undefined && !ENTRY_STATUS_CODES.includes(filters.entryStatus as never))
+    throw new AppError('VALIDATION_FAILED', '入职状态不合法');
   return rowsOf<Employee>(
     await tx.execute(sql`
     SELECT * FROM (${employeeQuery(tenantId, asOf, scope)}) employee WHERE true
       ${filters.status ? sql`AND status=${filters.status}` : sql``}
+      ${filters.employeeStatus === undefined ? sql`` : sql`AND "employeeStatus"=${filters.employeeStatus}`}
+      ${filters.entryStatus === undefined ? sql`` : sql`AND "entryStatus"=${filters.entryStatus}`}
       ${filters.code ? sql`AND lower(code)=lower(${filters.code})` : sql``}
       ${filters.name ? sql`AND name ILIKE ${`%${filters.name}%`}` : sql``}
     ORDER BY id LIMIT ${page.limit} OFFSET ${page.offset}

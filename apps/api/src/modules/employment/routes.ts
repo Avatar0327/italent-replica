@@ -123,6 +123,7 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   router.get('/employees', async (c) => {
     const ctx = await readPageContext(c, deps, 'list', undefined, EMPLOYEE_OBJECT);
     const page = pageQuery(c);
+    await requireViewableFilters(deps, ctx, ['employeeStatus', 'entryStatus'], (key) => c.req.query(key));
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
       listEmployees(
         tx,
@@ -133,6 +134,9 @@ function registerEmployees(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
           code: c.req.query('code'),
           name: c.req.query('name'),
           status: parse(z.enum(['pending', 'employed', 'left', 'retired']).optional(), c.req.query('status')),
+          // F-022：按当前人员状态 / 入职状态筛选（原站编码）
+          employeeStatus: parse(z.coerce.number().int().optional(), c.req.query('employeeStatus')),
+          entryStatus: parse(z.coerce.number().int().optional(), c.req.query('entryStatus')),
         },
         ctx.scope,
       ),
@@ -557,6 +561,19 @@ function splitLoginEmail(body: unknown): { rawInput: unknown; email: string | un
   }
   const { loginEmail: raw, ...rest } = body as Record<string, unknown>;
   return { rawInput: rest, email: parse(loginEmail, raw) };
+}
+
+/** 不能按不可查看的字段筛选，否则可借筛选结果推断隐藏值（与人员信息列表同一口径）。 */
+async function requireViewableFilters(
+  deps: TenantRouteDeps,
+  ctx: EmploymentContext,
+  keys: readonly string[],
+  query: (key: string) => string | undefined,
+) {
+  const used = keys.filter((key) => query(key) !== undefined);
+  if (!used.length) return;
+  const viewable = await getModuleViewableFields(deps, ctx, EMPLOYEE_OBJECT);
+  if (viewable && used.some((key) => !viewable.has(key))) throw new AppError('FORBIDDEN', '筛选字段不可查看');
 }
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {

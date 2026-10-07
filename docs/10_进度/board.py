@@ -7,6 +7,7 @@
   t <ID> k=v …     改任务字段：n 名称 / ms 子阶段 / p 被修正任务 / s 状态(done|active|review|todo|blocked)
                    dev / rev / note / ev(阻塞取证说明) / deps=a,b / pr=1,2 / pr+=93；值为 - 表示删除该字段
   pr <N> k=v …      改在途 PR：s 状态 / r 轮次 / n 说明 / h+="第N轮:说明"（追加轮次记录）；pr <N> -  删除（合并后）
+  run <编号> pr=N n=任务 now=当前在做 r=轮次 who=谁在做   改“正在进行”清单一行；run <编号> -  删除
   log "<文本>"      在最近动态最前面加一条（日期取今天）
   build [--nosync] 同步统计（gh、DEC、evidence-gate）并生成 HTML，再用 node 校验渲染
 """
@@ -68,6 +69,21 @@ def cmd_pr(d, a):
             p[k] = v
 
 
+def cmd_run(d, a):
+    rows = d.setdefault("run", [])
+    key, rest = a[0], a[1:]
+    row = next((r for r in rows if r[1] == key), None)
+    if rest == ["-"]:
+        if row: rows.remove(row)
+        return
+    if not row:
+        row = [None, key, "", "", "", ""]; rows.append(row)
+    idx = {"pr": 0, "n": 2, "now": 3, "r": 4, "who": 5}
+    for k, _, v in kv(rest):
+        row[idx[k]] = (int(v) if v not in ("", "-") else None) if k == "pr" else v
+    rows.sort(key=lambda r: (r[0] is None, r[0] or 0))
+
+
 def cmd_log(d, a):
     d["log"].insert(0, [datetime.date.today().strftime("%m-%d"), a[0]])
     d["updated"] = datetime.date.today().isoformat()
@@ -127,6 +143,8 @@ def main():
             cmd_t(d, a)
         elif c == "pr":
             cmd_pr(d, a)
+        elif c == "run":
+            cmd_run(d, a)
         elif c == "log":
             cmd_log(d, a)
         elif c == "build":

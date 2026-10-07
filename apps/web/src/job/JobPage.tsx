@@ -1,10 +1,11 @@
 import { useState } from 'react';
+import { initialTenantId } from '../demo/tenant.js';
 import { JobForm } from './JobForm.js';
 import { text } from './messages.js';
 import { useJobManager, useMessages, type JobManagerState } from './useJobManager.js';
 export function JobPage() {
-  const [tenant, setTenant] = useState('');
-  const [active, setActive] = useState('');
+  const [tenant, setTenant] = useState(initialTenantId);
+  const [active, setActive] = useState(initialTenantId);
   return (
     <main>
       <h1>{text.title}</h1>
