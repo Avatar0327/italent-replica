@@ -93,6 +93,8 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
       items: { id: string; name: string }[];
     };
     expect(owners.items.map((item) => item.id)).toEqual([data.inside.orgId]);
+    // 只有带“所属管理单元”输入的对象才有该候选（库内分类与指标随所属指标库）
+    expect((await op.request('GET', '/candidates/owner-orgs?object=dimension')).status).toBe(400);
     for (const [path, item] of ownedTargets(data.inside)) {
       expect((await op.request('GET', `/${path}/${item.id}`)).status, path).toBe(200);
     }

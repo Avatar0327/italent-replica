@@ -219,6 +219,12 @@ describe('DEC-281④ 发展建议子表与类型数据源（DescriptionType）',
     expect(denied.status).toBe(409);
     expect(await reason(denied)).toBe('DESCRIPTION_TYPE_IN_USE');
     expect(await w.read(`/description-types/${action.id}`)).toEqual(typeBefore);
+    // 类型名称在租户内唯一
+    const typesBefore = await w.read('/description-types');
+    const duplicate = await w.request('POST', '/description-types', { ifMatch: 0, body: { name: '行动建议' } });
+    expect(duplicate.status).toBe(409);
+    expect(await reason(duplicate)).toBe('DESCRIPTION_TYPE_NAME_TAKEN');
+    expect(await w.read('/description-types')).toEqual(typesBefore);
     const spareNow = await w.read<{ revision: number }>(`/description-types/${spare.id}`);
     expect((await w.request('DELETE', `/description-types/${spare.id}`, { ifMatch: spareNow.revision })).status).toBe(
       200,

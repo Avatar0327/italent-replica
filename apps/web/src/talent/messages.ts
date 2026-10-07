@@ -51,6 +51,7 @@ export const text = {
   weight: '权重',
   target: '目标',
   abilityOnly: '只有能力指标可以设置权重和目标',
+  serverDefault: '保存后按缺省值',
   addDimension: '添加指标',
   chooseDimension: '选择已启用的指标',
   addRow: '添加一行',

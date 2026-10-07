@@ -203,6 +203,37 @@ describe('AC-TC-02 被引用的指标不能删除（TC-R5）', () => {
     expect(fresh.status).toBe(400);
     expect((await details(fresh)).details?.reason).toBe('DIMENSION_NOT_ENABLED');
     expect(await w.read('/criteria')).toEqual(listBefore);
+
+    // 停用不改变删除判定：仍被引用就不能删
+    const disabledView = await w.read<DimensionView>(`/dimensions/${dimension.id}`);
+    const removed = await w.request('DELETE', `/dimensions/${dimension.id}`, { ifMatch: disabledView.revision });
+    expect(removed.status).toBe(409);
+    expect((await details(removed)).details?.reason).toBe('DIMENSION_REFERENCED');
+    expect(await w.read(`/dimensions/${dimension.id}`)).toEqual(disabledView);
+  });
+
+  it('停用指标库后：已有引用照常保留、可改权重 / 目标，库下有指标仍不能删除', async () => {
+    const w = await talentWorld(testDb().db, 'tc02libkeep');
+    const { library, dimension, criterion } = await standardWithAbility(w);
+    const disabled = await w.request('PATCH', `/libraries/${library.id}`, {
+      ifMatch: library.revision,
+      body: { enabled: false },
+    });
+    expect(disabled.status, await disabled.clone().text()).toBe(200);
+    const libraryView = (await disabled.json()) as { revision: number };
+    const current = await w.read<CriterionView>(`/criteria/${criterion.id}`);
+    expect(current.dimensions[0]).toMatchObject({ dimensionId: dimension.id, weight: 40, target: 3 });
+    const kept = await w.request('PATCH', `/criteria/${criterion.id}`, {
+      ifMatch: current.revision,
+      body: { dimensions: [{ dimensionId: dimension.id, weight: 2.5, target: 4 }] },
+    });
+    expect(kept.status, await kept.clone().text()).toBe(200);
+    expect(((await kept.json()) as CriterionView).dimensions[0]).toMatchObject({ weight: 2.5, target: 4 });
+    const before = await w.read(`/libraries/${library.id}`);
+    const removed = await w.request('DELETE', `/libraries/${library.id}`, { ifMatch: libraryView.revision });
+    expect(removed.status).toBe(409);
+    expect((await details(removed)).details?.reason).toBe('LIBRARY_HAS_DIMENSIONS');
+    expect(await w.read(`/libraries/${library.id}`)).toEqual(before);
   });
 
   it('DEC-281⑦ 人才标准分类下还有人才标准时不能删除分类（原站未实测 🟡，维持）', async () => {

@@ -2,10 +2,11 @@ import type { Dimension, DimensionType, NoteKey, OwnerOrg } from './api.js';
 import { text } from './messages.js';
 import { OwnerOrgSelect } from './OwnerOrgSelect.js';
 
+/** 新增的引用行不带权重 / 目标：由服务端按规则给缺省值（能力指标权重 1，DEC-281②），前端不自行推算。 */
 export interface ReferenceDraft {
   dimensionId: string;
-  weight: number | null;
-  target: number | null;
+  weight?: number | null;
+  target?: number | null;
   displayOrder: number;
 }
 export interface CriterionDraft extends Record<string, unknown> {
@@ -124,12 +125,8 @@ function References({
   const setReference = (index: number, patch: Partial<ReferenceDraft>) =>
     set({ dimensions: value.dimensions.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
   const chosen = new Set(value.dimensions.map((item) => item.dimensionId));
-  // DEC-281②：新增能力指标引用时权重缺省 1
-  const add = (dimensionId: string) => {
-    const weight = known.get(dimensionId)?.type === 'ability' ? 1 : null;
-    const row = { dimensionId, weight, target: null, displayOrder: value.dimensions.length + 1 };
-    set({ dimensions: [...value.dimensions, row] });
-  };
+  const add = (dimensionId: string) =>
+    set({ dimensions: [...value.dimensions, { dimensionId, displayOrder: value.dimensions.length + 1 }] });
   return (
     <fieldset>
       <legend>{text.referenced}</legend>
@@ -194,6 +191,7 @@ function ReferenceRow({
             type="number"
             step="0.1"
             aria-label={text[field]}
+            placeholder={ability && field === 'weight' && item.weight === undefined ? text.serverDefault : undefined}
             title={ability ? undefined : text.abilityOnly}
             disabled={!ability}
             value={item[field] ?? ''}
