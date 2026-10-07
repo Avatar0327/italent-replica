@@ -5,7 +5,15 @@
 import { describe, expect, it } from 'vitest';
 import { parseFormula } from './parser.js';
 import { createDefaultRegistry } from './registry.js';
-import { mergeTypes, TypeInference, verdictFor, type InferredType } from './typing.js';
+import {
+  emptySource,
+  mergeTypes,
+  NO_RECORDS,
+  TypeInference,
+  verdictFor,
+  withRecordObjects,
+  type InferredType,
+} from './typing.js';
 import type { StaticKind } from './values.js';
 
 const registry = createDefaultRegistry();
@@ -152,6 +160,22 @@ describe('Def 变量', () => {
     expect(typeOf('Def(a, Today()); Def(b, AddDays(a, 1)); Year(b)')).toEqual(definite('number'));
   });
 
+  it('同一实例重新定义后，已推导过的引用改取新类型（推导缓存随登记失效）', () => {
+    const parsed = parseFormula('Def(n, 1); Def(n, 真); n');
+    if (!parsed.ok) throw new Error('公式无法解析');
+    const [first, second] = parsed.program.definitions;
+    const typing = new TypeInference({ registry });
+    typing.define(first!.name, first!.value);
+    expect(typing.infer(parsed.program.body)).toEqual(definite('number'));
+    typing.define(second!.name, second!.value);
+    expect(typing.infer(parsed.program.body)).toEqual(definite('boolean'));
+  });
+
+  it('定义值按登记之前的环境推导：Def(n, IF(真, n, "a")) 中的 n 取旧类型', () => {
+    expect(typeOf('Def(n, 1); Def(n, IF(真, n, "a")); n')).toEqual(uncertain('number', 'text'));
+    expect(typeOf('Def(n, 1); Def(n, n > 0); Def(m, IF(真, n, 假)); m')).toEqual(definite('boolean'));
+  });
+
   it('重新定义后取最后一次定义的类型', () => {
     expect(typeOf('Def(n, 1); Def(n, "a"); n')).toEqual(definite('text'));
   });
@@ -230,5 +254,32 @@ describe('verdictFor：参数要求某类型时的判定', () => {
     [uncertain(), 'uncertain'],
   ] as const)('%j 作日期参数 → %s', (type, expected) => {
     expect(verdictFor(type, 'date')).toBe(expected);
+  });
+});
+
+describe('emptySource：运行期空值的来源类型（DEC-270②）', () => {
+  it.each([
+    [definite('number'), 'number'],
+    [definite('date'), 'date'],
+    [uncertain('number', 'text'), 'number'],
+    [uncertain('date', 'number'), undefined],
+    [uncertain(), undefined],
+  ] as const)('%j → %s', (type, expected) => {
+    expect(emptySource(type)).toBe(expected);
+  });
+});
+
+describe('withRecordObjects：进入函数参数后的记录对象范围', () => {
+  it('取数函数加上自己的记录对象；其他函数沿用外层范围（同一个集合）', () => {
+    const outer: ReadonlySet<string> = new Set(['考核结果']);
+    expect([...withRecordObjects(new Set(), registry.resolve('PerformanceLastCent'))]).toEqual(['考核结果']);
+    expect(withRecordObjects(outer, registry.resolve('Year'))).toBe(outer);
+    expect(withRecordObjects(outer, undefined)).toBe(outer);
+  });
+
+  it('内容相同的范围复用同一个集合（推导缓存不随求值次数分出新桶）', () => {
+    const spec = registry.resolve('PerformanceLastCent');
+    expect(withRecordObjects(NO_RECORDS, spec)).toBe(withRecordObjects(new Set(), spec));
+    expect(withRecordObjects(new Set(['考核结果']), spec)).toBe(withRecordObjects(NO_RECORDS, spec));
   });
 });

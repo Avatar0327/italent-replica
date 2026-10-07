@@ -25,7 +25,7 @@ import {
   type FunctionSpec,
   type StaticKind,
 } from './registry.js';
-import { TypeInference, verdictFor } from './typing.js';
+import { NO_RECORDS, TypeInference, verdictFor, withRecordObjects } from './typing.js';
 import { formatIsoLike, type ExprValue, type PlainValue } from './values.js';
 
 export type ValidationResult =
@@ -65,11 +65,6 @@ export interface ValidationOptions {
    */
   readonly fieldKind?: (path: string) => StaticKind | undefined;
 }
-
-const NO_RECORDS: ReadonlySet<string> = new Set();
-
-const withRecordObjects = (records: ReadonlySet<string>, spec: FunctionSpec | undefined): ReadonlySet<string> =>
-  spec?.recordObjects?.length ? new Set([...records, ...spec.recordObjects]) : records;
 
 /**
  * 保存时的静态检查：函数名、参数个数；传入字段目录时再查未知字段；参数类型只认统一类型推导（DEC-287①）。

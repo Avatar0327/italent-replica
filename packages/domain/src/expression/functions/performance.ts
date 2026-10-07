@@ -71,8 +71,9 @@ const nth = (index: number) => `第 ${index + 1} 个参数`;
  * 第 N 年 / 第 N 次的参数角色（DEC-287①：只认统一类型推导，保存检查与计算共用）：
  * - 裸写的考核结果字段：第 N 次的排序日期字段（第一个），其余是逐行过滤条件。这是函数签名（第 N 次按“考核结果相关日期”
  *   倒序），不按类型推断。
- * - 推导为是否型 → 过滤条件；不可能是是否型（数值、文本、日期，或各可能类型里没有是否型）→ N 的候选。
- * - 不确定（可能是是否型、也可能不是）→ 位置规则：已有确定的 N 时当作过滤条件；没有时第一个当作 N，其余当作过滤条件；
+ * - 推导为是否型 → 过滤条件；不可能是是否型（数值、文本、日期，或各可能类型里没有是否型）→ N 的候选。其中类型不确定的
+ *   （如 数值 / 日期、数值 / 文本）也给保存提示（DEC-287 补充：不确定一律报错或提示）。
+ * - 不确定（可能是是否型、也可能不是）→ 位置规则：已有 N 的候选时当作过滤条件；没有时第一个当作 N，其余当作过滤条件；
  *   都给保存提示，传入字段类型目录即可消除。
  * - N 恰好一个：多于一个、没有、或是日期都报错（保存时即拒绝）。
  */
@@ -105,19 +106,23 @@ function recencyRoles(
   if (first && isDefinitely(first.type, 'date')) {
     issues.push({ severity: 'error', message: `${nth(first.index)}是日期，既不是过滤条件也不能作为 N` });
   }
+  const notes: { readonly index: number; readonly message: string }[] = [];
+  for (const entry of numbers) {
+    if (entry.type.kind !== 'uncertain') continue;
+    notes.push({ index: entry.index, message: `${nth(entry.index)}类型不确定，按 N 处理（应为不小于 1 的整数）` });
+  }
   let n = first?.node;
   for (const entry of uncertain) {
     if (n) {
       filters.push(entry.node);
-      issues.push({ severity: 'warning', message: `${nth(entry.index)}类型不确定，按过滤条件处理（应为是否型）` });
+      notes.push({ index: entry.index, message: `${nth(entry.index)}类型不确定，按过滤条件处理（应为是否型）` });
     } else {
       n = entry.node;
-      issues.push({
-        severity: 'warning',
-        message: `${nth(entry.index)}类型不确定，按位置当作 N（应为不小于 1 的整数）`,
-      });
+      notes.push({ index: entry.index, message: `${nth(entry.index)}类型不确定，按位置当作 N（应为不小于 1 的整数）` });
     }
   }
+  notes.sort((a, b) => a.index - b.index);
+  for (const note of notes) issues.push({ severity: 'warning', message: note.message });
   if (!n) issues.push({ severity: 'error', message: '缺少 N（不小于 1 的整数）' });
   return { filters, issues, ...(n ? { n } : {}), ...(dateField ? { dateField } : {}) };
 }

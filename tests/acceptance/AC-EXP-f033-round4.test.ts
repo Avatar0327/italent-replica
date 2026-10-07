@@ -299,3 +299,27 @@ describe('保存 / 单公式 / 批量一致性：同一公式三条入口的类�
     expectConsistent(throughAllPaths(formula, fields, fieldKind), expected);
   });
 });
+
+describe('空值来源的推导按节点缓存：字段类型目录的查询次数与嵌套层数无关（防平方级回退）', () => {
+  function nestedIf(depth: number): string {
+    let formula = '员工信息.出生日期';
+    for (let i = 0; i < depth; i++) formula = `IF(假, Today(), ${formula})`;
+    return `Year(${formula})`;
+  }
+
+  function catalogCalls(formula: string): number {
+    let calls = 0;
+    const fieldKind: FieldKind = () => {
+      calls++;
+      return undefined;
+    };
+    const subjects = Array.from({ length: 20 }, (_, i) => inMemorySubject(`e${i}`, { '员工信息.出生日期': null }));
+    const result = evaluateBatch([{ field: ITEM, priority: 1, formula }], subjects, { calendar: CALENDAR, fieldKind });
+    expect(result.ok && result.results['e0']![ITEM]).toEqual({ ok: true, value: num(1) });
+    return calls;
+  }
+
+  it('嵌套 3 层与 40 层的 IF，批量 20 个对象：查询次数相同', () => {
+    expect(catalogCalls(nestedIf(40))).toBe(catalogCalls(nestedIf(3)));
+  });
+});

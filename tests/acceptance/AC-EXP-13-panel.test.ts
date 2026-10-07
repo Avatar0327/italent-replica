@@ -175,7 +175,8 @@ describe('AC-EXP-13 逻辑函数：中英文名各一例', () => {
     expect(run('IF(真, 1, 1 / 0)')).toEqual(num(1));
     expect(run('AND(假, 1 / 0 > 0)')).toEqual(bool(false));
     expect(run('OR(真, 1 / 0 > 0)')).toEqual(bool(true));
-    expect(run('IF(假, 1)')).toEqual({ kind: 'empty' });
+    // 没有“否则”时的空值带来源类型（PR #108 第 4 轮 P2-3）
+    expect(run('IF(假, 1)')).toEqual({ kind: 'empty', of: 'number' });
   });
 
   it('AND / OR / IF 写成函数时按函数解析；写在两个操作数之间仍是“且 / 或”运算', () => {

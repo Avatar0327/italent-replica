@@ -14,19 +14,10 @@ import {
   type FunctionCall,
   type FunctionEnvironment,
   type FunctionRegistry,
-  type FunctionSpec,
 } from './registry.js';
 import { DEFAULT_SEMANTICS, type ExpressionSemantics } from './semantics.js';
-import { declaredType, TypeInference } from './typing.js';
-import {
-  EMPTY,
-  emptyOf,
-  KIND_LABELS,
-  type DateParts,
-  type ExprValue,
-  type PlainValue,
-  type StaticKind,
-} from './values.js';
+import { emptySource, NO_RECORDS, TypeInference, withRecordObjects } from './typing.js';
+import { EMPTY, emptyOf, KIND_LABELS, type DateParts, type ExprValue, type PlainValue } from './values.js';
 
 /** 空日期参与日期函数时的取值（DEC-270：0001-01-01）。 */
 const MIN_DATE: DateParts = Object.freeze({
@@ -39,29 +30,20 @@ const MIN_DATE: DateParts = Object.freeze({
   precision: 'date',
 });
 
-const NO_RECORDS: ReadonlySet<string> = new Set();
-
-/**
- * 函数取不到值时空结果的来源类型：返回类型确定、或几种可能都不是日期时按它标注（日期参数据此拒绝，DEC-270②）；
- * 可能是日期或未声明时不标。
- */
-function emptySourceOf(spec: FunctionSpec): StaticKind | undefined {
-  const type = declaredType(spec.returns);
-  if (type.kind !== 'uncertain') return type.kind;
-  if (!type.candidates || type.candidates.has('date')) return undefined;
-  return [...type.candidates][0];
-}
-
 interface Scope {
   readonly vars: ReadonlyMap<string, ExprValue>;
   /** 取数函数过滤时叠加的记录字段（键为完整路径，如 考核结果.年度），内层优先。 */
   readonly records: readonly Readonly<Record<string, ExprValue>>[];
+  /** 所在取数函数的记录对象名（如 考核结果）：类型推导把这些对象下的字段看作不确定，与保存检查同一范围。 */
+  readonly objects: ReadonlySet<string>;
 }
 
 export class Evaluator {
   readonly registry: FunctionRegistry;
   readonly semantics: ExpressionSemantics;
-  /** 与保存检查同一套类型推导（DEC-287）：函数按它区分参数角色；排名成员的子求值器共用同一份 Def 类型。 */
+  /**
+   * 与保存检查同一套类型推导（DEC-287）：函数按它区分参数角色，空值按它标来源类型；排名成员的子求值器共用同一份 Def 类型。
+   */
   private readonly typing: TypeInference;
 
   constructor(
@@ -75,11 +57,14 @@ export class Evaluator {
 
   run(program: Program): ExprValue {
     const vars = new Map<string, ExprValue>();
+    const scope: Scope = { vars, records: [], objects: NO_RECORDS };
     for (const definition of program.definitions) {
+      // 与保存检查同序（DEC-287①）：右侧按重新定义之前的类型求值，算完再登记新类型
+      const value = this.evaluate(definition.value, scope);
       this.typing.define(definition.name, definition.value);
-      vars.set(definition.name, this.evaluate(definition.value, { vars, records: [] }));
+      vars.set(definition.name, value);
     }
-    return this.evaluate(program.body, { vars, records: [] });
+    return this.evaluate(program.body, scope);
   }
 
   fromPlain(value: PlainValue): ExprValue {
@@ -90,7 +75,17 @@ export class Evaluator {
   }
 
   private evaluate(node: ExprNode, scope: Scope): ExprValue {
-    return this.attachPosition(node, () => this.evaluateNode(node, scope));
+    const value = this.attachPosition(node, () => this.evaluateNode(node, scope));
+    return value.kind === 'empty' && value.of === undefined ? this.sourced(value, node, scope) : value;
+  }
+
+  /**
+   * 空值的来源类型取统一类型推导（DEC-287①），与保存检查同一结论：日期参数只把来源为日期或未知的空值按 0001-01-01，
+   * 数值、文本等来源的空值计算失败（DEC-270②）。推导不出（可能是日期）时保持来源未知。
+   */
+  private sourced(value: ExprValue, node: ExprNode, scope: Scope): ExprValue {
+    const source = emptySource(this.typing.infer(node, scope.objects));
+    return source ? emptyOf(source) : value;
   }
 
   /** 失败原因没有位置时补上当前节点的位置（最内层节点优先）。 */
@@ -148,7 +143,9 @@ export class Evaluator {
           if (toCondition(this.evaluate(branch.condition, scope), this.semantics))
             return this.evaluate(branch.then, scope);
         }
-        return node.otherwise ? this.evaluate(node.otherwise, scope) : EMPTY;
+        if (node.otherwise) return this.evaluate(node.otherwise, scope);
+        // 都没命中且缺“否则”：多段 如果 等同逐层嵌套的“否则 如果”，空值来源取最后一段的类型
+        return this.sourced(EMPTY, node.branches.at(-1)!.then, scope);
       case 'call':
         return this.call(node, scope);
     }
@@ -179,21 +176,11 @@ export class Evaluator {
     const found = this.readSubjectField(path);
     if (found.status === 'found') {
       const value = this.fromPlain(found.value);
-      if (value.kind !== 'empty') return value;
-      const source = found.emptyOf ?? this.catalogKind(path);
-      return source ? emptyOf(source) : value;
+      // 批量求值里先算项目的空结果自带来源；其余空值的来源由 evaluate 按字段类型目录推导补上
+      return value.kind === 'empty' && found.emptyOf ? emptyOf(found.emptyOf) : value;
     }
     if (found.status === 'forbidden') return fail('FIELD_FORBIDDEN', `当前查看人无权读取字段 ${path}`);
     return fail('UNKNOWN_FIELD', `找不到字段或变量 ${path}${hyphenHint(path)}`);
-  }
-
-  /** 字段为空时的来源类型取自字段类型目录；目录是使用方代码，读不出时按来源未知处理。 */
-  private catalogKind(path: string): StaticKind | undefined {
-    try {
-      return this.context.fieldKind?.(path);
-    } catch {
-      return undefined;
-    }
   }
 
   /** 对象读取器是使用方代码：抛出的异常转成不透出内容的失败原因（astra 首审 P2-5）。 */
@@ -214,17 +201,17 @@ export class Evaluator {
         max === Number.POSITIVE_INFINITY ? `至少 ${min} 个` : min === max ? `${min} 个` : `${min}～${max} 个`;
       return fail('ARGUMENT_COUNT', `函数 ${node.name} 需要 ${expected}参数，实际 ${node.args.length} 个`);
     }
-    const args = spec.lazy ? [] : node.args.map((arg) => this.evaluate(arg, scope));
-    const result = spec.implement(this.functionCall(node, args, scope, spec));
-    if (result.kind !== 'empty' || result.of) return result;
-    const source = emptySourceOf(spec);
-    return source ? emptyOf(source) : result;
+    // 参数里的记录对象范围与保存检查一致：外层范围加上本函数的记录对象
+    const inner: Scope = { ...scope, objects: withRecordObjects(scope.objects, spec) };
+    const args = spec.lazy ? [] : node.args.map((arg) => this.evaluate(arg, inner));
+    // 取不到值时的空结果由 evaluate 按统一类型推导补上来源（声明的返回类型、IF 各分支的合并）
+    return spec.implement(this.functionCall(node, args, inner));
   }
 
-  private functionCall(node: CallNode, args: readonly ExprValue[], scope: Scope, spec: FunctionSpec): FunctionCall {
+  /** scope 是参数的作用域（含本函数的记录对象）。 */
+  private functionCall(node: CallNode, args: readonly ExprValue[], scope: Scope): FunctionCall {
     const semantics = this.semantics;
     const failAt = (code: FailureCode, detail: string): never => fail(code, detail, node.pos);
-    const records = spec.recordObjects?.length ? new Set(spec.recordObjects) : NO_RECORDS;
     return {
       node,
       args,
@@ -232,7 +219,7 @@ export class Evaluator {
       evaluate: (child, recordFields) =>
         this.evaluate(child, recordFields ? { ...scope, records: [...scope.records, recordFields] } : scope),
       evaluateForSubject: (child, subject) =>
-        this.forSubject(subject).evaluate(child, { vars: scope.vars, records: [] }),
+        this.forSubject(subject).evaluate(child, { vars: scope.vars, records: [], objects: scope.objects }),
       fail: failAt,
       numberArg: (values, index) => {
         const value = values[index] ?? EMPTY;
@@ -260,7 +247,7 @@ export class Evaluator {
       toText,
       toDate,
       toBoolean: (value) => toCondition(value, semantics),
-      inferType: (child) => this.typing.infer(child, records),
+      inferType: (child) => this.typing.infer(child, scope.objects),
       env: this.environment(),
     };
   }
