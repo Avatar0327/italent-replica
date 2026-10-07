@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { EstablishmentReversalOrigin } from '../employment/types.js';
 import { sql, type Tx } from '@italent/db';
 import { AppError, type ErrorCode } from '../../errors.js';
 import type { TenantContext } from '../../tenant-context.js';
@@ -37,6 +38,8 @@ export interface ApprovalContext extends TenantContext {
    * 缺省未确认，不影响审批通过的严格兜底。
    */
   readonly establishmentConfirmed?: boolean;
+  /** DEC-273：接管合席 / 交接合席由服务端标记来源，间接结算的回退只记超编警告、不要求确认（handover.ts 设置）。 */
+  readonly establishmentReversalOrigin?: EstablishmentReversalOrigin;
 }
 
 export function actorOf(ctx: ApprovalContext): string | null {

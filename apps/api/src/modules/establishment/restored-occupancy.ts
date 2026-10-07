@@ -1,6 +1,10 @@
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
-import { assertEstablishmentCapacity, type ActivationTarget } from '../employment/activation-checks.js';
+import {
+  assertEstablishmentCapacity,
+  type ActivationTarget,
+  type EstablishmentWarning,
+} from '../employment/activation-checks.js';
 import { auditEmployment } from '../employment/context.js';
 import type { LockedEmploymentBusiness } from '../employment/record-store.js';
 import type { EmploymentContext } from '../employment/types.js';
@@ -15,6 +19,9 @@ interface Segment {
   readonly until: string;
   readonly before: readonly MemberInterval[];
 }
+/** 回退使原部门超编仍放行（确认 / 服务端间接触发）时写的审计动作；编制详情按编制范围裁剪（audit/establishment-reversal.ts）。 */
+export const ESTABLISHMENT_REVERSAL_AUDIT = 'employment.establishment.exceeded-confirmed';
+
 const adjacentDay = (date: string, offset: number) =>
   new Date(Date.parse(date) + offset * 86400000).toISOString().slice(0, 10);
 
@@ -48,6 +55,7 @@ export async function assertRestoredReservation(
   business: LockedEmploymentBusiness,
   segments: readonly Segment[],
   action: string,
+  warnings?: EstablishmentWarning[],
 ) {
   const exceeded: Record<string, unknown>[] = [];
   for (const segment of segments) {
@@ -73,18 +81,23 @@ export async function assertRestoredReservation(
       );
       for (const gap of uncovered(interval, covered)) {
         const positionId = interval.fields.positionId ?? null;
-        const assessment = await assertEstablishmentCapacity(tx, ctx, {
-          businessId: business.id,
-          employeeId: business.employeeId,
-          kind: 'transfer',
-          effectiveDate: gap.from,
-          until: gap.until,
-          departmentId,
-          positionId,
-          fields: interval.fields,
-          occupancyOnly: true,
-          reversal: true,
-        });
+        const assessment = await assertEstablishmentCapacity(
+          tx,
+          ctx,
+          {
+            businessId: business.id,
+            employeeId: business.employeeId,
+            kind: 'transfer',
+            effectiveDate: gap.from,
+            until: gap.until,
+            departmentId,
+            positionId,
+            fields: interval.fields,
+            occupancyOnly: true,
+            reversal: true,
+          },
+          warnings,
+        );
         if (assessment.exceeded)
           exceeded.push({
             departmentId,
@@ -97,21 +110,14 @@ export async function assertRestoredReservation(
     }
   }
   if (!exceeded.length) return;
-  await auditEmployment(
-    tx,
-    ctx,
-    'employment.establishment.exceeded-confirmed',
-    'employment-business',
-    business.id,
-    null,
-    {
-      reason: 'ESTABLISHMENT_EXCEEDED',
-      action,
-      confirmed: ctx.establishmentConfirmed === true,
-      strictControl: exceeded.some((item) => item.strictControl === true),
-      segments: exceeded,
-    },
-  );
+  await auditEmployment(tx, ctx, ESTABLISHMENT_REVERSAL_AUDIT, 'employment-business', business.id, null, {
+    reason: 'ESTABLISHMENT_EXCEEDED',
+    action,
+    origin: ctx.establishmentReversalOrigin ?? 'explicit',
+    confirmed: ctx.establishmentConfirmed === true,
+    strictControl: exceeded.some((item) => item.strictControl === true),
+    segments: exceeded,
+  });
 }
 
 async function employeeIntervals(

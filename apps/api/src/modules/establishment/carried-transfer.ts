@@ -313,12 +313,17 @@ export async function assertReleasedEstablishment(
   warnings?: EstablishmentWarning[],
 ) {
   const { assertEstablishmentCapacity } = await import('../employment/activation-checks.js');
+  const { auditEmployment } = await import('../employment/context.js');
+  const { ESTABLISHMENT_REVERSAL_AUDIT } = await import('./restored-occupancy.js');
   const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const exceeded: Record<string, unknown>[] = [];
   for (const row of allocations.filter((row) => row.localDelta > 0 || row.inclusiveDelta > 0)) {
     const capacity = await readCapacity(tx, ctx.tenantId, row.capacityId, today);
     if (capacity.periodEnd < today) continue;
     const effectiveDate = capacity.periodStart > today ? capacity.periodStart : today;
-    await assertEstablishmentCapacity(
+    // 只回退这一周期的额度，不把其他周期既有超编归到本次命令。
+    const until = new Date(Date.parse(capacity.periodEnd) + 86400000).toISOString().slice(0, 10);
+    const assessment = await assertEstablishmentCapacity(
       tx,
       ctx,
       {
@@ -326,13 +331,30 @@ export async function assertReleasedEstablishment(
         employeeId,
         kind: 'transfer',
         effectiveDate,
-        // 只回退这一周期的额度，不把其他周期既有超编归到本次命令。
-        until: new Date(Date.parse(capacity.periodEnd) + 86400000).toISOString().slice(0, 10),
+        until,
         departmentId: capacity.orgId,
         positionId: row.positionId,
         occupancyOnly: true,
       },
       warnings,
     );
+    if (assessment.exceeded)
+      exceeded.push({
+        departmentId: capacity.orgId,
+        positionId: row.positionId,
+        from: effectiveDate,
+        until,
+        strictControl: assessment.strict,
+      });
   }
+  // 放行（确认 / 服务端间接触发 / 批量警告）的携编回退超编同样留审计，与普通回退同一动作与裁剪规则（DEC-258 / 273）。
+  if (!exceeded.length) return;
+  await auditEmployment(tx, ctx, ESTABLISHMENT_REVERSAL_AUDIT, 'employment-business', businessId, null, {
+    reason: 'ESTABLISHMENT_EXCEEDED',
+    action: 'carried-release',
+    origin: ctx.establishmentReversalOrigin ?? 'explicit',
+    confirmed: ctx.establishmentConfirmed === true,
+    strictControl: exceeded.some((item) => item.strictControl === true),
+    segments: exceeded,
+  });
 }

@@ -17,7 +17,6 @@ const NOW = '2026-10-01T01:00:00Z';
 const AUDIT = 'employment.establishment.exceeded-confirmed';
 const APPROVAL = '/api/tenant/approval';
 const USERS = '/api/tenant/permission/users';
-type World = Awaited<ReturnType<typeof carriedWorld>>;
 
 /** 可信夹具：追加一条组织版本写入负责人（人员 ID），与 AC-APV-support.setOrgRoles 相同。 */
 async function setOrgHead(db: Db, tenantId: string, orgId: string, personId: string) {

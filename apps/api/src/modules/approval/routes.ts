@@ -19,6 +19,7 @@ import { handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { registerEmploymentApprovalHooks } from '../employment/approval-hooks.js';
+import { reversalWarningHints } from '../establishment/reversal-hints.js';
 import { pageQuery, parseBody, revision, uuidParam as rawUuidParam } from '../job/context.js';
 import {
   getModuleViewableFields,
@@ -346,10 +347,12 @@ function registerTenantConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
       toUserId: input.toUserId,
       ...(input.cursor ? { cursor: input.cursor } : {}),
     };
-    const result = await command(c, deps, ctx, input, async (tx, context) => ({
-      status: 200,
-      body: await handoverExceptionAdmin(tx, context, handover, scopeSql),
-    }));
+    const result = await command(c, deps, ctx, input, async (tx, context) => {
+      const body = await handoverExceptionAdmin(tx, context, handover, scopeSql);
+      // DEC-273：合席结算回退造成超编时附不阻断提示；同事务读本命令的超编审计并按操作人范围裁剪。
+      const establishmentWarnings = await reversalWarningHints(tx, deps, context, context.commandId);
+      return { status: 200, body: establishmentWarnings.length ? { ...body, establishmentWarnings } : body };
+    });
     // R4-1：幂等重放返回台账里的首次结果，其中的实例编号按调用者当前的范围重新裁剪（不重新执行交接）。
     const body = await withTenant(deps.db, ctx.tenantId, (tx) =>
       discloseHandover(tx, ctx, result.body as HandoverResult, scopeSql),

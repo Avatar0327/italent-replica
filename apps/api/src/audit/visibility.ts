@@ -1,4 +1,6 @@
 import { CapacityAuditFields, capacityAuditChanges, visibleCapacityParts } from './establishment-capacity.js';
+import { ReversalAuditFields, type ReversalAuditAccess } from './establishment-reversal.js';
+import { ESTABLISHMENT_REVERSAL_AUDIT } from '../modules/establishment/restored-occupancy.js';
 /**
  * DEC-197 / DEC-203（PR #75 第二、三轮）：审计查询按查看人**当前**的数据范围与字段权限裁剪，不设全量读取特权。
  * 「日志审计」能力只决定能不能进入查询；每条日志能否返回，按它的对象类型复用**该业务对象自己的查看规则**：
@@ -446,6 +448,7 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
     if (entry) resolved.set(rule, entry);
   }
   const config = await resolveConfigFields(deps, ctx, present);
+  const reversal = await resolveReversalAccess(deps, ctx);
   const viewer = { tenantId: ctx.tenantId, userId: ctx.userId };
   const events = [...resolved.values()].map(
     (entry) => sql`(${eventTypes(entry.rule)}
@@ -501,9 +504,19 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
       if (configured) return configured.fields;
       if (isConfigLog(objectType, action)) return undefined;
       const rule = RULE_BY_TYPE.get(objectType);
-      return rule ? resolved.get(rule)?.fields : undefined;
+      const fields = rule ? resolved.get(rule)?.fields : undefined;
+      // DEC-273②：回退超编警告里的编制详情另按编制数据范围裁剪，任职字段权不授予编制可见性。
+      return action === ESTABLISHMENT_REVERSAL_AUDIT ? new ReversalAuditFields(fields, reversal) : fields;
     },
   };
+}
+
+/** 查看人对编制对象的查看权与数据范围（没有查看权或范围为空即不可见）。 */
+async function resolveReversalAccess(deps: Deps, ctx: TenantContext): Promise<ReversalAuditAccess> {
+  const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: ESTABLISHMENT, fields: [] });
+  if (!canView) return { visible: false, scope: null };
+  const scope = await resolveModuleScope(deps, ctx, undefined, ESTABLISHMENT);
+  return { visible: scope.hasDataPermission && (scope.all || scope.orgIds.length > 0), scope };
 }
 
 /** 序码重算汇总里查看人可见的逐人序码日志条数（第四轮 N4）。 */
@@ -701,14 +714,16 @@ export function visibleChanges(
   changes: readonly AuditFieldChange[],
   fields: ReadonlySet<string> | undefined,
 ): AuditFieldChange[] {
+  if (fields instanceof ReversalAuditFields) return fields.changes(changes);
   return fields === undefined ? [...changes] : changes.filter((change) => fieldVisible(fields, change.field));
 }
 
 /** 前后值 / 快照只留可见字段；嵌套的 fields / customFields 等容器逐层裁剪，空容器去掉。 */
 export function visibleValue(value: unknown, fields: ReadonlySet<string> | undefined, prefix = ''): unknown {
   if (fields === undefined || value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+  const source = fields instanceof ReversalAuditFields && !prefix ? fields.project(value) : value;
   const kept: Record<string, unknown> = {};
-  for (const [key, inner] of Object.entries(value)) {
+  for (const [key, inner] of Object.entries(source as Record<string, unknown>)) {
     const path = prefix ? `${prefix}.${key}` : key;
     if (
       inner !== null &&
