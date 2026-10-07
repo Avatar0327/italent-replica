@@ -90,11 +90,13 @@ describe('AC-APV-39 不可用经理按空处理', () => {
       // 申请显式清空新经理，避免任职写入资格校验先于审批解析拦截已离职经理。
       const draft = await w.application(subject.employeeId, { departmentId: s.to, directManagerId: null });
       const before = await effects(w);
+      const businessBefore = await w.business(draft.id);
       const failed = await w.submitRaw(draft);
       expect(failed.status).toBe(409);
       expect(await failed.json()).toMatchObject({ error: { details: { reason: 'APPROVAL_FIRST_NODE_EMPTY' } } });
       expect(await effects(w)).toEqual(before);
-      expect(await w.business(draft.id)).toMatchObject({ status: 'draft', revision: draft.revision });
+      expect(businessBefore).toMatchObject({ status: 'draft', revision: draft.revision });
+      expect(await w.business(draft.id)).toEqual(businessBefore);
       await w.publishedProcess({
         priority: -1,
         nodes: [{ key: 'head', approver: 'latest_record_department_head' }, DIRECT],
@@ -234,7 +236,13 @@ describe('AC-APV-41 流程匹配、虚拟仿真、UUID 规范化与租户隔离'
       expect((await b.request(b.hr.id, method, path, { body })).status).toBe(404);
     }
     const da = await a.application(sa.subject.employeeId, { departmentId: sa.to });
+    const beforeA = await effects(a);
+    const beforeB = await effects(b);
+    const businessBefore = await a.business(da.id);
     expect((await b.submitRaw(da)).status).toBe(404);
+    expect(await a.business(da.id)).toEqual(businessBefore);
+    expect(await effects(a)).toEqual(beforeA);
+    expect(await effects(b)).toEqual(beforeB);
     const va = await a.submit(da);
     const vb = await b.submit(await b.application(sb.subject.employeeId, { departmentId: sb.to }));
     expect(va.processId).toBe(pa.id);
