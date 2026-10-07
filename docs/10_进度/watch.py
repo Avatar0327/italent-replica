@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """进度窗口的 GitHub 监控：每 3 分钟查一次在途 PR，有事件就打印并退出（由进度窗口处理后重启）。
 
-事件：新开 PR、转 Ready、CI 变红、合并或关闭、停摆 → 退出提醒；新推送、CI 变绿、新评论只记到 ~/.cache/italent-progress-watch.log（省 token）。
+事件：新开 PR、转 Ready、CI 变红、合并或关闭、停摆、本机 ChatGPT 审查会话出结论 → 退出提醒；新推送、CI 变绿、新评论只记到 ~/.cache/italent-progress-watch.log（省 token）。
 停摆：CI 全绿 + 最新提交与最新评论都早于 STALL 分钟 → 视为“开发方已停、没人送审或没人处理结论”。
 状态存在 STATE 文件里，重启不丢基线；已报过的停摆同一 head 只报一次。
 """
@@ -32,6 +32,25 @@ def snapshot():
     return out
 
 
+def codex_results():
+    """本机 ChatGPT 应用的审查会话：统计每个会话文件里 task_complete 的次数，并从内容中认出 PR 号。"""
+    import glob, re
+    out = {}
+    cutoff = time.time() - 3 * 86400
+    for f in glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")):
+        if os.path.getmtime(f) < cutoff:
+            continue
+        try:
+            txt = open(f, encoding="utf8", errors="ignore").read()
+        except OSError:
+            continue
+        n = txt.count('"task_complete"')
+        m = re.search(r"italent-replica/pull/(\d+)|wt-(\d+)", txt)
+        pr = (m.group(1) or m.group(2)) if m else "?"
+        out[os.path.basename(f)[-41:-6]] = [n, pr]
+    return out
+
+
 def mins_since(iso):
     if not iso:
         return 1e9
@@ -44,6 +63,7 @@ def main():
     if os.path.exists(STATE):
         old = json.load(open(STATE))
     prev, stalled = old.get("prs"), set(old.get("stalled", []))
+    cprev = old.get("codex")
     while True:
         try:
             cur = snapshot()
@@ -71,12 +91,18 @@ def main():
             for n in prev:
                 if n not in cur:
                     ev.append(f"#{n} 已合并或关闭")
+        cx = codex_results()
+        if cprev is not None:
+            for k, (cnt, pr) in cx.items():
+                if cnt > cprev.get(k, [0, pr])[0]:
+                    ev.append(f"本机 ChatGPT 会话完成 #{pr}（{k[-12:]}，第 {cnt} 次；审查会话即出了结论，开发任务即已停下）")
+        cprev = cx
         for n, p in cur.items():
             key = f"{n}@{p['head']}@{p['nc']}"
             if p["ci"] == "green" and not p["draft"] and mins_since(p["commit"]) > STALL and mins_since(p["comment"]) > STALL and key not in stalled:
                 ev.append(f"停摆 #{n} {p['t']}：CI 绿，最新提交 {int(mins_since(p['commit']))} 分钟前，{STALL} 分钟内无评论")
                 stalled.add(key)
-        json.dump({"prs": cur, "stalled": sorted(stalled)[-200:]}, open(STATE, "w"))
+        json.dump({"prs": cur, "stalled": sorted(stalled)[-200:], "codex": cprev}, open(STATE, "w"))
         quiet = [e for e in ev if (" 新推送 " in e or " CI green" in e or " 新评论 " in e)]
         loud = [e for e in ev if e not in quiet]
         if quiet:
