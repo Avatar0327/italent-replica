@@ -1954,8 +1954,8 @@
 "k": "run",
 "pr": 96,
 "n": "重叠调入超编确认",
-"seg": "ev:d ds:n dev:d4 rev:a4 mg:w",
-"now": "第 4 轮审查出结论，待读取",
+"seg": "ev:d ds:n dev:w5 rev:d4 mg:w",
+"now": "第 4 轮主体通过，2 个新 P2 → 第 5 轮",
 "fable": "1",
 "up": "10-07 第 4 轮调到 Max"
 },
