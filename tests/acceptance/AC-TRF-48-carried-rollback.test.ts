@@ -1,9 +1,9 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { carriedWorld } from './AC-TRF-37-EST-08-support.js';
+import { carriedWorld } from './AC-TRF-47-EST-08-support.js';
 const database = useTestDb();
 
-describe('AC-TRF-38 带编调动沿已有撤销/删除路径反向调整', () => {
+describe('AC-TRF-48 带编调动沿已有撤销/删除路径反向调整', () => {
   it.each(['delete', 'revoke', 'withdraw'])('%s 恢复原细分与预留，重复命令不重复回退', async (action) => {
     const w = await carriedWorld(database().db, `carried-${action}`, { matched: false });
     const before = await w.capacities();

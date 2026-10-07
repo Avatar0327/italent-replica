@@ -44,10 +44,14 @@ export function TransferForm(props: TransferFormProps) {
 }
 
 function SelectionFields({ model, onSelection }: TransferFormProps) {
-  const visible = (field: string) => !model.catalog.viewableFields || model.catalog.viewableFields.includes(field);
-  const editable = (field: string) => !model.catalog.editableFields || model.catalog.editableFields.includes(field);
+  const visible = (field: string) =>
+    (field !== 'reasonCode' || model.preview?.basicFieldModes?.reasonCode !== 'hidden') &&
+    (!model.catalog.viewableFields || model.catalog.viewableFields.includes(field));
+  const editable = (field: string) =>
+    (field !== 'reasonCode' || model.preview?.basicFieldModes?.reasonCode !== 'readonly') &&
+    (!model.catalog.editableFields || model.catalog.editableFields.includes(field));
   const reasons = model.catalog.reasons.filter(
-    (reason) => reason.transferTypeCode === null || reason.transferTypeCode === model.transferTypeCode,
+    (reason) => !reason.transferTypeCode || reason.transferTypeCode === model.transferTypeCode,
   );
   return (
     <div className="transfer-grid">
@@ -119,19 +123,23 @@ function EffectiveDateSelection({ model, onSelection }: TransferFormProps) {
   return (
     <>
       {' '}
-      {(!model.catalog.viewableFields || model.catalog.viewableFields.includes('effectiveDate')) && (
-        <label>
-          {text.date}
-          <input
-            disabled={!!model.catalog.editableFields && !model.catalog.editableFields.includes('effectiveDate')}
-            name="effectiveDate"
-            type="date"
-            value={model.effectiveDate}
-            onChange={(event) => onSelection?.('effectiveDate', event.target.value)}
-            required
-          />
-        </label>
-      )}
+      {model.preview?.basicFieldModes?.effectiveDate !== 'hidden' &&
+        (!model.catalog.viewableFields || model.catalog.viewableFields.includes('effectiveDate')) && (
+          <label>
+            {text.date}
+            <input
+              disabled={
+                model.preview?.basicFieldModes?.effectiveDate === 'readonly' ||
+                (!!model.catalog.editableFields && !model.catalog.editableFields.includes('effectiveDate'))
+              }
+              name="effectiveDate"
+              type="date"
+              value={model.effectiveDate}
+              onChange={(event) => onSelection?.('effectiveDate', event.target.value)}
+              required
+            />
+          </label>
+        )}
     </>
   );
 }
@@ -302,7 +310,7 @@ function ReferenceControl(props: PairProps & { value: FieldValue; choices: reado
   );
 }
 
-function TransferActions({ model, onAction, busy, actionsDisabled }: TransferFormProps) {
+function TransferActions({ model, onAction, busy, actionsDisabled, submitOnly }: TransferFormProps) {
   const preview = model.preview;
   const allowed = preview?.allowedActions;
   const direct = model.initiator !== 'employee' && preview?.allowDirectTransfer;
@@ -318,9 +326,11 @@ function TransferActions({ model, onAction, busy, actionsDisabled }: TransferFor
       <button type="button" disabled={blocked || allowed?.application !== true} onClick={() => onAction?.('submit')}>
         {text.submit}
       </button>
-      <button type="button" disabled={blocked || allowed?.application !== true} onClick={() => onAction?.('draft')}>
-        {text.draft}
-      </button>
+      {!submitOnly && (
+        <button type="button" disabled={blocked || allowed?.application !== true} onClick={() => onAction?.('draft')}>
+          {text.draft}
+        </button>
+      )}
       {direct && allowed?.directList === true ? (
         <button
           type="button"

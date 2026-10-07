@@ -4,7 +4,7 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, expect, it } from 'vitest';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
-import { carriedWorld } from './AC-TRF-37-EST-08-support.js';
+import { carriedWorld } from './AC-TRF-47-EST-08-support.js';
 import { auditApi } from './AC-AUD-support.js';
 const database = useTestDb();
 let w: Awaited<ReturnType<typeof carriedWorld>>;

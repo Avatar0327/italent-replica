@@ -1,9 +1,9 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { carriedWorld } from './AC-TRF-37-EST-08-support.js';
+import { carriedWorld } from './AC-TRF-47-EST-08-support.js';
 const database = useTestDb();
 
-describe('AC-TRF-39 / DEC-173、195 带编在途投影与同日顺序', () => {
+describe('AC-TRF-49 / DEC-173、195 带编在途投影与同日顺序', () => {
   it('已物化的未来直接调动到期复查不把自身误当成调出任职', async () => {
     const w = await carriedWorld(database().db, 'carried-direct-recheck');
     const response = await w.save(await w.hired());

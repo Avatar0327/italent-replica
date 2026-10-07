@@ -1,3 +1,4 @@
+import type { TransferFormAdapter } from './transfer-adapter.js';
 import { useEffect, useRef, useState } from 'react';
 import { missingTransferRequiredFields } from '@italent/domain';
 import {
@@ -41,9 +42,13 @@ const initial: TransferFormModel = {
   customFields: {},
   preview: null,
 };
-export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' | 'manager' = 'hr') {
+export function useTransferForm(
+  tenantId: string,
+  initiator: 'hr' | 'employee' | 'manager' = 'hr',
+  adapter?: TransferFormAdapter,
+) {
   const [model, setModel] = useState<TransferFormModel>({
-    ...initial,
+    ...(adapter?.initialModel ?? initial),
     initiator,
     ...(initiator === 'hr' ? { linkage: emptyLinkage } : {}),
   });
@@ -53,10 +58,10 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' |
   const [reload, setReload] = useState(0);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const commands = useTransferCommand(tenantId, model, loadingPreview, setModel, setError, setNotice);
-  useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator);
-  useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator);
-  usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice);
+  const commands = useTransferCommand(tenantId, model, loadingPreview, setModel, setError, setNotice, adapter);
+  useCatalog(tenantId, model.effectiveDate, setModel, setError, initiator, !adapter);
+  useEmployees(tenantId, model.catalog.today, search, page, setModel, setError, initiator, !adapter);
+  usePreview(tenantId, model, commands.saved, reload, setModel, setLoadingPreview, setError, setNotice, adapter);
   // R1-T10 的联动仅接入 HR；经理自助本轮仍不提供跨对象联动。
   useContractChoices(tenantId, initiator === 'hr' ? model.employeeId : '', initiator, setModel);
   const selection = (field: 'employeeId' | 'effectiveDate' | 'transferTypeCode' | 'reasonCode', value: string) => {
@@ -77,14 +82,7 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' |
           },
     );
   };
-  const field = (source: 'preset' | 'custom', code: string, value: FieldValue) => {
-    const key = source === 'preset' ? 'fields' : 'customFields';
-    setModel((current) => {
-      const values = { ...current[key], [code]: value };
-      if (source === 'preset' && code === 'postId') delete values.sequenceId;
-      return { ...current, [key]: values };
-    });
-  };
+  const field = editField(setModel);
   const refresh = () => {
     setError('');
     setModel((current) => ({ ...current, fields: {}, customFields: {}, preview: null }));
@@ -115,7 +113,7 @@ export function useTransferForm(tenantId: string, initiator: 'hr' | 'employee' |
       setPage(next);
       selection('employeeId', '');
     },
-    referenceQuery: referenceQuery(tenantId, model, setModel, setError),
+    referenceQuery: referenceQuery(tenantId, model, setModel, setError, adapter),
     search: (value: string) => {
       selection('employeeId', '');
       setSearch(value);
@@ -131,6 +129,7 @@ function useTransferCommand(
   setModel: SetModel,
   setError: SetText,
   setNotice: SetText,
+  adapter?: TransferFormAdapter,
 ) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState<TransferBusiness | null>(null);
@@ -156,7 +155,7 @@ function useTransferCommand(
     try {
       const result = saved
         ? await submitSavedTransfer(tenantId, saved, commandId)
-        : await saveTransfer(tenantId, model, action, commandId);
+        : await (adapter?.save ?? saveTransfer)(tenantId, model, action, commandId);
       if (!result.id || !Number.isInteger(result.revision) || !result.status) throw new Error(text.unknown);
       setSaved(result);
       setNotice(savedNotice(result, action));
@@ -206,8 +205,16 @@ function useTransferCommand(
 
 type SetModel = React.Dispatch<React.SetStateAction<TransferFormModel>>;
 type SetText = React.Dispatch<React.SetStateAction<string>>;
-function useCatalog(tenantId: string, date: string, setModel: SetModel, setError: SetText, initiator: string) {
+function useCatalog(
+  tenantId: string,
+  date: string,
+  setModel: SetModel,
+  setError: SetText,
+  initiator: string,
+  enabled: boolean,
+) {
   useEffect(() => {
+    if (!enabled) return;
     const controller = new AbortController();
     const query = `?initiator=${initiator}${date ? `&effectiveDate=${encodeURIComponent(date)}` : ''}`;
     void transferRequest<TransferCatalog>(tenantId, `${TRANSFER_API}/catalog${query}`, { signal: controller.signal })
@@ -226,7 +233,7 @@ function useCatalog(tenantId: string, date: string, setModel: SetModel, setError
         if (!controller.signal.aborted) setError(requestError(cause));
       });
     return () => controller.abort();
-  }, [tenantId, date, setModel, setError, initiator]);
+  }, [tenantId, date, setModel, setError, initiator, enabled]);
 }
 function useEmployees(
   tenantId: string,
@@ -236,9 +243,10 @@ function useEmployees(
   setModel: SetModel,
   setError: SetText,
   initiator: string,
+  enabled: boolean,
 ) {
   useEffect(() => {
-    if (!today) return;
+    if (!enabled || !today) return;
     const controller = new AbortController();
     const query = new URLSearchParams({
       asOf: today,
@@ -270,7 +278,7 @@ function useEmployees(
         if (!controller.signal.aborted) setError(requestError(cause));
       });
     return () => controller.abort();
-  }, [tenantId, today, search, page, setModel, setError, initiator]);
+  }, [tenantId, today, search, page, setModel, setError, initiator, enabled]);
 }
 function usePreview(
   tenantId: string,
@@ -281,6 +289,7 @@ function usePreview(
   setBusy: React.Dispatch<React.SetStateAction<boolean>>,
   setError: SetText,
   setNotice: SetText,
+  adapter?: TransferFormAdapter,
 ) {
   const input = JSON.stringify(previewInput(model));
   useEffect(() => {
@@ -291,7 +300,7 @@ function usePreview(
     const controller = new AbortController();
     setBusy(true);
     const timer = setTimeout(() => {
-      void loadPreview(tenantId, model, controller.signal)
+      void (adapter?.loadPreview ?? loadPreview)(tenantId, model, controller.signal)
         .then((result) => {
           if (controller.signal.aborted) return;
           setModel((current) => ({ ...current, ...result }));
@@ -313,7 +322,7 @@ function usePreview(
       controller.abort();
     };
     // input covers the scalar selection and explicit edits; returned defaults never trigger another request.
-  }, [tenantId, model.employeeId, input, saved, reload, setModel, setBusy, setError, setNotice]);
+  }, [tenantId, model.employeeId, input, saved, reload, setModel, setBusy, setError, setNotice, adapter]);
 }
 async function loadPreview(tenantId: string, model: TransferFormModel, signal: AbortSignal) {
   const preview = await transferRequest<TransferPreview>(
@@ -338,15 +347,22 @@ async function loadPreview(tenantId: string, model: TransferFormModel, signal: A
   return { preview, departments: departments.items, ...references };
 }
 
-function referenceQuery(tenantId: string, model: TransferFormModel, setModel: SetModel, setError: SetText) {
+function referenceQuery(
+  tenantId: string,
+  model: TransferFormModel,
+  setModel: SetModel,
+  setError: SetText,
+  adapter?: TransferFormAdapter,
+) {
   return async (code: string, name: string, page: number) => {
     try {
-      const result = await queryReferences(tenantId, model, code, name, page);
+      const result = await (adapter?.queryReferences ?? queryReferences)(tenantId, model, code, name, page);
       setModel((current) => {
         if (
           current.employeeId !== model.employeeId ||
           current.effectiveDate !== model.effectiveDate ||
-          current.transferTypeCode !== model.transferTypeCode
+          current.transferTypeCode !== model.transferTypeCode ||
+          current.fields.departmentId !== model.fields.departmentId
         )
           return current;
         return code === 'departmentId'
@@ -383,4 +399,17 @@ function savedNotice(result: TransferBusiness, action: TransferAction) {
   if (result.status === 'draft') return text.draftSaved;
   if (action === 'direct') return result.status === 'effective' ? text.effective : text.scheduled;
   return text.submitted;
+}
+
+function editField(setModel: SetModel) {
+  return (source: 'preset' | 'custom', code: string, value: FieldValue) => {
+    const key = source === 'preset' ? 'fields' : 'customFields';
+    setModel((current) => {
+      const values = { ...current[key], [code]: value };
+      if (source === 'preset' && code === 'postId') delete values.sequenceId;
+      if (current.initiator === 'employee' && source === 'preset' && code === 'departmentId')
+        delete values.directManagerId;
+      return { ...current, [key]: values };
+    });
+  };
 }

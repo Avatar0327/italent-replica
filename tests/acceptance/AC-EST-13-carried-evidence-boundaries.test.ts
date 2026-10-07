@@ -1,6 +1,6 @@
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
-import { carriedWorld } from './AC-TRF-37-EST-08-support.js';
+import { carriedWorld } from './AC-TRF-47-EST-08-support.js';
 const database = useTestDb();
 
 it('AC-EST-13 / 需取证 #78 多方案时不自行决定分配，也不写入部分调编', async () => {

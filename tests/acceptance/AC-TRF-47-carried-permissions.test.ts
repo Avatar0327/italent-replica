@@ -4,11 +4,11 @@ import { MODULE_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { ADAPTERS } from '../../apps/api/src/modules/approval/adapters.js';
-import { carriedWorld } from './AC-TRF-37-EST-08-support.js';
+import { carriedWorld } from './AC-TRF-47-EST-08-support.js';
 import { tenantApi } from './support/tenant-api.js';
 const database = useTestDb();
 
-it('AC-TRF-37 带编标志进入审批值和变化字段，受字段授权与盲审规则控制', async () => {
+it('AC-TRF-47 带编标志进入审批值和变化字段，受字段授权与盲审规则控制', async () => {
   const w = await carriedWorld(database().db, 'carried-approval-field');
   const response = await w.save(await w.hired(), { mode: 'application' });
   expect(response.status).toBe(201);
@@ -32,7 +32,7 @@ it('AC-TRF-37 带编标志进入审批值和变化字段，受字段授权与盲
   expect(MODULE_OBJECTS.employmentRecord.fields).toContainEqual({ code: 'withEstablishment', system: false });
 });
 
-it('AC-TRF-37 无带编字段编辑权时拒绝整个请求，不调编', async () => {
+it('AC-TRF-47 无带编字段编辑权时拒绝整个请求，不调编', async () => {
   const w = await carriedWorld(database().db, 'carried-write-denied');
   const person = await w.hired();
   const api = tenantApi(w.db, {

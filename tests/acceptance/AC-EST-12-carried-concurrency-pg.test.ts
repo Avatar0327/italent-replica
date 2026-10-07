@@ -1,7 +1,7 @@
 import { sql, withTenant, type Db } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { carriedWorld } from './AC-TRF-37-EST-08-support.js';
+import { carriedWorld } from './AC-TRF-47-EST-08-support.js';
 import { rowsOf } from '../../apps/api/src/modules/establishment/store.js';
 
 const database = useTestDb();

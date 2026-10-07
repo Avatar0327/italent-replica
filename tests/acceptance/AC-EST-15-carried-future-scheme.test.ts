@@ -1,6 +1,6 @@
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
-import { carriedWorld } from './AC-TRF-37-EST-08-support.js';
+import { carriedWorld } from './AC-TRF-47-EST-08-support.js';
 const database = useTestDb();
 
 it('AC-EST-15 尚未生效的另一方案及容量不干扰当前有效的唯一成对方案', async () => {

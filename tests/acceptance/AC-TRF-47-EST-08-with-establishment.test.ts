@@ -1,11 +1,11 @@
 import { useTestDb } from '@italent/testkit';
 import { sql, withTenant } from '@italent/db';
 import { describe, expect, it } from 'vitest';
-import { carriedWorld } from './AC-TRF-37-EST-08-support.js';
+import { carriedWorld } from './AC-TRF-47-EST-08-support.js';
 import { rowsOf } from '../../apps/api/src/modules/establishment/store.js';
 
 const database = useTestDb();
-describe('AC-TRF-37 / AC-EST-08 DEC-181 保存即调编', () => {
+describe('AC-TRF-47 / AC-EST-08 DEC-181 保存即调编', () => {
   it.each([true, false])('匹配细分=%s，未来调动保存即增减，组织总量始终平衡', async (matched) => {
     const w = await carriedWorld(database().db, `carried-${matched}`, { matched });
     const person = await w.hired();
@@ -76,7 +76,7 @@ describe('AC-TRF-37 / AC-EST-08 DEC-181 保存即调编', () => {
     expect(await w.history()).toEqual([]);
   });
 
-  it('AC-TRF-39 迟到执行按实际日落地，不重复增加保存时已转移的编制', async () => {
+  it('AC-TRF-49 迟到执行按实际日落地，不重复增加保存时已转移的编制', async () => {
     const w = await carriedWorld(database().db, 'carried-late');
     const response = await w.save(await w.hired(), { mode: 'application', submit: true });
     expect(response.status, await response.clone().text()).toBe(201);

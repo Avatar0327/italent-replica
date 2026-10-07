@@ -35,7 +35,7 @@ function model(fields: string[] = ['withEstablishment']): TransferFormModel & { 
     },
   };
 }
-it('AC-TRF-45 共用调动表单按字段权限显示带编开关，隐藏或只读不放开编辑', async () => {
+it('AC-TRF-50 共用调动表单按字段权限显示带编开关，隐藏或只读不放开编辑', async () => {
   const { TransferForm } = (await import(web('self-service/shared/TransferForm.tsx'))) as { TransferForm: unknown };
   const render = (m: TransferFormModel) => renderToStaticMarkup(createElement(TransferForm, { model: m }));
   expect(render(model())).toContain('name="withEstablishment"');
@@ -44,7 +44,7 @@ it('AC-TRF-45 共用调动表单按字段权限显示带编开关，隐藏或只
   const html = render({ ...readonly, catalog: { ...readonly.catalog, editableFields: [] } });
   expect(html).toMatch(/<input(?=[^>]*name="withEstablishment")(?=[^>]*disabled="")[^>]*>/);
 });
-it('AC-TRF-45 共用保存载荷保留带编选项；无编辑权不提交该字段，显式 false 保留', async () => {
+it('AC-TRF-50 共用保存载荷保留带编选项；无编辑权不提交该字段，显式 false 保留', async () => {
   const { transferBody } = (await import(web('transfer/api.ts'))) as {
     transferBody: (m: TransferFormModel, action: string) => object;
   };
