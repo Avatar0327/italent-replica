@@ -1,3 +1,4 @@
+import { CapacityAuditFields, capacityAuditChanges, visibleCapacityParts } from './establishment-capacity.js';
 /**
  * DEC-197 / DEC-203（PR #75 第二、三轮）：审计查询按查看人**当前**的数据范围与字段权限裁剪，不设全量读取特权。
  * 「日志审计」能力只决定能不能进入查询；每条日志能否返回，按它的对象类型复用**该业务对象自己的查看规则**：
@@ -267,6 +268,7 @@ const RULES: readonly Rule[] = [
   ),
   // 组织编码预占：业务接口 visible(scope, undefined) 只有看全部才能操作
   { types: ['org_code_reservation'], objectCode: ORG, visible: seeAllOnly },
+  // DEC-216 / F-018：带编增减与回退沿用容量对象归属；细分数组另按子字段投影。
   orgRule(['establishment-capacity'], ESTABLISHMENT, (row, viewer) =>
     creatorSql(viewer.tenantId, row.objectId, 'establishment.capacity.create', 'establishment-capacity'),
   ),
@@ -498,14 +500,20 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
   const run = resolved.get(orderRun);
   const orgRun = resolved.get(RULE_BY_TYPE.get('org-adjustment-run')!);
   const linkage = [...resolved.values()].find((entry) => entry.linkage)?.linkage;
+  const capacityFields = resolved.get(RULE_BY_TYPE.get('establishment-capacity')!)?.fields;
+  const normalChanges =
+    capacityFields instanceof CapacityAuditFields
+      ? sql`CASE WHEN audit_events.object_type='establishment-capacity'
+      THEN ${capacityAuditChanges(capacityFields, sql`audit_events.changes`)} ELSE audit_events.changes END`
+      : sql`audit_events.changes`;
   return {
     linkagePaths: linkage
       ? sql`CASE WHEN audit_events.object_type=${TRANSFER_LINKAGE} THEN ${linkage.paths} END`
       : sql`NULL::text[]`,
     eventChanges: linkage
       ? sql`CASE WHEN audit_events.object_type=${TRANSFER_LINKAGE} THEN ${linkage.changes}
-          ELSE audit_events.changes END`
-      : sql`audit_events.changes`,
+          ELSE ${normalChanges} END`
+      : normalChanges,
     dataChanges: sql`(${sql.join([...events, configPredicate(config, field)], sql` OR `)})`,
     operationLogs: sql`(${sql.join([...tasks.map((task) => task.whole), configTypes(TASK)], sql` OR `)})`,
     visibleRows: sql`(CASE WHEN ${hasItems()} THEN (SELECT COALESCE(jsonb_agg(item->'rowIndex'), '[]'::jsonb)
@@ -556,7 +564,10 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
     rule,
     scope,
     inputs: { extra: null, objectFields },
-    fields: fixed ?? objectFields,
+    fields:
+      rule.types.includes('establishment-capacity') && objectFields
+        ? new CapacityAuditFields(objectFields)
+        : (fixed ?? objectFields),
     ...(linkage ? { linkage } : {}),
   };
 }
@@ -664,13 +675,20 @@ function configPredicate(config: ReadonlyMap<string, ResolvedConfig>, field: str
 function fieldScope(fields: ReadonlySet<string> | undefined, field: string | undefined): SQL {
   if (fields === undefined) return sql`true`;
   if (field !== undefined && !fieldVisible(fields, field)) return sql`false`;
+  if (field !== undefined && fields instanceof CapacityAuditFields)
+    return sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${capacityAuditChanges(fields, sql`audit_events.changes`)}) c
+      WHERE c->>'field'=${field} OR right(c->>'field',${field.length + 1})=${`.${field}`})`;
   return changedVisible(EVENT, fields);
 }
 
 /** 该日志（表或别名）至少有一个字段变化在可见字段内。 */
 function changedVisible(table: string, fields: ReadonlySet<string> | undefined): SQL {
   if (fields === undefined) return sql`true`;
-  return sql`EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(${sql.identifier(table)}.changes, '[]'::jsonb))
+  const changes =
+    fields instanceof CapacityAuditFields
+      ? capacityAuditChanges(fields, sql`${sql.identifier(table)}.changes`)
+      : sql`${sql.identifier(table)}.changes`;
+  return sql`EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(${changes}, '[]'::jsonb))
       visible_change
     WHERE (CASE WHEN visible_change->>'field' LIKE 'customFields.%'
       THEN 'custom:' || substr(visible_change->>'field', 14)
@@ -732,7 +750,8 @@ export function visibleValue(value: unknown, fields: ReadonlySet<string> | undef
       const nested = visibleValue(inner, fields, path) as Record<string, unknown>;
       if (Object.keys(nested).length) kept[key] = nested;
     } else if (fieldVisible(fields, path)) {
-      kept[key] = inner;
+      kept[key] =
+        fields instanceof CapacityAuditFields && key === 'subdivisions' ? visibleCapacityParts(inner, fields) : inner;
     }
   }
   return kept;

@@ -22,6 +22,7 @@ export const text = {
   date: '调动日期',
   type: '异动类型',
   reason: '调动原因',
+  withEstablishment: '带编调动',
   choose: '请选择',
   adjustment: '任职调整',
   custom: '其他任职信息',
