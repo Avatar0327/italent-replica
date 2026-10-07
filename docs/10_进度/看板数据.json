@@ -894,7 +894,7 @@
 },
 "97": {
 "s": "active",
-"r": 6,
+"r": 7,
 "n": "#92 合并后与 main 冲突（SelfServiceShell.tsx），Codex 合并 main 中；之后 astra Ultra"
 },
 "99": {
@@ -909,7 +909,7 @@
 },
 "106": {
 "s": "review",
-"r": 4,
+"r": 5,
 "n": "待 Sol Ultra"
 },
 "108": {
@@ -1997,7 +1997,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 15:45",
+"liveUpdated": "10-07 15:46",
 "chains": [
 {
 "g": "exit",
@@ -2055,10 +2055,11 @@
 "k": "run",
 "pr": 100,
 "n": "离职管理",
-"seg": "ev:d ds:a5 dev:w rev:w mg:w",
-"now": "设计 v1.5 复审出结论，待读取（关键一轮）",
+"seg": "ev:d ds:w6 dev:w rev:w mg:w",
+"now": "设计 v1.5 剩 2 个 P2，等你定第 5 轮",
 "wait": "#83 合并后写代码",
-"fable": "1"
+"fable": "1",
+"need": "1"
 },
 {
 "id": "R2-T02",
@@ -2095,9 +2096,10 @@
 "k": "run",
 "pr": 97,
 "n": "审批中心前端",
-"seg": "ev:n ds:n dev:d6 rev:w6 mg:w",
-"now": "第 6 轮出结论，待读取",
-"fable": "1"
+"seg": "ev:n ds:n dev:a7 rev:d6 mg:w",
+"now": "第 7 轮：改为后端兜底（DEC-288 止损）",
+"fable": "1",
+"up": "10-07 调到 Max"
 },
 {
 "id": "F-029",
@@ -2177,9 +2179,10 @@
 "o": 1,
 "k": "run",
 "n": "人才标准与指标库",
-"seg": "ev:d ds:n dev:d4 rev:w4 mg:w",
-"now": "第 4 轮出结论，待读取",
-"pr": 106
+"seg": "ev:w ds:n dev:w5 rev:d4 mg:w",
+"now": "第 4 轮 2 个小 P2，等你定第 5 轮",
+"pr": 106,
+"need": "1"
 },
 {
 "id": "R3-T03",
@@ -2216,8 +2219,8 @@
 "k": "run",
 "pr": 102,
 "n": "AC 覆盖运行时统计",
-"seg": "ev:n ds:n dev:d4 rev:w4 mg:w",
-"now": "第 4 轮开发完成，待发起审查",
+"seg": "ev:n ds:n dev:d4 rev:a4 mg:w",
+"now": "第 4 轮审查中（codex exec）",
 "up": "10-07 调到 Max"
 },
 {
@@ -2312,9 +2315,10 @@
 "n": "权限框架强制",
 "u": "已核对，待开会话",
 "fable": "1",
-"seg": "ev:n ds:a2 dev:w rev:w mg:w",
-"now": "设计 v2 复审出结论，待读取",
-"pr": 110
+"seg": "ev:n ds:a3 dev:w rev:w mg:w",
+"now": "设计 v3 修订中（可能缩小 PR-A 范围）",
+"pr": 110,
+"up": "10-07 调到 Max"
 },
 {
 "id": "F-040",
