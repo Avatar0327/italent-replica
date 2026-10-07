@@ -120,12 +120,11 @@ describe('P2-3 短字段名：依赖排序与求值共用同一套解析规则',
 });
 
 describe('P2-4 直接自引用是循环依赖', () => {
-  it('全名与短名自引用都返回 CYCLIC_DEPENDENCY', () => {
+  it('全名与短名自引用都识别为循环依赖：保存时提示（DEC-274），计算时 CYCLIC_DEPENDENCY', () => {
     for (const formula of ['盘点对象.a + 1', 'a + 1']) {
       const ordered = orderComputationItems([item('盘点对象.a', 1, formula)]);
-      expect(ordered.ok).toBe(false);
-      if (ordered.ok || ordered.failure.code !== 'CYCLIC_DEPENDENCY') throw new Error('应当报循环依赖');
-      expect(ordered.failure.cycle).toEqual(['盘点对象.a', '盘点对象.a']);
+      if (!ordered.ok) throw new Error('DEC-274：保存不拦截循环依赖');
+      expect(ordered.cycles).toEqual([['盘点对象.a', '盘点对象.a']]);
     }
     const batch = evaluateBatch(
       [item('盘点对象.a', 1, '盘点对象.a + 1')],

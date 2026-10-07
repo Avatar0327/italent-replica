@@ -1,6 +1,6 @@
 /**
  * AC-EXP-15 DEC-265：日期与数学函数细节照原站（取证 Q-M0-83 实算，`26` §8.7；以盘点实际计算为准），
- * 以及同优先级按依赖排序、保存时循环依赖即拒绝（Q-M0-84，R3-T00 已实现，这里补测试确认）。
+ * 以及同优先级按依赖排序（Q-M0-84，R3-T00 已实现，这里补测试确认）；循环依赖由 DEC-274 修订为保存提示（见 AC-EXP-18）。
  */
 import { evaluateFormula, orderComputationItems, type EvaluationContext, type EvaluationResult } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
@@ -94,7 +94,7 @@ describe('DEC-265 除以 0 计算失败', () => {
   });
 });
 
-describe('DEC-265 同优先级按依赖排序、保存时循环依赖即拒绝（Q-M0-84，R3-T00 现实现，补测试确认）', () => {
+describe('DEC-265 同优先级按依赖排序（Q-M0-84）；循环依赖按 DEC-274 保存提示', () => {
   it('同为优先级 2：“能力”排在前面但引用“能力总得分”，排序后先算能力总得分', () => {
     const ordered = orderComputationItems([
       { field: '盘点对象.能力', priority: 2, formula: '如果 盘点对象.能力总得分 >= 4 那么 3 否则 1' },
@@ -104,16 +104,12 @@ describe('DEC-265 同优先级按依赖排序、保存时循环依赖即拒绝�
     if (ordered.ok) expect(ordered.order.map((item) => item.field)).toEqual(['盘点对象.能力总得分', '盘点对象.能力']);
   });
 
-  it('同优先级互相引用 → CYCLIC_DEPENDENCY，列出环，拒绝保存', () => {
+  it('同优先级互相引用：保存时只提示、不拒绝（DEC-274 修订 DEC-265，用例见 AC-EXP-18）', () => {
     const ordered = orderComputationItems([
       { field: '盘点对象.a', priority: 1, formula: '盘点对象.b + 1' },
       { field: '盘点对象.b', priority: 1, formula: '盘点对象.a + 1' },
     ]);
-    expect(ordered.ok).toBe(false);
-    if (!ordered.ok) {
-      expect(ordered.failure).toMatchObject({ code: 'CYCLIC_DEPENDENCY' });
-      expect(ordered.failure.message).toContain('盘点对象.a');
-      expect(ordered.failure.message).toContain('盘点对象.b');
-    }
+    expect(ordered.ok).toBe(true);
+    if (ordered.ok) expect(ordered.cycles).toEqual([['盘点对象.a', '盘点对象.b', '盘点对象.a']]);
   });
 });

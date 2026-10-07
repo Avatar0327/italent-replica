@@ -36,7 +36,7 @@ describe('AC-EXP-12 计算优先级与依赖顺序', () => {
     expect(ordered.warnings).toHaveLength(1);
   });
 
-  it('循环依赖：CYCLIC_DEPENDENCY 并列出环上的字段', () => {
+  it('循环依赖（DEC-274）：保存不拦截，排序结果列出环上的字段并给出提示', () => {
     const items = [
       item('盘点对象.a', 1, '盘点对象.b + 1'),
       item('盘点对象.b', 1, '盘点对象.c + 1'),
@@ -44,11 +44,10 @@ describe('AC-EXP-12 计算优先级与依赖顺序', () => {
       item('盘点对象.d', 1, '1'),
     ];
     const ordered = orderComputationItems(items);
-    expect(ordered.ok).toBe(false);
-    if (ordered.ok) return;
-    expect(ordered.failure.code).toBe('CYCLIC_DEPENDENCY');
-    if (ordered.failure.code !== 'CYCLIC_DEPENDENCY') return;
-    expect(ordered.failure.cycle).toEqual(['盘点对象.a', '盘点对象.b', '盘点对象.c', '盘点对象.a']);
+    expect(ordered.ok).toBe(true);
+    if (!ordered.ok) return;
+    expect(ordered.cycles).toEqual([['盘点对象.a', '盘点对象.b', '盘点对象.c', '盘点对象.a']]);
+    expect(ordered.warnings.join('\n')).toContain('盘点对象.a→盘点对象.b→盘点对象.c→盘点对象.a');
   });
 
   it('公式有语法错误的项目在排序阶段就报错并给出位置', () => {
@@ -113,7 +112,7 @@ describe('AC-EXP-12 批量求值：每个对象得到值或失败原因，后算
     });
   });
 
-  it('循环依赖时整批不执行，返回排序失败', () => {
+  it('循环依赖时整批不执行，返回计算失败（DEC-274）', () => {
     const cyclic = [item('盘点对象.a', 1, '盘点对象.b'), item('盘点对象.b', 1, '盘点对象.a')];
     const batch = evaluateBatch(cyclic, subjects, { calendar: CALENDAR });
     expect(batch).toMatchObject({ ok: false, failure: { code: 'CYCLIC_DEPENDENCY' } });
