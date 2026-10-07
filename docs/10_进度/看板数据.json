@@ -1850,7 +1850,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 10:42",
+"liveUpdated": "10-07 10:44",
 "chains": [
 {
 "g": "exit",
@@ -1935,8 +1935,8 @@
 "k": "run",
 "pr": 96,
 "n": "重叠调入超编确认",
-"seg": "ev:d ds:n dev:a4 rev:d3 mg:w",
-"now": "第 4 轮修改",
+"seg": "ev:d ds:n dev:d4 rev:w4 mg:w",
+"now": "第 4 轮已推送，待发起审查",
 "fable": "1"
 },
 {
