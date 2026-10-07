@@ -1,5 +1,5 @@
 import { postponeLateTransfer } from './late-transfer.js';
-import { tenantLocalDate } from '@italent/domain';
+import { resolveLateExecution, tenantLocalDate } from '@italent/domain';
 import { employmentDepartmentDisable } from '../org/employment-validity.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
 import { loadEmploymentRecord } from './read-model.js';
@@ -24,7 +24,13 @@ import { transitionEmployment } from './transitions.js';
 import type { BusinessKind, EmploymentContext, PresetFields } from './types.js';
 
 export interface ActivationFailure {
-  readonly reason: 'TARGET_ORG_DISABLED' | 'TARGET_POSITION_DISABLED' | 'ESTABLISHMENT_EXCEEDED' | 'RULE_REJECTED';
+  readonly reason:
+    | 'TARGET_ORG_DISABLED'
+    | 'TARGET_POSITION_DISABLED'
+    | 'ESTABLISHMENT_EXCEEDED'
+    | 'RULE_REJECTED'
+    /** DEC-278③：迟到执行区间内另有记录，需重建、待 HR 处理（late-transfer.ts）。 */
+    | 'REBUILD_REQUIRED';
   readonly detail: Record<string, unknown>;
 }
 
@@ -102,7 +108,14 @@ export function ruleRejection(error: unknown): ActivationFailure | null {
 
 async function precheck(tx: Tx, ctx: EmploymentContext, item: PendingActivation): Promise<ActivationFailure | null> {
   const { id: businessId, employeeId, kind } = item;
-  const effectiveDate = kind === 'transfer' ? tenantLocalDate(ctx.now, ctx.timezone) : item.effectiveDate;
+  // DEC-186 / DEC-272：调动按实际执行日对齐（共用判定函数）；其他业务按原生效日。
+  const effectiveDate =
+    kind === 'transfer'
+      ? resolveLateExecution({
+          plannedEffectiveDate: item.effectiveDate,
+          executionDate: tenantLocalDate(ctx.now, ctx.timezone),
+        }).effectiveDate
+      : item.effectiveDate;
   const record = item.materialized ? await loadEmploymentRecord(tx, ctx.tenantId, businessId, effectiveDate) : null;
   const departmentId = record ? record.fields.departmentId : item.departmentId;
   const positionId = record ? record.fields.positionId : item.positionId;

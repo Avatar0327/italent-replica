@@ -83,8 +83,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-ORG-34 真实 PG 交�
 });
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-ORG-34 全局业务→组织锁序', () => {
-  it.each([false, true])('等待组织锁时已持有需联动的旧业务头（迟到=%s）', async (late) => {
-    const w = await activationWorld(database().db, `org34business${late}`);
+  it('等待组织锁时已持有需联动的旧业务头', async () => {
+    const w = await activationWorld(database().db, 'org34business');
     const person = await w.hired();
     const api = tenantApi(w.db, { clock: () => new Date('2026-10-01T01:00:00Z') });
     const rename = (id: string) =>
@@ -94,21 +94,12 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-ORG-34 全局业务�
         ifMatch: 1,
         body: { name: '全局锁序改名', effectiveDate: '2026-10-09', addEmployment: true },
       });
-    let businessId = person.hire.id;
-    if (late) {
-      await w.session.business(
-        person.employee.id,
-        { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { departmentId: w.to.id } },
-        person.hire.employeeRevision,
-      );
-      expect((await rename(w.to.id)).status).toBe(200);
-      businessId = (await w.session.records(person.employee.id, '2026-10-09')).find((r) => r.isCurrent)!.id;
-    }
+    const businessId = person.hire.id;
     let pending: Promise<unknown> | undefined;
     let businessLocked = false;
     await withTenant(w.db, w.session.tenant.id, async (barrier) => {
       await barrier.execute(sql`SELECT tenant_id FROM org_settings WHERE tenant_id=${w.session.tenant.id} FOR UPDATE`);
-      pending = late ? w.runScheduler('2026-10-10T01:00:00Z') : rename(w.from.id);
+      pending = rename(w.from.id);
       let waiting = false;
       for (let i = 0; i < 200; i++) {
         const result = await w.db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity

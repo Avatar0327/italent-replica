@@ -3,7 +3,7 @@ import type { Tx } from '@italent/db';
 import { loadJobObject } from '../job/read-model.js';
 import { managerForTransferDepartment } from '../transfer/preview-defaults.js';
 import { readPositionAssignments } from './personnel-reader.js';
-import type { BusinessKind, PresetField, PresetFields } from './types.js';
+import type { BusinessKind, PresetFields } from './types.js';
 
 export type DerivationRule = 'post-sequence' | 'department-manager' | 'position-manager';
 export interface FieldDerivation {
@@ -103,14 +103,4 @@ export async function derivePresetFields(
     origins.push(origin);
   }
   return { values, origins };
-}
-
-export type FieldOrigin = 'explicit' | 'business-derived' | 'predecessor';
-export function presetFieldOrigin(
-  field: PresetField,
-  explicit: ReadonlySet<string>,
-  origins: readonly FieldDerivation[],
-): FieldOrigin {
-  if (origins.some((origin) => rules[origin.rule].field === field)) return 'business-derived';
-  return explicit.has(`preset:${field}`) ? 'explicit' : 'predecessor';
 }

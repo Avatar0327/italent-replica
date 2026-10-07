@@ -39,7 +39,7 @@ interface TrustedFormSnapshot {
   readonly autoPopulate?: boolean;
   readonly excludedAutofillFields?: readonly string[];
   readonly fieldDerivations?: readonly FieldDerivation[];
-  /** F-007 复制插入点快照（DEC-137 / `10` §17）：不应用表单矩阵，重建时整条取自新前驱。 */
+  /** F-007 复制插入点快照（DEC-137 / `10` §17）：不应用表单矩阵，整条复制自前驱；只作来源标记。 */
   readonly copiesPredecessor?: boolean;
 }
 export interface PreparedInheritance {
@@ -349,34 +349,6 @@ export async function resolveEffectiveInheritance(
         customFields[id] = previous?.customFields[id] ?? null;
       }
     }
-  }
-  return { fields, customFields };
-}
-
-/**
- * 迟到重建时按创建当时冻结的表单矩阵决定哪些非显式字段取自新前驱（R6-P2-03）：预置字段只继承 INHERITED_FIELDS
- * （场景留空的可编辑字段除外，DEC-163），自定义字段按冻结的继承开关或只读 / 隐藏模式；其余保留载荷原值。
- * F-007 复制记录（含存量未带标记、无字段模式的快照）整条取自前驱。继承配置之后的变更不影响已有记录（DEC-244③）。
- */
-export function predecessorInheritance(
-  payload: Pick<PreparedInheritance, 'formSnapshot' | 'fields' | 'customFields'>,
-  previous: { readonly fields: PresetFields; readonly customFields: CustomFields },
-): { fields: PresetFields; customFields: CustomFields } {
-  const form = payload.formSnapshot;
-  if (form.copiesPredecessor ?? Object.keys(form.fieldModes).length === 0)
-    return { fields: { ...previous.fields }, customFields: { ...previous.customFields } };
-  const fieldMode = (code: string): CustomMode => form.fieldModes[code] ?? 'absent';
-  const excluded = new Set(form.excludedAutofillFields ?? []);
-  const fields = { ...payload.fields };
-  for (const field of INHERITED_FIELDS) {
-    if (excluded.has(field) && fieldMode(`preset:${field}`) === 'editable') continue;
-    setField(fields, field, previous.fields[field]);
-  }
-  const customFields: Record<string, CustomValue> = { ...payload.customFields };
-  for (const id of new Set([...Object.keys(payload.customFields), ...Object.keys(previous.customFields)])) {
-    const mode = fieldMode(`custom:${id}`);
-    const inherits = (form.customInheritance[id] ?? false) || mode === 'readonly' || mode === 'hidden';
-    customFields[id] = inherits ? (previous.customFields[id] ?? null) : (payload.customFields[id] ?? null);
   }
   return { fields, customFields };
 }

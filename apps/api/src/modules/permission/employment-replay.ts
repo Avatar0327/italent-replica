@@ -88,15 +88,8 @@ export async function authorizeEmploymentResult(
     });
 }
 
-/**
- * 联动改写事件：向后更新、负责人标志补写、删除中间任职时恢复前一条的有效区间（R1-T11），
- * 以及迟到调动按最终时间轴重建组织调整（F-007，DEC-186 / 195）。
- */
-const LINKED_ACTIONS = new Set([
-  'employment.forward-update',
-  'employment.record.restore',
-  'employment.org-adjustment.rebased',
-]);
+/** 联动改写事件：向后更新、负责人标志补写，以及删除中间任职时恢复前一条的有效区间（R1-T11）。 */
+const LINKED_ACTIONS = new Set(['employment.forward-update', 'employment.record.restore']);
 
 /**
  * 本命令只经联动改写的记录：DEC-178 按 DEC-177 可见口径复查；

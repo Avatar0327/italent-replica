@@ -1,4 +1,4 @@
-/** 第六轮：自动同步同时依赖当时与最终引用，后续来源不能倒灌引用使旧同步提前生效。 */
+/** F-021 × F-007：自动同步依赖当时的引用，后续来源不能倒灌引用使旧同步提前生效。 */
 import { runEmploymentActivations } from '@italent/api';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
@@ -8,9 +8,9 @@ import { cmd } from './support/tenant-api.js';
 
 const database = useTestDb();
 
-it.each([false, true])('AC-ORG-37 同步不能借用后来恢复的引用阻断人工来源传播（迟到=%s）', async (late) => {
+it('AC-ORG-37 同步不能借用后来恢复的引用阻断人工来源传播', async () => {
   const db = database().db;
-  const w = await orgPeopleWorld(db, `r6syncprefix${late}`);
+  const w = await orgPeopleWorld(db, 'r6syncprefix');
   const org = await w.org('同步前缀部门');
   const a = await w.job('sequences', 'S_A');
   const b = await w.job('sequences', 'S_B');
@@ -62,17 +62,17 @@ it.each([false, true])('AC-ORG-37 同步不能借用后来恢复的引用阻断�
   expect((await w.record(target.id, '2026-10-09')).fields).toMatchObject({ postId: postB.id, sequenceId: x.id });
   const run = (date: string) =>
     runEmploymentActivations(db, cmd(), { tenantId: w.tenant.id }, { clock: () => new Date(`${date}T01:00:00Z`) });
-  if (!late) expect((await run('2026-10-05')).runs[0]).toMatchObject({ failed: [], errors: [] });
+  expect((await run('2026-10-05')).runs[0]).toMatchObject({ failed: [], errors: [] });
   w.setNow('2026-10-11T01:00:00Z');
-  // 历史更正只改变 middle 自身；目标仍为 B/X。重建时新的前驱提供 A/A。
+  // 历史更正只改变 middle 自身；目标仍为 B/X。
   await edit(middle.id, { postId: postA.id });
   expect((await w.record(middle.id, '2026-10-08')).fields).toMatchObject({ postId: postA.id, sequenceId: a.id });
   expect((await w.record(target.id, '2026-10-09')).fields).toMatchObject({ postId: postB.id, sequenceId: x.id });
   expect((await run('2026-10-12')).runs[0]).toMatchObject({ failed: [], errors: [] });
   expect((await w.record(source.id, '2026-10-07')).fields).toMatchObject({ postId: postB.id, sequenceId: x.id });
-  // 目标重算同步时仍引用 A，因此不能提前写入 C；后续人工来源将 A/A 传播为 B/X。
+  // 旧同步不能借 middle 恢复的引用 A 提前写入 C；人工来源的 B/X 保持。
   expect((await w.record(target.id, '2026-10-09')).fields).toMatchObject({ postId: postB.id, sequenceId: x.id });
-  expect((await w.record(transfer.id, '2026-10-12')).effectiveDate).toBe(late ? '2026-10-12' : '2026-10-05');
+  expect((await w.record(transfer.id, '2026-10-12')).effectiveDate).toBe('2026-10-05');
   const beforeRetry = await versions(db, w.tenant.id, person.id);
   expect((await run('2026-10-12')).runs[0]).toMatchObject({ failed: [], errors: [] });
   expect(await versions(db, w.tenant.id, person.id)).toEqual(beforeRetry);

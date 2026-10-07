@@ -1,6 +1,6 @@
 /**
- * #98 F-028（DEC-230）与 F-007 合并后的交叉检查：迟到重建改写历史记录的直线经理后，直接上级审批人仍取主体
- * 当前生效主职的经理，不取重建后的历史记录、也不取未来记录；当前经理为空时首节点 409 且不留下任何写入。
+ * #98 F-028（DEC-230）与 F-007 合并后的交叉检查：简单迟到执行（区间内无其他记录，DEC-278）把调动改到实际执行日后，
+ * 直接上级审批人仍取主体当前生效主职的经理，不取历史记录、也不取未来记录；当前经理为空时首节点 409 且不留下任何写入。
  */
 import { runEmploymentActivations } from '@italent/api';
 import { sql, withTenant } from '@italent/db';
@@ -55,7 +55,7 @@ async function effects(w: ApprovalWorld) {
   );
 }
 
-it.each([true, false])('AC-ORG-32 迟到重建后直接上级按当前经理派单 / 当前有经理=%s', async (hasManager) => {
+it.each([true, false])('AC-ORG-32 简单迟到执行后直接上级按当前经理派单 / 当前有经理=%s', async (hasManager) => {
   const w = await approvalWorld(database().db, `r7routing${hasManager}`);
   const org = await w.org('派单部门');
   const managerA = await w.person('历史经理 A', org);
@@ -68,14 +68,6 @@ it.each([true, false])('AC-ORG-32 迟到重建后直接上级按当前经理派�
     effectiveDate: '2026-10-05',
     fields: { directManagerId: hasManager ? managerB.employeeId : null, remarks: '迟到调动' },
   });
-  const current = await w.json<{ revision: number }>(
-    await w.request(w.hr.id, 'GET', `/api/tenant/org/organizations/${org}`),
-  );
-  const renamed = await w.request(w.hr.id, 'PATCH', `/api/tenant/org/organizations/${org}`, {
-    ifMatch: current.revision,
-    body: { name: '派单部门改名', effectiveDate: '2026-10-09', addEmployment: true },
-  });
-  expect(renamed.status, await renamed.clone().text()).toBe(200);
   const future = await directBusiness(w, subject.employeeId, {
     kind: 'org_adjustment',
     effectiveDate: '2026-10-20',
@@ -91,8 +83,8 @@ it.each([true, false])('AC-ORG-32 迟到重建后直接上级按当前经理派�
   expect(run.runs[0]).toMatchObject({ failed: [], errors: [] });
   w.setNow('2026-10-10T02:00:00Z');
   const timeline = await records(w, subject.employeeId, '2026-10-10');
-  const rebuilt = timeline.find((r) => r.kind === 'org_adjustment' && r.effectiveDate === '2026-10-09')!;
-  expect(rebuilt.fields.directManagerId).toBe(managerA.employeeId);
+  const history = timeline.find((r) => r.effectiveDate < '2026-10-05')!;
+  expect(history.fields.directManagerId).toBe(managerA.employeeId);
   expect(timeline.find((r) => r.isCurrent)).toMatchObject({
     id: late.id,
     effectiveDate: '2026-10-10',

@@ -1,5 +1,3 @@
-import { activationWorld } from './AC-TRF-activation-support.js';
-import { tenantApi } from './support/tenant-api.js';
 /** DEC-216：任职逐条审计与联动汇总按当前范围、字段查看权裁剪。 */
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
@@ -95,51 +93,3 @@ it.each([false, true])(
     expect((await viewer.get(`/data-changes/${summary.id}`, as)).status).toBe(404);
   },
 );
-
-it('AC-ORG-36 迟到重建的任职审计沿用当前范围并隐藏地点字段', async () => {
-  const w = await activationWorld(database().db, 'org36late');
-  const person = await w.hired();
-  await w.session.business(
-    person.employee.id,
-    {
-      kind: 'transfer',
-      mode: 'direct',
-      effectiveDate: '2026-10-05',
-      fields: { departmentId: w.to.id, place: '保密调入地点' },
-    },
-    person.hire.employeeRevision,
-  );
-  const api = tenantApi(w.db, { clock: () => new Date('2026-10-01T01:00:00Z') });
-  const as = { user: w.session.user.id, tenant: w.session.tenant.id };
-  const response = await api.request('PATCH', `/api/tenant/org/organizations/${w.to.id}`, {
-    ...as,
-    ifMatch: 1,
-    body: { name: '迟到审计更名', effectiveDate: '2026-10-09', addEmployment: true },
-  });
-  expect(response.status).toBe(200);
-  expect(await w.runScheduler('2026-10-10T01:00:00Z')).toMatchObject({ failed: [], errors: [] });
-  let scope: ModuleScope = {
-    all: false,
-    hasDataPermission: true,
-    personIds: [person.employee.id],
-    orgIds: [],
-    terms: [{ dimension: 'management', personIds: [person.employee.id], orgIds: [] }],
-  };
-  const authorize: Authorizer = () => true;
-  registerScopeProvider(authorize, {
-    scope: async () => scope,
-    authorize: async () => true,
-    fields: async () => new Set(['departmentId']),
-  });
-  const audit = auditApi(w.db, '2026-10-10T01:00:00Z', { authorize });
-  const rows = (await audit.dataChanges(as, { objectType: 'employment-record', limit: '100' })).items;
-  const event = rows.find((row) => row.action === 'employment.org-adjustment.rebased')!;
-  expect(event).toBeDefined();
-  const detail = await audit.dataChange(as, event.id);
-  expect(detail).toMatchObject({ before: { departmentId: w.to.id }, after: { departmentId: w.from.id } });
-  expect(JSON.stringify(detail)).not.toContain('保密调入地点');
-  expect(JSON.stringify(detail)).not.toContain('原地点');
-  expect(detail.changes.every((change) => change.field === 'departmentId')).toBe(true);
-  scope = { all: false, hasDataPermission: false, personIds: [], orgIds: [] };
-  expect((await audit.get(`/data-changes/${event.id}`, as)).status).toBe(404);
-});
