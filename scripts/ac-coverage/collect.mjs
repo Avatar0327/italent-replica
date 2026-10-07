@@ -29,26 +29,49 @@ function runWorker(config, name, profile, out) {
   });
 }
 
+/**
+ * 跨档配对：同一注册点 = 文件 + 注册位置（行:列）+ 完整标题层级。只在某一档注册的用例只带该档状态。
+ * 同一注册点在各档注册次数不同（如循环里按条件注册同名用例）时无法可靠配对，列为问题。
+ */
 function mergeProfiles(names, results) {
-  const tests = new Map();
+  const groups = new Map();
+  results.forEach((result, index) => {
+    for (const test of result.tests) {
+      const key = JSON.stringify([test.file, test.location, test.names]);
+      if (!groups.has(key)) groups.set(key, { file: test.file, names: test.names, location: test.location, modes: {} });
+      (groups.get(key).modes[names[index]] ??= []).push(test.mode);
+    }
+  });
+  const tests = [];
+  const pairing = [];
+  for (const group of groups.values()) {
+    const counts = Object.entries(group.modes).map(([profile, modes]) => `${profile} ${modes.length} 次`);
+    if (group.location === null || new Set(Object.values(group.modes).map((m) => m.length)).size > 1) {
+      const where = group.location ?? '未知位置';
+      pairing.push({
+        file: group.file,
+        message: `${group.names.join(' > ')}（${where}）无法跨档配对：${counts.join('、')}`,
+      });
+    }
+    const times = Math.max(...Object.values(group.modes).map((m) => m.length));
+    for (let i = 0; i < times; i++) {
+      const modes = Object.entries(group.modes).filter(([, list]) => i < list.length);
+      tests.push({ ...group, modes: Object.fromEntries(modes.map(([profile, list]) => [profile, list[i]])) });
+    }
+  }
+  return { tests, pairing, errors: mergeErrors(names, results) };
+}
+
+function mergeErrors(names, results) {
   const errors = new Map();
   results.forEach((result, index) => {
-    const seen = new Map();
-    for (const test of result.tests) {
-      const base = `${test.file}\u0000${JSON.stringify(test.names)}`;
-      const occurrence = seen.get(base) ?? 0;
-      seen.set(base, occurrence + 1);
-      const key = `${base}\u0000${occurrence}`;
-      if (!tests.has(key)) tests.set(key, { file: test.file, names: test.names, line: test.line, modes: {} });
-      tests.get(key).modes[names[index]] = test.mode;
-    }
     for (const error of result.errors) {
       const key = `${error.file}\u0000${error.message}`;
       if (!errors.has(key)) errors.set(key, { ...error, profiles: [] });
       errors.get(key).profiles.push(names[index]);
     }
   });
-  return { tests: [...tests.values()], errors: [...errors.values()] };
+  return [...errors.values()];
 }
 
 function profileStats(result) {

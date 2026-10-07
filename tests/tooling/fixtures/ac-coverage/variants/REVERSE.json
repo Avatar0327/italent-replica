@@ -3,7 +3,7 @@
   "groups": [
     {
       "name": "逆序",
-      "include": ["AC-DEMO-04~01"]
+      "include": ["AC-DEMO-04~01", "AC-NOPE-*"]
     }
   ]
 }

@@ -8,21 +8,26 @@ const WILDCARD_PATTERN = /^AC-([A-Z0-9]+)-\*$/;
 
 const formatId = (module, n, width) => `AC-${module}-${String(n).padStart(width, '0')}`;
 
-/** 从一段文本（一级标题）中提取编号；调用方逐段调用，不跨段拼接。 */
-export function extractIds(text) {
+/**
+ * 从一段文本（一级标题）中提取编号；调用方逐段调用，不跨段拼接。
+ * 区间终点不大于起点（如 AC-DEMO-04~01）属于写错，不展开也不猜测，原文记入 reversed 由调用方报问题。
+ */
+export function parseIds(text) {
   const ids = new Set();
-  for (const [, module, first, rest] of text.matchAll(ID_PATTERN)) {
+  const reversed = [];
+  for (const [whole, module, first, rest] of text.matchAll(ID_PATTERN)) {
     const width = first.length;
     let previous = Number(first);
     ids.add(formatId(module, previous, width));
     for (const [, separator, digits] of rest.matchAll(STEP_PATTERN)) {
       const value = Number(digits);
       if (separator === '/') ids.add(formatId(module, value, width));
+      else if (value <= previous) reversed.push(whole.trim());
       else for (let n = previous + 1; n <= value; n++) ids.add(formatId(module, n, width));
       previous = value;
     }
   }
-  return [...ids];
+  return { ids: [...ids], reversed: [...new Set(reversed)] };
 }
 
 /** 稳定排序：先按模块，再按序号数值。 */
@@ -32,9 +37,18 @@ export function compareIds(a, b) {
   return moduleA === moduleB ? Number(numberA) - Number(numberB) : moduleA.localeCompare(moduleB);
 }
 
-/** 阶段配置的范围写法：单个编号、简写区间，或 AC-<模块>-* 表示该模块全部已定义编号。认不出返回 null。 */
+/**
+ * 阶段配置的范围写法：单个编号、简写区间，或 AC-<模块>-* 表示该模块全部已定义编号。
+ * 认不出、区间逆序、通配匹配不到任何定义时返回 null，由调用方报配置问题。
+ */
 export function expandScopeToken(token, definedIds) {
   const wildcard = token.match(WILDCARD_PATTERN);
-  if (wildcard) return definedIds.filter((id) => id.startsWith(`AC-${wildcard[1]}-`)).sort(compareIds);
-  return TOKEN_PATTERN.test(token) ? extractIds(token) : null;
+  if (wildcard) {
+    // 模块写错时通配会匹配 0 个编号，范围被静默缩小，因此同样按认不出处理
+    const ids = definedIds.filter((id) => id.startsWith(`AC-${wildcard[1]}-`)).sort(compareIds);
+    return ids.length ? ids : null;
+  }
+  if (!TOKEN_PATTERN.test(token)) return null;
+  const { ids, reversed } = parseIds(token);
+  return reversed.length ? null : ids;
 }

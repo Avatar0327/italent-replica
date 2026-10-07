@@ -5,7 +5,7 @@
 //   找不到或未运行即列为问题。最终状态与运行时状态并列输出。
 // - 缺口：范围内最终状态为未覆盖 / 仅 skip / todo 且没有人工改判的编号，以及范围内未定义的编号。
 import { basename } from 'node:path';
-import { compareIds, expandScopeToken, extractIds } from './ids.mjs';
+import { compareIds, expandScopeToken, parseIds } from './ids.mjs';
 
 export const STATUSES = ['已覆盖', '部分覆盖', '未覆盖', '仅 skip / todo', '未定义'];
 const GAP_STATUSES = new Set(['未覆盖', '仅 skip / todo', '未定义']);
@@ -14,8 +14,14 @@ const MANUAL_STATUSES = new Set(['部分覆盖', '未覆盖']);
 const runsIn = (test) => Object.keys(test.modes).filter((p) => test.modes[p] === 'run');
 const titleOf = (test) => test.names.join(' > ');
 
-function withIds(tests) {
-  return tests.map((test) => ({ ...test, ids: [...new Set(test.names.flatMap(extractIds))].sort(compareIds) }));
+function withIds(tests, problems) {
+  return tests.map((test) => {
+    const parsed = test.names.map(parseIds);
+    for (const text of parsed.flatMap((p) => p.reversed)) {
+      problems.push({ kind: 'title', message: `${test.file}：${titleOf(test)} 的编号区间逆序「${text}」` });
+    }
+    return { ...test, ids: [...new Set(parsed.flatMap((p) => p.ids))].sort(compareIds) };
+  });
 }
 
 function buildScope(config, stageNames, definedIds, problems) {
@@ -28,7 +34,8 @@ function buildScope(config, stageNames, definedIds, problems) {
       for (const token of group.include ?? []) {
         const expanded = expandScopeToken(token, definedIds);
         if (expanded) expanded.forEach((id) => ids.add(id));
-        else problems.push({ kind: 'config', message: `${stage}：范围写法无法识别「${token}」` });
+        else
+          problems.push({ kind: 'config', message: `${stage}：范围写法无法识别、区间逆序或匹配不到定义「${token}」` });
       }
       const name = stageNames.length > 1 ? `${stage} · ${group.name}` : group.name;
       groups.push({ name, ids: [...ids].sort(compareIds) });
@@ -53,18 +60,30 @@ function validateNotes(notes, scopeIds, problems) {
   }
 }
 
+/**
+ * 人工映射：names 为完整标题层级（数组逐级精确相等）；只写 title 时按末级标题匹配。
+ * 必须恰好命中一个注册用例且该用例在某一档运行；找不到、命中多个、指向未运行的用例都列为问题，不任选替代。
+ */
 function matchEvidence(id, evidence, tests, problems) {
   const matched = [];
   for (const item of evidence ?? []) {
-    const hits = tests.filter(
-      (t) => basename(t.file) === item.file && (t.names.at(-1) === item.title || titleOf(t) === item.title),
-    );
-    const running = hits.filter((t) => runsIn(t).length > 0);
-    if (running.length) matched.push(...running);
-    else
-      problems.push({ kind: 'evidence', message: `${id}：人工映射找不到运行的用例「${item.file} / ${item.title}」` });
+    const label = `${item.file} / ${item.names ? JSON.stringify(item.names) : item.title}`;
+    const hits = tests.filter((t) => basename(t.file) === item.file && evidenceMatches(item, t));
+    let reason = null;
+    if (hits.length === 0) reason = '找不到用例';
+    else if (hits.length > 1) reason = `命中 ${hits.length} 个注册用例，映射有歧义，请写完整标题层级 names`;
+    else if (runsIn(hits[0]).length === 0) reason = '指向的用例未运行（skip / todo）';
+    if (reason) problems.push({ kind: 'evidence', message: `${id}：人工映射「${label}」${reason}` });
+    else matched.push(hits[0]);
   }
   return matched;
+}
+
+function evidenceMatches(item, test) {
+  if (Array.isArray(item.names)) {
+    return item.names.length === test.names.length && item.names.every((name, i) => name === test.names[i]);
+  }
+  return typeof item.title === 'string' && test.names.at(-1) === item.title;
 }
 
 function conditionalProfiles(tests, profiles) {
@@ -121,10 +140,18 @@ function references(tests, definitions, ignore) {
 
 // .only 会让同文件其他用例被标为 skip；收集按 allowOnly: false 进行，Vitest 把它记为该用例的收集失败。
 function runtimeProblems(collected) {
-  return collected.errors.map((e) => ({
+  const problems = collected.errors.map((e) => ({
     kind: e.message.includes('.only') ? 'only' : 'collect',
     message: `收集失败${e.file ? `（${e.file}）` : ''}：${e.message}（档：${e.profiles.join(' / ')}）`,
   }));
+  for (const p of collected.pairing ?? []) problems.push({ kind: 'pairing', message: `${p.file}：${p.message}` });
+  return problems;
+}
+
+// 同一 each 行重复注册等情况会产生内容相同的问题，只保留一条
+function uniqueProblems(problems) {
+  const seen = new Set();
+  return problems.filter((p) => !seen.has(`${p.kind}\u0000${p.message}`) && seen.add(`${p.kind}\u0000${p.message}`));
 }
 
 export function summarize(entries) {
@@ -135,7 +162,7 @@ export function summarize(entries) {
 
 export function computeReport({ config, stageNames, collected, definitions, duplicates }) {
   const problems = runtimeProblems(collected);
-  const tests = withIds(collected.tests);
+  const tests = withIds(collected.tests, problems);
   const { groups, notes } = buildScope(config, stageNames, [...definitions.keys()], problems);
   const scopeIds = [...new Set(groups.flatMap((g) => g.ids))];
   validateNotes(notes, new Set(scopeIds), problems);
@@ -153,7 +180,7 @@ export function computeReport({ config, stageNames, collected, definitions, dupl
     summary: summarize(Object.values(entries)),
     ...refs,
     duplicateDefinitions: duplicates,
-    problems,
+    problems: uniqueProblems(problems),
     gaps,
     ok: problems.length === 0 && refs.unknownReferences.length === 0 && gaps.length === 0,
   };

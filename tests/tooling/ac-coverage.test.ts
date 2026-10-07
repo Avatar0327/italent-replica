@@ -309,11 +309,12 @@ describe('F-030 AC 覆盖运行时采集：命令行', () => {
   );
 
   it(
-    '配置里的逆序区间报配置错误，--check 失败，不静默缩小范围（P2-3）',
+    '配置里的逆序区间、匹配不到定义的模块通配报配置错误，--check 失败，不静默缩小范围（P2-3）',
     () => {
       const report = toolJson('variants', 'REVERSE');
       expect(report.problems.filter((p) => p.kind === 'config').map((p) => p.message)).toEqual([
         expect.stringContaining('AC-DEMO-04~01'),
+        expect.stringContaining('AC-NOPE-*'),
       ]);
       expect(report.summary.total).toBe(0);
       expect(report.ok).toBe(false);
