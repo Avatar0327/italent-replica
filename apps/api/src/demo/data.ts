@@ -78,7 +78,7 @@ export interface DemoPersonDef {
 /**
  * 顺序即入职顺序：经理先于其下属入职，下属才能引用直线经理。
  * 普通员工只任职务、不占职位：本人调动入口不能编辑职位，带着原部门职位调到别的部门会被“职位必须属于任职部门”拒绝
- * （见 PR 描述“观察到的问题”），演示主线因此让普通员工不占职位。
+ * （原站本人调动的职位处理交取证核对，见 PR #92），演示主线因此让普通员工不占职位。
  */
 export const DEMO_PEOPLE: readonly DemoPersonDef[] = [
   { key: 'admin', name: '系统管理员（演示）', email: 'demo.admin@example.com', role: 'system_admin' },
