@@ -916,6 +916,11 @@
 "s": "review",
 "r": 3,
 "n": ""
+},
+"107": {
+"s": "review",
+"r": 3,
+"n": ""
 }
 },
 "log": [
@@ -1988,7 +1993,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 14:31",
+"liveUpdated": "10-07 14:33",
 "chains": [
 {
 "g": "exit",
@@ -2033,11 +2038,11 @@
 "k": "run",
 "pr": 83,
 "n": "组织变更联动任职",
-"seg": "ev:d ds:d4 dev:d1 rev:a1 mg:w",
-"now": "拆分本体第 1 轮出结论，待读取",
+"seg": "ev:d ds:d4 dev:a2 rev:d1 mg:w",
+"now": "拆分本体第 2 轮修改（5 组 P2）",
 "wait": "来源模型放哪由审查合并窗口判断",
 "fable": "1",
-"up": "10-07 第 8 轮后调到 Max"
+"up": "10-07 调到 Max"
 },
 {
 "id": "R2-T03",
@@ -2046,8 +2051,8 @@
 "k": "run",
 "pr": 100,
 "n": "离职管理",
-"seg": "ev:d ds:a4 dev:w rev:w mg:w",
-"now": "设计 v1.4 复审出结论，待读取",
+"seg": "ev:d ds:a5 dev:w rev:w mg:w",
+"now": "设计 v1.5 修订中（4 个 P2；再不过就问你）",
 "wait": "#83 合并后写代码",
 "fable": "1"
 },
@@ -2167,8 +2172,8 @@
 "o": 1,
 "k": "run",
 "n": "人才标准与指标库",
-"seg": "ev:d ds:n dev:d3 rev:w3 mg:w",
-"now": "第 3 轮已推送，待发起审查",
+"seg": "ev:d ds:n dev:d3 rev:a3 mg:w",
+"now": "第 3 轮审查中（codex exec）",
 "pr": 106
 },
 {
@@ -2177,9 +2182,10 @@
 "o": 1,
 "k": "run",
 "n": "360 度评估（PR-A）",
-"seg": "ev:d ds:n dev:d2 rev:a2 mg:w",
-"now": "PR-A 第 2 轮出结论，待读取",
-"pr": 107
+"seg": "ev:d ds:n dev:a3 rev:d2 mg:w",
+"now": "PR-A 第 3 轮修改（8 个 P2，公共鉴权没接全）",
+"pr": 107,
+"up": "10-07 第 3 轮调到 Max"
 },
 {
 "id": "R3-T02",
