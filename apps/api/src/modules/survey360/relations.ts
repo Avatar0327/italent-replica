@@ -19,6 +19,7 @@ import {
   survey360Relations,
   survey360Roles,
   type Tx,
+  withTenant,
 } from '@italent/db';
 import { survey360, tenantLocalDate } from '@italent/domain';
 import type { Hono } from 'hono';
@@ -49,7 +50,8 @@ import {
 } from './context.js';
 import { ensureAnswerLink, issueConfirmLink } from './links.js';
 import { createPerson, findPersonByEmail, loadPerson, personInput, type PersonRow, updatePerson } from './people.js';
-import { employeeInScope, personForEmployee, refreshFromOrg, syncAccess } from './sync.js';
+import { employeeInScope, personForEmployee, refreshFromOrg, routeEmployeeScope, syncAccess } from './sync.js';
+import type { ModuleScope } from '../permission/module-access.js';
 import { loadQuestionnaire, markUsed } from './questionnaires.js';
 
 const LIMITS = survey360.SURVEY360_LIMITS;
@@ -300,10 +302,13 @@ export function registerRelationRoutes(module: Hono<TenantEnv>, deps: TenantRout
       },
       {
         // 命令前（含幂等重放）同样校验评价对象的员工仍在操作人范围内（第 1 轮审查 P2-2 / P2-4）
-        guard: async (tx, admin) => {
-          await requireActivity(tx, admin, id);
-          const object = await requireObject(tx, id, objectId);
-          await requireTargetInScope(tx, await syncAccess(tx, deps, tenantOf(c)), object.person_id);
+        guard: guarded(id),
+        preflight: async (admin) => {
+          const scope = await routeEmployeeScope(c, deps);
+          await withTenant(deps.db, tenantOf(c).tenantId, async (tx) => {
+            await requireActivity(tx, admin, id);
+            await requireTargetInScope(tx, scope, (await requireObject(tx, id, objectId)).person_id);
+          });
         },
       },
     );
@@ -520,9 +525,9 @@ async function reportsOf(tx: Tx, tenantId: string, managerId: string, asOf: stri
 }
 
 /** 按组织架构添加以评价对象的员工为起点：该员工须在操作人当前员工范围内，否则按不存在处理（404）。 */
-async function requireTargetInScope(tx: Tx, access: Awaited<ReturnType<typeof syncAccess>>, personId: string) {
+async function requireTargetInScope(tx: Tx, scope: ModuleScope, personId: string) {
   const target = await loadPerson(tx, personId);
-  if (!target.employeeId || !(await employeeInScope(tx, access, target.employeeId)))
+  if (!target.employeeId || !(await employeeInScope(tx, scope, target.employeeId)))
     fail('NOT_FOUND', '评价对象的员工不存在或不在你的数据范围内');
 }
 
@@ -537,7 +542,7 @@ async function autoAdd(
   const target = await loadPerson(tx, object.person_id);
   if (!target.employeeId) fail('VALIDATION_FAILED', '评价对象未与组织员工挂接，不能按组织架构添加', 'NOT_LINKED');
   const access = await syncAccess(tx, deps, ctx);
-  await requireTargetInScope(tx, access, target.id);
+  await requireTargetInScope(tx, access.scope, target.id);
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
   const record = await findCurrentRecord(tx, ctx.tenantId, target.employeeId, asOf);
   const managerId = (record?.fields as unknown as Record<string, unknown> | undefined)?.directManagerId;
@@ -637,10 +642,10 @@ function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
       },
       {
         // 选择“同步”时需要员工信息查看权：命令前（含幂等重放）同样校验
-        guard: async (tx, admin) => {
-          await requireActivity(tx, admin, id);
-          const body = (await jsonOrEmpty(c)) as { sync?: unknown };
-          if (body?.sync === true) await syncAccess(tx, deps, tenantOf(c));
+        guard: guarded(id),
+        preflight: async () => {
+          const body = (await jsonOrEmpty(c)) as { sync?: unknown } | null;
+          if (body?.sync === true) await routeEmployeeScope(c, deps);
         },
       },
     );

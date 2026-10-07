@@ -76,6 +76,11 @@ export interface WriteOptions {
   readonly roles?: readonly AdminRole[];
   /** 资源级校验（活动可见、对象归属）：命令前与命令事务内各执行一次，重放同样经过。 */
   readonly guard?: (tx: Tx, admin: Admin) => Promise<void>;
+  /**
+   * 命令前（含幂等重放）、事务外的额外校验：复用组织员工侧的路由鉴权（module-route-access.ts 的 objectContext /
+   * requestScope 自己开事务），放在 360 身份与资源校验之后执行；命令事务内由业务代码按同一对象重验。
+   */
+  readonly preflight?: (admin: Admin) => Promise<void>;
   readonly status?: 200 | 201;
   /** 替换默认的“须为 360 管理员”判定（管理员任命另认企业管理员的管理员管理能力）。 */
   readonly actor?: (tx: Tx, tenant: TenantContext) => Promise<Admin>;
@@ -98,10 +103,12 @@ export async function write<T>(
   const tenant = tenantOf(c);
   const resolveActor = (tx: Tx) =>
     options.actor ? options.actor(tx, tenant) : requireAdmin(tx, tenant.userId, options.roles);
-  await withTenant(deps.db, tenant.tenantId, async (tx) => {
-    const admin = await resolveActor(tx);
-    await options.guard?.(tx, admin);
+  const admin = await withTenant(deps.db, tenant.tenantId, async (tx) => {
+    const current = await resolveActor(tx);
+    await options.guard?.(tx, current);
+    return current;
   });
+  await options.preflight?.(admin);
   const expectedRevision = options.revisionFree ? 0 : revision(c);
   const input = parse(schema, await jsonOrEmpty(c));
   const result = await runCommand(deps.db, tenant, {

@@ -15,7 +15,7 @@ import { PERSONNEL_OBJECT, tenantLocalDate } from '@italent/domain';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
-import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
+import type { TenantContext, TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
 import { findCurrentRecord } from '../employment/read-model.js';
 import {
@@ -25,6 +25,7 @@ import {
   resolveModuleScopeInTransaction,
   scopeSql,
 } from '../permission/module-access.js';
+import { objectContext, requestScope } from '../permission/module-route-access.js';
 import {
   actor,
   audit360,
@@ -51,22 +52,39 @@ export interface SyncAccess {
   readonly recordFields: ReadonlySet<string> | undefined;
 }
 
-/** 操作人当前对组织员工的查看权、数据范围与字段权限；没有员工信息查看权 403。 */
-export async function syncAccess(tx: Tx, deps: TenantRouteDeps, tenant: TenantContext): Promise<SyncAccess> {
+/**
+ * 路由层（命令前，含幂等重放）：直接复用 permission/module-route-access.ts 的 objectContext（员工信息 object.view）
+ * 与 requestScope（员工信息当前范围），不另写一套（派发规则 §1 自查项，e0a68da）。
+ */
+export async function routeEmployeeScope(c: C, deps: TenantRouteDeps): Promise<ModuleScope> {
+  const ctx = await objectContext(c, deps, PERSONNEL_OBJECT, 'view');
+  return requestScope(c, deps, ctx, PERSONNEL_OBJECT);
+}
+
+/**
+ * 命令事务内重验：同一对象（员工信息）的查看权、数据范围与字段权限（与路由层同一口径：写入口不带页面编码，
+ * 列表读取带 .list 页面编码）；没有员工信息查看权 403。
+ */
+export async function syncAccess(
+  tx: Tx,
+  deps: TenantRouteDeps,
+  tenant: TenantContext,
+  pageCode?: string,
+): Promise<SyncAccess> {
   const authorize = authorizeInTransaction(deps.authorize, tx);
   const canView = await authorize({ ...tenant, action: 'object.view', resource: PERSONNEL_OBJECT, fields: [] });
   if (!canView) fail('FORBIDDEN', '无权查看组织员工信息', 'NO_EMPLOYEE_ACCESS');
   return {
-    scope: await resolveModuleScopeInTransaction(deps, tenant, tx, PERSONNEL_OBJECT, `${PERSONNEL_OBJECT}.list`),
+    scope: await resolveModuleScopeInTransaction(deps, tenant, tx, PERSONNEL_OBJECT, pageCode),
     personnelFields: await getModuleViewableFieldsInTransaction(deps, tenant, PERSONNEL_OBJECT, tx),
     recordFields: await getModuleViewableFieldsInTransaction(deps, tenant, EMPLOYMENT_RECORD_OBJECT, tx),
   };
 }
 
-export async function employeeInScope(tx: Tx, access: SyncAccess, employeeId: string): Promise<boolean> {
+export async function employeeInScope(tx: Tx, scope: ModuleScope, employeeId: string): Promise<boolean> {
   const [row] = rows<{ id: string }>(
     await tx.execute(sql`SELECT e.id FROM employment_employees e WHERE e.id = ${employeeId}::uuid
-      AND ${scopeSql(access.scope, { person: sql`e.id` })}`),
+      AND ${scopeSql(scope, { person: sql`e.id` })}`),
   );
   return !!row;
 }
@@ -504,12 +522,14 @@ async function linkConflict(
  * （第 1 轮审查 P2-4）：失去查看权后用原命令 ID 重放同样 403。
  */
 export function registerSyncRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  const guardAccess = (c: C) => async (tx: Tx) => void (await syncAccess(tx, deps, tenantOf(c)));
+  const preflight = (c: C) => async () => void (await routeEmployeeScope(c, deps));
   module.get('/people/sync-conflicts', (c) =>
     read(
       c,
       deps,
-      async (tx, _admin, tenant) => ({ items: await pendingConflicts(tx, await syncAccess(tx, deps, tenant)) }),
+      async (tx, _admin, tenant) => ({
+        items: await pendingConflicts(tx, await syncAccess(tx, deps, tenant, `${PERSONNEL_OBJECT}.list`)),
+      }),
       SYSTEM_ONLY,
     ),
   );
@@ -519,7 +539,7 @@ export function registerSyncRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
       deps,
       z.strictObject({ after: uuid.optional(), limit: z.int().min(1).max(SYNC_LIMIT).optional() }),
       async (tx, ctx, input) => syncPeople(tx, ctx, await syncAccess(tx, deps, ctx), input),
-      { roles: SYSTEM_ONLY, revisionFree: true, guard: guardAccess(c) },
+      { roles: SYSTEM_ONLY, revisionFree: true, preflight: preflight(c) },
     ),
   );
   module.post('/people/sync-conflicts/:id/resolve', (c) => {
@@ -529,7 +549,7 @@ export function registerSyncRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
       deps,
       z.strictObject({ action: z.enum(['link', 'create', 'ignore']), personId: uuid.optional() }),
       async (tx, ctx, input) => resolveConflict(tx, ctx, await syncAccess(tx, deps, ctx), id, input),
-      { roles: SYSTEM_ONLY, guard: guardAccess(c) },
+      { roles: SYSTEM_ONLY, preflight: preflight(c) },
     );
   });
 }
