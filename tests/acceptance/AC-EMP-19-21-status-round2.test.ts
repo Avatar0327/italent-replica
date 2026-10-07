@@ -204,7 +204,66 @@ describe('AC-EMP-21 DEC-231：已把“正式”传播到后续版本的转正�
     );
     expect(await remove(session, alone.id)).toMatchObject({ status: 'deleted' });
   });
+
+  it('经 HTTP 删除已传播的转正返回 409，拒绝前后该租户所有业务表的数据完全不变', async () => {
+    const session = await employmentSession(testDb().db, 'f022-dec231-http');
+    const org = await session.org('转正删除部门', { establishedOn: '2026-01-01' });
+    const target = await session.org('转正删除调入部门', { establishedOn: '2026-01-01' });
+    const { employee } = await probationHire(session, org.id);
+    await session.business(
+      employee.id,
+      { kind: 'transfer', mode: 'direct', effectiveDate: '2026-12-01', fields: { departmentId: target.id } },
+      (await session.getEmployee(employee.id)).revision,
+    );
+    const propagated = await session.business(
+      employee.id,
+      { kind: 'regularization', mode: 'direct', effectiveDate: '2026-11-01', fields: {} },
+      (await session.getEmployee(employee.id)).revision,
+    );
+    const revision = (
+      (await (await session.request('GET', `/businesses/${propagated.id}`)).json()) as {
+        revision: number;
+      }
+    ).revision;
+    const before = await tenantTables(session);
+    const response = await session.request('DELETE', `/businesses/${propagated.id}`, { ifMatch: revision });
+    expect(response.status).toBe(409);
+    expect(JSON.stringify(await response.json())).toContain('REGULARIZATION_STATUS_PROPAGATED');
+    const after = await tenantTables(session);
+    // 业务失败只按 DEC-067 记一条命令失败，其余表逐行不变（含版本链、时间轴、revision、删除标记、审计、outbox）
+    const changed = Object.keys(after).filter(
+      (table) => JSON.stringify(after[table]) !== JSON.stringify(before[table]),
+    );
+    expect(changed.filter((table) => table !== 'audit_command_failures')).toEqual([]);
+    const failures = (after.audit_command_failures ?? []).filter((r) => !before.audit_command_failures?.includes(r));
+    expect(failures.map((r) => JSON.parse(r) as Record<string, unknown>)).toMatchObject([
+      { outcome: 'business_failed', error_code: 'CONFLICT', reason: 'REGULARIZATION_STATUS_PROPAGATED' },
+    ]);
+    expect(before.employment_records?.length).toBeGreaterThan(0);
+    expect(before.employment_timeline?.length).toBeGreaterThan(0);
+  });
 });
+
+/** 该租户所有带 tenant_id 列的表，按行的 JSON 排序后整体返回，用于证明拒绝的命令没有写入任何业务数据。 */
+async function tenantTables(session: EmploymentSession) {
+  return withTenant(testDb().db, session.tenant.id, async (tx) => {
+    const tables = rows<{ table_name: string }>(
+      await tx.execute(sql`SELECT c.table_name FROM information_schema.columns c
+        JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+        WHERE c.table_schema = 'public' AND c.column_name = 'tenant_id' AND t.table_type = 'BASE TABLE'
+        ORDER BY c.table_name`),
+    ).map((row) => row.table_name);
+    const snapshot: Record<string, string[]> = {};
+    for (const table of tables) {
+      const result = rows<{ body: string }>(
+        await tx.execute(sql`SELECT to_jsonb(x)::text AS body FROM ${sql.identifier(table)} x
+          WHERE x.tenant_id = ${session.tenant.id} ORDER BY 1`),
+      );
+      snapshot[table] = result.map((row) => row.body);
+    }
+    return snapshot;
+  });
+}
 
 describe('AC-PER-01（第二轮）人员信息列表的状态筛选校验编码', () => {
   it('非法人员状态 / 入职状态编码返回 400，与员工列表一致', async () => {
