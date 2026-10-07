@@ -238,11 +238,27 @@ it.each(['application', 'direct'] as const)('DEC-195 %s 迟到调入和后续调
     ).status,
   ).toBe(200);
   const run = await w.runScheduler('2026-10-08T01:00:00Z');
-  expect(run, JSON.stringify((await w.business(first.id)).activation)).toMatchObject({
-    ...(mode === 'application' ? { activated: [first.id, last.id] } : {}),
-    failed: [],
-    errors: [],
-  });
+  if (mode === 'direct') {
+    // DEC-278③：已落地的迟到调入区间 [10-05, 10-08) 内另有已落地的调出 → 先记需重建待 HR；调出区间为空照常顺延。
+    expect(run, JSON.stringify((await w.business(first.id)).activation)).toMatchObject({
+      failed: [first.id],
+      errors: [],
+    });
+    expect((await w.business(first.id)).activation).toMatchObject({
+      status: 'failed',
+      failureReason: 'REBUILD_REQUIRED',
+    });
+    // 调出离开区间后 HR 重试调入：两者合到同日、调入区间为空，不虚占编制。
+    const retried = await w.retry(first, '2026-10-08T02:00:00Z');
+    expect(retried.status, await retried.clone().text()).toBe(200);
+    expect((await w.business(first.id)).activation).toMatchObject({ status: 'effective' });
+  } else {
+    expect(run, JSON.stringify((await w.business(first.id)).activation)).toMatchObject({
+      activated: [first.id, last.id],
+      failed: [],
+      errors: [],
+    });
+  }
   expect((await w.session.records(person.employee.id, '2026-10-08')).find((r) => r.isCurrent)?.id).toBe(last.id);
 });
 

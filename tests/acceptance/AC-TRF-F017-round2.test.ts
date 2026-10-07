@@ -78,7 +78,16 @@ it.each(['direct', 'application'] as const)('DEC-195 %s 迟到同日按原计划
         );
   const b = await save('2026-10-06', 'B');
   const a = await save('2026-10-05', 'A');
-  expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({ failed: [], errors: [] });
+  if (mode === 'direct') {
+    // DEC-278③：已落地的 A 区间 [10-05, 10-08) 内另有已落地的 B → A 先记需重建待 HR，B 区间为空照常顺延；
+    // B 离开区间后 HR 重试 A，两者同日仍按原计划日排序。
+    expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({ failed: [a.id], errors: [] });
+    expect((await w.business(a.id)).activation).toMatchObject({ status: 'failed', failureReason: 'REBUILD_REQUIRED' });
+    const retried = await w.retry(a, '2026-10-08T02:00:00Z');
+    expect(retried.status, await retried.clone().text()).toBe(200);
+  } else {
+    expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({ failed: [], errors: [] });
+  }
   const records = await w.session.records(person.employee.id, '2026-10-08');
   expect(records.map((r) => r.id)).toEqual([person.hire.id, a.id, b.id]);
   expect(records.find((r) => r.isCurrent)?.id).toBe(b.id);
