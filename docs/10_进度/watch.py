@@ -75,8 +75,31 @@ def codex_results():
         if "thread_spawn" in head:
             continue  # 子代理线程，不算结论（只认主线程）
         n = txt.count('"task_complete"')
-        m = re.search(r"italent-replica/pull/(\d+)|wt-(\d+)", txt)
-        pr = (m.group(1) or m.group(2)) if m else "?"
+        # PR 识别：先认 PR 链接；codex exec 会话常不带链接，再认首条真实用户提问（跳过 AGENTS.md / 环境注入）里的 “PR #n / #n” 与任务编号
+        m = re.search(r"italent-replica/pull/(\d+)", txt)
+        pr = m.group(1) if m else ""
+        if not pr:
+            prompt = ""
+            for line in txt.split("\n")[:400]:
+                if '"role":"user"' not in line:
+                    continue
+                try:
+                    c = json.loads(line)["payload"]["content"]
+                    t = " ".join(x.get("text", "") for x in c if isinstance(x, dict))
+                except Exception:
+                    continue
+                if t.lstrip().startswith(("# AGENTS.md", "<environment_context", "<user_instructions")):
+                    continue
+                prompt = t[:3000]
+                break
+            m2 = re.search(r"(?:PR\s*#|#)(\d{2,3})\b", prompt)
+            tid = re.search(r"\b([FR]\d?-T?\d{2,3})\b", prompt)
+            pr = m2.group(1) if m2 else (tid.group(1) if tid else "")
+        if not pr:  # 最后才看工作目录（AGENTS.md 正文里也有 wt-NN，不能全文搜）
+            cwd = re.search(r'"cwd":"([^"]*)"', txt.split("\n", 1)[0])
+            cwd = cwd.group(1) if cwd else ""
+            m3 = re.search(r"wt-(\d+)", cwd)
+            pr = m3.group(1) if m3 else "?（" + (os.path.basename(cwd) or "未知目录") + "）"
         out[os.path.basename(f)[-41:-6]] = [n, pr]
     return out
 
