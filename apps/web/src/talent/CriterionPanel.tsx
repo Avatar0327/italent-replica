@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { listAll, request, type Category, type Criterion, type Dimension } from './api.js';
+import { DIMENSION_TYPES, listAll, request, type Category, type Criterion, type Dimension } from './api.js';
 import { changedFields } from './changes.js';
 import { CriterionForm, type CriterionDraft, type KnownDimension } from './CriterionForm.js';
 import { text } from './messages.js';
+import { useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
 import { useTalentWrite } from './useTalentWrite.js';
 
+/** 新建时带所属管理单元（建后不可改，编辑草稿里没有这个键）。 */
 const draftOf = (item: Criterion | null, categoryId = ''): CriterionDraft => ({
+  ...(item ? {} : { ownerOrgId: '' }),
   categoryId: item?.categoryId ?? categoryId,
   name: item?.name ?? '',
   enabled: item?.enabled ?? true,
@@ -23,7 +26,7 @@ const draftOf = (item: Criterion | null, categoryId = ''): CriterionDraft => ({
   })),
 });
 
-/** 人才标准：引用指标而不复制（TC-R2），详情显示指标库的当前内容。 */
+/** 人才标准：挂所属管理单元（DEC-281⑨）；引用指标而不复制（TC-R2），详情显示指标库的当前内容。 */
 export function CriterionPanel({ tenantId }: { tenantId: string }) {
   const [categoryId, setCategoryId] = useState('');
   const [viewing, setViewing] = useState<Criterion | null>(null);
@@ -35,6 +38,7 @@ export function CriterionPanel({ tenantId }: { tenantId: string }) {
   });
   const list = useList<Criterion>(tenantId, `criteria${categoryId ? `?categoryId=${categoryId}` : ''}`, write.setError);
   const { categories, candidates, known } = useChoices(tenantId, editor, write.setError);
+  const owners = useOwnerOrgs(tenantId, 'criterion', write.setError);
   const open = (id: string, edit: boolean) =>
     void request<Criterion>(tenantId, `criteria/${id}`)
       .then((item) => (edit ? setEditor({ original: item, value: draftOf(item) }) : setViewing(item)))
@@ -80,6 +84,7 @@ export function CriterionPanel({ tenantId }: { tenantId: string }) {
       {editor && (
         <CriterionForm
           value={editor.value}
+          owners={owners}
           categories={categories}
           known={known}
           candidates={candidates}
@@ -140,6 +145,10 @@ function CriterionTable({
   );
 }
 
+/**
+ * 标准详情：按 能力 / 潜力 / 经历 分组列出引用的指标，只显示 名称、定义、指标类别、权重、目标（DEC-281⑪）；
+ * 被停用的指标照常显示、不加标记（DEC-281⑧）。
+ */
 function CriterionDetail({ value, onClose }: { value: Criterion; onClose: () => void }) {
   return (
     <article>
@@ -152,31 +161,32 @@ function CriterionDetail({ value, onClose }: { value: Criterion; onClose: () => 
             </p>
           ),
       )}
-      <table>
-        <thead>
-          <tr>
-            <th>{text.name}</th>
-            <th>{text.type}</th>
-            <th>{text.definition}</th>
-            <th>{text.weight}</th>
-            <th>{text.target}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(value.dimensions ?? []).map((item) => (
-            <tr key={item.dimensionId}>
-              <td>
-                {item.dimension?.name ?? text.contentHidden}
-                {item.dimension?.enabled === false && `（${text.disabled}）`}
-              </td>
-              <td>{text.types[item.type]}</td>
-              <td>{item.dimension?.definition}</td>
-              <td>{item.weight ?? ''}</td>
-              <td>{item.target ?? ''}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {DIMENSION_TYPES.map((type) => {
+        const rows = (value.dimensions ?? []).filter((item) => item.type === type);
+        return rows.length ? (
+          <table key={type}>
+            <caption>{text.types[type]}</caption>
+            <thead>
+              <tr>
+                {[text.name, text.definition, text.dimensionCategory, text.weight, text.target].map((label) => (
+                  <th key={label}>{label}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((item) => (
+                <tr key={item.dimensionId}>
+                  <td>{item.dimension?.name ?? text.contentHidden}</td>
+                  <td>{item.dimension?.definition}</td>
+                  <td>{item.dimension?.categoryName}</td>
+                  <td>{item.weight ?? ''}</td>
+                  <td>{item.target ?? ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null;
+      })}
       <button onClick={onClose}>{text.cancel}</button>
     </article>
   );

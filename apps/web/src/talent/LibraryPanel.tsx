@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { DIMENSION_TYPES, type DimensionType, type Library } from './api.js';
+import { DIMENSION_TYPES, type DimensionType, type Library, type OwnerOrg } from './api.js';
 import { changedFields } from './changes.js';
 import { text } from './messages.js';
+import { OwnerOrgSelect, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
 import { useTalentWrite } from './useTalentWrite.js';
@@ -12,11 +13,15 @@ interface Draft {
   readonly type: DimensionType;
   readonly enabled: boolean;
   readonly displayOrder: number;
+  readonly ownerOrgId: string;
 }
 
-const pick = ({ name, type, enabled, displayOrder }: Library) => ({ name, type, enabled, displayOrder });
+const pick = ({ name, enabled, displayOrder }: Library) => ({ name, enabled, displayOrder });
 
-/** 指标库：按 能力 / 潜力 / 经历 三类建立（TC-R1）；类型创建后不可修改；还有指标的指标库不能删除（TC-R5）。 */
+/**
+ * 指标库：按 能力 / 潜力 / 经历 三类建立（TC-R1）；类型与所属管理单元建后不可修改（DEC-281⑥⑨）；
+ * 还有指标或分类的指标库不能删除（TC-R5）。
+ */
 export function LibraryPanel({ tenantId }: { tenantId: string }) {
   const [type, setType] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -25,16 +30,18 @@ export function LibraryPanel({ tenantId }: { tenantId: string }) {
     list.reload();
   });
   const list = useList<Library>(tenantId, `libraries${type ? `?type=${type}` : ''}`, write.setError);
+  const owners = useOwnerOrgs(tenantId, 'library', write.setError);
   const save = () => {
     if (!draft) return;
-    const { original, type: draftType, ...fields } = draft;
+    const { original, type: draftType, ownerOrgId, ...fields } = draft;
     write.mutate({
       path: original ? `libraries/${original.id}` : 'libraries',
       method: original ? 'PATCH' : 'POST',
       revision: original?.revision ?? 0,
-      body: original ? changedFields(pick(original), fields) : { ...fields, type: draftType },
+      body: original ? changedFields(pick(original), fields) : { ...fields, type: draftType, ownerOrgId },
     });
   };
+  const blank: Draft = { original: null, name: '', type: 'ability', enabled: true, displayOrder: 0, ownerOrgId: '' };
   return (
     <section aria-busy={write.busy}>
       <select aria-label={text.type} value={type} onChange={(event) => setType(event.target.value)}>
@@ -45,23 +52,23 @@ export function LibraryPanel({ tenantId }: { tenantId: string }) {
           </option>
         ))}
       </select>
-      <button
-        disabled={write.locked}
-        onClick={() => setDraft({ original: null, name: '', type: 'ability', enabled: true, displayOrder: 0 })}
-      >
+      <button disabled={write.locked} onClick={() => setDraft(blank)}>
         {text.create}
       </button>
       <Status write={write} hasDataPermission={list.hasDataPermission} />
       <LibraryTable
         items={list.items}
         locked={write.locked}
-        onEdit={(item) => setDraft({ ...pick(item), original: item })}
+        onEdit={(item) =>
+          setDraft({ ...pick(item), type: item.type, ownerOrgId: item.ownerOrgId ?? '', original: item })
+        }
         onDelete={(item) => write.mutate({ path: `libraries/${item.id}`, method: 'DELETE', revision: item.revision })}
       />
       <Pager list={list} locked={write.locked} />
       {draft && (
         <LibraryForm
           draft={draft}
+          owners={owners}
           busy={write.locked}
           onChange={setDraft}
           onSubmit={save}
@@ -116,12 +123,14 @@ function LibraryTable({
 
 function LibraryForm({
   draft,
+  owners,
   busy,
   onChange,
   onSubmit,
   onCancel,
 }: {
   draft: Draft;
+  owners: readonly OwnerOrg[];
   busy: boolean;
   onChange: (draft: Draft) => void;
   onSubmit: () => void;
@@ -158,6 +167,12 @@ function LibraryForm({
             ))}
           </select>
         </label>
+        <OwnerOrgSelect
+          value={draft.ownerOrgId}
+          options={owners}
+          readOnly={!!draft.original}
+          onChange={(ownerOrgId) => onChange({ ...draft, ownerOrgId })}
+        />
         <label>
           {text.displayOrder}
           <input

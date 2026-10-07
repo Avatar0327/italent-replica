@@ -1,5 +1,6 @@
-import type { Dimension, DimensionType, NoteKey } from './api.js';
+import type { Dimension, DimensionType, NoteKey, OwnerOrg } from './api.js';
 import { text } from './messages.js';
+import { OwnerOrgSelect } from './OwnerOrgSelect.js';
 
 export interface ReferenceDraft {
   dimensionId: string;
@@ -8,6 +9,8 @@ export interface ReferenceDraft {
   displayOrder: number;
 }
 export interface CriterionDraft extends Record<string, unknown> {
+  /** 只在新建时有（DEC-281⑨，建后不可改）。 */
+  ownerOrgId?: string;
   categoryId: string;
   name: string;
   enabled: boolean;
@@ -28,6 +31,7 @@ const numberOrNull = (value: string) => (value === '' ? null : Number(value));
 /** 人才标准表单：引用已启用的指标（TC-R4）；只有能力指标可填权重与目标（TC-R3，服务端同样校验）。 */
 export function CriterionForm({
   value,
+  owners,
   categories,
   known,
   candidates,
@@ -37,6 +41,7 @@ export function CriterionForm({
   onCancel,
 }: {
   value: CriterionDraft;
+  owners: readonly OwnerOrg[];
   categories: readonly { id: string; name: string }[];
   known: ReadonlyMap<string, KnownDimension>;
   candidates: readonly Dimension[];
@@ -54,6 +59,14 @@ export function CriterionForm({
       }}
     >
       <fieldset disabled={busy}>
+        {value.ownerOrgId !== undefined && (
+          <OwnerOrgSelect
+            value={value.ownerOrgId}
+            options={owners}
+            readOnly={false}
+            onChange={(ownerOrgId) => set({ ownerOrgId })}
+          />
+        )}
         <label>
           {text.criterionCategory}
           <select required value={value.categoryId} onChange={(e) => set({ categoryId: e.target.value })}>
@@ -93,7 +106,10 @@ export function CriterionForm({
   );
 }
 
-/** 标准里的指标：只引用、不复制；非能力指标的权重与目标输入框不可用（TC-R3）。 */
+/**
+ * 标准里的指标：只引用、不复制；非能力指标的权重与目标输入框不可用（TC-R3）。权重、目标为 1 位小数，
+ * 可空、可为负、不限范围（DEC-281①②）。引用行以指标为键，不能换指标（换即删旧行加新行）。
+ */
 function References({
   value,
   known,
@@ -108,13 +124,12 @@ function References({
   const setReference = (index: number, patch: Partial<ReferenceDraft>) =>
     set({ dimensions: value.dimensions.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
   const chosen = new Set(value.dimensions.map((item) => item.dimensionId));
-  const add = (dimensionId: string) =>
-    set({
-      dimensions: [
-        ...value.dimensions,
-        { dimensionId, weight: null, target: null, displayOrder: value.dimensions.length + 1 },
-      ],
-    });
+  // DEC-281②：新增能力指标引用时权重缺省 1
+  const add = (dimensionId: string) => {
+    const weight = known.get(dimensionId)?.type === 'ability' ? 1 : null;
+    const row = { dimensionId, weight, target: null, displayOrder: value.dimensions.length + 1 };
+    set({ dimensions: [...value.dimensions, row] });
+  };
   return (
     <fieldset>
       <legend>{text.referenced}</legend>
@@ -177,9 +192,7 @@ function ReferenceRow({
         <td key={field}>
           <input
             type="number"
-            min={0}
-            max={field === 'weight' ? 100 : undefined}
-            step="0.01"
+            step="0.1"
             aria-label={text[field]}
             title={ability ? undefined : text.abilityOnly}
             disabled={!ability}

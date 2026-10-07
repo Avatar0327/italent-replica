@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
-import { listAll, type Dimension, type Library } from './api.js';
+import { useEffect, useMemo, useState } from 'react';
+import { listAll, type DescriptionType, type Dimension, type DimensionCategory, type Library } from './api.js';
 import { changedFields } from './changes.js';
-import { DimensionForm, draftOf, type DimensionEditor } from './DimensionForm.js';
+import { DimensionForm, draftOf, type DimensionChoices, type DimensionEditor } from './DimensionForm.js';
 import { text } from './messages.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
@@ -9,7 +9,8 @@ import { useTalentWrite } from './useTalentWrite.js';
 
 /**
  * 指标：编码、名称、定义、分类、顺序、启用，以及等级描述 / 行为描述 / 发展建议 / 面试问题。
- * 改了指标内容，引用它的人才标准立即显示新内容（TC-R2）；被引用的指标不能删除（TC-R5）。
+ * 编码与名称在库内唯一（DEC-281⑤）；改了指标内容，引用它的人才标准立即显示新内容（TC-R2）；
+ * 被引用的指标可以停用、不能删除（DEC-281⑧，TC-R5）。
  */
 export function DimensionPanel({ tenantId }: { tenantId: string }) {
   const [libraryId, setLibraryId] = useState('');
@@ -26,6 +27,8 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
       .then(setLibraries)
       .catch((cause: unknown) => write.setError(String(cause)));
   }, [tenantId, write.setError]);
+  const choices = useDimensionChoices(tenantId, editor, write.setError);
+  const libraryName = (id: string) => libraries.find((item) => item.id === id)?.name ?? '';
   const save = () => {
     if (!editor) return;
     const { original, value } = editor;
@@ -52,6 +55,7 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
       <Status write={write} hasDataPermission={list.hasDataPermission} />
       <DimensionTable
         items={list.items}
+        libraryName={libraryName}
         locked={write.locked}
         onEdit={(item) => setEditor({ original: item, libraryId: item.libraryId, value: draftOf(item) })}
         onDelete={(item) => write.mutate({ path: `dimensions/${item.id}`, method: 'DELETE', revision: item.revision })}
@@ -61,6 +65,7 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
         <DimensionForm
           editor={editor}
           libraries={libraries}
+          choices={choices}
           busy={write.locked}
           onChange={setEditor}
           onSubmit={save}
@@ -92,13 +97,50 @@ function LibraryFilter({
   );
 }
 
+/** 编辑时的选项：所选指标库的分类、启用的发展建议类型（另补上指标已用、但已停用的类型，保留原行）。 */
+function useDimensionChoices(
+  tenantId: string,
+  editor: DimensionEditor | null,
+  onError: (message: string) => void,
+): DimensionChoices {
+  const [categories, setCategories] = useState<DimensionCategory[]>([]);
+  const [types, setTypes] = useState<DescriptionType[]>([]);
+  const libraryId = editor?.libraryId;
+  useEffect(() => {
+    if (!libraryId) return;
+    void listAll<DimensionCategory>(tenantId, `dimension-categories?libraryId=${libraryId}`)
+      .then(setCategories)
+      .catch((cause: unknown) => onError(String(cause)));
+  }, [tenantId, libraryId, onError]);
+  const editing = editor !== null;
+  useEffect(() => {
+    if (!editing) return;
+    void listAll<DescriptionType>(tenantId, 'candidates/description-types')
+      .then(setTypes)
+      .catch((cause: unknown) => onError(String(cause)));
+  }, [tenantId, editing, onError]);
+  const original = editor?.original;
+  return useMemo(() => {
+    const known = new Map(types.map((item) => [item.id, item]));
+    for (const row of original?.suggestions ?? []) {
+      if (!known.has(row.typeId)) {
+        const kept = { id: row.typeId, revision: 0, name: row.typeName ?? row.typeId, enabled: false, displayOrder: 0 };
+        known.set(row.typeId, kept);
+      }
+    }
+    return { categories, types: [...known.values()] };
+  }, [categories, types, original]);
+}
+
 function DimensionTable({
   items,
+  libraryName,
   locked,
   onEdit,
   onDelete,
 }: {
   items: readonly Dimension[];
+  libraryName: (id: string) => string;
   locked: boolean;
   onEdit: (item: Dimension) => void;
   onDelete: (item: Dimension) => void;
@@ -107,9 +149,11 @@ function DimensionTable({
     <table>
       <thead>
         <tr>
-          {[text.code, text.name, text.type, text.library, text.definition, text.enabled, ''].map((label, i) => (
-            <th key={i}>{label}</th>
-          ))}
+          {[text.code, text.name, text.type, text.library, text.category, text.definition, text.enabled, ''].map(
+            (label, i) => (
+              <th key={i}>{label}</th>
+            ),
+          )}
         </tr>
       </thead>
       <tbody>
@@ -118,10 +162,8 @@ function DimensionTable({
             <td>{item.code}</td>
             <td>{item.name}</td>
             <td>{text.types[item.type]}</td>
-            <td>
-              {item.libraryName}
-              {!item.libraryEnabled && `（${text.libraryDisabled}）`}
-            </td>
+            <td>{libraryName(item.libraryId)}</td>
+            <td>{item.categoryName}</td>
             <td>{item.definition}</td>
             <td>{item.enabled ? '✓' : text.disabled}</td>
             <td>

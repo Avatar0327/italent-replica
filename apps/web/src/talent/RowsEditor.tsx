@@ -3,11 +3,13 @@ import { text } from './messages.js';
 export interface Column<Row> {
   readonly key: keyof Row & string;
   readonly label: string;
-  readonly kind?: 'text' | 'number' | 'textarea';
+  readonly kind?: 'text' | 'number' | 'textarea' | 'select';
   readonly required?: boolean;
+  /** kind = select 时的选项（如发展建议类型下拉）。 */
+  readonly options?: readonly { readonly value: string; readonly label: string }[];
 }
 
-/** 明细行编辑（等级 / 行为 / 发展建议 / 面试问题）：整组提交，服务端整组替换。 */
+/** 明细行编辑（等级 / 行为 / 发展建议 / 面试问题）：整组提交，服务端整组替换；发展建议子表的增删改都经这里。 */
 export function RowsEditor<Row extends Record<string, unknown>>({
   legend,
   columns,
@@ -40,29 +42,11 @@ export function RowsEditor<Row extends Record<string, unknown>>({
             <tr key={index}>
               {columns.map((column) => (
                 <td key={column.key}>
-                  {column.kind === 'textarea' ? (
-                    <textarea
-                      aria-label={column.label}
-                      required={column.required}
-                      maxLength={4000}
-                      value={String(row[column.key] ?? '')}
-                      onChange={(event) => update(index, column.key, event.target.value || null)}
-                    />
-                  ) : (
-                    <input
-                      aria-label={column.label}
-                      type={column.kind === 'number' ? 'number' : 'text'}
-                      required={column.required}
-                      value={String(row[column.key] ?? '')}
-                      onChange={(event) =>
-                        update(
-                          index,
-                          column.key,
-                          column.kind === 'number' ? Number(event.target.value) : event.target.value || null,
-                        )
-                      }
-                    />
-                  )}
+                  <Cell
+                    column={column}
+                    value={row[column.key]}
+                    onChange={(value) => update(index, column.key, value)}
+                  />
                 </td>
               ))}
               <td>
@@ -78,5 +62,55 @@ export function RowsEditor<Row extends Record<string, unknown>>({
         {text.addRow}
       </button>
     </fieldset>
+  );
+}
+
+/** 一个明细单元格：下拉 / 多行文本 / 数字 / 单行文本。 */
+function Cell<Row>({
+  column,
+  value,
+  onChange,
+}: {
+  column: Column<Row>;
+  value: unknown;
+  onChange: (value: unknown) => void;
+}) {
+  const shown = String(value ?? '');
+  if (column.kind === 'select') {
+    return (
+      <select
+        aria-label={column.label}
+        required={column.required}
+        value={shown}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">{text.chooseType}</option>
+        {(column.options ?? []).map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  if (column.kind === 'textarea') {
+    return (
+      <textarea
+        aria-label={column.label}
+        required={column.required}
+        maxLength={4000}
+        value={shown}
+        onChange={(e) => onChange(e.target.value || null)}
+      />
+    );
+  }
+  return (
+    <input
+      aria-label={column.label}
+      type={column.kind === 'number' ? 'number' : 'text'}
+      required={column.required}
+      value={shown}
+      onChange={(e) => onChange(column.kind === 'number' ? Number(e.target.value) : e.target.value || null)}
+    />
   );
 }

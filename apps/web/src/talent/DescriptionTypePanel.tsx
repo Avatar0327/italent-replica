@@ -1,46 +1,45 @@
 import { useState } from 'react';
-import type { Category, OwnerOrg } from './api.js';
+import type { DescriptionType } from './api.js';
 import { changedFields } from './changes.js';
 import { text } from './messages.js';
-import { OwnerOrgSelect, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
 import { useTalentWrite } from './useTalentWrite.js';
 
 interface Draft {
-  readonly original: Category | null;
+  readonly original: DescriptionType | null;
   readonly name: string;
+  readonly enabled: boolean;
   readonly displayOrder: number;
-  readonly ownerOrgId: string;
 }
 
-/** 人才标准分类：挂所属管理单元（建后不可改，DEC-281⑨）；分类下还有人才标准时不能删除（DEC-281⑦）。 */
-export function CategoryPanel({ tenantId }: { tenantId: string }) {
+const pick = ({ name, enabled, displayOrder }: DescriptionType) => ({ name, enabled, displayOrder });
+
+/**
+ * 发展建议类型（DEC-281④）：发展建议“类型”下拉的数据源，租户可配置；开通时预置样本“行动建议”（完整选项未取证 🟡）。
+ * 停用的类型不能新选用，已有发展建议保留；被使用的类型不能删除。没有组织字段：只认看全部或创建人（DEC-121）。
+ */
+export function DescriptionTypePanel({ tenantId }: { tenantId: string }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const write = useTalentWrite(tenantId, () => {
     setDraft(null);
     list.reload();
   });
-  const list = useList<Category>(tenantId, 'criterion-categories', write.setError);
-  const owners = useOwnerOrgs(tenantId, 'criterionCategory', write.setError);
+  const list = useList<DescriptionType>(tenantId, 'description-types', write.setError);
   const save = (value: Draft) => {
-    const { original, ownerOrgId, ...fields } = value;
+    const { original, ...fields } = value;
     write.mutate({
-      path: original ? `criterion-categories/${original.id}` : 'criterion-categories',
+      path: original ? `description-types/${original.id}` : 'description-types',
       method: original ? 'PATCH' : 'POST',
       revision: original?.revision ?? 0,
-      body: original
-        ? changedFields({ name: original.name, displayOrder: original.displayOrder }, fields)
-        : { ...fields, ownerOrgId },
+      body: original ? changedFields(pick(original), fields) : fields,
     });
   };
-  const edit = (item: Category) =>
-    setDraft({ original: item, name: item.name, displayOrder: item.displayOrder, ownerOrgId: item.ownerOrgId ?? '' });
   return (
     <section aria-busy={write.busy}>
       <button
         disabled={write.locked}
-        onClick={() => setDraft({ original: null, name: '', displayOrder: 0, ownerOrgId: '' })}
+        onClick={() => setDraft({ original: null, name: '', enabled: true, displayOrder: 0 })}
       >
         {text.create}
       </button>
@@ -49,14 +48,15 @@ export function CategoryPanel({ tenantId }: { tenantId: string }) {
         {list.items.map((item) => (
           <li key={item.id}>
             {item.name}
-            <button disabled={write.locked} onClick={() => edit(item)}>
+            {!item.enabled && `（${text.disabled}）`}
+            <button disabled={write.locked} onClick={() => setDraft({ ...pick(item), original: item })}>
               {text.edit}
             </button>
             <button
               disabled={write.locked}
               onClick={() =>
                 window.confirm(text.confirmDelete) &&
-                write.mutate({ path: `criterion-categories/${item.id}`, method: 'DELETE', revision: item.revision })
+                write.mutate({ path: `description-types/${item.id}`, method: 'DELETE', revision: item.revision })
               }
             >
               {text.delete}
@@ -66,9 +66,8 @@ export function CategoryPanel({ tenantId }: { tenantId: string }) {
       </ul>
       <Pager list={list} locked={write.locked} />
       {draft && (
-        <CategoryForm
+        <TypeForm
           draft={draft}
-          owners={owners}
           busy={write.locked}
           onChange={setDraft}
           onSubmit={() => save(draft)}
@@ -79,16 +78,14 @@ export function CategoryPanel({ tenantId }: { tenantId: string }) {
   );
 }
 
-function CategoryForm({
+function TypeForm({
   draft,
-  owners,
   busy,
   onChange,
   onSubmit,
   onCancel,
 }: {
   draft: Draft;
-  owners: readonly OwnerOrg[];
   busy: boolean;
   onChange: (draft: Draft) => void;
   onSubmit: () => void;
@@ -106,17 +103,11 @@ function CategoryForm({
           {text.name}
           <input
             required
-            maxLength={200}
+            maxLength={50}
             value={draft.name}
             onChange={(event) => onChange({ ...draft, name: event.target.value })}
           />
         </label>
-        <OwnerOrgSelect
-          value={draft.ownerOrgId}
-          options={owners}
-          readOnly={!!draft.original}
-          onChange={(ownerOrgId) => onChange({ ...draft, ownerOrgId })}
-        />
         <label>
           {text.displayOrder}
           <input
@@ -125,6 +116,14 @@ function CategoryForm({
             value={draft.displayOrder}
             onChange={(event) => onChange({ ...draft, displayOrder: Number(event.target.value) })}
           />
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={draft.enabled}
+            onChange={(event) => onChange({ ...draft, enabled: event.target.checked })}
+          />
+          {text.enabled}
         </label>
         <button type="submit">{text.save}</button>
         <button type="button" onClick={onCancel}>

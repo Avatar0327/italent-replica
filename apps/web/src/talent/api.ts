@@ -3,11 +3,30 @@ import { text } from './messages.js';
 export type DimensionType = 'ability' | 'potential' | 'experience';
 export const DIMENSION_TYPES: readonly DimensionType[] = ['ability', 'potential', 'experience'];
 
-export interface Library {
+/** DEC-281⑨：所属人与所属管理单元（组织）。 */
+interface Owned {
+  readonly id: string;
+  readonly revision: number;
+  readonly ownerId?: string;
+  readonly ownerOrgId?: string;
+}
+export interface Library extends Owned {
+  readonly name: string;
+  readonly type: DimensionType;
+  readonly enabled: boolean;
+  readonly displayOrder: number;
+}
+/** 指标库内分类（DEC-281③）。 */
+export interface DimensionCategory extends Owned {
+  readonly libraryId: string;
+  readonly name: string;
+  readonly displayOrder: number;
+}
+/** 发展建议类型（DEC-281④）。 */
+export interface DescriptionType {
   readonly id: string;
   readonly revision: number;
   readonly name: string;
-  readonly type: DimensionType;
   readonly enabled: boolean;
   readonly displayOrder: number;
 }
@@ -22,26 +41,24 @@ export interface Behavior {
   displayOrder?: number;
 }
 export interface Suggestion {
-  suggestionType?: string | null;
+  typeId: string;
+  typeName?: string;
   description: string;
-  displayOrder?: number;
+  displayOrder: number;
 }
 export interface Question {
   question: string;
   keyPoints?: string | null;
   displayOrder?: number;
 }
-export interface Dimension {
-  readonly id: string;
-  readonly revision: number;
+export interface Dimension extends Owned {
   readonly libraryId: string;
-  readonly libraryName?: string;
   readonly type: DimensionType;
-  readonly libraryEnabled: boolean;
   readonly code: string;
   readonly name: string;
   readonly definition?: string | null;
-  readonly category?: string | null;
+  readonly categoryId?: string | null;
+  readonly categoryName?: string | null;
   readonly displayOrder: number;
   readonly enabled: boolean;
   readonly grades?: Grade[];
@@ -49,9 +66,7 @@ export interface Dimension {
   readonly suggestions?: Suggestion[];
   readonly questions?: Question[];
 }
-export interface Category {
-  readonly id: string;
-  readonly revision: number;
+export interface Category extends Owned {
   readonly name: string;
   readonly displayOrder: number;
 }
@@ -61,18 +76,23 @@ export interface CriterionDimension {
   readonly weight: number | null;
   readonly target: number | null;
   readonly displayOrder: number;
-  /** 指标库当前内容（TC-R2）；无权查看指标时缺省。 */
-  readonly dimension?: Partial<Dimension>;
+  /** 指标库当前内容（TC-R2），只有 名称、定义、指标类别（DEC-281⑪）；无权查看指标时缺省。 */
+  readonly dimension?: { name?: string; definition?: string | null; categoryName?: string | null };
 }
 export type NoteKey = 'abilityNote' | 'potentialNote' | 'experienceNote' | 'achievementNote';
-export interface Criterion extends Partial<Record<NoteKey, string | null>> {
-  readonly id: string;
-  readonly revision: number;
+export interface Criterion extends Owned, Partial<Record<NoteKey, string | null>> {
   readonly categoryId: string;
   readonly name: string;
   readonly enabled: boolean;
   readonly dimensions?: CriterionDimension[];
 }
+/** 可选的所属管理单元（查看人管理单元内的组织）。 */
+export interface OwnerOrg {
+  readonly id: string;
+  readonly code: string;
+  readonly name: string;
+}
+export type OwnerObject = 'library' | 'criterionCategory' | 'criterion';
 export interface ListResult<T> {
   readonly items: T[];
   readonly hasDataPermission: boolean;

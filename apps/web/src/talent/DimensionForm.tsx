@@ -1,17 +1,27 @@
-import type { Behavior, Dimension, Grade, Library, Question, Suggestion } from './api.js';
+import type {
+  Behavior,
+  DescriptionType,
+  Dimension,
+  DimensionCategory,
+  Grade,
+  Library,
+  Question,
+  Suggestion,
+} from './api.js';
 import { text } from './messages.js';
 import { RowsEditor } from './RowsEditor.js';
 
+type SuggestionDraft = Omit<Suggestion, 'typeName'>;
 export interface DimensionDraft extends Record<string, unknown> {
   code: string;
   name: string;
   definition: string | null;
-  category: string | null;
+  categoryId: string | null;
   displayOrder: number;
   enabled: boolean;
   grades: Grade[];
   behaviors: Behavior[];
-  suggestions: Suggestion[];
+  suggestions: SuggestionDraft[];
   questions: Question[];
 }
 export interface DimensionEditor {
@@ -24,19 +34,31 @@ export const draftOf = (item: Dimension | null): DimensionDraft => ({
   code: item?.code ?? '',
   name: item?.name ?? '',
   definition: item?.definition ?? null,
-  category: item?.category ?? null,
+  categoryId: item?.categoryId ?? null,
   displayOrder: item?.displayOrder ?? 0,
   enabled: item?.enabled ?? true,
   grades: item?.grades ?? [],
   behaviors: item?.behaviors ?? [],
-  suggestions: item?.suggestions ?? [],
+  // 类型名称是查找字段的显示值，不随表单提交
+  suggestions: (item?.suggestions ?? []).map(({ typeId, description, displayOrder }) => ({
+    typeId,
+    description,
+    displayOrder,
+  })),
   questions: item?.questions ?? [],
 });
 
-/** 指标表单：所属指标库只在新建时选择，之后不可修改（类型随指标库）。 */
+/** 选项：本指标库的分类与启用的发展建议类型。 */
+export interface DimensionChoices {
+  readonly categories: readonly DimensionCategory[];
+  readonly types: readonly DescriptionType[];
+}
+
+/** 指标表单：所属指标库只在新建时选择，编码建后只读（DEC-281⑤⑥）；类型随指标库。 */
 export function DimensionForm({
   editor,
   libraries,
+  choices,
   busy,
   onChange,
   onSubmit,
@@ -44,6 +66,7 @@ export function DimensionForm({
 }: {
   editor: DimensionEditor;
   libraries: readonly Library[];
+  choices: DimensionChoices;
   busy: boolean;
   onChange: (editor: DimensionEditor) => void;
   onSubmit: () => void;
@@ -73,8 +96,8 @@ export function DimensionForm({
             ))}
           </select>
         </label>
-        <BasicFields value={value} set={set} />
-        <DetailEditors value={value} set={set} />
+        <BasicFields value={value} readOnlyCode={!!editor.original} categories={choices.categories} set={set} />
+        <DetailEditors value={value} types={choices.types} set={set} />
         <button type="submit">{text.save}</button>
         <button type="button" onClick={onCancel}>
           {text.cancel}
@@ -84,12 +107,29 @@ export function DimensionForm({
   );
 }
 
-function BasicFields({ value, set }: { value: DimensionDraft; set: (patch: Partial<DimensionDraft>) => void }) {
+function BasicFields({
+  value,
+  readOnlyCode,
+  categories,
+  set,
+}: {
+  value: DimensionDraft;
+  readOnlyCode: boolean;
+  categories: readonly DimensionCategory[];
+  set: (patch: Partial<DimensionDraft>) => void;
+}) {
   return (
     <>
       <label>
         {text.code}
-        <input required maxLength={100} value={value.code} onChange={(e) => set({ code: e.target.value })} />
+        <input
+          required
+          readOnly={readOnlyCode}
+          maxLength={50}
+          pattern="[A-Za-z][A-Za-z0-9_]*"
+          value={value.code}
+          onChange={(e) => set({ code: e.target.value })}
+        />
       </label>
       <label>
         {text.name}
@@ -105,11 +145,14 @@ function BasicFields({ value, set }: { value: DimensionDraft; set: (patch: Parti
       </label>
       <label>
         {text.category}
-        <input
-          maxLength={200}
-          value={value.category ?? ''}
-          onChange={(e) => set({ category: e.target.value || null })}
-        />
+        <select value={value.categoryId ?? ''} onChange={(e) => set({ categoryId: e.target.value || null })}>
+          <option value="">{text.noCategory}</option>
+          {categories.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
       </label>
       <label>
         {text.displayOrder}
@@ -131,7 +174,15 @@ function BasicFields({ value, set }: { value: DimensionDraft; set: (patch: Parti
 type Rows<T> = (T & Record<string, unknown>)[];
 
 /** 等级描述 / 行为描述 / 发展建议 / 面试问题：各自整组编辑、整组提交。 */
-function DetailEditors({ value, set }: { value: DimensionDraft; set: (patch: Partial<DimensionDraft>) => void }) {
+function DetailEditors({
+  value,
+  types,
+  set,
+}: {
+  value: DimensionDraft;
+  types: readonly DescriptionType[];
+  set: (patch: Partial<DimensionDraft>) => void;
+}) {
   return (
     <>
       <RowsEditor<Grade & Record<string, unknown>>
@@ -155,14 +206,21 @@ function DetailEditors({ value, set }: { value: DimensionDraft; set: (patch: Par
         blank={() => ({ description: '', keyPoints: null })}
         onChange={(behaviors) => set({ behaviors })}
       />
-      <RowsEditor<Suggestion & Record<string, unknown>>
+      <RowsEditor<SuggestionDraft & Record<string, unknown>>
         legend={text.suggestions}
         columns={[
-          { key: 'suggestionType', label: text.suggestionType },
+          { key: 'displayOrder', label: text.presentOrder, kind: 'number', required: true },
+          {
+            key: 'typeId',
+            label: text.suggestionType,
+            kind: 'select',
+            required: true,
+            options: types.map((item) => ({ value: item.id, label: item.name })),
+          },
           { key: 'description', label: text.description, kind: 'textarea', required: true },
         ]}
-        rows={value.suggestions as Rows<Suggestion>}
-        blank={() => ({ suggestionType: null, description: '' })}
+        rows={value.suggestions as Rows<SuggestionDraft>}
+        blank={() => ({ typeId: '', description: '', displayOrder: value.suggestions.length + 1 })}
         onChange={(suggestions) => set({ suggestions })}
       />
       <RowsEditor<Question & Record<string, unknown>>
