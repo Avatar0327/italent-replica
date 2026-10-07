@@ -1,0 +1,22 @@
+.demo-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 16px;
+  background: #fff7e0;
+  border-bottom: 1px solid #e6c766;
+  color: #5b4300;
+  font-size: 14px;
+}
+.demo-bar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.demo-bar select {
+  max-width: 100%;
+}
+.demo-tenant code {
+  font-size: 12px;
+}
