@@ -133,24 +133,23 @@ describe('AC-APV-UI-02 / DEC-288 止损：披露版本随完整详情、每页�
     expect(JSON.stringify(after)).not.toContain('合成窗口外编辑地点');
   });
 
-  it('写响应：撤权后带旧版本提交编辑，命令已执行并入台账，但响应是 409 + 原因码且无业务数据；同键不带版本重放得到 200 且不重复执行', async () => {
+  it('写响应：撤权后带旧版本转交（盲审下仍允许），命令已执行入台账但响应 409 + 原因码且无业务数据；同键不带版本重放 200 且不重复执行', async () => {
     const scene = await placeScene(database().db, 'r7-write');
     const r = reader(scene);
     const old = await r.versionOf();
     await scene.revokePlace();
     const key = randomUUID();
-    const body = { fields: { remarks: '合成撤权后备注' } };
-    const written = await r.post(`/tasks/${scene.task.id}/edit`, { body, key, version: old });
+    const body = { toUserId: scene.s.inHrbp.userId, comment: '合成撤权后转交意见' };
+    const written = await r.post(`/tasks/${scene.task.id}/transfer`, { body, key, version: old });
     expectTightenedBody(written.status, await written.json());
-    const replay = await r.post(`/tasks/${scene.task.id}/edit`, { body, key });
+    const replay = await r.post(`/tasks/${scene.task.id}/transfer`, { body, key });
     expect(replay.status, await replay.clone().text()).toBe(200);
     const result = (await replay.json()) as Versioned;
-    expect(result.form?.values).toMatchObject({ remarks: '合成撤权后备注' });
     expect(result.form?.values).not.toHaveProperty('place');
     expect(result.revision).toBe(scene.view.revision + 1);
     expect(typeof result.disclosureVersion).toBe('string');
-    const logs = await r.ok('/logs?page=1&pageSize=20');
-    expect(logs.items?.filter((log) => log.event === 'edit')).toHaveLength(1);
+    const tasks = await r.ok('/tasks?page=1&pageSize=20');
+    expect(tasks.items?.filter((task) => task.status === 'transferred')).toHaveLength(1);
   });
 
   it('recordsHidden 由 false 变 true（转交进入隐藏节点，DEC-115）：带转交前版本的详情与两种历史都 409，不带版本则隐藏且无旧意见', async () => {

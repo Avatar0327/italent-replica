@@ -1,6 +1,6 @@
 import { isValidTimeZone } from '@italent/domain';
 import { useEffect, useRef, useState } from 'react';
-import { approvalRequest, PAGE_SIZE, permissionFailure, requestMessage } from './api.js';
+import { approvalRequest, disclosureTightened, PAGE_SIZE, permissionFailure, requestMessage } from './api.js';
 import { knownLogFields, logFieldsShrank } from './disclosure.js';
 import { displayValue } from './fields.js';
 import { eventLabels, statusLabels, text } from './messages.js';
@@ -66,19 +66,22 @@ export function useApprovalHistory({ tenantId, detail, requests }: HistoryProps)
     const known = knownLogFields(detail, current?.kind === 'logs' ? (current.rows as readonly ApprovalLog[]) : []);
     try {
       const query = new URLSearchParams({ page: String(nextPage), pageSize: String(PAGE_SIZE) });
-      // DEC-115 / DEC-277 ② / DEC-288：隐藏、被拒或同一日志字段名缩减都是收紧信号，在通道任务内即触发清空与整页重读。
+      // DEC-115 / DEC-277 ② / DEC-288：隐藏、被拒或同一日志字段名缩减都是收紧信号，在通道任务内即触发清空与整页重读；
+      // 每一页都回传最后看到的披露版本，服务端判定收紧（DISCLOSURE_TIGHTENED）则清空并整页刷新（DEC-288 止损）。
       const result = await requests.run(async (signal) => {
         try {
           const page = await approvalRequest<ApprovalPageResult<ApprovalTask | ApprovalLog>>(
             tenantId,
             `/instances/${detail.id}/${nextKind}?${query}`,
-            { signal },
+            { signal, version: requests.version() },
           );
+          requests.saw(page.disclosureVersion, signal);
           const shrank = nextKind === 'logs' && logFieldsShrank(known, page.items as readonly ApprovalLog[]);
           if (page.recordsHidden || shrank) requests.tighten();
           return page;
         } catch (failure) {
           if (permissionFailure(failure)) requests.tighten();
+          else if (disclosureTightened(failure)) requests.tightened();
           throw failure;
         }
       });

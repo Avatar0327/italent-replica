@@ -26,11 +26,11 @@ import {
 const database = useTestDb();
 const VERSION = 'x-disclosure-version';
 const OTHER_TAB_VALUE = '合成另一标签页编辑后地点';
-let reload: ReturnType<typeof vi.fn>;
+let reload: ReturnType<typeof vi.fn<() => void>>;
 
 beforeEach(() => {
   registerDom();
-  reload = vi.fn();
+  reload = vi.fn<() => void>();
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -39,7 +39,7 @@ afterEach(() => {
 
 interface Session {
   readonly net: RealFetch;
-  readonly ui: Mounted;
+  ui: Mounted;
   /** 自 409 交付起的 Profiler 帧序号。 */
   mark: number;
 }
@@ -58,6 +58,10 @@ async function open(scene: PlaceScene, options: { instanceId?: string | null; re
 }
 function detailUrl(scene: PlaceScene) {
   return `${BASE}/instances/${scene.view.id}`;
+}
+/** 完整详情 GET 的往返（列表请求先于详情发出，不能按下标取）。 */
+function detailReads(net: RealFetch, scene: PlaceScene): Exchange[] {
+  return net.exchanges.filter((item) => item.url === detailUrl(scene) && item.options.method !== 'POST');
 }
 function last(net: RealFetch): Exchange {
   return net.exchanges.at(-1)!;
@@ -119,10 +123,8 @@ describe('第 6 轮审查三条路径：服务端返回原因码、响应体无�
     await scene.revokePlace();
     gate.release();
     await awaitReload(session);
-    const detail = net.exchanges.find(
-      (item) => item.url === detailUrl(scene) && item.status === 200 && item !== net.exchanges[0],
-    );
-    expect(detail).toBeTruthy();
+    const [, detail] = detailReads(net, scene);
+    expect(detail?.status).toBe(200);
     expect(JSON.stringify(detail!.body)).toContain(OTHER_TAB_VALUE);
     const logs = last(net);
     expect(logs.url).toContain('/logs?');
@@ -141,7 +143,8 @@ describe('第 6 轮审查三条路径：服务端返回原因码、响应体无�
     await scene.padLogs(200);
     const session = await open(scene);
     const { net, ui } = session;
-    expect(JSON.stringify(net.exchanges[0]!.body)).not.toContain('"edit"');
+    const shown = (detailReads(net, scene)[0]!.body as { logs: { event: string }[] }).logs;
+    expect(shown.some((log) => log.event === 'edit')).toBe(false);
     await ui.click('查看日志历史');
     await awaitPage(session, 'logs', 1);
     await ui.click('下一页');
@@ -184,7 +187,7 @@ describe('GET / POST / 每一页历史各至少一例', () => {
     const scene = await placeScene(database().db, 'r7-e2e-get');
     const session = await open(scene);
     const { net, ui } = session;
-    const first = net.exchanges[0]!;
+    const first = detailReads(net, scene)[0]!;
     expect(header(first.options, VERSION)).toBeNull();
     await scene.revokePlace();
     await ui.click('刷新详情');
@@ -200,7 +203,7 @@ describe('GET / POST / 每一页历史各至少一例', () => {
     const scene = await placeScene(database().db, 'r7-e2e-post');
     const session = await open(scene);
     const { net, ui } = session;
-    const first = net.exchanges[0]!;
+    const first = detailReads(net, scene)[0]!;
     await scene.revokePlace();
     await ui.click('转交');
     await ui.input('接收人用户账号 ID', scene.s.inHrbp.userId);
@@ -226,8 +229,7 @@ describe('GET / POST / 每一页历史各至少一例', () => {
       () => again.ui.buttons().some((b) => b.textContent === '重试原命令' && !b.disabled),
       '回查完成',
     );
-    const recheck = again.net.exchanges[0]!;
-    expect(recheck.url).toBe(detailUrl(scene));
+    const recheck = detailReads(again.net, scene)[0]!;
     expect(header(recheck.options, VERSION)).toBeNull();
     expect(JSON.stringify(recheck.body)).not.toContain(PLACE_VALUE);
     await again.ui.click('重试原命令');

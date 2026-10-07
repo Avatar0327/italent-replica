@@ -14,11 +14,27 @@ export class ApprovalApiError extends Error {
     super(message);
   }
 }
-export async function approvalRequest<T>(tenantId: string, path: string, options: RequestInit = {}): Promise<T> {
+/** DEC-288 止损：客户端在读写请求里回传最后看到的披露版本，服务端据此判断是否已收紧。 */
+export const DISCLOSURE_VERSION_HEADER = 'x-disclosure-version';
+export interface ApprovalRequestOptions extends RequestInit {
+  /** 最后看到的披露版本；首次读取或刷新后为 null，不回传。 */
+  readonly version?: string | null;
+}
+export async function approvalRequest<T>(
+  tenantId: string,
+  path: string,
+  options: ApprovalRequestOptions = {},
+): Promise<T> {
+  const { version, ...init } = options;
   const response = await fetch(`${APPROVAL_API}${path}`, {
-    ...options,
+    ...init,
     credentials: 'same-origin',
-    headers: { 'content-type': 'application/json', 'x-tenant-id': tenantId, ...options.headers },
+    headers: {
+      'content-type': 'application/json',
+      'x-tenant-id': tenantId,
+      ...(version ? { [DISCLOSURE_VERSION_HEADER]: version } : {}),
+      ...init.headers,
+    },
   });
   const body = (await response.json()) as T & {
     error?: { code?: string; message?: string; details?: { reason?: string } };
@@ -50,13 +66,19 @@ export function loadApprovalList(
     { signal },
   );
 }
-export function loadApprovalDetail(tenantId: string, id: string, signal?: AbortSignal) {
-  return approvalRequest<ApprovalDetail>(tenantId, `/instances/${requireUuid(id)}`, { signal });
+export function loadApprovalDetail(tenantId: string, id: string, signal?: AbortSignal, version?: string | null) {
+  return approvalRequest<ApprovalDetail>(tenantId, `/instances/${requireUuid(id)}`, { signal, version });
 }
-export function executeApprovalCommand(tenantId: string, command: ApprovalCommand, signal?: AbortSignal) {
+export function executeApprovalCommand(
+  tenantId: string,
+  command: ApprovalCommand,
+  signal?: AbortSignal,
+  version?: string | null,
+) {
   return approvalRequest<ApprovalDetail>(tenantId, command.path, {
     method: 'POST',
     signal,
+    version,
     headers: { 'if-match': String(command.revision), 'idempotency-key': command.id },
     body: JSON.stringify(command.body),
   });
@@ -77,6 +99,10 @@ export function revisionConflict(error: unknown): error is ApprovalApiError {
       error.reason === 'APPROVAL_BUSINESS_CHANGED' ||
       error.reason === 'APPROVAL_CONCURRENT_CONFLICT')
   );
+}
+/** 服务端判定披露已收紧（DEC-288 止损）：清空并整页刷新，不按普通 409 处理。 */
+export function disclosureTightened(error: unknown): error is ApprovalApiError {
+  return error instanceof ApprovalApiError && error.status === 409 && error.reason === 'DISCLOSURE_TIGHTENED';
 }
 export function unknownResult(error: unknown) {
   if (!(error instanceof ApprovalApiError)) return true;

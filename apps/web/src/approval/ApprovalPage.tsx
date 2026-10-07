@@ -7,6 +7,7 @@ import { ApprovalHistory, formatApprovalTime, useApprovalHistory, type HistorySt
 import { PAGE_SIZE, requireUuid, requestMessage } from './api.js';
 import { statusLabels, tabLabels, text } from './messages.js';
 import { disclosureVersion } from './disclosure.js';
+import { readStash, reloadPage } from './pageRecovery.js';
 import type { ApprovalDetail, ApprovalListItem, ApprovalTab, FieldDraft } from './types.js';
 import { disclosedDraft, useApprovalCommand, type CommandState, type CommandView } from './useApprovalCommand.js';
 import { useApprovalInstance } from './useApprovalInstance.js';
@@ -38,14 +39,17 @@ interface WorkspaceProps {
   readonly instanceId?: string | null;
   readonly initialTab?: ApprovalTab;
   readonly businessId?: string;
+  /** 服务端判定披露收紧后的整页刷新（DEC-288 止损）；测试注入替身观察调用。 */
+  readonly reload?: () => void;
 }
 /** 租户/深链接变化会销毁所有旧状态，迟到响应无法回填另一租户。 */
 export function ApprovalWorkspace(props: WorkspaceProps) {
   return <TenantWorkspace key={`${props.tenantId}:${props.instanceId ?? ''}`} {...props} />;
 }
-function TenantWorkspace({ tenantId, instanceId, initialTab = 'todos', businessId = '' }: WorkspaceProps) {
+function TenantWorkspace({ tenantId, instanceId, initialTab = 'todos', businessId = '', reload }: WorkspaceProps) {
   const list = useApprovalList(tenantId, initialTab, businessId);
-  const [selectedId, setSelectedId] = useState(instanceId ?? null);
+  // 整页刷新后没有实例深链时，按刷新前暂存的命令回到原单，先回查再决定是否重试（DEC-288 止损 ④）。
+  const [selectedId, setSelectedId] = useState(() => instanceId ?? readStash(tenantId)?.instanceId ?? null);
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -78,6 +82,7 @@ function TenantWorkspace({ tenantId, instanceId, initialTab = 'todos', businessI
           }}
           onDone={list.refresh}
           onLockChange={setLocked}
+          reload={reload ?? reloadPage}
         />
       )}
     </div>
@@ -194,12 +199,14 @@ interface DetailPanelProps {
   readonly onDenied: () => void;
   readonly onDone: () => void;
   readonly onLockChange: (locked: boolean) => void;
+  readonly reload: () => void;
 }
 function ApprovalDetailPanel(props: DetailPanelProps) {
-  const instance = useApprovalInstance(props.tenantId, props.instanceId, props.onDenied);
+  const instance = useApprovalInstance(props.tenantId, props.instanceId, props.onDenied, props.reload);
   // DEC-288 ①：命令状态挂在面板层，清空重读与字段集合版本重建都不会销毁它。
   const command = useApprovalCommand({
     tenantId: props.tenantId,
+    instanceId: props.instanceId,
     detail: instance.detail,
     requests: instance.requests,
     refresh: instance.refresh,
@@ -230,8 +237,9 @@ function ApprovalDetailPanel(props: DetailPanelProps) {
         </p>
       )}
       {instance.detail ? (
+        // 字段集合版本变化或命令确认成功都整体重建展示层：已提交的表单草稿不再带入下一次提交（第 6 轮审查 P2-2）。
         <DetailContents
-          key={disclosureVersion(instance.detail)}
+          key={`${disclosureVersion(instance.detail)}#${command.succeeded}`}
           detail={instance.detail}
           command={command}
           history={history}
@@ -242,6 +250,7 @@ function ApprovalDetailPanel(props: DetailPanelProps) {
       ) : (
         // DEC-288 ③：重读完成前只显示占位，不渲染任何旧字段名或旧值。
         <div className="approval-button-row">
+          {command.mode === 'unknown' && command.message && <p role="status">{command.message}</p>}
           {!instance.loading && (
             <button type="button" onClick={() => void instance.refresh().catch(() => undefined)}>
               {text.refreshDetail}

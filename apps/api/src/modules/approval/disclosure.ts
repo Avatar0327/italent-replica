@@ -27,7 +27,16 @@ import { rowsOf, type ApprovalContext, type Row } from './context.js';
 import { loadVersion, type VersionView } from './definitions.js';
 import { userOfPerson } from './resolver.js';
 import { addSignAllowed, addSignLink, isOwnRequest, retrievableTask, urgeOpen, votesInTransition } from './rules.js';
-import { displayWindow, loadInstance, loadLogs, loadTasks, type InstanceRow, type TaskRow } from './store.js';
+import type { DisclosureVersion } from './disclosure-version.js';
+import {
+  displayWindow,
+  loadInstance,
+  loadLogFieldNames,
+  loadLogs,
+  loadTasks,
+  type InstanceRow,
+  type TaskRow,
+} from './store.js';
 
 export const SHOW_ORIGINALS_SETTING = 'approval.show_original_values';
 
@@ -50,6 +59,8 @@ export interface DetailData {
   /** 完整任务：查看人所在节点、记录隐藏与可用动作都按它判断，不受展示窗口影响（F1）。 */
   readonly allTasks: readonly TaskRow[];
   readonly logs: Awaited<ReturnType<typeof loadLogs>>;
+  /** 全部日志里出现过的字段名（不限展示窗口）：披露版本按它计算历史可见字段名集合（DEC-288 止损）。 */
+  readonly logFieldNames: ReadonlySet<string>;
   readonly showOriginals: boolean;
   /** 查看人可对本单执行的管理员动作（N8）。 */
   readonly admin: { readonly transfer: boolean; readonly intervene: boolean };
@@ -90,6 +101,7 @@ export async function readDetail(
     tasks: displayWindow(allTasks),
     allTasks,
     logs: await loadLogs(tx, ctx.tenantId, instanceId),
+    logFieldNames: await loadLogFieldNames(tx, ctx.tenantId, instanceId),
     showOriginals: setting.value === true,
     admin,
     subjectUserId: await userOfPerson(tx, ctx.tenantId, instance.subjectEmployeeId),
@@ -147,6 +159,40 @@ export function disclosedFields(data: DetailData, userId: string, viewable: Read
     formFieldsWithForeign(viewerNode(data, userId)?.formFields ?? [], data.snapshot),
     viewable,
   );
+}
+
+/** 表单实际披露的字段：可见字段，审批通过后再加两项日期（DEC-195）。 */
+function disclosedFormFields(data: DetailData, disclosed: ReadonlySet<string>): string[] {
+  const fields = [...disclosed];
+  if (data.instance.status === 'approved' && disclosed.has('effectiveDate'))
+    fields.push('originalEffectiveDate', 'actualEffectiveDate');
+  return fields;
+}
+
+/** 展示原值的字段（租户开关「审批详情页显示原信息」，DEC-057）。 */
+function originalFields(data: DetailData, fields: readonly string[]): string[] {
+  const originals = data.showOriginals ? data.snapshot.originals : undefined;
+  return originals ? fields.filter((field) => Object.hasOwn(originals, field)) : [];
+}
+
+/**
+ * 披露版本（DEC-288 止损）：查看人 × 实例当前的表单字段集合、原值字段集合、日志 / 任务历史可见字段名集合
+ * （全部日志 ∩ 可见字段，记录隐藏时为空）与 recordsHidden。完整详情、历史每一页、写响应共用同一计算。
+ */
+export function disclosureVersionOf(
+  data: DetailData,
+  userId: string,
+  viewable: ReadonlySet<string> | undefined,
+): DisclosureVersion {
+  const hidden = recordsHidden(data, userId);
+  const disclosed = disclosedFields(data, userId, viewable);
+  const fields = disclosedFormFields(data, disclosed);
+  return {
+    fields,
+    originals: originalFields(data, fields),
+    logFields: hidden ? [] : [...disclosed].filter((field) => data.logFieldNames.has(field)),
+    hidden,
+  };
 }
 
 function pick(source: Readonly<Row>, fields: readonly string[]): Row {
@@ -210,10 +256,8 @@ export function detailView(
   const node = viewerNode(data, userId);
   const hidden = recordsHidden(data, userId);
   const disclosed = disclosedFields(data, userId, viewable);
-  const fields = [...disclosed];
   // DEC-195：两项日期沿用生效日期的节点表单与字段查看权限，不扩展审批快照。
-  if (instance.status === 'approved' && disclosed.has('effectiveDate'))
-    fields.push('originalEffectiveDate', 'actualEffectiveDate');
+  const fields = disclosedFormFields(data, disclosed);
   const names = new Map(version.nodes.map((candidate) => [candidate.key, candidate.name]));
   const originals = data.showOriginals && snapshot.originals ? { originals: pick(snapshot.originals, fields) } : {};
   const actions = [

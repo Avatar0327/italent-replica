@@ -3,6 +3,7 @@
  * 在 node 环境里手工注册 happy-dom 窗口（web 转换模式下 `import.meta.url` 不是 file:，数据库包无法加载），
  * `fetch` 直接转给 `app.request`，并记录每次往返（状态码、响应体）供断言“响应体不带业务数据”。
  */
+import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { createApp, createDevIdentityResolver, devIdentityHeaders } from '@italent/api';
@@ -328,7 +329,8 @@ export async function placeScene(db: Db, label: string, options: PlaceSceneOptio
     },
     /** 生产授权器应用 + 开发身份：组件 fetch 直接转给它。 */
     app() {
-      const secret = `r7${Math.random().toString(16).slice(2)}${'0'.repeat(48)}`.slice(0, 64);
+      // 开发期签名密钥每次运行随机生成，不入库、不入仓（与 support/tenant-api.ts 相同）。
+      const secret = randomBytes(32).toString('hex');
       const app = createApp({
         db: w.db,
         identity: createDevIdentityResolver({ secret, nodeEnv: 'test' }),

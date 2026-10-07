@@ -65,6 +65,7 @@ import {
 import {
   detailView,
   disclosedFields,
+  disclosureVersionOf,
   projectLog,
   readDetail,
   recordsHidden,
@@ -72,6 +73,13 @@ import {
   type DetailData,
   type Viewer,
 } from './disclosure.js';
+import {
+  DISCLOSURE_VERSION_HEADER,
+  decodeDisclosureVersion,
+  disclosureTightened,
+  encodeDisclosureVersion,
+  type DisclosureVersion,
+} from './disclosure-version.js';
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
 import { discloseHandover, handoverExceptionAdmin, takeOverOnDeactivation, type HandoverResult } from './handover.js';
@@ -177,13 +185,31 @@ async function ownViewable(deps: TenantRouteDeps, ctx: TenantContext, data: Deta
   return new Set([...own, ...profileFields.filter((field) => profile === undefined || profile.has(field))]);
 }
 
+/**
+ * DEC-288 止损（后端兜底）：客户端回传最后看到的披露版本；当前披露更收紧（字段变少、历史字段名变少、
+ * recordsHidden 由 false 变 true）时返回 409 + DISCLOSURE_TIGHTENED，响应体不带任何业务数据，由客户端清空并整页刷新。
+ * 普通 revision 冲突仍是 REVISION_CONFLICT，两者以错误码与原因码区分。返回编码后的当前版本供响应携带。
+ */
+function assertDisclosure(c: C, current: DisclosureVersion): string {
+  const echoed = c.req.header(DISCLOSURE_VERSION_HEADER);
+  if (echoed !== undefined) {
+    const seen = decodeDisclosureVersion(echoed.trim());
+    if (!seen) throw approvalError('VALIDATION_FAILED', 'DISCLOSURE_VERSION_INVALID', '披露版本不合法');
+    if (disclosureTightened(seen, current)) {
+      throw approvalError('CONFLICT', 'DISCLOSURE_TIGHTENED', '可见范围已收紧，请刷新页面');
+    }
+  }
+  return encodeDisclosureVersion(current);
+}
+
 async function respondDetail(c: C, deps: TenantRouteDeps, instanceId: string) {
   const ctx = readCtx(c, deps);
   const viewer = await viewerOf(deps, ctx);
   const data = await withTenant(deps.db, ctx.tenantId, (tx) => readDetail(tx, ctx, instanceId, viewer));
   const viewable = await detailViewable(deps, ctx, data);
+  const disclosureVersion = assertDisclosure(c, disclosureVersionOf(data, ctx.userId, viewable));
   const editing = await withTenant(deps.db, ctx.tenantId, (tx) => readNodeEditing(tx, deps, ctx, data, viewable));
-  return c.json({ ...detailView(data, ctx.userId, viewable, editing), timezone: ctx.timezone });
+  return c.json({ ...detailView(data, ctx.userId, viewable, editing), disclosureVersion, timezone: ctx.timezone });
 }
 
 /** DEC-101 / X-19：完整任务与日志历史分页读取（最新在前），权限与披露同详情。 */
@@ -201,6 +227,8 @@ async function respondHistory(c: C, deps: TenantRouteDeps, kind: 'tasks' | 'logs
     return { data: detail, rows: items };
   });
   const viewable = await detailViewable(deps, ctx, data);
+  // 每一页、每种历史类型都带同一披露版本并接受同样的收紧检查（DEC-288 止损）。
+  const disclosureVersion = assertDisclosure(c, disclosureVersionOf(data, ctx.userId, viewable));
   // DEC-104 / DEC-115：查看人参与的任一节点（或开始节点）勾选了审批记录查看权限时，历史同样隐藏，只留当前待办。
   const hidden = recordsHidden(data, ctx.userId);
   const disclosed = disclosedFields(data, ctx.userId, viewable);
@@ -210,7 +238,14 @@ async function respondHistory(c: C, deps: TenantRouteDeps, kind: 'tasks' | 'logs
       : hidden
         ? []
         : (rows as LogView[]).map((log) => projectLog(log, disclosed));
-  return c.json({ items, recordsHidden: hidden, page: page.page, pageSize: page.pageSize, timezone: ctx.timezone });
+  return c.json({
+    items,
+    recordsHidden: hidden,
+    disclosureVersion,
+    page: page.page,
+    pageSize: page.pageSize,
+    timezone: ctx.timezone,
+  });
 }
 
 async function respondOutcome(c: C, deps: TenantRouteDeps, result: CommandResult) {

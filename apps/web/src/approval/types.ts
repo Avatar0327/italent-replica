@@ -65,6 +65,8 @@ export interface ApprovalDetail {
   readonly tasks: readonly ApprovalTask[];
   readonly logs: readonly ApprovalLog[];
   readonly recordsHidden: boolean;
+  /** 服务端披露版本（DEC-288 止损）：后续读写请求原样回传。 */
+  readonly disclosureVersion?: string;
   readonly commentNotice: string;
   readonly form: {
     readonly values: Readonly<Record<string, unknown>>;
@@ -80,6 +82,7 @@ export interface ApprovalPageResult<T> {
   readonly page?: number;
   readonly pageSize?: number;
   readonly recordsHidden?: boolean;
+  readonly disclosureVersion?: string;
 }
 export interface ActionDraft {
   readonly comment: string;

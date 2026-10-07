@@ -54,6 +54,12 @@ function snapshot(): string {
 function response(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), { status });
 }
+/** 延迟交付的响应：在点击之后另起 act 交付，确保 409 的帧标记落在点击本身引起的提交之后。 */
+function deferred() {
+  let finish!: (value: Response) => void;
+  const promise = new Promise<Response>((resolve) => (finish = resolve));
+  return { promise, finish };
+}
 const tightened = () =>
   response(
     { error: { code: 'CONFLICT', message: '可见范围已收紧', details: { reason: 'DISCLOSURE_TIGHTENED' } } },
@@ -72,7 +78,7 @@ let histories: { url: string; options: RequestInit }[];
 let onRead: (index: number) => Response | Promise<Response>;
 let onWrite: (index: number) => Response | Promise<Response>;
 let onHistory: (index: number) => Response | Promise<Response>;
-let reload: ReturnType<typeof vi.fn>;
+let reload: ReturnType<typeof vi.fn<() => void>>;
 let mark: number;
 
 beforeEach(() => {
@@ -85,7 +91,7 @@ beforeEach(() => {
   reads = [];
   writes = [];
   histories = [];
-  reload = vi.fn();
+  reload = vi.fn<() => void>();
   mark = -1;
   onRead = () => response(detail());
   onWrite = () => response(detail({ revision: 8, status: 'approved', actions: [], disclosureVersion: 'v3' }));
@@ -199,7 +205,7 @@ describe('DEC-288 止损 ②：每个读写请求回传最后看到的披露版�
     expect(header(reads[0]!, VERSION)).toBeNull();
     await click('查看日志历史');
     expect(header(histories[0]!, VERSION)).toBe('v1');
-    await click('下一页');
+    await click('查看任务历史');
     expect(header(histories[1]!, VERSION)).toBe('v2');
     await click('同意');
     await input('审批意见', '合成意见');
@@ -226,20 +232,26 @@ describe('DEC-288 止损 ②：每个读写请求回传最后看到的披露版�
 
 describe('DEC-288 止损 ④：收到 DISCLOSURE_TIGHTENED 立即清空并整页刷新', () => {
   it('完整详情 GET 返回 409 原因码：清空详情 / 历史 / 表单，整页刷新一次，不发出重读', async () => {
-    onRead = (index) => (index === 1 ? response(detail()) : tightened());
+    const refresh = deferred();
+    onRead = (index) => (index === 1 ? response(detail()) : refresh.promise);
     await mount();
     await click('查看日志历史');
     expect(panel().textContent).toContain(FIELD);
     await click('刷新详情');
+    await act(async () => refresh.finish(tightened()));
     expectClearedAndReloaded();
     expect(reads).toHaveLength(2);
     expect(sessionStorage.length).toBe(0);
   });
 
   it('历史分页返回 409 原因码：清空并整页刷新；排队中的请求不再发出', async () => {
-    onHistory = () => tightened();
+    const page = deferred();
+    onHistory = () => page.promise;
     await mount();
     await click('查看日志历史');
+    await click('刷新详情');
+    expect(reads).toHaveLength(1);
+    await act(async () => page.finish(tightened()));
     expectClearedAndReloaded();
     expect(histories).toHaveLength(1);
     expect(reads).toHaveLength(1);
@@ -340,10 +352,13 @@ async function expectRecoveredByOriginalKey(base: ReturnType<typeof detail>) {
 describe('DEC-288 止损 ④：写结果未知 → 回查收到收紧 → 刷新 → 按原键恢复（15 条写路径）', () => {
   it.each(paths)('$label $variant：结果未知的命令存入 sessionStorage，刷新后原键重试', async (test) => {
     const base = baseFor(test);
-    onRead = (index) => (index === 1 ? response(base) : tightened());
+    const recheck = deferred();
+    onRead = (index) => (index === 1 ? response(base) : recheck.promise);
     onWrite = () => unknownResult();
     await mount();
     await fillAndSubmit(test);
+    expect(reads).toHaveLength(2);
+    await act(async () => recheck.finish(tightened()));
     expectClearedAndReloaded();
     expect(reads).toHaveLength(2);
     expect(header(reads[1]!, VERSION)).toBe('v1');
@@ -357,11 +372,13 @@ describe('DEC-288 止损 ④：写结果未知 → 回查收到收紧 → 刷新
 describe('DEC-288 止损 ④：写响应直接收紧 → 刷新 → 按原键恢复（15 条写路径，已执行的写不重复执行）', () => {
   it.each(paths)('$label $variant：已发出的命令存入 sessionStorage，刷新后原键重试', async (test) => {
     const base = baseFor(test);
+    const write = deferred();
     onRead = () => response(base);
-    onWrite = () => tightened();
+    onWrite = () => write.promise;
     await mount();
     await fillAndSubmit(test);
     expect(header(writes[0]!, VERSION)).toBe('v1');
+    await act(async () => write.finish(tightened()));
     expectClearedAndReloaded();
     expect(reads).toHaveLength(1);
     expectStored(writes[0]!);

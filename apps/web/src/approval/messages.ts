@@ -20,6 +20,8 @@ export const text = {
   failed: '请求失败，请刷新后重试。',
   forbidden: '无权访问该审批信息，或审批信息已不存在。请检查当前租户与权限。',
   staleRetry: '数据已更新，请重试。',
+  disclosureRefresh: '可见范围已变化，正在刷新页面…',
+  unknownRestored: '页面已刷新，正在回查未确认的操作结果…',
   conflict: '单据已变化，已读取当前内容。请核对后显式重提。',
   conflictUnread: '单据已变化，当前内容尚未读到。请刷新后核对并显式重提。',
   unknown: '操作结果待确认，已回查原单。请核对状态；重试时将使用原命令。',

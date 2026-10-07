@@ -1,14 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
-import { executeApprovalCommand, permissionFailure, requestMessage, revisionConflict, unknownResult } from './api.js';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import {
+  disclosureTightened,
+  executeApprovalCommand,
+  permissionFailure,
+  requestMessage,
+  revisionConflict,
+  unknownResult,
+} from './api.js';
 import { initialActionDraft, makeApprovalCommand } from './commands.js';
 import { editableLeaf, fieldLeaves } from './fields.js';
 import { text } from './messages.js';
+import { clearStash, readStash, stashCommand } from './pageRecovery.js';
 import { STALE } from './requestLane.js';
 import type { ActionDraft, ApprovalAction, ApprovalCommand, ApprovalDetail, FieldDraft } from './types.js';
 import type { InstanceRequests } from './useApprovalInstance.js';
 
 interface CommandProps {
   readonly tenantId: string;
+  readonly instanceId: string;
   /** 清空重读期间为 null：命令状态（幂等键、结果未知的提交）仍保留在本 hook（DEC-288 ①）。 */
   readonly detail: ApprovalDetail | null;
   /** 写请求与读取共用实例通道串行执行（DEC-277 ①）；403 作为收紧信号交实例层清空并重读（②）。 */
@@ -41,6 +50,7 @@ export function useApprovalCommand(props: CommandProps) {
   };
   const recovery = useCommandRecovery({ ...props, reset });
   const { mode, markChecked } = recovery;
+  // 整页刷新后按暂存命令恢复为结果未知：等首次完整详情到达（视为回查）再允许沿原键重试（DEC-288 止损 ④）。
   // 清空重读只清展示缓存：未进入恢复流程时，动作选择与输入草稿随展示一起清空。
   useEffect(() => {
     if (!props.detail && mode === 'normal') {
@@ -89,15 +99,24 @@ function recoveryMessage(mode: 'normal' | 'conflict' | 'unknown', readable: bool
   if (mode === 'unknown') return readable ? text.unknown : text.unknownUnread;
   return `${reason}${readable ? text.conflict : text.conflictUnread}`;
 }
-function useRecoveryState() {
+/** 整页刷新前暂存在 sessionStorage 的本单命令：刷新后恢复为“结果未知、尚未回查”。 */
+function restoredCommand(tenantId: string, instanceId: string): ApprovalCommand | null {
+  const stashed = readStash(tenantId);
+  return stashed && stashed.instanceId === instanceId ? stashed : null;
+}
+function useRecoveryState(tenantId: string, instanceId: string) {
+  const [restored] = useState(() => restoredCommand(tenantId, instanceId));
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
-  const [mode, setMode] = useState<'normal' | 'conflict' | 'unknown'>('normal');
+  const [message, setMessage] = useState(restored ? text.unknownRestored : '');
+  const [mode, setMode] = useState<'normal' | 'conflict' | 'unknown'>(restored ? 'unknown' : 'normal');
   const [checked, setChecked] = useState(false);
-  const [pending, setPending] = useState<ApprovalCommand | null>(null);
+  const [pending, setPending] = useState<ApprovalCommand | null>(restored);
+  /** 确认成功的命令计数：展示层据此整体重建，丢弃已提交的表单草稿（第 6 轮审查 P2-2）。 */
+  const [succeeded, setSucceeded] = useState(0);
   const conflictReason = useRef('');
   function resetMode(message = '') {
     conflictReason.current = '';
+    clearStash();
     setPending(null);
     setMode('normal');
     setChecked(false);
@@ -118,15 +137,43 @@ function useRecoveryState() {
     setChecked,
     pending,
     setPending,
+    succeeded,
+    setSucceeded,
     conflictReason,
     resetMode,
     markChecked,
   };
 }
+/**
+ * 通道任务：发出写请求并采纳响应版本。DEC-277 ②：写被拒是收紧信号，在任务内即清空草稿并由实例层整页重读；
+ * DEC-288 止损 ④：服务端判定收紧时命令可能已执行，先把原命令暂存再整页刷新，刷新后按原键回查与重试。
+ */
+async function sendCommand(
+  props: RecoveryProps,
+  command: ApprovalCommand,
+  signal: AbortSignal,
+  active: RefObject<boolean>,
+  denied: () => void,
+) {
+  try {
+    const outcome = await executeApprovalCommand(props.tenantId, command, signal, props.requests.version());
+    props.requests.saw(outcome.disclosureVersion, signal);
+    return outcome;
+  } catch (failure) {
+    if (active.current && permissionFailure(failure)) {
+      denied();
+      props.requests.tighten();
+    } else if (active.current && disclosureTightened(failure)) {
+      stashCommand(props.tenantId, command);
+      props.requests.tightened();
+    }
+    throw failure;
+  }
+}
 function useCommandRecovery(props: RecoveryProps) {
-  const state = useRecoveryState();
+  const state = useRecoveryState(props.tenantId, props.instanceId);
   const { setBusy, setMessage, mode, setMode, setChecked, setPending, conflictReason, resetMode } = state;
-  const { markChecked } = state;
+  const { markChecked, setSucceeded } = state;
   const active = useMounted();
   const busyRef = useRef(false);
   function denied() {
@@ -139,8 +186,9 @@ function useCommandRecovery(props: RecoveryProps) {
       if (!active.current || !fresh) return;
       setChecked(true);
       setMessage(recoveryMessage(nextMode, true, conflictReason.current));
-    } catch {
-      // 回查被拒时实例层已清空并关闭该单，这里只处理其他读取失败。
+    } catch (failure) {
+      // 回查被拒时实例层已清空并关闭该单（原命令无从重试，暂存一并清除），这里只处理其他读取失败。
+      if (permissionFailure(failure)) clearStash();
       if (!active.current) return;
       setChecked(false);
       setMessage(recoveryMessage(nextMode, false, conflictReason.current));
@@ -151,21 +199,11 @@ function useCommandRecovery(props: RecoveryProps) {
     busyRef.current = true;
     setBusy(true);
     try {
-      // DEC-277 ②：写被拒是收紧信号，在通道任务内即清空草稿并由实例层整页重读；本次结果随之作废。
-      const result = await props.requests.run(async (signal) => {
-        try {
-          return await executeApprovalCommand(props.tenantId, command, signal);
-        } catch (failure) {
-          if (active.current && permissionFailure(failure)) {
-            denied();
-            props.requests.tighten();
-          }
-          throw failure;
-        }
-      });
+      const result = await props.requests.run((signal) => sendCommand(props, command, signal, active, denied));
       if (!active.current || result === STALE) return;
       props.onResult(result);
       props.reset();
+      setSucceeded((count) => count + 1);
       resetMode(text.succeeded);
       props.onDone();
     } catch (failure) {
@@ -178,6 +216,7 @@ function useCommandRecovery(props: RecoveryProps) {
         await recheck('conflict');
       } else if (unknownResult(failure)) {
         setPending(command);
+        stashCommand(props.tenantId, command);
         setMode('unknown');
         setChecked(false);
         await recheck('unknown');
@@ -194,6 +233,7 @@ function useCommandRecovery(props: RecoveryProps) {
     mode,
     checked: state.checked,
     pending: state.pending,
+    succeeded: state.succeeded,
     execute,
     recheck,
     resetMode,
