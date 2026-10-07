@@ -176,7 +176,7 @@ describe('AC-360-15 首次同步查重冲突', () => {
     expect((await w.ok<{ items: unknown[] }>(w.request('GET', '/people/sync-conflicts'))).items).toEqual([]);
   });
 
-  it('只有 360 系统管理员可以同步与处理冲突', async () => {
+  it('一般管理员没有“从系统管理中同步人员信息”，同步 403（DEC-280①）', async () => {
     const w = await world360(testDb().db, 'y15c');
     await hired(w, '员工');
     const general = await w.member('一般管理员');

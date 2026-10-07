@@ -32,7 +32,6 @@ describe('360 审计查看', () => {
 
     const system = await types(w.admin);
     for (const expected of [
-      'survey360-admin:survey360.admin.create',
       'survey360-person:survey360.person.create',
       'survey360-questionnaire:survey360.questionnaire.enable',
       'survey360-activity:survey360.activity.create',
@@ -53,7 +52,7 @@ describe('360 审计查看', () => {
 
     const current = await w.getActivity(activity.id);
     await w.ok(
-      w.request('PUT', `/activities/${activity.id}/grants`, {
+      w.request('POST', `/activities/${activity.id}/grants`, {
         ifMatch: current.revision,
         body: { userIds: [general] },
       }),

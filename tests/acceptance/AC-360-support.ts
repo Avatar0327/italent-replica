@@ -1,15 +1,22 @@
 /**
- * R3-T03 360 度评估验收夹具：租户成员（系统管理员）、360 人员、套卷、活动、评价关系与链接作答。
+ * R3-T03 360 度评估验收夹具：租户成员、360 人员、套卷、活动、评价关系与链接作答。
+ * 360 身份照 DEC-280：企业管理员在权限管理“用户授权”里授予（身份 × 应用 Survey360），360 侧没有管理员设置。
  * 测试数据一律合成，邮箱用 example.com。
  */
 import { randomUUID } from 'node:crypto';
-import type { Authorizer } from '@italent/api';
+import { type Authorizer, bootstrapTenantAdmin, createPermissionAuthorizer } from '@italent/api';
 import { createUser, type Db, grantMembership, sql, withTenant } from '@italent/db';
 import { expect } from 'vitest';
 import { employmentSession } from './AC-EMP-support.js';
 import { cmd, tenantApi, type RequestOptions } from './support/tenant-api.js';
-import { PERSONNEL_OBJECT } from '@italent/domain';
-import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
+import { PERSONNEL_OBJECT, survey360 } from '@italent/domain';
+import {
+  authorizeInTransaction,
+  getModuleViewableFieldsInTransaction,
+  registerScopeProvider,
+} from '../../apps/api/src/modules/permission/module-access.js';
+import { objectCatalog } from '../../apps/api/src/modules/permission/catalog.js';
+import { resolveDataScope } from '../../apps/api/src/modules/permission/scope-resolver.js';
 import { EMPTY_SCOPE, type ModuleScope } from '../../apps/api/src/modules/permission/scope-types.js';
 
 export const BASE = '/api/tenant/survey360';
@@ -105,32 +112,67 @@ export function fullAccess(): EmployeeAccess {
   };
 }
 
+export type ObjectPermissionBody = survey360.Survey360Profile['objects'][number];
+export type IdentityKind = 'system' | 'advanced' | 'general';
+const PROFILE_OF: Record<IdentityKind, string> = {
+  system: 'standard_360_system_admin',
+  advanced: 'standard_360_advanced_admin',
+  general: 'standard_360_general_admin',
+};
+const PERMISSION = '/api/tenant/permission';
+
+const isSurvey360 = (request: Parameters<Authorizer>[0]) =>
+  (request.resource ?? '').startsWith(`${survey360.SURVEY360_APP}.`);
+
+/**
+ * 授权器：360 对象走真实的权限判定（身份 × 应用 + 用户授权 + 数据权限），组织员工侧用可调替身
+ * （模拟操作人在组织员工侧的当前权限，测试中途改 scope / fields 即模拟撤权、收窄字段）。
+ */
+function hybridAuthorizer(db: Db, clock: () => Date, access: EmployeeAccess): Authorizer {
+  const real = createPermissionAuthorizer(db, objectCatalog, clock);
+  const employee = (request: Parameters<Authorizer>[0]) =>
+    request.action === 'object.view' && request.resource === PERSONNEL_OBJECT ? access.canView : true;
+  const authorize: Authorizer = (request) => (isSurvey360(request) ? real(request) : employee(request));
+  const deps = { authorize: real, clock, db };
+  registerScopeProvider(authorize, {
+    authorize: async (request, tx) =>
+      isSurvey360(request) ? authorizeInTransaction(real, tx)(request) : employee(request),
+    scope: async (query, tx) => {
+      if (!(query.objectCode ?? '').startsWith(`${survey360.SURVEY360_APP}.`)) return access.scope;
+      return tx ? resolveDataScope(tx, query) : withTenant(db, query.tenantId, (t) => resolveDataScope(t, query));
+    },
+    fields: async (tenantId, userId, objectCode, tx) => {
+      if (objectCode.startsWith(`${survey360.SURVEY360_APP}.`)) {
+        const ctx = { tenantId, userId, timezone: 'UTC' };
+        const read = (t: Parameters<typeof getModuleViewableFieldsInTransaction>[3]) =>
+          getModuleViewableFieldsInTransaction(deps, ctx, objectCode, t);
+        return (await (tx ? read(tx) : withTenant(db, tenantId, read))) ?? new Set<string>();
+      }
+      return (
+        access.fields[objectCode] ?? new Set(objectCatalog.get(objectCode)?.fields.map((f) => f.code) ?? [])
+      );
+    },
+  });
+  return authorize;
+}
+
 export async function world360(db: Db, label: string, options: { access?: EmployeeAccess } = {}) {
   const session = await employmentSession(db, label);
   let now = new Date('2026-10-01T01:00:00Z');
   const admin = session.user.id;
-  // 业务权限全部放行；企业设置的“管理员”管理能力只给租户首位成员（企业管理员），其他成员没有
-  const enterprise: Authorizer = (request) => {
-    if (request.action === 'admin.admin_manage') return request.userId === admin;
-    if (options.access && request.action === 'object.view' && request.resource === PERSONNEL_OBJECT)
-      return options.access.canView;
-    return true;
-  };
-  const access = options.access;
-  if (access)
-    registerScopeProvider(enterprise, {
-      authorize: async (request) => enterprise(request),
-      scope: async () => access.scope,
-      fields: async (_tenant, _user, objectCode) => access.fields[objectCode] ?? new Set<string>(),
-    });
-  const api = tenantApi(db, { clock: () => now, authorize: enterprise });
   const tenantId = session.tenant.id;
+  const clock = () => now;
+  const api = tenantApi(db, { clock, authorize: hybridAuthorizer(db, clock, options.access ?? fullAccess()) });
+  // 权限管理接口走真实授权器；租户首位成员是企业管理员（开通时指定）
+  const permission = tenantApi(db, { clock, authorize: undefined });
 
   const as =
     (user: string) =>
     (method: string, path: string, opts: RequestOptions = {}) =>
       api.request(method, `${BASE}${path}`, { ...opts, user, tenant: tenantId });
   const request = as(admin);
+  const enterprise = (method: string, path: string, opts: RequestOptions = {}) =>
+    permission.request(method, `${PERMISSION}${path}`, { ...opts, user: admin, tenant: tenantId });
 
   async function ok<T>(response: Promise<Response> | Response, status = 200): Promise<T> {
     const res = await response;
@@ -145,10 +187,65 @@ export async function world360(db: Db, label: string, options: { access?: Employ
     return user.id;
   }
 
-  async function appoint(userId: string, role: 'system' | 'advanced' | 'general', by = admin) {
-    return ok<{ id: string; revision: number }>(as(by)('POST', '/admins', { ifMatch: 0, body: { userId, role } }), 201);
+  /**
+   * 租户身份管理员按 permission 的“新建身份 → 登记应用 → 配对象权限”建一个 360 身份（自定义身份同此路径），
+   * 并加入企业管理员的可授权身份。
+   */
+  async function defineProfile(name: string, objects: readonly ObjectPermissionBody[]) {
+    const code = `s360_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
+    const created = await ok<{ id: string; revision: number }>(
+      enterprise('POST', '/profiles', {
+        body: { code, name, apps: [survey360.SURVEY360_APP], licenseType: null },
+      }),
+      201,
+    );
+    let revision = created.revision;
+    for (const { objectCode, ...body } of objects) {
+      const saved = await ok<{ revision: number }>(
+        enterprise('PUT', `/profiles/${created.id}/objects/${objectCode}`, { ifMatch: revision, body }),
+      );
+      revision = saved.revision;
+    }
+    const record = await ok<{ id: string; revision: number; grantableAdminRoles: string[] }>(
+      enterprise('GET', `/admins/${adminRecord.id}`),
+    );
+    const current = record as unknown as { grantableProfileIds: string[] };
+    await ok(
+      enterprise('PUT', `/admins/${record.id}`, {
+        ifMatch: record.revision,
+        body: {
+          grantableAdminRoles: record.grantableAdminRoles,
+          grantableProfileIds: [...current.grantableProfileIds, created.id],
+        },
+      }),
+    );
+    return created.id;
   }
-  // 租户内首位 360 系统管理员由企业管理员（管理员管理能力）指定
+
+  /** 企业管理员在“用户授权”里给用户授予 360 身份（DEC-280②）。 */
+  async function grantProfile(userId: string, profileId: string) {
+    return ok<{ id: string; revision: number }>(
+      enterprise('POST', '/grants', { body: { userId, profileId } }),
+      201,
+    );
+  }
+
+  /** 撤销用户授权（只停授权，不删活动授权行）。 */
+  async function revokeGrant(grant: { id: string; revision: number }) {
+    return ok(enterprise('POST', `/grants/${grant.id}/revoke`, { ifMatch: grant.revision }));
+  }
+
+  // 本夹具的租户不经平台开通，三类内置 360 身份按 SURVEY360_PROFILES 在租户内建同样内容的身份
+  const adminRecord = await bootstrapTenantAdmin(db, { tenantId, userId: admin }, cmd());
+  const profiles = {} as Record<IdentityKind, string>;
+  for (const kind of Object.keys(PROFILE_OF) as IdentityKind[]) {
+    const standard = survey360.SURVEY360_PROFILES.find((p) => p.code === PROFILE_OF[kind])!;
+    profiles[kind] = await defineProfile(standard.name, standard.objects);
+  }
+
+  async function appoint(userId: string, kind: IdentityKind) {
+    return grantProfile(userId, profiles[kind]);
+  }
   await appoint(admin, 'system');
 
   const roles = (await ok<{ items: { id: string; code: string | null; name: string }[] }>(request('GET', '/roles')))
@@ -311,6 +408,11 @@ export async function world360(db: Db, label: string, options: { access?: Employ
     ok,
     member,
     appoint,
+    profiles,
+    defineProfile,
+    grantProfile,
+    revokeGrant,
+    enterprise,
     roles,
     role,
     person,
