@@ -34,7 +34,21 @@ async function fixture() {
   const w = await approvalWorld(database().db, 'self-locks');
   const source = await w.org('合成原部门');
   const target = await w.org('合成待停用部门');
-  const person = await w.person('合成自助员工', source);
+  const post = await w.json<{ id: string }>(
+    await w.request(w.hr.id, 'POST', '/api/tenant/job/posts', {
+      ifMatch: 0,
+      body: { code: 'SELF_LOCK_POST', name: '合成职务', startDate: '2020-01-01' },
+    }),
+    201,
+  );
+  const position = await w.json<{ id: string }>(
+    await w.request(w.hr.id, 'POST', '/api/tenant/job/positions', {
+      ifMatch: 0,
+      body: { code: 'SELF_LOCK_POSITION', name: '合成原职位', startDate: '2020-01-01', orgId: source, postId: post.id },
+    }),
+    201,
+  );
+  const person = await w.person('合成自助员工', source, { positionId: position.id, postId: post.id });
   await w.publishedProcess({ nodes: [{ key: 'review', approver: 'owner' }] });
   const api = tenantApi(database().db, { authorize: undefined, clock: w.clock });
   const profile = await w.json<{ employee: { revision: number } }>(
@@ -61,7 +75,7 @@ async function fixture() {
       }),
   };
 }
-describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TRF-46 本人提交全局锁序（真 PG）', () => {
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TRF-46 / 51 占职位本人提交全局锁序（真 PG）', () => {
   it('停用在组织锁内先完成，员工等待后拒绝且不落业务、审批或成功审计', async () => {
     const w = await fixture();
     const reached = signal();

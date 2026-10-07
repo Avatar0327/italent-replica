@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { text as employeeText } from '../../employee-self-service/messages.js';
 import { LinkageFields } from '../../transfer/LinkageFields.js';
 import { missingTransferRequiredFields, requiredTransferFields } from '@italent/domain';
 import { text, presetLabels, jobReferences } from '../../transfer/messages.js';
@@ -36,6 +37,10 @@ export function TransferForm(props: TransferFormProps) {
         <SelectionFields {...props} />
       </fieldset>
       {props.model.preview ? <EmploymentFields {...props} /> : <p>{text.readyHint}</p>}
+      {props.model.initiator === 'employee' &&
+        props.model.preview?.positionCleared === true &&
+        props.model.preview.fields.departmentId &&
+        props.model.preview.before?.fields.departmentId && <p role="status">{employeeText.positionByHr}</p>}
       <CarriedEstablishment {...props} />
       <LinkageFields {...props} />
       <TransferActions {...props} />

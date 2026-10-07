@@ -251,6 +251,7 @@ describe('AC-TRF-39 第三轮：新旧员工入口的 DEC-209 一致性', () => 
       VALUES(${w.tenant.id},${old.id}::uuid,${self.employeeId}::uuid,'employee','in_department','TransferProcessNew')
     `),
     );
+    const beforeOld = await w.business(old.id);
     expect(
       (
         await api.request('POST', `${BASE}/businesses/${old.id}/submit`, {
@@ -260,6 +261,7 @@ describe('AC-TRF-39 第三轮：新旧员工入口的 DEC-209 一致性', () => 
         })
       ).status,
     ).toBe(403);
+    expect(await w.business(old.id)).toEqual(beforeOld);
     const candidate = await w.person('合成提交重放经理', target);
     const draft = await w.json<{ id: string; revision: number }>(
       await legacy(self, { directManagerId: candidate.employeeId }, false, false),

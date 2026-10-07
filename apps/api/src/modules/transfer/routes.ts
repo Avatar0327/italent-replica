@@ -51,8 +51,21 @@ export function registerTransferRoutes(router: Hono<TenantEnv>, deps: TenantRout
     const { form, employeeRevision, allowDirectTransfer, allowedActions } = preview.value;
     const viewable = await getModuleViewableFields(deps, ctx, 'TenantBase.EmploymentRecord');
     const visibleForm = await visibleTransferForm(form, viewable, ctx, deps);
+    const disclosed = (await trimEmploymentResponse(deps, ctx, preview.value)) as {
+      fields?: { departmentId?: unknown };
+      before?: { fields?: { departmentId?: unknown } } | null;
+    };
+    const departmentVisible = ['editable', 'readonly'].includes(
+      visibleForm.fieldModes['preset:departmentId'] ?? 'hidden',
+    );
     return c.json({
-      ...((await trimEmploymentResponse(deps, ctx, preview.value)) as object),
+      ...disclosed,
+      ...(preview.employeeTransfer &&
+      departmentVisible &&
+      disclosed.fields?.departmentId &&
+      disclosed.before?.fields?.departmentId
+        ? { positionCleared: preview.positionCleared }
+        : {}),
       form: visibleForm,
       employeeRevision,
       allowDirectTransfer,

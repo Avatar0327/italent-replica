@@ -3,10 +3,11 @@ import { AppError } from '../../errors.js';
 import { findPredecessor } from '../employment/read-model.js';
 import { camelRow, rowsOf, snapshotFields } from '../employment/record-store.js';
 import type { EmploymentBusinessPatch, EmploymentContext, PresetFields } from '../employment/types.js';
+import { loadJobObject } from '../job/read-model.js';
 import { requireManagerCandidate } from './employee-managers.js';
 
 // DEC-209：员工发起业务的只读上限，不因入口或额外身份的编辑权放开。
-export const EMPLOYEE_READONLY_FIELDS = new Set(['postId', 'levelId', 'sequenceId']);
+export const EMPLOYEE_READONLY_FIELDS = new Set(['postId', 'levelId', 'sequenceId', 'positionId']);
 
 /** 只校验显式输入；原值与服务端自动带出值不能冒充客户端填写，也不按客户端新引用拒绝。 */
 export async function requireEmployeeTransferFields(
@@ -17,7 +18,7 @@ export async function requireEmployeeTransferFields(
   employeeId?: string,
 ) {
   if ([...EMPLOYEE_READONLY_FIELDS].some((field) => Object.hasOwn(fields, field)))
-    throw new AppError('FORBIDDEN', '员工调动的职务、职级和职务序列只读');
+    throw new AppError('FORBIDDEN', '员工调动的职位、职务、职级和职务序列不可编辑');
   if (!fields.directManagerId) return;
   let departmentId = fields.departmentId;
   if (departmentId === undefined) {
@@ -56,22 +57,113 @@ export async function requireEmployeeTransferBusiness(
   const payload = camelRow(row);
   const saved = snapshotFields(payload);
   const codes = payload.explicitFieldCodes as string[];
-  const explicit: Partial<PresetFields> = Object.fromEntries(
-    codes
-      .filter((code) => code.startsWith('preset:'))
-      .map((code) => {
-        const key = code.slice(7) as keyof PresetFields;
-        return [key, saved[key]];
-      }),
-  );
-  // 与 normalizePatchedInput 一致：换部门且未手填经理时，旧手填经理被新部门负责人替代。
-  if (patch?.fields && Object.hasOwn(patch.fields, 'departmentId') && !Object.hasOwn(patch.fields, 'directManagerId'))
-    delete (explicit as Record<string, unknown>).directManagerId;
+  // DEC-209/232：explicitFieldCodes 还记录 HR 编辑与向后传播，不能当作本次客户端输入。
+  // 旧显式草稿也属于已保存值；本次员工写入仍按请求体拒绝，提交/重放继续复验当前范围。
+  // DEC-232 的旧职位兼容单独处理；职务/职级/序列按字段追溯写入来源（PR #99 第 4 轮 P2-1）。
+  await requireTrustedReadonlyFields(tx, ctx.tenantId, businessId, codes);
+  if (patch?.fields && Object.hasOwn(patch.fields, 'positionId')) {
+    const [binding] = rowsOf<{ employeeId: string }>(
+      await tx.execute(sql`
+      SELECT employee_id AS "employeeId" FROM permission_user_person_links
+      WHERE tenant_id=${ctx.tenantId} AND user_id=${ctx.userId}::uuid
+    `),
+    );
+    if (binding?.employeeId === payload.employeeId) throw new AppError('FORBIDDEN', '员工调动的职位不可编辑');
+  }
+  const checkedPatch = { ...patch?.fields };
+  delete checkedPatch.positionId;
   await requireEmployeeTransferFields(
     tx,
     ctx,
     patch?.effectiveDate ?? (payload.effectiveDate as string),
-    { ...explicit, departmentId: saved.departmentId, ...patch?.fields },
+    { departmentId: saved.departmentId, ...checkedPatch },
     payload.employeeId as string,
   );
+  // 旧手填经理仍按当前候选范围复验；换部门或显式改/清空经理后由本次输入与部门联动负责。
+  if (
+    codes.includes('preset:directManagerId') &&
+    saved.directManagerId &&
+    !Object.hasOwn(patch?.fields ?? {}, 'departmentId') &&
+    !Object.hasOwn(patch?.fields ?? {}, 'directManagerId')
+  )
+    await requireManagerCandidate(
+      tx,
+      ctx,
+      patch?.effectiveDate ?? (payload.effectiveDate as string),
+      saved.departmentId ?? undefined,
+      saved.directManagerId,
+    );
+}
+
+const GUARDED_FIELDS = ['postId', 'levelId', 'sequenceId'] as const;
+type GuardedField = (typeof GUARDED_FIELDS)[number];
+type VersionSource = Record<GuardedField, string | null> & {
+  readonly triggerBusinessId: string | null;
+  readonly explicitFieldCodes: string[];
+};
+// 有界查询：单张调动单的载荷版本远少于此；超出时无法追溯到写入者，按不可信拒绝（fail-closed）。
+const SOURCE_SCAN_LIMIT = 500;
+
+/**
+ * DEC-209 升级防线：员工业务上保存的职务 / 职级 / 序列显式值，逐字段追溯最后一次实际写入该字段的版本。
+ * 本人与 HR 入口都不能为员工业务写入这三个字段（requireEmployeeTransferFields），因此只有系统传播
+ * （向后更新、序列同步等带 triggerBusinessId 的版本）实际写入的值可信；整份载荷带传播来源或 employeeTransfer
+ * 标记都不能为其他字段背书——传播只覆盖它改动的字段，PATCH 追加的标记也不改变沿用值的来源。
+ */
+async function requireTrustedReadonlyFields(tx: Tx, tenantId: string, businessId: string, codes: string[]) {
+  const guarded = GUARDED_FIELDS.filter((field) => codes.includes(`preset:${field}`));
+  if (!guarded.length) return;
+  const versions = rowsOf<VersionSource>(
+    await tx.execute(sql`
+    SELECT trigger_business_id AS "triggerBusinessId", explicit_field_codes AS "explicitFieldCodes",
+      post_id AS "postId", level_id AS "levelId", sequence_id AS "sequenceId"
+    FROM employment_payload_versions WHERE tenant_id=${tenantId} AND business_id=${businessId}::uuid
+    ORDER BY version_no DESC LIMIT ${SOURCE_SCAN_LIMIT + 1}
+  `),
+  );
+  if (guarded.some((field) => !lastWriter(versions, field)?.triggerBusinessId))
+    throw new AppError('FORBIDDEN', '旧员工调动草稿包含不可编辑的任职字段');
+}
+
+/** 版本按新到旧排列；字段值与显式状态都未变的版本只是沿用，继续向前找到真正写入它的版本。 */
+function lastWriter(versions: readonly VersionSource[], field: GuardedField): VersionSource | undefined {
+  const code = `preset:${field}`;
+  for (const [index, version] of versions.entries()) {
+    const older = versions[index + 1];
+    if (!older) return versions.length > SOURCE_SCAN_LIMIT ? undefined : version;
+    if (!older.explicitFieldCodes.includes(code) || older[field] !== version[field]) return version;
+  }
+  return undefined;
+}
+
+/** DEC-232：只处理可信继承职位；HR 显式补充仍交由原有任职引用校验，不自动替换或清空。 */
+export async function employeeTransferPosition(
+  tx: Tx,
+  ctx: EmploymentContext,
+  effectiveDate: string,
+  fields: PresetFields,
+): Promise<PresetFields> {
+  if (!fields.positionId) return fields;
+  const position = await loadJobObject(tx, ctx.tenantId, 'positions', fields.positionId, effectiveDate, true);
+  // 生效日没有职位版本时无法判断所属部门，保留既有值交由引用校验拒绝失效引用，不以清空掩盖错误。
+  return position && position.orgId !== fields.departmentId ? { ...fields, positionId: null } : fields;
+}
+
+/** 老申请的冻结快照没有 DEC-232 标记时，以服务器保存的入口来源判断，不信任客户端。 */
+export async function isEmployeeTransferPayload(tx: Tx, tenantId: string, prepared: object) {
+  // 编制投影也解析其他任职业务；非调动不需要逐行查询入口来源。
+  if (
+    !('kind' in prepared) ||
+    prepared.kind !== 'transfer' ||
+    !('businessId' in prepared) ||
+    typeof prepared.businessId !== 'string'
+  )
+    return false;
+  const [request] = rowsOf(
+    await tx.execute(sql`
+    SELECT 1 FROM transfer_requests WHERE tenant_id=${tenantId}
+      AND business_id=${prepared.businessId}::uuid AND initiator='employee'
+  `),
+  );
+  return !!request;
 }

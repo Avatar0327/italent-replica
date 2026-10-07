@@ -188,6 +188,17 @@ async function initializeEmploymentBusiness(
   return id;
 }
 
+function assertBusinessPatchable(business: LockedEmploymentBusiness, approvalEdit: boolean): void {
+  // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。
+  if (business.payload.mode !== 'application' || !['draft', 'in_review', 'rejected'].includes(business.state)) {
+    throw new AppError('CONFLICT', '只有草稿、审批中或被驳回的申请可以修改', { reason: 'PAYLOAD_IMMUTABLE' });
+  }
+  // 审批中的单据只能由审批中心按当前节点的可编辑字段修改，业务端修改一律 409（PR #35 第二轮清单 1）。
+  if (business.state === 'in_review' && !approvalEdit) {
+    throw new AppError('CONFLICT', '审批中的申请只能由当前审批节点修改', { reason: 'APPROVAL_IN_PROGRESS' });
+  }
+}
+
 export async function updateEmploymentBusiness(
   tx: Tx,
   ctx: EmploymentContext,
@@ -198,14 +209,7 @@ export async function updateEmploymentBusiness(
   const patch = normalizeBusinessPatch(input);
   const business = await lockEmploymentBusiness(tx, ctx, id);
   await requireEmployeeTransferBusiness(tx, ctx, id, patch);
-  // DEC-053：被驳回的申请可在同一单上修改后重提；审批中修改由审批中心按节点可编辑字段放行（REQ-APV-003 R2）。
-  if (business.payload.mode !== 'application' || !['draft', 'in_review', 'rejected'].includes(business.state)) {
-    throw new AppError('CONFLICT', '只有草稿、审批中或被驳回的申请可以修改', { reason: 'PAYLOAD_IMMUTABLE' });
-  }
-  // 审批中的单据只能由审批中心按当前节点的可编辑字段修改，业务端修改一律 409（PR #35 第二轮清单 1）。
-  if (business.state === 'in_review' && !options.approvalEdit) {
-    throw new AppError('CONFLICT', '审批中的申请只能由当前审批节点修改', { reason: 'APPROVAL_IN_PROGRESS' });
-  }
+  assertBusinessPatchable(business, options.approvalEdit === true);
   const before = business.payload;
   const normalized = normalizePatchedInput(ctx, before, patch);
   await assertNotBeforeCurrentCycle(tx, ctx, business.employeeId, normalized);
@@ -221,13 +225,22 @@ export async function updateEmploymentBusiness(
   const prepared = await prepareEmploymentPatch(
     tx,
     ctx,
-    { ...normalized, employeeId: business.employeeId, staffId: selected?.cycle.id },
+    {
+      ...normalized,
+      employeeId: business.employeeId,
+      staffId: selected?.cycle.id,
+      allowEmployeePositionEdit: options.approvalEdit === true,
+    },
     before,
+    patch.fields ?? {},
   );
-  const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
-    staffId: selected?.cycle.id ?? '',
-    predecessor: selected?.predecessor ?? null,
-  });
+  const effective = await resolveEffectiveInheritance(
+    tx,
+    ctx,
+    prepared,
+    { staffId: selected?.cycle.id ?? '', predecessor: selected?.predecessor ?? null },
+    { explicitPositionEdit: options.approvalEdit === true && Object.hasOwn(patch.fields ?? {}, 'positionId') },
+  );
   await validatePreparedEmployment(tx, ctx, business.employeeId, normalized.kind, prepared, effective.fields, business);
   await assertEstablishmentCapacity(tx, ctx, {
     businessId: id,
@@ -767,7 +780,9 @@ async function validatePreparedEmployment(
   assertRequiredTransferFields(kind, prepared.formSnapshot, { ...effectiveFields });
   if (kind === 'transfer')
     await validateTransferSubordinates(tx, ctx, employeeId, effectiveFields, prepared.effectiveDate);
-  await requireScopedEmploymentObject(tx, ctx, employeeId, prepared.fields.departmentId, existing?.id);
+  // 本人入口的部门可能延迟继承；先解析再校验引用与范围。其他业务保持既有校验口径。
+  const referenceFields = prepared.formSnapshot.employeeTransfer ? effectiveFields : prepared.fields;
+  await requireScopedEmploymentObject(tx, ctx, employeeId, referenceFields.departmentId, existing?.id);
   // DEC-108 / PR #54：审批中编辑保留原提交操作顺序；草稿/驳回单重提时排在同日最后。
   const reporting = await newRecordReporting(
     tx,
@@ -777,7 +792,7 @@ async function validatePreparedEmployment(
     prepared.effectiveDate,
     existing?.state === 'in_review' ? existing.id : undefined,
   );
-  await validateNewEmploymentReferences(tx, ctx, prepared.fields, prepared.effectiveDate, reporting);
+  await validateNewEmploymentReferences(tx, ctx, referenceFields, prepared.effectiveDate, reporting);
 }
 
 async function registerCompletion(

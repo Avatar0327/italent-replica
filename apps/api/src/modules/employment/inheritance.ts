@@ -5,7 +5,11 @@ import { authorizeInTransaction } from '../permission/module-access.js';
 import { loadJobObject } from '../job/read-model.js';
 import { resolveTransferForm } from '../transfer/configuration.js';
 import { managerForTransferDepartment } from '../transfer/preview-defaults.js';
-import { EMPLOYEE_READONLY_FIELDS } from '../transfer/employee-policy.js';
+import {
+  EMPLOYEE_READONLY_FIELDS,
+  employeeTransferPosition,
+  isEmployeeTransferPayload,
+} from '../transfer/employee-policy.js';
 import { getCustomFieldsForInheritance, type CustomFieldDefinition } from './configuration.js';
 import {
   businessDate,
@@ -29,6 +33,8 @@ import type {
 
 type CustomMode = 'editable' | 'readonly' | 'hidden' | 'absent';
 interface TrustedFormSnapshot {
+  readonly employeeTransfer?: boolean;
+  readonly employeePositionByHr?: boolean;
   readonly id: FormId;
   readonly group: BusinessKind | null;
   readonly customMode: CustomMode;
@@ -49,6 +55,8 @@ export interface PreparedInheritance {
   readonly sourceStaffId: string | null;
 }
 export interface InheritanceInput {
+  /** 仅审批中心校验节点编辑权后由任职服务设置，客户端输入不接受此字段。 */
+  readonly allowEmployeePositionEdit?: boolean;
   readonly employeeId: string;
   readonly effectiveDate: string;
   readonly kind: BusinessKind;
@@ -131,7 +139,11 @@ async function applyExplicitPresetFields(
 ): Promise<void> {
   const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
   for (const [field, value] of Object.entries(parsedFields)) {
-    if (input.kind === 'transfer' && fieldMode(`preset:${field}`) !== 'editable')
+    if (
+      input.kind === 'transfer' &&
+      fieldMode(`preset:${field}`) !== 'editable' &&
+      !(field === 'positionId' && metadata.employeeTransfer && input.allowEmployeePositionEdit)
+    )
       throw new AppError('VALIDATION_FAILED', '当前表单不允许编辑此任职字段');
     setField(fields, field as PresetField, value ?? null);
     explicitFieldCodes.push(`preset:${field}`);
@@ -223,9 +235,56 @@ async function selfServiceForm(
       )
         fieldModes[code] = 'readonly';
     }
+    fieldModes['preset:positionId'] = 'hidden';
     configured = { ...configured, fieldModes };
   }
   return configured;
+}
+
+function employeeFormSnapshot(
+  ctx: EmploymentContext,
+  input: InheritanceInput,
+  snapshot: TrustedFormSnapshot,
+  frozen?: TrustedFormSnapshot,
+): TrustedFormSnapshot {
+  const employeeTransfer =
+    input.kind === 'transfer' && (frozen?.employeeTransfer || ctx.selfServiceEmployeeId === input.employeeId);
+  const employeePositionByHr =
+    frozen?.employeePositionByHr ||
+    (employeeTransfer && input.allowEmployeePositionEdit && Object.hasOwn(input.fields ?? {}, 'positionId'));
+  return {
+    ...snapshot,
+    ...(employeeTransfer ? { employeeTransfer: true } : {}),
+    ...(employeePositionByHr ? { employeePositionByHr: true } : {}),
+  };
+}
+
+async function prepareEmployeePosition(
+  tx: Tx,
+  ctx: EmploymentContext,
+  prepared: PreparedInheritance,
+  sourcePositionId: string | null,
+) {
+  if (!prepared.formSnapshot.employeeTransfer) return prepared;
+  // 部门留待生效时继承时尚不能判断跨部门；保留职位及其原有延迟继承标记。
+  if (prepared.deferredFieldCodes.includes('preset:departmentId'))
+    return {
+      ...prepared,
+      fields: prepared.explicitFieldCodes.includes('preset:positionId')
+        ? prepared.fields
+        : { ...prepared.fields, positionId: sourcePositionId },
+    };
+  // 部门已明确时，这里只按当前前驱算出预览与引用校验用的职位；职位单独延迟继承（未分组表单）仍保留标记，
+  // 到期按落地时的前驱继承后再按 DEC-232 判断（resolveEffectiveInheritance），不在建单 / 改单时提前固定。
+  return {
+    ...prepared,
+    fields: prepared.explicitFieldCodes.includes('preset:positionId')
+      ? prepared.fields
+      : await employeeTransferPosition(tx, ctx, prepared.effectiveDate, {
+          ...prepared.fields,
+          positionId: sourcePositionId,
+        }),
+  };
 }
 
 export async function prepareInheritance(
@@ -271,7 +330,7 @@ export async function prepareInheritance(
     ? null
     : await findPredecessor(tx, ctx.tenantId, input.employeeId, input.effectiveDate);
   const eligible = previous && (!input.staffId || previous.staffId === input.staffId) ? previous : null;
-  const metadata = snapshotForm(input, form, startsNewCycle, definitions);
+  const metadata = employeeFormSnapshot(ctx, input, snapshotForm(input, form, startsNewCycle, definitions), frozenForm);
   const fieldMode = (code: string): CustomMode => metadata.fieldModes[code] ?? 'absent';
   const excluded = new Set(metadata.excludedAutofillFields);
   for (const field of INHERITED_FIELDS) {
@@ -296,7 +355,7 @@ export async function prepareInheritance(
   );
   applyCustomInheritance(input, metadata, definitions, eligible, customFields, explicitFieldCodes, deferredFieldCodes);
   const explicit = new Set([...explicitFieldCodes, ...derivedFieldCodes]);
-  return {
+  const prepared = {
     effectiveDate: input.effectiveDate,
     fields,
     customFields,
@@ -306,6 +365,64 @@ export async function prepareInheritance(
     sourceRecordId: eligible?.id ?? null,
     sourceStaffId: eligible?.staffId ?? null,
   };
+  return prepareEmployeePosition(tx, ctx, prepared, eligible?.fields.positionId ?? null);
+}
+
+async function preparePatchedInheritance(
+  tx: Tx,
+  ctx: EmploymentContext,
+  input: InheritanceInput,
+  previous: PreparedInheritance,
+  snapshot: TrustedFormSnapshot,
+  requestedFields: Partial<PresetFields>,
+): Promise<PreparedInheritance> {
+  const employeeTransfer = snapshot.employeeTransfer;
+  // 保存的显式值也可能来自 HR / 向后传播；只校验本次请求的字段模式，不能把保存值当成人工输入。
+  const carried = PRESET_FIELDS.filter(
+    (field) =>
+      employeeTransfer &&
+      previous.explicitFieldCodes.includes(`preset:${field}`) &&
+      owns(input.fields ?? {}, field) &&
+      !owns(requestedFields, field) &&
+      (snapshot.fieldModes[`preset:${field}`] !== 'editable' || EMPLOYEE_READONLY_FIELDS.has(field)),
+  );
+  const submitted = { ...input.fields };
+  for (const field of carried) delete submitted[field];
+  let prepared = await prepareInheritance(tx, ctx, { ...input, fields: submitted }, snapshot);
+  if (carried.length) {
+    const fields = { ...prepared.fields };
+    for (const field of carried) setField(fields, field, previous.fields[field]);
+    const codes = carried.map((field) => `preset:${field}`);
+    prepared = {
+      ...prepared,
+      fields,
+      explicitFieldCodes: [...new Set([...prepared.explicitFieldCodes, ...codes])],
+      deferredFieldCodes: prepared.deferredFieldCodes.filter(
+        (code) =>
+          !codes.includes(code) ||
+          (code === 'preset:positionId' && prepared.deferredFieldCodes.includes('preset:departmentId')),
+      ),
+    };
+  }
+  if (
+    employeeTransfer &&
+    !prepared.deferredFieldCodes.includes('preset:departmentId') &&
+    !(input.allowEmployeePositionEdit && owns(requestedFields, 'positionId'))
+  ) {
+    const fields = await employeeTransferPosition(tx, ctx, prepared.effectiveDate, prepared.fields);
+    const cleared = prepared.fields.positionId !== null && fields.positionId === null;
+    prepared = {
+      ...prepared,
+      fields,
+      ...(cleared
+        ? {
+            explicitFieldCodes: prepared.explicitFieldCodes.filter((code) => code !== 'preset:positionId'),
+            formSnapshot: { ...prepared.formSnapshot, employeePositionByHr: false },
+          }
+        : {}),
+    };
+  }
+  return prepared;
 }
 
 /** 日期不变时保留创建表单时捕获的默认值；日期改变按 DEC-041 重新查前驱。 */
@@ -314,9 +431,13 @@ export async function prepareEmploymentPatch(
   ctx: EmploymentContext,
   input: InheritanceInput,
   previous: PreparedInheritance,
+  requestedFields: Partial<PresetFields> = input.fields ?? {},
 ): Promise<PreparedInheritance> {
   // 已保存申请的字段策略随申请冻结；修改表单配置不能把原单只读字段变成可伪造写入。
-  const prepared = await prepareInheritance(tx, ctx, input, previous.formSnapshot);
+  const employeeTransfer =
+    previous.formSnapshot.employeeTransfer || (await isEmployeeTransferPayload(tx, ctx.tenantId, previous));
+  const snapshot = { ...previous.formSnapshot, ...(employeeTransfer ? { employeeTransfer: true } : {}) };
+  const prepared = await preparePatchedInheritance(tx, ctx, input, previous, snapshot, requestedFields);
   if (input.effectiveDate !== previous.effectiveDate) return prepared;
   const explicit = new Set(prepared.explicitFieldCodes);
   const oldDeferred = new Set(previous.deferredFieldCodes);
@@ -327,6 +448,7 @@ export async function prepareEmploymentPatch(
     const code = `preset:${field}`;
     // 只恢复创建时冻结的默认值；上一版显式填写、本次被放弃的值（DEC-107 改选职务时的序列）改取当前默认值。
     const rederived =
+      (field === 'positionId' && employeeTransfer) ||
       (field === 'directManagerId' &&
         owns(input.fields ?? {}, 'departmentId') &&
         input.fields?.departmentId !== previous.fields.departmentId) ||
@@ -342,7 +464,7 @@ export async function prepareEmploymentPatch(
     ...prepared,
     fields,
     customFields,
-    formSnapshot: previous.formSnapshot,
+    formSnapshot: prepared.formSnapshot,
     sourceRecordId: previous.sourceRecordId,
     sourceStaffId: previous.sourceStaffId,
     deferredFieldCodes: prepared.deferredFieldCodes,
@@ -350,10 +472,11 @@ export async function prepareEmploymentPatch(
 }
 
 export async function resolveEffectiveInheritance(
-  _tx: Tx,
-  _ctx: EmploymentContext,
+  tx: Tx,
+  ctx: EmploymentContext,
   prepared: PreparedInheritance,
   effective: { staffId: string; predecessor: EmploymentRecord | null },
+  options: { readonly explicitPositionEdit?: boolean } = {},
 ): Promise<{ fields: PresetFields; customFields: CustomFields }> {
   const fields = { ...prepared.fields };
   const customFields = { ...prepared.customFields };
@@ -380,7 +503,17 @@ export async function resolveEffectiveInheritance(
       }
     }
   }
-  return { fields, customFields };
+  const employeeTransfer =
+    prepared.formSnapshot.employeeTransfer || (await isEmployeeTransferPayload(tx, ctx.tenantId, prepared));
+  return {
+    fields:
+      // 部门与职位的延迟继承已完成；保存的显式值也必须遵守 DEC-232。
+      // 本次 HR 审批编辑例外：保留其输入，让引用校验拒绝不属于目标部门的职位。
+      employeeTransfer && !options.explicitPositionEdit
+        ? await employeeTransferPosition(tx, ctx, prepared.effectiveDate, fields)
+        : fields,
+    customFields,
+  };
 }
 
 /** 仅裁剪预览；隐藏字段的可信快照仍保留供生效与审计使用。 */
