@@ -742,7 +742,10 @@
 ],
 "note": "DEC-254；第一批派：Opus 5.5 High → Sol Ultra",
 "dev": "Claude Opus 5.5 High",
-"rev": "Sol Ultra"
+"rev": "Sol Ultra",
+"pr": [
+102
+]
 },
 "F-031": {
 "n": "删除来源后提示被固定为人工的记录与字段",
@@ -755,11 +758,14 @@
 },
 "F-032": {
 "n": "表达式空值 / 类型语义按原站校准",
-"s": "active",
+"s": "review",
 "p": "R3-T00",
 "note": "DEC-257；B 档 Opus 5.5 High → Sol Ultra；会话待开",
 "dev": "Claude Opus 5.5 High",
-"rev": "Sol Ultra"
+"rev": "Sol Ultra",
+"pr": [
+101
+]
 },
 "F-033": {
 "n": "表达式函数库按原站补齐（63 个函数）",
@@ -817,6 +823,16 @@
 "s": "review",
 "r": 3,
 "n": "第 2 轮 Astra Ultra 2 P2（可信值 vs 员工输入，连续同类）→ 第 3 轮修改中；下轮 Astra Ultra 列全同类"
+},
+"101": {
+"s": "review",
+"r": 1,
+"n": "待 Sol Ultra（优先：F-033 / R3-T04 / T05 依赖）"
+},
+"102": {
+"s": "active",
+"r": 1,
+"n": "Draft 开发中"
 }
 },
 "log": [
@@ -1859,10 +1875,18 @@
 "开发：Claude Fable 5.1；设计审：Codex Astra Ultra"
 ],
 [
-null,
+101,
 "F-032",
 "表达式语义按原站校准",
-"开发",
+"待发起 Sol Ultra 审查（优先）",
+"第 1 轮",
+"开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
+],
+[
+102,
+"F-030",
+"AC 覆盖统计运行时采集",
+"开发（#91 已合并，可写代码）",
 "第 1 轮",
 "开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
 ],
@@ -1879,14 +1903,6 @@ null,
 "R3-T03",
 "360 度评估（PR-A 先）",
 "开发",
-"第 1 轮",
-"开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
-],
-[
-null,
-"F-030",
-"AC 覆盖统计运行时采集",
-"开发（#91 已合并，可写代码）",
 "第 1 轮",
 "开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
 ]
