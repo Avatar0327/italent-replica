@@ -124,7 +124,7 @@ def main():
                     continue
                 if p["head"] != o["head"]:
                     ev.append(f"#{n} 新推送 {p['head']}")
-                if p["ci"] != o["ci"] and p["ci"] != "running":
+                if p["ci"] != o["ci"] and p["ci"] not in ("running", "none"):
                     ev.append(f"#{n} CI {p['ci']}（{p['head']}）")
                 if p["nc"] > o["nc"]:
                     ev.append(f"#{n} 新评论 {p['nc'] - o['nc']} 条")
