@@ -17,6 +17,8 @@ const valueOf = (result: EvaluationResult) => (result.ok ? result.value : result
 const num = (value: number) => ({ kind: 'number', value });
 const text = (value: string) => ({ kind: 'text', value });
 const EMPTY = { kind: 'empty' };
+/** 数值取数函数取不到：空值带来源类型（PR #108 第 3 轮，日期参数据此区分真正的空日期）。 */
+const EMPTY_NUMBER = { kind: 'empty', of: 'number' };
 const runWith =
   (ports: InMemoryPortData, subjectId = 'emp-1') =>
   (formula: string) =>
@@ -42,7 +44,7 @@ describe('AC-EXP-16 绩效：最近第 N 年 / 第 N 次（周期按名称文本
   it('第 N 年：面板中文名，周期表达式过滤后取第 N 个年度', () => {
     expect(run('获取最近第N年的绩效考核得分(1, 考核结果.周期名称="年度")')).toEqual(num(90));
     expect(run('获取最近第N年的绩效考核等级(2, 考核结果.周期名称="第三季度")')).toEqual(text('B'));
-    expect(run('PerformanceLastCent(3, 考核结果.周期名称="第三季度")')).toEqual(EMPTY);
+    expect(run('PerformanceLastCent(3, 考核结果.周期名称="第三季度")')).toEqual(EMPTY_NUMBER);
   });
 
   it('第 N 年：参数顺序待取证（#105），N 写在前或后都识别；只写 N 时保持原口径', () => {
@@ -51,14 +53,14 @@ describe('AC-EXP-16 绩效：最近第 N 年 / 第 N 次（周期按名称文本
   });
 
   it('第 N 年：可选绩效活动过滤', () => {
-    expect(run('PerformanceLastCent(2, 考核结果.周期名称="年度", 考核结果.绩效活动="补考")')).toEqual(EMPTY);
+    expect(run('PerformanceLastCent(2, 考核结果.周期名称="年度", 考核结果.绩效活动="补考")')).toEqual(EMPTY_NUMBER);
     expect(run('PerformanceLastCent(1, 考核结果.周期名称="年度", 考核结果.绩效活动="补考")')).toEqual(num(60));
   });
 
   it('第 N 次：按指定的考核结果日期字段倒序取第 N 条（DEC-260）', () => {
     expect(run('获取最近第N次绩效考核得分(1, 考核结果.周期名称="第三季度", 考核结果.考核结束日期)')).toEqual(num(70));
     expect(run('获取最近第N次绩效考核等级(2, 考核结果.周期名称="第三季度", 考核结果.考核结束日期)')).toEqual(text('B'));
-    expect(run('PerformanceNthCent(3, 考核结果.周期名称="第三季度", 考核结果.考核结束日期)')).toEqual(EMPTY);
+    expect(run('PerformanceNthCent(3, 考核结果.周期名称="第三季度", 考核结果.考核结束日期)')).toEqual(EMPTY_NUMBER);
   });
 
   it('第 N 次：参数顺序待取证（#105），按参数形态识别 N、过滤条件与日期字段', () => {
@@ -67,7 +69,7 @@ describe('AC-EXP-16 绩效：最近第 N 年 / 第 N 次（周期按名称文本
 
   it('第 N 次：日期字段为空的记录不参与；不写日期字段时按最后修改时间倒序（🟡 #105）', () => {
     expect(run('PerformanceNthCent(2, 考核结果.周期名称="年度", 考核结果.考核结束日期)')).toEqual(num(80));
-    expect(run('PerformanceNthCent(3, 考核结果.周期名称="年度", 考核结果.考核结束日期)')).toEqual(EMPTY);
+    expect(run('PerformanceNthCent(3, 考核结果.周期名称="年度", 考核结果.考核结束日期)')).toEqual(EMPTY_NUMBER);
     // 不写日期字段：最后修改 2026-01-01（90）→ 2025-03-01（60）→ 2025-01-05（80）
     expect(run('PerformanceNthCent(2, 考核结果.周期名称="年度")')).toEqual(num(60));
   });

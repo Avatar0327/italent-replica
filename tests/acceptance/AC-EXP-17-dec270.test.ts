@@ -20,7 +20,8 @@ import { CALENDAR, contextFor } from './AC-EXP-support.js';
 const valueOf = (result: EvaluationResult) => (result.ok ? result.value : result.failure);
 const num = (value: number) => ({ kind: 'number', value });
 const text = (value: string) => ({ kind: 'text', value });
-const EMPTY = { kind: 'empty' };
+/** 数值取数函数（绩效得分、排名）取不到：空值带来源类型（PR #108 第 3 轮）。 */
+const EMPTY = { kind: 'empty', of: 'number' };
 
 /** 原站试算的空值来源：1999 年无绩效数据。 */
 const EMPTY_PERF = '获取指定年度指定周期的绩效得分(考核结果.年度=1999, 考核结果.周期名称="年度")';

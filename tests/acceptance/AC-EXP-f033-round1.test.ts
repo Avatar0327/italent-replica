@@ -174,12 +174,16 @@ describe('P2-2 第 N 年 / 第 N 次：N 写成字段、变量或算式仍是 N�
   });
 
   it('考核结果字段仍按日期字段识别（不会被当成第二个 N）：行里没有该日期 → 不参与，结果为空', () => {
-    expect(run('PerformanceNthCent(1, 考核结果.周期名称="年度", 考核结果.考核日期)', {})).toEqual({ kind: 'empty' });
+    expect(run('PerformanceNthCent(1, 考核结果.周期名称="年度", 考核结果.考核日期)', {})).toEqual({
+      kind: 'empty',
+      of: 'number',
+    });
   });
 });
 
-describe('P3-1 循环提示列出同一强连通分量里的全部环（DEC-274）', () => {
-  it('A = B + C、B = A、C = A：给出 A→B→A 与 A→C→A', () => {
+// DEC-287②（第 3 轮清单补充）：改为每个强连通分量报一条代表环，同组的成环项目全部标出（C 不再被说成“依赖成环”）
+describe('P3-1 同一强连通分量里的成环项目全部标出（DEC-274 / DEC-287②）', () => {
+  it('A = B + C、B = A、C = A：代表环 A→B→A，成环项目 A、B、C', () => {
     const items = [
       { field: '盘点对象.A', priority: 1, formula: '盘点对象.B + 盘点对象.C' },
       { field: '盘点对象.B', priority: 1, formula: '盘点对象.A' },
@@ -187,26 +191,30 @@ describe('P3-1 循环提示列出同一强连通分量里的全部环（DEC-274�
     ];
     const ordered = orderComputationItems(items);
     if (!ordered.ok) throw new Error('应允许保存');
-    expect(ordered.cycles).toEqual([
-      ['盘点对象.A', '盘点对象.B', '盘点对象.A'],
-      ['盘点对象.A', '盘点对象.C', '盘点对象.A'],
-    ]);
+    expect(ordered.cycles).toEqual([['盘点对象.A', '盘点对象.B', '盘点对象.A']]);
+    expect(ordered.cycleMembers).toEqual(['盘点对象.A', '盘点对象.B', '盘点对象.C']);
+    expect(ordered.warnings.join('\n')).not.toContain('盘点对象.C 依赖成环的项目');
     const batch = evaluateBatch(items, [inMemorySubject('e1', {})], { calendar: CALENDAR });
     expect(batch).toMatchObject({
       ok: false,
-      failure: { message: '计算失败：循环依赖 盘点对象.A→盘点对象.B→盘点对象.A；盘点对象.A→盘点对象.C→盘点对象.A' },
+      failure: {
+        message: '计算失败：循环依赖 盘点对象.A→盘点对象.B→盘点对象.A（同组成环项目还有 盘点对象.C）',
+        members: ['盘点对象.A', '盘点对象.B', '盘点对象.C'],
+      },
     });
   });
 });
 
-describe('P3-2 舍入只纠正浮点表示误差（不把 16 位有效数字压成 15 位）', () => {
+// 第 3 轮清单 P3：改为按输入值的十进制表示精确舍入，不再做 1 个 ULP 的修正（见 AC-EXP-f033-round3）
+describe('P3-2 舍入按输入值精确舍入（不把 16 位有效数字压成 15 位）', () => {
   const run = (formula: string) => valueOf(evaluateFormula(formula, contextFor({})));
 
   it.each([
     ['RoundDown(2.999999999999999)', 2],
     ['Round(1234567890123456)', 1234567890123456],
     ['RoundUP(1234567890123456)', 1234567890123456],
-    ['RoundUP(1.1 * 3, 1)', 3.3],
+    // 1.1 * 3 的输入值是 3.3000000000000003，精确向上舍入到 1 位为 3.4（第 3 轮起不再修正浮点尾差）
+    ['RoundUP(1.1 * 3, 1)', 3.4],
     ['Round(2.345, 2)', 2.35],
     ['Round(1.005, 2)', 1.01],
     ['RoundDown(0.1 + 0.2, 1)', 0.3],
