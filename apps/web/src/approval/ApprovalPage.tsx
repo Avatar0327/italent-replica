@@ -3,12 +3,13 @@ import { useEffect, useState } from 'react';
 import { SelfServiceShell } from '../self-service/shared/SelfServiceShell.js';
 import { ApprovalActions } from './ApprovalActions.js';
 import { ApprovalFields } from './ApprovalFields.js';
-import { ApprovalHistory, formatApprovalTime } from './ApprovalHistory.js';
+import { ApprovalHistory, formatApprovalTime, useApprovalHistory, type HistoryState } from './ApprovalHistory.js';
 import { PAGE_SIZE, requireUuid, requestMessage } from './api.js';
 import { statusLabels, tabLabels, text } from './messages.js';
-import type { ApprovalDetail, ApprovalListItem, ApprovalTab } from './types.js';
-import { useApprovalCommand } from './useApprovalCommand.js';
-import { useApprovalInstance, type InstanceRequests } from './useApprovalInstance.js';
+import { disclosureVersion } from './disclosure.js';
+import type { ApprovalDetail, ApprovalListItem, ApprovalTab, FieldDraft } from './types.js';
+import { disclosedDraft, useApprovalCommand, type CommandState, type CommandView } from './useApprovalCommand.js';
+import { useApprovalInstance } from './useApprovalInstance.js';
 import { useApprovalList } from './useApprovalList.js';
 import './approval.css';
 
@@ -196,6 +197,25 @@ interface DetailPanelProps {
 }
 function ApprovalDetailPanel(props: DetailPanelProps) {
   const instance = useApprovalInstance(props.tenantId, props.instanceId, props.onDenied);
+  // DEC-288 ①：命令状态挂在面板层，清空重读与字段集合版本重建都不会销毁它。
+  const command = useApprovalCommand({
+    tenantId: props.tenantId,
+    detail: instance.detail,
+    requests: instance.requests,
+    refresh: instance.refresh,
+    onResult: instance.replace,
+    onDone: props.onDone,
+  });
+  const history = useApprovalHistory({
+    tenantId: props.tenantId,
+    detail: instance.detail,
+    requests: instance.requests,
+  });
+  const locked = command.busy || command.mode === 'unknown';
+  useEffect(() => {
+    props.onLockChange(locked);
+  }, [locked, props.onLockChange]);
+  useEffect(() => () => props.onLockChange(false), [props.onLockChange]);
   return (
     <section className="transfer-content approval-detail" aria-label={text.detail}>
       {instance.notice && (
@@ -211,20 +231,23 @@ function ApprovalDetailPanel(props: DetailPanelProps) {
       )}
       {instance.detail ? (
         <DetailContents
-          {...props}
+          key={disclosureVersion(instance.detail)}
           detail={instance.detail}
+          command={command}
+          history={history}
           refresh={instance.refresh}
-          onResult={instance.replace}
-          requests={instance.requests}
+          onClose={props.onClose}
+          locked={locked}
         />
       ) : (
+        // DEC-288 ③：重读完成前只显示占位，不渲染任何旧字段名或旧值。
         <div className="approval-button-row">
           {!instance.loading && (
             <button type="button" onClick={() => void instance.refresh().catch(() => undefined)}>
               {text.refreshDetail}
             </button>
           )}
-          <button type="button" onClick={props.onClose}>
+          <button type="button" disabled={locked} onClick={props.onClose}>
             {text.close}
           </button>
         </div>
@@ -232,20 +255,19 @@ function ApprovalDetailPanel(props: DetailPanelProps) {
     </section>
   );
 }
-function DetailContents(
-  props: DetailPanelProps & {
-    detail: ApprovalDetail;
-    refresh: () => Promise<ApprovalDetail | null>;
-    onResult: (detail: ApprovalDetail) => void;
-    requests: InstanceRequests;
-  },
-) {
-  const command = useApprovalCommand(props);
-  const locked = command.busy || command.mode === 'unknown';
-  useEffect(() => {
-    props.onLockChange(locked);
-  }, [locked, props.onLockChange]);
-  useEffect(() => () => props.onLockChange(false), [props.onLockChange]);
+/** 展示层：按字段集合版本（key）整体卸载重建；表单草稿只在这里保存（DEC-288 ④）。 */
+function DetailContents(props: {
+  detail: ApprovalDetail;
+  command: CommandState;
+  history: HistoryState;
+  refresh: () => Promise<ApprovalDetail | null>;
+  onClose: () => void;
+  locked: boolean;
+}) {
+  const [fields, setFields] = useState<FieldDraft>({});
+  useEffect(() => setFields((old) => disclosedDraft(props.detail, old)), [props.detail]);
+  const actions: CommandView = { ...props.command, submit: () => props.command.submit(fields) };
+  const { locked } = props;
   return (
     <>
       <div className="approval-detail-heading">
@@ -281,9 +303,9 @@ function DetailContents(
       {props.detail.form.editMode !== 'none' && (
         <p className="approval-hint">{props.detail.form.editMode === 'separate' ? text.separate : text.withApprove}</p>
       )}
-      <ApprovalFields form={props.detail.form} draft={command.fields} onDraft={command.setFields} disabled={locked} />
-      <ApprovalActions detail={props.detail} command={command} />
-      <ApprovalHistory tenantId={props.tenantId} detail={props.detail} requests={props.requests} />
+      <ApprovalFields form={props.detail.form} draft={fields} onDraft={setFields} disabled={locked} />
+      <ApprovalActions detail={props.detail} command={actions} />
+      <ApprovalHistory detail={props.detail} history={props.history} />
     </>
   );
 }

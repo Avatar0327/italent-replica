@@ -9,7 +9,8 @@ import type { InstanceRequests } from './useApprovalInstance.js';
 
 interface CommandProps {
   readonly tenantId: string;
-  readonly detail: ApprovalDetail;
+  /** 清空重读期间为 null：命令状态（幂等键、结果未知的提交）仍保留在本 hook（DEC-288 ①）。 */
+  readonly detail: ApprovalDetail | null;
   /** 写请求与读取共用实例通道串行执行（DEC-277 ①）；403 作为收紧信号交实例层清空并重读（②）。 */
   readonly requests: InstanceRequests;
   /** 写响应是完整详情，由实例层整体替换。 */
@@ -18,7 +19,8 @@ interface CommandProps {
   readonly refresh: () => Promise<ApprovalDetail | null>;
   readonly onDone: () => void;
 }
-function disclosedDraft(detail: ApprovalDetail, draft: FieldDraft): FieldDraft {
+/** 表单草稿只保留当前详情里仍可编辑且已披露的叶子。 */
+export function disclosedDraft(detail: ApprovalDetail, draft: FieldDraft): FieldDraft {
   const visible = new Set(
     fieldLeaves(detail.form.values)
       .filter((leaf) => editableLeaf(leaf.path, detail.form.editableFields))
@@ -26,40 +28,52 @@ function disclosedDraft(detail: ApprovalDetail, draft: FieldDraft): FieldDraft {
   );
   return Object.fromEntries(Object.entries(draft).filter(([key]) => visible.has(key)));
 }
+/**
+ * 命令状态挂在详情面板层（随单据打开 / 关闭存活），不随展示层按字段集合版本重建或清空重读而销毁（DEC-288 ①）。
+ * 表单草稿（fields）属于展示缓存，由展示层自行持有。
+ */
 export function useApprovalCommand(props: CommandProps) {
   const [action, setAction] = useState<ApprovalAction | null>(null);
   const [draft, setDraft] = useState<ActionDraft>(() => initialActionDraft(props.detail));
-  const [fields, setFields] = useState<FieldDraft>({});
-  useEffect(() => setFields((old) => disclosedDraft(props.detail, old)), [props.detail]);
   const reset = () => {
     setAction(null);
-    setFields({});
     setDraft(initialActionDraft(props.detail));
   };
-  const recovery = useCommandRecovery({
-    ...props,
-    reset,
-    prune: (detail) => setFields((old) => disclosedDraft(detail, old)),
-  });
+  const recovery = useCommandRecovery({ ...props, reset });
+  const { mode, markChecked } = recovery;
+  // 清空重读只清展示缓存：未进入恢复流程时，动作选择与输入草稿随展示一起清空。
+  useEffect(() => {
+    if (!props.detail && mode === 'normal') {
+      setAction(null);
+      setDraft(initialActionDraft(null));
+    }
+  }, [props.detail, mode]);
+  // DEC-288 ②：结果未知后，任一完整详情到达即视为已查询一次结果，允许沿原幂等键重试。
+  useEffect(() => {
+    if (props.detail && mode === 'unknown') markChecked();
+    // 只在详情到达时触发；mode / markChecked 变化本身不代表新的查询结果。
+  }, [props.detail]);
   function selectAction(next: ApprovalAction) {
-    if (recovery.busy || recovery.mode === 'unknown') return;
+    if (!props.detail || recovery.busy || mode === 'unknown') return;
     setAction(next);
     setDraft(initialActionDraft(props.detail));
     recovery.resetMode();
   }
-  function submit() {
-    if (!action || recovery.busy) return;
+  function submit(fields: FieldDraft) {
+    if (!action || !props.detail || recovery.busy) return;
     try {
       void recovery.execute(makeApprovalCommand(props.detail, action, draft, fields));
     } catch (failure) {
       recovery.setMessage(requestMessage(failure));
     }
   }
-  return { action, draft, setDraft, fields, setFields, selectAction, submit, ...recovery };
+  return { action, draft, setDraft, selectAction, submit, ...recovery };
 }
+export type CommandState = ReturnType<typeof useApprovalCommand>;
+/** 展示层把表单草稿绑定进 submit 后交给动作面板。 */
+export type CommandView = Omit<CommandState, 'submit'> & { readonly submit: () => void };
 interface RecoveryProps extends CommandProps {
   readonly reset: () => void;
-  readonly prune: (detail: ApprovalDetail) => void;
 }
 function useMounted() {
   const active = useRef(true);
@@ -89,6 +103,10 @@ function useRecoveryState() {
     setChecked(false);
     setMessage(message);
   }
+  function markChecked() {
+    setChecked(true);
+    setMessage(recoveryMessage('unknown', true, ''));
+  }
   return {
     busy,
     setBusy,
@@ -102,11 +120,13 @@ function useRecoveryState() {
     setPending,
     conflictReason,
     resetMode,
+    markChecked,
   };
 }
 function useCommandRecovery(props: RecoveryProps) {
   const state = useRecoveryState();
   const { setBusy, setMessage, mode, setMode, setChecked, setPending, conflictReason, resetMode } = state;
+  const { markChecked } = state;
   const active = useMounted();
   const busyRef = useRef(false);
   function denied() {
@@ -117,7 +137,6 @@ function useCommandRecovery(props: RecoveryProps) {
     try {
       const fresh = await props.refresh();
       if (!active.current || !fresh) return;
-      props.prune(fresh);
       setChecked(true);
       setMessage(recoveryMessage(nextMode, true, conflictReason.current));
     } catch {
@@ -178,5 +197,6 @@ function useCommandRecovery(props: RecoveryProps) {
     execute,
     recheck,
     resetMode,
+    markChecked,
   };
 }

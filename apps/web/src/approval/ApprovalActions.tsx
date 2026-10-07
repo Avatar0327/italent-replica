@@ -2,9 +2,8 @@ import { allowedAddSignTypes } from './commands.js';
 import { actionLabels, text } from './messages.js';
 import { editableLeaf, editableValue, fieldLeaves } from './fields.js';
 import type { ActionDraft, ApprovalAction, ApprovalDetail } from './types.js';
-import type { useApprovalCommand } from './useApprovalCommand.js';
+import type { CommandView as Actions } from './useApprovalCommand.js';
 
-type Actions = ReturnType<typeof useApprovalCommand>;
 export function ApprovalActions({ detail, command }: { detail: ApprovalDetail; command: Actions }) {
   const canEdit =
     detail.form.editMode === 'separate' &&

@@ -14,13 +14,13 @@ import type {
 export function allowedAddSignTypes(detail: ApprovalDetail): readonly ApprovalSignType[] {
   return detail.addSignTypes ?? ['before', 'after'];
 }
-export function initialActionDraft(detail: ApprovalDetail): ActionDraft {
+export function initialActionDraft(detail: ApprovalDetail | null): ActionDraft {
   return {
     comment: '',
     toUserId: '',
     userIds: '',
     signType: 'before',
-    taskId: detail.taskId ?? '',
+    taskId: detail?.taskId ?? '',
     adminKind: 'reassign',
     nodeKey: '',
     reason: '',

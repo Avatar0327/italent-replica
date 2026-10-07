@@ -140,3 +140,72 @@ describe('AC-APV-UI-02 / DEC-277：字段撤权是收紧信号，而历史分页
     }
   });
 });
+
+describe('AC-APV-UI-02 / DEC-288：编辑日志承载受权限裁剪的字段名', () => {
+  it('生产授权器：本人编辑 place 产生字段名 [place] 的日志；撤销 place 查看权后同一日志字段名裁为空且非隐藏', async () => {
+    const w = await approvalWorld(database().db, 'apv-ui-r6-edit-log');
+    const s = await transferScene(w);
+    const world = await permissionAdmin(w);
+    const profile = await grantFieldAccess(world, s.outHead.userId, {
+      view: ['id', 'departmentId', 'effectiveDate', 'place'],
+      edit: ['place'],
+    });
+    const api = tenantApi(w.db, { authorize: undefined, clock: w.clock });
+    await w.publishedProcess({
+      nodes: [
+        {
+          key: 'out_head',
+          approver: 'latest_record_department_head',
+          formFields: ['departmentId', 'effectiveDate', 'place'],
+          editableFields: ['place'],
+          editMode: 'separate',
+        },
+        { key: 'in_hrbp', approver: 'record_department_hrbp' },
+      ],
+    });
+    const view = await w.submit(
+      await w.application(s.subject.employeeId, { departmentId: s.to, place: '合成编辑前地点' }),
+    );
+    const [task] = w.pending(view);
+    const edited = await api.request('POST', `${BASE}/tasks/${task!.id}/edit`, {
+      ...w.as(s.outHead.userId),
+      ifMatch: view.revision,
+      body: { fields: { place: '合成编辑后地点' } },
+    });
+    expect(edited.status, await edited.clone().text()).toBe(200);
+    const read = async (path: string) =>
+      api.request('GET', `${BASE}/instances/${view.id}${path}`, w.as(s.outHead.userId));
+    const logsOf = async () =>
+      await w.json<{ recordsHidden: boolean; items: { id: string; event: string; detail: { fields?: string[] } }[] }>(
+        await read('/logs?page=1&pageSize=20'),
+      );
+    const before = await logsOf();
+    const editLog = before.items.find((log) => log.event === 'edit');
+    expect(editLog?.detail.fields).toEqual(['place']);
+    expect((await w.json<typeof view>(await read(''))).form.values).toMatchObject({ place: '合成编辑后地点' });
+
+    const definition = MODULE_OBJECTS.employmentRecord;
+    const revoked = await setObjectPermission(
+      world,
+      profile,
+      {
+        dataOperations: { create: false, update: false, delete: false },
+        fields: definition.fields.map((field) => ({
+          fieldCode: field.code,
+          view: ['id', 'departmentId', 'effectiveDate'].includes(field.code),
+          edit: false,
+        })),
+        buttons: [],
+      },
+      definition.code,
+    );
+    expect(revoked.status, await revoked.clone().text()).toBe(200);
+    const after = await logsOf();
+    expect(after.recordsHidden).toBe(false);
+    expect(after.items.find((log) => log.event === 'edit')?.detail.fields).toEqual([]);
+    expect(JSON.stringify(after)).not.toContain('合成编辑后地点');
+    const detail = await w.json<typeof view>(await read(''));
+    expect(detail.form.values).not.toHaveProperty('place');
+    expect((detail.logs.find((log) => log.event === 'edit')?.detail as { fields?: string[] }).fields).toEqual([]);
+  });
+});

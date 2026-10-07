@@ -1,6 +1,7 @@
 import { isValidTimeZone } from '@italent/domain';
 import { useEffect, useRef, useState } from 'react';
 import { approvalRequest, PAGE_SIZE, permissionFailure, requestMessage } from './api.js';
+import { knownLogFields, logFieldsShrank } from './disclosure.js';
 import { displayValue } from './fields.js';
 import { eventLabels, statusLabels, text } from './messages.js';
 import { STALE } from './requestLane.js';
@@ -30,65 +31,70 @@ export function formatApprovalTime(value: string | null | undefined, tenantTimez
 }
 interface HistoryProps {
   readonly tenantId: string;
-  readonly detail: ApprovalDetail;
+  /** 清空重读期间为 null；分页状态挂在面板层，不随展示层按字段集合版本重建而丢失（DEC-288 ①）。 */
+  readonly detail: ApprovalDetail | null;
   /** 与详情 GET、写 POST 共用的实例通道（DEC-277 ①）；历史只能触发“清空 + 整页重读”，不替代完整详情（②）。 */
   readonly requests: InstanceRequests;
 }
-/** 隐藏状态只来自实例层的完整详情；分页行只在本组件内保存，完整详情整体替换时清空，不做局部合并。 */
-function useApprovalHistory({ tenantId, detail, requests }: HistoryProps) {
-  const [kind, setKind] = useState<'tasks' | 'logs' | null>(null);
-  const [page, setPage] = useState(1);
-  const [rows, setRows] = useState<readonly (ApprovalTask | ApprovalLog)[]>([]);
+type HistoryRows = readonly (ApprovalTask | ApprovalLog)[];
+interface HistoryPage {
+  /** 分页行所属的完整详情：详情被整体替换后，旧分页行在同一次渲染里即不再显示（DEC-288 ③ / ④）。 */
+  readonly owner: ApprovalDetail;
+  readonly kind: 'tasks' | 'logs';
+  readonly page: number;
+  readonly rows: HistoryRows;
+}
+/** 隐藏状态只来自实例层的完整详情；分页行绑定所属详情，不与新详情做局部合并。 */
+export function useApprovalHistory({ tenantId, detail, requests }: HistoryProps) {
+  const [loaded, setLoaded] = useState<HistoryPage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const active = useRef(true);
+  const latest = useRef(detail);
+  latest.current = detail;
   useEffect(() => {
     active.current = true;
     return () => {
       active.current = false;
     };
   }, []);
-  useEffect(() => {
-    setKind(null);
-    setRows([]);
-    setError('');
-  }, [detail]);
+  const current = loaded && loaded.owner === detail ? loaded : null;
   async function load(nextKind: 'tasks' | 'logs', nextPage: number) {
-    if (detail.recordsHidden || busy) return;
+    if (!detail || detail.recordsHidden || busy) return;
     setBusy(true);
     setError('');
+    const known = knownLogFields(detail, current?.kind === 'logs' ? (current.rows as readonly ApprovalLog[]) : []);
     try {
       const query = new URLSearchParams({ page: String(nextPage), pageSize: String(PAGE_SIZE) });
-      // DEC-115 / DEC-277 ②：隐藏或被拒是收紧信号，在通道任务内即触发清空与整页重读，本页结果随之作废。
+      // DEC-115 / DEC-277 ② / DEC-288：隐藏、被拒或同一日志字段名缩减都是收紧信号，在通道任务内即触发清空与整页重读。
       const result = await requests.run(async (signal) => {
         try {
-          const loaded = await approvalRequest<ApprovalPageResult<ApprovalTask | ApprovalLog>>(
+          const page = await approvalRequest<ApprovalPageResult<ApprovalTask | ApprovalLog>>(
             tenantId,
             `/instances/${detail.id}/${nextKind}?${query}`,
             { signal },
           );
-          if (loaded.recordsHidden) requests.tighten();
-          return loaded;
+          const shrank = nextKind === 'logs' && logFieldsShrank(known, page.items as readonly ApprovalLog[]);
+          if (page.recordsHidden || shrank) requests.tighten();
+          return page;
         } catch (failure) {
           if (permissionFailure(failure)) requests.tighten();
           throw failure;
         }
       });
-      if (result === STALE || !active.current) return;
-      setKind(nextKind);
-      setPage(nextPage);
-      setRows(result.items);
+      if (result === STALE || !active.current || !latest.current) return;
+      setLoaded({ owner: latest.current, kind: nextKind, page: nextPage, rows: result.items });
     } catch (failure) {
       if (active.current) setError(requestMessage(failure));
     } finally {
       if (active.current) setBusy(false);
     }
   }
-  return { kind, page, rows, busy, error, load };
+  return { kind: current?.kind ?? null, page: current?.page ?? 1, rows: current?.rows ?? [], busy, error, load };
 }
-export function ApprovalHistory(props: HistoryProps) {
-  const { kind, page, rows, busy, error, load } = useApprovalHistory(props);
-  const { detail } = props;
+export type HistoryState = ReturnType<typeof useApprovalHistory>;
+export function ApprovalHistory({ detail, history }: { detail: ApprovalDetail; history: HistoryState }) {
+  const { kind, page, rows, busy, error, load } = history;
   const hidden = detail.recordsHidden;
   return (
     <section className="approval-history">
