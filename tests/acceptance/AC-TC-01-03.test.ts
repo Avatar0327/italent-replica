@@ -324,6 +324,16 @@ describe('TC-R4 只有已启用的指标与指标库能被新引用', () => {
     expect(await w.read<CriterionView>(`/criteria/${criterion.id}`)).toEqual(before);
     const candidates = await w.read<{ items: { id: string }[] }>('/candidates/dimensions');
     expect(candidates.items.map((item) => item.id)).not.toContain(inside.id);
+
+    // 新建路径同样拒绝，不落库
+    const listBefore = await w.read('/criteria');
+    const created = await w.request('POST', '/criteria', {
+      ifMatch: 0,
+      body: { categoryId: before.categoryId, name: '引用停用库的指标', dimensions: [{ dimensionId: inside.id }] },
+    });
+    expect(created.status).toBe(400);
+    expect((await details(created)).details?.reason).toBe('DIMENSION_NOT_ENABLED');
+    expect(await w.read('/criteria')).toEqual(listBefore);
   });
 
   it('同一指标在一个标准里重复引用、引用不存在的指标被拒绝', async () => {

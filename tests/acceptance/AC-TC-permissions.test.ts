@@ -35,6 +35,8 @@ interface OperatorOptions {
   readonly hidden?: Partial<Record<ObjectKey, readonly string[]>>;
   readonly readonly?: Partial<Record<ObjectKey, readonly string[]>>;
   readonly seeAll?: boolean;
+  /** 是否授予对象登记的全部按钮（缺省授予）。 */
+  readonly buttons?: boolean;
 }
 
 describe('R3-T01 人才标准权限（真实授权器）', () => {
@@ -75,26 +77,31 @@ describe('R3-T01 人才标准权限（真实授权器）', () => {
 
   async function operator(options: OperatorOptions = {}) {
     const profile: ProfileBody = await createProfile(world, `tc-${randomUUID().slice(0, 8)}`, { apps: [TALENT_APP] });
-    for (const key of options.objects ?? (Object.keys(TALENT_OBJECTS) as ObjectKey[])) {
-      const definition = TALENT_OBJECTS[key];
-      const hidden = new Set(options.hidden?.[key] ?? []);
-      const locked = new Set(options.readonly?.[key] ?? []);
-      const response = await setObjectPermission(
-        world,
-        profile,
-        {
-          dataOperations: { create: true, update: true, delete: true },
-          fields: definition.fields.map((field) => ({
-            fieldCode: field.code,
-            view: !hidden.has(field.code),
-            edit: !field.system && !hidden.has(field.code) && !locked.has(field.code),
-          })),
-          buttons: definition.buttons.map((button) => ({ buttonCode: button.code, level: button.level })),
-        },
-        definition.code,
-      );
-      expect(response.status, await response.clone().text()).toBe(200);
-    }
+    const setPermissions = async (buttons: boolean) => {
+      for (const key of options.objects ?? (Object.keys(TALENT_OBJECTS) as ObjectKey[])) {
+        const definition = TALENT_OBJECTS[key];
+        const hidden = new Set(options.hidden?.[key] ?? []);
+        const locked = new Set(options.readonly?.[key] ?? []);
+        const response = await setObjectPermission(
+          world,
+          profile,
+          {
+            dataOperations: { create: true, update: true, delete: true },
+            fields: definition.fields.map((field) => ({
+              fieldCode: field.code,
+              view: !hidden.has(field.code),
+              edit: !field.system && !hidden.has(field.code) && !locked.has(field.code),
+            })),
+            buttons: buttons
+              ? definition.buttons.map((button) => ({ buttonCode: button.code, level: button.level }))
+              : [],
+          },
+          definition.code,
+        );
+        expect(response.status, await response.clone().text()).toBe(200);
+      }
+    };
+    await setPermissions(options.buttons ?? true);
     await makeGrantable(world, [profile.id]);
     const user = await addMember(world, `tc-operator-${randomUUID().slice(0, 4)}`);
     expect((await grant(world, user.id, profile.id)).status).toBe(201);
@@ -112,7 +119,7 @@ describe('R3-T01 人才标准权限（真实授权器）', () => {
     if (options.seeAll) await setSeeAll(true);
     const request = (method: string, path: string, extra: Parameters<typeof world.api.request>[2] = {}) =>
       world.api.request(method, `${TC_BASE}${path}`, { ...as, ...extra });
-    return { profile, user, as, request, setSeeAll };
+    return { profile, user, as, request, setSeeAll, setButtons: setPermissions };
   }
 
   const adminRead = async <T>(path: string): Promise<T> => {
@@ -224,6 +231,64 @@ describe('R3-T01 人才标准权限（真实授权器）', () => {
     await op.setSeeAll(false);
     const replay = await op.request('POST', '/criterion-categories', command);
     expect(replay.status).toBe(404);
+  });
+
+  it('按钮权限（REQ-PRM-001 R6）：有数据操作权、字段权与看全部但没有按钮，四对象新增 / 修改 / 删除都 403，数据不变', async () => {
+    const op = await operator({ seeAll: true, buttons: false });
+    const snapshot = async () =>
+      Promise.all(
+        [
+          '/libraries',
+          '/dimensions',
+          '/criterion-categories',
+          '/criteria',
+          `/libraries/${data.library.id}`,
+          `/dimensions/${data.dimension.id}`,
+          `/criterion-categories/${data.category.id}`,
+          `/criteria/${data.criterion.id}`,
+        ].map((path) => adminRead(path)),
+      );
+    const before = await snapshot();
+    const targets = [
+      ['libraries', data.library.id, { name: '无按钮新建库', type: 'ability' }, { name: '无按钮改名' }],
+      [
+        'dimensions',
+        data.dimension.id,
+        { libraryId: data.library.id, code: `NB${randomUUID().slice(0, 6)}`, name: '无按钮指标' },
+        { name: '无按钮改名' },
+      ],
+      ['criterion-categories', data.category.id, { name: '无按钮分类' }, { name: '无按钮改名' }],
+      ['criteria', data.criterion.id, { categoryId: data.category.id, name: '无按钮标准' }, { name: '无按钮改名' }],
+    ] as const;
+    for (const [path, id, created, patch] of targets) {
+      const current = await adminRead<{ revision: number }>(`/${path}/${id}`);
+      const posted = await op.request('POST', `/${path}`, { ifMatch: 0, body: created });
+      expect(posted.status, `POST ${path}`).toBe(403);
+      const patched = await op.request('PATCH', `/${path}/${id}`, { ifMatch: current.revision, body: patch });
+      expect(patched.status, `PATCH ${path}`).toBe(403);
+      const removed = await op.request('DELETE', `/${path}/${id}`, { ifMatch: current.revision });
+      expect(removed.status, `DELETE ${path}`).toBe(403);
+    }
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it('首次成功后撤掉按钮，原命令按原 ID 重放 403，不再返回首次结果', async () => {
+    const op = await operator({ seeAll: true });
+    const categories = await adminRead<{ items: unknown[] }>('/criterion-categories');
+    const command = {
+      ifMatch: 0,
+      idempotencyKey: `tc-button-replay-${randomUUID().slice(0, 8)}`,
+      body: { name: '按钮重放分类' },
+    };
+    const first = await op.request('POST', '/criterion-categories', command);
+    expect(first.status, await first.clone().text()).toBe(201);
+    const created = (await first.json()) as { id: string; revision: number };
+    await op.setButtons(false);
+    const replay = await op.request('POST', '/criterion-categories', command);
+    expect(replay.status).toBe(403);
+    const after = await adminRead<{ items: { id: string }[] }>('/criterion-categories');
+    expect(after.items).toHaveLength(categories.items.length + 1);
+    expect(await adminRead(`/criterion-categories/${created.id}`)).toMatchObject({ revision: 1 });
   });
 
   it('应用边界：只带组织员工应用的身份不能配置人才标准对象', async () => {

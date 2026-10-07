@@ -66,6 +66,45 @@ describe('R3-T01 审计', () => {
     });
   });
 
+  it('四类对象 × 新增 / 修改 / 删除 12 格都写数据变更日志，修改日志只含改动字段', async () => {
+    const w = await talentWorld(testDb().db, 'tcaudit12');
+    const audit = auditApi(testDb().db, NOW);
+    const library = await w.library('potential');
+    const dimension = await w.dimension(library.id);
+    const category = await w.category();
+    const criterion = await w.criterion(category.id, [{ dimensionId: dimension.id }]);
+    const cells = [
+      ['libraries', TALENT_OBJECTS.library.code, library, { name: '改名的库' }, 'name'],
+      ['dimensions', TALENT_OBJECTS.dimension.code, dimension, { category: '新分类' }, 'category'],
+      ['criterion-categories', TALENT_OBJECTS.criterionCategory.code, category, { name: '改名的分类' }, 'name'],
+      ['criteria', TALENT_OBJECTS.criterion.code, criterion, { name: '改名的标准' }, 'name'],
+    ] as const;
+    const revisions = new Map<string, number>();
+    for (const [path, , item, patch] of cells) {
+      const response = await w.request('PATCH', `/${path}/${item.id}`, { ifMatch: item.revision, body: patch });
+      expect(response.status, path).toBe(200);
+      revisions.set(path, ((await response.json()) as { revision: number }).revision);
+    }
+    // 删除顺序：先解除引用的标准，再指标、库、分类（TC-R5）
+    for (const path of ['criteria', 'dimensions', 'libraries', 'criterion-categories'] as const) {
+      const [, , item] = cells.find(([candidate]) => candidate === path)!;
+      const response = await w.request('DELETE', `/${path}/${item.id}`, { ifMatch: revisions.get(path)! });
+      expect(response.status, path).toBe(200);
+    }
+    for (const [, objectType, item, , field] of cells) {
+      const { items } = await audit.dataChanges(w.as, { objectType, limit: '50' });
+      expect(items.map((entry) => entry.operation).sort(), objectType).toEqual(['create', 'delete', 'update']);
+      expect(new Set(items.map((entry) => entry.objectId))).toEqual(new Set([item.id]));
+      const update = items.find((entry) => entry.operation === 'update')!;
+      expect(
+        update.changes.map((change) => change.field),
+        objectType,
+      ).toEqual([field]);
+      const removed = await audit.dataChange(w.as, items.find((entry) => entry.operation === 'delete')!.id);
+      expect(removed.snapshot, objectType).toMatchObject({ id: item.id });
+    }
+  });
+
   it('被拒绝的写入不留数据变更日志（业务与审计同事务）', async () => {
     const w = await talentWorld(testDb().db, 'tcauditfail');
     const audit = auditApi(testDb().db, NOW);
