@@ -3,7 +3,7 @@
 "stats": {
 "merged": 52,
 "open": 9,
-"dec": 285,
+"dec": 286,
 "ev": "18/110"
 },
 "tasks": {
@@ -902,7 +902,7 @@
 },
 "108": {
 "s": "review",
-"r": 2,
+"r": 3,
 "n": ""
 }
 },
@@ -1968,7 +1968,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 13:34",
+"liveUpdated": "10-07 13:39",
 "chains": [
 {
 "g": "exit",
@@ -2120,9 +2120,10 @@
 "o": 3,
 "k": "run",
 "n": "函数库补齐 63 个",
-"seg": "ev:d ds:n dev:d2 rev:a2 mg:w",
-"now": "Sol Ultra 第 2 轮审查中（只审修复点）",
-"pr": 108
+"seg": "ev:d ds:n dev:a3 rev:d2 mg:w",
+"now": "第 3 轮修改（日期检查被绕过、布尔误判、环枚举性能）",
+"pr": 108,
+"up": "10-07 第 3 轮调到 Max"
 },
 {
 "id": "R3-T05",
