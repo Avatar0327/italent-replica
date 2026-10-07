@@ -83,7 +83,10 @@ async function setScope(admin: PermissionWorld, userId: string, orgIds: readonly
   expect(response.status, await response.clone().text()).toBe(200);
 }
 
-/** 人事管理员：任职记录全部字段可见可编辑、调动管理与直接调动按钮、删除权；人员档案可见；数据范围 = 指定组织含下级。 */
+/**
+ * 人事管理员：任职记录全部字段可见可编辑、调动管理与直接调动按钮、删除权；人员档案可写、编制可写、组织只读；
+ * 数据范围 = 指定组织含下级。
+ */
 export async function hrActor(admin: PermissionWorld, label: string, orgIds: readonly string[]): Promise<Actor> {
   const user = await addMember(admin, label);
   const profile = await createProfile(admin, `e2e-hr-${randomUUID().slice(0, 8)}`);
@@ -96,6 +99,8 @@ export async function hrActor(admin: PermissionWorld, label: string, orgIds: rea
   for (const [definition, extra, write] of [
     [record, buttons, true],
     [MODULE_OBJECTS.employee, [], true],
+    // 编制可写：带编调动在调出 / 调入两侧调整编制，按编制对象字段权限与同一数据范围授权（F-018，AC-EST-14）。
+    [MODULE_OBJECTS.establishment, [], true],
     // 组织只读：看组织列表（AC-TEN-01），不改组织。
     [MODULE_OBJECTS.organization, [], false],
   ] as const) {
@@ -277,6 +282,10 @@ export async function e2eWorld(db: Db, label: string) {
     );
   }
 
+  /** 可信装配（全部允许）：只用于建职务、职位、编制等前置数据，被验收的步骤一律走真实授权器。 */
+  const trusted = (method: string, path: string, options: RequestOptions = {}) =>
+    w.request(w.hr.id, method, path, options);
+
   /** 给某成员授予任职记录字段可见身份（不带范围，DEC-057）：新加入流程的审批人用。 */
   const grantVisible = (userId: string) => grantVisibleFields(admin, userId, EMPLOYMENT_FIELDS);
 
@@ -285,6 +294,7 @@ export async function e2eWorld(db: Db, label: string) {
     admin,
     api,
     grantVisible,
+    trusted,
     audit,
     from,
     to,

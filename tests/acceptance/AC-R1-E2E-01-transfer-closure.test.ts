@@ -4,8 +4,8 @@
  * → 调动日由定时生效任务按租户时区落地（R1-T08，DEC-056）→ 任职版本链新增一条、字段继承正确（R1-T05）
  * → HR 补录触发向后更新，同日业务按操作先后排序（R1-T06，DEC-108）→ 员工自助、经理工作台（R1-T14）、HR 列表都能
  * 看到变更，范围外的人看不到（employment/visibility.ts，DEC-177）→ 审计日志按查看人权限可查（R1-T16，DEC-197）。
- * 全程真实授权器、真实身份；每步断言业务结果。涉及 AC：AC-TRF-01/05/06/32、AC-APV-01/02、AC-EMP-01/05/11/13、
- * AC-FWD-01/03/13、AC-PRM-03/04/12/29、AC-TRF-37/38/42/45、AC-AUD-01/04。
+ * 全程真实授权器、真实身份；每步断言业务结果，AC 编号写在各步标题里（scripts/ac-coverage.mjs 据此统计）：
+ * AC-TRF-01/06/32/37/38/42/45/46、AC-APV-01/02、AC-EMP-01/05/11/13、AC-FWD-01/02/03/14、AC-PRM-04/26/29、AC-AUD-04。
  */
 import { tenantLocalDate } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
@@ -36,7 +36,7 @@ beforeAll(async () => {
 });
 
 describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 向后更新 → 各侧可见 → 审计', () => {
-  it('步骤 1（R1-T13）：员工本人发起调动申请，新经理随新部门带出；提交即匹配流程并禁止自审', async () => {
+  it('步骤 1（R1-T13，AC-TRF-01/37/45）：员工本人发起调动申请，新经理随新部门带出；提交即匹配流程并禁止自审', async () => {
     const preview = await w.json<{ form: { id: string }; fields: Record<string, unknown> }>(
       await w.request(self, 'POST', `${SELF}/transfer/preview`, {
         body: { effectiveDate: TRANSFER_DATE, fields: { departmentId: w.to } },
@@ -75,14 +75,15 @@ describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 
     expect(await w.records(w.hr, employeeId)).toHaveLength(1);
   });
 
-  it('步骤 2（R1-T07）：调出负责人 → 调入 HRBP → 调入负责人逐节点同意；审批人不因审批获得员工数据范围', async () => {
+  it('步骤 2（R1-T07，AC-APV-01/02、AC-PRM-29、AC-TRF-06/38）：调出负责人 → 调入 HRBP → 调入负责人逐节点同意；审批人不因审批获得员工数据范围', async () => {
     const todos = await w.json<{ items: { instanceId: string; nodeKey: string }[] }>(
       await w.request(w.as(w.outHead), 'GET', '/api/tenant/approval/todos'),
     );
     expect(todos.items).toEqual([expect.objectContaining({ instanceId: instanceView.id, nodeKey: 'out_head' })]);
     // DEC-057 / AC-PRM-29：审批人只看本单，不能借审批读员工任职。
     const peek = await w.request(w.as(w.inHrbp), 'GET', `/api/tenant/employment/employees/${employeeId}/records`);
-    expect([403, 404]).toContain(peek.status);
+    expect(peek.status).toBe(404);
+    expect(await peek.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
 
     const { steps, view } = await w.approveAll(instanceView);
     expect(steps).toEqual([
@@ -114,7 +115,7 @@ describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 
     );
   });
 
-  it('步骤 3（R1-T08）：调动日前不生效；北京时间调动日 01:15（UTC 前一天）定时任务落地，前一条止于前一天', async () => {
+  it('步骤 3（R1-T08，AC-TRF-06/32、AC-EMP-01/05/11）：调动日前不生效；北京时间调动日 01:15（UTC 前一天）定时任务落地，前一条止于前一天', async () => {
     // 北京时间 10-14 23:30：业务日仍是 10-14，不生效。
     expect((await w.runScheduler('2026-10-14T15:30:00Z')).activated).toEqual([]);
     expect(await w.business(w.hr, applicationId)).toMatchObject({ status: 'approved', record: null });
@@ -165,7 +166,7 @@ describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 
     expect(await w.records(w.hr, employeeId, TRANSFER_DATE)).toHaveLength(2);
   });
 
-  it('步骤 4（R1-T06）：HR 补录 10-10 调动改地点，10-15 记录按值匹配向后更新且“变更前”重链；同日业务按操作先后', async () => {
+  it('步骤 4（R1-T06，AC-FWD-01/02/03/14、AC-EMP-13）：HR 补录 10-10 调动改地点，10-15 记录按值匹配向后更新且“变更前”重链；同日业务按操作先后', async () => {
     const input = {
       kind: 'transfer',
       mode: 'direct',
@@ -226,7 +227,7 @@ describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 
     expect(records.filter((record: EmploymentRecordView) => record.isCurrent)).toHaveLength(1);
   });
 
-  it('步骤 5（R1-T13 / T14 / T02）：员工自助、调入部门经理工作台、范围内 HR 都看到变更；调出经理与范围外 HR 看不到', async () => {
+  it('步骤 5（R1-T13 / T14 / T02，AC-TRF-38/42、AC-PRM-04/26）：员工自助、调入部门经理工作台、范围内 HR 都看到变更；调出经理与范围外 HR 看不到', async () => {
     // 员工自助：任职列表含补录与同日业务；我的申请仍只列本人发起的那一单。
     type SelfRecord = { id: string; approvalStatus: string; fields: Record<string, unknown> };
     const selfRecords = await w.json<{ items: SelfRecord[] }>(
@@ -260,6 +261,9 @@ describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 
       ).items;
     const seenByInHead = (await team(w.as(w.inHead))).find((row) => row.id === employeeId);
     expect(seenByInHead).toMatchObject({ departmentId: w.to, directManagerId: w.inHead.employeeId });
+    // 经理默认身份只含任职记录与员工两个对象：人员信息里的邮箱、手机号被裁剪，不出现在行里。
+    expect(seenByInHead).not.toHaveProperty('email');
+    expect(seenByInHead).not.toHaveProperty('mobilePhone');
     expect((await team(w.as(w.outHead))).map((row) => row.id)).not.toContain(employeeId);
 
     // HR 列表（AC-PRM-04 / 12）：范围内 HR 可见员工与整条版本链；范围外 HR 一律不可见且不泄露存在。
@@ -270,10 +274,12 @@ describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 
     expect(listed.items.map((item) => item.id)).toContain(employeeId);
     const current = (await w.records(w.hr, employeeId)).find((record) => record.isCurrent)!;
     expect(current.fields).toMatchObject({ departmentId: w.to, directManagerId: w.inHead.employeeId, place: '新地点' });
-    const hidden = await w.json<{ items: { id: string }[] }>(
+    // AC-PRM-26：范围外 HR 有数据范围、只是范围内没有员工 → “无数据”（hasDataPermission 为真）；
+    // “无数据权限”的另一半见 AC-PRM-30（未配置范围 → hasDataPermission 为假）。
+    const hidden = await w.json<{ items: { id: string }[]; hasDataPermission: boolean }>(
       await w.request(w.outsider, 'GET', '/api/tenant/employment/employees?pageSize=200'),
     );
-    expect(hidden.items.map((item) => item.id)).not.toContain(employeeId);
+    expect(hidden).toEqual(expect.objectContaining({ items: [], hasDataPermission: true }));
     for (const path of [
       `/api/tenant/employment/employees/${employeeId}`,
       `/api/tenant/employment/employees/${employeeId}/records`,
@@ -285,7 +291,8 @@ describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 
     const revision = await w.employeeRevision(w.hr, employeeId);
     const before = chain(await w.records(w.hr, employeeId));
     const denied = await w.hrTransfer(w.outsider, employeeId, { effectiveDate: '2026-11-01' }, revision);
-    expect([403, 404], await denied.clone().text()).toContain(denied.status);
+    expect(denied.status, await denied.clone().text()).toBe(404);
+    expect(await denied.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
     expect(chain(await w.records(w.hr, employeeId))).toEqual(before);
     expect(await w.employeeRevision(w.hr, employeeId)).toBe(revision);
     const applications = await w.json<{ items: unknown[] }>(
@@ -294,7 +301,7 @@ describe('E2E-01 员工发起调动 → 审批 → 定时生效 → 版本链 / 
     expect(applications.items).toEqual([]);
   });
 
-  it('步骤 6（R1-T16）：审计员按范围看到员工发起、系统生效与向后更新的日志；范围外审计员看不到', async () => {
+  it('步骤 6（R1-T16，AC-AUD-04、AC-TRF-46）：审计员按范围看到员工发起、系统生效与向后更新的日志；范围外审计员看不到', async () => {
     const created = await w.dataChanges(w.auditor, { objectId: applicationId, action: 'employment.business.create' });
     expect(created).toEqual([expect.objectContaining({ operator: expect.objectContaining({ userId: self.user }) })]);
     const activated = await w.dataChanges(w.auditor, { objectId: applicationId, action: 'employment.record.create' });

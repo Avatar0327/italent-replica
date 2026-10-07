@@ -2,7 +2,8 @@
  * F-024 R1 端到端验收 · 分支（DEC-221③）：经理发起他人调动（R1-T14）；带联动的调动（R1-T10 下属转交 / R1-T09 新增下属）；
  * 驳回后撤回再提交（R1-T07 / R1-T11）；撤销与删除任职（R1-T11）；迟到执行与迟到审批按实际执行日（DEC-186 / 195）；
  * 跨租户隔离（R1-T00）。全程真实授权器、真实身份；前置数据经可信夹具建立。
- * 涉及 AC：AC-TRF-02/40/41、AC-TRF-13/15、AC-LNK-03、AC-TRF-07/08/28/36、AC-APV-15/16、AC-TEN-01/02、AC-TRF-44。
+ * 涉及 AC：AC-TRF-02/40、AC-APV-04/15、AC-LNK-01/03、AC-TRF-10/15、AC-TRF-28、AC-TRF-07/08/36、AC-AUD-02、
+ * AC-TRF-05、AC-TEN-01/02、AC-TRF-44、AC-PRM-27/28。
  */
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -18,12 +19,22 @@ beforeAll(async () => {
   w = await e2eWorld(database().db, 'r1-e2e-branch');
 });
 
+/** 负向用例的前后对比快照：业务单状态与 revision、员工版本链（派发规则 §1）。 */
+async function snapshot(businessId: string, employeeId: string) {
+  const business = await w.business(w.hr, businessId);
+  return {
+    status: business.status,
+    revision: business.revision,
+    chain: chain(await w.records(w.hr, employeeId, '2026-12-31')),
+  };
+}
+
 async function errorBody(response: Response) {
   const body = (await response.json()) as { error: { code: string; details?: Record<string, unknown> } };
   return { status: response.status, code: body.error.code, reason: body.error.details?.reason };
 }
 
-describe('E2E-02 分支一：经理发起他人调动（R1-T14）', () => {
+describe('E2E-02 分支一：经理发起他人调动（R1-T14，AC-TRF-02/40、AC-APV-04/15）', () => {
   it('纯经理为负责组织内员工发起调往下级组织；本人节点自审跳过、不能审批自己的单；生效后仍在其团队内', async () => {
     w.setNow('2026-10-01T01:00:00Z');
     const child = await w.org('调出部门下级组', w.from);
@@ -89,7 +100,7 @@ describe('E2E-02 分支一：经理发起他人调动（R1-T14）', () => {
   });
 });
 
-describe('E2E-02 分支二：带联动的调动（R1-T09 / R1-T10）', () => {
+describe('E2E-02 分支二：带联动的调动（R1-T09 / R1-T10，AC-LNK-01/03、AC-TRF-10/15）', () => {
   it('HR 发起带下属转交与新增下属的调动：审批通过不联动，到期生效时同事务改写下属直线经理', async () => {
     w.setNow('2026-10-01T01:00:00Z');
     const mover = await w.person('带联动调动员工', w.from);
@@ -144,14 +155,25 @@ describe('E2E-02 分支二：带联动的调动（R1-T09 / R1-T10）', () => {
     const logs = await w.dataChanges(w.auditor, { objectId: saved.id });
     expect(logs.map((log) => log.action)).toEqual(expect.arrayContaining(['employment.record.create']));
     // DEC-012 / 172：有联动变更时拒绝删除任职。
-    const current = await w.business(w.hr, saved.id);
-    const blocked = await w.request(w.hr, 'DELETE', `${BUSINESSES}/${saved.id}`, { ifMatch: current.revision });
-    expect(blocked.status).toBe(409);
-    expect(await w.records(w.hr, mover.employeeId, '2026-10-20')).toHaveLength(2);
+    const before = {
+      ...(await snapshot(saved.id, mover.employeeId)),
+      managers: [await managerOf(oldReport), await managerOf(newReport)],
+    };
+    const blocked = await w.request(w.hr, 'DELETE', `${BUSINESSES}/${saved.id}`, { ifMatch: before.revision });
+    expect(await errorBody(blocked)).toMatchObject({
+      status: 409,
+      code: 'CONFLICT',
+      reason: 'EMPLOYMENT_LINKED_CHANGES_EXIST',
+    });
+    expect({
+      ...(await snapshot(saved.id, mover.employeeId)),
+      managers: [await managerOf(oldReport), await managerOf(newReport)],
+    }).toEqual(before);
+    expect(before.chain).toHaveLength(2);
   });
 });
 
-describe('E2E-02 分支三：驳回后撤回、修改再提交（R1-T07 / R1-T11）', () => {
+describe('E2E-02 分支三：驳回后撤回、修改再提交（R1-T07 / R1-T11，AC-TRF-28）', () => {
   it('调入负责人驳回 → 申请退回；HR 撤回到草稿、修改后再提交沿用原实例从首节点重走（DEC-103）', async () => {
     w.setNow('2026-10-01T01:00:00Z');
     const subject = await w.person('被驳回员工', w.from, { place: '原地点' });
@@ -199,7 +221,7 @@ describe('E2E-02 分支三：驳回后撤回、修改再提交（R1-T07 / R1-T11
   });
 });
 
-describe('E2E-02 分支四：撤销与删除任职（R1-T11）', () => {
+describe('E2E-02 分支四：撤销与删除任职（R1-T11，AC-AUD-02）', () => {
   it('AC-TRF-07：HR 撤销审批中的申请 → 作废、流程取消、不生成任职；作废后只能删除', async () => {
     w.setNow('2026-10-01T01:00:00Z');
     const subject = await w.person('被撤销员工', w.from);
@@ -220,17 +242,23 @@ describe('E2E-02 分支四：撤销与删除任职（R1-T11）', () => {
     expect(chain(await w.records(w.hr, subject.employeeId))).toEqual(before);
     // 作废的申请不再被定时任务落地（本租户其他用例的到期业务不受影响）。
     expect((await w.runScheduler('2026-10-24T17:15:00Z')).activated).not.toContain(saved.id);
+    const voided = await snapshot(saved.id, subject.employeeId);
     expect(
       await errorBody(
         await w.request(w.hr, 'POST', `${BUSINESSES}/${saved.id}/revoke`, { ifMatch: revoked.revision, body: {} }),
       ),
-    ).toMatchObject({ status: 409 });
+    ).toMatchObject({ status: 409, code: 'CONFLICT' });
+    expect(await snapshot(saved.id, subject.employeeId)).toEqual(voided);
+    // 范围外 HR 用有效 revision 删除范围内员工的业务：404 且不泄露存在，业务与版本链不变。
+    const outsiderDelete = await w.request(w.outsider, 'DELETE', `${BUSINESSES}/${saved.id}`, {
+      ifMatch: revoked.revision,
+    });
+    expect(await errorBody(outsiderDelete)).toMatchObject({ status: 404, code: 'NOT_FOUND' });
+    expect(await snapshot(saved.id, subject.employeeId)).toEqual(voided);
     const deleted = await w.json<{ status: string }>(
       await w.request(w.hr, 'DELETE', `${BUSINESSES}/${saved.id}`, { ifMatch: revoked.revision }),
     );
     expect(deleted.status).toBe('deleted');
-    // 范围外 HR 不能撤销 / 删除范围内员工的业务。
-    expect((await w.request(w.outsider, 'DELETE', `${BUSINESSES}/${saved.id}`, { ifMatch: 1 })).status).toBe(404);
   });
 
   it('AC-TRF-08 / 36：已生效的调动可删除并恢复前一条；其后有在途申请时拒绝删除（DEC-126）', async () => {
@@ -252,10 +280,17 @@ describe('E2E-02 分支四：撤销与删除任职（R1-T11）', () => {
       await w.hrTransfer(w.hr, subject.employeeId, { effectiveDate: '2026-10-25', fields: { departmentId: w.from } }),
       201,
     );
-    const blocked = await w.request(w.hr, 'DELETE', `${BUSINESSES}/${moved.id}`, {
-      ifMatch: (await w.business(w.hr, moved.id)).revision,
+    const before = { moved: await snapshot(moved.id, subject.employeeId), pending: await w.business(w.hr, pending.id) };
+    const blocked = await w.request(w.hr, 'DELETE', `${BUSINESSES}/${moved.id}`, { ifMatch: before.moved.revision });
+    expect(await errorBody(blocked)).toMatchObject({
+      status: 409,
+      code: 'CONFLICT',
+      reason: 'EMPLOYMENT_PENDING_APPLICATION_EXISTS',
     });
-    expect(await errorBody(blocked)).toMatchObject({ status: 409 });
+    expect({
+      moved: await snapshot(moved.id, subject.employeeId),
+      pending: await w.business(w.hr, pending.id),
+    }).toEqual(before);
     await w.json(
       await w.request(w.hr, 'POST', `${BUSINESSES}/${pending.id}/revoke`, {
         ifMatch: (await w.business(w.hr, pending.id)).revision,
@@ -281,7 +316,7 @@ describe('E2E-02 分支四：撤销与删除任职（R1-T11）', () => {
   });
 });
 
-describe('E2E-02 分支五：迟到执行与迟到审批按实际执行日（DEC-186 / 195）', () => {
+describe('E2E-02 分支五：迟到执行与迟到审批按实际执行日（DEC-186 / 195，AC-TRF-05）', () => {
   it('定时任务迟到：任职生效日改为实际执行日，原计划日保留在审计中', async () => {
     w.setNow('2026-10-01T01:00:00Z');
     const subject = await w.person('迟到执行员工', w.from);
@@ -332,7 +367,7 @@ describe('E2E-02 分支五：迟到执行与迟到审批按实际执行日（DEC
 });
 
 describe('E2E-02 分支七：经理自助身份随汇报关系自动取得与回收（AC-PRM-27 / 28，DEC-020）', () => {
-  it('首次获得汇报下属即取得经理身份；最后一名下属调走后身份回收，显式授予的身份不受影响', async () => {
+  it('首次获得汇报下属即取得经理身份；最后一名下属改由他人管理后身份回收，显式授予的身份不受影响', async () => {
     w.setNow('2026-10-01T01:00:00Z');
     const lead = await w.person('普通员工甲', w.from);
     const report = await w.person('唯一下属', w.from);
@@ -347,7 +382,7 @@ describe('E2E-02 分支七：经理自助身份随汇报关系自动取得与回
     // 甲既不是组织负责人也没有下属：没有经理自助身份。
     expect((await workbench(lead)).status).toBe(403);
 
-    // AC-PRM-27：下属的直线经理改为甲并生效 → 甲自动获得经理身份，团队成员含该下属。
+    // AC-PRM-27：下属的直线经理改为甲并生效 → 甲自动获得经理身份（工作台 200），下属当前任职的直线经理为甲。
     const gained = await w.directBusiness(w.hr, report.employeeId, {
       kind: 'transfer',
       effectiveDate: '2026-10-01',
@@ -381,8 +416,7 @@ describe('E2E-02 分支七：经理自助身份随汇报关系自动取得与回
 });
 
 describe('E2E-02 待补跑：验收基线不含在途 PR（编排窗口 2026-10-07 补充）', () => {
-  // 基线 main 0dd7af5 未包含 #79 F-018（带编调动，DEC-181）与 #83 F-007（组织改名 / 改行政上级联动任职，DEC-137）。
-  it.todo('待 #79 合并后补跑：带编调动保存即执行，调入方组织 +1 / 调出方 −1，审批与定时生效路径一致（F-018）');
+  // 第三轮基线 main 962e1c8 已含 #79 F-018（带编调动，见 AC-R1-E2E-03），仍不含 #83 F-007（DEC-137）。
   it.todo('待 #83 合并后补跑：组织改名 / 改行政上级时联动任职全称与版本，员工与经理侧可见（F-007）');
 });
 
@@ -405,10 +439,16 @@ describe('E2E-02 分支六：跨租户隔离（R1-T00，AC-TEN-01 / 02，AC-TRF-
       `/api/tenant/approval/instances/${view.id}`,
     ]) {
       const response = await foreign.request(foreign.hr, 'GET', path);
-      expect([403, 404], path).toContain(response.status);
+      expect(await errorBody(response), path).toMatchObject({ status: 404, code: 'NOT_FOUND' });
     }
     expect(await foreign.dataChanges(foreign.auditor, { objectId: saved.id })).toEqual([]);
-    expect((await foreign.request(foreign.hr, 'DELETE', `${BUSINESSES}/${saved.id}`, { ifMatch: 1 })).status).toBe(404);
+    // 外租户 HR 用本租户业务的有效 revision 删除：404，业务与版本链不变。
+    const beforeDelete = await snapshot(saved.id, subject.employeeId);
+    const foreignDelete = await foreign.request(foreign.hr, 'DELETE', `${BUSINESSES}/${saved.id}`, {
+      ifMatch: beforeDelete.revision,
+    });
+    expect(await errorBody(foreignDelete)).toMatchObject({ status: 404, code: 'NOT_FOUND' });
+    expect(await snapshot(saved.id, subject.employeeId)).toEqual(beforeDelete);
     // 外租户员工用自助入口读本租户员工：403；本租户员工带外租户的租户头：403（非成员）。
     expect(
       (
