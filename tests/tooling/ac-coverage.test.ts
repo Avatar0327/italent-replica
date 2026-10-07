@@ -19,7 +19,7 @@ type Mode = 'run' | 'skip' | 'todo' | 'only';
 interface ReportTest {
   file: string;
   names: string[];
-  modes: Record<string, Mode>;
+  modes: Partial<Record<string, Mode>>;
   ids: string[];
 }
 interface ReportEntry {
@@ -30,6 +30,7 @@ interface ReportEntry {
   conditional: string[];
   conditionalTests: number;
   tests: number;
+  skippedOrTodo: number;
   mapped: number;
 }
 interface Report {
@@ -98,8 +99,12 @@ function vitestTruth(dir: string, env: Record<string, string>, out: string): str
     .sort();
 }
 
+/** 工具在某一档的结果：只取该档注册了的用例（只在另一档注册的不计入）。 */
 function toolTests(report: Report, profile: string): string[] {
-  return report.tests.map((t) => `${basename(t.file)}|${JSON.stringify(t.names)}|${t.modes[profile]}`).sort();
+  return report.tests
+    .filter((t) => t.modes[profile] !== undefined)
+    .map((t) => `${basename(t.file)}|${JSON.stringify(t.names)}|${t.modes[profile]}`)
+    .sort();
 }
 
 const ids = (...nums: (string | number)[]) =>
@@ -178,6 +183,33 @@ describe('F-030 AC 覆盖运行时采集：写法变体（夹具 variants）', (
     expect(report.entries['AC-DEMO-92']).toMatchObject({ conditional: [], conditionalTests: 1, tests: 2 });
   });
 
+  it('多层 skip / todo：任一祖先 suite 为 skip / todo 时用例不执行，不计覆盖（P2-1）', () => {
+    expectStatus('仅 skip / todo', ids(110, 111, 112, 113, 114));
+    expectStatus('已覆盖', ids(115));
+    const nested = report.tests.filter((t) => t.ids.some((id) => ids(110, 111, 112, 113).includes(id)));
+    expect(nested.map((t) => t.modes)).toEqual(Array(4).fill({ pglite: 'skip', pg: 'skip' }));
+  });
+
+  it('跨档按注册位置配对：只在一档注册的同名用例不与另一档错配（P2-2）', () => {
+    expect(report.entries['AC-DEMO-116']).toMatchObject({
+      status: '已覆盖',
+      tests: 1,
+      skippedOrTodo: 1,
+      conditional: [],
+      conditionalTests: 0,
+    });
+    expect(report.entries['AC-DEMO-117']).toMatchObject({
+      status: '已覆盖',
+      tests: 1,
+      skippedOrTodo: 1,
+      conditional: ['pg'],
+      conditionalTests: 1,
+    });
+    const same = report.tests.filter((t) => t.names[0] === 'AC-DEMO-116 同名用例').map((t) => t.modes);
+    expect(same).toEqual(expect.arrayContaining([{ pg: 'skip' }, { pglite: 'run', pg: 'run' }]));
+    expect(same).toHaveLength(2);
+  });
+
   it('人工层：备注改状态、人工映射校验用例存在，映射失效列为问题', () => {
     expect(report.entries['AC-DEMO-93']).toMatchObject({
       runtimeStatus: '未覆盖',
@@ -186,8 +218,25 @@ describe('F-030 AC 覆盖运行时采集：写法变体（夹具 variants）', (
     });
     expect(report.entries['AC-DEMO-95']).toMatchObject({ runtimeStatus: '未覆盖', status: '已覆盖', mapped: 1 });
     expect(report.entries['AC-DEMO-96']).toMatchObject({ status: '未覆盖', mapped: 0 });
-    expect(report.problems.map((p) => p.kind)).toEqual(['evidence']);
-    expect(report.problems[0]?.message).toContain('AC-DEMO-96');
+    const evidence = report.problems.filter((p) => p.kind === 'evidence').map((p) => p.message);
+    expect(evidence).toHaveLength(3);
+    expect(evidence.find((m) => m.includes('AC-DEMO-96'))).toContain('找不到');
+  });
+
+  it('人工映射按完整标题层级精确匹配；拼接后相同、末级同名都不能替代（P2-4）', () => {
+    expect(report.entries['AC-DEMO-118']).toMatchObject({ status: '未覆盖', mapped: 0 });
+    expect(report.entries['AC-DEMO-119']).toMatchObject({ status: '未覆盖', mapped: 0 });
+    expect(report.entries['AC-DEMO-120']).toMatchObject({ status: '已覆盖', mapped: 1 });
+    const evidence = report.problems.filter((p) => p.kind === 'evidence').map((p) => p.message);
+    expect(evidence.find((m) => m.includes('AC-DEMO-118'))).toContain('未运行');
+    expect(evidence.find((m) => m.includes('AC-DEMO-119'))).toContain('命中 2 个');
+  });
+
+  it('标题里的逆序区间列为问题，不静默只取端点（P2-3）', () => {
+    const titles = report.problems.filter((p) => p.kind === 'title').map((p) => p.message);
+    expect(titles).toHaveLength(1);
+    expect(titles[0]).toContain('AC-DEMO-104~102');
+    expect(report.problems.map((p) => p.kind).sort()).toEqual(['evidence', 'evidence', 'evidence', 'title']);
   });
 
   it('范围内未定义、测试引用但未定义、已登记的非业务编号、重复定义分别列出', () => {
@@ -199,7 +248,7 @@ describe('F-030 AC 覆盖运行时采集：写法变体（夹具 variants）', (
 
   it('缺口 = 范围内无人工备注的未覆盖 / 仅 skip 或 todo / 未定义；有备注的不算', () => {
     const expected = ids(2, 5, 7, 8, 13, 15, 24, 25, 26, 38, 40, 41, 42, 43, 44, 45, 50, 51, 52, 53);
-    expected.push(...ids(70, 72, 75, 77, 79, 81, 83, 87, 94, 96, 98, 106));
+    expected.push(...ids(70, 72, 75, 77, 79, 81, 83, 87, 94, 96, 98, 106, 110, 111, 112, 113, 114, 118, 119));
     expect([...report.gaps].sort()).toEqual(expected.sort());
     expect(report.gaps).not.toContain('AC-DEMO-93');
     expect(report.ok).toBe(false);
@@ -245,11 +294,32 @@ describe('F-030 AC 覆盖运行时采集：命令行', () => {
       expect(Object.keys(other.entries)).toEqual(['AC-DEMO-01', 'AC-DEMO-02']);
       expect(other.groups.map((g) => g.name)).toEqual(['另一阶段']);
       const all = toolJson('variants', 'all');
-      expect(all.stages).toEqual(['DEMO', 'OTHER']);
-      expect(all.groups.map((g) => g.name)).toEqual(['DEMO · 变体', 'DEMO · 数字模块', 'OTHER · 另一阶段']);
+      expect(all.stages).toEqual(['DEMO', 'OTHER', 'REVERSE']);
+      expect(all.groups.map((g) => g.name)).toEqual([
+        'DEMO · 变体',
+        'DEMO · 数字模块',
+        'OTHER · 另一阶段',
+        'REVERSE · 逆序',
+      ]);
       const missing = runTool(['--config-dir', `${FIXTURES}/variants`, '--stage', 'R9']);
       expect(missing.status).toBe(2);
       expect(missing.stderr).toContain('R9');
+    },
+    TIMEOUT,
+  );
+
+  it(
+    '配置里的逆序区间报配置错误，--check 失败，不静默缩小范围（P2-3）',
+    () => {
+      const report = toolJson('variants', 'REVERSE');
+      expect(report.problems.filter((p) => p.kind === 'config').map((p) => p.message)).toEqual([
+        expect.stringContaining('AC-DEMO-04~01'),
+      ]);
+      expect(report.summary.total).toBe(0);
+      expect(report.ok).toBe(false);
+      const result = runTool(['--config-dir', `${FIXTURES}/variants`, '--stage', 'REVERSE', '--check']);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('AC-DEMO-04~01');
     },
     TIMEOUT,
   );

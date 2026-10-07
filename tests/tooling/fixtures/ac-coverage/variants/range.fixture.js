@@ -6,3 +6,4 @@ const fn = () => {};
 it('AC-DEMO-102~104 区间', fn);
 it('AC-DEMO-105/107 与 AC-DEMO-108 / 109', fn);
 it('AC-360-01 数字开头的模块', fn);
+it('AC-DEMO-104~102 逆序区间写错', fn);
