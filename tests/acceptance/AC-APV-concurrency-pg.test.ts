@@ -249,24 +249,25 @@ describe.runIf(realPostgres)('真 PostgreSQL 强制锁竞争', () => {
     });
   }
 
-  for (const kind of ['approve', 'withdraw'] as const) {
-    it(`N5：交接与${kind === 'approve' ? '最终同意' : '发起人撤回'}竞争，拿到锁时实例已结束：不加 revision、不写转交事件`, async () => {
-      const { w, s, applicant, view, successor } = await exceptionScene(`apv-pg-n5-${kind}`);
-      const finish = () =>
-        kind === 'approve'
-          ? w.taskAction(w.exceptionAdmin, pending(view).id, 'approve', view.revision)
-          : w.instanceAction(applicant, view.id, 'withdraw', view.revision);
-      const [finished, handover] = await raceHandover(w, s.subject.employeeId, finish, successor);
-      const ended = await w.json<InstanceView & { completedAt: string | null }>(await finished);
-      expect(ended.status).toBe(kind === 'approve' ? 'approved' : 'withdrawn');
-      const result = await w.json<{ tasks: number }>(await handover);
-      expect(result.tasks).toBe(0);
-      // 交接拿到锁时实例已结束：实例停在结束动作写下的状态，没有交接的任何痕迹。
-      const after = await writesAfter(w, view.id);
-      expect(after).toMatchObject({ revision: ended.revision, outbox: 0, audits: 0, logs: 0 });
-      expect(new Date(after.completed_at!).toISOString()).toBe(ended.completedAt);
-    });
-  }
+  it.each([
+    ['最终同意', 'approve'],
+    ['发起人撤回', 'withdraw'],
+  ] as const)('N5：交接与%s竞争，拿到锁时实例已结束：不加 revision、不写转交事件', async (_action, kind) => {
+    const { w, s, applicant, view, successor } = await exceptionScene(`apv-pg-n5-${kind}`);
+    const finish = () =>
+      kind === 'approve'
+        ? w.taskAction(w.exceptionAdmin, pending(view).id, 'approve', view.revision)
+        : w.instanceAction(applicant, view.id, 'withdraw', view.revision);
+    const [finished, handover] = await raceHandover(w, s.subject.employeeId, finish, successor);
+    const ended = await w.json<InstanceView & { completedAt: string | null }>(await finished);
+    expect(ended.status).toBe(kind === 'approve' ? 'approved' : 'withdrawn');
+    const result = await w.json<{ tasks: number }>(await handover);
+    expect(result.tasks).toBe(0);
+    // 交接拿到锁时实例已结束：实例停在结束动作写下的状态，没有交接的任何痕迹。
+    const after = await writesAfter(w, view.id);
+    expect(after).toMatchObject({ revision: ended.revision, outbox: 0, audits: 0, logs: 0 });
+    expect(new Date(after.completed_at!).toISOString()).toBe(ended.completedAt);
+  });
 
   async function pendingOf(w: ApprovalWorld, userId: string) {
     const [row] = await withTenant(w.db, w.tenant.id, async (tx) =>

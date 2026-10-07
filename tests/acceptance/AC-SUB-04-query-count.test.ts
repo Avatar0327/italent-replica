@@ -186,7 +186,7 @@ describe('AC-SUB 人员读取有界：语句数与行数无关', () => {
     });
   }
 
-  it(`列表、嵌套子集、历史：1 行与 ${ROWS} 行的语句数相同`, async () => {
+  it('列表、嵌套子集、历史：1 行与 200 行的语句数相同', async () => {
     const small = new Map<string, number>();
     for (const path of readPaths()) small.set(path, (await measure(path)).count);
     await cloneEmployees(ROWS);

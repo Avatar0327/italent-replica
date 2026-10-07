@@ -1,6 +1,6 @@
 /**
  * AC-EXP-04～06：空值与计算失败（`26` §8.2 / §8.4）、单选按选项值（§8.3）、百分比 / DateFormat / today()（§8.3，DEC-056）。
- * 空值与类型转换的精确行为按手册口径实现，集中在 semantics.ts，待 Q-M0-95 试算核对。
+ * 空值与类型转换的精确行为按 DEC-257（Q-M0-95 原站试算，§8.5）集中在 semantics.ts；七例实测见 AC-EXP-04-dec257。
  */
 import { evaluateFormula, type EvaluationResult } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
@@ -8,7 +8,7 @@ import { contextFor } from './AC-EXP-support.js';
 
 const failureOf = (result: EvaluationResult) => (result.ok ? undefined : result.failure);
 
-describe('AC-EXP-04 空值参与比较 / 平均 → 计算失败；ToNumber 兜底后通过', () => {
+describe('AC-EXP-04 空值参与比较为假、参与平均失败；ToNumber 兜底后通过（DEC-257）', () => {
   it('取不到的数据是空值，不自动当 0', () => {
     expect(evaluateFormula('盘点对象.绩效得分', contextFor({ '盘点对象.绩效得分': null }))).toEqual({
       ok: true,
@@ -16,12 +16,12 @@ describe('AC-EXP-04 空值参与比较 / 平均 → 计算失败；ToNumber 兜�
     });
   });
 
-  it('空值参与大小比较：失败原因码 EMPTY_IN_COMPARISON，文案与原站一致', () => {
+  it('空值参与大小比较：结果为假、不报错（DEC-257，原站实测与手册不符）', () => {
     const result = evaluateFormula(
       '如果 盘点对象.绩效得分 > 80 那么 1 否则 0',
       contextFor({ '盘点对象.绩效得分': null }),
     );
-    expect(failureOf(result)).toMatchObject({ code: 'EMPTY_IN_COMPARISON', message: expect.stringContaining('空值') });
+    expect(result).toEqual({ ok: true, value: { kind: 'number', value: 0 } });
   });
 
   it('空值参与平均：失败原因码 EMPTY_IN_AGGREGATE', () => {
@@ -32,7 +32,7 @@ describe('AC-EXP-04 空值参与比较 / 平均 → 计算失败；ToNumber 兜�
     expect(failureOf(result)?.code).toBe('EMPTY_IN_AGGREGATE');
   });
 
-  it('ToNumber(空) = 0（🟡 待 Q-M0-95），之后比较与平均都能算', () => {
+  it('ToNumber(空) = 0（DEC-257 实测），之后比较与平均都能算', () => {
     const fields = { '盘点对象.绩效得分': null, '盘点对象.b': 80 };
     expect(evaluateFormula('如果 ToNumber(盘点对象.绩效得分) > 80 那么 1 否则 0', contextFor(fields))).toMatchObject({
       value: { value: 0 },
@@ -42,7 +42,7 @@ describe('AC-EXP-04 空值参与比较 / 平均 → 计算失败；ToNumber 兜�
     });
   });
 
-  it('字符串参与四则运算 → 计算失败 TEXT_IN_ARITHMETIC（🟡 待 Q-M0-95）', () => {
+  it('非数字字符串参与四则运算 → 计算失败 TEXT_IN_ARITHMETIC（数字字符串按数值，DEC-257）', () => {
     expect(failureOf(evaluateFormula('盘点对象.备注 + 1', contextFor({ '盘点对象.备注': '甲' })))?.code).toBe(
       'TEXT_IN_ARITHMETIC',
     );

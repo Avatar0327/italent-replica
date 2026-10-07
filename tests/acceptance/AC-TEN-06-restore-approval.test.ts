@@ -149,8 +149,12 @@ describe('AC-TEN-06 恢复对账：异常管理员与在途异常待办（DEC-09
     ).rejects.toEqual(expect.objectContaining({ reason: 'RESTORE_NOT_VERIFIED' }));
   });
 
-  for (const last of [false, true]) {
-    it(`P2-N2：会签中接任人已同意、异常管理员席位待办（会签${last ? '为最后节点' : '后还有节点'}）→ 恢复不推进流转，列入 problems`, async () => {
+  it.each([
+    ['后还有节点', false],
+    ['为最后节点', true],
+  ] as const)(
+    'P2-N2：会签中接任人已同意、异常管理员席位待办（会签%s）→ 恢复不推进流转，列入 problems',
+    async (_position, last) => {
       const w = await approvalWorld(database().db, `restore-joint-${last ? 'last' : 'mid'}`);
       const s = await transferScene(w);
       await w.setOrgRoles(s.to, { hrbp: null });
@@ -227,7 +231,7 @@ describe('AC-TEN-06 恢复对账：异常管理员与在途异常待办（DEC-09
         ).map((r) => r.node_key),
         business: rowsOf<{ status: string }>(
           await tx.execute(sql`SELECT state AS status FROM employment_state_events
-            WHERE business_id = ${draft.id}::uuid ORDER BY event_seq DESC LIMIT 1`),
+          WHERE business_id = ${draft.id}::uuid ORDER BY event_seq DESC LIMIT 1`),
         )[0],
       }));
       expect(state.instance).toEqual({ status: 'running', current_node_key: 'joint' });
@@ -236,6 +240,6 @@ describe('AC-TEN-06 恢复对账：异常管理员与在途异常待办（DEC-09
       await expect(
         openRestoredTenant(handle.db, { tenantId: w.tenant.id, live: w.db, backup }, cmd(), w.clock),
       ).rejects.toEqual(expect.objectContaining({ reason: 'RESTORE_NOT_VERIFIED' }));
-    });
-  }
+    },
+  );
 });
