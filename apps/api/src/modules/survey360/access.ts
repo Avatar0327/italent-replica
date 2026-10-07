@@ -1,16 +1,19 @@
 /**
- * 活动授权（DEC-027；AC-360-13）：系统 / 高级管理员可见全部活动；一般管理员只见自己持有（创建或被转移）
- * 或被授权的活动。不可见的活动一律按不存在处理（404），不泄露是否存在。
- * TODO(需取证 #104)：原站三类 360 管理员的能力边界只有规格 §4 一句话，此处按“系统管全部、高级管全部活动、
- * 一般管自己的与被授权的”实现，集中在本文件便于取证后替换。
+ * 活动可见（DEC-280①；AC-360-13）：持“全部活动”按钮者（360 系统管理员）看全部；其余 360 身份只看自己创建的
+ * （owner_user_id）与被授权的活动。不可见的活动一律按不存在处理（404），不泄露是否存在。
  */
-import { type Db, sql, type Tx, withTenant } from '@italent/db';
+import { sql, type Tx, withTenant } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
-import { type Admin, fail, loadAdmin, rows } from './context.js';
+import type { TenantRouteDeps } from '../../routes.js';
+import { registerObjectDefinition } from '../permission/catalog.js';
+import { type Admin, can, fail, isHolder, loadAdmin, OBJECTS, rows } from './context.js';
+
+// 360 对象登记进权限对象目录（身份对象权限配置校验、按钮判定、数据范围按对象所属应用取）
+for (const object of Object.values(OBJECTS)) registerObjectDefinition(object);
 
 /** 活动可见谓词（别名 a = survey360_activities）。 */
-export function activityVisibleSql(admin: Pick<Admin, 'role' | 'userId'>, alias = sql`a`): SQL {
-  if (admin.role !== 'general') return sql`true`;
+export function activityVisibleSql(admin: Admin, alias = sql`a`): SQL {
+  if (admin.allActivities) return sql`true`;
   return sql`(${alias}.owner_user_id = ${admin.userId}::uuid OR EXISTS (SELECT 1 FROM survey360_activity_grants g
     WHERE g.tenant_id = ${alias}.tenant_id AND g.activity_id = ${alias}.id AND g.user_id = ${admin.userId}::uuid))`;
 }
@@ -79,37 +82,52 @@ export async function requireObject(tx: Tx, activityId: string, objectId: string
   return row;
 }
 
+type AuditDeps = Pick<TenantRouteDeps, 'db' | 'authorize'>;
+type Viewer = { tenantId: string; userId: string; timezone?: string };
+
+/** “精细化权限”开关（DEC-280⑤）；未设置即关闭。 */
+export async function finePermission(tx: Tx): Promise<boolean> {
+  const [row] = rows<{ fine_permission: boolean }>(
+    await tx.execute(sql`SELECT fine_permission FROM survey360_settings LIMIT 1`),
+  );
+  return row?.fine_permission === true;
+}
+
 /**
- * 审计查看（DEC-216，audit/visibility.ts 登记）：360 日志按查看人当前的 360 身份裁剪，不走组织员工的对象权限。
+ * 审计查看（DEC-216，audit/visibility.ts 登记）：360 日志按查看人当前的 360 身份裁剪，与接口同一判定。
  * - activity：活动内对象（活动、评价对象、评价关系、确认单、答卷）——查看人可见的活动编号集合（子查询）；
- * - system：人员、管理员、角色、同步冲突——只有 360 系统管理员；
- * - any：套卷——任一 360 管理员。
- * 不是 360 管理员返回 null（看不到任何 360 日志），被评价人与评价者因此不能经审计反推评价者身份。
+ * - person：人员、同步冲突——有人员查看权，且持“全部活动”或精细化权限关闭（开启时不经审计看到范围外人员）；
+ * - settings：评价角色、设置——任一 360 身份持有人；
+ * - questionnaire：套卷——有套卷查看权。
+ * 没有 360 身份返回 null（看不到任何 360 日志），被评价人与评价者因此不能经审计反推评价者身份。
  */
-export function survey360AuditScope(kind: 'activity' | 'system' | 'any') {
-  return async (deps: { db: Db }, ctx: { tenantId: string; userId: string }): Promise<SQL | null> => {
-    const admin = await withTenant(deps.db, ctx.tenantId, (tx) => loadAdmin(tx, ctx.userId));
-    if (!admin) return null;
-    if (kind === 'any') return sql`true`;
-    if (kind === 'system') return admin.role === 'system' ? sql`true` : null;
-    return sql`SELECT a.id::text FROM survey360_activities a WHERE a.tenant_id = ${ctx.tenantId}::uuid
-      AND ${activityVisibleSql(admin)}`;
-  };
+export function survey360AuditScope(kind: 'activity' | 'person' | 'settings' | 'questionnaire') {
+  return async (deps: AuditDeps, ctx: Viewer): Promise<SQL | null> =>
+    withTenant(deps.db, ctx.tenantId, async (tx) => {
+      const tenant = { timezone: 'UTC', ...ctx };
+      if (kind === 'settings') return (await isHolder(tx, ctx.userId)) ? sql`true` : null;
+      if (kind === 'questionnaire') return (await can(tx, deps, tenant, 'questionnaire')) ? sql`true` : null;
+      const admin = await loadAdmin(tx, deps, tenant);
+      if (kind === 'person') {
+        if (!(await can(tx, deps, tenant, 'person'))) return null;
+        return admin.allActivities || !(await finePermission(tx)) ? sql`true` : null;
+      }
+      if (!(await can(tx, deps, tenant, 'activity'))) return null;
+      return sql`SELECT a.id::text FROM survey360_activities a WHERE a.tenant_id = ${ctx.tenantId}::uuid
+        AND ${activityVisibleSql(admin)}`;
+    });
 }
 
 /**
  * 失败命令审计的 360 裁剪（第 1 轮审查 P2-5）：失败记录带请求来源（IP、终端、时间、命令 ID、TraceID），
- * 匿名作答链接的失败只给 360 系统管理员，360 管理端命令的失败只给 360 管理员；其他查看人（含只持日志审计
- * 能力者）看不到，无法据此关联评价者身份。谓词作用于 audit_command_failures 的 path 列。
+ * 匿名作答 / 确认链接的失败只给持“全部活动”者（360 系统管理员），360 管理端命令的失败只给 360 身份持有人；
+ * 其他查看人（含只持日志审计能力者）看不到，无法据此关联评价者身份。谓词作用于 audit_command_failures 的 path 列。
  */
-export async function survey360FailureVisibility(
-  deps: { db: Db },
-  ctx: { tenantId: string; userId: string },
-  path: SQL,
-) {
-  const admin = await withTenant(deps.db, ctx.tenantId, (tx) => loadAdmin(tx, ctx.userId));
-  const link = admin?.role === 'system' ? sql`true` : sql`false`;
-  const manage = admin ? sql`true` : sql`false`;
-  return sql`(CASE WHEN ${path} LIKE '/api/survey360/%' THEN ${link}
-    WHEN ${path} LIKE '/api/tenant/survey360/%' THEN ${manage} ELSE true END)`;
+export async function survey360FailureVisibility(deps: AuditDeps, ctx: Viewer, path: SQL) {
+  const { link, manage } = await withTenant(deps.db, ctx.tenantId, async (tx) => ({
+    link: (await loadAdmin(tx, deps, { timezone: 'UTC', ...ctx })).allActivities,
+    manage: await isHolder(tx, ctx.userId),
+  }));
+  return sql`(CASE WHEN ${path} LIKE '/api/survey360/%' THEN ${link ? sql`true` : sql`false`}
+    WHEN ${path} LIKE '/api/tenant/survey360/%' THEN ${manage ? sql`true` : sql`false`} ELSE true END)`;
 }

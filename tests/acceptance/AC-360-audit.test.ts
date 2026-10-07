@@ -23,7 +23,7 @@ describe('360 审计查看', () => {
     await w.transition(activity.id, 'enable');
     await w.answer(await w.token(activity.id, rater.id), relation.id, q, ['v4', 'v4']);
 
-    const audit = auditApi(db, '2026-10-01T02:00:00Z');
+    const audit = auditApi(db, '2026-10-01T02:00:00Z', { authorize: w.authorize });
     const as = (user: string) => ({ user, tenant: w.tenantId });
     const types = async (user: string) =>
       (await audit.dataChanges(as(user), { limit: '100' })).items

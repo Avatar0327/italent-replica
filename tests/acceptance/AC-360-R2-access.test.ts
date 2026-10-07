@@ -249,7 +249,7 @@ describe('P2-5 失败命令日志按 360 身份裁剪', () => {
       headers: { 'x-forwarded-for': '203.0.113.99', 'user-agent': 'ProbeAgent/1.0' },
     });
     expect(failed.status).toBe(400);
-    const audit = auditApi(db, '2026-10-01T02:00:00Z');
+    const audit = auditApi(db, '2026-10-01T02:00:00Z', { authorize: w.authorize });
     const failures = async (user: string) =>
       (await audit.commandFailures({ user, tenant: w.tenantId }, { commandId: key })).items;
     const outsider = await w.member('审计员');

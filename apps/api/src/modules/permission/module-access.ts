@@ -6,6 +6,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { EMPTY_SCOPE, type ModuleScope, type ScopeQuery, type ScopeTerm } from './scope-types.js';
 import { managedPersonsSql, reportingPersonsSql } from './scope-persons.js';
+import { objectCatalog } from './catalog.js';
 export type { ModuleScope } from './scope-types.js';
 
 interface AccessProvider {
@@ -34,6 +35,11 @@ export function authorizeInTransaction(authorize: Authorizer, tx: Tx): Authorize
 
 type Deps = Pick<TenantRouteDeps, 'authorize' | 'db' | 'clock'>;
 
+/** 数据范围按（用户 × 应用）存放（DEC-043）：取对象目录里该对象所属的应用，未登记的对象按组织员工应用。 */
+function appOf(objectCode: string | undefined): string {
+  return (objectCode && objectCatalog.get(objectCode)?.application) || ORG_EMPLOYEE_APP;
+}
+
 /**
  * Current rights also govern historical reads (AGENTS §10). asOf is a business query date,
  * never a client-controlled permission time machine. The raw resolver takes a trusted asOf.
@@ -51,7 +57,7 @@ export async function resolveModuleScope(
     return provider.scope({
       tenantId: ctx.tenantId,
       userId: ctx.userId,
-      appCode: ORG_EMPLOYEE_APP,
+      appCode: appOf(objectCode),
       asOf: tenantLocalDate(deps.clock(), ctx.timezone),
       ...(objectCode ? { objectCode } : {}),
       // This API owns both the page and its data source; neither identifier comes from query parameters.
@@ -78,7 +84,7 @@ export async function resolveModuleScopeInTransaction(
   const provider = providers.get(deps.authorize);
   if (provider) {
     const asOf = tenantLocalDate(deps.clock(), ctx.timezone);
-    const query = { tenantId: ctx.tenantId, userId: ctx.userId, appCode: ORG_EMPLOYEE_APP, asOf, objectCode };
+    const query = { tenantId: ctx.tenantId, userId: ctx.userId, appCode: appOf(objectCode), asOf, objectCode };
     return provider.scope({ ...query, ...(pageCode ? { pageCode, dataSourceCode: pageCode } : {}) }, tx);
   }
   const all = await deps.authorize({ ...ctx, action: 'data.scope.all', resource: objectCode });

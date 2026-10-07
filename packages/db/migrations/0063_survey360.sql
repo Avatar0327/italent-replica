@@ -33,19 +33,6 @@ CREATE TABLE "survey360_activity_grants" (
 	CONSTRAINT "survey360_activity_grants_user" UNIQUE("activity_id","user_id")
 );
 --> statement-breakpoint
-CREATE TABLE "survey360_admins" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"tenant_id" uuid NOT NULL,
-	"user_id" uuid NOT NULL,
-	"role" text NOT NULL,
-	"status" text DEFAULT 'active' NOT NULL,
-	"revision" integer DEFAULT 1 NOT NULL,
-	"created_by" uuid NOT NULL,
-	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "survey360_admins_role" CHECK ("survey360_admins"."role" IN ('system', 'advanced', 'general')),
-	CONSTRAINT "survey360_admins_status" CHECK ("survey360_admins"."status" IN ('active', 'revoked'))
-);
---> statement-breakpoint
 CREATE TABLE "survey360_answers" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
@@ -300,6 +287,14 @@ CREATE TABLE "survey360_scores" (
 	CONSTRAINT "survey360_scores_scope" CHECK ("survey360_scores"."scope" IN ('self', 'other', 'role'))
 );
 --> statement-breakpoint
+CREATE TABLE "survey360_settings" (
+	"tenant_id" uuid PRIMARY KEY NOT NULL,
+	"fine_permission" boolean DEFAULT false NOT NULL,
+	"revision" integer DEFAULT 1 NOT NULL,
+	"updated_by" uuid,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "survey360_sheets" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"tenant_id" uuid NOT NULL,
@@ -336,8 +331,6 @@ ALTER TABLE "survey360_activities" ADD CONSTRAINT "survey360_activities_tenant_i
 ALTER TABLE "survey360_activity_grants" ADD CONSTRAINT "survey360_activity_grants_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_activity_grants" ADD CONSTRAINT "survey360_activity_grants_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_activity_grants" ADD CONSTRAINT "survey360_activity_grants_activity_fk" FOREIGN KEY ("tenant_id","activity_id") REFERENCES "public"."survey360_activities"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "survey360_admins" ADD CONSTRAINT "survey360_admins_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "survey360_admins" ADD CONSTRAINT "survey360_admins_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_answers" ADD CONSTRAINT "survey360_answers_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_answers" ADD CONSTRAINT "survey360_answers_sheet_fk" FOREIGN KEY ("tenant_id","sheet_id") REFERENCES "public"."survey360_sheets"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_answers" ADD CONSTRAINT "survey360_answers_option_fk" FOREIGN KEY ("tenant_id","option_id") REFERENCES "public"."survey360_scale_options"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -388,13 +381,14 @@ ALTER TABLE "survey360_score_batches" ADD CONSTRAINT "survey360_score_batches_te
 ALTER TABLE "survey360_score_batches" ADD CONSTRAINT "survey360_score_batches_activity_fk" FOREIGN KEY ("tenant_id","activity_id") REFERENCES "public"."survey360_activities"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_scores" ADD CONSTRAINT "survey360_scores_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_scores" ADD CONSTRAINT "survey360_scores_batch_fk" FOREIGN KEY ("tenant_id","batch_id") REFERENCES "public"."survey360_score_batches"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "survey360_settings" ADD CONSTRAINT "survey360_settings_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "survey360_settings" ADD CONSTRAINT "survey360_settings_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_sheets" ADD CONSTRAINT "survey360_sheets_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_sheets" ADD CONSTRAINT "survey360_sheets_activity_fk" FOREIGN KEY ("tenant_id","activity_id") REFERENCES "public"."survey360_activities"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_sheets" ADD CONSTRAINT "survey360_sheets_relation_fk" FOREIGN KEY ("tenant_id","relation_id") REFERENCES "public"."survey360_relations"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_sheets" ADD CONSTRAINT "survey360_sheets_questionnaire_fk" FOREIGN KEY ("tenant_id","questionnaire_id") REFERENCES "public"."survey360_questionnaires"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_sync_conflicts" ADD CONSTRAINT "survey360_sync_conflicts_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "survey360_sync_conflicts" ADD CONSTRAINT "survey360_sync_conflicts_employee_fk" FOREIGN KEY ("tenant_id","employee_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE UNIQUE INDEX "survey360_admins_active_user" ON "survey360_admins" USING btree ("tenant_id","user_id") WHERE "survey360_admins"."status" = 'active';--> statement-breakpoint
 CREATE UNIQUE INDEX "survey360_confirmations_object" ON "survey360_confirmations" USING btree ("object_id") WHERE "survey360_confirmations"."status" <> 'cancelled';--> statement-breakpoint
 CREATE UNIQUE INDEX "survey360_links_token" ON "survey360_links" USING btree ("tenant_id","token_hash");--> statement-breakpoint
 CREATE UNIQUE INDEX "survey360_links_answer" ON "survey360_links" USING btree ("activity_id","person_id") WHERE "survey360_links"."kind" = 'answer' AND NOT "survey360_links"."revoked";--> statement-breakpoint

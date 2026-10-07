@@ -8,7 +8,7 @@ import { survey360 } from '@italent/domain';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
-import type { TenantEnv } from '../../tenant-context.js';
+import type { TenantContext, TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
 import { activityView, activityVisibleSql, type ActivityRow, requireActivity, requireObject } from './access.js';
 import {
@@ -16,6 +16,7 @@ import {
   type Admin,
   audit360,
   fail,
+  loadAdmin,
   optionalText,
   read,
   requireNewObject,
@@ -30,18 +31,21 @@ import { ensureAnswerLink } from './links.js';
 import { loadQuestionnaire, markUsed } from './questionnaires.js';
 import { computeScores, objectScores } from './scoring.js';
 
-const switches = {
-  showAppraiserName: z.boolean(),
-  roleDisplay: z.enum(survey360.ROLE_DISPLAY_MODES),
-};
-const createSchema = z.strictObject({
+const base = {
   name: text(200),
   scene: optionalText(100),
   form: z.enum(['single', 'multiple']),
   welcome: optionalText(5000),
-  ...switches,
+  showAppraiserName: z.boolean(),
+  roleDisplay: z.enum(survey360.ROLE_DISPLAY_MODES),
+};
+// DEC-280④：作答页默认显示评价者姓名、默认显示评价角色名称（原站新增活动页的默认值）
+const createSchema = z.strictObject({
+  ...base,
+  showAppraiserName: base.showAppraiserName.default(true),
+  roleDisplay: base.roleDisplay.default('name'),
 });
-const updateSchema = createSchema.partial();
+const updateSchema = z.strictObject(base).partial();
 
 async function reload(tx: Tx, id: string): Promise<ActivityRow> {
   const [row] = rows<ActivityRow>(await tx.execute(sql`SELECT * FROM survey360_activities WHERE id = ${id}::uuid`));
@@ -119,13 +123,8 @@ export async function issueAnswerLinks(tx: Tx, ctx: Survey360Context, activityId
   }
 }
 
+const VIEW = { object: 'activity' } as const;
 const guarded = (id: string) => async (tx: Tx, admin: Admin) => void (await requireActivity(tx, admin, id));
-
-function requireManager(admin: Admin, row: ActivityRow): void {
-  // 授权只能由系统 / 高级管理员或活动持有人调整
-  if (admin.role === 'general' && row.owner_user_id !== admin.userId)
-    fail('FORBIDDEN', '只有活动持有人或系统 / 高级管理员可以调整活动授权');
-}
 
 export function registerActivityRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerActivityCrud(module, deps);
@@ -135,15 +134,21 @@ export function registerActivityRoutes(module: Hono<TenantEnv>, deps: TenantRout
 
 function registerActivityCrud(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/activities', (c) =>
-    read(c, deps, async (tx, admin) => ({
-      items: rows<ActivityRow>(
-        await tx.execute(sql`SELECT a.* FROM survey360_activities a WHERE NOT a.deleted AND ${activityVisibleSql(admin)}
-          ORDER BY a.created_at, a.id LIMIT 500`),
-      ).map(activityView),
-    })),
+    read(
+      c,
+      deps,
+      VIEW,
+      async (tx, admin) => ({
+        items: rows<ActivityRow>(
+          await tx.execute(sql`SELECT a.* FROM survey360_activities a WHERE NOT a.deleted
+            AND ${activityVisibleSql(admin)} ORDER BY a.created_at, a.id LIMIT 500`),
+        ).map(activityView),
+      }),
+      'activity',
+    ),
   );
   module.get('/activities/:id', (c) =>
-    read(c, deps, async (tx, admin) => activityView(await requireActivity(tx, admin, uuidParam(c)))),
+    read(c, deps, VIEW, async (tx, admin) => activityView(await requireActivity(tx, admin, uuidParam(c))), 'activity'),
   );
   module.post('/activities', (c) =>
     write(
@@ -170,7 +175,7 @@ function registerActivityCrud(module: Hono<TenantEnv>, deps: TenantRouteDeps): v
         await auditActivity(tx, ctx, 'survey360.activity.create', null, saved);
         return activityView(saved);
       },
-      { status: 201 },
+      { need: { object: 'activity', operation: 'create' }, fields: (input) => input, status: 201 },
     ),
   );
 }
@@ -198,7 +203,7 @@ function registerActivityLifecycle(module: Hono<TenantEnv>, deps: TenantRouteDep
         await auditActivity(tx, ctx, 'survey360.activity.update', activityView(current), saved);
         return activityView(saved);
       },
-      { guard: guarded(id) },
+      { need: { object: 'activity', operation: 'update' }, guard: guarded(id), fields: (input) => input },
     );
   });
   module.delete('/activities/:id', (c) => {
@@ -215,7 +220,7 @@ function registerActivityLifecycle(module: Hono<TenantEnv>, deps: TenantRouteDep
         await auditActivity(tx, ctx, 'survey360.activity.delete', activityView(current), saved);
         return { id, deleted: true };
       },
-      { guard: guarded(id) },
+      { need: { object: 'activity', operation: 'delete' }, guard: guarded(id) },
     );
   });
   for (const action of ['enable', 'disable'] as const)
@@ -243,7 +248,7 @@ function registerActivityLifecycle(module: Hono<TenantEnv>, deps: TenantRouteDep
           await auditActivity(tx, ctx, `survey360.activity.${action}`, activityView(current), saved);
           return activityView(saved);
         },
-        { guard: guarded(id) },
+        { need: { object: 'activity', operation: 'update', button: action }, guard: guarded(id) },
       );
     });
 }
@@ -251,67 +256,140 @@ function registerActivityLifecycle(module: Hono<TenantEnv>, deps: TenantRouteDep
 function registerActivityExtras(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerGrants(module, deps);
   module.get('/activities/:id/objects/:objectId/scores', (c) =>
-    read(c, deps, async (tx, admin) => {
-      const activity = await requireActivity(tx, admin, uuidParam(c));
-      await requireObject(tx, activity.id, uuidParam(c, 'objectId'));
-      return { items: await objectScores(tx, activity.score_batch_id, uuidParam(c, 'objectId')) };
-    }),
+    read(
+      c,
+      deps,
+      { object: 'result' },
+      async (tx, admin) => {
+        const activity = await requireActivity(tx, admin, uuidParam(c));
+        await requireObject(tx, activity.id, uuidParam(c, 'objectId'));
+        return { items: await objectScores(tx, activity.score_batch_id, uuidParam(c, 'objectId')) };
+      },
+      'result',
+    ),
   );
 }
 
-function registerGrants(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  module.get('/activities/:id/grants', (c) =>
-    read(c, deps, async (tx, admin) => {
-      const activity = await requireActivity(tx, admin, uuidParam(c));
-      const items = await tx
-        .select({ userId: survey360ActivityGrants.userId })
-        .from(survey360ActivityGrants)
-        .where(eq(survey360ActivityGrants.activityId, activity.id));
-      return { userIds: items.map((i) => i.userId).sort() };
-    }),
+interface Holder {
+  readonly user_id: string;
+  readonly display_name: string | null;
+}
+
+/** 360 身份持有人（有效用户授权里有登记 Survey360 应用的身份、成员有效），带账号显示名。 */
+async function holders(tx: Tx): Promise<Holder[]> {
+  return rows<Holder>(
+    await tx.execute(sql`WITH h AS (SELECT DISTINCT g.user_id FROM permission_grants g
+        JOIN permission_profile_apps pa ON pa.tenant_id = g.tenant_id AND pa.profile_id = g.profile_id
+        WHERE g.status = 'active' AND pa.app_code = ${survey360.SURVEY360_APP})
+      SELECT h.user_id, m.display_name FROM h
+      JOIN tenant_memberships tm ON tm.user_id = h.user_id AND tm.status = 'active'
+      JOIN tenant_member_accounts(ARRAY(SELECT user_id FROM h)) m ON m.account_id = h.user_id AND m.status = 'active'
+      ORDER BY h.user_id LIMIT 2000`),
   );
-  module.put('/activities/:id/grants', (c) => {
+}
+
+async function explicitGrants(tx: Tx, activityId: string): Promise<string[]> {
+  return (
+    await tx
+      .select({ userId: survey360ActivityGrants.userId })
+      .from(survey360ActivityGrants)
+      .where(eq(survey360ActivityGrants.activityId, activityId))
+  )
+    .map((g) => g.userId)
+    .sort();
+}
+
+/**
+ * 活动授权穿梭框（DEC-280③）：已授权栏 = 创建者 + 持“全部活动”者（系统管理员，默认在内）+ 显式授权；未授权栏 =
+ * 其余 360 身份持有人。“全部活动”按候选人当前的身份逐个判定（与接口同一判定）。
+ */
+async function grantsView(tx: Tx, deps: TenantRouteDeps, tenant: TenantContext, activity: ActivityRow) {
+  const explicit = new Set(await explicitGrants(tx, activity.id));
+  const authorized: { userId: string; displayName: string | null; creator: boolean; systemAdmin: boolean }[] = [];
+  const unauthorized: { userId: string; displayName: string | null }[] = [];
+  for (const h of await holders(tx)) {
+    const creator = h.user_id === activity.owner_user_id;
+    const systemAdmin = (await loadAdmin(tx, deps, { ...tenant, userId: h.user_id })).allActivities;
+    if (creator || systemAdmin || explicit.has(h.user_id))
+      authorized.push({ userId: h.user_id, displayName: h.display_name, creator, systemAdmin });
+    else unauthorized.push({ userId: h.user_id, displayName: h.display_name });
+  }
+  return {
+    authorized: authorized.map(({ displayName: _name, ...a }) => ({ ...a, explicit: explicit.has(a.userId) })),
+    unauthorized: unauthorized.map((u) => ({ userId: u.userId })),
+    names: Object.fromEntries([...authorized, ...unauthorized].map((u) => [u.userId, u.displayName])),
+  };
+}
+
+async function auditGrants(tx: Tx, ctx: Survey360Context, id: string, before: string[], after: string[]) {
+  await audit360(tx, actor(ctx), {
+    action: 'survey360.activity.grants',
+    objectType: 'survey360-activity',
+    objectId: id,
+    before: { activityId: id, userIds: before },
+    after: { activityId: id, userIds: after },
+  });
+}
+
+function registerGrants(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  // 授权区是活动基本信息的一部分：能编辑该活动的人就能改授权（DEC-280③）
+  const EDIT = { object: 'activity', operation: 'update' } as const;
+  module.get('/activities/:id/grants', (c) =>
+    read(c, deps, VIEW, async (tx, admin, tenant) =>
+      grantsView(tx, deps, tenant, await requireActivity(tx, admin, uuidParam(c))),
+    ),
+  );
+  module.post('/activities/:id/grants', (c) => {
     const id = uuidParam(c);
     return write(
       c,
       deps,
-      z.strictObject({ userIds: z.array(uuid).max(200) }),
+      z.strictObject({ userIds: z.array(uuid).min(1).max(200) }),
       async (tx, ctx, input) => {
         const current = await requireActivity(tx, ctx.admin, id, true);
-        requireManager(ctx.admin, current);
         requireRevision(current.revision, ctx.expectedRevision);
+        const pool = new Set((await holders(tx)).map((h) => h.user_id));
         const userIds = [...new Set(input.userIds)].sort();
-        const admins = rows<{ user_id: string }>(
-          await tx.execute(sql`SELECT user_id FROM survey360_admins WHERE status = 'active'
-            AND user_id = ANY(${`{${userIds.join(',')}}`}::uuid[])`),
-        );
-        if (admins.length !== userIds.length) fail('VALIDATION_FAILED', '只能授权给 360 管理员', 'NOT_A_360_ADMIN');
-        const before = (
-          await tx
-            .select({ userId: survey360ActivityGrants.userId })
-            .from(survey360ActivityGrants)
-            .where(eq(survey360ActivityGrants.activityId, id))
-        )
-          .map((g) => g.userId)
-          .sort();
-        await tx.delete(survey360ActivityGrants).where(eq(survey360ActivityGrants.activityId, id));
-        if (userIds.length)
+        const outsider = userIds.find((u) => !pool.has(u));
+        if (outsider)
+          fail('VALIDATION_FAILED', '只能授权给持有 360 身份的用户', 'NOT_A_360_USER', { userId: outsider });
+        const before = await explicitGrants(tx, id);
+        const added = userIds.filter((u) => !before.includes(u));
+        if (added.length)
           await tx
             .insert(survey360ActivityGrants)
-            .values(
-              userIds.map((userId) => ({ tenantId: ctx.tenantId, activityId: id, userId, createdBy: ctx.userId })),
-            );
+            .values(added.map((userId) => ({ tenantId: ctx.tenantId, activityId: id, userId, createdBy: ctx.userId })));
         await bump(tx, current, {});
-        await audit360(tx, actor(ctx), {
-          action: 'survey360.activity.grants',
-          objectType: 'survey360-activity',
-          objectId: id,
-          before: { activityId: id, userIds: before },
-          after: { activityId: id, userIds },
-        });
-        return { userIds };
+        const after = await explicitGrants(tx, id);
+        await auditGrants(tx, ctx, id, before, after);
+        return grantsView(tx, deps, ctx, current);
       },
-      { guard: guarded(id) },
+      { need: EDIT, guard: guarded(id) },
+    );
+  });
+  module.delete('/activities/:id/grants/:userId', (c) => {
+    const id = uuidParam(c);
+    const userId = uuidParam(c, 'userId');
+    return write(
+      c,
+      deps,
+      z.object({}).passthrough(),
+      async (tx, ctx) => {
+        const current = await requireActivity(tx, ctx.admin, id, true);
+        requireRevision(current.revision, ctx.expectedRevision);
+        const implicit =
+          userId === current.owner_user_id || (await loadAdmin(tx, deps, { ...ctx, userId })).allActivities;
+        if (implicit) fail('CONFLICT', '创建者与系统管理员默认已授权，不能移除', 'IMPLICIT_GRANT');
+        const before = await explicitGrants(tx, id);
+        if (!before.includes(userId)) fail('NOT_FOUND', '该用户未被授权');
+        await tx
+          .delete(survey360ActivityGrants)
+          .where(and(eq(survey360ActivityGrants.activityId, id), eq(survey360ActivityGrants.userId, userId)));
+        await bump(tx, current, {});
+        await auditGrants(tx, ctx, id, before, await explicitGrants(tx, id));
+        return grantsView(tx, deps, ctx, current);
+      },
+      { need: EDIT, guard: guarded(id) },
     );
   });
 }

@@ -213,15 +213,16 @@ describe('DEC-280② 360 内没有管理员设置', () => {
     const w = await world360(testDb().db, 'd280f');
     const { advanced, advancedGrant } = await team(w);
     expect((await w.request('GET', '/admins')).status).toBe(404);
-    expect((await w.request('POST', '/admins', { ifMatch: 0, body: { userId: advanced, role: 'system' } })).status).toBe(
-      404,
-    );
+    expect(
+      (await w.request('POST', '/admins', { ifMatch: 0, body: { userId: advanced, role: 'system' } })).status,
+    ).toBe(404);
     expect((await w.request('GET', '/me')).status).toBe(404);
     const activity = await w.activity();
     expect((await addGrant(w, activity.id, [advanced])).status).toBe(200);
     await w.revokeGrant(advancedGrant);
     expect((await w.as(advanced)('GET', `/activities/${activity.id}`)).status).toBe(403);
-    expect((await grants(w, activity.id)).authorized.map((g) => g.userId)).toContain(advanced);
+    // 撤销后不再是 360 身份持有人，不出现在穿梭框里；活动授权行保留，重新授予后照旧可见
+    expect((await grants(w, activity.id)).authorized.map((g) => g.userId)).not.toContain(advanced);
     await w.appoint(advanced, 'advanced');
     expect((await w.as(advanced)('GET', `/activities/${activity.id}`)).status).toBe(200);
   });
@@ -309,7 +310,7 @@ describe('DEC-280④ 作答页默认值', () => {
     await w.appraiser(created.id, object.id, rater.id, 'superior');
     await w.transition(created.id, 'enable');
     const page = await w.ok<{ appraiser: { name?: string }; tasks: { role: { name?: string } }[] }>(
-      w.link(await w.token(created.id, rater.id))('GET', '/'),
+      w.link(await w.token(created.id, rater.id))('GET', ''),
     );
     expect(page.appraiser.name).toBe('评价者甲');
     expect(page.tasks[0]!.role.name).toBe(w.roles.find((r) => r.code === 'superior')!.name);
@@ -356,9 +357,17 @@ describe('DEC-280⑤ 人员表可见范围', () => {
     });
     expect(denied.status).toBe(403);
     await w.ok(w.request('PUT', '/settings', { ifMatch: settings.revision, body: { finePermission: true } }));
+    // 一般管理员在 360 应用上的数据权限：一个只含“范围内”部门的管理单元（用户 × 应用，DEC-043）
+    const mou = await w.ok<{ id: string }>(
+      w.enterprise('POST', '/mous', {
+        ifMatch: 0,
+        body: { code: 'mou360', name: '360范围', orgRanges: [{ orgId: inside.org.id, includeDescendants: true }] },
+      }),
+      201,
+    );
     const scope = await w.enterprise('PUT', `/scopes/${general}/${survey360.SURVEY360_APP}`, {
       ifMatch: 0,
-      body: { kind: 'org_range', orgRanges: [{ orgId: inside.org.id, includeDescendants: true }] },
+      body: { kind: 'mou', mouId: mou.id },
     });
     expect(scope.status, await scope.clone().text()).toBe(200);
 

@@ -22,12 +22,14 @@ import { survey360 } from '@italent/domain';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
-import type { TenantEnv } from '../../tenant-context.js';
+import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
 import {
   actor,
   type Admin,
   audit360,
+  BUTTONS,
+  can,
   fail,
   optionalText,
   read,
@@ -202,6 +204,7 @@ export function questionnaireView(q: LoadedQuestionnaire) {
     name: q.row.name,
     type: q.row.type,
     status: q.row.status,
+    createdBy: q.row.createdBy,
     scoreMethod: q.row.scoreMethod,
     guide: q.row.guide,
     excellence: line !== null && rate !== null ? { linePercent: Number(line), maxRate: Number(rate) } : null,
@@ -245,9 +248,20 @@ export function questionnaireView(q: LoadedQuestionnaire) {
   };
 }
 
-/** 修改权：系统 / 高级管理员，或套卷创建人。 */
-function requireEditor(admin: Admin, row: QuestionnaireRow): void {
-  if (admin.role === 'general' && row.createdBy !== admin.userId) fail('FORBIDDEN', '一般管理员只能修改自己创建的套卷');
+/**
+ * 修改权（DEC-280①）：套卷创建人，或持“编辑他人套卷”按钮者（360 系统管理员）。命令前（含重放）与命令事务内各判一次。
+ */
+function editableBy(deps: TenantRouteDeps, tenant: TenantContext, id: string) {
+  return async (tx: Tx, admin: Admin): Promise<void> => {
+    const [row] = await tx
+      .select({ createdBy: survey360Questionnaires.createdBy })
+      .from(survey360Questionnaires)
+      .where(and(eq(survey360Questionnaires.id, id), eq(survey360Questionnaires.deleted, false)));
+    if (!row) fail('NOT_FOUND', '套卷不存在');
+    if (row.createdBy === admin.userId) return;
+    if (!(await can(tx, deps, tenant, 'questionnaire', 'update', BUTTONS.editOthers)))
+      fail('FORBIDDEN', '不能编辑非本人创建的套卷', 'QUESTIONNAIRE_NOT_OWNER');
+  };
 }
 
 /** 结构引用校验（保存时）：键唯一、引用存在、等级评定与关键行为的挂接方式。 */
@@ -504,21 +518,36 @@ export function registerQuestionnaireRoutes(module: Hono<TenantEnv>, deps: Tenan
   registerQuestionnaireLifecycle(module, deps);
 }
 
+const VIEW = { object: 'questionnaire' } as const;
+
 function registerQuestionnaireReads(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/questionnaires', (c) =>
-    read(c, deps, async (tx) => ({
-      items: (
-        await tx
-          .select()
-          .from(survey360Questionnaires)
-          .where(eq(survey360Questionnaires.deleted, false))
-          .orderBy(survey360Questionnaires.createdAt)
-          .limit(500)
-      ).map((r) => ({ id: r.id, name: r.name, type: r.type, status: r.status, revision: r.revision })),
-    })),
+    read(
+      c,
+      deps,
+      VIEW,
+      async (tx) => ({
+        items: (
+          await tx
+            .select()
+            .from(survey360Questionnaires)
+            .where(eq(survey360Questionnaires.deleted, false))
+            .orderBy(survey360Questionnaires.createdAt)
+            .limit(500)
+        ).map((r) => ({
+          id: r.id,
+          name: r.name,
+          type: r.type,
+          status: r.status,
+          createdBy: r.createdBy,
+          revision: r.revision,
+        })),
+      }),
+      'questionnaire',
+    ),
   );
   module.get('/questionnaires/:id', (c) =>
-    read(c, deps, async (tx) => questionnaireView(await loadQuestionnaire(tx, uuidParam(c)))),
+    read(c, deps, VIEW, async (tx) => questionnaireView(await loadQuestionnaire(tx, uuidParam(c))), 'questionnaire'),
   );
   module.post('/questionnaires', (c) =>
     write(
@@ -544,7 +573,7 @@ function registerQuestionnaireReads(module: Hono<TenantEnv>, deps: TenantRouteDe
         await auditQuestionnaire(tx, ctx, 'survey360.questionnaire.create', null, loaded);
         return questionnaireView(loaded);
       },
-      { status: 201 },
+      { need: { object: 'questionnaire', operation: 'create' }, fields: (input) => input, status: 201 },
     ),
   );
 }
@@ -552,86 +581,113 @@ function registerQuestionnaireReads(module: Hono<TenantEnv>, deps: TenantRouteDe
 function registerQuestionnaireUpdate(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.put('/questionnaires/:id', (c) => {
     const id = uuidParam(c);
-    return write(c, deps, updateSchema, async (tx, ctx, input) => {
-      const current = await loadQuestionnaire(tx, id, true);
-      requireEditor(ctx.admin, current.row);
-      requireRevision(current.row.revision, ctx.expectedRevision);
-      if (current.row.status === 'used' && (await enabledActivitiesUsing(tx, id)) > 0)
-        fail('CONFLICT', '用到该套卷的活动处于启用状态，停用后才能修改', 'ACTIVITY_ENABLED');
-      if (input.content) {
-        checkReferences(input.content, current.row.type);
-        if (current.row.status === 'used') await updateInPlace(tx, current, input.content);
-        else await replaceContent(tx, ctx, id, input.content);
-      }
-      await tx
-        .update(survey360Questionnaires)
-        .set({
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.scoreMethod !== undefined ? { scoreMethod: input.scoreMethod } : {}),
-          ...(input.guide !== undefined ? { guide: input.guide } : {}),
-          ...(input.excellence !== undefined
-            ? {
-                excellentLinePercent: input.excellence ? String(input.excellence.linePercent) : null,
-                excellentMaxRate: input.excellence ? String(input.excellence.maxRate) : null,
-              }
-            : {}),
-          revision: current.row.revision + 1,
-        })
-        .where(eq(survey360Questionnaires.id, id));
-      const saved = await loadQuestionnaire(tx, id);
-      // 已启用 / 已使用的套卷修改后仍须满足启用条件
-      if (saved.row.status !== 'draft') issuesFail(survey360.validateQuestionnaire(saved.model));
-      await auditQuestionnaire(tx, ctx, 'survey360.questionnaire.update', questionnaireView(current), saved);
-      return questionnaireView(saved);
-    });
+    const options = {
+      need: { object: 'questionnaire', operation: 'update' },
+      guard: editableBy(deps, tenantOf(c), id),
+      fields: ({ content, ...header }: z.infer<typeof updateSchema>) => ({
+        ...header,
+        ...(content ? { roles: content.roles, scales: content.scales, dimensions: content.dimensions } : {}),
+        ...(content ? { questions: content.questions } : {}),
+      }),
+    } as const;
+    return write(
+      c,
+      deps,
+      updateSchema,
+      async (tx, ctx, input) => {
+        const current = await loadQuestionnaire(tx, id, true);
+        requireRevision(current.row.revision, ctx.expectedRevision);
+        if (current.row.status === 'used' && (await enabledActivitiesUsing(tx, id)) > 0)
+          fail('CONFLICT', '用到该套卷的活动处于启用状态，停用后才能修改', 'ACTIVITY_ENABLED');
+        if (input.content) {
+          checkReferences(input.content, current.row.type);
+          if (current.row.status === 'used') await updateInPlace(tx, current, input.content);
+          else await replaceContent(tx, ctx, id, input.content);
+        }
+        await tx
+          .update(survey360Questionnaires)
+          .set({
+            ...(input.name !== undefined ? { name: input.name } : {}),
+            ...(input.scoreMethod !== undefined ? { scoreMethod: input.scoreMethod } : {}),
+            ...(input.guide !== undefined ? { guide: input.guide } : {}),
+            ...(input.excellence !== undefined
+              ? {
+                  excellentLinePercent: input.excellence ? String(input.excellence.linePercent) : null,
+                  excellentMaxRate: input.excellence ? String(input.excellence.maxRate) : null,
+                }
+              : {}),
+            revision: current.row.revision + 1,
+          })
+          .where(eq(survey360Questionnaires.id, id));
+        const saved = await loadQuestionnaire(tx, id);
+        // 已启用 / 已使用的套卷修改后仍须满足启用条件
+        if (saved.row.status !== 'draft') issuesFail(survey360.validateQuestionnaire(saved.model));
+        await auditQuestionnaire(tx, ctx, 'survey360.questionnaire.update', questionnaireView(current), saved);
+        return questionnaireView(saved);
+      },
+      options,
+    );
   });
 }
 
 function registerQuestionnaireLifecycle(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.post('/questionnaires/:id/enable', (c) => {
     const id = uuidParam(c);
-    return write(c, deps, z.object({}).passthrough(), async (tx, ctx) => {
-      const current = await loadQuestionnaire(tx, id, true);
-      requireEditor(ctx.admin, current.row);
-      requireRevision(current.row.revision, ctx.expectedRevision);
-      if (current.row.status !== 'draft') fail('CONFLICT', '只有草稿套卷可以启用', 'NOT_DRAFT');
-      issuesFail(survey360.validateQuestionnaire(current.model));
-      await tx
-        .update(survey360Questionnaires)
-        .set({ status: 'enabled', revision: current.row.revision + 1 })
-        .where(eq(survey360Questionnaires.id, id));
-      const saved = await loadQuestionnaire(tx, id);
-      await auditQuestionnaire(tx, ctx, 'survey360.questionnaire.enable', questionnaireView(current), saved);
-      return questionnaireView(saved);
-    });
+    return write(
+      c,
+      deps,
+      z.object({}).passthrough(),
+      async (tx, ctx) => {
+        const current = await loadQuestionnaire(tx, id, true);
+        requireRevision(current.row.revision, ctx.expectedRevision);
+        if (current.row.status !== 'draft') fail('CONFLICT', '只有草稿套卷可以启用', 'NOT_DRAFT');
+        issuesFail(survey360.validateQuestionnaire(current.model));
+        await tx
+          .update(survey360Questionnaires)
+          .set({ status: 'enabled', revision: current.row.revision + 1 })
+          .where(eq(survey360Questionnaires.id, id));
+        const saved = await loadQuestionnaire(tx, id);
+        await auditQuestionnaire(tx, ctx, 'survey360.questionnaire.enable', questionnaireView(current), saved);
+        return questionnaireView(saved);
+      },
+      {
+        need: { object: 'questionnaire', operation: 'update', button: 'enable' },
+        guard: editableBy(deps, tenantOf(c), id),
+      },
+    );
   });
   module.delete('/questionnaires/:id', (c) => {
     const id = uuidParam(c);
-    return write(c, deps, z.object({}).passthrough(), async (tx, ctx) => {
-      const current = await loadQuestionnaire(tx, id, true);
-      requireEditor(ctx.admin, current.row);
-      requireRevision(current.row.revision, ctx.expectedRevision);
-      // E3-R2 / AC-360-09：已使用的套卷不可删除
-      if (current.row.status === 'used') fail('CONFLICT', '已使用的套卷不能删除', 'QUESTIONNAIRE_USED');
-      const [ref] = rows<{ n: number }>(
-        await tx.execute(sql`SELECT count(*)::int AS n FROM survey360_object_questionnaires oq
+    return write(
+      c,
+      deps,
+      z.object({}).passthrough(),
+      async (tx, ctx) => {
+        const current = await loadQuestionnaire(tx, id, true);
+        requireRevision(current.row.revision, ctx.expectedRevision);
+        // E3-R2 / AC-360-09：已使用的套卷不可删除
+        if (current.row.status === 'used') fail('CONFLICT', '已使用的套卷不能删除', 'QUESTIONNAIRE_USED');
+        const [ref] = rows<{ n: number }>(
+          await tx.execute(sql`SELECT count(*)::int AS n FROM survey360_object_questionnaires oq
           JOIN survey360_objects o ON o.tenant_id = oq.tenant_id AND o.id = oq.object_id AND NOT o.removed
           WHERE oq.questionnaire_id = ${id}::uuid`),
-      );
-      if (ref!.n > 0) fail('CONFLICT', '套卷已被评价对象引用，不能删除', 'QUESTIONNAIRE_REFERENCED');
-      await tx
-        .update(survey360Questionnaires)
-        .set({ deleted: true, revision: current.row.revision + 1 })
-        .where(eq(survey360Questionnaires.id, id));
-      await audit360(tx, actor(ctx), {
-        action: 'survey360.questionnaire.delete',
-        objectType: 'survey360-questionnaire',
-        objectId: id,
-        before: questionnaireView(current),
-        after: { id, deleted: true },
-      });
-      return { id, deleted: true };
-    });
+        );
+        if (ref!.n > 0) fail('CONFLICT', '套卷已被评价对象引用，不能删除', 'QUESTIONNAIRE_REFERENCED');
+        await tx
+          .update(survey360Questionnaires)
+          .set({ deleted: true, revision: current.row.revision + 1 })
+          .where(eq(survey360Questionnaires.id, id));
+        await audit360(tx, actor(ctx), {
+          action: 'survey360.questionnaire.delete',
+          objectType: 'survey360-questionnaire',
+          objectId: id,
+          before: questionnaireView(current),
+          after: { id, deleted: true },
+        });
+        return { id, deleted: true };
+      },
+      { need: { object: 'questionnaire', operation: 'delete' }, guard: editableBy(deps, tenantOf(c), id) },
+    );
   });
 }
 

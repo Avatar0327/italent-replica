@@ -45,7 +45,7 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   permission_mou: { label: '管理单元', app: ENTERPRISE },
   license_pool: { label: '许可', app: ENTERPRISE },
   audit_retention: { label: '日志保留期', app: ENTERPRISE },
-  'survey360-admin': { label: '360管理员', app: SURVEY360 },
+  'survey360-settings': { label: '360设置', app: SURVEY360 },
   'survey360-person': { label: '360人员', app: SURVEY360 },
   'survey360-role': { label: '评价角色', app: SURVEY360 },
   'survey360-sync-conflict': { label: '人员同步冲突', app: SURVEY360 },

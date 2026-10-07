@@ -29,7 +29,7 @@ import { tenantOf, type TenantEnv } from '../../tenant-context.js';
 import { findCurrentRecord } from '../employment/read-model.js';
 import { uuidParam } from '../job/context.js';
 import { type ActivityRow, requireActivity, requireObject } from './access.js';
-import { roleIdOf } from './admins.js';
+import { roleIdOf } from './settings.js';
 import {
   actor,
   type Admin,
@@ -237,17 +237,28 @@ export async function appraiserList(tx: Tx, objectId: string) {
   return { items, roleCounts, hint: survey360.ANONYMITY_HINT };
 }
 
+const VIEW = { object: 'relation' } as const;
 const guarded = (id: string) => async (tx: Tx, admin: Admin) => void (await requireActivity(tx, admin, id));
+
+function registerAppraiserList(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  module.get('/activities/:id/objects/:objectId/appraisers', (c) =>
+    read(
+      c,
+      deps,
+      VIEW,
+      async (tx, admin) => {
+        const activity = await requireActivity(tx, admin, uuidParam(c));
+        const object = await requireObject(tx, activity.id, uuidParam(c, 'objectId'));
+        return appraiserList(tx, object.id);
+      },
+      'relation',
+    ),
+  );
+}
 
 export function registerRelationRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerObjects(module, deps);
-  module.get('/activities/:id/objects/:objectId/appraisers', (c) =>
-    read(c, deps, async (tx, admin) => {
-      const activity = await requireActivity(tx, admin, uuidParam(c));
-      const object = await requireObject(tx, activity.id, uuidParam(c, 'objectId'));
-      return appraiserList(tx, object.id);
-    }),
-  );
+  registerAppraiserList(module, deps);
   module.post('/activities/:id/objects/:objectId/appraisers', (c) => {
     const id = uuidParam(c);
     const objectId = uuidParam(c, 'objectId');
@@ -262,7 +273,7 @@ export function registerRelationRoutes(module: Hono<TenantEnv>, deps: TenantRout
         const appraiser = await resolvePerson(tx, ctx, input);
         return relationView(await addRelation(tx, ctx, activity, objectId, appraiser, input.roleId, 'manual'));
       },
-      { guard: guarded(id), status: 201 },
+      { need: { object: 'relation', operation: 'create' }, guard: guarded(id), status: 201 },
     );
   });
   module.delete('/activities/:id/objects/:objectId/appraisers/:relationId', (c) => {
@@ -280,7 +291,7 @@ export function registerRelationRoutes(module: Hono<TenantEnv>, deps: TenantRout
         requireRevision(relation.revision, ctx.expectedRevision);
         return relationView(await removeRelation(tx, ctx, relation));
       },
-      { guard: guarded(id) },
+      { need: { object: 'relation', operation: 'delete' }, guard: guarded(id) },
     );
   });
   module.post('/activities/:id/objects/:objectId/appraisers/auto', (c) => {
@@ -302,6 +313,7 @@ export function registerRelationRoutes(module: Hono<TenantEnv>, deps: TenantRout
       },
       {
         // 命令前（含幂等重放）同样校验评价对象的员工仍在操作人范围内（第 1 轮审查 P2-2 / P2-4）
+        need: { object: 'relation', operation: 'create', button: 'autoAdd' },
         guard: guarded(id),
         preflight: async (admin) => {
           const scope = await routeEmployeeScope(c, deps);
@@ -324,32 +336,38 @@ function registerObjects(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
 
 function registerObjectCreation(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/activities/:id/objects', (c) =>
-    read(c, deps, async (tx, admin) => {
-      const activity = await requireActivity(tx, admin, uuidParam(c));
-      const items = rows<{
-        id: string;
-        person_id: string;
-        name: string;
-        email: string;
-        questionnaire_ids: string[] | null;
-        revision: number;
-      }>(
-        await tx.execute(sql`SELECT o.id, o.person_id, o.revision, p.name, p.email,
+    read(
+      c,
+      deps,
+      VIEW,
+      async (tx, admin) => {
+        const activity = await requireActivity(tx, admin, uuidParam(c));
+        const items = rows<{
+          id: string;
+          person_id: string;
+          name: string;
+          email: string;
+          questionnaire_ids: string[] | null;
+          revision: number;
+        }>(
+          await tx.execute(sql`SELECT o.id, o.person_id, o.revision, p.name, p.email,
             (SELECT array_agg(oq.questionnaire_id ORDER BY oq.id) FROM survey360_object_questionnaires oq
               WHERE oq.tenant_id = o.tenant_id AND oq.object_id = o.id) AS questionnaire_ids
           FROM survey360_objects o JOIN survey360_people p ON p.tenant_id = o.tenant_id AND p.id = o.person_id
           WHERE o.activity_id = ${activity.id}::uuid AND NOT o.removed ORDER BY o.sort, o.created_at, o.id`),
-      );
-      return {
-        items: items.map((o) => ({
-          id: o.id,
-          personId: o.person_id,
-          person: { name: o.name, email: o.email },
-          questionnaireIds: (o.questionnaire_ids ?? []).sort(),
-          revision: o.revision,
-        })),
-      };
-    }),
+        );
+        return {
+          items: items.map((o) => ({
+            id: o.id,
+            personId: o.person_id,
+            person: { name: o.name, email: o.email },
+            questionnaireIds: (o.questionnaire_ids ?? []).sort(),
+            revision: o.revision,
+          })),
+        };
+      },
+      'relation',
+    ),
   );
   module.post('/activities/:id/objects', (c) => {
     const id = uuidParam(c);
@@ -389,7 +407,7 @@ function registerObjectCreation(module: Hono<TenantEnv>, deps: TenantRouteDeps):
         });
         return view;
       },
-      { guard: guarded(id), status: 201 },
+      { need: { object: 'relation', operation: 'create' }, guard: guarded(id), status: 201 },
     );
   });
 }
@@ -440,7 +458,7 @@ function registerObjectQuestionnaires(module: Hono<TenantEnv>, deps: TenantRoute
         });
         return view;
       },
-      { guard: guarded(id) },
+      { need: { object: 'relation', operation: 'update' }, guard: guarded(id) },
     );
   });
 }
@@ -492,7 +510,7 @@ function registerObjectRemoval(module: Hono<TenantEnv>, deps: TenantRouteDeps): 
         });
         return { id: objectId, removed: true };
       },
-      { guard: guarded(id) },
+      { need: { object: 'relation', operation: 'delete' }, guard: guarded(id) },
     );
   });
 }
@@ -642,6 +660,7 @@ function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
       },
       {
         // 选择“同步”时需要员工信息查看权：命令前（含幂等重放）同样校验
+        need: { object: 'relation', operation: 'create', button: 'import' },
         guard: guarded(id),
         preflight: async () => {
           const body = (await jsonOrEmpty(c)) as { sync?: unknown } | null;
@@ -693,7 +712,7 @@ function registerConfirmationInvite(module: Hono<TenantEnv>, deps: TenantRouteDe
         });
         return view;
       },
-      { guard: guarded(id), status: 201 },
+      { need: { object: 'relation', operation: 'update', button: 'invite' }, guard: guarded(id), status: 201 },
     );
   });
 }

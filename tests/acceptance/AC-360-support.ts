@@ -148,9 +148,7 @@ function hybridAuthorizer(db: Db, clock: () => Date, access: EmployeeAccess): Au
           getModuleViewableFieldsInTransaction(deps, ctx, objectCode, t);
         return (await (tx ? read(tx) : withTenant(db, tenantId, read))) ?? new Set<string>();
       }
-      return (
-        access.fields[objectCode] ?? new Set(objectCatalog.get(objectCode)?.fields.map((f) => f.code) ?? [])
-      );
+      return access.fields[objectCode] ?? new Set(objectCatalog.get(objectCode)?.fields.map((f) => f.code) ?? []);
     },
   });
   return authorize;
@@ -162,7 +160,8 @@ export async function world360(db: Db, label: string, options: { access?: Employ
   const admin = session.user.id;
   const tenantId = session.tenant.id;
   const clock = () => now;
-  const api = tenantApi(db, { clock, authorize: hybridAuthorizer(db, clock, options.access ?? fullAccess()) });
+  const authorize = hybridAuthorizer(db, clock, options.access ?? fullAccess());
+  const api = tenantApi(db, { clock, authorize });
   // 权限管理接口走真实授权器；租户首位成员是企业管理员（开通时指定）
   const permission = tenantApi(db, { clock, authorize: undefined });
 
@@ -224,10 +223,7 @@ export async function world360(db: Db, label: string, options: { access?: Employ
 
   /** 企业管理员在“用户授权”里给用户授予 360 身份（DEC-280②）。 */
   async function grantProfile(userId: string, profileId: string) {
-    return ok<{ id: string; revision: number }>(
-      enterprise('POST', '/grants', { body: { userId, profileId } }),
-      201,
-    );
+    return ok<{ id: string; revision: number }>(enterprise('POST', '/grants', { body: { userId, profileId } }), 201);
   }
 
   /** 撤销用户授权（只停授权，不删活动授权行）。 */
@@ -400,6 +396,8 @@ export async function world360(db: Db, label: string, options: { access?: Employ
   return {
     db,
     api,
+    /** 本夹具的授权器（审计查询等其他入口要用同一套判定）。 */
+    authorize,
     session,
     tenantId,
     admin,

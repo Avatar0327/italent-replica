@@ -1,7 +1,7 @@
 -- R3-T03 360 度评估：统一租户隔离（硬规则 7）；关联日志、计分批次与得分只追加（AGENTS.md §10「审计」）。
-SELECT enable_tenant_isolation('survey360_admins');
+SELECT enable_tenant_isolation('survey360_settings');
 --> statement-breakpoint
-GRANT SELECT, INSERT, UPDATE, DELETE ON survey360_admins TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON survey360_settings TO app_user;
 --> statement-breakpoint
 SELECT enable_tenant_isolation('survey360_people');
 --> statement-breakpoint

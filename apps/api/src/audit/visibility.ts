@@ -196,7 +196,7 @@ export const APPROVAL_FLOW_FIELDS = [
 ];
 
 /**
- * R3-T03：360 日志按 360 管理员身份与活动授权裁剪（DEC-027，不走组织员工对象权限）。活动内对象的写入
+ * R3-T03：360 日志按查看人的 360 身份（DEC-280，平台身份 × 应用 Survey360）与活动授权裁剪。活动内对象的写入
  * 一律在 after 里带 activityId；权限对象编码只作占位，查看规则全部由 resolve 给出。
  */
 const SURVEY360_OBJECT = 'Survey360';
@@ -215,15 +215,21 @@ const survey360Rules: readonly Rule[] = [
       extra ? sql`COALESCE(${row.after}->>'activityId', '') IN (${extra})` : sql`false`,
   },
   {
-    types: ['survey360-admin', 'survey360-person', 'survey360-role', 'survey360-sync-conflict'],
+    types: ['survey360-person', 'survey360-sync-conflict'],
     objectCode: SURVEY360_OBJECT,
-    resolve: survey360AuditScope('system'),
+    resolve: survey360AuditScope('person'),
+    visible: (_scope, _row, _viewer, { extra }) => extra ?? sql`false`,
+  },
+  {
+    types: ['survey360-role', 'survey360-settings'],
+    objectCode: SURVEY360_OBJECT,
+    resolve: survey360AuditScope('settings'),
     visible: (_scope, _row, _viewer, { extra }) => extra ?? sql`false`,
   },
   {
     types: ['survey360-questionnaire'],
     objectCode: SURVEY360_OBJECT,
-    resolve: survey360AuditScope('any'),
+    resolve: survey360AuditScope('questionnaire'),
     visible: (_scope, _row, _viewer, { extra }) => extra ?? sql`false`,
   },
 ];

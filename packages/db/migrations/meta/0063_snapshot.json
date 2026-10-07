@@ -1,5 +1,5 @@
 {
-  "id": "b8b5c972-b38f-4296-ac58-2fa3f7a26c17",
+  "id": "e36dede7-476b-458a-bd74-8d2033ac356c",
   "prevId": "8697c5d8-9629-46b4-b102-6d86b7cf8030",
   "version": "7",
   "dialect": "postgresql",
@@ -28696,130 +28696,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.survey360_admins": {
-      "name": "survey360_admins",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "role": {
-          "name": "role",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'active'"
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "survey360_admins_active_user": {
-          "name": "survey360_admins_active_user",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"survey360_admins\".\"status\" = 'active'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "survey360_admins_tenant_id_tenants_id_fk": {
-          "name": "survey360_admins_tenant_id_tenants_id_fk",
-          "tableFrom": "survey360_admins",
-          "tableTo": "tenants",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "survey360_admins_user_id_users_id_fk": {
-          "name": "survey360_admins_user_id_users_id_fk",
-          "tableFrom": "survey360_admins",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "survey360_admins_role": {
-          "name": "survey360_admins_role",
-          "value": "\"survey360_admins\".\"role\" IN ('system', 'advanced', 'general')"
-        },
-        "survey360_admins_status": {
-          "name": "survey360_admins_status",
-          "value": "\"survey360_admins\".\"status\" IN ('active', 'revoked')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.survey360_answers": {
       "name": "survey360_answers",
       "schema": "",
@@ -31338,6 +31214,79 @@
           "value": "\"survey360_scores\".\"scope\" IN ('self', 'other', 'role')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.survey360_settings": {
+      "name": "survey360_settings",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "fine_permission": {
+          "name": "fine_permission",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_settings_tenant_id_tenants_id_fk": {
+          "name": "survey360_settings_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_settings",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "survey360_settings_updated_by_users_id_fk": {
+          "name": "survey360_settings_updated_by_users_id_fk",
+          "tableFrom": "survey360_settings",
+          "tableTo": "users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.survey360_sheets": {

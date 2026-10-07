@@ -35,7 +35,7 @@ import {
   requireRevision,
   rows,
   type Survey360Context,
-  SYSTEM_ONLY,
+  BUTTONS,
   uuid,
   write,
 } from './context.js';
@@ -518,20 +518,18 @@ async function linkConflict(
 }
 
 /**
- * 同步相关接口（只给 360 系统管理员）。员工信息查看权与范围在命令前（含幂等重放）与命令事务内各校验一次
- * （第 1 轮审查 P2-4）：失去查看权后用原命令 ID 重放同样 403。
+ * 同步相关接口：须持“从系统管理中同步人员信息”按钮（DEC-280①：360 系统 / 高级管理员有，一般管理员没有）。
+ * 员工信息查看权与范围在命令前（含幂等重放）与命令事务内各校验一次（第 1 轮审查 P2-4）：失去查看权后用原命令 ID
+ * 重放同样 403。
  */
+const SYNC = { object: 'person', button: BUTTONS.sync } as const;
+
 export function registerSyncRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   const preflight = (c: C) => async () => void (await routeEmployeeScope(c, deps));
   module.get('/people/sync-conflicts', (c) =>
-    read(
-      c,
-      deps,
-      async (tx, _admin, tenant) => ({
-        items: await pendingConflicts(tx, await syncAccess(tx, deps, tenant, `${PERSONNEL_OBJECT}.list`)),
-      }),
-      SYSTEM_ONLY,
-    ),
+    read(c, deps, SYNC, async (tx, _admin, tenant) => ({
+      items: await pendingConflicts(tx, await syncAccess(tx, deps, tenant, `${PERSONNEL_OBJECT}.list`)),
+    })),
   );
   module.post('/people/sync', (c) =>
     write(
@@ -539,7 +537,7 @@ export function registerSyncRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
       deps,
       z.strictObject({ after: uuid.optional(), limit: z.int().min(1).max(SYNC_LIMIT).optional() }),
       async (tx, ctx, input) => syncPeople(tx, ctx, await syncAccess(tx, deps, ctx), input),
-      { roles: SYSTEM_ONLY, revisionFree: true, preflight: preflight(c) },
+      { need: SYNC, revisionFree: true, preflight: preflight(c) },
     ),
   );
   module.post('/people/sync-conflicts/:id/resolve', (c) => {
@@ -549,7 +547,7 @@ export function registerSyncRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
       deps,
       z.strictObject({ action: z.enum(['link', 'create', 'ignore']), personId: uuid.optional() }),
       async (tx, ctx, input) => resolveConflict(tx, ctx, await syncAccess(tx, deps, ctx), id, input),
-      { roles: SYSTEM_ONLY, preflight: preflight(c) },
+      { need: SYNC, preflight: preflight(c) },
     );
   });
 }

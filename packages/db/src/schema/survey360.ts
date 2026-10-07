@@ -1,6 +1,7 @@
 /**
  * 360 度评估（R3-T03，docs/02_业务建模/25）。360 是独立的人员与评价关系体系（DEC-027）：
- * 自有人员表（内外部同表、邮箱为键）、自有管理员身份与活动授权；与组织员工只经“同步”衔接（DEC-030）。
+ * 自有人员表（内外部同表、邮箱为键）与活动授权；与组织员工只经“同步”衔接（DEC-030）。
+ * 360 身份照 DEC-280 走平台“身份 × 应用”（应用 Survey360），由企业管理员在“用户授权”里授予。
  * 匿名口径按 DEC-149：不设最少评价人数阈值，只有活动级“作答页评价者姓名 / 评价角色”两个开关。
  */
 import { sql } from 'drizzle-orm';
@@ -38,29 +39,17 @@ const uuids = (name: string) =>
     .notNull()
     .default(sql`'{}'::uuid[]`);
 
-/** 360 独立管理员身份：系统 / 高级 / 一般（`25` §4；DEC-027）。 */
-export const survey360Admins = pgTable(
-  'survey360_admins',
-  {
-    id: id(),
-    tenantId: tenantId(),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => users.id),
-    role: text('role').notNull(),
-    status: text('status').notNull().default('active'),
-    revision: revision(),
-    createdBy: uuid('created_by').notNull(),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    uniqueIndex('survey360_admins_active_user')
-      .on(t.tenantId, t.userId)
-      .where(sql`${t.status} = 'active'`),
-    check('survey360_admins_role', sql`${t.role} IN ('system', 'advanced', 'general')`),
-    check('survey360_admins_status', sql`${t.status} IN ('active', 'revoked')`),
-  ],
-);
+/**
+ * 360 租户级设置（DEC-280⑤）：“精细化权限”开启后，没有“全部活动”按钮的 360 身份只看到数据权限范围内的人员。
+ * 360 身份本身走平台“身份 × 应用”（应用 Survey360）与用户授权，360 侧不另存管理员。
+ */
+export const survey360Settings = pgTable('survey360_settings', {
+  tenantId: tenantId().primaryKey(),
+  finePermission: boolean('fine_permission').notNull().default(false),
+  revision: revision(),
+  updatedBy: uuid('updated_by').references(() => users.id),
+  updatedAt: at('updated_at').notNull().defaultNow(),
+});
 
 /** 360 人员（`I360Cloud.Personnel`）：邮箱为键；组织信息是同步时写入的文本快照，不实时引用组织对象。 */
 export const survey360People = pgTable(
