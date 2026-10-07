@@ -10,6 +10,7 @@ import { allowAll, tenantApi } from './support/tenant-api.js';
 import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
 import { createEmploymentBusiness } from '../../apps/api/src/modules/employment/write-service.js';
 import { runSequenceSyncJobs } from '../../apps/api/src/modules/job/sequence-worker.js';
+import { resolveTransferForm } from '../../apps/api/src/modules/transfer/configuration.js';
 
 // PR #99 第 4 轮：只读字段逐字段判定来源（AC-TRF-60）、职位单独延迟继承（AC-TRF-61）、审批节点编辑 × 职位来源（AC-TRF-62）。
 const database = useTestDb();
@@ -28,6 +29,7 @@ let levelId: string;
 let otherLevel: string;
 let sequenceId: string;
 let originalPosition: string;
+let otherPosition: string;
 
 interface Business {
   id: string;
@@ -298,6 +300,7 @@ beforeAll(async () => {
   levelId = await job('levels', { level: 3, levelTypeId });
   otherLevel = await job('levels', { level: 4, levelTypeId });
   originalPosition = await job('positions', { orgId: source, postId });
+  otherPosition = await job('positions', { orgId: source, postId });
   violationPosition = await job('positions', { orgId: source, postId: violationPost });
   const editable = ['positionId', 'levelId', 'remarks'];
   await w.publishedProcess({
@@ -431,6 +434,74 @@ describe('AC-TRF-60 旧违规职务 / 职级 / 序列逐字段判定来源，无
       expect(await payload(created.id)).toMatchObject({
         status: 'effective',
         record: { fields: { departmentId: source, positionId: position, ...(synced ? propagated : {}) } },
+      });
+    },
+  );
+});
+
+describe('AC-TRF-61 部门明确、职位单独延迟继承：生效时按前驱继承再判断', () => {
+  it.each([
+    // 审查原文路径：建草稿 → HR 删除较早调整 → 直接提交、审批、落地，不经草稿修改。
+    { scenario: 'deleted', patch: false },
+    // 草稿改期发生在删除调整之前：改期时前驱仍是 A/P2，不能借改期把职位提前固定。
+    { scenario: 'deleted', patch: true },
+    { scenario: 'kept', patch: true },
+    { scenario: 'cross', patch: true },
+  ] as const)(
+    'AC-TRF-61 未分组本人表单显式部门、不填职位，较早组织调整=$scenario，草稿改期=$patch',
+    async ({ scenario, patch }) => {
+      const formId = `self-position-deferred-${randomUUID()}`;
+      const form = await withTenant(database().db, w.tenant.id, (tx) => resolveTransferForm(tx, w.tenant.id, FORM));
+      await w.json(
+        await w.request(w.hr.id, 'PUT', `${BASE}/transfers/forms/${formId}`, {
+          ifMatch: 0,
+          body: { name: '合成未分组本人调动', group: null, fieldModes: form.fieldModes },
+        }),
+      );
+      const person = await actor(`合成职位单独延迟-${scenario}-${patch}`);
+      const adjustment =
+        scenario === 'cross'
+          ? null
+          : await w.json<{ id: string }>(
+              await w.request(w.hr.id, 'POST', `${BASE}/employees/${person.employeeId}/businesses`, {
+                ifMatch: await revision(person),
+                body: {
+                  kind: 'org_adjustment',
+                  mode: 'direct',
+                  effectiveDate: '2026-10-18',
+                  fields: { departmentId: source, positionId: otherPosition },
+                },
+              }),
+              201,
+            );
+      const departmentId = scenario === 'cross' ? target : source;
+      const created = await selfCreate(person, { departmentId }, false, formId);
+      const deferred = async () => {
+        const latest = await latestVersion(created.id);
+        expect(latest.deferred).toContain('preset:positionId');
+        expect(latest.deferred).not.toContain('preset:departmentId');
+      };
+      await deferred();
+      if (patch) {
+        await command(person, created.id, 'PATCH', { effectiveDate: '2026-10-20' });
+        await deferred();
+      }
+      if (scenario === 'deleted') {
+        const removed = await w.business(adjustment!.id);
+        await w.json(
+          await w.request(w.hr.id, 'DELETE', `${BASE}/businesses/${adjustment!.id}`, {
+            ifMatch: removed.revision,
+            body: {},
+          }),
+        );
+      }
+      await command(person, created.id, 'submit');
+      await approve(person, created.id);
+      await activate(patch ? '2026-10-20' : date);
+      const expected = { deleted: originalPosition, kept: otherPosition, cross: null }[scenario];
+      expect(await payload(created.id)).toMatchObject({
+        status: 'effective',
+        record: { fields: { departmentId, positionId: expected } },
       });
     },
   );
