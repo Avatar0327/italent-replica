@@ -134,99 +134,219 @@ describe('ac-coverage 统计规则', () => {
   });
 });
 
-/** 第四轮 P2：参数表标识符按使用位置的词法作用域解析；无法静态确定时报 problems，不静默择一。 */
-describe('ac-coverage 参数表按词法作用域解析', () => {
-  const scoped = mkdtempSync(join(tmpdir(), 'ac-coverage-scope-'));
-  afterAll(() => rmSync(scoped, { recursive: true, force: true }));
-  const put = (path: string, text: string) => {
-    mkdirSync(join(scoped, path, '..'), { recursive: true });
-    writeFileSync(join(scoped, path), text);
+/**
+ * DEC-245（PR #91 第五轮）：参数表只认白名单写法——标题直接写编号、.each / .for 的内联数组字面量、
+ * 同文件顶层 const 数组字面量（全文无重赋值、无同名遮蔽）。其他写法一律进 problems、--check 失败，且不计入覆盖。
+ */
+describe('ac-coverage 白名单（DEC-245）', () => {
+  const base = mkdtempSync(join(tmpdir(), 'ac-coverage-whitelist-'));
+  afterAll(() => rmSync(base, { recursive: true, force: true }));
+  const put = (path: string, lines: string[]) => {
+    mkdirSync(join(base, path, '..'), { recursive: true });
+    writeFileSync(join(base, path), `${lines.join('\n')}\n`);
   };
-  const ids = ['01', '02', '03', '04', '05', '06', '07'].map((n) => `AC-DEMO-${n}`);
-  put('docs/trace.md', ['| 编号 | 场景 |', '|---|---|', ...ids.map((id) => `| ${id} | 合成 |`)].join('\n'));
-  // 审查原文夹具：两个 describe 各自声明同名 rows。
-  put(
-    'tests/same-name.test.ts',
-    `import { describe, it } from 'vitest';
-describe('one', () => {
-  const rows = [{ ac: 'AC-DEMO-01' }];
-  it.each(rows)('$ac', () => {});
-});
-describe('two', () => {
-  const rows = [{ ac: 'AC-DEMO-02' }];
-  it.each(rows)('$ac', () => {});
-});
-`,
-  );
-  // 嵌套遮蔽：内层 describe 用内层 rows，外层用外层 rows（就近优先）。
-  put(
-    'tests/shadow.test.ts',
-    `import { describe, it } from 'vitest';
-const rows = [{ ac: 'AC-DEMO-03' }];
-describe('outer', () => {
-  it.each(rows)('$ac', () => {});
-  describe('inner', () => {
-    const rows = [{ ac: 'AC-DEMO-04' }];
-    for (const kind of ['a', 'b']) it.each(rows)(\`\${kind} $ac\`, () => {});
-  });
-});
-`,
-  );
-  // 无法静态确定：let 被重新赋值、同一作用域重复 var 声明 → 报 problems，两份都不计。
-  put(
-    'tests/ambiguous.test.ts',
-    `import { it } from 'vitest';
-let reassigned = [{ ac: 'AC-DEMO-05' }];
-reassigned = [{ ac: 'AC-DEMO-06' }];
-it.each(reassigned)('$ac', () => {});
-var twice = [{ ac: 'AC-DEMO-07' }];
-var twice = [{ ac: 'AC-DEMO-07' }];
-it.each(twice)('$ac', () => {});
-`,
-  );
-  put(
-    'config.json',
-    JSON.stringify({
-      title: '作用域',
-      root: '.',
-      tests: ['tests'],
-      definitions: ['docs'],
-      groups: [{ name: '全部', include: ['AC-DEMO-01~07'] }],
-    }),
-  );
+  const ids = Array.from({ length: 29 }, (_, i) => `AC-DEMO-${String(i + 1).padStart(2, '0')}`);
+  put('docs/trace.md', ['| 编号 | 场景 |', '|---|---|', ...ids.map((id) => `| ${id} | 合成 |`)]);
 
-  function scopedResult() {
-    const output = execFileSync(
-      process.execPath,
-      [SCRIPT, '--config', join(scoped, 'config.json'), '--format', 'json'],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
-    );
-    const result = JSON.parse(output) as {
+  function check(name: string, tests: string[]) {
+    put(`${name}.json`, [
+      JSON.stringify({
+        title: name,
+        root: '.',
+        tests,
+        definitions: ['docs'],
+        groups: [{ name, include: ['AC-DEMO-01~29'] }],
+      }),
+    ]);
+    const args = [SCRIPT, '--config', join(base, `${name}.json`)];
+    const json = spawnSync(process.execPath, [...args, '--format', 'json'], { encoding: 'utf8' });
+    const result = JSON.parse(json.stdout) as {
       groups: { rows: { id: string; status: string; cases: number }[] }[];
       problems: string[];
     };
-    return { ...result, byId: new Map(result.groups[0]!.rows.map((r) => [r.id, r])) };
+    put(`${name}.md`, ['<!-- ac-coverage:begin -->', '<!-- ac-coverage:end -->']);
+    spawnSync(process.execPath, [...args, '--write', join(base, `${name}.md`)], { encoding: 'utf8' });
+    const verdict = spawnSync(process.execPath, [...args, '--check', join(base, `${name}.md`)], { encoding: 'utf8' });
+    const byId = new Map(result.groups[0]!.rows.map((r) => [r.id, r]));
+    return { problems: result.problems, byId, status: verdict.status, stderr: verdict.stderr };
   }
 
-  it('两个 describe 同名 rows：AC-DEMO-01、AC-DEMO-02 各 1 个用例且均已覆盖', () => {
-    const { byId } = scopedResult();
-    expect(byId.get('AC-DEMO-01')).toMatchObject({ status: '已覆盖', cases: 1 });
-    expect(byId.get('AC-DEMO-02')).toMatchObject({ status: '已覆盖', cases: 1 });
+  // 每个反例单独成文件：[文件名, 源码行, 期望的 problems（行号与原因）]。
+  const REJECTED = [
+    [
+      'catch-shadow',
+      [
+        "import { it } from 'vitest';",
+        "const rows = [{ ac: 'AC-DEMO-01' }];",
+        'try {',
+        "  throw [{ ac: 'AC-DEMO-02' }];",
+        '} catch (rows) {',
+        "  it.each(rows)('$ac', () => {});",
+        '}',
+      ],
+      [/:6：.*“rows”.*第 5 行有同名声明/],
+    ],
+    [
+      'destructure-let',
+      [
+        "import { it } from 'vitest';",
+        "let rows = [{ ac: 'AC-DEMO-01' }];",
+        "[rows] = [[{ ac: 'AC-DEMO-02' }]];",
+        "it.each(rows)('$ac', () => {});",
+      ],
+      [/:4：.*“rows”.*不是同文件顶层 const/],
+    ],
+    [
+      'destructure-const',
+      [
+        "import { it } from 'vitest';",
+        "const rows = [{ ac: 'AC-DEMO-01' }];",
+        "const other = { rows: [{ ac: 'AC-DEMO-02' }] };",
+        '({ rows } = other);',
+        "it.each(rows)('$ac', () => {});",
+      ],
+      [/:5：.*“rows”.*第 4 行被重新赋值/],
+    ],
+    [
+      'imported',
+      ["import { it } from 'vitest';", "import { rows } from './tables.js';", "it.each(rows)('$ac', () => {});"],
+      [/:3：.*“rows”.*不是同文件顶层 const/],
+    ],
+    [
+      'function-param',
+      [
+        "import { it } from 'vitest';",
+        "[[{ ac: 'AC-DEMO-01' }]].forEach((rows) => {",
+        "  it.each(rows)('$ac', () => {});",
+        '});',
+      ],
+      [/:3：.*“rows”.*不是同文件顶层 const/],
+    ],
+    [
+      'let-table',
+      ["import { it } from 'vitest';", "let rows = [{ ac: 'AC-DEMO-01' }];", "it.each(rows)('$ac', () => {});"],
+      [/:3：.*“rows”.*不是同文件顶层 const/],
+    ],
+    [
+      'nested-const',
+      [
+        "import { describe, it } from 'vitest';",
+        "describe('d', () => {",
+        "  const rows = [{ ac: 'AC-DEMO-01' }];",
+        "  it.each(rows)('$ac', () => {});",
+        '});',
+      ],
+      [/:4：.*“rows”.*不是同文件顶层 const/],
+    ],
+    [
+      'spread',
+      ["import { it } from 'vitest';", "const base = [{ ac: 'AC-DEMO-01' }];", "it.each([...base])('$ac', () => {});"],
+      [/:3：参数表含非字面量（展开）/],
+    ],
+    // 第三轮回归：两个 describe 各自声明同名 rows——按 DEC-245 属非顶层声明，两处都报。
+    [
+      'same-name',
+      [
+        "import { describe, it } from 'vitest';",
+        "describe('one', () => {",
+        "  const rows = [{ ac: 'AC-DEMO-01' }];",
+        "  it.each(rows)('$ac', () => {});",
+        '});',
+        "describe('two', () => {",
+        "  const rows = [{ ac: 'AC-DEMO-02' }];",
+        "  it.each(rows)('$ac', () => {});",
+        '});',
+      ],
+      [/:4：.*“rows”.*不是同文件顶层 const/, /:8：.*“rows”.*不是同文件顶层 const/],
+    ],
+    [
+      'call-table',
+      ["import { it } from 'vitest';", "it.each(['AC-DEMO-01'].map((ac) => ({ ac })))('$ac', () => {});"],
+      [/:2：参数表不是数组字面量/],
+    ],
+    [
+      'identifier-leaf',
+      ["import { it } from 'vitest';", "const ac = 'AC-DEMO-01';", "it.each([{ ac }])('$ac', () => {});"],
+      [/:3：参数表含非字面量（简写属性）/],
+    ],
+    [
+      'template-title',
+      ["import { it } from 'vitest';", "const id = 'AC-DEMO-01';", 'it(`${id} 标题`, () => {});'],
+      [/:3：用例标题含模板插值/],
+    ],
+    [
+      'identifier-title',
+      ["import { it } from 'vitest';", "for (const title of ['AC-DEMO-01']) it(title, () => {});"],
+      [/:2：用例标题不是字符串字面量/],
+    ],
+    [
+      'helper-function',
+      [
+        "import { describe, it } from 'vitest';",
+        'function cases() {',
+        "  it('AC-DEMO-01 定义在函数里', () => {});",
+        '}',
+        "describe('AC-DEMO-02 外层', () => cases());",
+      ],
+      [/:3：用例定义在函数“cases”中/],
+    ],
+    [
+      'tagged-each',
+      ["import { it } from 'vitest';", "it.each`ac\n${'AC-DEMO-01'}`('$ac', () => {});"],
+      [/:2：参数表不是数组字面量/],
+    ],
+    [
+      'alias-import',
+      ["import { it as check } from 'vitest';", "check('AC-DEMO-01', () => {});"],
+      [/:1：从 vitest 以别名导入“it”/],
+    ],
+    [
+      'extended-test',
+      ["import { it } from 'vitest';", 'const custom = it.extend({});', "custom('AC-DEMO-01', () => {});"],
+      [/:2：自定义用例函数（it\.extend）/],
+    ],
+  ] as const;
+
+  put('rejected/tables.js', ["export const rows = [{ ac: 'AC-DEMO-02' }];"]);
+  for (const [name, lines] of REJECTED) put(`rejected/${name}.test.ts`, [...lines]);
+
+  it.each(REJECTED)('反例 %s：进入 problems、--check 失败、不计入覆盖', (name, _lines, expected) => {
+    const { problems, byId, status, stderr } = check(name, [`rejected/${name}.test.ts`]);
+    expect(problems).toHaveLength(expected.length);
+    expected.forEach((pattern, i) => expect(problems[i]).toMatch(new RegExp(`${name}\\.test\\.ts${pattern.source}`)));
+    expect(status).toBe(1);
+    expect(stderr).toContain(problems[0]);
+    expect(byId.get('AC-DEMO-02')).toMatchObject({ status: '未覆盖', cases: 0 });
+    if (name !== 'helper-function') expect(byId.get('AC-DEMO-01')).toMatchObject({ status: '未覆盖', cases: 0 });
   });
 
-  it('内层同名声明遮蔽外层：外层用例只计 AC-DEMO-03，内层循环两次只计 AC-DEMO-04', () => {
-    const { byId } = scopedResult();
-    expect(byId.get('AC-DEMO-03')).toMatchObject({ status: '已覆盖', cases: 1 });
-    expect(byId.get('AC-DEMO-04')).toMatchObject({ status: '已覆盖', cases: 1 });
-  });
+  put('accepted/whitelist.test.ts', [
+    "import { describe, it, test } from 'vitest';",
+    "const rows = [{ ac: 'AC-DEMO-23' }] as const;",
+    "it('AC-DEMO-20 标题直接写编号', () => {});",
+    "it.each([{ ac: 'AC-DEMO-21' }, { ac: 'AC-DEMO-22' }])('$ac 内联数组字面量', () => {});",
+    "describe('同文件顶层 const 数组字面量', () => {",
+    "  it.each(rows)('$ac 第一次引用', () => {});",
+    "  test.for(rows)('$ac 第二次引用', () => {});",
+    "  it('读取不算重赋值', () => void rows.length);",
+    '});',
+    "it.each([{ ac: 'AC-DEMO-24', note: 'AC-DEMO-25', run: () => 1 }])('$ac 只计标题引用的字段', () => {});",
+    "it.each([['AC-DEMO-26', 'AC-DEMO-27']])('%s 按位置只计第一个', () => {});",
+    "it.each(Array.from({ length: 2 }))('AC-DEMO-28 标题无占位时不读参数表', () => {});",
+  ]);
+  put('accepted/other-file.test.ts', [
+    "import { it } from 'vitest';",
+    "const rows = [{ ac: 'AC-DEMO-29' }];",
+    "it.each(rows)('$ac 另一文件的同名顶层 const 互不影响', () => {});",
+  ]);
 
-  it('被重新赋值或重复声明的参数表无法静态确定：报 problems，不计入任何一份', () => {
-    const { byId, problems } = scopedResult();
-    for (const id of ['AC-DEMO-05', 'AC-DEMO-06', 'AC-DEMO-07'])
-      expect(byId.get(id)).toMatchObject({ status: '未覆盖', cases: 0 });
-    expect(problems).toEqual([
-      expect.stringMatching(/ambiguous\.test\.ts:4.*reassigned.*无法静态确定/),
-      expect.stringMatching(/ambiguous\.test\.ts:7.*twice.*无法静态确定/),
-    ]);
+  it('白名单三种写法计入覆盖、problems 为空、--check 通过；只计标题实际引用的参数', () => {
+    const { problems, byId, status } = check('accepted', ['accepted']);
+    expect(problems).toEqual([]);
+    expect(status).toBe(0);
+    const covered = { 20: 1, 21: 1, 22: 1, 23: 2, 24: 1, 26: 1, 28: 1, 29: 1 };
+    for (const [n, cases] of Object.entries(covered))
+      expect(byId.get(`AC-DEMO-${n}`)).toMatchObject({ status: '已覆盖', cases });
+    for (const n of ['25', '27']) expect(byId.get(`AC-DEMO-${n}`)).toMatchObject({ status: '未覆盖', cases: 0 });
   });
 });
