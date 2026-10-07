@@ -3,8 +3,8 @@
 "stats": {
 "merged": 52,
 "open": 10,
-"dec": 290,
-"ev": "19/111"
+"dec": 292,
+"ev": "18/112"
 },
 "tasks": {
 "M0": {
@@ -889,7 +889,7 @@
 },
 "96": {
 "s": "active",
-"r": 6,
+"r": 7,
 "n": "Opus 第 3 轮审查中（「F-026 审查」续审，D 档穷举占编入口）→ Sol Ultra 最终复查"
 },
 "97": {
@@ -904,21 +904,30 @@
 },
 "102": {
 "s": "active",
-"r": 3,
+"r": 4,
 "n": "Draft 开发中"
 },
 "106": {
 "s": "review",
-"r": 3,
+"r": 4,
 "n": "待 Sol Ultra"
 },
 "108": {
+"s": "review",
+"r": 4,
+"n": ""
+},
+"107": {
 "s": "review",
 "r": 3,
 "n": ""
 }
 },
 "log": [
+[
+"10-07",
+"取证三批完成（Q-M0-108～113 推进）；第四批开工前扫描已排；5 项需你亲自决定 / 操作已交总编排"
+],
 [
 "10-07",
 "DEC-286 试点通过：审查一律改为 codex exec 后台发起"
@@ -1988,7 +1997,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 14:18",
+"liveUpdated": "10-07 15:36",
 "chains": [
 {
 "g": "exit",
@@ -2033,11 +2042,11 @@
 "k": "run",
 "pr": 83,
 "n": "组织变更联动任职",
-"seg": "ev:d ds:d4 dev:d1 rev:a1 mg:w",
-"now": "拆分本体 Astra Ultra 第 1 轮审查中",
+"seg": "ev:d ds:d4 dev:a2 rev:d1 mg:w",
+"now": "拆分本体第 2 轮修改（5 组 P2）",
 "wait": "来源模型放哪由审查合并窗口判断",
 "fable": "1",
-"up": "10-07 第 8 轮后调到 Max"
+"up": "10-07 调到 Max"
 },
 {
 "id": "R2-T03",
@@ -2046,8 +2055,8 @@
 "k": "run",
 "pr": 100,
 "n": "离职管理",
-"seg": "ev:d ds:a4 dev:w rev:w mg:w",
-"now": "设计 v1.4 复审中",
+"seg": "ev:d ds:a5 dev:w rev:w mg:w",
+"now": "设计 v1.5 复审出结论，待读取（关键一轮）",
 "wait": "#83 合并后写代码",
 "fable": "1"
 },
@@ -2074,9 +2083,10 @@
 "k": "run",
 "pr": 96,
 "n": "重叠调入超编确认",
-"seg": "ev:d ds:n dev:a6 rev:d5 mg:w",
-"now": "第 6 轮按 DEC-284 收缩（通用提示、重放只返回状态、审计复用投影）",
-"fable": "1"
+"seg": "ev:d ds:n dev:w7 rev:d6 mg:w",
+"now": "第 6 轮剩 1 个泄露 P2（旧格式回执），等你定第 7 轮",
+"fable": "1",
+"need": "1"
 },
 {
 "id": "F-027",
@@ -2085,8 +2095,8 @@
 "k": "run",
 "pr": 97,
 "n": "审批中心前端",
-"seg": "ev:n ds:n dev:a6 rev:d5 mg:w",
-"now": "第 6 轮修改（DEC-288：展示与命令状态分开，Fable High）",
+"seg": "ev:n ds:n dev:d6 rev:w6 mg:w",
+"now": "第 6 轮出结论，待读取",
 "fable": "1"
 },
 {
@@ -2140,10 +2150,10 @@
 "o": 3,
 "k": "run",
 "n": "函数库补齐 63 个",
-"seg": "ev:d ds:n dev:a3 rev:d2 mg:w",
-"now": "第 3 轮修改（日期检查被绕过、布尔误判、环枚举性能）",
+"seg": "ev:d ds:n dev:a4 rev:d3 mg:w",
+"now": "第 4 轮修改（3 个数据正确性 P2）",
 "pr": 108,
-"up": "10-07 第 3 轮调到 Max"
+"up": "10-07 调到 Max"
 },
 {
 "id": "R3-T05",
@@ -2167,8 +2177,8 @@
 "o": 1,
 "k": "run",
 "n": "人才标准与指标库",
-"seg": "ev:d ds:n dev:a3 rev:d2 mg:w",
-"now": "第 3 轮按 DEC-281（Q-M0-107 原站口径）修改后合并",
+"seg": "ev:d ds:n dev:d4 rev:w4 mg:w",
+"now": "第 4 轮完成，待发起审查（合并还要等 Q-M0-113 的 DEC）",
 "pr": 106
 },
 {
@@ -2177,9 +2187,10 @@
 "o": 1,
 "k": "run",
 "n": "360 度评估（PR-A）",
-"seg": "ev:d ds:n dev:d2 rev:a2 mg:w",
-"now": "PR-A 第 2 轮审查中（C 档，复审 + 终审）",
-"pr": 107
+"seg": "ev:d ds:n dev:a3 rev:d2 mg:w",
+"now": "PR-A 第 3 轮修改（8 个 P2，公共鉴权没接全）",
+"pr": 107,
+"up": "10-07 第 3 轮调到 Max"
 },
 {
 "id": "R3-T02",
@@ -2205,9 +2216,9 @@
 "k": "run",
 "pr": 102,
 "n": "AC 覆盖运行时统计",
-"seg": "ev:n ds:n dev:d3 rev:a3 mg:w",
-"now": "Sol Ultra 第 3 轮审查中",
-"up": "10-07 第 3 轮调到 Max"
+"seg": "ev:n ds:n dev:a4 rev:d3 mg:w",
+"now": "第 4 轮修改（3 个 P2：.only、位置未知、跨 project）",
+"up": "10-07 调到 Max"
 },
 {
 "id": "F-025",
@@ -2284,23 +2295,14 @@
 "u": "#106 合并后"
 },
 {
-"id": "Q-M0-33",
-"g": "exit",
-"o": 2,
-"k": "run",
-"n": "系统联动遇范围外记录（#83 用）",
-"seg": "ev:b ds:n dev:n rev:n mg:n",
-"now": "暂缓：需你用 A4 账号登录",
-"need": "1"
-},
-{
 "id": "Q-M0-108",
 "g": "r3a",
 "o": 2,
-"k": "run",
+"k": "done",
 "n": "R3-T02 评定状态机取证",
-"seg": "ev:a ds:n dev:n rev:n mg:n",
-"now": "写入实测中（第三批）"
+"seg": "ev:d ds:n dev:n rev:n mg:n",
+"now": "已推进 🟡（AC-EV-10 待你定）",
+"u": "10-07 推进；AC-EV-10 不可撤回操作待你定"
 },
 {
 "id": "F-039",
@@ -2321,6 +2323,15 @@
 "k": "todo",
 "n": "套卷共享部门 / 共享人",
 "u": "R3-T03 PR-B 之后"
+},
+{
+"id": "EVQ4",
+"g": "r3a",
+"o": 3,
+"k": "run",
+"n": "取证第四批：R3-T06 / T07、F-037、R2-T01 / T04 / T08 / T09 开工前扫描",
+"seg": "ev:a ds:n dev:n rev:n mg:n",
+"now": "排队进行中"
 }
 ]
 }

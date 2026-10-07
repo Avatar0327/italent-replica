@@ -104,14 +104,14 @@ def codex_results():
     return out
 
 
-EVIDENCE_IDLE = 60  # 分钟：取证窗口（提交信息以“取证：”开头）这么久没有新提交 → 提醒（用户 10-07 要求取证不停）
+EVIDENCE_IDLE = 60  # 分钟：取证窗口（提交信息以“取证”开头）这么久没有新提交 → 提醒（用户 10-07 要求取证不停）
 
 
 def last_evidence_commit():
     """origin/main 上最近一条“取证：”提交的时间（ISO），取不到返回空。"""
     try:
         subprocess.run(["git", "fetch", "-q"], cwd=os.path.expanduser("~/Code/wt-progress"), timeout=60)
-        r = subprocess.run(["git", "log", "origin/main", "-1", "--format=%cI", "--grep=^取证："], capture_output=True, text=True,
+        r = subprocess.run(["git", "log", "origin/main", "-1", "--format=%cI", "--grep=^取证"], capture_output=True, text=True,
                            timeout=30, cwd=os.path.expanduser("~/Code/wt-progress"))
         return r.stdout.strip()
     except Exception:
@@ -207,7 +207,7 @@ def main():
             m = int(mins_since(ev_t))
             k3 = f"evidence-idle@{ev_t}@{m // EVIDENCE_IDLE}"
             if m >= EVIDENCE_IDLE and k3 not in stalled:
-                ev.append(f"取证停顿：取证窗口最近一次“取证：”提交在 {m} 分钟前，请确认是否卡住、是否在等用户操作")
+                ev.append(f"取证停顿：取证窗口最近一次“取证”提交在 {m} 分钟前，请确认是否卡住、是否在等用户操作")
                 stalled.add(k3)
         open(os.path.expanduser("~/.cache/italent-progress-watch.beat"), "w").write(datetime.datetime.now().isoformat())
         json.dump({"prs": cur, "stalled": sorted(stalled)[-200:], "codex": cprev}, open(STATE, "w"))
