@@ -841,7 +841,7 @@
 },
 "99": {
 "s": "review",
-"r": 4,
+"r": 5,
 "n": "第 2 轮 Astra Ultra 2 P2（可信值 vs 员工输入，连续同类）→ 第 3 轮修改中；下轮 Astra Ultra 列全同类"
 },
 "102": {
@@ -1885,7 +1885,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 12:07",
+"liveUpdated": "10-07 12:09",
 "chains": [
 {
 "g": "exit",
@@ -1994,10 +1994,11 @@
 "k": "run",
 "pr": 99,
 "n": "本人跨部门调动职位置空",
-"seg": "ev:d ds:n dev:d4 rev:a4 mg:w",
-"now": "第 4 轮审查出结论，待读取",
+"seg": "ev:d ds:n dev:w5 rev:d4 mg:w",
+"now": "第 4 轮 1 个 P2（同类第 4 次），等你定第 5 轮",
 "wait": "同类第 3 次，第 5 轮仍有则问你",
-"up": "10-07 第 4 轮调到 Max（Opus）"
+"up": "10-07 第 4 轮调到 Max（Opus）",
+"need": "1"
 },
 {
 "id": "R3-T00",
