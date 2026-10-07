@@ -1,5 +1,6 @@
 import type { Authorizer } from '../../authorization.js';
 import type { resolveModuleScope } from '../permission/module-access.js';
+import type { EmployeeStatusCode, EntryStatusCode } from '@italent/domain';
 import type { ActivationSummary } from './activation-store.js';
 export const BUSINESS_KINDS = [
   'hire',
@@ -159,6 +160,9 @@ export interface EmploymentRecord {
   readonly previousRecordId: string | null;
   readonly fields: PresetFields;
   readonly customFields: CustomFields;
+  /** F-022：本版本的人员状态 / 入职状态（只经业务流转写入，15 §9）。 */
+  readonly employeeStatus: EmployeeStatusCode;
+  readonly entryStatus: EntryStatusCode | null;
   readonly isCurrent: boolean;
   readonly isLatest: boolean;
   readonly status: 'effective';
@@ -179,6 +183,8 @@ export interface EmploymentBusiness {
   readonly effectiveDate: string;
   readonly fields: PresetFields;
   readonly customFields: CustomFields;
+  readonly employeeStatus: EmployeeStatusCode;
+  readonly entryStatus: EntryStatusCode | null;
   readonly record: EmploymentRecord | null;
   /** R1-T08 生效结果（DEC-052 / DEC-112）：审批通过的申请与经定时任务 / 重试生效的业务才有。 */
   readonly activation: ActivationSummary | null;

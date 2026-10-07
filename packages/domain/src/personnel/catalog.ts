@@ -28,6 +28,9 @@ export const EMPLOYEE_ATTRIBUTE_FIELDS = [
   'gradeSortNumber',
   // DEC-148 / DEC-170 / DEC-171 / 15 §12：人员组合名次由 F-010 周期重算后存储。
   'orderCode',
+  // F-022：当前生效主职版本的人员状态 / 入职状态（只读，可筛选排序）
+  'employeeStatus',
+  'entryStatus',
 ];
 export const SUBSET_EMPLOYEE_ATTRIBUTES: Readonly<Record<string, string>> = {
   code: 'code',

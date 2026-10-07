@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EMPLOYMENT_STATUS_FIELDS } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { validIsoDate } from '../org/read-model.js';
 import {
@@ -72,12 +73,31 @@ const patchSchema = z.strictObject({
   customFields: customFields.optional(),
 });
 
+/**
+ * 人员状态 / 入职状态只能经业务流转更新（15 §9.3）：新增业务、任职编辑、导入、批量编辑带了这两个字段
+ * （含显式清空）一律拒绝，给出可机读原因；字段权限层另把它们登记为系统字段（不可授编辑）。
+ */
+function assertNoStatusFields(value: unknown): void {
+  if (!value || typeof value !== 'object') return;
+  const body = value as Record<string, unknown>;
+  const fields = body.fields && typeof body.fields === 'object' ? (body.fields as Record<string, unknown>) : {};
+  const touched = EMPLOYMENT_STATUS_FIELDS.filter(
+    (field) => Object.hasOwn(body, field) || Object.hasOwn(fields, field),
+  );
+  if (touched.length)
+    throw new AppError('VALIDATION_FAILED', '人员状态、入职状态只能经业务流转更新，不能手工修改', {
+      reason: 'EMPLOYEE_STATUS_READONLY',
+      fields: touched,
+    });
+}
+
 export function normalizeEmploymentInput(_ctx: EmploymentContext, value: unknown): NormalizedEmploymentInput {
   return parseEmploymentInput(value);
 }
 
 /** 只做结构与日期推导，不读库；导入批次在鉴权前据此做批内校验。 */
 export function parseEmploymentInput(value: unknown): NormalizedEmploymentInput {
+  assertNoStatusFields(value);
   const parsed = businessSchema.safeParse(value);
   if (!parsed.success) throw new AppError('VALIDATION_FAILED', '任职业务字段不合法', parsed.error.issues);
   const input = parsed.data;
@@ -95,6 +115,7 @@ export function parseEmploymentInput(value: unknown): NormalizedEmploymentInput 
 }
 
 export function normalizeBusinessPatch(value: unknown): EmploymentBusinessPatch {
+  assertNoStatusFields(value);
   const parsed = patchSchema.safeParse(value);
   if (!parsed.success || !Object.keys(parsed.data).length)
     throw new AppError('VALIDATION_FAILED', '任职修改字段不合法');
