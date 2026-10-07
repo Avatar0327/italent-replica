@@ -46,7 +46,7 @@ def snapshot():
         done_at = ""  # 开发方贴“开发完成”（DEC：开发完成明确报到）且其后尚无审查发起 / 排队
         for c in p["comments"]:
             b = c.get("body", "")[:200]
-            if "开发完成" in b:
+            if "开发完成" in b or "设计完成" in b:
                 done_at = c["createdAt"]
             elif done_at and any(w in b for w in ("审查已发起", "排队待审", "已发起")):
                 done_at = ""

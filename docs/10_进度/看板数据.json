@@ -919,7 +919,7 @@
 },
 "107": {
 "s": "review",
-"r": 3,
+"r": 4,
 "n": ""
 }
 },
@@ -2001,7 +2001,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 16:49",
+"liveUpdated": "10-07 16:51",
 "chains": [
 {
 "g": "exit",
@@ -2046,8 +2046,8 @@
 "k": "run",
 "pr": 83,
 "n": "组织变更联动任职",
-"seg": "ev:d ds:d4 dev:d2 rev:w2 mg:w",
-"now": "第 2 轮已推送（CI 绿），待开发报到 / 发起审查",
+"seg": "ev:d ds:d4 dev:d2 rev:a2 mg:w",
+"now": "拆分后本体第 2 轮审查中（codex exec）",
 "wait": "来源模型放哪由审查合并窗口判断",
 "fable": "1",
 "up": "10-07 调到 Max"
@@ -2194,10 +2194,11 @@
 "o": 1,
 "k": "run",
 "n": "360 度评估（PR-A）",
-"seg": "ev:d ds:n dev:d3 rev:d3 mg:w",
-"now": "第 3 轮出结论，待读取",
+"seg": "ev:d ds:n dev:w4 rev:d3 mg:w",
+"now": "第 3 轮 4 个 P2（3 个权限），等你定第 4 轮",
 "pr": 107,
-"up": "10-07 第 3 轮调到 Max"
+"up": "10-07 第 3 轮调到 Max",
+"need": "1"
 },
 {
 "id": "R3-T02",
@@ -2320,8 +2321,8 @@
 "n": "权限框架强制",
 "u": "已核对，待开会话",
 "fable": "1",
-"seg": "ev:n ds:d3 dev:w rev:w3 mg:w",
-"now": "设计 v3 已推送，待复审（或等缩小范围的决定）",
+"seg": "ev:n ds:d3 dev:w rev:a3 mg:w",
+"now": "设计 v3 复审中（codex exec 续审）",
 "pr": 110,
 "up": "10-07 调到 Max"
 },
