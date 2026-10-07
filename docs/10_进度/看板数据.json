@@ -885,7 +885,7 @@
 },
 "97": {
 "s": "active",
-"r": 5,
+"r": 6,
 "n": "#92 合并后与 main 冲突（SelfServiceShell.tsx），Codex 合并 main 中；之后 astra Ultra"
 },
 "99": {
@@ -1971,7 +1971,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 14:01",
+"liveUpdated": "10-07 14:11",
 "chains": [
 {
 "g": "exit",
@@ -2016,8 +2016,8 @@
 "k": "run",
 "pr": 83,
 "n": "组织变更联动任职",
-"seg": "ev:d ds:d4 dev:d1 rev:w1 mg:w",
-"now": "拆分本体代码已推送，待发起审查（C 档）",
+"seg": "ev:d ds:d4 dev:d1 rev:a1 mg:w",
+"now": "拆分本体 Astra Ultra 第 1 轮审查中",
 "wait": "来源模型放哪由审查合并窗口判断",
 "fable": "1",
 "up": "10-07 第 8 轮后调到 Max"
@@ -2030,7 +2030,7 @@
 "pr": 100,
 "n": "离职管理",
 "seg": "ev:d ds:a4 dev:w rev:w mg:w",
-"now": "设计 v1.4 已推送，待发起复审",
+"now": "设计 v1.4 复审中",
 "wait": "#83 合并后写代码",
 "fable": "1"
 },
@@ -2068,9 +2068,10 @@
 "k": "run",
 "pr": 97,
 "n": "审批中心前端",
-"seg": "ev:n ds:n dev:d5 rev:w5 mg:w",
-"now": "第 5 轮结构性简化已推送，待发起审查",
-"fable": "1"
+"seg": "ev:n ds:n dev:w6 rev:d5 mg:w",
+"now": "第 5 轮剩 2 个小 P2（收尾），等你定第 6 轮",
+"fable": "1",
+"need": "1"
 },
 {
 "id": "F-029",
@@ -2160,8 +2161,8 @@
 "o": 1,
 "k": "run",
 "n": "360 度评估（PR-A）",
-"seg": "ev:d ds:n dev:d2 rev:w2 mg:w",
-"now": "PR-A 第 2 轮已推送，待发起审查（C 档）",
+"seg": "ev:d ds:n dev:d2 rev:a2 mg:w",
+"now": "PR-A 第 2 轮审查中（C 档，复审 + 终审）",
 "pr": 107
 },
 {
@@ -2188,8 +2189,8 @@
 "k": "run",
 "pr": 102,
 "n": "AC 覆盖运行时统计",
-"seg": "ev:n ds:n dev:d3 rev:w3 mg:w",
-"now": "第 3 轮已推送，待发起审查",
+"seg": "ev:n ds:n dev:d3 rev:a3 mg:w",
+"now": "Sol Ultra 第 3 轮审查中",
 "up": "10-07 第 3 轮调到 Max"
 },
 {
@@ -2294,7 +2295,7 @@
 "u": "已核对，待开会话",
 "fable": "1",
 "seg": "ev:n ds:a1 dev:w rev:w mg:w",
-"now": "设计 v1 已提交，待设计审（codex exec 试点）",
+"now": "设计审中（codex exec 试点）",
 "pr": 110
 }
 ]
