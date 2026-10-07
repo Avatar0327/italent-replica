@@ -20,7 +20,7 @@ export {
   connectionCode,
   isClassifiedFailure,
 } from './command-failure.js';
-export { createPgDb, createPgliteDb, type Db, type DbHandle, migrationsFolder } from './client.js';
+export { createPgDb, createPgliteDb, type Db, type DbHandle, migrationsFolder, openPgliteDir } from './client.js';
 export {
   type AuditEntry,
   findPlatformCommandResult,

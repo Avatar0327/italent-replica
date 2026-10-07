@@ -13,7 +13,7 @@ STALL = 90  # 分钟（审查发起时编排会在 PR 贴一行评论，据此�
 
 
 def gh(args):
-    r = subprocess.run(["gh"] + args, capture_output=True, text=True, cwd=os.path.expanduser("~/Code/wt-progress"))
+    r = subprocess.run(["gh"] + args, capture_output=True, text=True, timeout=90, cwd=os.path.expanduser("~/Code/wt-progress"))
     if r.returncode or not r.stdout.strip():
         raise RuntimeError(r.stderr.strip()[:200] or "gh 无输出")
     return json.loads(r.stdout)
@@ -104,6 +104,7 @@ def main():
             if p["ci"] == "green" and not p["draft"] and mins_since(p["commit"]) > STALL and mins_since(p["comment"]) > STALL and key not in stalled:
                 ev.append(f"停摆 #{n} {p['t']}：CI 绿，最新提交 {int(mins_since(p['commit']))} 分钟前，{STALL} 分钟内无评论")
                 stalled.add(key)
+        open(os.path.expanduser("~/.cache/italent-progress-watch.beat"), "w").write(datetime.datetime.now().isoformat())
         json.dump({"prs": cur, "stalled": sorted(stalled)[-200:], "codex": cprev}, open(STATE, "w"))
         quiet = [e for e in ev if (" 新推送 " in e or " CI green" in e or " 新评论 " in e)]
         loud = [e for e in ev if e not in quiet]
