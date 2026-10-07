@@ -7,9 +7,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { approvalWorld, permissionAdmin, type InstanceView, type Person } from './AC-APV-support.js';
 import { createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
-import { appendForwardPayload, auditForwardTarget } from '../../apps/api/src/modules/employment/forward-store.js';
-import { lockEmploymentBusiness, rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
-import { lockTransferBusiness } from '../../apps/api/src/modules/employment/transfer-locks.js';
+import { rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
 import { resolveTransferForm } from '../../apps/api/src/modules/transfer/configuration.js';
 
 const database = useTestDb();
@@ -590,6 +588,14 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     ),
   )('AC-TRF-58 可信职位完整生命周期：来源=$source，终点=$end', async ({ source: origin, end }) => {
     const person = await actor(`合成生命周期-${origin}-${end}`, true);
+    const currentStatuses = await w.json<{ items: { employeeStatus: number; entryStatus: number | null }[] }>(
+      await w.request(w.hr.id, 'GET', `${BASE}/employees/${person.employeeId}/records`),
+    );
+    const inheritedStatus = {
+      employeeStatus: currentStatuses.items[0]!.employeeStatus,
+      entryStatus: currentStatuses.items[0]!.entryStatus,
+    };
+    expect(typeof inheritedStatus.employeeStatus).toBe('number');
     const expectedPosition = ['hr-record', 'propagated'].includes(origin)
       ? propagatedPosition
       : origin === 'approval-edit'
@@ -683,13 +689,18 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
         expect(await profile(person)).toEqual(beforePerson);
       }
       await command('PATCH', { effectiveDate: '2026-10-21', fields: { remarks: `合成-${state}` } });
-      expect(await payload(saved.id)).toMatchObject({ fields: { positionId: expectedPosition } });
+      expect(await payload(saved.id)).toMatchObject({ fields: { positionId: expectedPosition }, ...inheritedStatus });
       await command('submit');
-      expect(await payload(saved.id)).toMatchObject({ status: 'in_review', fields: { positionId: expectedPosition } });
+      expect(await payload(saved.id)).toMatchObject({
+        status: 'in_review',
+        fields: { positionId: expectedPosition },
+        ...inheritedStatus,
+      });
     }
     if (end === 'activate') {
       await approve(person, saved.id);
-      w.setNow('2026-10-21T01:00:00Z');
+      // 计划 21 日，实际 22 日执行：迟到改期追加版本也不能把可信职位误认作员工输入。
+      w.setNow('2026-10-22T01:00:00Z');
       try {
         for (let attempt = 0; attempt < 2; attempt++)
           await runEmploymentActivations(
@@ -700,7 +711,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
           );
         expect(await payload(saved.id)).toMatchObject({
           status: 'effective',
-          record: { fields: { departmentId, positionId: expectedPosition } },
+          record: { ...inheritedStatus, fields: { departmentId, positionId: expectedPosition } },
         });
       } finally {
         w.setNow('2026-10-01T01:00:00Z');
@@ -794,40 +805,16 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
 
   it('AC-TRF-59 旧显式职位草稿按可信保存值修改提交，员工新增输入仍拒绝', async () => {
     const person = await actor('合成旧显式草稿', true);
-    const created = await draft(person);
-    // 升级兼容夹具：追加旧式快照，不改写历史版本；显式职位没有 HR 标记且字段模式为 editable。
-    await withTenant(database().db, w.tenant.id, async (tx) => {
-      const ctx = {
-        tenantId: w.tenant.id,
-        userId: w.hr.id,
-        commandId: randomUUID(),
-        now: new Date('2026-10-01T01:00:00Z'),
-        timezone: 'UTC',
-        expectedRevision: created.revision,
-      };
-      await lockTransferBusiness(tx, ctx, created.id);
-      const business = await lockEmploymentBusiness(tx, ctx, created.id);
-      const previous = business.payload;
-      const changes = [{ field: 'positionId', before: originalPosition, after: originalPosition }];
-      const next = await appendForwardPayload(
-        tx,
-        ctx,
-        {
-          ...previous,
-          formSnapshot: {
-            ...previous.formSnapshot,
-            employeeTransfer: false,
-            employeePositionByHr: false,
-            fieldModes: { ...previous.formSnapshot.fieldModes, 'preset:positionId': 'editable' },
-          },
-        },
-        { fields: previous.fields, customFields: previous.customFields },
-        created.id,
-        false,
-        changes,
-      );
-      await auditForwardTarget(tx, ctx, next, changes);
-    });
+    // 升级前的员工草稿：实际 HR 任职端口创建 editable 职位快照，再由可信夹具补入口来源。
+    // 没有本人 / HR 标记、没有传播 triggerBusinessId；不关闭生产校验或改写历史任职版本。
+    const created = await w.application(person.employeeId, { departmentId: source, positionId: originalPosition });
+    await withTenant(database().db, w.tenant.id, (tx) =>
+      tx.execute(sql`
+      INSERT INTO transfer_requests(tenant_id,business_id,employee_id,initiator,transfer_type_code,process_code)
+      VALUES(${w.tenant.id},${created.id}::uuid,${person.employeeId}::uuid,
+        'employee','in_department','TransferProcessNew')
+    `),
+    );
     let saved: Pick<Business, 'revision'> = await payload(created.id);
     for (const positionId of [null, propagatedPosition.toUpperCase()]) {
       const before = await payload(created.id);
