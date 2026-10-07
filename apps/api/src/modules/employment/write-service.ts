@@ -4,7 +4,13 @@ import { queueTransferLinkage, validateTransferSubordinates } from './transfer-l
 import { lockTransferParticipants } from './transfer-locks.js';
 import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { personnelHooks } from './personnel-hooks.js';
-import { entryStatusFor, propagateEmployeeStatus, type EntryOptions, type VersionStatus } from './employee-status.js';
+import {
+  entryStatusFor,
+  inheritedStatus,
+  propagateEmployeeStatus,
+  type EntryOptions,
+  type VersionStatus,
+} from './employee-status.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import { clearedTransferFields, tenantLocalDate } from '@italent/domain';
@@ -244,6 +250,8 @@ export async function updateEmploymentBusiness(
     before.id,
     selected?.cycle.id,
     before.changeType ?? undefined,
+    // 改期后按新生效日的前一条重新确定继承的人员状态（PR #93 首审 P2-1），不沿用原日期下的值
+    inheritedStatus(normalized.kind, selected?.predecessor ?? null),
   );
   await auditEmployment(
     tx,

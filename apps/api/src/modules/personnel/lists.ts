@@ -1,6 +1,13 @@
 import { sortRankColumns } from './sorting.js';
 import { sql, type Tx } from '@italent/db';
-import { SUBSET_EMPLOYEE_ATTRIBUTES, PERSONNEL_OBJECT, SUBSETS, type SubsetKind } from '@italent/domain';
+import {
+  isEmployeeStatusCode,
+  isEntryStatusCode,
+  SUBSET_EMPLOYEE_ATTRIBUTES,
+  PERSONNEL_OBJECT,
+  SUBSETS,
+  type SubsetKind,
+} from '@italent/domain';
 import type { Context } from 'hono';
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
@@ -27,6 +34,12 @@ const sortColumns: Record<string, SQL> = {
   employeeStatus: sql`r.current_employee_status`,
   entryStatus: sql`r.current_entry_status`,
 };
+/** F-022：状态筛选按原站编码校验，非法编码 400（与任职员工列表一致）。 */
+const STATUS_FILTERS: Readonly<Record<string, (value: number) => boolean>> = {
+  employeeStatus: isEmployeeStatusCode,
+  entryStatus: isEntryStatusCode,
+};
+
 export async function listOptions(c: Context, deps: TenantRouteDeps, ctx: AccessContext) {
   const sortBy = c.req.query('sortBy');
   const direction = c.req.query('direction') ?? 'asc';
@@ -48,6 +61,9 @@ export async function listOptions(c: Context, deps: TenantRouteDeps, ctx: Access
     }
     if (value !== undefined) {
       if (value.length > 200) throw new AppError('VALIDATION_FAILED', '筛选值过长');
+      const check = STATUS_FILTERS[key];
+      if (check && !(/^\d+$/.test(value) && check(Number(value))))
+        throw new AppError('VALIDATION_FAILED', '人员状态或入职状态编码不合法');
       filters.push(sql`${sortColumns[key]}::text=${value}`);
     }
   }

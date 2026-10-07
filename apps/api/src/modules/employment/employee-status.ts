@@ -15,7 +15,7 @@ import {
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { auditEmployment, requireLinkedEmploymentRecord, requireScopedEmploymentObject } from './context.js';
-import { loadEmploymentRecord } from './read-model.js';
+import { findPredecessor, loadEmploymentRecord } from './read-model.js';
 import {
   bumpEmploymentBusiness,
   camelRow,
@@ -43,6 +43,18 @@ export interface EntryOptions {
 }
 
 const ENTRY_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
+/** 本身决定人员状态的业务（与迁移 0061 employment_kind_status 一致）；其余业务继承插入点前一条。 */
+const STATUS_SETTING_KINDS: readonly BusinessKind[] = [...ENTRY_KINDS, 'regularization', 'leave', 'retirement'];
+
+export function inheritsEmployeeStatus(kind: BusinessKind): boolean {
+  return !STATUS_SETTING_KINDS.includes(kind);
+}
+
+/** 继承类业务在给定前一条（同周期）之后应有的状态；本身决定状态的业务或无前一条时返回 undefined。 */
+export function inheritedStatus(kind: BusinessKind, predecessor: EmploymentRecord | null): VersionStatus | undefined {
+  if (!inheritsEmployeeStatus(kind) || !predecessor) return undefined;
+  return { employeeStatus: predecessor.employeeStatus, entryStatus: predecessor.entryStatus };
+}
 const ENTRY_TARGETS = {
   normal: ENTRY_STATUS.normal,
   cancelled: ENTRY_STATUS.cancelled,
@@ -124,6 +136,7 @@ async function appendStatusSnapshot(
   business: LockedEmploymentBusiness,
   record: EmploymentRecord,
   status: VersionStatus,
+  options: { readonly bump?: boolean } = {},
 ): Promise<void> {
   const versionId = await appendStatusVersion(tx, ctx, business.payload, record, status, record.id);
   await auditEmployment(
@@ -136,7 +149,57 @@ async function appendStatusSnapshot(
     { employeeStatus: status.employeeStatus, entryStatus: status.entryStatus },
     versionId,
   );
-  await bumpEmploymentBusiness(tx, ctx, business);
+  if (options.bump !== false) await bumpEmploymentBusiness(tx, ctx, business);
+  business.payload = { ...business.payload, id: versionId, versionNo: business.payload.versionNo + 1 };
+}
+
+/**
+ * 已生效记录移到新的实际位置后（DEC-186 迟到改期），继承类业务按新位置的前一条重新确定状态并追加快照，
+ * 不沿用原日期下的状态（PR #93 首审 P2-1）。revision 由调用命令统一递增（同一命令内调用方会按原 revision 重锁）。
+ */
+export async function rederiveRepositionedStatus(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+): Promise<void> {
+  if (!inheritsEmployeeStatus(business.payload.kind)) return;
+  const record = await loadEmploymentRecord(tx, ctx.tenantId, business.id, business.payload.effectiveDate);
+  if (!record) return;
+  const [point] = rowsOf<{ sortOrder: number }>(
+    await tx.execute(sql`SELECT sort_order AS "sortOrder" FROM employment_timeline
+      WHERE tenant_id=${ctx.tenantId} AND record_id=${business.id}::uuid`),
+  );
+  const predecessor = point
+    ? await findPredecessor(tx, ctx.tenantId, business.employeeId, record.effectiveDate, point.sortOrder)
+    : null;
+  const status = inheritedStatus(record.kind, predecessor?.staffId === record.staffId ? predecessor : null);
+  if (!status || (status.employeeStatus === record.employeeStatus && status.entryStatus === record.entryStatus)) return;
+  await appendStatusSnapshot(tx, ctx, business, record, status, { bump: false });
+}
+
+/**
+ * DEC-231（照 DEC-012）：转正已把“正式”传播到后续版本（29 PB-R7）时暂不允许删除，原站做法待取证，由 R2-T02 定终口径。
+ * 传播版本 = 由该转正触发、改写其他业务且人员状态由非正式变为正式的追加版本。
+ */
+export async function assertRegularizationNotPropagated(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: Pick<LockedEmploymentBusiness, 'id' | 'employeeId' | 'payload'>,
+): Promise<void> {
+  if (business.payload.kind !== 'regularization') return;
+  const [propagated] = rowsOf<{ id: string }>(
+    await tx.execute(sql`
+      SELECT v.id FROM employment_payload_versions v
+      JOIN employment_payload_versions p ON p.tenant_id=v.tenant_id AND p.id=v.previous_version_id
+      WHERE v.tenant_id=${ctx.tenantId} AND v.employee_id=${business.employeeId}::uuid
+        AND v.trigger_business_id=${business.id}::uuid AND v.business_id<>${business.id}::uuid
+        AND v.employee_status=${EMPLOYEE_STATUS.regular} AND p.employee_status<>${EMPLOYEE_STATUS.regular}
+      LIMIT 1`),
+  );
+  if (propagated)
+    throw new AppError('CONFLICT', '该转正记录已将人员状态“正式”同步到后续任职记录，暂不能删除', {
+      reason: 'REGULARIZATION_STATUS_PROPAGATED',
+    });
 }
 
 async function appendStatusVersion(

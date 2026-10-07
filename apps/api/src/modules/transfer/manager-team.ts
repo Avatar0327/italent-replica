@@ -12,7 +12,8 @@ export async function managerTeamQuery(tx: Tx, ctx: EmploymentContext): Promise<
   const identity = await managerIdentity(tx, { ...ctx, asOf });
   if (!identity.active) throw new AppError('FORBIDDEN', '需要经理自助身份');
   const orgs = `{${identity.orgIds.join(',')}}`;
-  // Q-M0-71：先按当前主职（待入职取其入职记录）和负责组织过滤，再分页。历史可见不产生候选资格。
+  // Q-M0-71：先按负责组织过滤，再分页。历史可见不产生候选资格。每人至多两行：current 取当前生效主职，
+  // pending 取命中的待入职记录；两行各自按该记录计算部门范围、人员类型、状态与展示（PR #93 首审 P2-2）。
   // F-022（Q-M0-76 / Q-M0-99）：在岗 = 当前生效主职版本人员状态 ∈ {试用, 正式}；试用中 = 人员状态为试用（不看试用期日期）；
   // 待入职 = 未删除的新增 / 重聘入职记录人员状态为待入职、入职状态 ∈ {空, 正常, 延期}，不限当前记录。
   return sql`WITH latest AS (
@@ -26,28 +27,19 @@ export async function managerTeamQuery(tx: Tx, ctx: EmploymentContext): Promise<
   ), states AS (
     SELECT DISTINCT ON (s.business_id) s.business_id,s.state FROM employment_state_events s
     WHERE s.tenant_id=${ctx.tenantId} ORDER BY s.business_id,s.event_no DESC
-  ), people AS (
-    SELECT e.id,e.code,COALESCE(person.name,e.name) AS name,e.revision,
-      p.department_id AS "departmentId",p.post_id AS "postId",p.level_id AS "levelId",
-      p.direct_manager_id AS "directManagerId",p.dotted_manager_id AS "dottedManagerId",
-      COALESCE(p.employ_type,cycle.employ_type,'internal') AS "employType",
-      COALESCE(cycle.entry_date,p.effective_date) AS "entryDate",
-      person.email,person.mobile_phone AS "mobilePhone",
-      p.status_code::integer AS "employeeStatus",p.entry_code::integer AS "entryStatus",
-      COALESCE(current_status.employee_status IN (2,3),false) AS active,
-      COALESCE(current_status.employee_status=2,false) AS probation,
-      (pending_entry.id IS NOT NULL) AS pending,
-      EXISTS (SELECT 1 FROM latest l JOIN states s ON s.business_id=l.business_id
-        WHERE l.employee_id=e.id AND l.kind='leave' AND s.state<>'deleted') AS leaving,
-      CASE WHEN p.o=1 THEN 'pending'
-        WHEN r.kind IN ('leave','retirement') THEN 'leaving' ELSE 'active' END AS category
+  ), sources AS (
+    SELECT t.employee_id,'current' AS source,r.id AS record_id,r.staff_id,r.kind,
+      cs.employee_status,cs.entry_status
+    FROM employment_timeline t
+    JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+    JOIN LATERAL employment_record_status(r.tenant_id,r.id) cs ON true
+    WHERE t.tenant_id=${ctx.tenantId} AND t.valid_during @> ${asOf}::date
+    UNION ALL
+    SELECT e.id,'pending',pending_entry.id,pending_entry.staff_id,pending_entry.kind,
+      pending_entry.employee_status,pending_entry.entry_status
     FROM employment_employees e
-    LEFT JOIN employment_timeline t ON t.tenant_id=e.tenant_id AND t.employee_id=e.id
-      AND t.valid_during @> ${asOf}::date
-    LEFT JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
-    LEFT JOIN LATERAL employment_record_status(e.tenant_id,r.id) current_status ON true
-    LEFT JOIN LATERAL (
-      SELECT pr.id,pr.staff_id,ps.employee_status,ps.entry_status FROM employment_records pr
+    JOIN LATERAL (
+      SELECT pr.id,pr.staff_id,pr.kind,ps.employee_status,ps.entry_status FROM employment_records pr
       JOIN employment_timeline pt ON pt.tenant_id=pr.tenant_id AND pt.record_id=pr.id
       JOIN states s ON s.business_id=pr.id AND s.state='effective'
       JOIN LATERAL employment_record_status(pr.tenant_id,pr.id) ps ON true
@@ -55,21 +47,30 @@ export async function managerTeamQuery(tx: Tx, ctx: EmploymentContext): Promise<
         AND ps.employee_status=1 AND COALESCE(ps.entry_status,0) IN (0,2)
       ORDER BY pt.start_date DESC,pt.sort_order DESC LIMIT 1
     ) pending_entry ON true
-    JOIN LATERAL (
-      SELECT current.*,0 AS o,r.staff_id AS staff,current_status.employee_status AS status_code,
-        current_status.entry_status AS entry_code FROM snapshots current
-      WHERE current.employee_id=e.id AND current.business_id=r.id
-        AND (pending_entry.id IS NULL OR current_status.employee_status IN (2,3))
-      UNION ALL
-      SELECT pending.*,1,pending_entry.staff_id,pending_entry.employee_status,pending_entry.entry_status
-      FROM snapshots pending WHERE pending.business_id=pending_entry.id
-        AND current_status.employee_status IS DISTINCT FROM 2 AND current_status.employee_status IS DISTINCT FROM 3
-      ORDER BY o LIMIT 1
-    ) p ON true
-    LEFT JOIN employment_cycles cycle ON cycle.tenant_id=e.tenant_id AND cycle.id=p.staff
+    WHERE e.tenant_id=${ctx.tenantId}
+  ), people AS (
+    SELECT e.id,e.code,COALESCE(person.name,e.name) AS name,e.revision,
+      p.department_id AS "departmentId",p.post_id AS "postId",p.level_id AS "levelId",
+      p.direct_manager_id AS "directManagerId",p.dotted_manager_id AS "dottedManagerId",
+      COALESCE(p.employ_type,cycle.employ_type,'internal') AS "employType",
+      COALESCE(cycle.entry_date,p.effective_date) AS "entryDate",
+      person.email,person.mobile_phone AS "mobilePhone",
+      src.employee_status::integer AS "employeeStatus",src.entry_status::integer AS "entryStatus",
+      (src.source='current' AND src.employee_status IN (2,3)) AS active,
+      (src.source='current' AND src.employee_status=2) AS probation,
+      (src.source='pending') AS pending,
+      EXISTS (SELECT 1 FROM latest l JOIN states s ON s.business_id=l.business_id
+        WHERE l.employee_id=e.id AND l.kind='leave' AND s.state<>'deleted') AS leaving,
+      CASE WHEN src.source='pending' THEN 'pending'
+        WHEN src.kind IN ('leave','retirement') THEN 'leaving' ELSE 'active' END AS category,
+      src.source
+    FROM sources src
+    JOIN employment_employees e ON e.tenant_id=${ctx.tenantId} AND e.id=src.employee_id
+    JOIN snapshots p ON p.business_id=src.record_id
+    LEFT JOIN employment_cycles cycle ON cycle.tenant_id=e.tenant_id AND cycle.id=src.staff_id
     LEFT JOIN LATERAL (SELECT name,email,mobile_phone FROM personnel_employee_versions
       WHERE tenant_id=e.tenant_id AND employee_id=e.id ORDER BY revision DESC LIMIT 1) person ON true
-    WHERE e.tenant_id=${ctx.tenantId} AND e.id<>${identity.employeeId}::uuid
+    WHERE e.id<>${identity.employeeId}::uuid
       AND COALESCE(p.employ_type,cycle.employ_type,'internal') IN ('internal','intern')
       AND p.department_id=ANY(${orgs}::uuid[])
       AND ${ctx.scope ? scopeSql(ctx.scope, { org: sql`p.department_id` }) : sql`false`}
@@ -96,7 +97,7 @@ export async function readManagerTeam(
       count(*) FILTER (WHERE probation)::integer AS probation,
       count(*) FILTER (WHERE active AND "employType"='intern')::integer AS intern,
       count(*) FILTER (WHERE pending)::integer AS pending,
-      count(*) FILTER (WHERE leaving)::integer AS leaving FROM people`),
+      count(*) FILTER (WHERE leaving AND source='current')::integer AS leaving FROM people`),
   );
   const search = options.search?.trim() ?? '';
   const filter = search
@@ -110,17 +111,17 @@ export async function readManagerTeam(
     probation: sql`probation`,
     intern: sql`active AND "employType"='intern'`,
     pending: sql`pending`,
-    leaving: sql`leaving`,
+    leaving: sql`leaving AND source='current'`,
   };
   const items =
     options.candidates && !search
       ? []
       : scopeRows<Record<string, unknown>>(
           await tx.execute(sql`
-    ${query} SELECT * FROM people WHERE true
+    ${query} SELECT * FROM (SELECT DISTINCT ON (id) * FROM people WHERE true
     ${options.candidates ? sql`AND active` : sql``}
     ${options.category ? sql`AND (${categories[options.category] ?? sql`false`})` : sql``}
-    ${filter} ORDER BY code,id LIMIT ${page.limit} OFFSET ${page.offset}
+    ${filter} ORDER BY id,(source='pending')) people ORDER BY code,id LIMIT ${page.limit} OFFSET ${page.offset}
   `),
         );
   return {
