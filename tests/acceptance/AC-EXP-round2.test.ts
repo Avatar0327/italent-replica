@@ -77,9 +77,10 @@ describe('P2-2 两侧都是原站日期格式的文本时按日期比较（`26` 
     expect(run('盘点对象.入职日期 >= "2020/01/02" 且 盘点对象.入职日期 < "2020/01/03"', instant)).toEqual(bool(true));
   });
 
-  it('只有一侧是日期格式时仍按文本比较', () => {
+  it('只有一侧是日期格式时仍按文本处理：相等按文本比较，比较大小失败（DEC-257）', () => {
     expect(run('"2020/01/01" = "元旦"')).toEqual(bool(false));
-    expect(run('"b" > "a"')).toEqual(bool(true));
+    expect(run('"2020/01/01" > "元旦"')).toMatchObject({ code: 'TYPE_CONVERSION' });
+    expect(run('"b" > "a"')).toMatchObject({ code: 'TYPE_CONVERSION' });
   });
 });
 

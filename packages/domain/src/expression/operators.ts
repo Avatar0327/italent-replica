@@ -1,5 +1,5 @@
 /**
- * 类型转换、比较与四则（`26` §8.2 / §8.3）。所有可调口径都从 semantics.ts 读取（待 Q-M0-95）。
+ * 类型转换、比较与四则（`26` §8.2 / §8.3 / §8.5）。空值与四则的可调口径从 semantics.ts 读取（DEC-257）。
  */
 import { dateOrdinal, parseDateText } from './dates.js';
 import { CONVERSION_MESSAGE, fail, type FailureCode } from './failures.js';
@@ -18,7 +18,7 @@ function numericText(raw: string, semantics: ExpressionSemantics): number | unde
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-/** ToNumber(值) 函数的结果：空值按配置给 0 / 空 / 失败（待 Q-M0-95），其余同 toNumber。 */
+/** ToNumber(值) 函数的结果：空值按配置给 0 / 空 / 失败（DEC-257 默认 0），其余同 toNumber。 */
 export function toNumberValue(value: ExprValue, semantics: ExpressionSemantics): ExprValue {
   if (value.kind === 'empty' && semantics.toNumberOfEmpty === 'empty') return EMPTY;
   return { kind: 'number', value: toNumber(value, semantics) };
@@ -79,7 +79,7 @@ export function toCondition(value: ExprValue, semantics: ExpressionSemantics): b
   return fail('TYPE_CONVERSION', `条件须是是否型，实际是${KIND_LABELS[value.kind]}`);
 }
 
-/** 四则运算 / 聚合的操作数：数值与单选值可用；空值、文本、是否、日期按配置失败。 */
+/** 四则运算 / 聚合的操作数：数值与单选值可用；空值、文本按配置（DEC-257）；是否、日期失败。 */
 export function operandNumber(
   value: ExprValue,
   semantics: ExpressionSemantics,
@@ -95,9 +95,12 @@ export function operandNumber(
       if (emptyCode === 'EMPTY_IN_ARITHMETIC' && semantics.emptyInArithmetic === 'zero') return 0;
       if (emptyCode === 'EMPTY_IN_ARITHMETIC' && semantics.emptyInArithmetic === 'empty') return undefined;
       return fail(emptyCode, emptyCode === 'EMPTY_IN_AGGREGATE' ? '空值参与求平均 / 求和' : '空值参与四则运算');
-    case 'text':
-      if (semantics.textInArithmetic === 'coerce') return toNumber(value, semantics);
+    case 'text': {
+      // 数字字符串按数值（"5" + 1 = 6，`26` §8.5）；非数字文本仍按“字符串参与四则”失败
+      const parsed = semantics.textInArithmetic === 'coerce' ? numericText(value.value, semantics) : undefined;
+      if (parsed !== undefined) return parsed;
       return fail('TEXT_IN_ARITHMETIC', `字符串 ${describeValue(value)} 参与四则运算`);
+    }
     case 'boolean':
       return fail('TYPE_CONVERSION', '是否型不能参与四则运算');
     case 'date':
@@ -158,6 +161,19 @@ function comparable(plain: ExprValue, other: ExprValue, semantics: ExpressionSem
   return plain;
 }
 
+/**
+ * 比较大小的操作数：数值、日期，以及能按日期解读的文本（两侧都是原站日期格式文本，或对侧是日期）。
+ * 其余文本不转数值、不按字典序（DEC-257）；是否型不能比较大小。
+ */
+function orderable(plain: ExprValue, other: ExprValue): { kind: 'number' | 'date'; value: number } | undefined {
+  if (plain.kind === 'number') return plain;
+  if (plain.kind === 'date') return { kind: 'date', value: dateOrdinal(plain.value) };
+  if (plain.kind !== 'text') return undefined;
+  const otherIsDate = other.kind === 'date' || (other.kind === 'text' && parseDateText(other.value) !== undefined);
+  const parsed = otherIsDate ? parseDateText(plain.value) : undefined;
+  return parsed ? { kind: 'date', value: dateOrdinal(parsed) } : undefined;
+}
+
 export function valuesEqual(left: ExprValue, right: ExprValue, semantics: ExpressionSemantics): boolean {
   if (left.kind === 'empty' || right.kind === 'empty') {
     if (semantics.emptyInEquality === 'fail') return fail('EMPTY_IN_COMPARISON', '空值参与比较');
@@ -183,15 +199,16 @@ export function compare(
     return fail('EMPTY_IN_COMPARISON', '空值参与大于 / 小于比较，请先用 ToNumber 转换');
   }
   const [l, r] = [unwrapOption(left), unwrapOption(right)];
-  const a = comparable(l, r, semantics);
-  const b = comparable(r, l, semantics);
-  if (!a || !b || a.kind !== b.kind || a.kind === 'boolean') {
+  const a = orderable(l, r);
+  const b = orderable(r, l);
+  if (!a || !b || a.kind !== b.kind) {
+    // 文本参与比较大小（"10" > "9"、"5" > 3）原站运行期报“比较【10>9】 时出错！”（`26` §8.5，DEC-257）
+    if (l.kind === 'text' || r.kind === 'text') {
+      return fail('TYPE_CONVERSION', `比较【${toText(l)}${operator}${toText(r)}】时出错`);
+    }
     return fail('TYPE_CONVERSION', `${KIND_LABELS[left.kind]}与${KIND_LABELS[right.kind]}不能比较大小`);
   }
-  const delta =
-    a.kind === 'text'
-      ? a.value.localeCompare(b.value as string, 'zh-Hans-CN')
-      : (a.value as number) - (b.value as number);
+  const delta = a.value - b.value;
   switch (operator) {
     case '<':
       return delta < 0;

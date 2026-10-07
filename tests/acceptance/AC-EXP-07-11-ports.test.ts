@@ -58,10 +58,11 @@ describe('AC-EXP-07 绩效取数：同年同周期取最后修改；PerformanceL
     expect(valueOf(evaluateFormula('PerformanceLastCent(3)', context))).toEqual({ kind: 'empty' });
   });
 
-  it('无结果返回空而不是 0；空值再比较则计算失败', () => {
+  it('无结果返回空而不是 0；空值再比较大小结果为假、不报错（DEC-257）', () => {
     expect(run('PerformanceCent(考核结果.年度=2025, 考核结果.周期名称="年度")')).toEqual({ kind: 'empty' });
-    expect(run('PerformanceCent(考核结果.年度=2025, 考核结果.周期名称="年度") > 60')).toMatchObject({
-      code: 'EMPTY_IN_COMPARISON',
+    expect(run('PerformanceCent(考核结果.年度=2025, 考核结果.周期名称="年度") > 60')).toEqual({
+      kind: 'boolean',
+      value: false,
     });
   });
 });
