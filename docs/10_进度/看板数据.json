@@ -2001,7 +2001,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 16:51",
+"liveUpdated": "10-07 16:52",
 "chains": [
 {
 "g": "exit",
@@ -2047,7 +2047,7 @@
 "pr": 83,
 "n": "组织变更联动任职",
 "seg": "ev:d ds:d4 dev:d2 rev:a2 mg:w",
-"now": "拆分后本体第 2 轮审查中（codex exec）",
+"now": "第 2 轮审查出结论，待读取",
 "wait": "来源模型放哪由审查合并窗口判断",
 "fable": "1",
 "up": "10-07 调到 Max"
