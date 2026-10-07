@@ -147,7 +147,7 @@ describe('DEC-289① 精细化权限下活动内人员同口径裁剪', () => {
         })
       ).status,
     ).toBe(404);
-    // 范围内对象上按 personId 选范围外人员、或录入邮箱命中范围外已有人员 → 404
+    // 范围内对象上按 personId 选范围外人员 → 404
     expect(
       (
         await g('POST', `${base}/${s.objIn.id}/appraisers`, {
@@ -156,14 +156,18 @@ describe('DEC-289① 精细化权限下活动内人员同口径裁剪', () => {
         })
       ).status,
     ).toBe(404);
-    expect(
-      (
-        await g('POST', `${base}/${s.objIn.id}/appraisers`, {
-          ifMatch: 0,
-          body: { person: { name: '同名', email: s.external.email }, roleId: w.role('customer') },
-        })
-      ).status,
-    ).toBe(404);
+    // 手工录入：邮箱命中范围外已有人员与全新邮箱同样 403（受限管理员不能新建人员，不暴露存在性）
+    const manual = (email: string) =>
+      g('POST', `${base}/${s.objIn.id}/appraisers`, {
+        ifMatch: 0,
+        body: { person: { name: '同名', email }, roleId: w.role('customer') },
+      });
+    const hiddenEmail = await manual(s.external.email);
+    const freshEmail = await manual('fresh-289@example.com');
+    expect([hiddenEmail.status, freshEmail.status]).toEqual([403, 403]);
+    const errorOf = async (res: Response) => ((await res.json()) as { error: { details?: { reason?: string } } }).error;
+    expect((await errorOf(hiddenEmail)).details?.reason).toBe('PERSON_NOT_AVAILABLE');
+    expect((await errorOf(freshEmail)).details?.reason).toBe('PERSON_NOT_AVAILABLE');
     expect(
       (await g('DELETE', `${base}/${s.objIn.id}/appraisers/${s.customer.id}`, { ifMatch: s.customer.revision })).status,
     ).toBe(404);
@@ -184,8 +188,13 @@ describe('DEC-289① 精细化权限下活动内人员同口径裁剪', () => {
     const badPerson = await importOf([
       { objectEmail: inPerson, roleId: w.role('customer'), name: '改名', email: s.external.email },
     ]);
-    expect(badPerson.status).toBe(400);
-    expect(JSON.stringify(await badPerson.json())).toContain('PERSON_NOT_VISIBLE');
+    const freshPerson = await importOf([
+      { objectEmail: inPerson, roleId: w.role('customer'), name: '新人', email: 'fresh-import-289@example.com' },
+    ]);
+    for (const res of [badPerson, freshPerson]) {
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(await res.json())).toContain('PERSON_NOT_AVAILABLE');
+    }
 
     expect(await snapshot()).toEqual(before);
     expect((await w.ok<PersonView>(w.request('GET', `/people/${s.external.id}`))).name).toBe('外部客户');
