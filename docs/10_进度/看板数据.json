@@ -775,7 +775,7 @@
 },
 "F-033": {
 "n": "表达式函数库按原站补齐（63 个函数）",
-"s": "active",
+"s": "review",
 "p": "R3-T00",
 "deps": [
 "F-032"
@@ -1872,7 +1872,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 11:43",
+"liveUpdated": "10-07 11:51",
 "chains": [
 {
 "g": "exit",
@@ -2026,8 +2026,8 @@
 "o": 3,
 "k": "run",
 "n": "函数库补齐 63 个",
-"seg": "ev:d ds:n dev:a1 rev:w mg:w",
-"now": "开发中（Draft）",
+"seg": "ev:d ds:n dev:d1 rev:w1 mg:w",
+"now": "已转 Ready，待发起审查",
 "pr": 108
 },
 {
