@@ -420,8 +420,9 @@ describe('AC-APV-UI-04 并发、未知结果与权限失败', () => {
   });
 
   it.each([403, 404])('%i清除旧单详情和历史，保留列表且显示统一权限提示', async (status) => {
+    // DEC-277 ②：写请求 403 / 404 先清空再整页重读；成员已撤销时重读同样被拒。
     handler = (call) =>
-      call.options.method === 'POST'
+      call.options.method === 'POST' || (writes().length > 0 && call.url === `${API}/instances/${INSTANCE}`)
         ? response({ error: { code: 'FORBIDDEN', message: '不应把接口敏感文案当提示' } }, status)
         : undefined;
     await mount();
@@ -684,7 +685,8 @@ describe('AC-APV-UI-04 第二轮恢复与单据权限隔离', () => {
         return fail && kind === 'history'
           ? deniedResponse
           : response({ items: [{ event: 'approve', detail: { comment: '合成该单旧分页秘密' } }] });
-      if (call.url === `${API}/instances/${INSTANCE}` && fail && kind === 'detail') return deniedResponse;
+      // DEC-277 ②：历史 / 写请求被拒后整页重读，成员已撤销时完整详情同样被拒。
+      if (call.url === `${API}/instances/${INSTANCE}` && fail) return deniedResponse;
       return undefined;
     };
     await mount();

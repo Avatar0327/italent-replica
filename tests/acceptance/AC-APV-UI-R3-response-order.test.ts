@@ -1,5 +1,10 @@
 /// <reference lib="dom" />
 // @vitest-environment happy-dom
+/**
+ * 第 3 轮（Astra 第 2 轮 P2-1）写路径交错用例，第 5 轮按 DEC-277 ① 改为串行语义：
+ * 刷新 GET 在途时写请求排队，不可能出现“旧 GET 覆盖已采用的写结果”；排队的写在 GET 返回后才发出，
+ * 写结果整体采用；GET 返回 403 时按当前证据清单，排队的写不再发出。
+ */
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -93,7 +98,7 @@ async function click(label: string) {
   expect(button, label).toBeTruthy();
   await act(async () => button!.click());
 }
-async function startWrite(label: string) {
+async function submitWrite(label: string) {
   await click(label);
   if (label === '转交') {
     const input = host.querySelector<HTMLInputElement>('[aria-label="接收人用户账号 ID"]')!;
@@ -103,41 +108,43 @@ async function startWrite(label: string) {
     });
   }
   await click('确认提交');
-  expect(writes).toHaveLength(1);
 }
 
-describe('AC-APV-UI-02 / AC-APV-UI-04 读写响应代次与撤权交错', () => {
+describe('AC-APV-UI-02 / AC-APV-UI-04 读写串行与撤权交错', () => {
   it.each([
     { action: 'transfer', label: '转交', path: `/tasks/${TASK}/transfer`, revision: 8 },
     { action: 'urge', label: '催办', path: `/instances/${INSTANCE}/urge`, revision: 7 },
-  ])('$label 成功后丢弃更早刷新GET，撤权字段和旧节点记录不能恢复（revision=$revision）', async (test) => {
-    initial = detail({ actions: [test.action] });
-    await mount();
-    await click('刷新详情');
-    expect(reads).toBe(2);
+  ])(
+    '$label：刷新 GET 在途时写请求排队；GET 返回旧快照后写才发出，撤权后的写结果整体采用（revision=$revision）',
+    async (test) => {
+      initial = detail({ actions: [test.action] });
+      await mount();
+      await click('刷新详情');
+      expect(reads).toBe(2);
 
-    // 刷新已读取旧快照但延迟返回；撤权后的写响应只含当前可见字段。
-    fresh = detail({
-      revision: test.revision,
-      actions: [],
-      currentNodeKey: test.action === 'transfer' ? 'recipient' : 'manager',
-      tasks: [{ id: TASK, nodeName: '经理审批', status: test.action === 'transfer' ? 'transferred' : 'pending' }],
-      logs: [{ id: 'new-event', event: test.action, detail: { comment: '合成最新处理记录' } }],
-      form: { values: { reason: '合成申请理由' }, editMode: 'none', editableFields: [] },
-    });
-    await startWrite(test.label);
-    expect(writes[0]).toBe(`/api/tenant/approval${test.path}`);
-    await act(async () => write.finish(response(fresh)));
-    expect(panel().textContent).not.toContain(SECRET);
-    expect(panel().textContent).toContain('合成最新处理记录');
-    const accepted = panel().textContent;
+      fresh = detail({
+        revision: test.revision,
+        actions: [],
+        currentNodeKey: test.action === 'transfer' ? 'recipient' : 'manager',
+        tasks: [{ id: TASK, nodeName: '经理审批', status: test.action === 'transfer' ? 'transferred' : 'pending' }],
+        logs: [{ id: 'new-event', event: test.action, detail: { comment: '合成最新处理记录' } }],
+        form: { values: { reason: '合成申请理由' }, editMode: 'none', editableFields: [] },
+      });
+      await submitWrite(test.label);
+      // 串行：刷新在途，写请求只能排队。
+      expect(writes).toHaveLength(0);
+      await act(async () => oldRead.finish(response(initial)));
+      expect(writes).toEqual([`/api/tenant/approval${test.path}`]);
+      await act(async () => write.finish(response(fresh)));
+      expect(panel().textContent).not.toContain(SECRET);
+      expect(panel().textContent).toContain('合成最新处理记录');
+      expect(panel().textContent).not.toContain(
+        test.action === 'transfer' ? '审批中 · manager' : '待处理 · 经理审批 · 同意',
+      );
+    },
+  );
 
-    await act(async () => oldRead.finish(response(initial)));
-    expect(panel().textContent).not.toContain(SECRET);
-    expect(panel().textContent).toBe(accepted);
-  });
-
-  it('同意写响应已接受后，旧GET不能倒退状态、重新公布动作或覆盖新字段', async () => {
+  it('同意：排队的写在刷新返回后发出，写结果采用后状态不倒退、不重新公布动作、不恢复撤权字段', async () => {
     await mount();
     await click('刷新详情');
     fresh = detail({
@@ -147,12 +154,11 @@ describe('AC-APV-UI-02 / AC-APV-UI-04 读写响应代次与撤权交错', () => 
       tasks: [],
       form: { values: { reason: '合成审批后内容' }, editMode: 'none', editableFields: [] },
     });
-    await startWrite('同意');
-    await act(async () => write.finish(response(fresh)));
-    expect(panel().querySelector('.approval-summary')?.textContent).toContain('已同意');
-    expect(panel().textContent).toContain('合成审批后内容');
-
+    await submitWrite('同意');
+    expect(writes).toHaveLength(0);
     await act(async () => oldRead.finish(response(initial)));
+    expect(writes).toHaveLength(1);
+    await act(async () => write.finish(response(fresh)));
     expect(panel().querySelector('.approval-summary')?.textContent).toContain('已同意');
     expect(panel().querySelector('.approval-summary')?.textContent).not.toContain('审批中');
     expect(panel().textContent).toContain('合成审批后内容');
@@ -160,15 +166,15 @@ describe('AC-APV-UI-02 / AC-APV-UI-04 读写响应代次与撤权交错', () => 
     expect(Array.from(panel().querySelectorAll('button')).some((button) => button.textContent === '同意')).toBe(false);
   });
 
-  it('写响应已接受后，旧GET的权限错误不能清掉当前详情或显示旧错误', async () => {
+  it('刷新 GET 返回 403 时按当前证据清单关闭，排队的写请求不再以旧快照发出', async () => {
     await mount();
     await click('刷新详情');
-    await startWrite('同意');
-    await act(async () => write.finish(response(fresh)));
+    await submitWrite('同意');
+    expect(writes).toHaveLength(0);
     await act(async () => oldRead.finish(response({ error: { code: 'FORBIDDEN' } }, 403)));
-    expect(panel()).not.toBeNull();
-    expect(panel().textContent).toContain('合成申请理由');
-    expect(panel().textContent).not.toContain('无权访问');
-    expect(panel().textContent).not.toContain(SECRET);
+    expect(host.querySelector('.approval-detail')).toBeNull();
+    expect(host.textContent).toContain('无权访问');
+    expect(host.textContent).not.toContain(SECRET);
+    expect(writes).toHaveLength(0);
   });
 });
