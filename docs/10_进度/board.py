@@ -144,8 +144,6 @@ def build(d, nosync):
     if rr.returncode:
         sys.exit(1)
     html = open(TPL, encoding="utf8").read().replace("__DATA__", json.dumps(d, ensure_ascii=False))
-    with open(OUT, "w", encoding="utf8") as f:
-        f.write(html)
     js = html[html.index("const DATA"):html.rindex("</script>")]
     stub = """const els={};const mk=()=>({innerHTML:"",textContent:"",hidden:false,onclick:null,addEventListener(){},closest(){return null},classList:{add(){},remove(){}}});
 global.document={getElementById:id=>els[id]||(els[id]=mk()),querySelector:()=>null,querySelectorAll:()=>[],addEventListener(){}};
@@ -153,7 +151,10 @@ global.document={getElementById:id=>els[id]||(els[id]=mk()),querySelector:()=>nu
     r = subprocess.run(["node", "-e", stub], capture_output=True, text=True)
     print(r.stdout.strip() or r.stderr.strip()[:800])
     if r.returncode:
+        print("！！总体看板渲染校验失败，未写入 进度看板.html", file=sys.stderr)
         sys.exit(1)
+    with open(OUT, "w", encoding="utf8") as f:
+        f.write(html)
 
 
 def main():
