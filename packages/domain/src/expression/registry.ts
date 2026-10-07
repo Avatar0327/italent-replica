@@ -40,7 +40,7 @@ export interface FunctionCall {
 /** 函数可见的上下文切片（不含求值器内部状态）。 */
 export interface FunctionEnvironment {
   readonly subjectId: string;
-  readonly calendar: { readonly today: string; readonly timeZone: string };
+  readonly calendar: { readonly today: string; readonly timeZone: string; readonly now?: Date };
   readonly project?: { readonly startAt?: Date; readonly endAt?: Date };
   readonly assessmentLatestWindow: 'before_project_end' | 'before_project_start';
   readonly semantics: ExpressionSemantics;
@@ -62,6 +62,10 @@ export interface FunctionSpec {
    * 保存校验在该函数的参数里不按对象字段目录检查它们。
    */
   readonly recordObjects?: readonly string[];
+  /**
+   * 在待办中触发计算时，含该函数的计算项目不计算（面板原文，`26` §8.6；排名函数）。引擎只标记，调度由 R3-T04 落实。
+   */
+  readonly skipInTodoTrigger?: boolean;
   readonly implement: (call: FunctionCall) => ExprValue;
 }
 
@@ -97,7 +101,7 @@ export class FunctionRegistry {
   }
 }
 
-/** 内置函数库（`26` §8.1 全集 + 评定专用函数）；使用方在其上追加自定义函数。 */
+/** 内置函数库（`26` §8.6 面板全集 + 评定专用函数）；使用方在其上追加自定义函数。 */
 export function createDefaultRegistry(): FunctionRegistry {
   const registry = new FunctionRegistry();
   for (const spec of BUILTIN_FUNCTIONS) registry.register(spec);

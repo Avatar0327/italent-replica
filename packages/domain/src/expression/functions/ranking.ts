@@ -1,6 +1,9 @@
 /**
- * 排名（`26` §3.5 TR-R28、§8.1）：Ranking(模式, 排序字段, 人员范围条件?, 分组字段?)。
- * 模式 "排序号"：降序名次，并列同名次（1-2-2-4）；"百分位"：不高于本人的人数占比，按小数返回（🟡 TODO(需取证 #89)：百分位定义与并列名次）。
+ * 排名（`26` §3.5 TR-R28、§8.6）：Ranking(模式, 排序字段, 人员范围条件?, 分组字段?)。
+ * 🟡 DEC-262①：模式 "排序号" 降序名次，并列同名次、后续跳号（1、1、3，同 Excel RANK）；
+ * "百分位" = 名次 ÷ 范围人数 × 100，越靠前越小，并列取同值（面板“单位为(%)”，与本租户 `ToNumber(aa)<=20 → 3` 的
+ * 写法一致；TODO(需取证 #105)：原站百分位公式未说明）。
+ * 面板原文“在待办中触发计算时，包含这个函数的计算项目不会计算”：以 skipInTodoTrigger 标记，调度由 R3-T04 落实。
  * 范围 = RankingPort 给出的人员（批量求值时默认本次计算对象）再按范围条件筛选；本人不在范围内 → 范围外人员（207126957 问题 2）。
  */
 import type { ExprNode } from '../ast.js';
@@ -76,8 +79,8 @@ function ranking(call: FunctionCall): ExprValue {
     return call.fail('OUT_OF_SCOPE', '本人不满足人员范围条件');
   }
   const peers = members.filter((member) => valuesEqual(member.group, me.group, call.env.semantics));
-  if (mode === 'rank') return { kind: 'number', value: peers.filter((member) => member.value > me.value).length + 1 };
-  return { kind: 'number', value: peers.filter((member) => member.value <= me.value).length / peers.length };
+  const rank = peers.filter((member) => member.value > me.value).length + 1;
+  return { kind: 'number', value: mode === 'rank' ? rank : (rank / peers.length) * 100 };
 }
 
 export const RANKING_FUNCTIONS: readonly FunctionSpec[] = [
@@ -91,6 +94,7 @@ export const RANKING_FUNCTIONS: readonly FunctionSpec[] = [
       { name: '分组字段', required: false },
     ],
     lazy: true,
+    skipInTodoTrigger: true,
     implement: ranking,
   },
 ];

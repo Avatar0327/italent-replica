@@ -1,6 +1,6 @@
 /**
  * 日期工具（`26` §8.3；DEC-056）：日期字面量解析、瞬时按租户时区转墙上时间、.NET 风格格式化、日期差与加减。
- * 🟡 待 Q-M0-83：日期函数与 today() 的业务日 / 时区口径在原站的精确行为。
+ * 业务日与“现在”按租户时区（DEC-056 / DEC-265，Q-M0-83 实算）。
  */
 import type { DateParts, DatePrecision } from './values.js';
 
@@ -114,6 +114,11 @@ export function dateDiff(unit: DateUnit, from: DateParts, to: DateParts): number
   let months = (to.year - from.year) * 12 + (to.month - from.month);
   if (dateOrdinal({ ...to, year: from.year, month: from.month }) < dateOrdinal(from)) months--;
   return unit === 'm' ? months : Math.trunc(months / 12);
+}
+
+/** 加减分钟（AddHours / AddMinutes）：结果带时分，日期精度的值变为日期时间。 */
+export function addMinutes(base: DateParts, minutes: number): DateParts {
+  return fromOrdinal(dateOrdinal(base) + minutes * 60_000, base.precision === 'time' ? 'time' : 'datetime');
 }
 
 /** 加减：月 / 年加减后超出目标月天数时取该月最后一天（2020/01/31 + 1 月 = 2020/02/29）。 */

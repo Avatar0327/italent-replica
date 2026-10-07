@@ -5,7 +5,7 @@
 import { childrenOf, type CallNode, type ExprNode, type Program } from './ast.js';
 import { isValidTimeZone } from '../tenant-time.js';
 import type { BatchContext, EvaluationCalendar, EvaluationContext } from './context.js';
-import { parseDateText } from './dates.js';
+import { instantToParts, parseDateText } from './dates.js';
 import { Evaluator } from './evaluator.js';
 import {
   ComputationError,
@@ -164,6 +164,15 @@ export function validateContext(calendar: EvaluationCalendar): ComputationFailur
   }
   if (parseDateText(calendar.today)?.precision !== 'date') {
     return { code: 'CONTEXT_INVALID', message: `${FAILURE_PREFIX}：计算上下文的“今天”不是合法日期` };
+  }
+  const { now } = calendar;
+  if (now === undefined) return undefined;
+  // “现在”与“今天”须在租户时区下是同一天（DEC-265），否则 Now() 与 Today() 自相矛盾
+  const nowDay = Number.isNaN(now.getTime())
+    ? undefined
+    : formatIsoLike({ ...instantToParts(now, calendar.timeZone), precision: 'date' });
+  if (nowDay !== calendar.today) {
+    return { code: 'CONTEXT_INVALID', message: `${FAILURE_PREFIX}：计算上下文的“现在”与“今天”不是同一天` };
   }
   return undefined;
 }

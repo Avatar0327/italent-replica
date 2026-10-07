@@ -1,14 +1,17 @@
 /**
- * 绩效取数（`26` §3.5 TR-R28、§8.1）：数据来自人员子集「考核结果」，经 PerformancePort 注入。
- * PerformanceCent / Grade：年度、周期两个过滤表达式必填，其他过滤选填；同年同周期多条取最后修改的。
- * PerformanceLastCent / Grade(N)：最近第 N 年，不要求连续年份，无结果返回空而非 0（🟡 手册未再出现，维持 `26` §3.5 口径；
- * 周期与中文名 TODO(需取证 #89)）。
+ * 绩效取数（`26` §3.5 TR-R28、§8.6；DEC-260）：数据来自人员子集「考核结果」，经 PerformancePort 注入。
+ * 周期按周期名称文本过滤（考核结果.周期名称="年度" / "第三季度"），可选绩效活动等其他过滤。
+ * - 指定年度指定周期的得分 / 等级：年度、周期两个过滤必填，其他过滤选填；同年同周期多条取最后修改的。
+ * - 最近第 N 年的得分 / 等级：过滤后按年度倒序取第 N 个年度（不要求连续年份，不晚于参考年），无结果返回空。
+ * - 最近第 N 次的得分 / 等级：过滤后按“考核结果相关日期”倒序取第 N 条。
+ * TODO(需取证 #105)：第 N 年 / 第 N 次的参数顺序与日期字段是否为参数原站未说明，暂按参数形态识别（见 recencyArgs）。
  */
-import { instantToParts } from '../dates.js';
+import type { ExprNode, FieldNode } from '../ast.js';
+import { dateOrdinal, instantToParts } from '../dates.js';
 import type { FunctionCall, FunctionSpec } from '../registry.js';
 import type { PerformanceRecord } from '../ports.js';
 import { EMPTY, type ExprValue } from '../values.js';
-import { matchesAll, prefixedFields, unwrapPort } from './shared.js';
+import { matchesAll, recordReader, unwrapPort } from './shared.js';
 
 /** 「考核结果」子集的字段名（`22`）。 */
 export const PERFORMANCE_FIELDS = {
@@ -26,23 +29,57 @@ function records(call: FunctionCall): readonly PerformanceRecord[] {
   return unwrapPort(call, 'performance', () => call.env.ports?.performance?.records(call.env.subjectId));
 }
 
-function lastModified(rows: readonly PerformanceRecord[]): PerformanceRecord | undefined {
-  return rows.reduce<PerformanceRecord | undefined>(
-    (latest, row) => (latest === undefined || row.modifiedAt.getTime() > latest.modifiedAt.getTime() ? row : latest),
-    undefined,
-  );
-}
+const newestFirst = (a: PerformanceRecord, b: PerformanceRecord) => b.modifiedAt.getTime() - a.modifiedAt.getTime();
 
 function resultField(call: FunctionCall, row: PerformanceRecord | undefined, field: string): ExprValue {
   return row ? call.env.fromPlain(row.fields[field]) : EMPTY;
 }
 
-/** 按过滤表达式筛行（年度、周期、其他过滤都在记录作用域里求值）。 */
+/** 过滤后的行（过滤表达式在记录作用域里求值）。 */
+function filtered(call: FunctionCall, filters: readonly ExprNode[], extra: readonly ExprNode[] = []) {
+  const read = recordReader(call, PREFIXES, [...filters, ...extra]);
+  return records(call)
+    .map((row) => ({ row, record: read(row.fields) }))
+    .filter(({ record }) => matchesAll(call, filters, record));
+}
+
 function byFilters(call: FunctionCall, field: string): ExprValue {
-  const matched = records(call).filter((row) =>
-    matchesAll(call, call.rawArgs, prefixedFields(call, PREFIXES, row.fields)),
-  );
-  return resultField(call, lastModified(matched), field);
+  const rows = filtered(call, call.rawArgs).map(({ row }) => row);
+  return resultField(call, [...rows].sort(newestFirst)[0], field);
+}
+
+interface RecencyArgs {
+  readonly n: number;
+  readonly filters: readonly ExprNode[];
+  readonly dateField?: FieldNode;
+}
+
+const isFilterShaped = (node: ExprNode) =>
+  node.type === 'logical' ||
+  node.type === 'boolean' ||
+  (node.type === 'binary' && !['+', '-', '*', '/'].includes(node.operator));
+
+/**
+ * 按参数形态识别：比较 / 且或 / 是否值是过滤条件；考核结果的字段引用（第 N 次时第一个）是排序用的日期字段；
+ * 其余（数字、变量、算式）是 N，必须恰好一个。
+ */
+function recencyArgs(call: FunctionCall, withDateField: boolean): RecencyArgs {
+  const filters: ExprNode[] = [];
+  const counts: ExprNode[] = [];
+  let dateField: FieldNode | undefined;
+  for (const node of call.rawArgs) {
+    if (withDateField && !dateField && node.type === 'field' && node.path[0] === PERFORMANCE_FIELDS.object) {
+      dateField = node;
+    } else if (isFilterShaped(node) || node.type === 'field') {
+      filters.push(node);
+    } else {
+      counts.push(node);
+    }
+  }
+  if (counts.length !== 1) return call.fail('ARGUMENT_TYPE', 'N 须写且只写一个（不小于 1 的整数）');
+  const n = Math.trunc(call.numberArg([call.evaluate(counts[0]!)], 0));
+  if (n < 1) return call.fail('ARGUMENT_TYPE', 'N 须是不小于 1 的整数');
+  return dateField ? { n, filters, dateField } : { n, filters };
 }
 
 function yearOf(row: PerformanceRecord): number | undefined {
@@ -58,20 +95,29 @@ function referenceYear(call: FunctionCall): number {
   return Number(call.env.calendar.today.slice(0, 4));
 }
 
-function byRecency(call: FunctionCall, field: string): ExprValue {
-  const n = Math.trunc(call.numberArg(call.args, 0));
-  if (n < 1) return call.fail('ARGUMENT_TYPE', 'N 须是不小于 1 的整数');
+function byRecentYear(call: FunctionCall, field: string): ExprValue {
+  const { n, filters } = recencyArgs(call, false);
+  const rows = filtered(call, filters).map(({ row }) => row);
   const limit = referenceYear(call);
-  const years = [
-    ...new Set(
-      records(call)
-        .map(yearOf)
-        .filter((year): year is number => year !== undefined && year <= limit),
-    ),
-  ];
+  const years = [...new Set(rows.map(yearOf).filter((year): year is number => year !== undefined && year <= limit))];
   const target = years.sort((a, b) => b - a)[n - 1];
   if (target === undefined) return EMPTY;
-  return resultField(call, lastModified(records(call).filter((row) => yearOf(row) === target)), field);
+  return resultField(call, rows.filter((row) => yearOf(row) === target).sort(newestFirst)[0], field);
+}
+
+/** 第 N 次：按日期字段倒序（日期为空的行不参与）；没写日期字段时按最后修改时间（🟡 #105）。 */
+function byRecentOccurrence(call: FunctionCall, field: string): ExprValue {
+  const { n, filters, dateField } = recencyArgs(call, true);
+  const sortKey = (row: PerformanceRecord, record: Readonly<Record<string, ExprValue>>): number | undefined => {
+    if (!dateField) return row.modifiedAt.getTime();
+    const value = call.evaluate(dateField, record);
+    return value.kind === 'empty' ? undefined : dateOrdinal(call.toDate(value));
+  };
+  const ranked = filtered(call, filters, dateField ? [dateField] : [])
+    .map(({ row, record }) => ({ row, key: sortKey(row, record) }))
+    .filter((entry): entry is { row: PerformanceRecord; key: number } => entry.key !== undefined)
+    .sort((a, b) => b.key - a.key || newestFirst(a.row, b.row));
+  return resultField(call, ranked[n - 1]?.row, field);
 }
 
 const FILTER_PARAMS = [
@@ -79,35 +125,45 @@ const FILTER_PARAMS = [
   filterParam('周期表达式', true),
   filterParam('其他过滤', false, true),
 ];
+const RECENT_YEAR_PARAMS = [filterParam('N', true), filterParam('周期表达式 / 其他过滤', false, true)];
+const RECENT_OCCURRENCE_PARAMS = [
+  filterParam('N', true),
+  filterParam('周期表达式', true),
+  filterParam('考核结果日期字段 / 其他过滤', false, true),
+];
+
+const fetchSpec = (
+  name: string,
+  aliases: string[],
+  params: FunctionSpec['params'],
+  implement: FunctionSpec['implement'],
+): FunctionSpec => ({ name, aliases, params, lazy: true, recordObjects: PREFIXES, implement });
 
 export const PERFORMANCE_FUNCTIONS: readonly FunctionSpec[] = [
-  {
-    name: 'PerformanceCent',
-    aliases: ['获取指定年度指定周期的绩效得分'],
-    params: FILTER_PARAMS,
-    lazy: true,
-    recordObjects: PREFIXES,
-    implement: (call) => byFilters(call, PERFORMANCE_FIELDS.score),
-  },
-  {
-    name: 'PerformanceGrade',
-    aliases: ['获取指定年度指定周期的绩效等级'],
-    params: FILTER_PARAMS,
-    lazy: true,
-    recordObjects: PREFIXES,
-    implement: (call) => byFilters(call, PERFORMANCE_FIELDS.grade),
-  },
-  {
-    // TODO(需取证 #89)：中文名为推断（手册未列出）；同年多周期取哪条、结束年当年是否算第 1 年待核对
-    name: 'PerformanceLastCent',
-    aliases: ['获取最近第N年度的绩效得分'],
-    params: [filterParam('N', true)],
-    implement: (call) => byRecency(call, PERFORMANCE_FIELDS.score),
-  },
-  {
-    name: 'PerformanceLastGrade',
-    aliases: ['获取最近第N年度的绩效等级'],
-    params: [filterParam('N', true)],
-    implement: (call) => byRecency(call, PERFORMANCE_FIELDS.grade),
-  },
+  fetchSpec('PerformanceCent', ['获取指定年度指定周期的绩效得分'], FILTER_PARAMS, (call) =>
+    byFilters(call, PERFORMANCE_FIELDS.score),
+  ),
+  fetchSpec('PerformanceGrade', ['获取指定年度指定周期的绩效等级'], FILTER_PARAMS, (call) =>
+    byFilters(call, PERFORMANCE_FIELDS.grade),
+  ),
+  // 面板名（§8.6）；“获取最近第N年度的…”是 R3-T00 时的推断名，保留兼容
+  fetchSpec(
+    'PerformanceLastCent',
+    ['获取最近第N年的绩效考核得分', '获取最近第N年度的绩效得分'],
+    RECENT_YEAR_PARAMS,
+    (call) => byRecentYear(call, PERFORMANCE_FIELDS.score),
+  ),
+  fetchSpec(
+    'PerformanceLastGrade',
+    ['获取最近第N年的绩效考核等级', '获取最近第N年度的绩效等级'],
+    RECENT_YEAR_PARAMS,
+    (call) => byRecentYear(call, PERFORMANCE_FIELDS.grade),
+  ),
+  // 英文名为复刻命名（面板只有中文名）
+  fetchSpec('PerformanceNthCent', ['获取最近第N次绩效考核得分'], RECENT_OCCURRENCE_PARAMS, (call) =>
+    byRecentOccurrence(call, PERFORMANCE_FIELDS.score),
+  ),
+  fetchSpec('PerformanceNthGrade', ['获取最近第N次绩效考核等级'], RECENT_OCCURRENCE_PARAMS, (call) =>
+    byRecentOccurrence(call, PERFORMANCE_FIELDS.grade),
+  ),
 ];

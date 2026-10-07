@@ -21,7 +21,7 @@ export type {
   EvaluationContext,
   ProjectWindow,
 } from './context.js';
-export { dateAdd, dateDiff, formatDate, instantToParts, parseDateText, type DateUnit } from './dates.js';
+export { addMinutes, dateAdd, dateDiff, formatDate, instantToParts, parseDateText, type DateUnit } from './dates.js';
 export {
   evaluateBatch,
   evaluateFormula,
@@ -47,7 +47,16 @@ export {
   type FailureCode,
   type SourcePosition,
 } from './failures.js';
-export { ASSESSMENT_OBJECTS, BUILTIN_FUNCTIONS, PERFORMANCE_FIELDS, SURVEY360_OBJECT } from './functions/index.js';
+export {
+  ASSESSMENT_OBJECTS,
+  BUILTIN_FUNCTIONS,
+  FUNCTION_PANEL,
+  PERFORMANCE_FIELDS,
+  SURVEY360_OBJECT,
+  TALENT_REVIEW_OBJECT,
+  type PanelCategory,
+  type PanelEntry,
+} from './functions/index.js';
 export { tokenize, type SyntaxIssue, type SyntaxIssueCode, type Token, type TokenKind } from './lexer.js';
 export { parseFormula, type ParseResult } from './parser.js';
 export {
@@ -61,8 +70,11 @@ export {
   type InMemoryPortData,
   type InMemoryRankingMember,
   type InMemorySubjectOptions,
+  type ParameterRulePort,
   type PerformancePort,
   type PerformanceRecord,
+  type PersonnelSubsetPort,
+  type PersonnelSubsetRecord,
   type PortName,
   type PortOutcome,
   type RankingPort,
@@ -72,6 +84,8 @@ export {
   type SubjectReader,
   type Survey360Port,
   type Survey360Record,
+  type TalentReviewPort,
+  type TalentReviewRecord,
 } from './ports.js';
 export {
   arityOf,
