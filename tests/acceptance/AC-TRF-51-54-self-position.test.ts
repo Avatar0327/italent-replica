@@ -584,7 +584,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
   });
   it.each(
     ['inherit', 'deferred', 'hr-record', 'propagated', 'approval-edit'].flatMap((source) =>
-      ['activate', 'revoke', 'delete'].map((end) => ({ source, end })),
+      ['activate', 'revoke', 'delete', 'delete-effective'].map((end) => ({ source, end })),
     ),
   )('AC-TRF-58 可信职位完整生命周期：来源=$source，终点=$end', async ({ source: origin, end }) => {
     const person = await actor(`合成生命周期-${origin}-${end}`, true);
@@ -629,6 +629,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     };
     if (origin === 'deferred') await configure({ ...original.fieldModes, 'preset:departmentId': 'absent' });
     let saved: Business;
+    const replays: Partial<Record<'create' | 'PATCH' | 'submit', () => Promise<Response>>> = {};
     try {
       const options = {
         ...w.as(person.userId),
@@ -638,20 +639,21 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
       };
       const path = `${BASE}/transfers/employees/${person.employeeId.toUpperCase()}`;
       saved = await w.json<Business>(await api.request('POST', path, options), 201);
-      expect(await w.json(await api.request('POST', path, options), 201)).toEqual(saved);
+      replays.create = () => api.request('POST', path, options);
+      expect(await w.json(await replays.create(), 201)).toEqual(saved);
     } finally {
       if (origin === 'deferred') await configure(original.fieldModes);
     }
     if (origin === 'propagated') await updateCurrent();
-    let replayLast: (() => Promise<Response>) | undefined;
     const command = async (action: 'PATCH' | 'submit', body: object = {}) => {
       const before = await payload(saved.id);
       const options = { ...w.as(person.userId), ifMatch: before.revision, idempotencyKey: randomUUID(), body };
       const path = `${BASE}/businesses/${saved.id.toUpperCase()}${action === 'submit' ? '/submit' : ''}`;
       const method = action === 'PATCH' ? 'PATCH' : 'POST';
       saved = await w.json<Business>(await api.request(method, path, options), 200);
-      replayLast = () => api.request(method, path, options);
-      expect(await w.json(await replayLast(), 200)).toEqual(saved);
+      const replay = () => api.request(method, path, options);
+      replays[action] = replay;
+      expect(await w.json(await replay(), 200)).toEqual(saved);
     };
     if (origin === 'approval-edit') {
       await command('submit');
@@ -665,7 +667,9 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
       await w.json(await w.instanceAction(person.userId, view.id, 'withdraw', view.revision));
     }
     // 来源均可在草稿、驳回、撤回三个状态修改与重提；字段权限只约束本次请求体。
-    for (const state of ['draft', 'reject', 'withdraw']) {
+    // 每个状态都真正再次改期（21 / 22 / 23 日），证明驳回、撤回后的改期同样不把可信职位当员工输入。
+    const reschedule = { draft: '2026-10-21', reject: '2026-10-22', withdraw: '2026-10-23' } as const;
+    for (const state of ['draft', 'reject', 'withdraw'] as const) {
       if (state !== 'draft') {
         const view = await w.instanceOf(saved.id, person.userId);
         const task = w.pending(view)[0]!;
@@ -688,8 +692,12 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
         expect(await payload(saved.id)).toEqual(before);
         expect(await profile(person)).toEqual(beforePerson);
       }
-      await command('PATCH', { effectiveDate: '2026-10-21', fields: { remarks: `合成-${state}` } });
-      expect(await payload(saved.id)).toMatchObject({ fields: { positionId: expectedPosition }, ...inheritedStatus });
+      await command('PATCH', { effectiveDate: reschedule[state], fields: { remarks: `合成-${state}` } });
+      expect(await payload(saved.id)).toMatchObject({
+        effectiveDate: reschedule[state],
+        fields: { positionId: expectedPosition },
+        ...inheritedStatus,
+      });
       await command('submit');
       expect(await payload(saved.id)).toMatchObject({
         status: 'in_review',
@@ -697,10 +705,10 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
         ...inheritedStatus,
       });
     }
-    if (end === 'activate') {
+    if (end === 'activate' || end === 'delete-effective') {
       await approve(person, saved.id);
-      // 计划 21 日，实际 22 日执行：迟到改期追加版本也不能把可信职位误认作员工输入。
-      w.setNow('2026-10-22T01:00:00Z');
+      // 计划 23 日，实际 24 日执行：迟到改期追加版本也不能把可信职位误认作员工输入。
+      w.setNow('2026-10-24T01:00:00Z');
       try {
         for (let attempt = 0; attempt < 2; attempt++)
           await runEmploymentActivations(
@@ -716,7 +724,8 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
       } finally {
         w.setNow('2026-10-01T01:00:00Z');
       }
-    } else {
+    }
+    if (end !== 'activate') {
       if (end === 'delete') {
         const view = await w.instanceOf(saved.id, person.userId);
         await w.json(await w.instanceAction(person.userId, view.id, 'withdraw', view.revision));
@@ -734,14 +743,20 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
       const removed = await w.json(await w.request(w.hr.id, method, path, options), 200);
       expect(await w.json(await w.request(w.hr.id, method, path, options), 200)).toEqual(removed);
       expect(await payload(saved.id)).toMatchObject({ status: end === 'revoke' ? 'voided' : 'deleted', record: null });
-      expect(await profile(person)).toMatchObject({
-        employee: { ...beforePerson.employee, revision: beforePerson.employee.revision + 1 },
-        record: beforePerson.record,
-      });
-      const records = await w.json<{ items: unknown[] }>(
+      const records = await w.json<{ items: { fields: { positionId: string | null } }[] }>(
         await w.request(w.hr.id, 'GET', `${BASE}/employees/${person.employeeId}/records`),
       );
       expect(records.items).toHaveLength(1);
+      if (end === 'delete-effective') {
+        // 删除已生效调动：当前任职回到前一条（入职或 HR 改过的原任职），不残留调动带来的职位。
+        const original = ['hr-record', 'propagated'].includes(origin) ? propagatedPosition : originalPosition;
+        expect(records.items[0]!.fields.positionId).toBe(original);
+      } else {
+        expect(await profile(person)).toMatchObject({
+          employee: { ...beforePerson.employee, revision: beforePerson.employee.revision + 1 },
+          record: beforePerson.record,
+        });
+      }
     }
     const beforeReplay = await payload(saved.id);
     await withTenant(database().db, w.tenant.id, (tx) =>
@@ -749,10 +764,13 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
         sql`DELETE FROM permission_user_person_links WHERE tenant_id=${w.tenant.id} AND user_id=${person.userId}::uuid`,
       ),
     );
-    const deniedReplay = await replayLast!();
-    expect(deniedReplay.status).toBe(403);
-    expect(await deniedReplay.text()).not.toContain(expectedPosition);
-    expect(await payload(saved.id)).toEqual(beforeReplay);
+    // 创建、PATCH、提交三条命令分别重放：解除绑定后都按当前绑定拒绝，不返回缓存结果、不泄漏职位。
+    for (const replay of [replays.create!, replays.PATCH!, replays.submit!]) {
+      const deniedReplay = await replay();
+      expect(deniedReplay.status).toBe(403);
+      expect(await deniedReplay.text()).not.toContain(expectedPosition);
+      expect(await payload(saved.id)).toEqual(beforeReplay);
+    }
   });
   it('AC-TRF-57 传播职位后换部门清空，后续改期重提与落地不还原', async () => {
     const person = await actor('合成传播换部门');

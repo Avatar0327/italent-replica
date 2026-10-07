@@ -287,6 +287,24 @@ async function activate(at: string) {
     w.setNow('2026-10-01T01:00:00Z');
   }
 }
+async function withSharedForm<T>(fieldModes: Record<string, string>, run: () => Promise<T>) {
+  const form = () => withTenant(database().db, w.tenant.id, (tx) => resolveTransferForm(tx, w.tenant.id, FORM));
+  const original = await form();
+  const configure = async (modes: Record<string, string>) =>
+    w.json(
+      await w.request(w.hr.id, 'PUT', `${BASE}/transfers/forms/${FORM}`, {
+        ifMatch: (await form()).revision,
+        body: { name: original.name, group: 'transfer', fieldModes: modes },
+      }),
+    );
+  await configure({ ...original.fieldModes, ...fieldModes });
+  try {
+    return await run();
+  } finally {
+    await configure(original.fieldModes);
+  }
+}
+
 beforeAll(async () => {
   w = await approvalWorld(database().db, 'self-provenance');
   api = tenantApi(database().db, { authorize: undefined, clock: w.clock });
@@ -502,6 +520,48 @@ describe('AC-TRF-61 部门明确、职位单独延迟继承：生效时按前驱
       expect(await payload(created.id)).toMatchObject({
         status: 'effective',
         record: { fields: { departmentId, positionId: expected } },
+      });
+    },
+  );
+});
+
+describe('AC-TRF-62 审批节点编辑 × 职位来源', () => {
+  it.each(['inherit', 'deferred', 'hr-record', 'propagated', 'sequence', 'status'] as const)(
+    'AC-TRF-62 审批节点编辑非职位字段不改变职位来源：来源=%s',
+    async (origin) => {
+      const synced = origin === 'sequence' ? await syncedJob() : undefined;
+      const person =
+        origin === 'status' ? await probationer(`合成节点-${origin}`) : await actor(`合成节点-${origin}`, synced);
+      if (origin === 'hr-record') await editCurrent(person, { positionId: otherPosition });
+      const create = () => selfCreate(person, origin === 'deferred' ? {} : { departmentId: source }, true);
+      const created =
+        origin === 'deferred' ? await withSharedForm({ 'preset:departmentId': 'absent' }, create) : await create();
+      if (origin === 'propagated') await editCurrent(person, { positionId: otherPosition });
+      if (synced) await syncSequence(synced);
+      if (origin === 'status') await regularize(person);
+      const position = ['hr-record', 'propagated'].includes(origin)
+        ? otherPosition
+        : (synced?.positionId ?? originalPosition);
+      expect(await payload(created.id)).toMatchObject({ status: 'in_review', fields: { positionId: position } });
+      if (['propagated', 'status'].includes(origin)) {
+        // 传播改动了审批表单可见的在途载荷，旧实例冻结：节点编辑 409 且不写入；发起人撤回后重提，节点再编辑。
+        // 序列不在节点表单字段内，同步后节点可直接编辑（来源=sequence）。
+        const frozen = await payload(created.id);
+        const conflict = await nodeEdit(person, created.id, { remarks: '合成冻结备注' });
+        expect(conflict.status).toBe(409);
+        expect(await payload(created.id)).toEqual(frozen);
+        await sendBack(person, created.id, 'withdraw');
+        await command(person, created.id, 'submit');
+      }
+      await w.json(await nodeEdit(person, created.id, { remarks: `合成节点备注-${origin}` }));
+      expect(await payload(created.id)).toMatchObject({
+        fields: { positionId: position, remarks: `合成节点备注-${origin}` },
+      });
+      await approve(person, created.id);
+      await activate(date);
+      expect(await payload(created.id)).toMatchObject({
+        status: 'effective',
+        record: { fields: { departmentId: source, positionId: position } },
       });
     },
   );
