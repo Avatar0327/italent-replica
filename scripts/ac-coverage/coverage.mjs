@@ -142,20 +142,23 @@ function references(tests, definitions, ignore) {
 }
 
 /**
- * 收集阶段的问题：收集错误；只要注册了 .only 一律报 only（含挂在 skip / todo 祖先下、Vitest 不再检查的，
- * only 还会把同文件其他用例压成 skip）；认不出同一个用例的跨档身份报 identity（DEC-282）。
+ * 收集阶段的问题（DEC-282 及补充，不按报错文本分辨来源）：收集错误一律原样报 collect（含模块错误、
+ * Vitest 拒绝生效的 .only 时挂在该 suite / 用例上的错误）；mode 仍为 only 的注册报 only（挂在 skip / todo 祖先下、
+ * Vitest 不再检查的，only 还会把同文件其他用例压成 skip）；身份无法确认的注册报 identity，并带上逐条注册。
  */
 function runtimeProblems(collected) {
-  const where = (item) => `（档：${item.profiles.join(' / ')}）`;
+  const where = (item) => `（档：${item.profiles.join(' / ')}${item.project ? `；project ${item.project}` : ''}）`;
+  const nodeOf = (item) => (item.names ? `：${item.names.join(' > ')}（${item.location ?? '未知位置'}）` : '');
   const problems = collected.errors.map((e) => ({
     kind: 'collect',
-    message: `收集失败${e.file ? `（${e.file}）` : ''}：${e.message}${where(e)}`,
+    message: `收集失败${e.file ? `（${e.file}${nodeOf(e)}）` : ''}：${e.message}${where(e)}`,
   }));
   for (const node of collected.onlyNodes ?? []) {
-    const title = `${node.names.join(' > ')}（${node.location ?? '未知位置'}）`;
-    problems.push({ kind: 'only', message: `${node.file}：${title} 注册了 .only${where(node)}` });
+    problems.push({ kind: 'only', message: `${node.file}${nodeOf(node)} 注册了 .only${where(node)}` });
   }
-  for (const item of collected.identity ?? []) problems.push({ kind: 'identity', message: item.message });
+  for (const item of collected.identity ?? []) {
+    problems.push({ kind: 'identity', message: item.message, registrations: item.registrations });
+  }
   return problems;
 }
 

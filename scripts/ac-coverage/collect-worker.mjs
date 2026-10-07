@@ -2,6 +2,7 @@
 // staticParse: false 必须显式写：Vitest 5 的 collect() 与 `vitest list` 默认是静态解析，正是 DEC-254 要弃用的做法。
 // 收集会真实加载测试文件、执行各级 describe 回调并格式化 each 标题，但不执行用例体与钩子。
 // DEC-282：身份与状态只读 Vitest 任务对象在收集完成后的字段（name、location、mode、result / state），不自行解释语义。
+// DEC-282 补充（#102 第 4 轮）：不支持的写法一律报错，不合并、不推断；错误一律原样带回，不按消息文本分辨来源。
 import { writeFileSync } from 'node:fs';
 import { relative } from 'node:path';
 import { createVitest } from 'vitest/node';
@@ -9,7 +10,6 @@ import { createVitest } from 'vitest/node';
 const { root, vitestConfig, filters, out } = JSON.parse(process.argv[2]);
 
 const messageOf = (error) => String(error?.message ?? error).split('\n')[0];
-const isOnlyError = (error) => messageOf(error).includes('.only');
 const locationOf = (node) => (node.location ? `${node.location.line}:${node.location.column}` : null);
 const errorsOf = (node) => (node.type === 'test' ? (node.result().errors ?? []) : node.errors());
 
@@ -37,39 +37,64 @@ function modeOf(test, suites) {
   return test.options.mode === 'todo' ? 'todo' : 'skip';
 }
 
-/** only 门禁：mode 为 only（含挂在 skip / todo 祖先下、Vitest 不再检查的），或被 Vitest 以 .only 拒绝。 */
-const registersOnly = (node) => node.options.mode === 'only' || errorsOf(node).some(isOnlyError);
+/**
+ * only 门禁只认 mode 仍为 only 的注册（挂在 skip / todo 祖先下、Vitest 不再检查的）。
+ * 生效的 .only 被 Vitest 以 allowOnly: false 拒绝时 mode 已改回 run、挂一条错误：那条错误照常作为收集错误报出，
+ * 不按消息文本认成 only（DEC-282 补充）；两条路径都让 --check 失败。
+ */
+const registersOnly = (node) => node.options.mode === 'only';
 
-/** 同一档内“文件 + 名称路径 + 位置”出现多次的注册（suite 或用例）：身份冲突，其下用例都无法确认身份。 */
-function duplicatedKeys(file, nodes) {
-  const counts = new Map();
-  for (const node of nodes) counts.set(keyOf(file, node), (counts.get(keyOf(file, node)) ?? 0) + 1);
-  return new Map([...counts].filter(([, count]) => count > 1));
+/** 一个 module 里全部 suite 与用例，带上所属文件与 project。 */
+function nodesOf(module) {
+  const file = relative(root, module.moduleId);
+  const project = module.project.name ?? '';
+  return { module, file, project, suites: [...module.children.allSuites()], tests: [...module.children.allTests()] };
 }
 
+/**
+ * 同一档内“文件 + 名称路径 + 位置”出现多次的注册（suite 或用例）：在整档范围统计，跨 module 也算
+ * （同一文件被多个 Vitest project 收集时，#102 第 3 轮 P2-3）。值为各次注册所属的 project。
+ */
+function duplicatedKeys(modules) {
+  const seen = new Map();
+  for (const { file, project, suites, tests } of modules) {
+    for (const node of [...suites, ...tests]) {
+      const key = keyOf(file, node);
+      seen.set(key, [...(seen.get(key) ?? []), project]);
+    }
+  }
+  return new Map([...seen].filter(([, projects]) => projects.length > 1));
+}
+
+/** 用例自身或任一祖先 suite 的身份在同一档重复时，说明是哪一个；其下用例都无法确认身份。 */
 function conflictOf(file, test, suites, duplicated) {
   const node = [...suites, test].find((n) => duplicated.has(keyOf(file, n)));
   if (!node) return null;
+  const projects = duplicated.get(keyOf(file, node));
+  const named = [...new Set(projects)].filter(Boolean);
+  const across = named.length > 1 ? `，跨 project：${named.join(' / ')}` : '';
   const what = node === test ? '用例' : `父套件「${namesOf(node).join(' > ')}」`;
-  return `${what}（${locationOf(node)}）在同一档注册 ${duplicated.get(keyOf(file, node))} 次`;
+  return `${what}（${locationOf(node)}）在同一档注册 ${projects.length} 次${across}`;
 }
 
-function serializeModule(module) {
-  const file = relative(root, module.moduleId);
-  const suites = [...module.children.allSuites()];
-  const tests = [...module.children.allTests()];
-  const duplicated = duplicatedKeys(file, [...suites, ...tests]);
-  const errors = [module, ...suites, ...tests]
-    .flatMap((node) => (node.type === 'module' ? node.errors() : errorsOf(node)))
-    .filter((error) => !isOnlyError(error))
-    .map((error) => ({ file, message: messageOf(error) }));
+function errorRecords({ module, file, project, suites, tests }) {
+  const moduleErrors = module.errors().map((error) => ({ file, project, names: null, location: null, error }));
+  const nodeErrors = [...suites, ...tests].flatMap((node) =>
+    errorsOf(node).map((error) => ({ file, project, names: namesOf(node), location: locationOf(node), error })),
+  );
+  return [...moduleErrors, ...nodeErrors].map(({ error, ...where }) => ({ ...where, message: messageOf(error) }));
+}
+
+function serializeModule(nodes, duplicated) {
+  const { file, project, suites, tests } = nodes;
   const onlyNodes = [...suites, ...tests]
     .filter(registersOnly)
-    .map((node) => ({ file, names: namesOf(node), location: locationOf(node) }));
+    .map((node) => ({ file, project, names: namesOf(node), location: locationOf(node) }));
   const records = tests.map((test) => {
     const chain = suitesOf(test);
     return {
       file,
+      project,
       names: namesOf(test),
       location: locationOf(test),
       ancestors: chain.map(locationOf),
@@ -78,18 +103,25 @@ function serializeModule(module) {
       conflict: conflictOf(file, test, chain, duplicated),
     };
   });
-  return { tests: records, onlyNodes, errors };
+  return { tests: records, onlyNodes, errors: errorRecords(nodes) };
 }
 
 function serialize(result) {
-  const modules = result.testModules.map(serializeModule);
+  const modules = result.testModules.map(nodesOf);
+  const duplicated = duplicatedKeys(modules);
+  const serialized = modules.map((nodes) => serializeModule(nodes, duplicated));
+  const unhandled = result.unhandledErrors.map((error) => ({
+    file: null,
+    project: '',
+    names: null,
+    location: null,
+    message: messageOf(error),
+  }));
   return {
     files: result.testModules.length,
-    tests: modules.flatMap((m) => m.tests),
-    onlyNodes: modules.flatMap((m) => m.onlyNodes),
-    errors: [...result.unhandledErrors.map((error) => ({ file: null, message: messageOf(error) }))].concat(
-      modules.flatMap((m) => m.errors),
-    ),
+    tests: serialized.flatMap((m) => m.tests),
+    onlyNodes: serialized.flatMap((m) => m.onlyNodes),
+    errors: [...unhandled, ...serialized.flatMap((m) => m.errors)],
   };
 }
 

@@ -71,9 +71,18 @@ function detailTable(report, group) {
 }
 
 function statsTable(report) {
-  const lines = header(['收集档', '文件', 'run', 'skip', 'todo', '注册的 only']);
+  const lines = header([
+    '收集档',
+    '文件',
+    'run',
+    'skip',
+    'todo',
+    'mode 为 only',
+    '收集错误',
+    '身份无法确认（不计入覆盖）',
+  ]);
   for (const [name, s] of Object.entries(report.profiles))
-    lines.push(row([name, s.files, s.run, s.skip, s.todo, s.only]));
+    lines.push(row([name, s.files, s.run, s.skip, s.todo, s.only, s.errors, s.excluded]));
   return lines;
 }
 
@@ -101,6 +110,8 @@ export function renderMarkdown(report, command) {
     '',
     '采集局限：只收集、不执行用例体，用例体内的 `ctx.skip()` 与用例失败不在统计内（失败由 CI 全绿保证）。',
     '“条件执行”表示覆盖该编号的用例只在部分收集档运行（如仅真 PostgreSQL）。',
+    '身份无法确认的注册（位置未知、同档重复、跨 project 同名、各档对不上）不计入覆盖，汇总与明细的计数都不含，',
+    '逐条列在检查结果的 identity 问题里；收集统计的 run / skip / todo 是各档原样计数，含这些注册。',
     '',
   ].join('\n');
 }

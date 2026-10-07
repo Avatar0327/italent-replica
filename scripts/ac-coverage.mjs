@@ -7,12 +7,13 @@
 //   node scripts/ac-coverage.mjs --stage all --out <目录>     # 写出 <阶段>.json 与 <阶段>.md
 //   node scripts/ac-coverage.mjs --stage R1 --check          # 有缺口、未定义引用或问题时退出码 1
 //   --config-dir <目录>  配置目录，缺省 docs/05_验收/ac-coverage（config.json + 各阶段 <阶段>.json）
-//   --save-collected <文件> / --from-collected <文件>  保存 / 复用一次运行时收集结果（同一提交上按阶段多次统计时用）
+//   --save-collected <文件> / --from-collected <文件>  保存 / 复用一次运行时收集结果（同一提交上按阶段多次统计时用；
+//                         文件带格式版本号，与当前工具不符时拒绝，须重新采集）
 // 退出码：0 正常；1 --check 不通过；2 参数、配置或收集失败。
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { collectProfiles } from './ac-coverage/collect.mjs';
+import { COLLECTED_FORMAT_VERSION, collectProfiles } from './ac-coverage/collect.mjs';
 import { loadConfig, selectStages, UsageError } from './ac-coverage/config.mjs';
 import { computeReport } from './ac-coverage/coverage.mjs';
 import { scanDefinitions } from './ac-coverage/definitions.mjs';
@@ -28,8 +29,20 @@ const OPTIONS = {
   'from-collected': { type: 'string' },
 };
 
+/** 复用的收集结果必须是当前格式：旧格式的问题字段（如旧版的 pairing）读不到，会被当成“没有问题”放行。 */
+function readCollected(file) {
+  const data = JSON.parse(readFileSync(file, 'utf8'));
+  if (data.formatVersion !== COLLECTED_FORMAT_VERSION) {
+    const found = data.formatVersion ?? '无版本号';
+    throw new UsageError(
+      `收集结果格式版本不符（${file}：${found}，当前工具：${COLLECTED_FORMAT_VERSION}），请去掉 --from-collected 重新采集`,
+    );
+  }
+  return data;
+}
+
 async function collected(config, values) {
-  if (values['from-collected']) return JSON.parse(readFileSync(values['from-collected'], 'utf8'));
+  if (values['from-collected']) return readCollected(values['from-collected']);
   const result = await collectProfiles(config);
   if (values['save-collected']) writeFileSync(values['save-collected'], JSON.stringify(result));
   return result;
