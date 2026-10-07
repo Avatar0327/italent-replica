@@ -1,6 +1,6 @@
 /**
  * R3-T01 引用约束在真实 PostgreSQL 16 上的强制交错（TC-R4 / TC-R5；AGENTS §10「并发」）：
- * 取锁顺序 指标库 → 指标 → 人才标准；人才标准保存时对引用的指标与指标库加 FOR SHARE，停用 / 删除指标先 FOR UPDATE。
+ * 取锁顺序 人才标准 → 指标 → 指标库（talent/service.ts）：保存标准时对引用的指标与指标库加 FOR SHARE，停用 / 删除指标先 FOR UPDATE。
  * - 停用指标的事务先持锁，并发的“新引用该指标”等待后读到停用状态 → 400，不会引用到已停用指标；
  * - 引用该指标的事务先持锁（未提交），并发删除该指标等待后读到已提交的引用 → 409，不会删掉被引用指标。
  */
@@ -70,7 +70,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('R3-T01 PostgreSQL 16 强
       // 模拟引用事务：先锁标准，再对指标加共享锁并写入引用，提交前删除请求到达
       await tx.execute(sql`SELECT id FROM talent_criteria WHERE id = ${criterion.id}::uuid FOR UPDATE`);
       await tx.execute(sql`SELECT id FROM talent_dimensions WHERE id = ${target.id}::uuid FOR SHARE`);
-      await tx.execute(sql`INSERT INTO talent_criterion_dimensions (tenant_id, criterion_id, dimension_id, display_order)
+      await tx.execute(sql`INSERT INTO talent_criterion_dimensions
+        (tenant_id, criterion_id, dimension_id, display_order)
         VALUES (${w.tenant.id}::uuid, ${criterion.id}::uuid, ${target.id}::uuid, 1)`);
       pending = w.request('DELETE', `/dimensions/${target.id}`, { ifMatch: target.revision });
       await blocked(db, 1);

@@ -5,7 +5,7 @@ import { CapacityAuditFields, capacityAuditChanges, visibleCapacityParts } from 
  * - 每种写入审计的对象类型都在下方逐个登记（RULES / 配置对象），未登记的对象类型一律不返回（fail-closed）；
  * - 业务对象先要有该对象的查看权限（与业务接口 objectContext 同一 object.view），再按业务列表 / 详情的同一 SQL 谓词
  *   判断范围：任职 DEC-177、人员与合同按所属人员、组织 / 编制 / 职位按所属组织、全局职务体系对象与编制方案只认
- *   看全部或“使用用户（创建人）”、编制复制任务 / 通知 / 占编按其业务规则、组织编码预占只认看全部、审批实例按
+ *   看全部或“使用用户（创建人）”、人才标准四类对象（R3-T01）同样只认看全部或创建人、编制复制任务 / 通知 / 占编按其业务规则、组织编码预占只认看全部、审批实例按
  *   审批管理员按钮与任职 / 合同范围；
  * - 需要归属的对象推导不出所属人员 / 组织时不返回（第三轮 P1-1：“推导失败”不等于“无归属”）；
  * - “使用用户”维度按保留的创建人元数据（DEC-198，audit_object_creators）或模块真实的创建人列判断（第三轮 P2-1）；
@@ -27,6 +27,7 @@ import {
   PERSONNEL_OBJECT,
   PERSONNEL_REQUEST_OBJECT,
   SUBSETS,
+  TALENT_OBJECTS,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../routes.js';
@@ -104,6 +105,14 @@ const GLOBAL_JOB_KINDS = [
   'professional-lines',
   'posts',
 ] as const;
+
+/** R3-T01 人才标准四类对象的审计动作前缀（talent/service.ts）。 */
+const TALENT_AUDIT_ACTIONS: readonly (readonly [keyof typeof TALENT_OBJECTS, string])[] = [
+  ['library', 'talent.library'],
+  ['dimension', 'talent.dimension'],
+  ['criterionCategory', 'talent.category'],
+  ['criterion', 'talent.criterion'],
+];
 
 const uuidOf = (text: SQL) => sql`(CASE WHEN audit_is_uuid(${text}) THEN (${text})::uuid END)`;
 /**
@@ -290,6 +299,17 @@ const RULES: readonly Rule[] = [
     visible: (scope, row, viewer) =>
       scopeSql(scope, { creator: ownedBy(row, creatorSql(viewer.tenantId, jobObject(row), 'job.create', kind)) }),
   })),
+  // R3-T01 人才标准（TalentCenter）：没有组织字段，与业务接口一致只认看全部或创建人；创建人取保留的创建元数据，
+  // 对象删除后仍可判断（DEC-198）
+  ...TALENT_AUDIT_ACTIONS.map(([object, action]): Rule => {
+    const code = TALENT_OBJECTS[object].code;
+    return {
+      types: [code],
+      objectCode: code,
+      visible: (scope, row, viewer) =>
+        scopeSql(scope, { creator: ownedBy(row, creatorSql(viewer.tenantId, row.objectId, `${action}.create`, code)) }),
+    };
+  }),
   {
     // 审批实例 / 任务：审批管理员按钮（转交 / 干预 / 查看流程日志）+ 任职或合同范围（与审批中心管理员视图一致）
     types: ['approval-instance', 'approval-task'],

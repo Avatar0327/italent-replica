@@ -10,13 +10,14 @@ import { withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { type DimensionView, talentWorld } from './AC-TC-support.js';
+import type * as TalentPort from '../../apps/api/src/modules/talent/port.js';
 
 const testDb = useTestDb();
 
 // 动态路径：实现落地前用例因端口缺失而失败，而不是整个文件无法加载。
 async function port() {
   const path = '../../apps/api/src/modules/talent/port.js';
-  return (await import(path)) as typeof import('../../apps/api/src/modules/talent/port.js');
+  return (await import(path)) as typeof TalentPort;
 }
 
 async function fixture(label: string) {

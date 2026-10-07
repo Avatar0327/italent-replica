@@ -164,6 +164,11 @@ describe('写入审计的对象类型都已登记查看规则（PR #75 第三轮
       'transfer-request',
       'transfer_form',
       'transfer_settings',
+      // R3-T01 人才标准
+      'TalentCenter.DimensionLibrary',
+      'TalentCenter.Dimension',
+      'TalentCenter.TalentCriterionCategory',
+      'TalentCenter.TalentCriterion',
     ]);
 
   it.each(written)('%s', (objectType) => {

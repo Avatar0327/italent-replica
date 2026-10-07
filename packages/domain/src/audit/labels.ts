@@ -11,6 +11,7 @@ export interface AuditObjectMeta {
 const ORG_PEOPLE = '组织员工';
 const APPROVAL = '审批中心';
 const ENTERPRISE = '企业设置';
+const TALENT = '人才标准';
 
 const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'job-sequence-sync': { label: '任职序列同步任务', app: ORG_PEOPLE },
@@ -44,6 +45,10 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   permission_mou: { label: '管理单元', app: ENTERPRISE },
   license_pool: { label: '许可', app: ENTERPRISE },
   audit_retention: { label: '日志保留期', app: ENTERPRISE },
+  'TalentCenter.DimensionLibrary': { label: '指标库', app: TALENT },
+  'TalentCenter.Dimension': { label: '指标', app: TALENT },
+  'TalentCenter.TalentCriterionCategory': { label: '人才标准分类', app: TALENT },
+  'TalentCenter.TalentCriterion': { label: '人才标准', app: TALENT },
 };
 
 /** 对象编码前缀 → 应用（未单独登记的对象按所属模块归类）。 */
@@ -115,6 +120,18 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   enabled: '启用',
   employeeId: '员工',
   value: '取值',
+  // R3-T01 人才标准（`23` §2.1 字段名）
+  libraryId: '指标库',
+  definition: '定义',
+  category: '分类',
+  grades: '等级描述',
+  behaviors: '行为描述',
+  suggestions: '发展建议',
+  questions: '面试问题',
+  abilityNote: '能力说明',
+  potentialNote: '潜力说明',
+  experienceNote: '经历说明',
+  achievementNote: '成就说明',
 };
 
 export function auditFieldLabel(field: string): string {
