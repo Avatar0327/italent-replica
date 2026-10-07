@@ -1,3 +1,5 @@
+import { EMPLOYEE_STATUS_LABELS, ENTRY_STATUS_LABELS } from '@italent/domain';
+
 export const managerText = {
   employTypes: { internal: '正式员工', intern: '实习生', external: '外部人员' },
   statuses: {
@@ -13,7 +15,6 @@ export const managerText = {
     draft: '草稿',
     withdrawn: '已撤回',
   },
-  statusPending: '待接入人员状态',
   title: '管理者工作台',
   applications: '人事申请',
   apply: '他人调动申请',
@@ -24,6 +25,9 @@ export const managerText = {
   pending: '待处理',
   processed: '已处理',
   initiated: '已申请',
+  // 人员状态 / 入职状态按原站编码展示中文（F-022，15 §9.1）
+  employeeStatuses: EMPLOYEE_STATUS_LABELS as Readonly<Record<string, string>>,
+  entryStatuses: ENTRY_STATUS_LABELS as Readonly<Record<string, string>>,
   leavingYes: '是',
   leavingNo: '否',
   empty: '暂无数据',
@@ -33,6 +37,8 @@ export const managerText = {
   placeholder: '暂未接入',
   columns: {
     leaving: '离职中',
+    employeeStatus: '人员状态',
+    entryStatus: '入职状态',
     name: '人员',
     code: '工号',
     employType: '雇佣关系',

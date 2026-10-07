@@ -11,7 +11,9 @@ export function employeeJoins(ctx: PersonnelContext): SQL {
     LEFT JOIN LATERAL (SELECT v.* FROM personnel_employee_versions v
       WHERE v.tenant_id=e.tenant_id AND v.employee_id=e.id ORDER BY revision DESC LIMIT 1) v ON true
     LEFT JOIN permission_user_person_links u ON u.tenant_id=e.tenant_id AND u.employee_id=e.id
-    LEFT JOIN LATERAL (SELECT r.*,COALESCE(p.body,to_jsonb(r)) AS current_fields FROM employment_timeline t
+    LEFT JOIN LATERAL (SELECT r.*,COALESCE(p.body,to_jsonb(r)) AS current_fields,
+      (COALESCE(p.body,to_jsonb(r))->>'employee_status')::integer AS current_employee_status,
+      (COALESCE(p.body,to_jsonb(r))->>'entry_status')::integer AS current_entry_status FROM employment_timeline t
       JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
       LEFT JOIN LATERAL (SELECT to_jsonb(p) AS body FROM employment_payload_versions p
         WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
@@ -38,6 +40,7 @@ function jobJoin(table: string, alias: string, field: string, date: string) {
 }
 export const employeeAttributes = sql`e.code,COALESCE(v.name,e.name) AS employee_name,u.user_id,
   cycles.first_entry_date::text,cycles.latest_entry_date::text,r.entry_date::text,r.last_work_date::text,
+  r.current_employee_status AS employee_status,r.current_entry_status AS entry_status,
   ${sortRankColumns},person_rank.order_code,
   jl.level AS level_sort_number,jg.grade AS grade_sort_number,jp.display_order AS position_sort_number`;
 export function employeeDto(row: Row, ctx: PersonnelContext): Row {
