@@ -30,6 +30,7 @@ const BASE = '/api/tenant/approval';
 
 export type ApproverExpressionInput =
   | 'owner'
+  | 'direct_manager'
   | 'latest_record_department_head'
   | 'record_department_head'
   | 'record_department_hrbp'
