@@ -4,12 +4,16 @@ import { initialActionDraft, makeApprovalCommand } from './commands.js';
 import { editableLeaf, fieldLeaves } from './fields.js';
 import { text } from './messages.js';
 import type { ActionDraft, ApprovalAction, ApprovalCommand, ApprovalDetail, FieldDraft } from './types.js';
+import type { InstanceRequests } from './useApprovalInstance.js';
 
 interface CommandProps {
   readonly tenantId: string;
   readonly detail: ApprovalDetail;
-  readonly onResult: (detail: ApprovalDetail) => void;
-  readonly refresh: () => Promise<ApprovalDetail>;
+  /** 写请求发出时领取的代次随响应一起交回，由实例层裁决是否采用。 */
+  readonly requests: Pick<InstanceRequests, 'issue' | 'settle'>;
+  readonly onResult: (detail: ApprovalDetail, ticket: number) => void;
+  /** 回查结果过期（更晚的响应已被采用）时返回 null。 */
+  readonly refresh: () => Promise<ApprovalDetail | null>;
   readonly onDenied: () => void;
   readonly onDone: () => void;
 }
@@ -70,14 +74,12 @@ function recoveryMessage(mode: 'normal' | 'conflict' | 'unknown', readable: bool
   if (mode === 'unknown') return readable ? text.unknown : text.unknownUnread;
   return `${reason}${readable ? text.conflict : text.conflictUnread}`;
 }
-function useCommandRecovery(props: RecoveryProps) {
+function useRecoveryState() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [mode, setMode] = useState<'normal' | 'conflict' | 'unknown'>('normal');
   const [checked, setChecked] = useState(false);
   const [pending, setPending] = useState<ApprovalCommand | null>(null);
-  const active = useMounted();
-  const busyRef = useRef(false);
   const conflictReason = useRef('');
   function resetMode(message = '') {
     conflictReason.current = '';
@@ -86,7 +88,33 @@ function useCommandRecovery(props: RecoveryProps) {
     setChecked(false);
     setMessage(message);
   }
-  function denied() {
+  return {
+    busy,
+    setBusy,
+    message,
+    setMessage,
+    mode,
+    setMode,
+    checked,
+    setChecked,
+    pending,
+    setPending,
+    conflictReason,
+    resetMode,
+  };
+}
+function useCommandRecovery(props: RecoveryProps) {
+  const state = useRecoveryState();
+  const { setBusy, setMessage, mode, setMode, setChecked, setPending, conflictReason, resetMode } = state;
+  const active = useMounted();
+  const busyRef = useRef(false);
+  function denied(ticket?: number) {
+    // 过期的写 403（更晚的响应已被采用）不清掉当前详情，改由服务端重新裁决。
+    if (ticket !== undefined && !props.requests.settle(ticket)) {
+      resetMode(text.forbidden);
+      void props.refresh().catch(() => undefined);
+      return;
+    }
     props.reset();
     resetMode(text.forbidden);
     props.onDenied();
@@ -94,7 +122,7 @@ function useCommandRecovery(props: RecoveryProps) {
   async function recheck(nextMode = mode) {
     try {
       const fresh = await props.refresh();
-      if (!active.current) return;
+      if (!active.current || !fresh) return;
       props.prune(fresh);
       setChecked(true);
       setMessage(recoveryMessage(nextMode, true, conflictReason.current));
@@ -109,16 +137,17 @@ function useCommandRecovery(props: RecoveryProps) {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
+    const ticket = props.requests.issue();
     try {
       const result = await executeApprovalCommand(props.tenantId, command);
       if (!active.current) return;
-      props.onResult(result);
+      props.onResult(result, ticket);
       props.reset();
       resetMode(text.succeeded);
       props.onDone();
     } catch (failure) {
       if (!active.current) return;
-      if (permissionFailure(failure)) denied();
+      if (permissionFailure(failure)) denied(ticket);
       else if (revisionConflict(failure)) {
         conflictReason.current = failure.reason === 'APPROVAL_CONCURRENT_CONFLICT' ? `${requestMessage(failure)} ` : '';
         setPending(null);
@@ -137,12 +166,12 @@ function useCommandRecovery(props: RecoveryProps) {
     }
   }
   return {
-    busy,
-    message,
+    busy: state.busy,
+    message: state.message,
     setMessage,
     mode,
-    checked,
-    pending,
+    checked: state.checked,
+    pending: state.pending,
     execute,
     recheck,
     resetMode,

@@ -4,6 +4,7 @@ import { approvalRequest, PAGE_SIZE, permissionFailure, requestMessage } from '.
 import { displayValue } from './fields.js';
 import { eventLabels, statusLabels, text } from './messages.js';
 import type { ApprovalDetail, ApprovalLog, ApprovalPageResult, ApprovalTask } from './types.js';
+import type { InstanceRequests } from './useApprovalInstance.js';
 
 /** 事件存 UTC，显示按接口租户时区；旧响应缺少时区时明确退回 UTC，不读取浏览器时区。 */
 export function formatApprovalTime(value: string | null | undefined, tenantTimezone = 'UTC') {
@@ -26,33 +27,30 @@ export function formatApprovalTime(value: string | null | undefined, tenantTimez
   const time = ['hour', 'minute', 'second'].map(part).join(':');
   return `${day} ${time} ${timeZone}`;
 }
-function useApprovalHistory({
-  tenantId,
-  detail,
-  onDenied,
-}: {
-  tenantId: string;
-  detail: ApprovalDetail;
-  onDenied: () => void;
-}) {
+interface HistoryProps {
+  readonly tenantId: string;
+  readonly detail: ApprovalDetail;
+  /** 与详情 GET、写 POST 共用的实例代次台账；历史接口报告隐藏时在实例层收紧。 */
+  readonly requests: InstanceRequests;
+  readonly onDenied: () => void;
+}
+/** 隐藏状态只来自实例层详情（接口返回或历史接口收紧后的投影），本组件不单独保存。 */
+function useApprovalHistory({ tenantId, detail, requests, onDenied }: HistoryProps) {
   const [kind, setKind] = useState<'tasks' | 'logs' | null>(null);
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<readonly (ApprovalTask | ApprovalLog)[]>([]);
-  const [hidden, setHidden] = useState(detail.recordsHidden);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const active = useRef(true);
-  const sequence = useRef(0);
   useEffect(() => {
     active.current = true;
     return () => {
       active.current = false;
-      sequence.current++;
     };
   }, []);
   async function load(nextKind: 'tasks' | 'logs', nextPage: number) {
-    if (hidden || busy) return;
-    const request = ++sequence.current;
+    if (detail.recordsHidden || busy) return;
+    const ticket = requests.issue();
     setBusy(true);
     setError('');
     try {
@@ -61,27 +59,29 @@ function useApprovalHistory({
         tenantId,
         `/instances/${detail.id}/${nextKind}?${query}`,
       );
-      if (!active.current || request !== sequence.current) return;
+      if (!requests.settle(ticket)) return;
+      // DEC-115：历史接口报告隐藏即收紧本实例披露，并作废更早发出的详情 GET 与写响应；本组件是否仍挂载不影响。
+      if (result.recordsHidden) requests.hideRecords();
+      if (!active.current) return;
       setKind(nextKind);
       setPage(nextPage);
-      setHidden(result.recordsHidden === true);
       setRows(result.recordsHidden ? [] : result.items);
     } catch (failure) {
-      if (!active.current || request !== sequence.current) return;
+      if (!requests.settle(ticket)) return;
+      if (permissionFailure(failure)) onDenied();
+      if (!active.current) return;
       setError(requestMessage(failure));
-      if (permissionFailure(failure)) {
-        setRows([]);
-        onDenied();
-      }
+      if (permissionFailure(failure)) setRows([]);
     } finally {
-      if (active.current && request === sequence.current) setBusy(false);
+      if (active.current) setBusy(false);
     }
   }
-  return { kind, page, rows, hidden, busy, error, load };
+  return { kind, page, rows, busy, error, load };
 }
-export function ApprovalHistory(props: { tenantId: string; detail: ApprovalDetail; onDenied: () => void }) {
-  const { kind, page, rows, hidden, busy, error, load } = useApprovalHistory(props);
+export function ApprovalHistory(props: HistoryProps) {
+  const { kind, page, rows, busy, error, load } = useApprovalHistory(props);
   const { detail } = props;
+  const hidden = detail.recordsHidden;
   return (
     <section className="approval-history">
       <h3>{text.progress}</h3>

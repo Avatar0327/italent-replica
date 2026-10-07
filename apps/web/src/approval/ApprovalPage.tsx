@@ -8,7 +8,7 @@ import { PAGE_SIZE, requireUuid, requestMessage } from './api.js';
 import { statusLabels, tabLabels, text } from './messages.js';
 import type { ApprovalDetail, ApprovalListItem, ApprovalTab } from './types.js';
 import { useApprovalCommand } from './useApprovalCommand.js';
-import { useApprovalInstance } from './useApprovalInstance.js';
+import { useApprovalInstance, type InstanceRequests } from './useApprovalInstance.js';
 import { useApprovalList } from './useApprovalList.js';
 import './approval.css';
 
@@ -210,6 +210,7 @@ function ApprovalDetailPanel(props: DetailPanelProps) {
           detail={instance.detail}
           refresh={instance.refresh}
           onResult={instance.accept}
+          requests={instance.requests}
           epoch={instance.epoch}
           clear={instance.clear}
         />
@@ -224,8 +225,9 @@ function ApprovalDetailPanel(props: DetailPanelProps) {
 function DetailContents(
   props: DetailPanelProps & {
     detail: ApprovalDetail;
-    refresh: () => Promise<ApprovalDetail>;
-    onResult: (detail: ApprovalDetail) => void;
+    refresh: () => Promise<ApprovalDetail | null>;
+    onResult: (detail: ApprovalDetail, ticket: number) => void;
+    requests: InstanceRequests;
     clear: () => void;
     epoch: number;
   },
@@ -273,7 +275,13 @@ function DetailContents(
       )}
       <ApprovalFields form={props.detail.form} draft={command.fields} onDraft={command.setFields} disabled={locked} />
       <ApprovalActions detail={props.detail} command={command} />
-      <ApprovalHistory key={props.epoch} tenantId={props.tenantId} detail={props.detail} onDenied={props.clear} />
+      <ApprovalHistory
+        key={props.epoch}
+        tenantId={props.tenantId}
+        detail={props.detail}
+        requests={props.requests}
+        onDenied={props.clear}
+      />
     </>
   );
 }
