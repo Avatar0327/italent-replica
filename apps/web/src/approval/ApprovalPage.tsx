@@ -198,6 +198,11 @@ function ApprovalDetailPanel(props: DetailPanelProps) {
   const instance = useApprovalInstance(props.tenantId, props.instanceId, props.onDenied);
   return (
     <section className="transfer-content approval-detail" aria-label={text.detail}>
+      {instance.notice && (
+        <p role="status" className="transfer-notice">
+          {instance.notice}
+        </p>
+      )}
       {instance.loading && <p role="status">{text.loading}</p>}
       {instance.error && (
         <p role="alert" className="transfer-error">
@@ -209,15 +214,20 @@ function ApprovalDetailPanel(props: DetailPanelProps) {
           {...props}
           detail={instance.detail}
           refresh={instance.refresh}
-          onResult={instance.accept}
+          onResult={instance.replace}
           requests={instance.requests}
-          epoch={instance.epoch}
-          clear={instance.clear}
         />
       ) : (
-        <button type="button" onClick={props.onClose}>
-          {text.close}
-        </button>
+        <div className="approval-button-row">
+          {!instance.loading && (
+            <button type="button" onClick={() => void instance.refresh().catch(() => undefined)}>
+              {text.refreshDetail}
+            </button>
+          )}
+          <button type="button" onClick={props.onClose}>
+            {text.close}
+          </button>
+        </div>
       )}
     </section>
   );
@@ -226,13 +236,11 @@ function DetailContents(
   props: DetailPanelProps & {
     detail: ApprovalDetail;
     refresh: () => Promise<ApprovalDetail | null>;
-    onResult: (detail: ApprovalDetail, ticket: number) => void;
+    onResult: (detail: ApprovalDetail) => void;
     requests: InstanceRequests;
-    clear: () => void;
-    epoch: number;
   },
 ) {
-  const command = useApprovalCommand({ ...props, onDenied: props.clear });
+  const command = useApprovalCommand(props);
   const locked = command.busy || command.mode === 'unknown';
   useEffect(() => {
     props.onLockChange(locked);
@@ -275,13 +283,7 @@ function DetailContents(
       )}
       <ApprovalFields form={props.detail.form} draft={command.fields} onDraft={command.setFields} disabled={locked} />
       <ApprovalActions detail={props.detail} command={command} />
-      <ApprovalHistory
-        key={props.epoch}
-        tenantId={props.tenantId}
-        detail={props.detail}
-        requests={props.requests}
-        onDenied={props.clear}
-      />
+      <ApprovalHistory tenantId={props.tenantId} detail={props.detail} requests={props.requests} />
     </>
   );
 }

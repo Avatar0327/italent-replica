@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { approvalRequest, PAGE_SIZE, permissionFailure, requestMessage } from './api.js';
 import { displayValue } from './fields.js';
 import { eventLabels, statusLabels, text } from './messages.js';
+import { STALE } from './requestLane.js';
 import type { ApprovalDetail, ApprovalLog, ApprovalPageResult, ApprovalTask } from './types.js';
 import type { InstanceRequests } from './useApprovalInstance.js';
 
@@ -30,12 +31,11 @@ export function formatApprovalTime(value: string | null | undefined, tenantTimez
 interface HistoryProps {
   readonly tenantId: string;
   readonly detail: ApprovalDetail;
-  /** 与详情 GET、写 POST 共用的实例代次台账；历史接口报告隐藏时在实例层收紧。 */
+  /** 与详情 GET、写 POST 共用的实例通道（DEC-277 ①）；历史只能触发“清空 + 整页重读”，不替代完整详情（②）。 */
   readonly requests: InstanceRequests;
-  readonly onDenied: () => void;
 }
-/** 隐藏状态只来自实例层详情（接口返回或历史接口收紧后的投影），本组件不单独保存。 */
-function useApprovalHistory({ tenantId, detail, requests, onDenied }: HistoryProps) {
+/** 隐藏状态只来自实例层的完整详情；分页行只在本组件内保存，完整详情整体替换时清空，不做局部合并。 */
+function useApprovalHistory({ tenantId, detail, requests }: HistoryProps) {
   const [kind, setKind] = useState<'tasks' | 'logs' | null>(null);
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<readonly (ApprovalTask | ApprovalLog)[]>([]);
@@ -48,30 +48,38 @@ function useApprovalHistory({ tenantId, detail, requests, onDenied }: HistoryPro
       active.current = false;
     };
   }, []);
+  useEffect(() => {
+    setKind(null);
+    setRows([]);
+    setError('');
+  }, [detail]);
   async function load(nextKind: 'tasks' | 'logs', nextPage: number) {
     if (detail.recordsHidden || busy) return;
-    const ticket = requests.issue();
     setBusy(true);
     setError('');
     try {
       const query = new URLSearchParams({ page: String(nextPage), pageSize: String(PAGE_SIZE) });
-      const result = await approvalRequest<ApprovalPageResult<ApprovalTask | ApprovalLog>>(
-        tenantId,
-        `/instances/${detail.id}/${nextKind}?${query}`,
-      );
-      if (!requests.settle(ticket)) return;
-      // DEC-115：历史接口报告隐藏即收紧本实例披露，并作废更早发出的详情 GET 与写响应；本组件是否仍挂载不影响。
-      if (result.recordsHidden) requests.hideRecords();
-      if (!active.current) return;
+      // DEC-115 / DEC-277 ②：隐藏或被拒是收紧信号，在通道任务内即触发清空与整页重读，本页结果随之作废。
+      const result = await requests.run(async (signal) => {
+        try {
+          const loaded = await approvalRequest<ApprovalPageResult<ApprovalTask | ApprovalLog>>(
+            tenantId,
+            `/instances/${detail.id}/${nextKind}?${query}`,
+            { signal },
+          );
+          if (loaded.recordsHidden) requests.tighten();
+          return loaded;
+        } catch (failure) {
+          if (permissionFailure(failure)) requests.tighten();
+          throw failure;
+        }
+      });
+      if (result === STALE || !active.current) return;
       setKind(nextKind);
       setPage(nextPage);
-      setRows(result.recordsHidden ? [] : result.items);
+      setRows(result.items);
     } catch (failure) {
-      if (!requests.settle(ticket)) return;
-      if (permissionFailure(failure)) onDenied();
-      if (!active.current) return;
-      setError(requestMessage(failure));
-      if (permissionFailure(failure)) setRows([]);
+      if (active.current) setError(requestMessage(failure));
     } finally {
       if (active.current) setBusy(false);
     }

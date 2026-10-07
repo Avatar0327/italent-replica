@@ -53,9 +53,10 @@ export function loadApprovalList(
 export function loadApprovalDetail(tenantId: string, id: string, signal?: AbortSignal) {
   return approvalRequest<ApprovalDetail>(tenantId, `/instances/${requireUuid(id)}`, { signal });
 }
-export function executeApprovalCommand(tenantId: string, command: ApprovalCommand) {
+export function executeApprovalCommand(tenantId: string, command: ApprovalCommand, signal?: AbortSignal) {
   return approvalRequest<ApprovalDetail>(tenantId, command.path, {
     method: 'POST',
+    signal,
     headers: { 'if-match': String(command.revision), 'idempotency-key': command.id },
     body: JSON.stringify(command.body),
   });

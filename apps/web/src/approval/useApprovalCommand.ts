@@ -3,18 +3,19 @@ import { executeApprovalCommand, permissionFailure, requestMessage, revisionConf
 import { initialActionDraft, makeApprovalCommand } from './commands.js';
 import { editableLeaf, fieldLeaves } from './fields.js';
 import { text } from './messages.js';
+import { STALE } from './requestLane.js';
 import type { ActionDraft, ApprovalAction, ApprovalCommand, ApprovalDetail, FieldDraft } from './types.js';
 import type { InstanceRequests } from './useApprovalInstance.js';
 
 interface CommandProps {
   readonly tenantId: string;
   readonly detail: ApprovalDetail;
-  /** 写请求发出时领取的代次随响应一起交回，由实例层裁决是否采用。 */
-  readonly requests: Pick<InstanceRequests, 'issue' | 'settle'>;
-  readonly onResult: (detail: ApprovalDetail, ticket: number) => void;
-  /** 回查结果过期（更晚的响应已被采用）时返回 null。 */
+  /** 写请求与读取共用实例通道串行执行（DEC-277 ①）；403 作为收紧信号交实例层清空并重读（②）。 */
+  readonly requests: InstanceRequests;
+  /** 写响应是完整详情，由实例层整体替换。 */
+  readonly onResult: (detail: ApprovalDetail) => void;
+  /** 回查被通道重置丢弃时返回 null；被拒时实例层已清空并抛出。 */
   readonly refresh: () => Promise<ApprovalDetail | null>;
-  readonly onDenied: () => void;
   readonly onDone: () => void;
 }
 function disclosedDraft(detail: ApprovalDetail, draft: FieldDraft): FieldDraft {
@@ -108,16 +109,9 @@ function useCommandRecovery(props: RecoveryProps) {
   const { setBusy, setMessage, mode, setMode, setChecked, setPending, conflictReason, resetMode } = state;
   const active = useMounted();
   const busyRef = useRef(false);
-  function denied(ticket?: number) {
-    // 过期的写 403（更晚的响应已被采用）不清掉当前详情，改由服务端重新裁决。
-    if (ticket !== undefined && !props.requests.settle(ticket)) {
-      resetMode(text.forbidden);
-      void props.refresh().catch(() => undefined);
-      return;
-    }
+  function denied() {
     props.reset();
     resetMode(text.forbidden);
-    props.onDenied();
   }
   async function recheck(nextMode = mode) {
     try {
@@ -126,9 +120,9 @@ function useCommandRecovery(props: RecoveryProps) {
       props.prune(fresh);
       setChecked(true);
       setMessage(recoveryMessage(nextMode, true, conflictReason.current));
-    } catch (failure) {
+    } catch {
+      // 回查被拒时实例层已清空并关闭该单，这里只处理其他读取失败。
       if (!active.current) return;
-      if (permissionFailure(failure)) return denied();
       setChecked(false);
       setMessage(recoveryMessage(nextMode, false, conflictReason.current));
     }
@@ -137,18 +131,27 @@ function useCommandRecovery(props: RecoveryProps) {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
-    const ticket = props.requests.issue();
     try {
-      const result = await executeApprovalCommand(props.tenantId, command);
-      if (!active.current) return;
-      props.onResult(result, ticket);
+      // DEC-277 ②：写被拒是收紧信号，在通道任务内即清空草稿并由实例层整页重读；本次结果随之作废。
+      const result = await props.requests.run(async (signal) => {
+        try {
+          return await executeApprovalCommand(props.tenantId, command, signal);
+        } catch (failure) {
+          if (active.current && permissionFailure(failure)) {
+            denied();
+            props.requests.tighten();
+          }
+          throw failure;
+        }
+      });
+      if (!active.current || result === STALE) return;
+      props.onResult(result);
       props.reset();
       resetMode(text.succeeded);
       props.onDone();
     } catch (failure) {
       if (!active.current) return;
-      if (permissionFailure(failure)) denied(ticket);
-      else if (revisionConflict(failure)) {
+      if (revisionConflict(failure)) {
         conflictReason.current = failure.reason === 'APPROVAL_CONCURRENT_CONFLICT' ? `${requestMessage(failure)} ` : '';
         setPending(null);
         setMode('conflict');
