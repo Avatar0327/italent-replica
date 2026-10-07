@@ -904,12 +904,12 @@
 },
 "102": {
 "s": "active",
-"r": 3,
+"r": 4,
 "n": "Draft 开发中"
 },
 "106": {
 "s": "review",
-"r": 3,
+"r": 4,
 "n": "待 Sol Ultra"
 },
 "108": {
@@ -1993,7 +1993,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 14:41",
+"liveUpdated": "10-07 14:45",
 "chains": [
 {
 "g": "exit",
@@ -2079,8 +2079,8 @@
 "k": "run",
 "pr": 96,
 "n": "重叠调入超编确认",
-"seg": "ev:d ds:n dev:d6 rev:w6 mg:w",
-"now": "第 6 轮已推送，待发起审查",
+"seg": "ev:d ds:n dev:d6 rev:a6 mg:w",
+"now": "第 6 轮审查中（复审 + 终审，codex exec）",
 "fable": "1"
 },
 {
@@ -2145,8 +2145,8 @@
 "o": 3,
 "k": "run",
 "n": "函数库补齐 63 个",
-"seg": "ev:d ds:n dev:d3 rev:w3 mg:w",
-"now": "第 3 轮已推送，待发起审查（待汇总转告）",
+"seg": "ev:d ds:n dev:d3 rev:a3 mg:w",
+"now": "第 3 轮审查中（codex exec）",
 "pr": 108,
 "up": "10-07 第 3 轮调到 Max"
 },
@@ -2172,8 +2172,8 @@
 "o": 1,
 "k": "run",
 "n": "人才标准与指标库",
-"seg": "ev:d ds:n dev:d3 rev:a3 mg:w",
-"now": "第 3 轮出结论，待读取",
+"seg": "ev:w ds:n dev:a4 rev:d3 mg:w",
+"now": "第 4 轮修改；合并还要等 Q-M0-113 取证和 DEC",
 "pr": 106
 },
 {
@@ -2211,9 +2211,9 @@
 "k": "run",
 "pr": 102,
 "n": "AC 覆盖运行时统计",
-"seg": "ev:n ds:n dev:d3 rev:a3 mg:w",
-"now": "第 3 轮出结论，待读取",
-"up": "10-07 第 3 轮调到 Max"
+"seg": "ev:n ds:n dev:a4 rev:d3 mg:w",
+"now": "第 4 轮修改（3 个 P2：.only、位置未知、跨 project）",
+"up": "10-07 调到 Max"
 },
 {
 "id": "F-025",
