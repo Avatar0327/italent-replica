@@ -390,9 +390,13 @@ function ReferenceSelect(props: PairProps & { value: FieldValue; choices: readon
   );
 }
 
-/** 共用 HR / 自助表单按同一字段权限展示；编制对象写权仍由保存事务单独判断。 */
+/** DEC-205：员工端默认隐藏带编；其余入口按字段权限展示，编制写权在保存事务独立判断。 */
 function CarriedEstablishment({ model, busy, onWithEstablishment }: TransferFormProps) {
-  if (!model.preview || (model.catalog.viewableFields && !model.catalog.viewableFields.includes('withEstablishment')))
+  if (
+    model.initiator === 'employee' ||
+    !model.preview ||
+    (model.catalog.viewableFields && !model.catalog.viewableFields.includes('withEstablishment'))
+  )
     return null;
   const editable = !model.catalog.editableFields || model.catalog.editableFields.includes('withEstablishment');
   return (
