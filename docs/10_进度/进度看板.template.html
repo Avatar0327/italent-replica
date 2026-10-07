@@ -237,7 +237,7 @@ drawLog(false); more.onclick = () => drawLog(true);
 
 document.getElementById("foot").innerHTML = [
   "<b>统计口径</b>　R1 / R2 / R3：各阶段路线图主任务（R1 含 M0），修正任务 F-xxx 不计入；修正任务：后续任务.md 登记的 F 任务；在途 PR：GitHub 未关闭的 PR；已合并 PR：main 上累计合并数（含文档、CI 小 PR）；已确认决策：02_已确认决策.md 最新 DEC 编号；待取证：evidence-gate 未完成项 / 需取证清单总数。",
-  "<b>规则</b>　合并以 astra“可以合并”为准（DEC-179）；待你决定的事项由总编排统一提问并登记 DEC；派发规则见 docs/09_派发/派发规则.md。看板只展示进度，待处理事项随每次更新以文字发到进度窗口。"
+  "<b>规则</b>　开发全部由 Claude 完成，Codex 只做审查并与开发模型错开（DEC-256）；审查由本机 codex exec 在后台发起（DEC-286，F-039 设计审起试点）；合并以审查方“可以合并”为准；待你决定的事项由总编排统一提问并登记 DEC；派发规则见 docs/09_派发/派发规则.md。看板只展示进度，待处理事项随每次更新以文字发到进度窗口。"
 ].map(x => `<div>${x}</div>`).join("");
 
 /* 定位 */
