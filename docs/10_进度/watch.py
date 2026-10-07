@@ -53,6 +53,8 @@ def codex_results():
             txt = open(f, encoding="utf8", errors="ignore").read()
         except OSError:
             continue
+        if "italent" not in txt:
+            continue  # 其他项目的 ChatGPT 会话
         if "thread_spawn" in txt.split("\n", 1)[0]:
             continue  # 子代理线程，不算结论（只认主线程）
         n = txt.count('"task_complete"')
