@@ -35,11 +35,16 @@ export async function previewTransfer(tx: Tx, ctx: EmploymentContext, employeeId
   const visible = (prefix: string, fields: object) =>
     Object.fromEntries(
       Object.entries(fields).filter(
-        ([field]) => !['hidden', 'absent'].includes(form.fieldModes[`${prefix}:${field}`] ?? 'editable'),
+        ([field]) =>
+          !['hidden', 'absent'].includes(prepared.formSnapshot.fieldModes[`${prefix}:${field}`] ?? 'editable'),
       ),
     );
   return {
     context,
+    // 操作结果元数据：只在本人预览且新旧部门可见时披露，不返回职位 ID 或名称。
+    employeeTransfer: input.initiator === 'employee',
+    positionCleared:
+      input.initiator === 'employee' && !!before?.fields.positionId && effective.fields.positionId === null,
     requiredDepartmentMissing: !effective.fields.departmentId,
     value: {
       employeeId,

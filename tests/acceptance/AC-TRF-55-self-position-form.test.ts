@@ -37,6 +37,7 @@ describe('AC-TRF-55 本人跨部门调动提示', () => {
       initiator,
       preview: {
         ...model.preview!,
+        positionCleared: true,
         fields: { departmentId: 'target' },
         before: { fields: { departmentId: 'source' }, customFields: {} },
       },
@@ -50,11 +51,30 @@ describe('AC-TRF-55 本人跨部门调动提示', () => {
     for (const fields of [{ departmentId: 'source' }, {}]) {
       const next = {
         ...model,
-        preview: { ...model.preview!, fields, before: { fields: { departmentId: 'source' }, customFields: {} } },
+        preview: {
+          ...model.preview!,
+          positionCleared: !('departmentId' in fields),
+          fields,
+          before: { fields: { departmentId: 'source' }, customFields: {} },
+        },
       };
       const html = renderToStaticMarkup(createElement(TransferForm, { model: next, submitOnly: true }));
       expect(html).not.toContain('职位由 HR 补充');
       expect(html).not.toContain('name="positionId"');
     }
+  });
+  it.each([false, undefined])('跨部门但职位没有被清空时不提示：%s', async (positionCleared) => {
+    const { TransferForm } = (await import(path)) as { TransferForm: unknown };
+    const next = {
+      ...model,
+      preview: {
+        ...model.preview!,
+        positionCleared,
+        fields: { departmentId: 'target' },
+        before: { fields: { departmentId: 'source' }, customFields: {} },
+      },
+    };
+    const html = renderToStaticMarkup(createElement(TransferForm, { model: next, submitOnly: true }));
+    expect(html).not.toContain('职位由 HR 补充');
   });
 });

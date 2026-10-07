@@ -57,20 +57,16 @@ export async function requireEmployeeTransferBusiness(
   const payload = camelRow(row);
   const saved = snapshotFields(payload);
   const codes = payload.explicitFieldCodes as string[];
-  const explicit: Partial<PresetFields> = Object.fromEntries(
-    codes
-      .filter((code) => code.startsWith('preset:'))
-      .map((code) => {
-        const key = code.slice(7) as keyof PresetFields;
-        return [key, saved[key]];
-      }),
-  );
-  // 与 normalizePatchedInput 一致：换部门且未手填经理时，旧手填经理被新部门负责人替代。
-  if (patch?.fields && Object.hasOwn(patch.fields, 'departmentId') && !Object.hasOwn(patch.fields, 'directManagerId'))
-    delete (explicit as Record<string, unknown>).directManagerId;
-  // DEC-232：HR 审批补充的职位属于可信保存值；员工即使另有编辑权也不能显式设置或清空。
-  if ((payload.formSnapshot as { employeePositionByHr?: boolean }).employeePositionByHr)
-    delete (explicit as Record<string, unknown>).positionId;
+  // DEC-209/232：explicitFieldCodes 还记录 HR 编辑与向后传播，不能当作本次客户端输入。
+  // 旧显式草稿也属于已保存值；本次员工写入仍按请求体拒绝，提交/重放继续复验当前范围。
+  // DEC-209 既有升级防线：未经过本人只读上限、也没有系统传播来源的旧职务/职级/序列草稿不能重提。
+  // DEC-232 的旧职位兼容单独处理；可信本人快照及传播版本的显式代码不代表员工输入。
+  if (
+    !(payload.formSnapshot as { employeeTransfer?: boolean }).employeeTransfer &&
+    !payload.triggerBusinessId &&
+    codes.some((code) => ['preset:postId', 'preset:levelId', 'preset:sequenceId'].includes(code))
+  )
+    throw new AppError('FORBIDDEN', '旧员工调动草稿包含不可编辑的任职字段');
   if (patch?.fields && Object.hasOwn(patch.fields, 'positionId')) {
     const [binding] = rowsOf<{ employeeId: string }>(
       await tx.execute(sql`
@@ -86,9 +82,23 @@ export async function requireEmployeeTransferBusiness(
     tx,
     ctx,
     patch?.effectiveDate ?? (payload.effectiveDate as string),
-    { ...explicit, departmentId: saved.departmentId, ...checkedPatch },
+    { departmentId: saved.departmentId, ...checkedPatch },
     payload.employeeId as string,
   );
+  // 旧手填经理仍按当前候选范围复验；换部门或显式改/清空经理后由本次输入与部门联动负责。
+  if (
+    codes.includes('preset:directManagerId') &&
+    saved.directManagerId &&
+    !Object.hasOwn(patch?.fields ?? {}, 'departmentId') &&
+    !Object.hasOwn(patch?.fields ?? {}, 'directManagerId')
+  )
+    await requireManagerCandidate(
+      tx,
+      ctx,
+      patch?.effectiveDate ?? (payload.effectiveDate as string),
+      saved.departmentId ?? undefined,
+      saved.directManagerId,
+    );
 }
 
 /** DEC-232：只处理可信继承职位；HR 显式补充仍交由原有任职引用校验，不自动替换或清空。 */

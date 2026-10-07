@@ -38,11 +38,9 @@ export function TransferForm(props: TransferFormProps) {
       </fieldset>
       {props.model.preview ? <EmploymentFields {...props} /> : <p>{text.readyHint}</p>}
       {props.model.initiator === 'employee' &&
-        props.model.preview?.fields.departmentId &&
-        props.model.preview.before?.fields.departmentId &&
-        props.model.preview.fields.departmentId !== props.model.preview.before.fields.departmentId && (
-          <p role="status">{employeeText.positionByHr}</p>
-        )}
+        props.model.preview?.positionCleared === true &&
+        props.model.preview.fields.departmentId &&
+        props.model.preview.before?.fields.departmentId && <p role="status">{employeeText.positionByHr}</p>}
       <CarriedEstablishment {...props} />
       <LinkageFields {...props} />
       <TransferActions {...props} />

@@ -24,6 +24,8 @@ export interface TransferCatalog {
 export interface TransferPreview {
   readonly basicFieldModes?: Readonly<Record<'effectiveDate' | 'reasonCode', FieldMode>>;
   readonly requiredFieldsUnavailable?: boolean;
+  /** 服务端确认原职位在本人调动中被清空；隐藏部门时不披露此操作提示。 */
+  readonly positionCleared?: boolean;
   readonly form: {
     readonly id: string;
     readonly name: string;

@@ -7,6 +7,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { approvalWorld, permissionAdmin, type InstanceView, type Person } from './AC-APV-support.js';
 import { createProfile, grant, makeGrantable, setObjectPermission } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
+import { appendForwardPayload, auditForwardTarget } from '../../apps/api/src/modules/employment/forward-store.js';
+import { lockEmploymentBusiness, rowsOf } from '../../apps/api/src/modules/employment/record-store.js';
+import { lockTransferBusiness } from '../../apps/api/src/modules/employment/transfer-locks.js';
 import { resolveTransferForm } from '../../apps/api/src/modules/transfer/configuration.js';
 
 const database = useTestDb();
@@ -30,8 +33,8 @@ interface Business {
   status: string;
   fields: { positionId: string | null; departmentId: string };
 }
-async function actor(label: string, positionEditable = false) {
-  const person = await w.person(label, source, { positionId: originalPosition, postId });
+async function actor(label: string, positionEditable = false, positionId: string | null = originalPosition) {
+  const person = await w.person(label, source, { positionId, postId });
   const profile = await createProfile(admin, `position-${randomUUID()}`);
   const def = MODULE_OBJECTS.employmentRecord;
   await w.json(
@@ -46,7 +49,11 @@ async function actor(label: string, positionEditable = false) {
           edit: !field.system && (field.code !== 'positionId' || positionEditable),
         })),
         buttons: def.buttons
-          .filter((button) => !button.code.startsWith('Transfer.') || button.code === 'Transfer.Self')
+          .filter(
+            (button) =>
+              (!button.code.startsWith('Transfer.') || button.code === 'Transfer.Self') &&
+              !['Employment.Revoke', 'Employment.Delete'].includes(button.code),
+          )
           .map((button) => ({ buttonCode: button.code, level: button.level })),
       },
       def.code,
@@ -64,10 +71,12 @@ async function actor(label: string, positionEditable = false) {
       },
     }),
   );
-  return person;
+  return { ...person, permissionProfile: profile };
 }
 async function profile(person: Person) {
-  return w.json(await api.request('GET', '/api/tenant/self-service/profile', w.as(person.userId)));
+  return w.json<{ employee: { revision: number; [key: string]: unknown }; record: unknown }>(
+    await api.request('GET', '/api/tenant/self-service/profile', w.as(person.userId)),
+  );
 }
 async function revision(person: Person) {
   const profile = await w.json<{ employee: { revision: number } }>(
@@ -253,17 +262,25 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     }
     expect(await profile(person)).toEqual(beforeCreate);
     const saved = await draft(person);
-    const beforePatch = await payload(saved.id);
+    const beforeSubmit = await payload(saved.id);
     expect(
       (
-        await api.request('PATCH', `${BASE}/businesses/${saved.id}`, {
+        await api.request('POST', `${BASE}/businesses/${saved.id}/submit`, {
           ...w.as(person.userId),
           ifMatch: saved.revision,
           body: { fields },
         })
       ).status,
-    ).toBe(403);
-    expect(await payload(saved.id)).toEqual(beforePatch);
+    ).toBe(400);
+    expect(await payload(saved.id)).toEqual(beforeSubmit);
+    const beforePatch = await payload(saved.id);
+    const beforePatchPerson = await profile(person);
+    const options = { ...w.as(person.userId), ifMatch: saved.revision, idempotencyKey: randomUUID(), body: { fields } };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      expect((await api.request('PATCH', `${BASE}/businesses/${saved.id}`, options)).status).toBe(403);
+      expect(await payload(saved.id)).toEqual(beforePatch);
+      expect(await profile(person)).toEqual(beforePatchPerson);
+    }
   });
 
   it('AC-TRF-53 HR 审批中补目标部门职位，错误部门拒绝，正确值通过后保留', async () => {
@@ -426,6 +443,50 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     expect(await payload(saved.id)).toMatchObject({ fields: { positionId: null } });
   });
 
+  it.each(['legacy', 'self-service'])('AC-TRF-55 提示只披露本人职位确实被清空的结果：%s', async (entry) => {
+    for (const original of [originalPosition, null]) {
+      const person = await actor(`合成提示-${entry}-${original !== null}`, false, original);
+      for (const destination of [source, target]) {
+        const path =
+          entry === 'legacy' ? `${BASE}/transfers/employees/${person.employeeId}/preview` : `${SELF}/preview`;
+        const body =
+          entry === 'legacy' ? legacyBody(destination) : { effectiveDate: date, fields: { departmentId: destination } };
+        const preview = await w.json<{ positionCleared?: boolean; fields: object; before: { fields: object } }>(
+          await api.request('POST', path, { ...w.as(person.userId), body }),
+        );
+        expect(preview.positionCleared).toBe(original !== null && destination !== source);
+        expect(preview.fields).not.toHaveProperty('positionId');
+        expect(preview.before.fields).not.toHaveProperty('positionId');
+        expect(JSON.stringify(preview)).not.toContain(originalPosition);
+        expect(JSON.stringify(preview)).not.toContain(targetPosition);
+      }
+      // 部门隐藏时提示元数据也不出现，不能绕过表单及字段裁剪泄漏新旧任职关系。
+      const def = MODULE_OBJECTS.employmentRecord;
+      await w.json(
+        await setObjectPermission(
+          admin,
+          person.permissionProfile,
+          {
+            dataOperations: { create: true, update: true, delete: false },
+            fields: def.fields.map((field) => ({
+              fieldCode: field.code,
+              view: field.code !== 'departmentId',
+              edit: !field.system && field.code !== 'departmentId' && field.code !== 'positionId',
+            })),
+            buttons: def.buttons
+              .filter((button) => button.code === 'Transfer.Self')
+              .map((button) => ({ buttonCode: button.code, level: button.level })),
+          },
+          def.code,
+        ),
+      );
+      const path = entry === 'legacy' ? `${BASE}/transfers/employees/${person.employeeId}/preview` : `${SELF}/preview`;
+      const body = entry === 'legacy' ? { ...legacyBody(source), fields: {} } : { effectiveDate: date, fields: {} };
+      const hidden = await w.json(await api.request('POST', path, { ...w.as(person.userId), body }));
+      expect(hidden).not.toHaveProperty('positionCleared');
+    }
+  });
+
   it.each([false, true])('AC-TRF-56 部门延迟继承完成后保留或清空原职位：部门后来变化=%s', async (changed) => {
     const formId = 'TenantBase.TransferMultiFormView';
     const form = () => withTenant(database().db, w.tenant.id, (tx) => resolveTransferForm(tx, w.tenant.id, formId));
@@ -522,5 +583,410 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     const updated = await w.json<Business>(await api.request(method, path, options), 200);
     expect(await w.json(await api.request(method, path, options), 200)).toEqual(updated);
     expect(await payload(created.id)).toMatchObject({ fields: { positionId: propagatedPosition } });
+  });
+  it.each(
+    ['inherit', 'deferred', 'hr-record', 'propagated', 'approval-edit'].flatMap((source) =>
+      ['activate', 'revoke', 'delete'].map((end) => ({ source, end })),
+    ),
+  )('AC-TRF-58 可信职位完整生命周期：来源=$source，终点=$end', async ({ source: origin, end }) => {
+    const person = await actor(`合成生命周期-${origin}-${end}`, true);
+    const expectedPosition = ['hr-record', 'propagated'].includes(origin)
+      ? propagatedPosition
+      : origin === 'approval-edit'
+        ? targetPosition
+        : originalPosition;
+    const departmentId = origin === 'approval-edit' ? target : source;
+    const updateCurrent = async () => {
+      const records = await w.json<{ items: { id: string; revision: number }[] }>(
+        await w.request(w.hr.id, 'GET', `${BASE}/employees/${person.employeeId}/records`),
+      );
+      const hire = records.items[0]!;
+      await w.json(
+        await w.request(w.hr.id, 'PATCH', `${BASE}/records/${hire.id}`, {
+          ifMatch: hire.revision,
+          body: { fields: { positionId: propagatedPosition.toUpperCase() } },
+        }),
+      );
+    };
+    if (origin === 'hr-record') await updateCurrent();
+    const formId = 'TenantBase.TransferMultiFormView';
+    const form = () => withTenant(database().db, w.tenant.id, (tx) => resolveTransferForm(tx, w.tenant.id, formId));
+    const original = await form();
+    const configure = async (fieldModes: Record<string, string>) => {
+      const current = await form();
+      await w.json(
+        await w.request(w.hr.id, 'PUT', `${BASE}/transfers/forms/${formId}`, {
+          ifMatch: current.revision,
+          body: { name: original.name, group: 'transfer', fieldModes },
+        }),
+      );
+    };
+    if (origin === 'deferred') await configure({ ...original.fieldModes, 'preset:departmentId': 'absent' });
+    let saved: Business;
+    try {
+      const options = {
+        ...w.as(person.userId),
+        ifMatch: await revision(person),
+        idempotencyKey: randomUUID(),
+        body: { ...legacyBody(departmentId), ...(origin === 'deferred' ? { fields: {} } : {}) },
+      };
+      const path = `${BASE}/transfers/employees/${person.employeeId.toUpperCase()}`;
+      saved = await w.json<Business>(await api.request('POST', path, options), 201);
+      expect(await w.json(await api.request('POST', path, options), 201)).toEqual(saved);
+    } finally {
+      if (origin === 'deferred') await configure(original.fieldModes);
+    }
+    if (origin === 'propagated') await updateCurrent();
+    let replayLast: (() => Promise<Response>) | undefined;
+    const command = async (action: 'PATCH' | 'submit', body: object = {}) => {
+      const before = await payload(saved.id);
+      const options = { ...w.as(person.userId), ifMatch: before.revision, idempotencyKey: randomUUID(), body };
+      const path = `${BASE}/businesses/${saved.id.toUpperCase()}${action === 'submit' ? '/submit' : ''}`;
+      const method = action === 'PATCH' ? 'PATCH' : 'POST';
+      saved = await w.json<Business>(await api.request(method, path, options), 200);
+      replayLast = () => api.request(method, path, options);
+      expect(await w.json(await replayLast(), 200)).toEqual(saved);
+    };
+    if (origin === 'approval-edit') {
+      await command('submit');
+      let view = await w.instanceOf(saved.id, person.userId);
+      const task = w.pending(view)[0]!;
+      view = await w.json<InstanceView>(
+        await w.taskAction(task.assigneeUserId!, task.id, 'edit', view.revision, {
+          fields: { positionId: targetPosition.toUpperCase() },
+        }),
+      );
+      await w.json(await w.instanceAction(person.userId, view.id, 'withdraw', view.revision));
+    }
+    // 来源均可在草稿、驳回、撤回三个状态修改与重提；字段权限只约束本次请求体。
+    for (const state of ['draft', 'reject', 'withdraw']) {
+      if (state !== 'draft') {
+        const view = await w.instanceOf(saved.id, person.userId);
+        const task = w.pending(view)[0]!;
+        if (state === 'reject')
+          await w.json(await w.taskAction(task.assigneeUserId!, task.id, 'reject', view.revision));
+        else await w.json(await w.instanceAction(person.userId, view.id, 'withdraw', view.revision));
+      }
+      for (const positionId of [null, expectedPosition.toUpperCase()]) {
+        const before = await payload(saved.id);
+        const beforePerson = await profile(person);
+        expect(
+          (
+            await api.request('PATCH', `${BASE}/businesses/${saved.id}`, {
+              ...w.as(person.userId),
+              ifMatch: before.revision,
+              body: { fields: { positionId } },
+            })
+          ).status,
+        ).toBe(403);
+        expect(await payload(saved.id)).toEqual(before);
+        expect(await profile(person)).toEqual(beforePerson);
+      }
+      await command('PATCH', { effectiveDate: '2026-10-21', fields: { remarks: `合成-${state}` } });
+      expect(await payload(saved.id)).toMatchObject({ fields: { positionId: expectedPosition } });
+      await command('submit');
+      expect(await payload(saved.id)).toMatchObject({ status: 'in_review', fields: { positionId: expectedPosition } });
+    }
+    if (end === 'activate') {
+      await approve(person, saved.id);
+      w.setNow('2026-10-21T01:00:00Z');
+      try {
+        for (let attempt = 0; attempt < 2; attempt++)
+          await runEmploymentActivations(
+            database().db,
+            { commandId: randomUUID(), actorUserId: w.hr.id },
+            { tenantId: w.tenant.id },
+            { clock: w.clock },
+          );
+        expect(await payload(saved.id)).toMatchObject({
+          status: 'effective',
+          record: { fields: { departmentId, positionId: expectedPosition } },
+        });
+      } finally {
+        w.setNow('2026-10-01T01:00:00Z');
+      }
+    } else {
+      if (end === 'delete') {
+        const view = await w.instanceOf(saved.id, person.userId);
+        await w.json(await w.instanceAction(person.userId, view.id, 'withdraw', view.revision));
+      }
+      const before = await payload(saved.id);
+      const beforePerson = await profile(person);
+      const path = `${BASE}/businesses/${saved.id}${end === 'revoke' ? '/revoke' : ''}`;
+      const method = end === 'revoke' ? 'POST' : 'DELETE';
+      expect(
+        (await api.request(method, path, { ...w.as(person.userId), ifMatch: before.revision, body: {} })).status,
+      ).toBe(403);
+      expect(await payload(saved.id)).toEqual(before);
+      expect(await profile(person)).toEqual(beforePerson);
+      const options = { ifMatch: before.revision, idempotencyKey: randomUUID(), body: {} };
+      const removed = await w.json(await w.request(w.hr.id, method, path, options), 200);
+      expect(await w.json(await w.request(w.hr.id, method, path, options), 200)).toEqual(removed);
+      expect(await payload(saved.id)).toMatchObject({ status: end === 'revoke' ? 'voided' : 'deleted', record: null });
+      expect(await profile(person)).toMatchObject({
+        employee: { ...beforePerson.employee, revision: beforePerson.employee.revision + 1 },
+        record: beforePerson.record,
+      });
+      const records = await w.json<{ items: unknown[] }>(
+        await w.request(w.hr.id, 'GET', `${BASE}/employees/${person.employeeId}/records`),
+      );
+      expect(records.items).toHaveLength(1);
+    }
+    const beforeReplay = await payload(saved.id);
+    await withTenant(database().db, w.tenant.id, (tx) =>
+      tx.execute(
+        sql`DELETE FROM permission_user_person_links WHERE tenant_id=${w.tenant.id} AND user_id=${person.userId}::uuid`,
+      ),
+    );
+    const deniedReplay = await replayLast!();
+    expect(deniedReplay.status).toBe(403);
+    expect(await deniedReplay.text()).not.toContain(expectedPosition);
+    expect(await payload(saved.id)).toEqual(beforeReplay);
+  });
+  it('AC-TRF-57 传播职位后换部门清空，后续改期重提与落地不还原', async () => {
+    const person = await actor('合成传播换部门');
+    const records = await w.json<{ items: { id: string; revision: number }[] }>(
+      await w.request(w.hr.id, 'GET', `${BASE}/employees/${person.employeeId}/records`),
+    );
+    const hire = records.items[0]!;
+    let saved = await draft(person);
+    await w.json(
+      await w.request(w.hr.id, 'PATCH', `${BASE}/records/${hire.id}`, {
+        ifMatch: hire.revision,
+        body: { fields: { positionId: propagatedPosition } },
+      }),
+    );
+    for (const body of [{ fields: { departmentId: target.toUpperCase() } }, { effectiveDate: '2026-10-21' }]) {
+      const current = await payload(saved.id);
+      saved = await w.json<Business>(
+        await api.request('PATCH', `${BASE}/businesses/${saved.id}`, {
+          ...w.as(person.userId),
+          ifMatch: current.revision,
+          body,
+        }),
+      );
+      expect(await payload(saved.id)).toMatchObject({ fields: { positionId: null, departmentId: target } });
+    }
+    await w.json(
+      await api.request('POST', `${BASE}/businesses/${saved.id}/submit`, {
+        ...w.as(person.userId),
+        ifMatch: saved.revision,
+        body: {},
+      }),
+    );
+    await approve(person, saved.id);
+    w.setNow('2026-10-21T01:00:00Z');
+    try {
+      await runEmploymentActivations(
+        database().db,
+        { commandId: randomUUID(), actorUserId: w.hr.id },
+        { tenantId: w.tenant.id },
+        { clock: w.clock },
+      );
+      expect(await payload(saved.id)).toMatchObject({
+        status: 'effective',
+        record: { fields: { positionId: null, departmentId: target } },
+      });
+    } finally {
+      w.setNow('2026-10-01T01:00:00Z');
+    }
+  });
+
+  it('AC-TRF-59 旧显式职位草稿按可信保存值修改提交，员工新增输入仍拒绝', async () => {
+    const person = await actor('合成旧显式草稿', true);
+    const created = await draft(person);
+    // 升级兼容夹具：追加旧式快照，不改写历史版本；显式职位没有 HR 标记且字段模式为 editable。
+    await withTenant(database().db, w.tenant.id, async (tx) => {
+      const ctx = {
+        tenantId: w.tenant.id,
+        userId: w.hr.id,
+        commandId: randomUUID(),
+        now: new Date('2026-10-01T01:00:00Z'),
+        timezone: 'UTC',
+        expectedRevision: created.revision,
+      };
+      await lockTransferBusiness(tx, ctx, created.id);
+      const business = await lockEmploymentBusiness(tx, ctx, created.id);
+      const previous = business.payload;
+      const changes = [{ field: 'positionId', before: originalPosition, after: originalPosition }];
+      const next = await appendForwardPayload(
+        tx,
+        ctx,
+        {
+          ...previous,
+          formSnapshot: {
+            ...previous.formSnapshot,
+            employeeTransfer: false,
+            employeePositionByHr: false,
+            fieldModes: { ...previous.formSnapshot.fieldModes, 'preset:positionId': 'editable' },
+          },
+        },
+        { fields: previous.fields, customFields: previous.customFields },
+        created.id,
+        false,
+        changes,
+      );
+      await auditForwardTarget(tx, ctx, next, changes);
+    });
+    let saved: Pick<Business, 'revision'> = await payload(created.id);
+    for (const positionId of [null, propagatedPosition.toUpperCase()]) {
+      const before = await payload(created.id);
+      expect(
+        (
+          await api.request('PATCH', `${BASE}/businesses/${created.id}`, {
+            ...w.as(person.userId),
+            ifMatch: saved.revision,
+            body: { fields: { positionId } },
+          })
+        ).status,
+      ).toBe(403);
+      expect(await payload(created.id)).toEqual(before);
+    }
+    saved = await w.json<Business>(
+      await api.request('PATCH', `${BASE}/businesses/${created.id}`, {
+        ...w.as(person.userId),
+        ifMatch: saved.revision,
+        body: { effectiveDate: '2026-10-20' },
+      }),
+    );
+    expect(await payload(created.id)).toMatchObject({ fields: { positionId: originalPosition } });
+    await w.json(
+      await api.request('POST', `${BASE}/businesses/${created.id}/submit`, {
+        ...w.as(person.userId),
+        ifMatch: saved.revision,
+        body: {},
+      }),
+    );
+    expect(await payload(created.id)).toMatchObject({ status: 'in_review', fields: { positionId: originalPosition } });
+  });
+
+  it.each([false, true])('AC-TRF-56 传播职位与部门延迟继承组合：实际跨部门=%s', async (changed) => {
+    const formId = 'TenantBase.TransferMultiFormView';
+    const form = () => withTenant(database().db, w.tenant.id, (tx) => resolveTransferForm(tx, w.tenant.id, formId));
+    const original = await form();
+    const configure = async (fieldModes: Record<string, string>) => {
+      const current = await form();
+      await w.json(
+        await w.request(w.hr.id, 'PUT', `${BASE}/transfers/forms/${formId}`, {
+          ifMatch: current.revision,
+          body: { name: original.name, group: 'transfer', fieldModes },
+        }),
+      );
+    };
+    await configure({ ...original.fieldModes, 'preset:departmentId': 'absent' });
+    try {
+      const person = await actor(`合成传播延迟部门-${changed}`);
+      const records = await w.json<{ items: { id: string; revision: number }[] }>(
+        await w.request(w.hr.id, 'GET', `${BASE}/employees/${person.employeeId}/records`),
+      );
+      const hire = records.items[0]!;
+      let saved = await w.json<Business>(
+        await api.request('POST', `${BASE}/transfers/employees/${person.employeeId}`, {
+          ...w.as(person.userId),
+          ifMatch: await revision(person),
+          body: { ...legacyBody(source), fields: {} },
+        }),
+        201,
+      );
+      await w.json(
+        await w.request(w.hr.id, 'PATCH', `${BASE}/records/${hire.id}`, {
+          ifMatch: hire.revision,
+          body: { fields: { positionId: propagatedPosition } },
+        }),
+      );
+      const propagated = await payload(saved.id);
+      expect(propagated).toMatchObject({ fields: { positionId: propagatedPosition, departmentId: null } });
+      saved = await w.json<Business>(
+        await api.request('PATCH', `${BASE}/businesses/${saved.id}`, {
+          ...w.as(person.userId),
+          ifMatch: propagated.revision,
+          body: { effectiveDate: '2026-10-21' },
+        }),
+      );
+      await w.json(
+        await api.request('POST', `${BASE}/businesses/${saved.id}/submit`, {
+          ...w.as(person.userId),
+          ifMatch: saved.revision,
+          body: {},
+        }),
+      );
+      await approve(person, saved.id);
+      if (changed)
+        await w.json(
+          await w.request(w.hr.id, 'POST', `${BASE}/employees/${person.employeeId}/businesses`, {
+            ifMatch: await revision(person),
+            body: {
+              kind: 'org_adjustment',
+              mode: 'direct',
+              effectiveDate: '2026-10-20',
+              fields: { departmentId: target, positionId: targetPosition },
+            },
+          }),
+          201,
+        );
+      w.setNow('2026-10-21T01:00:00Z');
+      await runEmploymentActivations(
+        database().db,
+        { commandId: randomUUID(), actorUserId: w.hr.id },
+        { tenantId: w.tenant.id },
+        { clock: w.clock },
+      );
+      expect(await payload(saved.id)).toMatchObject({
+        status: 'effective',
+        record: {
+          fields: { departmentId: changed ? target : source, positionId: changed ? null : propagatedPosition },
+        },
+      });
+    } finally {
+      w.setNow('2026-10-01T01:00:00Z');
+      await configure(original.fieldModes);
+    }
+  });
+
+  it('AC-TRF-56 未分组本人表单同时延迟继承部门与职位，保留两者标记到生效解析', async () => {
+    const formId = `self-deferred-${randomUUID()}`;
+    const form = await withTenant(database().db, w.tenant.id, (tx) =>
+      resolveTransferForm(tx, w.tenant.id, 'TenantBase.TransferMultiFormView'),
+    );
+    await w.json(
+      await w.request(w.hr.id, 'PUT', `${BASE}/transfers/forms/${formId}`, {
+        ifMatch: 0,
+        body: { name: '合成未分组本人调动', group: null, fieldModes: form.fieldModes },
+      }),
+    );
+    const person = await actor('合成未分组延迟职位');
+    const created = await w.json<Business>(
+      await api.request('POST', `${BASE}/transfers/employees/${person.employeeId}`, {
+        ...w.as(person.userId),
+        ifMatch: await revision(person),
+        body: { ...legacyBody(source, true), formId, fields: {} },
+      }),
+      201,
+    );
+    const stored = await withTenant(database().db, w.tenant.id, async (tx) => {
+      const result = await tx.execute(
+        sql`SELECT deferred_field_codes FROM employment_payload_versions
+          WHERE tenant_id=${w.tenant.id} AND business_id=${created.id}::uuid
+          ORDER BY version_no DESC LIMIT 1`,
+      );
+      return rowsOf<{ deferred_field_codes: string[] }>(result)[0]!;
+    });
+    expect(stored.deferred_field_codes).toEqual(expect.arrayContaining(['preset:departmentId', 'preset:positionId']));
+    await approve(person, created.id);
+    w.setNow(`${date}T01:00:00Z`);
+    try {
+      await runEmploymentActivations(
+        database().db,
+        { commandId: randomUUID(), actorUserId: w.hr.id },
+        { tenantId: w.tenant.id },
+        { clock: w.clock },
+      );
+      expect(await payload(created.id)).toMatchObject({
+        status: 'effective',
+        record: { fields: { departmentId: source, positionId: originalPosition } },
+      });
+    } finally {
+      w.setNow('2026-10-01T01:00:00Z');
+    }
   });
 });

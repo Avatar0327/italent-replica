@@ -266,6 +266,14 @@ async function prepareEmployeePosition(
   sourcePositionId: string | null,
 ) {
   if (!prepared.formSnapshot.employeeTransfer) return prepared;
+  // 部门留待生效时继承时尚不能判断跨部门；保留职位及其原有延迟继承标记。
+  if (prepared.deferredFieldCodes.includes('preset:departmentId'))
+    return {
+      ...prepared,
+      fields: prepared.explicitFieldCodes.includes('preset:positionId')
+        ? prepared.fields
+        : { ...prepared.fields, positionId: sourcePositionId },
+    };
   return {
     ...prepared,
     fields: prepared.explicitFieldCodes.includes('preset:positionId')
@@ -275,36 +283,6 @@ async function prepareEmployeePosition(
           positionId: sourcePositionId,
         }),
     deferredFieldCodes: prepared.deferredFieldCodes.filter((field) => field !== 'preset:positionId'),
-  };
-}
-
-/** DEC-232 / AC-TRF-53：HR 补的职位随单保留；员工换部门或改期后重新验证所属部门。 */
-async function retainEmployeePositionByHr(
-  tx: Tx,
-  ctx: EmploymentContext,
-  input: InheritanceInput,
-  previous: PreparedInheritance,
-  prepared: PreparedInheritance,
-): Promise<PreparedInheritance> {
-  if (
-    !prepared.formSnapshot.employeeTransfer ||
-    !previous.formSnapshot.employeePositionByHr ||
-    input.allowEmployeePositionEdit ||
-    owns(input.fields ?? {}, 'positionId')
-  )
-    return prepared;
-  const fields = await employeeTransferPosition(tx, ctx, prepared.effectiveDate, {
-    ...prepared.fields,
-    positionId: previous.fields.positionId,
-  });
-  const cleared = previous.fields.positionId !== null && fields.positionId === null;
-  const explicit = prepared.explicitFieldCodes.filter((code) => code !== 'preset:positionId');
-  // 自动清空不能再以 HR 显式填写跳过后续继承判断；仍匹配的保存值继续作为显式值落地。
-  return {
-    ...prepared,
-    fields,
-    explicitFieldCodes: cleared ? explicit : [...explicit, 'preset:positionId'],
-    formSnapshot: { ...prepared.formSnapshot, employeePositionByHr: !cleared },
   };
 }
 
@@ -389,24 +367,76 @@ export async function prepareInheritance(
   return prepareEmployeePosition(tx, ctx, prepared, eligible?.fields.positionId ?? null);
 }
 
+async function preparePatchedInheritance(
+  tx: Tx,
+  ctx: EmploymentContext,
+  input: InheritanceInput,
+  previous: PreparedInheritance,
+  snapshot: TrustedFormSnapshot,
+  requestedFields: Partial<PresetFields>,
+): Promise<PreparedInheritance> {
+  const employeeTransfer = snapshot.employeeTransfer;
+  // 保存的显式值也可能来自 HR / 向后传播；只校验本次请求的字段模式，不能把保存值当成人工输入。
+  const carried = PRESET_FIELDS.filter(
+    (field) =>
+      employeeTransfer &&
+      previous.explicitFieldCodes.includes(`preset:${field}`) &&
+      owns(input.fields ?? {}, field) &&
+      !owns(requestedFields, field) &&
+      (snapshot.fieldModes[`preset:${field}`] !== 'editable' || EMPLOYEE_READONLY_FIELDS.has(field)),
+  );
+  const submitted = { ...input.fields };
+  for (const field of carried) delete submitted[field];
+  let prepared = await prepareInheritance(tx, ctx, { ...input, fields: submitted }, snapshot);
+  if (carried.length) {
+    const fields = { ...prepared.fields };
+    for (const field of carried) setField(fields, field, previous.fields[field]);
+    const codes = carried.map((field) => `preset:${field}`);
+    prepared = {
+      ...prepared,
+      fields,
+      explicitFieldCodes: [...new Set([...prepared.explicitFieldCodes, ...codes])],
+      deferredFieldCodes: prepared.deferredFieldCodes.filter(
+        (code) =>
+          !codes.includes(code) ||
+          (code === 'preset:positionId' && prepared.deferredFieldCodes.includes('preset:departmentId')),
+      ),
+    };
+  }
+  if (
+    employeeTransfer &&
+    !prepared.deferredFieldCodes.includes('preset:departmentId') &&
+    !(input.allowEmployeePositionEdit && owns(requestedFields, 'positionId'))
+  ) {
+    const fields = await employeeTransferPosition(tx, ctx, prepared.effectiveDate, prepared.fields);
+    const cleared = prepared.fields.positionId !== null && fields.positionId === null;
+    prepared = {
+      ...prepared,
+      fields,
+      ...(cleared
+        ? {
+            explicitFieldCodes: prepared.explicitFieldCodes.filter((code) => code !== 'preset:positionId'),
+            formSnapshot: { ...prepared.formSnapshot, employeePositionByHr: false },
+          }
+        : {}),
+    };
+  }
+  return prepared;
+}
+
 /** 日期不变时保留创建表单时捕获的默认值；日期改变按 DEC-041 重新查前驱。 */
 export async function prepareEmploymentPatch(
   tx: Tx,
   ctx: EmploymentContext,
   input: InheritanceInput,
   previous: PreparedInheritance,
+  requestedFields: Partial<PresetFields> = input.fields ?? {},
 ): Promise<PreparedInheritance> {
   // 已保存申请的字段策略随申请冻结；修改表单配置不能把原单只读字段变成可伪造写入。
   const employeeTransfer =
     previous.formSnapshot.employeeTransfer || (await isEmployeeTransferPayload(tx, ctx.tenantId, previous));
   const snapshot = { ...previous.formSnapshot, ...(employeeTransfer ? { employeeTransfer: true } : {}) };
-  const prepared = await retainEmployeePositionByHr(
-    tx,
-    ctx,
-    input,
-    previous,
-    await prepareInheritance(tx, ctx, input, snapshot),
-  );
+  const prepared = await preparePatchedInheritance(tx, ctx, input, previous, snapshot, requestedFields);
   if (input.effectiveDate !== previous.effectiveDate) return prepared;
   const explicit = new Set(prepared.explicitFieldCodes);
   const oldDeferred = new Set(previous.deferredFieldCodes);
@@ -445,6 +475,7 @@ export async function resolveEffectiveInheritance(
   ctx: EmploymentContext,
   prepared: PreparedInheritance,
   effective: { staffId: string; predecessor: EmploymentRecord | null },
+  options: { readonly explicitPositionEdit?: boolean } = {},
 ): Promise<{ fields: PresetFields; customFields: CustomFields }> {
   const fields = { ...prepared.fields };
   const customFields = { ...prepared.customFields };
@@ -475,7 +506,9 @@ export async function resolveEffectiveInheritance(
     prepared.formSnapshot.employeeTransfer || (await isEmployeeTransferPayload(tx, ctx.tenantId, prepared));
   return {
     fields:
-      employeeTransfer && !explicit.has('preset:positionId')
+      // 部门与职位的延迟继承已完成；保存的显式值也必须遵守 DEC-232。
+      // 本次 HR 审批编辑例外：保留其输入，让引用校验拒绝不属于目标部门的职位。
+      employeeTransfer && !options.explicitPositionEdit
         ? await employeeTransferPosition(tx, ctx, prepared.effectiveDate, fields)
         : fields,
     customFields,

@@ -76,6 +76,9 @@ export async function ownTransferPreview(
     Object.fromEntries(Object.entries(fields).filter(([key]) => Object.hasOwn(fieldModes, `${prefix}:${key}`)));
   const catalog = await readTransferCatalog(tx, ctx.tenantId, input.employment.effectiveDate);
   return {
+    ...(trim(preview.value.fields).departmentId && trim(preview.value.before?.fields ?? {}).departmentId
+      ? { positionCleared: preview.positionCleared }
+      : {}),
     employeeId: preview.value.employeeId,
     employeeRevision: preview.value.employeeRevision,
     allowDirectTransfer: preview.value.allowDirectTransfer,
