@@ -6,6 +6,13 @@ import { validIsoDate } from '../org/read-model.js';
 import { ensureDefaultScheme } from './default-scheme.js';
 import { recordAudit } from '../../audit/record.js';
 
+export interface CapacityScopeTarget {
+  readonly operation: 'create' | 'update';
+  readonly id?: string;
+  readonly orgId: string;
+  readonly linked?: boolean;
+}
+
 export interface EstablishmentContext {
   readonly tenantId: string;
   readonly userId: string | null;
@@ -13,14 +20,11 @@ export interface EstablishmentContext {
   readonly now: Date;
   readonly commandId: string;
   readonly expectedRevision: number;
+  readonly authorizeCapacityScope?: (tx: Tx, target: CapacityScopeTarget) => Promise<void>;
   readonly authorizeCapacity?: (
     tx: Tx,
-    change: {
-      readonly operation: 'create' | 'update';
-      readonly id?: string;
-      readonly orgId: string;
+    change: CapacityScopeTarget & {
       readonly payload: Readonly<Record<string, unknown>>;
-      readonly linked?: boolean;
     },
   ) => Promise<void>;
 }

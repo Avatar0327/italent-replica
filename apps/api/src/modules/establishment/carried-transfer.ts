@@ -47,13 +47,19 @@ export async function carryEstablishment(
   if (!source.departmentId || !target.departmentId)
     throw new AppError('VALIDATION_FAILED', '带编调动必须有调出和调入部门');
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  const records = rowsOf<{ id: string }>(
+  const records = rowsOf<{ id: string; orgId: string }>(
     await tx.execute(sql`
-    SELECT id FROM establishment_objects WHERE tenant_id=${ctx.tenantId}
+    SELECT id,org_id AS "orgId" FROM establishment_objects WHERE tenant_id=${ctx.tenantId}
       AND org_id IN (${source.departmentId}::uuid,${target.departmentId}::uuid)
       AND period_start<=${effectiveDate}::date AND period_end>=${effectiveDate}::date
     ORDER BY id LIMIT 1001`),
   );
+  // AGENTS §10：先独立授权两侧，再读取配置；不存在候选也不能泄露范围外的方案/周期状态。
+  for (const orgId of new Set([source.departmentId, target.departmentId])) {
+    const candidates = records.filter((record) => record.orgId === orgId);
+    for (const record of candidates.length ? candidates : [{ orgId }])
+      await context.authorizeCapacityScope?.(tx, { ...record, operation: 'update' });
+  }
   if (records.length > 1000) throw new AppError('PAYLOAD_TOO_LARGE', '带编调动涉及的编制超过单次处理上限');
   const capacities: { record: CapacityRecord; scheme: SchemeRecord }[] = [];
   for (const { id } of records) {
