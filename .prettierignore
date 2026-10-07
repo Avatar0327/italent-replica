@@ -8,3 +8,4 @@ coverage/
 pnpm-lock.yaml
 packages/db/migrations/meta/
 *.md
+.demo/
