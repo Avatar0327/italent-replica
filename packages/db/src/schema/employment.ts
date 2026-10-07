@@ -14,6 +14,7 @@ import {
   jsonb,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   unique,
@@ -179,6 +180,24 @@ function presetRules(name: string, t: PresetColumns): PgTableExtraConfigValue[] 
   ];
 }
 
+/**
+ * 人员状态 / 入职状态（F-022，15 §9）：随任职版本存储，表示该版本的目标状态。只能经业务流转写入：
+ * 未显式给出时由插入触发器按版本链继承（快照继承记录当前值，其余继承上一版本或时间轴前一条，迁移 0059）。
+ */
+function statusColumns() {
+  return {
+    employeeStatus: smallint('employee_status').notNull(),
+    entryStatus: smallint('entry_status'),
+  };
+}
+
+function statusRules(name: string, t: { employeeStatus: AnyPgColumn; entryStatus: AnyPgColumn }) {
+  return [
+    check(`${name}_employee_status`, sql`${t.employeeStatus} IN (1, 2, 3, 4, 5, 6, 8, 12)`),
+    check(`${name}_entry_status`, sql`${t.entryStatus} IN (0, 1, 2)`),
+  ];
+}
+
 function kindRule(name: string, kind: AnyPgColumn) {
   return check(
     name,
@@ -217,6 +236,7 @@ export const employmentPayloadVersions = pgTable(
     sourceRecordId: uuid('source_record_id'),
     sourceStaffId: uuid('source_staff_id'),
     ...presetFields(),
+    ...statusColumns(),
     customFields: customFields(),
     deferredFieldCodes: text('deferred_field_codes')
       .array()
@@ -287,6 +307,7 @@ export const employmentPayloadVersions = pgTable(
       ],
     }),
     ...presetRules('employment_payload_versions', t),
+    ...statusRules('employment_payload_versions', t),
     kindRule('employment_payload_versions_kind', t.kind),
     changeTypeRule('employment_payload_versions_change_type', t.changeType),
     check('employment_payload_versions_version_positive', sql`${t.versionNo} > 0`),
@@ -364,6 +385,7 @@ export const employmentRecords = pgTable(
     isInserted: boolean('is_inserted').notNull().default(false),
     inheritanceSourceId: uuid('inheritance_source_id'),
     ...presetFields(),
+    ...statusColumns(),
     employType: text('employ_type').notNull(),
     customFields: customFields(),
     createdAt: utc(),
@@ -400,6 +422,7 @@ export const employmentRecords = pgTable(
       foreignColumns: [t.tenantId, t.employeeId, t.id],
     }),
     ...presetRules('employment_records', t),
+    ...statusRules('employment_records', t),
     kindRule('employment_records_kind', t.kind),
     changeTypeRule('employment_records_change_type', t.changeType),
     check('employment_records_primary_only', sql`${t.serviceType} = 'primary'`),

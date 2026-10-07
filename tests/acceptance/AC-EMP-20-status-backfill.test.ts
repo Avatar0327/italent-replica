@@ -106,8 +106,9 @@ it('AC-EMP-20 回填：有试用期且未转正为试用、转正及之后为正
       VALUES (${pending},${tenantId},${a})`);
     await tx.execute(sql`INSERT INTO employment_payload_versions
       (id,tenant_id,employee_id,business_id,version_no,kind,mode,effective_date,form_id,selected_staff_id)
-      VALUES (gen_random_uuid(),${tenantId},${a},${pending},1,'transfer','application','2026-12-01','standard',${aStaff})`);
-    // 合同试用期：A 当前周期有、B 只在旧周期之前没有（B 无试用期）
+      VALUES (gen_random_uuid(),${tenantId},${a},${pending},1,'transfer','application','2026-12-01','standard',
+        ${aStaff})`);
+    // 合同试用期：只有 A 的当前周期有，B、C 没有试用期
     const [type, company, contract] = [randomUUID(), randomUUID(), randomUUID()];
     await tx.execute(
       sql`INSERT INTO contract_types (id,tenant_id,code,name) VALUES (${type},${tenantId},'t','劳动合同')`,

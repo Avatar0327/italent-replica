@@ -12,7 +12,9 @@ export async function managerTeamQuery(tx: Tx, ctx: EmploymentContext): Promise<
   const identity = await managerIdentity(tx, { ...ctx, asOf });
   if (!identity.active) throw new AppError('FORBIDDEN', '需要经理自助身份');
   const orgs = `{${identity.orgIds.join(',')}}`;
-  // Q-M0-71：先按当前主职（待入职取未来入职）和负责组织过滤，再分页。历史可见不产生候选资格。
+  // Q-M0-71：先按当前主职（待入职取其入职记录）和负责组织过滤，再分页。历史可见不产生候选资格。
+  // F-022（Q-M0-76 / Q-M0-99）：在岗 = 当前生效主职版本人员状态 ∈ {试用, 正式}；试用中 = 人员状态为试用（不看试用期日期）；
+  // 待入职 = 未删除的新增 / 重聘入职记录人员状态为待入职、入职状态 ∈ {空, 正常, 延期}，不限当前记录。
   return sql`WITH latest AS (
     SELECT DISTINCT ON (p.business_id) p.* FROM employment_payload_versions p
     WHERE p.tenant_id=${ctx.tenantId} ORDER BY p.business_id,p.version_no DESC
@@ -31,28 +33,40 @@ export async function managerTeamQuery(tx: Tx, ctx: EmploymentContext): Promise<
       COALESCE(p.employ_type,cycle.employ_type,'internal') AS "employType",
       COALESCE(cycle.entry_date,p.effective_date) AS "entryDate",
       person.email,person.mobile_phone AS "mobilePhone",
-      COALESCE(t.record_id IS NOT NULL AND r.kind NOT IN ('leave','retirement'),false) AS active,
-      (p.kind IN ('hire','rehire') AND p.effective_date>${asOf}::date) AS pending,
+      p.status_code::integer AS "employeeStatus",p.entry_code::integer AS "entryStatus",
+      COALESCE(current_status.employee_status IN (2,3),false) AS active,
+      COALESCE(current_status.employee_status=2,false) AS probation,
+      (pending_entry.id IS NOT NULL) AS pending,
       EXISTS (SELECT 1 FROM latest l JOIN states s ON s.business_id=l.business_id
         WHERE l.employee_id=e.id AND l.kind='leave' AND s.state<>'deleted') AS leaving,
-      CASE WHEN p.effective_date>${asOf}::date THEN 'pending'
+      CASE WHEN p.o=1 THEN 'pending'
         WHEN r.kind IN ('leave','retirement') THEN 'leaving' ELSE 'active' END AS category
     FROM employment_employees e
     LEFT JOIN employment_timeline t ON t.tenant_id=e.tenant_id AND t.employee_id=e.id
       AND t.valid_during @> ${asOf}::date
     LEFT JOIN employment_records r ON r.tenant_id=t.tenant_id AND r.id=t.record_id
+    LEFT JOIN LATERAL employment_record_status(e.tenant_id,r.id) current_status ON true
+    LEFT JOIN LATERAL (
+      SELECT pr.id,pr.staff_id,ps.employee_status,ps.entry_status FROM employment_records pr
+      JOIN employment_timeline pt ON pt.tenant_id=pr.tenant_id AND pt.record_id=pr.id
+      JOIN states s ON s.business_id=pr.id AND s.state='effective'
+      JOIN LATERAL employment_record_status(pr.tenant_id,pr.id) ps ON true
+      WHERE pr.tenant_id=e.tenant_id AND pr.employee_id=e.id AND pr.kind IN ('hire','rehire')
+        AND ps.employee_status=1 AND COALESCE(ps.entry_status,0) IN (0,2)
+      ORDER BY pt.start_date DESC,pt.sort_order DESC LIMIT 1
+    ) pending_entry ON true
     JOIN LATERAL (
-      SELECT current.* FROM snapshots current WHERE current.employee_id=e.id
-        AND current.business_id=r.id
+      SELECT current.*,0 AS o,r.staff_id AS staff,current_status.employee_status AS status_code,
+        current_status.entry_status AS entry_code FROM snapshots current
+      WHERE current.employee_id=e.id AND current.business_id=r.id
+        AND (pending_entry.id IS NULL OR current_status.employee_status IN (2,3))
       UNION ALL
-      SELECT l.* FROM latest l JOIN states s ON s.business_id=l.business_id
-      WHERE l.employee_id=e.id AND (r.id IS NULL OR r.kind IN ('leave','retirement'))
-        AND l.kind IN ('hire','rehire')
-        AND l.effective_date>${asOf}::date AND s.state IN ('approved','effective')
-      ORDER BY effective_date DESC,business_id LIMIT 1
+      SELECT pending.*,1,pending_entry.staff_id,pending_entry.employee_status,pending_entry.entry_status
+      FROM snapshots pending WHERE pending.business_id=pending_entry.id
+        AND current_status.employee_status IS DISTINCT FROM 2 AND current_status.employee_status IS DISTINCT FROM 3
+      ORDER BY o LIMIT 1
     ) p ON true
-    LEFT JOIN employment_cycles cycle ON cycle.tenant_id=e.tenant_id
-      AND cycle.id=COALESCE(p.selected_staff_id,r.staff_id)
+    LEFT JOIN employment_cycles cycle ON cycle.tenant_id=e.tenant_id AND cycle.id=p.staff
     LEFT JOIN LATERAL (SELECT name,email,mobile_phone FROM personnel_employee_versions
       WHERE tenant_id=e.tenant_id AND employee_id=e.id ORDER BY revision DESC LIMIT 1) person ON true
     WHERE e.tenant_id=${ctx.tenantId} AND e.id<>${identity.employeeId}::uuid
@@ -76,9 +90,10 @@ export async function readManagerTeam(
   },
 ) {
   const query = await managerTeamQuery(tx, ctx);
-  const [counts] = scopeRows<{ active: number; intern: number; pending: number; leaving: number }>(
+  const [counts] = scopeRows<{ active: number; probation: number; intern: number; pending: number; leaving: number }>(
     await tx.execute(sql`${query} SELECT
       count(*) FILTER (WHERE active)::integer AS active,
+      count(*) FILTER (WHERE probation)::integer AS probation,
       count(*) FILTER (WHERE active AND "employType"='intern')::integer AS intern,
       count(*) FILTER (WHERE pending)::integer AS pending,
       count(*) FILTER (WHERE leaving)::integer AS leaving FROM people`),
@@ -89,10 +104,10 @@ export async function readManagerTeam(
       OR (${options.codeSearch !== false} AND code ILIKE ${`%${search}%`})
     ${options.emailSearch ? sql`OR email ILIKE ${`%${search}%`}` : sql``})`
     : sql``;
-  // Q-M0-76 已取证；模型仍缺独立人员状态，试用栏目等待人员 / 任职模块补齐，不按日期推断。
+  // 计数与列表共用同一谓词（Q-M0-76）；试用只看人员状态，不按日期推断（F-022）。
   const categories: Record<string, SQL> = {
     active: sql`active`,
-    probation: sql`false`,
+    probation: sql`probation`,
     intern: sql`active AND "employType"='intern'`,
     pending: sql`pending`,
     leaving: sql`leaving`,
@@ -112,7 +127,7 @@ export async function readManagerTeam(
     items,
     counts: {
       active: 0,
-      probation: null,
+      probation: 0,
       intern: 0,
       pending: 0,
       leaving: 0,

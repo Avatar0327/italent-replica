@@ -97,6 +97,8 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   transferTypeCode: '调动类型',
   reasonCode: '调动原因',
   changeType: '变动类型',
+  employeeStatus: '人员状态',
+  entryStatus: '入职状态',
   isDepartmentHead: '是否部门负责人',
   isStoreManager: '是否店长',
   employType: '雇佣关系',

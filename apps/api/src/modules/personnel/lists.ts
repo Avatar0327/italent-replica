@@ -23,6 +23,9 @@ const sortColumns: Record<string, SQL> = {
   levelSortNumber: sql`jl.level`,
   gradeSortNumber: sql`jg.grade`,
   positionSortNumber: sql`jp.display_order`,
+  // F-022：当前生效主职版本的人员状态 / 入职状态（编码）
+  employeeStatus: sql`r.current_employee_status`,
+  entryStatus: sql`r.current_entry_status`,
 };
 export async function listOptions(c: Context, deps: TenantRouteDeps, ctx: AccessContext) {
   const sortBy = c.req.query('sortBy');

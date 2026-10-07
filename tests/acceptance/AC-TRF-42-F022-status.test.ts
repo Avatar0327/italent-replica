@@ -88,10 +88,12 @@ describe('AC-TRF-42（F-022）试用中 / 待入职按人员状态精确统计',
     expect(ids).toEqual(expect.arrayContaining([probation.id, intern.id]));
     for (const id of [regular.id, external.id, outside.id]) expect(ids).not.toContain(id);
     expect(dto.counts.probation).toBe(ids.length);
-    expect(dto.items.every((row) => row.probation === true && row.employeeStatus === 2)).toBe(true);
+    expect(dto.items.every((row) => row.probation === true)).toBe(true);
+    // 默认经理身份未授“人员状态”查看：标记列照常返回，字段值按字段权限裁剪
+    expect(dto.items.every((row) => !('employeeStatus' in row) && !('entryStatus' in row))).toBe(true);
     const active = await team(world, manager, 'active');
     expect(active.items.map((row) => row.id)).toEqual(expect.arrayContaining([probation.id, regular.id]));
-    expect(active.items.find((row) => row.id === regular.id)).toMatchObject({ probation: false, employeeStatus: 3 });
+    expect(active.items.find((row) => row.id === regular.id)).toMatchObject({ probation: false });
     expect(active.items.find((row) => row.id === probation.id)?.probation).toBe(true);
   });
 
@@ -131,7 +133,31 @@ describe('AC-TRF-42（F-022）试用中 / 待入职按人员状态精确统计',
     expect(ids).toEqual(expect.arrayContaining([normal.id, postponed.id]));
     for (const id of [cancelled.id, removed.id, future.id]) expect(ids).not.toContain(id);
     expect(dto.counts.pending).toBe(ids.length);
-    expect(dto.items.find((row) => row.id === postponed.id)).toMatchObject({ employeeStatus: 1, entryStatus: 2 });
+    const hr = await world.setup.request(
+      'GET',
+      `/api/tenant/employment/employees/${postponed.id}/records?asOf=2026-10-01`,
+      world.asAdmin,
+    );
+    expect(((await hr.json()) as { items: unknown[] }).items[0]).toMatchObject({ employeeStatus: 1, entryStatus: 2 });
+  });
+
+  it('字段权限照常裁剪：未授人员状态 / 入职状态查看的 HR 读任职记录时不返回这两个字段', async () => {
+    const person = await world.person(world.inside.id, undefined, undefined, { entry: { probation: true } });
+    const visible = await world.actor('f022-visible');
+    const hidden = await world.actor('f022-hidden', { hidden: ['employeeStatus', 'entryStatus'] });
+    const read = async (as: { user: string; tenant: string }) => {
+      const response = await world.api.request(
+        'GET',
+        `/api/tenant/employment/employees/${person.id}/records?asOf=2026-10-01`,
+        as,
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      return ((await response.json()) as { items: Record<string, unknown>[] }).items[0]!;
+    };
+    expect(await read(visible)).toMatchObject({ employeeStatus: 2, entryStatus: null });
+    const trimmed = await read(hidden);
+    expect(trimmed).not.toHaveProperty('employeeStatus');
+    expect(trimmed).not.toHaveProperty('entryStatus');
   });
 
   it('跨租户：另一租户的试用、待入职人员不进入本租户统计；本租户经理请求另一租户被拒', async () => {

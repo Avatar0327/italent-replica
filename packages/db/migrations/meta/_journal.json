@@ -414,6 +414,13 @@
       "when": 1791271936034,
       "tag": "0058_audit_log_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1791333975255,
+      "tag": "0059_employee_status",
+      "breakpoints": true
     }
   ]
 }
