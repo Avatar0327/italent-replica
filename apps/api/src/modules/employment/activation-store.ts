@@ -131,9 +131,23 @@ export function isRebuildBlocker(predecessor: PendingActivation, businessId: str
   );
 }
 
-/** 失败尚未修正的前序（其后的业务按 DEC-112 一律挂起在它之后）；调用方先用 blockingPredecessors 去掉豁免的前序。 */
-export function failedPredecessor(before: readonly PendingActivation[]): PendingActivation | undefined {
-  return before.find((item) => !item.reminderOnly && item.lastOutcome === 'failed');
+export interface UnresolvedPredecessor {
+  readonly item: PendingActivation;
+  /** 记为 blockedBy 的来源失败业务：前序自己失败时是它本身，前序被挂起时沿用它的来源（DEC-112 只记失败的那条）。 */
+  readonly failedId: string;
+}
+
+/**
+ * 尚未解决的第一笔前序（DEC-112：失败未修正、或因前序失败挂起的，其后的业务一律挂起在它之后；S3-P2-01：对照全部
+ * 前序而不只是最近一次失败）；调用方先用 blockingPredecessors 去掉只提醒与豁免的前序。
+ */
+export function unresolvedPredecessor(before: readonly PendingActivation[]): UnresolvedPredecessor | undefined {
+  for (const item of before) {
+    if (item.reminderOnly) continue;
+    if (item.lastOutcome === 'failed') return { item, failedId: item.id };
+    if (item.lastOutcome === 'suspended') return { item, failedId: item.lastBlockedBy ?? item.id };
+  }
+  return undefined;
 }
 
 export interface AttemptRecord {

@@ -1,4 +1,5 @@
 import { postponeLateTransfer } from './late-transfer.js';
+import { assertPredecessorsSettled } from './linkage-dependency.js';
 import { resolveLateExecution, tenantLocalDate } from '@italent/domain';
 import { employmentDepartmentDisable } from '../org/employment-validity.js';
 import { bumpEmploymentBusiness, lockEmploymentBusiness } from './record-store.js';
@@ -155,6 +156,9 @@ export async function activateWithJudgement(
     return await tx.transaction(async (savepoint) => {
       // org/locks.ts：预检可能取组织 / 编制锁，先锁已有业务；员工闭包已由调度 / 重试入口锁定。
       const business = await lockEmploymentBusiness(savepoint, { ...ctx, expectedRevision: item.revision }, item.id);
+      // 已落地直接调动与申请的 activate 端口同一套前序复核（S3-P2-01）；只提醒的复查不受前序约束（DEC-173）。
+      if (item.materialized && !item.reminderOnly)
+        await assertPredecessorsSettled(savepoint, ctx, item.employeeId, item.id);
       if (item.materialized && item.kind === 'transfer') {
         await postponeLateTransfer(savepoint, ctx, business);
         if (item.reminderOnly && item.effectiveDate < tenantLocalDate(ctx.now, ctx.timezone))

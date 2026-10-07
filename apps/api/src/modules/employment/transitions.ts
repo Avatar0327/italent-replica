@@ -12,11 +12,11 @@ import { AppError } from '../../errors.js';
 import { assertRegularizationNotPropagated } from './employee-status.js';
 import {
   activationPredecessors,
-  failedPredecessor,
   PREDECESSOR_FAILED,
   recordActivationAttempt,
+  unresolvedPredecessor,
 } from './activation-store.js';
-import { blockingPredecessors } from './linkage-dependency.js';
+import { assertPredecessorsSettled, blockingPredecessors } from './linkage-dependency.js';
 import { auditEmployment } from './context.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
 import { resolveEffectiveInheritance } from './inheritance.js';
@@ -143,13 +143,7 @@ export async function transitionEmployment(
     }
     // R1-T08：定时任务与 HR 重试经此端口按队列逐条落地（activation-service.ts）；前序未落地时不得越过它（DEC-108 / 112）；
     // 前序因区间内含本业务而记 REBUILD_REQUIRED、且无跨对象联动依赖时例外（设计 §2.5）。
-    const predecessors = await activationPredecessors(tx, ctx, business.employeeId, business.id);
-    const before = await blockingPredecessors(tx, ctx, predecessors.before, business.id);
-    if (before.length)
-      throw new AppError('CONFLICT', '前序待生效业务尚未生效', {
-        reason: 'ACTIVATION_PREDECESSOR_PENDING',
-        blockedByBusinessId: before[0]!.id,
-      });
+    await assertPredecessorsSettled(tx, ctx, business.employeeId, business.id);
     await postponeLateTransfer(tx, ctx, business);
     // materialize 同事务完成向后更新、审计与 outbox。
     await materializeEmploymentRecord(tx, ctx, business);
@@ -194,14 +188,14 @@ async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, busines
     await appendEmploymentState(tx, ctx, business, 'effective');
     return;
   }
-  const blocker = failedPredecessor(before);
+  const blocker = unresolvedPredecessor(before);
   if (item && blocker) {
     // 本命令结束时统一递增一次业务 revision，挂起记录不另行递增。
     await recordActivationAttempt(
       tx,
       ctx,
       item,
-      { outcome: 'suspended', trigger: 'approval', reason: PREDECESSOR_FAILED, blockedBy: blocker.id },
+      { outcome: 'suspended', trigger: 'approval', reason: PREDECESSOR_FAILED, blockedBy: blocker.failedId },
       { bumpRevision: false },
     );
   }
