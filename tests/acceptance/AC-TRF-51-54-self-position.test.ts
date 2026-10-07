@@ -22,6 +22,7 @@ let third: string;
 let postId: string;
 let originalPosition: string;
 let targetPosition: string;
+let propagatedPosition: string;
 
 interface Business {
   id: string;
@@ -125,7 +126,7 @@ beforeAll(async () => {
       await w.json<{ id: string }>(
         await w.request(w.hr.id, 'POST', '/api/tenant/job/positions', {
           ifMatch: 0,
-          body: { code: `P-${randomUUID()}`, name: '合成职位', startDate: '2020-01-01', orgId, postId },
+          body: { code: `P-${randomUUID()}`, name: `合成职位-${randomUUID()}`, startDate: '2020-01-01', orgId, postId },
         }),
         201,
       )
@@ -133,6 +134,7 @@ beforeAll(async () => {
   }
   originalPosition = await position(source);
   targetPosition = await position(target);
+  propagatedPosition = await position(source);
   await w.publishedProcess({
     nodes: [
       {
@@ -479,5 +481,46 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
       w.setNow('2026-10-01T01:00:00Z');
       await configure(original.fieldModes);
     }
+  });
+
+  it.each(['PATCH', 'submit'])('AC-TRF-57 HR 向后同步职位后，员工仅 %s 不被当成显式职位输入', async (action) => {
+    const person = await actor(`合成传播职位-${action}`, true);
+    const current = await w.json<{ items: { id: string; revision: number }[] }>(
+      await w.request(w.hr.id, 'GET', `${BASE}/employees/${person.employeeId}/records`),
+    );
+    expect(current.items).toHaveLength(1);
+    const hire = current.items[0]!;
+    const created = await draft(person);
+    await w.json(
+      await w.request(w.hr.id, 'PATCH', `${BASE}/records/${hire.id}`, {
+        ifMatch: hire.revision,
+        body: { fields: { positionId: propagatedPosition.toUpperCase() } },
+      }),
+    );
+    const saved = await payload(created.id);
+    expect(saved).toMatchObject({ fields: { departmentId: source, positionId: propagatedPosition } });
+    for (const positionId of [null, originalPosition, propagatedPosition.toUpperCase()]) {
+      const beforeBusiness = await payload(created.id);
+      const beforeProfile = await profile(person);
+      const denied = await api.request('PATCH', `${BASE}/businesses/${created.id}`, {
+        ...w.as(person.userId),
+        ifMatch: saved.revision,
+        body: { fields: { positionId } },
+      });
+      expect(denied.status).toBe(403);
+      expect(await payload(created.id)).toEqual(beforeBusiness);
+      expect(await profile(person)).toEqual(beforeProfile);
+    }
+    const options = {
+      ...w.as(person.userId),
+      ifMatch: saved.revision,
+      idempotencyKey: randomUUID(),
+      body: action === 'PATCH' ? { effectiveDate: '2026-10-20' } : {},
+    };
+    const path = `${BASE}/businesses/${created.id}${action === 'submit' ? '/submit' : ''}`;
+    const method = action === 'PATCH' ? 'PATCH' : 'POST';
+    const updated = await w.json<Business>(await api.request(method, path, options), 200);
+    expect(await w.json(await api.request(method, path, options), 200)).toEqual(updated);
+    expect(await payload(created.id)).toMatchObject({ fields: { positionId: propagatedPosition } });
   });
 });
