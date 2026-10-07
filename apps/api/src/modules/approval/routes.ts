@@ -470,8 +470,14 @@ async function fieldRights(c: C, deps: TenantRouteDeps, taskId: string, edits: R
 const comment = z.string().trim().max(2000).nullable().optional();
 const fields = z.record(z.string().max(100), z.unknown());
 
+/** DEC-258：驳回 / 不同意 / 撤回使原部门超编时按现有确认协议重提；confirmed 只透传到任职状态机，不改审批规则。 */
+const establishmentConfirmation = z.boolean().optional();
+function confirmedCtx(ctx: ApprovalContext, confirmed: boolean | undefined): ApprovalContext {
+  return confirmed === undefined ? ctx : { ...ctx, establishmentConfirmed: confirmed };
+}
+
 function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  const decision = z.strictObject({ comment, fields: fields.optional() });
+  const decision = z.strictObject({ comment, fields: fields.optional(), confirmed: establishmentConfirmation });
   for (const [path, act] of [
     ['approve', approveTask],
     ['disagree', disagreeTask],
@@ -483,7 +489,13 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       const input = await parseBody(c, decision);
       const viewable = await fieldRights(c, deps, taskId, input.fields);
       const request = { taskId, comment: input.comment ?? null, ...(input.fields ? { fields: input.fields } : {}) };
-      const result = await command(c, deps, ctx, request, (tx, context) => act(tx, context, request, viewable));
+      const result = await command(
+        c,
+        deps,
+        confirmedCtx(ctx, input.confirmed),
+        { ...request, ...(input.confirmed === undefined ? {} : { confirmed: input.confirmed }) },
+        (tx, context) => act(tx, context, request, viewable),
+      );
       return respondOutcome(c, deps, result);
     });
   }
@@ -568,7 +580,14 @@ function registerInstanceRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       const ctx = writeCtx(c, deps);
       const id = uuidParam(c);
       if (path === 'withdraw') await requireWithdrawRight(deps, ctx, id);
-      const result = await command(c, deps, ctx, { id }, (tx, context) => act(tx, context, id));
+      // DEC-258：发起人撤回使原部门超编时可带 confirmed 重提；催办不接受请求体参数。
+      const input =
+        path === 'withdraw' && c.req.header('content-type')
+          ? await parseBody(c, z.strictObject({ confirmed: establishmentConfirmation }))
+          : {};
+      const result = await command(c, deps, confirmedCtx(ctx, input.confirmed), { id, ...input }, (tx, context) =>
+        act(tx, context, id),
+      );
       return respondOutcome(c, deps, result);
     });
   }

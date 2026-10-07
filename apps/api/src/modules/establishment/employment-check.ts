@@ -47,8 +47,11 @@ export async function affectsEstablishmentOccupancy(
   await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
   const window = await targetWindow(tx, ctx, target);
   if (!window) return false;
+  // F-026 R4（P3）：历史段的方案不再影响今后占编，从 max(生效日, 今天) 起分段，避免很早生效的记录边界超限。
+  const from = [target.effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
+  if (window.to && window.to <= from) return false;
   // F-026 R3：字段在起点未参与占编，仍可能被本任职区间内的未来方案采用。
-  for (const effectiveDate of await assessmentDates(tx, ctx.tenantId, target.effectiveDate, window.to)) {
+  for (const effectiveDate of await assessmentDates(tx, ctx.tenantId, from, window.to)) {
     const capacityAsOf = [effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
     const capacities = await targetCapacities(
       tx,

@@ -123,7 +123,10 @@ async function businessRevision(tx: Tx, tenantId: string, id: string): Promise<n
   return Number(row.revision);
 }
 
-/** 审批中心以可信身份推进任职状态；不带数据范围（审批不授予范围，DEC-057），由节点规则约束。 */
+/**
+ * 审批中心以可信身份推进任职状态；不带数据范围（审批不授予范围，DEC-057），由节点规则约束。
+ * DEC-258：撤回 / 驳回 / 不同意恢复原部门占编时的确认随请求体透传（approve 不消费确认，仍按严格兜底）。
+ */
 async function employmentTransition(
   tx: Tx,
   ctx: ApprovalContext,
@@ -131,7 +134,8 @@ async function employmentTransition(
   action: 'approve' | 'reject' | 'disapprove' | 'withdraw',
 ) {
   const expectedRevision = await businessRevision(tx, ctx.tenantId, id);
-  await transitionEmployment(tx, { ...ctx, expectedRevision }, { id, action });
+  const confirmed = ctx.establishmentConfirmed === undefined ? {} : { confirmed: ctx.establishmentConfirmed };
+  await transitionEmployment(tx, { ...ctx, expectedRevision }, { id, action, ...confirmed });
 }
 
 async function latestPayload(tx: Tx, tenantId: string, businessId: string) {

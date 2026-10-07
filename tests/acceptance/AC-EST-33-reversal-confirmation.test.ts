@@ -3,7 +3,7 @@
  * 严格与非严格控编同口径；审批中心的撤回、驳回、不同意入口透传 `confirmed`。携编回退维持原口径与 DEC-181 非负护栏。
  * 每个入口 × 严格 / 非严格 × 确认 / 未确认，断言状态码与原因码，并前后比对单据、员工 revision、占用、审计与 outbox。
  */
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { createUser, grantMembership } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';

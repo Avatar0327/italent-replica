@@ -84,10 +84,12 @@ export async function transitionEmployment(
   input: EmploymentTransitionInput,
 ): Promise<EmploymentBusiness> {
   if (!input || !ACTIONS.includes(input.action)) throw new AppError('VALIDATION_FAILED', '任职状态动作不合法');
+  // DEC-258：驳回 / 不同意不再服务端豁免非严格确认，由审批中心把审批人的 confirmed 透传进来；
+  // 审批通过与到期生效仍是可信后台动作，只按严格控编兜底。
   ctx = {
     ...ctx,
     establishmentConfirmed: input.confirmed ?? false,
-    establishmentConfirmationExempt: ['approve', 'activate', 'reject', 'disapprove'].includes(input.action),
+    establishmentConfirmationExempt: ['approve', 'activate'].includes(input.action),
   };
   if (['submit', 'approve', 'activate'].includes(input.action)) await lockTransferBusiness(tx, ctx, input.id);
   const business = await lockEmploymentBusiness(tx, ctx, input.id);
@@ -160,7 +162,7 @@ export async function transitionEmployment(
     await appendEmploymentState(tx, ctx, business, state);
   }
   await assertReleasedEstablishment(tx, ctx, business.id, business.employeeId, released);
-  await assertRestoredReservation(tx, ctx, business, reserved);
+  await assertRestoredReservation(tx, ctx, business, reserved, input.action);
   // 一条命令只增加一次业务 revision；approve→effective 的两条状态事件不各自递增头版本。
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, business.id);

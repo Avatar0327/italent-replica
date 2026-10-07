@@ -32,6 +32,11 @@ export interface ApprovalContext extends TenantContext {
   readonly recheckContractResubmit?: (tx: Tx, instanceId: string, corrections: Row) => Promise<void>;
   /** 审计与日志记录的操作人；系统自动处理（如成员停用时的接管，DEC-123）可为平台操作人或空。缺省为 userId。 */
   readonly actorUserId?: string | null;
+  /**
+   * DEC-258：撤回 / 驳回 / 不同意使原部门超编时的单次确认，只由路由从请求体设置并透传到任职状态机；
+   * 缺省未确认，不影响审批通过的严格兜底。
+   */
+  readonly establishmentConfirmed?: boolean;
 }
 
 export function actorOf(ctx: ApprovalContext): string | null {

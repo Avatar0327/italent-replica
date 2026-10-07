@@ -12,7 +12,11 @@ import { applyTransferLinkage } from './transfer-linkage.js';
  * TODO(需取证 Q-M0-48)：原站到期当天是否再校验（目标组织 / 职位停用、编制不足）、失败如何表现，待 10-10 回查；
  * 原站很可能没有失败分支（`08` §17），本判定为复刻自定，取证后只需调整本文件。
  */
-import { assessEmploymentEstablishment, employmentEstablishmentExceeded } from '../establishment/employment-check.js';
+import {
+  assessEmploymentEstablishment,
+  employmentEstablishmentExceeded,
+  type EstablishmentAssessment,
+} from '../establishment/employment-check.js';
 import type { Tx } from '@italent/db';
 import type { OrgId } from '@italent/domain';
 import { AppError, type ErrorCode } from '../../errors.js';
@@ -41,6 +45,11 @@ export interface ActivationTarget {
   readonly effectiveDate: string;
   /** 占编只到这一天之前（不含）；不给则到编制周期末。删除任职恢复前一条区间时按实际区间判断（R1-T11）。 */
   readonly until?: string | null;
+  /**
+   * DEC-258：普通调出申请回退（撤回 / 作废 / 删除 / 驳回 / 不同意）恢复原部门占编：严格与非严格控编都只要求确认、
+   * 不拦截；确认后由调用方记超编警告审计。携编回退与其他入口不设此标记，严格控编照旧拒绝。
+   */
+  readonly reversal?: boolean;
 }
 
 /** 编制单一判定入口：定时生效与调动保存（R1-T09）共用同一口径，按严格控制判定调入是否超编。 */
@@ -63,24 +72,26 @@ export interface EstablishmentWarning {
   readonly businessId: string;
   readonly reason: 'ESTABLISHMENT_EXCEEDED';
 }
+/** 返回本次评估：超编但被确认、豁免或记为警告而放行时，调用方据此记审计（DEC-258）。 */
 export async function assertEstablishmentCapacity(
   tx: Tx,
   ctx: EmploymentContext,
   target: ActivationTarget,
   warnings?: EstablishmentWarning[],
-) {
+): Promise<EstablishmentAssessment> {
   const assessment =
     checks === DEFAULT_ESTABLISHMENT_CHECKS
       ? await assessEmploymentEstablishment(tx, ctx, target, warnings)
       : { exceeded: await establishmentExceeded(tx, ctx, target), strict: true };
-  if (!assessment.exceeded) return;
+  if (!assessment.exceeded) return assessment;
   // DEC-015 仅内部导入/批量端口提供警告收集器；HTTP 单笔保存与定时生效不能关闭严格校验。
   if (warnings) {
     if (!warnings.some((item) => item.businessId === target.businessId))
       warnings.push({ businessId: target.businessId, reason: 'ESTABLISHMENT_EXCEEDED' });
-    return;
+    return assessment;
   }
-  if (assessment.strict)
+  // DEC-258：普通申请回退恢复原部门占编时，严格控编也只弹确认、不拦截（照原站不校验，多一步确认）。
+  if (assessment.strict && !target.reversal)
     throw new AppError('CONFLICT', '已超出设定编制，不可继续操作', { reason: 'ESTABLISHMENT_EXCEEDED' });
   // 确认只属于本次交互命令，不持久化为跳过以后复查的授权；到期/审批继续按严格控编兜底。
   if (ctx.establishmentConfirmed !== true && !ctx.establishmentConfirmationExempt && !ctx.deferredExecution)
@@ -88,6 +99,7 @@ export async function assertEstablishmentCapacity(
       reason: 'CONFIRMATION_REQUIRED',
       warnings: [{ reason: 'ESTABLISHMENT_EXCEEDED' }],
     });
+  return assessment;
 }
 
 /** 业务规则拒绝：按租户数据确定的结果，重跑也不会变，记为失败交 HR 修正。 */

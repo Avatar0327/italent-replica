@@ -1,6 +1,7 @@
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { assertEstablishmentCapacity, type ActivationTarget } from '../employment/activation-checks.js';
+import { auditEmployment } from '../employment/context.js';
 import type { LockedEmploymentBusiness } from '../employment/record-store.js';
 import type { EmploymentContext } from '../employment/types.js';
 import { assessmentDates } from './assessment-windows.js';
@@ -37,12 +38,18 @@ export async function captureReservedOccupancy(tx: Tx, ctx: EmploymentContext, b
   return segments;
 }
 
+/**
+ * DEC-258：回退恢复的占用使原部门超编时，严格与非严格都只要求确认（照原站不校验，多一步确认）；
+ * 确认后同事务记超编警告审计与 outbox，不持久化为后续免检。
+ */
 export async function assertRestoredReservation(
   tx: Tx,
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
   segments: readonly Segment[],
+  action: string,
 ) {
+  const exceeded: Record<string, unknown>[] = [];
   for (const segment of segments) {
     const after = await employeeIntervals(tx, ctx, business, segment.from, segment.until);
     for (const interval of after) {
@@ -64,20 +71,47 @@ export async function assertRestoredReservation(
               matchesOccupancy(previous.fields, scheme.occupancyRanges),
           ),
       );
-      for (const gap of uncovered(interval, covered))
-        await assertEstablishmentCapacity(tx, ctx, {
+      for (const gap of uncovered(interval, covered)) {
+        const positionId = interval.fields.positionId ?? null;
+        const assessment = await assertEstablishmentCapacity(tx, ctx, {
           businessId: business.id,
           employeeId: business.employeeId,
           kind: 'transfer',
           effectiveDate: gap.from,
           until: gap.until,
           departmentId,
-          positionId: interval.fields.positionId ?? null,
+          positionId,
           fields: interval.fields,
           occupancyOnly: true,
+          reversal: true,
         });
+        if (assessment.exceeded)
+          exceeded.push({
+            departmentId,
+            positionId,
+            from: gap.from,
+            until: gap.until,
+            strictControl: assessment.strict,
+          });
+      }
     }
   }
+  if (!exceeded.length) return;
+  await auditEmployment(
+    tx,
+    ctx,
+    'employment.establishment.exceeded-confirmed',
+    'employment-business',
+    business.id,
+    null,
+    {
+      reason: 'ESTABLISHMENT_EXCEEDED',
+      action,
+      confirmed: ctx.establishmentConfirmed === true,
+      strictControl: exceeded.some((item) => item.strictControl === true),
+      segments: exceeded,
+    },
+  );
 }
 
 async function employeeIntervals(
