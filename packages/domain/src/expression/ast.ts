@@ -38,6 +38,8 @@ export interface FieldNode extends NodeBase {
   readonly type: 'field';
   readonly path: readonly string[];
   readonly text: string;
+  /** 末段带连字符且解析时没有字段解析器：可能是一个字段，也可能是“字段 - 名字”的减法。 */
+  readonly hyphenAmbiguous?: true;
 }
 
 export interface UnaryNode extends NodeBase {
@@ -98,6 +100,9 @@ export interface Definition extends NodeBase {
 export interface Program {
   readonly definitions: readonly Definition[];
   readonly body: ExprNode;
+  /** 原文：含连字符歧义时求值前按对象字段重新解析。 */
+  readonly source: string;
+  readonly hasAmbiguousHyphen: boolean;
 }
 
 /** 深度优先遍历，供依赖分析与校验。 */

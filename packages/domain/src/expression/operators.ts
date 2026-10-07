@@ -127,33 +127,34 @@ type Comparable =
   | { kind: 'date'; value: number }
   | { kind: 'boolean'; value: boolean };
 
-/** 单选取选项值；文本按配置尝试转数值（"2026" 与 2026 等价）；文本与日期比较时转成日期。 */
-function comparable(value: ExprValue, other: ExprValue, semantics: ExpressionSemantics): Comparable | undefined {
-  const plain: ExprValue =
-    value.kind === 'option'
-      ? typeof value.value === 'number'
-        ? { kind: 'number', value: value.value }
-        : { kind: 'text', value: value.value }
-      : value;
-  const otherKind = other.kind === 'option' ? (typeof other.value === 'number' ? 'number' : 'text') : other.kind;
+/** 单选先解包成选项值（`26` §8.3 按选项值比较）；两侧都解包后再决定按什么类型比较。 */
+function unwrapOption(value: ExprValue): ExprValue {
+  if (value.kind !== 'option') return value;
+  return typeof value.value === 'number'
+    ? { kind: 'number', value: value.value }
+    : { kind: 'text', value: value.value };
+}
+
+/** 文本按配置尝试转数值（"2026" 与 2026 等价）；两侧都是日期格式文本、或对侧是日期时转成日期。 */
+function comparable(plain: ExprValue, other: ExprValue, semantics: ExpressionSemantics): Comparable | undefined {
   if (plain.kind === 'text') {
     // 两侧都是原站日期格式的文本（"2020/1/31"、"2020/01/01 00:00:00"、"2020/01"）时按日期比较（`26` §8.3）
     if (other.kind === 'text' && parseDateText(other.value)) {
       const parsed = parseDateText(plain.value);
       if (parsed) return { kind: 'date', value: dateOrdinal(parsed) };
     }
-    if (otherKind === 'number' && semantics.textNumberEquality === 'loose') {
+    if (other.kind === 'number' && semantics.textNumberEquality === 'loose') {
       const parsed = numericText(plain.value, semantics);
       if (parsed !== undefined) return { kind: 'number', value: parsed };
     }
-    if (otherKind === 'date') {
+    if (other.kind === 'date') {
       const parsed = parseDateText(plain.value);
       return parsed ? { kind: 'date', value: dateOrdinal(parsed) } : undefined;
     }
     return plain;
   }
   if (plain.kind === 'date') return { kind: 'date', value: dateOrdinal(plain.value) };
-  if (plain.kind === 'empty') return undefined;
+  if (plain.kind === 'empty' || plain.kind === 'option') return undefined;
   return plain;
 }
 
@@ -162,8 +163,9 @@ export function valuesEqual(left: ExprValue, right: ExprValue, semantics: Expres
     if (semantics.emptyInEquality === 'fail') return fail('EMPTY_IN_COMPARISON', '空值参与比较');
     return left.kind === 'empty' && right.kind === 'empty';
   }
-  const a = comparable(left, right, semantics);
-  const b = comparable(right, left, semantics);
+  const [l, r] = [unwrapOption(left), unwrapOption(right)];
+  const a = comparable(l, r, semantics);
+  const b = comparable(r, l, semantics);
   if (!a || !b || a.kind !== b.kind) return false;
   return a.value === b.value;
 }
@@ -180,8 +182,9 @@ export function compare(
     if (semantics.emptyInOrdering === 'false') return false;
     return fail('EMPTY_IN_COMPARISON', '空值参与大于 / 小于比较，请先用 ToNumber 转换');
   }
-  const a = comparable(left, right, semantics);
-  const b = comparable(right, left, semantics);
+  const [l, r] = [unwrapOption(left), unwrapOption(right)];
+  const a = comparable(l, r, semantics);
+  const b = comparable(r, l, semantics);
   if (!a || !b || a.kind !== b.kind || a.kind === 'boolean') {
     return fail('TYPE_CONVERSION', `${KIND_LABELS[left.kind]}与${KIND_LABELS[right.kind]}不能比较大小`);
   }

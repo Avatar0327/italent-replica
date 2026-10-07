@@ -30,6 +30,7 @@ export {
   type BatchResult,
   type ComputationItem,
   type EvaluationResult,
+  type FieldBindings,
   type OrderedItem,
   type OrderingFailure,
   type OrderingResult,
@@ -45,8 +46,21 @@ export {
   type FailureCode,
   type SourcePosition,
 } from './failures.js';
-export { ASSESSMENT_OBJECTS, BUILTIN_FUNCTIONS, PERFORMANCE_FIELDS, SURVEY360_OBJECT } from './functions/index.js';
-export { tokenize, type SyntaxIssue, type SyntaxIssueCode, type Token, type TokenKind } from './lexer.js';
+export {
+  ASSESSMENT_OBJECTS,
+  BUILTIN_FUNCTIONS,
+  PERFORMANCE_FIELDS,
+  RECORD_OBJECTS,
+  SURVEY360_OBJECT,
+} from './functions/index.js';
+export {
+  tokenize,
+  type SyntaxIssue,
+  type SyntaxIssueCode,
+  type Token,
+  type TokenizeOptions,
+  type TokenKind,
+} from './lexer.js';
 export { parseFormula, type ParseResult } from './parser.js';
 export {
   createInMemoryPorts,
