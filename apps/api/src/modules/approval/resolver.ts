@@ -18,9 +18,10 @@ export interface RoutingSubject {
   readonly tenantId: string;
   readonly asOf: string;
   readonly initiatorUserId: string;
+  readonly subjectEmployeeId: string | null;
   readonly latestDepartmentId: string | null;
   readonly recordDepartmentId: string | null;
-  /** 同一次推进内的查询缓存（结果只依赖本主体的部门与业务日期，X-20）。 */
+  /** 同一次推进内的查询缓存（结果只依赖本主体的员工、部门与业务日期，X-20）。 */
   readonly cache?: Map<string, Promise<unknown>>;
 }
 
@@ -240,6 +241,10 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
       if (!(await isEligibleApprover(tx, subject, subject.initiatorUserId))) return NOBODY;
       return { personId: await personOfUser(tx, tenantId, subject.initiatorUserId), userId: subject.initiatorUserId };
     }
+    case 'direct_manager':
+      // DEC-230：取流程主体而非发起人；findCurrentRecord 只读已生效的主职时间线。
+      // TODO(需取证 #95)：原站字段 / 汇报关系及主职 / 兼职来源待核对。
+      return directManagerOf(tx, subject, { personId: subject.subjectEmployeeId, userId: null });
     case 'latest_record_department_head':
       return candidateOf(tx, subject, await orgRole(tx, subject, subject.latestDepartmentId, 'head'));
     case 'record_department_head':
@@ -253,7 +258,7 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
   }
 }
 
-/** DEC-068：自审时转该审批人任职记录上的直线经理。 */
+/** DEC-230 / DEC-068：直接上级与自审回避共用最新生效主职任职上的直线经理。 */
 export function directManagerOf(tx: Tx, subject: RoutingSubject, candidate: Candidate): Promise<Candidate> {
   const key = `manager:${candidate.personId ?? ''}:${candidate.userId ?? ''}`;
   return memo(subject, key, () => managerFresh(tx, subject, candidate));
