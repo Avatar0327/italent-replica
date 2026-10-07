@@ -518,10 +518,12 @@ async function visibleParents(
   });
 }
 
-/** 在途提醒不产生写入；使用与保存相同的对象、字段和任职可见性授权。 */
+/** 在途提醒不产生写入；使用与保存相同的对象、按钮、字段和任职可见性授权。 */
 function registerEmploymentPreview(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   router.post(`${BASE}/organizations/:id/employment-preview`, async (c) => {
     const ctx = await context(c, deps, 'update');
+    // DEC-080：数据操作权限与按钮权限独立判定；变更与预检都要求组织对象的 update@detail 按钮（S1-P2-03）。
+    await button(deps, ctx, OBJECT, 'update', 'detail');
     const id = orgId(c);
     const input = await body(c, update);
     const { addEmployment: _choice, ...changedFields } = input;
@@ -548,6 +550,8 @@ function registerEmploymentPreview(router: Hono<TenantEnv>, deps: TenantRouteDep
 function registerUpdate(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   router.patch(`${BASE}/organizations/:id`, async (c) => {
     const ctx = await context(c, deps, 'update', revision(c));
+    // 首发与同键重放都先过按钮检查（重放也经本处理器），与导入入口的 import@list 同一口径。
+    await button(deps, ctx, OBJECT, 'update', 'detail');
     const id = orgId(c);
     const input = await body(c, update);
     const { addEmployment: _choice, ...changedFields } = input;

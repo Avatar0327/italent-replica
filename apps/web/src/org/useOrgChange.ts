@@ -18,12 +18,12 @@ export function useOrgChange({ tenant, date }: { tenant: string; date: string })
     setLocked(false);
     try {
       const org = await orgRequest<Organization>(tenant, `${BASE}/${item.id}?asOf=${date}`);
-      if (typeof org.name !== 'string' || !org.parents?.admin?.parentId || !Number.isInteger(org.revision))
-        throw new Error(text.missing);
-      const parent = await orgRequest<Organization>(tenant, `${BASE}/${org.parents.admin.parentId}?asOf=${date}`);
-      setParents([parent]);
+      // 只要求 revision：按可见、可编辑字段初始化，不把整个组织对象及旧上级都可见当作整单编辑前提（S1-P2-05）。
+      if (!Number.isInteger(org.revision)) throw new Error(text.missing);
+      const parentId = org.parents?.admin?.parentId ?? '';
+      setParents(parentId ? [await currentParent(tenant, date, parentId)] : []);
       setOriginal(org);
-      setModel({ name: org.name, parentId: parent.id, remarks: org.remarks ?? '', addEmployment: '' });
+      setModel({ name: org.name ?? '', parentId, remarks: org.remarks ?? '', addEmployment: '' });
     } catch (error) {
       setNotice(error instanceof Error ? error.message : text.failed);
     } finally {
@@ -73,6 +73,16 @@ export function useOrgChange({ tenant, date }: { tenant: string; date: string })
     }
   }
   return { original, parents, model, busy, notice, pending, locked, select, save, setParents, setModel, setPending };
+}
+
+/** 旧上级超出查看范围（404）时用占位项保留当前值：不改上级就不提交 parents，改上级经上级查询另选。 */
+async function currentParent(tenant: string, date: string, parentId: string): Promise<Organization> {
+  try {
+    return await orgRequest<Organization>(tenant, `${BASE}/${parentId}?asOf=${date}`);
+  } catch (error) {
+    if (error instanceof OrgApiError && error.status === 404) return { id: parentId, revision: 0 };
+    throw error;
+  }
 }
 
 function saveError(error: unknown, saving: boolean) {

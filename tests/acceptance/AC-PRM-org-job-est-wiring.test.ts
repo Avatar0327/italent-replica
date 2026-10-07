@@ -849,7 +849,8 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     expect((await world.api.request('GET', `${paths[key]}/${other.id}?asOf=${TODAY}`, as)).status).toBe(404);
   });
   it('组织 using_user 实体范围允许修改本人创建记录，拒绝他人记录', async () => {
-    const as = await actor('organization');
+    // 组织变更要求 update@detail 按钮（S1-P2-03）；本例只验证实体范围。
+    const as = await actor('organization', { buttons: [{ buttonCode: 'update', level: 'detail' }] });
     const created = await fixture.request('POST', paths.organization, {
       ...as,
       ifMatch: 0,

@@ -159,7 +159,8 @@ describe('AC-ORG-17/18 不按操作人数据范围过滤（真实授权器）', 
           view: true,
           edit: !field.system && editable.includes(field.code),
         })),
-        buttons: [],
+        // 组织变更 PATCH 要求 update@detail 按钮（S1-P2-03）；本组只验证人员选择器与字段权限。
+        buttons: [{ buttonCode: 'update', level: 'detail' }],
       },
       definition.code,
     );

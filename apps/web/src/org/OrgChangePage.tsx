@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BASE, orgRequest } from './api.js';
-import { OrgChangeForm, type Organization } from './OrgChangeForm.js';
+import { editableFields, OrgChangeForm, type Organization } from './OrgChangeForm.js';
 import { useOrgChange } from './useOrgChange.js';
 import { text } from './messages.js';
 import './org.css';
@@ -50,16 +50,18 @@ function ChangeManager({ tenant, date }: { tenant: string; date: string }) {
       {notice && <p role="status">{notice}</p>}
       {original && (
         <>
-          <OrganizationSearch
-            tenant={tenant}
-            date={date}
-            disabled={busy || pending || locked}
-            label={text.parent}
-            onSelect={(org) => {
-              setParents((items) => [...items.filter((item) => item.id !== org.id), org]);
-              setModel((current) => ({ ...current, parentId: org.id, addEmployment: '' }));
-            }}
-          />
+          {editableFields(original).parent && (
+            <OrganizationSearch
+              tenant={tenant}
+              date={date}
+              disabled={busy || pending || locked}
+              label={text.parent}
+              onSelect={(org) => {
+                setParents((items) => [...items.filter((item) => item.id !== org.id), org]);
+                setModel((current) => ({ ...current, parentId: org.id, addEmployment: '' }));
+              }}
+            />
+          )}
           <OrgChangeForm
             original={original}
             model={model}
@@ -131,7 +133,7 @@ function OrganizationSearch(props: {
         {items.map((org) => (
           <li key={org.id}>
             <button type="button" onClick={() => props.onSelect(org)}>
-              {org.name}
+              {org.name ?? text.hiddenName}
             </button>
           </li>
         ))}

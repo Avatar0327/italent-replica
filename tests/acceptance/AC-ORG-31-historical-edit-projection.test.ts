@@ -107,7 +107,10 @@ it('批量编辑中的历史记录：同样不投影不会发生的传播（200�
   const s = await scene('org31hist-batch');
   const current = await s.w.business(s.historical.id);
   const response = await s.w.session.request('POST', '/records/batch-edit', {
-    body: { items: [{ id: s.historical.id, revision: current.revision }], patch: { fields: { departmentId: s.w.to.id } } },
+    body: {
+      items: [{ id: s.historical.id, revision: current.revision }],
+      patch: { fields: { departmentId: s.w.to.id } },
+    },
   });
   expect(response.status, await response.clone().text()).toBe(200);
   await expectHistoricalMove(s);

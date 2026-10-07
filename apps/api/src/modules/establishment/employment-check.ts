@@ -439,7 +439,8 @@ async function projectTarget(
     ? (projectedAdjustments.get(previous.recordId) ??
       (await loadEmploymentRecord(tx, ctx.tenantId, previous.recordId, target.effectiveDate)))
     : null;
-  if (before && target.fields)
+  // 只模拟真实会发生的向后更新（S1-P2-04）：历史任职的编辑与选“不向后更新”的导入不传播，其后组织调整不随之改写。
+  if (before && target.fields && target.propagates !== false)
     await projectAdjustments(
       tx,
       ctx,

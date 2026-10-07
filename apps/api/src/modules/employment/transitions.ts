@@ -1,6 +1,6 @@
 import { reverseCarriedEstablishment, assertReleasedEstablishment } from '../establishment/carried-transfer.js';
 import { postponeLateTransfer } from './late-transfer.js';
-import { assertEstablishmentCapacity } from './activation-checks.js';
+import { activationFailureOf, assertEstablishmentCapacity } from './activation-checks.js';
 import { lockTransferBusiness } from './transfer-locks.js';
 import { assertEmploymentDepartmentAvailable } from './references.js';
 import { personnelHooks } from './personnel-hooks.js';
@@ -12,6 +12,7 @@ import { AppError } from '../../errors.js';
 import { assertRegularizationNotPropagated } from './employee-status.js';
 import {
   activationPredecessors,
+  exemptsBlocker,
   failedPredecessor,
   PREDECESSOR_FAILED,
   recordActivationAttempt,
@@ -140,9 +141,10 @@ export async function transitionEmployment(
     if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) {
       throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
     }
-    // R1-T08：定时任务与 HR 重试经此端口按队列逐条落地（activation-service.ts）；前序未落地时不得越过它（DEC-108 / 112）。
+    // R1-T08：定时任务与 HR 重试经此端口按队列逐条落地（activation-service.ts）；前序未落地时不得越过它（DEC-108 / 112）；
+    // 前序因区间内含本业务而记 REBUILD_REQUIRED 时例外（设计 §2.5）。
     const predecessors = await activationPredecessors(tx, ctx, business.employeeId, business.id);
-    const before = predecessors.before.filter((item) => !item.reminderOnly);
+    const before = predecessors.before.filter((item) => !item.reminderOnly && !exemptsBlocker(item, business.id));
     if (before.length)
       throw new AppError('CONFLICT', '前序待生效业务尚未生效', {
         reason: 'ACTIVATION_PREDECESSOR_PENDING',
@@ -165,13 +167,28 @@ export async function transitionEmployment(
 /**
  * 审批通过日已到生效日则立即生效（AC-TRF-05）；未到则停在「审批通过」，只存申请单（DEC-125），由 R1-T08 定时任务
  * 到期落地（AC-TRF-06）。同员工排在它前面的待生效业务尚未落地时也不立即生效，交给定时任务按序处理（DEC-108）；
- * 前序生效失败未修正时记“因前序业务失败挂起”（DEC-112）。
+ * 前序生效失败未修正时记“因前序业务失败挂起”（DEC-112）。迟到落地区间内另有记录时（DEC-278③，设计 §2.3）审批动作
+ * 本身成功、申请停在审批通过，同事务记一次生效失败 REBUILD_REQUIRED 交 HR。
  */
 async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
   if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) return;
   const { item, before: predecessors } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
-  const before = predecessors.filter((item) => !item.reminderOnly);
-  await postponeLateTransfer(tx, ctx, business);
+  const before = predecessors.filter((entry) => !entry.reminderOnly && !exemptsBlocker(entry, business.id));
+  try {
+    await postponeLateTransfer(tx, ctx, business);
+  } catch (error) {
+    const failure = activationFailureOf(error);
+    if (!failure || !item) throw error;
+    // 本命令结束时统一递增一次业务 revision，失败记录不另行递增。
+    await recordActivationAttempt(
+      tx,
+      ctx,
+      item,
+      { outcome: 'failed', trigger: 'approval', ...failure },
+      { bumpRevision: false },
+    );
+    return;
+  }
   if (!before.length) {
     await materializeEmploymentRecord(tx, ctx, business);
     await appendEmploymentState(tx, ctx, business, 'effective');

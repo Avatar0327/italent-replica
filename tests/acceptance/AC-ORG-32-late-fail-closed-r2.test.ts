@@ -205,7 +205,10 @@ it('S1-P2-02 后一笔为已批准未落地申请：不被前序失败门禁挡�
   expect(run.activated).toEqual([other.id]);
   await expectRebuildRequired(w, late, [other.id], { planned: '2026-10-05', execution: '2026-10-10' });
   expect((await w.business(other.id)).activation).toMatchObject({ status: 'effective' });
-  expect(await w.session.record(other.id, '2026-10-10')).toMatchObject({ effectiveDate: '2026-10-10', isCurrent: true });
+  expect(await w.session.record(other.id, '2026-10-10')).toMatchObject({
+    effectiveDate: '2026-10-10',
+    isCurrent: true,
+  });
   const retried = await w.retry(late, '2026-10-10T02:00:00Z');
   expect(retried.status, await retried.clone().text()).toBe(200);
   expect((await w.business(late.id)).activation).toMatchObject({ status: 'effective' });
@@ -236,7 +239,10 @@ it.each(['rejected', 'approved'] as const)(
     }
     // 已批准的后笔是前序失败的 blocker：不挂起，区间为空照常顺延落地。
     expect(run.activated).toEqual([other.id]);
-    expect(await w.session.record(other.id, '2026-10-10')).toMatchObject({ effectiveDate: '2026-10-10', isCurrent: true });
+    expect(await w.session.record(other.id, '2026-10-10')).toMatchObject({
+      effectiveDate: '2026-10-10',
+      isCurrent: true,
+    });
   },
 );
 
@@ -292,7 +298,10 @@ it.each(MATRIX)(
     expect(run.activated).toEqual([two.id]);
     await expectRebuildRequired(w, one, [two.id], { planned: '2026-10-05', execution: '2026-10-10' });
     expect((await w.business(two.id)).activation).toMatchObject({ status: 'effective' });
-    expect(await w.session.record(two.id, '2026-10-10')).toMatchObject({ effectiveDate: '2026-10-10', isCurrent: true });
+    expect(await w.session.record(two.id, '2026-10-10')).toMatchObject({
+      effectiveDate: '2026-10-10',
+      isCurrent: true,
+    });
     const retried = await w.retry(one, '2026-10-10T02:00:00Z');
     expect(retried.status, await retried.clone().text()).toBe(200);
     expect((await w.business(one.id)).activation).toMatchObject({ status: 'effective' });
@@ -310,7 +319,8 @@ it('P3：区间内记录超过上限时仍按 REBUILD_REQUIRED 表达，blockers
   const person = await w.hired();
   const late = await lateDirect(w, person.employee.id, w.to.id);
   const drafts = [];
-  for (const day of ['06', '07', '08']) drafts.push(await application(w, person.employee.id, `2026-10-${day}`, 'draft'));
+  for (const day of ['06', '07', '08'])
+    drafts.push(await application(w, person.employee.id, `2026-10-${day}`, 'draft'));
   const business = { id: late.id, employeeId: person.employee.id };
   const ctx = context(w, 0, '2026-10-10T01:00:00Z');
   const truncated = await withTenant(w.db, w.session.tenant.id, (tx) =>

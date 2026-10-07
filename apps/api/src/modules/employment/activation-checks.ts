@@ -37,6 +37,11 @@ export interface ActivationFailure {
 export interface ActivationTarget {
   /** 回退调编时只验证剩余占用，不把被删除业务再次投影为调入。 */
   readonly occupancyOnly?: boolean;
+  /**
+   * 这次写入是否真的会向后更新其后的记录（设计 §4，S1-P2-04）：false 时容量判定不模拟其后组织调整随之传播——
+   * 历史任职的编辑（单条 / 批量 / 导入编辑）与新增导入选“不向后更新”都不传播，占编只到下一条记录。缺省视为会传播。
+   */
+  readonly propagates?: boolean;
   readonly reconcileCarried?: boolean;
   readonly fields?: Partial<PresetFields>;
   readonly businessId: string;
@@ -168,17 +173,22 @@ export async function activateWithJudgement(
       return null;
     });
   } catch (error) {
-    if (
-      error instanceof AppError &&
-      error.details &&
-      typeof error.details === 'object' &&
-      'activationFailure' in error.details
-    )
-      return error.details.activationFailure as ActivationFailure;
-    const rejected = ruleRejection(error);
-    if (!rejected) throw error;
-    return rejected;
+    const failure = activationFailureOf(error) ?? ruleRejection(error);
+    if (!failure) throw error;
+    return failure;
   }
+}
+
+/** 预检与迟到判定以 activationFailure 细节抛出的业务失败（late-transfer.ts、precheck）；其他错误返回 null。 */
+export function activationFailureOf(error: unknown): ActivationFailure | null {
+  if (
+    error instanceof AppError &&
+    error.details &&
+    typeof error.details === 'object' &&
+    'activationFailure' in error.details
+  )
+    return error.details.activationFailure as ActivationFailure;
+  return null;
 }
 
 /** 直接未来调动已有任职记录：联动完成同样推进业务/员工 revision，旧页面不能沿用生效前版本提交。 */

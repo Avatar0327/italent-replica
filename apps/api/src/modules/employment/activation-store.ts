@@ -16,6 +16,8 @@ export type ActivationOutcome = 'effective' | 'failed' | 'suspended';
 export type ActivationTrigger = 'scheduler' | 'retry' | 'approval';
 /** DEC-112：因前序业务失败挂起。 */
 export const PREDECESSOR_FAILED = 'PREDECESSOR_FAILED';
+/** DEC-278③：迟到执行区间内另有记录，需重建、待 HR 处理（late-transfer.ts 判定）。 */
+export const REBUILD_REQUIRED = 'REBUILD_REQUIRED';
 
 export interface PendingActivation {
   readonly id: string;
@@ -32,6 +34,9 @@ export interface PendingActivation {
   readonly lastOutcome: ActivationOutcome | null;
   readonly lastBlockedBy: string | null;
   readonly lastAttemptNo: number;
+  /** 最近一次尝试的失败原因与其 detail.blockers（REBUILD_REQUIRED 时为区间内的业务，设计 §2.5）。 */
+  readonly lastReason: string | null;
+  readonly lastBlockerIds: readonly string[];
 }
 
 const QUEUE_LIMIT = 200;
@@ -62,7 +67,10 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
         OR EXISTS (SELECT 1 FROM transfer_linkage_versions v
           WHERE v.tenant_id=b.tenant_id AND v.business_id=b.id))) AS "reminderOnly",
       a.outcome AS "lastOutcome", a.blocked_by_business_id AS "lastBlockedBy",
-      COALESCE(a.attempt_no, 0) AS "lastAttemptNo"
+      COALESCE(a.attempt_no, 0) AS "lastAttemptNo", a.reason AS "lastReason",
+      COALESCE((SELECT jsonb_agg(item->>'id') FROM jsonb_array_elements(
+        CASE WHEN jsonb_typeof(a.detail->'blockers')='array' THEN a.detail->'blockers' ELSE '[]'::jsonb END) item),
+        '[]'::jsonb) AS "lastBlockerIds"
     FROM employment_business_objects b
     JOIN LATERAL (SELECT * FROM employment_payload_versions p
       WHERE p.tenant_id=b.tenant_id AND p.employee_id=b.employee_id AND p.business_id=b.id
@@ -70,7 +78,8 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
     JOIN LATERAL (SELECT state FROM employment_state_events s
       WHERE s.tenant_id=b.tenant_id AND s.employee_id=b.employee_id AND s.business_id=b.id
       ORDER BY s.event_no DESC LIMIT 1) s ON true
-    LEFT JOIN LATERAL (SELECT outcome, blocked_by_business_id, attempt_no FROM employment_activation_attempts a
+    LEFT JOIN LATERAL (SELECT outcome, blocked_by_business_id, attempt_no, reason, detail
+      FROM employment_activation_attempts a
       WHERE a.tenant_id=b.tenant_id AND a.business_id=b.id ORDER BY a.attempt_no DESC LIMIT 1) a ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.employee_id=${employeeId}::uuid
       AND ${pendingActivationState(ctx.timezone)}
@@ -81,7 +90,12 @@ export async function pendingActivations(tx: Tx, ctx: EmploymentContext, employe
       p.kind IN ('hire', 'rehire', 'retire_rehire'), ${operationKey(ctx.tenantId, sql`b.id`)}
     LIMIT ${QUEUE_LIMIT + 1}
   `),
-  ).map((row) => ({ ...row, revision: Number(row.revision), lastAttemptNo: Number(row.lastAttemptNo) }));
+  ).map((row) => ({
+    ...row,
+    revision: Number(row.revision),
+    lastAttemptNo: Number(row.lastAttemptNo),
+    lastBlockerIds: blockerIds(row.lastBlockerIds),
+  }));
   if (rows.length > QUEUE_LIMIT) throw new AppError('PAYLOAD_TOO_LARGE', '待生效业务超过单名员工的处理上限');
   return rows;
 }
@@ -93,9 +107,38 @@ export async function activationPredecessors(tx: Tx, ctx: EmploymentContext, emp
   return { item: index < 0 ? undefined : queue[index], before: index < 0 ? [] : queue.slice(0, index) };
 }
 
-/** 失败尚未修正的前序（其后的业务按 DEC-112 一律挂起在它之后）。 */
-export function failedPredecessor(before: readonly PendingActivation[]): PendingActivation | undefined {
-  return before.find((item) => !item.reminderOnly && item.lastOutcome === 'failed');
+function blockerIds(value: unknown): string[] {
+  const parsed = typeof value === 'string' ? (JSON.parse(value) as unknown) : value;
+  return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+}
+
+/** 生效失败 detail.blockers 里的业务 ID（REBUILD_REQUIRED，late-transfer.ts 写入）。 */
+export function failureBlockerIds(detail: Record<string, unknown> | undefined): string[] {
+  const blockers = detail?.blockers;
+  if (!Array.isArray(blockers)) return [];
+  return blockers.map((item) => (item as { id?: unknown }).id).filter((id): id is string => typeof id === 'string');
+}
+
+/**
+ * 设计 §2.5（S1-P2-02）：前序因迟到区间内含本业务而记 REBUILD_REQUIRED 时，本业务不被这次失败挂起或拒绝——
+ * 它区间为空先顺延落地，离开前序的区间后 HR 重试前序即成功；其他前序失败仍按 DEC-112 处理。
+ */
+export function exemptsBlocker(predecessor: PendingActivation, businessId: string): boolean {
+  return (
+    predecessor.lastOutcome === 'failed' &&
+    predecessor.lastReason === REBUILD_REQUIRED &&
+    predecessor.lastBlockerIds.includes(businessId)
+  );
+}
+
+/** 失败尚未修正的前序（其后的业务按 DEC-112 一律挂起在它之后）；给出本业务时跳过把它记为 blocker 的前序。 */
+export function failedPredecessor(
+  before: readonly PendingActivation[],
+  businessId?: string,
+): PendingActivation | undefined {
+  return before.find(
+    (item) => !item.reminderOnly && item.lastOutcome === 'failed' && !(businessId && exemptsBlocker(item, businessId)),
+  );
 }
 
 export interface AttemptRecord {

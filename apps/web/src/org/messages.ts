@@ -29,4 +29,6 @@ export const text = {
   transfer: '调动管理',
   unchanged: '请修改组织名称、行政上级或备注',
   missing: '组织数据不可编辑，请确认字段查看权限。',
+  hiddenParent: '（当前上级不在可见范围）',
+  hiddenName: '（名称不可见）',
 };

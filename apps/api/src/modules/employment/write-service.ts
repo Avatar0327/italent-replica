@@ -196,6 +196,8 @@ async function initializeEmploymentBusiness(
       fields: fields,
       departmentId: fields.departmentId,
       positionId: fields.positionId,
+      // 导入选“不向后更新”时其后组织调整不随之改写，控编不模拟该传播（S1-P2-04）。
+      propagates: options.forwardUpdate !== false,
     },
     options.establishmentWarnings,
   );
@@ -603,7 +605,7 @@ export async function materializeEmploymentRecord(
   // 拒绝后由生效端口记失败与 HR 待办、按 DEC-112 挂起后序；不能截断任职或改期绕过。
   await validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting);
   assertRequiredTransferFields(payload.kind, payload.formSnapshot, fields);
-  await checkMaterializedCapacity(tx, ctx, business, fields, options.establishmentWarnings);
+  await checkMaterializedCapacity(tx, ctx, business, fields, options);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
   await insertEmploymentRow(tx, 'employment_records', {
     ...fields,
@@ -753,7 +755,7 @@ async function checkMaterializedCapacity(
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
   fields: PresetFields,
-  warnings?: EstablishmentWarning[],
+  options: { forwardUpdate?: boolean; establishmentWarnings?: EstablishmentWarning[] },
 ) {
   await assertEstablishmentCapacity(
     tx,
@@ -766,8 +768,9 @@ async function checkMaterializedCapacity(
       fields,
       departmentId: fields.departmentId,
       positionId: fields.positionId,
+      propagates: options.forwardUpdate !== false,
     },
-    warnings,
+    options.establishmentWarnings,
   );
 }
 

@@ -50,7 +50,8 @@ async function openChangeForm() {
   root = createRoot(container);
   await act(() => root.render(createElement(OrgChangePage)));
   const type = async (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
-    const prototype = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const prototype =
+      element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     await act(() => {
       Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value);
       element.dispatchEvent(new Event('input', { bubbles: true }));
