@@ -6,7 +6,8 @@ import { auditEmployment, requireLinkedEmploymentRecord } from './context.js';
 import { applyForwardChanges, type ForwardFieldChange } from './forward-rules.js';
 import { personnelHooks } from './personnel-hooks.js';
 import { loadEmploymentRecord } from './read-model.js';
-import { camelRow, insertEmploymentRow, rowsOf, snapshotFields, type EmploymentPayloadRow } from './record-store.js';
+import { insertEmploymentRow, rowsOf } from './record-store.js';
+import { orgAdjustmentHistory, type AdjustmentHistory } from './org-adjustment-history.js';
 import { validateNewEmploymentReferences } from './references.js';
 import { recordWindow } from './reporting-cycle.js';
 import type { EmploymentContext, EmploymentRecord } from './types.js';
@@ -49,24 +50,9 @@ async function rebaseRecord(
   previous: EmploymentRecord,
   triggerBusinessId: string,
 ) {
-  const rows = rowsOf<Record<string, unknown>>(
-    await tx.execute(sql`
-    SELECT p.*,EXISTS (SELECT 1 FROM employment_outbox o
-        WHERE o.tenant_id=p.tenant_id AND o.payload_version_id=p.id
-          AND o.event_type='employment.org-adjustment.rebased') AS is_rebase
-      FROM employment_payload_versions p WHERE p.tenant_id=${ctx.tenantId} AND p.business_id=${record.id}::uuid
-      ORDER BY p.version_no LIMIT 1001`),
-  );
-  if (rows.length > 1000) throw new AppError('PAYLOAD_TOO_LARGE', '组织调整载荷历史超过处理上限');
-  const history = rows.map((row) => {
-    const { isRebase, ...raw } = camelRow(row);
-    return {
-      rebase: Boolean(isRebase),
-      payload: { ...raw, fields: snapshotFields(raw) } as unknown as EmploymentPayloadRow,
-    };
-  });
+  const history = await orgAdjustmentHistory(tx, ctx, record);
   const latest = history.at(-1)!.payload;
-  const changes = inheritedChanges(record, history, previous, triggerBusinessId);
+  const changes = inheritedChanges(record, history, previous);
   if (!changes.length) return;
   const values = applyForwardChanges(record, changes);
   await requireLinkedEmploymentRecord(tx, ctx, record.employeeId, record.fields.departmentId, record.id);
@@ -108,39 +94,34 @@ async function rebaseRecord(
 
 function inheritedChanges(
   record: EmploymentRecord,
-  history: { payload: EmploymentPayloadRow; rebase: boolean }[],
+  history: readonly AdjustmentHistory[],
   previous: EmploymentRecord,
-  triggerBusinessId: string,
+): ForwardFieldChange[] {
+  let values = { fields: { ...previous.fields }, customFields: { ...previous.customFields } };
+  // 按版本顺序重放有效来源和人工更正；已改期/移出时间线的来源、此前重建均不能恢复提前值。
+  for (let index = 1; index < history.length; index++) {
+    const item = history[index]!;
+    if (!item.replay) continue;
+    const source = item.sequenceSource;
+    // F-021 的同事务事件区分自动同步和人工更正，无须增加载荷列或修改同步写入口。
+    if (source && values.fields[source.sourceKind === 'posts' ? 'postId' : 'positionId'] !== source.sourceId) continue;
+    values = applyForwardChanges(values, valueChanges(history[index - 1]!.payload, item.payload));
+  }
+  return valueChanges(record, values);
+}
+
+function valueChanges(
+  before: Pick<EmploymentRecord, 'fields' | 'customFields'>,
+  after: Pick<EmploymentRecord, 'fields' | 'customFields'>,
 ): ForwardFieldChange[] {
   const changes: ForwardFieldChange[] = [];
-  const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-  const restore = (
-    field: string,
-    current: ForwardFieldChange['before'],
-    inherited: ForwardFieldChange['after'],
-    read: (payload: EmploymentPayloadRow) => ForwardFieldChange['after'],
-  ) => {
-    let value = inherited;
-    // 用新前驱重放独立更正；忽略移走的源业务传播及以前的派生重建，避免多个迟到源互相留下提前值。
-    for (let index = 1; index < history.length; index++) {
-      const item = history[index]!;
-      if (
-        !item.rebase &&
-        item.payload.triggerBusinessId !== triggerBusinessId &&
-        !equal(read(history[index - 1]!.payload), read(item.payload))
-      )
-        value = read(item.payload);
-    }
-    if (!equal(current, value)) changes.push({ field, before: current, after: value });
+  const add = (field: string, oldValue: ForwardFieldChange['before'], newValue: ForwardFieldChange['after']) => {
+    if (JSON.stringify(oldValue) !== JSON.stringify(newValue))
+      changes.push({ field, before: oldValue, after: newValue });
   };
-  for (const field of Object.keys(record.fields) as (keyof typeof record.fields)[])
-    restore(field, record.fields[field], previous.fields[field], (payload) => payload.fields[field]);
-  for (const id of Object.keys(record.customFields))
-    restore(
-      `custom:${id}`,
-      record.customFields[id] ?? null,
-      previous.customFields[id] ?? null,
-      (payload) => payload.customFields[id] ?? null,
-    );
+  for (const field of Object.keys(before.fields) as (keyof typeof before.fields)[])
+    add(field, before.fields[field], after.fields[field]);
+  for (const id of new Set([...Object.keys(before.customFields), ...Object.keys(after.customFields)]))
+    add(`custom:${id}`, before.customFields[id] ?? null, after.customFields[id] ?? null);
   return changes;
 }

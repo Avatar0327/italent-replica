@@ -8,11 +8,15 @@ import { cmd } from './support/tenant-api.js';
 
 const database = useTestDb();
 it.each([
-  ['posts', false],
-  ['posts', true],
-  ['positions', false],
-  ['positions', true],
-] as const)('AC-ORG-37 迟到重建按引用恢复序列（来源=%s，先同步=%s）', async (kind, syncFirst) => {
+  ['posts', false, 'restore'],
+  ['posts', true, 'restore'],
+  ['positions', false, 'restore'],
+  ['positions', true, 'restore'],
+  ['posts', false, 'manual'],
+  ['positions', false, 'manual'],
+  ['posts', false, 'same-reference'],
+  ['positions', false, 'same-reference'],
+] as const)('AC-ORG-37 迟到重建按引用恢复序列（来源=%s，先同步=%s，对照=%s）', async (kind, syncFirst, control) => {
   const db = database().db;
   const w = await orgPeopleWorld(db, `org37late${kind}${syncFirst}`);
   const org = await w.org('组合部门');
@@ -22,7 +26,7 @@ it.each([
   const post = kind === 'positions' ? await w.job('posts', '职位对应职务', { sequenceId: a.id }) : null;
   const extra = post ? { orgId: org.id, postId: post.id } : {};
   const sourceA = await w.job(kind, 'A', { ...extra, sequenceId: a.id });
-  const sourceB = await w.job(kind, 'B', { ...extra, sequenceId: b.id });
+  const sourceB = control === 'same-reference' ? sourceA : await w.job(kind, 'B', { ...extra, sequenceId: b.id });
   const reference = kind === 'posts' ? 'postId' : 'positionId';
   const person = await w.hire('序列迟到员工', {
     departmentId: org.id,
@@ -37,7 +41,7 @@ it.each([
       kind: 'transfer',
       mode: 'direct',
       effectiveDate: '2026-10-05',
-      fields: { [reference]: sourceB.id, sequenceId: b.id },
+      fields: control === 'same-reference' ? { place: '新地点' } : { [reference]: sourceB.id, sequenceId: b.id },
     },
     person.revision,
   );
@@ -60,6 +64,16 @@ it.each([
   if (!syncFirst) await sync();
   const adjustment = (await w.records(person.id, '2026-10-09')).find((r) => r.isCurrent)!;
   expect(adjustment.fields).toMatchObject({ [reference]: sourceB.id, sequenceId: c.id });
+  if (control === 'manual') {
+    const business = await w.request('GET', `/businesses/${adjustment.id}`);
+    const { revision } = (await business.json()) as { revision: number };
+    const corrected = await w.request('PATCH', `/records/${adjustment.id}`, {
+      ifMatch: revision,
+      body: { fields: { sequenceId: b.id, place: '人工更正' } },
+    });
+    expect(corrected.status, await corrected.clone().text()).toBe(200);
+  }
+  const expectedSequence = control === 'manual' ? b.id : control === 'same-reference' ? c.id : a.id;
   const result = await runEmploymentActivations(
     db,
     cmd(),
@@ -69,9 +83,14 @@ it.each([
     },
   );
   expect(result.runs[0]).toMatchObject({ failed: [], errors: [] });
-  expect
-    .soft((await w.records(person.id, '2026-10-09')).find((r) => r.isCurrent))
-    .toMatchObject({ id: adjustment.id, fields: { [reference]: sourceA.id, sequenceId: a.id } });
+  expect.soft((await w.records(person.id, '2026-10-09')).find((r) => r.isCurrent)).toMatchObject({
+    id: adjustment.id,
+    fields: {
+      [reference]: sourceA.id,
+      sequenceId: expectedSequence,
+      ...(control === 'manual' ? { place: '人工更正' } : {}),
+    },
+  });
   expect((await w.records(person.id, '2026-10-10')).find((r) => r.isCurrent)).toMatchObject({
     id: transfer.id,
     fields: { [reference]: sourceB.id, sequenceId: c.id },
