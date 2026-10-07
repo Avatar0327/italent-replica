@@ -161,7 +161,7 @@ async function initializeEmploymentBusiness(
     createdAt: ctx.now.toISOString(),
   });
   if (options.withEstablishment && normalized.kind === 'transfer')
-    await carryEstablishment(tx, ctx, id, normalized.effectiveDate, source, fields);
+    await carryEstablishment(tx, ctx, id, normalized.effectiveDate, source, fields, options.establishmentWarnings);
   await assertEstablishmentCapacity(
     tx,
     ctx,

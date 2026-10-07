@@ -1,3 +1,4 @@
+import { captureReservedOccupancy, assertRestoredReservation } from '../establishment/restored-occupancy.js';
 import { reverseCarriedEstablishment, assertReleasedEstablishment } from '../establishment/carried-transfer.js';
 import { postponeLateTransfer } from './late-transfer.js';
 import { assertEstablishmentCapacity } from './activation-checks.js';
@@ -123,9 +124,9 @@ export async function transitionEmployment(
       fields,
     });
   }
-  const released = ['delete', 'withdraw', 'revoke', 'reject', 'disapprove'].includes(input.action)
-    ? await reverseCarriedEstablishment(tx, ctx, business.id)
-    : [];
+  const reverses = ['delete', 'withdraw', 'revoke', 'reject', 'disapprove'].includes(input.action);
+  const reserved = reverses ? await captureReservedOccupancy(tx, ctx, business) : [];
+  const released = reverses ? await reverseCarriedEstablishment(tx, ctx, business.id) : [];
   if (input.action === 'delete') {
     const previous = await deleteEmploymentBusiness(tx, ctx, business);
     const { kind, effectiveDate } = business.payload;
@@ -158,6 +159,7 @@ export async function transitionEmployment(
     await appendEmploymentState(tx, ctx, business, state);
   }
   await assertReleasedEstablishment(tx, ctx, business.id, business.employeeId, released);
+  await assertRestoredReservation(tx, ctx, business, reserved);
   // 一条命令只增加一次业务 revision；approve→effective 的两条状态事件不各自递增头版本。
   await bumpEmploymentBusiness(tx, ctx, business);
   return requireSavedBusiness(tx, ctx, business.id);

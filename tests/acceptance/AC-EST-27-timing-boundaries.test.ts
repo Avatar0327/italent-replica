@@ -101,6 +101,7 @@ it.each([false, true])('AC-EST-27 本人后续调出不能用旧时机提前截�
   ).toBe(201);
   expect((await w.save(a, { withEstablishment: false, effectiveDate: '2026-10-20' })).status).toBe(201);
   const before = await w.session.records(b.employee.id);
+  const employee = await w.session.getEmployee(b.employee.id);
   const current = await w.business(id);
   await warning(
     await w.session.request('PATCH', `/records/${id}`, {
@@ -110,4 +111,5 @@ it.each([false, true])('AC-EST-27 本人后续调出不能用旧时机提前截�
     strict,
   );
   expect(await w.session.records(b.employee.id)).toEqual(before);
+  expect(await w.session.getEmployee(b.employee.id)).toEqual(employee);
 });

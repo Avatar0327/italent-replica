@@ -1,7 +1,6 @@
 import { useTestDb } from '@italent/testkit';
 import { expect, it } from 'vitest';
 import { scenario, worker } from './AC-JOB-sequence-support.js';
-import { MODULE_OBJECTS } from '@italent/domain';
 import type { Authorizer } from '@italent/api';
 import { tenantApi } from './support/tenant-api.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
@@ -73,22 +72,25 @@ for (const strict of [false, true])
       expect(await s.world.employmentRecords(s.employee.id)).toEqual(after);
 
       const authorize: Authorizer = () => true;
+      let hiddenScope = true;
       registerScopeProvider(authorize, {
         authorize: async () => true,
-        scope: async () => EMPTY_SCOPE,
-        fields: async (query) =>
-          query.objectCode === MODULE_OBJECTS.employmentRecord.code ? new Set(['id']) : undefined,
+        scope: async () => (hiddenScope ? EMPTY_SCOPE : { ...EMPTY_SCOPE, all: true, hasDataPermission: true }),
+        fields: async () => new Set(hiddenScope ? ['id', 'sequenceId'] : ['id']),
       });
       const api = tenantApi(db, { authorize });
-      for (const endpoint of ['sequence-sync/messages', path]) {
-        const hidden = await api.request('GET', `/api/tenant/job/${endpoint}`, {
-          user: s.world.user.id,
-          tenant: s.world.tenant.id,
-        });
-        expect(hidden.status).toBe(200);
-        const body = await hidden.json();
-        expect(JSON.stringify(body)).not.toContain(s.future.id);
-        const receipt = endpoint.endsWith('/messages') ? body.items[0].message : body.result;
-        expect(receipt).toMatchObject({ count: 0, warnings: [] });
+      for (const scope of [true, false]) {
+        hiddenScope = scope;
+        for (const endpoint of ['sequence-sync/messages', path]) {
+          const hidden = await api.request('GET', `/api/tenant/job/${endpoint}`, {
+            user: s.world.user.id,
+            tenant: s.world.tenant.id,
+          });
+          expect(hidden.status).toBe(200);
+          const body = await hidden.json();
+          expect(JSON.stringify(body)).not.toContain(s.future.id);
+          const receipt = endpoint.endsWith('/messages') ? body.items[0].message : body.result;
+          expect(receipt).toMatchObject({ count: 0, warnings: [] });
+        }
       }
     });

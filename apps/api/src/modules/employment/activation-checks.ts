@@ -71,7 +71,7 @@ export async function assertEstablishmentCapacity(
 ) {
   const assessment =
     checks === DEFAULT_ESTABLISHMENT_CHECKS
-      ? await assessEmploymentEstablishment(tx, ctx, target)
+      ? await assessEmploymentEstablishment(tx, ctx, target, warnings)
       : { exceeded: await establishmentExceeded(tx, ctx, target), strict: true };
   if (!assessment.exceeded) return;
   // DEC-015 仅内部导入/批量端口提供警告收集器；HTTP 单笔保存与定时生效不能关闭严格校验。

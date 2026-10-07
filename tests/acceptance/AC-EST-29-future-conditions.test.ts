@@ -5,7 +5,7 @@ import { configure, warning } from './AC-EST-20-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
-async function world(strict: boolean, forward: boolean) {
+async function world(strict: boolean, forward: boolean, application = false) {
   const w = await carriedWorld(database().db, 'future-condition');
   await configure(w, strict);
   const api = tenantApi(w.db);
@@ -39,6 +39,7 @@ async function world(strict: boolean, forward: boolean) {
   expect(first.status, await first.clone().text()).toBe(201);
   const second = await w.save(b, {
     withEstablishment: false,
+    ...(application ? { mode: 'application' } : {}),
     fields: { departmentId: w.to.id, positionId: w.targetPosition, ...(forward ? {} : { dimension1: 'other' }) },
   });
   expect(second.status, await second.clone().text()).toBe(201);
@@ -48,30 +49,30 @@ async function world(strict: boolean, forward: boolean) {
 }
 
 for (const strict of [false, true])
-  for (const entry of ['record', 'forward', 'import', 'batch'] as const)
+  for (const entry of ['record', 'business', 'forward', 'import', 'batch', 'forward-import', 'forward-batch'] as const)
     it(`AC-EST-29 未来方案条件 ${entry} strict=${strict}`, async () => {
-      const w = await world(strict, entry === 'forward');
+      const w = await world(strict, entry.startsWith('forward'), entry === 'business');
       const before = await w.session.records(w.b.employee.id);
       const employee = await w.session.getEmployee(w.b.employee.id);
       const patch = { fields: { dimension1: 'counted' } };
       const request = (confirmed?: boolean) => {
-        if (entry === 'import')
+        if (entry.includes('import'))
           return w.session.request('POST', `/employees/${w.b.employee.id}/import`, {
             ifMatch: employee.revision,
             body: { items: [{ operation: 'edit', id: w.edited.id, revision: w.edited.revision, patch }] },
           });
-        if (entry === 'batch')
+        if (entry.includes('batch'))
           return w.session.request('POST', '/records/batch-edit', {
             ifMatch: 0,
             body: { items: [{ id: w.edited.id, revision: w.edited.revision }], patch },
           });
-        return w.session.request('PATCH', `/records/${w.edited.id}`, {
+        return w.session.request('PATCH', `/${entry === 'business' ? 'businesses' : 'records'}/${w.edited.id}`, {
           ifMatch: w.edited.revision,
           body: { ...patch, ...(confirmed === undefined ? {} : { confirmed }) },
         });
       };
       const response = await request();
-      if (entry === 'import' || entry === 'batch') {
+      if (entry.includes('import') || entry.includes('batch')) {
         expect(response.status, await response.clone().text()).toBe(200);
         expect(await response.json()).toMatchObject({
           warnings: [{ businessId: w.id, reason: 'ESTABLISHMENT_EXCEEDED' }],
@@ -89,6 +90,7 @@ for (const strict of [false, true])
         }
         expect(confirmed.status, await confirmed.clone().text()).toBe(200);
       }
-      expect((await w.session.record(w.id)).fields.dimension1).toBe('counted');
+      const saved = entry === 'business' ? await w.business(w.id) : await w.session.record(w.id);
+      expect(saved.fields.dimension1).toBe('counted');
       expect((await w.session.getEmployee(w.b.employee.id)).revision).toBeGreaterThan(employee.revision);
     });

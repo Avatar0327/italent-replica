@@ -112,3 +112,77 @@ for (const strict of [false, true])
         expect(await w.session.getEmployee(w.a.employee.id)).toEqual(employee);
       }
     });
+
+it.each([false, true])('AC-EST-31 未预减原部门的撤回不误报原有超编 strict=%s', async (strict) => {
+  const w = await carriedWorld(database().db, 'cancel-no-release');
+  await configure(w, strict);
+  const response = await tenantApi(w.db).request('PUT', '/api/tenant/establishment/settings', {
+    user: w.session.user.id,
+    tenant: w.session.tenant.id,
+    ifMatch: 0,
+    body: { effectiveDate: '2026-10-01', transferIn: 'submitted', transferOut: 'approved' },
+  });
+  expect(response.status).toBe(200);
+  const a = await w.hired('甲');
+  const b = await w.hired('乙');
+  expect((await w.save(a, { withEstablishment: false, effectiveDate: '2026-10-01' })).status).toBe(201);
+  const outgoing = await w.save(a, {
+    withEstablishment: false,
+    mode: 'application',
+    submit: true,
+    fields: { departmentId: w.from.id, positionId: w.sourcePosition },
+  });
+  expect(outgoing.status, await outgoing.clone().text()).toBe(201);
+  const business = (await outgoing.json()) as { id: string; revision: number };
+  const imported = await w.session.request('POST', `/employees/${b.employee.id}/import`, {
+    ifMatch: (await w.session.getEmployee(b.employee.id)).revision,
+    body: {
+      items: [
+        {
+          operation: 'create',
+          business: {
+            kind: 'transfer',
+            mode: 'direct',
+            effectiveDate: '2026-10-05',
+            fields: { departmentId: w.to.id, positionId: w.targetPosition },
+          },
+        },
+      ],
+    },
+  });
+  expect(imported.status, await imported.clone().text()).toBe(200);
+  expect(await imported.json()).toMatchObject({ warnings: [{ reason: 'ESTABLISHMENT_EXCEEDED' }] });
+  const withdrawn = await w.session.request('POST', `/businesses/${business.id}/withdraw`, {
+    ifMatch: business.revision,
+    body: {},
+  });
+  expect(withdrawn.status, await withdrawn.clone().text()).toBe(200);
+  expect((await w.business(business.id)).status).toBe('draft');
+});
+
+it.each([false, true])('AC-EST-31 删除离职恢复相同部门的占编 strict=%s', async (strict) => {
+  const w = await world(strict);
+  const leave = await w.session.business(
+    w.a.employee.id,
+    {
+      kind: 'leave',
+      mode: 'direct',
+      lastWorkDate: '2026-10-04',
+    },
+    (await w.session.getEmployee(w.a.employee.id)).revision,
+  );
+  expect((await w.save(w.b, { withEstablishment: false, fields: w.fields })).status).toBe(201);
+  const employee = await w.session.getEmployee(w.a.employee.id);
+  const before = await w.session.records(w.a.employee.id);
+  const request = (confirmed?: boolean) =>
+    w.session.request('DELETE', `/businesses/${leave.id}`, {
+      ifMatch: leave.revision,
+      body: confirmed === undefined ? {} : { confirmed },
+    });
+  await warning(await request(), strict);
+  expect(await w.session.records(w.a.employee.id)).toEqual(before);
+  expect(await w.session.getEmployee(w.a.employee.id)).toEqual(employee);
+  const confirmed = await request(true);
+  if (strict) await warning(confirmed, true);
+  else expect(confirmed.status, await confirmed.clone().text()).toBe(200);
+});

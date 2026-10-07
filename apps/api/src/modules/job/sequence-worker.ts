@@ -1,3 +1,4 @@
+import { sequenceEstablishmentWarnings } from './sequence-establishment.js';
 import {
   classifyCommandFailure,
   recordCommandFailure,
@@ -218,6 +219,7 @@ async function executeSequenceJob(tx: Tx, ctx: EmploymentContext, job: QueuedJob
   await authorizeSequenceTargets(tx, ctx, targets);
   const results = await sequenceResults(tx, ctx, request, candidates);
   for (const target of targets) await appendSequenceVersion(tx, ctx, target);
+  const warnings = await sequenceEstablishmentWarnings(tx, ctx, targets);
   await auditSequenceResult(tx, ctx, job.id, results);
   // 审批通知要求 instance_id；站内消息复用 outbox，不伪造审批实例。
   // 此载荷是内部执行证据，两个读取接口必须经 visibleSequenceReceipts 按当前权限裁剪。
@@ -232,6 +234,7 @@ async function executeSequenceJob(tx: Tx, ctx: EmploymentContext, job: QueuedJob
       recipientUserId: request.recipientUserId,
       channel: 'inbox',
       count: targets.length,
+      ...(warnings.length ? { warnings } : {}),
       taskId: job.id,
       skipped: results.filter((row) => row.reason).map(({ recordId, reason }) => ({ recordId, reason })),
     },

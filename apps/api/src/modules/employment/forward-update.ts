@@ -233,7 +233,11 @@ async function writeForwardTarget(
 ) {
   if (!source.businessId) throw new TypeError('向后更新必须关联触发业务');
   if (
-    await affectsEstablishmentOccupancy(tx, ctx, target.values.fields, nextValues.fields, target.payload.effectiveDate)
+    await affectsEstablishmentOccupancy(tx, ctx, target.values.fields, nextValues.fields, {
+      businessId: target.payload.businessId,
+      employeeId: source.employeeId,
+      effectiveDate: target.payload.effectiveDate,
+    })
   )
     await assertEstablishmentCapacity(
       tx,

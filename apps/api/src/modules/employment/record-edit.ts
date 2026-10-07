@@ -86,7 +86,13 @@ export async function editEmploymentRecord(
     )
     .map(([field, value]) => ({ field, before: beforeAudit[field as keyof typeof beforeAudit] ?? null, after: value }));
   if (!changes.length) return requireSavedBusiness(tx, ctx, id);
-  if (await affectsEstablishmentOccupancy(tx, ctx, record.fields, after.fields, record.effectiveDate))
+  if (
+    await affectsEstablishmentOccupancy(tx, ctx, record.fields, after.fields, {
+      businessId: id,
+      employeeId: record.employeeId,
+      effectiveDate: record.effectiveDate,
+    })
+  )
     await assertEstablishmentCapacity(
       tx,
       ctx,

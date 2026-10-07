@@ -9,7 +9,7 @@
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
-import { establishmentPeriodStartsWithin } from '../establishment/employment-check.js';
+import { establishmentPeriodStartsWithin, affectsEstablishmentOccupancy } from '../establishment/employment-check.js';
 import { employmentDepartmentDisable } from '../org/employment-validity.js';
 import { assertEstablishmentCapacity } from './activation-checks.js';
 import { auditEmployment, employmentRecordVisibleTo, requireLinkedEmploymentRecord } from './context.js';
@@ -162,7 +162,13 @@ export async function assertRestoredPredecessor(
       );
   }
   await validateRestoredReferences(tx, ctx, previous, window);
-  const moved = fields.departmentId !== deleted.fields.departmentId || fields.positionId !== deleted.fields.positionId;
+  const moved =
+    ['leave', 'retirement'].includes(deleted.kind) ||
+    (await affectsEstablishmentOccupancy(tx, ctx, deleted.fields, fields, {
+      businessId: previous.id,
+      employeeId: previous.employeeId,
+      effectiveDate: window.from,
+    }));
   if (fields.departmentId && moved) await assertRestoredEstablishment(tx, ctx, previous, window);
 }
 

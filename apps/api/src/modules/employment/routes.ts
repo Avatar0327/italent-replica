@@ -303,10 +303,9 @@ function registerBusinessTransitions(router: Hono<TenantEnv>, deps: TenantRouteD
         ctx = await withTenant(deps.db, ctx.tenantId, (tx) =>
           transferBusinessContext(tx, ctx, id, 'before-command', undefined, action === 'submit' ? {} : undefined),
         );
-        const confirmation =
-          (action === 'submit' || action === 'delete') && c.req.header('content-type')
-            ? parse(z.strictObject({ confirmed: z.boolean().optional() }), await jsonBody(c))
-            : {};
+        const confirmation = c.req.header('content-type')
+          ? parse(z.strictObject({ confirmed: z.boolean().optional() }), await jsonBody(c))
+          : {};
         await requireEmploymentWrite(
           ctx,
           action === 'delete' ? 'delete' : 'update',
@@ -410,7 +409,7 @@ function registerActivation(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 }
 
-/** 重试生效不接受客户端业务参数；提交申请另只接受 confirmed，流程编码仍由审批中心派生。 */
+/** 重试生效不接受客户端业务参数；交互状态动作只接受 confirmed，流程编码仍由审批中心派生。 */
 async function emptySubmitBody(c: Context<TenantEnv>): Promise<void> {
   if (c.req.header('content-type')) parse(z.strictObject({}), await jsonBody(c));
 }

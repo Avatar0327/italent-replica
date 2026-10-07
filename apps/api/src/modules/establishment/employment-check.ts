@@ -11,7 +11,7 @@ import { auditActor } from '../../system-actor.js';
 import { AppError } from '../../errors.js';
 import { tenantLocalDate } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
-import type { ActivationTarget } from '../employment/activation-checks.js';
+import type { ActivationTarget, EstablishmentWarning } from '../employment/activation-checks.js';
 import type { EmploymentContext, PresetFields } from '../employment/types.js';
 import { findPredecessor, loadEmploymentBusiness, loadEmploymentRecord } from '../employment/read-model.js';
 import { loadScheme, type OccupancyRange } from './schemes.js';
@@ -25,7 +25,7 @@ export async function affectsEstablishmentOccupancy(
   ctx: EmploymentContext,
   before: PresetFields,
   after: PresetFields,
-  effectiveDate: string,
+  target: Pick<ActivationTarget, 'businessId' | 'employeeId' | 'effectiveDate'>,
 ): Promise<boolean> {
   const changed = (key: string) => before[key as keyof PresetFields] !== after[key as keyof PresetFields];
   if (['departmentId', 'positionId', 'employType'].some(changed)) return true;
@@ -45,19 +45,21 @@ export async function affectsEstablishmentOccupancy(
   ];
   if (!after.departmentId || !conditionFields.some(changed)) return false;
   await lockEstablishment(tx, { ...ctx, userId: auditActor(ctx.userId) }, { initializeDefault: false });
-  const capacityAsOf = [effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
-  const capacities = await targetCapacities(
-    tx,
-    ctx,
-    {
-      targetOrgId: after.departmentId,
-      effectiveDate,
-    },
-    capacityAsOf,
-  );
-  for (const capacity of capacities) {
-    const scheme = await loadScheme(tx, ctx.tenantId, capacity.schemeId, capacityAsOf);
-    if (scheme.occupancyRanges.some((range) => Object.keys(range.conditions ?? {}).some(changed))) return true;
+  const window = await targetWindow(tx, ctx, target);
+  if (!window) return false;
+  // F-026 R3：字段在起点未参与占编，仍可能被本任职区间内的未来方案采用。
+  for (const effectiveDate of await assessmentDates(tx, ctx.tenantId, target.effectiveDate, window.to)) {
+    const capacityAsOf = [effectiveDate, tenantLocalDate(ctx.now, ctx.timezone)].sort().at(-1)!;
+    const capacities = await targetCapacities(
+      tx,
+      ctx,
+      { targetOrgId: after.departmentId, effectiveDate },
+      capacityAsOf,
+    );
+    for (const capacity of capacities) {
+      const scheme = await loadScheme(tx, ctx.tenantId, capacity.schemeId, capacityAsOf);
+      if (scheme.occupancyRanges.some((range) => Object.keys(range.conditions ?? {}).some(changed))) return true;
+    }
   }
   return false;
 }
@@ -76,6 +78,7 @@ export async function assessEmploymentEstablishment(
   tx: Tx,
   ctx: EmploymentContext,
   target: ActivationTarget,
+  warnings?: EstablishmentWarning[],
 ): Promise<EstablishmentAssessment> {
   const clear = { exceeded: false, strict: false };
   if (target.kind !== 'transfer' || !target.departmentId) return clear;
@@ -92,7 +95,7 @@ export async function assessEmploymentEstablishment(
     positionId: target.positionId,
     employType: target.fields?.employType ?? previous?.fields.employType ?? 'internal',
   };
-  await reconcileCarriedEstablishment(tx, ctx, { ...target, fields });
+  await reconcileCarriedEstablishment(tx, ctx, { ...target, fields }, warnings);
   if (!target.occupancyOnly && fields.employType === 'external') return clear;
   const window = target.occupancyOnly ? null : await targetWindow(tx, ctx, target);
   if (!target.occupancyOnly && !window) return clear;
@@ -207,7 +210,7 @@ export function matchesOccupancy(fields: Partial<PresetFields>, ranges: readonly
   );
 }
 
-interface MemberInterval {
+export interface MemberInterval {
   readonly employeeId: string;
   readonly fields: Partial<PresetFields>;
   readonly from: string;
@@ -222,11 +225,25 @@ async function projectedMembers(
   orgIds: readonly string[],
   windows: readonly MembershipWindow[],
 ) {
+  const members = await projectedIntervals(tx, ctx, target, end, orgIds);
+  for (const [id, intervals] of members) members.set(id, clipMembership(intervals, windows));
+  return (matches: (fields: Partial<PresetFields>) => boolean) => maximumMembers(members, matches);
+}
+
+/** 人员投影共用实现；撤销前后只读取本人的区间，不额外锁其他员工。 */
+export async function projectedIntervals(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget,
+  end: string,
+  orgIds: readonly string[] | null,
+  employeeId?: string,
+) {
   // P2-1：读取目标日到周期末（给了 target.until 则到它为止，R1-T11 恢复区间）的真实主职区间，在变化点取人数峰值。
   const periodEnd = new Date(Date.parse(end) + 86400000).toISOString().slice(0, 10);
   const windowEnd = target.until && target.until < periodEnd ? target.until : periodEnd;
   // 本次按实际区间并入同一端点扫描，不能把本人当成永久占编的常量。
-  const rows = await occupancyRows(tx, ctx, target, windowEnd, orgIds);
+  const rows = await occupancyRows(tx, ctx, target, windowEnd, orgIds, employeeId);
   // DEC-195：迟到申请及待复查的直接调动按实际执行日投影，原计划日决定同日顺序。
   // 已落地单用冻结字段替换其旧区间，不重复占编；撤回/驳回自动退出。
   const timings = await readSettings(tx, ctx.tenantId, target.effectiveDate);
@@ -238,7 +255,7 @@ async function projectedMembers(
   }
   // DEC-108：同日按最近提交的实际操作序号投影，不能按 UUID 排序。
   const projectedPredecessors = new Map<string, Awaited<ReturnType<typeof findPredecessor>>>();
-  for (const row of await pendingTransfers(tx, ctx, target, end)) {
+  for (const row of await pendingTransfers(tx, ctx, target, end, employeeId)) {
     const raw = camelRow(row.fields);
     const payload = { ...raw, fields: snapshotFields(raw) } as unknown as EmploymentPayloadRow;
     const window = await insertedWindow(tx, ctx, row.employeeId, payload.effectiveDate, payload.businessId);
@@ -294,8 +311,7 @@ async function projectedMembers(
     members.set(row.employeeId, intervals);
   }
   if (!target.occupancyOnly) await projectTarget(tx, ctx, target, windowEnd, members, timings.transferOut);
-  for (const [id, intervals] of members) members.set(id, clipMembership(intervals, windows));
-  return (matches: (fields: Partial<PresetFields>) => boolean) => maximumMembers(members, matches);
+  return members;
 }
 
 /** 扫描合并区间的端点，O(n log n)，无需逐日或逐变化点重新遍历全员。 */
@@ -347,7 +363,8 @@ async function occupancyRows(
   ctx: EmploymentContext,
   target: ActivationTarget,
   until: string,
-  orgIds: readonly string[],
+  orgIds: readonly string[] | null,
+  employeeId?: string,
 ) {
   const rows = rowsOf<{ employeeId: string; fields: Record<string, unknown>; from: string; until: string }>(
     await tx.execute(sql`
@@ -359,9 +376,15 @@ async function occupancyRows(
       WHERE p.tenant_id=r.tenant_id AND p.business_id=r.id AND p.is_record_snapshot
       ORDER BY p.version_no DESC LIMIT 1) p ON true
     WHERE t.tenant_id=${ctx.tenantId} AND t.valid_during && daterange(${target.effectiveDate}::date,${until}::date,'[)')
-      AND (COALESCE(p.body,to_jsonb(r))->>'department_id')::uuid = ANY(${`{${orgIds.join(',')}}`}::uuid[])
+      ${
+        orgIds
+          ? sql`AND (COALESCE(p.body,to_jsonb(r))->>'department_id')::uuid
+        = ANY(${`{${orgIds.join(',')}}`}::uuid[])`
+          : sql``
+      }
       AND r.service_type='primary' AND r.kind NOT IN ('leave','retirement')
       AND r.id<>${target.businessId}::uuid
+      ${employeeId ? sql`AND r.employee_id=${employeeId}::uuid` : sql``}
     ORDER BY r.employee_id LIMIT 100001
   `),
   );
@@ -370,7 +393,13 @@ async function occupancyRows(
 }
 
 /** 删除恢复校验先于 deleted 状态事件，已写墓碑的业务不能再占编或截断恢复区间（P2-M1）。 */
-async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: ActivationTarget, end: string) {
+async function pendingTransfers(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget,
+  end: string,
+  employeeId?: string,
+) {
   const date = sql`greatest(p.effective_date,${tenantLocalDate(ctx.now, ctx.timezone)}::date)`;
   const pending = rowsOf<{ employeeId: string; fields: Record<string, unknown>; state: string }>(
     await tx.execute(sql`
@@ -387,6 +416,7 @@ async function pendingTransfers(tx: Tx, ctx: EmploymentContext, target: Activati
       WHERE t.tenant_id=b.tenant_id AND t.employee_id=b.employee_id
         AND t.valid_during @> p.effective_date AND r.service_type='primary' LIMIT 1) current_record ON true
     WHERE b.tenant_id=${ctx.tenantId} AND b.id<>${target.businessId}::uuid
+      ${employeeId ? sql`AND b.employee_id=${employeeId}::uuid` : sql``}
       AND NOT EXISTS (SELECT 1 FROM employment_record_tombstones tombstone
         WHERE tombstone.tenant_id=b.tenant_id AND tombstone.employee_id=b.employee_id AND tombstone.record_id=b.id)
       AND p.kind='transfer' AND (p.mode='application' AND s.state IN ('in_review','approved')
@@ -433,7 +463,11 @@ async function projectTarget(
   }
 }
 
-async function targetWindow(tx: Tx, ctx: EmploymentContext, target: ActivationTarget) {
+async function targetWindow(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: Pick<ActivationTarget, 'businessId' | 'employeeId' | 'effectiveDate'>,
+) {
   const [existing] = rowsOf(
     await tx.execute(sql`SELECT 1 FROM employment_timeline
     WHERE tenant_id=${ctx.tenantId} AND record_id=${target.businessId}::uuid`),

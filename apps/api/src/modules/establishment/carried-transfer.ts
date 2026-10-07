@@ -6,7 +6,7 @@ import type { EmploymentContext, PresetFields } from '../employment/types.js';
 import { validateCapacity } from './constraints.js';
 import { employmentTimelineNeighbors } from '../employment/timeline.js';
 import { loadEmploymentRecord } from '../employment/read-model.js';
-import type { ActivationTarget } from '../employment/activation-checks.js';
+import type { ActivationTarget, EstablishmentWarning } from '../employment/activation-checks.js';
 import { readCapacity, type CapacityRecord } from './capacity-read.js';
 import { updateCapacity } from './capacity-service.js';
 import { loadScheme, type SchemeRecord } from './schemes.js';
@@ -42,6 +42,7 @@ export async function carryEstablishment(
   effectiveDate: string,
   source: Partial<PresetFields>,
   target: Partial<PresetFields>,
+  warnings?: EstablishmentWarning[],
 ) {
   const context = await employmentCapacityContext(tx, ctx);
   await lockEstablishment(tx, context, { initializeDefault: false });
@@ -108,7 +109,7 @@ export async function carryEstablishment(
       SELECT employee_id AS "employeeId" FROM employment_business_objects
       WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid`),
     );
-    if (business) await assertReleasedEstablishment(tx, ctx, businessId, business.employeeId, released);
+    if (business) await assertReleasedEstablishment(tx, ctx, businessId, business.employeeId, released, warnings);
   }
 }
 
@@ -267,7 +268,12 @@ export async function reverseCarriedEstablishment(tx: Tx, ctx: EmploymentContext
 }
 
 /** 编辑、重提与迟到跨周期复查使用当前任职插入点；相同分配幂等，不在到期时再次加编。 */
-export async function reconcileCarriedEstablishment(tx: Tx, ctx: EmploymentContext, target: ActivationTarget) {
+export async function reconcileCarriedEstablishment(
+  tx: Tx,
+  ctx: EmploymentContext,
+  target: ActivationTarget,
+  warnings?: EstablishmentWarning[],
+) {
   if (target.occupancyOnly || target.reconcileCarried === false) return;
   const [request] = rowsOf(
     await tx.execute(sql`SELECT 1 FROM transfer_requests
@@ -286,34 +292,47 @@ export async function reconcileCarriedEstablishment(tx: Tx, ctx: EmploymentConte
     : (await employmentTimelineNeighbors(tx, ctx, target.employeeId, target.effectiveDate, target.businessId)).previous
         ?.recordId;
   const source = previousId ? await loadEmploymentRecord(tx, ctx.tenantId, previousId, target.effectiveDate) : null;
-  await carryEstablishment(tx, ctx, target.businessId, target.effectiveDate, source?.fields ?? {}, target.fields ?? {});
+  await carryEstablishment(
+    tx,
+    ctx,
+    target.businessId,
+    target.effectiveDate,
+    source?.fields ?? {},
+    target.fields ?? {},
+    warnings,
+  );
 }
 
-/** 回退后，原调入方被其他业务占用的编制仍需严格控编；调用者已将本单置为撤销/删除。 */
+/** 回退/改配后，原调入方仍按区间复查；沿用交互确认、后台豁免与 DEC-015 行级警告。 */
 export async function assertReleasedEstablishment(
   tx: Tx,
   ctx: EmploymentContext,
   businessId: string,
   employeeId: string,
   allocations: readonly Allocation[],
+  warnings?: EstablishmentWarning[],
 ) {
-  const { employmentEstablishmentExceeded } = await import('./employment-check.js');
+  const { assertEstablishmentCapacity } = await import('../employment/activation-checks.js');
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   for (const row of allocations.filter((row) => row.localDelta > 0 || row.inclusiveDelta > 0)) {
     const capacity = await readCapacity(tx, ctx.tenantId, row.capacityId, today);
     if (capacity.periodEnd < today) continue;
     const effectiveDate = capacity.periodStart > today ? capacity.periodStart : today;
-    if (
-      await employmentEstablishmentExceeded(tx, ctx, {
+    await assertEstablishmentCapacity(
+      tx,
+      ctx,
+      {
         businessId,
         employeeId,
         kind: 'transfer',
         effectiveDate,
+        // 只回退这一周期的额度，不把其他周期既有超编归到本次命令。
+        until: new Date(Date.parse(capacity.periodEnd) + 86400000).toISOString().slice(0, 10),
         departmentId: capacity.orgId,
         positionId: row.positionId,
         occupancyOnly: true,
-      })
-    )
-      throw new AppError('CONFLICT', '回退带编调动后将超出严格控制编制', { reason: 'ESTABLISHMENT_EXCEEDED' });
+      },
+      warnings,
+    );
   }
 }
