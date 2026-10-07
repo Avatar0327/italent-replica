@@ -3,7 +3,8 @@ import { CONTRACT_FIELDS } from '../contracts/rules.js';
  * 出厂预置流程（DEC-018 / DEC-094 / DEC-116）：全部审批类型都有草稿预置，租户开通时配置异常管理员后发布（R1-T17）。
  * 有标准流程编码的类型都带“流程编码 = 标准编码”发起条件（`14` §11.1）。调动按本租户已取证的节点结构（`14` §2、§8.2、
  * §8.3，开关按 §11.10 更正）与 TransferDetailView 已交付字段（§11.2，DEC-118）预置；离职按 §8.5 取证的
- * “直接上级 → HR 访谈”结构以现有表达式近似；其余类型的节点结构尚未取证（TODO(需取证 #38)），预置为
+ * “直接上级 → HR 访谈”结构，直接上级取最新生效主职任职的直线经理（DEC-230）；
+ * 其余类型的节点结构尚未取证（TODO(需取证 #38)），预置为
  * “部门负责人审批 → HRBP 审核”，由租户调整后发布。
  */
 import { TRANSFER_FORM_FIELDS } from './transfer-view.js';
@@ -137,8 +138,7 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
     approvalType: 'leave',
     definition: draft({
       name: '标准离职流程',
-      description:
-        '出厂预置：按本租户离职流程“直接上级 → HR访谈”结构近似（直接上级暂以部门负责人表达），发布前须配置异常管理员',
+      description: '出厂预置：直接上级（最新生效主职任职的直线经理） → HR访谈，发布前须配置异常管理员',
       priority: 0,
       isFallback: false,
       conditions: {
@@ -146,7 +146,7 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
         expression: '1',
       },
       nodes: [
-        node('direct_head', '直接上级审批', 'latest_record_department_head', { formFields: LEAVE_FORM }),
+        node('direct_head', '直接上级', 'direct_manager', { formFields: LEAVE_FORM }),
         node('hr_interview', 'HR访谈', 'record_department_hrbp', { formFields: LEAVE_FORM }),
       ],
     }),

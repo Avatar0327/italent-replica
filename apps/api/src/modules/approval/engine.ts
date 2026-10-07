@@ -146,6 +146,7 @@ function routingSubject(run: Run): RoutingSubject {
     tenantId: run.ctx.tenantId,
     asOf: tenantLocalDate(run.ctx.now, run.ctx.timezone),
     initiatorUserId: run.instance.initiatorUserId,
+    subjectEmployeeId: run.snapshot.subjectEmployeeId,
     latestDepartmentId: run.snapshot.latestDepartmentId,
     recordDepartmentId: run.snapshot.recordDepartmentId,
     cache: new Map(),
