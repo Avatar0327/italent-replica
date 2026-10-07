@@ -1752,7 +1752,7 @@
 "重叠调入超编提示",
 "等北森取证定口径（第 4 轮暂缓）",
 "第 4 轮",
-"开发：Codex；审查：Claude Opus 5.5"
+"第 4 轮起开发：Claude Fable 5.1；审查：Codex Astra Ultra"
 ],
 [
 97,
@@ -1760,7 +1760,7 @@
 "审批中心前端",
 "开发（修改）",
 "第 3 轮",
-"开发：Codex Sol Ultra；下轮审查：Codex Astra Ultra"
+"开发：Codex Sol Ultra（本轮后交 Claude Fable 5.1）；审查：Codex Astra Ultra"
 ],
 [
 99,
@@ -1768,7 +1768,7 @@
 "本人跨部门调动清空职位",
 "开发（修改，先补失败测试）",
 "第 3 轮",
-"开发：Codex Sol；下轮审查：Codex Astra"
+"开发：Codex Sol（本轮后交 Claude Opus 5.5 High）；审查：Codex Astra Ultra"
 ],
 [
 100,
