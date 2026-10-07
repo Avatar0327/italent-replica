@@ -42,15 +42,10 @@ describe('P2-1 无空格减法是减号；原站带连字符的字段名仍可�
     );
   });
 
-  it('汉字字段名之间无空格相减解析不出时，失败信息提示加空格', () => {
-    const result = evaluateFormula(
-      '盘点对象.得分-盘点对象.基准',
-      contextFor({ '盘点对象.得分': 5, '盘点对象.基准': 2 }),
-    );
-    expect(valueOf(result)).toMatchObject({ code: 'UNKNOWN_FIELD', message: expect.stringContaining('空格') });
-    expect(
-      valueOf(evaluateFormula('盘点对象.得分 - 盘点对象.基准', contextFor({ '盘点对象.得分': 5, '盘点对象.基准': 2 }))),
-    ).toEqual(num(3));
+  it('汉字完整字段之间无空格相减也是减法（第三轮 P2-1，期望 3）', () => {
+    const fields = { '盘点对象.得分': 5, '盘点对象.基准': 2 };
+    expect(valueOf(evaluateFormula('盘点对象.得分-盘点对象.基准', contextFor(fields)))).toEqual(num(3));
+    expect(valueOf(evaluateFormula('盘点对象.得分 - 盘点对象.基准', contextFor(fields)))).toEqual(num(3));
   });
 });
 
