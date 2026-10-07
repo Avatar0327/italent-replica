@@ -255,6 +255,7 @@ export async function updateEmploymentBusiness(
     selected?.cycle.id,
     before.changeType ?? undefined,
   );
+  // 申请修改是人工意图：事件绑定新载荷版本，迟到重建据此把它当作新的初始输入（R6-P2-01）。
   await auditEmployment(
     tx,
     ctx,
@@ -263,6 +264,7 @@ export async function updateEmploymentBusiness(
     id,
     payloadAudit(before),
     payloadAudit(business.payload),
+    business.payload.id,
   );
   return requireSavedBusiness(tx, ctx, id);
 }

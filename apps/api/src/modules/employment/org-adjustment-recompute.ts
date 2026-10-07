@@ -15,7 +15,7 @@ import {
   type ForwardValues,
 } from './forward-rules.js';
 import { availableForwardChanges } from './forward-references.js';
-import type { AdjustmentHistory } from './org-adjustment-history.js';
+import { effectiveInput, type AdjustmentHistory } from './org-adjustment-history.js';
 import { PRESET_FIELD_NAMES, type EmploymentContext, type EmploymentRecord, type PresetField } from './types.js';
 
 export interface RecalculatedSource {
@@ -32,7 +32,7 @@ export async function calculateOrgAdjustment(
   previous: ForwardValues,
   resolveSource: SourceResolver,
 ): Promise<ForwardValues> {
-  const initial = history[0]!.payload;
+  const { initial, commands } = effectiveInput(history);
   const origins = await initialDerivations(tx, ctx, initial);
   const explicit = new Set(initial.explicitFieldCodes);
   const fields = Object.fromEntries(
@@ -56,7 +56,7 @@ export async function calculateOrgAdjustment(
     .filter((field) => field.inherit)
     .map((field) => field.id);
   const availability = new Map<string, boolean>();
-  for (const { command } of history.slice(1)) {
+  for (const { command } of commands) {
     if (command.type === 'manual') {
       values = {
         fields: { ...values.fields, ...command.patch.fields },
@@ -139,7 +139,7 @@ async function calculateReferences(
   const referenceFields = new Set(['departmentId', 'positionId', 'postId']);
   const availability = new Map<string, boolean>();
   // 序列/经理规则都不赋值引用字段，先求命令 prefix 的最终引用，避免中间匹配的自动同步变成永久输入。
-  for (const { command } of history.slice(1)) {
+  for (const { command } of effectiveInput(history).commands) {
     if (command.type === 'manual') values = { ...values, fields: { ...values.fields, ...command.patch.fields } };
     if (command.type !== 'forward') continue;
     const source = await resolveSource(command.sourceId, command.sourceVersionNo);

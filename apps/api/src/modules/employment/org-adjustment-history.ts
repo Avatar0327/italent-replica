@@ -32,6 +32,12 @@ export interface AdjustmentHistory {
   readonly payload: EmploymentPayloadRow;
   readonly command: AdjustmentCommand;
 }
+
+/** 最后一版完整业务输入及其后的命令：申请修改前的版本已被整版替换，不再是重建输入。 */
+export function effectiveInput(history: readonly AdjustmentHistory[]) {
+  const index = history.findLastIndex((item) => item.command.type === 'initial');
+  return { initial: history[Math.max(index, 0)]!.payload, commands: history.slice(Math.max(index, 0) + 1) };
+}
 interface CommandEvent {
   readonly eventType: string;
   readonly payload: {
@@ -52,8 +58,8 @@ export async function orgAdjustmentHistory(tx: Tx, ctx: EmploymentContext, recor
     await tx.execute(sql`
     SELECT p.*,(SELECT jsonb_build_object('eventType',o.event_type,'payload',o.payload)
         FROM employment_outbox o WHERE o.tenant_id=p.tenant_id AND o.business_id=p.business_id
-          AND o.event_type IN ('employment.record.edit','employment.sequence-sync',
-            'employment.forward-update','employment.org-adjustment.rebased')
+          AND o.event_type IN ('employment.record.edit','employment.sequence-sync','employment.forward-update',
+            'employment.org-adjustment.rebased','employment.business.payload.append')
           AND (o.payload_version_id=p.id OR (o.payload_version_id IS NULL
             AND o.event_type='employment.record.edit' AND o.command_id=p.command_id))
         ORDER BY CASE WHEN o.payload_version_id=p.id THEN 0 ELSE 1 END,o.id LIMIT 1) AS command_event,
@@ -83,6 +89,9 @@ function classifyCommand(
   sourceVersionNo: number | null,
 ): AdjustmentCommand {
   if (payload.versionNo === 1) return { type: 'initial' };
+  // 申请修改（草稿修改、驳回后重提、审批节点编辑、编辑并同意）整版替换业务输入；存量未绑定事件的落地前版本同样如此。
+  if (event?.eventType === 'employment.business.payload.append') return { type: 'initial' };
+  if (!event && !payload.isRecordSnapshot && !payload.triggerBusinessId) return { type: 'initial' };
   if (!event || event.eventType === 'employment.org-adjustment.rebased') return { type: 'output' };
   const { after = {}, meta = {} } = event.payload;
   if (event.eventType === 'employment.record.edit')
