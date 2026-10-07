@@ -44,28 +44,32 @@ export async function calculateOrgAdjustment(
   const custom = Object.fromEntries(
     Object.entries(initial.customFields).filter(([id]) => explicit.has(`custom:${id}`)),
   );
-  let values: ForwardValues = {
-    fields: { ...previous.fields, ...fields },
-    customFields: { ...previous.customFields, ...custom },
-  };
+  // 本业务派生值以创建当时算出的结果为准；只有引用改变才按同一规则重算（R6-P2-02，DEC-208 清空序列不回写）。
   const rules = new Map<PresetField, FieldDerivation>();
   for (const origin of origins) rules.set(derivationFields(origin).field, origin);
+  let values: ForwardValues = {
+    fields: { ...previous.fields, ...derivedValues(initial.fields, rules), ...fields },
+    customFields: { ...previous.customFields, ...custom },
+  };
   const finalReferences = await calculateReferences(tx, ctx, record, values, history, resolveSource);
-  values = await refreshDerivations(tx, ctx, record, values, previous, rules, true);
+  values = await refreshDerivations(tx, ctx, record, values, previous, rules);
   const customIds = (await getCustomFieldsForInheritance(tx, ctx.tenantId))
     .filter((field) => field.inherit)
     .map((field) => field.id);
   const availability = new Map<string, boolean>();
-  for (const { command } of commands) {
+  for (const { command, payload } of commands) {
     if (command.type === 'manual') {
       values = {
         fields: { ...values.fields, ...command.patch.fields },
         customFields: { ...values.customFields, ...command.patch.customFields },
       };
       for (const field of Object.keys(command.patch.fields ?? {})) rules.delete(field as PresetField);
-      for (const origin of command.derivations) rules.set(derivationFields(origin).field, origin);
       // 更正的派生规则与创建相同；显式同值也会覆盖字段来源，而非仅保留有差异的字段。
-      values = await refreshDerivations(tx, ctx, record, values, values, rules, true);
+      const added = new Map<PresetField, FieldDerivation>();
+      for (const origin of command.derivations) added.set(derivationFields(origin).field, origin);
+      for (const [field, origin] of added) rules.set(field, origin);
+      values = { ...values, fields: { ...values.fields, ...derivedValues(payload.fields, added) } };
+      values = await refreshDerivations(tx, ctx, record, values, values, rules);
     } else if (command.type === 'sequence-sync') {
       const reference = command.sourceKind === 'posts' ? 'postId' : 'positionId';
       if (values.fields[reference] === command.sourceId && finalReferences.fields[reference] === command.sourceId) {
@@ -86,10 +90,18 @@ export async function calculateOrgAdjustment(
       );
       values = applyForwardChanges(values, changes);
       for (const { field } of changes) rules.delete(field as PresetField);
-      values = await refreshDerivations(tx, ctx, record, values, previous, rules, false);
+      values = await refreshDerivations(tx, ctx, record, values, previous, rules);
     }
   }
   return values;
+}
+
+/** 派生命令当时写入的字段值（载荷里保存的结果），作为引用未变时的派生结果。 */
+function derivedValues(
+  fields: ForwardValues['fields'],
+  rules: ReadonlyMap<PresetField, FieldDerivation>,
+): Partial<ForwardValues['fields']> {
+  return Object.fromEntries([...rules.keys()].map((field) => [field, fields[field]]));
 }
 
 async function initialDerivations(tx: Tx, ctx: EmploymentContext, initial: AdjustmentHistory['payload']) {
@@ -104,6 +116,7 @@ async function initialDerivations(tx: Tx, ctx: EmploymentContext, initial: Adjus
   return origins;
 }
 
+/** 只有规则引用的字段（职务 / 职位 / 部门）实际改变时才重新派生；引用未变时保留当时的派生结果。 */
 async function refreshDerivations(
   tx: Tx,
   ctx: EmploymentContext,
@@ -111,11 +124,10 @@ async function refreshDerivations(
   values: ForwardValues,
   fallback: ForwardValues,
   rules: Map<PresetField, FieldDerivation>,
-  all: boolean,
 ) {
   for (const [field, origin] of rules) {
     const referenceId = values.fields[derivationFields(origin).reference];
-    if (!all && referenceId === origin.referenceId) continue;
+    if (referenceId === origin.referenceId) continue;
     const next = { ...origin, referenceId };
     const derived = await resolveDerivation(tx, ctx.tenantId, record.employeeId, record.effectiveDate, next);
     values = applyForwardChanges(values, [
