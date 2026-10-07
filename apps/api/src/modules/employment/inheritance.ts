@@ -1,9 +1,11 @@
 import { applyInitiatorFieldModes } from '../transfer/initiator-fields.js';
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
+import { authorizeInTransaction } from '../permission/module-access.js';
 import { loadJobObject } from '../job/read-model.js';
 import { resolveTransferForm } from '../transfer/configuration.js';
 import { managerForTransferDepartment } from '../transfer/preview-defaults.js';
+import { EMPLOYEE_READONLY_FIELDS } from '../transfer/employee-policy.js';
 import { getCustomFieldsForInheritance, type CustomFieldDefinition } from './configuration.js';
 import {
   businessDate,
@@ -198,6 +200,34 @@ function applyCustomInheritance(
   }
 }
 
+async function selfServiceForm(
+  tx: Tx,
+  ctx: EmploymentContext,
+  input: InheritanceInput,
+  configured: Awaited<ReturnType<typeof resolveTransferForm>> | ReturnType<typeof resolveForm>,
+) {
+  // DEC-205：同一 HR 表单按本人身份编辑权裁剪。不可编辑字段按只读继承，不能因 HR 场景留空而丢失原值。
+  if (ctx.selfServiceEmployeeId === input.employeeId && ctx.authorize && 'fieldModes' in configured) {
+    const authorize = authorizeInTransaction(ctx.authorize, tx);
+    const fieldModes = { ...configured.fieldModes };
+    for (const [code, mode] of Object.entries(fieldModes)) {
+      if (mode !== 'editable') continue;
+      if (
+        EMPLOYEE_READONLY_FIELDS.has(code.replace(/^preset:/, '')) ||
+        !(await authorize({
+          ...ctx,
+          action: 'object.create',
+          resource: 'TenantBase.EmploymentRecord',
+          fields: [code.replace(/^preset:/, '')],
+        }))
+      )
+        fieldModes[code] = 'readonly';
+    }
+    configured = { ...configured, fieldModes };
+  }
+  return configured;
+}
+
 export async function prepareInheritance(
   tx: Tx,
   ctx: EmploymentContext,
@@ -205,10 +235,11 @@ export async function prepareInheritance(
   frozenForm?: TrustedFormSnapshot,
 ): Promise<PreparedInheritance> {
   businessDate(input.effectiveDate);
-  const configured =
+  let configured =
     input.kind === 'transfer'
       ? await applyInitiatorFieldModes(tx, ctx, await resolveTransferForm(tx, ctx.tenantId, input.formId))
       : resolveForm(input.formId);
+  configured = await selfServiceForm(tx, ctx, input, configured);
   const form = frozenForm
     ? {
         grouped: frozenForm.group !== null,

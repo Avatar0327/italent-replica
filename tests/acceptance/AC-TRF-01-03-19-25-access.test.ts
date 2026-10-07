@@ -340,7 +340,7 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
     expect(await world.currentRevision(emptySelf)).toBe(emptySelf.revision);
   });
 
-  it('AC-TRF-01/23：本人端点只返回绑定人员；入口与 Personal 表单强绑定，禁止直接调动', async () => {
+  it('AC-TRF-01/23：本人端点只返回绑定人员；兼容 Personal 表单并按 DEC-205 复用 HR 表单，禁止直接调动', async () => {
     const actor = await world.actor('transfer-personal-page', { role: 'Transfer.Self' });
     const self = await world.person(world.inside.id, actor);
     const response = await world.api.request('GET', `${BASE}/self`, actor);
@@ -351,10 +351,8 @@ describe('AC-TRF-01/02/03/19/20/24/25 调动入口真实权限', () => {
     expect(catalog.status).toBe(200);
     for (const type of ((await catalog.json()) as { types: { formId: string }[] }).types)
       expect(type.formId).toMatch(/^TenantBase.Personal/);
+    expect((await world.transfer(actor, self, { initiator: 'employee', formId: STANDARD }, true)).status).toBe(200);
     for (const preview of [true, false]) {
-      expect((await world.transfer(actor, self, { initiator: 'employee', formId: STANDARD }, preview)).status).toBe(
-        400,
-      );
       expect((await world.transfer(actor, self, { initiator: 'employee', mode: 'direct' }, preview)).status).toBe(400);
     }
     const hr = await world.actor('transfer-personal-hr');

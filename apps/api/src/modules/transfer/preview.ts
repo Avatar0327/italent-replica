@@ -9,11 +9,16 @@ import { authorizeInTransaction } from '../permission/module-access.js';
 import { resolveTransferForm } from './configuration.js';
 import { transferDirectActions, requireTransferSource } from './access.js';
 import { transferTargetContext, type TransferInput } from './service.js';
+import { requireEmployeeTransferFields } from './employee-policy.js';
 
 export async function previewTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
   ctx = { ...ctx, managerTransfer: input.initiator === 'manager' };
   const accessContext = { ...ctx, authorize: ctx.authorize ? authorizeInTransaction(ctx.authorize, tx) : undefined };
   await requireTransferSource(tx, ctx, employeeId, input.initiator);
+  if (input.initiator === 'employee') {
+    ctx = { ...ctx, selfServiceEmployeeId: employeeId };
+    await requireEmployeeTransferFields(tx, ctx, input.employment.effectiveDate, input.employment.fields, employeeId);
+  }
   const employee = await readEmploymentEmployee(tx, ctx, employeeId);
   const prepared = await prepareInheritance(tx, ctx, { ...input.employment, employeeId });
   const context = await transferTargetContext(tx, ctx, employeeId, input, prepared.fields.departmentId);
@@ -38,7 +43,11 @@ export async function previewTransfer(tx: Tx, ctx: EmploymentContext, employeeId
     requiredDepartmentMissing: !effective.fields.departmentId,
     value: {
       employeeId,
-      form: { ...form, customFields: await getCustomFieldsForInheritance(tx, ctx.tenantId) },
+      form: {
+        ...form,
+        fieldModes: prepared.formSnapshot.fieldModes,
+        customFields: await getCustomFieldsForInheritance(tx, ctx.tenantId),
+      },
       ...inheritancePreview(prepared),
       before: before
         ? { fields: visible('preset', before.fields), customFields: visible('custom', before.customFields) }
