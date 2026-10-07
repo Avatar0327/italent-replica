@@ -224,6 +224,7 @@ export async function updateCapacity(
   ctx: EstablishmentContext,
   id: string,
   patch: Partial<CapacityInput> & { effectiveDate: string; adjustmentThrough?: string },
+  options: { deferConstraints?: boolean } = {},
 ): Promise<CapacityRecord> {
   await lockEstablishment(tx, ctx);
   const date = businessDate(patch.effectiveDate);
@@ -290,7 +291,7 @@ export async function updateCapacity(
     .where(and(eq(establishmentObjects.tenantId, ctx.tenantId), eq(establishmentObjects.id, id)));
   const saved = await append(tx, ctx, id, previous.revision + 1, normalizedInput, previous);
   if (patch.syncParents) await syncAncestors(tx, ctx, previous, saved);
-  await validateCapacity(tx, ctx, saved);
+  if (!options.deferConstraints) await validateCapacity(tx, ctx, saved);
   await audit(tx, ctx, 'establishment.capacity.update', 'establishment-capacity', id, previous, saved);
   if (patch.adjustmentThrough) await propagate(tx, ctx, previous, saved, scheme, patch);
 

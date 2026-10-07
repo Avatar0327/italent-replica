@@ -1,3 +1,4 @@
+import { carriedAllocations } from './carried-transfer.js';
 import { randomUUID } from 'node:crypto';
 import {
   and,
@@ -310,10 +311,9 @@ export async function applyTransferStage(
   const transfer = await port.readTransfer(tx, { tenantId: ctx.tenantId, businessId: input.businessId });
   if (transfer.businessId !== input.businessId) throw new AppError('CONFLICT', '可信业务单标识不一致');
   businessDate(transfer.effectiveDate);
-  if (transfer.withEstablishment) {
-    // TODO(需取证 Q-M0-18): 18§6 未定义带编转移数量/细分分配，不能猜测容量增减。
-    throw new AppError('SERVICE_UNAVAILABLE', '带编调动分配规则尚待取证');
-  }
+  // DEC-181：带编增减在真实任职保存事务内完成；旧人员桥只推进占编阶段，不能重复调编。
+  if (transfer.withEstablishment && !(await carriedAllocations(tx, ctx.tenantId, transfer.businessId)).length)
+    throw new AppError('CONFLICT', '带编调动须先通过任职调动入口保存', { reason: 'TRANSFER_SAVE_REQUIRED' });
   if (input.stage === 'effective') return applyEffective(tx, ctx, transfer, previous, port);
   await assertOrg(tx, ctx.tenantId, transfer.sourceOrgId, transfer.effectiveDate);
   await assertOrg(tx, ctx.tenantId, transfer.targetOrgId, transfer.effectiveDate);

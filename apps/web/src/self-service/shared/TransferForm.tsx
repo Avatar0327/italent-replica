@@ -36,6 +36,7 @@ export function TransferForm(props: TransferFormProps) {
         <SelectionFields {...props} />
       </fieldset>
       {props.model.preview ? <EmploymentFields {...props} /> : <p>{text.readyHint}</p>}
+      <CarriedEstablishment {...props} />
       <LinkageFields {...props} />
       <TransferActions {...props} />
     </form>
@@ -386,5 +387,28 @@ function ReferenceSelect(props: PairProps & { value: FieldValue; choices: readon
           </option>
         ))}
     </select>
+  );
+}
+
+/** DEC-205：员工端默认隐藏带编；其余入口按字段权限展示，编制写权在保存事务独立判断。 */
+function CarriedEstablishment({ model, busy, onWithEstablishment }: TransferFormProps) {
+  if (
+    model.initiator === 'employee' ||
+    !model.preview ||
+    (model.catalog.viewableFields && !model.catalog.viewableFields.includes('withEstablishment'))
+  )
+    return null;
+  const editable = !model.catalog.editableFields || model.catalog.editableFields.includes('withEstablishment');
+  return (
+    <label>
+      <input
+        type="checkbox"
+        name="withEstablishment"
+        disabled={busy || !editable}
+        checked={model.withEstablishment === true}
+        onChange={(event) => onWithEstablishment?.(event.target.checked)}
+      />
+      {text.withEstablishment}
+    </label>
   );
 }

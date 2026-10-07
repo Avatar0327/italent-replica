@@ -38,7 +38,7 @@ export async function objectContext(
 }
 
 export async function writeFields(
-  deps: TenantRouteDeps,
+  deps: Pick<TenantRouteDeps, 'authorize'>,
   ctx: ScopeBusinessContext,
   objectCode: string,
   operation: 'create' | 'update',
