@@ -60,6 +60,9 @@ async function actor(label: string, positionEditable = false) {
   );
   return person;
 }
+async function profile(person: Person) {
+  return w.json(await api.request('GET', '/api/tenant/self-service/profile', w.as(person.userId)));
+}
 async function revision(person: Person) {
   const profile = await w.json<{ employee: { revision: number } }>(
     await api.request('GET', '/api/tenant/self-service/profile', w.as(person.userId)),
@@ -150,6 +153,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     );
     expect(preview.form.fieldModes['preset:positionId']).not.toBe('editable');
     expect(preview.fields).not.toHaveProperty('positionId');
+    expect(preview.fields).toMatchObject({ departmentId: target });
     const options = { ...w.as(person.userId), ifMatch: await revision(person), idempotencyKey: randomUUID(), body };
     const created = await w.json<Business>(await api.request('POST', path, options), 201);
     expect(await payload(created.id)).toMatchObject({
@@ -176,6 +180,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
         })
       ).status,
     ).toBe(400);
+    expect(await payload(created.id)).toEqual(effective);
     await w.json(
       await w.request(w.hr.id, 'PATCH', `${BASE}/records/${created.id}`, {
         ifMatch: effective.revision,
@@ -217,6 +222,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     const fields = {
       positionId: value === null ? null : (value === 'original' ? originalPosition : targetPosition).toUpperCase(),
     };
+    const beforeCreate = await profile(person);
     for (const preview of [false, true]) {
       expect(
         (
@@ -237,7 +243,9 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
         ).status,
       ).toBe(403);
     }
+    expect(await profile(person)).toEqual(beforeCreate);
     const saved = await draft(person);
+    const beforePatch = await payload(saved.id);
     expect(
       (
         await api.request('PATCH', `${BASE}/businesses/${saved.id}`, {
@@ -247,7 +255,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
         })
       ).status,
     ).toBe(403);
-    expect(await payload(saved.id)).toMatchObject({ revision: saved.revision });
+    expect(await payload(saved.id)).toEqual(beforePatch);
   });
 
   it('AC-TRF-53 HR 审批中补目标部门职位，错误部门拒绝，正确值通过后保留', async () => {
@@ -266,7 +274,9 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
       w.taskAction(task.assigneeUserId!, task.id, 'edit', view.revision, {
         fields: { positionId: positionId.toUpperCase() },
       });
+    const beforeEdit = await payload(created.id);
     expect((await edit(originalPosition)).status).toBe(400);
+    expect(await payload(created.id)).toEqual(beforeEdit);
     view = await w.json<InstanceView>(await edit(targetPosition));
     expect(await payload(created.id)).toMatchObject({ fields: { positionId: targetPosition } });
     await w.json(await w.taskAction(task.assigneeUserId!, task.id, 'approve', view.revision));
@@ -288,6 +298,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
   it('AC-TRF-54 他人越界与解除本人绑定后重放均拒绝，不泄漏原职位', async () => {
     const person = await actor('合成撤权重放');
     const other = await actor('合成范围外员工');
+    const beforeOther = await profile(other);
     expect(
       (
         await api.request('POST', `${BASE}/transfers/employees/${other.employeeId}/preview`, {
@@ -296,6 +307,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
         })
       ).status,
     ).toBe(403);
+    expect(await profile(other)).toEqual(beforeOther);
     const options = {
       ...w.as(person.userId),
       ifMatch: await revision(person),
@@ -303,6 +315,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
       body: { effectiveDate: date, fields: { departmentId: target.toUpperCase() } },
     };
     const saved = await w.json<Business>(await api.request('POST', SELF, options), 201);
+    const beforeReplay = await payload(saved.id);
     await withTenant(database().db, w.tenant.id, (tx) =>
       tx.execute(sql`
       DELETE FROM permission_user_person_links WHERE tenant_id=${w.tenant.id} AND user_id=${person.userId}::uuid
@@ -311,6 +324,7 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     const denied = await api.request('POST', SELF, options);
     expect(denied.status).toBe(403);
     expect(await denied.text()).not.toContain(originalPosition);
+    expect(await payload(saved.id)).toEqual(beforeReplay);
     expect(await payload(saved.id)).toMatchObject({ fields: { positionId: null } });
   });
 });

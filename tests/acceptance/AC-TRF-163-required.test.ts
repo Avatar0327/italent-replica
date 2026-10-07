@@ -175,10 +175,15 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
         formId,
         transferTypeCode: 'cross_department',
         effectiveDate: '2026-10-01',
-        fields: w.fields,
+        // DEC-232：员工复用同一表单，但本人入口不能显式设置职位。
+        fields: {
+          departmentId: w.target,
+          directManagerId: w.manager.employeeId,
+          dottedManagerId: w.manager.employeeId,
+        },
       },
     });
-    expect(response.status).toBe(201);
+    expect(response.status, await response.clone().text()).toBe(201);
     const reversed = await w.create({ formId: 'TenantBase.PersonalCrossDepartmentTransferMultiFormView' });
     expect(reversed.status).toBe(400);
   });
