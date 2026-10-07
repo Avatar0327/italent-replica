@@ -17,6 +17,7 @@ let api: ReturnType<typeof tenantApi>;
 let admin: Awaited<ReturnType<typeof permissionAdmin>>;
 let source: string;
 let target: string;
+let third: string;
 let postId: string;
 let originalPosition: string;
 let targetPosition: string;
@@ -55,7 +56,10 @@ async function actor(label: string, positionEditable = false) {
     await admin.api.request('PUT', `/api/tenant/permission/scopes/${person.userId}/TenantBase`, {
       ...admin.asAdmin,
       ifMatch: 0,
-      body: { kind: 'org_range', orgRanges: [source, target].map((orgId) => ({ orgId, includeDescendants: false })) },
+      body: {
+        kind: 'org_range',
+        orgRanges: [source, target, third].map((orgId) => ({ orgId, includeDescendants: false })),
+      },
     }),
   );
   return person;
@@ -105,6 +109,7 @@ beforeAll(async () => {
   admin = await permissionAdmin(w);
   source = await w.org('合成职位原部门');
   target = await w.org('合成职位新部门');
+  third = await w.org('合成第三部门');
   postId = (
     await w.json<{ id: string }>(
       await w.request(w.hr.id, 'POST', '/api/tenant/job/posts', {
@@ -291,6 +296,89 @@ describe('AC-TRF-51 / 52 / 53 / 54 DEC-232 本人调动职位置空', () => {
     expect(await payload(created.id)).toMatchObject({
       status: 'effective',
       record: { fields: { positionId: targetPosition } },
+    });
+    w.setNow('2026-10-01T01:00:00Z');
+  });
+
+  it.each([
+    { action: 'reject' as const, change: 'date' },
+    { action: 'withdraw' as const, change: 'date' },
+    { action: 'reject' as const, change: 'department' },
+    { action: 'withdraw' as const, change: 'department' },
+  ])('AC-TRF-53 HR 补职位后 $action，员工修改 $change 保留或清空可信职位', async ({ action, change }) => {
+    const person = await actor(`合成HR补后修改-${action}-${change}`, true);
+    const created = await w.json<Business>(
+      await api.request('POST', SELF, {
+        ...w.as(person.userId),
+        ifMatch: await revision(person),
+        body: { effectiveDate: date, fields: { departmentId: target } },
+      }),
+      201,
+    );
+    let view = await w.instanceOf(created.id, person.userId);
+    const task = w.pending(view)[0]!;
+    view = await w.json<InstanceView>(
+      await w.taskAction(task.assigneeUserId!, task.id, 'edit', view.revision, {
+        fields: { positionId: targetPosition.toUpperCase() },
+      }),
+    );
+    if (action === 'reject') await w.json(await w.taskAction(task.assigneeUserId!, task.id, 'reject', view.revision));
+    else await w.json(await w.instanceAction(person.userId, view.id, 'withdraw', view.revision));
+    let saved = await payload(created.id);
+    expect(saved).toMatchObject({
+      status: action === 'reject' ? 'rejected' : 'draft',
+      fields: { departmentId: target, positionId: targetPosition },
+    });
+    for (const positionId of [null, targetPosition.toUpperCase(), originalPosition]) {
+      const beforeBusiness = await payload(created.id);
+      const beforeProfile = await profile(person);
+      const denied = await api.request('PATCH', `${BASE}/businesses/${created.id}`, {
+        ...w.as(person.userId),
+        ifMatch: saved.revision,
+        body: { fields: { positionId } },
+      });
+      expect(denied.status).toBe(403);
+      expect(await payload(created.id)).toEqual(beforeBusiness);
+      expect(await profile(person)).toEqual(beforeProfile);
+    }
+    const patch = async (body: object) => {
+      const options = { ...w.as(person.userId), ifMatch: saved.revision, idempotencyKey: randomUUID(), body };
+      const path = `${BASE}/businesses/${created.id.toUpperCase()}`;
+      saved = await w.json<Business>(await api.request('PATCH', path, options), 200);
+      expect(await w.json(await api.request('PATCH', path, options), 200)).toEqual(saved);
+    };
+    if (change === 'date') {
+      await patch({ effectiveDate: '2026-10-20' });
+      expect(await payload(created.id)).toMatchObject({ fields: { departmentId: target, positionId: targetPosition } });
+      await patch({ fields: { remarks: '合成驳回或撤回后修改' } });
+      expect(await payload(created.id)).toMatchObject({
+        fields: { positionId: targetPosition, remarks: '合成驳回或撤回后修改' },
+      });
+      await patch({ fields: { departmentId: target.toUpperCase() } });
+      expect(await payload(created.id)).toMatchObject({ fields: { positionId: targetPosition } });
+    }
+    await patch({ fields: { departmentId: third.toUpperCase() } });
+    expect(await payload(created.id)).toMatchObject({ fields: { departmentId: third, positionId: null } });
+    // 自动清空后继续改期、重提、审批及到期落地，不能被上一版的 HR 标记还原。
+    await patch({ effectiveDate: '2026-10-21' });
+    const options = { ...w.as(person.userId), ifMatch: saved.revision, idempotencyKey: randomUUID(), body: {} };
+    const submitted = await w.json<Business>(
+      await api.request('POST', `${BASE}/businesses/${created.id}/submit`, options),
+    );
+    expect(await w.json(await api.request('POST', `${BASE}/businesses/${created.id}/submit`, options))).toEqual(
+      submitted,
+    );
+    await approve(person, created.id);
+    w.setNow('2026-10-21T01:00:00Z');
+    await runEmploymentActivations(
+      database().db,
+      { commandId: randomUUID(), actorUserId: w.hr.id },
+      { tenantId: w.tenant.id },
+      { clock: w.clock },
+    );
+    expect(await payload(created.id)).toMatchObject({
+      status: 'effective',
+      record: { fields: { departmentId: third, positionId: null } },
     });
     w.setNow('2026-10-01T01:00:00Z');
   });
