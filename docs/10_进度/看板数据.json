@@ -782,7 +782,10 @@
 ],
 "note": "DEC-260；B 档 Opus 5.5 High → Sol Ultra；F-032 合并后开工；R3-T04 前完成",
 "dev": "Claude Opus 5.5 High",
-"rev": "Sol Ultra"
+"rev": "Sol Ultra",
+"pr": [
+108
+]
 }
 },
 "prs": {
@@ -1865,7 +1868,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 11:24",
+"liveUpdated": "10-07 11:25",
 "chains": [
 {
 "g": "exit",
@@ -2020,7 +2023,8 @@
 "k": "run",
 "n": "函数库补齐 63 个",
 "seg": "ev:d ds:n dev:a1 rev:w mg:w",
-"now": "开发中（并入 DEC-270：Round / Abs 遇空失败）"
+"now": "开发中（Draft）",
+"pr": 108
 },
 {
 "id": "R3-T05",
