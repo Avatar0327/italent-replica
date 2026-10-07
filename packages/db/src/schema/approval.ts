@@ -210,7 +210,7 @@ export const approvalProcessNodes = pgTable(
     }),
     check(
       'approval_nodes_approver',
-      sql`${t.approverExpression} IN ('owner','latest_record_department_head','record_department_head',
+      sql`${t.approverExpression} IN ('owner','direct_manager','latest_record_department_head','record_department_head',
         'record_department_hrbp','record_first_level_org_head')`,
     ),
     // DEC-054：中间节点审批人为空一律转异常管理员（PR #35 第二轮清单 6）。
@@ -227,9 +227,9 @@ export const approvalProcessNodes = pgTable(
     check(
       'approval_nodes_approvers',
       sql`CASE WHEN ${t.nodeType} = 'countersign'
-        THEN ${t.approverExpression} IS NULL AND cardinality(${t.approverExpressions}) BETWEEN 1 AND 5
-          AND ${t.approverExpressions} <@ ARRAY['owner','latest_record_department_head','record_department_head',
-            'record_department_hrbp','record_first_level_org_head']::text[]
+        THEN ${t.approverExpression} IS NULL AND cardinality(${t.approverExpressions}) BETWEEN 1 AND 6
+          AND ${t.approverExpressions} <@ ARRAY['owner','direct_manager','latest_record_department_head',
+            'record_department_head','record_department_hrbp','record_first_level_org_head']::text[]
         ELSE ${t.approverExpression} IS NOT NULL AND cardinality(${t.approverExpressions}) = 0 END`,
     ),
     check(
