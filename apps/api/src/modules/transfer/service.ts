@@ -23,6 +23,7 @@ import {
   type TransferInitiator,
 } from './access.js';
 import { readTransferCatalog, readTransferSettings, resolveTransferForm } from './configuration.js';
+import { requireEmployeeTransferFields } from './employee-policy.js';
 import { dutySubordinateIds, normalizeLinkage, type LinkageOptions } from './linkage/input.js';
 import { saveNewTransferLinkage } from './linkage/service.js';
 import type { LinkageAccess } from './linkage/access.js';
@@ -87,14 +88,21 @@ export async function normalizeTransferInput(tx: Tx, ctx: EmploymentContext, raw
     fields: input.fields,
     customFields: input.customFields,
   });
-  // 08 §10 / AC-TRF-23：人事申请入口只能使用 Personal 表单，不能借用 HR 按钮。
+  // DEC-205：本人入口复用 HR 表单；旧 Personal 标识保持兼容，但不能用于他人入口或直接调动。
   if (
-    employment.formId.startsWith('TenantBase.Personal') !== (input.initiator === 'employee') ||
+    (employment.formId.startsWith('TenantBase.Personal') && input.initiator !== 'employee') ||
     (input.initiator !== 'hr' && input.mode !== 'application')
   )
     throw new AppError('VALIDATION_FAILED', '表单与调动入口不匹配', { reason: 'TRANSFER_FORM_ENTRY_MISMATCH' });
   await resolveTransferForm(tx, ctx.tenantId, employment.formId);
-  // 联动选项不是任职对象字段，不进字段权限校验；合同部分按合同模块权限另行校验（linkage/routes.ts）。
+  if (input.initiator === 'employee')
+    await requireEmployeeTransferFields(
+      tx,
+      ctx,
+      employment.effectiveDate,
+      employment.fields,
+      ctx.selfServiceEmployeeId,
+    );
   const writable = Object.fromEntries(Object.entries(input).filter(([key]) => !['submit', 'linkage'].includes(key)));
   return {
     writable,
@@ -129,8 +137,9 @@ export async function transferTargetContext(
 }
 
 export async function createTransfer(tx: Tx, ctx: EmploymentContext, employeeId: string, input: TransferInput) {
+  if (input.initiator === 'employee') ctx = { ...ctx, selfServiceEmployeeId: employeeId };
   ctx = { ...ctx, managerTransfer: input.initiator === 'manager' };
-  // F-008：先取员工锁，再重验关系/范围；业务写入沿用员工 → 业务 → 审批实例的顺序。
+  // org/locks.ts：参与员工闭包 → 业务 → 组织 → 编制 → 审批实例；先取员工锁再重验关系/范围。
   const { linkage, linkageAccess } = input;
   await lockTransferParticipants(tx, ctx, employeeId, [
     ...(input.employment.fields.addedSubordinateIds ?? []),

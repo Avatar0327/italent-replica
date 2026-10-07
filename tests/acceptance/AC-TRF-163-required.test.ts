@@ -165,11 +165,20 @@ describe('DEC-163 / AC-TRF：仅新部门必填，其它场景不带出字段可
     );
   });
 
-  it('AC-TRF-01/23 员工入口拒绝 HR 表单，HR 入口拒绝 Personal 表单', async () => {
+  it('AC-TRF-01/23 DEC-205 员工复用 HR 表单，HR 入口仍拒绝 Personal 表单', async () => {
     const w = await fixture(database().db, 'trf-personal-binding');
-    const response = await w.create({ initiator: 'employee', mode: 'application' });
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ error: { details: { reason: 'TRANSFER_FORM_ENTRY_MISMATCH' } } });
+    const response = await w.request(w.person.userId, 'POST', `${base}/transfers/employees/${w.person.employeeId}`, {
+      ifMatch: await w.currentRevision(),
+      body: {
+        initiator: 'employee',
+        mode: 'application',
+        formId,
+        transferTypeCode: 'cross_department',
+        effectiveDate: '2026-10-01',
+        fields: w.fields,
+      },
+    });
+    expect(response.status).toBe(201);
     const reversed = await w.create({ formId: 'TenantBase.PersonalCrossDepartmentTransferMultiFormView' });
     expect(reversed.status).toBe(400);
   });
