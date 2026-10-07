@@ -1971,7 +1971,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 14:11",
+"liveUpdated": "10-07 14:14",
 "chains": [
 {
 "g": "exit",
@@ -2295,7 +2295,7 @@
 "u": "已核对，待开会话",
 "fable": "1",
 "seg": "ev:n ds:a1 dev:w rev:w mg:w",
-"now": "设计审中（codex exec 试点）",
+"now": "设计审出结论，待读取（codex exec 试点）",
 "pr": 110
 }
 ]
