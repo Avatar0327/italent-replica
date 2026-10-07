@@ -2,9 +2,9 @@
 "updated": "2026-10-07",
 "stats": {
 "merged": 52,
-"open": 9,
-"dec": 285,
-"ev": "18/110"
+"open": 10,
+"dec": 290,
+"ev": "19/111"
 },
 "tasks": {
 "M0": {
@@ -840,7 +840,19 @@
 "s": "active",
 "note": "DEC-285；C 档先出设计；Fable High → Astra Ultra；先告警 + 白名单再强制",
 "dev": "Claude Fable 5.1",
-"rev": "Astra Ultra"
+"rev": "Astra Ultra",
+"pr": [
+110
+]
+},
+"F-040": {
+"n": "360 套卷共享部门 / 共享人",
+"s": "todo",
+"p": "R3-T03",
+"deps": [
+"R3-T03"
+],
+"note": "DEC-289；R3-T03 PR-B 之后"
 }
 },
 "prs": {
@@ -882,7 +894,7 @@
 },
 "97": {
 "s": "active",
-"r": 5,
+"r": 6,
 "n": "#92 合并后与 main 冲突（SelfServiceShell.tsx），Codex 合并 main 中；之后 astra Ultra"
 },
 "99": {
@@ -902,11 +914,23 @@
 },
 "108": {
 "s": "review",
-"r": 2,
+"r": 3,
 "n": ""
 }
 },
 "log": [
+[
+"10-07",
+"DEC-286 试点通过：审查一律改为 codex exec 后台发起"
+],
+[
+"10-07",
+"DEC-288 #97 第 6 轮 Fable High；DEC-289 #107 三项（同口径裁剪、回补身份）+ F-040、Q-M0-112"
+],
+[
+"10-07",
+"DEC-286：审查改由本机 codex exec 后台发起（F-039 设计审试点），监控已兼容"
+],
 [
 "10-07",
 "DEC-284 #96 第 6 轮收缩暴露面；DEC-285 流程优化七条；F-039 拟派"
@@ -1964,7 +1988,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 13:34",
+"liveUpdated": "10-07 14:18",
 "chains": [
 {
 "g": "exit",
@@ -2009,8 +2033,8 @@
 "k": "run",
 "pr": 83,
 "n": "组织变更联动任职",
-"seg": "ev:d ds:d4 dev:a1 rev:w mg:w",
-"now": "按 DEC-278 拆分：稳定部分实现（v4 → 写代码）",
+"seg": "ev:d ds:d4 dev:d1 rev:a1 mg:w",
+"now": "拆分本体 Astra Ultra 第 1 轮审查中",
 "wait": "来源模型放哪由审查合并窗口判断",
 "fable": "1",
 "up": "10-07 第 8 轮后调到 Max"
@@ -2023,7 +2047,7 @@
 "pr": 100,
 "n": "离职管理",
 "seg": "ev:d ds:a4 dev:w rev:w mg:w",
-"now": "设计 v1.4 修订中（剩 2 个 P2）",
+"now": "设计 v1.4 复审中",
 "wait": "#83 合并后写代码",
 "fable": "1"
 },
@@ -2061,8 +2085,8 @@
 "k": "run",
 "pr": 97,
 "n": "审批中心前端",
-"seg": "ev:n ds:n dev:a5 rev:d4 mg:w",
-"now": "第 5 轮结构性简化（DEC-277，Fable High）",
+"seg": "ev:n ds:n dev:a6 rev:d5 mg:w",
+"now": "第 6 轮修改（DEC-288：展示与命令状态分开，Fable High）",
 "fable": "1"
 },
 {
@@ -2116,9 +2140,10 @@
 "o": 3,
 "k": "run",
 "n": "函数库补齐 63 个",
-"seg": "ev:d ds:n dev:d2 rev:a2 mg:w",
-"now": "Sol Ultra 第 2 轮审查中（只审修复点）",
-"pr": 108
+"seg": "ev:d ds:n dev:a3 rev:d2 mg:w",
+"now": "第 3 轮修改（日期检查被绕过、布尔误判、环枚举性能）",
+"pr": 108,
+"up": "10-07 第 3 轮调到 Max"
 },
 {
 "id": "R3-T05",
@@ -2152,8 +2177,8 @@
 "o": 1,
 "k": "run",
 "n": "360 度评估（PR-A）",
-"seg": "ev:d ds:n dev:a2 rev:d1 mg:w",
-"now": "PR-A 第 2 轮修改（按 DEC-280 补改，C 档）",
+"seg": "ev:d ds:n dev:d2 rev:a2 mg:w",
+"now": "PR-A 第 2 轮审查中（C 档，复审 + 终审）",
 "pr": 107
 },
 {
@@ -2180,8 +2205,8 @@
 "k": "run",
 "pr": 102,
 "n": "AC 覆盖运行时统计",
-"seg": "ev:n ds:n dev:a3 rev:d2 mg:w",
-"now": "第 3 轮修改（2 个 P2：身份配对、only 漏报）",
+"seg": "ev:n ds:n dev:d3 rev:a3 mg:w",
+"now": "Sol Ultra 第 3 轮审查中",
 "up": "10-07 第 3 轮调到 Max"
 },
 {
@@ -2285,8 +2310,17 @@
 "n": "权限框架强制",
 "u": "已核对，待开会话",
 "fable": "1",
-"seg": "ev:n ds:a1 dev:w rev:w mg:w",
-"now": "设计中（先告警 + 白名单，再强制）"
+"seg": "ev:n ds:a2 dev:w rev:w mg:w",
+"now": "设计 v2 修订中（v1 有 9 类 P2）",
+"pr": 110
+},
+{
+"id": "F-040",
+"g": "r3a",
+"o": 3,
+"k": "todo",
+"n": "套卷共享部门 / 共享人",
+"u": "R3-T03 PR-B 之后"
 }
 ]
 }
