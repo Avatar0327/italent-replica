@@ -4,7 +4,6 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { personnelSession } from './AC-SUB-support.js';
 
-// 参数表写在本文件顶层，供 ac-coverage 静态读取（DEC-245）。
 const SUBSETS = [
   ['education', { educationLevel: '本科', school: '合成大学' }],
   ['jobhistory', { company: '合成单位', responsibilities: '研究' }],

@@ -23,7 +23,7 @@ const paths = {
   jobPost: '/api/tenant/job/posts',
   establishment: '/api/tenant/establishment/schemes',
 } as const;
-// 参数表写成顶层字面量，供 ac-coverage 静态读取（DEC-245）；类型上限定为 paths 的键。
+// 参数表写成顶层字面量；类型上限定为 paths 的键。
 const PATH_KEYS = ['organization', 'jobPost', 'establishment'] as const satisfies readonly (keyof typeof paths)[];
 
 describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
