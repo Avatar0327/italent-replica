@@ -125,22 +125,8 @@ async function inheritedChanges(
     const source = item.sequenceSource;
     // F-021 的同事务事件区分自动同步和人工更正，无须增加载荷列或修改同步写入口。
     if (source && values.fields[source.sourceKind === 'posts' ? 'postId' : 'positionId'] !== source.sourceId) continue;
-    const prior = history[index - 1]!.payload;
-    const changes = valueChanges(prior, item.payload);
-    // 人工更正取得字段所有权；依赖引用的系统同步仍按引用决定有效性。
-    if (!source && (!item.payload.triggerBusinessId || item.payload.triggerBusinessId === record.id)) {
-      for (let index = origins.length - 1; index >= 0; index--) {
-        const { field } = derivationFields(origins[index]!);
-        if (
-          changes.some((change) => change.field === field) ||
-          (item.payload.explicitFieldCodes.includes(`preset:${field}`) &&
-            !prior.explicitFieldCodes.includes(`preset:${field}`))
-        )
-          origins.splice(index, 1);
-      }
-    }
-    values = applyForwardChanges(values, changes);
-    values = await refreshDerivations(tx, ctx, record, previous, values, origins);
+    // 有效历史已包含当时显式输入 / 派生结果；不能再次默认带出，覆盖来源明确指定的序列等值。
+    values = applyForwardChanges(values, valueChanges(history[index - 1]!.payload, item.payload));
   }
   return valueChanges(record, values);
 }
