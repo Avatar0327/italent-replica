@@ -97,7 +97,15 @@ function inheritedChanges(
   history: readonly AdjustmentHistory[],
   previous: EmploymentRecord,
 ): ForwardFieldChange[] {
-  let values = { fields: { ...previous.fields }, customFields: { ...previous.customFields } };
+  const initial = history[0]!.payload;
+  const explicit = new Set(initial.explicitFieldCodes);
+  // F-006 首个载荷已含本业务主动设置的经理；F-007 纯复制的显式字段为空，只重建其继承值。
+  let values = applyForwardChanges(
+    previous,
+    valueChanges(previous, initial).filter((change) =>
+      explicit.has(change.field.startsWith('custom:') ? change.field : `preset:${change.field}`),
+    ),
+  );
   // 按版本顺序重放有效来源和人工更正；已改期/移出时间线的来源、此前重建均不能恢复提前值。
   for (let index = 1; index < history.length; index++) {
     const item = history[index]!;
