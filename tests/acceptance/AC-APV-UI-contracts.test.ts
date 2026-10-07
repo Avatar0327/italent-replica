@@ -12,7 +12,8 @@ import {
   type ApprovalWorld,
   type InstanceView,
 } from './AC-APV-support.js';
-import { setObjectPermission, type PermissionWorld, type ProfileBody } from './AC-PRM-support.js';
+import { createProfile, setObjectPermission, type PermissionWorld, type ProfileBody } from './AC-PRM-support.js';
+import { MANAGER_PROFILE_CODE } from '../../apps/api/src/modules/permission/manager-identity.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
 
 const database = useTestDb();
@@ -66,6 +67,8 @@ async function editableScene(mode: 'separate' | 'with_approve' = 'separate') {
   const w = await approvalWorld(database().db, `apv-ui-${mode}`);
   const s = await transferScene(w);
   const world = await permissionAdmin(w);
+  // 显式经理身份取代默认后备权限，使本夹具的字段授权可以收窄（DEC-042 多身份并集仍不变）。
+  await createProfile(world, MANAGER_PROFILE_CODE);
   const profile = await grantFieldAccess(world, s.outHead.userId, { view: FIELDS, edit: ['place'] });
   await scope(world, s.outHead.userId, [s.from, s.to]);
   await w.publishedProcess({
@@ -209,6 +212,38 @@ describe('AC-APV-UI-01 / DEC-233：全身份已处理分页', () => {
 });
 
 describe('AC-APV-UI-04 / DEC-233：实例节点编辑元数据与写校验一致', () => {
+  it('节点配置中的业务抬头与当前业务不支持的字段不宣称可编辑；既有写入口400且数据不变', async () => {
+    const w = await approvalWorld(database().db, 'apv-ui-edit-supported');
+    const s = await transferScene(w);
+    const unsupported = ['kind', 'mode', 'employType', 'lastWorkDate'];
+    await w.publishedProcess({
+      nodes: [
+        {
+          key: 'manager',
+          approver: 'latest_record_department_head',
+          formFields: ['departmentId', 'effectiveDate', 'place', ...unsupported],
+          editableFields: ['place', ...unsupported],
+          editMode: 'separate',
+        },
+      ],
+    });
+    const instance = await w.submit(
+      await w.application(s.subject.employeeId, {
+        departmentId: s.to,
+        place: '当前地点',
+      }),
+    );
+    const before = (await w.detail(instance.id, s.outHead.userId)) as EditableView;
+    expect(before.form).toMatchObject({ editMode: 'separate', editableFields: ['place'] });
+    const business = await w.business(instance.businessId);
+    const response = await w.taskAction(s.outHead.userId, pending(instance).id, 'edit', instance.revision, {
+      fields: { kind: 'leave' },
+    });
+    expect(response.status).toBe(400);
+    expect(await w.detail(instance.id, s.outHead.userId)).toEqual(before);
+    expect(await w.business(instance.businessId)).toEqual(business);
+  });
+
   it.each(['separate', 'with_approve'] as const)(
     '%s 只返回已披露且当前可写字段；null 清空沿用同一权限',
     async (mode) => {
