@@ -12,12 +12,13 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
-import { getModuleViewableFields, scopeAllows, scopeSql } from '../permission/module-access.js';
+import { getModuleViewableFields, scopeSql } from '../permission/module-access.js';
 import {
   button,
   objectContext,
   requestScope,
   trimModuleResponse,
+  visible,
   writeFields,
   type ModuleScope,
 } from '../permission/module-route-access.js';
@@ -87,8 +88,18 @@ export function checkWriteFields(
 
 /** 范围外与不存在同样返回 404，不泄露对象是否存在。 */
 export function requireVisible(scope: ModuleScope, object: TalentObject, createdBy: string | null | undefined): void {
-  if (!scopeAllows(scope, { creatorId: createdBy ?? null })) {
-    throw new AppError('NOT_FOUND', `${TALENT_LABELS[object]}不存在`);
+  // 复用模块统一的范围判定（module-route-access.ts visible）：无组织字段，只按看全部或创建人
+  visible(scope, undefined, `${TALENT_LABELS[object]}不存在`, createdBy ?? null);
+}
+
+/** 同 requireVisible，但不抛错（嵌套内容按范围省略而不是整单 404）。 */
+function canSee(scope: ModuleScope, createdBy: string | null | undefined): boolean {
+  try {
+    visible(scope, undefined, '', createdBy ?? null);
+    return true;
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'NOT_FOUND') return false;
+    throw error;
   }
 }
 
@@ -120,7 +131,7 @@ export async function nestedDimensionReader(c: Context<TenantEnv>, deps: TenantR
   const scope = await talentScope(c, deps, ctx, 'dimension');
   const fields = await getModuleViewableFields(deps, ctx, code);
   return <T extends { createdBy?: string | null }>(dimension: T | undefined) => {
-    if (!dimension || !scopeAllows(scope, { creatorId: dimension.createdBy ?? null })) return undefined;
+    if (!dimension || !canSee(scope, dimension.createdBy)) return undefined;
     if (fields === undefined) return dimension;
     return Object.fromEntries(Object.entries(dimension).filter(([field]) => fields.has(field))) as Partial<T>;
   };
