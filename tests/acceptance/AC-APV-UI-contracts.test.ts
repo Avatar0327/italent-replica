@@ -105,17 +105,23 @@ describe('AC-APV-UI-01 / DEC-242：全身份按本人处理记录分页', () => 
   it('生产授权器：无任职范围普通员工接受转交并处理后可见最小已处理字段，待办/抄送/未参与与跨租户隔离', async () => {
     const w = await approvalWorld(database().db, 'apv-ui-processed-real');
     const s = await transferScene(w);
-    const employeeApprover = await w.member('无任职范围普通员工审批人');
+    const employeeApprover = (await w.person('无任职范围普通员工审批人', s.to)).userId;
     const ccUser = await w.member('仅被抄送员工');
     const stranger = await w.member('未参与员工');
     const world = await permissionAdmin(w);
     for (const userId of [s.outHead.userId, employeeApprover]) {
       await grantFieldAccess(world, userId, { view: FIELDS });
     }
+    await scope(world, employeeApprover, []);
     const api = tenantApi(w.db, { authorize: undefined, clock: w.clock });
     await w.publishedProcess({
       nodes: [
-        { key: 'manager', approver: 'latest_record_department_head', actions: { transfer: true, copySend: true } },
+        {
+          key: 'manager',
+          approver: 'latest_record_department_head',
+          formFields: ['departmentId', 'effectiveDate', 'place'],
+          actions: { transfer: true, copySend: true },
+        },
       ],
     });
     let view = await w.submit(
@@ -331,7 +337,7 @@ describe('AC-APV-UI-01 / DEC-242：全身份按本人处理记录分页', () => 
   });
 });
 
-describe('AC-APV-UI-04 / DEC-233：实例节点编辑元数据与写校验一致', () => {
+describe('AC-APV-UI-05 / DEC-233 / DEC-242：实例节点编辑元数据与写校验一致', () => {
   it('节点配置中的业务抬头与当前业务不支持的字段不宣称可编辑；既有写入口400且数据不变', async () => {
     const w = await approvalWorld(database().db, 'apv-ui-edit-supported');
     const s = await transferScene(w);

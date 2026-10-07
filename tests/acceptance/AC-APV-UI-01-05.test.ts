@@ -428,10 +428,10 @@ describe('AC-APV-UI-04 并发、未知结果与权限失败', () => {
     await click('同意');
     await click('确认提交');
     expect(host.textContent).toContain('无权访问');
-    expect(host.querySelector('.approval-detail')?.textContent).not.toContain('合成调动申请');
+    expect(host.querySelector('.approval-detail')?.textContent ?? '').not.toContain('合成调动申请');
     expect(host.querySelector('.approval-list')?.textContent).toContain('合成调动申请');
     expect(host.textContent).not.toContain('不应把接口敏感文案当提示');
-    expect(host.querySelector('.approval-detail')?.textContent).not.toContain('经理审批');
+    expect(host.querySelector('.approval-detail')?.textContent ?? '').not.toContain('经理审批');
   });
 
   it('列表刷新403时，已打开的旧详情、历史和编辑草稿同样被清除', async () => {
@@ -625,6 +625,7 @@ describe('AC-APV-UI-04 第二轮恢复与单据权限隔离', () => {
     await mount();
     await click('同意');
     await click('确认提交');
+    expect(host.textContent).toContain('单据正被他人处理，请刷新后重试');
     expect(host.textContent).toContain('显式重提');
     expect(writes()).toHaveLength(1);
     expect(calls.filter(({ url }) => url === `${API}/instances/${INSTANCE}`)).toHaveLength(2);
@@ -698,7 +699,7 @@ describe('AC-APV-UI-04 第二轮恢复与单据权限隔离', () => {
     expect(host.textContent).not.toContain('合成该单旧分页秘密');
     expect(host.querySelector('[aria-label="审批意见"]')).toBeNull();
     expect(host.querySelector('.approval-list')?.textContent).toContain('合成其他列表项 1');
-    expect(host.querySelector('.approval-detail')?.textContent).not.toContain('合成调动申请');
+    expect(host.querySelector('.approval-detail')?.textContent ?? '').not.toContain('合成调动申请');
     expect(host.querySelectorAll('.approval-row-link')).toHaveLength(20);
     await click('下一页');
     expect(calls.some(({ url }) => url.includes('/todos?') && url.includes('page=2'))).toBe(true);
