@@ -1,6 +1,6 @@
 /**
  * AC-EXP-13 函数面板全集（F-033，DEC-260，取证 Q-M0-81，`26` §8.6）：面板上的每个函数都能在注册表里解析；
- * 中文名与英文名同义，每个新增函数中英文名各至少一例；没有 avg；新增函数的数值参数经公共取参（DEC-264）。
+ * 中文名与英文名同义，每个新增函数中英文名各至少一例；没有 avg；新增函数的数值参数经公共取参（DEC-270 取代 DEC-264）。
  */
 import {
   createDefaultRegistry,
@@ -238,7 +238,7 @@ describe('AC-EXP-13 统计 / 文本 / 其它函数：中英文名各一例', () 
   });
 });
 
-describe('AC-EXP-13 新增函数的数值参数经公共取参（DEC-264）：空值按 semantics 配置按 0 或计算失败', () => {
+describe('AC-EXP-13 新增函数的数值参数经公共取参（DEC-270）：空值默认计算失败，semantics 可切回按 0', () => {
   const FORMULAS = [
     'RoundUP(盘点对象.x)',
     'RoundDown(盘点对象.x, 1)',
@@ -249,19 +249,17 @@ describe('AC-EXP-13 新增函数的数值参数经公共取参（DEC-264）：�
     'DateFormat(AddDays("2026/10/07", 盘点对象.x), "yyyy-MM-dd")',
   ];
 
-  it.each(FORMULAS)('默认（空值按 0）：%s', (formula) => {
-    const result = run(formula, { '盘点对象.x': null });
-    expect(result).toEqual(formula.startsWith('DateFormat') ? text('2026-10-07') : num(0));
+  it.each(FORMULAS)('默认（DEC-270：函数数值参数遇空计算失败）：%s', (formula) => {
+    expect(run(formula, { '盘点对象.x': null })).toMatchObject({ code: 'EMPTY_IN_ARITHMETIC' });
   });
 
-  it.each(FORMULAS)('切换为计算失败：%s', (formula) => {
-    const failing = {
+  it.each(FORMULAS)('semantics 切回按 0（emptyInFunctionArgument = zero）：%s', (formula) => {
+    const lenient: EvaluationContext = {
       ...context({ '盘点对象.x': null }),
-      semantics: { ...DEFAULT_SEMANTICS, emptyInArithmetic: 'fail' },
+      semantics: { ...DEFAULT_SEMANTICS, emptyInFunctionArgument: 'zero' },
     };
-    expect(valueOf(evaluateFormula(formula, failing as EvaluationContext))).toMatchObject({
-      code: 'EMPTY_IN_ARITHMETIC',
-    });
+    const result = valueOf(evaluateFormula(formula, lenient));
+    expect(result).toEqual(formula.startsWith('DateFormat') ? text('2026-10-07') : num(0));
   });
 
   it('数字字符串按数值、非数字文本失败（与四则同口径，DEC-257）', () => {
