@@ -95,6 +95,7 @@ export {
   type FunctionEnvironment,
   type FunctionParam,
   type FunctionSpec,
+  type StaticKind,
 } from './registry.js';
 export { DEFAULT_SEMANTICS, type ExpressionSemantics } from './semantics.js';
 export {

@@ -54,6 +54,7 @@ export const SURVEY360_FUNCTIONS: readonly FunctionSpec[] = [
     ],
     lazy: true,
     recordObjects: PREFIXES,
+    returns: 'number',
     implement: latest360,
   },
 ];

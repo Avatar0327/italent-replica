@@ -25,6 +25,7 @@ const rounding = (name: string, aliases: string[], mode: (scaled: number) => num
   name,
   aliases,
   params: [param('数值'), param('小数位数', false)],
+  returns: 'number',
   implement: (call) => num(roundWith(mode, call.numberArg(call.args, 0), digitsArg(call, 1))),
 });
 
@@ -32,6 +33,7 @@ const unary = (name: string, aliases: string[], apply: (value: number) => number
   name,
   aliases,
   params: [param('数值')],
+  returns: 'number',
   implement: (call) => num(apply(call.numberArg(call.args, 0)) || 0),
 });
 
@@ -57,6 +59,7 @@ export const MATH_FUNCTIONS: readonly FunctionSpec[] = [
     name: 'Mod',
     aliases: ['取余', '求余'],
     params: [param('被除数'), param('除数')],
+    returns: 'number',
     implement: mod,
   },
 ];

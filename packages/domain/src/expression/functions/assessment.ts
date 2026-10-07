@@ -34,6 +34,7 @@ export const ASSESSMENT_FUNCTIONS: readonly FunctionSpec[] = [
     ],
     lazy: true,
     recordObjects: ASSESSMENT_OBJECTS,
+    returns: 'number',
     implement: latestAssessment,
   },
 ];

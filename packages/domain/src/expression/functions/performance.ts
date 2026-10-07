@@ -132,38 +132,54 @@ const RECENT_OCCURRENCE_PARAMS = [
   filterParam('考核结果日期字段 / 其他过滤', false, true),
 ];
 
+/** 得分函数返回数值、等级函数返回文本（保存检查用，DEC-270）。 */
 const fetchSpec = (
   name: string,
   aliases: string[],
   params: FunctionSpec['params'],
-  implement: FunctionSpec['implement'],
-): FunctionSpec => ({ name, aliases, params, lazy: true, recordObjects: PREFIXES, implement });
+  field: string,
+  pick: (call: FunctionCall, field: string) => ExprValue,
+): FunctionSpec => ({
+  name,
+  aliases,
+  params,
+  lazy: true,
+  recordObjects: PREFIXES,
+  returns: field === PERFORMANCE_FIELDS.score ? 'number' : 'text',
+  implement: (call) => pick(call, field),
+});
 
 export const PERFORMANCE_FUNCTIONS: readonly FunctionSpec[] = [
-  fetchSpec('PerformanceCent', ['获取指定年度指定周期的绩效得分'], FILTER_PARAMS, (call) =>
-    byFilters(call, PERFORMANCE_FIELDS.score),
-  ),
-  fetchSpec('PerformanceGrade', ['获取指定年度指定周期的绩效等级'], FILTER_PARAMS, (call) =>
-    byFilters(call, PERFORMANCE_FIELDS.grade),
-  ),
+  fetchSpec('PerformanceCent', ['获取指定年度指定周期的绩效得分'], FILTER_PARAMS, PERFORMANCE_FIELDS.score, byFilters),
+  fetchSpec('PerformanceGrade', ['获取指定年度指定周期的绩效等级'], FILTER_PARAMS, PERFORMANCE_FIELDS.grade, byFilters),
   // 面板名（§8.6）；“获取最近第N年度的…”是 R3-T00 时的推断名，保留兼容
   fetchSpec(
     'PerformanceLastCent',
     ['获取最近第N年的绩效考核得分', '获取最近第N年度的绩效得分'],
     RECENT_YEAR_PARAMS,
-    (call) => byRecentYear(call, PERFORMANCE_FIELDS.score),
+    PERFORMANCE_FIELDS.score,
+    byRecentYear,
   ),
   fetchSpec(
     'PerformanceLastGrade',
     ['获取最近第N年的绩效考核等级', '获取最近第N年度的绩效等级'],
     RECENT_YEAR_PARAMS,
-    (call) => byRecentYear(call, PERFORMANCE_FIELDS.grade),
+    PERFORMANCE_FIELDS.grade,
+    byRecentYear,
   ),
   // 英文名为复刻命名（面板只有中文名）
-  fetchSpec('PerformanceNthCent', ['获取最近第N次绩效考核得分'], RECENT_OCCURRENCE_PARAMS, (call) =>
-    byRecentOccurrence(call, PERFORMANCE_FIELDS.score),
+  fetchSpec(
+    'PerformanceNthCent',
+    ['获取最近第N次绩效考核得分'],
+    RECENT_OCCURRENCE_PARAMS,
+    PERFORMANCE_FIELDS.score,
+    byRecentOccurrence,
   ),
-  fetchSpec('PerformanceNthGrade', ['获取最近第N次绩效考核等级'], RECENT_OCCURRENCE_PARAMS, (call) =>
-    byRecentOccurrence(call, PERFORMANCE_FIELDS.grade),
+  fetchSpec(
+    'PerformanceNthGrade',
+    ['获取最近第N次绩效考核等级'],
+    RECENT_OCCURRENCE_PARAMS,
+    PERFORMANCE_FIELDS.grade,
+    byRecentOccurrence,
   ),
 ];

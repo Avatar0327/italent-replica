@@ -32,7 +32,7 @@ export interface Token extends SourcePosition {
 }
 
 export type SyntaxIssueCode =
-  'SYNTAX_ERROR' | 'CHINESE_QUOTE' | 'UNKNOWN_FUNCTION' | 'ARGUMENT_COUNT' | 'UNKNOWN_FIELD';
+  'SYNTAX_ERROR' | 'CHINESE_QUOTE' | 'UNKNOWN_FUNCTION' | 'ARGUMENT_COUNT' | 'ARGUMENT_TYPE' | 'UNKNOWN_FIELD';
 
 export interface SyntaxIssue extends SourcePosition {
   readonly code: SyntaxIssueCode;

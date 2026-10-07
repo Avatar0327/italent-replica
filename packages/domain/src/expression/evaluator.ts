@@ -16,7 +16,18 @@ import {
   type FunctionRegistry,
 } from './registry.js';
 import { DEFAULT_SEMANTICS, type ExpressionSemantics } from './semantics.js';
-import { EMPTY, type ExprValue, type PlainValue } from './values.js';
+import { EMPTY, type DateParts, type ExprValue, type PlainValue } from './values.js';
+
+/** 空日期参与日期函数时的取值（DEC-270：0001-01-01）。 */
+const MIN_DATE: DateParts = Object.freeze({
+  year: 1,
+  month: 1,
+  day: 1,
+  hour: 0,
+  minute: 0,
+  second: 0,
+  precision: 'date',
+});
 
 interface Scope {
   readonly vars: ReadonlyMap<string, ExprValue>;
@@ -174,9 +185,22 @@ export class Evaluator {
       evaluateForSubject: (child, subject) =>
         this.forSubject(subject).evaluate(child, { vars: scope.vars, records: [] }),
       fail: failAt,
-      numberArg: (values, index) =>
-        operandNumber(values[index] ?? EMPTY, semantics, 'EMPTY_IN_ARITHMETIC') ??
-        failAt('EMPTY_IN_ARITHMETIC', '空值参与函数计算'),
+      numberArg: (values, index) => {
+        const value = values[index] ?? EMPTY;
+        if (value.kind === 'empty') {
+          // DEC-270：函数的数值参数遇空，原站“无法转换为double类型”；四则另按 emptyInArithmetic
+          if (semantics.emptyInFunctionArgument === 'zero') return 0;
+          return failAt('EMPTY_IN_ARITHMETIC', '空值参与函数计算（无法转换为数值）');
+        }
+        return (
+          operandNumber(value, semantics, 'EMPTY_IN_ARITHMETIC') ?? failAt('EMPTY_IN_ARITHMETIC', '空值参与函数计算')
+        );
+      },
+      dateArg: (values, index) => {
+        const value = values[index] ?? EMPTY;
+        if (value.kind === 'empty' && semantics.emptyDateArgument === 'min-date') return MIN_DATE;
+        return toDate(value);
+      },
       textArg: (values, index) => toText(values[index] ?? EMPTY),
       toNumber: (value) => toNumber(value, semantics),
       toText,

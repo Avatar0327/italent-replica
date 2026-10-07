@@ -28,7 +28,10 @@ export interface FunctionCall {
   /** 以另一个对象（如排名范围内的成员）为主体求值一个参数节点。 */
   readonly evaluateForSubject: (node: ExprNode, subject: SubjectReader) => ExprValue;
   readonly fail: (code: FailureCode, detail: string) => never;
+  /** 公共取参：函数的数值参数（空值按 semantics.emptyInFunctionArgument，数字文本按数值，DEC-270）。 */
   readonly numberArg: (args: readonly ExprValue[], index: number) => number;
+  /** 公共取参：函数的日期参数（空值按 semantics.emptyDateArgument，默认 0001-01-01，DEC-270）。 */
+  readonly dateArg: (args: readonly ExprValue[], index: number) => DateParts;
   readonly textArg: (args: readonly ExprValue[], index: number) => string;
   readonly toNumber: (value: ExprValue) => number;
   readonly toText: (value: ExprValue) => string;
@@ -48,6 +51,9 @@ export interface FunctionEnvironment {
   readonly fromPlain: (value: PlainValue) => ExprValue;
 }
 
+/** 保存检查时能静态确定的值类型（DEC-270：日期函数的日期参数做类型检查）。 */
+export type StaticKind = 'number' | 'text' | 'boolean' | 'date';
+
 export interface FunctionSpec {
   /** 规范英文名。 */
   readonly name: string;
@@ -66,6 +72,10 @@ export interface FunctionSpec {
    * 在待办中触发计算时，含该函数的计算项目不计算（面板原文，`26` §8.6；排名函数）。引擎只标记，调度由 R3-T04 落实。
    */
   readonly skipInTodoTrigger?: boolean;
+  /** 返回值类型；不确定（取决于字段或分支）时不写。 */
+  readonly returns?: StaticKind;
+  /** 须是日期的参数下标：保存检查时静态可知不是日期的直接拦截（DEC-270，`26` §8.8）。 */
+  readonly dateParams?: readonly number[];
   readonly implement: (call: FunctionCall) => ExprValue;
 }
 

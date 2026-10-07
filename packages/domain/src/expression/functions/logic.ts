@@ -24,6 +24,7 @@ const emptyCheck = (name: string, aliases: string[], blank: boolean): FunctionSp
   name,
   aliases,
   params: [param('值')],
+  returns: 'boolean',
   implement: (call) => bool(isBlank(call.args[0] ?? EMPTY) === blank),
 });
 
@@ -33,6 +34,7 @@ export const LOGIC_FUNCTIONS: readonly FunctionSpec[] = [
     aliases: ['全部为真'],
     params: [param('条件', true, true)],
     lazy: true,
+    returns: 'boolean',
     implement: (call) => bool(call.rawArgs.every((_, index) => condition(call, index))),
   },
   {
@@ -40,6 +42,7 @@ export const LOGIC_FUNCTIONS: readonly FunctionSpec[] = [
     aliases: ['任一为真'],
     params: [param('条件', true, true)],
     lazy: true,
+    returns: 'boolean',
     implement: (call) => bool(call.rawArgs.some((_, index) => condition(call, index))),
   },
   {
@@ -58,12 +61,14 @@ export const LOGIC_FUNCTIONS: readonly FunctionSpec[] = [
     name: 'IN',
     aliases: ['属于'],
     params: [param('值'), param('候选值', true, true)],
+    returns: 'boolean',
     implement: (call) => bool(memberOf(call)),
   },
   {
     name: 'NOTIN',
     aliases: ['不属于'],
     params: [param('值'), param('候选值', true, true)],
+    returns: 'boolean',
     implement: (call) => bool(!memberOf(call)),
   },
   emptyCheck('IsEmpty', ['是否为空'], true),

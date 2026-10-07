@@ -11,7 +11,7 @@ import { valuesEqual } from '../operators.js';
 import type { SubjectReader } from '../ports.js';
 import type { FunctionCall, FunctionSpec } from '../registry.js';
 import { EMPTY, type ExprValue } from '../values.js';
-import { unwrapPort } from './shared.js';
+import { isTypeConversion, unwrapPort } from './shared.js';
 
 const MODES: Readonly<Record<string, 'rank' | 'percentile'>> = {
   排序号: 'rank',
@@ -33,6 +33,17 @@ function tryEvaluate(call: FunctionCall, node: ExprNode | undefined, subject: Su
     return call.evaluateForSubject(node, subject);
   } catch {
     return undefined;
+  }
+}
+
+/** 条件求值时出现类型转换失败（如文本与数值比较大小）。 */
+function comparisonFailed(call: FunctionCall, node: ExprNode | undefined, subject: SubjectReader): boolean {
+  if (!node) return false;
+  try {
+    call.evaluateForSubject(node, subject);
+    return false;
+  } catch (error) {
+    return isTypeConversion(error);
   }
 }
 
@@ -74,6 +85,8 @@ function ranking(call: FunctionCall): ExprValue {
   const members = collectMembers(call, population);
   const me = members.find((member) => member.subject.id === self.id);
   if (!me) {
+    // DEC-270：范围条件里 盘点活动.盘点年度 > "2025" 这类文本比较原站不报错、结果为空（`26` §8.8，是否按数值比较 🟡）
+    if (comparisonFailed(call, call.rawArgs[2], self)) return EMPTY;
     const sortValue = tryEvaluate(call, call.rawArgs[1], self);
     if (sortValue?.kind === 'empty') return call.fail('EMPTY_IN_COMPARISON', '排序字段为空，无法排名');
     return call.fail('OUT_OF_SCOPE', '本人不满足人员范围条件');
@@ -95,6 +108,7 @@ export const RANKING_FUNCTIONS: readonly FunctionSpec[] = [
     ],
     lazy: true,
     skipInTodoTrigger: true,
+    returns: 'number',
     implement: ranking,
   },
 ];

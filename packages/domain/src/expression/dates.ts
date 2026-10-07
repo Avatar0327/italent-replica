@@ -18,8 +18,18 @@ export function makeDateParts(fields: Partial<DateParts> & { year: number; month
   };
 }
 
+/**
+ * 墙上时间 → 毫秒序数。Date.UTC 会把 0～99 年当成 1900～1999 年，空日期按 0001-01-01 参与运算（DEC-270）
+ * 时会算错，所以用 setUTCFullYear。
+ */
+export function utcMs(year: number, month: number, day: number, hour = 0, minute = 0, second = 0): number {
+  const instant = new Date(Date.UTC(2000, 0, 1, hour, minute, second));
+  instant.setUTCFullYear(year, month - 1, day);
+  return instant.getTime();
+}
+
 function isValidDate(year: number, month: number, day: number): boolean {
-  const probe = new Date(Date.UTC(year, month - 1, day));
+  const probe = new Date(utcMs(year, month, day));
   return probe.getUTCFullYear() === year && probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
 }
 
@@ -76,7 +86,7 @@ export function instantToParts(instant: Date, timeZone: string): DateParts {
 
 /** 可比较的序数：按墙上时间排序（不涉及时区换算）。 */
 export function dateOrdinal(parts: DateParts): number {
-  return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return utcMs(parts.year, parts.month, parts.day, parts.hour, parts.minute, parts.second);
 }
 
 function fromOrdinal(ordinal: number, precision: DatePrecision): DateParts {
@@ -107,8 +117,8 @@ const DAY_MS = 86_400_000;
 /** 整数差：天按自然日，月 / 年按“满一个月 / 年”计（同 .NET 常见写法，🟡）。 */
 export function dateDiff(unit: DateUnit, from: DateParts, to: DateParts): number {
   if (unit === 'd') {
-    const start = Date.UTC(from.year, from.month - 1, from.day);
-    const end = Date.UTC(to.year, to.month - 1, to.day);
+    const start = utcMs(from.year, from.month, from.day);
+    const end = utcMs(to.year, to.month, to.day);
     return Math.round((end - start) / DAY_MS);
   }
   let months = (to.year - from.year) * 12 + (to.month - from.month);
@@ -127,7 +137,7 @@ export function dateAdd(unit: DateUnit, amount: number, base: DateParts): DatePa
   const totalMonths = base.year * 12 + (base.month - 1) + (unit === 'm' ? amount : amount * 12);
   const year = Math.floor(totalMonths / 12);
   const month = totalMonths - year * 12 + 1;
-  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const lastDay = new Date(utcMs(year, month + 1, 0)).getUTCDate();
   return { ...base, year, month, day: Math.min(base.day, lastDay) };
 }
 

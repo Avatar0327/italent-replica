@@ -2,6 +2,7 @@
  * 取数函数共用：端口结果 → 失败原因；记录字段按对象前缀展开成完整路径；时间窗划界。
  */
 import { walk, type ExprNode, type FieldNode } from '../ast.js';
+import { ComputationError } from '../failures.js';
 import type { FunctionCall } from '../registry.js';
 import type { PortOutcome } from '../ports.js';
 import { EMPTY, type ExprValue, type PlainValue } from '../values.js';
@@ -72,13 +73,30 @@ export function recordReader(
   };
 }
 
-/** 过滤表达式逐条在记录作用域求值，全部为真才保留。 */
+export function isTypeConversion(error: unknown): boolean {
+  return error instanceof ComputationError && error.failure.code === 'TYPE_CONVERSION';
+}
+
+/**
+ * 过滤表达式逐条在记录作用域求值，全部为真才保留。过滤里出现类型转换失败（如 考核结果.年度 > "2025" 的
+ * 文本与数值比较大小）时原站不报错、该行不命中（`26` §8.8，DEC-270；是否按数值比较 🟡）。
+ */
 export function matchesAll(
   call: FunctionCall,
   filters: readonly ExprNode[],
   record: Readonly<Record<string, ExprValue>>,
 ): boolean {
-  return filters.every((filter) => call.toBoolean(call.evaluate(filter, record)));
+  return filters.every((filter) => {
+    let value: ExprValue;
+    try {
+      value = call.evaluate(filter, record);
+    } catch (error) {
+      if (isTypeConversion(error)) return false;
+      throw error;
+    }
+    // 过滤本身不是条件（如只写了 考核结果.年度）仍报错，不悄悄当成不命中
+    return call.toBoolean(value);
+  });
 }
 
 /** 必须是指定对象的字段引用（如 360结果.角色得分）。 */

@@ -18,7 +18,13 @@ import {
 import { parseFormula } from './parser.js';
 import type { SyntaxIssue } from './lexer.js';
 import type { SubjectReader } from './ports.js';
-import { arityOf, createDefaultRegistry, type FunctionRegistry } from './registry.js';
+import {
+  arityOf,
+  createDefaultRegistry,
+  type FunctionRegistry,
+  type FunctionSpec,
+  type StaticKind,
+} from './registry.js';
 import { formatIsoLike, type ExprValue, type PlainValue } from './values.js';
 
 export type ValidationResult =
@@ -91,6 +97,20 @@ class ReferenceCollector {
     this.issues.push({ code: 'UNKNOWN_FIELD', message, length: path.length, ...pos });
   }
 
+  /**
+   * 日期函数的日期参数静态可知不是日期时拦截（DEC-270，`26` §8.8 原站【检查】：
+   * “AddDays(,)函数的第1个参数应为日期或日期时间字段或常量”）；字段、变量等运行期才知道类型的不拦截。
+   */
+  private checkDateParams(node: CallNode, spec: FunctionSpec): void {
+    for (const index of spec.dateParams ?? []) {
+      const arg = node.args[index];
+      const kind = arg ? staticKind(arg, this.registry) : undefined;
+      if (kind === undefined || kind === 'date') continue;
+      const message = `${node.name}函数的第${index + 1}个参数应为日期或日期时间字段或常量`;
+      this.issues.push({ code: 'ARGUMENT_TYPE', message, length: node.name.length, ...node.pos });
+    }
+  }
+
   private call(node: CallNode, records: ReadonlySet<string>): void {
     const spec = this.registry.resolve(node.name);
     const length = node.name.length;
@@ -104,9 +124,30 @@ class ReferenceCollector {
         const message = `函数 ${node.name} 的参数个数不对：需要 ${min}${expected}`;
         this.issues.push({ code: 'ARGUMENT_COUNT', message, length, ...node.pos });
       }
+      this.checkDateParams(node, spec);
     }
     const inner = spec?.recordObjects?.length ? new Set([...records, ...spec.recordObjects]) : records;
     for (const arg of node.args) this.visit(arg, inner);
+  }
+}
+
+/** 能静态确定的值类型；字段、变量、如果 / IF 等取决于数据的返回 undefined。 */
+function staticKind(node: ExprNode, registry: FunctionRegistry): StaticKind | undefined {
+  switch (node.type) {
+    case 'number':
+    case 'unary':
+      return 'number';
+    case 'string':
+      return parseDateText(node.value) ? 'date' : 'text';
+    case 'boolean':
+    case 'logical':
+      return 'boolean';
+    case 'binary':
+      return ['+', '-', '*', '/'].includes(node.operator) ? 'number' : 'boolean';
+    case 'call':
+      return registry.resolve(node.name)?.returns;
+    default:
+      return undefined;
   }
 }
 

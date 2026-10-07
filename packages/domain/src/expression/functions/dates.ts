@@ -14,10 +14,11 @@ import {
   makeDateParts,
   parseDateText,
   parseDateUnit,
+  utcMs,
   type DateUnit,
 } from '../dates.js';
 import type { FunctionCall, FunctionSpec } from '../registry.js';
-import { EMPTY, type DateParts, type ExprValue } from '../values.js';
+import type { DateParts, ExprValue } from '../values.js';
 
 const param = (name: string, required = true) => ({ name, required });
 const num = (value: number): ExprValue => ({ kind: 'number', value });
@@ -36,7 +37,8 @@ function now(call: FunctionCall): DateParts {
   return instantToParts(instant, call.env.calendar.timeZone);
 }
 
-const dateArg = (call: FunctionCall, index: number) => call.toDate(call.args[index] ?? EMPTY);
+/** 日期参数经公共取参（DEC-270：空日期按 0001-01-01，可由 semantics 改为失败）。 */
+const dateArg = (call: FunctionCall, index: number) => call.dateArg(call.args, index);
 /** 加减数量经公共取参（DEC-264）；TODO(需取证 #105)：带小数时原站的处理，暂截断取整。 */
 const amountArg = (call: FunctionCall, index: number) => Math.trunc(call.numberArg(call.args, index));
 
@@ -49,6 +51,8 @@ const datePart = (name: string, aliases: string[], pick: (parts: DateParts) => n
   name,
   aliases,
   params: [param('日期')],
+  returns: 'number',
+  dateParams: [0],
   implement: (call) => num(pick(dateArg(call, 0))),
 });
 
@@ -56,26 +60,40 @@ const dateTransform = (name: string, aliases: string[], apply: (parts: DateParts
   name,
   aliases,
   params: [param('日期')],
+  returns: 'date',
+  dateParams: [0],
   implement: (call) => dateValue(apply(dateArg(call, 0))),
 });
 
-const dateAddition = (name: string, aliases: string[], apply: (base: DateParts, n: number) => DateParts) => ({
+const dateAddition = (
+  name: string,
+  aliases: string[],
+  apply: (base: DateParts, n: number) => DateParts,
+): FunctionSpec => ({
   name,
   aliases,
   params: [param('日期'), param('数量')],
-  implement: (call: FunctionCall) => dateValue(apply(dateArg(call, 0), amountArg(call, 1))),
+  returns: 'date',
+  dateParams: [0],
+  implement: (call) => dateValue(apply(dateArg(call, 0), amountArg(call, 1))),
 });
 
 /** 两个日期之差，第二个参数减第一个（DEC-265：Days(a, b) = b − a）。 */
-const difference = (name: string, aliases: string[], diff: (from: DateParts, to: DateParts) => number) => ({
+const difference = (
+  name: string,
+  aliases: string[],
+  diff: (from: DateParts, to: DateParts) => number,
+): FunctionSpec => ({
   name,
   aliases,
   params: [param('开始日期'), param('结束日期')],
-  implement: (call: FunctionCall) => num(diff(dateArg(call, 0), dateArg(call, 1))),
+  returns: 'number',
+  dateParams: [0, 1],
+  implement: (call) => num(diff(dateArg(call, 0), dateArg(call, 1))),
 });
 
-const utcDay = (parts: DateParts) => new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
-const dayOfYear = (parts: DateParts) => Math.round((utcDay(parts).getTime() - Date.UTC(parts.year, 0, 1)) / DAY_MS) + 1;
+const utcDay = (parts: DateParts) => new Date(utcMs(parts.year, parts.month, parts.day));
+const dayOfYear = (parts: DateParts) => Math.round((utcDay(parts).getTime() - utcMs(parts.year, 1, 1)) / DAY_MS) + 1;
 const timeOnly = (parts: DateParts): DateParts => ({ ...parts, year: 1, month: 1, day: 1, precision: 'time' });
 const nextMonthFirstDay = (parts: DateParts) =>
   dateAdd('m', 1, makeDateParts({ year: parts.year, month: parts.month, day: 1 }));
@@ -86,6 +104,7 @@ export const DATE_FUNCTIONS: readonly FunctionSpec[] = [
     name: 'Today',
     aliases: ['今天', '当前日期'],
     params: [],
+    returns: 'date',
     description: '租户时区下的业务日期“今天”0 点，由计算上下文传入（DEC-056 / DEC-265）',
     implement: (call) => dateValue(today(call)),
   },
@@ -93,6 +112,7 @@ export const DATE_FUNCTIONS: readonly FunctionSpec[] = [
     name: 'Now',
     aliases: ['现在', '当前时间'],
     params: [],
+    returns: 'date',
     description: '当前时刻按租户时区换算的墙上时间（DEC-265）',
     implement: (call) => dateValue(now(call)),
   },
@@ -111,6 +131,7 @@ export const DATE_FUNCTIONS: readonly FunctionSpec[] = [
     name: 'ToDate',
     aliases: ['转换为日期'],
     params: [param('值')],
+    returns: 'date',
     implement: (call) => dateValue(dateArg(call, 0)),
   },
   // DEC-265：FirstDay / LastDay 是该年的 1 月 1 日 / 12 月 31 日，不是月初月末
@@ -139,6 +160,8 @@ export const DATE_FUNCTIONS: readonly FunctionSpec[] = [
     name: 'DateDiff',
     aliases: ['日期差'],
     params: [param('单位'), param('开始日期'), param('结束日期')],
+    returns: 'number',
+    dateParams: [1, 2],
     description: '结束 − 开始：d 自然日，m / y 满月 / 满年',
     implement: (call) => num(dateDiff(unitArg(call, 0), dateArg(call, 1), dateArg(call, 2))),
   },
@@ -146,12 +169,16 @@ export const DATE_FUNCTIONS: readonly FunctionSpec[] = [
     name: 'DateAdd',
     aliases: ['日期加'],
     params: [param('单位'), param('数量'), param('日期')],
+    returns: 'date',
+    dateParams: [2],
     implement: (call) => dateValue(dateAdd(unitArg(call, 0), amountArg(call, 1), dateArg(call, 2))),
   },
   {
     name: 'DateFormat',
     aliases: ['日期格式化'],
     params: [param('日期'), param('格式')],
+    returns: 'text',
+    dateParams: [0],
     description: '.NET 风格格式符：yyyy MM dd HH mm ss tt 等（221160022）',
     implement: (call) => ({ kind: 'text', value: formatDate(dateArg(call, 0), call.textArg(call.args, 1)) }),
   },
