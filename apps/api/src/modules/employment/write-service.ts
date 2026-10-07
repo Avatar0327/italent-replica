@@ -471,7 +471,7 @@ export async function appendEmploymentPayload(
     { ...fields, ...metadata, createdAt: ctx.now.toISOString() },
     status,
   );
-  // 未显式给出时由插入触发器继承（迁移 0061），以库中的值为准
+  // 未显式给出时由插入触发器继承（迁移 0062），以库中的值为准
   return { ...payload, ...(await storedStatus(tx, ctx, payload.id)) };
 }
 

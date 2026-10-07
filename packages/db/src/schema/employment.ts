@@ -182,7 +182,7 @@ function presetRules(name: string, t: PresetColumns): PgTableExtraConfigValue[] 
 
 /**
  * 人员状态 / 入职状态（F-022，15 §9）：随任职版本存储，表示该版本的目标状态。只能经业务流转写入：
- * 未显式给出时由插入触发器按版本链继承（快照继承记录当前值，其余继承上一版本或时间轴前一条，迁移 0061）。
+ * 未显式给出时由插入触发器按版本链继承（快照继承记录当前值，其余继承上一版本或时间轴前一条，迁移 0062）。
  */
 function statusColumns() {
   return {

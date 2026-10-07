@@ -183,7 +183,7 @@ const ARRAY_COLUMNS = new Set(['deferredFieldCodes', 'explicitFieldCodes']);
 /**
  * 表名固定于本模块；字段名由服务构造，业务值全部绑定为参数。
  * 任职版本（载荷、记录）的人员状态 / 入职状态是所有追加路径共用的继承点（F-022）：调用方展开旧载荷带来的值一律丢弃，
- * 只有业务流转端口经 status 显式给出新状态；未给出时由插入触发器按版本链继承（迁移 0061）。
+ * 只有业务流转端口经 status 显式给出新状态；未给出时由插入触发器按版本链继承（迁移 0062）。
  */
 export async function insertEmploymentRow(
   tx: Tx,

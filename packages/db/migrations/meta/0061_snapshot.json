@@ -1,5 +1,5 @@
 {
-  "id": "c3053507-dc8e-406a-b7ca-775d5af10645",
+  "id": "842df8cd-79c2-4dbd-b4d6-d87380da1360",
   "prevId": "043eec4d-bed4-4159-b51b-f4598a386249",
   "version": "7",
   "dialect": "postgresql",
@@ -11274,18 +11274,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "employee_status": {
-          "name": "employee_status",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "entry_status": {
-          "name": "entry_status",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": false
-        },
         "custom_fields": {
           "name": "custom_fields",
           "type": "jsonb",
@@ -11719,14 +11707,6 @@
           "name": "employment_payload_versions_custom_object",
           "value": "jsonb_typeof(\"employment_payload_versions\".\"custom_fields\") = 'object'"
         },
-        "employment_payload_versions_employee_status": {
-          "name": "employment_payload_versions_employee_status",
-          "value": "\"employment_payload_versions\".\"employee_status\" IN (1, 2, 3, 4, 5, 6, 8, 12)"
-        },
-        "employment_payload_versions_entry_status": {
-          "name": "employment_payload_versions_entry_status",
-          "value": "\"employment_payload_versions\".\"entry_status\" IN (0, 1, 2)"
-        },
         "employment_payload_versions_kind": {
           "name": "employment_payload_versions_kind",
           "value": "\"employment_payload_versions\".\"kind\" IN ('hire', 'rehire', 'retire_rehire', 'regularization', 'transfer',\n      'org_adjustment', 'leave', 'retirement', 'intern_regularization')"
@@ -12112,18 +12092,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "employee_status": {
-          "name": "employee_status",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "entry_status": {
-          "name": "entry_status",
-          "type": "smallint",
-          "primaryKey": false,
-          "notNull": false
-        },
         "custom_fields": {
           "name": "custom_fields",
           "type": "jsonb",
@@ -12428,14 +12396,6 @@
         "employment_records_custom_object": {
           "name": "employment_records_custom_object",
           "value": "jsonb_typeof(\"employment_records\".\"custom_fields\") = 'object'"
-        },
-        "employment_records_employee_status": {
-          "name": "employment_records_employee_status",
-          "value": "\"employment_records\".\"employee_status\" IN (1, 2, 3, 4, 5, 6, 8, 12)"
-        },
-        "employment_records_entry_status": {
-          "name": "employment_records_entry_status",
-          "value": "\"employment_records\".\"entry_status\" IN (0, 1, 2)"
         },
         "employment_records_kind": {
           "name": "employment_records_kind",
@@ -23418,7 +23378,7 @@
       "checkConstraints": {
         "approval_nodes_approver": {
           "name": "approval_nodes_approver",
-          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head')"
+          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head')"
         },
         "approval_nodes_no_assignee": {
           "name": "approval_nodes_no_assignee",
@@ -23450,7 +23410,7 @@
         },
         "approval_nodes_approvers": {
           "name": "approval_nodes_approvers",
-          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 5\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','latest_record_department_head','record_department_head',\n            'record_department_hrbp','record_first_level_org_head']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
+          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 6\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
         },
         "approval_nodes_exits": {
           "name": "approval_nodes_exits",

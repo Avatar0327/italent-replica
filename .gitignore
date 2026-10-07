@@ -16,3 +16,5 @@ coverage/
 
 # 本地数据库文件
 *.pglite/
+# 本地演示数据（F-025：PGlite 数据目录与演示身份清单），pnpm demo:reset 可一键重置
+.demo/

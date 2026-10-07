@@ -1,7 +1,7 @@
 /**
  * 人员状态 / 入职状态的业务流转端口（F-022；docs/02_业务建模/15 §9、29 PB-R7、34 EN-R8～R11）。
  * 状态随承载它的任职版本生效而切换：每次流转追加版本（记录快照或申请载荷），不原地改写，不另建“变更前”列。
- * 未经这里显式给出的追加一律继承上一版本（record-store.ts insertEmploymentRow + 迁移 0061 触发器）。
+ * 未经这里显式给出的追加一律继承上一版本（record-store.ts insertEmploymentRow + 迁移 0062 触发器）。
  * 端口接线：添加待入职、办理入职生效、延期 / 取消 / 改期入职由 R2-T01 接入；转正审批与调整试用信息由 R2-T02 接入。
  */
 import { randomUUID } from 'node:crypto';
@@ -45,7 +45,7 @@ export interface EntryOptions {
 const ENTRY_KINDS: readonly BusinessKind[] = ['hire', 'rehire', 'retire_rehire'];
 /** DEC-234：实习转正按入职处理（原站变动类型为“入职”，15 §9.5）——按是否有试用期取试用 / 正式，默认正式。 */
 const ENTRY_LIKE_KINDS: readonly BusinessKind[] = [...ENTRY_KINDS, 'intern_regularization'];
-/** 本身决定人员状态的业务（与迁移 0061 的触发器、employment_kind_status 一致）；其余业务继承插入点前一条。 */
+/** 本身决定人员状态的业务（与迁移 0062 的触发器、employment_kind_status 一致）；其余业务继承插入点前一条。 */
 const STATUS_SETTING_KINDS: readonly BusinessKind[] = [...ENTRY_LIKE_KINDS, 'regularization', 'leave', 'retirement'];
 
 export function inheritsEmployeeStatus(kind: BusinessKind): boolean {

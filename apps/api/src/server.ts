@@ -2,8 +2,8 @@ import { startSequenceSyncScheduler } from './modules/job/sequence-worker.js';
 import { startOrderCodeScheduler } from './modules/personnel/order-code-scheduler.js';
 import { startContractScheduler } from './modules/contracts/scheduler.js';
 import { serve } from '@hono/node-server';
-import { createPgDb } from '@italent/db';
 import { createApp } from './app.js';
+import { databaseFromEnv, localPgliteDir } from './database.js';
 import { identityResolverFromEnv } from './identity.js';
 import { startEmploymentActivationScheduler } from './modules/employment/activation-scheduler.js';
 import { startAuditRetentionScheduler } from './audit/retention.js';
@@ -11,8 +11,15 @@ import { startAuditRetentionScheduler } from './audit/retention.js';
 // 生产环境未接入真实登录（B-01）时，这里直接抛错阻止启动，不回退到不安全的身份实现。
 // 授权不在此注入：createApp 缺省使用权限模型授权器（R1-T01），默认拒绝。
 const identity = identityResolverFromEnv();
-const databaseUrl = process.env.DATABASE_URL;
-const handle = databaseUrl ? createPgDb(databaseUrl) : undefined;
+// 设 DATABASE_URL 连真 PG；只有 NODE_ENV=development 且未设时才用本地 PGlite 并自动迁移（F-025，见 database.ts）
+const handle = await databaseFromEnv();
+if (handle?.driver === 'pglite') {
+  console.log(`开发环境未设 DATABASE_URL：使用本地 PGlite（${localPgliteDir()}），已执行迁移`);
+  // PGlite 落盘：退出前关库，避免数据目录处于未刷写状态
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.once(signal, () => void handle.close().finally(() => process.exit(0)));
+  }
+}
 const port = Number(process.env.PORT ?? 3000);
 
 serve({ fetch: createApp(handle ? { db: handle.db, identity } : { identity }).fetch, port }, (info) => {

@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { PGlite } from '@electric-sql/pglite';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
@@ -32,6 +33,19 @@ export function createPgDb(url: string, options: { max?: number } = {}): DbHandl
     migrate: (folder = migrationsFolder) => migratePg(db, { migrationsFolder: folder }),
     close: () => client.end(),
   };
+}
+
+/**
+ * 打开落盘的 PGlite（本地演示 F-025）：数据目录不存在时自动创建，加载迁移所需的 btree_gist。
+ * 动态 import：只有调用方（apps/api 的开发环境分支）走到这里才加载 PGlite。
+ */
+export async function openPgliteDir(dataDir: string): Promise<DbHandle> {
+  const [{ PGlite }, { btree_gist }] = await Promise.all([
+    import('@electric-sql/pglite'),
+    import('@electric-sql/pglite/contrib/btree_gist'),
+  ]);
+  mkdirSync(dataDir, { recursive: true });
+  return createPgliteDb(await PGlite.create(dataDir, { extensions: { btree_gist } }));
 }
 
 /** 包装一个已创建的 PGlite 实例（调用方负责加载 btree_gist 等扩展）。 */

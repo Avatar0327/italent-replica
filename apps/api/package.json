@@ -24,6 +24,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@italent/testkit": "workspace:*"
+    "@italent/testkit": "workspace:*",
+    "tsx": "4.23.15"
   }
 }
