@@ -3,7 +3,7 @@
 "stats": {
 "merged": 51,
 "open": 7,
-"dec": 260,
+"dec": 263,
 "ev": "18/103"
 },
 "tasks": {
@@ -693,8 +693,8 @@
 "n": "审批中心前端：我的待办 / 已办、单据详情（按节点盲审裁剪）、同意 / 驳回 / 转交 / 加签 / 催办",
 "p": "R1-T07",
 "s": "active",
-"dev": "Codex",
-"rev": "Opus",
+"dev": "Claude Fable 5.1",
+"rev": "Astra Ultra",
 "note": "Codex 开发（GPT-6.1 Sol，Ultra，DEC-233 已投递）；DEC-233 本 PR 补两个只读接口；DEC-229；F-025 发现复刻前端缺审批中心页面",
 "pr": [
 97
@@ -719,8 +719,8 @@
 "pr": [
 99
 ],
-"dev": "Codex",
-"rev": "Opus"
+"dev": "Claude Opus 5.5 High",
+"rev": "Astra Ultra"
 },
 "F-011": {
 "n": "新建职位 / 改所属组织按整段校验组织停用",
@@ -816,12 +816,12 @@
 },
 "97": {
 "s": "active",
-"r": 3,
+"r": 4,
 "n": "#92 合并后与 main 冲突（SelfServiceShell.tsx），Codex 合并 main 中；之后 astra Ultra"
 },
 "99": {
 "s": "review",
-"r": 3,
+"r": 4,
 "n": "第 2 轮 Astra Ultra 2 P2（可信值 vs 员工输入，连续同类）→ 第 3 轮修改中；下轮 Astra Ultra 列全同类"
 },
 "101": {
@@ -836,6 +836,10 @@
 }
 },
 "log": [
+[
+"10-07",
+"#97 第 3 轮 1 P2、#99 第 3 轮 2 P2 → 第 4 轮交 Claude（DEC-256）"
+],
 [
 "10-07",
 "DEC-261 继任规则结构化+编译；DEC-262 并列名次 1,1,3、360 最近一次；DEC-263 离职口径（最后工作日改实际执行日、提示不拦截）"
@@ -1862,17 +1866,17 @@
 97,
 "F-027",
 "审批中心前端",
-"第 3 轮审查（被 ChatGPT 安全过滤拦截，改措辞续审）",
-"第 3 轮",
-"开发：Codex Sol Ultra（本轮后交 Claude Fable 5.1）；审查：Codex Astra Ultra"
+"第 4 轮修改（D 档列全同类）",
+"第 4 轮",
+"开发：Claude Fable 5.1（接手 Codex）；审查：Codex Astra Ultra"
 ],
 [
 99,
 "F-029",
 "本人跨部门调动清空职位",
-"第 3 轮审查中",
-"第 3 轮",
-"开发：Codex Sol（本轮后交 Claude Opus 5.5 High）；审查：Codex Astra Ultra"
+"第 4 轮修改（D 档，同类第 3 次 + 1 权限）",
+"第 4 轮",
+"开发：Claude Opus 5.5 High（接手 Codex）；审查：Codex Astra Ultra"
 ],
 [
 100,
