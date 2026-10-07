@@ -1885,7 +1885,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 12:09",
+"liveUpdated": "10-07 12:14",
 "chains": [
 {
 "g": "exit",
@@ -1983,7 +1983,7 @@
 "pr": 97,
 "n": "审批中心前端",
 "seg": "ev:n ds:n dev:d4 rev:a4 mg:w",
-"now": "第 4 轮 Astra Ultra 审查中",
+"now": "第 4 轮审查出结论，待读取",
 "fable": "1",
 "up": "10-07 第 4 轮调到 Max"
 },
