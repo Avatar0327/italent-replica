@@ -7,8 +7,9 @@
   t <ID> k=v …     改任务字段：n 名称 / ms 子阶段 / p 被修正任务 / s 状态(done|active|review|todo|blocked)
                    dev / rev / note / ev(阻塞取证说明) / deps=a,b / pr=1,2 / pr+=93；值为 - 表示删除该字段
   pr <N> k=v …      改在途 PR：s 状态 / r 轮次 / n 说明 / h+="第N轮:说明"（追加轮次记录）；pr <N> -  删除（合并后）
-  card <编号> pr=N n=任务 now=现在在做 seg="ev:d ds:n dev:a4 rev:d3 mg:w" dev=… rev=… wait=… need=1   进行中看板的卡片（段状态 a 正在做 / d 完成 / w 待做 / b 受阻 / n 不适用，后接轮次）；card <编号> -  删除
-  recent <编号> pr=N n=任务 u="10-07 · 解锁 …"     最近完成条目；queue <编号> n=任务 u="等 …"  即将开始条目；两者都可用 - 删除
+  it <编号> g=链 o=列序 k=run|done|todo pr=N n=任务 seg="ev:d ds:n dev:a4 rev:d3 mg:w" now=… wait=… need=1 fable=1 up=… u=…
+                   进行中看板条目（seg 段状态 a 正在做 / d 完成 / w 待做 / n 不适用，后接轮次；同链同 o 为并行）；it <编号> -  删除
+  chain <链> t=标题 d=说明   定义一条依赖链（按加入顺序显示）；chain <链> -  删除
   build              生成两个页面：进度看板.html（总体，低频发布）与 进行中看板.html（高频发布）
   log "<文本>"      在最近动态最前面加一条（日期取今天）
   build [--nosync] 同步统计（gh、DEC、evidence-gate）并生成 HTML，再用 node 校验渲染
@@ -84,7 +85,7 @@ def cmd_item(d, key, a):
         if v == "-":
             row.pop(kk, None)
         else:
-            row[kk] = int(v) if kk == "pr" else v
+            row[kk] = int(v) if kk in ("pr", "o") else v
     d["liveUpdated"] = datetime.datetime.now().strftime("%m-%d %H:%M")
 
 
@@ -132,12 +133,12 @@ def build(d, nosync):
         sync(d)
         save(d)
     live = open(os.path.join(HERE, "进行中看板.template.html"), encoding="utf8").read().replace(
-        "__DATA__", json.dumps({k: d.get(k) for k in ("cards", "recent", "queue", "liveUpdated", "updated")}, ensure_ascii=False))
+        "__DATA__", json.dumps({k: d.get(k) for k in ("items", "chains", "liveUpdated", "updated")}, ensure_ascii=False))
     with open(os.path.join(HERE, "进行中看板.html"), "w", encoding="utf8") as f:
         f.write(live)
     ljs = live[live.index("const DATA"):live.rindex("</script>")]
     lstub = """const els={};const mk=()=>({innerHTML:"",textContent:""});global.document={getElementById:id=>els[id]||(els[id]=mk())};
-""" + ljs + "\nconsole.log('live cards',(els.cards.innerHTML.match(/<article/g)||[]).length,'recent',(els.recent.innerHTML.match(/chip/g)||[]).length);"
+""" + ljs + "\nconsole.log('live chains',(els.chains.innerHTML.match(/class=\"chain\"/g)||[]).length,'items',(els.chains.innerHTML.match(/class=\"it/g)||[]).length);"
     rr = subprocess.run(["node", "-e", lstub], capture_output=True, text=True)
     print(rr.stdout.strip() or rr.stderr.strip()[:800])
     if rr.returncode:
@@ -173,8 +174,16 @@ def main():
             cmd_t(d, a)
         elif c == "pr":
             cmd_pr(d, a)
-        elif c in ("card", "recent", "queue"):
-            cmd_item(d, {"card": "cards"}.get(c, c), a)
+        elif c == "it":
+            cmd_item(d, "items", a)
+        elif c == "chain":
+            rows = d.setdefault("chains", []); g = a[0]
+            row = next((r for r in rows if r["g"] == g), None)
+            if a[1:] == ["-"]:
+                rows.remove(row) if row else None
+            else:
+                if not row: row = {"g": g}; rows.append(row)
+                for kk, _, v in kv(a[1:]): row[kk] = v
         elif c == "run":
             cmd_run(d, a)
         elif c == "log":
