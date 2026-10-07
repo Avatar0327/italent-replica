@@ -1,5 +1,5 @@
 /**
- * AC-EXP 第三轮回归（astra 第二轮审查 P2-1～P2-3，PR #90）：按字段解析区分连字符与减号、
+ * AC-EXP 第三轮回归（astra 第二轮审查 P2-1～P2-3，PR #90）：连字符与减号（第四轮起按 DEC-228）、
  * 短字段名绑定在排序前一次性固定、单选先解包再决定是否按日期比较。
  */
 import {
@@ -19,8 +19,14 @@ const num = (value: number) => ({ kind: 'number', value });
 const bool = (value: boolean) => ({ kind: 'boolean', value });
 const item = (field: string, priority: number, formula: string): ComputationItem => ({ field, priority, formula });
 
-describe('P2-1 连字符与减号按字段解析区分', () => {
-  it('整体是已知字段时按字段：对象自身字段、原站 360 字段', () => {
+describe('P2-1 连字符与减号（DEC-228 取代第三轮“先试作字段、不行再拆成减法”）', () => {
+  const HINT = '如需相减，请在减号两侧加空格';
+  const unknownWithHint = (path: string) => ({
+    code: 'UNKNOWN_FIELD',
+    message: expect.stringMatching(new RegExp(`${path}.*${HINT}`)),
+  });
+
+  it('完整字段按字段读取：对象自身字段、原站 360 字段', () => {
     expect(valueOf(evaluateFormula('盘点对象.得分-上级分 + 1', contextFor({ '盘点对象.得分-上级分': 4 })))).toEqual(
       num(5),
     );
@@ -29,33 +35,44 @@ describe('P2-1 连字符与减号按字段解析区分', () => {
     if (validated.ok) expect(validated.fields).toContain('360结果.问卷-他评总分');
   });
 
-  it('整体不是字段时在连字符处拆分：右侧是字段、变量、函数调用', () => {
+  it('不加空格时连字符一律并入字段名：右侧是字段、变量、函数调用都不再拆分', () => {
     const fields = { '盘点对象.得分': 5, '盘点对象.基准': 2, 基准: 1 };
-    expect(valueOf(evaluateFormula('盘点对象.得分-盘点对象.基准', contextFor(fields)))).toEqual(num(3));
-    expect(valueOf(evaluateFormula('盘点对象.得分-基准', contextFor(fields)))).toEqual(num(4));
-    expect(valueOf(evaluateFormula('Def(上级分, 3); 盘点对象.得分-上级分', contextFor(fields)))).toEqual(num(2));
-    expect(valueOf(evaluateFormula('盘点对象.得分-转换为数字("2")', contextFor(fields)))).toEqual(num(3));
+    const run = (formula: string) => valueOf(evaluateFormula(formula, contextFor(fields)));
+    expect(run('盘点对象.得分-盘点对象.基准')).toMatchObject(unknownWithHint('盘点对象.得分-盘点对象.基准'));
+    expect(run('盘点对象.得分-基准')).toMatchObject(unknownWithHint('盘点对象.得分-基准'));
+    expect(run('Def(上级分, 3); 盘点对象.得分-上级分')).toMatchObject(unknownWithHint('盘点对象.得分-上级分'));
+    expect(run('盘点对象.得分-转换为数字("2")')).toMatchObject({
+      code: 'SYNTAX_ERROR',
+      message: expect.stringContaining(HINT),
+    });
   });
 
-  it('拆分后的减法保持运算优先级', () => {
+  it('加空格后的减法保持运算优先级', () => {
     const fields = { '盘点对象.得分': 5, 基准: 2 };
-    expect(valueOf(evaluateFormula('盘点对象.得分-基准*2', contextFor(fields)))).toEqual(num(1));
-    expect(valueOf(evaluateFormula('盘点对象.得分-基准-1', contextFor(fields)))).toEqual(num(2));
+    expect(valueOf(evaluateFormula('盘点对象.得分 - 基准*2', contextFor(fields)))).toEqual(num(1));
+    expect(valueOf(evaluateFormula('盘点对象.得分 - 基准 - 1', contextFor(fields)))).toEqual(num(2));
   });
 
-  it('整体和拆分后都解析不出：UNKNOWN_FIELD 指出拆分后的那一侧', () => {
+  it('不加空格且字段不存在：UNKNOWN_FIELD 指出完整字段名并提示加空格', () => {
     const result = evaluateFormula('盘点对象.得分-不存在', contextFor({ '盘点对象.得分': 5 }));
-    expect(valueOf(result)).toMatchObject({ code: 'UNKNOWN_FIELD', message: expect.stringContaining('不存在') });
+    expect(valueOf(result)).toMatchObject(unknownWithHint('盘点对象.得分-不存在'));
   });
 
-  it('批量求值（预解析的公式）同样按字段解析：右侧是先算项目的短名', () => {
-    const items = [item('盘点对象.基准', 1, '2'), item('盘点对象.差值', 2, '盘点对象.得分-基准')];
-    const ordered = orderComputationItems(items);
-    expect(ordered.ok).toBe(true);
-    if (ordered.ok) expect(ordered.entries[1]?.dependsOn).toEqual(['盘点对象.基准']);
-    const batch = evaluateBatch(items, [inMemorySubject('e1', { '盘点对象.得分': 5 })], { calendar: CALENDAR });
-    expect(batch.ok).toBe(true);
-    if (batch.ok) expect(batch.results.e1?.['盘点对象.差值']).toEqual({ ok: true, value: num(3) });
+  it('批量求值：不加空格不绑定为对先算项目的引用；加空格才依赖并相减', () => {
+    const subjects = [inMemorySubject('e1', { '盘点对象.得分': 5 })];
+    const joined = [item('盘点对象.基准', 1, '2'), item('盘点对象.差值', 2, '盘点对象.得分-基准')];
+    const orderedJoined = orderComputationItems(joined);
+    expect(orderedJoined.ok && orderedJoined.entries[1]?.dependsOn).toEqual([]);
+    const batchJoined = evaluateBatch(joined, subjects, { calendar: CALENDAR });
+    expect(batchJoined.ok && batchJoined.results.e1?.['盘点对象.差值']).toMatchObject({
+      ok: false,
+      failure: unknownWithHint('盘点对象.得分-基准'),
+    });
+    const spaced = [item('盘点对象.基准', 1, '2'), item('盘点对象.差值', 2, '盘点对象.得分 - 基准')];
+    const orderedSpaced = orderComputationItems(spaced);
+    expect(orderedSpaced.ok && orderedSpaced.entries[1]?.dependsOn).toEqual(['盘点对象.基准']);
+    const batchSpaced = evaluateBatch(spaced, subjects, { calendar: CALENDAR });
+    expect(batchSpaced.ok && batchSpaced.results.e1?.['盘点对象.差值']).toEqual({ ok: true, value: num(3) });
   });
 });
 

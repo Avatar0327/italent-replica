@@ -19,9 +19,15 @@ describe('词法：字段引用、数字、字符串、全角符号', () => {
     expect(kinds).toEqual(['identifier:360结果', 'dot:.', 'identifier:问卷-他评总分', 'eof:']);
   });
 
-  it('连字符后面是数字时仍是减号', () => {
-    const kinds = tokenize('考核结果.年度-1').map((token) => token.kind);
-    expect(kinds).toEqual(['identifier', 'dot', 'identifier', 'operator', 'number', 'eof']);
+  it('DEC-228：成员位置的连字符一律并入字段名（后接数字、对象名也一样）；不在成员位置时是减号', () => {
+    const texts = (source: string) => tokenize(source).map((token) => token.text);
+    expect(texts('考核结果.年度-1')).toEqual(['考核结果', '.', '年度-1', '']);
+    expect(texts('盘点对象.得分-盘点对象.基准')).toEqual(['盘点对象', '.', '得分-盘点对象', '.', '基准', '']);
+    expect(texts('考核结果.年度 - 1')).toEqual(['考核结果', '.', '年度', '-', '1', '']);
+    expect(texts('考核结果.年度- 1')).toEqual(['考核结果', '.', '年度', '-', '1', '']);
+    expect(texts('a-b')).toEqual(['a', '-', 'b', '']);
+    expect(texts('总分-上级分')).toEqual(['总分', '-', '上级分', '']);
+    expect(texts('10-3')).toEqual(['10', '-', '3', '']);
   });
 
   it('全角括号、逗号、分号和比较符都能识别；百分比是数字', () => {
@@ -90,6 +96,14 @@ describe('语法错误：位置与原因', () => {
   });
   it('缺少 那么', () => {
     expect(fail('如果 a 1 否则 2')).toMatchObject({ code: 'SYNTAX_ERROR', column: 6 });
+  });
+  it('DEC-228：连字符并入字段名后紧跟的语法错误提示“如需相减，请在减号两侧加空格”', () => {
+    expect(fail('盘点对象.得分-转换为数字("2")')).toMatchObject({
+      code: 'SYNTAX_ERROR',
+      column: 14,
+      message: expect.stringContaining('如需相减，请在减号两侧加空格'),
+    });
+    expect(fail('1 2').message).not.toContain('减号');
   });
   it('空公式', () => {
     expect(fail('   ')).toMatchObject({ code: 'SYNTAX_ERROR' });
