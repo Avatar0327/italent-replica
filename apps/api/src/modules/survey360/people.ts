@@ -168,6 +168,17 @@ export async function personVisible(tx: Tx, admin: Admin, person: PersonRow): Pr
   return scopeAllowsInTransaction(tx, admin.people, { personId: person.employeeId, creatorId: person.createdBy });
 }
 
+/** 一批人员里查看人可见的（与列表同一谓词，一条 SQL）。 */
+export async function visiblePersonIds(tx: Tx, admin: Admin, ids: readonly string[]): Promise<Set<string>> {
+  const filter = personFilter(admin);
+  if (!filter || ids.length === 0) return new Set(ids);
+  const found = rows<{ id: string }>(
+    await tx.execute(sql`SELECT p.id FROM survey360_people p
+      WHERE p.id = ANY(${`{${[...new Set(ids)].join(',')}}`}::uuid[]) AND ${filter}`),
+  );
+  return new Set(found.map((r) => r.id));
+}
+
 /** 尚未建 360 人员的员工（自动添加的候选）：只按员工判断，不按将来的创建人放行。 */
 export async function employeeVisible(tx: Tx, admin: Admin, employeeId: string): Promise<boolean> {
   return !admin.people || scopeAllowsInTransaction(tx, admin.people, { personId: employeeId });

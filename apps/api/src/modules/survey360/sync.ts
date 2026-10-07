@@ -13,6 +13,7 @@
 import {
   and,
   eq,
+  inArray,
   sql,
   survey360PersonLinkLogs,
   survey360People,
@@ -53,7 +54,14 @@ import {
   type Viewer,
   write,
 } from './context.js';
-import { findPersonByEmail, loadPerson, type PersonRow, personView, personVisible } from './people.js';
+import {
+  findPersonByEmail,
+  loadPerson,
+  type PersonRow,
+  personView,
+  personVisible,
+  visiblePersonIds,
+} from './people.js';
 
 const EMPLOYMENT_RECORD_OBJECT = 'TenantBase.EmploymentRecord';
 /** 一次同步最多处理的员工数（有界查询）；超出部分返回游标，按游标续同步。 */
@@ -93,6 +101,16 @@ export async function syncAccess(
     personnelFields: await getModuleViewableFieldsInTransaction(deps, tenant, PERSONNEL_OBJECT, tx),
     recordFields: await getModuleViewableFieldsInTransaction(deps, tenant, EMPLOYMENT_RECORD_OBJECT, tx),
   };
+}
+
+/** 一批员工里在范围内的（与同步同一谓词，一条 SQL）。 */
+export async function employeesInScope(tx: Tx, scope: ModuleScope, ids: readonly string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const found = rows<{ id: string }>(
+    await tx.execute(sql`SELECT e.id FROM employment_employees e
+      WHERE e.id = ANY(${`{${[...new Set(ids)].join(',')}}`}::uuid[]) AND ${scopeSql(scope, { person: sql`e.id` })}`),
+  );
+  return new Set(found.map((r) => r.id));
 }
 
 export async function employeeInScope(tx: Tx, scope: ModuleScope, employeeId: string): Promise<boolean> {
@@ -655,37 +673,39 @@ const conflictPresent: Present = async (viewer, body: ReturnType<typeof conflict
  */
 async function syncView(viewer: Viewer, employees: ModuleScope, body: SyncResult, after: string | undefined) {
   const { tx, admin } = viewer;
-  const inScope = (employeeId: string) => employeeInScope(tx, employees, employeeId);
+  const conflictRows = body.conflicts.length
+    ? await tx
+        .select({ id: survey360SyncConflicts.id, employeeId: survey360SyncConflicts.employeeId })
+        .from(survey360SyncConflicts)
+        .where(inArray(survey360SyncConflicts.id, body.conflicts))
+    : [];
+  const conflictEmployee = new Map(conflictRows.map((c) => [c.id, c.employeeId]));
+  const listed = [...body.created, ...body.updated, ...body.skipped, ...conflictRows].map((e) => e.employeeId);
+  const inScope = await employeesInScope(tx, employees, [...listed, ...(body.nextCursor ? [body.nextCursor] : [])]);
+  const visible = await visiblePersonIds(
+    tx,
+    admin,
+    [...body.created, ...body.updated].map((e) => e.personId),
+  );
   const fields = await viewer.fields('person');
-  const people = async (list: SyncResult['created']) => {
-    const kept = [];
-    for (const entry of list)
-      if ((await inScope(entry.employeeId)) && (await personVisible(tx, admin, await loadPerson(tx, entry.personId))))
-        kept.push(pick(entry, fields, { personId: 'id' }));
-    return kept;
-  };
-  const conflicts = [];
-  for (const id of body.conflicts) {
-    const [row] = await tx
-      .select({ employeeId: survey360SyncConflicts.employeeId })
-      .from(survey360SyncConflicts)
-      .where(eq(survey360SyncConflicts.id, id));
-    if (row && (await inScope(row.employeeId))) conflicts.push({ id, employeeId: row.employeeId });
-  }
-  const skipped = [];
-  for (const entry of body.skipped) if (await inScope(entry.employeeId)) skipped.push(entry);
-  const seen = [...body.created, ...body.updated, ...skipped, ...conflicts].map((e) => e.employeeId);
+  const people = (list: SyncResult['created']) =>
+    list
+      .filter((e) => inScope.has(e.employeeId) && visible.has(e.personId))
+      .map((e) => pick(e, fields, { personId: 'id' }));
   let nextCursor = body.nextCursor;
-  if (nextCursor && !(await inScope(nextCursor))) {
-    const kept: string[] = [];
-    for (const id of seen) if (await inScope(id)) kept.push(id);
-    nextCursor = kept.sort().at(-1) ?? after ?? null;
-  }
+  if (nextCursor && !inScope.has(nextCursor))
+    nextCursor =
+      listed
+        .filter((id) => inScope.has(id))
+        .sort()
+        .at(-1) ??
+      after ??
+      null;
   return {
-    created: await people(body.created),
-    updated: await people(body.updated),
-    conflicts: conflicts.map((c) => c.id),
-    skipped,
+    created: people(body.created),
+    updated: people(body.updated),
+    conflicts: body.conflicts.filter((id) => inScope.has(conflictEmployee.get(id) ?? '')),
+    skipped: body.skipped.filter((e) => inScope.has(e.employeeId)),
     nextCursor,
   };
 }

@@ -16,6 +16,7 @@ import {
   survey360Links,
   survey360ObjectQuestionnaires,
   survey360Objects,
+  survey360People,
   survey360Relations,
   survey360Roles,
   type Tx,
@@ -67,9 +68,11 @@ import {
   requireCreatable,
   updatePerson,
   visiblePerson,
+  visiblePersonIds,
 } from './people.js';
 import {
   employeeInScope,
+  employeesInScope,
   linkedPerson,
   personForEmployee,
   refreshFromOrg,
@@ -693,20 +696,30 @@ async function candidateVisible(tx: Tx, admin: Admin, employeeId: string): Promi
 
 /**
  * 自动添加回执：返回前（新请求与重放同一路径）按当前员工范围与精细化范围复核，移出范围的员工的新增关系与跳过
- * 原因都去掉（第 3 轮 R2-P2-1）；新增关系按评价关系字段裁剪。
+ * 原因都去掉（第 3 轮 R2-P2-1）；新增关系按评价关系字段裁剪。按批查询（有界：一个对象最多 500 个评价者）。
  */
 async function autoAddView(viewer: Viewer, employees: ModuleScope, body: AutoAddResult) {
-  const inScope = async (employeeId: string | null) =>
-    !!employeeId &&
-    (await employeeInScope(viewer.tx, employees, employeeId)) &&
-    (await candidateVisible(viewer.tx, viewer.admin, employeeId));
-  const added = [];
-  for (const relation of body.added)
-    if (await inScope((await loadPerson(viewer.tx, relation.appraiserPersonId)).employeeId)) added.push(relation);
-  const skipped = [];
-  for (const entry of body.skipped) if (await inScope(entry.employeeId)) skipped.push(entry);
+  const { tx, admin } = viewer;
+  const personIds = body.added.map((r) => r.appraiserPersonId);
+  const linked = personIds.length
+    ? await tx
+        .select({ id: survey360People.id, employeeId: survey360People.employeeId })
+        .from(survey360People)
+        .where(inArray(survey360People.id, personIds))
+    : [];
+  const employeeOf = new Map(linked.map((p) => [p.id, p.employeeId ?? '']));
+  const skippedIds = body.skipped.map((s) => s.employeeId);
+  const inScope = await employeesInScope(tx, employees, [...employeeOf.values(), ...skippedIds].filter(Boolean));
+  const visible = await visiblePersonIds(tx, admin, personIds);
+  // 跳过的员工没有 360 人员：精细化权限下按员工判断
+  const fine = admin.people ? await employeesInScope(tx, admin.people, skippedIds) : new Set(skippedIds);
   const fields = await viewer.fields('relation');
-  return { added: added.map((row) => pick(row, fields)), skipped };
+  return {
+    added: body.added
+      .filter((r) => inScope.has(employeeOf.get(r.appraiserPersonId) ?? '') && visible.has(r.appraiserPersonId))
+      .map((row) => pick(row, fields)),
+    skipped: body.skipped.filter((s) => inScope.has(s.employeeId) && fine.has(s.employeeId)),
+  };
 }
 
 /** 邀请上级确认的回执：按评价关系字段裁剪；精细化权限下确认人（上级）看不到时去掉 confirmerPersonId。 */
