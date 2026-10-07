@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -88,5 +88,24 @@ describe('F-025 后端本地数据库选择', () => {
       await handle!.close();
     }
     expect(existsSync(join(demoRoot, 'unused'))).toBe(false);
+  });
+
+  // #92 第 2 轮审查 P2：演示根 `.demo` 本身是符号链接时，realpath 会把仓库外目录当成允许范围
+  it('演示根目录本身是符号链接（指向仓库外）：启动与重置都拒绝，仓库外的库保留', async () => {
+    const fakeRepo = mkdtempSync(join(tmpdir(), 'italent-linked-root-'));
+    const outside = mkdtempSync(join(tmpdir(), 'italent-outside-'));
+    mkdirSync(join(outside, 'pglite'));
+    writeFileSync(join(outside, 'pglite', 'PG_VERSION'), '16\n');
+    const linkedRoot = join(fakeRepo, '.demo');
+    symlinkSync(outside, linkedRoot);
+    try {
+      const env = { NODE_ENV: 'development' };
+      expect(() => resetLocalDatabase(env, { demoRoot: linkedRoot })).toThrow(/符号链接/);
+      expect(existsSync(join(outside, 'pglite', 'PG_VERSION'))).toBe(true);
+      await expect(databaseFromEnv(env, { demoRoot: linkedRoot })).rejects.toThrow(/符号链接/);
+    } finally {
+      rmSync(fakeRepo, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });
