@@ -108,7 +108,10 @@ export interface RealFetch {
   hold(match: (url: string, options: RequestInit) => boolean): { release: () => void; held: Promise<void> };
   /** 某次响应交付前的钩子（如记录 Profiler 帧标记）。 */
   onDeliver: (exchange: Exchange) => void;
+  /** 等待所有在途请求（含被通道中止但服务端仍在处理的）结束：用例结束前必须静默，否则迟到的响应会在 DOM 释放后触发渲染。 */
+  idle(): Promise<void>;
 }
+let activeNet: RealFetch | null = null;
 export function header(options: RequestInit, name: string) {
   return new Headers(options.headers).get(name);
 }
@@ -119,8 +122,14 @@ export function realFetch(app: ReturnType<typeof createApp>, secret: string, use
     promise: Promise<void>;
     arrived: () => void;
   } | null = null;
+  let inFlight = 0;
   const self: RealFetch = {
     exchanges,
+    async idle() {
+      for (let round = 0; round < 1000 && inFlight > 0; round++)
+        await new Promise<void>((done) => setTimeout(done, 10));
+      expect(inFlight, '仍有在途请求').toBe(0);
+    },
     hold(match) {
       let release!: () => void;
       let arrived!: () => void;
@@ -134,25 +143,31 @@ export function realFetch(app: ReturnType<typeof createApp>, secret: string, use
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string | URL, init: RequestInit = {}) => {
-      const url = String(input);
-      const headers = { ...(init.headers as Record<string, string>), ...devIdentityHeaders(secret, userId) };
-      const response = await app.request(url, { ...init, headers });
-      const body: unknown = await response
-        .clone()
-        .json()
-        .catch(() => null);
-      const exchange: Exchange = { url, options: init, status: response.status, body };
-      exchanges.push(exchange);
-      if (gate?.match(url, init)) {
-        const current = gate;
-        gate = null;
-        current.arrived();
-        await current.promise;
+      inFlight++;
+      try {
+        const url = String(input);
+        const headers = { ...(init.headers as Record<string, string>), ...devIdentityHeaders(secret, userId) };
+        const response = await app.request(url, { ...init, headers });
+        const body: unknown = await response
+          .clone()
+          .json()
+          .catch(() => null);
+        const exchange: Exchange = { url, options: init, status: response.status, body };
+        exchanges.push(exchange);
+        if (gate?.match(url, init)) {
+          const current = gate;
+          gate = null;
+          current.arrived();
+          await current.promise;
+        }
+        self.onDeliver(exchange);
+        return response;
+      } finally {
+        inFlight--;
       }
-      self.onDeliver(exchange);
-      return response;
     }),
   );
+  activeNet = self;
   return self;
 }
 
@@ -163,6 +178,13 @@ export function snapshot(host: Element): string {
     (element) => element.value,
   );
   return `${host.textContent ?? ''}\u0000${values.join('\u0000')}`;
+}
+const mountedRoots = new Set<Mounted>();
+/** 用例收尾：先卸载所有根（通道重置、effect 清理），再等在途请求归零，之后才能释放 DOM 全局。 */
+export async function settleAll() {
+  for (const mounted of [...mountedRoots]) await mounted.unmount();
+  await activeNet?.idle();
+  activeNet = null;
 }
 export interface Mounted {
   readonly host: HTMLDivElement;
@@ -203,7 +225,7 @@ export async function mountWorkspace(props: {
       await act(async () => new Promise<void>((done) => setTimeout(done, 10)));
     expect(predicate(), `等待超时：${what}`).toBe(true);
   };
-  return {
+  const mounted: Mounted = {
     host,
     frames,
     act,
@@ -234,10 +256,13 @@ export async function mountWorkspace(props: {
     },
     until,
     async unmount() {
+      mountedRoots.delete(mounted);
       await act(async () => root.unmount());
       host.remove();
     },
   };
+  mountedRoots.add(mounted);
+  return mounted;
 }
 
 /* ---------- 场景夹具 ---------- */

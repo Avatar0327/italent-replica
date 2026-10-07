@@ -16,6 +16,7 @@ import {
   realFetch,
   registerDom,
   releaseDom,
+  settleAll,
   snapshot,
   type Exchange,
   type Mounted,
@@ -32,7 +33,9 @@ beforeEach(() => {
   registerDom();
   reload = vi.fn<() => void>();
 });
-afterEach(() => {
+afterEach(async () => {
+  // 先卸载并等在途请求（如写成功后的列表刷新）归零，再释放 DOM：迟到的响应不得在无 window 时触发 React 提交。
+  await settleAll();
   vi.unstubAllGlobals();
   releaseDom();
 });
