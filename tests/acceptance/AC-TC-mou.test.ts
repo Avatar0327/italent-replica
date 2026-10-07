@@ -6,9 +6,10 @@
  * - 发展建议类型是没有组织字段的字典（DEC-121 同口径：看全部或创建人），下拉候选只要求指标查看权。
  */
 import { randomUUID } from 'node:crypto';
+import { TALENT_APP, TALENT_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
+import { BASE, seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import {
   clock,
@@ -188,5 +189,57 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
       body: { suggestions: [{ typeId: data.type.id, description: '范围内补充建议', displayOrder: 1 }] },
     });
     expect(saved.status, await saved.clone().text()).toBe(200);
+  });
+  // 放在最后：数据权限策略是租户级配置，避免影响前面的用例
+  it('DEC-082：管理单元只含 A 且配置了“使用用户”规则，向 B 新建五类对象仍 404，数据不变', async () => {
+    const op = await talentOperator(world, { mouId: data.mouId });
+    for (const definition of Object.values(TALENT_OBJECTS).filter((d) => d !== TALENT_OBJECTS.descriptionType)) {
+      const policy = await world.api.request(
+        'PUT',
+        `${BASE}/scope-policies/${TALENT_APP}/${definition.code}/entity/${definition.code}`,
+        { ...world.asAdmin, ifMatch: 0, body: { rules: [{ dimension: 'management' }, { dimension: 'using_user' }] } },
+      );
+      expect(policy.status, await policy.clone().text()).toBe(200);
+    }
+    // 操作人自己是所属人、但挂在 B 组织下的库：按“使用用户”规则对本人可见
+    const own = await data.setup.request('POST', `${TC_BASE}/libraries`, {
+      ...op.as,
+      ifMatch: 0,
+      body: { name: '本人在 B 的库', type: 'ability', ownerOrgId: data.outside.orgId },
+    });
+    expect(own.status, await own.clone().text()).toBe(201);
+    const ownLibrary = (await own.json()) as { id: string };
+    expect((await op.request('GET', `/libraries/${ownLibrary.id}`)).status).toBe(200);
+
+    const before = await snapshot();
+    const ownLibraryChildren = () =>
+      Promise.all([
+        adminRead(`/dimension-categories?libraryId=${ownLibrary.id}`),
+        adminRead(`/dimensions?libraryId=${ownLibrary.id}`),
+      ]);
+    const childrenBefore = await ownLibraryChildren();
+    const { inside, outside } = data;
+    const posts = [
+      ['/libraries', { name: 'B 的新库', type: 'ability', ownerOrgId: outside.orgId }],
+      ['/criterion-categories', { name: 'B 的新分类', ownerOrgId: outside.orgId }],
+      ['/criteria', { categoryId: inside.criterionCategory.id, name: 'B 的新标准', ownerOrgId: outside.orgId }],
+      ['/dimension-categories', { libraryId: ownLibrary.id, name: 'B 库下分类', displayOrder: 1 }],
+      ['/dimensions', { libraryId: ownLibrary.id, code: `B${randomUUID().slice(0, 4)}`, name: 'B 库下指标' }],
+    ] as const;
+    for (const [path, body] of posts) {
+      const response = await op.request('POST', path, { ifMatch: 0, body });
+      expect(response.status, `${path} ${JSON.stringify(body)}`).toBe(404);
+    }
+    expect(await snapshot()).toEqual(before);
+    expect(await ownLibraryChildren()).toEqual(childrenBefore);
+
+    // 本人已有记录照常可改（创建人规则只放行查看与修改）；管理范围内照常新建
+    const renamed = await op.request('PATCH', `/libraries/${ownLibrary.id}`, { ifMatch: 1, body: { name: '改名' } });
+    expect(renamed.status, await renamed.clone().text()).toBe(200);
+    const inScope = await op.request('POST', '/criterion-categories', {
+      ifMatch: 0,
+      body: { name: 'A 的新分类', ownerOrgId: inside.orgId },
+    });
+    expect(inScope.status, await inScope.clone().text()).toBe(201);
   });
 });

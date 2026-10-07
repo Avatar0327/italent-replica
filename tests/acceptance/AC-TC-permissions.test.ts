@@ -216,7 +216,7 @@ describe('R3-T01 人才标准权限（真实授权器）', () => {
 });
 
 describe('R3-T01 配置了“使用用户”规则时：只看到、只能引用自己作为所属人的对象', () => {
-  it('所属人范围：列表与详情只含本人的对象；引用他人的指标按不存在处理', async () => {
+  it('所属人范围：列表与详情只含本人的对象；引用他人的指标按不存在处理；不放行新建（DEC-082）', async () => {
     const w = await talentWorld(testDb().db, 'tcowner');
     const other = await addMemberTo(w);
     const mine = await w.library('ability', { name: '我的库' });
@@ -254,34 +254,30 @@ describe('R3-T01 配置了“使用用户”规则时：只看到、只能引用
     const candidates = (await (await call('GET', '/candidates/dimensions')).json()) as { items: { id: string }[] };
     expect(candidates.items.map((item) => item.id)).toEqual([mineDimension.id]);
 
-    const category = await call('POST', '/criterion-categories', {
+    // DEC-082：创建人规则只放行本人已有记录的查看与修改，不放行新建（没有管理范围就不能新建）
+    const categoriesBefore = await w.read('/criterion-categories');
+    const created = await call('POST', '/criterion-categories', {
       ifMatch: 0,
       body: { name: '自建分类', ownerOrgId: w.orgId },
     });
-    expect(category.status, await category.clone().text()).toBe(201);
-    const { id: categoryId } = (await category.json()) as { id: string };
-    const before = (await (await call('GET', '/criteria')).json()) as unknown;
-    const denied = await call('POST', '/criteria', {
-      ifMatch: 0,
-      body: {
-        categoryId,
-        name: '引用他人指标',
-        ownerOrgId: w.orgId,
-        dimensions: [{ dimensionId: theirDimension.id, weight: 10 }],
-      },
+    expect(created.status).toBe(404);
+    expect(await w.read('/criterion-categories')).toEqual(categoriesBefore);
+
+    // 本人已有的标准：引用他人的指标按不存在处理，引用自己的指标可以保存
+    const category = await w.category('我的分类');
+    const criterion = await w.criterion(category.id, [], { name: '我的标准' });
+    const before = await w.read(`/criteria/${criterion.id}`);
+    const denied = await call('PATCH', `/criteria/${criterion.id}`, {
+      ifMatch: criterion.revision,
+      body: { dimensions: [{ dimensionId: theirDimension.id, weight: 10 }] },
     });
     expect(denied.status).toBe(404);
-    expect(await (await call('GET', '/criteria')).json()).toEqual(before);
-    const accepted = await call('POST', '/criteria', {
-      ifMatch: 0,
-      body: {
-        categoryId,
-        name: '引用自己指标',
-        ownerOrgId: w.orgId,
-        dimensions: [{ dimensionId: mineDimension.id, weight: 10 }],
-      },
+    expect(await w.read(`/criteria/${criterion.id}`)).toEqual(before);
+    const accepted = await call('PATCH', `/criteria/${criterion.id}`, {
+      ifMatch: criterion.revision,
+      body: { dimensions: [{ dimensionId: mineDimension.id, weight: 10 }] },
     });
-    expect(accepted.status, await accepted.clone().text()).toBe(201);
+    expect(accepted.status, await accepted.clone().text()).toBe(200);
   });
 });
 

@@ -204,6 +204,21 @@ describe('DEC-281④ 发展建议子表与类型数据源（DescriptionType）',
     expect(fresh.status).toBe(400);
     expect(await reason(fresh)).toBe('DESCRIPTION_TYPE_INVALID');
     expect(await w.read(`/dimensions/${dimension.id}`)).toEqual(before);
+    // 按行区分：保留原行、再追加一行同样已停用的类型，新增行同样拒绝（审查第 3 轮问题 2）
+    const appended = await w.request('PATCH', `/dimensions/${dimension.id}`, {
+      ifMatch: before.revision,
+      body: {
+        suggestions: [
+          { typeId: action.id, description: '原描述', displayOrder: 1 },
+          { typeId: action.id, description: '追加同类型', displayOrder: 2 },
+        ],
+      },
+    });
+    expect(appended.status).toBe(400);
+    expect(await reason(appended)).toBe('DESCRIPTION_TYPE_INVALID');
+    const reread = await w.read<DimensionView>(`/dimensions/${dimension.id}`);
+    expect(reread).toEqual(before);
+    expect(reread.suggestions).toHaveLength(1);
     const kept = await w.request('PATCH', `/dimensions/${dimension.id}`, {
       ifMatch: before.revision,
       body: { suggestions: [{ typeId: action.id, description: '改过的描述', displayOrder: 1 }] },
