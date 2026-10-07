@@ -3,7 +3,7 @@
 "stats": {
 "merged": 47,
 "open": 8,
-"dec": 239,
+"dec": 240,
 "ev": "19/102"
 },
 "tasks": {
@@ -760,25 +760,29 @@
 "96": {
 "s": "active",
 "r": 2,
-"n": "首审 2 P2（区间分段漏了占编时机版本边界；任职编辑绕过超编确认）；第二轮修改中，下一轮 Opus 5.5 High 审"
+"n": "第二轮已推送 c19d2fb，CI 中；停下后开「F-026 审查」会话做 Opus 第 2 轮"
 },
 "98": {
 "s": "review",
 "r": 1,
-"n": "Codex-Astra 开发；astra High 首审可以合并；按 DEC-235 合并前做 Sol Ultra 最终复查"
+"n": "astra High 首审可以合并；合并前 Sol Ultra 最终复查（需你在应用里把强度拉到 Ultra）"
 },
 "97": {
 "s": "review",
 "r": 1,
-"n": "Codex-Sol（Sol Ultra）开发；停下后首轮 Opus 5.5 High 审"
+"n": "Codex-Sol（Sol Ultra）开发；首轮 Opus 5.5 High 在「F-027 审查」会话（claude.ai/code session_01CdJqvz…）"
 },
 "99": {
 "s": "review",
 "r": 1,
-"n": "Codex-Sol（Sol High）开发；停下后首轮 Opus 5.5 High 审"
+"n": "Codex-Sol（Sol High）开发；首轮 Opus 5.5 High 在「F-029 审查」会话（claude.ai/code session_01APQqcc…）"
 }
 },
 "log": [
+[
+"10-07",
+"DEC-240：Opus 审查改为 claude.ai/code 单开「编号 审查」会话、多轮续审，删除 reviewer-opus；F-027、F-029 审查会话已开"
+],
 [
 "10-07",
 "DEC-235～239 审查与流程整包登记（派发规则 §7）；#98 F-028 astra 首审可以合并，待 Sol Ultra 最终复查；#96 F-026 首审 2 P2 进入第二轮"
