@@ -1,9 +1,9 @@
 {
 "updated": "2026-10-07",
 "stats": {
-"merged": 50,
-"open": 6,
-"dec": 258,
+"merged": 51,
+"open": 7,
+"dec": 260,
 "ev": "19/103"
 },
 "tasks": {
@@ -351,8 +351,10 @@
 "R3-T01": {
 "n": "人才标准与指标库",
 "ms": "R3",
-"s": "todo",
-"note": "第一批：Opus 5.5 High → Sol Ultra（用户 10-07 同意分批）"
+"s": "active",
+"note": "第一批：Opus 5.5 High → Sol Ultra（用户 10-07 同意分批）",
+"dev": "Claude Opus 5.5 High",
+"rev": "Sol Ultra"
 },
 "R3-T02": {
 "n": "任职资格与人才评定",
@@ -366,8 +368,10 @@
 "R3-T03": {
 "n": "360 度评估",
 "ms": "R3",
-"s": "todo",
-"note": "第一批：Opus 5.5 High → Sol Ultra；匿名阈值 DEC-065"
+"s": "active",
+"note": "第一批：Opus 5.5 High → Sol Ultra；匿名阈值 DEC-065",
+"dev": "Claude Opus 5.5 High",
+"rev": "Sol Ultra"
 },
 "R3-T04": {
 "n": "人才盘点",
@@ -375,7 +379,8 @@
 "s": "todo",
 "deps": [
 "R3-T00",
-"F-032"
+"F-032",
+"F-033"
 ],
 "note": "第二批：F-032 合并 + 取证后；Fable 5.1 → Astra Ultra，先出设计",
 "ev": "⛔ Q-M0-81 未取证"
@@ -651,13 +656,13 @@
 "F-024": {
 "n": "R1 端到端验收与 AC 覆盖报告（员工发起调动 → 审批 → HR 执行 → 定时生效 → 版本链与向后更新 → 员工与经理侧可见）",
 "p": "R1-T16",
-"s": "active",
+"s": "done",
 "dev": "Claude",
 "rev": "Codex",
 "pr": [
 91
 ],
-"note": "DEC-221③；编排窗口另做界面走查；Claude 开发中（Fable 5.1 High，§28）；报告注明基线提交、未含 #79 / #83，相关用例待其合并后补跑（§28 已补，已发进会话）"
+"note": "#91 已合并（cb823b6）；AC 覆盖人工核对，F-030 复核"
 },
 "F-025": {
 "n": "本地演示环境：后端可用 PGlite 本地启动、合成演示种子、仅开发环境可用的签名身份切换、一条命令起前后端",
@@ -730,12 +735,17 @@
 },
 "F-030": {
 "n": "AC 覆盖统计改为 Vitest 运行时采集（替代静态解析脚本）",
-"s": "todo",
+"s": "active",
 "p": "F-024",
 "deps": [
 "F-024"
 ],
-"note": "DEC-254；第一批派：Opus 5.5 High → Sol Ultra"
+"note": "DEC-254；第一批派：Opus 5.5 High → Sol Ultra",
+"dev": "Claude Opus 5.5 High",
+"rev": "Sol Ultra",
+"pr": [
+102
+]
 },
 "F-031": {
 "n": "删除来源后提示被固定为人工的记录与字段",
@@ -748,11 +758,23 @@
 },
 "F-032": {
 "n": "表达式空值 / 类型语义按原站校准",
-"s": "active",
+"s": "review",
 "p": "R3-T00",
 "note": "DEC-257；B 档 Opus 5.5 High → Sol Ultra；会话待开",
 "dev": "Claude Opus 5.5 High",
-"rev": "Sol Ultra"
+"rev": "Sol Ultra",
+"pr": [
+101
+]
+},
+"F-033": {
+"n": "表达式函数库按原站补齐（63 个函数）",
+"s": "todo",
+"p": "R3-T00",
+"deps": [
+"F-032"
+],
+"note": "DEC-260；B 档 Opus 5.5 High → Sol Ultra；F-032 合并后开工；R3-T04 前完成"
 }
 },
 "prs": {
@@ -787,11 +809,6 @@
 ]
 ]
 },
-"91": {
-"s": "active",
-"r": 6,
-"n": "DEC-245：覆盖率脚本改为认不出就报错；第 5 轮修改中，之后 astra Ultra"
-},
 "96": {
 "s": "active",
 "r": 3,
@@ -806,9 +823,35 @@
 "s": "review",
 "r": 3,
 "n": "第 2 轮 Astra Ultra 2 P2（可信值 vs 员工输入，连续同类）→ 第 3 轮修改中；下轮 Astra Ultra 列全同类"
+},
+"101": {
+"s": "review",
+"r": 1,
+"n": "待 Sol Ultra（优先：F-033 / R3-T04 / T05 依赖）"
+},
+"102": {
+"s": "active",
+"r": 1,
+"n": "Draft 开发中"
 }
 },
 "log": [
+[
+"10-07",
+"#91 F-024 R1 端到端验收合并（cb823b6）；#97 / #99 / #100 审查发起"
+],
+[
+"10-07",
+"DEC-260：函数库照原站补齐（F-033，待 F-032 合并）"
+],
+[
+"10-07",
+"监控修复：孤儿 watcher 吞事件；新增“待送审”提醒；#91 / #97 / #99 / #100 待送审"
+],
+[
+"10-07",
+"R3 第一批派发：R3-T01、R3-T03、F-030；#83 设计 v2 复审发起"
+],
 [
 "10-07",
 "R3 分批派发方案获用户同意：第一批 T01 / T03 / F-030 + 取证 Q-M0-81 / 82"
@@ -1795,17 +1838,9 @@
 83,
 "F-007",
 "组织变更联动任职",
-"设计 v2 修订中（v1 设计审未过，6 组 P2）",
+"设计 v2 复审出结论，待读取",
 "第 8 轮",
-"开发：Claude Fable 5.1；设计复审：Codex Astra Ultra"
-],
-[
-91,
-"F-024",
-"R1 端到端验收",
-"第 6 轮：停用静态脚本，报告注明人工核对（DEC-254）",
-"第 6 轮",
-"审查：Codex Astra（Ultra）；开发：Claude Fable 5.1"
+"审查：Codex Astra Ultra；开发：Claude Fable 5.1"
 ],
 [
 96,
@@ -1819,7 +1854,7 @@
 97,
 "F-027",
 "审批中心前端",
-"开发（修改）",
+"第 3 轮审查出结论，待读取",
 "第 3 轮",
 "开发：Codex Sol Ultra（本轮后交 Claude Fable 5.1）；审查：Codex Astra Ultra"
 ],
@@ -1827,7 +1862,7 @@
 99,
 "F-029",
 "本人跨部门调动清空职位",
-"开发（修改，先补失败测试）",
+"第 3 轮审查中",
 "第 3 轮",
 "开发：Codex Sol（本轮后交 Claude Opus 5.5 High）；审查：Codex Astra Ultra"
 ],
@@ -1835,14 +1870,38 @@
 100,
 "R2-T03",
 "离职管理",
-"暂停：会话用量上限，23:10 后继续",
+"设计审出结论，待读取",
 "第 1 轮",
 "开发：Claude Fable 5.1；设计审：Codex Astra Ultra"
 ],
 [
-null,
+101,
 "F-032",
 "表达式语义按原站校准",
+"待发起 Sol Ultra 审查（优先）",
+"第 1 轮",
+"开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
+],
+[
+102,
+"F-030",
+"AC 覆盖统计运行时采集",
+"开发（#91 已合并，可写代码）",
+"第 1 轮",
+"开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
+],
+[
+null,
+"R3-T01",
+"人才标准与指标库",
+"开发",
+"第 1 轮",
+"开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
+],
+[
+null,
+"R3-T03",
+"360 度评估（PR-A 先）",
 "开发",
 "第 1 轮",
 "开发：Claude Opus 5.5 High；审查：Codex Sol Ultra"
