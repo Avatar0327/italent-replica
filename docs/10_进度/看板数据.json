@@ -883,6 +883,11 @@
 "s": "review",
 "r": 2,
 "n": "待 Sol Ultra"
+},
+"108": {
+"s": "review",
+"r": 2,
+"n": ""
 }
 },
 "log": [
@@ -1931,7 +1936,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 12:53",
+"liveUpdated": "10-07 12:54",
 "chains": [
 {
 "g": "exit",
@@ -1989,8 +1994,8 @@
 "k": "run",
 "pr": 100,
 "n": "离职管理",
-"seg": "ev:d ds:a2 dev:w rev:w mg:w",
-"now": "设计复审出结论，待读取",
+"seg": "ev:d ds:a4 dev:w rev:w mg:w",
+"now": "设计 v1.4 修订中（剩 2 个 P2）",
 "wait": "#83 合并后写代码",
 "fable": "1"
 },
@@ -2083,8 +2088,8 @@
 "o": 3,
 "k": "run",
 "n": "函数库补齐 63 个",
-"seg": "ev:d ds:n dev:d1 rev:d1 mg:w",
-"now": "第 1 轮审查出结论，待读取",
+"seg": "ev:d ds:n dev:a2 rev:d1 mg:w",
+"now": "第 2 轮修改（2 个 P2：日期检查绕过、N 字段回归）",
 "pr": 108
 },
 {
