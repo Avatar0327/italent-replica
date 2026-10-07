@@ -120,10 +120,10 @@ export function failureBlockerIds(detail: Record<string, unknown> | undefined): 
 }
 
 /**
- * 设计 §2.5（S1-P2-02）：前序因迟到区间内含本业务而记 REBUILD_REQUIRED 时，本业务不被这次失败挂起或拒绝——
- * 它区间为空先顺延落地，离开前序的区间后 HR 重试前序即成功；其他前序失败仍按 DEC-112 处理。
+ * 设计 §2.5（S1-P2-02）：前序因迟到区间内含本业务而记 REBUILD_REQUIRED。是否据此豁免还要看两笔有没有跨对象联动
+ * 依赖（linkage-dependency.ts 的 exemptsBlocker）；本函数只判定“本业务是那次失败的 blocker”。
  */
-export function exemptsBlocker(predecessor: PendingActivation, businessId: string): boolean {
+export function isRebuildBlocker(predecessor: PendingActivation, businessId: string): boolean {
   return (
     predecessor.lastOutcome === 'failed' &&
     predecessor.lastReason === REBUILD_REQUIRED &&
@@ -131,14 +131,9 @@ export function exemptsBlocker(predecessor: PendingActivation, businessId: strin
   );
 }
 
-/** 失败尚未修正的前序（其后的业务按 DEC-112 一律挂起在它之后）；给出本业务时跳过把它记为 blocker 的前序。 */
-export function failedPredecessor(
-  before: readonly PendingActivation[],
-  businessId?: string,
-): PendingActivation | undefined {
-  return before.find(
-    (item) => !item.reminderOnly && item.lastOutcome === 'failed' && !(businessId && exemptsBlocker(item, businessId)),
-  );
+/** 失败尚未修正的前序（其后的业务按 DEC-112 一律挂起在它之后）；调用方先用 blockingPredecessors 去掉豁免的前序。 */
+export function failedPredecessor(before: readonly PendingActivation[]): PendingActivation | undefined {
+  return before.find((item) => !item.reminderOnly && item.lastOutcome === 'failed');
 }
 
 export interface AttemptRecord {

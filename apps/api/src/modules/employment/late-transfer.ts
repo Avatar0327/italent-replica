@@ -135,12 +135,15 @@ async function originalPlannedDate(tx: Tx, ctx: EmploymentContext, business: Loc
 export async function postponeLateTransfer(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const previous = business.payload;
-  const { late } = resolveLateExecution({ plannedEffectiveDate: previous.effectiveDate, executionDate: today });
-  if (previous.kind !== 'transfer' || !late) return;
+  if (previous.kind !== 'transfer') return;
   const record = await loadEmploymentRecord(tx, ctx.tenantId, business.id, today);
-  // 已落地与未落地的迟到调动同一口径：区间判定在任何写入之前，拒绝时不改期、不追加载荷版本（设计 §2.3）。
+  // 区间按原计划日判定（已落地取时间轴行，未落地取首次改期前的原计划日），在任何写入之前：批准当天已顺延、但因前序
+  // 未落地留在队列的申请同日再执行时，最新载荷已是执行日，仍须复核原计划区间（设计 §2.3，S2-P2-01）。
   const planned = record ? record.effectiveDate : await originalPlannedDate(tx, ctx, business);
-  await assertNoRebuildRequired(tx, ctx, business, planned, today);
+  if (resolveLateExecution({ plannedEffectiveDate: planned, executionDate: today }).late)
+    await assertNoRebuildRequired(tx, ctx, business, planned, today);
+  // 是否追加改期版本只看最新载荷（DEC-272）：已顺延到执行日的不再追加。
+  if (!resolveLateExecution({ plannedEffectiveDate: previous.effectiveDate, executionDate: today }).late) return;
   const next = {
     ...previous,
     id: randomUUID(),

@@ -5,8 +5,8 @@ import { lockTransferParticipants } from './transfer-locks.js';
  * - DEC-052：某条失败记 failed、原因并生成待办，自动生效主路径不变；
  * - DEC-112：失败（或失败未修正）的那条之后的到期业务一律挂起，记“因前序业务失败挂起”，同一前序只记一次；
  *   前序重试成功后，其后业务在同一次重试里按顺序紧接着生效；
- * - 设计 §2.5：前序因迟到区间内含某条后序而记 REBUILD_REQUIRED 时，那条后序不挂起、照常判定执行（它区间为空即顺延），
- *   离开前序的区间后 HR 重试前序即成功。
+ * - 设计 §2.5：前序因迟到区间内含某条后序而记 REBUILD_REQUIRED、且两笔没有跨对象联动依赖时，那条后序不挂起、照常
+ *   判定执行（它区间为空即顺延），离开前序的区间后 HR 重试前序即成功；有依赖时仍按 DEC-112 挂起（linkage-dependency.ts）。
  * 调用方须持员工行锁；多实例并发由员工行锁（定时任务 SKIP LOCKED）串行，状态在锁内重读，故可重复执行。
  */
 import type { Tx } from '@italent/db';
@@ -15,7 +15,6 @@ import { AppError } from '../../errors.js';
 import { activateWithJudgement } from './activation-checks.js';
 import {
   activationPredecessors,
-  exemptsBlocker,
   failedPredecessor,
   failureBlockerIds,
   pendingActivations,
@@ -25,6 +24,7 @@ import {
   type ActivationTrigger,
   type PendingActivation,
 } from './activation-store.js';
+import { blockingPredecessors, exemptsBlocker } from './linkage-dependency.js';
 import { lockEmploymentEmployee } from './record-store.js';
 import type { EmploymentContext } from './types.js';
 
@@ -54,7 +54,7 @@ export async function activateDueBusinesses(
   const attempted = new Set<string>();
   for (let index = 0; index < queue.length; index++) {
     const item = queue[index]!;
-    if (blocker && !item.reminderOnly && !exemptsBlocker(blocker, item.id)) {
+    if (blocker && !item.reminderOnly && !(await exemptsBlocker(tx, ctx, blocker, item.id))) {
       if (item.lastOutcome !== 'suspended' || item.lastBlockedBy !== blocker.id) {
         await recordActivationAttempt(tx, ctx, item, {
           outcome: 'suspended',
@@ -116,7 +116,9 @@ export async function retryActivation(tx: Tx, ctx: EmploymentContext, businessId
     throw new AppError('CONFLICT', '该申请没有生效失败或挂起，等待定时生效', { reason: 'NOT_FAILED' });
   if (item.effectiveDate > tenantLocalDate(ctx.now, ctx.timezone))
     throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
-  const blocker = item.reminderOnly ? undefined : failedPredecessor(before, item.id);
+  const blocker = item.reminderOnly
+    ? undefined
+    : failedPredecessor(await blockingPredecessors(tx, ctx, before, item.id));
   if (blocker)
     throw new AppError('CONFLICT', '前序业务生效失败，请先处理前序业务', {
       reason: PREDECESSOR_FAILED,

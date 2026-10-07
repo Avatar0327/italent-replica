@@ -12,11 +12,11 @@ import { AppError } from '../../errors.js';
 import { assertRegularizationNotPropagated } from './employee-status.js';
 import {
   activationPredecessors,
-  exemptsBlocker,
   failedPredecessor,
   PREDECESSOR_FAILED,
   recordActivationAttempt,
 } from './activation-store.js';
+import { blockingPredecessors } from './linkage-dependency.js';
 import { auditEmployment } from './context.js';
 import { findPredecessor, loadEmploymentRecord } from './read-model.js';
 import { resolveEffectiveInheritance } from './inheritance.js';
@@ -142,9 +142,9 @@ export async function transitionEmployment(
       throw new AppError('CONFLICT', '尚未到任职生效日期', { reason: 'EFFECTIVE_DATE_NOT_REACHED' });
     }
     // R1-T08：定时任务与 HR 重试经此端口按队列逐条落地（activation-service.ts）；前序未落地时不得越过它（DEC-108 / 112）；
-    // 前序因区间内含本业务而记 REBUILD_REQUIRED 时例外（设计 §2.5）。
+    // 前序因区间内含本业务而记 REBUILD_REQUIRED、且无跨对象联动依赖时例外（设计 §2.5）。
     const predecessors = await activationPredecessors(tx, ctx, business.employeeId, business.id);
-    const before = predecessors.before.filter((item) => !item.reminderOnly && !exemptsBlocker(item, business.id));
+    const before = await blockingPredecessors(tx, ctx, predecessors.before, business.id);
     if (before.length)
       throw new AppError('CONFLICT', '前序待生效业务尚未生效', {
         reason: 'ACTIVATION_PREDECESSOR_PENDING',
@@ -173,7 +173,7 @@ export async function transitionEmployment(
 async function approveEmploymentBusiness(tx: Tx, ctx: EmploymentContext, business: LockedEmploymentBusiness) {
   if (tenantLocalDate(ctx.now, ctx.timezone) < business.payload.effectiveDate) return;
   const { item, before: predecessors } = await activationPredecessors(tx, ctx, business.employeeId, business.id);
-  const before = predecessors.filter((entry) => !entry.reminderOnly && !exemptsBlocker(entry, business.id));
+  const before = await blockingPredecessors(tx, ctx, predecessors, business.id);
   try {
     await postponeLateTransfer(tx, ctx, business);
   } catch (error) {
