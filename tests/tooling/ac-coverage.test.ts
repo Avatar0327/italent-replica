@@ -577,3 +577,66 @@ describe('F-030 AC 覆盖运行时采集：.only 门禁（夹具 only，DEC-282 
     TIMEOUT,
   );
 });
+
+describe('F-030 AC 覆盖运行时采集：多段编号（夹具 multiseg，DEC-291②）', () => {
+  let report: Report;
+
+  beforeAll(() => {
+    report = toolJson('multiseg', 'MULTI');
+  }, TIMEOUT);
+
+  const idsOf = (title: string) => report.tests.find((t) => t.names.at(-1) === title)?.ids;
+  const titleProblems = () => report.problems.filter((p) => p.kind === 'title').map((p) => p.message);
+
+  it('多段单号、多段区间、与单段混写、数字开头的模块加多段都按完整编号提取', () => {
+    expect(idsOf('AC-PRM-FW-01 多段单号')).toEqual(['AC-PRM-FW-01']);
+    expect(idsOf('AC-PRM-FW-02～04 多段区间')).toEqual(['AC-PRM-FW-02', 'AC-PRM-FW-03', 'AC-PRM-FW-04']);
+    expect(idsOf('AC-PRM-01～02 与 AC-PRM-FW-05 / 06 混写')).toEqual([
+      'AC-PRM-01',
+      'AC-PRM-02',
+      'AC-PRM-FW-05',
+      'AC-PRM-FW-06',
+    ]);
+    expect(idsOf('AC-360-FW-01 数字模块加多段')).toEqual(['AC-360-FW-01']);
+  });
+
+  it('统计按完整编号聚合：多段区间展开；AC-PRM-* 只含单段模块 PRM，不把 AC-PRM-FW-* 截成 AC-PRM 前缀', () => {
+    const group = (name: string) => report.groups.find((g) => g.name === name)?.ids;
+    const fw = Array.from({ length: 7 }, (_, i) => `AC-PRM-FW-0${i + 1}`);
+    expect(group('多段区间')).toEqual(fw);
+    expect(group('多段通配')).toEqual(fw);
+    expect(group('单段通配')).toEqual(Array.from({ length: 7 }, (_, i) => `AC-PRM-0${i + 1}`));
+    expect(group('数字模块多段')).toEqual(['AC-360-FW-01']);
+    const covered = ['AC-PRM-FW-01', 'AC-PRM-FW-02', 'AC-PRM-FW-03', 'AC-PRM-FW-04', 'AC-PRM-FW-05', 'AC-PRM-FW-06'];
+    for (const id of covered) expect(report.entries[id]?.status).toBe('已覆盖');
+    expect(report.entries['AC-PRM-FW-07']?.status).toBe('未覆盖');
+    expect(report.entries['AC-360-FW-01']?.status).toBe('已覆盖');
+    expect(report.unknownReferences).toEqual([]);
+  });
+
+  it('非法写法报 title 问题、不吞掉；模块统称（AC-PRM）不算编号也不报错', () => {
+    const problems = titleProblems();
+    expect(problems).toHaveLength(4);
+    for (const text of ['AC-PRM-FW-1', 'AC-PRM--03', 'AC-EMP-16-SUB-05', 'AC-PRM-03～AC-PRM-05']) {
+      expect(problems.some((m) => m.includes(text))).toBe(true);
+    }
+    expect(problems.some((m) => m.includes('模块统称'))).toBe(false);
+    expect(report.entries['AC-PRM-04']?.status).toBe('未覆盖');
+    expect(report.ok).toBe(false);
+  });
+
+  it(
+    '配置里的非法多段写法与匹配不到定义的多段通配报配置错误，--check 失败',
+    () => {
+      const bad = toolJson('multiseg', 'BAD');
+      expect(bad.problems.filter((p) => p.kind === 'config').map((p) => p.message)).toEqual([
+        expect.stringContaining('AC-PRM-FW-1'),
+        expect.stringContaining('AC-PRM-FW-01～AC-PRM-FW-03'),
+        expect.stringContaining('AC-NOPE-FW-*'),
+      ]);
+      const result = runTool(['--config-dir', `${FIXTURES}/multiseg`, '--stage', 'BAD', '--check']);
+      expect(result.status).toBe(1);
+    },
+    TIMEOUT,
+  );
+});
