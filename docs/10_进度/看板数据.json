@@ -351,10 +351,13 @@
 "R3-T01": {
 "n": "人才标准与指标库",
 "ms": "R3",
-"s": "active",
+"s": "review",
 "note": "第一批：Opus 5.5 High → Sol Ultra（用户 10-07 同意分批）",
 "dev": "Claude Opus 5.5 High",
-"rev": "Sol Ultra"
+"rev": "Sol Ultra",
+"pr": [
+106
+]
 },
 "R3-T02": {
 "n": "任职资格与人才评定",
@@ -830,6 +833,11 @@
 "s": "active",
 "r": 1,
 "n": "Draft 开发中"
+},
+"106": {
+"s": "review",
+"r": 1,
+"n": "待 Sol Ultra"
 }
 },
 "log": [
@@ -2029,8 +2037,9 @@
 "o": 1,
 "k": "run",
 "n": "人才标准与指标库",
-"seg": "ev:d ds:n dev:a1 rev:w mg:w",
-"now": "开发中"
+"seg": "ev:d ds:n dev:d1 rev:w1 mg:w",
+"now": "开发完成，待发起审查",
+"pr": 106
 },
 {
 "id": "R3-T03",
