@@ -16,7 +16,6 @@ import type { TenantRouteDeps } from '../../routes.js';
 import { memberInstanceScope } from './access.js';
 import { approvalError, assertRevision, auditApproval, rowsOf, type ApprovalContext } from './context.js';
 import { mergeSeat, mergesSeat, resettle } from './countersign.js';
-import type { ReversalWarningHint } from '../establishment/reversal-hints.js';
 import { assertExceptionAdminMember, republishWithExceptionAdmin } from './definitions.js';
 import { currentRouting, openRun, persistRun, type Run } from './engine.js';
 import { notifyTodo } from './notifications.js';
@@ -54,8 +53,6 @@ export interface HandoverResult {
   readonly unlisted: number;
   readonly remaining: boolean;
   readonly nextCursor: string | null;
-  /** DEC-273：合席结算回退造成超编时的不阻断提示（按操作人可见范围裁剪，routes.ts 附加）。 */
-  readonly establishmentWarnings?: readonly ReversalWarningHint[];
 }
 
 /**

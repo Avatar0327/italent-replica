@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext, TenantEnv } from '../../tenant-context.js';
-import { reversalWarningHints, type ReversalWarningHint } from '../establishment/reversal-hints.js';
+import { reversalWarning, type ReversalWarning } from '../establishment/reversal-hints.js';
 import { adminCommand, adminGuard, platformCommandId, type RouteContext } from './admin-http.js';
 import { etag, idParam, ifMatch, parseBody } from './http.js';
 import {
@@ -106,36 +106,36 @@ function registerLifecycleRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps)
       status === 'disabled'
         ? await revokeMembership(deps.db, change, meta)
         : await grantMembership(deps.db, change, meta);
-    return receipt(c, membership, status === 'disabled' ? await reversalHints(deps, ctx, commandId) : []);
+    return receipt(c, membership, status === 'disabled' ? await reversalHint(deps, ctx, commandId) : null);
   });
   router.post(`${BASE}/:userId/remove`, async (c) => {
     const { ctx, userId, expectedRevision, commandId } = await lifecycleRequest(c, deps);
     if (userId === ctx.userId) throw selfConflict('CANNOT_REMOVE_SELF', '不能把自己移出租户');
     const change = { tenantId: ctx.tenantId, userId, expectedRevision };
     const membership = await revokeMembership(deps.db, change, { actorUserId: ctx.userId, commandId });
-    return receipt(c, membership, await reversalHints(deps, ctx, commandId));
+    return receipt(c, membership, await reversalHint(deps, ctx, commandId));
   });
 }
 
 /**
- * DEC-273：停用 / 移出同事务接管合席（DEC-123）可能沿「不同意」办结申请并恢复原部门占用；超编不阻断撤权，
- * 回执附不阻断提示，按操作人可见范围裁剪。重放也按本命令的审计重新派生。
+ * DEC-273 / DEC-284①：停用 / 移出同事务接管合席（DEC-123）可能沿「不同意」办结申请并恢复原部门占用；超编不阻断
+ * 撤权，回执附一条不阻断的通用提示（不带任何具体信息）。按本命令的审计判断有无，重放同样派生。
  */
-function reversalHints(deps: TenantRouteDeps, ctx: TenantContext, commandId: string) {
-  return withTenant(deps.db, ctx.tenantId, (tx) => reversalWarningHints(tx, deps, ctx, commandId));
+function reversalHint(deps: TenantRouteDeps, ctx: TenantContext, commandId: string) {
+  return withTenant(deps.db, ctx.tenantId, (tx) => reversalWarning(tx, ctx, commandId));
 }
 
 /**
  * 生命周期命令的回执只取平台命令的结果（同键重放时即平台台账保存的首次结果），不回查当前状态，
  * 期间被其他命令改过也照样返回首次回执（astra 首审 P2-2，AGENTS.md §10「幂等」）。完整视图请 GET /users/:userId。
  */
-function receipt(c: RouteContext, membership: TenantMembership, establishmentWarnings: ReversalWarningHint[] = []) {
+function receipt(c: RouteContext, membership: TenantMembership, establishmentWarning: ReversalWarning | null = null) {
   etag(c, membership.revision);
   return c.json({
     userId: membership.userId,
     membershipStatus: membership.status,
     membershipRevision: membership.revision,
-    ...(establishmentWarnings.length ? { establishmentWarnings } : {}),
+    ...(establishmentWarning ? { establishmentWarning } : {}),
   });
 }
 

@@ -123,8 +123,9 @@ it('AC-EST-35 编制范围全部、编制可见字段只有 orgId：列表、详
   expect(segments?.toText).toContain(w.to.id);
   expect(segments?.toText).not.toContain(w.targetPosition);
   expect(row.changes.find((change) => change.field === 'strictControl')).toBeUndefined();
-  expect(JSON.stringify(row)).not.toContain(w.targetPosition);
-  expect(JSON.stringify(row)).not.toMatch(/strictControl|2026-10-/);
+  // 变更值与文本里没有职位、区间、控编模式（occurredAt 自身带日期，只核对 changes）。
+  expect(JSON.stringify(row.changes)).not.toContain(w.targetPosition);
+  expect(JSON.stringify(row.changes)).not.toMatch(/strictControl|positionId|2026-10-05/);
   expect(detail.after).not.toHaveProperty('strictControl');
   expect((detail.after as { segments: unknown[] }).segments).toEqual([{ departmentId: w.to.id }]);
 });

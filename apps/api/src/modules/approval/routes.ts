@@ -19,7 +19,7 @@ import { handleError } from '../../errors.js';
 import type { TenantRouteDeps, TenantRouteModule } from '../../routes.js';
 import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { registerEmploymentApprovalHooks } from '../employment/approval-hooks.js';
-import { reversalWarningHints } from '../establishment/reversal-hints.js';
+import { reversalWarning, type ReversalWarning } from '../establishment/reversal-hints.js';
 import { pageQuery, parseBody, revision, uuidParam as rawUuidParam } from '../job/context.js';
 import {
   getModuleViewableFields,
@@ -347,17 +347,19 @@ function registerTenantConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
       toUserId: input.toUserId,
       ...(input.cursor ? { cursor: input.cursor } : {}),
     };
+    // DEC-284②：台账只存处理状态；超编提示在本次实际执行时才附加（通用文案），重放不再带首次提示。
+    let warning: ReversalWarning | null = null;
     const result = await command(c, deps, ctx, input, async (tx, context) => {
       const body = await handoverExceptionAdmin(tx, context, handover, scopeSql);
-      // DEC-273：合席结算回退造成超编时附不阻断提示；同事务读本命令的超编审计并按操作人范围裁剪。
-      const establishmentWarnings = await reversalWarningHints(tx, deps, context, context.commandId);
-      return { status: 200, body: establishmentWarnings.length ? { ...body, establishmentWarnings } : body };
+      // DEC-273 / 284①：合席结算回退造成超编时附一条不阻断的通用提示，不带任何具体信息。
+      warning = await reversalWarning(tx, context, context.commandId);
+      return { status: 200, body };
     });
-    // R4-1：幂等重放返回台账里的首次结果，其中的实例编号按调用者当前的范围重新裁剪（不重新执行交接）。
+    // R4-1：幂等重放返回台账里的处理状态，其中的实例编号按调用者当前的范围重新裁剪（不重新执行交接）。
     const body = await withTenant(deps.db, ctx.tenantId, (tx) =>
       discloseHandover(tx, ctx, result.body as HandoverResult, scopeSql),
     );
-    return c.json(body, result.status);
+    return c.json(warning ? { ...body, establishmentWarning: warning } : body, result.status);
   });
   router.post('/presets/install', async (c) => {
     const ctx = writeCtx(c, deps);

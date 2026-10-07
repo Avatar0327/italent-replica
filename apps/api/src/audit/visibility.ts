@@ -511,12 +511,16 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
   };
 }
 
-/** 查看人对编制对象的查看权与数据范围（没有查看权或范围为空即不可见）。 */
+/**
+ * 查看人对编制对象的查看权、数据范围与可见字段（没有查看权或范围为空即不可见；DEC-284③：分段里的键再按
+ * 编制字段权限投影，与编制容量接口 / 编制审计用同一份字段权）。
+ */
 async function resolveReversalAccess(deps: Deps, ctx: TenantContext): Promise<ReversalAuditAccess> {
   const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: ESTABLISHMENT, fields: [] });
-  if (!canView) return { visible: false, scope: null };
+  if (!canView) return { visible: false, scope: null, fields: new Set() };
   const scope = await resolveModuleScope(deps, ctx, undefined, ESTABLISHMENT);
-  return { visible: scope.hasDataPermission && (scope.all || scope.orgIds.length > 0), scope };
+  const fields = await getModuleViewableFields(deps, ctx, ESTABLISHMENT);
+  return { visible: scope.hasDataPermission && (scope.all || scope.orgIds.length > 0), scope, fields };
 }
 
 /** 序码重算汇总里查看人可见的逐人序码日志条数（第四轮 N4）。 */
