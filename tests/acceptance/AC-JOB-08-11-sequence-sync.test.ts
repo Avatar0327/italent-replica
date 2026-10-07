@@ -15,8 +15,9 @@ import type { Authorizer } from '../../apps/api/src/authorization.js';
 
 const testDb = useTestDb();
 describe('AC-JOB-08～11 F-021 序列同步', () => {
-  for (const kind of ['posts', 'positions'] as const) {
-    it(`AC-JOB-08 ${kind} 编辑按引用异步追加当前/未来版本，历史与原始记录不变`, async () => {
+  it.each(['posts', 'positions'] as const)(
+    'AC-JOB-08 %s 编辑按引用异步追加当前/未来版本，历史与原始记录不变',
+    async (kind) => {
       const { db } = testDb();
       const s = await scenario(db, kind);
       const before = await versions(db, s.world.tenant.id, s.employee.id);
@@ -40,22 +41,22 @@ describe('AC-JOB-08～11 F-021 序列同步', () => {
       await withTenant(db, s.world.tenant.id, async (tx) => {
         const originals = resultRows<{ sequence: string }>(
           await tx.execute(sql`
-          SELECT sequence_id AS sequence FROM employment_records WHERE employee_id=${s.employee.id}::uuid`),
+        SELECT sequence_id AS sequence FROM employment_records WHERE employee_id=${s.employee.id}::uuid`),
         );
         expect(originals.every((r) => r.sequence === s.oldSequence.id)).toBe(true);
         const audit = resultRows(
           await tx.execute(sql`SELECT id FROM audit_events
-          WHERE action='employment.sequence-sync' AND command_id=${key}`),
+        WHERE action='employment.sequence-sync' AND command_id=${key}`),
         );
         expect(audit).toHaveLength(2);
         const events = resultRows(
           await tx.execute(sql`SELECT id FROM employment_outbox
-          WHERE event_type='job.sequence-sync.completed' AND payload->'after'->>'recipientUserId'=${s.world.user.id}`),
+        WHERE event_type='job.sequence-sync.completed' AND payload->'after'->>'recipientUserId'=${s.world.user.id}`),
         );
         expect(events).toHaveLength(1);
       });
-    });
-  }
+    },
+  );
 
   it('AC-JOB-09 清空不排队，新建不同步，非空编辑不能以 false 绕过锁定', async () => {
     const { db } = testDb();
@@ -211,35 +212,34 @@ it('AC-JOB-10 第二条写入失败回滚第一条，修复后并发消费者只
   expect(after.reduce((n, r) => n + r.count, 0)).toBe(before.reduce((n, r) => n + r.count, 0) + 2);
 });
 
-for (const kind of ['posts', 'positions'] as const)
-  it(`AC-JOB-10 ${kind} 列表按引用覆盖不同旧值，其他引用不变`, async () => {
-    const { db } = testDb();
-    const s = await scenario(db, kind);
-    const otherPost = await s.world.job('posts', '其他职务', { sequenceId: s.oldSequence.id });
-    const otherPosition = await s.world.job('positions', '其他职位', { orgId: s.org.id, postId: otherPost.id });
-    const other = await s.world.hire('对照员工', {
-      departmentId: s.org.id,
-      postId: otherPost.id,
-      positionId: otherPosition.id,
-      sequenceId: s.nextSequence.id,
-    });
-    const mismatch = await s.world.request('PATCH', `/records/${s.future.id}`, {
-      ifMatch: s.future.revision,
-      body: { fields: { sequenceId: s.nextSequence.id } },
-    });
-    expect(mismatch.status, await mismatch.clone().text()).toBe(200);
-    expect((await s.call('POST', `${kind}/sync-sequence`, { items: [{ id: s.target.id, revision: 1 }] })).status).toBe(
-      202,
-    );
-    await worker(db, s.world.tenant.id);
-    expect((await s.world.record(s.future.id)).fields.sequenceId).toBe(s.oldSequence.id);
-    expect((await s.world.record(other.recordId)).fields.sequenceId).toBe(s.nextSequence.id);
-    const messages = await s.call('GET', 'sequence-sync/messages');
-    expect(((await messages.json()) as { items: unknown[] }).items).toHaveLength(1);
-    const foreign = await orgPeopleWorld(db, 'seqnoticeforeign');
-    const hidden = await callAt(db, foreign)('GET', 'sequence-sync/messages');
-    expect(((await hidden.json()) as { items: unknown[] }).items).toEqual([]);
+it.each(['posts', 'positions'] as const)('AC-JOB-10 %s 列表按引用覆盖不同旧值，其他引用不变', async (kind) => {
+  const { db } = testDb();
+  const s = await scenario(db, kind);
+  const otherPost = await s.world.job('posts', '其他职务', { sequenceId: s.oldSequence.id });
+  const otherPosition = await s.world.job('positions', '其他职位', { orgId: s.org.id, postId: otherPost.id });
+  const other = await s.world.hire('对照员工', {
+    departmentId: s.org.id,
+    postId: otherPost.id,
+    positionId: otherPosition.id,
+    sequenceId: s.nextSequence.id,
   });
+  const mismatch = await s.world.request('PATCH', `/records/${s.future.id}`, {
+    ifMatch: s.future.revision,
+    body: { fields: { sequenceId: s.nextSequence.id } },
+  });
+  expect(mismatch.status, await mismatch.clone().text()).toBe(200);
+  expect((await s.call('POST', `${kind}/sync-sequence`, { items: [{ id: s.target.id, revision: 1 }] })).status).toBe(
+    202,
+  );
+  await worker(db, s.world.tenant.id);
+  expect((await s.world.record(s.future.id)).fields.sequenceId).toBe(s.oldSequence.id);
+  expect((await s.world.record(other.recordId)).fields.sequenceId).toBe(s.nextSequence.id);
+  const messages = await s.call('GET', 'sequence-sync/messages');
+  expect(((await messages.json()) as { items: unknown[] }).items).toHaveLength(1);
+  const foreign = await orgPeopleWorld(db, 'seqnoticeforeign');
+  const hidden = await callAt(db, foreign)('GET', 'sequence-sync/messages');
+  expect(((await hidden.json()) as { items: unknown[] }).items).toEqual([]);
+});
 
 it('AC-JOB-08 审批中追加版本、作废不改；已批未来、同日多条及迟到调动保持排序和序列', async () => {
   const { db } = testDb();
