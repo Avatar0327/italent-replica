@@ -11,6 +11,7 @@ import { survey360 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loginEmailOf } from './AC-EMP-support.js';
+import type { RequestOptions } from './support/tenant-api.js';
 import {
   BASE,
   fullAccess,
@@ -808,12 +809,222 @@ const REPLAY_CASES: Record<string, Case | NotApplicable> = {
 };
 
 /** 只有这些写路由允许不适用（租户级配置）；其余都引用受范围约束的资源，必须给用例。 */
+/**
+ * PR-B 场景：受限管理员（范围甲 + 乙）自己的活动，评价对象甲一、评价者乙一（同事），乙一全选同一选项提交后停用；
+ * 收窄后乙一在范围外。
+ */
+async function bScene(env: Env, name: string, opts: { answer?: boolean; disable?: boolean } = {}) {
+  const { w, q } = env;
+  const s = await scene(env, name);
+  const path = `/activities/${s.activity.id}`;
+  const object = await w.ok<{ id: string }>(
+    s.as('POST', `${path}/objects`, { ifMatch: 0, body: { personId: env.people.a1.id, questionnaireIds: [q.id] } }),
+    201,
+  );
+  const relation = await w.ok<{ id: string; revision: number }>(
+    s.as('POST', `${path}/objects/${object.id}/appraisers`, {
+      ifMatch: 0,
+      body: { personId: env.people.b1.id, roleId: w.role('peer') },
+    }),
+    201,
+  );
+  const transition = async (action: 'enable' | 'disable') => {
+    const current = await w.ok<{ revision: number }>(s.as('GET', path));
+    await w.ok(s.as('POST', `${path}/${action}`, { ifMatch: current.revision }));
+  };
+  await transition('enable');
+  if (opts.answer !== false)
+    await w.answer(await w.token(s.activity.id, env.people.b1.id), relation.id, q, ['v4', 'v4']);
+  if (opts.disable !== false) await transition('disable');
+  const sheet = async () => {
+    const cards = await w.ok<{ items: { id: string; revision: number }[] }>(s.as('GET', `${path}/sheets`));
+    return cards.items[0]!;
+  };
+  return { ...s, path, object, relation, sheet };
+}
+
+/** 回执只有人数：收窄后重放仍是首次回执（命令台账），不带任何人员标识。 */
+async function receiptReplay(env: Env, name: string, path: string, body: object, opts: { disable?: boolean } = {}) {
+  const s = await bScene(env, name, { disable: opts.disable });
+  const key = randomUUID();
+  const call = () => s.as('POST', `${s.path}${path}`, { idempotencyKey: key, body });
+  const first = await (await expectStatus(call(), 200)).text();
+  await s.narrow();
+  const replay = await (await expectStatus(call(), 200)).text();
+  expect(JSON.parse(replay)).toEqual(JSON.parse(first));
+  for (const secret of [env.people.b1.id, env.people.b1.email]) expect(replay).not.toContain(secret);
+  return s;
+}
+
+const TEMPLATE = '套卷模板：租户级配置，不引用活动、人员等受数据范围约束的资源；功能权限撤销后的重放由路由层';
+
+const PR_B_REPLAY: Record<string, Case | NotApplicable> = {
+  [`PUT ${S}/report-template`]: { na: `报告模板：${CONFIG} objectContext / button 拦截（未授权类同一守卫）` },
+  [`POST ${S}/questionnaire-templates`]: { na: `${TEMPLATE} objectContext / button 拦截` },
+  [`PUT ${S}/questionnaire-templates/:id`]: { na: `${TEMPLATE} objectContext / button 拦截` },
+  [`DELETE ${S}/questionnaire-templates/:id`]: { na: `${TEMPLATE} objectContext / button 拦截` },
+  [`POST ${S}/questionnaires/:id/save-as-template`]: { na: `${TEMPLATE} objectContext / button 拦截` },
+  [`POST ${S}/questionnaire-templates/:id/instantiate`]: { na: `${TEMPLATE} objectContext / button 拦截` },
+
+  [`POST ${S}/activities/:id/relations/:relationId/reanswer`]: async (env) => {
+    const s = await bScene(env, '重新作答管理员');
+    const replay = await replayAfter(
+      (key) =>
+        s.as('POST', `${s.path}/relations/${s.relation.id}/reanswer`, {
+          ifMatch: s.relation.revision,
+          idempotencyKey: key,
+        }),
+      200,
+      s.narrow,
+    );
+    await expectStatus(replay, 404);
+    expect(await replay.text()).not.toContain(env.people.b1.id);
+  },
+  [`POST ${S}/activities/:id/sheets/:sheetId/block`]: async (env) => {
+    const s = await bScene(env, '屏蔽管理员');
+    const sheet = await s.sheet();
+    const replay = await replayAfter(
+      (key) => s.as('POST', `${s.path}/sheets/${sheet.id}/block`, { ifMatch: sheet.revision, idempotencyKey: key }),
+      200,
+      s.narrow,
+    );
+    await expectStatus(replay, 404);
+  },
+  [`POST ${S}/activities/:id/sheets/:sheetId/unblock`]: async (env) => {
+    const s = await bScene(env, '取消屏蔽管理员');
+    const sheet = await s.sheet();
+    await expectStatus(s.as('POST', `${s.path}/sheets/${sheet.id}/block`, { ifMatch: sheet.revision }), 200);
+    const replay = await replayAfter(
+      (key) =>
+        s.as('POST', `${s.path}/sheets/${sheet.id}/unblock`, { ifMatch: sheet.revision + 1, idempotencyKey: key }),
+      200,
+      s.narrow,
+    );
+    await expectStatus(replay, 404);
+  },
+  [`POST ${S}/activities/:id/sheets/block-suspected`]: async (env) => {
+    await receiptReplay(env, '屏蔽疑似管理员', '/sheets/block-suspected', {});
+  },
+  [`POST ${S}/activities/:id/sheets/unblock-all`]: async (env) => {
+    await receiptReplay(env, '恢复屏蔽管理员', '/sheets/unblock-all', {});
+  },
+  [`POST ${S}/activities/:id/todos`]: async (env) => {
+    const s = await bScene(env, '待办管理员', { answer: false, disable: false });
+    const key = randomUUID();
+    const call = () => s.as('POST', `${s.path}/todos`, { idempotencyKey: key, body: {} });
+    const first = await (await expectStatus(call(), 200)).text();
+    await s.narrow();
+    const replay = await (await expectStatus(call(), 200)).text();
+    expect(JSON.parse(replay)).toEqual(JSON.parse(first));
+    expect(replay).not.toContain(env.people.b1.id);
+    // 新命令按收窄后的范围：乙一不在范围内，没有可发的评价者
+    await expectStatus(s.as('POST', `${s.path}/todos`, { idempotencyKey: randomUUID(), body: {} }), 409);
+  },
+  [`POST ${S}/activities/:id/todos/cancel`]: async (env) => {
+    await receiptReplay(env, '取消待办管理员', '/todos/cancel', {}, { disable: false });
+  },
+  [`POST ${S}/activities/:id/invitations`]: async (env) => {
+    const s = await bScene(env, '邀请管理员', { answer: false, disable: false });
+    const key = randomUUID();
+    const call = () => s.as('POST', `${s.path}/invitations`, { idempotencyKey: key, body: {} });
+    const first = await (await expectStatus(call(), 200)).text();
+    await s.narrow();
+    expect(await (await expectStatus(call(), 200)).json()).toEqual(JSON.parse(first));
+    await expectStatus(s.as('POST', `${s.path}/invitations`, { idempotencyKey: randomUUID(), body: {} }), 409);
+  },
+  [`POST ${S}/activities/:id/reports/generate`]: async (env) => {
+    await receiptReplay(env, '生成报告管理员', '/reports/generate', {});
+  },
+  [`POST ${S}/activities/:id/reports/forward`]: async (env) => {
+    const s = await bScene(env, '转发管理员');
+    await expectStatus(s.as('POST', `${s.path}/reports/generate`, { body: {} }), 200);
+    const body = { mode: 'relation', roleIds: [env.w.role('peer')] };
+    const key = randomUUID();
+    const call = () => s.as('POST', `${s.path}/reports/forward`, { idempotencyKey: key, body });
+    const first = await (await expectStatus(call(), 200)).text();
+    await s.narrow();
+    const replay = await (await expectStatus(call(), 200)).text();
+    expect(JSON.parse(replay)).toEqual(JSON.parse(first));
+    expect(replay).not.toContain(env.people.b1.email);
+  },
+  [`POST ${S}/activities/:id/reports/forward/preview`]: async (env) => {
+    // 预览不是命令（不进台账）：收窄后同一请求按当前范围给出，不再列出乙一的邮箱
+    const s = await bScene(env, '预览管理员');
+    await expectStatus(s.as('POST', `${s.path}/reports/generate`, { body: {} }), 200);
+    const body = { mode: 'relation', roleIds: [env.w.role('peer')] };
+    const before = await (await expectStatus(s.as('POST', `${s.path}/reports/forward/preview`, { body }), 200)).text();
+    expect(before).toContain(env.people.b1.email);
+    await s.narrow();
+    const after = await (await expectStatus(s.as('POST', `${s.path}/reports/forward/preview`, { body }), 200)).text();
+    expect(after).not.toContain(env.people.b1.email);
+  },
+  [`PUT ${S}/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId`]: async (env) => {
+    const t = await todoScene(env);
+    const replay = await replayAfter(
+      (key) => t.my('PUT', t.task, { ifMatch: 0, idempotencyKey: key, body: { answers: [] } }),
+      200,
+      () => removeRelation(env.w, t.activityId, t.objectId, t.relationId),
+    );
+    await expectStatus(replay, 404);
+  },
+  [`POST ${S}/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/submit`]: async (env) => {
+    const t = await todoScene(env);
+    const options = env.q.scales[0]!.options;
+    const answers = env.q.questions.map((question) => ({ itemId: question.id, optionId: options[0]!.id }));
+    const saved = (await (await expectStatus(t.my('PUT', t.task, { ifMatch: 0, body: { answers } }), 200)).json()) as {
+      revision: number;
+    };
+    const replay = await replayAfter(
+      (key) => t.my('POST', `${t.task}/submit`, { ifMatch: saved.revision, idempotencyKey: key }),
+      200,
+      () => removeRelation(env.w, t.activityId, t.objectId, t.relationId),
+    );
+    await expectStatus(replay, 404);
+  },
+};
+
+/** 系统管理员的活动：内部员工甲二（有账号）作同事评价者，启用并发待办；返回甲二的待办作答入口。 */
+async function todoScene(env: Env) {
+  const { w, q } = env;
+  const activity = await w.activity({ name: `待办${randomUUID().slice(0, 4)}` });
+  const object = await w.object(activity.id, (await w.person('待办对象')).id, [q.id]);
+  const relation = await w.appraiser(activity.id, object.id, env.people.a2.id, 'peer');
+  await w.transition(activity.id, 'enable');
+  await w.ok(w.request('POST', `/activities/${activity.id}/todos`, { body: { personIds: [env.people.a2.id] } }));
+  const result = await withTenant(w.db, w.tenantId, (tx) =>
+    tx.execute(
+      sql`SELECT user_id FROM permission_user_person_links WHERE employee_id = ${env.people.a2.employeeId}::uuid`,
+    ),
+  );
+  const [link] = (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as { user_id: string }[];
+  const my = (method: string, path: string, opts: RequestOptions = {}) =>
+    w.api.request(method, `${S}/my${path}`, { ...opts, user: link!.user_id, tenant: w.tenantId });
+  const todos = (await (await expectStatus(my('GET', '/todos'), 200)).json()) as {
+    items: { id: string; activityId: string }[];
+  };
+  const todo = todos.items.find((i) => i.activityId === activity.id)!;
+  return {
+    my,
+    activityId: activity.id,
+    objectId: object.id,
+    relationId: relation.id,
+    task: `/todos/${todo.id}/tasks/${relation.id}/questionnaires/${q.id}`,
+  };
+}
+Object.assign(REPLAY_CASES, PR_B_REPLAY);
+
 const CONFIG_ROUTES = new Set([
   `PUT ${S}/settings`,
   `POST ${S}/roles`,
   `PUT ${S}/roles/:id`,
   `POST ${S}/questionnaires`,
   `POST ${S}/activities`,
+  `PUT ${S}/report-template`,
+  `POST ${S}/questionnaire-templates`,
+  `PUT ${S}/questionnaire-templates/:id`,
+  `DELETE ${S}/questionnaire-templates/:id`,
+  `POST ${S}/questionnaires/:id/save-as-template`,
+  `POST ${S}/questionnaire-templates/:id/instantiate`,
 ]);
 
 async function buildEnv(): Promise<Env> {

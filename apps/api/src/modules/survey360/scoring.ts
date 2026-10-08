@@ -1,6 +1,7 @@
 /**
  * 计分（E3-R11、E3-R13、E3-R15）：停用活动时按已提交的答卷重算，得分写入新的计分批次，活动指向最新批次；
- * 已移除的评价对象与评价关系、未提交的答卷不参与计分。只存聚合分，不落逐个评价者的分数。
+ * 已移除的评价对象与评价关系、未提交的答卷、被屏蔽的答卷（PR-B，AC-360-08）不参与计分。只存聚合分，不落逐个
+ * 评价者的分数。
  */
 import { sql, survey360Activities, survey360ScoreBatches, survey360Scores, type Tx, eq } from '@italent/db';
 import { survey360 } from '@italent/domain';
@@ -29,12 +30,12 @@ export async function computeScores(
       JOIN survey360_object_questionnaires oq ON oq.tenant_id = o.tenant_id AND oq.object_id = o.id
         AND oq.questionnaire_id = s.questionnaire_id
       JOIN survey360_roles ro ON ro.tenant_id = r.tenant_id AND ro.id = r.role_id
-      WHERE s.activity_id = ${activityId}::uuid AND s.status = 'submitted'`),
+      WHERE s.activity_id = ${activityId}::uuid AND s.status = 'submitted' AND NOT s.blocked`),
   );
   const answers = rows<{ sheet_id: string; item_id: string; option_id: string }>(
     await tx.execute(sql`SELECT a.sheet_id, a.item_id, a.option_id FROM survey360_answers a
       JOIN survey360_sheets s ON s.tenant_id = a.tenant_id AND s.id = a.sheet_id
-      WHERE s.activity_id = ${activityId}::uuid AND s.status = 'submitted'`),
+      WHERE s.activity_id = ${activityId}::uuid AND s.status = 'submitted' AND NOT s.blocked`),
   );
   const bySheet = new Map<string, Map<string, string>>();
   for (const a of answers) bySheet.set(a.sheet_id, (bySheet.get(a.sheet_id) ?? new Map()).set(a.item_id, a.option_id));
@@ -65,7 +66,8 @@ export async function computeScores(
   for (let i = 0; i < values.length; i += 500) await tx.insert(survey360Scores).values(values.slice(i, i + 500));
   await tx
     .update(survey360Activities)
-    .set({ scoreBatchId: batch!.id, scoredAt: ctx.now })
+    // 重算即纳入此前的作答数据变化（清除作答、屏蔽），报告恢复可查看、可重新生成
+    .set({ scoreBatchId: batch!.id, scoredAt: ctx.now, dataChangedAt: null })
     .where(eq(survey360Activities.id, activityId));
   return batch!.id;
 }
@@ -110,4 +112,21 @@ export async function objectScores(tx: Tx, batchId: string | null, objectId: str
     score: r.score === null ? null : Number(r.score),
     raterCount: Number(r.rater_count),
   }));
+}
+
+/**
+ * 作答数据变化（清除作答、屏蔽 / 取消屏蔽，PR-B）：记下变化时间，到下一次计分前都是“数据发生变化”——已生成的报告
+ * 不可查看、不可重新生成，须启用 → 停用重算（`25` §10.3 ⑫）；报告不再算“已生成”，Lastest360Cent 不再计入
+ * （DEC-262②）。报表读的是计分批次，重算前仍是旧结果。
+ */
+export async function markDataChanged(tx: Tx, activityId: string, now: Date): Promise<void> {
+  await tx.update(survey360Activities).set({ dataChangedAt: now }).where(eq(survey360Activities.id, activityId));
+  await tx.execute(
+    sql`UPDATE survey360_objects SET report_generated_at = NULL WHERE activity_id = ${activityId}::uuid`,
+  );
+}
+
+/** 活动作答数据在最近一次计分之后有变化（报告失效）：计分时清空变化时间。 */
+export function dataChanged(activity: { data_changed_at: Date | string | null }): boolean {
+  return activity.data_changed_at !== null;
 }

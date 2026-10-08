@@ -151,8 +151,8 @@ async function routeNeed(c: C, deps: TenantRouteDeps, need: Need): Promise<Scope
   return ctx;
 }
 
-/** 会读写 360 人员的对象：人员、评价关系（评价对象 / 评价者）、结果。 */
-const PERSON_OBJECTS: ReadonlySet<ObjectKey> = new Set(['person', 'relation', 'result']);
+/** 会读写 360 人员的对象：人员、评价关系（评价对象 / 评价者）、结果、答卷（PR-B 原始数据、屏蔽与重新作答）。 */
+const PERSON_OBJECTS: ReadonlySet<ObjectKey> = new Set(['person', 'relation', 'result', 'answer']);
 
 /**
  * 路由层取（用户 × Survey360）数据范围（requestScope），按 360 人员改写：管理单元 / 组织条件按挂接员工的当前任职
@@ -223,6 +223,23 @@ export function trimBody(fields: ReadonlySet<string> | undefined, body: unknown)
   const items = (body as { items?: unknown }).items;
   if (Array.isArray(items)) return { ...body, items: items.map((row: object) => pick(row, fields)) };
   return pick(body, fields);
+}
+
+/** 嵌套层（报告快照、报表列头）里与对象字段同名的键：查看人看不到该字段时，任何层级都去掉。 */
+export function trimNested(fields: ReadonlySet<string> | undefined, body: unknown, keys: readonly string[]): unknown {
+  if (fields === undefined) return body;
+  const hidden = new Set(keys.filter((k) => !fields.has(k)));
+  if (!hidden.size) return body;
+  const walk = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(walk);
+    if (value === null || typeof value !== 'object') return value;
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([k]) => !hidden.has(k))
+        .map(([k, v]) => [k, walk(v)]),
+    );
+  };
+  return walk(body);
 }
 
 /** 按某个 360 对象的查看字段裁剪。 */

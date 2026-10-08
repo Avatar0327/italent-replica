@@ -185,11 +185,15 @@ describe('PR-B 重新作答', () => {
   });
 
   it('启用中也可清除；清除后待办不重开', async () => {
-    const s = await answered('b02d');
+    const s = await sceneB(testDb().db, 'b02d');
     const { w } = s;
-    await w.ok(w.request('POST', `${s.path}/todos`, { idempotencyKey: key(), body: { personIds: [s.person.T.id] } }));
+    await w.ok(w.request('POST', `${s.path}/todos`, { idempotencyKey: key(), body: { personIds: [s.person.P1.id] } }));
+    await s.answerAs(s.person.P1.id, s.rel.p1.id, ['v4', 'v3', 'v4']);
+    const todoOf = async () => (await progress(s)).items.find((i) => i.personId === s.person.P1.id)!.todo;
+    expect(await todoOf()).toBe('done');
     const row = (await progressDetail(s, s.person.P1.id)).items[0]!;
     await w.ok(w.request('POST', `${s.path}/relations/${row.relationId}/reanswer`, { ifMatch: row.revision }));
-    expect((await progress(s)).items.find((i) => i.personId === s.person.P1.id)!.todo).toBeNull();
+    expect((await progressDetail(s, s.person.P1.id)).items[0]!.status).toBe('not_started');
+    expect(await todoOf()).toBe('done');
   });
 });

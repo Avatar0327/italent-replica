@@ -11,6 +11,7 @@ import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { loginEmailOf } from './AC-EMP-support.js';
+import type { RequestOptions } from './support/tenant-api.js';
 import {
   BASE,
   fullAccess,
@@ -24,7 +25,7 @@ import {
 
 const testDb = useTestDb();
 const OBJ = survey360.SURVEY360_OBJECTS;
-type Key = 'activity' | 'relation' | 'result' | 'questionnaire' | 'person' | 'settings';
+type Key = 'activity' | 'relation' | 'result' | 'questionnaire' | 'person' | 'settings' | 'answer';
 const KEYS: readonly Key[] = ['activity', 'relation', 'result', 'questionnaire', 'person', 'settings'];
 
 interface Spec {
@@ -84,7 +85,13 @@ interface Env {
     | 'tSettingsFine'
     | 'tSettingsRev'
     | 'tRelNoId'
-    | 'tLinkLogs',
+    | 'tLinkLogs'
+    | 'tProgress'
+    | 'tAnswer'
+    | 'tReport'
+    | 'tTemplate'
+    | 'tTemplateRev'
+    | 'tQOwner',
     string
   >;
   readonly q: QuestionnaireView;
@@ -234,6 +241,32 @@ async function buildEnv(): Promise<Env> {
     tLinkLogs: await custom(w, '看不到挂接', [
       { object: 'person', hide: ['employeeId', 'previousEmployeeId'], buttons: ['sync'] },
     ]),
+    // PR-B：进程控制看不到邮箱与角色名；原始数据看不到总分（可屏蔽、重新作答）；报告看不到生成时间、内容与收件人
+    // 邮箱（可转发）；报告模板看不到开关 / 版本号
+    tProgress: await custom(w, '进度看不到邮箱', [
+      { object: 'activity' },
+      { object: 'relation', hide: ['email', 'roleName'] },
+    ]),
+    tAnswer: await custom(w, '答卷看不到总分', [
+      { object: 'activity' },
+      { object: 'relation', hide: ['roleName'] },
+      { object: 'answer', ops: { update: true }, hide: ['total'], buttons: ['block', 'reanswer'] },
+    ]),
+    tReport: await custom(w, '报告看不到内容', [
+      { object: 'activity' },
+      {
+        object: 'result',
+        ops: { update: true },
+        hide: ['generatedAt', 'questionnaires', 'recipientEmail'],
+        buttons: ['forwardReport'],
+      },
+    ]),
+    tTemplate: await custom(w, '看不到文本角色开关', [{ object: 'settings', hide: ['showTextRole'] }]),
+    // 能新建 / 编辑套卷模板（含指导语），看不到创建人
+    tQOwner: await custom(w, '看不到创建人', [full('questionnaire', ['createdBy'])]),
+    tTemplateRev: await custom(w, '看不到模板版本号', [
+      { object: 'settings', ops: { update: true }, hide: ['revision'], buttons: ['update'] },
+    ]),
   };
   await w.appoint(users.general, 'general');
   await w.appoint(users.advanced, 'advanced');
@@ -272,7 +305,7 @@ async function buildEnv(): Promise<Env> {
   await w.transition(sc.id, 'enable');
   await w.answer(await w.token(sc.id, rater.id), rS.id, q, ['v4', 'v4']);
   await w.transition(sc.id, 'disable');
-  await grantTo(w, sc.id, [users.tResult]);
+  await grantTo(w, sc.id, [users.tResult, users.tProgress, users.tAnswer, users.tReport]);
 
   // 自动添加：评价对象是已挂接的 Tg
   const au = await w.activity({ name: '自动添加活动' });
@@ -1788,6 +1821,773 @@ const ROUTE_CASES: Record<string, RouteCases> = {
     },
   },
 };
+
+/** PR-B 共用场景（只建一次）：计分活动的答卷与报告、转发链接、待办活动（不显示姓名与角色）、他租户的套卷模板。 */
+interface PrB {
+  readonly sheetId: string;
+  readonly reportId: string;
+  readonly reportToken: string;
+  readonly todo: { id: string; user: string; activityId: string; relationId: string; otherRelation: string };
+  readonly w2Template: string;
+  readonly template: string;
+}
+let prbCache: Promise<PrB> | undefined;
+const rowsOf = <T>(result: unknown) => (Array.isArray(result) ? result : (result as { rows: unknown[] }).rows) as T[];
+function prb(env: Env): Promise<PrB> {
+  prbCache ??= (async () => {
+    const { w } = env;
+    const [sheet] = rowsOf<{ id: string }>(
+      await withTenant(w.db, w.tenantId, (tx) =>
+        tx.execute(sql`SELECT id FROM survey360_sheets WHERE activity_id = ${env.SC.id}::uuid`),
+      ),
+    );
+    await w.ok(w.request('POST', `/activities/${env.SC.id}/reports/generate`, { body: {} }));
+    const reports = await w.ok<{ items: { id: string }[] }>(w.request('GET', `/activities/${env.SC.id}/reports`));
+    await w.ok(
+      w.request('POST', `/activities/${env.SC.id}/reports/forward`, {
+        body: { mode: 'others', others: [{ name: 'HRBP', email: 'guard-hrbp@example.com' }] },
+      }),
+    );
+    const [mail] = rowsOf<{ token: string }>(
+      await withTenant(w.db, w.tenantId, (tx) =>
+        tx.execute(sql`SELECT payload->>'token' AS token FROM survey360_outbox
+          WHERE event_type = 'survey360.report_forward' ORDER BY created_at DESC LIMIT 1`),
+      ),
+    );
+    const people = (await w.ok<{ items: PersonView[] }>(w.request('GET', '/people?pageSize=200'))).items;
+    const manager = people.find((p) => p.name === '经理M')!;
+    const activity = await w.activity({ name: '待办活动', showAppraiserName: false, roleDisplay: 'hidden' });
+    const object = await w.object(activity.id, (await w.person('待办对象')).id, [env.q.id]);
+    const relation = await w.appraiser(activity.id, object.id, manager.id, 'peer');
+    const other = await w.appraiser(activity.id, object.id, (await w.person('待办外部评价者')).id, 'customer');
+    await w.transition(activity.id, 'enable');
+    await w.ok(w.request('POST', `/activities/${activity.id}/todos`, { body: { personIds: [manager.id] } }));
+    const [link] = rowsOf<{ user_id: string }>(
+      await withTenant(w.db, w.tenantId, (tx) =>
+        tx.execute(
+          sql`SELECT user_id FROM permission_user_person_links WHERE employee_id = ${manager.employeeId}::uuid`,
+        ),
+      ),
+    );
+    const todos = await w.ok<{ items: { id: string; activityId: string }[] }>(
+      w.api.request('GET', `${S}/my/todos`, { user: link!.user_id, tenant: w.tenantId }),
+    );
+    const w2Template = await env.w2.ok<{ id: string }>(
+      env.w2.request('POST', '/questionnaire-templates', { ifMatch: 0, body: { name: '他租户模板', type: 'rating' } }),
+      201,
+    );
+    const template = await w.ok<{ id: string }>(
+      w.request('POST', '/questionnaire-templates', { ifMatch: 0, body: { name: '守卫模板', type: 'rating' } }),
+      201,
+    );
+    return {
+      sheetId: sheet!.id,
+      reportId: reports.items[0]!.id,
+      reportToken: mail!.token,
+      todo: {
+        id: todos.items.find((t) => t.activityId === activity.id)!.id,
+        user: link!.user_id,
+        activityId: activity.id,
+        relationId: relation.id,
+        otherRelation: other.id,
+      },
+      w2Template: w2Template.id,
+      template: template.id,
+    };
+  })();
+  return prbCache;
+}
+
+/** 新建、计分并停用的活动（答卷一份），授权给 grantees：屏蔽 / 重新作答的字段裁剪用，不动共用的计分活动。 */
+async function freshScored(env: Env, grantees: string[]) {
+  const { w, q } = env;
+  const activity = await w.activity({ name: `计分${randomUUID().slice(0, 4)}` });
+  const object = await w.object(activity.id, (await w.person('裁剪对象')).id, [q.id]);
+  const rater = await w.person('裁剪评价者');
+  const relation = await w.appraiser(activity.id, object.id, rater.id, 'peer');
+  await w.transition(activity.id, 'enable');
+  await w.answer(await w.token(activity.id, rater.id), relation.id, q, ['v4', 'v5']);
+  await w.transition(activity.id, 'disable');
+  await grantTo(w, activity.id, grantees);
+  const [sheet] = rowsOf<{ id: string; revision: number }>(
+    await withTenant(w.db, w.tenantId, (tx) =>
+      tx.execute(sql`SELECT id, revision FROM survey360_sheets WHERE activity_id = ${activity.id}::uuid`),
+    ),
+  );
+  return { activity, relation, sheet: sheet! };
+}
+
+const RECEIPT = '回执只有协议字段（人数与原站提示文案），不含任何 360 对象字段，不按对象字段裁剪（asIs）';
+const my =
+  (env: Env, user: string) =>
+  (method: string, path: string, opts: RequestOptions = {}) =>
+    env.w.api.request(method, `${S}/my${path}`, { ...opts, user, tenant: env.w.tenantId });
+const todoTask = (p: PrB, relationId = p.todo.relationId) =>
+  `/todos/${p.todo.id}/tasks/${relationId}/questionnaires/${'Q'}`;
+
+/** 活动内批量命令（发送 / 取消待办、邮件邀请、屏蔽疑似、恢复、生成 / 转发报告）：未授权 403、无授权活动 404。 */
+function activityCommand(path: string, body: Record<string, unknown>, unauthorized: (env: Env) => string): RouteCases {
+  return {
+    unauthorized: async (env) =>
+      void (await expectStatus(
+        admin(env, unauthorized(env))('POST', `/activities/${env.SC.id}${path}`, { body }),
+        403,
+      )),
+    outOfScope: async (env) =>
+      void (await expectStatus(
+        admin(env, env.users.general)('POST', `/activities/${env.SC.id}${path}`, { body }),
+        404,
+      )),
+    trimming: { na: RECEIPT },
+  };
+}
+
+const PR_B_CASES: Record<string, RouteCases> = {
+  [`GET ${S}/activities/:id/progress`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(admin(env, env.users.onlyActivity)('GET', `/activities/${env.SC.id}/progress`), 403)),
+    outOfScope: async (env) =>
+      void (await expectStatus(admin(env, env.users.general)('GET', `/activities/${env.SC.id}/progress`), 404)),
+    trimming: async (env) => {
+      const body = await json(
+        await expectStatus(admin(env, env.users.tProgress)('GET', `/activities/${env.SC.id}/progress`), 200),
+      );
+      expect(body.items!.length).toBeGreaterThan(0);
+      without(body, 'email');
+    },
+  },
+  [`GET ${S}/activities/:id/progress/:personId`]: {
+    unauthorized: async (env) => {
+      const items = (await json(await sa(env)('GET', `/activities/${env.SC.id}/progress`))).items!;
+      await expectStatus(
+        admin(env, env.users.onlyActivity)('GET', `/activities/${env.SC.id}/progress/${items[0]!.personId}`),
+        403,
+      );
+    },
+    outOfScope: async (env) => {
+      const items = (await json(await sa(env)('GET', `/activities/${env.SC.id}/progress`))).items!;
+      await expectStatus(
+        admin(env, env.users.general)('GET', `/activities/${env.SC.id}/progress/${items[0]!.personId}`),
+        404,
+      );
+      // 不是该活动评价者的人员：与不存在同一 404
+      await expectStatus(sa(env)('GET', `/activities/${env.SC.id}/progress/${randomUUID()}`), 404);
+    },
+    trimming: async (env) => {
+      const items = (await json(await sa(env)('GET', `/activities/${env.SC.id}/progress`))).items!;
+      const body = await json(
+        await expectStatus(
+          admin(env, env.users.tProgress)('GET', `/activities/${env.SC.id}/progress/${items[0]!.personId}`),
+          200,
+        ),
+      );
+      expect(body.items!.length).toBe(1);
+      without(body, 'roleName');
+    },
+  },
+  [`POST ${S}/activities/:id/relations/:relationId/reanswer`]: {
+    unauthorized: async (env) => {
+      const before = await json(await sa(env)('GET', `/activities/${env.SC.id}/progress`));
+      await expectStatus(
+        admin(env, env.users.noButtons)('POST', `/activities/${env.SC.id}/relations/${env.SC.objectId}/reanswer`, {
+          ifMatch: 1,
+        }),
+        403,
+      );
+      expect(await json(await sa(env)('GET', `/activities/${env.SC.id}/progress`))).toEqual(before);
+    },
+    outOfScope: async (env) => {
+      const relation = (await json(await sa(env)('GET', `/activities/${env.SC.id}/progress`))).items!;
+      const detail = await json(await sa(env)('GET', `/activities/${env.SC.id}/progress/${relation[0]!.personId}`));
+      const row = detail.items![0]!;
+      await expectStatus(
+        admin(env, env.users.general)('POST', `/activities/${env.SC.id}/relations/${row.relationId}/reanswer`, {
+          ifMatch: row.revision as number,
+        }),
+        404,
+      );
+    },
+    trimming: async (env) => {
+      const f = await freshScored(env, [env.users.tAnswer]);
+      const res = await expectStatus(
+        admin(env, env.users.tAnswer)('POST', `/activities/${f.activity.id}/relations/${f.relation.id}/reanswer`, {
+          ifMatch: f.relation.revision,
+        }),
+        200,
+      );
+      const body = await json(res);
+      expect(body.status).toBe('not_started');
+      without(body, 'roleName');
+    },
+  },
+  [`POST ${S}/activities/:id/todos`]: activityCommand('/todos', {}, (env) => env.users.noButtons),
+  [`POST ${S}/activities/:id/todos/cancel`]: activityCommand('/todos/cancel', {}, (env) => env.users.noButtons),
+  [`POST ${S}/activities/:id/invitations`]: activityCommand('/invitations', {}, (env) => env.users.noButtons),
+  [`POST ${S}/activities/:id/sheets/block-suspected`]: activityCommand(
+    '/sheets/block-suspected',
+    {},
+    (env) => env.users.noButtons,
+  ),
+  [`POST ${S}/activities/:id/sheets/unblock-all`]: activityCommand(
+    '/sheets/unblock-all',
+    {},
+    (env) => env.users.noButtons,
+  ),
+  [`POST ${S}/activities/:id/reports/generate`]: activityCommand('/reports/generate', {}, (env) => env.users.tResult),
+  [`POST ${S}/activities/:id/reports/forward`]: activityCommand(
+    '/reports/forward',
+    { mode: 'others', others: [{ name: 'X', email: 'guard-x@example.com' }] },
+    (env) => env.users.tResult,
+  ),
+  [`POST ${S}/activities/:id/reports/forward/preview`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(
+        admin(env, env.users.tResult)('POST', `/activities/${env.SC.id}/reports/forward/preview`, {
+          body: { mode: 'reporting', targets: ['self'] },
+        }),
+        403,
+      )),
+    outOfScope: async (env) =>
+      void (await expectStatus(
+        admin(env, env.users.general)('POST', `/activities/${env.SC.id}/reports/forward/preview`, {
+          body: { mode: 'reporting', targets: ['self'] },
+        }),
+        404,
+      )),
+    trimming: async (env) => {
+      await prb(env);
+      const body = await json(
+        await expectStatus(
+          admin(env, env.users.tReport)('POST', `/activities/${env.SC.id}/reports/forward/preview`, {
+            body: { mode: 'others', others: [{ name: 'Y', email: 'guard-y@example.com' }] },
+          }),
+          200,
+        ),
+      );
+      expect(body.items!.length).toBe(1);
+      without(body, 'recipientEmail');
+      noMarkers(body, ['guard-y@example.com']);
+    },
+  },
+  [`GET ${S}/my/todos`]: {
+    unauthorized: async (env) =>
+      // 不是本租户成员（他租户的管理员）
+      void (await expectStatus(
+        env.w.api.request('GET', `${S}/my/todos`, { user: env.w2.admin, tenant: env.w.tenantId }),
+        403,
+      )),
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      const body = await json(await expectStatus(my(env, env.users.outsider)('GET', '/todos'), 200));
+      expect(JSON.stringify(body)).not.toContain(p.todo.id);
+    },
+    trimming: { na: '只返回本人账号的待办（标题、活动名称、状态、时间），不是 360 对象字段，不需要 360 身份' },
+  },
+  [`GET ${S}/my/todos/:todoId/answer`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(my(env, env.users.outsider)('GET', `/todos/${p.todo.id}/answer`), 404);
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(my(env, p.todo.user)('GET', `/todos/${randomUUID()}/answer`), 404);
+    },
+    trimming: async (env) => {
+      const p = await prb(env);
+      const body = await json(await expectStatus(my(env, p.todo.user)('GET', `/todos/${p.todo.id}/answer`), 200));
+      expect(body).not.toHaveProperty('appraiser');
+      for (const task of body.tasks as object[]) expect(task).not.toHaveProperty('role');
+      noMarkers(body, ['待办外部评价者', '经理M']);
+    },
+  },
+  [`GET ${S}/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(my(env, env.users.outsider)('GET', todoTask(p).replace('Q', env.q.id)), 404);
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(my(env, p.todo.user)('GET', todoTask(p, p.todo.otherRelation).replace('Q', env.q.id)), 404);
+    },
+    trimming: async (env) => {
+      const p = await prb(env);
+      const body = await json(await expectStatus(my(env, p.todo.user)('GET', todoTask(p).replace('Q', env.q.id)), 200));
+      without(body, 'appraiser', 'role');
+    },
+  },
+  [`PUT ${S}/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        my(env, env.users.outsider)('PUT', todoTask(p).replace('Q', env.q.id), { ifMatch: 0, body: { answers: [] } }),
+        404,
+      );
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        my(env, p.todo.user)('PUT', todoTask(p, p.todo.otherRelation).replace('Q', env.q.id), {
+          ifMatch: 0,
+          body: { answers: [] },
+        }),
+        404,
+      );
+    },
+    trimming: {
+      na: '答卷视图只有本人作答的内容（状态、版本、答案、建议），与链接作答同一出口，不含其他评价者或对象字段',
+    },
+  },
+  [`POST ${S}/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/submit`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        my(env, env.users.outsider)('POST', `${todoTask(p).replace('Q', env.q.id)}/submit`, { ifMatch: 1 }),
+        404,
+      );
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        my(env, p.todo.user)('POST', `${todoTask(p, p.todo.otherRelation).replace('Q', env.q.id)}/submit`, {
+          ifMatch: 1,
+        }),
+        404,
+      );
+    },
+    trimming: {
+      na: '答卷视图只有本人作答的内容（状态、版本、答案、建议），与链接作答同一出口，不含其他评价者或对象字段',
+    },
+  },
+  [`GET ${S}/activities/:id/sheets`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(admin(env, env.users.onlyActivity)('GET', `/activities/${env.SC.id}/sheets`), 403)),
+    outOfScope: async (env) =>
+      void (await expectStatus(admin(env, env.users.general)('GET', `/activities/${env.SC.id}/sheets`), 404)),
+    trimming: async (env) => {
+      const body = await json(
+        await expectStatus(admin(env, env.users.tAnswer)('GET', `/activities/${env.SC.id}/sheets`), 200),
+      );
+      expect(body.items!.length).toBe(1);
+      without(body, 'total', 'relationId', 'appraiserPersonId', 'appraiser');
+      noMarkers(body, ['评价者甲']);
+    },
+  },
+  [`POST ${S}/activities/:id/sheets/:sheetId/block`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        admin(env, env.users.noButtons)('POST', `/activities/${env.SC.id}/sheets/${p.sheetId}/block`, { ifMatch: 1 }),
+        403,
+      );
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        admin(env, env.users.general)('POST', `/activities/${env.SC.id}/sheets/${p.sheetId}/block`, { ifMatch: 1 }),
+        404,
+      );
+    },
+    trimming: async (env) => {
+      const f = await freshScored(env, [env.users.tAnswer]);
+      await writeTwice(
+        (key) =>
+          admin(env, env.users.tAnswer)('POST', `/activities/${f.activity.id}/sheets/${f.sheet.id}/block`, {
+            ifMatch: f.sheet.revision,
+            idempotencyKey: key,
+          }),
+        200,
+        (body) => {
+          expect(body.blocked).toBe(true);
+          without(body, 'total');
+        },
+      );
+    },
+  },
+  [`POST ${S}/activities/:id/sheets/:sheetId/unblock`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        admin(env, env.users.noButtons)('POST', `/activities/${env.SC.id}/sheets/${p.sheetId}/unblock`, { ifMatch: 1 }),
+        403,
+      );
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        admin(env, env.users.general)('POST', `/activities/${env.SC.id}/sheets/${p.sheetId}/unblock`, { ifMatch: 1 }),
+        404,
+      );
+    },
+    trimming: async (env) => {
+      const f = await freshScored(env, [env.users.tAnswer]);
+      const blocked = await json(
+        await expectStatus(
+          sa(env)('POST', `/activities/${f.activity.id}/sheets/${f.sheet.id}/block`, { ifMatch: f.sheet.revision }),
+          200,
+        ),
+      );
+      const body = await json(
+        await expectStatus(
+          admin(env, env.users.tAnswer)('POST', `/activities/${f.activity.id}/sheets/${f.sheet.id}/unblock`, {
+            ifMatch: blocked.revision as number,
+          }),
+          200,
+        ),
+      );
+      expect(body.blocked).toBe(false);
+      without(body, 'total');
+    },
+  },
+  [`GET ${S}/report-template`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(admin(env, env.users.onlyActivity)('GET', '/report-template'), 403)),
+    outOfScope: async (env) => {
+      const own = await json(await expectStatus(sa(env)('GET', '/report-template'), 200));
+      const other = await json(await expectStatus(env.w2.request('GET', '/report-template'), 200));
+      expect(own.id).not.toBe(other.id);
+    },
+    trimming: async (env) => {
+      const body = await json(await expectStatus(admin(env, env.users.tTemplate)('GET', '/report-template'), 200));
+      expect(body).not.toHaveProperty('showTextRole');
+    },
+  },
+  [`PUT ${S}/report-template`]: {
+    unauthorized: async (env) => {
+      const before = await json(await sa(env)('GET', '/report-template'));
+      await expectStatus(
+        admin(env, env.users.noButtons)('PUT', '/report-template', {
+          ifMatch: before.revision as number,
+          body: { showTextRole: true },
+        }),
+        403,
+      );
+      expect(await json(await sa(env)('GET', '/report-template'))).toEqual(before);
+    },
+    outOfScope: async (env) => {
+      const other = await json(await env.w2.request('GET', '/report-template'));
+      const own = await json(await sa(env)('GET', '/report-template'));
+      await expectStatus(
+        sa(env)('PUT', '/report-template', { ifMatch: own.revision as number, body: { showTextRole: true } }),
+        200,
+      );
+      expect(await json(await env.w2.request('GET', '/report-template'))).toEqual(other);
+    },
+    trimming: async (env) => {
+      const before = await json(await sa(env)('GET', '/report-template'));
+      await writeTwice(
+        (key) =>
+          admin(env, env.users.tTemplateRev)('PUT', '/report-template', {
+            ifMatch: before.revision as number,
+            idempotencyKey: key,
+            body: { showTextRole: true },
+          }),
+        200,
+        (body) => expect(body).not.toHaveProperty('revision'),
+      );
+    },
+  },
+  [`GET ${S}/activities/:id/reports`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(admin(env, env.users.onlyActivity)('GET', `/activities/${env.SC.id}/reports`), 403)),
+    outOfScope: async (env) =>
+      void (await expectStatus(admin(env, env.users.general)('GET', `/activities/${env.SC.id}/reports`), 404)),
+    trimming: async (env) => {
+      await prb(env);
+      const body = await json(
+        await expectStatus(admin(env, env.users.tReport)('GET', `/activities/${env.SC.id}/reports`), 200),
+      );
+      expect(body.items![0]!.status).toBe('generated');
+      without(body, 'generatedAt');
+    },
+  },
+  [`GET ${S}/activities/:id/reports/:reportId`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        admin(env, env.users.onlyActivity)('GET', `/activities/${env.SC.id}/reports/${p.reportId}`),
+        403,
+      );
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(admin(env, env.users.general)('GET', `/activities/${env.SC.id}/reports/${p.reportId}`), 404);
+      // 报告须属于该活动
+      await expectStatus(sa(env)('GET', `/activities/${env.A.id}/reports/${p.reportId}`), 404);
+    },
+    trimming: async (env) => {
+      const p = await prb(env);
+      const body = await json(
+        await expectStatus(admin(env, env.users.tReport)('GET', `/activities/${env.SC.id}/reports/${p.reportId}`), 200),
+      );
+      expect(body).toHaveProperty('cover');
+      expect(body).not.toHaveProperty('questionnaires');
+      expect(body).not.toHaveProperty('generatedAt');
+    },
+  },
+  [`GET ${S}/activities/:id/score-tables`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(
+        admin(env, env.users.onlyActivity)('GET', `/activities/${env.SC.id}/score-tables?level=questionnaire`),
+        403,
+      )),
+    outOfScope: async (env) =>
+      void (await expectStatus(
+        admin(env, env.users.general)('GET', `/activities/${env.SC.id}/score-tables?level=questionnaire`),
+        404,
+      )),
+    trimming: async (env) => {
+      const body = await json(
+        await expectStatus(
+          admin(env, env.users.tResult)('GET', `/activities/${env.SC.id}/score-tables?level=questionnaire`),
+          200,
+        ),
+      );
+      expect(body.items!.length).toBe(1);
+      without(body, 'roleName');
+    },
+  },
+  [`GET ${S}/questionnaire-templates`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(admin(env, env.users.onlyActivity)('GET', '/questionnaire-templates'), 403)),
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      const body = await json(await expectStatus(sa(env)('GET', '/questionnaire-templates'), 200));
+      expect(JSON.stringify(body)).not.toContain(p.w2Template);
+    },
+    trimming: async (env) => {
+      await prb(env);
+      const body = await json(await expectStatus(admin(env, env.users.tQ)('GET', '/questionnaire-templates'), 200));
+      expect(body.items!.length).toBeGreaterThan(0);
+      without(body, 'createdBy');
+    },
+  },
+  [`GET ${S}/questionnaire-templates/:id`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(admin(env, env.users.onlyActivity)('GET', `/questionnaire-templates/${p.template}`), 403);
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(sa(env)('GET', `/questionnaire-templates/${p.w2Template}`), 404);
+      // 套卷与模板互不可见
+      await expectStatus(sa(env)('GET', `/questionnaire-templates/${env.q.id}`), 404);
+    },
+    trimming: async (env) => {
+      const p = await prb(env);
+      const body = await json(
+        await expectStatus(admin(env, env.users.tQ)('GET', `/questionnaire-templates/${p.template}`), 200),
+      );
+      without(body, 'guide', 'createdBy');
+    },
+  },
+  [`POST ${S}/questionnaire-templates`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(
+        admin(env, env.users.noButtons)('POST', '/questionnaire-templates', {
+          ifMatch: 0,
+          body: { name: '无权', type: 'rating' },
+        }),
+        403,
+      )),
+    outOfScope: { na: '新建模板是租户级配置：不引用活动、人员或其他租户的资源；他租户隔离由读用例覆盖' },
+    trimming: async (env) =>
+      writeTwice(
+        (key) =>
+          admin(env, env.users.tQOwner)('POST', '/questionnaire-templates', {
+            ifMatch: 0,
+            idempotencyKey: key,
+            body: { name: '裁剪模板', type: 'rating', guide: 'GUIDE_SECRET' },
+          }),
+        201,
+        (body) => {
+          without(body, 'createdBy');
+          expect(body.guide).toBe('GUIDE_SECRET');
+        },
+      ),
+  },
+  [`PUT ${S}/questionnaire-templates/:id`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        admin(env, env.users.noButtons)('PUT', `/questionnaire-templates/${p.template}`, {
+          ifMatch: 1,
+          body: { name: 'x' },
+        }),
+        403,
+      );
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        sa(env)('PUT', `/questionnaire-templates/${p.w2Template}`, { ifMatch: 1, body: { name: 'x' } }),
+        404,
+      );
+    },
+    trimming: async (env) => {
+      const own = await json(
+        await expectStatus(
+          admin(env, env.users.tQOwner)('POST', '/questionnaire-templates', {
+            ifMatch: 0,
+            body: { name: '改名模板', type: 'rating' },
+          }),
+          201,
+        ),
+      );
+      const body = await json(
+        await expectStatus(
+          admin(env, env.users.tQOwner)('PUT', `/questionnaire-templates/${own.id}`, {
+            ifMatch: own.revision as number,
+            body: { guide: 'GUIDE_X' },
+          }),
+          200,
+        ),
+      );
+      without(body, 'createdBy');
+    },
+  },
+  [`DELETE ${S}/questionnaire-templates/:id`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        admin(env, env.users.noButtons)('DELETE', `/questionnaire-templates/${p.template}`, { ifMatch: 1 }),
+        403,
+      );
+      await expectStatus(sa(env)('GET', `/questionnaire-templates/${p.template}`), 200);
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(sa(env)('DELETE', `/questionnaire-templates/${p.w2Template}`, { ifMatch: 1 }), 404);
+    },
+    trimming: { na: '删除回执只有 id 与 deleted 协议键，不含模板字段' },
+  },
+  [`POST ${S}/questionnaires/:id/save-as-template`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(
+        admin(env, env.users.noButtons)('POST', `/questionnaires/${env.q.id}/save-as-template`, {
+          ifMatch: 0,
+          body: { name: 'x' },
+        }),
+        403,
+      )),
+    outOfScope: async (env) =>
+      void (await expectStatus(
+        sa(env)('POST', `/questionnaires/${env.w2Ids.questionnaire}/save-as-template`, {
+          ifMatch: 0,
+          body: { name: 'x' },
+        }),
+        404,
+      )),
+    trimming: async (env) =>
+      writeTwice(
+        (key) =>
+          admin(env, env.users.tQOwner)('POST', `/questionnaires/${env.q.id}/save-as-template`, {
+            ifMatch: 0,
+            idempotencyKey: key,
+            body: { name: '另存模板' },
+          }),
+        201,
+        (body) => without(body, 'createdBy'),
+      ),
+  },
+  [`POST ${S}/questionnaire-templates/:id/instantiate`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        admin(env, env.users.noButtons)('POST', `/questionnaire-templates/${p.template}/instantiate`, {
+          ifMatch: 0,
+          body: { name: 'x' },
+        }),
+        403,
+      );
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        sa(env)('POST', `/questionnaire-templates/${p.w2Template}/instantiate`, { ifMatch: 0, body: { name: 'x' } }),
+        404,
+      );
+    },
+    trimming: async (env) => {
+      const p = await prb(env);
+      await writeTwice(
+        (key) =>
+          admin(env, env.users.tQOwner)('POST', `/questionnaire-templates/${p.template}/instantiate`, {
+            ifMatch: 0,
+            idempotencyKey: key,
+            body: { name: '模板新建' },
+          }),
+        201,
+        (body) => without(body, 'createdBy'),
+      );
+    },
+  },
+  [`GET /api/survey360/report-link`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(
+        env.w.api.request('GET', '/api/survey360/report-link', { tenant: env.w.tenantId }),
+        404,
+      )),
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      // 他租户：同一令牌换租户头即 404
+      await expectStatus(
+        env.w.api.request('GET', '/api/survey360/report-link', {
+          tenant: env.w2.tenantId,
+          headers: { 'x-survey360-token': p.reportToken },
+        }),
+        404,
+      );
+    },
+    trimming: async (env) => {
+      const p = await prb(env);
+      const body = await json(
+        await expectStatus(
+          env.w.api.request('GET', '/api/survey360/report-link', {
+            tenant: env.w.tenantId,
+            headers: { 'x-survey360-token': p.reportToken },
+          }),
+          200,
+        ),
+      );
+      expect(keysOf((body.reports as object[])[0])).toEqual(['id', 'objectName', 'templateName']);
+    },
+  },
+  [`GET /api/survey360/report-link/reports/:reportId`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        env.w.api.request('GET', `/api/survey360/report-link/reports/${p.reportId}`, { tenant: env.w.tenantId }),
+        404,
+      );
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        env.w.api.request('GET', `/api/survey360/report-link/reports/${randomUUID()}`, {
+          tenant: env.w.tenantId,
+          headers: { 'x-survey360-token': p.reportToken },
+        }),
+        404,
+      );
+    },
+    trimming: async (env) => {
+      const p = await prb(env);
+      const body = await json(
+        await expectStatus(
+          env.w.api.request('GET', `/api/survey360/report-link/reports/${p.reportId}`, {
+            tenant: env.w.tenantId,
+            headers: { 'x-survey360-token': p.reportToken },
+          }),
+          200,
+        ),
+      );
+      // 报告快照不带任何评价者标识
+      noMarkers(body, ['评价者甲', ...env.emails.slice(1, 2)]);
+      without(body, 'appraiserPersonId', 'relationId', 'sheetId');
+    },
+  },
+};
+Object.assign(ROUTE_CASES, PR_B_CASES);
 
 describe('路由 × 守卫：三类反向用例（表驱动）', () => {
   let env: Env;
