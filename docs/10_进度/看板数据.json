@@ -865,7 +865,7 @@
 },
 "F-045": {
 "n": "排名函数对齐原站（Q-M0-81 / DEC-302）",
-"s": "todo",
+"s": "active",
 "p": "R3-T00",
 "note": "DEC-304；B 档 Opus High → Sol Ultra；T04 写代码前合并"
 },
@@ -2025,7 +2025,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 22:36",
+"liveUpdated": "10-07 22:37",
 "chains": [
 {
 "g": "exit",
@@ -2197,8 +2197,8 @@
 "k": "run",
 "n": "继任管理",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:d ds:d2 dev:w rev:w2 mg:w",
-"now": "设计 v2 已交，待复审",
+"seg": "ev:d ds:d2 dev:w rev:a2 mg:w",
+"now": "设计 v2 复审中",
 "fable": "1",
 "pr": 112
 },
@@ -2209,8 +2209,8 @@
 "k": "run",
 "n": "人才盘点",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:a ds:d2 dev:w rev:w2 mg:w",
-"now": "设计 v2 已交，待复审；Q-M0-125 取证中",
+"seg": "ev:a ds:d2 dev:w rev:a2 mg:w",
+"now": "设计 v2 复审中；Q-M0-125 取证中",
 "fable": "1",
 "pr": 113
 },
@@ -2402,9 +2402,11 @@
 "id": "F-045",
 "g": "expr",
 "o": 4,
-"k": "todo",
+"k": "run",
 "n": "排名函数对齐原站",
-"u": "已核对，待开会话（T04 写代码前合并）"
+"u": "已核对，待开会话（T04 写代码前合并）",
+"seg": "ev:d ds:n dev:a1 rev:w mg:w",
+"now": "开发中"
 },
 {
 "id": "F-046",
