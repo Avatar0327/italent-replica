@@ -2,8 +2,8 @@
 "updated": "2026-10-08",
 "stats": {
 "merged": 57,
-"open": 13,
-"dec": 314,
+"open": 14,
+"dec": 316,
 "ev": "29/129"
 },
 "tasks": {
@@ -958,6 +958,10 @@
 }
 },
 "log": [
+[
+"10-08",
+"DEC-317：流程优化 6 条登记；自检试点 PR #119（Draft）"
+],
 [
 "10-08",
 "DEC-316：#106 第 7 轮，只剩 P3 直接合并"
@@ -2123,7 +2127,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-08 04:54",
+"liveUpdated": "10-08 05:18",
 "chains": [
 {
 "g": "base",
@@ -2603,8 +2607,8 @@
 "n": "IDP PR-B：执行 / 带教 / 干预",
 "u": "可派；干预测试需 A5 登录",
 "pr": 115,
-"seg": "ev:d ds:n dev:d1 rev:w1 mg:w",
-"now": "开发方 09:52Z 贴“开发完成”，CI 绿，待首轮审查（Astra Ultra）",
+"seg": "ev:d ds:n dev:a2 rev:d1 mg:w",
+"now": "第 1 轮：1 P1 + 10 P2，第 2 轮修改中；K-35/37/38/39 口径先取证再问你",
 "wait": "干预实测需 A5 登录"
 },
 {
@@ -2636,6 +2640,16 @@
 "n": "360 PR-A2：标准身份安装 / 平台回补",
 "seg": "ev:d ds:n dev:a1 rev:w1 mg:w",
 "now": "与 main 有 add/add 冲突，开发方合并 main 后重推；CI 绿后首审"
+},
+{
+"id": "F-SC",
+"g": "base",
+"o": 2,
+"k": "run",
+"n": "开发自检试点（open-code-review）",
+"pr": 119,
+"seg": "ev:n ds:n dev:a1 rev:w mg:w",
+"now": "DEC-317⑤：规则 + skill 已提 Draft；回放 #114/#106/#107 中"
 }
 ]
 }
