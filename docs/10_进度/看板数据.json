@@ -3,7 +3,7 @@
 "stats": {
 "merged": 57,
 "open": 14,
-"dec": 316,
+"dec": 317,
 "ev": "29/129"
 },
 "tasks": {
@@ -2127,7 +2127,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-08 05:18",
+"liveUpdated": "10-08 05:27",
 "chains": [
 {
 "g": "base",
@@ -2352,7 +2352,7 @@
 "k": "run",
 "n": "360 PR-A3（#107）",
 "seg": "ev:d ds:n dev:a5 rev:d4 mg:w",
-"now": "第 5 轮修改：R4-P2-1/2 + 两项 P3（DEC-311⑤ 更正：A1/A2/A3 全部继续）",
+"now": "第 5 轮修改；下轮审查加 4 条自检疑点专项核对",
 "pr": 107,
 "up": "10-07 第 3 轮调到 Max",
 "nx": "F-046、F-034"
@@ -2543,8 +2543,8 @@
 "n": "引擎钩子",
 "nx": "R3-T04 写代码",
 "cx": "1",
-"seg": "ev:d ds:n dev:d1 rev:w1 mg:w",
-"now": "CI 重跑中（上次被 ready_for_review 并发取消）；开发方贴“开发完成”后首审（Astra Ultra）",
+"seg": "ev:d ds:n dev:d1 rev:a1 mg:w",
+"now": "首审中（Astra Ultra，head e82ff77）",
 "pr": 118
 },
 {
@@ -2638,8 +2638,8 @@
 "k": "run",
 "pr": 117,
 "n": "360 PR-A2：标准身份安装 / 平台回补",
-"seg": "ev:d ds:n dev:a1 rev:w1 mg:w",
-"now": "与 main 有 add/add 冲突，开发方合并 main 后重推；CI 绿后首审"
+"seg": "ev:d ds:n dev:d1 rev:a1 mg:w",
+"now": "首审中（Astra Ultra，head 15fd7cd）"
 },
 {
 "id": "F-SC",
@@ -2649,7 +2649,7 @@
 "n": "开发自检试点（open-code-review）",
 "pr": 119,
 "seg": "ev:n ds:n dev:a1 rev:w mg:w",
-"now": "DEC-317⑤：规则 + skill 已提 Draft；回放 #114/#106/#107 中"
+"now": "回放中期：盲测召回约 30%（完整）/ 50%（含部分），P1 未中；下一步 F-046 / F-034 / F-048 实测"
 }
 ]
 }
