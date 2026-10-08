@@ -215,33 +215,43 @@ describe('PR #75 第三轮：审计查询复用业务权限规则', () => {
       outsideOnly,
     );
     const mixed = randomUUID();
-    await w.call(
-      'POST',
-      'org/import',
-      {
+    // DEC-207 更正：冲突整批回滚，仍按原始行归属裁剪失败任务。
+    const response = await w.setup.request('POST', '/api/tenant/org/import', {
+      ...w.world.asAdmin,
+      ifMatch: 0,
+      idempotencyKey: mixed,
+      body: {
         rows: [
           { sourceCode: 'S-IN-1', code: 'INSIDE_CODE', name: '范围内导入部门', parentId: w.inside.id },
           { sourceCode: 'S-OUT-2', code: 'OUTSIDE_CODE', name: '范围外冲突部门', parentId: w.outside.id },
         ],
       },
-      0,
-      mixed,
-    );
+    });
+    expect(response.status).toBe(409);
     const api = audit(w.db);
     expect((await api.operationLogs(w.viewer.as, { behavior: 'import', commandId: outsideOnly })).items).toEqual([]);
     const { items } = await api.operationLogs(w.viewer.as, { behavior: 'import', commandId: mixed });
     expect(items).toEqual([
-      expect.objectContaining({ totalCount: 1, successCount: 1, failureCount: 0, result: 'succeeded' }),
+      expect.objectContaining({ totalCount: 1, successCount: 0, failureCount: 1, result: 'failed' }),
     ]);
     expect(JSON.stringify(items)).not.toContain('OUTSIDE_CODE');
     expect(JSON.stringify(items)).not.toContain('S-OUT-2');
+    // 合法行单独重提后才产生成功回执；保留原有逐行审计范围覆盖。
+    await w.call(
+      'POST',
+      'org/import',
+      { rows: [{ sourceCode: 'S-IN-1', code: 'INSIDE_CODE', name: '范围内导入部门', parentId: w.inside.id }] },
+      0,
+    );
     // 逐行回执的数据变更日志同样按行归属裁剪
     const rows = await api.dataChanges(w.viewer.as, { objectType: 'org_import_result', limit: '100' });
     expect(JSON.stringify(rows.items)).not.toContain('OUTSIDE_CODE');
     expect(rows.items.some((item) => JSON.stringify(item).includes('INSIDE_CODE'))).toBe(true);
     // 看全部的查看人（租户管理员经可信端口）两条任务都能看到原始汇总
     const full = await auditApi(w.db, NOW).operationLogs(w.world.asAdmin, { behavior: 'import', commandId: mixed });
-    expect(full.items).toEqual([expect.objectContaining({ totalCount: 2, successCount: 1, failureCount: 1 })]);
+    expect(full.items).toEqual([expect.objectContaining({ totalCount: 2, successCount: 0, failureCount: 2 })]);
+    expect(full.items[0]!.errorReport).toEqual([{ rowIndex: 1, errorCode: 'CONFLICT', reason: 'CODE_CONFLICT' }]);
+    expect(items[0]!.errorReport).toEqual([]);
   });
 
   it('P1-3 编制方案：业务接口 403 的查看人，审计里也看不到方案日志', async () => {

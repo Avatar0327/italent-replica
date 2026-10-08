@@ -202,7 +202,7 @@ describe('DEC-089 组织排序号预计算', () => {
     await w.updateOrg(b, { effectiveDate: TODAY, parents: { admin: { parentId: w.tenant.id, sequence: 3 } } });
     await w.assertRanks();
     expect(order(await w.list('&sortBy=organizationSortNumber'), ids)).toEqual([ids[0], ids[2], ids[1]]);
-    await w.updateOrg(c, { effectiveDate: TODAY, parents: { admin: { parentId: b.id } } });
+    await w.updateOrg(c, { addEmployment: false, effectiveDate: TODAY, parents: { admin: { parentId: b.id } } });
     await w.assertRanks();
     expect(order(await w.list('&sortBy=organizationSortNumber'), ids)).toEqual([ids[0], ids[1], ids[2]]);
     await w.assertMatchesFullRecompute();

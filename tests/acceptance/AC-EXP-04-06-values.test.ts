@@ -46,9 +46,10 @@ describe('AC-EXP-04 空值参与比较为假、参与平均失败；ToNumber 兜
     expect(failureOf(evaluateFormula('盘点对象.备注 + 1', contextFor({ '盘点对象.备注': '甲' })))?.code).toBe(
       'TEXT_IN_ARITHMETIC',
     );
-    expect(failureOf(evaluateFormula('ToNumber(盘点对象.备注)', contextFor({ '盘点对象.备注': '甲' })))).toMatchObject({
-      code: 'TYPE_CONVERSION',
-      message: expect.stringContaining('转换出错'),
+    // DEC-265：ToNumber 对非数字文本给 0（原站 ToNumber("abc") = 0，`26` §8.7），不再报转换出错
+    expect(evaluateFormula('ToNumber(盘点对象.备注)', contextFor({ '盘点对象.备注': '甲' }))).toEqual({
+      ok: true,
+      value: { kind: 'number', value: 0 },
     });
   });
 

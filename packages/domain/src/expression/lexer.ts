@@ -1,6 +1,7 @@
 /**
  * 词法分析（REQ-EXP-001）：兼容原站公式文本——中文函数名与字段名、全角比较符 / 括号 / 逗号、
- * 以数字开头的对象名（360结果）、带连字符的字段名（问卷-他评总分，DEC-228）、百分比字面量（82%）。
+ * 以数字开头的对象名（360结果）、带连字符的字段名（问卷-他评总分，DEC-228）、百分比字面量（82%）、
+ * 乘除号 × ÷（本租户规则原文写法）、名字里带“/”的面板函数名（`26` §8.6）。
  * 中文引号与无法识别的字符在这里报错并给出行列（复刻改进，`26` §8.1）。
  */
 import type { SourcePosition } from './failures.js';
@@ -31,7 +32,7 @@ export interface Token extends SourcePosition {
 }
 
 export type SyntaxIssueCode =
-  'SYNTAX_ERROR' | 'CHINESE_QUOTE' | 'UNKNOWN_FUNCTION' | 'ARGUMENT_COUNT' | 'UNKNOWN_FIELD';
+  'SYNTAX_ERROR' | 'CHINESE_QUOTE' | 'UNKNOWN_FUNCTION' | 'ARGUMENT_COUNT' | 'ARGUMENT_TYPE' | 'UNKNOWN_FIELD';
 
 export interface SyntaxIssue extends SourcePosition {
   readonly code: SyntaxIssueCode;
@@ -89,8 +90,15 @@ const OPERATORS: readonly (readonly [string, string])[] = [
   ['-', '-'],
   ['*', '*'],
   ['/', '/'],
+  ['×', '*'],
+  ['÷', '/'],
   ['!', 'not'],
 ];
+
+/**
+ * 名字里带“/”的面板函数名（`26` §8.6）：后面（可隔空白）紧跟左括号时整体作为函数名，否则“/”仍是除号。
+ */
+const SLASH_FUNCTION_NAMES = ['获取当前人员测评测验下的最近一次测评得分/维度得分'] as const;
 
 const PUNCTUATION: Readonly<Record<string, TokenKind>> = {
   '(': 'lparen',
@@ -170,6 +178,10 @@ class Scanner {
     if (ch === "'") this.error('SYNTAX_ERROR', '字符串须用英文双引号');
     if (isDigit(ch)) return this.atMember() ? this.scanIdentifier() : this.scanNumberOrIdentifier();
     if (isIdentStart(ch)) return this.scanIdentifier();
+    // TODO(需取证 #105)：运算符工具栏里的“//”是整除还是注释原站未说明，取证前不猜，按语法错误提示
+    if (this.source.startsWith('//', this.offset)) {
+      this.error('SYNTAX_ERROR', '“//” 的含义（整除或注释）待取证，暂不支持', 2);
+    }
     const punctuation = PUNCTUATION[ch];
     if (punctuation) {
       const start = this.position();
@@ -223,6 +235,11 @@ class Scanner {
   private scanIdentifier(): void {
     const start = this.position();
     const member = this.atMember();
+    const slashName = member ? undefined : this.slashFunctionName();
+    if (slashName) {
+      this.advance(slashName.length);
+      return this.push('identifier', slashName, slashName, start);
+    }
     let end = this.offset;
     while (end < this.source.length) {
       const ch = this.source[end]!;
@@ -235,6 +252,14 @@ class Scanner {
     const keyword = KEYWORDS[text] ?? KEYWORDS[text.toLowerCase()];
     if (keyword) this.push('keyword', text, keyword, start);
     else this.push('identifier', text, text, start);
+  }
+
+  private slashFunctionName(): string | undefined {
+    return SLASH_FUNCTION_NAMES.find((name) => {
+      if (!this.source.startsWith(name, this.offset)) return false;
+      const rest = this.source.slice(this.offset + name.length);
+      return /^\s*[(（]/.test(rest);
+    });
   }
 }
 

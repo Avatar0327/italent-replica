@@ -1,0 +1,44 @@
+.org-page {
+  max-width: 960px;
+  margin: 32px auto;
+  padding: 24px;
+  color: #223047;
+  font-family: system-ui, sans-serif;
+}
+.org-page header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.org-page fieldset {
+  border: 1px solid #d5dce5;
+  border-radius: 8px;
+  margin: 20px 0;
+  padding: 20px;
+}
+.org-page label {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+.org-page input,
+.org-page select,
+.org-page textarea {
+  padding: 10px;
+  border: 1px solid #a8b5c6;
+  border-radius: 4px;
+}
+.org-page button {
+  margin: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+.org-page [role='alertdialog'] {
+  padding: 20px;
+  border: 2px solid #b8860b;
+  background: #fff9e8;
+}
+.org-page button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}

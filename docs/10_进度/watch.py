@@ -27,6 +27,11 @@ def gh(args):
 
 def snapshot():
     prs = gh(["pr", "list", "--state", "open", "--json", "number,title,headRefOid,isDraft,statusCheckRollup,comments,commits"])
+    try:  # 搁置中的 PR（每行一个号）不再报停摆 / 待送审
+        paused = set(open(os.path.expanduser("~/.cache/italent-paused-prs")).read().split())
+    except Exception:
+        paused = set()
+    prs = [p for p in prs if str(p["number"]) not in paused]
     out = {}
     for p in prs:
         checks = [c.get("conclusion") or c.get("status") for c in p["statusCheckRollup"] if c.get("conclusion") != "SKIPPED"]
@@ -46,7 +51,7 @@ def snapshot():
         done_at = ""  # 开发方贴“开发完成”（DEC：开发完成明确报到）且其后尚无审查发起 / 排队
         for c in p["comments"]:
             b = c.get("body", "")[:200]
-            if "开发完成" in b:
+            if "开发完成" in b or "设计完成" in b:
                 done_at = c["createdAt"]
             elif done_at and any(w in b for w in ("审查已发起", "排队待审", "已发起")):
                 done_at = ""
@@ -104,14 +109,14 @@ def codex_results():
     return out
 
 
-EVIDENCE_IDLE = 60  # 分钟：取证窗口（提交信息以“取证：”开头）这么久没有新提交 → 提醒（用户 10-07 要求取证不停）
+EVIDENCE_IDLE = 60  # 分钟：取证窗口（提交信息以“取证”开头）这么久没有新提交 → 提醒（用户 10-07 要求取证不停）
 
 
 def last_evidence_commit():
     """origin/main 上最近一条“取证：”提交的时间（ISO），取不到返回空。"""
     try:
         subprocess.run(["git", "fetch", "-q"], cwd=os.path.expanduser("~/Code/wt-progress"), timeout=60)
-        r = subprocess.run(["git", "log", "origin/main", "-1", "--format=%cI", "--grep=^取证："], capture_output=True, text=True,
+        r = subprocess.run(["git", "log", "origin/main", "-1", "--format=%cI", "--grep=^取证"], capture_output=True, text=True,
                            timeout=30, cwd=os.path.expanduser("~/Code/wt-progress"))
         return r.stdout.strip()
     except Exception:
@@ -175,8 +180,12 @@ def main():
                     ev.append(f"#{n} 新评论 {p['nc'] - o['nc']} 条")
                 if o["draft"] and not p["draft"]:
                     ev.append(f"#{n} 转为 Ready")
+            try:
+                paused_now = set(open(os.path.expanduser("~/.cache/italent-paused-prs")).read().split())
+            except Exception:
+                paused_now = set()
             for n in prev:
-                if n not in cur:
+                if n not in cur and n not in paused_now:
                     ev.append(f"#{n} 已合并或关闭")
         cx = codex_results()
         if cprev is not None:
@@ -203,11 +212,16 @@ def main():
                     ev.append(f"Opus 审查待收 #{n} {p['t']}：claude.ai/code 审查会话发起 {m} 分钟，PR 上仍无审查原文 / 结论，请审查合并窗口看会话是否已完成或卡住")
                     stalled.add(k)
         ev_t = last_evidence_commit()
-        if ev_t:
+        pause = os.path.expanduser("~/.cache/italent-evidence-pause")  # 内容为 ISO 日期：取证窗口按计划停到该日，期间不报停顿
+        try:
+            paused = os.path.exists(pause) and datetime.date.today().isoformat() < open(pause).read().strip()
+        except Exception:
+            paused = False
+        if ev_t and not paused:
             m = int(mins_since(ev_t))
             k3 = f"evidence-idle@{ev_t}@{m // EVIDENCE_IDLE}"
             if m >= EVIDENCE_IDLE and k3 not in stalled:
-                ev.append(f"取证停顿：取证窗口最近一次“取证：”提交在 {m} 分钟前，请确认是否卡住、是否在等用户操作")
+                ev.append(f"取证停顿：取证窗口最近一次“取证”提交在 {m} 分钟前，请确认是否卡住、是否在等用户操作")
                 stalled.add(k3)
         open(os.path.expanduser("~/.cache/italent-progress-watch.beat"), "w").write(datetime.datetime.now().isoformat())
         json.dump({"prs": cur, "stalled": sorted(stalled)[-200:], "codex": cprev}, open(STATE, "w"))

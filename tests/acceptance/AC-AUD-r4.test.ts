@@ -171,7 +171,12 @@ describe('PR #75 第四轮', () => {
       { sourceCode: 'R4-S1', code: 'R4-OWN', name: '本人导入部门', parentId: w.world.tenant.id },
       { sourceCode: 'R4-S2', code: 'R4-OWN', name: '本人冲突部门', parentId: w.world.tenant.id },
     ]);
-    expect(mine.status, await mine.clone().text()).toBe(200);
+    expect(mine.status, await mine.clone().text()).toBe(409);
+    const succeeded = randomUUID();
+    const retried = await importAs(creator.user.id, succeeded, [
+      { sourceCode: 'R4-S1', code: 'R4-OWN', name: '本人导入部门', parentId: w.world.tenant.id },
+    ]);
+    expect(retried.status).toBe(200);
     const failed = randomUUID();
     const bad = await importAs(creator.user.id, failed, [
       { sourceCode: 'R4-S3', code: 'R4-BAD', name: '格式错误', parentId: 'not-a-uuid' },
@@ -185,7 +190,10 @@ describe('PR #75 第四轮', () => {
 
     const logs = async (commandId: string) =>
       (await w.audit.operationLogs(creator.as, { behavior: 'import', commandId })).items;
-    expect(await logs(own)).toEqual([expect.objectContaining({ totalCount: 2, successCount: 1, failureCount: 1 })]);
+    expect(await logs(own)).toEqual([expect.objectContaining({ totalCount: 2, successCount: 0, failureCount: 2 })]);
+    expect(await logs(succeeded)).toEqual([
+      expect.objectContaining({ totalCount: 1, successCount: 1, failureCount: 0 }),
+    ]);
     expect(await logs(failed)).toEqual([expect.objectContaining({ result: 'failed', totalCount: 1 })]);
     expect(await logs(others)).toEqual([]);
   });

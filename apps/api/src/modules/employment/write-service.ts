@@ -81,6 +81,8 @@ export interface CreateEmploymentOptions {
   readonly forwardUpdate?: boolean;
   /** 变动类型只由可信的系统联动传入（如职位变更同步直线经理，F-006），不开放给请求体。 */
   readonly changeType?: ChangeType;
+  /** F-006 系统派生，不能由请求体指定。 */
+  readonly positionManagerDerivation?: boolean;
   readonly establishmentWarnings?: EstablishmentWarning[];
   /** F-022 入职写入端口（R2-T01 接线）：添加待入职、是否有试用期；不开放给请求体。 */
   readonly entry?: EntryOptions;
@@ -104,11 +106,23 @@ export async function createEmploymentBusiness(
   const selected = NEW_CYCLE_KINDS.includes(normalized.kind)
     ? undefined
     : await selectEmploymentCycle(tx, ctx, employee.id, normalized);
-  const prepared = await prepareInheritance(tx, ctx, {
+  let prepared = await prepareInheritance(tx, ctx, {
     ...normalized,
     employeeId: employee.id,
     staffId: selected?.cycle.id,
   });
+  if (options.positionManagerDerivation) {
+    prepared = {
+      ...prepared,
+      formSnapshot: {
+        ...prepared.formSnapshot,
+        fieldDerivations: [
+          ...(prepared.formSnapshot.fieldDerivations ?? []),
+          { rule: 'position-manager', referenceId: prepared.fields.positionId },
+        ],
+      },
+    };
+  }
   const effective = await resolveEffectiveInheritance(tx, ctx, prepared, {
     staffId: selected?.cycle.id ?? '',
     predecessor: selected?.predecessor ?? null,
@@ -182,6 +196,8 @@ async function initializeEmploymentBusiness(
       fields: fields,
       departmentId: fields.departmentId,
       positionId: fields.positionId,
+      // 导入选“不向后更新”时其后组织调整不随之改写，控编不模拟该传播（S1-P2-04）。
+      propagates: options.forwardUpdate !== false,
     },
     options.establishmentWarnings,
   );
@@ -253,6 +269,7 @@ export async function updateEmploymentBusiness(
     // 改期后按新生效日的前一条重新确定继承的人员状态（PR #93 首审 P2-1），不沿用原日期下的值
     inheritedStatus(normalized.kind, selected?.predecessor ?? null),
   );
+  // 申请修改是人工意图：事件绑定新载荷版本，迟到重建据此把它当作新的初始输入（R6-P2-01）。
   await auditEmployment(
     tx,
     ctx,
@@ -261,6 +278,7 @@ export async function updateEmploymentBusiness(
     id,
     payloadAudit(before),
     payloadAudit(business.payload),
+    business.payload.id,
   );
   return requireSavedBusiness(tx, ctx, id);
 }
@@ -587,7 +605,7 @@ export async function materializeEmploymentRecord(
   // 拒绝后由生效端口记失败与 HR 待办、按 DEC-112 挂起后序；不能截断任职或改期绕过。
   await validateNewEmploymentReferences(tx, ctx, fields, payload.effectiveDate, reporting);
   assertRequiredTransferFields(payload.kind, payload.formSnapshot, fields);
-  await checkMaterializedCapacity(tx, ctx, business, fields, options.establishmentWarnings);
+  await checkMaterializedCapacity(tx, ctx, business, fields, options);
   if (newCycle) await insertNewEmploymentCycle(tx, ctx, business, { staffId, entryDate, employType });
   await insertEmploymentRow(tx, 'employment_records', {
     ...fields,
@@ -737,7 +755,7 @@ async function checkMaterializedCapacity(
   ctx: EmploymentContext,
   business: LockedEmploymentBusiness,
   fields: PresetFields,
-  warnings?: EstablishmentWarning[],
+  options: { forwardUpdate?: boolean; establishmentWarnings?: EstablishmentWarning[] },
 ) {
   await assertEstablishmentCapacity(
     tx,
@@ -750,8 +768,9 @@ async function checkMaterializedCapacity(
       fields,
       departmentId: fields.departmentId,
       positionId: fields.positionId,
+      propagates: options.forwardUpdate !== false,
     },
-    warnings,
+    options.establishmentWarnings,
   );
 }
 
