@@ -1,6 +1,7 @@
 /**
  * R3-T07 PR-B 第 2 轮 P2-5：提示、校验与下发回执不泄露隐藏引用。
- * - 发布提示 warnings：查看人看不到模板 processId、流程或子流程的审批流程字段时，不返回隐藏的 subProcessId 与其废弃状态；
+ * - 发布提示 warnings：查看人看不到模板 processId、流程或子流程的审批流程字段时，不返回提示（子流程 ID 与其审批流程
+ *   废弃状态；模块节点配置里的子流程 ID 按模块对象权限照常返回）；
  *   首次与同键重放同一出口；
  * - 统一下发任务（DEC-309 入口清单 E11）：先校验操作人对模板、通用目标、目标的查看权再做校验——看不到时“不存在 / 模板
  *   不一致 / 目标缺失”都是同一个 404，回执不含隐藏目标的 goalId；看得到时照常下发（对照）。
@@ -47,7 +48,6 @@ describe('P2-5：发布提示按查看人裁剪', () => {
         const text = await response.text();
         expect(response.status, `${round} ${text}`).toBe(200);
         expect(JSON.parse(text), round).not.toHaveProperty('warnings');
-        expect(text, round).not.toContain(w.stageId(1));
         expect(text, round).not.toContain('IDP_APPROVAL_PROCESS_DISCARDED');
       }
     }

@@ -535,10 +535,16 @@ function registerInterventions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: codeOf('plan'), fields: [] });
     if (!canView) throw new AppError('FORBIDDEN', '无权查看发展计划');
     const hr = await idpScope(c, deps, ctx, 'plan');
+    const sources: intervention.IssueSources = {
+      template: await projectionOf(deps, ctx, 'template'),
+      commonGoal: await projectionOf(deps, ctx, 'commonGoal'),
+      goal: await projectionOf(deps, ctx, 'goal'),
+      templateScope: await idpScope(c, deps, ctx, 'template'),
+    };
     const { view, status } = await runPlanWrite(c, deps, ctx, hr, {
       status: 201,
       body,
-      execute: (tx, w) => intervention.issueTasks(tx, w, body),
+      execute: (tx, w) => intervention.issueTasks(tx, w, body, sources),
       recheck: async (tx, result) => {
         for (const item of result.created) await stillVisible(tx, ctx, hr, item.planId);
       },

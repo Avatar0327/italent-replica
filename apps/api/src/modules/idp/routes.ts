@@ -14,6 +14,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery, parseBody, requireNew, revision, uuidParam } from '../job/context.js';
 import {
+  accessOf,
   type Anchor,
   checkWriteFields,
   codeOf,
@@ -24,6 +25,7 @@ import {
   listEnvelope,
   type ModuleScope,
   project,
+  type Projection,
   projectionOf,
   type PermissionCheck,
   readableSql,
@@ -417,10 +419,29 @@ function templateWriter(deps: TenantRouteDeps) {
       recheck,
       present: async ({ warnings, ...view }) => ({
         ...(await templatePresenter(deps, ctx))(view),
-        // 发布提示（DEC-309④-3）：协议元数据，不是模板字段
-        ...(warnings ? { warnings } : {}),
+        // 发布提示（DEC-309④-3）：协议元数据，不是模板字段；披露子流程与其审批流程状态，按查看人裁剪（P2-5）
+        ...(warnings && (await warningsVisible(c, deps, ctx, view.processId)) ? { warnings } : {}),
       }),
     });
+}
+
+const sees = (projection: Projection, field: string) =>
+  projection !== null && (projection === undefined || projection.has(field));
+
+/**
+ * 发布提示里的子流程 ID 与其审批流程废弃状态（P2-5）：查看人须看得到模板的 processId、该流程（当前在范围内或向下公开）
+ * 的子流程，以及子流程的审批流程字段；否则整段提示不返回。首次与重放共用这一出口。
+ */
+async function warningsVisible(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: IdpContext, processId: string) {
+  const template = await projectionOf(deps, ctx, 'template');
+  const process = await projectionOf(deps, ctx, 'process');
+  const sub = await projectionOf(deps, ctx, 'subProcess');
+  if (!sees(template, 'processId') || !sees(process, 'subProcesses') || !sees(sub, 'approvalProcessId')) return false;
+  const scope = await idpScope(c, deps, ctx, 'process');
+  return withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const anchor = await currentAnchor(tx, ctx.tenantId, 'process', processId);
+    return anchor !== undefined && (await accessOf(tx, ctx, scope, anchor)) !== 'none';
+  });
 }
 
 /** 模板写入后：模板当前可写；引用的流程（新建 / 换流程 / 复制时）当前可见。 */

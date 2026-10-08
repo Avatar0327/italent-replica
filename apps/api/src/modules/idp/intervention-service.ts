@@ -13,7 +13,7 @@ import { AppError, ERROR_STATUS } from '../../errors.js';
 import { adminAct, urgeAsAdmin } from '../approval/actions.js';
 import type { ApprovalContext } from '../approval/context.js';
 import { personOfUser } from '../approval/resolver.js';
-import { rowsOf } from './access.js';
+import { accessOf, type ModuleScope, type Projection, rowsOf } from './access.js';
 import { insertTask } from './execution-service.js';
 import { hrSees } from './plan-access.js';
 import type { BatchItems, JumpInput, StartNextInput, TaskIssue } from './plan-input.js';
@@ -168,11 +168,23 @@ export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, in
   return loadPlanDetail(tx, await requirePlanRow(tx, ctx.tenantId, plan.id), tenantLocalDate(ctx.now, ctx.timezone));
 }
 
+/** 统一下发的源对象查看权（事务外按当前权限解析，P2-5）。 */
+export interface IssueSources {
+  readonly template: Projection;
+  readonly commonGoal: Projection;
+  readonly goal: Projection;
+  readonly templateScope: ModuleScope;
+}
+
+const hiddenGoal = () => new AppError('NOT_FOUND', '模板通用目标不存在');
+
 /**
  * 统一下发任务（K-46，IDP-R15）：按模板通用目标下发，勾选的计划须使用同一模板（409 IDP_TASK_TEMPLATE_MISMATCH）；
  * 每个计划由该通用目标生成的目标下各加一条任务，整体成功或整体失败。范围 / revision 先于模板判定。
+ * 通用目标与目标是“从另一个对象带出值”（入口清单 E11）：先判操作人对模板、通用目标、目标的查看权（模板另须在范围内），
+ * 看不到时“不存在 / 模板不一致 / 任务关闭 / 目标缺失”都是同一个 404，回执不含隐藏目标（P2-5，PR-A 同口径）。
  */
-export async function issueTasks(tx: Tx, ctx: PlanWriteContext, input: TaskIssue) {
+export async function issueTasks(tx: Tx, ctx: PlanWriteContext, input: TaskIssue, sources: IssueSources) {
   const plans: PlanRow[] = [];
   for (const item of [...input.plans].sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const plan = await loadPlanRow(tx, ctx.tenantId, item.id, true);
@@ -181,16 +193,28 @@ export async function issueTasks(tx: Tx, ctx: PlanWriteContext, input: TaskIssue
     plans.push(plan);
   }
   if (plans.some((p) => p.status === 'ended' || p.status === 'terminated')) notActive();
-  const [goal] = rowsOf<{ template_id: string; task_enabled: boolean | null }>(
-    await tx.execute(sql`SELECT g.template_id, m.task_enabled FROM idp_template_common_goals g
+  if (sources.template === null || sources.commonGoal === null || sources.goal === null) throw hiddenGoal();
+  for (const object of ['template', 'commonGoal', 'goal'] as const)
+    ctx.checks?.push({ kind: 'view', object, fields: [] });
+  const [goal] = rowsOf<{
+    template_id: string;
+    task_enabled: boolean | null;
+    org_id: string;
+    public_down: boolean;
+    created_by: string;
+  }>(
+    await tx.execute(sql`SELECT g.template_id, m.task_enabled, t.org_id, t.public_down, t.created_by
+      FROM idp_template_common_goals g
       JOIN idp_template_modules m ON m.tenant_id = g.tenant_id AND m.id = g.module_id
+      JOIN idp_templates t ON t.tenant_id = g.tenant_id AND t.id = g.template_id
       WHERE g.tenant_id = ${ctx.tenantId} AND g.id = ${input.commonGoalId}::uuid`),
   );
+  const anchor = goal && { orgId: goal.org_id, publicDown: goal.public_down, createdBy: goal.created_by };
+  if (!anchor || (await accessOf(tx, ctx, sources.templateScope, anchor)) === 'none') throw hiddenGoal();
   const templates = new Set(plans.map((p) => p.templateId));
-  if (templates.size > 1 || (goal && !templates.has(goal.template_id))) {
+  if (templates.size > 1 || !templates.has(goal.template_id)) {
     conflict('IDP_TASK_TEMPLATE_MISMATCH', '所选计划使用了不同的模板，请按模板分开下发');
   }
-  if (!goal) throw new AppError('NOT_FOUND', '模板通用目标不存在');
   if (goal.task_enabled !== true) conflict('IDP_TASK_DISABLED', '该发展目标模块未开启制定任务');
   const created: { planId: string; goalId: string; taskId: string }[] = [];
   for (const plan of plans) {
