@@ -386,8 +386,8 @@ export type PlanWorld = Awaited<ReturnType<typeof planWorld>>;
 export const otherTutor = (w: PlanWorld) => ({ tutorRole: 'other', tutorEmployeeId: w.manager.employeeId });
 
 export async function errorOf(response: Response) {
-  const body = (await response.json()) as { error: { code: string; details?: { reason?: string } } };
-  return { status: response.status, code: body.error.code, reason: body.error.details?.reason };
+  const body = (await response.json()) as { error?: { code: string; details?: { reason?: string } } };
+  return { status: response.status, code: body.error?.code, reason: body.error?.details?.reason };
 }
 
 /**
