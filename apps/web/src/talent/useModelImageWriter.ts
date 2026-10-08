@@ -65,6 +65,8 @@ async function executePipeline(initial: ModelImageCommand, context: Pipeline) {
       error: rejected ? cause.message : text.uncertain,
       unknown: rejected ? null : command,
     });
+    // 权限拒绝意味着已显示内容也不再可信：load 同步清图与旧授权，再等待服务端重新核权。
+    if (cause instanceof ModelImageApiError && [401, 403, 404].includes(cause.status)) await context.reader.load();
   } finally {
     if (context.live()) context.set((value) => ({ ...value, busy: false }));
   }

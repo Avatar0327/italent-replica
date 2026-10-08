@@ -37,6 +37,7 @@ export class ModelImageApiError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    readonly status: number,
   ) {
     super(message);
   }
@@ -53,7 +54,11 @@ async function response(tenantId: string, path: string, options: RequestInit = {
   if (result.status >= 500) throw new Error(text.uncertain);
   if (!result.ok) {
     const body = (await result.json()) as { error?: { code?: string; message?: string } };
-    throw new ModelImageApiError(body.error?.code ?? 'UNKNOWN_ERROR', body.error?.message ?? text.failed);
+    throw new ModelImageApiError(
+      body.error?.code ?? 'UNKNOWN_ERROR',
+      body.error?.message ?? text.failed,
+      result.status,
+    );
   }
   return result;
 }
