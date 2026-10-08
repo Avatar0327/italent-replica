@@ -758,13 +758,10 @@ const REPLAY_CASES: Record<string, Case | NotApplicable> = {
   [`POST ${LINK}/confirmation/appraisers`]: async (env) => {
     const s = await confirmScene(env);
     const revision = await s.revision();
+    // 先冻结输入：同键同内容才是重放（第 4 轮审查 P3）
+    const body = { person: customer(), roleId: env.w.role('customer') };
     const replay = await replayAfter(
-      (key) =>
-        s.link('POST', '/confirmation/appraisers', {
-          ifMatch: revision,
-          idempotencyKey: key,
-          body: { person: customer(), roleId: env.w.role('customer') },
-        }),
+      (key) => s.link('POST', '/confirmation/appraisers', { ifMatch: revision, idempotencyKey: key, body }),
       201,
       () => removeObject(env.w, s.activity.id, s.object.id),
     );
