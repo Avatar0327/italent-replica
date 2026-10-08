@@ -13,6 +13,10 @@ export const FAILURE_CODES = [
   'FIELD_FORBIDDEN',
   'DATA_FORBIDDEN',
   'DATA_UNAVAILABLE',
+  /** 须取到唯一值的取数（人事子集）取到多条。 */
+  'AMBIGUOUS_DATA',
+  /** 面板上有、口径待取证的函数（有效时长）：已注册可保存，求值时失败。 */
+  'FUNCTION_UNAVAILABLE',
   'EMPTY_IN_COMPARISON',
   'EMPTY_IN_ARITHMETIC',
   'EMPTY_IN_AGGREGATE',

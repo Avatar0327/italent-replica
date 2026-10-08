@@ -1,5 +1,6 @@
 import { reconcileCarriedEstablishment } from './carried-transfer.js';
 import { pendingActivationState } from '../employment/activation-store.js';
+import { projectOrgAdjustmentRecords } from '../employment/org-adjustment-projection.js';
 import { insertedWindow, recordWindow } from '../employment/reporting-cycle.js';
 import { camelRow, snapshotFields, type EmploymentPayloadRow } from '../employment/record-store.js';
 import { resolveEffectiveInheritance } from '../employment/inheritance.js';
@@ -7,10 +8,10 @@ import { employmentTimelineNeighbors, operationKey, plannedEffectiveDate } from 
 /** DEC-145 / 18 §11：真实任职投影，条件内且、条件间或；外部人员计数但不拦其调入。 */
 import { auditActor } from '../../system-actor.js';
 import { AppError } from '../../errors.js';
-import { tenantLocalDate } from '@italent/domain';
+import { addDays, tenantLocalDate } from '@italent/domain';
 import { sql, type Tx } from '@italent/db';
 import type { ActivationTarget } from '../employment/activation-checks.js';
-import type { EmploymentContext, PresetFields } from '../employment/types.js';
+import type { EmploymentContext, EmploymentRecord, PresetFields } from '../employment/types.js';
 import { findPredecessor, loadEmploymentBusiness, loadEmploymentRecord } from '../employment/read-model.js';
 import { loadScheme, type OccupancyRange } from './schemes.js';
 import { membershipWindows, clipMembership, type MembershipWindow } from './membership-windows.js';
@@ -197,36 +198,19 @@ async function projectedMembers(
   }
   // DEC-108：同日按最近提交的实际操作序号投影，不能按 UUID 排序。
   const projectedPredecessors = new Map<string, Awaited<ReturnType<typeof findPredecessor>>>();
+  const projectedAdjustments = await adjustmentProjection(tx, ctx, target);
   for (const row of await pendingTransfers(tx, ctx, target, start, end)) {
     const raw = camelRow(row.fields);
     const payload = { ...raw, fields: snapshotFields(raw) } as unknown as EmploymentPayloadRow;
     const window = await insertedWindow(tx, ctx, row.employeeId, payload.effectiveDate, payload.businessId);
-    if (!window) continue;
-    const { previous: point } = await employmentTimelineNeighbors(
+    const { predecessor, resolved, fields } = await resolveProjectedTransfer(
       tx,
       ctx,
-      row.employeeId,
-      payload.effectiveDate,
-      payload.businessId,
+      payload,
+      row.state,
+      projectedPredecessors,
+      projectedAdjustments,
     );
-    const original = point ? await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, payload.effectiveDate) : null;
-    const projected = projectedPredecessors.get(row.employeeId);
-    const predecessor =
-      projected && (!original || projected.effectiveDate >= original.effectiveDate) ? projected : original;
-    const materialized =
-      row.state === 'effective'
-        ? await loadEmploymentRecord(tx, ctx.tenantId, payload.businessId, payload.effectiveDate)
-        : null;
-    const resolved =
-      materialized ??
-      (await resolveEffectiveInheritance(tx, ctx, payload, {
-        staffId: payload.selectedStaffId ?? predecessor?.staffId ?? '',
-        predecessor,
-      }));
-    const fields = {
-      ...resolved.fields,
-      employType: resolved.fields.employType ?? predecessor?.fields.employType ?? 'internal',
-    };
     if (predecessor)
       projectedPredecessors.set(row.employeeId, {
         ...predecessor,
@@ -236,6 +220,21 @@ async function projectedMembers(
       });
     const from = [payload.effectiveDate, target.effectiveDate].sort().at(-1)!;
     const until = window?.to && window.to < windowEnd ? window.to : windowEnd;
+    if (predecessor && (timings.transferIn === 'submitted' || row.state !== 'in_review'))
+      await projectAdjustments(
+        tx,
+        ctx,
+        {
+          ...payload,
+          before: predecessor,
+          after: { fields, customFields: resolved.customFields },
+        },
+        projectedAdjustments,
+        members,
+        target.effectiveDate,
+        windowEnd,
+        timings.transferOut === 'submitted' || row.state !== 'in_review',
+      );
     if (!window || from >= until) continue;
     const previous = members.get(row.employeeId) ?? [];
     const intervals =
@@ -252,9 +251,61 @@ async function projectedMembers(
       intervals.push({ employeeId: row.employeeId, fields, from, until });
     members.set(row.employeeId, intervals);
   }
-  if (!target.occupancyOnly) await projectTarget(tx, ctx, target, windowEnd, members, timings.transferOut);
+  if (!target.occupancyOnly)
+    await projectTarget(tx, ctx, target, windowEnd, members, timings.transferOut, projectedAdjustments);
   for (const [id, intervals] of members) members.set(id, clipMembership(intervals, windows));
   return (matches: (fields: Partial<PresetFields>) => boolean) => maximumMembers(members, matches);
+}
+
+async function adjustmentProjection(tx: Tx, ctx: EmploymentContext, target: ActivationTarget) {
+  const projectedAdjustments = new Map<string, EmploymentRecord>();
+  const targetRecord = await loadEmploymentRecord(tx, ctx.tenantId, target.businessId, target.effectiveDate);
+  // 向后更新正校验的组织调整也先以拟写快照参与推演，之后的已批准调出仍可改写它。
+  if (targetRecord?.kind === 'org_adjustment' && target.fields)
+    projectedAdjustments.set(target.businessId, {
+      ...targetRecord,
+      fields: { ...targetRecord.fields, ...target.fields },
+    });
+  return projectedAdjustments;
+}
+
+async function resolveProjectedTransfer(
+  tx: Tx,
+  ctx: EmploymentContext,
+  payload: EmploymentPayloadRow,
+  state: string,
+  projectedPredecessors: Map<string, EmploymentRecord | null>,
+  projectedAdjustments: Map<string, EmploymentRecord>,
+) {
+  const { previous: point } = await employmentTimelineNeighbors(
+    tx,
+    ctx,
+    payload.employeeId,
+    payload.effectiveDate,
+    payload.businessId,
+  );
+  const original = point
+    ? (projectedAdjustments.get(point.recordId) ??
+      (await loadEmploymentRecord(tx, ctx.tenantId, point.recordId, payload.effectiveDate)))
+    : null;
+  const projected = projectedPredecessors.get(payload.employeeId);
+  const predecessor =
+    projected && (!original || projected.effectiveDate >= original.effectiveDate) ? projected : original;
+  const materialized =
+    state === 'effective'
+      ? await loadEmploymentRecord(tx, ctx.tenantId, payload.businessId, payload.effectiveDate)
+      : null;
+  const resolved =
+    materialized ??
+    (await resolveEffectiveInheritance(tx, ctx, payload, {
+      staffId: payload.selectedStaffId ?? predecessor?.staffId ?? '',
+      predecessor,
+    }));
+  const fields = {
+    ...resolved.fields,
+    employType: resolved.fields.employType ?? predecessor?.fields.employType ?? 'internal',
+  };
+  return { predecessor, resolved, fields };
 }
 
 /** 扫描合并区间的端点，O(n log n)，无需逐日或逐变化点重新遍历全员。 */
@@ -367,6 +418,7 @@ async function projectTarget(
   periodUntil: string,
   members: Map<string, MemberInterval[]>,
   transferOut: string,
+  projectedAdjustments: Map<string, EmploymentRecord>,
 ) {
   const [existing] = rowsOf(
     await tx.execute(sql`SELECT 1 FROM employment_timeline
@@ -375,9 +427,36 @@ async function projectTarget(
   const window = existing
     ? await recordWindow(tx, ctx.tenantId, target.businessId)
     : await insertedWindow(tx, ctx, target.employeeId, target.effectiveDate, target.businessId);
+  const next = await nextReservedTransfer(tx, ctx, target, transferOut);
+  const { previous } = await employmentTimelineNeighbors(
+    tx,
+    ctx,
+    target.employeeId,
+    target.effectiveDate,
+    target.businessId,
+  );
+  const before = previous
+    ? (projectedAdjustments.get(previous.recordId) ??
+      (await loadEmploymentRecord(tx, ctx.tenantId, previous.recordId, target.effectiveDate)))
+    : null;
+  // 只模拟真实会发生的向后更新（S1-P2-04）：历史任职的编辑与选“不向后更新”的导入不传播，其后组织调整不随之改写。
+  if (before && target.fields && target.propagates !== false)
+    await projectAdjustments(
+      tx,
+      ctx,
+      {
+        ...target,
+        before,
+        after: { fields: { ...before.fields, ...target.fields }, customFields: {} },
+      },
+      projectedAdjustments,
+      members,
+      target.effectiveDate,
+      next && next < periodUntil ? next : periodUntil,
+      true,
+    );
   if (window) {
     const from = [window.from, target.effectiveDate].sort().at(-1)!;
-    const next = await nextReservedTransfer(tx, ctx, target, transferOut);
     const until = [window.to ?? periodUntil, next ?? periodUntil, periodUntil].sort()[0]!;
     if (from < until)
       members.set(target.employeeId, [
@@ -390,11 +469,42 @@ async function projectTarget(
         }),
         {
           employeeId: target.employeeId,
-          fields: target.fields ?? {},
+          fields: projectedAdjustments.get(target.businessId)?.fields ?? target.fields ?? {},
           from,
           until,
         },
       ]);
+  }
+}
+
+async function projectAdjustments(
+  tx: Tx,
+  ctx: EmploymentContext,
+  source: Parameters<typeof projectOrgAdjustmentRecords>[2],
+  projected: Map<string, EmploymentRecord>,
+  members: Map<string, MemberInterval[]>,
+  start: string,
+  end: string,
+  replace: boolean,
+) {
+  for (const record of await projectOrgAdjustmentRecords(tx, ctx, source, projected)) {
+    const from = [record.effectiveDate, start].sort().at(-1)!;
+    const until = record.stopDate < end ? addDays(record.stopDate, 1) : end;
+    if (from >= until) continue;
+    const previous = members.get(source.employeeId) ?? [];
+    const intervals = replace
+      ? previous.flatMap((interval) => {
+          if (interval.until <= from || interval.from >= until) return [interval];
+          return [
+            ...(interval.from < from ? [{ ...interval, until: from }] : []),
+            ...(interval.until > until ? [{ ...interval, from: until }] : []),
+          ];
+        })
+      : previous;
+    members.set(source.employeeId, [
+      ...intervals,
+      { employeeId: source.employeeId, fields: record.fields, from, until },
+    ]);
   }
 }
 

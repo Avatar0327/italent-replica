@@ -37,7 +37,7 @@ describe('函数注册表', () => {
       expect.arrayContaining([
         'Abs',
         'Average',
-        'Concat',
+        'Concatenate',
         'Contains',
         'CountJudgesWithResult',
         'CountModulesWithResult',
@@ -91,7 +91,8 @@ describe('类型转换', () => {
     expect(run('ToNumber(真)')).toEqual(num(1));
     expect(run('ToNumber(盘点对象.x)', { '盘点对象.x': { optionValue: '3', label: '高' } })).toEqual(num(3));
     expect(run('ToNumber(盘点对象.x)', { '盘点对象.x': null })).toEqual(num(0));
-    expect(run('ToNumber("abc")')).toMatchObject({ code: 'TYPE_CONVERSION' });
+    // DEC-265：原站 ToNumber("abc") = 0（`26` §8.7）
+    expect(run('ToNumber("abc")')).toEqual(num(0));
   });
   it('ToText / 转换为文本（别名 ToString）', () => {
     expect(run('ToText(12)')).toEqual(text('12'));
@@ -131,16 +132,17 @@ describe('数值与聚合', () => {
     expect(run('Average(1, "a")')).toMatchObject({ code: 'TEXT_IN_ARITHMETIC' });
     expect(run('Average(1, "5")')).toEqual(num(3));
   });
-  it('函数的数值参数与四则同一口径（DEC-257）：空值按 0、数字字符串按数值', () => {
-    expect(run('Round(盘点对象.x)', { '盘点对象.x': null })).toEqual(num(0));
-    expect(run('Abs(盘点对象.x)', { '盘点对象.x': null })).toEqual(num(0));
+  it('函数的数值参数遇空计算失败（DEC-270，取代 DEC-264 的按 0）；数字字符串按数值', () => {
+    expect(run('Round(盘点对象.x)', { '盘点对象.x': null })).toMatchObject({ code: 'EMPTY_IN_ARITHMETIC' });
+    expect(run('Abs(盘点对象.x)', { '盘点对象.x': null })).toMatchObject({ code: 'EMPTY_IN_ARITHMETIC' });
+    expect(run('盘点对象.x + 1', { '盘点对象.x': null })).toEqual(num(1));
     expect(run('Round("2.5")')).toEqual(num(3));
     expect(run('Abs("甲")')).toMatchObject({ code: 'TEXT_IN_ARITHMETIC' });
   });
 });
 
 describe('文本', () => {
-  it('Length / 长度、Contains / 包含、Concat / 连接', () => {
+  it('Length / 长度、Contains / 包含、Concatenate / Concat / 连接', () => {
     expect(run('Length("北森")')).toEqual(num(2));
     expect(run('长度("")')).toEqual(num(0));
     expect(run('Contains("人才盘点", "盘点")')).toEqual(bool(true));
@@ -175,7 +177,8 @@ describe('日期（🟡 待 Q-M0-83：业务日按租户时区）', () => {
     expect(run('DateFormat("2020/01/02 09:05:07", "yy/M/d h:m:s t")')).toEqual(text('20/1/2 9:5:7 A'));
     expect(run('日期格式化("2020/01/02", "yyyy\'年\'MM\'月\'")')).toEqual(text('2020年01月'));
     expect(run('DateFormat("13:04", "HH:mm")')).toEqual(text('13:04'));
-    expect(run('DateFormat(盘点对象.x, "yyyy")', { '盘点对象.x': null })).toMatchObject({ code: 'TYPE_CONVERSION' });
+    // DEC-270：空日期按 0001-01-01 参与运算
+    expect(run('DateFormat(盘点对象.x, "yyyy")', { '盘点对象.x': null })).toEqual(text('0001'));
   });
 });
 

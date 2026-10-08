@@ -123,6 +123,7 @@ it('F-017 周期内组织后来挂入目标子树，联合峰值不能使用生�
     'PATCH',
     `org/organizations/${w.from.id}`,
     {
+      addEmployment: false,
       effectiveDate: '2026-10-20',
       parents: { admin: { parentId: w.to.id } },
     },
@@ -237,11 +238,21 @@ it.each(['application', 'direct'] as const)('DEC-195 %s 迟到调入和后续调
     ).status,
   ).toBe(200);
   const run = await w.runScheduler('2026-10-08T01:00:00Z');
+  // DEC-278③（第 2 轮起已落地与未落地同一口径）：迟到调入区间 [10-05, 10-08) 内另有调出（已落地 / 已批准未落地）
+  // → 先记需重建待 HR；调出是它的 blocker、不被前序失败挂起，区间为空照常顺延。
   expect(run, JSON.stringify((await w.business(first.id)).activation)).toMatchObject({
-    ...(mode === 'application' ? { activated: [first.id, last.id] } : {}),
-    failed: [],
+    failed: [first.id],
     errors: [],
   });
+  expect((await w.business(first.id)).activation).toMatchObject({
+    status: 'failed',
+    failureReason: 'REBUILD_REQUIRED',
+  });
+  expect((await w.business(last.id)).activation).toMatchObject({ status: 'effective' });
+  // 调出离开区间后 HR 重试调入：两者合到同日、调入区间为空，不虚占编制。
+  const retried = await w.retry(first, '2026-10-08T02:00:00Z');
+  expect(retried.status, await retried.clone().text()).toBe(200);
+  expect((await w.business(first.id)).activation).toMatchObject({ status: 'effective' });
   expect((await w.session.records(person.employee.id, '2026-10-08')).find((r) => r.isCurrent)?.id).toBe(last.id);
 });
 

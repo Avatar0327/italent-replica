@@ -74,7 +74,10 @@ async function sourceOrder(tx: Tx, ctx: EmploymentContext, source: ForwardSource
  * 原计划日与操作序号，避免重复迟到改期丢失后续申请（07 A2）。
  * TODO(需取证 #44)：编辑同日在前的记录时，原站是否也更新同日在后的生效记录未实测（新增业务总在当日最后，不受影响）。
  */
-/** DEC-195：未落地调动投影到实际执行日，重复改期始终取最早审计中的原计划日，再按操作序号比较。 */
+/**
+ * DEC-195：未落地调动投影到实际执行日，重复改期始终取最早审计中的原计划日，再按操作序号比较。
+ * greatest(生效日, 今天) 是 resolveLateExecution（DEC-272）的 SQL 投影，AC-TRF-F017-dec272 断言两者等价。
+ */
 function pendingAfterSource(ctx: EmploymentContext, source: ForwardSource): SQL {
   const today = tenantLocalDate(ctx.now, ctx.timezone);
   const executionDate = sql`CASE WHEN p.kind='transfer'

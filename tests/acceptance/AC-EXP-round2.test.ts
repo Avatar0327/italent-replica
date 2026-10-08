@@ -120,12 +120,11 @@ describe('P2-3 短字段名：依赖排序与求值共用同一套解析规则',
 });
 
 describe('P2-4 直接自引用是循环依赖', () => {
-  it('全名与短名自引用都返回 CYCLIC_DEPENDENCY', () => {
+  it('全名与短名自引用都识别为循环依赖：保存时提示（DEC-274），计算时 CYCLIC_DEPENDENCY', () => {
     for (const formula of ['盘点对象.a + 1', 'a + 1']) {
       const ordered = orderComputationItems([item('盘点对象.a', 1, formula)]);
-      expect(ordered.ok).toBe(false);
-      if (ordered.ok || ordered.failure.code !== 'CYCLIC_DEPENDENCY') throw new Error('应当报循环依赖');
-      expect(ordered.failure.cycle).toEqual(['盘点对象.a', '盘点对象.a']);
+      if (!ordered.ok) throw new Error('DEC-274：保存不拦截循环依赖');
+      expect(ordered.cycles).toEqual([['盘点对象.a', '盘点对象.a']]);
     }
     const batch = evaluateBatch(
       [item('盘点对象.a', 1, '盘点对象.a + 1')],
@@ -226,13 +225,24 @@ describe('P2-5 公共边界只返回结构化结果，不抛异常、不透出�
   });
 });
 
-describe('P2-6 360 固定取项目结束时间前最近开始的活动；DEC-031 的窗口参数只作用于测评', () => {
+describe('P2-6 360 固定取项目结束时间前最近一次（DEC-262② 起按结束时间）；DEC-031 的窗口参数只作用于测评', () => {
   const project = { startAt: new Date('2026-08-31T16:00:00Z'), endAt: new Date('2026-09-30T16:00:00Z') };
   const ports: InMemoryPortData = {
     survey360: {
       'emp-1': [
-        { startAt: new Date('2026-08-10T00:00:00Z'), fields: { 套卷名称: 'S', 角色名称: '上级', 角色得分: 60 } },
-        { startAt: new Date('2026-09-15T00:00:00Z'), fields: { 套卷名称: 'S', 角色名称: '上级', 角色得分: 90 } },
+        // DEC-262②：只取已结束且报告已生成的活动
+        {
+          startAt: new Date('2026-08-10T00:00:00Z'),
+          endAt: new Date('2026-08-20T00:00:00Z'),
+          reportGeneratedAt: new Date('2026-08-21T00:00:00Z'),
+          fields: { 套卷名称: 'S', 角色名称: '上级', 角色得分: 60 },
+        },
+        {
+          startAt: new Date('2026-09-15T00:00:00Z'),
+          endAt: new Date('2026-09-25T00:00:00Z'),
+          reportGeneratedAt: new Date('2026-09-26T00:00:00Z'),
+          fields: { 套卷名称: 'S', 角色名称: '上级', 角色得分: 90 },
+        },
       ],
     },
     assessment: {

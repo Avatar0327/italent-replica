@@ -37,6 +37,12 @@ describe.each(EMPTY_SOURCES)('DEC-257 空值（%s）', (_label, empty, fields) =
     expect(run(`ToNumber(${empty})`, fields)).toEqual(num(0));
   });
 
+  it('DEC-270：Round(空)、Abs(空) 等函数数值参数遇空计算失败（取代 DEC-264 的按 0），四则仍按 0', () => {
+    expect(run(`Round(${empty})`, fields)).toMatchObject({ code: 'EMPTY_IN_ARITHMETIC' });
+    expect(run(`Abs(${empty})`, fields)).toMatchObject({ code: 'EMPTY_IN_ARITHMETIC' });
+    expect(run(`Round(${empty} + 0)`, fields)).toEqual(num(0));
+  });
+
   it('Average(空, 4) 计算失败（不变，聚合不跳过空值）', () => {
     expect(run(`Average(${empty}, 4)`, fields)).toMatchObject({ code: 'EMPTY_IN_AGGREGATE' });
     expect(run(`Sum(${empty}, 4)`, fields)).toMatchObject({ code: 'EMPTY_IN_AGGREGATE' });

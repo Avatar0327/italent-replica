@@ -18,6 +18,7 @@ const perf = (
   modifiedAt: new Date(modifiedAt),
 });
 
+/** 数值取数函数取不到时返回带来源类型的空值（of: number），供日期参数区分真正的空日期（PR #108 第 3 轮）。 */
 describe('AC-EXP-07 绩效取数：同年同周期取最后修改；PerformanceLastCent(N) 不要求连续年份；无结果返回空', () => {
   const ports: InMemoryPortData = {
     performance: {
@@ -55,11 +56,14 @@ describe('AC-EXP-07 绩效取数：同年同周期取最后修改；PerformanceL
     };
     expect(valueOf(evaluateFormula('PerformanceLastCent(2)', context))).toEqual({ kind: 'number', value: 77 });
     expect(valueOf(evaluateFormula('获取最近第N年度的绩效等级(1)', context))).toEqual({ kind: 'text', value: 'B' });
-    expect(valueOf(evaluateFormula('PerformanceLastCent(3)', context))).toEqual({ kind: 'empty' });
+    expect(valueOf(evaluateFormula('PerformanceLastCent(3)', context))).toEqual({ kind: 'empty', of: 'number' });
   });
 
   it('无结果返回空而不是 0；空值再比较大小结果为假、不报错（DEC-257）', () => {
-    expect(run('PerformanceCent(考核结果.年度=2025, 考核结果.周期名称="年度")')).toEqual({ kind: 'empty' });
+    expect(run('PerformanceCent(考核结果.年度=2025, 考核结果.周期名称="年度")')).toEqual({
+      kind: 'empty',
+      of: 'number',
+    });
     expect(run('PerformanceCent(考核结果.年度=2025, 考核结果.周期名称="年度") > 60')).toEqual({
       kind: 'boolean',
       value: false,
@@ -68,8 +72,11 @@ describe('AC-EXP-07 绩效取数：同年同周期取最后修改；PerformanceL
 });
 
 describe('AC-EXP-08 360 与测评：最近一次的时间口径', () => {
+  /** DEC-262②：360 行须带结束时间与报告生成时间（已结束、报告已生成）；这里统一取开始后 7 天结束、第 8 天出报告。 */
   const row = (startAt: string, fields: Record<string, string | number | null>) => ({
     startAt: new Date(startAt),
+    endAt: new Date(new Date(startAt).getTime() + 7 * 86_400_000),
+    reportGeneratedAt: new Date(new Date(startAt).getTime() + 8 * 86_400_000),
     fields,
   });
   const assessment = (testedAt: string, fields: Record<string, string | number | null>) => ({
@@ -131,20 +138,23 @@ describe('AC-EXP-08 360 与测评：最近一次的时间口径', () => {
   const run = (formula: string, extra: Partial<EvaluationContext> = {}) =>
     valueOf(evaluateFormula(formula, { ...contextFor({}, { ports }), ...extra }));
 
-  it('Lastest360Cent：取盘点项目结束时间前最近开始的活动，分数字段 + 过滤表达式', () => {
+  it('Lastest360Cent：取盘点项目结束时间前已结束且报告已生成的最近一次活动（DEC-262②），分数字段 + 过滤表达式', () => {
     expect(run('获取最近一次360总分(360结果.角色得分, 360结果.套卷名称="GLD套卷", 360结果.角色名称="上级")')).toEqual({
       kind: 'number',
       value: 4.2,
     });
     expect(run('Lastest360Cent(360结果.问卷-他评总分)')).toEqual({ kind: 'number', value: 4.0 });
-    expect(run('Lastest360Cent(360结果.角色得分, 360结果.角色名称="下级")')).toEqual({ kind: 'empty' });
+    expect(run('Lastest360Cent(360结果.角色得分, 360结果.角色名称="下级")')).toEqual({ kind: 'empty', of: 'number' });
   });
 
   it('LastestAssessmentCent：过滤必填；默认取项目结束时间前最近一次，可改为开始时间前（DEC-031）', () => {
     const formula = 'LastestAssessmentCent(测验信息.总分, 测验信息.测验名称="职业性格")';
     expect(run(formula)).toEqual({ kind: 'number', value: 0.9 });
     expect(run(formula, { assessmentLatestWindow: 'before_project_start' })).toEqual({ kind: 'number', value: 0.82 });
-    expect(run('获取最近一次的测评总分(测验信息.维度得分, 测验信息.维度名称="不存在")')).toEqual({ kind: 'empty' });
+    expect(run('获取最近一次的测评总分(测验信息.维度得分, 测验信息.维度名称="不存在")')).toEqual({
+      kind: 'empty',
+      of: 'number',
+    });
     expect(run('LastestAssessmentCent(测验信息.总分)')).toMatchObject({ code: 'ARGUMENT_COUNT' });
   });
 });
@@ -180,9 +190,9 @@ describe('AC-EXP-09 Ranking：百分位 / 排序号、排序字段、人员范�
     });
   });
 
-  it('百分位：按小数返回（名次之后占比）', () => {
-    expect(run('Ranking("百分位", 盘点对象.综合得分)', 'd')).toEqual({ kind: 'number', value: 0.2 });
-    expect(run('Ranking("百分位", 盘点对象.综合得分)', 'e')).toEqual({ kind: 'number', value: 1 });
+  it('百分位：名次 ÷ 范围人数 × 100，越靠前越小（🟡 DEC-262①，本租户 ToNumber(aa)<=20 → 3 的写法；#105）', () => {
+    expect(run('Ranking("百分位", 盘点对象.综合得分)', 'd')).toEqual({ kind: 'number', value: 100 });
+    expect(run('Ranking("百分位", 盘点对象.综合得分)', 'e')).toEqual({ kind: 'number', value: 20 });
   });
 
   it('范围外人员：失败原因 OUT_OF_SCOPE', () => {

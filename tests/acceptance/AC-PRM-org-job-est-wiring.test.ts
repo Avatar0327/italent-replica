@@ -712,7 +712,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
         await fixture.request('PATCH', `${paths.organization}/${id}`, {
           ...world.asAdmin,
           ifMatch: 1,
-          body: { effectiveDate: TODAY, parents: { admin: { parentId: secondOrg.id } } },
+          body: { addEmployment: false, effectiveDate: TODAY, parents: { admin: { parentId: secondOrg.id } } },
         })
       ).status,
     ).toBe(200);
@@ -849,7 +849,8 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
     expect((await world.api.request('GET', `${paths[key]}/${other.id}?asOf=${TODAY}`, as)).status).toBe(404);
   });
   it('组织 using_user 实体范围允许修改本人创建记录，拒绝他人记录', async () => {
-    const as = await actor('organization');
+    // 组织变更要求 update@detail 按钮（S1-P2-03）；本例只验证实体范围。
+    const as = await actor('organization', { buttons: [{ buttonCode: 'update', level: 'detail' }] });
     const created = await fixture.request('POST', paths.organization, {
       ...as,
       ifMatch: 0,
@@ -872,7 +873,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
         await world.api.request('PATCH', `${paths.organization}/${own.id}`, {
           ...as,
           ifMatch: own.revision,
-          body: { effectiveDate: TODAY, name: '本人可维护' },
+          body: { addEmployment: false, effectiveDate: TODAY, name: '本人可维护' },
         })
       ).status,
     ).toBe(200);
@@ -881,7 +882,7 @@ describe('DEC-080 组织 / 职务 / 编制真实路由权限', () => {
         await world.api.request('PATCH', `${paths.organization}/${org.id}`, {
           ...as,
           ifMatch: org.revision,
-          body: { effectiveDate: TODAY, name: '无权维护' },
+          body: { addEmployment: false, effectiveDate: TODAY, name: '无权维护' },
         })
       ).status,
     ).toBe(404);

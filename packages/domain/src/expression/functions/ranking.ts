@@ -1,6 +1,9 @@
 /**
- * 排名（`26` §3.5 TR-R28、§8.1）：Ranking(模式, 排序字段, 人员范围条件?, 分组字段?)。
- * 模式 "排序号"：降序名次，并列同名次（1-2-2-4）；"百分位"：不高于本人的人数占比，按小数返回（🟡 TODO(需取证 #89)：百分位定义与并列名次）。
+ * 排名（`26` §3.5 TR-R28、§8.6）：Ranking(模式, 排序字段, 人员范围条件?, 分组字段?)。
+ * 🟡 DEC-262①：模式 "排序号" 降序名次，并列同名次、后续跳号（1、1、3，同 Excel RANK）；
+ * "百分位" = 名次 ÷ 范围人数 × 100，越靠前越小，并列取同值（面板“单位为(%)”，与本租户 `ToNumber(aa)<=20 → 3` 的
+ * 写法一致；TODO(需取证 #105)：原站百分位公式未说明）。
+ * 面板原文“在待办中触发计算时，包含这个函数的计算项目不会计算”：以 skipInTodoTrigger 标记，调度由 R3-T04 落实。
  * 范围 = RankingPort 给出的人员（批量求值时默认本次计算对象）再按范围条件筛选；本人不在范围内 → 范围外人员（207126957 问题 2）。
  */
 import type { ExprNode } from '../ast.js';
@@ -8,7 +11,7 @@ import { valuesEqual } from '../operators.js';
 import type { SubjectReader } from '../ports.js';
 import type { FunctionCall, FunctionSpec } from '../registry.js';
 import { EMPTY, type ExprValue } from '../values.js';
-import { unwrapPort } from './shared.js';
+import { isTypeConversion, unwrapPort } from './shared.js';
 
 const MODES: Readonly<Record<string, 'rank' | 'percentile'>> = {
   排序号: 'rank',
@@ -30,6 +33,17 @@ function tryEvaluate(call: FunctionCall, node: ExprNode | undefined, subject: Su
     return call.evaluateForSubject(node, subject);
   } catch {
     return undefined;
+  }
+}
+
+/** 条件求值时出现类型转换失败（如文本与数值比较大小）。 */
+function comparisonFailed(call: FunctionCall, node: ExprNode | undefined, subject: SubjectReader): boolean {
+  if (!node) return false;
+  try {
+    call.evaluateForSubject(node, subject);
+    return false;
+  } catch (error) {
+    return isTypeConversion(error);
   }
 }
 
@@ -71,13 +85,15 @@ function ranking(call: FunctionCall): ExprValue {
   const members = collectMembers(call, population);
   const me = members.find((member) => member.subject.id === self.id);
   if (!me) {
+    // DEC-270：范围条件里 盘点活动.盘点年度 > "2025" 这类文本比较原站不报错、结果为空（`26` §8.8，是否按数值比较 🟡）
+    if (comparisonFailed(call, call.rawArgs[2], self)) return EMPTY;
     const sortValue = tryEvaluate(call, call.rawArgs[1], self);
     if (sortValue?.kind === 'empty') return call.fail('EMPTY_IN_COMPARISON', '排序字段为空，无法排名');
     return call.fail('OUT_OF_SCOPE', '本人不满足人员范围条件');
   }
   const peers = members.filter((member) => valuesEqual(member.group, me.group, call.env.semantics));
-  if (mode === 'rank') return { kind: 'number', value: peers.filter((member) => member.value > me.value).length + 1 };
-  return { kind: 'number', value: peers.filter((member) => member.value <= me.value).length / peers.length };
+  const rank = peers.filter((member) => member.value > me.value).length + 1;
+  return { kind: 'number', value: mode === 'rank' ? rank : (rank / peers.length) * 100 };
 }
 
 export const RANKING_FUNCTIONS: readonly FunctionSpec[] = [
@@ -91,6 +107,8 @@ export const RANKING_FUNCTIONS: readonly FunctionSpec[] = [
       { name: '分组字段', required: false },
     ],
     lazy: true,
+    skipInTodoTrigger: true,
+    returns: 'number',
     implement: ranking,
   },
 ];

@@ -81,7 +81,7 @@ async function remove(session: EmploymentSession, id: string, at = '2026-10-01T0
 }
 
 describe('AC-EMP-19（第二轮）改期后按新位置重新继承人员状态', () => {
-  it('迟到调动越过转正：定时生效移到当天后取转正后的正式，不倒退为试用', async () => {
+  it('迟到调动越过转正：F-036 前按 DEC-278③ 记需重建待 HR，人员状态既不倒退也不前移', async () => {
     const w = await activationWorld(testDb().db, 'f022-late-cross');
     const { employee } = await probationHire(w.session, w.from.id);
     const transfer = await w.session.business(
@@ -89,19 +89,28 @@ describe('AC-EMP-19（第二轮）改期后按新位置重新继承人员状态'
       { kind: 'transfer', mode: 'direct', effectiveDate: '2026-10-05', fields: { departmentId: w.to.id } },
       (await w.session.getEmployee(employee.id)).revision,
     );
-    await w.session.business(
+    const regularization = await w.session.business(
       employee.id,
       { kind: 'regularization', mode: 'direct', effectiveDate: '2026-10-06', fields: {} },
       (await w.session.getEmployee(employee.id)).revision,
     );
-    expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({ failed: [], errors: [] });
-    const records = await statuses(w.session, employee.id, '2026-10-08');
-    expect(records.map((record) => [record.kind, record.effectiveDate, record.employeeStatus])).toEqual([
+    const before = await statuses(w.session, employee.id, '2026-10-08');
+    expect(before.map((record) => [record.kind, record.effectiveDate, record.employeeStatus])).toEqual([
       ['hire', '2026-09-01', 2],
+      ['transfer', '2026-10-05', 2],
       ['regularization', '2026-10-06', 3],
-      ['transfer', '2026-10-08', 3],
     ]);
-    expect(records.find((record) => record.id === transfer.record!.id)?.employeeStatus).toBe(3);
+    // 区间 [10-05, 10-08) 内有转正版本：迟到执行拒绝、交 HR（重建后按新位置取正式的逻辑归 F-036）。
+    expect(await w.runScheduler('2026-10-08T01:00:00Z')).toMatchObject({ failed: [transfer.id], errors: [] });
+    expect((await w.business(transfer.id)).activation).toMatchObject({
+      status: 'failed',
+      failureReason: 'REBUILD_REQUIRED',
+    });
+    const failed = (await w.auditEvents(transfer.id)).find((event) => event.action === 'employment.activation.failed');
+    expect((failed?.after?.detail as { blockers: { id: string }[] }).blockers.map((item) => item.id)).toEqual([
+      regularization.id,
+    ]);
+    expect(await statuses(w.session, employee.id, '2026-10-08')).toEqual(before);
   });
 
   it('改期申请越过转正：申请改到转正之后，追加的载荷版本为正式', async () => {

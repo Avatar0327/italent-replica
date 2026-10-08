@@ -8,6 +8,8 @@
  *   cmp     := add (比较符 add)? ；add := mul (('+'|'-') mul)* ；mul := unary (('*'|'/') unary)*
  *   unary   := ('-'|'+') unary | primary
  *   primary := 数字 | 字符串 | 真 | 假 | '(' expr ')' | 调用 | 字段引用 | 标识符
+ * 面板逻辑函数 AND / OR / IF（`26` §8.6）与关键字同名：在操作数位置、后跟左括号的 AND( / OR( 是函数调用；
+ * IF( 在括号内有顶层逗号时是函数调用（IF(条件, 值1, 值2)），否则仍是 if … then … else。
  */
 import type { BinaryOperator, CallNode, Definition, ExprNode, IfBranch, Program } from './ast.js';
 import { HYPHEN_SUBTRACTION_HINT, type SourcePosition } from './failures.js';
@@ -18,6 +20,8 @@ export type ParseResult =
 
 const DEF_NAMES = new Set(['def', '定义']);
 const COMPARISONS = new Set(['=', '!=', '<', '>', '<=', '>=']);
+const KEYWORD_FUNCTIONS = new Set(['and', 'or', 'if']);
+const ASCII_WORD = /^[A-Za-z]+$/;
 
 /** 公式规模上限（astra 首审 P2-5）：超出直接报语法错误，避免解析 / 求值递归栈溢出。 */
 export const MAX_FORMULA_LENGTH = 4000;
@@ -119,7 +123,7 @@ class Parser {
   }
 
   private parseExpr(): ExprNode {
-    return this.nested(() => (this.atKeyword('if') ? this.parseIf() : this.parseOr()));
+    return this.nested(() => (this.atIfExpression() ? this.parseIf() : this.parseOr()));
   }
 
   private parseIf(): ExprNode {
@@ -130,13 +134,13 @@ class Parser {
       const condition = this.parseOr();
       this.expectKeyword('then', '如果 后面缺少 那么');
       branches.push({ condition, then: this.parseExpr() });
-      if (this.atKeyword('if')) {
+      if (this.atIfExpression()) {
         this.next();
         continue;
       }
       if (!this.atKeyword('else')) break;
       this.next();
-      if (this.atKeyword('if')) {
+      if (this.atIfExpression()) {
         this.next();
         continue;
       }
@@ -146,6 +150,31 @@ class Parser {
     return otherwise
       ? { type: 'if', branches, otherwise, pos: this.pos(start) }
       : { type: 'if', branches, pos: this.pos(start) };
+  }
+
+  private atIfExpression(): boolean {
+    return this.atKeyword('if') && !this.atKeywordFunction();
+  }
+
+  /** 当前词是写成函数调用的 AND / OR / IF（见文件头）。只在操作数位置调用。 */
+  private atKeywordFunction(): boolean {
+    const token = this.peek();
+    if (token.kind !== 'keyword' || !KEYWORD_FUNCTIONS.has(String(token.value))) return false;
+    if (!ASCII_WORD.test(token.text) || this.peek(1).kind !== 'lparen') return false;
+    return token.value !== 'if' || this.hasTopLevelComma(this.index + 1);
+  }
+
+  /** 从左括号起到配对的右括号之间，是否有不在内层括号里的逗号。 */
+  private hasTopLevelComma(open: number): boolean {
+    let depth = 0;
+    for (let i = open; i < this.tokens.length; i++) {
+      const kind = this.tokens[i]!.kind;
+      if (kind === 'lparen') depth++;
+      else if (kind === 'rparen' && --depth === 0) return false;
+      else if (kind === 'comma' && depth === 1) return true;
+      else if (kind === 'eof') return false;
+    }
+    return false;
   }
 
   private parseOr(): ExprNode {
@@ -236,6 +265,7 @@ class Parser {
   }
 
   private parseKeywordPrimary(token: Token): ExprNode {
+    if (this.atKeywordFunction()) return this.parseCall();
     if (token.value === 'true' || token.value === 'false') {
       this.next();
       return { type: 'boolean', value: token.value === 'true', pos: this.pos(token) };
@@ -256,7 +286,8 @@ class Parser {
       }
     }
     this.expect('rparen', '函数调用缺少右括号');
-    return { type: 'call', name: String(nameToken.value), args, pos: this.pos(nameToken) };
+    // 用原文：AND / OR / IF 的 value 是归一化后的关键字
+    return { type: 'call', name: nameToken.text, args, pos: this.pos(nameToken) };
   }
 
   private parseReference(): ExprNode {
