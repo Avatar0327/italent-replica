@@ -3,7 +3,7 @@
 "stats": {
 "merged": 54,
 "open": 11,
-"dec": 304,
+"dec": 306,
 "ev": "26/124"
 },
 "tasks": {
@@ -2029,7 +2029,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 23:00",
+"liveUpdated": "10-07 23:01",
 "chains": [
 {
 "g": "exit",
@@ -2398,8 +2398,8 @@
 "k": "run",
 "n": "个人发展计划 IDP",
 "u": "已核对（C 档、建议拆 2 个 PR），待开会话",
-"seg": "ev:d ds:n dev:a1 rev:w mg:w",
-"now": "PR-A 开发中（流程与模板配置）",
+"seg": "ev:d ds:n dev:d1 rev:w1 mg:w",
+"now": "PR-A 开发完成，待审查（C 档，Sol Ultra）",
 "pr": 111
 },
 {
