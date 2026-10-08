@@ -11,3 +11,4 @@ export * from './approval.js';
 export * from './contracts.js';
 export * from './transfer.js';
 export * from './audit.js';
+export * from './idp.js';

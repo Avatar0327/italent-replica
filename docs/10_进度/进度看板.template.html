@@ -8,22 +8,22 @@
 :root{
   --bg:#f5f6f8;--panel:#fff;--sunk:#eef1f5;--ink:#051c2c;--ink2:#2b3a4a;--muted:#5f6b7a;--faint:#9aa5b1;--line:#e1e5ea;--line2:#c9d0d8;
   --accent:#2251ff;--accent-soft:#e6ecff;
-  --done:#7f93a8;--active:#2251ff;--review:#00a9f4;--todo:#b8c2cc;--blocked:#d0453a;
-  --done-bg:#eef1f5;--active-bg:#e6ecff;--review-bg:#e1f5fd;--todo-bg:#f3f5f7;--blocked-bg:#fbe9e7;
+  --done:#7f93a8;--active:#2251ff;--review:#00a9f4;--todo:#b8c2cc;--blocked:#d0453a;--paused:#8a7a5c;
+  --done-bg:#eef1f5;--active-bg:#e6ecff;--review-bg:#e1f5fd;--todo-bg:#f3f5f7;--blocked-bg:#fbe9e7;--paused-bg:#f5f0e6;
   --fable:#051c2c;
   --f:Arial,"Helvetica Neue","Noto Sans SC","PingFang SC",system-ui,sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#071722;--panel:#0d2231;--sunk:#12293a;--ink:#e8eef4;--ink2:#c3cfdb;--muted:#8a9bab;--faint:#5b6d7e;--line:#1d3446;--line2:#2a4459;
   --accent:#6f8dff;--accent-soft:#16264a;
-  --done:#7d93a8;--active:#6f8dff;--review:#3cc4ff;--todo:#4a5d6e;--blocked:#f0796c;
-  --done-bg:#12293a;--active-bg:#16264a;--review-bg:#0f2f40;--todo-bg:#102434;--blocked-bg:#3a1c1a;
+  --done:#7d93a8;--active:#6f8dff;--review:#3cc4ff;--todo:#4a5d6e;--blocked:#f0796c;--paused:#bfa97a;
+  --done-bg:#12293a;--active-bg:#16264a;--review-bg:#0f2f40;--todo-bg:#102434;--blocked-bg:#3a1c1a;--paused-bg:#2e2a1f;
   --fable:#e8eef4;color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#071722;--panel:#0d2231;--sunk:#12293a;--ink:#e8eef4;--ink2:#c3cfdb;--muted:#8a9bab;--faint:#5b6d7e;--line:#1d3446;--line2:#2a4459;
   --accent:#6f8dff;--accent-soft:#16264a;
-  --done:#7d93a8;--active:#6f8dff;--review:#3cc4ff;--todo:#4a5d6e;--blocked:#f0796c;
-  --done-bg:#12293a;--active-bg:#16264a;--review-bg:#0f2f40;--todo-bg:#102434;--blocked-bg:#3a1c1a;
+  --done:#7d93a8;--active:#6f8dff;--review:#3cc4ff;--todo:#4a5d6e;--blocked:#f0796c;--paused:#bfa97a;
+  --done-bg:#12293a;--active-bg:#16264a;--review-bg:#0f2f40;--todo-bg:#102434;--blocked-bg:#3a1c1a;--paused-bg:#2e2a1f;
   --fable:#e8eef4;color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.55 var(--f);-webkit-font-smoothing:antialiased}
@@ -90,6 +90,7 @@ td.nt div{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;o
 .s-done{color:var(--done);background:var(--done-bg)}.s-active{color:var(--active);background:var(--active-bg)}
 .s-review{color:var(--review);background:var(--review-bg)}.s-todo{color:var(--todo);background:var(--todo-bg)}
 .s-blocked{color:var(--blocked);background:var(--blocked-bg)}
+.s-paused{color:var(--paused);background:var(--paused-bg)}
 .who{font-size:12px;color:var(--ink2);white-space:nowrap}
 .dep{font-family:var(--mono);font-size:11.5px;margin-right:6px;cursor:pointer;white-space:nowrap}
 .dep.ok{color:var(--faint)}.dep.wait{color:var(--active)}
@@ -113,7 +114,7 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 
   <section>
     <div class="sec-h"><h2>全景 · 依赖关系</h2>
-      <div class="lg"><span><i style="background:var(--active)"></i>开发 / 修改中</span><span><i style="background:var(--review)"></i>审查中</span><span><i style="background:var(--todo)"></i>待派</span><span><i style="background:var(--blocked)"></i>受阻</span><span><i style="background:var(--done)"></i>已完成</span><span>── 依赖　- - 修正所属</span></div></div>
+      <div class="lg"><span><i style="background:var(--active)"></i>开发 / 修改中</span><span><i style="background:var(--review)"></i>审查中</span><span><i style="background:var(--todo)"></i>待派</span><span><i style="background:var(--blocked)"></i>受阻</span><span><i style="background:var(--paused)"></i>搁置（DEC-297 聚焦 R3）</span><span><i style="background:var(--done)"></i>已完成</span><span>── 依赖　- - 修正所属</span></div></div>
     <div class="panel"><div id="graph"></div><div class="backlog" id="backlog"></div></div>
   </section>
 
@@ -132,8 +133,8 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 <script>
 const DATA = __DATA__;
 const T = DATA.tasks, P = DATA.prs || {}, S = DATA.stats || {};
-const ST = {done:["已完成","s-done"],review:["审查中","s-review"],active:["开发 / 修改中","s-active"],todo:["待派","s-todo"],blocked:["受阻","s-blocked"]};
-const COL = {done:"var(--done)",review:"var(--review)",active:"var(--active)",todo:"var(--todo)",blocked:"var(--blocked)"};
+const ST = {done:["已完成","s-done"],review:["审查中","s-review"],active:["开发 / 修改中","s-active"],todo:["待派","s-todo"],blocked:["受阻","s-blocked"],paused:["搁置","s-paused"]};
+const COL = {done:"var(--done)",review:"var(--review)",active:"var(--active)",todo:"var(--todo)",blocked:"var(--blocked)",paused:"var(--paused)"};
 const MS = {M0:"底座与决策",M1:"多租户隔离",M2:"权限与平台",M3:"组织与职务编制",M4:"任职版本链",M5:"审批与定时生效",M6:"调动业务",M7:"联动 · 自助 · 审计"};
 const STAGES = {R1:"R1 底座",R2:"R2 人事完整化",R3:"R3 人才链路"};
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
