@@ -187,6 +187,7 @@ export class Evaluator {
       if (Object.hasOwn(record, path)) return record[path]!;
     }
     const found = this.readSubjectField(path);
+    if (found.status === 'computed') return found.value;
     if (found.status === 'found') {
       const value = this.fromPlain(found.value);
       // 批量求值里先算项目的空结果自带来源；其余空值的来源由 evaluate 按字段类型目录推导补上

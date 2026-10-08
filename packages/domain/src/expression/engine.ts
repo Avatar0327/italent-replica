@@ -625,7 +625,7 @@ function withComputed(
   subject: SubjectReader,
   computed: Readonly<Record<string, ExprValue>>,
   bindings: FieldBindings,
-  readBoundFields = false,
+  options: { readonly readBoundFields?: boolean; readonly preserveTypes?: boolean } = {},
 ): SubjectReader {
   return {
     id: subject.id,
@@ -633,11 +633,13 @@ function withComputed(
       const target = bindings[path];
       if (target !== undefined && Object.hasOwn(computed, target)) {
         const value = computed[target]!;
+        // F-049 P2-01：适配结果已是领域值，日期不能经字符串往返；未传 adapt 保留旧叠加行为。
+        if (options.preserveTypes) return { status: 'computed', value };
         if (value.kind === 'empty' && value.of) return { status: 'found', value: null, emptyOf: value.of };
         return { status: 'found', value: toPlain(value) };
       }
       // DEC-312：额外总体成员没有同轮结果，短名仍须按固定绑定读取库中完整目标字段。
-      return subject.resolveField(readBoundFields ? (target ?? path) : path);
+      return subject.resolveField(options.readBoundFields ? (target ?? path) : path);
     },
   };
 }
@@ -709,6 +711,7 @@ export function evaluateBatch(
   if (!ordered.ok) return ordered;
   if (groups.length) return { ok: false, failure: cyclicFailure(groups, ordered.cycleMembers) };
   const invalidContext = validateContext(context.calendar);
+  const preserveTypes = hooks.adapt !== undefined;
   const population = context.ports?.ranking ? subjects : mergePopulation(subjects, hooks.population);
   const computed = new Map(subjects.map((subject) => [subject.id, {} as Record<string, ExprValue>]));
   const results: Record<string, Record<string, EvaluationResult>> = Object.fromEntries(
@@ -728,8 +731,8 @@ export function evaluateBatch(
             .map((subject) => {
               const values = computed.get(subject.id);
               return values
-                ? withComputed(subject, values, ordered.bindings)
-                : withComputed(subject, {}, ordered.bindings, true);
+                ? withComputed(subject, values, ordered.bindings, { preserveTypes })
+                : withComputed(subject, {}, ordered.bindings, { readBoundFields: true });
             }),
         }),
       },
@@ -742,7 +745,7 @@ export function evaluateBatch(
         results[subject.id]![field] = dependencyFailure(field, dependency);
         continue;
       }
-      const reader = withComputed(subject, computed.get(subject.id)!, ordered.bindings);
+      const reader = withComputed(subject, computed.get(subject.id)!, ordered.bindings, { preserveTypes });
       const evaluated: EvaluationResult = invalidContext
         ? { ok: false, failure: invalidContext }
         : runProgram(entry.program, { ...context, registry, subject: reader, ports, rankingTables });
