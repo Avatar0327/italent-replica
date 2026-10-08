@@ -280,12 +280,23 @@ export const IDP_OBJECTS = {
   commonGoal: object('IDPTemplateCommonGoal', ['moduleId', 'name', 'measure', 'suggestion', 'displayOrder']),
   /**
    * 发展计划 Idp（PR-B）。HR 端按钮：新建 / 修改 / 删除 / 开始，流程干预（Q-M0-115⑥ 列表菜单）催办 / 跳转 / 开启下个阶段 /
-   * 终止。阶段、当前步骤等由服务端维护，只读。
+   * 终止。阶段、当前步骤等由服务端维护，只读。干预审计记录的动作、原因、阶段、跳转目标节点（DEC-321）也是计划的只读
+   * 字段，按字段查看权在审计里展示（第 4 轮 R3-2）。
    */
   plan: object(
     'Idp',
     PLAN_FIELDS,
-    ['processId', 'status', 'currentStageName', 'currentNodeName', 'stages'],
+    [
+      'processId',
+      'status',
+      'currentStageName',
+      'currentNodeName',
+      'stages',
+      'intervention',
+      'reason',
+      'stageId',
+      'toNodeKey',
+    ],
     [
       ...crud,
       { code: 'start', level: 'detail', requires: 'update' },

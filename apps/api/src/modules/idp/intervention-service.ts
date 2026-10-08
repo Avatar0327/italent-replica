@@ -43,7 +43,8 @@ const actorOf = (ctx: PlanWriteContext): StageActor => ({ ...ctx });
 
 /**
  * 流程干预的审计（DEC-321）：计划所有者可全量干预（DEC-092“本人发起”回避的例外），每次干预都在计划上记一条：
- * 操作人（审计行的 actor）、计划、动作、原因。
+ * 操作人（审计行的 actor）、计划、动作、原因。前后值只用计划对象登记的字段（`intervention` / `reason` / `stageId` /
+ * `toNodeKey` / `status`），审计按字段查看权展示（第 4 轮 R3-2）。
  */
 async function auditIntervention(
   tx: Tx,
@@ -112,8 +113,8 @@ export function urgePlans(tx: Tx, ctx: PlanWriteContext, input: BatchItems) {
     if (!stage) conflict('IDP_NO_RUNNING_STAGE', '计划没有进行中的阶段，无需催办');
     await urgeAsAdmin(sp, hrApproval(ctx), stage.approvalInstanceId!);
     await auditIntervention(sp, ctx, plan, 'urge', {
-      before: { stage: { id: stage.id } },
-      after: { stage: { id: stage.id } },
+      before: { stageId: stage.id },
+      after: { stageId: stage.id },
       reason: input.reason ?? null,
     });
     return { id: plan.id, status: 200, outcome: 'urged' };
@@ -186,8 +187,8 @@ export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, in
   );
   await bumpPlan(tx, ctx.tenantId, plan.id, ctx.now);
   await auditIntervention(tx, ctx, plan, 'jump', {
-    before: { stage: { id: stage.id, currentNodeKey: null } },
-    after: { stage: { id: stage.id, currentNodeKey: input.toNodeKey } },
+    before: { stageId: stage.id, toNodeKey: null },
+    after: { stageId: stage.id, toNodeKey: input.toNodeKey },
     reason: input.reason,
   });
   return loadPlanDetail(tx, await requirePlanRow(tx, ctx.tenantId, plan.id), tenantLocalDate(ctx.now, ctx.timezone));
