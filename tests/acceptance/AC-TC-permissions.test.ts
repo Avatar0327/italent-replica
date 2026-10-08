@@ -55,8 +55,14 @@ describe('R3-T01 人才标准权限（真实授权器）', () => {
     const view = (await (await op.request('GET', `/criteria/${criterion.id}`)).json()) as CriterionView;
     expect(view).toMatchObject({ name: '内总监标准' });
     expect(view).not.toHaveProperty('abilityNote');
-    expect(view.dimensions[0]).toMatchObject({ dimensionId: dimension.id, weight: 50, target: 3 });
-    expect(view.dimensions[0]!.dimension).toEqual({ name: '内战略思维', categoryName: '内通用' });
+    // 指标类别是关联记录自己的字段（DEC-294⑤），选入时复制了库内分类
+    expect(view.dimensions[0]).toMatchObject({
+      dimensionId: dimension.id,
+      weight: 50,
+      target: 3,
+      dimensionCategory: '内通用',
+    });
+    expect(view.dimensions[0]!.dimension).toEqual({ name: '内战略思维' });
     expect(JSON.stringify(view)).not.toContain('保密');
     expect(JSON.stringify(view)).not.toContain('能力说明');
 

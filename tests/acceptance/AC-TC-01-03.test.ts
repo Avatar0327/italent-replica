@@ -53,7 +53,8 @@ describe('AC-TC-01 引用而非复制（TC-R2）', () => {
       type: 'ability',
       weight: 40,
       target: 3,
-      dimension: { name: '客户导向', definition: '以客户为中心', categoryName: null },
+      dimensionCategory: null,
+      dimension: { name: '客户导向', definition: '以客户为中心' },
     });
 
     const patched = await w.request('PATCH', `/dimensions/${dimension.id}`, {
@@ -64,11 +65,7 @@ describe('AC-TC-01 引用而非复制（TC-R2）', () => {
 
     const after = await w.read<CriterionView>(`/criteria/${criterion.id}`);
     expect(after.revision).toBe(before.revision);
-    expect(after.dimensions[0]!.dimension).toEqual({
-      name: '客户第一',
-      definition: '始终把客户放在第一位',
-      categoryName: null,
-    });
+    expect(after.dimensions[0]!.dimension).toEqual({ name: '客户第一', definition: '始终把客户放在第一位' });
   });
 
   it('AC-TC-01 人才标准里的指标只存引用：关系表没有指标内容列', async () => {
@@ -180,7 +177,10 @@ describe('AC-TC-02 被引用的指标不能删除（TC-R5）', () => {
       weight: 40,
       target: 3,
       displayOrder: 1,
-      dimension: { name: '客户导向', definition: '以客户为中心', categoryName: null },
+      dimensionCategory: null,
+      ownerId: w.as.user,
+      ownerOrgId: w.orgId,
+      dimension: { name: '客户导向', definition: '以客户为中心' },
     });
     expect(JSON.stringify(current)).not.toMatch(/enabled":false|libraryEnabled/);
     const kept = await w.request('PATCH', `/criteria/${criterion.id}`, {

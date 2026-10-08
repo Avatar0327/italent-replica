@@ -4,6 +4,8 @@
  * - 范围外的对象在列表、详情、候选里不可见，写入（含新建到范围外、引用范围外的对象）一律 404，数据不变；
  * - 收回管理单元后，原命令按原 ID 重放重新校验范围（404）；
  * - 发展建议类型是没有组织字段的字典（DEC-121 同口径：看全部或创建人），下拉候选只要求指标查看权。
+ * - 新建时的所属管理单元由系统按创建人的授权管理单元填写（DEC-294③）；不属于创建人的单元与不存在的组织、范围外与
+ *   不存在的指标库，返回完全相同的 404（第 5 轮清单 2，DEC-297②）。
  */
 import { randomUUID } from 'node:crypto';
 import { TALENT_APP, TALENT_OBJECTS } from '@italent/domain';
@@ -69,7 +71,8 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
       ifMatch: 0,
       body: { name: '自建分类', ownerOrgId: data.inside.orgId },
     });
-    expect(created.status).toBe(404);
+    // 没有授权管理单元（DEC-294 补充）：拒绝新建
+    expect(created.status).toBe(403);
     expect(await snapshot()).toEqual(before);
   });
 
@@ -94,8 +97,13 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
       items: { id: string; name: string }[];
     };
     expect(owners.items.map((item) => item.id)).toEqual([data.inside.orgId]);
-    // 只有带“所属管理单元”输入的对象才有该候选（库内分类与指标随所属指标库）
-    expect((await op.request('GET', '/candidates/owner-orgs?object=dimension')).status).toBe(400);
+    // 指标的所属管理单元也取创建人的（DEC-294③）；库内分类随所属指标库，没有该候选
+    const forDimension = await op.request('GET', '/candidates/owner-orgs?object=dimension');
+    expect(forDimension.status).toBe(200);
+    expect(((await forDimension.json()) as { items: { id: string }[] }).items.map((item) => item.id)).toEqual([
+      data.inside.orgId,
+    ]);
+    expect((await op.request('GET', '/candidates/owner-orgs?object=dimensionCategory')).status).toBe(400);
     for (const [path, item] of ownedTargets(data.inside)) {
       expect((await op.request('GET', `/${path}/${item.id}`)).status, path).toBe(200);
     }
@@ -145,6 +153,25 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
     for (const [path, body] of posts) {
       const response = await op.request('POST', path, { ifMatch: 0, body });
       expect(response.status, `${path} ${JSON.stringify(body)}`).toBe(404);
+    }
+    // 范围外与不存在走同一个拒绝分支：状态码、错误码、文案完全一致（第 5 轮清单 2）
+    const ghost = '00000000-0000-4000-8000-00000000dead';
+    const pairs = [
+      ['/libraries', { name: '比对', type: 'ability', ownerOrgId: outside.orgId }, { ownerOrgId: ghost }],
+      ['/criterion-categories', { name: '比对', ownerOrgId: outside.orgId }, { ownerOrgId: ghost }],
+      [
+        '/criteria',
+        { categoryId: inside.criterionCategory.id, name: '比对', ownerOrgId: outside.orgId },
+        { ownerOrgId: ghost },
+      ],
+      ['/dimension-categories', { libraryId: outside.library.id, name: '比对', displayOrder: 1 }, { libraryId: ghost }],
+      ['/dimensions', { libraryId: outside.library.id, code: 'CMP', name: '比对' }, { libraryId: ghost }],
+    ] as const;
+    for (const [path, body, missing] of pairs) {
+      const out = await op.request('POST', path, { ifMatch: 0, body });
+      const none = await op.request('POST', path, { ifMatch: 0, body: { ...body, ...missing } });
+      expect([out.status, none.status], path).toEqual([404, 404]);
+      expect(await out.json(), path).toEqual(await none.json());
     }
     expect(await snapshot()).toEqual(before);
 
@@ -201,7 +228,8 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
       );
       expect(policy.status, await policy.clone().text()).toBe(200);
     }
-    // 操作人自己是所属人、但挂在 B 组织下的库：按“使用用户”规则对本人可见
+    // 操作人自己是所属人、但挂在 B 组织下的库（当时授权过含 B 的管理单元）：按“使用用户”规则对本人可见
+    await op.setMou(data.bothMouId);
     const own = await data.setup.request('POST', `${TC_BASE}/libraries`, {
       ...op.as,
       ifMatch: 0,
@@ -209,6 +237,7 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
     });
     expect(own.status, await own.clone().text()).toBe(201);
     const ownLibrary = (await own.json()) as { id: string };
+    await op.setMou(data.mouId);
     expect((await op.request('GET', `/libraries/${ownLibrary.id}`)).status).toBe(200);
 
     const before = await snapshot();
@@ -232,6 +261,25 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
     }
     expect(await snapshot()).toEqual(before);
     expect(await ownLibraryChildren()).toEqual(childrenBefore);
+    // 本人可见、但不在管理范围内的库：与不存在的库同一个 404
+    for (const path of ['/dimension-categories', '/dimensions']) {
+      const body = { libraryId: ownLibrary.id, code: 'CMPB', name: '比对', displayOrder: 1 };
+      const pick =
+        path === '/dimensions'
+          ? { libraryId: body.libraryId, code: body.code, name: body.name }
+          : {
+              libraryId: body.libraryId,
+              name: body.name,
+              displayOrder: body.displayOrder,
+            };
+      const out = await op.request('POST', path, { ifMatch: 0, body: pick });
+      const none = await op.request('POST', path, {
+        ifMatch: 0,
+        body: { ...pick, libraryId: '00000000-0000-4000-8000-00000000beef' },
+      });
+      expect([out.status, none.status], path).toEqual([404, 404]);
+      expect(await out.json(), path).toEqual(await none.json());
+    }
 
     // 本人已有记录照常可改（创建人规则只放行查看与修改）；管理范围内照常新建
     const renamed = await op.request('PATCH', `/libraries/${ownLibrary.id}`, { ifMatch: 1, body: { name: '改名' } });

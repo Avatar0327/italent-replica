@@ -17,6 +17,8 @@ import {
 } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
 import {
+  assignTalentMou,
+  createMou,
   createOrg,
   type CriterionView,
   type DescriptionTypeView,
@@ -46,9 +48,14 @@ export interface TalentPermissionData {
   readonly inside: OwnedSet;
   readonly outside: OwnedSet;
   readonly mouId: string;
+  /** 同时含“内 / 外”两个组织的管理单元（建数据的管理员用它，DEC-294 补充：多个时须选一个）。 */
+  readonly bothMouId: string;
 }
 
-/** 建数据用“全部允许”的授权钩子，操作人是租户管理员（创建人、所属人）。 */
+/**
+ * 建数据用“全部允许”的授权钩子，操作人是租户管理员（创建人、所属人）。所属管理单元由系统按创建人的授权管理单元
+ * 填写（DEC-294③）：管理员的管理单元含内 / 外两个组织，新建时选其一（DEC-294 补充）。
+ */
 export async function seedTalentData(world: PermissionWorld): Promise<TalentPermissionData> {
   const setup = tenantApi(world.db, { clock });
   const create = async <T>(path: string, body: unknown): Promise<T> => {
@@ -71,6 +78,7 @@ export async function seedTalentData(world: PermissionWorld): Promise<TalentPerm
     const dimension = await create<DimensionView>('/dimensions', {
       libraryId: library.id,
       code: `P${randomUUID().slice(0, 8)}`,
+      ownerOrgId: orgId,
       name: `${label}战略思维`,
       definition: '保密定义',
       categoryId: dimensionCategory.id,
@@ -92,6 +100,8 @@ export async function seedTalentData(world: PermissionWorld): Promise<TalentPerm
   };
   const insideOrg = await createOrg(setup, world.asAdmin, '人才标准部（范围内）');
   const outsideOrg = await createOrg(setup, world.asAdmin, '人才标准部（范围外）');
+  const bothMouId = await createMou(setup, world.asAdmin, [insideOrg, outsideOrg], '内外');
+  await assignTalentMou(setup, world.asAdmin, world.asAdmin.user, bothMouId, 0);
   const mou = await world.api.request('POST', `${BASE}/mous`, {
     ...world.asAdmin,
     ifMatch: 0,
@@ -108,6 +118,7 @@ export async function seedTalentData(world: PermissionWorld): Promise<TalentPerm
     inside: await owned(insideOrg, '内'),
     outside: await owned(outsideOrg, '外'),
     mouId: ((await mou.json()) as { id: string }).id,
+    bothMouId,
   };
 }
 

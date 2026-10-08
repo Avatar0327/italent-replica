@@ -4,6 +4,8 @@
  *   只能引用同一指标库的分类；分类被指标引用、库里还有分类时不能删除（🟡 原站未取证，按不留孤儿处理）；
  * - 发展建议是指标下的子表：类型为必填下拉（数据源 DescriptionType，可配置；样本“行动建议”🟡）、描述必填、呈现顺序必填；
  *   停用的类型不能新选用（已有行保留），被引用的类型不能删除。
+ * - 建议行带行身份（第 5 轮清单 1、DEC-297②）：读取与编辑都带建议行 ID；停用类型只能留在“原来就是该类型、类型没改”
+ *   的那一行，新增行或改选成停用类型的行一律 400，数据不变。
  * 负向用例断言具体响应码，并前后各读一次比对。
  */
 import { useTestDb } from '@italent/testkit';
@@ -170,10 +172,49 @@ describe('DEC-281④ 发展建议子表与类型数据源（DescriptionType）',
       },
     });
     expect(saved.status, await saved.clone().text()).toBe(200);
-    expect(((await saved.json()) as DimensionView).suggestions).toEqual([
+    const rows = ((await saved.json()) as DimensionView).suggestions;
+    expect(rows.map(({ id: _id, ...row }) => row)).toEqual([
       { typeId: action.id, typeName: '行动建议', description: '承担跨部门项目', displayOrder: 1 },
       { typeId: course.id, typeName: '课程学习', description: '参加管理课程', displayOrder: 2 },
     ]);
+    expect(rows.every((row) => typeof row.id === 'string')).toBe(true);
+    // 带回行 ID 时行身份保持；不属于本指标的行 ID、重复的行 ID 一律 400
+    const current = await w.read<DimensionView>(`/dimensions/${dimension.id}`);
+    const resaved = await w.request('PATCH', `/dimensions/${dimension.id}`, {
+      ifMatch: current.revision,
+      body: { suggestions: current.suggestions.map(({ typeName: _name, ...row }) => ({ ...row, description: '改' })) },
+    });
+    expect(resaved.status, await resaved.clone().text()).toBe(200);
+    const resavedRows = ((await resaved.json()) as DimensionView).suggestions;
+    expect(resavedRows.map((row) => row.id)).toEqual(current.suggestions.map((row) => row.id));
+    const latest = await w.read<DimensionView>(`/dimensions/${dimension.id}`);
+    const first = latest.suggestions[0]!;
+    for (const suggestions of [
+      [{ id: '00000000-0000-4000-8000-0000000000cc', typeId: action.id, description: '别人的行', displayOrder: 1 }],
+      [
+        { id: first.id, typeId: action.id, description: '重复一', displayOrder: 1 },
+        { id: first.id, typeId: action.id, description: '重复二', displayOrder: 2 },
+      ],
+    ]) {
+      const response = await w.request('PATCH', `/dimensions/${dimension.id}`, {
+        ifMatch: latest.revision,
+        body: { suggestions },
+      });
+      expect(response.status, JSON.stringify(suggestions)).toBe(400);
+      expect(await reason(response)).toBe('SUGGESTION_ROW_INVALID');
+    }
+    // 新建时没有已有行，不收行 ID
+    const withId = await w.request('POST', '/dimensions', {
+      ifMatch: 0,
+      body: {
+        libraryId: library.id,
+        code: 'WITH_ROW_ID',
+        name: '带行号新建',
+        suggestions: [{ id: first.id, typeId: action.id, description: '新建', displayOrder: 1 }],
+      },
+    });
+    expect(withId.status).toBe(400);
+    expect(await w.read(`/dimensions/${dimension.id}`)).toEqual(latest);
   });
 
   it('停用的类型不能新选用，已有行保留并可改描述；被引用的类型不能删除', async () => {
@@ -181,8 +222,12 @@ describe('DEC-281④ 发展建议子表与类型数据源（DescriptionType）',
     const library = await w.library('ability');
     const action = await w.descriptionType('行动建议');
     const spare = await w.descriptionType('备用类型');
+    const course = await w.descriptionType('课程学习');
     const dimension = await w.dimension(library.id, {
-      suggestions: [{ typeId: action.id, description: '原描述', displayOrder: 1 }],
+      suggestions: [
+        { typeId: action.id, description: '原描述', displayOrder: 1 },
+        { typeId: course.id, description: '另一行', displayOrder: 2 },
+      ],
     });
     for (const type of [action, spare]) {
       const disabled = await w.request('PATCH', `/description-types/${type.id}`, {
@@ -192,38 +237,45 @@ describe('DEC-281④ 发展建议子表与类型数据源（DescriptionType）',
       expect(disabled.status, await disabled.clone().text()).toBe(200);
     }
     const before = await w.read<DimensionView>(`/dimensions/${dimension.id}`);
-    const fresh = await w.request('PATCH', `/dimensions/${dimension.id}`, {
-      ifMatch: before.revision,
-      body: {
-        suggestions: [
-          { typeId: action.id, description: '原描述', displayOrder: 1 },
-          { typeId: spare.id, description: '新选停用类型', displayOrder: 2 },
-        ],
-      },
-    });
-    expect(fresh.status).toBe(400);
-    expect(await reason(fresh)).toBe('DESCRIPTION_TYPE_INVALID');
-    expect(await w.read(`/dimensions/${dimension.id}`)).toEqual(before);
-    // 按行区分：保留原行、再追加一行同样已停用的类型，新增行同样拒绝（审查第 3 轮问题 2）
-    const appended = await w.request('PATCH', `/dimensions/${dimension.id}`, {
-      ifMatch: before.revision,
-      body: {
-        suggestions: [
-          { typeId: action.id, description: '原描述', displayOrder: 1 },
-          { typeId: action.id, description: '追加同类型', displayOrder: 2 },
-        ],
-      },
-    });
-    expect(appended.status).toBe(400);
-    expect(await reason(appended)).toBe('DESCRIPTION_TYPE_INVALID');
-    const reread = await w.read<DimensionView>(`/dimensions/${dimension.id}`);
-    expect(reread).toEqual(before);
-    expect(reread.suggestions).toHaveLength(1);
+    const [actionRow, courseRow] = before.suggestions;
+    const keep = { id: actionRow!.id, typeId: action.id, description: '原描述', displayOrder: 1 };
+    const other = { id: courseRow!.id, typeId: course.id, description: '另一行', displayOrder: 2 };
+    const rejected = [
+      // 新选另一个停用类型
+      [keep, other, { typeId: spare.id, description: '新选停用类型', displayOrder: 3 }],
+      // 保留原行、再追加一行同样已停用的类型（审查第 3 轮问题 2）
+      [keep, other, { typeId: action.id, description: '追加同类型', displayOrder: 3 }],
+      // 删掉原行、再加一行同类型的新行（审查第 4 轮问题 1）
+      [other, { typeId: action.id, description: '原描述', displayOrder: 1 }],
+      // 删掉原行、把另一行改选成停用类型（审查第 4 轮问题 1）
+      [{ ...other, typeId: action.id }],
+      // 两行互换行 ID：带着停用类型的那一行，原来并不是该类型
+      [
+        { ...keep, id: courseRow!.id },
+        { ...other, id: actionRow!.id },
+      ],
+    ];
+    for (const suggestions of rejected) {
+      const response = await w.request('PATCH', `/dimensions/${dimension.id}`, {
+        ifMatch: before.revision,
+        body: { suggestions },
+      });
+      expect(response.status, JSON.stringify(suggestions)).toBe(400);
+      expect(await reason(response), JSON.stringify(suggestions)).toBe('DESCRIPTION_TYPE_INVALID');
+      const reread = await w.read<DimensionView>(`/dimensions/${dimension.id}`);
+      expect(reread).toEqual(before);
+      expect(reread.suggestions).toHaveLength(2);
+    }
+    // 保留原行（带回行 ID、类型没改）：可改描述与顺序，行身份不变
     const kept = await w.request('PATCH', `/dimensions/${dimension.id}`, {
       ifMatch: before.revision,
-      body: { suggestions: [{ typeId: action.id, description: '改过的描述', displayOrder: 1 }] },
+      body: { suggestions: [{ ...keep, description: '改过的描述', displayOrder: 5 }, other] },
     });
     expect(kept.status, await kept.clone().text()).toBe(200);
+    expect(((await kept.json()) as DimensionView).suggestions).toEqual([
+      { id: courseRow!.id, typeId: course.id, typeName: '课程学习', description: '另一行', displayOrder: 2 },
+      { id: actionRow!.id, typeId: action.id, typeName: '行动建议', description: '改过的描述', displayOrder: 5 },
+    ]);
 
     // 候选只列启用的类型
     const candidates = await w.read<{ items: { id: string }[] }>('/candidates/description-types');
