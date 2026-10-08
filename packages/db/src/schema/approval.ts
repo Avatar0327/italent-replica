@@ -194,6 +194,12 @@ export const approvalProcessNodes = pgTable(
     /** DEC-104「审批记录查看权限」：勾选后本节点审批人看不到审批记录与沟通（出厂关 = 默认公开）。 */
     hideRecords: boolean('hide_records').notNull().default(false),
     rejectResubmitMode: text('reject_resubmit_mode').notNull().default('restart'),
+    /** DEC-318 K-37：自审回避是节点开关，缺省开启（原有流程不变），IDP 预置流程关闭。 */
+    avoidSelf: boolean('avoid_self').notNull().default(true),
+    /** DEC-318 K-39：发起人撤回（isRevoke，缺省开启）、驳回到上一步、审批人跳转（缺省关闭），IDP 预置流程按原站。 */
+    allowRevoke: boolean('allow_revoke').notNull().default(true),
+    allowRejectPrevious: boolean('allow_reject_previous').notNull().default(false),
+    allowJump: boolean('allow_jump').notNull().default(false),
     // DEC-035：时效首版不做，只保留 `14` §9.1 的字段结构，不参与计算。
     timeSpan: integer('time_span'),
     timeEffectBefore: jsonb('time_effect_before'),
@@ -211,10 +217,10 @@ export const approvalProcessNodes = pgTable(
     check(
       'approval_nodes_approver',
       sql`${t.approverExpression} IN ('owner','direct_manager','latest_record_department_head','record_department_head',
-        'record_department_hrbp','record_first_level_org_head')`,
+        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor')`,
     ),
     // DEC-054：中间节点审批人为空一律转异常管理员（PR #35 第二轮清单 6）。
-    check('approval_nodes_no_assignee', sql`${t.noAssigneePolicy} = 'exception_admin'`),
+    check('approval_nodes_no_assignee', sql`${t.noAssigneePolicy} IN ('exception_admin','none')`),
     check('approval_nodes_edit_mode', sql`${t.editMode} IN ('none','separate','with_approve')`),
     check('approval_nodes_resubmit', sql`${t.rejectResubmitMode} IN ('restart','rejecting_node')`),
     check('approval_nodes_seq_positive', sql`${t.seq} > 0`),
@@ -227,9 +233,10 @@ export const approvalProcessNodes = pgTable(
     check(
       'approval_nodes_approvers',
       sql`CASE WHEN ${t.nodeType} = 'countersign'
-        THEN ${t.approverExpression} IS NULL AND cardinality(${t.approverExpressions}) BETWEEN 1 AND 6
+        THEN ${t.approverExpression} IS NULL AND cardinality(${t.approverExpressions}) BETWEEN 1 AND 8
           AND ${t.approverExpressions} <@ ARRAY['owner','direct_manager','latest_record_department_head',
-            'record_department_head','record_department_hrbp','record_first_level_org_head']::text[]
+            'record_department_head','record_department_hrbp','record_first_level_org_head',
+            'idp_employee','idp_tutor']::text[]
         ELSE ${t.approverExpression} IS NOT NULL AND cardinality(${t.approverExpressions}) = 0 END`,
     ),
     check(
@@ -354,7 +361,10 @@ export const approvalInstances = pgTable(
       'approval_instances_status',
       sql`${t.status} IN ('running','returned','approved','disapproved','withdrawn','cancelled')`,
     ),
-    check('approval_instances_business_type', sql`${t.businessType} IN ('employment','personnel_change','contract')`),
+    check(
+      'approval_instances_business_type',
+      sql`${t.businessType} IN ('employment','personnel_change','contract','idp')`,
+    ),
     check('approval_instances_revision', sql`${t.revision} > 0 AND ${t.round} > 0 AND ${t.historyFromSeq} >= 0`),
   ],
 );

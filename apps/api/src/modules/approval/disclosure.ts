@@ -7,6 +7,10 @@
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  avoidsSelf,
+  jumpAllowed,
+  rejectToPreviousAllowed,
+  revokeAllowed,
   blindReviewFields,
   disclosedFieldNames,
   hasExit,
@@ -161,8 +165,9 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
   const mine = allTasks.find((task) => task.status === 'pending' && task.assigneeUserId === userId);
   const node = version.nodes.find((candidate) => candidate.key === (mine?.nodeKey ?? instance.currentNodeKey));
   const own = isOwnRequest(instance, data.subjectUserId, userId);
-  // DEC-058：发起人或异动本人不能审批；看不到本单变化字段的人（盲审，C-非4）也不显示同意 / 驳回，只能转交。
-  const decide = !own && !blind;
+  // DEC-058：发起人或异动本人不能审批（节点开关 avoidSelf，DEC-318 K-37，关闭的节点本人照常办理）；看不到本单变化字段
+  // 的人（盲审，C-非4）也不显示同意 / 驳回，只能转交。
+  const decide = !(own && node !== undefined && avoidsSelf(node)) && !blind;
   if (running && mine && node) {
     // DEC-144：同意 / 不同意是出口动作，按节点配置公布；会签节点的前加签人不计入流转规则，不公布不同意（DEC-152）。
     // 驳回是节点开关（F-003 第二轮），加签人沿用原节点开关。
@@ -170,6 +175,12 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
     if (decide && hasExit(node, 'approve')) actions.push('approve');
     if (decide && votes && hasExit(node, 'disagree')) actions.push('disagree');
     if (decide && rejectAllowed(node)) actions.push('reject');
+    // DEC-318 K-39：驳回到上一步（单人节点、非第一个节点）、审批人跳转按节点开关公布，与命令同一判定
+    const first = version.nodes[0]?.key === node.key;
+    if (decide && rejectToPreviousAllowed(node) && !isCountersign(node) && !first && !addSignLink(allTasks, mine)) {
+      actions.push('rejectPrevious');
+    }
+    if (decide && jumpAllowed(node) && !addSignLink(allTasks, mine)) actions.push('jump');
     if (node.actions.transfer || mine.isExceptionAdmin) actions.push('transfer');
     if (decide && node.actions.addSign && addSignAllowed(allTasks, mine)) actions.push('addSign');
     // `14` §11.3：加签人不能编辑表单内容，只有本节点原审批人可以；DEC-105：员工信息类不开放编辑。
@@ -187,10 +198,15 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
 
 function initiatorActions({ instance, version }: DetailData): string[] {
   const actions: string[] = [];
-  if (['running', 'returned'].includes(instance.status)) actions.push('withdraw');
-  // X-16：任职申请只能在申请单上修改后提交，审批侧不公布执行不了的“重提”；员工子集变更撤回后也可沿原实例重提（F9）。
-  const personnel = instance.businessType === 'personnel_change';
-  if (personnel && ['returned', 'withdrawn'].includes(instance.status)) actions.push('resubmit');
+  // DEC-318 K-39：撤回按当前节点的开关（isRevoke，缺省开启）
+  const current = version.nodes.find((node) => node.key === instance.currentNodeKey);
+  if (['running', 'returned'].includes(instance.status) && (!current || revokeAllowed(current))) {
+    actions.push('withdraw');
+  }
+  // X-16：任职申请只能在申请单上修改后提交，审批侧不公布执行不了的“重提”；员工子集变更撤回后也可沿原实例重提（F9），
+  // 发展计划驳回或撤回后由所有者沿原实例重提（DEC-318 K-39）。
+  const sameInstance = ['personnel_change', 'idp'].includes(instance.businessType);
+  if (sameInstance && ['returned', 'withdrawn'].includes(instance.status)) actions.push('resubmit');
   if (urgeOpen(instance, version)) actions.push('urge');
   return actions;
 }

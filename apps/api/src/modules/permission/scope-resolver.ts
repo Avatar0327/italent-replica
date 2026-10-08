@@ -137,17 +137,28 @@ function addBoundedIds(target: Set<string>, ids: readonly string[]): void {
   }
 }
 
+/**
+ * 其他应用里按人员归属裁剪的业务对象（R3-T07 IDP：发展计划及其组成部分、关键信息按员工，K-50）：由业务模块在加载时登记，
+ * 组织类维度对这些对象同样带出“按人员”的关联谓词，与员工信息类对象同口径。
+ */
+const personScopedObjects = new Set<string>();
+
+export function registerPersonScopedObject(objectCode: string): void {
+  personScopedObjects.add(objectCode);
+}
+
 /** Single resolver behind the authorizer; a trusted asOf, never approval participation. */
 export async function resolveDataScope(tx: Tx, query: ScopeQuery): Promise<ModuleScope> {
   if (await identityAll(tx, query)) return { ...EMPTY_SCOPE, all: true, hasDataPermission: true, source: 'identity' };
   const { source, rules } = await rulesFor(tx, query);
   const terms: ScopeTerm[] = [];
-  const usesPersonnelScope = [
-    'TenantBase.Employee',
-    'TenantBase.EmploymentRecord',
-    'TenantBase.EmploymentContract',
-    ...Object.keys(PERSONNEL_SCOPE_FIELDS),
-  ].includes(query.objectCode ?? '');
+  const usesPersonnelScope =
+    [
+      'TenantBase.Employee',
+      'TenantBase.EmploymentRecord',
+      'TenantBase.EmploymentContract',
+      ...Object.keys(PERSONNEL_SCOPE_FIELDS),
+    ].includes(query.objectCode ?? '') || personScopedObjects.has(query.objectCode ?? '');
   const orgIds = new Set<string>();
   const resolvedRules = new Set<string>();
   for (const rule of rules) {

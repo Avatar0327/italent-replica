@@ -21,6 +21,8 @@ export interface RoutingSubject {
   readonly subjectEmployeeId: string | null;
   readonly latestDepartmentId: string | null;
   readonly recordDepartmentId: string | null;
+  /** 发展计划的指导人（审批人表达式 idp_tutor，R3-T07）。 */
+  readonly tutorEmployeeId?: string | null;
   /** 同一次推进内的查询缓存（结果只依赖本主体的员工、部门与业务日期，X-20）。 */
   readonly cache?: Map<string, Promise<unknown>>;
 }
@@ -255,6 +257,11 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
       const firstLevel = await firstLevelOrg(tx, subject, subject.recordDepartmentId);
       return candidateOf(tx, subject, await orgRole(tx, subject, firstLevel, 'head'));
     }
+    // R3-T07（K-09）：发展计划上的员工本人 / 指导人；同样复核账号与离职（DEC-098，`14` §11.7）
+    case 'idp_employee':
+      return candidateOf(tx, subject, subject.subjectEmployeeId);
+    case 'idp_tutor':
+      return candidateOf(tx, subject, subject.tutorEmployeeId ?? null);
   }
 }
 

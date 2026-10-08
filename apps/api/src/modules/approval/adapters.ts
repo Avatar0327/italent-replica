@@ -8,6 +8,7 @@ import { lockTransferBusiness } from '../employment/transfer-locks.js';
  */
 import { lockEstablishment } from '../establishment/store.js';
 import { contractAdapter } from '../contracts/adapter.js';
+import { idpAdapter } from '../idp/approval-adapter.js';
 import { sql, type Tx } from '@italent/db';
 import {
   ageOn,
@@ -39,7 +40,7 @@ import { loadSubset } from '../personnel/subsets.js';
 import { AppError } from '../../errors.js';
 import { approvalError, rowsOf, type ApprovalContext, type Row } from './context.js';
 
-export type BusinessType = 'employment' | 'personnel_change' | 'contract';
+export type BusinessType = 'employment' | 'personnel_change' | 'contract' | 'idp';
 
 export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
@@ -59,6 +60,8 @@ export interface BusinessSnapshot {
   readonly conditionValues: Readonly<Row>;
   readonly latestDepartmentId: string | null;
   readonly recordDepartmentId: string | null;
+  /** 发展计划的指导人（R3-T07，审批人表达式 idp_tutor）；其他业务为空。 */
+  readonly tutorEmployeeId?: string | null;
   /** 业务载荷版本：实例记下审批人所读的版本，绕过审批改了业务单即判旧审批失效（AGENTS §10「并发」）。 */
   readonly version: string;
   /**
@@ -85,6 +88,13 @@ export interface BusinessAdapter {
    */
   resubmit(tx: Tx, ctx: ApprovalContext, businessId: string, corrections: Readonly<Row>): Promise<void>;
   edit(tx: Tx, ctx: ApprovalContext, businessId: string, fields: Readonly<Row>): Promise<void>;
+  /**
+   * 批量操作（异常管理员交接 / 停用接管）在逐单锁实例之前，按业务自己的规范顺序一次锁齐本批业务行（R3-T07 P3-2：
+   * 发展计划按计划 ID 升序，与 IDP 批量干预一致）。没有批量锁序要求的业务不实现。
+   */
+  lockMany?(tx: Tx, ctx: ApprovalContext, businessIds: readonly string[]): Promise<void>;
+  /** 同意前的业务前提（R3-T07 无目标校验 IDP-R10）；不满足时抛错，任务不动。 */
+  beforeApprove?(tx: Tx, ctx: ApprovalContext, businessId: string, nodeKey: string): Promise<void>;
 }
 
 const same = (left: unknown, right: unknown) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
@@ -447,4 +457,5 @@ export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   contract: contractAdapter,
   employment: employmentAdapter,
   personnel_change: personnelAdapter,
+  idp: idpAdapter,
 };

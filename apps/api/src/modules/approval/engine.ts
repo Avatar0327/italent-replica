@@ -149,6 +149,7 @@ function routingSubject(run: Run): RoutingSubject {
     subjectEmployeeId: run.snapshot.subjectEmployeeId,
     latestDepartmentId: run.snapshot.latestDepartmentId,
     recordDepartmentId: run.snapshot.recordDepartmentId,
+    tutorEmployeeId: run.snapshot.tutorEmployeeId ?? null,
     cache: new Map(),
   };
 }
@@ -360,6 +361,11 @@ function firstNodeEmpty(nodeKey: string, decision: { readonly reason: string }, 
   return approvalError('CONFLICT', 'APPROVAL_FIRST_NODE_EMPTY', decision.reason, { nodeKey, ...extra });
 }
 
+/** DEC-318 K-38：节点“无操作”且审批人为空——拒绝本次推进，流程停在原节点（不转异常管理员）。 */
+function noAssignee(nodeKey: string, decision: { readonly reason: string }, extra: Row = {}) {
+  return approvalError('CONFLICT', 'APPROVAL_NO_ASSIGNEE', decision.reason, { nodeKey, ...extra });
+}
+
 /** 单人审批节点：需人工审批即停下；相同 / 历史相同审批人自动处理后继续下一节点。 */
 async function enterSingle(
   tx: Tx,
@@ -370,6 +376,7 @@ async function enterSingle(
 ): Promise<EntryResult> {
   const { candidate, decision } = await decide(tx, entry.subject, node, node.approver, entry.facts);
   if (decision.kind === 'first_node_empty') throw firstNodeEmpty(node.key, decision);
+  if (decision.kind === 'no_assignee') throw noAssignee(node.key, decision);
   if (decision.kind === 'assign') {
     await assign(tx, run, node, decision, { ...entry, candidateUserId: candidate.userId });
     run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
@@ -436,6 +443,7 @@ async function countersignSeats(tx: Tx, run: Run, node: CountersignApprovalNode,
   for (const expression of node.approvers) {
     const { candidate, decision } = await decide(tx, entry.subject, node, expression, entry.facts);
     if (decision.kind === 'first_node_empty') throw firstNodeEmpty(node.key, decision, { approver: expression });
+    if (decision.kind === 'no_assignee') throw noAssignee(node.key, decision, { approver: expression });
     if (candidate.userId !== null && candidates.has(candidate.userId)) continue;
     if (candidate.userId !== null) candidates.add(candidate.userId);
     if (decision.kind === 'assign' && decision.selfSkippedUserId) selfSkips.push(decision);
@@ -450,7 +458,7 @@ async function countersignSeats(tx: Tx, run: Run, node: CountersignApprovalNode,
 async function seatOf(
   tx: Tx,
   run: Run,
-  decision: Exclude<NodeDecision, { kind: 'first_node_empty' }>,
+  decision: Exclude<NodeDecision, { kind: 'first_node_empty' | 'no_assignee' }>,
   candidateUserId: string | null,
   entry: Entry,
 ): Promise<Seat> {
@@ -733,7 +741,16 @@ export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: Start
   if (latest?.status === 'running') throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '该申请已在审批中');
   if (latest) return resume(tx, ctx, latest.id);
   const snapshot = await ADAPTERS[request.businessType].snapshot(tx, ctx, request.businessId);
-  const matched = await matchProcess(tx, ctx, snapshot);
+  return launch(tx, ctx, request, snapshot, await matchProcess(tx, ctx, snapshot));
+}
+
+async function launch(
+  tx: Tx,
+  ctx: ApprovalContext,
+  request: StartRequest,
+  snapshot: BusinessSnapshot,
+  matched: Awaited<ReturnType<typeof matchProcess>>,
+): Promise<InstanceRow> {
   const instance = await insertInstance(tx, ctx, request, snapshot, matched);
   const run: Run = {
     ctx,
@@ -752,13 +769,31 @@ export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: Start
   return persistRun(tx, run, 'approval.instance.start', true);
 }
 
-async function matchProcess(tx: Tx, ctx: ApprovalContext, snapshot: BusinessSnapshot) {
+/**
+ * 按业务指定的流程发起（R3-T07 K-08：IDP 子流程引用审批中心的一条流程）。仍先按审批类型过滤（DEC-017），只在该类型的
+ * 已发布流程里取指定的那一条，其发起条件不满足即拒绝，不跨流程兜底（AGENTS §2 第 8 条）；没有重提（业务侧另起实例）。
+ */
+export async function startSpecified(
+  tx: Tx,
+  ctx: ApprovalContext,
+  request: StartRequest & { readonly processId: string },
+): Promise<InstanceRow> {
+  await assertActorUsable(tx, ctx);
+  const latest = await resumableInstanceOf(tx, ctx.tenantId, request.businessType, request.businessId);
+  if (latest) throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '该申请已在审批中');
+  const snapshot = await ADAPTERS[request.businessType].snapshot(tx, ctx, request.businessId);
+  const matched = await matchProcess(tx, ctx, snapshot, request.processId);
+  return launch(tx, ctx, request, snapshot, matched);
+}
+
+async function matchProcess(tx: Tx, ctx: ApprovalContext, snapshot: BusinessSnapshot, processId?: string) {
   const type = snapshot.approvalType;
-  const list = await candidates(tx, ctx.tenantId, {
+  const published = await candidates(tx, ctx.tenantId, {
     objectCode: APPROVAL_TYPES[type].objectCode,
     approvalType: type,
     scope: 'published',
   });
+  const list = processId === undefined ? published : published.filter((item) => item.processId === processId);
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
   if (type.startsWith('contract_')) {
     for (const candidate of list) {

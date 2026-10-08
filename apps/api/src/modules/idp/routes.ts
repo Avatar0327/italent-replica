@@ -4,16 +4,16 @@
  * 取消发布）、模板模块 templates/:id/modules（含按流程节点的可用按钮）、模板通用目标 templates/:id/common-goals。
  * 写入走命令台账（幂等、revision 409）；首次执行与幂等重放都按当前功能权限、按钮与范围复核，响应逐层按字段权限裁剪。
  */
-import { IDP_APPROVAL_TYPES, type IdpObject } from '@italent/domain';
+import { IDP_APPROVAL_TYPES, type IdpObject, RULE_TEXT_SOURCES } from '@italent/domain';
 import { and, eq, idpProcesses, idpTemplates, isUuid, sql, type Tx, withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import type { z } from 'zod';
-import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery, parseBody, requireNew, revision, uuidParam } from '../job/context.js';
 import {
+  accessOf,
   type Anchor,
   checkWriteFields,
   codeOf,
@@ -24,15 +24,17 @@ import {
   listEnvelope,
   type ModuleScope,
   project,
+  type Projection,
   projectionOf,
-  type PermissionCheck,
   readableSql,
-  replayChecks,
   requireEditable,
   requireReadable,
   rowsOf,
 } from './access.js';
+import { runIdpCommand } from './executor.js';
 import * as input from './input.js';
+import { registerKeyInfoRoutes } from './key-info-routes.js';
+import { registerPlanRoutes } from './plan-routes.js';
 import * as processes from './process-service.js';
 import * as read from './read-model.js';
 import * as templates from './template-service.js';
@@ -48,9 +50,22 @@ export function registerIdpRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
   registerTemplateWrites(router, deps);
   registerTemplateActions(router, deps);
   registerTemplatePartRoutes(router, deps);
+  // PR-B：计划执行、干预与关键信息
+  registerPlanRoutes(router, deps);
+  registerKeyInfoRoutes(router, deps);
 }
 
 // ---- 响应裁剪 ----
+
+/**
+ * 子流程按字段权限裁剪；开启规则说明文本是派生值，与 fixedDate 同一门禁（DEC-309④）：看得到它依据的全部字段才输出。
+ */
+function subProcessShown(item: read.SubProcessView, sub: ReadonlySet<string> | undefined) {
+  const { ruleText, ...fields } = item;
+  const shown: Record<string, unknown> = project(fields, sub);
+  if (sub === undefined || RULE_TEXT_SOURCES.every((field) => sub.has(field))) shown.ruleText = ruleText;
+  return shown;
+}
 
 /** 流程：顶层按 IDPProcess、子流程按 SubProcess 字段权限；没有子流程查看权时省略整段。 */
 async function processPresenter(deps: TenantRouteDeps, ctx: IdpContext) {
@@ -60,7 +75,7 @@ async function processPresenter(deps: TenantRouteDeps, ctx: IdpContext) {
     const { subProcesses, ...rest } = view;
     const shown: Record<string, unknown> = project(rest, top);
     if (sub !== null && (top === undefined || top?.has('subProcesses'))) {
-      shown.subProcesses = subProcesses.map((item) => project(item, sub));
+      shown.subProcesses = subProcesses.map((item) => subProcessShown(item, sub));
     }
     return shown;
   };
@@ -98,16 +113,7 @@ interface WriteSpec<T> {
   present(result: T): Promise<unknown>;
 }
 
-/** 命令台账里存的结果：业务视图 + 本命令实际用到的权限（重放时复核，P2-2 / P2-3）。 */
-interface Stored<T> {
-  readonly view: T;
-  readonly checks: PermissionCheck[];
-}
-
-/**
- * 范围在事务外按当前权限解析，首次执行在事务内（行锁之后）复核；无论首次还是重放，返回前都按对象当前归属复核可写性、
- * 复核命令实际用到的嵌套写权限与查看权（AGENTS §10），响应按当前字段权限裁剪。
- */
+/** 流程 / 模板写入：共用执行器（executor.ts），返回前按当前字段权限裁剪。 */
 async function runIdpWrite<T extends { revision?: number }>(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
@@ -115,22 +121,9 @@ async function runIdpWrite<T extends { revision?: number }>(
   spec: WriteSpec<T>,
 ) {
   const scope = await idpScope(c, deps, ctx, spec.anchorObject);
-  const result = await runCommand(deps.db, ctx, {
-    id: c.req.header('idempotency-key'),
-    fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: spec.body },
-    execute: async (tx, commandId) => {
-      const checks: PermissionCheck[] = [];
-      const view = await spec.execute(tx, { ...ctx, commandId, scope, checks });
-      return { status: spec.status, body: { view, checks } satisfies Stored<T> };
-    },
-  });
-  const { view, checks } = result.body as Stored<T>;
-  // 先复核命令实际用到的权限（只看权限、不看数据），再按当前数据复核归属与引用：否则重放时引用对象的状态差别
-  // （如隐藏的流程停用 / 移走）会先于查看权门禁暴露出来（第 4 轮）
-  await replayChecks(deps, ctx, checks);
-  await withTenant(deps.db, ctx.tenantId, (tx) => spec.recheck(tx, scope, view));
+  const { view, status } = await runIdpCommand<T>(c, deps, ctx, { ...spec, scope });
   if (c.req.method !== 'DELETE' && view.revision !== undefined) c.header('ETag', `"${view.revision}"`);
-  return c.json((await spec.present(view)) as object, result.status);
+  return c.json((await spec.present(view)) as object, status as 200 | 201);
 }
 
 /** 流程 / 模板的当前范围锚点（不存在为 undefined）。 */
@@ -288,7 +281,7 @@ function registerProcessWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       anchorObject: 'process',
       status: 200,
       body: { id },
-      execute: (tx, w) => processes.deleteProcess(tx, w, id),
+      execute: (tx, w) => processes.deleteProcess(tx, deps, w, id),
       // 删除的受控快照：按删除时的归属判定当前可写性
       recheck: (tx, scope, view) => requireEditable(tx, ctx, scope, 'process', anchorOf(view)),
       present: async (view) => (await processPresenter(deps, ctx))(view),
@@ -386,7 +379,7 @@ function registerTemplateRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
 
 /** 模板写入（模块与通用目标以外）：共用执行器，返回前按 recheck 复核当前归属与引用。 */
 function templateWriter(deps: TenantRouteDeps) {
-  return <T extends read.TemplateView>(
+  return <T extends read.TemplateView & { warnings?: readonly unknown[] }>(
     c: Context<TenantEnv>,
     ctx: IdpContext,
     status: 200 | 201,
@@ -400,8 +393,31 @@ function templateWriter(deps: TenantRouteDeps) {
       body,
       execute,
       recheck,
-      present: async (view) => (await templatePresenter(deps, ctx))(view),
+      present: async ({ warnings, ...view }) => ({
+        ...(await templatePresenter(deps, ctx))(view),
+        // 发布提示（DEC-309④-3）：协议元数据，不是模板字段；披露子流程与其审批流程状态，按查看人裁剪（P2-5）
+        ...(warnings && (await warningsVisible(c, deps, ctx, view.processId)) ? { warnings } : {}),
+      }),
     });
+}
+
+const sees = (projection: Projection, field: string) =>
+  projection !== null && (projection === undefined || projection.has(field));
+
+/**
+ * 发布提示里的子流程 ID 与其审批流程废弃状态（P2-5）：查看人须看得到模板的 processId、该流程（当前在范围内或向下公开）
+ * 的子流程，以及子流程的审批流程字段；否则整段提示不返回。首次与重放共用这一出口。
+ */
+async function warningsVisible(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: IdpContext, processId: string) {
+  const template = await projectionOf(deps, ctx, 'template');
+  const process = await projectionOf(deps, ctx, 'process');
+  const sub = await projectionOf(deps, ctx, 'subProcess');
+  if (!sees(template, 'processId') || !sees(process, 'subProcesses') || !sees(sub, 'approvalProcessId')) return false;
+  const scope = await idpScope(c, deps, ctx, 'process');
+  return withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const anchor = await currentAnchor(tx, ctx.tenantId, 'process', processId);
+    return anchor !== undefined && (await accessOf(tx, ctx, scope, anchor)) !== 'none';
+  });
 }
 
 /** 模板写入后：模板当前可写；引用的流程（新建 / 换流程 / 复制时）当前可见。 */
@@ -455,7 +471,7 @@ function registerTemplateWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       ctx,
       200,
       { id },
-      (tx, w) => templates.deleteTemplate(tx, w, id),
+      (tx, w) => templates.deleteTemplate(tx, deps, w, id),
       // 删除的受控快照：按删除时的归属判定当前可写性
       (tx, scope, view) => requireEditable(tx, ctx, scope, 'template', anchorOf(view)),
     );
@@ -566,7 +582,7 @@ function registerTemplatePartRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
   );
   router.delete(
     `${path}/modules/:partId`,
-    write('templateModule', 'delete', null, (tx, w, id, part) => templates.deleteModule(tx, w, id, part!)),
+    write('templateModule', 'delete', null, (tx, w, id, part) => templates.deleteModule(tx, deps, w, id, part!)),
   );
   router.post(
     `${path}/common-goals`,
