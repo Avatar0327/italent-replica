@@ -6,7 +6,7 @@ import type { RankingTables } from './functions/ranking.js';
 import type { DataSourcePorts, SubjectReader } from './ports.js';
 import type { FunctionRegistry } from './registry.js';
 import type { ExpressionSemantics } from './semantics.js';
-import type { StaticKind } from './values.js';
+import type { ExpressionFieldKind } from './values.js';
 
 export interface EvaluationCalendar {
   /** 租户时区下的业务日期“今天”（YYYY-MM-DD）。 */
@@ -44,7 +44,7 @@ export interface EvaluationContext {
    * 字段类型目录（同保存校验的 ValidationOptions.fieldKind）：公式文本求值前的静态检查、函数参数的类型推导，
    * 以及字段为空时的来源类型都按它（DEC-287）；使用方应与保存时传入同一目录。
    */
-  readonly fieldKind?: (path: string) => StaticKind | undefined;
+  readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined;
   /**
    * 排名表缓存（DEC-301② 排名在全体总体上一次性求值）：同一总体、同一上下文的多个对象共用，同一排名调用只算一次。
    * evaluateBatch 为每个计算项目自建；单独调用 evaluateFormula 时不传则每次现算。

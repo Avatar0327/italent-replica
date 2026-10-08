@@ -19,15 +19,15 @@ import { parseFormula } from './parser.js';
 import type { SyntaxIssue } from './lexer.js';
 import type { RankingTables } from './functions/ranking.js';
 import type { RankingPort, SubjectReader } from './ports.js';
-import {
-  arityOf,
-  createDefaultRegistry,
-  type FunctionRegistry,
-  type FunctionSpec,
-  type StaticKind,
-} from './registry.js';
+import { arityOf, createDefaultRegistry, type FunctionRegistry, type FunctionSpec } from './registry.js';
 import { NO_RECORDS, TypeInference, verdictFor, withRecordObjects } from './typing.js';
-import { formatIsoLike, type ExprValue, type PlainValue } from './values.js';
+import {
+  formatIsoLike,
+  isMultiOptionField,
+  type ExprValue,
+  type ExpressionFieldKind,
+  type PlainValue,
+} from './values.js';
 
 export type ValidationResult =
   | {
@@ -64,7 +64,7 @@ export interface ValidationOptions {
    * （DEC-287①）：日期参数确定非日期时报错、不确定时提示；第 N 年 / 第 N 次据此区分过滤条件与 N。
    * 取数函数参数里的记录字段（考核结果.* 等）不按它推导。
    */
-  readonly fieldKind?: (path: string) => StaticKind | undefined;
+  readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined;
 }
 
 /**
@@ -83,7 +83,8 @@ class ReferenceCollector {
   constructor(
     private readonly registry: FunctionRegistry,
     private readonly isKnownField?: (path: string) => boolean,
-    fieldKind?: (path: string) => StaticKind | undefined,
+    private readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined,
+    private readonly multiOptionOnly = false,
   ) {
     this.typing = new TypeInference({ registry, fieldKind });
   }
@@ -91,7 +92,7 @@ class ReferenceCollector {
   collect(program: Program): this {
     for (const definition of program.definitions) {
       this.visit(definition.value, NO_RECORDS);
-      this.typing.define(definition.name, definition.value);
+      if (!this.multiOptionOnly) this.typing.define(definition.name, definition.value);
       this.defined.add(definition.name);
     }
     this.visit(program.body, NO_RECORDS);
@@ -108,7 +109,12 @@ class ReferenceCollector {
 
   private reference(path: string, pos: SourcePosition, fromRecord = false): void {
     this.fields.add(path);
-    if (fromRecord || !this.isKnownField) return;
+    // DEC-314②：连未执行分支也拒绝；取数记录字段不使用对象字段目录（DEC-287）。
+    if (!fromRecord && isMultiOptionField(this.fieldKind, path)) {
+      const message = `多选字段 ${path} 暂不允许参与公式（🟡 待取证，DEC-314）`;
+      return void this.issues.push({ code: 'ARGUMENT_TYPE', message, length: path.length, ...pos });
+    }
+    if (this.multiOptionOnly || fromRecord || !this.isKnownField) return;
     let known: boolean;
     try {
       known = this.isKnownField(path);
@@ -124,6 +130,11 @@ class ReferenceCollector {
 
   private call(node: CallNode, records: ReadonlySet<string>): void {
     const spec = this.registry.resolve(node.name);
+    if (this.multiOptionOnly) {
+      const inner = withRecordObjects(records, spec);
+      for (const arg of node.args) this.visit(arg, inner);
+      return;
+    }
     const length = node.name.length;
     if (!spec) {
       this.issues.push({ code: 'UNKNOWN_FUNCTION', message: `未知函数 ${node.name}`, length, ...node.pos });
@@ -195,6 +206,22 @@ export function validateFormula(source: string, options: ValidationOptions = {})
 export type EvaluationResult =
   { readonly ok: true; readonly value: ExprValue } | { readonly ok: false; readonly failure: ComputationFailure };
 
+/** R3-T04 C-07（DEC-309③）：使用方决定目标字段适配与预先授权的排名总体；不传时保留旧行为。 */
+export interface BatchEvaluationHooks {
+  /**
+   * 成功求值后、进入 computed 前调用。使用方按目标字段类型完成精度、选项、日期等适配；
+   * 返回失败阻断该对象的下游依赖，返回成功则下游和排名读取适配值。抛错按 INTERNAL_ERROR 处理。
+   * 只适配本次 subjects 的输出，不写库；使用方仍须重新验权、审计并发布成功结果。
+   */
+  readonly adapt?: (item: ComputationItem, subjectId: string, value: ExprValue) => EvaluationResult;
+  /**
+   * 预先确定的总体额外成员。与 subjects 按 ID 去重，subjects 优先并叠加同轮新值（DEC-312）；
+   * 额外成员只读旧值、不求值也不返回输出。显式 context.ports.ranking 优先，忽略本选项。
+   * 成员可见性、租户、删除状态由调用方预先校验（与 RankingPort 一致）。
+   */
+  readonly population?: readonly SubjectReader[];
+}
+
 function syntaxFailure(issue: SyntaxIssue): ComputationFailure {
   return {
     code: issue.code,
@@ -217,6 +244,10 @@ export function evaluateFormula(formula: string | Program, context: EvaluationCo
     program = validated.program;
   } else {
     program = formula;
+    // DEC-314：已解析 Program 也检查整棵树；旧 Program 的其他参数校验例外保持不变。
+    const registry = context.registry ?? createDefaultRegistry();
+    const collected = new ReferenceCollector(registry, undefined, context.fieldKind, true).collect(program);
+    if (collected.issues.length) return { ok: false, failure: syntaxFailure(collected.issues.sort(byOffset)[0]!) };
   }
   const invalidContext = validateContext(context.calendar);
   if (invalidContext) return { ok: false, failure: invalidContext };
@@ -338,13 +369,22 @@ interface ParsedItems {
 interface ItemValidation {
   readonly registry: FunctionRegistry;
   readonly isKnownField?: (path: string) => boolean;
-  readonly fieldKind?: (path: string) => StaticKind | undefined;
+  readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined;
 }
 
 /** 解析全部公式，再用全部目标字段一次性确定每个引用的绑定，依赖关系由绑定推出。 */
 function parseItems(items: readonly ComputationItem[], options: ItemValidation): ParsedItems | OrderingFailure {
   const targets = items.map((item) => item.field);
   const catalog = options.isKnownField;
+  const typeCatalog = options.fieldKind;
+  const fieldKind = typeCatalog
+    ? (path: string): ExpressionFieldKind | undefined => {
+        const target = resolveComputedField(path, targets);
+        // 唯一短名按既有绑定查完整目标的多选标记；不改变旧标量推导，也不猜测有歧义的绑定。
+        if (target !== undefined && target !== path && isMultiOptionField(typeCatalog, target)) return 'multi_option';
+        return typeCatalog(path);
+      }
+    : undefined;
   // 传入字段目录时，计算项目的目标字段（含唯一短名）也视为已知：后算项目可以引用先算项目的结果
   const isKnownField = catalog
     ? (path: string) => resolveComputedField(path, targets) !== undefined || catalog(path)
@@ -355,7 +395,7 @@ function parseItems(items: readonly ComputationItem[], options: ItemValidation):
     const validated = validateFormula(item.formula, {
       registry: options.registry,
       isKnownField,
-      fieldKind: options.fieldKind,
+      fieldKind,
     });
     if (!validated.ok) {
       const issue = validated.errors[0]!;
@@ -604,6 +644,7 @@ function withComputed(
   subject: SubjectReader,
   computed: Readonly<Record<string, ExprValue>>,
   bindings: FieldBindings,
+  options: { readonly readBoundFields?: boolean; readonly preserveTypes?: boolean } = {},
 ): SubjectReader {
   return {
     id: subject.id,
@@ -611,10 +652,13 @@ function withComputed(
       const target = bindings[path];
       if (target !== undefined && Object.hasOwn(computed, target)) {
         const value = computed[target]!;
+        // F-049 P2-01：适配结果已是领域值，日期不能经字符串往返；未传 adapt 保留旧叠加行为。
+        if (options.preserveTypes) return { status: 'computed', value };
         if (value.kind === 'empty' && value.of) return { status: 'found', value: null, emptyOf: value.of };
         return { status: 'found', value: toPlain(value) };
       }
-      return subject.resolveField(path);
+      // DEC-312：额外总体成员没有同轮结果，短名仍须按固定绑定读取库中完整目标字段。
+      return subject.resolveField(options.readBoundFields ? (target ?? path) : path);
     },
   };
 }
@@ -642,21 +686,52 @@ function readOnce(port: RankingPort): RankingPort {
   };
 }
 
+/** 只在注入新总体时去重；不传钩子的旧对象列表与显式 RankingPort 均保持原样。 */
+function mergePopulation(
+  subjects: readonly SubjectReader[],
+  population?: readonly SubjectReader[],
+): readonly SubjectReader[] {
+  if (population === undefined) return subjects;
+  const members = new Map<string, SubjectReader>();
+  for (const subject of [...subjects, ...population]) {
+    if (!members.has(subject.id)) members.set(subject.id, subject);
+  }
+  return [...members.values()];
+}
+
+function adaptOutput(
+  result: EvaluationResult,
+  item: ComputationItem,
+  subjectId: string,
+  adapt: BatchEvaluationHooks['adapt'],
+): EvaluationResult {
+  if (!result.ok || !adapt) return result;
+  try {
+    return adapt(item, subjectId, result.value);
+  } catch {
+    return { ok: false, failure: { code: 'INTERNAL_ERROR', message: `${FAILURE_PREFIX}：内部错误` } };
+  }
+}
+
 /**
  * 对一组对象按计算项目批量求值：每个对象得到每个字段的值或失败原因；一个对象失败不影响其他对象。
  * 排名总体默认 = 本次全部计算对象（叠加先算项目的值，依赖失败的对象不参与该项目）；分批计算时调用方须经
- * ports.ranking 注入全体计算对象，排名结果才与一次性求值一致（DEC-301②）。
+ * 第四参 population 或 ports.ranking 注入全体计算对象（DEC-301②）。population 与本次对象并集：本次对象读
+ * 同轮适配后的新值、其他对象读旧值（DEC-312）；显式排名端口仍按原契约取值，不叠加、不裁剪。
  */
 export function evaluateBatch(
   items: readonly ComputationItem[],
   subjects: readonly SubjectReader[],
   context: BatchContext,
+  hooks: BatchEvaluationHooks = {},
 ): BatchResult {
   const registry = context.registry ?? createDefaultRegistry();
   const { result: ordered, groups } = orderItems(items, { registry, fieldKind: context.fieldKind });
   if (!ordered.ok) return ordered;
   if (groups.length) return { ok: false, failure: cyclicFailure(groups, ordered.cycleMembers) };
   const invalidContext = validateContext(context.calendar);
+  const preserveTypes = hooks.adapt !== undefined;
+  const population = context.ports?.ranking ? subjects : mergePopulation(subjects, hooks.population);
   const computed = new Map(subjects.map((subject) => [subject.id, {} as Record<string, ExprValue>]));
   const results: Record<string, Record<string, EvaluationResult>> = Object.fromEntries(
     subjects.map((subject) => [subject.id, {}]),
@@ -670,9 +745,14 @@ export function evaluateBatch(
       context.ports?.ranking ?? {
         population: () => ({
           ok: true as const,
-          data: subjects
-            .filter((subject) => failedDependency(subject.id) === undefined)
-            .map((subject) => withComputed(subject, computed.get(subject.id)!, ordered.bindings)),
+          data: population
+            .filter((subject) => !computed.has(subject.id) || failedDependency(subject.id) === undefined)
+            .map((subject) => {
+              const values = computed.get(subject.id);
+              return values
+                ? withComputed(subject, values, ordered.bindings, { preserveTypes })
+                : withComputed(subject, {}, ordered.bindings, { readBoundFields: true });
+            }),
         }),
       },
     );
@@ -684,10 +764,11 @@ export function evaluateBatch(
         results[subject.id]![field] = dependencyFailure(field, dependency);
         continue;
       }
-      const reader = withComputed(subject, computed.get(subject.id)!, ordered.bindings);
-      const result: EvaluationResult = invalidContext
+      const reader = withComputed(subject, computed.get(subject.id)!, ordered.bindings, { preserveTypes });
+      const evaluated: EvaluationResult = invalidContext
         ? { ok: false, failure: invalidContext }
         : runProgram(entry.program, { ...context, registry, subject: reader, ports, rankingTables });
+      const result = adaptOutput(evaluated, entry.item, subject.id, hooks.adapt);
       results[subject.id]![field] = result;
       if (result.ok) computed.get(subject.id)![field] = result.value;
     }

@@ -11,6 +11,7 @@ export interface AuditObjectMeta {
 const ORG_PEOPLE = '组织员工';
 const APPROVAL = '审批中心';
 const ENTERPRISE = '企业设置';
+const TALENT = '人才标准';
 const IDP = '个人发展计划';
 
 const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
@@ -46,6 +47,13 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   permission_mou: { label: '管理单元', app: ENTERPRISE },
   license_pool: { label: '许可', app: ENTERPRISE },
   audit_retention: { label: '日志保留期', app: ENTERPRISE },
+  'TalentCenter.DimensionLibrary': { label: '指标库', app: TALENT },
+  'TalentCenter.Category': { label: '指标库分类', app: TALENT },
+  'TalentCenter.DescriptionType': { label: '发展建议类型', app: TALENT },
+  'TalentCenter.Dimension': { label: '指标', app: TALENT },
+  'TalentCenter.TalentCriterionCategory': { label: '人才标准分类', app: TALENT },
+  'TalentCenter.TalentCriterion': { label: '人才标准', app: TALENT },
+  'TalentCenter.TalentCriterionModelImage': { label: '潜力模型图', app: TALENT },
   'IDP.IDPProcess': { label: '发展计划流程', app: IDP },
   'IDP.SubProcess': { label: '子流程', app: IDP },
   'IDP.IDPTemplate': { label: '发展计划模板', app: IDP },
@@ -122,6 +130,25 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   enabled: '启用',
   employeeId: '员工',
   value: '取值',
+  // R3-T01 人才标准（`23` §2.1 字段名）
+  libraryId: '指标库',
+  definition: '定义',
+  categoryId: '分类',
+  ownerId: '所属人',
+  ownerOrgId: '所属管理单元',
+  grades: '等级描述',
+  behaviors: '行为描述',
+  suggestions: '发展建议',
+  questions: '面试问题',
+  abilityNote: '能力说明',
+  potentialNote: '潜力说明',
+  experienceNote: '经历说明',
+  achievementNote: '成就说明',
+  modelImage: '潜力模型图',
+  filename: '文件名称',
+  contentType: '文件格式',
+  byteSize: '文件大小',
+  sha256: '文件哈希',
 };
 
 export function auditFieldLabel(field: string): string {
@@ -144,6 +171,7 @@ export type AuditReferenceKind = (typeof AUDIT_REFERENCE_KINDS)[number];
 const REFERENCE_FIELDS: Readonly<Record<string, AuditReferenceKind>> = {
   departmentId: 'org',
   orgId: 'org',
+  ownerOrgId: 'org',
   positionId: 'position',
   postId: 'post',
   levelId: 'level',
