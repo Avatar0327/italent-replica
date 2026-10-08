@@ -9,6 +9,14 @@ import { managedPersonsSql, reportingPersonsSql } from './scope-persons.js';
 import { objectCatalog } from './catalog.js';
 export type { ModuleScope } from './scope-types.js';
 
+/**
+ * 数据范围按（用户 × 应用）存一份（DEC-043）：按对象登记的所属应用解析（人才标准 TalentCenter 等独立应用，R3-T01）；
+ * 未登记的对象与不带对象的查询沿用组织员工应用。
+ */
+export function scopeAppOf(objectCode: string | undefined): string {
+  return (objectCode && objectCatalog.get(objectCode)?.application) || ORG_EMPLOYEE_APP;
+}
+
 interface AccessProvider {
   scope(query: ScopeQuery, tx?: Tx): Promise<ModuleScope>;
   authorize(request: Parameters<Authorizer>[0], tx: Tx): Promise<boolean>;
@@ -35,11 +43,6 @@ export function authorizeInTransaction(authorize: Authorizer, tx: Tx): Authorize
 
 type Deps = Pick<TenantRouteDeps, 'authorize' | 'db' | 'clock'>;
 
-/** 数据范围按（用户 × 应用）存放（DEC-043）：取对象目录里该对象所属的应用，未登记的对象按组织员工应用。 */
-function appOf(objectCode: string | undefined): string {
-  return (objectCode && objectCatalog.get(objectCode)?.application) || ORG_EMPLOYEE_APP;
-}
-
 /**
  * Current rights also govern historical reads (AGENTS §10). asOf is a business query date,
  * never a client-controlled permission time machine. The raw resolver takes a trusted asOf.
@@ -57,7 +60,7 @@ export async function resolveModuleScope(
     return provider.scope({
       tenantId: ctx.tenantId,
       userId: ctx.userId,
-      appCode: appOf(objectCode),
+      appCode: scopeAppOf(objectCode),
       asOf: tenantLocalDate(deps.clock(), ctx.timezone),
       ...(objectCode ? { objectCode } : {}),
       // This API owns both the page and its data source; neither identifier comes from query parameters.
@@ -84,7 +87,7 @@ export async function resolveModuleScopeInTransaction(
   const provider = providers.get(deps.authorize);
   if (provider) {
     const asOf = tenantLocalDate(deps.clock(), ctx.timezone);
-    const query = { tenantId: ctx.tenantId, userId: ctx.userId, appCode: appOf(objectCode), asOf, objectCode };
+    const query = { tenantId: ctx.tenantId, userId: ctx.userId, appCode: scopeAppOf(objectCode), asOf, objectCode };
     return provider.scope({ ...query, ...(pageCode ? { pageCode, dataSourceCode: pageCode } : {}) }, tx);
   }
   const all = await deps.authorize({ ...ctx, action: 'data.scope.all', resource: objectCode });
@@ -242,7 +245,7 @@ export async function linkedObjectScope(
         {
           tenantId: ctx.tenantId,
           userId: ctx.userId,
-          appCode: ORG_EMPLOYEE_APP,
+          appCode: scopeAppOf(objectCode),
           asOf: tenantLocalDate(ctx.now, ctx.timezone),
           objectCode,
         },

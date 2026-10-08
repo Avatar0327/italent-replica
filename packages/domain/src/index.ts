@@ -35,3 +35,4 @@ export {
 export * from './audit/index.js';
 export * from './expression/index.js';
 export * as survey360 from './survey360/index.js';
+export * from './idp/index.js';

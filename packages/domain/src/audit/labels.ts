@@ -12,6 +12,7 @@ const ORG_PEOPLE = '组织员工';
 const APPROVAL = '审批中心';
 const ENTERPRISE = '企业设置';
 const SURVEY360 = '360度评估';
+const IDP = '个人发展计划';
 
 const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'job-sequence-sync': { label: '任职序列同步任务', app: ORG_PEOPLE },
@@ -56,6 +57,11 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'survey360-relation': { label: '评价关系', app: SURVEY360 },
   'survey360-confirmation': { label: '评价关系确认', app: SURVEY360 },
   'survey360-sheet': { label: '答卷', app: SURVEY360 },
+  'IDP.IDPProcess': { label: '发展计划流程', app: IDP },
+  'IDP.SubProcess': { label: '子流程', app: IDP },
+  'IDP.IDPTemplate': { label: '发展计划模板', app: IDP },
+  'IDP.IDPTemplateModule': { label: '发展计划模块', app: IDP },
+  'IDP.IDPTemplateCommonGoal': { label: '模板通用目标', app: IDP },
 };
 
 /** 对象编码前缀 → 应用（未单独登记的对象按所属模块归类）。 */
