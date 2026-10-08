@@ -2,7 +2,7 @@
 "updated": "2026-10-08",
 "stats": {
 "merged": 57,
-"open": 12,
+"open": 13,
 "dec": 314,
 "ev": "29/129"
 },
@@ -907,14 +907,17 @@
 },
 "F-049": {
 "n": "表达式引擎钩子（C-07）",
-"s": "todo",
+"s": "active",
 "p": "R3-T04",
 "deps": [
 "F-045"
 ],
 "note": "DEC-309；B 档 Opus High；F-045 合并后；T04 写代码前合并",
 "dev": "Codex GPT-6.1 Sol",
-"rev": "Astra Ultra"
+"rev": "Astra Ultra",
+"pr": [
+118
+]
 }
 },
 "prs": {
@@ -955,6 +958,14 @@
 }
 },
 "log": [
+[
+"10-08",
+"DEC-316：#106 第 7 轮，只剩 P3 直接合并"
+],
+[
+"10-08",
+"DEC-315：360 写入实测获批（取证窗口授 A4 身份、测试活动只留站内通知）；PR-B 可分批派"
+],
 [
 "10-08",
 "#116 R3-T03 PR-A1 合并（9322bac，Astra 首轮通过）"
@@ -2112,7 +2123,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-08 04:14",
+"liveUpdated": "10-08 04:54",
 "chains": [
 {
 "g": "base",
@@ -2325,8 +2336,8 @@
 "o": 1,
 "k": "run",
 "n": "人才标准与指标库",
-"seg": "ev:d ds:n dev:d6 rev:a6 mg:w",
-"now": "第 6 轮审查中（Sol Ultra，head 5fca6dd），通过即合并",
+"seg": "ev:d ds:n dev:a7 rev:d6 mg:w",
+"now": "第 7 轮修改中（DEC-316：复用范围过滤 helper + 测试；只剩 P3 即合并）",
 "pr": 106,
 "nx": "R3-T02、F-035、F-038、F-048"
 },
@@ -2528,8 +2539,9 @@
 "n": "引擎钩子",
 "nx": "R3-T04 写代码",
 "cx": "1",
-"seg": "ev:d ds:n dev:a1 rev:w mg:w",
-"now": "开发中（codex exec，Sol Ultra，wt-f049），PR 待开"
+"seg": "ev:d ds:n dev:d1 rev:w1 mg:w",
+"now": "CI 重跑中（上次被 ready_for_review 并发取消）；开发方贴“开发完成”后首审（Astra Ultra）",
+"pr": 118
 },
 {
 "id": "F-048",
@@ -2555,9 +2567,8 @@
 "k": "run",
 "n": "360 系统入口 / A5 登录",
 "seg": "ev:a ds:n dev:n rev:n mg:n",
-"now": "已拿到入口；Q-M0-127 完成 7 个、部分 3 个；写入实测待你定（授 A4 身份、建测试活动）",
-"nx": "R3-T03 第二部分（19 个必测点）",
-"need": "1"
+"now": "DEC-315：取证窗口授 A4 身份、建测试活动（只留站内通知）；Q-M0-127 分批交付",
+"nx": "R3-T03 第二部分（19 个必测点）"
 },
 {
 "id": "R3-T03B",
@@ -2565,7 +2576,7 @@
 "o": 4,
 "k": "todo",
 "n": "360 PR-B：邀请 / 屏蔽 / 报告 / 导出",
-"u": "未开工；Q-M0-112 精细权限取证并行，不挡 PR-A 合并"
+"u": "可按批派（DEC-315：已确认 / 🟡 分批）"
 },
 {
 "id": "R3-T06",
@@ -2592,8 +2603,8 @@
 "n": "IDP PR-B：执行 / 带教 / 干预",
 "u": "可派；干预测试需 A5 登录",
 "pr": 115,
-"seg": "ev:d ds:n dev:a1 rev:w mg:w",
-"now": "开发中（计划执行 / 带教 / 流程干预）",
+"seg": "ev:d ds:n dev:d1 rev:w1 mg:w",
+"now": "开发方 09:52Z 贴“开发完成”，CI 绿，待首轮审查（Astra Ultra）",
 "wait": "干预实测需 A5 登录"
 },
 {
