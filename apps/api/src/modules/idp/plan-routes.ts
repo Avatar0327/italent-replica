@@ -42,7 +42,7 @@ import {
   type PlanDetail,
   planProjections,
   presentPlan,
-  type StageSources,
+  type Projections,
   stageSourcesOf,
   stagesShown,
   stageViews,
@@ -109,8 +109,8 @@ async function stillVisible(tx: Tx, ctx: IdpContext, hr: HrScope, planId: string
 
 // ---- 读取 ----
 
-/** 列表摘要；sources 为 HR 的阶段带出源权限（E9 / E10），参与人列表按固定字段集传 null。 */
-async function summaries(tx: Tx, tenantId: string, rows: PlanRow[], asOf: string, sources: StageSources | null) {
+/** 列表摘要；projections 为 HR 的阶段带出源权限（E9 / E10，含所属流程范围 R2-4），参与人列表按固定字段集传 null。 */
+async function summaries(tx: Tx, tenantId: string, rows: PlanRow[], asOf: string, projections: Projections | null) {
   const stages = await loadStages(
     tx,
     tenantId,
@@ -119,6 +119,7 @@ async function summaries(tx: Tx, tenantId: string, rows: PlanRow[], asOf: string
   return Promise.all(
     rows.map(async (row) => {
       const own = stages.filter((s) => s.planId === row.id);
+      const sources = projections && (await stageSourcesOf(tx, projections, row));
       const detail = await stagesShown(tx, row, await stageViews(tx, row, own, asOf), sources, asOf);
       return {
         id: row.id,
@@ -168,7 +169,7 @@ function registerPlanReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         .orderBy(asc(idpPlans.createdAt), asc(idpPlans.id))
         .limit(page.limit)
         .offset(page.offset);
-      return summaries(tx, ctx.tenantId, rows, projections.asOf, stageSourcesOf(projections));
+      return summaries(tx, ctx.tenantId, rows, projections.asOf, projections);
     });
     return c.json({ ...listEnvelope(page, scope), items: items.map((item) => project(item, top)) });
   });

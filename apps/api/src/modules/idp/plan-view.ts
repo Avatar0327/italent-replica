@@ -23,7 +23,16 @@ import type { TenantRouteDeps } from '../../routes.js';
 import { findCurrentRecord } from '../employment/read-model.js';
 import { isEmploymentRecordVisible } from '../employment/visibility.js';
 import { getModuleViewableFields, resolveModuleScope } from '../permission/module-access.js';
-import { codeOf, type IdpContext, type ModuleScope, project, type Projection, projectionOf, rowsOf } from './access.js';
+import {
+  accessOf,
+  codeOf,
+  type IdpContext,
+  type ModuleScope,
+  project,
+  type Projection,
+  projectionOf,
+  rowsOf,
+} from './access.js';
 import { KEY_INFO, KEY_INFO_KINDS, type KeyInfoKind } from './key-info-scope.js';
 import { inScope } from './key-info-service.js';
 import type { PlanViewer } from './plan-access.js';
@@ -367,6 +376,8 @@ export interface Projections {
   readonly asOf: string;
   /** 关键信息各对象的当前范围（与直接读取同一谓词，P2-1）。 */
   readonly keyInfoScopes: Readonly<Record<KeyInfoKind, ModuleScope>>;
+  /** 所属流程 / 模板的当前范围（含向下公开，与流程 / 模板详情同一判定，第 3 轮 R2-4）。 */
+  readonly config: { readonly ctx: IdpContext; readonly process: ModuleScope; readonly template: ModuleScope };
 }
 
 const PROJECTED: readonly (keyof Projections & IdpObject)[] = [
@@ -398,19 +409,48 @@ export async function planProjections(deps: TenantRouteDeps, ctx: IdpContext): P
       : null,
     scope: await resolveModuleScope(deps, ctx, undefined, record, `${record}.detail`),
   };
+  const configScope = (object: 'process' | 'template') =>
+    resolveModuleScope(deps, ctx, undefined, codeOf(object), `${codeOf(object)}.detail`);
   return {
     ...Object.fromEntries(entries),
     employment,
     asOf: tenantLocalDate(deps.clock(), ctx.timezone),
     keyInfoScopes: Object.fromEntries(scopes),
+    config: { ctx, process: await configScope('process'), template: await configScope('template') },
   } as unknown as Projections;
 }
 
-export const stageSourcesOf = (p: Projections): StageSources => ({
-  subProcess: p.subProcess,
-  plan: p.plan,
-  employment: p.employment,
-});
+/** 计划的所属流程 / 模板对查看人是否可见（范围内、使用用户或向下公开；不可见与不存在同样处理）。 */
+export async function configVisible(
+  tx: Tx,
+  p: Projections,
+  plan: { readonly tenantId: string; readonly processId: string; readonly templateId: string },
+) {
+  const visible = async (table: 'idp_processes' | 'idp_templates', id: string, scope: ModuleScope) => {
+    const [anchor] = rowsOf<{ orgId: string; publicDown: boolean; createdBy: string }>(
+      await tx.execute(sql`SELECT org_id AS "orgId", public_down AS "publicDown", created_by AS "createdBy"
+        FROM ${sql.identifier(table)} WHERE tenant_id = ${plan.tenantId} AND id = ${id}::uuid`),
+    );
+    return !!anchor && (await accessOf(tx, p.config.ctx, scope, anchor)) !== 'none';
+  };
+  return {
+    process: await visible('idp_processes', plan.processId, p.config.process),
+    template: await visible('idp_templates', plan.templateId, p.config.template),
+  };
+}
+
+/**
+ * HR 的阶段带出源：子流程字段之外，所属流程须对查看人可见（第 3 轮 R2-4）——看不到流程时阶段名称、开启规则
+ * 得出的 dueDate、当前阶段名称都不输出。
+ */
+export async function stageSourcesOf(
+  tx: Tx,
+  p: Projections,
+  plan: { readonly tenantId: string; readonly processId: string; readonly templateId: string },
+): Promise<StageSources> {
+  const { process } = await configVisible(tx, p, plan);
+  return { subProcess: process ? p.subProcess : null, plan: p.plan, employment: p.employment };
+}
 
 const listOf = (rows: readonly Record<string, unknown>[], projection: Projection) =>
   projection === null ? [] : rows.map((row) => project(row, projection));
@@ -484,11 +524,15 @@ export async function presentPlan(
   if (viewer.kind === 'hr') {
     const { modules, goals, analyses, reviews, keyInfo, ...top } = detail;
     const shown: Record<string, unknown> = project(top, projections.plan);
-    const sources = stageSourcesOf(projections);
+    const config = await configVisible(tx, projections, { tenantId, ...detail });
+    const sources = await stageSourcesOf(tx, projections, { tenantId, ...detail });
     if ('stages' in shown)
       shown.stages = await stagesShown(tx, { tenantId, ...detail }, detail.stages, sources, projections.asOf);
     if ('currentStageName' in shown) shown.currentStageName = currentStageShown(detail.currentStageName, sources);
-    if (projections.templateModule !== null) shown.modules = modules.map((m) => project(m, projections.templateModule));
+    // 模块与节点按钮配置来自所属模板：模板看不到就不出现（第 3 轮 R2-4）
+    if (projections.templateModule !== null && config.template) {
+      shown.modules = modules.map((m) => project(m, projections.templateModule));
+    }
     if (projections.goal !== null) {
       // 嵌套的 tasks / reviews 本身是目标的字段（IdpGoal.tasks / reviews），先按目标字段权、再按子对象查看权（P2-3）
       const goalFields = projections.goal;
@@ -502,7 +546,8 @@ export async function presentPlan(
     }
     if (projections.analysis !== null) shown.analyses = listOf(analyses, projections.analysis);
     if (projections.review !== null) shown.reviews = listOf(reviews, projections.review);
-    shown.keyInfo = await keyInfoShown(tx, keyInfo, modules, projections);
+    // 关键信息按模板配置的区块与展示字段呈现，同样随所属模板可见
+    if (config.template) shown.keyInfo = await keyInfoShown(tx, keyInfo, modules, projections);
     return shown;
   }
   const { stage, nodeKey } = viewer.at;
