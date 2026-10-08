@@ -97,13 +97,15 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
       items: { id: string; name: string }[];
     };
     expect(owners.items.map((item) => item.id)).toEqual([data.inside.orgId]);
-    // 指标的所属管理单元也取创建人的（DEC-294③）；库内分类随所属指标库，没有该候选
-    const forDimension = await op.request('GET', '/candidates/owner-orgs?object=dimension');
-    expect(forDimension.status).toBe(200);
-    expect(((await forDimension.json()) as { items: { id: string }[] }).items.map((item) => item.id)).toEqual([
-      data.inside.orgId,
-    ]);
-    expect((await op.request('GET', '/candidates/owner-orgs?object=dimensionCategory')).status).toBe(400);
+    // 指标与库内分类的所属管理单元也取创建人的（DEC-294③ 及补充二），不随所属指标库
+    for (const object of ['dimension', 'dimensionCategory']) {
+      const response = await op.request('GET', `/candidates/owner-orgs?object=${object}`);
+      expect(response.status, object).toBe(200);
+      expect(((await response.json()) as { items: { id: string }[] }).items.map((item) => item.id)).toEqual([
+        data.inside.orgId,
+      ]);
+    }
+    expect((await op.request('GET', '/candidates/owner-orgs?object=descriptionType')).status).toBe(400);
     for (const [path, item] of ownedTargets(data.inside)) {
       expect((await op.request('GET', `/${path}/${item.id}`)).status, path).toBe(200);
     }

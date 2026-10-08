@@ -153,7 +153,7 @@ describe('R3-T01 审计', () => {
     expect(items).toEqual([]);
   });
 
-  it('审计查询按人才标准对象权限、管理单元与字段权限裁剪', async () => {
+  it('审计查询按人才标准对象权限、管理单元与字段权限裁剪（含快照里带出的分类名称，DEC-309）', async () => {
     const db = testDb().db;
     let world = await seedPermissionWorld(db);
     world = { ...world, api: tenantApi(db, { authorize: undefined, clock }) };
@@ -182,7 +182,8 @@ describe('R3-T01 审计', () => {
         dataOperations: { create: false, update: false, delete: false },
         fields: definition.fields.map((field) => ({
           fieldCode: field.code,
-          view: field.code !== 'definition',
+          // 指标快照里的分类名称是从库内分类带出的值，同样按查看人当前对 categoryName 的查看权裁剪
+          view: field.code !== 'definition' && field.code !== 'categoryName',
           edit: false,
         })),
         buttons: [],
@@ -208,5 +209,6 @@ describe('R3-T01 审计', () => {
     expect(detail.after).toMatchObject({ name: '内战略思维' });
     expect(JSON.stringify(detail)).not.toContain('保密定义');
     expect(JSON.stringify(detail)).not.toContain('隐藏定义');
+    expect(JSON.stringify(detail)).not.toContain('内通用');
   });
 });

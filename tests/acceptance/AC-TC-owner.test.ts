@@ -11,7 +11,11 @@ import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { seedPermissionWorld } from './AC-PRM-support.js';
+import { tenantApi } from './support/tenant-api.js';
+import { clock, seedTalentData, talentOperator } from './AC-TC-permission-support.js';
 import {
+  createMou,
   createOrg,
   type CriterionView,
   type DimensionView,
@@ -208,5 +212,209 @@ describe('DEC-294③ 范围外仍拒绝：新建对象的所属管理单元必�
     expect(criterion.ownerOrgId).toBe(w.orgId);
     const reread: LibraryView = await w.read(`/libraries/${library.id}`);
     expect(reread.ownerOrgId).toBe(second);
+  });
+});
+
+describe('DEC-294 补充二：新增的关联记录跟添加人走（所属人 = 添加人，管理单元按添加人的授权管理单元）', () => {
+  it('库内分类：管理单元取创建人的授权管理单元，不随所属指标库；多个时不选 400、选别人的 404、选中的照填', async () => {
+    const w = await talentWorld(testDb().db, 'tcowncat');
+    const second = await createOrg(w.api, w.as, 'tcowncat第二单元');
+    const stranger = await createOrg(w.api, w.as, 'tcowncat未授权组织');
+    await w.setUnits([second]);
+    const library = await w.library('ability');
+    await w.setUnits([w.orgId]);
+    const category = await w.dimensionCategory(library.id);
+    expect(library.ownerOrgId).toBe(second);
+    expect(category).toMatchObject({ ownerId: w.as.user, ownerOrgId: w.orgId });
+
+    await w.setUnits([w.orgId, second]);
+    const options = (await w.read<{ items: { id: string }[] }>('/candidates/owner-orgs?object=dimensionCategory'))
+      .items;
+    expect(options.map((item) => item.id).sort()).toEqual([w.orgId, second].sort());
+    const before = await snapshot(w);
+    const body = { libraryId: library.id, name: '多单元分类', displayOrder: 2 };
+    const missing = await w.request('POST', '/dimension-categories', { ifMatch: 0, body });
+    expect(missing.status).toBe(400);
+    expect((await errorOf(missing)).details?.reason).toBe('MANAGEMENT_UNIT_REQUIRED');
+    const outside = await w.request('POST', '/dimension-categories', {
+      ifMatch: 0,
+      body: { ...body, ownerOrgId: stranger },
+    });
+    const ghost = await w.request('POST', '/dimension-categories', {
+      ifMatch: 0,
+      body: { ...body, ownerOrgId: randomUUID() },
+    });
+    expect(outside.status).toBe(404);
+    expect(await outside.json()).toEqual(await ghost.json());
+    expect(await snapshot(w)).toEqual(before);
+    const chosen = await w.dimensionCategory(library.id, { ...body, ownerOrgId: second });
+    expect(chosen).toMatchObject({ ownerId: w.as.user, ownerOrgId: second });
+  });
+
+  it('标准内指标关联：多个授权管理单元时编辑新加关联须选一个，不再取标准的单元；一个时自动填写', async () => {
+    const w = await talentWorld(testDb().db, 'tcownrel');
+    const second = await createOrg(w.api, w.as, 'tcownrel第二单元');
+    const stranger = await createOrg(w.api, w.as, 'tcownrel未授权组织');
+    await w.setUnits([w.orgId, second]);
+    const library = await w.library('ability', { ownerOrgId: w.orgId });
+    const [d1, d2, d3] = [
+      await w.dimension(library.id, { ownerOrgId: w.orgId }),
+      await w.dimension(library.id, { ownerOrgId: w.orgId }),
+      await w.dimension(library.id, { ownerOrgId: w.orgId }),
+    ];
+    const category = await w.category('关联单元分类', { ownerOrgId: w.orgId });
+    const criterion = await w.criterion(category.id, [{ dimensionId: d1!.id }], { ownerOrgId: w.orgId });
+    const before = await w.read<CriterionView>(`/criteria/${criterion.id}`);
+    const add = (extra: Record<string, unknown>) =>
+      w.request('PATCH', `/criteria/${criterion.id}`, {
+        ifMatch: before.revision,
+        body: { dimensions: [{ dimensionId: d1!.id }, { dimensionId: d2!.id }], ...extra },
+      });
+
+    const missing = await add({});
+    expect(missing.status).toBe(400);
+    expect((await errorOf(missing)).details?.reason).toBe('MANAGEMENT_UNIT_REQUIRED');
+    const outside = await add({ relationOwnerOrgId: stranger });
+    const ghost = await add({ relationOwnerOrgId: randomUUID() });
+    expect(outside.status).toBe(404);
+    expect(await outside.json()).toEqual(await ghost.json());
+    expect(await w.read(`/criteria/${criterion.id}`)).toEqual(before);
+
+    const chosen = await add({ relationOwnerOrgId: second });
+    expect(chosen.status, await chosen.clone().text()).toBe(200);
+    const after = (await chosen.json()) as CriterionView;
+    const row = (id: string) => after.dimensions.find((item) => item.dimensionId === id);
+    expect(row(d2!.id)).toMatchObject({ ownerId: w.as.user, ownerOrgId: second });
+    expect(row(d1!.id)).toMatchObject({ ownerOrgId: w.orgId });
+    expect(after.ownerOrgId).toBe(w.orgId);
+
+    // 只调整已有行（没有新加的关联）不要求选择
+    const reordered = await w.request('PATCH', `/criteria/${criterion.id}`, {
+      ifMatch: after.revision,
+      body: { dimensions: [{ dimensionId: d2!.id }, { dimensionId: d1!.id }] },
+    });
+    expect(reordered.status, await reordered.clone().text()).toBe(200);
+    // 只剩一个授权管理单元：自动填写
+    await w.setUnits([second]);
+    const single = await w.request('PATCH', `/criteria/${criterion.id}`, {
+      ifMatch: ((await reordered.json()) as CriterionView).revision,
+      body: { dimensions: [{ dimensionId: d2!.id }, { dimensionId: d1!.id }, { dimensionId: d3!.id }] },
+    });
+    expect(single.status, await single.clone().text()).toBe(200);
+    const last = ((await single.json()) as CriterionView).dimensions.find((item) => item.dimensionId === d3!.id);
+    expect(last).toMatchObject({ ownerId: w.as.user, ownerOrgId: second });
+  });
+
+  it('添加人与标准创建人不同、管理单元也不同：新关联记录的所属人与管理单元都跟添加人，已有行与标准不变', async () => {
+    const db = testDb().db;
+    let world = await seedPermissionWorld(db);
+    world = { ...world, api: tenantApi(db, { authorize: undefined, clock }) };
+    const data = await seedTalentData(world);
+    const outsideMou = await createMou(data.setup, world.asAdmin, [data.outside.orgId], '只含外');
+    const op = await talentOperator(world, { seeAll: true, mouId: outsideMou });
+    const criterion = data.inside.criterion;
+    const response = await op.request('PATCH', `/criteria/${criterion.id}`, {
+      ifMatch: criterion.revision,
+      body: { dimensions: [{ dimensionId: data.inside.dimension.id }, { dimensionId: data.outside.dimension.id }] },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const after = (await response.json()) as CriterionView;
+    const row = (id: string) => after.dimensions.find((item) => item.dimensionId === id);
+    expect(row(data.outside.dimension.id)).toMatchObject({ ownerId: op.user.id, ownerOrgId: data.outside.orgId });
+    expect(row(data.inside.dimension.id)).toMatchObject({ ownerId: world.asAdmin.user, ownerOrgId: data.inside.orgId });
+    expect(after).toMatchObject({ ownerId: world.asAdmin.user, ownerOrgId: data.inside.orgId });
+  });
+
+  it('真实授权器：多个授权管理单元的操作人选所属管理单元不按字段编辑权拦截（系统填写的字段也能选）', async () => {
+    const db = testDb().db;
+    let world = await seedPermissionWorld(db);
+    world = { ...world, api: tenantApi(db, { authorize: undefined, clock }) };
+    const data = await seedTalentData(world);
+    const op = await talentOperator(world, { mouId: data.bothMouId });
+    const created = async (path: string, body: Record<string, unknown>) => {
+      const response = await op.request('POST', path, {
+        ifMatch: 0,
+        body: { ...body, ownerOrgId: data.outside.orgId },
+      });
+      expect(response.status, `${path} ${await response.clone().text()}`).toBe(201);
+      return (await response.json()) as { ownerOrgId: string; ownerId: string };
+    };
+    const dimension = await created('/dimensions', {
+      libraryId: data.inside.library.id,
+      code: `R${randomUUID().slice(0, 6)}`,
+      name: '多单元操作人的指标',
+    });
+    expect(dimension).toMatchObject({ ownerId: op.user.id, ownerOrgId: data.outside.orgId });
+    const category = await created('/dimension-categories', {
+      libraryId: data.inside.library.id,
+      name: '多单元操作人的分类',
+      displayOrder: 9,
+    });
+    expect(category).toMatchObject({ ownerId: op.user.id, ownerOrgId: data.outside.orgId });
+    const criterion = data.inside.criterion;
+    const added = await op.request('PATCH', `/criteria/${criterion.id}`, {
+      ifMatch: criterion.revision,
+      body: {
+        dimensions: [{ dimensionId: data.inside.dimension.id }, { dimensionId: data.outside.dimension.id }],
+        relationOwnerOrgId: data.outside.orgId,
+      },
+    });
+    expect(added.status, await added.clone().text()).toBe(200);
+  });
+});
+
+describe('DEC-294 补充二 表单：编辑标准时新加指标、且有多个授权管理单元才显示“新加指标的所属管理单元”', () => {
+  const unit = (id: string) => ({ id, code: id, name: `单元${id}` });
+  async function render(dimensionIds: string[], owners: unknown[]) {
+    const path = '../../apps/web/src/talent/CriterionForm.js';
+    const { CriterionForm } = await import(path);
+    return renderToStaticMarkup(
+      createElement(CriterionForm, {
+        value: {
+          relationOwnerOrgId: '',
+          categoryId: '',
+          name: '标准',
+          enabled: true,
+          abilityNote: null,
+          potentialNote: null,
+          experienceNote: null,
+          achievementNote: null,
+          dimensions: dimensionIds.map((dimensionId, index) => ({ dimensionId, displayOrder: index + 1 })),
+        },
+        existing: new Set(['a']),
+        owners,
+        categories: [],
+        known: new Map(),
+        candidates: [],
+        busy: false,
+        onChange: () => {},
+        onSubmit: () => {},
+        onCancel: () => {},
+      }),
+    );
+  }
+
+  it('有新加的行 + 多个单元：显示必选下拉；没有新加的行或只有一个单元：不显示', async () => {
+    const label = '新加指标的所属管理单元';
+    const many = await render(['a', 'b'], [unit('x'), unit('y')]);
+    expect(many).toContain(label);
+    expect(many).toMatch(/<select[^>]*required/);
+    expect(await render(['a'], [unit('x'), unit('y')])).not.toContain(label);
+    expect(await render(['a', 'b'], [unit('x')])).not.toContain(label);
+  });
+
+  it('看不到组织名称时（DEC-309 只返回 ID），下拉以 ID 显示', async () => {
+    const path = '../../apps/web/src/talent/OwnerOrgSelect.js';
+    const { OwnerUnitField } = await import(path);
+    const markup = renderToStaticMarkup(
+      createElement(OwnerUnitField, {
+        editing: false,
+        value: '',
+        onChange: () => {},
+        options: [{ id: 'x1' }, { id: 'y1' }],
+      }),
+    );
+    expect(markup).toContain('x1');
+    expect(markup).not.toContain('undefined');
   });
 });

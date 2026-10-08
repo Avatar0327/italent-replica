@@ -74,6 +74,7 @@ export async function seedTalentData(world: PermissionWorld): Promise<TalentPerm
       libraryId: library.id,
       name: `${label}通用`,
       displayOrder: 1,
+      ownerOrgId: orgId,
     });
     const dimension = await create<DimensionView>('/dimensions', {
       libraryId: library.id,
