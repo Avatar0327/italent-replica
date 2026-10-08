@@ -56,7 +56,8 @@ const JPEG = Buffer.from(
   'base64',
 );
 
-const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+// 完整 LZW：clear(4)、像素(0)、end(5)，不能靠渲染器补齐被截断的终止码。
+const GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==', 'base64');
 
 function crc32(bytes: Buffer): number {
   let crc = 0xffffffff;

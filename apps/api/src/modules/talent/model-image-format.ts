@@ -1,5 +1,9 @@
-/** Q-M0-126：五种文件扩展名、单张静态图片、5M 内；类型同时核对声明与文件结构。 */
+/** Q-M0-126：声明、静态文件结构与实际像素解码均有效，单张图片不超过 5M。 */
+import { Transformer } from '@napi-rs/image';
+import { decode as decodeJpeg } from 'jpeg-js';
+import sharp from 'sharp';
 import { AppError } from '../../errors.js';
+import { completeGifPixels } from './model-image-gif.js';
 
 export const MODEL_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 export const MODEL_IMAGE_BODY_LIMIT = 4 * Math.ceil(MODEL_IMAGE_MAX_BYTES / 3) + 1024;
@@ -42,7 +46,7 @@ export function decodeImage(base64: string): Buffer {
   return bytes;
 }
 
-export function validateImageContent(bytes: Buffer, contentType: string): void {
+export async function validateImageContent(bytes: Buffer, contentType: string): Promise<void> {
   const valid =
     contentType === 'image/png'
       ? staticPng(bytes)
@@ -52,6 +56,20 @@ export function validateImageContent(bytes: Buffer, contentType: string): void {
           ? jpeg(bytes)
           : contentType === 'image/bmp' && bmp(bytes);
   if (!valid) unsupported();
+  try {
+    if (contentType === 'image/bmp') {
+      // 此原生 API 会先完整解码 DynamicImage；Sharp 不支持 BMP，不能只查其文件头。
+      await new Transformer(bytes).metadata();
+    } else if (contentType === 'image/jpeg') {
+      // 原生 JPEG 解码器会用灰色补缺扫描数据；严格模式必须真正解出每个 MCU。
+      decodeJpeg(bytes, { useTArray: true, tolerantDecoding: false });
+    } else {
+      // stats 强制读取像素，拒绝压缩数据损坏；无需把整张 raw 图片复制进 JS 内存。
+      await sharp(bytes, { failOn: 'warning' }).stats();
+    }
+  } catch {
+    unsupported();
+  }
 }
 
 function unsupported(): never {
@@ -96,7 +114,8 @@ function staticPng(bytes: Buffer): boolean {
 function staticGif(bytes: Buffer): boolean {
   if (bytes.length < 14 || !['GIF87a', 'GIF89a'].includes(bytes.toString('ascii', 0, 6))) return false;
   if (!bytes.readUInt16LE(6) || !bytes.readUInt16LE(8)) return false;
-  let offset = 13 + (bytes[10]! & 0x80 ? 3 * (1 << ((bytes[10]! & 7) + 1)) : 0);
+  const globalColors = bytes[10]! & 0x80 ? 1 << ((bytes[10]! & 7) + 1) : 0;
+  let offset = 13 + 3 * globalColors;
   let frames = 0;
   while (offset < bytes.length) {
     const marker = bytes[offset++];
@@ -106,16 +125,35 @@ function staticGif(bytes: Buffer): boolean {
     } else if (marker === 0x2c) {
       frames += 1;
       if (frames > 1 || offset + 9 > bytes.length) return false;
-      if (!bytes.readUInt16LE(offset + 4) || !bytes.readUInt16LE(offset + 6)) return false;
+      const pixels = bytes.readUInt16LE(offset + 4) * bytes.readUInt16LE(offset + 6);
+      if (!pixels) return false;
       const packed = bytes[offset + 8]!;
-      offset += 9 + (packed & 0x80 ? 3 * (1 << ((packed & 7) + 1)) : 0);
+      const colors = packed & 0x80 ? 1 << ((packed & 7) + 1) : globalColors;
+      offset += 9 + (packed & 0x80 ? 3 * colors : 0);
       if (offset >= bytes.length || bytes[offset]! < 2 || bytes[offset]! > 8) return false;
-      offset += 1;
+      const minimum = bytes[offset++]!;
+      const blocks = gifPixels(bytes, offset);
+      if (!blocks || !completeGifPixels(blocks.data, minimum, pixels, colors)) return false;
+      offset = blocks.end;
+      continue;
     } else return false;
     offset = skipGifBlocks(bytes, offset);
     if (offset < 0) return false;
   }
   return false;
+}
+
+function gifPixels(bytes: Buffer, start: number): { data: Buffer; end: number } | null {
+  let offset = start;
+  const blocks: Buffer[] = [];
+  while (offset < bytes.length) {
+    const size = bytes[offset++]!;
+    if (!size) return { data: Buffer.concat(blocks), end: offset };
+    if (offset + size > bytes.length) return null;
+    blocks.push(bytes.subarray(offset, offset + size));
+    offset += size;
+  }
+  return null;
 }
 
 function skipGifBlocks(bytes: Buffer, start: number): number {

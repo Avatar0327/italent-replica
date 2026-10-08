@@ -97,7 +97,7 @@ export async function uploadModelImage(tx: Tx, ctx: WriteContext, id: string, at
   if (bytes.length !== attachment.byteSize || createHash('sha256').update(bytes).digest('hex') !== attachment.sha256) {
     throw new AppError('VALIDATION_FAILED', '图片内容与登记的大小或哈希不一致');
   }
-  validateImageContent(bytes, attachment.contentType);
+  await validateImageContent(bytes, attachment.contentType);
   const before = await currentImage(tx, ctx.tenantId, id);
   await tx
     .update(A)
