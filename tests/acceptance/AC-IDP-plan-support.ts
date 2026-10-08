@@ -97,10 +97,13 @@ export interface NodeOverride {
   readonly noAssignee?: string;
 }
 
-/** 同 IDP 预置流程的节点开关（DEC-318 K-37：自审回避关闭）；处理人为空沿用缺省的转异常管理员，便于取证异常待办。 */
+/**
+ * 同 IDP 预置流程的节点开关（DEC-318 K-37 / K-39：回避、撤回关闭；员工节点同意 + 跳转，指导人节点另有驳回与驳回到
+ * 上一步）；处理人为空沿用缺省的转异常管理员，便于验证异常待办。
+ */
 const IDP_NODE_DEFAULTS: Partial<Record<NodeExpr, NodeOverride>> = {
-  idp_employee: { actions: { avoidSelf: false } },
-  idp_tutor: { actions: { avoidSelf: false } },
+  idp_employee: { actions: { avoidSelf: false, reject: false, jump: true, revoke: false } },
+  idp_tutor: { actions: { avoidSelf: false, reject: true, rejectToPrevious: true, jump: true, revoke: false } },
 };
 
 /** 覆盖项与缺省按表达式合并，节点开关逐项合并。 */

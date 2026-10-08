@@ -1,5 +1,5 @@
 {
-  "id": "86c736c7-5dad-4395-a5c9-53ae532b4c02",
+  "id": "fddb9c62-ad27-457d-bea2-16656725da90",
   "prevId": "64b020ff-bd59-4cb0-b25b-939525278aa2",
   "version": "7",
   "dialect": "postgresql",
@@ -23343,6 +23343,27 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "allow_revoke": {
+          "name": "allow_revoke",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "allow_reject_previous": {
+          "name": "allow_reject_previous",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "allow_jump": {
+          "name": "allow_jump",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "time_span": {
           "name": "time_span",

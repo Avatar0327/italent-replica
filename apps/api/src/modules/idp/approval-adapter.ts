@@ -2,8 +2,9 @@
  * 审批中心的发展计划适配器（R3-T07 PR-B；K-08 / K-37～K-39 / K-47）：业务单 = 计划的一个阶段（子流程实例）。
  * - 快照：主体 = 计划员工，指导人供 idp_tutor 解析；不带表单字段与变化字段（计划内容在 IDP 内按节点按钮维护，DEC-296④），
  *   标题不含个人数据（DEC-057）；
- * - 实例完成 = 阶段结束（onStageApproved）；驳回、不同意、撤回、重提、审批中编辑对 IDP 一律不开放（409，K-39），
- *   IDP 的“驳回”是子流程内跳转（IDP-R18）；
+ * - 实例完成 = 阶段结束（onStageApproved）；驳回（到发起人）与撤回后实例等所有者重提，阶段保持进行中；重提不带
+ *   修正内容（计划内容按节点按钮维护）；不同意结束流程 → 阶段开启失败，HR 查明后手动重开（DEC-318 K-39，不再一刀切
+ *   禁用）。审批中心的“编辑”对 IDP 不可用（审批类型不支持审批中编辑，内容由节点按钮决定）；
  * - 同意前：节点配置了“新增目标”的发展目标模块开启无目标校验时，该模块须有目标（IDP-R10，AC-IDP-05）。
  * 取锁顺序：计划 → 审批实例（审批命令先经 lock 锁计划行，再锁实例）。
  */
@@ -15,13 +16,7 @@ import type { BusinessAdapter, BusinessSnapshot } from '../approval/adapters.js'
 import type { ApprovalContext } from '../approval/context.js';
 import { rowsOf } from './access.js';
 import { loadStage, requirePlanRow } from './plan-store.js';
-import { onStageApproved } from './stage-service.js';
-
-function unsupported(): never {
-  throw new AppError('CONFLICT', '发展计划不支持该审批操作，如需退回请由 HR 在当前子流程内跳转', {
-    reason: 'IDP_APPROVAL_ACTION_UNSUPPORTED',
-  });
-}
+import { onStageApproved, onStageDisapproved } from './stage-service.js';
 
 async function stageOf(tx: Tx, tenantId: string, stageId: string) {
   const stage = await loadStage(tx, tenantId, stageId);
@@ -102,10 +97,22 @@ export const idpAdapter: BusinessAdapter = {
     const userId = ctx.actorUserId === null ? SYSTEM_USER_ID : (ctx.actorUserId ?? ctx.userId);
     await onStageApproved(tx, { ...ctx, userId }, plan, stage);
   },
-  rejected: unsupported,
-  disapproved: unsupported,
-  withdrawn: unsupported,
-  resubmit: unsupported,
-  edit: unsupported,
+  // 驳回 / 撤回：实例退回所有者，阶段保持进行中（没有在办任务，执行人入口随之关闭）
+  async rejected() {},
+  async withdrawn() {},
+  async disapproved(tx, ctx, stageId) {
+    const stage = await stageOf(tx, ctx.tenantId, stageId);
+    const plan = await requirePlanRow(tx, ctx.tenantId, stage.planId);
+    const userId = ctx.actorUserId === null ? SYSTEM_USER_ID : (ctx.actorUserId ?? ctx.userId);
+    await onStageDisapproved(tx, { ...ctx, userId }, plan, stage);
+  },
+  async resubmit(_tx, _ctx, _stageId, corrections) {
+    if (Object.keys(corrections).length) {
+      throw new AppError('VALIDATION_FAILED', '发展计划重提不带修正内容，请按节点按钮维护计划');
+    }
+  },
+  edit() {
+    throw new AppError('CONFLICT', '发展计划在审批中的修改按节点按钮进行', { reason: 'APPROVAL_EDIT_UNSUPPORTED' });
+  },
   beforeApprove: requireGoals,
 };

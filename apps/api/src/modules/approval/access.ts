@@ -112,16 +112,20 @@ export async function requireWithdrawRight(deps: TenantRouteDeps, ctx: TenantCon
     await requireSelfServiceSubmit(deps, ctx);
     return;
   }
-  const objectCode = instance.businessType === 'contract' ? CONTRACT_OBJECT : MODULE_OBJECTS.employmentRecord.code;
+  // 发展计划（DEC-318 K-39）：所有者撤回按计划的编辑权、编辑按钮与 IDP 范围复核（IDP 没有单独的撤回按钮）
+  const objectCode =
+    instance.businessType === 'contract'
+      ? CONTRACT_OBJECT
+      : instance.businessType === 'idp'
+        ? IDP_PLAN_OBJECT
+        : MODULE_OBJECTS.employmentRecord.code;
+  const withdrawButton =
+    { contract: 'withdraw', idp: 'update' }[instance.businessType as string] ?? 'Employment.Withdraw';
   await requireObjectWrite(deps.authorize, ctx, { objectCode, operation: 'update', payload: {} });
   await requirePermission(deps.authorize, {
     ...ctx,
     action: 'object.button',
-    resource: buttonResource(
-      objectCode,
-      instance.businessType === 'contract' ? 'withdraw' : 'Employment.Withdraw',
-      'detail',
-    ),
+    resource: buttonResource(objectCode, withdrawButton, 'detail'),
   });
   const scope = await resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
   const predicate = instanceScopeSql(ctx, scope);

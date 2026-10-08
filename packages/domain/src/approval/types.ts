@@ -147,7 +147,25 @@ export interface NodeActions {
    * IDP 预置流程关闭（员工处理自己计划的节点是正常路径）。
    */
   readonly avoidSelf?: boolean;
+  /** 发起人撤回（原站 isRevoke，DEC-318 K-39）：缺省开启（原有流程不变），IDP 预置流程关闭。 */
+  readonly revoke?: boolean;
+  /**
+   * 驳回到上一步（原站 isRejectToPrevious，DEC-318 K-39）：回到上一个节点重新办理，重新提交后按正常顺序往后走
+   * （isResubmitThisActivity = false）。缺省关闭；单人节点、非第一个节点才可用。
+   */
+  readonly rejectToPrevious?: boolean;
+  /** 审批人跳转（原站节点系统动作“跳转”，DEC-318 K-39）：跳到本流程的其他节点。缺省关闭。 */
+  readonly jump?: boolean;
 }
+
+/** 发起人能否在该节点撤回：未给出即开启。 */
+export const revokeAllowed = (node: { readonly actions?: Pick<NodeActions, 'revoke'> }) =>
+  node.actions?.revoke !== false;
+/** 驳回到上一步：显式开启才可用。 */
+export const rejectToPreviousAllowed = (node: { readonly actions?: Pick<NodeActions, 'rejectToPrevious'> }) =>
+  node.actions?.rejectToPrevious === true;
+/** 审批人跳转：显式开启才可用。 */
+export const jumpAllowed = (node: { readonly actions?: Pick<NodeActions, 'jump'> }) => node.actions?.jump === true;
 
 /** 节点是否自审回避：未给出即开启（NodeActions.avoidSelf）。 */
 export function avoidsSelf(node: { readonly actions?: Pick<NodeActions, 'avoidSelf'> }): boolean {

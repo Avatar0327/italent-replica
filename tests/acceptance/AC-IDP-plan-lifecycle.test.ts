@@ -2,7 +2,7 @@
  * R3-T07 PR-B 计划生命周期与执行（docs/02_业务建模/28 §2.3；IDP-R10 / R13 / R14 / R17；DEC-296④；PR 描述 K-37～K-49）：
  * - 新建只用已发布模板；开始一次；被计划引用的模板不能删除 / 增删模块（K-25）；删除计划不可恢复、作废运行中的审批；
  * - 执行人按“当前节点执行人 + 节点按钮”写目标 / 任务 / 回顾 / 综述，非执行人 403；重放同样复核；
- * - 员工填写节点不按自审拦截（K-37）；IDP 实例不开放驳回等动作（K-39）；最后一段结束 → 计划已结束；
+ * - 员工填写节点不按自审拦截（节点开关，DEC-318 K-37）；驳回等动作按节点开关（K-39）；最后一段结束 → 计划已结束；
  * - 审批人表达式 idp_employee / idp_tutor 只有 IDP 审批类型可选。负例前后比对不变。
  */
 import { PRESET_PROCESSES } from '@italent/domain';
@@ -228,14 +228,14 @@ describe('执行：当前节点执行人 + 节点按钮（DEC-296④）', () => 
 });
 
 describe('审批中心接入', () => {
-  it('员工填写节点可以提交（不按自审拦截，K-37）；IDP 实例驳回 409（K-39）', async () => {
+  it('员工填写节点可以提交（节点关闭自审回避，DEC-318 K-37）；员工节点未开启驳回 409（节点开关，K-39）', async () => {
     const w = await planWorld(testDb().db, 'idp-apv');
-    let plan = await w.startedPlan();
-    plan = await w.submit(plan, 1, w.employee.userId);
-    const { instance, task } = await w.pendingTask(plan, 1, w.manager.userId);
-    const reject = await w.taskAction(w.manager.userId, task.id, 'reject', instance.revision, { comment: '重写' });
-    expect(await errorOf(reject)).toMatchObject({ status: 409, reason: 'IDP_APPROVAL_ACTION_UNSUPPORTED' });
+    const plan = await w.startedPlan();
+    const { instance, task } = await w.pendingTask(plan, 1, w.employee.userId);
+    const reject = await w.taskAction(w.employee.userId, task.id, 'reject', instance.revision, { comment: '重写' });
+    expect(await errorOf(reject)).toMatchObject({ status: 409, reason: 'APPROVAL_ACTION_DISABLED' });
     expect((await w.instanceOf(plan, 1)).revision).toBe(instance.revision);
+    await w.submit(plan, 1, w.employee.userId);
   });
 
   it('三段全部结束 → 计划已结束；当前阶段为空', async () => {

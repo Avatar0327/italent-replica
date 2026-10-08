@@ -74,6 +74,10 @@ const node = z.strictObject({
       urge: z.enum(URGE_MODES).default('inherit'),
       /** 自审回避（DEC-318 K-37）：缺省不给即开启，原有流程不变。 */
       avoidSelf: z.boolean().optional(),
+      /** 发起人撤回、驳回到上一步、审批人跳转（DEC-318 K-39）：不给即取缺省（撤回开，其余关）。 */
+      revoke: z.boolean().optional(),
+      rejectToPrevious: z.boolean().optional(),
+      jump: z.boolean().optional(),
     })
     .default({ transfer: false, addSign: false, copySend: false, retrieve: false, reject: true, urge: 'inherit' }),
   rejectCommentRequired: z.boolean().default(false),

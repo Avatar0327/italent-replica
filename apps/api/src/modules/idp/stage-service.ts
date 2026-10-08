@@ -159,14 +159,32 @@ export async function onStageApproved(tx: Tx, actor: StageActor, plan: PlanRow, 
   await settlePlan(tx, actor, plan);
 }
 
-/** HR“结束当前阶段并开启下一阶段”（StartNextSubProcessType = 1）或终止 / 删除计划：作废运行中的审批实例。 */
+/**
+ * 审批流程沿“不同意”结束（DEC-318 K-39 不禁用）：阶段记开启失败（APPROVAL_DISAPPROVED），不自动重试，HR 查明后用
+ * “开启下一阶段”重开（与 AC-IDP-08 的失败处理一致）。
+ */
+export async function onStageDisapproved(tx: Tx, actor: StageActor, plan: PlanRow, stage: StageRow): Promise<void> {
+  await tx.execute(sql`UPDATE idp_plan_stages SET status = 'failed', failure_reason = 'APPROVAL_DISAPPROVED',
+    approval_instance_id = NULL WHERE tenant_id = ${actor.tenantId} AND id = ${stage.id}::uuid`);
+  await bumpPlan(tx, actor.tenantId, plan.id, actor.now);
+  await auditStage(tx, actor, plan, stage, {
+    status: 'failed',
+    approvalInstanceId: null,
+    failureReason: 'APPROVAL_DISAPPROVED',
+  });
+}
+
+/**
+ * HR“结束当前阶段并开启下一阶段”（StartNextSubProcessType = 1）或终止 / 删除计划：作废阶段的审批实例——运行中、
+ * 被驳回待重提、已撤回待重提的都作废（DEC-318 K-39 起后两种也会出现）。
+ */
 export async function cancelStageInstance(tx: Tx, actor: StageActor, plan: PlanRow, stage: StageRow) {
   if (!stage.approvalInstanceId) return;
   const [instance] = rowsOf<{ status: string }>(
     await tx.execute(sql`SELECT status FROM approval_instances WHERE tenant_id = ${actor.tenantId}
       AND id = ${stage.approvalInstanceId}::uuid`),
   );
-  if (instance?.status !== 'running') return;
+  if (!['running', 'returned', 'withdrawn'].includes(instance?.status ?? '')) return;
   await cancel(tx, approvalContext(actor, plan), stage.approvalInstanceId);
 }
 

@@ -7,6 +7,9 @@ import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
   avoidsSelf,
+  jumpAllowed,
+  rejectToPreviousAllowed,
+  revokeAllowed,
   blindReviewFields,
   EXIT_LABELS,
   hasExit,
@@ -369,6 +372,99 @@ export async function rejectTask(
 }
 
 /**
+ * 驳回到上一步（DEC-318 K-39，原站 isRejectToPrevious）：节点开关开启的单人节点，回到上一个节点重新办理；上一节点
+ * 再提交后按正常顺序往后走（isResubmitThisActivity = false）。意见与驳回同规则；不进流转规则，其余在办任务取消。
+ */
+export async function rejectToPreviousTask(
+  tx: Tx,
+  ctx: ApprovalContext,
+  input: DecisionInput,
+  viewable: ReadonlySet<string> | undefined,
+): Promise<Outcome> {
+  const scene = await openTask(tx, ctx, input.taskId);
+  assertOpen(scene, ctx);
+  const { run, task, node } = scene;
+  if (!rejectToPreviousAllowed(node) || isCountersign(node)) {
+    throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '本节点未开启驳回到上一步');
+  }
+  const index = nodeIndex(run, node.key);
+  if (index === 0) throw approvalError('CONFLICT', 'APPROVAL_NO_PREVIOUS_NODE', '第一个节点没有上一步');
+  const blocked = await blindReview(tx, scene, viewable);
+  if (blocked) return blocked;
+  await assertNotSelf(tx, run, ctx.userId, node);
+  assertNotAddSigner(await loadTasks(tx, ctx.tenantId, run.instance.id), task);
+  if (node.rejectCommentRequired && !input.comment?.trim()) {
+    throw approvalError('VALIDATION_FAILED', 'APPROVAL_COMMENT_REQUIRED', '本节点驳回时必须填写意见');
+  }
+  const previous = run.version.nodes[index - 1]!;
+  await closeTask(tx, ctx, task.id, 'rejected', input.comment);
+  await cancelPending(tx, ctx, run.instance.id);
+  await appendLog(tx, ctx, run.instance, {
+    event: 'reject_previous',
+    nodeKey: node.key,
+    taskId: task.id,
+    detail: { comment: input.comment, toNodeKey: previous.key },
+  });
+  await auditTask(
+    tx,
+    run,
+    'approval.task.reject_previous',
+    { status: 'pending', comment: null },
+    { status: 'rejected', comment: input.comment, toNodeKey: previous.key },
+  );
+  await applyMessageRules(tx, ctx, run.instance, node, 'reject', task);
+  await advanceFrom(tx, run, index - 1);
+  run.events.push('approval.task.rejected_previous');
+  await persistRun(tx, run, outcomeAction(run));
+  return ok(run);
+}
+
+export interface JumpInput {
+  readonly taskId: string;
+  readonly toNodeKey: string;
+  readonly comment: string | null;
+}
+
+/**
+ * 审批人跳转（DEC-318 K-39，原站节点系统动作“跳转”）：节点开关开启时，当前审批人把流程跳到本流程的另一个节点
+ * （IDP：员工节点只能跳到指导人节点，指导人节点只能跳到员工节点——两节点流程里即“其他节点”）。本节点在办任务取消，
+ * 从目标节点重新路由；审批历史从此重新计算（同管理员跳转）。
+ */
+export async function jumpTask(tx: Tx, ctx: ApprovalContext, input: JumpInput): Promise<Outcome> {
+  const scene = await openTask(tx, ctx, input.taskId);
+  assertOpen(scene, ctx);
+  const { run, task, node } = scene;
+  if (!jumpAllowed(node)) throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '本节点未开启跳转');
+  if (input.toNodeKey === node.key) {
+    throw approvalError('VALIDATION_FAILED', 'APPROVAL_JUMP_SAME_NODE', '只能跳到其他节点');
+  }
+  const target = nodeIndex(run, input.toNodeKey);
+  await assertNotSelf(tx, run, ctx.userId, node);
+  const tasks = await loadTasks(tx, ctx.tenantId, run.instance.id);
+  assertNotAddSigner(tasks, task);
+  await closeTask(tx, ctx, task.id, 'cancelled', input.comment);
+  await cancelPending(tx, ctx, run.instance.id);
+  startHistoryAfter(run, tasks);
+  await appendLog(tx, ctx, run.instance, {
+    event: 'jump',
+    nodeKey: node.key,
+    taskId: task.id,
+    detail: { comment: input.comment, toNodeKey: input.toNodeKey },
+  });
+  await auditTask(
+    tx,
+    run,
+    'approval.task.jump',
+    { currentNodeKey: node.key },
+    { currentNodeKey: input.toNodeKey, comment: input.comment },
+  );
+  await advanceFrom(tx, run, target);
+  run.events.push('approval.instance.jumped');
+  await persistRun(tx, run, outcomeAction(run));
+  return ok(run);
+}
+
+/**
  * DEC-058：发起人或异动本人不得审批自己的单据；异常任务按 DEC-091 回避，不会落到本人名下。DEC-318 K-37 起由节点开关
  * actions.avoidSelf 决定（缺省开启）；关闭的节点（IDP 预置流程）本人办理是正常路径。
  */
@@ -689,6 +785,11 @@ export async function withdraw(
     throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有发起人可以撤回');
   if (!['running', 'returned'].includes(run.instance.status))
     throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程已结束');
+  // DEC-318 K-39：撤回是节点开关（原站 isRevoke，缺省开启），按当前节点判断
+  const current = run.version.nodes.find((node) => node.key === run.instance.currentNodeKey);
+  if (!fromBusiness && current && !revokeAllowed(current)) {
+    throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '当前节点未开启撤回');
+  }
   await cancelPending(tx, ctx, instanceId);
   run.instance = { ...run.instance, status: 'withdrawn', currentNodeKey: null };
   if (!fromBusiness) await ADAPTERS[run.instance.businessType].withdrawn(tx, ctx, run.instance.businessId);
@@ -714,9 +815,10 @@ export async function cancel(tx: Tx, ctx: ApprovalContext, instanceId: string): 
  */
 export async function resubmit(tx: Tx, ctx: ApprovalContext, instanceId: string, corrections?: Row): Promise<Outcome> {
   const run = await openOwn(tx, ctx, instanceId);
+  // 员工子集变更（F9）与发展计划（DEC-318 K-39，所有者撤回后沿原实例重提）撤回后也可重提
   const reopenable =
     run.instance.status === 'returned' ||
-    (run.instance.status === 'withdrawn' && run.instance.businessType === 'personnel_change');
+    (run.instance.status === 'withdrawn' && ['personnel_change', 'idp'].includes(run.instance.businessType));
   if (!reopenable) throw approvalError('CONFLICT', 'APPROVAL_NOT_RETURNED', '只有被驳回或已撤回的申请可以重提');
   if (run.instance.businessType === 'contract') await ctx.recheckContractResubmit?.(tx, instanceId, corrections ?? {});
   // 业务单回到待审批、修正追加为新版本，并按完整载荷复核当前自助字段白名单（DEC-099 / DEC-113 / N1）。
