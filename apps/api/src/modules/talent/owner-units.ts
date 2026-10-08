@@ -10,6 +10,7 @@
  * （DEC-082：只看管理范围，不因“使用用户”规则放行）。
  */
 import { sql, type Tx } from '@italent/db';
+import type { SQL } from 'drizzle-orm';
 import { TALENT_APP, tenantLocalDate } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { requireCreatable, type TalentObject } from './access.js';
@@ -19,6 +20,8 @@ export interface OwnerUnit {
   readonly id: string;
   readonly code: string;
   readonly name: string;
+  /** 查看人能否看到这个组织本身（`nameable` 谓词的结果，缺省 false）。 */
+  readonly named: boolean;
 }
 
 export const NO_UNIT_MESSAGE = '无可用的管理单元，请联系管理员授权';
@@ -26,9 +29,18 @@ const UNIT_NOT_FOUND = '所属管理单元不存在';
 /** 一个管理单元最多选 200 个组织范围（data-scope-admin），这里同样有界。 */
 const MAX_UNITS = 200;
 
-/** 用户在人才标准应用里的授权管理单元（按组织编码排序）。 */
-export async function authorizedUnits(tx: Tx, tenantId: string, userId: string, asOf: string): Promise<OwnerUnit[]> {
-  const result = await tx.execute(sql`SELECT v.org_id AS id, v.code, v.name FROM (
+/**
+ * 用户在人才标准应用里的授权管理单元（按组织编码排序）。`nameable` 是作用在 `v.org_id` 上的谓词，结果放在 `named`：
+ * 候选接口用它按查看人组织员工应用的当前数据范围判定能否带出组织名称 / 编码（DEC-316②）。
+ */
+export async function authorizedUnits(
+  tx: Tx,
+  tenantId: string,
+  userId: string,
+  asOf: string,
+  nameable: SQL = sql`false`,
+): Promise<OwnerUnit[]> {
+  const result = await tx.execute(sql`SELECT v.org_id AS id, v.code, v.name, (${nameable}) AS named FROM (
       SELECT DISTINCT ON (org_id) org_id, code, name, enabled FROM org_versions
       WHERE tenant_id = ${tenantId} AND start_date <= ${asOf}::date
       ORDER BY org_id, start_date DESC, version_no DESC) v
