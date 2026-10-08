@@ -19,6 +19,21 @@ export interface DateParts {
 /** 静态类型推导与空值来源用到的值类型（DEC-270 / DEC-287）。 */
 export type StaticKind = 'number' | 'text' | 'boolean' | 'date';
 
+/** 字段目录可标识多选；它不是可求值的标量类型（DEC-314②，🟡 取证前禁止引用）。 */
+export type ExpressionFieldKind = StaticKind | 'multi_option';
+
+export function isMultiOptionField(
+  catalog: ((path: string) => ExpressionFieldKind | undefined) | undefined,
+  path: string,
+): boolean {
+  try {
+    return catalog?.(path) === 'multi_option';
+  } catch {
+    // 沿用 DEC-287：目录读取失败时类型不确定，不把异常内容带入保存结果。
+    return false;
+  }
+}
+
 export type ExprValue =
   | {
       readonly kind: 'empty';

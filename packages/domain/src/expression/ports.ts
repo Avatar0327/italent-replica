@@ -16,6 +16,8 @@ export type FieldLookup =
       /** 值为空时的来源类型（批量求值叠加先算项目的结果时带上，日期参数据此区分真正的空日期，DEC-270②）。 */
       readonly emptyOf?: StaticKind;
     }
+  /** 批量 adapt 已返回领域值：保留日期精度等类型信息，不再按普通 JS 值重新解释。 */
+  | { readonly status: 'computed'; readonly value: ExprValue }
   | { readonly status: 'unknown' }
   | { readonly status: 'forbidden' };
 
