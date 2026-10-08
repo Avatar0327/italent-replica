@@ -316,3 +316,66 @@ describe('P2-4 复制校验节点配置', () => {
     expect(await w.read<{ items: TemplateView[] }>('/templates')).toEqual(before);
   });
 });
+
+describe('第 3 轮 P2：复制对通用目标的查看权判定不依赖来源集合是否为空', () => {
+  /** 两个源模板：一个没有通用目标、一个有；其余相同（同组织、同流程、都有发展目标模块）。 */
+  async function sources(env: World) {
+    const { data } = env;
+    const call = admin(env).call;
+    const created = async (name: string) => {
+      const response = await call('POST', '/templates', {
+        ifMatch: 0,
+        body: { name, orgId: data.insideOrg, processId: data.inside.process.id },
+      });
+      expect(response.status, await response.clone().text()).toBe(201);
+      let template = (await response.json()) as TemplateView;
+      const added = await call('POST', `/templates/${template.id}/modules`, {
+        ifMatch: template.revision,
+        body: { moduleType: 'goal', name: '发展目标' },
+      });
+      template = (await added.json()) as TemplateView;
+      return template;
+    };
+    const empty = await created('无通用目标的源模板');
+    let withGoal = await created('有通用目标的源模板');
+    const goal = withGoal.modules.find((m) => m.moduleType === 'goal')!;
+    const added = await call('POST', `/templates/${withGoal.id}/common-goals`, {
+      ifMatch: withGoal.revision,
+      body: { moduleId: goal.id, name: '隐藏的通用目标' },
+    });
+    expect(added.status, await added.clone().text()).toBe(201);
+    withGoal = (await added.json()) as TemplateView;
+    return { empty, withGoal };
+  }
+
+  const states = [
+    ['看不到模板的 commonGoals 字段', { hidden: { template: ['commonGoals'] } }],
+    [
+      '看得到父字段、没有通用目标对象的查看权',
+      { objects: ['process', 'subProcess', 'template', 'templateModule'] as const },
+    ],
+  ] as const;
+
+  it.each(states)(
+    '%s：来源为空与非空同样 403 IDP_COPY_HIDDEN_FIELDS，响应体完全一致，不生成副本',
+    async (_label, options) => {
+      const env = await world();
+      const { w, data } = env;
+      const { empty, withGoal } = await sources(env);
+      const op = await idpOperator(w, { orgId: data.insideOrg, ...options });
+      const before = await admin(env).templateNames();
+      const copy = async (source: TemplateView, name: string) => {
+        const response = await op.request('POST', `/templates/${source.id}/copy`, { ifMatch: 0, body: { name } });
+        return { status: response.status, body: await response.json() };
+      };
+      const fromEmpty = await copy(empty, '空来源副本');
+      const fromGoal = await copy(withGoal, '非空来源副本');
+      expect(fromEmpty.status).toBe(403);
+      expect(fromEmpty.body).toMatchObject({
+        error: { code: 'FORBIDDEN', details: { reason: 'IDP_COPY_HIDDEN_FIELDS' } },
+      });
+      expect(fromGoal).toEqual(fromEmpty);
+      expect(await admin(env).templateNames()).toEqual(before);
+    },
+  );
+});
