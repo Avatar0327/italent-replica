@@ -4,7 +4,7 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { planWorld } from './AC-IDP-plan-support.js';
+import { otherTutor, planWorld } from './AC-IDP-plan-support.js';
 
 const testDb = useTestDb();
 
@@ -25,7 +25,7 @@ describe('AC-IDP-04 通用目标只对之后新发起的计划生效', () => {
     expect(unchanged.goals!.map((g) => g.name)).toEqual(['提升跨部门沟通']);
     expect(unchanged.revision).toBe(first.revision);
 
-    const second = await w.createPlan({ name: '第二份计划' }, w.hrUser, w.outsider);
+    const second = await w.createPlan({ name: '第二份计划', ...otherTutor(w) }, w.hrUser, w.outsider);
     expect(second.goals!.map((g) => [g.name, g.commonGoalId])).toEqual([
       ['提升跨部门沟通', w.firstCommonGoal.id],
       ['建立技术影响力', added.id],

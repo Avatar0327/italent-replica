@@ -10,6 +10,7 @@ import {
   EXIT_LABELS,
   hasExit,
   isCountersign,
+  SUBJECT_FILL_APPROVER,
   NODE_ADD_SIGN_TYPES,
   nodeKindOf,
   rejectAllowed,
@@ -236,8 +237,9 @@ export async function approveTask(
   assertExit(scene.node, 'approve');
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
-  await assertNotSelf(tx, scene.run, ctx.userId);
+  if (!isSubjectFill(scene)) await assertNotSelf(tx, scene.run, ctx.userId);
   const { run, task, node } = scene;
+  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey);
   if (input.fields && Object.keys(input.fields).length) {
     assertApprovalEdit(run);
     if (node.editMode !== 'with_approve')
@@ -300,8 +302,9 @@ export async function disagreeTask(
   }
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
-  await assertNotSelf(tx, scene.run, ctx.userId);
+  if (!isSubjectFill(scene)) await assertNotSelf(tx, scene.run, ctx.userId);
   const { run, task, node } = scene;
+  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey);
   await closeTask(tx, ctx, task.id, 'disagreed', input.comment);
   await appendLog(tx, ctx, run.instance, {
     event: 'disagree',
@@ -336,8 +339,9 @@ export async function rejectTask(
   assertRejectEnabled(scene.node);
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
-  await assertNotSelf(tx, scene.run, ctx.userId);
+  if (!isSubjectFill(scene)) await assertNotSelf(tx, scene.run, ctx.userId);
   const { run, task, node } = scene;
+  await ADAPTERS[run.instance.businessType].beforeApprove?.(tx, ctx, run.instance.businessId, task.nodeKey);
   // DEC-059：节点开关「驳回意见必填」，出厂关闭。
   if (node.rejectCommentRequired && !input.comment?.trim()) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_COMMENT_REQUIRED', '本节点驳回时必须填写意见');
@@ -365,6 +369,20 @@ export async function rejectTask(
 }
 
 /** DEC-058：发起人或异动本人不得审批自己的单据；异常任务按 DEC-091 回避，不会落到本人名下。 */
+/**
+ * K-37（R3-T07）：发展计划员工填写自己计划的节点（审批人表达式 idp_employee 解析出的本人任务）不按“发起人 / 异动本人
+ * 不能审批”拒绝——处理人就是计划员工本人（原站 W-114）。只对单人节点上由该表达式派给本人的任务生效。
+ */
+function isSubjectFill(scene: TaskScene): boolean {
+  const { node, task } = scene;
+  return (
+    !isCountersign(node) &&
+    node.approver === SUBJECT_FILL_APPROVER &&
+    task.origin === 'resolved' &&
+    APPROVAL_TYPES[scene.run.snapshot.approvalType].adapter === 'idp'
+  );
+}
+
 async function assertNotSelf(tx: Tx, run: Run, userId: string): Promise<void> {
   const subjectUser = await userOfPerson(tx, run.ctx.tenantId, run.snapshot.subjectEmployeeId);
   if (userId === run.instance.initiatorUserId || userId === subjectUser) {
@@ -603,7 +621,21 @@ async function openOwn(tx: Tx, ctx: ApprovalContext, instanceId: string): Promis
 
 /** 催办：通知当前节点未审批的人（`14` §9.2）；不改变流程状态，不推进 revision。 */
 export async function urge(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<Outcome> {
-  const run = await openOwn(tx, ctx, instanceId);
+  return urgeRun(tx, await openOwn(tx, ctx, instanceId));
+}
+
+/**
+ * 业务管理员催办（R3-T07 IDP 流程干预“催办”，IDP-R16）：权限与范围由业务模块按其按钮与数据范围判定，这里不要求发起人；
+ * 频率限制与通知同发起人催办。
+ */
+export async function urgeAsAdmin(tx: Tx, ctx: ApprovalContext, instanceId: string): Promise<Outcome> {
+  return urgeRun(tx, await openRun(tx, ctx, instanceId));
+}
+
+async function urgeRun(tx: Tx, run: Run): Promise<Outcome> {
+  const { ctx } = run;
+  const instanceId = run.instance.id;
+  if (run.instance.status !== 'running') throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程不在审批中');
   const node = run.version.nodes.find((candidate) => candidate.key === run.instance.currentNodeKey);
   if (!node || !urgeOpen(run.instance, run.version)) {
     throw approvalError('CONFLICT', 'APPROVAL_ACTION_DISABLED', '当前节点不允许催办');

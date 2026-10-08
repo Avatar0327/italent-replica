@@ -6,7 +6,7 @@
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import type { TemplateView } from './AC-IDP-support.js';
-import { errorOf, planWorld, type PlanView } from './AC-IDP-plan-support.js';
+import { errorOf, otherTutor, planWorld, type PlanView } from './AC-IDP-plan-support.js';
 
 const testDb = useTestDb();
 
@@ -26,7 +26,7 @@ describe('AC-IDP-06 统一下发任务', () => {
       await w.http(w.hrUser, 'POST', `/api/tenant/idp/templates/${copied.id}/publish`, { ifMatch: copied.revision }),
     );
     const a = await w.createPlan();
-    const b = await w.createPlan({ templateId: copied.id }, w.hrUser, w.outsider);
+    const b = await w.createPlan({ templateId: copied.id, ...otherTutor(w) }, w.hrUser, w.outsider);
     const response = await w.intervene('tasks/issue', {
       commonGoalId: w.firstCommonGoal.id,
       plans: [a, b].map((p) => ({ id: p.id, revision: p.revision })),
@@ -42,7 +42,10 @@ describe('AC-IDP-06 统一下发任务', () => {
 
   it('同一模板的计划：整体下发，任务挂在通用目标生成的目标下', async () => {
     const w = await planWorld(testDb().db, 'idp-ac06-same');
-    const plans: PlanView[] = [await w.createPlan(), await w.createPlan({ name: '丙的计划' }, w.hrUser, w.outsider)];
+    const plans: PlanView[] = [
+      await w.createPlan(),
+      await w.createPlan({ name: '丙的计划', ...otherTutor(w) }, w.hrUser, w.outsider),
+    ];
     const response = await w.intervene('tasks/issue', {
       commonGoalId: w.firstCommonGoal.id,
       plans: plans.map((p) => ({ id: p.id, revision: p.revision })),
@@ -60,7 +63,7 @@ describe('AC-IDP-06 统一下发任务', () => {
   it('任一计划 revision 不一致：整体 409，不部分生效', async () => {
     const w = await planWorld(testDb().db, 'idp-ac06-rev');
     const a = await w.createPlan();
-    const b = await w.createPlan({ name: '丙的计划' }, w.hrUser, w.outsider);
+    const b = await w.createPlan({ name: '丙的计划', ...otherTutor(w) }, w.hrUser, w.outsider);
     const response = await w.intervene('tasks/issue', {
       commonGoalId: w.firstCommonGoal.id,
       plans: [

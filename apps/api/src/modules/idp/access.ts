@@ -16,6 +16,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
+import { registerPersonScopedObject } from '../permission/scope-resolver.js';
 import { authorizeInTransaction, getModuleViewableFields, scopeAllows, scopeSql } from '../permission/module-access.js';
 import {
   button,
@@ -38,6 +39,15 @@ export const IDP_LABELS: Readonly<Record<IdpObject, string>> = {
   template: '发展计划模板',
   templateModule: '模板模块',
   commonGoal: '模板通用目标',
+  plan: '发展计划',
+  goal: '发展目标',
+  task: '目标任务',
+  goalReview: '目标回顾',
+  analysis: '综述',
+  review: '回顾',
+  tutorship: '带教信息',
+  career: '职业发展信息',
+  workShift: '轮岗信息',
 };
 
 /** 审计动作前缀（`<前缀>.create|update|delete`）；审计查询的查看规则按它登记（audit/visibility.ts）。 */
@@ -47,7 +57,38 @@ export const IDP_AUDIT_ACTIONS: Readonly<Record<IdpObject, string>> = {
   template: 'idp.template',
   templateModule: 'idp.template-module',
   commonGoal: 'idp.common-goal',
+  plan: 'idp.plan',
+  goal: 'idp.goal',
+  task: 'idp.task',
+  goalReview: 'idp.goal-review',
+  analysis: 'idp.analysis',
+  review: 'idp.review',
+  tutorship: 'idp.tutorship',
+  career: 'idp.career',
+  workShift: 'idp.work-shift',
 };
+
+/** 配置对象按所属组织归属；计划及其组成部分、关键信息按员工归属（审计查看规则 audit/visibility.ts，DEC-197）。 */
+export const IDP_ORG_OBJECTS: readonly IdpObject[] = [
+  'process',
+  'subProcess',
+  'template',
+  'templateModule',
+  'commonGoal',
+];
+export const IDP_PERSON_OBJECTS: readonly IdpObject[] = [
+  'plan',
+  'goal',
+  'task',
+  'goalReview',
+  'analysis',
+  'review',
+  'tutorship',
+  'career',
+  'workShift',
+];
+// 计划与关键信息按员工归属：组织类数据范围对它们带出“按人员”的谓词（K-50）
+for (const object of IDP_PERSON_OBJECTS) registerPersonScopedObject(IDP_OBJECTS[object].code);
 
 export const codeOf = (object: IdpObject) => IDP_OBJECTS[object].code;
 

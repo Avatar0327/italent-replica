@@ -170,6 +170,15 @@ describe('写入审计的对象类型都已登记查看规则（PR #75 第三轮
       'IDP.IDPTemplate',
       'IDP.IDPTemplateModule',
       'IDP.IDPTemplateCommonGoal',
+      'IDP.Idp',
+      'IDP.IdpGoal',
+      'IDP.Task',
+      'IDP.GoalReview',
+      'IDP.Analysis',
+      'IDP.Review',
+      'IDP.TutorShip',
+      'IDP.Career',
+      'IDP.WorkShift',
     ]);
 
   it.each(written)('%s', (objectType) => {

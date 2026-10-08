@@ -1,0 +1,210 @@
+/**
+ * HR 流程干预与统一下发任务（docs/02_业务建模/28 IDP-R15 / R16；Q-M0-115 ⑥ 只读结论 🟡；PR 描述 K-42～K-46）。
+ * - 催办 / 开启下个阶段 / 终止：勾选多个计划，逐条回执（部分成功；每条在自己的保存点里执行，失败的一条不影响其他）；
+ *   每条复核范围（范围外回执 404）、revision（409）；本人为计划员工的计划不能干预（DEC-092）；
+ * - 跳转：单个计划，只能跳到当前运行阶段审批流程版本里的节点（跨阶段 409 IDP_JUMP_CROSS_STAGE，AC-IDP-02），经审批中心的
+ *   管理员跳转执行（须填原因，不代签 DEC-063）；
+ * - 统一下发任务：勾选的计划须使用同一模板（AC-IDP-06），整体成功或整体失败。
+ * 取锁顺序：计划（按 ID 升序）→ 审批实例。
+ */
+import { sql, type Tx } from '@italent/db';
+import { nextOpenableStage, tenantLocalDate } from '@italent/domain';
+import { AppError, ERROR_STATUS } from '../../errors.js';
+import { adminAct, urgeAsAdmin } from '../approval/actions.js';
+import type { ApprovalContext } from '../approval/context.js';
+import { personOfUser } from '../approval/resolver.js';
+import { rowsOf } from './access.js';
+import { insertTask } from './execution-service.js';
+import { hrSees } from './plan-access.js';
+import type { BatchItems, JumpInput, StartNextInput, TaskIssue } from './plan-input.js';
+import { lockPlanForHr, type PlanWriteContext } from './plan-service.js';
+import { bumpPlan, loadPlanRow, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
+import { loadPlanDetail } from './plan-view.js';
+import { cancelStageInstance, endRunningStage, openStage, type StageActor } from './stage-service.js';
+import { audit, conflict } from './write-support.js';
+
+export interface Receipt {
+  readonly id: string;
+  readonly status: number;
+  readonly outcome?: 'urged' | 'opened' | 'skipped' | 'failed' | 'terminated';
+  readonly code?: string;
+}
+
+const hrApproval = (ctx: PlanWriteContext, expectedRevision = 0): ApprovalContext => ({
+  tenantId: ctx.tenantId,
+  userId: ctx.userId,
+  timezone: ctx.timezone,
+  now: ctx.now,
+  commandId: ctx.commandId,
+  expectedRevision,
+});
+
+const actorOf = (ctx: PlanWriteContext): StageActor => ({ ...ctx });
+
+/** DEC-092：不能干预本人为计划员工的计划，须由其他 HR 处理。 */
+async function notOwnPlan(tx: Tx, ctx: PlanWriteContext, plan: PlanRow): Promise<void> {
+  if ((await personOfUser(tx, ctx.tenantId, ctx.userId)) === plan.employeeId) {
+    throw new AppError('FORBIDDEN', '不能干预本人的发展计划，请由其他管理员处理', { reason: 'IDP_INTERVENE_SELF' });
+  }
+}
+
+const notActive = () => conflict('IDP_PLAN_NOT_ACTIVE', '计划未开始、已结束或已终止');
+
+function receiptOf(id: string, error: AppError): Receipt {
+  const reason = (error.details as { reason?: string } | undefined)?.reason;
+  return { id, status: ERROR_STATUS[error.code], code: reason ?? error.code };
+}
+
+/** 逐条执行：每条锁计划、复核范围与 revision，失败只回执这一条（保存点回滚）。 */
+async function eachPlan(
+  tx: Tx,
+  ctx: PlanWriteContext,
+  input: BatchItems | StartNextInput,
+  act: (tx: Tx, plan: PlanRow) => Promise<Receipt>,
+): Promise<Receipt[]> {
+  const receipts = new Map<string, Receipt>();
+  for (const item of [...input.items].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    try {
+      receipts.set(
+        item.id,
+        await tx.transaction(async (sp) => {
+          const plan = await loadPlanRow(sp, ctx.tenantId, item.id, true);
+          if (!plan || !(await hrSees(sp, ctx.hr, plan))) throw new AppError('NOT_FOUND', '发展计划不存在');
+          if (plan.revision !== item.revision) throw new AppError('REVISION_CONFLICT', '发展计划已变更，请刷新后重提');
+          await notOwnPlan(sp, ctx, plan);
+          return act(sp, plan);
+        }),
+      );
+    } catch (error) {
+      if (!(error instanceof AppError)) throw error;
+      receipts.set(item.id, receiptOf(item.id, error));
+    }
+  }
+  return input.items.map((item) => receipts.get(item.id)!);
+}
+
+async function runningStage(tx: Tx, plan: PlanRow) {
+  if (plan.status !== 'running') return undefined;
+  return (await loadStages(tx, plan.tenantId, [plan.id])).find((s) => s.status === 'running' && s.approvalInstanceId);
+}
+
+export function urgePlans(tx: Tx, ctx: PlanWriteContext, input: BatchItems) {
+  return eachPlan(tx, ctx, input, async (sp, plan) => {
+    const stage = await runningStage(sp, plan);
+    if (!stage) conflict('IDP_NO_RUNNING_STAGE', '计划没有进行中的阶段，无需催办');
+    await urgeAsAdmin(sp, hrApproval(ctx), stage.approvalInstanceId!);
+    return { id: plan.id, status: 200, outcome: 'urged' };
+  });
+}
+
+/**
+ * 开启下个阶段（K-42，StartNextSubProcessType）：有进行中阶段时 skipRunning 不处理该计划、endRunning 先结束当前阶段；
+ * 下一个待开启 / 开启失败的阶段（自动开启的可提前手动开启，IDP-R4）。开启失败照样记次数与原因并回执 409。
+ */
+export function startNextStages(tx: Tx, ctx: PlanWriteContext, input: StartNextInput) {
+  return eachPlan(tx, ctx, input, async (sp, plan): Promise<Receipt> => {
+    if (plan.status !== 'running') notActive();
+    const stages = await loadStages(sp, ctx.tenantId, [plan.id]);
+    const running = stages.find((s) => s.status === 'running');
+    if (running && input.runningMode === 'skipRunning') return { id: plan.id, status: 200, outcome: 'skipped' };
+    const next = nextOpenableStage(running ? stages.filter((s) => s.seq > running.seq) : stages);
+    if (!next) conflict('IDP_NO_NEXT_STAGE', '已是最后一个阶段，没有可开启的下一阶段');
+    if (running) await endRunningStage(sp, actorOf(ctx), plan, running);
+    const outcome = await openStage(sp, actorOf(ctx), await requirePlanRow(sp, ctx.tenantId, plan.id), next);
+    if (outcome.kind === 'opened') return { id: plan.id, status: 200, outcome: 'opened' };
+    return { id: plan.id, status: 409, outcome: 'failed', code: outcome.reason };
+  });
+}
+
+/** 终止（K-45）：未开始 / 进行中 → 已终止；运行中的审批实例作废；终态。 */
+export function terminatePlans(tx: Tx, ctx: PlanWriteContext, input: BatchItems) {
+  return eachPlan(tx, ctx, input, async (sp, plan): Promise<Receipt> => {
+    if (plan.status !== 'running' && plan.status !== 'not_started') notActive();
+    for (const stage of await loadStages(sp, ctx.tenantId, [plan.id])) {
+      if (stage.status === 'running') await cancelStageInstance(sp, actorOf(ctx), plan, stage);
+    }
+    await sp.execute(sql`UPDATE idp_plans SET status = 'terminated', revision = revision + 1,
+      updated_at = ${ctx.now.toISOString()} WHERE tenant_id = ${ctx.tenantId} AND id = ${plan.id}::uuid`);
+    await audit(sp, ctx, 'plan', 'update', plan.id, {
+      before: { status: plan.status },
+      after: { status: 'terminated', reason: input.reason ?? null },
+      employeeId: plan.employeeId,
+    });
+    return { id: plan.id, status: 200, outcome: 'terminated' };
+  });
+}
+
+/** 跳转（K-43）：只能在当前运行阶段的审批流程版本内跳（AC-IDP-02）。 */
+export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, input: JumpInput) {
+  const plan = await lockPlanForHr(tx, ctx, planId);
+  await notOwnPlan(tx, ctx, plan);
+  const stage = await runningStage(tx, plan);
+  if (!stage) conflict('IDP_NO_RUNNING_STAGE', '计划没有进行中的阶段');
+  const [instance] = rowsOf<{ revision: number; version_id: string; status: string }>(
+    await tx.execute(sql`SELECT revision, version_id, status FROM approval_instances
+      WHERE tenant_id = ${ctx.tenantId} AND id = ${stage.approvalInstanceId}::uuid`),
+  );
+  if (instance?.status !== 'running') conflict('IDP_NO_RUNNING_STAGE', '计划没有进行中的阶段');
+  const nodes = rowsOf<{ node_key: string }>(
+    await tx.execute(sql`SELECT node_key FROM approval_process_nodes WHERE tenant_id = ${ctx.tenantId}
+      AND version_id = ${instance.version_id}::uuid`),
+  );
+  const crossStage = input.stageId !== undefined && input.stageId !== stage.id;
+  if (crossStage || !nodes.some((n) => n.node_key === input.toNodeKey)) {
+    conflict('IDP_JUMP_CROSS_STAGE', '只能在当前子流程内跳转，不能跨阶段');
+  }
+  await adminAct(
+    tx,
+    hrApproval(ctx, Number(instance.revision)),
+    { instanceId: stage.approvalInstanceId!, kind: 'jump', toNodeKey: input.toNodeKey, reason: input.reason },
+    sql`true`,
+  );
+  await bumpPlan(tx, ctx.tenantId, plan.id, ctx.now);
+  await audit(tx, ctx, 'plan', 'update', plan.id, {
+    before: { stage: { id: stage.id, currentNodeKey: null } },
+    after: { stage: { id: stage.id, currentNodeKey: input.toNodeKey }, reason: input.reason },
+    employeeId: plan.employeeId,
+  });
+  return loadPlanDetail(tx, await requirePlanRow(tx, ctx.tenantId, plan.id), tenantLocalDate(ctx.now, ctx.timezone));
+}
+
+/**
+ * 统一下发任务（K-46，IDP-R15）：按模板通用目标下发，勾选的计划须使用同一模板（409 IDP_TASK_TEMPLATE_MISMATCH）；
+ * 每个计划由该通用目标生成的目标下各加一条任务，整体成功或整体失败。范围 / revision 先于模板判定。
+ */
+export async function issueTasks(tx: Tx, ctx: PlanWriteContext, input: TaskIssue) {
+  const plans: PlanRow[] = [];
+  for (const item of [...input.plans].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const plan = await loadPlanRow(tx, ctx.tenantId, item.id, true);
+    if (!plan || !(await hrSees(tx, ctx.hr, plan))) throw new AppError('NOT_FOUND', '发展计划不存在');
+    if (plan.revision !== item.revision) throw new AppError('REVISION_CONFLICT', '发展计划已变更，请刷新后重提');
+    plans.push(plan);
+  }
+  if (plans.some((p) => p.status === 'ended' || p.status === 'terminated')) notActive();
+  const [goal] = rowsOf<{ template_id: string; task_enabled: boolean | null }>(
+    await tx.execute(sql`SELECT g.template_id, m.task_enabled FROM idp_template_common_goals g
+      JOIN idp_template_modules m ON m.tenant_id = g.tenant_id AND m.id = g.module_id
+      WHERE g.tenant_id = ${ctx.tenantId} AND g.id = ${input.commonGoalId}::uuid`),
+  );
+  const templates = new Set(plans.map((p) => p.templateId));
+  if (templates.size > 1 || (goal && !templates.has(goal.template_id))) {
+    conflict('IDP_TASK_TEMPLATE_MISMATCH', '所选计划使用了不同的模板，请按模板分开下发');
+  }
+  if (!goal) throw new AppError('NOT_FOUND', '模板通用目标不存在');
+  if (goal.task_enabled !== true) conflict('IDP_TASK_DISABLED', '该发展目标模块未开启制定任务');
+  const created: { planId: string; goalId: string; taskId: string }[] = [];
+  for (const plan of plans) {
+    const [target] = rowsOf<{ id: string }>(
+      await tx.execute(sql`SELECT id FROM idp_goals WHERE tenant_id = ${ctx.tenantId} AND plan_id = ${plan.id}::uuid
+        AND common_goal_id = ${input.commonGoalId}::uuid ORDER BY created_at LIMIT 1`),
+    );
+    if (!target) conflict('IDP_TASK_GOAL_MISSING', '有计划没有由该通用目标生成的目标，不能统一下发');
+    created.push({
+      planId: plan.id,
+      goalId: target.id,
+      taskId: await insertTask(tx, ctx, plan, target.id, input.task),
+    });
+    await bumpPlan(tx, ctx.tenantId, plan.id, ctx.now);
+  }
+  return { created };
+}

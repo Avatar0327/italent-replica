@@ -53,6 +53,38 @@ describe('新建 / 开始 / 删除', () => {
     expect(await errorOf(again)).toMatchObject({ status: 409, reason: 'IDP_PLAN_NOT_STARTABLE' });
   });
 
+  it('修改计划：未开始可改起止与指导人；开始后改起止 409，改指导人照常；已终止 409', async () => {
+    const w = await planWorld(testDb().db, 'idp-life-patch');
+    let plan = await w.createPlan();
+    plan = await w.ok<PlanView>(
+      await w.http(w.hrUser, 'PATCH', `${IDP}/plans/${plan.id}`, {
+        ifMatch: plan.revision,
+        body: { endDate: '2026-11-30', tutorRole: 'other', tutorEmployeeId: w.outsider.employeeId },
+      }),
+    );
+    expect(plan).toMatchObject({ endDate: '2026-11-30', tutorRole: 'other', tutorEmployeeId: w.outsider.employeeId });
+    plan = await w.start(plan);
+    const dates = await w.http(w.hrUser, 'PATCH', `${IDP}/plans/${plan.id}`, {
+      ifMatch: plan.revision,
+      body: { startDate: '2026-02-01' },
+    });
+    expect(await errorOf(dates)).toMatchObject({ status: 409, reason: 'IDP_PLAN_STARTED' });
+    plan = await w.ok<PlanView>(
+      await w.http(w.hrUser, 'PATCH', `${IDP}/plans/${plan.id}`, {
+        ifMatch: plan.revision,
+        body: { tutorRole: 'direct_manager' },
+      }),
+    );
+    expect(plan.tutorEmployeeId).toBe(w.manager.employeeId);
+    await w.ok(await w.intervene('terminate', { items: [{ id: plan.id, revision: plan.revision }] }));
+    const after = await w.readPlan(plan.id);
+    const late = await w.http(w.hrUser, 'PATCH', `${IDP}/plans/${plan.id}`, {
+      ifMatch: after.revision,
+      body: { name: '终止后改名' },
+    });
+    expect(await errorOf(late)).toMatchObject({ status: 409, reason: 'IDP_PLAN_NOT_ACTIVE' });
+  });
+
   it('被计划引用的模板：不能删除、不能增删模块（K-25）', async () => {
     const w = await planWorld(testDb().db, 'idp-life-ref');
     await w.createPlan();

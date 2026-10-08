@@ -4,7 +4,7 @@
  * 取消发布）、模板模块 templates/:id/modules（含按流程节点的可用按钮）、模板通用目标 templates/:id/common-goals。
  * 写入走命令台账（幂等、revision 409）；首次执行与幂等重放都按当前功能权限、按钮与范围复核，响应逐层按字段权限裁剪。
  */
-import { IDP_APPROVAL_TYPES, type IdpObject } from '@italent/domain';
+import { IDP_APPROVAL_TYPES, type IdpObject, RULE_TEXT_SOURCES } from '@italent/domain';
 import { and, eq, idpProcesses, idpTemplates, isUuid, sql, type Tx, withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import type { z } from 'zod';
@@ -33,6 +33,8 @@ import {
   rowsOf,
 } from './access.js';
 import * as input from './input.js';
+import { registerKeyInfoRoutes } from './key-info-routes.js';
+import { registerPlanRoutes } from './plan-routes.js';
 import * as processes from './process-service.js';
 import * as read from './read-model.js';
 import * as templates from './template-service.js';
@@ -48,9 +50,22 @@ export function registerIdpRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
   registerTemplateWrites(router, deps);
   registerTemplateActions(router, deps);
   registerTemplatePartRoutes(router, deps);
+  // PR-B：计划执行、干预与关键信息
+  registerPlanRoutes(router, deps);
+  registerKeyInfoRoutes(router, deps);
 }
 
 // ---- 响应裁剪 ----
+
+/**
+ * 子流程按字段权限裁剪；开启规则说明文本是派生值，与 fixedDate 同一门禁（DEC-309④）：看得到它依据的全部字段才输出。
+ */
+function subProcessShown(item: read.SubProcessView, sub: ReadonlySet<string> | undefined) {
+  const { ruleText, ...fields } = item;
+  const shown: Record<string, unknown> = project(fields, sub);
+  if (sub === undefined || RULE_TEXT_SOURCES.every((field) => sub.has(field))) shown.ruleText = ruleText;
+  return shown;
+}
 
 /** 流程：顶层按 IDPProcess、子流程按 SubProcess 字段权限；没有子流程查看权时省略整段。 */
 async function processPresenter(deps: TenantRouteDeps, ctx: IdpContext) {
@@ -60,7 +75,7 @@ async function processPresenter(deps: TenantRouteDeps, ctx: IdpContext) {
     const { subProcesses, ...rest } = view;
     const shown: Record<string, unknown> = project(rest, top);
     if (sub !== null && (top === undefined || top?.has('subProcesses'))) {
-      shown.subProcesses = subProcesses.map((item) => project(item, sub));
+      shown.subProcesses = subProcesses.map((item) => subProcessShown(item, sub));
     }
     return shown;
   };
@@ -288,7 +303,7 @@ function registerProcessWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       anchorObject: 'process',
       status: 200,
       body: { id },
-      execute: (tx, w) => processes.deleteProcess(tx, w, id),
+      execute: (tx, w) => processes.deleteProcess(tx, deps, w, id),
       // 删除的受控快照：按删除时的归属判定当前可写性
       recheck: (tx, scope, view) => requireEditable(tx, ctx, scope, 'process', anchorOf(view)),
       present: async (view) => (await processPresenter(deps, ctx))(view),
@@ -386,7 +401,7 @@ function registerTemplateRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
 
 /** 模板写入（模块与通用目标以外）：共用执行器，返回前按 recheck 复核当前归属与引用。 */
 function templateWriter(deps: TenantRouteDeps) {
-  return <T extends read.TemplateView>(
+  return <T extends read.TemplateView & { warnings?: readonly unknown[] }>(
     c: Context<TenantEnv>,
     ctx: IdpContext,
     status: 200 | 201,
@@ -400,7 +415,11 @@ function templateWriter(deps: TenantRouteDeps) {
       body,
       execute,
       recheck,
-      present: async (view) => (await templatePresenter(deps, ctx))(view),
+      present: async ({ warnings, ...view }) => ({
+        ...(await templatePresenter(deps, ctx))(view),
+        // 发布提示（DEC-309④-3）：协议元数据，不是模板字段
+        ...(warnings ? { warnings } : {}),
+      }),
     });
 }
 
@@ -455,7 +474,7 @@ function registerTemplateWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
       ctx,
       200,
       { id },
-      (tx, w) => templates.deleteTemplate(tx, w, id),
+      (tx, w) => templates.deleteTemplate(tx, deps, w, id),
       // 删除的受控快照：按删除时的归属判定当前可写性
       (tx, scope, view) => requireEditable(tx, ctx, scope, 'template', anchorOf(view)),
     );
@@ -566,7 +585,7 @@ function registerTemplatePartRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
   );
   router.delete(
     `${path}/modules/:partId`,
-    write('templateModule', 'delete', null, (tx, w, id, part) => templates.deleteModule(tx, w, id, part!)),
+    write('templateModule', 'delete', null, (tx, w, id, part) => templates.deleteModule(tx, deps, w, id, part!)),
   );
   router.post(
     `${path}/common-goals`,

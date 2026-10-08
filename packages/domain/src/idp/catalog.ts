@@ -128,11 +128,84 @@ export const TEMPLATE_MODULE_FIELDS = [
   'nodeSettings',
 ] as const;
 
+/** 发展计划的可写字段（IDP-R13）。 */
+export const PLAN_FIELDS = [
+  'name',
+  'employeeId',
+  'templateId',
+  'startDate',
+  'endDate',
+  'tutorRole',
+  'tutorEmployeeId',
+] as const;
+
+/** 发展目标字段（IDP-R8；胜任力库目标另存指标的名称 / 定义 / 类别快照，DEC-307）。 */
+export const GOAL_FIELDS = [
+  'moduleId',
+  'name',
+  'measure',
+  'suggestion',
+  'startDate',
+  'endDate',
+  'indicatorId',
+  'indicatorName',
+  'indicatorDefinition',
+  'indicatorCategory',
+  'displayOrder',
+] as const;
+
+export const TASK_FIELDS = ['goalId', 'name', 'description', 'ownerEmployeeId', 'startDate', 'endDate'] as const;
+
+export const CAREER_FIELDS = [
+  'employeeId',
+  'targetPositionId',
+  'strengths',
+  'developmentItems',
+  'intendedCity',
+  'startDate',
+  'endDate',
+] as const;
+
+/** 计划状态（Q-M0-115① IdpStatus）：未开始 0 / 进行中 1 / 已结束 100 / 已终止 200。 */
+export const PLAN_STATUSES = ['not_started', 'running', 'ended', 'terminated'] as const;
+export type PlanStatus = (typeof PLAN_STATUSES)[number];
+
+/** 阶段（子流程实例）状态：待开启 / 进行中 / 已结束 / 开启失败（IDP-R3）。 */
+export const STAGE_STATUSES = ['pending', 'running', 'ended', 'failed'] as const;
+export type StageStatus = (typeof STAGE_STATUSES)[number];
+
+/**
+ * 指导人角色（Q-M0-115① IDP.TutorRole）：直线经理 1、间接经理 2、第三 / 四 / 五级主管 3 / 4 / 5、导师 6、部门 HRBP 11、
+ * 部门负责人 12、其他人 0（与人才池的枚举不同）。
+ */
+export const TUTOR_ROLES = [
+  'direct_manager',
+  'indirect_manager',
+  'level3_head',
+  'level4_head',
+  'level5_head',
+  'mentor',
+  'department_hrbp',
+  'department_head',
+  'other',
+] as const;
+export type TutorRole = (typeof TUTOR_ROLES)[number];
+
+/** 开启下个阶段时已有进行中阶段的处理（Q-M0-115① StartNextSubProcessType）：不处理 0 / 结束当前阶段并开启 1。 */
+export const START_NEXT_MODES = ['skipRunning', 'endRunning'] as const;
+export type StartNextMode = (typeof START_NEXT_MODES)[number];
+
+/** 计划进行中、没有运行中的阶段、仍有未开启阶段时的“当前阶段”显示值（IDP-R4，🟡 K-03）。 */
+export const IMPROVING_STAGE_NAME = '努力提升中';
+
 export const IDP_OBJECTS = {
   /** 发展计划流程 IDPProcess：名称、所属组织、是否向下公开、是否启用；子流程是它的组成部分。 */
   process: object('IDPProcess', ['name', 'orgId', 'publicDown', 'enabled', 'subProcesses'], ['referenced']),
-  /** 子流程 SubProcess（顺序由流程内位置决定，seq 只读；开启规则说明文本 ruleText 只读）。 */
-  subProcess: object('SubProcess', SUB_PROCESS_FIELDS, ['seq', 'ruleText'], []),
+  /**
+   * 子流程 SubProcess（顺序由流程内位置决定，seq 只读）。开启规则说明文本 ruleText 是派生值、不是可单独授权的字段：
+   * 只在查看人看得到它所依据的全部字段（RULE_TEXT_SOURCES，含 fixedDate）时输出（DEC-309④）。
+   */
+  subProcess: object('SubProcess', SUB_PROCESS_FIELDS, ['seq'], []),
   /** 发展计划模板 IDPTemplate。 */
   template: object(
     'IDPTemplate',
@@ -149,6 +222,49 @@ export const IDP_OBJECTS = {
   templateModule: object('IDPTemplateModule', TEMPLATE_MODULE_FIELDS),
   /** 模板通用目标 IDPTemplateCommonGoal（只对之后新发起的计划生效，IDP-R9）。 */
   commonGoal: object('IDPTemplateCommonGoal', ['moduleId', 'name', 'measure', 'suggestion', 'displayOrder']),
+  /**
+   * 发展计划 Idp（PR-B）。HR 端按钮：新建 / 修改 / 删除 / 开始，流程干预（Q-M0-115⑥ 列表菜单）催办 / 跳转 / 开启下个阶段 /
+   * 终止。阶段、当前步骤等由服务端维护，只读。
+   */
+  plan: object(
+    'Idp',
+    PLAN_FIELDS,
+    ['processId', 'status', 'currentStageName', 'currentNodeName', 'stages'],
+    [
+      ...crud,
+      { code: 'start', level: 'detail', requires: 'update' },
+      { code: 'urge', level: 'list', requires: 'update' },
+      { code: 'jump', level: 'detail', requires: 'update' },
+      { code: 'startNext', level: 'list', requires: 'update' },
+      { code: 'terminate', level: 'list', requires: 'update' },
+    ],
+  ),
+  /** 发展目标 IdpGoal：执行人按节点按钮写（DEC-296④），HR 没有直接写入的按钮。 */
+  goal: object('IdpGoal', GOAL_FIELDS, ['planId', 'sourceType', 'commonGoalId', 'tasks', 'reviews'], []),
+  /** 目标任务 Task：执行人按节点按钮写；HR 只能统一下发（IDP-R15）。 */
+  task: object('Task', TASK_FIELDS, ['planId'], [{ code: 'issue', level: 'list', requires: 'create' }]),
+  /** 目标回顾 GoalReview（按阶段）。 */
+  goalReview: object('GoalReview', ['goalId', 'stageId', 'progress', 'outcome'], [], []),
+  /** 综述 Analysis。 */
+  analysis: object('Analysis', ['moduleId', 'currentAnalysis', 'developmentItems'], [], []),
+  /** 回顾 / 总结 Review（按阶段）。 */
+  review: object('Review', ['moduleId', 'stageId', 'summary', 'improvement'], [], []),
+  /** 带教信息 TutorShip（IDP-R19）。 */
+  tutorship: object('TutorShip', ['tutorEmployeeId', 'tuteeEmployeeId', 'startDate', 'endDate', 'remark']),
+  /** 职业发展信息 Career（IDP-R20；职务 / 职级等其余字段首版不做）。 */
+  career: object('Career', CAREER_FIELDS),
+  /** 轮岗信息 WorkShift（IDP-R21；职务首版不做）。 */
+  workShift: object('WorkShift', ['employeeId', 'orgId', 'positionId', 'mentorEmployeeId', 'startDate', 'endDate']),
 } as const satisfies Record<string, ObjectDefinition>;
 
 export type IdpObject = keyof typeof IDP_OBJECTS;
+
+/** 说明文本依据的字段（DEC-309④：与 fixedDate 同一门禁；看不到其中任一个就不输出说明文本）。 */
+export const RULE_TEXT_SOURCES = [
+  'startMode',
+  'startTimeType',
+  'fixedDate',
+  'referencePoint',
+  'startFrom',
+  'days',
+] as const satisfies readonly (typeof SUB_PROCESS_FIELDS)[number][];

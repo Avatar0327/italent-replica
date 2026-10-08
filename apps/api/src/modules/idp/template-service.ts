@@ -248,6 +248,7 @@ export async function setTemplateStatus(tx: Tx, ctx: WriteContext, id: string, s
       .for('share');
     if (!process?.enabled) conflict('IDP_PROCESS_DISABLED', '模板引用的流程已停用，不能发布');
   }
+  const warnings = status === 'published' ? await discardedApprovals(tx, ctx.tenantId, row.processId) : [];
   const T = idpTemplates;
   await tx
     .update(T)
@@ -259,12 +260,37 @@ export async function setTemplateStatus(tx: Tx, ctx: WriteContext, id: string, s
     after: templateRecord(after),
     orgId: after.orgId,
   });
-  return after;
+  return { ...after, warnings };
 }
 
-/** 被计划引用的模板不能删除（🟡 K-25）；删除保留模板、模块、通用目标的快照。 */
-export async function deleteTemplate(tx: Tx, ctx: WriteContext, id: string) {
+export interface PublishWarning {
+  readonly code: 'IDP_APPROVAL_PROCESS_DISCARDED';
+  readonly subProcessId: string;
+}
+
+/**
+ * 审批流程废弃后（DEC-309④-3）：配置照常保存、发布照常成功，但提示哪些子流程引用的审批流程已废弃（提示不拦截）；
+ * 阶段开启时失败（stage-service.openStage）。
+ */
+async function discardedApprovals(tx: Tx, tenantId: string, processId: string): Promise<PublishWarning[]> {
+  const rows = rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT s.id FROM idp_sub_processes s
+      JOIN approval_processes p ON p.tenant_id = s.tenant_id AND p.id = s.approval_process_id
+      WHERE s.tenant_id = ${tenantId} AND s.process_id = ${processId}::uuid
+        AND (p.status <> 'active' OR p.current_version_id IS NULL)
+      ORDER BY s.seq`),
+  );
+  return rows.map((r) => ({ code: 'IDP_APPROVAL_PROCESS_DISCARDED', subProcessId: r.id }));
+}
+
+/**
+ * 被计划引用的模板不能删除（🟡 K-25）；删除保留模板、模块、通用目标的快照。级联删除模块与通用目标须有两者的删除权
+ * （DEC-309④-2，不论是否存在都要求，避免以存在性泄露隐藏内容；缺权整次 403），记入台账、重放复核。
+ */
+export async function deleteTemplate(tx: Tx, deps: Deps, ctx: WriteContext, id: string) {
   await lockTemplate(tx, ctx, id);
+  await requireNestedWrite(tx, deps, ctx, 'templateModule', 'delete');
+  await requireNestedWrite(tx, deps, ctx, 'commonGoal', 'delete');
   if (await referenced(tx, ctx, id)) conflict('IDP_TEMPLATE_REFERENCED', '模板已被发展计划引用，不能删除');
   const before = (await loadTemplate(tx, ctx.tenantId, id))!;
   for (const goal of before.commonGoals) {
@@ -606,11 +632,15 @@ export async function updateModule(
   return finish(tx, ctx, templateId);
 }
 
-/** 基本信息模块固定不可删（IDP-R7）；删除发展目标模块连带其通用目标（各留快照）。 */
-export async function deleteModule(tx: Tx, ctx: WriteContext, templateId: string, moduleId: string) {
+/**
+ * 基本信息模块固定不可删（IDP-R7）；删除发展目标模块连带其通用目标（各留快照），须有通用目标删除权（DEC-309④-2，
+ * 不论该模块下是否有通用目标都要求）。
+ */
+export async function deleteModule(tx: Tx, deps: Deps, ctx: WriteContext, templateId: string, moduleId: string) {
   const template = await lockTemplate(tx, ctx, templateId);
   const row = await loadModule(tx, ctx, templateId, moduleId);
   if (row.moduleType === 'basic') conflict('IDP_BASIC_MODULE_FIXED', '基本信息模块固定，不能删除');
+  if (row.moduleType === 'goal') await requireNestedWrite(tx, deps, ctx, 'commonGoal', 'delete');
   if (await referenced(tx, ctx, templateId)) conflict('IDP_TEMPLATE_REFERENCED', '模板已被发展计划引用，不能增删模块');
   const goals = (await loadCommonGoals(tx, ctx.tenantId, templateId)).filter((g) => g.moduleId === moduleId);
   for (const goal of goals) {

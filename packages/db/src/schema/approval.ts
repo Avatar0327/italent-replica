@@ -211,7 +211,7 @@ export const approvalProcessNodes = pgTable(
     check(
       'approval_nodes_approver',
       sql`${t.approverExpression} IN ('owner','direct_manager','latest_record_department_head','record_department_head',
-        'record_department_hrbp','record_first_level_org_head')`,
+        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor')`,
     ),
     // DEC-054：中间节点审批人为空一律转异常管理员（PR #35 第二轮清单 6）。
     check('approval_nodes_no_assignee', sql`${t.noAssigneePolicy} = 'exception_admin'`),
@@ -227,9 +227,10 @@ export const approvalProcessNodes = pgTable(
     check(
       'approval_nodes_approvers',
       sql`CASE WHEN ${t.nodeType} = 'countersign'
-        THEN ${t.approverExpression} IS NULL AND cardinality(${t.approverExpressions}) BETWEEN 1 AND 6
+        THEN ${t.approverExpression} IS NULL AND cardinality(${t.approverExpressions}) BETWEEN 1 AND 8
           AND ${t.approverExpressions} <@ ARRAY['owner','direct_manager','latest_record_department_head',
-            'record_department_head','record_department_hrbp','record_first_level_org_head']::text[]
+            'record_department_head','record_department_hrbp','record_first_level_org_head',
+            'idp_employee','idp_tutor']::text[]
         ELSE ${t.approverExpression} IS NOT NULL AND cardinality(${t.approverExpressions}) = 0 END`,
     ),
     check(
@@ -354,7 +355,10 @@ export const approvalInstances = pgTable(
       'approval_instances_status',
       sql`${t.status} IN ('running','returned','approved','disapproved','withdrawn','cancelled')`,
     ),
-    check('approval_instances_business_type', sql`${t.businessType} IN ('employment','personnel_change','contract')`),
+    check(
+      'approval_instances_business_type',
+      sql`${t.businessType} IN ('employment','personnel_change','contract','idp')`,
+    ),
     check('approval_instances_revision', sql`${t.revision} > 0 AND ${t.round} > 0 AND ${t.historyFromSeq} >= 0`),
   ],
 );

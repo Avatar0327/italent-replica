@@ -381,6 +381,9 @@ export async function planWorld(db: Db, label: string, options: PlanWorldOptions
 
 export type PlanWorld = Awaited<ReturnType<typeof planWorld>>;
 
+/** 无关员工丙没有直线经理：给他建计划时显式指定指导人（经理甲）。 */
+export const otherTutor = (w: PlanWorld) => ({ tutorRole: 'other', tutorEmployeeId: w.manager.employeeId });
+
 export async function errorOf(response: Response) {
   const body = (await response.json()) as { error: { code: string; details?: { reason?: string } } };
   return { status: response.status, code: body.error.code, reason: body.error.details?.reason };

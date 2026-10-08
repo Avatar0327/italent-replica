@@ -24,6 +24,8 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { approvalProcesses } from './approval.js';
+import { employmentEmployees } from './employment.js';
+import { jobPositionObjects } from './job.js';
 import { orgObjects } from './org.js';
 import { tenants } from './tenancy.js';
 
@@ -287,5 +289,342 @@ export const idpTemplateCommonGoals = pgTable(
       foreignColumns: [idpTemplateModules.tenantId, idpTemplateModules.id],
       name: 'idp_template_common_goals_module_fk',
     }).onDelete('cascade'),
+  ],
+);
+
+// ───────────── PR-B：发展计划执行（docs/02_业务建模/28 §1 / §2.3 / §2.4；Q-M0-115①）─────────────
+
+/** 员工引用（任职员工，RESTRICT）。 */
+const employeeFk = (name: string, t: { tenantId: AnyPgColumn }, column: AnyPgColumn) =>
+  foreignKey({
+    columns: [t.tenantId, column],
+    foreignColumns: [employmentEmployees.tenantId, employmentEmployees.id],
+    name,
+  }).onDelete('restrict');
+
+const planDates = () => ({
+  startDate: date('start_date', { mode: 'string' }).notNull(),
+  endDate: date('end_date', { mode: 'string' }).notNull(),
+});
+
+/**
+ * 发展计划 Idp：员工、模板（及其流程）、起止、指导人（创建时按角色解析为具体人员，K-20）、状态（Q-M0-115① IdpStatus）。
+ * 阶段、目标等是计划的组成部分，并发控制用计划的 revision。数据范围按计划员工的当前任职（K-50）。
+ */
+export const idpPlans = pgTable(
+  'idp_plans',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    templateId: uuid('template_id').notNull(),
+    processId: uuid('process_id').notNull(),
+    ...planDates(),
+    tutorRole: text('tutor_role').notNull(),
+    tutorEmployeeId: uuid('tutor_employee_id').notNull(),
+    status: text('status').notNull().default('not_started'),
+    ...tracked(),
+  },
+  (t) => [
+    unique('idp_plans_tenant_id').on(t.tenantId, t.id),
+    index('idp_plans_employee').on(t.tenantId, t.employeeId),
+    index('idp_plans_tutor').on(t.tenantId, t.tutorEmployeeId),
+    index('idp_plans_template').on(t.tenantId, t.templateId),
+    employeeFk('idp_plans_employee_fk', t, t.employeeId),
+    employeeFk('idp_plans_tutor_fk', t, t.tutorEmployeeId),
+    foreignKey({
+      columns: [t.tenantId, t.templateId],
+      foreignColumns: [idpTemplates.tenantId, idpTemplates.id],
+      name: 'idp_plans_template_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.tenantId, t.processId],
+      foreignColumns: [idpProcesses.tenantId, idpProcesses.id],
+      name: 'idp_plans_process_fk',
+    }).onDelete('restrict'),
+    check('idp_plans_status', inList(t.status, ['not_started', 'running', 'ended', 'terminated'])),
+    check(
+      'idp_plans_tutor_role',
+      inList(t.tutorRole, [
+        'direct_manager',
+        'indirect_manager',
+        'level3_head',
+        'level4_head',
+        'level5_head',
+        'mentor',
+        'department_hrbp',
+        'department_head',
+        'other',
+      ]),
+    ),
+    check('idp_plans_dates', sql`${t.endDate} >= ${t.startDate}`),
+  ],
+);
+
+/**
+ * 阶段 = 计划内的一个子流程实例（IDP-R1）：建计划时按流程的子流程逐段生成；开启后挂一条审批实例（K-41）。
+ * 开启失败记原因与次数（DEC-052），last_attempt_on 是调度的幂等键（阶段 + 业务日，K-33）。
+ */
+export const idpPlanStages = pgTable(
+  'idp_plan_stages',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    planId: uuid('plan_id').notNull(),
+    subProcessId: uuid('sub_process_id').notNull(),
+    seq: integer('seq').notNull(),
+    status: text('status').notNull().default('pending'),
+    approvalInstanceId: uuid('approval_instance_id'),
+    openedAt: timestamp('opened_at', { withTimezone: true }),
+    endedOn: date('ended_on', { mode: 'string' }),
+    failureReason: text('failure_reason'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    lastAttemptOn: date('last_attempt_on', { mode: 'string' }),
+  },
+  (t) => [
+    unique('idp_plan_stages_tenant_id').on(t.tenantId, t.id),
+    unique('idp_plan_stages_seq').on(t.tenantId, t.planId, t.seq),
+    index('idp_plan_stages_pending').on(t.tenantId, t.status),
+    index('idp_plan_stages_instance').on(t.tenantId, t.approvalInstanceId),
+    foreignKey({
+      columns: [t.tenantId, t.planId],
+      foreignColumns: [idpPlans.tenantId, idpPlans.id],
+      name: 'idp_plan_stages_plan_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.subProcessId],
+      foreignColumns: [idpSubProcesses.tenantId, idpSubProcesses.id],
+      name: 'idp_plan_stages_sub_process_fk',
+    }).onDelete('restrict'),
+    check('idp_plan_stages_status', inList(t.status, ['pending', 'running', 'ended', 'failed'])),
+    check('idp_plan_stages_attempts', sql`${t.attemptCount} >= 0`),
+  ],
+);
+
+const planChild = (name: string, t: { tenantId: AnyPgColumn; planId: AnyPgColumn }) =>
+  foreignKey({
+    columns: [t.tenantId, t.planId],
+    foreignColumns: [idpPlans.tenantId, idpPlans.id],
+    name,
+  }).onDelete('cascade');
+
+/** 发展目标 IdpGoal（IDP-R8）：自定义 / 胜任力库（指标快照，DEC-307）/ 模板通用目标（建计划时带入，IDP-R9）。 */
+export const idpGoals = pgTable(
+  'idp_goals',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    planId: uuid('plan_id').notNull(),
+    moduleId: uuid('module_id').notNull(),
+    name: text('name').notNull(),
+    measure: text('measure'),
+    suggestion: text('suggestion'),
+    startDate: date('start_date', { mode: 'string' }),
+    endDate: date('end_date', { mode: 'string' }),
+    sourceType: text('source_type').notNull(),
+    // 通用目标可能随后被删除，只留来源编号（不建外键）
+    commonGoalId: uuid('common_goal_id'),
+    indicatorId: uuid('indicator_id'),
+    indicatorName: text('indicator_name'),
+    indicatorDefinition: text('indicator_definition'),
+    indicatorCategory: text('indicator_category'),
+    displayOrder: integer('display_order').notNull().default(0),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('idp_goals_tenant_id').on(t.tenantId, t.id),
+    index('idp_goals_plan').on(t.tenantId, t.planId),
+    planChild('idp_goals_plan_fk', t),
+    foreignKey({
+      columns: [t.tenantId, t.moduleId],
+      foreignColumns: [idpTemplateModules.tenantId, idpTemplateModules.id],
+      name: 'idp_goals_module_fk',
+    }).onDelete('restrict'),
+    check('idp_goals_source', inList(t.sourceType, ['custom', 'library', 'common'])),
+  ],
+);
+
+/** 目标任务 Task（IDP-R15 统一下发；执行人按节点按钮维护）。 */
+export const idpGoalTasks = pgTable(
+  'idp_goal_tasks',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    planId: uuid('plan_id').notNull(),
+    goalId: uuid('goal_id').notNull(),
+    name: text('name').notNull(),
+    description: text('description'),
+    ownerEmployeeId: uuid('owner_employee_id'),
+    startDate: date('start_date', { mode: 'string' }),
+    endDate: date('end_date', { mode: 'string' }),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('idp_goal_tasks_tenant_id').on(t.tenantId, t.id),
+    index('idp_goal_tasks_goal').on(t.tenantId, t.goalId),
+    planChild('idp_goal_tasks_plan_fk', t),
+    foreignKey({
+      columns: [t.tenantId, t.goalId],
+      foreignColumns: [idpGoals.tenantId, idpGoals.id],
+      name: 'idp_goal_tasks_goal_fk',
+    }).onDelete('cascade'),
+    employeeFk('idp_goal_tasks_owner_fk', t, t.ownerEmployeeId),
+  ],
+);
+
+/** 目标回顾 GoalReview：每个目标在每个阶段一份（目标进度、工作成果）。 */
+export const idpGoalReviews = pgTable(
+  'idp_goal_reviews',
+  {
+    tenantId: tenantId(),
+    planId: uuid('plan_id').notNull(),
+    goalId: uuid('goal_id').notNull(),
+    stageId: uuid('stage_id').notNull(),
+    progress: integer('progress'),
+    outcome: text('outcome'),
+    updatedBy: uuid('updated_by').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.goalId, t.stageId] }),
+    planChild('idp_goal_reviews_plan_fk', t),
+    foreignKey({
+      columns: [t.tenantId, t.goalId],
+      foreignColumns: [idpGoals.tenantId, idpGoals.id],
+      name: 'idp_goal_reviews_goal_fk',
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.tenantId, t.stageId],
+      foreignColumns: [idpPlanStages.tenantId, idpPlanStages.id],
+      name: 'idp_goal_reviews_stage_fk',
+    }).onDelete('cascade'),
+    check('idp_goal_reviews_progress', sql`${t.progress} IS NULL OR ${t.progress} BETWEEN 0 AND 100`),
+  ],
+);
+
+/** 综述 Analysis：每个综述模块一份（现状分析、待发展项）。 */
+export const idpPlanAnalyses = pgTable(
+  'idp_plan_analyses',
+  {
+    tenantId: tenantId(),
+    planId: uuid('plan_id').notNull(),
+    moduleId: uuid('module_id').notNull(),
+    currentAnalysis: text('current_analysis'),
+    developmentItems: text('development_items'),
+    updatedBy: uuid('updated_by').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.planId, t.moduleId] }), planChild('idp_plan_analyses_plan_fk', t)],
+);
+
+/** 回顾 / 总结 Review：每个回顾 / 总结模块在每个阶段一份（总结、改进方法）。 */
+export const idpPlanReviews = pgTable(
+  'idp_plan_reviews',
+  {
+    tenantId: tenantId(),
+    planId: uuid('plan_id').notNull(),
+    moduleId: uuid('module_id').notNull(),
+    stageId: uuid('stage_id').notNull(),
+    summary: text('summary'),
+    improvement: text('improvement'),
+    updatedBy: uuid('updated_by').notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.planId, t.moduleId, t.stageId] }),
+    planChild('idp_plan_reviews_plan_fk', t),
+    foreignKey({
+      columns: [t.tenantId, t.stageId],
+      foreignColumns: [idpPlanStages.tenantId, idpPlanStages.id],
+      name: 'idp_plan_reviews_stage_fk',
+    }).onDelete('cascade'),
+  ],
+);
+
+/** 带教信息 TutorShip（IDP-R19）：判重键 = 带教人 + 被带教人 + 起止。 */
+export const idpTutorships = pgTable(
+  'idp_tutorships',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    tutorEmployeeId: uuid('tutor_employee_id').notNull(),
+    tuteeEmployeeId: uuid('tutee_employee_id').notNull(),
+    startDate: date('start_date', { mode: 'string' }).notNull(),
+    endDate: date('end_date', { mode: 'string' }),
+    remark: text('remark'),
+    ...tracked(),
+  },
+  (t) => [
+    unique('idp_tutorships_tenant_id').on(t.tenantId, t.id),
+    unique('idp_tutorships_key')
+      .on(t.tenantId, t.tutorEmployeeId, t.tuteeEmployeeId, t.startDate, t.endDate)
+      .nullsNotDistinct(),
+    index('idp_tutorships_tutee').on(t.tenantId, t.tuteeEmployeeId),
+    employeeFk('idp_tutorships_tutor_fk', t, t.tutorEmployeeId),
+    employeeFk('idp_tutorships_tutee_fk', t, t.tuteeEmployeeId),
+    check('idp_tutorships_dates', sql`${t.endDate} IS NULL OR ${t.endDate} >= ${t.startDate}`),
+    check('idp_tutorships_distinct', sql`${t.tutorEmployeeId} <> ${t.tuteeEmployeeId}`),
+  ],
+);
+
+/** 职业发展信息 Career（IDP-R20）：判重键 = 员工 + 起止。 */
+export const idpCareers = pgTable(
+  'idp_careers',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employeeId: uuid('employee_id').notNull(),
+    targetPositionId: uuid('target_position_id'),
+    strengths: text('strengths'),
+    developmentItems: text('development_items'),
+    intendedCity: text('intended_city'),
+    startDate: date('start_date', { mode: 'string' }).notNull(),
+    endDate: date('end_date', { mode: 'string' }),
+    ...tracked(),
+  },
+  (t) => [
+    unique('idp_careers_tenant_id').on(t.tenantId, t.id),
+    unique('idp_careers_key').on(t.tenantId, t.employeeId, t.startDate, t.endDate).nullsNotDistinct(),
+    employeeFk('idp_careers_employee_fk', t, t.employeeId),
+    foreignKey({
+      columns: [t.tenantId, t.targetPositionId],
+      foreignColumns: [jobPositionObjects.tenantId, jobPositionObjects.id],
+      name: 'idp_careers_position_fk',
+    }).onDelete('restrict'),
+    check('idp_careers_dates', sql`${t.endDate} IS NULL OR ${t.endDate} >= ${t.startDate}`),
+  ],
+);
+
+/** 轮岗信息 WorkShift（IDP-R21）：判重键 = 员工 + 部门 + 职位 + 起止（🟡 K-35 加员工，职务不做）。 */
+export const idpWorkShifts = pgTable(
+  'idp_work_shifts',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employeeId: uuid('employee_id').notNull(),
+    orgId: uuid('org_id').notNull(),
+    positionId: uuid('position_id'),
+    mentorEmployeeId: uuid('mentor_employee_id'),
+    startDate: date('start_date', { mode: 'string' }).notNull(),
+    endDate: date('end_date', { mode: 'string' }),
+    ...tracked(),
+  },
+  (t) => [
+    unique('idp_work_shifts_tenant_id').on(t.tenantId, t.id),
+    unique('idp_work_shifts_key')
+      .on(t.tenantId, t.employeeId, t.orgId, t.positionId, t.startDate, t.endDate)
+      .nullsNotDistinct(),
+    employeeFk('idp_work_shifts_employee_fk', t, t.employeeId),
+    employeeFk('idp_work_shifts_mentor_fk', t, t.mentorEmployeeId),
+    foreignKey({
+      columns: [t.tenantId, t.positionId],
+      foreignColumns: [jobPositionObjects.tenantId, jobPositionObjects.id],
+      name: 'idp_work_shifts_position_fk',
+    }).onDelete('restrict'),
+    ...ownerOrg('idp_work_shifts', t),
+    check('idp_work_shifts_dates', sql`${t.endDate} IS NULL OR ${t.endDate} >= ${t.startDate}`),
   ],
 );

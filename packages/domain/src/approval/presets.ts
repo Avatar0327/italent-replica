@@ -178,8 +178,8 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       nodes: [node('department_head', '部门负责人审批', 'latest_record_department_head', { formFields: [] })],
     }),
   },
-  // IDP-R1：预置三条子流程审批流程（制定计划 / 中期回顾 / 期末回顾），节点照原站 W-114 节点链（员工 → 指导人）。
-  // TODO(R3-T07 PR-B，🟡 K-09)：审批人表达式暂用“流程所有者（发起人）/ 直接上级”，PR-B 新增“计划员工 / 指导人”后替换。
+  // IDP-R1：预置三条子流程审批流程（制定计划 / 中期回顾 / 期末回顾），节点照原站 W-114 节点链：
+  // 发展计划 - 员工本人 → 发展计划 - 指导人（K-09）。
   ...(
     [
       ['idp_plan', 'StandardIdpPlan', '标准制定计划流程', 'set_goals', '制定发展目标', 'approve_plan', '审批发展计划'],
@@ -212,8 +212,8 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       priority: 0,
       ...standardCondition(approvalType),
       nodes: [
-        node(employeeKey, employeeName, 'owner', { formFields: [] }),
-        node(tutorKey, tutorName, 'direct_manager', { formFields: [] }),
+        node(employeeKey, employeeName, 'idp_employee', { formFields: [] }),
+        node(tutorKey, tutorName, 'idp_tutor', { formFields: [] }),
       ],
     }),
   })),

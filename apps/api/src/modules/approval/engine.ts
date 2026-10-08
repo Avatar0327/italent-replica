@@ -24,6 +24,7 @@ import {
   nodeExits,
   previousNodeComparand,
   STALLED_COUNTERSIGN_HANDLING,
+  SUBJECT_FILL_APPROVER,
   submitBlockers,
   tenantLocalDate,
   type ApprovalNode,
@@ -149,6 +150,7 @@ function routingSubject(run: Run): RoutingSubject {
     subjectEmployeeId: run.snapshot.subjectEmployeeId,
     latestDepartmentId: run.snapshot.latestDepartmentId,
     recordDepartmentId: run.snapshot.recordDepartmentId,
+    tutorEmployeeId: run.snapshot.tutorEmployeeId ?? null,
     cache: new Map(),
   };
 }
@@ -185,10 +187,21 @@ async function decide(
   facts: RoutingFacts,
 ) {
   const candidate = await resolveCandidate(tx, subject, expression);
+  // K-37：员工填写自己计划的节点不按自审回避（处理人就是计划员工本人，也是发起人）
+  if (expression === SUBJECT_FILL_APPROVER)
+    return { candidate, decision: decideNode(node, candidate, fillFacts(facts)) };
   const draft = decideNode(node, candidate, facts);
   if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return { candidate, decision: draft };
   return { candidate, decision: decideNode(node, candidate, facts, await directManagerOf(tx, subject, candidate)) };
 }
+
+/** 填写节点的路由事实：不把员工本人当作发起人或异动本人（K-37，只用于 idp_employee 解析出的人）。 */
+const fillFacts = (facts: RoutingFacts): RoutingFacts => ({
+  ...facts,
+  initiatorUserId: '',
+  subjectEmployeeId: null,
+  subjectUserId: null,
+});
 
 /** 自动处理的触发机制（审批记录里区分“与上一节点相同 / 与历史节点相同”）。 */
 const MECHANISMS = { same_skip: 'same', history_skip: 'history' } as const;
@@ -733,7 +746,16 @@ export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: Start
   if (latest?.status === 'running') throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '该申请已在审批中');
   if (latest) return resume(tx, ctx, latest.id);
   const snapshot = await ADAPTERS[request.businessType].snapshot(tx, ctx, request.businessId);
-  const matched = await matchProcess(tx, ctx, snapshot);
+  return launch(tx, ctx, request, snapshot, await matchProcess(tx, ctx, snapshot));
+}
+
+async function launch(
+  tx: Tx,
+  ctx: ApprovalContext,
+  request: StartRequest,
+  snapshot: BusinessSnapshot,
+  matched: Awaited<ReturnType<typeof matchProcess>>,
+): Promise<InstanceRow> {
   const instance = await insertInstance(tx, ctx, request, snapshot, matched);
   const run: Run = {
     ctx,
@@ -752,13 +774,31 @@ export async function startOrResume(tx: Tx, ctx: ApprovalContext, request: Start
   return persistRun(tx, run, 'approval.instance.start', true);
 }
 
-async function matchProcess(tx: Tx, ctx: ApprovalContext, snapshot: BusinessSnapshot) {
+/**
+ * 按业务指定的流程发起（R3-T07 K-08：IDP 子流程引用审批中心的一条流程）。仍先按审批类型过滤（DEC-017），只在该类型的
+ * 已发布流程里取指定的那一条，其发起条件不满足即拒绝，不跨流程兜底（AGENTS §2 第 8 条）；没有重提（业务侧另起实例）。
+ */
+export async function startSpecified(
+  tx: Tx,
+  ctx: ApprovalContext,
+  request: StartRequest & { readonly processId: string },
+): Promise<InstanceRow> {
+  await assertActorUsable(tx, ctx);
+  const latest = await resumableInstanceOf(tx, ctx.tenantId, request.businessType, request.businessId);
+  if (latest) throw approvalError('CONFLICT', 'APPROVAL_ALREADY_RUNNING', '该申请已在审批中');
+  const snapshot = await ADAPTERS[request.businessType].snapshot(tx, ctx, request.businessId);
+  const matched = await matchProcess(tx, ctx, snapshot, request.processId);
+  return launch(tx, ctx, request, snapshot, matched);
+}
+
+async function matchProcess(tx: Tx, ctx: ApprovalContext, snapshot: BusinessSnapshot, processId?: string) {
   const type = snapshot.approvalType;
-  const list = await candidates(tx, ctx.tenantId, {
+  const published = await candidates(tx, ctx.tenantId, {
     objectCode: APPROVAL_TYPES[type].objectCode,
     approvalType: type,
     scope: 'published',
   });
+  const list = processId === undefined ? published : published.filter((item) => item.processId === processId);
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
   if (type.startsWith('contract_')) {
     for (const candidate of list) {
