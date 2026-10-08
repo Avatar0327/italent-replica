@@ -2037,7 +2037,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 23:29",
+"liveUpdated": "10-07 23:40",
 "chains": [
 {
 "g": "exit",
@@ -2221,8 +2221,8 @@
 "k": "run",
 "n": "人才盘点",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:d ds:d3 dev:w rev:a3 mg:w",
-"now": "设计 v3 复审中（与 #112 双向核对契约）",
+"seg": "ev:d ds:d3 dev:w rev:d3 mg:w",
+"now": "设计 v3 复审出结论，待读取",
 "fable": "1",
 "pr": 113
 },
@@ -2418,8 +2418,8 @@
 "k": "run",
 "n": "排名函数对齐原站",
 "u": "已核对，待开会话（T04 写代码前合并）",
-"seg": "ev:d ds:n dev:a1 rev:w mg:w",
-"now": "开发中（Draft）",
+"seg": "ev:d ds:n dev:d1 rev:w1 mg:w",
+"now": "开发完成，待审查（Sol Ultra）",
 "pr": 114
 },
 {
