@@ -4,7 +4,7 @@
 "merged": 54,
 "open": 11,
 "dec": 302,
-"ev": "29/124"
+"ev": "28/124"
 },
 "tasks": {
 "M0": {
@@ -2006,7 +2006,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 22:30",
+"liveUpdated": "10-07 22:33",
 "chains": [
 {
 "g": "exit",
@@ -2190,8 +2190,8 @@
 "k": "run",
 "n": "人才盘点",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:a ds:d1 dev:w rev:d1 mg:w",
-"now": "设计审出结论待读；Q-M0-81 已收尾（待 DEC 视同完成），Q-M0-125 取证中",
+"seg": "ev:a ds:d2 dev:w rev:w2 mg:w",
+"now": "设计 v2 已交，待复审；Q-M0-125 取证中",
 "fable": "1",
 "pr": 113
 },
@@ -2336,8 +2336,8 @@
 "n": "权限框架强制",
 "u": "已核对，待开会话",
 "fable": "1",
-"seg": "ev:n ds:a6 dev:w rev:d5 mg:w",
-"now": "设计 v6（DEC-300 再收窄，最后一版）",
+"seg": "ev:n ds:d6 dev:w rev:d6 mg:w",
+"now": "设计 v6（最后一版）复审出结论，待读取",
 "pr": 110,
 "up": "10-07 调到 Max"
 },
