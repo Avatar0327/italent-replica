@@ -25,7 +25,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { approvalProcesses } from './approval.js';
 import { employmentEmployees } from './employment.js';
-import { jobPositionObjects } from './job.js';
+import { jobPositionObjects, jobPostObjects } from './job.js';
 import { orgObjects } from './org.js';
 import { tenants } from './tenancy.js';
 
@@ -598,7 +598,7 @@ export const idpCareers = pgTable(
   ],
 );
 
-/** 轮岗信息 WorkShift（IDP-R21）：判重键 = 员工 + 部门 + 职位 + 起止（🟡 K-35 加员工，职务不做）。 */
+/** 轮岗信息 WorkShift（IDP-R21）：判重键 = 员工 + 部门 + 职位 + 职务 + 起止（DEC-318 K-35 / D-063，🟡 加员工）。 */
 export const idpWorkShifts = pgTable(
   'idp_work_shifts',
   {
@@ -607,6 +607,8 @@ export const idpWorkShifts = pgTable(
     employeeId: uuid('employee_id').notNull(),
     orgId: uuid('org_id').notNull(),
     positionId: uuid('position_id'),
+    /** 职务（DEC-318 K-35 补回，参与判重）。 */
+    postId: uuid('post_id'),
     mentorEmployeeId: uuid('mentor_employee_id'),
     startDate: date('start_date', { mode: 'string' }).notNull(),
     endDate: date('end_date', { mode: 'string' }),
@@ -615,7 +617,7 @@ export const idpWorkShifts = pgTable(
   (t) => [
     unique('idp_work_shifts_tenant_id').on(t.tenantId, t.id),
     unique('idp_work_shifts_key')
-      .on(t.tenantId, t.employeeId, t.orgId, t.positionId, t.startDate, t.endDate)
+      .on(t.tenantId, t.employeeId, t.orgId, t.positionId, t.postId, t.startDate, t.endDate)
       .nullsNotDistinct(),
     employeeFk('idp_work_shifts_employee_fk', t, t.employeeId),
     employeeFk('idp_work_shifts_mentor_fk', t, t.mentorEmployeeId),
@@ -623,6 +625,11 @@ export const idpWorkShifts = pgTable(
       columns: [t.tenantId, t.positionId],
       foreignColumns: [jobPositionObjects.tenantId, jobPositionObjects.id],
       name: 'idp_work_shifts_position_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.tenantId, t.postId],
+      foreignColumns: [jobPostObjects.tenantId, jobPostObjects.id],
+      name: 'idp_work_shifts_post_fk',
     }).onDelete('restrict'),
     ...ownerOrg('idp_work_shifts', t),
     check('idp_work_shifts_dates', sql`${t.endDate} IS NULL OR ${t.endDate} >= ${t.startDate}`),

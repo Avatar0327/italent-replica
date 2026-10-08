@@ -143,6 +143,7 @@ export const workShiftCreate = z
     employeeId: uuid,
     orgId: uuid,
     positionId: uuid.nullable().optional(),
+    postId: uuid.nullable().optional(),
     mentorEmployeeId: uuid.nullable().optional(),
     ...span,
   })
@@ -171,6 +172,7 @@ export const workShiftPatch = z.strictObject({
   employeeId: uuid.optional(),
   orgId: uuid.optional(),
   positionId: uuid.nullable().optional(),
+  postId: uuid.nullable().optional(),
   mentorEmployeeId: uuid.nullable().optional(),
   startDate: isoDate.optional(),
   endDate: isoDate.nullable().optional(),

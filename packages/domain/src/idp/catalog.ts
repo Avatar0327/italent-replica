@@ -253,8 +253,16 @@ export const IDP_OBJECTS = {
   tutorship: object('TutorShip', ['tutorEmployeeId', 'tuteeEmployeeId', 'startDate', 'endDate', 'remark']),
   /** 职业发展信息 Career（IDP-R20；职务 / 职级等其余字段首版不做）。 */
   career: object('Career', CAREER_FIELDS),
-  /** 轮岗信息 WorkShift（IDP-R21；职务首版不做）。 */
-  workShift: object('WorkShift', ['employeeId', 'orgId', 'positionId', 'mentorEmployeeId', 'startDate', 'endDate']),
+  /** 轮岗信息 WorkShift（IDP-R21；职务 postId 随 DEC-318 K-35 补回，参与判重）。 */
+  workShift: object('WorkShift', [
+    'employeeId',
+    'orgId',
+    'positionId',
+    'postId',
+    'mentorEmployeeId',
+    'startDate',
+    'endDate',
+  ]),
 } as const satisfies Record<string, ObjectDefinition>;
 
 export type IdpObject = keyof typeof IDP_OBJECTS;

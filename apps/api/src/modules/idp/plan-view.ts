@@ -305,7 +305,7 @@ async function loadKeyInfo(tx: Tx, plan: PlanRow): Promise<KeyInfo> {
       rowsOf(
         await select(
           sql`id, employee_id AS "employeeId", org_id AS "orgId", position_id AS "positionId",
-            mentor_employee_id AS "mentorEmployeeId"`,
+            post_id AS "postId", mentor_employee_id AS "mentorEmployeeId"`,
           'idp_work_shifts',
           'employee_id',
         ),

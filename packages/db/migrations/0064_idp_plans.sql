@@ -156,6 +156,7 @@ CREATE TABLE "idp_work_shifts" (
 	"employee_id" uuid NOT NULL,
 	"org_id" uuid NOT NULL,
 	"position_id" uuid,
+	"post_id" uuid,
 	"mentor_employee_id" uuid,
 	"start_date" date NOT NULL,
 	"end_date" date,
@@ -164,7 +165,7 @@ CREATE TABLE "idp_work_shifts" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "idp_work_shifts_tenant_id" UNIQUE("tenant_id","id"),
-	CONSTRAINT "idp_work_shifts_key" UNIQUE NULLS NOT DISTINCT("tenant_id","employee_id","org_id","position_id","start_date","end_date"),
+	CONSTRAINT "idp_work_shifts_key" UNIQUE NULLS NOT DISTINCT("tenant_id","employee_id","org_id","position_id","post_id","start_date","end_date"),
 	CONSTRAINT "idp_work_shifts_dates" CHECK ("idp_work_shifts"."end_date" IS NULL OR "idp_work_shifts"."end_date" >= "idp_work_shifts"."start_date")
 );
 --> statement-breakpoint
@@ -210,6 +211,7 @@ ALTER TABLE "idp_work_shifts" ADD CONSTRAINT "idp_work_shifts_tenant_id_tenants_
 ALTER TABLE "idp_work_shifts" ADD CONSTRAINT "idp_work_shifts_employee_fk" FOREIGN KEY ("tenant_id","employee_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "idp_work_shifts" ADD CONSTRAINT "idp_work_shifts_mentor_fk" FOREIGN KEY ("tenant_id","mentor_employee_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "idp_work_shifts" ADD CONSTRAINT "idp_work_shifts_position_fk" FOREIGN KEY ("tenant_id","position_id") REFERENCES "public"."job_position_objects"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "idp_work_shifts" ADD CONSTRAINT "idp_work_shifts_post_fk" FOREIGN KEY ("tenant_id","post_id") REFERENCES "public"."job_post_objects"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "idp_work_shifts" ADD CONSTRAINT "idp_work_shifts_org_fk" FOREIGN KEY ("tenant_id","org_id") REFERENCES "public"."org_objects"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "idp_goal_tasks_goal" ON "idp_goal_tasks" USING btree ("tenant_id","goal_id");--> statement-breakpoint
 CREATE INDEX "idp_goals_plan" ON "idp_goals" USING btree ("tenant_id","plan_id");--> statement-breakpoint

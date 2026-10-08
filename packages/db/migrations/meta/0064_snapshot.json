@@ -1,5 +1,5 @@
 {
-  "id": "fddb9c62-ad27-457d-bea2-16656725da90",
+  "id": "98a0b75c-ace1-464b-b95d-3a71ddf84097",
   "prevId": "64b020ff-bd59-4cb0-b25b-939525278aa2",
   "version": "7",
   "dialect": "postgresql",
@@ -31130,6 +31130,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "post_id": {
+          "name": "post_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "mentor_employee_id": {
           "name": "mentor_employee_id",
           "type": "uuid",
@@ -31258,6 +31264,21 @@
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
+        "idp_work_shifts_post_fk": {
+          "name": "idp_work_shifts_post_fk",
+          "tableFrom": "idp_work_shifts",
+          "tableTo": "job_post_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "post_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
         "idp_work_shifts_org_fk": {
           "name": "idp_work_shifts_org_fk",
           "tableFrom": "idp_work_shifts",
@@ -31292,6 +31313,7 @@
             "employee_id",
             "org_id",
             "position_id",
+            "post_id",
             "start_date",
             "end_date"
           ]

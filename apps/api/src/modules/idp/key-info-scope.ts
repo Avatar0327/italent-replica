@@ -62,6 +62,7 @@ export const KEY_INFO: Readonly<Record<KeyInfoKind, KeyInfoSpec>> = {
       employeeId: 'employee_id',
       orgId: 'org_id',
       positionId: 'position_id',
+      postId: 'post_id',
       mentorEmployeeId: 'mentor_employee_id',
       ...dated,
     },
