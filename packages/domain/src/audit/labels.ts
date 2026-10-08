@@ -12,6 +12,7 @@ const ORG_PEOPLE = '组织员工';
 const APPROVAL = '审批中心';
 const ENTERPRISE = '企业设置';
 const TALENT = '人才标准';
+const IDP = '个人发展计划';
 
 const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'job-sequence-sync': { label: '任职序列同步任务', app: ORG_PEOPLE },
@@ -52,6 +53,11 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'TalentCenter.Dimension': { label: '指标', app: TALENT },
   'TalentCenter.TalentCriterionCategory': { label: '人才标准分类', app: TALENT },
   'TalentCenter.TalentCriterion': { label: '人才标准', app: TALENT },
+  'IDP.IDPProcess': { label: '发展计划流程', app: IDP },
+  'IDP.SubProcess': { label: '子流程', app: IDP },
+  'IDP.IDPTemplate': { label: '发展计划模板', app: IDP },
+  'IDP.IDPTemplateModule': { label: '发展计划模块', app: IDP },
+  'IDP.IDPTemplateCommonGoal': { label: '模板通用目标', app: IDP },
 };
 
 /** 对象编码前缀 → 应用（未单独登记的对象按所属模块归类）。 */

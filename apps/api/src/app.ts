@@ -25,6 +25,7 @@ import { auditRequestContext } from './audit/request-context.js';
 import { registerAuditRoutes } from './audit/routes.js';
 import { captureCommandFailures } from './audit/capture.js';
 import { registerTalentRoutes } from './modules/talent/routes.js';
+import { registerIdpRoutes } from './modules/idp/routes.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
 const TENANT_MODULES: readonly TenantRouteModule[] = [
@@ -39,6 +40,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerEmployeeSelfServiceRoutes, // R1-T13 员工自助，仅本人
   registerAuditRoutes, // R1-T16 审计日志
   registerTalentRoutes, // R3-T01 人才标准与指标库（TalentCenter）
+  registerIdpRoutes, // R3-T07 个人发展计划（IDP）
 ];
 
 export interface AppDeps {

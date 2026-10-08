@@ -23,6 +23,8 @@ import {
   type AuditFieldChange,
   CONTRACT_OBJECT,
   ESTABLISHMENT_SCHEME_DATASOURCE,
+  IDP_OBJECTS,
+  type IdpObject,
   MODULE_OBJECTS,
   PERSONNEL_OBJECT,
   PERSONNEL_REQUEST_OBJECT,
@@ -43,6 +45,7 @@ import {
 } from '../modules/permission/module-access.js';
 import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
+import { IDP_AUDIT_ACTIONS } from '../modules/idp/access.js';
 import {
   isDictionary as isTalentDictionary,
   TALENT_AUDIT_ACTIONS,
@@ -333,6 +336,14 @@ const RULES: readonly Rule[] = [
             AND ${admin})`
         : sql`false`,
   },
+  // R3-T07 个人发展计划配置（IDP 应用，PR 描述矩阵 A）：与业务接口一致按所属组织（日志写入时流程 / 模板的所属组织）
+  // 裁剪，“使用用户”按保留的创建元数据（DEC-198）；向下公开只放开业务查看与选用，不放开审计（🟡 K-23）
+  ...(Object.keys(IDP_OBJECTS) as IdpObject[]).map((object): Rule => {
+    const code = IDP_OBJECTS[object].code;
+    return orgRule([code], code, (row, viewer) =>
+      creatorSql(viewer.tenantId, row.objectId, `${IDP_AUDIT_ACTIONS[object]}.create`, code),
+    );
+  }),
 ];
 
 /** 同一次序码重算命令写下的、查看人可见的逐人序码日志（别名 p）。 */

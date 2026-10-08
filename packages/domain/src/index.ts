@@ -36,3 +36,4 @@ export {
 export * from './audit/index.js';
 export * from './expression/index.js';
 export * from './talent/index.js';
+export * from './idp/index.js';

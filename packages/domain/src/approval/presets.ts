@@ -178,6 +178,45 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       nodes: [node('department_head', '部门负责人审批', 'latest_record_department_head', { formFields: [] })],
     }),
   },
+  // IDP-R1：预置三条子流程审批流程（制定计划 / 中期回顾 / 期末回顾），节点照原站 W-114 节点链（员工 → 指导人）。
+  // TODO(R3-T07 PR-B，🟡 K-09)：审批人表达式暂用“流程所有者（发起人）/ 直接上级”，PR-B 新增“计划员工 / 指导人”后替换。
+  ...(
+    [
+      ['idp_plan', 'StandardIdpPlan', '标准制定计划流程', 'set_goals', '制定发展目标', 'approve_plan', '审批发展计划'],
+      [
+        'idp_mid_review',
+        'StandardIdpMidReview',
+        '标准中期回顾流程',
+        'employee_mid',
+        '员工中期回顾',
+        'tutor_mid',
+        '指导人中期回顾',
+      ],
+      [
+        'idp_final_review',
+        'StandardIdpFinalReview',
+        '标准期末回顾流程',
+        'employee_final',
+        '员工期末回顾',
+        'tutor_final',
+        '指导人期末回顾',
+      ],
+    ] as const
+  ).map(([approvalType, code, name, employeeKey, employeeName, tutorKey, tutorName]): PresetProcess => ({
+    presetKey: `standard_${approvalType}`,
+    code,
+    approvalType,
+    definition: draft({
+      name,
+      description: '出厂预置：员工 → 指导人两个节点，发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition(approvalType),
+      nodes: [
+        node(employeeKey, employeeName, 'owner', { formFields: [] }),
+        node(tutorKey, tutorName, 'direct_manager', { formFields: [] }),
+      ],
+    }),
+  })),
   {
     presetKey: 'standard_personnel_change',
     code: 'StandardPersonnelChange',
