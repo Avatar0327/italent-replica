@@ -3,7 +3,7 @@
  * 以及按需配置对象权限、按钮、看全部与管理单元范围的操作人（DEC-043：范围按 用户 × TalentCenter 存一份）。
  */
 import { randomUUID } from 'node:crypto';
-import { TALENT_APP, TALENT_OBJECTS } from '@italent/domain';
+import { MODULE_OBJECTS, ORG_EMPLOYEE_APP, TALENT_APP, TALENT_OBJECTS } from '@italent/domain';
 import { expect } from 'vitest';
 import {
   addMember,
@@ -132,6 +132,8 @@ export interface OperatorOptions {
   readonly mouId?: string;
   /** 是否授予对象登记的全部按钮（缺省授予）。 */
   readonly buttons?: boolean;
+  /** 按对象覆盖数据操作开关（缺省 新增 / 修改 / 删除 都开）。 */
+  readonly operations?: Partial<Record<ObjectKey, { create: boolean; update: boolean; delete: boolean }>>;
 }
 
 export async function talentOperator(world: PermissionWorld, options: OperatorOptions = {}) {
@@ -145,7 +147,7 @@ export async function talentOperator(world: PermissionWorld, options: OperatorOp
         world,
         profile,
         {
-          dataOperations: { create: true, update: true, delete: true },
+          dataOperations: options.operations?.[key] ?? { create: true, update: true, delete: true },
           fields: definition.fields.map((field) => ({
             fieldCode: field.code,
             view: !hidden.has(field.code),
@@ -202,4 +204,32 @@ export function ownedTargets(set: OwnedSet) {
     ['criterion-categories', set.criterionCategory],
     ['criteria', set.criterion],
   ] as const;
+}
+
+/**
+ * 给用户组织对象的查看权（全部字段可见）与组织员工应用里的数据范围（DEC-043：用户 × TenantBase 一份范围）。
+ * 用于验证“TalentCenter 的授权管理单元不能替代组织应用的数据范围”（DEC-316②）。
+ */
+export async function grantOrganizationView(world: PermissionWorld, userId: string, mouId: string) {
+  const profile = await createProfile(world, `tc-org-${randomUUID().slice(0, 8)}`, { apps: [ORG_EMPLOYEE_APP] });
+  const definition = MODULE_OBJECTS.organization;
+  const response = await setObjectPermission(
+    world,
+    profile,
+    {
+      dataOperations: { create: false, update: false, delete: false },
+      fields: definition.fields.map((field) => ({ fieldCode: field.code, view: true, edit: false })),
+      buttons: [],
+    },
+    definition.code,
+  );
+  expect(response.status, await response.clone().text()).toBe(200);
+  await makeGrantable(world, [profile.id]);
+  expect((await grant(world, userId, profile.id)).status).toBe(201);
+  const scope = await world.api.request('PUT', `${BASE}/scopes/${userId}/${ORG_EMPLOYEE_APP}`, {
+    ...world.asAdmin,
+    ifMatch: 0,
+    body: { kind: 'mou', mouId },
+  });
+  expect(scope.status, await scope.clone().text()).toBe(200);
 }

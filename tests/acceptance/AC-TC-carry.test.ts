@@ -5,15 +5,25 @@
  * - E2 人才标准里嵌套的指标名称 / 定义（指标对象查看权 + 指标范围 + 指标字段权限）；
  * - E3 指标的分类名称、类型（指标.categoryName / type，列表、详情、写入响应、可引用指标候选）；
  * - E4 发展建议的类型名称（指标.suggestions 里的 typeName；类型下拉候选的名称同样按 suggestions 的查看权）；
- * - E5 所属管理单元候选里的组织名称 / 编码（源字段：组织.name / code）。
+ * - E5 所属管理单元候选里的组织名称 / 编码（源字段：组织.name / code）：组织对象的字段查看权之外，还要该组织在查看人
+ *   组织员工应用的当前数据范围内（DEC-316②：TalentCenter 的授权管理单元不能替代组织应用的数据范围）；
+ *   只有标准编辑权（没有新建权）的人也能取候选，用于编辑时新加关联（DEC-316③）。
  * 审计快照里的带出值见 AC-TC-audit.test.ts（按指标字段权限裁剪）。
  */
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
 import { tenantApi } from './support/tenant-api.js';
-import { clock, seedTalentData, talentOperator, type TalentPermissionData } from './AC-TC-permission-support.js';
-import { TC_BASE, type CriterionView } from './AC-TC-support.js';
+import {
+  clock,
+  grantOrganizationView,
+  seedTalentData,
+  talentOperator,
+  type TalentPermissionData,
+} from './AC-TC-permission-support.js';
+import { createMou, TC_BASE, type CriterionView } from './AC-TC-support.js';
+
+const OWNER_OBJECTS = ['library', 'dimensionCategory', 'dimension', 'criterionCategory', 'criterion'] as const;
 
 const testDb = useTestDb();
 
@@ -193,5 +203,85 @@ describe('DEC-309 从另一个对象带出值：按查看人当前对源字段�
       ['人才标准部（范围内）', '人才标准部（范围外）'].sort(),
     );
     for (const item of admin.items) expect(typeof item.code).toBe('string');
+  });
+
+  const unitsOf = async (op: Operator, object: string) => {
+    const response = await op.request('GET', `/candidates/owner-orgs?object=${object}`);
+    expect(response.status, `${object} ${await response.clone().text()}`).toBe(200);
+    return ((await response.json()) as { items: Record<string, unknown>[] }).items;
+  };
+
+  it('E5 源组织不在组织应用的数据范围内：五种对象的候选都只给 ID，不带名称 / 编码；范围内的照常带出', async () => {
+    const outsideMou = await createMou(data.setup, world.asAdmin, [data.outside.orgId], 'E5外');
+    const op = await talentOperator(world, { mouId: outsideMou });
+    await grantOrganizationView(world, op.user.id, data.mouId);
+    // 组织应用里只看得到范围内组织：范围外组织详情 404
+    const orgDetail = (id: string) => world.api.request('GET', `/api/tenant/org/organizations/${id}`, op.as);
+    expect((await orgDetail(data.outside.orgId)).status).toBe(404);
+    expect((await orgDetail(data.inside.orgId)).status).toBe(200);
+
+    for (const object of OWNER_OBJECTS) {
+      const items = await unitsOf(op, object);
+      expect(items, object).toEqual([{ id: data.outside.orgId }]);
+      expect(JSON.stringify(items), object).not.toContain('人才标准部');
+    }
+    // 正例：授权管理单元同时含范围内组织时，范围内的带名称与编码，范围外的仍只有 ID
+    await op.setMou(data.bothMouId);
+    for (const object of OWNER_OBJECTS) {
+      const items = await unitsOf(op, object);
+      expect(
+        items.find((item) => item.id === data.inside.orgId),
+        object,
+      ).toMatchObject({
+        name: '人才标准部（范围内）',
+        code: expect.any(String),
+      });
+      expect(
+        items.find((item) => item.id === data.outside.orgId),
+        object,
+      ).toEqual({ id: data.outside.orgId });
+    }
+  });
+
+  it('DEC-316③ 只有标准编辑权（无新建权）：候选可用并按组织范围裁剪，编辑时新加关联可选单元并保存', async () => {
+    const op = await talentOperator(world, {
+      mouId: data.bothMouId,
+      operations: { criterion: { create: false, update: true, delete: false } },
+    });
+    await grantOrganizationView(world, op.user.id, data.mouId);
+    expect((await op.request('POST', '/criteria', { ifMatch: 0, body: {} })).status).toBe(403);
+    const items = await unitsOf(op, 'criterion');
+    expect(items.map((item) => item.id).sort()).toEqual([data.inside.orgId, data.outside.orgId].sort());
+    expect(items.find((item) => item.id === data.outside.orgId)).toEqual({ id: data.outside.orgId });
+    expect(items.find((item) => item.id === data.inside.orgId)).toMatchObject({ name: '人才标准部（范围内）' });
+
+    const empty = await emptyCriterion('只有编辑权的人加关联');
+    const added = await op.request('PATCH', `/criteria/${empty.id}`, {
+      ifMatch: empty.revision,
+      body: { dimensions: [{ dimensionId: data.inside.dimension.id }], relationOwnerOrgId: data.outside.orgId },
+    });
+    expect(added.status, await added.clone().text()).toBe(200);
+    expect(rowOf((await added.json()) as CriterionView, data.inside.dimension.id)).toMatchObject({
+      ownerId: op.user.id,
+      ownerOrgId: data.outside.orgId,
+    });
+  });
+
+  it('DEC-316③ 编辑场景仍要求编辑按钮与 dimensions 编辑权：缺任一项候选 403；其他对象仍只认新建权', async () => {
+    const editOnly = { criterion: { create: false, update: true, delete: false } };
+    const noButton = await talentOperator(world, { mouId: data.bothMouId, operations: editOnly, buttons: false });
+    const readonly = await talentOperator(world, {
+      mouId: data.bothMouId,
+      operations: editOnly,
+      readonly: { criterion: ['dimensions'] },
+    });
+    for (const op of [noButton, readonly]) {
+      expect((await op.request('GET', '/candidates/owner-orgs?object=criterion')).status).toBe(403);
+    }
+    const libraryEditOnly = await talentOperator(world, {
+      mouId: data.bothMouId,
+      operations: { library: { create: false, update: true, delete: false } },
+    });
+    expect((await libraryEditOnly.request('GET', '/candidates/owner-orgs?object=library')).status).toBe(403);
   });
 });
