@@ -78,6 +78,11 @@ export interface NodeInput {
     readonly urge?: 'inherit' | 'enabled' | 'disabled';
     /** 驳回（驳回到发起人）开关，缺省开启（F-003 第二轮，`14` §12.2）。 */
     readonly reject?: boolean;
+    /** DEC-318 节点开关：自审回避、撤回（缺省开启），驳回到上一步、跳转（缺省关闭）。 */
+    readonly avoidSelf?: boolean;
+    readonly revoke?: boolean;
+    readonly rejectToPrevious?: boolean;
+    readonly jump?: boolean;
   };
   readonly rejectCommentRequired?: boolean;
   /** DEC-104：审批记录查看权限——勾选后本节点审批人看不到审批记录与沟通。 */

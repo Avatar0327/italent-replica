@@ -95,6 +95,7 @@ type NodeExpr = 'idp_employee' | 'idp_tutor' | 'owner';
 export interface NodeOverride {
   readonly actions?: Record<string, unknown>;
   readonly noAssignee?: string;
+  readonly historySameAssigneeSkip?: boolean;
 }
 
 /**
