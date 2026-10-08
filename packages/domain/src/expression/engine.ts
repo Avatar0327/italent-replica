@@ -625,6 +625,7 @@ function withComputed(
   subject: SubjectReader,
   computed: Readonly<Record<string, ExprValue>>,
   bindings: FieldBindings,
+  readBoundFields = false,
 ): SubjectReader {
   return {
     id: subject.id,
@@ -635,7 +636,8 @@ function withComputed(
         if (value.kind === 'empty' && value.of) return { status: 'found', value: null, emptyOf: value.of };
         return { status: 'found', value: toPlain(value) };
       }
-      return subject.resolveField(path);
+      // DEC-312：额外总体成员没有同轮结果，短名仍须按固定绑定读取库中完整目标字段。
+      return subject.resolveField(readBoundFields ? (target ?? path) : path);
     },
   };
 }
@@ -725,7 +727,9 @@ export function evaluateBatch(
             .filter((subject) => !computed.has(subject.id) || failedDependency(subject.id) === undefined)
             .map((subject) => {
               const values = computed.get(subject.id);
-              return values ? withComputed(subject, values, ordered.bindings) : subject;
+              return values
+                ? withComputed(subject, values, ordered.bindings)
+                : withComputed(subject, {}, ordered.bindings, true);
             }),
         }),
       },
