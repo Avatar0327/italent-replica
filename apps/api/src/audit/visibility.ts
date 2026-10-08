@@ -1,4 +1,5 @@
 import { CapacityAuditFields, capacityAuditChanges, visibleCapacityParts } from './establishment-capacity.js';
+import { NestedAuditFields, type NestedChildren, visibleNested, visibleNestedChanges } from './nested-fields.js';
 /**
  * DEC-197 / DEC-203（PR #75 第二、三轮）：审计查询按查看人**当前**的数据范围与字段权限裁剪，不设全量读取特权。
  * 「日志审计」能力只决定能不能进入查询；每条日志能否返回，按它的对象类型复用**该业务对象自己的查看规则**：
@@ -617,9 +618,32 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
     fields:
       rule.types.includes('establishment-capacity') && objectFields
         ? new CapacityAuditFields(objectFields)
-        : (fixed ?? objectFields),
+        : rule.objectCode === IDP_OBJECTS.goal.code
+          ? await idpGoalFields(deps, ctx, objectFields)
+          : (fixed ?? objectFields),
     ...(linkage ? { linkage } : {}),
   };
+}
+
+/**
+ * 发展目标快照嵌套的任务与目标回顾按各自对象的查看权与字段裁剪（R2-2）；全部字段可见且子对象不受限时不包装。
+ */
+async function idpGoalFields(
+  deps: Deps,
+  ctx: TenantContext,
+  goalFields: ReadonlySet<string> | undefined,
+): Promise<ReadonlySet<string> | undefined> {
+  const children: Record<string, ReadonlySet<string> | undefined | null> = {};
+  for (const [key, object] of [
+    ['tasks', IDP_OBJECTS.task],
+    ['reviews', IDP_OBJECTS.goalReview],
+  ] as const) {
+    const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: object.code, fields: [] });
+    children[key] = canView ? await getModuleViewableFields(deps, ctx, object.code) : null;
+  }
+  if (goalFields === undefined && Object.values(children).every((child) => child === undefined)) return undefined;
+  const all = IDP_OBJECTS.goal.fields.map((field) => field.code);
+  return new NestedAuditFields(goalFields ?? all, children as NestedChildren);
 }
 
 interface ResolvedConfig {
@@ -784,7 +808,9 @@ export function visibleChanges(
   changes: readonly AuditFieldChange[],
   fields: ReadonlySet<string> | undefined,
 ): AuditFieldChange[] {
-  return fields === undefined ? [...changes] : changes.filter((change) => fieldVisible(fields, change.field));
+  if (fields === undefined) return [...changes];
+  const visible = changes.filter((change) => fieldVisible(fields, change.field));
+  return fields instanceof NestedAuditFields ? visibleNestedChanges(visible, fields) : visible;
 }
 
 /** 前后值 / 快照只留可见字段；嵌套的 fields / customFields 等容器逐层裁剪，空容器去掉。 */
@@ -801,6 +827,9 @@ export function visibleValue(value: unknown, fields: ReadonlySet<string> | undef
     ) {
       const nested = visibleValue(inner, fields, path) as Record<string, unknown>;
       if (Object.keys(nested).length) kept[key] = nested;
+    } else if (fields instanceof NestedAuditFields && !prefix && key in fields.children) {
+      const nested = fieldVisible(fields, path) ? visibleNested(fields, key, inner) : undefined;
+      if (nested !== undefined) kept[key] = nested;
     } else if (fieldVisible(fields, path)) {
       kept[key] =
         fields instanceof CapacityAuditFields && key === 'subdivisions' ? visibleCapacityParts(inner, fields) : inner;
