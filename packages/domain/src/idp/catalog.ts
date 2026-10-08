@@ -56,6 +56,61 @@ export type CompetencySource = (typeof COMPETENCY_SOURCES)[number];
 export const KEY_INFO_SOURCES = ['career', 'work_shift', 'tutorship', 'talent_pool'] as const;
 export type KeyInfoSource = (typeof KEY_INFO_SOURCES)[number];
 
+/**
+ * 关键信息区块的可选展示字段与缺省展示字段（DEC-318 K-35 补充，取证 8db4dc6d：每个区块展示哪些字段在模板里配置）。
+ * 🟡 可选字段按现有数据字段推断（原站“新增区块”的选项未实测）；缺省按取证样本（轮岗：部门、职位、职务、导师、起止；
+ * 带教：带教人、起止；职业发展：拟晋升职位、优势项、待发展项、起止）。储备人才区块待 R3-T06（K-16），暂无字段。
+ */
+export const KEY_INFO_BLOCK_FIELDS: Readonly<
+  Record<KeyInfoSource, { readonly options: readonly string[]; readonly defaults: readonly string[] }>
+> = {
+  career: {
+    options: [
+      'employeeId',
+      'targetPositionId',
+      'strengths',
+      'developmentItems',
+      'intendedCity',
+      'startDate',
+      'endDate',
+    ],
+    defaults: ['targetPositionId', 'strengths', 'developmentItems', 'startDate', 'endDate'],
+  },
+  work_shift: {
+    options: ['employeeId', 'orgId', 'positionId', 'postId', 'mentorEmployeeId', 'startDate', 'endDate'],
+    defaults: ['orgId', 'positionId', 'postId', 'mentorEmployeeId', 'startDate', 'endDate'],
+  },
+  tutorship: {
+    options: ['tutorEmployeeId', 'tuteeEmployeeId', 'startDate', 'endDate', 'remark'],
+    defaults: ['tutorEmployeeId', 'startDate', 'endDate'],
+  },
+  talent_pool: { options: [], defaults: [] },
+};
+
+export interface KeyInfoBlock {
+  readonly block: KeyInfoSource;
+  readonly fields: readonly string[];
+}
+
+/**
+ * 区块配置的存储形式：区块顺序存 key_info_sources，各区块选定的展示字段存 key_info_fields（“区块.字段”）；某区块没有
+ * 选定字段即取缺省展示字段。
+ */
+export function keyInfoBlocksOf(sources: readonly KeyInfoSource[], encoded: readonly string[] | null): KeyInfoBlock[] {
+  return sources.map((block) => {
+    const chosen = (encoded ?? []).filter((f) => f.startsWith(`${block}.`)).map((f) => f.slice(block.length + 1));
+    return { block, fields: chosen.length ? chosen : [...KEY_INFO_BLOCK_FIELDS[block].defaults] };
+  });
+}
+
+/** 区块配置 → 存储形式；只记与缺省不同的区块。 */
+export function encodeKeyInfoBlocks(blocks: readonly { block: KeyInfoSource; fields?: readonly string[] }[]) {
+  return {
+    keyInfoSources: blocks.map((b) => b.block),
+    keyInfoFields: blocks.flatMap((b) => (b.fields ?? []).map((field) => `${b.block}.${field}`)),
+  };
+}
+
 /** 盘点结果模块：时间基准取盘点项目开始 / 结束时间，计划基准取计划开始 / 结束时间（IDP-R11）。 */
 export const REVIEW_TIME_BASES = ['project_start', 'project_end'] as const;
 export const PLAN_TIME_BASES = ['plan_start', 'plan_end'] as const;
@@ -122,6 +177,7 @@ export const TEMPLATE_MODULE_FIELDS = [
   'taskEnabled',
   'checkNoneGoal',
   'keyInfoSources',
+  'keyInfoBlocks',
   'reviewTimeBasis',
   'planTimeBasis',
   'reviewCategoryIds',

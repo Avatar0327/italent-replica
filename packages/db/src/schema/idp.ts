@@ -186,6 +186,8 @@ export const idpTemplateModules = pgTable(
     checkNoneGoal: boolean('check_none_goal'),
     // 关键信息模块（IDP-R7）
     keyInfoSources: text('key_info_sources').array(),
+    /** 关键信息各区块选定的展示字段（“区块.字段”，DEC-318 K-35 补充）；某区块没有即取缺省展示字段。 */
+    keyInfoFields: text('key_info_fields').array(),
     // 盘点结果模块（IDP-R11）
     reviewTimeBasis: text('review_time_basis'),
     planTimeBasis: text('plan_time_basis'),

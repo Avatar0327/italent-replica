@@ -1,5 +1,5 @@
 {
-  "id": "98a0b75c-ace1-464b-b95d-3a71ddf84097",
+  "id": "57bbad59-1783-494c-9f09-58976725c767",
   "prevId": "64b020ff-bd59-4cb0-b25b-939525278aa2",
   "version": "7",
   "dialect": "postgresql",
@@ -30421,6 +30421,12 @@
         },
         "key_info_sources": {
           "name": "key_info_sources",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "key_info_fields": {
+          "name": "key_info_fields",
           "type": "text[]",
           "primaryKey": false,
           "notNull": false

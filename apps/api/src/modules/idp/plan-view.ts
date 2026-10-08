@@ -10,6 +10,8 @@ import { sql, type Tx } from '@italent/db';
 import {
   currentStageName,
   IMPROVING_STAGE_NAME,
+  type KeyInfoBlock,
+  type KeyInfoSource,
   MODULE_OBJECTS,
   periodsIntersect,
   RULE_TEXT_SOURCES,
@@ -413,19 +415,48 @@ export const stageSourcesOf = (p: Projections): StageSources => ({
 const listOf = (rows: readonly Record<string, unknown>[], projection: Projection) =>
   projection === null ? [] : rows.map((row) => project(row, projection));
 
-/** 关键信息：记录涉及的全部员工 / 组织都在查看人范围内才列出（与直接读取一致），再按源对象字段权裁剪。 */
-async function keyInfoShown(tx: Tx, info: KeyInfo, p: Projections): Promise<KeyInfo> {
-  const shown = async (kind: KeyInfoKind, rows: readonly Record<string, unknown>[]) => {
+const BLOCK_KINDS: Readonly<Partial<Record<KeyInfoSource, KeyInfoKind>>> = {
+  career: 'career',
+  work_shift: 'workShift',
+  tutorship: 'tutorship',
+};
+const KIND_KEYS = { tutorship: 'tutorships', career: 'careers', workShift: 'workShifts' } as const;
+
+/** 模板关键信息模块配置的区块 → 各对象要展示的字段（多个模块配置同一区块取并集；储备人才待 R3-T06）。 */
+function configuredBlocks(modules: readonly ModuleView[]): Map<KeyInfoKind, Set<string>> {
+  const configured = new Map<KeyInfoKind, Set<string>>();
+  for (const module of modules) {
+    for (const { block, fields } of (module as { keyInfoBlocks?: readonly KeyInfoBlock[] }).keyInfoBlocks ?? []) {
+      const kind = BLOCK_KINDS[block];
+      if (!kind) continue;
+      const set = configured.get(kind) ?? new Set<string>(['id']);
+      for (const field of fields) set.add(field);
+      configured.set(kind, set);
+    }
+  }
+  return configured;
+}
+
+/**
+ * 关键信息（DEC-318 K-35 补充）：只返回模板配置的区块，每条只带配置的展示字段（另带 id）；记录涉及的全部员工 / 组织
+ * 都在查看人范围内才列出（与直接读取一致，P2-1），再按源对象字段权裁剪（E6）。
+ */
+async function keyInfoShown(
+  tx: Tx,
+  info: KeyInfo,
+  modules: readonly ModuleView[],
+  p: Projections,
+): Promise<Partial<KeyInfo>> {
+  const shown: Partial<Record<(typeof KIND_KEYS)[KeyInfoKind], Record<string, unknown>[]>> = {};
+  for (const [kind, fields] of configuredBlocks(modules)) {
     const kept: Record<string, unknown>[] = [];
-    for (const row of p[kind] === null ? [] : rows)
-      if (await inScope(tx, p.keyInfoScopes[kind], KEY_INFO[kind], row)) kept.push(row);
-    return listOf(kept, p[kind]);
-  };
-  return {
-    tutorships: await shown('tutorship', info.tutorships),
-    careers: await shown('career', info.careers),
-    workShifts: await shown('workShift', info.workShifts),
-  };
+    for (const row of p[kind] === null ? [] : info[KIND_KEYS[kind]]) {
+      if (!(await inScope(tx, p.keyInfoScopes[kind], KEY_INFO[kind], row))) continue;
+      kept.push(Object.fromEntries(Object.entries(row).filter(([field]) => fields.has(field))));
+    }
+    shown[KIND_KEYS[kind]] = listOf(kept, p[kind]);
+  }
+  return shown;
 }
 
 /** 参与人固定字段集（DEC-296④）：计划不按 IDP 字段权限，模块只带结构与本节点按钮。 */
@@ -471,7 +502,7 @@ export async function presentPlan(
     }
     if (projections.analysis !== null) shown.analyses = listOf(analyses, projections.analysis);
     if (projections.review !== null) shown.reviews = listOf(reviews, projections.review);
-    shown.keyInfo = await keyInfoShown(tx, keyInfo, projections);
+    shown.keyInfo = await keyInfoShown(tx, keyInfo, modules, projections);
     return shown;
   }
   const { stage, nodeKey } = viewer.at;
@@ -488,6 +519,6 @@ export async function presentPlan(
   shown.goals = detail.goals;
   shown.analyses = detail.analyses;
   shown.reviews = detail.reviews;
-  shown.keyInfo = await keyInfoShown(tx, detail.keyInfo, projections);
+  shown.keyInfo = await keyInfoShown(tx, detail.keyInfo, detail.modules, projections);
   return shown;
 }
