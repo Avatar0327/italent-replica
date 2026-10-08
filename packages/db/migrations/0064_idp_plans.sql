@@ -172,6 +172,7 @@ ALTER TABLE "approval_instances" DROP CONSTRAINT "approval_instances_business_ty
 ALTER TABLE "approval_process_nodes" DROP CONSTRAINT "approval_nodes_approver";--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" DROP CONSTRAINT "approval_nodes_no_assignee";--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" DROP CONSTRAINT "approval_nodes_approvers";--> statement-breakpoint
+ALTER TABLE "approval_process_nodes" ADD COLUMN "avoid_self" boolean DEFAULT true NOT NULL;--> statement-breakpoint
 ALTER TABLE "idp_careers" ADD CONSTRAINT "idp_careers_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "idp_careers" ADD CONSTRAINT "idp_careers_employee_fk" FOREIGN KEY ("tenant_id","employee_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "idp_careers" ADD CONSTRAINT "idp_careers_position_fk" FOREIGN KEY ("tenant_id","target_position_id") REFERENCES "public"."job_position_objects"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint

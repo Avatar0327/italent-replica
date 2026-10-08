@@ -46,22 +46,19 @@ describe('K-37：回避是节点开关', () => {
     await off.submit(offPlan, 1, off.employee.userId);
   });
 
-  it('员工节点打开回避后，即使把待办转到员工本人，办理也按自审拒绝（开关同时管办理时的拦截）', async () => {
+  it('员工节点打开回避：管理员也不能把待办改派给员工本人（开关同时管转交 / 改派目标）', async () => {
     const w = await planWorld(testDb().db, 'idp-k37-act', {
       nodes: { idp_employee: { actions: { avoidSelf: true } }, idp_tutor: { actions: { avoidSelf: false } } },
     });
     const plan = await w.startedPlan();
     const instance = await w.instanceOf(plan, 1);
     const task = instance.tasks.find((t) => t.status === 'pending')!;
-    // 全权管理员（非发起人）把待办改派给员工本人
     const admin = await w.member('改派管理员');
-    await w.ok(
-      await w.http(admin, 'POST', `/api/tenant/approval/instances/${instance.id}/admin-intervene`, {
-        ifMatch: instance.revision,
-        body: { taskId: task.id, toUserId: w.employee.userId, reason: '测试改派' },
-      }),
-    );
-    expect(await errorOf(await w.submitRaw(plan, 1, w.employee.userId))).toMatchObject({ status: 409 });
+    const reassigned = await w.http(admin, 'POST', `/api/tenant/approval/instances/${instance.id}/admin-intervene`, {
+      ifMatch: instance.revision,
+      body: { taskId: task.id, toUserId: w.employee.userId, reason: '测试改派' },
+    });
+    expect(await errorOf(reassigned)).toMatchObject({ status: 409, reason: 'APPROVAL_SELF_REVIEW' });
   });
 
   it('其他审批类型不配置开关：保持现状，异动本人仍被自审跳过，读回定义不含 avoidSelf', async () => {

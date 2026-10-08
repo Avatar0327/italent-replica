@@ -194,6 +194,8 @@ export const approvalProcessNodes = pgTable(
     /** DEC-104「审批记录查看权限」：勾选后本节点审批人看不到审批记录与沟通（出厂关 = 默认公开）。 */
     hideRecords: boolean('hide_records').notNull().default(false),
     rejectResubmitMode: text('reject_resubmit_mode').notNull().default('restart'),
+    /** DEC-318 K-37：自审回避是节点开关，缺省开启（原有流程不变），IDP 预置流程关闭。 */
+    avoidSelf: boolean('avoid_self').notNull().default(true),
     // DEC-035：时效首版不做，只保留 `14` §9.1 的字段结构，不参与计算。
     timeSpan: integer('time_span'),
     timeEffectBefore: jsonb('time_effect_before'),

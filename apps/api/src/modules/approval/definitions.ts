@@ -12,6 +12,7 @@ import {
   PRESET_PROCESSES,
   publishViolations,
   conditionViolations,
+  avoidsSelf,
   rejectAllowed,
   type ApprovalNode,
   type ApprovalTypeCode,
@@ -169,6 +170,8 @@ function nodeOf(row: Row, rules: Row[]): ApprovalNode {
       retrieve: Boolean(row.allow_retrieve),
       reject: Boolean(row.allow_reject),
       urge: row.urge_mode as ApprovalNode['actions']['urge'],
+      // 缺省开启的开关只在关闭时给出，原有流程的定义读回不变（DEC-318 K-37）
+      ...(row.avoid_self === false ? { avoidSelf: false } : {}),
     },
     rejectCommentRequired: Boolean(row.reject_comment_required),
     hideRecords: Boolean(row.hide_records),
@@ -310,7 +313,7 @@ async function writeVersionContent(tx: Tx, tenantId: string, id: string, definit
        no_assignee_policy,same_assignee_skip,
        history_same_assignee_skip,same_assignee_result,history_same_assignee_result,form_fields,editable_fields,
        edit_mode,allow_transfer,allow_add_sign,allow_copy_send,allow_retrieve,allow_reject,urge_mode,
-       reject_comment_required,hide_records,reject_resubmit_mode)
+       reject_comment_required,hide_records,reject_resubmit_mode,avoid_self)
       VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${typed.type},${typed.approver},
         ${textArray(typed.approvers)},${textArray(nodeExits(node))},${typed.rule},${approve?.kind ?? null},
         ${approve?.value ?? null},${disagree?.kind ?? null},${disagree?.value ?? null},${node.noAssignee},
@@ -318,7 +321,7 @@ async function writeVersionContent(tx: Tx, tenantId: string, id: string, definit
         ${node.historySameAssigneeResult},${textArray(node.formFields)},${textArray(node.editableFields)},
         ${node.editMode},${node.actions.transfer},${node.actions.addSign},${node.actions.copySend},
         ${node.actions.retrieve},${rejectAllowed(node)},${node.actions.urge},${node.rejectCommentRequired},
-        ${node.hideRecords},${node.rejectResubmit})`);
+        ${node.hideRecords},${node.rejectResubmit},${avoidsSelf(node)})`);
     for (const [ruleIndex, rule] of node.messageRules.entries()) {
       await tx.execute(sql`INSERT INTO approval_node_message_rules
         (tenant_id,version_id,node_key,rule_no,trigger,channels,template_code,recipient)

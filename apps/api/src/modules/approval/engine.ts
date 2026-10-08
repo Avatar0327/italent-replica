@@ -24,7 +24,6 @@ import {
   nodeExits,
   previousNodeComparand,
   STALLED_COUNTERSIGN_HANDLING,
-  SUBJECT_FILL_APPROVER,
   submitBlockers,
   tenantLocalDate,
   type ApprovalNode,
@@ -187,21 +186,10 @@ async function decide(
   facts: RoutingFacts,
 ) {
   const candidate = await resolveCandidate(tx, subject, expression);
-  // K-37：员工填写自己计划的节点不按自审回避（处理人就是计划员工本人，也是发起人）
-  if (expression === SUBJECT_FILL_APPROVER)
-    return { candidate, decision: decideNode(node, candidate, fillFacts(facts)) };
   const draft = decideNode(node, candidate, facts);
   if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return { candidate, decision: draft };
   return { candidate, decision: decideNode(node, candidate, facts, await directManagerOf(tx, subject, candidate)) };
 }
-
-/** 填写节点的路由事实：不把员工本人当作发起人或异动本人（K-37，只用于 idp_employee 解析出的人）。 */
-const fillFacts = (facts: RoutingFacts): RoutingFacts => ({
-  ...facts,
-  initiatorUserId: '',
-  subjectEmployeeId: null,
-  subjectUserId: null,
-});
 
 /** 自动处理的触发机制（审批记录里区分“与上一节点相同 / 与历史节点相同”）。 */
 const MECHANISMS = { same_skip: 'same', history_skip: 'history' } as const;

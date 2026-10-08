@@ -7,6 +7,7 @@
 import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  avoidsSelf,
   blindReviewFields,
   disclosedFieldNames,
   hasExit,
@@ -161,8 +162,9 @@ function actionsFor(data: DetailData, userId: string, blind: boolean): string[] 
   const mine = allTasks.find((task) => task.status === 'pending' && task.assigneeUserId === userId);
   const node = version.nodes.find((candidate) => candidate.key === (mine?.nodeKey ?? instance.currentNodeKey));
   const own = isOwnRequest(instance, data.subjectUserId, userId);
-  // DEC-058：发起人或异动本人不能审批；看不到本单变化字段的人（盲审，C-非4）也不显示同意 / 驳回，只能转交。
-  const decide = !own && !blind;
+  // DEC-058：发起人或异动本人不能审批（节点开关 avoidSelf，DEC-318 K-37，关闭的节点本人照常办理）；看不到本单变化字段
+  // 的人（盲审，C-非4）也不显示同意 / 驳回，只能转交。
+  const decide = !(own && node !== undefined && avoidsSelf(node)) && !blind;
   if (running && mine && node) {
     // DEC-144：同意 / 不同意是出口动作，按节点配置公布；会签节点的前加签人不计入流转规则，不公布不同意（DEC-152）。
     // 驳回是节点开关（F-003 第二轮），加签人沿用原节点开关。

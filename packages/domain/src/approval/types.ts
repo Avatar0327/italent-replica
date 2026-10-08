@@ -26,12 +26,6 @@ export type ApproverExpression = (typeof APPROVER_EXPRESSIONS)[number];
 export const IDP_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set(['idp_employee', 'idp_tutor']);
 
 /**
- * 员工填写自己计划的节点（K-37）：由“发展计划 - 员工本人”解析，处理人就是计划员工本人（原站 W-114“制定发展目标”），
- * 不按自审回避，也不按“异动本人不能审批”拒绝（DEC-058 / DEC-068 的 IDP 例外，只对该表达式）。
- */
-export const SUBJECT_FILL_APPROVER: ApproverExpression = 'idp_employee';
-
-/**
  * 审批人为空：首节点提交即报错，中间节点一律转异常管理员（DEC-054、REQ-APV-002 R6、`14` §10）。
  * 原站另有“自动跳过 / 自动同意”配置（`14` §8.7），复刻首版不开放（PR #35 第二轮清单 6）。
  */
@@ -147,6 +141,17 @@ export interface NodeActions {
   /** 审批人撤回：下一节点尚未处理时撤回本人的同意（`isRetrieve`）。 */
   readonly retrieve: boolean;
   readonly urge: UrgeMode;
+  /**
+   * 自审回避（DEC-058 / DEC-068 / DEC-091 的“发起人 / 异动本人不审批自己的单据”）：路由时自审跳过转直线经理、办理时
+   * 拒绝本人。DEC-318 K-37 起是节点开关（原站跳过类开关都是节点级）；缺省（未给出）即开启，原有流程行为不变。
+   * IDP 预置流程关闭（员工处理自己计划的节点是正常路径）。
+   */
+  readonly avoidSelf?: boolean;
+}
+
+/** 节点是否自审回避：未给出即开启（NodeActions.avoidSelf）。 */
+export function avoidsSelf(node: { readonly actions?: Pick<NodeActions, 'avoidSelf'> }): boolean {
+  return node.actions?.avoidSelf !== false;
 }
 
 /** 节点是否开启驳回：未给出即开启（NodeActions.reject）。 */

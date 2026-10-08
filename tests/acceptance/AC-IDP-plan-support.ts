@@ -97,6 +97,24 @@ export interface NodeOverride {
   readonly noAssignee?: string;
 }
 
+/** 同 IDP 预置流程的节点开关（DEC-318 K-37：自审回避关闭）；处理人为空沿用缺省的转异常管理员，便于取证异常待办。 */
+const IDP_NODE_DEFAULTS: Partial<Record<NodeExpr, NodeOverride>> = {
+  idp_employee: { actions: { avoidSelf: false } },
+  idp_tutor: { actions: { avoidSelf: false } },
+};
+
+/** 覆盖项与缺省按表达式合并，节点开关逐项合并。 */
+function withNodeDefaults(overrides: Partial<Record<NodeExpr, NodeOverride>> = {}) {
+  const merged: Partial<Record<NodeExpr, NodeOverride>> = {};
+  for (const expr of ['idp_employee', 'idp_tutor', 'owner'] as const) {
+    const base = IDP_NODE_DEFAULTS[expr];
+    const extra = overrides[expr];
+    if (!base && !extra) continue;
+    merged[expr] = { ...base, ...extra, actions: { ...base?.actions, ...extra?.actions } };
+  }
+  return merged;
+}
+
 /** IDP 审批流程：每个节点 = [key, 名称, 审批人表达式]；节点开关按表达式取覆盖项。 */
 function approvalBody(
   approvalType: string,
@@ -158,7 +176,7 @@ export async function planWorld(db: Db, label: string, options: PlanWorldOptions
     const created = await ok<{ id: string; revision: number }>(
       await http(hr, 'POST', `${APV}/processes`, {
         ifMatch: 0,
-        body: approvalBody(type, nodes, w.exceptionAdmin, options.nodes),
+        body: approvalBody(type, nodes, w.exceptionAdmin, withNodeDefaults(options.nodes)),
       }),
       201,
     );

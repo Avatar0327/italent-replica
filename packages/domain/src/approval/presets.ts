@@ -48,6 +48,17 @@ const node = (key: string, name: string, approver: ApproverExpression, extra: Pa
     ...extra,
   }) satisfies SingleApprovalNode;
 
+/** IDP 预置节点的开关（DEC-318 K-37，原站 MakePlan 节点原值）。 */
+const IDP_ACTIONS = {
+  transfer: false,
+  addSign: false,
+  copySend: false,
+  retrieve: false,
+  reject: true,
+  urge: 'inherit',
+  avoidSelf: false,
+} as const;
+
 type DraftInput = Omit<
   ProcessDefinition,
   'exceptionAdminUserId' | 'urgeEnabled' | 'groupName' | 'hideRecordsFromInitiator'
@@ -212,9 +223,9 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       priority: 0,
       ...standardCondition(approvalType),
       nodes: [
-        // DEC-318 K-38：处理人为空照原站“无操作”（noAssignee.type = 0），不兜底给管理员
-        node(employeeKey, employeeName, 'idp_employee', { formFields: [], noAssignee: 'none' }),
-        node(tutorKey, tutorName, 'idp_tutor', { formFields: [], noAssignee: 'none' }),
+        // DEC-318：处理人为空照原站“无操作”（K-38）；回避、加签、转交、抄送全部关闭（K-37）
+        node(employeeKey, employeeName, 'idp_employee', { formFields: [], noAssignee: 'none', actions: IDP_ACTIONS }),
+        node(tutorKey, tutorName, 'idp_tutor', { formFields: [], noAssignee: 'none', actions: IDP_ACTIONS }),
       ],
     }),
   })),

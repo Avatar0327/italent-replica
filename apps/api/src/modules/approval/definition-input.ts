@@ -72,6 +72,8 @@ const node = z.strictObject({
       /** 驳回（驳回到发起人）开关，缺省开启（R1-T07 起的节点一直可以驳回）。 */
       reject: z.boolean().default(true),
       urge: z.enum(URGE_MODES).default('inherit'),
+      /** 自审回避（DEC-318 K-37）：缺省不给即开启，原有流程不变。 */
+      avoidSelf: z.boolean().optional(),
     })
     .default({ transfer: false, addSign: false, copySend: false, retrieve: false, reject: true, urge: 'inherit' }),
   rejectCommentRequired: z.boolean().default(false),

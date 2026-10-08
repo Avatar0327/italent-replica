@@ -4,7 +4,7 @@
  * 自动处理的结果按节点配置为「同意」或「跳过」（DEC-106）。
  * “历史节点”只认本轮有效历史（DEC-124 暂定，TODO(需取证 Q-M0-43，#39)，判断在 policies.effectiveHistory）。
  */
-import type { ApprovalNode, AutoResult } from './types.js';
+import { type ApprovalNode, type AutoResult, avoidsSelf } from './types.js';
 
 /** 表达式解析出的人员与其绑定的账号（无账号视为审批人为空）。 */
 export interface Candidate {
@@ -84,8 +84,9 @@ function auto(outcome: AutoOutcome, result: AutoResult, userId: string, why: str
 export function decideNode(
   node: Pick<
     ApprovalNode,
-    'sameAssigneeSkip' | 'historySameAssigneeSkip' | 'sameAssigneeResult' | 'historySameAssigneeResult' | 'noAssignee'
-  >,
+    'sameAssigneeSkip' | 'historySameAssigneeSkip' | 'sameAssigneeResult' | 'historySameAssigneeResult'
+  > &
+    Partial<Pick<ApprovalNode, 'noAssignee' | 'actions'>>,
   candidate: Candidate,
   facts: RoutingFacts,
   manager: Candidate = { personId: null, userId: null },
@@ -95,7 +96,8 @@ export function decideNode(
     if (facts.isFirstNode) return { kind: 'first_node_empty', reason: '第一个审批节点没有审批人' };
     return exceptionAdmin(facts, '审批人为空，转异常管理员', null);
   }
-  if (isSelf(candidate, facts)) {
+  // DEC-318 K-37：自审回避是节点开关（缺省开启）
+  if (avoidsSelf(node) && isSelf(candidate, facts)) {
     const selfSkipped = candidate.userId;
     const managerInvalid = manager.userId === null || manager.userId === selfSkipped || isSelf(manager, facts);
     if (managerInvalid) return exceptionAdmin(facts, '自审跳过；直线经理为空或仍为本人，转异常管理员', selfSkipped);
