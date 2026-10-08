@@ -113,7 +113,7 @@ export const talentScope = (c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: T
  * 填写（DEC-294③），请求里只是“从创建人 / 添加人自己的多个授权管理单元里选哪一个”，由服务端按授权管理单元校验
  * （owner-units.ts），因此不按字段编辑权拦截（指标、库内分类的 ownerOrgId 是系统字段，本就不可授予编辑权）。
  */
-const UNIT_SELECTION = new Set(['ownerOrgId', 'relationOwnerOrgId']);
+export const UNIT_SELECTION: ReadonlySet<string> = new Set(['ownerOrgId', 'relationOwnerOrgId']);
 
 export function checkWriteFields(
   deps: TenantRouteDeps,

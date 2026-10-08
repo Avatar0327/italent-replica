@@ -104,7 +104,7 @@ const definitions = [
 
 const testDb = useTestDb();
 
-describe('F-035 人才标准表单权限契约与部分字段保存', () => {
+describe('AC-TC-F035 人才标准表单权限契约与部分字段保存', () => {
   let world: PermissionWorld;
   let data: TalentPermissionData;
   beforeAll(async () => {
@@ -272,6 +272,7 @@ describe('F-035 人才标准表单权限契约与部分字段保存', () => {
     const op = await talentOperator(world, { seeAll: true });
     for (const path of [
       '/forms/not-an-object?operation=create',
+      '/forms/toString?operation=create',
       '/forms/library?operation=delete',
       '/forms/library',
       '/forms/library?operation=update',
@@ -281,5 +282,14 @@ describe('F-035 人才标准表单权限契约与部分字段保存', () => {
       expect(response.status, path).toBe(400);
       expect(await errorCode(response)).toBe('VALIDATION_FAILED');
     }
+    const target = `/libraries/${data.inside.library.id}`;
+    const before = await adminRead(target);
+    const uppercase = await op.request(
+      'GET',
+      `/forms/library?operation=update&id=${data.inside.library.id.toUpperCase()}`,
+    );
+    expect(uppercase.status, await uppercase.clone().text()).toBe(200);
+    expect(((await uppercase.json()) as FormAccess).editableFields).toContain('name');
+    expect(await adminRead(target)).toEqual(before);
   });
 });

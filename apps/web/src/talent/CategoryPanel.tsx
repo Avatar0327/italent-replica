@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import type { Category, OwnerOrg } from './api.js';
 import { changedFields } from './changes.js';
+import { AccessNotice, Editable, editableBody, useFormAccess, type FormAccessState } from './FormAccess.js';
 import { text } from './messages.js';
 import { ownerOrgBody, OwnerUnitField, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
 import { useTalentWrite } from './useTalentWrite.js';
+import { candidatesBlocked, type CandidateState } from './useCandidates.js';
 
 interface Draft {
   readonly original: Category | null;
@@ -25,16 +27,22 @@ export function CategoryPanel({ tenantId }: { tenantId: string }) {
     list.reload();
   });
   const list = useList<Category>(tenantId, 'criterion-categories', write.setError);
-  const owners = useOwnerOrgs(tenantId, 'criterionCategory', write.setError);
+  const owners = useOwnerOrgs(tenantId, 'criterionCategory');
+  const access = useFormAccess(tenantId, 'criterionCategory', draft?.original);
+  const blocked = access.blocked || (!!draft && !draft.original && candidatesBlocked(owners));
   const save = (value: Draft) => {
+    if (blocked) return;
     const { original, ownerOrgId, ...fields } = value;
     write.mutate({
       path: original ? `criterion-categories/${original.id}` : 'criterion-categories',
       method: original ? 'PATCH' : 'POST',
       revision: original?.revision ?? 0,
       body: original
-        ? changedFields({ name: original.name, displayOrder: original.displayOrder }, fields)
-        : { ...fields, ...ownerOrgBody(owners, ownerOrgId) },
+        ? editableBody(
+            changedFields({ name: original.name, displayOrder: original.displayOrder }, fields),
+            access.access,
+          )
+        : { ...editableBody(fields, access.access), ...ownerOrgBody(owners.items, ownerOrgId) },
     });
   };
   const edit = (item: Category) =>
@@ -72,6 +80,8 @@ export function CategoryPanel({ tenantId }: { tenantId: string }) {
         <CategoryForm
           draft={draft}
           owners={owners}
+          access={access}
+          blocked={blocked}
           busy={write.locked}
           onChange={setDraft}
           onSubmit={() => save(draft)}
@@ -85,13 +95,17 @@ export function CategoryPanel({ tenantId }: { tenantId: string }) {
 function CategoryForm({
   draft,
   owners,
+  access,
+  blocked,
   busy,
   onChange,
   onSubmit,
   onCancel,
 }: {
   draft: Draft;
-  owners: readonly OwnerOrg[] | undefined;
+  owners: CandidateState<OwnerOrg>;
+  access: FormAccessState;
+  blocked: boolean;
   busy: boolean;
   onChange: (draft: Draft) => void;
   onSubmit: () => void;
@@ -101,35 +115,43 @@ function CategoryForm({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        if (!blocked) onSubmit();
       }}
     >
       <fieldset disabled={busy}>
-        <label>
-          {text.name}
-          <input
-            required
-            maxLength={200}
-            value={draft.name}
-            onChange={(event) => onChange({ ...draft, name: event.target.value })}
-          />
-        </label>
+        <AccessNotice state={access} />
+        <Editable access={access.access} field="name">
+          <label>
+            {text.name}
+            <input
+              required={access.access.requiredFields.includes('name')}
+              maxLength={200}
+              value={draft.name}
+              onChange={(event) => onChange({ ...draft, name: event.target.value })}
+            />
+          </label>
+        </Editable>
         <OwnerUnitField
           editing={!!draft.original}
           value={draft.ownerOrgId}
-          options={owners}
+          options={owners.items}
+          state={owners}
           onChange={(ownerOrgId) => onChange({ ...draft, ownerOrgId })}
         />
-        <label>
-          {text.displayOrder}
-          <input
-            type="number"
-            min={0}
-            value={draft.displayOrder}
-            onChange={(event) => onChange({ ...draft, displayOrder: Number(event.target.value) })}
-          />
-        </label>
-        <button type="submit">{text.save}</button>
+        <Editable access={access.access} field="displayOrder">
+          <label>
+            {text.displayOrder}
+            <input
+              type="number"
+              min={0}
+              value={draft.displayOrder}
+              onChange={(event) => onChange({ ...draft, displayOrder: Number(event.target.value) })}
+            />
+          </label>
+        </Editable>
+        <button type="submit" disabled={blocked}>
+          {text.save}
+        </button>
         <button type="button" onClick={onCancel}>
           {text.cancel}
         </button>

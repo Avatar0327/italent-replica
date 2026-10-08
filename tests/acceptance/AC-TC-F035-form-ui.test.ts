@@ -60,8 +60,25 @@ function json(body: unknown, status = 200) {
 }
 
 function fixture(path: string) {
-  if (path === 'dimensions') return { ...base, libraryId: LIBRARY.id, type: 'ability', definition: null };
-  if (path === 'criteria') return { ...base, categoryId: CATEGORY.id, potentialNote: null, dimensions: [] };
+  if (path === 'dimensions')
+    return {
+      ...base,
+      libraryId: LIBRARY.id,
+      type: 'ability',
+      definition: null,
+      categoryId: CATEGORY.id,
+      grades: [{ gradeOrder: 1, description: '等级隐藏值' }],
+      suggestions: [
+        { id: 'suggestion', typeId: 'type', typeName: '原类型', description: '建议隐藏值', displayOrder: 1 },
+      ],
+    };
+  if (path === 'criteria')
+    return {
+      ...base,
+      categoryId: CATEGORY.id,
+      potentialNote: null,
+      dimensions: [{ dimensionId: 'dimension', type: 'ability', weight: null, target: null, displayOrder: 1 }],
+    };
   if (path === 'dimension-categories') return { ...base, libraryId: LIBRARY.id };
   if (path === 'libraries') return { ...base, type: 'ability' };
   return base;
@@ -75,6 +92,8 @@ function mockRequests({
   creating = false,
   ownerResponse,
   categories = [CATEGORY],
+  candidateResponse,
+  item,
 }: {
   path: string;
   editableFields: readonly string[];
@@ -83,6 +102,8 @@ function mockRequests({
   creating?: boolean;
   ownerResponse?: (options: RequestInit) => Response | Promise<Response>;
   categories?: readonly unknown[];
+  candidateResponse?: (route: string) => Response | undefined;
+  item?: unknown;
 }) {
   const writes: { path: string; body: unknown }[] = [];
   vi.stubGlobal(
@@ -96,8 +117,10 @@ function mockRequests({
       }
       if (route.startsWith('forms/')) return json({ editableFields, requiredFields, blockedReason });
       if (route === 'candidates/owner-orgs') return ownerResponse ? ownerResponse(options) : json({ items: [UNIT] });
-      if (route === `${path}/${ID}`) return json(fixture(path));
-      if (route === path) return json({ items: creating ? [] : [fixture(path)], hasDataPermission: true });
+      const candidate = candidateResponse?.(route);
+      if (candidate) return candidate;
+      if (route === `${path}/${ID}`) return json(item ?? fixture(path));
+      if (route === path) return json({ items: creating ? [] : [item ?? fixture(path)], hasDataPermission: true });
       if (route === 'libraries') return json({ items: [LIBRARY], hasDataPermission: true });
       if (route === 'criterion-categories') return json({ items: categories, hasDataPermission: true });
       return json({ items: [], hasDataPermission: true });
@@ -149,6 +172,9 @@ it.each(panels)('AC-TC-F035 $object 只渲染服务端允许编辑的字段，�
   expect(field('指标库')).toBeNull();
   expect(field('人才标准分类')).toBeNull();
   expect(form.querySelector('[required]')).toBeNull();
+  expect(form.textContent).not.toContain('等级描述');
+  expect(form.textContent).not.toContain('发展建议');
+  expect(form.textContent).not.toContain('标准里的指标');
   const control = field(panel.label)!;
   expect(control).toBeTruthy();
   await enter(control as HTMLInputElement | HTMLTextAreaElement, panel.field === 'displayOrder' ? '9' : '获准修改');
@@ -183,7 +209,8 @@ it('AC-TC-F035 新建缺少必需字段编辑权，显示服务端阻止原因�
 });
 
 it('AC-TC-F035 管理单元候选加载中明确提示，字段不能直接消失', async () => {
-  const { OwnerUnitField } = await import('../../apps/web/src/talent/OwnerOrgSelect.js');
+  const ownerPath = resolve('apps/web/src/talent/OwnerOrgSelect.tsx');
+  const { OwnerUnitField } = await import(ownerPath);
   await act(async () =>
     root.render(
       createElement(OwnerUnitField, {
@@ -256,4 +283,114 @@ it('AC-TC-F035 标准新建没有可选分类时明确提示并禁用保存', as
   const form = host.querySelector('form')!;
   expect(form.textContent).toMatch(/(?:无|没有|暂无).*可(?:用|选).*分类|分类.*(?:无|没有|暂无).*可(?:用|选)/);
   expect(form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
+});
+
+it.each([
+  {
+    module: 'CriterionPanel',
+    path: 'criteria',
+    field: 'potentialNote',
+    label: '潜力说明',
+    allowed: ['potentialNote', 'categoryId', 'dimensions'],
+  },
+  {
+    module: 'DimensionPanel',
+    path: 'dimensions',
+    field: 'definition',
+    label: '定义',
+    allowed: ['definition', 'categoryId', 'suggestions'],
+  },
+])('AC-TC-F035 $path 候选失败不会阻止已有对象无关文本编辑', async (panel) => {
+  const writes = mockRequests({
+    path: panel.path,
+    editableFields: panel.allowed,
+    ownerResponse: () => json({ error: { message: '管理单元候选失败' } }, 403),
+    candidateResponse: (route) =>
+      [
+        'criterion-categories',
+        'dimension-categories',
+        'candidates/dimensions',
+        'candidates/description-types',
+      ].includes(route)
+        ? json({ error: { message: '候选读取失败' } }, 403)
+        : undefined,
+  });
+  await renderPanel(panel.module);
+  await click('编辑');
+  const form = host.querySelector('form')!;
+  expect(form.textContent).toContain('候选读取失败');
+  expect(form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(false);
+  expect(
+    Array.from(
+      form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input,select,textarea'),
+    )
+      .filter((control) => !control.checkValidity())
+      .map((control) => control.outerHTML),
+  ).toEqual([]);
+  await enter(field(panel.label) as HTMLTextAreaElement, '仅修改获准说明');
+  await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(writes).toEqual([{ path: `${panel.path}/${ID}`, body: { [panel.field]: '仅修改获准说明' } }]);
+});
+
+it('AC-TC-F035 指标所属库被裁剪时分类显示明确不可用原因，其余文本可保存', async () => {
+  const { libraryId: _libraryId, ...item } = fixture('dimensions') as Record<string, unknown>;
+  const writes = mockRequests({ path: 'dimensions', editableFields: ['definition', 'categoryId'], item });
+  await renderPanel('DimensionPanel');
+  await click('编辑');
+  const form = host.querySelector('form')!;
+  expect(form.textContent).toContain('无法获取所属指标库');
+  expect((field('分类') as HTMLSelectElement).disabled).toBe(true);
+  await enter(field('定义') as HTMLTextAreaElement, '其他字段仍可保存');
+  await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(writes).toEqual([{ path: `dimensions/${ID}`, body: { definition: '其他字段仍可保存' } }]);
+});
+
+it('AC-TC-F035 迟到的旧租户表单契约与候选不能覆盖新租户结果', async () => {
+  const formPath = resolve('apps/web/src/talent/FormAccess.tsx');
+  const candidatePath = resolve('apps/web/src/talent/useCandidates.tsx');
+  const { useFormAccess } = await import(formPath);
+  const { useCandidates } = await import(candidatePath);
+  const pending: (() => void)[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: string, options: RequestInit = {}) => {
+      const old = (options.headers as Record<string, string>)['x-tenant-id'] === 'tenant-a';
+      const body = input.includes('/forms/')
+        ? { editableFields: old ? ['name'] : ['enabled'], requiredFields: [] }
+        : { items: [{ id: old ? 'old-unit' : 'new-unit' }] };
+      return old ? new Promise<Response>((done) => pending.push(() => done(json(body)))) : Promise.resolve(json(body));
+    }),
+  );
+  function Harness({ tenantId }: { tenantId: string }) {
+    const form = useFormAccess(tenantId, 'library', { id: ID });
+    const choices = useCandidates(tenantId, 'candidates/owner-orgs?object=library');
+    return createElement('section', {}, JSON.stringify({ fields: form.access.editableFields, items: choices.items }));
+  }
+  await act(async () => root.render(createElement(Harness, { tenantId: 'tenant-a' })));
+  expect(host.textContent).not.toContain('name');
+  await act(async () => root.render(createElement(Harness, { tenantId: 'tenant-b' })));
+  expect(host.textContent).toContain('enabled');
+  expect(host.textContent).toContain('new-unit');
+  await act(async () => pending.forEach((done) => done()));
+  expect(host.textContent).not.toContain('old-unit');
+  expect(host.textContent).not.toContain('name');
+});
+
+it('AC-TC-F035 未取得字段契约时隐藏业务输入，手工提交也不发送写请求', async () => {
+  const writes = mockRequests({ path: 'libraries', editableFields: ['name', 'type'], creating: true });
+  const original = fetch;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: string, options?: RequestInit) =>
+      input.includes('/forms/') ? new Promise<Response>(() => {}) : original(input, options),
+    ),
+  );
+  await renderPanel('LibraryPanel');
+  await click('新建');
+  const form = host.querySelector('form')!;
+  expect(form.textContent).toContain('正在加载可编辑字段');
+  expect(field('名称')).toBeNull();
+  expect(form.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true);
+  await act(async () => form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(writes).toEqual([]);
 });

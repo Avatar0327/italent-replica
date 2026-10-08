@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { DescriptionType } from './api.js';
 import { changedFields } from './changes.js';
+import { AccessNotice, Editable, editableBody, useFormAccess, type FormAccessState } from './FormAccess.js';
 import { text } from './messages.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
@@ -26,13 +27,15 @@ export function DescriptionTypePanel({ tenantId }: { tenantId: string }) {
     list.reload();
   });
   const list = useList<DescriptionType>(tenantId, 'description-types', write.setError);
+  const access = useFormAccess(tenantId, 'descriptionType', draft?.original);
   const save = (value: Draft) => {
+    if (access.blocked) return;
     const { original, ...fields } = value;
     write.mutate({
       path: original ? `description-types/${original.id}` : 'description-types',
       method: original ? 'PATCH' : 'POST',
       revision: original?.revision ?? 0,
-      body: original ? changedFields(pick(original), fields) : fields,
+      body: editableBody(original ? changedFields(pick(original), fields) : fields, access.access),
     });
   };
   return (
@@ -68,6 +71,7 @@ export function DescriptionTypePanel({ tenantId }: { tenantId: string }) {
       {draft && (
         <TypeForm
           draft={draft}
+          access={access}
           busy={write.locked}
           onChange={setDraft}
           onSubmit={() => save(draft)}
@@ -80,12 +84,14 @@ export function DescriptionTypePanel({ tenantId }: { tenantId: string }) {
 
 function TypeForm({
   draft,
+  access,
   busy,
   onChange,
   onSubmit,
   onCancel,
 }: {
   draft: Draft;
+  access: FormAccessState;
   busy: boolean;
   onChange: (draft: Draft) => void;
   onSubmit: () => void;
@@ -95,37 +101,46 @@ function TypeForm({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        if (!access.blocked) onSubmit();
       }}
     >
       <fieldset disabled={busy}>
-        <label>
-          {text.name}
-          <input
-            required
-            maxLength={50}
-            value={draft.name}
-            onChange={(event) => onChange({ ...draft, name: event.target.value })}
-          />
-        </label>
-        <label>
-          {text.displayOrder}
-          <input
-            type="number"
-            min={0}
-            value={draft.displayOrder}
-            onChange={(event) => onChange({ ...draft, displayOrder: Number(event.target.value) })}
-          />
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={draft.enabled}
-            onChange={(event) => onChange({ ...draft, enabled: event.target.checked })}
-          />
-          {text.enabled}
-        </label>
-        <button type="submit">{text.save}</button>
+        <AccessNotice state={access} />
+        <Editable access={access.access} field="name">
+          <label>
+            {text.name}
+            <input
+              required={access.access.requiredFields.includes('name')}
+              maxLength={50}
+              value={draft.name}
+              onChange={(event) => onChange({ ...draft, name: event.target.value })}
+            />
+          </label>
+        </Editable>
+        <Editable access={access.access} field="displayOrder">
+          <label>
+            {text.displayOrder}
+            <input
+              type="number"
+              min={0}
+              value={draft.displayOrder}
+              onChange={(event) => onChange({ ...draft, displayOrder: Number(event.target.value) })}
+            />
+          </label>
+        </Editable>
+        <Editable access={access.access} field="enabled">
+          <label>
+            <input
+              type="checkbox"
+              checked={draft.enabled}
+              onChange={(event) => onChange({ ...draft, enabled: event.target.checked })}
+            />
+            {text.enabled}
+          </label>
+        </Editable>
+        <button type="submit" disabled={access.blocked}>
+          {text.save}
+        </button>
         <button type="button" onClick={onCancel}>
           {text.cancel}
         </button>

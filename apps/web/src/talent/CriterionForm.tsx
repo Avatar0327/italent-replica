@@ -1,6 +1,8 @@
 import type { Dimension, DimensionType, NoteKey, OwnerOrg } from './api.js';
+import { AccessNotice, Editable, type FormAccess, type FormAccessState } from './FormAccess.js';
 import { text } from './messages.js';
 import { OwnerUnitField } from './OwnerOrgSelect.js';
+import { candidateLabel, CandidateNotice, candidatesBlocked, type CandidateState } from './useCandidates.js';
 
 /** 新增的引用行不带权重 / 目标：由服务端按规则给缺省值（能力指标权重 1，DEC-281②），前端不自行推算。 */
 export interface ReferenceDraft {
@@ -41,6 +43,11 @@ export function CriterionForm({
   categories,
   known,
   candidates,
+  ownerState,
+  categoryState,
+  candidateState,
+  access,
+  blocked = true,
   busy,
   onChange,
   onSubmit,
@@ -53,6 +60,11 @@ export function CriterionForm({
   categories: readonly { id: string; name: string }[];
   known: ReadonlyMap<string, KnownDimension>;
   candidates: readonly Dimension[];
+  ownerState?: CandidateState<OwnerOrg>;
+  categoryState?: CandidateState<{ id: string; name: string }>;
+  candidateState?: CandidateState<Dimension>;
+  access?: FormAccessState;
+  blocked?: boolean;
   busy: boolean;
   onChange: (value: CriterionDraft) => void;
   onSubmit: () => void;
@@ -64,31 +76,89 @@ export function CriterionForm({
     <form
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        if (!blocked) onSubmit();
       }}
     >
       <fieldset disabled={busy}>
-        <OwnerUnits value={value} adding={adding} owners={owners} set={set} />
+        {access && <AccessNotice state={access} />}
+        <OwnerUnits value={value} adding={adding} owners={owners} ownerState={ownerState} set={set} />
+        <BasicFields
+          value={value}
+          categories={categories}
+          categoryState={categoryState}
+          access={access?.access}
+          set={set}
+        />
+        <Editable access={access?.access} field="dimensions">
+          <References value={value} known={known} candidates={candidates} state={candidateState} set={set} />
+        </Editable>
+        <button type="submit" disabled={blocked}>
+          {text.save}
+        </button>
+        <button type="button" onClick={onCancel}>
+          {text.cancel}
+        </button>
+      </fieldset>
+    </form>
+  );
+}
+
+function BasicFields({
+  value,
+  categories,
+  categoryState,
+  access,
+  set,
+}: {
+  value: CriterionDraft;
+  categories: readonly { id: string; name: string }[];
+  categoryState?: CandidateState<{ id: string; name: string }>;
+  access?: FormAccess;
+  set: (patch: Partial<CriterionDraft>) => void;
+}) {
+  return (
+    <>
+      <Editable access={access} field="categoryId">
+        {categoryState && <CandidateNotice state={categoryState} label={text.criterionCategory} />}
         <label>
           {text.criterionCategory}
-          <select required value={value.categoryId} onChange={(e) => set({ categoryId: e.target.value })}>
+          <select
+            required={access?.requiredFields.includes('categoryId')}
+            disabled={categoryState && candidatesBlocked(categoryState)}
+            value={value.categoryId}
+            onChange={(e) => set({ categoryId: e.target.value })}
+          >
             <option value="" />
+            {value.categoryId && !categories.some((item) => item.id === value.categoryId) && (
+              <option value={value.categoryId}>{value.categoryId}</option>
+            )}
             {categories.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.name}
+                {candidateLabel(item)}
               </option>
             ))}
           </select>
         </label>
+      </Editable>
+      <Editable access={access} field="name">
         <label>
           {text.name}
-          <input required maxLength={200} value={value.name} onChange={(e) => set({ name: e.target.value })} />
+          <input
+            required={access?.requiredFields.includes('name')}
+            maxLength={200}
+            value={value.name}
+            onChange={(e) => set({ name: e.target.value })}
+          />
         </label>
+      </Editable>
+      <Editable access={access} field="enabled">
         <label>
           <input type="checkbox" checked={value.enabled} onChange={(e) => set({ enabled: e.target.checked })} />
           {text.enabled}
         </label>
-        {NOTES.map((key) => (
+      </Editable>
+      {NOTES.map((key) => (
+        <Editable key={key} access={access} field={key}>
           <label key={key}>
             {text.notes[key]}
             <textarea
@@ -97,14 +167,9 @@ export function CriterionForm({
               onChange={(e) => set({ [key]: e.target.value || null })}
             />
           </label>
-        ))}
-        <References value={value} known={known} candidates={candidates} set={set} />
-        <button type="submit">{text.save}</button>
-        <button type="button" onClick={onCancel}>
-          {text.cancel}
-        </button>
-      </fieldset>
-    </form>
+        </Editable>
+      ))}
+    </>
   );
 }
 
@@ -116,11 +181,13 @@ function OwnerUnits({
   value,
   adding,
   owners,
+  ownerState,
   set,
 }: {
   value: CriterionDraft;
   adding: boolean;
   owners: readonly OwnerOrg[] | undefined;
+  ownerState?: CandidateState<OwnerOrg>;
   set: (patch: Partial<CriterionDraft>) => void;
 }) {
   return (
@@ -129,6 +196,7 @@ function OwnerUnits({
         editing={value.ownerOrgId === undefined}
         value={value.ownerOrgId ?? ''}
         options={owners}
+        state={ownerState}
         onChange={(ownerOrgId) => set({ ownerOrgId })}
       />
       <OwnerUnitField
@@ -136,6 +204,7 @@ function OwnerUnits({
         label={text.relationOwnerOrg}
         value={value.relationOwnerOrgId ?? ''}
         options={owners}
+        state={ownerState}
         onChange={(relationOwnerOrgId) => set({ relationOwnerOrgId })}
       />
     </>
@@ -150,11 +219,13 @@ function References({
   value,
   known,
   candidates,
+  state,
   set,
 }: {
   value: CriterionDraft;
   known: ReadonlyMap<string, KnownDimension>;
   candidates: readonly Dimension[];
+  state?: CandidateState<Dimension>;
   set: (patch: Partial<CriterionDraft>) => void;
 }) {
   const setReference = (index: number, patch: Partial<ReferenceDraft>) =>
@@ -165,6 +236,7 @@ function References({
   return (
     <fieldset>
       <legend>{text.referenced}</legend>
+      {state && <CandidateNotice state={state} label={text.addDimension} />}
       <table>
         <thead>
           <tr>
@@ -190,13 +262,17 @@ function References({
       </table>
       <label>
         {text.addDimension}
-        <select value="" onChange={(e) => e.target.value && add(e.target.value)}>
+        <select
+          disabled={state && candidatesBlocked(state)}
+          value=""
+          onChange={(e) => e.target.value && add(e.target.value)}
+        >
           <option value="">{text.chooseDimension}</option>
           {candidates
             .filter((item) => !chosen.has(item.id))
             .map((item) => (
               <option key={item.id} value={item.id}>
-                {item.name}（{text.types[item.type]}）
+                {candidateLabel(item)}
               </option>
             ))}
         </select>

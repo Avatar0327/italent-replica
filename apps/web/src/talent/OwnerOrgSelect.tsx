@@ -1,16 +1,10 @@
-import { useEffect, useState } from 'react';
-import { listAll, type OwnerObject, type OwnerOrg } from './api.js';
+import type { OwnerObject, OwnerOrg } from './api.js';
 import { text } from './messages.js';
+import { CandidateNotice, useCandidates, type CandidateState } from './useCandidates.js';
 
 /** 当前用户在人才标准应用里的授权管理单元（DEC-294③）。 */
-export function useOwnerOrgs(tenantId: string, object: OwnerObject, onError: (message: string) => void) {
-  const [options, setOptions] = useState<OwnerOrg[] | undefined>(undefined);
-  useEffect(() => {
-    void listAll<OwnerOrg>(tenantId, `candidates/owner-orgs?object=${object}`)
-      .then(setOptions)
-      .catch((cause: unknown) => onError(cause instanceof Error ? cause.message : String(cause)));
-  }, [tenantId, object, onError]);
-  return options;
+export function useOwnerOrgs(tenantId: string, object: OwnerObject) {
+  return useCandidates<OwnerOrg>(tenantId, `candidates/owner-orgs?object=${object}`);
 }
 
 /** 新建请求里的所属管理单元：只在有多个授权管理单元时由用户选择，其余情况交给服务端填写。 */
@@ -32,14 +26,18 @@ export function OwnerUnitField({
   options,
   onChange,
   label = text.ownerOrg,
+  state,
 }: {
   editing: boolean;
   value: string;
   options: readonly OwnerOrg[] | undefined;
   onChange: (value: string) => void;
   label?: string;
+  state?: CandidateState<OwnerOrg>;
 }) {
-  if (editing || !options || options.length === 1) return null;
+  if (editing) return null;
+  if (!options) return <CandidateNotice label={label} state={state ?? { items: undefined, status: 'loading' }} />;
+  if (options.length === 1) return null;
   if (!options.length) return <p role="alert">{text.noOwnerUnit}</p>;
   return (
     <label>

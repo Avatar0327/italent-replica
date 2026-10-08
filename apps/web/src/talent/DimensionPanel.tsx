@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
-import { listAll, type DescriptionType, type Dimension, type DimensionCategory, type Library } from './api.js';
+import { useMemo, useState } from 'react';
+import type { DescriptionType, Dimension, DimensionCategory, Library } from './api.js';
 import { changedFields } from './changes.js';
 import { DimensionForm, draftOf, type DimensionChoices, type DimensionEditor } from './DimensionForm.js';
+import { editableBody, useFormAccess } from './FormAccess.js';
 import { text } from './messages.js';
 import { ownerOrgBody, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
 import { useTalentWrite } from './useTalentWrite.js';
+import { candidateLabel, CandidateNotice, candidatesBlocked, useCandidates } from './useCandidates.js';
 
 /**
  * 指标：编码、名称、定义、分类、顺序、启用，以及等级描述 / 行为描述 / 发展建议 / 面试问题。
@@ -15,7 +17,8 @@ import { useTalentWrite } from './useTalentWrite.js';
  */
 export function DimensionPanel({ tenantId }: { tenantId: string }) {
   const [libraryId, setLibraryId] = useState('');
-  const [libraries, setLibraries] = useState<Library[]>([]);
+  const libraryChoices = useCandidates<Library>(tenantId, 'libraries');
+  const libraries = libraryChoices.items ?? [];
   const [editor, setEditor] = useState<DimensionEditor | null>(null);
   const write = useTalentWrite(tenantId, () => {
     setEditor(null);
@@ -23,15 +26,14 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
   });
   const path = `dimensions${libraryId ? `?libraryId=${libraryId}` : ''}`;
   const list = useList<Dimension>(tenantId, path, write.setError);
-  useEffect(() => {
-    void listAll<Library>(tenantId, 'libraries')
-      .then(setLibraries)
-      .catch((cause: unknown) => write.setError(String(cause)));
-  }, [tenantId, write.setError]);
-  const choices = useDimensionChoices(tenantId, editor, write.setError);
+  const choices = useDimensionChoices(tenantId, editor);
+  const access = useFormAccess(tenantId, 'dimension', editor?.original);
+  const blocked =
+    access.blocked ||
+    (!!editor && !editor.original && (candidatesBlocked(choices.ownerState) || candidatesBlocked(libraryChoices)));
   const libraryName = (id: string) => libraries.find((item) => item.id === id)?.name ?? '';
   const save = () => {
-    if (!editor) return;
+    if (!editor || blocked) return;
     const { original, value } = editor;
     write.mutate(
       original
@@ -39,18 +41,22 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
             path: `dimensions/${original.id}`,
             method: 'PATCH',
             revision: original.revision,
-            body: changedFields(draftOf(original), value),
+            body: editableBody(changedFields(draftOf(original), value), access.access),
           }
         : {
             path: 'dimensions',
             method: 'POST',
             revision: 0,
-            body: { ...value, libraryId: editor.libraryId, ...ownerOrgBody(choices.owners, editor.ownerOrgId) },
+            body: {
+              ...editableBody({ ...value, libraryId: editor.libraryId }, access.access),
+              ...ownerOrgBody(choices.owners, editor.ownerOrgId),
+            },
           },
     );
   };
   return (
     <section aria-busy={write.busy}>
+      <CandidateNotice state={libraryChoices} label={text.library} />
       <LibraryFilter libraries={libraries} value={libraryId} onChange={setLibraryId} />
       <button
         disabled={write.locked || !libraries.length}
@@ -76,6 +82,9 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
           editor={editor}
           libraries={libraries}
           choices={choices}
+          access={access}
+          blocked={blocked}
+          libraryChoices={libraryChoices}
           busy={write.locked}
           onChange={setEditor}
           onSubmit={save}
@@ -100,7 +109,7 @@ function LibraryFilter({
       <option value="">{text.allLibraries}</option>
       {libraries.map((item) => (
         <option key={item.id} value={item.id}>
-          {item.name}（{text.types[item.type]}）
+          {candidateLabel(item)}
         </option>
       ))}
     </select>
@@ -111,39 +120,38 @@ function LibraryFilter({
  * 编辑时的选项：所选指标库的分类、启用的发展建议类型，以及按行保留的已停用类型——只给原本就是该类型的那一行
  * （按建议行 ID，DEC-297②）；新建时的授权管理单元（DEC-294③）。
  */
-function useDimensionChoices(
-  tenantId: string,
-  editor: DimensionEditor | null,
-  onError: (message: string) => void,
-): DimensionChoices {
-  const [categories, setCategories] = useState<DimensionCategory[]>([]);
-  const [types, setTypes] = useState<DescriptionType[]>([]);
+function useDimensionChoices(tenantId: string, editor: DimensionEditor | null): DimensionChoices {
   const libraryId = editor?.libraryId;
-  useEffect(() => {
-    if (!libraryId) return;
-    void listAll<DimensionCategory>(tenantId, `dimension-categories?libraryId=${libraryId}`)
-      .then(setCategories)
-      .catch((cause: unknown) => onError(String(cause)));
-  }, [tenantId, libraryId, onError]);
-  const editing = editor !== null;
-  useEffect(() => {
-    if (!editing) return;
-    void listAll<DescriptionType>(tenantId, 'candidates/description-types')
-      .then(setTypes)
-      .catch((cause: unknown) => onError(String(cause)));
-  }, [tenantId, editing, onError]);
-  const owners = useOwnerOrgs(tenantId, 'dimension', onError);
+  const loadedCategories = useCandidates<DimensionCategory>(
+    tenantId,
+    `dimension-categories?libraryId=${libraryId ?? ''}`,
+    !!libraryId,
+  );
+  const categoryState =
+    editor && !libraryId
+      ? { items: undefined, status: 'error' as const, error: text.missingLibrary }
+      : loadedCategories;
+  const typeState = useCandidates<DescriptionType>(tenantId, 'candidates/description-types', editor !== null);
+  const ownerState = useOwnerOrgs(tenantId, 'dimension');
   const original = editor?.original;
   return useMemo(() => {
-    const enabled = new Set(types.map((item) => item.id));
+    const enabled = new Set(typeState.items?.map((item) => item.id));
     const retained = new Map<string, { value: string; label: string }>();
     for (const row of original?.suggestions ?? []) {
       if (row.id && !enabled.has(row.typeId)) {
         retained.set(row.id, { value: row.typeId, label: row.typeName ?? row.typeId });
       }
     }
-    return { categories, types, retained, owners };
-  }, [categories, types, original, owners]);
+    return {
+      categories: categoryState.items ?? [],
+      types: typeState.items ?? [],
+      retained,
+      owners: ownerState.items,
+      ownerState,
+      categoryState,
+      typeState,
+    };
+  }, [categoryState, typeState, original, ownerState]);
 }
 
 function DimensionTable({
