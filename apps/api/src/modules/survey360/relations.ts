@@ -74,6 +74,7 @@ import {
   fineEmployees,
   personForEmployee,
   refreshFromOrg,
+  restrictedSkips,
   routeEmployeeScope,
   syncAccess,
 } from './sync.js';
@@ -714,7 +715,9 @@ async function candidateVisible(tx: Tx, admin: Admin, employeeId: string): Promi
 
 /**
  * 自动添加回执：返回前（新请求与重放同一路径）按当前员工范围与精细化范围复核，移出范围的员工的新增关系与跳过
- * 原因都去掉（第 3 轮 R2-P2-1）；新增关系按评价关系字段裁剪。按批查询（有界：一个对象最多 500 个评价者）。
+ * 原因都去掉（第 3 轮 R2-P2-1）；新增关系按评价关系字段裁剪。精细化下受限查看人的跳过原因一律
+ * PERSON_NOT_AVAILABLE，与其新命令同一口径，不带出查重冲突（第 6 轮 R5-P2-1）。按批查询（有界：一个对象最多 500
+ * 个评价者）。
  */
 async function autoAddView(viewer: Viewer, employees: ModuleScope, body: AutoAddResult) {
   const { tx, admin } = viewer;
@@ -736,7 +739,10 @@ async function autoAddView(viewer: Viewer, employees: ModuleScope, body: AutoAdd
     added: body.added
       .filter((r) => inScope.has(employeeOf.get(r.appraiserPersonId) ?? '') && visible.has(r.appraiserPersonId))
       .map((row) => pick(row, fields)),
-    skipped: body.skipped.filter((s) => inScope.has(s.employeeId) && fine.has(s.employeeId)),
+    skipped: restrictedSkips(
+      admin,
+      body.skipped.filter((s) => inScope.has(s.employeeId) && fine.has(s.employeeId)),
+    ),
   };
 }
 

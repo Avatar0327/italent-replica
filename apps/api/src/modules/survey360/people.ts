@@ -78,10 +78,17 @@ export async function findPersonByEmail(tx: Tx, value: string): Promise<PersonRo
 
 /**
  * 上级须存在；精细化权限下还须可见（看不到与不存在同一结果，不暴露存在性）。编辑 / 新建人员的载荷资源复核
- * （命令前，含幂等重放，第 4 轮 R3-P2-1）与命令内同一判定。
+ * （命令前，含幂等重放，第 4 轮 R3-P2-1）与命令内同一判定。上级没有改动（与人员当前的上级相同）时按保留原值
+ * 处理、不重新校验——可见下属的上级可以在范围外，只给 ID（DEC-319①②）。
  */
-async function requireSuperior(tx: Tx, id: string | null | undefined, self?: string, admin?: Admin) {
-  if (!id) return;
+async function requireSuperior(
+  tx: Tx,
+  id: string | null | undefined,
+  self?: string,
+  admin?: Admin,
+  current?: string | null,
+) {
+  if (!id || id === current) return;
   if (id === self) fail('VALIDATION_FAILED', '上级不能是本人', 'SUPERIOR_SELF');
   const missing = () => fail('VALIDATION_FAILED', '上级人员不存在', 'SUPERIOR_NOT_FOUND');
   const superior = await loadPerson(tx, id).catch(missing);
@@ -136,7 +143,7 @@ export async function updatePerson(
     const other = await findPersonByEmail(tx, patch.email);
     if (other && other.id !== current.id) fail('CONFLICT', '邮箱已被其他人员使用', 'EMAIL_TAKEN');
   }
-  await requireSuperior(tx, patch.superiorPersonId, current.id, ctx.admin);
+  await requireSuperior(tx, patch.superiorPersonId, current.id, ctx.admin, current.superiorPersonId);
   const values = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
   const [saved] = await tx
     .update(survey360People)
@@ -191,10 +198,20 @@ export async function visiblePerson(tx: Tx, admin: Admin, id: string, message = 
 
 /**
  * 精细化权限生效时不新建 360 人员（第 3 轮 R2-P2-7）：不论邮箱是否已被看不到的人员占用都同一结果，不暴露存在性；
- * 录入邮箱属于可见人员时照常复用（调用方先查）。
+ * 录入邮箱属于可见人员时照常复用（调用方先查）。同步与自动添加同此（第 6 轮 R5-P2-1，见 sync.ts）。
  */
 export function requireCreatable(admin: Admin): void {
   if (admin.people) fail('FORBIDDEN', '开启精细化权限后只能选择可见的人员，不能新建人员', 'PERSON_NOT_AVAILABLE');
+}
+
+/**
+ * 同步冲突（清单、处理）与人员关联日志只给不受限的管理员（第 6 轮 R5-P2-1）：查重命中的候选、命中方式与挂接历史
+ * 都可能来自查看人看不到的人员，精细化生效时一律 403，与人员审计日志不给受限查看人同一口径；冲突由系统管理员
+ * 确认（DEC-030②）。只按查看人身份判定，与数据无关。
+ */
+export function requireUnrestricted(admin: Admin): void {
+  if (admin.people)
+    fail('FORBIDDEN', '开启精细化权限后，同步冲突与关联日志只由系统管理员处理', 'FINE_PERMISSION_RESTRICTED');
 }
 
 /** 关联日志：员工挂接字段按查看人的人员字段裁剪，其余是日志协议字段。 */
@@ -250,7 +267,9 @@ function registerPersonReads(module: Hono<TenantEnv>, deps: TenantRouteDeps): vo
       // 关联日志属“从系统管理中同步人员信息”（DEC-280①：一般管理员看不到）
       { object: 'person', button: BUTTONS.sync },
       async (tx, admin) => {
+        // 看不到的人员与不存在同样 404；看得到但受限 403（R5-P2-1）
         const person = await visiblePerson(tx, admin, uuidParam(c));
+        requireUnrestricted(admin);
         const items = await tx
           .select()
           .from(survey360PersonLinkLogs)
@@ -307,7 +326,8 @@ function registerPeopleWrites(module: Hono<TenantEnv>, deps: TenantRouteDeps): v
         need: { object: 'person', operation: 'update' },
         fields: 'body',
         guard: async (tx, admin) => void (await visiblePerson(tx, admin, id)),
-        refs: (tx, admin, input) => requireSuperior(tx, input.superiorPersonId, id, admin),
+        refs: async (tx, admin, input) =>
+          requireSuperior(tx, input.superiorPersonId, id, admin, (await loadPerson(tx, id)).superiorPersonId),
       },
     );
   });

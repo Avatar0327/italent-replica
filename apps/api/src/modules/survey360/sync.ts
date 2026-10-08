@@ -9,6 +9,10 @@
  * 权限（第 1 轮审查 P2-1 / P2-2）：只读操作人当前员工信息数据范围内的员工；字段按操作人对员工信息
  * （姓名、工号、邮箱、手机）与任职记录（部门、职位、直线经理）的查看权限裁剪——看不到的字段不写入 360，
  * 已有的 360 值保持不变；姓名或邮箱看不到的员工不建人员（FIELD_HIDDEN）。登录邮箱兜底同样要求能看邮箱。
+ * 精细化权限生效时（受限管理员，admin.people 非空；第 6 轮 R5-P2-1）：结果不能随其看不到的人员变化——查重、冲突与
+ * 邮箱占用都可能来自看不到的人员，故受限管理员不新建人员（未挂接的员工一律跳过 PERSON_NOT_AVAILABLE，不查重、
+ * 不登记冲突）、刷新已挂接人员时不改邮箱（邮箱是键，以不受限管理员的同步为准，不会出现 EMAIL_TAKEN），冲突清单
+ * 与冲突处理 403；回执里的冲突与跳过原因按查看人当时的身份同样处理（重放同一路径）。
  */
 import {
   and,
@@ -62,12 +66,15 @@ import {
   type PersonRow,
   personView,
   personVisible,
+  requireUnrestricted,
   visiblePersonIds,
 } from './people.js';
 
 const EMPLOYMENT_RECORD_OBJECT = 'TenantBase.EmploymentRecord';
 /** 一次同步最多处理的员工数（有界查询）；超出部分返回游标，按游标续同步。 */
 export const SYNC_LIMIT = 5000;
+/** 精细化下受限管理员不可添加 / 不新建人员的统一原因（与 requireCreatable 同一代码，R2-P2-7、R5-P2-1）。 */
+const NOT_AVAILABLE = 'PERSON_NOT_AVAILABLE';
 
 export interface SyncAccess {
   readonly scope: ModuleScope;
@@ -322,11 +329,13 @@ async function createSyncedPerson(tx: Tx, ctx: Survey360Context, snapshot: Emplo
 
 /**
  * 已挂接人员按组织为准覆盖可见字段与上级：有变化才写，推进 revision、写审计（P2-7）；
- * 邮箱为空不覆盖（邮箱是键）；邮箱被其他人员占用时整条不写，返回 EMAIL_TAKEN。
+ * 邮箱为空不覆盖（邮箱是键）；邮箱被其他人员占用时整条不写，返回 EMAIL_TAKEN。精细化下受限管理员不改邮箱：
+ * 占用者可能是其看不到的人员，改与不改都会暴露占用（第 6 轮 R5-P2-1）。
  */
 async function refreshLinked(tx: Tx, ctx: Survey360Context, person: PersonRow, snapshot: EmployeeSnapshot) {
+  const keepEmail = !!ctx.admin.people;
   const values: Partial<PersonRow> = Object.fromEntries(
-    Object.entries(snapshot.values).filter(([key, value]) => !(key === 'email' && !value)),
+    Object.entries(snapshot.values).filter(([key, value]) => !(key === 'email' && (!value || keepEmail))),
   );
   if (snapshot.managerId !== undefined)
     values.superiorPersonId = snapshot.managerId ? ((await linkedPerson(tx, snapshot.managerId))?.id ?? null) : null;
@@ -410,9 +419,16 @@ async function conflictOf(tx: Tx, employeeId: string, status: 'pending' | 'ignor
   return row;
 }
 
-/** 未挂接员工的首次同步：被忽略的跳过；已有待处理冲突复用；查重命中登记冲突；否则新建。 */
+/**
+ * 未挂接员工的首次同步：被忽略的跳过；已有待处理冲突复用；查重命中登记冲突；否则新建。精细化下受限管理员一律跳过
+ * PERSON_NOT_AVAILABLE（不查重、不登记冲突、不建人员；第 6 轮 R5-P2-1）。
+ */
 async function syncUnlinked(tx: Tx, ctx: Survey360Context, snapshot: EmployeeSnapshot, result: SyncResult) {
   const employeeId = snapshot.employeeId;
+  if (ctx.admin.people) {
+    result.skipped.push({ employeeId, reason: NOT_AVAILABLE });
+    return null;
+  }
   if (await conflictOf(tx, employeeId, 'ignored')) {
     result.skipped.push({ employeeId, reason: 'CONFLICT_IGNORED' });
     return null;
@@ -554,7 +570,8 @@ export async function linkedPerson(tx: Tx, employeeId: string): Promise<PersonRo
 
 /**
  * 按组织架构自动添加时取员工对应的 360 人员：先校验员工在操作人当前范围内（已挂接的同样校验，P2-2），
- * 未同步的按同一规则新建（看不到姓名 / 邮箱或有冲突的不建，返回原因）。
+ * 未同步的按同一规则新建（看不到姓名 / 邮箱或有冲突的不建，返回原因）。精细化下受限管理员只用已挂接的人员，
+ * 未同步的一律 PERSON_NOT_AVAILABLE（不查重、不建人员；第 6 轮 R5-P2-1）。
  */
 export async function personForEmployee(
   tx: Tx,
@@ -566,6 +583,7 @@ export async function personForEmployee(
   if (!snapshot) return 'OUT_OF_SCOPE';
   const existing = await linkedPerson(tx, employeeId);
   if (existing) return existing;
+  if (ctx.admin.people) return NOT_AVAILABLE;
   const blocked = creatable(snapshot);
   if (blocked) return blocked;
   if ((await candidatesOf(tx, snapshot)).ids.length) return 'SYNC_CONFLICT';
@@ -712,9 +730,12 @@ export function registerSyncRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
       c,
       deps,
       SYNC,
-      async (tx, admin, tenant) => ({
-        items: await pendingConflicts(tx, await syncAccess(tx, deps, tenant, `${PERSONNEL_OBJECT}.list`), admin),
-      }),
+      async (tx, admin, tenant) => {
+        requireUnrestricted(admin);
+        return {
+          items: await pendingConflicts(tx, await syncAccess(tx, deps, tenant, `${PERSONNEL_OBJECT}.list`), admin),
+        };
+      },
       conflictList,
     ),
   );
@@ -747,6 +768,8 @@ export function registerSyncRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
       {
         need: SYNC,
         fields: 'none', // 处理选择（挂接 / 新建 / 忽略），人员值取自组织员工
+        // 精细化下受限管理员不处理冲突（命令前与命令事务内，含重放；第 6 轮 R5-P2-1）
+        guard: async (_tx, admin) => requireUnrestricted(admin),
         // 命令前（含命中台账的重放）按当前员工范围复核冲突员工：撤回范围后原键重放 404（第 3 轮 R2-P2-1）
         preflight: async () => {
           const scope = await routeEmployeeScope(c, deps);
@@ -842,10 +865,19 @@ async function syncView(viewer: Viewer, employees: ModuleScope, body: SyncResult
   return {
     created: people(body.created),
     updated: people(body.updated),
-    conflicts: body.conflicts.filter((id) => inScope.has(conflictEmployee.get(id) ?? '')),
-    skipped: body.skipped.filter((e) => allowed(e.employeeId)),
+    // 精细化下受限查看人不看冲突、跳过原因统一（与其新命令同一口径；重放当时不受限时的回执也一样，R5-P2-1）
+    conflicts: admin.people ? [] : body.conflicts.filter((id) => inScope.has(conflictEmployee.get(id) ?? '')),
+    skipped: restrictedSkips(
+      admin,
+      body.skipped.filter((e) => allowed(e.employeeId)),
+    ),
     nextCursor: viewCursor(body.nextCursor, cursorAllowed, listed, after),
   };
+}
+
+/** 跳过原因：精细化下受限查看人一律 PERSON_NOT_AVAILABLE（冲突、邮箱占用等原因可能来自其看不到的人员）。 */
+export function restrictedSkips<T extends { reason: string }>(admin: Admin, skipped: readonly T[]): T[] {
+  return admin.people ? skipped.map((entry) => ({ ...entry, reason: NOT_AVAILABLE })) : [...skipped];
 }
 
 async function pendingConflicts(tx: Tx, access: SyncAccess, admin: Admin) {
