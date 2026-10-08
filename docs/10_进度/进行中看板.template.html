@@ -51,6 +51,7 @@ h1{margin:0;font:400 24px/1.15 var(--serif);letter-spacing:-.01em}
 .tg{margin-left:auto;font:700 9.5px/1.5 var(--mono);padding:0 4px;border:1px solid currentColor;white-space:nowrap}
 .tg.fb{color:var(--ink)}
 .tg.up{color:var(--dev)}
+.tg.cx{color:var(--ds)}
 .nm{font-size:11.5px;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .done .nm,.todo .nm{color:var(--muted)}
 .bar{display:grid;grid-template-columns:repeat(5,1fr);gap:2px}
@@ -96,7 +97,7 @@ const seg = (k, x) => {
   return `<div class="sg ${x.s}" style="${style}" title="${ST.find(s => s[0] === k)[1]}${x.r ? " 第 " + x.r + " 轮" : ""}">${x.s === "d" && !x.r ? "✓" : esc(x.r)}</div>`;
 };
 const card = it => {
-  const head = `<div class="hd"><span class="id">${it.pr ? "#" + it.pr + " " : ""}${esc(it.id)}</span>${it.fable ? '<span class="tg fb">Fable</span>' : ""}${it.up ? `<span class="tg up" title="${esc(it.up)}">强度↑</span>` : ""}</div><div class="nm" title="${esc(it.n)}">${esc(it.n)}</div>`;
+  const head = `<div class="hd"><span class="id">${it.pr ? "#" + it.pr + " " : ""}${esc(it.id)}</span>${it.fable ? '<span class="tg fb">Fable</span>' : ""}${it.cx ? '<span class="tg cx">Codex</span>' : ""}${it.up ? `<span class="tg up" title="${esc(it.up)}">强度↑</span>` : ""}</div><div class="nm" title="${esc(it.n)}">${esc(it.n)}</div>`;
   if (it.k === "done") return `<div class="it done">${head}<div class="u">✓ ${esc(it.u)}</div></div>`;
   if (it.k === "todo") return `<div class="it todo">${head}<div class="u">${esc(it.u)}</div>${it.nx ? `<div class="nx">→ 解锁 ${esc(it.nx)}</div>` : ""}</div>`;
   const p = parse(it.seg);
@@ -106,7 +107,7 @@ document.getElementById("upd").textContent = DATA.liveUpdated || DATA.updated ||
 const shelfG = new Set((DATA.chains || []).filter(c => c.sh).map(c => c.g));
 const run = items.filter(i => i.k === "run" && !shelfG.has(i.g)), cnt = {}; run.forEach(i => { const c = cur(i); if (c) cnt[c] = (cnt[c] || 0) + 1; });
 document.getElementById("tally").innerHTML = ST.map(([k, l]) => `<span><i style="background:var(--${k})"></i>${l}<b>${cnt[k] || 0}</b></span>`).join("") + `<span style="color:var(--need)"><i style="background:var(--need)"></i>等你处理<b>${run.filter(i => i.need).length}</b></span>`;
-document.getElementById("lg").innerHTML = ST.map(([k, l]) => `<span><i style="background:var(--${k})"></i>${l}进行中</span>`).join("") + `<span><i style="background:var(--dev-bg)"></i>已完成（浅色）</span><span><i style="border:1px dashed var(--faint)"></i>待做</span><span>数字 = 第几轮</span><span><span class="tg fb" style="margin:0">Fable</span> Fable 5.1 开发</span><span><span class="tg up" style="margin:0">强度↑</span> 超过 3 轮已升强度</span>`;
+document.getElementById("lg").innerHTML = ST.map(([k, l]) => `<span><i style="background:var(--${k})"></i>${l}进行中</span>`).join("") + `<span><i style="background:var(--dev-bg)"></i>已完成（浅色）</span><span><i style="border:1px dashed var(--faint)"></i>待做</span><span>数字 = 第几轮</span><span><span class="tg fb" style="margin:0">Fable</span> Fable 5.1 开发（在途，设计通过后转 Opus）</span><span><span class="tg cx" style="margin:0">Codex</span> GPT-6.1 Sol 开发（B 档）</span><span>未标注 = Opus 5.5 开发 · 审查一律 Astra Ultra</span><span><span class="tg up" style="margin:0">强度↑</span> 超过 3 轮已升强度</span>`;
 const chainHtml = ch => {
   const cols = {}; items.filter(i => i.g === ch.g).forEach(i => (cols[i.o || 1] ||= []).push(i));
   const keys = Object.keys(cols).map(Number).sort((a, b) => a - b);

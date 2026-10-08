@@ -186,6 +186,43 @@ export function valuesEqual(left: ExprValue, right: ExprValue, semantics: Expres
   return a.value === b.value;
 }
 
+/**
+ * 排名分组的候选索引（F-045）：= 不传递（"1" = 1、1 = "01"，但 "1" ≠ "01"），不能用单一哈希键分组。
+ * 每个取值登记在若干入口键下（equalityStoreKeys），查找时取可能与它相等的入口（equalityLookupKeys），
+ * 两者保证覆盖 valuesEqual 为真的全部组合；候选须再逐个用 valuesEqual 复核，结果与逐一比较完全一致。
+ */
+export function equalityStoreKeys(value: ExprValue, semantics: ExpressionSemantics): string[] {
+  if (value.kind === 'empty') return ['e'];
+  const plain = unwrapOption(value);
+  if (plain.kind !== 'text') return [scalarKey(plain)];
+  const keys = [`t:${plain.value}`];
+  const date = parseDateText(plain.value);
+  if (date) keys.push(`d:${dateOrdinal(date)}`);
+  const parsed = numericText(plain.value, semantics);
+  if (parsed !== undefined) keys.push(`tn:${parsed}`);
+  return keys;
+}
+
+export function equalityLookupKeys(value: ExprValue, semantics: ExpressionSemantics): string[] {
+  if (value.kind === 'empty') return ['e'];
+  const plain = unwrapOption(value);
+  if (plain.kind === 'number') return [`n:${plain.value}`, `tn:${plain.value}`];
+  if (plain.kind !== 'text') return [scalarKey(plain)];
+  const keys = [`t:${plain.value}`];
+  const date = parseDateText(plain.value);
+  if (date) keys.push(`d:${dateOrdinal(date)}`);
+  const parsed = numericText(plain.value, semantics);
+  if (parsed !== undefined) keys.push(`n:${parsed}`);
+  return keys;
+}
+
+/** 数值、是否、日期的入口键（单选已解包）。 */
+function scalarKey(plain: ExprValue): string {
+  if (plain.kind === 'number') return `n:${plain.value}`;
+  if (plain.kind === 'date') return `d:${dateOrdinal(plain.value)}`;
+  return `b:${toText(plain)}`;
+}
+
 export function compare(
   operator: ComparisonOperator,
   left: ExprValue,

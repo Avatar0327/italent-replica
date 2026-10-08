@@ -46,7 +46,7 @@ def snapshot():
             elif opus and ("审查原文" in b or "结论" in b[:200]):
                 opus = ""
         lc = p["commits"][-1]["committedDate"] if p["commits"] else ""
-        handled = any(c["createdAt"] > lc and any(w in c.get("body", "") for w in ("审查已发起", "排队待审", "修改清单", "审查原文", "勿改动", "待合并", "已发起"))
+        handled = any(c["createdAt"] > lc and any(w in c.get("body", "") for w in ("审查已发起", "排队待审", "修改清单", "清单补充", "审查原文", "勿改动", "待合并", "已发起"))
                       for c in p["comments"])
         done_at = ""  # 开发方贴“开发完成”（DEC：开发完成明确报到）且其后尚无审查发起 / 排队
         for c in p["comments"]:
@@ -55,6 +55,8 @@ def snapshot():
                 done_at = c["createdAt"]
             elif done_at and any(w in b for w in ("审查已发起", "排队待审", "已发起")):
                 done_at = ""
+        if done_at and handled:  # 审查发起与“开发完成”几乎同时贴（同一 head 已发起）时不再报
+            done_at = ""
         out[str(p["number"])] = {"opus": opus, "handled": handled, "done": done_at, "t": p["title"][:40], "head": p["headRefOid"][:7], "draft": p["isDraft"], "ci": ci,
                                  "commit": last_commit, "comment": last_comment, "nc": len(p["comments"])}
     return out
