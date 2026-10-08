@@ -90,4 +90,46 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('R3-T07 IDP 计划执行 
     expect(response.status, await response.clone().text()).toBe(403);
     expect((await w.readPlan(plan.id)).goals!.map((g) => g.name)).toEqual(['提升跨部门沟通']);
   });
+
+  it('P3-2 锁序：异常管理员交接先按计划 ID 升序锁齐计划——较小的计划被持锁时，较大的计划仍未被交接锁住', async () => {
+    const { db } = testDb();
+    const w = await planWorld(db, 'idppglock');
+    // 指导人没有账号：员工提交后两份计划的指导人节点都落到异常管理员
+    const loner = await w.person('无账号指导人', w.dept);
+    await withTenant(db, w.tenant.id, (tx) =>
+      tx.execute(sql`DELETE FROM permission_user_person_links WHERE employee_id = ${loner.employeeId}::uuid`),
+    );
+    const tutor = { tutorRole: 'other', tutorEmployeeId: loner.employeeId };
+    const plans = [
+      await w.start(await w.createPlan(tutor)),
+      await w.start(await w.createPlan(tutor, w.hrUser, w.outsider)),
+    ];
+    for (const [plan, person] of [
+      [plans[0]!, w.employee],
+      [plans[1]!, w.outsider],
+    ] as const) {
+      await w.submit(plan, 1, person.userId);
+    }
+    const [low, high] = plans.map((p) => p.id).sort();
+    const admin = await w.member('交接操作人');
+    const successor = await w.member('新异常管理员');
+    let pending: Promise<Response> | undefined;
+    await withTenant(db, w.tenant.id, async (tx) => {
+      // 模拟 IDP 批量干预已按升序锁住较小的计划
+      await tx.execute(sql`SELECT id FROM idp_plans WHERE id = ${low}::uuid FOR UPDATE`);
+      pending = w.http(admin, 'POST', '/api/tenant/approval/exception-admins/handover', {
+        ifMatch: 0,
+        body: { fromUserId: w.exceptionAdmin, toUserId: successor },
+      });
+      await blocked(db, 1);
+      // 交接卡在较小的计划上，尚未锁较大的计划：批量干预接着锁较大的计划不会与交接互等
+      const free = await withTenant(db, w.tenant.id, (other) =>
+        other.execute(sql`SELECT id FROM idp_plans WHERE id = ${high}::uuid FOR UPDATE NOWAIT`),
+      );
+      expect(rowsOf(free)).toHaveLength(1);
+    });
+    const response = await pending!;
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(((await response.json()) as { tasks: number }).tasks).toBe(2);
+  });
 });
