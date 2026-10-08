@@ -84,6 +84,7 @@ class ReferenceCollector {
     private readonly registry: FunctionRegistry,
     private readonly isKnownField?: (path: string) => boolean,
     private readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined,
+    private readonly multiOptionOnly = false,
   ) {
     this.typing = new TypeInference({ registry, fieldKind });
   }
@@ -91,7 +92,7 @@ class ReferenceCollector {
   collect(program: Program): this {
     for (const definition of program.definitions) {
       this.visit(definition.value, NO_RECORDS);
-      this.typing.define(definition.name, definition.value);
+      if (!this.multiOptionOnly) this.typing.define(definition.name, definition.value);
       this.defined.add(definition.name);
     }
     this.visit(program.body, NO_RECORDS);
@@ -113,7 +114,7 @@ class ReferenceCollector {
       const message = `多选字段 ${path} 暂不允许参与公式（🟡 待取证，DEC-314）`;
       return void this.issues.push({ code: 'ARGUMENT_TYPE', message, length: path.length, ...pos });
     }
-    if (fromRecord || !this.isKnownField) return;
+    if (this.multiOptionOnly || fromRecord || !this.isKnownField) return;
     let known: boolean;
     try {
       known = this.isKnownField(path);
@@ -129,6 +130,11 @@ class ReferenceCollector {
 
   private call(node: CallNode, records: ReadonlySet<string>): void {
     const spec = this.registry.resolve(node.name);
+    if (this.multiOptionOnly) {
+      const inner = withRecordObjects(records, spec);
+      for (const arg of node.args) this.visit(arg, inner);
+      return;
+    }
     const length = node.name.length;
     if (!spec) {
       this.issues.push({ code: 'UNKNOWN_FUNCTION', message: `未知函数 ${node.name}`, length, ...node.pos });
@@ -238,6 +244,10 @@ export function evaluateFormula(formula: string | Program, context: EvaluationCo
     program = validated.program;
   } else {
     program = formula;
+    // DEC-314：已解析 Program 也检查整棵树；旧 Program 的其他参数校验例外保持不变。
+    const registry = context.registry ?? createDefaultRegistry();
+    const collected = new ReferenceCollector(registry, undefined, context.fieldKind, true).collect(program);
+    if (collected.issues.length) return { ok: false, failure: syntaxFailure(collected.issues.sort(byOffset)[0]!) };
   }
   const invalidContext = validateContext(context.calendar);
   if (invalidContext) return { ok: false, failure: invalidContext };
@@ -366,6 +376,15 @@ interface ItemValidation {
 function parseItems(items: readonly ComputationItem[], options: ItemValidation): ParsedItems | OrderingFailure {
   const targets = items.map((item) => item.field);
   const catalog = options.isKnownField;
+  const typeCatalog = options.fieldKind;
+  const fieldKind = typeCatalog
+    ? (path: string): ExpressionFieldKind | undefined => {
+        const target = resolveComputedField(path, targets);
+        // 唯一短名按既有绑定查完整目标的多选标记；不改变旧标量推导，也不猜测有歧义的绑定。
+        if (target !== undefined && target !== path && isMultiOptionField(typeCatalog, target)) return 'multi_option';
+        return typeCatalog(path);
+      }
+    : undefined;
   // 传入字段目录时，计算项目的目标字段（含唯一短名）也视为已知：后算项目可以引用先算项目的结果
   const isKnownField = catalog
     ? (path: string) => resolveComputedField(path, targets) !== undefined || catalog(path)
@@ -376,7 +395,7 @@ function parseItems(items: readonly ComputationItem[], options: ItemValidation):
     const validated = validateFormula(item.formula, {
       registry: options.registry,
       isKnownField,
-      fieldKind: options.fieldKind,
+      fieldKind,
     });
     if (!validated.ok) {
       const issue = validated.errors[0]!;

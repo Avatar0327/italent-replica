@@ -68,11 +68,22 @@ export function hyphenHint(path: string): string {
 export class ComputationError extends Error {
   readonly failure: ComputationFailure;
 
-  constructor(failure: ComputationFailure) {
+  constructor(
+    failure: ComputationFailure,
+    /** 内部传播标识，不进入对外失败结果；排名只对多选禁入越过旧的吞错边界。 */
+    readonly reason?: 'multi_option',
+  ) {
     super(failure.message);
     this.name = 'ComputationError';
     this.failure = failure;
   }
+}
+
+/** DEC-314：多选不是可退化为空值的取数失败，对外仍使用既有 ARGUMENT_TYPE。 */
+export function failMultiOption(path?: string): never {
+  const field = path === undefined ? '多选字段' : `多选字段 ${path} `;
+  const message = `${FAILURE_PREFIX}：${field}暂不允许参与公式（🟡 待取证，DEC-314）`;
+  throw new ComputationError({ code: 'ARGUMENT_TYPE', message }, 'multi_option');
 }
 
 export function fail(code: FailureCode, detail: string, position?: SourcePosition): never {

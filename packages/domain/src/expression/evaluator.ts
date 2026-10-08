@@ -5,7 +5,14 @@
 import type { CallNode, ExprNode, FieldNode, IdentifierNode, Program } from './ast.js';
 import type { EvaluationContext } from './context.js';
 import { instantToParts } from './dates.js';
-import { ComputationError, CONVERSION_MESSAGE, fail, hyphenHint, type FailureCode } from './failures.js';
+import {
+  ComputationError,
+  CONVERSION_MESSAGE,
+  fail,
+  failMultiOption,
+  hyphenHint,
+  type FailureCode,
+} from './failures.js';
 import { arithmetic, compare, operandNumber, toCondition, toDate, toNumber, toText } from './operators.js';
 import { plainToValue, type FieldLookup, type SubjectReader } from './ports.js';
 import {
@@ -77,7 +84,7 @@ export class Evaluator {
 
   fromPlain(value: PlainValue): ExprValue {
     // DEC-314②：未提供目录时也不能把多选数组静默当空值（🟡 取证前禁止参与公式）。
-    if (Array.isArray(value)) return fail('ARGUMENT_TYPE', '多选字段暂不允许参与公式（🟡 待取证，DEC-314）');
+    if (Array.isArray(value)) return failMultiOption();
     return plainToValue(value, (instant) => ({
       kind: 'date',
       value: instantToParts(instant, this.context.calendar.timeZone),
@@ -104,7 +111,7 @@ export class Evaluator {
       return run();
     } catch (error) {
       if (error instanceof ComputationError && error.failure.line === undefined) {
-        throw new ComputationError({ ...error.failure, ...node.pos });
+        throw new ComputationError({ ...error.failure, ...node.pos }, error.reason);
       }
       throw error;
     }
@@ -180,7 +187,7 @@ export class Evaluator {
 
   private lookup(path: string, scope: Scope): ExprValue {
     if (!scope.objects.has(path.split('.')[0]!) && isMultiOptionField(this.context.fieldKind, path)) {
-      return fail('ARGUMENT_TYPE', `多选字段 ${path} 暂不允许参与公式（🟡 待取证，DEC-314）`);
+      return failMultiOption(path);
     }
     for (let i = scope.records.length - 1; i >= 0; i--) {
       const record = scope.records[i]!;
