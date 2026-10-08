@@ -6,11 +6,12 @@
  */
 import { randomUUID } from 'node:crypto';
 import { bootstrapTenantAdmin } from '@italent/api';
+import { MODULE_OBJECTS } from '@italent/domain';
 import type { Db } from '@italent/db';
 import { expect } from 'vitest';
 import { approvalWorld, type InstanceView, type Person } from './AC-APV-support.js';
 import type { ProcessView, TemplateView } from './AC-IDP-support.js';
-import type { PermissionWorld } from './AC-PRM-support.js';
+import { createProfile, grant, makeGrantable, type PermissionWorld, setObjectPermission } from './AC-PRM-support.js';
 import { cmd, type RequestOptions, tenantApi } from './support/tenant-api.js';
 
 export const IDP = '/api/tenant/idp';
@@ -403,4 +404,31 @@ export async function permissionWorldOf(w: PlanWorld): Promise<PermissionWorld> 
     api: tenantApi(w.db, { authorize: undefined, clock: w.clock }),
     asAdmin: { user: w.hrUser, tenant: w.tenant.id },
   };
+}
+
+/** TenantBase 身份：任职记录与组织全部字段可查看；orgIds 为 TenantBase 数据范围（含下级），空 = 缺省空范围。 */
+export async function grantTenantBaseView(pw: PermissionWorld, userId: string, orgIds: readonly string[]) {
+  const profile = await createProfile(pw, `tb-${userId.slice(0, 6)}`, { apps: ['TenantBase'] });
+  for (const definition of [MODULE_OBJECTS.employmentRecord, MODULE_OBJECTS.organization]) {
+    const response = await setObjectPermission(
+      pw,
+      profile,
+      {
+        dataOperations: { create: false, update: false, delete: false },
+        fields: definition.fields.map((f) => ({ fieldCode: f.code, view: true, edit: false })),
+        buttons: [],
+      },
+      definition.code,
+    );
+    expect(response.status, await response.clone().text()).toBe(200);
+  }
+  await makeGrantable(pw, [profile.id]);
+  expect((await grant(pw, userId, profile.id)).status).toBe(201);
+  if (!orgIds.length) return;
+  const scope = await pw.api.request('PUT', `/api/tenant/permission/scopes/${userId}/TenantBase`, {
+    ...pw.asAdmin,
+    ifMatch: 0,
+    body: { kind: 'org_range', orgRanges: orgIds.map((orgId) => ({ orgId, includeDescendants: true })) },
+  });
+  expect(scope.status, await scope.clone().text()).toBe(200);
 }
