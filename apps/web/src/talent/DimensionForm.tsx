@@ -14,20 +14,21 @@ import { EnabledField, NameField, OrderField } from './FormFields.js';
 import { text } from './messages.js';
 import { OwnerUnitField } from './OwnerOrgSelect.js';
 import { RowsEditor } from './RowsEditor.js';
+import { readFields } from './useFreshEditor.js';
 import { candidateLabel, CandidateNotice, candidatesBlocked, type CandidateState } from './useCandidates.js';
 
 type SuggestionDraft = Omit<Suggestion, 'typeName'>;
 export interface DimensionDraft extends Record<string, unknown> {
-  code: string;
-  name: string;
-  definition: string | null;
-  categoryId: string | null;
-  displayOrder: number;
-  enabled: boolean;
-  grades: Grade[];
-  behaviors: Behavior[];
-  suggestions: SuggestionDraft[];
-  questions: Question[];
+  code?: string;
+  name?: string;
+  definition?: string | null;
+  categoryId?: string | null;
+  displayOrder?: number;
+  enabled?: boolean;
+  grades?: Grade[];
+  behaviors?: Behavior[];
+  suggestions?: SuggestionDraft[];
+  questions?: Question[];
 }
 export interface DimensionEditor {
   readonly original: Dimension | null;
@@ -37,24 +38,47 @@ export interface DimensionEditor {
   readonly value: DimensionDraft;
 }
 
-export const draftOf = (item: Dimension | null): DimensionDraft => ({
-  code: item?.code ?? '',
-  name: item?.name ?? '',
-  definition: item?.definition ?? null,
-  categoryId: item?.categoryId ?? null,
-  displayOrder: item?.displayOrder ?? 0,
-  enabled: item?.enabled ?? true,
-  grades: item?.grades ?? [],
-  behaviors: item?.behaviors ?? [],
-  // 类型名称是查找字段的显示值，不随表单提交；行 ID 带回表示保留这一行（DEC-297②）
-  suggestions: (item?.suggestions ?? []).map(({ id, typeId, description, displayOrder }) => ({
-    id,
-    typeId,
-    description,
-    displayOrder,
-  })),
-  questions: item?.questions ?? [],
-});
+export const draftOf = (item: Dimension | null): DimensionDraft => {
+  if (!item)
+    return {
+      code: '',
+      name: '',
+      definition: null,
+      categoryId: null,
+      displayOrder: 0,
+      enabled: true,
+      grades: [],
+      behaviors: [],
+      suggestions: [],
+      questions: [],
+    };
+  const fields = readFields(item, [
+    'code',
+    'name',
+    'definition',
+    'categoryId',
+    'displayOrder',
+    'enabled',
+    'grades',
+    'behaviors',
+    'suggestions',
+    'questions',
+  ]);
+  return {
+    ...fields,
+    // 类型名称是显示值，不提交；已有行 ID 带回表示保留（DEC-297②）。未读取的整组不创建空草稿。
+    ...(fields.suggestions
+      ? {
+          suggestions: fields.suggestions.map(({ id, typeId, description, displayOrder }) => ({
+            id,
+            typeId,
+            description,
+            displayOrder,
+          })),
+        }
+      : {}),
+  };
+};
 
 type Option = { readonly value: string; readonly label: string };
 /** 选项：本指标库的分类、启用的发展建议类型，以及按行保留的已停用类型（建议行 ID → 原类型）。 */
@@ -251,8 +275,8 @@ function DetailEditors({
             { key: 'alias', label: text.alias },
             { key: 'description', label: text.description, kind: 'textarea' },
           ]}
-          rows={value.grades as Rows<Grade>}
-          blank={() => ({ gradeOrder: value.grades.length + 1, alias: null, description: null })}
+          rows={(value.grades ?? []) as Rows<Grade>}
+          blank={() => ({ gradeOrder: (value.grades?.length ?? 0) + 1, alias: null, description: null })}
           onChange={(grades) => set({ grades })}
         />
       </Editable>
@@ -263,7 +287,7 @@ function DetailEditors({
             { key: 'description', label: text.description, kind: 'textarea', required: true },
             { key: 'keyPoints', label: text.keyPoints, kind: 'textarea' },
           ]}
-          rows={value.behaviors as Rows<Behavior>}
+          rows={(value.behaviors ?? []) as Rows<Behavior>}
           blank={() => ({ description: '', keyPoints: null })}
           onChange={(behaviors) => set({ behaviors })}
         />
@@ -283,8 +307,8 @@ function DetailEditors({
             },
             { key: 'description', label: text.description, kind: 'textarea', required: true },
           ]}
-          rows={value.suggestions as Rows<SuggestionDraft>}
-          blank={() => ({ typeId: '', description: '', displayOrder: value.suggestions.length + 1 })}
+          rows={(value.suggestions ?? []) as Rows<SuggestionDraft>}
+          blank={() => ({ typeId: '', description: '', displayOrder: (value.suggestions?.length ?? 0) + 1 })}
           onChange={(suggestions) => set({ suggestions })}
           addDisabled={candidatesBlocked(choices.typeState)}
         />
@@ -296,7 +320,7 @@ function DetailEditors({
             { key: 'question', label: text.question, kind: 'textarea', required: true },
             { key: 'keyPoints', label: text.keyPoints, kind: 'textarea' },
           ]}
-          rows={value.questions as Rows<Question>}
+          rows={(value.questions ?? []) as Rows<Question>}
           blank={() => ({ question: '', keyPoints: null })}
           onChange={(questions) => set({ questions })}
         />

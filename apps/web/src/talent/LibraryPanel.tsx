@@ -6,20 +6,27 @@ import { EnabledField, NameField, OrderField } from './FormFields.js';
 import { text } from './messages.js';
 import { ownerOrgBody, OwnerUnitField, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
+import { FreshEditNotice, readFields, useFreshEditor } from './useFreshEditor.js';
 import { useList } from './useList.js';
 import { useTalentWrite } from './useTalentWrite.js';
 import { candidatesBlocked, type CandidateState } from './useCandidates.js';
 
 interface Draft {
   readonly original: Library | null;
-  readonly name: string;
-  readonly type: DimensionType;
-  readonly enabled: boolean;
-  readonly displayOrder: number;
+  readonly name?: string;
+  readonly type?: DimensionType;
+  readonly enabled?: boolean;
+  readonly displayOrder?: number;
   readonly ownerOrgId: string;
 }
 
-const pick = ({ name, enabled, displayOrder }: Library) => ({ name, enabled, displayOrder });
+const pick = (item: Library) => readFields(item, ['name', 'enabled', 'displayOrder']);
+const editDraft = (item: Library): Draft => ({
+  ...pick(item),
+  ...readFields(item, ['type']),
+  ownerOrgId: '',
+  original: item,
+});
 
 /**
  * 指标库：按 能力 / 潜力 / 经历 三类建立（TC-R1）；类型建后不可修改（DEC-281⑥）；所属人 / 所属管理单元由系统填写，
@@ -28,14 +35,15 @@ const pick = ({ name, enabled, displayOrder }: Library) => ({ name, enabled, dis
  */
 export function LibraryPanel({ tenantId }: { tenantId: string }) {
   const [type, setType] = useState('');
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const fresh = useFreshEditor<Library, Draft>(tenantId, 'libraries', editDraft);
+  const { editor: draft, setEditor: setDraft } = fresh;
   const write = useTalentWrite(tenantId, () => {
     setDraft(null);
     list.reload();
   });
   const list = useList<Library>(tenantId, `libraries${type ? `?type=${type}` : ''}`, write.setError);
   const owners = useOwnerOrgs(tenantId, 'library');
-  const access = useFormAccess(tenantId, 'library', draft?.original);
+  const access = useFormAccess(tenantId, 'library', draft?.original, draft?.original);
   const blocked = access.blocked || (!!draft && !draft.original && candidatesBlocked(owners));
   const save = () => {
     if (!draft || blocked) return;
@@ -51,7 +59,7 @@ export function LibraryPanel({ tenantId }: { tenantId: string }) {
   };
   const blank: Draft = { original: null, name: '', type: 'ability', enabled: true, displayOrder: 0, ownerOrgId: '' };
   return (
-    <section aria-busy={write.busy}>
+    <section aria-busy={write.busy || fresh.loading}>
       <select aria-label={text.type} value={type} onChange={(event) => setType(event.target.value)}>
         <option value="">{text.allTypes}</option>
         {DIMENSION_TYPES.map((item) => (
@@ -64,10 +72,11 @@ export function LibraryPanel({ tenantId }: { tenantId: string }) {
         {text.create}
       </button>
       <Status write={write} hasDataPermission={list.hasDataPermission} />
+      <FreshEditNotice state={fresh} />
       <LibraryTable
         items={list.items}
         locked={write.locked}
-        onEdit={(item) => setDraft({ ...pick(item), type: item.type, ownerOrgId: '', original: item })}
+        onEdit={(item) => fresh.edit(item.id)}
         onDelete={(item) => write.mutate({ path: `libraries/${item.id}`, method: 'DELETE', revision: item.revision })}
       />
       <Pager list={list} locked={write.locked} />

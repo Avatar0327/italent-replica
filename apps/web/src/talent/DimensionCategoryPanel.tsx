@@ -6,6 +6,7 @@ import { NameField, OrderField } from './FormFields.js';
 import { text } from './messages.js';
 import { ownerOrgBody, OwnerUnitField, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
+import { FreshEditNotice, readFields, useFreshEditor } from './useFreshEditor.js';
 import { useList } from './useList.js';
 import { useTalentWrite } from './useTalentWrite.js';
 import {
@@ -19,17 +20,24 @@ import {
 interface Draft {
   readonly original: DimensionCategory | null;
   readonly libraryId: string;
-  readonly name: string;
-  readonly displayOrder: number;
+  readonly name?: string;
+  readonly displayOrder?: number;
   /** 新建时所选的授权管理单元（只在多个时提交，DEC-294 补充二）。 */
   readonly ownerOrgId: string;
 }
 
-const draftOf = (item: DimensionCategory | null, libraryId: string): Draft => ({
-  original: item,
+const createDraft = (libraryId: string): Draft => ({
+  original: null,
   libraryId,
-  name: item?.name ?? '',
-  displayOrder: item?.displayOrder ?? 1,
+  name: '',
+  displayOrder: 1,
+  ownerOrgId: '',
+});
+const pick = (item: DimensionCategory) => readFields(item, ['name', 'displayOrder']);
+const editDraft = (item: DimensionCategory): Draft => ({
+  ...pick(item),
+  original: item,
+  libraryId: item.libraryId ?? '',
   ownerOrgId: '',
 });
 
@@ -42,7 +50,8 @@ export function DimensionCategoryPanel({ tenantId }: { tenantId: string }) {
   const [libraryId, setLibraryId] = useState('');
   const libraryChoices = useCandidates<Library>(tenantId, 'libraries');
   const libraries = libraryChoices.items ?? [];
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const fresh = useFreshEditor<DimensionCategory, Draft>(tenantId, 'dimension-categories', editDraft);
+  const { editor: draft, setEditor: setDraft } = fresh;
   const write = useTalentWrite(tenantId, () => {
     setDraft(null);
     list.reload();
@@ -50,7 +59,7 @@ export function DimensionCategoryPanel({ tenantId }: { tenantId: string }) {
   const path = `dimension-categories${libraryId ? `?libraryId=${libraryId}` : ''}`;
   const list = useList<DimensionCategory>(tenantId, path, write.setError);
   const owners = useOwnerOrgs(tenantId, 'dimensionCategory');
-  const access = useFormAccess(tenantId, 'dimensionCategory', draft?.original);
+  const access = useFormAccess(tenantId, 'dimensionCategory', draft?.original, draft?.original);
   const blocked =
     access.blocked || (!!draft && !draft.original && (candidatesBlocked(owners) || candidatesBlocked(libraryChoices)));
   const libraryName = (id: string) => libraries.find((item) => item.id === id)?.name ?? '';
@@ -62,10 +71,7 @@ export function DimensionCategoryPanel({ tenantId }: { tenantId: string }) {
       method: original ? 'PATCH' : 'POST',
       revision: original?.revision ?? 0,
       body: original
-        ? editableBody(
-            changedFields({ name: original.name, displayOrder: original.displayOrder }, fields),
-            access.access,
-          )
+        ? editableBody(changedFields(pick(original), fields), access.access)
         : {
             ...editableBody({ ...fields, libraryId: library }, access.access),
             ...ownerOrgBody(owners.items, ownerOrgId),
@@ -73,7 +79,7 @@ export function DimensionCategoryPanel({ tenantId }: { tenantId: string }) {
     });
   };
   return (
-    <section aria-busy={write.busy}>
+    <section aria-busy={write.busy || fresh.loading}>
       <CandidateNotice state={libraryChoices} label={text.library} />
       <select aria-label={text.library} value={libraryId} onChange={(event) => setLibraryId(event.target.value)}>
         <option value="">{text.allLibraries}</option>
@@ -85,16 +91,17 @@ export function DimensionCategoryPanel({ tenantId }: { tenantId: string }) {
       </select>
       <button
         disabled={write.locked || !libraries.length}
-        onClick={() => setDraft(draftOf(null, libraryId || libraries[0]!.id))}
+        onClick={() => setDraft(createDraft(libraryId || libraries[0]!.id))}
       >
         {text.create}
       </button>
       <Status write={write} hasDataPermission={list.hasDataPermission} />
+      <FreshEditNotice state={fresh} />
       <CategoryList
         items={list.items}
         libraryName={libraryName}
         locked={write.locked}
-        onEdit={(item) => setDraft(draftOf(item, item.libraryId))}
+        onEdit={(item) => fresh.edit(item.id)}
         onDelete={(item) =>
           write.mutate({ path: `dimension-categories/${item.id}`, method: 'DELETE', revision: item.revision })
         }

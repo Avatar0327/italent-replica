@@ -265,6 +265,8 @@ it('AC-TC-F035 切换租户后候选失败，清除旧租户管理单元，不�
   await click('新建');
   expect(host.querySelector('form')!.textContent).toContain('旧租户单元甲');
   await renderPanel('LibraryPanel', 'tenant-b');
+  expect(host.querySelector('form')).toBeNull();
+  await click('新建');
   expect(host.querySelector('form')!.textContent).not.toContain('旧租户单元');
   expect(host.querySelector('form')!.textContent).toMatch(/管理单元.*(?:失败|权限|不可用)/);
   expect(host.querySelector<HTMLButtonElement>('form button[type="submit"]')!.disabled).toBe(true);

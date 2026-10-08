@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { request } from './api.js';
 import { text } from './messages.js';
 
@@ -16,10 +16,21 @@ export interface FormAccessState {
 const EMPTY: FormAccess = { editableFields: [], requiredFields: [] };
 
 /** 服务端给出当前对象的表单契约；切换对象时只使用新请求的结果（DEC-285②）。 */
-export function useFormAccess(tenantId: string, object: string, original: { id: string } | null | undefined) {
+export function useFormAccess(
+  tenantId: string,
+  object: string,
+  original: { id: string } | null | undefined,
+  readFrom?: object | null,
+) {
   const operation = original ? 'update' : 'create';
   const path = `forms/${object}?operation=${operation}${original ? `&id=${original.id}` : ''}`;
-  const key = `${tenantId}:${path}`;
+  const source = useRef(readFrom);
+  const generation = useRef(0);
+  if (source.current !== readFrom) {
+    source.current = readFrom;
+    generation.current += 1;
+  }
+  const key = `${tenantId}:${path}:${generation.current}`;
   const active = original !== undefined;
   const [result, setResult] = useState<{ key: string; access?: FormAccess; error?: string }>();
   useEffect(() => {
@@ -39,14 +50,25 @@ export function useFormAccess(tenantId: string, object: string, original: { id: 
     };
   }, [tenantId, path, key, active]);
   const value = active && result?.key === key ? result : undefined;
-  const noEditable = value?.access?.editableFields.length === 0;
+  const loaded = value?.access;
+  // 详情读取与契约取得之间也可能授权；未读到的值不能变成新获权字段的默认草稿。
+  const access = loaded
+    ? {
+        ...loaded,
+        editableFields: loaded.editableFields.filter(
+          (field) => !readFrom || (Object.hasOwn(readFrom, field) && Reflect.get(readFrom, field) !== undefined),
+        ),
+      }
+    : EMPTY;
+  const unread = !!loaded && loaded.editableFields.length !== access.editableFields.length;
+  const noEditable = !!loaded && access.editableFields.length === 0;
   return {
-    access: value?.access ?? EMPTY,
-    blocked: !value?.access || !!value.access.blockedReason || noEditable,
+    access,
+    blocked: !loaded || !!loaded.blockedReason || noEditable,
     reason:
       value?.error ??
       value?.access?.blockedReason ??
-      (noEditable ? text.noEditableFields : !value?.access ? text.formLoading : undefined),
+      (unread ? text.editUnread : noEditable ? text.noEditableFields : !loaded ? text.formLoading : undefined),
     loading: !value?.access && !value?.error,
   } satisfies FormAccessState;
 }

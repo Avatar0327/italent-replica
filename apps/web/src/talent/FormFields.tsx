@@ -8,7 +8,7 @@ export function NameField({
   maxLength = 200,
 }: {
   access: FormAccess;
-  value: string;
+  value: string | undefined;
   onChange: (value: string) => void;
   maxLength?: number;
 }) {
@@ -19,7 +19,7 @@ export function NameField({
         <input
           required={access.requiredFields.includes('name')}
           maxLength={maxLength}
-          value={value}
+          value={value ?? ''}
           onChange={(event) => onChange(event.target.value)}
         />
       </label>
@@ -35,7 +35,7 @@ export function OrderField({
   min,
 }: {
   access: FormAccess;
-  value: number;
+  value: number | undefined;
   onChange: (value: number) => void;
   step?: number;
   min?: number;
@@ -49,7 +49,7 @@ export function OrderField({
           type="number"
           step={step}
           min={min}
-          value={value}
+          value={value ?? ''}
           onChange={(event) => onChange(Number(event.target.value))}
         />
       </label>
@@ -63,13 +63,13 @@ export function EnabledField({
   onChange,
 }: {
   access: FormAccess;
-  value: boolean;
+  value: boolean | undefined;
   onChange: (value: boolean) => void;
 }) {
   return (
     <Editable access={access} field="enabled">
       <label>
-        <input type="checkbox" checked={value} onChange={(event) => onChange(event.target.checked)} />
+        <input type="checkbox" checked={value ?? false} onChange={(event) => onChange(event.target.checked)} />
         {text.enabled}
       </label>
     </Editable>

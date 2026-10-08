@@ -7,8 +7,16 @@ import { text } from './messages.js';
 import { ownerOrgBody, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
+import { FreshEditNotice, useFreshEditor } from './useFreshEditor.js';
 import { useTalentWrite } from './useTalentWrite.js';
 import { candidateLabel, CandidateNotice, candidatesBlocked, useCandidates } from './useCandidates.js';
+
+const editorOf = (item: Dimension): DimensionEditor => ({
+  original: item,
+  libraryId: item.libraryId ?? '',
+  ownerOrgId: '',
+  value: draftOf(item),
+});
 
 /**
  * 指标：编码、名称、定义、分类、顺序、启用，以及等级描述 / 行为描述 / 发展建议 / 面试问题。
@@ -19,7 +27,8 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
   const [libraryId, setLibraryId] = useState('');
   const libraryChoices = useCandidates<Library>(tenantId, 'libraries');
   const libraries = libraryChoices.items ?? [];
-  const [editor, setEditor] = useState<DimensionEditor | null>(null);
+  const fresh = useFreshEditor(tenantId, 'dimensions', editorOf);
+  const { editor, setEditor } = fresh;
   const write = useTalentWrite(tenantId, () => {
     setEditor(null);
     list.reload();
@@ -27,7 +36,7 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
   const path = `dimensions${libraryId ? `?libraryId=${libraryId}` : ''}`;
   const list = useList<Dimension>(tenantId, path, write.setError);
   const choices = useDimensionChoices(tenantId, editor);
-  const access = useFormAccess(tenantId, 'dimension', editor?.original);
+  const access = useFormAccess(tenantId, 'dimension', editor?.original, editor?.original);
   const blocked =
     access.blocked ||
     (!!editor && !editor.original && (candidatesBlocked(choices.ownerState) || candidatesBlocked(libraryChoices)));
@@ -55,7 +64,7 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
     );
   };
   return (
-    <section aria-busy={write.busy}>
+    <section aria-busy={write.busy || fresh.loading}>
       <CandidateNotice state={libraryChoices} label={text.library} />
       <LibraryFilter libraries={libraries} value={libraryId} onChange={setLibraryId} />
       <button
@@ -67,13 +76,12 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
         {text.create}
       </button>
       <Status write={write} hasDataPermission={list.hasDataPermission} />
+      <FreshEditNotice state={fresh} />
       <DimensionTable
         items={list.items}
         libraryName={libraryName}
         locked={write.locked}
-        onEdit={(item) =>
-          setEditor({ original: item, libraryId: item.libraryId, ownerOrgId: '', value: draftOf(item) })
-        }
+        onEdit={(item) => fresh.edit(item.id)}
         onDelete={(item) => write.mutate({ path: `dimensions/${item.id}`, method: 'DELETE', revision: item.revision })}
       />
       <Pager list={list} locked={write.locked} />

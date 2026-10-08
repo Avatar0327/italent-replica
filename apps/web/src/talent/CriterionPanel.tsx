@@ -8,6 +8,7 @@ import { text } from './messages.js';
 import { ownerOrgBody, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
+import { FreshEditNotice, readFields, useFreshEditor } from './useFreshEditor.js';
 import { useTalentWrite, type Write } from './useTalentWrite.js';
 import { candidateLabel, CandidateNotice, candidatesBlocked, useCandidates } from './useCandidates.js';
 
@@ -20,29 +21,64 @@ interface Editor {
  * 新建草稿带所属管理单元键，编辑草稿带“新加指标的所属管理单元”键：都只在多个授权管理单元时由用户选择并提交
  * （DEC-294③ 及补充二），其余情况由服务端填写。
  */
-const draftOf = (item: Criterion | null, categoryId = ''): CriterionDraft => ({
-  ...(item ? { relationOwnerOrgId: '' } : { ownerOrgId: '' }),
-  categoryId: item?.categoryId ?? categoryId,
-  name: item?.name ?? '',
-  enabled: item?.enabled ?? true,
-  abilityNote: item?.abilityNote ?? null,
-  potentialNote: item?.potentialNote ?? null,
-  experienceNote: item?.experienceNote ?? null,
-  achievementNote: item?.achievementNote ?? null,
-  dimensions: (item?.dimensions ?? []).map(({ dimensionId, weight, target, displayOrder, dimensionCategory }) => ({
-    dimensionId,
-    weight,
-    target,
-    displayOrder,
-    dimensionCategory,
-  })),
-});
+const draftOf = (item: Criterion | null, categoryId = ''): CriterionDraft => {
+  if (!item)
+    return {
+      ownerOrgId: '',
+      categoryId,
+      name: '',
+      enabled: true,
+      abilityNote: null,
+      potentialNote: null,
+      experienceNote: null,
+      achievementNote: null,
+      dimensions: [],
+    };
+  const fields = readFields(item, [
+    'categoryId',
+    'name',
+    'enabled',
+    'abilityNote',
+    'potentialNote',
+    'experienceNote',
+    'achievementNote',
+    'dimensions',
+  ]);
+  return {
+    ...fields,
+    relationOwnerOrgId: '',
+    ...(fields.dimensions
+      ? {
+          dimensions: fields.dimensions.map(({ dimensionId, weight, target, displayOrder, dimensionCategory }) => ({
+            dimensionId,
+            weight,
+            target,
+            displayOrder,
+            dimensionCategory,
+          })),
+        }
+      : {}),
+  };
+};
+const editorOf = (item: Criterion): Editor => ({ original: item, value: draftOf(item) });
+
+function openCriterionDetail(
+  tenantId: string,
+  id: string,
+  onLoaded: (item: Criterion) => void,
+  onError: (message: string) => void,
+) {
+  void request<Criterion>(tenantId, `criteria/${id}`)
+    .then(onLoaded)
+    .catch((cause: unknown) => onError(cause instanceof Error ? cause.message : String(cause)));
+}
 
 /** 人才标准：所属管理单元由系统填写（DEC-294③）；引用指标而不复制（TC-R2），详情显示指标库的当前内容。 */
 export function CriterionPanel({ tenantId }: { tenantId: string }) {
   const [categoryId, setCategoryId] = useState('');
   const [viewing, setViewing] = useState<Criterion | null>(null);
-  const [editor, setEditor] = useState<Editor | null>(null);
+  const fresh = useFreshEditor(tenantId, 'criteria', editorOf);
+  const { editor, setEditor } = fresh;
   const write = useTalentWrite(tenantId, () => {
     setEditor(null);
     setViewing(null);
@@ -54,9 +90,7 @@ export function CriterionPanel({ tenantId }: { tenantId: string }) {
   const owners = useOwnerOrgs(tenantId, 'criterion');
   const { access, existing, blocked } = useEditorAccess(tenantId, editor, owners, choices);
   const open = (id: string, edit: boolean) =>
-    void request<Criterion>(tenantId, `criteria/${id}`)
-      .then((item) => (edit ? setEditor({ original: item, value: draftOf(item) }) : setViewing(item)))
-      .catch((cause: unknown) => write.setError(cause instanceof Error ? cause.message : String(cause)));
+    edit ? fresh.edit(id) : openCriterionDetail(tenantId, id, setViewing, write.setError);
   const save = () => editor && !blocked && write.mutate(saveCommand(editor, owners.items, access.access));
   const setCategory = (item: Criterion, dimensionIds: string[], dimensionCategory: string | null) =>
     write.mutate({
@@ -67,7 +101,7 @@ export function CriterionPanel({ tenantId }: { tenantId: string }) {
     });
   const categoryName = (id: string) => categories.find((item) => item.id === id)?.name ?? '';
   return (
-    <section aria-busy={write.busy}>
+    <section aria-busy={write.busy || fresh.loading}>
       <CandidateNotice state={choices.categoryState} label={text.criterionCategory} />
       <select aria-label={text.criterionCategory} value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
         <option value="">{text.allCategories}</option>
@@ -81,6 +115,7 @@ export function CriterionPanel({ tenantId }: { tenantId: string }) {
         {text.create}
       </button>
       <Status write={write} hasDataPermission={list.hasDataPermission} />
+      <FreshEditNotice state={fresh} />
       <CriterionTable
         items={list.items}
         categoryName={categoryName}
@@ -126,10 +161,10 @@ function useEditorAccess(
   owners: ReturnType<typeof useOwnerOrgs>,
   choices: ReturnType<typeof useChoices>,
 ) {
-  const access = useFormAccess(tenantId, 'criterion', editor?.original);
+  const access = useFormAccess(tenantId, 'criterion', editor?.original, editor?.original);
   const existing = new Set(editor?.original?.dimensions?.map((item) => item.dimensionId));
   const adding =
-    canEdit(access.access, 'dimensions') && editor?.value.dimensions.some((item) => !existing.has(item.dimensionId));
+    canEdit(access.access, 'dimensions') && editor?.value.dimensions?.some((item) => !existing.has(item.dimensionId));
   const blocked =
     access.blocked ||
     (!!editor && !editor.original && (candidatesBlocked(owners) || candidatesBlocked(choices.categoryState))) ||

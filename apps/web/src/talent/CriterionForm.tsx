@@ -18,14 +18,14 @@ export interface CriterionDraft extends Record<string, unknown> {
   ownerOrgId?: string;
   /** 只在编辑时有：新加的指标关联跟添加人，添加人有多个授权管理单元时选一个（DEC-294 补充二）。 */
   relationOwnerOrgId?: string;
-  categoryId: string;
-  name: string;
-  enabled: boolean;
-  abilityNote: string | null;
-  potentialNote: string | null;
-  experienceNote: string | null;
-  achievementNote: string | null;
-  dimensions: ReferenceDraft[];
+  categoryId?: string;
+  name?: string;
+  enabled?: boolean;
+  abilityNote?: string | null;
+  potentialNote?: string | null;
+  experienceNote?: string | null;
+  achievementNote?: string | null;
+  dimensions?: ReferenceDraft[];
 }
 export interface KnownDimension {
   readonly name: string;
@@ -71,7 +71,7 @@ export function CriterionForm({
   onCancel: () => void;
 }) {
   const set = (patch: Partial<CriterionDraft>) => onChange({ ...value, ...patch });
-  const adding = value.dimensions.some((item) => !existing.has(item.dimensionId));
+  const adding = (value.dimensions ?? []).some((item) => !existing.has(item.dimensionId));
   return (
     <form
       onSubmit={(event) => {
@@ -228,11 +228,12 @@ function References({
   state?: CandidateState<Dimension>;
   set: (patch: Partial<CriterionDraft>) => void;
 }) {
+  const dimensions = value.dimensions ?? [];
   const setReference = (index: number, patch: Partial<ReferenceDraft>) =>
-    set({ dimensions: value.dimensions.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
-  const chosen = new Set(value.dimensions.map((item) => item.dimensionId));
+    set({ dimensions: dimensions.map((item, i) => (i === index ? { ...item, ...patch } : item)) });
+  const chosen = new Set(dimensions.map((item) => item.dimensionId));
   const add = (dimensionId: string) =>
-    set({ dimensions: [...value.dimensions, { dimensionId, displayOrder: value.dimensions.length + 1 }] });
+    set({ dimensions: [...dimensions, { dimensionId, displayOrder: dimensions.length + 1 }] });
   return (
     <fieldset>
       <legend>{text.referenced}</legend>
@@ -249,13 +250,13 @@ function References({
           </tr>
         </thead>
         <tbody>
-          {value.dimensions.map((item, index) => (
+          {dimensions.map((item, index) => (
             <ReferenceRow
               key={item.dimensionId}
               item={item}
               dimension={known.get(item.dimensionId)}
               onChange={(patch) => setReference(index, patch)}
-              onRemove={() => set({ dimensions: value.dimensions.filter((_, i) => i !== index) })}
+              onRemove={() => set({ dimensions: dimensions.filter((_, i) => i !== index) })}
             />
           ))}
         </tbody>
