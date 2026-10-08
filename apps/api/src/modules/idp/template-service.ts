@@ -308,6 +308,9 @@ export async function copyTemplate(
     .for('share');
   if (!source) throw new AppError('NOT_FOUND', '发展计划模板不存在');
   await requireReadable(tx, ctx, ctx.scope, 'template', source);
+  // 第 4 轮：先判继承字段的查看权（只看权限、不看源数据），再用这些字段（缺省组织、流程）做范围与状态校验，
+  // 否则 404 / 409 的差别会泄露隐藏的流程关联或源组织
+  requireCopyViewable(ctx, scopes.projections, !input.orgId);
   const orgId = input.orgId ?? source.orgId;
   requireCreatable(ctx.scope, 'template', orgId);
   await requireOrg(tx, ctx.tenantId, orgId);
@@ -319,7 +322,7 @@ export async function copyTemplate(
     modules.map((m) => m.id),
   );
   const goals = await loadCommonGoals(tx, ctx.tenantId, sourceId);
-  await checkCopyable(tx, deps, ctx, scopes.projections, { source, modules, nodes, goals, orgDefaulted: !input.orgId });
+  await checkCopyWritable(tx, deps, ctx, { source, modules, nodes, goals });
 
   const [row] = await unique(
     () =>
@@ -367,15 +370,24 @@ interface CopySource {
   readonly modules: readonly ModuleRow[];
   readonly nodes: ReadonlyMap<string, readonly NodeSettingInput[]>;
   readonly goals: readonly { readonly id: string }[];
-  readonly orgDefaulted: boolean;
 }
 
-/** 继承内容逐项校验：源字段可见（不论取值是否为空）、目标位置可创建，节点配置仍在已发布版本里。 */
-async function checkCopyable(tx: Tx, deps: Deps, ctx: WriteContext, views: CopyProjections, copy: CopySource) {
-  // 集合字段（模块、通用目标）的查看权一律要求，不看来源集合是否为空：否则“空则放行、非空则拒绝”会泄露隐藏集合是否存在
+const COMMON_GOAL_COPY_FIELDS = ['moduleId', 'name', 'measure', 'suggestion', 'displayOrder'];
+
+/**
+ * 继承内容的查看门禁（P2-3，第 3 / 4 轮）：要求查看的字段只取决于请求（是否缺省组织），与源模板的数据无关——
+ * 模板的继承字段（含流程、集合字段）、模块与通用目标对象的全部可继承字段。必须先于任何用源数据做的校验执行。
+ */
+function requireCopyViewable(ctx: WriteContext, views: CopyProjections, orgDefaulted: boolean) {
   const templateFields = ['description', 'publicDown', 'processId', 'modules', 'commonGoals'];
-  if (copy.orgDefaulted) templateFields.push('orgId');
+  if (orgDefaulted) templateFields.push('orgId');
   requireViewable(ctx, views.template, 'template', templateFields);
+  requireViewable(ctx, views.templateModule, 'templateModule', [...TEMPLATE_MODULE_FIELDS]);
+  requireViewable(ctx, views.commonGoal, 'commonGoal', COMMON_GOAL_COPY_FIELDS);
+}
+
+/** 继承内容在目标位置可创建（只对实际继承的模块 / 通用目标判定，此时内容对操作人可见），节点配置仍在已发布版本里。 */
+async function checkCopyWritable(tx: Tx, deps: Deps, ctx: WriteContext, copy: CopySource) {
   await requireNestedWrite(tx, deps, ctx, 'template', 'create', {
     name: true,
     description: true,
@@ -383,19 +395,15 @@ async function checkCopyable(tx: Tx, deps: Deps, ctx: WriteContext, views: CopyP
     publicDown: true,
     processId: true,
   });
-  // 模块同理：要求查看的字段固定为模块对象的全部可继承字段，不随来源模块的类型或数量变化
-  requireViewable(ctx, views.templateModule, 'templateModule', [...TEMPLATE_MODULE_FIELDS]);
   for (const module of copy.modules) {
     const settings = copy.nodes.get(module.id) ?? [];
     const fields = Object.keys(moduleView(module, settings)).filter((field) => field !== 'id');
     await requireNestedWrite(tx, deps, ctx, 'templateModule', 'create', Object.fromEntries(fields.map((f) => [f, 1])));
     if (settings.length) await validateNodeSettings(tx, ctx, copy.source, module.moduleType as ModuleType, settings);
   }
-  const goalFields = ['moduleId', 'name', 'measure', 'suggestion', 'displayOrder'];
-  requireViewable(ctx, views.commonGoal, 'commonGoal', goalFields);
-  // 创建权只在真有通用目标要继承时才要求：此时操作人已能看到它们，按集合是否为空区分不会泄露
   if (copy.goals.length) {
-    await requireNestedWrite(tx, deps, ctx, 'commonGoal', 'create', Object.fromEntries(goalFields.map((f) => [f, 1])));
+    const fields = Object.fromEntries(COMMON_GOAL_COPY_FIELDS.map((f) => [f, 1]));
+    await requireNestedWrite(tx, deps, ctx, 'commonGoal', 'create', fields);
   }
 }
 

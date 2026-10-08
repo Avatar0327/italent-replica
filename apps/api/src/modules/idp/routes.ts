@@ -125,8 +125,10 @@ async function runIdpWrite<T extends { revision?: number }>(
     },
   });
   const { view, checks } = result.body as Stored<T>;
-  await withTenant(deps.db, ctx.tenantId, (tx) => spec.recheck(tx, scope, view));
+  // 先复核命令实际用到的权限（只看权限、不看数据），再按当前数据复核归属与引用：否则重放时引用对象的状态差别
+  // （如隐藏的流程停用 / 移走）会先于查看权门禁暴露出来（第 4 轮）
   await replayChecks(deps, ctx, checks);
+  await withTenant(deps.db, ctx.tenantId, (tx) => spec.recheck(tx, scope, view));
   if (c.req.method !== 'DELETE' && view.revision !== undefined) c.header('ETag', `"${view.revision}"`);
   return c.json((await spec.present(view)) as object, result.status);
 }
