@@ -137,6 +137,14 @@ describe('AC-EXP-12 F-049 adapt 在结果进入 computed 前调用', () => {
 });
 
 describe('AC-EXP-19 F-049 population 与 DEC-312 部分重算', () => {
+  it('短字段引用也让额外总体成员读到完整目标字段的旧值', () => {
+    const shortRank = item(rank.field, 2, 'Ranking("排序号", 分数)');
+    const batch = evaluateBatch([item(source, 1, '0.1'), shortRank], [subject('s1', 1)], context, {
+      population: [subject('s2', 1), subject('s3', 1)],
+    });
+    expect(resultOf(batch, 's1', rank.field)).toEqual(success({ kind: 'number', value: 3 }));
+  });
+
   it.each([0.1, -1])('参与对象新源值 %s，其他对象旧值；只返回参与对象的结果', (newScore) => {
     const selected = [subject('s1', 1)];
     const population = [subject('s1', 100), subject('s2', 1), subject('s3', 1), subject('empty', null)];
