@@ -9,6 +9,7 @@ import {
   evaluateBatch,
   evaluateFormula,
   inMemorySubject,
+  parseFormula,
   type EvaluationContext,
   type EvaluationResult,
   type InMemoryRankingMember,
@@ -86,10 +87,15 @@ describe('N1 emptyInEquality = fail：逐对象、逐列短路比较', () => {
     expect(run(members)).toEqual([num(1), EMPTY_FAIL]);
   });
 
-  it('第 5 参数的空值来自表达式（IF 不命中）', () => {
+  it('第 5 参数的空值来自表达式（IF 不命中；这种写法保存即报错，只有已保存的旧 Program 直接求值会走到）', () => {
     const members = [member('A', 100, { 'person.g1': 'a' }), member('B', 90, { 'person.g1': 'b' })];
     const formula = 'Ranking("排序号", person.score, true, person.g1, 如果 person.score > 95 那么 "x")';
-    expect(run(members, formula)).toEqual([num(1), EMPTY_FAIL]);
+    const parsed = parseFormula(formula);
+    if (!parsed.ok) throw new Error('解析失败');
+    const results = members.map((m) =>
+      valueOf(evaluateFormula(parsed.program, contextOf(members, m.id, { semantics: FAILING }))),
+    );
+    expect(results).toEqual([num(1), EMPTY_FAIL]);
   });
 
   it('第 5 参数的字段缺失（按空值分组）', () => {
@@ -145,9 +151,9 @@ describe('N2 日期型 Def 的非有限分量不在缓存键里碰撞', () => {
 
   it.each([
     ['AddYears', `AddYears(${BASE}, person.amount)`],
-    ['AddMonths（外层，年份已是 ±∞）', `AddMonths(AddYears(${BASE}, person.amount), 1)`],
+    ['AddMonths（连加两次，月数溢出为 ±∞）', `AddMonths(AddMonths(${BASE}, person.amount), person.amount)`],
     ['DateAdd 年', `DateAdd("y", person.amount, ${BASE})`],
-    ['DateAdd 月（外层）', `DateAdd("m", 1, DateAdd("y", person.amount, ${BASE}))`],
+    ['DateAdd 月（连加两次）', `DateAdd("m", person.amount, DateAdd("m", person.amount, ${BASE}))`],
     ['FirstDay', `FirstDay(AddYears(${BASE}, person.amount))`],
     ['LastDay', `LastDay(AddYears(${BASE}, person.amount))`],
     ['ToDate', `ToDate(AddYears(${BASE}, person.amount))`],

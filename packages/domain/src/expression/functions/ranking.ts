@@ -19,7 +19,7 @@ import { equalityLookupKeys, equalityStoreKeys, valuesEqual } from '../operators
 import type { SubjectReader } from '../ports.js';
 import type { ArgumentIssue, FunctionCall, FunctionSpec } from '../registry.js';
 import { isDefinitely, mayBe, verdictFor, type InferredType } from '../typing.js';
-import { EMPTY, type ExprValue } from '../values.js';
+import { EMPTY, type DateParts, type ExprValue } from '../values.js';
 import { isTypeConversion, unwrapPort } from './shared.js';
 
 const MODES: Readonly<Record<string, 'rank' | 'percentile'>> = {
@@ -79,7 +79,7 @@ export interface RankingTable {
   readonly participants: readonly Entry[];
   /** 每个分组参数一张候选索引：入口键 → 参与者下标（见 operators.ts equalityStoreKeys）。 */
   readonly indexes: readonly ReadonlyMap<string, readonly number[]>[];
-  /** 参与者里有空的分组取值：emptyInEquality = fail 时与旧实现一样报 EMPTY_IN_COMPARISON。 */
+  /** 参与者里有空的分组取值：emptyInEquality = fail 时改为逐对象、逐列短路比较（见 peerScores）。 */
   readonly hasEmptyGroup: boolean;
   /** 本人分组取值的编码 → 同组分数（降序）。 */
   readonly peers: Map<string, readonly number[]>;
@@ -166,20 +166,22 @@ function candidates(call: FunctionCall, table: RankingTable, column: number, val
 /**
  * 与本人同组的参与者分数（降序）：各分组参数逐个按 valuesEqual 与本人取值相等，与旧实现逐一比较完全一致
  * （= 不传递时每人按自己的取值找同组）。候选取各参数里最少的一列，再逐个复核全部参数。
+ * emptyInEquality = fail 且有空的分组取值时，不用候选索引：对全体参与者逐对象、逐列短路比较（前面的列已不相等
+ * 就不再比后面的列），比到空值那一列才由 valuesEqual 报 EMPTY_IN_COMPARISON，与旧实现一致。
  */
 function peerScores(call: FunctionCall, table: RankingTable, me: Entry): readonly number[] {
   const semantics = call.env.semantics;
-  if (semantics.emptyInEquality === 'fail' && (table.hasEmptyGroup || me.groups.some((v) => v.kind === 'empty'))) {
-    valuesEqual(EMPTY, EMPTY, semantics);
-  }
   const key = JSON.stringify(me.groups.map(encodeValue));
   let scores = table.peers.get(key);
   if (scores) return scores;
+  const hasEmpty = table.hasEmptyGroup || me.groups.some((value) => value.kind === 'empty');
   let pool: readonly number[] | undefined;
-  me.groups.forEach((value, column) => {
-    const found = candidates(call, table, column, value);
-    if (!pool || found.length < pool.length) pool = found;
-  });
+  if (!(semantics.emptyInEquality === 'fail' && hasEmpty)) {
+    me.groups.forEach((value, column) => {
+      const found = candidates(call, table, column, value);
+      if (!pool || found.length < pool.length) pool = found;
+    });
+  }
   const members = pool ? pool.map((i) => table.participants[i]!) : table.participants;
   scores = members
     .filter((entry) => entry.groups.every((value, column) => valuesEqual(value, me.groups[column]!, semantics)))
@@ -194,6 +196,12 @@ function numberText(value: number): string {
   return Object.is(value, -0) ? '-0' : String(value);
 }
 
+/** 日期各分量逐个用 numberText（加减年 / 月溢出时分量可能是 ±∞ 或 NaN，JSON 会都写成 null）。 */
+function dateText(parts: DateParts): string {
+  const numbers = [parts.year, parts.month, parts.day, parts.hour, parts.minute, parts.second];
+  return `${numbers.map(numberText).join(',')}:${parts.precision}`;
+}
+
 /** 取值的无碰撞编码（带类型标记）：编码相同则取值完全相同。 */
 function encodeValue(value: ExprValue): string {
   switch (value.kind) {
@@ -206,7 +214,7 @@ function encodeValue(value: ExprValue): string {
     case 'boolean':
       return `b:${value.value}`;
     case 'date':
-      return `d:${JSON.stringify(value.value)}`;
+      return `d:${dateText(value.value)}`;
     case 'option': {
       const raw = typeof value.value === 'number' ? `n:${numberText(value.value)}` : `t:${JSON.stringify(value.value)}`;
       return `o:${raw}:${JSON.stringify(value.label ?? null)}`;
