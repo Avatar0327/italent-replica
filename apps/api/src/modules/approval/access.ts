@@ -11,6 +11,7 @@ import { sql, type Tx, withTenant } from '@italent/db';
 import {
   APPROVAL_INSTANCE_OBJECT,
   APPROVAL_OBJECTS,
+  IDP_OBJECTS,
   APPROVAL_PROCESS_OBJECT,
   buttonResource,
   mayResubmit,
@@ -36,6 +37,8 @@ import { personOfUser } from './resolver.js';
 import { loadInstance } from './store.js';
 
 for (const object of APPROVAL_OBJECTS) registerObjectDefinition(object);
+
+const IDP_PLAN_OBJECT = IDP_OBJECTS.plan.code;
 
 type ProcessButton =
   'create' | 'installPresets' | 'simulateByObject' | 'update' | 'newVersion' | 'publish' | 'discard' | 'simulate';
@@ -201,11 +204,22 @@ export async function adminScope(
   for (const button of buttons)
     allowed ||= await hasButton(deps, ctx, button, button === 'adminLogs' ? 'list' : 'detail');
   if (!allowed) return null;
-  const objectCode = MODULE_OBJECTS.employmentRecord.code;
-  const scope = await resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
-  const contractScope = await resolveModuleScope(deps, ctx, undefined, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`);
-  return sql`((i.business_type='contract' AND ${instanceScopeSql(ctx, contractScope)})
-    OR (i.business_type<>'contract' AND ${instanceScopeSql(ctx, scope)}))`;
+  return byBusinessScope(ctx, (objectCode) =>
+    resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`),
+  );
+}
+
+/**
+ * 各业务实例按所属应用的数据范围判断（DEC-043）：合同按合同对象，发展计划按 IDP 应用（计划对象，K-50：员工当前任职
+ * 在范围内），其余（任职、员工子集）按任职记录。IDP 不能落进任职记录的 TenantBase 范围（PR #115 第 2 轮 P1）。
+ */
+async function byBusinessScope(ctx: TenantContext, resolve: (objectCode: string) => Promise<ModuleScope>) {
+  const employment = await resolve(MODULE_OBJECTS.employmentRecord.code);
+  const contract = await resolve(CONTRACT_OBJECT);
+  const idp = await resolve(IDP_PLAN_OBJECT);
+  return sql`((i.business_type='contract' AND ${instanceScopeSql(ctx, contract)})
+    OR (i.business_type='idp' AND ${instanceScopeSql(ctx, idp)})
+    OR (i.business_type NOT IN ('contract','idp') AND ${instanceScopeSql(ctx, employment)}))`;
 }
 
 /**
@@ -213,15 +227,7 @@ export async function adminScope(
  * 与管理员范围同一对象与页面（任职记录列表），但不要求管理员按钮——这是系统自动接管，不是该成员的操作。
  */
 export async function memberInstanceScope(deps: TenantRouteDeps, ctx: TenantContext, tx: Tx): Promise<SQL> {
-  const objectCode = MODULE_OBJECTS.employmentRecord.code;
-  const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, objectCode, `${objectCode}.list`);
-  const contractScope = await resolveModuleScopeInTransaction(
-    deps,
-    ctx,
-    tx,
-    CONTRACT_OBJECT,
-    `${CONTRACT_OBJECT}.list`,
+  return byBusinessScope(ctx, (objectCode) =>
+    resolveModuleScopeInTransaction(deps, ctx, tx, objectCode, `${objectCode}.list`),
   );
-  return sql`((i.business_type='contract' AND ${instanceScopeSql(ctx, contractScope)})
-    OR (i.business_type<>'contract' AND ${instanceScopeSql(ctx, scope)}))`;
 }
