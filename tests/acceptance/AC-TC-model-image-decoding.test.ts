@@ -47,6 +47,18 @@ function emptyGif() {
   return fixtureFromBytes(Buffer.concat([header, image]), 'gif');
 }
 
+function gifWithOnlyControlCodes() {
+  const bytes = emptyGif().bytes;
+  return fixtureFromBytes(Buffer.concat([bytes.subarray(0, -2), Buffer.from([1, 0x2c, 0, 0x3b])]), 'gif');
+}
+
+function incompleteGifFrame() {
+  const bytes = Buffer.from(imageFixture('gif').bytes);
+  bytes.writeUInt16LE(2, 8);
+  bytes.writeUInt16LE(2, bytes.indexOf(0x2c) + 7);
+  return fixtureFromBytes(bytes, 'gif');
+}
+
 function emptyJpeg() {
   return fixtureFromBytes(Buffer.from('ffd8ffc0000b080001000101011100ffda0008010100003f00ffd9', 'hex'), 'jpeg');
 }
@@ -56,6 +68,11 @@ function missingJpegScan() {
   const start = valid.indexOf(Buffer.from([0xff, 0xda]));
   const end = start + 2 + valid.readUInt16BE(start + 2);
   return fixtureFromBytes(Buffer.concat([valid.subarray(0, end), Buffer.from([0xff, 0xd9])]), 'jpg');
+}
+
+function fakeJpegScan(byte: number) {
+  const bytes = missingJpegScan().bytes;
+  return fixtureFromBytes(Buffer.concat([bytes.subarray(0, -2), Buffer.from([byte]), bytes.subarray(-2)]), 'jpg');
 }
 
 function zeroDepthBmp() {
@@ -77,8 +94,12 @@ describe('AC-TC（补）F-038 R2 实际像素解码', () => {
     ['IDAT 装文本但 CRC 正确的 PNG', () => falsePng(Buffer.from('synthetic text is not compressed pixels'))],
     ['能 inflate 但没有像素行的 PNG', () => falsePng(deflateSync(Buffer.alloc(0)))],
     ['没有 LZW 像素的 GIF', emptyGif],
+    ['只有 clear/end 码但没有像素的 GIF', gifWithOnlyControlCodes],
+    ['帧需要两个像素但码流只提供一个的 GIF', incompleteGifFrame],
     ['没有扫描数据的 JPEG 空壳', emptyJpeg],
     ['保留量化与霍夫曼表但无扫描像素的 JPG', missingJpegScan],
+    ['扫描区只有单个 00 字节的 JPG', () => fakeJpegScan(0)],
+    ['扫描区只有单个 7F 字节的 JPG', () => fakeJpegScan(0x7f)],
     ['位深为 0 的 BMP', zeroDepthBmp],
   ] as const)('%s 返回 415，当前图、revision 与附件状态不变', async (_label, makeInvalid) => {
     const parent = await world.criterion(categoryId, [], { name: `合成解码标准 ${randomUUID()}` });
