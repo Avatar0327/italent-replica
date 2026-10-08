@@ -25,6 +25,7 @@ export const text = {
   noCategory: '（不分类）',
   ownerOrg: '所属管理单元',
   chooseOwnerOrg: '选择所属管理单元',
+  relationOwnerOrg: '新加指标的所属管理单元',
   noOwnerUnit: '无可用的管理单元，请联系管理员授权',
   setDimensionCategory: '设置指标类别',
   selectedDimensions: '勾选的指标',

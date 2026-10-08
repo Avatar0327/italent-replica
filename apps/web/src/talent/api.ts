@@ -91,12 +91,13 @@ export interface Criterion extends Owned, Partial<Record<NoteKey, string | null>
   readonly dimensions?: CriterionDimension[];
 }
 /** 当前用户在人才标准应用里的授权管理单元（DEC-294③）。 */
+/** 授权管理单元：查看人看不到组织的编码 / 名称时只有 ID（DEC-309）。 */
 export interface OwnerOrg {
   readonly id: string;
-  readonly code: string;
-  readonly name: string;
+  readonly code?: string;
+  readonly name?: string;
 }
-export type OwnerObject = 'library' | 'dimension' | 'criterionCategory' | 'criterion';
+export type OwnerObject = 'library' | 'dimensionCategory' | 'dimension' | 'criterionCategory' | 'criterion';
 export interface ListResult<T> {
   readonly items: T[];
   readonly hasDataPermission: boolean;

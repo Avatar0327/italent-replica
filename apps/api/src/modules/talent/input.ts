@@ -61,8 +61,10 @@ export const dimensionCategoryCreate = z.strictObject({
   libraryId: uuid,
   name: z.string().trim().min(1).max(50),
   displayOrder: z.int().min(-1_000_000).max(1_000_000),
+  // 库内分类同样跟创建人的授权管理单元，不随所属指标库（DEC-294 补充二）
+  ownerOrgId,
 });
-export const dimensionCategoryPatch = dimensionCategoryCreate.omit({ libraryId: true }).partial();
+export const dimensionCategoryPatch = dimensionCategoryCreate.omit({ libraryId: true, ownerOrgId: true }).partial();
 
 export const descriptionTypeCreate = z.strictObject({
   name: z.string().trim().min(1).max(50),
@@ -118,7 +120,11 @@ const criterionFields = {
   dimensions: z.array(criterionDimension).max(MAX_CRITERION_DIMENSIONS).optional(),
 };
 export const criterionCreate = z.strictObject({ ...criterionFields, ownerOrgId });
-export const criterionPatch = z.strictObject(criterionFields).partial();
+/**
+ * 编辑时新加的关联记录跟添加人（DEC-294 补充二）：添加人有多个授权管理单元时用 relationOwnerOrgId 选一个；
+ * 新建标准时关联记录与标准由同一人在同一请求里加入，用同一个所选的 ownerOrgId。
+ */
+export const criterionPatch = z.strictObject({ ...criterionFields, relationOwnerOrgId: ownerOrgId }).partial();
 
 /** 「设置指标类别」（DEC-294⑤）：给标准里勾选的指标统一填一个类别（null 清空）。 */
 export const dimensionCategoryBatch = z.strictObject({

@@ -9,9 +9,12 @@ import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
 import { useTalentWrite, type Write } from './useTalentWrite.js';
 
-/** 新建草稿带所属管理单元键（只在多个授权管理单元时提交，DEC-294③；编辑草稿里没有这个键）。 */
+/**
+ * 新建草稿带所属管理单元键，编辑草稿带“新加指标的所属管理单元”键：都只在多个授权管理单元时由用户选择并提交
+ * （DEC-294③ 及补充二），其余情况由服务端填写。
+ */
 const draftOf = (item: Criterion | null, categoryId = ''): CriterionDraft => ({
-  ...(item ? {} : { ownerOrgId: '' }),
+  ...(item ? { relationOwnerOrgId: '' } : { ownerOrgId: '' }),
   categoryId: item?.categoryId ?? categoryId,
   name: item?.name ?? '',
   enabled: item?.enabled ?? true,
@@ -87,6 +90,7 @@ export function CriterionPanel({ tenantId }: { tenantId: string }) {
       {editor && (
         <CriterionForm
           value={editor.value}
+          existing={new Set((editor.original?.dimensions ?? []).map((item) => item.dimensionId))}
           owners={owners}
           categories={categories}
           known={known}

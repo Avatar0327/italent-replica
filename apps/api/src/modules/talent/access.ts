@@ -108,6 +108,13 @@ export async function talentWriteContext(
 export const talentScope = (c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: TalentContext, object: TalentObject) =>
   requestScope(c, deps, ctx, codeOf(object));
 
+/**
+ * 所属管理单元的选择（新建时的 ownerOrgId、编辑标准新加关联时的 relationOwnerOrgId）不是写字段：所属管理单元由系统
+ * 填写（DEC-294③），请求里只是“从创建人 / 添加人自己的多个授权管理单元里选哪一个”，由服务端按授权管理单元校验
+ * （owner-units.ts），因此不按字段编辑权拦截（指标、库内分类的 ownerOrgId 是系统字段，本就不可授予编辑权）。
+ */
+const UNIT_SELECTION = new Set(['ownerOrgId', 'relationOwnerOrgId']);
+
 export function checkWriteFields(
   deps: TenantRouteDeps,
   ctx: TalentContext,
@@ -115,8 +122,16 @@ export function checkWriteFields(
   operation: 'create' | 'update',
   payload: Readonly<Record<string, unknown>>,
 ) {
-  return writeFields(deps, ctx, codeOf(object), operation, payload);
+  const fields = Object.fromEntries(Object.entries(payload).filter(([key]) => !UNIT_SELECTION.has(key)));
+  return writeFields(deps, ctx, codeOf(object), operation, fields);
 }
+
+/** 查看人当前对某对象的可见字段（undefined = 全部）。 */
+export const viewableFields = (deps: TenantRouteDeps, ctx: TalentContext, object: TalentObject) =>
+  getModuleViewableFields(deps, ctx, codeOf(object));
+
+export const fieldVisible = (fields: ReadonlySet<string> | undefined, field: string) =>
+  fields === undefined || fields.has(field);
 
 /** 范围外与不存在同样返回 404，不泄露对象是否存在。 */
 export function requireVisible(scope: ModuleScope, object: TalentObject, owner: Owner): void {

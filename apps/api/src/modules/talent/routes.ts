@@ -26,6 +26,7 @@ import {
   talentScope,
   talentWriteContext,
   trimTalentList,
+  viewableFields,
   visibleSql,
   type ModuleScope,
   type TalentContext,
@@ -49,7 +50,7 @@ import {
 import * as input from './input.js';
 import * as libraries from './library-service.js';
 import * as read from './read-model.js';
-import type { WriteContext } from './write-support.js';
+import type { ReferenceFields, WriteContext } from './write-support.js';
 
 interface Tracked {
   readonly id: string;
@@ -288,15 +289,18 @@ async function runTalentWrite<View extends Tracked, Create, Patch>(
 ) {
   const scope = await talentScope(c, deps, ctx, spec.object);
   const references: Partial<Record<TalentObject, ModuleScope | null>> = {};
+  const referenceFields: ReferenceFields = {};
   for (const object of spec.references(body as Create | Patch)) {
-    references[object] = await referenceScope(c, deps, ctx, object);
+    const access = await referenceAccess(c, deps, ctx, object);
+    references[object] = access.scope;
+    referenceFields[object] = access.fields;
   }
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
     execute: async (tx, commandId) => ({
       status,
-      body: await execute(tx, { ...ctx, commandId, scope, references }),
+      body: await execute(tx, { ...ctx, commandId, scope, references, referenceFields }),
     }),
   });
   const view = result.body as View;
@@ -305,9 +309,11 @@ async function runTalentWrite<View extends Tracked, Create, Patch>(
   return c.json((await presenter(deps, spec.object)(c, ctx, [view]))[0], result.status);
 }
 
-async function referenceScope(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: TalentContext, object: TalentObject) {
+/** 引用对象的查看权、范围与可见字段（按当前权限，事务外解析；首次执行在事务内逐个复核）。 */
+async function referenceAccess(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: TalentContext, object: TalentObject) {
   const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: codeOf(object), fields: [] });
-  return canView ? talentScope(c, deps, ctx, object) : null;
+  if (!canView) return { scope: null, fields: new Set<string>() };
+  return { scope: await talentScope(c, deps, ctx, object), fields: await viewableFields(deps, ctx, object) };
 }
 
 /** 按字段权限裁剪；人才标准里嵌套的指标内容另按指标对象的查看权、范围与字段权限，只投影三项（DEC-281⑪）。 */

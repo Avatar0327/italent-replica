@@ -25,9 +25,13 @@ import { usageCount } from './read-model.js';
 /** 写入时引用其他对象须各自可见（DEC-178 同口径）；null 表示查看人没有该对象的查看权。 */
 export type ReferenceScopes = Partial<Record<TalentObject, ModuleScope | null>>;
 
+/** 引用对象上查看人当前可见的字段（undefined = 全部；没有查看权为空集），带出值前按它裁剪（DEC-309）。 */
+export type ReferenceFields = Partial<Record<TalentObject, ReadonlySet<string> | undefined>>;
+
 export interface WriteContext extends TalentContext {
   readonly scope: ModuleScope;
   readonly references: ReferenceScopes;
+  readonly referenceFields: ReferenceFields;
 }
 
 export const TALENT_TABLES: Readonly<Record<TalentObject, string>> = {
@@ -72,7 +76,7 @@ export async function lockOwned(tx: Tx, ctx: WriteContext, object: TalentObject,
 
 /**
  * 被引用的对象：共享锁（与它的停用 / 删除串行）→ 存在 → 查看人对该对象有查看权且在其范围内。
- * 返回所属管理单元，供挂在它下面的对象继承（库内分类、指标随指标库）。
+ * 返回它的范围锚点（所属管理单元 / 所属人），供挂在它下面新建时判定新建范围（库内分类、指标）。
  */
 export async function referenced(tx: Tx, ctx: WriteContext, object: TalentObject, id: string): Promise<Owner> {
   const scope = ctx.references[object];

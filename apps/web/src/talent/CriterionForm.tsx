@@ -14,6 +14,8 @@ export interface ReferenceDraft {
 export interface CriterionDraft extends Record<string, unknown> {
   /** 只在新建时有（DEC-294③：多个授权管理单元时选一个，建后不可改）。 */
   ownerOrgId?: string;
+  /** 只在编辑时有：新加的指标关联跟添加人，添加人有多个授权管理单元时选一个（DEC-294 补充二）。 */
+  relationOwnerOrgId?: string;
   categoryId: string;
   name: string;
   enabled: boolean;
@@ -34,6 +36,7 @@ const numberOrNull = (value: string) => (value === '' ? null : Number(value));
 /** 人才标准表单：引用已启用的指标（TC-R4）；只有能力指标可填权重与目标（TC-R3，服务端同样校验）。 */
 export function CriterionForm({
   value,
+  existing = new Set<string>(),
   owners,
   categories,
   known,
@@ -44,6 +47,8 @@ export function CriterionForm({
   onCancel,
 }: {
   value: CriterionDraft;
+  /** 已保存的引用（编辑时）：不在其中的行就是本次新加的关联。 */
+  existing?: ReadonlySet<string>;
   owners: readonly OwnerOrg[] | undefined;
   categories: readonly { id: string; name: string }[];
   known: ReadonlyMap<string, KnownDimension>;
@@ -54,6 +59,7 @@ export function CriterionForm({
   onCancel: () => void;
 }) {
   const set = (patch: Partial<CriterionDraft>) => onChange({ ...value, ...patch });
+  const adding = value.dimensions.some((item) => !existing.has(item.dimensionId));
   return (
     <form
       onSubmit={(event) => {
@@ -62,12 +68,7 @@ export function CriterionForm({
       }}
     >
       <fieldset disabled={busy}>
-        <OwnerUnitField
-          editing={value.ownerOrgId === undefined}
-          value={value.ownerOrgId ?? ''}
-          options={owners}
-          onChange={(ownerOrgId) => set({ ownerOrgId })}
-        />
+        <OwnerUnits value={value} adding={adding} owners={owners} set={set} />
         <label>
           {text.criterionCategory}
           <select required value={value.categoryId} onChange={(e) => set({ categoryId: e.target.value })}>
@@ -104,6 +105,40 @@ export function CriterionForm({
         </button>
       </fieldset>
     </form>
+  );
+}
+
+/**
+ * 所属管理单元（DEC-294③ 及补充二）：新建时选标准（及同一请求里加入的关联）的；编辑时只在新加了指标时选新关联的。
+ * 都只在多个授权管理单元时显示。
+ */
+function OwnerUnits({
+  value,
+  adding,
+  owners,
+  set,
+}: {
+  value: CriterionDraft;
+  adding: boolean;
+  owners: readonly OwnerOrg[] | undefined;
+  set: (patch: Partial<CriterionDraft>) => void;
+}) {
+  return (
+    <>
+      <OwnerUnitField
+        editing={value.ownerOrgId === undefined}
+        value={value.ownerOrgId ?? ''}
+        options={owners}
+        onChange={(ownerOrgId) => set({ ownerOrgId })}
+      />
+      <OwnerUnitField
+        editing={value.relationOwnerOrgId === undefined || !adding}
+        label={text.relationOwnerOrg}
+        value={value.relationOwnerOrgId ?? ''}
+        options={owners}
+        onChange={(relationOwnerOrgId) => set({ relationOwnerOrgId })}
+      />
+    </>
   );
 }
 

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { listAll, type DimensionCategory, type Library } from './api.js';
+import { listAll, type DimensionCategory, type Library, type OwnerOrg } from './api.js';
 import { changedFields } from './changes.js';
 import { text } from './messages.js';
+import { ownerOrgBody, OwnerUnitField, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
 import { useTalentWrite } from './useTalentWrite.js';
@@ -11,11 +12,22 @@ interface Draft {
   readonly libraryId: string;
   readonly name: string;
   readonly displayOrder: number;
+  /** 新建时所选的授权管理单元（只在多个时提交，DEC-294 补充二）。 */
+  readonly ownerOrgId: string;
 }
+
+const draftOf = (item: DimensionCategory | null, libraryId: string): Draft => ({
+  original: item,
+  libraryId,
+  name: item?.name ?? '',
+  displayOrder: item?.displayOrder ?? 1,
+  ownerOrgId: '',
+});
 
 /**
  * 指标库内分类（DEC-281③）：类别名称（必填，≤50）+ 类别顺序（必填整数），挂在指标库下，无编码、无层级；
- * 所属指标库建后不可改，所属管理单元随指标库。被指标引用的分类不能删除。
+ * 所属指标库建后不可改；所属人 = 创建人，所属管理单元取创建人的授权管理单元，不随指标库（DEC-294 补充二）。
+ * 被指标引用的分类不能删除。
  */
 export function DimensionCategoryPanel({ tenantId }: { tenantId: string }) {
   const [libraryId, setLibraryId] = useState('');
@@ -27,6 +39,7 @@ export function DimensionCategoryPanel({ tenantId }: { tenantId: string }) {
   });
   const path = `dimension-categories${libraryId ? `?libraryId=${libraryId}` : ''}`;
   const list = useList<DimensionCategory>(tenantId, path, write.setError);
+  const owners = useOwnerOrgs(tenantId, 'dimensionCategory', write.setError);
   useEffect(() => {
     void listAll<Library>(tenantId, 'libraries')
       .then(setLibraries)
@@ -34,14 +47,14 @@ export function DimensionCategoryPanel({ tenantId }: { tenantId: string }) {
   }, [tenantId, write.setError]);
   const libraryName = (id: string) => libraries.find((item) => item.id === id)?.name ?? '';
   const save = (value: Draft) => {
-    const { original, libraryId: library, ...fields } = value;
+    const { original, libraryId: library, ownerOrgId, ...fields } = value;
     write.mutate({
       path: original ? `dimension-categories/${original.id}` : 'dimension-categories',
       method: original ? 'PATCH' : 'POST',
       revision: original?.revision ?? 0,
       body: original
         ? changedFields({ name: original.name, displayOrder: original.displayOrder }, fields)
-        : { ...fields, libraryId: library },
+        : { ...fields, libraryId: library, ...ownerOrgBody(owners, ownerOrgId) },
     });
   };
   return (
@@ -56,9 +69,7 @@ export function DimensionCategoryPanel({ tenantId }: { tenantId: string }) {
       </select>
       <button
         disabled={write.locked || !libraries.length}
-        onClick={() =>
-          setDraft({ original: null, libraryId: libraryId || libraries[0]!.id, name: '', displayOrder: 1 })
-        }
+        onClick={() => setDraft(draftOf(null, libraryId || libraries[0]!.id))}
       >
         {text.create}
       </button>
@@ -67,9 +78,7 @@ export function DimensionCategoryPanel({ tenantId }: { tenantId: string }) {
         items={list.items}
         libraryName={libraryName}
         locked={write.locked}
-        onEdit={(item) =>
-          setDraft({ original: item, libraryId: item.libraryId, name: item.name, displayOrder: item.displayOrder })
-        }
+        onEdit={(item) => setDraft(draftOf(item, item.libraryId))}
         onDelete={(item) =>
           write.mutate({ path: `dimension-categories/${item.id}`, method: 'DELETE', revision: item.revision })
         }
@@ -78,6 +87,7 @@ export function DimensionCategoryPanel({ tenantId }: { tenantId: string }) {
       {draft && (
         <CategoryForm
           draft={draft}
+          owners={owners}
           libraries={libraries}
           busy={write.locked}
           onChange={setDraft}
@@ -121,6 +131,7 @@ function CategoryList({
 
 function CategoryForm({
   draft,
+  owners,
   libraries,
   busy,
   onChange,
@@ -128,6 +139,7 @@ function CategoryForm({
   onCancel,
 }: {
   draft: Draft;
+  owners: readonly OwnerOrg[] | undefined;
   libraries: readonly Library[];
   busy: boolean;
   onChange: (draft: Draft) => void;
@@ -142,6 +154,12 @@ function CategoryForm({
       }}
     >
       <fieldset disabled={busy}>
+        <OwnerUnitField
+          editing={!!draft.original}
+          value={draft.ownerOrgId}
+          options={owners}
+          onChange={(ownerOrgId) => onChange({ ...draft, ownerOrgId })}
+        />
         <label>
           {text.library}
           <select

@@ -1,7 +1,8 @@
 /**
  * 新建对象的所属管理单元（DEC-294③ 及补充，`23` §8 ①）：所属人 = 创建人，所属管理单元 = 创建人在人才标准应用里的
  * 授权管理单元，由系统填写，建后不能修改或转移。复刻以组织表达管理单元（DEC-281⑨），用户 × TalentCenter 只有一份
- * 范围（DEC-043），因此“授权管理单元”取该范围所选管理单元里的组织范围（当天有效且启用）：
+ * 范围（DEC-043），因此“授权管理单元”取该范围所选管理单元里的组织范围（当天有效且启用；一份范围内的多个组织按多个
+授权管理单元算，DEC-294 补充三 / DEC-309 推定 🟡）：
  * - 没有：拒绝新建（403，提示原文）；
  * - 一个：自动填写；
  * - 多个：须由请求选一个（新建表单此时才显示下拉），不选 400；
@@ -47,36 +48,37 @@ function noUnit(): AppError {
   return new AppError('FORBIDDEN', NO_UNIT_MESSAGE, { reason: 'NO_MANAGEMENT_UNIT' });
 }
 
-/** 新建指标库 / 指标 / 标准分类 / 人才标准时填写的所属管理单元。 */
+/**
+ * 在创建人 / 添加人自己的授权管理单元里定一个（一律不继承主对象，DEC-294 补充二，原站样本 🟡）：
+ * 没有拒绝；请求选了就须属于其中（不属于时存在与否同一个 404）；只有一个自动填写；多个而没选 400。
+ */
+async function chooseUnit(tx: Tx, ctx: WriteContext, requested: string | undefined): Promise<string> {
+  const units = await unitsOf(tx, ctx);
+  if (!units.length) throw noUnit();
+  if (requested !== undefined) {
+    // 先判是否属于本人的授权管理单元，不另查组织是否存在：范围外与不存在同一个拒绝分支
+    if (!units.some((unit) => unit.id === requested)) throw new AppError('NOT_FOUND', UNIT_NOT_FOUND);
+    return requested;
+  }
+  if (units.length === 1) return units[0]!.id;
+  throw new AppError('VALIDATION_FAILED', '请选择所属管理单元', { reason: 'MANAGEMENT_UNIT_REQUIRED' });
+}
+
+/** 新建指标库 / 库内分类 / 指标 / 标准分类 / 人才标准：选定后再按新建授权复核（DEC-082）。 */
 export async function ownerUnit(
   tx: Tx,
   ctx: WriteContext,
   object: TalentObject,
   requested: string | undefined,
 ): Promise<string> {
-  const units = await unitsOf(tx, ctx);
-  if (!units.length) throw noUnit();
-  let orgId: string;
-  if (requested !== undefined) {
-    // 先判是否属于创建人的授权管理单元，不另查组织是否存在：范围外与不存在同一个拒绝分支
-    if (!units.some((unit) => unit.id === requested)) throw new AppError('NOT_FOUND', UNIT_NOT_FOUND);
-    orgId = requested;
-  } else if (units.length === 1) {
-    orgId = units[0]!.id;
-  } else {
-    throw new AppError('VALIDATION_FAILED', '请选择所属管理单元', { reason: 'MANAGEMENT_UNIT_REQUIRED' });
-  }
+  const orgId = await chooseUnit(tx, ctx, requested);
   requireCreatable(ctx.scope, object, orgId, UNIT_NOT_FOUND);
   return orgId;
 }
 
 /**
- * 标准内新加的指标关联记录（DEC-294③）：所属人 = 加入它的人；所属管理单元取其授权管理单元——只有一个就用它，
- * 多个时取所在标准的所属管理单元（属于其中之一时），否则取排序第一个。
- * TODO(需取证 #109): 原站多个授权管理单元时关联记录取哪一个未取证，暂按上述规则。
+ * 编辑人才标准时新加的指标关联记录：所属管理单元按添加人的授权管理单元定（DEC-294 补充二）。关联记录随标准的
+ * dimensions 字段整组编辑，授权就是标准的编辑授权（行锁后已按标准的范围判定），不另按新建授权复核。
  */
-export async function referenceUnit(tx: Tx, ctx: WriteContext, criterionOrgId: string): Promise<string> {
-  const units = await unitsOf(tx, ctx);
-  if (!units.length) throw noUnit();
-  return (units.find((unit) => unit.id === criterionOrgId) ?? units[0]!).id;
-}
+export const relationUnit = (tx: Tx, ctx: WriteContext, requested: string | undefined) =>
+  chooseUnit(tx, ctx, requested);

@@ -1,6 +1,6 @@
 /**
  * 指标库、指标库内分类（DEC-281③）与发展建议类型（DEC-281④）的写入。
- * - 指标库的所属人 / 所属管理单元由系统按创建人填写（DEC-294③，建后不可改），库内分类随所属指标库；
+ * - 指标库的所属人 / 所属管理单元由系统按创建人填写（DEC-294③，建后不可改）；库内分类同样按其创建人填写，不随所属指标库（DEC-294 补充二）；
  * - TC-R5：还有指标或分类的指标库不能删除；被指标引用的分类、被发展建议引用的类型不能删除（🟡 原站未取证，不留孤儿）。
  */
 import {
@@ -92,13 +92,18 @@ export async function deleteLibrary(tx: Tx, ctx: WriteContext, id: string) {
 
 // ---- 指标库内分类 ----
 
+/**
+ * 库内分类：所属库须可见且在操作人的新建范围内（DEC-082，不因“使用用户”放行）；所属人 = 创建人，所属管理单元取
+ * 创建人的授权管理单元，不随所属指标库（DEC-294 补充二）。
+ */
 export async function createDimensionCategory(tx: Tx, ctx: WriteContext, input: DimensionCategoryCreate) {
+  const { ownerOrgId: requested, ...fields } = input;
   const library = await referenced(tx, ctx, 'library', input.libraryId);
-  // 随所属库的管理单元：新建须在操作人分类范围内（DEC-082，不因“使用用户”放行）
   requireLibraryCreatable(ctx, 'dimensionCategory', library);
+  const ownerOrgId = await ownerUnit(tx, ctx, 'dimensionCategory', requested);
   const [row] = await tx
     .insert(talentDimensionCategories)
-    .values({ tenantId: ctx.tenantId, ...input, ...owned(ctx, library.orgId!), ...created(ctx) })
+    .values({ tenantId: ctx.tenantId, ...fields, ...owned(ctx, ownerOrgId), ...created(ctx) })
     .returning({ id: talentDimensionCategories.id });
   const after = (await loadDimensionCategory(tx, ctx.tenantId, row!.id))!;
   await audit(tx, ctx, 'dimensionCategory', 'create', after.id, { before: null, after, orgId: after.ownerOrgId });

@@ -3,8 +3,9 @@
  * - 所属人 / 所属管理单元由系统按创建人填写（DEC-294③，建后不可改）；标准的分类须可见；
  * - 引用指标（TC-R2 只存引用）：新引用的指标须在查看人的指标范围内、与所属指标库都已启用（TC-R4），只有能力指标
  *   可设权重与目标（TC-R3）；新增能力引用缺省权重 1，已有引用没传的值保持（DEC-281②）；
- * - 引用行（关联记录）带自己的“指标类别”文本：新增时复制所选指标的库内分类名称，之后可单独修改或经「设置指标类别」
- *   批量填写，与库内分类各自独立（DEC-294⑤）；新增的关联记录也由系统填写所属人与所属管理单元（DEC-294③）；
+ * - 引用行（关联记录）带自己的“指标类别”文本：新增时复制所选指标的库内分类名称——操作人当前看不到指标的
+ *   categoryName 就留空（DEC-309），之后可单独修改或经「设置指标类别」批量填写，与库内分类各自独立（DEC-294⑤）；
+ * - 新增的关联记录由系统填写所属人 = 添加人、所属管理单元 = 添加人的授权管理单元，不继承标准（DEC-294 补充二）；
  * - 分类下还有标准时不能删除分类（DEC-281⑦ 维持，原站未实测 🟡）；被其他模块引用的标准不能删除。
  */
 import {
@@ -26,7 +27,6 @@ import {
   type TalentDimensionType,
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
-import { requireVisible } from './access.js';
 import type {
   CategoryCreate,
   CategoryPatch,
@@ -35,7 +35,8 @@ import type {
   CriterionPatch,
   DimensionCategoryBatch,
 } from './input.js';
-import { ownerUnit, referenceUnit } from './owner-units.js';
+import { fieldVisible, requireVisible } from './access.js';
+import { ownerUnit, relationUnit } from './owner-units.js';
 import { loadCategory, loadCriterion, type CriterionView } from './read-model.js';
 import { criterionReferrer } from './references.js';
 import {
@@ -106,7 +107,7 @@ export async function createCriterion(tx: Tx, ctx: WriteContext, input: Criterio
     .insert(C)
     .values({ tenantId: ctx.tenantId, ...fields, ...owned(ctx, ownerOrgId), ...created(ctx) })
     .returning({ id: C.id });
-  // 同一请求里选中的授权管理单元即关联记录的所属管理单元
+  // 关联记录与标准由同一添加人在同一请求里加入：用同一个所选（或自动填写）的授权管理单元
   await replaceReferences(tx, ctx, row!.id, dimensions, checked, new Map(), ownerOrgId);
   const after = (await loadCriterion(tx, ctx.tenantId, row!.id))!;
   await audit(tx, ctx, 'criterion', 'create', after.id, {
@@ -120,7 +121,7 @@ export async function createCriterion(tx: Tx, ctx: WriteContext, input: Criterio
 export async function updateCriterion(tx: Tx, ctx: WriteContext, id: string, patch: CriterionPatch) {
   await lockOwned(tx, ctx, 'criterion', id);
   const before = (await loadCriterion(tx, ctx.tenantId, id))!;
-  const { dimensions, ...fields } = patch;
+  const { dimensions, relationOwnerOrgId, ...fields } = patch;
   if (fields.categoryId !== undefined && fields.categoryId !== before.categoryId) {
     await referenced(tx, ctx, 'criterionCategory', fields.categoryId);
   }
@@ -129,9 +130,10 @@ export async function updateCriterion(tx: Tx, ctx: WriteContext, id: string, pat
   );
   const checked = dimensions && (await checkReferences(tx, ctx, dimensions, existing));
   const kept = new Map(before.dimensions.map((row) => [row.dimensionId, row]));
-  // 新加的关联记录由系统填写所属管理单元（DEC-294③）；没有授权管理单元时与新建同样拒绝
+  // 新加的关联记录跟添加人（DEC-294 补充二）：没有授权管理单元拒绝，多个时须选一个；传了选择就校验
   const adds = dimensions?.some((item) => !kept.has(item.dimensionId)) ?? false;
-  const unit = adds ? await referenceUnit(tx, ctx, before.ownerOrgId) : before.ownerOrgId;
+  const unit =
+    adds || relationOwnerOrgId !== undefined ? await relationUnit(tx, ctx, relationOwnerOrgId) : before.ownerOrgId;
   await tx
     .update(C)
     .set({ ...fields, ...bumped(ctx) })
@@ -176,7 +178,7 @@ interface DimensionStateRow {
 
 interface CheckedReferences {
   readonly values: CriterionDimensionValue[];
-  /** 选入时复制的库内分类名称（DEC-294⑤）。 */
+  /** 选入时复制的库内分类名称（DEC-294⑤）；操作人当前看不到指标的 categoryName 时为空（DEC-309）。 */
   readonly categoryNames: ReadonlyMap<string, string | null>;
 }
 
@@ -215,9 +217,11 @@ async function checkReferences(
   );
   const violation = criterionDimensionViolation(items, referenced, new Set(existing.keys()));
   if (violation) throw new AppError('VALIDATION_FAILED', VIOLATION_MESSAGES[violation.reason], violation);
+  // 没解析到指标的可见字段就按看不到处理（fail-closed）
+  const copyable = 'dimension' in ctx.referenceFields && fieldVisible(ctx.referenceFields.dimension, 'categoryName');
   return {
     values: criterionDimensionValues(items, referenced, existing),
-    categoryNames: new Map(rows.map((row) => [row.id, row.category_name])),
+    categoryNames: new Map(rows.map((row) => [row.id, copyable ? row.category_name : null])),
   };
 }
 

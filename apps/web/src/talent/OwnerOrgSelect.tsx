@@ -18,31 +18,37 @@ export function ownerOrgBody(options: readonly OwnerOrg[] | undefined, value: st
   return options && options.length > 1 && value ? { ownerOrgId: value } : {};
 }
 
+/** 下拉里的单元名称：看不到组织名称 / 编码时（DEC-309）退回显示 ID。 */
+const unitLabel = (item: OwnerOrg) =>
+  item.name ? `${item.name}${item.code ? `（${item.code}）` : ''}` : (item.code ?? item.id);
+
 /**
- * 所属管理单元（DEC-294③ 及补充）：由系统按创建人的授权管理单元填写，编辑时不显示、不能转移。
- * 新建时只有一个就不显示；没有就提示无法新建；多个时显示下拉、必须选一个。
+ * 所属管理单元（DEC-294③ 及补充）：由系统按创建人 / 添加人的授权管理单元填写，编辑时不显示、不能转移。
+ * 新建时只有一个就不显示；没有就提示无法新建；多个时显示下拉、必须选一个。label 用于“新加指标的所属管理单元”。
  */
 export function OwnerUnitField({
   editing,
   value,
   options,
   onChange,
+  label = text.ownerOrg,
 }: {
   editing: boolean;
   value: string;
   options: readonly OwnerOrg[] | undefined;
   onChange: (value: string) => void;
+  label?: string;
 }) {
   if (editing || !options || options.length === 1) return null;
   if (!options.length) return <p role="alert">{text.noOwnerUnit}</p>;
   return (
     <label>
-      {text.ownerOrg}
+      {label}
       <select required value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">{text.chooseOwnerOrg}</option>
         {options.map((item) => (
           <option key={item.id} value={item.id}>
-            {item.name}（{item.code}）
+            {unitLabel(item)}
           </option>
         ))}
       </select>
