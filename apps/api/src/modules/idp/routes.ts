@@ -5,7 +5,7 @@
  * 写入走命令台账（幂等、revision 409）；首次执行与幂等重放都按当前功能权限、按钮与范围复核，响应逐层按字段权限裁剪。
  */
 import { IDP_APPROVAL_TYPES, type IdpObject } from '@italent/domain';
-import { isUuid, sql, type Tx, withTenant } from '@italent/db';
+import { and, eq, idpProcesses, idpTemplates, isUuid, sql, type Tx, withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import type { z } from 'zod';
 import { runCommand } from '../../commands.js';
@@ -25,7 +25,10 @@ import {
   type ModuleScope,
   project,
   projectionOf,
+  type PermissionCheck,
   readableSql,
+  replayChecks,
+  requireEditable,
   requireReadable,
   rowsOf,
 } from './access.js';
@@ -43,6 +46,7 @@ export function registerIdpRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps
   registerCandidateRoutes(router, deps);
   registerTemplateRoutes(router, deps);
   registerTemplateWrites(router, deps);
+  registerTemplateActions(router, deps);
   registerTemplatePartRoutes(router, deps);
 }
 
@@ -86,13 +90,23 @@ interface WriteSpec<T> {
   readonly status: 200 | 201;
   readonly body: unknown;
   execute(tx: Tx, ctx: WriteContext): Promise<T>;
-  anchor(result: T): Anchor;
+  /**
+   * 返回前（首次执行与幂等重放都走）按**当前**归属复核**当前可写性**及相关引用（第 2 轮 P2-1）：写入后仍存在的对象按其
+   * 当前行判定；删除命令没有当前行，按删除时的受控快照（台账里的结果）判定可写性。范围外 404，仅向下公开可见 403。
+   */
+  recheck(tx: Tx, scope: ModuleScope, result: T): Promise<void>;
   present(result: T): Promise<unknown>;
 }
 
+/** 命令台账里存的结果：业务视图 + 本命令实际用到的权限（重放时复核，P2-2 / P2-3）。 */
+interface Stored<T> {
+  readonly view: T;
+  readonly checks: PermissionCheck[];
+}
+
 /**
- * 范围在事务外按当前权限解析，首次执行在事务内（行锁之后）复核；幂等重放按当前范围复核结果对象（撤权后重放 404，
- * AGENTS §10），响应按当前字段权限裁剪。
+ * 范围在事务外按当前权限解析，首次执行在事务内（行锁之后）复核；无论首次还是重放，返回前都按对象当前归属复核可写性、
+ * 复核命令实际用到的嵌套写权限与查看权（AGENTS §10），响应按当前字段权限裁剪。
  */
 async function runIdpWrite<T extends { revision?: number }>(
   c: Context<TenantEnv>,
@@ -104,17 +118,53 @@ async function runIdpWrite<T extends { revision?: number }>(
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: spec.body },
-    execute: async (tx, commandId) => ({
-      status: spec.status,
-      body: await spec.execute(tx, { ...ctx, commandId, scope }),
-    }),
+    execute: async (tx, commandId) => {
+      const checks: PermissionCheck[] = [];
+      const view = await spec.execute(tx, { ...ctx, commandId, scope, checks });
+      return { status: spec.status, body: { view, checks } satisfies Stored<T> };
+    },
   });
-  const value = result.body as T;
-  await withTenant(deps.db, ctx.tenantId, (tx) =>
-    requireReadable(tx, ctx, scope, spec.anchorObject, spec.anchor(value)),
-  );
-  if (c.req.method !== 'DELETE' && value.revision !== undefined) c.header('ETag', `"${value.revision}"`);
-  return c.json((await spec.present(value)) as object, result.status);
+  const { view, checks } = result.body as Stored<T>;
+  await withTenant(deps.db, ctx.tenantId, (tx) => spec.recheck(tx, scope, view));
+  await replayChecks(deps, ctx, checks);
+  if (c.req.method !== 'DELETE' && view.revision !== undefined) c.header('ETag', `"${view.revision}"`);
+  return c.json((await spec.present(view)) as object, result.status);
+}
+
+/** 流程 / 模板的当前范围锚点（不存在为 undefined）。 */
+async function currentAnchor(tx: Tx, tenantId: string, object: 'process' | 'template', id: string) {
+  const table = object === 'process' ? idpProcesses : idpTemplates;
+  const [row] = await tx
+    .select({ orgId: table.orgId, publicDown: table.publicDown, createdBy: table.createdBy })
+    .from(table)
+    .where(and(eq(table.tenantId, tenantId), eq(table.id, id)));
+  return row;
+}
+
+/** 写入后的对象按当前行复核可写性（已不存在 → 404）。 */
+async function currentEditable(
+  tx: Tx,
+  ctx: IdpContext,
+  scope: ModuleScope,
+  object: 'process' | 'template',
+  id: string,
+) {
+  const anchor = await currentAnchor(tx, ctx.tenantId, object, id);
+  if (!anchor) throw new AppError('NOT_FOUND', '对象不存在');
+  await requireEditable(tx, ctx, scope, object, anchor);
+}
+
+/** 相关引用（模板引用的流程、复制的源模板）按当前行复核可见性（已不存在 → 404）。 */
+async function currentReadable(
+  tx: Tx,
+  ctx: IdpContext,
+  scope: ModuleScope,
+  object: 'process' | 'template',
+  id: string,
+) {
+  const anchor = await currentAnchor(tx, ctx.tenantId, object, id);
+  if (!anchor) throw new AppError('NOT_FOUND', '对象不存在');
+  await requireReadable(tx, ctx, scope, object, anchor);
 }
 
 const anchorOf = (view: { orgId: string; publicDown: boolean; createdBy: string }): Anchor => ({
@@ -207,7 +257,7 @@ function registerProcessWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       status: 201,
       body,
       execute: (tx, w) => processes.createProcess(tx, deps, w, body),
-      anchor: anchorOf,
+      recheck: (tx, scope, view) => currentEditable(tx, ctx, scope, 'process', view.id),
       present: async (view) => (await processPresenter(deps, ctx))(view),
     });
   });
@@ -216,7 +266,7 @@ function registerProcessWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await writeContext(c, deps, 'process', 'update', 'update');
     const id = uuidParam(c);
     const body = await parseBody(c, input.processPatch);
-    // 子流程按实际变化在事务内逐段校验（process-service.ts），这里只校验顶层字段
+    // 子流程按实际变化在事务内逐段校验并记入台账、重放时复核（process-service.ts），这里只校验顶层字段
     const { subProcesses: _subProcesses, ...top } = body;
     await checkWriteFields(deps, ctx, 'process', 'update', top);
     return runIdpWrite<read.ProcessView>(c, deps, ctx, {
@@ -224,7 +274,7 @@ function registerProcessWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       status: 200,
       body,
       execute: (tx, w) => processes.updateProcess(tx, deps, w, id, body),
-      anchor: anchorOf,
+      recheck: (tx, scope, view) => currentEditable(tx, ctx, scope, 'process', view.id),
       present: async (view) => (await processPresenter(deps, ctx))(view),
     });
   });
@@ -237,7 +287,8 @@ function registerProcessWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       status: 200,
       body: { id },
       execute: (tx, w) => processes.deleteProcess(tx, w, id),
-      anchor: anchorOf,
+      // 删除的受控快照：按删除时的归属判定当前可写性
+      recheck: (tx, scope, view) => requireEditable(tx, ctx, scope, 'process', anchorOf(view)),
       present: async (view) => (await processPresenter(deps, ctx))(view),
     });
   });
@@ -331,23 +382,36 @@ function registerTemplateRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
   });
 }
 
-function registerTemplateWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  const path = `${BASE}/templates`;
-  const templateWrite = <T extends read.TemplateView>(
+/** 模板写入（模块与通用目标以外）：共用执行器，返回前按 recheck 复核当前归属与引用。 */
+function templateWriter(deps: TenantRouteDeps) {
+  return <T extends read.TemplateView>(
     c: Context<TenantEnv>,
     ctx: IdpContext,
     status: 200 | 201,
     body: unknown,
     execute: (tx: Tx, w: WriteContext) => Promise<T>,
+    recheck: (tx: Tx, scope: ModuleScope, view: T) => Promise<void>,
   ) =>
     runIdpWrite<T>(c, deps, ctx, {
       anchorObject: 'template',
       status,
       body,
       execute,
-      anchor: anchorOf,
+      recheck,
       present: async (view) => (await templatePresenter(deps, ctx))(view),
     });
+}
+
+/** 模板写入后：模板当前可写；引用的流程（新建 / 换流程 / 复制时）当前可见。 */
+const editable =
+  (ctx: IdpContext, process?: ModuleScope) => async (tx: Tx, scope: ModuleScope, view: read.TemplateView) => {
+    await currentEditable(tx, ctx, scope, 'template', view.id);
+    if (process) await currentReadable(tx, ctx, process, 'process', view.processId);
+  };
+
+function registerTemplateWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  const path = `${BASE}/templates`;
+  const templateWrite = templateWriter(deps);
 
   router.post(path, async (c) => {
     const ctx = await writeContext(c, deps, 'template', 'create', 'create');
@@ -355,7 +419,14 @@ function registerTemplateWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     const body = await parseBody(c, input.templateCreate);
     await checkWriteFields(deps, ctx, 'template', 'create', body);
     const process = await processScopeFor(c, deps, ctx);
-    return templateWrite(c, ctx, 201, body, (tx, w) => templates.createTemplate(tx, w, { process }, body));
+    return templateWrite(
+      c,
+      ctx,
+      201,
+      body,
+      (tx, w) => templates.createTemplate(tx, w, { process }, body),
+      editable(ctx, process),
+    );
   });
 
   router.patch(`${path}/:id`, async (c) => {
@@ -364,15 +435,35 @@ function registerTemplateWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     const body = await parseBody(c, input.templatePatch);
     await checkWriteFields(deps, ctx, 'template', 'update', body);
     const process = body.processId ? await processScopeFor(c, deps, ctx) : undefined;
-    return templateWrite(c, ctx, 200, body, (tx, w) => templates.updateTemplate(tx, w, { process }, id, body));
+    return templateWrite(
+      c,
+      ctx,
+      200,
+      body,
+      (tx, w) => templates.updateTemplate(tx, w, { process }, id, body),
+      editable(ctx, process),
+    );
   });
 
   router.delete(`${path}/:id`, async (c) => {
     const ctx = await writeContext(c, deps, 'template', 'delete', 'delete');
     const id = uuidParam(c);
-    return templateWrite(c, ctx, 200, { id }, (tx, w) => templates.deleteTemplate(tx, w, id));
+    return templateWrite(
+      c,
+      ctx,
+      200,
+      { id },
+      (tx, w) => templates.deleteTemplate(tx, w, id),
+      // 删除的受控快照：按删除时的归属判定当前可写性
+      (tx, scope, view) => requireEditable(tx, ctx, scope, 'template', anchorOf(view)),
+    );
   });
+}
 
+/** 复制、发布、取消发布。 */
+function registerTemplateActions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  const path = `${BASE}/templates`;
+  const templateWrite = templateWriter(deps);
   router.post(`${path}/:id/copy`, async (c) => {
     const ctx = await writeContext(c, deps, 'template', 'create', 'copy');
     requireNew(ctx);
@@ -380,7 +471,23 @@ function registerTemplateWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     const body = await parseBody(c, input.templateCopy);
     await checkWriteFields(deps, ctx, 'template', 'create', body);
     const process = await processScopeFor(c, deps, ctx);
-    return templateWrite(c, ctx, 201, body, (tx, w) => templates.copyTemplate(tx, w, { process }, id, body));
+    // 继承内容的字段投影在事务外按当前权限解析（事务内判定，P2-3）
+    const projections = {
+      template: await projectionOf(deps, ctx, 'template'),
+      templateModule: await projectionOf(deps, ctx, 'templateModule'),
+      commonGoal: await projectionOf(deps, ctx, 'commonGoal'),
+    };
+    return templateWrite(
+      c,
+      ctx,
+      201,
+      body,
+      (tx, w) => templates.copyTemplate(tx, deps, w, { process, projections }, id, body),
+      async (tx, scope, view) => {
+        await editable(ctx, process)(tx, scope, view);
+        await currentReadable(tx, ctx, scope, 'template', id);
+      },
+    );
   });
 
   for (const [action, status] of [
@@ -390,7 +497,14 @@ function registerTemplateWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
     router.post(`${path}/:id/${action}`, async (c) => {
       const ctx = await writeContext(c, deps, 'template', 'update', action);
       const id = uuidParam(c);
-      return templateWrite(c, ctx, 200, { id, action }, (tx, w) => templates.setTemplateStatus(tx, w, id, status));
+      return templateWrite(
+        c,
+        ctx,
+        200,
+        { id, action },
+        (tx, w) => templates.setTemplateStatus(tx, w, id, status),
+        editable(ctx),
+      );
     });
   }
 }
@@ -431,7 +545,7 @@ function registerTemplatePartRoutes(router: Hono<TenantEnv>, deps: TenantRouteDe
         status: operation === 'create' ? 201 : 200,
         body: { partId, body },
         execute: (tx, w) => execute(tx, w, templateId, partId, body),
-        anchor: anchorOf,
+        recheck: (tx, scope) => currentEditable(tx, ctx, scope, 'template', templateId),
         present: async (view) => (await templatePresenter(deps, ctx))(view),
       });
     };

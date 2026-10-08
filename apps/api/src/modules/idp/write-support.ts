@@ -10,10 +10,19 @@ import type { IdpApprovalType, IdpObject } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
-import { codeOf, IDP_AUDIT_ACTIONS, type IdpContext, type ModuleScope, rowsOf } from './access.js';
+import {
+  codeOf,
+  IDP_AUDIT_ACTIONS,
+  type IdpContext,
+  type ModuleScope,
+  type PermissionCheck,
+  rowsOf,
+} from './access.js';
 
 export interface WriteContext extends IdpContext {
   readonly scope: ModuleScope;
+  /** 本命令实际用到的权限（随结果存进命令台账，重放时复核）。 */
+  readonly checks: PermissionCheck[];
 }
 
 export async function audit(

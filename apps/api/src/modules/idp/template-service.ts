@@ -21,7 +21,16 @@ import {
   SINGLETON_MODULES,
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
-import { requireCreatable, requireEditable, requireReadable, rowsOf } from './access.js';
+import {
+  type Projection,
+  requireCreatable,
+  requireEditable,
+  requireNestedWrite,
+  requireReadable,
+  requireViewable,
+  rowsOf,
+} from './access.js';
+import type { TenantRouteDeps } from '../../routes.js';
 import type {
   CommonGoalCreate,
   CommonGoalPatch,
@@ -54,6 +63,7 @@ import {
 } from './write-support.js';
 
 type ModuleRow = typeof idpTemplateModules.$inferSelect;
+type Deps = Pick<TenantRouteDeps, 'authorize'>;
 type TemplateRow = typeof idpTemplates.$inferSelect;
 
 const NAME_TAKEN = ['IDP_TEMPLATE_NAME_TAKEN', '模板名称已存在'] as const;
@@ -268,14 +278,24 @@ export async function deleteTemplate(tx: Tx, ctx: WriteContext, id: string) {
   return before;
 }
 
+/** 复制时继承内容的字段投影（事务外按当前权限预先解析，见 routes.ts）。 */
+export interface CopyProjections {
+  readonly template: Projection;
+  readonly templateModule: Projection;
+  readonly commonGoal: Projection;
+}
+
 /**
  * 复制模板（IDP-R6，🟡 K-27）：源模板对操作人可见即可（含向下公开）；新模板挂在操作人范围内的组织（缺省同源模板），
  * 带出模块、节点按钮配置与通用目标，名称须新填且不重复，副本为草稿。
+ * 第 2 轮 P2-3 / P2-4：继承的每个字段都须对操作人可见、且操作人在目标位置有权创建（模板、每个模块、每个通用目标），
+ * 有一项不满足即整次拒绝（403），不做“看不到的字段不复制”的部分复制；节点配置按审批流程当前已发布版本复核（409）。
  */
 export async function copyTemplate(
   tx: Tx,
+  deps: Deps,
   ctx: WriteContext,
-  scopes: TemplateScopes,
+  scopes: TemplateScopes & { readonly projections: CopyProjections },
   sourceId: string,
   input: TemplateCopy,
 ) {
@@ -291,6 +311,15 @@ export async function copyTemplate(
   requireCreatable(ctx.scope, 'template', orgId);
   await requireOrg(tx, ctx.tenantId, orgId);
   await requireUsableProcess(tx, ctx, scopes.process, source.processId);
+  const modules = await loadModuleRows(tx, ctx.tenantId, sourceId);
+  const nodes = await loadNodeSettings(
+    tx,
+    ctx.tenantId,
+    modules.map((m) => m.id),
+  );
+  const goals = await loadCommonGoals(tx, ctx.tenantId, sourceId);
+  await checkCopyable(tx, deps, ctx, scopes.projections, { source, modules, nodes, goals, orgDefaulted: !input.orgId });
+
   const [row] = await unique(
     () =>
       tx
@@ -309,12 +338,6 @@ export async function copyTemplate(
     ...NAME_TAKEN,
   );
   const id = row!.id;
-  const modules = await loadModuleRows(tx, ctx.tenantId, sourceId);
-  const nodes = await loadNodeSettings(
-    tx,
-    ctx.tenantId,
-    modules.map((m) => m.id),
-  );
   const moduleIds = new Map<string, string>();
   for (const module of modules) {
     const { id: oldId, templateId: _t, createdAt: _c, createdBy: _b, ...fields } = module;
@@ -325,7 +348,7 @@ export async function copyTemplate(
     moduleIds.set(oldId, copy!.id);
     await writeNodeSettings(tx, ctx, copy!.id, nodes.get(oldId) ?? []);
   }
-  for (const goal of await loadCommonGoals(tx, ctx.tenantId, sourceId)) {
+  for (const goal of goals) {
     const { id: _id, moduleId, ...fields } = goal;
     await tx.insert(idpTemplateCommonGoals).values({
       tenantId: ctx.tenantId,
@@ -336,6 +359,41 @@ export async function copyTemplate(
     });
   }
   return auditCreated(tx, ctx, id);
+}
+
+interface CopySource {
+  readonly source: TemplateRow;
+  readonly modules: readonly ModuleRow[];
+  readonly nodes: ReadonlyMap<string, readonly NodeSettingInput[]>;
+  readonly goals: readonly { readonly id: string }[];
+  readonly orgDefaulted: boolean;
+}
+
+/** 继承内容逐项校验：源字段可见（不论取值是否为空）、目标位置可创建，节点配置仍在已发布版本里。 */
+async function checkCopyable(tx: Tx, deps: Deps, ctx: WriteContext, views: CopyProjections, copy: CopySource) {
+  const templateFields = ['description', 'publicDown', 'processId', 'modules'];
+  if (copy.goals.length) templateFields.push('commonGoals');
+  if (copy.orgDefaulted) templateFields.push('orgId');
+  requireViewable(ctx, views.template, 'template', templateFields);
+  await requireNestedWrite(tx, deps, ctx, 'template', 'create', {
+    name: true,
+    description: true,
+    orgId: true,
+    publicDown: true,
+    processId: true,
+  });
+  for (const module of copy.modules) {
+    const settings = copy.nodes.get(module.id) ?? [];
+    const fields = Object.keys(moduleView(module, settings)).filter((field) => field !== 'id');
+    requireViewable(ctx, views.templateModule, 'templateModule', fields);
+    await requireNestedWrite(tx, deps, ctx, 'templateModule', 'create', Object.fromEntries(fields.map((f) => [f, 1])));
+    if (settings.length) await validateNodeSettings(tx, ctx, copy.source, module.moduleType as ModuleType, settings);
+  }
+  if (copy.goals.length) {
+    const fields = ['moduleId', 'name', 'measure', 'suggestion', 'displayOrder'];
+    requireViewable(ctx, views.commonGoal, 'commonGoal', fields);
+    await requireNestedWrite(tx, deps, ctx, 'commonGoal', 'create', Object.fromEntries(fields.map((f) => [f, 1])));
+  }
 }
 
 // ---- 模块 ----

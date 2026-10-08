@@ -11,7 +11,7 @@ import { sql, type Tx } from '@italent/db';
 import { IDP_OBJECTS, tenantLocalDate, type IdpObject } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { Context } from 'hono';
-import { requirePermission } from '../../authorization.js';
+import { type Authorizer, requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
@@ -26,7 +26,6 @@ import {
   type ModuleScope,
 } from '../permission/module-route-access.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
-import { requireObjectWrite } from '../permission/object-write.js';
 
 for (const definition of Object.values(IDP_OBJECTS)) registerObjectDefinition(definition);
 
@@ -94,22 +93,74 @@ export function checkWriteFields(
   return writeFields(deps, ctx, codeOf(object), operation, payload);
 }
 
+/**
+ * 命令实际用到的权限（第 2 轮 P2-2 / P2-3）：嵌套写权限按首次执行时的实际变化得出，复制另须源内容的查看权。
+ * 首次执行在事务内逐项判定，并随结果存进命令台账；幂等重放返回前按当前权限逐项复核（replayChecks）。
+ */
+export type PermissionCheck =
+  | {
+      readonly kind: 'write';
+      readonly object: IdpObject;
+      readonly operation: 'create' | 'update' | 'delete';
+      readonly fields: readonly string[];
+    }
+  | { readonly kind: 'view'; readonly object: IdpObject; readonly fields: readonly string[] };
+
+/** 带“已用权限记录”的上下文：服务层每判定一项就记一项。 */
+export interface CheckedContext extends IdpContext {
+  readonly checks?: PermissionCheck[];
+}
+
+async function requireWrite(authorize: Authorizer, ctx: IdpContext, check: PermissionCheck & { kind: 'write' }) {
+  const { object, operation, fields } = check;
+  await requirePermission(authorize, { ...ctx, action: `object.${operation}`, resource: codeOf(object), fields });
+}
+
 /** 嵌套对象的写权限（在事务内按实际变化判定：新增段 create、改动的字段 update、删掉的段 delete）。 */
 export async function requireNestedWrite(
   tx: Tx,
   deps: Pick<TenantRouteDeps, 'authorize'>,
-  ctx: IdpContext,
+  ctx: CheckedContext,
   object: IdpObject,
   operation: 'create' | 'update' | 'delete',
   payload: Readonly<Record<string, unknown>> = {},
 ) {
+  const check: PermissionCheck = {
+    kind: 'write',
+    object,
+    operation,
+    fields: operation === 'delete' ? [] : Object.keys(payload),
+  };
   // 在调用方事务内判定（不另开连接，避免与本事务的行锁互等）
-  const authorize = authorizeInTransaction(deps.authorize, tx);
-  if (operation === 'delete') {
-    await requirePermission(authorize, { ...ctx, action: 'object.delete', resource: codeOf(object), fields: [] });
-    return;
+  await requireWrite(authorizeInTransaction(deps.authorize, tx), ctx, check);
+  ctx.checks?.push(check);
+}
+
+/** 复制：继承内容的每个字段都须可查看（字段投影事务外预先解析）；看不到即整次拒绝，不生成副本（P2-3）。 */
+export function requireViewable(ctx: CheckedContext, projection: Projection, object: IdpObject, fields: string[]) {
+  const check: PermissionCheck = { kind: 'view', object, fields };
+  if (!viewable(projection, fields)) {
+    throw new AppError('FORBIDDEN', `看不到${IDP_LABELS[object]}的部分内容，不能复制`, {
+      reason: 'IDP_COPY_HIDDEN_FIELDS',
+    });
   }
-  await requireObjectWrite(authorize, ctx, { objectCode: codeOf(object), operation, payload });
+  ctx.checks?.push(check);
+}
+
+const viewable = (projection: Projection, fields: readonly string[]) =>
+  projection !== null && (projection === undefined || fields.every((field) => projection.has(field)));
+
+/** 幂等重放（与首次执行）返回前，按当前权限复核命令实际用到的每一项权限。 */
+export async function replayChecks(deps: TenantRouteDeps, ctx: IdpContext, checks: readonly PermissionCheck[]) {
+  const projections = new Map<IdpObject, Projection>();
+  for (const check of checks) {
+    if (check.kind === 'write') {
+      await requireWrite(deps.authorize, ctx, check);
+      continue;
+    }
+    if (!projections.has(check.object)) projections.set(check.object, await projectionOf(deps, ctx, check.object));
+    requireViewable(ctx, projections.get(check.object)!, check.object, [...check.fields]);
+  }
 }
 
 /** 流程 / 模板的范围锚点：所属组织、是否向下公开、创建人（“使用用户”规则）。 */
