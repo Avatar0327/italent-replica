@@ -150,7 +150,16 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
     expect(res.status).toBe(200);
     const { items } = (await res.json()) as { items: { code: string; source: string; licenseType: string | null }[] };
     expect(items.map((p) => p.code).sort()).toEqual(
-      ['standard_hr_admin', 'standard_hr_specialist', 'standard_manager', 'standard_org_system_admin'].sort(),
+      [
+        'standard_hr_admin',
+        'standard_hr_specialist',
+        'standard_manager',
+        'standard_org_system_admin',
+        // DEC-280：三类内置 360 身份（应用 Survey360）
+        'standard_360_system_admin',
+        'standard_360_advanced_admin',
+        'standard_360_general_admin',
+      ].sort(),
     );
     expect(items.every((p) => p.source === 'standard')).toBe(true);
     const grantable = await api.request('GET', '/api/tenant/permission/grantable-profiles', asAdmin);

@@ -8,6 +8,7 @@ import { APPROVAL_OBJECTS, APPROVAL_PROCESS_OBJECT } from '../approval/catalog.j
 import { MODULE_OBJECTS, ORG_EMPLOYEE_APP } from '../permission/module-actions.js';
 import type { ObjectDefinition, ObjectPermission } from '../permission/object-permission.js';
 import { PERSONNEL_OBJECTS } from '../personnel/catalog.js';
+import { SURVEY360_APP, SURVEY360_PROFILES } from '../survey360/catalog.js';
 
 /**
  * 编制方案的“看全部”目标（数据源类）：编制方案与组织编制共用对象 OrganizationEstablishment，对象级看全部会连带放开
@@ -122,6 +123,8 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     objects: BUSINESS_OBJECTS.filter((o) => MANAGER_OBJECTS.has(o.code)).map(readOnly),
     hr: false,
   },
+  // DEC-280①②：三类内置 360 身份，由企业管理员在“用户授权”里授予；不消耗许可，数据范围不预置
+  ...SURVEY360_PROFILES.map((p) => ({ ...p, licenseType: null, apps: [SURVEY360_APP], hr: false })),
 ];
 
 /** 开通时授予首位租户管理员的业务身份，使其能查看与配置出厂流程等业务对象（占一个核心人力名额）。 */
