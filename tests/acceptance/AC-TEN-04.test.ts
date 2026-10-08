@@ -149,6 +149,7 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
     const res = await api.request('GET', '/api/tenant/permission/profiles', asAdmin);
     expect(res.status).toBe(200);
     const { items } = (await res.json()) as { items: { code: string; source: string; licenseType: string | null }[] };
+    // DEC-281⑩：另预置“人才标准管理员（人才标准）”（R3-T01）
     expect(items.map((p) => p.code).sort()).toEqual(
       [
         'standard_hr_admin',
@@ -159,6 +160,7 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
         'standard_360_system_admin',
         'standard_360_advanced_admin',
         'standard_360_general_admin',
+        'standard_talent_admin',
       ].sort(),
     );
     expect(items.every((p) => p.source === 'standard')).toBe(true);

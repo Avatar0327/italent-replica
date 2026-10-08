@@ -1,6 +1,6 @@
 {
-  "id": "485bc15e-04b1-4c31-be18-cb049b9fe42b",
-  "prevId": "64b020ff-bd59-4cb0-b25b-939525278aa2",
+  "id": "3acd2b36-52f4-4b46-92f0-6eeaf15b7c70",
+  "prevId": "485bc15e-04b1-4c31-be18-cb049b9fe42b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -22609,7 +22609,7 @@
         },
         "approval_instances_business_type": {
           "name": "approval_instances_business_type",
-          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract')"
+          "value": "\"approval_instances\".\"business_type\" IN ('employment','personnel_change','contract','idp')"
         },
         "approval_instances_revision": {
           "name": "approval_instances_revision",
@@ -23337,6 +23337,34 @@
           "notNull": true,
           "default": "'restart'"
         },
+        "avoid_self": {
+          "name": "avoid_self",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "allow_revoke": {
+          "name": "allow_revoke",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "allow_reject_previous": {
+          "name": "allow_reject_previous",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "allow_jump": {
+          "name": "allow_jump",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "time_span": {
           "name": "time_span",
           "type": "integer",
@@ -23418,11 +23446,11 @@
       "checkConstraints": {
         "approval_nodes_approver": {
           "name": "approval_nodes_approver",
-          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head')"
+          "value": "\"approval_process_nodes\".\"approver_expression\" IN ('owner','direct_manager','latest_record_department_head','record_department_head',\n        'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor')"
         },
         "approval_nodes_no_assignee": {
           "name": "approval_nodes_no_assignee",
-          "value": "\"approval_process_nodes\".\"no_assignee_policy\" = 'exception_admin'"
+          "value": "\"approval_process_nodes\".\"no_assignee_policy\" IN ('exception_admin','none')"
         },
         "approval_nodes_edit_mode": {
           "name": "approval_nodes_edit_mode",
@@ -23450,7 +23478,7 @@
         },
         "approval_nodes_approvers": {
           "name": "approval_nodes_approvers",
-          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 6\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
+          "value": "CASE WHEN \"approval_process_nodes\".\"node_type\" = 'countersign'\n        THEN \"approval_process_nodes\".\"approver_expression\" IS NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") BETWEEN 1 AND 8\n          AND \"approval_process_nodes\".\"approver_expressions\" <@ ARRAY['owner','direct_manager','latest_record_department_head',\n            'record_department_head','record_department_hrbp','record_first_level_org_head',\n            'idp_employee','idp_tutor']::text[]\n        ELSE \"approval_process_nodes\".\"approver_expression\" IS NOT NULL AND cardinality(\"approval_process_nodes\".\"approver_expressions\") = 0 END"
         },
         "approval_nodes_exits": {
           "name": "approval_nodes_exits",
@@ -30073,6 +30101,1359 @@
       },
       "isRLSEnabled": false
     },
+    "public.idp_careers": {
+      "name": "idp_careers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_position_id": {
+          "name": "target_position_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "strengths": {
+          "name": "strengths",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "development_items": {
+          "name": "development_items",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "intended_city": {
+          "name": "intended_city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "idp_careers_tenant_id_tenants_id_fk": {
+          "name": "idp_careers_tenant_id_tenants_id_fk",
+          "tableFrom": "idp_careers",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idp_careers_employee_fk": {
+          "name": "idp_careers_employee_fk",
+          "tableFrom": "idp_careers",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_careers_position_fk": {
+          "name": "idp_careers_position_fk",
+          "tableFrom": "idp_careers",
+          "tableTo": "job_position_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "target_position_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "idp_careers_tenant_id": {
+          "name": "idp_careers_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "idp_careers_key": {
+          "name": "idp_careers_key",
+          "nullsNotDistinct": true,
+          "columns": [
+            "tenant_id",
+            "employee_id",
+            "start_date",
+            "end_date"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "idp_careers_dates": {
+          "name": "idp_careers_dates",
+          "value": "\"idp_careers\".\"end_date\" IS NULL OR \"idp_careers\".\"end_date\" >= \"idp_careers\".\"start_date\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.idp_goal_reviews": {
+      "name": "idp_goal_reviews",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_id": {
+          "name": "plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "goal_id": {
+          "name": "goal_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stage_id": {
+          "name": "stage_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "progress": {
+          "name": "progress",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "idp_goal_reviews_tenant_id_tenants_id_fk": {
+          "name": "idp_goal_reviews_tenant_id_tenants_id_fk",
+          "tableFrom": "idp_goal_reviews",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idp_goal_reviews_plan_fk": {
+          "name": "idp_goal_reviews_plan_fk",
+          "tableFrom": "idp_goal_reviews",
+          "tableTo": "idp_plans",
+          "columnsFrom": [
+            "tenant_id",
+            "plan_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "idp_goal_reviews_goal_fk": {
+          "name": "idp_goal_reviews_goal_fk",
+          "tableFrom": "idp_goal_reviews",
+          "tableTo": "idp_goals",
+          "columnsFrom": [
+            "tenant_id",
+            "goal_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "idp_goal_reviews_stage_fk": {
+          "name": "idp_goal_reviews_stage_fk",
+          "tableFrom": "idp_goal_reviews",
+          "tableTo": "idp_plan_stages",
+          "columnsFrom": [
+            "tenant_id",
+            "stage_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "idp_goal_reviews_tenant_id_goal_id_stage_id_pk": {
+          "name": "idp_goal_reviews_tenant_id_goal_id_stage_id_pk",
+          "columns": [
+            "tenant_id",
+            "goal_id",
+            "stage_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "idp_goal_reviews_progress": {
+          "name": "idp_goal_reviews_progress",
+          "value": "\"idp_goal_reviews\".\"progress\" IS NULL OR \"idp_goal_reviews\".\"progress\" BETWEEN 0 AND 100"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.idp_goal_tasks": {
+      "name": "idp_goal_tasks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_id": {
+          "name": "plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "goal_id": {
+          "name": "goal_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_employee_id": {
+          "name": "owner_employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idp_goal_tasks_goal": {
+          "name": "idp_goal_tasks_goal",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "goal_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "idp_goal_tasks_tenant_id_tenants_id_fk": {
+          "name": "idp_goal_tasks_tenant_id_tenants_id_fk",
+          "tableFrom": "idp_goal_tasks",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idp_goal_tasks_plan_fk": {
+          "name": "idp_goal_tasks_plan_fk",
+          "tableFrom": "idp_goal_tasks",
+          "tableTo": "idp_plans",
+          "columnsFrom": [
+            "tenant_id",
+            "plan_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "idp_goal_tasks_goal_fk": {
+          "name": "idp_goal_tasks_goal_fk",
+          "tableFrom": "idp_goal_tasks",
+          "tableTo": "idp_goals",
+          "columnsFrom": [
+            "tenant_id",
+            "goal_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "idp_goal_tasks_owner_fk": {
+          "name": "idp_goal_tasks_owner_fk",
+          "tableFrom": "idp_goal_tasks",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "idp_goal_tasks_tenant_id": {
+          "name": "idp_goal_tasks_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.idp_goals": {
+      "name": "idp_goals",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_id": {
+          "name": "plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "module_id": {
+          "name": "module_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "measure": {
+          "name": "measure",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "suggestion": {
+          "name": "suggestion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_type": {
+          "name": "source_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "common_goal_id": {
+          "name": "common_goal_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "indicator_id": {
+          "name": "indicator_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "indicator_name": {
+          "name": "indicator_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "indicator_definition": {
+          "name": "indicator_definition",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "indicator_category": {
+          "name": "indicator_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idp_goals_plan": {
+          "name": "idp_goals_plan",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "plan_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "idp_goals_tenant_id_tenants_id_fk": {
+          "name": "idp_goals_tenant_id_tenants_id_fk",
+          "tableFrom": "idp_goals",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idp_goals_plan_fk": {
+          "name": "idp_goals_plan_fk",
+          "tableFrom": "idp_goals",
+          "tableTo": "idp_plans",
+          "columnsFrom": [
+            "tenant_id",
+            "plan_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "idp_goals_module_fk": {
+          "name": "idp_goals_module_fk",
+          "tableFrom": "idp_goals",
+          "tableTo": "idp_template_modules",
+          "columnsFrom": [
+            "tenant_id",
+            "module_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "idp_goals_tenant_id": {
+          "name": "idp_goals_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "idp_goals_source": {
+          "name": "idp_goals_source",
+          "value": "\"idp_goals\".\"source_type\" IN ('custom', 'library', 'common')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.idp_plan_analyses": {
+      "name": "idp_plan_analyses",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_id": {
+          "name": "plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "module_id": {
+          "name": "module_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "current_analysis": {
+          "name": "current_analysis",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "development_items": {
+          "name": "development_items",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "idp_plan_analyses_tenant_id_tenants_id_fk": {
+          "name": "idp_plan_analyses_tenant_id_tenants_id_fk",
+          "tableFrom": "idp_plan_analyses",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idp_plan_analyses_plan_fk": {
+          "name": "idp_plan_analyses_plan_fk",
+          "tableFrom": "idp_plan_analyses",
+          "tableTo": "idp_plans",
+          "columnsFrom": [
+            "tenant_id",
+            "plan_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "idp_plan_analyses_tenant_id_plan_id_module_id_pk": {
+          "name": "idp_plan_analyses_tenant_id_plan_id_module_id_pk",
+          "columns": [
+            "tenant_id",
+            "plan_id",
+            "module_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.idp_plan_reviews": {
+      "name": "idp_plan_reviews",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_id": {
+          "name": "plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "module_id": {
+          "name": "module_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "stage_id": {
+          "name": "stage_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "improvement": {
+          "name": "improvement",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "idp_plan_reviews_tenant_id_tenants_id_fk": {
+          "name": "idp_plan_reviews_tenant_id_tenants_id_fk",
+          "tableFrom": "idp_plan_reviews",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idp_plan_reviews_plan_fk": {
+          "name": "idp_plan_reviews_plan_fk",
+          "tableFrom": "idp_plan_reviews",
+          "tableTo": "idp_plans",
+          "columnsFrom": [
+            "tenant_id",
+            "plan_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "idp_plan_reviews_stage_fk": {
+          "name": "idp_plan_reviews_stage_fk",
+          "tableFrom": "idp_plan_reviews",
+          "tableTo": "idp_plan_stages",
+          "columnsFrom": [
+            "tenant_id",
+            "stage_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "idp_plan_reviews_tenant_id_plan_id_module_id_stage_id_pk": {
+          "name": "idp_plan_reviews_tenant_id_plan_id_module_id_stage_id_pk",
+          "columns": [
+            "tenant_id",
+            "plan_id",
+            "module_id",
+            "stage_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.idp_plan_stages": {
+      "name": "idp_plan_stages",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_id": {
+          "name": "plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sub_process_id": {
+          "name": "sub_process_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "approval_instance_id": {
+          "name": "approval_instance_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "opened_at": {
+          "name": "opened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_on": {
+          "name": "ended_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempt_count": {
+          "name": "attempt_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_attempt_on": {
+          "name": "last_attempt_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "idp_plan_stages_pending": {
+          "name": "idp_plan_stages_pending",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idp_plan_stages_instance": {
+          "name": "idp_plan_stages_instance",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "approval_instance_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "idp_plan_stages_tenant_id_tenants_id_fk": {
+          "name": "idp_plan_stages_tenant_id_tenants_id_fk",
+          "tableFrom": "idp_plan_stages",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idp_plan_stages_plan_fk": {
+          "name": "idp_plan_stages_plan_fk",
+          "tableFrom": "idp_plan_stages",
+          "tableTo": "idp_plans",
+          "columnsFrom": [
+            "tenant_id",
+            "plan_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "idp_plan_stages_sub_process_fk": {
+          "name": "idp_plan_stages_sub_process_fk",
+          "tableFrom": "idp_plan_stages",
+          "tableTo": "idp_sub_processes",
+          "columnsFrom": [
+            "tenant_id",
+            "sub_process_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "idp_plan_stages_tenant_id": {
+          "name": "idp_plan_stages_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "idp_plan_stages_seq": {
+          "name": "idp_plan_stages_seq",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "plan_id",
+            "seq"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "idp_plan_stages_status": {
+          "name": "idp_plan_stages_status",
+          "value": "\"idp_plan_stages\".\"status\" IN ('pending', 'running', 'ended', 'failed')"
+        },
+        "idp_plan_stages_attempts": {
+          "name": "idp_plan_stages_attempts",
+          "value": "\"idp_plan_stages\".\"attempt_count\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.idp_plans": {
+      "name": "idp_plans",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "template_id": {
+          "name": "template_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "process_id": {
+          "name": "process_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tutor_role": {
+          "name": "tutor_role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tutor_employee_id": {
+          "name": "tutor_employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'not_started'"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idp_plans_employee": {
+          "name": "idp_plans_employee",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idp_plans_tutor": {
+          "name": "idp_plans_tutor",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "tutor_employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idp_plans_template": {
+          "name": "idp_plans_template",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "template_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "idp_plans_tenant_id_tenants_id_fk": {
+          "name": "idp_plans_tenant_id_tenants_id_fk",
+          "tableFrom": "idp_plans",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idp_plans_employee_fk": {
+          "name": "idp_plans_employee_fk",
+          "tableFrom": "idp_plans",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_plans_tutor_fk": {
+          "name": "idp_plans_tutor_fk",
+          "tableFrom": "idp_plans",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "tutor_employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_plans_template_fk": {
+          "name": "idp_plans_template_fk",
+          "tableFrom": "idp_plans",
+          "tableTo": "idp_templates",
+          "columnsFrom": [
+            "tenant_id",
+            "template_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_plans_process_fk": {
+          "name": "idp_plans_process_fk",
+          "tableFrom": "idp_plans",
+          "tableTo": "idp_processes",
+          "columnsFrom": [
+            "tenant_id",
+            "process_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "idp_plans_tenant_id": {
+          "name": "idp_plans_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "idp_plans_status": {
+          "name": "idp_plans_status",
+          "value": "\"idp_plans\".\"status\" IN ('not_started', 'running', 'ended', 'terminated')"
+        },
+        "idp_plans_tutor_role": {
+          "name": "idp_plans_tutor_role",
+          "value": "\"idp_plans\".\"tutor_role\" IN ('direct_manager', 'indirect_manager', 'level3_head', 'level4_head', 'level5_head', 'mentor', 'department_hrbp', 'department_head', 'other')"
+        },
+        "idp_plans_dates": {
+          "name": "idp_plans_dates",
+          "value": "\"idp_plans\".\"end_date\" >= \"idp_plans\".\"start_date\""
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.idp_processes": {
       "name": "idp_processes",
       "schema": "",
@@ -30685,6 +32066,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "key_info_fields": {
+          "name": "key_info_fields",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
         "review_time_basis": {
           "name": "review_time_basis",
           "type": "text",
@@ -31173,6 +32560,417 @@
         "idp_templates_status": {
           "name": "idp_templates_status",
           "value": "\"idp_templates\".\"status\" IN ('draft', 'published')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.idp_tutorships": {
+      "name": "idp_tutorships",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tutor_employee_id": {
+          "name": "tutor_employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tutee_employee_id": {
+          "name": "tutee_employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "remark": {
+          "name": "remark",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idp_tutorships_tutee": {
+          "name": "idp_tutorships_tutee",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "tutee_employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "idp_tutorships_tenant_id_tenants_id_fk": {
+          "name": "idp_tutorships_tenant_id_tenants_id_fk",
+          "tableFrom": "idp_tutorships",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idp_tutorships_tutor_fk": {
+          "name": "idp_tutorships_tutor_fk",
+          "tableFrom": "idp_tutorships",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "tutor_employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_tutorships_tutee_fk": {
+          "name": "idp_tutorships_tutee_fk",
+          "tableFrom": "idp_tutorships",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "tutee_employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "idp_tutorships_tenant_id": {
+          "name": "idp_tutorships_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "idp_tutorships_key": {
+          "name": "idp_tutorships_key",
+          "nullsNotDistinct": true,
+          "columns": [
+            "tenant_id",
+            "tutor_employee_id",
+            "tutee_employee_id",
+            "start_date",
+            "end_date"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "idp_tutorships_dates": {
+          "name": "idp_tutorships_dates",
+          "value": "\"idp_tutorships\".\"end_date\" IS NULL OR \"idp_tutorships\".\"end_date\" >= \"idp_tutorships\".\"start_date\""
+        },
+        "idp_tutorships_distinct": {
+          "name": "idp_tutorships_distinct",
+          "value": "\"idp_tutorships\".\"tutor_employee_id\" <> \"idp_tutorships\".\"tutee_employee_id\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.idp_work_shifts": {
+      "name": "idp_work_shifts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position_id": {
+          "name": "position_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "post_id": {
+          "name": "post_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mentor_employee_id": {
+          "name": "mentor_employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idp_work_shifts_org": {
+          "name": "idp_work_shifts_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "idp_work_shifts_tenant_id_tenants_id_fk": {
+          "name": "idp_work_shifts_tenant_id_tenants_id_fk",
+          "tableFrom": "idp_work_shifts",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "idp_work_shifts_employee_fk": {
+          "name": "idp_work_shifts_employee_fk",
+          "tableFrom": "idp_work_shifts",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_work_shifts_mentor_fk": {
+          "name": "idp_work_shifts_mentor_fk",
+          "tableFrom": "idp_work_shifts",
+          "tableTo": "employment_employees",
+          "columnsFrom": [
+            "tenant_id",
+            "mentor_employee_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_work_shifts_position_fk": {
+          "name": "idp_work_shifts_position_fk",
+          "tableFrom": "idp_work_shifts",
+          "tableTo": "job_position_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "position_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_work_shifts_post_fk": {
+          "name": "idp_work_shifts_post_fk",
+          "tableFrom": "idp_work_shifts",
+          "tableTo": "job_post_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "post_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "idp_work_shifts_org_fk": {
+          "name": "idp_work_shifts_org_fk",
+          "tableFrom": "idp_work_shifts",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "idp_work_shifts_tenant_id": {
+          "name": "idp_work_shifts_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "idp_work_shifts_key": {
+          "name": "idp_work_shifts_key",
+          "nullsNotDistinct": true,
+          "columns": [
+            "tenant_id",
+            "employee_id",
+            "org_id",
+            "position_id",
+            "post_id",
+            "start_date",
+            "end_date"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "idp_work_shifts_dates": {
+          "name": "idp_work_shifts_dates",
+          "value": "\"idp_work_shifts\".\"end_date\" IS NULL OR \"idp_work_shifts\".\"end_date\" >= \"idp_work_shifts\".\"start_date\""
         }
       },
       "isRLSEnabled": false

@@ -1,0 +1,201 @@
+import { useState } from 'react';
+import { DIMENSION_TYPES, type DimensionType, type Library, type OwnerOrg } from './api.js';
+import { changedFields } from './changes.js';
+import { text } from './messages.js';
+import { ownerOrgBody, OwnerUnitField, useOwnerOrgs } from './OwnerOrgSelect.js';
+import { Pager, Status } from './parts.js';
+import { useList } from './useList.js';
+import { useTalentWrite } from './useTalentWrite.js';
+
+interface Draft {
+  readonly original: Library | null;
+  readonly name: string;
+  readonly type: DimensionType;
+  readonly enabled: boolean;
+  readonly displayOrder: number;
+  readonly ownerOrgId: string;
+}
+
+const pick = ({ name, enabled, displayOrder }: Library) => ({ name, enabled, displayOrder });
+
+/**
+ * 指标库：按 能力 / 潜力 / 经历 三类建立（TC-R1）；类型建后不可修改（DEC-281⑥）；所属人 / 所属管理单元由系统填写，
+ * 只在创建人有多个授权管理单元时新建可选（DEC-294③）；
+ * 还有指标或分类的指标库不能删除（TC-R5）。
+ */
+export function LibraryPanel({ tenantId }: { tenantId: string }) {
+  const [type, setType] = useState('');
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const write = useTalentWrite(tenantId, () => {
+    setDraft(null);
+    list.reload();
+  });
+  const list = useList<Library>(tenantId, `libraries${type ? `?type=${type}` : ''}`, write.setError);
+  const owners = useOwnerOrgs(tenantId, 'library', write.setError);
+  const save = () => {
+    if (!draft) return;
+    const { original, type: draftType, ownerOrgId, ...fields } = draft;
+    write.mutate({
+      path: original ? `libraries/${original.id}` : 'libraries',
+      method: original ? 'PATCH' : 'POST',
+      revision: original?.revision ?? 0,
+      body: original
+        ? changedFields(pick(original), fields)
+        : { ...fields, type: draftType, ...ownerOrgBody(owners, ownerOrgId) },
+    });
+  };
+  const blank: Draft = { original: null, name: '', type: 'ability', enabled: true, displayOrder: 0, ownerOrgId: '' };
+  return (
+    <section aria-busy={write.busy}>
+      <select aria-label={text.type} value={type} onChange={(event) => setType(event.target.value)}>
+        <option value="">{text.allTypes}</option>
+        {DIMENSION_TYPES.map((item) => (
+          <option key={item} value={item}>
+            {text.types[item]}
+          </option>
+        ))}
+      </select>
+      <button disabled={write.locked} onClick={() => setDraft(blank)}>
+        {text.create}
+      </button>
+      <Status write={write} hasDataPermission={list.hasDataPermission} />
+      <LibraryTable
+        items={list.items}
+        locked={write.locked}
+        onEdit={(item) => setDraft({ ...pick(item), type: item.type, ownerOrgId: '', original: item })}
+        onDelete={(item) => write.mutate({ path: `libraries/${item.id}`, method: 'DELETE', revision: item.revision })}
+      />
+      <Pager list={list} locked={write.locked} />
+      {draft && (
+        <LibraryForm
+          draft={draft}
+          owners={owners}
+          busy={write.locked}
+          onChange={setDraft}
+          onSubmit={save}
+          onCancel={() => setDraft(null)}
+        />
+      )}
+    </section>
+  );
+}
+
+function LibraryTable({
+  items,
+  locked,
+  onEdit,
+  onDelete,
+}: {
+  items: readonly Library[];
+  locked: boolean;
+  onEdit: (item: Library) => void;
+  onDelete: (item: Library) => void;
+}) {
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th>{text.name}</th>
+          <th>{text.type}</th>
+          <th>{text.enabled}</th>
+          <th />
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((item) => (
+          <tr key={item.id}>
+            <td>{item.name}</td>
+            <td>{text.types[item.type]}</td>
+            <td>{item.enabled ? '✓' : text.disabled}</td>
+            <td>
+              <button disabled={locked} onClick={() => onEdit(item)}>
+                {text.edit}
+              </button>
+              <button disabled={locked} onClick={() => window.confirm(text.confirmDelete) && onDelete(item)}>
+                {text.delete}
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function LibraryForm({
+  draft,
+  owners,
+  busy,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  draft: Draft;
+  owners: readonly OwnerOrg[] | undefined;
+  busy: boolean;
+  onChange: (draft: Draft) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      <fieldset disabled={busy}>
+        <label>
+          {text.name}
+          <input
+            required
+            maxLength={200}
+            value={draft.name}
+            onChange={(event) => onChange({ ...draft, name: event.target.value })}
+          />
+        </label>
+        <label>
+          {text.type}
+          <select
+            value={draft.type}
+            disabled={!!draft.original}
+            onChange={(event) => onChange({ ...draft, type: event.target.value as DimensionType })}
+          >
+            {DIMENSION_TYPES.map((item) => (
+              <option key={item} value={item}>
+                {text.types[item]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <OwnerUnitField
+          editing={!!draft.original}
+          value={draft.ownerOrgId}
+          options={owners}
+          onChange={(ownerOrgId) => onChange({ ...draft, ownerOrgId })}
+        />
+        <label>
+          {text.displayOrder}
+          <input
+            type="number"
+            min={0}
+            value={draft.displayOrder}
+            onChange={(event) => onChange({ ...draft, displayOrder: Number(event.target.value) })}
+          />
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={draft.enabled}
+            onChange={(event) => onChange({ ...draft, enabled: event.target.checked })}
+          />
+          {text.enabled}
+        </label>
+        <button type="submit">{text.save}</button>
+        <button type="button" onClick={onCancel}>
+          {text.cancel}
+        </button>
+      </fieldset>
+    </form>
+  );
+}
