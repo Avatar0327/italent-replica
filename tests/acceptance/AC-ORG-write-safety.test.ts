@@ -55,7 +55,7 @@ describe('AC-ORG 写命令安全边界', () => {
       ['并发新名甲', '并发新名乙'].map((name) =>
         session.request('PATCH', `/organizations/${org.id}`, {
           ifMatch: org.revision,
-          body: { name, effectiveDate: '2026-10-01' },
+          body: { addEmployment: false, name, effectiveDate: '2026-10-01' },
         }),
       ),
     );

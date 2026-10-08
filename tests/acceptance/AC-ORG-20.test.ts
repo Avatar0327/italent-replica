@@ -43,7 +43,11 @@ async function versionCount(world: OrgPeopleWorld, orgId: string): Promise<numbe
 async function versioned(label: string) {
   const world = await orgPeopleWorld(testDb().db, label);
   const org = await world.org('编辑设立部门', world.tenant.id, { establishedOn: '2026-09-01' });
-  const renamed = await world.patchOrg(org, { name: '编辑设立部门V2', effectiveDate: '2026-10-08' });
+  const renamed = await world.patchOrg(org, {
+    addEmployment: false,
+    name: '编辑设立部门V2',
+    effectiveDate: '2026-10-08',
+  });
   expect(renamed.status, await renamed.clone().text()).toBe(200);
   return { world, org: { id: org.id, revision: 2 } };
 }
@@ -162,7 +166,7 @@ describe('AC-ORG-20 在「编辑」中修改设立日期（DEC-147）', () => {
     }
     const unknownField = await world.call('PATCH', `org/organizations/${org.id}/correction`, {
       ifMatch: org.revision,
-      body: { establishedOn: '2026-08-31', name: '不可在此修改' },
+      body: { addEmployment: false, establishedOn: '2026-08-31', name: '不可在此修改' },
     });
     expect(unknownField.status).toBe(400);
     expect((await correct(world, { id: org.id, revision: 1 }, '2026-08-31')).status).toBe(409);
@@ -237,7 +241,11 @@ describe('AC-ORG-20 更正不产生派生全称版本，全称按当天的上级
   it('上级在区间内改名：改早不新增版本、全称按日期解析；再改晚、改回都不被挡，版本数始终为 1', async () => {
     const world = await orgPeopleWorld(testDb().db, 'org20rename');
     const parent = await world.org('区间上级', world.tenant.id, { establishedOn: '2026-08-01' });
-    const renamed = await world.patchOrg(parent, { name: '区间上级V2', effectiveDate: '2026-09-01' });
+    const renamed = await world.patchOrg(parent, {
+      addEmployment: false,
+      name: '区间上级V2',
+      effectiveDate: '2026-09-01',
+    });
     expect(renamed.status, await renamed.clone().text()).toBe(200);
     const child = await world.org('区间下级', parent.id, { establishedOn: '2026-09-01' });
     const root = String(parent.fullName).split('/')[0];
@@ -278,7 +286,11 @@ describe('AC-ORG-20 更正不产生派生全称版本，全称按当天的上级
     const parent = await world.org('改名上级', world.tenant.id, { establishedOn: '2026-08-01' });
     const child = await world.org('先设下级', parent.id, { establishedOn: '2026-08-15' });
     const root = String(parent.fullName).split('/')[0];
-    const renamed = await world.patchOrg(parent, { name: '改名上级V2', effectiveDate: '2026-09-01' });
+    const renamed = await world.patchOrg(parent, {
+      addEmployment: false,
+      name: '改名上级V2',
+      effectiveDate: '2026-09-01',
+    });
     expect(renamed.status, await renamed.clone().text()).toBe(200);
     expect(await versionCount(world, child.id)).toBe(1);
     expect((await world.orgsAt('2026-08-20')).get(child.id)).toMatchObject({
@@ -295,7 +307,7 @@ describe('AC-ORG-20 更正不产生派生全称版本，全称按当天的上级
     expect(await versionCount(world, child.id)).toBe(1);
     const own = await world.patchOrg(
       { id: child.id, revision: 2 },
-      { name: '先设下级V2', effectiveDate: '2026-10-08' },
+      { addEmployment: false, name: '先设下级V2', effectiveDate: '2026-10-08' },
     );
     expect(own.status, await own.clone().text()).toBe(200);
     await rejected(

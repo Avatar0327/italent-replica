@@ -13,7 +13,7 @@ import {
   transferOnTrials,
   type Tx,
 } from '@italent/db';
-import { addDays, tenantLocalDate, termEnd } from '@italent/domain';
+import { addDays, resolveLateExecution, tenantLocalDate, termEnd } from '@italent/domain';
 import { AppError } from '../../../errors.js';
 import { auditEmployment } from '../../employment/context.js';
 import { plannedEffectiveDate } from '../../employment/timeline.js';
@@ -43,8 +43,9 @@ export async function linkageExecuted(tx: Tx, tenantId: string, businessId: stri
  * F-017 已把迟到的任职本身改到实际执行日（late-transfer.ts），两者取同一日期；这里保持一致，作为同口径兜底。
  */
 function executionDate(ctx: EmploymentContext, planned: string): string {
+  if (!ctx.deferredExecution) return planned;
   const today = tenantLocalDate(ctx.now, ctx.timezone);
-  return ctx.deferredExecution && today > planned ? today : planned;
+  return resolveLateExecution({ plannedEffectiveDate: planned, executionDate: today }).effectiveDate;
 }
 
 async function originalPlannedDate(tx: Tx, tenantId: string, transfer: ActivatedTransfer): Promise<string> {

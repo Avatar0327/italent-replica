@@ -78,7 +78,7 @@ describe('AC-ORG-15 设立日期必填并作为首个版本的生效日期（DEC
     };
     const renamed = await session.request('PATCH', `/organizations/${org.id}`, {
       ifMatch: org.revision,
-      body: { name: '变更后名称', effectiveDate: '2026-10-05' },
+      body: { addEmployment: false, name: '变更后名称', effectiveDate: '2026-10-05' },
     });
     expect(renamed.status).toBe(200);
     expect(await renamed.json()).toMatchObject({ establishedOn: '2026-09-01', startDate: '2026-10-05', revision: 2 });
