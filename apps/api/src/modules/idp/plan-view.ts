@@ -21,7 +21,7 @@ import {
 } from '@italent/domain';
 import type { TenantRouteDeps } from '../../routes.js';
 import { findCurrentRecord } from '../employment/read-model.js';
-import { isEmploymentRecordVisible } from '../employment/visibility.js';
+import { sourceRecordVisible } from './employment-source.js';
 import { getModuleViewableFields, resolveModuleScope } from '../permission/module-access.js';
 import {
   accessOf,
@@ -225,8 +225,7 @@ async function employmentVisible(
   if (!sees(employment.fields, 'effectiveDate')) return false;
   const record = await findCurrentRecord(tx, plan.tenantId, plan.employeeId, asOf);
   if (!record) return true;
-  const departmentId = (record.fields.departmentId as string | null | undefined) ?? null;
-  return isEmploymentRecordVisible(tx, plan.tenantId, employment.scope, { employeeId: plan.employeeId, departmentId });
+  return sourceRecordVisible(tx, plan.tenantId, employment.scope, record);
 }
 
 /** 当前阶段名是某段的子流程名称时随名称一起裁剪；“努力提升中”是固定文案，不是带出值。 */

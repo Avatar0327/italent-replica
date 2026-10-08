@@ -12,7 +12,7 @@ import { MODULE_OBJECTS, tenantLocalDate, type TutorRole } from '@italent/domain
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { findCurrentRecord } from '../employment/read-model.js';
-import { isEmploymentRecordVisible } from '../employment/visibility.js';
+import { sourceRecordVisible } from './employment-source.js';
 import { getModuleViewableFields, resolveModuleScope, scopeAllows } from '../permission/module-access.js';
 import { creatorOf, hasCreatorScope } from '../permission/scope-audit.js';
 import { auditContents, auditGoalChildren } from './cascade-audit.js';
@@ -127,13 +127,11 @@ async function resolveTutor(
     ctx.checks.push({ kind: 'source', objectCode: MODULE_OBJECTS.organization.code, fields: [field] });
   }
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
-  /** 员工当前任职记录，须在操作人任职记录范围内（与任职记录接口同一可见判定，DEC-177）。 */
+  /** 员工当前任职记录，须在操作人任职记录范围内（与任职记录接口同一可见判定，DEC-177，含创建人 R2-7）。 */
   const visibleRecord = async (person: string) => {
     const record = await findCurrentRecord(tx, ctx.tenantId, person, asOf);
     if (!record) return null;
-    const departmentId = (record.fields.departmentId as string | null | undefined) ?? null;
-    const target = { employeeId: person, departmentId };
-    return (await isEmploymentRecordVisible(tx, ctx.tenantId, sources.employmentScope, target)) ? record : null;
+    return (await sourceRecordVisible(tx, ctx.tenantId, sources.employmentScope, record)) ? record : null;
   };
   // 间接经理逐跳调用：每一跳的任职记录都单独校验范围
   const managerOf = async (person: string) => {
