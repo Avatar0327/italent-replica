@@ -19,6 +19,7 @@ import {
   type ModuleType,
   nodeButtonsOf,
   SINGLETON_MODULES,
+  TEMPLATE_MODULE_FIELDS,
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import {
@@ -371,8 +372,8 @@ interface CopySource {
 
 /** 继承内容逐项校验：源字段可见（不论取值是否为空）、目标位置可创建，节点配置仍在已发布版本里。 */
 async function checkCopyable(tx: Tx, deps: Deps, ctx: WriteContext, views: CopyProjections, copy: CopySource) {
-  const templateFields = ['description', 'publicDown', 'processId', 'modules'];
-  if (copy.goals.length) templateFields.push('commonGoals');
+  // 集合字段（模块、通用目标）的查看权一律要求，不看来源集合是否为空：否则“空则放行、非空则拒绝”会泄露隐藏集合是否存在
+  const templateFields = ['description', 'publicDown', 'processId', 'modules', 'commonGoals'];
   if (copy.orgDefaulted) templateFields.push('orgId');
   requireViewable(ctx, views.template, 'template', templateFields);
   await requireNestedWrite(tx, deps, ctx, 'template', 'create', {
@@ -382,17 +383,19 @@ async function checkCopyable(tx: Tx, deps: Deps, ctx: WriteContext, views: CopyP
     publicDown: true,
     processId: true,
   });
+  // 模块同理：要求查看的字段固定为模块对象的全部可继承字段，不随来源模块的类型或数量变化
+  requireViewable(ctx, views.templateModule, 'templateModule', [...TEMPLATE_MODULE_FIELDS]);
   for (const module of copy.modules) {
     const settings = copy.nodes.get(module.id) ?? [];
     const fields = Object.keys(moduleView(module, settings)).filter((field) => field !== 'id');
-    requireViewable(ctx, views.templateModule, 'templateModule', fields);
     await requireNestedWrite(tx, deps, ctx, 'templateModule', 'create', Object.fromEntries(fields.map((f) => [f, 1])));
     if (settings.length) await validateNodeSettings(tx, ctx, copy.source, module.moduleType as ModuleType, settings);
   }
+  const goalFields = ['moduleId', 'name', 'measure', 'suggestion', 'displayOrder'];
+  requireViewable(ctx, views.commonGoal, 'commonGoal', goalFields);
+  // 创建权只在真有通用目标要继承时才要求：此时操作人已能看到它们，按集合是否为空区分不会泄露
   if (copy.goals.length) {
-    const fields = ['moduleId', 'name', 'measure', 'suggestion', 'displayOrder'];
-    requireViewable(ctx, views.commonGoal, 'commonGoal', fields);
-    await requireNestedWrite(tx, deps, ctx, 'commonGoal', 'create', Object.fromEntries(fields.map((f) => [f, 1])));
+    await requireNestedWrite(tx, deps, ctx, 'commonGoal', 'create', Object.fromEntries(goalFields.map((f) => [f, 1])));
   }
 }
 
