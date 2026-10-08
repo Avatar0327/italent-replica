@@ -26,8 +26,11 @@ const planBody = (w: PlanWorld, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-/** 给已有成员加一个 TenantBase 身份：任职记录对象可查看，按需隐藏字段。 */
-async function grantEmploymentView(pw: PermissionWorld, userId: string, hidden: readonly string[]) {
+/**
+ * 给已有成员加一个 TenantBase 身份：任职记录对象可查看，按需隐藏字段；TenantBase 范围为 orgId（含下级），
+ * 源记录须在范围内才能带出（第 2 轮 P2-2，范围为空的反例见 AC-IDP-tutor-scope）。
+ */
+async function grantEmploymentView(pw: PermissionWorld, userId: string, hidden: readonly string[], orgId: string) {
   const profile = await createProfile(pw, `emp-${userId.slice(0, 6)}`, { apps: ['TenantBase'] });
   const definition = MODULE_OBJECTS.employmentRecord;
   const response = await setObjectPermission(
@@ -43,6 +46,12 @@ async function grantEmploymentView(pw: PermissionWorld, userId: string, hidden: 
   expect(response.status, await response.clone().text()).toBe(200);
   await makeGrantable(pw, [profile.id]);
   expect((await grant(pw, userId, profile.id)).status).toBe(201);
+  const scope = await pw.api.request('PUT', `/api/tenant/permission/scopes/${userId}/TenantBase`, {
+    ...pw.asAdmin,
+    ifMatch: 0,
+    body: { kind: 'org_range', orgRanges: [{ orgId, includeDescendants: true }] },
+  });
+  expect(scope.status, await scope.clone().text()).toBe(200);
 }
 
 describe('E2 新建计划带入通用目标', () => {
@@ -80,13 +89,13 @@ describe('E3 指导人角色解析', () => {
     const w = await planWorld(testDb().db, 'idp-e3');
     const pw = await permissionWorldOf(w);
     const hidden = await idpOperator(pw, { orgId: w.dept });
-    await grantEmploymentView(pw, hidden.user.id, ['directManagerId']);
+    await grantEmploymentView(pw, hidden.user.id, ['directManagerId'], w.dept);
     const denied = await hidden.request('POST', '/plans', {
       ifMatch: 0,
       body: planBody(w, { tutorRole: 'direct_manager', tutorEmployeeId: undefined }),
     });
     const visible = await idpOperator(pw, { orgId: w.dept });
-    await grantEmploymentView(pw, visible.user.id, []);
+    await grantEmploymentView(pw, visible.user.id, [], w.dept);
     // 无关员工丙没有直线经理
     const missing = await visible.request('POST', '/plans', {
       ifMatch: 0,

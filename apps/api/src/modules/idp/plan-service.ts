@@ -12,8 +12,10 @@ import { MODULE_OBJECTS, tenantLocalDate, type TutorRole } from '@italent/domain
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { findCurrentRecord } from '../employment/read-model.js';
-import { getModuleViewableFields } from '../permission/module-access.js';
-import { type IdpContext, type Projection, requireNestedWrite, rowsOf } from './access.js';
+import { isEmploymentRecordVisible } from '../employment/visibility.js';
+import { getModuleViewableFields, resolveModuleScope, scopeAllows } from '../permission/module-access.js';
+import { creatorOf, hasCreatorScope } from '../permission/scope-audit.js';
+import { type IdpContext, type ModuleScope, type Projection, requireNestedWrite, rowsOf } from './access.js';
 import { employeeInScope, type HrScope, hrSees } from './plan-access.js';
 import type { PlanCreate, PlanPatch } from './plan-input.js';
 import { loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
@@ -38,6 +40,9 @@ export interface CarrySources {
   readonly commonGoal: Projection;
   readonly employmentRecord: Projection;
   readonly organization: Projection;
+  /** 源记录的数据范围（任职记录 / 组织接口 404 的记录不能带出值，第 2 轮 P2-2）。 */
+  readonly employmentScope: ModuleScope;
+  readonly organizationScope: ModuleScope;
 }
 
 async function objectProjection(deps: TenantRouteDeps, ctx: IdpContext, objectCode: string): Promise<Projection> {
@@ -50,10 +55,13 @@ export async function carrySources(
   ctx: IdpContext,
   commonGoal: Projection,
 ): Promise<CarrySources> {
+  const scopeOf = (code: string) => resolveModuleScope(deps, ctx, undefined, code, `${code}.detail`);
   return {
     commonGoal,
     employmentRecord: await objectProjection(deps, ctx, MODULE_OBJECTS.employmentRecord.code),
     organization: await objectProjection(deps, ctx, MODULE_OBJECTS.organization.code),
+    employmentScope: await scopeOf(MODULE_OBJECTS.employmentRecord.code),
+    organizationScope: await scopeOf(MODULE_OBJECTS.organization.code),
   };
 }
 
@@ -86,9 +94,17 @@ async function orgRoleOf(tx: Tx, tenantId: string, orgId: string, asOf: string, 
   return (column === 'head' ? row?.person_in_charge_id : row?.hrbp_id) ?? null;
 }
 
+/** 组织在操作人组织范围内（与组织详情接口同一判定，含“使用用户”维度的创建人）。 */
+async function orgVisible(tx: Tx, ctx: IdpContext, scope: ModuleScope, orgId: string) {
+  const creatorId = hasCreatorScope(scope)
+    ? await creatorOf(tx, ctx.tenantId, orgId, 'org.create', 'organization')
+    : undefined;
+  return scopeAllows(scope, { orgId, ...(creatorId ? { creatorId } : {}) });
+}
+
 /**
  * 指导人角色 → 具体人员（K-20）：直线经理 / 间接经理取任职记录的直线经理（再上一级），部门负责人 / HRBP 取员工当前部门
- * 的组织版本；源字段看不到视同解析不到（DEC-309，E3）。第三 / 四 / 五级主管、导师首版解析不到。
+ * 的组织版本；源字段看不到、源记录不在操作人数据范围内（间接经理逐跳）都视同解析不到（DEC-309，E3）。第三 / 四 / 五级主管、导师首版解析不到。
  */
 async function resolveTutor(
   tx: Tx,
@@ -100,17 +116,27 @@ async function resolveTutor(
 ): Promise<string> {
   if (role === 'other') return explicit!;
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
+  /** 员工当前任职记录，须在操作人任职记录范围内（与任职记录接口同一可见判定，DEC-177）。 */
+  const visibleRecord = async (person: string) => {
+    const record = await findCurrentRecord(tx, ctx.tenantId, person, asOf);
+    if (!record) return null;
+    const departmentId = (record.fields.departmentId as string | null | undefined) ?? null;
+    const target = { employeeId: person, departmentId };
+    return (await isEmploymentRecordVisible(tx, ctx.tenantId, sources.employmentScope, target)) ? record : null;
+  };
+  // 间接经理逐跳调用：每一跳的任职记录都单独校验范围
   const managerOf = async (person: string) => {
     if (!sees(sources.employmentRecord, 'directManagerId')) return null;
-    const record = await findCurrentRecord(tx, ctx.tenantId, person, asOf);
+    const record = await visibleRecord(person);
     return (record?.fields.directManagerId as string | null | undefined) ?? null;
   };
   const departmentRole = async (column: 'head' | 'hrbp') => {
     const field = column === 'head' ? 'personInChargeId' : 'hrbpId';
     if (!sees(sources.employmentRecord, 'departmentId') || !sees(sources.organization, field)) return null;
-    const record = await findCurrentRecord(tx, ctx.tenantId, employeeId, asOf);
+    const record = await visibleRecord(employeeId);
     const department = (record?.fields.departmentId as string | null | undefined) ?? null;
-    return department ? orgRoleOf(tx, ctx.tenantId, department, asOf, column) : null;
+    if (!department || !(await orgVisible(tx, ctx, sources.organizationScope, department))) return null;
+    return orgRoleOf(tx, ctx.tenantId, department, asOf, column);
   };
   let tutor: string | null = null;
   if (role === 'direct_manager') tutor = await managerOf(employeeId);
