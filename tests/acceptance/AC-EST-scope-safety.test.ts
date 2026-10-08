@@ -114,7 +114,7 @@ describe('AC-EST-01/03/04 编制范围、占用时机与关联时间轴', () => 
       user: session.user.id,
       tenant: session.tenant.id,
       ifMatch: target.revision,
-      body: { effectiveDate: '2027-01-01', parents: { admin: { parentId: parent.id } } },
+      body: { addEmployment: false, effectiveDate: '2027-01-01', parents: { admin: { parentId: parent.id } } },
     });
     expect(reparent.status).toBe(200);
     const scheme = await session.scheme({ maintenanceMode: 'inclusive' });

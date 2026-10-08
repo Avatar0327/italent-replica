@@ -34,6 +34,7 @@ describe('AC-ORG-12 DEC-060 原站编码映射与导入冲突', () => {
             sourceCode: 'SEQ001',
             code: 'seq001',
             name: '顺序部门更名',
+            addEmployment: false,
             parentId: session.tenant.id,
             expectedRevision: 2,
             startDate: '2026-10-03',
@@ -82,14 +83,9 @@ describe('AC-ORG-12 DEC-060 原站编码映射与导入冲突', () => {
         ],
       },
     });
-    expect(imported.status).toBe(200);
-    const results = ((await imported.json()) as { results: ImportResult[] }).results;
-    expect(results).toHaveLength(2);
-    expect(results[0]).toMatchObject({ sourceCode: 'A001', status: 'updated', orgId: id });
-    expect(results[1]).toMatchObject({ sourceCode: 'A777', status: 'conflict' });
-    expect(results[1]!.reason).toBeTruthy();
-    const [updated] = await session.list('映射部门');
-    expect(updated).toMatchObject({ id, code: 'zz009', revision: 2 });
+    expect(imported.status).toBe(409);
+    expect(await imported.json()).toMatchObject({ error: { details: { rowIndex: 1, reason: 'CODE_CONFLICT' } } });
+    expect((await session.list('映射部门'))[0]).toMatchObject({ id, code: 'zz001', revision: 1 });
     expect(await session.list('冲突部门')).toEqual([]);
 
     // 后续导入仍按 A001 找到同一内部 ID，证明映射并非只存在于一次请求内。
@@ -102,7 +98,7 @@ describe('AC-ORG-12 DEC-060 原站编码映射与导入冲突', () => {
             code: 'zz010',
             name: '映射部门',
             parentId: session.tenant.id,
-            expectedRevision: 2,
+            expectedRevision: 1,
           },
         ],
       },
@@ -122,10 +118,7 @@ describe('AC-ORG-12 DEC-060 原站编码映射与导入冲突', () => {
     const stored = await withTenant(db, session.tenant.id, (tx) =>
       tx.select().from(orgImportResults).where(eq(orgImportResults.commandId, importCommandId)),
     );
-    expect(stored.sort((a, b) => a.rowIndex - b.rowIndex)).toMatchObject([
-      { rowIndex: 0, sourceCode: 'A001', status: 'updated', orgId: id },
-      { rowIndex: 1, sourceCode: 'A777', status: 'conflict', orgId: null },
-    ]);
+    expect(stored).toEqual([]);
     const mappings = await withTenant(db, session.tenant.id, (tx) => tx.select().from(orgImportMappings));
     expect(mappings.map((mapping) => [mapping.sourceCode, mapping.orgId])).toEqual([['A001', id]]);
 
@@ -165,16 +158,16 @@ describe('AC-ORG-12 DEC-060 原站编码映射与导入冲突', () => {
         ],
       },
     });
-    expect(conflict.status).toBe(200);
-    const [result] = ((await conflict.json()) as { results: ImportResult[] }).results;
-    expect(result).toMatchObject({ sourceCode: 'A001', status: 'conflict' });
-    expect(result?.reason).toBeTruthy();
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({
+      error: { details: { sourceCode: 'A001', reason: 'SOURCE_MAPPING_CONFLICT' } },
+    });
     expect((await session.list('另一部门'))[0]).toMatchObject({ id: target.id, code: target.code });
     expect(await session.list('已映射部门')).toHaveLength(1);
     expect(await session.list('不得覆盖')).toEqual([]);
   });
 
-  it('一行落库中途失败时撤销该行对象和映射，后续行继续成功并保存逐条回执', async () => {
+  it('一行落库中途失败时整批撤销对象、映射和回执', async () => {
     const { db } = testDb();
     const session = await orgSession(db, 'org12savepoint');
     await db.execute(sql`ALTER TABLE org_versions ADD CONSTRAINT org_import_test_failure
@@ -199,19 +192,16 @@ describe('AC-ORG-12 DEC-060 原站编码映射与导入冲突', () => {
           ],
         },
       });
-      expect(response.status).toBe(200);
-      const results = ((await response.json()) as { results: ImportResult[] }).results;
-      expect(results).toHaveLength(2);
-      expect(results[0]).toMatchObject({ sourceCode: 'FAIL001', status: 'conflict' });
-      expect(results[1]).toMatchObject({ sourceCode: 'PASS001', status: 'created' });
-      expect(await session.list('失败行后续部门')).toHaveLength(1);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: { details: { rowIndex: 0 } } });
+      expect(await session.list('失败行后续部门')).toEqual([]);
       expect(await session.list('测试落库失败')).toEqual([]);
       const objects = await withTenant(db, session.tenant.id, (tx) =>
         tx.execute(sql`SELECT org_id FROM org_versions WHERE code = 'fail001'`),
       );
       expect(resultRows(objects)).toEqual([]);
       const mappings = await withTenant(db, session.tenant.id, (tx) => tx.select().from(orgImportMappings));
-      expect(mappings.map((mapping) => mapping.sourceCode)).toEqual(['PASS001']);
+      expect(mappings.map((mapping) => mapping.sourceCode)).toEqual([]);
     } finally {
       await db.execute(sql`ALTER TABLE org_versions DROP CONSTRAINT org_import_test_failure`);
     }
@@ -248,32 +238,34 @@ describe('AC-ORG-12 DEC-060 原站编码映射与导入冲突', () => {
     expect(receipts).toEqual([]);
   });
 
-  it('批内原站编码和业务编码重复、跨租户上级都列冲突，后续合法行仍可写入', async () => {
+  it('批内原站编码和业务编码重复、跨租户上级均整批拒绝且不泄露外部 ID', async () => {
     const { db } = testDb();
     const session = await orgSession(db, 'org12batch');
     const foreign = await orgSession(db, 'org12foreign');
     const foreignParent = await foreign.create('外部租户上级');
-    const response = await session.request('POST', '/import', {
-      ifMatch: 0,
-      body: {
-        rows: [
-          { sourceCode: 'A001', code: 'batch001', name: '批次首行', parentId: session.tenant.id },
-          { sourceCode: 'A001', code: 'batch002', name: '重复映射行', parentId: session.tenant.id },
-          { sourceCode: 'A003', code: 'batch001', name: '重复编码行', parentId: session.tenant.id },
-          { sourceCode: 'A004', code: 'batch004', name: '跨租户上级行', parentId: foreignParent.id },
-          { sourceCode: 'A005', code: 'batch005', name: '批次末行', parentId: session.tenant.id },
-        ],
-      },
-    });
-    expect(response.status).toBe(200);
-    const results = ((await response.json()) as { results: ImportResult[] }).results;
-    expect(results.map((result) => result.status)).toEqual(['created', 'conflict', 'conflict', 'conflict', 'created']);
-    expect(results.slice(1, 4).every((result) => !!result.reason)).toBe(true);
-    expect(JSON.stringify(results)).not.toContain(foreignParent.id);
-    expect(await session.list('批次首行')).toHaveLength(1);
-    expect(await session.list('批次末行')).toHaveLength(1);
-    expect(await session.list('重复映射行')).toEqual([]);
-    expect(await session.list('重复编码行')).toEqual([]);
-    expect(await session.list('跨租户上级行')).toEqual([]);
+    const first = { sourceCode: 'A001', code: 'batch001', name: '批次首行', parentId: session.tenant.id };
+    for (const invalid of [
+      { ...first, code: 'batch002', name: '重复映射行' },
+      { ...first, sourceCode: 'A003', name: '重复编码行' },
+      { sourceCode: 'A004', code: 'batch004', name: '跨租户上级行', parentId: foreignParent.id },
+    ]) {
+      const response = await session.request('POST', '/import', {
+        ifMatch: 0,
+        body: {
+          rows: [
+            first,
+            invalid,
+            { sourceCode: 'A005', code: 'batch005', name: '批次末行', parentId: session.tenant.id },
+          ],
+        },
+      });
+      expect([400, 409]).toContain(response.status);
+      const body = await response.json();
+      expect(body).toMatchObject({ error: { details: { rowIndex: 1 } } });
+      expect(JSON.stringify(body)).not.toContain(foreignParent.id);
+      expect(await session.list('批次首行')).toEqual([]);
+      expect(await session.list('批次末行')).toEqual([]);
+      expect(await session.list(invalid.name)).toEqual([]);
+    }
   });
 });

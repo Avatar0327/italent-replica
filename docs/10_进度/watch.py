@@ -27,6 +27,11 @@ def gh(args):
 
 def snapshot():
     prs = gh(["pr", "list", "--state", "open", "--json", "number,title,headRefOid,isDraft,statusCheckRollup,comments,commits"])
+    try:  # 搁置中的 PR（每行一个号）不再报停摆 / 待送审
+        paused = set(open(os.path.expanduser("~/.cache/italent-paused-prs")).read().split())
+    except Exception:
+        paused = set()
+    prs = [p for p in prs if str(p["number"]) not in paused]
     out = {}
     for p in prs:
         checks = [c.get("conclusion") or c.get("status") for c in p["statusCheckRollup"] if c.get("conclusion") != "SKIPPED"]
@@ -43,7 +48,14 @@ def snapshot():
         lc = p["commits"][-1]["committedDate"] if p["commits"] else ""
         handled = any(c["createdAt"] > lc and any(w in c.get("body", "") for w in ("审查已发起", "排队待审", "修改清单", "审查原文", "勿改动", "待合并", "已发起"))
                       for c in p["comments"])
-        out[str(p["number"])] = {"opus": opus, "handled": handled, "t": p["title"][:40], "head": p["headRefOid"][:7], "draft": p["isDraft"], "ci": ci,
+        done_at = ""  # 开发方贴“开发完成”（DEC：开发完成明确报到）且其后尚无审查发起 / 排队
+        for c in p["comments"]:
+            b = c.get("body", "")[:200]
+            if "开发完成" in b or "设计完成" in b:
+                done_at = c["createdAt"]
+            elif done_at and any(w in b for w in ("审查已发起", "排队待审", "已发起")):
+                done_at = ""
+        out[str(p["number"])] = {"opus": opus, "handled": handled, "done": done_at, "t": p["title"][:40], "head": p["headRefOid"][:7], "draft": p["isDraft"], "ci": ci,
                                  "commit": last_commit, "comment": last_comment, "nc": len(p["comments"])}
     return out
 
@@ -68,10 +80,47 @@ def codex_results():
         if "thread_spawn" in head:
             continue  # 子代理线程，不算结论（只认主线程）
         n = txt.count('"task_complete"')
-        m = re.search(r"italent-replica/pull/(\d+)|wt-(\d+)", txt)
-        pr = (m.group(1) or m.group(2)) if m else "?"
+        # PR 识别：先认 PR 链接；codex exec 会话常不带链接，再认首条真实用户提问（跳过 AGENTS.md / 环境注入）里的 “PR #n / #n” 与任务编号
+        m = re.search(r"italent-replica/pull/(\d+)", txt)
+        pr = m.group(1) if m else ""
+        if not pr:
+            prompt = ""
+            for line in txt.split("\n")[:400]:
+                if '"role":"user"' not in line:
+                    continue
+                try:
+                    c = json.loads(line)["payload"]["content"]
+                    t = " ".join(x.get("text", "") for x in c if isinstance(x, dict))
+                except Exception:
+                    continue
+                if t.lstrip().startswith(("# AGENTS.md", "<environment_context", "<user_instructions")):
+                    continue
+                prompt = t[:3000]
+                break
+            m2 = re.search(r"(?:PR\s*#|#)(\d{2,3})\b", prompt)
+            tid = re.search(r"\b([FR]\d?-T?\d{2,3})\b", prompt)
+            pr = m2.group(1) if m2 else (tid.group(1) if tid else "")
+        if not pr:  # 最后才看工作目录（AGENTS.md 正文里也有 wt-NN，不能全文搜）
+            cwd = re.search(r'"cwd":"([^"]*)"', txt.split("\n", 1)[0])
+            cwd = cwd.group(1) if cwd else ""
+            m3 = re.search(r"wt-(\d+)", cwd)
+            pr = m3.group(1) if m3 else "?（" + (os.path.basename(cwd) or "未知目录") + "）"
         out[os.path.basename(f)[-41:-6]] = [n, pr]
     return out
+
+
+EVIDENCE_IDLE = 60  # 分钟：取证窗口（提交信息以“取证”开头）这么久没有新提交 → 提醒（用户 10-07 要求取证不停）
+
+
+def last_evidence_commit():
+    """origin/main 上最近一条“取证：”提交的时间（ISO），取不到返回空。"""
+    try:
+        subprocess.run(["git", "fetch", "-q"], cwd=os.path.expanduser("~/Code/wt-progress"), timeout=60)
+        r = subprocess.run(["git", "log", "origin/main", "-1", "--format=%cI", "--grep=^取证"], capture_output=True, text=True,
+                           timeout=30, cwd=os.path.expanduser("~/Code/wt-progress"))
+        return r.stdout.strip()
+    except Exception:
+        return ""
 
 
 def mins_since(iso):
@@ -131,8 +180,12 @@ def main():
                     ev.append(f"#{n} 新评论 {p['nc'] - o['nc']} 条")
                 if o["draft"] and not p["draft"]:
                     ev.append(f"#{n} 转为 Ready")
+            try:
+                paused_now = set(open(os.path.expanduser("~/.cache/italent-paused-prs")).read().split())
+            except Exception:
+                paused_now = set()
             for n in prev:
-                if n not in cur:
+                if n not in cur and n not in paused_now:
                     ev.append(f"#{n} 已合并或关闭")
         cx = codex_results()
         if cprev is not None:
@@ -145,6 +198,9 @@ def main():
             if p["ci"] == "green" and not p["draft"] and mins_since(p["commit"]) > STALL and mins_since(p["comment"]) > STALL and key not in stalled:
                 ev.append(f"停摆 #{n} {p['t']}：CI 绿，最新提交 {int(mins_since(p['commit']))} 分钟前，{STALL} 分钟内无评论")
                 stalled.add(key)
+            if p.get("done") and f"{n}@done@{p['done']}" not in stalled:
+                ev.append(f"开发完成待审 #{n} {p['t']}：开发方 {p['done'][11:16]}Z 已贴“开发完成”，尚无审查发起，请发起审查")
+                stalled.add(f"{n}@done@{p['done']}")
             k2 = f"{n}@ready@{p['head']}"
             if p["ci"] in ("green", "none") and mins_since(p["commit"]) >= (READY_DRAFT if p["draft"] else READY) and not p.get("handled") and k2 not in stalled:
                 ev.append(f"待送审 #{n} {p['t']}：最新提交 {p['head']} 已 {int(mins_since(p['commit']))} 分钟、CI {'绿' if p['ci'] == 'green' else '无'}，提交后 PR 上没有审查发起 / 排队 / 修改清单评论——开发方可能已完成，请确认并发起审查")
@@ -155,6 +211,18 @@ def main():
                 if m >= OPUS_REMIND and k not in stalled:
                     ev.append(f"Opus 审查待收 #{n} {p['t']}：claude.ai/code 审查会话发起 {m} 分钟，PR 上仍无审查原文 / 结论，请审查合并窗口看会话是否已完成或卡住")
                     stalled.add(k)
+        ev_t = last_evidence_commit()
+        pause = os.path.expanduser("~/.cache/italent-evidence-pause")  # 内容为 ISO 日期：取证窗口按计划停到该日，期间不报停顿
+        try:
+            paused = os.path.exists(pause) and datetime.date.today().isoformat() < open(pause).read().strip()
+        except Exception:
+            paused = False
+        if ev_t and not paused:
+            m = int(mins_since(ev_t))
+            k3 = f"evidence-idle@{ev_t}@{m // EVIDENCE_IDLE}"
+            if m >= EVIDENCE_IDLE and k3 not in stalled:
+                ev.append(f"取证停顿：取证窗口最近一次“取证”提交在 {m} 分钟前，请确认是否卡住、是否在等用户操作")
+                stalled.add(k3)
         open(os.path.expanduser("~/.cache/italent-progress-watch.beat"), "w").write(datetime.datetime.now().isoformat())
         json.dump({"prs": cur, "stalled": sorted(stalled)[-200:], "codex": cprev}, open(STATE, "w"))
         quiet = [e for e in ev if (" 新推送 " in e or " CI green" in e or " 新评论 " in e)]

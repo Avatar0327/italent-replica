@@ -21,6 +21,7 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   employment_settings: { label: '任职设置', app: ORG_PEOPLE },
   employment_custom_field: { label: '任职自定义字段', app: ORG_PEOPLE },
   organization: { label: '组织单元', app: ORG_PEOPLE },
+  'org-adjustment-run': { label: '组织调整任职联动', app: ORG_PEOPLE },
   org_setting: { label: '组织设置', app: ORG_PEOPLE },
   org_code_reservation: { label: '组织编码', app: ORG_PEOPLE },
   org_import_result: { label: '组织导入', app: ORG_PEOPLE },

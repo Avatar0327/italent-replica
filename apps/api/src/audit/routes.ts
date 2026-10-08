@@ -285,12 +285,13 @@ function eventColumns(viewer: Awaited<ReturnType<typeof auditViewer>>) {
 }
 
 /**
- * 人员派生计数按可见行重算（第四轮 N4）：序码重算汇总的变化人数换成查看人可见的逐人序码日志条数，
- * 差异按重算后的值重新计算（看全部的查看人 visibleCount 为空，保持原值）。
+ * 序码重算和组织调整的汇总人数按可见逐人日志重算，差异也使用裁剪后的值。
+ * 无需重算的记录由查看规则返回空 visibleCount，保持原值。
  */
 function recounted(row: AuditEventRow): AuditEventRow {
-  if (row.visibleCount === null || row.objectType !== 'personnel-order-run') return row;
-  const after = { ...(row.after as Record<string, unknown>), changed: row.visibleCount };
+  if (row.visibleCount === null) return row;
+  const field = row.objectType === 'org-adjustment-run' ? 'employeeCount' : 'changed';
+  const after = { ...(row.after as Record<string, unknown>), [field]: row.visibleCount };
   return { ...row, after, changes: diffAuditFields(row.before, after) };
 }
 
