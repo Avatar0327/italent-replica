@@ -57,6 +57,9 @@ describe('360 审计查看', () => {
         body: { userIds: [general] },
       }),
     );
-    expect(await types(general)).toContain('survey360-sheet:survey360.sheet.submit');
+    // PR-B：答卷类日志（含答案与评价关系）只给持“全部活动”者，有活动授权的一般管理员看不到（身份保护）
+    const granted = await types(general);
+    expect(granted).toContain('survey360-relation:survey360.relation.create');
+    expect(granted.filter((t) => t.startsWith('survey360-sheet'))).toEqual([]);
   });
 });
