@@ -2045,7 +2045,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-08 00:56",
+"liveUpdated": "10-08 00:58",
 "chains": [
 {
 "g": "exit",
@@ -2217,10 +2217,11 @@
 "k": "run",
 "n": "继任管理",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:d ds:d4 dev:w rev:d4 mg:w",
-"now": "设计 v4 复审出结论，待读取",
+"seg": "ev:d ds:w5 dev:w rev:d4 mg:w",
+"now": "v4 剩 4 类 P2；第 5 轮等你定（建议等 T04 v4）",
 "fable": "1",
-"pr": 112
+"pr": 112,
+"need": "1"
 },
 {
 "id": "R3-T04",
@@ -2229,8 +2230,8 @@
 "k": "run",
 "n": "人才盘点",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:d ds:d3 dev:w rev:d3 mg:w",
-"now": "设计 v3 复审出结论，待读取",
+"seg": "ev:d ds:a4 dev:w rev:d3 mg:w",
+"now": "设计 v4 修订中（v3 有 9 个 P2）",
 "fable": "1",
 "pr": 113
 },
@@ -2415,8 +2416,8 @@
 "k": "run",
 "n": "个人发展计划 IDP",
 "u": "已核对（C 档、建议拆 2 个 PR），待开会话",
-"seg": "ev:d ds:n dev:d2 rev:d2 mg:w",
-"now": "PR-A 第 2 轮审查出结论，待读取",
+"seg": "ev:d ds:n dev:d3 rev:w3 mg:w",
+"now": "第 3 轮已推送（剩 1 个泄露 P2），等开发报到；审过即可合并",
 "pr": 111
 },
 {
@@ -2426,8 +2427,8 @@
 "k": "run",
 "n": "排名函数对齐原站",
 "u": "已核对，待开会话（T04 写代码前合并）",
-"seg": "ev:d ds:n dev:d2 rev:w2 mg:w",
-"now": "第 2 轮开发完成，待审查",
+"seg": "ev:d ds:n dev:d2 rev:a2 mg:w",
+"now": "第 2 轮审查中",
 "pr": 114
 },
 {
