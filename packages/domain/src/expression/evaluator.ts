@@ -17,7 +17,15 @@ import {
 } from './registry.js';
 import { DEFAULT_SEMANTICS, type ExpressionSemantics } from './semantics.js';
 import { emptySource, NO_RECORDS, TypeInference, withRecordObjects } from './typing.js';
-import { EMPTY, emptyOf, KIND_LABELS, type DateParts, type ExprValue, type PlainValue } from './values.js';
+import {
+  EMPTY,
+  emptyOf,
+  isMultiOptionField,
+  KIND_LABELS,
+  type DateParts,
+  type ExprValue,
+  type PlainValue,
+} from './values.js';
 
 /** 空日期参与日期函数时的取值（DEC-270：0001-01-01）。 */
 const MIN_DATE: DateParts = Object.freeze({
@@ -68,6 +76,8 @@ export class Evaluator {
   }
 
   fromPlain(value: PlainValue): ExprValue {
+    // DEC-314②：未提供目录时也不能把多选数组静默当空值（🟡 取证前禁止参与公式）。
+    if (Array.isArray(value)) return fail('ARGUMENT_TYPE', '多选字段暂不允许参与公式（🟡 待取证，DEC-314）');
     return plainToValue(value, (instant) => ({
       kind: 'date',
       value: instantToParts(instant, this.context.calendar.timeZone),
@@ -169,6 +179,9 @@ export class Evaluator {
   }
 
   private lookup(path: string, scope: Scope): ExprValue {
+    if (!scope.objects.has(path.split('.')[0]!) && isMultiOptionField(this.context.fieldKind, path)) {
+      return fail('ARGUMENT_TYPE', `多选字段 ${path} 暂不允许参与公式（🟡 待取证，DEC-314）`);
+    }
     for (let i = scope.records.length - 1; i >= 0; i--) {
       const record = scope.records[i]!;
       if (Object.hasOwn(record, path)) return record[path]!;
