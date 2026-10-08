@@ -30,7 +30,7 @@ async function operatorWith(w: PlanWorld, options: OperatorOptions) {
 }
 
 const keyInfoOf = (view: TemplateView, w: PlanWorld) =>
-  view.modules.find((m) => m.id === w.keyInfoModule.id) as Record<string, unknown>;
+  view.modules.find((m) => m.id === w.keyInfoModule.id) as unknown as Record<string, unknown>;
 
 describe('R2-3：keyInfoSources 与 keyInfoBlocks 的权限一起满足', () => {
   it('sources 只读：用 blocks 改配置 403；blocks 只读：用 sources 清空 403；配置都不变', async () => {

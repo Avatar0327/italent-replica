@@ -25,6 +25,7 @@ import {
   CONTRACT_OBJECT,
   ESTABLISHMENT_SCHEME_DATASOURCE,
   IDP_OBJECTS,
+  linkedViewable,
   MODULE_OBJECTS,
   PERSONNEL_OBJECT,
   PERSONNEL_REQUEST_OBJECT,
@@ -607,7 +608,7 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
   const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: rule.objectCode, fields: [] });
   if (!canView) return undefined;
   const scope = await resolveModuleScope(deps, ctx, undefined, rule.objectCode, undefined, rule.view);
-  const objectFields = await getModuleViewableFields(deps, ctx, rule.objectCode);
+  const objectFields = linkedViewable(rule.objectCode, await getModuleViewableFields(deps, ctx, rule.objectCode));
   const linkage = rule.types.includes(TRANSFER_LINKAGE)
     ? await resolveLinkageAudit(deps, ctx, scope, objectFields)
     : undefined;

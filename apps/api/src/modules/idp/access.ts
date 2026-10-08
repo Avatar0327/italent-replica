@@ -8,7 +8,7 @@
  * - 响应裁剪：顶层与嵌套层各按本对象字段权限；没有嵌套对象查看权时整段省略。
  */
 import { sql, type Tx } from '@italent/db';
-import { IDP_OBJECTS, tenantLocalDate, type IdpObject } from '@italent/domain';
+import { IDP_OBJECTS, linkedViewable, tenantLocalDate, withLinkedFields, type IdpObject } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { type Authorizer, requirePermission } from '../../authorization.js';
@@ -131,7 +131,9 @@ export function checkWriteFields(
   operation: 'create' | 'update',
   payload: Readonly<Record<string, unknown>>,
 ) {
-  return writeFields(deps, ctx, codeOf(object), operation, payload);
+  const code = codeOf(object);
+  const fields = withLinkedFields(code, Object.keys(payload));
+  return writeFields(deps, ctx, code, operation, Object.fromEntries(fields.map((f) => [f, payload[f] ?? null])));
 }
 
 /**
@@ -172,7 +174,7 @@ export async function requireNestedWrite(
     kind: 'write',
     object,
     operation,
-    fields: operation === 'delete' ? [] : Object.keys(payload),
+    fields: operation === 'delete' ? [] : withLinkedFields(codeOf(object), Object.keys(payload)),
   };
   // 在调用方事务内判定（不另开连接，避免与本事务的行锁互等）
   await requireWrite(authorizeInTransaction(deps.authorize, tx), ctx, check);
@@ -198,7 +200,7 @@ const sourceHidden = () => new AppError('FORBIDDEN', '看不到带出值的来�
 /** 某对象的字段投影（没有对象查看权为 null）。 */
 export async function objectFields(deps: TenantRouteDeps, ctx: IdpContext, objectCode: string): Promise<Projection> {
   if (!(await deps.authorize({ ...ctx, action: 'object.view', resource: objectCode, fields: [] }))) return null;
-  return getModuleViewableFields(deps, ctx, objectCode);
+  return linkedViewable(objectCode, await getModuleViewableFields(deps, ctx, objectCode));
 }
 
 /**

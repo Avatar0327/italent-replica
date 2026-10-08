@@ -323,6 +323,33 @@ export const IDP_OBJECTS = {
 
 export type IdpObject = keyof typeof IDP_OBJECTS;
 
+/**
+ * 同一份配置的几种表示（DEC-318 K-35 补充：关键信息区块 keyInfoBlocks 与旧的 keyInfoSources）：读写权限必须一起满足，
+ * 不能用一个字段绕过另一个的字段权限，也不能从一个还原另一个（PR #115 第 3 轮 R2-3）。
+ */
+const LINKED_FIELDS: Readonly<Record<string, readonly (readonly string[])[]>> = {
+  [IDP_OBJECTS.templateModule.code]: [['keyInfoSources', 'keyInfoBlocks']],
+};
+
+/** 写入要校验的字段：载荷里出现联动组的任一字段，整组都要可编辑。 */
+export function withLinkedFields(objectCode: string, fields: readonly string[]): string[] {
+  const expanded = new Set(fields);
+  for (const group of LINKED_FIELDS[objectCode] ?? []) {
+    if (group.some((field) => expanded.has(field))) for (const field of group) expanded.add(field);
+  }
+  return [...expanded];
+}
+
+/** 可见字段：联动组有任一字段看不到，整组都不输出（undefined = 全部可见）。 */
+export function linkedViewable<T extends ReadonlySet<string> | undefined>(objectCode: string, fields: T): T {
+  if (fields === undefined) return fields;
+  const groups = LINKED_FIELDS[objectCode] ?? [];
+  const broken = groups.filter((group) => !group.every((field) => fields.has(field)));
+  if (!broken.length) return fields;
+  const hidden = new Set(broken.flat());
+  return new Set([...fields].filter((field) => !hidden.has(field))) as ReadonlySet<string> as T;
+}
+
 /** 说明文本依据的字段（DEC-309④：与 fixedDate 同一门禁；看不到其中任一个就不输出说明文本）。 */
 export const RULE_TEXT_SOURCES = [
   'startMode',
