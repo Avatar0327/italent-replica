@@ -2,7 +2,8 @@
  * 发展计划阶段的定时开启（docs/02_业务建模/28 IDP-R3；DEC-296⑤ 租户时区凌晨 2 点；DEC-052 / DEC-056；PR 描述 K-33）。
  * - 只经平台路径触发（运维 / 调度进程），租户接口上没有触发入口；平台命令 ID 幂等、平台审计留痕（同 R1-T08 调度）；
  * - 按各租户时区判定业务日与“凌晨 2 点”：本地时间过 2 点后，开启到期日不晚于今天的阶段，否则只到昨天；
- * - 候选：进行中的计划里、前序阶段都已结束的第一个“待开启”的自动阶段；幂等键 = 阶段 + 业务日（last_attempt_on），
+ * - 候选：进行中的计划里、前序阶段都已结束的第一个“待开启”的自动阶段，按计划 ID 游标分页推进；limit 是一次运行最多
+ *   尝试开启的阶段数（开不了的计划不占名额、不挡住后面的，第 2 轮 P2-9）；幂等键 = 阶段 + 业务日（last_attempt_on），
  *   同一业务日只尝试一次；开启失败记 failed、次数与原因，此后不再自动重试，HR 查明后手动开启（AC-IDP-08）；
  * - 多实例：每个计划一个事务，FOR UPDATE SKIP LOCKED，被其他实例或 HR 持有就跳过，锁内重读；
  * - 逐条复核：计划仍进行中、阶段仍待开启、前序都已结束、到期日已到。
@@ -30,6 +31,8 @@ const RUN_OPERATION = 'idp.stage-auto-start.run';
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 1000;
 const TENANT_PAGE = 100;
+/** 候选分页大小：每页一条有界查询，游标推进直到尝试数达到 limit 或候选取尽。 */
+const CANDIDATE_PAGE = 200;
 
 export interface IdpAutoStartInput {
   readonly tenantId?: string;
@@ -125,15 +128,24 @@ async function activeTenants(db: Db, tenantId: string | null): Promise<TenantRow
   }
 }
 
-/** 候选计划：进行中、还有自动开启且今天还没尝试过的待开启阶段（逐条再按规则复核）。 */
-async function candidatePlans(tx: Tx, tenantId: string, businessDate: string, limit: number) {
+/**
+ * 候选计划（一页，按计划 ID 游标推进）：进行中、没有运行中的阶段、存在“前序都已结束”的待开启自动阶段且今天还没尝试过。
+ * 到期日、参照日期与锁在逐条复核时判断——开不了的计划不计入本次尝试数，游标越过它继续往后找（第 2 轮 P2-9）。
+ */
+async function candidatePage(tx: Tx, tenantId: string, businessDate: string, after: string | null) {
   return rowsOf<{ plan_id: string }>(
-    await tx.execute(sql`SELECT DISTINCT p.id AS plan_id FROM idp_plans p
-      JOIN idp_plan_stages s ON s.tenant_id = p.tenant_id AND s.plan_id = p.id AND s.status = 'pending'
-      JOIN idp_sub_processes sp ON sp.tenant_id = s.tenant_id AND sp.id = s.sub_process_id AND sp.start_mode = 'auto'
+    await tx.execute(sql`SELECT p.id AS plan_id FROM idp_plans p
       WHERE p.tenant_id = ${tenantId} AND p.status = 'running'
-        AND (s.last_attempt_on IS NULL OR s.last_attempt_on < ${businessDate}::date)
-      ORDER BY p.id LIMIT ${limit}`),
+        AND (${after}::uuid IS NULL OR p.id > ${after}::uuid)
+        AND NOT EXISTS (SELECT 1 FROM idp_plan_stages r WHERE r.tenant_id = p.tenant_id AND r.plan_id = p.id
+          AND r.status = 'running')
+        AND EXISTS (SELECT 1 FROM idp_plan_stages s
+          JOIN idp_sub_processes sp ON sp.tenant_id = s.tenant_id AND sp.id = s.sub_process_id
+          WHERE s.tenant_id = p.tenant_id AND s.plan_id = p.id AND s.status = 'pending' AND sp.start_mode = 'auto'
+            AND (s.last_attempt_on IS NULL OR s.last_attempt_on < ${businessDate}::date)
+            AND NOT EXISTS (SELECT 1 FROM idp_plan_stages e WHERE e.tenant_id = s.tenant_id AND e.plan_id = s.plan_id
+              AND e.seq < s.seq AND e.status <> 'ended'))
+      ORDER BY p.id LIMIT ${CANDIDATE_PAGE}`),
   ).map((r) => r.plan_id);
 }
 
@@ -142,7 +154,6 @@ async function sweepTenant(db: Db, meta: PlatformCommandMeta, tenant: TenantRow,
   const cutoff = autoStartCutoff(local);
   const run = { opened: [] as string[], failed: [] as string[], skippedLocked: 0 };
   const errors: IdpAutoStartRun['errors'] = [];
-  const plans = await withTenant(db, tenant.id, (tx) => candidatePlans(tx, tenant.id, local.date, limit));
   const actor = {
     tenantId: tenant.id,
     userId: SYSTEM_USER_ID,
@@ -150,7 +161,19 @@ async function sweepTenant(db: Db, meta: PlatformCommandMeta, tenant: TenantRow,
     now,
     commandId: meta.commandId,
   };
-  for (const planId of plans) {
+  let after: string | null = null;
+  for (;;) {
+    const page = await withTenant(db, tenant.id, (tx) => candidatePage(tx, tenant.id, local.date, after));
+    for (const planId of page) {
+      if (run.opened.length + run.failed.length >= limit) break;
+      await attempt(planId);
+    }
+    if (page.length < CANDIDATE_PAGE || run.opened.length + run.failed.length >= limit) break;
+    after = page.at(-1)!;
+  }
+  return { tenantId: tenant.id, businessDate: local.date, ranAt: now.toISOString(), ...run, errors };
+
+  async function attempt(planId: string) {
     try {
       const outcome = await withTenant(db, tenant.id, async (tx) => {
         const [locked] = rowsOf(
@@ -178,5 +201,4 @@ async function sweepTenant(db: Db, meta: PlatformCommandMeta, tenant: TenantRow,
       errors.push({ planId, code: error instanceof AppError ? error.code : 'INTERNAL_ERROR' });
     }
   }
-  return { tenantId: tenant.id, businessDate: local.date, ranAt: now.toISOString(), ...run, errors };
 }
