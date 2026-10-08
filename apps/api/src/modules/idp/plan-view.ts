@@ -337,10 +337,14 @@ export async function presentPlan(
     const shown: Record<string, unknown> = project(top, projections.plan);
     if (projections.templateModule !== null) shown.modules = modules.map((m) => project(m, projections.templateModule));
     if (projections.goal !== null) {
+      // 嵌套的 tasks / reviews 本身是目标的字段（IdpGoal.tasks / reviews），先按目标字段权、再按子对象查看权（P2-3）
+      const goalFields = projections.goal;
+      const nested = (field: 'tasks' | 'reviews', child: Projection) =>
+        child !== null && (goalFields === undefined || goalFields.has(field));
       shown.goals = goals.map(({ tasks, reviews: goalReviews, ...goal }) => ({
         ...project(goal, projections.goal),
-        ...(projections.task === null ? {} : { tasks: listOf(tasks, projections.task) }),
-        ...(projections.goalReview === null ? {} : { reviews: listOf(goalReviews, projections.goalReview) }),
+        ...(nested('tasks', projections.task) ? { tasks: listOf(tasks, projections.task) } : {}),
+        ...(nested('reviews', projections.goalReview) ? { reviews: listOf(goalReviews, projections.goalReview) } : {}),
       }));
     }
     if (projections.analysis !== null) shown.analyses = listOf(analyses, projections.analysis);
