@@ -164,6 +164,12 @@ describe('写入审计的对象类型都已登记查看规则（PR #75 第三轮
       'transfer-request',
       'transfer_form',
       'transfer_settings',
+      // R3-T07 个人发展计划配置
+      'IDP.IDPProcess',
+      'IDP.SubProcess',
+      'IDP.IDPTemplate',
+      'IDP.IDPTemplateModule',
+      'IDP.IDPTemplateCommonGoal',
     ]);
 
   it.each(written)('%s', (objectType) => {
