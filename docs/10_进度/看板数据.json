@@ -1,8 +1,8 @@
 {
 "updated": "2026-10-08",
 "stats": {
-"merged": 57,
-"open": 14,
+"merged": 58,
+"open": 13,
 "dec": 318,
 "ev": "29/129"
 },
@@ -958,6 +958,10 @@
 }
 },
 "log": [
+[
+"10-08",
+"#117 R3-T03 PR-A2 合并（073e17e，Astra 首轮通过）"
+],
 [
 "10-08",
 "DEC-317：流程优化 6 条登记；自检试点 PR #119（Draft）"
@@ -2127,7 +2131,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-08 05:29",
+"liveUpdated": "10-08 05:37",
 "chains": [
 {
 "g": "base",
@@ -2341,7 +2345,7 @@
 "k": "run",
 "n": "人才标准与指标库",
 "seg": "ev:d ds:n dev:a7 rev:d6 mg:w",
-"now": "第 7 轮修改中（DEC-316：复用范围过滤 helper + 测试；只剩 P3 即合并）",
+"now": "第 7 轮已推送（f510c9a）；CI 一项因无关偶发测试失败，重跑中",
 "pr": 106,
 "nx": "R3-T02、F-035、F-038、F-048"
 },
@@ -2635,11 +2639,12 @@
 "id": "R3-T03A2",
 "g": "s360",
 "o": 2,
-"k": "run",
+"k": "done",
 "pr": 117,
 "n": "360 PR-A2：标准身份安装 / 平台回补",
 "seg": "ev:d ds:n dev:d1 rev:a1 mg:w",
-"now": "首审中（Astra Ultra，head 15fd7cd）"
+"now": "首审中（Astra Ultra，head 15fd7cd）",
+"u": "10-08 合并（073e17e），Astra 首轮通过"
 },
 {
 "id": "F-SC",
