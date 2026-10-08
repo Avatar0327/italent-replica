@@ -266,6 +266,7 @@ export class Evaluator {
       assessmentLatestWindow: this.context.assessmentLatestWindow ?? 'before_project_end',
       semantics: this.semantics,
       ports: this.context.ports,
+      rankingTables: this.context.rankingTables,
       fromPlain: (value) => this.fromPlain(value),
     };
   }

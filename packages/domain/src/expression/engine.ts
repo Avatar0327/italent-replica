@@ -17,7 +17,8 @@ import {
 } from './failures.js';
 import { parseFormula } from './parser.js';
 import type { SyntaxIssue } from './lexer.js';
-import type { SubjectReader } from './ports.js';
+import type { RankingTables } from './functions/ranking.js';
+import type { RankingPort, SubjectReader } from './ports.js';
 import {
   arityOf,
   createDefaultRegistry,
@@ -618,7 +619,29 @@ const dependencyFailure = (field: string, dependency: string): EvaluationResult 
   failure: { code: 'DEPENDENCY_FAILED', message: `计算失败：${field} 依赖的 ${dependency} 未能算出` },
 });
 
-/** 对一组对象按计算项目批量求值：每个对象得到每个字段的值或失败原因；一个对象失败不影响其他对象。 */
+/** 端口只调一次、结果（含抛出的异常）复用：同一计算项目内各对象看到同一个总体数组，排名表按它缓存。 */
+function readOnce(port: RankingPort): RankingPort {
+  let read: { readonly outcome: ReturnType<RankingPort['population']> } | { readonly error: unknown } | undefined;
+  return {
+    population: () => {
+      if (!read) {
+        try {
+          read = { outcome: port.population() };
+        } catch (error) {
+          read = { error };
+        }
+      }
+      if ('error' in read) throw read.error;
+      return read.outcome;
+    },
+  };
+}
+
+/**
+ * 对一组对象按计算项目批量求值：每个对象得到每个字段的值或失败原因；一个对象失败不影响其他对象。
+ * 排名总体默认 = 本次全部计算对象（叠加先算项目的值，依赖失败的对象不参与该项目）；分批计算时调用方须经
+ * ports.ranking 注入全体计算对象，排名结果才与一次性求值一致（DEC-301②）。
+ */
 export function evaluateBatch(
   items: readonly ComputationItem[],
   subjects: readonly SubjectReader[],
@@ -636,13 +659,19 @@ export function evaluateBatch(
     const field = entry.item.field;
     const failedDependency = (id: string) =>
       entry.dependsOn.find((dependency) => !Object.hasOwn(computed.get(id)!, dependency));
-    const population = subjects.filter((subject) => failedDependency(subject.id) === undefined);
-    const ranking = context.ports?.ranking ?? {
-      population: () => ({
-        ok: true as const,
-        data: population.map((subject) => withComputed(subject, computed.get(subject.id)!, ordered.bindings)),
-      }),
-    };
+    // 排名总体按计算项目只读一次（DEC-301②）：本项目所有对象共用同一总体与排名表
+    const ranking = readOnce(
+      context.ports?.ranking ?? {
+        population: () => ({
+          ok: true as const,
+          data: subjects
+            .filter((subject) => failedDependency(subject.id) === undefined)
+            .map((subject) => withComputed(subject, computed.get(subject.id)!, ordered.bindings)),
+        }),
+      },
+    );
+    const ports = { ...context.ports, ranking };
+    const rankingTables: RankingTables = new Map();
     for (const subject of subjects) {
       const dependency = failedDependency(subject.id);
       if (dependency !== undefined) {
@@ -654,7 +683,8 @@ export function evaluateBatch(
         ...context,
         registry,
         subject: reader,
-        ports: { ...context.ports, ranking },
+        ports,
+        rankingTables,
       });
       results[subject.id]![field] = result;
       if (result.ok) computed.get(subject.id)![field] = result.value;

@@ -5,6 +5,7 @@
 import type { CallNode, ExprNode } from './ast.js';
 import type { FailureCode } from './failures.js';
 import { BUILTIN_FUNCTIONS } from './functions/index.js';
+import type { RankingTables } from './functions/ranking.js';
 import type { DataSourcePorts, SubjectReader } from './ports.js';
 import type { ExpressionSemantics } from './semantics.js';
 import type { InferredType } from './typing.js';
@@ -62,6 +63,8 @@ export interface FunctionEnvironment {
   readonly assessmentLatestWindow: 'before_project_end' | 'before_project_start';
   readonly semantics: ExpressionSemantics;
   readonly ports?: DataSourcePorts;
+  /** 排名表缓存（见 EvaluationContext.rankingTables）。 */
+  readonly rankingTables?: RankingTables;
   readonly fromPlain: (value: PlainValue) => ExprValue;
 }
 

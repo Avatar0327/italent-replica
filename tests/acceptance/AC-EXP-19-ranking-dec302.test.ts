@@ -325,6 +325,24 @@ describe('AC-EXP-19 排名在全体计算对象上一次性求值（DEC-301②�
     expect(valueOf(batch.results.s4!['盘点对象.名次']!)).toEqual(num(3));
     expect(valueOf(batch.results.s5!['盘点对象.名次']!)).toMatchObject({ code: 'OUT_OF_SCOPE' });
   });
+
+  it('同值范围按 = 的口径：盘点年度 "2026" 与 2026 同组', () => {
+    const YEAR = '盘点活动.盘点年度';
+    const members = [member('a', 90, { [YEAR]: '2026' }), member('b', 80, { [YEAR]: 2026 }), member('c', 99)];
+    const formula = `Ranking("排序号", ${SCORE}, ${YEAR})`;
+    expect(rankOf(members, formula, 'b')).toEqual(num(2));
+    expect(rankOf(members, formula, 'c')).toEqual(num(1));
+  });
+
+  it('5000 人批量排名（两种模式 × 按方案分组）在 5 秒内完成（本机约 1 秒，留 CI 余量）', () => {
+    const many = Array.from({ length: 5000 }, (_, i) =>
+      inMemorySubject(`m${i}`, member(`m${i}`, i % 997, { [PLAN]: `方案${i % 7}` }).fields),
+    );
+    const started = performance.now();
+    const batch = evaluateBatch(ITEMS, many, { calendar: CALENDAR, project: PROJECT });
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(batch.ok).toBe(true);
+  });
 });
 
 describe('AC-EXP-19 元数据与保存检查（DEC-260、DEC-287）', () => {
