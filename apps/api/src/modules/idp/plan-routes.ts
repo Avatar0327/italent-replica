@@ -309,7 +309,7 @@ function registerPlanWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 interface ExecResult {
   readonly planId: string;
   readonly moduleId: string;
-  readonly button: NodeButton;
+  readonly button: NodeButton | readonly NodeButton[];
 }
 
 /** 执行人写入：计划 revision 校验在服务层；首次与重放返回前都按当前节点复核执行人与按钮。 */
@@ -389,7 +389,7 @@ function registerGoalRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     return runExecutorWrite(c, deps, 200, { goalId }, async (tx, w) => {
       const moduleId = await goalModule(tx, w, id, goalId);
       await execution.deleteGoal(tx, w, id, goalId);
-      return { planId: id, moduleId, button: 'RowDeleteIdpGoal' };
+      return { planId: id, moduleId, button: execution.GOAL_DELETE_BUTTONS };
     });
   });
 }

@@ -77,10 +77,13 @@ export async function recheckExecutor(
   ctx: PlanWriteContext,
   planId: string,
   moduleId: string,
-  button: NodeButton,
+  buttons: NodeButton | readonly NodeButton[],
 ): Promise<void> {
   const plan = await requirePlanRow(tx, ctx.tenantId, planId);
-  await requireExecutor(tx, ctx, ctx.hr, plan, await loadStages(tx, ctx.tenantId, [planId]), moduleId, button);
+  const stages = await loadStages(tx, ctx.tenantId, [planId]);
+  for (const button of typeof buttons === 'string' ? [buttons] : buttons) {
+    await requireExecutor(tx, ctx, ctx.hr, plan, stages, moduleId, button);
+  }
 }
 
 async function finish(tx: Tx, ctx: PlanWriteContext, plan: PlanRow) {
@@ -192,10 +195,17 @@ export async function updateGoal(tx: Tx, ctx: PlanWriteContext, planId: string, 
   return finish(tx, ctx, plan);
 }
 
+/**
+ * 删除目标级联删除其任务与目标回顾：执行人还须有子对象的删除权——任务 / 目标回顾挂在本模块的 RowEditIdpGoal 上
+ * （🟡 K-12）。不论子对象是否存在都要求，缺了整次 403（DEC-309④-2 级联清单的目标层，第 2 轮 P2-7）。
+ */
+export const GOAL_DELETE_BUTTONS: readonly NodeButton[] = ['RowDeleteIdpGoal', 'RowEditIdpGoal'];
+
 export async function deleteGoal(tx: Tx, ctx: PlanWriteContext, planId: string, goalId: string) {
   const head = await requirePlanRow(tx, ctx.tenantId, planId);
   const goal = await goalOf(tx, head, goalId);
   const { plan } = await executorFor(tx, ctx, planId, goal.moduleId, 'RowDeleteIdpGoal');
+  await recheckExecutor(tx, ctx, planId, goal.moduleId, 'RowEditIdpGoal');
   await tx.execute(sql`DELETE FROM idp_goals WHERE tenant_id = ${ctx.tenantId} AND id = ${goalId}::uuid`);
   await audit(tx, ctx, 'goal', 'delete', goalId, { before: goal, after: null, employeeId: plan.employeeId });
   return finish(tx, ctx, plan);
