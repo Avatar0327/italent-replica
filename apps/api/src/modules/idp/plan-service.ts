@@ -15,6 +15,7 @@ import { findCurrentRecord } from '../employment/read-model.js';
 import { isEmploymentRecordVisible } from '../employment/visibility.js';
 import { getModuleViewableFields, resolveModuleScope, scopeAllows } from '../permission/module-access.js';
 import { creatorOf, hasCreatorScope } from '../permission/scope-audit.js';
+import { auditContents, auditGoalChildren } from './cascade-audit.js';
 import { type IdpContext, type ModuleScope, type Projection, requireNestedWrite, rowsOf } from './access.js';
 import { employeeInScope, type HrScope, hrSees } from './plan-access.js';
 import type { PlanCreate, PlanPatch } from './plan-input.js';
@@ -316,9 +317,11 @@ export async function deletePlan(tx: Tx, deps: Deps, ctx: PlanWriteContext, id: 
   for (const stage of await loadStages(tx, ctx.tenantId, [id])) {
     if (stage.status === 'running') await cancelStageInstance(tx, actorOf(ctx), row, stage);
   }
+  // 子对象各写删除日志，目标快照保留其任务与目标回顾（K-34 / DEC-216，P2-10）
+  await auditGoalChildren(tx, ctx, row);
+  await auditContents(tx, ctx, row);
   for (const goal of before.goals) {
-    const { tasks: _t, reviews: _r, ...snapshot } = goal;
-    await audit(tx, ctx, 'goal', 'delete', goal.id, { before: snapshot, after: null, employeeId: row.employeeId });
+    await audit(tx, ctx, 'goal', 'delete', goal.id, { before: goal, after: null, employeeId: row.employeeId });
   }
   await tx.execute(sql`DELETE FROM idp_plans WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid`);
   await audit(tx, ctx, 'plan', 'delete', id, { before: planRecord(row), after: null, employeeId: row.employeeId });

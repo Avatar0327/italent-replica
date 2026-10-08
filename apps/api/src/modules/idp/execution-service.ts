@@ -8,6 +8,7 @@ import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate, type CompetencySource, type NodeButton } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { rowsOf } from './access.js';
+import { auditGoalChildren } from './cascade-audit.js';
 import { type CandidateIndicator, competencyCandidates } from './competency.js';
 import { type Executor, requireExecutor } from './plan-access.js';
 import type {
@@ -206,8 +207,17 @@ export async function deleteGoal(tx: Tx, ctx: PlanWriteContext, planId: string, 
   const goal = await goalOf(tx, head, goalId);
   const { plan } = await executorFor(tx, ctx, planId, goal.moduleId, 'RowDeleteIdpGoal');
   await recheckExecutor(tx, ctx, planId, goal.moduleId, 'RowEditIdpGoal');
+  // 目标的删除快照含其任务与目标回顾；子对象各写删除日志（P2-10）
+  const snapshot = (await loadPlanDetail(tx, plan, tenantLocalDate(ctx.now, ctx.timezone))).goals.find(
+    (g) => g.id === goalId,
+  );
+  await auditGoalChildren(tx, ctx, plan, goalId);
   await tx.execute(sql`DELETE FROM idp_goals WHERE tenant_id = ${ctx.tenantId} AND id = ${goalId}::uuid`);
-  await audit(tx, ctx, 'goal', 'delete', goalId, { before: goal, after: null, employeeId: plan.employeeId });
+  await audit(tx, ctx, 'goal', 'delete', goalId, {
+    before: { ...goal, tasks: snapshot?.tasks ?? [], reviews: snapshot?.reviews ?? [] },
+    after: null,
+    employeeId: plan.employeeId,
+  });
   return finish(tx, ctx, plan);
 }
 
