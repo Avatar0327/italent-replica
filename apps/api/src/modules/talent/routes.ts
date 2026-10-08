@@ -24,6 +24,7 @@ import {
   scopeColumns,
   talentContext,
   talentScope,
+  TALENT_LABELS,
   talentWriteContext,
   trimTalentList,
   viewableFields,
@@ -248,7 +249,8 @@ function registerObject<View extends Tracked, Create extends object, Patch exten
     const id = uuidParam(c);
     const scope = await talentScope(c, deps, ctx, spec.object);
     const found = await withTenant(deps.db, ctx.tenantId, (tx) => spec.load(tx, ctx.tenantId, id));
-    if (!found) throw new AppError('NOT_FOUND', '对象不存在');
+    // 不存在与范围外同一个 404（requireVisible 的文案），不泄露对象是否存在
+    if (!found) throw new AppError('NOT_FOUND', `${TALENT_LABELS[spec.object]}不存在`);
     requireVisible(scope, spec.object, spec.owner(found));
     c.header('ETag', `"${found.revision}"`);
     return c.json((await present(c, ctx, [found]))[0]);
