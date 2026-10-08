@@ -182,11 +182,6 @@ export async function visiblePersonIds(tx: Tx, admin: Admin, ids: readonly strin
   return new Set(found.map((r) => r.id));
 }
 
-/** 尚未建 360 人员的员工（自动添加的候选）：只按员工判断，不按将来的创建人放行。 */
-export async function employeeVisible(tx: Tx, admin: Admin, employeeId: string): Promise<boolean> {
-  return !admin.people || scopeAllowsInTransaction(tx, admin.people, { personId: employeeId });
-}
-
 /** 当前操作人可见的人员；看不到按不存在处理（404）。 */
 export async function visiblePerson(tx: Tx, admin: Admin, id: string, message = '人员不存在'): Promise<PersonRow> {
   const person = await loadPerson(tx, id).catch(() => fail('NOT_FOUND', message));

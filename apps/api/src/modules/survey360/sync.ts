@@ -126,6 +126,33 @@ export async function employeesInScope(tx: Tx, scope: ModuleScope, ids: readonly
   return new Set(found.map((r) => r.id));
 }
 
+/**
+ * 精细化权限下一批员工里在操作人 360 范围内的（第 5 轮 R4-P2-2）：已挂接 360 人员的按该人员的可见性判定（与人员
+ * 列表、回补筛选同一谓词，含创建人维度），尚未挂接的没有人员可判，按员工判定（与自动添加选候选同一口径）。
+ * 未生效（admin.people 为空）时返回 null，调用方不另加限制。
+ */
+export async function fineEmployees(tx: Tx, admin: Admin, ids: readonly string[]): Promise<Set<string> | null> {
+  if (!admin.people) return null;
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Set();
+  const linked = rows<{ id: string; employee_id: string }>(
+    await tx.execute(sql`SELECT p.id, p.employee_id FROM survey360_people p
+      WHERE p.employee_id = ANY(${`{${unique.join(',')}}`}::uuid[])`),
+  );
+  const visible = await visiblePersonIds(
+    tx,
+    admin,
+    linked.map((p) => p.id),
+  );
+  const linkedIds = new Set(linked.map((p) => p.employee_id));
+  const unlinked = await employeesInScope(
+    tx,
+    admin.people,
+    unique.filter((id) => !linkedIds.has(id)),
+  );
+  return new Set([...linked.filter((p) => visible.has(p.id)).map((p) => p.employee_id), ...unlinked]);
+}
+
 export async function employeeInScope(tx: Tx, scope: ModuleScope, employeeId: string): Promise<boolean> {
   const [row] = rows<{ id: string }>(
     await tx.execute(sql`SELECT e.id FROM employment_employees e WHERE e.id = ${employeeId}::uuid
@@ -782,8 +809,9 @@ function viewCursor(
 
 /**
  * 同步回执：返回前（新请求与重放同一路径）按当前员工范围复核（第 3 轮 R2-P2-1），范围外员工的新建 / 更新 / 冲突 /
- * 跳过条目去掉；人员条目另按精细化范围与人员字段裁剪；跳过条目与回补游标没有可判的可见人员，精细化下按员工判定
- * 360 范围（第 4 轮）。游标见 viewCursor。
+ * 跳过条目去掉；人员条目另按精细化范围与人员字段裁剪；跳过条目与回补游标精细化下另按 fineEmployees 判定 360 范围
+ * ——已挂接的按实际 360 人员及创建人，与筛选回补目标同一口径，合法的创建人范围不会被误判为范围外而把游标退回
+ * 从头（第 5 轮 R4-P2-2）。游标见 viewCursor。
  */
 async function syncView(viewer: Viewer, employees: ModuleScope, body: SyncResult, after: string | undefined) {
   const { tx, admin } = viewer;
@@ -798,7 +826,7 @@ async function syncView(viewer: Viewer, employees: ModuleScope, body: SyncResult
   const listed = [...body.created, ...body.updated, ...body.skipped, ...conflictRows].map((e) => e.employeeId);
   const inScope = await employeesInScope(tx, employees, [...listed, ...(position ? [position] : [])]);
   const unlisted = [...body.skipped.map((e) => e.employeeId), ...(position ? [position] : [])];
-  const fine = admin.people ? await employeesInScope(tx, admin.people, unlisted) : null;
+  const fine = await fineEmployees(tx, admin, unlisted);
   const allowed = (id: string) => inScope.has(id) && (!fine || fine.has(id));
   const visible = await visiblePersonIds(
     tx,

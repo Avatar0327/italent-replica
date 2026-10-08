@@ -278,6 +278,12 @@ export interface WriteOptions<T> {
    */
   readonly refs?: (tx: Tx, admin: Admin, input: T) => Promise<void>;
   /**
+   * 结果引用的资源（第 5 轮 R4-P2-1）：返回前（新请求与重放同一路径）按结果里的稳定 ID（人员、评价者、评价关系）
+   * 按请求人当前的范围复核，不按载荷重新解析——录入的邮箱可能已转给别人，refs 判的是邮箱现在的持有人，台账返回的
+   * 却是当时解析出的资源。看不到时与新命令引用看不到的资源同一错误，不返回历史结果。
+   */
+  readonly results?: (tx: Tx, admin: Admin, body: never) => Promise<void>;
+  /**
    * 命令前（含幂等重放）、事务外的额外校验：复用组织员工侧的路由鉴权（objectContext / requestScope 自己开事务），
    * 放在功能权限与资源校验之后执行；命令事务内由业务代码按同一对象重验。
    */
@@ -316,8 +322,9 @@ async function routeFields<T>(
 /**
  * 写命令：路由层判功能权限与按钮，在独立事务里校验路径资源（含幂等重放，结果不会绕过当前权限返回），解析请求体后
  * 按声明的写字段校验字段编辑权限、按当前范围复核载荷引用的资源，再进入命令执行器（业务写 + 审计 + 命令台账同一
- * 事务，AGENTS.md §10），事务内重验功能权限与资源。返回前（新请求与重放同一路径）按请求人当时的权限复核并裁剪
- * 响应（第 3 轮 R2-P2-2）。请求体在路径资源校验之后才解析，范围外的路径资源不会因请求体不合法而暴露为 400。
+ * 事务，AGENTS.md §10），事务内重验功能权限与资源。返回前（新请求与重放同一路径）按请求人当时的权限复核结果引用的
+ * 资源（第 5 轮 R4-P2-1），再复核并裁剪响应（第 3 轮 R2-P2-2）。请求体在路径资源校验之后才解析，范围外的路径资源
+ * 不会因请求体不合法而暴露为 400。
  */
 export async function write<T>(
   c: C,
@@ -354,9 +361,11 @@ export async function write<T>(
     },
   });
   const present = options.present ?? trimAs(options.need.object);
-  const body = await withTenant(deps.db, tenant.tenantId, async (tx) =>
-    present(viewerOf(tx, deps, tenant, await loadAdmin(tx, deps, tenant, people)), result.body as never),
-  );
+  const body = await withTenant(deps.db, tenant.tenantId, async (tx) => {
+    const viewer = viewerOf(tx, deps, tenant, await loadAdmin(tx, deps, tenant, people));
+    await options.results?.(tx, viewer.admin, result.body as never);
+    return present(viewer, result.body as never);
+  });
   return c.json(body as object, result.status);
 }
 

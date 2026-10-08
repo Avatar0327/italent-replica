@@ -57,7 +57,6 @@ import {
 import { ensureAnswerLink, issueConfirmLink } from './links.js';
 import {
   createPerson,
-  employeeVisible,
   findPersonByEmail,
   loadPerson,
   personFilter,
@@ -72,7 +71,7 @@ import {
 import {
   employeeInScope,
   employeesInScope,
-  linkedPerson,
+  fineEmployees,
   personForEmployee,
   refreshFromOrg,
   routeEmployeeScope,
@@ -130,6 +129,15 @@ async function resolvePerson(tx: Tx, ctx: Survey360Context, ref: PersonRef): Pro
 
 /** write() 的载荷资源复核：录入 / 选择的人员按当前范围判定（不新建）。 */
 const personRefs = async (tx: Tx, admin: Admin, ref: PersonRef) => void (await referencedPerson(tx, admin, ref));
+
+/**
+ * write() 的结果资源复核（第 5 轮 R4-P2-1）：结果里实际的人员（稳定 ID）按当前范围判定。录入的邮箱可能已转给别人，
+ * personRefs 判的是邮箱现在的持有人；结果里的人员看不到时与新命令选到看不到的人员同一结果（404），不返回历史结果。
+ */
+const resultPerson =
+  (key: 'personId' | 'appraiserPersonId') =>
+  async (tx: Tx, admin: Admin, body: Record<typeof key, string>): Promise<void> =>
+    void (await visiblePerson(tx, admin, body[key]));
 
 /** 录入 person 即隐式新建 360 人员：不论邮箱是否已存在都先判人员新增权限与字段（不暴露存在性）。 */
 const personAlso = (ref: PersonRef): readonly Also[] =>
@@ -381,6 +389,7 @@ export function registerRelationRoutes(module: Hono<TenantEnv>, deps: TenantRout
         also: personAlso,
         guard: objectGuard(id, objectId),
         refs: personRefs,
+        results: resultPerson('appraiserPersonId'),
         status: 201,
       },
     );
@@ -545,6 +554,7 @@ function registerObjectCreation(module: Hono<TenantEnv>, deps: TenantRouteDeps):
         also: personAlso,
         guard: guarded(id),
         refs: personRefs,
+        results: resultPerson('personId'),
         status: 201,
       },
     );
@@ -696,11 +706,10 @@ interface AutoAddResult {
   readonly skipped: { employeeId: string; reason: string }[];
 }
 
-/** 候选员工在精细化权限下是否可见：已有 360 人员按人员判，尚未同步的按员工判（DEC-289①）。 */
+/** 候选员工在精细化权限下是否可见：已有 360 人员按人员判，尚未同步的按员工判（DEC-289①；与回执同一函数）。 */
 async function candidateVisible(tx: Tx, admin: Admin, employeeId: string): Promise<boolean> {
-  if (!admin.people) return true;
-  const linked = await linkedPerson(tx, employeeId);
-  return linked ? personVisible(tx, admin, linked) : employeeVisible(tx, admin, employeeId);
+  const fine = await fineEmployees(tx, admin, [employeeId]);
+  return !fine || fine.has(employeeId);
 }
 
 /**
@@ -720,8 +729,8 @@ async function autoAddView(viewer: Viewer, employees: ModuleScope, body: AutoAdd
   const skippedIds = body.skipped.map((s) => s.employeeId);
   const inScope = await employeesInScope(tx, employees, [...employeeOf.values(), ...skippedIds].filter(Boolean));
   const visible = await visiblePersonIds(tx, admin, personIds);
-  // 跳过的员工没有 360 人员：精细化权限下按员工判断
-  const fine = admin.people ? await employeesInScope(tx, admin.people, skippedIds) : new Set(skippedIds);
+  // 跳过的员工：精细化权限下与命令内选候选同一判定（已挂接的按人员，尚未挂接的按员工，第 5 轮）
+  const fine = (await fineEmployees(tx, admin, skippedIds)) ?? new Set(skippedIds);
   const fields = await viewer.fields('relation');
   return {
     added: body.added
@@ -862,6 +871,35 @@ const importRefs = (activityId: string) => async (tx: Tx, admin: Admin, input: I
   if (admin.people) requireValidImport((await importErrors(tx, admin, activityId, input, true)).errors);
 };
 
+/**
+ * 导入的结果复核（第 5 轮 R4-P2-1）：按回执里的评价关系（稳定 ID，含之后被移除的）取实际的评价对象与评价者，逐条
+ * 按当前人员范围判定——邮箱可能已转给别人，importRefs 按载荷邮箱解析的是现在的持有人。看不到的行与命令前同一回执：
+ * 整批 400 IMPORT_INVALID，逐行 OBJECT_NOT_FOUND / PERSON_NOT_AVAILABLE；精细化未生效时人员不受范围约束。
+ */
+async function importResults(tx: Tx, admin: Admin, body: { receipts: { row: number; relationId: string }[] }) {
+  if (!admin.people || body.receipts.length === 0) return;
+  const ids = body.receipts.map((r) => r.relationId);
+  const found = rows<{ id: string; object_person: string; appraiser: string }>(
+    await tx.execute(sql`SELECT r.id, o.person_id AS object_person, r.appraiser_person_id AS appraiser
+      FROM survey360_relations r JOIN survey360_objects o ON o.tenant_id = r.tenant_id AND o.id = r.object_id
+      WHERE r.id = ANY(${`{${ids.join(',')}}`}::uuid[])`),
+  );
+  const relations = new Map(found.map((r) => [r.id, r]));
+  const visible = await visiblePersonIds(
+    tx,
+    admin,
+    found.flatMap((r) => [r.object_person, r.appraiser]),
+  );
+  const errors: { row: number; code: string; details: { reason: string } }[] = [];
+  const error = (row: number, reason: string) => errors.push({ row, code: 'VALIDATION_FAILED', details: { reason } });
+  for (const { row, relationId } of body.receipts) {
+    const relation = relations.get(relationId);
+    if (!relation || !visible.has(relation.object_person)) error(row, 'OBJECT_NOT_FOUND');
+    if (relation && !visible.has(relation.appraiser)) error(row, 'PERSON_NOT_AVAILABLE');
+  }
+  requireValidImport(errors);
+}
+
 /** 导入回执：行号与处理状态是协议键，关系 ID 按评价关系的 id 字段裁剪（不再原样返回，第 4 轮 R3-P2-1）。 */
 const importView: Present = async (
   viewer,
@@ -915,6 +953,7 @@ function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
         also: importAlso,
         guard: guarded(id),
         refs: importRefs(id),
+        results: importResults,
         // 选择“同步”时需要员工信息查看权：命令前（含幂等重放）同样校验
         preflight: async () => {
           const body = (await jsonOrEmpty(c)) as { sync?: unknown } | null;
