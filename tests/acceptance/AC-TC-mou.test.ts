@@ -114,6 +114,16 @@ describe('DEC-281⑨ 按管理单元控制人才标准数据', () => {
     }
   });
 
+  it('详情：范围外与不存在返回同一个 404（响应体相同，不泄露对象是否存在）', async () => {
+    const op = await talentOperator(world, { mouId: data.mouId });
+    for (const [path, item] of ownedTargets(data.outside)) {
+      const outside = await op.request('GET', `/${path}/${item.id}`);
+      const ghost = await op.request('GET', `/${path}/${randomUUID()}`);
+      expect([outside.status, ghost.status], path).toEqual([404, 404]);
+      expect(await outside.json(), path).toEqual(await ghost.json());
+    }
+  });
+
   it('管理单元外的写入一律 404：改 / 删范围外对象、新建到范围外、在范围外的库下建指标或分类、引用范围外的指标', async () => {
     const op = await talentOperator(world, { mouId: data.mouId });
     const { inside, outside } = data;
