@@ -3,7 +3,7 @@
 "stats": {
 "merged": 54,
 "open": 11,
-"dec": 301,
+"dec": 302,
 "ev": "29/124"
 },
 "tasks": {
@@ -2006,7 +2006,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 22:26",
+"liveUpdated": "10-07 22:30",
 "chains": [
 {
 "g": "exit",
@@ -2178,8 +2178,8 @@
 "k": "run",
 "n": "继任管理",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:d ds:d1 dev:w rev:d1 mg:w",
-"now": "设计 v1 审查出结论，待读取",
+"seg": "ev:d ds:d2 dev:w rev:w2 mg:w",
+"now": "设计 v2 已交，待复审",
 "fable": "1",
 "pr": 112
 },
