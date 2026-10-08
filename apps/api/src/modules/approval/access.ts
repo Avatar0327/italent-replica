@@ -139,8 +139,28 @@ export async function requireWithdrawRight(deps: TenantRouteDeps, ctx: TenantCon
 }
 
 /**
+ * 发展计划所有者的重提（DEC-113 / DEC-318 K-39，PR #115 第 3 轮 R2-1）：与撤回同一口径——计划编辑权、编辑按钮
+ * （IDP 没有单独的撤回 / 重提按钮）与 IDP 范围（K-50），在调用方事务内按当前授权解析。
+ */
+async function requireIdpOwnerRight(deps: TenantRouteDeps, ctx: TenantContext, tx: Tx, instanceId: string) {
+  const authorize = authorizeInTransaction(deps.authorize, tx);
+  await requireObjectWrite(authorize, ctx, { objectCode: IDP_PLAN_OBJECT, operation: 'update', payload: {} });
+  await requirePermission(authorize, {
+    ...ctx,
+    action: 'object.button',
+    resource: buttonResource(IDP_PLAN_OBJECT, 'update', 'detail'),
+  });
+  const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, IDP_PLAN_OBJECT, `${IDP_PLAN_OBJECT}.list`);
+  const [covered] = rowsOf(
+    await tx.execute(sql`SELECT 1 FROM approval_instances i WHERE i.tenant_id=${ctx.tenantId}
+      AND i.id=${instanceId}::uuid AND ${instanceScopeSql(ctx, scope)}`),
+  );
+  if (!covered) throw approvalError('FORBIDDEN', 'APPROVAL_SCOPE_DENIED', '该申请已不在您的数据范围内');
+}
+
+/**
  * DEC-113 / F3：重提只由原发起人进行，并按首次提交复核其当前权限——员工子集变更须仍持有自助申请按钮，且账号仍绑定
- * 异动本人（自助申请的范围就是本人）。任职申请经任职模块的“提交”重提，那里按任职权限校验，审批侧命令直接拒绝。
+ * 异动本人（自助申请的范围就是本人）；发展计划按所有者当前的计划编辑权、按钮与 IDP 范围。任职申请经任职模块的“提交”重提，那里按任职权限校验，审批侧命令直接拒绝。
  */
 export async function requireResubmitRight(
   deps: TenantRouteDeps,
@@ -156,6 +176,11 @@ export async function requireResubmitRight(
   const { instance, person } = transaction ? await read(transaction) : await withTenant(deps.db, ctx.tenantId, read);
   if (!mayResubmit(instance.initiatorUserId, ctx.userId)) {
     throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有原发起人可以重新提交');
+  }
+  if (instance.businessType === 'idp') {
+    const check = (tx: Tx) => requireIdpOwnerRight(deps, ctx, tx, instanceId);
+    await (transaction ? check(transaction) : withTenant(deps.db, ctx.tenantId, check));
+    return;
   }
   if (instance.businessType === 'contract') {
     corrections = parse(fieldsSchema, corrections);
