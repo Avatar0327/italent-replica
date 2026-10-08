@@ -6,7 +6,7 @@
  *   修正内容（计划内容按节点按钮维护）；不同意结束流程 → 阶段开启失败，HR 查明后手动重开（DEC-318 K-39，不再一刀切
  *   禁用）。审批中心的“编辑”对 IDP 不可用（审批类型不支持审批中编辑，内容由节点按钮决定）；
  * - 同意前：节点配置了“新增目标”的发展目标模块开启无目标校验时，该模块须有目标（IDP-R10，AC-IDP-05）。
- * 取锁顺序：计划 → 审批实例（审批命令先经 lock 锁计划行，再锁实例）。
+ * 取锁顺序：计划 → 审批实例（审批命令先经 lock 锁计划行，再锁实例）；批量交接经 lockMany 按计划 ID 升序先锁齐计划。
  */
 import { sql, type Tx } from '@italent/db';
 import { APPROVAL_TYPES, type ApprovalTypeCode, IDP_OBJECTS } from '@italent/domain';
@@ -65,6 +65,14 @@ export const idpAdapter: BusinessAdapter = {
     const stage = await loadStage(tx, ctx.tenantId, stageId);
     // 计划已删除（IDP-R17）：审批实例已作废、只剩记录可查，没有业务行可锁
     if (stage) await requirePlanRow(tx, ctx.tenantId, stage.planId, true);
+  },
+  // 批量交接先按计划 ID 升序锁齐计划，与 IDP 批量干预（intervention-service 按计划 ID 排序取锁）同一锁序（P3-2）
+  async lockMany(tx, ctx, stageIds) {
+    const plans = rowsOf<{ plan_id: string }>(
+      await tx.execute(sql`SELECT DISTINCT plan_id::text FROM idp_plan_stages WHERE tenant_id = ${ctx.tenantId}
+        AND id = ANY(${`{${stageIds.join(',')}}`}::uuid[])`),
+    ).map((r) => r.plan_id);
+    for (const planId of plans.sort()) await requirePlanRow(tx, ctx.tenantId, planId, true);
   },
   async snapshot(tx, ctx, stageId): Promise<BusinessSnapshot> {
     const stage = await loadStage(tx, ctx.tenantId, stageId);

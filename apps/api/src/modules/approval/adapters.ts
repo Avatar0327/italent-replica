@@ -88,6 +88,11 @@ export interface BusinessAdapter {
    */
   resubmit(tx: Tx, ctx: ApprovalContext, businessId: string, corrections: Readonly<Row>): Promise<void>;
   edit(tx: Tx, ctx: ApprovalContext, businessId: string, fields: Readonly<Row>): Promise<void>;
+  /**
+   * 批量操作（异常管理员交接 / 停用接管）在逐单锁实例之前，按业务自己的规范顺序一次锁齐本批业务行（R3-T07 P3-2：
+   * 发展计划按计划 ID 升序，与 IDP 批量干预一致）。没有批量锁序要求的业务不实现。
+   */
+  lockMany?(tx: Tx, ctx: ApprovalContext, businessIds: readonly string[]): Promise<void>;
   /** 同意前的业务前提（R3-T07 无目标校验 IDP-R10）；不满足时抛错，任务不动。 */
   beforeApprove?(tx: Tx, ctx: ApprovalContext, businessId: string, nodeKey: string): Promise<void>;
 }
