@@ -175,10 +175,12 @@ describe('AC-EXP-19 参数按原站 5 个：模式、排序字段、数据范围
     expect(rankOf(members, FIVE('排序号'), 'd')).toEqual(num(1));
   });
 
-  it('第 4、5 参数也可写条件表达式：作为筛选', () => {
+  it('第 4 参数写条件：按旧语义分组（真与真、假与假同组）；第 5 参数写条件：筛选', () => {
     const formula = `Ranking("排序号", ${SCORE}, ${PROJECT_NAME}="PRJ_02", ${PLAN}="方案一", ${GRADE}="P7")`;
     expect(rankOf(members, formula, 'e')).toEqual(num(3));
     expect(rankOf(members, formula, 'd')).toMatchObject({ code: 'OUT_OF_SCOPE' });
+    // b 是方案二：第 4 参数为假，与同为假的人一组（只有自己），不是被筛掉
+    expect(rankOf(members, formula, 'b')).toEqual(num(1));
   });
 });
 
@@ -201,9 +203,9 @@ describe('AC-EXP-19 兼容 2～4 参旧写法（缺省的范围参数 = 不限�
     expect(rankOf(members, `Ranking("排序号", ${SCORE}, ${GRADE}="P7")`, 'b')).toEqual(num(2));
   });
 
-  it('3 参：第 3 参数为字段引用 → 与本人同值的人员', () => {
-    expect(rankOf(members, `Ranking("排序号", ${SCORE}, ${GRADE})`, 'd')).toEqual(num(4));
-    expect(rankOf(members, `Ranking("排序号", ${SCORE}, ${GRADE})`, 'e')).toEqual(num(1));
+  it('3 参：第 3 参数始终是过滤条件；写成非是否型字段时人人不满足 → OUT_OF_SCOPE（旧语义不变）', () => {
+    expect(rankOf(members, `Ranking("排序号", ${SCORE}, ${GRADE})`, 'd')).toMatchObject({ code: 'OUT_OF_SCOPE' });
+    expect(rankOf(members, `Ranking("排序号", ${SCORE}, ${GRADE})`, 'e')).toMatchObject({ code: 'OUT_OF_SCOPE' });
   });
 
   it('4 参（本租户写法）：条件 + 分组字段，结果与对应 5 参一致', () => {
@@ -329,7 +331,7 @@ describe('AC-EXP-19 排名在全体计算对象上一次性求值（DEC-301②�
   it('同值范围按 = 的口径：盘点年度 "2026" 与 2026 同组', () => {
     const YEAR = '盘点活动.盘点年度';
     const members = [member('a', 90, { [YEAR]: '2026' }), member('b', 80, { [YEAR]: 2026 }), member('c', 99)];
-    const formula = `Ranking("排序号", ${SCORE}, ${YEAR})`;
+    const formula = `Ranking("排序号", ${SCORE}, true, ${YEAR})`;
     expect(rankOf(members, formula, 'b')).toEqual(num(2));
     expect(rankOf(members, formula, 'c')).toEqual(num(1));
   });
@@ -383,7 +385,9 @@ describe('AC-EXP-19 元数据与保存检查（DEC-260、DEC-287）', () => {
       ok: false,
       errors: [{ code: 'ARGUMENT_TYPE' }],
     });
-    expect(check(`Ranking("排序号", ${SCORE}, ${PROJECT_NAME}="PRJ_02", "方案一")`)).toMatchObject({ ok: false });
+    expect(check(`Ranking("排序号", ${SCORE}, ${PROJECT_NAME}="PRJ_02", ${PLAN}, "方案一")`)).toMatchObject({
+      ok: false,
+    });
     const uncertain = check(`Ranking("排序号", ${SCORE}, 如果 ${SCORE} > 1 那么 ${PLAN} 否则 盘点对象.是否关键)`);
     expect(uncertain.ok).toBe(true);
     if (uncertain.ok) expect(uncertain.warnings.map((w) => w.code)).toContain('TYPE_UNCERTAIN');
