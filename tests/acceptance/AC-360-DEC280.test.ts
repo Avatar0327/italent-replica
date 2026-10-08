@@ -31,11 +31,6 @@ interface GrantsView {
   unauthorized: { userId: string }[];
 }
 
-interface MyObject {
-  dataOperations: { create: boolean; update: boolean; delete: boolean };
-  buttons: { buttonCode: string; level: string }[];
-}
-
 async function grants(w: World360, activityId: string, by = w.admin) {
   return w.ok<GrantsView>(w.as(by)('GET', `/activities/${activityId}/grants`));
 }
@@ -59,7 +54,9 @@ async function team(w: World360) {
 }
 
 describe('DEC-280① 三类内置身份由平台下发，企业管理员在用户授权里授予', () => {
-  it('开通租户即有三个 360 标准身份；授予高级管理员后只见自己创建的活动，按钮与系统管理员不同', async () => {
+  // 三类身份随开通下发、首位租户管理员没有 360 身份、按钮差别由 AC-360-standard-profiles（PR-A2）验证；
+  // 这里只验 360 路由按企业管理员授出的身份放行
+  it('授予高级管理员后 360 路由放行、只见自己创建的活动；首位租户管理员调 360 路由 403', async () => {
     const { db } = testDb();
     const api = tenantApi(db, { authorize: undefined });
     const operator = await seedOperator(db, 'ops-360');
@@ -73,16 +70,14 @@ describe('DEC-280① 三类内置身份由平台下发，企业管理员在用�
     const tenant = result.tenant.id;
     const asAdmin = { user: admin.id, tenant };
     const listed = await api.request('GET', '/api/tenant/permission/profiles', asAdmin);
-    const { items } = (await listed.json()) as { items: { id: string; code: string; apps: string[] }[] };
-    const of = (code: string) => items.find((p) => p.code === code)!;
-    for (const code of ['standard_360_system_admin', 'standard_360_advanced_admin', 'standard_360_general_admin'])
-      expect(of(code).apps).toEqual([survey360.SURVEY360_APP]);
+    const { items } = (await listed.json()) as { items: { id: string; code: string }[] };
+    const advanced = items.find((p) => p.code === 'standard_360_advanced_admin')!;
 
     const user = await createUser(db, { email: 'adv-360@example.com', displayName: '高级' }, cmd());
     await grantMembership(db, { tenantId: tenant, userId: user.id, expectedRevision: 0 }, cmd());
     const granted = await api.request('POST', '/api/tenant/permission/grants', {
       ...asAdmin,
-      body: { userId: user.id, profileId: of('standard_360_advanced_admin').id },
+      body: { userId: user.id, profileId: advanced.id },
     });
     expect(granted.status, await granted.clone().text()).toBe(201);
     const asUser = { user: user.id, tenant };
@@ -98,10 +93,6 @@ describe('DEC-280① 三类内置身份由平台下发，企业管理员在用�
     expect(list.items).toHaveLength(1);
     // 首位租户管理员没有 360 身份：看不到 360 活动（360 身份要另行授予）
     expect((await api.request('GET', `${BASE}/activities`, asAdmin)).status).toBe(403);
-    const me = await api.request('GET', `/api/tenant/permission/me/objects/${ACTIVITY.code}`, asUser);
-    const buttons = ((await me.json()) as MyObject).buttons.map((b) => b.buttonCode);
-    expect(buttons).not.toContain(survey360.SURVEY360_BUTTONS.allActivities);
-    expect(buttons).toContain('update');
   });
 
   it('不能编辑非本人创建的套卷：403 且数据不变；本人创建的可改；系统管理员可改他人的', async () => {

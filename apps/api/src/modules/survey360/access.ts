@@ -6,14 +6,10 @@ import { sql, type Tx, withTenant } from '@italent/db';
 import { PERSONNEL_OBJECT } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../../routes.js';
-import { registerObjectDefinition } from '../permission/catalog.js';
 import { scopeSql } from '../permission/module-access.js';
-import { type Admin, allActivitiesOf, BUTTONS, can, fail, finePermission, isHolder, OBJECTS, rows } from './context.js';
+import { type Admin, allActivitiesOf, BUTTONS, can, fail, finePermission, isHolder, rows } from './context.js';
 import { loadPerson, personVisible } from './people.js';
 import { employeeScope } from './sync.js';
-
-// 360 对象登记进权限对象目录（身份对象权限配置校验、按钮判定、数据范围按对象所属应用取）
-for (const object of Object.values(OBJECTS)) registerObjectDefinition(object);
 
 /** 活动可见谓词（别名 a = survey360_activities）。 */
 export function activityVisibleSql(admin: Pick<Admin, 'userId' | 'allActivities'>, alias = sql`a`): SQL {
