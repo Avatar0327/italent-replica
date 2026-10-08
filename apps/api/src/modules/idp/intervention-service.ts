@@ -41,6 +41,24 @@ const hrApproval = (ctx: PlanWriteContext, expectedRevision = 0): ApprovalContex
 
 const actorOf = (ctx: PlanWriteContext): StageActor => ({ ...ctx });
 
+/**
+ * 流程干预的审计（DEC-321）：计划所有者可全量干预（DEC-092“本人发起”回避的例外），每次干预都在计划上记一条：
+ * 操作人（审计行的 actor）、计划、动作、原因。
+ */
+async function auditIntervention(
+  tx: Tx,
+  ctx: PlanWriteContext,
+  plan: PlanRow,
+  intervention: 'urge' | 'jump' | 'terminate',
+  change: { readonly before: Record<string, unknown>; readonly after: Record<string, unknown>; reason: string | null },
+) {
+  await audit(tx, ctx, 'plan', 'update', plan.id, {
+    before: change.before,
+    after: { ...change.after, intervention, reason: change.reason },
+    employeeId: plan.employeeId,
+  });
+}
+
 /** DEC-092：不能干预本人为计划员工的计划，须由其他 HR 处理。 */
 async function notOwnPlan(tx: Tx, ctx: PlanWriteContext, plan: PlanRow): Promise<void> {
   if ((await personOfUser(tx, ctx.tenantId, ctx.userId)) === plan.employeeId) {
@@ -93,6 +111,11 @@ export function urgePlans(tx: Tx, ctx: PlanWriteContext, input: BatchItems) {
     const stage = await runningStage(sp, plan);
     if (!stage) conflict('IDP_NO_RUNNING_STAGE', '计划没有进行中的阶段，无需催办');
     await urgeAsAdmin(sp, hrApproval(ctx), stage.approvalInstanceId!);
+    await auditIntervention(sp, ctx, plan, 'urge', {
+      before: { stage: { id: stage.id } },
+      after: { stage: { id: stage.id } },
+      reason: input.reason ?? null,
+    });
     return { id: plan.id, status: 200, outcome: 'urged' };
   });
 }
@@ -125,10 +148,10 @@ export function terminatePlans(tx: Tx, ctx: PlanWriteContext, input: BatchItems)
     }
     await sp.execute(sql`UPDATE idp_plans SET status = 'terminated', revision = revision + 1,
       updated_at = ${ctx.now.toISOString()} WHERE tenant_id = ${ctx.tenantId} AND id = ${plan.id}::uuid`);
-    await audit(sp, ctx, 'plan', 'update', plan.id, {
+    await auditIntervention(sp, ctx, plan, 'terminate', {
       before: { status: plan.status },
-      after: { status: 'terminated', reason: input.reason ?? null },
-      employeeId: plan.employeeId,
+      after: { status: 'terminated' },
+      reason: input.reason ?? null,
     });
     return { id: plan.id, status: 200, outcome: 'terminated' };
   });
@@ -158,13 +181,14 @@ export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, in
     hrApproval(ctx, Number(instance.revision)),
     { instanceId: stage.approvalInstanceId!, kind: 'jump', toNodeKey: input.toNodeKey, reason: input.reason },
     sql`true`,
+    // DEC-321：计划所有者（审批发起人）可干预本计划，不按 DEC-092“本人发起”回避；“本人为计划员工”仍回避
     { ownerIntervention: true },
   );
   await bumpPlan(tx, ctx.tenantId, plan.id, ctx.now);
-  await audit(tx, ctx, 'plan', 'update', plan.id, {
+  await auditIntervention(tx, ctx, plan, 'jump', {
     before: { stage: { id: stage.id, currentNodeKey: null } },
-    after: { stage: { id: stage.id, currentNodeKey: input.toNodeKey }, reason: input.reason },
-    employeeId: plan.employeeId,
+    after: { stage: { id: stage.id, currentNodeKey: input.toNodeKey } },
+    reason: input.reason,
   });
   return loadPlanDetail(tx, await requirePlanRow(tx, ctx.tenantId, plan.id), tenantLocalDate(ctx.now, ctx.timezone));
 }

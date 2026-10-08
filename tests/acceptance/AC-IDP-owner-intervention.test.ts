@@ -53,23 +53,28 @@ describe('DEC-321：计划所有者的流程干预', () => {
     );
     expect(terminated.receipts).toEqual([expect.objectContaining({ status: 200, outcome: 'terminated' })]);
 
-    expect(await interventionLogs(w, plan.id)).toEqual([
-      expect.objectContaining({
-        actor_user_id: w.hrUser,
-        object_id: plan.id,
-        after: expect.objectContaining({ intervention: 'urge', reason: '请尽快制定目标' }),
-      }),
-      expect.objectContaining({
-        actor_user_id: w.hrUser,
-        object_id: plan.id,
-        after: expect.objectContaining({ intervention: 'jump', reason: '员工已线下确认目标' }),
-      }),
-      expect.objectContaining({
-        actor_user_id: w.hrUser,
-        object_id: plan.id,
-        after: expect.objectContaining({ intervention: 'terminate', reason: '员工转岗，计划作废' }),
-      }),
-    ]);
+    // 测试时钟固定，三条审计的发生时间相同：按动作比对，不依赖顺序
+    const logs = await interventionLogs(w, plan.id);
+    expect(logs).toHaveLength(3);
+    expect(logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actor_user_id: w.hrUser,
+          object_id: plan.id,
+          after: expect.objectContaining({ intervention: 'urge', reason: '请尽快制定目标' }),
+        }),
+        expect.objectContaining({
+          actor_user_id: w.hrUser,
+          object_id: plan.id,
+          after: expect.objectContaining({ intervention: 'jump', reason: '员工已线下确认目标' }),
+        }),
+        expect.objectContaining({
+          actor_user_id: w.hrUser,
+          object_id: plan.id,
+          after: expect.objectContaining({ intervention: 'terminate', reason: '员工转岗，计划作废' }),
+        }),
+      ]),
+    );
   });
 
   it('计划员工本人（非所有者）干预自己的计划：催办 / 终止回执 403，跳转 403，计划与审计不变', async () => {

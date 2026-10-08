@@ -847,7 +847,7 @@ export interface AdminInput {
 
 /**
  * 管理员转交 / 干预（DEC-063 / DEC-070）：每次操作单独写审计，原审批人、新审批人、原因齐全。
- * @param options.ownerIntervention 业务模块内流程所有者的流程干预（IDP 计划所有者的阶段内跳转，DEC-318 K-38）：发起人
+ * @param options.ownerIntervention 业务模块内流程所有者的流程干预（IDP 计划所有者的阶段内跳转，DEC-318 K-38 / DEC-321）：发起人
  *   就是所有者本人，不按 DEC-092 的“本人发起”回避；“本人为异动对象”仍回避。审批中心的管理员入口不传。
  */
 export async function adminAct(
