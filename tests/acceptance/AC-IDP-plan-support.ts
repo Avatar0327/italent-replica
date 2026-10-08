@@ -424,11 +424,12 @@ export async function grantTenantBaseView(pw: PermissionWorld, userId: string, o
   }
   await makeGrantable(pw, [profile.id]);
   expect((await grant(pw, userId, profile.id)).status).toBe(201);
-  if (!orgIds.length) return;
+  if (!orgIds.length) return profile;
   const scope = await pw.api.request('PUT', `/api/tenant/permission/scopes/${userId}/TenantBase`, {
     ...pw.asAdmin,
     ifMatch: 0,
     body: { kind: 'org_range', orgRanges: orgIds.map((orgId) => ({ orgId, includeDescendants: true })) },
   });
   expect(scope.status, await scope.clone().text()).toBe(200);
+  return profile;
 }
