@@ -12,7 +12,6 @@ import { SYSTEM_USER_ID } from '../../system-actor.js';
 import { cancel } from '../approval/actions.js';
 import type { ApprovalContext } from '../approval/context.js';
 import { startSpecified } from '../approval/engine.js';
-import { userOfPerson } from '../approval/resolver.js';
 import { rowsOf } from './access.js';
 import { bumpPlan, loadStages, type PlanRow, type StageRow } from './plan-store.js';
 import { audit } from './write-support.js';
@@ -33,14 +32,13 @@ export type OpenOutcome =
 const businessDate = (actor: StageActor) => tenantLocalDate(actor.now, actor.timezone);
 
 /**
- * 审批实例的发起人（流程所有者，🟡 K-38）：计划员工本人的有效账号；没有时为计划创建人（实例要求发起人是租户成员）。
+ * 审批实例的发起人 = 流程所有者，即计划所有者（建计划的人，DEC-318 K-38），不是员工本人；不再按员工有无账号兜底。
  * 实际触发人记为审批日志与审计的操作人。
  */
-async function approvalContext(tx: Tx, actor: StageActor, plan: PlanRow): Promise<ApprovalContext> {
-  const initiator = (await userOfPerson(tx, actor.tenantId, plan.employeeId)) ?? plan.createdBy;
+function approvalContext(actor: StageActor, plan: PlanRow): ApprovalContext {
   return {
     tenantId: actor.tenantId,
-    userId: initiator,
+    userId: plan.createdBy,
     timezone: actor.timezone,
     now: actor.now,
     commandId: actor.commandId,
@@ -92,7 +90,7 @@ export async function openStage(tx: Tx, actor: StageActor, plan: PlanRow, stage:
   if (unavailable) {
     outcome = { kind: 'failed', reason: unavailable, message: '子流程引用的审批流程已废弃或没有已发布版本' };
   } else {
-    const ctx = await approvalContext(tx, actor, plan);
+    const ctx = approvalContext(actor, plan);
     try {
       const instance = await tx.transaction(async (sp) => {
         await sp.execute(sql`UPDATE idp_plan_stages SET status = 'running', opened_at = ${actor.now.toISOString()},
@@ -169,7 +167,7 @@ export async function cancelStageInstance(tx: Tx, actor: StageActor, plan: PlanR
       AND id = ${stage.approvalInstanceId}::uuid`),
   );
   if (instance?.status !== 'running') return;
-  await cancel(tx, await approvalContext(tx, actor, plan), stage.approvalInstanceId);
+  await cancel(tx, approvalContext(actor, plan), stage.approvalInstanceId);
 }
 
 /** HR 结束运行中的阶段：作废实例、阶段结束（不触发“无规则”的自动开启，下一段由调用方开启）。 */

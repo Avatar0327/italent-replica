@@ -158,6 +158,7 @@ export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, in
     hrApproval(ctx, Number(instance.revision)),
     { instanceId: stage.approvalInstanceId!, kind: 'jump', toNodeKey: input.toNodeKey, reason: input.reason },
     sql`true`,
+    { ownerIntervention: true },
   );
   await bumpPlan(tx, ctx.tenantId, plan.id, ctx.now);
   await audit(tx, ctx, 'plan', 'update', plan.id, {

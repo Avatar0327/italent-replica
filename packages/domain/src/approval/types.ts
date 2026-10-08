@@ -35,7 +35,11 @@ export const SUBJECT_FILL_APPROVER: ApproverExpression = 'idp_employee';
  * 审批人为空：首节点提交即报错，中间节点一律转异常管理员（DEC-054、REQ-APV-002 R6、`14` §10）。
  * 原站另有“自动跳过 / 自动同意”配置（`14` §8.7），复刻首版不开放（PR #35 第二轮清单 6）。
  */
-export const NO_ASSIGNEE_POLICIES = ['exception_admin'] as const;
+/**
+ * 审批人为空的处理：转异常管理员（DEC-054 / 098）；无操作（DEC-318 K-38，原站 noAssignee.type = 0：不转管理员、不自动
+ * 跳过，推进到该节点的操作报错，流程停在原节点，🟡 原站报错文案未实测）。
+ */
+export const NO_ASSIGNEE_POLICIES = ['exception_admin', 'none'] as const;
 export type NoAssigneePolicy = (typeof NO_ASSIGNEE_POLICIES)[number];
 
 /** 审批中编辑：独立【编辑】按钮（保存后仍需同意）/ 与【同意】合一（REQ-APV-003 R2）。 */

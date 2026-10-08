@@ -1,5 +1,5 @@
 {
-  "id": "e74771e2-7bd6-4365-ae47-28a31ac65aea",
+  "id": "a1ec0983-037b-4e8c-8c31-3ec90af9d0ec",
   "prevId": "64b020ff-bd59-4cb0-b25b-939525278aa2",
   "version": "7",
   "dialect": "postgresql",
@@ -23422,7 +23422,7 @@
         },
         "approval_nodes_no_assignee": {
           "name": "approval_nodes_no_assignee",
-          "value": "\"approval_process_nodes\".\"no_assignee_policy\" = 'exception_admin'"
+          "value": "\"approval_process_nodes\".\"no_assignee_policy\" IN ('exception_admin','none')"
         },
         "approval_nodes_edit_mode": {
           "name": "approval_nodes_edit_mode",

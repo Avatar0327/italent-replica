@@ -373,6 +373,11 @@ function firstNodeEmpty(nodeKey: string, decision: { readonly reason: string }, 
   return approvalError('CONFLICT', 'APPROVAL_FIRST_NODE_EMPTY', decision.reason, { nodeKey, ...extra });
 }
 
+/** DEC-318 K-38：节点“无操作”且审批人为空——拒绝本次推进，流程停在原节点（不转异常管理员）。 */
+function noAssignee(nodeKey: string, decision: { readonly reason: string }, extra: Row = {}) {
+  return approvalError('CONFLICT', 'APPROVAL_NO_ASSIGNEE', decision.reason, { nodeKey, ...extra });
+}
+
 /** 单人审批节点：需人工审批即停下；相同 / 历史相同审批人自动处理后继续下一节点。 */
 async function enterSingle(
   tx: Tx,
@@ -383,6 +388,7 @@ async function enterSingle(
 ): Promise<EntryResult> {
   const { candidate, decision } = await decide(tx, entry.subject, node, node.approver, entry.facts);
   if (decision.kind === 'first_node_empty') throw firstNodeEmpty(node.key, decision);
+  if (decision.kind === 'no_assignee') throw noAssignee(node.key, decision);
   if (decision.kind === 'assign') {
     await assign(tx, run, node, decision, { ...entry, candidateUserId: candidate.userId });
     run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
@@ -449,6 +455,7 @@ async function countersignSeats(tx: Tx, run: Run, node: CountersignApprovalNode,
   for (const expression of node.approvers) {
     const { candidate, decision } = await decide(tx, entry.subject, node, expression, entry.facts);
     if (decision.kind === 'first_node_empty') throw firstNodeEmpty(node.key, decision, { approver: expression });
+    if (decision.kind === 'no_assignee') throw noAssignee(node.key, decision, { approver: expression });
     if (candidate.userId !== null && candidates.has(candidate.userId)) continue;
     if (candidate.userId !== null) candidates.add(candidate.userId);
     if (decision.kind === 'assign' && decision.selfSkippedUserId) selfSkips.push(decision);
@@ -463,7 +470,7 @@ async function countersignSeats(tx: Tx, run: Run, node: CountersignApprovalNode,
 async function seatOf(
   tx: Tx,
   run: Run,
-  decision: Exclude<NodeDecision, { kind: 'first_node_empty' }>,
+  decision: Exclude<NodeDecision, { kind: 'first_node_empty' | 'no_assignee' }>,
   candidateUserId: string | null,
   entry: Entry,
 ): Promise<Seat> {

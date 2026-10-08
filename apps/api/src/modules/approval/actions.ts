@@ -742,8 +742,18 @@ export interface AdminInput {
   readonly reason: string | null;
 }
 
-/** 管理员转交 / 干预（DEC-063 / DEC-070）：每次操作单独写审计，原审批人、新审批人、原因齐全。 */
-export async function adminAct(tx: Tx, ctx: ApprovalContext, input: AdminInput, scope: SQL): Promise<Outcome> {
+/**
+ * 管理员转交 / 干预（DEC-063 / DEC-070）：每次操作单独写审计，原审批人、新审批人、原因齐全。
+ * @param options.ownerIntervention 业务模块内流程所有者的流程干预（IDP 计划所有者的阶段内跳转，DEC-318 K-38）：发起人
+ *   就是所有者本人，不按 DEC-092 的“本人发起”回避；“本人为异动对象”仍回避。审批中心的管理员入口不传。
+ */
+export async function adminAct(
+  tx: Tx,
+  ctx: ApprovalContext,
+  input: AdminInput,
+  scope: SQL,
+  options: { readonly ownerIntervention?: boolean } = {},
+): Promise<Outcome> {
   const run = await openRun(tx, ctx, input.instanceId);
   const [covered] = rowsOf(
     await tx.execute(sql`SELECT 1 FROM approval_instances i WHERE i.tenant_id=${ctx.tenantId}
@@ -755,7 +765,10 @@ export async function adminAct(tx: Tx, ctx: ApprovalContext, input: AdminInput, 
   assertBusinessUnchanged(run);
   // DEC-092：管理员不得干预本人发起或本人为异动对象的实例，须由其他管理员处理。
   const subjectUser = await userOfPerson(tx, ctx.tenantId, run.snapshot.subjectEmployeeId);
-  if (isOwnRequest(run.instance, subjectUser, ctx.userId)) {
+  const own = options.ownerIntervention
+    ? subjectUser === ctx.userId
+    : isOwnRequest(run.instance, subjectUser, ctx.userId);
+  if (own) {
     throw approvalError(
       'FORBIDDEN',
       'APPROVAL_ADMIN_SELF',

@@ -51,7 +51,9 @@ export type NodeDecision =
       readonly userId: string | null;
       readonly reason: string;
     }
-  | { readonly kind: 'first_node_empty'; readonly reason: string };
+  | { readonly kind: 'first_node_empty'; readonly reason: string }
+  /** DEC-318 K-38：节点“处理人为空”配置为无操作（原站 noAssignee.type = 0）——不转异常管理员、不自动跳过。 */
+  | { readonly kind: 'no_assignee'; readonly reason: string };
 
 export function isSelf(candidate: Candidate, facts: RoutingFacts): boolean {
   return (
@@ -82,13 +84,14 @@ function auto(outcome: AutoOutcome, result: AutoResult, userId: string, why: str
 export function decideNode(
   node: Pick<
     ApprovalNode,
-    'sameAssigneeSkip' | 'historySameAssigneeSkip' | 'sameAssigneeResult' | 'historySameAssigneeResult'
+    'sameAssigneeSkip' | 'historySameAssigneeSkip' | 'sameAssigneeResult' | 'historySameAssigneeResult' | 'noAssignee'
   >,
   candidate: Candidate,
   facts: RoutingFacts,
   manager: Candidate = { personId: null, userId: null },
 ): NodeDecision {
   if (candidate.userId === null) {
+    if (node.noAssignee === 'none') return { kind: 'no_assignee', reason: '审批人为空，本节点配置为无操作' };
     if (facts.isFirstNode) return { kind: 'first_node_empty', reason: '第一个审批节点没有审批人' };
     return exceptionAdmin(facts, '审批人为空，转异常管理员', null);
   }

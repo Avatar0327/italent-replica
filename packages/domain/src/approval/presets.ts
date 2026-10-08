@@ -212,8 +212,9 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       priority: 0,
       ...standardCondition(approvalType),
       nodes: [
-        node(employeeKey, employeeName, 'idp_employee', { formFields: [] }),
-        node(tutorKey, tutorName, 'idp_tutor', { formFields: [] }),
+        // DEC-318 K-38：处理人为空照原站“无操作”（noAssignee.type = 0），不兜底给管理员
+        node(employeeKey, employeeName, 'idp_employee', { formFields: [], noAssignee: 'none' }),
+        node(tutorKey, tutorName, 'idp_tutor', { formFields: [], noAssignee: 'none' }),
       ],
     }),
   })),

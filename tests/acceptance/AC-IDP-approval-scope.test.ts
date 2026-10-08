@@ -66,9 +66,10 @@ describe('P1：审批中心的 IDP 实例按 IDP 范围判断', () => {
   it('管理员日志：IDP 范围为空时不列 IDP 实例的转交记录；范围放开后列出', async () => {
     const { w, instance, admin, narrowed } = await runningPlan('idp-apv-logs');
     const task = instance.tasks.find((t) => t.status === 'pending')!;
-    // 全权 HR 先做一次管理员转交，产生一条管理日志
+    // 另一名全权管理员先做一次管理员转交，产生一条管理日志（HR 是发起人 = 计划所有者，按 DEC-092 不能干预，K-38）
+    const other = await w.member('全权管理员');
     await w.ok(
-      await w.http(w.hrUser, 'POST', `${APV}/instances/${instance.id}/admin-transfer`, {
+      await w.http(other, 'POST', `${APV}/instances/${instance.id}/admin-transfer`, {
         ifMatch: instance.revision,
         body: { taskId: task.id, toUserId: w.outsider.userId, reason: '合成转交' },
       }),

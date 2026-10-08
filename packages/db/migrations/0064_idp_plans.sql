@@ -170,6 +170,7 @@ CREATE TABLE "idp_work_shifts" (
 --> statement-breakpoint
 ALTER TABLE "approval_instances" DROP CONSTRAINT "approval_instances_business_type";--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" DROP CONSTRAINT "approval_nodes_approver";--> statement-breakpoint
+ALTER TABLE "approval_process_nodes" DROP CONSTRAINT "approval_nodes_no_assignee";--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" DROP CONSTRAINT "approval_nodes_approvers";--> statement-breakpoint
 ALTER TABLE "idp_careers" ADD CONSTRAINT "idp_careers_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "idp_careers" ADD CONSTRAINT "idp_careers_employee_fk" FOREIGN KEY ("tenant_id","employee_id") REFERENCES "public"."employment_employees"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
@@ -218,6 +219,7 @@ CREATE INDEX "idp_work_shifts_org" ON "idp_work_shifts" USING btree ("tenant_id"
 ALTER TABLE "approval_instances" ADD CONSTRAINT "approval_instances_business_type" CHECK ("approval_instances"."business_type" IN ('employment','personnel_change','contract','idp'));--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD CONSTRAINT "approval_nodes_approver" CHECK ("approval_process_nodes"."approver_expression" IN ('owner','direct_manager','latest_record_department_head','record_department_head',
         'record_department_hrbp','record_first_level_org_head','idp_employee','idp_tutor'));--> statement-breakpoint
+ALTER TABLE "approval_process_nodes" ADD CONSTRAINT "approval_nodes_no_assignee" CHECK ("approval_process_nodes"."no_assignee_policy" IN ('exception_admin','none'));--> statement-breakpoint
 ALTER TABLE "approval_process_nodes" ADD CONSTRAINT "approval_nodes_approvers" CHECK (CASE WHEN "approval_process_nodes"."node_type" = 'countersign'
         THEN "approval_process_nodes"."approver_expression" IS NULL AND cardinality("approval_process_nodes"."approver_expressions") BETWEEN 1 AND 8
           AND "approval_process_nodes"."approver_expressions" <@ ARRAY['owner','direct_manager','latest_record_department_head',
