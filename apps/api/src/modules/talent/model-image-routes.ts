@@ -6,7 +6,8 @@ import { runCommand, type CommandResult } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { talentContext, talentScope, talentWriteContext, type TalentContext } from './access.js';
+import { resolveModuleScope } from '../permission/module-access.js';
+import { codeOf, talentContext, talentScope, talentWriteContext, type TalentContext } from './access.js';
 import { parseBody, revision, TALENT_BASE, uuidParam } from './http.js';
 import * as service from './model-image-service.js';
 import type { WriteContext } from './write-support.js';
@@ -31,13 +32,14 @@ export function registerModelImageRoutes(router: Hono<TenantEnv>, deps: TenantRo
     const ctx = await talentContext(c, deps, 'criterion');
     const id = uuidParam(c);
     const attachmentId = uuidParam(c, 'attachmentId');
-    const scope = await talentScope(c, deps, ctx, 'criterion');
+    const scope = await detailScope(deps, ctx);
     const image = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       await service.imageOwner(tx, ctx.tenantId, id, scope);
       return service.imageContent(tx, ctx.tenantId, id, attachmentId);
     });
     c.header('Cache-Control', 'private, no-store');
     c.header('X-Content-Type-Options', 'nosniff');
+    c.header('Content-Disposition', 'inline');
     c.header('Content-Type', image.contentType);
     return c.body(new Uint8Array(image.bytes));
   });
@@ -83,8 +85,12 @@ async function write(
   status: 200 | 201 = 200,
 ): Promise<CommandResult> {
   const scope = await talentScope(c, deps, ctx, 'criterion');
-  // 先验当前父对象，使重放也不能绕过范围或通过旧命令访问已删除标准。
-  await withTenant(deps.db, ctx.tenantId, (tx) => service.imageOwner(tx, ctx.tenantId, id, scope));
+  const visibleScope = await detailScope(deps, ctx);
+  // 写响应随标准详情可见性；在执行和查台账前校验，拒绝时业务不产生副作用。
+  await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    await service.imageOwner(tx, ctx.tenantId, id, scope);
+    await service.imageOwner(tx, ctx.tenantId, id, visibleScope);
+  });
   return runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
@@ -103,7 +109,7 @@ async function imageWriteContext(c: Context<TenantEnv>, deps: TenantRouteDeps) {
 }
 
 async function present(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: TalentContext, id: string) {
-  const scope = await talentScope(c, deps, ctx, 'criterion');
+  const scope = await detailScope(deps, ctx);
   const state = await withTenant(deps.db, ctx.tenantId, async (tx) => {
     const owner = await service.imageOwner(tx, ctx.tenantId, id, scope);
     return { revision: owner.revision, modelImage: await service.currentImage(tx, ctx.tenantId, id) };
@@ -118,6 +124,12 @@ async function present(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: Talent
   c.header('ETag', `"${state.revision}"`);
   c.header('Cache-Control', 'private, no-store');
   return { ...state, canEdit };
+}
+
+function detailScope(deps: TenantRouteDeps, ctx: TalentContext) {
+  const object = codeOf('criterion');
+  // 显式使用服务端详情上下文：POST/DELETE 也必须遵守 GET 的 page/datasource 策略。
+  return resolveModuleScope(deps, ctx, undefined, object, `${object}.detail`);
 }
 
 function sameOrigin(c: Context): void {
