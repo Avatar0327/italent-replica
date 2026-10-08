@@ -168,9 +168,12 @@ function candidates(call: FunctionCall, table: RankingTable, column: number, val
  * （= 不传递时每人按自己的取值找同组）。候选取各参数里最少的一列，再逐个复核全部参数。
  * emptyInEquality = fail 且有空的分组取值时，不用候选索引：对全体参与者逐对象、逐列短路比较（前面的列已不相等
  * 就不再比后面的列），比到空值那一列才由 valuesEqual 报 EMPTY_IN_COMPARISON，与旧实现一致。
+ * 没有分组参数（2～3 参写法）时，旧实现把缺省的分组当空值与每个参与者比较：fail 口径下同样报
+ * EMPTY_IN_COMPARISON（DEC-311④ 恢复旧版行为）。
  */
 function peerScores(call: FunctionCall, table: RankingTable, me: Entry): readonly number[] {
   const semantics = call.env.semantics;
+  if (table.indexes.length === 0 && semantics.emptyInEquality === 'fail') valuesEqual(EMPTY, EMPTY, semantics);
   const key = JSON.stringify(me.groups.map(encodeValue));
   let scores = table.peers.get(key);
   if (scores) return scores;
