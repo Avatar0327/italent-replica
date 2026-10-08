@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { DIMENSION_TYPES, type Criterion, type CriterionDimension } from './api.js';
 import { text } from './messages.js';
+import { PotentialModelImage } from './PotentialModelImage.js';
+import { useTalentTenant } from './TalentTenantContext.js';
 
 /**
  * 标准详情：按 能力 / 潜力 / 经历 分组列出引用的指标，只显示 名称、定义、指标类别、权重、目标（DEC-281⑪）；
@@ -19,6 +21,7 @@ export function CriterionDetail({
   onClose: () => void;
 }) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const tenantId = useTalentTenant();
   const toggle = (id: string, checked: boolean) => {
     const next = new Set(selected);
     if (checked) next.add(id);
@@ -38,8 +41,13 @@ export function CriterionDetail({
       )}
       {DIMENSION_TYPES.map((type) => {
         const rows = (value.dimensions ?? []).filter((item) => item.type === type);
-        return rows.length ? (
-          <ReferenceTable key={type} caption={text.types[type]} rows={rows} selected={selected} onToggle={toggle} />
+        return rows.length || type === 'potential' ? (
+          <section key={type}>
+            {type === 'potential' && tenantId && (
+              <PotentialModelImage tenantId={tenantId} criterionId={value.id} locked={locked} />
+            )}
+            <ReferenceTable caption={text.types[type]} rows={rows} selected={selected} onToggle={toggle} />
+          </section>
         ) : null;
       })}
       <CategoryBatch

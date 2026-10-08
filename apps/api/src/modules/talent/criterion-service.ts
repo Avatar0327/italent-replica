@@ -39,6 +39,7 @@ import { fieldVisible, requireVisible } from './access.js';
 import { ownerUnit, relationUnit } from './owner-units.js';
 import { loadCategory, loadCriterion, type CriterionView } from './read-model.js';
 import { criterionReferrer } from './references.js';
+import { cleanupCriterionImages } from './model-image-service.js';
 import {
   audit,
   bumped,
@@ -157,6 +158,7 @@ export async function deleteCriterion(tx: Tx, ctx: WriteContext, id: string) {
     throw new AppError('CONFLICT', '人才标准已被引用，不能删除', { reason: 'CRITERION_REFERENCED', referrer });
   }
   const before = (await loadCriterion(tx, ctx.tenantId, id))!;
+  await cleanupCriterionImages(tx, ctx, before);
   await tx.delete(C).where(and(eq(C.tenantId, ctx.tenantId), eq(C.id, id)));
   await audit(tx, ctx, 'criterion', 'delete', id, {
     before: auditCriterion(before),

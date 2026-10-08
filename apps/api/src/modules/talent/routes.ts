@@ -52,6 +52,7 @@ import {
 import * as input from './input.js';
 import * as libraries from './library-service.js';
 import * as read from './read-model.js';
+import { registerModelImageRoutes } from './model-image-routes.js';
 import type { ReferenceFields, WriteContext } from './write-support.js';
 
 interface Tracked {
@@ -205,6 +206,7 @@ const CRITERIA: ObjectRoutes<read.CriterionView, input.CriterionCreate, input.Cr
 };
 
 export function registerTalentRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerModelImageRoutes(router, deps);
   registerCandidates(router, deps);
   const forms = {
     library: registerObject(router, deps, LIBRARIES),

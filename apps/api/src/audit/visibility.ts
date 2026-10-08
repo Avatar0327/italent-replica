@@ -53,6 +53,7 @@ import {
   TALENT_AUDIT_ACTIONS,
   type TalentObject,
 } from '../modules/talent/access.js';
+import { MODEL_IMAGE_AUDIT_TYPE } from '../modules/talent/model-image-service.js';
 import {
   ExactAuditFields,
   resolveLinkageAudit,
@@ -400,6 +401,22 @@ const RULES: readonly Rule[] = [
       visible: (scope, row, viewer) => scopeSql(scope, { creator: ownedBy(row, creator(row, viewer)) }),
     };
   }),
+  {
+    // Q-M0-126：模型图没有独立可见性设置，日志同样随标准对象查看权与当前管理单元范围。
+    ...orgRule([MODEL_IMAGE_AUDIT_TYPE], TALENT_OBJECTS.criterion.code, (row, viewer) =>
+      creatorSql(viewer.tenantId, row.objectId, 'talent.criterion.create', TALENT_OBJECTS.criterion.code),
+    ),
+    fixedFields: [
+      'modelImage',
+      'revision',
+      'modelImage.id',
+      'modelImage.filename',
+      'modelImage.contentType',
+      'modelImage.byteSize',
+      'modelImage.sha256',
+      'modelImage.status',
+    ],
+  },
   {
     // 审批实例 / 任务：审批管理员按钮（转交 / 干预 / 查看流程日志）+ 任职或合同范围（与审批中心管理员视图一致）
     types: ['approval-instance', 'approval-task'],

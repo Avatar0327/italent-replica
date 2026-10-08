@@ -1,6 +1,6 @@
 {
-  "id": "73d2b290-1c6b-4a4a-9c29-6bb54acbd46b",
-  "prevId": "a8f07491-73e3-4e10-80d4-8690cf80934c",
+  "id": "8f8e6d81-da3b-47ba-96da-9fa46091c382",
+  "prevId": "024c32be-5a76-4713-8b88-803be2154e14",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -28428,6 +28428,3169 @@
         "platform_command_failures_outcome_valid": {
           "name": "platform_command_failures_outcome_valid",
           "value": "\"platform_command_failures\".\"outcome\" IN ('business_failed', 'storage_unwritable', 'unknown')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_activities": {
+      "name": "survey360_activities",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scene": {
+          "name": "scene",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "form": {
+          "name": "form",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "welcome": {
+          "name": "welcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "show_appraiser_name": {
+          "name": "show_appraiser_name",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role_display": {
+          "name": "role_display",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_user_id": {
+          "name": "owner_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "score_batch_id": {
+          "name": "score_batch_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scored_at": {
+          "name": "scored_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted": {
+          "name": "deleted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_activities_tenant_id_tenants_id_fk": {
+          "name": "survey360_activities_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_activities",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_activities_tenant_id": {
+          "name": "survey360_activities_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "survey360_activities_status": {
+          "name": "survey360_activities_status",
+          "value": "\"survey360_activities\".\"status\" IN ('draft', 'enabled', 'disabled')"
+        },
+        "survey360_activities_form": {
+          "name": "survey360_activities_form",
+          "value": "\"survey360_activities\".\"form\" IN ('single', 'multiple')"
+        },
+        "survey360_activities_role_display": {
+          "name": "survey360_activities_role_display",
+          "value": "\"survey360_activities\".\"role_display\" IN ('name', 'fixed_text', 'hidden')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_activity_grants": {
+      "name": "survey360_activity_grants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activity_id": {
+          "name": "activity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_activity_grants_tenant_id_tenants_id_fk": {
+          "name": "survey360_activity_grants_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_activity_grants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_activity_grants_user_id_users_id_fk": {
+          "name": "survey360_activity_grants_user_id_users_id_fk",
+          "tableFrom": "survey360_activity_grants",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_activity_grants_activity_fk": {
+          "name": "survey360_activity_grants_activity_fk",
+          "tableFrom": "survey360_activity_grants",
+          "columnsFrom": [
+            "tenant_id",
+            "activity_id"
+          ],
+          "tableTo": "survey360_activities",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_activity_grants_user": {
+          "name": "survey360_activity_grants_user",
+          "columns": [
+            "activity_id",
+            "user_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.survey360_answers": {
+      "name": "survey360_answers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sheet_id": {
+          "name": "sheet_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "option_id": {
+          "name": "option_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "remark": {
+          "name": "remark",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_answers_tenant_id_tenants_id_fk": {
+          "name": "survey360_answers_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_answers",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_answers_sheet_fk": {
+          "name": "survey360_answers_sheet_fk",
+          "tableFrom": "survey360_answers",
+          "columnsFrom": [
+            "tenant_id",
+            "sheet_id"
+          ],
+          "tableTo": "survey360_sheets",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_answers_option_fk": {
+          "name": "survey360_answers_option_fk",
+          "tableFrom": "survey360_answers",
+          "columnsFrom": [
+            "tenant_id",
+            "option_id"
+          ],
+          "tableTo": "survey360_scale_options",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_answers_item": {
+          "name": "survey360_answers_item",
+          "columns": [
+            "sheet_id",
+            "item_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.survey360_confirmations": {
+      "name": "survey360_confirmations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activity_id": {
+          "name": "activity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confirmer_person_id": {
+          "name": "confirmer_person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "confirmed_at": {
+          "name": "confirmed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "survey360_confirmations_object": {
+          "name": "survey360_confirmations_object",
+          "columns": [
+            {
+              "expression": "object_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"survey360_confirmations\".\"status\" <> 'cancelled'",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "survey360_confirmations_tenant_id_tenants_id_fk": {
+          "name": "survey360_confirmations_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_confirmations",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_confirmations_activity_fk": {
+          "name": "survey360_confirmations_activity_fk",
+          "tableFrom": "survey360_confirmations",
+          "columnsFrom": [
+            "tenant_id",
+            "activity_id"
+          ],
+          "tableTo": "survey360_activities",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_confirmations_object_fk": {
+          "name": "survey360_confirmations_object_fk",
+          "tableFrom": "survey360_confirmations",
+          "columnsFrom": [
+            "tenant_id",
+            "object_id"
+          ],
+          "tableTo": "survey360_objects",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_confirmations_confirmer_fk": {
+          "name": "survey360_confirmations_confirmer_fk",
+          "tableFrom": "survey360_confirmations",
+          "columnsFrom": [
+            "tenant_id",
+            "confirmer_person_id"
+          ],
+          "tableTo": "survey360_people",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_confirmations_tenant_id": {
+          "name": "survey360_confirmations_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "survey360_confirmations_status": {
+          "name": "survey360_confirmations_status",
+          "value": "\"survey360_confirmations\".\"status\" IN ('pending', 'confirmed', 'cancelled')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_dimensions": {
+      "name": "survey360_dimensions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "questionnaire_id": {
+          "name": "questionnaire_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort": {
+          "name": "sort",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "definition": {
+          "name": "definition",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "weight": {
+          "name": "weight",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scale_id": {
+          "name": "scale_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "role_ids": {
+          "name": "role_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_dimensions_tenant_id_tenants_id_fk": {
+          "name": "survey360_dimensions_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_dimensions",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_dimensions_questionnaire_fk": {
+          "name": "survey360_dimensions_questionnaire_fk",
+          "tableFrom": "survey360_dimensions",
+          "columnsFrom": [
+            "tenant_id",
+            "questionnaire_id"
+          ],
+          "tableTo": "survey360_questionnaires",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_dimensions_parent_fk": {
+          "name": "survey360_dimensions_parent_fk",
+          "tableFrom": "survey360_dimensions",
+          "columnsFrom": [
+            "tenant_id",
+            "parent_id"
+          ],
+          "tableTo": "survey360_dimensions",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_dimensions_scale_fk": {
+          "name": "survey360_dimensions_scale_fk",
+          "tableFrom": "survey360_dimensions",
+          "columnsFrom": [
+            "tenant_id",
+            "scale_id"
+          ],
+          "tableTo": "survey360_scales",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_dimensions_tenant_id": {
+          "name": "survey360_dimensions_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "survey360_dimensions_key": {
+          "name": "survey360_dimensions_key",
+          "columns": [
+            "questionnaire_id",
+            "key"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "survey360_dimensions_weight": {
+          "name": "survey360_dimensions_weight",
+          "value": "\"survey360_dimensions\".\"weight\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_links": {
+      "name": "survey360_links",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activity_id": {
+          "name": "activity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confirmation_id": {
+          "name": "confirmation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked": {
+          "name": "revoked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "survey360_links_token": {
+          "name": "survey360_links_token",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "survey360_links_answer": {
+          "name": "survey360_links_answer",
+          "columns": [
+            {
+              "expression": "activity_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "person_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"survey360_links\".\"kind\" = 'answer' AND NOT \"survey360_links\".\"revoked\"",
+          "concurrently": false
+        },
+        "survey360_links_confirm": {
+          "name": "survey360_links_confirm",
+          "columns": [
+            {
+              "expression": "confirmation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"survey360_links\".\"kind\" = 'confirm' AND NOT \"survey360_links\".\"revoked\"",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "survey360_links_tenant_id_tenants_id_fk": {
+          "name": "survey360_links_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_links",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_links_activity_fk": {
+          "name": "survey360_links_activity_fk",
+          "tableFrom": "survey360_links",
+          "columnsFrom": [
+            "tenant_id",
+            "activity_id"
+          ],
+          "tableTo": "survey360_activities",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_links_person_fk": {
+          "name": "survey360_links_person_fk",
+          "tableFrom": "survey360_links",
+          "columnsFrom": [
+            "tenant_id",
+            "person_id"
+          ],
+          "tableTo": "survey360_people",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_links_confirmation_fk": {
+          "name": "survey360_links_confirmation_fk",
+          "tableFrom": "survey360_links",
+          "columnsFrom": [
+            "tenant_id",
+            "confirmation_id"
+          ],
+          "tableTo": "survey360_confirmations",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "survey360_links_kind": {
+          "name": "survey360_links_kind",
+          "value": "\"survey360_links\".\"kind\" IN ('answer', 'confirm')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_object_questionnaires": {
+      "name": "survey360_object_questionnaires",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "questionnaire_id": {
+          "name": "questionnaire_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_object_questionnaires_tenant_id_tenants_id_fk": {
+          "name": "survey360_object_questionnaires_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_object_questionnaires",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_object_questionnaires_object_fk": {
+          "name": "survey360_object_questionnaires_object_fk",
+          "tableFrom": "survey360_object_questionnaires",
+          "columnsFrom": [
+            "tenant_id",
+            "object_id"
+          ],
+          "tableTo": "survey360_objects",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_object_questionnaires_questionnaire_fk": {
+          "name": "survey360_object_questionnaires_questionnaire_fk",
+          "tableFrom": "survey360_object_questionnaires",
+          "columnsFrom": [
+            "tenant_id",
+            "questionnaire_id"
+          ],
+          "tableTo": "survey360_questionnaires",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_object_questionnaires_pair": {
+          "name": "survey360_object_questionnaires_pair",
+          "columns": [
+            "object_id",
+            "questionnaire_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.survey360_objects": {
+      "name": "survey360_objects",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activity_id": {
+          "name": "activity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort": {
+          "name": "sort",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "removed": {
+          "name": "removed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "report_generated_at": {
+          "name": "report_generated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "survey360_objects_person": {
+          "name": "survey360_objects_person",
+          "columns": [
+            {
+              "expression": "activity_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "person_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "NOT \"survey360_objects\".\"removed\"",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "survey360_objects_tenant_id_tenants_id_fk": {
+          "name": "survey360_objects_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_objects",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_objects_activity_fk": {
+          "name": "survey360_objects_activity_fk",
+          "tableFrom": "survey360_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "activity_id"
+          ],
+          "tableTo": "survey360_activities",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_objects_person_fk": {
+          "name": "survey360_objects_person_fk",
+          "tableFrom": "survey360_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "person_id"
+          ],
+          "tableTo": "survey360_people",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_objects_tenant_id": {
+          "name": "survey360_objects_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.survey360_outbox": {
+      "name": "survey360_outbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_type": {
+          "name": "event_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_outbox_tenant_id_tenants_id_fk": {
+          "name": "survey360_outbox_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_outbox",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.survey360_people": {
+      "name": "survey360_people",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mobile": {
+          "name": "mobile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "staff_code": {
+          "name": "staff_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "department": {
+          "name": "department",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "position": {
+          "name": "position",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "superior_person_id": {
+          "name": "superior_person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "previous_employee_id": {
+          "name": "previous_employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email_locked": {
+          "name": "email_locked",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "survey360_people_email": {
+          "name": "survey360_people_email",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"email\")",
+              "isExpression": true,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "survey360_people_employee": {
+          "name": "survey360_people_employee",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"survey360_people\".\"employee_id\" IS NOT NULL",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "survey360_people_tenant_id_tenants_id_fk": {
+          "name": "survey360_people_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_people",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_people_employee_fk": {
+          "name": "survey360_people_employee_fk",
+          "tableFrom": "survey360_people",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "tableTo": "employment_employees",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_people_superior_fk": {
+          "name": "survey360_people_superior_fk",
+          "tableFrom": "survey360_people",
+          "columnsFrom": [
+            "tenant_id",
+            "superior_person_id"
+          ],
+          "tableTo": "survey360_people",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_people_tenant_id": {
+          "name": "survey360_people_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "survey360_people_source": {
+          "name": "survey360_people_source",
+          "value": "\"survey360_people\".\"source\" IN ('manual', 'import', 'org_sync')"
+        },
+        "survey360_people_name_nonempty": {
+          "name": "survey360_people_name_nonempty",
+          "value": "btrim(\"survey360_people\".\"name\") <> ''"
+        },
+        "survey360_people_email_nonempty": {
+          "name": "survey360_people_email_nonempty",
+          "value": "btrim(\"survey360_people\".\"email\") <> ''"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_person_link_logs": {
+      "name": "survey360_person_link_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "person_id": {
+          "name": "person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "previous_employee_id": {
+          "name": "previous_employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "matched_by": {
+          "name": "matched_by",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "actor_user_id": {
+          "name": "actor_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_person_link_logs_tenant_id_tenants_id_fk": {
+          "name": "survey360_person_link_logs_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_person_link_logs",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_person_link_logs_person_fk": {
+          "name": "survey360_person_link_logs_person_fk",
+          "tableFrom": "survey360_person_link_logs",
+          "columnsFrom": [
+            "tenant_id",
+            "person_id"
+          ],
+          "tableTo": "survey360_people",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "survey360_person_link_logs_reason": {
+          "name": "survey360_person_link_logs_reason",
+          "value": "\"survey360_person_link_logs\".\"reason\" IN ('new', 'employee', 'admin_confirm')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_questionnaire_roles": {
+      "name": "survey360_questionnaire_roles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "questionnaire_id": {
+          "name": "questionnaire_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort": {
+          "name": "sort",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "role_id": {
+          "name": "role_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "weight": {
+          "name": "weight",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_questionnaire_roles_tenant_id_tenants_id_fk": {
+          "name": "survey360_questionnaire_roles_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_questionnaire_roles",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_questionnaire_roles_questionnaire_fk": {
+          "name": "survey360_questionnaire_roles_questionnaire_fk",
+          "tableFrom": "survey360_questionnaire_roles",
+          "columnsFrom": [
+            "tenant_id",
+            "questionnaire_id"
+          ],
+          "tableTo": "survey360_questionnaires",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_questionnaire_roles_role_fk": {
+          "name": "survey360_questionnaire_roles_role_fk",
+          "tableFrom": "survey360_questionnaire_roles",
+          "columnsFrom": [
+            "tenant_id",
+            "role_id"
+          ],
+          "tableTo": "survey360_roles",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_questionnaire_roles_role": {
+          "name": "survey360_questionnaire_roles_role",
+          "columns": [
+            "questionnaire_id",
+            "role_id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "survey360_questionnaire_roles_key": {
+          "name": "survey360_questionnaire_roles_key",
+          "columns": [
+            "questionnaire_id",
+            "key"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "survey360_questionnaire_roles_weight": {
+          "name": "survey360_questionnaire_roles_weight",
+          "value": "\"survey360_questionnaire_roles\".\"weight\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_questionnaires": {
+      "name": "survey360_questionnaires",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "score_method": {
+          "name": "score_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'weighted_average'"
+        },
+        "guide": {
+          "name": "guide",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "excellent_line_percent": {
+          "name": "excellent_line_percent",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "excellent_max_rate": {
+          "name": "excellent_max_rate",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted": {
+          "name": "deleted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_questionnaires_tenant_id_tenants_id_fk": {
+          "name": "survey360_questionnaires_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_questionnaires",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_questionnaires_tenant_id": {
+          "name": "survey360_questionnaires_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "survey360_questionnaires_type": {
+          "name": "survey360_questionnaires_type",
+          "value": "\"survey360_questionnaires\".\"type\" IN ('key_behavior', 'rating')"
+        },
+        "survey360_questionnaires_status": {
+          "name": "survey360_questionnaires_status",
+          "value": "\"survey360_questionnaires\".\"status\" IN ('draft', 'enabled', 'used')"
+        },
+        "survey360_questionnaires_method": {
+          "name": "survey360_questionnaires_method",
+          "value": "\"survey360_questionnaires\".\"score_method\" IN ('weighted_average', 'weighted_sum')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_questions": {
+      "name": "survey360_questions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "questionnaire_id": {
+          "name": "questionnaire_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort": {
+          "name": "sort",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "dimension_id": {
+          "name": "dimension_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "weight": {
+          "name": "weight",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scale_id": {
+          "name": "scale_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "allow_remark": {
+          "name": "allow_remark",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "role_ids": {
+          "name": "role_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_questions_tenant_id_tenants_id_fk": {
+          "name": "survey360_questions_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_questions",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_questions_questionnaire_fk": {
+          "name": "survey360_questions_questionnaire_fk",
+          "tableFrom": "survey360_questions",
+          "columnsFrom": [
+            "tenant_id",
+            "questionnaire_id"
+          ],
+          "tableTo": "survey360_questionnaires",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_questions_dimension_fk": {
+          "name": "survey360_questions_dimension_fk",
+          "tableFrom": "survey360_questions",
+          "columnsFrom": [
+            "tenant_id",
+            "dimension_id"
+          ],
+          "tableTo": "survey360_dimensions",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_questions_scale_fk": {
+          "name": "survey360_questions_scale_fk",
+          "tableFrom": "survey360_questions",
+          "columnsFrom": [
+            "tenant_id",
+            "scale_id"
+          ],
+          "tableTo": "survey360_scales",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_questions_tenant_id": {
+          "name": "survey360_questions_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "survey360_questions_key": {
+          "name": "survey360_questions_key",
+          "columns": [
+            "questionnaire_id",
+            "key"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "survey360_questions_weight": {
+          "name": "survey360_questions_weight",
+          "value": "\"survey360_questions\".\"weight\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_relations": {
+      "name": "survey360_relations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activity_id": {
+          "name": "activity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "appraiser_person_id": {
+          "name": "appraiser_person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role_id": {
+          "name": "role_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "removed": {
+          "name": "removed",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "survey360_relations_pair": {
+          "name": "survey360_relations_pair",
+          "columns": [
+            {
+              "expression": "object_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "appraiser_person_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "NOT \"survey360_relations\".\"removed\"",
+          "concurrently": false
+        },
+        "survey360_relations_appraiser": {
+          "name": "survey360_relations_appraiser",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "activity_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "appraiser_person_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "survey360_relations_tenant_id_tenants_id_fk": {
+          "name": "survey360_relations_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_relations",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_relations_activity_fk": {
+          "name": "survey360_relations_activity_fk",
+          "tableFrom": "survey360_relations",
+          "columnsFrom": [
+            "tenant_id",
+            "activity_id"
+          ],
+          "tableTo": "survey360_activities",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_relations_object_fk": {
+          "name": "survey360_relations_object_fk",
+          "tableFrom": "survey360_relations",
+          "columnsFrom": [
+            "tenant_id",
+            "object_id"
+          ],
+          "tableTo": "survey360_objects",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_relations_appraiser_fk": {
+          "name": "survey360_relations_appraiser_fk",
+          "tableFrom": "survey360_relations",
+          "columnsFrom": [
+            "tenant_id",
+            "appraiser_person_id"
+          ],
+          "tableTo": "survey360_people",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_relations_role_fk": {
+          "name": "survey360_relations_role_fk",
+          "tableFrom": "survey360_relations",
+          "columnsFrom": [
+            "tenant_id",
+            "role_id"
+          ],
+          "tableTo": "survey360_roles",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_relations_tenant_id": {
+          "name": "survey360_relations_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "survey360_relations_source": {
+          "name": "survey360_relations_source",
+          "value": "\"survey360_relations\".\"source\" IN ('manual', 'import', 'org', 'confirm')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_roles": {
+      "name": "survey360_roles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_text": {
+          "name": "display_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sort": {
+          "name": "sort",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "survey360_roles_code": {
+          "name": "survey360_roles_code",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"survey360_roles\".\"code\" IS NOT NULL",
+          "concurrently": false
+        },
+        "survey360_roles_name": {
+          "name": "survey360_roles_name",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "survey360_roles_tenant_id_tenants_id_fk": {
+          "name": "survey360_roles_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_roles",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_roles_tenant_id": {
+          "name": "survey360_roles_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.survey360_scale_options": {
+      "name": "survey360_scale_options",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "questionnaire_id": {
+          "name": "questionnaire_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort": {
+          "name": "sort",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "scale_id": {
+          "name": "scale_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "not_scored": {
+          "name": "not_scored",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "remark_required": {
+          "name": "remark_required",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_scale_options_tenant_id_tenants_id_fk": {
+          "name": "survey360_scale_options_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_scale_options",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_scale_options_questionnaire_fk": {
+          "name": "survey360_scale_options_questionnaire_fk",
+          "tableFrom": "survey360_scale_options",
+          "columnsFrom": [
+            "tenant_id",
+            "questionnaire_id"
+          ],
+          "tableTo": "survey360_questionnaires",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_scale_options_scale_fk": {
+          "name": "survey360_scale_options_scale_fk",
+          "tableFrom": "survey360_scale_options",
+          "columnsFrom": [
+            "tenant_id",
+            "scale_id"
+          ],
+          "tableTo": "survey360_scales",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_scale_options_tenant_id": {
+          "name": "survey360_scale_options_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "survey360_scale_options_key": {
+          "name": "survey360_scale_options_key",
+          "columns": [
+            "questionnaire_id",
+            "key"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "survey360_scale_options_value": {
+          "name": "survey360_scale_options_value",
+          "value": "\"survey360_scale_options\".\"not_scored\" OR \"survey360_scale_options\".\"value\" IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_scales": {
+      "name": "survey360_scales",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "questionnaire_id": {
+          "name": "questionnaire_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort": {
+          "name": "sort",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_scales_tenant_id_tenants_id_fk": {
+          "name": "survey360_scales_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_scales",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_scales_questionnaire_fk": {
+          "name": "survey360_scales_questionnaire_fk",
+          "tableFrom": "survey360_scales",
+          "columnsFrom": [
+            "tenant_id",
+            "questionnaire_id"
+          ],
+          "tableTo": "survey360_questionnaires",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_scales_tenant_id": {
+          "name": "survey360_scales_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "survey360_scales_key": {
+          "name": "survey360_scales_key",
+          "columns": [
+            "questionnaire_id",
+            "key"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.survey360_score_batches": {
+      "name": "survey360_score_batches",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activity_id": {
+          "name": "activity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_score_batches_tenant_id_tenants_id_fk": {
+          "name": "survey360_score_batches_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_score_batches",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_score_batches_activity_fk": {
+          "name": "survey360_score_batches_activity_fk",
+          "tableFrom": "survey360_score_batches",
+          "columnsFrom": [
+            "tenant_id",
+            "activity_id"
+          ],
+          "tableTo": "survey360_activities",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_score_batches_tenant_id": {
+          "name": "survey360_score_batches_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.survey360_scores": {
+      "name": "survey360_scores",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activity_id": {
+          "name": "activity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "object_id": {
+          "name": "object_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "questionnaire_id": {
+          "name": "questionnaire_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level": {
+          "name": "level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item_id": {
+          "name": "item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role_id": {
+          "name": "role_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "score": {
+          "name": "score",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rater_count": {
+          "name": "rater_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "survey360_scores_object": {
+          "name": "survey360_scores_object",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "batch_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "object_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "survey360_scores_tenant_id_tenants_id_fk": {
+          "name": "survey360_scores_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_scores",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_scores_batch_fk": {
+          "name": "survey360_scores_batch_fk",
+          "tableFrom": "survey360_scores",
+          "columnsFrom": [
+            "tenant_id",
+            "batch_id"
+          ],
+          "tableTo": "survey360_score_batches",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "survey360_scores_level": {
+          "name": "survey360_scores_level",
+          "value": "\"survey360_scores\".\"level\" IN ('questionnaire', 'dimension', 'question')"
+        },
+        "survey360_scores_scope": {
+          "name": "survey360_scores_scope",
+          "value": "\"survey360_scores\".\"scope\" IN ('self', 'other', 'role')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_settings": {
+      "name": "survey360_settings",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "fine_permission": {
+          "name": "fine_permission",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_settings_tenant_id_tenants_id_fk": {
+          "name": "survey360_settings_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_settings",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_settings_updated_by_users_id_fk": {
+          "name": "survey360_settings_updated_by_users_id_fk",
+          "tableFrom": "survey360_settings",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "tableTo": "users",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.survey360_sheets": {
+      "name": "survey360_sheets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activity_id": {
+          "name": "activity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "relation_id": {
+          "name": "relation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "questionnaire_id": {
+          "name": "questionnaire_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'draft'"
+        },
+        "suggestion": {
+          "name": "suggestion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "saved_at": {
+          "name": "saved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "submitted_at": {
+          "name": "submitted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "survey360_sheets_tenant_id_tenants_id_fk": {
+          "name": "survey360_sheets_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_sheets",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_sheets_activity_fk": {
+          "name": "survey360_sheets_activity_fk",
+          "tableFrom": "survey360_sheets",
+          "columnsFrom": [
+            "tenant_id",
+            "activity_id"
+          ],
+          "tableTo": "survey360_activities",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_sheets_relation_fk": {
+          "name": "survey360_sheets_relation_fk",
+          "tableFrom": "survey360_sheets",
+          "columnsFrom": [
+            "tenant_id",
+            "relation_id"
+          ],
+          "tableTo": "survey360_relations",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_sheets_questionnaire_fk": {
+          "name": "survey360_sheets_questionnaire_fk",
+          "tableFrom": "survey360_sheets",
+          "columnsFrom": [
+            "tenant_id",
+            "questionnaire_id"
+          ],
+          "tableTo": "survey360_questionnaires",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "survey360_sheets_tenant_id": {
+          "name": "survey360_sheets_tenant_id",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        },
+        "survey360_sheets_pair": {
+          "name": "survey360_sheets_pair",
+          "columns": [
+            "relation_id",
+            "questionnaire_id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "survey360_sheets_status": {
+          "name": "survey360_sheets_status",
+          "value": "\"survey360_sheets\".\"status\" IN ('draft', 'submitted')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.survey360_sync_conflicts": {
+      "name": "survey360_sync_conflicts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "employee_id": {
+          "name": "employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "candidate_person_ids": {
+          "name": "candidate_person_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::uuid[]"
+        },
+        "matched_by": {
+          "name": "matched_by",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "resolution": {
+          "name": "resolution",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_person_id": {
+          "name": "resolved_person_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_by": {
+          "name": "resolved_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "survey360_sync_conflicts_pending": {
+          "name": "survey360_sync_conflicts_pending",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "with": {},
+          "method": "btree",
+          "where": "\"survey360_sync_conflicts\".\"status\" = 'pending'",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "survey360_sync_conflicts_tenant_id_tenants_id_fk": {
+          "name": "survey360_sync_conflicts_tenant_id_tenants_id_fk",
+          "tableFrom": "survey360_sync_conflicts",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "survey360_sync_conflicts_employee_fk": {
+          "name": "survey360_sync_conflicts_employee_fk",
+          "tableFrom": "survey360_sync_conflicts",
+          "columnsFrom": [
+            "tenant_id",
+            "employee_id"
+          ],
+          "tableTo": "employment_employees",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "survey360_sync_conflicts_status": {
+          "name": "survey360_sync_conflicts_status",
+          "value": "\"survey360_sync_conflicts\".\"status\" IN ('pending', 'resolved', 'ignored')"
         }
       },
       "isRLSEnabled": false
