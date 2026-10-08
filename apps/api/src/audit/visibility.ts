@@ -44,6 +44,7 @@ import {
 import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
 import { IDP_AUDIT_ACTIONS, IDP_ORG_OBJECTS, IDP_PERSON_OBJECTS } from '../modules/idp/access.js';
+import { KEY_INFO, keyInfoScopeSql, keyInfoSnapshot, type KeyInfoSpec } from '../modules/idp/key-info-scope.js';
 import {
   ExactAuditFields,
   resolveLinkageAudit,
@@ -60,6 +61,7 @@ interface Row {
   readonly objectId: SQL;
   readonly employee: SQL;
   readonly org: SQL;
+  readonly before: SQL;
   readonly after: SQL;
   readonly commandId: SQL;
   readonly actor: SQL | null;
@@ -324,12 +326,23 @@ const RULES: readonly Rule[] = [
       creatorSql(viewer.tenantId, row.objectId, `${IDP_AUDIT_ACTIONS[object]}.create`, code),
     );
   }),
-  // R3-T07 PR-B：计划及其组成部分按计划员工、关键信息按员工（带教按被带教人）归属，与业务接口的范围一致（K-50）
+  // R3-T07 PR-B：计划及其组成部分按计划员工、关键信息按员工（带教按被带教人）归属，与业务接口的范围一致（K-50）；
+  // 关键信息另要求日志前后快照涉及的全部员工 / 组织都在范围内（带教双方、轮岗部门，第 2 轮 P2-1）
   ...IDP_PERSON_OBJECTS.map((object): Rule => {
     const code = IDP_OBJECTS[object].code;
-    return personRule([code], code, (row, viewer) =>
+    const rule = personRule([code], code, (row, viewer) =>
       creatorSql(viewer.tenantId, row.objectId, `${IDP_AUDIT_ACTIONS[object]}.create`, code),
     );
+    const spec = (KEY_INFO as Partial<Record<string, KeyInfoSpec>>)[object];
+    if (!spec) return rule;
+    const snapshot = (scope: ModuleScope, value: SQL) =>
+      sql`(${value} IS NULL OR ${keyInfoScopeSql(scope, spec, keyInfoSnapshot(value))})`;
+    return {
+      ...rule,
+      visible: (scope, row, viewer, inputs) =>
+        sql`(${rule.visible(scope, row, viewer, inputs)} AND ${snapshot(scope, row.before)}
+          AND ${snapshot(scope, row.after)})`,
+    };
   }),
 ];
 
@@ -339,6 +352,7 @@ function orderCodeChildren(scope: ModuleScope, row: Row, viewer: Viewer, fields?
     objectId: sql`p.object_id`,
     employee: sql`p.scope_employee_id`,
     org: sql`p.scope_org_id`,
+    before: sql`p.before`,
     after: sql`p.after`,
     commandId: sql`p.command_id`,
     actor: null,
@@ -635,6 +649,7 @@ function rowOf(table: string): Row {
     objectId: sql`COALESCE(${column('object_id')}, '')`,
     employee: column('scope_employee_id'),
     org: column('scope_org_id'),
+    before: table === EVENT ? column('before') : sql`NULL::jsonb`,
     after: table === EVENT ? column('after') : sql`NULL::jsonb`,
     commandId: column('command_id'),
     actor: table === TASK ? column('actor_user_id') : null,
@@ -648,6 +663,7 @@ function itemRow(): Row {
     objectId: sql`COALESCE(item->>'objectId', '')`,
     employee: sql`COALESCE(NULLIF(item->>'employeeId', '')::uuid, ${task('scope_employee_id')})`,
     org: sql`COALESCE(NULLIF(item->>'orgId', '')::uuid, ${task('scope_org_id')})`,
+    before: sql`NULL::jsonb`,
     after: sql`NULL::jsonb`,
     commandId: sql`${sql.identifier(TASK)}.command_id`,
     actor: sql`${sql.identifier(TASK)}.actor_user_id`,

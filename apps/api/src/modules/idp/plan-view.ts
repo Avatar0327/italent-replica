@@ -10,7 +10,10 @@ import { sql, type Tx } from '@italent/db';
 import { currentStageName, periodsIntersect, stageDueDate, type IdpObject } from '@italent/domain';
 import type { TenantRouteDeps } from '../../routes.js';
 import { findCurrentRecord } from '../employment/read-model.js';
-import { type IdpContext, project, type Projection, projectionOf, rowsOf } from './access.js';
+import { resolveModuleScope } from '../permission/module-access.js';
+import { codeOf, type IdpContext, type ModuleScope, project, type Projection, projectionOf, rowsOf } from './access.js';
+import { KEY_INFO, KEY_INFO_KINDS, type KeyInfoKind } from './key-info-scope.js';
+import { inScope } from './key-info-service.js';
 import type { PlanViewer } from './plan-access.js';
 import { nodeButtons } from './plan-access.js';
 import { currentNodes, loadStages, type PlanRow, type StageRow } from './plan-store.js';
@@ -261,6 +264,8 @@ export interface Projections {
   readonly tutorship: Projection;
   readonly career: Projection;
   readonly workShift: Projection;
+  /** 关键信息各对象的当前范围（与直接读取同一谓词，P2-1）。 */
+  readonly keyInfoScopes: Readonly<Record<KeyInfoKind, ModuleScope>>;
 }
 
 const PROJECTED: readonly (keyof Projections & IdpObject)[] = [
@@ -278,17 +283,30 @@ const PROJECTED: readonly (keyof Projections & IdpObject)[] = [
 
 export async function planProjections(deps: TenantRouteDeps, ctx: IdpContext): Promise<Projections> {
   const entries = await Promise.all(PROJECTED.map(async (key) => [key, await projectionOf(deps, ctx, key)] as const));
-  return Object.fromEntries(entries) as unknown as Projections;
+  const scopes = await Promise.all(
+    KEY_INFO_KINDS.map(async (kind) => {
+      const code = codeOf(kind);
+      return [kind, await resolveModuleScope(deps, ctx, undefined, code, `${code}.detail`)] as const;
+    }),
+  );
+  return { ...Object.fromEntries(entries), keyInfoScopes: Object.fromEntries(scopes) } as unknown as Projections;
 }
 
 const listOf = (rows: readonly Record<string, unknown>[], projection: Projection) =>
   projection === null ? [] : rows.map((row) => project(row, projection));
 
-function keyInfoShown(info: KeyInfo, p: Projections): KeyInfo {
+/** 关键信息：记录涉及的全部员工 / 组织都在查看人范围内才列出（与直接读取一致），再按源对象字段权裁剪。 */
+async function keyInfoShown(tx: Tx, info: KeyInfo, p: Projections): Promise<KeyInfo> {
+  const shown = async (kind: KeyInfoKind, rows: readonly Record<string, unknown>[]) => {
+    const kept: Record<string, unknown>[] = [];
+    for (const row of p[kind] === null ? [] : rows)
+      if (await inScope(tx, p.keyInfoScopes[kind], KEY_INFO[kind], row)) kept.push(row);
+    return listOf(kept, p[kind]);
+  };
   return {
-    tutorships: listOf(info.tutorships, p.tutorship),
-    careers: listOf(info.careers, p.career),
-    workShifts: listOf(info.workShifts, p.workShift),
+    tutorships: await shown('tutorship', info.tutorships),
+    careers: await shown('career', info.careers),
+    workShifts: await shown('workShift', info.workShifts),
   };
 }
 
@@ -327,7 +345,7 @@ export async function presentPlan(
     }
     if (projections.analysis !== null) shown.analyses = listOf(analyses, projections.analysis);
     if (projections.review !== null) shown.reviews = listOf(reviews, projections.review);
-    shown.keyInfo = keyInfoShown(keyInfo, projections);
+    shown.keyInfo = await keyInfoShown(tx, keyInfo, projections);
     return shown;
   }
   const { stage, nodeKey } = viewer.at;
@@ -343,6 +361,6 @@ export async function presentPlan(
   shown.goals = detail.goals;
   shown.analyses = detail.analyses;
   shown.reviews = detail.reviews;
-  shown.keyInfo = keyInfoShown(detail.keyInfo, projections);
+  shown.keyInfo = await keyInfoShown(tx, detail.keyInfo, projections);
   return shown;
 }

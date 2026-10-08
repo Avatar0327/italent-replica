@@ -2,75 +2,17 @@
  * 关键信息维护：带教 / 职业发展 / 轮岗（docs/02_业务建模/28 IDP-R19～R22；PR 描述 K-35）。
  * - 判重键：带教 = 带教人 + 被带教人 + 起止；职业发展 = 员工 + 起止；轮岗 = 员工 + 部门 + 职位 + 起止（🟡 加员工）；
  * - 员工须在操作人 IDP 范围内（带教双方都须在范围内，范围外 404），轮岗部门须在范围内（管理单元限制，IDP-R21）；
+ *   范围谓词见 key-info-scope.ts（读取、列表、计划详情聚合与审计共用）；
  * - 写入与审计同事务，审计按员工（带教按被带教人）归属。
  */
 import { pgErrorCode, sql, type Tx } from '@italent/db';
-import type { IdpObject } from '@italent/domain';
+import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
-import { scopeAllowsInTransaction } from '../permission/module-access.js';
 import { type ModuleScope, rowsOf } from './access.js';
-import { employeeInScope } from './plan-access.js';
+import { keyInfoScopeSql, type KeyInfoSpec } from './key-info-scope.js';
 import { audit, conflict, created, requireRevision, type WriteContext } from './write-support.js';
 
-export type KeyInfoKind = 'tutorship' | 'career' | 'workShift';
-
-interface KeyInfoSpec {
-  readonly object: IdpObject & KeyInfoKind;
-  readonly table: string;
-  /** 字段 → 列。 */
-  readonly columns: Readonly<Record<string, string>>;
-  /** 须在范围内的员工字段（第一个是审计归属）。 */
-  readonly persons: readonly string[];
-  /** 须在范围内的组织字段。 */
-  readonly orgs: readonly string[];
-  readonly duplicate: string;
-  readonly label: string;
-}
-
-const dated = { startDate: 'start_date', endDate: 'end_date' };
-
-export const KEY_INFO: Readonly<Record<KeyInfoKind, KeyInfoSpec>> = {
-  tutorship: {
-    object: 'tutorship',
-    table: 'idp_tutorships',
-    columns: { tutorEmployeeId: 'tutor_employee_id', tuteeEmployeeId: 'tutee_employee_id', remark: 'remark', ...dated },
-    persons: ['tuteeEmployeeId', 'tutorEmployeeId'],
-    orgs: [],
-    duplicate: 'IDP_TUTORSHIP_DUPLICATE',
-    label: '带教信息',
-  },
-  career: {
-    object: 'career',
-    table: 'idp_careers',
-    columns: {
-      employeeId: 'employee_id',
-      targetPositionId: 'target_position_id',
-      strengths: 'strengths',
-      developmentItems: 'development_items',
-      intendedCity: 'intended_city',
-      ...dated,
-    },
-    persons: ['employeeId'],
-    orgs: [],
-    duplicate: 'IDP_CAREER_DUPLICATE',
-    label: '职业发展信息',
-  },
-  workShift: {
-    object: 'workShift',
-    table: 'idp_work_shifts',
-    columns: {
-      employeeId: 'employee_id',
-      orgId: 'org_id',
-      positionId: 'position_id',
-      mentorEmployeeId: 'mentor_employee_id',
-      ...dated,
-    },
-    persons: ['employeeId'],
-    orgs: ['orgId'],
-    duplicate: 'IDP_WORK_SHIFT_DUPLICATE',
-    label: '轮岗信息',
-  },
-};
+export { KEY_INFO, type KeyInfoKind, type KeyInfoSpec } from './key-info-scope.js';
 
 const UUID_COLUMNS = /_id$/;
 const cast = (column: string) =>
@@ -93,30 +35,28 @@ export async function loadKeyInfo(tx: Tx, tenantId: string, spec: KeyInfoSpec, i
   return row ? { ...row, revision: Number(row.revision) } : undefined;
 }
 
-/** 记录的员工 / 部门都在范围内（范围外与不存在同为 404）。 */
+/** 记录涉及的员工 / 部门都在范围内（范围外与不存在同为 404）。 */
 export async function inScope(tx: Tx, scope: ModuleScope, spec: KeyInfoSpec, row: Record<string, unknown>) {
-  for (const field of spec.persons) {
-    if (!(await employeeInScope(tx, scope, row[field] as string))) return false;
-  }
-  for (const field of spec.orgs) {
-    if (!(await scopeAllowsInTransaction(tx, scope, { orgId: row[field] as string }))) return false;
-  }
-  return true;
+  const value = (field: string) => sql`${(row[field] as string | null | undefined) ?? null}::uuid`;
+  const [hit] = rowsOf<{ visible: boolean }>(
+    await tx.execute(sql`SELECT ${keyInfoScopeSql(scope, spec, value)} AS visible`),
+  );
+  return hit?.visible === true;
 }
 
-/** 列表：按第一个员工字段（带教按被带教人）在范围内过滤（分页之前）。 */
+/** 列表：记录涉及的员工（带教双方）与轮岗部门都在范围内（分页之前）。 */
 export async function listKeyInfo(
   tx: Tx,
   tenantId: string,
   spec: KeyInfoSpec,
-  visible: (person: ReturnType<typeof sql>) => ReturnType<typeof sql>,
+  visible: SQL,
   page: { limit: number; offset: number },
   employeeId?: string,
 ) {
   const anchor = sql.raw(spec.columns[spec.persons[0]!]!);
   return rowsOf<KeyInfoRow>(
     await tx.execute(sql`SELECT ${selectList(spec)} FROM ${sql.raw(spec.table)}
-      WHERE tenant_id = ${tenantId} AND ${visible(anchor)}
+      WHERE tenant_id = ${tenantId} AND ${visible}
         ${employeeId ? sql`AND ${anchor} = ${employeeId}::uuid` : sql``}
       ORDER BY start_date, id LIMIT ${page.limit} OFFSET ${page.offset}`),
   );

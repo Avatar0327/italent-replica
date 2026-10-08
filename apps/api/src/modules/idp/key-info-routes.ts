@@ -4,7 +4,7 @@
  * 功能权限（对象 + 按钮 + 字段编辑权）在命令台账之前校验；范围按记录的员工（带教双方）与轮岗部门（K-35），范围外 404；
  * 首次与重放返回前按当前行复核范围；响应按对象字段权限裁剪。
  */
-import { isUuid, sql, type Tx, withTenant } from '@italent/db';
+import { isUuid, type Tx, withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import type { z } from 'zod';
 import { runCommand } from '../../commands.js';
@@ -12,7 +12,6 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { pageQuery, parseBody, requireNew, revision, uuidParam } from '../job/context.js';
-import { scopeSql } from '../permission/module-access.js';
 import {
   checkWriteFields,
   idpContext,
@@ -20,7 +19,6 @@ import {
   idpScope,
   idpWriteContext,
   listEnvelope,
-  type ModuleScope,
   type PermissionCheck,
   project,
   projectionOf,
@@ -37,6 +35,7 @@ import {
   loadKeyInfo,
   updateKeyInfo,
 } from './key-info-service.js';
+import { keyInfoColumn, keyInfoScopeSql } from './key-info-scope.js';
 import * as input from './plan-input.js';
 import type { WriteContext } from './write-support.js';
 
@@ -60,16 +59,6 @@ export function registerKeyInfoRoutes(router: Hono<TenantEnv>, deps: TenantRoute
   }
 }
 
-/** 列表范围：记录涉及的员工（带教双方）与轮岗部门都在范围内（分页之前）。 */
-function visibleSql(scope: ModuleScope, kind: KeyInfoKind) {
-  const spec = KEY_INFO[kind];
-  const parts = [
-    ...spec.persons.map((field) => scopeSql(scope, { person: sql.raw(spec.columns[field]!) })),
-    ...spec.orgs.map((field) => scopeSql(scope, { org: sql.raw(spec.columns[field]!) })),
-  ];
-  return sql.join(parts, sql` AND `);
-}
-
 function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps, path: string, kind: KeyInfoKind) {
   const spec = KEY_INFO[kind];
   router.get(`${BASE}/${path}`, async (c) => {
@@ -81,7 +70,14 @@ function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps, path: str
       throw new AppError('VALIDATION_FAILED', 'employeeId 必须为 UUID');
     }
     const rows = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      listKeyInfo(tx, ctx.tenantId, spec, () => visibleSql(scope, kind), page, employeeId?.toLowerCase()),
+      listKeyInfo(
+        tx,
+        ctx.tenantId,
+        spec,
+        keyInfoScopeSql(scope, spec, keyInfoColumn(spec)),
+        page,
+        employeeId?.toLowerCase(),
+      ),
     );
     const fields = await projectionOf(deps, ctx, kind);
     return c.json({ ...listEnvelope(page, scope), items: rows.map((row) => project(row, fields)) });
