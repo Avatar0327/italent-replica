@@ -2,7 +2,7 @@
 "updated": "2026-10-07",
 "stats": {
 "merged": 54,
-"open": 10,
+"open": 11,
 "dec": 299,
 "ev": "27/122"
 },
@@ -389,7 +389,10 @@
 "F-033"
 ],
 "note": "第二批：F-032 合并 + 取证后；Fable 5.1 → Astra Ultra，先出设计",
-"ev": "⛔ Q-M0-81 未取证"
+"ev": "⛔ Q-M0-81 未取证",
+"pr": [
+113
+]
 },
 "R3-T05": {
 "n": "继任管理",
@@ -1991,7 +1994,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 21:53",
+"liveUpdated": "10-07 21:56",
 "chains": [
 {
 "g": "exit",
@@ -2175,9 +2178,10 @@
 "k": "run",
 "n": "人才盘点",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:a ds:a1 dev:w rev:w mg:w",
-"now": "设计中；Q-M0-81 取证收尾并行（写代码前 gate 须 ✅）",
-"fable": "1"
+"seg": "ev:a ds:d1 dev:w rev:w1 mg:w",
+"now": "设计 v1 已交，待设计审；Q-M0-81 收尾中",
+"fable": "1",
+"pr": 113
 },
 {
 "id": "R3-T01",
