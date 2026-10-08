@@ -517,8 +517,10 @@ function registerInterventions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const hr = await idpScope(c, deps, ctx, 'plan');
     const sources: intervention.IssueSources = {
       template: await projectionOf(deps, ctx, 'template'),
+      templateModule: await projectionOf(deps, ctx, 'templateModule'),
       commonGoal: await projectionOf(deps, ctx, 'commonGoal'),
       goal: await projectionOf(deps, ctx, 'goal'),
+      plan: await projectionOf(deps, ctx, 'plan'),
       templateScope: await idpScope(c, deps, ctx, 'template'),
     };
     type Issued = { created: { planId: string }[] };

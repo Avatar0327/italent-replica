@@ -8,12 +8,12 @@
  * 取锁顺序：计划（按 ID 升序）→ 审批实例。
  */
 import { sql, type Tx } from '@italent/db';
-import { nextOpenableStage, tenantLocalDate } from '@italent/domain';
+import { type IdpObject, nextOpenableStage, tenantLocalDate } from '@italent/domain';
 import { AppError, ERROR_STATUS } from '../../errors.js';
 import { adminAct, urgeAsAdmin } from '../approval/actions.js';
 import type { ApprovalContext } from '../approval/context.js';
 import { personOfUser } from '../approval/resolver.js';
-import { accessOf, type ModuleScope, type Projection, rowsOf } from './access.js';
+import { accessOf, type ModuleScope, type Projection, rowsOf, viewable } from './access.js';
 import { insertTask } from './execution-service.js';
 import { hrSees } from './plan-access.js';
 import type { BatchItems, JumpInput, StartNextInput, TaskIssue } from './plan-input.js';
@@ -169,21 +169,35 @@ export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, in
   return loadPlanDetail(tx, await requirePlanRow(tx, ctx.tenantId, plan.id), tenantLocalDate(ctx.now, ctx.timezone));
 }
 
-/** 统一下发的源对象查看权（事务外按当前权限解析，P2-5）。 */
+/** 统一下发的源对象查看权（事务外按当前权限解析，P2-5 / R2-5）。 */
 export interface IssueSources {
   readonly template: Projection;
+  readonly templateModule: Projection;
   readonly commonGoal: Projection;
   readonly goal: Projection;
+  readonly plan: Projection;
   readonly templateScope: ModuleScope;
 }
+
+/**
+ * 统一下发实际用到的源字段（第 3 轮 R2-5）：通用目标 → 所属模块（moduleId）→ 模块开关 taskEnabled；计划的 templateId
+ * 用于“模板一致”判定；目标的 commonGoalId 用于找到要挂任务的目标。看不到任一项与“通用目标不存在”同一个 404。
+ */
+const ISSUE_SOURCE_FIELDS: readonly (readonly [keyof IssueSources & IdpObject, readonly string[]])[] = [
+  ['template', []],
+  ['templateModule', ['taskEnabled']],
+  ['commonGoal', ['moduleId']],
+  ['goal', ['commonGoalId']],
+  ['plan', ['templateId']],
+];
 
 const hiddenGoal = () => new AppError('NOT_FOUND', '模板通用目标不存在');
 
 /**
  * 统一下发任务（K-46，IDP-R15）：按模板通用目标下发，勾选的计划须使用同一模板（409 IDP_TASK_TEMPLATE_MISMATCH）；
  * 每个计划由该通用目标生成的目标下各加一条任务，整体成功或整体失败。范围 / revision 先于模板判定。
- * 通用目标与目标是“从另一个对象带出值”（入口清单 E11）：先判操作人对模板、通用目标、目标的查看权（模板另须在范围内），
- * 看不到时“不存在 / 模板不一致 / 任务关闭 / 目标缺失”都是同一个 404，回执不含隐藏目标（P2-5，PR-A 同口径）。
+ * 通用目标与目标是“从另一个对象带出值”（入口清单 E11）：先判操作人对实际用到的源对象与字段的查看权（模板另须在
+ * 范围内），看不到时“不存在 / 模板不一致 / 任务关闭 / 目标缺失”都是同一个 404，回执不含隐藏目标（P2-5 / R2-5）。
  */
 export async function issueTasks(tx: Tx, ctx: PlanWriteContext, input: TaskIssue, sources: IssueSources) {
   const plans: PlanRow[] = [];
@@ -194,9 +208,11 @@ export async function issueTasks(tx: Tx, ctx: PlanWriteContext, input: TaskIssue
     plans.push(plan);
   }
   if (plans.some((p) => p.status === 'ended' || p.status === 'terminated')) notActive();
-  if (sources.template === null || sources.commonGoal === null || sources.goal === null) throw hiddenGoal();
-  for (const object of ['template', 'commonGoal', 'goal'] as const)
-    ctx.checks?.push({ kind: 'view', object, fields: [] });
+  // 先判源字段查看权，再做可区分的校验；记入台账，重放时按当前权限复核（看不到了 403 IDP_CARRY_SOURCE_HIDDEN）
+  for (const [object, fields] of ISSUE_SOURCE_FIELDS) {
+    if (!viewable(sources[object], fields)) throw hiddenGoal();
+    ctx.checks?.push({ kind: 'view', object, fields, carry: true });
+  }
   const [goal] = rowsOf<{
     template_id: string;
     task_enabled: boolean | null;

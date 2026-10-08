@@ -192,7 +192,7 @@ export function requireViewable(ctx: CheckedContext, projection: Projection, obj
   ctx.checks?.push(check);
 }
 
-const viewable = (projection: Projection, fields: readonly string[]) =>
+export const viewable = (projection: Projection, fields: readonly string[]) =>
   projection !== null && (projection === undefined || fields.every((field) => projection.has(field)));
 
 const sourceHidden = () => new AppError('FORBIDDEN', '看不到带出值的来源字段', { reason: 'IDP_CARRY_SOURCE_HIDDEN' });
