@@ -16,8 +16,18 @@ export interface DateParts {
   readonly precision: DatePrecision;
 }
 
+/** 静态类型推导与空值来源用到的值类型（DEC-270 / DEC-287）。 */
+export type StaticKind = 'number' | 'text' | 'boolean' | 'date';
+
 export type ExprValue =
-  | { readonly kind: 'empty' }
+  | {
+      readonly kind: 'empty';
+      /**
+       * 空值的来源类型：声明了返回类型的函数取不到值（如绩效得分 → number）、字段类型目录标明类型的字段为空。
+       * 来源未知时不写。日期参数据此区分“真正的空日期”与数值函数的空结果（DEC-270②，PR #108 第 3 轮）。
+       */
+      readonly of?: StaticKind;
+    }
   | { readonly kind: 'number'; readonly value: number }
   | { readonly kind: 'text'; readonly value: string }
   | { readonly kind: 'boolean'; readonly value: boolean }
@@ -36,6 +46,16 @@ export interface OptionValue {
 export type PlainValue = number | string | boolean | Date | OptionValue | null | undefined;
 
 export const EMPTY: ExprValue = Object.freeze({ kind: 'empty' } as const);
+
+const TYPED_EMPTY: Readonly<Record<StaticKind, ExprValue>> = Object.freeze({
+  number: Object.freeze({ kind: 'empty', of: 'number' } as const),
+  text: Object.freeze({ kind: 'empty', of: 'text' } as const),
+  boolean: Object.freeze({ kind: 'empty', of: 'boolean' } as const),
+  date: Object.freeze({ kind: 'empty', of: 'date' } as const),
+});
+
+/** 已知来源类型的空值。 */
+export const emptyOf = (kind: StaticKind): ExprValue => TYPED_EMPTY[kind];
 
 export const number = (value: number): ExprValue => ({ kind: 'number', value });
 export const text = (value: string): ExprValue => ({ kind: 'text', value });
@@ -65,7 +85,7 @@ export const KIND_LABELS: Readonly<Record<ExprValueKind, string>> = {
 export function describeValue(value: ExprValue): string {
   switch (value.kind) {
     case 'empty':
-      return '空值';
+      return value.of ? `空值（${KIND_LABELS[value.of]}）` : '空值';
     case 'number':
       return String(value.value);
     case 'text':
