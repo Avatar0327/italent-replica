@@ -83,6 +83,8 @@ interface Env {
     | 'tResult'
     | 'tSettings'
     | 'tSettingsFine'
+    | 'tSettingsRev'
+    | 'tRelNoId'
     | 'tLinkLogs',
     string
   >;
@@ -220,6 +222,17 @@ async function buildEnv(): Promise<Env> {
     tResult: await custom(w, '看不到角色名', [{ object: 'activity' }, { object: 'result', hide: ['roleName'] }]),
     tSettings: await custom(w, '看不到固定文字', [full('settings', ['displayText'])]),
     tSettingsFine: await custom(w, '看不到精细化', [{ object: 'settings', hide: ['finePermission'] }]),
+    // 能写精细化开关、看不到独立的 revision 字段（第 3 轮审查 P3）
+    tSettingsRev: await custom(w, '看不到设置版本号', [
+      { object: 'settings', ops: { update: true }, hide: ['revision'], buttons: ['finePermission'] },
+    ]),
+    // 看不到评价关系 id：导入回执不能再原样返回关系 ID（第 4 轮 R3-P2-1）
+    tRelNoId: await custom(w, '看不到关系ID', [
+      full('activity'),
+      full('relation', ['id']),
+      { object: 'questionnaire' },
+      full('person'),
+    ]),
     tLinkLogs: await custom(w, '看不到挂接', [
       { object: 'person', hide: ['employeeId', 'previousEmployeeId'], buttons: ['sync'] },
     ]),
@@ -435,10 +448,19 @@ const ROUTE_CASES: Record<string, RouteCases> = {
       );
       expect(await json(await env.w2.request('GET', '/settings'))).toEqual(other);
     },
-    trimming: {
-      na:
-        '响应只有 finePermission 与 revision（并发控制字段）；平台规定可编辑字段以可查看为前提' +
-        '（packages/domain/src/permission/effective.ts），能写 finePermission 的人一定看得到它，无可裁剪字段',
+    trimming: async (env) => {
+      // 能编辑 finePermission 不代表能看独立的 revision 字段：写响应与同键重放都不带 revision（第 3 轮审查 P3）
+      const before = await json(await sa(env)('GET', '/settings'));
+      await writeTwice(
+        (key) =>
+          admin(env, env.users.tSettingsRev)('PUT', '/settings', {
+            ifMatch: before.revision as number,
+            idempotencyKey: key,
+            body: { finePermission: false },
+          }),
+        200,
+        (body) => expect(body).toEqual({ finePermission: false }),
+      );
     },
   },
   [`GET ${S}/roles`]: {
@@ -1501,6 +1523,32 @@ const ROUTE_CASES: Record<string, RouteCases> = {
           for (const receipt of body.receipts as object[])
             expect(keysOf(receipt)).toEqual(['relationId', 'row', 'status']);
           noMarkers(body, [target.email]);
+        },
+      );
+      // 看不到评价关系 id：回执只剩行号与处理状态（第 4 轮 R3-P2-1：导入回执不再原样返回）
+      const hidden = await freshActivity(env, [env.users.tRelNoId]);
+      const hiddenTarget = await env.w.person('导入对象（看不到关系ID）');
+      await env.w.object(hidden.id, hiddenTarget.id, [env.q.id]);
+      await writeTwice(
+        (key) =>
+          admin(env, env.users.tRelNoId)('POST', `/activities/${hidden.id}/appraisers/import`, {
+            ifMatch: 0,
+            idempotencyKey: key,
+            body: {
+              sync: false,
+              rows: [
+                {
+                  objectEmail: hiddenTarget.email,
+                  roleId: env.w.role('customer'),
+                  name: '导入客户',
+                  email: `imp-noid-${key.slice(0, 6)}@example.com`,
+                },
+              ],
+            },
+          }),
+        200,
+        (body) => {
+          for (const receipt of body.receipts as object[]) expect(keysOf(receipt)).toEqual(['row', 'status']);
         },
       );
     },
