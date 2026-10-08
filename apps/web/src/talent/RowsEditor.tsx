@@ -17,12 +17,14 @@ export function RowsEditor<Row extends Record<string, unknown>>({
   columns,
   rows,
   blank,
+  addDisabled = false,
   onChange,
 }: {
   legend: string;
   columns: readonly Column<Row>[];
   rows: readonly Row[];
   blank: () => Row;
+  addDisabled?: boolean;
   onChange: (rows: Row[]) => void;
 }) {
   const update = (index: number, key: string, value: unknown) =>
@@ -61,7 +63,7 @@ export function RowsEditor<Row extends Record<string, unknown>>({
           ))}
         </tbody>
       </table>
-      <button type="button" onClick={() => onChange([...rows, blank()])}>
+      <button type="button" disabled={addDisabled} onClick={() => onChange([...rows, blank()])}>
         {text.addRow}
       </button>
     </fieldset>

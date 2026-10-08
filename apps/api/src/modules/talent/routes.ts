@@ -36,6 +36,7 @@ import {
 import { registerCandidates } from './candidates.js';
 import * as criteria from './criterion-service.js';
 import * as dimensions from './dimension-service.js';
+import { talentFormHandler } from './form-access.js';
 import {
   booleanQuery,
   nameQuery,
@@ -205,12 +206,19 @@ const CRITERIA: ObjectRoutes<read.CriterionView, input.CriterionCreate, input.Cr
 
 export function registerTalentRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerCandidates(router, deps);
-  registerObject(router, deps, LIBRARIES);
-  registerObject(router, deps, DIMENSION_CATEGORIES);
-  registerObject(router, deps, DESCRIPTION_TYPES);
-  registerObject(router, deps, DIMENSIONS);
-  registerObject(router, deps, CATEGORIES);
-  registerObject(router, deps, CRITERIA);
+  const forms = {
+    library: registerObject(router, deps, LIBRARIES),
+    dimensionCategory: registerObject(router, deps, DIMENSION_CATEGORIES),
+    descriptionType: registerObject(router, deps, DESCRIPTION_TYPES),
+    dimension: registerObject(router, deps, DIMENSIONS),
+    criterionCategory: registerObject(router, deps, CATEGORIES),
+    criterion: registerObject(router, deps, CRITERIA),
+  };
+  router.get(`${TALENT_BASE}/forms/:object`, (c) => {
+    const object = c.req.param('object');
+    if (!Object.hasOwn(forms, object)) throw new AppError('VALIDATION_FAILED', '表单对象不合法');
+    return forms[object as TalentObject](c);
+  });
   registerDimensionCategoryBatch(router, deps);
 }
 
@@ -274,6 +282,7 @@ function registerObject<View extends Tracked, Create extends object, Patch exten
     const id = uuidParam(c);
     return runTalentWrite(c, deps, ctx, spec, { id }, 200, (tx, w) => spec.remove(tx, w, id));
   });
+  return talentFormHandler(deps, spec);
 }
 
 /**
