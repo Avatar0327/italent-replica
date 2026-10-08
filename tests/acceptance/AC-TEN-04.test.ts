@@ -156,6 +156,10 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
         'standard_hr_specialist',
         'standard_manager',
         'standard_org_system_admin',
+        // DEC-280：三类内置 360 身份（应用 Survey360）
+        'standard_360_system_admin',
+        'standard_360_advanced_admin',
+        'standard_360_general_admin',
         'standard_talent_admin',
       ].sort(),
     );

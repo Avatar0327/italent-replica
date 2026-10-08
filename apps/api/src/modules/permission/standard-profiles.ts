@@ -4,6 +4,10 @@
  * 身份定义在 @italent/domain 的 STANDARD_PROFILES；这里只负责按对象目录校验后落库，并与业务写同事务写审计与 outbox。
  */
 import {
+  and,
+  eq,
+  permissionAdminGrantableProfiles,
+  permissionAdmins,
   permissionGrants,
   permissionIdentityScopes,
   permissionProfileApps,
@@ -23,6 +27,7 @@ import {
   type StandardProfile,
   validateObjectPermission,
 } from '@italent/domain';
+import { viewOf } from './admins.js';
 import { auditAs, type PlatformWriteContext } from './audit.js';
 import { objectCatalog } from './catalog.js';
 import { consumeSeat, type LicenseOverage } from './licenses.js';
@@ -39,6 +44,68 @@ export async function installStandardProfiles(tx: Tx, write: PlatformWriteContex
   const installed: InstalledProfile[] = [];
   for (const profile of STANDARD_PROFILES) installed.push(await installProfile(tx, write, profile));
   return installed;
+}
+
+export interface StandardBackfill {
+  readonly installed: string[];
+  readonly skipped: { readonly code: string; readonly reason: 'ALREADY_INSTALLED' | 'CODE_TAKEN' }[];
+}
+
+/**
+ * 存量租户回补标准身份（DEC-289③）：开通早于新增标准身份（如 360 三类身份）的租户，按 STANDARD_PROFILES 只补租户里
+ * 还没有该编码的（与开通同一安装函数，同样按对象目录校验、逐个写身份审计）。同编码已是标准身份跳过
+ * （ALREADY_INSTALLED）；租户手工建过同编码身份不覆盖、不合并、不改其对象权限（CODE_TAKEN）。身份编码建后不能改、
+ * 身份也不能删，所以这个标准身份不会再由回补装入，租户身份管理员可二选一：在身份管理里按标准身份
+ * （STANDARD_PROFILES）的对象权限调整这条自定义身份后继续使用；或另建一个其他编码的自定义身份按同样配置，在用户
+ * 授权里改授并撤销旧授权。新装身份加入有效租户管理员的可授权业务身份。重复执行不新建任何行。
+ */
+export async function installMissingStandardProfiles(tx: Tx, write: PlatformWriteContext): Promise<StandardBackfill> {
+  const existing = await tx
+    .select({ code: permissionProfiles.code, source: permissionProfiles.source })
+    .from(permissionProfiles);
+  const sources = new Map(existing.map((p) => [p.code, p.source]));
+  const installed: InstalledProfile[] = [];
+  const skipped: StandardBackfill['skipped'][number][] = [];
+  for (const profile of STANDARD_PROFILES) {
+    const source = sources.get(profile.code);
+    if (source === undefined) installed.push(await installProfile(tx, write, profile));
+    else skipped.push({ code: profile.code, reason: source === 'standard' ? 'ALREADY_INSTALLED' : 'CODE_TAKEN' });
+  }
+  if (installed.length)
+    await grantableToTenantAdmins(
+      tx,
+      write,
+      installed.map((p) => p.id),
+    );
+  return { installed: installed.map((p) => p.code), skipped };
+}
+
+/** 新装身份加入有效租户管理员的可授权业务身份：推进管理员记录 revision（防并发整体覆盖丢失）、写审计。 */
+async function grantableToTenantAdmins(tx: Tx, write: PlatformWriteContext, profileIds: readonly string[]) {
+  const admins = await tx
+    .select()
+    .from(permissionAdmins)
+    .where(and(eq(permissionAdmins.role, 'tenant_admin'), eq(permissionAdmins.status, 'active')))
+    .for('update');
+  for (const admin of admins) {
+    const before = await viewOf(tx, admin);
+    await tx
+      .insert(permissionAdminGrantableProfiles)
+      .values(profileIds.map((profileId) => ({ tenantId: write.tenantId, adminId: admin.id, profileId })))
+      .onConflictDoNothing();
+    const [saved] = await tx
+      .update(permissionAdmins)
+      .set({ revision: admin.revision + 1, updatedAt: write.now })
+      .where(eq(permissionAdmins.id, admin.id))
+      .returning();
+    await auditAs(tx, write, {
+      action: 'permission_admin.update',
+      objectType: 'permission_admin',
+      objectId: admin.id,
+      before,
+      after: await viewOf(tx, saved!),
+    });
+  }
 }
 
 async function installProfile(tx: Tx, write: PlatformWriteContext, profile: StandardProfile) {

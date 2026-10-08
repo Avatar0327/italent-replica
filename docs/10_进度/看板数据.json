@@ -1,9 +1,9 @@
 {
 "updated": "2026-10-08",
 "stats": {
-"merged": 57,
-"open": 12,
-"dec": 314,
+"merged": 58,
+"open": 13,
+"dec": 318,
 "ev": "29/129"
 },
 "tasks": {
@@ -907,14 +907,17 @@
 },
 "F-049": {
 "n": "表达式引擎钩子（C-07）",
-"s": "todo",
+"s": "active",
 "p": "R3-T04",
 "deps": [
 "F-045"
 ],
 "note": "DEC-309；B 档 Opus High；F-045 合并后；T04 写代码前合并",
 "dev": "Codex GPT-6.1 Sol",
-"rev": "Astra Ultra"
+"rev": "Astra Ultra",
+"pr": [
+118
+]
 }
 },
 "prs": {
@@ -955,6 +958,22 @@
 }
 },
 "log": [
+[
+"10-08",
+"#117 R3-T03 PR-A2 合并（073e17e，Astra 首轮通过）"
+],
+[
+"10-08",
+"DEC-317：流程优化 6 条登记；自检试点 PR #119（Draft）"
+],
+[
+"10-08",
+"DEC-316：#106 第 7 轮，只剩 P3 直接合并"
+],
+[
+"10-08",
+"DEC-315：360 写入实测获批（取证窗口授 A4 身份、测试活动只留站内通知）；PR-B 可分批派"
+],
 [
 "10-08",
 "#116 R3-T03 PR-A1 合并（9322bac，Astra 首轮通过）"
@@ -2112,7 +2131,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-08 04:14",
+"liveUpdated": "10-08 05:37",
 "chains": [
 {
 "g": "base",
@@ -2325,8 +2344,8 @@
 "o": 1,
 "k": "run",
 "n": "人才标准与指标库",
-"seg": "ev:d ds:n dev:d6 rev:a6 mg:w",
-"now": "第 6 轮审查中（Sol Ultra，head 5fca6dd），通过即合并",
+"seg": "ev:d ds:n dev:a7 rev:d6 mg:w",
+"now": "第 7 轮已推送（f510c9a）；CI 一项因无关偶发测试失败，重跑中",
 "pr": 106,
 "nx": "R3-T02、F-035、F-038、F-048"
 },
@@ -2336,8 +2355,8 @@
 "o": 2,
 "k": "run",
 "n": "360 PR-A3（#107）",
-"seg": "ev:d ds:n dev:a5 rev:d4 mg:w",
-"now": "第 5 轮修改：R4-P2-1/2 + 两项 P3（DEC-311⑤ 更正：A1/A2/A3 全部继续）",
+"seg": "ev:d ds:n dev:d5 rev:w5 mg:w",
+"now": "第 5 轮开发完成（10:28Z），待审（Sol，含 4 条自检疑点专项核对）",
 "pr": 107,
 "up": "10-07 第 3 轮调到 Max",
 "nx": "F-046、F-034"
@@ -2528,8 +2547,9 @@
 "n": "引擎钩子",
 "nx": "R3-T04 写代码",
 "cx": "1",
-"seg": "ev:d ds:n dev:a1 rev:w mg:w",
-"now": "开发中（codex exec，Sol Ultra，wt-f049），PR 待开"
+"seg": "ev:d ds:n dev:d1 rev:a1 mg:w",
+"now": "首审中（Astra Ultra，head e82ff77）",
+"pr": 118
 },
 {
 "id": "F-048",
@@ -2555,9 +2575,8 @@
 "k": "run",
 "n": "360 系统入口 / A5 登录",
 "seg": "ev:a ds:n dev:n rev:n mg:n",
-"now": "已拿到入口；Q-M0-127 完成 7 个、部分 3 个；写入实测待你定（授 A4 身份、建测试活动）",
-"nx": "R3-T03 第二部分（19 个必测点）",
-"need": "1"
+"now": "DEC-315：取证窗口授 A4 身份、建测试活动（只留站内通知）；Q-M0-127 分批交付",
+"nx": "R3-T03 第二部分（19 个必测点）"
 },
 {
 "id": "R3-T03B",
@@ -2565,7 +2584,7 @@
 "o": 4,
 "k": "todo",
 "n": "360 PR-B：邀请 / 屏蔽 / 报告 / 导出",
-"u": "未开工；Q-M0-112 精细权限取证并行，不挡 PR-A 合并"
+"u": "可按批派（DEC-315：已确认 / 🟡 分批）"
 },
 {
 "id": "R3-T06",
@@ -2592,8 +2611,8 @@
 "n": "IDP PR-B：执行 / 带教 / 干预",
 "u": "可派；干预测试需 A5 登录",
 "pr": 115,
-"seg": "ev:d ds:n dev:a1 rev:w mg:w",
-"now": "开发中（计划执行 / 带教 / 流程干预）",
+"seg": "ev:d ds:n dev:a2 rev:d1 mg:w",
+"now": "第 1 轮：1 P1 + 10 P2，第 2 轮修改中；K-35/37/38/39 口径先取证再问你",
 "wait": "干预实测需 A5 登录"
 },
 {
@@ -2620,11 +2639,22 @@
 "id": "R3-T03A2",
 "g": "s360",
 "o": 2,
-"k": "run",
+"k": "done",
 "pr": 117,
 "n": "360 PR-A2：标准身份安装 / 平台回补",
-"seg": "ev:d ds:n dev:a1 rev:w1 mg:w",
-"now": "与 main 有 add/add 冲突，开发方合并 main 后重推；CI 绿后首审"
+"seg": "ev:d ds:n dev:d1 rev:a1 mg:w",
+"now": "首审中（Astra Ultra，head 15fd7cd）",
+"u": "10-08 合并（073e17e），Astra 首轮通过"
+},
+{
+"id": "F-SC",
+"g": "base",
+"o": 2,
+"k": "run",
+"n": "开发自检试点（open-code-review）",
+"pr": 119,
+"seg": "ev:n ds:n dev:a1 rev:w mg:w",
+"now": "回放中期：盲测召回约 30%（完整）/ 50%（含部分），P1 未中；下一步 F-046 / F-034 / F-048 实测"
 }
 ]
 }
