@@ -187,29 +187,40 @@ export function valuesEqual(left: ExprValue, right: ExprValue, semantics: Expres
 }
 
 /**
- * 按值分组用的等价键（排名的分组范围，F-045）：与 valuesEqual 同口径——单选按选项值、日期格式文本按日期、
- * 宽松模式下数字文本按数值（"2026" 与 2026 同组）。分组需要等价关系，而 = 对“两个写法不同的数字文本”
- * （"2026" 与 "2026.0"）不传递：这里把它们归为同一组，其余情形与 = 一致。
+ * 排名分组的候选索引（F-045）：= 不传递（"1" = 1、1 = "01"，但 "1" ≠ "01"），不能用单一哈希键分组。
+ * 每个取值登记在若干入口键下（equalityStoreKeys），查找时取可能与它相等的入口（equalityLookupKeys），
+ * 两者保证覆盖 valuesEqual 为真的全部组合；候选须再逐个用 valuesEqual 复核，结果与逐一比较完全一致。
  */
-export function equalityKey(value: ExprValue, semantics: ExpressionSemantics): string {
-  if (value.kind === 'empty') return 'empty';
+export function equalityStoreKeys(value: ExprValue, semantics: ExpressionSemantics): string[] {
+  if (value.kind === 'empty') return ['e'];
   const plain = unwrapOption(value);
-  switch (plain.kind) {
-    case 'number':
-      return `n:${plain.value === 0 ? 0 : plain.value}`;
-    case 'boolean':
-      return `b:${plain.value}`;
-    case 'date':
-      return `d:${dateOrdinal(plain.value)}`;
-    case 'text': {
-      const date = parseDateText(plain.value);
-      if (date) return `d:${dateOrdinal(date)}`;
-      const parsed = semantics.textNumberEquality === 'loose' ? numericText(plain.value, semantics) : undefined;
-      return parsed === undefined ? `t:${plain.value}` : `n:${parsed === 0 ? 0 : parsed}`;
-    }
-    default:
-      return `t:${toText(plain)}`;
-  }
+  if (plain.kind !== 'text') return [scalarKey(plain)];
+  const keys = [`t:${plain.value}`];
+  const date = parseDateText(plain.value);
+  if (date) keys.push(`d:${dateOrdinal(date)}`);
+  const parsed = numericText(plain.value, semantics);
+  if (parsed !== undefined) keys.push(`tn:${parsed}`);
+  return keys;
+}
+
+export function equalityLookupKeys(value: ExprValue, semantics: ExpressionSemantics): string[] {
+  if (value.kind === 'empty') return ['e'];
+  const plain = unwrapOption(value);
+  if (plain.kind === 'number') return [`n:${plain.value}`, `tn:${plain.value}`];
+  if (plain.kind !== 'text') return [scalarKey(plain)];
+  const keys = [`t:${plain.value}`];
+  const date = parseDateText(plain.value);
+  if (date) keys.push(`d:${dateOrdinal(date)}`);
+  const parsed = numericText(plain.value, semantics);
+  if (parsed !== undefined) keys.push(`n:${parsed}`);
+  return keys;
+}
+
+/** 数值、是否、日期的入口键（单选已解包）。 */
+function scalarKey(plain: ExprValue): string {
+  if (plain.kind === 'number') return `n:${plain.value}`;
+  if (plain.kind === 'date') return `d:${dateOrdinal(plain.value)}`;
+  return `b:${toText(plain)}`;
 }
 
 export function compare(

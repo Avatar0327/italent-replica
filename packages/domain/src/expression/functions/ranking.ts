@@ -15,7 +15,7 @@
  */
 import { walk, type CallNode, type ExprNode } from '../ast.js';
 import { CONVERSION_MESSAGE } from '../failures.js';
-import { equalityKey } from '../operators.js';
+import { equalityLookupKeys, equalityStoreKeys, valuesEqual } from '../operators.js';
 import type { SubjectReader } from '../ports.js';
 import type { ArgumentIssue, FunctionCall, FunctionSpec } from '../registry.js';
 import { isDefinitely, mayBe, verdictFor, type InferredType } from '../typing.js';
@@ -40,7 +40,7 @@ const NEW_RANGE = 4;
 const isReference = (node: ExprNode) => node.type === 'field' || node.type === 'identifier';
 
 /**
- * 范围参数的角色：filter 须为“是”；group 与本人取值相同（等价键见 operators.ts equalityKey）；
+ * 范围参数的角色：filter 须为“是”；group 与本人取值相同（按 = 的口径，即 valuesEqual）；
  * auto（第 5 参数类型推导不确定）按实际值——“否”或空 = 不满足，其余按取值分组。
  */
 type RangeRole = 'filter' | 'group' | 'auto';
@@ -67,16 +67,22 @@ function rangeArgs(call: FunctionCall): RangeArg[] {
 interface Entry {
   /** 参与排名的分数；不参与（不满足条件、排序字段为空或不是数值）时为 undefined。 */
   readonly score?: number;
-  /** 分组键：各分组参数取值的等价键拼接。 */
-  readonly group: string;
+  /** 各分组参数（第 4 参数；第 5 参数为分组或按实际值时）的取值，顺序与参数一致。 */
+  readonly groups: readonly ExprValue[];
 }
 
-/** 一个排名调用在一个总体上的排名表：一次求出全体成员的分数与分组，各对象查表得名次。 */
+/** 一个排名调用在一个总体上的排名表：一次求出全体成员的分数与分组取值，各对象查表得名次。 */
 export interface RankingTable {
   readonly population: readonly SubjectReader[];
   readonly entries: ReadonlyMap<string, Entry>;
-  /** 分组键 → 组内分数（降序，建表时排好）。 */
-  readonly groups: ReadonlyMap<string, readonly number[]>;
+  /** 参与者（分数已定）。 */
+  readonly participants: readonly Entry[];
+  /** 每个分组参数一张候选索引：入口键 → 参与者下标（见 operators.ts equalityStoreKeys）。 */
+  readonly indexes: readonly ReadonlyMap<string, readonly number[]>[];
+  /** 参与者里有空的分组取值：emptyInEquality = fail 时与旧实现一样报 EMPTY_IN_COMPARISON。 */
+  readonly hasEmptyGroup: boolean;
+  /** 本人分组取值的编码 → 同组分数（降序）。 */
+  readonly peers: Map<string, readonly number[]>;
 }
 
 /**
@@ -84,6 +90,12 @@ export interface RankingTable {
  * evaluateBatch 为每个计算项目新建一份；总体换了（数组不是同一个）时重建。
  */
 export type RankingTables = Map<CallNode, Map<string, RankingTable>>;
+
+/**
+ * 每个调用最多缓存的排名表数：参数引用的本人 Def 取值很分散时（如每人一个值）每个取值各建一张表，
+ * 时间仍是人数平方级；限制张数只为不让内存随人数平方增长（超出时丢弃最早的表）。
+ */
+const MAX_TABLES_PER_CALL = 64;
 
 function tryEvaluate(call: FunctionCall, node: ExprNode, subject: SubjectReader): ExprValue | undefined {
   try {
@@ -102,45 +114,109 @@ function scoreOf(value: ExprValue): number | undefined {
 }
 
 /**
- * 成员在一个范围参数上：返回分组键片段，undefined 表示不满足。条件求值出错（含 DEC-270 的文本年度比较）视为不满足；
- * 分组取值出错按空值分组（旧实现口径）。
+ * 成员在一个范围参数上：undefined 表示不满足，null 表示过滤通过，其余为分组取值。
+ * 条件求值出错（含 DEC-270 的文本年度比较）视为不满足；分组取值出错按空值分组（旧实现口径）。
  */
-function rangePart(call: FunctionCall, arg: RangeArg, value: ExprValue | undefined): string | undefined {
-  const semantics = call.env.semantics;
-  if (arg.role === 'filter') return value?.kind === 'boolean' && value.value ? '' : undefined;
-  if (arg.role === 'group') return equalityKey(value ?? EMPTY, semantics);
+function rangeValue(arg: RangeArg, value: ExprValue | undefined): ExprValue | null | undefined {
+  if (arg.role === 'filter') return value?.kind === 'boolean' && value.value ? null : undefined;
+  if (arg.role === 'group') return value ?? EMPTY;
   if (!value || value.kind === 'empty' || (value.kind === 'boolean' && !value.value)) return undefined;
-  return equalityKey(value, semantics);
+  return value;
 }
 
 function entryOf(call: FunctionCall, ranges: readonly RangeArg[], subject: SubjectReader): Entry {
-  const parts: string[] = [];
+  const groups: ExprValue[] = [];
   for (const arg of ranges) {
-    const part = rangePart(call, arg, tryEvaluate(call, arg.node, subject));
-    if (part === undefined) return { group: '' };
-    if (arg.role !== 'filter') parts.push(part);
+    const value = rangeValue(arg, tryEvaluate(call, arg.node, subject));
+    if (value === undefined) return { groups: [] };
+    if (value !== null) groups.push(value);
   }
   const sortValue = tryEvaluate(call, call.rawArgs[1]!, subject);
-  return { score: sortValue ? scoreOf(sortValue) : undefined, group: JSON.stringify(parts) };
+  return { score: sortValue ? scoreOf(sortValue) : undefined, groups };
 }
 
 function buildTable(call: FunctionCall, population: readonly SubjectReader[]): RankingTable {
   const ranges = rangeArgs(call);
+  const semantics = call.env.semantics;
   const entries = new Map(population.map((subject) => [subject.id, entryOf(call, ranges, subject)]));
-  const groups = new Map<string, number[]>();
-  for (const entry of entries.values()) {
-    if (entry.score === undefined) continue;
-    let scores = groups.get(entry.group);
-    if (!scores) groups.set(entry.group, (scores = []));
-    scores.push(entry.score);
+  const participants = [...entries.values()].filter((entry) => entry.score !== undefined);
+  const columns = ranges.filter((arg) => arg.role !== 'filter').length;
+  const indexes = Array.from({ length: columns }, () => new Map<string, number[]>());
+  participants.forEach((entry, i) => {
+    entry.groups.forEach((value, column) => {
+      for (const key of equalityStoreKeys(value, semantics)) {
+        const list = indexes[column]!.get(key);
+        if (list) list.push(i);
+        else indexes[column]!.set(key, [i]);
+      }
+    });
+  });
+  const hasEmptyGroup = participants.some((entry) => entry.groups.some((value) => value.kind === 'empty'));
+  return { population, entries, participants, indexes, hasEmptyGroup, peers: new Map() };
+}
+
+/** 本人在一个分组参数上的候选参与者：可能与本人取值相等的入口并集（再由 valuesEqual 复核）。 */
+function candidates(call: FunctionCall, table: RankingTable, column: number, value: ExprValue): readonly number[] {
+  const keys = equalityLookupKeys(value, call.env.semantics);
+  const index = table.indexes[column]!;
+  if (keys.length === 1) return index.get(keys[0]!) ?? [];
+  return [...new Set(keys.flatMap((key) => index.get(key) ?? []))];
+}
+
+/**
+ * 与本人同组的参与者分数（降序）：各分组参数逐个按 valuesEqual 与本人取值相等，与旧实现逐一比较完全一致
+ * （= 不传递时每人按自己的取值找同组）。候选取各参数里最少的一列，再逐个复核全部参数。
+ */
+function peerScores(call: FunctionCall, table: RankingTable, me: Entry): readonly number[] {
+  const semantics = call.env.semantics;
+  if (semantics.emptyInEquality === 'fail' && (table.hasEmptyGroup || me.groups.some((v) => v.kind === 'empty'))) {
+    valuesEqual(EMPTY, EMPTY, semantics);
   }
-  for (const scores of groups.values()) scores.sort((a, b) => b - a);
-  return { population, entries, groups };
+  const key = JSON.stringify(me.groups.map(encodeValue));
+  let scores = table.peers.get(key);
+  if (scores) return scores;
+  let pool: readonly number[] | undefined;
+  me.groups.forEach((value, column) => {
+    const found = candidates(call, table, column, value);
+    if (!pool || found.length < pool.length) pool = found;
+  });
+  const members = pool ? pool.map((i) => table.participants[i]!) : table.participants;
+  scores = members
+    .filter((entry) => entry.groups.every((value, column) => valuesEqual(value, me.groups[column]!, semantics)))
+    .map((entry) => entry.score!)
+    .sort((a, b) => b - a);
+  table.peers.set(key, scores);
+  return scores;
+}
+
+/** 数值的无歧义写法：区分 -0、Infinity、-Infinity、NaN（JSON 会把后三者都写成 null）。 */
+function numberText(value: number): string {
+  return Object.is(value, -0) ? '-0' : String(value);
+}
+
+/** 取值的无碰撞编码（带类型标记）：编码相同则取值完全相同。 */
+function encodeValue(value: ExprValue): string {
+  switch (value.kind) {
+    case 'empty':
+      return `e:${value.of ?? ''}`;
+    case 'number':
+      return `n:${numberText(value.value)}`;
+    case 'text':
+      return `t:${JSON.stringify(value.value)}`;
+    case 'boolean':
+      return `b:${value.value}`;
+    case 'date':
+      return `d:${JSON.stringify(value.value)}`;
+    case 'option': {
+      const raw = typeof value.value === 'number' ? `n:${numberText(value.value)}` : `t:${JSON.stringify(value.value)}`;
+      return `o:${raw}:${JSON.stringify(value.label ?? null)}`;
+    }
+  }
 }
 
 /**
  * 语义键：排序字段与范围参数里引用的 Def 变量取值（这些变量按本人作用域求值，取值相同则排名表相同）。
- * 裸词若不是变量，按成员各自的字段读取，与本人无关；模式参数不影响排名表。
+ * 裸词若不是变量，按成员各自的字段读取，与本人无关；模式参数不影响排名表。取值用无碰撞编码（含非有限数）。
  */
 function semanticKey(call: FunctionCall): string {
   const names = new Set<string>();
@@ -151,7 +227,7 @@ function semanticKey(call: FunctionCall): string {
   }
   const bound = [...names].sort().flatMap((name) => {
     const value = call.variable(name);
-    return value === undefined ? [] : [[name, value]];
+    return value === undefined ? [] : [name, encodeValue(value)];
   });
   return JSON.stringify(bound);
 }
@@ -165,6 +241,8 @@ function tableFor(call: FunctionCall, population: readonly SubjectReader[]): Ran
   const cached = byKey.get(key);
   if (cached?.population === population) return cached;
   const table = buildTable(call, population);
+  byKey.delete(key);
+  if (byKey.size >= MAX_TABLES_PER_CALL) byKey.delete(byKey.keys().next().value!);
   byKey.set(key, table);
   return table;
 }
@@ -201,7 +279,7 @@ function ownResult(call: FunctionCall, self: SubjectReader): ExprValue {
     } catch (error) {
       if (isTypeConversion(error)) return EMPTY;
     }
-    if (rangePart(call, arg, value) === undefined) return call.fail('OUT_OF_SCOPE', '本人不满足人员范围条件');
+    if (rangeValue(arg, value) === undefined) return call.fail('OUT_OF_SCOPE', '本人不满足人员范围条件');
   }
   const sortValue = call.evaluateForSubject(call.rawArgs[1]!, self);
   if (isBlank(sortValue)) return EMPTY;
@@ -222,7 +300,7 @@ function ranking(call: FunctionCall): ExprValue {
       population.find((subject) => subject.id === call.env.subjectId)!,
     );
   }
-  const scores = table.groups.get(me.group)!;
+  const scores = peerScores(call, table, me);
   const rank = countGreater(scores, me.score) + 1;
   return { kind: 'number', value: mode === 'rank' ? rank : percentile(rank, scores.length) };
 }
