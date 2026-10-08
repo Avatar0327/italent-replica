@@ -905,12 +905,17 @@
 },
 "106": {
 "s": "review",
-"r": 5,
+"r": 6,
 "n": "待 Sol Ultra"
 },
 "107": {
 "s": "review",
 "r": 4,
+"n": ""
+},
+"111": {
+"s": "review",
+"r": 2,
 "n": ""
 }
 },
@@ -2032,7 +2037,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 23:14",
+"liveUpdated": "10-07 23:17",
 "chains": [
 {
 "g": "exit",
@@ -2204,8 +2209,8 @@
 "k": "run",
 "n": "继任管理",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:d ds:d3 dev:w rev:w3 mg:w",
-"now": "设计 v3 已交，待复审",
+"seg": "ev:d ds:d3 dev:w rev:a3 mg:w",
+"now": "设计 v3 复审中",
 "fable": "1",
 "pr": 112
 },
@@ -2216,8 +2221,8 @@
 "k": "run",
 "n": "人才盘点",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:d ds:d2 dev:w rev:d2 mg:w",
-"now": "设计 v2 复审结论待读；取证门槛已通过（只剩可后补的 Q-M0-84）",
+"seg": "ev:d ds:d3 dev:w rev:a3 mg:w",
+"now": "设计 v3 复审中（与 #112 双向核对契约）",
 "fable": "1",
 "pr": 113
 },
@@ -2227,9 +2232,10 @@
 "o": 1,
 "k": "run",
 "n": "人才标准与指标库",
-"seg": "ev:d ds:n dev:d5 rev:d5 mg:w",
-"now": "第 5 轮审查出结论，待读取（合并等 Q-M0-113 的 DEC）",
-"pr": 106
+"seg": "ev:d ds:n dev:w6 rev:d5 mg:w",
+"now": "第 5 轮剩 1 个泄露 P2，等你定第 6 轮",
+"pr": 106,
+"need": "1"
 },
 {
 "id": "R3-T03",
@@ -2237,8 +2243,8 @@
 "o": 1,
 "k": "run",
 "n": "360 度评估（PR-A）",
-"seg": "ev:d ds:n dev:d4 rev:w4 mg:w",
-"now": "第 4 轮开发完成，待审查",
+"seg": "ev:d ds:n dev:d4 rev:a4 mg:w",
+"now": "第 4 轮审查中",
 "pr": 107,
 "up": "10-07 第 3 轮调到 Max"
 },
@@ -2401,8 +2407,8 @@
 "k": "run",
 "n": "个人发展计划 IDP",
 "u": "已核对（C 档、建议拆 2 个 PR），待开会话",
-"seg": "ev:d ds:n dev:d1 rev:d1 mg:w",
-"now": "PR-A 第 1 轮审查出结论，待读取",
+"seg": "ev:d ds:n dev:a2 rev:d1 mg:w",
+"now": "PR-A 第 2 轮修改（4 类 P2：重放 / 嵌套权限、复制带出隐藏字段）",
 "pr": 111
 },
 {
