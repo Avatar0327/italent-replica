@@ -6,7 +6,13 @@
 import { randomUUID } from 'node:crypto';
 import { type Db, withTenant } from '@italent/db';
 import { expect } from 'vitest';
-import { createProcess, publishProcess } from '../../apps/api/src/modules/approval/definitions.js';
+import {
+  createProcess,
+  loadProcess as loadApprovalProcess,
+  newVersion,
+  publishProcess,
+  replaceDraft,
+} from '../../apps/api/src/modules/approval/definitions.js';
 import { type RequestOptions, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 
 export const IDP_NOW = new Date('2026-10-08T02:00:00.000Z');
@@ -105,6 +111,48 @@ export async function createOrg(api: Api, who: Identity, name: string, parentId 
   return ((await response.json()) as { id: string }).id;
 }
 
+/** IDP 审批流程定义：每个节点 = [节点 key, 节点名称]，审批人一律“流程所有者”（PR-A 只用到节点结构）。 */
+function approvalDefinition(approvalType: IdpApprovalType, nodes: readonly [string, string][], admin: string) {
+  return {
+    name: `IDP 流程 ${approvalType}`,
+    groupName: null,
+    description: null,
+    priority: 0,
+    isFallback: true,
+    exceptionAdminUserId: admin,
+    urgeEnabled: true,
+    hideRecordsFromInitiator: false,
+    conditions: { items: [], expression: '' },
+    nodes: nodes.map(([key, name]) => ({
+      key,
+      name,
+      approver: 'owner' as const,
+      noAssignee: 'exception_admin' as const,
+      sameAssigneeSkip: false,
+      historySameAssigneeSkip: false,
+      sameAssigneeResult: 'approve' as const,
+      historySameAssigneeResult: 'approve' as const,
+      formFields: [],
+      editableFields: [],
+      editMode: 'none' as const,
+      actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' as const },
+      rejectCommentRequired: false,
+      hideRecords: false,
+      rejectResubmit: 'restart' as const,
+      messageRules: [],
+    })),
+  };
+}
+
+const approvalCtx = (who: Identity, expectedRevision: number) => ({
+  tenantId: who.tenant,
+  userId: who.user,
+  timezone: 'Asia/Shanghai',
+  now: IDP_NOW,
+  commandId: randomUUID(),
+  expectedRevision,
+});
+
 /** 两个节点的 IDP 审批流程（制定发展目标 → 审批发展计划），可选只建草稿不发布。 */
 export async function idpApprovalProcess(
   db: Db,
@@ -112,7 +160,6 @@ export async function idpApprovalProcess(
   approvalType: IdpApprovalType,
   options: { publish?: boolean; nodes?: readonly [string, string][] } = {},
 ): Promise<{ id: string; nodes: string[] }> {
-  const ctx = { tenantId: who.tenant, userId: who.user, timezone: 'Asia/Shanghai', now: IDP_NOW };
   const nodes = options.nodes ?? [
     ['set_goals', '制定发展目标'],
     ['approve_plan', '审批发展计划'],
@@ -120,42 +167,33 @@ export async function idpApprovalProcess(
   return withTenant(db, who.tenant, async (tx) => {
     const created = await createProcess(
       tx,
-      { ...ctx, commandId: randomUUID(), expectedRevision: 0 },
+      approvalCtx(who, 0),
       { code: `IDP_${randomUUID().slice(0, 8)}`, approvalType },
-      {
-        name: `IDP 流程 ${approvalType}`,
-        groupName: null,
-        description: null,
-        priority: 0,
-        isFallback: true,
-        exceptionAdminUserId: who.user,
-        urgeEnabled: true,
-        hideRecordsFromInitiator: false,
-        conditions: { items: [], expression: '' },
-        nodes: nodes.map(([key, name]) => ({
-          key,
-          name,
-          approver: 'owner',
-          noAssignee: 'exception_admin',
-          sameAssigneeSkip: false,
-          historySameAssigneeSkip: false,
-          sameAssigneeResult: 'approve',
-          historySameAssigneeResult: 'approve',
-          formFields: [],
-          editableFields: [],
-          editMode: 'none',
-          actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' },
-          rejectCommentRequired: false,
-          hideRecords: false,
-          rejectResubmit: 'restart',
-          messageRules: [],
-        })),
-      },
+      approvalDefinition(approvalType, nodes, who.user),
     );
-    if (options.publish !== false) {
-      await publishProcess(tx, { ...ctx, commandId: randomUUID(), expectedRevision: created.revision }, created.id);
-    }
+    if (options.publish !== false) await publishProcess(tx, approvalCtx(who, created.revision), created.id);
     return { id: created.id, nodes: nodes.map(([key]) => key) };
+  });
+}
+
+/** 审批流程发布新版本、换掉节点（模拟“审批流程改版后旧节点不存在”）。 */
+export async function republishApprovalProcess(
+  db: Db,
+  who: Identity,
+  id: string,
+  approvalType: IdpApprovalType,
+  nodes: readonly [string, string][],
+): Promise<void> {
+  await withTenant(db, who.tenant, async (tx) => {
+    const current = await loadApprovalProcess(tx, who.tenant, id);
+    const draft = await newVersion(tx, approvalCtx(who, current.revision), id);
+    const replaced = await replaceDraft(
+      tx,
+      approvalCtx(who, draft.revision),
+      id,
+      approvalDefinition(approvalType, nodes, who.user),
+    );
+    await publishProcess(tx, approvalCtx(who, replaced.revision), id);
   });
 }
 

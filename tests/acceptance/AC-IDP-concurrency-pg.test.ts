@@ -3,7 +3,7 @@
  * - 模板引用流程的事务先持流程共享锁（未提交），并发调整子流程顺序等待后读到引用 → 409 IDP_PROCESS_REFERENCED；
  * - 删除流程的事务先持锁（未提交），并发新建引用它的模板等待后读到流程已删除 → 404；
  * - 模板写节点配置的事务先持子流程共享锁（未提交），并发给该子流程换审批流程等待后读到节点配置 → 409；
- * - 同名模板并发新建：唯一约束兜底，一个 201、一个 409 IDP_TEMPLATE_NAME_TAKEN。
+ * - 同名模板新建未提交时再建同名：后到者在唯一索引上等待，提交后读到同名 → 409 IDP_TEMPLATE_NAME_TAKEN。
  */
 import { type Db, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -114,18 +114,25 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('R3-T07 IDP 配置 Postgr
     );
   });
 
-  it('同名模板并发新建：一个 201、一个 409', async () => {
+  it('同名模板新建未提交时再建同名：等待唯一索引后读到已提交的同名 → 409，只留一个', async () => {
     const { db } = testDb();
     const w = await idpWorld(db, 'idppgname');
     const process = await w.process();
-    const body = { name: '同名并发模板', orgId: w.orgId, processId: process.id };
-    const responses = await Promise.all([
-      w.request('POST', '/templates', { ifMatch: 0, body }),
-      w.request('POST', '/templates', { ifMatch: 0, body }),
-    ]);
-    expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
-    const rejected = responses.find((r) => r.status === 409)!;
-    expect(((await rejected.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe(
+
+    let pending: Promise<Response> | undefined;
+    await withTenant(db, w.tenant.id, async (tx) => {
+      // 模拟先到的新建事务：已插入同名模板、未提交时第二个新建请求到达，在唯一索引上等待
+      await tx.execute(sql`INSERT INTO idp_templates (tenant_id, name, org_id, process_id, created_by)
+        VALUES (${w.tenant.id}::uuid, '同名并发模板', ${w.orgId}::uuid, ${process.id}::uuid, ${w.user.id}::uuid)`);
+      pending = w.request('POST', '/templates', {
+        ifMatch: 0,
+        body: { name: '同名并发模板', orgId: w.orgId, processId: process.id },
+      });
+      await blocked(db, 1);
+    });
+    const response = await pending!;
+    expect(response.status, await response.clone().text()).toBe(409);
+    expect(((await response.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe(
       'IDP_TEMPLATE_NAME_TAKEN',
     );
     const list = await w.read<{ items: TemplateView[] }>('/templates');

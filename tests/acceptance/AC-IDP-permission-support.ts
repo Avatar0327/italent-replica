@@ -156,8 +156,23 @@ export async function idpOperator(world: PermissionWorld, options: OperatorOptio
     expect(response.status, await response.clone().text()).toBe(200);
     scopeRevision = ((await response.json()) as { revision: number }).revision;
   };
+  /** 撤掉某个对象的写权限（新增 / 编辑 / 删除与字段编辑），查看保留。 */
+  const revokeWrite = async (key: IdpObjectKey) => {
+    const definition = IDP_OBJECTS[key];
+    const response = await setObjectPermission(
+      world,
+      profile,
+      {
+        dataOperations: { create: false, update: false, delete: false },
+        fields: definition.fields.map((field) => ({ fieldCode: field.code, view: true, edit: false })),
+        buttons: [],
+      },
+      definition.code,
+    );
+    expect(response.status, await response.clone().text()).toBe(200);
+  };
   if (options.orgId) await setOrg(options.orgId);
   const request = (method: string, path: string, extra: Parameters<typeof world.api.request>[2] = {}) =>
     world.api.request(method, `${IDP_BASE}${path}`, { ...as, ...extra });
-  return { profile, user, as, request, setOrg, setButtons };
+  return { profile, user, as, request, setOrg, setButtons, revokeWrite };
 }

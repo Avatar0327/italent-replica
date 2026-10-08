@@ -119,6 +119,7 @@ describe('子流程开启规则与说明文本（Q-M0-115 ②，DEC-296⑤ 凌�
       expect(response.status).toBe(status);
       if (reason) expect((await reasonOf(response)).reason).toBe(reason);
     }
+    expect((await w.read<{ items: unknown[] }>('/processes')).items).toEqual([]);
   });
 
   it('子流程候选审批流程：只列已发布的 IDP 三类流程及其节点', async () => {
@@ -148,12 +149,14 @@ describe('发展计划模板（IDP-R6 / R7 / R10，DEC-296④）', () => {
     expect(template).toMatchObject({ name: '年度发展模板', publicDown: true, status: 'draft', referenced: false });
     expect(template.modules.map((m) => [m.moduleType, m.name])).toEqual([['basic', '基本信息']]);
 
+    const before = await w.read<{ items: TemplateView[] }>('/templates');
     const duplicate = await w.request('POST', '/templates', {
       ifMatch: 0,
       body: { name: '年度发展模板', orgId: w.orgId, processId: process.id },
     });
     expect(duplicate.status).toBe(409);
     expect(await reasonOf(duplicate)).toEqual({ code: 'CONFLICT', reason: 'IDP_TEMPLATE_NAME_TAKEN' });
+    expect(await w.read<{ items: TemplateView[] }>('/templates')).toEqual(before);
   });
 
   it('只能选启用的流程（409）；发布前流程须启用', async () => {
@@ -165,6 +168,7 @@ describe('发展计划模板（IDP-R6 / R7 / R10，DEC-296④）', () => {
     });
     expect(rejected.status).toBe(409);
     expect(await reasonOf(rejected)).toEqual({ code: 'CONFLICT', reason: 'IDP_PROCESS_DISABLED' });
+    expect((await w.read<{ items: TemplateView[] }>('/templates')).items).toEqual([]);
 
     const process = await w.process();
     const template = await w.template(process.id);
@@ -189,6 +193,7 @@ describe('发展计划模板（IDP-R6 / R7 / R10，DEC-296④）', () => {
     });
     expect(again.status).toBe(409);
     expect(await reasonOf(again)).toEqual({ code: 'CONFLICT', reason: 'IDP_MODULE_DUPLICATE' });
+    expect(await w.read<TemplateView>(`/templates/${template.id}`)).toEqual(template);
 
     let current = template;
     for (const [moduleType, name] of [
@@ -227,6 +232,7 @@ describe('发展计划模板（IDP-R6 / R7 / R10，DEC-296④）', () => {
       body: { moduleType: 'goal', name: '发展目标', allowLibraryGoal: true },
     });
     expect(missing.status).toBe(400);
+    expect(await w.read<TemplateView>(`/templates/${template.id}`)).toEqual(template);
     const saved = await w.addModule(template, {
       moduleType: 'goal',
       name: '发展目标',
@@ -303,6 +309,7 @@ describe('发展计划模板（IDP-R6 / R7 / R10，DEC-296④）', () => {
     const latest = await w.read<ProcessView>(`/processes/${process.id}`);
     const input = latest.subProcesses.map(({ ruleText: _ruleText, ...rest }) => rest);
     const replacement = await idpApprovalProcess(testDb().db, w.as, 'idp_plan');
+    const templateBefore = await w.read<TemplateView>(`/templates/${template.id}`);
     const swap = await w.request('PATCH', `/processes/${process.id}`, {
       ifMatch: latest.revision,
       body: { subProcesses: input.map((s, i) => (i === 0 ? { ...s, approvalProcessId: replacement.id } : s)) },
@@ -315,6 +322,8 @@ describe('发展计划模板（IDP-R6 / R7 / R10，DEC-296④）', () => {
     });
     expect(move.status).toBe(409);
     expect(await reasonOf(move)).toEqual({ code: 'CONFLICT', reason: 'IDP_NODE_SETTINGS_EXIST' });
+    expect(await w.read<ProcessView>(`/processes/${process.id}`)).toEqual(latest);
+    expect(await w.read<TemplateView>(`/templates/${template.id}`)).toEqual(templateBefore);
   });
 
   it('复制模板：带出模块、通用目标与节点配置，新名称、草稿状态、独立的标识', async () => {
@@ -358,11 +367,14 @@ describe('发展计划模板（IDP-R6 / R7 / R10，DEC-296④）', () => {
     ]);
     expect(copy.commonGoals).toEqual([expect.objectContaining({ moduleId: copiedGoal.id, name: '通用目标A' })]);
 
+    const listBefore = await w.read<{ items: TemplateView[] }>('/templates');
     const sameName = await w.request('POST', `/templates/${template.id}/copy`, {
       ifMatch: 0,
       body: { name: '复制的模板' },
     });
     expect(sameName.status).toBe(409);
+    expect(await reasonOf(sameName)).toEqual({ code: 'CONFLICT', reason: 'IDP_TEMPLATE_NAME_TAKEN' });
+    expect(await w.read<{ items: TemplateView[] }>('/templates')).toEqual(listBefore);
   });
 
   it('幂等：同键同内容重放同一结果，同键异内容 409', async () => {
