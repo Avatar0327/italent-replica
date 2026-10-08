@@ -7,10 +7,20 @@
  * 呈现：HR 各段按对象字段权限裁剪；参与人按固定字段集（DEC-296④），关键信息仍按其对源对象的字段查看权（DEC-309，E6）。
  */
 import { sql, type Tx } from '@italent/db';
-import { currentStageName, periodsIntersect, stageDueDate, type IdpObject } from '@italent/domain';
+import {
+  currentStageName,
+  IMPROVING_STAGE_NAME,
+  MODULE_OBJECTS,
+  periodsIntersect,
+  RULE_TEXT_SOURCES,
+  stageDueDate,
+  tenantLocalDate,
+  type IdpObject,
+} from '@italent/domain';
 import type { TenantRouteDeps } from '../../routes.js';
 import { findCurrentRecord } from '../employment/read-model.js';
-import { resolveModuleScope } from '../permission/module-access.js';
+import { isEmploymentRecordVisible } from '../employment/visibility.js';
+import { getModuleViewableFields, resolveModuleScope } from '../permission/module-access.js';
 import { codeOf, type IdpContext, type ModuleScope, project, type Projection, projectionOf, rowsOf } from './access.js';
 import { KEY_INFO, KEY_INFO_KINDS, type KeyInfoKind } from './key-info-scope.js';
 import { inScope } from './key-info-service.js';
@@ -30,6 +40,26 @@ export interface StageView {
   readonly endedOn: string | null;
   readonly failureReason: string | null;
   readonly attemptCount: number;
+  /** dueDate 依据的源（内部，呈现前按查看人裁剪后去掉，E10）。 */
+  readonly dueBasis: readonly DueBasis[];
+}
+
+/** dueDate 依据的源：子流程开启规则（与 ruleText 同一组字段，含 fixedDate）、计划起止、任职生效日。 */
+export type DueBasis = 'rule' | 'planStart' | 'planEnd' | 'employment';
+
+const REFERENCE_BASIS: Readonly<Record<string, DueBasis | null>> = {
+  plan_start: 'planStart',
+  plan_end: 'planEnd',
+  previous_end: null,
+  employment_effective: 'employment',
+};
+
+/** 与 stageDueDate 的分支一一对应。 */
+function dueBasisOf(stage: StageRow, index: number): DueBasis[] {
+  if (stage.startMode === 'manual' || stage.startTimeType === 'fixed') return ['rule'];
+  if (stage.startTimeType === null) return index === 0 ? ['rule', 'planStart'] : ['rule'];
+  const reference = REFERENCE_BASIS[stage.referencePoint!];
+  return reference ? ['rule', reference] : ['rule'];
 }
 
 export interface GoalView {
@@ -126,8 +156,72 @@ export async function stageViews(tx: Tx, plan: PlanRow, stages: readonly StageRo
       endedOn: stage.endedOn,
       failureReason: stage.failureReason,
       attemptCount: stage.attemptCount,
+      dueBasis: dueBasisOf(stage, index),
     };
   });
+}
+
+/** 阶段带出值的源字段查看权（HR 呈现，E9 / E10）；参与人按 DEC-296④ 固定字段集，传 null。 */
+export interface StageSources {
+  readonly subProcess: Projection;
+  readonly plan: Projection;
+  readonly employment: { readonly fields: Projection; readonly scope: ModuleScope };
+}
+
+const sees = (projection: Projection, field: string) =>
+  projection !== null && (projection === undefined || projection.has(field));
+
+/**
+ * 阶段呈现：阶段名称来自子流程 name，dueDate 由开启规则 / 计划起止 / 任职生效日推算——看不到任一来源就不输出
+ * （DEC-309；第 2 轮 P2-4）。任职生效日另须员工当前任职记录在操作人任职记录范围内（与任职记录接口同一判定）。
+ */
+export async function stagesShown(
+  tx: Tx,
+  plan: Pick<PlanRow, 'tenantId' | 'employeeId'>,
+  stages: readonly StageView[],
+  sources: StageSources | null,
+  asOf: string,
+): Promise<Record<string, unknown>[]> {
+  if (sources === null) return stages.map(({ dueBasis: _b, ...stage }) => stage);
+  let employment: boolean | undefined;
+  const allowed = async (basis: DueBasis) => {
+    if (basis === 'rule')
+      return sources.subProcess !== null && RULE_TEXT_SOURCES.every((field) => sees(sources.subProcess, field));
+    if (basis === 'planStart') return sees(sources.plan, 'startDate');
+    if (basis === 'planEnd') return sees(sources.plan, 'endDate');
+    employment ??= await employmentVisible(tx, plan, sources.employment, asOf);
+    return employment;
+  };
+  const shown: Record<string, unknown>[] = [];
+  for (const { dueBasis, name, dueDate, ...stage } of stages) {
+    let due = true;
+    for (const basis of dueBasis) due &&= await allowed(basis);
+    shown.push({
+      ...stage,
+      ...(sees(sources.subProcess, 'name') ? { name } : {}),
+      ...(due ? { dueDate } : {}),
+    });
+  }
+  return shown;
+}
+
+async function employmentVisible(
+  tx: Tx,
+  plan: Pick<PlanRow, 'tenantId' | 'employeeId'>,
+  employment: StageSources['employment'],
+  asOf: string,
+) {
+  if (!sees(employment.fields, 'effectiveDate')) return false;
+  const record = await findCurrentRecord(tx, plan.tenantId, plan.employeeId, asOf);
+  if (!record) return true;
+  const departmentId = (record.fields.departmentId as string | null | undefined) ?? null;
+  return isEmploymentRecordVisible(tx, plan.tenantId, employment.scope, { employeeId: plan.employeeId, departmentId });
+}
+
+/** 当前阶段名是某段的子流程名称时随名称一起裁剪；“努力提升中”是固定文案，不是带出值。 */
+export function currentStageShown(value: string | null, sources: StageSources | null): string | null {
+  if (sources === null || value === null || value === IMPROVING_STAGE_NAME) return value;
+  return sees(sources.subProcess, 'name') ? value : null;
 }
 
 async function loadGoals(tx: Tx, tenantId: string, planId: string): Promise<GoalView[]> {
@@ -264,6 +358,11 @@ export interface Projections {
   readonly tutorship: Projection;
   readonly career: Projection;
   readonly workShift: Projection;
+  readonly subProcess: Projection;
+  /** 阶段 dueDate 依据任职生效日时的源权限（E10）。 */
+  readonly employment: StageSources['employment'];
+  /** 查看人的业务日期（租户时区）。 */
+  readonly asOf: string;
   /** 关键信息各对象的当前范围（与直接读取同一谓词，P2-1）。 */
   readonly keyInfoScopes: Readonly<Record<KeyInfoKind, ModuleScope>>;
 }
@@ -279,6 +378,7 @@ const PROJECTED: readonly (keyof Projections & IdpObject)[] = [
   'tutorship',
   'career',
   'workShift',
+  'subProcess',
 ];
 
 export async function planProjections(deps: TenantRouteDeps, ctx: IdpContext): Promise<Projections> {
@@ -289,8 +389,26 @@ export async function planProjections(deps: TenantRouteDeps, ctx: IdpContext): P
       return [kind, await resolveModuleScope(deps, ctx, undefined, code, `${code}.detail`)] as const;
     }),
   );
-  return { ...Object.fromEntries(entries), keyInfoScopes: Object.fromEntries(scopes) } as unknown as Projections;
+  const record = MODULE_OBJECTS.employmentRecord.code;
+  const employment = {
+    fields: (await deps.authorize({ ...ctx, action: 'object.view', resource: record, fields: [] }))
+      ? await getModuleViewableFields(deps, ctx, record)
+      : null,
+    scope: await resolveModuleScope(deps, ctx, undefined, record, `${record}.detail`),
+  };
+  return {
+    ...Object.fromEntries(entries),
+    employment,
+    asOf: tenantLocalDate(deps.clock(), ctx.timezone),
+    keyInfoScopes: Object.fromEntries(scopes),
+  } as unknown as Projections;
 }
+
+export const stageSourcesOf = (p: Projections): StageSources => ({
+  subProcess: p.subProcess,
+  plan: p.plan,
+  employment: p.employment,
+});
 
 const listOf = (rows: readonly Record<string, unknown>[], projection: Projection) =>
   projection === null ? [] : rows.map((row) => project(row, projection));
@@ -335,6 +453,10 @@ export async function presentPlan(
   if (viewer.kind === 'hr') {
     const { modules, goals, analyses, reviews, keyInfo, ...top } = detail;
     const shown: Record<string, unknown> = project(top, projections.plan);
+    const sources = stageSourcesOf(projections);
+    if ('stages' in shown)
+      shown.stages = await stagesShown(tx, { tenantId, ...detail }, detail.stages, sources, projections.asOf);
+    if ('currentStageName' in shown) shown.currentStageName = currentStageShown(detail.currentStageName, sources);
     if (projections.templateModule !== null) shown.modules = modules.map((m) => project(m, projections.templateModule));
     if (projections.goal !== null) {
       // 嵌套的 tasks / reviews 本身是目标的字段（IdpGoal.tasks / reviews），先按目标字段权、再按子对象查看权（P2-3）
@@ -355,6 +477,7 @@ export async function presentPlan(
   const { stage, nodeKey } = viewer.at;
   const buttons = stage && nodeKey ? await nodeButtons(tx, tenantId, stage, nodeKey) : new Map<string, string[]>();
   const shown: Record<string, unknown> = Object.fromEntries(PARTICIPANT_PLAN_KEYS.map((k) => [k, detail[k]]));
+  shown.stages = await stagesShown(tx, { tenantId, ...detail }, detail.stages, null, projections.asOf);
   shown.modules = detail.modules.map((m) => ({
     id: m.id,
     moduleType: m.moduleType,

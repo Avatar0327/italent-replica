@@ -82,6 +82,9 @@ describe('P2-4：带出值清单补漏', () => {
     const w = await planWorld(testDb().db, 'idp-e9', { stages });
     const pw = await permissionWorldOf(w);
     const plan = await w.startedPlan();
+    // 固定日期已过：调度开启第一段，当前阶段名 = 子流程名称（否则是固定文案“努力提升中”）
+    await w.runScheduler('2026-03-01T19:00:00.000Z');
+    expect((await w.readPlan(plan.id)).currentStageName).toBe('制定计划');
     const hr = await idpOperator(pw, { orgId: w.dept, hidden: { subProcess: ['name', 'fixedDate'] } });
     const detail = await hr.request('GET', `/plans/${plan.id}`);
     const list = await hr.request('GET', '/plans');

@@ -165,7 +165,7 @@ async function requirePublishedTemplate(tx: Tx, ctx: PlanWriteContext, templateI
   return { processId: template.process_id, subs };
 }
 
-/** 带入模板当时的通用目标（K-48，AC-IDP-04）；看不到的字段留空、看不到名称或对象不带入（DEC-309，E2）。 */
+/** 带入模板当时的通用目标（K-48，AC-IDP-04）；看不到的字段留空（排序值取 0）、看不到名称或对象不带入（DEC-309，E2）。 */
 async function carryCommonGoals(tx: Tx, ctx: PlanWriteContext, plan: PlanRow, projection: Projection) {
   if (projection === null) return;
   const goals = rowsOf<{
@@ -187,12 +187,13 @@ async function carryCommonGoals(tx: Tx, ctx: PlanWriteContext, plan: PlanRow, pr
       name: goal.name,
       measure: sees(projection, 'measure') ? goal.measure : null,
       suggestion: sees(projection, 'suggestion') ? goal.suggestion : null,
+      displayOrder: sees(projection, 'displayOrder') ? Number(goal.display_order) : 0,
     };
     const [row] = rowsOf<{ id: string }>(
       await tx.execute(sql`INSERT INTO idp_goals (tenant_id, plan_id, module_id, name, measure, suggestion,
         source_type, common_goal_id, display_order, created_by, created_at)
         VALUES (${ctx.tenantId}, ${plan.id}::uuid, ${values.moduleId}::uuid, ${values.name}, ${values.measure},
-          ${values.suggestion}, 'common', ${goal.id}::uuid, ${Number(goal.display_order)}, ${ctx.userId}::uuid,
+          ${values.suggestion}, 'common', ${goal.id}::uuid, ${values.displayOrder}, ${ctx.userId}::uuid,
           ${ctx.now.toISOString()}) RETURNING id`),
     );
     await audit(tx, ctx, 'goal', 'create', row!.id, {

@@ -37,7 +37,17 @@ import { type HrScope, hrSees, requireViewer } from './plan-access.js';
 import * as input from './plan-input.js';
 import * as plans from './plan-service.js';
 import { loadPlanRow, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
-import { loadPlanDetail, type PlanDetail, planProjections, presentPlan, stageViews } from './plan-view.js';
+import {
+  currentStageShown,
+  loadPlanDetail,
+  type PlanDetail,
+  planProjections,
+  presentPlan,
+  type StageSources,
+  stageSourcesOf,
+  stagesShown,
+  stageViews,
+} from './plan-view.js';
 
 const BASE = '/api/tenant/idp';
 
@@ -130,7 +140,8 @@ async function stillVisible(tx: Tx, ctx: IdpContext, hr: HrScope, planId: string
 
 // ---- 读取 ----
 
-async function summaries(tx: Tx, tenantId: string, rows: PlanRow[], asOf: string) {
+/** 列表摘要；sources 为 HR 的阶段带出源权限（E9 / E10），参与人列表按固定字段集传 null。 */
+async function summaries(tx: Tx, tenantId: string, rows: PlanRow[], asOf: string, sources: StageSources | null) {
   const stages = await loadStages(
     tx,
     tenantId,
@@ -139,7 +150,7 @@ async function summaries(tx: Tx, tenantId: string, rows: PlanRow[], asOf: string
   return Promise.all(
     rows.map(async (row) => {
       const own = stages.filter((s) => s.planId === row.id);
-      const detail = await stageViews(tx, row, own, asOf);
+      const detail = await stagesShown(tx, row, await stageViews(tx, row, own, asOf), sources, asOf);
       return {
         id: row.id,
         revision: row.revision,
@@ -152,7 +163,7 @@ async function summaries(tx: Tx, tenantId: string, rows: PlanRow[], asOf: string
         tutorRole: row.tutorRole,
         tutorEmployeeId: row.tutorEmployeeId,
         status: row.status,
-        currentStageName: currentStageName(row.status as PlanStatus, own),
+        currentStageName: currentStageShown(currentStageName(row.status as PlanStatus, own), sources),
         stages: detail,
       };
     }),
@@ -172,7 +183,8 @@ function registerPlanReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const scope = await idpScope(c, deps, ctx, 'plan');
     const page = pageQuery(c);
     const status = statusQuery(c);
-    const top = await projectionOf(deps, ctx, 'plan');
+    const projections = await planProjections(deps, ctx);
+    const top = projections.plan;
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const rows = await tx
         .select()
@@ -187,7 +199,7 @@ function registerPlanReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         .orderBy(asc(idpPlans.createdAt), asc(idpPlans.id))
         .limit(page.limit)
         .offset(page.offset);
-      return summaries(tx, ctx.tenantId, rows, tenantLocalDate(ctx.now, ctx.timezone));
+      return summaries(tx, ctx.tenantId, rows, projections.asOf, stageSourcesOf(projections));
     });
     return c.json({ ...listEnvelope(page, scope), items: items.map((item) => project(item, top)) });
   });
@@ -214,7 +226,7 @@ function registerPlanReads(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
         .from(idpPlans)
         .where(and(eq(idpPlans.tenantId, ctx.tenantId), inArray(idpPlans.id, ids)))
         .orderBy(asc(idpPlans.createdAt), asc(idpPlans.id));
-      const shown = await summaries(tx, ctx.tenantId, rows, tenantLocalDate(ctx.now, ctx.timezone));
+      const shown = await summaries(tx, ctx.tenantId, rows, tenantLocalDate(ctx.now, ctx.timezone), null);
       return shown.map(({ tutorRole: _r, tutorEmployeeId: _t, processId: _p, ...rest }) => rest);
     });
     return c.json({ page: page.page, pageSize: page.pageSize, items });
