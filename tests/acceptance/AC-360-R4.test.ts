@@ -19,6 +19,7 @@ const testDb = useTestDb();
 interface SyncPage {
   created: { personId: string; employeeId: string }[];
   updated: { personId: string; employeeId: string }[];
+  conflicts: string[];
   skipped: { employeeId: string; reason: string }[];
   nextCursor: string | null;
 }
@@ -125,8 +126,27 @@ describe('R3-P2-3 跨页回补只写操作人 360 人员范围内的人', () => 
     await w.ok(w.request('PUT', '/settings', { ifMatch: settings.revision, body: { finePermission: true } }));
     expect((await w.as(advanced)('GET', `/people/${subPersonId}`)).status).toBe(404);
 
+    // 精细化下受限管理员不新建人员（第 6 轮 R5-P2-1）：经理的 360 人员由系统管理员经冲突确认挂接——系统管理员只同步
+    // 经理所在末页时经理尚未挂接，不进入回补；挂接后下属的上级仍为空，留给高级管理员的回补阶段
+    const external = await w.ok<PersonView>(
+      w.request('POST', '/people', { ifMatch: 0, body: { name: '员工Y', email: loginEmailOf(boss!.id) } }),
+      201,
+    );
+    const bossPage = await sync(w, { limit: 1, after: page1.nextCursor });
+    expect(bossPage.conflicts).toHaveLength(1);
+    const [conflict] = (
+      await w.ok<{ items: { id: string; revision: number }[] }>(w.request('GET', '/people/sync-conflicts'))
+    ).items;
+    await w.ok(
+      w.request('POST', `/people/sync-conflicts/${conflict!.id}/resolve`, {
+        ifMatch: conflict!.revision,
+        body: { action: 'link', personId: external.id },
+      }),
+    );
+    expect((await w.ok<PersonView>(w.request('GET', `/people/${subPersonId}`))).superiorPersonId).toBeNull();
+
     const page2 = await sync(w, { limit: 1, after: page1.nextCursor }, advanced);
-    expect(page2.created.map((c) => c.employeeId)).toEqual([boss!.id]);
+    expect(page2.created).toEqual([]);
     expect(page2.nextCursor).toBeNull();
     expect(JSON.stringify(page2)).not.toContain(sub!.id);
     expect(JSON.stringify(page2)).not.toContain(subPersonId);

@@ -276,11 +276,20 @@ const REPLAY_CASES: Record<string, Case | NotApplicable> = {
     const { sw } = env;
     const r = await restricted(sw, '同步管理员', env.swMous);
     const newcomer = await hire(sw, '乙部门新员工', env.swOrgs.b);
+    // 精细化下受限管理员不新建人员（第 6 轮 R5-P2-1）：新员工由系统管理员同步建人员，组织侧随后改手机，
+    // 受限管理员的同步按组织刷新这名已挂接的人员
+    const [person] = await synced(sw, [newcomer.id]);
+    const patched = await sw.api.request('PATCH', `/api/tenant/personnel/employees/${newcomer.id}`, {
+      user: sw.admin,
+      tenant: sw.tenantId,
+      ifMatch: 0,
+      body: { mobilePhone: 'SYNTHETIC-R4-SYNC' },
+    });
+    expect(patched.status, await patched.clone().text()).toBe(200);
     const key = randomUUID();
     const sync = () => r.as('POST', '/people/sync', { idempotencyKey: key, body: {} });
-    const first = (await (await expectStatus(sync(), 200)).json()) as { created: { employeeId: string }[] };
-    expect(first.created.map((c) => c.employeeId)).toContain(newcomer.id);
-    const [person] = await synced(sw, [newcomer.id]);
+    const first = (await (await expectStatus(sync(), 200)).json()) as { updated: { employeeId: string }[] };
+    expect(first.updated.map((c) => c.employeeId)).toContain(newcomer.id);
     await r.narrow();
     const replay = await expectStatus(sync(), 200);
     const text = await replay.text();
@@ -313,7 +322,8 @@ const REPLAY_CASES: Record<string, Case | NotApplicable> = {
     const replay = await replayAfter(resolve, 200, () =>
       u.setObjects([{ object: 'activity' }, { object: 'person', buttons: [survey360.SURVEY360_BUTTONS.sync] }]),
     );
-    expect(await reasonOf(await expectStatus(replay, 400))).toBe('NOT_A_CANDIDATE');
+    // 精细化下同步冲突只由不受限的管理员处理（第 6 轮 R5-P2-1）：重放与新命令同样 403，不带外部候选
+    expect(await reasonOf(await expectStatus(replay, 403))).toBe('FINE_PERMISSION_RESTRICTED');
     expect(await replay.text()).not.toContain(external.id);
   },
   [`POST ${S}/people`]: async (env) => {
@@ -338,20 +348,22 @@ const REPLAY_CASES: Record<string, Case | NotApplicable> = {
     const s = await scene(env, '改上级');
     const employee = await hire(w, '甲部门下属', env.orgs.a);
     const [person] = await synced(w, [employee.id]);
-    const update = (key: string, revision: number) =>
-      s.as('PUT', `/people/${person!.id}`, {
-        ifMatch: revision,
-        idempotencyKey: key,
-        body: { superiorPersonId: env.people.b1.id },
-      });
+    const update = (key: string, revision: number, superiorPersonId = env.people.b1.id) =>
+      s.as('PUT', `/people/${person!.id}`, { ifMatch: revision, idempotencyKey: key, body: { superiorPersonId } });
     const key = randomUUID();
-    const saved = (await (await expectStatus(update(key, person!.revision), 200)).json()) as { revision: number };
+    const saved = (await (await expectStatus(update(key, person!.revision), 200)).json()) as PersonView;
     await s.narrow();
-    // 重放与新命令同一判定：上级不在当前范围内即“上级人员不存在”，不返回带范围外上级的历史结果
-    const replay = await expectStatus(update(key, person!.revision), 400);
-    expect(await reasonOf(replay)).toBe('SUPERIOR_NOT_FOUND');
-    expect(await replay.text()).not.toContain(env.people.b1.id);
-    expect(await reasonOf(await expectStatus(update(randomUUID(), saved.revision), 400))).toBe('SUPERIOR_NOT_FOUND');
+    // 重放与新命令同一判定（DEC-319①）：上级仍是原值、没有改动，不重新校验可见性，返回原结果；范围外上级只给 ID
+    // （DEC-319②），不带其姓名、邮箱等字段
+    const replay = await expectStatus(update(key, person!.revision), 200);
+    expect(await replay.clone().json()).toEqual(saved);
+    const replayText = await replay.text();
+    for (const marker of [env.people.b1.name, env.people.b1.email]) expect(replayText).not.toContain(marker);
+    const same = (await (await expectStatus(update(randomUUID(), saved.revision), 200)).json()) as PersonView;
+    expect(same.superiorPersonId).toBe(env.people.b1.id);
+    // 真的改成另一个范围外的人：仍是“上级人员不存在”
+    const changed = await expectStatus(update(randomUUID(), same.revision, env.people.b2.id), 400);
+    expect(await reasonOf(changed)).toBe('SUPERIOR_NOT_FOUND');
   },
 
   [`PUT ${S}/questionnaires/:id`]: async (env) => {

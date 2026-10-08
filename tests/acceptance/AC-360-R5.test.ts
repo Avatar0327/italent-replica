@@ -3,8 +3,9 @@
  * - R4-P2-1 邮箱改归属后用原键、原载荷重放：新增评价对象、新增评价者、导入关系三个入口都不得返回范围外人员的历史
  *   结果——按历史回执里的稳定 ID（人员、评价者、评价关系）按当前权限复核，导入逐条复核实际的评价对象与评价者；
  *   不能只按当前邮箱持有人验权，也不能只裁字段。
- * - R4-P2-2 创建人范围（using_user）下回补：首人 EMAIL_TAKEN 后跟随返回的游标、limit=1 续页，第二人照常回补，
- *   游标不退回 backfill:（判定与筛选回补目标同一口径：实际 360 人员及创建人）。
+ * - R4-P2-2 创建人范围（using_user）下回补：跟随返回的游标、limit=1 续页，游标停在本人建的人员上、不退回
+ *   backfill:（判定与筛选回补目标同一口径：实际 360 人员及创建人）。第 6 轮起受限管理员不新建人员、刷新不改邮箱
+ *   （R5-P2-1），原场景里的 EMAIL_TAKEN 本身就随隐藏人员变化，改为由本人在开启精细化前建好人员。
  */
 import { randomUUID } from 'node:crypto';
 import { survey360 } from '@italent/domain';
@@ -191,10 +192,9 @@ describe('R4-P2-1 邮箱改归属后，原键重放不返回范围外人员的�
 });
 
 describe('R4-P2-2 创建人范围下，回补游标按实际 360 人员与创建人判定', () => {
-  it('首人 EMAIL_TAKEN 后跟随返回的游标、limit=1 续页：第二人照常回补，游标不退回 backfill:', async () => {
+  it('创建人范围的受限管理员按游标、limit=1 续页回补：游标停在本人建的人员上，不退回 backfill:', async () => {
     const w = await world360(testDb().db, 'r5b', { access: fullAccess() });
-    await finePermissionOn(w);
-    // 360 人员的数据权限按创建人（using_user，创建人字段缺省 createdBy）：受限管理员看得到自己同步建的人员
+    // 360 人员的数据权限按创建人（using_user，创建人字段缺省 createdBy）：受限管理员看得到自己建的人员
     await w.ok(
       w.enterprise('PUT', `/scope-policies/${APP}/${PERSON}/entity/${PERSON}`, {
         ifMatch: 0,
@@ -202,48 +202,50 @@ describe('R4-P2-2 创建人范围下，回补游标按实际 360 人员与创建
       }),
     );
     const org = await w.session.org('回补部门', { establishedOn: '2025-01-01' });
-    // 同步按员工 ID 分页：ID 小的两名作下属、最大的作经理，下属先于经理同步
-    const ordered = [
-      await w.session.employee('下属甲'),
-      await w.session.employee('下属乙'),
-      await w.session.employee('经理'),
-    ].sort((x, y) => (x.id < y.id ? -1 : 1));
-    const [sub1, sub2, boss] = ordered as [(typeof ordered)[0], (typeof ordered)[0], (typeof ordered)[0]];
+    // 同步按员工 ID 分页：ID 小的三名作下属、最大的作经理，下属先于经理同步
+    const ordered: Awaited<ReturnType<World360['session']['employee']>>[] = [];
+    for (const name of ['下属甲', '下属乙', '下属丙', '经理']) ordered.push(await w.session.employee(name));
+    ordered.sort((x, y) => (x.id < y.id ? -1 : 1));
+    const [sub1, sub2, sub3, boss] = ordered as [
+      (typeof ordered)[0],
+      (typeof ordered)[0],
+      (typeof ordered)[0],
+      (typeof ordered)[0],
+    ];
     await hire(w, boss, org.id);
-    await hire(w, sub1, org.id, boss.id);
-    await hire(w, sub2, org.id, boss.id);
+    for (const sub of [sub1, sub2, sub3]) await hire(w, sub, org.id, boss.id);
     const admin = await w.member('创建人范围管理员');
     await w.appoint(admin, 'advanced');
     const as = w.as(admin);
 
-    // 管理员先同步两名下属：经理还没有 360 人员，下属上级为空；两名下属的人员由该管理员创建，均可见
-    const first = await sync(w, { limit: 2 }, admin);
-    expect(first.created.map((c) => c.employeeId)).toEqual([sub1.id, sub2.id]);
+    // 精细化开启前（不受限）由该管理员同步建人员——第 6 轮起精细化下受限管理员不新建人员（R5-P2-1）：先建三名
+    // 下属，再建经理并回补首名下属（limit=1，留下两人待补）
+    const first = await sync(w, { limit: 3 }, admin);
+    expect(first.created.map((c) => c.employeeId)).toEqual([sub1.id, sub2.id, sub3.id]);
+    const bossPage = await sync(w, { after: first.nextCursor, limit: 1 }, admin);
+    expect(bossPage.created.map((c) => c.employeeId)).toEqual([boss.id]);
+    expect(bossPage.updated.map((u) => u.employeeId)).toEqual([sub1.id]);
+    expect(bossPage.nextCursor).toBe(`backfill:${sub1.id}`);
+
+    await finePermissionOn(w);
     const personOf = (employeeId: string) => first.created.find((c) => c.employeeId === employeeId)!.personId;
-    for (const sub of [sub1, sub2]) expect((await as('GET', `/people/${personOf(sub.id)}`)).status).toBe(200);
+    for (const sub of [sub1, sub2, sub3]) expect((await as('GET', `/people/${personOf(sub.id)}`)).status).toBe(200);
 
-    // 首名下属的组织邮箱已被另一名 360 人员占用：回补他时 EMAIL_TAKEN
-    const taken = mail('taken');
-    await w.person('占用邮箱的外部人员', { email: taken });
-    await setWorkEmail(w, sub1.id, taken, 0);
-
+    // 精细化开启后受限（创建人范围）：跟随游标、limit=1 续页。第二名下属的员工不在组织维度的范围内，但人员是本人
+    // 建的、可见，游标停在他之后、不退回 backfill:；再续一页补完第三名并报结束
     const pages: SyncPage[] = [];
-    let cursor = first.nextCursor;
+    let cursor = bossPage.nextCursor;
     for (let i = 0; i < 5 && cursor !== null; i += 1) {
       const page = await sync(w, { after: cursor, limit: 1 }, admin);
       pages.push(page);
       cursor = page.nextCursor;
     }
-    // 第一页：员工阶段同步经理，随后回补首名下属（邮箱被占用，跳过），游标停在他之后
-    expect(pages[0]!.created.map((c) => c.employeeId)).toEqual([boss.id]);
-    expect(pages[0]!.skipped).toEqual([{ employeeId: sub1.id, reason: 'EMAIL_TAKEN' }]);
-    expect(pages[0]!.nextCursor).toBe(`backfill:${sub1.id}`);
-    // 续页回补第二名下属，补完报结束；游标从不退回 backfill:
-    expect(pages.flatMap((p) => p.updated.map((u) => u.employeeId))).toEqual([sub2.id]);
+    expect(pages.map((p) => p.updated.map((u) => u.employeeId))).toEqual([[sub2.id], [sub3.id]]);
+    expect(pages[0]!.nextCursor).toBe(`backfill:${sub2.id}`);
     expect(pages.map((p) => p.nextCursor)).not.toContain('backfill:');
     expect(cursor).toBeNull();
-    const bossPerson = pages[0]!.created[0]!.personId;
-    const second = await w.ok<PersonView>(as('GET', `/people/${personOf(sub2.id)}`));
-    expect(second.superiorPersonId).toBe(bossPerson);
+    const bossPerson = bossPage.created[0]!.personId;
+    for (const sub of [sub2, sub3])
+      expect((await w.ok<PersonView>(as('GET', `/people/${personOf(sub.id)}`))).superiorPersonId).toBe(bossPerson);
   });
 });
