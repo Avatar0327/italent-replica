@@ -1,8 +1,8 @@
 {
 "updated": "2026-10-08",
 "stats": {
-"merged": 56,
-"open": 13,
+"merged": 57,
+"open": 12,
 "dec": 314,
 "ev": "29/129"
 },
@@ -955,6 +955,10 @@
 }
 },
 "log": [
+[
+"10-08",
+"#116 R3-T03 PR-A1 合并（9322bac，Astra 首轮通过）"
+],
 [
 "10-08",
 "#114 F-045 排名函数合并（e5b0560），F-049 可派；T04 前置剩 F-046 / 048 / 049"
@@ -2108,7 +2112,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-08 04:09",
+"liveUpdated": "10-08 04:14",
 "chains": [
 {
 "g": "base",
@@ -2551,8 +2555,9 @@
 "k": "run",
 "n": "360 系统入口 / A5 登录",
 "seg": "ev:a ds:n dev:n rev:n mg:n",
-"now": "取证中（A5 已在你的 Chrome 登录），同时做 Q-M0-127",
-"nx": "R3-T03 第二部分（19 个必测点）"
+"now": "已拿到入口；Q-M0-127 完成 7 个、部分 3 个；写入实测待你定（授 A4 身份、建测试活动）",
+"nx": "R3-T03 第二部分（19 个必测点）",
+"need": "1"
 },
 {
 "id": "R3-T03B",
@@ -2604,11 +2609,12 @@
 "id": "R3-T03A1",
 "g": "s360",
 "o": 2,
-"k": "run",
+"k": "done",
 "pr": 116,
 "n": "360 PR-A1：套卷校验 / 人数权重 / 计分",
-"seg": "ev:d ds:n dev:d1 rev:a1 mg:w",
-"now": "首轮审查中（Astra Ultra，head 9f27f29）"
+"seg": "ev:d ds:n dev:d1 rev:d1 mg:w",
+"now": "首轮审查结论已出，审查合并窗口读取中",
+"u": "10-08 合并（9322bac），Astra 首轮即通过"
 },
 {
 "id": "R3-T03A2",
@@ -2617,8 +2623,8 @@
 "k": "run",
 "pr": 117,
 "n": "360 PR-A2：标准身份安装 / 平台回补",
-"seg": "ev:d ds:n dev:d1 rev:w1 mg:w",
-"now": "CI 运行中（head ae93e81），绿后首审（Astra Ultra）"
+"seg": "ev:d ds:n dev:a1 rev:w1 mg:w",
+"now": "与 main 有 add/add 冲突，开发方合并 main 后重推；CI 绿后首审"
 }
 ]
 }
