@@ -24,6 +24,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { orgObjects } from './org.js';
@@ -284,6 +285,42 @@ export const talentCriteria = pgTable(
       name: 'talent_criteria_category_fk',
     }).onDelete('restrict'),
     ...ownerOrg('talent_criteria', t),
+  ],
+);
+
+/** F-038：沿用现有附件的登记 / 上传 / 待清理生命周期；内容随租户数据库一致快照保存。 */
+export const talentModelImageAttachments = pgTable(
+  'talent_model_image_attachments',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // 不级联删附件：标准删除时同事务标记待清理，保留文件元数据与删除快照。
+    criterionId: uuid('criterion_id').notNull(),
+    filename: text('filename').notNull(),
+    contentType: text('content_type').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    sha256: text('sha256').notNull(),
+    status: text('status').notNull().default('registered'),
+    contentBase64: text('content_base64'),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('talent_model_image_attachments_tenant_id').on(t.tenantId, t.id),
+    index('talent_model_image_attachments_criterion').on(t.tenantId, t.criterionId),
+    index('talent_model_image_attachments_cleanup').on(t.tenantId, t.status),
+    uniqueIndex('talent_model_image_attachments_current')
+      .on(t.tenantId, t.criterionId)
+      .where(sql`${t.status} = 'uploaded'`),
+    check('talent_model_image_attachments_status', sql`${t.status} IN ('registered','uploaded','pending_cleanup')`),
+    check('talent_model_image_attachments_size', sql`${t.byteSize} > 0 AND ${t.byteSize} <= 5242880`),
+    check('talent_model_image_attachments_sha256', sql`${t.sha256} ~ '^[a-f0-9]{64}$'`),
+    check(
+      'talent_model_image_attachments_content_type',
+      sql`${t.contentType} IN ('image/jpeg','image/gif','image/png','image/bmp')`,
+    ),
+    check('talent_model_image_attachments_uploaded', sql`${t.status} <> 'uploaded' OR ${t.contentBase64} IS NOT NULL`),
   ],
 );
 
