@@ -12,4 +12,5 @@ export * from './contracts.js';
 export * from './transfer.js';
 export * from './audit.js';
 export * from './survey360.js';
+export * from './talent.js';
 export * from './idp.js';

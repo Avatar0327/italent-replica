@@ -453,15 +453,22 @@
     {
       "idx": 64,
       "version": "7",
-      "when": 1791443914225,
-      "tag": "0064_survey360",
+      "when": 1791443498372,
+      "tag": "0064_talent_standard",
       "breakpoints": true
     },
     {
       "idx": 65,
       "version": "7",
-      "when": 1791443920106,
-      "tag": "0065_survey360_isolation",
+      "when": 1791470830588,
+      "tag": "0065_survey360",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1791470841018,
+      "tag": "0066_survey360_isolation",
       "breakpoints": true
     }
   ]

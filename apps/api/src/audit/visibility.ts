@@ -5,7 +5,7 @@ import { CapacityAuditFields, capacityAuditChanges, visibleCapacityParts } from 
  * - 每种写入审计的对象类型都在下方逐个登记（RULES / 配置对象），未登记的对象类型一律不返回（fail-closed）；
  * - 业务对象先要有该对象的查看权限（与业务接口 objectContext 同一 object.view），再按业务列表 / 详情的同一 SQL 谓词
  *   判断范围：任职 DEC-177、人员与合同按所属人员、组织 / 编制 / 职位按所属组织、全局职务体系对象与编制方案只认
- *   看全部或“使用用户（创建人）”、编制复制任务 / 通知 / 占编按其业务规则、组织编码预占只认看全部、审批实例按
+ *   看全部或“使用用户（创建人）”、人才标准对象（R3-T01，DEC-281⑨）按所属管理单元（字典只认看全部或创建人）、编制复制任务 / 通知 / 占编按其业务规则、组织编码预占只认看全部、审批实例按
  *   审批管理员按钮与任职 / 合同范围；
  * - 需要归属的对象推导不出所属人员 / 组织时不返回（第三轮 P1-1：“推导失败”不等于“无归属”）；
  * - “使用用户”维度按保留的创建人元数据（DEC-198，audit_object_creators）或模块真实的创建人列判断（第三轮 P2-1）；
@@ -30,6 +30,7 @@ import {
   PERSONNEL_REQUEST_OBJECT,
   SUBSETS,
   survey360,
+  TALENT_OBJECTS,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../routes.js';
@@ -47,6 +48,11 @@ import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
 import { survey360AuditScope } from '../modules/survey360/access.js';
 import { IDP_AUDIT_ACTIONS } from '../modules/idp/access.js';
+import {
+  isDictionary as isTalentDictionary,
+  TALENT_AUDIT_ACTIONS,
+  type TalentObject,
+} from '../modules/talent/access.js';
 import {
   ExactAuditFields,
   resolveLinkageAudit,
@@ -381,6 +387,19 @@ const RULES: readonly Rule[] = [
     visible: (scope, row, viewer) =>
       scopeSql(scope, { creator: ownedBy(row, creatorSql(viewer.tenantId, jobObject(row), 'job.create', kind)) }),
   })),
+  // R3-T01 人才标准（TalentCenter，DEC-281⑨）：与业务接口一致按所属管理单元（日志写入时的所属组织）裁剪，“使用用户”
+  // 按保留的创建元数据（DEC-198，对象删除后仍可判断）；发展建议类型是字典，只认看全部或创建人（DEC-121）
+  ...(Object.keys(TALENT_OBJECTS) as TalentObject[]).map((object): Rule => {
+    const code = TALENT_OBJECTS[object].code;
+    const creator = (row: Row, viewer: Viewer) =>
+      creatorSql(viewer.tenantId, row.objectId, `${TALENT_AUDIT_ACTIONS[object]}.create`, code);
+    if (!isTalentDictionary(object)) return orgRule([code], code, creator);
+    return {
+      types: [code],
+      objectCode: code,
+      visible: (scope, row, viewer) => scopeSql(scope, { creator: ownedBy(row, creator(row, viewer)) }),
+    };
+  }),
   {
     // 审批实例 / 任务：审批管理员按钮（转交 / 干预 / 查看流程日志）+ 任职或合同范围（与审批中心管理员视图一致）
     types: ['approval-instance', 'approval-task'],

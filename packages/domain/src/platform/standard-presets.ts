@@ -3,12 +3,14 @@
  * 身份名称与描述取自本租户组织员工应用的可授予身份（docs/02_业务建模/06 §3.3），许可类型按“核心人力用户”（06 §4）。
  * 数据范围一律不在身份里预置（硬规则：默认空），唯一例外是 DEC-121：标准 HR 身份对无组织字段的对象（职务字典、
  * 编制方案）预置“看全部”，开箱效果与原站一致（`11` §17）；有组织字段的对象（职位、组织编制等）仍按管理单元裁剪。
+ * 人才标准管理员（DEC-281⑩）同一口径：只对无组织字段的发展建议类型字典预置看全部，其余按管理单元。
  */
 import { APPROVAL_OBJECTS, APPROVAL_PROCESS_OBJECT } from '../approval/catalog.js';
 import { MODULE_OBJECTS, ORG_EMPLOYEE_APP } from '../permission/module-actions.js';
 import type { ObjectDefinition, ObjectPermission } from '../permission/object-permission.js';
 import { PERSONNEL_OBJECTS } from '../personnel/catalog.js';
 import { SURVEY360_APP, SURVEY360_PROFILES } from '../survey360/catalog.js';
+import { TALENT_APP, TALENT_OBJECTS } from '../talent/catalog.js';
 
 /**
  * 编制方案的“看全部”目标（数据源类）：编制方案与组织编制共用对象 OrganizationEstablishment，对象级看全部会连带放开
@@ -31,6 +33,13 @@ export const NO_ORG_FIELD_SEE_ALL = {
   dataSources: [ESTABLISHMENT_SCHEME_DATASOURCE],
 } as const;
 
+/** 身份上预置“看全部”的目标（应用 × 实体 / 数据源）。 */
+export interface PresetSeeAllTarget {
+  readonly appCode: string;
+  readonly targetKind: 'entity' | 'datasource';
+  readonly targetCode: string;
+}
+
 export interface StandardProfile {
   readonly code: string;
   readonly name: string;
@@ -40,6 +49,8 @@ export interface StandardProfile {
   readonly objects: readonly ObjectPermission[];
   /** 是否为标准 HR 身份（DEC-121 预置无组织字段对象的看全部）。 */
   readonly hr: boolean;
+  /** 其他应用的身份按同一口径预置看全部的无组织字段对象（如人才标准的发展建议类型字典）。 */
+  readonly seeAll?: readonly PresetSeeAllTarget[];
 }
 
 /** 系统配置类对象由“其他设置”管理员能力控制，不进业务身份（permission/authorizer.ts 的 CONFIG_OBJECTS）。 */
@@ -112,6 +123,20 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     apps: [ORG_EMPLOYEE_APP],
     objects: BUSINESS_OBJECTS.filter((o) => o.code !== APPROVAL_PROCESS_OBJECT).map(full),
     hr: true,
+  },
+  {
+    // DEC-281⑨⑩（`23` §7 ③）：原站预置身份，拥有人才标准全部功能，可见数据按管理单元控制——不预置看全部，
+    // 数据范围仍默认空，授予时为用户 × TalentCenter 选管理单元（DEC-043）。唯一例外是没有组织字段的发展建议类型字典，
+    // 按 DEC-121 同口径预置看全部，否则管理员无法维护下拉选项。
+    // DEC-294④（`23` §8 ④）：不占许可名额（原站许可项里没有人才标准，按计费规则推断）。
+    code: 'standard_talent_admin',
+    name: '人才标准管理员（人才标准）',
+    description: '拥有人才标准的全部功能，可见数据按管理单元控制',
+    licenseType: null,
+    apps: [TALENT_APP],
+    objects: Object.values(TALENT_OBJECTS).map(full),
+    hr: false,
+    seeAll: [{ appCode: TALENT_APP, targetKind: 'entity', targetCode: TALENT_OBJECTS.descriptionType.code }],
   },
   {
     // 经理自助须显式授权（C-003 复核，06 §8）；数据范围由汇报关系规则给出，不预置看全部
