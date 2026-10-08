@@ -2,6 +2,7 @@
  * 计算上下文（REQ-EXP-001）：“今天”与时区由调用方传入（DEC-056），引擎不读系统时钟；取数走端口。
  */
 import type { IsoDate } from '../tenant-time.js';
+import type { RankingTables } from './functions/ranking.js';
 import type { DataSourcePorts, SubjectReader } from './ports.js';
 import type { FunctionRegistry } from './registry.js';
 import type { ExpressionSemantics } from './semantics.js';
@@ -44,6 +45,11 @@ export interface EvaluationContext {
    * 以及字段为空时的来源类型都按它（DEC-287）；使用方应与保存时传入同一目录。
    */
   readonly fieldKind?: (path: string) => StaticKind | undefined;
+  /**
+   * 排名表缓存（DEC-301② 排名在全体总体上一次性求值）：同一总体、同一上下文的多个对象共用，同一排名调用只算一次。
+   * evaluateBatch 为每个计算项目自建；单独调用 evaluateFormula 时不传则每次现算。
+   */
+  readonly rankingTables?: RankingTables;
 }
 
 /** 批量求值的公共上下文：对象逐个注入。 */
