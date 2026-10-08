@@ -5,6 +5,7 @@
 import type { CallNode, ExprNode } from './ast.js';
 import type { FailureCode } from './failures.js';
 import { BUILTIN_FUNCTIONS } from './functions/index.js';
+import type { RankingTables } from './functions/ranking.js';
 import type { DataSourcePorts, SubjectReader } from './ports.js';
 import type { ExpressionSemantics } from './semantics.js';
 import type { InferredType } from './typing.js';
@@ -28,7 +29,9 @@ export interface FunctionCall {
   readonly rawArgs: readonly ExprNode[];
   /** 在当前作用域（或叠加一组记录字段后的子作用域）求值一个参数节点。 */
   readonly evaluate: (node: ExprNode, recordFields?: Readonly<Record<string, ExprValue>>) => ExprValue;
-  /** 以另一个对象（如排名范围内的成员）为主体求值一个参数节点。 */
+  /** 当前作用域里 Def 变量的取值（不是变量时为 undefined）：排名表按参数引用的变量取值区分缓存。 */
+  readonly variable: (name: string) => ExprValue | undefined;
+  /** 以另一个对象（如排名范围内的成员）为主体求值一个参数节点；Def 变量仍取当前作用域的值。 */
   readonly evaluateForSubject: (node: ExprNode, subject: SubjectReader) => ExprValue;
   readonly fail: (code: FailureCode, detail: string) => never;
   /** 公共取参：函数的数值参数（空值按 semantics.emptyInFunctionArgument，数字文本按数值，DEC-270）。 */
@@ -62,6 +65,8 @@ export interface FunctionEnvironment {
   readonly assessmentLatestWindow: 'before_project_end' | 'before_project_start';
   readonly semantics: ExpressionSemantics;
   readonly ports?: DataSourcePorts;
+  /** 排名表缓存（见 EvaluationContext.rankingTables）。 */
+  readonly rankingTables?: RankingTables;
   readonly fromPlain: (value: PlainValue) => ExprValue;
 }
 
