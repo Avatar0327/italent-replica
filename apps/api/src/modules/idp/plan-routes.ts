@@ -8,7 +8,6 @@
 import { and, asc, eq, idpPlans, inArray, isUuid, sql, type Tx, withTenant } from '@italent/db';
 import { currentStageName, type NodeButton, PLAN_STATUSES, type PlanStatus, tenantLocalDate } from '@italent/domain';
 import type { Context, Hono } from 'hono';
-import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
@@ -24,19 +23,19 @@ import {
   idpScope,
   idpWriteContext,
   listEnvelope,
-  type PermissionCheck,
   project,
   projectionOf,
-  replayChecks,
   requireReadable,
   rowsOf,
 } from './access.js';
 import * as execution from './execution-service.js';
+import { runIdpCommand } from './executor.js';
 import * as intervention from './intervention-service.js';
 import { type HrScope, hrSees, requireViewer } from './plan-access.js';
 import * as input from './plan-input.js';
 import * as plans from './plan-service.js';
 import { loadPlanRow, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
+import type { WriteContext } from './write-support.js';
 import {
   currentStageShown,
   loadPlanDetail,
@@ -72,41 +71,11 @@ async function hrScopeOf(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: IdpC
   return can ? idpScope(c, deps, ctx, 'plan') : null;
 }
 
-interface Stored<T> {
-  readonly view: T;
-  readonly checks: PermissionCheck[];
-}
-
-interface PlanWriteSpec<T> {
-  readonly status: 200 | 201;
-  readonly body: unknown;
-  execute(tx: Tx, ctx: plans.PlanWriteContext): Promise<T>;
-  /** 返回前（首次与重放）按当前数据复核：计划仍可见、执行人仍有按钮等。 */
-  recheck(tx: Tx, view: T): Promise<void>;
-}
-
-async function runPlanWrite<T>(
-  c: Context<TenantEnv>,
-  deps: TenantRouteDeps,
-  ctx: IdpContext,
-  hr: HrScope,
-  spec: PlanWriteSpec<T>,
-) {
-  const result = await runCommand(deps.db, ctx, {
-    id: c.req.header('idempotency-key'),
-    fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: spec.body },
-    execute: async (tx, commandId) => {
-      const checks: PermissionCheck[] = [];
-      const view = await spec.execute(tx, { ...ctx, commandId, scope: hr ?? EMPTY_SCOPE, checks, hr });
-      return { status: spec.status, body: { view, checks } satisfies Stored<T> };
-    },
-  });
-  const { view, checks } = result.body as Stored<T>;
-  // 先复核命令用到的权限（只看权限），再按当前数据复核（PR-A 第 4 轮同一顺序）
-  await replayChecks(deps, ctx, checks);
-  await withTenant(deps.db, ctx.tenantId, (tx) => spec.recheck(tx, view));
-  return { view, status: result.status };
-}
+/** 计划侧命令的范围与上下文：HR 范围（可为 null，只按参与关系）随写上下文传给服务层。 */
+const planCommand = (hr: HrScope) => ({
+  scope: hr ?? EMPTY_SCOPE,
+  extend: (w: WriteContext): plans.PlanWriteContext => ({ ...w, hr }),
+});
 
 /** 按查看人呈现计划当前状态（HR 字段裁剪 / 参与人固定字段集）。 */
 async function showPlan(deps: TenantRouteDeps, ctx: IdpContext, hr: HrScope, planId: string) {
@@ -269,14 +238,15 @@ function registerPlanWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const hr = await idpScope(c, deps, ctx, 'plan');
     const visibleTemplate = await templateCheck(c, deps, ctx);
     const sources = await plans.carrySources(deps, ctx, await projectionOf(deps, ctx, 'commonGoal'));
-    const { view, status } = await runPlanWrite<PlanDetail>(c, deps, ctx, hr, {
+    const { view, status } = await runIdpCommand<PlanDetail, plans.PlanWriteContext>(c, deps, ctx, {
+      ...planCommand(hr),
       status: 201,
       body,
       execute: async (tx, w) => {
         await visibleTemplate(tx, body.templateId);
         return plans.createPlan(tx, w, sources, body);
       },
-      recheck: (tx, plan) => stillVisible(tx, ctx, hr, plan.id),
+      recheck: (tx, _scope, plan) => stillVisible(tx, ctx, hr, plan.id),
     });
     return respondPlan(c, deps, ctx, hr, view.id, status as 201);
   });
@@ -288,7 +258,8 @@ function registerPlanWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     await checkWriteFields(deps, ctx, 'plan', 'update', body);
     const hr = await idpScope(c, deps, ctx, 'plan');
     const sources = await plans.carrySources(deps, ctx, null);
-    await runPlanWrite<PlanDetail>(c, deps, ctx, hr, {
+    await runIdpCommand<PlanDetail, plans.PlanWriteContext>(c, deps, ctx, {
+      ...planCommand(hr),
       status: 200,
       body,
       execute: (tx, w) => plans.updatePlan(tx, w, sources, id, body),
@@ -301,7 +272,8 @@ function registerPlanWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await idpWriteContext(c, deps, 'plan', 'update', 'start', 'detail', revision(c));
     const id = uuidParam(c);
     const hr = await idpScope(c, deps, ctx, 'plan');
-    await runPlanWrite<PlanDetail>(c, deps, ctx, hr, {
+    await runIdpCommand<PlanDetail, plans.PlanWriteContext>(c, deps, ctx, {
+      ...planCommand(hr),
       status: 200,
       body: { id, action: 'start' },
       execute: (tx, w) => plans.startPlan(tx, w, id),
@@ -315,12 +287,13 @@ function registerPlanWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const id = uuidParam(c);
     const hr = await idpScope(c, deps, ctx, 'plan');
     const projections = await planProjections(deps, ctx);
-    const { view } = await runPlanWrite<PlanDetail>(c, deps, ctx, hr, {
+    const { view } = await runIdpCommand<PlanDetail, plans.PlanWriteContext>(c, deps, ctx, {
+      ...planCommand(hr),
       status: 200,
       body: { id },
       execute: (tx, w) => plans.deletePlan(tx, deps, w, id),
       // 删除的受控快照：按删除时的员工归属复核当前范围
-      recheck: async (tx, snapshot) => {
+      recheck: async (tx, _scope, snapshot) => {
         if (!(await hrSees(tx, hr, snapshot))) throw new AppError('NOT_FOUND', '发展计划不存在');
       },
     });
@@ -349,11 +322,12 @@ async function runExecutorWrite(
 ) {
   const ctx = baseContext(c, deps, revision(c));
   const hr = await hrScopeOf(c, deps, ctx);
-  const { view } = await runPlanWrite<ExecResult>(c, deps, ctx, hr, {
+  const { view } = await runIdpCommand<ExecResult, plans.PlanWriteContext>(c, deps, ctx, {
+    ...planCommand(hr),
     status,
     body,
     execute,
-    recheck: (tx, r) =>
+    recheck: (tx, _scope, r) =>
       execution.recheckExecutor(tx, { ...ctx, scope: EMPTY_SCOPE, checks: [], hr }, r.planId, r.moduleId, r.button),
   });
   return respondPlan(c, deps, ctx, hr, view.planId, status);
@@ -479,12 +453,15 @@ function registerContentRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
 
 // ---- 干预与统一下发 ----
 
-/** 批量回执：重放时按当前范围复核成功的条目，范围外的改回执 404（不泄露）。 */
+/**
+ * 批量回执：首次与重放都按当前范围逐条复核——成功与失败的回执一样，计划已不在范围内（或已不存在）就改成 404，
+ * 不再回放业务错误（P2-6）。原本就是 404 的保持不变。
+ */
 async function receiptsNow(tx: Tx, ctx: IdpContext, hr: HrScope, receipts: readonly intervention.Receipt[]) {
   const shown: intervention.Receipt[] = [];
   for (const receipt of receipts) {
-    const plan = receipt.status === 200 ? await loadPlanRow(tx, ctx.tenantId, receipt.id) : undefined;
-    const visible = receipt.status !== 200 || (plan !== undefined && (await hrSees(tx, hr, plan)));
+    const plan = await loadPlanRow(tx, ctx.tenantId, receipt.id);
+    const visible = plan !== undefined && (await hrSees(tx, hr, plan));
     shown.push(visible ? receipt : { id: receipt.id, status: 404, code: 'NOT_FOUND' });
   }
   return shown;
@@ -502,7 +479,8 @@ function registerInterventions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       requireNew(ctx);
       const body = await parseBody(c, schema as typeof input.startNext);
       const hr = await idpScope(c, deps, ctx, 'plan');
-      const { view } = await runPlanWrite<intervention.Receipt[]>(c, deps, ctx, hr, {
+      const { view } = await runIdpCommand<intervention.Receipt[], plans.PlanWriteContext>(c, deps, ctx, {
+        ...planCommand(hr),
         status: 200,
         body,
         execute: (tx, w) => (act as typeof intervention.startNextStages)(tx, w, body),
@@ -518,7 +496,8 @@ function registerInterventions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const id = uuidParam(c);
     const body = await parseBody(c, input.jump);
     const hr = await idpScope(c, deps, ctx, 'plan');
-    await runPlanWrite<PlanDetail>(c, deps, ctx, hr, {
+    await runIdpCommand<PlanDetail, plans.PlanWriteContext>(c, deps, ctx, {
+      ...planCommand(hr),
       status: 200,
       body,
       execute: (tx, w) => intervention.jumpPlan(tx, w, id, body),
@@ -541,11 +520,13 @@ function registerInterventions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       goal: await projectionOf(deps, ctx, 'goal'),
       templateScope: await idpScope(c, deps, ctx, 'template'),
     };
-    const { view, status } = await runPlanWrite(c, deps, ctx, hr, {
+    type Issued = { created: { planId: string }[] };
+    const { view, status } = await runIdpCommand<Issued, plans.PlanWriteContext>(c, deps, ctx, {
+      ...planCommand(hr),
       status: 201,
       body,
       execute: (tx, w) => intervention.issueTasks(tx, w, body, sources),
-      recheck: async (tx, result) => {
+      recheck: async (tx, _scope, result) => {
         for (const item of result.created) await stillVisible(tx, ctx, hr, item.planId);
       },
     });

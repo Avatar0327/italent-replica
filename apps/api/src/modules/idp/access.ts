@@ -145,7 +145,9 @@ export type PermissionCheck =
       readonly operation: 'create' | 'update' | 'delete';
       readonly fields: readonly string[];
     }
-  | { readonly kind: 'view'; readonly object: IdpObject; readonly fields: readonly string[] };
+  | { readonly kind: 'view'; readonly object: IdpObject; readonly fields: readonly string[]; readonly carry?: true }
+  /** 带出值的非 IDP 源对象（任职记录 / 组织，E3）：重放时复核对象查看权与字段查看权。 */
+  | { readonly kind: 'source'; readonly objectCode: string; readonly fields: readonly string[] };
 
 /** 带“已用权限记录”的上下文：服务层每判定一项就记一项。 */
 export interface CheckedContext extends IdpContext {
@@ -191,16 +193,39 @@ export function requireViewable(ctx: CheckedContext, projection: Projection, obj
 const viewable = (projection: Projection, fields: readonly string[]) =>
   projection !== null && (projection === undefined || fields.every((field) => projection.has(field)));
 
-/** 幂等重放（与首次执行）返回前，按当前权限复核命令实际用到的每一项权限。 */
+const sourceHidden = () => new AppError('FORBIDDEN', '看不到带出值的来源字段', { reason: 'IDP_CARRY_SOURCE_HIDDEN' });
+
+/** 某对象的字段投影（没有对象查看权为 null）。 */
+export async function objectFields(deps: TenantRouteDeps, ctx: IdpContext, objectCode: string): Promise<Projection> {
+  if (!(await deps.authorize({ ...ctx, action: 'object.view', resource: objectCode, fields: [] }))) return null;
+  return getModuleViewableFields(deps, ctx, objectCode);
+}
+
+/**
+ * 幂等重放（与首次执行）返回前，按当前权限复核命令实际用到的每一项权限：嵌套写权限、复制继承字段与带出值源字段的
+ * 查看权（第 2 轮 P2-6：带出源看不到了 → 403 IDP_CARRY_SOURCE_HIDDEN）。
+ */
 export async function replayChecks(deps: TenantRouteDeps, ctx: IdpContext, checks: readonly PermissionCheck[]) {
-  const projections = new Map<IdpObject, Projection>();
+  const projections = new Map<string, Projection>();
+  const fieldsOf = async (code: string) => {
+    if (!projections.has(code)) projections.set(code, await objectFields(deps, ctx, code));
+    return projections.get(code)!;
+  };
   for (const check of checks) {
     if (check.kind === 'write') {
       await requireWrite(deps.authorize, ctx, check);
       continue;
     }
-    if (!projections.has(check.object)) projections.set(check.object, await projectionOf(deps, ctx, check.object));
-    requireViewable(ctx, projections.get(check.object)!, check.object, [...check.fields]);
+    if (check.kind === 'source') {
+      if (!viewable(await fieldsOf(check.objectCode), check.fields)) throw sourceHidden();
+      continue;
+    }
+    const projection = await fieldsOf(codeOf(check.object));
+    if (check.carry) {
+      if (!viewable(projection, check.fields)) throw sourceHidden();
+      continue;
+    }
+    requireViewable(ctx, projection, check.object, [...check.fields]);
   }
 }
 
@@ -296,9 +321,7 @@ export function listEnvelope(page: { page: number; pageSize: number }, scope: Mo
 export type Projection = ReadonlySet<string> | undefined | null;
 
 export async function projectionOf(deps: TenantRouteDeps, ctx: IdpContext, object: IdpObject): Promise<Projection> {
-  const code = codeOf(object);
-  if (!(await deps.authorize({ ...ctx, action: 'object.view', resource: code, fields: [] }))) return null;
-  return getModuleViewableFields(deps, ctx, code);
+  return objectFields(deps, ctx, codeOf(object));
 }
 
 export function project<T extends object>(value: T, fields: Projection): Partial<T> {

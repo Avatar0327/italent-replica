@@ -7,7 +7,6 @@
 import { isUuid, type Tx, withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import type { z } from 'zod';
-import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
@@ -18,11 +17,10 @@ import {
   type IdpContext,
   idpScope,
   idpWriteContext,
+  type ModuleScope,
   listEnvelope,
-  type PermissionCheck,
   project,
   projectionOf,
-  replayChecks,
 } from './access.js';
 import {
   createKeyInfo,
@@ -35,9 +33,9 @@ import {
   loadKeyInfo,
   updateKeyInfo,
 } from './key-info-service.js';
+import { runIdpCommand } from './executor.js';
 import { keyInfoColumn, keyInfoScopeSql } from './key-info-scope.js';
 import * as input from './plan-input.js';
-import type { WriteContext } from './write-support.js';
 
 const BASE = '/api/tenant/idp';
 
@@ -97,40 +95,27 @@ function registerReads(router: Hono<TenantEnv>, deps: TenantRouteDeps, path: str
   });
 }
 
-interface Stored {
-  readonly view: KeyInfoRow;
-  readonly checks: PermissionCheck[];
-}
-
-async function runKeyInfoWrite(
-  c: Context<TenantEnv>,
-  deps: TenantRouteDeps,
-  ctx: IdpContext,
-  kind: KeyInfoKind,
-  spec: { status: 200 | 201; body: unknown; execute: (tx: Tx, w: WriteContext) => Promise<KeyInfoRow> },
-  deleting = false,
-) {
-  const scope = await idpScope(c, deps, ctx, kind);
-  const result = await runCommand(deps.db, ctx, {
-    id: c.req.header('idempotency-key'),
-    fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: spec.body },
-    execute: async (tx, commandId) => {
-      const checks: PermissionCheck[] = [];
-      const view = await spec.execute(tx, { ...ctx, commandId, scope, checks });
-      return { status: spec.status, body: { view, checks } satisfies Stored };
-    },
-  });
-  const { view, checks } = result.body as Stored;
-  await replayChecks(deps, ctx, checks);
-  await withTenant(deps.db, ctx.tenantId, async (tx) => {
-    // 删除按删除时的快照、其余按当前行复核范围（PR-A 同口径）
+/**
+ * 返回前（首次与重放，共用执行器 executor.ts）复核范围：删除按删除时的快照、其余按当前行（PR-A 同口径）；
+ * 范围外 404。响应按当前字段权限裁剪。
+ */
+const stillInScope = (ctx: IdpContext, kind: KeyInfoKind, deleting: boolean) =>
+  async function recheck(tx: Tx, scope: ModuleScope, view: KeyInfoRow) {
     const current = deleting ? view : await loadKeyInfo(tx, ctx.tenantId, KEY_INFO[kind], view.id);
     if (!current || !(await inScope(tx, scope, KEY_INFO[kind], current))) {
       throw new AppError('NOT_FOUND', `${KEY_INFO[kind].label}不存在`);
     }
-  });
-  if (!deleting) c.header('ETag', `"${view.revision}"`);
-  return c.json(project(view, await projectionOf(deps, ctx, kind)), result.status as 200 | 201);
+  };
+
+async function respondKeyInfo(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  ctx: IdpContext,
+  kind: KeyInfoKind,
+  result: { view: KeyInfoRow; status: number },
+) {
+  if (c.req.method !== 'DELETE') c.header('ETag', `"${result.view.revision}"`);
+  return c.json(project(result.view, await projectionOf(deps, ctx, kind)), result.status as 200 | 201);
 }
 
 function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps, route: (typeof ROUTES)[number]) {
@@ -141,33 +126,39 @@ function registerWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps, route: (
     requireNew(ctx);
     const body = await parseBody(c, route.create);
     await checkWriteFields(deps, ctx, kind, 'create', body);
-    return runKeyInfoWrite(c, deps, ctx, kind, {
+    const result = await runIdpCommand(c, deps, ctx, {
+      scope: await idpScope(c, deps, ctx, kind),
       status: 201,
       body,
       execute: (tx, w) => createKeyInfo(tx, w, spec, body),
+      recheck: stillInScope(ctx, kind, false),
     });
+    return respondKeyInfo(c, deps, ctx, kind, result);
   });
   router.patch(`${BASE}/${path}/:id`, async (c) => {
     const ctx = await idpWriteContext(c, deps, kind, 'update', 'update', 'detail', revision(c));
     const id = uuidParam(c);
     const body = await parseBody(c, route.patch);
     await checkWriteFields(deps, ctx, kind, 'update', body);
-    return runKeyInfoWrite(c, deps, ctx, kind, {
+    const result = await runIdpCommand(c, deps, ctx, {
+      scope: await idpScope(c, deps, ctx, kind),
       status: 200,
       body: { id, body },
       execute: (tx, w) => updateKeyInfo(tx, w, spec, id, body),
+      recheck: stillInScope(ctx, kind, false),
     });
+    return respondKeyInfo(c, deps, ctx, kind, result);
   });
   router.delete(`${BASE}/${path}/:id`, async (c) => {
     const ctx = await idpWriteContext(c, deps, kind, 'delete', 'delete', 'detail', revision(c));
     const id = uuidParam(c);
-    return runKeyInfoWrite(
-      c,
-      deps,
-      ctx,
-      kind,
-      { status: 200, body: { id }, execute: (tx, w) => deleteKeyInfo(tx, w, spec, id) },
-      true,
-    );
+    const result = await runIdpCommand(c, deps, ctx, {
+      scope: await idpScope(c, deps, ctx, kind),
+      status: 200,
+      body: { id },
+      execute: (tx, w) => deleteKeyInfo(tx, w, spec, id),
+      recheck: stillInScope(ctx, kind, true),
+    });
+    return respondKeyInfo(c, deps, ctx, kind, result);
   });
 }

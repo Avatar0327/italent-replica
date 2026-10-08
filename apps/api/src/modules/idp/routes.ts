@@ -8,7 +8,6 @@ import { IDP_APPROVAL_TYPES, type IdpObject, RULE_TEXT_SOURCES } from '@italent/
 import { and, eq, idpProcesses, idpTemplates, isUuid, sql, type Tx, withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import type { z } from 'zod';
-import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
@@ -27,13 +26,12 @@ import {
   project,
   type Projection,
   projectionOf,
-  type PermissionCheck,
   readableSql,
-  replayChecks,
   requireEditable,
   requireReadable,
   rowsOf,
 } from './access.js';
+import { runIdpCommand } from './executor.js';
 import * as input from './input.js';
 import { registerKeyInfoRoutes } from './key-info-routes.js';
 import { registerPlanRoutes } from './plan-routes.js';
@@ -115,16 +113,7 @@ interface WriteSpec<T> {
   present(result: T): Promise<unknown>;
 }
 
-/** 命令台账里存的结果：业务视图 + 本命令实际用到的权限（重放时复核，P2-2 / P2-3）。 */
-interface Stored<T> {
-  readonly view: T;
-  readonly checks: PermissionCheck[];
-}
-
-/**
- * 范围在事务外按当前权限解析，首次执行在事务内（行锁之后）复核；无论首次还是重放，返回前都按对象当前归属复核可写性、
- * 复核命令实际用到的嵌套写权限与查看权（AGENTS §10），响应按当前字段权限裁剪。
- */
+/** 流程 / 模板写入：共用执行器（executor.ts），返回前按当前字段权限裁剪。 */
 async function runIdpWrite<T extends { revision?: number }>(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
@@ -132,22 +121,9 @@ async function runIdpWrite<T extends { revision?: number }>(
   spec: WriteSpec<T>,
 ) {
   const scope = await idpScope(c, deps, ctx, spec.anchorObject);
-  const result = await runCommand(deps.db, ctx, {
-    id: c.req.header('idempotency-key'),
-    fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: spec.body },
-    execute: async (tx, commandId) => {
-      const checks: PermissionCheck[] = [];
-      const view = await spec.execute(tx, { ...ctx, commandId, scope, checks });
-      return { status: spec.status, body: { view, checks } satisfies Stored<T> };
-    },
-  });
-  const { view, checks } = result.body as Stored<T>;
-  // 先复核命令实际用到的权限（只看权限、不看数据），再按当前数据复核归属与引用：否则重放时引用对象的状态差别
-  // （如隐藏的流程停用 / 移走）会先于查看权门禁暴露出来（第 4 轮）
-  await replayChecks(deps, ctx, checks);
-  await withTenant(deps.db, ctx.tenantId, (tx) => spec.recheck(tx, scope, view));
+  const { view, status } = await runIdpCommand<T>(c, deps, ctx, { ...spec, scope });
   if (c.req.method !== 'DELETE' && view.revision !== undefined) c.header('ETag', `"${view.revision}"`);
-  return c.json((await spec.present(view)) as object, result.status);
+  return c.json((await spec.present(view)) as object, status as 200 | 201);
 }
 
 /** 流程 / 模板的当前范围锚点（不存在为 undefined）。 */

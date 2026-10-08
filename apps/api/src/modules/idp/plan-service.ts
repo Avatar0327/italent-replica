@@ -115,6 +115,16 @@ async function resolveTutor(
   explicit: string | null | undefined,
 ): Promise<string> {
   if (role === 'other') return explicit!;
+  // 带出源的查看权记入台账，重放时复核（P2-6）
+  const record = MODULE_OBJECTS.employmentRecord.code;
+  if (role === 'direct_manager' || role === 'indirect_manager') {
+    ctx.checks.push({ kind: 'source', objectCode: record, fields: ['directManagerId'] });
+  }
+  if (role === 'department_head' || role === 'department_hrbp') {
+    const field = role === 'department_head' ? 'personInChargeId' : 'hrbpId';
+    ctx.checks.push({ kind: 'source', objectCode: record, fields: ['departmentId'] });
+    ctx.checks.push({ kind: 'source', objectCode: MODULE_OBJECTS.organization.code, fields: [field] });
+  }
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
   /** 员工当前任职记录，须在操作人任职记录范围内（与任职记录接口同一可见判定，DEC-177）。 */
   const visibleRecord = async (person: string) => {
@@ -180,8 +190,10 @@ async function carryCommonGoals(tx: Tx, ctx: PlanWriteContext, plan: PlanRow, pr
       WHERE tenant_id = ${ctx.tenantId} AND template_id = ${plan.templateId}::uuid
       ORDER BY display_order, created_at, id`),
   );
+  if (!sees(projection, 'name') || !sees(projection, 'moduleId')) return;
+  const used = ['name', 'moduleId', 'measure', 'suggestion', 'displayOrder'].filter((f) => sees(projection, f));
+  if (goals.length) ctx.checks.push({ kind: 'view', object: 'commonGoal', fields: used, carry: true });
   for (const goal of goals) {
-    if (!sees(projection, 'name') || !sees(projection, 'moduleId')) continue;
     const values = {
       moduleId: goal.module_id,
       name: goal.name,
