@@ -186,6 +186,32 @@ export function valuesEqual(left: ExprValue, right: ExprValue, semantics: Expres
   return a.value === b.value;
 }
 
+/**
+ * 按值分组用的等价键（排名的分组范围，F-045）：与 valuesEqual 同口径——单选按选项值、日期格式文本按日期、
+ * 宽松模式下数字文本按数值（"2026" 与 2026 同组）。分组需要等价关系，而 = 对“两个写法不同的数字文本”
+ * （"2026" 与 "2026.0"）不传递：这里把它们归为同一组，其余情形与 = 一致。
+ */
+export function equalityKey(value: ExprValue, semantics: ExpressionSemantics): string {
+  if (value.kind === 'empty') return 'empty';
+  const plain = unwrapOption(value);
+  switch (plain.kind) {
+    case 'number':
+      return `n:${plain.value === 0 ? 0 : plain.value}`;
+    case 'boolean':
+      return `b:${plain.value}`;
+    case 'date':
+      return `d:${dateOrdinal(plain.value)}`;
+    case 'text': {
+      const date = parseDateText(plain.value);
+      if (date) return `d:${dateOrdinal(date)}`;
+      const parsed = semantics.textNumberEquality === 'loose' ? numericText(plain.value, semantics) : undefined;
+      return parsed === undefined ? `t:${plain.value}` : `n:${parsed === 0 ? 0 : parsed}`;
+    }
+    default:
+      return `t:${toText(plain)}`;
+  }
+}
+
 export function compare(
   operator: ComparisonOperator,
   left: ExprValue,

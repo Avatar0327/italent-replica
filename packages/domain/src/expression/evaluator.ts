@@ -218,6 +218,7 @@ export class Evaluator {
       rawArgs: node.args,
       evaluate: (child, recordFields) =>
         this.evaluate(child, recordFields ? { ...scope, records: [...scope.records, recordFields] } : scope),
+      variable: (name) => scope.vars.get(name),
       evaluateForSubject: (child, subject) =>
         this.forSubject(subject).evaluate(child, { vars: scope.vars, records: [], objects: scope.objects }),
       fail: failAt,

@@ -220,6 +220,11 @@ export function evaluateFormula(formula: string | Program, context: EvaluationCo
   }
   const invalidContext = validateContext(context.calendar);
   if (invalidContext) return { ok: false, failure: invalidContext };
+  return runProgram(program, context);
+}
+
+/** 已校验的语法树在已校验的上下文里求值（批量求值只校验一次上下文，不按对象重复构造时区格式器）。 */
+function runProgram(program: Program, context: EvaluationContext): EvaluationResult {
   try {
     return { ok: true, value: new Evaluator(context).run(program) };
   } catch (error) {
@@ -651,6 +656,7 @@ export function evaluateBatch(
   const { result: ordered, groups } = orderItems(items, { registry, fieldKind: context.fieldKind });
   if (!ordered.ok) return ordered;
   if (groups.length) return { ok: false, failure: cyclicFailure(groups, ordered.cycleMembers) };
+  const invalidContext = validateContext(context.calendar);
   const computed = new Map(subjects.map((subject) => [subject.id, {} as Record<string, ExprValue>]));
   const results: Record<string, Record<string, EvaluationResult>> = Object.fromEntries(
     subjects.map((subject) => [subject.id, {}]),
@@ -679,13 +685,9 @@ export function evaluateBatch(
         continue;
       }
       const reader = withComputed(subject, computed.get(subject.id)!, ordered.bindings);
-      const result = evaluateFormula(entry.program, {
-        ...context,
-        registry,
-        subject: reader,
-        ports,
-        rankingTables,
-      });
+      const result: EvaluationResult = invalidContext
+        ? { ok: false, failure: invalidContext }
+        : runProgram(entry.program, { ...context, registry, subject: reader, ports, rankingTables });
       results[subject.id]![field] = result;
       if (result.ok) computed.get(subject.id)![field] = result.value;
     }

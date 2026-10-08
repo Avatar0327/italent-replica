@@ -116,7 +116,17 @@ describe('R1 第 3 参数：是否型的各种写法一律过滤，假或空的�
   it('确定不是是否型（如 1 + 2、文本字段）：保存报错；旧 Program 直接求值仍是人人 OUT_OF_SCOPE', () => {
     expect(errorsOf('Ranking("排序号", person.score, 1 + 2)')).toEqual(['ARGUMENT_TYPE']);
     expect(errorsOf('Ranking("排序号", person.score, person.group)')).toEqual(['ARGUMENT_TYPE']);
-    expect(ranksOf('Ranking("排序号", person.score, person.group)')).toEqual([OUT, OUT]);
+    // 带类型目录时公式文本求值先过保存检查（报 ARGUMENT_TYPE）；已保存的旧 Program 直接求值保持旧结果
+    const parsed = parseFormula('Ranking("排序号", person.score, person.group)');
+    if (!parsed.ok) throw new Error('解析失败');
+    for (const typed of [true, false]) {
+      const results = [A, B].map((m) => valueOf(evaluateFormula(parsed.program, contextOf([A, B], m.id, typed))));
+      expect(results).toEqual([OUT, OUT]);
+    }
+    const typedText = valueOf(
+      evaluateFormula('Ranking("排序号", person.score, person.group)', contextOf([A, B], 'A', true)),
+    );
+    expect(typedText).toEqual({ code: 'ARGUMENT_TYPE' });
   });
 });
 
