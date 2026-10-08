@@ -1,6 +1,7 @@
 /**
- * 关键信息的范围谓词（IDP-R21 / R22；PR #115 第 2 轮 P2-1）：记录涉及的全部员工（带教双方）与组织（轮岗部门）都在范围内
- * 才可见。直接读取、列表、计划详情聚合与审计共用这一个谓词，任一方在范围外都和直接读取一样不可见。
+ * 关键信息的范围谓词（IDP-R21 / R22；PR #115 第 2 轮 P2-1 / P2-8）：记录涉及的全部员工（带教双方）、组织（轮岗部门）
+ * 与职位（按所属组织）都在范围内才可见。直接读取、列表、计划详情聚合与审计共用这一个谓词，任一方在范围外都和直接
+ * 读取一样不可见。
  */
 import { sql } from '@italent/db';
 import type { IdpObject } from '@italent/domain';
@@ -18,6 +19,8 @@ export interface KeyInfoSpec {
   readonly persons: readonly string[];
   /** 须在范围内的组织字段。 */
   readonly orgs: readonly string[];
+  /** 可空的职位字段：按职位所属组织判断（管理单元限制，IDP-R21，第 2 轮 P2-8）。 */
+  readonly positions: readonly string[];
   readonly duplicate: string;
   readonly label: string;
 }
@@ -31,6 +34,7 @@ export const KEY_INFO: Readonly<Record<KeyInfoKind, KeyInfoSpec>> = {
     columns: { tutorEmployeeId: 'tutor_employee_id', tuteeEmployeeId: 'tutee_employee_id', remark: 'remark', ...dated },
     persons: ['tuteeEmployeeId', 'tutorEmployeeId'],
     orgs: [],
+    positions: [],
     duplicate: 'IDP_TUTORSHIP_DUPLICATE',
     label: '带教信息',
   },
@@ -47,6 +51,7 @@ export const KEY_INFO: Readonly<Record<KeyInfoKind, KeyInfoSpec>> = {
     },
     persons: ['employeeId'],
     orgs: [],
+    positions: [],
     duplicate: 'IDP_CAREER_DUPLICATE',
     label: '职业发展信息',
   },
@@ -62,6 +67,7 @@ export const KEY_INFO: Readonly<Record<KeyInfoKind, KeyInfoSpec>> = {
     },
     persons: ['employeeId'],
     orgs: ['orgId'],
+    positions: ['positionId'],
     duplicate: 'IDP_WORK_SHIFT_DUPLICATE',
     label: '轮岗信息',
   },
@@ -78,9 +84,20 @@ export function keyInfoScopeSql(scope: ModuleScope, spec: KeyInfoSpec, value: (f
   const parts = [
     ...spec.persons.map((field) => scopeSql(scope, { person: value(field) })),
     ...spec.orgs.map((field) => scopeSql(scope, { org: value(field) })),
+    ...spec.positions.map(
+      (field) => sql`(${value(field)} IS NULL OR ${scopeSql(scope, { org: positionOrg(value(field)) })})`,
+    ),
   ];
   return sql`(${sql.join(parts, sql` AND `)})`;
 }
+
+/**
+ * 职位所属组织：取职位最新版本的组织（职位是组织 × 职务的实例，组织随版本记录，docs/02_业务建模/19 §2）。
+ * 在调用方的租户事务内求值（RLS 之外再按事务的租户显式限定）。
+ */
+const positionOrg = (position: SQL) => sql`(SELECT v.org_id FROM job_position_versions v
+  WHERE v.tenant_id = current_setting('app.tenant_id')::uuid AND v.object_id = ${position}
+  ORDER BY v.version_no DESC LIMIT 1)`;
 
 /** 表列（无别名）。 */
 export const keyInfoColumn = (spec: KeyInfoSpec) => (field: string) => sql.raw(spec.columns[field]!);
