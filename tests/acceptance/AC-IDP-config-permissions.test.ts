@@ -246,8 +246,10 @@ describe('审计（DEC-216）', () => {
       IDP_OBJECTS.templateModule.code,
       IDP_OBJECTS.commonGoal.code,
     ];
-    for (const objectType of types) {
-      const { items } = await audit.dataChanges(w.asAdmin, { objectType, limit: '50' });
+    // 写入侧：用“全部允许”的查看人核对每类对象都有日志（查看规则另测）
+    const all = auditApi(w.db, IDP_NOW.toISOString());
+    for (const objectType of [...types, IDP_OBJECTS.subProcess.code]) {
+      const { items } = await all.dataChanges(w.asAdmin, { objectType, limit: '50' });
       expect(items.length, objectType).toBeGreaterThan(0);
       for (const item of items) expect(item.app).toBe('个人发展计划');
     }

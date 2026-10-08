@@ -4,6 +4,7 @@ import { CONTRACT_FIELDS, CONTRACT_OBJECT } from '../contracts/rules.js';
  * 流程按审批类型隔离（DEC-017）；节点是动作开关集 + 消息规则数组（`14` §8.2）；时效字段只预留（DEC-035）。
  */
 import { MODULE_OBJECTS } from '../permission/module-actions.js';
+import { IDP_APP } from '../idp/catalog.js';
 import { PERSONNEL_OBJECT } from '../personnel/catalog.js';
 import { EMPLOYEE_EDITABLE_FIELDS, SUBSETS, type SubsetKind } from '../personnel/fields.js';
 
@@ -287,8 +288,11 @@ const employmentFormFields = [
 const personnelFormFields = [...new Set(Object.values(SUBSETS).flatMap((subset) => subset.fields.map((f) => f.code)))];
 const employeeInfoFormFields = EMPLOYEE_EDITABLE_FIELDS.filter((f) => !f.system).map((f) => f.code);
 
-/** employee_info：个人信息变更（员工信息主表），发起入口留待后续业务接入（DEC-116），尚无运行时适配器。 */
-export type ApprovalAdapterKind = 'employment' | 'personnel_change' | 'employee_info' | 'contract';
+/**
+ * employee_info：个人信息变更（员工信息主表），发起入口留待后续业务接入（DEC-116），尚无运行时适配器。
+ * idp：个人发展计划的子流程（R3-T07），PR-A 只登记类型供子流程引用与节点配置，运行时适配器随计划执行（PR-B）接入。
+ */
+export type ApprovalAdapterKind = 'employment' | 'personnel_change' | 'employee_info' | 'contract' | 'idp';
 export interface ApprovalTypeDefinition {
   readonly code: string;
   readonly name: string;
@@ -303,6 +307,9 @@ export interface ApprovalTypeDefinition {
   /** 是否开放审批中编辑（REQ-APV-003 R2）；员工信息类首版不做（DEC-105），配置与详情动作都按此判断。 */
   readonly approvalEdit: boolean;
 }
+
+/** 发展计划对象（IDP.Idp）：IDP 审批实例的业务对象，权限对象随计划执行（PR-B）登记。 */
+const IDP_PLAN_OBJECT = `${IDP_APP}.Idp`;
 
 const employmentType = (code: string, name: string, defaultProcessCode: string | null = null) =>
   ({
@@ -335,6 +342,23 @@ const contractType = (code: string, name: string, defaultProcessCode: string) =>
     approvalEdit: false,
   }) as const satisfies ApprovalTypeDefinition;
 
+/**
+ * IDP 子流程的三类审批流程（`28` IDP-R1；Q-M0-115② 子流程“名称（关联审批流程）”制定计划 1 / 中期回顾 2 / 末期回顾 3）。
+ * 原站没有标准流程编码（预置流程随 PR-B），表单字段与发起条件待计划执行接入后再定。
+ */
+const idpType = (code: string, name: string) =>
+  ({
+    code,
+    name,
+    objectCode: IDP_PLAN_OBJECT,
+    adapter: 'idp',
+    defaultProcessCode: null,
+    conditionFields: [],
+    formFields: [],
+    readonlyFields: [],
+    approvalEdit: false,
+  }) as const satisfies ApprovalTypeDefinition;
+
 export const APPROVAL_TYPES = {
   contract_create: contractType('contract_create', '新建合同', 'AddContractApproval'),
   contract_renew: contractType('contract_renew', '续签合同', 'RenewContractProcess'),
@@ -360,6 +384,9 @@ export const APPROVAL_TYPES = {
     readonlyFields: [],
     approvalEdit: false,
   },
+  idp_plan: idpType('idp_plan', '制定计划'),
+  idp_mid_review: idpType('idp_mid_review', '中期回顾'),
+  idp_final_review: idpType('idp_final_review', '末期回顾'),
   personnel_change: {
     code: 'personnel_change',
     name: '员工子集变更',

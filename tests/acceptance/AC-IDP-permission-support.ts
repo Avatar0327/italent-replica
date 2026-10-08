@@ -129,12 +129,29 @@ export async function idpOperator(world: PermissionWorld, options: OperatorOptio
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   const as = { user: user.id, tenant: world.tenant.id };
   let scopeRevision = 0;
-  /** 用户 × IDP 的组织范围；null 回到缺省（空）。 */
+  /**
+   * 用户 × IDP 的组织范围：独立应用只接受管理单元或缺省（permission/data-scope-admin.ts），按组织建一个含下级的
+   * 管理单元再指派；null 回到缺省（空）。
+   */
   const setOrg = async (orgId: string | null) => {
+    let body: unknown = { kind: 'default' };
+    if (orgId) {
+      const mou = await world.api.request('POST', `${BASE}/mous`, {
+        ...world.asAdmin,
+        ifMatch: 0,
+        body: {
+          code: `idp-mou-${randomUUID().slice(0, 6)}`,
+          name: 'IDP 管理单元',
+          orgRanges: [{ orgId, includeDescendants: true }],
+        },
+      });
+      expect(mou.status, await mou.clone().text()).toBe(201);
+      body = { kind: 'mou', mouId: ((await mou.json()) as { id: string }).id };
+    }
     const response = await world.api.request('PUT', `${BASE}/scopes/${user.id}/${IDP_APP}`, {
       ...world.asAdmin,
       ifMatch: scopeRevision,
-      body: orgId ? { kind: 'org_range', orgRanges: [{ orgId, includeDescendants: true }] } : { kind: 'default' },
+      body,
     });
     expect(response.status, await response.clone().text()).toBe(200);
     scopeRevision = ((await response.json()) as { revision: number }).revision;

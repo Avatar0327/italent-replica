@@ -104,6 +104,21 @@ describe('AC-IDP-03 被模板引用的流程不能改子流程顺序和开启方
     ]);
   });
 
+  it('引用它的模板删除后不再算被引用（删除的数据不参与判定），可以调整顺序', async () => {
+    const w = await idpWorld(testDb().db, 'idp03f');
+    const process = await w.process();
+    const template = await w.template(process.id);
+    const removed = await w.request('DELETE', `/templates/${template.id}`, { ifMatch: template.revision });
+    expect(removed.status, await removed.clone().text()).toBe(200);
+    const before = await w.read<ProcessView>(`/processes/${process.id}`);
+    expect(before.referenced).toBe(false);
+    const response = await w.request('PATCH', `/processes/${process.id}`, {
+      ifMatch: before.revision,
+      body: { subProcesses: [asInput(before)[0]!, asInput(before)[2]!, asInput(before)[1]!] },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+  });
+
   it('被模板引用的流程不能删除（409），未引用的可以删除', async () => {
     const w = await idpWorld(testDb().db, 'idp03e');
     const used = await w.process();
