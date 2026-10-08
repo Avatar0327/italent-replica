@@ -53,6 +53,7 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'TalentCenter.Dimension': { label: '指标', app: TALENT },
   'TalentCenter.TalentCriterionCategory': { label: '人才标准分类', app: TALENT },
   'TalentCenter.TalentCriterion': { label: '人才标准', app: TALENT },
+  'TalentCenter.TalentCriterionModelImage': { label: '潜力模型图', app: TALENT },
   'IDP.IDPProcess': { label: '发展计划流程', app: IDP },
   'IDP.SubProcess': { label: '子流程', app: IDP },
   'IDP.IDPTemplate': { label: '发展计划模板', app: IDP },
@@ -143,6 +144,11 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   potentialNote: '潜力说明',
   experienceNote: '经历说明',
   achievementNote: '成就说明',
+  modelImage: '潜力模型图',
+  filename: '文件名称',
+  contentType: '文件格式',
+  byteSize: '文件大小',
+  sha256: '文件哈希',
 };
 
 export function auditFieldLabel(field: string): string {

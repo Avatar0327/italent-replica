@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { initialTenantId } from '../demo/tenant.js';
 import { CategoryPanel } from './CategoryPanel.js';
 import { CriterionPanel } from './CriterionPanel.js';
@@ -7,6 +7,8 @@ import { DimensionCategoryPanel } from './DimensionCategoryPanel.js';
 import { DimensionPanel } from './DimensionPanel.js';
 import { LibraryPanel } from './LibraryPanel.js';
 import { text } from './messages.js';
+import type { ModelImageCommand } from './model-image-api.js';
+import { TalentTenantContext } from './TalentTenantContext.js';
 
 type Tab = keyof typeof text.tabs;
 const TABS: readonly Tab[] = [
@@ -23,6 +25,7 @@ export function TalentPage() {
   const [tenant, setTenant] = useState(initialTenantId);
   const [active, setActive] = useState(initialTenantId);
   const [tab, setTab] = useState<Tab>('libraries');
+  const modelImageCommands = useRef(new Map<string, ModelImageCommand>());
   return (
     <main>
       <h1>{text.title}</h1>
@@ -40,7 +43,11 @@ export function TalentPage() {
           {tab === 'descriptionTypes' && <DescriptionTypePanel key={active} tenantId={active} />}
           {tab === 'dimensions' && <DimensionPanel key={active} tenantId={active} />}
           {tab === 'categories' && <CategoryPanel key={active} tenantId={active} />}
-          {tab === 'criteria' && <CriterionPanel key={active} tenantId={active} />}
+          {tab === 'criteria' && (
+            <TalentTenantContext.Provider value={{ tenantId: active, modelImageCommands: modelImageCommands.current }}>
+              <CriterionPanel key={active} tenantId={active} />
+            </TalentTenantContext.Provider>
+          )}
         </>
       ) : (
         <form

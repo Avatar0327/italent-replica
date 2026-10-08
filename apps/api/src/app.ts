@@ -25,6 +25,7 @@ import { auditRequestContext } from './audit/request-context.js';
 import { registerAuditRoutes } from './audit/routes.js';
 import { captureCommandFailures } from './audit/capture.js';
 import { registerTalentRoutes } from './modules/talent/routes.js';
+import { MODEL_IMAGE_BODY_LIMIT } from './modules/talent/model-image-format.js';
 import { registerIdpRoutes } from './modules/idp/routes.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
@@ -66,6 +67,11 @@ export function createApp(deps: AppDeps = {}): Hono {
     '*',
     limitBody(DEFAULT_BODY_LIMIT, [
       ...PERMISSION_BODY_LIMITS,
+      {
+        method: 'POST',
+        path: /^\/api\/tenant\/talent\/criteria\/[^/]+\/model-image\/attachments\/[^/]+\/upload$/,
+        maxSize: MODEL_IMAGE_BODY_LIMIT,
+      },
       {
         method: 'POST',
         path: /^\/api\/tenant\/contracts\/imports(?:\/(?:preview|errors))?$/,
