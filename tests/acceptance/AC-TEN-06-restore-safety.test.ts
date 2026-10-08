@@ -199,7 +199,7 @@ describe('AC-TEN-06 恢复安全与对账（astra 复审回归）', () => {
     expect(await withPlatform(isolated, (tx) => tx.select().from(tenants))).toEqual([]);
 
     const occupied = await target();
-    await createTenant(occupied, { code: `occupied-${randomUUID().slice(0, 6)}`, name: '已有租户' }, cmd());
+    await createTenant(occupied, { code: `occupied-${randomUUID()}`, name: '已有租户' }, cmd());
     await expect(run(backup, occupied)).rejects.toEqual(
       expect.objectContaining({ name: 'BackupIntegrityError', reason: 'TARGET_NOT_EMPTY' }),
     );

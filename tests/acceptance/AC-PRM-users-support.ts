@@ -3,7 +3,7 @@
  * 权限接口走真实授权器；人员建档 / 入职走“全部允许”的业务接口（与 AC-PRM-scope-resolution 一致），
  * 只验证建档写入路径在同一事务里调用权限模块的用户端口。
  */
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import type { AdminRole } from '@italent/domain';
 import { expect } from 'vitest';
 import { addMember, BASE, type PermissionWorld } from './AC-PRM-support.js';
@@ -33,7 +33,7 @@ export interface EmployeeBody {
 }
 
 export function syntheticEmail(label: string): string {
-  return `${label}-${randomBytes(3).toString('hex')}@example.com`;
+  return `${label}-${randomUUID()}@example.com`;
 }
 
 /** 人员建档 / 入职的业务接口（全部允许）；时钟固定在 USERS_TODAY。 */

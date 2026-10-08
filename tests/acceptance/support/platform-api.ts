@@ -2,7 +2,7 @@
  * 平台运营层（R1-T17，REQ-PLT-001）验收测试的公共装配：平台运营身份 + 平台接口 /api/platform/*。
  * 平台接口与租户内权限隔离：只认平台运营身份，不看任何租户成员关系或管理员身份。
  */
-import { randomBytes } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { createUser, type Db, grantPlatformOperator, type User } from '@italent/db';
 import { cmd, type tenantApi } from './tenant-api.js';
 
@@ -10,7 +10,7 @@ export const PLATFORM = '/api/platform';
 
 /** 建一个全局账号并登记为平台运营身份。 */
 export async function seedOperator(db: Db, label = 'ops'): Promise<User> {
-  const suffix = randomBytes(3).toString('hex');
+  const suffix = randomUUID();
   const user = await createUser(
     db,
     { email: `${label}-${suffix}@example.com`, displayName: `${label} 平台运营` },
@@ -21,7 +21,7 @@ export async function seedOperator(db: Db, label = 'ops'): Promise<User> {
 }
 
 export async function newUser(db: Db, label: string): Promise<User> {
-  const suffix = randomBytes(3).toString('hex');
+  const suffix = randomUUID();
   return createUser(db, { email: `${label}-${suffix}@example.com`, displayName: label }, cmd());
 }
 
@@ -41,7 +41,7 @@ export async function provision(
   body: { firstAdminUserId: string; exceptionAdminUserId?: string; timezone?: string; [key: string]: unknown },
   idempotencyKey?: string,
 ): Promise<Response> {
-  const suffix = randomBytes(3).toString('hex');
+  const suffix = randomUUID();
   return api.request('POST', `${PLATFORM}/tenants`, {
     user: operator.id,
     body: { code: `t-${suffix}`, name: `开通租户${suffix}`, ...body },
