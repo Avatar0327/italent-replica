@@ -379,3 +379,29 @@ describe('第 3 轮 P2：复制对通用目标的查看权判定不依赖来源�
     },
   );
 });
+
+describe('第 3 轮同类实例：复制对模块字段的查看权判定不依赖来源模块的类型', () => {
+  it('看不到模块的 nodeSettings：只有基本信息模块的来源与带发展目标模块的来源同样 403，响应体一致', async () => {
+    const env = await world();
+    const { w, data } = env;
+    const call = admin(env).call;
+    const created = await call('POST', '/templates', {
+      ifMatch: 0,
+      body: { name: '只有基本信息的源模板', orgId: data.insideOrg, processId: data.inside.process.id },
+    });
+    expect(created.status, await created.clone().text()).toBe(201);
+    const basicOnly = (await created.json()) as TemplateView;
+    const op = await idpOperator(w, { orgId: data.insideOrg, hidden: { templateModule: ['nodeSettings'] } });
+    const before = await admin(env).templateNames();
+    const copy = async (source: TemplateView, name: string) => {
+      const response = await op.request('POST', `/templates/${source.id}/copy`, { ifMatch: 0, body: { name } });
+      return { status: response.status, body: await response.json() };
+    };
+    const fromBasic = await copy(basicOnly, '基本信息来源副本');
+    const fromGoal = await copy(data.inside.template, '目标模块来源副本');
+    expect(fromBasic.status).toBe(403);
+    expect(fromBasic.body).toMatchObject({ error: { details: { reason: 'IDP_COPY_HIDDEN_FIELDS' } } });
+    expect(fromGoal).toEqual(fromBasic);
+    expect(await admin(env).templateNames()).toEqual(before);
+  });
+});
