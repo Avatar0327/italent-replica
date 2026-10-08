@@ -180,8 +180,12 @@ def main():
                     ev.append(f"#{n} 新评论 {p['nc'] - o['nc']} 条")
                 if o["draft"] and not p["draft"]:
                     ev.append(f"#{n} 转为 Ready")
+            try:
+                paused_now = set(open(os.path.expanduser("~/.cache/italent-paused-prs")).read().split())
+            except Exception:
+                paused_now = set()
             for n in prev:
-                if n not in cur:
+                if n not in cur and n not in paused_now:
                     ev.append(f"#{n} 已合并或关闭")
         cx = codex_results()
         if cprev is not None:
