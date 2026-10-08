@@ -36,7 +36,6 @@ import {
   actor,
   type Admin,
   type Also,
-  asIs,
   audit360,
   email,
   fail,
@@ -112,17 +111,25 @@ async function auditRelation(tx: Tx, ctx: Writer, action: string, before: Relati
 type PersonRef = { personId?: string | undefined; person?: z.infer<typeof personInput> | undefined };
 
 /**
- * 选已有人员或手动录入（邮箱已存在时复用该人员）。精细化权限下只能用可见人员：选到看不到的人员 404；录入的邮箱
- * 属于看不到的人员或是新邮箱都一样 403 PERSON_NOT_AVAILABLE（不新建、不暴露存在性，第 3 轮 R2-P2-7）。
+ * 载荷引用的人员：选已有人员，或手动录入时按邮箱复用。精细化权限下只能用可见人员：选到看不到的人员 404；录入的
+ * 邮箱属于看不到的人员或是新邮箱都一样 403 PERSON_NOT_AVAILABLE（不新建、不暴露存在性，第 3 轮 R2-P2-7）。
+ * 返回 undefined = 录入的是新邮箱、可以新建。命令前（含幂等重放，第 4 轮 R3-P2-1）与命令内同一判定。
  */
-async function resolvePerson(tx: Tx, ctx: Survey360Context, ref: PersonRef): Promise<PersonRow> {
-  if (ref.personId) return visiblePerson(tx, ctx.admin, ref.personId);
+async function referencedPerson(tx: Tx, admin: Admin, ref: PersonRef): Promise<PersonRow | undefined> {
+  if (ref.personId) return visiblePerson(tx, admin, ref.personId);
   if (!ref.person) fail('VALIDATION_FAILED', '须选择人员或录入姓名与邮箱', 'PERSON_REQUIRED');
   const existing = await findPersonByEmail(tx, ref.person.email);
-  if (existing && (await personVisible(tx, ctx.admin, existing))) return existing;
-  requireCreatable(ctx.admin);
-  return existing ?? createPerson(tx, ctx, ref.person);
+  if (existing && (await personVisible(tx, admin, existing))) return existing;
+  requireCreatable(admin);
+  return undefined;
 }
+
+async function resolvePerson(tx: Tx, ctx: Survey360Context, ref: PersonRef): Promise<PersonRow> {
+  return (await referencedPerson(tx, ctx.admin, ref)) ?? createPerson(tx, ctx, ref.person!);
+}
+
+/** write() 的载荷资源复核：录入 / 选择的人员按当前范围判定（不新建）。 */
+const personRefs = async (tx: Tx, admin: Admin, ref: PersonRef) => void (await referencedPerson(tx, admin, ref));
 
 /** 录入 person 即隐式新建 360 人员：不论邮箱是否已存在都先判人员新增权限与字段（不暴露存在性）。 */
 const personAlso = (ref: PersonRef): readonly Also[] =>
@@ -373,6 +380,7 @@ export function registerRelationRoutes(module: Hono<TenantEnv>, deps: TenantRout
         fields: (input) => [input.personId ? 'appraiserPersonId' : 'appraiser', 'roleId'],
         also: personAlso,
         guard: objectGuard(id, objectId),
+        refs: personRefs,
         status: 201,
       },
     );
@@ -536,6 +544,7 @@ function registerObjectCreation(module: Hono<TenantEnv>, deps: TenantRouteDeps):
         fields: 'body', // personId / person、questionnaireIds
         also: personAlso,
         guard: guarded(id),
+        refs: personRefs,
         status: 201,
       },
     );
@@ -814,8 +823,11 @@ function importAlso(input: ImportInput): readonly Also[] {
   return [create, { need: { object: 'person', operation: 'update' }, fields: fields.filter((f) => f !== 'email') }];
 }
 
-/** 整批校验（AGENTS.md §10「批量」）：评价对象须在活动内且可见；精细化权限下行内人员须是可见的已有人员。 */
-async function importErrors(tx: Tx, admin: Admin, activityId: string, input: ImportInput) {
+/**
+ * 整批校验（AGENTS.md §10「批量」）：评价对象须在活动内且可见；精细化权限下行内人员须是可见的已有人员。
+ * removed = 命令前（含幂等重放）的范围复核：已移除的评价对象按移除前判定可见，重放仍返回原回执（第 4 轮 R3-P2-1）。
+ */
+async function importErrors(tx: Tx, admin: Admin, activityId: string, input: ImportInput, removed = false) {
   const errors: { row: number; code: string; details: { reason: string } }[] = [];
   const objects = new Map<number, string>();
   const error = (index: number, reason: string) =>
@@ -824,8 +836,8 @@ async function importErrors(tx: Tx, admin: Admin, activityId: string, input: Imp
     const [object] = rows<{ id: string }>(
       await tx.execute(sql`SELECT o.id FROM survey360_objects o JOIN survey360_people p
         ON p.tenant_id = o.tenant_id AND p.id = o.person_id
-        WHERE o.activity_id = ${activityId}::uuid AND NOT o.removed AND lower(p.email) = lower(${row.objectEmail})
-          ${filterOf(admin)}`),
+        WHERE o.activity_id = ${activityId}::uuid ${removed ? sql`` : sql`AND NOT o.removed`}
+          AND lower(p.email) = lower(${row.objectEmail}) ${filterOf(admin)} LIMIT 1`),
     );
     if (!object) error(index, 'OBJECT_NOT_FOUND');
     else objects.set(index, object.id);
@@ -837,6 +849,31 @@ async function importErrors(tx: Tx, admin: Admin, activityId: string, input: Imp
   }
   return { errors, objects };
 }
+
+function requireValidImport(errors: { row: number; code: string; details: { reason: string } }[]): void {
+  if (errors.length) fail('VALIDATION_FAILED', '导入数据有误，整批未导入', 'IMPORT_INVALID', { errors });
+}
+
+/**
+ * 导入的载荷资源复核（第 4 轮 R3-P2-1）：精细化权限生效时，每行的评价对象与评价者按当前人员范围判定，与命令内同一
+ * 校验、同一回执；未生效时人员不受范围约束，整批校验只在命令内做。
+ */
+const importRefs = (activityId: string) => async (tx: Tx, admin: Admin, input: ImportInput) => {
+  if (admin.people) requireValidImport((await importErrors(tx, admin, activityId, input, true)).errors);
+};
+
+/** 导入回执：行号与处理状态是协议键，关系 ID 按评价关系的 id 字段裁剪（不再原样返回，第 4 轮 R3-P2-1）。 */
+const importView: Present = async (
+  viewer,
+  body: { receipts: { row: number; status: string; relationId: string }[] },
+) => {
+  const fields = await viewer.fields('relation');
+  return {
+    receipts: body.receipts.map(({ relationId, ...receipt }) =>
+      !fields || fields.has('id') ? { ...receipt, relationId } : receipt,
+    ),
+  };
+};
 
 function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.post('/activities/:id/appraisers/import', (c) => {
@@ -850,7 +887,7 @@ function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
         const activity = await requireActivity(tx, ctx.admin, id, true);
         // 先整批校验，再写入：任一行不合法整批失败（AGENTS.md §10「批量」）
         const { errors, objects } = await importErrors(tx, ctx.admin, id, input);
-        if (errors.length) fail('VALIDATION_FAILED', '导入数据有误，整批未导入', 'IMPORT_INVALID', { errors });
+        requireValidImport(errors);
         const receipts = [];
         let access: Awaited<ReturnType<typeof syncAccess>> | undefined;
         for (const [index, row] of input.rows.entries()) {
@@ -877,12 +914,13 @@ function registerImport(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
         fields: () => ['appraiser', 'roleId'],
         also: importAlso,
         guard: guarded(id),
+        refs: importRefs(id),
         // 选择“同步”时需要员工信息查看权：命令前（含幂等重放）同样校验
         preflight: async () => {
           const body = (await jsonOrEmpty(c)) as { sync?: unknown } | null;
           if (body?.sync === true) await routeEmployeeScope(c, deps);
         },
-        present: asIs, // 回执只有行号、状态、关系 ID
+        present: importView,
       },
     );
   });

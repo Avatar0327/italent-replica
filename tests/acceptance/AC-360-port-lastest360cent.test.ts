@@ -104,10 +104,10 @@ describe('Lastest360Cent 数据源', () => {
     expect(question.ok && question.value.kind === 'number' ? Number(question.value.value.toFixed(2)) : question).toBe(
       3.81,
     );
-    // 没参加 360 的员工：空值（语义以 semantics.ts 为准，本任务不改）
+    // 没参加 360 的员工：空值（语义以 semantics.ts 为准，本任务不改；F-033 起空值带来源类型，DEC-270②）
     expect(evaluate(`Lastest360Cent(360结果.问卷-他评总分)`, port, s.F)).toEqual({
       ok: true,
-      value: { kind: 'empty' },
+      value: { kind: 'empty', of: 'number' },
     });
   });
 

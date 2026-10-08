@@ -3,11 +3,14 @@
  * （owner_user_id）与被授权的活动。不可见的活动一律按不存在处理（404），不泄露是否存在。
  */
 import { sql, type Tx, withTenant } from '@italent/db';
+import { PERSONNEL_OBJECT } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../../routes.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
+import { scopeSql } from '../permission/module-access.js';
 import { type Admin, allActivitiesOf, BUTTONS, can, fail, finePermission, isHolder, OBJECTS, rows } from './context.js';
 import { loadPerson, personVisible } from './people.js';
+import { employeeScope } from './sync.js';
 
 // 360 对象登记进权限对象目录（身份对象权限配置校验、按钮判定、数据范围按对象所属应用取）
 for (const object of Object.values(OBJECTS)) registerObjectDefinition(object);
@@ -107,7 +110,7 @@ export async function requireVisibleObject(
   return object;
 }
 
-type AuditDeps = Pick<TenantRouteDeps, 'db' | 'authorize'>;
+type AuditDeps = Pick<TenantRouteDeps, 'db' | 'authorize' | 'clock'>;
 type Viewer = { tenantId: string; userId: string; timezone?: string };
 
 /**
@@ -116,7 +119,8 @@ type Viewer = { tenantId: string; userId: string; timezone?: string };
  * - activity：查看人可见的活动编号集合（子查询）；
  * - relation：活动内对象（评价对象、评价关系、确认单、答卷）——同上，且精细化生效时一律不可见（日志带人员信息）；
  * - person：人员——持“全部活动”或精细化权限关闭（开启时不经审计看到范围外人员）；
- * - sync：同步冲突——另须“从系统管理中同步人员信息”按钮。
+ * - sync：同步冲突——另须“从系统管理中同步人员信息”按钮与员工信息查看权，并且只给冲突员工在查看人**当前**员工
+ *   信息数据范围内的日志（与冲突清单同一 .list 范围、同一谓词，第 4 轮 R3-P2-2）：返回范围内员工编号的子查询。
  * 没有 360 身份返回 null（看不到任何 360 日志），被评价人与评价者因此不能经审计反推评价者身份。
  */
 export function survey360AuditScope(kind: 'activity' | 'relation' | 'person' | 'sync') {
@@ -126,8 +130,14 @@ export function survey360AuditScope(kind: 'activity' | 'relation' | 'person' | '
       const allActivities = await allActivitiesOf(tx, deps, tenant);
       const restricted = !allActivities && (await finePermission(tx));
       if (kind === 'person') return restricted ? null : sql`true`;
-      if (kind === 'sync')
-        return !restricted && (await can(tx, deps, tenant, 'person', 'view', BUTTONS.sync)) ? sql`true` : null;
+      if (kind === 'sync') {
+        if (restricted || !(await can(tx, deps, tenant, 'person', 'view', BUTTONS.sync))) return null;
+        const scope = await employeeScope(tx, deps, tenant, `${PERSONNEL_OBJECT}.list`);
+        return scope
+          ? sql`SELECT e.id::text FROM employment_employees e WHERE e.tenant_id = ${ctx.tenantId}::uuid
+            AND ${scopeSql(scope, { person: sql`e.id` })}`
+          : null;
+      }
       if (kind === 'relation' && restricted) return null;
       return sql`SELECT a.id::text FROM survey360_activities a WHERE a.tenant_id = ${ctx.tenantId}::uuid
         AND ${activityVisibleSql({ userId: ctx.userId, allActivities })}`;

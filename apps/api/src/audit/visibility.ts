@@ -206,13 +206,16 @@ export const APPROVAL_FLOW_FIELDS = [
 /**
  * R3-T03：360 日志按真实对象判定（第 3 轮 R2-P2-4）——先要该 360 对象的查看权，再按该对象的查看字段裁剪；可见条件
  * 与接口同一判定（survey360/access.ts）：活动按活动可见；评价对象 / 评价关系 / 确认单按评价关系对象、答卷按答卷
- * 对象，且活动可见、精细化权限生效时一律不可见；人员按人员对象（精细化生效时不可见）；同步冲突另须同步按钮，只展示
- * 冲突协议字段；评价角色 / 设置、套卷有对象查看权即可见。活动内对象的写入一律在 after 里带 activityId。
+ * 对象，且活动可见、精细化权限生效时一律不可见；人员按人员对象（精细化生效时不可见）；同步冲突另须同步按钮与员工
+ * 信息查看权、冲突员工在查看人当前员工范围内（第 4 轮 R3-P2-2），只展示冲突协议字段；评价角色 / 设置、套卷有对象
+ * 查看权即可见。活动内对象的写入一律在 after 里带 activityId，同步冲突的 after 带 employeeId。
  */
 const S360 = survey360.SURVEY360_OBJECTS;
 const inVisibleActivity: Rule['visible'] = (_scope, row, _viewer, { extra }) =>
   extra ? sql`COALESCE(${row.after}->>'activityId', '') IN (${extra})` : sql`false`;
 const byResolve: Rule['visible'] = (_scope, _row, _viewer, { extra }) => extra ?? sql`false`;
+const byConflictEmployee: Rule['visible'] = (_scope, row, _viewer, { extra }) =>
+  extra ? sql`COALESCE(${row.after}->>'employeeId', '') IN (${extra})` : sql`false`;
 const survey360Rules: readonly Rule[] = [
   {
     types: ['survey360-activity'],
@@ -259,7 +262,7 @@ const survey360Rules: readonly Rule[] = [
       'revision',
     ],
     resolve: survey360AuditScope('sync'),
-    visible: byResolve,
+    visible: byConflictEmployee,
   },
   { types: ['survey360-role', 'survey360-settings'], objectCode: S360.settings.code, visible: () => sql`true` },
   {

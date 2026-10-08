@@ -4,6 +4,8 @@
  * 第 3 轮（总编排补充）：每个路由声明对象、操作、按钮与写字段来源，统一接 module-route-access.ts 的公共守卫——
  * 路由层（命令前，含幂等重放）objectContext / button / requestScope / writeFields，命令事务内用 authorizeInTransaction
  * 按同一对象 / 按钮重验；返回前（新请求与重放同一路径）按请求人当时的权限复核并裁剪响应（AGENTS.md §10「权限」）。
+ * 第 4 轮（DEC-297③）：载荷引用的资源（人员、导入行的评价对象与评价者、上级、挂接目标）同样在命令前按当前范围
+ * 复核（refs），命中台账的幂等重放也经过，与新命令同一判定、同一错误码。
  */
 import { pgErrorCode, sql, type Tx, withTenant } from '@italent/db';
 import { buttonResource, survey360, tenantLocalDate } from '@italent/domain';
@@ -229,7 +231,7 @@ export const trimAs =
   async (viewer, body: unknown) =>
     trimBody(await viewer.fields(object), body);
 
-/** 不按 360 对象字段裁剪的回执（授权两栏的账号信息、导入行回执），用处逐路由写明原因。 */
+/** 不按 360 对象字段裁剪的回执（授权两栏的账号信息，不是 360 对象），用处逐路由写明原因。 */
 export const asIs: Present = async (_viewer, body: unknown) => body;
 
 /**
@@ -270,6 +272,12 @@ export interface WriteOptions<T> {
   /** 资源级校验（活动可见、对象 / 人员可见、套卷本人）：命令前与命令事务内各执行一次，重放同样经过。 */
   readonly guard?: (tx: Tx, admin: Admin) => Promise<void>;
   /**
+   * 载荷引用的资源（第 4 轮 R3-P2-1）：解析请求体、校验字段编辑权之后，进入命令执行器之前按请求人当前的范围复核
+   * ——命中台账的幂等重放同样经过，与新命令同一判定、同一错误码（不返回历史结果）；命令事务内由业务代码按同一判定
+   * 重验。已移除的资源按移除前判定可见（与删除类重放同一口径）。
+   */
+  readonly refs?: (tx: Tx, admin: Admin, input: T) => Promise<void>;
+  /**
    * 命令前（含幂等重放）、事务外的额外校验：复用组织员工侧的路由鉴权（objectContext / requestScope 自己开事务），
    * 放在功能权限与资源校验之后执行；命令事务内由业务代码按同一对象重验。
    */
@@ -306,10 +314,10 @@ async function routeFields<T>(
 }
 
 /**
- * 写命令：路由层判功能权限与按钮，在独立事务里校验资源（含幂等重放，结果不会绕过当前权限返回），解析请求体后
- * 按声明的写字段校验字段编辑权限，再进入命令执行器（业务写 + 审计 + 命令台账同一事务，AGENTS.md §10），事务内
- * 重验功能权限与资源。返回前（新请求与重放同一路径）按请求人当时的权限复核并裁剪响应（第 3 轮 R2-P2-2）。
- * 请求体在资源校验之后才解析，范围外的资源不会因请求体不合法而暴露为 400。
+ * 写命令：路由层判功能权限与按钮，在独立事务里校验路径资源（含幂等重放，结果不会绕过当前权限返回），解析请求体后
+ * 按声明的写字段校验字段编辑权限、按当前范围复核载荷引用的资源，再进入命令执行器（业务写 + 审计 + 命令台账同一
+ * 事务，AGENTS.md §10），事务内重验功能权限与资源。返回前（新请求与重放同一路径）按请求人当时的权限复核并裁剪
+ * 响应（第 3 轮 R2-P2-2）。请求体在路径资源校验之后才解析，范围外的路径资源不会因请求体不合法而暴露为 400。
  */
 export async function write<T>(
   c: C,
@@ -333,6 +341,8 @@ export async function write<T>(
   const input = parse(schema, await jsonOrEmpty(c));
   const also = options.also?.(input) ?? [];
   await routeFields(c, deps, route, options, input, also);
+  const refs = options.refs;
+  if (refs) await withTenant(deps.db, tenant.tenantId, (tx) => refs(tx, admin, input));
   const result = await runCommand(deps.db, tenant, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, revision: expectedRevision, input },

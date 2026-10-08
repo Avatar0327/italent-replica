@@ -53,8 +53,10 @@ export interface StandardBackfill {
 /**
  * 存量租户回补标准身份（DEC-289③）：开通早于新增标准身份（如 360 三类身份）的租户，按 STANDARD_PROFILES 只补租户里
  * 还没有该编码的（与开通同一安装函数，同样按对象目录校验、逐个写身份审计）。同编码已是标准身份跳过
- * （ALREADY_INSTALLED）；租户手工建过同编码身份不覆盖、不合并、不改其对象权限（CODE_TAKEN，由租户身份管理员改编码后
- * 再执行一次）。新装身份加入有效租户管理员的可授权业务身份。重复执行不新建任何行。
+ * （ALREADY_INSTALLED）；租户手工建过同编码身份不覆盖、不合并、不改其对象权限（CODE_TAKEN）。身份编码建后不能改、
+ * 身份也不能删，所以这个标准身份不会再由回补装入，租户身份管理员可二选一：在身份管理里按标准身份
+ * （STANDARD_PROFILES）的对象权限调整这条自定义身份后继续使用；或另建一个其他编码的自定义身份按同样配置，在用户
+ * 授权里改授并撤销旧授权。新装身份加入有效租户管理员的可授权业务身份。重复执行不新建任何行。
  */
 export async function installMissingStandardProfiles(tx: Tx, write: PlatformWriteContext): Promise<StandardBackfill> {
   const existing = await tx

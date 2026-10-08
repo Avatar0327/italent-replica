@@ -2,10 +2,10 @@
  * Lastest360Cent 的真实数据源（R3-T00 端口 Survey360Port；`26` §3.5 TR-R28、§8.1）。
  * 使用方（盘点、继任等）按批次预读：传入本次计算的员工与查看人对员工的数据范围，返回同步读取器。
  * - 员工 → 挂接的 360 人员（DEC-030：换挂邮箱不换人员，历史结果仍归属该人，AC-360-12）；
- * - “最近一次”按 DEC-262：只取**已结束（停用）且该对象的报告已生成**的活动（报告生成时间不早于本次结束时间），
- *   进行中或重新启用的活动不计；按结束时间倒序，结束时间相同按报告生成时间倒序。引擎按记录的 startAt 取最近，
- *   故 startAt 填活动结束时间，同一结束时间的记录按报告生成时间倒序排在前面（引擎取同值中第一个有分的）；
- *   R3-T00 的“盘点项目结束时间前”边界同样作用于结束时间。PR-A 尚无报告生成能力，端口按资格条件返回空；
+ * - “最近一次”按 DEC-262：只给**已结束（停用）且该对象的报告已生成**的活动（报告生成时间不早于本次结束时间），
+ *   进行中或重新启用的活动不计；每条记录带活动结束时间、报告生成时间与活动标识（F-033 端口契约 Survey360Record），
+ *   由引擎按结束时间倒序、结束时间相同按报告生成时间倒序取最近一次，“盘点项目结束时间前”的边界作用于结束时间。
+ *   PR-A 尚无报告生成能力，端口按资格条件返回空；
  * - 用最新计分批次；已删除活动、已移除的评价对象不返回；
  * - 只有聚合分（问卷 / 维度 / 题目 × 自评 / 他评 / 角色），没有任何评价者标识与逐人分数；
  * - 查看人范围外、或未预读的员工返回 forbidden（不回落为“无数据”）。空值语义以 semantics.ts 为准（本任务不改）。
@@ -23,7 +23,9 @@ interface ScoreRow {
   employee_id: string;
   activity_id: string;
   activity_name: string;
+  started_at: Date | string | null;
   ended_at: Date | string;
+  report_generated_at: Date | string;
   questionnaire_id: string;
   questionnaire_name: string;
   level: 'questionnaire' | 'dimension' | 'question';
@@ -41,6 +43,8 @@ export interface Survey360PortInput {
   readonly scope: ModuleScope;
 }
 
+const at = (value: Date | string) => (value instanceof Date ? value : new Date(value));
+
 /** 一个员工的 360 记录：每个活动 × 套卷先给问卷级（总分、各角色分），再给维度级、题目级。 */
 function recordsOf(scores: readonly ScoreRow[]): Survey360Record[] {
   const groups = new Map<string, ScoreRow[]>();
@@ -51,7 +55,12 @@ function recordsOf(scores: readonly ScoreRow[]): Survey360Record[] {
   const records: Survey360Record[] = [];
   for (const group of groups.values()) {
     const first = group[0]!;
-    const startAt = first.ended_at instanceof Date ? first.ended_at : new Date(first.ended_at);
+    const times = {
+      ...(first.started_at ? { startAt: at(first.started_at) } : {}),
+      endAt: at(first.ended_at),
+      reportGeneratedAt: at(first.report_generated_at),
+      activityId: first.activity_id,
+    };
     const base = {
       ...EMPTY_RECORD,
       [F.activityName]: first.activity_name,
@@ -60,11 +69,11 @@ function recordsOf(scores: readonly ScoreRow[]): Survey360Record[] {
     const pick = (level: string, scope: string, itemId: string | null = null) =>
       group.find((s) => s.level === level && s.scope === scope && s.item_id === itemId)?.score ?? null;
     const totals = { [F.selfTotal]: pick('questionnaire', 'self'), [F.otherTotal]: pick('questionnaire', 'other') };
-    records.push({ fields: { ...base, ...totals }, startAt });
+    records.push({ fields: { ...base, ...totals }, ...times });
     for (const role of group.filter((s) => s.level === 'questionnaire' && s.scope === 'role'))
       records.push({
         fields: { ...base, ...totals, [F.roleName]: role.role_name, [F.roleScore]: role.score },
-        startAt,
+        ...times,
       });
     for (const level of ['dimension', 'question'] as const) {
       const [nameKey, selfKey, otherKey] =
@@ -79,9 +88,9 @@ function recordsOf(scores: readonly ScoreRow[]): Survey360Record[] {
           [selfKey]: pick(level, 'self', itemId),
           [otherKey]: pick(level, 'other', itemId),
         };
-        records.push({ fields: item, startAt });
+        records.push({ fields: item, ...times });
         for (const role of group.filter((s) => s.level === level && s.scope === 'role' && s.item_id === itemId))
-          records.push({ fields: { ...item, [F.roleName]: role.role_name, [F.roleScore]: role.score }, startAt });
+          records.push({ fields: { ...item, [F.roleName]: role.role_name, [F.roleScore]: role.score }, ...times });
       }
     }
   }
@@ -101,7 +110,8 @@ export async function loadSurvey360Port(tx: Tx, input: Survey360PortInput): Prom
   const visible = [...allowed];
   const scores = visible.length
     ? rows<ScoreRow>(
-        await tx.execute(sql`SELECT p.employee_id, a.id AS activity_id, a.name AS activity_name, a.ended_at,
+        await tx.execute(sql`SELECT p.employee_id, a.id AS activity_id, a.name AS activity_name, a.started_at,
+            a.ended_at, o.report_generated_at,
             q.id AS questionnaire_id, q.name AS questionnaire_name, sc.level, sc.item_id,
             COALESCE(d.name, qu.text) AS item_name, sc.scope, ro.name AS role_name, sc.score
           FROM survey360_people p

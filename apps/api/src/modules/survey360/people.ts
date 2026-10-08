@@ -76,7 +76,10 @@ export async function findPersonByEmail(tx: Tx, value: string): Promise<PersonRo
   return row;
 }
 
-/** 上级须存在；精细化权限下还须可见（看不到与不存在同一结果，不暴露存在性）。 */
+/**
+ * 上级须存在；精细化权限下还须可见（看不到与不存在同一结果，不暴露存在性）。编辑 / 新建人员的载荷资源复核
+ * （命令前，含幂等重放，第 4 轮 R3-P2-1）与命令内同一判定。
+ */
 async function requireSuperior(tx: Tx, id: string | null | undefined, self?: string, admin?: Admin) {
   if (!id) return;
   if (id === self) fail('VALIDATION_FAILED', '上级不能是本人', 'SUPERIOR_SELF');
@@ -289,6 +292,7 @@ function registerPeopleWrites(module: Hono<TenantEnv>, deps: TenantRouteDeps): v
         need: { object: 'person', operation: 'create' },
         fields: 'body',
         guard: async (_tx, admin) => requireCreatable(admin),
+        refs: (tx, admin, input) => requireSuperior(tx, input.superiorPersonId, undefined, admin),
         status: 201,
       },
     ),
@@ -308,6 +312,7 @@ function registerPeopleWrites(module: Hono<TenantEnv>, deps: TenantRouteDeps): v
         need: { object: 'person', operation: 'update' },
         fields: 'body',
         guard: async (tx, admin) => void (await visiblePerson(tx, admin, id)),
+        refs: (tx, admin, input) => requireSuperior(tx, input.superiorPersonId, id, admin),
       },
     );
   });
