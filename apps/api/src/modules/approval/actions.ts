@@ -392,13 +392,16 @@ export async function rejectToPreviousTask(
   const blocked = await blindReview(tx, scene, viewable);
   if (blocked) return blocked;
   await assertNotSelf(tx, run, ctx.userId, node);
-  assertNotAddSigner(await loadTasks(tx, ctx.tenantId, run.instance.id), task);
+  const tasks = await loadTasks(tx, ctx.tenantId, run.instance.id);
+  assertNotAddSigner(tasks, task);
   if (node.rejectCommentRequired && !input.comment?.trim()) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_COMMENT_REQUIRED', '本节点驳回时必须填写意见');
   }
   const previous = run.version.nodes[index - 1]!;
   await closeTask(tx, ctx, task.id, 'rejected', input.comment);
   await cancelPending(tx, ctx, run.instance.id);
+  // DEC-124：与跳转一样重置有效历史边界，上一步的办理人重新办理，不沿用驳回前的同意（第 3 轮 R2-6）
+  startHistoryAfter(run, tasks);
   await appendLog(tx, ctx, run.instance, {
     event: 'reject_previous',
     nodeKey: node.key,
