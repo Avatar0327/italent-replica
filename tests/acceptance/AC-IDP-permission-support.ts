@@ -171,8 +171,27 @@ export async function idpOperator(world: PermissionWorld, options: OperatorOptio
     );
     expect(response.status, await response.clone().text()).toBe(200);
   };
+  /** 事后把某个对象的部分字段改为不可见（其余字段、数据操作与按钮照旧全给）。 */
+  const hideFields = async (key: IdpObjectKey, hidden: readonly string[]) => {
+    const definition = IDP_OBJECTS[key];
+    const response = await setObjectPermission(
+      world,
+      profile,
+      {
+        dataOperations: { create: true, update: true, delete: true },
+        fields: definition.fields.map((field) => ({
+          fieldCode: field.code,
+          view: !hidden.includes(field.code),
+          edit: !field.system && !hidden.includes(field.code),
+        })),
+        buttons: definition.buttons.map((button) => ({ buttonCode: button.code, level: button.level })),
+      },
+      definition.code,
+    );
+    expect(response.status, await response.clone().text()).toBe(200);
+  };
   if (options.orgId) await setOrg(options.orgId);
   const request = (method: string, path: string, extra: Parameters<typeof world.api.request>[2] = {}) =>
     world.api.request(method, `${IDP_BASE}${path}`, { ...as, ...extra });
-  return { profile, user, as, request, setOrg, setButtons, revokeWrite };
+  return { profile, user, as, request, setOrg, setButtons, revokeWrite, hideFields };
 }

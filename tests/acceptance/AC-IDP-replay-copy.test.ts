@@ -405,3 +405,149 @@ describe('第 3 轮同类实例：复制对模块字段的查看权判定不依�
     expect(await admin(env).templateNames()).toEqual(before);
   });
 });
+
+describe('第 4 轮 P2：复制先判继承字段的查看权，再用这些字段做校验', () => {
+  /** 三个源模板，各引用一条流程：启用且可见 / 停用 / 移出操作人可见范围。 */
+  async function sourcesByProcessState(env: World) {
+    const { data } = env;
+    const call = admin(env).call;
+    const approval = planApproval(data);
+    const make = async (label: string) => {
+      const process = await call('POST', '/processes', {
+        ifMatch: 0,
+        body: { name: `${label}流程`, orgId: data.insideOrg, subProcesses: [subProcessBody(approval)] },
+      });
+      expect(process.status, await process.clone().text()).toBe(201);
+      const processView = (await process.json()) as ProcessView;
+      const template = await call('POST', '/templates', {
+        ifMatch: 0,
+        body: { name: `${label}源模板`, orgId: data.insideOrg, processId: processView.id },
+      });
+      expect(template.status, await template.clone().text()).toBe(201);
+      return { process: processView, template: (await template.json()) as TemplateView };
+    };
+    const enabled = await make('启用');
+    const disabled = await make('停用');
+    const hidden = await make('移走');
+    const current = (await (await call('GET', `/processes/${disabled.process.id}`)).json()) as ProcessView;
+    const off = await call('PATCH', `/processes/${disabled.process.id}`, {
+      ifMatch: current.revision,
+      body: { enabled: false },
+    });
+    expect(off.status, await off.clone().text()).toBe(200);
+    await admin(env).move('processes', hidden.process.id, data.outsideOrg);
+    return { enabled, disabled, hidden };
+  }
+
+  async function copyOutcome(op: Awaited<ReturnType<typeof idpOperator>>, source: TemplateView, name: string) {
+    const response = await op.request('POST', `/templates/${source.id}/copy`, { ifMatch: 0, body: { name } });
+    return { status: response.status, body: await response.json() };
+  }
+
+  it('看不到源模板的 processId：流程启用 / 停用 / 不可见三种状态都同样 403 IDP_COPY_HIDDEN_FIELDS，响应体一致', async () => {
+    const env = await world();
+    const { w, data } = env;
+    const sources = await sourcesByProcessState(env);
+    const op = await idpOperator(w, { orgId: data.insideOrg, hidden: { template: ['processId'] } });
+    const before = await admin(env).templateNames();
+    const outcomes = [
+      await copyOutcome(op, sources.enabled.template, '副本一'),
+      await copyOutcome(op, sources.disabled.template, '副本二'),
+      await copyOutcome(op, sources.hidden.template, '副本三'),
+    ];
+    expect(outcomes[0]!.status).toBe(403);
+    expect(outcomes[0]!.body).toMatchObject({
+      error: { code: 'FORBIDDEN', details: { reason: 'IDP_COPY_HIDDEN_FIELDS' } },
+    });
+    expect(outcomes[1]).toEqual(outcomes[0]);
+    expect(outcomes[2]).toEqual(outcomes[0]);
+    expect(await admin(env).templateNames()).toEqual(before);
+  });
+
+  it('有 processId 查看权时原校验保留：流程停用 → 409 IDP_PROCESS_DISABLED，流程不可见 → 404', async () => {
+    const env = await world();
+    const { w, data } = env;
+    const sources = await sourcesByProcessState(env);
+    const op = await idpOperator(w, { orgId: data.insideOrg });
+    const before = await admin(env).templateNames();
+    const disabled = await copyOutcome(op, sources.disabled.template, '停用流程副本');
+    expect(disabled).toMatchObject({ status: 409, body: { error: { details: { reason: 'IDP_PROCESS_DISABLED' } } } });
+    const hidden = await copyOutcome(op, sources.hidden.template, '不可见流程副本');
+    expect(hidden).toMatchObject({ status: 404, body: { error: { code: 'NOT_FOUND' } } });
+    expect(await admin(env).templateNames()).toEqual(before);
+  });
+
+  it('同类：不填目标组织且看不到源模板 orgId 时，源组织在不在自己范围内都同样 403', async () => {
+    const env = await world();
+    const { w, data } = env;
+    // 源模板一个挂在操作人范围内的组织，一个挂在上级组织并向下公开（操作人只有下级组织范围）
+    const op = await idpOperator(w, { orgId: data.childOrg, hidden: { template: ['orgId'] } });
+    const call = admin(env).call;
+    const own = await call('POST', '/templates', {
+      ifMatch: 0,
+      body: { name: '下级组织源模板', orgId: data.childOrg, processId: data.inside.process.id },
+    });
+    expect(own.status, await own.clone().text()).toBe(201);
+    const before = await admin(env).templateNames();
+    const fromOwn = await copyOutcome(op, (await own.json()) as TemplateView, '缺省组织副本一');
+    const fromParent = await copyOutcome(op, data.inside.template, '缺省组织副本二');
+    expect(fromOwn.status).toBe(403);
+    expect(fromOwn.body).toMatchObject({ error: { details: { reason: 'IDP_COPY_HIDDEN_FIELDS' } } });
+    expect(fromParent).toEqual(fromOwn);
+    expect(await admin(env).templateNames()).toEqual(before);
+  });
+
+  it('同类（重放）：复制成功后 processId 改为不可见，流程停用或移走时原键重放都同样 403', async () => {
+    const env = await world();
+    const { w, data } = env;
+    const op = await idpOperator(w, { orgId: data.insideOrg });
+    const call = admin(env).call;
+    const disable = async (id: string) => {
+      const current = (await (await call('GET', `/processes/${id}`)).json()) as ProcessView;
+      const off = await call('PATCH', `/processes/${id}`, { ifMatch: current.revision, body: { enabled: false } });
+      expect(off.status, await off.clone().text()).toBe(200);
+    };
+    const moveOut = (id: string) => admin(env).move('processes', id, data.outsideOrg);
+    const copies: { key: string; sourceId: string; body: { name: string } }[] = [];
+    for (const [label, mutate] of [
+      ['off', disable],
+      ['move', moveOut],
+    ] as const) {
+      const created = await call('POST', '/processes', {
+        ifMatch: 0,
+        body: { name: `重放流程-${label}`, orgId: data.insideOrg, subProcesses: [subProcessBody(planApproval(data))] },
+      });
+      const process = (await created.json()) as ProcessView;
+      const src = await call('POST', '/templates', {
+        ifMatch: 0,
+        body: { name: `重放源-${label}`, orgId: data.insideOrg, processId: process.id },
+      });
+      const copy = {
+        key: `idp-r4-replay-${label}`,
+        sourceId: ((await src.json()) as TemplateView).id,
+        body: { name: `重放副本-${label}` },
+      };
+      const first = await op.request('POST', `/templates/${copy.sourceId}/copy`, {
+        ifMatch: 0,
+        body: copy.body,
+        idempotencyKey: copy.key,
+      });
+      expect(first.status, await first.clone().text()).toBe(201);
+      await mutate(process.id);
+      copies.push(copy);
+    }
+    await op.hideFields('template', ['processId']);
+    const outcomes = [];
+    for (const copy of copies) {
+      const response = await op.request('POST', `/templates/${copy.sourceId}/copy`, {
+        ifMatch: 0,
+        body: copy.body,
+        idempotencyKey: copy.key,
+      });
+      outcomes.push({ status: response.status, body: await response.json() });
+    }
+    expect(outcomes[0]!.status).toBe(403);
+    expect(outcomes[0]!.body).toMatchObject({ error: { details: { reason: 'IDP_COPY_HIDDEN_FIELDS' } } });
+    expect(outcomes[1]).toEqual(outcomes[0]);
+  });
+});
