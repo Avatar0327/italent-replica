@@ -91,8 +91,19 @@ export interface Receipt {
 
 type NodeExpr = 'idp_employee' | 'idp_tutor' | 'owner';
 
-/** IDP 审批流程：每个节点 = [key, 名称, 审批人表达式]。 */
-function approvalBody(approvalType: string, nodes: readonly (readonly [string, string, NodeExpr])[], admin: string) {
+/** 节点覆盖项（DEC-318：节点级开关、处理人为空的处理）。 */
+export interface NodeOverride {
+  readonly actions?: Record<string, unknown>;
+  readonly noAssignee?: string;
+}
+
+/** IDP 审批流程：每个节点 = [key, 名称, 审批人表达式]；节点开关按表达式取覆盖项。 */
+function approvalBody(
+  approvalType: string,
+  nodes: readonly (readonly [string, string, NodeExpr])[],
+  admin: string,
+  overrides: Partial<Record<NodeExpr, NodeOverride>> = {},
+) {
   return {
     code: `IDP_${randomUUID().slice(0, 8)}`,
     name: `IDP ${approvalType}`,
@@ -101,7 +112,7 @@ function approvalBody(approvalType: string, nodes: readonly (readonly [string, s
     isFallback: true,
     exceptionAdminUserId: admin,
     conditions: { items: [] },
-    nodes: nodes.map(([key, name, approver]) => ({ key, name, approver })),
+    nodes: nodes.map(([key, name, approver]) => ({ key, name, approver, ...overrides[approver] })),
   };
 }
 
@@ -110,6 +121,8 @@ export interface PlanWorldOptions {
   readonly checkNoneGoal?: boolean;
   /** 发展计划流程的三段（缺省：制定计划自动无规则 → 中期回顾手动 → 期末回顾上一阶段结束后 7 天）。 */
   readonly stages?: (approvals: Approvals) => Record<string, unknown>[];
+  /** 员工 / 指导人节点的覆盖项（缺省同 IDP 预置流程的节点开关，DEC-318）。 */
+  readonly nodes?: Partial<Record<NodeExpr, NodeOverride>>;
 }
 
 export interface Approvals {
@@ -143,7 +156,10 @@ export async function planWorld(db: Db, label: string, options: PlanWorldOptions
 
   async function approvalProcess(type: string, nodes: readonly (readonly [string, string, NodeExpr])[]) {
     const created = await ok<{ id: string; revision: number }>(
-      await http(hr, 'POST', `${APV}/processes`, { ifMatch: 0, body: approvalBody(type, nodes, w.exceptionAdmin) }),
+      await http(hr, 'POST', `${APV}/processes`, {
+        ifMatch: 0,
+        body: approvalBody(type, nodes, w.exceptionAdmin, options.nodes),
+      }),
       201,
     );
     await ok(await http(hr, 'POST', `${APV}/processes/${created.id}/publish`, { ifMatch: created.revision }));
