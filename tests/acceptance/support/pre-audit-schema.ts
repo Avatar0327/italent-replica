@@ -22,7 +22,7 @@ const COLUMNS = [
   ['scope_org_id', 'uuid'],
 ] as const;
 
-/** 审批流程节点开关列（迁移 0067，缺省值与迁移一致）。 */
+/** 审批流程节点开关列（迁移 0069，缺省值与迁移一致）。 */
 const NODE_COLUMNS = [
   ['avoid_self', 'boolean NOT NULL DEFAULT true'],
   ['allow_revoke', 'boolean NOT NULL DEFAULT true'],

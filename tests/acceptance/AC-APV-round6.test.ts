@@ -94,7 +94,7 @@ describe('R5-3（P2）：回退的租户管理员候选按游标分批扫描，�
     await withPlatform(w.db, async (tx) => {
       for (const [i, id] of ids.entries()) {
         await tx.execute(sql`INSERT INTO users (id,email,display_name,status)
-          VALUES (${id}::uuid,${`apv-r53-${i}-${w.tenant.id.slice(0, 8)}@example.com`},${`已停用管理员${i}`},'disabled')`);
+          VALUES (${id}::uuid,${`apv-r53-${i}-${w.tenant.id}@example.com`},${`已停用管理员${i}`},'disabled')`);
       }
     });
     await withTenant(w.db, w.tenant.id, async (tx) => {

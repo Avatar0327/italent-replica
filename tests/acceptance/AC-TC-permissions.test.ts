@@ -302,7 +302,7 @@ async function addMemberTo(w: Awaited<ReturnType<typeof talentWorld>>) {
   const { cmd } = await import('./support/tenant-api.js');
   const user = await createUser(
     testDb().db,
-    { email: `tc-other-${randomUUID().slice(0, 6)}@example.com`, displayName: '另一成员' },
+    { email: `tc-other-${randomUUID()}@example.com`, displayName: '另一成员' },
     cmd(),
   );
   await grantMembership(testDb().db, { tenantId: w.tenant.id, userId: user.id, expectedRevision: 0 }, cmd());

@@ -49,7 +49,7 @@ async function buttons(api: Api, as: Caller, objectCode: string): Promise<string
 /** 企业管理员把某个身份授给一名新成员，返回该成员的调用身份。 */
 async function holderOf(api: Api, admin: Caller, profileId: string, label: string): Promise<Caller> {
   const { db } = testDb();
-  const user = await createUser(db, { email: `${label}@example.com`, displayName: label }, cmd());
+  const user = await createUser(db, { email: `${label}-${randomUUID()}@example.com`, displayName: label }, cmd());
   await grantMembership(db, { tenantId: admin.tenant, userId: user.id, expectedRevision: 0 }, cmd());
   const granted = await api.request('POST', '/api/tenant/permission/grants', {
     ...admin,

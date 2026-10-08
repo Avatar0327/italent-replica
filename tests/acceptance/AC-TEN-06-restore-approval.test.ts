@@ -29,7 +29,10 @@ afterAll(async () => {
   for (const handle of handles) await handle.close();
 });
 
-describe('AC-TEN-06 恢复对账：异常管理员与在途异常待办（DEC-098 / 123）', () => {
+// 整库备份 / 恢复按全部租户表逐表进行，耗时随表数增长（R3-T03 新增 23 张表后逼近默认 30s），单独放宽且仍有上限
+const RESTORE_TIMEOUT = { timeout: 90_000 };
+
+describe('AC-TEN-06 恢复对账：异常管理员与在途异常待办（DEC-098 / 123）', RESTORE_TIMEOUT, () => {
   it('现网已交接并停用的异常管理员：恢复库流程改指现网异常管理员，其在途异常待办被接管，开放成功', async () => {
     const w = await approvalWorld(database().db, 'restore-exception');
     const s = await transferScene(w);

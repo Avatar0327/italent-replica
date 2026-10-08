@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { type QuestionnaireModel, type Scale, validateQuestionnaire } from './questionnaire.js';
-import { SURVEY360_LIMITS } from './rules.js';
 
 const scale = (values: readonly (number | null)[]): Scale => ({
   id: 's',
@@ -62,13 +61,14 @@ describe('套卷角色与权重（E3-R4、E3-R5；AC-360-02）', () => {
     expect(codes({ ...valid, roles: withRole('boss', 1.5) })).toEqual(['ROLE_WEIGHT_INVALID']);
   });
 
-  it(`单套卷最多 ${SURVEY360_LIMITS.rolesPerQuestionnaire} 个角色（含自评）`, () => {
+  // 规格值固定写 15 / 16，不用实现常量生成边界：常量改错时这里要能失败（#116 审查 P3-1）
+  it('单套卷最多 15 个角色（含自评）：15 个通过，16 个拒绝', () => {
     const roles = (count: number) => [
       { roleId: 'self', weight: 0, isSelf: true },
       ...Array.from({ length: count - 1 }, (_, i) => ({ roleId: `r${i}`, weight: 1, isSelf: false })),
     ];
-    expect(codes({ ...valid, roles: roles(SURVEY360_LIMITS.rolesPerQuestionnaire) })).toEqual([]);
-    expect(codes({ ...valid, roles: roles(SURVEY360_LIMITS.rolesPerQuestionnaire + 1) })).toEqual(['TOO_MANY_ROLES']);
+    expect(codes({ ...valid, roles: roles(15) })).toEqual([]);
+    expect(codes({ ...valid, roles: roles(16) })).toEqual(['TOO_MANY_ROLES']);
   });
 
   it('限定的评价角色须在套卷角色中（E3-R8）', () => {
@@ -80,12 +80,10 @@ describe('套卷角色与权重（E3-R4、E3-R5；AC-360-02）', () => {
 });
 
 describe('评定等级选项（E3-R6）', () => {
-  it(`选项 1～${SURVEY360_LIMITS.optionsPerScale} 个，且至少有一个计分选项`, () => {
+  it('选项 1～15 个（15 个通过，16 个拒绝），且至少有一个计分选项', () => {
     const values = (count: number) => Array.from({ length: count }, (_, i) => i + 1);
-    expect(codes({ ...valid, scales: [scale(values(SURVEY360_LIMITS.optionsPerScale))] })).toEqual([]);
-    expect(codes({ ...valid, scales: [scale(values(SURVEY360_LIMITS.optionsPerScale + 1))] })).toEqual([
-      'OPTION_COUNT_INVALID',
-    ]);
+    expect(codes({ ...valid, scales: [scale(values(15))] })).toEqual([]);
+    expect(codes({ ...valid, scales: [scale(values(16))] })).toEqual(['OPTION_COUNT_INVALID']);
     expect(codes({ ...valid, scales: [scale([])] })).toEqual(['OPTION_COUNT_INVALID', 'SCALE_WITHOUT_SCORE']);
     expect(codes({ ...valid, scales: [scale([null])] })).toEqual(['SCALE_WITHOUT_SCORE']);
   });
