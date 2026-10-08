@@ -3,6 +3,7 @@ import { listAll, type DescriptionType, type Dimension, type DimensionCategory, 
 import { changedFields } from './changes.js';
 import { DimensionForm, draftOf, type DimensionChoices, type DimensionEditor } from './DimensionForm.js';
 import { text } from './messages.js';
+import { ownerOrgBody, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
 import { useTalentWrite } from './useTalentWrite.js';
@@ -10,7 +11,7 @@ import { useTalentWrite } from './useTalentWrite.js';
 /**
  * 指标：编码、名称、定义、分类、顺序、启用，以及等级描述 / 行为描述 / 发展建议 / 面试问题。
  * 编码与名称在库内唯一（DEC-281⑤）；改了指标内容，引用它的人才标准立即显示新内容（TC-R2）；
- * 被引用的指标可以停用、不能删除（DEC-281⑧，TC-R5）。
+ * 被引用的指标可以停用、不能删除（DEC-281⑧，TC-R5）。所属人 / 所属管理单元由系统按创建人填写（DEC-294③）。
  */
 export function DimensionPanel({ tenantId }: { tenantId: string }) {
   const [libraryId, setLibraryId] = useState('');
@@ -40,7 +41,12 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
             revision: original.revision,
             body: changedFields(draftOf(original), value),
           }
-        : { path: 'dimensions', method: 'POST', revision: 0, body: { ...value, libraryId: editor.libraryId } },
+        : {
+            path: 'dimensions',
+            method: 'POST',
+            revision: 0,
+            body: { ...value, libraryId: editor.libraryId, ...ownerOrgBody(choices.owners, editor.ownerOrgId) },
+          },
     );
   };
   return (
@@ -48,7 +54,9 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
       <LibraryFilter libraries={libraries} value={libraryId} onChange={setLibraryId} />
       <button
         disabled={write.locked || !libraries.length}
-        onClick={() => setEditor({ original: null, libraryId: libraryId || libraries[0]!.id, value: draftOf(null) })}
+        onClick={() =>
+          setEditor({ original: null, libraryId: libraryId || libraries[0]!.id, ownerOrgId: '', value: draftOf(null) })
+        }
       >
         {text.create}
       </button>
@@ -57,7 +65,9 @@ export function DimensionPanel({ tenantId }: { tenantId: string }) {
         items={list.items}
         libraryName={libraryName}
         locked={write.locked}
-        onEdit={(item) => setEditor({ original: item, libraryId: item.libraryId, value: draftOf(item) })}
+        onEdit={(item) =>
+          setEditor({ original: item, libraryId: item.libraryId, ownerOrgId: '', value: draftOf(item) })
+        }
         onDelete={(item) => write.mutate({ path: `dimensions/${item.id}`, method: 'DELETE', revision: item.revision })}
       />
       <Pager list={list} locked={write.locked} />
@@ -97,7 +107,10 @@ function LibraryFilter({
   );
 }
 
-/** 编辑时的选项：所选指标库的分类、启用的发展建议类型（另补上指标已用、但已停用的类型，保留原行）。 */
+/**
+ * 编辑时的选项：所选指标库的分类、启用的发展建议类型，以及按行保留的已停用类型——只给原本就是该类型的那一行
+ * （按建议行 ID，DEC-297②）；新建时的授权管理单元（DEC-294③）。
+ */
 function useDimensionChoices(
   tenantId: string,
   editor: DimensionEditor | null,
@@ -119,17 +132,18 @@ function useDimensionChoices(
       .then(setTypes)
       .catch((cause: unknown) => onError(String(cause)));
   }, [tenantId, editing, onError]);
+  const owners = useOwnerOrgs(tenantId, 'dimension', onError);
   const original = editor?.original;
   return useMemo(() => {
-    const known = new Map(types.map((item) => [item.id, item]));
+    const enabled = new Set(types.map((item) => item.id));
+    const retained = new Map<string, { value: string; label: string }>();
     for (const row of original?.suggestions ?? []) {
-      if (!known.has(row.typeId)) {
-        const kept = { id: row.typeId, revision: 0, name: row.typeName ?? row.typeId, enabled: false, displayOrder: 0 };
-        known.set(row.typeId, kept);
+      if (row.id && !enabled.has(row.typeId)) {
+        retained.set(row.id, { value: row.typeId, label: row.typeName ?? row.typeId });
       }
     }
-    return { categories, types: [...known.values()] };
-  }, [categories, types, original]);
+    return { categories, types, retained, owners };
+  }, [categories, types, original, owners]);
 }
 
 function DimensionTable({

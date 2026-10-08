@@ -3,7 +3,8 @@
  * 人才标准是独立应用 TalentCenter（`16` §52：独立菜单组、独立配置应用、独立身份「人才标准管理员（人才标准）」），
  * 对象只能配置进、也只在登记了该应用的身份里生效。
  * DEC-281⑨：指标库、库内分类、指标、标准分类、人才标准带所属人与所属管理单元，按管理单元控制数据范围；
- * 库内分类与指标的所属管理单元随所属指标库（只读）。发展建议类型是没有组织字段的字典（DEC-121 同口径）。
+ * DEC-294③：所属人 / 所属管理单元由系统按创建人与其授权管理单元填写（只读，多个授权管理单元时新建可选其一）；
+ * 库内分类随所属指标库。发展建议类型是没有组织字段的字典（DEC-121 同口径）。
  */
 import type { ButtonDefinition, ObjectDefinition } from '../permission/object-permission.js';
 
@@ -28,7 +29,12 @@ const crud: readonly ButtonDefinition[] = [
   { code: 'delete', level: 'detail', requires: 'delete' },
 ];
 
-function object(code: string, fields: readonly string[], system: readonly string[] = []): ObjectDefinition {
+function object(
+  code: string,
+  fields: readonly string[],
+  system: readonly string[] = [],
+  buttons: readonly ButtonDefinition[] = crud,
+): ObjectDefinition {
   return {
     code: `${TALENT_APP}.${code}`,
     application: TALENT_APP,
@@ -36,7 +42,7 @@ function object(code: string, fields: readonly string[], system: readonly string
       ...fields.map((field) => ({ code: field, system: false })),
       ...[...SYSTEM_FIELDS, ...system].map((field) => ({ code: field, system: true })),
     ],
-    buttons: crud,
+    buttons,
   };
 }
 
@@ -69,7 +75,11 @@ export const TALENT_OBJECTS = {
     ['type', 'categoryName', 'ownerId', 'ownerOrgId'],
   ),
   criterionCategory: object('TalentCriterionCategory', ['name', 'displayOrder', 'ownerOrgId'], ['ownerId']),
-  /** 人才标准 TalentCriterion：dimensions 是对指标的引用（TC-R2），四段说明即 TalentCriterionDescription。 */
+  /**
+   * 人才标准 TalentCriterion：dimensions 是对指标的引用（TC-R2），四段说明即 TalentCriterionDescription。
+   * 引用行（关联记录）带自己的“指标类别”文本与所属人 / 所属管理单元（DEC-294③⑤），随 dimensions 整组授权；
+   * 「设置指标类别」是详情页按钮（批量给勾选的指标填类别，要求编辑权）。
+   */
   criterion: object(
     'TalentCriterion',
     [
@@ -84,5 +94,6 @@ export const TALENT_OBJECTS = {
       'ownerOrgId',
     ],
     ['ownerId'],
+    [...crud, { code: 'setDimensionCategory', level: 'detail', requires: 'update' }],
   ),
 } as const satisfies Record<string, ObjectDefinition>;

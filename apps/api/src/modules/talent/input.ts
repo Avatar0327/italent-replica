@@ -1,6 +1,7 @@
 /**
  * 人才标准各接口的请求结构（只做结构校验，不读库）。严格对象：未登记的键（含建后不可改的 指标库类型、指标所属指标库、
- * 指标编码、所属管理单元，DEC-281⑤⑥）一律 400。明细数组设上限（AGENTS §10「批量」）。
+ * 指标编码、所属管理单元，DEC-281⑤⑥；所属人由系统填写，DEC-294③）一律 400。明细数组设上限（AGENTS §10「批量」）。
+ * 新建时的 ownerOrgId 只表示“从创建人的多个授权管理单元里选的那一个”（DEC-294 补充），可省略，由服务端填写与校验。
  */
 import { TALENT_DIMENSION_TYPES } from '@italent/domain';
 import { z } from 'zod';
@@ -27,8 +28,12 @@ const behavior = z.strictObject({
   keyPoints: note.optional(),
   displayOrder: order.optional(),
 });
-/** 发展建议（DEC-281④）：类型取自类型数据源（必填）、描述必填、呈现顺序必填。 */
+/**
+ * 发展建议（DEC-281④）：类型取自类型数据源（必填）、描述必填、呈现顺序必填。id 是已有建议行的行身份（读取时返回），
+ * 编辑时带回表示“保留这一行”；不带 id 的是新增行（第 5 轮清单 1）。
+ */
 const suggestion = z.strictObject({
+  id: uuid.optional(),
   typeId: uuid,
   description: z.string().trim().min(1).max(4000),
   displayOrder: order,
@@ -39,13 +44,15 @@ const question = z.strictObject({
   displayOrder: order.optional(),
 });
 
-// TODO(需取证 #109): 所属管理单元（所属人）新建缺省与能否修改 / 转移未取证，暂按新建时选择、建后不可改。
+/** DEC-294③：所属管理单元由系统填写，只在创建人有多个授权管理单元时由新建请求选一个；建后不能改。 */
+const ownerOrgId = uuid.optional();
+
 export const libraryCreate = z.strictObject({
   name,
   type: z.enum(TALENT_DIMENSION_TYPES),
   enabled: z.boolean().optional(),
   displayOrder: order.optional(),
-  ownerOrgId: uuid,
+  ownerOrgId,
 });
 export const libraryPatch = libraryCreate.omit({ type: true, ownerOrgId: true }).partial();
 
@@ -81,18 +88,24 @@ const dimensionFields = {
   suggestions: z.array(suggestion).max(MAX_DETAILS).optional(),
   questions: z.array(question).max(MAX_DETAILS).optional(),
 };
-export const dimensionCreate = z.strictObject({ libraryId: uuid, code, ...dimensionFields });
+export const dimensionCreate = z.strictObject({ libraryId: uuid, code, ...dimensionFields, ownerOrgId });
 export const dimensionPatch = z.strictObject(dimensionFields).partial();
 
-export const categoryCreate = z.strictObject({ name, displayOrder: order.optional(), ownerOrgId: uuid });
+export const categoryCreate = z.strictObject({ name, displayOrder: order.optional(), ownerOrgId });
 export const categoryPatch = categoryCreate.omit({ ownerOrgId: true }).partial();
 
-/** 引用行以指标为键（没有可写的行标识，编辑时不能换指标，DEC-281⑥）。 */
+/** DEC-294⑤：关联记录上的“指标类别”文本（与库内分类名称同长度上限）。 */
+const dimensionCategory = z.string().trim().max(50).nullable();
+/**
+ * 引用行以指标为键（没有可写的行标识，编辑时不能换指标，DEC-281⑥）。指标类别不传时：新增行复制库内分类，
+ * 已有行保持原值；传了（含 null）就按传入的写。
+ */
 const criterionDimension = z.strictObject({
   dimensionId: uuid,
   weight: oneDecimal,
   target: oneDecimal,
   displayOrder: order.optional(),
+  dimensionCategory: dimensionCategory.optional(),
 });
 const criterionFields = {
   categoryId: uuid,
@@ -104,8 +117,18 @@ const criterionFields = {
   achievementNote: note.optional(),
   dimensions: z.array(criterionDimension).max(MAX_CRITERION_DIMENSIONS).optional(),
 };
-export const criterionCreate = z.strictObject({ ...criterionFields, ownerOrgId: uuid });
+export const criterionCreate = z.strictObject({ ...criterionFields, ownerOrgId });
 export const criterionPatch = z.strictObject(criterionFields).partial();
+
+/** 「设置指标类别」（DEC-294⑤）：给标准里勾选的指标统一填一个类别（null 清空）。 */
+export const dimensionCategoryBatch = z.strictObject({
+  dimensionIds: z
+    .array(uuid)
+    .min(1)
+    .max(MAX_CRITERION_DIMENSIONS)
+    .refine((ids) => new Set(ids).size === ids.length, '指标不能重复'),
+  dimensionCategory,
+});
 
 export type LibraryCreate = z.output<typeof libraryCreate>;
 export type LibraryPatch = z.output<typeof libraryPatch>;
@@ -121,3 +144,4 @@ export type CategoryPatch = z.output<typeof categoryPatch>;
 export type CriterionCreate = z.output<typeof criterionCreate>;
 export type CriterionPatch = z.output<typeof criterionPatch>;
 export type CriterionDimensionInput = z.output<typeof criterionDimension>;
+export type DimensionCategoryBatch = z.output<typeof dimensionCategoryBatch>;

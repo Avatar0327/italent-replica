@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DIMENSION_TYPES, listAll, request, type Category, type Criterion, type Dimension } from './api.js';
+import { listAll, request, type Category, type Criterion, type Dimension } from './api.js';
 import { changedFields } from './changes.js';
+import { CriterionDetail } from './CriterionDetail.js';
 import { CriterionForm, type CriterionDraft, type KnownDimension } from './CriterionForm.js';
 import { text } from './messages.js';
-import { useOwnerOrgs } from './OwnerOrgSelect.js';
+import { ownerOrgBody, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
-import { useTalentWrite } from './useTalentWrite.js';
+import { useTalentWrite, type Write } from './useTalentWrite.js';
 
-/** 新建时带所属管理单元（建后不可改，编辑草稿里没有这个键）。 */
+/** 新建草稿带所属管理单元键（只在多个授权管理单元时提交，DEC-294③；编辑草稿里没有这个键）。 */
 const draftOf = (item: Criterion | null, categoryId = ''): CriterionDraft => ({
   ...(item ? {} : { ownerOrgId: '' }),
   categoryId: item?.categoryId ?? categoryId,
@@ -18,15 +19,16 @@ const draftOf = (item: Criterion | null, categoryId = ''): CriterionDraft => ({
   potentialNote: item?.potentialNote ?? null,
   experienceNote: item?.experienceNote ?? null,
   achievementNote: item?.achievementNote ?? null,
-  dimensions: (item?.dimensions ?? []).map(({ dimensionId, weight, target, displayOrder }) => ({
+  dimensions: (item?.dimensions ?? []).map(({ dimensionId, weight, target, displayOrder, dimensionCategory }) => ({
     dimensionId,
     weight,
     target,
     displayOrder,
+    dimensionCategory,
   })),
 });
 
-/** 人才标准：挂所属管理单元（DEC-281⑨）；引用指标而不复制（TC-R2），详情显示指标库的当前内容。 */
+/** 人才标准：所属管理单元由系统填写（DEC-294③）；引用指标而不复制（TC-R2），详情显示指标库的当前内容。 */
 export function CriterionPanel({ tenantId }: { tenantId: string }) {
   const [categoryId, setCategoryId] = useState('');
   const [viewing, setViewing] = useState<Criterion | null>(null);
@@ -43,20 +45,14 @@ export function CriterionPanel({ tenantId }: { tenantId: string }) {
     void request<Criterion>(tenantId, `criteria/${id}`)
       .then((item) => (edit ? setEditor({ original: item, value: draftOf(item) }) : setViewing(item)))
       .catch((cause: unknown) => write.setError(cause instanceof Error ? cause.message : String(cause)));
-  const save = () => {
-    if (!editor) return;
-    const { original, value } = editor;
-    write.mutate(
-      original
-        ? {
-            path: `criteria/${original.id}`,
-            method: 'PATCH',
-            revision: original.revision,
-            body: changedFields(draftOf(original), value),
-          }
-        : { path: 'criteria', method: 'POST', revision: 0, body: value },
-    );
-  };
+  const save = () => editor && write.mutate(saveCommand(editor, owners));
+  const setCategory = (item: Criterion, dimensionIds: string[], dimensionCategory: string | null) =>
+    write.mutate({
+      path: `criteria/${item.id}/dimension-category`,
+      method: 'POST',
+      revision: item.revision,
+      body: { dimensionIds, dimensionCategory },
+    });
   const categoryName = (id: string) => categories.find((item) => item.id === id)?.name ?? '';
   return (
     <section aria-busy={write.busy}>
@@ -80,7 +76,14 @@ export function CriterionPanel({ tenantId }: { tenantId: string }) {
         onDelete={(item) => write.mutate({ path: `criteria/${item.id}`, method: 'DELETE', revision: item.revision })}
       />
       <Pager list={list} locked={write.locked} />
-      {viewing && <CriterionDetail value={viewing} onClose={() => setViewing(null)} />}
+      {viewing && (
+        <CriterionDetail
+          value={viewing}
+          locked={write.locked}
+          onSetCategory={(ids, category) => setCategory(viewing, ids, category)}
+          onClose={() => setViewing(null)}
+        />
+      )}
       {editor && (
         <CriterionForm
           value={editor.value}
@@ -96,6 +99,24 @@ export function CriterionPanel({ tenantId }: { tenantId: string }) {
       )}
     </section>
   );
+}
+
+/** 保存：编辑只提交改动；新建时所属管理单元只在有多个授权管理单元时随请求提交（DEC-294 补充）。 */
+function saveCommand(
+  { original, value }: { original: Criterion | null; value: CriterionDraft },
+  owners: Parameters<typeof ownerOrgBody>[0],
+): Write {
+  if (original) {
+    const body = changedFields(draftOf(original), value);
+    return { path: `criteria/${original.id}`, method: 'PATCH', revision: original.revision, body };
+  }
+  const { ownerOrgId, ...fields } = value;
+  return {
+    path: 'criteria',
+    method: 'POST',
+    revision: 0,
+    body: { ...fields, ...ownerOrgBody(owners, ownerOrgId ?? '') },
+  };
 }
 
 function CriterionTable({
@@ -142,53 +163,6 @@ function CriterionTable({
         ))}
       </tbody>
     </table>
-  );
-}
-
-/**
- * 标准详情：按 能力 / 潜力 / 经历 分组列出引用的指标，只显示 名称、定义、指标类别、权重、目标（DEC-281⑪）；
- * 被停用的指标照常显示、不加标记（DEC-281⑧）。
- */
-function CriterionDetail({ value, onClose }: { value: Criterion; onClose: () => void }) {
-  return (
-    <article>
-      <h2>{value.name}</h2>
-      {(['abilityNote', 'potentialNote', 'experienceNote', 'achievementNote'] as const).map(
-        (key) =>
-          value[key] && (
-            <p key={key}>
-              {text.notes[key]}：{value[key]}
-            </p>
-          ),
-      )}
-      {DIMENSION_TYPES.map((type) => {
-        const rows = (value.dimensions ?? []).filter((item) => item.type === type);
-        return rows.length ? (
-          <table key={type}>
-            <caption>{text.types[type]}</caption>
-            <thead>
-              <tr>
-                {[text.name, text.definition, text.dimensionCategory, text.weight, text.target].map((label) => (
-                  <th key={label}>{label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((item) => (
-                <tr key={item.dimensionId}>
-                  <td>{item.dimension?.name ?? text.contentHidden}</td>
-                  <td>{item.dimension?.definition}</td>
-                  <td>{item.dimension?.categoryName}</td>
-                  <td>{item.weight ?? ''}</td>
-                  <td>{item.target ?? ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : null;
-      })}
-      <button onClick={onClose}>{text.cancel}</button>
-    </article>
   );
 }
 

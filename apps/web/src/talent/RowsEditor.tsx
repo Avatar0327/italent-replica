@@ -7,6 +7,8 @@ export interface Column<Row> {
   readonly required?: boolean;
   /** kind = select 时的选项（如发展建议类型下拉）。 */
   readonly options?: readonly { readonly value: string; readonly label: string }[];
+  /** 按行给选项（如停用的发展建议类型只出现在原本就是该类型的那一行）；给了就取代 options。 */
+  readonly optionsFor?: (row: Row) => readonly { readonly value: string; readonly label: string }[];
 }
 
 /** 明细行编辑（等级 / 行为 / 发展建议 / 面试问题）：整组提交，服务端整组替换；发展建议子表的增删改都经这里。 */
@@ -44,6 +46,7 @@ export function RowsEditor<Row extends Record<string, unknown>>({
                 <td key={column.key}>
                   <Cell
                     column={column}
+                    row={row}
                     value={row[column.key]}
                     onChange={(value) => update(index, column.key, value)}
                   />
@@ -68,10 +71,12 @@ export function RowsEditor<Row extends Record<string, unknown>>({
 /** 一个明细单元格：下拉 / 多行文本 / 数字 / 单行文本。 */
 function Cell<Row>({
   column,
+  row,
   value,
   onChange,
 }: {
   column: Column<Row>;
+  row: Row;
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
@@ -85,7 +90,7 @@ function Cell<Row>({
         onChange={(e) => onChange(e.target.value)}
       >
         <option value="">{text.chooseType}</option>
-        {(column.options ?? []).map((option) => (
+        {(column.optionsFor ? column.optionsFor(row) : (column.options ?? [])).map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>

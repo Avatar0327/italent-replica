@@ -39,7 +39,11 @@ CREATE TABLE "talent_criterion_dimensions" (
 	"weight" numeric(10, 1),
 	"target" numeric(10, 1),
 	"display_order" integer DEFAULT 0 NOT NULL,
-	CONSTRAINT "talent_criterion_dimensions_once" UNIQUE("tenant_id","criterion_id","dimension_id")
+	"dimension_category" text,
+	"owner_id" uuid NOT NULL,
+	"owner_org_id" uuid NOT NULL,
+	CONSTRAINT "talent_criterion_dimensions_once" UNIQUE("tenant_id","criterion_id","dimension_id"),
+	CONSTRAINT "talent_criterion_dimensions_category" CHECK (char_length("talent_criterion_dimensions"."dimension_category") <= 50)
 );
 --> statement-breakpoint
 CREATE TABLE "talent_description_types" (
@@ -155,6 +159,7 @@ ALTER TABLE "talent_criteria" ADD CONSTRAINT "talent_criteria_owner_org_fk" FORE
 ALTER TABLE "talent_criterion_categories" ADD CONSTRAINT "talent_criterion_categories_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_criterion_categories" ADD CONSTRAINT "talent_criterion_categories_owner_org_fk" FOREIGN KEY ("tenant_id","owner_org_id") REFERENCES "public"."org_objects"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_criterion_dimensions" ADD CONSTRAINT "talent_criterion_dimensions_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "talent_criterion_dimensions" ADD CONSTRAINT "talent_criterion_dimensions_owner_org_fk" FOREIGN KEY ("tenant_id","owner_org_id") REFERENCES "public"."org_objects"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_criterion_dimensions" ADD CONSTRAINT "talent_criterion_dimensions_criterion_fk" FOREIGN KEY ("tenant_id","criterion_id") REFERENCES "public"."talent_criteria"("tenant_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_criterion_dimensions" ADD CONSTRAINT "talent_criterion_dimensions_dimension_fk" FOREIGN KEY ("tenant_id","dimension_id") REFERENCES "public"."talent_dimensions"("tenant_id","id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "talent_description_types" ADD CONSTRAINT "talent_description_types_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -179,6 +184,7 @@ ALTER TABLE "talent_dimensions" ADD CONSTRAINT "talent_dimensions_owner_org_fk" 
 CREATE INDEX "talent_criteria_category" ON "talent_criteria" USING btree ("tenant_id","category_id");--> statement-breakpoint
 CREATE INDEX "talent_criteria_owner_org" ON "talent_criteria" USING btree ("tenant_id","owner_org_id");--> statement-breakpoint
 CREATE INDEX "talent_criterion_categories_owner_org" ON "talent_criterion_categories" USING btree ("tenant_id","owner_org_id");--> statement-breakpoint
+CREATE INDEX "talent_criterion_dimensions_owner_org" ON "talent_criterion_dimensions" USING btree ("tenant_id","owner_org_id");--> statement-breakpoint
 CREATE INDEX "talent_criterion_dimensions_dimension" ON "talent_criterion_dimensions" USING btree ("tenant_id","dimension_id");--> statement-breakpoint
 CREATE INDEX "talent_dimension_behaviors_dimension" ON "talent_dimension_behaviors" USING btree ("tenant_id","dimension_id");--> statement-breakpoint
 CREATE INDEX "talent_dimension_categories_owner_org" ON "talent_dimension_categories" USING btree ("tenant_id","owner_org_id");--> statement-breakpoint

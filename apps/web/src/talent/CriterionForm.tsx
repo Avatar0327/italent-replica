@@ -1,6 +1,6 @@
 import type { Dimension, DimensionType, NoteKey, OwnerOrg } from './api.js';
 import { text } from './messages.js';
-import { OwnerOrgSelect } from './OwnerOrgSelect.js';
+import { OwnerUnitField } from './OwnerOrgSelect.js';
 
 /** 新增的引用行不带权重 / 目标：由服务端按规则给缺省值（能力指标权重 1，DEC-281②），前端不自行推算。 */
 export interface ReferenceDraft {
@@ -8,9 +8,11 @@ export interface ReferenceDraft {
   weight?: number | null;
   target?: number | null;
   displayOrder: number;
+  /** 关联记录的“指标类别”（DEC-294⑤）：新增行不填时由服务端复制库内分类，已有行不改则保持。 */
+  dimensionCategory?: string | null;
 }
 export interface CriterionDraft extends Record<string, unknown> {
-  /** 只在新建时有（DEC-281⑨，建后不可改）。 */
+  /** 只在新建时有（DEC-294③：多个授权管理单元时选一个，建后不可改）。 */
   ownerOrgId?: string;
   categoryId: string;
   name: string;
@@ -42,7 +44,7 @@ export function CriterionForm({
   onCancel,
 }: {
   value: CriterionDraft;
-  owners: readonly OwnerOrg[];
+  owners: readonly OwnerOrg[] | undefined;
   categories: readonly { id: string; name: string }[];
   known: ReadonlyMap<string, KnownDimension>;
   candidates: readonly Dimension[];
@@ -60,14 +62,12 @@ export function CriterionForm({
       }}
     >
       <fieldset disabled={busy}>
-        {value.ownerOrgId !== undefined && (
-          <OwnerOrgSelect
-            value={value.ownerOrgId}
-            options={owners}
-            readOnly={false}
-            onChange={(ownerOrgId) => set({ ownerOrgId })}
-          />
-        )}
+        <OwnerUnitField
+          editing={value.ownerOrgId === undefined}
+          value={value.ownerOrgId ?? ''}
+          options={owners}
+          onChange={(ownerOrgId) => set({ ownerOrgId })}
+        />
         <label>
           {text.criterionCategory}
           <select required value={value.categoryId} onChange={(e) => set({ categoryId: e.target.value })}>
@@ -137,6 +137,7 @@ function References({
             <th>{text.type}</th>
             <th>{text.weight}</th>
             <th>{text.target}</th>
+            <th>{text.dimensionCategory}</th>
             <th />
           </tr>
         </thead>
@@ -199,6 +200,15 @@ function ReferenceRow({
           />
         </td>
       ))}
+      <td>
+        <input
+          aria-label={text.dimensionCategory}
+          maxLength={50}
+          placeholder={item.dimensionCategory === undefined ? text.serverDefault : undefined}
+          value={item.dimensionCategory ?? ''}
+          onChange={(e) => onChange({ dimensionCategory: e.target.value.trim() ? e.target.value : null })}
+        />
+      </td>
       <td>
         <button type="button" onClick={onRemove}>
           {text.remove}

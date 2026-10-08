@@ -5,10 +5,12 @@ import type {
   DimensionCategory,
   Grade,
   Library,
+  OwnerOrg,
   Question,
   Suggestion,
 } from './api.js';
 import { text } from './messages.js';
+import { OwnerUnitField } from './OwnerOrgSelect.js';
 import { RowsEditor } from './RowsEditor.js';
 
 type SuggestionDraft = Omit<Suggestion, 'typeName'>;
@@ -27,6 +29,8 @@ export interface DimensionDraft extends Record<string, unknown> {
 export interface DimensionEditor {
   readonly original: Dimension | null;
   readonly libraryId: string;
+  /** 新建时从多个授权管理单元里选的那一个（DEC-294 补充）；只有一个或编辑时不用。 */
+  readonly ownerOrgId: string;
   readonly value: DimensionDraft;
 }
 
@@ -39,8 +43,9 @@ export const draftOf = (item: Dimension | null): DimensionDraft => ({
   enabled: item?.enabled ?? true,
   grades: item?.grades ?? [],
   behaviors: item?.behaviors ?? [],
-  // 类型名称是查找字段的显示值，不随表单提交
-  suggestions: (item?.suggestions ?? []).map(({ typeId, description, displayOrder }) => ({
+  // 类型名称是查找字段的显示值，不随表单提交；行 ID 带回表示保留这一行（DEC-297②）
+  suggestions: (item?.suggestions ?? []).map(({ id, typeId, description, displayOrder }) => ({
+    id,
     typeId,
     description,
     displayOrder,
@@ -48,10 +53,13 @@ export const draftOf = (item: Dimension | null): DimensionDraft => ({
   questions: item?.questions ?? [],
 });
 
-/** 选项：本指标库的分类与启用的发展建议类型。 */
+type Option = { readonly value: string; readonly label: string };
+/** 选项：本指标库的分类、启用的发展建议类型，以及按行保留的已停用类型（建议行 ID → 原类型）。 */
 export interface DimensionChoices {
   readonly categories: readonly DimensionCategory[];
   readonly types: readonly DescriptionType[];
+  readonly retained: ReadonlyMap<string, Option>;
+  readonly owners: readonly OwnerOrg[] | undefined;
 }
 
 /** 指标表单：所属指标库只在新建时选择，编码建后只读（DEC-281⑤⑥）；类型随指标库。 */
@@ -96,8 +104,14 @@ export function DimensionForm({
             ))}
           </select>
         </label>
+        <OwnerUnitField
+          editing={!!editor.original}
+          value={editor.ownerOrgId}
+          options={choices.owners}
+          onChange={(ownerOrgId) => onChange({ ...editor, ownerOrgId })}
+        />
         <BasicFields value={value} readOnlyCode={!!editor.original} categories={choices.categories} set={set} />
-        <DetailEditors value={value} types={choices.types} set={set} />
+        <DetailEditors value={value} choices={choices} set={set} />
         <button type="submit">{text.save}</button>
         <button type="button" onClick={onCancel}>
           {text.cancel}
@@ -176,13 +190,19 @@ type Rows<T> = (T & Record<string, unknown>)[];
 /** 等级描述 / 行为描述 / 发展建议 / 面试问题：各自整组编辑、整组提交。 */
 function DetailEditors({
   value,
-  types,
+  choices,
   set,
 }: {
   value: DimensionDraft;
-  types: readonly DescriptionType[];
+  choices: DimensionChoices;
   set: (patch: Partial<DimensionDraft>) => void;
 }) {
+  const enabled = choices.types.map((item) => ({ value: item.id, label: item.name }));
+  // 停用的类型只出现在原本就是该类型的那一行（DEC-297②）；新增行只能选启用的类型
+  const typeOptions = (row: SuggestionDraft) => {
+    const kept = row.id ? choices.retained.get(row.id) : undefined;
+    return kept ? [...enabled, kept] : enabled;
+  };
   return (
     <>
       <RowsEditor<Grade & Record<string, unknown>>
@@ -215,7 +235,7 @@ function DetailEditors({
             label: text.suggestionType,
             kind: 'select',
             required: true,
-            options: types.map((item) => ({ value: item.id, label: item.name })),
+            optionsFor: typeOptions,
           },
           { key: 'description', label: text.description, kind: 'textarea', required: true },
         ]}

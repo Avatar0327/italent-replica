@@ -2,7 +2,8 @@
  * R3-T01 人才标准与指标库接口（docs/02_业务建模/23 §2、§7；REQ-TC-001；DEC-281）。挂在 /api/tenant/talent/ 之下：
  * 指标库 libraries、指标库内分类 dimension-categories、发展建议类型 description-types、指标 dimensions、
  * 人才标准分类 criterion-categories、人才标准 criteria，以及候选：可引用指标 candidates/dimensions（TC-R4）、
- * 发展建议类型下拉 candidates/description-types、可选所属管理单元 candidates/owner-orgs。
+ * 发展建议类型下拉 candidates/description-types、创建人的授权管理单元 candidates/owner-orgs（DEC-294③），
+ * 以及人才标准的「设置指标类别」criteria/:id/dimension-category（DEC-294⑤）。
  * 写入走命令台账（幂等、revision 409），首次执行与幂等重放都按当前功能权限、按钮与范围复核。
  */
 import { withTenant, type Tx } from '@italent/db';
@@ -208,6 +209,21 @@ export function registerTalentRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
   registerObject(router, deps, DIMENSIONS);
   registerObject(router, deps, CATEGORIES);
   registerObject(router, deps, CRITERIA);
+  registerDimensionCategoryBatch(router, deps);
+}
+
+/**
+ * 「设置指标类别」（DEC-294⑤；e0a68da）：数据操作权（编辑）+ 详情按钮 setDimensionCategory + 标准 dimensions 字段的
+ * 编辑权 + 当前范围（行锁后判定），If-Match revision、幂等键与审计同普通编辑。
+ */
+function registerDimensionCategoryBatch(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  router.post(`${TALENT_BASE}/${CRITERIA.path}/:id/dimension-category`, async (c) => {
+    const ctx = await talentWriteContext(c, deps, 'criterion', 'setDimensionCategory', revision(c));
+    const id = uuidParam(c);
+    const body = await parseBody(c, input.dimensionCategoryBatch);
+    await checkWriteFields(deps, ctx, 'criterion', 'update', { dimensions: body });
+    return runTalentWrite(c, deps, ctx, CRITERIA, body, 200, (tx, w) => criteria.setDimensionCategory(tx, w, id, body));
+  });
 }
 
 function registerObject<View extends Tracked, Create extends object, Patch extends object>(

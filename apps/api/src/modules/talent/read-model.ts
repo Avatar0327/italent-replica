@@ -75,6 +75,8 @@ export interface BehaviorView {
   readonly displayOrder: number;
 }
 export interface SuggestionView {
+  /** 建议行身份（第 5 轮清单 1）：编辑时带回表示保留这一行。 */
+  readonly id: string;
   readonly typeId: string;
   readonly typeName: string;
   readonly description: string;
@@ -118,6 +120,11 @@ export interface CriterionDimensionView {
   readonly weight: number | null;
   readonly target: number | null;
   readonly displayOrder: number;
+  /** DEC-294⑤：关联记录自己的“指标类别”文本。 */
+  readonly dimensionCategory: string | null;
+  /** DEC-294③：关联记录的所属人 / 所属管理单元（系统填写）。 */
+  readonly ownerId: string;
+  readonly ownerOrgId: string;
   readonly dimension: DimensionRecord;
 }
 
@@ -390,6 +397,7 @@ async function withDetails(tx: Tx, tenantId: string, rows: DimensionRow[]): Prom
     .orderBy(asc(B.displayOrder), asc(B.id));
   const suggestions = await tx
     .select({
+      id: S.id,
       dimensionId: S.dimensionId,
       typeId: S.typeId,
       typeName: T.name,
@@ -493,6 +501,9 @@ async function withReferences(tx: Tx, tenantId: string, rows: CriterionRow[]): P
       weight: R.weight,
       target: R.target,
       displayOrder: R.displayOrder,
+      dimensionCategory: R.dimensionCategory,
+      ownerId: R.ownerId,
+      ownerOrgId: R.ownerOrgId,
     })
     .from(R)
     .where(
@@ -519,6 +530,9 @@ async function withReferences(tx: Tx, tenantId: string, rows: CriterionRow[]): P
           weight: relation.weight === null ? null : Number(relation.weight),
           target: relation.target === null ? null : Number(relation.target),
           displayOrder: relation.displayOrder,
+          dimensionCategory: relation.dimensionCategory,
+          ownerId: relation.ownerId,
+          ownerOrgId: relation.ownerOrgId,
           dimension,
         };
       }),
@@ -536,30 +550,6 @@ export async function usageCount(tx: Tx, table: string, column: string, tenantId
     count: number;
   }[];
   return rows[0]?.count ?? 0;
-}
-
-export interface OwnerOrgOption {
-  readonly id: string;
-  readonly code: string;
-  readonly name: string;
-}
-
-/**
- * 可选的所属管理单元（DEC-281⑨）：asOf 当天有效且启用的组织，范围谓词（查看人的管理单元）在分页之前生效。
- * 组织当前版本的取法与数据范围解析一致（permission/scope-hierarchy.ts）。
- */
-export async function listOwnerOrgs(
-  tx: Tx,
-  tenantId: string,
-  query: Page & { asOf: string; name?: string; visible: SQL },
-): Promise<OwnerOrgOption[]> {
-  const result = await tx.execute(sql`SELECT v.org_id AS id, v.code, v.name FROM (
-      SELECT DISTINCT ON (org_id) org_id, code, name, enabled FROM org_versions
-      WHERE tenant_id = ${tenantId} AND start_date <= ${query.asOf}::date
-      ORDER BY org_id, start_date DESC, version_no DESC) v
-    WHERE v.enabled AND ${query.visible} ${query.name ? sql`AND ${nameLike(sql`v.name`, query.name)}` : sql``}
-    ORDER BY v.code, v.org_id LIMIT ${query.limit} OFFSET ${query.offset}`);
-  return (Array.isArray(result) ? result : (result as { rows: OwnerOrgOption[] }).rows) as OwnerOrgOption[];
 }
 
 /** 名称模糊查询：转义通配符，按字面匹配。 */

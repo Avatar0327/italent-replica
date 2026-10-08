@@ -3,7 +3,7 @@ import { text } from './messages.js';
 export type DimensionType = 'ability' | 'potential' | 'experience';
 export const DIMENSION_TYPES: readonly DimensionType[] = ['ability', 'potential', 'experience'];
 
-/** DEC-281⑨：所属人与所属管理单元（组织）。 */
+/** DEC-281⑨：所属人与所属管理单元（组织），由系统按创建人填写（DEC-294③）。 */
 interface Owned {
   readonly id: string;
   readonly revision: number;
@@ -41,6 +41,8 @@ export interface Behavior {
   displayOrder?: number;
 }
 export interface Suggestion {
+  /** 已有建议行的行身份（编辑时带回，DEC-297②）；新增行没有。 */
+  id?: string;
   typeId: string;
   typeName?: string;
   description: string;
@@ -76,8 +78,10 @@ export interface CriterionDimension {
   readonly weight: number | null;
   readonly target: number | null;
   readonly displayOrder: number;
-  /** 指标库当前内容（TC-R2），只有 名称、定义、指标类别（DEC-281⑪）；无权查看指标时缺省。 */
-  readonly dimension?: { name?: string; definition?: string | null; categoryName?: string | null };
+  /** 关联记录自己的“指标类别”文本（DEC-294⑤）。 */
+  readonly dimensionCategory?: string | null;
+  /** 指标库当前内容（TC-R2），只有 名称、定义（DEC-281⑪）；无权查看指标时缺省。 */
+  readonly dimension?: { name?: string; definition?: string | null };
 }
 export type NoteKey = 'abilityNote' | 'potentialNote' | 'experienceNote' | 'achievementNote';
 export interface Criterion extends Owned, Partial<Record<NoteKey, string | null>> {
@@ -86,13 +90,13 @@ export interface Criterion extends Owned, Partial<Record<NoteKey, string | null>
   readonly enabled: boolean;
   readonly dimensions?: CriterionDimension[];
 }
-/** 可选的所属管理单元（查看人管理单元内的组织）。 */
+/** 当前用户在人才标准应用里的授权管理单元（DEC-294③）。 */
 export interface OwnerOrg {
   readonly id: string;
   readonly code: string;
   readonly name: string;
 }
-export type OwnerObject = 'library' | 'criterionCategory' | 'criterion';
+export type OwnerObject = 'library' | 'dimension' | 'criterionCategory' | 'criterion';
 export interface ListResult<T> {
   readonly items: T[];
   readonly hasDataPermission: boolean;

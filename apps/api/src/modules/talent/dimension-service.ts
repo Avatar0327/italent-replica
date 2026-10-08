@@ -1,9 +1,11 @@
 /**
  * 指标的写入（docs/02_业务建模/23 §2.1、§7；DEC-281）。
- * - 所属指标库与所属管理单元（随指标库）建后不可改；编码建后只读（DEC-281⑤⑥）；
+ * - 所属指标库建后不可改，编码建后只读（DEC-281⑤⑥）；所属人 / 所属管理单元由系统按创建人填写（DEC-294③）；
+ *   在库下新建时库的所属管理单元须在操作人的管理范围内（DEC-082）；
  * - 编码、名称都在库内唯一，重复时照原站提示“名称或者编码重复，请重新输入”（W-577 / W-578）；
  * - 分类只能引用同一指标库的分类（DEC-281③，外键兜底）；
- * - 四类明细整组替换；发展建议的类型须取自类型数据源，新选用的类型须已启用，已有行可保留停用的类型（DEC-281④）；
+ * - 四类明细整组替换；发展建议的类型须取自类型数据源，新选用的类型须已启用；建议行带行身份，原来就是某个停用类型
+ *   且类型没改的那一行可以保留（DEC-281④、DEC-297②）；
  * - TC-R5：被人才标准引用的指标不能删除；停用不拦截（DEC-281⑧，只拦新引用）。
  */
 import {
@@ -22,8 +24,8 @@ import {
 import { TALENT_DUPLICATE_MESSAGE } from '@italent/domain';
 import { or } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
-import { requireCreatable } from './access.js';
 import type { DimensionCreate, DimensionPatch, SuggestionInput } from './input.js';
+import { ownerUnit } from './owner-units.js';
 import { loadDimension } from './read-model.js';
 import {
   audit,
@@ -33,6 +35,7 @@ import {
   owned,
   referenced,
   rejectInUse,
+  requireLibraryCreatable,
   rowsOf,
   type WriteContext,
 } from './write-support.js';
@@ -42,15 +45,16 @@ type Details = Pick<DimensionPatch, 'grades' | 'behaviors' | 'suggestions' | 'qu
 
 export async function createDimension(tx: Tx, ctx: WriteContext, input: DimensionCreate) {
   const library = await referenced(tx, ctx, 'library', input.libraryId);
-  requireCreatable(ctx.scope, 'dimension', library.orgId);
+  requireLibraryCreatable(ctx, 'dimension', library);
+  const { grades, behaviors, suggestions, questions, ownerOrgId: requested, ...fields } = input;
+  const ownerOrgId = await ownerUnit(tx, ctx, 'dimension', requested);
   if (input.categoryId) await referencedCategory(tx, ctx, input.libraryId, input.categoryId);
   await requireUnique(tx, ctx.tenantId, input.libraryId, { code: input.code, name: input.name });
-  await checkSuggestionTypes(tx, ctx, input.suggestions, []);
-  const { grades, behaviors, suggestions, questions, ...fields } = input;
+  await checkSuggestionTypes(tx, ctx, suggestions, []);
   const [row] = await duplicate(() =>
     tx
       .insert(D)
-      .values({ tenantId: ctx.tenantId, ...fields, ...owned(ctx, library.orgId!), ...created(ctx) })
+      .values({ tenantId: ctx.tenantId, ...fields, ...owned(ctx, ownerOrgId), ...created(ctx) })
       .returning({ id: D.id }),
   );
   await replaceDetails(tx, ctx.tenantId, row!.id, { grades, behaviors, suggestions, questions });
@@ -140,39 +144,38 @@ async function duplicate<T>(write: () => Promise<T>): Promise<T> {
 }
 
 /**
- * 发展建议的类型（DEC-281④）：须是本租户类型数据源里的类型；新增行不能选用已停用的类型，已有行即使类型停用也可保留
- * （#109③ 暂定口径）。发展建议按整组提交、行不带 ID，所以按“行数”区分新旧：某个停用类型在提交里的行数
- * 不得超过指标上原有的该类型行数，多出来的就是新增行。共享锁与删除类型串行（被引用的类型不能删除）。
- * 类型是下拉选项，不按类型字典的数据范围裁剪。
+ * 发展建议的类型与行身份（DEC-281④、DEC-297②，第 5 轮清单 1）：
+ * - 带 id 的行须是本指标已有的建议行（不重复），不带 id 的是新增行；
+ * - 类型须是本租户类型数据源里的类型；已停用的类型只能留在“原来就是该类型、而且类型没改”的那一行，新增行或改选成
+ *   停用类型的行一律 400（停用政策为 #109③ 暂定口径）。
+ * 共享锁与删除类型串行（被引用的类型不能删除）。类型是下拉选项，不按类型字典的数据范围裁剪。
  */
 async function checkSuggestionTypes(
   tx: Tx,
   ctx: WriteContext,
   suggestions: readonly SuggestionInput[] | undefined,
-  existing: readonly { readonly typeId: string }[],
+  existing: readonly { readonly id: string; readonly typeId: string }[],
 ) {
-  const submitted = countByType(suggestions ?? []);
-  if (!submitted.size) return;
-  const ids = [...submitted.keys()];
+  if (!suggestions?.length) return;
+  const original = new Map(existing.map((row) => [row.id, row.typeId]));
+  const rowIds = suggestions.flatMap((item) => (item.id ? [item.id] : []));
+  if (new Set(rowIds).size !== rowIds.length || rowIds.some((id) => !original.has(id))) {
+    throw new AppError('VALIDATION_FAILED', '发展建议行不存在或重复', { reason: 'SUGGESTION_ROW_INVALID' });
+  }
+  const ids = [...new Set(suggestions.map((item) => item.typeId))];
   const result = await tx.execute(sql`SELECT id, enabled FROM talent_description_types
     WHERE tenant_id = ${ctx.tenantId} AND id = ANY(${`{${ids.join(',')}}`}::uuid[]) ORDER BY id FOR SHARE`);
   const found = new Map(rowsOf<{ id: string; enabled: boolean }>(result).map((row) => [row.id, row.enabled]));
-  const kept = countByType(existing);
-  for (const [id, count] of submitted) {
-    const enabled = found.get(id);
-    if (enabled === undefined || (!enabled && count > (kept.get(id) ?? 0))) {
+  for (const item of suggestions) {
+    const enabled = found.get(item.typeId);
+    const kept = item.id !== undefined && original.get(item.id) === item.typeId;
+    if (enabled === undefined || (!enabled && !kept)) {
       throw new AppError('VALIDATION_FAILED', '发展建议类型不存在或已停用', {
         reason: 'DESCRIPTION_TYPE_INVALID',
-        typeId: id,
+        typeId: item.typeId,
       });
     }
   }
-}
-
-function countByType(rows: readonly { readonly typeId: string }[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const row of rows) counts.set(row.typeId, (counts.get(row.typeId) ?? 0) + 1);
-  return counts;
 }
 
 /** 指标的四类明细：提交了哪组就整组替换哪组，未提交的保持不变。 */

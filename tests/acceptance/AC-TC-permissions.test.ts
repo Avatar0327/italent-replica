@@ -16,7 +16,14 @@ import { tenantApi } from './support/tenant-api.js';
 import { registerScopeProvider } from '../../apps/api/src/modules/permission/module-access.js';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
 import { clock, seedTalentData, talentOperator, type TalentPermissionData } from './AC-TC-permission-support.js';
-import { TC_BASE, type CriterionView, type DimensionView, talentWorld } from './AC-TC-support.js';
+import {
+  assignTalentMou,
+  createMou,
+  TC_BASE,
+  type CriterionView,
+  type DimensionView,
+  talentWorld,
+} from './AC-TC-support.js';
 
 const testDb = useTestDb();
 
@@ -100,8 +107,9 @@ describe('R3-T01 人才标准权限（真实授权器）', () => {
     expect(allowed.status, await allowed.clone().text()).toBe(200);
   });
 
-  it('撤销看全部后，原命令按原 ID 重放返回 404', async () => {
-    const op = await talentOperator(world, { seeAll: true });
+  it('撤销看全部（管理单元也只剩范围内）后，原命令按原 ID 重放返回 404', async () => {
+    // 新建须有授权管理单元（DEC-294③）：当时的管理单元含范围外组织
+    const op = await talentOperator(world, { seeAll: true, mouId: data.bothMouId });
     const command = {
       ifMatch: 0,
       idempotencyKey: `tc-replay-${randomUUID().slice(0, 8)}`,
@@ -110,6 +118,7 @@ describe('R3-T01 人才标准权限（真实授权器）', () => {
     const first = await op.request('POST', '/criterion-categories', command);
     expect(first.status, await first.clone().text()).toBe(201);
     await op.setSeeAll(false);
+    await op.setMou(data.mouId);
     const replay = await op.request('POST', '/criterion-categories', command);
     expect(replay.status).toBe(404);
   });
@@ -170,7 +179,7 @@ describe('R3-T01 人才标准权限（真实授权器）', () => {
   });
 
   it('首次成功后撤掉按钮，原命令按原 ID 重放 403，不再返回首次结果', async () => {
-    const op = await talentOperator(world, { seeAll: true });
+    const op = await talentOperator(world, { seeAll: true, mouId: data.mouId });
     const categories = await adminRead<{ items: unknown[] }>('/criterion-categories');
     const command = {
       ifMatch: 0,
@@ -225,6 +234,7 @@ describe('R3-T01 配置了“使用用户”规则时：只看到、只能引用
   it('所属人范围：列表与详情只含本人的对象；引用他人的指标按不存在处理；不放行新建（DEC-082）', async () => {
     const w = await talentWorld(testDb().db, 'tcowner');
     const other = await addMemberTo(w);
+    await assignTalentMou(w.api, w.as, other.user, await createMou(w.api, w.as, [w.orgId]), 0);
     const mine = await w.library('ability', { name: '我的库' });
     const mineDimension = await w.dimension(mine.id, { name: '我的指标' });
     const theirs = await w.created<{ id: string }>(

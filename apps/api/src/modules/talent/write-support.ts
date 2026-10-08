@@ -85,15 +85,11 @@ export async function referenced(tx: Tx, ctx: WriteContext, object: TalentObject
 }
 
 /**
- * 新建对象的所属管理单元（DEC-281⑨）：组织须存在，且在操作人对该对象的管理单元范围内（范围外按不存在 404，
- * 不因“使用用户”规则放行，DEC-082）；所属人为操作人本人。
+ * 挂在指标库下新建（库内分类、指标）：库须可见（referenced），且库的所属管理单元在操作人对新对象的管理范围内
+ * （DEC-082，不因“使用用户”规则放行）。范围外与库不存在同一个 404（第 5 轮清单 2）。
  */
-export async function requireOwnerOrg(tx: Tx, ctx: WriteContext, object: TalentObject, orgId: string) {
-  // 组织不做物理删除（停用只是新版本），存在性即可；外键兜底
-  const result = await tx.execute(sql`SELECT id FROM org_objects WHERE tenant_id = ${ctx.tenantId}
-    AND id = ${orgId}::uuid`);
-  if (!rowsOf(result).length) throw new AppError('NOT_FOUND', '所属管理单元不存在');
-  requireCreatable(ctx.scope, object, orgId);
+export function requireLibraryCreatable(ctx: WriteContext, object: TalentObject, library: Owner): void {
+  requireCreatable(ctx.scope, object, library.orgId, `${TALENT_LABELS.library}不存在`);
 }
 
 /** 删除前的“还在使用”判断：有引用即 409，数据不变。 */

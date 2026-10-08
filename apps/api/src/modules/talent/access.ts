@@ -5,7 +5,7 @@
  *   复用模块统一的 visible / scopeSql；“使用用户”规则按所属人。发展建议类型是没有组织字段的字典，只认看全部或创建人
  *   （DEC-121 口径）。范围按对象所属应用 TalentCenter 解析（permission/module-access.ts scopeAppOf，DEC-043），默认空；
  * - 响应裁剪：顶层按本对象字段权限；人才标准里嵌套的指标内容另按指标对象的查看权、范围与字段权限（DEC-178 同口径），
- *   并且只投影 名称、定义、指标类别（DEC-281⑪）。
+ *   并且只投影 名称、定义（DEC-281⑪；指标类别在关联记录上，DEC-294⑤）。
  */
 import { sql } from '@italent/db';
 import { TALENT_OBJECTS } from '@italent/domain';
@@ -74,11 +74,18 @@ export function talentContext(
   return objectContext(c, deps, codeOf(object), operation, expectedRevision);
 }
 
-/** 写入口对应的按钮（目录登记 create@list / update@detail / delete@detail）。 */
+/** 写入口对应的按钮（目录登记 create@list / update@detail / delete@detail，人才标准另有「设置指标类别」）。 */
 const WRITE_BUTTONS = {
   create: ['create', 'list'],
   update: ['update', 'detail'],
   delete: ['delete', 'detail'],
+  setDimensionCategory: ['setDimensionCategory', 'detail'],
+} as const;
+const DATA_OPERATION = {
+  create: 'create',
+  update: 'update',
+  delete: 'delete',
+  setDimensionCategory: 'update',
 } as const;
 
 /**
@@ -92,7 +99,7 @@ export async function talentWriteContext(
   operation: keyof typeof WRITE_BUTTONS,
   expectedRevision: number,
 ): Promise<TalentContext> {
-  const ctx = await talentContext(c, deps, object, operation, expectedRevision);
+  const ctx = await talentContext(c, deps, object, DATA_OPERATION[operation], expectedRevision);
   const [code, level] = WRITE_BUTTONS[operation];
   await button(deps, ctx, codeOf(object), code, level);
   return ctx;
@@ -121,8 +128,13 @@ export function requireVisible(scope: ModuleScope, object: TalentObject, owner: 
  * 新建授权（DEC-082，与职务模块新建同口径）：只按目标所属管理单元（组织）判定，不带所属人——“使用用户”规则只放行
  * 本人已有记录的查看与修改，不放行新建；字典对象没有组织，只有看全部才能新建。范围外按不存在 404。
  */
-export function requireCreatable(scope: ModuleScope, object: TalentObject, orgId: string | null | undefined): void {
-  visible(scope, orgId ?? undefined, `${TALENT_LABELS[object]}不存在`);
+export function requireCreatable(
+  scope: ModuleScope,
+  object: TalentObject,
+  orgId: string | null | undefined,
+  message = `${TALENT_LABELS[object]}不存在`,
+): void {
+  visible(scope, orgId ?? undefined, message);
 }
 
 /** 同 requireVisible，但不抛错（嵌套内容按范围省略而不是整单 404）。 */
@@ -169,14 +181,14 @@ export const trimTalentList = <T extends object>(
 
 /**
  * DEC-281⑪：标准的指标列表只显示 名称、定义、指标类别（另有引用行上的目标、权重），不显示库名称与库状态。
- * TODO(需取证 #109): “指标类别”暂取指标的库内分类名称；原站关系对象另有标准内分组（「设置指标类别」），未做。
+ * “指标类别”是关联记录自己的字段（DEC-294⑤），在引用行上；嵌套的指标内容只投影名称与定义。
  */
-const NESTED_DIMENSION_FIELDS = ['name', 'definition', 'categoryName'] as const;
+const NESTED_DIMENSION_FIELDS = ['name', 'definition'] as const;
 type NestedDimension = Partial<Record<(typeof NESTED_DIMENSION_FIELDS)[number], unknown>>;
 
 /**
  * 人才标准里嵌套的指标内容：查看人须有指标对象的查看权，且该指标在其指标数据范围内；否则只保留引用本身
- * （指标 ID、类型、权重、目标、顺序），不带指标内容。可见时只投影上述三项，再按指标字段权限裁剪。
+ * （指标 ID、类型、权重、目标、顺序、指标类别），不带指标内容。可见时只投影上述两项，再按指标字段权限裁剪。
  */
 export async function nestedDimensionReader(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: TalentContext) {
   const code = codeOf('dimension');

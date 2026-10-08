@@ -10,7 +10,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { BASE } from './AC-PRM-support.js';
 import { newUser, provisioned, type ProvisionResult, seedOperator } from './support/platform-api.js';
 import { cmd, tenantApi } from './support/tenant-api.js';
-import { createOrg, TC_BASE, TC_NOW } from './AC-TC-support.js';
+import { assignTalentMou, createMou, createOrg, TC_BASE, TC_NOW } from './AC-TC-support.js';
 
 const testDb = useTestDb();
 const clock = () => TC_NOW;
@@ -105,6 +105,8 @@ describe('DEC-281⑩ 开通预置“人才标准管理员”身份', () => {
 
     const inside = await createOrg(fixture, asAdmin, '预置范围内');
     const outside = await createOrg(fixture, asAdmin, '预置范围外');
+    // 建数据的管理员授权管理单元含两个组织，新建时选其一（DEC-294 补充）
+    await assignTalentMou(fixture, asAdmin, asAdmin.user, await createMou(fixture, asAdmin, [inside, outside]), 0);
     const create = async (orgId: string, name: string) => {
       const response = await fixture.request('POST', `${TC_BASE}/libraries`, {
         ...asAdmin,

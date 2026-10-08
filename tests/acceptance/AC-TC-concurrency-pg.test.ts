@@ -73,8 +73,9 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('R3-T01 PostgreSQL 16 强
       await tx.execute(sql`SELECT id FROM talent_criteria WHERE id = ${criterion.id}::uuid FOR UPDATE`);
       await tx.execute(sql`SELECT id FROM talent_dimensions WHERE id = ${target.id}::uuid FOR SHARE`);
       await tx.execute(sql`INSERT INTO talent_criterion_dimensions
-        (tenant_id, criterion_id, dimension_id, display_order)
-        VALUES (${w.tenant.id}::uuid, ${criterion.id}::uuid, ${target.id}::uuid, 1)`);
+        (tenant_id, criterion_id, dimension_id, display_order, owner_id, owner_org_id)
+        VALUES (${w.tenant.id}::uuid, ${criterion.id}::uuid, ${target.id}::uuid, 1, ${w.as.user}::uuid,
+          ${w.orgId}::uuid)`);
       pending = w.request('DELETE', `/dimensions/${target.id}`, { ifMatch: target.revision });
       await blocked(db, 1);
     });

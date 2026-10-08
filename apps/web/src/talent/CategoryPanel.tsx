@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Category, OwnerOrg } from './api.js';
 import { changedFields } from './changes.js';
 import { text } from './messages.js';
-import { OwnerOrgSelect, useOwnerOrgs } from './OwnerOrgSelect.js';
+import { ownerOrgBody, OwnerUnitField, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
 import { useTalentWrite } from './useTalentWrite.js';
@@ -14,7 +14,10 @@ interface Draft {
   readonly ownerOrgId: string;
 }
 
-/** 人才标准分类：挂所属管理单元（建后不可改，DEC-281⑨）；分类下还有人才标准时不能删除（DEC-281⑦）。 */
+/**
+ * 人才标准分类：所属人 / 所属管理单元由系统填写（DEC-294③，多个授权管理单元时新建可选，建后不可改）；
+ * 分类下还有人才标准时不能删除（DEC-281⑦）。
+ */
 export function CategoryPanel({ tenantId }: { tenantId: string }) {
   const [draft, setDraft] = useState<Draft | null>(null);
   const write = useTalentWrite(tenantId, () => {
@@ -31,11 +34,11 @@ export function CategoryPanel({ tenantId }: { tenantId: string }) {
       revision: original?.revision ?? 0,
       body: original
         ? changedFields({ name: original.name, displayOrder: original.displayOrder }, fields)
-        : { ...fields, ownerOrgId },
+        : { ...fields, ...ownerOrgBody(owners, ownerOrgId) },
     });
   };
   const edit = (item: Category) =>
-    setDraft({ original: item, name: item.name, displayOrder: item.displayOrder, ownerOrgId: item.ownerOrgId ?? '' });
+    setDraft({ original: item, name: item.name, displayOrder: item.displayOrder, ownerOrgId: '' });
   return (
     <section aria-busy={write.busy}>
       <button
@@ -88,7 +91,7 @@ function CategoryForm({
   onCancel,
 }: {
   draft: Draft;
-  owners: readonly OwnerOrg[];
+  owners: readonly OwnerOrg[] | undefined;
   busy: boolean;
   onChange: (draft: Draft) => void;
   onSubmit: () => void;
@@ -111,10 +114,10 @@ function CategoryForm({
             onChange={(event) => onChange({ ...draft, name: event.target.value })}
           />
         </label>
-        <OwnerOrgSelect
+        <OwnerUnitField
+          editing={!!draft.original}
           value={draft.ownerOrgId}
           options={owners}
-          readOnly={!!draft.original}
           onChange={(ownerOrgId) => onChange({ ...draft, ownerOrgId })}
         />
         <label>

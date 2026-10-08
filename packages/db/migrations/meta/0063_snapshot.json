@@ -1,5 +1,5 @@
 {
-  "id": "ab9a650b-3103-4687-90b7-1e96216b3238",
+  "id": "fda3262b-361a-4acf-ad92-08735bbf530e",
   "prevId": "8697c5d8-9629-46b4-b102-6d86b7cf8030",
   "version": "7",
   "dialect": "postgresql",
@@ -28821,9 +28821,48 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
+        },
+        "dimension_category": {
+          "name": "dimension_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
         }
       },
       "indexes": {
+        "talent_criterion_dimensions_owner_org": {
+          "name": "talent_criterion_dimensions_owner_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "talent_criterion_dimensions_dimension": {
           "name": "talent_criterion_dimensions_dimension",
           "columns": [
@@ -28858,6 +28897,21 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "talent_criterion_dimensions_owner_org_fk": {
+          "name": "talent_criterion_dimensions_owner_org_fk",
+          "tableFrom": "talent_criterion_dimensions",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
           "onUpdate": "no action"
         },
         "talent_criterion_dimensions_criterion_fk": {
@@ -28904,7 +28958,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "talent_criterion_dimensions_category": {
+          "name": "talent_criterion_dimensions_category",
+          "value": "char_length(\"talent_criterion_dimensions\".\"dimension_category\") <= 50"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.talent_description_types": {

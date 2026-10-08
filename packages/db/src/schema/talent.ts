@@ -2,11 +2,13 @@
  * R3-T01 人才标准与指标库（docs/02_业务建模/23 §2.1、§7；REQ-TC-001；DEC-281）。
  * - 指标库按 能力 / 潜力 / 经历 三类（TC-R1）；库内分类是独立对象（DEC-281③），指标以查找字段引用同库的分类；
  * - 指标的等级 / 行为 / 发展建议 / 面试问题各一张明细表，随指标整组替换；发展建议的类型取自类型数据源（DEC-281④）；
- * - 人才标准里的指标只存引用（TC-R2）：关系表只有指标 ID、权重、目标与顺序，不复制指标内容；
+ * - 人才标准里的指标只存引用（TC-R2）：关系表只有指标 ID、权重、目标、顺序与关联记录自己的“指标类别”文本
+ *   （DEC-294⑤：选入时复制库内分类名称作缺省，之后各自独立），不复制指标内容；
  * - 被引用的指标、还有指标或分类的指标库、被引用的分类与类型、还有标准的标准分类不能删除（TC-R5）：
  *   外键 RESTRICT 兜底，服务层先给出明确错误；
  * - 指标库、库内分类、指标、标准分类、人才标准带所属人与所属管理单元（DEC-281⑨），所属管理单元以组织表达
- *   （DEC-026 同思路），数据范围按查看人的管理单元裁剪；发展建议类型是没有组织字段的字典。
+ *   （DEC-026 同思路），数据范围按查看人的管理单元裁剪；发展建议类型是没有组织字段的字典。所属人 / 所属管理单元
+ *   由系统按创建人与其授权管理单元填写（DEC-294③），标准内的指标关联记录同样带这两项。
  */
 import { sql } from 'drizzle-orm';
 import {
@@ -298,9 +300,14 @@ export const talentCriterionDimensions = pgTable(
     weight: numeric('weight', { precision: 10, scale: 1 }),
     target: numeric('target', { precision: 10, scale: 1 }),
     displayOrder: displayOrder(),
+    /** DEC-294⑤：关联记录自己的“指标类别”文本（原站 DimensionCategory）。 */
+    dimensionCategory: text('dimension_category'),
+    ...owned(),
   },
   (t) => [
     unique('talent_criterion_dimensions_once').on(t.tenantId, t.criterionId, t.dimensionId),
+    check('talent_criterion_dimensions_category', sql`char_length(${t.dimensionCategory}) <= 50`),
+    ...ownerOrg('talent_criterion_dimensions', t),
     index('talent_criterion_dimensions_dimension').on(t.tenantId, t.dimensionId),
     foreignKey({
       columns: [t.tenantId, t.criterionId],

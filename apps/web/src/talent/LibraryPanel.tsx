@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { DIMENSION_TYPES, type DimensionType, type Library, type OwnerOrg } from './api.js';
 import { changedFields } from './changes.js';
 import { text } from './messages.js';
-import { OwnerOrgSelect, useOwnerOrgs } from './OwnerOrgSelect.js';
+import { ownerOrgBody, OwnerUnitField, useOwnerOrgs } from './OwnerOrgSelect.js';
 import { Pager, Status } from './parts.js';
 import { useList } from './useList.js';
 import { useTalentWrite } from './useTalentWrite.js';
@@ -19,7 +19,8 @@ interface Draft {
 const pick = ({ name, enabled, displayOrder }: Library) => ({ name, enabled, displayOrder });
 
 /**
- * 指标库：按 能力 / 潜力 / 经历 三类建立（TC-R1）；类型与所属管理单元建后不可修改（DEC-281⑥⑨）；
+ * 指标库：按 能力 / 潜力 / 经历 三类建立（TC-R1）；类型建后不可修改（DEC-281⑥）；所属人 / 所属管理单元由系统填写，
+ * 只在创建人有多个授权管理单元时新建可选（DEC-294③）；
  * 还有指标或分类的指标库不能删除（TC-R5）。
  */
 export function LibraryPanel({ tenantId }: { tenantId: string }) {
@@ -38,7 +39,9 @@ export function LibraryPanel({ tenantId }: { tenantId: string }) {
       path: original ? `libraries/${original.id}` : 'libraries',
       method: original ? 'PATCH' : 'POST',
       revision: original?.revision ?? 0,
-      body: original ? changedFields(pick(original), fields) : { ...fields, type: draftType, ownerOrgId },
+      body: original
+        ? changedFields(pick(original), fields)
+        : { ...fields, type: draftType, ...ownerOrgBody(owners, ownerOrgId) },
     });
   };
   const blank: Draft = { original: null, name: '', type: 'ability', enabled: true, displayOrder: 0, ownerOrgId: '' };
@@ -59,9 +62,7 @@ export function LibraryPanel({ tenantId }: { tenantId: string }) {
       <LibraryTable
         items={list.items}
         locked={write.locked}
-        onEdit={(item) =>
-          setDraft({ ...pick(item), type: item.type, ownerOrgId: item.ownerOrgId ?? '', original: item })
-        }
+        onEdit={(item) => setDraft({ ...pick(item), type: item.type, ownerOrgId: '', original: item })}
         onDelete={(item) => write.mutate({ path: `libraries/${item.id}`, method: 'DELETE', revision: item.revision })}
       />
       <Pager list={list} locked={write.locked} />
@@ -130,7 +131,7 @@ function LibraryForm({
   onCancel,
 }: {
   draft: Draft;
-  owners: readonly OwnerOrg[];
+  owners: readonly OwnerOrg[] | undefined;
   busy: boolean;
   onChange: (draft: Draft) => void;
   onSubmit: () => void;
@@ -167,10 +168,10 @@ function LibraryForm({
             ))}
           </select>
         </label>
-        <OwnerOrgSelect
+        <OwnerUnitField
+          editing={!!draft.original}
           value={draft.ownerOrgId}
           options={owners}
-          readOnly={!!draft.original}
           onChange={(ownerOrgId) => onChange({ ...draft, ownerOrgId })}
         />
         <label>

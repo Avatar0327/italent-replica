@@ -1,6 +1,6 @@
 /**
  * 指标库、指标库内分类（DEC-281③）与发展建议类型（DEC-281④）的写入。
- * - 指标库挂所属管理单元（建后不可改），库内分类随所属指标库；
+ * - 指标库的所属人 / 所属管理单元由系统按创建人填写（DEC-294③，建后不可改），库内分类随所属指标库；
  * - TC-R5：还有指标或分类的指标库不能删除；被指标引用的分类、被发展建议引用的类型不能删除（🟡 原站未取证，不留孤儿）。
  */
 import {
@@ -31,15 +31,16 @@ import {
   owned,
   referenced,
   rejectInUse,
-  requireOwnerOrg,
+  requireLibraryCreatable,
   type WriteContext,
 } from './write-support.js';
+import { ownerUnit } from './owner-units.js';
 
 // ---- 指标库 ----
 
 export async function createLibrary(tx: Tx, ctx: WriteContext, input: LibraryCreate) {
-  await requireOwnerOrg(tx, ctx, 'library', input.ownerOrgId);
-  const { ownerOrgId, ...fields } = input;
+  const { ownerOrgId: requested, ...fields } = input;
+  const ownerOrgId = await ownerUnit(tx, ctx, 'library', requested);
   const [row] = await tx
     .insert(talentDimensionLibraries)
     .values({ tenantId: ctx.tenantId, ...fields, ...owned(ctx, ownerOrgId), ...created(ctx) })
@@ -94,7 +95,7 @@ export async function deleteLibrary(tx: Tx, ctx: WriteContext, id: string) {
 export async function createDimensionCategory(tx: Tx, ctx: WriteContext, input: DimensionCategoryCreate) {
   const library = await referenced(tx, ctx, 'library', input.libraryId);
   // 随所属库的管理单元：新建须在操作人分类范围内（DEC-082，不因“使用用户”放行）
-  requireCreatable(ctx.scope, 'dimensionCategory', library.orgId);
+  requireLibraryCreatable(ctx, 'dimensionCategory', library);
   const [row] = await tx
     .insert(talentDimensionCategories)
     .values({ tenantId: ctx.tenantId, ...input, ...owned(ctx, library.orgId!), ...created(ctx) })
