@@ -55,6 +55,8 @@ def snapshot():
                 done_at = c["createdAt"]
             elif done_at and any(w in b for w in ("审查已发起", "排队待审", "已发起")):
                 done_at = ""
+        if done_at and handled:  # 审查发起与“开发完成”几乎同时贴（同一 head 已发起）时不再报
+            done_at = ""
         out[str(p["number"])] = {"opus": opus, "handled": handled, "done": done_at, "t": p["title"][:40], "head": p["headRefOid"][:7], "draft": p["isDraft"], "ci": ci,
                                  "commit": last_commit, "comment": last_comment, "nc": len(p["comments"])}
     return out
