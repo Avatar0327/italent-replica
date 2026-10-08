@@ -27,6 +27,7 @@ export {
   evaluateFormula,
   orderComputationItems,
   validateFormula,
+  type BatchEvaluationHooks,
   type BatchResult,
   type ComputationItem,
   type EvaluationResult,
@@ -121,6 +122,7 @@ export {
   type DatePrecision,
   type ExprValue,
   type ExprValueKind,
+  type ExpressionFieldKind,
   type OptionValue,
   type PlainValue,
 } from './values.js';

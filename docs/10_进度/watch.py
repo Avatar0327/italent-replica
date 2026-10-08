@@ -83,8 +83,11 @@ def codex_results():
             continue  # 子代理线程，不算结论（只认主线程）
         n = txt.count('"task_complete"')
         # PR 识别：先认 PR 链接；codex exec 会话常不带链接，再认首条真实用户提问（跳过 AGENTS.md / 环境注入）里的 “PR #n / #n” 与任务编号
-        m = re.search(r"italent-replica/pull/(\d+)", txt)
-        pr = m.group(1) if m else ""
+        # 取出现次数最多的 PR 链接（开发会话会顺带引用前置 PR，只认第一条会认错，如 F-049 被认成 #113）
+        cwd0 = re.search(r'"cwd":"([^"]*)"', txt.split("\n", 1)[0])
+        mw = re.search(r"/wt-(\d+)$", cwd0.group(1)) if cwd0 else None  # 审查会话的工作目录 wt-NNN 最可靠
+        links = re.findall(r"italent-replica/pull/(\d+)", txt)
+        pr = mw.group(1) if mw else (max(set(links), key=links.count) if links else "")
         if not pr:
             prompt = ""
             for line in txt.split("\n")[:400]:

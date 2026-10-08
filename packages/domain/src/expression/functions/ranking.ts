@@ -14,7 +14,7 @@
  * 面板原文“在待办中触发计算时，包含这个函数的计算项目不会计算”（DEC-260）：以 skipInTodoTrigger 标记，调度由 R3-T04 落实。
  */
 import { walk, type CallNode, type ExprNode } from '../ast.js';
-import { CONVERSION_MESSAGE } from '../failures.js';
+import { ComputationError, CONVERSION_MESSAGE } from '../failures.js';
 import { equalityLookupKeys, equalityStoreKeys, valuesEqual } from '../operators.js';
 import type { SubjectReader } from '../ports.js';
 import type { ArgumentIssue, FunctionCall, FunctionSpec } from '../registry.js';
@@ -100,7 +100,9 @@ const MAX_TABLES_PER_CALL = 64;
 function tryEvaluate(call: FunctionCall, node: ExprNode, subject: SubjectReader): ExprValue | undefined {
   try {
     return call.evaluateForSubject(node, subject);
-  } catch {
+  } catch (error) {
+    // DEC-314：多选禁入不能被排名降格为空分组或不参与；其他取数失败沿用旧口径。
+    if (error instanceof ComputationError && error.reason === 'multi_option') throw error;
     return undefined;
   }
 }
@@ -288,6 +290,7 @@ function ownResult(call: FunctionCall, self: SubjectReader): ExprValue {
     try {
       value = call.evaluateForSubject(arg.node, self);
     } catch (error) {
+      if (error instanceof ComputationError && error.reason === 'multi_option') throw error;
       if (isTypeConversion(error)) return EMPTY;
     }
     if (rangeValue(arg, value) === undefined) return call.fail('OUT_OF_SCOPE', '本人不满足人员范围条件');
