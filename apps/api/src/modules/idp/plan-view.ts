@@ -498,6 +498,11 @@ async function keyInfoShown(
   return shown;
 }
 
+/** 模板模块的关键信息配置（keyInfoSources 与 keyInfoBlocks 联动，R2-3）对查看人可见。 */
+const keyInfoConfigVisible = (moduleFields: Projection) =>
+  moduleFields !== null &&
+  (moduleFields === undefined || (moduleFields.has('keyInfoSources') && moduleFields.has('keyInfoBlocks')));
+
 /** 参与人固定字段集（DEC-296④）：计划不按 IDP 字段权限，模块只带结构与本节点按钮。 */
 const PARTICIPANT_PLAN_KEYS = [
   'id',
@@ -545,8 +550,11 @@ export async function presentPlan(
     }
     if (projections.analysis !== null) shown.analyses = listOf(analyses, projections.analysis);
     if (projections.review !== null) shown.reviews = listOf(reviews, projections.review);
-    // 关键信息按模板配置的区块与展示字段呈现，同样随所属模板可见
-    if (config.template) shown.keyInfo = await keyInfoShown(tx, keyInfo, modules, projections);
+    // 关键信息按模板配置的区块与展示列生成，返回的区块与列就是配置本身：查看人须看得到所属模板、模块对象与
+    // 两个联动配置字段，否则不输出（第 3 轮 R2-4、第 4 轮 R3-1；记录本身仍可经关键信息接口按其权限读取）
+    if (config.template && keyInfoConfigVisible(projections.templateModule)) {
+      shown.keyInfo = await keyInfoShown(tx, keyInfo, modules, projections);
+    }
     return shown;
   }
   const { stage, nodeKey } = viewer.at;
