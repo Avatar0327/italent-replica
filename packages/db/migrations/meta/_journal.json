@@ -484,6 +484,13 @@
       "when": 1791475623782,
       "tag": "0068_survey360_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1791481741509,
+      "tag": "0069_idp_plans",
+      "breakpoints": true
     }
   ]
 }

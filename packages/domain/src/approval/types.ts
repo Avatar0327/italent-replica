@@ -16,14 +16,24 @@ export const APPROVER_EXPRESSIONS = [
   'record_department_head', // 本条任职记录 → 部门 → 负责人（调入方）
   'record_department_hrbp', // 本条任职记录 → 部门 → HRBP
   'record_first_level_org_head', // 本条任职记录 → 部门 → 一级组织 → 负责人
+  // R3-T07 PR-B（K-09，W-114 节点链）：只有 IDP 三类审批类型可选（IDP_ONLY_APPROVERS）
+  'idp_employee', // 发展计划 - 员工本人（填写节点，不按自审处理，K-37）
+  'idp_tutor', // 发展计划 - 指导人
 ] as const;
 export type ApproverExpression = (typeof APPROVER_EXPRESSIONS)[number];
+
+/** 只在 IDP 审批类型上可用的审批人表达式（取发展计划上的员工 / 指导人）。 */
+export const IDP_ONLY_APPROVERS: ReadonlySet<ApproverExpression> = new Set(['idp_employee', 'idp_tutor']);
 
 /**
  * 审批人为空：首节点提交即报错，中间节点一律转异常管理员（DEC-054、REQ-APV-002 R6、`14` §10）。
  * 原站另有“自动跳过 / 自动同意”配置（`14` §8.7），复刻首版不开放（PR #35 第二轮清单 6）。
  */
-export const NO_ASSIGNEE_POLICIES = ['exception_admin'] as const;
+/**
+ * 审批人为空的处理：转异常管理员（DEC-054 / 098）；无操作（DEC-318 K-38，原站 noAssignee.type = 0：不转管理员、不自动
+ * 跳过，推进到该节点的操作报错，流程停在原节点，🟡 原站报错文案未实测）。
+ */
+export const NO_ASSIGNEE_POLICIES = ['exception_admin', 'none'] as const;
 export type NoAssigneePolicy = (typeof NO_ASSIGNEE_POLICIES)[number];
 
 /** 审批中编辑：独立【编辑】按钮（保存后仍需同意）/ 与【同意】合一（REQ-APV-003 R2）。 */
@@ -131,6 +141,35 @@ export interface NodeActions {
   /** 审批人撤回：下一节点尚未处理时撤回本人的同意（`isRetrieve`）。 */
   readonly retrieve: boolean;
   readonly urge: UrgeMode;
+  /**
+   * 自审回避（DEC-058 / DEC-068 / DEC-091 的“发起人 / 异动本人不审批自己的单据”）：路由时自审跳过转直线经理、办理时
+   * 拒绝本人。DEC-318 K-37 起是节点开关（原站跳过类开关都是节点级）；缺省（未给出）即开启，原有流程行为不变。
+   * IDP 预置流程关闭（员工处理自己计划的节点是正常路径）。
+   */
+  readonly avoidSelf?: boolean;
+  /** 发起人撤回（原站 isRevoke，DEC-318 K-39）：缺省开启（原有流程不变），IDP 预置流程关闭。 */
+  readonly revoke?: boolean;
+  /**
+   * 驳回到上一步（原站 isRejectToPrevious，DEC-318 K-39）：回到上一个节点重新办理，重新提交后按正常顺序往后走
+   * （isResubmitThisActivity = false）。缺省关闭；单人节点、非第一个节点才可用。
+   */
+  readonly rejectToPrevious?: boolean;
+  /** 审批人跳转（原站节点系统动作“跳转”，DEC-318 K-39）：跳到本流程的其他节点。缺省关闭。 */
+  readonly jump?: boolean;
+}
+
+/** 发起人能否在该节点撤回：未给出即开启。 */
+export const revokeAllowed = (node: { readonly actions?: Pick<NodeActions, 'revoke'> }) =>
+  node.actions?.revoke !== false;
+/** 驳回到上一步：显式开启才可用。 */
+export const rejectToPreviousAllowed = (node: { readonly actions?: Pick<NodeActions, 'rejectToPrevious'> }) =>
+  node.actions?.rejectToPrevious === true;
+/** 审批人跳转：显式开启才可用。 */
+export const jumpAllowed = (node: { readonly actions?: Pick<NodeActions, 'jump'> }) => node.actions?.jump === true;
+
+/** 节点是否自审回避：未给出即开启（NodeActions.avoidSelf）。 */
+export function avoidsSelf(node: { readonly actions?: Pick<NodeActions, 'avoidSelf'> }): boolean {
+  return node.actions?.avoidSelf !== false;
 }
 
 /** 节点是否开启驳回：未给出即开启（NodeActions.reject）。 */
@@ -290,7 +329,7 @@ const employeeInfoFormFields = EMPLOYEE_EDITABLE_FIELDS.filter((f) => !f.system)
 
 /**
  * employee_info：个人信息变更（员工信息主表），发起入口留待后续业务接入（DEC-116），尚无运行时适配器。
- * idp：个人发展计划的子流程（R3-T07），PR-A 只登记类型供子流程引用与节点配置，运行时适配器随计划执行（PR-B）接入。
+ * idp：个人发展计划的子流程（R3-T07）：PR-A 登记类型供子流程引用与节点配置，PR-B 接入运行时适配器（一个阶段一条实例）。
  */
 export type ApprovalAdapterKind = 'employment' | 'personnel_change' | 'employee_info' | 'contract' | 'idp';
 export interface ApprovalTypeDefinition {
@@ -308,7 +347,7 @@ export interface ApprovalTypeDefinition {
   readonly approvalEdit: boolean;
 }
 
-/** 发展计划对象（IDP.Idp）：IDP 审批实例的业务对象，权限对象随计划执行（PR-B）登记。 */
+/** 发展计划对象（IDP.Idp）：IDP 审批实例的业务对象。 */
 const IDP_PLAN_OBJECT = `${IDP_APP}.Idp`;
 
 const employmentType = (code: string, name: string, defaultProcessCode: string | null = null) =>
@@ -344,7 +383,7 @@ const contractType = (code: string, name: string, defaultProcessCode: string) =>
 
 /**
  * IDP 子流程的三类审批流程（`28` IDP-R1；Q-M0-115② 子流程“名称（关联审批流程）”制定计划 1 / 中期回顾 2 / 末期回顾 3）。
- * 原站没有标准流程编码（预置流程随 PR-B），表单字段与发起条件待计划执行接入后再定。
+ * 原站没有标准流程编码；审批不带业务表单字段与发起条件（计划内容在 IDP 内按节点按钮维护，DEC-296④）。
  */
 const idpType = (code: string, name: string) =>
   ({

@@ -1,4 +1,5 @@
 import { CapacityAuditFields, capacityAuditChanges, visibleCapacityParts } from './establishment-capacity.js';
+import { NestedAuditFields, type NestedChildren, visibleNested, visibleNestedChanges } from './nested-fields.js';
 /**
  * DEC-197 / DEC-203（PR #75 第二、三轮）：审计查询按查看人**当前**的数据范围与字段权限裁剪，不设全量读取特权。
  * 「日志审计」能力只决定能不能进入查询；每条日志能否返回，按它的对象类型复用**该业务对象自己的查看规则**：
@@ -24,7 +25,7 @@ import {
   CONTRACT_OBJECT,
   ESTABLISHMENT_SCHEME_DATASOURCE,
   IDP_OBJECTS,
-  type IdpObject,
+  linkedViewable,
   MODULE_OBJECTS,
   PERSONNEL_OBJECT,
   PERSONNEL_REQUEST_OBJECT,
@@ -47,7 +48,8 @@ import {
 import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
 import { survey360AuditScope } from '../modules/survey360/access.js';
-import { IDP_AUDIT_ACTIONS } from '../modules/idp/access.js';
+import { IDP_AUDIT_ACTIONS, IDP_ORG_OBJECTS, IDP_PERSON_OBJECTS } from '../modules/idp/access.js';
+import { KEY_INFO, keyInfoScopeSql, keyInfoSnapshot, type KeyInfoSpec } from '../modules/idp/key-info-scope.js';
 import {
   isDictionary as isTalentDictionary,
   TALENT_AUDIT_ACTIONS,
@@ -70,6 +72,7 @@ interface Row {
   readonly objectId: SQL;
   readonly employee: SQL;
   readonly org: SQL;
+  readonly before: SQL;
   readonly after: SQL;
   readonly commandId: SQL;
   readonly actor: SQL | null;
@@ -435,11 +438,29 @@ const RULES: readonly Rule[] = [
   },
   // R3-T07 个人发展计划配置（IDP 应用，PR 描述矩阵 A）：与业务接口一致按所属组织（日志写入时流程 / 模板的所属组织）
   // 裁剪，“使用用户”按保留的创建元数据（DEC-198）；向下公开只放开业务查看与选用，不放开审计（🟡 K-23）
-  ...(Object.keys(IDP_OBJECTS) as IdpObject[]).map((object): Rule => {
+  ...IDP_ORG_OBJECTS.map((object): Rule => {
     const code = IDP_OBJECTS[object].code;
     return orgRule([code], code, (row, viewer) =>
       creatorSql(viewer.tenantId, row.objectId, `${IDP_AUDIT_ACTIONS[object]}.create`, code),
     );
+  }),
+  // R3-T07 PR-B：计划及其组成部分按计划员工、关键信息按员工（带教按被带教人）归属，与业务接口的范围一致（K-50）；
+  // 关键信息另要求日志前后快照涉及的全部员工 / 组织都在范围内（带教双方、轮岗部门，第 2 轮 P2-1）
+  ...IDP_PERSON_OBJECTS.map((object): Rule => {
+    const code = IDP_OBJECTS[object].code;
+    const rule = personRule([code], code, (row, viewer) =>
+      creatorSql(viewer.tenantId, row.objectId, `${IDP_AUDIT_ACTIONS[object]}.create`, code),
+    );
+    const spec = (KEY_INFO as Partial<Record<string, KeyInfoSpec>>)[object];
+    if (!spec) return rule;
+    const snapshot = (scope: ModuleScope, value: SQL) =>
+      sql`(${value} IS NULL OR ${keyInfoScopeSql(scope, spec, keyInfoSnapshot(value))})`;
+    return {
+      ...rule,
+      visible: (scope, row, viewer, inputs) =>
+        sql`(${rule.visible(scope, row, viewer, inputs)} AND ${snapshot(scope, row.before)}
+          AND ${snapshot(scope, row.after)})`,
+    };
   }),
 ];
 
@@ -449,6 +470,7 @@ function orderCodeChildren(scope: ModuleScope, row: Row, viewer: Viewer, fields?
     objectId: sql`p.object_id`,
     employee: sql`p.scope_employee_id`,
     org: sql`p.scope_org_id`,
+    before: sql`p.before`,
     after: sql`p.after`,
     commandId: sql`p.command_id`,
     actor: null,
@@ -690,7 +712,7 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
   }
   if (!(await canView())) return undefined;
   const scope = await resolveModuleScope(deps, ctx, undefined, rule.objectCode, undefined, rule.view);
-  const objectFields = await getModuleViewableFields(deps, ctx, rule.objectCode);
+  const objectFields = linkedViewable(rule.objectCode, await getModuleViewableFields(deps, ctx, rule.objectCode));
   const linkage = rule.types.includes(TRANSFER_LINKAGE)
     ? await resolveLinkageAudit(deps, ctx, scope, objectFields)
     : undefined;
@@ -701,9 +723,32 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
     fields:
       rule.types.includes('establishment-capacity') && objectFields
         ? new CapacityAuditFields(objectFields)
-        : (fixed ?? withProtocol(objectFields, rule.protocol)),
+        : rule.objectCode === IDP_OBJECTS.goal.code
+          ? await idpGoalFields(deps, ctx, objectFields)
+          : (fixed ?? withProtocol(objectFields, rule.protocol)),
     ...(linkage ? { linkage } : {}),
   };
+}
+
+/**
+ * 发展目标快照嵌套的任务与目标回顾按各自对象的查看权与字段裁剪（R2-2）；全部字段可见且子对象不受限时不包装。
+ */
+async function idpGoalFields(
+  deps: Deps,
+  ctx: TenantContext,
+  goalFields: ReadonlySet<string> | undefined,
+): Promise<ReadonlySet<string> | undefined> {
+  const children: Record<string, ReadonlySet<string> | undefined | null> = {};
+  for (const [key, object] of [
+    ['tasks', IDP_OBJECTS.task],
+    ['reviews', IDP_OBJECTS.goalReview],
+  ] as const) {
+    const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: object.code, fields: [] });
+    children[key] = canView ? await getModuleViewableFields(deps, ctx, object.code) : null;
+  }
+  if (goalFields === undefined && Object.values(children).every((child) => child === undefined)) return undefined;
+  const all = IDP_OBJECTS.goal.fields.map((field) => field.code);
+  return new NestedAuditFields(goalFields ?? all, children as NestedChildren);
 }
 
 interface ResolvedConfig {
@@ -752,6 +797,7 @@ function rowOf(table: string): Row {
     objectId: sql`COALESCE(${column('object_id')}, '')`,
     employee: column('scope_employee_id'),
     org: column('scope_org_id'),
+    before: table === EVENT ? column('before') : sql`NULL::jsonb`,
     after: table === EVENT ? column('after') : sql`NULL::jsonb`,
     commandId: column('command_id'),
     actor: table === TASK ? column('actor_user_id') : null,
@@ -765,6 +811,7 @@ function itemRow(): Row {
     objectId: sql`COALESCE(item->>'objectId', '')`,
     employee: sql`COALESCE(NULLIF(item->>'employeeId', '')::uuid, ${task('scope_employee_id')})`,
     org: sql`COALESCE(NULLIF(item->>'orgId', '')::uuid, ${task('scope_org_id')})`,
+    before: sql`NULL::jsonb`,
     after: sql`NULL::jsonb`,
     commandId: sql`${sql.identifier(TASK)}.command_id`,
     actor: sql`${sql.identifier(TASK)}.actor_user_id`,
@@ -866,7 +913,9 @@ export function visibleChanges(
   changes: readonly AuditFieldChange[],
   fields: ReadonlySet<string> | undefined,
 ): AuditFieldChange[] {
-  return fields === undefined ? [...changes] : changes.filter((change) => fieldVisible(fields, change.field));
+  if (fields === undefined) return [...changes];
+  const visible = changes.filter((change) => fieldVisible(fields, change.field));
+  return fields instanceof NestedAuditFields ? visibleNestedChanges(visible, fields) : visible;
 }
 
 /** 前后值 / 快照只留可见字段；嵌套的 fields / customFields 等容器逐层裁剪，空容器去掉。 */
@@ -883,6 +932,9 @@ export function visibleValue(value: unknown, fields: ReadonlySet<string> | undef
     ) {
       const nested = visibleValue(inner, fields, path) as Record<string, unknown>;
       if (Object.keys(nested).length) kept[key] = nested;
+    } else if (fields instanceof NestedAuditFields && !prefix && key in fields.children) {
+      const nested = fieldVisible(fields, path) ? visibleNested(fields, key, inner) : undefined;
+      if (nested !== undefined) kept[key] = nested;
     } else if (fieldVisible(fields, path)) {
       kept[key] =
         fields instanceof CapacityAuditFields && key === 'subdivisions' ? visibleCapacityParts(inner, fields) : inner;

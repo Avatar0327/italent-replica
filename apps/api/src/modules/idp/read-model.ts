@@ -18,6 +18,8 @@ import {
 } from '@italent/db';
 import {
   type ModuleType,
+  type KeyInfoSource,
+  keyInfoBlocksOf,
   nodeButtonsOf,
   type ReferencePoint,
   type StartFrom,
@@ -272,7 +274,11 @@ export function moduleView(row: ModuleRow, nodeSettings: readonly NodeSettingVie
       checkNoneGoal: row.checkNoneGoal,
     });
   }
-  if (row.moduleType === 'key_info') settings.keyInfoSources = row.keyInfoSources ?? [];
+  if (row.moduleType === 'key_info') {
+    const sources = (row.keyInfoSources ?? []) as KeyInfoSource[];
+    settings.keyInfoSources = sources;
+    settings.keyInfoBlocks = keyInfoBlocksOf(sources, row.keyInfoFields);
+  }
   if (row.moduleType === 'talent_review') {
     Object.assign(settings, {
       reviewTimeBasis: row.reviewTimeBasis,

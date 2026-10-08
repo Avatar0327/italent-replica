@@ -70,6 +70,15 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'IDP.IDPTemplate': { label: '发展计划模板', app: IDP },
   'IDP.IDPTemplateModule': { label: '发展计划模块', app: IDP },
   'IDP.IDPTemplateCommonGoal': { label: '模板通用目标', app: IDP },
+  'IDP.Idp': { label: '发展计划', app: IDP },
+  'IDP.IdpGoal': { label: '发展目标', app: IDP },
+  'IDP.Task': { label: '目标任务', app: IDP },
+  'IDP.GoalReview': { label: '目标回顾', app: IDP },
+  'IDP.Analysis': { label: '综述', app: IDP },
+  'IDP.Review': { label: '回顾', app: IDP },
+  'IDP.TutorShip': { label: '带教信息', app: IDP },
+  'IDP.Career': { label: '职业发展信息', app: IDP },
+  'IDP.WorkShift': { label: '轮岗信息', app: IDP },
 };
 
 /** 对象编码前缀 → 应用（未单独登记的对象按所属模块归类）。 */
