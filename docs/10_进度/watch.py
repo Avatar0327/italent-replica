@@ -46,7 +46,7 @@ def snapshot():
             elif opus and ("审查原文" in b or "结论" in b[:200]):
                 opus = ""
         lc = p["commits"][-1]["committedDate"] if p["commits"] else ""
-        handled = any(c["createdAt"] > lc and any(w in c.get("body", "") for w in ("审查已发起", "排队待审", "修改清单", "审查原文", "勿改动", "待合并", "已发起"))
+        handled = any(c["createdAt"] > lc and any(w in c.get("body", "") for w in ("审查已发起", "排队待审", "修改清单", "清单补充", "审查原文", "勿改动", "待合并", "已发起"))
                       for c in p["comments"])
         done_at = ""  # 开发方贴“开发完成”（DEC：开发完成明确报到）且其后尚无审查发起 / 排队
         for c in p["comments"]:

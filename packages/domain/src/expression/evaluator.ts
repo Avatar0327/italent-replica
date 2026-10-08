@@ -218,6 +218,7 @@ export class Evaluator {
       rawArgs: node.args,
       evaluate: (child, recordFields) =>
         this.evaluate(child, recordFields ? { ...scope, records: [...scope.records, recordFields] } : scope),
+      variable: (name) => scope.vars.get(name),
       evaluateForSubject: (child, subject) =>
         this.forSubject(subject).evaluate(child, { vars: scope.vars, records: [], objects: scope.objects }),
       fail: failAt,
@@ -266,6 +267,7 @@ export class Evaluator {
       assessmentLatestWindow: this.context.assessmentLatestWindow ?? 'before_project_end',
       semantics: this.semantics,
       ports: this.context.ports,
+      rankingTables: this.context.rankingTables,
       fromPlain: (value) => this.fromPlain(value),
     };
   }
