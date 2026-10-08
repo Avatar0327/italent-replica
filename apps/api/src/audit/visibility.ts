@@ -29,6 +29,7 @@ import {
   PERSONNEL_OBJECT,
   PERSONNEL_REQUEST_OBJECT,
   SUBSETS,
+  survey360,
   TALENT_OBJECTS,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
@@ -45,6 +46,7 @@ import {
 } from '../modules/permission/module-access.js';
 import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
+import { survey360AuditScope } from '../modules/survey360/access.js';
 import { IDP_AUDIT_ACTIONS } from '../modules/idp/access.js';
 import {
   isDictionary as isTalentDictionary,
@@ -92,6 +94,13 @@ interface Rule {
   readonly visible: (scope: ModuleScope, row: Row, viewer: Viewer, resolved: RuleInputs) => SQL;
   /** 规则需要的额外谓词（如审批管理员范围，对 approval_instances 别名 i）；返回 null 表示没有权限。 */
   readonly resolve?: (deps: Deps, ctx: TenantContext) => Promise<SQL | null>;
+  /**
+   * 带 resolve 的规则同样先要 objectCode 的查看权，再按该对象的查看字段裁剪（R3-T03 第 3 轮 R2-P2-4：360 日志按
+   * 真实对象判定）；不设时保持原样（审批实例等只按 resolve 与固定字段）。
+   */
+  readonly objectPermission?: boolean;
+  /** 不是对象字段的协议键（删除 / 移除标记、活动授权名单等），随对象字段一起展示。 */
+  readonly protocol?: readonly string[];
 }
 
 type Deps = TenantRouteDeps;
@@ -204,7 +213,78 @@ export const APPROVAL_FLOW_FIELDS = [
   'origin',
 ];
 
+/**
+ * R3-T03：360 日志按真实对象判定（第 3 轮 R2-P2-4）——先要该 360 对象的查看权，再按该对象的查看字段裁剪；可见条件
+ * 与接口同一判定（survey360/access.ts）：活动按活动可见；评价对象 / 评价关系 / 确认单按评价关系对象、答卷按答卷
+ * 对象，且活动可见、精细化权限生效时一律不可见；人员按人员对象（精细化生效时不可见）；同步冲突另须同步按钮与员工
+ * 信息查看权、冲突员工在查看人当前员工范围内（第 4 轮 R3-P2-2），只展示冲突协议字段；评价角色 / 设置、套卷有对象
+ * 查看权即可见。活动内对象的写入一律在 after 里带 activityId，同步冲突的 after 带 employeeId。
+ */
+const S360 = survey360.SURVEY360_OBJECTS;
+const inVisibleActivity: Rule['visible'] = (_scope, row, _viewer, { extra }) =>
+  extra ? sql`COALESCE(${row.after}->>'activityId', '') IN (${extra})` : sql`false`;
+const byResolve: Rule['visible'] = (_scope, _row, _viewer, { extra }) => extra ?? sql`false`;
+const byConflictEmployee: Rule['visible'] = (_scope, row, _viewer, { extra }) =>
+  extra ? sql`COALESCE(${row.after}->>'employeeId', '') IN (${extra})` : sql`false`;
+const survey360Rules: readonly Rule[] = [
+  {
+    types: ['survey360-activity'],
+    objectCode: S360.activity.code,
+    objectPermission: true,
+    protocol: ['activityId', 'userIds', 'deleted'],
+    resolve: survey360AuditScope('activity'),
+    visible: inVisibleActivity,
+  },
+  {
+    types: ['survey360-object', 'survey360-relation', 'survey360-confirmation'],
+    objectCode: S360.relation.code,
+    objectPermission: true,
+    protocol: ['removed'],
+    resolve: survey360AuditScope('relation'),
+    visible: inVisibleActivity,
+  },
+  {
+    types: ['survey360-sheet'],
+    objectCode: S360.answer.code,
+    objectPermission: true,
+    resolve: survey360AuditScope('relation'),
+    visible: inVisibleActivity,
+  },
+  {
+    types: ['survey360-person'],
+    objectCode: S360.person.code,
+    objectPermission: true,
+    resolve: survey360AuditScope('person'),
+    visible: byResolve,
+  },
+  {
+    types: ['survey360-sync-conflict'],
+    objectCode: S360.person.code,
+    objectPermission: true,
+    fixedFields: [
+      'id',
+      'employeeId',
+      'candidatePersonIds',
+      'matchedBy',
+      'status',
+      'resolution',
+      'resolvedPersonId',
+      'revision',
+    ],
+    resolve: survey360AuditScope('sync'),
+    visible: byConflictEmployee,
+  },
+  { types: ['survey360-role', 'survey360-settings'], objectCode: S360.settings.code, visible: () => sql`true` },
+  {
+    types: ['survey360-questionnaire'],
+    objectCode: S360.questionnaire.code,
+    protocol: ['deleted'],
+    visible: () => sql`true`,
+  },
+];
+
 const RULES: readonly Rule[] = [
+  ...survey360Rules,
   {
     // DEC-216 / F-007：联动汇总按任职查看规则判定，人数按本组织本次联动的可见逐条审计重算。
     types: ['org-adjustment-run'],
@@ -591,17 +671,24 @@ function orderRunCount(run: ResolvedRule, viewer: Viewer): SQL {
     THEN (SELECT count(*)::int FROM (${children}) visible_child) END)`;
 }
 
+/** 对象查看字段加上规则的协议键；undefined（不限）保持不限。 */
+function withProtocol(fields: ReadonlySet<string> | undefined, protocol: readonly string[] | undefined) {
+  return fields === undefined || !protocol?.length ? fields : new Set([...fields, ...protocol]);
+}
+
 async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<ResolvedRule | undefined> {
   const fixed = rule.fixedFields ? new Set(rule.fixedFields) : undefined;
+  // 与业务接口 objectContext 同一开关：没有该对象的查看权限，审计里也看不到（第三轮 P1-3）
+  const canView = () => deps.authorize({ ...ctx, action: 'object.view', resource: rule.objectCode, fields: [] });
   if (rule.resolve) {
+    if (rule.objectPermission && !(await canView())) return undefined;
     const extra = await rule.resolve(deps, ctx);
     if (!extra) return undefined;
     const scope = { all: false, hasDataPermission: true } as ModuleScope;
-    return { rule, scope, inputs: { extra, objectFields: undefined }, fields: fixed };
+    const objectFields = rule.objectPermission ? await getModuleViewableFields(deps, ctx, rule.objectCode) : undefined;
+    return { rule, scope, inputs: { extra, objectFields }, fields: fixed ?? withProtocol(objectFields, rule.protocol) };
   }
-  // 与业务接口 objectContext 同一开关：没有该对象的查看权限，审计里也看不到（第三轮 P1-3）
-  const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: rule.objectCode, fields: [] });
-  if (!canView) return undefined;
+  if (!(await canView())) return undefined;
   const scope = await resolveModuleScope(deps, ctx, undefined, rule.objectCode, undefined, rule.view);
   const objectFields = await getModuleViewableFields(deps, ctx, rule.objectCode);
   const linkage = rule.types.includes(TRANSFER_LINKAGE)
@@ -614,7 +701,7 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
     fields:
       rule.types.includes('establishment-capacity') && objectFields
         ? new CapacityAuditFields(objectFields)
-        : (fixed ?? objectFields),
+        : (fixed ?? withProtocol(objectFields, rule.protocol)),
     ...(linkage ? { linkage } : {}),
   };
 }

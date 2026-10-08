@@ -11,6 +11,7 @@ export interface AuditObjectMeta {
 const ORG_PEOPLE = '组织员工';
 const APPROVAL = '审批中心';
 const ENTERPRISE = '企业设置';
+const SURVEY360 = '360度评估';
 const TALENT = '人才标准';
 const IDP = '个人发展计划';
 
@@ -47,6 +48,16 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   permission_mou: { label: '管理单元', app: ENTERPRISE },
   license_pool: { label: '许可', app: ENTERPRISE },
   audit_retention: { label: '日志保留期', app: ENTERPRISE },
+  'survey360-settings': { label: '360设置', app: SURVEY360 },
+  'survey360-person': { label: '360人员', app: SURVEY360 },
+  'survey360-role': { label: '评价角色', app: SURVEY360 },
+  'survey360-sync-conflict': { label: '人员同步冲突', app: SURVEY360 },
+  'survey360-questionnaire': { label: '套卷', app: SURVEY360 },
+  'survey360-activity': { label: '360活动', app: SURVEY360 },
+  'survey360-object': { label: '评价对象', app: SURVEY360 },
+  'survey360-relation': { label: '评价关系', app: SURVEY360 },
+  'survey360-confirmation': { label: '评价关系确认', app: SURVEY360 },
+  'survey360-sheet': { label: '答卷', app: SURVEY360 },
   'TalentCenter.DimensionLibrary': { label: '指标库', app: TALENT },
   'TalentCenter.Category': { label: '指标库分类', app: TALENT },
   'TalentCenter.DescriptionType': { label: '发展建议类型', app: TALENT },
@@ -68,6 +79,7 @@ const APP_PREFIXES: readonly (readonly [string, string])[] = [
   ['tenant', ENTERPRISE],
   ['license', ENTERPRISE],
   ['audit', ENTERPRISE],
+  ['survey360', SURVEY360],
 ];
 
 export function auditObjectMeta(objectType: string): AuditObjectMeta {
