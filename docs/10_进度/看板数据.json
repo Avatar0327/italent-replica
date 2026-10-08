@@ -2,7 +2,7 @@
 "updated": "2026-10-07",
 "stats": {
 "merged": 54,
-"open": 8,
+"open": 10,
 "dec": 299,
 "ev": "27/122"
 },
@@ -400,7 +400,10 @@
 "F-032"
 ],
 "note": "第二批：F-032 合并 + 取证后；Fable 5.1 → Astra Ultra，先出设计",
-"ev": "⛔ Q-M0-82 未取证"
+"ev": "⛔ Q-M0-82 未取证",
+"pr": [
+112
+]
 },
 "R3-T06": {
 "n": "人才池与人才梯队",
@@ -415,7 +418,10 @@
 "n": "个人发展计划 IDP",
 "ms": "R3",
 "s": "active",
-"note": "第三批：Opus 5.5 High → Sol Ultra"
+"note": "第三批：Opus 5.5 High → Sol Ultra",
+"pr": [
+111
+]
 },
 "F-001": {
 "n": "同周期同日多条主职业务、早于入职日一律拒绝",
@@ -1985,7 +1991,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-07 21:33",
+"liveUpdated": "10-07 21:53",
 "chains": [
 {
 "g": "exit",
@@ -2157,9 +2163,10 @@
 "k": "run",
 "n": "继任管理",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:d ds:a1 dev:w rev:w mg:w",
-"now": "设计中（端口契约以 T04 为准）",
-"fable": "1"
+"seg": "ev:d ds:d1 dev:w rev:w1 mg:w",
+"now": "设计 v1 已交，待设计审",
+"fable": "1",
+"pr": 112
 },
 {
 "id": "R3-T04",
@@ -2313,8 +2320,8 @@
 "n": "权限框架强制",
 "u": "已核对，待开会话",
 "fable": "1",
-"seg": "ev:n ds:w5 dev:w rev:d4 mg:w",
-"now": "缩小 PR-A 后第 5 轮",
+"seg": "ev:n ds:d5 dev:w rev:w5 mg:w",
+"now": "设计 v5（收窄 PR-A）已交，待复审",
 "pr": 110,
 "up": "10-07 调到 Max"
 },
@@ -2353,7 +2360,8 @@
 "n": "个人发展计划 IDP",
 "u": "已核对（C 档、建议拆 2 个 PR），待开会话",
 "seg": "ev:d ds:n dev:a1 rev:w mg:w",
-"now": "会话开设中（口径清单 + 矩阵先行）"
+"now": "PR-A 开发中（流程与模板配置）",
+"pr": 111
 }
 ]
 }
