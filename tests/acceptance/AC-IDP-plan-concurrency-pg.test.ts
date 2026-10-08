@@ -6,7 +6,7 @@
 import { type Db, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { type Approvals, planWorld } from './AC-IDP-plan-support.js';
+import { type Approvals, planWorld, type PlanView } from './AC-IDP-plan-support.js';
 
 const testDb = useTestDb();
 
@@ -100,17 +100,26 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('R3-T07 IDP 计划执行 
       tx.execute(sql`DELETE FROM permission_user_person_links WHERE employee_id = ${loner.employeeId}::uuid`),
     );
     const tutor = { tutorRole: 'other', tutorEmployeeId: loner.employeeId };
-    const plans = [
-      await w.start(await w.createPlan(tutor)),
-      await w.start(await w.createPlan(tutor, w.hrUser, w.outsider)),
-    ];
-    for (const [plan, person] of [
-      [plans[0]!, w.employee],
-      [plans[1]!, w.outsider],
-    ] as const) {
-      await w.submit(plan, 1, person.userId);
+    // 固定“员工排序与计划排序相反”（第 3 轮 P3）：旧实现按员工 → 实例顺序逐单锁计划，会先锁较大的计划，必然变红。
+    // 计划 ID 随机，先建未开始的候选计划（不产生审批实例），直到员工 ID 较小者有一份计划 ID 更大的计划
+    const [first, second] = [w.employee, w.outsider].sort((a, b) => (a.employeeId < b.employeeId ? -1 : 1));
+    const candidates = { first: [] as PlanView[], second: [] as PlanView[] };
+    let pair: [PlanView, PlanView] | undefined;
+    for (let round = 0; !pair && round < 40; round++) {
+      candidates.first.push(await w.createPlan(tutor, w.hrUser, first));
+      candidates.second.push(await w.createPlan(tutor, w.hrUser, second));
+      const big = candidates.first.find((a) => candidates.second.some((b) => b.id < a.id));
+      if (big) pair = [big, candidates.second.find((b) => b.id < big.id)!];
     }
-    const [low, high] = plans.map((p) => p.id).sort();
+    expect(pair).toBeTruthy();
+    const [high, low] = [pair![0].id, pair![1].id];
+    expect(first!.employeeId < second!.employeeId && low < high).toBe(true);
+    for (const [plan, person] of [
+      [pair![0], first!],
+      [pair![1], second!],
+    ] as const) {
+      await w.submit(await w.start(plan), 1, person.userId);
+    }
     const admin = await w.member('交接操作人');
     const successor = await w.member('新异常管理员');
     let pending: Promise<Response> | undefined;
