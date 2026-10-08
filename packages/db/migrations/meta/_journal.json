@@ -449,6 +449,13 @@
       "when": 1791428027740,
       "tag": "0063_idp_config",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1791443498372,
+      "tag": "0064_talent_standard",
+      "breakpoints": true
     }
   ]
 }
