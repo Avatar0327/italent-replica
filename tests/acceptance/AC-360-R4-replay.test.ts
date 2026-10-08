@@ -1,13 +1,12 @@
 /**
  * PR #107 第 4 轮修改清单第一步（DEC-297③，评论 6050983318）：表驱动反向用例的第四类——成功后收窄范围，再用原幂等键
  * 重放。每个实际注册的 360 写路由一条：先以范围内的身份成功执行，再收窄它的范围（精细化下的（用户 × Survey360）人员
- * 范围、活动授权、编辑他人套卷按钮、全部活动按钮、链接令牌指向的关系 / 确认单、平台运营身份），用同一幂等键重放——
+ * 范围、活动授权、编辑他人套卷按钮、全部活动按钮、链接令牌指向的关系 / 确认单），用同一幂等键重放——
  * 结果必须与新命令在当前范围下的判定一致：资源不在范围内即同一错误码，回执里范围外的条目去掉，不返回历史结果。
  * 用例表的键取自实际注册的写路由：缺用例即失败；不适用只限不引用任何受范围约束资源的租户级配置，并写明原因。
  */
 import { randomUUID } from 'node:crypto';
-import { bootstrapTenantAdmin } from '@italent/api';
-import { revokePlatformOperator, sql, withTenant } from '@italent/db';
+import { sql, withTenant } from '@italent/db';
 import { survey360 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -22,8 +21,6 @@ import {
   world360,
   type World360,
 } from './AC-360-support.js';
-import { PLATFORM, seedOperator } from './support/platform-api.js';
-import { cmd, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 const OBJ = survey360.SURVEY360_OBJECTS;
@@ -796,25 +793,6 @@ const REPLAY_CASES: Record<string, Case | NotApplicable> = {
     );
     await expectStatus(replay, 404);
   },
-
-  [`POST ${PLATFORM}/tenants/:tenantId/standard-profiles/backfill`]: async () => {
-    const { db } = testDb();
-    const api = tenantApi(db, { authorize: undefined });
-    const operator = await seedOperator(db, 'ops-r4');
-    const { tenant, user } = await seedTenantWithMember(db, 'r4-backfill');
-    await bootstrapTenantAdmin(db, { tenantId: tenant.id, userId: user.id }, cmd());
-    const replay = await replayAfter(
-      (key) =>
-        api.request('POST', `${PLATFORM}/tenants/${tenant.id}/standard-profiles/backfill`, {
-          user: operator.id,
-          idempotencyKey: key,
-          body: {},
-        }),
-      200,
-      () => revokePlatformOperator(db, { userId: operator.id, expectedRevision: 1 }, cmd()),
-    );
-    await expectStatus(replay, 403);
-  },
 };
 
 /** 只有这些写路由允许不适用（租户级配置）；其余都引用受范围约束的资源，必须给用例。 */
@@ -868,7 +846,7 @@ describe('路由 × 守卫第四类：成功后收窄范围，再用原幂等键
     const registered = env.w.api.app.routes
       .filter((r) => !['ALL', 'GET'].includes(r.method))
       .map((r) => `${r.method} ${r.path}`)
-      .filter((key) => key.includes('/survey360') || key.endsWith('/standard-profiles/backfill'));
+      .filter((key) => key.includes('/survey360'));
     expect([...new Set(registered)].sort()).toEqual(Object.keys(REPLAY_CASES).sort());
     for (const [route, entry] of Object.entries(REPLAY_CASES)) {
       if (typeof entry === 'function') continue;

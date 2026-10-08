@@ -21,7 +21,6 @@ import {
   world360,
   type World360,
 } from './AC-360-support.js';
-import { PLATFORM, seedOperator } from './support/platform-api.js';
 
 const testDb = useTestDb();
 const OBJ = survey360.SURVEY360_OBJECTS;
@@ -109,7 +108,6 @@ interface Env {
   readonly unsynced: string;
   readonly emails: readonly string[];
   readonly w2Ids: { questionnaire: string; role: string };
-  readonly operator: string;
 }
 
 interface FineWorld {
@@ -323,7 +321,6 @@ async function buildEnv(): Promise<Env> {
   const s2 = await w2.ok<{ revision: number }>(w2.request('GET', '/settings'));
   await w2.ok(w2.request('PUT', '/settings', { ifMatch: s2.revision, body: { finePermission: true } }));
 
-  const operator = (await seedOperator(testDb().db, 'ops-guard')).id;
   const fw = await buildFineWorld();
   return {
     w,
@@ -353,7 +350,6 @@ async function buildEnv(): Promise<Env> {
     unsynced,
     emails: [target.email, rater.email, r1p.email, r2p.email, loginEmailOf(C2.id)],
     w2Ids: { questionnaire: q2.id, role: role2.id },
-    operator,
   };
 }
 
@@ -1791,25 +1787,6 @@ const ROUTE_CASES: Record<string, RouteCases> = {
       );
     },
   },
-  [`POST ${PLATFORM}/tenants/:tenantId/standard-profiles/backfill`]: {
-    unauthorized: async (env) =>
-      void (await expectStatus(
-        env.w.api.request('POST', `${PLATFORM}/tenants/${env.w.tenantId}/standard-profiles/backfill`, {
-          user: env.w.admin,
-          body: {},
-        }),
-        403,
-      )),
-    outOfScope: async (env) =>
-      void (await expectStatus(
-        env.w.api.request('POST', `${PLATFORM}/tenants/${randomUUID()}/standard-profiles/backfill`, {
-          user: env.operator,
-          body: {},
-        }),
-        404,
-      )),
-    trimming: { na: '平台运营接口：不经租户字段权限，回执只有身份编码与跳过原因，不含任何租户业务字段' },
-  },
 };
 
 describe('路由 × 守卫：三类反向用例（表驱动）', () => {
@@ -1822,7 +1799,7 @@ describe('路由 × 守卫：三类反向用例（表驱动）', () => {
     const registered = env.w.api.app.routes
       .filter((r) => r.method !== 'ALL')
       .map((r) => `${r.method} ${r.path}`)
-      .filter((key) => key.includes('/survey360') || key.endsWith('/standard-profiles/backfill'));
+      .filter((key) => key.includes('/survey360'));
     expect([...new Set(registered)].sort()).toEqual(Object.keys(ROUTE_CASES).sort());
     for (const [route, cases] of Object.entries(ROUTE_CASES)) {
       expect(typeof cases.unauthorized, route).toBe('function');

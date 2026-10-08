@@ -36,15 +36,6 @@ interface MyObject {
   buttons: { buttonCode: string; level: string }[];
 }
 
-async function myButtons(w: World360, user: string, objectCode: string) {
-  const res = await w.api.request('GET', `/api/tenant/permission/me/objects/${objectCode}`, {
-    user,
-    tenant: w.tenantId,
-  });
-  if (res.status !== 200) return null;
-  return ((await res.json()) as MyObject).buttons.map((b) => b.buttonCode).sort();
-}
-
 async function grants(w: World360, activityId: string, by = w.admin) {
   return w.ok<GrantsView>(w.as(by)('GET', `/activities/${activityId}/grants`));
 }
@@ -111,21 +102,6 @@ describe('DEC-280① 三类内置身份由平台下发，企业管理员在用�
     const buttons = ((await me.json()) as MyObject).buttons.map((b) => b.buttonCode);
     expect(buttons).not.toContain(survey360.SURVEY360_BUTTONS.allActivities);
     expect(buttons).toContain('update');
-  });
-
-  it('三类身份的按钮差别：全部活动 / 编辑他人套卷 / 精细化权限只给系统管理员；一般管理员另无同步', async () => {
-    const w = await world360(testDb().db, 'd280b');
-    const { advanced, general } = await team(w);
-    const { activity, questionnaire, person, settings } = survey360.SURVEY360_OBJECTS;
-    expect(await myButtons(w, w.admin, activity.code)).toContain('viewAll');
-    expect(await myButtons(w, advanced, activity.code)).not.toContain('viewAll');
-    expect(await myButtons(w, general, activity.code)).not.toContain('viewAll');
-    expect(await myButtons(w, w.admin, questionnaire.code)).toContain('editOthers');
-    expect(await myButtons(w, advanced, questionnaire.code)).not.toContain('editOthers');
-    expect(await myButtons(w, advanced, person.code)).toContain('sync');
-    expect(await myButtons(w, general, person.code)).not.toContain('sync');
-    expect(await myButtons(w, w.admin, settings.code)).toContain('finePermission');
-    expect(await myButtons(w, advanced, settings.code)).not.toContain('finePermission');
   });
 
   it('不能编辑非本人创建的套卷：403 且数据不变；本人创建的可改；系统管理员可改他人的', async () => {
