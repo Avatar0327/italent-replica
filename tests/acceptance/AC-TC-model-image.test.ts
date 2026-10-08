@@ -15,6 +15,7 @@ import {
   expectImageError,
   fixtureFromBytes,
   imageFixture,
+  malformedPng,
   MODEL_IMAGE_AUDIT_TYPE,
   MODEL_IMAGE_LIMIT,
   modelPath,
@@ -107,9 +108,31 @@ describe('AC-TC（补）F-038 潜力模型图格式与生命周期', () => {
     }
   });
 
+  it('登记小图但实际解码内容超过 5 MiB 时返回 413，上传体上限不掩盖服务层校验，原图不变', async () => {
+    const parent = await criterion();
+    const first = await registerImage(w.request, parent.id, parent.revision);
+    const firstView = await uploadImage(w.request, parent.id, first);
+    const registered = await registerImage(w.request, parent.id, firstView.revision, imageFixture('bmp'));
+    const before = await readModel(w.request, parent.id);
+    const oversized = fixtureFromBytes(pngBytes(MODEL_IMAGE_LIMIT + 1));
+    await expectImageError(
+      await w.request('POST', `${modelPath(parent.id)}/attachments/${registered.attachment.id}/upload`, {
+        ifMatch: registered.revision,
+        body: { base64: oversized.base64 },
+      }),
+      413,
+      'PAYLOAD_TOO_LARGE',
+    );
+    expect(await readModel(w.request, parent.id)).toEqual(before);
+    expect(await attachmentStatus(testDb().db, w.tenant.id, registered.attachment.id)).toBe('registered');
+    expect((await w.request('GET', contentPath(parent.id, first.attachment.id))).status).toBe(200);
+  });
+
   it.each([
     ['多帧 GIF', animatedGif],
     ['APNG', animatedPng],
+    ['PNG chunk 长度越界', () => malformedPng('length')],
+    ['PNG chunk CRC 不合法', () => malformedPng('crc')],
     ['伪 PNG 签名', () => fixtureFromBytes(Buffer.from('合成普通文本，不是图片'))],
   ] as const)('%s 上传拒绝 415，不关联登记对象、不增父 revision', async (_label, makeFixture) => {
     const parent = await criterion();
@@ -207,6 +230,26 @@ describe('AC-TC（补）F-038 潜力模型图格式与生命周期', () => {
     }
   });
 
+  it('显式删图也取消尚未上传的登记对象，之后不能用旧登记上传复活模型图', async () => {
+    const parent = await criterion();
+    const fixture = imageFixture();
+    const registered = await registerImage(w.request, parent.id, parent.revision, fixture);
+    const deleted = await w.request('DELETE', modelPath(parent.id), { ifMatch: registered.revision });
+    expect(deleted.status, await deleted.clone().text()).toBe(200);
+    const before = await readModel(w.request, parent.id);
+    expect(before).toMatchObject({ revision: registered.revision + 1, modelImage: null });
+    expect(await attachmentStatus(testDb().db, w.tenant.id, registered.attachment.id)).toBe('pending_cleanup');
+    await expectImageError(
+      await w.request('POST', `${modelPath(parent.id)}/attachments/${registered.attachment.id}/upload`, {
+        ifMatch: before.revision,
+        body: { base64: fixture.base64 },
+      }),
+      404,
+      'NOT_FOUND',
+    );
+    expect(await readModel(w.request, parent.id)).toEqual(before);
+  });
+
   it('revision 与命令 ID 为必填；旧 revision 或同键异内容不改图', async () => {
     const parent = await criterion();
     const fixture = imageFixture();
@@ -276,8 +319,8 @@ describe('AC-TC（补）F-038 潜力模型图格式与生命周期', () => {
       const ledgerResult = await tx.execute(sql`SELECT response_body FROM command_ledger
         WHERE tenant_id=${w.tenant.id} AND command_id IN (${registerKey},${uploadKey},${deleteKey})`);
       return {
-        audit: Array.isArray(auditResult) ? auditResult : auditResult.rows,
-        ledger: Array.isArray(ledgerResult) ? ledgerResult : ledgerResult.rows,
+        audit: Array.isArray(auditResult) ? auditResult : (auditResult as { rows: unknown[] }).rows,
+        ledger: Array.isArray(ledgerResult) ? ledgerResult : (ledgerResult as { rows: unknown[] }).rows,
       };
     });
     expect(evidence.audit).toHaveLength(3);

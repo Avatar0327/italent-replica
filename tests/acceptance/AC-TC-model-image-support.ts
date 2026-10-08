@@ -138,7 +138,35 @@ export function animatedPng(): ImageFixture {
   const png = pngBytes();
   const animation = Buffer.alloc(8);
   animation.writeUInt32BE(2, 0);
-  return fixtureFromBytes(Buffer.concat([png.subarray(0, 33), pngChunk('acTL', animation), png.subarray(33)]));
+  const frame = (sequence: number) => {
+    const control = Buffer.alloc(26);
+    control.writeUInt32BE(sequence, 0);
+    control.writeUInt32BE(1, 4);
+    control.writeUInt32BE(1, 8);
+    control.writeUInt16BE(1, 20);
+    control.writeUInt16BE(10, 22);
+    return pngChunk('fcTL', control);
+  };
+  const secondData = Buffer.concat([Buffer.from([0, 0, 0, 2]), deflateSync(Buffer.from([0, 153, 102, 51, 255]))]);
+  return fixtureFromBytes(
+    Buffer.concat([
+      png.subarray(0, 33),
+      pngChunk('acTL', animation),
+      frame(0),
+      png.subarray(33, -12),
+      frame(1),
+      pngChunk('fdAT', secondData),
+      png.subarray(-12),
+    ]),
+  );
+}
+
+/** 保留 PNG 签名与合法 IHDR，但破坏 IDAT 的 CRC 或 chunk 长度。 */
+export function malformedPng(kind: 'crc' | 'length'): ImageFixture {
+  const png = pngBytes();
+  if (kind === 'crc') png[png.length - 13] = png[png.length - 13]! ^ 1;
+  else png.writeUInt32BE(0x7fffffff, 33);
+  return fixtureFromBytes(png);
 }
 
 export const modelPath = (criterionId: string) => `/criteria/${criterionId}/model-image`;

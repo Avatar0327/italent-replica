@@ -134,11 +134,18 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function render(locked = false) {
+async function render(locked = false, commands?: Map<string, unknown>, tenantId = 'tenant') {
   const { PotentialModelImage } = (await import(componentPath)) as { PotentialModelImage: unknown };
-  await act(async () =>
-    root.render(createElement(PotentialModelImage, { tenantId: 'tenant', criterionId: 'criterion', locked })),
-  );
+  const element = createElement(PotentialModelImage, { tenantId, criterionId: 'criterion', locked });
+  const contextPath = resolve('apps/web/src/talent/TalentTenantContext.tsx');
+  const { TalentTenantContext } = await import(contextPath);
+  await act(async () => {
+    root.render(
+      commands
+        ? createElement(TalentTenantContext.Provider, { value: { tenantId, modelImageCommands: commands } }, element)
+        : element,
+    );
+  });
   await vi.waitFor(() => expect(host.textContent).toContain('潜力概览'));
   await vi.waitFor(() => expect(requests.some((request) => request.path === BASE)).toBe(true));
 }
@@ -287,5 +294,82 @@ describe('AC-TC-MODEL-UI 潜力模型静态图片操作', () => {
     await act(async () => root.unmount());
     mounted = false;
     expect(revokeUrl).toHaveBeenCalledWith(restoredUrl);
+  });
+
+  it('关闭详情再打开仍保留结果未知的原命令，刷新核对后才允许重放', async () => {
+    const commands = new Map<string, unknown>();
+    unknownUpload = true;
+    await render(false, commands);
+    await click('模型图设置');
+    await selectFile(file());
+    await click('保存');
+    await vi.waitFor(() => expect(host.querySelector('[role="alert"]')?.textContent).toContain('尚未确认'));
+    const original = writes().find((request) => request.path.endsWith('/upload'))!;
+    expect(commands.size).toBe(1);
+    await act(async () => root.render(null));
+    await render(false, commands);
+    expect(button('重试原请求')?.disabled).toBe(true);
+    expect(writes()).toHaveLength(2);
+    await click('刷新');
+    await vi.waitFor(() => expect(button('重试原请求')?.disabled).toBe(false));
+    await click('重试原请求');
+    await vi.waitFor(() => expect(writes()).toHaveLength(3));
+    const replay = writes().at(-1)!;
+    expect(replay.headers.get('idempotency-key')).toBe(original.headers.get('idempotency-key'));
+    expect(replay.headers.get('if-match')).toBe(original.headers.get('if-match'));
+    expect(replay.body).toEqual(original.body);
+    await vi.waitFor(() => expect(commands.size).toBe(0));
+  });
+
+  it('旧租户的迟到读取不填入新租户图片，也不继续下载旧租户内容', async () => {
+    let finishOld!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (new Headers(init?.headers).get('x-tenant-id') === 'old-tenant')
+        return new Promise<Response>((resolveOld) => {
+          finishOld = resolveOld;
+        });
+      return mockFetch(input, init);
+    });
+    const { PotentialModelImage } = await import(componentPath);
+    await act(async () =>
+      root.render(createElement(PotentialModelImage, { tenantId: 'old-tenant', criterionId: 'criterion' })),
+    );
+    await render(false, undefined, 'tenant');
+    await act(async () => finishOld(json({ revision: 1, canEdit: true, modelImage: image('old-image') })));
+    expect(host.querySelector('img')).toBeNull();
+    expect(createUrl).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith('/content'))).toHaveLength(0);
+  });
+
+  it('没有潜力指标的标准详情仍装配潜力概览，并从租户 Context 读取模型图', async () => {
+    const detailPath = resolve('apps/web/src/talent/CriterionDetail.tsx');
+    const contextPath = resolve('apps/web/src/talent/TalentTenantContext.tsx');
+    const [{ CriterionDetail }, { TalentTenantContext }] = await Promise.all([import(detailPath), import(contextPath)]);
+    await act(async () =>
+      root.render(
+        createElement(
+          TalentTenantContext.Provider,
+          { value: { tenantId: 'tenant', modelImageCommands: new Map() } },
+          createElement(CriterionDetail, {
+            value: {
+              id: 'criterion',
+              revision: 1,
+              categoryId: 'category',
+              name: '合成标准',
+              enabled: true,
+              dimensions: [],
+            },
+            locked: false,
+            onSetCategory: vi.fn(),
+            onClose: vi.fn(),
+          }),
+        ),
+      ),
+    );
+    await vi.waitFor(() => expect(host.textContent).toContain('潜力概览'));
+    expect(host.textContent).toContain('影响未来发展的底层素质');
+    expect(requests.some((request) => request.path === BASE && request.headers.get('x-tenant-id') === 'tenant')).toBe(
+      true,
+    );
   });
 });

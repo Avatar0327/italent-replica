@@ -1,5 +1,6 @@
 /** F-038 模型图随标准对象的当前权限：无独立图权限，服务端范围、按钮与重放都不能绕过。 */
 import { randomUUID } from 'node:crypto';
+import type { Authorizer } from '@italent/api';
 import { TALENT_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -226,4 +227,88 @@ describe('AC-TC（补）F-038 潜力模型图权限与撤权重放', () => {
       );
     },
   );
+
+  it('注入授权器只放行 update 不放行 view 时，三种写命令及旧命令重放 403，不披露后续图片', async () => {
+    let viewAllowed = true;
+    const authorize: Authorizer = (request) =>
+      request.action === 'object.view' && request.resource === TALENT_OBJECTS.criterion.code ? viewAllowed : true;
+    const w = await talentWorld(testDb().db, 'model-image-update-no-view', { authorize });
+    const category = await w.category();
+    const parent = await w.criterion(category.id, []);
+    const fixture = imageFixture();
+    const registerKey = randomUUID();
+    const uploadKey = randomUUID();
+    const deleteKey = randomUUID();
+    const registered = await registerImage(w.request, parent.id, parent.revision, fixture, registerKey);
+    const uploaded = await uploadImage(w.request, parent.id, registered, fixture, uploadKey);
+    expect(
+      (
+        await w.request('DELETE', modelPath(parent.id), {
+          ifMatch: uploaded.revision,
+          idempotencyKey: deleteKey,
+        })
+      ).status,
+    ).toBe(200);
+    const replacement = imageFixture('bmp');
+    const newer = await registerImage(w.request, parent.id, uploaded.revision + 1, replacement);
+    await uploadImage(w.request, parent.id, newer, replacement);
+    const privileged = tenantApi(testDb().db, { clock });
+    const privilegedRequest: ImageRequest = (method, path, options = {}) =>
+      privileged.request(method, `${TC_BASE}${path}`, { ...w.as, ...options });
+    const before = await readModel(privilegedRequest, parent.id);
+    viewAllowed = false;
+    const cases = [
+      ['POST', `${modelPath(parent.id)}/attachments`, parent.revision, fixture.metadata, registerKey],
+      [
+        'POST',
+        `${modelPath(parent.id)}/attachments/${registered.attachment.id}/upload`,
+        registered.revision,
+        { base64: fixture.base64 },
+        uploadKey,
+      ],
+      ['DELETE', modelPath(parent.id), uploaded.revision, undefined, deleteKey],
+    ] as const;
+    for (const [method, path, oldRevision, body, idempotencyKey] of cases) {
+      for (const replay of [false, true]) {
+        const response = await w.request(method, path, {
+          ifMatch: replay ? oldRevision : before.revision,
+          body,
+          idempotencyKey: replay ? idempotencyKey : randomUUID(),
+        });
+        expect(await response.clone().text()).not.toContain(replacement.metadata.sha256);
+        await expectImageError(response, 403, 'FORBIDDEN');
+        expect(await readModel(privilegedRequest, parent.id)).toEqual(before);
+      }
+    }
+  });
+
+  it('跨站 Origin 或 Sec-Fetch-Site 的三种写请求均 403，已经上传的图片与父 revision 不变', async () => {
+    const parent = await criterion();
+    const registered = await registerImage(adminRequest, parent.id, parent.revision);
+    const uploaded = await uploadImage(adminRequest, parent.id, registered);
+    const before = await readModel(adminRequest, parent.id);
+    const cases = [
+      ['POST', `${modelPath(parent.id)}/attachments`, imageFixture('bmp').metadata],
+      [
+        'POST',
+        `${modelPath(parent.id)}/attachments/${registered.attachment.id}/upload`,
+        { base64: imageFixture().base64 },
+      ],
+      ['DELETE', modelPath(parent.id), undefined],
+    ] as const;
+    const crossSiteHeaders: Readonly<Record<string, string>>[] = [
+      { origin: 'https://cross-site.example.com' },
+      { 'sec-fetch-site': 'cross-site' },
+    ];
+    for (const headers of crossSiteHeaders) {
+      for (const [method, path, body] of cases) {
+        await expectImageError(
+          await adminRequest(method, path, { ifMatch: uploaded.revision, body, headers }),
+          403,
+          'FORBIDDEN',
+        );
+        expect(await readModel(adminRequest, parent.id)).toEqual(before);
+      }
+    }
+  });
 });
