@@ -1,0 +1,44 @@
+{
+  "include": [
+    "tests/acceptance/**/*.ts"
+  ],
+  "exclude": [
+    "reference/**",
+    "docs/**",
+    "packages/db/migrations/meta/**",
+    "**/*.snap",
+    "**/*.generated.ts"
+  ],
+  "rules": [
+    {
+      "path": "packages/db/migrations/**/*.sql",
+      "rule": "本项目迁移规则（DEC-221）：\n- 迁移号不得手写或预占，必须是合并最新 main 后用 db:generate 生成的下一号；与 main 已有迁移号冲突即为 P2。\n- 新表必须带 tenant_id，并启用 RLS（与同目录已有迁移一致）；跨租户外键必须用 (tenant_id, id) 复合外键。\n- 版本链 / 历史表只允许追加（参照 org_versions 的触发器约束），不得新增 UPDATE / DELETE 路径。\n- 不得删除或改写已合并迁移。",
+      "merge_system_rule": true
+    },
+    {
+      "path": "packages/domain/src/expression/**/*.ts",
+      "rule": "表达式引擎规则（DEC-264 / 302 / 304 / 310 / 311）：\n- 任何改动必须保持旧公式的行为不变：空值语义、错误码、参数个数不同的写法、裸布尔参数、emptyInEquality 各配置下的结果，都要与旧实现一致；行为变化必须有对应 DEC 编号写在注释或测试名里，否则为 P2。\n- 新增 / 修改函数必须同时有批量求值与逐人求值两种路径的测试。\n- 缓存键必须无碰撞（日期分量、NaN、±Infinity 要单独编码）。\n- 多列比较必须逐列短路，不能整体预检。",
+      "merge_system_rule": true
+    },
+    {
+      "path": "apps/api/src/modules/**/*routes*.ts",
+      "rule": "路由文件规则（本项目最常见的 P2 来源，逐条检查）：\n1. 权限声明：每条新增或修改的路由都要有 F-039 格式的权限声明（对象、操作 view/create/update/delete、数据范围来源），并调用 requirePermission / objectContext；缺声明即 P2。\n2. 数据范围：所有列表、候选（下拉 / 选择器）、详情、导出、审计接口都必须用 permission 模块的统一解析器（resolveModuleScope → scopeSql 用于 SQL 过滤、scopeAllows 用于单条判定）。在 JS 里对全租户结果再过滤、或自写 WHERE 条件代替 scopeSql，都是 P2。\n3. 范围外与不存在：详情 / 关联记录在“不存在”和“范围外”两种情况下必须返回同一个 404（NOT_FOUND 或 LINKED_RECORD_OUT_OF_SCOPE）和同一文案，不能泄露存在性。\n4. 候选接口带出的名称、编码、计数等字段，同样只能来自范围内对象；只有 create 或只有 update 权限的人，候选接口也要可用且同样经过范围过滤。\n5. 写接口必须带 expectedRevision；revision 冲突返回冲突错误，前端要能提示“已被他人修改，刷新后重试”。\n6. 响应要经过 trimModuleResponse（字段级裁剪）；用户看不到的字段不得出现在响应、错误信息或审计详情里。",
+      "merge_system_rule": true
+    },
+    {
+      "path": "apps/api/src/**/*.ts",
+      "rule": "服务端通用规则：\n- 任何读取其他人员 / 组织数据的查询，都必须经过 permission 模块的数据范围（scopeSql / scopeAllows / requestScope），不得自行推断范围；系统主体（system-actor）只能用于 DEC 明确规定的后台执行。\n- 审计、通知、错误信息里不得带出范围外对象的名称、编码或存在性。\n- 幂等：带 commandId 的命令重放必须返回同一结果，不能重复写入；租约 / 锁要有过期与接管路径。\n- 业务规则必须来自取证或 DEC；没有依据的推断规则（代码里看不出来源）要标出来。",
+      "merge_system_rule": true
+    },
+    {
+      "path": "apps/web/src/**/*.{ts,tsx}",
+      "rule": "前端规则：\n- 页面只展示接口返回的字段，不在前端推算或补全用户看不到的数据。\n- 冲突 / 无权限 / 404 要有明确提示，不能静默失败（用户偏好：提示不拦截）。\n- 多处状态合并要用单一来源，避免同一数据在多个 store 里各自更新造成回退。",
+      "merge_system_rule": true
+    },
+    {
+      "path": "tests/acceptance/**/*.ts",
+      "rule": "验收测试规则：\n- 测试名要带 AC 编号或 DEC 编号。\n- 涉及权限的功能，至少要有一条反向测试：范围外用户看不到 / 选不到 / 得到 404。\n- 修复 P2 时必须先有能复现问题的失败测试。",
+      "merge_system_rule": true
+    }
+  ]
+}
