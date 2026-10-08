@@ -27,6 +27,11 @@ def gh(args):
 
 def snapshot():
     prs = gh(["pr", "list", "--state", "open", "--json", "number,title,headRefOid,isDraft,statusCheckRollup,comments,commits"])
+    try:  # 搁置中的 PR（每行一个号）不再报停摆 / 待送审
+        paused = set(open(os.path.expanduser("~/.cache/italent-paused-prs")).read().split())
+    except Exception:
+        paused = set()
+    prs = [p for p in prs if str(p["number"]) not in paused]
     out = {}
     for p in prs:
         checks = [c.get("conclusion") or c.get("status") for c in p["statusCheckRollup"] if c.get("conclusion") != "SKIPPED"]
