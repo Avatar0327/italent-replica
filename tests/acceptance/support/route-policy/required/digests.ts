@@ -544,7 +544,7 @@ export const DIGESTS: Digests = {
     selfRecordHiddenSql: '89628ea4a06a',
   },
   'apps/api/src/modules/succession/record-read.ts': {
-    conditions: 'de36b4659bdd',
+    conditions: '679d225bd6b9',
   },
   'apps/api/src/modules/succession/routes.ts': {
     recordFilter: '858f731477d8',

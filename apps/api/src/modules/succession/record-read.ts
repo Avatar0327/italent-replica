@@ -69,8 +69,9 @@ function conditions(visibility: RecordVisibility, filter: RecordFilter): SQL {
     sql`r.deleted_at IS NULL`,
     sql`r.start_date <= ${asOf}::date`,
     statusPredicate(filter.status, asOf),
-    // 范围锚点 = 目标组织；职位继任 = 职位 asOf 当日所属组织；“使用用户”规则按记录创建人
-    scopeSql(scope, { org: sql`COALESCE(r.target_org_id, pv.org_id)`, creator: sql`r.created_by` }),
+    // 范围锚点 = 目标组织；职位继任 = 职位**今天**所属的组织（DEC-368①：资源归属只按今天的管理范围判断，
+    // asOf 查历史也一样，不用 asOf 当日的历史组织）；“使用用户”规则按记录创建人
+    scopeSql(scope, { org: sql`COALESCE(r.target_org_id, pa.org_id)`, creator: sql`r.created_by` }),
     sql`NOT ${selfRecordHiddenSql(
       { tenantId, userId },
       { type: sql`r.succession_type`, org: sql`r.target_org_id`, position: sql`r.target_position_id` },
@@ -85,8 +86,11 @@ function conditions(visibility: RecordVisibility, filter: RecordFilter): SQL {
   return sql.join(parts, sql` AND `);
 }
 
-/** 时点版本：asOf 当日已开始的最新版本，且 stop_date ≥ asOf（同 org / job 读模型）。 */
-const from = (asOf: string) => sql`FROM succession_records r
+/**
+ * 时点版本：asOf 当日已开始的最新版本，且 stop_date ≥ asOf（同 org / job 读模型），用于展示；pa 是请求当日的职位版本，
+ * 只用于范围锚点（DEC-368①）。
+ */
+const from = (asOf: string, today: string) => sql`FROM succession_records r
   LEFT JOIN LATERAL (
     SELECT v.name, v.stop_date FROM org_versions v
     WHERE v.tenant_id = r.tenant_id AND v.org_id = r.target_org_id AND v.start_date <= ${asOf}::date
@@ -97,6 +101,11 @@ const from = (asOf: string) => sql`FROM succession_records r
     WHERE v.tenant_id = r.tenant_id AND v.object_id = r.target_position_id AND v.start_date <= ${asOf}::date
     ORDER BY v.start_date DESC, v.version_no DESC LIMIT 1
   ) pv ON pv.stop_date >= ${asOf}::date
+  LEFT JOIN LATERAL (
+    SELECT v.org_id, v.stop_date FROM job_position_versions v
+    WHERE v.tenant_id = r.tenant_id AND v.object_id = r.target_position_id AND v.start_date <= ${today}::date
+    ORDER BY v.start_date DESC, v.version_no DESC LIMIT 1
+  ) pa ON pa.stop_date >= ${today}::date
   LEFT JOIN talent_readiness_levels rl ON rl.tenant_id = r.tenant_id AND rl.id = r.readiness_id`;
 
 export async function listRecordRows(
@@ -106,11 +115,12 @@ export async function listRecordRows(
   page: { readonly limit: number; readonly offset: number },
 ): Promise<{ readonly rows: readonly RecordRow[]; readonly total: number }> {
   const where = conditions(visibility, filter);
+  const source = from(visibility.asOf, visibility.today);
   const [count] = rowsOf<{ total: number }>(
-    await tx.execute(sql`SELECT count(*)::int AS total ${from(visibility.asOf)} WHERE ${where}`),
+    await tx.execute(sql`SELECT count(*)::int AS total ${source} WHERE ${where}`),
   );
   const rows = rowsOf<Record<string, unknown>>(
-    await tx.execute(sql`SELECT ${selectColumns(visibility.asOf)} ${from(visibility.asOf)} WHERE ${where}
+    await tx.execute(sql`SELECT ${selectColumns(visibility.asOf)} ${source} WHERE ${where}
       ORDER BY r.start_date DESC, r.created_at DESC, r.id LIMIT ${page.limit} OFFSET ${page.offset}`),
   );
   return { rows: rows.map(toRow), total: count?.total ?? 0 };
@@ -122,7 +132,7 @@ export async function loadRecordRow(
   filter: RecordFilter,
 ): Promise<RecordRow | undefined> {
   const rows = rowsOf<Record<string, unknown>>(
-    await tx.execute(sql`SELECT ${selectColumns(visibility.asOf)} ${from(visibility.asOf)}
+    await tx.execute(sql`SELECT ${selectColumns(visibility.asOf)} ${from(visibility.asOf, visibility.today)}
       WHERE ${conditions(visibility, filter)} LIMIT 1`),
   );
   return rows[0] ? toRow(rows[0]) : undefined;

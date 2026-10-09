@@ -21,7 +21,8 @@ export function installSuccessionPorts(ports: SuccessionPorts = SUCCESSION_PORTS
 
 /**
  * 给 R3-T06 人才池的读端口（设计 §6.3）。可信端口，同准备度字典端口：在调用方的租户事务内执行（RLS 只读到当前租户），
- * 不做查看人的权限判断、SELF 过滤与字段裁剪——调用方（人才池）按自己的对象权限决定展示什么；只给业务口径：
+ * **可信端口，调用方负责范围 / 字段 / SELF 裁剪**（DEC-368②，与 DEC-320⑥ / Q-T02-16 一致）：端口不做查看人的权限判断、
+ * SELF 过滤与字段裁剪，T06 接线时按自己的对象权限与范围决定对外披露什么；只给业务口径：
  * asOf 当日生效（start_date ≤ asOf < end_date）、未删除。
  */
 export interface SuccessionReadContext {
