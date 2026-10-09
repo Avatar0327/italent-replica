@@ -107,8 +107,9 @@ function card(sheet: CardSheet, q: LoadedQuestionnaire, answers: Pick[]) {
 
 /**
  * 疑似无效（汇总投影，只回布尔）：放弃作答（不计分选项）题量过半；关键行为套卷所有题目选择同一选项（至少两题）。
- * TODO(需取证 #170)：规格 25 §10.1 的“平均单题耗时 <1.5s”——耗时起算点、分母、历史答卷口径未定，库里也没有耗时数据，
- * 未做；口径定下后在本函数补判，仍只回布尔。
+ * TODO(需取证 #170)：规格 25 §10.1 的“平均单题耗时 <1.5s”——耗时起算点与分母（#170 ①②④）仍在取证，库里也没有耗时
+ * 数据，未做。DEC-371 已定：③ 本功能上线前已提交、无耗时数据的历史答卷不判耗时、也不算疑似；⑤ 耗时与逐份答案同级敏感，
+ * 只存库、对外只回“是否疑似”布尔，经本层。口径定下后在本函数补判。
  */
 export async function isSuspected(tx: Tx, q: LoadedQuestionnaire, roleId: string, sheetId: string) {
   const answers = await picks(tx, sheetId);

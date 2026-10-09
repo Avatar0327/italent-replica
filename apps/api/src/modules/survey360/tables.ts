@@ -11,11 +11,12 @@ import { sql, type Tx } from '@italent/db';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
-import type { TenantEnv } from '../../tenant-context.js';
+import { type TenantEnv, tenantOf } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
 import { requireActivity } from './access.js';
 import { type Admin, fail, parse, type Present, read, rows, trimAliases, trimBody } from './context.js';
 import {
+  admitted,
   attachmentName,
   fileResponse,
   levelName,
@@ -136,14 +137,20 @@ async function scoreTables(tx: Tx, admin: Admin, id: string, raw: Record<string,
 }
 
 interface Loaded {
-  readonly activityName: string;
+  readonly activityName: string | undefined;
   readonly body: ScoreTablesBody;
 }
-/** 下载：数据照常按查看人的结果字段裁剪，再交给渲染（活动名是活动可见者本就看得到的）。 */
-const downloadPresent: Present = async (viewer, loaded: Loaded) => ({
-  activityName: loaded.activityName,
-  body: (await present(viewer, loaded.body as never)) as ScoreTablesBody,
-});
+/**
+ * 下载：数据照常按查看人的结果字段裁剪；活动名称是另一个对象（Activity.name）的字段，也按来源字段权限裁剪——隐藏时
+ * 图内标题与文件名都不带名称（F-060 第 2 轮 P2-1）。
+ */
+const downloadPresent: Present = async (viewer, loaded: { activityName: string; body: ScoreTablesBody }) => {
+  const fields = await viewer.fields('activity');
+  return {
+    activityName: !fields || fields.has('name') ? loaded.activityName : undefined,
+    body: (await present(viewer, loaded.body as never)) as ScoreTablesBody,
+  } satisfies Loaded;
+};
 
 export function registerTableRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/activities/:id/score-tables', (c) =>
@@ -163,13 +170,10 @@ export function registerTableRoutes(module: Hono<TenantEnv>, deps: TenantRouteDe
       { object: 'result' },
       (tx, admin) => scoreTables(tx, admin, uuidParam(c), c.req.query()),
       downloadPresent,
-      async (_c, { activityName, body }: Loaded) => {
-        const png = await renderPng(scoreTableDocument(body, { activityName }));
-        return fileResponse(
-          png,
-          'image/png',
-          attachmentName(`360度评估结果-${activityName}-${levelName(body.level)}`, 'png'),
-        );
+      async (c, { activityName, body }: Loaded) => {
+        const png = await admitted(tenantOf(c).tenantId, () => renderPng(scoreTableDocument(body, { activityName })));
+        const stem = ['360度评估结果', activityName, levelName(body.level)].filter(Boolean).join('-');
+        return fileResponse(png, 'image/png', attachmentName(stem, 'png'));
       },
     ),
   );

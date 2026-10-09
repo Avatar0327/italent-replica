@@ -7,12 +7,18 @@
  * - 流程：JSON → 版面模型 Doc（纯函数，字体无关，测试直接断言） → 分页排版 → SVG → sharp 栅格化成 PNG；PDF 是把各页
  *   位图作为图像页写入的最小 PDF（无外部依赖，不带时间戳，同一输入字节相同）。因此 PDF 页内文字不可选择 / 搜索，
  *   文本层需要嵌入中文字体，另行决策（见 PR 描述）；
- * - 栅格化依赖系统里有中文字体（fontconfig）：没有时返回 503 EXPORT_FONT_UNAVAILABLE，而不是输出一堆方框；
- * - 上限：报表 300 行、报告 80 页，超过拒绝而不是静默截断（整份文件必须与数据一致，AGENTS §10 批量设上限）。
+ * - 栅格化依赖系统里有中文字体（fontconfig）：没有时返回 503 EXPORT_FONT_UNAVAILABLE，而不是输出一堆方框（字体检查、
+ *   并发准入、超时见 export-runtime.ts，这里再导出）；
+ * - 上限：报表 300 行、PNG 像素预算、报告 80 页，超过拒绝（413 EXPORT_TOO_LARGE）而不是静默截断（整份文件必须与数据
+ *   一致，AGENTS §10 批量设上限）；80 页与像素预算在排版过程中检查，不等整份排完。表格里超过一页的长行拆分续接，
+ *   不会被裁掉。
  */
 import { deflateSync } from 'node:zlib';
 import sharp from 'sharp';
 import { AppError } from '../../errors.js';
+import { exportConfig, requireFont } from './export-runtime.js';
+
+export * from './export-runtime.js';
 
 export const EXPORT_ROW_LIMIT = 300;
 export const EXPORT_PAGE_LIMIT = 80;
@@ -85,7 +91,10 @@ function columnName(column: ScoreColumn): string {
 }
 
 /** 结果报表版面：整张清单一个表（原站是整块报表视图的截图）。 */
-export function scoreTableDocument(body: ScoreTablesBody, meta: { activityName: string }): Doc {
+/** 隐藏活动名称字段的查看人：图内标题用这个中性占位，文件名不带名称（F-060 第 2 轮 P2-1）。 */
+export const HIDDEN_ACTIVITY_NAME = '360度评估';
+
+export function scoreTableDocument(body: ScoreTablesBody, meta: { activityName?: string }): Doc {
   const items = body.items ?? [];
   if (items.length > EXPORT_ROW_LIMIT)
     throw new AppError('PAYLOAD_TOO_LARGE', `报表超过 ${EXPORT_ROW_LIMIT} 行，不能生成完整截图`, {
@@ -117,7 +126,7 @@ export function scoreTableDocument(body: ScoreTablesBody, meta: { activityName: 
     title,
     blocks: [
       { kind: 'title', text: title },
-      { kind: 'text', text: clean(meta.activityName) },
+      { kind: 'text', text: clean(meta.activityName ?? HIDDEN_ACTIVITY_NAME) },
       rows.length ? { kind: 'table', header, rows } : { kind: 'text', text: '暂无数据' },
     ],
   };
@@ -310,7 +319,7 @@ interface Page {
   readonly draws: Draw[];
 }
 
-const A4 = { width: 794, height: 1123 };
+export const A4 = { width: 794, height: 1123 };
 const MARGIN = 48;
 const SIZE = { title: 26, heading: 18, body: 13, cell: 12 };
 const PAD = 6;
@@ -362,6 +371,14 @@ function columnWidths(header: readonly string[], rows: readonly (readonly string
   return natural.map((w) => (w / sum) * total);
 }
 
+const tooLarge = (message: string, limit: number) =>
+  new AppError('PAYLOAD_TOO_LARGE', message, { reason: 'EXPORT_TOO_LARGE', limit });
+/** 96 dpi 的版面像素按 1.5 倍栅格化（≈144 dpi）。 */
+const DENSITY = 108;
+const SCALE = DENSITY / 72;
+/** 一页至少能放下的行数：低于它先换页再拆分，避免一两行孤零零留在页尾。 */
+const MIN_SPLIT_LINES = 3;
+
 class Layout {
   readonly pages: Page[] = [];
   private page!: Page;
@@ -369,31 +386,39 @@ class Layout {
 
   constructor(
     private readonly width: number,
-    /** 单页上限；undefined = 不分页（报表 PNG 一张长图）。 */
+    /** 单页上限；undefined = 不分页（报表 PNG 一张长图，按像素预算限高）。 */
     private readonly limit: number | undefined,
   ) {
     this.next();
   }
 
   private next() {
+    // 80 页限制在排版过程中检查：超限立即停止，不等整份文档排完
+    if (this.pages.length >= EXPORT_PAGE_LIMIT)
+      throw tooLarge(`文件超过 ${EXPORT_PAGE_LIMIT} 页，不能生成完整文件`, EXPORT_PAGE_LIMIT);
     this.page = { width: this.width, height: this.limit ?? 0, draws: [] };
     this.pages.push(this.page);
     this.y = MARGIN;
+  }
+
+  /** 长图按实际排版高度检查像素预算（栅格化前拒绝，不让 libvips 在像素上限处抛 500）。 */
+  private grew() {
+    if (this.limit !== undefined) return;
+    const pixels = (this.y + MARGIN) * SCALE * (this.width * SCALE);
+    if (pixels > exportConfig().pixelBudget)
+      throw tooLarge('报表内容过长，超过图片渲染的像素预算，不能生成完整文件', exportConfig().pixelBudget);
   }
 
   private needsBreak(height: number): boolean {
     return this.limit !== undefined && this.y + height > this.limit - MARGIN && this.y > MARGIN;
   }
 
-  private ensure(height: number) {
-    if (this.needsBreak(height)) this.next();
-  }
-
-  private line(value: string, size: number, bold: boolean, gap: number) {
+  private line(value: string, size: number, bold: boolean) {
     const lh = Math.round(size * 1.6);
-    this.ensure(lh);
+    if (this.needsBreak(lh)) this.next();
     this.page.draws.push({ t: 'text', x: MARGIN, y: this.y + size, size, bold, value });
-    this.y += lh + gap;
+    this.y += lh;
+    this.grew();
   }
 
   block(block: Block) {
@@ -402,21 +427,25 @@ class Layout {
     const size = BLOCK_SIZE[block.kind];
     // 标题 / 小节标题与上一块之间留白（页首不留）
     if (this.y > MARGIN) this.y += BLOCK_GAP[block.kind];
-    for (const l of wrap(block.text, inner, size)) this.line(l, size, block.kind !== 'text', 0);
+    for (const l of wrap(block.text, inner, size)) this.line(l, size, block.kind !== 'text');
     this.y += block.kind === 'text' ? 6 : 8;
+    this.grew();
   }
 
-  private rowHeight(cells: readonly string[], widths: readonly number[]): number {
-    return Math.max(...cells.map((c, i) => wrap(c, widths[i]! - 2 * PAD, SIZE.cell).length)) * CELL_LINE + 2 * PAD;
-  }
-
-  private row(cells: readonly string[], widths: readonly number[], fill: string | undefined, bold: boolean) {
-    const height = this.rowHeight(cells, widths);
-    this.ensure(height);
+  /** 画一行里第 from～to 行文字（含上下内边距与下边线）。 */
+  private segment(
+    lines: readonly (readonly string[])[],
+    from: number,
+    to: number,
+    widths: readonly number[],
+    fill: string | undefined,
+    bold: boolean,
+  ) {
+    const height = (to - from) * CELL_LINE + 2 * PAD;
     if (fill) this.page.draws.push({ t: 'rect', x: MARGIN, y: this.y, w: this.width - 2 * MARGIN, h: height, fill });
     let x = MARGIN;
-    cells.forEach((cell, i) => {
-      wrap(cell, widths[i]! - 2 * PAD, SIZE.cell).forEach((value, n) =>
+    lines.forEach((cell, i) => {
+      cell.slice(from, to).forEach((value, n) =>
         this.page.draws.push({
           t: 'text',
           x: x + PAD,
@@ -430,20 +459,52 @@ class Layout {
     });
     this.y += height;
     this.page.draws.push({ t: 'line', x1: MARGIN, x2: this.width - MARGIN, y: this.y });
+    this.grew();
+  }
+
+  /**
+   * 一行表格：整行放得下就整行画；放不下但下一页放得下就换页；比一页还高的行按文字行拆分、跨页续接（每页重复表头），
+   * 不会被裁掉（PR #174 审查 P2-2）。
+   */
+  private row(
+    cells: readonly string[],
+    widths: readonly number[],
+    fill: string | undefined,
+    bold: boolean,
+    repeatHeader?: () => void,
+  ) {
+    const lines = cells.map((c, i) => wrap(c, widths[i]! - 2 * PAD, SIZE.cell));
+    const total = Math.max(...lines.map((l) => l.length));
+    const page = this.limit === undefined ? Infinity : Math.floor((this.limit - 2 * MARGIN - 2 * PAD) / CELL_LINE) - 2;
+    let done = 0;
+    while (done < total) {
+      const remaining = total - done;
+      const fit =
+        this.limit === undefined ? remaining : Math.floor((this.limit - MARGIN - this.y - 2 * PAD) / CELL_LINE);
+      if (remaining <= fit) {
+        this.segment(lines, done, total, widths, fill, bold);
+        return;
+      }
+      const freshPage = this.y <= MARGIN + CELL_LINE * 2;
+      if (!freshPage && (remaining <= page || fit < MIN_SPLIT_LINES)) {
+        this.next();
+        repeatHeader?.();
+        continue;
+      }
+      this.segment(lines, done, done + fit, widths, fill, bold);
+      done += fit;
+      this.next();
+      repeatHeader?.();
+    }
   }
 
   private table(block: Extract<Block, { kind: 'table' }>, inner: number) {
     const widths = columnWidths(block.header, block.rows, inner);
-    this.row(block.header, widths, HEAD_FILL, true);
-    for (const cells of block.rows) {
-      // 换页后重复表头，便于对照
-      if (this.needsBreak(this.rowHeight(cells, widths))) {
-        this.next();
-        this.row(block.header, widths, HEAD_FILL, true);
-      }
-      this.row(cells, widths, undefined, false);
-    }
+    const header = () => this.row(block.header, widths, HEAD_FILL, true);
+    header();
+    for (const cells of block.rows) this.row(cells, widths, undefined, false, header);
     this.y += 10;
+    this.grew();
   }
 
   finish(): Page[] {
@@ -456,11 +517,6 @@ export function paginate(doc: Doc, mode: 'long' | 'a4'): Page[] {
   const layout = mode === 'a4' ? new Layout(A4.width, A4.height) : new Layout(LONG_WIDTH, undefined);
   for (const block of doc.blocks) layout.block(block);
   const pages = layout.finish();
-  if (pages.length > EXPORT_PAGE_LIMIT)
-    throw new AppError('PAYLOAD_TOO_LARGE', `文件超过 ${EXPORT_PAGE_LIMIT} 页，不能生成完整文件`, {
-      reason: 'EXPORT_TOO_LARGE',
-      limit: EXPORT_PAGE_LIMIT,
-    });
   if (mode === 'a4') for (const page of pages) page.height = A4.height;
   return pages;
 }
@@ -480,9 +536,6 @@ const FONT_FAMILY = [
   .map((family) => `'${family}'`)
   .concat('sans-serif')
   .join(',');
-/** 96 dpi 的版面像素按 1.5 倍栅格化（≈144 dpi）。 */
-const DENSITY = 108;
-
 const escapeXml = (value: string) =>
   value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]!);
 
@@ -500,37 +553,11 @@ function svgOf(page: Page): string {
 <rect width="100%" height="100%" fill="#ffffff"/>${body}</svg>`;
 }
 
+/** 栅格化：像素上限与超时都在 sharp 层再设一道（排版已按预算拒绝，这里防止预算被调大后失控）。 */
 const rasterize = (page: Page) =>
-  sharp(Buffer.from(svgOf(page)), { density: DENSITY }).flatten({ background: '#ffffff' });
-
-/** 系统是否有能画出中文的字体：缺字的“中”和私用区码位画出同样的方框。 */
-let fontProbe: Promise<boolean> | undefined;
-export function exportFontReady(): Promise<boolean> {
-  fontProbe ??= (async () => {
-    const glyph = async (char: string) =>
-      sharp(
-        Buffer.from(
-          `<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" font-family="${FONT_FAMILY}">` +
-            `<rect width="48" height="48" fill="#fff"/><text x="4" y="38" font-size="36">${char}</text></svg>`,
-        ),
-      )
-        .raw()
-        .toBuffer();
-    try {
-      return !(await glyph('中')).equals(await glyph(''));
-    } catch {
-      return false;
-    }
-  })();
-  return fontProbe;
-}
-
-async function requireFont() {
-  if (!(await exportFontReady()))
-    throw new AppError('SERVICE_UNAVAILABLE', '服务器缺少中文字体，暂时不能生成文件', {
-      reason: 'EXPORT_FONT_UNAVAILABLE',
-    });
-}
+  sharp(Buffer.from(svgOf(page)), { density: DENSITY, limitInputPixels: exportConfig().pixelBudget * 2 })
+    .timeout({ seconds: Math.max(1, Math.ceil(exportConfig().timeoutMs / 1000)) })
+    .flatten({ background: '#ffffff' });
 
 /** 报表下载：整块报表视图的 PNG 长图。 */
 export async function renderPng(doc: Doc): Promise<Buffer> {
@@ -598,10 +625,8 @@ export async function renderPdf(doc: Doc): Promise<Buffer> {
 
 /** 附件文件名：RFC 5987 编码，去掉路径与引号等不宜出现在文件名里的字符。 */
 export function attachmentName(name: string, extension: 'png' | 'pdf'): string {
-  const safe =
-    clean(name)
-      .replace(/[\\/:*?"<>|\r\n]+/g, '_')
-      .slice(0, 120) || 'download';
+  // 按完整字符截断：按 UTF-16 单元截会把代理对（如“𠮷”）劈开，encodeURIComponent 抛 URIError
+  const safe = [...clean(name).replace(/[\\/:*?"<>|\r\n]+/g, '_')].slice(0, 120).join('') || 'download';
   return `attachment; filename*=UTF-8''${encodeURIComponent(`${safe}.${extension}`)}`;
 }
 

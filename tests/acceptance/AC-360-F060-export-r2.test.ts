@@ -75,7 +75,7 @@ function profile(object: 'activity' | 'result', hide: readonly string[] = []) {
 describe('AC-360-F060 R2 P2-1 隐藏活动名称的查看人拿不到名称', () => {
   it('PNG：图内标题与文件名用中性占位；有名称权限的人照常带名称', async () => {
     overrideFontProbe(async () => true);
-    const { s } = await scene('f060r2-name');
+    const { s, reportId } = await scene('f060r2-name');
     const { w } = s;
     const user = await w.member('看不到活动名称');
     await w.grantProfile(
@@ -100,6 +100,15 @@ describe('AC-360-F060 R2 P2-1 隐藏活动名称的查看人拿不到名称', ()
     expect(bytes.equals(await renderPng(scoreTableDocument(json as never, {})))).toBe(true);
     expect(docText(scoreTableDocument(json as never, {}))).not.toContain(s.activity.name);
     expect(HIDDEN_ACTIVITY_NAME).not.toContain(s.activity.name);
+
+    // 报告同理：封面里的活动名称也按 Activity.name 的字段权限裁剪（JSON 与 PDF 一致）
+    const report = await w.ok<Record<string, unknown>>(as('GET', `${s.path}/reports/${reportId}`));
+    expect(JSON.stringify(report)).not.toContain(s.activity.name);
+    const pdf = await as('GET', `${s.path}/reports/${reportId}/download`);
+    expect(pdf.status).toBe(200);
+    expect(decodeURIComponent(pdf.headers.get('content-disposition')!)).not.toContain(s.activity.name);
+    expect(Buffer.from(await pdf.arrayBuffer()).equals(await renderPdf(reportDocument(report as never)))).toBe(true);
+    expect(docText(reportDocument(report as never))).not.toContain(s.activity.name);
 
     // 有名称权限的管理员：文件名与图内标题带名称，且与隐藏版不同
     const full = await w.request('GET', `${s.path}/score-tables/download?level=questionnaire`);
