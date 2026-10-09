@@ -575,6 +575,13 @@
       "when": 1791575777626,
       "tag": "0081_succession_records_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1791580409986,
+      "tag": "0082_talent_review_calc_rules",
+      "breakpoints": true
     }
   ]
 }
