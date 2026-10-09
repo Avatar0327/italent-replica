@@ -103,6 +103,8 @@ interface Rule {
    */
   readonly fixedFields?: readonly string[];
   readonly visible: (scope: ModuleScope, row: Row, viewer: Viewer, resolved: RuleInputs) => SQL;
+  /** 数据范围按另一个权限对象解析（随父对象授权的对象与业务接口同一范围，如任职资格标准按类别）。 */
+  readonly scopeCode?: string;
   /** 规则需要的额外谓词（如审批管理员范围，对 approval_instances 别名 i）；返回 null 表示没有权限。 */
   readonly resolve?: (deps: Deps, ctx: TenantContext) => Promise<SQL | null>;
   /**
@@ -196,6 +198,53 @@ function appConfigRules<K extends string>(
       visible: (scope, row, viewer) => scopeSql(scope, { creator: ownedBy(row, creator(row, viewer)) }),
     };
   });
+}
+
+/**
+ * R3-T02 任职资格（设计 §8）：随父对象授权的对象，审计范围与业务接口同锚（第 3 轮 R2-04 / R2-05）——
+ * - 标准、发展通道锚在所属类别上：按类别权限对象的范围，判类别当前的所属组织 / 所属人（不因向下公开放宽）；日志
+ *   带 categoryId，任务行按行里的标准回查；类别已删除时退回日志的所属组织（只认组织维度，任务行另认执行人）；
+ * - 指标等级描述随指标：按指标权限对象的范围，所属组织取日志的，创建人取指标的新增记录（DEC-198）；
+ * - 其余按 appConfigRules：带资源集合的按所属组织，字典只认看全部或创建人（DEC-121）。
+ */
+function qualificationRules(): Rule[] {
+  const anchoredByParent = new Set<string>(['standard', 'developmentChannel', 'targetGradeDescription']);
+  const keys = Object.keys(QUALIFICATION_OBJECTS) as (keyof typeof QUALIFICATION_OBJECTS)[];
+  const rest = Object.fromEntries(
+    keys.filter((key) => !anchoredByParent.has(key)).map((key) => [key, QUALIFICATION_OBJECTS[key]]),
+  );
+  const target = QUALIFICATION_OBJECTS.target.code;
+  const description = orgRule(
+    [QUALIFICATION_OBJECTS.targetGradeDescription.code],
+    QUALIFICATION_OBJECTS.targetGradeDescription.code,
+    (row, viewer) => creatorSql(viewer.tenantId, row.objectId, `${QUALIFICATION_AUDIT_ACTIONS.target}.create`, target),
+  );
+  return [
+    ...appConfigRules(rest as typeof QUALIFICATION_OBJECTS, QUALIFICATION_AUDIT_ACTIONS, QUALIFICATION_ORG_AUDITED),
+    categoryAnchoredRule(QUALIFICATION_OBJECTS.standard.code),
+    categoryAnchoredRule(QUALIFICATION_OBJECTS.developmentChannel.code),
+    { ...description, scopeCode: target },
+  ];
+}
+
+function categoryAnchoredRule(code: string): Rule {
+  return {
+    types: [code],
+    objectCode: code,
+    scopeCode: QUALIFICATION_OBJECTS.category.code,
+    visible: (scope, row, viewer) => {
+      if (scope.all) return sql`true`;
+      const categoryId = sql`COALESCE(${row.after}->>'categoryId', ${row.before}->>'categoryId',
+        (SELECT s.category_id::text FROM ql_standards s
+          WHERE s.tenant_id = ${viewer.tenantId}::uuid AND s.id = ${uuidOf(row.objectId)}))`;
+      const category = (predicate: SQL) => sql`EXISTS (SELECT 1 FROM ql_categories qa
+        WHERE qa.tenant_id = ${viewer.tenantId}::uuid AND qa.id = ${uuidOf(categoryId)} AND ${predicate})`;
+      const fallback = anchored(scope, row.org, scopeSql(scope, { org: row.org }), row.actor ?? undefined);
+      return sql`(CASE WHEN ${category(sql`true`)}
+        THEN ${category(scopeSql(scope, { org: sql`qa.owner_org_id`, creator: sql`qa.owner_id` }))}
+        ELSE ${fallback} END)`;
+    },
+  };
 }
 
 /** DEC-197：业务编号解析到当前员工范围；创建人仍取调动业务，不取联动日志执行人。 */
@@ -489,7 +538,7 @@ const RULES: readonly Rule[] = [
   }),
   // R3-T02 任职资格（Qualification）与人才评定配置（TEvaluation），设计 §8：带资源集合 / 所属组织的对象按日志写入时的
   // 所属组织裁剪，不因向下公开放宽；字典只认看全部或创建人（DEC-121）。流程对象（员工评定数据等）随 C2 登记。
-  ...appConfigRules(QUALIFICATION_OBJECTS, QUALIFICATION_AUDIT_ACTIONS, QUALIFICATION_ORG_AUDITED),
+  ...qualificationRules(),
   ...appConfigRules(EVALUATION_OBJECTS, EVALUATION_AUDIT_ACTIONS, EVALUATION_ORG_OBJECTS),
   // R3-T07 PR-B：计划及其组成部分按计划员工、关键信息按员工（带教按被带教人）归属，与业务接口的范围一致（K-50）；
   // 关键信息另要求日志前后快照涉及的全部员工 / 组织都在范围内（带教双方、轮岗部门，第 2 轮 P2-1）
@@ -654,8 +703,12 @@ export interface AuditViewer {
 }
 
 const EVENT = 'audit_events';
-/** 日志里带“带出值”、需要按源对象裁剪的对象类型（R3-T02 第 2 轮 P2-05）。 */
-const SOURCE_TYPES = new Set([QUALIFICATION_OBJECTS.standard.code, QUALIFICATION_OBJECTS.targetGradeDescription.code]);
+/** 日志里带“带出值”或引用、需要按源对象裁剪的对象类型（R3-T02 第 2 轮 P2-05、第 3 轮 R2-03）。 */
+const SOURCE_TYPES = new Set([
+  QUALIFICATION_OBJECTS.standard.code,
+  QUALIFICATION_OBJECTS.targetGradeDescription.code,
+  QUALIFICATION_OBJECTS.developmentChannel.code,
+]);
 const TASK = 'audit_operation_logs';
 
 /** 在查询事务之外解析（范围解析各自开租户事务）；返回的谓词放进查询的 WHERE，分页之前生效。 */
@@ -770,7 +823,7 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
     };
   }
   if (!(await canView())) return undefined;
-  const scope = await resolveModuleScope(deps, ctx, undefined, rule.objectCode, undefined, rule.view);
+  const scope = await resolveModuleScope(deps, ctx, undefined, rule.scopeCode ?? rule.objectCode, undefined, rule.view);
   const objectFields = linkedViewable(rule.objectCode, await getModuleViewableFields(deps, ctx, rule.objectCode));
   const linkage = rule.types.includes(TRANSFER_LINKAGE)
     ? await resolveLinkageAudit(deps, ctx, scope, objectFields)

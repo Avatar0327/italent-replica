@@ -9,7 +9,7 @@
 import { sql, type Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
 import { visible } from '../permission/module-route-access.js';
-import { QUALIFICATION_LABELS } from './access.js';
+import { accessSql, QUALIFICATION_LABELS } from './access.js';
 import type * as input from './input.js';
 import {
   gradeDetails,
@@ -113,13 +113,15 @@ async function overwriteStandards(
       SELECT ${ctx.tenantId}, d.id, ${description ?? ''}, 0, 'common_overwrite', ${targetId}::uuid
       FROM ql_standard_details d WHERE d.tenant_id = ${ctx.tenantId} AND d.standard_id = ${standardId}::uuid
         AND d.target_id = ${targetId}::uuid`);
-    const standard = rowsOf<{ owner_org_id: string }>(
+    const standard = rowsOf<{ owner_org_id: string; category_id: string }>(
       await tx.execute(sql`UPDATE ql_standards SET revision = revision + 1, updated_at = ${ctx.now.toISOString()}
-        WHERE tenant_id = ${ctx.tenantId} AND id = ${standardId}::uuid RETURNING owner_org_id`),
+        WHERE tenant_id = ${ctx.tenantId} AND id = ${standardId}::uuid RETURNING owner_org_id, category_id`),
     )[0]!;
+    // 带上所属类别：审计范围与业务同锚在类别上（第 3 轮 R2-04），前后相同不算变化
+    const categoryId = standard.category_id;
     await audit(tx, ctx, 'standard', 'common-overwrite', standardId, {
-      before: { details: before },
-      after: { details: await cellsOf(tx, ctx.tenantId, standardId, targetId) },
+      before: { categoryId, details: before },
+      after: { categoryId, details: await cellsOf(tx, ctx.tenantId, standardId, targetId) },
       orgId: standard.owner_org_id,
     });
   }
@@ -193,6 +195,27 @@ export async function deleteTarget(tx: Tx, ctx: WriteContext, id: string) {
   await tx.execute(sql`DELETE FROM ql_targets WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid`);
   await audit(tx, ctx, 'target', 'delete', id, { before, after: null, orgId: row.owner_org_id as string });
   return before;
+}
+
+/**
+ * 等级方案连带删除的遗留描述随指标授权：所属指标须都在操作人当前对指标的写范围内（第 3 轮 R2-06），有一条不在就
+ * 整体拒绝，什么都不删。
+ */
+async function requireTargetsEditable(tx: Tx, ctx: WriteContext, targetIds: readonly string[]) {
+  const ids = [...new Set(targetIds)];
+  if (!ids.length) return;
+  const scope = ctx.scopes.target;
+  const editable = scope
+    ? rowsOf(
+        await tx.execute(sql`SELECT t.id FROM ql_targets t WHERE t.tenant_id = ${ctx.tenantId}::uuid
+          AND t.id = ANY(${`{${ids.join(',')}}`}::uuid[]) AND ${accessSql(ctx, scope, 'owned').editable}`),
+      ).length
+    : 0;
+  if (editable < ids.length) {
+    throw new AppError('FORBIDDEN', '等级方案上有不在你管理范围内的指标手改描述，不能删除', {
+      reason: 'CHILD_OUT_OF_SCOPE',
+    });
+  }
 }
 
 /** 手改的指标等级描述（快照的键即 TargetGradeDescription 的字段）。 */
@@ -325,6 +348,11 @@ export async function deleteGradeScheme(tx: Tx, ctx: WriteContext, id: string) {
     ctx.tenantId,
     sql`g.grade_detail_id IN (SELECT d.id FROM ql_grade_details d WHERE d.tenant_id = g.tenant_id
       AND d.scheme_id = ${id}::uuid)`,
+  );
+  await requireTargetsEditable(
+    tx,
+    ctx,
+    leftovers.map((item) => item.targetId),
   );
   await deleteChildren(
     tx,

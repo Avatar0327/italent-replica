@@ -261,7 +261,7 @@ export async function deleteStandard(tx: Tx, ctx: WriteContext, id: string) {
     channels.horizontal.map((channel) => ({
       objectId: id,
       orgId: before.ownerOrgId,
-      snapshot: { standardId: id, ...channel },
+      snapshot: { standardId: id, categoryId: before.categoryId, ...channel },
     })),
   );
   await tx.execute(sql`DELETE FROM ql_standards WHERE tenant_id = ${ctx.tenantId} AND id = ${id}::uuid`);
@@ -550,10 +550,14 @@ export async function loadChannels(tx: Tx, tenantId: string, standardId: string)
   };
 }
 
-/** 横向通道的保存提示（DEC-347② 🟡：只提示、不拦截）。 */
+/**
+ * 横向通道的保存提示（DEC-347② 🟡：只提示、不拦截）。目的地类别只供出口按查看人对目的地标准的权限筛选
+ * （第 3 轮 R2-01），不出现在响应里。
+ */
 export interface ChannelWarning {
   readonly index: number;
   readonly reason: 'TARGET_STANDARD_MISSING' | 'TARGET_LEVEL_NOT_IN_STANDARD';
+  readonly targetCategoryId: string;
 }
 
 const channelKey = (c: { levelId: string; targetCategoryId: string; targetLevelId: string }) =>
@@ -563,7 +567,7 @@ const channelKey = (c: { levelId: string; targetCategoryId: string; targetLevelI
  * 横向通道整组替换（随标准授权，If-Match 为标准的 revision）；目标类别 / 级别须可引用（新引用须启用）。
  * - 横向通往其他类别（QL-R13）：目标类别等于本标准的类别（同级或本类别其他级别）400 CHANNEL_SELF_LOOP（P2-09）；
  * - 目的地没有标准、或目标级别不在该标准的级别范围内：照常保存，返回里逐条提示（DEC-347② 🟡）；
- * - 审计逐条路径写新增 / 删除（键即发展通道的字段，审计员按字段目录可见，P2-11）。
+ * - 审计逐条路径写新增 / 删除（键即发展通道的字段，审计员按字段目录可见，P2-11；另带所属类别作范围锚点）。
  */
 export async function putChannels(tx: Tx, ctx: WriteContext, standardId: string, body: input.ChannelsPut) {
   const row = await lockEditable(tx, ctx, 'standard', standardId);
@@ -588,9 +592,10 @@ export async function putChannels(tx: Tx, ctx: WriteContext, standardId: string,
       await tx.execute(sql`SELECT level_ids FROM ql_standards WHERE tenant_id = ${ctx.tenantId}
         AND category_id = ${channel.targetCategoryId}::uuid`),
     )[0];
-    if (!destination) warnings.push({ index, reason: 'TARGET_STANDARD_MISSING' });
+    const { targetCategoryId } = channel;
+    if (!destination) warnings.push({ index, reason: 'TARGET_STANDARD_MISSING', targetCategoryId });
     else if (!destination.level_ids.includes(channel.targetLevelId)) {
-      warnings.push({ index, reason: 'TARGET_LEVEL_NOT_IN_STANDARD' });
+      warnings.push({ index, reason: 'TARGET_LEVEL_NOT_IN_STANDARD', targetCategoryId });
     }
     await tx.execute(sql`INSERT INTO ql_development_channels (tenant_id, standard_id, level_id,
       target_category_id, target_level_id)
@@ -602,11 +607,13 @@ export async function putChannels(tx: Tx, ctx: WriteContext, standardId: string,
     WHERE tenant_id = ${ctx.tenantId} AND id = ${standardId}::uuid`);
   const after = await loadChannels(tx, ctx.tenantId, standardId);
   const orgId = row.owner_org_id as string;
+  // 所属类别不是通道字段（审计员按字段目录看不到），供审计范围与业务同锚在类别上（第 3 轮 R2-04）
+  const categoryId = row.category_id as string;
   const was = new Set(before.horizontal.map(channelKey));
   const now = new Set(after.horizontal.map(channelKey));
   for (const channel of before.horizontal.filter((c) => !now.has(channelKey(c)))) {
     await audit(tx, ctx, 'developmentChannel', 'delete', standardId, {
-      before: { standardId, ...channel },
+      before: { standardId, categoryId, ...channel },
       after: null,
       orgId,
     });
@@ -614,7 +621,7 @@ export async function putChannels(tx: Tx, ctx: WriteContext, standardId: string,
   for (const channel of after.horizontal.filter((c) => !was.has(channelKey(c)))) {
     await audit(tx, ctx, 'developmentChannel', 'create', standardId, {
       before: null,
-      after: { standardId, ...channel },
+      after: { standardId, categoryId, ...channel },
       orgId,
     });
   }

@@ -48,6 +48,8 @@ interface ObjectRoutes<Create, Patch> {
   readonly references: readonly QualificationObject[];
   /** 删除时连带删除的子对象（另需删除权并逐条写删除快照，store.deleteChildren）。 */
   readonly children?: readonly QualificationObject[];
+  /** 删除时还要按写范围校验的对象（等级方案连带的遗留描述按所属指标，第 3 轮 R2-06）。 */
+  readonly deleteScopes?: readonly QualificationObject[];
   /** 写入要读取的岗职务对象（引入 / 关联）。 */
   readonly jobs?: readonly ScopedJobKind[];
   readonly filter?: (c: Context) => SQL;
@@ -145,6 +147,7 @@ const SPECS = {
     patchSchema: input.gradeSchemePatch,
     references: [],
     children: ['targetGradeDescription'],
+    deleteScopes: ['target'],
     decorate: read.withGradeDetails,
     create: targets.createGradeScheme,
     update: targets.updateGradeScheme,
@@ -226,7 +229,7 @@ function registerObject<Create extends object, Patch extends object>(
     const ctx = await qualificationWriteContext(c, deps, spec.object, 'delete', revision(c));
     const id = uuidParam(c);
     const w = {
-      ...(await writeContext(c, deps, ctx, spec.object, [])),
+      ...(await writeContext(c, deps, ctx, spec.object, spec.deleteScopes ?? [])),
       childDeletes: await childDeletes(deps, ctx, spec),
     };
     return runWrite(c, deps, w, spec.object, { id }, 200, (tx, x) => spec.remove(tx, x, id));

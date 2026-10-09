@@ -5,6 +5,8 @@
  *   description 字段查看权，且该指标在其读取范围内；否则去掉内容，只留 `projectionHidden` 标记；
  * - 指标等级描述首次手改时的 before 是等级明细描述的投影（`projected: true`，带来源方案）：查看人须对等级方案有查看权、
  *   details 字段查看权，且该方案在其读取范围内（字典：看全部 ∪ 创建人）；否则去掉该描述。
+ * - 发展通道的目标类别 / 目标级别（第 3 轮 R2-03）：与通道 GET 一致，查看人须有类别 / 级别的查看权、且该类别 /
+ *   级别在其读取范围内；否则去掉该 ID（新增、移除与删除标准级联的日志同样处理）。
  * 前后值、快照、差异（含展示文本）都经过这里；字段级裁剪仍由 visibleValue / visibleChanges 做。
  */
 import { QUALIFICATION_OBJECTS, type AuditFieldChange } from '@italent/domain';
@@ -16,6 +18,10 @@ import { accessSql, qlReadable } from '../modules/qualification/access.js';
 
 const STANDARD = QUALIFICATION_OBJECTS.standard.code;
 const GRADE_DESCRIPTION = QUALIFICATION_OBJECTS.targetGradeDescription.code;
+const CHANNEL = QUALIFICATION_OBJECTS.developmentChannel.code;
+/** 通道日志里的引用键 → 所指对象的表。 */
+const CHANNEL_REFS = { targetCategoryId: 'ql_categories', targetLevelId: 'ql_levels' } as const;
+type ChannelRef = keyof typeof CHANNEL_REFS;
 
 interface SourceRow {
   readonly objectType: string;
@@ -24,11 +30,11 @@ interface SourceRow {
   readonly changes: unknown;
 }
 
-/** 查看人对一类源对象的当前权限：null = 没有查看权或看不到该字段（一律隐藏）。 */
-async function sourceScope(deps: TenantRouteDeps, ctx: TenantContext, code: string, field: string) {
+/** 查看人对一类源对象的当前权限：null = 没有查看权或看不到该字段（一律隐藏）；不给字段时只看查看权。 */
+async function sourceScope(deps: TenantRouteDeps, ctx: TenantContext, code: string, field?: string) {
   if (!(await deps.authorize({ ...ctx, action: 'object.view', resource: code, fields: [] }))) return null;
-  const fields = await getModuleViewableFields(deps, ctx, code);
-  if (fields !== undefined && !fields.has(field)) return null;
+  const fields = field ? await getModuleViewableFields(deps, ctx, code) : undefined;
+  if (field && fields !== undefined && !fields.has(field)) return null;
   return resolveModuleScope(deps, ctx, undefined, code);
 }
 
@@ -39,19 +45,36 @@ export interface SourceRedactor {
 export async function qualificationSources(deps: TenantRouteDeps, ctx: TenantContext): Promise<SourceRedactor> {
   const targetScope = await sourceScope(deps, ctx, QUALIFICATION_OBJECTS.target.code, 'description');
   const schemeScope = await sourceScope(deps, ctx, QUALIFICATION_OBJECTS.gradeScheme.code, 'details');
+  const refScopes = {
+    targetCategoryId: await sourceScope(deps, ctx, QUALIFICATION_OBJECTS.category.code),
+    targetLevelId: await sourceScope(deps, ctx, QUALIFICATION_OBJECTS.level.code),
+  };
   const scoped = { tenantId: ctx.tenantId, now: deps.clock(), timezone: ctx.timezone };
   return {
     async redact(tx, rows) {
       const targets = new Set<string>();
       const schemes = new Set<string>();
+      const refs: Record<ChannelRef, Set<string>> = { targetCategoryId: new Set(), targetLevelId: new Set() };
       for (const row of rows) {
         if (row.objectType === STANDARD) collectTargets([row.before, row.after, row.changes], targets);
         if (row.objectType === GRADE_DESCRIPTION) {
           const scheme = projectedScheme(row.before);
           if (scheme) schemes.add(scheme);
         }
+        if (row.objectType === CHANNEL) collectRefs(row, refs);
       }
-      if (!targets.size && !schemes.size) return [...rows];
+      if (!targets.size && !schemes.size && !refs.targetCategoryId.size && !refs.targetLevelId.size) return [...rows];
+      const readableRefs = {} as Record<ChannelRef, ReadonlySet<string>>;
+      for (const key of Object.keys(CHANNEL_REFS) as ChannelRef[]) {
+        readableRefs[key] = await readable(
+          tx,
+          ctx.tenantId,
+          CHANNEL_REFS[key],
+          [...refs[key]],
+          refScopes[key],
+          (scope) => qlReadable(scoped, scope, 't'),
+        );
+      }
       const readableTargets = await readable(tx, ctx.tenantId, 'ql_targets', [...targets], targetScope, (scope) =>
         qlReadable(scoped, scope, 't'),
       );
@@ -66,6 +89,7 @@ export async function qualificationSources(deps: TenantRouteDeps, ctx: TenantCon
       return rows.map((row) => {
         if (row.objectType === STANDARD) return redactStandard(row, readableTargets);
         if (row.objectType === GRADE_DESCRIPTION) return redactProjection(row, readableSchemes);
+        if (row.objectType === CHANNEL) return redactRefs(row, readableRefs);
         return row;
       });
     },
@@ -146,6 +170,44 @@ function redactProjection<T extends SourceRow>(row: T, allowed: ReadonlySet<stri
       ? (row.changes as AuditFieldChange[]).map(({ fromText: _f, toText: _t, ...change }) =>
           change.field === 'description' ? { ...change, from: null } : change,
         )
+      : row.changes,
+  };
+}
+
+const isRef = (key: string): key is ChannelRef => key in CHANNEL_REFS;
+
+function collectRefs(row: SourceRow, into: Record<ChannelRef, Set<string>>): void {
+  for (const value of [row.before, row.after]) {
+    if (!isObject(value)) continue;
+    for (const key of Object.keys(CHANNEL_REFS) as ChannelRef[]) {
+      if (typeof value[key] === 'string') into[key].add(value[key]);
+    }
+  }
+  if (!Array.isArray(row.changes)) return;
+  for (const change of row.changes as AuditFieldChange[]) {
+    if (!isRef(change.field)) continue;
+    for (const side of [change.from, change.to]) if (typeof side === 'string') into[change.field].add(side);
+  }
+}
+
+/** 通道日志：看不到的目标类别 / 级别去掉 ID；差异里两边都去掉的条目不再出现。 */
+function redactRefs<T extends SourceRow>(row: T, allowed: Readonly<Record<ChannelRef, ReadonlySet<string>>>): T {
+  const shown = (key: ChannelRef, value: unknown) => typeof value !== 'string' || allowed[key].has(value);
+  const strip = (value: unknown) =>
+    isObject(value)
+      ? Object.fromEntries(Object.entries(value).filter(([key, inner]) => !isRef(key) || shown(key, inner)))
+      : value;
+  return {
+    ...row,
+    before: strip(row.before),
+    after: strip(row.after),
+    changes: Array.isArray(row.changes)
+      ? (row.changes as AuditFieldChange[]).flatMap(({ fromText: _f, toText: _t, ...change }) => {
+          if (!isRef(change.field)) return [change];
+          const from = shown(change.field, change.from) ? change.from : null;
+          const to = shown(change.field, change.to) ? change.to : null;
+          return from === null && to === null ? [] : [{ ...change, from, to }];
+        })
       : row.changes,
   };
 }

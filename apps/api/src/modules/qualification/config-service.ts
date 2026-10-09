@@ -568,8 +568,9 @@ const notFound = () => new AppError('NOT_FOUND', `${QUALIFICATION_LABELS.codingR
 
 /**
  * 编码规则的可见范围 = 看全部 ∪ 创建人（DEC-347③，字典口径同 DEC-121）：看全部的看四项；只有“使用用户”维度的
- * 只看自己建的规则行，还没有人建的项按缺省值呈现（缺省值不是任何人的数据，供其第一次保存）；都没有的看不到。
- * 未改过的项按缺省值呈现（未启用、无前缀、从 1 起，🟡 原站缺省值未取证）。
+ * 只看自己建的规则行，看不到的项（还没有人建、或别人建的）一律按缺省值呈现——占位不按全租户有没有行决定，不透露
+ * 是否已被别人建过（第 3 轮 R2-02；占位口径待总编排定）；都没有的看不到。
+ * 缺省值：未启用、无前缀、从 1 起（🟡 原站缺省值未取证）。
  */
 export async function listCodingRules(
   tx: Tx,
@@ -582,19 +583,21 @@ export async function listCodingRules(
         (${accessSql(ctx, scope, 'dictionary').readable}) AS readable
       FROM ql_coding_rules t WHERE t.tenant_id = ${ctx.tenantId}::uuid`),
   );
-  return CODING_ITEMS.flatMap((item): CodingRuleView[] => {
-    const row = rows.find((r) => r.item === item);
-    if (!row) return [{ id: null, item, enabled: false, prefix: '', nextSeq: 1, revision: 0 }];
-    const { readable, ...rest } = row;
-    return readable === true ? [view<CodingRuleView>(rest)] : [];
+  return CODING_ITEMS.map((item): CodingRuleView => {
+    const row = rows.find((r) => r.item === item && r.readable === true);
+    if (!row) return { id: null, item, enabled: false, prefix: '', nextSeq: 1, revision: 0 };
+    const { readable: _readable, ...rest } = row;
+    return view<CodingRuleView>(rest);
   });
 }
 
 export async function updateCodingRule(tx: Tx, ctx: WriteContext, item: CodingItem, body: input.CodingRulePatch) {
   if (!ctx.scope.all && !hasCreatorScope(ctx.scope)) throw notFound();
   // 还没有人建的项由本次保存的人建（成为创建人）；已有的须在看全部 ∪ 创建人范围内，否则与不存在同一个 404
-  await tx.execute(sql`INSERT INTO ql_coding_rules (tenant_id, item, created_by, revision)
-    VALUES (${ctx.tenantId}, ${item}, ${ctx.userId}, 0) ON CONFLICT (tenant_id, item) DO NOTHING`);
+  const inserted = rowsOf(
+    await tx.execute(sql`INSERT INTO ql_coding_rules (tenant_id, item, created_by, revision)
+      VALUES (${ctx.tenantId}, ${item}, ${ctx.userId}, 0) ON CONFLICT (tenant_id, item) DO NOTHING RETURNING id`),
+  ).length;
   const current = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`SELECT t.*, (${accessSql(ctx, ctx.scope, 'dictionary').readable}) AS readable
       FROM ql_coding_rules t WHERE t.tenant_id = ${ctx.tenantId} AND t.item = ${item} FOR UPDATE OF t`),
@@ -613,6 +616,10 @@ export async function updateCodingRule(tx: Tx, ctx: WriteContext, item: CodingIt
     revision = ${ctx.expectedRevision + 1}, updated_at = ${ctx.now.toISOString()}
     WHERE tenant_id = ${ctx.tenantId} AND item = ${item}`);
   const after = (await listCodingRules(tx, ctx, ctx.scope)).find((rule) => rule.item === item)!;
-  await audit(tx, ctx, 'codingRule', 'update', after.id!, { before, after });
+  // 首次保存记为新增（DEC-198 创建人归属，第 3 轮 R2-05）：“使用用户”范围的审计员按它找得到自己的规则
+  await audit(tx, ctx, 'codingRule', inserted ? 'create' : 'update', after.id!, {
+    before: inserted ? null : before,
+    after,
+  });
   return after;
 }

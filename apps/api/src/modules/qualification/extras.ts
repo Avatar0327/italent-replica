@@ -5,6 +5,7 @@
  * 引入与导入在失败时另在独立事务里登记任务级日志（DEC-199，P2-12）。
  */
 import { sql, withTenant, type Tx } from '@italent/db';
+import { QUALIFICATION_APP, tenantLocalDate } from '@italent/domain';
 import type { Context, Hono } from 'hono';
 import type { z } from 'zod';
 import { rawImportRows, rawUuid, withFailedImportLog } from '../../audit/record.js';
@@ -12,6 +13,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
 import type { ScopedJobKind } from '../permission/module-contracts.js';
+import { authorizedUnits } from '../permission/owner-units.js';
 import { parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
 import {
   accessSql,
@@ -27,7 +29,7 @@ import {
 } from './access.js';
 import * as config from './config-service.js';
 import * as input from './input.js';
-import { presentChannels, presentChart, presentGradeDescriptions } from './presenters.js';
+import { presentChannels, presentChart, presentGradeDescriptions, presentWarnings } from './presenters.js';
 import * as read from './read-model.js';
 import { presenter, QL_BASE, requireAllVisible, runWrite, writeContext } from './route-support.js';
 import * as standards from './standard-service.js';
@@ -46,20 +48,61 @@ export function registerExtras(router: Hono<TenantEnv>, deps: TenantRouteDeps): 
   registerChart(router, deps);
 }
 
-/** 导入 / 引入失败时的任务级日志（DEC-199）：只取行数与可识别的归属编号，不存其他输入值。 */
-async function importTask(c: Context<TenantEnv>, object: QualificationObject, key: 'items' | 'rows') {
-  const raw = (await c.req.json().catch(() => undefined)) as Record<string, unknown> | undefined;
-  const rows = rawImportRows(raw, key);
-  const orgId = rawUuid(raw?.ownerOrgId);
-  const tenant = tenantOf(c);
-  return {
-    tenantId: tenant.tenantId,
-    userId: tenant.userId,
-    commandId: c.req.header('idempotency-key'),
-    objectType: codeOf(object),
-    total: rows.length,
-    anchors: rows.map(() => ({ objectId: null, orgId })),
-  };
+/**
+ * 导入 / 引入失败时的任务级日志（DEC-199）：只取行数与可识别的归属编号，不存其他输入值。归属按实际操作的管理单元
+ * / 目标锚点登记（第 3 轮 R2-07），让操作人与该单元的审计员经授权查询找得到：
+ * - 引入类别 / 级别：请求选定的授权管理单元，没选时取唯一的授权管理单元（与新建时自动填同一口径，DEC-339）；
+ * - 标准导入：行里类别的所属组织与其标准（标准锚在类别上）；类别找不到时退回唯一的授权管理单元。
+ */
+function importTask(c: Context<TenantEnv>, deps: TenantRouteDeps, object: QualificationObject, key: 'items' | 'rows') {
+  return c.req
+    .json()
+    .catch(() => undefined)
+    .then((raw: Record<string, unknown> | undefined) => {
+      const rows = rawImportRows(raw, key);
+      const tenant = tenantOf(c);
+      const requested = rawUuid(raw?.ownerOrgId);
+      const categoryCodes = rows.map((row) => (typeof row.categoryCode === 'string' ? row.categoryCode : ''));
+      return {
+        tenantId: tenant.tenantId,
+        userId: tenant.userId,
+        commandId: c.req.header('idempotency-key'),
+        objectType: codeOf(object),
+        total: rows.length,
+        resolveAnchors: async (tx: Tx) => {
+          const unit = await operatingUnit(tx, deps, tenant, requested);
+          if (object !== 'standard') return rows.map(() => ({ objectId: null, orgId: unit }));
+          const anchors = await categoryAnchors(tx, tenant.tenantId, categoryCodes);
+          return categoryCodes.map((code) => anchors.get(code) ?? { objectId: null, orgId: unit });
+        },
+      };
+    });
+}
+
+async function operatingUnit(
+  tx: Tx,
+  deps: TenantRouteDeps,
+  tenant: { tenantId: string; userId: string; timezone: string },
+  requested: string | null,
+): Promise<string | null> {
+  const asOf = tenantLocalDate(deps.clock(), tenant.timezone);
+  const units = await authorizedUnits(tx, tenant.tenantId, tenant.userId, QUALIFICATION_APP, asOf);
+  if (requested && units.some((unit) => unit.id === requested)) return requested;
+  return units.length === 1 ? units[0]!.id : null;
+}
+
+async function categoryAnchors(tx: Tx, tenantId: string, codes: readonly string[]) {
+  const wanted = [...new Set(codes.filter(Boolean))];
+  if (!wanted.length) return new Map<string, { objectId: string | null; orgId: string }>();
+  const rows = rowsOf<{ code: string; owner_org_id: string; standard_id: string | null }>(
+    await tx.execute(sql`SELECT c.code, c.owner_org_id, s.id AS standard_id FROM ql_categories c
+      LEFT JOIN ql_standards s ON s.tenant_id = c.tenant_id AND s.category_id = c.id
+      WHERE c.tenant_id = ${tenantId}::uuid AND c.code IN (${sql.join(
+        wanted.map((code) => sql`${code}`),
+        sql`, `,
+      )})`),
+  );
+  return new Map(rows.map((row) => [row.code, { objectId: row.standard_id, orgId: row.owner_org_id }]));
 }
 
 function registerImports(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
@@ -73,7 +116,7 @@ function registerImports(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     execute: (tx: Tx, ctx: config.ConfigWriteContext, body: T) => Promise<{ items: read.JobLinked[] }>,
   ) =>
     router.post(`${QL_BASE}/${path}/import`, async (c) =>
-      withFailedImportLog(deps.db, await importTask(c, object, 'items'), async () => {
+      withFailedImportLog(deps.db, await importTask(c, deps, object, 'items'), async () => {
         const ctx = await qualificationWriteContext(c, deps, object, 'create', revision(c));
         requireNew(ctx.expectedRevision);
         const body = await parseBody(c, schema);
@@ -189,7 +232,7 @@ function registerStandardImport(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
   // 编辑导入标准明细（QL-R11、AC-QL-05）：标准的编辑授权 + 按钮；逐标准在请求体里带预期 revision（P2-06），
   // 不用 If-Match（一次导入涉及多条标准）
   router.post(`${QL_BASE}/standards/import`, async (c) =>
-    withFailedImportLog(deps.db, await importTask(c, 'standard', 'rows'), async () => {
+    withFailedImportLog(deps.db, await importTask(c, deps, 'standard', 'rows'), async () => {
       const ctx = await qualificationWriteContext(c, deps, 'standard', 'update', 0);
       const body = await parseBody(c, input.standardImport);
       await checkWriteFields(deps, ctx, 'standard', 'update', { details: body.rows });
@@ -226,8 +269,11 @@ function registerChannels(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const w = await writeContext(c, deps, ctx, 'standard', ['category', 'level']);
     return runWrite(c, deps, w, 'standard', body, 200, (tx, x) => standards.putChannels(tx, x, id, body), {
       recheck: (value) => requireAllVisible(deps, w, 'standard', [value.standardId]),
-      // 提示只带序号与原因（DEC-347② 🟡），不带目的地的任何内容
-      present: async ({ warnings, ...view }) => ({ ...(await presentChannels(c, deps, w, view)), warnings }),
+      // 提示只带序号与原因（DEC-347② 🟡），且只给看得到目的地标准的人（第 3 轮 R2-01）
+      present: async ({ warnings, ...view }) => ({
+        ...(await presentChannels(c, deps, w, view)),
+        warnings: await presentWarnings(c, deps, w, warnings),
+      }),
     });
   });
 }
