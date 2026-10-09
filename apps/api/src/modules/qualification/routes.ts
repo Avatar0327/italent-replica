@@ -30,6 +30,7 @@ import {
 import { registerQualificationCandidates } from './candidates.js';
 import * as config from './config-service.js';
 import { registerExtras } from './extras.js';
+import './subset-policy.js'; // 登记 qualification 子集策略（C1-1）
 import * as input from './input.js';
 import * as read from './read-model.js';
 import { fieldEditable, presenter, QL_BASE, runWrite, type View, writeContext } from './route-support.js';
@@ -44,8 +45,14 @@ interface ObjectRoutes<Create, Patch> {
   readonly path: string;
   readonly createSchema: z.ZodType<Create>;
   readonly patchSchema: z.ZodType<Patch>;
-  /** 写入时引用的同应用对象（各自按读取范围校验）。 */
+  /** 创建时引用的同应用对象（各自按读取范围校验）。 */
   readonly references: readonly QualificationObject[];
+  /**
+   * 更新时引用的同应用对象，缺省同 references。更新的 schema 不含引用字段（categoryPatch 无 classId、targetPatch 无
+   * typeId、standardPatch 无 categoryId / levelIds …），命令内也只在创建 / 导入路径 referenced()：更新用不到的引用
+   * 对象不预取查看权（F-075，DEC-369）。
+   */
+  readonly updateReferences?: readonly QualificationObject[];
   /** 删除时连带删除的子对象（另需删除权并逐条写删除快照，store.deleteChildren）。 */
   readonly children?: readonly QualificationObject[];
   /** 删除时还要按写范围校验的对象（等级方案连带的遗留描述按所属指标，第 3 轮 R2-06）。 */
@@ -72,6 +79,7 @@ const SPECS = {
     createSchema: input.categoryClassCreate,
     patchSchema: input.categoryClassPatch,
     references: ['categoryClass'],
+    updateReferences: [],
     filter: (c: Context) => eq('enabled', booleanQuery(c, 'enabled')),
     create: config.createCategoryClass,
     update: config.updateCategoryClass,
@@ -83,6 +91,7 @@ const SPECS = {
     createSchema: input.categoryCreate,
     patchSchema: input.categoryPatch,
     references: ['categoryClass'],
+    updateReferences: [],
     jobs: CATEGORY_JOBS,
     filter: (c: Context) =>
       sql`${eq('class_id', uuidQuery(c, 'classId'))} AND ${eq('enabled', booleanQuery(c, 'enabled'))}`,
@@ -122,6 +131,7 @@ const SPECS = {
     createSchema: input.targetTypeCreate,
     patchSchema: input.targetTypePatch,
     references: ['targetType'],
+    updateReferences: [],
     filter: (c: Context) => eq('parent_id', uuidQuery(c, 'parentId')),
     create: config.createTargetType,
     update: config.updateTargetType,
@@ -133,6 +143,7 @@ const SPECS = {
     createSchema: input.targetCreate,
     patchSchema: input.targetPatch,
     references: ['targetType', 'gradeScheme'],
+    updateReferences: ['gradeScheme'],
     children: ['targetGradeDescription'],
     filter: (c: Context) =>
       sql`${eq('type_id', uuidQuery(c, 'typeId'))} AND ${eq('enabled', booleanQuery(c, 'enabled'))}`,
@@ -159,6 +170,7 @@ const SPECS = {
     createSchema: input.standardCreate,
     patchSchema: input.standardPatch,
     references: ['category', 'level', 'target'],
+    updateReferences: ['target'],
     children: ['developmentChannel'],
     filter: (c: Context) => eq('category_id', uuidQuery(c, 'categoryId')),
     decorate: read.withStandardParts,
@@ -219,7 +231,7 @@ function registerObject<Create extends object, Patch extends object>(
     const body = await parseBody(c, spec.patchSchema);
     await checkWriteFields(deps, ctx, spec.object, 'update', body as Record<string, unknown>);
     const w: config.ConfigWriteContext = {
-      ...(await writeContext(c, deps, ctx, spec.object, spec.references, spec.jobs)),
+      ...(await writeContext(c, deps, ctx, spec.object, spec.updateReferences ?? spec.references, spec.jobs)),
       // 改关联类型会派生出清空关联：命令内按这项权限拦截（第 2 轮 P2-04）
       ...(spec.jobs ? { jobLinksEditable: await fieldEditable(deps, ctx, spec.object, 'jobLinks') } : {}),
     };

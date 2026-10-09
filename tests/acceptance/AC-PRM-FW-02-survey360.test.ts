@@ -3,7 +3,7 @@
  * 全允许探测在 survey360 管理端问到的 `obj:Survey360.Activity:view` / `btn:Survey360.Activity#viewAll@list`
  * 是 allActivities（360 系统管理员，context.ts allActivitiesOf）的判定，它决定活动 / 人员**可见范围的广度**，
  * 会让结果变成 404 / 403 或整体放宽，所以**按实际用途分别登记**，不整体放进 optional：
- *   - 活动资源守卫（requireActivity 的内部“或”：全部活动 或 本人创建 / 被授权）：36 个 `/activities/:id…` 端点，
+ *   - 活动资源守卫（requireActivity 的内部“或”：全部活动 或 本人创建 / 被授权）：38 个 `/activities/:id…` 端点（含 F-060 的报告 PDF / 报表 PNG 下载），
  *     承载者 guard:survey360.activityScope；
  *   - 人员资源守卫（visiblePerson：全部活动 或 精细化关闭 或 人员在范围内）：GET / PUT /people/:id，承载者 personVisible；
  *   - 精细化条件守卫（requireUnrestricted / requireCreatable：全部活动 或 精细化关闭）：关联日志、同步冲突清单与处理（承载者
@@ -69,17 +69,17 @@ const ACTIVITY_ENDPOINTS = () =>
     .sort();
 
 describe('AC-PRM-FW-02 F-073 已知缺口账本：survey360 的 87 项精确删除，其余账不动', () => {
-  it('账本里不再有 survey360 组；org / idp 两类共 29 项（任职资格已由 F-074 补完）与冗余观测 59 项不变', () => {
+  it('账本里不再有 survey360 组；org / idp 两类共 29 项（任职资格已由 F-074 补完）与冗余观测 18 项不变（原 41 项已由 F-075 去掉）', () => {
     expect(KNOWN_GAPS.filter((g) => g.id.startsWith('survey360'))).toEqual([]);
     expect(KNOWN_GAPS.flatMap((g) => g.pairs)).toHaveLength(29);
-    expect(REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs)).toHaveLength(59);
+    expect(REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs)).toHaveLength(18);
   });
 });
 
-describe('AC-PRM-FW-02 F-073 活动资源守卫：36 个 /activities/:id… 端点（allActivities 或 本人创建 / 被授权）', () => {
-  it('端点集合：36 个，全部有承载者 guard:survey360.activityScope（声明与表一致）', () => {
+describe('AC-PRM-FW-02 F-073 活动资源守卫：38 个 /activities/:id… 端点（allActivities 或 本人创建 / 被授权）', () => {
+  it('端点集合：38 个（F-073 的 36 个 + F-060 两个下载），全部有承载者 guard:survey360.activityScope（声明与表一致）', () => {
     const endpoints = ACTIVITY_ENDPOINTS();
-    expect(endpoints).toHaveLength(36);
+    expect(endpoints).toHaveLength(38);
     for (const key of endpoints) {
       expect(
         entry(key).some((o) => o.perm === 'guard:survey360.activityScope' && !o.purpose),

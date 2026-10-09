@@ -5,6 +5,7 @@
  * requireResubmitRight）；详情 / 历史 = assertCanOpen（参与人或范围内管理员）；管理员动作 = 实例按钮 + 业务范围（adminScope）。
  */
 import { list, NONE, SCOPE_AT } from './scopes.js';
+import { QL_REQUEST_EVIDENCE } from './qualification-subset-evidence.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const DIR = 'apps/api/src/modules/approval';
@@ -415,6 +416,7 @@ export const APPROVAL: RequiredTable = {
           unit: 'apps/api/src/modules/personnel/subset-policy.ts#runSubsetRequestPolicy',
           anchor: 'await POLICIES.get(kind)?.beforeRequest?.(tx, ctx, input)',
         },
+        ...QL_REQUEST_EVIDENCE,
       ],
     },
   ],

@@ -1,0 +1,112 @@
+[
+  {
+    "body": {
+      "hasDataPermission": false,
+      "items": [],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "操作人 GET /plans",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": false,
+      "items": [],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "操作人 GET /plans 按状态",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": false,
+      "items": [],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "操作人 GET /plans 另一状态",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": false,
+      "items": [],
+      "page": 2,
+      "pageSize": 1
+    },
+    "name": "操作人 GET /plans 分页",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "message": "status 不合法"
+      }
+    },
+    "name": "操作人 GET /plans 非法状态",
+    "status": 400
+  },
+  {
+    "body": {
+      "hasDataPermission": false,
+      "items": [],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "操作人 GET /templates",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": false,
+      "items": [],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "操作人 GET /templates 草稿",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": false,
+      "items": [],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "操作人 GET /templates 已发布",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": false,
+      "items": [],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "操作人 GET /templates 按流程",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": false,
+      "items": [],
+      "page": 2,
+      "pageSize": 1
+    },
+    "name": "操作人 GET /templates 分页",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "message": "status 不合法"
+      }
+    },
+    "name": "操作人 GET /templates 非法状态",
+    "status": 400
+  }
+]

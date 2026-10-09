@@ -285,40 +285,19 @@
       "status": 200
     },
     "fieldQueries": [
-      "fields:IDP.Analysis",
-      "fields:IDP.Career",
-      "fields:IDP.GoalReview",
-      "fields:IDP.IDPTemplateModule",
       "fields:IDP.Idp",
-      "fields:IDP.IdpGoal",
-      "fields:IDP.Review",
       "fields:IDP.SubProcess",
-      "fields:IDP.Task",
-      "fields:IDP.TutorShip",
-      "fields:IDP.WorkShift",
       "fields:TenantBase.EmploymentRecord"
     ],
     "scopeQueries": [
-      "scope:IDP/IDP.Career/IDP.Career.detail",
       "scope:IDP/IDP.IDPProcess/IDP.IDPProcess.detail",
       "scope:IDP/IDP.IDPTemplate/IDP.IDPTemplate.detail",
       "scope:IDP/IDP.Idp/IDP.Idp.list",
-      "scope:IDP/IDP.TutorShip/IDP.TutorShip.detail",
-      "scope:IDP/IDP.WorkShift/IDP.WorkShift.detail",
       "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail"
     ],
     "trace": [
-      "obj:IDP.Analysis:view",
-      "obj:IDP.Career:view",
-      "obj:IDP.GoalReview:view",
-      "obj:IDP.IDPTemplateModule:view",
       "obj:IDP.Idp:view",
-      "obj:IDP.IdpGoal:view",
-      "obj:IDP.Review:view",
       "obj:IDP.SubProcess:view",
-      "obj:IDP.Task:view",
-      "obj:IDP.TutorShip:view",
-      "obj:IDP.WorkShift:view",
       "obj:TenantBase.EmploymentRecord:view"
     ]
   },
@@ -429,17 +408,13 @@
       "status": 200
     },
     "fieldQueries": [
-      "fields:IDP.IDPTemplate",
-      "fields:IDP.IDPTemplateCommonGoal",
-      "fields:IDP.IDPTemplateModule"
+      "fields:IDP.IDPTemplate"
     ],
     "scopeQueries": [
       "scope:IDP/IDP.IDPTemplate/IDP.IDPTemplate.list"
     ],
     "trace": [
-      "obj:IDP.IDPTemplate:view",
-      "obj:IDP.IDPTemplateCommonGoal:view",
-      "obj:IDP.IDPTemplateModule:view"
+      "obj:IDP.IDPTemplate:view"
     ]
   },
   "GET /api/tenant/idp/templates/:id": {
