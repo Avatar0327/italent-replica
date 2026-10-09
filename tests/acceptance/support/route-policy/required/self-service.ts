@@ -147,6 +147,7 @@ export const SELF_SERVICE: RequiredTable = {
     {
       perm: 'obj:TenantBase.EmploymentRecord:create',
       purpose: 'guard:selfService.transferInput',
+      inner: { role: 'required' },
       facts: ['object:object.* 动作'],
       at: [
         route('POST', '/transfer/preview', 'ownTransferPreview(tx, self.ctx, self.employee.id, raw, deps)'),
@@ -245,6 +246,7 @@ export const SELF_SERVICE: RequiredTable = {
     {
       perm: 'obj:TenantBase.EmploymentRecord:create',
       purpose: 'guard:selfService.transferInput',
+      inner: { role: 'required' },
       facts: ['object:object.* 动作', 'object:requireObjectWrite（对象写操作权）'],
       at: [
         route('POST', '/transfer', 'const input = await ownTransferInput(tx, ctx, raw, deps)'),
