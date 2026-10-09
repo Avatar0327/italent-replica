@@ -78,8 +78,13 @@ export interface NodeInput {
     readonly urge?: 'inherit' | 'enabled' | 'disabled';
     /** 驳回（驳回到发起人）开关，缺省开启（F-003 第二轮，`14` §12.2）。 */
     readonly reject?: boolean;
-    /** DEC-318 节点开关：自审回避、撤回（缺省开启），驳回到上一步、跳转（缺省关闭）。 */
+    /**
+     * DEC-318 节点开关：撤回（缺省开启），驳回到上一步、跳转（缺省关闭）。自审回避在 DEC-329④ 起新建节点缺省关闭，
+     * 本夹具的 createProcess 不给时显式发送 true（F-048 PR-1：原有用例依赖旧的缺省开启）。
+     */
     readonly avoidSelf?: boolean;
+    /** F-048：多主体回避（PR-1 阶段定义校验拒绝开启）。 */
+    readonly avoidSubjects?: boolean;
     readonly revoke?: boolean;
     readonly rejectToPrevious?: boolean;
     readonly jump?: boolean;
@@ -401,7 +406,8 @@ export async function approvalWorld(db: Db, label: string, fixed: FixedIds = {})
           conditions: input.conditions ?? {
             items: [{ no: 1, field: 'processCode', operator: 'eq', value: 'TransferProcessNew' }],
           },
-          nodes: input.nodes,
+          // F-048 PR-1（DEC-329④）：新建节点的自审回避缺省改为关闭；原有用例按旧缺省（开启）编写，这里显式发送 true
+          nodes: input.nodes.map((node) => ({ ...node, actions: { avoidSelf: true, ...node.actions } })),
         },
       }),
       201,
