@@ -54,7 +54,7 @@ import { errorCode, seedTenantWithMember, tenantApi } from './support/tenant-api
 const testDb = useTestDb();
 const O = SUCCESSION_OBJECTS;
 
-describe('对象目录与应用登记（§8.1）', () => {
+describe('对象目录与应用登记（§8.1；DEC-043 / DEC-080）', () => {
   it('十个对象都登记在 SuccessionAndDevelopment，装配后权限目录可解析，数据范围按该应用解析', () => {
     tenantApi(testDb().db);
     expect(Object.keys(O)).toHaveLength(10);
@@ -119,7 +119,7 @@ describe('对象目录与应用登记（§8.1）', () => {
   });
 });
 
-describe('标准身份（§8.1；硬规则：数据范围默认空）', () => {
+describe('标准身份（§8.1；硬规则：数据范围默认空；DEC-121）', () => {
   async function presets() {
     const { db } = testDb();
     const api = tenantApi(db, { authorize: undefined });
@@ -290,7 +290,7 @@ describe('审计（§8.4；DEC-197 / 216）', () => {
   });
 });
 
-describe('租户开关（§1.5）', () => {
+describe('租户开关（§1.5；DEC-311 D-04 / DEC-194）', () => {
   const settingPath = (key: string) => `/api/tenant/settings/${key}`;
 
   it('种子系统值与领域默认值、说明逐键一致；租户未覆盖时来源为 system', async () => {
@@ -515,7 +515,7 @@ describe('任职状态钩子端口（§5.4；DEC-343）', () => {
   });
 });
 
-describe('对外端口与定时任务登记位（SP-15、§4.6）', () => {
+describe('对外端口与定时任务登记位（SP-15 / DEC-330、§4.6 / DEC-343）', () => {
   afterEach(() => resetOrgHealthComputePortForTest());
 
   it('契约 PR 不登记健康度实现（T04 仍 400）；装配位登记的实现可重复安装', () => {

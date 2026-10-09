@@ -64,7 +64,8 @@ export function resetEmployeeStatusHooksForTest(): void {
   registry.clear();
 }
 
-const subscribers = () => [...registry.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, h]) => h);
+/** 名称唯一，按码元顺序排列即可得到与登记先后无关的固定顺序。 */
+const subscribers = () => [...registry.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([, hooks]) => hooks);
 
 const hookContext = (ctx: EmployeeStatusHookContext): EmployeeStatusHookContext => ({
   tenantId: ctx.tenantId,

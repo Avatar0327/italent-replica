@@ -148,9 +148,3 @@ export const SUCCESSION_CONFIG_OBJECTS: readonly SuccessionObject[] = [
   'population',
   'ruleSettings',
 ];
-
-/** 有组织锚点的业务对象：范围按目标组织 / 职位所属组织 / 组织（§8.1 范围锚点列）。 */
-export const SUCCESSION_ORG_OBJECTS: readonly SuccessionObject[] = ['record', 'map', 'riskResult', 'healthResult'];
-
-/** 任务对象：整体可见按逐对象 / 逐目标归属判定（§8.4），不按单一组织锚点。 */
-export const SUCCESSION_TASK_OBJECTS: readonly SuccessionObject[] = ['calcRun', 'syncBatch'];

@@ -61,7 +61,3 @@ export const SUCCESSION_SETTINGS = {
 
 export type SuccessionSettingKey = keyof typeof SUCCESSION_SETTINGS;
 export const SUCCESSION_SETTING_KEYS = Object.keys(SUCCESSION_SETTINGS) as SuccessionSettingKey[];
-
-export function isSuccessionSettingKey(key: string): key is SuccessionSettingKey {
-  return Object.hasOwn(SUCCESSION_SETTINGS, key);
-}

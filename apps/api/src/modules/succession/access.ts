@@ -8,8 +8,6 @@ import { registerObjectDefinition } from '../permission/catalog.js';
 
 for (const definition of Object.values(SUCCESSION_OBJECTS)) registerObjectDefinition(definition);
 
-export const SUCCESSION_BASE = '/api/tenant/succession';
-
 /** 审计动作前缀（`<前缀>.create|update|delete|…`）；审计查看规则按它取创建人（audit-scope.ts、DEC-198）。 */
 export const SUCCESSION_AUDIT_ACTIONS: Readonly<Record<SuccessionObject, string>> = {
   record: 'succession.record',
