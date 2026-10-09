@@ -15,6 +15,7 @@ INTERVAL = 180
 STALL = 90  # 分钟（审查发起时编排会在 PR 贴一行评论，据此区分在审与停摆）
 READY = 10  # 分钟：提交后这么久、CI 绿（或无 CI）且无送审评论 → 提醒审查合并窗口
 READY_DRAFT = 45  # Draft 多为开发中，门槛放宽
+HANDOFF = 15  # 分钟：开发完成后仍未发起审查 → 衔接超时，进度窗口直接催
 OPUS_REMIND = 60  # 分钟：claude.ai/code 的 Opus 审查会话本机看不到，发起后这么久 PR 上仍无“审查原文 / 结论”就提醒去看会话，之后每 60 分钟再提醒
 
 
@@ -53,13 +54,53 @@ def snapshot():
             b = c.get("body", "")[:200]
             if "开发完成" in b or "设计完成" in b:
                 done_at = c["createdAt"]
-            elif done_at and any(w in b for w in ("审查已发起", "排队待审", "已发起")):
+            elif done_at and any(w in b for w in ("审查已发起", "排队待审", "已发起", "审查原文", "修改清单", "清单补充", "可以合并")):
                 done_at = ""
         if done_at and handled:  # 审查发起与“开发完成”几乎同时贴（同一 head 已发起）时不再报
             done_at = ""
         out[str(p["number"])] = {"opus": opus, "handled": handled, "done": done_at, "t": p["title"][:40], "head": p["headRefOid"][:7], "draft": p["isDraft"], "ci": ci,
                                  "commit": last_commit, "comment": last_comment, "nc": len(p["comments"])}
     return out
+
+
+QUOTA_LOG = os.path.expanduser("~/.cache/italent-codex-quota.jsonl")
+
+
+def quota_snapshot():
+    """额度试跑（用户 10-09）：每轮记一行——Codex 周额度已用百分比 + 最近 15 分钟活跃的审查 / 开发会话（含子线程归并到主会话）。
+    之后挑“只有一单在跑”的时段，按 Δ百分比 / Δtoken 对比 模型 × 强度 × 速度档。只写本地文件，不发事件。"""
+    import glob, re, json
+    now = time.time()
+    used, sess = None, {}
+    for f in glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")):
+        if now - os.path.getmtime(f) > 900:
+            continue
+        try:
+            txt = open(f, encoding="utf8", errors="ignore").read()
+        except OSError:
+            continue
+        head = "\n".join(txt.split("\n", 80)[:80])
+        sid = f[-42:-6]
+        par = re.search(r'"(?:forked_from_id|parent_thread_id)":"([^"]+)"', head)
+        cwd = re.search(r'"cwd":"([^"]*)"', head)
+        eff = re.search(r'"(?:reasoning_)?effort":"(\w+)"', head)
+        mdl = re.search(r'"model":"([^"]+)"', head)
+        tier = re.search(r'"service_tier":"(\w+)"', head)
+        tok = re.findall(r'"total_token_usage":\{"input_tokens":(\d+),"cached_input_tokens":(\d+)[^}]*"output_tokens":(\d+)', txt)
+        up = re.findall(r'"primary":\{"used_percent":([0-9.]+)', txt)
+        if up:
+            used = max(used or 0, float(up[-1]))
+        sess[sid] = {"root": par.group(1) if par else sid, "cwd": os.path.basename(cwd.group(1)) if cwd else "",
+                     "model": mdl.group(1) if mdl else "", "effort": eff.group(1) if eff else "",
+                     "tier": tier.group(1) if tier else "", "unc": int(tok[-1][0]) - int(tok[-1][1]) if tok else 0,
+                     "cached": int(tok[-1][1]) if tok else 0, "out": int(tok[-1][2]) if tok else 0}
+    if not sess:
+        return
+    try:
+        with open(QUOTA_LOG, "a", encoding="utf8") as fh:
+            fh.write(json.dumps({"t": time.strftime("%Y-%m-%dT%H:%M:%S"), "used": used, "sessions": sess}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 def codex_results():
@@ -87,7 +128,14 @@ def codex_results():
         cwd0 = re.search(r'"cwd":"([^"]*)"', txt.split("\n", 1)[0])
         mw = re.search(r"/wt-(\d+)$", cwd0.group(1)) if cwd0 else None  # 审查会话的工作目录 wt-NNN 最可靠
         links = re.findall(r"italent-replica/pull/(\d+)", txt)
-        pr = mw.group(1) if mw else (max(set(links), key=links.count) if links else "")
+        pp = ""  # 首条真实提示里写的 PR 号最可靠（审查会话会复用别的 PR 的 wt-NNN 目录，如 #141 在 wt-132 里审）
+        for line in txt.split("\n")[:400]:
+            if '"role":"user"' in line and "AGENTS.md" not in line and "environment_context" not in line:
+                mp = re.search(r"PR\s*#(\d{2,3})\b", line)
+                if mp:
+                    pp = mp.group(1)
+                    break
+        pr = pp or (mw.group(1) if mw else (max(set(links), key=links.count) if links else ""))
         if not pr:
             prompt = ""
             for line in txt.split("\n")[:400]:
@@ -192,6 +240,10 @@ def main():
             for n in prev:
                 if n not in cur and n not in paused_now:
                     ev.append(f"#{n} 已合并或关闭")
+        try:
+            quota_snapshot()
+        except Exception:
+            pass
         cx = codex_results()
         if cprev is not None:
             for k, (cnt, pr) in cx.items():
@@ -206,6 +258,10 @@ def main():
             if p.get("done") and f"{n}@done@{p['done']}" not in stalled:
                 ev.append(f"开发完成待审 #{n} {p['t']}：开发方 {p['done'][11:16]}Z 已贴“开发完成”，尚无审查发起，请发起审查")
                 stalled.add(f"{n}@done@{p['done']}")
+            # 衔接超时（用户 10-09）：“开发完成”贴出 HANDOFF 分钟后仍无审查发起 → 再报一次，进度窗口须直接催审查合并窗口
+            if p.get("done") and mins_since(p["done"]) >= HANDOFF and f"{n}@late@{p['done']}" not in stalled:
+                ev.append(f"⚠ 衔接超时 #{n} {p['t']}：“开发完成”已贴 {int(mins_since(p['done']))} 分钟仍未发起审查——进度窗口直接催审查合并窗口")
+                stalled.add(f"{n}@late@{p['done']}")
             k2 = f"{n}@ready@{p['head']}"
             if p["ci"] in ("green", "none") and mins_since(p["commit"]) >= (READY_DRAFT if p["draft"] else READY) and not p.get("handled") and k2 not in stalled:
                 ev.append(f"待送审 #{n} {p['t']}：最新提交 {p['head']} 已 {int(mins_since(p['commit']))} 分钟、CI {'绿' if p['ci'] == 'green' else '无'}，提交后 PR 上没有审查发起 / 排队 / 修改清单评论——开发方可能已完成，请确认并发起审查")

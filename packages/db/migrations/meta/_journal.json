@@ -502,8 +502,15 @@
     {
       "idx": 71,
       "version": "7",
-      "when": 1791524503973,
-      "tag": "0071_qualification_config",
+      "when": 1791524499272,
+      "tag": "0071_approval_subjects",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1791530158976,
+      "tag": "0072_qualification_config",
       "breakpoints": true
     }
   ]
