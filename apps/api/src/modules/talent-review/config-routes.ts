@@ -10,9 +10,11 @@ import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
+import { getModuleViewableFields } from '../permission/module-access.js';
 import { booleanQuery, pageQuery, parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
 import {
   checkWriteFields,
+  codeOf,
   configEnvelope,
   configScopeSql,
   notFoundMessage,
@@ -72,8 +74,15 @@ async function listResponse<V extends { id: string; name: string }>(
   // 筛选字段同样受字段查看权约束：看不到 enabled 的人不能用筛选还原启用状态
   if (enabled !== undefined) await requireFilterVisible(deps, ctx, object, 'enabled');
   const scope = await reviewScope(c, deps, ctx, object);
+  // 排序只用查看人看得到的字段（隐藏的 sortNo / code / name 不能影响顺序与分页）
+  const viewable = await getModuleViewableFields(deps, ctx, codeOf(object));
   const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-    const rows = await listConfig(tx, spec, ctx.tenantId, { ...page, enabled, visible: configScopeSql(scope, table) });
+    const rows = await listConfig(tx, spec, ctx.tenantId, {
+      ...page,
+      enabled,
+      visible: configScopeSql(scope, table),
+      viewable,
+    });
     return assemble ? assemble(tx, rows) : rows;
   });
   return c.json({ ...configEnvelope(page, scope), items: await trimReview(deps, ctx, object, items as object[]) });

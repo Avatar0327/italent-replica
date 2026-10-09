@@ -25,7 +25,10 @@ export const CATEGORY: ConfigSpec<CategoryView & Named> = {
   label: '盘点分类',
   table: C as unknown as ConfigTable,
   view: audited(C),
-  orderBy: [C.sortNo, C.name],
+  orderBy: [
+    ['sortNo', C.sortNo],
+    ['name', C.name],
+  ],
   duplicate: 'CATEGORY_DUPLICATE',
   inUse: 'CATEGORY_IN_USE',
 };
@@ -34,7 +37,10 @@ export const ROLE: ConfigSpec<RoleView & Named> = {
   label: '盘点角色',
   table: R as unknown as ConfigTable,
   view: { ...audited(R), code: R.code, resolver: R.resolver },
-  orderBy: [R.sortNo, R.code],
+  orderBy: [
+    ['sortNo', R.sortNo],
+    ['code', R.code],
+  ],
   duplicate: 'ROLE_DUPLICATE',
   inUse: 'ROLE_IN_USE',
 };

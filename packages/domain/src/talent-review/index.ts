@@ -1,4 +1,5 @@
 export * from './catalog.js';
 export * from './fields.js';
+export * from './matrix.js';
 export * from './sync-protocol.js';
 export * from './sync-outcomes.js';

@@ -19,7 +19,7 @@ import {
   type TalentReviewContext,
 } from './access.js';
 
-export type ConfigObject = 'category' | 'role' | 'field';
+export type ConfigObject = 'category' | 'role' | 'field' | 'matrix';
 
 export interface WriteContext extends TalentReviewContext {
   readonly scope: ModuleScope;
@@ -43,7 +43,8 @@ export interface ConfigSpec<V extends { id: string; name: string }> {
   readonly table: ConfigTable;
   /** 视图列（含 id / name / revision / createdBy）。 */
   readonly view: Record<string, AnyPgColumn>;
-  readonly orderBy: readonly AnyPgColumn[];
+  /** 默认排序键（字段编码 + 列）；列表只用查看人可见的那些（visibleOrder），最后总以 id 收尾。 */
+  readonly orderBy: readonly OrderKey[];
   /** 编码或名称撞唯一约束时的原因码。 */
   readonly duplicate: string;
   readonly inUse: string;
@@ -53,7 +54,7 @@ export interface ConfigSpec<V extends { id: string; name: string }> {
 
 /** 返回引用方编码（如 'TEMPLATE_MODULE'）表示被引用；返回 null 表示未引用。 */
 export type ConfigReferenceGuard = (tx: Tx, tenantId: string, id: string) => Promise<string | null>;
-const guards: Record<ConfigObject, ConfigReferenceGuard[]> = { category: [], role: [], field: [] };
+const guards: Record<ConfigObject, ConfigReferenceGuard[]> = { category: [], role: [], field: [], matrix: [] };
 
 /** 引用方（项目、模板、公式…）在加载时登记；删除时同事务逐个询问。 */
 export function registerConfigReferenceGuard(object: ConfigObject, guard: ConfigReferenceGuard): void {
@@ -82,11 +83,28 @@ export async function loadConfig<V extends { id: string; name: string }>(
   return row as V | undefined;
 }
 
+/** 排序键：字段编码 + 列。 */
+export type OrderKey = readonly [field: string, column: AnyPgColumn];
+
+/**
+ * 列表排序只用查看人看得到的排序字段（PR #182 审查：管理员只改隐藏的 sortNo / code / name 就会改变查看人第一页看到的
+ * 对象，泄露隐藏值的大小关系）；看不到的键直接跳过，最后由调用方以 id 收尾。viewable 为 undefined 表示全部可见。
+ */
+export const visibleOrder = (keys: readonly OrderKey[], viewable: ReadonlySet<string> | undefined): AnyPgColumn[] =>
+  keys.filter(([field]) => viewable === undefined || viewable.has(field)).map(([, column]) => column);
+
 export function listConfig(
   tx: Tx,
   spec: Pick<ConfigSpec<never>, 'table' | 'view' | 'orderBy'>,
   tenantId: string,
-  query: { limit: number; offset: number; enabled?: boolean; visible: SQL },
+  query: {
+    limit: number;
+    offset: number;
+    enabled?: boolean;
+    visible: SQL;
+    /** 查看人可见的字段（getModuleViewableFields）；必填，避免漏传时退回按隐藏字段排序。 */
+    viewable: ReadonlySet<string> | undefined;
+  },
 ) {
   const filters = [eq(spec.table.tenantId, tenantId), query.visible];
   if (query.enabled !== undefined) filters.push(eq(spec.table.enabled, query.enabled));
@@ -94,7 +112,7 @@ export function listConfig(
     .select(spec.view)
     .from(spec.table)
     .where(and(...filters))
-    .orderBy(...spec.orderBy.map((column) => asc(column)), asc(spec.table.id))
+    .orderBy(...visibleOrder(spec.orderBy, query.viewable).map((column) => asc(column)), asc(spec.table.id))
     .limit(query.limit)
     .offset(query.offset);
 }
@@ -216,11 +234,11 @@ export async function deleteConfig<V extends { id: string; name: string }>(
   spec: ConfigSpec<V>,
   ctx: WriteContext,
   id: string,
-  beforeDelete?: (before: V) => void,
+  beforeDelete?: (before: V) => void | Promise<void>,
 ): Promise<V> {
   await lockConfigRow(tx, spec, ctx, id);
   const before = (await loadConfig(tx, spec, ctx.tenantId, id))!;
-  beforeDelete?.(before);
+  await beforeDelete?.(before);
   const referrer = await configReferrer(tx, ctx.tenantId, spec.object, id);
   if (referrer) {
     throw new AppError('CONFLICT', `${spec.label}已被引用，不能删除，可以停用`, { reason: spec.inUse, referrer });
