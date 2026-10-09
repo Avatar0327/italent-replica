@@ -9,6 +9,7 @@ import { AVATAR } from './avatar.js';
 import { CONTRACTS } from './contracts.js';
 import { EMPLOYMENT } from './employment.js';
 import { ESTABLISHMENT } from './establishment.js';
+import { EVALUATION } from './evaluation.js';
 import { IDP } from './idp.js';
 import { JOB } from './job.js';
 import { ORG } from './org.js';
@@ -43,6 +44,7 @@ const PARTS: readonly RequiredTable[] = [
   IDP,
   TALENT_REVIEW,
   QUALIFICATION,
+  EVALUATION,
   SUCCESSION,
 ];
 

@@ -95,9 +95,9 @@ describe('AC-EV-config-dicts 活动类型', () => {
     it('列表按顺序号、名称排序，`enabled` 过滤，分页参数非法 400', async () => {
       const op = await admin();
       const label = name('排序');
-      const b = await created(op, { name: `${label}乙`, displayOrder: 2 });
-      const a = await created(op, { name: `${label}甲`, displayOrder: 1 });
-      const off = await created(op, { name: `${label}丙`, displayOrder: 1, enabled: false });
+      const b = await created(op, { name: `${label}-3`, displayOrder: 2 });
+      const a = await created(op, { name: `${label}-1`, displayOrder: 1 });
+      const off = await created(op, { name: `${label}-2`, displayOrder: 1, enabled: false });
       const mine = (page: Page) => page.items.filter((item) => item.name?.startsWith(label)).map((item) => item.id);
       expect(mine(await list(op, 'pageSize=100'))).toEqual([a.id, off.id, b.id]);
       expect(mine(await list(op, 'pageSize=100&enabled=false'))).toEqual([off.id]);
@@ -299,7 +299,7 @@ describe('AC-EV-config-dicts 活动类型', () => {
         body: { syncQualification: false },
       });
       expect(toggle.status).toBe(403);
-      expect((await errorOf(toggle)).reason).toBe('FIELD_EDIT_FORBIDDEN');
+      expect((await errorOf(toggle)).code).toBe('FORBIDDEN');
       const hidden = await op.request('PATCH', `${PATH}/${row.id}`, {
         ifMatch: row.revision,
         body: { displayOrder: 9 },

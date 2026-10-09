@@ -209,6 +209,16 @@ export const DIGESTS: Digests = {
     visibleCapacity: '83b0e7615025',
     visibleCopyJob: '556b59f8ffbd',
   },
+  'apps/api/src/modules/evaluation/access.ts': {
+    BUTTON_LEVEL: '66011e711e8a',
+    evaluationContext: 'a2c40a59eff3',
+    evaluationWriteContext: 'dd8d9c528232',
+  },
+  'apps/api/src/modules/evaluation/routes.ts': {
+    SPECS: 'eaaa0e59f24d',
+    registerEvaluationRoutes: 'ec92e85cec4d',
+    registerObject: 'e231708562f1',
+  },
   'apps/api/src/modules/idp/access.ts': {
     idpContext: 'a649410c2da0',
     idpWriteContext: '8b79ce0f8846',
@@ -783,6 +793,9 @@ export const DIGESTS: Digests = {
   'packages/domain/src/contracts/rules.ts': {
     CONTRACT_OBJECT: 'e22987935f65',
     contractAction: '213e0434171f',
+  },
+  'packages/domain/src/evaluation/catalog.ts': {
+    EVALUATION_OBJECTS: 'a013dfe28980',
   },
   'packages/domain/src/idp/catalog.ts': {
     'IDP_OBJECTS>analysis': 'dc4daddf088d',
