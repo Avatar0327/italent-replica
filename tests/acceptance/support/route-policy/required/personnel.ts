@@ -4,6 +4,7 @@
  * 子集对象按 :kind 取 SUBSETS[kind].objectCode；目标人员范围经 preflight → requirePerson（404）；列表筛选 / 排序字段
  * 须可查看（listOptions → 403）；子集记录须属于该员工（loadSubset → 404）；本人申请经 requireSelf（绑定本人）。
  */
+import { bound, list, SCOPE_AT, withNeeds } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const ROUTES = 'apps/api/src/modules/personnel/routes.ts';
@@ -151,6 +152,7 @@ export const PERSONNEL: RequiredTable = {
     {
       perm: 'obj:{mapper:personnel.nestedSubsets}:view',
       purpose: 'disclosure:nestedSubsets',
+      need: list('personnel.personScope'),
       facts: ['object:object.* 动作'],
       note: 'includeSubsets=true 时逐子集 object.view，无权的子集跳过（不拒绝请求）',
       at: [
@@ -164,6 +166,7 @@ export const PERSONNEL: RequiredTable = {
           anchor: "if (!(await deps.authorize({ ...ctx, action: 'object.view', resource: objectCode }))) continue",
         },
         SUBSET_CONST,
+        ...SCOPE_AT['personnel.personScope(nested)'],
       ],
     },
   ],
@@ -221,16 +224,20 @@ export const PERSONNEL: RequiredTable = {
       PERSON_CONST,
     ),
   ],
-  'GET /api/tenant/personnel/employees/:employeeId/subsets/:kind': [
-    op(
-      subset('GET', ''),
-      `obj:${SUBSET}:view`,
-      VIEW_LIST,
-      ['object:personnel access', SUBSET_OP('view')],
-      SUBSET_CONST,
-    ),
-    viewableFilters(subset('GET', '')('const options = await listOptions(c, deps, ctx)')),
-  ],
+  // 同一查看权由两个承载节点提供：列表按 personScope 过滤（need），preflight 另做 employeeId 点校验（requirePerson）
+  'GET /api/tenant/personnel/employees/:employeeId/subsets/:kind': withNeeds(
+    [
+      op(
+        subset('GET', ''),
+        `obj:${SUBSET}:view`,
+        VIEW_LIST,
+        ['object:personnel access', SUBSET_OP('view')],
+        SUBSET_CONST,
+      ),
+      viewableFilters(subset('GET', '')('const options = await listOptions(c, deps, ctx)')),
+    ],
+    { [`obj:${SUBSET}:view`]: bound(list('personnel.personScope'), SCOPE_AT['personnel.personScope(subsets)']) },
+  ),
   'GET /api/tenant/personnel/subsets/:kind': [
     op(
       (anchor) => call(SUBSET_ROUTES, 'GET', '/subsets/:kind', anchor),

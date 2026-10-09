@@ -3,6 +3,7 @@
  * 入口内的 DEC-197 裁剪（auditViewer）是范围 / 字段元数据，由第二道比较按维度检查。失败命令列表另有 360 相关失败的
  * 披露（survey360FailureVisibility：持“全部活动”者才看匿名链接失败，can(activity, view, viewAll)），不作准入。
  */
+import { NONE } from './scopes.js';
 import type { Obligation, RequiredTable } from './types.js';
 
 const ROUTES = 'apps/api/src/audit/routes.ts';
@@ -37,6 +38,7 @@ export const AUDIT: RequiredTable = {
     ...(['obj:Survey360.Activity:view', 'btn:Survey360.Activity#viewAll@list'] as const).map((perm): Obligation => ({
       perm,
       purpose: 'disclosure:survey360LinkFailures' as const,
+      need: NONE,
       note: '只决定匿名链接失败是否可见（CASE … THEN true / false），不拒绝请求',
       at: [
         {

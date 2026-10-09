@@ -1,24 +1,68 @@
 /**
  * 从声明树取**权限键**（F-039 PR-A 第 4 轮，DEC-348②；键的写法见 required/types.ts）。范围模式、字段、逐行路径、
  * 失败导入日志等是辅助元数据，不产生权限键（模型图准入与 optional.canEdit 共用 point 范围不构成冲突）。
- * 声明展开成析取范式：每个准入备选 = 一组同时成立的权限键；可选分支按名字各自汇总，不参与准入。
- * 每个键记下来源（节点路径 + 字段），供 required-mutate.ts 在声明树上精确删除 / 移动。
+ * 声明展开成析取范式：每个准入备选 = 一组同时成立的权限键；可选分支按名字各自展开成**自身**的析取范式，
+ * 不参与准入（B-01：分支内的嵌套 optional 不计入，D1～D3 把位置 / 嵌套 / 名字当作结构错误报出）。
+ * 每个键记下来源（节点路径 + 字段 + 该节点的范围），供 required-mutate.ts 在声明树上精确删除 / 移动，
+ * 供 required.ts 把 `need` 绑定到提供权限的节点（B-03）。
  */
 import type { RoutePolicy } from '@italent/api';
+import { SUBSETS } from '@italent/domain';
+import type { Need } from './required/types.js';
+
+/** 可选分支名（D3）：驼峰字母数字。节点路径按点号切分，名字里带点会找错分支（required-mutate.ts locate）。 */
+export const OPTIONAL_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/;
+
+/** `missing` = byObject 里没有该对象也没有 `*`：范围缺失，不满足任何 need（不借用其他对象的范围）。 */
+export type ScopeMode = 'point' | 'list' | 'see-all' | 'guard' | 'none' | 'missing';
+/** 节点范围的签名：模式 + 名字（point = 定位器，list = 谓词，guard = 守卫名；see-all / none 无名字）。 */
+export interface ScopeSig {
+  readonly mode: ScopeMode;
+  readonly name?: string;
+}
 
 /** 节点路径沿用 weakenings.ts：根 ''，`of[i].`、`optional.<名>.` 逐层拼接。 */
 export interface PermSource {
   readonly path: string;
   readonly field:
     'kind' | 'operation' | 'button' | 'guards' | 'scope' | 'rows.operation' | 'rows.button' | 'rows.relation';
+  /** 提供者是否承载范围（object / admin 节点）。 */
+  readonly carrier: boolean;
+  /** 该节点对这个权限适用的范围签名；按对象分范围时取该对象的，无法唯一确定则列出全部。 */
+  readonly scopes: readonly ScopeSig[];
 }
 
 export type PermMap = Map<string, PermSource[]>;
 
+export interface OptionalBranch {
+  /** 分支节点路径，如 `optional.canApply.`。 */
+  readonly path: string;
+  /** 分支自身（不含嵌套 optional）的准入析取范式。 */
+  readonly alternatives: PermMap[];
+}
+
+export interface LayoutViolation {
+  readonly code: 'OPTIONAL_POSITION' | 'OPTIONAL_NESTED' | 'OPTIONAL_NAME';
+  readonly name: string;
+  readonly path: string;
+}
+
+/** 对象型 mapper 没有登记实际输出对象，或域里有未登记的输入键（#162 第 2 轮 P2-1 残项）。 */
+export interface MapperViolation {
+  readonly mapper: string;
+  readonly path: string;
+  /** 未登记的输入键；整个 mapper 未登记时为空。 */
+  readonly keys: readonly string[];
+}
+
 export interface DeclaredPerms {
   readonly alternatives: PermMap[];
-  /** 可选分支名 → 该分支（含其嵌套节点）授予的权限键。 */
-  readonly optional: Map<string, PermMap>;
+  /** 挂在声明根节点上的可选分支：名字 → 自身析取范式。 */
+  readonly optional: Map<string, OptionalBranch>;
+  /** D1～D3 的结构违规（整棵声明树扫描，含不在根上的分支）。 */
+  readonly layout: LayoutViolation[];
+  /** 对象型 mapper 的输出对象未登记（整棵声明树扫描）。 */
+  readonly mappers: MapperViolation[];
 }
 
 type Node = Record<string, unknown>;
@@ -62,11 +106,79 @@ function scopeGuards(scope: unknown): string[] {
   return all.flatMap((one) => ((one as Node)['mode'] === 'guard' ? [String((one as Node)['guard'])] : []));
 }
 
+function sigOf(scope: unknown): ScopeSig {
+  if (!scope || typeof scope !== 'object') return { mode: 'none' };
+  const s = scope as Node;
+  switch (s['mode']) {
+    case 'point':
+      return { mode: 'point', name: String(s['locator']) };
+    case 'list':
+      return { mode: 'list', name: String(s['predicate']) };
+    case 'guard':
+      return { mode: 'guard', name: String(s['guard']) };
+    case 'see-all':
+      return { mode: 'see-all' };
+    default:
+      return { mode: 'none' };
+  }
+}
+
+/**
+ * 对象型 mapper 的**实际输出对象**：mapper 名 → 输入键 → 对象编码。来自源码常量，不来自声明（#162 第 2 轮 P2-1 残项）：
+ * mapper 的 `domain` 是输入键（如子集名 education / family），处理函数按映射后的对象编码判权与解析范围，
+ * 范围必须按输出对象选择。新增对象型 mapper 必须在这里登记，否则报 OBJECT_MAPPER_UNMAPPED。
+ */
+export const OBJECT_MAPPERS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  // apps/api/src/modules/personnel/routes.ts nestedSubsets：for kind of Object.keys(SUBSETS) → SUBSETS[kind].objectCode
+  'personnel.nestedSubsets': Object.fromEntries(Object.entries(SUBSETS).map(([kind, s]) => [kind, s.objectCode])),
+};
+
+/** 未登记的输入键映射成占位编码：不会与任何真实对象或 byObject 键相同，按 `*` 或缺失处理，并由 mappers 报出。 */
+const unmapped = (mapper: string, key: string) => `?unmapped:${mapper}:${key}`;
+
+/**
+ * 对象选择器能取到的全部**实际对象编码**：静态值；param / body / query 映射的取值；record 登记的域（即对象编码）；
+ * mapper 的域是输入键，按 OBJECT_MAPPERS 换成输出对象。
+ */
+export function objectsOf(selector: unknown): string[] | undefined {
+  if (typeof selector === 'string') return [selector];
+  if (!selector || typeof selector !== 'object' || !('from' in selector)) return undefined;
+  const s = selector as Node;
+  const domain = [...((s['domain'] as string[] | undefined) ?? [])];
+  if (s['from'] === 'record') return domain;
+  if (s['from'] === 'mapper') {
+    const mapper = String(s['mapper']);
+    const outputs = OBJECT_MAPPERS[mapper];
+    return [...new Set(domain.map((key) => outputs?.[key] ?? unmapped(mapper, key)))];
+  }
+  const values = Object.values((s['map'] as Node | undefined) ?? {}).filter((v): v is string => typeof v === 'string');
+  return [...new Set(values)];
+}
+
+/**
+ * 节点对其对象的范围签名，**按实际对象逐项选择**（#162 审查 P2-1）：byObject 里取该对象的条目，缺则取 `*`，都没有就是
+ * `missing`（不借用其他对象的范围）；动态对象逐个对象各取一项，满足 need 时要求每一项都满足。
+ * 对象取不到（不是对象节点）时无法逐项选择，列出全部条目，同样要求每一项都满足。
+ */
+function scopesOf(node: Node): ScopeSig[] {
+  const scope = node['scope'] as Node | undefined;
+  if (!scope || typeof scope !== 'object' || !('byObject' in scope)) return [sigOf(scope)];
+  const by = scope['byObject'] as Node;
+  const objects = objectsOf(node['object']);
+  if (!objects?.length) return Object.values(by).map(sigOf);
+  return objects.map((object) => {
+    const entry = by[object] ?? by['*'];
+    return entry ? sigOf(entry) : { mode: 'missing', name: object };
+  });
+}
+
 /** 节点自身（不含 of / optional 分支）授予的权限键。 */
 export function nodePerms(node: Node, path: string): [string, PermSource][] {
   const out: [string, PermSource][] = [];
+  const carrier = node['kind'] === 'object' || node['kind'] === 'admin';
+  const scopes = scopesOf(node);
   const add = (perm: string | undefined, field: PermSource['field']) => {
-    if (perm) out.push([perm, { path, field }]);
+    if (perm) out.push([perm, { path, field, carrier, scopes }]);
   };
   for (const guard of (node['guards'] as string[] | undefined) ?? []) add(`guard:${guard}`, 'guards');
   for (const guard of scopeGuards(node['scope'])) add(`guard:${guard}`, 'scope');
@@ -149,26 +261,64 @@ function alternatives(node: Node, path: string): PermMap[] {
   return [self];
 }
 
-/** 一个可选分支（含其 of 与嵌套 optional）授予的全部键。 */
-function branchPerms(node: Node, path: string): PermMap {
-  const nested = Object.entries((node['optional'] as Record<string, Node> | undefined) ?? {}).map(([name, b]) =>
-    branchPerms(b, `${path}optional.${name}.`),
-  );
-  const children = ((node['of'] as Node[] | undefined) ?? []).map((b, i) => branchPerms(b, `${path}of[${i}].`));
-  return merge(own(node, path), ...children, ...nested);
+/** 扫描整棵声明树（含 of / optional）里对象型 mapper 的登记情况。 */
+function mappersOf(node: Node, path: string, out: MapperViolation[]): void {
+  const object = node['object'] as Node | undefined;
+  if (object && typeof object === 'object' && object['from'] === 'mapper') {
+    const mapper = String(object['mapper']);
+    const outputs = OBJECT_MAPPERS[mapper];
+    const domain = (object['domain'] as string[] | undefined) ?? [];
+    if (!outputs) out.push({ mapper, path, keys: [] });
+    else {
+      const keys = domain.filter((key) => !Object.hasOwn(outputs, key));
+      if (keys.length) out.push({ mapper, path, keys });
+    }
+  }
+  ((node['of'] as Node[] | undefined) ?? []).forEach((b, i) => mappersOf(b, `${path}of[${i}].`, out));
+  for (const [name, branch] of Object.entries((node['optional'] as Record<string, Node> | undefined) ?? {})) {
+    mappersOf(branch, `${path}optional.${name}.`, out);
+  }
 }
 
-/** 准入树里每个节点挂的可选分支（嵌套在 any / all 分支里的也算），按名字汇总。 */
-function optionalBranches(node: Node, path: string, out: Map<string, PermMap>): void {
+/** 扫描整棵声明树的可选分支：D1 只挂根、D2 不嵌套、D3 名字字符集。 */
+function layoutOf(node: Node, path: string, inBranch: boolean, out: LayoutViolation[]): void {
   for (const [name, branch] of Object.entries((node['optional'] as Record<string, Node> | undefined) ?? {})) {
-    out.set(name, merge(out.get(name) ?? new Map(), branchPerms(branch, `${path}optional.${name}.`)));
+    const at = `${path}optional.${name}.`;
+    if (!OPTIONAL_NAME_PATTERN.test(name)) out.push({ code: 'OPTIONAL_NAME', name, path: at });
+    if (inBranch) out.push({ code: 'OPTIONAL_NESTED', name, path: at });
+    else if (path !== '') out.push({ code: 'OPTIONAL_POSITION', name, path: at });
+    layoutOf(branch, at, true, out);
   }
-  ((node['of'] as Node[] | undefined) ?? []).forEach((b, i) => optionalBranches(b, `${path}of[${i}].`, out));
+  ((node['of'] as Node[] | undefined) ?? []).forEach((b, i) => layoutOf(b, `${path}of[${i}].`, inBranch, out));
 }
 
 export function declaredPerms(policy: RoutePolicy): DeclaredPerms {
   const root = policy as unknown as Node;
-  const optional = new Map<string, PermMap>();
-  optionalBranches(root, '', optional);
-  return { alternatives: alternatives(root, ''), optional };
+  const optional = new Map<string, OptionalBranch>();
+  for (const [name, branch] of Object.entries((root['optional'] as Record<string, Node> | undefined) ?? {})) {
+    const path = `optional.${name}.`;
+    optional.set(name, { path, alternatives: alternatives(branch, path) });
+  }
+  const layout: LayoutViolation[] = [];
+  layoutOf(root, '', false, layout);
+  const mappers: MapperViolation[] = [];
+  mappersOf(root, '', mappers);
+  return { alternatives: alternatives(root, ''), optional, layout, mappers };
+}
+
+/** 可选分支各备选授予的权限键并集。 */
+export function branchPerms(branch: OptionalBranch): Set<string> {
+  return new Set(branch.alternatives.flatMap((alt) => [...alt.keys()]));
+}
+
+/** 签名集合是否**每一项**都满足 need：模式相等，且 need 写了名字就要相等（`missing` 永不满足）。 */
+export function scopeMatches(scopes: readonly ScopeSig[], need: Need | undefined): boolean {
+  if (!need) return true;
+  const wanted = need.locator ?? need.predicate ?? need.guard;
+  return scopes.every((sig) => sig.mode === need.scope && (wanted === undefined || sig.name === wanted));
+}
+
+/** 备选里是否有提供 perm 且范围满足 need 的来源节点。 */
+export function provides(alt: PermMap, perm: string, need?: Need): boolean {
+  return (alt.get(perm) ?? []).some((source) => scopeMatches(source.scopes, need));
 }

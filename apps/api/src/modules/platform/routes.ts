@@ -26,6 +26,7 @@ import { etag, ifMatch, parseBody } from '../permission/http.js';
 import { LICENSE_TYPE } from '../permission/licenses.js';
 import { operatorOf, platformContext, type PlatformEnv } from './context.js';
 import {
+  backfillSeeds,
   backfillStandardProfiles,
   changeTenantLifecycle,
   issueLicense,
@@ -155,6 +156,16 @@ export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: 
     const tenantId = tenantParam(c);
     await parseBody(c, z.strictObject({}));
     return c.json(await backfillStandardProfiles(db, tenantId, meta(c), clock()));
+  });
+
+  // DEC-361：存量租户按种子登记表回补缺失的预置数据（不覆盖租户定制；可按模块筛选）
+  router.post('/api/platform/tenants/:tenantId/seeds/backfill', async (c) => {
+    const tenantId = tenantParam(c);
+    const input = await parseBody(
+      c,
+      z.strictObject({ modules: z.array(z.string().min(1).max(64)).max(50).optional() }),
+    );
+    return c.json(await backfillSeeds(db, tenantId, input, meta(c), clock()));
   });
 
   router.get('/api/platform/tenants/:tenantId/licenses', async (c) =>

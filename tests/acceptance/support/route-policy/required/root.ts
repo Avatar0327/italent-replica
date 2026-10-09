@@ -13,6 +13,7 @@ export const ROOT: RequiredTable = {
   'GET /api/platform/tenants/:tenantId': [],
   'POST /api/platform/tenants/:tenantId/status': [],
   'POST /api/platform/tenants/:tenantId/standard-profiles/backfill': [],
+  'POST /api/platform/tenants/:tenantId/seeds/backfill': [],
   'GET /api/platform/tenants/:tenantId/licenses': [],
   'PUT /api/platform/tenants/:tenantId/licenses/:licenseType': [],
 };
