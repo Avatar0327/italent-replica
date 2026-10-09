@@ -459,7 +459,8 @@ describe('AC-QL-indicator-port 第 1 轮 P3-1：指标类型树不静默截断',
       await f.tx((t) =>
         t.execute(sql`INSERT INTO ql_target_types
           (id, tenant_id, code, name, parent_id, display_order, enabled, owner_id, owner_org_id, created_by)
-          VALUES (${id}::uuid, ${tenant}::uuid, ${`DP${level}`}, ${names[level]}, ${ids[level - 1] ?? null}::uuid, ${level},
+          VALUES (${id}::uuid, ${tenant}::uuid, ${`DP${level}`}, ${names[level]},
+            ${ids[level - 1] ?? null}::uuid, ${level},
             true, ${owner}::uuid, ${f.w.orgId}::uuid, ${owner}::uuid)`),
       );
     }
