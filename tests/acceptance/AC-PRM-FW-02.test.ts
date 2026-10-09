@@ -61,12 +61,19 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
     expect(declared).toHaveLength(375);
   });
 
-  it('边界探测：租户接口匿名 401、非成员 403；平台接口非运营身份 403 PLATFORM_OPERATOR_REQUIRED；/healthz 都 200', () => {
+  it('边界探测：租户接口匿名 401、非成员 403；平台非运营 403；360 链接无令牌 404；/healthz 200', () => {
     for (const [key, entry] of Object.entries(fresh.routes)) {
       if (key.startsWith('GET /healthz')) {
         expect(entry.edge.anonymous.status, key).toBe(200);
         expect(entry.edge.nonMember.status, key).toBe(200);
         expect(entry.edge.member.status, key).toBe(200);
+        continue;
+      }
+      if (key.includes(' /api/survey360/link')) {
+        // 360 链接作答不经成员中间件：没有令牌（或令牌不对）三种身份都是 404，不泄露链接是否存在
+        for (const edge of [entry.edge.anonymous, entry.edge.nonMember, entry.edge.member]) {
+          expect(edge, key).toEqual({ status: 404, code: 'NOT_FOUND' });
+        }
         continue;
       }
       expect(entry.edge.anonymous, key).toEqual({ status: 401, code: 'UNAUTHENTICATED' });
@@ -112,7 +119,7 @@ describe('AC-PRM-FW-02 声明 vs 基准比较', () => {
     const health = manifest.declared.find((r) => r.path === '/healthz');
     const plain = manifest.declared.find((r) => !('guards' in r.policy) && r.policy.kind === 'admin');
     if (!health || !plain) throw new Error('缺少 /healthz 或无守卫的 admin 路由');
-    const guarded = { ...plain, policy: { ...plain.policy, guards: ['fw.fake-guard'] } };
+    const guarded = { ...plain, policy: { ...plain.policy, guards: ['permission.personLinksReadOnly'] } };
     expect(codes(compareDeclarations(frozen, [guarded]))).toContain('OVERDECLARED:guard');
     const memberHealth = {
       ...health,

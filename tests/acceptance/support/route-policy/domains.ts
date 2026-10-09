@@ -4,7 +4,7 @@
  * 删一个值就对不上任何域（WEAKER:domain）。常量变了基准必须跟着变（FW-02 freshness）。
  */
 import { JOB_OBJECT_CODES } from '@italent/api';
-import { CONTRACT_FLOW, CONTRACT_OBJECT, contractAction, SUBSETS } from '@italent/domain';
+import { CONTRACT_FLOW, CONTRACT_OBJECT, contractAction, SUBSETS, TALENT_OBJECTS } from '@italent/domain';
 
 const CONTRACT_MODES = ['direct', 'application'] as const;
 /** 任职记录对象编码（apps/api/src/modules/employment/context.ts EMPLOYMENT_OBJECT）。 */
@@ -42,5 +42,10 @@ export function domainConstants(): Record<string, string[]> {
     // 导入逐行操作（org / job import-service）；任职导入逐行为 create / edit（employment/forward-import.ts）
     'import.rowOperation': ['create', 'update'],
     'employment.importRowOperation': ['create', 'edit'],
+    // 人才标准六对象（forms/:object）与可选所属管理单元的五对象（candidates/owner-orgs，字典不设单元）
+    'talent.object': Object.keys(TALENT_OBJECTS).sort(),
+    'talent.ownerUnitObject': Object.keys(TALENT_OBJECTS)
+      .filter((key) => key !== 'descriptionType')
+      .sort(),
   };
 }

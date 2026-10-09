@@ -16,6 +16,7 @@ import {
   BAD_REQUEST,
   button,
   denied,
+  guardScope,
   listScope,
   noButton,
   none,
@@ -96,7 +97,8 @@ function configCrud(key: 'process' | 'template', path: string, guards: readonly 
       operation: 'create',
       button: 'create',
       level: 'list',
-      scope: noScope('新建按所属组织在新建范围内（idp.currentEditable 事务内复核）'),
+      // 新建：所属组织须在新建范围内（currentEditable：scopeAllows 含创建人维度），范围外 404
+      scope: guardScope(`idp.currentEditable(${key})`, NOT_FOUND),
       fields: 'body',
       result: editable,
       guards,
@@ -173,6 +175,8 @@ function executor(fields: 'body' | 'none'): RoutePolicy {
     fields: projector('idp.plan', 'idp.plan'),
     ...byId,
     write: idpWrite(fields, 'idp.executorRecheck', { preconditions: ['requireExecutor', 'requireViewer'] }),
+    // 响应按查看人（HR 字段裁剪 / 参与人固定字段）投影，计划及组成对象的查看权只决定出口
+    optional: { responseView: reader('plan', PLAN_LIST) },
   });
 }
 

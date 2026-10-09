@@ -70,7 +70,6 @@ import {
   BAD_REQUEST,
   button,
   buttonOnly,
-  commandWrite,
   denied,
   fixed,
   guardScope,
@@ -138,13 +137,16 @@ const INITIATOR_BUTTON: ButtonPolicy = {
 function employmentWrite(fields: FieldsFrom, preconditions: readonly string[], extra: Partial<WritePolicy> = {}) {
   return write(fields, EMPLOYMENT_RESULT, EMPLOYMENT_RESULT, { preconditions, ...extra });
 }
-/** 命令式按钮（submit / withdraw / revoke / delete / 两个 retry）：不提取字段，命令内前提逐个登记。 */
+/**
+ * 命令式按钮（submit / withdraw / revoke / delete / 两个 retry）：requireEmploymentWrite 以空字段集合校验按钮与操作
+ * （§3.3 commandOnly：按钮允许空集合），命令内前提逐个登记。
+ */
 function employmentCommand(preconditions: readonly string[]) {
-  return commandWrite(EMPLOYMENT_RESULT, EMPLOYMENT_RESULT, { preconditions });
+  return write('body.fields+customFields', EMPLOYMENT_RESULT, EMPLOYMENT_RESULT, { commandOnly: true, preconditions });
 }
-/** 只读预览（POST）：不开命令事务，不写入；响应仍经 trimEmploymentResponse 裁剪。 */
+/** 只读预览（POST）：不开命令事务，不写入；输入仍经 requireEmploymentWrite 按字段编辑权校验，响应经 trimEmploymentResponse 裁剪。 */
 const previewWrite = write(
-  none('只读预览：不经 requireEmploymentWrite，不提取写字段'),
+  'body.fields+customFields',
   none('只读预览：没有命令事务，没有提交前足迹'),
   none('只读预览：没有返回后复核，响应经 trimEmploymentResponse 裁剪'),
 );
@@ -266,7 +268,8 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   'GET /transfers/catalog': object({
     object: EMPLOYMENT,
     operation: 'view',
-    button: { from: 'query', path: 'initiator', map: { employee: button('Transfer.Self', 'detail') } },
+    // 只有 initiator=employee 时校验 Transfer.Self；hr / manager / 缺省不校验按钮（mapper 决定，域 = 三种发起人）
+    button: { from: 'mapper', mapper: 'transfer.catalogButton', domain: TRANSFER_INITIATORS },
     scope: noScope('调动目录是租户字典（readTransferCatalog），不查数据范围'),
     fields: projector('transfer.catalog', 'transfer.catalog'),
   }),
@@ -276,6 +279,23 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'view',
     button: noButton('canApply / canViewReporting 只披露按钮判定结果，不作准入'),
+    // 披露分支：两个布尔各按 Transfer.Manager / Transfer.Hr 按钮判定，不参与准入
+    optional: {
+      canApply: object({
+        object: EMPLOYMENT,
+        operation: 'button',
+        button: button('Transfer.Manager', 'detail'),
+        scope: noScope('只判按钮'),
+        fields: noFields('只决定 canApply'),
+      }),
+      canViewReporting: object({
+        object: EMPLOYMENT,
+        operation: 'button',
+        button: button('Transfer.Hr', 'detail'),
+        scope: noScope('只判按钮'),
+        fields: noFields('只决定 canViewReporting'),
+      }),
+    },
     guards: [MANAGER_IDENTITY],
     scope: noScope('只做经理身份判定（managerIdentity），不查数据范围'),
     fields: fixed(['identity', 'canApply', 'canViewReporting'], '§3.5 固定键'),
@@ -384,7 +404,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'view',
     button: INITIATOR_BUTTON,
-    guards: ['transfer.previewInput', TRANSFER_SOURCE],
+    guards: ['transfer.direct', 'transfer.previewInput', TRANSFER_SOURCE],
     scope: guardScope('transfer.previewScope', NF_EMPLOYEE),
     fields: projector('transfer.preview', 'transfer.preview'),
     write: previewWrite,
@@ -397,7 +417,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'create',
     button: INITIATOR_BUTTON,
-    guards: ['transfer.direct', 'linkage.preauthorize'],
+    guards: ['employment.linkage', 'transfer.direct', 'linkage.preauthorize'],
     scope: guardScope(TRANSFER_SOURCE, NF_EMPLOYEE),
     fields: RESPONSE,
     write: employmentWrite('body.fields+customFields', [
@@ -431,7 +451,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'update',
     button: INITIATOR_BUTTON,
-    guards: ['linkage.source'],
+    guards: ['employment.linkage', 'linkage.preauthorize', 'transfer.source', 'linkage.source'],
     scope: pointScope({ param: 'id' }, 'employment.business', NF_TRANSFER),
     fields: RESPONSE,
     write: employmentWrite({ guard: 'linkage.preauthorize' }, [
@@ -600,9 +620,11 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 标准表单放宽时给 transferTarget 例外）→ loadEmploymentBusiness（DEC-177，有例外时不带范围）→ 404「任职业务不存在」→
   // requirePermission(tenant.employment.read, resource=employeeId)
   'GET /businesses/:id': object({
+    guards: ['transfer.source'],
     object: EMPLOYMENT,
     operation: 'view',
-    button: noButton('业务详情无按钮'),
+    // 调动单详情经 transferBusinessContext → requireTransferSource（按单据 initiator 校验发起按钮）
+    button: INITIATOR_BUTTON,
     scope: pointScope({ param: 'id' }, 'employment.business', NF_BUSINESS),
     fields: RESPONSE,
     ...byId,
@@ -648,7 +670,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Submit', 'detail'),
-    guards: [TRANSFER_SOURCE, 'employment.employeeTransferBusiness'],
+    guards: ['employment.linkage', TRANSFER_SOURCE, 'employment.employeeTransferBusiness'],
     scope: BUSINESS_WRITE,
     fields: RESPONSE,
     write: employmentCommand([
@@ -667,7 +689,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Withdraw', 'detail'),
-    guards: [TRANSFER_SOURCE],
+    guards: ['employment.linkage', TRANSFER_SOURCE],
     scope: BUSINESS_WRITE,
     fields: RESPONSE,
     write: employmentCommand([
@@ -684,7 +706,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.Revoke', 'detail'),
-    guards: [TRANSFER_SOURCE],
+    guards: ['employment.linkage', TRANSFER_SOURCE],
     scope: BUSINESS_WRITE,
     fields: RESPONSE,
     write: employmentCommand([
@@ -736,6 +758,7 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
   // 重试生效：If-Match 必填；空体；requireEmploymentWrite('update', {}, RetryActivation)；authorizeBusinessWrite（写入口径）；
   // 命令内 retryActivation 内联校验 revision（409 REVISION_CONFLICT）、未生效 / 未失败 / 未到期 / 前序失败（409）
   'POST /businesses/:id/activation/retry': object({
+    guards: ['employment.linkage'],
     object: EMPLOYMENT,
     operation: 'update',
     button: button('Employment.RetryActivation', 'detail'),
@@ -778,7 +801,14 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'view',
     button: button('Employment.Preview', 'detail'),
-    guards: [DIRECT_OPERATION, 'employment.employeeTransferBusiness', LINKAGE],
+    guards: [
+      'employment.businessWrite',
+      'transfer.source',
+      'transfer.direct',
+      DIRECT_OPERATION,
+      'employment.employeeTransferBusiness',
+      LINKAGE,
+    ],
     scope: guardScope('employment.scope', NF_DATA),
     fields: RESPONSE,
     rows: IMPORT_PREVIEW_ROWS,
@@ -812,7 +842,15 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     object: EMPLOYMENT,
     operation: 'view',
     button: button('Employment.Import', 'list'),
-    guards: ['employment.importTransferAccess', DIRECT_OPERATION, 'employment.employeeTransferBusiness', LINKAGE],
+    guards: [
+      'employment.businessWrite',
+      'transfer.source',
+      'transfer.direct',
+      'employment.importTransferAccess',
+      DIRECT_OPERATION,
+      'employment.employeeTransferBusiness',
+      LINKAGE,
+    ],
     scope: guardScope('employment.scope', NF_DATA),
     fields: projector('employment.response', 'employment.importResult'),
     rows: IMPORT_ROWS,

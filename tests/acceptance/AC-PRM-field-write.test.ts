@@ -29,7 +29,11 @@ const demoWritePolicies = defineTable('demo', {
     kind: 'member',
     reason: '测试夹具：对象字段编辑权（requireObjectWrite）',
     fields: { mode: 'none', reason: '测试夹具' },
-    write: { fields: 'body', footprint: { none: true, reason: '测试夹具' }, result: { none: true, reason: '测试夹具' } },
+    write: {
+      fields: 'body',
+      footprint: { none: true, reason: '测试夹具' },
+      result: { none: true, reason: '测试夹具' },
+    },
   },
 });
 const demoWriteRoute: TenantRouteModule = (router, deps) => {
@@ -50,7 +54,11 @@ describe('写入字段权限：全部身份都不可编辑的字段写入被拒'
 
   beforeAll(async () => {
     world = await seedPermissionWorld(testDb().db);
-    api = tenantApi(world.db, { authorize: undefined, tenantRoutes: [demoWriteRoute], routePolicies: [demoWritePolicies] });
+    api = tenantApi(world.db, {
+      authorize: undefined,
+      tenantRoutes: [demoWriteRoute],
+      routePolicies: [demoWritePolicies],
+    });
   });
 
   it('只可编辑 Name：写 Name 放行；带上只读字段、系统字段、未登记字段 → 403；叠加可编辑手机的身份后放行', async () => {

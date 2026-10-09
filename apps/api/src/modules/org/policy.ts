@@ -148,6 +148,7 @@ export const ORG_POLICIES = defineTable('org', {
   // AC-ORG-04 只读预检：字段编辑权（writeFields create）先于按钮校验；不开命令事务；validateOrganization 不初始化根、
   // 不预占编码；响应是 valid / errors / warnings / canSubmit / requiresConfirmation / isBeyondEstablishment 信封 + fields
   [`POST ${BASE}/validate`]: object({
+    guards: ['org.visibleParents'],
     object: ORG,
     operation: 'create',
     button: button('validate', 'detail'),
@@ -165,6 +166,7 @@ export const ORG_POLICIES = defineTable('org', {
   // requireNew；各维度上级都须在范围内（visibleParents）；命令内 assertRevision(0)、assertCanSubmit（超编确认 409）、
   // consumeCode（预占须本人持有且未过期 → 404 / 409，直填编码查 CODE_CONFLICT）；201 + ETag
   [`POST ${BASE}/organizations`]: object({
+    guards: ['org.visibleParents'],
     object: ORG,
     operation: 'create',
     button: noButton('新增按数据操作开关授权（objectContext create），无按钮'),
@@ -213,7 +215,8 @@ export const ORG_POLICIES = defineTable('org', {
     button: button('update', 'detail'),
     scope: orgPoint({ param: 'id' }),
     fields: fixed(['hasPendingEmployment'], 'DEC-137（employment-linkage.ts hasPendingOrgEmployment：只返回布尔）'),
-    write: write('body', none('只读预检，不进命令 / 台账'), none('只读预检，无返回对象（单个布尔）'), {
+    // 不进命令 / 台账；预检事务内仍按 authorizeOrgResult（created = false，即 org.byId 范围）复核目标组织
+    write: write('body', 'org.result', none('只读预检，无返回对象（单个布尔）'), {
       controls: UPDATE_CONTROLS,
       preconditions: ['validateEmploymentChoice'],
     }),

@@ -13,6 +13,7 @@ import {
   BAD_REQUEST,
   button,
   fixed,
+  guardScope,
   listScope,
   noButton,
   noFields,
@@ -177,7 +178,8 @@ function crud(key: Key): Record<string, RoutePolicy> {
       operation: 'create',
       button: button('create', 'list'),
       // 字典只有看全部能新建（DEC-082 / 121）；其余由 ownerUnit 守卫按授权管理单元判定
-      scope: key === 'descriptionType' ? seeAll(NF) : noScope('新建按授权管理单元（talent.ownerUnit）守卫判定'),
+      // 字典只有看全部能新建（DEC-082 / 121）；其余按授权管理单元 + 新建范围（ownerUnit：NO_UNIT / UNIT_REQUIRED / NF_UNIT）
+      scope: key === 'descriptionType' ? seeAll(NF) : guardScope(`talent.ownerUnit(${key})`, NF),
       write: talentWrite(o, 'body', key === 'criterion' ? ['talent.criterionDimensionRules'] : []),
     }),
     [`PATCH ${path}/:id`]: object({
@@ -345,6 +347,16 @@ export const TALENT_POLICIES = defineTable('talent', {
     button: noButton('随标准详情'),
     scope: CRIT_DETAIL,
     fields: projector('talent.modelImage', 'talent.modelImage'),
+    // canEdit 由当前 update + update@detail 判定（只披露，不参与准入）
+    optional: {
+      canEdit: object({
+        object: CRIT,
+        operation: 'update',
+        button: button('update', 'detail'),
+        scope: CRIT_DETAIL,
+        fields: noFields('只决定 canEdit'),
+      }),
+    },
   }),
   [`GET ${BASE}/criteria/:id/model-image/attachments/:attachmentId/content`]: object({
     ...byId,

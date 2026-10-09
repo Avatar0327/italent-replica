@@ -45,6 +45,7 @@ const LEAF_FILES = new Set(
     'modules/employee-self-service/access.ts',
     'modules/job/context.ts',
     'audit/visibility.ts',
+    'modules/survey360/context.ts',
   ].map((f) => path.join(API_SRC, f)),
 );
 
@@ -79,6 +80,7 @@ const HUB_FUNCTIONS = new Set([
   'modules/establishment/routes.ts#checkScheme',
   'modules/establishment/routes.ts#trimCapacities',
   'audit/routes.ts#auditContext',
+  'modules/idp/routes.ts#write',
 ]);
 
 const REGISTER_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'on']);
@@ -218,11 +220,12 @@ function literalElement(node: ts.Expression, info: FileInfo): Bound {
 }
 
 /** 把 for…of 的可迭代表达式解析成元素列表；解析不了返回 undefined（退化为通配）。 */
-function iterableElements(expr: ts.Expression, info: FileInfo): Bound[] | undefined {
+function iterableElements(expr: ts.Expression, info: FileInfo, scope?: ts.Node): Bound[] | undefined {
   const inner = ts.isAsExpression(expr) || ts.isParenthesizedExpression(expr) ? expr.expression : expr;
   if (ts.isArrayLiteralExpression(inner)) return inner.elements.map((e) => literalElement(e, info));
   if (ts.isIdentifier(inner)) {
-    const constant = info.consts.get(inner.text);
+    // 模块常量，或包围作用域里的局部常量（如 `const own = [['urge', urge], …] as const`）
+    const constant = info.consts.get(inner.text) ?? (scope ? localInitializer(inner.text, scope) : undefined);
     return constant ? iterableElements(constant, info) : undefined;
   }
   if (ts.isCallExpression(inner) && ts.isPropertyAccessExpression(inner.expression)) {
@@ -270,7 +273,7 @@ function loopBindings(call: ts.Node, info: FileInfo): Bindings[] {
   for (const loop of loops.reverse()) {
     if (!ts.isVariableDeclarationList(loop.initializer)) continue;
     const declaration = loop.initializer.declarations[0];
-    const elements = declaration ? iterableElements(loop.expression, info) : undefined;
+    const elements = declaration ? iterableElements(loop.expression, info, loop) : undefined;
     if (!declaration || !elements) continue;
     combos = combos.flatMap((combo) =>
       elements.map((element) => {
@@ -404,20 +407,16 @@ function handlerBodyText(handler: ts.Expression, info: FileInfo, bindings: Bindi
   if (!fn || !fn.body || !ts.isBlock(fn.body) || !bindings.size) return handler.getText(info.sf);
   const kept: string[] = [];
   for (const statement of fn.body.statements) {
-    if (ts.isIfStatement(statement) && !statement.elseStatement) {
-      const then = statement.thenStatement;
-      const ret = ts.isReturnStatement(then)
-        ? then
-        : ts.isBlock(then) && then.statements.length === 1 && ts.isReturnStatement(then.statements[0]!)
-          ? then.statements[0]!
-          : undefined;
-      if (ret) {
-        const verdict = evalCondition(statement.expression, info, bindings, scope);
-        if (verdict === true) {
-          kept.push(ret.expression ? ret.expression.getText(info.sf) : '');
-          return kept.join('\n');
-        }
-        if (verdict === false) continue;
+    if (ts.isIfStatement(statement)) {
+      const verdict = evalCondition(statement.expression, info, bindings, scope);
+      const chosen =
+        verdict === true ? statement.thenStatement : verdict === false ? statement.elseStatement : undefined;
+      if (verdict !== undefined) {
+        if (chosen) kept.push(chosen.getText(info.sf));
+        // 选中的分支以 return 结束：后面的语句不会执行
+        const last = chosen && ts.isBlock(chosen) ? chosen.statements.at(-1) : chosen;
+        if (last && ts.isReturnStatement(last)) return kept.join('\n');
+        continue;
       }
     }
     kept.push(statement.getText(info.sf));
@@ -444,7 +443,8 @@ function handlerRoots(
     const bound = bindings.get(name);
     if (bound && typeof bound === 'object' && 'ref' in bound) roots.push(bound.ref);
     const local = localInitializer(name, scope);
-    if (local && (ts.isArrowFunction(local) || ts.isFunctionExpression(local))) {
+    const hub = HUB_FUNCTIONS.has(`${path.relative(API_SRC, info.file)}#${name}`);
+    if (local && !hub && (ts.isArrowFunction(local) || ts.isFunctionExpression(local))) {
       const text = local.getText(info.sf);
       parts.push(text);
       queue.push(...identifiers(text));
@@ -502,7 +502,7 @@ export interface RouteModule {
   readonly subApp: boolean;
   readonly dirs: readonly string[];
 }
-const SUB_APPS = new Set(['employment', 'approval', 'contracts', 'self-service']);
+const SUB_APPS = new Set(['employment', 'approval', 'contracts', 'self-service', 'survey360', 'survey360-link']);
 export function moduleDirs(fullPath: string): RouteModule {
   const modules = path.join(API_SRC, 'modules');
   const table: readonly (readonly [string, string, readonly string[]])[] = [
@@ -518,6 +518,10 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['personnel', '/api/tenant/personnel', [path.join(modules, 'personnel')]],
     ['audit', '/api/tenant/audit', [path.join(API_SRC, 'audit')]],
     ['platform', '/api/platform', [path.join(modules, 'platform')]],
+    ['survey360', '/api/tenant/survey360', [path.join(modules, 'survey360')]],
+    ['survey360-link', '/api/survey360/link', [path.join(modules, 'survey360')]],
+    ['talent', '/api/tenant/talent', [path.join(modules, 'talent')]],
+    ['idp', '/api/tenant/idp', [path.join(modules, 'idp')]],
   ];
   const hit = table.find(([, prefix]) => fullPath === prefix || fullPath.startsWith(prefix + '/'));
   return hit
@@ -573,6 +577,17 @@ function findDef(
   return undefined;
 }
 
+/** 文本里按名字引用的同文件模块常量（`VIEW`、`SYNC` 这类 need 常量）的初始化文本。 */
+function constantTexts(index: SourceIndex, file: string, text: string): string[] {
+  const info = index.files.get(file);
+  if (!info) return [];
+  const names = new Set(text.match(/\b[A-Z][A-Z0-9_]+\b/g) ?? []);
+  return [...names].flatMap((name) => {
+    const constant = info.consts.get(name);
+    return constant ? [`${name} = ${constant.getText(info.sf)}`] : [];
+  });
+}
+
 /** 处理函数文本 + 它（递归）引用的模块内函数文本；叶子文件不展开。`trace` 收集展开链（调试 / 统计）。 */
 export function closureText(
   index: SourceIndex,
@@ -580,7 +595,10 @@ export function closureText(
   maxDepth = 6,
   trace?: string[],
 ): string {
-  const parts: string[] = [registration.handlerText];
+  const parts: string[] = [
+    registration.handlerText,
+    ...constantTexts(index, registration.file, registration.handlerText),
+  ];
   const visited = new Set<string>();
   const queue: { file: string; name: string; depth: number }[] = [
     ...identifiers(registration.handlerText).map((name) => ({ file: registration.file, name, depth: 0 })),
@@ -595,6 +613,7 @@ export function closureText(
     visited.add(key);
     trace?.push(`${item.depth}:${path.relative(API_SRC, hit.file)}#${item.name}`);
     parts.push(hit.text);
+    parts.push(...constantTexts(index, hit.file, hit.text));
     if (item.depth < maxDepth) {
       for (const name of identifiers(hit.text)) queue.push({ file: hit.file, name, depth: item.depth + 1 });
     }

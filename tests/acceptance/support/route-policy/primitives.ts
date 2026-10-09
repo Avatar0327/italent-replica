@@ -76,6 +76,9 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['readPageContext', call('readPageContext')],
     ['personnel access', /\baccess\(\s*c,\s*deps/, { modules: ['personnel'] }],
     ['requireProcessView', call('requireProcessView')],
+    // 360 read() / write()：路由层 objectContext(need)（context.ts routeNeed）
+    ['survey360 read/write(need)', /\b(read|write)(<[^>]*>)?\(\s*c,/, { modules: ['survey360'] }],
+    ['idp part write', /\bwrite\(\s*'(templateModule|commonGoal)'/, { modules: ['idp'] }],
     ['object.* 动作', /[`'"]object\.(view|create|update|delete)\b/, { unless: CONFIGURATION_TERNARY, near: true }],
     // 字段编辑权校验（requireObjectWrite）同时判定对象的新增 / 编辑开关
     ['requireObjectWrite（对象写操作权）', call('requireObjectWrite'), { near: true, writeOnly: true }],
@@ -93,6 +96,9 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['personnel access(button)', personnelAccess('view|create|update|delete', true)],
     ['adminScope(buttons)', /adminScope\([^)]*\[/],
     ['commandButton', calls('commandButton', 'requireCommandButton')],
+    // 360 need：显式按钮，或 create / update / delete 的同名按钮（buttonOf）；SYNC / EDIT 常量同理
+    ['survey360 need button', /\bbutton:\s*\S|operation:\s*'(create|update|delete)'/, { modules: ['survey360'] }],
+    ['idp part write', /\bwrite\(\s*'(templateModule|commonGoal)'/, { modules: ['idp'] }],
   ]),
   ...dimension('scope', [
     ['requestScope', call('requestScope'), NEAR],
@@ -119,12 +125,17 @@ export const PRIMITIVES: readonly Primitive[] = [
     ],
     ['employment visibility', calls('visibleEmploymentRecords', 'employmentVisibilitySql'), NEAR],
     ['auditViewer', call('auditViewer')],
-    ['manager team', calls('inTeam', 'managerContext')],
-    ['routeContext（非配置对象）', /\brouteContext\(\s*c,\s*deps/, { unless: CONFIG_OBJECTS }],
+    ['manager team', call('inTeam'), NEAR],
     ['readContext（非配置对象）', /readContext\(\s*c,\s*deps,\s*(?:'object\.|action)/, { unless: CONFIG_OBJECTS }],
     // 目录路由只用上下文、不按范围过滤（readTransferCatalog）
     ['readPageContext', call('readPageContext'), { unless: /readTransferCatalog/ }],
     ['scope.all', /scope\??\.all\b/, NEAR],
+    // 360：活动可见、评价对象 / 人员可见，与 routePeople（need 对象为 person / relation / result 时取人员范围）
+    [
+      'survey360 visibility',
+      /\b(requireActivity|activityVisibleSql|requireVisibleObject|visiblePerson|personFilter|filterOf)\(|object:\s*'(person|relation|result)'/,
+      { modules: ['survey360'] },
+    ],
     ['creator scope', calls('hasCreatorScope', 'creatorSql', 'scopeAllows'), NEAR],
   ]),
   ...dimension('fieldsOut', [
@@ -143,7 +154,8 @@ export const PRIMITIVES: readonly Primitive[] = [
     ],
     ['visibleTransferForm', call('visibleTransferForm')],
     // 写入口的出口裁剪在枢纽里：org / contracts write()、employment runWrite（trimEmploymentResponse）、personnel write()
-    ['org write()', /\bwrite\(\s*c,/, { modules: ['org', 'contracts', 'personnel'] }],
+    // write(…, trim = false) 的配置写入口不裁剪（org settings）
+    ['org write()', /\bwrite\(\s*c,/, { modules: ['org', 'contracts', 'personnel'], unless: /\}\),\s*false,?\s*\)/ }],
     ['employment runWrite()', call('runWrite'), { modules: ['employment', 'self-service'] }],
   ]),
   ...dimension('fieldsIn', [
@@ -155,11 +167,19 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['assertSelfServiceFields', call('assertSelfServiceFields'), NEAR],
     ['linkage write', calls('authorizeLinkageWrite', 'preauthorizeLinkage'), NEAR],
     // 空载荷 `{}` 的 update（附件登记）不提取字段
-    ['personnel access(create|update)', /\baccess\(\s*c,\s*deps,\s*[^,]+,\s*'(create|update)',\s*(?!\{\})/, NEAR],
+    ['personnel access(create|update)', /\baccess\(\s*c,\s*deps,\s*[^,]+,\s*'(create|update)',(?!\s*\{\s*\})/, NEAR],
+    // 360 write()：fields 为 'body' 或按载荷列出（函数）时校验字段编辑权（routeFields）；'none' 不校验
+    ['survey360 write(fields)', /fields:\s*(?:'body'|\()/, { near: true, writeOnly: true, modules: ['survey360'] }],
+    // IDP 模板组成部分 write(object, 'create' | 'update', …)：checkWriteFields；删除不校验
+    [
+      'idp part write',
+      /\bwrite\(\s*'(templateModule|commonGoal)',\s*'(create|update)'/,
+      { writeOnly: true, modules: ['idp'] },
+    ],
     ['transfer write', calls('requireTransferWrite', 'requireEmployeeTransferFields'), NEAR],
   ]),
   ...dimension('relation', [
-    ['assertCanOpen', calls('assertCanOpen', 'viewerOf'), NEAR],
+    ['assertCanOpen', calls('assertCanOpen', 'viewerOf'), { near: true, modules: ['approval', 'contracts'] }],
     ['instanceOfTask', call('instanceOfTask'), NEAR],
     ['currentAssignee（assertOpen / openTask）', calls('assertOpen', 'openTask'), NEAR],
     ['retrievable（retrievableTask）', call('retrievableTask'), NEAR],
@@ -193,8 +213,7 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['establishment replay', call('authorizeEstablishmentReplay'), NEAR],
     ['job result', calls('authorizeJobResult', 'importRows'), NEAR],
     ['org result', calls('authorizeOrgResult', 'authorizeOrgImportRows'), NEAR],
-    ['authorizeInTransaction', call('authorizeInTransaction'), NEAR],
-    ['contracts result', calls('checkResult', 'requireMasterScope', 'authorizeImport'), NEAR],
+    ['contracts result', calls('checkResult', 'requireMasterScope'), NEAR],
     ['discloseHandover', call('discloseHandover'), NEAR],
     ['establishment check*', calls('checkCapacity', 'checkScheme'), NEAR],
   ]),
@@ -221,13 +240,14 @@ export const PRIMITIVES: readonly Primitive[] = [
       'ownTransferInput',
       'requireSelf',
       // 业务内的联动范围（DEC-178）、直接调动开关（transfer.direct）：留在命令内，按名字登记
-      'requireLinkedEmploymentRecord',
-      'requireDirectTransfer',
-      'transferDirectActions',
     ].map((fn): Entry => [fn, call(fn), NEAR]),
   ]),
   ...dimension('guard', [
     ['employment.businessWrite', call('authorizeBusinessWrite'), NEAR],
+    // DEC-178 联动范围（LINKED_RECORD_OUT_OF_SCOPE）与直接调动开关：业务深处调用，按深闭包观测
+    ['employment.linkage', call('requireLinkedEmploymentRecord')],
+    ['transfer.direct', calls('requireDirectTransfer', 'transferDirectActions')],
+    ['linkage.preauthorize', call('preauthorizeLinkage'), NEAR],
     [
       'employment.importTransferAccess',
       call('importWithTransferAuthorization'),
@@ -263,27 +283,6 @@ export const PRIMITIVES: readonly Primitive[] = [
 export const KNOWN_GUARDS: ReadonlySet<string> = new Set(
   PRIMITIVES.filter((p) => p.dimension === 'guard').map((p) => p.name),
 );
-
-/**
- * 有代码证据但静态目录认不出的仅声明守卫（判定内联在处理函数或业务函数里，没有独立函数名；证据见各模块 policy.ts 头注释）。
- * 这些名字不参与"过度声明"判定；PR-B 为它们登记实现时须按证据位置核对。
- */
-export const DECLARED_ONLY_GUARDS: ReadonlySet<string> = new Set([
-  'job.orgIdInScope', // job/write-service.ts body.orgId 按范围校验
-  'job.employmentPersonnel', // job/employment-port.ts 任职 / 人员联动校验
-  'establishment.orgIdInScope', // establishment/capacity-service.ts body.orgId 事务内校验
-  'transfer.referenceField', // transfer/manager-routes.ts :field 引用字段可见性
-  'transfer.departmentField', // transfer/routes.ts departmentId 可见性（403「无权查看调动部门」）
-  'transfer.previewInput', // transfer/preview.ts normalizeTransferInput
-  'contracts.employeeContractChoices', // transfer/linkage/routes.ts 合同选项按合同范围逐行过滤
-  'employment.viewableFilters', // employment/employees.ts 筛选字段可见性（403「筛选字段不可查看」）
-  'employment.noVisibleRecords', // employment/routes.ts 范围内无可见记录 → 404
-  'employment.inheritanceDepartment', // employment/inheritance.ts 继承部门 requireEmploymentScope
-  'employment.employeeTransferBusiness', // transfer/service.ts 员工自助调动单的发起人校验
-  'employment.directOperation', // employment/context.ts requireScopedEmploymentObject（DEC-193）
-  'personnel.subset.byId', // personnel/subsets.ts loadSubset 按员工 + 子集定位
-  'contracts.todoIsContract', // contracts/todos.ts businessType !== 'contract' → 404
-]);
 
 /** 写方法才有意义的维度（GET 处理函数不提字段、不跑命令）；基准生成时按方法过滤。 */
 export const WRITE_ONLY_DIMENSIONS: ReadonlySet<Dimension> = new Set([

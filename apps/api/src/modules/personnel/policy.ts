@@ -156,7 +156,8 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     operation: 'update',
     button: button('update', 'detail'),
     scope: employeePoint('id'),
-    fields: noFields('附件登记回执不是人员字段；现状 write() 仍按 EmployeeInformation 查看权过滤回执键'),
+    // 附件登记回执经 write() 按 EmployeeInformation 查看权过滤键（现状）
+    fields: shape('personnel.attachmentReceipt'),
     write: personnelWrite(none('附件元数据不是人员字段，requireObjectWrite 收到空字段集合'), 'employeeId'),
     ...byUuid,
   }),

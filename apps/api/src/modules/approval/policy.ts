@@ -168,6 +168,8 @@ const decision = (preconditions: readonly string[]) =>
 /** openTask（openRun + 当前审批人）→ assertOpen（revision / pending / 业务版本）；后四项仅 body.fields 非空时执行。 */
 const APPROVE = [
   'openTask',
+  'openRun',
+  'assertBusinessUnchanged',
   'assertOpen',
   'assertExit',
   'blindReview',
@@ -177,18 +179,54 @@ const APPROVE = [
   'editableInput',
   'assertNotBlindAfterEdit',
 ];
-const DISAGREE = ['openTask', 'assertOpen', 'assertExit', 'votesInTransition', 'blindReview', 'assertNotSelf'];
+const DISAGREE = [
+  'openTask',
+  'openRun',
+  'assertBusinessUnchanged',
+  'assertOpen',
+  'assertExit',
+  'votesInTransition',
+  'blindReview',
+  'assertNotSelf',
+];
 /** 驳回意见必填（node.rejectCommentRequired，DEC-059）是内联校验，无函数名。 */
-const REJECT = ['openTask', 'assertOpen', 'assertRejectEnabled', 'blindReview', 'assertNotSelf'];
+const REJECT = [
+  'openTask',
+  'openRun',
+  'assertBusinessUnchanged',
+  'assertOpen',
+  'assertRejectEnabled',
+  'blindReview',
+  'assertNotSelf',
+];
 /** 驳回到上一步（rejectToPreviousTask）：节点开关与“第一个节点没有上一步”内联 409；盲审与本人回避同驳回。 */
-const REJECT_PREVIOUS = ['openTask', 'assertOpen', 'blindReview', 'assertNotSelf', 'assertNotAddSigner'];
+const REJECT_PREVIOUS = [
+  'openTask',
+  'openRun',
+  'assertBusinessUnchanged',
+  'assertOpen',
+  'blindReview',
+  'assertNotSelf',
+  'assertNotAddSigner',
+];
 /** 跳转（jumpTask）：节点跳转开关与“只能跳到其他节点”内联；本人回避、加签人限制。 */
-const JUMP = ['openTask', 'assertOpen', 'assertNotSelf', 'assertNotAddSigner'];
+const JUMP = ['openTask', 'openRun', 'assertBusinessUnchanged', 'assertOpen', 'assertNotSelf', 'assertNotAddSigner'];
 /** 节点转交开关（异常管理员例外 DEC-069）与「不能转交给自己」是内联校验；无盲审。 */
-const TRANSFER = ['openTask', 'assertOpen', 'assertReviewer', 'assertNotNodeAssignee'];
+const TRANSFER = [
+  'openTask',
+  'openRun',
+  'assertBusinessUnchanged',
+  'assertOpen',
+  'assertReviewer',
+  'assertNotNodeAssignee',
+  'assertNotSelf',
+];
 /** 节点加签开关内联；parallel / before 不盲审，after 含本人同意才 blindReview + assertNotSelf（DEC-095）。 */
 const ADD_SIGN = [
   'openTask',
+  'openRun',
+  'assertBusinessUnchanged',
+  'assertReviewer',
   'assertOpen',
   'addSignAllowed',
   'assertAddSignType',
@@ -198,12 +236,14 @@ const ADD_SIGN = [
   'assertNotSelf',
 ];
 /** 节点抄送开关内联；抄送对象须是有效账号（isActiveAccount）；无盲审。 */
-const CC = ['openTask', 'assertOpen', 'isActiveAccount'];
+const CC = ['openTask', 'openRun', 'assertBusinessUnchanged', 'assertOpen', 'isActiveAccount'];
 /** retrieveTask 不走 openTask：openRun 后自行校验 revision / 业务版本 / 本人任务，再按 rules.retrievableTask 判定。 */
 const RETRIEVE = ['openRun', 'assertRevision', 'assertBusinessUnchanged', 'retrievableTask'];
 /** editMode === 'separate' 内联；assertNotBlindAfterEdit 抛错回滚（不是 Outcome）。 */
 const EDIT = [
   'openTask',
+  'openRun',
+  'assertBusinessUnchanged',
   'assertOpen',
   'assertApprovalEdit',
   'assertNotAddSigner',
@@ -225,14 +265,15 @@ function initiatorAction(preconditions: readonly string[], extra: PolicyBase = {
   });
 }
 /** 催办：节点催办开关（urgeOpen）与 30 分钟频率限制（assertUrgeInterval）。 */
-const URGE = ['openOwn', 'urgeOpen', 'assertUrgeInterval'];
+const URGE = ['openOwn', 'openRun', 'urgeOpen', 'assertUrgeInterval'];
 /** 撤回：实例须 running / returned（内联 409 APPROVAL_CLOSED）。 */
-const WITHDRAW = ['openOwn'];
+const WITHDRAW = ['openOwn', 'openRun'];
 /** 重提：状态须 returned（personnel_change 另可 withdrawn）内联；contract 分支事务内复查同一字段集；employment 适配器拒绝。 */
-const RESUBMIT = ['openOwn', 'requireResubmitRight', 'adapter.resubmit'];
+const RESUBMIT = ['openOwn', 'openRun', 'requireResubmitRight', 'adapter.resubmit'];
 /** adminAct：范围覆盖（404）→ revision → running → 业务版本 → DEC-092 本人回避；jump 不改派任务，其余两项仅非 jump。 */
 const ADMIN = [
   'openRun',
+  'assertNotSelf',
   'assertRevision',
   'assertBusinessUnchanged',
   'isOwnRequest',
@@ -258,6 +299,7 @@ function adminAction(code: 'adminTransfer' | 'adminIntervene'): RoutePolicy {
 }
 /** handoverExceptionAdmin：If-Match 须为 0、原异常管理员须是成员、替代人须是有效成员；逐单 DEC-092 本人回避只计 skipped。 */
 const HANDOVER = [
+  'openRun',
   'assertRevision',
   'assertTenantMember',
   'assertExceptionAdminMember',

@@ -16,7 +16,19 @@
  * limit / from / to）格式非法 → 400 VALIDATION_FAILED：是筛选参数校验而非对象标识，列表路由不登记 invalidId。
  */
 import { defineTable } from '../route-policy/index.js';
-import { admin, BAD_REQUEST, listScope, noScope, NOT_FOUND, pointScope, projector } from '../route-policy/presets.js';
+import { survey360 } from '@italent/domain';
+import {
+  admin,
+  BAD_REQUEST,
+  button,
+  noFields,
+  noScope,
+  NOT_FOUND,
+  listScope,
+  object,
+  pointScope,
+  projector,
+} from '../route-policy/presets.js';
 
 const BASE = '/api/tenant/audit';
 /** 数据变更日志：changes 为 fieldEntries（field / from / to），content 由已裁剪的 changes 派生（derivedText，§3.5）。 */
@@ -43,5 +55,15 @@ export const AUDIT_POLICIES = defineTable('audit', {
   [`GET ${BASE}/command-failures`]: admin('audit_log', {
     scope: noScope('失败命令审计不按数据范围筛选（DEC-197）：只有查询筛选、保留期窗口与游标；对象编号在投影器打码'),
     fields: projector('audit.failureView', 'audit.commandFailure'),
+    // 360 链接 / 管理端的失败只给对应持有人（survey360FailureVisibility）：持“全部活动”按钮才看链接失败；不参与准入
+    optional: {
+      survey360LinkFailures: object({
+        object: survey360.SURVEY360_OBJECTS.activity.code,
+        operation: 'button',
+        button: button(survey360.SURVEY360_BUTTONS.allActivities, 'list'),
+        scope: noScope('只决定 /api/survey360/ 路径的失败记录是否可见'),
+        fields: noFields('只决定行可见'),
+      }),
+    },
   }),
 });

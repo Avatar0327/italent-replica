@@ -1,13 +1,14 @@
 /**
  * 声明 vs 现状必测基准的比较器（F-039 PR-A §4.4「declaration-not-weaker」限定版）。内存比较，不发请求。
- * 两个方向都报：基准观测到而声明没有 → WEAKER:<维度>；声明有而基准没有 → OVERDECLARED:<维度>（PR-B 接管时会凭空
- * 多出一道检查，同样是声明与现状不符）。前提与事务内 / 返回后复核只查"声明不得弱于现状"（命令内前提允许多登，
- * 复核登记名允许是接管阶段的守卫名，§10.3）。
+ * - 弱于现状（WEAKER:<维度>）：基准观测到的维度 / 守卫 / 前提 / 分支域，声明里没有 → 失败（DEC-300 的核心要求）。
+ * - 过度声明（OVERDECLARED:<维度>）：只在静态探测能可靠否定的维度上双向报——身份（public / platform / tenant）、
+ *   成员之外的特权、写入口、管理员能力、本人绑定、目录内已知守卫名。对象 / 范围 / 字段 / 关系 / 按钮的“声明多于
+ *   现状”需要多维身份探测才能否定，按 DEC-303 留给 PR-B（§10.6）。目录外的守卫名是接管阶段才实现的登记名，不报。
  */
 import type { ManifestRoute } from '@italent/api';
 import type { ObservedContract, ObservedRoute } from './contract.js';
 import { features, type Identity, preconditionName } from './features.js';
-import { DECLARED_ONLY_GUARDS, KNOWN_GUARDS } from './primitives.js';
+import { KNOWN_GUARDS } from './primitives.js';
 
 export interface Finding {
   readonly route: string;
@@ -15,24 +16,24 @@ export interface Finding {
   readonly detail: string;
 }
 
-/** 两边都能表达、双向比较的维度。 */
-const DIMENSIONS = [
-  'admin',
+/** 双向比较的维度。 */
+const BOTH_WAYS = ['admin', 'self'] as const;
+/** 只查"声明不得弱于现状"的维度。 */
+const WEAKER_ONLY = [
   'object',
   'button',
   'scope',
   'fieldsOut',
   'fieldsIn',
   'relation',
-  'self',
   'own',
   'failureAudit',
+  'postcheck',
 ] as const;
-/** 只查"声明不得弱于现状"的维度。 */
-const WEAKER_ONLY = ['postcheck'] as const;
 
+/** 匿名请求不被 401 拦下的路由不经成员中间件（/healthz、360 链接作答：令牌不对按 404）。 */
 export function observedIdentity(key: string, route: ObservedRoute): Identity {
-  if (route.edge.anonymous.status === 200) return 'public';
+  if (route.edge.anonymous.status !== 401) return 'public';
   if (key.includes(' /api/platform/')) return 'platform';
   return 'tenant';
 }
@@ -42,21 +43,39 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
 }
 
 /**
- * 蕴含关系（声明侧）：self / own 自带范围（本人即范围）；self 的叠加授权器自带对象权限并放行其按钮白名单，本人数据即 own；
- * 写入口登记了字段编辑权提取（requireObjectWrite）即蕴含对象写操作权。
+ * 蕴含关系（声明侧）：self / own 自带范围（本人即范围）；self 的叠加授权器自带对象权限，本人数据即 own；
+ * relation 由关系定位自带范围；写入口登记了字段编辑权提取（requireObjectWrite）即蕴含对象写操作权。
  */
-function declaredHas(dims: ReadonlySet<string>, dim: string): boolean {
+export function declaredHas(dims: ReadonlySet<string>, dim: string): boolean {
   if (dims.has(dim)) return true;
   const self = dims.has('self');
-  if (dim === 'scope') return self || dims.has('own');
+  if (dim === 'scope') return self || dims.has('own') || dims.has('relation');
   if (dim === 'object') return self || dims.has('fieldsIn');
-  if (dim === 'own' || dim === 'button') return self;
+  if (dim === 'own') return self;
   return false;
 }
 
 /** 蕴含关系（基准侧）：观测到字段编辑权校验即观测到对象写操作权。 */
 function observedHas(dims: ReadonlySet<string>, dim: string): boolean {
   return dims.has(dim) || (dim === 'object' && dims.has('fieldsIn'));
+}
+
+function compareIdentity(observed: ObservedRoute, key: string, declared: ReturnType<typeof features>) {
+  const out: [string, string][] = [];
+  const identity = observedIdentity(key, observed);
+  if (identity !== declared.identity) {
+    // 平台运营身份降成租户成员是削弱；其余身份不一致是登记错
+    const code = identity === 'platform' && declared.identity === 'tenant' ? 'WEAKER:identity' : 'MISMATCH:identity';
+    out.push([code, `基准 ${identity}，声明 ${declared.identity}`]);
+  }
+  const member = observed.edge.member;
+  if (member.status === 403 && member.code === 'FORBIDDEN' && !declared.privileged && identity === 'tenant') {
+    out.push(['WEAKER:privilege', '仅成员身份被 403 FORBIDDEN，声明却不要求成员之外的权限']);
+  }
+  if (member.status >= 200 && member.status < 300 && declared.privileged && identity === 'tenant') {
+    out.push(['OVERDECLARED:privilege', `仅成员身份得到 ${member.status}，声明却要求成员之外的权限`]);
+  }
+  return out;
 }
 
 export function compareRoute(contract: ObservedContract, route: ManifestRoute): Finding[] {
@@ -66,48 +85,34 @@ export function compareRoute(contract: ObservedContract, route: ManifestRoute): 
   const declared = features(route.policy);
   const findings: Finding[] = [];
   const report = (code: string, detail: string) => findings.push({ route: key, code, detail });
-
-  // 身份层（边界探测，精确）
-  const identity = observedIdentity(key, observed);
-  if (identity !== declared.identity) report('MISMATCH:identity', `基准 ${identity}，声明 ${declared.identity}`);
-  const member = observed.edge.member;
-  if (member.status === 403 && member.code === 'FORBIDDEN' && !declared.privileged) {
-    report('WEAKER:privilege', '仅成员身份被 403 FORBIDDEN，声明却不要求成员之外的权限');
-  }
-  if (member.status >= 200 && member.status < 300 && declared.privileged) {
-    report('OVERDECLARED:privilege', `仅成员身份得到 ${member.status}，声明却要求成员之外的权限`);
-  }
+  for (const [code, detail] of compareIdentity(observed, key, declared)) report(code, detail);
 
   // 写路由必有 write；GET 不得有 write
   if (route.method !== 'GET' && !declared.dims.has('write')) report('WEAKER:write', '写路由没有 write');
   if (route.method === 'GET' && declared.dims.has('write')) report('OVERDECLARED:write', 'GET 路由带 write');
 
-  // 维度双向（含蕴含关系）
   const observedDims = new Set(Object.keys(observed.primitives));
-  for (const dim of DIMENSIONS) {
-    const names = observed.primitives[dim]?.join(', ') ?? '';
+  const names = (dim: string) => observed.primitives[dim]?.join(', ') ?? '';
+  for (const dim of [...BOTH_WAYS, ...WEAKER_ONLY]) {
     if (observedDims.has(dim) && !declaredHas(declared.dims, dim)) {
-      report(`WEAKER:${dim}`, `现状有 ${names}，声明没有 ${dim}`);
+      report(`WEAKER:${dim}`, `现状有 ${names(dim)}，声明没有 ${dim}`);
     }
+  }
+  for (const dim of BOTH_WAYS) {
     if (declared.dims.has(dim) && !observedHas(observedDims, dim)) {
       report(`OVERDECLARED:${dim}`, `声明有 ${dim}，现状代码里没有对应原语`);
     }
   }
-  for (const dim of WEAKER_ONLY) {
-    if (observedDims.has(dim) && !declared.dims.has(dim)) {
-      report(`WEAKER:${dim}`, `现状有 ${observed.primitives[dim]?.join(', ')}，声明没有 ${dim}`);
-    }
-  }
 
-  // 守卫按名字双向；不在目录、也不在有证据的仅声明清单里的名字视为过度声明
+  // 守卫按名字：观测到的必须声明；声明了目录内已知、但现状没有的，过度声明
   const observedGuards = observed.primitives['guard'] ?? [];
   for (const guard of observedGuards) {
     if (!declared.guards.has(guard)) report('WEAKER:guard', `现状有守卫 ${guard}，声明没有`);
   }
   for (const guard of declared.guards) {
-    if (observedGuards.includes(guard) || DECLARED_ONLY_GUARDS.has(guard)) continue;
-    const why = KNOWN_GUARDS.has(guard) ? '现状代码里没有' : '不在原语目录，也不在有证据的仅声明守卫清单里';
-    report('OVERDECLARED:guard', `声明守卫 ${guard}，${why}`);
+    if (KNOWN_GUARDS.has(guard) && !observedGuards.includes(guard)) {
+      report('OVERDECLARED:guard', `声明守卫 ${guard}，现状代码里没有`);
+    }
   }
 
   // 前提：现状观测到的名字必须都在声明里（允许多登）

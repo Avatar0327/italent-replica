@@ -174,7 +174,8 @@ const masterWrite = write('body', MASTER_SCOPE, MASTER_SCOPE, { preconditions: [
  * assertOpen（assertRevision + 状态 + assertBusinessUnchanged）→ assertExit（approve / disagree）或 assertRejectEnabled →
  * blindReview（盲审 Outcome 403，已提交入台账）→ assertNotSelf；resubmit 走 openOwn（发起人 + assertRevision）→ 重提状态 →
  * recheckContractResubmit（requireResubmitRight 事务内复查）。openTask / openOwn 都经 openRun。approveTask 的编辑分支
- * （assertApprovalEdit / assertNotBlindAfterEdit）在批量里不可达（不传 fields），不登记。
+ * （assertApprovalEdit / assertNotBlindAfterEdit）在批量里不传 fields 时不执行；它们静态可达（同一 approveTask），
+ * 按“前提允许多登”的口径登记，避免基准观测到而声明缺失。
  */
 const TODO_PRECONDITIONS = [
   'openTask',
@@ -187,6 +188,8 @@ const TODO_PRECONDITIONS = [
   'blindReview',
   'assertNotSelf',
   'openOwn',
+  'assertApprovalEdit',
+  'assertNotBlindAfterEdit',
 ];
 
 // ---- 导入三入口共用的准入 ----------------------------------------------------------------------------------------

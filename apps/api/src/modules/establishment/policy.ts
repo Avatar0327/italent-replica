@@ -28,7 +28,6 @@ import {
   all,
   BAD_REQUEST,
   button,
-  commandWrite,
   guardScope,
   listScope,
   noButton,
@@ -193,7 +192,8 @@ export const ESTABLISHMENT_POLICIES = defineTable('establishment', {
     button: button('execute', 'detail'),
     scope: copyJobScope,
     fields: copyJobShape,
-    write: commandWrite('establishment.replay', 'establishment.replay', { preconditions: LOCK_THEN_REVISION }),
+    // 执行前 writeFields(update, input) 校验本次输入字段（现状），再按 execute@detail
+    write: write('body', 'establishment.replay', 'establishment.replay', { preconditions: LOCK_THEN_REVISION }),
     ...byId,
   }),
   // 明细下载：text/csv，列 capacityIds / status / failureReason 经查看权过滤；pending → 409 CONFLICT；超 15 天 → 404

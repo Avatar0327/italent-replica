@@ -60,6 +60,21 @@ const kindParam: ObjectSelector = { from: 'param', path: 'kind', map: JOB_OBJECT
 const kindBody: ObjectSelector = { from: 'body', path: 'kind', map: JOB_OBJECT_CODES };
 const jobShape = shape('job.object');
 const receiptProjector = projector('job.sequenceReceipt', 'job.sequenceReceipt');
+/**
+ * 回执行可见（visibleSequenceReceipts）：EmploymentRecord 查看权 + sequenceId / id 字段可见 + 任职范围，否则整行裁掉；
+ * 只决定出口，不参与准入。
+ */
+const RECEIPT_VISIBILITY = {
+  optional: {
+    receiptRows: object({
+      object: MODULE_OBJECTS.employmentRecord.code,
+      operation: 'view',
+      button: noButton('只判查看权'),
+      scope: listScope('employment.scopeSql'),
+      fields: noFields('只决定回执行是否可见'),
+    }),
+  },
+};
 const settingFields = noFields('职务体系配置值，无字段目录');
 const viewOnly = noButton('列表 / 详情按对象查看权，无按钮');
 const dataOperationOnly = noButton(
@@ -100,7 +115,7 @@ function syncSequence(kind: 'posts' | 'positions'): RoutePolicy {
     button: button('syncSequence', 'list'),
     scope: pointScope({ body: 'items[*].id' }, `job.${kind}.byId`, NF_JOB),
     fields: noFields('返回 { taskId, state } 任务信封，不是对象字段'),
-    guards: ['job.employmentScope'],
+    guards: ['job.employmentScope', 'employment.linkage'],
     rows: { path: 'items[*]', fields: { guard: 'job.sequenceSyncSources' }, target: { body: 'id' }, batch: 'atomic' },
     write: write({ guard: 'job.sequenceSyncSources' }, 'job.sequenceSyncSources', none('返回任务信封，无对象可复核'), {
       preconditions: ['job.lockJobTenant'],
@@ -141,6 +156,7 @@ export const JOB_POLICIES = defineTable('job', {
   // 行操作：sourceCode 已有映射或传了 objectId → update，否则 create（映射与 objectId 不一致 → 回执 SOURCE_MAPPING_CONFLICT）。
   // kind 不在 JOB_KINDS 时任务 objectType 'job'、total 0，不记失败日志。
   [`POST ${BASE}/import`]: object({
+    guards: ['employment.linkage', 'job.employmentScope'],
     object: kindBody,
     operation: 'view',
     button: button('import', 'list'),
@@ -170,7 +186,11 @@ export const JOB_POLICIES = defineTable('job', {
     },
   }),
   // ---- sequence-routes.ts：序列同步回执（只认本人 recipientUserId；visibleSequenceReceipts 按任职范围与字段权裁剪）----
-  [`GET ${BASE}/sequence-sync/messages`]: own({ predicate: 'job.sequenceReceiptRecipient', fields: receiptProjector }),
+  [`GET ${BASE}/sequence-sync/messages`]: own({
+    predicate: 'job.sequenceReceiptRecipient',
+    fields: receiptProjector,
+    ...RECEIPT_VISIBILITY,
+  }),
   // outbox 任务按 id + 本人定位，不存在 → 404「任务不存在」
   [`GET ${BASE}/sequence-sync/tasks/:id`]: own({
     predicate: 'job.sequenceReceiptRecipient',
@@ -178,6 +198,7 @@ export const JOB_POLICIES = defineTable('job', {
     locator: 'job.sequenceTask.byId',
     denied: NOT_FOUND,
     fields: receiptProjector,
+    ...RECEIPT_VISIBILITY,
     ...byId,
   }),
   [`POST ${BASE}/posts/sync-sequence`]: syncSequence('posts'),
@@ -217,7 +238,7 @@ export const JOB_POLICIES = defineTable('job', {
     button: dataOperationOnly,
     scope: pointByKind({ param: 'id' }),
     fields: projector('job.managerSyncReceipt', 'job.object'),
-    guards: ['job.orgIdInScope', 'job.employmentPersonnel', 'job.employmentScope'],
+    guards: ['employment.linkage', 'job.orgIdInScope', 'job.employmentPersonnel', 'job.employmentScope'],
     write: write('body', 'job.result', 'job.result', {
       controls: ['adjustEmployeeDirectManager', 'syncSequenceToAssignments'],
       preconditions: ['job.lockJobTenant', 'job.lockObject', 'job.assertRevision', 'job.assertTemporalOrder'],

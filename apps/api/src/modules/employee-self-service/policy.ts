@@ -27,7 +27,7 @@ import { EMPLOYMENT_OBJECT } from '../employment/context.js';
 import { rowsOf } from '../employment/read-model.js';
 import { loadObjectPermissions } from '../permission/subject.js';
 import { defineTable } from '../../route-policy/index.js';
-import { BAD_REQUEST, fixed, noButton, none, projector, self, write } from '../../route-policy/presets.js';
+import { BAD_REQUEST, button, fixed, none, projector, self, write } from '../../route-policy/presets.js';
 
 // DEC-205：这是自动员工身份的出厂权限，不是表单白名单。租户可用现有身份配置接口覆盖，另有身份按并集合并。
 export const EMPLOYEE_PROFILE_CODE = 'employee_self_service';
@@ -70,10 +70,11 @@ export async function employeeFieldPolicy(tx: Tx, tenantId: string) {
  * 其他身份字段）裁剪顶层 / fields / customFields（custom:<id>），fieldLabels 只回显该任职已有引用的名称（envelope 协议键）。
  */
 const ownRecord = projector('selfService.ownRecord', 'selfService.ownRecord');
-/** access.ts BUTTONS：叠加授权器对这三个按钮直接返回 true，不查身份配置，所以不是可撤销的按钮校验。 */
-const whitelistedButtons = noButton(
-  'Transfer.Self / Employment.Create / Employment.Submit 由叠加授权器 selfService 的按钮白名单放行（access.ts BUTTONS）',
-);
+/**
+ * 自助调动仍经 requireTransferButton(employee) 校验 Transfer.Self@detail；叠加授权器 selfService 对 Transfer.Self /
+ * Employment.Create / Employment.Submit 三个按钮直接放行（access.ts BUTTONS），所以身份配置撤不掉——校验在、结果恒真。
+ */
+const whitelistedButtons = button('Transfer.Self', 'detail');
 /**
  * ownTransferInput（transfer.ts）：zod strictObject（effectiveDate / reasonCode / fields / customFields，其余键 400）；
  * effectiveDate 不可见或不可编辑 → 400 SELF_TRANSFER_DATE_UNAVAILABLE；服务端固定 initiator=employee、
@@ -118,7 +119,7 @@ export const SELF_SERVICE_POLICIES = defineTable('self-service', {
   // fieldModes（prefixedKeys，可编辑再经叠加授权器判 object.create）、basicFieldModes、reasons、valueLabels / beforeLabels
   'POST /transfer/preview': self({
     button: whitelistedButtons,
-    guards: [TRANSFER_INPUT],
+    guards: ['transfer.direct', 'transfer.source', TRANSFER_INPUT],
     fields: projector('selfService.transferPreview', 'selfService.transferPreview'),
     write: write(
       'body.fields+customFields',
@@ -141,7 +142,7 @@ export const SELF_SERVICE_POLICIES = defineTable('self-service', {
   // 命令事务内（提交前足迹）与 runCommand 返回后各跑一次（employment.result），首次 / 重放都复核
   'POST /transfer': self({
     button: whitelistedButtons,
-    guards: [TRANSFER_INPUT],
+    guards: ['transfer.direct', 'transfer.source', 'employment.linkage', TRANSFER_INPUT],
     fields: projector('employment.response', 'employment.response'),
     write: write('body.fields+customFields', 'employment.result', 'employment.result', {
       preconditions: transferPreconditions,

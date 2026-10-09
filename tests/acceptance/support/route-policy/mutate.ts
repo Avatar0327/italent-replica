@@ -5,6 +5,7 @@
  */
 import type { ManifestRoute, RoutePolicy } from '@italent/api';
 import type { ObservedContract, ObservedRoute } from './contract.js';
+import { declaredHas } from './compare.js';
 import { features, LEDGER_ONLY_FOOTPRINTS, preconditionName } from './features.js';
 
 export interface Mutation {
@@ -180,51 +181,54 @@ function deleteNamed(route: ManifestRoute, field: 'preconditions' | 'guards', na
   return changed ? withPolicy(route, policy) : undefined;
 }
 
-/** 删 any / all 的一个分支：只在该分支独有一个基准也观测到的维度时生成（否则不可能被发现）。 */
+/**
+ * 突变是否“原则上可被发现”：突变后的声明丢掉了某个基准观测到、原声明满足的维度 / 守卫 / 前提，或丢掉了
+ * 仅成员 403 所要求的特权。只有这样的突变才进套件（基准观测不到的内容本来允许多登）。
+ */
+function detectable(original: RoutePolicy, mutated: RoutePolicy, observed: ObservedRoute): boolean {
+  const before = features(original);
+  const after = features(mutated);
+  for (const dim of Object.keys(observed.primitives)) {
+    if (declaredHas(before.dims, dim) && !declaredHas(after.dims, dim)) return true;
+  }
+  for (const guard of observed.primitives['guard'] ?? []) {
+    if (before.guards.has(guard) && !after.guards.has(guard)) return true;
+  }
+  for (const name of observed.primitives['precondition'] ?? []) {
+    if (before.preconditions.has(name) && !after.preconditions.has(name)) return true;
+  }
+  const member = observed.edge.member;
+  return member.status === 403 && member.code === 'FORBIDDEN' && before.privileged && !after.privileged;
+}
+
+/** 删 any / all 的一个分支（含嵌套组合）。 */
 function deleteBranches(route: ManifestRoute, observed: ObservedRoute): ManifestRoute[] {
   const out: ManifestRoute[] = [];
-  const observedDims = new Set(Object.keys(observed.primitives));
-  const visit = (policy: RoutePolicy, replace: (next: RoutePolicy) => RoutePolicy): void => {
-    if (policy.kind !== 'any' && policy.kind !== 'all') return;
-    if (policy.of.length < 2) return;
-    const branchDims = policy.of.map((b) => features(b).dims);
-    policy.of.forEach((_branch, index) => {
-      const others = new Set(branchDims.flatMap((dims, i) => (i === index ? [] : [...dims])));
-      const unique = [...branchDims[index]!].filter((d) => !others.has(d) && observedDims.has(d));
-      if (!unique.length) return;
-      const next = { ...policy, of: policy.of.filter((_b, i) => i !== index) } as RoutePolicy;
-      out.push({ ...route, policy: replace(next) });
-    });
-  };
-  visit(route.policy, (next) => next);
+  const policy = route.policy;
+  if ((policy.kind !== 'any' && policy.kind !== 'all') || policy.of.length < 2) return out;
+  policy.of.forEach((_branch, index) => {
+    const mutated = { ...policy, of: policy.of.filter((_b, i) => i !== index) } as RoutePolicy;
+    if (detectable(policy, mutated, observed)) out.push({ ...route, policy: mutated });
+  });
   return out;
 }
 
 function deleteOptional(route: ManifestRoute, observed: ObservedRoute): ManifestRoute | undefined {
-  const optional = route.policy.optional;
-  if (!optional || !Object.keys(optional).length) return undefined;
-  const base = features({ ...route.policy, optional: {} } as RoutePolicy).dims;
-  const withOptional = features(route.policy).dims;
-  const unique = [...withOptional].filter((d) => !base.has(d) && Object.hasOwn(observed.primitives, d));
-  if (!unique.length) return undefined;
+  if (!route.policy.optional || !Object.keys(route.policy.optional).length) return undefined;
   const { optional: _dropped, ...rest } = route.policy;
-  return { ...route, policy: rest as RoutePolicy };
+  const mutated = rest as RoutePolicy;
+  return detectable(route.policy, mutated, observed) ? { ...route, policy: mutated } : undefined;
 }
 
 function kindToMember(route: ManifestRoute, observed: ObservedRoute): ManifestRoute | undefined {
-  const declared = features(route.policy);
-  if (!declared.privileged) return undefined;
-  const detectable =
-    ['admin', 'object', 'button', 'self', 'relation'].some((d) => Object.hasOwn(observed.primitives, d)) ||
-    (observed.edge.member.status === 403 && observed.edge.member.code === 'FORBIDDEN');
-  if (!detectable) return undefined;
-  const member: RoutePolicy = {
+  if (!features(route.policy).privileged) return undefined;
+  const mutated: RoutePolicy = {
     kind: 'member',
     reason: '突变',
     fields: { mode: 'none', reason: '突变' },
     ...(route.policy.write ? { write: route.policy.write } : {}),
   };
-  return { ...route, policy: member };
+  return detectable(route.policy, mutated, observed) ? { ...route, policy: mutated } : undefined;
 }
 
 function dropDomainValues(route: ManifestRoute): ManifestRoute[] {
@@ -274,9 +278,14 @@ export function mutantsOf(route: ManifestRoute, contract: ObservedContract): Mut
   const has = (dim: string) => Object.hasOwn(observed.primitives, dim);
   const declared = features(route.policy);
   const out: Mutant[] = [];
+  // 等价突变（按蕴含关系没有丢掉任何基准观测到的义务，如关系定位自带范围）不进套件
+  // 删 write 与删分支域值不靠维度判定（写路由必有 write、选择器域按集合相等），不过滤
   const push = (name: string, mutated: ManifestRoute | undefined) => {
     const mutation = MUTATIONS.find((m) => m.name === name)!;
-    if (mutated) out.push({ name, expected: mutation.expected, route: mutated });
+    const structural = name === 'delete-write' || name === 'domain-drop-value';
+    if (mutated && (structural || detectable(route.policy, mutated.policy, observed))) {
+      out.push({ name, expected: mutation.expected, route: mutated });
+    }
   };
   if (has('button')) push('button→none', buttonsToNone(route));
   if (has('scope')) push('scope→none', scopesToNone(route));
