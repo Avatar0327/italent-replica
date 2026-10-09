@@ -209,14 +209,19 @@ async function validateShape(tx: Tx, ctx: MatrixWriteContext, shape: Shape, curr
  * 补装事务在这一步之前只插入新的预置行（预置字段等），并发事务看不到未提交的新行，不会等它们。
  */
 export async function lockPositionFields(tx: Tx, tenantId: string, fieldIds: readonly string[]): Promise<void> {
-  for (const id of [...new Set(fieldIds)].sort()) {
+  // 排序也按规范化后的 id（小写）：同一批字段不管调用方给的大小写，取锁顺序都一样
+  for (const id of [...new Set(fieldIds.map((value) => value.toLowerCase()))].sort()) {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${positionLockKey(tenantId, id)})`);
   }
 }
 
-/** 位置字段占用锁的键（租户 + 字段）；并发测试的屏障用同一个键。 */
+/**
+ * 位置字段占用锁的键（租户 + 字段）；所有入口（新建、修改、删除、预置开通 / 回补）与并发测试的屏障都用这一个函数。
+ * 租户与字段 id 先转成 PostgreSQL 的 uuid 规范文本（小写）再哈希：租户中间件按原样保留 X-Tenant-Id 的大小写，
+ * 同一租户的大小写变体若直接拼文本会得到不同的锁、等于没有锁（PR #182 第 3 轮 P2-01；与 seeds/registry.ts 的补装锁同法）。
+ */
 export const positionLockKey = (tenantId: string, fieldId: string) =>
-  sql`hashtextextended(${tenantId}::text || ':matrix-position:' || ${fieldId}::text, 0)`;
+  sql`hashtextextended((${tenantId}::uuid)::text || ':matrix-position:' || (${fieldId}::uuid)::text, 0)`;
 
 // ---- 子数据写入 ----------------------------------------------------------------------------------------------------
 
