@@ -154,9 +154,11 @@ describe('AC-PRM-FW-08 账本证据锚点不能是纯注释（#163 第 2 轮 P3�
     expect(codes(checkEvidenceRefs([group], 'PROBE_KNOWN_GAP_EVIDENCE'))).toEqual(['PROBE_KNOWN_GAP_EVIDENCE']);
   });
 
-  it('真实账本：已知缺口与冗余观测的证据锚点都有实际代码记号；41 项冗余观测集合不变', () => {
+  it('真实账本：已知缺口与冗余观测的证据锚点都有实际代码记号；第 2 轮审查核实的 41 项冗余观测集合不变', () => {
     expect(checkEvidenceRefs(KNOWN_GAPS, 'PROBE_KNOWN_GAP_EVIDENCE')).toEqual([]);
     expect(checkEvidenceRefs(REDUNDANT_OBSERVATIONS, 'PROBE_REDUNDANT_EVIDENCE')).toEqual([]);
-    expect(REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs)).toHaveLength(41);
+    // 第 2 轮审查核实的 41 项不变；合并 main 带入的 #125 新端点另成一组（survey360.allActivities#4，18 项）
+    const reviewed = REDUNDANT_OBSERVATIONS.filter((g) => g.id !== 'survey360.allActivities#4');
+    expect(reviewed.flatMap((g) => g.pairs)).toHaveLength(41);
   });
 });

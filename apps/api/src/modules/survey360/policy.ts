@@ -14,6 +14,7 @@ import {
   all,
   BAD_REQUEST,
   button,
+  fixed,
   listScope,
   noButton,
   noFields,
@@ -21,6 +22,7 @@ import {
   noScope,
   NOT_FOUND,
   object,
+  own,
   pointScope,
   publicRoute,
   shape,
@@ -53,6 +55,8 @@ interface Route {
   readonly button?: string;
   readonly scope?: ReturnType<typeof listScope>;
   readonly out?: 'asIs';
+  /** 回执只有人数与原站提示（协议字段，asIs），不含对象字段（PR-B）。 */
+  readonly receipt?: string;
   readonly write?: {
     readonly fields: 'body' | 'none' | 'derived';
     readonly guards?: readonly string[];
@@ -105,7 +109,11 @@ function route(r: Route): RoutePolicy {
     operation,
     button: buttonFor(r.key, operation, r.button),
     scope: r.scope ?? noScope(`${r.key} 不按数据范围过滤（套卷 / 设置 / 角色为租户级配置）`),
-    fields: r.out === 'asIs' ? noFields('授权名单是账号信息，不是 360 对象（asIs）') : shape(`survey360.${r.key}`),
+    fields: r.receipt
+      ? noFields(r.receipt)
+      : r.out === 'asIs'
+        ? noFields('授权名单是账号信息，不是 360 对象（asIs）')
+        : shape(`survey360.${r.key}`),
     ...(guards.length ? { guards } : {}),
     ...(writePolicy ? { write: writePolicy } : {}),
     ...(r.byId ? byId : {}),
@@ -120,6 +128,31 @@ const PREFLIGHT = 'survey360.preflight';
 const UNRESTRICTED = 'survey360.unrestricted';
 /** 导入评价者 body.sync === true 时：员工信息查看权 + 当前员工信息范围（relations.ts preflight → routeEmployeeScope）。 */
 const SYNC_EMPLOYEES = 'survey360.syncEmployees';
+
+/** 转发与转发预览另要对报告正文涉及的全部结果字段有查看权（reports.ts requireFullReportView，第 2 轮 P2-5）。 */
+const FULL_REPORT = 'survey360.fullReportView';
+/** 逐份答卷卡片只给持“全部活动”者或活动创建者，兼任者除外（anonymous.ts requireCardViewer，DEC-358② / DEC-364）。 */
+const SHEET_CARDS = 'survey360.sheetCards';
+/** 我的待办：只看 user_id = 当前账号的待办（todos.ts）。 */
+const TODO_RECIPIENT = 'survey360.todoRecipient';
+const TODO_KEYS = ['id', 'activityId', 'title', 'content', 'status', 'sentAt', 'doneAt'];
+/** 待办“去处理”：本人账号的待办 → 该评价者当前有效的作答链接（todos.ts todoEntry），别人的待办与不存在同一 404。 */
+const todoOwn = (extra: { write?: WritePolicy } = {}): RoutePolicy =>
+  own({
+    predicate: TODO_RECIPIENT,
+    target: { param: 'todoId' },
+    locator: 'survey360.todo.mine',
+    denied: NOT_FOUND,
+    fields: noFields('作答视图与链接作答相同：只含本评价者自己的任务与答卷'),
+    ...byId,
+    ...extra,
+  });
+const todoWrite = () =>
+  todoOwn({
+    write: write('body', 'survey360.linkResolve', none('作答写入的回执只含本评价者可见的内容'), { ledger: 'single' }),
+  });
+/** 报告转发的收件人链接令牌（reports.ts registerReportLinkRoutes resolve + linkOf）。 */
+const REPORT_LINK_TOKEN = 'survey360.reportLinkToken';
 
 export const SURVEY360_POLICIES = defineTable('survey360', {
   // ---- settings.ts ------------------------------------------------------------------------------------------------
@@ -321,6 +354,151 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     write: { fields: 'derived', guards: [RESOURCE] },
     byId: true,
   }),
+  // ---- PR-B（docs/08_设计/R3-T03_360度评估PR-B_路由声明.md）----------------------------------------------------------
+  // progress.ts：进程控制按评价关系查看；重新作答是答卷的 reanswer 按钮
+  'GET /activities/:id/progress': route({ key: 'relation', scope: ACTIVITY, byId: true }),
+  'GET /activities/:id/progress/:personId': route({ key: 'relation', scope: ACTIVITY, byId: true }),
+  'POST /activities/:id/relations/:relationId/reanswer': route({
+    key: 'answer',
+    operation: 'update',
+    button: 'reanswer',
+    scope: ACTIVITY,
+    write: { fields: 'none', guards: [RESOURCE] },
+    byId: true,
+  }),
+  // todos.ts：发送 / 取消待办、邮件邀请是评价关系的 invite 按钮，回执只有人数
+  ...Object.fromEntries(
+    ['/todos', '/todos/cancel', '/invitations'].map((path) => [
+      `POST /activities/:id${path}`,
+      route({
+        key: 'relation',
+        operation: 'update',
+        button: 'invite',
+        scope: ACTIVITY,
+        receipt: '回执只有人数与原站提示（asIs）',
+        write: { fields: 'none', guards: [RESOURCE] },
+        byId: true,
+      }),
+    ]),
+  ),
+  // 我的待办：只要租户成员身份，只看本人账号的待办（固定键）
+  'GET /my/todos': own({
+    predicate: TODO_RECIPIENT,
+    fields: fixed(TODO_KEYS, 'R3-T03 PR-B 路由声明：我的待办固定键'),
+  }),
+  // 待办“去处理”：本人账号的待办 → 该评价者当前有效的作答链接，判定与链接作答相同（answering.ts todoEntry）
+  // 作答页（匿名开关按活动设置）
+  'GET /my/todos/:todoId/answer': todoOwn(),
+  // 作答页人员头像：只给本单人员集合的当前头像字节
+  'GET /my/todos/:todoId/avatars/:attachmentId/content': todoOwn(),
+  // 作答页：本评价者的任务
+  'GET /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId': todoOwn(),
+  // 保存答卷
+  'PUT /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId': todoWrite(),
+  // 提交答卷
+  'POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/submit': todoWrite(),
+  // sheets.ts：原始数据按答卷查看；屏蔽 / 取消屏蔽 / 屏蔽疑似 / 恢复是答卷的 block 按钮
+  'GET /activities/:id/sheets': route({ key: 'answer', scope: ACTIVITY, guards: [SHEET_CARDS], byId: true }),
+  ...Object.fromEntries(
+    ['block', 'unblock'].map((action) => [
+      `POST /activities/:id/sheets/:sheetId/${action}`,
+      route({
+        key: 'answer',
+        operation: 'update',
+        button: 'block',
+        scope: ACTIVITY,
+        write: { fields: 'none', guards: [RESOURCE, SHEET_CARDS] },
+        byId: true,
+      }),
+    ]),
+  ),
+  ...Object.fromEntries(
+    ['block-suspected', 'unblock-all'].map((path) => [
+      `POST /activities/:id/sheets/${path}`,
+      route({
+        key: 'answer',
+        operation: 'update',
+        button: 'block',
+        scope: ACTIVITY,
+        receipt: '回执只有人数（asIs）',
+        write: { fields: 'none', guards: [RESOURCE] },
+        byId: true,
+      }),
+    ]),
+  ),
+  // reports.ts：报告模板是设置对象；报告、报表是结果对象；生成 / 转发是结果的按钮，转发另要报告正文完整查看权
+  'GET /report-template': route({ key: 'settings' }),
+  'PUT /report-template': route({ key: 'settings', operation: 'update', write: { fields: 'body' } }),
+  'GET /activities/:id/reports': route({ key: 'result', scope: ACTIVITY, byId: true }),
+  'GET /activities/:id/reports/:reportId': route({ key: 'result', scope: ACTIVITY, byId: true }),
+  'POST /activities/:id/reports/generate': route({
+    key: 'result',
+    operation: 'update',
+    button: 'generateReport',
+    scope: ACTIVITY,
+    receipt: '回执只有人数（asIs）',
+    write: { fields: 'none', guards: [RESOURCE] },
+    byId: true,
+  }),
+  // 预览是 POST 的只读接口（read()）：不开命令事务、不进台账
+  'POST /activities/:id/reports/forward/preview': {
+    ...route({ key: 'result', button: 'forwardReport', scope: ACTIVITY, guards: [FULL_REPORT], byId: true }),
+    write: write(
+      none('只读预览：载荷是收件人选择，不写对象字段'),
+      none('只读预览：不开命令事务、不写入'),
+      none('只读预览：预览行按结果字段裁剪'),
+    ),
+  },
+  'POST /activities/:id/reports/forward': route({
+    key: 'result',
+    operation: 'update',
+    button: 'forwardReport',
+    scope: ACTIVITY,
+    receipt: '回执只有人数（asIs）',
+    write: { fields: 'none', guards: [RESOURCE, FULL_REPORT] },
+    byId: true,
+  }),
+  // tables.ts
+  'GET /activities/:id/score-tables': route({ key: 'result', scope: ACTIVITY, byId: true }),
+  // questionnaires.ts：套卷模板与套卷同表同结构，模板入口只取模板（改 / 删他人模板同样要 editOthers）
+  'GET /questionnaire-templates': route({ key: 'questionnaire' }),
+  'GET /questionnaire-templates/:id': route({ key: 'questionnaire', byId: true }),
+  'POST /questionnaire-templates': route({ key: 'questionnaire', operation: 'create', write: { fields: 'body' } }),
+  'PUT /questionnaire-templates/:id': route({
+    key: 'questionnaire',
+    operation: 'update',
+    write: { fields: 'derived', guards: [RESOURCE] },
+    byId: true,
+  }),
+  'DELETE /questionnaire-templates/:id': route({
+    key: 'questionnaire',
+    operation: 'delete',
+    write: { fields: 'none', guards: [RESOURCE] },
+    byId: true,
+  }),
+  'POST /questionnaires/:id/save-as-template': route({
+    key: 'questionnaire',
+    operation: 'create',
+    write: { fields: 'derived', guards: [RESOURCE] },
+    byId: true,
+  }),
+  'POST /questionnaire-templates/:id/instantiate': route({
+    key: 'questionnaire',
+    operation: 'create',
+    write: { fields: 'derived', guards: [RESOURCE] },
+    byId: true,
+  }),
+});
+
+/** 报告转发的收件人链接：令牌守卫在每个处理函数里（resolve + linkOf），报告须在链接的报告清单里。 */
+export const SURVEY360_REPORT_LINK_POLICIES = defineTable('survey360-report-link', {
+  'GET /': publicRoute('收件人链接主页：本链接的报告清单', 'DEC-280 同口径（R3-T03 PR-B）', [REPORT_LINK_TOKEN]),
+  'GET /reports/:reportId': publicRoute(
+    '收件人查看报告：报告须在本链接的清单里',
+    'DEC-280 同口径（R3-T03 PR-B）',
+    [REPORT_LINK_TOKEN],
+    byId,
+  ),
 });
 
 /** 链接作答 / 确认：令牌守卫在每个处理函数里（linkTenant + resolve），命令前与命令事务内各解析一次链接。 */

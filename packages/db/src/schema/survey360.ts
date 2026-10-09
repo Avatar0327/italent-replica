@@ -198,6 +198,14 @@ export const survey360Questionnaires = pgTable(
     /** 优秀线（满分的百分比）与优秀率上限（E3-R9，仅一次评价多人）。 */
     excellentLinePercent: numeric('excellent_line_percent'),
     excellentMaxRate: numeric('excellent_max_rate'),
+    /** 题库里的套卷模板（PR-B，E3-R10）：与套卷同表同结构，引用即复制；套卷入口与模板入口互不可见。 */
+    template: boolean('template').notNull().default(false),
+    /**
+     * 已使用套卷的计分口径（内容 / 权重 / 计分方式）版本（PR-B 第 2 / 3 轮 P2-7、P2-3）：每改一次在套卷行锁内 +1，
+     * 高于计分批次记下的版本时，用到它的活动报告失效。只记在套卷上，不在套卷编辑里写活动 / 对象行（锁顺序
+     * 活动 → 套卷，F-053）；用锁内递增的版本号而不是请求时间，等锁期间的计分不会被误判为“口径未变”。
+     */
+    scoringRevision: integer('scoring_revision').notNull().default(0),
     deleted: boolean('deleted').notNull().default(false),
     revision: revision(),
     createdBy: uuid('created_by').notNull(),
@@ -366,6 +374,12 @@ export const survey360Activities = pgTable(
     endedAt: at('ended_at'),
     scoreBatchId: uuid('score_batch_id'),
     scoredAt: at('scored_at'),
+    /** 计分后的作答数据变化（清除作答、屏蔽 / 取消屏蔽）：非空即报告失效，须启用 → 停用重算（`25` §10.3 ⑫）。 */
+    dataChangedAt: at('data_changed_at'),
+    /** 最近一次“屏蔽疑似无效数据”：2 小时内只允许一次（§10.1）。 */
+    suspectBlockedAt: at('suspect_blocked_at'),
+    /** 最近一次“生成 / 更新报告”：2 小时内只允许一次（§10.3 ⑭）。 */
+    reportsRequestedAt: at('reports_requested_at'),
     deleted: boolean('deleted').notNull().default(false),
     revision: revision(),
     createdBy: uuid('created_by').notNull(),
@@ -544,6 +558,8 @@ export const survey360Links = pgTable(
     confirmationId: uuid('confirmation_id'),
     tokenHash: text('token_hash').notNull(),
     revoked: boolean('revoked').notNull().default(false),
+    /** 最后发送时间：邮件邀请与站内待办都计入（`25` §10.2 更正）；重发邮件轮换链接时沿用到新链接。 */
+    lastSentAt: at('last_sent_at'),
     createdAt: createdAt(),
   },
   (t) => [
@@ -595,6 +611,11 @@ export const survey360Sheets = pgTable(
     revision: revision(),
     savedAt: at('saved_at').notNull().defaultNow(),
     submittedAt: at('submitted_at'),
+    /** 屏蔽（`25` §10.1 ⑥⑦⑧）：粒度为评价者 × 套卷；被屏蔽的答卷不参与计分，可取消屏蔽，重算须启用 → 停用。 */
+    blocked: boolean('blocked').notNull().default(false),
+    blockedSource: text('blocked_source'),
+    blockedAt: at('blocked_at'),
+    blockedBy: uuid('blocked_by'),
   },
   (t) => [
     unique('survey360_sheets_tenant_id').on(t.tenantId, t.id),
@@ -607,6 +628,11 @@ export const survey360Sheets = pgTable(
     }),
     questionnaireFk('survey360_sheets_questionnaire_fk', t.tenantId, t.questionnaireId),
     check('survey360_sheets_status', sql`${t.status} IN ('draft', 'submitted')`),
+    check(
+      'survey360_sheets_blocked',
+      sql`(NOT ${t.blocked} AND ${t.blockedSource} IS NULL) OR (${t.blocked} AND ${t.status} = 'submitted'
+        AND ${t.blockedSource} IN ('manual', 'suspected'))`,
+    ),
   ],
 );
 
@@ -645,6 +671,8 @@ export const survey360ScoreBatches = pgTable(
     activityId: uuid('activity_id').notNull(),
     commandId: text('command_id').notNull(),
     computedAt: createdAt(),
+    /** 本次计分用到的各套卷计分口径版本（套卷 ID → scoring_revision，PR-B 第 3 轮 P2-3）。 */
+    questionnaireRevisions: jsonb('questionnaire_revisions').$type<Record<string, number>>().notNull().default({}),
   },
   (t) => [
     unique('survey360_score_batches_tenant_id').on(t.tenantId, t.id),
@@ -678,5 +706,123 @@ export const survey360Scores = pgTable(
     }),
     check('survey360_scores_level', sql`${t.level} IN ('questionnaire', 'dimension', 'question')`),
     check('survey360_scores_scope', sql`${t.scope} IN ('self', 'other', 'role')`),
+  ],
+);
+
+/**
+ * 站内待办（`25` §10.3 ①②③；开工通知：站内只用“待办”）：评价者 × 活动一条，重发覆盖原条、刷新发送时间；
+ * 接收人是 360 人员挂接员工的租户账号（DEC-128）；评价者提交全部对象后自动“已处理”，取消待办也移入“已处理”。
+ */
+export const survey360Todos = pgTable(
+  'survey360_todos',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    activityId: uuid('activity_id').notNull(),
+    personId: uuid('person_id').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id),
+    status: text('status').notNull().default('open'),
+    doneReason: text('done_reason'),
+    sentAt: at('sent_at').notNull(),
+    doneAt: at('done_at'),
+    revision: revision(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('survey360_todos_tenant_id').on(t.tenantId, t.id),
+    unique('survey360_todos_appraiser').on(t.activityId, t.personId),
+    index('survey360_todos_user').on(t.tenantId, t.userId),
+    activityFk('survey360_todos_activity_fk', t.tenantId, t.activityId),
+    foreignKey({
+      columns: [t.tenantId, t.personId],
+      foreignColumns: [survey360People.tenantId, survey360People.id],
+      name: 'survey360_todos_person_fk',
+    }),
+    check('survey360_todos_status', sql`${t.status} IN ('open', 'done')`),
+    check(
+      'survey360_todos_done',
+      sql`(${t.status} = 'open' AND ${t.doneReason} IS NULL AND ${t.doneAt} IS NULL)
+        OR (${t.status} = 'done' AND ${t.doneReason} IN ('completed', 'cancelled') AND ${t.doneAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+/** 报告模板（首版只有标准版一个，多版本 ⏸）：DEC-149 第二个匿名开关“文本答案中是否呈现评价角色”。 */
+export const survey360ReportTemplates = pgTable(
+  'survey360_report_templates',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    showTextRole: boolean('show_text_role').notNull().default(true),
+    revision: revision(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('survey360_report_templates_tenant_id').on(t.tenantId, t.id),
+    unique('survey360_report_templates_code').on(t.tenantId, t.code),
+  ],
+);
+
+/**
+ * 个人报告（`25` §10.3 ⑬⑭）：评价对象 × 报告模板一行；内容是生成时的快照（不含任何评价者标识），活动作答数据
+ * 变化后失效（查看被拦），须启用 → 停用后重新生成。
+ */
+export const survey360Reports = pgTable(
+  'survey360_reports',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    activityId: uuid('activity_id').notNull(),
+    objectId: uuid('object_id').notNull(),
+    templateId: uuid('template_id').notNull(),
+    batchId: uuid('batch_id').notNull(),
+    content: jsonb('content').notNull(),
+    generatedAt: at('generated_at').notNull(),
+    revision: revision(),
+  },
+  (t) => [
+    unique('survey360_reports_tenant_id').on(t.tenantId, t.id),
+    unique('survey360_reports_object_template').on(t.objectId, t.templateId),
+    activityFk('survey360_reports_activity_fk', t.tenantId, t.activityId),
+    foreignKey({
+      columns: [t.tenantId, t.objectId],
+      foreignColumns: [survey360Objects.tenantId, survey360Objects.id],
+      name: 'survey360_reports_object_fk',
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.templateId],
+      foreignColumns: [survey360ReportTemplates.tenantId, survey360ReportTemplates.id],
+      name: 'survey360_reports_template_fk',
+    }),
+    foreignKey({
+      columns: [t.tenantId, t.batchId],
+      foreignColumns: [survey360ScoreBatches.tenantId, survey360ScoreBatches.id],
+      name: 'survey360_reports_batch_fk',
+    }),
+  ],
+);
+
+/** 报告转发的收件人链接（§10.3 ⑮：每位收件人一封邮件，发链接不发附件）：只存令牌摘要。 */
+export const survey360ReportLinks = pgTable(
+  'survey360_report_links',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    activityId: uuid('activity_id').notNull(),
+    recipientName: text('recipient_name').notNull(),
+    recipientEmail: text('recipient_email').notNull(),
+    reportIds: uuids('report_ids'),
+    tokenHash: text('token_hash').notNull(),
+    commandId: text('command_id').notNull(),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('survey360_report_links_token').on(t.tenantId, t.tokenHash),
+    activityFk('survey360_report_links_activity_fk', t.tenantId, t.activityId),
   ],
 );
