@@ -1,7 +1,7 @@
 /**
  * R3-T02 PR-A 第 3 轮（第 2 轮审查 R2-01 / 03 / 06 / 07，真实授权器，管理单元范围）：
- * - R2-01 横向通道的保存提示（DEC-347② 🟡）只给看得到目的地标准的人：要有标准查看权、目的地类别在标准读取范围内；
- *   目标级别不在标准里的提示另须标准 levelIds 字段可见；首次与重放都按当前权限（DEC-309 / DEC-067）；
+ * - DEC-349 横向通道的保存提示（DEC-347② / DEC-348①）不按权限裁剪：提示用于敦促业务方与 HR 建设标准，有通道
+ *   编辑权的人首次与重放都照常拿到（R2-01 按用户决定关闭）；
  * - R2-03 发展通道审计里的目标类别 / 级别按查看人当前对类别 / 级别的读取权裁剪，与通道 GET 一致（DEC-197）；
  * - R2-06 删除等级方案连带的遗留手改描述，所属指标须在操作人当前的写范围内，否则整体拒绝；
  * - R2-07 引入 / 导入失败的任务日志按实际操作的管理单元 / 目标锚点登记，操作人走授权查询能查到（DEC-199）。
@@ -61,32 +61,30 @@ describe('任职资格配置第 3 轮：提示、审计与级联的范围', () =
   const warningsOf = async (response: Response) =>
     ((await ok<{ warnings?: Warning[] }>(response)).warnings ?? []) as Warning[];
 
-  describe('R2-01 通道提示只给看得到目的地标准的人（DEC-347② / DEC-348① / DEC-309）', () => {
-    it('没有标准查看权：目的地有没有标准、包含哪些级别都不提示；有权的照常提示', async () => {
+  describe('DEC-349 通道提示不按权限裁剪（用于敦促建设标准；R2-01 按用户决定关闭）', () => {
+    it('没有标准查看权的通道编辑人：目的地没有标准、目标级别不在标准里都照常提示', async () => {
       const set = await channelSet();
-      const blind = await childOp({ noObject: ['standard'] });
-      expect((await blind.request('GET', `/standards/${set.standard.id}`)).status).toBe(403);
+      const op = await childOp({ noObject: ['standard'] });
+      expect((await op.request('GET', `/standards/${set.standard.id}`)).status).toBe(403);
       const path = `/standards/${set.standard.id}/channels`;
       const body = {
         channels: [{ levelId: set.p1.id, targetCategoryId: set.destination.id, targetLevelId: set.p1.id }],
       };
-      expect(await warningsOf(await blind.request('PUT', path, { ifMatch: set.standard.revision, body }))).toEqual([]);
+      expect(await warningsOf(await op.request('PUT', path, { ifMatch: set.standard.revision, body }))).toEqual([
+        { index: 0, reason: 'TARGET_STANDARD_MISSING' },
+      ]);
       await set.create('/standards', {
         categoryId: set.destination.id,
         name: '目的地标准',
         levelIds: [set.p2.id],
         details: [],
       });
-      expect(await warningsOf(await blind.request('PUT', path, { ifMatch: set.standard.revision + 1, body }))).toEqual(
-        [],
-      );
-      const sighted = await childOp();
-      expect(
-        await warningsOf(await sighted.request('PUT', path, { ifMatch: set.standard.revision + 2, body })),
-      ).toEqual([{ index: 0, reason: 'TARGET_LEVEL_NOT_IN_STANDARD' }]);
+      expect(await warningsOf(await op.request('PUT', path, { ifMatch: set.standard.revision + 1, body }))).toEqual([
+        { index: 0, reason: 'TARGET_LEVEL_NOT_IN_STANDARD' },
+      ]);
     });
 
-    it('看不到标准的 levelIds：不提示目标级别不在标准里；同键重放按当前字段权复核', async () => {
+    it('看不到标准的 levelIds：首次与同键重放都照常提示，提示只有序号与原因', async () => {
       const set = await channelSet();
       await set.create('/standards', {
         categoryId: set.destination.id,
@@ -94,17 +92,17 @@ describe('任职资格配置第 3 轮：提示、审计与级联的范围', () =
         levelIds: [set.p2.id],
         details: [],
       });
-      const op: Operator = await childOp();
+      const op: Operator = await childOp({ hidden: { standard: ['levelIds'] } });
       const path = `/standards/${set.standard.id}/channels`;
       const body = {
         channels: [{ levelId: set.p1.id, targetCategoryId: set.destination.id, targetLevelId: set.p1.id }],
       };
       const idempotencyKey = randomUUID();
+      const expected = [{ index: 0, reason: 'TARGET_LEVEL_NOT_IN_STANDARD' }];
       const first = await op.request('PUT', path, { ifMatch: set.standard.revision, body, idempotencyKey });
-      expect(await warningsOf(first)).toEqual([{ index: 0, reason: 'TARGET_LEVEL_NOT_IN_STANDARD' }]);
-      await op.hide('standard', ['levelIds']);
+      expect(await warningsOf(first)).toEqual(expected);
       const replay = await op.request('PUT', path, { ifMatch: set.standard.revision, body, idempotencyKey });
-      expect(await warningsOf(replay)).toEqual([]);
+      expect(await warningsOf(replay)).toEqual(expected);
     });
   });
 
