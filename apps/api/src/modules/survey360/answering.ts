@@ -235,9 +235,17 @@ function taskGuard(relationId: string, questionnaireId: string) {
   };
 }
 
-async function requireTask(tx: Tx, link: LinkRow, activity: ActivityRow, relationId: string, questionnaireId: string) {
+async function requireTask(
+  tx: Tx,
+  link: LinkRow,
+  activity: ActivityRow,
+  relationId: string,
+  questionnaireId: string,
+  lockObject = false,
+) {
   const [task] = rows<TaskRow>(
-    await tx.execute(sql`${taskQuery(activity.id, link.personId)} AND r.id = ${relationId}::uuid`),
+    await tx.execute(sql`${taskQuery(activity.id, link.personId)} AND r.id = ${relationId}::uuid
+      ${lockObject ? sql`FOR UPDATE OF o` : sql``}`),
   );
   if (!task) notFound();
   if (!(await sheetsOf(tx, task!)).some((q) => q.id === questionnaireId)) notFound();
@@ -330,11 +338,21 @@ async function lockAppraiser(tx: Tx, tenantId: string, activityId: string, perso
   );
 }
 
+const PAUSED = '活动暂停中，请稍后评价';
+
 async function openSheet(tx: Tx, ctx: Writer, activity: ActivityRow, link: LinkRow, relationId: string, qid: string) {
   // 原站停用期间打开作答链接提示“活动暂停中，请稍后评价”（`25` §10.3 ③）
-  if (activity.status !== 'enabled') fail('CONFLICT', '活动暂停中，请稍后评价', 'ACTIVITY_NOT_OPEN');
-  const found = await requireTask(tx, link, activity, relationId, qid);
+  if (activity.status !== 'enabled') fail('CONFLICT', PAUSED, 'ACTIVITY_NOT_OPEN');
   await lockAppraiser(tx, ctx.tenantId, activity.id, link.personId);
+  // F-034 R2 / E3-R2：与替换共用活动 → 对象 → 答卷顺序；先锁活动避免新答卷外键形成反向等待。
+  const [current] = rows<ActivityRow>(
+    await tx.execute(sql`SELECT * FROM survey360_activities
+      WHERE id = ${activity.id}::uuid AND NOT deleted FOR KEY SHARE`),
+  );
+  if (!current) notFound();
+  if (current!.status !== 'enabled') fail('CONFLICT', PAUSED, 'ACTIVITY_NOT_OPEN');
+  // 等锁期间可能已替换套卷，任务与套卷归属必须在取得对象锁后重新读取。
+  const found = await requireTask(tx, link, current!, relationId, qid, true);
   const sheet = await findSheet(tx, relationId, qid, true);
   if (sheet?.status === 'submitted') fail('CONFLICT', '答卷已提交，不能再修改', 'SHEET_SUBMITTED');
   return { ...found, sheet };

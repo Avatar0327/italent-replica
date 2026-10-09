@@ -81,6 +81,7 @@ import {
 } from './sync.js';
 import type { ModuleScope } from '../permission/module-access.js';
 import { loadQuestionnaire, markUsed } from './questionnaires.js';
+import { clearObjectAnswers, objectSheets } from './object-answers.js';
 
 const LIMITS = survey360.SURVEY360_LIMITS;
 const personRef = { personId: uuid.optional(), person: personInput.optional() };
@@ -578,20 +579,29 @@ function registerObjectQuestionnaires(module: Hono<TenantEnv>, deps: TenantRoute
     return write(
       c,
       deps,
-      z.strictObject({ questionnaireIds: z.array(uuid).max(10) }),
+      z.strictObject({ questionnaireIds: z.array(uuid).max(10), confirmClearAnswers: z.boolean().optional() }),
       async (tx, ctx, input) => {
         const activity = await requireActivity(tx, ctx.admin, id, true);
         const object = await requireVisibleObject(tx, ctx.admin, id, objectId, true);
         requireRevision(object.revision, ctx.expectedRevision);
         await requireQuestionnaires(tx, input.questionnaireIds);
-        // 替换套卷会清空已有作答（E3-R2）——首版不做，已有答卷时拒绝
-        const sheets = await count(
-          tx,
-          sql`SELECT count(*)::int AS n FROM survey360_sheets s JOIN survey360_relations r
-            ON r.tenant_id = s.tenant_id AND r.id = s.relation_id WHERE r.object_id = ${objectId}::uuid`,
-        );
-        if (sheets > 0) fail('CONFLICT', '评价对象已有作答，不能更换套卷', 'ANSWERS_EXIST');
         const before = await objectQuestionnaires(tx, objectId);
+        const changed =
+          before.length !== input.questionnaireIds.length || before.some((q) => !input.questionnaireIds.includes(q));
+        if (!changed)
+          return objectView(
+            { id: object.id, activityId: id, personId: object.person_id, revision: object.revision },
+            before,
+          );
+        const sheets = await objectSheets(tx, id, objectId);
+        // 25 §3.1 E3-R2：实际替换才清空该对象全部作答；确认提示不带评价者、答案或计数。
+        if (sheets.length && input.confirmClearAnswers !== true)
+          fail(
+            'CONFLICT',
+            '替换套卷将清空该评价对象的全部已有作答，请确认后执行',
+            'ANSWER_CLEAR_CONFIRMATION_REQUIRED',
+          );
+        await clearObjectAnswers(tx, ctx, sheets);
         await tx.delete(survey360ObjectQuestionnaires).where(eq(survey360ObjectQuestionnaires.objectId, objectId));
         await tx
           .insert(survey360ObjectQuestionnaires)
@@ -600,7 +610,7 @@ function registerObjectQuestionnaires(module: Hono<TenantEnv>, deps: TenantRoute
         await markDataChanged(tx, activity.id, ctx.now);
         const [saved] = await tx
           .update(survey360Objects)
-          .set({ revision: object.revision + 1 })
+          .set({ revision: object.revision + 1, reportGeneratedAt: null })
           .where(eq(survey360Objects.id, objectId))
           .returning();
         const view = objectView(saved!, input.questionnaireIds);
@@ -613,7 +623,11 @@ function registerObjectQuestionnaires(module: Hono<TenantEnv>, deps: TenantRoute
         });
         return view;
       },
-      { need: { object: 'relation', operation: 'update' }, fields: 'body', guard: objectGuard(id, objectId) },
+      {
+        need: { object: 'relation', operation: 'update' },
+        fields: () => ['questionnaireIds'], // confirmClearAnswers 是协议确认，清空作答随套卷替换原子执行。
+        guard: objectGuard(id, objectId),
+      },
     );
   });
 }
@@ -671,7 +685,10 @@ function registerObjectRemoval(module: Hono<TenantEnv>, deps: TenantRouteDeps): 
   });
 }
 
-function objectView(row: typeof survey360Objects.$inferSelect, questionnaireIds: readonly string[]) {
+function objectView(
+  row: Pick<typeof survey360Objects.$inferSelect, 'id' | 'activityId' | 'personId' | 'revision'>,
+  questionnaireIds: readonly string[],
+) {
   return {
     id: row.id,
     activityId: row.activityId,
