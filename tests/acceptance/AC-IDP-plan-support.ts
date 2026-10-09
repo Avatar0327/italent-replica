@@ -143,6 +143,8 @@ export interface PlanWorldOptions {
   readonly checkNoneGoal?: boolean;
   /** 发展计划流程的三段（缺省：制定计划自动无规则 → 中期回顾手动 → 期末回顾上一阶段结束后 7 天）。 */
   readonly stages?: (approvals: Approvals) => Record<string, unknown>[];
+  /** 制定计划阶段的自定义节点（如会签），缺省为“员工制定目标 → 指导人审批”。 */
+  readonly planNodes?: readonly Record<string, unknown>[];
   /** 员工 / 指导人节点的覆盖项（缺省同 IDP 预置流程的节点开关，DEC-318）。 */
   readonly nodes?: Partial<Record<NodeExpr, NodeOverride>>;
 }
@@ -176,11 +178,18 @@ export async function planWorld(db: Db, label: string, options: PlanWorldOptions
     return (await response.json()) as T;
   }
 
-  async function approvalProcess(type: string, nodes: readonly (readonly [string, string, NodeExpr])[]) {
+  async function approvalProcess(
+    type: string,
+    nodes: readonly (readonly [string, string, NodeExpr])[],
+    rawNodes?: readonly Record<string, unknown>[],
+  ) {
     const created = await ok<{ id: string; revision: number }>(
       await http(hr, 'POST', `${APV}/processes`, {
         ifMatch: 0,
-        body: approvalBody(type, nodes, w.exceptionAdmin, withNodeDefaults(options.nodes)),
+        body: {
+          ...approvalBody(type, nodes, w.exceptionAdmin, withNodeDefaults(options.nodes)),
+          ...(rawNodes ? { nodes: rawNodes } : {}),
+        },
       }),
       201,
     );
@@ -189,10 +198,14 @@ export async function planWorld(db: Db, label: string, options: PlanWorldOptions
   }
 
   const approvals: Approvals = {
-    plan: await approvalProcess('idp_plan', [
-      ['set_goals', '制定发展目标', 'idp_employee'],
-      ['approve_plan', '审批发展计划', 'idp_tutor'],
-    ]),
+    plan: await approvalProcess(
+      'idp_plan',
+      [
+        ['set_goals', '制定发展目标', 'idp_employee'],
+        ['approve_plan', '审批发展计划', 'idp_tutor'],
+      ],
+      options.planNodes,
+    ),
     mid: await approvalProcess('idp_mid_review', [
       ['employee_mid', '员工中期回顾', 'idp_employee'],
       ['tutor_mid', '指导人中期回顾', 'idp_tutor'],
