@@ -160,7 +160,7 @@ export function todoEntry(): EntryOf {
         ? { id: row.id, activityId: row.activity_id, kind: 'answer', personId: row.person_id, confirmationId: null }
         : undefined;
     };
-    return { tenant, caller: tenant, locate };
+    return { tenant, caller: tenant, locate, avatarBase: `/api/tenant/survey360/my/todos/${todoId}` };
   };
 }
 

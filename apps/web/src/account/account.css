@@ -1,0 +1,26 @@
+.account-settings {
+  max-width: 640px;
+}
+.account-settings h2 {
+  font-size: 20px;
+  margin: 0 0 28px;
+}
+.account-avatar-summary {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+.account-avatar-summary h3 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+.account-avatar-summary p,
+.account-avatar-hint {
+  color: #65768b;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.account-avatar-summary p {
+  margin: 0;
+}

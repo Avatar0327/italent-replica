@@ -6,8 +6,10 @@
  * - 邮件邀请重发轮换令牌（同一时刻一个评价者一个有效链接）；只发未完成的评价者；
  * - 进程控制：最后发送时间（邮件、待办都计入）、进度、总进度；停用后不能发送 / 取消待办，作答写入 409。
  */
+import { randomUUID } from 'node:crypto';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { employeeAvatar } from './AC-EMP-F058-avatar-support.js';
 import { errorOf, key, my, outbox, progress, sceneB, type TodoView, TODO_NOT_ELIGIBLE } from './AC-360-B-support.js';
 
 const testDb = useTestDb();
@@ -125,6 +127,27 @@ describe('PR-B 站内待办', () => {
     ]);
     expect((await w.as(s.user.T)('GET', `${s.path}/progress`)).status).toBe(403);
     expect((await w.as(s.user.T)('POST', `${s.path}/todos`, { idempotencyKey: key(), body: {} })).status).toBe(403);
+  });
+});
+
+describe('PR-B 待办作答 × F-058 头像（合并 #138）', () => {
+  it('待办入口的作答页头像地址指向待办入口本身，本单具名人员的头像可取，他人的待办与未知头像 404', async () => {
+    const s = await sceneB(testDb().db, 'b01-avatar');
+    const { w } = s;
+    const avatar = (await employeeAvatar(w, s.employees.T.id)).avatar;
+    await w.ok(w.request('POST', `${s.path}/todos`, { idempotencyKey: key(), body: { personIds: [s.person.P1.id] } }));
+    const p1 = my(w, s.user.P1);
+    const todo = (await w.ok<{ items: TodoView[] }>(p1('GET', '/todos'))).items[0]!;
+    const page = await w.ok<{ tasks: { object: { avatar: { id: string; url: string } | null } }[] }>(
+      p1('GET', `/todos/${todo.id}/answer`),
+    );
+    const path = `/todos/${todo.id}/avatars/${avatar.id}/content`;
+    expect(page.tasks[0]!.object.avatar).toEqual({ id: avatar.id, url: `/api/tenant/survey360/my${path}` });
+    const image = await p1('GET', path);
+    expect(image.status).toBe(200);
+    expect(image.headers.get('cache-control')).toBe('private, no-store');
+    expect((await my(w, s.user.P2)('GET', path)).status).toBe(404);
+    expect((await p1('GET', `/todos/${todo.id}/avatars/${randomUUID()}/content`)).status).toBe(404);
   });
 });
 

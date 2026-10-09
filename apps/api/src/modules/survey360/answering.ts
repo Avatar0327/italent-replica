@@ -28,7 +28,9 @@ import type { TenantRouteDeps } from '../../routes.js';
 import { SYSTEM_USER_ID } from '../../system-actor.js';
 import type { TenantContext, TenantEnv } from '../../tenant-context.js';
 import { revision, uuidParam } from '../job/context.js';
-import type { ActivityRow } from './access.js';
+import { requireObject, type ActivityRow } from './access.js';
+import type { AvatarReference } from '../avatar/references.js';
+import { linkAvatarContent, linkAvatars } from './avatar-links.js';
 import {
   actor,
   audit360,
@@ -49,6 +51,7 @@ import { type LoadedQuestionnaire, loadQuestionnaire } from './questionnaires.js
 import { addRelation, appraiserList, confirmationView, loadRelation, removeRelation } from './relations.js';
 
 export const LINK_TOKEN_HEADER = 'x-survey360-token';
+const LINK_BASE = '/api/survey360/link';
 
 const notFound = (): never => fail('NOT_FOUND', '链接无效或已失效');
 
@@ -61,30 +64,34 @@ async function linkTenant(c: C, deps: TenantRouteDeps): Promise<{ tenant: Tenant
   return { tenant: { tenantId: tenant!.id, userId: SYSTEM_USER_ID, timezone: tenant!.timezone }, token: token! };
 }
 
-/** 作答入口：令牌链接，或登录账号本人的待办；caller 是命令台账的请求人。 */
+/**
+ * 作答入口：令牌链接，或登录账号本人的待办；caller 是命令台账的请求人；avatarBase 是本入口的头像地址前缀
+ * （F-058 头像只经本入口、按本单具名人员取，待办入口没有令牌，不能指向令牌链接的地址）。
+ */
 export interface Entry {
   readonly tenant: TenantContext;
   readonly caller: TenantContext;
   readonly locate: (tx: Tx) => Promise<LinkRow | undefined>;
+  readonly avatarBase: string;
 }
 export type EntryOf = (c: C) => Promise<Entry>;
 
 function tokenEntry(deps: TenantRouteDeps): EntryOf {
   return async (c) => {
     const { tenant, token } = await linkTenant(c, deps);
-    return { tenant, caller: tenant, locate: (tx) => findLink(tx, token) };
+    return { tenant, caller: tenant, locate: (tx) => findLink(tx, token), avatarBase: LINK_BASE };
   };
 }
 
-async function resolve(tx: Tx, locate: Entry['locate'], kind: LinkRow['kind']) {
+async function resolve(tx: Tx, locate: Entry['locate'], kind?: LinkRow['kind']) {
   const link = await locate(tx);
-  if (!link || link.kind !== kind) notFound();
+  if (!link || (kind !== undefined && link.kind !== kind)) notFound();
   const [activity] = rows<ActivityRow>(
     await tx.execute(sql`SELECT * FROM survey360_activities WHERE id = ${link!.activityId}::uuid AND NOT deleted`),
   );
   if (!activity) notFound();
   // 确认链接：确认单已取消或评价对象已移除即失效，主页、候选人员与写入一律 404（第 1 轮审查 P2-3）
-  if (kind === 'confirm') {
+  if (link!.kind === 'confirm') {
     const [open] = rows<{ id: string }>(
       await tx.execute(sql`SELECT k.id FROM survey360_confirmations k
         JOIN survey360_objects o ON o.tenant_id = k.tenant_id AND o.id = k.object_id AND NOT o.removed
@@ -98,16 +105,17 @@ async function resolve(tx: Tx, locate: Entry['locate'], kind: LinkRow['kind']) {
 function linkRead<T>(
   deps: TenantRouteDeps,
   entryOf: EntryOf,
-  kind: LinkRow['kind'],
-  load: (tx: Tx, link: LinkRow, a: ActivityRow) => Promise<T>,
+  kind: LinkRow['kind'] | undefined,
+  load: (tx: Tx, link: LinkRow, a: ActivityRow, entry: Entry) => Promise<T>,
+  respond: (c: C, body: T) => Response = (c, body) => c.json(body as object),
 ) {
   return async (c: C) => {
-    const { tenant, locate } = await entryOf(c);
-    const body = await withTenant(deps.db, tenant.tenantId, async (tx) => {
-      const { link, activity } = await resolve(tx, locate, kind);
-      return load(tx, link, activity);
+    const entry = await entryOf(c);
+    const body = await withTenant(deps.db, entry.tenant.tenantId, async (tx) => {
+      const { link, activity } = await resolve(tx, entry.locate, kind);
+      return load(tx, link, activity, entry);
     });
-    return c.json(body as object);
+    return respond(c, body);
   };
 }
 
@@ -164,8 +172,15 @@ function roleLabel(activity: ActivityRow, role: { role_name: string; display_tex
   return { role: { name: role.role_name } };
 }
 
-async function appraiserLabel(tx: Tx, activity: ActivityRow, personId: string) {
-  return activity.show_appraiser_name ? { appraiser: { name: (await loadPerson(tx, personId)).name } } : {};
+async function appraiserLabel(
+  tx: Tx,
+  activity: ActivityRow,
+  personId: string,
+  avatars: ReadonlyMap<string, AvatarReference | null>,
+) {
+  return activity.show_appraiser_name
+    ? { appraiser: { name: (await loadPerson(tx, personId)).name, avatar: avatars.get(personId) ?? null } }
+    : {};
 }
 
 interface TaskRow {
@@ -175,10 +190,11 @@ interface TaskRow {
   role_name: string;
   display_text: string | null;
   object_name: string;
+  object_person_id: string;
 }
 
 const taskQuery = (activityId: string, personId: string) => sql`SELECT r.id, r.object_id, r.role_id,
-    ro.name AS role_name, ro.display_text, p.name AS object_name
+    ro.name AS role_name, ro.display_text, p.name AS object_name, p.id AS object_person_id
   FROM survey360_relations r
   JOIN survey360_objects o ON o.tenant_id = r.tenant_id AND o.id = r.object_id AND NOT o.removed
   JOIN survey360_people p ON p.tenant_id = o.tenant_id AND p.id = o.person_id
@@ -201,15 +217,16 @@ async function sheetsOf(tx: Tx, task: TaskRow) {
   return result;
 }
 
-async function answerPage(tx: Tx, link: LinkRow, activity: ActivityRow) {
+async function answerPage(tx: Tx, link: LinkRow, activity: ActivityRow, avatarBase: string) {
   const tasks = rows<TaskRow>(
     await tx.execute(sql`${taskQuery(activity.id, link.personId)} ORDER BY o.sort, o.created_at, r.id`),
   );
+  const avatars = await linkAvatars(tx, activity.tenant_id, answerPersonIds(link, activity, tasks), avatarBase);
   const items = [];
   for (const task of tasks)
     items.push({
       relationId: task.id,
-      object: { name: task.object_name },
+      object: { name: task.object_name, avatar: avatars.get(task.object_person_id) ?? null },
       ...roleLabel(activity, task),
       questionnaires: await sheetsOf(tx, task),
     });
@@ -222,9 +239,13 @@ async function answerPage(tx: Tx, link: LinkRow, activity: ActivityRow) {
       form: activity.form,
       status: activity.status,
     },
-    ...(await appraiserLabel(tx, activity, link.personId)),
+    ...(await appraiserLabel(tx, activity, link.personId, avatars)),
     tasks: items,
   };
+}
+
+function answerPersonIds(link: LinkRow, activity: ActivityRow, tasks: readonly TaskRow[]) {
+  return [...tasks.map((task) => task.object_person_id), ...(activity.show_appraiser_name ? [link.personId] : [])];
 }
 
 /** 写入答卷前的任务归属校验（命令前与重放前同样执行）。 */
@@ -421,10 +442,14 @@ const task = '/tasks/:relationId/questionnaires/:questionnaireId';
 
 /** 作答页与答卷读写；prefix 为入口前缀（令牌链接为空，待办为 /my/todos/:todoId）。 */
 export function registerAnswerRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps, entryOf: EntryOf, prefix = '') {
-  if (prefix)
+  if (prefix) {
     module.get(`${prefix}/answer`, (c) =>
-      linkRead(deps, entryOf, 'answer', (tx, link, activity) => answerPage(tx, link, activity))(c),
+      linkRead(deps, entryOf, 'answer', (tx, link, activity, entry) =>
+        answerPage(tx, link, activity, entry.avatarBase),
+      )(c),
     );
+    registerAvatarRoute(module, deps, entryOf, prefix, 'answer');
+  }
   registerAnswerRead(module, deps, entryOf, prefix);
   registerAnswerSave(module, deps, entryOf, prefix);
   registerAnswerSubmit(module, deps, entryOf, prefix);
@@ -432,7 +457,7 @@ export function registerAnswerRoutes(module: Hono<TenantEnv>, deps: TenantRouteD
 
 function registerAnswerRead(module: Hono<TenantEnv>, deps: TenantRouteDeps, entryOf: EntryOf, prefix: string) {
   module.get(`${prefix}${task}`, async (c) =>
-    linkRead(deps, entryOf, 'answer', async (tx, link, activity) => {
+    linkRead(deps, entryOf, 'answer', async (tx, link, activity, entry) => {
       const { task: t, questionnaire } = await requireTask(
         tx,
         link,
@@ -440,10 +465,11 @@ function registerAnswerRead(module: Hono<TenantEnv>, deps: TenantRouteDeps, entr
         uuidParam(c, 'relationId'),
         uuidParam(c, 'questionnaireId'),
       );
+      const avatars = await linkAvatars(tx, activity.tenant_id, answerPersonIds(link, activity, [t]), entry.avatarBase);
       return {
         activity: { name: activity.name, form: activity.form, status: activity.status },
-        object: { name: t.object_name },
-        ...(await appraiserLabel(tx, activity, link.personId)),
+        object: { name: t.object_name, avatar: avatars.get(t.object_person_id) ?? null },
+        ...(await appraiserLabel(tx, activity, link.personId, avatars)),
         ...roleLabel(activity, t),
         questionnaire: {
           id: questionnaire.row.id,
@@ -560,18 +586,25 @@ async function loadConfirmation(tx: Tx, link: LinkRow, lock = false) {
 
 async function confirmPage(tx: Tx, link: LinkRow, activity: ActivityRow) {
   const confirmation = await loadConfirmation(tx, link);
-  const object = await tx.execute(sql`SELECT p.name FROM survey360_objects o JOIN survey360_people p
+  const object = await tx.execute(sql`SELECT p.id, p.name FROM survey360_objects o JOIN survey360_people p
     ON p.tenant_id = o.tenant_id AND p.id = o.person_id WHERE o.id = ${confirmation.objectId}::uuid AND NOT o.removed`);
-  const [target] = rows<{ name: string }>(object);
+  const [target] = rows<{ id: string; name: string }>(object);
   if (!target) notFound();
   const list = await appraiserList(tx, confirmation.objectId);
+  const avatars = await linkAvatars(tx, activity.tenant_id, [
+    target!.id,
+    ...list.items.map((row) => row.appraiserPersonId),
+  ]);
   return {
     kind: 'confirm',
     activity: { name: activity.name, status: activity.status },
-    object: { name: target!.name },
+    object: { name: target!.name, avatar: avatars.get(target!.id) ?? null },
     status: confirmation.status,
     revision: confirmation.revision,
-    appraisers: list.items,
+    appraisers: list.items.map((row) => ({
+      ...row,
+      appraiser: { ...row.appraiser, avatar: avatars.get(row.appraiserPersonId) ?? null },
+    })),
     hint: list.hint,
   };
 }
@@ -619,7 +652,8 @@ function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
         await tx.execute(sql`SELECT id, name, department, position FROM survey360_people
           WHERE employee_id IS NOT NULL AND name ILIKE ${`%${q}%`} ORDER BY name, id LIMIT 50`),
       );
-      return { items };
+      // 候选搜索跨本单人员，选择前只用默认头像，不能扩大确认令牌的实际图片下载名单。
+      return { items: items.map((person) => ({ ...person, avatar: null })) };
     })(c),
   );
   module.post('/confirmation/appraisers', (c) =>
@@ -683,17 +717,59 @@ function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
 export function registerLinkRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   const module = new Hono<TenantEnv>();
   module.onError((error, c) => handleError(mapDbError(error) ?? error, c));
-  module.get('/', async (c) => {
-    const { tenant, token } = await linkTenant(c, deps);
-    const body = await withTenant(deps.db, tenant.tenantId, async (tx) => {
-      const link = await findLink(tx, token);
-      if (!link) notFound();
-      const { activity } = await resolve(tx, (t) => findLink(t, token), link!.kind);
-      return link!.kind === 'answer' ? answerPage(tx, link!, activity) : confirmPage(tx, link!, activity);
-    });
-    return c.json(body as object);
-  });
+  module.get('/', (c) =>
+    linkRead(deps, tokenEntry(deps), undefined, async (tx, link, activity, entry) =>
+      link.kind === 'answer'
+        ? await answerPage(tx, link, activity, entry.avatarBase)
+        : await confirmPage(tx, link, activity),
+    )(c),
+  );
+  // 头像：令牌链接下作答与确认两种链接都可取（本单具名人员）
+  registerAvatarRoute(module, deps, tokenEntry(deps), '', undefined);
   registerAnswerRoutes(module, deps, tokenEntry(deps));
   registerConfirmRoutes(module, deps);
-  router.route('/api/survey360/link', module);
+  router.route(LINK_BASE, module);
+}
+
+/** 本入口作答页 / 确认页里具名人员的头像字节（F-058）；不在本单人员集合里的与不存在同一 404。 */
+function registerAvatarRoute(
+  module: Hono<TenantEnv>,
+  deps: TenantRouteDeps,
+  entryOf: EntryOf,
+  prefix: string,
+  kind: LinkRow['kind'] | undefined,
+) {
+  module.get(`${prefix}/avatars/:attachmentId/content`, (c) =>
+    linkRead(
+      deps,
+      entryOf,
+      kind,
+      async (tx, link, activity) => {
+        const id = c.req.param('attachmentId');
+        if (!id || !isUuid(id)) notFound();
+        const allowed = await avatarPersonIds(tx, link, activity);
+        const content = await linkAvatarContent(tx, activity.tenant_id, allowed, id.toLowerCase());
+        return content ?? notFound();
+      },
+      (ctx, image) => {
+        ctx.header('Cache-Control', 'private, no-store');
+        ctx.header('Content-Disposition', 'inline');
+        ctx.header('X-Content-Type-Options', 'nosniff');
+        ctx.header('Content-Type', image.contentType);
+        return ctx.body(new Uint8Array(image.bytes));
+      },
+    )(c),
+  );
+}
+
+/** 与作答任务 / 确认页相同的当前人员集合；匿名评价者不会成为单独的图片权限来源。 */
+async function avatarPersonIds(tx: Tx, link: LinkRow, activity: ActivityRow) {
+  if (link.kind === 'answer') {
+    const tasks = rows<TaskRow>(await tx.execute(taskQuery(activity.id, link.personId)));
+    return answerPersonIds(link, activity, tasks);
+  }
+  const confirmation = await loadConfirmation(tx, link);
+  const object = await requireObject(tx, activity.id, confirmation.objectId);
+  const appraisers = await appraiserList(tx, object.id);
+  return [object.person_id, ...appraisers.items.map((row) => row.appraiserPersonId)];
 }

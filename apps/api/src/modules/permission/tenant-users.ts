@@ -22,8 +22,10 @@ import { AppError } from '../../errors.js';
 import { audit, type WriteContext } from './audit.js';
 import { revisionConflict } from './http.js';
 import { scopeRows } from './scope-hierarchy.js';
+import { userAvatars, type AvatarReference } from '../avatar/references.js';
 
 export interface TenantUserView {
+  readonly avatar?: AvatarReference | null;
   readonly userId: string;
   readonly email: string;
   readonly displayName: string;
@@ -116,10 +118,18 @@ async function viewsOf(tx: Tx, rows: readonly MemberRow[]): Promise<TenantUserVi
     tx,
     rows.map((r) => r.membership.userId),
   );
+  const avatars = rows.length
+    ? await userAvatars(
+        tx,
+        rows[0]!.membership.tenantId,
+        rows.map((r) => r.membership.userId),
+      )
+    : new Map();
   return rows.map(({ membership: m, employeeId }) => {
     const account = accounts.get(m.userId);
     return {
       userId: m.userId,
+      avatar: avatars.get(m.userId) ?? null,
       email: account?.email ?? '',
       displayName: account?.displayName ?? '',
       // 档案绑定由早期夹具 / 导入直接写入时尚未登记类型，按绑定视为内部员工

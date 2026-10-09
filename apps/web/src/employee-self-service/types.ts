@@ -1,4 +1,5 @@
 import type { EmployeeChoice, FieldValues, TransferPreview, TransferCatalog } from '../transfer/types.js';
+import type { AvatarReference } from '../account/avatar-api.js';
 export interface OwnRecord {
   id: string;
   kind?: string;
@@ -10,7 +11,7 @@ export interface OwnRecord {
 }
 export interface Profile {
   timezone: string;
-  employee: EmployeeChoice;
+  employee: EmployeeChoice & { readonly avatar?: AvatarReference | null };
   today: string;
   record: OwnRecord | null;
 }

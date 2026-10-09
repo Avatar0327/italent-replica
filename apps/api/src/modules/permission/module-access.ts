@@ -148,8 +148,13 @@ export async function trimModuleResponse(deps: Deps, ctx: TenantContext, objectC
     'requiresConfirmation',
     'isBeyondEstablishment',
   ]);
+  const person = ['TenantBase.Employee', 'TenantBase.EmployeeInformation'].includes(objectCode);
   const trim = (row: object) =>
-    Object.fromEntries(Object.entries(row).filter(([field]) => envelope.has(field) || fields.has(field)));
+    Object.fromEntries(
+      Object.entries(row).filter(
+        ([field]) => envelope.has(field) || fields.has(person && field === 'avatar' ? 'name' : field),
+      ),
+    );
   return Array.isArray(value) ? value.map(trim) : trim(value);
 }
 
