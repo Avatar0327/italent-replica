@@ -982,6 +982,10 @@
 "log": [
 [
 "10-09",
+"R3-T04 人才盘点设计第 8 轮通过；T04 / T05 设计全部定稿"
+],
+[
+"10-09",
 "#137 合并：AGENTS.md 写入 DEC-338 / 340① 分工与审查强度，自检必做"
 ],
 [
@@ -2442,8 +2446,8 @@
 "o": 6,
 "k": "run",
 "n": "继任管理",
-"seg": "ev:d ds:d8 dev:w rev:a8 mg:w",
-"now": "v8 同步窄审中（Sol xhigh + priority）",
+"seg": "ev:d ds:d8 dev:w rev:d8 mg:w",
+"now": "设计已通过（第 7 轮），v8 同步对齐；实现由 Sonnet 按拆分方案开发",
 "pr": 112
 },
 {
@@ -2453,8 +2457,8 @@
 "k": "run",
 "n": "人才盘点",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:d ds:d8 dev:w rev:a8 mg:w",
-"now": "第 8 轮窄审中（Sol xhigh + priority，DEC-341）",
+"seg": "ev:d ds:d8 dev:w rev:d8 mg:w",
+"now": "设计第 8 轮通过（Sol xhigh 窄审）；写代码前置只剩 F-048；实现由 Sonnet 按拆分方案开发",
 "pr": 113,
 "wait": "写代码前置：F-048（F-045 ✓ F-046 ✓ F-049 ✓）+ 设计通过"
 },
