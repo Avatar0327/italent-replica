@@ -29,6 +29,7 @@ import { requireObjectWrite } from '../permission/object-write.js';
 import { registerPersonnelApprovalHooks } from '../personnel/approval-hooks.js';
 import {
   adminScope,
+  adminTargetScope,
   isProcessAdmin,
   requireProcessButton,
   requireProcessView,
@@ -606,7 +607,11 @@ function registerInstanceRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
         ...(body.toUserId ? { toUserId: body.toUserId } : {}),
         ...(body.toNodeKey ? { toNodeKey: body.toNodeKey } : {}),
       } as const;
-      const result = await command(c, deps, ctx, input, (tx, context) => adminAct(tx, context, input, scopeSql));
+      // F-067：转交 / 改派目标须在操作人对该业务对象的管理范围内（事务外解析范围，事务内按实例业务类型判断）
+      const targetScope = await adminTargetScope(deps, ctx);
+      const result = await command(c, deps, ctx, input, (tx, context) =>
+        adminAct(tx, context, input, scopeSql, { targetScope }),
+      );
       return respondOutcome(c, deps, result);
     });
   }

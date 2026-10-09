@@ -26,6 +26,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { ErrorBody } from '../../errors.js';
 import { assertNotAddSigner, continueAfterApproval } from './add-sign.js';
 import { mergeSeat, mergesSeat, resettle, settleCountersign } from './countersign.js';
+import type { TargetScope } from './access.js';
 import { ADAPTERS } from './adapters.js';
 import {
   approvalError,
@@ -49,10 +50,11 @@ import {
   startOrResume,
   type Run,
 } from './engine.js';
+import { foldMentorFailure, type TargetAdmission } from '../idp/plan-mentor.js';
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
 import { assertNotRecused, eligibilityScope, recusalFactsOf } from './recusal.js';
 import { addSignAllowed, nodeParticipantsOf, urgeOpen, votesInTransition } from './rules.js';
-import { isEligibleApprover } from './resolver.js';
+import { isEligibleApprover, personOfUser } from './resolver.js';
 import { appendLog, cancelPending, closeTask, insertTask, instanceOfTask, loadTasks, type TaskRow } from './store.js';
 
 export interface Outcome {
@@ -830,17 +832,56 @@ export interface AdminInput {
   readonly reason: string | null;
 }
 
+export interface AdminOptions {
+  readonly ownerIntervention?: boolean;
+  readonly targetScope?: TargetScope;
+  readonly targetChecked?: boolean;
+}
+
+const targetNotFound = () => approvalError('NOT_FOUND', 'APPROVAL_TARGET_NOT_FOUND', '转交目标不存在');
+
+/**
+ * F-067：转交 / 改派目标须是已绑定员工、且在操作人对该实例业务对象的管理范围内，否则目标会因成为待办人而获得业务对象
+ * 的可见性。账号不存在、未绑定员工的纯账号（待产品确认，先按拒绝）、范围外三种情况同一个 404，不暴露存在性。
+ * 转给操作人自己也一样校验：“审批实例可见”与业务对象的参与权（如 IDP 计划按待办认定参与人）是不同的授权边界，
+ * 自转交同样会因成为待办人扩大业务对象可见性（仍须填理由，DEC-070）。其余目标校验（有效成员、节点回避、
+ * 会签重复办理人）仍由后面的 adminAct 判定。
+ * 返回放行方式：`mentor` = 靠范围外例外（DEC-358①：IDP 计划当前的指导人 / 带教人，判定与 IDP 入口共用 idp/plan-mentor.ts）放行，
+ * 后续任何失败都要经共享的 `foldMentorFailure` 折成同一个 404。
+ */
+async function assertTargetInScope(
+  tx: Tx,
+  ctx: ApprovalContext,
+  input: AdminInput,
+  options: AdminOptions,
+  instance: Run['instance'],
+): Promise<TargetAdmission> {
+  if (input.kind === 'jump' || options.targetChecked) return 'scope';
+  if (!options.targetScope) throw new Error('adminAct：转交 / 改派必须提供目标范围校验');
+  const employeeId = input.toUserId ? await personOfUser(tx, ctx.tenantId, input.toUserId) : null;
+  if (!employeeId) throw targetNotFound();
+  const [hit] = rowsOf(
+    await tx.execute(sql`SELECT 1 FROM approval_instances i WHERE i.tenant_id=${ctx.tenantId}
+      AND i.id=${input.instanceId}::uuid AND ${options.targetScope.inScope(employeeId)}`),
+  );
+  if (hit) return 'scope';
+  if (!(await options.targetScope.exception(tx, instance, employeeId))) throw targetNotFound();
+  return 'mentor';
+}
+
 /**
  * 管理员转交 / 干预（DEC-063 / DEC-070）：每次操作单独写审计，原审批人、新审批人、原因齐全。
  * @param options.ownerIntervention 业务模块内流程所有者的流程干预（IDP 计划所有者的阶段内跳转，DEC-318 K-38 / DEC-321）：发起人
  *   就是所有者本人，不按 DEC-092 的“本人发起”回避；“本人为异动对象”仍回避。审批中心的管理员入口不传。
+ * @param options.targetScope 转交 / 改派目标须在操作人对业务对象的管理范围内（F-067，IDP-R16）：非跳转的动作必须给出，
+ *   或由调用方声明 `targetChecked`（调用方已按自己的范围校验过目标，如 IDP 计划转交，F-066）；两者都没有按编程错误拒绝，不默认放行。
  */
 export async function adminAct(
   tx: Tx,
   ctx: ApprovalContext,
   input: AdminInput,
   scope: SQL,
-  options: { readonly ownerIntervention?: boolean } = {},
+  options: AdminOptions = {},
 ): Promise<Outcome> {
   const run = await openRun(tx, ctx, input.instanceId);
   const [covered] = rowsOf(
@@ -848,6 +889,19 @@ export async function adminAct(
       AND i.id=${input.instanceId}::uuid AND ${scope}`),
   );
   if (!covered) throw approvalError('NOT_FOUND', 'APPROVAL_NOT_FOUND', '审批实例不存在');
+  const admission = await assertTargetInScope(tx, ctx, input, options, run.instance);
+  // 靠例外放行的目标（范围外的指导人 / 带教人）：后续任何业务失败（版本冲突、流程已结束、待办已关闭、回避……）都折成
+  // 与普通范围外拒绝完全相同的 404，否则失败响应的差异会泄露“目标是该计划的指导人 / 带教人”（DEC-358①，F-068 审查）。
+  return foldMentorFailure(admission, targetNotFound, () => performAdmin(tx, ctx, run, input, options));
+}
+
+async function performAdmin(
+  tx: Tx,
+  ctx: ApprovalContext,
+  run: Run,
+  input: AdminInput,
+  options: AdminOptions,
+): Promise<Outcome> {
   assertRevision(ctx.expectedRevision, run.instance.revision);
   if (run.instance.status !== 'running') throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程不在审批中');
   assertBusinessUnchanged(run);
