@@ -5,7 +5,14 @@
 import type { CallNode, ExprNode, FieldNode, IdentifierNode, Program } from './ast.js';
 import type { EvaluationContext } from './context.js';
 import { instantToParts } from './dates.js';
-import { ComputationError, CONVERSION_MESSAGE, fail, hyphenHint, type FailureCode } from './failures.js';
+import {
+  ComputationError,
+  CONVERSION_MESSAGE,
+  fail,
+  failMultiOption,
+  hyphenHint,
+  type FailureCode,
+} from './failures.js';
 import { arithmetic, compare, operandNumber, toCondition, toDate, toNumber, toText } from './operators.js';
 import { plainToValue, type FieldLookup, type SubjectReader } from './ports.js';
 import {
@@ -17,7 +24,15 @@ import {
 } from './registry.js';
 import { DEFAULT_SEMANTICS, type ExpressionSemantics } from './semantics.js';
 import { emptySource, NO_RECORDS, TypeInference, withRecordObjects } from './typing.js';
-import { EMPTY, emptyOf, KIND_LABELS, type DateParts, type ExprValue, type PlainValue } from './values.js';
+import {
+  EMPTY,
+  emptyOf,
+  isMultiOptionField,
+  KIND_LABELS,
+  type DateParts,
+  type ExprValue,
+  type PlainValue,
+} from './values.js';
 
 /** 空日期参与日期函数时的取值（DEC-270：0001-01-01）。 */
 const MIN_DATE: DateParts = Object.freeze({
@@ -68,6 +83,8 @@ export class Evaluator {
   }
 
   fromPlain(value: PlainValue): ExprValue {
+    // DEC-314②：未提供目录时也不能把多选数组静默当空值（🟡 取证前禁止参与公式）。
+    if (Array.isArray(value)) return failMultiOption();
     return plainToValue(value, (instant) => ({
       kind: 'date',
       value: instantToParts(instant, this.context.calendar.timeZone),
@@ -94,7 +111,7 @@ export class Evaluator {
       return run();
     } catch (error) {
       if (error instanceof ComputationError && error.failure.line === undefined) {
-        throw new ComputationError({ ...error.failure, ...node.pos });
+        throw new ComputationError({ ...error.failure, ...node.pos }, error.reason);
       }
       throw error;
     }
@@ -169,11 +186,15 @@ export class Evaluator {
   }
 
   private lookup(path: string, scope: Scope): ExprValue {
+    if (!scope.objects.has(path.split('.')[0]!) && isMultiOptionField(this.context.fieldKind, path)) {
+      return failMultiOption(path);
+    }
     for (let i = scope.records.length - 1; i >= 0; i--) {
       const record = scope.records[i]!;
       if (Object.hasOwn(record, path)) return record[path]!;
     }
     const found = this.readSubjectField(path);
+    if (found.status === 'computed') return found.value;
     if (found.status === 'found') {
       const value = this.fromPlain(found.value);
       // 批量求值里先算项目的空结果自带来源；其余空值的来源由 evaluate 按字段类型目录推导补上
@@ -218,6 +239,7 @@ export class Evaluator {
       rawArgs: node.args,
       evaluate: (child, recordFields) =>
         this.evaluate(child, recordFields ? { ...scope, records: [...scope.records, recordFields] } : scope),
+      variable: (name) => scope.vars.get(name),
       evaluateForSubject: (child, subject) =>
         this.forSubject(subject).evaluate(child, { vars: scope.vars, records: [], objects: scope.objects }),
       fail: failAt,
@@ -266,6 +288,7 @@ export class Evaluator {
       assessmentLatestWindow: this.context.assessmentLatestWindow ?? 'before_project_end',
       semantics: this.semantics,
       ports: this.context.ports,
+      rankingTables: this.context.rankingTables,
       fromPlain: (value) => this.fromPlain(value),
     };
   }

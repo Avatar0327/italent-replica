@@ -14,6 +14,7 @@ import { avoidSelfExceptionAdmin, isSelf, tenantLocalDate, type Candidate } from
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../../routes.js';
 import { memberInstanceScope } from './access.js';
+import { ADAPTERS, type BusinessType } from './adapters.js';
 import { approvalError, assertRevision, auditApproval, rowsOf, type ApprovalContext } from './context.js';
 import { mergeSeat, mergesSeat, resettle } from './countersign.js';
 import { assertExceptionAdminMember, republishWithExceptionAdmin } from './definitions.js';
@@ -478,9 +479,22 @@ async function takeoverTarget(
   return { userId: takeover.userId, reason: `原异常管理员停用，替代人不能接手，转租户管理员；${takeover.reason}` };
 }
 
+/**
+ * 交接前统一取锁：员工（任职业务的参与闭包）→ 各业务的业务行（适配器 lockMany，按业务自己的规范顺序）→ 之后逐单锁
+ * 实例。发展计划的批量干预按计划 ID 升序锁计划再锁实例，这里同样先按计划 ID 升序锁齐本批的计划，两边锁序一致，
+ * 不会交错互等（PR #115 第 2 轮 P3-2）。
+ */
 async function lockHandoverParticipants(tx: Tx, ctx: ApprovalContext, batch: readonly LockKey[]) {
   const employees = [...new Set(batch.map((item) => item.employee_id))]
     .filter((id) => id !== '00000000-0000-0000-0000-000000000000')
     .sort();
   if (employees.length) await lockTransferParticipants(tx, ctx, employees[0]!, employees.slice(1));
+  if (!batch.length) return;
+  const rows = rowsOf<{ business_type: BusinessType; business_id: string }>(
+    await tx.execute(sql`SELECT business_type, business_id::text FROM approval_instances
+      WHERE tenant_id=${ctx.tenantId} AND id = ANY(${`{${batch.map((item) => item.id).join(',')}}`}::uuid[])`),
+  );
+  const byType = new Map<BusinessType, string[]>();
+  for (const row of rows) byType.set(row.business_type, [...(byType.get(row.business_type) ?? []), row.business_id]);
+  for (const [type, ids] of byType) await ADAPTERS[type].lockMany?.(tx, ctx, ids);
 }

@@ -42,7 +42,9 @@ import {
   cancel,
   disagreeTask,
   editTask,
+  jumpTask,
   rejectTask,
+  rejectToPreviousTask,
   resubmit,
   transferTask,
   urge,
@@ -479,6 +481,7 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     ['approve', approveTask],
     ['disagree', disagreeTask],
     ['reject', rejectTask],
+    ['reject-previous', rejectToPreviousTask],
   ] as const) {
     router.post(`/tasks/:id/${path}`, async (c) => {
       const ctx = writeCtx(c, deps);
@@ -490,6 +493,13 @@ function registerTaskRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       return respondOutcome(c, deps, result);
     });
   }
+  router.post('/tasks/:id/jump', async (c) => {
+    const ctx = writeCtx(c, deps);
+    const input = await parseBody(c, z.strictObject({ toNodeKey: z.string().min(1).max(40), comment }));
+    const request = { taskId: uuidParam(c), toNodeKey: input.toNodeKey, comment: input.comment ?? null };
+    const result = await command(c, deps, ctx, request, (tx, context) => jumpTask(tx, context, request));
+    return respondOutcome(c, deps, result);
+  });
   router.post('/tasks/:id/transfer', async (c) => {
     const ctx = writeCtx(c, deps);
     const input = await parseBody(c, z.strictObject({ toUserId: userIdInput, comment }));

@@ -48,6 +48,23 @@ const node = (key: string, name: string, approver: ApproverExpression, extra: Pa
     ...extra,
   }) satisfies SingleApprovalNode;
 
+/**
+ * IDP 预置节点的开关（DEC-318，原站 MakePlan 节点原值）：回避、加签、转交、抄送、撤回全部关闭（K-37 / K-39）；
+ * 员工节点只有同意与跳转，指导人节点另有驳回与驳回到上一步（K-39）。
+ */
+const IDP_ACTIONS = {
+  transfer: false,
+  addSign: false,
+  copySend: false,
+  retrieve: false,
+  urge: 'inherit',
+  avoidSelf: false,
+  revoke: false,
+  jump: true,
+} as const;
+const IDP_EMPLOYEE_ACTIONS = { ...IDP_ACTIONS, reject: false } as const;
+const IDP_TUTOR_ACTIONS = { ...IDP_ACTIONS, reject: true, rejectToPrevious: true } as const;
+
 type DraftInput = Omit<
   ProcessDefinition,
   'exceptionAdminUserId' | 'urgeEnabled' | 'groupName' | 'hideRecordsFromInitiator'
@@ -178,6 +195,50 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       nodes: [node('department_head', '部门负责人审批', 'latest_record_department_head', { formFields: [] })],
     }),
   },
+  // IDP-R1：预置三条子流程审批流程（制定计划 / 中期回顾 / 期末回顾），节点照原站 W-114 节点链：
+  // 发展计划 - 员工本人 → 发展计划 - 指导人（K-09）。
+  ...(
+    [
+      ['idp_plan', 'StandardIdpPlan', '标准制定计划流程', 'set_goals', '制定发展目标', 'approve_plan', '审批发展计划'],
+      [
+        'idp_mid_review',
+        'StandardIdpMidReview',
+        '标准中期回顾流程',
+        'employee_mid',
+        '员工中期回顾',
+        'tutor_mid',
+        '指导人中期回顾',
+      ],
+      [
+        'idp_final_review',
+        'StandardIdpFinalReview',
+        '标准期末回顾流程',
+        'employee_final',
+        '员工期末回顾',
+        'tutor_final',
+        '指导人期末回顾',
+      ],
+    ] as const
+  ).map(([approvalType, code, name, employeeKey, employeeName, tutorKey, tutorName]): PresetProcess => ({
+    presetKey: `standard_${approvalType}`,
+    code,
+    approvalType,
+    definition: draft({
+      name,
+      description: '出厂预置：员工 → 指导人两个节点，发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition(approvalType),
+      nodes: [
+        // DEC-318：处理人为空照原站“无操作”（K-38）；节点开关见 IDP_ACTIONS（K-37 / K-39）
+        node(employeeKey, employeeName, 'idp_employee', {
+          formFields: [],
+          noAssignee: 'none',
+          actions: IDP_EMPLOYEE_ACTIONS,
+        }),
+        node(tutorKey, tutorName, 'idp_tutor', { formFields: [], noAssignee: 'none', actions: IDP_TUTOR_ACTIONS }),
+      ],
+    }),
+  })),
   {
     presetKey: 'standard_personnel_change',
     code: 'StandardPersonnelChange',

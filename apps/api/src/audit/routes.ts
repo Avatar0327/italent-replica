@@ -33,6 +33,7 @@ import type { Context, Hono } from 'hono';
 import { requirePermission } from '../authorization.js';
 import { AppError } from '../errors.js';
 import type { TenantRouteDeps } from '../routes.js';
+import { survey360FailureVisibility } from '../modules/survey360/access.js';
 import { type TenantContext, type TenantEnv, tenantOf } from '../tenant-context.js';
 import {
   afterCursor,
@@ -156,6 +157,8 @@ function registerTaskLogs(router: Hono<TenantEnv>, deps: TenantRouteDeps): void 
   router.get(`${BASE}/command-failures`, async (c) => {
     const ctx = await auditContext(c, deps);
     const filters = failureFilters(c);
+    // R3-T03：360 相关命令的失败按 360 身份裁剪（匿名作答的请求来源不对无 360 权限者公开）
+    filters.push(await survey360FailureVisibility(deps, ctx, sql`${auditCommandFailures.path}`));
     return c.json(
       await withTenant(deps.db, ctx.tenantId, async (tx) => {
         const window = queryWindow(c, deps.clock(), ctx.timezone, await tenantRetention(tx, ctx.tenantId));

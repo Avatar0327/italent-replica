@@ -201,7 +201,7 @@ describe('PR #75 第四轮', () => {
   it('N3 平台重复邮箱建用户：一次请求恰好一条平台失败审计', async () => {
     const api = tenantApi(w.db, { authorize: undefined, clock: () => new Date(NOW) });
     const operator = await seedOperator(w.db, 'aud-r4-ops');
-    const email = `aud-r4-${randomUUID().slice(0, 8)}@example.com`;
+    const email = `aud-r4-${randomUUID()}@example.com`;
     const create = (commandId: string) =>
       api.request('POST', `${PLATFORM}/users`, {
         user: operator.id,

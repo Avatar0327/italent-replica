@@ -89,3 +89,5 @@ export {
   startAuditRetentionScheduler,
 } from './audit/retention.js';
 export { type AuditFallbackRecord, setAuditFallbackSink } from './audit/failures.js';
+// R3-T03：Lastest360Cent 的 360 数据源（盘点、继任等使用方按查看人范围预读）
+export { loadSurvey360Port, type Survey360PortInput } from './modules/survey360/port.js';

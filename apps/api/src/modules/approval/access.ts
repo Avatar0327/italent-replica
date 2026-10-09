@@ -11,6 +11,7 @@ import { sql, type Tx, withTenant } from '@italent/db';
 import {
   APPROVAL_INSTANCE_OBJECT,
   APPROVAL_OBJECTS,
+  IDP_OBJECTS,
   APPROVAL_PROCESS_OBJECT,
   buttonResource,
   mayResubmit,
@@ -36,6 +37,8 @@ import { personOfUser } from './resolver.js';
 import { loadInstance } from './store.js';
 
 for (const object of APPROVAL_OBJECTS) registerObjectDefinition(object);
+
+const IDP_PLAN_OBJECT = IDP_OBJECTS.plan.code;
 
 type ProcessButton =
   'create' | 'installPresets' | 'simulateByObject' | 'update' | 'newVersion' | 'publish' | 'discard' | 'simulate';
@@ -109,16 +112,20 @@ export async function requireWithdrawRight(deps: TenantRouteDeps, ctx: TenantCon
     await requireSelfServiceSubmit(deps, ctx);
     return;
   }
-  const objectCode = instance.businessType === 'contract' ? CONTRACT_OBJECT : MODULE_OBJECTS.employmentRecord.code;
+  // 发展计划（DEC-318 K-39）：所有者撤回按计划的编辑权、编辑按钮与 IDP 范围复核（IDP 没有单独的撤回按钮）
+  const objectCode =
+    instance.businessType === 'contract'
+      ? CONTRACT_OBJECT
+      : instance.businessType === 'idp'
+        ? IDP_PLAN_OBJECT
+        : MODULE_OBJECTS.employmentRecord.code;
+  const withdrawButton =
+    { contract: 'withdraw', idp: 'update' }[instance.businessType as string] ?? 'Employment.Withdraw';
   await requireObjectWrite(deps.authorize, ctx, { objectCode, operation: 'update', payload: {} });
   await requirePermission(deps.authorize, {
     ...ctx,
     action: 'object.button',
-    resource: buttonResource(
-      objectCode,
-      instance.businessType === 'contract' ? 'withdraw' : 'Employment.Withdraw',
-      'detail',
-    ),
+    resource: buttonResource(objectCode, withdrawButton, 'detail'),
   });
   const scope = await resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
   const predicate = instanceScopeSql(ctx, scope);
@@ -132,8 +139,28 @@ export async function requireWithdrawRight(deps: TenantRouteDeps, ctx: TenantCon
 }
 
 /**
+ * 发展计划所有者的重提（DEC-113 / DEC-318 K-39，PR #115 第 3 轮 R2-1）：与撤回同一口径——计划编辑权、编辑按钮
+ * （IDP 没有单独的撤回 / 重提按钮）与 IDP 范围（K-50），在调用方事务内按当前授权解析。
+ */
+async function requireIdpOwnerRight(deps: TenantRouteDeps, ctx: TenantContext, tx: Tx, instanceId: string) {
+  const authorize = authorizeInTransaction(deps.authorize, tx);
+  await requireObjectWrite(authorize, ctx, { objectCode: IDP_PLAN_OBJECT, operation: 'update', payload: {} });
+  await requirePermission(authorize, {
+    ...ctx,
+    action: 'object.button',
+    resource: buttonResource(IDP_PLAN_OBJECT, 'update', 'detail'),
+  });
+  const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, IDP_PLAN_OBJECT, `${IDP_PLAN_OBJECT}.list`);
+  const [covered] = rowsOf(
+    await tx.execute(sql`SELECT 1 FROM approval_instances i WHERE i.tenant_id=${ctx.tenantId}
+      AND i.id=${instanceId}::uuid AND ${instanceScopeSql(ctx, scope)}`),
+  );
+  if (!covered) throw approvalError('FORBIDDEN', 'APPROVAL_SCOPE_DENIED', '该申请已不在您的数据范围内');
+}
+
+/**
  * DEC-113 / F3：重提只由原发起人进行，并按首次提交复核其当前权限——员工子集变更须仍持有自助申请按钮，且账号仍绑定
- * 异动本人（自助申请的范围就是本人）。任职申请经任职模块的“提交”重提，那里按任职权限校验，审批侧命令直接拒绝。
+ * 异动本人（自助申请的范围就是本人）；发展计划按所有者当前的计划编辑权、按钮与 IDP 范围。任职申请经任职模块的“提交”重提，那里按任职权限校验，审批侧命令直接拒绝。
  */
 export async function requireResubmitRight(
   deps: TenantRouteDeps,
@@ -149,6 +176,11 @@ export async function requireResubmitRight(
   const { instance, person } = transaction ? await read(transaction) : await withTenant(deps.db, ctx.tenantId, read);
   if (!mayResubmit(instance.initiatorUserId, ctx.userId)) {
     throw approvalError('FORBIDDEN', 'APPROVAL_NOT_INITIATOR', '只有原发起人可以重新提交');
+  }
+  if (instance.businessType === 'idp') {
+    const check = (tx: Tx) => requireIdpOwnerRight(deps, ctx, tx, instanceId);
+    await (transaction ? check(transaction) : withTenant(deps.db, ctx.tenantId, check));
+    return;
   }
   if (instance.businessType === 'contract') {
     corrections = parse(fieldsSchema, corrections);
@@ -201,11 +233,22 @@ export async function adminScope(
   for (const button of buttons)
     allowed ||= await hasButton(deps, ctx, button, button === 'adminLogs' ? 'list' : 'detail');
   if (!allowed) return null;
-  const objectCode = MODULE_OBJECTS.employmentRecord.code;
-  const scope = await resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
-  const contractScope = await resolveModuleScope(deps, ctx, undefined, CONTRACT_OBJECT, `${CONTRACT_OBJECT}.list`);
-  return sql`((i.business_type='contract' AND ${instanceScopeSql(ctx, contractScope)})
-    OR (i.business_type<>'contract' AND ${instanceScopeSql(ctx, scope)}))`;
+  return byBusinessScope(ctx, (objectCode) =>
+    resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`),
+  );
+}
+
+/**
+ * 各业务实例按所属应用的数据范围判断（DEC-043）：合同按合同对象，发展计划按 IDP 应用（计划对象，K-50：员工当前任职
+ * 在范围内），其余（任职、员工子集）按任职记录。IDP 不能落进任职记录的 TenantBase 范围（PR #115 第 2 轮 P1）。
+ */
+async function byBusinessScope(ctx: TenantContext, resolve: (objectCode: string) => Promise<ModuleScope>) {
+  const employment = await resolve(MODULE_OBJECTS.employmentRecord.code);
+  const contract = await resolve(CONTRACT_OBJECT);
+  const idp = await resolve(IDP_PLAN_OBJECT);
+  return sql`((i.business_type='contract' AND ${instanceScopeSql(ctx, contract)})
+    OR (i.business_type='idp' AND ${instanceScopeSql(ctx, idp)})
+    OR (i.business_type NOT IN ('contract','idp') AND ${instanceScopeSql(ctx, employment)}))`;
 }
 
 /**
@@ -213,15 +256,7 @@ export async function adminScope(
  * 与管理员范围同一对象与页面（任职记录列表），但不要求管理员按钮——这是系统自动接管，不是该成员的操作。
  */
 export async function memberInstanceScope(deps: TenantRouteDeps, ctx: TenantContext, tx: Tx): Promise<SQL> {
-  const objectCode = MODULE_OBJECTS.employmentRecord.code;
-  const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, objectCode, `${objectCode}.list`);
-  const contractScope = await resolveModuleScopeInTransaction(
-    deps,
-    ctx,
-    tx,
-    CONTRACT_OBJECT,
-    `${CONTRACT_OBJECT}.list`,
+  return byBusinessScope(ctx, (objectCode) =>
+    resolveModuleScopeInTransaction(deps, ctx, tx, objectCode, `${objectCode}.list`),
   );
-  return sql`((i.business_type='contract' AND ${instanceScopeSql(ctx, contractScope)})
-    OR (i.business_type<>'contract' AND ${instanceScopeSql(ctx, scope)}))`;
 }

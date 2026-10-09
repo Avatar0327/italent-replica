@@ -25,7 +25,13 @@ import type { IdentityResolver } from '../../identity.js';
 import { etag, ifMatch, parseBody } from '../permission/http.js';
 import { LICENSE_TYPE } from '../permission/licenses.js';
 import { operatorOf, platformContext, type PlatformEnv } from './context.js';
-import { changeTenantLifecycle, issueLicense, requireTenant, tenantBalances } from './operations.js';
+import {
+  backfillStandardProfiles,
+  changeTenantLifecycle,
+  issueLicense,
+  requireTenant,
+  tenantBalances,
+} from './operations.js';
 import { provisionTenant, tenantView } from './provisioning.js';
 import { policed, useMiddleware } from '../../route-policy/index.js';
 import { PLATFORM_POLICIES } from './policy.js';
@@ -128,6 +134,13 @@ export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: 
     const tenant = tenantView(await changeTenantLifecycle(db, { tenantId, status, expectedRevision }, meta(c)));
     etag(c, tenant.revision);
     return c.json(tenant);
+  });
+
+  // DEC-289③：存量租户回补开通后新增的标准身份（只补缺失编码，手工同编码保留，见 permission/standard-profiles.ts）
+  router.post('/api/platform/tenants/:tenantId/standard-profiles/backfill', async (c) => {
+    const tenantId = tenantParam(c);
+    await parseBody(c, z.strictObject({}));
+    return c.json(await backfillStandardProfiles(db, tenantId, meta(c), clock()));
   });
 
   router.get('/api/platform/tenants/:tenantId/licenses', async (c) =>

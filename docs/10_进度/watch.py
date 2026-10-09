@@ -46,7 +46,7 @@ def snapshot():
             elif opus and ("审查原文" in b or "结论" in b[:200]):
                 opus = ""
         lc = p["commits"][-1]["committedDate"] if p["commits"] else ""
-        handled = any(c["createdAt"] > lc and any(w in c.get("body", "") for w in ("审查已发起", "排队待审", "修改清单", "审查原文", "勿改动", "待合并", "已发起"))
+        handled = any(c["createdAt"] > lc and any(w in c.get("body", "") for w in ("审查已发起", "排队待审", "修改清单", "清单补充", "审查原文", "勿改动", "待合并", "已发起"))
                       for c in p["comments"])
         done_at = ""  # 开发方贴“开发完成”（DEC：开发完成明确报到）且其后尚无审查发起 / 排队
         for c in p["comments"]:
@@ -55,6 +55,8 @@ def snapshot():
                 done_at = c["createdAt"]
             elif done_at and any(w in b for w in ("审查已发起", "排队待审", "已发起")):
                 done_at = ""
+        if done_at and handled:  # 审查发起与“开发完成”几乎同时贴（同一 head 已发起）时不再报
+            done_at = ""
         out[str(p["number"])] = {"opus": opus, "handled": handled, "done": done_at, "t": p["title"][:40], "head": p["headRefOid"][:7], "draft": p["isDraft"], "ci": ci,
                                  "commit": last_commit, "comment": last_comment, "nc": len(p["comments"])}
     return out
@@ -81,8 +83,11 @@ def codex_results():
             continue  # 子代理线程，不算结论（只认主线程）
         n = txt.count('"task_complete"')
         # PR 识别：先认 PR 链接；codex exec 会话常不带链接，再认首条真实用户提问（跳过 AGENTS.md / 环境注入）里的 “PR #n / #n” 与任务编号
-        m = re.search(r"italent-replica/pull/(\d+)", txt)
-        pr = m.group(1) if m else ""
+        # 取出现次数最多的 PR 链接（开发会话会顺带引用前置 PR，只认第一条会认错，如 F-049 被认成 #113）
+        cwd0 = re.search(r'"cwd":"([^"]*)"', txt.split("\n", 1)[0])
+        mw = re.search(r"/wt-(\d+)$", cwd0.group(1)) if cwd0 else None  # 审查会话的工作目录 wt-NNN 最可靠
+        links = re.findall(r"italent-replica/pull/(\d+)", txt)
+        pr = mw.group(1) if mw else (max(set(links), key=links.count) if links else "")
         if not pr:
             prompt = ""
             for line in txt.split("\n")[:400]:

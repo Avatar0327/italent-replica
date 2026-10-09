@@ -442,6 +442,55 @@
       "when": 1791375277994,
       "tag": "0062_employee_status",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1791428027740,
+      "tag": "0063_idp_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1791443498372,
+      "tag": "0064_talent_standard",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1791462664433,
+      "tag": "0065_salty_hiroim",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1791462737438,
+      "tag": "0066_f038_model_image_isolation",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1791475620402,
+      "tag": "0067_survey360",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1791475623782,
+      "tag": "0068_survey360_isolation",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1791481741509,
+      "tag": "0069_idp_plans",
+      "breakpoints": true
     }
   ]
 }
