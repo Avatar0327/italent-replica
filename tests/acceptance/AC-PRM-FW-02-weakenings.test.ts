@@ -94,6 +94,30 @@ describe('AC-PRM-FW-02 审查复现的四个弱化都被报出', () => {
   });
 });
 
+describe('AC-PRM-FW-02 必需准入分支不能移进 optional（实现审第 2 轮 P2-1 残项）', () => {
+  it('IDP 任务发放：必需的计划查看分支从 all.of 移进 optional → 报出', () => {
+    const base = route('POST /api/tenant/idp/plans/tasks/issue');
+    const policy = combinator(base.policy);
+    expect(policy.kind).toBe('all');
+    const index = policy.of.findIndex((branch) => JSON.stringify(branch).includes('"IDP.Idp"'));
+    expect(index).toBeGreaterThanOrEqual(0);
+    const moved: RoutePolicy = {
+      ...policy,
+      of: policy.of.filter((_b, i) => i !== index),
+      optional: { ...(policy.optional ?? {}), planView: policy.of[index]! },
+    } as RoutePolicy;
+    const findings = compareDeclarations(frozen, [withPolicy(base, moved)]);
+    expect(reported(findings), describeFindings(findings)).toBe(true);
+  });
+
+  it('360 评价者导入：员工信息查看只在 sync=true 时校验，登记为条件守卫而不是无条件 AND', () => {
+    const policy = route('POST /api/tenant/survey360/activities/:id/appraisers/import').policy;
+    expect(JSON.stringify(policy)).toContain('"survey360.syncEmployees"');
+    const admission = policy.kind === 'all' ? policy.of : [policy];
+    expect(JSON.stringify(admission)).not.toContain('"TenantBase.EmployeeInformation"');
+  });
+});
+
 describe('AC-PRM-FW-02 独立登记的结构弱化：全部真实声明逐个施加，每个都被报出', () => {
   for (const kind of WEAKENING_KINDS) {
     it(`${kind}`, () => {

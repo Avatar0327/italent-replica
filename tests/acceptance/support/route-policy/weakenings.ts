@@ -2,12 +2,14 @@
  * 必须施加的弱化反例（F-039 PR-A 实现审第 1 轮 P2-1）：按声明树的**结构**生成，不经比较器、不读 features，
  * 生成的每一个都必须被比较器报出（WEAKER:* / MISMATCH:*）。与 mutate.ts 的突变套件互补：突变套件按基准观测到
  * 的维度逐类削弱；这里覆盖组合与绑定类削弱——删 all 的分支、all → any、any 的分支降为普通成员、
- * 关系降为普通成员、动态选择器换成别的域。
+ * 关系降为普通成员、动态选择器换成别的域、必需准入分支移进 optional（实现审第 2 轮 P2-1 残项：可选分支只决定
+ * 附加披露，不能顶替必需授权）。
  */
 import type { ManifestRoute, RoutePolicy } from '@italent/api';
 import type { ObservedContract } from './contract.js';
 
-export type WeakeningKind = 'all-drop-branch' | 'all→any' | 'any-branch→member' | 'relation→member' | 'selector→domain';
+export type WeakeningKind =
+  'all-drop-branch' | 'all→any' | 'any-branch→member' | 'relation→member' | 'selector→domain' | 'required→optional';
 
 export interface Weakening {
   readonly kind: WeakeningKind;
@@ -22,6 +24,7 @@ export const WEAKENING_KINDS: readonly WeakeningKind[] = [
   'any-branch→member',
   'relation→member',
   'selector→domain',
+  'required→optional',
 ];
 
 type Node = Record<string, unknown>;
@@ -69,6 +72,24 @@ function replaceAt(route: ManifestRoute, at: string, next: (node: Node) => Node)
   return { ...route, policy: root as unknown as RoutePolicy };
 }
 
+/** 把 all 的第 i 个分支从 of 移进同一节点的 optional（其余登记不变）。 */
+function moveToOptional(node: Node, i: number): void {
+  const [moved] = (node['of'] as Node[]).splice(i, 1);
+  node['optional'] = { ...((node['optional'] as Node | undefined) ?? {}), [`moved${i}`]: moved };
+}
+
+/** 整个准入降为普通成员，原准入整体挪进 optional（write 留在根上）。 */
+function admissionToOptional(policy: Node): Node {
+  const { write, optional, ...admission } = policy;
+  return {
+    kind: 'member',
+    reason: '弱化反例',
+    fields: { mode: 'none', reason: '弱化反例' },
+    ...(write ? { write } : {}),
+    optional: { ...((optional as Node | undefined) ?? {}), moved: admission },
+  };
+}
+
 function isSelector(value: unknown): value is Node {
   return !!value && typeof value === 'object' && 'from' in value;
 }
@@ -111,6 +132,16 @@ export function weakeningsOf(route: ManifestRoute, contract: ObservedContract): 
         at,
         edit(route, at, (n) => (n['kind'] = 'any')),
       );
+      for (let i = 0; i < branches.length; i++) {
+        push(
+          'required→optional',
+          `${at}of[${i}]`,
+          edit(route, at, (n) => moveToOptional(n, i)),
+        );
+      }
+    }
+    if (at === '' && !['member', 'public', 'own'].includes(node['kind'] as string)) {
+      push('required→optional', 'root', replaceAt(route, '', admissionToOptional));
     }
     if (node['kind'] === 'any' && branches) {
       for (let i = 0; i < branches.length; i++) {
