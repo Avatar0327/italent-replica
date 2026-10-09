@@ -3,7 +3,13 @@
  * 字段权限与数据范围在事务外解析（授权器自带事务），命令内只做有界读写。
  */
 import { foreignVisibility, viewableWithForeign } from './foreign-fields.js';
-import { pgErrorCode, registerMembershipRevokeHook, type Tx, withTenant } from '@italent/db';
+import {
+  pgErrorCode,
+  registerMembershipPrelockHook,
+  registerMembershipRevokeHook,
+  type Tx,
+  withTenant,
+} from '@italent/db';
 import {
   ADD_SIGN_TYPES,
   APPROVAL_PROCESS_OBJECT,
@@ -29,6 +35,7 @@ import { requireObjectWrite } from '../permission/object-write.js';
 import { registerPersonnelApprovalHooks } from '../personnel/approval-hooks.js';
 import {
   adminScope,
+  adminTargetScope,
   isProcessAdmin,
   requireProcessButton,
   requireProcessView,
@@ -76,7 +83,13 @@ import {
 } from './disclosure.js';
 import { copySend, retrieveTask } from './node-actions.js';
 import { startOrResume } from './engine.js';
-import { discloseHandover, handoverExceptionAdmin, takeOverOnDeactivation, type HandoverResult } from './handover.js';
+import {
+  discloseHandover,
+  handoverExceptionAdmin,
+  prelockOnDeactivation,
+  takeOverOnDeactivation,
+  type HandoverResult,
+} from './handover.js';
 import { listAdminLogs, listInstances, listNotifications, listTodos } from './queries.js';
 import { simulateByObject, simulateProcess } from './simulation.js';
 import {
@@ -248,6 +261,8 @@ function registerHooks(deps: TenantRouteDeps) {
   const withFields = <T extends ApprovalContext>(ctx: T): T => ({ ...ctx, fields: fieldAccess(deps, ctx) });
   // DEC-123：成员停用（平台撤销成员关系）的同一事务内，自动转派其剩余在途异常待办。
   registerMembershipRevokeHook((tx, revocation) => takeOverOnDeactivation(tx, deps, revocation));
+  // F-069：全局停用在锁账号行之前按全局锁序预取接管要用的员工 / 业务 / 组织锁。
+  registerMembershipPrelockHook((tx, revocation) => prelockOnDeactivation(tx, deps, revocation));
   registerEmploymentApprovalHooks({
     submitted: async (tx, ctx, businessId) => {
       await startOrResume(tx, withFields(ctx), { businessType: 'employment', businessId });
@@ -606,7 +621,11 @@ function registerInstanceRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) 
         ...(body.toUserId ? { toUserId: body.toUserId } : {}),
         ...(body.toNodeKey ? { toNodeKey: body.toNodeKey } : {}),
       } as const;
-      const result = await command(c, deps, ctx, input, (tx, context) => adminAct(tx, context, input, scopeSql));
+      // F-067：转交 / 改派目标须在操作人对该业务对象的管理范围内（事务外解析范围，事务内按实例业务类型判断）
+      const targetScope = await adminTargetScope(deps, ctx);
+      const result = await command(c, deps, ctx, input, (tx, context) =>
+        adminAct(tx, context, input, scopeSql, { targetScope }),
+      );
       return respondOutcome(c, deps, result);
     });
   }
