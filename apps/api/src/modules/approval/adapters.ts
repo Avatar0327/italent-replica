@@ -9,6 +9,7 @@ import { lockTransferBusiness } from '../employment/transfer-locks.js';
 import { lockEstablishment } from '../establishment/store.js';
 import { contractAdapter } from '../contracts/adapter.js';
 import { idpAdapter } from '../idp/approval-adapter.js';
+import { talentReviewAdapter } from '../talent-review/approval-adapter.js';
 import { sql, type Tx } from '@italent/db';
 import {
   ageOn,
@@ -40,7 +41,7 @@ import { loadSubset } from '../personnel/subsets.js';
 import { AppError } from '../../errors.js';
 import { approvalError, rowsOf, type ApprovalContext, type Row } from './context.js';
 
-export type BusinessType = 'employment' | 'personnel_change' | 'contract' | 'idp';
+export type BusinessType = 'employment' | 'personnel_change' | 'contract' | 'idp' | 'talent_review';
 
 export interface BusinessSnapshot {
   readonly approvalType: ApprovalTypeCode;
@@ -464,4 +465,6 @@ export const ADAPTERS: Readonly<Record<BusinessType, BusinessAdapter>> = {
   employment: employmentAdapter,
   personnel_change: personnelAdapter,
   idp: idpAdapter,
+  // R3-T04 C-08：PR-A 占位（无发起入口），PR-D 接入盘点结果审批（集合审批）
+  talent_review: talentReviewAdapter,
 };

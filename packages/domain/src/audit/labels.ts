@@ -3,6 +3,13 @@
  * 字段中文名照搬原站任职记录字段（docs/02_业务建模/07 §3.1、15），未登记的字段按编码原样显示，不猜中文名。
  */
 
+import {
+  TALENT_REVIEW_APP_LABEL,
+  TALENT_REVIEW_OBJECT_LABELS,
+  TALENT_REVIEW_OBJECTS,
+  type TalentReviewObject,
+} from '../talent-review/catalog.js';
+
 export interface AuditObjectMeta {
   readonly label: string;
   readonly app: string;
@@ -17,7 +24,16 @@ const IDP = '个人发展计划';
 const QUALIFICATION = '任职资格';
 const EVALUATION = '人才评定';
 
+/** R3-T04 人才盘点：对象中文名随领域目录登记，后续 PR 不再改本文件。 */
+const TALENT_REVIEW_META = Object.fromEntries(
+  (Object.keys(TALENT_REVIEW_OBJECTS) as TalentReviewObject[]).map((key) => [
+    TALENT_REVIEW_OBJECTS[key].code,
+    { label: TALENT_REVIEW_OBJECT_LABELS[key], app: TALENT_REVIEW_APP_LABEL },
+  ]),
+);
+
 const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
+  ...TALENT_REVIEW_META,
   'job-sequence-sync': { label: '任职序列同步任务', app: ORG_PEOPLE },
   'employment-record': { label: '任职记录', app: ORG_PEOPLE },
   'employment-business': { label: '任职业务', app: ORG_PEOPLE },

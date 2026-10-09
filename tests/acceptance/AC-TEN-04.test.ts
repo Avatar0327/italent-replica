@@ -161,6 +161,8 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
         'standard_360_advanced_admin',
         'standard_360_general_admin',
         'standard_talent_admin',
+        // R3-T04 设计 §6.1（C-06）：盘点管理员（人才盘点）
+        'standard_talent_review_admin',
       ].sort(),
     );
     expect(items.every((p) => p.source === 'standard')).toBe(true);
