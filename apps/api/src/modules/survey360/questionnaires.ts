@@ -555,126 +555,132 @@ async function auditQuestionnaire(
 
 const QUESTIONNAIRES = '/questionnaires';
 const TEMPLATES = '/questionnaire-templates';
+const SAVE_AS_TEMPLATE = `${QUESTIONNAIRES}/:id/save-as-template`;
+const INSTANTIATE = `${TEMPLATES}/:id/instantiate`;
 
 export function registerQuestionnaireRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  for (const template of [false, true]) {
-    registerQuestionnaireReads(module, deps, template);
-    registerQuestionnaireUpdate(module, deps, template);
-    registerQuestionnaireDelete(module, deps, template);
-  }
+  registerQuestionnaireReads(module, deps);
+  registerQuestionnaireUpdate(module, deps);
+  registerQuestionnaireDelete(module, deps);
   registerQuestionnaireEnable(module, deps);
   registerTemplateCopies(module, deps);
 }
 
 const VIEW = { object: 'questionnaire' } as const;
 
-function registerQuestionnaireReads(module: Hono<TenantEnv>, deps: TenantRouteDeps, template: boolean): void {
-  const base = template ? TEMPLATES : QUESTIONNAIRES;
-  module.get(base, (c) =>
-    read(c, deps, VIEW, async (tx) => ({
-      items: (
-        await tx
-          .select()
-          .from(survey360Questionnaires)
-          .where(and(eq(survey360Questionnaires.deleted, false), eq(survey360Questionnaires.template, template)))
-          .orderBy(survey360Questionnaires.createdAt)
-          .limit(500)
-      ).map((r) => ({
-        id: r.id,
-        name: r.name,
-        type: r.type,
-        status: r.status,
-        createdBy: r.createdBy,
-        revision: r.revision,
+function registerQuestionnaireReads(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  // 套卷与套卷模板同一套处理函数；路径写成字面量数组，F-039 静态扫描按注册处求值
+  for (const base of [QUESTIONNAIRES, TEMPLATES]) {
+    const template = base === TEMPLATES;
+    module.get(base, (c) =>
+      read(c, deps, VIEW, async (tx) => ({
+        items: (
+          await tx
+            .select()
+            .from(survey360Questionnaires)
+            .where(and(eq(survey360Questionnaires.deleted, false), eq(survey360Questionnaires.template, template)))
+            .orderBy(survey360Questionnaires.createdAt)
+            .limit(500)
+        ).map((r) => ({
+          id: r.id,
+          name: r.name,
+          type: r.type,
+          status: r.status,
+          createdBy: r.createdBy,
+          revision: r.revision,
+        })),
       })),
-    })),
-  );
-  module.get(`${base}/:id`, (c) =>
-    read(c, deps, VIEW, async (tx) => questionnaireView(await loadQuestionnaire(tx, uuidParam(c), false, template))),
-  );
-  module.post(base, (c) =>
-    write(
-      c,
-      deps,
-      createSchema,
-      async (tx, ctx, input) => {
-        requireNewObject(ctx);
-        const [row] = await tx
-          .insert(survey360Questionnaires)
-          .values({
-            tenantId: ctx.tenantId,
-            name: input.name,
-            type: input.type,
-            scoreMethod: input.scoreMethod ?? 'weighted_average',
-            guide: input.guide ?? null,
-            excellentLinePercent: input.excellence ? String(input.excellence.linePercent) : null,
-            excellentMaxRate: input.excellence ? String(input.excellence.maxRate) : null,
-            template,
-            createdBy: ctx.userId,
-          })
-          .returning();
-        const loaded = await loadQuestionnaire(tx, row!.id, false, template);
-        await auditQuestionnaire(tx, ctx, 'survey360.questionnaire.create', null, loaded);
-        return questionnaireView(loaded);
-      },
-      { need: { object: 'questionnaire', operation: 'create' }, fields: 'body', status: 201 },
-    ),
-  );
+    );
+    module.get(`${base}/:id`, (c) =>
+      read(c, deps, VIEW, async (tx) => questionnaireView(await loadQuestionnaire(tx, uuidParam(c), false, template))),
+    );
+    module.post(base, (c) =>
+      write(
+        c,
+        deps,
+        createSchema,
+        async (tx, ctx, input) => {
+          requireNewObject(ctx);
+          const [row] = await tx
+            .insert(survey360Questionnaires)
+            .values({
+              tenantId: ctx.tenantId,
+              name: input.name,
+              type: input.type,
+              scoreMethod: input.scoreMethod ?? 'weighted_average',
+              guide: input.guide ?? null,
+              excellentLinePercent: input.excellence ? String(input.excellence.linePercent) : null,
+              excellentMaxRate: input.excellence ? String(input.excellence.maxRate) : null,
+              template,
+              createdBy: ctx.userId,
+            })
+            .returning();
+          const loaded = await loadQuestionnaire(tx, row!.id, false, template);
+          await auditQuestionnaire(tx, ctx, 'survey360.questionnaire.create', null, loaded);
+          return questionnaireView(loaded);
+        },
+        { need: { object: 'questionnaire', operation: 'create' }, fields: 'body', status: 201 },
+      ),
+    );
+  }
 }
 
-function registerQuestionnaireUpdate(module: Hono<TenantEnv>, deps: TenantRouteDeps, template: boolean): void {
-  module.put(`${template ? TEMPLATES : QUESTIONNAIRES}/:id`, (c) => {
-    const id = uuidParam(c);
-    const options = {
-      need: { object: 'questionnaire', operation: 'update' },
-      guard: editableBy(deps, tenantOf(c), id, false, template),
-      // 整卷保存的 content 写的是角色、量表、指标、题目四个字段
-      fields: ({ content, ...header }: z.infer<typeof updateSchema>) => [
-        ...Object.keys(header),
-        ...(content ? ['roles', 'scales', 'dimensions', 'questions'] : []),
-      ],
-    } as const;
-    return write(
-      c,
-      deps,
-      updateSchema,
-      async (tx, ctx, input) => {
-        const current = await loadQuestionnaire(tx, id, true, template);
-        requireRevision(current.row.revision, ctx.expectedRevision);
-        if (current.row.status === 'used' && (await enabledActivitiesUsing(tx, id)) > 0)
-          fail('CONFLICT', '用到该套卷的活动处于启用状态，停用后才能修改', 'ACTIVITY_ENABLED');
-        if (input.content) {
-          checkReferences(input.content, current.row.type);
-          if (current.row.status === 'used') await updateInPlace(tx, current, input.content);
-          else await replaceContent(tx, ctx, id, input.content);
-        }
-        // 已使用套卷改权重 / 计分方式：用到它的活动计分组成变了，旧报告失效（第 2 轮 P2-7）
-        if (current.row.status === 'used' && (input.content || input.scoreMethod !== undefined))
-          await markQuestionnaireChanged(tx, id);
-        await tx
-          .update(survey360Questionnaires)
-          .set({
-            ...(input.name !== undefined ? { name: input.name } : {}),
-            ...(input.scoreMethod !== undefined ? { scoreMethod: input.scoreMethod } : {}),
-            ...(input.guide !== undefined ? { guide: input.guide } : {}),
-            ...(input.excellence !== undefined
-              ? {
-                  excellentLinePercent: input.excellence ? String(input.excellence.linePercent) : null,
-                  excellentMaxRate: input.excellence ? String(input.excellence.maxRate) : null,
-                }
-              : {}),
-            revision: current.row.revision + 1,
-          })
-          .where(eq(survey360Questionnaires.id, id));
-        const saved = await loadQuestionnaire(tx, id, false, template);
-        // 已启用 / 已使用的套卷修改后仍须满足启用条件
-        if (saved.row.status !== 'draft') issuesFail(survey360.validateQuestionnaire(saved.model));
-        await auditQuestionnaire(tx, ctx, 'survey360.questionnaire.update', questionnaireView(current), saved);
-        return questionnaireView(saved);
-      },
-      options,
-    );
-  });
+function registerQuestionnaireUpdate(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  for (const base of [QUESTIONNAIRES, TEMPLATES]) {
+    const template = base === TEMPLATES;
+    module.put(`${base}/:id`, (c) => {
+      const id = uuidParam(c);
+      const options = {
+        need: { object: 'questionnaire', operation: 'update' },
+        guard: editableBy(deps, tenantOf(c), id, false, template),
+        // 整卷保存的 content 写的是角色、量表、指标、题目四个字段
+        fields: ({ content, ...header }: z.infer<typeof updateSchema>) => [
+          ...Object.keys(header),
+          ...(content ? ['roles', 'scales', 'dimensions', 'questions'] : []),
+        ],
+      } as const;
+      return write(
+        c,
+        deps,
+        updateSchema,
+        async (tx, ctx, input) => {
+          const current = await loadQuestionnaire(tx, id, true, template);
+          requireRevision(current.row.revision, ctx.expectedRevision);
+          if (current.row.status === 'used' && (await enabledActivitiesUsing(tx, id)) > 0)
+            fail('CONFLICT', '用到该套卷的活动处于启用状态，停用后才能修改', 'ACTIVITY_ENABLED');
+          if (input.content) {
+            checkReferences(input.content, current.row.type);
+            if (current.row.status === 'used') await updateInPlace(tx, current, input.content);
+            else await replaceContent(tx, ctx, id, input.content);
+          }
+          // 已使用套卷改权重 / 计分方式：用到它的活动计分组成变了，旧报告失效（第 2 轮 P2-7）
+          if (current.row.status === 'used' && (input.content || input.scoreMethod !== undefined))
+            await markQuestionnaireChanged(tx, id);
+          await tx
+            .update(survey360Questionnaires)
+            .set({
+              ...(input.name !== undefined ? { name: input.name } : {}),
+              ...(input.scoreMethod !== undefined ? { scoreMethod: input.scoreMethod } : {}),
+              ...(input.guide !== undefined ? { guide: input.guide } : {}),
+              ...(input.excellence !== undefined
+                ? {
+                    excellentLinePercent: input.excellence ? String(input.excellence.linePercent) : null,
+                    excellentMaxRate: input.excellence ? String(input.excellence.maxRate) : null,
+                  }
+                : {}),
+              revision: current.row.revision + 1,
+            })
+            .where(eq(survey360Questionnaires.id, id));
+          const saved = await loadQuestionnaire(tx, id, false, template);
+          // 已启用 / 已使用的套卷修改后仍须满足启用条件
+          if (saved.row.status !== 'draft') issuesFail(survey360.validateQuestionnaire(saved.model));
+          await auditQuestionnaire(tx, ctx, 'survey360.questionnaire.update', questionnaireView(current), saved);
+          return questionnaireView(saved);
+        },
+        options,
+      );
+    });
+  }
 }
 
 function registerQuestionnaireEnable(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
@@ -706,44 +712,47 @@ function registerQuestionnaireEnable(module: Hono<TenantEnv>, deps: TenantRouteD
   });
 }
 
-function registerQuestionnaireDelete(module: Hono<TenantEnv>, deps: TenantRouteDeps, template: boolean): void {
-  module.delete(`${template ? TEMPLATES : QUESTIONNAIRES}/:id`, (c) => {
-    const id = uuidParam(c);
-    return write(
-      c,
-      deps,
-      z.object({}).passthrough(),
-      async (tx, ctx) => {
-        const current = await loadQuestionnaire(tx, id, true, template);
-        requireRevision(current.row.revision, ctx.expectedRevision);
-        // E3-R2 / AC-360-09：已使用的套卷不可删除
-        if (current.row.status === 'used') fail('CONFLICT', '已使用的套卷不能删除', 'QUESTIONNAIRE_USED');
-        const [ref] = rows<{ n: number }>(
-          await tx.execute(sql`SELECT count(*)::int AS n FROM survey360_object_questionnaires oq
-          JOIN survey360_objects o ON o.tenant_id = oq.tenant_id AND o.id = oq.object_id AND NOT o.removed
-          WHERE oq.questionnaire_id = ${id}::uuid`),
-        );
-        if (ref!.n > 0) fail('CONFLICT', '套卷已被评价对象引用，不能删除', 'QUESTIONNAIRE_REFERENCED');
-        await tx
-          .update(survey360Questionnaires)
-          .set({ deleted: true, revision: current.row.revision + 1 })
-          .where(eq(survey360Questionnaires.id, id));
-        await audit360(tx, actor(ctx), {
-          action: 'survey360.questionnaire.delete',
-          objectType: 'survey360-questionnaire',
-          objectId: id,
-          before: questionnaireView(current),
-          after: { id, deleted: true },
-        });
-        return { id, deleted: true };
-      },
-      {
-        need: { object: 'questionnaire', operation: 'delete' },
-        fields: 'none',
-        guard: editableBy(deps, tenantOf(c), id, true, template),
-      },
-    );
-  });
+function registerQuestionnaireDelete(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  for (const base of [QUESTIONNAIRES, TEMPLATES]) {
+    const template = base === TEMPLATES;
+    module.delete(`${base}/:id`, (c) => {
+      const id = uuidParam(c);
+      return write(
+        c,
+        deps,
+        z.object({}).passthrough(),
+        async (tx, ctx) => {
+          const current = await loadQuestionnaire(tx, id, true, template);
+          requireRevision(current.row.revision, ctx.expectedRevision);
+          // E3-R2 / AC-360-09：已使用的套卷不可删除
+          if (current.row.status === 'used') fail('CONFLICT', '已使用的套卷不能删除', 'QUESTIONNAIRE_USED');
+          const [ref] = rows<{ n: number }>(
+            await tx.execute(sql`SELECT count(*)::int AS n FROM survey360_object_questionnaires oq
+            JOIN survey360_objects o ON o.tenant_id = oq.tenant_id AND o.id = oq.object_id AND NOT o.removed
+            WHERE oq.questionnaire_id = ${id}::uuid`),
+          );
+          if (ref!.n > 0) fail('CONFLICT', '套卷已被评价对象引用，不能删除', 'QUESTIONNAIRE_REFERENCED');
+          await tx
+            .update(survey360Questionnaires)
+            .set({ deleted: true, revision: current.row.revision + 1 })
+            .where(eq(survey360Questionnaires.id, id));
+          await audit360(tx, actor(ctx), {
+            action: 'survey360.questionnaire.delete',
+            objectType: 'survey360-questionnaire',
+            objectId: id,
+            before: questionnaireView(current),
+            after: { id, deleted: true },
+          });
+          return { id, deleted: true };
+        },
+        {
+          need: { object: 'questionnaire', operation: 'delete' },
+          fields: 'none',
+          guard: editableBy(deps, tenantOf(c), id, true, template),
+        },
+      );
+    });
+  }
 }
 
 /** 已保存内容转回整卷提交的结构（按稳定键），用于复制。 */
@@ -815,10 +824,9 @@ async function copyOf(tx: Tx, ctx: Survey360Context, source: LoadedQuestionnaire
 }
 
 function registerTemplateCopies(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  for (const [path, fromTemplate] of [
-    [`${QUESTIONNAIRES}/:id/save-as-template`, false],
-    [`${TEMPLATES}/:id/instantiate`, true],
-  ] as const)
+  // 路径写成字面量数组：F-039 静态扫描按注册处求值
+  for (const path of [SAVE_AS_TEMPLATE, INSTANTIATE]) {
+    const fromTemplate = path === INSTANTIATE;
     module.post(path, (c) => {
       const id = uuidParam(c);
       return write(
@@ -848,6 +856,7 @@ function registerTemplateCopies(module: Hono<TenantEnv>, deps: TenantRouteDeps):
         },
       );
     });
+  }
 }
 
 /** 活动启用时把用到的套卷标为已使用（E3-R2）。 */

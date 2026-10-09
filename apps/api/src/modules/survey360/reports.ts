@@ -59,6 +59,8 @@ import { hashToken } from './links.js';
 import { personFilter, visiblePersonIds } from './people.js';
 import { buildReport } from './report-content.js';
 import { scoringChanged } from './changes.js';
+import { SURVEY360_REPORT_LINK_POLICIES } from './policy.js';
+import { policedSub } from '../../route-policy/index.js';
 import { currentManager } from './sync.js';
 
 export const DATA_CHANGED = '数据发生变化,请启用-停用活动后再生成/更新报告！';
@@ -476,14 +478,15 @@ export function registerReportRoutes(module: Hono<TenantEnv>, deps: TenantRouteD
       reportPresent,
     ),
   );
-  const command = (
-    path: string,
-    button: string,
-    schema: z.ZodType,
-    run: (tx: Tx, ctx: Survey360Context, a: ActivityRow, input: never) => Promise<object>,
-    fullView = false,
-  ) =>
-    module.post(`/activities/:id${path}`, (c) => {
+  // 生成 / 转发共用的命令处理函数；注册路径写字面量（F-039 静态扫描按注册处求值）
+  const command =
+    (
+      button: string,
+      schema: z.ZodType,
+      run: (tx: Tx, ctx: Survey360Context, a: ActivityRow, input: never) => Promise<object>,
+      fullView = false,
+    ) =>
+    (c: C) => {
       const id = uuidParam(c);
       return write(
         c,
@@ -502,19 +505,23 @@ export function registerReportRoutes(module: Hono<TenantEnv>, deps: TenantRouteD
           present: asIs,
         },
       );
-    });
-  command(
-    '/reports/generate',
-    'generateReport',
-    z.strictObject({ objectIds: z.array(uuid).min(1).max(2000).optional() }),
-    (tx, ctx, activity, input: { objectIds?: string[] }) => generate(tx, ctx, activity, input.objectIds),
+    };
+  module.post(
+    '/activities/:id/reports/generate',
+    command(
+      'generateReport',
+      z.strictObject({ objectIds: z.array(uuid).min(1).max(2000).optional() }),
+      (tx, ctx, activity, input: { objectIds?: string[] }) => generate(tx, ctx, activity, input.objectIds),
+    ),
   );
-  command(
-    '/reports/forward',
-    'forwardReport',
-    forwardSchema,
-    (tx, ctx, activity, input: Forward) => sendForward(tx, ctx, activity, input),
-    true,
+  module.post(
+    '/activities/:id/reports/forward',
+    command(
+      'forwardReport',
+      forwardSchema,
+      (tx, ctx, activity, input: Forward) => sendForward(tx, ctx, activity, input),
+      true,
+    ),
   );
   module.post('/activities/:id/reports/forward/preview', (c) =>
     read(c, deps, { ...VIEW, button: 'forwardReport' }, async (tx, admin, tenant) => {
@@ -569,7 +576,8 @@ function registerTemplateRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps):
 
 /** 报告转发的收件人链接（/api/survey360/report-link）：不经租户成员中间件；租户、令牌无效一律 404。 */
 export function registerReportLinkRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  const module = new Hono<TenantEnv>();
+  // F-039：收件人链接子应用套登记表（SURVEY360_REPORT_LINK_POLICIES）
+  const module = policedSub(router, SURVEY360_REPORT_LINK_POLICIES, () => new Hono<TenantEnv>());
   module.onError((error, c) => handleError(mapDbError(error) ?? error, c));
   const resolve = async (c: C) => {
     const tenantId = c.req.header('x-tenant-id');

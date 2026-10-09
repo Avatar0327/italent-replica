@@ -441,24 +441,35 @@ async function excellenceCheck(
 }
 
 const task = '/tasks/:relationId/questionnaires/:questionnaireId';
+const submitTask = `${task}/submit`;
+const TODO = '/my/todos/:todoId';
 
-/** 作答页与答卷读写；prefix 为入口前缀（令牌链接为空，待办为 /my/todos/:todoId）。 */
-export function registerAnswerRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps, entryOf: EntryOf, prefix = '') {
-  if (prefix) {
-    module.get(`${prefix}/answer`, (c) =>
-      linkRead(deps, entryOf, 'answer', (tx, link, activity, entry) =>
-        answerPage(tx, link, activity, entry.avatarBase),
-      )(c),
-    );
-    registerAvatarRoute(module, deps, entryOf, prefix, 'answer');
-  }
-  registerAnswerRead(module, deps, entryOf, prefix);
-  registerAnswerSave(module, deps, entryOf, prefix);
-  registerAnswerSubmit(module, deps, entryOf, prefix);
+/**
+ * 作答页与答卷读写：令牌链接（/api/survey360/link）与站内待办（/api/tenant/survey360/my/todos/:todoId）两个入口
+ * 共用同一套处理函数（answerRead / answerSave / answerSubmit / avatarRoute），按入口各注册一次；注册路径写成字面量，
+ * F-039 静态扫描按注册处求值。
+ */
+export function registerAnswerRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps, entryOf: EntryOf) {
+  module.get(task, answerRead(deps, entryOf));
+  module.put(task, answerSave(deps, entryOf));
+  module.post(submitTask, answerSubmit(deps, entryOf));
 }
 
-function registerAnswerRead(module: Hono<TenantEnv>, deps: TenantRouteDeps, entryOf: EntryOf, prefix: string) {
-  module.get(`${prefix}${task}`, async (c) =>
+/** 站内待办“去处理”：登录账号本人作答，与链接作答同一套页面与命令（todos.ts todoEntry）。 */
+export function registerTodoAnswerRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps, entryOf: EntryOf) {
+  module.get(`${TODO}/answer`, (c) =>
+    linkRead(deps, entryOf, 'answer', (tx, link, activity, entry) => answerPage(tx, link, activity, entry.avatarBase))(
+      c,
+    ),
+  );
+  module.get(`${TODO}/avatars/:attachmentId/content`, avatarRoute(deps, entryOf, 'answer'));
+  module.get(`${TODO}${task}`, answerRead(deps, entryOf));
+  module.put(`${TODO}${task}`, answerSave(deps, entryOf));
+  module.post(`${TODO}${submitTask}`, answerSubmit(deps, entryOf));
+}
+
+function answerRead(deps: TenantRouteDeps, entryOf: EntryOf) {
+  return async (c: C) =>
     linkRead(deps, entryOf, 'answer', async (tx, link, activity, entry) => {
       const { task: t, questionnaire } = await requireTask(
         tx,
@@ -482,12 +493,11 @@ function registerAnswerRead(module: Hono<TenantEnv>, deps: TenantRouteDeps, entr
         },
         sheet: await sheetView(tx, await findSheet(tx, t.id, questionnaire.row.id)),
       };
-    })(c),
-  );
+    })(c);
 }
 
-function registerAnswerSave(module: Hono<TenantEnv>, deps: TenantRouteDeps, entryOf: EntryOf, prefix: string) {
-  module.put(`${prefix}${task}`, (c) => {
+function answerSave(deps: TenantRouteDeps, entryOf: EntryOf) {
+  return (c: C) => {
     const relationId = uuidParam(c, 'relationId');
     const qid = uuidParam(c, 'questionnaireId');
     return linkWrite(
@@ -540,11 +550,11 @@ function registerAnswerSave(module: Hono<TenantEnv>, deps: TenantRouteDeps, entr
       },
       taskGuard(relationId, qid),
     )(c);
-  });
+  };
 }
 
-function registerAnswerSubmit(module: Hono<TenantEnv>, deps: TenantRouteDeps, entryOf: EntryOf, prefix: string) {
-  module.post(`${prefix}${task}/submit`, (c) => {
+function answerSubmit(deps: TenantRouteDeps, entryOf: EntryOf) {
+  return (c: C) => {
     const relationId = uuidParam(c, 'relationId');
     const qid = uuidParam(c, 'questionnaireId');
     return linkWrite(
@@ -576,7 +586,7 @@ function registerAnswerSubmit(module: Hono<TenantEnv>, deps: TenantRouteDeps, en
       },
       taskGuard(relationId, qid),
     )(c);
-  });
+  };
 }
 
 async function loadConfirmation(tx: Tx, link: LinkRow, lock = false) {
@@ -728,28 +738,22 @@ export function registerLinkRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
     )(c),
   );
   // 头像：令牌链接下作答与确认两种链接都可取（本单具名人员）
-  registerAvatarRoute(module, deps, tokenEntry(deps), '', undefined);
+  module.get('/avatars/:attachmentId/content', avatarRoute(deps, tokenEntry(deps), undefined));
   registerAnswerRoutes(module, deps, tokenEntry(deps));
   registerConfirmRoutes(module, deps);
   router.route(LINK_BASE, module);
 }
 
 /** 本入口作答页 / 确认页里具名人员的头像字节（F-058）；不在本单人员集合里的与不存在同一 404。 */
-function registerAvatarRoute(
-  module: Hono<TenantEnv>,
-  deps: TenantRouteDeps,
-  entryOf: EntryOf,
-  prefix: string,
-  kind: LinkRow['kind'] | undefined,
-) {
-  module.get(`${prefix}/avatars/:attachmentId/content`, (c) =>
+function avatarRoute(deps: TenantRouteDeps, entryOf: EntryOf, kind: LinkRow['kind'] | undefined) {
+  return (c: C) =>
     linkRead(
       deps,
       entryOf,
       kind,
       async (tx, link, activity) => {
-        const id = c.req.param('attachmentId');
-        if (!id || !isUuid(id)) notFound();
+        const id = c.req.param('attachmentId') ?? '';
+        if (!isUuid(id)) notFound();
         const allowed = await avatarPersonIds(tx, link, activity);
         const content = await linkAvatarContent(tx, activity.tenant_id, allowed, id.toLowerCase());
         return content ?? notFound();
@@ -761,8 +765,7 @@ function registerAvatarRoute(
         ctx.header('Content-Type', image.contentType);
         return ctx.body(new Uint8Array(image.bytes));
       },
-    )(c),
-  );
+    )(c);
 }
 
 /** 与作答任务 / 确认页相同的当前人员集合；匿名评价者不会成为单独的图片权限来源。 */

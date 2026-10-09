@@ -196,8 +196,13 @@ export function registerSheetRoutes(module: Hono<TenantEnv>, deps: TenantRouteDe
   registerBatchBlocking(module, deps);
 }
 
+type BatchRun = (tx: Tx, ctx: Survey360Context, activity: ActivityRow) => Promise<object>;
+
 function registerBatchBlocking(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  const batch = (path: string, run: (tx: Tx, ctx: Survey360Context, activity: ActivityRow) => Promise<object>) =>
+  const RUNS: Readonly<Record<string, BatchRun>> = { 'block-suspected': blockSuspected, 'unblock-all': unblockAll };
+  // 路径写成字面量数组：F-039 静态扫描按注册处求值
+  for (const path of ['block-suspected', 'unblock-all']) {
+    const run = RUNS[path]!;
     module.post(`/activities/:id/sheets/${path}`, (c) => {
       const id = uuidParam(c);
       return write(
@@ -219,31 +224,34 @@ function registerBatchBlocking(module: Hono<TenantEnv>, deps: TenantRouteDeps): 
         },
       );
     });
-  batch('block-suspected', async (tx, ctx, activity) => {
-    const last = activity.suspect_blocked_at ? new Date(activity.suspect_blocked_at).getTime() : null;
-    if (last !== null && ctx.now.getTime() - last < SUSPECT_INTERVAL_MS)
-      fail('CONFLICT', '此功能2小时内仅允许使用一次', 'RATE_LIMITED');
-    const changed: string[] = [];
-    for (const sheet of await submittedSheets(tx, activity.id, ctx.admin)) {
-      if (sheet.blocked) continue;
-      const q = await loadQuestionnaire(tx, sheet.questionnaire_id);
-      if (!suspected(q, sheet.role_id, await answersOf(tx, sheet.id))) continue;
-      await setBlocked(tx, ctx, activity.id, sheet, 'suspected');
-      changed.push(sheet.object_id);
-    }
-    await tx.execute(sql`UPDATE survey360_activities SET suspect_blocked_at = ${ctx.now.toISOString()}::timestamptz
-      WHERE id = ${activity.id}::uuid`);
-    if (changed.length) await markDataChanged(tx, activity.id, ctx.now, changed);
-    return { blocked: changed.length };
-  });
-  batch('unblock-all', async (tx, ctx, activity) => {
-    const changed: string[] = [];
-    for (const sheet of await submittedSheets(tx, activity.id, ctx.admin)) {
-      if (!sheet.blocked) continue;
-      await setBlocked(tx, ctx, activity.id, sheet, null);
-      changed.push(sheet.object_id);
-    }
-    if (changed.length) await markDataChanged(tx, activity.id, ctx.now, changed);
-    return { unblocked: changed.length };
-  });
+  }
 }
+
+const blockSuspected: BatchRun = async (tx, ctx, activity) => {
+  const last = activity.suspect_blocked_at ? new Date(activity.suspect_blocked_at).getTime() : null;
+  if (last !== null && ctx.now.getTime() - last < SUSPECT_INTERVAL_MS)
+    fail('CONFLICT', '此功能2小时内仅允许使用一次', 'RATE_LIMITED');
+  const changed: string[] = [];
+  for (const sheet of await submittedSheets(tx, activity.id, ctx.admin)) {
+    if (sheet.blocked) continue;
+    const q = await loadQuestionnaire(tx, sheet.questionnaire_id);
+    if (!suspected(q, sheet.role_id, await answersOf(tx, sheet.id))) continue;
+    await setBlocked(tx, ctx, activity.id, sheet, 'suspected');
+    changed.push(sheet.object_id);
+  }
+  await tx.execute(sql`UPDATE survey360_activities SET suspect_blocked_at = ${ctx.now.toISOString()}::timestamptz
+      WHERE id = ${activity.id}::uuid`);
+  if (changed.length) await markDataChanged(tx, activity.id, ctx.now, changed);
+  return { blocked: changed.length };
+};
+
+const unblockAll: BatchRun = async (tx, ctx, activity) => {
+  const changed: string[] = [];
+  for (const sheet of await submittedSheets(tx, activity.id, ctx.admin)) {
+    if (!sheet.blocked) continue;
+    await setBlocked(tx, ctx, activity.id, sheet, null);
+    changed.push(sheet.object_id);
+  }
+  if (changed.length) await markDataChanged(tx, activity.id, ctx.now, changed);
+  return { unblocked: changed.length };
+};

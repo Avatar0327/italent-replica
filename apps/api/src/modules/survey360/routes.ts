@@ -12,7 +12,7 @@ import type { TenantRouteModule } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { registerActivityRoutes } from './activities.js';
 import { registerSettingsRoutes } from './settings.js';
-import { registerAnswerRoutes, registerLinkRoutes } from './answering.js';
+import { registerLinkRoutes, registerTodoAnswerRoutes } from './answering.js';
 import { mapDbError } from './context.js';
 import { registerPeopleRoutes } from './people.js';
 import { registerProgressRoutes } from './progress.js';
@@ -42,7 +42,7 @@ export const registerSurvey360Routes: TenantRouteModule = (router, deps) => {
   registerReportRoutes(module, deps);
   registerTableRoutes(module, deps);
   // 站内待办“去处理”：登录账号本人作答，与链接作答同一套页面与命令
-  registerAnswerRoutes(module, deps, todoEntry(), '/my/todos/:todoId');
+  registerTodoAnswerRoutes(module, deps, todoEntry());
   router.route('/api/tenant/survey360', module);
   registerLinkRoutes(router, deps);
   registerReportLinkRoutes(router, deps);

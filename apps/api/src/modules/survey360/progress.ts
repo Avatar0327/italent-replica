@@ -9,6 +9,7 @@
  */
 import { sql, survey360Answers, survey360Relations, survey360Sheets, type Tx, eq, inArray } from '@italent/db';
 import type { Hono } from 'hono';
+import type { SQL } from 'drizzle-orm';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
@@ -72,10 +73,25 @@ export async function relationStates(
   tx: Tx,
   activityId: string,
   admin: Admin | null,
-  only: { readonly appraiserId?: string; readonly relationId?: string } = {},
+  only: Only = {},
 ): Promise<RelationState[]> {
-  const objectFilter = admin ? personFilter(admin, sql`op`) : null;
-  const appraiserFilter = admin ? personFilter(admin, sql`ap`) : null;
+  if (!admin) return allRelationStates(tx, activityId, only);
+  return statesOf(tx, activityId, only, [personFilter(admin, sql`op`), personFilter(admin, sql`ap`)]);
+}
+
+type Only = { readonly appraiserId?: string; readonly relationId?: string };
+
+/** 系统内部口径（待办完成判定）：不按查看人范围过滤，与查看人无关。 */
+export function allRelationStates(tx: Tx, activityId: string, only: Only = {}): Promise<RelationState[]> {
+  return statesOf(tx, activityId, only, []);
+}
+
+async function statesOf(
+  tx: Tx,
+  activityId: string,
+  only: Only,
+  filters: readonly (SQL | null)[],
+): Promise<RelationState[]> {
   const found = rows<StateRow>(
     await tx.execute(sql`SELECT r.id, r.object_id, op.name AS object_name, r.appraiser_person_id, r.role_id,
         ro.name AS role_name, r.revision,
@@ -96,7 +112,10 @@ export async function relationStates(
       WHERE r.activity_id = ${activityId}::uuid AND NOT r.removed
         ${only.appraiserId ? sql`AND r.appraiser_person_id = ${only.appraiserId}::uuid` : sql``}
         ${only.relationId ? sql`AND r.id = ${only.relationId}::uuid` : sql``}
-        ${objectFilter ? sql`AND ${objectFilter}` : sql``} ${appraiserFilter ? sql`AND ${appraiserFilter}` : sql``}
+        ${sql.join(
+          filters.flatMap((f) => (f ? [sql`AND ${f}`] : [])),
+          sql` `,
+        )}
       GROUP BY r.id, op.name, ro.name, ro.sort, o.sort, o.created_at
       ORDER BY o.sort, o.created_at, ro.sort, r.id`),
   );

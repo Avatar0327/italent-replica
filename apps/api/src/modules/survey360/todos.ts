@@ -29,7 +29,7 @@ import {
 } from './context.js';
 import { type LinkRow, markSent, reissueAnswerLink } from './links.js';
 import { loadPerson } from './people.js';
-import { byAppraiser, isComplete, relationStates } from './progress.js';
+import { allRelationStates, byAppraiser, isComplete, relationStates } from './progress.js';
 
 export const TODO_TITLE = '请你进行';
 
@@ -133,7 +133,7 @@ async function sendInvitations(tx: Tx, ctx: Survey360Context, activityId: string
 
 /** 评价者提交全部评价对象后，其待办自动“已处理”（§10.3 ①完成条件）。按全部评价关系判定，与查看人无关。 */
 export async function completeTodo(tx: Tx, ctx: Writer, activityId: string, personId: string): Promise<void> {
-  const progress = byAppraiser(await relationStates(tx, activityId, null, { appraiserId: personId })).get(personId);
+  const progress = byAppraiser(await allRelationStates(tx, activityId, { appraiserId: personId })).get(personId);
   if (!progress || !isComplete(progress)) return;
   const done = rows<{ id: string; person_id: string; status: string }>(
     await tx.execute(sql`UPDATE survey360_todos SET status = 'done', done_reason = 'completed',
@@ -168,7 +168,14 @@ export function registerTodoRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
   // 发送 / 取消：评价关系对象的“邀请”按钮；回执是协议字段（人数与原站提示），不按对象字段裁剪
   const INVITE = { object: 'relation', operation: 'update', button: 'invite' } as const;
   type Run = (tx: Tx, ctx: Survey360Context, activityId: string, personIds?: readonly string[]) => Promise<object>;
-  const command = (path: string, run: Run) =>
+  const RUNS: Readonly<Record<string, Run>> = {
+    '/todos': sendTodos,
+    '/todos/cancel': cancelTodos,
+    '/invitations': sendInvitations,
+  };
+  // 路径写成字面量数组：F-039 静态扫描按注册处求值，三条路由各自定位到本处理函数
+  for (const path of ['/todos', '/todos/cancel', '/invitations']) {
+    const run = RUNS[path]!;
     module.post(`/activities/:id${path}`, (c) => {
       const id = uuidParam(c);
       return write(
@@ -189,9 +196,7 @@ export function registerTodoRoutes(module: Hono<TenantEnv>, deps: TenantRouteDep
         },
       );
     });
-  command('/todos', sendTodos);
-  command('/todos/cancel', cancelTodos);
-  command('/invitations', sendInvitations);
+  }
 
   // 我的待办：只要租户成员身份，只看本人账号的
   module.get('/my/todos', async (c) => {

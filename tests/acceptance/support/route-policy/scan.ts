@@ -522,7 +522,15 @@ export interface RouteModule {
   readonly subApp: boolean;
   readonly dirs: readonly string[];
 }
-const SUB_APPS = new Set(['employment', 'approval', 'contracts', 'self-service', 'survey360', 'survey360-link']);
+const SUB_APPS = new Set([
+  'employment',
+  'approval',
+  'contracts',
+  'self-service',
+  'survey360',
+  'survey360-link',
+  'survey360-report-link',
+]);
 export function moduleDirs(fullPath: string): RouteModule {
   const modules = path.join(API_SRC, 'modules');
   const table: readonly (readonly [string, string, readonly string[]])[] = [
@@ -540,6 +548,7 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['platform', '/api/platform', [path.join(modules, 'platform')]],
     ['survey360', '/api/tenant/survey360', [path.join(modules, 'survey360')]],
     ['survey360-link', '/api/survey360/link', [path.join(modules, 'survey360')]],
+    ['survey360-report-link', '/api/survey360/report-link', [path.join(modules, 'survey360')]],
     ['talent', '/api/tenant/talent', [path.join(modules, 'talent')]],
     ['idp', '/api/tenant/idp', [path.join(modules, 'idp')]],
     ['talent-review', '/api/tenant/talent-review', [path.join(modules, 'talent-review')]],
