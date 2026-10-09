@@ -74,7 +74,8 @@ export async function frozenOf(w: ApprovalWorld, instanceId: string): Promise<Fr
 export async function insertFrozen(db: Db, tenantId: string, instanceId: string, userId: string, round = 1) {
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
-    await tx.execute(sql`INSERT INTO approval_instance_subjects (tenant_id,instance_id,round,employee_id,user_id,created_at)
+    await tx.execute(sql`INSERT INTO approval_instance_subjects
+      (tenant_id,instance_id,round,employee_id,user_id,created_at)
       VALUES (${tenantId},${instanceId}::uuid,${round},${randomUUID()}::uuid,${userId}::uuid,now())`);
   });
 }
@@ -88,3 +89,16 @@ export const NODES = {
   inHrbp: { key: 'in_hrbp', approver: 'record_department_hrbp' },
   inHead: { key: 'in_head', approver: 'record_department_head' },
 } as const;
+
+/**
+ * 可信夹具（连接角色直写）：删除某实例的冻结行，模拟 F-048 上线前创建、没有冻结行的存量实例。冻结表有只追加触发器，
+ * 属主在同一事务内临时停用用户触发器后删除，提交前恢复。
+ */
+export async function dropFrozen(db: Db, tenantId: string, instanceId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
+    await tx.execute(sql`ALTER TABLE approval_instance_subjects DISABLE TRIGGER USER`);
+    await tx.execute(sql`DELETE FROM approval_instance_subjects WHERE instance_id=${instanceId}::uuid`);
+    await tx.execute(sql`ALTER TABLE approval_instance_subjects ENABLE TRIGGER USER`);
+  });
+}

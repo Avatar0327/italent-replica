@@ -10,6 +10,7 @@ import { approvalError, assertRevision, auditApproval, type ApprovalContext } fr
 import { activationOf, countersignFlowed, holdersAfterRetrieve, reopenEnded, resettle } from './countersign.js';
 import { assertBusinessUnchanged, nodeIndex, openRun, persistRun } from './engine.js';
 import { notifyCc } from './notifications.js';
+import { assertNotRecused } from './recusal.js';
 import { isActiveAccount } from './resolver.js';
 import { retrievableTask } from './rules.js';
 import { appendLog, cancelPending, insertTask, instanceOfTask, loadTasks } from './store.js';
@@ -30,6 +31,8 @@ export async function copySend(tx: Tx, ctx: ApprovalContext, input: CopySendInpu
   for (const userId of userIds) {
     if (!(await isActiveAccount(tx, ctx.tenantId, userId)))
       throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '抄送对象必须是本租户有效成员');
+    // DEC-329③：节点开启 avoidSubjects 时不能抄送给本单涵盖的主体
+    await assertNotRecused(tx, run, node, userId, 'cc');
   }
   for (const userId of userIds) {
     await tx.execute(sql`INSERT INTO approval_instance_ccs
@@ -68,6 +71,8 @@ export async function retrieveTask(tx: Tx, ctx: ApprovalContext, taskId: string)
   const task = tasks.find((candidate) => candidate.id === taskId)!;
   if (task.assigneeUserId !== ctx.userId)
     throw approvalError('FORBIDDEN', 'APPROVAL_NOT_ASSIGNEE', '只能撤回本人的审批');
+  // F-048 §6 #10：撤回等于重开本人的待办，撤回人同样按冻结值判定（防御）
+  await assertNotRecused(tx, run, run.version.nodes[nodeIndex(run, task.nodeKey)]!, ctx.userId, 'actor', task);
   if (retrievableTask(run.instance, run.version, tasks, ctx.userId)?.id !== task.id) {
     throw approvalError('CONFLICT', 'APPROVAL_NOT_RETRIEVABLE', '本节点未开启撤回或后续节点已处理，不能撤回');
   }

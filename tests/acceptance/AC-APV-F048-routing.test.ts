@@ -111,8 +111,14 @@ describe('T2 单人节点多主体回避：自动跳过', () => {
     );
     await w.publishedProcess({
       nodes: [
-        { key: 'a', approver: 'owner' },
-        { key: 'b', approver: 'owner', historySameAssigneeSkip: true, historySameAssigneeResult: 'skip', actions: ON },
+        { key: 'a', approver: 'owner', actions: { avoidSelf: false } },
+        {
+          key: 'b',
+          approver: 'owner',
+          historySameAssigneeSkip: true,
+          historySameAssigneeResult: 'skip',
+          actions: { avoidSelf: false, avoidSubjects: true },
+        },
       ],
     });
     mapSubjects(() => [hrEmployee.id]);

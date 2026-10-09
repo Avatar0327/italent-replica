@@ -8,10 +8,11 @@ import { cmd, tenantApi, allowAll } from './support/tenant-api.js';
 import { createProcess, publishProcess } from '../../apps/api/src/modules/approval/definitions.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
 import { runContractJobs } from '../../apps/api/src/modules/contracts/scheduler.js';
-import { insertFrozen } from './support/f048.js';
+import { dropFrozen, insertFrozen } from './support/f048.js';
 
 const testDb = useTestDb();
-async function world(label: string) {
+/** @param options.omitAvoidSelf 节点不带自审回避开关（模拟手工新建、不传开关的流程，缺省关闭，DEC-329④） */
+async function world(label: string, options: { omitAvoidSelf?: boolean } = {}) {
   const w = await contractWorld(testDb().db, label);
   const approver = await createUser(
     w.db,
@@ -29,6 +30,7 @@ async function world(label: string) {
         commandId: randomUUID(),
         expectedRevision: 0,
       };
+      const { avoidSelf: _avoidSelf, ...withoutAvoidSelf } = preset.definition.nodes[0]!.actions;
       const created = await createProcess(
         tx,
         ctx,
@@ -39,6 +41,7 @@ async function world(label: string) {
           nodes: [
             {
               ...preset.definition.nodes[0]!,
+              ...(options.omitAvoidSelf ? { actions: withoutAvoidSelf } : {}),
               kind: 'single',
               approver: 'owner',
               exits: ['approve', 'disagree'],
@@ -163,10 +166,15 @@ describe('R2-T06 四种申请和合并待办', () => {
 describe('F-048 T9d 合并待办逐条回避', () => {
   it('3 条待办其中 1 条办理人命中冻结值：该条 409，其余成功；同键重放逐条回执相同', async () => {
     const w = await world('ctf048batch');
+    const thirdType = await w.request('POST', '/master-data/types', {
+      ifMatch: 0,
+      body: { code: randomUUID(), name: '实习协议' },
+    });
+    const third = (await thirdType.json()) as { id: string };
     const created = [
       await w.create(),
       await w.create({ typeId: w.otherType.id }),
-      await w.create({ endDate: '2026-10-31' }),
+      await w.create({ typeId: third.id }),
     ];
     const result = await w.request('POST', '/batch', {
       ifMatch: 0,
@@ -206,5 +214,46 @@ describe('F-048 T9d 合并待办逐条回避', () => {
     expect(await w.pending()).toEqual([expect.objectContaining({ id: tasks[1]!.id })]);
     const replay = (await (await send()).json()) as { items: { status: number }[] };
     expect(replay).toEqual(first);
+  });
+});
+
+describe('F-048 T11 合同审批：缺省关闭与存量在途实例', () => {
+  async function terminateApplication(w: Awaited<ReturnType<typeof world>>) {
+    const original = await w.create();
+    const result = await w.request('POST', '/commands', {
+      ifMatch: original.revision,
+      body: {
+        operation: 'terminate',
+        mode: 'application',
+        employeeId: w.employee.id,
+        targetId: original.id,
+        fields: { actualTerminationDate: '2026-09-30' },
+      },
+    });
+    expect(result.status, await result.clone().text()).toBe(201);
+    return original;
+  }
+
+  const assigneesOf = (w: Awaited<ReturnType<typeof world>>) =>
+    withTenant(w.db, w.session.tenant.id, async (tx) =>
+      rowsOf<{ assignee_user_id: string; origin: string }>(
+        await tx.execute(sql`SELECT assignee_user_id::text,origin FROM approval_tasks WHERE status='pending'`),
+      ),
+    );
+
+  it('手工新建且不传开关：发起人是审批人时收到自己的待办（不再自审回避）', async () => {
+    const w = await world('ctf048default', { omitAvoidSelf: true });
+    await terminateApplication(w);
+    expect(await assigneesOf(w)).toEqual([{ assignee_user_id: w.session.user.id, origin: 'resolved' }]);
+  });
+
+  it('存量在途实例（avoid_self=true、无冻结行）：发起人自审跳过转异常管理员，升级后继续办理并通过', async () => {
+    const w = await world('ctf048legacy');
+    const original = await terminateApplication(w);
+    const [pending] = await w.pending();
+    await dropFrozen(w.db, w.session.tenant.id, pending!.instanceId);
+    expect(await assigneesOf(w)).toEqual([expect.objectContaining({ origin: 'exception_admin' })]);
+    expect(await (await w.act('approve', [pending!])).json()).toMatchObject({ items: [{ status: 200 }] });
+    expect((await w.list()).find((c) => c.id === original.id)?.status).toBe('terminated');
   });
 });

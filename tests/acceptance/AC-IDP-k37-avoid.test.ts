@@ -10,6 +10,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld, type InstanceView, TRANSFER_NODES, transferScene } from './AC-APV-support.js';
 import { errorOf, planWorld } from './AC-IDP-plan-support.js';
+import { dropFrozen } from './support/f048.js';
 
 const testDb = useTestDb();
 const current = (view: InstanceView) => view.tasks.find((t) => t.status === 'pending')!;
@@ -72,5 +73,25 @@ describe('K-37：回避是节点开关', () => {
     expect(process.currentVersion!.nodes[0]!.actions).toMatchObject({ avoidSelf: true, avoidSubjects: false });
     const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     expect(current(view)).toMatchObject({ assigneeUserId: s.manager.userId, origin: 'self_skip_manager' });
+  });
+});
+
+describe('F-048 T11 IDP：缺省关闭与存量在途实例', () => {
+  it('手工新建且不传开关：员工节点由员工本人收到待办（缺省关闭，不被自审回避）', async () => {
+    const w = await planWorld(testDb().db, 'idp-f048-default', {
+      nodes: { idp_employee: { actions: { avoidSelf: undefined } }, idp_tutor: { actions: { avoidSelf: undefined } } },
+    });
+    const plan = await w.startedPlan();
+    const task = (await w.instanceOf(plan, 1)).tasks.find((t) => t.status === 'pending')!;
+    expect(task).toMatchObject({ assigneeUserId: w.employee.userId, origin: 'resolved' });
+  });
+
+  it('存量在途实例（无冻结行）：员工节点升级后继续办理，提交后进入指导人节点', async () => {
+    const w = await planWorld(testDb().db, 'idp-f048-legacy');
+    const plan = await w.startedPlan();
+    await dropFrozen(w.db, w.tenant.id, (await w.instanceOf(plan, 1)).id);
+    await w.submit(plan, 1, w.employee.userId);
+    const next = (await w.instanceOf(plan, 1)).tasks.find((t) => t.status === 'pending')!;
+    expect(next).toMatchObject({ nodeKey: 'approve_plan', assigneeUserId: w.manager.userId });
   });
 });

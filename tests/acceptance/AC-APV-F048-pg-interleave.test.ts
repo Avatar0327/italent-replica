@@ -14,7 +14,6 @@ import { frozenOf, NODES, pendingOf, reasonOf, rowsOf, useSubjectMapping } from 
 
 const database = useTestDb();
 const mapSubjects = useSubjectMapping();
-const BASE = '/api/tenant/approval';
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
 
 async function lockWaiters(db: Db): Promise<number> {
