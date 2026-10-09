@@ -83,10 +83,16 @@ export interface OperatorOptions {
   readonly operations?: { create: boolean; update: boolean; delete: boolean };
   /** 即使 buttons 为真也不授予的按钮编码。 */
   readonly omitButtons?: readonly string[];
+  /** 把身份授予已有成员（同一用户同时持有多个对象的身份）；缺省新建成员。 */
+  readonly user?: { readonly id: string };
 }
 
 /** 真实授权器下的操作人：身份只带 TalentReview 应用与指定对象，按需配置看全部、隐藏字段、按钮。 */
-export async function configOperator(world: PermissionWorld, object: ConfigObject, options: OperatorOptions = {}) {
+export async function configOperator(
+  world: PermissionWorld,
+  object: ConfigObject | keyof typeof TALENT_REVIEW_OBJECTS,
+  options: OperatorOptions = {},
+) {
   const definition = TALENT_REVIEW_OBJECTS[object];
   const profile = await createProfile(world, `trc-${randomUUID().slice(0, 8)}`, { apps: [TALENT_REVIEW_APP] });
   const hidden = new Set(options.hidden ?? []);
@@ -114,7 +120,7 @@ export async function configOperator(world: PermissionWorld, object: ConfigObjec
   };
   if (options.view !== false) await setButtons(options.buttons ?? true);
   await makeGrantable(world, [profile.id]);
-  const user = await addMember(world, `trc-operator-${randomUUID().slice(0, 4)}`);
+  const user = options.user ?? (await addMember(world, `trc-operator-${randomUUID().slice(0, 4)}`));
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
   const as = { user: user.id, tenant: world.tenant.id };
   let seeAllRevision = 0;
