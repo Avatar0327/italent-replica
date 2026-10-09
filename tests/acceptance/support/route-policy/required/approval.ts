@@ -4,6 +4,7 @@
  * 任务动作 = 当前审批人（openTask，命令内）；撤回审批 = 本人的审批（retrieveTask）；实例动作 = 发起人（openOwn /
  * requireResubmitRight）；详情 / 历史 = assertCanOpen（参与人或范围内管理员）；管理员动作 = 实例按钮 + 业务范围（adminScope）。
  */
+import { list, NONE, SCOPE_AT } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const DIR = 'apps/api/src/modules/approval';
@@ -93,6 +94,7 @@ const TASK_OBJECT = 'obj:{record:approval.taskObject.fieldObjectCode}';
 const blindReview = (call: Evidence): Obligation => ({
   perm: `${TASK_OBJECT}:view`,
   purpose: 'disclosure:taskObject',
+  need: NONE,
   note: '审批人对快照对象的字段查看权只决定盲审（不足时 Outcome 403 已提交入台账）与详情披露，不在入口拒绝',
   at: [
     call,
@@ -144,6 +146,7 @@ function canOpen(call: Evidence): Obligation[] {
     ...(['adminTransfer', 'adminIntervene'] as const).map((code): Obligation => ({
       perm: `btn:${INSTANCE}#${code}@detail`,
       purpose: 'guard:approval.canOpen',
+      inner: { role: 'or', group: 'canOpen', alt: code },
       note: '范围内的实例管理员也能打开详情（assertCanOpen 的管理员分支）；同时决定详情里公布的管理员动作',
       at: [
         call,
@@ -257,11 +260,13 @@ export const APPROVAL: RequiredTable = {
     {
       perm: `btn:${INSTANCE}#adminTransfer@detail`,
       purpose: 'disclosure:instanceTransfer',
+      need: list('approval.adminScope'),
       facts: ['button:adminScope(buttons)', 'scope:adminScope'],
       note: '在途实例改派只限转交按钮 + 业务范围内的实例（scopeSql 为 null 则不改派），不拒绝交接本身',
       at: [
         route('POST', '/exception-admins/handover', "const scopeSql = await adminScope(deps, ctx, ['adminTransfer'])"),
         ...ADMIN_SCOPE,
+        ...SCOPE_AT['approval.adminScope'],
       ],
     },
   ],

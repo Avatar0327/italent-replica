@@ -18,6 +18,8 @@ export const PLATFORM_POLICIES = defineTable('platform', {
   'POST /api/platform/tenants/:tenantId/status': platform({ ...byTenant, write: platformCommand }),
   // DEC-289③：存量租户回补开通后新增的标准身份；请求体须为空对象，只补缺失编码（平台命令台账）
   'POST /api/platform/tenants/:tenantId/standard-profiles/backfill': platform({ ...byTenant, write: platformCommand }),
+  // DEC-361：存量租户按种子登记表回补预置数据；请求体可选 modules 筛选，只补缺失编码（平台命令台账）
+  'POST /api/platform/tenants/:tenantId/seeds/backfill': platform({ ...byTenant, write: platformCommand }),
   'GET /api/platform/tenants/:tenantId/licenses': platform(byTenant),
   // licenseType 不合法另报 400 VALIDATION_FAILED（不是 invalidId）
   'PUT /api/platform/tenants/:tenantId/licenses/:licenseType': platform({ ...byTenant, write: platformCommand }),

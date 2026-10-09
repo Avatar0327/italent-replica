@@ -7,17 +7,20 @@
  * - “或”关系（primitives.ts DISJUNCTIONS，如流程查看 = 管理员 或 对象查看、IDP 查看人 = HR 或 参与人）：
  *   每个备选至少满足其中一支（WEAKER:or）；
  * - 守卫 / 命令内前提按名字，每个备选都要有；
- * - 动态选择器的分支键必须等于**本路由**处理函数绑定的某个域（基准 domain 维度），不能借用别的模块的同形域。
+ * - 动态选择器的分支键必须等于**本路由**处理函数绑定的某个域（基准 domain 维度），不能借用别的模块的同形域；
+ *   `map` 型选择器再核对输入来源与逐键值（PR-B2，设计 B-07：端点 + 位置 + 输入来源 + 域 + 映射值）。
  * 过度声明（OVERDECLARED:<维度>）只在静态探测能可靠否定的维度上报：身份、成员之外的特权、写入口、管理员能力、
  * 本人绑定、目录内已知守卫名。对象 / 范围 / 字段 / 关系 / 按钮的“声明多于现状”需要多维身份探测，按 DEC-303 留给 PR-B。
  */
 import type { ManifestRoute } from '@italent/api';
 import type { ObservedContract, ObservedRoute } from './contract.js';
+import { BRANCH_BINDINGS, type BranchBindings } from './domains.js';
 import { type Alternative, declared, type Declared, type Identity, preconditionName } from './features.js';
 import { DISJUNCTIONS, KNOWN_GUARDS, type Obligation } from './primitives.js';
 import { admissionPrimitives, checkRequired } from './required.js';
 import { REQUIRED } from './required/index.js';
 import type { RequiredTable } from './required/types.js';
+import { mapSelectors } from './selectors.js';
 
 export interface Finding {
   readonly route: string;
@@ -143,17 +146,90 @@ function compareAlternative(
   }
 }
 
-/** 选择器分支键必须等于本路由绑定的某个域。 */
+/** 值的规范化比较（键排序），映射值可以是字符串或 `{ code, level }` 这样的按钮引用。 */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value).sort(([a], [b]) => a.localeCompare(b));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * `map` 型选择器的五元组（设计 B-07）：端点（登记按端点）+ 位置（节点路径 + 字段）+ 输入来源（from / path）+ 域 +
+ * 映射值。键集合等于域只是第一层（compareSelectors），这里补输入来源与逐键值；两张表（branch-inputs.ts /
+ * domains.ts BRANCH_VALUES）都是审定过的字面量，不来自声明。
+ */
+function compareBranchBindings(
+  key: string,
+  route: ManifestRoute,
+  bound: readonly (readonly [string, string[]])[],
+  bindings: BranchBindings,
+  report: (code: string, detail: string) => void,
+): void {
+  const sites = mapSelectors(route.policy);
+  const registered = bindings.inputs[key] ?? [];
+  for (const site of sites) {
+    const entry = registered.find((e) => e.position === site.position);
+    const where = `${site.position}（${site.from}.${site.path}）`;
+    if (!entry) {
+      report('BRANCH_INPUT_UNBOUND', `选择器 ${where} 没有输入来源登记`);
+      continue;
+    }
+    if (entry.from !== site.from || entry.path !== site.path) {
+      report(
+        'MISMATCH:branchInput',
+        `选择器 ${site.position} 声明取 ${site.from}.${site.path}，登记 ${entry.from}.${entry.path}`,
+      );
+    }
+    const domains = bound.filter(([, values]) => sameSet(site.keys, values)).map(([name]) => name);
+    if (!domains.includes(entry.domain)) {
+      report(
+        'MISMATCH:branchInput',
+        `选择器 ${site.position} 登记的域 ${entry.domain} 不是它的分支键对应的本路由绑定域（${domains.join(', ') || '无'}）`,
+      );
+    }
+    const values = (bindings.values[entry.domain] ?? []).filter(
+      (v) => v.field === site.field && v.variant === entry.variant,
+    );
+    if (values.length > 1) {
+      report(
+        'TABLE_CONFLICT',
+        `域 ${entry.domain} 的 ${site.field}${entry.variant ? `#${entry.variant}` : ''} 登记了 ${values.length} 条`,
+      );
+    }
+    if (!values.length) {
+      report(
+        'BRANCH_VALUE_UNBOUND',
+        `域 ${entry.domain} 的 ${site.field}${entry.variant ? `#${entry.variant}` : ''} 没有分支值登记`,
+      );
+    } else if (!values.some((v) => canonical(v.values) === canonical(site.map))) {
+      report('MISMATCH:branchValue', `选择器 ${where} 的映射值与域 ${entry.domain} 的登记不一致`);
+    }
+  }
+  for (const entry of registered) {
+    if (!sites.some((site) => site.position === entry.position)) {
+      report('MISMATCH:branchInput', `登记了选择器位置 ${entry.position}，声明里该位置没有 map 选择器`);
+    }
+  }
+}
+
+/** 选择器分支键必须等于本路由绑定的某个域；map 选择器再核对输入来源与逐键值。 */
 function compareSelectors(
   contract: ObservedContract,
   observed: ObservedRoute,
   decl: Declared,
+  where: { readonly key: string; readonly route: ManifestRoute; readonly bindings: BranchBindings },
   report: (code: string, detail: string) => void,
 ): void {
-  const bound = (observed.primitives['domain'] ?? []).map((key) => [key, [...(contract.domains[key] ?? [])].sort()]);
+  const bound = (observed.primitives['domain'] ?? []).map(
+    (key) => [key, [...(contract.domains[key] ?? [])].sort()] as const,
+  );
+  compareBranchBindings(where.key, where.route, bound, where.bindings, report);
   for (const keys of decl.selectors) {
-    if (bound.some(([, values]) => sameSet(keys, values as string[]))) continue;
-    const superset = bound.find(([, values]) => keys.every((k) => (values as string[]).includes(k)));
+    if (bound.some(([, values]) => sameSet(keys, values))) continue;
+    const superset = bound.find(([, values]) => keys.every((k) => values.includes(k)));
     if (superset) report('WEAKER:domain', `选择器分支 ${keys.join('/')} 少于本路由绑定的域 ${superset[0]}`);
     else {
       const names = bound.map(([key]) => key).join(', ') || '（无）';
@@ -166,6 +242,7 @@ export function compareRoute(
   contract: ObservedContract,
   route: ManifestRoute,
   table: RequiredTable = REQUIRED,
+  bindings: BranchBindings = BRANCH_BINDINGS,
 ): Finding[] {
   const key = `${route.method} ${route.path}`;
   const raw = contract.routes[key];
@@ -206,7 +283,7 @@ export function compareRoute(
       report('OVERDECLARED:guard', `声明守卫 ${guard}，现状代码里没有`);
     }
   }
-  compareSelectors(contract, observed, decl, report);
+  compareSelectors(contract, observed, decl, { key, route, bindings }, report);
   return findings;
 }
 
@@ -214,6 +291,7 @@ export function compareDeclarations(
   contract: ObservedContract,
   routes: readonly ManifestRoute[],
   table: RequiredTable = REQUIRED,
+  bindings: BranchBindings = BRANCH_BINDINGS,
 ): Finding[] {
-  return routes.flatMap((route) => compareRoute(contract, route, table));
+  return routes.flatMap((route) => compareRoute(contract, route, table, bindings));
 }
