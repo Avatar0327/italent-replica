@@ -210,7 +210,7 @@ describe('AC-PRM-FW-02 F-073 第 2 轮 P2-1：三个人员守卫的内部备选�
     }
   });
 
-  it('表里这三个守卫的承载者义务也带 scope.all 证据（人员可见 / 受限管理员 403 / 新建人员）', () => {
+  it('表里这三个守卫的内部义务（allActivities 的两个授权请求）也带 scope.all 证据（人员可见 / 受限管理员 403 / 新建人员）', () => {
     const keys = [
       `GET ${BASE}/people/:id`,
       `PUT ${BASE}/people/:id`,
@@ -219,9 +219,9 @@ describe('AC-PRM-FW-02 F-073 第 2 轮 P2-1：三个人员守卫的内部备选�
       `POST ${BASE}/people`,
     ];
     for (const key of keys) {
-      const carriers = entry(key).filter((o) => PEOPLE_ALL_CARRIERS.some((c) => o.perm === `guard:${c}`));
-      expect(carriers.length, key).toBeGreaterThan(0);
-      for (const o of carriers) {
+      const found = entry(key).filter((o) => PEOPLE_ALL_CARRIERS.some((c) => o.purpose === `guard:${c}`));
+      expect(found.length, key).toBeGreaterThan(0);
+      for (const o of found) {
         expect(
           o.at.some((e) => e.unit.endsWith('context.ts#loadAdmin') && e.anchor === PEOPLE_ALL_ANCHOR),
           `${key} ${o.perm}`,

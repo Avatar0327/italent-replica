@@ -131,7 +131,8 @@ const RESOURCE = 'survey360.resourceGuard';
  * allActivities（360 系统管理员，context.ts allActivitiesOf：Activity 查看权 + 全部活动按钮 viewAll）按用途分别登记
  * （F-073，不整体 optional）：
  * - 活动资源守卫：活动可见 = allActivities 或 本人创建 / 被授权，不可见 404（access.ts requireActivity）；
- * - 人员资源守卫 / 精细化条件守卫：admin.people 为空（不受精细化限制）⇔ allActivities 或 精细化权限关闭（loadAdmin），
+ * - 人员资源守卫 / 精细化条件守卫：admin.people 为空（不受精细化限制）⇔ allActivities、精细化权限关闭，或精细化开启且没有
+ *   viewAll 但人员数据范围为全部（loadAdmin 的 `scope.all` 分支，Survey360 seeAll）三者之一，
  *   人员可见（visiblePerson）、同步冲突与关联日志（requireUnrestricted）、新建人员（requireCreatable）都按它判定；
  * - 列表范围披露 / 写范围与披露：同一判定只决定列表 / 同步结果范围的广度，不拒绝请求（optional.allActivities）。
  */

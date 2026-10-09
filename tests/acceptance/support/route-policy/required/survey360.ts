@@ -355,6 +355,12 @@ const FINE_OFF: Evidence = {
   anchor:
     'if (allActivities || !(await finePermission(tx))) return { userId: tenant.userId, allActivities, people: null };',
 };
+/** 人员数据范围为全部（scope.all）同样让 admin.people 为 null：内部“或”的第三支，数据态（#178 第 2 轮 P2-1）。 */
+const PEOPLE_ALL: Evidence = {
+  role: 'impl',
+  unit: `${CONTEXT}#loadAdmin`,
+  anchor: 'return { userId: tenant.userId, allActivities, people: scope.all ? null : scope };',
+};
 
 /** allActivities 的两个授权请求，按给定用途登记（守卫内部备选 / 披露）。 */
 function allActivitiesPerms(
@@ -406,7 +412,7 @@ function activityCall(r: Route): Evidence {
   };
 }
 
-/** 人员可见（visiblePerson）：不受精细化限制（全部活动 或 精细化关闭），否则人员须在范围内。 */
+/** 人员可见（visiblePerson）：不受精细化限制（全部活动 / 精细化关闭 / 人员数据范围为全部），否则人员须在范围内。 */
 function personVisible(entry: Evidence, anchor: string, load: 'read' | 'write'): Obligation[] {
   const impl: Evidence[] = [
     {
@@ -416,6 +422,7 @@ function personVisible(entry: Evidence, anchor: string, load: 'read' | 'write'):
     },
     { role: 'impl', unit: `${S}/people.ts#personVisible`, anchor: 'if (!admin.people) return true;' },
     FINE_OFF,
+    PEOPLE_ALL,
   ];
   return [
     { perm: 'guard:survey360.personVisible', at: [{ ...entry, anchor }, ...impl] },
@@ -428,14 +435,14 @@ function personVisible(entry: Evidence, anchor: string, load: 'read' | 'write'):
     ),
   ];
 }
-/** 受限管理员的 403（requireUnrestricted / requireCreatable）：全部活动 或 精细化关闭才放行。 */
+/** 受限管理员的 403（requireUnrestricted / requireCreatable）：全部活动 / 精细化关闭 / 人员数据范围为全部才放行。 */
 function unrestrictedInner(carrier: string, entry: Evidence, load: 'read' | 'write', effect: Evidence): Obligation[] {
   return allActivitiesPerms(
     `guard:${carrier}`,
     entry,
     load,
     { inner: { role: 'or', group: 'unrestricted', alt: 'allActivities' } },
-    [effect, FINE_OFF],
+    [effect, FINE_OFF, PEOPLE_ALL],
   );
 }
 const REQUIRE_CREATABLE: Evidence = {
@@ -663,7 +670,12 @@ const ROUTES: readonly Route[] = [
       resource(entry, 'guard: async (_tx, admin) => requireCreatable(admin)', [REQUIRE_CREATABLE]),
       {
         perm: 'guard:survey360.personCreatable',
-        at: [{ ...entry, anchor: 'guard: async (_tx, admin) => requireCreatable(admin)' }, REQUIRE_CREATABLE, FINE_OFF],
+        at: [
+          { ...entry, anchor: 'guard: async (_tx, admin) => requireCreatable(admin)' },
+          REQUIRE_CREATABLE,
+          FINE_OFF,
+          PEOPLE_ALL,
+        ],
       },
       ...unrestrictedInner('survey360.personCreatable', entry, 'write', REQUIRE_CREATABLE),
       refs(

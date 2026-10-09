@@ -77,6 +77,16 @@ const FINE_OFF: Evidence = {
   anchor:
     'if (allActivities || !(await finePermission(tx))) return { userId: tenant.userId, allActivities, people: null };',
 };
+/**
+ * 精细化开启且没有 viewAll 时，人员数据范围为全部（`scope.all`）同样让 admin.people 为 null，即不受精细化限制
+ * （loadAdmin，#178 第 2 轮 P2-1）。数据态备选，不经授权器。
+ */
+const PEOPLE_ALL: Evidence = {
+  role: 'impl',
+  unit: `${SURVEY360}/context.ts#loadAdmin`,
+  anchor: 'return { userId: tenant.userId, allActivities, people: scope.all ? null : scope };',
+};
+const PERSON_SCOPE_ALL = 'data:survey360.personScopeAll';
 
 // F-073：survey360 的 allActivities 按用途分别登记（不整体 optional）
 const SURVEY360_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
@@ -102,12 +112,13 @@ const SURVEY360_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
       },
     ],
   },
-  // 人员可见（visiblePerson）：不受精细化限制（全部活动 或 精细化关闭），否则人员须在范围内
+  // 人员可见（visiblePerson）：不受精细化限制（全部活动 / 精细化关闭 / 人员数据范围为全部），否则人员须在范围内
   'survey360.personVisible': {
     group: 'personVisible',
     alts: {
       allActivities: ALL_ACTIVITIES,
       finePermissionOff: 'data:survey360.finePermissionOff',
+      personScopeAll: PERSON_SCOPE_ALL,
       personInScope: 'data:survey360.personInPeopleScope',
     },
     at: [
@@ -125,12 +136,17 @@ const SURVEY360_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
           '{ personId: person.employeeId, creatorId: person.createdBy });',
       },
       FINE_OFF,
+      PEOPLE_ALL,
     ],
   },
-  // 同步冲突与关联日志只给不受限的管理员（requireUnrestricted）：全部活动 或 精细化关闭
+  // 同步冲突与关联日志只给不受限的管理员（requireUnrestricted）：全部活动 / 精细化关闭 / 人员数据范围为全部
   'survey360.unrestricted': {
     group: 'unrestricted',
-    alts: { allActivities: ALL_ACTIVITIES, finePermissionOff: 'data:survey360.finePermissionOff' },
+    alts: {
+      allActivities: ALL_ACTIVITIES,
+      finePermissionOff: 'data:survey360.finePermissionOff',
+      personScopeAll: PERSON_SCOPE_ALL,
+    },
     at: [
       {
         role: 'call',
@@ -138,12 +154,17 @@ const SURVEY360_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
         anchor: 'if (admin.people)',
       },
       FINE_OFF,
+      PEOPLE_ALL,
     ],
   },
-  // 精细化生效时不新建 360 人员（requireCreatable）：全部活动 或 精细化关闭
+  // 精细化生效时不新建 360 人员（requireCreatable）：全部活动 / 精细化关闭 / 人员数据范围为全部
   'survey360.personCreatable': {
     group: 'unrestricted',
-    alts: { allActivities: ALL_ACTIVITIES, finePermissionOff: 'data:survey360.finePermissionOff' },
+    alts: {
+      allActivities: ALL_ACTIVITIES,
+      finePermissionOff: 'data:survey360.finePermissionOff',
+      personScopeAll: PERSON_SCOPE_ALL,
+    },
     at: [
       {
         role: 'call',
@@ -152,6 +173,7 @@ const SURVEY360_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
           "if (admin.people) fail('FORBIDDEN', '开启精细化权限后只能选择可见的人员，不能新建人员', 'PERSON_NOT_AVAILABLE');",
       },
       FINE_OFF,
+      PEOPLE_ALL,
     ],
   },
 };
