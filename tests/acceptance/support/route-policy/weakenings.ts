@@ -113,8 +113,14 @@ function leafToOptional(route: ManifestRoute, at: string, leaf: 'button' | 'oper
     if (leaf === 'button') {
       moved = { kind: 'object', object: node['object'], operation: 'button', button: node['button'] };
       node['button'] = NONE;
+      // 同一按钮在逐行（rows.button）上重复登记的，一并移走：否则逐行按钮仍在准入里，不算移动了这个叶子
+      const rows = node['rows'] as Node | undefined;
+      if (rows?.['button']) rows['button'] = NONE;
     } else {
       moved = { kind: 'object', object: node['object'], operation: node['operation'], button: NONE };
+      // 逐行的数据操作选择器同属这个叶子，一并移走
+      const rows = node['rows'] as Node | undefined;
+      if (rows?.['operation']) delete rows['operation'];
       if (node['button'] && !(node['button'] as Node)['none']) node['operation'] = 'button';
       else {
         const replacement = member(node);

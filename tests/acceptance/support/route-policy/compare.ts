@@ -48,14 +48,15 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
 
 /**
  * 蕴含关系（声明侧）：self / own 自带范围（本人即范围）；self 的叠加授权器自带对象权限，本人数据即 own；
- * relation 由关系定位自带范围；写入口登记了字段编辑权提取（requireObjectWrite）即蕴含对象写操作权。
+ * relation 由关系定位自带范围。写入字段（fieldsIn）不再蕴含对象操作：对象操作必须由准入里的对象节点登记，
+ * 否则把对象操作单独挪进 optional 会被写字段顶替（实现审第 3 轮 leaf→optional）。
  * 点范围只能由点校验（point / guard 范围）或本人 / 关系定位满足。
  */
 export function declaredHas(dims: ReadonlySet<string>, dim: string): boolean {
   if (dims.has(dim)) return true;
   const self = dims.has('self');
   if (dim === 'scope' || dim === 'scopePoint') return self || dims.has('own') || dims.has('relation');
-  if (dim === 'object') return self || dims.has('fieldsIn');
+  if (dim === 'object') return self;
   if (dim === 'own') return self;
   return false;
 }
@@ -87,7 +88,12 @@ function compareIdentity(observed: ObservedRoute, key: string, decl: Declared): 
 
 /** 对象 × 数据操作是否有对象节点覆盖（编码 * = 任一对象）。 */
 function coversObject(objects: ReadonlySet<string>, code: string, op: string): boolean {
-  return code === '*' ? [...objects].some((entry) => entry.endsWith(`:${op}`)) : objects.has(`${code}:${op}`);
+  // 操作可以是收窄后的取值集合（`create|update`：处理函数把变量收窄到这几个值），覆盖其一即可
+  return op
+    .split('|')
+    .some((one) =>
+      code === '*' ? [...objects].some((entry) => entry.endsWith(`:${one}`)) : objects.has(`${code}:${one}`),
+    );
 }
 
 /** 维度或对象义务（`obj:编码:操作`）是否由给定的维度 / 对象集合满足。 */

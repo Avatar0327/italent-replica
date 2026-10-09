@@ -818,6 +818,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Activity:delete"
+        ],
         "scope": [
           "survey360 visibility"
         ],
@@ -843,11 +846,17 @@
       },
       "module": "survey360",
       "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
         "command": [
           "write() / command()"
         ],
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Activity:update"
         ],
         "scope": [
           "survey360 visibility"
@@ -883,6 +892,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Relation:delete"
+        ],
         "scope": [
           "survey360 visibility"
         ],
@@ -917,6 +929,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Relation:delete"
+        ],
         "scope": [
           "survey360 visibility"
         ],
@@ -950,6 +965,9 @@
         ],
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:delete"
         ]
       }
     },
@@ -2486,8 +2504,9 @@
       },
       "module": "employment",
       "primitives": {
-        "disclose": [
-          "button"
+        "button": [
+          "buttonResource",
+          "object.button"
         ],
         "guard": [
           "transfer.managerIdentity"
@@ -4740,6 +4759,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Activity:view"
+        ],
         "scope": [
           "survey360 visibility"
         ]
@@ -4764,6 +4786,9 @@
       "primitives": {
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Activity:view"
         ],
         "scope": [
           "survey360 visibility"
@@ -4793,6 +4818,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Activity:view"
+        ],
         "scope": [
           "survey360 visibility"
         ],
@@ -4820,6 +4848,9 @@
       "primitives": {
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Relation:view"
         ],
         "scope": [
           "scopeSql",
@@ -4849,6 +4880,9 @@
       "primitives": {
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Relation:view"
         ],
         "scope": [
           "scopeSql",
@@ -4907,6 +4941,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Person:view"
+        ],
         "scope": [
           "scopeSql",
           "survey360 visibility"
@@ -4932,6 +4969,9 @@
       "primitives": {
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Person:view"
         ],
         "scope": [
           "survey360 visibility"
@@ -4996,6 +5036,9 @@
           "object.* 动作",
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Person:view"
+        ],
         "scope": [
           "scopeSql",
           "survey360 visibility"
@@ -5021,6 +5064,9 @@
       "primitives": {
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:view"
         ]
       }
     },
@@ -5043,6 +5089,9 @@
       "primitives": {
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:view"
         ]
       }
     },
@@ -5065,6 +5114,9 @@
       "primitives": {
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Settings:view"
         ]
       }
     },
@@ -5087,6 +5139,9 @@
       "primitives": {
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Settings:view"
         ]
       }
     },
@@ -5576,6 +5631,7 @@
           "objectContext"
         ],
         "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:create|update",
           "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
         ],
         "scope": [
@@ -5677,6 +5733,7 @@
       "module": "employment",
       "primitives": {
         "button": [
+          "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
         "command": [
@@ -5737,6 +5794,9 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
         "command": [
           "assertRevision",
           "revision(c)",
@@ -7789,6 +7849,9 @@
         "fieldsOut": [
           "org write()"
         ],
+        "object": [
+          "contracts checkFields（对象写操作权）"
+        ],
         "precondition": [
           "lockEmployee"
         ],
@@ -7830,6 +7893,9 @@
         ],
         "fieldsOut": [
           "org write()"
+        ],
+        "object": [
+          "contracts checkFields（对象写操作权）"
         ],
         "precondition": [
           "lockEmployee"
@@ -7880,6 +7946,7 @@
           "contracts.importScope"
         ],
         "object": [
+          "contracts checkFields（对象写操作权）",
           "object.* 动作"
         ],
         "precondition": [
@@ -7922,6 +7989,7 @@
           "contracts.importScope"
         ],
         "object": [
+          "contracts checkFields（对象写操作权）",
           "object.* 动作"
         ],
         "precondition": [
@@ -7964,6 +8032,7 @@
           "contracts.importScope"
         ],
         "object": [
+          "contracts checkFields（对象写操作权）",
           "object.* 动作"
         ],
         "precondition": [
@@ -8175,6 +8244,9 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
         "command": [
           "assertRevision",
           "revision(c)",
@@ -8450,6 +8522,9 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
         "command": [
           "assertRevision",
           "revision(c)",
@@ -8495,6 +8570,7 @@
       "module": "employment",
       "primitives": {
         "button": [
+          "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
         "command": [
@@ -8592,6 +8668,7 @@
       "primitives": {
         "button": [
           "object.button",
+          "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
         "command": [
@@ -8660,6 +8737,7 @@
       "primitives": {
         "button": [
           "object.button",
+          "requireEmploymentWrite(按钮)",
           "requireTransferButton"
         ],
         "domain": [
@@ -8794,6 +8872,9 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
         "command": [
           "assertRevision",
           "runCommand / runWrite"
@@ -8959,6 +9040,9 @@
       },
       "module": "employment",
       "primitives": {
+        "button": [
+          "requireEmploymentWrite(按钮)"
+        ],
         "command": [
           "assertRevision",
           "revision(c)",
@@ -10836,6 +10920,9 @@
         ],
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Activity:create"
         ]
       }
     },
@@ -10874,6 +10961,7 @@
           "survey360 read/write(need)"
         ],
         "objectOp": [
+          "Survey360.Relation:create",
           "TenantBase.EmployeeInformation:view"
         ],
         "scope": [
@@ -10912,6 +11000,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Activity:update"
+        ],
         "scope": [
           "survey360 visibility"
         ],
@@ -10946,6 +11037,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Activity:update"
+        ],
         "scope": [
           "survey360 visibility"
         ],
@@ -10971,11 +11065,17 @@
       },
       "module": "survey360",
       "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
         "command": [
           "write() / command()"
         ],
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Activity:update"
         ],
         "scope": [
           "survey360 visibility"
@@ -11014,6 +11114,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Relation:create"
+        ],
         "scope": [
           "survey360 visibility"
         ],
@@ -11050,6 +11153,9 @@
         ],
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Relation:create"
         ],
         "scope": [
           "survey360 visibility"
@@ -11091,6 +11197,7 @@
           "survey360 read/write(need)"
         ],
         "objectOp": [
+          "Survey360.Relation:create",
           "TenantBase.EmployeeInformation:view"
         ],
         "scope": [
@@ -11134,6 +11241,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Relation:update"
+        ],
         "scope": [
           "survey360 visibility"
         ],
@@ -11171,6 +11281,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Person:create"
+        ],
         "scope": [
           "survey360 visibility"
         ]
@@ -11205,6 +11318,7 @@
           "survey360 read/write(need)"
         ],
         "objectOp": [
+          "Survey360.Person:view",
           "TenantBase.EmployeeInformation:view"
         ],
         "scope": [
@@ -11246,6 +11360,7 @@
           "survey360 read/write(need)"
         ],
         "objectOp": [
+          "Survey360.Person:view",
           "TenantBase.EmployeeInformation:view"
         ],
         "scope": [
@@ -11283,6 +11398,9 @@
         ],
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:create"
         ]
       }
     },
@@ -11311,6 +11429,9 @@
         ],
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:update"
         ]
       }
     },
@@ -11342,6 +11463,9 @@
         ],
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Settings:create"
         ]
       }
     },
@@ -12623,6 +12747,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Activity:update"
+        ],
         "scope": [
           "survey360 visibility"
         ],
@@ -12659,6 +12786,9 @@
         ],
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Relation:update"
         ],
         "scope": [
           "survey360 visibility"
@@ -12697,6 +12827,9 @@
         "object": [
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "Survey360.Person:update"
+        ],
         "scope": [
           "survey360 visibility"
         ]
@@ -12730,6 +12863,9 @@
         ],
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:update"
         ]
       }
     },
@@ -12761,6 +12897,9 @@
         ],
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Settings:update"
         ]
       }
     },
@@ -12792,6 +12931,9 @@
         ],
         "object": [
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Settings:update"
         ]
       }
     }

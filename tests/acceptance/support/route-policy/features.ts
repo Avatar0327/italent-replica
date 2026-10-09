@@ -88,8 +88,12 @@ function collectWrite(write: WritePolicy, acc: Alternative): void {
   for (const name of write.preconditions ?? []) acc.preconditions.add(preconditionName(name));
 }
 
-function collectRows(rows: RowsPolicy, acc: Alternative): void {
+/** 逐行：字段、按钮、关系；逐行的数据操作选择器（rows.operation）也是对象 × 操作义务（按节点的对象展开）。 */
+function collectRows(rows: RowsPolicy, acc: Alternative, codes: readonly string[]): void {
   if (!isNone(rows.fields)) acc.dims.add('fieldsIn');
+  const ops = selectorValues(rows.operation).filter((op) => DATA_OPERATIONS.has(op));
+  if (ops.length && codes.length) acc.dims.add('object');
+  for (const code of codes) for (const op of ops) acc.objects.add(`${code}:${op}`);
   if (rows.button && !isNone(rows.button)) acc.dims.add('button');
   if (rows.relation) acc.dims.add('relation');
 }
@@ -151,7 +155,7 @@ function own(policy: RoutePolicy): Alternative {
       if (!isNone(policy.button)) acc.dims.add('button');
       collectScope(policy.scope, acc);
       if (fieldsActive(policy.fields)) acc.dims.add('fieldsOut');
-      if (policy.rows) collectRows(policy.rows, acc);
+      if (policy.rows) collectRows(policy.rows, acc, selectorValues(policy.object));
       if (policy.failureAudit) acc.dims.add('failureAudit');
       break;
     case 'button':
@@ -171,7 +175,7 @@ function own(policy: RoutePolicy): Alternative {
     case 'relation':
       acc.dims.add('relation');
       acc.privileged = true;
-      if (policy.rows) collectRows(policy.rows, acc);
+      if (policy.rows) collectRows(policy.rows, acc, []);
       if (fieldsActive(policy.fields)) acc.dims.add('fieldsOut');
       break;
     case 'exception':

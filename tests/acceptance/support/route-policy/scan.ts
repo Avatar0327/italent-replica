@@ -448,6 +448,8 @@ function handlerRoots(
   const roots: string[] = [];
   const seen = new Set<string>();
   const queue = identifiers(parts[0]!);
+  // 处理函数引用的包围作用域常量（全大写名，如 360 的 EDIT need 常量）
+  queue.push(...new Set(parts[0]!.match(/\b[A-Z][A-Z0-9_]+\b/g) ?? []));
   if (ts.isIdentifier(handler)) queue.push(handler.text);
   while (queue.length) {
     const name = queue.shift()!;
@@ -461,6 +463,12 @@ function handlerRoots(
       const text = local.getText(info.sf);
       parts.push(text);
       queue.push(...identifiers(text));
+    }
+    // 包围作用域里的小常量对象（如 360 的 `const EDIT = { object: 'activity', operation: 'update' }`）：
+    // 处理函数把它作为 need 传给枢纽，按文本带上，供原语匹配
+    if (local && ts.isAsExpression(local) && ts.isObjectLiteralExpression(local.expression)) {
+      const text = local.getText(info.sf);
+      if (text.length < 200) parts.push(`${name} = ${text}`);
     }
   }
   if (ts.isCallExpression(handler) && ts.isIdentifier(handler.expression)) roots.push(handler.expression.text);
@@ -607,6 +615,26 @@ function constantTexts(index: SourceIndex, file: string, text: string): string[]
   });
 }
 
+/**
+ * 布尔授权函数：函数体直接返回授权结果（`return !!(await deps.authorize(…))` / `return deps.authorize(…)`），
+ * 调用方决定它是准入还是披露（disclosure.ts R2）。只在可展开（非叶子）文件里找；叶子文件的函数按名字作原语匹配。
+ */
+const evaluatorCache = new WeakMap<SourceIndex, ReadonlySet<string>>();
+export function booleanEvaluators(index: SourceIndex): ReadonlySet<string> {
+  const cached = evaluatorCache.get(index);
+  if (cached) return cached;
+  const names = new Set<string>();
+  for (const info of index.files.values()) {
+    if (LEAF_FILES.has(info.file)) continue;
+    for (const [name, text] of info.defs) {
+      const body = text.slice(text.indexOf('{') + 1).trim();
+      if (/^return (!!\()?(await )?deps\.authorize\(/.test(body)) names.add(name);
+    }
+  }
+  evaluatorCache.set(index, names);
+  return names;
+}
+
 /** 文本里 `ns.fn` 形式、ns 为命名空间 import 的引用：展开为目标文件里的 fn（叶子文件不展开）。 */
 function namespaceRefs(index: SourceIndex, file: string, text: string): { file: string; name: string }[] {
   const info = index.files.get(file);
@@ -630,7 +658,9 @@ export function closureText(
   trace?: string[],
   admission = false,
 ): string {
-  const keep = (text: string, handler = false) => (admission ? splitDisclosure(text, handler).admission : text);
+  const evaluators = admission ? booleanEvaluators(index) : new Set<string>();
+  const keep = (text: string, handler = false) =>
+    admission ? splitDisclosure(text, handler, evaluators).admission : text;
   const handlerText = keep(registration.handlerText, true);
   const parts: string[] = [handlerText, ...constantTexts(index, registration.file, handlerText)];
   const visited = new Set<string>();

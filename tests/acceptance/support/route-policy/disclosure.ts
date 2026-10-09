@@ -4,8 +4,11 @@
  * 规则只看语法形状，不读声明：
  * - R1 吞掉 FORBIDDEN 的 try / catch：catch 里只有一句“不是 FORBIDDEN 就重抛”（catch 里另有判定的是“或”关系，
  *   如人才候选的新建权 / 编辑权，不算）；
- * - R2 `const x = await <求值>(…)` 之后没有紧跟 `if (!x) throw`（求值 = deps.authorize / authorizeInTransaction(…) /
- *   adminScope）；`!!(await deps.authorize(…))` 布尔；
+ * - R2 `const x = await <求值>(…)` 之后没有紧跟 `if (!x) throw`，或求值结果直接作对象字面量的属性值
+ *   （`canX: await <求值>(…)`）。求值 = deps.authorize / authorizeInTransaction(…) / adminScope，以及**布尔授权函数**
+ *   （函数体就是 `return !!(await deps.authorize(…))` 一类，scan.ts booleanEvaluators）——这类函数按**调用点**判定：
+ *   `if (!(await f(…))) throw` 是准入（函数体照常展开进准入闭包），上面两种用法才是披露（实现审第 3 轮：
+ *   managerHasHr 在经理入口生成 canViewReporting 是披露，在汇报关系页为假即 403 是准入）；
  * - R3 辅助函数里 `if (!(await deps.authorize(…))) { return …`：以“无权值”提前返回，函数余下部分只为有权时补充
  *   披露（如候选里的组织字段），整段到函数末尾都算披露；处理函数本身不按此剥离。
  * scan.ts 在闭包展开时按片段切分：披露片段里引用的函数只进披露闭包。准入闭包给原语扫描；完整闭包多出来的维度 /
@@ -55,27 +58,26 @@ function swallowedTries(text: string): Span[] {
   return spans;
 }
 
-const EVALUATOR = /const (\w+) = await (deps\.authorize|authorizeInTransaction\([^()]*\)|adminScope)\(/g;
+const BUILTIN_EVALUATORS = ['deps\\.authorize', 'authorizeInTransaction\\([^()]*\\)', 'adminScope'];
 
-/** R2：结果没有紧跟 `if (!x) throw` 的权限求值语句。 */
-function unenforcedEvaluations(text: string): Span[] {
+function evaluatorPattern(evaluators: ReadonlySet<string>): string {
+  return [...BUILTIN_EVALUATORS, ...[...evaluators].map((name) => name.replace(/[$]/g, '\\$'))].join('|');
+}
+
+/** R2：`const x = await <求值>(…)` 之后没有紧跟 `if (!x) throw`；`key: await <求值>(…)` 对象字面量属性值。 */
+function unenforcedEvaluations(text: string, evaluators: ReadonlySet<string>): Span[] {
   const spans: Span[] = [];
-  for (const match of text.matchAll(EVALUATOR)) {
+  const pattern = evaluatorPattern(evaluators);
+  for (const match of text.matchAll(new RegExp(`const (\\w+) = await (?:${pattern})\\(`, 'g'))) {
     const end = matching(text, match.index + match[0].length - 1);
     if (end < 0) continue;
     const rest = text.slice(end + 1);
     if (new RegExp(`^\\s*;?\\s*if \\(!${match[1]}\\) throw\\b`).test(rest)) continue;
     spans.push([match.index, end + 1]);
   }
-  return spans;
-}
-
-/** R2'：`!!(await deps.authorize(…))` 布尔求值。 */
-function booleanEvaluations(text: string): Span[] {
-  const spans: Span[] = [];
-  for (const match of text.matchAll(/!!\(await deps\.authorize\(/g)) {
-    const end = matching(text, match.index + 2);
-    if (end >= 0) spans.push([match.index, end + 1]);
+  for (const match of text.matchAll(new RegExp(`[{,]\\s*\\w+:\\s*await (?:${pattern})\\(`, 'g'))) {
+    const end = matching(text, match.index + match[0].length - 1);
+    if (end >= 0) spans.push([match.index + 1, end + 1]);
   }
   return spans;
 }
@@ -98,12 +100,11 @@ export interface Split {
   readonly disclosure: string;
 }
 
-/** `handler`：文本是路由处理函数本身（R3 不适用）。 */
-export function splitDisclosure(text: string, handler = false): Split {
+/** `handler`：文本是路由处理函数本身（R3 不适用）；`evaluators`：布尔授权函数名（按调用点判定）。 */
+export function splitDisclosure(text: string, handler = false, evaluators: ReadonlySet<string> = new Set()): Split {
   const spans = [
     ...swallowedTries(text),
-    ...unenforcedEvaluations(text),
-    ...booleanEvaluations(text),
+    ...unenforcedEvaluations(text, evaluators),
     ...earlyReturns(text, handler),
   ].sort((a, b) => a[0] - b[0]);
   let admission = '';

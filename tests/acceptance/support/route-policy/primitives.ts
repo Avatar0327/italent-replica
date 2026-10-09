@@ -90,6 +90,12 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['object.* 动作', /[`'"]object\.(view|create|update|delete)\b/, { unless: CONFIGURATION_TERNARY, near: true }],
     // 字段编辑权校验（requireObjectWrite）同时判定对象的新增 / 编辑开关
     ['requireObjectWrite（对象写操作权）', call('requireObjectWrite'), { near: true, writeOnly: true }],
+    // 合同 checkFields(ctx, op, fields) 经 requireObjectWrite 同时判定对象的新增 / 编辑开关（contracts/context.ts）
+    [
+      'contracts checkFields（对象写操作权）',
+      call('checkFields'),
+      { near: true, writeOnly: true, modules: ['contracts'] },
+    ],
     ['managerContext（readPageContext）', call('managerContext')],
     ['configurationContext(view)', CONFIGURATION_TERNARY, { getOnly: true }],
     ['org context(read|create|update|delete)', /\bcontext\(\s*c,\s*deps,\s*'(read|create|update|delete)'/],
@@ -104,6 +110,12 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['personnel access(button)', personnelAccess('view|create|update|delete', true)],
     ['adminScope(buttons)', /adminScope\([^)]*\[/],
     ['commandButton', calls('commandButton', 'requireCommandButton')],
+    // 任职写权枢纽带按钮实参：requireEmploymentWrite(ctx, op, payload, 'Employment.Edit' …)（employment/context.ts）
+    [
+      'requireEmploymentWrite(按钮)',
+      /\brequireEmploymentWrite\(\s*\w+,\s*'(?:create|update|delete)',[^;]*?,\s*'(?!TenantBase\.)[A-Z]\w*\.[A-Z]\w*'\s*[,)]/,
+      { near: true, modules: ['employment'] },
+    ],
     // 360 need：显式按钮，或 create / update / delete 的同名按钮（buttonOf）；SYNC / EDIT 常量同理
     ['survey360 need button', /\bbutton:\s*\S|operation:\s*'(create|update|delete)'/, { modules: ['survey360'] }],
     ['idp part write', /\bwrite\(\s*'(templateModule|commonGoal)'/, { modules: ['idp'] }],

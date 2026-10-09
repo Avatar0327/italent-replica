@@ -136,7 +136,21 @@ class Resolver {
   }
 }
 
-type Extract = (args: string[], resolver: Resolver) => [string[] | undefined, Op | undefined] | undefined;
+type Extract = (
+  args: string[],
+  resolver: Resolver,
+  text: string,
+) => [string[] | undefined, string | undefined] | undefined;
+
+/**
+ * 变量操作的收窄：`if (x !== 'a' && x !== 'b') throw …` 之后 x 只能是 a / b（如人才表单的 operation 查询参数），
+ * 事实记为 `a|b`（覆盖其一即可）。
+ */
+function narrowed(arg: string | undefined, text: string): string | undefined {
+  if (!arg || !/^\w+$/.test(arg)) return undefined;
+  const match = new RegExp(`if \\(${arg} !== '(\\w+)' && ${arg} !== '(\\w+)'\\)`).exec(text);
+  return match && OPS.has(match[1]!) && OPS.has(match[2]!) ? `${match[1]}|${match[2]}` : undefined;
+}
 
 const TALENT_WRITE: Record<string, Op> = { create: 'create', update: 'update', delete: 'delete' };
 const talentKey = (arg: string | undefined) => (arg === 'spec.object' ? 'spec.object' : quoted(arg));
@@ -176,7 +190,10 @@ const SHAPES: readonly { fn: string; modules?: readonly string[]; extract: Extra
   {
     fn: 'talentWriteContext',
     modules: ['talent'],
-    extract: (args) => [talentCodes(talentKey(args[2])), TALENT_WRITE[quoted(args[3]) ?? '']],
+    extract: (args, _r, text) => [
+      talentCodes(talentKey(args[2])),
+      TALENT_WRITE[quoted(args[3]) ?? ''] ?? narrowed(args[3], text),
+    ],
   },
   { fn: 'idpContext', modules: ['idp'], extract: (args) => [one(idpCode(quoted(args[2]))), opAt(args, 3, 'view')] },
   { fn: 'idpWriteContext', modules: ['idp'], extract: (args) => [one(idpCode(quoted(args[2]))), opAt(args, 3)] },
@@ -214,10 +231,33 @@ const SHAPES: readonly { fn: string; modules?: readonly string[]; extract: Extra
  */
 const AUTHORIZE_THEN_THROW = /const (\w+) = await deps\.authorize\(\{([^{}]*)\}\);\s*if \(!\1\) throw\b/g;
 
+/**
+ * 360 的 need（context.ts read / write 的对象 × 操作）：`{ need: { object: 'person', operation: 'update' … } }` 与
+ * `VIEW / EDIT = { object: 'activity' … }` 常量；操作缺省为查看。`also` / 引用列表里的 need（`[{ need: … }]`）是
+ * 附带对象，由守卫 survey360.alsoObjects 承载，不在这里记。
+ */
+function survey360Needs(text: string): string[] {
+  const objects = domain.survey360.SURVEY360_OBJECTS as Record<string, { code: string }>;
+  const out: string[] = [];
+  const shapes = [
+    /(?<!\[\s*)\{\s*need:\s*\{\s*object:\s*'(\w+)'(?:,\s*operation:\s*'(\w+)')?/g,
+    /\b[A-Z][A-Z0-9_]* = \{\s*object:\s*'(\w+)'(?:,\s*operation:\s*'(\w+)')?/g,
+  ];
+  for (const re of shapes) {
+    for (const match of text.matchAll(re)) {
+      const code = objects[match[1]!]?.code;
+      const op = match[2] ?? 'view';
+      if (code && OPS.has(op)) out.push(`${code}:${op}`);
+    }
+  }
+  return out;
+}
+
 /** 近闭包文本 → `编码(|编码…):操作` 事实（排序去重）。 */
 export function objectFacts(index: SourceIndex, near: string, module: string, dirs: readonly string[]): string[] {
   const resolver = new Resolver(index, dirs, module);
   const facts = new Set<string>();
+  if (module === 'survey360') for (const fact of survey360Needs(near)) facts.add(fact);
   for (const match of near.matchAll(AUTHORIZE_THEN_THROW)) {
     const action = /action:\s*'object\.(view|create|update|delete)'/.exec(match[2]!)?.[1];
     const resource = /resource:\s*([^,]+?)\s*(?:,|$)/.exec(match[2]!)?.[1];
@@ -227,7 +267,7 @@ export function objectFacts(index: SourceIndex, near: string, module: string, di
   for (const shape of SHAPES) {
     if (shape.modules && !shape.modules.includes(module)) continue;
     for (const args of callsOf(near, shape.fn)) {
-      const [codes, op] = shape.extract(args, resolver) ?? [];
+      const [codes, op] = shape.extract(args, resolver, near) ?? [];
       if (codes?.length && op) facts.add(`${[...new Set(codes)].sort().join('|')}:${op}`);
     }
   }
