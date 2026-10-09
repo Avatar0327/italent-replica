@@ -166,17 +166,15 @@ describe('AC-PRM-FW-02 F-073 人员 / 列表用途分别登记', () => {
     }
   });
 
-  it('反例：列表披露分支被删 → DISCLOSURE_MISSING；降成普通成员 → DISCLOSURE_WEAK', () => {
+  it('反例：列表披露分支被删 → DISCLOSURE_MISSING；any([披露, 普通成员]) → DISCLOSURE_WEAK', () => {
     const key = `GET ${BASE}/people`;
     const base = route(key);
     const policy = JSON.parse(JSON.stringify(base.policy)) as { optional?: Record<string, unknown> };
     const { allActivities: branch, ...rest } = policy.optional ?? {};
     expect(branch).toBeDefined();
     expect(codes(check([{ ...base, policy: { ...policy, optional: rest } as never }]))).toContain('DISCLOSURE_MISSING');
-    const weak = {
-      ...policy,
-      optional: { allActivities: { kind: 'member', reason: '夹具', fields: { mode: 'none', reason: '夹具' } } },
-    };
+    const member = { kind: 'member', reason: '夹具', fields: { mode: 'none', reason: '夹具' } };
+    const weak = { ...policy, optional: { allActivities: { kind: 'any', of: [branch, member] } } };
     expect(codes(check([{ ...base, policy: weak as never }]))).toContain('DISCLOSURE_WEAK');
   });
 
