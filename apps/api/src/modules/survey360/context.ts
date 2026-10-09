@@ -129,6 +129,24 @@ export async function allActivitiesOf(tx: Tx, deps: Pick<TenantRouteDeps, 'autho
 }
 
 /**
+ * 只带身份的操作人（DEC-369）：处理函数只用 userId 的入口不必为“全部活动 / 精细化范围”预取授权——这两项只给活动 /
+ * 人员可见范围用（activityVisibleSql、requireActivity、personVisible …），读它们说明入口选错了模式。
+ * 两个字段设成不可枚举的访问器，误用时当场抛错，展开运算符也不会碰到。
+ */
+function identityOnly(userId: string): Admin {
+  const unavailable = (field: string) => () => {
+    throw new Error(`该入口按 admin: 'identity' 注册，未加载 ${field}（需要活动 / 人员可见范围的入口用 'full'）`);
+  };
+  return Object.defineProperties({ userId } as Admin, {
+    allActivities: { get: unavailable('allActivities') },
+    people: { get: unavailable('people') },
+  });
+}
+
+/** 'full' = 查“全部活动”按钮与精细化范围（缺省）；'identity' = 只带 userId（DEC-369，处理函数不用可见范围的入口）。 */
+export type AdminMode = 'full' | 'identity';
+
+/**
  * 当前 360 操作人。people = 路由层取得的人员范围；精细化生效却没有取到范围时按空范围处理（fail-closed）。
  */
 export async function loadAdmin(
@@ -136,7 +154,9 @@ export async function loadAdmin(
   deps: Pick<TenantRouteDeps, 'authorize'>,
   tenant: TenantContext,
   people?: ModuleScope,
+  mode: AdminMode = 'full',
 ): Promise<Admin> {
+  if (mode === 'identity') return identityOnly(tenant.userId);
   const allActivities = await allActivitiesOf(tx, deps, tenant);
   if (allActivities || !(await finePermission(tx))) return { userId: tenant.userId, allActivities, people: null };
   const scope = people ?? EMPTY_SCOPE;
@@ -269,12 +289,13 @@ export async function read<T>(
   need: Need,
   load: (tx: Tx, admin: Admin, tenant: TenantContext) => Promise<T>,
   present: Present = trimAs(need.object),
+  adminMode: AdminMode = 'full',
 ): Promise<Response> {
   const route = await routeNeed(c, deps, need);
   const people = await routePeople(c, deps, route, need.object);
   const tenant = tenantOf(c);
   const body = await withTenant(deps.db, tenant.tenantId, async (tx) => {
-    const admin = await loadAdmin(tx, deps, tenant, people);
+    const admin = await loadAdmin(tx, deps, tenant, people, adminMode);
     return present(viewerOf(tx, deps, tenant, admin), (await load(tx, admin, tenant)) as never);
   });
   return c.json(body as object);
@@ -318,6 +339,8 @@ export interface WriteOptions<T> {
   readonly status?: 200 | 201;
   /** 不针对单个带 revision 对象的命令（如同步）：不要求 If-Match。 */
   readonly revisionFree?: boolean;
+  /** 缺省 'full'；处理函数 / 守卫 / 复核都不用活动与人员可见范围的入口登记 'identity'（DEC-369）。 */
+  readonly admin?: AdminMode;
 }
 
 const asPayload = (fields: readonly string[]) => Object.fromEntries(fields.map((field) => [field, true]));
@@ -363,7 +386,7 @@ export async function write<T>(
   const people = await routePeople(c, deps, route, options.need.object);
   const checked = async (tx: Tx) => {
     await requireNeed(tx, deps, tenant, options.need);
-    const admin = await loadAdmin(tx, deps, tenant, people);
+    const admin = await loadAdmin(tx, deps, tenant, people, options.admin);
     await options.guard?.(tx, admin);
     return admin;
   };
@@ -387,7 +410,7 @@ export async function write<T>(
   });
   const present = options.present ?? trimAs(options.need.object);
   const body = await withTenant(deps.db, tenant.tenantId, async (tx) => {
-    const viewer = viewerOf(tx, deps, tenant, await loadAdmin(tx, deps, tenant, people));
+    const viewer = viewerOf(tx, deps, tenant, await loadAdmin(tx, deps, tenant, people, options.admin));
     await options.results?.(tx, viewer.admin, result.body as never);
     return present(viewer, result.body as never);
   });
