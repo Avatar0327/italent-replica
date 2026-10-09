@@ -1,6 +1,6 @@
 /** F-034 R2：真实 PG 锁等待与 HTTP 交错，不允许确认替换后旧套卷作答复活。 */
 import { randomUUID } from 'node:crypto';
-import { type Db, type SQL, sql, withTenant } from '@italent/db';
+import { type Db, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as context from '../../apps/api/src/modules/survey360/context.js';
@@ -93,7 +93,7 @@ async function assertRejected(f: Awaited<ReturnType<typeof fixture>>, response: 
 }
 
 /** 真实锁屏障只延后事务释放；任何失败路径也须结束占用连接的事务。 */
-function hold(db: Db, tenantId: string, lock: SQL) {
+function hold(db: Db, tenantId: string, lock: ReturnType<typeof sql>) {
   const reached = signal();
   const release = signal();
   const promise = withTenant(db, tenantId, async (tx) => {

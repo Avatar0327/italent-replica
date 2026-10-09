@@ -4,7 +4,7 @@ import { actor, audit360, type Writer } from './context.js';
 
 type Sheet = typeof survey360Sheets.$inferSelect;
 
-/** 调用方先锁活动与评价对象；包括已移除评价关系遗留的答卷，避免旧作答随关系恢复而重新出现。 */
+/** 与作答共用活动 → 对象 → 答卷锁顺序；包括已移除关系遗留的答卷，避免旧作答恢复。 */
 export async function objectSheets(tx: Tx, activityId: string, objectId: string): Promise<Sheet[]> {
   const found = await tx
     .select({ sheet: survey360Sheets })
