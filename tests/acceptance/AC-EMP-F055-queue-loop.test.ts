@@ -85,6 +85,23 @@ describe('AC-EMP-F055 状态队列取数循环', () => {
     expect(await probeState(w.db, w.tenantId, moved)).toEqual([{ state: 'done', reason: null }]);
   });
 
+  it('⑥ 同 ID 顺延：取数后持锁前被顺延到更晚的执行日 → not_yet，退回 pending，不写派生数据；执行日再处理', async () => {
+    const { w, round } = await setup('f055-loop-postponed');
+    const id = await w.transfer('2026-10-05');
+    await probeEnqueue(w.db, w.tenantId);
+    // 消费者按 10-09（租户当天）取数；取数之后、持员工锁之前，顺延命令在 10-10 提交
+    const picked = await probeRound(w.db, w.context('2026-10-09T01:00:00Z'), {
+      beforeLock: () => w.postpone(id, '2026-10-10T01:00:00Z'),
+    });
+    expect(picked.map((row) => row.recordId)).toEqual([id]);
+    expect(await probeState(w.db, w.tenantId, id)).toEqual([{ state: 'pending', reason: null }]);
+    expect(await probeDerived(w.db, w.tenantId, id)).toEqual([]);
+    expect(await round('2026-10-09T10:00:00Z')).toEqual([]);
+    expect((await round('2026-10-10T01:00:00Z')).map((row) => row.recordId)).toEqual([id]);
+    expect(await probeState(w.db, w.tenantId, id)).toEqual([{ state: 'done', reason: null }]);
+    expect(await probeDerived(w.db, w.tenantId, id)).toEqual([{ effectiveDate: '2026-10-10' }]);
+  });
+
   it('⑤ 重复入队只一行', async () => {
     const { w, round } = await setup('f055-loop-dedupe');
     const id = await w.transfer('2026-10-02');

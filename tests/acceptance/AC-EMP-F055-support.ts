@@ -1,6 +1,7 @@
 /**
  * F-055 夹具：任职事件生效日门禁（R3-T02 实现拆分方案 §10）。
- * - 业务保存 / 删除 / 改期（= 删除后重存）都经真实入口；
+ * - 业务保存 / 删除都经真实入口；改期有两种已有语义：删除后以新日期重存（reschedule，旧事件 gone、新事件独立判断）、
+ *   同 ID 顺延（postpone，late-transfer.ts 重建时间轴，事件 ID 不变，复核按新日期 not_yet / effective）；
  * - 探针队列严格按 §10.2 的消费方约定实现：recordEventReadySql 取数 → 员工锁 → recheckRecordEvent → 更新队列；
  *   C1-4 / C2-1b 的真实调度器各自再用同一组用例重跑。
  */
@@ -14,7 +15,8 @@ import {
   recordEventReadySql,
   type RecordEventRecheck,
 } from '../../apps/api/src/modules/employment/record-events.js';
-import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
+import { postponeLateTransfer } from '../../apps/api/src/modules/employment/late-transfer.js';
+import { lockEmploymentBusiness, lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
 import type { EmploymentContext } from '../../apps/api/src/modules/employment/types.js';
 import { activationWorld, type ActivationWorld } from './AC-TRF-activation-support.js';
 
@@ -98,6 +100,24 @@ export async function f055World(db: Db, label: string, options: { timezone?: str
     return transfer(newDate);
   }
 
+  /**
+   * 同 ID 顺延（DEC-186，late-transfer.ts）：迟到执行的调动删除并重插时间轴，保留业务 / 记录 / 事件 ID，生效日改到执行日。
+   * 与“删除后重存”不同：旧事件仍指向同一条记录，复核按新日期给出 not_yet / effective。
+   */
+  async function postponeIn(tx: Tx, recordId: string, at: string) {
+    const [head] = rowsOf<{ revision: number }>(
+      await tx.execute(sql`SELECT revision FROM employment_business_objects
+        WHERE tenant_id=${tenantId} AND id=${recordId}::uuid`),
+    );
+    const ctx = { ...context(at), expectedRevision: Number(head!.revision) };
+    const business = await lockEmploymentBusiness(tx, ctx, recordId);
+    await postponeLateTransfer(tx, ctx, business);
+  }
+
+  async function postpone(recordId: string, at: string) {
+    await withTenant(db, tenantId, (tx) => postponeIn(tx, recordId, at));
+  }
+
   /** 逐事件求值谓词：返回 事件 ID → 门禁结果。 */
   async function gate(which: 'due' | 'ready', today: string, recordId?: string): Promise<Map<string, boolean>> {
     const predicate = which === 'due' ? recordEventDueSql('e', today) : recordEventReadySql('e', today);
@@ -125,6 +145,8 @@ export async function f055World(db: Db, label: string, options: { timezone?: str
     remove,
     events,
     reschedule,
+    postpone,
+    postponeIn,
     gate,
     recheck,
   };

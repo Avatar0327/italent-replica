@@ -28,9 +28,13 @@ export function recordEventToday(ctx: Pick<EmploymentContext, 'now' | 'timezone'
   return tenantLocalDate(ctx.now, ctx.timezone);
 }
 
+/** 谓词内部的时间轴别名；取不易与外层别名（t、e 等）冲突的名字，外层同名会遮蔽内部引用（42703）。 */
+const TIMELINE_ALIAS = 'rev_timeline';
+
 function eventColumns(eventAlias: string): { type: SQL; tenant: SQL; object: SQL } {
   // 别名由调用方源码给出，不是用户输入；仍限定成标识符，杜绝拼接任意 SQL。
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(eventAlias)) throw new TypeError(`事件表别名不合法：${eventAlias}`);
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(eventAlias) || eventAlias === TIMELINE_ALIAS)
+    throw new TypeError(`事件表别名不合法：${eventAlias}`);
   return {
     type: sql.raw(`${eventAlias}.event_type`),
     tenant: sql.raw(`${eventAlias}.tenant_id`),
@@ -45,8 +49,9 @@ function eventColumns(eventAlias: string): { type: SQL; tenant: SQL; object: SQL
 export function recordEventDueSql(eventAlias: string, today: string): SQL {
   const e = eventColumns(eventAlias);
   return sql`(${e.type} <> ${RECORD_CREATE_EVENT} OR EXISTS (
-    SELECT 1 FROM employment_timeline t
-    WHERE t.tenant_id = ${e.tenant} AND t.record_id = ${e.object} AND t.start_date <= ${today}::date))`;
+    SELECT 1 FROM employment_timeline rev_timeline
+    WHERE rev_timeline.tenant_id = ${e.tenant} AND rev_timeline.record_id = ${e.object}
+      AND rev_timeline.start_date <= ${today}::date))`;
 }
 
 /**
@@ -56,8 +61,8 @@ export function recordEventDueSql(eventAlias: string, today: string): SQL {
 export function recordEventReadySql(eventAlias: string, today: string): SQL {
   const e = eventColumns(eventAlias);
   return sql`(${recordEventDueSql(eventAlias, today)} OR NOT EXISTS (
-    SELECT 1 FROM employment_timeline t
-    WHERE t.tenant_id = ${e.tenant} AND t.record_id = ${e.object}))`;
+    SELECT 1 FROM employment_timeline rev_timeline
+    WHERE rev_timeline.tenant_id = ${e.tenant} AND rev_timeline.record_id = ${e.object}))`;
 }
 
 export type RecordEventRecheck =

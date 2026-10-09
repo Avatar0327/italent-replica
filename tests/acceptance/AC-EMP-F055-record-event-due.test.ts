@@ -101,6 +101,55 @@ describe('AC-EMP-F055 recordEventDueSql：生效日前为假、当天为真', ()
   });
 });
 
+describe('AC-EMP-F055 同 ID 顺延（DEC-186 迟到调动改到执行日）', () => {
+  it('事件 ID 与记录 ID 不变，门禁按顺延后的新日期判断：原日期当天已不再为真，执行日才为真', async () => {
+    const w = await f055World(database().db, 'f055-due-postpone');
+    const id = await w.transfer('2026-10-05');
+    const [before] = await w.events(id);
+    expect(await only(await w.gate('due', '2026-10-05', id))).toBe(true);
+    await w.postpone(id, '2026-10-10T01:00:00Z');
+    const [after] = await w.events(id);
+    expect(after!.id).toBe(before!.id);
+    expect(await only(await w.gate('due', '2026-10-09', id))).toBe(false);
+    expect(await only(await w.gate('ready', '2026-10-09', id))).toBe(false);
+    expect(await only(await w.gate('due', '2026-10-10', id))).toBe(true);
+  });
+});
+
+describe('AC-EMP-F055 外层别名与谓词内部别名', () => {
+  it('外层把事件表别名也叫 t（时间轴常用别名）时不被遮蔽：Due / Ready 结果与别名 e 一致', async () => {
+    const w = await f055World(database().db, 'f055-alias-t');
+    const kept = await w.transfer('2026-10-20');
+    const other = await w.hired('别名员工');
+    const removed = await w.transfer('2026-10-20', other.employee.id);
+    await w.remove(removed);
+    const run = (alias: string, which: 'due' | 'ready') =>
+      withTenant(w.db, w.tenantId, async (tx) =>
+        rowsOf<{ objectId: string }>(
+          await tx.execute(
+            sql`SELECT ${sql.raw(alias)}.object_id AS "objectId" FROM employment_outbox ${sql.raw(alias)}
+              WHERE ${sql.raw(alias)}.tenant_id=${w.tenantId} AND ${sql.raw(alias)}.event_type=${RECORD_CREATE}
+                AND ${which === 'due' ? recordEventDueSql(alias, '2026-10-02') : recordEventReadySql(alias, '2026-10-02')}
+                AND ${sql.raw(alias)}.object_id IN (${kept}::uuid, ${removed}::uuid)
+              ORDER BY 1`,
+          ),
+        ),
+      );
+    for (const which of ['due', 'ready'] as const) {
+      expect((await run('t', which)).map((row) => row.objectId)).toEqual(
+        (await run('e', which)).map((row) => row.objectId),
+      );
+    }
+    expect((await run('t', 'ready')).map((row) => row.objectId)).toEqual([removed]);
+    expect(await run('t', 'due')).toEqual([]);
+  });
+
+  it('非法别名与内部别名被拒绝', () => {
+    expect(() => recordEventDueSql('e; DROP TABLE x', '2026-10-02')).toThrow(TypeError);
+    expect(() => recordEventReadySql('rev_timeline', '2026-10-02')).toThrow(TypeError);
+  });
+});
+
 describe('AC-EMP-F055 租户时区跨日边界（DEC-056）', () => {
   it('UTC 比租户本地日期早一天：上海 10-05 00:30 已到期，UTC 日期仍是 10-04', async () => {
     const w = await f055World(database().db, 'f055-tz-shanghai', { timezone: 'Asia/Shanghai' });

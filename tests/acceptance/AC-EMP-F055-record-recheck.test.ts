@@ -45,6 +45,15 @@ describe('AC-EMP-F055 recheckRecordEvent', () => {
     expect((await w.recheck(moved, '2026-10-30')).kind).toBe('effective');
   });
 
+  it('同 ID 顺延（DEC-186）：记录 ID 不变，复核按新日期给出 not_yet，到执行日 effective', async () => {
+    const w = await f055World(database().db, 'f055-recheck-postponed');
+    const id = await w.transfer('2026-10-05');
+    expect((await w.recheck(id, '2026-10-09')).kind).toBe('effective');
+    await w.postpone(id, '2026-10-10T01:00:00Z');
+    expect(await w.recheck(id, '2026-10-09')).toEqual({ kind: 'not_yet', effectiveDate: '2026-10-10' });
+    expect((await w.recheck(id, '2026-10-10')).kind).toBe('effective');
+  });
+
   it('跨租户记录 ID 读不到 → gone（不泄露存在性）', async () => {
     const database_ = database().db;
     const mine = await f055World(database_, 'f055-recheck-tenant-a');

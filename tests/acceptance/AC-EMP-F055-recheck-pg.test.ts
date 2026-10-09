@@ -190,3 +190,56 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EMP-F055 真 PG：改期（�
     expect(await probeDerived(w.db, w.tenantId, moved)).toEqual([{ effectiveDate: '2026-10-30' }]);
   });
 });
+
+describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EMP-F055 真 PG：同 ID 顺延 × 消费交错', () => {
+  const consumerClock = '2026-10-09T01:00:00Z';
+  const postponeClock = '2026-10-10T01:00:00Z';
+
+  it('顺延先提交：消费者（按 10-09 判断）取数后在员工锁上等待，放行后复核 not_yet → 退回 pending，不写派生数据', async () => {
+    const w = await setup('f055-pg-postpone-first');
+    const id = await w.transfer('2026-10-05');
+    await probeEnqueue(w.db, w.tenantId);
+    const mover = holdLockThen(w, (tx) => w.postponeIn(tx, id, postponeClock));
+    await mover.held;
+    let consumed = false;
+    const consumer = probeRound(w.db, w.context(consumerClock)).then((picked) => {
+      consumed = true;
+      return picked;
+    });
+    await waitForLock(w.db, () => consumed);
+    mover.release();
+    await mover.done;
+    expect((await consumer).map((row) => row.recordId)).toEqual([id]);
+    expect(await probeState(w.db, w.tenantId, id)).toEqual([{ state: 'pending', reason: null }]);
+    expect(await probeDerived(w.db, w.tenantId, id)).toEqual([]);
+    await probeRound(w.db, w.context(postponeClock));
+    expect(await probeState(w.db, w.tenantId, id)).toEqual([{ state: 'done', reason: null }]);
+    expect(await probeDerived(w.db, w.tenantId, id)).toEqual([{ effectiveDate: '2026-10-10' }]);
+  });
+
+  it('消费者先提交：顺延在员工锁上等待，消费者提交后顺延照常落地；派生数据按消费时的日期保留', async () => {
+    const w = await setup('f055-pg-consume-then-postpone');
+    const id = await w.transfer('2026-10-05');
+    await probeEnqueue(w.db, w.tenantId);
+    const rechecked = signal();
+    const release = signal();
+    const consumer = probeRound(w.db, w.context(consumerClock), {
+      afterRecheck: async () => {
+        rechecked.resolve();
+        await release.promise;
+      },
+    });
+    await rechecked.promise;
+    let finished = false;
+    const moving = w.postpone(id, postponeClock).then(() => {
+      finished = true;
+    });
+    await waitForLock(w.db, () => finished);
+    release.resolve();
+    await consumer;
+    await moving;
+    expect(await probeState(w.db, w.tenantId, id)).toEqual([{ state: 'done', reason: null }]);
+    expect(await probeDerived(w.db, w.tenantId, id)).toEqual([{ effectiveDate: '2026-10-05' }]);
+    expect(await w.recheck(id, '2026-10-09')).toEqual({ kind: 'not_yet', effectiveDate: '2026-10-10' });
+  });
+});
