@@ -72,6 +72,7 @@ function rowFields(row: SubProcessRow): SubFields {
     category: row.category as SubFields['category'],
     approvalType: row.approvalType as SubFields['approvalType'],
     approvalProcessId: row.approvalProcessId,
+    endNoticeTemplate: row.endNoticeTemplate,
     startMode: row.startMode as SubFields['startMode'],
     startTimeType: row.startTimeType as SubFields['startTimeType'],
     fixedDate: row.fixedDate,
@@ -83,7 +84,11 @@ function rowFields(row: SubProcessRow): SubFields {
 
 function changedFields(before: SubFields, after: SubFields): Record<string, unknown> {
   return Object.fromEntries(
-    SUB_PROCESS_FIELDS.filter((field) => before[field] !== after[field]).map((field) => [field, after[field]]),
+    // 省略新增的可选字段时保留原值，旧客户端不需要提交或取得该字段的编辑权。
+    SUB_PROCESS_FIELDS.filter((field) => after[field] !== undefined && before[field] !== after[field]).map((field) => [
+      field,
+      after[field],
+    ]),
   );
 }
 
