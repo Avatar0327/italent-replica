@@ -1,6 +1,6 @@
 {
-  "id": "fc6379e0-490d-466f-a0ca-5af25f2e9ffe",
-  "prevId": "782d7386-2a24-4a31-ae75-bc9051528512",
+  "id": "65dc4278-9211-4cfb-b1ba-4a7a17606ba9",
+  "prevId": "6d2c7b2a-f536-4f3a-bc9d-b29ac4b1136f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -20515,531 +20515,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.personnel_qualification": {
-      "name": "personnel_qualification",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "source_type": {
-          "name": "source_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source_id": {
-          "name": "source_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "deleted": {
-          "name": "deleted",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "category_id": {
-          "name": "category_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "level_id": {
-          "name": "level_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "start_date": {
-          "name": "start_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "end_date": {
-          "name": "end_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "final_score": {
-          "name": "final_score",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_auto_sync": {
-          "name": "is_auto_sync",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "employment_record_id": {
-          "name": "employment_record_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "activity_type_id": {
-          "name": "activity_type_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "evaluation_id": {
-          "name": "evaluation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "result": {
-          "name": "result",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "personnel_qualification_employee": {
-          "name": "personnel_qualification_employee",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "employee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "start_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        },
-        "personnel_qualification_category": {
-          "name": "personnel_qualification_category",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "category_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        },
-        "personnel_qualification_level": {
-          "name": "personnel_qualification_level",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "level_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        },
-        "personnel_qualification_evaluation_one": {
-          "name": "personnel_qualification_evaluation_one",
-          "columns": [
-            {
-              "expression": "tenant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "evaluation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "with": {},
-          "method": "btree",
-          "where": "\"personnel_qualification\".\"evaluation_id\" IS NOT NULL",
-          "concurrently": false
-        }
-      },
-      "foreignKeys": {
-        "personnel_qualification_tenant_id_tenants_id_fk": {
-          "name": "personnel_qualification_tenant_id_tenants_id_fk",
-          "tableFrom": "personnel_qualification",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "personnel_qualification_employee_fk": {
-          "name": "personnel_qualification_employee_fk",
-          "tableFrom": "personnel_qualification",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id"
-          ],
-          "tableTo": "employment_employees",
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "personnel_qualification_category_fk": {
-          "name": "personnel_qualification_category_fk",
-          "tableFrom": "personnel_qualification",
-          "columnsFrom": [
-            "tenant_id",
-            "category_id"
-          ],
-          "tableTo": "ql_categories",
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
-        },
-        "personnel_qualification_level_fk": {
-          "name": "personnel_qualification_level_fk",
-          "tableFrom": "personnel_qualification",
-          "columnsFrom": [
-            "tenant_id",
-            "level_id"
-          ],
-          "tableTo": "ql_levels",
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "restrict"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "personnel_qualification_tenant_id": {
-          "name": "personnel_qualification_tenant_id",
-          "columns": [
-            "tenant_id",
-            "id"
-          ],
-          "nullsNotDistinct": false
-        },
-        "personnel_qualification_owner_id": {
-          "name": "personnel_qualification_owner_id",
-          "columns": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "nullsNotDistinct": false
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "personnel_qualification_revision_positive": {
-          "name": "personnel_qualification_revision_positive",
-          "value": "\"personnel_qualification\".\"revision\" > 0"
-        },
-        "personnel_qualification_dates": {
-          "name": "personnel_qualification_dates",
-          "value": "\"personnel_qualification\".\"end_date\" IS NULL OR \"personnel_qualification\".\"end_date\" >= \"personnel_qualification\".\"start_date\""
-        },
-        "personnel_qualification_source": {
-          "name": "personnel_qualification_source",
-          "value": "\"personnel_qualification\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync','initialization','evaluation')\n    AND ((\"personnel_qualification\".\"source_type\" = 'hr_direct' AND \"personnel_qualification\".\"source_id\" IS NULL)\n      OR (\"personnel_qualification\".\"source_type\" <> 'hr_direct' AND \"personnel_qualification\".\"source_id\" IS NOT NULL))"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.personnel_qualification_versions": {
-      "name": "personnel_qualification_versions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "employee_id": {
-          "name": "employee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "revision": {
-          "name": "revision",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "source_type": {
-          "name": "source_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source_id": {
-          "name": "source_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "deleted": {
-          "name": "deleted",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "command_id": {
-          "name": "command_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "record_id": {
-          "name": "record_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "category_id": {
-          "name": "category_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "level_id": {
-          "name": "level_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "start_date": {
-          "name": "start_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "end_date": {
-          "name": "end_date",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "final_score": {
-          "name": "final_score",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_auto_sync": {
-          "name": "is_auto_sync",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "employment_record_id": {
-          "name": "employment_record_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "activity_type_id": {
-          "name": "activity_type_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "evaluation_id": {
-          "name": "evaluation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "result": {
-          "name": "result",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "personnel_qualification_versions_tenant_id_tenants_id_fk": {
-          "name": "personnel_qualification_versions_tenant_id_tenants_id_fk",
-          "tableFrom": "personnel_qualification_versions",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "tableTo": "tenants",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "personnel_qualification_versions_employee_fk": {
-          "name": "personnel_qualification_versions_employee_fk",
-          "tableFrom": "personnel_qualification_versions",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id"
-          ],
-          "tableTo": "employment_employees",
-          "columnsTo": [
-            "tenant_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        },
-        "personnel_qualification_versions_record_fk": {
-          "name": "personnel_qualification_versions_record_fk",
-          "tableFrom": "personnel_qualification_versions",
-          "columnsFrom": [
-            "tenant_id",
-            "employee_id",
-            "record_id"
-          ],
-          "tableTo": "personnel_qualification",
-          "columnsTo": [
-            "tenant_id",
-            "employee_id",
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "personnel_qualification_versions_revision": {
-          "name": "personnel_qualification_versions_revision",
-          "columns": [
-            "tenant_id",
-            "record_id",
-            "revision"
-          ],
-          "nullsNotDistinct": false
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "personnel_qualification_versions_source": {
-          "name": "personnel_qualification_versions_source",
-          "value": "\"personnel_qualification_versions\".\"source_type\" IN ('hr_direct','self_service','info_collection','employment_sync','initialization','evaluation')\n    AND ((\"personnel_qualification_versions\".\"source_type\" = 'hr_direct' AND \"personnel_qualification_versions\".\"source_id\" IS NULL)\n      OR (\"personnel_qualification_versions\".\"source_type\" <> 'hr_direct' AND \"personnel_qualification_versions\".\"source_id\" IS NOT NULL))"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.personnel_skill": {
       "name": "personnel_skill",
       "schema": "",
@@ -41507,6 +40982,453 @@
         "talent_review_settings_rev": {
           "name": "talent_review_settings_rev",
           "value": "\"talent_review_settings\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.succession_records": {
+      "name": "succession_records",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "succession_type": {
+          "name": "succession_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_org_id": {
+          "name": "target_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_position_id": {
+          "name": "target_position_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "successor_employee_id": {
+          "name": "successor_employee_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "readiness_id": {
+          "name": "readiness_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "backup_type": {
+          "name": "backup_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'principal'"
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'9999-12-31'"
+        },
+        "end_reason": {
+          "name": "end_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_source": {
+          "name": "end_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_by": {
+          "name": "ended_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "exit_record_id": {
+          "name": "exit_record_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_kind": {
+          "name": "source_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
+        "source_batch_id": {
+          "name": "source_batch_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_item_id": {
+          "name": "source_item_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_by": {
+          "name": "deleted_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "succession_records_org_target": {
+          "name": "succession_records_org_target",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "succession_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "target_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "end_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "succession_records_position_target": {
+          "name": "succession_records_position_target",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "succession_type",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "target_position_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "end_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "succession_records_successor": {
+          "name": "succession_records_successor",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "successor_employee_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "end_date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "succession_records_exit": {
+          "name": "succession_records_exit",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "exit_record_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "succession_records_tenant_id_tenants_id_fk": {
+          "name": "succession_records_tenant_id_tenants_id_fk",
+          "tableFrom": "succession_records",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "succession_records_successor_fk": {
+          "name": "succession_records_successor_fk",
+          "tableFrom": "succession_records",
+          "columnsFrom": [
+            "tenant_id",
+            "successor_employee_id"
+          ],
+          "tableTo": "employment_employees",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "succession_records_target_org_fk": {
+          "name": "succession_records_target_org_fk",
+          "tableFrom": "succession_records",
+          "columnsFrom": [
+            "tenant_id",
+            "target_org_id"
+          ],
+          "tableTo": "org_objects",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "succession_records_target_position_fk": {
+          "name": "succession_records_target_position_fk",
+          "tableFrom": "succession_records",
+          "columnsFrom": [
+            "tenant_id",
+            "target_position_id"
+          ],
+          "tableTo": "job_position_objects",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "succession_records_readiness_fk": {
+          "name": "succession_records_readiness_fk",
+          "tableFrom": "succession_records",
+          "columnsFrom": [
+            "tenant_id",
+            "readiness_id"
+          ],
+          "tableTo": "talent_readiness_levels",
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "succession_records_type": {
+          "name": "succession_records_type",
+          "value": "\"succession_records\".\"succession_type\" IN ('org', 'position')"
+        },
+        "succession_records_target": {
+          "name": "succession_records_target",
+          "value": "(\"succession_records\".\"succession_type\" = 'org' AND \"succession_records\".\"target_org_id\" IS NOT NULL AND \"succession_records\".\"target_position_id\" IS NULL)\n        OR (\"succession_records\".\"succession_type\" = 'position' AND \"succession_records\".\"target_position_id\" IS NOT NULL AND \"succession_records\".\"target_org_id\" IS NULL)"
+        },
+        "succession_records_period": {
+          "name": "succession_records_period",
+          "value": "\"succession_records\".\"start_date\" <= \"succession_records\".\"end_date\""
+        },
+        "succession_records_backup_type": {
+          "name": "succession_records_backup_type",
+          "value": "\"succession_records\".\"backup_type\" IN ('principal', 'deputy')"
+        },
+        "succession_records_end_source": {
+          "name": "succession_records_end_source",
+          "value": "\"succession_records\".\"end_source\" IS NULL OR \"succession_records\".\"end_source\" IN ('manual', 'exit', 'sync_overwrite', 'sync_scope_overwrite')"
+        },
+        "succession_records_source_kind": {
+          "name": "succession_records_source_kind",
+          "value": "\"succession_records\".\"source_kind\" IN ('manual', 'review_sync')"
+        },
+        "succession_records_revision": {
+          "name": "succession_records_revision",
+          "value": "\"succession_records\".\"revision\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.succession_target_locks": {
+      "name": "succession_target_locks",
+      "schema": "",
+      "columns": {
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_kind": {
+          "name": "target_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "succession_target_locks_tenant_id_tenants_id_fk": {
+          "name": "succession_target_locks_tenant_id_tenants_id_fk",
+          "tableFrom": "succession_target_locks",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "succession_target_locks_tenant_id_target_kind_target_id_pk": {
+          "name": "succession_target_locks_tenant_id_target_kind_target_id_pk",
+          "columns": [
+            "tenant_id",
+            "target_kind",
+            "target_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "succession_target_locks_kind": {
+          "name": "succession_target_locks_kind",
+          "value": "\"succession_target_locks\".\"target_kind\" IN ('org', 'position')"
         }
       },
       "isRLSEnabled": false
