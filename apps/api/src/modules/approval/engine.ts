@@ -10,6 +10,7 @@ import { sql, type Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
   conditionViolations,
+  adminRecused,
   avoidSelfExceptionAdmin,
   blindReviewFields,
   countersignEndedReason,
@@ -19,7 +20,6 @@ import {
   EXIT_TARGETS,
   exitRulesOf,
   isCountersign,
-  isSelf,
   mayResubmit,
   nodeExits,
   previousNodeComparand,
@@ -32,6 +32,7 @@ import {
   type CountersignApprovalNode,
   type NodeDecision,
   type NodeExit,
+  type RecusalFacts,
   type RoutingFacts,
   type SingleApprovalNode,
 } from '@italent/domain';
@@ -48,9 +49,9 @@ import {
   personOfUser,
   resolveCandidate,
   tenantAdminTakeover,
-  userOfPerson,
   type RoutingSubject,
 } from './resolver.js';
+import { freezeRunSubjects, recusalFactsOf } from './recusal.js';
 import { freezeSubjects } from './subjects.js';
 import {
   resumableInstanceOf,
@@ -73,6 +74,8 @@ export interface Run {
   snapshot: BusinessSnapshot;
   instance: InstanceRow;
   readonly events: string[];
+  /** 本次命令内的回避事实缓存（读冻结行；冻结写入后清空，见 recusal.ts）。 */
+  recusal?: RecusalFacts;
 }
 
 /**
@@ -155,17 +158,15 @@ function routingSubject(run: Run): RoutingSubject {
   };
 }
 
-function routingFacts(run: Run, tasks: readonly TaskRow[], index: number, subjectUserId: string | null): RoutingFacts {
+function routingFacts(run: Run, tasks: readonly TaskRow[], index: number, recusal: RecusalFacts): RoutingFacts {
   // DEC-124 / F7：只认本轮、有效历史边界之后的任务（policies.effectiveHistory，暂定待 Q-M0-43）。
   // 自动「跳过」的节点处理人是系统（DEC-106），不计为任何人的同意。
   const history = effectiveHistory(tasks, run.instance);
   const approvedBy = (task: TaskRow) => task.assigneeUserId !== null && task.status === 'approved';
   const previousKey = index > 0 ? run.version.nodes[index - 1]!.key : null;
   return {
+    ...recusal,
     isFirstNode: index === 0,
-    initiatorUserId: run.instance.initiatorUserId,
-    subjectEmployeeId: run.snapshot.subjectEmployeeId,
-    subjectUserId,
     exceptionAdminUserId: run.version.exceptionAdminUserId!,
     previousApproverUserIds: previousNodeComparand(history.filter((task) => task.nodeKey === previousKey)),
     approvedUserIds: history.filter(approvedBy).map((task) => task.assigneeUserId!),
@@ -193,7 +194,7 @@ async function decide(
 }
 
 /** 自动处理的触发机制（审批记录里区分“与上一节点相同 / 与历史节点相同”）。 */
-const MECHANISMS = { same_skip: 'same', history_skip: 'history' } as const;
+const MECHANISMS = { same_skip: 'same', history_skip: 'history', subject_skip: 'subject' } as const;
 
 /**
  * 实际接手异常任务的人：流程上的异常管理员不可用（已停用、正在停用）时由租户管理员接管（DEC-098，回退人同样复核
@@ -221,8 +222,9 @@ export async function exceptionAdminFor(
     }
     return { userId: takeover.userId, reason: `${takeover.reason}（原异常管理员已停用，由租户管理员接管）` };
   }
+  // 异常管理员是账号来源：回避只按账号与冻结的 U(S) 比较（设计 §2.3），personId 仅用于取其直线经理
   const admin: Candidate = { userId: configured, personId: await personOfUser(tx, tenantId, configured) };
-  const manager = isSelf(admin, facts) ? await directManagerOf(tx, subject, admin) : undefined;
+  const manager = adminRecused(admin, facts) ? await directManagerOf(tx, subject, admin) : undefined;
   const choice = avoidSelfExceptionAdmin(admin, facts, manager);
   if (choice.kind === 'unavailable') {
     // 提交预检与仿真共用 submitBlockers（F13）。
@@ -234,10 +236,9 @@ export async function exceptionAdminFor(
 /** 按实例当前状态计算路由事实（盲审转异常管理员、提交前预检共用）。 */
 export async function currentRouting(tx: Tx, run: Run, nodeKey: string | null) {
   const subject = routingSubject(run);
-  const subjectUserId = await userOfPerson(tx, run.ctx.tenantId, run.snapshot.subjectEmployeeId);
   const tasks = await loadTasks(tx, run.ctx.tenantId, run.instance.id);
   const index = nodeKey ? nodeIndex(run, nodeKey) : 0;
-  return { subject, facts: routingFacts(run, tasks, index, subjectUserId) };
+  return { subject, facts: routingFacts(run, tasks, index, await recusalFactsOf(tx, run)) };
 }
 
 interface Entry {
@@ -342,11 +343,11 @@ async function announceAssignment(
  */
 export async function advanceFrom(tx: Tx, run: Run, index: number, known?: readonly TaskRow[]): Promise<void> {
   const subject = routingSubject(run);
-  const subjectUserId = await userOfPerson(tx, run.ctx.tenantId, run.snapshot.subjectEmployeeId);
+  const recusal = await recusalFactsOf(tx, run);
   const tasks = [...(known ?? (await loadTasks(tx, run.ctx.tenantId, run.instance.id)))];
   for (let i = index; i < run.version.nodes.length; i++) {
     const node = run.version.nodes[i]!;
-    const entry: Entry = { subject, facts: routingFacts(run, tasks, i, subjectUserId), activationId: randomUUID() };
+    const entry: Entry = { subject, facts: routingFacts(run, tasks, i, recusal), activationId: randomUUID() };
     const result = isCountersign(node)
       ? await enterCountersign(tx, run, node, entry, tasks)
       : await enterSingle(tx, run, node, entry, tasks);
@@ -383,7 +384,8 @@ async function enterSingle(
     run.instance = { ...run.instance, status: 'running', currentNodeKey: node.key };
     return 'stay';
   }
-  const hidden = await hiddenForAuto(tx, run, entry, decision.userId!);
+  // 多主体回避的“跳过”没有审批人作判断，不做盲审（设计 §3.1，Q14）
+  const hidden = decision.outcome === 'subject_skip' ? [] : await hiddenForAuto(tx, run, entry, decision.userId!);
   if (hidden.length) {
     await blindReviewSeat(
       tx,
@@ -868,8 +870,7 @@ export async function resume(tx: Tx, ctx: ApprovalContext, instanceId: string): 
   });
   // F-048 设计 §5.2：重提写新一轮冻结（历史员工 ∪ 适配器当前给出的员工，账号按此刻绑定重新取），再预检、路由
   const adapter = ADAPTERS[run.instance.businessType];
-  const current = (await adapter.subjects?.(tx, ctx, run.instance.businessId)) ?? [];
-  await freezeSubjects(tx, ctx, run.instance, run.instance.round, current);
+  await freezeRunSubjects(tx, run, (await adapter.subjects?.(tx, ctx, run.instance.businessId)) ?? []);
   await assertExceptionAdminAvailable(tx, run);
   await advanceFrom(tx, run, toRejecting ? nodeIndex(run, rejecting) : 0);
   return persistRun(tx, run, 'approval.instance.resubmit');

@@ -129,22 +129,25 @@ describe('R5-3（P2）：回退的租户管理员候选按游标分批扫描，�
  * 两张单的异动员工不同，先后即员工编号的先后，由构造保证，不靠随机重试。
  */
 async function orderedPair(w: ApprovalWorld, s: Scene, successor: string) {
-  const pair: { view: InstanceView; employeeId: string }[] = [];
+  const employees: string[] = [];
   for (const name of ['甲', '乙']) {
     const employee = await w.employee(`异动对象${name}`);
     await w.hire(employee.id, { departmentId: s.from });
-    pair.push({ view: await exceptionInstance(w, s, w.hr.id, employee.id), employeeId: employee.id });
+    employees.push(employee.id);
   }
   // 小写 UUID 文本的字典序与 PostgreSQL uuid 的排序一致。
-  const [first, second] = pair.sort((a, b) => (a.employeeId < b.employeeId ? -1 : 1));
-  // 入职时按 DEC-140 自动建了合成账号的绑定；可信夹具把它换成替代人的账号（同一事务内先删后插）。
+  const [firstId, secondId] = employees.sort();
+  // 入职时按 DEC-140 自动建了合成账号的绑定；可信夹具把它换成替代人的账号（同一事务内先删后插）。F-048（DEC-329⑤）起回避判定
+  // 读发起时冻结的账号，所以必须在发起之前换绑，替代人才是那张单上的异动本人。
   await withTenant(w.db, w.tenant.id, async (tx) => {
-    await tx.delete(permissionUserPersonLinks).where(eq(permissionUserPersonLinks.employeeId, second!.employeeId));
+    await tx.delete(permissionUserPersonLinks).where(eq(permissionUserPersonLinks.employeeId, secondId!));
     await tx
       .insert(permissionUserPersonLinks)
-      .values({ tenantId: w.tenant.id, userId: successor, employeeId: second!.employeeId });
+      .values({ tenantId: w.tenant.id, userId: successor, employeeId: secondId! });
   });
-  return { takeable: first!.view, failing: second!.view };
+  const takeable = await exceptionInstance(w, s, w.hr.id, firstId!);
+  const failing = await exceptionInstance(w, s, w.hr.id, secondId!);
+  return { takeable, failing };
 }
 
 describe('顺带补测：停用接管中途失败，整体回滚', () => {
