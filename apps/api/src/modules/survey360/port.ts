@@ -131,6 +131,11 @@ export async function loadSurvey360Port(tx: Tx, input: Survey360PortInput): Prom
           JOIN survey360_activities a ON a.tenant_id = o.tenant_id AND a.id = o.activity_id AND NOT a.deleted
             AND a.status = 'disabled' AND a.ended_at IS NOT NULL AND a.score_batch_id IS NOT NULL
             AND o.report_generated_at IS NOT NULL AND o.report_generated_at >= a.ended_at
+            -- 报告生成后用到的套卷改过计分口径：报告失效，不再计入（PR-B 第 2 轮 P2-7，changes.ts）
+            AND NOT EXISTS (SELECT 1 FROM survey360_object_questionnaires oq
+              JOIN survey360_questionnaires cq ON cq.tenant_id = oq.tenant_id AND cq.id = oq.questionnaire_id
+              WHERE oq.tenant_id = o.tenant_id AND oq.object_id = o.id
+                AND cq.scoring_changed_at > o.report_generated_at)
           JOIN survey360_scores sc ON sc.tenant_id = a.tenant_id AND sc.batch_id = a.score_batch_id
             AND sc.object_id = o.id
           JOIN survey360_questionnaires q ON q.tenant_id = sc.tenant_id AND q.id = sc.questionnaire_id

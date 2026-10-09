@@ -58,7 +58,7 @@ import {
 import { hashToken } from './links.js';
 import { personFilter, visiblePersonIds } from './people.js';
 import { buildReport } from './report-content.js';
-import { dataChanged } from './changes.js';
+import { scoringChanged } from './changes.js';
 import { currentManager } from './sync.js';
 
 export const DATA_CHANGED = '数据发生变化,请启用-停用活动后再生成/更新报告！';
@@ -111,17 +111,27 @@ async function visibleObjects(tx: Tx, activityId: string, admin: Admin, template
   );
 }
 
-/** 报告仍有效：计分后作答数据没变，且快照出自活动当前的计分批次（重算不让旧批次的报告复活，第 2 轮 P2-7）。 */
-function current(activity: ActivityRow, batchId: string | null) {
-  return !dataChanged(activity) && batchId !== null && batchId === activity.score_batch_id;
+/** 活动当前的报告有效性：计分组成是否在计分后变化，以及当前计分批次。 */
+interface Validity {
+  readonly changed: boolean;
+  readonly batchId: string | null;
 }
 
-function statusOf(activity: ActivityRow, object: ObjectRow) {
+async function validity(tx: Tx, activity: ActivityRow): Promise<Validity> {
+  return { changed: await scoringChanged(tx, activity), batchId: activity.score_batch_id };
+}
+
+/** 报告仍有效：计分后计分组成没变，且快照出自活动当前的计分批次（重算不让旧批次的报告复活，第 2 轮 P2-7）。 */
+function current(v: Validity, batchId: string | null) {
+  return !v.changed && batchId !== null && batchId === v.batchId;
+}
+
+function statusOf(v: Validity, object: ObjectRow) {
   if (!object.report_id) return 'not_generated';
-  return current(activity, object.report_batch_id) ? 'generated' : 'outdated';
+  return current(v, object.report_batch_id) ? 'generated' : 'outdated';
 }
 
-function rowView(activity: ActivityRow, template: TemplateRow, object: ObjectRow) {
+function rowView(v: Validity, template: TemplateRow, object: ObjectRow) {
   return {
     id: object.report_id,
     objectId: object.id,
@@ -129,7 +139,7 @@ function rowView(activity: ActivityRow, template: TemplateRow, object: ObjectRow
     department: object.department,
     position: object.position,
     template: { id: template.id, name: template.name },
-    status: statusOf(activity, object),
+    status: statusOf(v, object),
     generatedAt: iso(object.generated_at),
   };
 }
@@ -150,14 +160,14 @@ async function reportView(tx: Tx, activity: ActivityRow, reportId: string) {
       WHERE rp.id = ${reportId}::uuid AND rp.activity_id = ${activity.id}::uuid`),
   );
   if (!report) fail('NOT_FOUND', '报告不存在');
-  if (!current(activity, report.batch_id)) fail('CONFLICT', DATA_CHANGED, 'DATA_CHANGED');
+  if (!current(await validity(tx, activity), report.batch_id)) fail('CONFLICT', DATA_CHANGED, 'DATA_CHANGED');
   return { id: report.id, objectId: report.object_id, generatedAt: iso(report.generated_at), ...report.content };
 }
 
 async function generate(tx: Tx, ctx: Survey360Context, activity: ActivityRow, objectIds?: string[]) {
   if (activity.status !== 'disabled' || !activity.score_batch_id)
     fail('CONFLICT', '活动停用后才能生成报告', 'ACTIVITY_NOT_DISABLED');
-  if (dataChanged(activity)) fail('CONFLICT', DATA_CHANGED, 'DATA_CHANGED');
+  if (await scoringChanged(tx, activity)) fail('CONFLICT', DATA_CHANGED, 'DATA_CHANGED');
   const last = activity.reports_requested_at ? new Date(activity.reports_requested_at).getTime() : null;
   if (last !== null && ctx.now.getTime() - last < REPORT_INTERVAL_MS)
     fail('CONFLICT', '生成活动下所有报告120分钟后才可以重新生成报告！', 'RATE_LIMITED');
@@ -287,7 +297,7 @@ async function forwardPlan(
   input: Forward,
 ) {
   const template = await standardTemplate(tx, tenant.tenantId);
-
+  const v = await validity(tx, activity);
   const items: {
     reportId: string;
     objectName: string;
@@ -303,7 +313,7 @@ async function forwardPlan(
   let unresolved = 0;
   let reports = 0;
   for (const object of await visibleObjects(tx, activity.id, admin, template.id, input.objectIds)) {
-    const ready = object.report_id && current(activity, object.report_batch_id);
+    const ready = object.report_id && current(v, object.report_batch_id);
     let recipients = ready ? await recipientsOf(tx, tenant, now, input, object) : [];
     // 精细化下系统内收件人也须在范围内：不暴露范围外人员的邮箱
     const people = recipients.filter((r) => r.personId).map((r) => r.personId!);
@@ -325,7 +335,7 @@ async function forwardPlan(
         department: object.department,
         position: object.position,
         template: template.name,
-        status: statusOf(activity, object),
+        status: statusOf(v, object),
         recipientName: r.name,
         recipientEmail: r.email,
         relation: r.relation,
@@ -445,7 +455,8 @@ export function registerReportRoutes(module: Hono<TenantEnv>, deps: TenantRouteD
       const activity = await requireActivity(tx, admin, uuidParam(c));
       const template = await standardTemplate(tx, tenant.tenantId);
       const objects = await visibleObjects(tx, activity.id, admin, template.id);
-      return { items: objects.map((o) => rowView(activity, template, o)) };
+      const v = await validity(tx, activity);
+      return { items: objects.map((o) => rowView(v, template, o)) };
     }),
   );
   module.get('/activities/:id/reports/:reportId', (c) =>

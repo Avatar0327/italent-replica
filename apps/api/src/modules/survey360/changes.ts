@@ -2,8 +2,10 @@
  * 计分组成的变化（PR-B）：作答数据（清除作答、屏蔽 / 取消屏蔽）与计分组成（评价关系 / 评价对象增删、对象套卷调整、
  * 已使用套卷的权重与计分方式修改）一变，旧报告即失效，到下一次停用计分前不能生成新报告——保证报告里的关系、答卷
  * 与分数来自同一个计分批次（第 2 轮 P2-7）。报告是否有效另按报告的计分批次核对（reports.ts），重算不让旧报告复活。
+ * 活动内的变化记在活动上（markDataChanged）；套卷的变化记在套卷上（markQuestionnaireChanged），两者由
+ * scoringChanged 合并判断。
  */
-import { eq, sql, survey360Activities, type Tx } from '@italent/db';
+import { eq, sql, survey360Activities, survey360Questionnaires, type Tx } from '@italent/db';
 import { rows } from './context.js';
 
 /**
@@ -22,19 +24,39 @@ export async function markDataChanged(
     WHERE activity_id = ${activityId}::uuid AND id = ANY(${`{${[...new Set(objectIds)].join(',')}}`}::uuid[])`);
 }
 
-/** 用到某套卷的全部活动（未移除的评价对象）都标记变化：已使用套卷改权重 / 计分方式会改变计分结果。 */
+/**
+ * 已使用套卷改了计分口径（内容 / 权重 / 计分方式）：只在套卷上记时间，不写活动 / 评价对象行——套卷编辑持有套卷锁，
+ * 再去锁活动会与启用、替换套卷的 活动 → 套卷 顺序反向等待（F-053）。用到它的活动在 scoringChanged 里按时间比对。
+ */
 export async function markQuestionnaireChanged(tx: Tx, questionnaireId: string, now: Date): Promise<void> {
-  const found = rows<{ activity_id: string; object_id: string }>(
-    await tx.execute(sql`SELECT o.activity_id, o.id AS object_id FROM survey360_object_questionnaires oq
-      JOIN survey360_objects o ON o.tenant_id = oq.tenant_id AND o.id = oq.object_id AND NOT o.removed
-      WHERE oq.questionnaire_id = ${questionnaireId}::uuid ORDER BY o.activity_id, o.id`),
-  );
-  const byActivity = new Map<string, string[]>();
-  for (const r of found) byActivity.set(r.activity_id, [...(byActivity.get(r.activity_id) ?? []), r.object_id]);
-  for (const [activityId, objectIds] of byActivity) await markDataChanged(tx, activityId, now, objectIds);
+  await tx
+    .update(survey360Questionnaires)
+    .set({ scoringChangedAt: now })
+    .where(eq(survey360Questionnaires.id, questionnaireId));
 }
 
 /** 最近一次计分之后计分组成有变化：生成被拦、已生成的报告失效。计分时清空。 */
 export function dataChanged(activity: { data_changed_at: Date | string | null }): boolean {
   return activity.data_changed_at !== null;
+}
+
+/**
+ * 活动的报告是否失效：计分组成在计分后有变化（dataChanged），或活动内（未移除的评价对象）用到的套卷在最近一次
+ * 计分之后改过计分口径。
+ */
+export async function scoringChanged(
+  tx: Tx,
+  activity: { id: string; data_changed_at: Date | string | null; scored_at: Date | string | null },
+): Promise<boolean> {
+  if (dataChanged(activity)) return true;
+  if (activity.scored_at === null) return false;
+  const scoredAt = new Date(activity.scored_at).toISOString();
+  const [row] = rows<{ changed: boolean }>(
+    await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM survey360_objects o
+      JOIN survey360_object_questionnaires oq ON oq.tenant_id = o.tenant_id AND oq.object_id = o.id
+      JOIN survey360_questionnaires q ON q.tenant_id = oq.tenant_id AND q.id = oq.questionnaire_id
+      WHERE o.activity_id = ${activity.id}::uuid AND NOT o.removed
+        AND q.scoring_changed_at > ${scoredAt}::timestamptz) AS changed`),
+  );
+  return row!.changed;
 }

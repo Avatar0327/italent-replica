@@ -200,6 +200,11 @@ export const survey360Questionnaires = pgTable(
     excellentMaxRate: numeric('excellent_max_rate'),
     /** 题库里的套卷模板（PR-B，E3-R10）：与套卷同表同结构，引用即复制；套卷入口与模板入口互不可见。 */
     template: boolean('template').notNull().default(false),
+    /**
+     * 已使用套卷的计分口径（内容 / 权重 / 计分方式）最近一次修改时间（PR-B 第 2 轮 P2-7）：晚于活动计分时间的，
+     * 用到它的活动报告失效。只记在套卷上，不在套卷编辑里写活动 / 对象行（锁顺序 活动 → 套卷，F-053）。
+     */
+    scoringChangedAt: timestamp('scoring_changed_at', { withTimezone: true }),
     deleted: boolean('deleted').notNull().default(false),
     revision: revision(),
     createdBy: uuid('created_by').notNull(),

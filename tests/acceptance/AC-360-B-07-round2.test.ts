@@ -4,9 +4,12 @@
  * 4 报告嵌套字段与分数别名、报表列头按字段裁剪；5 转发须发送人对报告正文有完整查看权；6 待办 / 报告审计不绕过
  * 字段权限；7 重算不恢复旧报告、读取核对批次、改变计分组成的入口都让旧报告失效；8 评价对象移除后报告链接 404。
  */
+import { withTenant } from '@italent/db';
 import { survey360 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
+import { loadSurvey360Port } from '../../apps/api/src/modules/survey360/port.js';
 import { auditApi } from './AC-AUD-support.js';
 import type { ObjectPermissionBody, PersonView, QuestionnaireView } from './AC-360-support.js';
 import {
@@ -26,6 +29,7 @@ import {
 
 const testDb = useTestDb();
 const OBJ = survey360.SURVEY360_OBJECTS;
+const ALL = { ...EMPTY_SCOPE, all: true, hasDataPermission: true };
 
 /** 高级管理员身份，按对象隐藏指定字段（查看、编辑都关）。 */
 function hiding(hide: Partial<Record<keyof typeof OBJ, readonly string[]>>): ObjectPermissionBody[] {
@@ -270,8 +274,19 @@ describe('第 2 轮 P2-7：报告失效与批次一致', () => {
         ...(x.key === 'q1' ? { allowRemark: true } : {}),
       })),
     };
+    const records = async () =>
+      (
+        await withTenant(w.db, w.tenantId, (tx) =>
+          loadSurvey360Port(tx, { tenantId: w.tenantId, employeeIds: [s.employees.T.id], scope: ALL }),
+        )
+      ).records(s.employees.T.id);
+    const before = await records();
+    expect(before.ok && before.data.length).toBeGreaterThan(0);
+    w.setNow('2026-10-01T02:00:00Z'); // 计分、生成之后才改套卷
     await w.ok(w.request('PUT', `/questionnaires/${s.q.id}`, { ifMatch: q.revision, body: { content } }));
     expect((await reports(s))[0]!.status).toBe('outdated');
+    // Lastest360Cent 同样不再计入失效的报告
+    expect(await records()).toEqual({ ok: true, data: [] });
   });
 });
 

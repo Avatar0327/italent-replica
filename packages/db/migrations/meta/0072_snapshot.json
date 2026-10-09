@@ -1,5 +1,5 @@
 {
-  "id": "95c6a7eb-5bde-4063-93d4-3350e33a4c2c",
+  "id": "aeeb0a16-f286-49fc-b075-1b2ce7ff4b47",
   "prevId": "68b11a64-0ad3-47c8-a827-dea27286b546",
   "version": "7",
   "dialect": "postgresql",
@@ -30356,6 +30356,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "scoring_changed_at": {
+          "name": "scoring_changed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "deleted": {
           "name": "deleted",
