@@ -5,8 +5,8 @@
  * 重验；资源守卫（options.guard）、载荷引用（refs）、隐式写入的人员（also → routeNeed）、命令前员工信息查看权
  * （preflight → routeEmployeeScope）逐个绑判定处。链接入口不经成员中间件，令牌在每个处理函数里解析（linkTenant + resolve）。
  */
-import { type Binding, bound, list, point, SCOPE_AT, withNeeds } from './scopes.js';
-import type { Evidence, Inner, Obligation, RequiredTable } from './types.js';
+import { type Binding, bound, list, NONE, point, SCOPE_AT, withNeeds } from './scopes.js';
+import type { Evidence, Inner, Obligation, Purpose, RequiredTable } from './types.js';
 
 const S = 'apps/api/src/modules/survey360';
 const CONTEXT = `${S}/context.ts`;
@@ -159,7 +159,10 @@ function obligations(r: Route): Obligation[] {
       at: [...common, ...ROUTE_BUTTON, ...(write ? [IN_TRANSACTION] : []), buttonConst(r.key, r.button)],
     });
   }
-  const all = [...out, ...(r.extra?.(entry) ?? [])];
+  const activity = r.path.startsWith('/activities/:id')
+    ? activityScope(entry, activityCall(r), write ? 'write' : 'read')
+    : [];
+  const all = [...out, ...(r.extra?.(entry) ?? []), ...activity];
   return r.needs ? withNeeds(all, r.needs) : all;
 }
 
@@ -306,6 +309,166 @@ const unrestricted = (entry: Evidence, anchor: string): Obligation => ({
   at: [{ ...entry, anchor }, UNRESTRICTED_IMPL],
 });
 
+// ---- allActivities（F-073）：按实际用途分别登记，不整体 optional ------------------------------------------------------
+// 全允许探测在每个经 loadAdmin 的 read() / write() 路由上问到两个授权请求：Activity 查看权 + 全部活动按钮 viewAll
+// （context.ts allActivitiesOf → can，先判查看权、通过才判按钮）。它决定 admin.allActivities / admin.people：
+// 活动可见、人员可见、受限管理员的 403、列表与同步结果的范围广度。
+const VIEW_ALL = 'btn:Survey360.Activity#viewAll@list';
+const LOAD_ADMIN: Readonly<Record<'read' | 'write', Evidence>> = {
+  read: {
+    role: 'impl',
+    unit: `${CONTEXT}#read`,
+    anchor: 'const admin = await loadAdmin(tx, deps, tenant, people, adminMode);',
+  },
+  write: {
+    role: 'impl',
+    unit: `${CONTEXT}#write`,
+    anchor: 'const admin = await loadAdmin(tx, deps, tenant, people, options.admin);',
+  },
+};
+const ALL_ACTIVITIES_CHAIN: Evidence[] = [
+  {
+    role: 'impl',
+    unit: `${CONTEXT}#allActivitiesOf`,
+    anchor: "return can(tx, deps, tenant, 'activity', 'view', BUTTONS.allActivities);",
+  },
+  {
+    role: 'impl',
+    unit: `${CONTEXT}#loadAdmin`,
+    anchor: 'const allActivities = await allActivitiesOf(tx, deps, tenant);',
+  },
+];
+const CAN_VIEW: Evidence = {
+  role: 'impl',
+  unit: `${CONTEXT}#can`,
+  anchor:
+    'if (!(await authorize({ ...tenant, action: `object.${operation}`, resource: code, fields: [] }))) return false;',
+};
+const CAN_BUTTON: Evidence = {
+  role: 'impl',
+  unit: `${CONTEXT}#can`,
+  anchor: "return authorize({ ...tenant, action: 'object.button', resource });",
+};
+const VIEW_ALL_CONST: Evidence[] = [
+  { role: 'const', unit: `${CATALOG}#SURVEY360_BUTTONS`, anchor: "allActivities: 'viewAll'" },
+  {
+    role: 'const',
+    unit: `${CATALOG}#SURVEY360_OBJECTS>activity`,
+    anchor: "button(SURVEY360_BUTTONS.allActivities, 'list')",
+  },
+];
+const FINE_OFF: Evidence = {
+  role: 'impl',
+  unit: `${CONTEXT}#loadAdmin`,
+  anchor:
+    'if (allActivities || !(await finePermission(tx))) return { userId: tenant.userId, allActivities, people: null };',
+};
+/** 人员数据范围为全部（scope.all）同样让 admin.people 为 null：内部“或”的第三支，数据态（#178 第 2 轮 P2-1）。 */
+const PEOPLE_ALL: Evidence = {
+  role: 'impl',
+  unit: `${CONTEXT}#loadAdmin`,
+  anchor: 'return { userId: tenant.userId, allActivities, people: scope.all ? null : scope };',
+};
+
+/** allActivities 的两个授权请求，按给定用途登记（守卫内部备选 / 披露）。 */
+function allActivitiesPerms(
+  purpose: Purpose,
+  entry: Evidence,
+  load: 'read' | 'write',
+  extra: Pick<Obligation, 'inner' | 'need'>,
+  effect: readonly Evidence[] = [],
+): Obligation[] {
+  const base = [entry, LOAD_ADMIN[load], ...ALL_ACTIVITIES_CHAIN, ...effect];
+  return [
+    { perm: `obj:${code('activity')}:view`, purpose, ...extra, at: [...base, CAN_VIEW, objectConst('activity')] },
+    { perm: VIEW_ALL, purpose, ...extra, at: [...base, CAN_BUTTON, ...VIEW_ALL_CONST] },
+  ];
+}
+
+/** 活动可见 = allActivities 或 本人创建 / 被授权（access.ts requireActivity，不可见 404）。 */
+const ACTIVITY_VISIBLE: Evidence = {
+  role: 'impl',
+  unit: `${S}/access.ts#activityVisibleSql`,
+  anchor: 'if (admin.allActivities) return sql`true`;',
+};
+function activityScope(entry: Evidence, call: Evidence, load: 'read' | 'write'): Obligation[] {
+  return [
+    { perm: 'guard:survey360.activityScope', at: [call, REQUIRE_ACTIVITY, ACTIVITY_VISIBLE] },
+    ...allActivitiesPerms(
+      'guard:survey360.activityScope',
+      entry,
+      load,
+      { inner: { role: 'or', group: 'activityVisible', alt: 'allActivities' } },
+      [ACTIVITY_VISIBLE],
+    ),
+  ];
+}
+/** 路由处理函数里调 requireActivity 的位置：命令入口（写）/ 读取回调（读）；报告生成与转发经 reports.ts 的共用 command。 */
+function activityCall(r: Route): Evidence {
+  if (r.path.endsWith('/reports/generate') || r.path.endsWith('/reports/forward')) {
+    return {
+      role: 'call',
+      unit: `${S}/reports.ts#registerReportRoutes>command`,
+      anchor: 'run(tx, ctx, await requireActivity(tx, ctx.admin, id, true), input as never)',
+    };
+  }
+  const read = r.method === 'GET' || r.readOnly;
+  return {
+    role: 'call',
+    unit: unitOf(r),
+    anchor: read ? 'requireActivity(tx, admin, uuidParam(c)' : 'requireActivity(tx, ctx.admin, id, true)',
+  };
+}
+
+/** 人员可见（visiblePerson）：不受精细化限制（全部活动 / 精细化关闭 / 人员数据范围为全部），否则人员须在范围内。 */
+function personVisible(entry: Evidence, anchor: string, load: 'read' | 'write'): Obligation[] {
+  const impl: Evidence[] = [
+    {
+      role: 'impl',
+      unit: `${S}/people.ts#visiblePerson`,
+      anchor: "if (!(await personVisible(tx, admin, person))) fail('NOT_FOUND', message)",
+    },
+    { role: 'impl', unit: `${S}/people.ts#personVisible`, anchor: 'if (!admin.people) return true;' },
+    FINE_OFF,
+    PEOPLE_ALL,
+  ];
+  return [
+    { perm: 'guard:survey360.personVisible', at: [{ ...entry, anchor }, ...impl] },
+    ...allActivitiesPerms(
+      'guard:survey360.personVisible',
+      entry,
+      load,
+      { inner: { role: 'or', group: 'personVisible', alt: 'allActivities' } },
+      impl,
+    ),
+  ];
+}
+/** 受限管理员的 403（requireUnrestricted / requireCreatable）：全部活动 / 精细化关闭 / 人员数据范围为全部才放行。 */
+function unrestrictedInner(carrier: string, entry: Evidence, load: 'read' | 'write', effect: Evidence): Obligation[] {
+  return allActivitiesPerms(
+    `guard:${carrier}`,
+    entry,
+    load,
+    { inner: { role: 'or', group: 'unrestricted', alt: 'allActivities' } },
+    [effect, FINE_OFF, PEOPLE_ALL],
+  );
+}
+const REQUIRE_CREATABLE: Evidence = {
+  role: 'impl',
+  unit: `${S}/people.ts#requireCreatable`,
+  anchor:
+    "if (admin.people) fail('FORBIDDEN', '开启精细化权限后只能选择可见的人员，不能新建人员', 'PERSON_NOT_AVAILABLE')",
+};
+const REQUIRE_UNRESTRICTED_IMPL: Evidence = {
+  role: 'impl',
+  unit: `${S}/people.ts#requireUnrestricted`,
+  anchor: 'if (admin.people)',
+};
+/** 列表范围披露 / 写范围与披露：同一判定只决定结果范围的广度，不拒绝请求（optional.allActivities）。 */
+function allActivitiesDisclosure(entry: Evidence, load: 'read' | 'write', effect: readonly Evidence[]): Obligation[] {
+  return allActivitiesPerms('disclosure:allActivities', entry, load, { need: NONE }, effect);
+}
+
 /** 员工信息查看权（routeEmployeeScope：objectContext(PERSONNEL_OBJECT, 'view')；事务内 syncAccess 无查看权 403）。 */
 const ROUTE_EMPLOYEE: Evidence = {
   role: 'impl',
@@ -407,6 +570,7 @@ const ROUTES: readonly Route[] = [
     needConst: SYNC_NEED,
     extra: (entry) => [
       unrestricted(entry, 'requireUnrestricted(admin)'),
+      ...unrestrictedInner('survey360.unrestricted', entry, 'read', REQUIRE_UNRESTRICTED_IMPL),
       employeeView(
         [{ ...entry, anchor: 'await syncAccess(tx, deps, tenant, `${PERSONNEL_OBJECT}.list`)' }],
         ['object:object.* 动作'],
@@ -424,7 +588,23 @@ const ROUTES: readonly Route[] = [
     needConst: SYNC_NEED,
     extra: (entry) => {
       const anchor = 'preflight: async () => void (employees = await routeEmployeeScope(c, deps))';
-      return [preflight(entry, anchor), employeeView([{ ...entry, anchor }], ROUTE_EMPLOYEE_FACTS)];
+      return [
+        preflight(entry, anchor),
+        employeeView([{ ...entry, anchor }], ROUTE_EMPLOYEE_FACTS),
+        // 写范围与披露：受限（精细化生效）时只新建 / 更新范围内员工、不改邮箱、冲突与跳过项按范围裁剪，不拒绝请求
+        ...allActivitiesDisclosure(entry, 'write', [
+          { ...entry, anchor: 'return syncView(viewer, employees!, body, after);' },
+          { role: 'impl', unit: `${S}/sync.ts#refreshLinked`, anchor: 'const keepEmail = !!ctx.admin.people;' },
+          { role: 'impl', unit: `${S}/sync.ts#syncUnlinked`, anchor: 'if (ctx.admin.people) {' },
+          {
+            role: 'impl',
+            unit: `${S}/sync.ts#syncView`,
+            anchor:
+              'conflicts: admin.people ? [] : ' +
+              "body.conflicts.filter((id) => inScope.has(conflictEmployee.get(id) ?? '')),",
+          },
+        ]),
+      ];
     },
   },
   {
@@ -445,6 +625,7 @@ const ROUTES: readonly Route[] = [
       }),
       preflight(entry, 'const scope = await routeEmployeeScope(c, deps)'),
       unrestricted(entry, 'guard: async (_tx, admin) => requireUnrestricted(admin)'),
+      ...unrestrictedInner('survey360.unrestricted', entry, 'write', REQUIRE_UNRESTRICTED_IMPL),
       employeeView([{ ...entry, anchor: 'const scope = await routeEmployeeScope(c, deps)' }], ROUTE_EMPLOYEE_FACTS),
     ],
   },
@@ -456,6 +637,12 @@ const ROUTES: readonly Route[] = [
     key: 'person',
     need: 'read( c, deps, VIEW',
     needConst: VIEW('people.ts', 'person'),
+    // 列表范围披露：受限（精细化生效）时只列挂接员工在范围内的人员（personFilter），不拒绝请求
+    extra: (entry) =>
+      allActivitiesDisclosure(entry, 'read', [
+        { ...entry, anchor: 'const scope = personFilter(admin) ?? sql`true`;' },
+        { role: 'impl', unit: `${S}/people.ts#personFilter`, anchor: 'if (!admin.people) return null;' },
+      ]),
   },
   {
     file: 'people.ts',
@@ -464,6 +651,7 @@ const ROUTES: readonly Route[] = [
     key: 'person',
     need: 'read(c, deps, VIEW',
     needConst: VIEW('people.ts', 'person'),
+    extra: (entry) => personVisible(entry, 'visiblePerson(tx, admin, uuidParam(c))', 'read'),
   },
   {
     file: 'people.ts',
@@ -473,7 +661,10 @@ const ROUTES: readonly Route[] = [
     button: 'sync',
     need: "{ object: 'person', button: BUTTONS.sync }",
     opFact: false,
-    extra: (entry) => [unrestricted(entry, 'requireUnrestricted(admin)')],
+    extra: (entry) => [
+      unrestricted(entry, 'requireUnrestricted(admin)'),
+      ...unrestrictedInner('survey360.unrestricted', entry, 'read', REQUIRE_UNRESTRICTED_IMPL),
+    ],
   },
   {
     file: 'people.ts',
@@ -484,14 +675,17 @@ const ROUTES: readonly Route[] = [
     button: 'create',
     need: "need: { object: 'person', operation: 'create' }",
     extra: (entry) => [
-      resource(entry, 'guard: async (_tx, admin) => requireCreatable(admin)', [
-        {
-          role: 'impl',
-          unit: `${S}/people.ts#requireCreatable`,
-          anchor:
-            "if (admin.people) fail('FORBIDDEN', '开启精细化权限后只能选择可见的人员，不能新建人员', 'PERSON_NOT_AVAILABLE')",
-        },
-      ]),
+      resource(entry, 'guard: async (_tx, admin) => requireCreatable(admin)', [REQUIRE_CREATABLE]),
+      {
+        perm: 'guard:survey360.personCreatable',
+        at: [
+          { ...entry, anchor: 'guard: async (_tx, admin) => requireCreatable(admin)' },
+          REQUIRE_CREATABLE,
+          FINE_OFF,
+          PEOPLE_ALL,
+        ],
+      },
+      ...unrestrictedInner('survey360.personCreatable', entry, 'write', REQUIRE_CREATABLE),
       refs(
         entry,
         'refs: (tx, admin, input) => requireSuperior(tx, input.superiorPersonId, undefined, admin)',
@@ -515,6 +709,7 @@ const ROUTES: readonly Route[] = [
           anchor: "if (!(await personVisible(tx, admin, person))) fail('NOT_FOUND', message)",
         },
       ]),
+      ...personVisible(entry, 'guard: async (tx, admin) => void (await visiblePerson(tx, admin, id))', 'write'),
       refs(
         entry,
         'requireSuperior(tx, input.superiorPersonId, id, admin, (await loadPerson(tx, id)).superiorPersonId)',
@@ -586,6 +781,9 @@ const ROUTES: readonly Route[] = [
     key: 'activity',
     need: 'read(c, deps, VIEW',
     needConst: VIEW('activities.ts', 'activity'),
+    // 列表范围披露：全部活动看全部，其余只列本人创建与被授权的（activityVisibleSql），不拒绝请求
+    extra: (entry) =>
+      allActivitiesDisclosure(entry, 'read', [{ ...entry, anchor: 'activityVisibleSql(admin)' }, ACTIVITY_VISIBLE]),
   },
   {
     file: 'activities.ts',

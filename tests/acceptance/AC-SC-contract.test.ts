@@ -240,7 +240,7 @@ describe('审计（§8.4；DEC-197 / 216）', () => {
           objectType,
           objectId: randomUUID(),
           before: null,
-          after: { name: '合成名称', levelId: randomUUID() },
+          after: { name: '合成名称', levelId: randomUUID(), successionType: 'org', targetOrgId: world.tenant.id },
           commandId: randomUUID(),
           ...(orgId ? { scope: { orgId } } : {}),
         });
@@ -278,7 +278,7 @@ describe('审计（§8.4；DEC-197 / 216）', () => {
     return user.as;
   }
 
-  it('规则配置只认看全部；组织锚点按范围；记录日志等 PR-A 的 SELF 谓词、任务日志等逐行谓词，此前一律不返回', async () => {
+  it('规则配置只认看全部；组织锚点按范围；记录日志由 A1 的 SELF 谓词裁剪（见 AC-SC-self），任务日志等逐行谓词随 B3 / D3 提供前一律不返回', async () => {
     const world = await auditWorld();
     const audit = auditApi(world.db, () => new Date(), { authorize: undefined });
     const visibleTypes = async (as: { user: string; tenant: string }) => {
@@ -290,7 +290,7 @@ describe('审计（§8.4；DEC-197 / 216）', () => {
       return types;
     };
     const all = await viewer(world, [O.riskLevel.code, O.healthResult.code, O.record.code, O.calcRun.code]);
-    expect(await visibleTypes(all)).toEqual([O.riskLevel.code, O.healthResult.code]);
+    expect(await visibleTypes(all)).toEqual([O.riskLevel.code, O.healthResult.code, O.record.code]);
     // 有对象查看权、数据范围默认空：规则配置与组织锚点对象都看不到
     expect(await visibleTypes(await viewer(world, []))).toEqual([]);
   });

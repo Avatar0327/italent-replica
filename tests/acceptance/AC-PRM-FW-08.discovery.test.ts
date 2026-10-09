@@ -66,9 +66,9 @@ const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => 
 const withTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({ ...REQUIRED, [k]: obligations });
 
 describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
-  it('覆盖全部已声明端点（490），每个模块一个冻结文件，条目数与模块端点数一致', () => {
+  it('覆盖全部已声明端点（493），每个模块一个冻结文件，条目数与模块端点数一致', () => {
     expect(Object.keys(fresh).sort()).toEqual(manifest.declared.map(key).sort());
-    expect(manifest.declared).toHaveLength(490);
+    expect(manifest.declared).toHaveLength(493);
     const groups = groupByModule(fresh);
     const files = readdirSync(PROBE_DIR).filter((f) => f.endsWith('.json'));
     expect(files.sort()).toEqual(
@@ -113,12 +113,12 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     expect(findings, show(findings)).toEqual([]);
   });
 
-  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：116 项有实际用途 + 18 项冗余观测（#125 套卷模板入口；原审定的 41 项已由 F-075 去掉），互斥', () => {
+  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：29 项有实际用途 + 18 项冗余观测（#125 套卷模板入口；原审定的 41 项已由 F-075 去掉），互斥', () => {
     const open = check(manifest.declared);
     expect(codes(open).every((c) => c === 'PROBE_ADMISSION_UNCLAIMED')).toBe(true);
     const gaps = KNOWN_GAPS.flatMap((g) => g.pairs);
     const redundant = REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs);
-    expect(gaps).toHaveLength(116);
+    expect(gaps).toHaveLength(29);
     expect(redundant).toHaveLength(18);
     const all = [...gaps, ...redundant].map(([r, k]) => `${r}\t${k}`);
     expect(new Set(all).size, '登记对不重复，两本账互斥').toBe(all.length);
@@ -167,13 +167,8 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     expect(findings[0]!.route).toBe(k);
   });
 
-  /** 审查原文替换反例（F-074 后任职资格组已无缺口，剩 survey360 / idp 两组）：补上一个旧缺口，同时误删同类另一端点的合法登记（总数不变）。 */
+  /** 审查原文替换反例（F-073 / F-074 后 survey360 与任职资格组已无缺口，剩 idp 组；org 组只有 1 对）：补上一个旧缺口，同时误删同类另一端点的合法登记（总数不变）。 */
   const REPLACEMENTS = [
-    {
-      name: 'survey360',
-      fixed: ['DELETE /api/tenant/survey360/activities/:id', 'btn:Survey360.Activity#viewAll@list'],
-      broken: ['GET /api/tenant/survey360/activities', 'obj:Survey360.Activity:view'],
-    },
     {
       name: 'idp',
       fixed: ['DELETE /api/tenant/idp/plans/:id', 'obj:IDP.Analysis:view'],
