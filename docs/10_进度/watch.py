@@ -54,7 +54,7 @@ def snapshot():
             b = c.get("body", "")[:200]
             if "开发完成" in b or "设计完成" in b:
                 done_at = c["createdAt"]
-            elif done_at and any(w in b for w in ("审查已发起", "排队待审", "已发起")):
+            elif done_at and any(w in b for w in ("审查已发起", "排队待审", "已发起", "审查原文", "修改清单", "清单补充", "可以合并")):
                 done_at = ""
         if done_at and handled:  # 审查发起与“开发完成”几乎同时贴（同一 head 已发起）时不再报
             done_at = ""
