@@ -1,7 +1,7 @@
 /**
  * AC-SC-01（R3-T05 A1，设计 §1.1）：继任记录表与目标锁表的库级约束——类型与目标二选一、区间合法、区间排他
  * （含历史，软删除不占）、同租户外键、准备度 RESTRICT、租户隔离、软删除清准备度引用、source_batch_id 先建列不建外键（D1 补）。
- * 约束违反只断言 PostgreSQL 错误码（23514 检查 / 23P01 排他 / 23503 外键 / 23505 唯一），不依赖文案。
+ * 约束违反只断言 PostgreSQL 错误码（23514 检查 / 23P01 排他 / 23503 外键（RESTRICT 在 PGlite 为 23001）/ 23505 唯一），不依赖文案。
  */
 import { pgErrorCode, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
@@ -149,11 +149,12 @@ describe('AC-SC-01 继任记录表约束（设计 §1.1）', () => {
       startDate: '2025-01-01',
       endDate: '2025-02-01',
     });
-    expect(
+    // RESTRICT 的错误码因引擎而异：真 PostgreSQL 报 23503，PGlite 报 23001（restrict_violation），都是外键拒绝
+    expect(['23001', '23503']).toContain(
       await failure(() =>
         w.asTenant((tx) => tx.execute(sql`DELETE FROM talent_readiness_levels WHERE id = ${level.id}::uuid`)),
       ),
-    ).toBe('23503');
+    );
   });
 
   it('软删除同事务清掉准备度引用（删除数据不占用准备度，快照留在审计）', async () => {

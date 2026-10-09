@@ -16,7 +16,7 @@ describe('AC-SC-guards 继任记录读侧权限（真实授权器）', () => {
   let w: SuccessionWorld;
   let world: PermissionWorld;
   let std: Awaited<ReturnType<SuccessionWorld['standard']>>;
-  const ids: Record<string, string> = {};
+  const ids = {} as Record<'inOrg' | 'outOrg' | 'inPosition' | 'outPosition', string>;
 
   beforeAll(async () => {
     w = await successionWorld(testDb().db, 'sc-guards');

@@ -462,6 +462,20 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/personnel/subsets.ts': {
     loadSubset: 'ce8761631bb3',
   },
+  'apps/api/src/modules/succession/access.ts': {
+    requireFilterVisible: '41fc2093cc0b',
+    successionContext: '293e20c468e5',
+  },
+  'apps/api/src/modules/succession/read-sql.ts': {
+    selfRecordHiddenSql: '89628ea4a06a',
+  },
+  'apps/api/src/modules/succession/record-read.ts': {
+    conditions: 'de36b4659bdd',
+  },
+  'apps/api/src/modules/succession/routes.ts': {
+    recordFilter: '858f731477d8',
+    registerSuccessionRoutes: '47b740013e16',
+  },
   'apps/api/src/modules/survey360/access.ts': {
     requireActivity: '8ae13475536b',
     requireVisibleObject: '3d8ff28e5d4c',
@@ -737,6 +751,9 @@ export const DIGESTS: Digests = {
   },
   'packages/domain/src/personnel/fields.ts': {
     SUBSETS: '12a3afeab085',
+  },
+  'packages/domain/src/succession/catalog.ts': {
+    'SUCCESSION_OBJECTS>record': 'a17b8e7432d2',
   },
   'packages/domain/src/survey360/catalog.ts': {
     SURVEY360_BUTTONS: '864363f22e8b',

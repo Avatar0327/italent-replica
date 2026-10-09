@@ -21,7 +21,7 @@ describe('AC-SC-self SELF 谓词（设计 §8.4）', () => {
   let w: SuccessionWorld;
   let world: PermissionWorld;
   let std: Awaited<ReturnType<SuccessionWorld['standard']>>;
-  const ids: Record<string, string> = {};
+  const ids = {} as Record<'org' | 'position' | 'orgB', string>;
 
   beforeAll(async () => {
     w = await successionWorld(testDb().db, 'sc-self');
@@ -124,7 +124,7 @@ describe('AC-SC-self SELF 谓词（设计 §8.4）', () => {
         });
     });
     const head = await recordOperator(world, { userId: await w.userOf(std.head), seeAll: true, audit: true });
-    const audit = auditApi(world.db, () => new Date(`${SC_TODAY}T01:00:00Z`), { authorize: undefined });
+    const audit = auditApi(world.db, () => new Date(), { authorize: undefined });
     const seen = async () =>
       (await audit.dataChanges(head.as, { objectType: record, limit: '50' })).items.map(
         (item) => (item as unknown as { objectId: string }).objectId,

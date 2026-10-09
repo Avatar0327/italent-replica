@@ -16,12 +16,13 @@ import {
 } from './AC-SC-support.js';
 
 const testDb = useTestDb();
+const errorOf = (body: unknown) => (body as { error: { code: string; details?: { reason?: string } } }).error;
 
 describe('AC-SC-01 继任记录读侧（设计 §2.2 #1 / #2）', () => {
   let w: SuccessionWorld;
   let std: Awaited<ReturnType<SuccessionWorld['standard']>>;
   let level: ReadinessSeed;
-  const ids: Record<string, string> = {};
+  const ids = {} as Record<'orgActive' | 'orgEnded' | 'orgDeleted' | 'posActive', string>;
 
   beforeAll(async () => {
     w = await successionWorld(testDb().db, 'sc-read');
@@ -173,8 +174,9 @@ describe('AC-SC-01 继任记录读侧（设计 §2.2 #1 / #2）', () => {
       const before = await w.list('?asOf=2026-07-01&status=all');
       expect(before.items.map((item) => item.id)).toEqual([ids.orgEnded]);
       const future = await get('/records?asOf=2026-10-02');
-      expect([future.status, (future.body as { error: { code: string } }).error.code]).toEqual([
+      expect([future.status, errorOf(future.body).code, errorOf(future.body).details?.reason]).toEqual([
         400,
+        'VALIDATION_FAILED',
         'AS_OF_IN_FUTURE',
       ]);
       const malformed = await get('/records?asOf=2026-13-40');

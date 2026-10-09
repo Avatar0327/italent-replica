@@ -154,7 +154,7 @@ export async function successionWorld(db: Db, label: string) {
     return { orgA, orgB, keyPosition, head, incumbent, successor1, successor2 };
   }
 
-  return { ...world, post, position, setHead, readiness, insertRecord, userOf, request, list, standard, asTenant };
+  return { ...world, db, post, position, setHead, readiness, insertRecord, userOf, request, list, standard, asTenant };
 }
 
 export type SuccessionWorld = Awaited<ReturnType<typeof successionWorld>>;

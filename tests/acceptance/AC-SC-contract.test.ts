@@ -234,7 +234,7 @@ describe('审计（§8.4；DEC-197 / 216）', () => {
           objectType,
           objectId: randomUUID(),
           before: null,
-          after: { name: '合成名称', levelId: randomUUID() },
+          after: { name: '合成名称', levelId: randomUUID(), successionType: 'org', targetOrgId: world.tenant.id },
           commandId: randomUUID(),
           ...(orgId ? { scope: { orgId } } : {}),
         });

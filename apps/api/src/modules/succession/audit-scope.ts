@@ -10,6 +10,7 @@ import { sql } from '@italent/db';
 import type { SuccessionObject } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { ModuleScope } from '../permission/module-access.js';
+import { selfRecordHiddenSql } from './read-sql.js';
 
 /** 审计行可用的列（与 audit/visibility.ts 的 Row 同义）。 */
 export interface SuccessionAuditRow {
@@ -33,11 +34,24 @@ export type SuccessionAuditSpec =
       readonly visible?: (scope: ModuleScope, row: SuccessionAuditRow, viewer: SuccessionAuditViewer) => SQL;
     };
 
-/** 继任记录日志在 PR-A 接入 SELF 谓词（§8.4：本人为目标的记录日志不可见）之前一律不返回。 */
-const selfPredicatePending = () => sql`false`;
+/**
+ * 继任记录日志的 SELF 谓词（§8.4：本人为目标的记录，开关为 false 时日志同样不可见）：目标取审计行写入时的快照
+ * （after，删除时取 before）里的类型与目标 ID；快照里没有目标的行不属于“本人的”记录，照常按组织锚点判定。
+ * 与列表 / 详情共用 succession_self_target_sql；“请求当日”按租户时区在 SQL 里取。
+ */
+function recordSelfRestrict(row: SuccessionAuditRow, viewer: SuccessionAuditViewer): SQL {
+  const field = (key: string) => sql`COALESCE(${row.after}->>${key}, ${row.before}->>${key})`;
+  const uuidField = (key: string) => sql`(CASE WHEN audit_is_uuid(${field(key)}) THEN (${field(key)})::uuid END)`;
+  const today = sql`succession_tenant_today(${viewer.tenantId}::uuid)`;
+  return sql`NOT ${selfRecordHiddenSql(
+    viewer,
+    { type: field('successionType'), org: uuidField('targetOrgId'), position: uuidField('targetPositionId') },
+    today,
+  )}`;
+}
 
 export const SUCCESSION_AUDIT: Readonly<Partial<Record<SuccessionObject, SuccessionAuditSpec>>> = {
-  record: { kind: 'org', restrict: selfPredicatePending },
+  record: { kind: 'org', restrict: recordSelfRestrict },
   riskResult: { kind: 'org' },
   healthResult: { kind: 'org' },
   riskLevel: { kind: 'seeAll' },
