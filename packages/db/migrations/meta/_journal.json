@@ -579,8 +579,15 @@
     {
       "idx": 82,
       "version": "7",
-      "when": 1791580409986,
-      "tag": "0082_talent_review_calc_rules",
+      "when": 1791580669501,
+      "tag": "0082_qualification_subset",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1791580676393,
+      "tag": "0083_qualification_subset_isolation",
       "breakpoints": true
     }
   ]
