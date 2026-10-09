@@ -308,6 +308,8 @@ describe('租户开关（§1.5；DEC-311 D-04 / DEC-194）', () => {
     }[];
     expect(seeded.map((row) => row.key)).toEqual([...SUCCESSION_SETTING_KEYS].sort());
     for (const row of seeded) {
+      // system_settings.value 非空：JSON null 在租户备份恢复按记录集写回时会变成 SQL NULL（AC-TEN-06）
+      expect(row.value, row.key).not.toBeNull();
       const spec = SUCCESSION_SETTINGS[row.key as keyof typeof SUCCESSION_SETTINGS];
       expect(row, row.key).toEqual({
         key: row.key,

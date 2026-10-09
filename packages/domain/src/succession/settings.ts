@@ -13,7 +13,7 @@ const isInteger = (value: unknown, min: number, max: number): value is number =>
 interface SettingSpec<T> {
   readonly description: string;
   readonly defaultValue: T;
-  /** 租户覆盖值是否合法（系统值 null 只表示“未配置”，租户不能写 null，见 tenant-settings 路由）。 */
+  /** 租户覆盖值是否合法（系统值另有“未配置”的表示，见系统主体；租户不能写 null，见 tenant-settings 路由）。 */
   readonly valid: (value: unknown) => boolean;
 }
 
@@ -49,14 +49,15 @@ export const SUCCESSION_SETTINGS = {
     valid: (value) => isInteger(value, 1, 24),
   } satisfies SettingSpec<number>,
   /**
-   * 继任侧系统主体（§4.0，D-04 / DEC-311）：同步与本模块 run 的目标写入主体与所属人。系统值 null = 未配置，
+   * 继任侧系统主体（§4.0，D-04 / DEC-311）：同步与本模块 run 的目标写入主体与所属人。系统值空串 = 未配置，
    * 执行时按主体不可用失败（PRINCIPAL_UNAVAILABLE），不回退到任何人；租户覆盖只接受小写 UUID（DEC-194）。
+   * 不用 JSON null：system_settings.value 非空，租户备份恢复按记录集写回时 null 会变成 SQL NULL（AC-TEN-06）。
    */
   'succession.system_principal_user_id': {
     description: '继任：继任侧系统主体（用户 ID，未配置时同步与计算不执行）',
-    defaultValue: null,
+    defaultValue: '',
     valid: (value) => typeof value === 'string' && UUID.test(value),
-  } satisfies SettingSpec<string | null>,
+  } satisfies SettingSpec<string>,
 } as const;
 
 export type SuccessionSettingKey = keyof typeof SUCCESSION_SETTINGS;
