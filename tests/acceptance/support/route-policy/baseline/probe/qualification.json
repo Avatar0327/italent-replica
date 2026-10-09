@@ -532,7 +532,6 @@
     },
     "scopeQueries": [
       "scope:Qualification/Qualification.EmploymentCategory/-",
-      "scope:Qualification/Qualification.EmploymentCategoryClassify/-",
       "scope:TenantBase/TenantBase.JobLevelType/-",
       "scope:TenantBase/TenantBase.JobPost/-",
       "scope:TenantBase/TenantBase.JobSequence/-",
@@ -542,7 +541,6 @@
       "btn:Qualification.EmploymentCategory#update@detail",
       "obj:Qualification.EmploymentCategory:update",
       "obj:Qualification.EmploymentCategory:view",
-      "obj:Qualification.EmploymentCategoryClassify:view",
       "obj:TenantBase.JobLevelType:view",
       "obj:TenantBase.JobPost:view",
       "obj:TenantBase.JobSequence:view",
@@ -566,8 +564,7 @@
     ],
     "trace": [
       "btn:Qualification.EmploymentCategoryClassify#update@detail",
-      "obj:Qualification.EmploymentCategoryClassify:update",
-      "obj:Qualification.EmploymentCategoryClassify:view"
+      "obj:Qualification.EmploymentCategoryClassify:update"
     ]
   },
   "PATCH /api/tenant/qualification/coding-rules/:item": {
@@ -670,13 +667,10 @@
     },
     "scopeQueries": [
       "scope:Qualification/Qualification.EmploymentCategory/-",
-      "scope:Qualification/Qualification.EmploymentLevel/-",
       "scope:Qualification/Qualification.Target/-"
     ],
     "trace": [
       "btn:Qualification.QualificationStandard#update@detail",
-      "obj:Qualification.EmploymentCategory:view",
-      "obj:Qualification.EmploymentLevel:view",
       "obj:Qualification.QualificationStandard:update",
       "obj:Qualification.Target:view"
     ]
@@ -698,8 +692,7 @@
     ],
     "trace": [
       "btn:Qualification.TargetType#update@detail",
-      "obj:Qualification.TargetType:update",
-      "obj:Qualification.TargetType:view"
+      "obj:Qualification.TargetType:update"
     ]
   },
   "PATCH /api/tenant/qualification/targets/:id": {
@@ -716,14 +709,12 @@
     },
     "scopeQueries": [
       "scope:Qualification/Qualification.GradeScheme/-",
-      "scope:Qualification/Qualification.Target/-",
-      "scope:Qualification/Qualification.TargetType/-"
+      "scope:Qualification/Qualification.Target/-"
     ],
     "trace": [
       "btn:Qualification.Target#update@detail",
       "obj:Qualification.GradeScheme:view",
-      "obj:Qualification.Target:update",
-      "obj:Qualification.TargetType:view"
+      "obj:Qualification.Target:update"
     ]
   },
   "POST /api/tenant/qualification/categories": {
