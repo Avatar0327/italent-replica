@@ -66,6 +66,8 @@ interface Route {
   readonly byId?: boolean;
   /** 另要员工信息查看权与其范围（sync.ts routeEmployeeScope：objectContext(PERSONNEL_OBJECT, 'view')）。 */
   readonly employees?: boolean;
+  /** 可选分支（只决定响应 / 写入范围的广度，不参与准入）。 */
+  readonly optional?: Readonly<Record<string, RoutePolicy>>;
 }
 
 /** 同步 / 自动带出 / 导入评价者按员工信息范围取人：员工信息查看权（无 → 403）+ 当前员工信息范围。 */
@@ -79,16 +81,19 @@ const EMPLOYEE_VIEW = object({
 
 function route(r: Route): RoutePolicy {
   if (r.employees) {
-    const { employees: _employees, ...rest } = r;
+    const { employees: _employees, optional, ...rest } = r;
     const main = route(rest);
     const { write: writePolicy, invalidId, ...admission } = main;
     return all([admission as RoutePolicy, EMPLOYEE_VIEW], 'fields' in main ? main.fields : noFields('无'), {
       ...(writePolicy ? { write: writePolicy } : {}),
       ...(invalidId ? { invalidId } : {}),
+      ...(optional ? { optional } : {}),
     });
   }
   const operation = r.operation ?? 'view';
-  const guards = [...(r.guards ?? []), ...(r.write?.guards ?? [])];
+  // 活动内入口：活动可见 = allActivities 或 本人创建 / 被授权（access.ts requireActivity，不可见 404）
+  const activityScoped = r.scope === ACTIVITY || r.scope === ACTIVITY_OBJECT;
+  const guards = [...(r.guards ?? []), ...(r.write?.guards ?? []), ...(activityScoped ? [ACTIVITY_SCOPE] : [])];
   let writePolicy: WritePolicy | undefined;
   if (r.write) {
     const fields =
@@ -116,17 +121,33 @@ function route(r: Route): RoutePolicy {
         : shape(`survey360.${r.key}`),
     ...(guards.length ? { guards } : {}),
     ...(writePolicy ? { write: writePolicy } : {}),
+    ...(r.optional ? { optional: r.optional } : {}),
     ...(r.byId ? byId : {}),
   });
 }
 
 const RESOURCE = 'survey360.resourceGuard';
 /**
- * 活动资源守卫（与 #178 F-073 同名同口径）：活动可见 = allActivities（Activity 查看权 + 全部活动按钮 viewAll）或 本人
- * 创建 / 被授权，不可见 404（access.ts requireActivity）。F-060 先给报告 / 报表的 JSON 与下载 4 个端点正式登记，
- * 其余活动端点由 #178 统一接入。
+ * allActivities（360 系统管理员，context.ts allActivitiesOf：Activity 查看权 + 全部活动按钮 viewAll）按用途分别登记
+ * （F-073，不整体 optional）：
+ * - 活动资源守卫：活动可见 = allActivities 或 本人创建 / 被授权，不可见 404（access.ts requireActivity）；
+ * - 人员资源守卫 / 精细化条件守卫：admin.people 为空（不受精细化限制）⇔ allActivities、精细化权限关闭，或精细化开启且没有
+ *   viewAll 但人员数据范围为全部（loadAdmin 的 `scope.all` 分支，Survey360 seeAll）三者之一，
+ *   人员可见（visiblePerson）、同步冲突与关联日志（requireUnrestricted）、新建人员（requireCreatable）都按它判定；
+ * - 列表范围披露 / 写范围与披露：同一判定只决定列表 / 同步结果范围的广度，不拒绝请求（optional.allActivities）。
  */
 const ACTIVITY_SCOPE = 'survey360.activityScope';
+const PERSON_VISIBLE = 'survey360.personVisible';
+const PERSON_CREATABLE = 'survey360.personCreatable';
+const ALL_ACTIVITIES = {
+  allActivities: object({
+    object: OBJECTS.activity.code,
+    operation: 'view',
+    button: button(BUTTONS.allActivities, 'list'),
+    scope: noScope('全部活动按钮只决定可见范围的广度，不另做范围过滤'),
+    fields: noFields('只用于判定，不出口字段'),
+  }),
+} as const;
 const REFS = 'survey360.payloadRefs';
 const ALSO = 'survey360.alsoObjects';
 const PREFLIGHT = 'survey360.preflight';
@@ -187,6 +208,7 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     button: BUTTONS.sync,
     scope: PEOPLE,
     write: { fields: 'none', guards: [PREFLIGHT] },
+    optional: ALL_ACTIVITIES,
     employees: true,
   }),
   'POST /people/sync-conflicts/:id/resolve': route({
@@ -198,8 +220,8 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     employees: true,
   }),
   // ---- people.ts ----------------------------------------------------------------------------------------------------
-  'GET /people': route({ key: 'person', scope: PEOPLE }),
-  'GET /people/:id': route({ key: 'person', scope: PERSON, byId: true }),
+  'GET /people': route({ key: 'person', scope: PEOPLE, optional: ALL_ACTIVITIES }),
+  'GET /people/:id': route({ key: 'person', scope: PERSON, guards: [PERSON_VISIBLE], byId: true }),
   // 关联日志属“同步人员信息”（一般管理员看不到）；看不到的人员 404，看得到但受限（精细化）403
   'GET /people/:id/link-logs': route({
     key: 'person',
@@ -212,13 +234,13 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     key: 'person',
     operation: 'create',
     scope: PEOPLE,
-    write: { fields: 'body', guards: [RESOURCE, REFS] },
+    write: { fields: 'body', guards: [RESOURCE, REFS, PERSON_CREATABLE] },
   }),
   'PUT /people/:id': route({
     key: 'person',
     operation: 'update',
     scope: PERSON,
-    write: { fields: 'body', guards: [RESOURCE, REFS] },
+    write: { fields: 'body', guards: [RESOURCE, REFS, PERSON_VISIBLE] },
     byId: true,
   }),
   // ---- questionnaires.ts：改他人创建的套卷另需 editOthers（guard）--------------------------------------------------
@@ -245,7 +267,11 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     byId: true,
   }),
   // ---- activities.ts ------------------------------------------------------------------------------------------------
-  'GET /activities': route({ key: 'activity', scope: listScope('survey360.activityVisible') }),
+  'GET /activities': route({
+    key: 'activity',
+    scope: listScope('survey360.activityVisible'),
+    optional: ALL_ACTIVITIES,
+  }),
   'GET /activities/:id': route({ key: 'activity', scope: ACTIVITY, byId: true }),
   'POST /activities': route({ key: 'activity', operation: 'create', write: { fields: 'body' } }),
   'PUT /activities/:id': route({
@@ -436,19 +462,9 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
   'GET /report-template': route({ key: 'settings' }),
   'PUT /report-template': route({ key: 'settings', operation: 'update', write: { fields: 'body' } }),
   'GET /activities/:id/reports': route({ key: 'result', scope: ACTIVITY, byId: true }),
-  'GET /activities/:id/reports/:reportId': route({
-    key: 'result',
-    scope: ACTIVITY,
-    guards: [ACTIVITY_SCOPE],
-    byId: true,
-  }),
+  'GET /activities/:id/reports/:reportId': route({ key: 'result', scope: ACTIVITY, byId: true }),
   // F-060：下载 = 同一份（已按查看人裁剪的）报告 / 报表数据生成的 PDF / PNG，权限、范围、字段裁剪与上面的 GET 一致
-  'GET /activities/:id/reports/:reportId/download': route({
-    key: 'result',
-    scope: ACTIVITY,
-    guards: [ACTIVITY_SCOPE],
-    byId: true,
-  }),
+  'GET /activities/:id/reports/:reportId/download': route({ key: 'result', scope: ACTIVITY, byId: true }),
   'POST /activities/:id/reports/generate': route({
     key: 'result',
     operation: 'update',
@@ -477,13 +493,8 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     byId: true,
   }),
   // tables.ts
-  'GET /activities/:id/score-tables': route({ key: 'result', scope: ACTIVITY, guards: [ACTIVITY_SCOPE], byId: true }),
-  'GET /activities/:id/score-tables/download': route({
-    key: 'result',
-    scope: ACTIVITY,
-    guards: [ACTIVITY_SCOPE],
-    byId: true,
-  }),
+  'GET /activities/:id/score-tables': route({ key: 'result', scope: ACTIVITY, byId: true }),
+  'GET /activities/:id/score-tables/download': route({ key: 'result', scope: ACTIVITY, byId: true }),
   // questionnaires.ts：套卷模板与套卷同表同结构，模板入口只取模板（改 / 删他人模板同样要 editOthers）
   'GET /questionnaire-templates': route({ key: 'questionnaire' }),
   'GET /questionnaire-templates/:id': route({ key: 'questionnaire', byId: true }),
