@@ -23,7 +23,7 @@ import {
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import type { ErrorBody } from '../../errors.js';
+import { AppError, type ErrorBody } from '../../errors.js';
 import { assertNotAddSigner, continueAfterApproval } from './add-sign.js';
 import { mergeSeat, mergesSeat, resettle, settleCountersign } from './countersign.js';
 import type { TargetScope } from './access.js';
@@ -837,24 +837,34 @@ export interface AdminOptions {
   readonly targetChecked?: boolean;
 }
 
+const targetNotFound = () => approvalError('NOT_FOUND', 'APPROVAL_TARGET_NOT_FOUND', '转交目标不存在');
+
 /**
  * F-067：转交 / 改派目标须是已绑定员工、且在操作人对该实例业务对象的管理范围内，否则目标会因成为待办人而获得业务对象
  * 的可见性。账号不存在、未绑定员工的纯账号（待产品确认，先按拒绝）、范围外三种情况同一个 404，不暴露存在性。
- * 转给操作人自己不看目标范围：操作人本就看得到该实例，不产生新的可见性（仍须填理由，DEC-070）。其余目标校验
- * （有效成员、节点回避、会签重复办理人）仍由后面的 adminAct 判定。
+ * 转给操作人自己也一样校验：“审批实例可见”与业务对象的参与权（如 IDP 计划按待办认定参与人）是不同的授权边界，
+ * 自转交同样会因成为待办人扩大业务对象可见性（仍须填理由，DEC-070）。其余目标校验（有效成员、节点回避、
+ * 会签重复办理人）仍由后面的 adminAct 判定。
+ * 返回 `exception`：目标是靠范围外例外（DEC-358①：IDP 计划当前的指导人 / 带教人）放行的，后续任何失败都要折成同一个 404。
  */
-async function assertTargetInScope(tx: Tx, ctx: ApprovalContext, input: AdminInput, options: AdminOptions) {
-  if (input.kind === 'jump' || options.targetChecked) return;
+async function assertTargetInScope(
+  tx: Tx,
+  ctx: ApprovalContext,
+  input: AdminInput,
+  options: AdminOptions,
+  instance: Run['instance'],
+): Promise<{ readonly exception: boolean }> {
+  if (input.kind === 'jump' || options.targetChecked) return { exception: false };
   if (!options.targetScope) throw new Error('adminAct：转交 / 改派必须提供目标范围校验');
-  if (input.toUserId === ctx.userId) return;
   const employeeId = input.toUserId ? await personOfUser(tx, ctx.tenantId, input.toUserId) : null;
-  const [hit] = employeeId
-    ? rowsOf(
-        await tx.execute(sql`SELECT 1 FROM approval_instances i WHERE i.tenant_id=${ctx.tenantId}
-          AND i.id=${input.instanceId}::uuid AND ${options.targetScope(employeeId)}`),
-      )
-    : [];
-  if (!hit) throw approvalError('NOT_FOUND', 'APPROVAL_TARGET_NOT_FOUND', '转交目标不存在');
+  if (!employeeId) throw targetNotFound();
+  const [hit] = rowsOf(
+    await tx.execute(sql`SELECT 1 FROM approval_instances i WHERE i.tenant_id=${ctx.tenantId}
+      AND i.id=${input.instanceId}::uuid AND ${options.targetScope.inScope(employeeId)}`),
+  );
+  if (hit) return { exception: false };
+  if (!(await options.targetScope.exception(tx, instance, employeeId))) throw targetNotFound();
+  return { exception: true };
 }
 
 /**
@@ -877,7 +887,22 @@ export async function adminAct(
       AND i.id=${input.instanceId}::uuid AND ${scope}`),
   );
   if (!covered) throw approvalError('NOT_FOUND', 'APPROVAL_NOT_FOUND', '审批实例不存在');
-  await assertTargetInScope(tx, ctx, input, options);
+  const { exception } = await assertTargetInScope(tx, ctx, input, options, run.instance);
+  // 靠例外放行的目标（范围外的指导人 / 带教人）：后续任何业务失败（版本冲突、流程已结束、待办已关闭、回避……）都折成
+  // 与普通范围外拒绝完全相同的 404，否则失败响应的差异会泄露“目标是该计划的指导人 / 带教人”（DEC-358①，F-068 审查）。
+  if (!exception) return performAdmin(tx, ctx, run, input, options);
+  return performAdmin(tx, ctx, run, input, options).catch((error: unknown) => {
+    throw error instanceof AppError ? targetNotFound() : error;
+  });
+}
+
+async function performAdmin(
+  tx: Tx,
+  ctx: ApprovalContext,
+  run: Run,
+  input: AdminInput,
+  options: AdminOptions,
+): Promise<Outcome> {
   assertRevision(ctx.expectedRevision, run.instance.revision);
   if (run.instance.status !== 'running') throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程不在审批中');
   assertBusinessUnchanged(run);

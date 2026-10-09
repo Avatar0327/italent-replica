@@ -23,6 +23,7 @@ import { requirePermission } from '../../authorization.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { employmentCreator } from '../employment/context.js';
+import { isStageMentor, mentorSourcesOf } from '../idp/plan-mentor.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
 import {
   authorizeInTransaction,
@@ -31,6 +32,7 @@ import {
   scopeSql,
   type ModuleScope,
 } from '../permission/module-access.js';
+import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { approvalError, rowsOf } from './context.js';
 import { personOfUser } from './resolver.js';
@@ -241,15 +243,32 @@ const listScopeOf = (deps: TenantRouteDeps, ctx: TenantContext) => (objectCode: 
   resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
 
 /**
- * F-067：转交 / 改派目标须在操作人对该实例业务对象的管理范围内（IDP-R16“受管理单元限制”）。谓词对 approval_instances
+ * F-067：转交 / 改派目标须在操作人对该实例业务对象的管理范围内（IDP-R16“受管理单元限制”）。`inScope` 对 approval_instances
  * 别名 i，只取实例的业务类型来选范围对象（与实例范围同一映射，DEC-043），目标员工按人员 / 组织维度判断；“使用用户”
  * 维度针对的是业务创建人，对目标员工不成立（默认拒绝）。
+ * `exception`：范围外也可作为目标的例外（DEC-358①，同 DEC-354）——IDP 审批待办的目标可以是该计划当前的指导人 / 带教人。
  */
-export type TargetScope = (employeeId: string) => SQL;
+export interface TargetScope {
+  readonly inScope: (employeeId: string) => SQL;
+  readonly exception: (
+    tx: Tx,
+    instance: { readonly businessType: string; readonly businessId: string },
+    employeeId: string,
+  ) => Promise<boolean>;
+}
 
-export async function adminTargetScope(deps: TenantRouteDeps, ctx: TenantContext): Promise<TargetScope> {
+export async function adminTargetScope(
+  deps: TenantRouteDeps,
+  ctx: TenantContext & ScopeBusinessContext,
+): Promise<TargetScope> {
   const scopes = await businessScopes(listScopeOf(deps, ctx));
-  return (employeeId) => perBusinessType(scopes, (scope) => scopeSql(scope, { person: sql`${employeeId}::uuid` }));
+  const mentorSources = await mentorSourcesOf(deps, ctx);
+  return {
+    inScope: (employeeId) => perBusinessType(scopes, (scope) => scopeSql(scope, { person: sql`${employeeId}::uuid` })),
+    exception: async (tx, instance, employeeId) =>
+      instance.businessType === 'idp' &&
+      (await isStageMentor(tx, ctx.tenantId, instance.businessId, employeeId, mentorSources)),
+  };
 }
 
 interface BusinessScopes {

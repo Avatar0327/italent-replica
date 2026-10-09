@@ -18,7 +18,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/approval/access.ts': {
     PROCESS_ADMIN: 'ca58b0b364f1',
     adminScope: '175ed4b1418f',
-    adminTargetScope: 'ae5afabda089',
+    adminTargetScope: 'e0898d859530',
     hasButton: '6dbb8ca471b1',
     isProcessAdmin: 'e5782416fefc',
     requireProcessButton: '782f172bb6ca',
@@ -27,7 +27,8 @@ export const DIGESTS: Digests = {
     requireWithdrawRight: 'e17fe05b2b0e',
   },
   'apps/api/src/modules/approval/actions.ts': {
-    assertTargetInScope: '1afae3e58ca0',
+    adminAct: '905c3d891657',
+    assertTargetInScope: '3636a0063bda',
     openOwn: '2bf5722813f2',
     openTask: '6f9c0c04e106',
   },
@@ -239,6 +240,9 @@ export const DIGESTS: Digests = {
     participation: '9e6acf568844',
     requireExecutor: 'c6041bc8af4f',
     requireViewer: 'ea1df4c436f9',
+  },
+  'apps/api/src/modules/idp/plan-mentor.ts': {
+    isStageMentor: 'b2127b80ec3b',
   },
   'apps/api/src/modules/idp/plan-routes.ts': {
     hrScopeOf: '6dc4bea09e02',

@@ -37,8 +37,12 @@ const fieldsOf = (hidden: Readonly<Record<string, readonly string[]>>) => (objec
 };
 
 /** 范围只含计划员工的审批管理员（未绑定员工的独立成员）；hidden：按对象编码隐藏的字段。 */
-async function scene(label: string, planExtra: (far: { employeeId: string }) => Record<string, unknown> = () => ({})) {
-  const w = await planWorld(testDb().db, label);
+async function scene(
+  label: string,
+  planExtra: (far: { employeeId: string }) => Record<string, unknown> = () => ({}),
+  worldOptions: Parameters<typeof planWorld>[2] = {},
+) {
+  const w = await planWorld(testDb().db, label, worldOptions);
   const farOrg = await w.org('范围外部门');
   const far = await w.person('范围外甲', farOrg);
   const stranger = await w.person('范围外乙', farOrg);
@@ -46,7 +50,7 @@ async function scene(label: string, planExtra: (far: { employeeId: string }) => 
   const admin = await w.member('审批管理员');
   const plan = await w.startedPlan(planExtra(far));
   const instance = await w.instanceOf(plan, 1);
-  const taskId = instance.tasks.find((t) => t.status === 'pending')!.id;
+  const taskId = instance.tasks.find((t) => t.status === 'pending' && t.assigneeUserId === w.employee.userId)!.id;
 
   const operator = (hidden: Readonly<Record<string, readonly string[]>> = {}) => {
     const authorize: Authorizer = () => true;
@@ -181,19 +185,27 @@ describe('AC-APV（补）F-067 / DEC-358① 例外目标的失败响应与普通
     expect((await s.w.instanceOf(s.plan, 1)).revision).toBe(s.instance.revision);
   });
 
-  it('例外目标已是该节点的办理人（adminAct 的重复办理人判定）：与普通拒绝相同', async () => {
-    const s = await scene('f067-mn-fail-assignee', mentorOf);
-    // 员工提交后待办在指导人（= 例外目标）手上，再转给他自己
-    const submitted = await s.w.submit(s.plan, 1, s.w.employee.userId);
-    const view = await s.w.instanceOf(submitted, 1);
-    const pending = view.tasks.find((t) => t.status === 'pending')!;
-    expect(pending.assigneeUserId).toBe(s.far.userId);
-    for (const path of PATHS) {
-      await expectSameAsOrdinary({ ...s, instance: view } as Scene, path, {
-        taskId: pending.id,
-        revision: view.revision,
-      });
-    }
+  it('例外目标已是同节点的其他在办办理人（会签，adminAct 的重复办理人判定）：与普通拒绝相同', async () => {
+    const countersign = {
+      key: 'set_goals',
+      name: '会签制定目标',
+      kind: 'countersign',
+      approvers: ['idp_employee', 'idp_tutor'],
+      transitionRule: { type: 'all' },
+      actions: { avoidSelf: false, reject: false, jump: true, revoke: false },
+    };
+    const approve = {
+      key: 'approve_plan',
+      name: '审批发展计划',
+      approver: 'idp_tutor',
+      actions: { avoidSelf: false, reject: true, rejectToPrevious: true, jump: true, revoke: false },
+    };
+    const s = await scene('f067-mn-fail-assignee', mentorOf, { planNodes: [countersign, approve] });
+    // 指导人（= 例外目标）与员工同在会签节点办理：把员工的待办转给指导人，被判重复办理人
+    const pending = s.instance.tasks.filter((t) => t.status === 'pending');
+    expect(pending.map((t) => t.assigneeUserId).sort()).toEqual([s.far.userId, s.w.employee.userId].sort());
+    for (const path of PATHS) await expectSameAsOrdinary(s, path);
+    expect(await s.w.readPlan(s.plan.id)).toMatchObject({ revision: s.plan.revision });
   });
 
   it('流程已结束（计划被终止，无运行阶段）：与普通拒绝相同', async () => {

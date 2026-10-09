@@ -180,11 +180,15 @@ const adminAction = (code: 'adminTransfer' | 'adminIntervene'): Obligation => ({
     ...ADMIN_SCOPE,
   ],
 });
-/** F-067：转交 / 改派目标须是已绑定员工且在操作人对该业务对象的范围内（不存在 / 未绑定 / 范围外同为 404）。 */
+/**
+ * F-067：转交 / 改派目标须是已绑定员工且在操作人对该业务对象的范围内（不存在 / 未绑定 / 范围外同为 404）；
+ * 例外（DEC-358①）：IDP 待办的目标可以是该计划当前的指导人 / 带教人（来源字段看不到视同不是），靠例外放行的目标
+ * 后续任何失败都折成同一个 404。
+ */
 const adminTarget = (code: 'adminTransfer' | 'adminIntervene'): Obligation => ({
   perm: 'guard:approval.adminTargetScope',
   facts: ['guard:approval.adminTargetScope'],
-  note: `${code}：目标范围随实例业务类型选对象（同 adminScope 的映射），跳转与转给操作人自己不校验目标`,
+  note: `${code}：目标范围随实例业务类型选对象（同 adminScope 的映射），跳转不校验目标，转给操作人自己同样校验`,
   at: [
     fn('registerInstanceRoutes', 'const targetScope = await adminTargetScope(deps, ctx)'),
     fn('registerInstanceRoutes', 'adminAct(tx, context, input, scopeSql, { targetScope })'),
@@ -195,8 +199,23 @@ const adminTarget = (code: 'adminTransfer' | 'adminIntervene'): Obligation => ({
     },
     {
       role: 'impl',
+      unit: `${ACCESS}#adminTargetScope`,
+      anchor: 'isStageMentor(tx, ctx.tenantId, instance.businessId, employeeId, mentorSources)',
+    },
+    {
+      role: 'impl',
+      unit: 'apps/api/src/modules/idp/plan-mentor.ts#isStageMentor',
+      anchor: "viewable(sources.plan, ['tutorEmployeeId']) && plan.tutorEmployeeId === employeeId",
+    },
+    {
+      role: 'impl',
       unit: `${ACTIONS}#assertTargetInScope`,
-      anchor: "throw approvalError('NOT_FOUND', 'APPROVAL_TARGET_NOT_FOUND', '转交目标不存在')",
+      anchor: 'if (!(await options.targetScope.exception(tx, instance, employeeId))) throw targetNotFound()',
+    },
+    {
+      role: 'impl',
+      unit: `${ACTIONS}#adminAct`,
+      anchor: 'throw error instanceof AppError ? targetNotFound() : error',
     },
   ],
 });
