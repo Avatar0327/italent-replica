@@ -117,6 +117,55 @@ describe('AC-360-F060 R2 P2-1 隐藏活动名称的查看人拿不到名称', ()
   });
 });
 
+describe('AC-360-F060 R3 P2-R2-1 隐藏活动名称的发送人不能经转发读回（第 3 轮，Opus 接手）', () => {
+  it('转发预览与执行都 403、不发邮件；有完整查看权的发送人照常转发，收件人报告 JSON / PDF 保留活动名称', async () => {
+    overrideFontProbe(async () => true);
+    const { s, reportId } = await scene('f060r3-forward');
+    const { w } = s;
+    const user = await w.member('看不到活动名称的转发人');
+    const result = profile('result');
+    await w.grantProfile(
+      user,
+      await w.defineProfile('看不到活动名称的转发人', [
+        profile('activity', ['name']),
+        {
+          ...result,
+          dataOperations: { create: false, update: true, delete: false },
+          buttons: [{ buttonCode: 'forwardReport', level: 'list' }],
+        },
+      ] as never),
+    );
+    const current = await w.getActivity(s.activity.id);
+    await w.ok(w.request('POST', `${s.path}/grants`, { ifMatch: current.revision, body: { userIds: [user] } }));
+    const as = w.as(user);
+    // 前提：该发送人在管理端看不到活动名称
+    expect(JSON.stringify(await w.ok(as('GET', `${s.path}/reports/${reportId}`)))).not.toContain(s.activity.name);
+
+    const body = { mode: 'others', others: [{ name: '自己', email: 'self-f060r3@example.com' }] };
+    for (const path of ['/reports/forward/preview', '/reports/forward']) {
+      const res = await as('POST', `${s.path}${path}`, { idempotencyKey: key(), body });
+      expect(res.status, path).toBe(403);
+      expect((await errorOf(res)).details?.reason, path).toBe('REPORT_FIELDS_RESTRICTED');
+    }
+    expect(await outbox(w, 'survey360.report_forward')).toEqual([]);
+
+    // 合法收件人的全量口径保留：有完整查看权的管理员转发，收件人报告 JSON 与 PDF 都带活动名称
+    await w.ok(
+      w.request('POST', `${s.path}/reports/forward`, {
+        idempotencyKey: key(),
+        body: { mode: 'others', others: [{ name: 'HRBP', email: 'hrbp-f060r3@example.com' }] },
+      }),
+    );
+    const [mail] = await outbox(w, 'survey360.report_forward');
+    const call = reportLink(w, mail!.payload.token);
+    const recipient = await w.ok<Record<string, unknown>>(call('GET', `/reports/${reportId}`));
+    expect(JSON.stringify(recipient)).toContain(s.activity.name);
+    const pdf = await call('GET', `/reports/${reportId}/download`);
+    expect(pdf.status).toBe(200);
+    expect(docText(reportDocument(recipient as never))).toContain(s.activity.name);
+  });
+});
+
 // ---- P2-2 -------------------------------------------------------------------------------------------------------
 
 const textsOf = (pages: ReturnType<typeof paginate>) =>
