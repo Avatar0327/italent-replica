@@ -1,7 +1,7 @@
 /**
  * R3-T05 继任管理接口（设计 §2.2；前缀 /api/tenant/succession）。契约 PR 只占装配位：登记权限对象、开关校验与
- * 对外端口，不注册任何路由；记录、地图、规则、计算、同步的路由随 PR-A～PR-D 在本函数追加，并按 F-039 格式登记
- * 权限声明。
+ * 对外端口，不注册任何路由；记录、地图、规则、计算、同步的路由随实现子 PR 在本函数追加，并按 F-039 格式在 policy.ts
+ * 登记声明、在 tests/acceptance/support/route-policy/required/succession.ts 登记必需义务。
  */
 import type { Hono } from 'hono';
 import type { TenantRouteDeps } from '../../routes.js';
