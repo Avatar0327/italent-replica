@@ -5,7 +5,7 @@
  * - 跳转：单个计划，只能跳到当前运行阶段审批流程版本里的节点（跨阶段 409 IDP_JUMP_CROSS_STAGE，AC-IDP-02），经审批中心的
  *   管理员跳转执行（须填原因，不代签 DEC-063）；
  * - 转交（F-066，IDP-R16）：单个计划，把当前运行阶段审批实例的当前待办转给他人，经审批中心的管理员转交执行，
- *   目标校验（有效成员、不在冻结主体集合内、不是同节点其他办理人）与本人回避都由 adminAct 判定；
+ *   目标须在操作人的 IDP 范围内（本入口先校验，范围外 404）；目标其余校验（有效成员、冻结主体、同节点其他办理人）与本人回避由 adminAct 判定；
  * - 统一下发任务：勾选的计划须使用同一模板（AC-IDP-06），整体成功或整体失败。
  * 取锁顺序：计划（按 ID 升序）→ 审批实例。
  */
@@ -18,7 +18,7 @@ import { personOfUser } from '../approval/resolver.js';
 import { loadTasks } from '../approval/store.js';
 import { accessOf, type ModuleScope, type Projection, rowsOf, viewable } from './access.js';
 import { insertTask } from './execution-service.js';
-import { hrSees } from './plan-access.js';
+import { employeeInScope, hrSees } from './plan-access.js';
 import type { BatchItems, JumpInput, StartNextInput, TaskIssue, TransferInput } from './plan-input.js';
 import { lockPlanForHr, type PlanWriteContext } from './plan-service.js';
 import { bumpPlan, loadPlanRow, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
@@ -205,13 +205,25 @@ export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, in
 }
 
 /**
+ * 转交目标须是已绑定员工、且在操作人的 IDP 范围内（IDP-R16“受管理单元限制”；引用 ID 写入前校验范围）。账号不存在、
+ * 未绑定员工的纯账号（先按拒绝，待产品确认）、范围外三种情况同一个 404，不暴露存在性。
+ */
+async function requireTargetInScope(tx: Tx, ctx: PlanWriteContext, toUserId: string): Promise<void> {
+  const employeeId = await personOfUser(tx, ctx.tenantId, toUserId);
+  if (employeeId === null || !(await employeeInScope(tx, ctx.hr, employeeId))) {
+    throw new AppError('NOT_FOUND', '转交目标不存在');
+  }
+}
+
+/**
  * 转交（F-066，IDP-R16）：把当前运行阶段审批实例的当前待办转给 `toUserId`，撤回原待办、给新人发待办。
  * 本人回避同跳转（F-048 §6 #17 / #20，DEC-321）：不查实时绑定，由 adminAct 按冻结的 U(S) 判定；转交目标的有效性、
- * 是否在冻结主体集合内也都由 adminAct 判定，这里不另写一套。未指定 taskId 时只在恰有一条待办时取它。
+ * 是否在冻结主体集合内也都由 adminAct 判定，这里不另写一套；adminAct 不看操作人范围，目标在范围内由本入口先校验。未指定 taskId 时只在恰有一条待办时取它。
  * 计划审计只记计划对象登记的字段；新旧审批人写在审批实例的 `approval.admin.transfer` 审计里（DEC-063）。
  */
 export async function transferPlan(tx: Tx, ctx: PlanWriteContext, planId: string, input: TransferInput) {
   const plan = await lockPlanForHr(tx, ctx, planId);
+  await requireTargetInScope(tx, ctx, input.toUserId);
   const { stage, instance } = await runningInstance(tx, ctx, plan);
   const instanceId = stage.approvalInstanceId!;
   const pending = (await loadTasks(tx, ctx.tenantId, instanceId)).filter((t) => t.status === 'pending');
