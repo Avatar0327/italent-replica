@@ -2,8 +2,8 @@
 "updated": "2026-10-09",
 "stats": {
 "merged": 76,
-"open": 15,
-"dec": 344,
+"open": 14,
+"dec": 345,
 "ev": "34/137"
 },
 "tasks": {
@@ -2257,7 +2257,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-09 01:44",
+"liveUpdated": "10-09 02:07",
 "chains": [
 {
 "g": "base",
@@ -2493,8 +2493,8 @@
 "o": 2,
 "k": "run",
 "n": "任职资格 + 人才评定",
-"seg": "ev:a ds:d6 dev:a1 rev:w mg:w",
-"now": "PR-0 已合并；阻塞取证已清零（DEC-335），PR-A（#136）开发中",
+"seg": "ev:d ds:d6 dev:d1 rev:a1 mg:w",
+"now": "#136 PR-A 首审中（Astra Ultra）；曾因审查脚本漏看耽搁约 40 分钟",
 "pr": 129,
 "pd": "设计 #121 ✓ · PR-0 #129 ✓ · PR-A #136"
 },
@@ -2898,8 +2898,8 @@
 "k": "run",
 "sn": "1",
 "n": "360 套卷修改与活动启用并发",
-"seg": "ev:n ds:n dev:a1 rev:w mg:w",
-"now": "开发中（Sonnet High，DEC-338 首个 Sonnet 任务）",
+"seg": "ev:n ds:n dev:a2 rev:d1 mg:w",
+"now": "首轮（Sol high+fast）：1 P2 死锁（取锁顺序），第 2 轮修改中（Sonnet）",
 "pr": 141
 },
 {
