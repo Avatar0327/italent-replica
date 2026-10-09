@@ -6,7 +6,7 @@
  * - 预置字段（开通租户时下发，编码固定）可改名、停用，不可删；被引用不可删（引用方登记守卫）；
  * - 预置安装可重复执行，不产生重复行。
  */
-import { sql, withTenant } from '@italent/db';
+import { eq, sql, talentReviewFields, withTenant } from '@italent/db';
 import { TALENT_REVIEW_PRESET_FIELDS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -148,8 +148,11 @@ describe('盘点字段目录（设计 §2.2；DEC-257）', () => {
 describe('预置盘点字段（设计 §2.7；DEC-306①）', () => {
   const countRows = (tenant: string) =>
     withTenant(testDb().db, tenant, async (tx) => {
-      const result = await tx.execute(sql`SELECT count(*)::int AS n FROM talent_review_fields WHERE preset = true`);
-      return (result as unknown as { rows: { n: number }[] }).rows[0]!.n;
+      const [row] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(talentReviewFields)
+        .where(eq(talentReviewFields.preset, true));
+      return row!.n;
     });
 
   it('预置清单：业绩 / 能力 / 绩效 / 潜力成对，位置字段系统写入，编码固定且互不重复', () => {

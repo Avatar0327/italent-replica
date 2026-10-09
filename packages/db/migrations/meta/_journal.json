@@ -530,8 +530,15 @@
     {
       "idx": 75,
       "version": "7",
-      "when": 1791552246352,
-      "tag": "0075_talent_review_config",
+      "when": 1791549316542,
+      "tag": "0075_succession_settings_seed",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1791554652672,
+      "tag": "0076_talent_review_config",
       "breakpoints": true
     }
   ]
