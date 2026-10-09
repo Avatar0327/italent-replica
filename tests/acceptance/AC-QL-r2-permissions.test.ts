@@ -70,8 +70,8 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
   };
   const childOp = (extra: Parameters<typeof operator>[1] = {}) => operator(world, { mouId: data.childMou, ...extra });
 
-  describe('P2-01 幂等重放按当前范围复核（DEC-067）', () => {
-    /** 首次成功，撤销范围后同键同内容重放：与不存在同一个 404。 */
+  describe('P2-01 幂等重放按当前权限复核（DEC-067；DEC-352 起结果对象只放开查看）', () => {
+    /** 首次成功，撤销范围后同键同内容重放：结果对象只放开查看（DEC-352），撤范围后仍看得到，返回原结果。 */
     const replayAfterRevoke = async (
       op: Operator,
       method: string,
@@ -84,7 +84,7 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
       expect(first.status, await first.clone().text()).toBeLessThan(300);
       await revoke();
       const replay = await op.request(method, path, { ...options, idempotencyKey });
-      expect(replay.status, await replay.clone().text()).toBe(404);
+      expect(replay.status, await replay.clone().text()).toBe(first.status);
     };
 
     it('引入任职类别 / 级别', async () => {
@@ -221,7 +221,7 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
           body: {
             channels: [
               { levelId: set.level.id, targetCategoryId: set.other.id, targetLevelId: set.level.id },
-              // 目标类别在下级管理员读取范围外（上级部、不向下公开）
+              // 目标类别在下级管理员的管理单元外（上级部、不向下公开）：DEC-352 起有类别查看权即看得到
               { levelId: set.level.id, targetCategoryId: data.closed.id, targetLevelId: set.level.id },
             ],
           },
@@ -241,8 +241,14 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
       const channels = await ok<{ horizontal: Record<string, unknown>[] }>(
         await normal.request('GET', `/standards/${set.standard.id}/channels`),
       );
-      expect(JSON.stringify(channels)).not.toContain(data.closed.id);
+      expect(channels.horizontal.some((node) => node.targetCategoryId === data.closed.id)).toBe(true);
       expect(channels.horizontal.some((node) => node.targetCategoryId === set.other.id)).toBe(true);
+      // 没有类别查看权：目标类别 ID 一律不给
+      const blind = await childOp({ noObject: ['category'] });
+      const withoutCategory = await ok<{ horizontal: Record<string, unknown>[] }>(
+        await blind.request('GET', `/standards/${set.standard.id}/channels`),
+      );
+      for (const node of withoutCategory.horizontal) expect(node).not.toHaveProperty('targetCategoryId');
     });
 
     it('图谱：看不到级别范围、明细、级别描述与级别顺序号时，不从原始数据重建级别 ID 与顺序号', async () => {
@@ -256,8 +262,8 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
     });
   });
 
-  describe('P2-03 关联冲突提示（DEC-331④）不带出看不到的岗职务编码与范围外名称', () => {
-    it('类别与级别的新建、修改、引入共 6 个入口：409 照拦，提示不含范围外名称与隐藏编码', async () => {
+  describe('P2-03 关联冲突提示（DEC-331④）不带出看不到的岗职务编码', () => {
+    it('类别与级别的新建、修改、引入共 6 个入口：409 照拦，提示不含隐藏编码；类别 / 级别名称只放开查看（DEC-352）', async () => {
       const sequence = await job('sequences');
       const jobLevel = await job('levels');
       const outside = await data.adminIn(data.outside);
@@ -352,9 +358,8 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
         expect(response.status, label).toBe(409);
         expect(await reasonOf(response), label).toBe('JOB_ALREADY_LINKED');
         const message = ((await response.json()) as { error: { message: string } }).error.message;
-        for (const secret of ['范围外类别', '范围外级别', sequence.code, jobLevel.code]) {
-          expect(message, label).not.toContain(secret);
-        }
+        for (const secret of [sequence.code, jobLevel.code]) expect(message, label).not.toContain(secret);
+        expect(message, label).toMatch(label.startsWith('category') ? /范围外类别/ : /范围外级别/);
       }
     });
 
@@ -615,7 +620,7 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
       expect(await reasonOf(loop)).toBe('CHANNEL_SELF_LOOP');
     });
 
-    it('③ 编码规则可见范围 = 看全部 ∪ 创建人：只有创建人维度时看得到自己建的，别人的只见缺省占位', async () => {
+    it('③ 编码规则写入 = 看全部 ∪ 创建人；查看只放开（DEC-352）：只有创建人维度的人看得到别人建的，但不能改', async () => {
       // 别人（管理员）先建好“类别”这一项
       const rules = await ok<{ items: { item: string; revision: number }[] }>(await data.admin('GET', '/coding-rules'));
       const category = rules.items.find((item) => item.item === 'category')!;
@@ -641,20 +646,18 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
             await op.request('GET', '/coding-rules'),
           )
         ).items;
-      // 别人建过的项对其照样是缺省占位（第 3 轮 R2-02：不透露是否已被别人建过）
-      expect((await listed(second)).find((item) => item.item === 'category')).toMatchObject({
-        prefix: '',
-        revision: 0,
-      });
+      // DEC-352：有查看权即看到别人建的真实规则
+      expect((await listed(second)).find((item) => item.item === 'category')).toMatchObject({ prefix: 'ADMIN' });
       const blank = (await listed(first)).find((item) => item.item === 'target')!;
       await ok(
         await first.request('PATCH', '/coding-rules/target', { ifMatch: blank.revision, body: { prefix: 'MINE' } }),
       );
       await first.revokeSeeAll();
       expect((await listed(first)).find((item) => item.item === 'target')).toMatchObject({ prefix: 'MINE' });
-      expect((await listed(second)).find((item) => item.item === 'target')).toMatchObject({ prefix: '', revision: 0 });
+      expect((await listed(second)).find((item) => item.item === 'target')).toMatchObject({ prefix: 'MINE' });
       const foreign = await second.request('PATCH', '/coding-rules/target', { ifMatch: 1, body: { prefix: 'THEIRS' } });
-      expect(foreign.status).toBe(404);
+      expect(foreign.status).toBe(403);
+      expect(await reasonOf(foreign)).toBe('QL_OUT_OF_SCOPE_READONLY');
       const admin = await ok<{ items: { item: string; prefix: string }[] }>(await data.admin('GET', '/coding-rules'));
       expect(admin.items.find((item) => item.item === 'target')).toMatchObject({ prefix: 'MINE' });
     });

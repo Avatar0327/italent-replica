@@ -13,7 +13,7 @@ import { sql, type Tx } from '@italent/db';
 import { recordImportLog } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
-import { accessSql, codeOf, fieldVisible, qlReadable, requireEditable } from './access.js';
+import { accessSql, codeOf, fieldVisible, qlViewable, requireEditable } from './access.js';
 import { MAX_ABILITIES, type Cell } from './input.js';
 import type * as input from './input.js';
 import { loadRow, withStandardParts, type DetailRow, type StandardView } from './read-model.js';
@@ -283,13 +283,16 @@ interface Resolved {
   readonly targetId: string;
 }
 
-/** 按编码解析（只在导入人的读取范围内）：类别 → 标准（须可写）、级别（须在标准的级别范围内）、指标（非通用）。 */
+/**
+ * 按编码解析：类别 → 标准（须可写）、级别（须在标准的级别范围内）、指标（非通用）。类别、级别、指标只放开查看
+ * （DEC-352），有查看权即可解析；类别不在写范围内给 CATEGORY_READONLY。
+ */
 async function resolveRows(tx: Tx, ctx: WriteContext, rows: input.StandardImport['rows']) {
   const readableIn = (alias: string, object: 'level' | 'target') => {
     const scope = ctx.scopes[object];
-    return scope ? qlReadable(ctx, scope, alias) : sql`false`;
+    return scope ? qlViewable(object, ctx, scope, alias) : sql`false`;
   };
-  const categoryAccess = accessSql(ctx, ctx.scope, 'owned', 'c');
+  const categoryAccess = accessSql(ctx, ctx.scope, 'open', 'c');
   const resolved: (Resolved | undefined)[] = [];
   const receipts: ImportReceipt[] = [];
   for (const [index, row] of rows.entries()) {

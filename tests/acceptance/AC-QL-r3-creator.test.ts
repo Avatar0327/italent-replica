@@ -1,8 +1,7 @@
 /**
  * R3-T02 PR-A 第 3 轮（第 2 轮审查 R2-02 / 04 / 05，真实授权器，“使用用户”范围）：
- * - R2-02 编码规则（DEC-347③ 看全部 ∪ 创建人）：查看人看不到的规则照样显示缺省占位，不透露是否已被别人建过；
- * - R2-04 标准 / 发展通道的审计与业务同锚在所属类别的 owner 上：在别人的类别下建的标准 / 通道，撤销看全部后
- *   业务 404，审计也查不到；自己类别下的照常查得到；
+ * - R2-02 编码规则（DEC-347③ 写入看全部 ∪ 创建人；DEC-352 只放开查看）：有查看权即看到真实规则；
+ * - R2-04 标准 / 发展通道的审计与业务同口径（DEC-352）：有查看权即看得到，写入锚在所属类别的管理单元；
  * - R2-05 新增审计带创建人归属：编码规则首次保存记为新增；删除指标 / 等级方案连带的描述删除日志随所属指标的
  *   创建人归属，“使用用户”范围的审计员查得到自己的。
  */
@@ -57,8 +56,8 @@ describe('任职资格配置第 3 轮：创建人范围', () => {
   /** 先有看全部、能在上级部建对象的操作人；用完撤销看全部，只剩“使用用户”范围。 */
   const creator = () => operator(world, { mouId: data.parentMou, seeAll: true, auditor: true });
 
-  describe('R2-02 编码规则缺省占位不透露别人是否已建（DEC-347③）', () => {
-    it('别人建过的项：照样显示缺省占位，与没人建过的项无从区分', async () => {
+  describe('R2-02 编码规则的查看（DEC-347③ 写入口径；DEC-352 只放开查看）', () => {
+    it('别人建过的项：只有创建人维度的人也看得到真实规则；没人建过的项按缺省值呈现', async () => {
       const all = await rules(await operator(world, { seeAll: true }));
       const category = all.find((rule) => rule.item === 'category')!;
       await ok(
@@ -70,15 +69,13 @@ describe('任职资格配置第 3 轮：创建人范围', () => {
       const op = await operator(world, {});
       const listed = await rules(op);
       expect(listed.map((rule) => rule.item)).toEqual(['category', 'level', 'target_type', 'target']);
-      const { item: _c, ...taken } = listed.find((rule) => rule.item === 'category')!;
-      const { item: _l, ...blank } = listed.find((rule) => rule.item === 'level')!;
-      expect(taken).toEqual(blank);
-      expect(JSON.stringify(listed)).not.toContain('ADMINX');
+      expect(listed.find((rule) => rule.item === 'category')).toMatchObject({ prefix: 'ADMINX', enabled: true });
+      expect(listed.find((rule) => rule.item === 'level')).toMatchObject({ id: null, prefix: '', revision: 0 });
     });
   });
 
-  describe('R2-04 标准 / 通道审计锚在所属类别的 owner 上（DEC-197，设计 §5.1 / §8）', () => {
-    it('别人类别下自己建的标准与通道：撤销看全部后业务 404、审计查不到；自己类别下的照常可查', async () => {
+  describe('R2-04 标准 / 通道的查看与审计（DEC-197；DEC-352 只放开查看，写入锚在所属类别）', () => {
+    it('别人类别下自己建的标准与通道：撤销看全部后业务与审计照样看得到，写入 403；自己类别下的照常可查可写', async () => {
       const admin = await data.adminIn(data.parent);
       const klass = await admin<{ id: string }>('/category-classes', { code: code(), name: '他人分类' });
       const foreignCategory = await admin<CategoryView>('/categories', {
@@ -119,10 +116,15 @@ describe('任职资格配置第 3 轮：创建人范围', () => {
       const own = await standardIn(ownCategory.id);
       await op.revokeSeeAll();
 
-      expect((await op.request('GET', `/standards/${foreign.id}`)).status).toBe(404);
-      expect((await op.request('GET', `/standards/${foreign.id}/channels`)).status).toBe(404);
-      expect(await audited(op, 'standard', foreign.id)).toEqual([]);
-      expect(await audited(op, 'developmentChannel', foreign.id)).toEqual([]);
+      expect((await op.request('GET', `/standards/${foreign.id}`)).status).toBe(200);
+      expect((await op.request('GET', `/standards/${foreign.id}/channels`)).status).toBe(200);
+      expect(await audited(op, 'standard', foreign.id)).toContain('qualification.standard.create');
+      expect(await audited(op, 'developmentChannel', foreign.id)).toContain('qualification.development-channel.create');
+      const write = await op.request('PATCH', `/standards/${foreign.id}`, {
+        ifMatch: foreign.revision + 1,
+        body: { name: '越权改名' },
+      });
+      expect(write.status, await write.clone().text()).toBe(403);
 
       expect((await op.request('GET', `/standards/${own.id}`)).status).toBe(200);
       expect(await audited(op, 'standard', own.id)).toContain('qualification.standard.create');

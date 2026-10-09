@@ -56,6 +56,7 @@ import {
 import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
 import { survey360AuditScope } from '../modules/survey360/access.js';
+import { OPEN_READ } from '../modules/qualification/access.js';
 import { qualificationSources, type SourceRedactor } from './qualification-sources.js';
 import { survey360PersonAuditFields } from './survey360-person.js';
 import { IDP_AUDIT_ACTIONS, IDP_ORG_OBJECTS, IDP_PERSON_OBJECTS } from '../modules/idp/access.js';
@@ -106,8 +107,6 @@ interface Rule {
    */
   readonly fixedFields?: readonly string[];
   readonly visible: (scope: ModuleScope, row: Row, viewer: Viewer, resolved: RuleInputs) => SQL;
-  /** 数据范围按另一个权限对象解析（随父对象授权的对象与业务接口同一范围，如任职资格标准按类别）。 */
-  readonly scopeCode?: string;
   /** 规则需要的额外谓词（如审批管理员范围，对 approval_instances 别名 i）；返回 null 表示没有权限。 */
   readonly resolve?: (deps: Deps, ctx: TenantContext) => Promise<SQL | null>;
   /**
@@ -204,62 +203,25 @@ function appConfigRules<K extends string>(
 }
 
 /**
- * R3-T02 任职资格（设计 §8）：随父对象授权的对象，审计范围与业务接口同锚（第 3 轮 R2-04 / R2-05）——
- * - 标准、发展通道锚在所属类别上：按类别权限对象的范围，判类别当前的所属组织 / 所属人（不因向下公开放宽）；日志
- *   带 categoryId、标准导入任务行的对象编号即类别，标准删除后照样能判断；类别已删除时按日志的所属组织与类别的
- *   新增记录（创建人）判断（第 4 轮 R3-02）；没有目标类别的失败行按所属组织与执行人；
- * - 指标等级描述随指标：按指标权限对象的范围，所属组织取日志的，创建人取指标的新增记录（DEC-198）；
- * - 其余按 appConfigRules：带资源集合的按所属组织，字典只认看全部或创建人（DEC-121）。
+ * R3-T02 任职资格（设计 §8）：DEC-352 只放开查看的对象（类别、级别、指标、指标等级描述、编码规则、标准、发展通道）
+ * 的日志与业务同口径——有日志审计与该对象的查看权即可见，不按管理单元 / 创建人裁剪（字段与带出值照常按查看人当前
+ * 权限裁剪）；其余（分类、指标类型按所属组织，层级、等级方案按字典）仍按 appConfigRules。
  */
 function qualificationRules(): Rule[] {
-  const anchoredByParent = new Set<string>(['standard', 'developmentChannel', 'targetGradeDescription']);
   const keys = Object.keys(QUALIFICATION_OBJECTS) as (keyof typeof QUALIFICATION_OBJECTS)[];
   const rest = Object.fromEntries(
-    keys.filter((key) => !anchoredByParent.has(key)).map((key) => [key, QUALIFICATION_OBJECTS[key]]),
+    keys.filter((key) => !OPEN_READ.has(key)).map((key) => [key, QUALIFICATION_OBJECTS[key]]),
   );
-  const target = QUALIFICATION_OBJECTS.target.code;
-  const description = orgRule(
-    [QUALIFICATION_OBJECTS.targetGradeDescription.code],
-    QUALIFICATION_OBJECTS.targetGradeDescription.code,
-    (row, viewer) => creatorSql(viewer.tenantId, row.objectId, `${QUALIFICATION_AUDIT_ACTIONS.target}.create`, target),
-  );
+  const open = keys
+    .filter((key) => OPEN_READ.has(key))
+    .map((key): Rule => {
+      const code = QUALIFICATION_OBJECTS[key].code;
+      return { types: [code], objectCode: code, visible: () => sql`true` };
+    });
   return [
     ...appConfigRules(rest as typeof QUALIFICATION_OBJECTS, QUALIFICATION_AUDIT_ACTIONS, QUALIFICATION_ORG_AUDITED),
-    categoryAnchoredRule(QUALIFICATION_OBJECTS.standard.code),
-    categoryAnchoredRule(QUALIFICATION_OBJECTS.developmentChannel.code),
-    { ...description, scopeCode: target },
+    ...open,
   ];
-}
-
-function categoryAnchoredRule(code: string): Rule {
-  const category = QUALIFICATION_OBJECTS.category.code;
-  return {
-    types: [code],
-    objectCode: code,
-    scopeCode: category,
-    visible: (scope, row, viewer) => {
-      if (scope.all) return sql`true`;
-      // 类别锚点：数据变更日志取前后值里的 categoryId；任务行的对象编号就是类别（standard-service / extras）
-      const categoryId = row.actor
-        ? sql`NULLIF(${row.objectId}, '')`
-        : sql`COALESCE(${row.after}->>'categoryId', ${row.before}->>'categoryId')`;
-      const live = (predicate: SQL) => sql`EXISTS (SELECT 1 FROM ql_categories qa
-        WHERE qa.tenant_id = ${viewer.tenantId}::uuid AND qa.id = ${uuidOf(categoryId)} AND ${predicate})`;
-      // 类别已删除：所属组织取日志的（类别的所属组织不可改），所属人取类别的新增记录（DEC-198 最小元数据）
-      const deletedOwner = creatorSql(
-        viewer.tenantId,
-        categoryId,
-        `${QUALIFICATION_AUDIT_ACTIONS.category}.create`,
-        category,
-      );
-      // 没有目标类别（导入时找不到或范围外的行）：按所属组织，任务行另按执行人回退
-      const untargeted = scopeSql(scope, { org: row.org, ...(row.actor ? { creator: row.actor } : {}) });
-      return sql`(CASE WHEN ${live(sql`true`)}
-        THEN ${live(scopeSql(scope, { org: sql`qa.owner_org_id`, creator: sql`qa.owner_id` }))}
-        WHEN ${uuidOf(categoryId)} IS NOT NULL THEN ${scopeSql(scope, { org: row.org, creator: deletedOwner })}
-        ELSE ${untargeted} END)`;
-    },
-  };
 }
 
 /** DEC-197：业务编号解析到当前员工范围；创建人仍取调动业务，不取联动日志执行人。 */
@@ -854,7 +816,7 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
     };
   }
   if (!(await canView())) return undefined;
-  const scope = await resolveModuleScope(deps, ctx, undefined, rule.scopeCode ?? rule.objectCode, undefined, rule.view);
+  const scope = await resolveModuleScope(deps, ctx, undefined, rule.objectCode, undefined, rule.view);
   const objectFields = linkedViewable(rule.objectCode, await getModuleViewableFields(deps, ctx, rule.objectCode));
   const linkage = rule.types.includes(TRANSFER_LINKAGE)
     ? await resolveLinkageAudit(deps, ctx, scope, objectFields)

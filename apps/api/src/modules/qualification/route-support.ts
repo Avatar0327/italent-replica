@@ -17,7 +17,7 @@ import {
   fieldVisible,
   type ModuleScope,
   objectFields,
-  qlReadable,
+  qlViewable,
   QUALIFICATION_LABELS,
   type QualificationContext,
   type QualificationObject,
@@ -193,7 +193,7 @@ export async function readableIds(
   return withTenant(deps.db, ctx.tenantId, async (tx) => {
     const result = await tx.execute(sql`SELECT t.id FROM ${sql.identifier(table)} t
       WHERE t.tenant_id = ${ctx.tenantId}::uuid AND t.id = ANY(${`{${[...new Set(ids)].join(',')}}`}::uuid[])
-        AND ${qlReadable(ctx, scope, 't')}`);
+        AND ${qlViewable(object, ctx, scope, 't')}`);
     return new Set(rowsOf<{ id: string }>(result).map((row) => row.id));
   });
 }

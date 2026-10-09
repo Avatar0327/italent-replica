@@ -5,8 +5,9 @@
  *   description 字段查看权，且该指标在其读取范围内；否则去掉内容，只留 `projectionHidden` 标记；
  * - 指标等级描述首次手改时的 before 是等级明细描述的投影（`projected: true`，带来源方案）：查看人须对等级方案有查看权、
  *   details 字段查看权，且该方案在其读取范围内（字典：看全部 ∪ 创建人）；否则去掉该描述。
- * - 发展通道的目标类别 / 目标级别（第 3 轮 R2-03）：与通道 GET 一致，查看人须有类别 / 级别的查看权、且该类别 /
- *   级别在其读取范围内；否则去掉该 ID（新增、移除与删除标准级联的日志同样处理）。
+ * - 发展通道的目标类别 / 目标级别（第 3 轮 R2-03）：与通道 GET 一致，查看人须有类别 / 级别的查看权；否则去掉该 ID
+ *   （新增、移除与删除标准级联的日志同样处理）。
+ * DEC-352：指标、类别、级别只放开查看，上面“在读取范围内”对它们恒真，只看查看权与字段查看权；等级方案仍按字典范围。
  * 前后值、快照、差异（含展示文本）都经过这里；字段级裁剪仍由 visibleValue / visibleChanges 做。
  */
 import { QUALIFICATION_OBJECTS, type AuditFieldChange } from '@italent/domain';
@@ -14,7 +15,7 @@ import { sql, type Tx } from '@italent/db';
 import type { TenantRouteDeps } from '../routes.js';
 import type { TenantContext } from '../tenant-context.js';
 import { getModuleViewableFields, type ModuleScope, resolveModuleScope } from '../modules/permission/module-access.js';
-import { accessSql, qlReadable } from '../modules/qualification/access.js';
+import { accessSql, qlViewable } from '../modules/qualification/access.js';
 
 const STANDARD = QUALIFICATION_OBJECTS.standard.code;
 const GRADE_DESCRIPTION = QUALIFICATION_OBJECTS.targetGradeDescription.code;
@@ -72,11 +73,11 @@ export async function qualificationSources(deps: TenantRouteDeps, ctx: TenantCon
           CHANNEL_REFS[key],
           [...refs[key]],
           refScopes[key],
-          (scope) => qlReadable(scoped, scope, 't'),
+          (scope) => qlViewable(key === 'targetCategoryId' ? 'category' : 'level', scoped, scope, 't'),
         );
       }
       const readableTargets = await readable(tx, ctx.tenantId, 'ql_targets', [...targets], targetScope, (scope) =>
-        qlReadable(scoped, scope, 't'),
+        qlViewable('target', scoped, scope, 't'),
       );
       const readableSchemes = await readable(
         tx,

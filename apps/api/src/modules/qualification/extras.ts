@@ -17,7 +17,6 @@ import { type ModuleScope, resolveModuleScope, scopeSql } from '../permission/mo
 import { authorizedUnits } from '../permission/owner-units.js';
 import { parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
 import {
-  accessSql,
   checkWriteFields,
   codeOf,
   type QualificationObject,
@@ -34,7 +33,7 @@ import { presentChannels, presentChart, presentGradeDescriptions } from './prese
 import * as read from './read-model.js';
 import { presenter, QL_BASE, requireAllVisible, runWrite, writeContext } from './route-support.js';
 import * as standards from './standard-service.js';
-import { rowAccess, type WriteContext } from './store.js';
+import { rowAccess } from './store.js';
 import * as targets from './target-service.js';
 
 const CATEGORY_JOBS: readonly ScopedJobKind[] = ['positions', 'posts', 'sequences', 'level-types'];
@@ -193,11 +192,10 @@ function registerGradeDescriptions(router: Hono<TenantEnv>, deps: TenantRouteDep
 }
 
 function registerCodingRules(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  // 编码规则（QL-R3）：四项，只能编辑；可见范围 = 看全部 ∪ 创建人（DEC-347③）
+  // 编码规则（QL-R3）：四项，只能编辑；有查看权即看到全部（DEC-352），写入按看全部 ∪ 创建人（DEC-347③）
   router.get(`${QL_BASE}/coding-rules`, async (c) => {
     const ctx = await qualificationContext(c, deps, 'codingRule');
-    const scope = await qualificationScope(c, deps, ctx, 'codingRule');
-    const items = await withTenant(deps.db, ctx.tenantId, (tx) => config.listCodingRules(tx, ctx, scope));
+    const items = await withTenant(deps.db, ctx.tenantId, (tx) => config.listCodingRules(tx, ctx));
     return c.json({ items: await trimQualification(deps, ctx, 'codingRule', items) });
   });
   router.patch(`${QL_BASE}/coding-rules/:item`, async (c) => {
@@ -216,22 +214,12 @@ function registerCodingRules(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
       200,
       (tx, x) => config.updateCodingRule(tx, x, item as config.CodingItem, body),
       {
-        recheck: (value) => requireCodingRuleVisible(deps, w, value.id!),
+        // 规则只放开查看（DEC-352）：结果对查看人都可见，重放不再按范围复核
+        recheck: async () => undefined,
         present: async (value) => (await trimQualification(deps, w, 'codingRule', [value]))[0],
       },
     );
   });
-}
-
-/** 编码规则行仍在查看人当前的“看全部 ∪ 创建人”范围内，否则与不存在同一个 404。 */
-async function requireCodingRuleVisible(deps: TenantRouteDeps, w: WriteContext, id: string) {
-  const visible = await withTenant(deps.db, w.tenantId, async (tx) =>
-    rowsOf(
-      await tx.execute(sql`SELECT 1 FROM ql_coding_rules t WHERE t.tenant_id = ${w.tenantId}::uuid
-        AND t.id = ${id}::uuid AND ${accessSql(w, w.scope, 'dictionary').readable}`),
-    ),
-  );
-  if (!visible.length) throw new AppError('NOT_FOUND', '编码规则不存在');
 }
 
 function registerStandardImport(router: Hono<TenantEnv>, deps: TenantRouteDeps) {

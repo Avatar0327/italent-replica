@@ -1,7 +1,7 @@
 /**
  * R3-T02 PR-A 第 4 轮（第 3 轮审查 R3-01 / R3-02，真实授权器，“使用用户”范围）：
- * - R3-01 编码规则：只有创建人维度的人对看不到的项（没人建过、别人建过）保存，结果一律相同（同一个 404），不能借
- *   200 / 404 推断是否已被别人建过；首次建行同其他字典只认看全部（DEC-121 / DEC-347③）；
+ * - R3-01 编码规则：首次建行同其他字典只认看全部（DEC-121 / DEC-347③），只有创建人维度的人建不了、也改不了别人
+ *   建的（403）；DEC-352 起规则只放开查看，看得到真实规则；
  * - R3-02 标准 / 通道审计与标准导入任务锚在所属类别上，类别或标准删除后仍按类别归属判断（DEC-197 / DEC-198）：
  *   类别所有者删掉标准与类别后仍查得到历史；导入成功后删掉标准仍查得到任务；导入到没有标准的类别或不存在的类别，
  *   失败任务按执行人查得到。
@@ -56,8 +56,8 @@ describe('任职资格配置第 4 轮：编码规则保存与类别锚点', () =
   const created = async <T>(op: Operator, path: string, body: unknown) =>
     ok<T>(await op.request('POST', path, { ifMatch: 0, body }), 201);
 
-  describe('R3-01 编码规则保存不透露别人是否已建（DEC-347③ / DEC-121）', () => {
-    it('四项：只有创建人维度的人保存看不到的项，没人建过与别人建过同一个 404', async () => {
+  describe('R3-01 编码规则写入（DEC-347③ / DEC-121；DEC-352 只放开查看）', () => {
+    it('四项：只有创建人维度的人不能建（没人建过）也不能改别人建的，都 403；改后看得到真实规则', async () => {
       const op = await operator(world, {});
       const save = async (item: string) => {
         const response = await op.request('PATCH', `/coding-rules/${item}`, { ifMatch: 0, body: { prefix: 'OWN' } });
@@ -66,14 +66,19 @@ describe('任职资格配置第 4 轮：编码规则保存与类别锚点', () =
       };
       for (const item of ITEMS) {
         const untouched = await save(item);
+        expect(untouched.status, item).toBe(403);
         const rules = await ok<{ items: Rule[] }>(await data.admin('GET', '/coding-rules'));
         const rule = rules.items.find((r) => r.item === item)!;
         await ok(
           await data.admin('PATCH', `/coding-rules/${item}`, { ifMatch: rule.revision, body: { prefix: 'ADM' } }),
         );
         const taken = await save(item);
-        expect(untouched, item).toEqual(taken);
-        expect(taken.status, item).toBe(404);
+        expect(taken.status, item).toBe(403);
+        const listed = await ok<{ items: Rule[] }>(await op.request('GET', '/coding-rules'));
+        expect(
+          listed.items.find((r) => r.item === item),
+          item,
+        ).toMatchObject({ prefix: 'ADM' });
       }
       const all = await ok<{ items: Rule[] }>(await data.admin('GET', '/coding-rules'));
       expect(all.items.every((rule) => rule.id !== null)).toBe(true);

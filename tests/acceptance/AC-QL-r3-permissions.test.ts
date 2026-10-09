@@ -178,7 +178,8 @@ describe('任职资格配置第 3 轮：提示、审计与级联的范围', () =
         }),
       );
       await op.revokeSeeAll();
-      expect((await op.request('GET', `/targets/${target.id}`)).status).toBe(404);
+      // DEC-352：指标只放开查看，范围外的指标看得到；但不在操作人的写范围内
+      expect((await op.request('GET', `/targets/${target.id}`)).status).toBe(200);
       const leftovers = () =>
         withTenant(testDb().db, world.tenant.id, async (tx) => {
           const result = await tx.execute(sql`SELECT count(*)::int AS n FROM ql_target_grade_descriptions

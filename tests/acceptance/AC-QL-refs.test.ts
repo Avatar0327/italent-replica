@@ -1,7 +1,7 @@
 /**
  * R3-T02 PR-A 首个提交的冻结契约（设计 §1.2、§5.1）：qlReadable / qlStandardReadable 与 assertQualificationRefs。
- * - 读取 = 所属管理单元在范围内 ∪（向下公开 ∧ 范围内有其下级组织）；标准锚在类别上；
- * - 引用校验：没有查看权 403；不存在与范围外同一个 404；已停用 400 REFERENCE_DISABLED；
+ * - DEC-352：类别、级别、指标、标准只放开查看——有查看权即可引用，不按管理单元范围（含向下公开）裁剪；
+ * - 引用校验：没有查看权 403；不存在 404；已停用 400 REFERENCE_DISABLED；
  * - PR-B / C1 / C2 只经这两个函数引用任职资格对象。
  */
 import { randomUUID } from 'node:crypto';
@@ -59,7 +59,7 @@ async function fixture(label: string) {
 }
 
 describe('PR-A 冻结契约：assertQualificationRefs', () => {
-  it('DEC-281⑧ 范围内且启用通过；范围外与不存在同一个 404；没有查看权 403；停用 400', async () => {
+  it('DEC-352 / DEC-281⑧ 有查看权即可引用（范围内外、空范围都通过）；不存在 404；没有查看权 403；停用 400', async () => {
     const { w, other, tx, insert, scoped, access } = await fixture('ql-refs-basic');
     const mine = await insert(w.orgId);
     const theirs = await insert(other);
@@ -71,37 +71,33 @@ describe('PR-A 冻结契约：assertQualificationRefs', () => {
     await expect(
       check({ categoryIds: [mine.categoryId], levelIds: [mine.levelId], standardIds: [mine.standardId] }),
     ).resolves.toBeUndefined();
-    const missing = randomUUID();
-    for (const ids of [[theirs.categoryId], [missing]]) {
-      await expect(check({ categoryIds: ids })).rejects.toMatchObject({ code: 'NOT_FOUND', message: '任职类别不存在' });
-    }
-    await expect(check({ standardIds: [theirs.standardId] })).rejects.toMatchObject({
+    await expect(
+      check({ categoryIds: [theirs.categoryId], levelIds: [theirs.levelId], standardIds: [theirs.standardId] }),
+    ).resolves.toBeUndefined();
+    await expect(check({ levelIds: [mine.levelId] }, access(EMPTY_SCOPE))).resolves.toBeUndefined();
+    await expect(check({ categoryIds: [randomUUID()] })).rejects.toMatchObject({
       code: 'NOT_FOUND',
-      message: '任职资格标准不存在',
+      message: '任职类别不存在',
     });
     await expect(check({ categoryIds: [mine.categoryId] }, access(null))).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await expect(check({ categoryIds: [disabled.categoryId] })).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
       details: { reason: 'REFERENCE_DISABLED' },
     });
-    // 空范围（缺省）一律不可见
-    await expect(check({ levelIds: [mine.levelId] }, access(EMPTY_SCOPE))).rejects.toMatchObject({
-      code: 'NOT_FOUND',
-    });
   });
 
-  it('DEC-324② 向下公开：上级组织的类别打开向下公开后，下级范围的操作人可以引用；关闭时 404', async () => {
+  it('DEC-352：向下公开开关不再影响这四类对象的引用，下级范围的操作人引用上级未公开的类别同样通过', async () => {
     const { w, child, tx, insert, scoped, access } = await fixture('ql-refs-public-down');
     const closed = await insert(w.orgId);
     const open = await insert(w.orgId, { publicDown: true });
     const childScope = access(scoped([child]));
     await expect(
       tx((t) =>
-        assertQualificationRefs(t, childScope, { categoryIds: [open.categoryId], standardIds: [open.standardId] }),
+        assertQualificationRefs(t, childScope, {
+          categoryIds: [open.categoryId, closed.categoryId],
+          standardIds: [open.standardId, closed.standardId],
+        }),
       ),
     ).resolves.toBeUndefined();
-    await expect(
-      tx((t) => assertQualificationRefs(t, childScope, { categoryIds: [closed.categoryId] })),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 });

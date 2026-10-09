@@ -30,11 +30,13 @@ describe('任职资格配置的数据范围与向下公开', () => {
     data = await seed(world);
   });
 
-  it('DEC-043 数据范围缺省为空：列表为空、详情 404、新建 403 NO_MANAGEMENT_UNIT', async () => {
+  it('DEC-043 数据范围缺省为空：分类列表为空、详情 404、新建 403 NO_MANAGEMENT_UNIT；类别只放开查看（DEC-352）', async () => {
     const op = await operator(world, {});
-    const list = await op.request('GET', '/categories');
+    const list = await op.request('GET', '/category-classes');
     expect(await list.json()).toMatchObject({ items: [], hasDataPermission: false });
-    expect((await op.request('GET', `/categories/${data.open.id}`)).status).toBe(404);
+    expect((await op.request('GET', `/category-classes/${data.open.classId}`)).status).toBe(404);
+    // DEC-352：类别有查看权即看得到全部，与数据范围无关
+    expect((await op.request('GET', `/categories/${data.open.id}`)).status).toBe(200);
     const create = await op.request('POST', '/category-classes', { ifMatch: 0, body: { code: 'KX', name: '分类' } });
     expect(create.status).toBe(403);
     expect(((await create.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe(
@@ -42,30 +44,43 @@ describe('任职资格配置的数据范围与向下公开', () => {
     );
   });
 
-  it('DEC-324② 下级单元管理员：上级向下公开的对象可读不可写（403），不公开的与范围外的同一个 404', async () => {
+  it('DEC-324② 下级单元管理员：上级向下公开的分类可读不可写（403），范围外的与不存在同一个 404', async () => {
     const op = await operator(world, { mouId: data.childMou });
-    const list = (await (await op.request('GET', '/categories')).json()) as { items: { id: string }[] };
-    expect(list.items.map((c) => c.id)).toEqual([data.open.id]);
-    expect((await op.request('GET', `/categories/${data.open.id}`)).status).toBe(200);
-    const notFound = [data.closed.id, data.foreign.id, randomUUID()];
+    const list = (await (await op.request('GET', '/category-classes')).json()) as { items: { id: string }[] };
+    expect(list.items.map((c) => c.id)).toEqual([data.open.classId]);
+    expect((await op.request('GET', `/category-classes/${data.open.classId}`)).status).toBe(200);
     const bodies = new Set<string>();
-    for (const id of notFound) {
-      const response = await op.request('GET', `/categories/${id}`);
+    for (const id of [data.foreign.classId, randomUUID()]) {
+      const response = await op.request('GET', `/category-classes/${id}`);
       expect(response.status).toBe(404);
       bodies.add(JSON.stringify(((await response.json()) as { error: { message: string } }).error.message));
     }
     expect(bodies.size).toBe(1);
-    const write = await op.request('PATCH', `/categories/${data.open.id}`, {
-      ifMatch: data.open.revision,
+    const klass = (await (await op.request('GET', `/category-classes/${data.open.classId}`)).json()) as {
+      revision: number;
+    };
+    const write = await op.request('PATCH', `/category-classes/${data.open.classId}`, {
+      ifMatch: klass.revision,
       body: { name: '改名' },
     });
     expect(write.status).toBe(403);
     expect(((await write.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe(
       'QL_PUBLIC_DOWN_READONLY',
     );
-    const remove = await op.request('DELETE', `/categories/${data.open.id}`, { ifMatch: data.open.revision });
+    const remove = await op.request('DELETE', `/category-classes/${data.open.classId}`, { ifMatch: klass.revision });
     expect(remove.status).toBe(403);
-    // 标准锚在类别上：公开类别的标准可读
+    // DEC-352：类别、标准只放开查看——范围外的看得到，写入仍按管理单元 403
+    for (const id of [data.open.id, data.closed.id, data.foreign.id]) {
+      expect((await op.request('GET', `/categories/${id}`)).status).toBe(200);
+    }
+    const category = await op.request('PATCH', `/categories/${data.open.id}`, {
+      ifMatch: data.open.revision,
+      body: { name: '改名' },
+    });
+    expect(category.status).toBe(403);
+    expect(((await category.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe(
+      'QL_OUT_OF_SCOPE_READONLY',
+    );
     expect((await op.request('GET', `/standards/${data.standardId}`)).status).toBe(200);
     // 新建的向下公开缺省 false，资源集合 = 本人的授权管理单元
     const own = await op.request('POST', '/category-classes', { ifMatch: 0, body: { code: 'KOWN', name: '自建' } });

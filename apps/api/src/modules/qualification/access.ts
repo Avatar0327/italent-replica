@@ -1,12 +1,15 @@
 /**
  * 任职资格的权限接入（DEC-080 单一权限模型；设计 docs/08_设计/R3-T02_任职资格与人才评定_设计.md §5.1；AGENTS §10）：
  * - 功能权限：对象的查看 / 新增 / 编辑 / 删除 + 写入口按钮，写入按载荷逐字段校验编辑权（含显式清空）；
- * - 数据范围：带资源集合的对象（分类、类别、级别、指标类型、指标）读取 = 所属管理单元在范围内（“使用用户”按所属人）
+ * - 数据范围：带资源集合的对象（分类、指标类型）读取 = 所属管理单元在范围内（“使用用户”按所属人）
  *   ∪（向下公开 ∧ 范围内有其下级组织）；写入只认前半段，仅因向下公开可见的写 403（QL_PUBLIC_DOWN_READONLY）。
- *   标准的可见性锚在所属类别上。层级、等级方案、编码规则是字典（看全部 ∪ 创建人，DEC-121）。
- *   范围按对象所属应用 Qualification 解析（DEC-043），缺省为空；
+ *   DEC-352（🟡 写权限待原站取证）：类别、级别、指标、标准、发展通道、编码规则（及随指标的等级描述）只放开查看——
+ *   有功能 / 字段查看权即看得到全部，不按管理单元 / 创建人裁剪；新建、编辑、删除仍按管理单元（标准按所属类别、编码
+ *   规则按看全部 ∪ 创建人）控制，范围外的写 403（QL_OUT_OF_SCOPE_READONLY）。层级、等级方案是字典（看全部 ∪ 创建人，
+ *   DEC-121）。范围按对象所属应用 Qualification 解析（DEC-043），缺省为空；
  * - 引用校验统一一处（assertQualificationRefs）：评定活动、评价表、发展通道等引用类别 / 级别 / 指标 / 标准时，
- *   被引用对象须在操作人读取范围内且启用（只拦新引用；已引用后停用照常显示，同 DEC-281⑧）。
+ *   操作人须有被引用对象的查看权（DEC-352 起不再按范围），被引用对象须启用（只拦新引用；已引用后停用照常显示，
+ *   同 DEC-281⑧）。
  *
  * qlReadable / qlStandardReadable / qualificationRefAccess / assertQualificationRefs 的签名在 PR-A 首个提交冻结，
  * 供 PR-B（评定配置）与 C1 / C2 引用（设计 §1.2）。
@@ -63,10 +66,33 @@ export function qlReadable(ctx: PublicDownContext, scope: ModuleScope, alias: st
   });
 }
 
-/** 标准的读取谓词：所属类别可读（标准锚在类别上，设计 §5.1）。别名指向 ql_standards。 */
-export function qlStandardReadable(ctx: PublicDownContext, scope: ModuleScope, alias: string): SQL {
-  return sql`EXISTS (SELECT 1 FROM ql_categories qc_anchor WHERE qc_anchor.tenant_id = ${column(alias, 'tenant_id')}
-    AND qc_anchor.id = ${column(alias, 'category_id')} AND ${qlReadable(ctx, scope, 'qc_anchor')})`;
+/**
+ * 标准的读取谓词：DEC-352 起有标准查看权即看得到全部，不再按所属类别的范围裁剪（签名冻结，参数保留）。别名指向
+ * ql_standards。
+ */
+export function qlStandardReadable(_ctx: PublicDownContext, _scope: ModuleScope, _alias: string): SQL {
+  return sql`true`;
+}
+
+/** DEC-352：只放开查看的对象——有功能 / 字段查看权即看得到全部，写入仍按管理单元。 */
+export const OPEN_READ: ReadonlySet<QualificationObject> = new Set<QualificationObject>([
+  'category',
+  'level',
+  'target',
+  'targetGradeDescription',
+  'codingRule',
+  'standard',
+  'developmentChannel',
+]);
+
+/** 某对象在查看人当前范围下的读取谓词：只放开查看的对象恒真（查看权由调用方判定），其余按 qlReadable。 */
+export function qlViewable(
+  object: QualificationObject,
+  ctx: PublicDownContext,
+  scope: ModuleScope,
+  alias: string,
+): SQL {
+  return OPEN_READ.has(object) ? sql`true` : qlReadable(ctx, scope, alias);
 }
 
 /** 可被其他对象引用的任职资格对象（设计 §5.1 引用校验）。 */
@@ -152,8 +178,7 @@ export async function assertQualificationRefs(
     const scope = access.scopes[object];
     if (scope === null) throw new AppError('FORBIDDEN', `无权查看${label}`);
     if (!scope) throw new Error(`未解析${label}的引用范围`);
-    const readable =
-      object === 'standard' ? qlStandardReadable(access.ctx, scope, 'r') : qlReadable(access.ctx, scope, 'r');
+    const readable = qlViewable(REF_OBJECTS[object], access.ctx, scope, 'r');
     const result = await tx.execute(sql`SELECT r.id, r.enabled, (${readable}) AS readable
       FROM ${sql.identifier(REF_TABLES[object])} r
       WHERE r.tenant_id = ${access.ctx.tenantId}::uuid AND r.id = ANY(${`{${unique.join(',')}}`}::uuid[])
@@ -173,19 +198,22 @@ export function rowsOf<T>(result: unknown): T[] {
   return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
 }
 
-/** 对象的范围锚点类型：带资源集合（owner 列组）、字典（创建人）、标准（锚在所属类别上）。 */
-export type AnchorKind = 'owned' | 'dictionary' | 'standard';
+/**
+ * 对象的范围锚点类型：带资源集合（owner 列组）、字典（创建人）、标准（写锚在所属类别上）。`open` / `openDictionary`
+ * 是只放开查看的带资源集合对象与字典（DEC-352）：读取恒真，写入同 owned / dictionary。
+ */
+export type AnchorKind = 'owned' | 'open' | 'dictionary' | 'openDictionary' | 'standard';
 
 export const ANCHOR: Readonly<Record<QualificationObject, AnchorKind>> = {
   categoryClass: 'owned',
-  category: 'owned',
+  category: 'open',
   layer: 'dictionary',
-  level: 'owned',
+  level: 'open',
   targetType: 'owned',
-  target: 'owned',
+  target: 'open',
   gradeScheme: 'dictionary',
-  targetGradeDescription: 'owned',
-  codingRule: 'dictionary',
+  targetGradeDescription: 'open',
+  codingRule: 'openDictionary',
   standard: 'standard',
   developmentChannel: 'standard',
 };
@@ -195,14 +223,14 @@ export const ANCHOR: Readonly<Record<QualificationObject, AnchorKind>> = {
  * 字典按创建人）；可读另加向下公开（字典与可写相同）。标准经 ql_categories 锚在类别上。
  */
 export function accessSql(ctx: PublicDownContext, scope: ModuleScope, kind: AnchorKind, alias = 't') {
-  if (kind === 'dictionary') {
+  if (kind === 'dictionary' || kind === 'openDictionary') {
     const own = scopeSql(scope, { creator: column(alias, 'created_by') });
-    return { editable: own, readable: own };
+    return { editable: own, readable: kind === 'openDictionary' ? sql`true` : own };
   }
-  if (kind === 'owned') {
+  if (kind === 'owned' || kind === 'open') {
     return {
       editable: scopeSql(scope, { org: column(alias, 'owner_org_id'), creator: column(alias, 'owner_id') }),
-      readable: qlReadable(ctx, scope, alias),
+      readable: kind === 'open' ? sql`true` : qlReadable(ctx, scope, alias),
     };
   }
   const anchored = (predicate: SQL) => sql`EXISTS (SELECT 1 FROM ql_categories qa
@@ -220,14 +248,21 @@ export function requireReadable(access: Access, object: QualificationObject): vo
   if (access === 'none') throw new AppError('NOT_FOUND', `${QUALIFICATION_LABELS[object]}不存在`);
 }
 
-/** 写入：不可见 404；仅因向下公开可见 403（设计 §5.1）。 */
+/**
+ * 写入：不可见 404；看得到但不在写范围内 403——只放开查看的对象（DEC-352）为 QL_OUT_OF_SCOPE_READONLY，其余是
+ * 仅因向下公开可见（设计 §5.1，QL_PUBLIC_DOWN_READONLY）。
+ */
 export function requireEditable(access: Access, object: QualificationObject): void {
   requireReadable(access, object);
-  if (access === 'view') {
-    throw new AppError('FORBIDDEN', `${QUALIFICATION_LABELS[object]}由上级组织向下公开，只能查看与选用`, {
-      reason: 'QL_PUBLIC_DOWN_READONLY',
+  if (access !== 'view') return;
+  if (OPEN_READ.has(object)) {
+    throw new AppError('FORBIDDEN', `${QUALIFICATION_LABELS[object]}不在你的管理范围内，只能查看`, {
+      reason: 'QL_OUT_OF_SCOPE_READONLY',
     });
   }
+  throw new AppError('FORBIDDEN', `${QUALIFICATION_LABELS[object]}由上级组织向下公开，只能查看与选用`, {
+    reason: 'QL_PUBLIC_DOWN_READONLY',
+  });
 }
 
 export function qualificationContext(
@@ -296,6 +331,8 @@ export const trimQualification = <T extends object>(
 
 /** 列表信封：查看人在该对象上有没有任何数据范围（字典看看全部或创建人）。 */
 export function listEnvelope(page: { page: number; pageSize: number }, scope: ModuleScope, kind: AnchorKind) {
-  const hasDataPermission = scope.all || (kind === 'dictionary' ? hasCreatorScope(scope) : scope.hasDataPermission);
+  const open = kind === 'open' || kind === 'openDictionary' || kind === 'standard';
+  const hasDataPermission =
+    open || scope.all || (kind === 'dictionary' ? hasCreatorScope(scope) : scope.hasDataPermission);
   return { page: page.page, pageSize: page.pageSize, hasDataPermission };
 }

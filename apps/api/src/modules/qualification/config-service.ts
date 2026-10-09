@@ -11,10 +11,11 @@ import { tenantLocalDate } from '@italent/domain';
 import { recordImportLog } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
-import { hasCreatorScope, visibleJob, type ModuleScope } from '../permission/module-route-access.js';
+import { visibleJob, type ModuleScope } from '../permission/module-route-access.js';
 import type { ScopedJobKind } from '../permission/module-contracts.js';
 import {
   accessSql,
+  ANCHOR,
   codeOf,
   fieldVisible,
   QUALIFICATION_LABELS,
@@ -105,7 +106,7 @@ async function replaceJobLinks(
     const { item, fields, label } = await jobObject(tx, ctx, linkType!, jobId);
     const jobCode = fieldVisible(fields, 'code') && item.code ? `【${item.code}】` : '';
     const taken = rowsOf<{ name: string; readable: boolean }>(
-      await tx.execute(sql`SELECT o.name, (${accessSql(ctx, ctx.scope, 'owned', 'o').readable}) AS readable
+      await tx.execute(sql`SELECT o.name, (${accessSql(ctx, ctx.scope, ANCHOR[object], 'o').readable}) AS readable
         FROM ${sql.identifier(table)} l
         JOIN ${sql.identifier(otherTable)} o ON o.tenant_id = l.tenant_id AND o.id = l.${sql.identifier(key)}
         WHERE l.tenant_id = ${ctx.tenantId}::uuid AND l.job_link_type = ${linkType}
@@ -564,38 +565,24 @@ export interface CodingRuleView {
   readonly revision: number;
 }
 
-const notFound = () => new AppError('NOT_FOUND', `${QUALIFICATION_LABELS.codingRule}不存在`);
-
 /**
- * 编码规则的可见范围 = 看全部 ∪ 创建人（DEC-347③，字典口径同 DEC-121）：看全部的看四项；只有“使用用户”维度的
- * 只看自己建的规则行，看不到的项（还没有人建、或别人建的）一律按缺省值呈现——占位不按全租户有没有行决定，不透露
- * 是否已被别人建过（第 3 轮 R2-02；占位口径待总编排定）；都没有的看不到。占位只有看全部的人能保存（建行），见
- * updateCodingRule。
- * 缺省值：未启用、无前缀、从 1 起（🟡 原站缺省值未取证）。
+ * 编码规则只放开查看（DEC-352）：有查看权即看到四项真实规则；还没有人建过的项按缺省值呈现（未启用、无前缀、
+ * 从 1 起，🟡 原站缺省值未取证）。写入仍按看全部 ∪ 创建人（DEC-347③），见 updateCodingRule。
  */
-export async function listCodingRules(
-  tx: Tx,
-  ctx: QualificationContext,
-  scope: ModuleScope,
-): Promise<CodingRuleView[]> {
-  if (!scope.all && !hasCreatorScope(scope)) return [];
+export async function listCodingRules(tx: Tx, ctx: QualificationContext): Promise<CodingRuleView[]> {
   const rows = rowsOf<Record<string, unknown>>(
-    await tx.execute(sql`SELECT t.id, t.item, t.enabled, t.prefix, t.next_seq, t.revision,
-        (${accessSql(ctx, scope, 'dictionary').readable}) AS readable
+    await tx.execute(sql`SELECT t.id, t.item, t.enabled, t.prefix, t.next_seq, t.revision
       FROM ql_coding_rules t WHERE t.tenant_id = ${ctx.tenantId}::uuid`),
   );
   return CODING_ITEMS.map((item): CodingRuleView => {
-    const row = rows.find((r) => r.item === item && r.readable === true);
-    if (!row) return { id: null, item, enabled: false, prefix: '', nextSeq: 1, revision: 0 };
-    const { readable: _readable, ...rest } = row;
-    return view<CodingRuleView>(rest);
+    const row = rows.find((r) => r.item === item);
+    return row ? view<CodingRuleView>(row) : { id: null, item, enabled: false, prefix: '', nextSeq: 1, revision: 0 };
   });
 }
 
 export async function updateCodingRule(tx: Tx, ctx: WriteContext, item: CodingItem, body: input.CodingRulePatch) {
-  if (!ctx.scope.all && !hasCreatorScope(ctx.scope)) throw notFound();
-  // 建行同其他字典只认看全部（DEC-121，第 4 轮 R3-01）：看全部的人保存还没有人建的项时建行并成为创建人；只有
-  // 创建人维度的人只能改自己建的行，没人建过与别人建过同一个 404，不能借 200 / 404 推断是否已被别人建过
+  // 写入按看全部 ∪ 创建人（DEC-347③）：建行同其他字典只认看全部（DEC-121，第 4 轮 R3-01），看全部的人保存
+  // 还没有人建的项时建行并成为创建人；只有创建人维度的人只能改自己建的行（DEC-352 起规则对查看人都可见，拒绝给 403）
   const inserted = ctx.scope.all
     ? rowsOf(
         await tx.execute(sql`INSERT INTO ql_coding_rules (tenant_id, item, created_by, revision)
@@ -603,23 +590,30 @@ export async function updateCodingRule(tx: Tx, ctx: WriteContext, item: CodingIt
       ).length
     : 0;
   const current = rowsOf<Record<string, unknown>>(
-    await tx.execute(sql`SELECT t.*, (${accessSql(ctx, ctx.scope, 'dictionary').readable}) AS readable
+    await tx.execute(sql`SELECT t.*, (${accessSql(ctx, ctx.scope, 'openDictionary').editable}) AS editable
       FROM ql_coding_rules t WHERE t.tenant_id = ${ctx.tenantId} AND t.item = ${item} FOR UPDATE OF t`),
   )[0];
-  if (current?.readable !== true) throw notFound();
+  if (!current) {
+    throw new AppError('FORBIDDEN', '还没有人建过这项编码规则，只有看全部的人能建', {
+      reason: 'CODING_RULE_CREATE_REQUIRES_SEE_ALL',
+    });
+  }
+  if (current.editable !== true) {
+    throw new AppError('FORBIDDEN', '编码规则不是你建的，只能查看', { reason: 'QL_OUT_OF_SCOPE_READONLY' });
+  }
   if (current.revision !== ctx.expectedRevision) {
     throw new AppError('REVISION_CONFLICT', '编码规则已变更，请刷新后显式重提', {
       expected: ctx.expectedRevision,
       actual: current.revision,
     });
   }
-  const { readable: _readable, ...stored } = current;
+  const { editable: _editable, ...stored } = current;
   const before = view<CodingRuleView>(stored);
   await tx.execute(sql`UPDATE ql_coding_rules SET enabled = ${body.enabled ?? current.enabled},
     prefix = ${body.prefix ?? current.prefix}, next_seq = ${body.nextSeq ?? current.next_seq},
     revision = ${ctx.expectedRevision + 1}, updated_at = ${ctx.now.toISOString()}
     WHERE tenant_id = ${ctx.tenantId} AND item = ${item}`);
-  const after = (await listCodingRules(tx, ctx, ctx.scope)).find((rule) => rule.item === item)!;
+  const after = (await listCodingRules(tx, ctx)).find((rule) => rule.item === item)!;
   // 首次保存记为新增（DEC-198 创建人归属，第 3 轮 R2-05）：“使用用户”范围的审计员按它找得到自己的规则
   await audit(tx, ctx, 'codingRule', inserted ? 'create' : 'update', after.id!, {
     before: inserted ? null : before,
