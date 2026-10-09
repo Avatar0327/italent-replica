@@ -1,9 +1,11 @@
 name: CI
 
 # Actions 分钟按 job 向上取整计费，以下配置均为控制消耗：
-# - 纯文档 PR（DEC-344）：必需检查照常触发但快速通过、不跑分片；判定见 changes job
-#   （PR 相对 base 的完整改动文件全部落在 docs/ reference/ 或 *.md，且不含 .github/；.claude/ 只有其中的 *.md 算文档）
-# - push 到 main 的纯文档提交仍不触发（没有必需检查在等它，省分钟）
+# - 纯文档 PR（DEC-344）：必需检查照常触发但快速通过、不跑分片；判定见 changes job：
+#   PR 相对 base 的完整改动文件必须全部是文档——任意目录的 *.md，或 docs/ reference/ .claude/ 下的
+#   图片（png jpg jpeg gif svg webp）与纯文本资料（txt tsv）；其余扩展名（py mjs js ts json yml sh html 等）
+#   不论在哪个目录都跑全量，.github/ 下任何文件也跑全量
+# - push 到 main 的纯文档提交仍不触发（没有必需检查在等它，省分钟），口径与上面一致
 # - 同一分支/PR 连续推送时取消旧运行，只验证最新提交
 # - Draft PR 不跑，转 Ready 后再跑
 # - Node 22（engines 下限）只在每周定时与手动触发时补跑，日常只跑 Node 24
@@ -13,7 +15,36 @@ name: CI
 on:
   push:
     branches: [main]
-    paths-ignore: ['**.md', 'docs/**', 'reference/**']
+    # paths 按顺序求值：先全选，再排除文档，最后把 .github/ 加回来（改 CI 必须跑）。
+    # 与 changes job 的纯文档口径保持一致；GitHub 的 paths 过滤不支持花括号，故逐项列出。
+    paths:
+      - '**'
+      - '!**.md'
+      - '!docs/**.png'
+      - '!docs/**.jpg'
+      - '!docs/**.jpeg'
+      - '!docs/**.gif'
+      - '!docs/**.svg'
+      - '!docs/**.webp'
+      - '!docs/**.txt'
+      - '!docs/**.tsv'
+      - '!reference/**.png'
+      - '!reference/**.jpg'
+      - '!reference/**.jpeg'
+      - '!reference/**.gif'
+      - '!reference/**.svg'
+      - '!reference/**.webp'
+      - '!reference/**.txt'
+      - '!reference/**.tsv'
+      - '!.claude/**.png'
+      - '!.claude/**.jpg'
+      - '!.claude/**.jpeg'
+      - '!.claude/**.gif'
+      - '!.claude/**.svg'
+      - '!.claude/**.webp'
+      - '!.claude/**.txt'
+      - '!.claude/**.tsv'
+      - '.github/**'
   pull_request:
     # 不能加 paths-ignore：整条流程不触发会让必需检查永远挂起（DEC-344）
     types: [opened, synchronize, reopened, ready_for_review]
@@ -63,8 +94,15 @@ jobs:
                 while IFS= read -r -d '' f; do
                   case "$f" in
                     .github/*) docs_only=false ;;
-                    # .claude/ 里只有 *.md 是文档；脚本、hooks、settings.json 等走全量
-                    docs/* | reference/* | *.md) ;;
+                    *.md) ;;
+                    # docs/ reference/ .claude/ 下只有图片和纯文本资料算文档；
+                    # 脚本、json、html、yml 等（如 docs/10_进度/watch.py）走全量
+                    docs/* | reference/* | .claude/*)
+                      case "$f" in
+                        *.png | *.jpg | *.jpeg | *.gif | *.svg | *.webp | *.txt | *.tsv) ;;
+                        *) docs_only=false ;;
+                      esac
+                      ;;
                     *) docs_only=false ;;
                   esac
                 done < "$RUNNER_TEMP/changed.z"
