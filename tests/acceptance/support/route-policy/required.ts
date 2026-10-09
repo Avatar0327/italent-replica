@@ -160,19 +160,18 @@ export function checkRoute(
   }
   // R3：披露义务由同名 optional 分支的每个备选授予（权限 + need）；R4：纯披露不得进准入
   const disclosures = obligations.filter((x) => kindOf(x) === 'disclosure');
-  const named = (o: Obligation) => carrierOf(o);
   for (const o of disclosures.filter((x) => !x.or)) {
-    const branch = decl.optional.get(named(o));
+    const branch = decl.optional.get(carrierOf(o));
     if (!branch?.alternatives.some((alt) => alt.has(o.perm))) {
-      report('DISCLOSURE_MISSING', `披露 ${named(o)} 没有 optional 分支授予 ${o.perm}`);
+      report('DISCLOSURE_MISSING', `披露 ${carrierOf(o)} 没有 optional 分支授予 ${o.perm}`);
       continue;
     }
     branch.alternatives.forEach((alt, k) => {
-      if (!holds(alt, o)) report('DISCLOSURE_WEAK', `披露 ${named(o)} 第 ${k + 1} 个备选：${whyNot(alt, o)}`);
+      if (!holds(alt, o)) report('DISCLOSURE_WEAK', `披露 ${carrierOf(o)} 第 ${k + 1} 个备选：${whyNot(alt, o)}`);
     });
   }
   for (const [name, alts] of groupsOf(disclosures)) {
-    const branchName = named([...alts.values()][0]![0]!);
+    const branchName = carrierOf([...alts.values()][0]![0]!);
     const branch = decl.optional.get(branchName);
     if (!branch) report('DISCLOSURE_MISSING', `披露 ${branchName}（组 ${name}）没有 optional 分支`);
     else
@@ -191,7 +190,7 @@ export function checkRoute(
   }
   // R3c：披露义务必须写 need
   for (const o of disclosures) {
-    if (!o.need) report('DISCLOSURE_NEED_UNBOUND', `披露 ${named(o)} 的 ${o.perm} 须登记 need`);
+    if (!o.need) report('DISCLOSURE_NEED_UNBOUND', `披露 ${carrierOf(o)} 的 ${o.perm} 须登记 need`);
   }
   // need.scope 不是 none 的义务必须有强制范围判定处的证据
   for (const o of obligations) {
