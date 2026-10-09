@@ -1,0 +1,88 @@
+{
+  "DELETE /api/tenant/evaluation/activity-types/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "6e1dde35dea8",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.ActivityType/-"
+    ],
+    "trace": [
+      "btn:TEvaluation.ActivityType#delete@detail",
+      "obj:TEvaluation.ActivityType:delete"
+    ]
+  },
+  "GET /api/tenant/evaluation/activity-types": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TEvaluation.ActivityType"
+    ],
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.ActivityType/TEvaluation.ActivityType.list"
+    ],
+    "trace": [
+      "obj:TEvaluation.ActivityType:view"
+    ]
+  },
+  "GET /api/tenant/evaluation/activity-types/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "6e1dde35dea8",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.ActivityType/TEvaluation.ActivityType.detail"
+    ],
+    "trace": [
+      "obj:TEvaluation.ActivityType:view"
+    ]
+  },
+  "PATCH /api/tenant/evaluation/activity-types/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "6e1dde35dea8",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TEvaluation/TEvaluation.ActivityType/-"
+    ],
+    "trace": [
+      "btn:TEvaluation.ActivityType#update@detail",
+      "obj:TEvaluation.ActivityType:update"
+    ]
+  },
+  "POST /api/tenant/evaluation/activity-types": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TEvaluation.ActivityType#create@list",
+      "obj:TEvaluation.ActivityType:create"
+    ]
+  }
+}
