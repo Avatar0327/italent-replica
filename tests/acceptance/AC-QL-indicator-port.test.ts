@@ -212,7 +212,11 @@ describe('AC-QL-indicator-port indicators：当前资格 → 标准 → 当前�
     await f.record(id);
     const outcome = await f.tx((t) => port().indicators(t, f.w.tenant.id, id, '2026-06-01'));
     if (!outcome.ok) throw new Error('应成功');
-    const item = outcome.data[0]! as { name: string; abilities: { content: string }[]; targetTypePath: string[] };
+    const item = outcome.data[0]! as unknown as {
+      name: string;
+      abilities: { content: string }[];
+      targetTypePath: string[];
+    };
     expect(() => {
       item.name = '改名';
     }).toThrow();

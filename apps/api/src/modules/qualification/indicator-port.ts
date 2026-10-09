@@ -150,9 +150,10 @@ async function indicators(
   });
   const abilities = new Map<string, AbilityRow[]>();
   if (kept.length) {
+    const detailIds = uuidArray(kept.map((row) => row.detail_id));
     const found = rowsOf<AbilityRow>(
       await tx.execute(sql`SELECT detail_id, content, target_value, target_grade_id FROM ql_ability_details
-        WHERE tenant_id = ${tenant}::uuid AND detail_id = ANY(${uuidArray(kept.map((row) => row.detail_id))}::uuid[])
+        WHERE tenant_id = ${tenant}::uuid AND detail_id = ANY(${detailIds}::uuid[])
         ORDER BY detail_id, display_order, id`),
     );
     for (const ability of found)
@@ -219,4 +220,7 @@ const port: QualificationIndicatorPort = {
   listTargets: (tx, tenantId, scope, page) => listTargets(tx as Tx, tenantId, scope, page),
 };
 
-registerQualificationIndicatorPort(port);
+/** 登记端口实现（随 qualification 路由装配调用，可重复调用；未装配路由的进程里端口保持未登记，调用方按 INDICATOR_SOURCE_UNAVAILABLE 处理）。 */
+export function installQualificationIndicatorPort(): void {
+  registerQualificationIndicatorPort(port);
+}

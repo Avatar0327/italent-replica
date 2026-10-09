@@ -30,7 +30,7 @@ import {
 import { registerQualificationCandidates } from './candidates.js';
 import * as config from './config-service.js';
 import { registerExtras } from './extras.js';
-import './indicator-port.js'; // 登记 QualificationIndicatorPort（C1-3）
+import { installQualificationIndicatorPort } from './indicator-port.js';
 import { bindQualificationSubsetPolicy } from './subset-policy.js';
 import * as input from './input.js';
 import * as read from './read-model.js';
@@ -173,6 +173,8 @@ const SPECS = {
 export function registerQualificationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   // 子集策略的钩子签名里没有授权器，随路由装配绑定（C1-1）
   bindQualificationSubsetPolicy(deps);
+  // 指标端口随装配登记（C1-3；PR-0 契约：未装配时为 null）
+  installQualificationIndicatorPort();
   registerQualificationCandidates(router, deps);
   registerExtras(router, deps);
   for (const spec of Object.values(SPECS)) registerObject(router, deps, spec as ObjectRoutes<object, object>);

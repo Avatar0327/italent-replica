@@ -3,7 +3,7 @@
  * 指标类型 / 指标 / 标准）+ 员工与任职资格子集记录。配置经 PR-A 的真实接口创建，子集记录经人员子集通用路由。
  */
 import { randomUUID } from 'node:crypto';
-import { sql, withTenant } from '@italent/db';
+import { type sql, withTenant } from '@italent/db';
 import { expect } from 'vitest';
 import type { useTestDb } from '@italent/testkit';
 import { qualificationWorld } from './AC-QL-support.js';
