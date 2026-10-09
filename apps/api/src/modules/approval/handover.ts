@@ -114,7 +114,7 @@ export async function handoverExceptionAdmin(
   const batch = instances.slice(0, BATCH);
   // F-065：员工 → 业务 → 组织的锁必须先于登记替代人 / 重发流程（二者的外键对来源账号与替代人的成员行取 KEY SHARE）。
   // 入职绑定账号的顺序是组织锁 → 成员行 FOR UPDATE，反过来先持成员行再等组织锁会与它成环（org/locks.ts 全局锁序）。
-  await lockHandoverParticipants(tx, ctx, batch, { organization: true });
+  await lockHandoverParticipants(tx, ctx, batch, { organization: true, reassignFrom: input.fromUserId });
   await designateSuccessor(tx, ctx, input);
   const processes = await republishProcesses(tx, ctx, input);
   let tasks = 0;
@@ -514,7 +514,9 @@ async function takeoverTarget(
 
 /**
  * 交接前统一取锁：员工（任职业务的参与闭包）→ 各业务的业务行与资源锁（适配器 lockMany，按业务自己的规范顺序）→ 之后逐单锁
- * 实例。手动交接（organization: true）还须在登记替代人（成员行 KEY SHARE）之前取组织锁（F-065）；全局停用在锁账号行之前同样以 true 预取（F-069），撤销成员关系的接管不预取。
+ * 实例。组织锁按路径区分（见适配器 lockMany 的 options）：手动交接（organization: true）在登记替代人（成员行 KEY SHARE）
+ * 之前取（F-065），但批里没有调动、也不可能会签合席时不取（reassignFrom，F-070）；全局停用在锁账号行之前同样以 true
+ * 预取（F-069）；撤销成员关系的接管没有账号锁前缀，不预取。
  * 发展计划的批量干预按计划 ID 升序锁计划再锁实例，这里同样先按计划 ID 升序锁齐本批的计划，两边锁序一致，
  * 不会交错互等（PR #115 第 2 轮 P3-2）。
  */
@@ -522,7 +524,7 @@ async function lockHandoverParticipants(
   tx: Tx,
   ctx: ApprovalContext,
   batch: readonly LockKey[],
-  options: { readonly organization: boolean },
+  options: { readonly organization: boolean; readonly reassignFrom?: string },
 ) {
   const employees = [...new Set(batch.map((item) => item.employee_id))]
     .filter((id) => id !== '00000000-0000-0000-0000-000000000000')

@@ -47,7 +47,9 @@ export const AUDIT: RequiredTable = {
         {
           role: 'impl',
           unit: 'apps/api/src/modules/survey360/access.ts#survey360FailureVisibility',
-          anchor: "link: await allActivitiesOf(tx, deps, { timezone: 'UTC', ...ctx })",
+          // 作答入口失败审计另要本人不兼任任何活动的被评价人 / 评价者（PR-B 第 3 轮 P2-1）
+          anchor:
+            "allActivitiesOf(tx, deps, { timezone: 'UTC', ...ctx })) && !(await participatesAnywhere(tx, ctx.userId)",
         },
         {
           role: 'impl',
