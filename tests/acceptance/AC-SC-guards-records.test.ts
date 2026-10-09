@@ -109,13 +109,28 @@ describe('AC-SC-guards 继任记录读侧权限（真实授权器）', () => {
     expect(detail.startDate).toBe('2026-09-01');
   });
 
-  it('按不可见字段筛选 403 FILTER_FIELD_HIDDEN：不能借筛选结果还原被裁掉的字段', async () => {
-    const operator = await recordOperator(world, { seeAll: true, hidden: ['targetOrgId', 'successorEmployeeId'] });
-    for (const query of [`targetOrgId=${std.orgA.id}`, `successorEmployeeId=${std.successor1.id}`]) {
-      const response = await operator.request('GET', `/records?${query}`);
-      expect([response.status, await errorCode(response)], query).toEqual([403, 'FORBIDDEN']);
+  it('按不可见字段筛选 403 FILTER_FIELD_HIDDEN：五个筛选字段逐个精确断言码、reason 与字段名', async () => {
+    const filters = {
+      status: 'all',
+      successionType: 'org',
+      targetOrgId: std.orgA.id,
+      targetPositionId: std.keyPosition.id,
+      successorEmployeeId: std.successor1.id,
+    } as const;
+    for (const [field, value] of Object.entries(filters)) {
+      const operator = await recordOperator(world, { seeAll: true, hidden: [field] });
+      const response = await operator.request('GET', `/records?${field}=${value}`);
+      const body = (await response.json()) as {
+        error: { code: string; details?: { reason?: string; field?: string } };
+      };
+      expect([response.status, body.error.code, body.error.details?.reason, body.error.details?.field], field).toEqual([
+        403,
+        'FORBIDDEN',
+        'FILTER_FIELD_HIDDEN',
+        field,
+      ]);
+      // 没有这个筛选时照常 200，其余字段不受影响
+      expect((await operator.request('GET', '/records')).status, field).toBe(200);
     }
-    const allowed = await operator.request('GET', '/records?successionType=org');
-    expect(allowed.status).toBe(200);
   });
 });
