@@ -28,6 +28,7 @@ import { captureCommandFailures } from './audit/capture.js';
 import { registerTalentRoutes } from './modules/talent/routes.js';
 import { MODEL_IMAGE_BODY_LIMIT } from './modules/talent/model-image-format.js';
 import { registerIdpRoutes } from './modules/idp/routes.js';
+import { registerTalentReviewRoutes } from './modules/talent-review/routes.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
 const TENANT_MODULES: readonly TenantRouteModule[] = [
@@ -44,6 +45,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerSurvey360Routes, // R3-T03 360 度评估（含 /api/survey360/link 链接作答）
   registerTalentRoutes, // R3-T01 人才标准与指标库（TalentCenter）
   registerIdpRoutes, // R3-T07 个人发展计划（IDP）
+  registerTalentReviewRoutes, // R3-T04 人才盘点（TalentReview；PR-A 准备度字典）
 ];
 
 export interface AppDeps {

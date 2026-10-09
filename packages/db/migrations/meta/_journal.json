@@ -505,6 +505,13 @@
       "when": 1791524499272,
       "tag": "0071_approval_subjects",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1791531187155,
+      "tag": "0072_talent_review_readiness",
+      "breakpoints": true
     }
   ]
 }

@@ -40,3 +40,4 @@ export * from './qualification/index.js';
 export * from './evaluation/index.js';
 export * as survey360 from './survey360/index.js';
 export * from './idp/index.js';
+export * from './talent-review/index.js';

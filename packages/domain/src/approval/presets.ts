@@ -260,6 +260,21 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
     }),
   })),
   {
+    // R3-T04 设计 §3.3（D-34，DEC-332①）：盘点结果涉及绩效、潜力等人才评价，影响晋升与继任，敏感且有重大影响，
+    // 审批节点显式 avoidSelf = true。avoidSubjects 在 F-048 PR-2 放开开关前定义校验一律拒绝开启（F-048 R3-01），
+    // 先写 false，由 T04 PR-D（F-048 PR-2 之后）改为 true。节点结构未取证（TODO(需取证 #38) 同口径），由租户调整后发布。
+    presetKey: 'standard_talent_review_result',
+    code: 'StandardTalentReviewResult',
+    approvalType: 'talent_review_result',
+    definition: draft({
+      name: '标准盘点结果审批流程',
+      description: '出厂预置：节点结构待按本租户实际流程核对，发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition('talent_review_result'),
+      nodes: [node('department_head', '部门负责人审批', 'latest_record_department_head', { formFields: [] })],
+    }),
+  },
+  {
     presetKey: 'standard_personnel_change',
     code: 'StandardPersonnelChange',
     approvalType: 'personnel_change',

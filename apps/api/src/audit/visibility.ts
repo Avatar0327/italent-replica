@@ -38,6 +38,8 @@ import {
   SUBSETS,
   survey360,
   TALENT_OBJECTS,
+  TALENT_REVIEW_CONFIG_OBJECTS,
+  TALENT_REVIEW_OBJECTS,
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../routes.js';
@@ -63,6 +65,7 @@ import {
   type TalentObject,
 } from '../modules/talent/access.js';
 import { MODEL_IMAGE_AUDIT_TYPE } from '../modules/talent/model-image-service.js';
+import { TALENT_REVIEW_AUDIT_ACTIONS } from '../modules/talent-review/access.js';
 import {
   ExactAuditFields,
   resolveLinkageAudit,
@@ -428,6 +431,22 @@ const RULES: readonly Rule[] = [
       types: [code],
       objectCode: code,
       visible: (scope, row, viewer) => scopeSql(scope, { creator: ownedBy(row, creator(row, viewer)) }),
+    };
+  }),
+  // R3-T04 人才盘点设置类对象（准备度等，设计 §6.1 configRule）：没有组织字段，只认看全部或创建人（DEC-121），
+  // 创建人按保留的创建元数据判断（DEC-198，删除后仍可判断）；字段按对象当前字段权限裁剪
+  ...TALENT_REVIEW_CONFIG_OBJECTS.map((object): Rule => {
+    const code = TALENT_REVIEW_OBJECTS[object].code;
+    return {
+      types: [code],
+      objectCode: code,
+      visible: (scope, row, viewer) =>
+        scopeSql(scope, {
+          creator: ownedBy(
+            row,
+            creatorSql(viewer.tenantId, row.objectId, `${TALENT_REVIEW_AUDIT_ACTIONS[object]}.create`, code),
+          ),
+        }),
     };
   }),
   {
