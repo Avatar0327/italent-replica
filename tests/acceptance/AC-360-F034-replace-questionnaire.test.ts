@@ -120,7 +120,7 @@ describe('AC-360-F034 替换套卷清空作答', () => {
   it('AC-360-F034 相同套卷集合（含乱序）不清空作答、不增加 revision 或业务审计', async () => {
     const f = await setup('f034-noop');
     const before = await state(f.w, f.activity.id);
-    const saved = await f.w.ok<ObjectView>(
+    const saved = await f.w.ok<ObjectView & { activityId: string }>(
       f.w.request('PUT', f.path, {
         ifMatch: f.object.revision,
         body: { questionnaireIds: [f.retained.id, f.old.id], confirmClearAnswers: true },
