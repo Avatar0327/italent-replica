@@ -123,13 +123,15 @@ describe('AC-EMP-F055 外层别名与谓词内部别名', () => {
     const other = await w.hired('别名员工');
     const removed = await w.transfer('2026-10-20', other.employee.id);
     await w.remove(removed);
+    const predicate = (alias: string, which: 'due' | 'ready') =>
+      (which === 'due' ? recordEventDueSql : recordEventReadySql)(alias, '2026-10-02');
     const run = (alias: string, which: 'due' | 'ready') =>
       withTenant(w.db, w.tenantId, async (tx) =>
         rowsOf<{ objectId: string }>(
           await tx.execute(
             sql`SELECT ${sql.raw(alias)}.object_id AS "objectId" FROM employment_outbox ${sql.raw(alias)}
               WHERE ${sql.raw(alias)}.tenant_id=${w.tenantId} AND ${sql.raw(alias)}.event_type=${RECORD_CREATE}
-                AND ${which === 'due' ? recordEventDueSql(alias, '2026-10-02') : recordEventReadySql(alias, '2026-10-02')}
+                AND ${predicate(alias, which)}
                 AND ${sql.raw(alias)}.object_id IN (${kept}::uuid, ${removed}::uuid)
               ORDER BY 1`,
           ),
