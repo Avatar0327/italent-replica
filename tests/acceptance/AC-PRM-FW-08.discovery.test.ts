@@ -113,11 +113,12 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     expect(findings, show(findings)).toEqual([]);
   });
 
-  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：112 项有实际用途 + 59 项冗余观测（含 #125 新增 34 + 18；F-060 的报告 / 报表 JSON 与下载 4 个端点已正式登记活动资源守卫，删 8 对），互斥', () => {
+  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：112 项有实际用途 + 59 项冗余观测（含 #125 新增 34 + 18），互斥', () => {
     const open = check(manifest.declared);
     expect(codes(open).every((c) => c === 'PROBE_ADMISSION_UNCLAIMED')).toBe(true);
     const gaps = KNOWN_GAPS.flatMap((g) => g.pairs);
     const redundant = REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs);
+    // F-060：报告 / 报表的 JSON 与下载 4 个端点已正式登记活动资源守卫（survey360.activityScope），删 8 对：116 → 112
     expect(gaps).toHaveLength(112);
     expect(redundant).toHaveLength(59);
     const all = [...gaps, ...redundant].map(([r, k]) => `${r}\t${k}`);
