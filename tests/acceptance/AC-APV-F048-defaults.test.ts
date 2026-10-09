@@ -61,6 +61,20 @@ async function patchDraftNodes(w: ApprovalWorld, processId: string, set: ReturnT
   });
 }
 
+/**
+ * 可信夹具：已发布版本的节点受“仅草稿可改”触发器保护，属主在同一事务内临时停用该触发器后直写，提交前恢复。
+ * 模拟运行判定上线（PR-2）后已开启、又回到只拒绝开启的代码时的存量版本。
+ */
+async function patchPublishedNodes(w: ApprovalWorld, processId: string, set: ReturnType<typeof sql>) {
+  await w.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
+    await tx.execute(sql`ALTER TABLE approval_process_nodes DISABLE TRIGGER approval_nodes_draft_only`);
+    await tx.execute(sql`UPDATE approval_process_nodes SET ${set} WHERE tenant_id=${w.tenant.id}
+      AND version_id IN (SELECT id FROM approval_process_versions WHERE process_id=${processId}::uuid)`);
+    await tx.execute(sql`ALTER TABLE approval_process_nodes ENABLE TRIGGER approval_nodes_draft_only`);
+  });
+}
+
 const nodeOf = (process: Process, key: string) => process.latestVersion.nodes.find((node) => node.key === key)!;
 
 describe('T11 新建节点缺省关闭、回显显式（DEC-329④）', () => {
@@ -220,6 +234,46 @@ describe('T11 R3-01：PR-1 阶段不能开启多主体回避', () => {
     });
     expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNAVAILABLE' });
     expect((await getProcess(w, created.id)).latestVersion.status).toBe('draft');
+  });
+});
+
+describe('T11 R3-01：写入层独立拒绝（不依赖请求入口的校验）', () => {
+  it('草稿整份替换沿用到的 avoidSubjects=true（可信夹具写入）→ 400，草稿前后不变', async () => {
+    const w = await approvalWorld(database().db, 'f048-gate-inherit');
+    const created = await w.createProcess({ nodes: [{ key: 'a', approver: 'owner' }] });
+    await patchDraftNodes(w, created.id, sql`avoid_subjects=true`);
+    const before = await getProcess(w, created.id);
+    const response = await w.request(w.hr.id, 'PUT', `${BASE}/processes/${created.id}/draft`, {
+      ifMatch: created.revision,
+      body: { name: '草稿二', exceptionAdminUserId: w.exceptionAdmin, nodes: [{ key: 'a', approver: 'owner' }] },
+    });
+    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNAVAILABLE' });
+    expect(await getProcess(w, created.id)).toEqual(before);
+  });
+
+  it('新版本复制到 avoidSubjects=true（可信夹具写入已发布版本）→ 400，不生成草稿', async () => {
+    const w = await approvalWorld(database().db, 'f048-gate-version');
+    const published = await w.publishedProcess({ nodes: [{ key: 'a', approver: 'owner' }] });
+    await patchPublishedNodes(w, published.id, sql`avoid_subjects=true`);
+    const response = await w.request(w.hr.id, 'POST', `${BASE}/processes/${published.id}/versions`, {
+      ifMatch: published.revision,
+    });
+    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNAVAILABLE' });
+    expect((await getProcess(w, published.id)).latestVersion.status).toBe('published');
+  });
+
+  it('异常管理员交接重发到 avoidSubjects=true（可信夹具写入已发布版本）→ 400，不重发', async () => {
+    const w = await approvalWorld(database().db, 'f048-gate-handover');
+    const published = await w.publishedProcess({ nodes: [{ key: 'a', approver: 'owner' }] });
+    await patchPublishedNodes(w, published.id, sql`avoid_subjects=true`);
+    const before = await getProcess(w, published.id);
+    const successor = await w.member('新异常管理员');
+    const response = await w.request(w.hr.id, 'POST', `${BASE}/exception-admins/handover`, {
+      ifMatch: 0,
+      body: { fromUserId: w.exceptionAdmin, toUserId: successor },
+    });
+    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNAVAILABLE' });
+    expect(await getProcess(w, published.id)).toEqual(before);
   });
 });
 

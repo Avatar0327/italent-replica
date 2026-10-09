@@ -5,7 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { eq, permissionUserPersonLinks, sql, users, withPlatform, withTenant } from '@italent/db';
-import { useTestDb } from '@italent/testkit';
+import { pgErrorCode, useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ADAPTERS, type BusinessAdapter } from '../../apps/api/src/modules/approval/adapters.js';
 import type { ApprovalContext } from '../../apps/api/src/modules/approval/context.js';
@@ -213,7 +213,7 @@ describe('T1 负例：整单拒绝、不写入', () => {
 });
 
 describe('T1 冻结行不可改', () => {
-  it('UPDATE / DELETE 被拒绝，行内容不变', async () => {
+  it('应用角色（只授予 SELECT / INSERT）：UPDATE / DELETE 被拒绝，行内容不变', async () => {
     const w = await approvalWorld(database().db, 'f048-immutable');
     const s = await scene(w);
     const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
@@ -228,6 +228,31 @@ describe('T1 冻结行不可改', () => {
         tx.execute(sql`DELETE FROM approval_instance_subjects WHERE instance_id=${view.id}::uuid`),
       ),
     ).rejects.toThrow();
+    expect(await frozen(w, view.id)).toEqual(before);
+  });
+
+  it('表属主（有改删权限）的 UPDATE / DELETE / TRUNCATE 也被只追加触发器拒绝（55000），行内容不变', async () => {
+    const w = await approvalWorld(database().db, 'f048-immutable-owner');
+    const s = await scene(w);
+    const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    const before = await frozen(w, view.id);
+    const statements = [
+      sql`UPDATE approval_instance_subjects SET user_id=NULL WHERE instance_id=${view.id}::uuid`,
+      sql`DELETE FROM approval_instance_subjects WHERE instance_id=${view.id}::uuid`,
+      sql`TRUNCATE approval_instance_subjects`,
+    ];
+    for (const statement of statements) {
+      const error = await w.db
+        .transaction(async (tx) => {
+          await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
+          await tx.execute(statement);
+        })
+        .then(
+          () => null,
+          (thrown: unknown) => thrown,
+        );
+      expect(pgErrorCode(error)).toBe('55000');
+    }
     expect(await frozen(w, view.id)).toEqual(before);
   });
 });
