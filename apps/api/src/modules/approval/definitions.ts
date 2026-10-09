@@ -13,6 +13,9 @@ import {
   publishViolations,
   conditionViolations,
   avoidsSelf,
+  avoidsSubjects,
+  avoidSubjectsViolations,
+  DEFAULT_AVOID_SUBJECTS_RESULT,
   jumpAllowed,
   rejectAllowed,
   rejectToPreviousAllowed,
@@ -173,8 +176,9 @@ function nodeOf(row: Row, rules: Row[]): ApprovalNode {
       retrieve: Boolean(row.allow_retrieve),
       reject: Boolean(row.allow_reject),
       urge: row.urge_mode as ApprovalNode['actions']['urge'],
-      // 缺省开启的开关只在关闭时给出，原有流程的定义读回不变（DEC-318 K-37）
-      ...(row.avoid_self === false ? { avoidSelf: false } : {}),
+      // F-048 设计 §3.2：两个回避开关始终显式回显（新建节点缺省关闭，存量节点按冻结的列值）
+      avoidSelf: Boolean(row.avoid_self),
+      avoidSubjects: Boolean(row.avoid_subjects),
       ...(row.allow_revoke === false ? { revoke: false } : {}),
       ...(row.allow_reject_previous === true ? { rejectToPrevious: true } : {}),
       ...(row.allow_jump === true ? { jump: true } : {}),
@@ -182,6 +186,7 @@ function nodeOf(row: Row, rules: Row[]): ApprovalNode {
     rejectCommentRequired: Boolean(row.reject_comment_required),
     hideRecords: Boolean(row.hide_records),
     rejectResubmit: row.reject_resubmit_mode as ApprovalNode['rejectResubmit'],
+    avoidSubjectsResult: row.avoid_subjects_result as NonNullable<ApprovalNode['avoidSubjectsResult']>,
     messageRules: rules
       .filter((rule) => rule.node_key === row.node_key)
       .map((rule) => ({
@@ -303,6 +308,9 @@ function nodeTypeColumns(node: ApprovalNode) {
 }
 
 async function writeVersionContent(tx: Tx, tenantId: string, id: string, definition: ProcessDefinition) {
+  // F-048 R3-01：节点落库前统一复核，新建、草稿替换（含继承）、新版本复制、交接重发、预置各自独立拒绝开启（设计 §14）
+  const [avoid] = definition.nodes.flatMap(avoidSubjectsViolations);
+  if (avoid) throw approvalError('VALIDATION_FAILED', avoid.reason, avoid.message);
   for (const item of definition.conditions.items) {
     const list = Array.isArray(item.value) ? textArray(item.value as string[]) : sql`NULL`;
     const single = typeof item.value === 'string' ? item.value : null;
@@ -320,7 +328,7 @@ async function writeVersionContent(tx: Tx, tenantId: string, id: string, definit
        history_same_assignee_skip,same_assignee_result,history_same_assignee_result,form_fields,editable_fields,
        edit_mode,allow_transfer,allow_add_sign,allow_copy_send,allow_retrieve,allow_reject,urge_mode,
        reject_comment_required,hide_records,reject_resubmit_mode,avoid_self,allow_revoke,allow_reject_previous,
-       allow_jump)
+       allow_jump,avoid_subjects,avoid_subjects_result)
       VALUES (${tenantId},${id}::uuid,${node.key},${index + 1},${node.name},${typed.type},${typed.approver},
         ${textArray(typed.approvers)},${textArray(nodeExits(node))},${typed.rule},${approve?.kind ?? null},
         ${approve?.value ?? null},${disagree?.kind ?? null},${disagree?.value ?? null},${node.noAssignee},
@@ -329,7 +337,8 @@ async function writeVersionContent(tx: Tx, tenantId: string, id: string, definit
         ${node.editMode},${node.actions.transfer},${node.actions.addSign},${node.actions.copySend},
         ${node.actions.retrieve},${rejectAllowed(node)},${node.actions.urge},${node.rejectCommentRequired},
         ${node.hideRecords},${node.rejectResubmit},${avoidsSelf(node)},${revokeAllowed(node)},
-        ${rejectToPreviousAllowed(node)},${jumpAllowed(node)})`);
+        ${rejectToPreviousAllowed(node)},${jumpAllowed(node)},${avoidsSubjects(node)},
+        ${node.avoidSubjectsResult ?? DEFAULT_AVOID_SUBJECTS_RESULT})`);
     for (const [ruleIndex, rule] of node.messageRules.entries()) {
       await tx.execute(sql`INSERT INTO approval_node_message_rules
         (tenant_id,version_id,node_key,rule_no,trigger,channels,template_code,recipient)
@@ -421,12 +430,13 @@ async function bump(tx: Tx, ctx: ApprovalContext, id: string, set: SQL = sql``) 
     WHERE tenant_id=${ctx.tenantId} AND id=${id}::uuid`);
 }
 
-export async function replaceDraft(tx: Tx, ctx: ApprovalContext, id: string, definition: ProcessDefinition) {
+export async function replaceDraft(tx: Tx, ctx: ApprovalContext, id: string, input: ProcessDefinition) {
   const { before } = await lockedForChange(tx, ctx, id);
   const draft = before.latestVersion;
   if (draft.status !== 'draft') {
     throw approvalError('CONFLICT', 'APPROVAL_VERSION_PUBLISHED', '已发布的流程不能直接修改，请先编辑最新版本');
   }
+  const definition = inheritRecusalSwitches(input, draft.nodes);
   for (const table of ['approval_node_message_rules', 'approval_process_nodes', 'approval_process_conditions']) {
     await tx.execute(sql`DELETE FROM ${sql.identifier(table)}
       WHERE tenant_id=${ctx.tenantId} AND version_id=${draft.id}::uuid`);
@@ -440,6 +450,24 @@ export async function replaceDraft(tx: Tx, ctx: ApprovalContext, id: string, def
   await writeVersionContent(tx, ctx.tenantId, draft.id, definition);
   await bump(tx, ctx, id);
   return audited(tx, ctx, 'draft.update', before, id);
+}
+
+/**
+ * F-048 设计 §3.2：草稿整份替换时，请求没给回避开关的节点，按节点键沿用当前草稿值；新节点键取新建缺省（关闭）。
+ * 避免不认识这两个开关的旧客户端保存草稿时悄悄翻转已有节点。
+ */
+function inheritRecusalSwitches(definition: ProcessDefinition, current: readonly ApprovalNode[]): ProcessDefinition {
+  const byKey = new Map(current.map((node) => [node.key, node]));
+  const nodes = definition.nodes.map((node) => {
+    const before = byKey.get(node.key);
+    const actions = {
+      ...node.actions,
+      avoidSelf: node.actions.avoidSelf ?? (before ? avoidsSelf(before) : false),
+      avoidSubjects: node.actions.avoidSubjects ?? (before ? avoidsSubjects(before) : false),
+    };
+    return { ...node, actions };
+  });
+  return { ...definition, nodes };
 }
 
 /** 编辑最新版本：以当前生效版本为底稿生成下一版草稿（`14` §4 原文）。 */
