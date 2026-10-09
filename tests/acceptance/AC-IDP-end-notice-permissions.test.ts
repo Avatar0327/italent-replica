@@ -3,7 +3,7 @@
  * 字段裁剪覆盖流程列表、详情与审计；显式清空、幂等重放按当前字段权 / 按钮 / 范围复核。
  */
 import { randomUUID } from 'node:crypto';
-import { IDP_OBJECTS } from '@italent/domain';
+import { IDP_OBJECTS, SUB_PROCESS_FIELDS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { auditApi } from './AC-AUD-support.js';
@@ -55,6 +55,26 @@ function noticeBody(process: NoticeProcess, value: string | null) {
   };
 }
 
+const guesses = {
+  name: '另一子流程名称',
+  category: 'review',
+  approvalType: 'idp_mid_review',
+  approvalProcessId: randomUUID(),
+  endNoticeTemplate: 'IDP_WRONG_END_NOTICE',
+  startMode: 'manual',
+  startTimeType: 'fixed',
+  fixedDate: '2026-11-01',
+  referencePoint: 'plan_start',
+  startFrom: 'before',
+  days: 1,
+} as const;
+
+function guessedBody(process: NoticeProcess, field: keyof typeof guesses, value: unknown) {
+  return {
+    subProcesses: process.subProcesses.map(({ ruleText: _rule, ...sub }) => ({ ...sub, [field]: value })),
+  };
+}
+
 async function codeOf(response: Response) {
   const body = (await response.json()) as { error: { code: string } };
   return { status: response.status, code: body.error.code };
@@ -70,6 +90,105 @@ async function auditLogs(env: World) {
 }
 
 describe('AC-IDP（补）F-047：结束通知模板配置权限', () => {
+  it.each(SUB_PROCESS_FIELDS)('隐藏 %s：猜中、猜错、合法清空及重复请求均同样拒绝，不能探测原值', async (field) => {
+    const env = await world();
+    const op = await idpOperator(env.w, {
+      orgId: env.data.insideOrg,
+      hidden: { subProcess: [field] },
+    });
+    const before = await adminRead(env);
+    const logs = await auditLogs(env);
+    const same = before.subProcesses[0]![field];
+    const values = [same, guesses[field]];
+    if (field === 'endNoticeTemplate' || same === null) values.push(null);
+    let rejection: unknown;
+    for (const value of values) {
+      const options = {
+        ifMatch: before.revision,
+        body: guessedBody(before, field, value),
+        idempotencyKey: `idp-hidden-probe-${randomUUID()}`,
+      };
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await op.request('PATCH', `/processes/${before.id}`, options);
+        const result = { status: response.status, body: await response.json() };
+        expect(result).toMatchObject({ status: 403, body: { error: { code: 'FORBIDDEN' } } });
+        rejection ??= result;
+        expect(result).toEqual(rejection);
+        expect(await adminRead(env)).toEqual(before);
+        expect(await auditLogs(env)).toEqual(logs);
+      }
+    }
+  });
+
+  it.each(SUB_PROCESS_FIELDS)('显式提交可见 %s 的原值成功后隐藏：无变化命令原键重放也同样 403', async (field) => {
+    const env = await world();
+    const op = await idpOperator(env.w, { orgId: env.data.insideOrg });
+    const options = {
+      ifMatch: env.process.revision,
+      body: guessedBody(env.process, field, env.process.subProcesses[0]![field]),
+      idempotencyKey: `idp-hidden-noop-${randomUUID()}`,
+    };
+    const first = await op.request('PATCH', `/processes/${env.process.id}`, options);
+    expect(first.status, await first.clone().text()).toBe(200);
+    const before = await adminRead(env);
+    const logs = await auditLogs(env);
+    await op.hideFields('subProcess', [field]);
+    const replay = await op.request('PATCH', `/processes/${before.id}`, options);
+    const rejected = { status: replay.status, body: await replay.json() };
+    expect(rejected).toMatchObject({ status: 403, body: { error: { code: 'FORBIDDEN' } } });
+    const fresh = await op.request('PATCH', `/processes/${before.id}`, {
+      ...options,
+      ifMatch: before.revision,
+      idempotencyKey: `idp-hidden-fresh-${randomUUID()}`,
+    });
+    expect({ status: fresh.status, body: await fresh.json() }).toEqual(rejected);
+    expect(await adminRead(env)).toEqual(before);
+    expect(await auditLogs(env)).toEqual(logs);
+  });
+
+  it('隐藏结束通知模板时省略该字段，仍能修改其他可见字段并保留原值', async () => {
+    const env = await world();
+    const op = await idpOperator(env.w, {
+      orgId: env.data.insideOrg,
+      hidden: { subProcess: ['endNoticeTemplate'] },
+    });
+    const response = await op.request('PATCH', `/processes/${env.process.id}`, {
+      ifMatch: env.process.revision,
+      body: {
+        subProcesses: env.process.subProcesses.map(({ ruleText: _rule, endNoticeTemplate: _notice, ...sub }) => ({
+          ...sub,
+          name: '修改可见名称，保留隐藏模板',
+        })),
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const shown = (await response.json()) as NoticeProcess;
+    expect(shown.subProcesses[0]).toMatchObject({ name: '修改可见名称，保留隐藏模板' });
+    expect(shown.subProcesses[0]).not.toHaveProperty('endNoticeTemplate');
+    expect((await adminRead(env)).subProcesses[0]).toMatchObject({
+      name: '修改可见名称，保留隐藏模板',
+      endNoticeTemplate: TEMPLATE,
+    });
+  });
+
+  it('可见只读的结束通知模板显式提交原值不要求编辑权，仍可修改其他字段', async () => {
+    const env = await world();
+    const op = await idpOperator(env.w, {
+      orgId: env.data.insideOrg,
+      readonly: { subProcess: ['endNoticeTemplate'] },
+    });
+    const body = noticeBody(env.process, TEMPLATE);
+    body.subProcesses[0]!.name = '保留可见只读模板并修改名称';
+    const response = await op.request('PATCH', `/processes/${env.process.id}`, {
+      ifMatch: env.process.revision,
+      body,
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await response.json()).toMatchObject({
+      subProcesses: [{ name: '保留可见只读模板并修改名称', endNoticeTemplate: TEMPLATE }],
+    });
+  });
+
   it('流程列表和详情：允许字段显示实际值，隐藏的嵌套结束通知模板不返回', async () => {
     const env = await world();
     const { w, data, process } = env;
