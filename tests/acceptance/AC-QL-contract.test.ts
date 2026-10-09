@@ -224,13 +224,15 @@ describe('PR-0 ③：Qualification / TEvaluation 对象目录（Q-M0-132、DEC-3
 });
 
 describe('PR-0 ④：QualificationIndicatorPort 登记（设计 §6.2 (1)）', () => {
-  it('未登记为 null；登记后取到同一实现', () => {
+  // C1-3 起装配路由（createApp）即登记真实实现，本文件前面的用例已建过应用，所以不再断言“未登记为 null”（未登记 →
+  // 调用方报 INDICATOR_SOURCE_UNAVAILABLE 是 R3-T04 的约定，端口默认值仍是 null）；这里验登记函数的往返并还原。
+  it('登记后取到同一实现，之后还原', () => {
     const registry = domain as unknown as {
       qualificationIndicatorPort?: () => unknown;
       registerQualificationIndicatorPort?: (port: unknown) => void;
     };
     expect(typeof registry.qualificationIndicatorPort).toBe('function');
-    expect(registry.qualificationIndicatorPort!()).toBeNull();
+    const installed = registry.qualificationIndicatorPort!();
     const port = {
       indicators: async () => ({ ok: false }),
       listTargetTypes: async () => [],
@@ -238,5 +240,6 @@ describe('PR-0 ④：QualificationIndicatorPort 登记（设计 §6.2 (1)）', (
     };
     registry.registerQualificationIndicatorPort!(port);
     expect(registry.qualificationIndicatorPort!()).toBe(port);
+    if (installed) registry.registerQualificationIndicatorPort!(installed);
   });
 });

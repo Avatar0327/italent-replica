@@ -134,7 +134,8 @@ async function indicators(
         t.id AS target_id, t.code, t.name, t.type_id, t.eval_mode, t.grade_scheme_id, t.enabled
       FROM ql_standard_details d
       JOIN ql_targets t ON t.tenant_id = d.tenant_id AND t.id = d.target_id
-      WHERE d.tenant_id = ${tenant}::uuid AND d.standard_id = ${standard.id}::uuid AND d.level_id = ${current.levelId}::uuid
+      WHERE d.tenant_id = ${tenant}::uuid AND d.standard_id = ${standard.id}::uuid
+        AND d.level_id = ${current.levelId}::uuid
         ${targetFilter ? sql`AND t.id = ANY(${uuidArray(targetFilter)}::uuid[])` : sql``}
       ORDER BY t.display_order, t.code, t.id
       LIMIT ${QUALIFICATION_PORT_LIMIT + 1}`),
