@@ -8,7 +8,10 @@
  *   缺字体时三个入口全部 503 EXPORT_FONT_UNAVAILABLE；
  * - P3：附件文件名按完整字符截断（含代理对不抛 URIError）。
  */
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { survey360 } from '@italent/domain';
@@ -22,6 +25,7 @@ import {
   docText,
   EXPORT_PAGE_LIMIT,
   exportStartupCheck,
+  FONT_FAMILY,
   HIDDEN_ACTIVITY_NAME,
   overrideFontProbe,
   paginate,
@@ -372,10 +376,45 @@ function isolatedFontconfig(): NodeJS.ProcessEnv {
   return { ...process.env, FONTCONFIG_FILE: conf, FONTCONFIG_PATH: dir };
 }
 
+/** 本机是否有可执行的 fc-list（缺命令时“判缺”来自命令不存在，不能当作隔离生效的证据）。 */
+const HAS_FC_LIST = spawnSync('fc-list', ['--version']).status === 0;
+
+/** 用 sharp（librsvg + fontconfig，与渲染同一路径）把一段中文栅格化，返回像素摘要；env 用于子进程隔离字体配置。 */
+const GLYPH_SVG =
+  `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="48"><rect width="100%" height="100%" fill="#fff"/>` +
+  `<text x="4" y="36" font-size="28" font-family="${FONT_FAMILY}">中文报告评价得分</text></svg>`;
+const SHARP = createRequire(import.meta.url).resolve('sharp', { paths: [join(process.cwd(), 'apps/api')] });
+const GLYPH_SCRIPT =
+  `const sharp = require(${JSON.stringify(SHARP)});` +
+  `sharp(Buffer.from(process.env.GLYPH_SVG)).flatten({ background: '#ffffff' }).raw().toBuffer()` +
+  `.then((b) => process.stdout.write(require('node:crypto').createHash('sha256').update(b).digest('hex')));`;
+function glyphDigest(env: NodeJS.ProcessEnv): string {
+  const run = spawnSync(process.execPath, ['-e', GLYPH_SCRIPT], { env: { ...env, GLYPH_SVG }, encoding: 'utf8' });
+  expect(run.status, run.stderr).toBe(0);
+  return run.stdout;
+}
+
 describe('AC-360-F060 R2 P2-4 字体覆盖检查', () => {
-  it('隔离到没有任何中文字体的 fontconfig 时判缺（用真实 fc-list）', async () => {
-    const result = await probeFontCoverage({ env: isolatedFontconfig() });
-    expect(result).toBe(false);
+  // 第 3 轮 P3：缺 fc-list 时“判缺”来自命令不存在，不能据此通过——此时跳过并在报告里显示为 skipped
+  it.runIf(HAS_FC_LIST)('隔离到没有任何中文字体的 fontconfig 时判缺（用真实 fc-list，命令本身须能运行）', async () => {
+    const env = isolatedFontconfig();
+    const direct = spawnSync('fc-list', [':charset=4e2d', 'file'], { env, encoding: 'utf8' });
+    expect(direct.status, '隔离配置下 fc-list 本身要能正常运行').toBe(0);
+    expect(direct.stdout.trim()).toBe('');
+    expect(await probeFontCoverage({ env })).toBe(false);
+  });
+
+  // 第 3 轮 P3：正向集成——本机真有中文字体时，渲染出的中文字形必须与“无中文字体”的回退方框不同
+  it('有中文字体的环境：真实探测为有，且 sharp 渲染的中文字形不同于隔离掉中文字体后的回退结果', async (ctx) => {
+    if (!HAS_FC_LIST || !(await probeFontCoverage())) ctx.skip();
+    const withFonts = glyphDigest(process.env);
+    const isolated = glyphDigest(isolatedFontconfig());
+    expect(withFonts).toMatch(/^[0-9a-f]{64}$/);
+    expect(isolated).toMatch(/^[0-9a-f]{64}$/);
+    expect(withFonts, '有中文字体时字形应与回退方框不同').not.toBe(isolated);
+    // 同一环境渲染是确定的（排除随机差异造成的“不同”）
+    expect(glyphDigest(process.env)).toBe(withFonts);
+    expect(createHash('sha256').update(GLYPH_SVG).digest('hex')).toHaveLength(64);
   });
 
   it('fc-list 返回覆盖目标字符集的字体 → 有；空输出 / 命令不存在 / 失败 → 缺', async () => {

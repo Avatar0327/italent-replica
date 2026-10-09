@@ -523,7 +523,7 @@ export function paginate(doc: Doc, mode: 'long' | 'a4'): Page[] {
 
 // ---- 栅格化 ------------------------------------------------------------------------------------------------------
 
-const FONT_FAMILY = [
+export const FONT_FAMILY = [
   'Noto Sans CJK SC',
   'Noto Sans SC',
   'Source Han Sans SC',
