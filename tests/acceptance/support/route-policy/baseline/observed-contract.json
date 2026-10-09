@@ -6976,6 +6976,31 @@
         ]
       }
     },
+    "POST /api/platform/tenants/:tenantId/seeds/backfill": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "reason": "PLATFORM_OPERATOR_REQUIRED",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "FORBIDDEN",
+          "reason": "PLATFORM_OPERATOR_REQUIRED",
+          "status": 403
+        }
+      },
+      "module": "platform",
+      "primitives": {
+        "command": [
+          "ifMatch / meta",
+          "runCommand / runWrite"
+        ]
+      }
+    },
     "POST /api/platform/tenants/:tenantId/standard-profiles/backfill": {
       "edge": {
         "anonymous": {

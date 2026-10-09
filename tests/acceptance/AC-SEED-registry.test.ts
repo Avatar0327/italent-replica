@@ -103,7 +103,7 @@ describe('DEC-361 登记表与统一安装', () => {
     const again = await withTenant(db, tenant, (tx) => installMissingSeeds(tx, write, { modules: ['test-mod'] }));
     expect(again).toEqual([{ module: 'test-mod', key: 'letters', version: 2, installed: [], existing: 3 }]);
     expect([...store.get(tenant)!.entries()]).toEqual(snapshot);
-    expect(seen.at(-2)).toMatchObject({ tenantId: tenant, commandId: 'seed-test' });
+    expect(seen.at(-1)).toMatchObject({ tenantId: tenant, commandId: 'seed-test' });
   });
 
   it('新租户开通走同一登记表：登记项被安装一次，拿到开通命令的写入上下文', async () => {
