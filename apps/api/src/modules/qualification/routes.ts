@@ -30,6 +30,7 @@ import {
 import { registerQualificationCandidates } from './candidates.js';
 import * as config from './config-service.js';
 import { registerExtras } from './extras.js';
+import './indicator-port.js'; // 登记 QualificationIndicatorPort（C1-3）
 import { bindQualificationSubsetPolicy } from './subset-policy.js';
 import * as input from './input.js';
 import * as read from './read-model.js';

@@ -13,7 +13,7 @@ import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { currentWorld } from './AC-QL-current-support.js';
 import { createOrg } from './AC-TC-support.js';
-import type { GradeSchemeView, StandardView } from './AC-QL-support.js';
+import { QL_NOW, type GradeSchemeView, type StandardView } from './AC-QL-support.js';
 import { qualificationReadableSql } from '../../apps/api/src/modules/qualification/indicator-port.js';
 
 const database = useTestDb();
@@ -201,6 +201,9 @@ describe('AC-QL-indicator-port indicators：当前资格 → 标准 → 当前�
     expect(await run({ targetTypeIds: [f.rootType.id], targetIds: [f.common.id, f.graded.id] })).toEqual(['Z2']);
     expect(await run({ targetTypeIds: [randomUUID()] })).toEqual([]);
     expect(await run({})).toEqual(['Z1', 'Z2', 'Z3']);
+    // 给了空数组 = 什么都不要（不是“不过滤”）
+    expect(await run({ targetIds: [] })).toEqual([]);
+    expect(await run({ targetTypeIds: [] })).toEqual([]);
   });
 
   it('返回值各层 readonly（冻结）：调用方不能就地改写', async () => {
@@ -259,7 +262,7 @@ describe('AC-QL-indicator-port listTargetTypes / listTargets：调用方范围�
     });
     const predicate = (orgIds: string[]) =>
       qualificationReadableSql(
-        { tenantId: w.tenant.id, now: w.clock(), timezone: 'Asia/Shanghai' },
+        { tenantId: w.tenant.id, now: QL_NOW, timezone: 'Asia/Shanghai' },
         scopeOf(orgIds),
         'targetType',
       );
@@ -364,7 +367,7 @@ describe('AC-QL-indicator-port listTargetTypes / listTargets：调用方范围�
 
   it('指标是只放开查看的对象（DEC-352）：qualificationReadableSql 对 target 恒真，不按管理单元裁剪', async () => {
     const f = await portWorld('ql-readable');
-    const ctx = { tenantId: f.w.tenant.id, now: f.w.clock(), timezone: 'Asia/Shanghai' };
+    const ctx = { tenantId: f.w.tenant.id, now: QL_NOW, timezone: 'Asia/Shanghai' };
     const empty = { orgIds: [], personIds: [], all: false, hasDataPermission: false, terms: [] };
     const evaluate = (predicate: unknown) =>
       f.tx(async (t) => {
