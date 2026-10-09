@@ -156,6 +156,7 @@ export const SUB_PROCESS_FIELDS = [
   'category',
   'approvalType',
   'approvalProcessId',
+  'endNoticeTemplate',
   'startMode',
   'startTimeType',
   'fixedDate',

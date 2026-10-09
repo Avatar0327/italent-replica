@@ -4,7 +4,7 @@
  * 取消发布）、模板模块 templates/:id/modules（含按流程节点的可用按钮）、模板通用目标 templates/:id/common-goals。
  * 写入走命令台账（幂等、revision 409）；首次执行与幂等重放都按当前功能权限、按钮与范围复核，响应逐层按字段权限裁剪。
  */
-import { IDP_APPROVAL_TYPES, type IdpObject, RULE_TEXT_SOURCES } from '@italent/domain';
+import { IDP_APPROVAL_TYPES, type IdpObject, RULE_TEXT_SOURCES, SUB_PROCESS_FIELDS } from '@italent/domain';
 import { and, eq, idpProcesses, idpTemplates, isUuid, sql, type Tx, withTenant } from '@italent/db';
 import type { Context, Hono } from 'hono';
 import type { z } from 'zod';
@@ -26,11 +26,12 @@ import {
   project,
   type Projection,
   projectionOf,
-  readableSql,
   requireEditable,
   requireReadable,
   rowsOf,
+  viewable,
 } from './access.js';
+import { readableSql } from '../permission/public-down.js';
 import { runIdpCommand } from './executor.js';
 import * as input from './input.js';
 import { registerKeyInfoRoutes } from './key-info-routes.js';
@@ -240,6 +241,24 @@ function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   });
 }
 
+/**
+ * 在命令台账与旧值比较之前检查输入的可见性，避免同值绕过实际变化授权，也覆盖旧无变化命令的重放。
+ * 开启规则默认 null 本来就是写入输入，不能依据它与旧值是否相同决定是否需要查看权。
+ */
+async function requireSubProcessInputVisible(
+  deps: TenantRouteDeps,
+  ctx: IdpContext,
+  subProcesses: readonly input.SubProcessInput[],
+) {
+  const fields = [
+    ...new Set(subProcesses.flatMap((sub) => SUB_PROCESS_FIELDS.filter((field) => sub[field] !== undefined))),
+  ];
+  const parent = await projectionOf(deps, ctx, 'process');
+  if (!viewable(parent, ['subProcesses']) || !viewable(await projectionOf(deps, ctx, 'subProcess'), fields)) {
+    throw new AppError('FORBIDDEN', '看不到提交的子流程字段', { reason: 'IDP_SUB_PROCESS_FIELDS_HIDDEN' });
+  }
+}
+
 function registerProcessWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
   const path = `${BASE}/processes`;
   router.post(path, async (c) => {
@@ -261,6 +280,7 @@ function registerProcessWrites(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await writeContext(c, deps, 'process', 'update', 'update');
     const id = uuidParam(c);
     const body = await parseBody(c, input.processPatch);
+    if (body.subProcesses) await requireSubProcessInputVisible(deps, ctx, body.subProcesses);
     // 子流程按实际变化在事务内逐段校验并记入台账、重放时复核（process-service.ts），这里只校验顶层字段
     const { subProcesses: _subProcesses, ...top } = body;
     await checkWriteFields(deps, ctx, 'process', 'update', top);

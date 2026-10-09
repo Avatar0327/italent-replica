@@ -24,11 +24,17 @@ import {
   type AuditFieldChange,
   CONTRACT_OBJECT,
   ESTABLISHMENT_SCHEME_DATASOURCE,
+  EVALUATION_AUDIT_ACTIONS,
+  EVALUATION_OBJECTS,
+  EVALUATION_ORG_OBJECTS,
   IDP_OBJECTS,
   linkedViewable,
   MODULE_OBJECTS,
   PERSONNEL_OBJECT,
   PERSONNEL_REQUEST_OBJECT,
+  QUALIFICATION_AUDIT_ACTIONS,
+  QUALIFICATION_OBJECTS,
+  QUALIFICATION_ORG_AUDITED,
   SUBSETS,
   survey360,
   TALENT_OBJECTS,
@@ -48,6 +54,7 @@ import {
 import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
 import { survey360AuditScope } from '../modules/survey360/access.js';
+import { survey360PersonAuditFields } from './survey360-person.js';
 import { IDP_AUDIT_ACTIONS, IDP_ORG_OBJECTS, IDP_PERSON_OBJECTS } from '../modules/idp/access.js';
 import { KEY_INFO, keyInfoScopeSql, keyInfoSnapshot, type KeyInfoSpec } from '../modules/idp/key-info-scope.js';
 import {
@@ -169,6 +176,25 @@ function orgRule(types: readonly string[], objectCode: string, creator: (row: Ro
       return anchored(scope, row.org, scopeSql(scope, { org: row.org, creator: owner }), owner);
     },
   };
+}
+
+/** 配置对象的审计查看规则：按所属组织裁剪的对象用 orgRule，其余按字典（看全部或创建人）。 */
+function appConfigRules<K extends string>(
+  objects: Readonly<Record<K, { readonly code: string }>>,
+  actions: Readonly<Record<K, string>>,
+  orgObjects: readonly K[],
+): Rule[] {
+  return (Object.keys(objects) as K[]).map((object): Rule => {
+    const code = objects[object].code;
+    const creator = (row: Row, viewer: Viewer) =>
+      creatorSql(viewer.tenantId, row.objectId, `${actions[object]}.create`, code);
+    if (orgObjects.includes(object)) return orgRule([code], code, creator);
+    return {
+      types: [code],
+      objectCode: code,
+      visible: (scope, row, viewer) => scopeSql(scope, { creator: ownedBy(row, creator(row, viewer)) }),
+    };
+  });
 }
 
 /** DEC-197：业务编号解析到当前员工范围；创建人仍取调动业务，不取联动日志执行人。 */
@@ -444,6 +470,10 @@ const RULES: readonly Rule[] = [
       creatorSql(viewer.tenantId, row.objectId, `${IDP_AUDIT_ACTIONS[object]}.create`, code),
     );
   }),
+  // R3-T02 任职资格（Qualification）与人才评定配置（TEvaluation），设计 §8：带资源集合 / 所属组织的对象按日志写入时的
+  // 所属组织裁剪，不因向下公开放宽；字典只认看全部或创建人（DEC-121）。流程对象（员工评定数据等）随 C2 登记。
+  ...appConfigRules(QUALIFICATION_OBJECTS, QUALIFICATION_AUDIT_ACTIONS, QUALIFICATION_ORG_AUDITED),
+  ...appConfigRules(EVALUATION_OBJECTS, EVALUATION_AUDIT_ACTIONS, EVALUATION_ORG_OBJECTS),
   // R3-T07 PR-B：计划及其组成部分按计划员工、关键信息按员工（带教按被带教人）归属，与业务接口的范围一致（K-50）；
   // 关键信息另要求日志前后快照涉及的全部员工 / 组织都在范围内（带教双方、轮岗部门，第 2 轮 P2-1）
   ...IDP_PERSON_OBJECTS.map((object): Rule => {
@@ -708,7 +738,13 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
     if (!extra) return undefined;
     const scope = { all: false, hasDataPermission: true } as ModuleScope;
     const objectFields = rule.objectPermission ? await getModuleViewableFields(deps, ctx, rule.objectCode) : undefined;
-    return { rule, scope, inputs: { extra, objectFields }, fields: fixed ?? withProtocol(objectFields, rule.protocol) };
+    const fields = fixed ?? withProtocol(objectFields, rule.protocol);
+    return {
+      rule,
+      scope,
+      inputs: { extra, objectFields },
+      fields: rule.types.includes('survey360-person') ? survey360PersonAuditFields(fields) : fields,
+    };
   }
   if (!(await canView())) return undefined;
   const scope = await resolveModuleScope(deps, ctx, undefined, rule.objectCode, undefined, rule.view);
@@ -856,6 +892,11 @@ function configPredicate(config: ReadonlyMap<string, ResolvedConfig>, field: str
 function fieldScope(fields: ReadonlySet<string> | undefined, field: string | undefined): SQL {
   if (fields === undefined) return sql`true`;
   if (field !== undefined && !fieldVisible(fields, field)) return sql`false`;
+  // 派生引用字段须对同一条差异联合校验精确路径与筛选字段，不能借隐藏的 superior.name 匹配顶层 name。
+  if (field !== undefined && fields instanceof ExactAuditFields)
+    return sql`EXISTS (SELECT 1 FROM jsonb_array_elements(audit_events.changes) c
+      WHERE c->>'field' = ANY(${textArray([...fields])})
+        AND (c->>'field'=${field} OR right(c->>'field',${field.length + 1})=${`.${field}`}))`;
   if (field !== undefined && fields instanceof CapacityAuditFields)
     return sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${capacityAuditChanges(fields, sql`audit_events.changes`)}) c
       WHERE c->>'field'=${field} OR right(c->>'field',${field.length + 1})=${`.${field}`})`;
@@ -865,6 +906,9 @@ function fieldScope(fields: ReadonlySet<string> | undefined, field: string | und
 /** 该日志（表或别名）至少有一个字段变化在可见字段内。 */
 function changedVisible(table: string, fields: ReadonlySet<string> | undefined): SQL {
   if (fields === undefined) return sql`true`;
+  if (fields instanceof ExactAuditFields)
+    return sql`EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(${sql.identifier(table)}.changes, '[]'::jsonb)) c
+      WHERE c->>'field' = ANY(${textArray([...fields])}))`;
   const changes =
     fields instanceof CapacityAuditFields
       ? capacityAuditChanges(fields, sql`${sql.identifier(table)}.changes`)

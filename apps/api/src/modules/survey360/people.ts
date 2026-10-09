@@ -18,6 +18,7 @@ import {
   email,
   fail,
   optionalText,
+  pick,
   type Present,
   read,
   requireNewObject,
@@ -29,6 +30,7 @@ import {
   uuid,
   write,
 } from './context.js';
+import { superiorNames, superiorSummary } from './superior.js';
 
 export type PersonRow = typeof survey360People.$inferSelect;
 
@@ -79,7 +81,7 @@ export async function findPersonByEmail(tx: Tx, value: string): Promise<PersonRo
 /**
  * 上级须存在；精细化权限下还须可见（看不到与不存在同一结果，不暴露存在性）。编辑 / 新建人员的载荷资源复核
  * （命令前，含幂等重放，第 4 轮 R3-P2-1）与命令内同一判定。上级没有改动（与人员当前的上级相同）时按保留原值
- * 处理、不重新校验——可见下属的上级可以在范围外，只给 ID（DEC-319①②）。
+ * 处理、不重新校验——可见下属的上级可以在范围外，展示姓名但不授予独立查看权（DEC-319①、DEC-325③）。
  */
 async function requireSuperior(
   tx: Tx,
@@ -227,6 +229,28 @@ const linkLogs: Present = async (viewer, body: { items: Record<string, unknown>[
 
 const VIEW = { object: 'person' } as const;
 
+type PersonView = ReturnType<typeof personView>;
+
+/** 详情、列表、首次写回执与重放统一按当前字段权限构造固定摘要，范围只放宽上级引用的姓名。 */
+const presentPeople: Present = async (viewer, body: PersonView | { items: PersonView[] }) => {
+  const fields = await viewer.fields('person');
+  const showSuperior = !fields || fields.has('superiorPersonId');
+  const items = 'items' in body ? body.items : [body];
+  const names =
+    showSuperior && (!fields || fields.has('name'))
+      ? await superiorNames(
+          viewer.tx,
+          viewer.tenant.tenantId,
+          items.map((person) => person.superiorPersonId),
+        )
+      : new Map<string, string>();
+  const project = (person: PersonView) => ({
+    ...pick(person, fields),
+    ...(showSuperior ? { superior: superiorSummary(person.superiorPersonId, names, fields) } : {}),
+  });
+  return 'items' in body ? { ...body, items: items.map(project) } : project(body);
+};
+
 export function registerPeopleRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerPeopleLists(module, deps);
   registerPersonReads(module, deps);
@@ -235,30 +259,36 @@ export function registerPeopleRoutes(module: Hono<TenantEnv>, deps: TenantRouteD
 
 function registerPeopleLists(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/people', (c) =>
-    read(c, deps, VIEW, async (tx, admin) => {
-      const page = pageQuery(c);
-      const q = c.req.query('q')?.trim();
-      const search = q ? sql`(p.name ILIKE ${`%${q}%`} OR p.email ILIKE ${`%${q}%`})` : sql`true`;
-      const scope = personFilter(admin) ?? sql`true`;
-      const ids = rows<{ id: string }>(
-        await tx.execute(sql`SELECT p.id FROM survey360_people p WHERE ${search} AND ${scope}
+    read(
+      c,
+      deps,
+      VIEW,
+      async (tx, admin) => {
+        const page = pageQuery(c);
+        const q = c.req.query('q')?.trim();
+        const search = q ? sql`(p.name ILIKE ${`%${q}%`} OR p.email ILIKE ${`%${q}%`})` : sql`true`;
+        const scope = personFilter(admin) ?? sql`true`;
+        const ids = rows<{ id: string }>(
+          await tx.execute(sql`SELECT p.id FROM survey360_people p WHERE ${search} AND ${scope}
             ORDER BY p.created_at, p.id LIMIT ${page.limit} OFFSET ${page.offset}`),
-      ).map((r) => r.id);
-      const items = ids.length
-        ? await tx
-            .select()
-            .from(survey360People)
-            .where(inArray(survey360People.id, ids))
-            .orderBy(survey360People.createdAt, survey360People.id)
-        : [];
-      return { items: items.map(personView), page: page.page, pageSize: page.pageSize };
-    }),
+        ).map((r) => r.id);
+        const items = ids.length
+          ? await tx
+              .select()
+              .from(survey360People)
+              .where(inArray(survey360People.id, ids))
+              .orderBy(survey360People.createdAt, survey360People.id)
+          : [];
+        return { items: items.map(personView), page: page.page, pageSize: page.pageSize };
+      },
+      presentPeople,
+    ),
   );
 }
 
 function registerPersonReads(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/people/:id', (c) =>
-    read(c, deps, VIEW, async (tx, admin) => personView(await visiblePerson(tx, admin, uuidParam(c)))),
+    read(c, deps, VIEW, async (tx, admin) => personView(await visiblePerson(tx, admin, uuidParam(c))), presentPeople),
   );
   module.get('/people/:id/link-logs', (c) =>
     read(
@@ -307,6 +337,7 @@ function registerPeopleWrites(module: Hono<TenantEnv>, deps: TenantRouteDeps): v
         fields: 'body',
         guard: async (_tx, admin) => requireCreatable(admin),
         refs: (tx, admin, input) => requireSuperior(tx, input.superiorPersonId, undefined, admin),
+        present: presentPeople,
         status: 201,
       },
     ),
@@ -328,6 +359,7 @@ function registerPeopleWrites(module: Hono<TenantEnv>, deps: TenantRouteDeps): v
         guard: async (tx, admin) => void (await visiblePerson(tx, admin, id)),
         refs: async (tx, admin, input) =>
           requireSuperior(tx, input.superiorPersonId, id, admin, (await loadPerson(tx, id)).superiorPersonId),
+        present: presentPeople,
       },
     );
   });
