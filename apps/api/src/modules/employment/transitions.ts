@@ -4,6 +4,7 @@ import { activationFailureOf, assertEstablishmentCapacity } from './activation-c
 import { lockTransferBusiness } from './transfer-locks.js';
 import { assertEmploymentDepartmentAvailable } from './references.js';
 import { personnelHooks } from './personnel-hooks.js';
+import { employeeStatusHooks } from './status-hooks.js';
 import { randomUUID } from 'node:crypto';
 import { sql, type Db, type Tx } from '@italent/db';
 import { resolveLateExecution, tenantLocalDate } from '@italent/domain';
@@ -281,6 +282,15 @@ async function deleteEmploymentBusiness(
       },
       null,
     );
+    // R3-T05 设计 §5.4：删除已生效记录（如误办的离职）通知订阅方，是否恢复由订阅方按自己的口径决定
+    await employeeStatusHooks.recordDeleted(tx, ctx, {
+      employeeId: business.employeeId,
+      recordId: business.id,
+      kind: record.kind,
+      effectiveDate: record.effectiveDate,
+      lastWorkDate: business.payload.lastWorkDate,
+      employeeStatus: record.employeeStatus,
+    });
   }
   await appendEmploymentState(tx, ctx, business, 'deleted');
   await auditEmployment(tx, ctx, 'employment.business.delete', 'employment-business', business.id, before, null);
