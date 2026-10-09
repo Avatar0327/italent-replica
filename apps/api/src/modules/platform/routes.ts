@@ -33,8 +33,22 @@ import {
   tenantBalances,
 } from './operations.js';
 import { provisionTenant, tenantView } from './provisioning.js';
-import { policed, useMiddleware } from '../../route-policy/index.js';
+import { mergeTables, policed, useMiddleware } from '../../route-policy/index.js';
 import { PLATFORM_POLICIES } from './policy.js';
+import {
+  registerSuccessionPlatformRoutes,
+  SUCCESSION_PLATFORM_POLICIES,
+  type PlatformRouteDeps,
+} from '../succession/platform-routes.js';
+
+/**
+ * 业务模块的平台接口（各模块自己的 platform-routes.ts，路径在 /api/platform/<模块>/ 之下）：新模块在这里追加一行，
+ * 声明表并入 PLATFORM_TABLE；平台运营身份中间件对它们同样生效。
+ */
+export const PLATFORM_MODULES: readonly ((router: Hono<PlatformEnv>, deps: PlatformRouteDeps) => void)[] = [
+  registerSuccessionPlatformRoutes, // R3-T05 继任：调度与规则重新编译（设计 §2.2 #19）
+];
+const PLATFORM_TABLE = mergeTables('platform', [PLATFORM_POLICIES, SUCCESSION_PLATFORM_POLICIES]);
 
 const COMMAND_ID = /^[A-Za-z0-9:_-]{1,100}$/;
 const userId = z.uuid();
@@ -99,8 +113,8 @@ function tenantParam(c: Context): string {
 }
 
 export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: () => Date): Hono<PlatformEnv> {
-  // F-039：平台路由器套登记表（PLATFORM_POLICIES），中间件经 useMiddleware 登记
-  const router = policed(new Hono<PlatformEnv>(), PLATFORM_POLICIES);
+  // F-039：平台路由器套登记表（平台与业务模块平台表的合并），中间件经 useMiddleware 登记
+  const router = policed(new Hono<PlatformEnv>(), PLATFORM_TABLE);
   useMiddleware(router, '/api/platform/*', platformContext(db, identity), 'platformContext');
   useMiddleware(router, '/api/platform/*', capturePlatformFailures(db), 'capturePlatformFailures');
 
@@ -158,6 +172,7 @@ export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: 
     return c.json(balance);
   });
 
+  for (const register of PLATFORM_MODULES) register(router, { db, clock });
   return router;
 }
 

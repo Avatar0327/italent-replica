@@ -5,53 +5,23 @@
  * - 冻结语句与并发首次绑定交错：冻结读到语句开始时已提交的绑定，绝不出现半截；
  * - 真实交接 × 真实建档绑定 × 重提冻结（R2-01 的无锁边结论）：绑定提交后重提冻结读到它，三者无死锁；
  * - 重提 × 交接批处理：既有组织锁序下排队，放行后都完成。
- * 附记：用同一个来源成员（交接 KEY SHARE）与入职绑定同时交错，会撞上交接（成员 KEY SHARE → 组织锁）与入职（组织锁 → 成员 FOR UPDATE）
- * 的既有锁序差异而死锁，与冻结无关，已在 PR 描述记为存量问题，不在本 PR 改。
  * - 重提与管理员干预并发：一方成功，另一方 409，不死锁。
+ * 附记：用同一个来源成员（交接 KEY SHARE）与入职绑定交错曾因锁序相反而死锁，已由 F-065 修复并另有测试，见
+ * AC-APV-F065-handover-binding-lock；本文件仍用不同账号，只证明冻结不新增锁边。
  */
 import { randomUUID } from 'node:crypto';
-import { createUser, grantMembership, permissionUserPersonLinks, sql, withTenant, type Db } from '@italent/db';
+import { createUser, grantMembership, permissionUserPersonLinks, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld, transferScene, type ApprovalWorld, type InstanceView } from './AC-APV-support.js';
 import { cmd } from './support/tenant-api.js';
 import { frozenOf, NODES, pendingOf, reasonOf, rowsOf, useSubjectMapping } from './support/f048.js';
+import { settledOrBlocked, waitForBlocked } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const mapSubjects = useSubjectMapping();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
 const BASE = '/api/tenant/approval';
-
-async function lockWaiters(db: Db): Promise<number> {
-  const [row] = rowsOf<{ n: number }>(
-    await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
-      WHERE datname=current_database() AND wait_event_type='Lock'`),
-  );
-  return Number(row?.n);
-}
-
-/** 等到请求结束或恰有 expected 个会话在等锁，返回先发生的那一个。 */
-async function settledOrBlocked(db: Db, request: Promise<unknown>, expected: number) {
-  let settled = false;
-  void request.then(
-    () => (settled = true),
-    () => (settled = true),
-  );
-  for (let i = 0; i < 200; i++) {
-    if (settled) return 'settled';
-    if ((await lockWaiters(db)) === expected) return 'blocked';
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`等待请求结束或 ${expected} 个会话阻塞超时`);
-}
-
-async function waitForBlocked(db: Db, expected: number) {
-  for (let i = 0; i < 200; i++) {
-    if ((await lockWaiters(db)) === expected) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`等待 ${expected} 个会话阻塞超时`);
-}
 
 async function scene(label: string) {
   const w = await approvalWorld(database().db, label);

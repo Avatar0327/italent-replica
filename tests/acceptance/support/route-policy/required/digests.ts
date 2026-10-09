@@ -111,7 +111,7 @@ export const DIGESTS: Digests = {
     routeContext: '897cf761c712',
   },
   'apps/api/src/modules/contracts/todos.ts': {
-    registerMergedTodos: 'e0adf02e9fdf',
+    registerMergedTodos: '247f568f9db7',
   },
   'apps/api/src/modules/employee-self-service/access.ts': {
     boundEmployee: 'cde7cba2052a',
@@ -222,10 +222,12 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/idp/intervention-service.ts': {
     ISSUE_SOURCE_FIELDS: '02d8128ce179',
     eachPlan: '453001319f02',
+    isPlanMentor: 'a064d8d1cfb0',
     issueTasks: '0da7eb1e4250',
     notOwnPlan: '235e72df46d4',
-    requireTargetInScope: 'cb90d6c4ca66',
-    transferPlan: 'e0e4fe86c81a',
+    requireTargetInScope: 'd987c2808bcc',
+    targetHidden: '4c60647fadb8',
+    transferPlan: '64d51b8d9d07',
   },
   'apps/api/src/modules/idp/key-info-routes.ts': {
     ROUTES: '906e28eb362e',
@@ -242,7 +244,7 @@ export const DIGESTS: Digests = {
     hrScopeOf: '6dc4bea09e02',
     registerContentRoutes: '7e873b62ea0c',
     registerGoalRoutes: '44acf811163b',
-    registerInterventions: 'a5b3bcefa685',
+    registerInterventions: '29693b931143',
     'registerInterventions>batches': 'f2b5e029c857',
     'route:DELETE /api/tenant/idp/plans/:id': '0a0e902b23d8',
     'route:DELETE /api/tenant/idp/plans/:id/goals/:goalId': '3f6d6eb9ff64',
@@ -259,7 +261,7 @@ export const DIGESTS: Digests = {
     'route:POST /api/tenant/idp/plans/:id/goals/:goalId/tasks': '051a65cb9c9c',
     'route:POST /api/tenant/idp/plans/:id/jump': 'a4f2ebe89018',
     'route:POST /api/tenant/idp/plans/:id/start': '171fb43931e6',
-    'route:POST /api/tenant/idp/plans/:id/transfer': 'ccb749740453',
+    'route:POST /api/tenant/idp/plans/:id/transfer': 'b5755feb422a',
     'route:POST /api/tenant/idp/plans/tasks/issue': 'bc4cf03ee3c0',
     'route:PUT /api/tenant/idp/plans/:id/goals/:goalId/review': '80906406fef7',
     'route:PUT /api/tenant/idp/plans/:id/modules/:moduleId/content': '3f755da1323f',
