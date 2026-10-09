@@ -34,6 +34,8 @@ import { cancelFailedRequest } from './recovery.js';
 import { registerMergedTodos } from './todos.js';
 import { auditActor } from '../../system-actor.js';
 import { rawImportRows, rawUuid, recordOperationLog, withFailedImportLog } from '../../audit/record.js';
+import { policedSub } from '../../route-policy/index.js';
+import { CONTRACT_POLICIES } from './policy.js';
 
 type C = Context<TenantEnv>;
 export async function routeContext(c: C, deps: TenantRouteDeps, object = CONTRACT_OBJECT, write = false) {
@@ -127,7 +129,8 @@ export async function write(
   return c.json(await trim(deps, ctx, object, result.body), result.status);
 }
 export const registerContractRoutes: TenantRouteModule = (router, deps) => {
-  const module = new Hono<TenantEnv>();
+  // F-039：子应用套本模块登记表（CONTRACT_POLICIES），注册行不变、处理函数不变
+  const module = policedSub(router, CONTRACT_POLICIES, () => new Hono<TenantEnv>());
   module.onError((error, c) => {
     const code = pgErrorCode(error);
     if (code === '23505') return handleError(new AppError('CONFLICT', '合同编号或主数据编码已存在'), c);

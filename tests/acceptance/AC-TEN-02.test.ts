@@ -6,7 +6,7 @@
 import { APP_ROLE, eq, sql, withPlatform, withTenant } from '@italent/db';
 import { installTenantProbe, pgErrorCode, tenantProbe, useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { probeRoutes } from './support/probe-routes.js';
+import { PROBE_POLICIES, probeRoutes } from './support/probe-routes.js';
 import { errorCode, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -110,7 +110,7 @@ describe('AC-TEN-02 跨租户访问一律拒绝', () => {
 
   describe('API 层（租户中间件 + RLS）', () => {
     it('A 会话在自己租户上下文里读 / 改 / 删 B 的对象 ID → 404', async () => {
-      const api = tenantApi(testDb().db, { tenantRoutes: [probeRoutes] });
+      const api = tenantApi(testDb().db, { tenantRoutes: [probeRoutes], routePolicies: [PROBE_POLICIES] });
       const as = { user: a.user.id, tenant: a.tenant.id };
       const path = `/api/tenant/probes/${objectOfB}`;
 
@@ -125,14 +125,14 @@ describe('AC-TEN-02 跨租户访问一律拒绝', () => {
     });
 
     it('A 用户把 X-Tenant-Id 换成 B → 403 TENANT_NOT_MEMBER', async () => {
-      const api = tenantApi(testDb().db, { tenantRoutes: [probeRoutes] });
+      const api = tenantApi(testDb().db, { tenantRoutes: [probeRoutes], routePolicies: [PROBE_POLICIES] });
       const res = await api.request('GET', `/api/tenant/probes/${objectOfB}`, { user: a.user.id, tenant: b.tenant.id });
       expect(res.status).toBe(403);
       expect(await errorCode(res)).toBe('TENANT_NOT_MEMBER');
     });
 
     it('不存在的租户与非成员租户返回同一错误码，不泄露租户是否存在', async () => {
-      const api = tenantApi(testDb().db, { tenantRoutes: [probeRoutes] });
+      const api = tenantApi(testDb().db, { tenantRoutes: [probeRoutes], routePolicies: [PROBE_POLICIES] });
       const res = await api.request('GET', '/api/tenant/probes', {
         user: a.user.id,
         tenant: '00000000-0000-4000-8000-00000000dead',
@@ -142,7 +142,7 @@ describe('AC-TEN-02 跨租户访问一律拒绝', () => {
     });
 
     it('缺少或非法 X-Tenant-Id → 400 TENANT_CONTEXT_REQUIRED；缺少身份 → 401', async () => {
-      const api = tenantApi(testDb().db, { tenantRoutes: [probeRoutes] });
+      const api = tenantApi(testDb().db, { tenantRoutes: [probeRoutes], routePolicies: [PROBE_POLICIES] });
       const missing = await api.request('GET', '/api/tenant/probes', { user: a.user.id });
       const invalid = await api.request('GET', '/api/tenant/probes', { user: a.user.id, tenant: 'abc' });
       const anonymous = await api.request('GET', '/api/tenant/probes', { tenant: a.tenant.id });
