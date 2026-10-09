@@ -80,12 +80,11 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
           .limit(limit + 1);
         const page = paginate(rows, limit);
         const operator = await operatorNames(tx, page.items);
+        const redacted = await viewer.redact(tx, page.items.map(recounted));
         return {
-          items: page.items
-            .map(recounted)
-            .map((row) =>
-              dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action, row.linkagePaths)),
-            ),
+          items: redacted.map((row) =>
+            dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action, row.linkagePaths)),
+          ),
           nextCursor: page.nextCursor,
           window,
         };
@@ -113,7 +112,7 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
           );
         // 超出保留期、范围外或只涉及隐藏字段的日志与不存在同样处理（原站“最远只能查 6 个月内”；DEC-197）
         if (!found) throw new AppError('NOT_FOUND', '日志不存在或已超出保留期');
-        const row = recounted(found);
+        const row = (await viewer.redact(tx, [recounted(found)]))[0]!;
         const fields = viewer.fieldsOf(row.objectType, row.action, row.linkagePaths);
         const view = dataChangeView(row, (await operatorNames(tx, [row]))(row), fields);
         return {

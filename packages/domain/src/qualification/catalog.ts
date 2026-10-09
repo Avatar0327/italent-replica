@@ -100,8 +100,9 @@ export const QUALIFICATION_OWNED_OBJECTS: readonly QualificationObject[] = [
 ];
 
 /**
- * 审计查看规则按所属组织裁剪的对象（设计 §8：不因向下公开放宽）：带资源集合的对象，以及随它们授权的指标等级描述
- * （随指标）、发展通道（随标准），审计行的所属组织取锚定对象的。其余为字典，只认看全部或创建人（DEC-121）。
+ * 审计行带所属组织的对象：带资源集合的对象，以及随它们授权的指标等级描述（随指标）、发展通道（随标准），审计行的
+ * 所属组织取锚定对象的。审计查看时只放开查看的对象（DEC-352，access.OPEN_READ）不按组织裁剪，其余按所属组织
+ * 裁剪、不因向下公开放宽（设计 §8）；不在此列的为字典，只认看全部或创建人（DEC-121）。
  */
 export const QUALIFICATION_ORG_AUDITED: readonly QualificationObject[] = [
   ...QUALIFICATION_OWNED_OBJECTS,
