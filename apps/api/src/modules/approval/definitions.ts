@@ -14,6 +14,7 @@ import {
   conditionViolations,
   avoidsSelf,
   avoidsSubjects,
+  avoidSubjectsViolations,
   DEFAULT_AVOID_SUBJECTS_RESULT,
   jumpAllowed,
   rejectAllowed,
@@ -307,6 +308,9 @@ function nodeTypeColumns(node: ApprovalNode) {
 }
 
 async function writeVersionContent(tx: Tx, tenantId: string, id: string, definition: ProcessDefinition) {
+  // F-048 R3-01：节点落库前统一复核，新建、草稿替换（含继承）、新版本复制、交接重发、预置各自独立拒绝开启（设计 §14）
+  const [avoid] = definition.nodes.flatMap(avoidSubjectsViolations);
+  if (avoid) throw approvalError('VALIDATION_FAILED', avoid.reason, avoid.message);
   for (const item of definition.conditions.items) {
     const list = Array.isArray(item.value) ? textArray(item.value as string[]) : sql`NULL`;
     const single = typeof item.value === 'string' ? item.value : null;

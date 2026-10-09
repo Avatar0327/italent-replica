@@ -46,7 +46,8 @@ const transitionRule = z.strictObject({
 
 /**
  * DEC-331⑤：多主体回避命中动作的契约取值（跳过 / 同意 / 不同意 / 自定义出口动作）；只启用「跳过」，其余在定义校验中
- * 明确拒绝（avoidSubjectsViolations），不当作格式错误。
+ * 明确拒绝（avoidSubjectsViolations），不当作格式错误。`exit:` 之后的编码格式（字母开头、仅字母 / 数字 / 下划线、≤40）
+ * 为设计自定，无取证依据，待 Q-M0-138 取到原站自定义出口动作的编码后再定（PR #135 第 2 轮清单）。
  */
 const avoidSubjectsResult = z.union([
   z.enum(['skip', 'approve', 'disagree']),
@@ -70,7 +71,11 @@ const node = z.strictObject({
   historySameAssigneeSkip: z.boolean().default(false),
   sameAssigneeResult: z.enum(AUTO_RESULTS).default('approve'),
   historySameAssigneeResult: z.enum(AUTO_RESULTS).default('approve'),
-  avoidSubjectsResult: avoidSubjectsResult.default('skip'),
+  /**
+   * 不给时不补缺省值（存储层取 DEFAULT_AVOID_SUBJECTS_RESULT）：新建 / 草稿保存按解析后的输入算命令指纹，补值会让升级前
+   * 入台账的同一请求重放时指纹不同、误报 409（DEC-067；PR #135 第 1 轮审查 P2）。actions.avoidSubjects 同理。
+   */
+  avoidSubjectsResult: avoidSubjectsResult.optional(),
   formFields: codeList.default([]),
   editableFields: codeList.default([]),
   editMode: z.enum(EDIT_MODES).default('none'),
