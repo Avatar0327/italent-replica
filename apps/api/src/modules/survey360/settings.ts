@@ -57,7 +57,8 @@ async function loadSettings(tx: Tx) {
 const VIEW = { object: 'settings' } as const;
 
 export function registerSettingsRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  module.get('/settings', (c) => read(c, deps, VIEW, (tx) => loadSettings(tx)));
+  // 设置 / 评价角色入口只读写设置与角色，不用活动 / 人员可见范围：不预取 Activity 查看权与“全部活动”按钮（F-075，DEC-369）
+  module.get('/settings', (c) => read(c, deps, VIEW, (tx) => loadSettings(tx), undefined, 'identity'));
   module.put('/settings', (c) =>
     write(
       c,
@@ -87,7 +88,11 @@ export function registerSettingsRoutes(module: Hono<TenantEnv>, deps: TenantRout
         });
         return after;
       },
-      { need: { object: 'settings', operation: 'update', button: BUTTONS.finePermission }, fields: 'body' },
+      {
+        need: { object: 'settings', operation: 'update', button: BUTTONS.finePermission },
+        fields: 'body',
+        admin: 'identity',
+      },
     ),
   );
   registerRoleRoutes(module, deps);
@@ -96,11 +101,18 @@ export function registerSettingsRoutes(module: Hono<TenantEnv>, deps: TenantRout
 function registerRoleRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   // 评价角色属“设置”对象：查看要设置的查看权并按其字段裁剪（第 3 轮取消“持有人即可读”的选择器例外）
   module.get('/roles', (c) =>
-    read(c, deps, VIEW, async (tx, _admin, tenant) => {
-      await ensureBuiltinRoles(tx, tenant.tenantId);
-      const items = await tx.select().from(survey360Roles).orderBy(survey360Roles.sort, survey360Roles.createdAt);
-      return { items: items.map(roleView) };
-    }),
+    read(
+      c,
+      deps,
+      VIEW,
+      async (tx, _admin, tenant) => {
+        await ensureBuiltinRoles(tx, tenant.tenantId);
+        const items = await tx.select().from(survey360Roles).orderBy(survey360Roles.sort, survey360Roles.createdAt);
+        return { items: items.map(roleView) };
+      },
+      undefined,
+      'identity',
+    ),
   );
   const body = z.strictObject({ name: text(50), displayText: optionalText(50) });
   module.post('/roles', (c) =>
@@ -128,7 +140,7 @@ function registerRoleRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): voi
         });
         return view;
       },
-      { need: { object: 'settings', operation: 'create' }, fields: 'body', status: 201 },
+      { need: { object: 'settings', operation: 'create' }, fields: 'body', status: 201, admin: 'identity' },
     ),
   );
   module.put('/roles/:id', (c) => {
@@ -161,7 +173,7 @@ function registerRoleRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): voi
         });
         return roleView(saved!);
       },
-      { need: { object: 'settings', operation: 'update' }, fields: 'body' },
+      { need: { object: 'settings', operation: 'update' }, fields: 'body', admin: 'identity' },
     );
   });
 }
