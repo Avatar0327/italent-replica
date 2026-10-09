@@ -2,8 +2,8 @@
 "updated": "2026-10-08",
 "stats": {
 "merged": 67,
-"open": 9,
-"dec": 323,
+"open": 12,
+"dec": 325,
 "ev": "35/136"
 },
 "tasks": {
@@ -368,7 +368,8 @@
 ],
 "note": "设计 #121 合并（9bc124d），6 轮；实现拆 5 个 PR，PR-0 等 Q-M0-132",
 "pr": [
-121
+121,
+129
 ]
 },
 "R3-T03": {
@@ -917,7 +918,10 @@
 "R3-T01"
 ],
 "dev": "Claude Opus 5.5 High",
-"rev": "Astra Ultra"
+"rev": "Astra Ultra",
+"pr": [
+128
+]
 },
 "F-049": {
 "n": "表达式引擎钩子（C-07）",
@@ -2185,7 +2189,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-08 20:33",
+"liveUpdated": "10-08 20:57",
 "chains": [
 {
 "g": "base",
@@ -2421,10 +2425,10 @@
 "o": 2,
 "k": "run",
 "n": "任职资格 + 人才评定",
-"seg": "ev:a ds:d6 dev:w rev:d6 mg:w",
-"now": "设计第 6 轮通过并合并（9bc124d）；5 个 PR（PR-0、A、B、C1、C2）全 C 档 Opus",
+"seg": "ev:a ds:d6 dev:a1 rev:w mg:w",
+"now": "PR-0 契约开发中（#129 Draft，Opus）；PR-A / C1 等 SW73 / SW74 实测",
 "wait": "PR-0 开工等取证 Q-M0-132",
-"pr": 121
+"pr": 129
 },
 {
 "id": "F-024",
@@ -2623,8 +2627,9 @@
 "k": "run",
 "n": "审批多主体回避",
 "nx": "R3-T04 写代码",
-"seg": "ev:n ds:a1 dev:w rev:w mg:w",
-"now": "派发（Opus High，C 档先设计；自检由 Codex）"
+"seg": "ev:n ds:d1 dev:w rev:w1 mg:w",
+"now": "设计 v1 已交（#128），待设计审（Astra）",
+"pr": 128
 },
 {
 "id": "Q-M0-113",
@@ -2753,7 +2758,8 @@
 "cx": "1",
 "n": "范围外上级照原站显示姓名",
 "seg": "ev:n ds:n dev:a1 rev:w mg:w",
-"now": "派发（Codex Sol，DEC-325）"
+"now": "开发中（#127 Draft，Codex）；头像来源待决",
+"pr": 127
 },
 {
 "id": "CI40",
