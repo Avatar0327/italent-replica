@@ -982,6 +982,10 @@
 "log": [
 [
 "10-09",
+"DEC-340：审查强度试跑（Astra Ultra 首轮 / Sol xhigh·high + fast）；开分支保护；#125 拆出 F-060 / F-061"
+],
+[
+"10-09",
 "DEC-337 / 338：T04 / T05 第 7 轮；Claude 开发（Opus 设计 / Sonnet 实现）、Codex 审查；审查强度试跑"
 ],
 [
@@ -2237,7 +2241,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-09 00:57",
+"liveUpdated": "10-09 01:07",
 "chains": [
 {
 "g": "base",
@@ -2846,6 +2850,22 @@
 "n": "AGENTS：自检必做 + 新分工（DEC-338）",
 "seg": "ev:n ds:n dev:d1 rev:w1 mg:w",
 "now": "已转 Ready，待审"
+},
+{
+"id": "F-060",
+"g": "s360",
+"o": 6,
+"k": "todo",
+"n": "360 PR-B 审计边界",
+"u": "DEC-340，#125 拆出"
+},
+{
+"id": "F-061",
+"g": "s360",
+"o": 6,
+"k": "todo",
+"n": "360 PR-B 交付边界",
+"u": "DEC-340，#125 拆出"
 }
 ]
 }
