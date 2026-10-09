@@ -16,7 +16,10 @@ import {
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { ADAPTERS } from '../../../../apps/api/src/modules/approval/adapters.js';
+import type { BranchInput } from './branch-inputs.js';
+import type { Evidence } from './required/types.js';
 import { API_SRC } from './scan.js';
+import type { BranchField } from './selectors.js';
 
 const CONTRACT_MODES = ['direct', 'application'] as const;
 
@@ -120,3 +123,180 @@ export function domainConstants(): Record<string, string[]> {
       .sort(),
   };
 }
+
+// ---- 分支值表（F-039 PR-B2，设计 B-07） -------------------------------------------------------------------------
+/**
+ * 选择器的映射值：域 → [{ 字段, 变体, 值: { 分支键 → 值 }, 证据 }]。比较器（compare.ts compareSelectors）要求声明里每个
+ * `map` 选择器的逐键值等于这里（域 + 字段 + 变体）的条目，而不只是键集合等于域。取值优先来自源码导出常量的运行时求值
+ * （JOB_OBJECT_CODES、SUBSETS[k].objectCode、TALENT_OBJECTS[k].code）；处理函数里内联的映射按字面量登记，
+ * 每条带证据（单元 + 锚点，摘要进 required/digests.ts，改了即 EVIDENCE_STALE）。
+ * 同一（域, 字段）有多个条目时用 `variant` 区分（任职导入预览与导入的逐行操作值不同），输入来源表按变体选。
+ */
+export interface BranchValueEntry {
+  readonly field: BranchField;
+  readonly variant?: string;
+  readonly values: Readonly<Record<string, unknown>>;
+  readonly at: readonly Evidence[];
+}
+
+/** 选择器绑定的两张表：输入来源（branch-inputs.ts）与分支值（本文件）。 */
+export interface BranchBindings {
+  readonly inputs: Readonly<Record<string, readonly BranchInput[]>>;
+  readonly values: Readonly<Record<string, readonly BranchValueEntry[]>>;
+}
+
+const MODULES = 'apps/api/src/modules';
+const evidence = (role: Evidence['role'], unit: string, anchor: string): Evidence => ({ role, unit, anchor });
+const identityMap = (keys: readonly string[]) => Object.fromEntries(keys.map((key) => [key, key]));
+const ALL_CURRENT_ASSIGNEE = 'approval.currentAssignee';
+const buttonRef = (code: string, level: 'list' | 'detail') => ({ code, level });
+const TALENT_CATALOG = 'packages/domain/src/talent/catalog.ts#TALENT_OBJECTS';
+const TALENT_ANCHORS = [
+  "library: object( 'DimensionLibrary'",
+  "dimensionCategory: object( 'Category'",
+  "descriptionType: object( 'DescriptionType'",
+  "dimension: object( 'Dimension'",
+  "criterionCategory: object( 'TalentCriterionCategory'",
+  "criterion: object( 'TalentCriterion'",
+];
+const AUTHORIZE_IMPORT = `${MODULES}/employment/routes.ts#authorizeImport`;
+const EMPLOYMENT_CREATE = "if (!preview) await requireEmploymentWrite(ctx, 'create', item.business as object";
+const EMPLOYMENT_UPDATE = "if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')";
+const TODOS = `${MODULES}/contracts/todos.ts#registerMergedTodos`;
+
+export const BRANCH_VALUES: Readonly<Record<string, readonly BranchValueEntry[]>> = {
+  'job.kind': [
+    {
+      field: 'object',
+      values: { ...JOB_OBJECT_CODES },
+      at: [
+        evidence(
+          'const',
+          `${MODULES}/permission/module-route-access.ts#JOB_OBJECT_CODES`,
+          'layers: MODULE_OBJECTS.jobLayer.code',
+        ),
+      ],
+    },
+    {
+      field: 'objectType',
+      values: identityMap(Object.keys(JOB_OBJECT_CODES)),
+      at: [
+        evidence('call', `${MODULES}/job/routes.ts#route:POST /api/tenant/job/import`, "objectType: known ?? 'job'"),
+      ],
+    },
+  ],
+  'personnel.subset': [
+    {
+      field: 'object',
+      values: Object.fromEntries(Object.entries(SUBSETS).map(([kind, subset]) => [kind, subset.objectCode])),
+      at: [evidence('const', 'packages/domain/src/personnel/fields.ts#SUBSETS', "objectCode: 'TenantBase.Education'")],
+    },
+  ],
+  'contracts.operation': [
+    {
+      field: 'operation',
+      values: { create: 'create', renew: 'update', change: 'update', terminate: 'update' },
+      at: [
+        evidence('call', `${MODULES}/contracts/routes.ts#route:POST /commands`, "=== 'create' ? 'create' : 'update'"),
+        evidence('call', `${MODULES}/contracts/routes.ts#route:POST /batch`, "=== 'create' ? 'create' : 'update'"),
+      ],
+    },
+  ],
+  'contracts.importMode': [
+    {
+      field: 'operation',
+      values: { add: 'create', edit: 'update', change: 'update', initialize: 'create' },
+      at: [
+        evidence(
+          'call',
+          `${MODULES}/contracts/routes.ts#authorizeImport`,
+          "['edit', 'change'].includes(input.mode) ? 'update' : 'create'",
+        ),
+      ],
+    },
+  ],
+  'contracts.todoAction': [
+    {
+      field: 'relation',
+      values: {
+        approve: ALL_CURRENT_ASSIGNEE,
+        decline: ALL_CURRENT_ASSIGNEE,
+        reject: ALL_CURRENT_ASSIGNEE,
+        resubmit: 'approval.initiator',
+      },
+      at: [
+        evidence('call', TODOS, "if (input.action === 'resubmit') await requireResubmitRight(deps, ctx, instanceId)"),
+        evidence('call', TODOS, "if (!task) throw new AppError('FORBIDDEN', '只有当前审批人可以处理该任务')"),
+      ],
+    },
+  ],
+  'employment.importRowOperation': [
+    {
+      field: 'operation',
+      variant: 'import',
+      values: { create: 'create', edit: 'update' },
+      at: [
+        evidence('call', AUTHORIZE_IMPORT, EMPLOYMENT_CREATE),
+        evidence('call', AUTHORIZE_IMPORT, EMPLOYMENT_UPDATE),
+      ],
+    },
+    {
+      field: 'operation',
+      variant: 'preview',
+      values: { create: 'view', edit: 'view' },
+      at: [
+        evidence('call', AUTHORIZE_IMPORT, EMPLOYMENT_CREATE),
+        evidence('call', AUTHORIZE_IMPORT, EMPLOYMENT_UPDATE),
+      ],
+    },
+    {
+      field: 'button',
+      values: { create: buttonRef('Employment.Create', 'detail'), edit: buttonRef('Employment.Edit', 'detail') },
+      at: [
+        evidence('call', AUTHORIZE_IMPORT, "'Employment.Create'"),
+        evidence('call', AUTHORIZE_IMPORT, "'Employment.Edit'"),
+      ],
+    },
+  ],
+  'talent.object': [
+    {
+      field: 'object',
+      values: Object.fromEntries(Object.entries(TALENT_OBJECTS).map(([key, object]) => [key, object.code])),
+      at: TALENT_ANCHORS.map((anchor) => evidence('const', TALENT_CATALOG, anchor)),
+    },
+  ],
+  'talent.ownerUnitObject': [
+    {
+      field: 'object',
+      values: Object.fromEntries(
+        Object.entries(TALENT_OBJECTS)
+          .filter(([key]) => key !== 'descriptionType')
+          .map(([key, object]) => [key, object.code]),
+      ),
+      at: [
+        evidence('const', `${MODULES}/talent/candidates.ts#OWNER_OBJECTS`, "'criterionCategory'"),
+        ...TALENT_ANCHORS.filter((anchor) => !anchor.startsWith('descriptionType')).map((anchor) =>
+          evidence('const', TALENT_CATALOG, anchor),
+        ),
+      ],
+    },
+  ],
+  'talent.formOperation': [
+    {
+      field: 'operation',
+      values: { create: 'create', update: 'update' },
+      at: [
+        evidence('const', `${MODULES}/talent/access.ts#DATA_OPERATION`, "create: 'create'"),
+        evidence('const', `${MODULES}/talent/access.ts#DATA_OPERATION`, "update: 'update'"),
+      ],
+    },
+    {
+      field: 'button',
+      values: { create: buttonRef('create', 'list'), update: buttonRef('update', 'detail') },
+      at: [
+        evidence('const', `${MODULES}/talent/access.ts#WRITE_BUTTONS`, "create: ['create', 'list']"),
+        evidence('const', `${MODULES}/talent/access.ts#WRITE_BUTTONS`, "update: ['update', 'detail']"),
+      ],
+    },
+  ],
+};

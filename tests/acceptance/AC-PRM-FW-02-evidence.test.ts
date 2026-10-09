@@ -15,14 +15,16 @@ import { compareDeclarations, type Finding } from './support/route-policy/compar
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { BRANCH_VALUES, type BranchBindings } from './support/route-policy/domains.js';
 import { assertBoundaryShape, EVIDENCE_BOUNDARY } from './support/route-policy/evidence-boundary.js';
+import { MAX_DEPTH } from './support/route-policy/evidence-closure.js';
 import {
   checkEvidence,
   closureReports,
   currentDependencies,
-  currentDigests,
+  currentDigestTable,
   repoSource,
   type SourceReader,
   unitText,
+  usesOf,
 } from './support/route-policy/evidence.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Evidence, Obligation, RequiredTable } from './support/route-policy/required/types.js';
@@ -88,7 +90,7 @@ function baseline(files: Record<string, string> = FIXTURE_FILES, table: Required
     base: {
       read,
       branch: false as const,
-      digests: currentDigests(table, read, false),
+      digests: currentDigestTable(table, read, false),
       dependencies: currentDependencies(table, read, false),
     },
   };
@@ -161,22 +163,25 @@ describe('AC-PRM-FW-02 证据闭包（B-02）：夹具', () => {
     );
   });
 
-  it('不设固定深度：互相递归不死循环；超过 12 层的链报 depth-limit → EVIDENCE_CLOSURE_UNRESOLVED', () => {
+  it('不设固定深度：互相递归不死循环；超过安全上限（40 层）的链报 depth-limit → EVIDENCE_CLOSURE_UNRESOLVED', () => {
     const chain = (length: number) =>
       Array.from({ length }, (_, i) =>
         i === length - 1 ? `function f${i}() {\n  return 1;\n}` : `function f${i}() {\n  return f${i + 1}();\n}`,
       ).join('\n');
+    const gateFile = FIXTURE_FILES[`${FIX}/gate.ts`]!;
     const files = (n: number) => ({
       ...FIXTURE_FILES,
-      [`${FIX}/gate.ts`]: `${FIXTURE_FILES[`${FIX}/gate.ts`]!.replace('return levelOf(kind);', 'return f0();')}\n${chain(n)}\n`,
+      [`${FIX}/gate.ts`]: `${gateFile.replace('return levelOf(kind);', 'return f0();')}\n${chain(n)}\n`,
     });
     const shallow = baseline(files(8));
     expect(checkEvidence(shallow.table, shallow.base)).toEqual([]);
-    const deep = baseline(files(15));
+    const deep = baseline(files(45));
     const found = checkEvidence(deep.table, deep.base);
     expect(codes(found)).toContain('EVIDENCE_CLOSURE_UNRESOLVED');
     expect(show(found)).toContain('depth-limit');
-    const cycle = FIXTURE_FILES[`${FIX}/helper.ts`] + 'export function ping() {\n  return pong();\n}\nfunction pong() {\n  return ping();\n}\n';
+    const cycle =
+      FIXTURE_FILES[`${FIX}/helper.ts`] +
+      'export function ping() {\n  return pong();\n}\nfunction pong() {\n  return ping();\n}\n';
     const gate = FIXTURE_FILES[`${FIX}/gate.ts`]!.replace('return levelOf(kind);', 'return ping();').replace(
       "import { allowed } from './helper.js';",
       "import { allowed, ping } from './helper.js';",
@@ -187,7 +192,8 @@ describe('AC-PRM-FW-02 证据闭包（B-02）：夹具', () => {
 
   it('边界内改动不触发：errors.ts 的 AppError 变化 → 零发现；边界内的计算属性访问也不报', () => {
     const errors = repoSource('apps/api/src/errors.ts');
-    const changed = `${errors}\nexport const HELPER = (name: string, ns: Record<string, () => void>) => ns[name]?.();\n`;
+    const computed = 'export const HELPER = (name: string, ns: Record<string, () => void>) => ns[name]?.();';
+    const changed = `${errors}\n${computed}\n`;
     expect(afterChange({ ...FIXTURE_FILES, 'apps/api/src/errors.ts': changed })).toEqual([]);
   });
 
@@ -213,24 +219,55 @@ describe('AC-PRM-FW-02 证据闭包（B-02）：真实表', () => {
     expect(key, '表里没有引用 routeNeed 的 360 端点').toBeDefined();
     const file = 'apps/api/src/modules/survey360/context.ts';
     const reader: SourceReader = (path) =>
-      path === file ? repoSource(path).replace("return found.level as 'list' | 'detail';", "return 'detail';") : repoSource(path);
+      path === file
+        ? repoSource(path).replace("return found.level as 'list' | 'detail';", "return 'detail';")
+        : repoSource(path);
     expect(repoSource(file)).toContain("return found.level as 'list' | 'detail';");
     const found = checkEvidence({ [key!]: REQUIRED[key!]! }, { read: reader });
-    expect(found.some((f) => f.code === 'EVIDENCE_STALE' && f.detail.includes('levelOf')), show(found)).toBe(true);
+    expect(
+      found.some((f) => f.code === 'EVIDENCE_STALE' && f.detail.includes('levelOf')),
+      show(found),
+    ).toBe(true);
   });
 
-  it('全表零发现，且没有任何位于 modules/** 的未解析项；输出每个单元的闭包大小 / 最大深度 / unresolved 数', () => {
+  it('全表零发现，且没有任何位于 modules/** 的未解析项；输出闭包大小 / 最大深度 / unresolved / 依赖牵连的义务数分布', () => {
     const reports = closureReports(REQUIRED);
     expect(reports.length).toBeGreaterThan(100);
-    const sizes = reports.map((r) => r.size).sort((a, b) => a - b);
-    const pick = (q: number) => sizes[Math.min(sizes.length - 1, Math.floor(sizes.length * q))]!;
+    const quantiles = (values: number[]) => {
+      const sorted = [...values].sort((a, b) => a - b);
+      const pick = (q: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))]!;
+      return { p50: pick(0.5), p90: pick(0.9), max: sorted.at(-1) };
+    };
+    const uses = usesOf(REQUIRED);
+    // 一个依赖被改，要复核的义务数 = 把它放进闭包的各单元所引用的义务数之和（同一义务只算一次）
+    const affected = new Map<string, Set<string>>();
+    for (const report of reports) {
+      for (const dep of Object.keys(report.deps)) {
+        const set = affected.get(dep) ?? new Set<string>();
+        for (const use of uses.get(report.unit) ?? []) set.add(use.label);
+        affected.set(dep, set);
+      }
+    }
+    const counts = [...affected.values()].map((set) => set.size);
+    const over100 = [...affected].filter(([, set]) => set.size > 100).map(([dep, set]) => `${dep} ${set.size}`);
     const depth = Math.max(...reports.map((r) => r.depth));
-    const unresolved = reports.reduce((n, r) => n + r.unresolved.length, 0);
     console.info(
-      JSON.stringify({ units: reports.length, size: { p50: pick(0.5), p90: pick(0.9), max: sizes.at(-1) }, depth, unresolved }),
+      JSON.stringify({
+        units: reports.length,
+        closureSize: quantiles(reports.map((r) => r.size)),
+        depth,
+        unresolved: reports.reduce((n, r) => n + r.unresolved.length, 0),
+        dependencies: affected.size,
+        affectedObligations: quantiles(counts),
+        over100: over100.length,
+      }),
     );
-    expect(depth).toBeLessThanOrEqual(12);
-    expect(checkEvidence(REQUIRED, { unused: true }).filter((f) => f.code === 'EVIDENCE_CLOSURE_UNRESOLVED')).toEqual([]);
+    console.info(`OVER100\n${over100.sort().join('\n')}`);
+    expect(depth).toBeLessThanOrEqual(MAX_DEPTH);
+    const unresolved = checkEvidence(REQUIRED, { unused: true }).filter(
+      (f) => f.code === 'EVIDENCE_CLOSURE_UNRESOLVED',
+    );
+    expect(unresolved, show(unresolved)).toEqual([]);
   });
 
   it('边界清单只放授权引擎与通用基础设施：每条有理由；modules/<模块>/ 下除 permission 外一个都不允许', () => {
@@ -333,7 +370,10 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
   it('每条输入来源登记都有证据（调用点 + 取值处），每个分支值条目都有证据', () => {
     for (const [key, entries] of Object.entries(BRANCH_INPUTS)) {
       for (const input of entries as readonly BranchInput[]) {
-        expect(input.at.some((e) => e.role === 'call'), `${key} @${input.position} 缺调用点证据`).toBe(true);
+        expect(
+          input.at.some((e) => e.role === 'call'),
+          `${key} @${input.position} 缺调用点证据`,
+        ).toBe(true);
         expect(input.at.length, `${key} @${input.position}`).toBeGreaterThanOrEqual(2);
       }
     }
@@ -349,7 +389,10 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
 
   it('分支值与输入来源的证据锚点命中、摘要与依赖登记一致（EVIDENCE_STALE / ANCHOR 为零）', () => {
     const found = checkEvidence({}, { unused: false });
-    expect(found.filter((f) => /^EVIDENCE_(STALE|ANCHOR|UNIT|MISSING)$/.test(f.code)), show(found)).toEqual([]);
+    expect(
+      found.filter((f) => /^EVIDENCE_(STALE|ANCHOR|UNIT|MISSING)$/.test(f.code)),
+      show(found),
+    ).toEqual([]);
   });
 });
 
@@ -434,7 +477,8 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记缺失与登记错位',
       const original = unitText(repoSource, evidence.unit);
       const end = original.lastIndexOf('}');
       const touched = end < 0 ? `${original} void 0;` : `${original.slice(0, end)}void 0; ${original.slice(end)}`;
-      const reader: SourceReader = (path) => (path === file ? repoSource(path).replace(original, touched) : repoSource(path));
+      const reader: SourceReader = (path) =>
+        path === file ? repoSource(path).replace(original, touched) : repoSource(path);
       expect(reader(file!), `${evidence.unit} 补丁没有生效`).not.toBe(repoSource(file!));
       expect(codes(checkEvidence({}, { read: reader }))).toContain('EVIDENCE_STALE');
     }
@@ -443,7 +487,8 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记缺失与登记错位',
 
 describe('AC-PRM-FW-02 选择器绑定（B-07）：新结构弱化（按声明结构生成，不经比较器筛选）', () => {
   const sites = () => manifest.declared.flatMap((r) => mapSelectors(r.policy).map((s) => ({ route: r, site: s })));
-  const generated = (kind: string) => manifest.declared.flatMap((r) => weakeningsOf(r, frozen)).filter((w) => w.kind === kind);
+  const generated = (kind: string) =>
+    manifest.declared.flatMap((r) => weakeningsOf(r, frozen)).filter((w) => w.kind === kind);
 
   it('WEAKENING_KINDS 登记三类新弱化', () => {
     expect(WEAKENING_KINDS).toEqual(expect.arrayContaining(['selector→value', 'selector→path', 'selector→from']));
