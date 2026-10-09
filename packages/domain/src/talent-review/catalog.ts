@@ -66,6 +66,21 @@ export const TALENT_REVIEW_OBJECTS = {
     'sortNo',
     'enabled',
   ]),
+  /** 评价规则（TR-R20）：数值类 / 等级类；等级随规则整组维护。设置类配置对象（DEC-121）。 */
+  scoreRule: object('ScoreRule', [
+    'name',
+    'kind',
+    'minScore',
+    'maxScore',
+    'display',
+    'allowUnable',
+    'levels',
+    'enabled',
+  ]),
+  /** 模块等级（TR-R15 / R20）：得分区间或按指标数目的等级项，随模块等级整组维护。 */
+  moduleGrade: object('ModuleGrade', ['name', 'mode', 'items', 'enabled']),
+  /** 字段映射（TR-R9）：带入上次结果 / 入人才池的来源 → 目标字段；预置“标签 → 标签”。 */
+  mapping: object('FieldMapping', ['scene', 'sourceFieldId', 'targetFieldId', 'preset']),
   /**
    * 盘点结果审批（设计 §3.3、§2.6；N12）：审批类型 talent_review_result 的业务对象（集合审批，一单多个被盘点人）。
    * 发起 / 撤回入口随 PR-D 接入；本 PR 只登记对象，供审批类型与标准身份引用。
@@ -90,6 +105,9 @@ export const TALENT_REVIEW_OBJECT_LABELS: Readonly<Record<TalentReviewObject, st
   category: '盘点分类',
   role: '盘点角色',
   field: '盘点字段',
+  scoreRule: '评价规则',
+  moduleGrade: '模块等级',
+  mapping: '字段映射',
   resultApproval: '盘点结果审批',
 };
 
@@ -100,6 +118,9 @@ export const TALENT_REVIEW_CONFIG_OBJECTS: readonly TalentReviewObject[] = [
   'category',
   'role',
   'field',
+  'scoreRule',
+  'moduleGrade',
+  'mapping',
 ];
 
 /** 准备度颜色：#RRGGBB（原站字典每项带颜色，`27` 补充 W-617）。 */

@@ -49,16 +49,17 @@ import {
 import * as simple from './config-service.js';
 import * as fields from './field-service.js';
 import * as settings from './settings-service.js';
+import { registerScoringRoutes } from './scoring-routes.js';
 
 const CATEGORIES = `${TALENT_REVIEW_BASE}/categories`;
 const ROLES = `${TALENT_REVIEW_BASE}/roles`;
 const FIELDS = `${TALENT_REVIEW_BASE}/fields`;
 const SETTINGS = `${TALENT_REVIEW_BASE}/settings`;
 
-type Viewed = { createdBy: string | null; revision: number };
+export type Viewed = { createdBy: string | null; revision: number };
 
 /** 列表公共部分：分页、enabled 筛选（筛选字段须有查看权）、范围谓词；返回信封与已裁剪的条目。 */
-async function listResponse<V extends { id: string; name: string }>(
+export async function listResponse<V extends { id: string; name: string }>(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   ctx: TalentReviewContext,
@@ -79,7 +80,7 @@ async function listResponse<V extends { id: string; name: string }>(
   return c.json({ ...configEnvelope(page, scope), items: await trimReview(deps, ctx, object, items as object[]) });
 }
 
-async function detailResponse<V extends Viewed & { id: string; name: string }>(
+export async function detailResponse<V extends Viewed & { id: string; name: string }>(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   ctx: TalentReviewContext,
@@ -100,7 +101,7 @@ async function detailResponse<V extends Viewed & { id: string; name: string }>(
  * 命令执行：范围在事务外按当前权限解析，首次执行在事务内行锁后复核；幂等重放按当前范围复核结果对象
  * （撤范围后重放 404，AGENTS §10），响应按当前字段权限裁剪。
  */
-async function runWrite<V extends Viewed>(
+export async function runWrite<V extends Viewed>(
   c: Context<TenantEnv>,
   deps: TenantRouteDeps,
   ctx: TalentReviewContext,
@@ -121,10 +122,11 @@ async function runWrite<V extends Viewed>(
   if (c.req.method !== 'DELETE') c.header('ETag', `"${view.revision}"`);
   return c.json((await trimReview(deps, ctx, object, [view]))[0], result.status);
 }
-const visibleTo = (object: ConfigObject) => (scope: ModuleScope, view: Viewed) =>
+export const visibleTo = (object: ConfigObject) => (scope: ModuleScope, view: Viewed) =>
   requireConfigVisible(scope, object, view.createdBy);
 
 export function registerConfigRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerScoringRoutes(router, deps); // PR-B2：评价规则、模块等级、字段映射
   registerSettings(router, deps);
   registerCategories(router, deps);
   registerRoles(router, deps);

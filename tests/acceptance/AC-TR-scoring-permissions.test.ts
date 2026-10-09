@@ -145,6 +145,7 @@ describe('字段映射权限（DEC-121 / 082 / 043）', () => {
       hasDataPermission: false,
     });
     expect((await operator.request('GET', `/field-mappings/${mapping.id}`)).status).toBe(404);
+    await configOperator(world, 'field', { user: operator.user });
     const before = await mappingCount();
     expect(
       (await operator.request('POST', '/field-mappings', { ifMatch: 0, body: mappingBody(a.id, a.id) })).status,

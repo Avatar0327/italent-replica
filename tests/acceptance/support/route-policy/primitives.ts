@@ -322,6 +322,8 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['talentReview.configRenameRequiresSeeAll', /\bNAME_REQUIRES_SEE_ALL\b/, { modules: ['talent-review'] }],
     // 新建字段时指定成对字段：另需字段更新权 + update 按钮 + pairFieldId 编辑权（config-routes.ts requirePairUpdate）
     ['talentReview.pairRequiresUpdate', call('requirePairUpdate'), { modules: ['talent-review'] }],
+    // 字段映射引用来源 / 目标字段 = 读取字段对象：另需字段对象的查看权与范围（scoring-routes.ts requireMappingFields）
+    ['talentReview.mappingFieldVisible', call('requireMappingFields'), { modules: ['talent-review'] }],
     ['selfService.transferInput', call('ownTransferInput'), { modules: ['self-service'] }],
     ['selfService.referenceChoices', call('referenceChoices'), { modules: ['self-service'] }],
     ['selfService.ownApplication', call('ownApplication'), { modules: ['self-service'] }],

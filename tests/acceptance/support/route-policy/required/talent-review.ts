@@ -75,12 +75,20 @@ function change(operation: Exclude<Operation, 'view'>): Obligation[] {
 
 // ---- R3-T04 PR-B1：设置 / 分类 / 角色 / 字段目录（modules/talent-review/config-routes.ts） ----------------------------
 const CFG = `${T}/config-routes.ts`;
+const SCORING = `${T}/scoring-routes.ts`;
 const CATALOG = 'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS';
-const cfgView = (object: string, constKey: string, label: string, register: string, anchor: string): Obligation => ({
+const cfgView = (
+  object: string,
+  constKey: string,
+  label: string,
+  register: string,
+  anchor: string,
+  file = CFG,
+): Obligation => ({
   perm: `obj:${object}:view`,
   facts: ['object:objectContext'],
   at: [
-    { role: 'call', unit: `${CFG}#${register}`, anchor },
+    { role: 'call', unit: `${file}#${register}`, anchor },
     ...CONTEXT,
     { role: 'const', unit: `${CATALOG}>${constKey}`, anchor: `object('${label}'` },
   ],
@@ -91,10 +99,11 @@ function cfgChange(
   label: string,
   register: string,
   operation: Exclude<Operation, 'view'>,
+  file = CFG,
 ): Obligation[] {
   const entry: Evidence = {
     role: 'call',
-    unit: `${CFG}#${register}`,
+    unit: `${file}#${register}`,
     anchor: `const ctx = await reviewWriteContext(c, deps, '${constKey}', '${operation}', revision(c))`,
   };
   const objectConst: Evidence = { role: 'const', unit: `${CATALOG}>${constKey}`, anchor: `object('${label}'` };
@@ -182,20 +191,85 @@ const PAIR_OBLIGATIONS: Obligation[] = [
   },
 ];
 
-/** 分类 / 角色 / 字段目录五条路由；settings 另列（单例，只有读与改）。 */
-function cfgObject(key: string, label: string, register: string, base: string, constName: string): RequiredTable {
+/** 分类 / 角色 / 字段目录（B1）与评价规则 / 模块等级（B2，scoring-routes.ts）五条路由；settings 另列（单例，只有读与改）。 */
+function cfgObject(
+  key: string,
+  label: string,
+  register: string,
+  base: string,
+  constName: string,
+  file = CFG,
+): RequiredTable {
   const object = `TalentReview.${label}`;
-  const get = (anchor: string) => cfgView(object, key, label, register, anchor);
+  const get = (anchor: string) => cfgView(object, key, label, register, anchor, file);
   const ctx = `const ctx = await reviewContext(c, deps, '${key}')`;
   return {
     [`GET ${BASE_ROOT}/${base}`]: [get(`router.get(${constName}, async (c) => { ${ctx}`), FILTER_GUARD],
     [`GET ${BASE_ROOT}/${base}/:id`]: [get(`router.get(\`\${${constName}}/:id\`, async (c) => { ${ctx}`)],
     [`POST ${BASE_ROOT}/${base}`]: [
-      ...cfgChange(object, key, label, register, 'create'),
+      ...cfgChange(object, key, label, register, 'create', file),
       ...(key === 'field' ? PAIR_OBLIGATIONS : []),
     ],
-    [`PATCH ${BASE_ROOT}/${base}/:id`]: [...cfgChange(object, key, label, register, 'update'), RENAME_GUARD],
-    [`DELETE ${BASE_ROOT}/${base}/:id`]: cfgChange(object, key, label, register, 'delete'),
+    [`PATCH ${BASE_ROOT}/${base}/:id`]: [...cfgChange(object, key, label, register, 'update', file), RENAME_GUARD],
+    [`DELETE ${BASE_ROOT}/${base}/:id`]: cfgChange(object, key, label, register, 'delete', file),
+  };
+}
+
+/**
+ * 字段映射（B2）：无名称（无改名守卫）；列表自己写 scene 筛选守卫；新建 / 改来源或目标字段 = 读取字段对象，
+ * 另需字段对象的查看权（条件准入，随守卫 talentReview.mappingFieldVisible）。
+ */
+const MAPPING_GUARD = 'talentReview.mappingFieldVisible';
+const mappingFieldsCall: Evidence = {
+  role: 'call',
+  unit: `${SCORING}#requireMappingFields`,
+  anchor: "const ctx = await reviewContext(c, deps, 'field')",
+};
+const MAPPING_FIELD_OBLIGATIONS = (entry: string): Obligation[] => [
+  {
+    perm: `guard:${MAPPING_GUARD}`,
+    facts: [`guard:${MAPPING_GUARD}`],
+    note: '引用来源 / 目标字段 = 读取字段对象：另需字段对象查看权与范围（先于读取字段；不存在与范围外同一个 404）',
+    at: [{ role: 'call', unit: `${SCORING}#registerMappings`, anchor: entry }],
+  },
+  {
+    perm: 'obj:TalentReview.Field:view',
+    purpose: `when:${MAPPING_GUARD}`,
+    at: [mappingFieldsCall, ...CONTEXT, FIELD_OBJECT_CONST],
+  },
+];
+function mappingTable(): RequiredTable {
+  const object = 'TalentReview.FieldMapping';
+  const reg = 'registerMappings';
+  const list = "router.get(MAPPINGS, async (c) => { const ctx = await reviewContext(c, deps, 'mapping')";
+  const detail = "router.get(`${MAPPINGS}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'mapping')";
+  return {
+    [`GET ${BASE_ROOT}/field-mappings`]: [
+      cfgView(object, 'mapping', 'FieldMapping', reg, list, SCORING),
+      {
+        perm: 'guard:talentReview.filterFieldVisible',
+        facts: ['guard:talentReview.filterFieldVisible'],
+        note: '带 scene 筛选而无 scene 字段查看权 → 403 FILTER_FIELD_HIDDEN（字段级，只在带筛选时判定）',
+        at: [
+          {
+            role: 'call',
+            unit: `${SCORING}#${reg}`,
+            anchor: "if (scene !== undefined) await requireFilterVisible(deps, ctx, 'mapping', 'scene')",
+          },
+          FILTER_GUARD.at[1]!,
+        ],
+      },
+    ],
+    [`GET ${BASE_ROOT}/field-mappings/:id`]: [cfgView(object, 'mapping', 'FieldMapping', reg, detail, SCORING)],
+    [`POST ${BASE_ROOT}/field-mappings`]: [
+      ...cfgChange(object, 'mapping', 'FieldMapping', reg, 'create', SCORING),
+      ...MAPPING_FIELD_OBLIGATIONS('const fieldScope = await requireMappingFields(c, deps);'),
+    ],
+    [`PATCH ${BASE_ROOT}/field-mappings/:id`]: [
+      ...cfgChange(object, 'mapping', 'FieldMapping', reg, 'update', SCORING),
+      ...MAPPING_FIELD_OBLIGATIONS('const fieldScope = touched ? await requireMappingFields(c, deps) : undefined;'),
+    ],
+    [`DELETE ${BASE_ROOT}/field-mappings/:id`]: cfgChange(object, 'mapping', 'FieldMapping', reg, 'delete', SCORING),
   };
 }
 const BASE_ROOT = '/api/tenant/talent-review';
@@ -205,6 +279,9 @@ export const TALENT_REVIEW: RequiredTable = {
   ...cfgObject('category', 'Category', 'registerCategories', 'categories', 'CATEGORIES'),
   ...cfgObject('role', 'Role', 'registerRoles', 'roles', 'ROLES'),
   ...cfgObject('field', 'Field', 'registerFields', 'fields', 'FIELDS'),
+  ...cfgObject('scoreRule', 'ScoreRule', 'registerScoreRules', 'score-rules', 'SCORE_RULES', SCORING),
+  ...cfgObject('moduleGrade', 'ModuleGrade', 'registerModuleGrades', 'module-grades', 'MODULE_GRADES', SCORING),
+  ...mappingTable(),
   [`GET ${BASE_ROOT}/settings`]: [
     cfgView(
       SETTINGS_OBJECT,

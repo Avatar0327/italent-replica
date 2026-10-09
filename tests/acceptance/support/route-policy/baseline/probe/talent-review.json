@@ -19,6 +19,26 @@
       "obj:TalentReview.Category:delete"
     ]
   },
+  "DELETE /api/tenant/talent-review/field-mappings/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "fbf04fb1a95e",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.FieldMapping/-"
+    ],
+    "trace": [
+      "btn:TalentReview.FieldMapping#delete@detail",
+      "obj:TalentReview.FieldMapping:delete"
+    ]
+  },
   "DELETE /api/tenant/talent-review/fields/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -37,6 +57,26 @@
     "trace": [
       "btn:TalentReview.Field#delete@detail",
       "obj:TalentReview.Field:delete"
+    ]
+  },
+  "DELETE /api/tenant/talent-review/module-grades/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "49c0d8140bca",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.ModuleGrade/-"
+    ],
+    "trace": [
+      "btn:TalentReview.ModuleGrade#delete@detail",
+      "obj:TalentReview.ModuleGrade:delete"
     ]
   },
   "DELETE /api/tenant/talent-review/readiness-levels/:id": {
@@ -79,6 +119,26 @@
       "obj:TalentReview.Role:delete"
     ]
   },
+  "DELETE /api/tenant/talent-review/score-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "edd2560d8a5e",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.ScoreRule/-"
+    ],
+    "trace": [
+      "btn:TalentReview.ScoreRule#delete@detail",
+      "obj:TalentReview.ScoreRule:delete"
+    ]
+  },
   "GET /api/tenant/talent-review/categories": {
     "all": {
       "status": 200
@@ -112,6 +172,39 @@
       "obj:TalentReview.Category:view"
     ]
   },
+  "GET /api/tenant/talent-review/field-mappings": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentReview.FieldMapping"
+    ],
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.FieldMapping/TalentReview.FieldMapping.list"
+    ],
+    "trace": [
+      "obj:TalentReview.FieldMapping:view"
+    ]
+  },
+  "GET /api/tenant/talent-review/field-mappings/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "fbf04fb1a95e",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.FieldMapping/TalentReview.FieldMapping.detail"
+    ],
+    "trace": [
+      "obj:TalentReview.FieldMapping:view"
+    ]
+  },
   "GET /api/tenant/talent-review/fields": {
     "all": {
       "status": 200
@@ -143,6 +236,39 @@
     ],
     "trace": [
       "obj:TalentReview.Field:view"
+    ]
+  },
+  "GET /api/tenant/talent-review/module-grades": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentReview.ModuleGrade"
+    ],
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.ModuleGrade/TalentReview.ModuleGrade.list"
+    ],
+    "trace": [
+      "obj:TalentReview.ModuleGrade:view"
+    ]
+  },
+  "GET /api/tenant/talent-review/module-grades/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "49c0d8140bca",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.ModuleGrade/TalentReview.ModuleGrade.detail"
+    ],
+    "trace": [
+      "obj:TalentReview.ModuleGrade:view"
     ]
   },
   "GET /api/tenant/talent-review/readiness-levels": {
@@ -211,6 +337,39 @@
       "obj:TalentReview.Role:view"
     ]
   },
+  "GET /api/tenant/talent-review/score-rules": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentReview.ScoreRule"
+    ],
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.ScoreRule/TalentReview.ScoreRule.list"
+    ],
+    "trace": [
+      "obj:TalentReview.ScoreRule:view"
+    ]
+  },
+  "GET /api/tenant/talent-review/score-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "edd2560d8a5e",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.ScoreRule/TalentReview.ScoreRule.detail"
+    ],
+    "trace": [
+      "obj:TalentReview.ScoreRule:view"
+    ]
+  },
   "GET /api/tenant/talent-review/settings": {
     "all": {
       "status": 200
@@ -245,6 +404,26 @@
       "obj:TalentReview.Category:update"
     ]
   },
+  "PATCH /api/tenant/talent-review/field-mappings/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "fbf04fb1a95e",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.FieldMapping/-"
+    ],
+    "trace": [
+      "btn:TalentReview.FieldMapping#update@detail",
+      "obj:TalentReview.FieldMapping:update"
+    ]
+  },
   "PATCH /api/tenant/talent-review/fields/:id": {
     "all": {
       "code": "NOT_FOUND",
@@ -263,6 +442,26 @@
     "trace": [
       "btn:TalentReview.Field#update@detail",
       "obj:TalentReview.Field:update"
+    ]
+  },
+  "PATCH /api/tenant/talent-review/module-grades/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "49c0d8140bca",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.ModuleGrade/-"
+    ],
+    "trace": [
+      "btn:TalentReview.ModuleGrade#update@detail",
+      "obj:TalentReview.ModuleGrade:update"
     ]
   },
   "PATCH /api/tenant/talent-review/readiness-levels/:id": {
@@ -305,6 +504,26 @@
       "obj:TalentReview.Role:update"
     ]
   },
+  "PATCH /api/tenant/talent-review/score-rules/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "edd2560d8a5e",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.ScoreRule/-"
+    ],
+    "trace": [
+      "btn:TalentReview.ScoreRule#update@detail",
+      "obj:TalentReview.ScoreRule:update"
+    ]
+  },
   "PATCH /api/tenant/talent-review/settings": {
     "all": {
       "code": "REVISION_CONFLICT",
@@ -333,6 +552,19 @@
       "obj:TalentReview.Category:create"
     ]
   },
+  "POST /api/tenant/talent-review/field-mappings": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentReview.FieldMapping#create@list",
+      "obj:TalentReview.FieldMapping:create"
+    ]
+  },
   "POST /api/tenant/talent-review/fields": {
     "all": {
       "code": "REVISION_CONFLICT",
@@ -344,6 +576,19 @@
     "trace": [
       "btn:TalentReview.Field#create@list",
       "obj:TalentReview.Field:create"
+    ]
+  },
+  "POST /api/tenant/talent-review/module-grades": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentReview.ModuleGrade#create@list",
+      "obj:TalentReview.ModuleGrade:create"
     ]
   },
   "POST /api/tenant/talent-review/readiness-levels": {
@@ -370,6 +615,19 @@
     "trace": [
       "btn:TalentReview.Role#create@list",
       "obj:TalentReview.Role:create"
+    ]
+  },
+  "POST /api/tenant/talent-review/score-rules": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentReview.ScoreRule#create@list",
+      "obj:TalentReview.ScoreRule:create"
     ]
   }
 }
