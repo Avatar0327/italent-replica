@@ -12,7 +12,8 @@ import type { Need } from './required/types.js';
 /** 可选分支名（D3）：驼峰字母数字。节点路径按点号切分，名字里带点会找错分支（required-mutate.ts locate）。 */
 export const OPTIONAL_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/;
 
-export type ScopeMode = 'point' | 'list' | 'see-all' | 'guard' | 'none';
+/** `missing` = byObject 里没有该对象也没有 `*`：范围缺失，不满足任何 need（不借用其他对象的范围）。 */
+export type ScopeMode = 'point' | 'list' | 'see-all' | 'guard' | 'none' | 'missing';
 /** 节点范围的签名：模式 + 名字（point = 定位器，list = 谓词，guard = 守卫名；see-all / none 无名字）。 */
 export interface ScopeSig {
   readonly mode: ScopeMode;
@@ -111,20 +112,38 @@ function sigOf(scope: unknown): ScopeSig {
   }
 }
 
-/** 节点的范围签名；按对象分范围（byObject）时，静态对象取该对象的条目（缺则 `*`），动态对象列出全部条目。 */
-function scopesOf(node: Node, object: string | undefined): ScopeSig[] {
+/** 对象选择器能取到的全部对象编码：静态值；param / body / query 映射的取值；mapper / record 登记的域。 */
+export function objectsOf(selector: unknown): string[] | undefined {
+  if (typeof selector === 'string') return [selector];
+  if (!selector || typeof selector !== 'object' || !('from' in selector)) return undefined;
+  const s = selector as Node;
+  if (s['from'] === 'mapper' || s['from'] === 'record') return [...((s['domain'] as string[] | undefined) ?? [])];
+  const values = Object.values((s['map'] as Node | undefined) ?? {}).filter((v): v is string => typeof v === 'string');
+  return [...new Set(values)];
+}
+
+/**
+ * 节点对其对象的范围签名，**按实际对象逐项选择**（#162 审查 P2-1）：byObject 里取该对象的条目，缺则取 `*`，都没有就是
+ * `missing`（不借用其他对象的范围）；动态对象逐个对象各取一项，满足 need 时要求每一项都满足。
+ * 对象取不到（不是对象节点）时无法逐项选择，列出全部条目，同样要求每一项都满足。
+ */
+function scopesOf(node: Node): ScopeSig[] {
   const scope = node['scope'] as Node | undefined;
   if (!scope || typeof scope !== 'object' || !('byObject' in scope)) return [sigOf(scope)];
   const by = scope['byObject'] as Node;
-  const exact = object !== undefined && !object.startsWith('{') ? (by[object] ?? by['*']) : undefined;
-  return exact ? [sigOf(exact)] : Object.values(by).map(sigOf);
+  const objects = objectsOf(node['object']);
+  if (!objects?.length) return Object.values(by).map(sigOf);
+  return objects.map((object) => {
+    const entry = by[object] ?? by['*'];
+    return entry ? sigOf(entry) : { mode: 'missing', name: object };
+  });
 }
 
 /** 节点自身（不含 of / optional 分支）授予的权限键。 */
 export function nodePerms(node: Node, path: string): [string, PermSource][] {
   const out: [string, PermSource][] = [];
   const carrier = node['kind'] === 'object' || node['kind'] === 'admin';
-  const scopes = scopesOf(node, objectToken(node['object']));
+  const scopes = scopesOf(node);
   const add = (perm: string | undefined, field: PermSource['field']) => {
     if (perm) out.push([perm, { path, field, carrier, scopes }]);
   };
@@ -238,11 +257,11 @@ export function branchPerms(branch: OptionalBranch): Set<string> {
   return new Set(branch.alternatives.flatMap((alt) => [...alt.keys()]));
 }
 
-/** 签名集合里是否有满足 need 的：模式相等，且 need 写了名字就要相等。 */
+/** 签名集合是否**每一项**都满足 need：模式相等，且 need 写了名字就要相等（`missing` 永不满足）。 */
 export function scopeMatches(scopes: readonly ScopeSig[], need: Need | undefined): boolean {
   if (!need) return true;
   const wanted = need.locator ?? need.predicate ?? need.guard;
-  return scopes.some((sig) => sig.mode === need.scope && (wanted === undefined || sig.name === wanted));
+  return scopes.every((sig) => sig.mode === need.scope && (wanted === undefined || sig.name === wanted));
 }
 
 /** 备选里是否有提供 perm 且范围满足 need 的来源节点。 */

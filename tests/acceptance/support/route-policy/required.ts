@@ -23,7 +23,7 @@ import type { ManifestRoute } from '@italent/api';
 import type { Finding } from './compare.js';
 import type { ObservedContract, ObservedRoute } from './contract.js';
 import { branchPerms, declaredPerms, provides, type PermMap, type ScopeSig } from './perms.js';
-import { GUARD_INNER_ALTS } from './required/guard-inner.js';
+import { GUARD_INNER_ALTS, INNER_CONDITIONS } from './required/guard-inner.js';
 import type { Need, Obligation, RequiredTable } from './required/types.js';
 
 /** 权限类原语维度：它们的每个原始事实都要有义务承接；其余维度（范围 / 字段 / 命令 / 前提 …）是元数据。 */
@@ -68,7 +68,8 @@ function union(maps: Iterable<PermMap>): Set<string> {
   return new Set([...maps].flatMap((map) => [...map.keys()]));
 }
 
-const sigText = (sig: ScopeSig) => (sig.name ? `${sig.mode}(${sig.name})` : sig.mode);
+const sigText = (sig: ScopeSig) =>
+  sig.mode === 'missing' ? `缺失(${sig.name})` : sig.name ? `${sig.mode}(${sig.name})` : sig.mode;
 const needText = (need: Need | undefined) =>
   need ? sigText({ mode: need.scope, name: need.locator ?? need.predicate ?? need.guard }) : '任意';
 const declaredText = (alt: PermMap, perm: string) =>
@@ -170,15 +171,17 @@ export function checkRoute(
       if (!holds(alt, o)) report('DISCLOSURE_WEAK', `披露 ${carrierOf(o)} 第 ${k + 1} 个备选：${whyNot(alt, o)}`);
     });
   }
-  for (const [name, alts] of groupsOf(disclosures)) {
-    const branchName = carrierOf([...alts.values()][0]![0]!);
+  // 披露“或”组按分支逐个检查（组名在不同分支里可以重名，不能跨分支合并，#162 审查 P3）
+  for (const branchName of new Set(disclosures.filter((x) => x.or).map(carrierOf))) {
     const branch = decl.optional.get(branchName);
-    if (!branch) report('DISCLOSURE_MISSING', `披露 ${branchName}（组 ${name}）没有 optional 分支`);
-    else
-      branch.alternatives.forEach((alt, k) => {
-        if (!satisfiedGroupAlts(alt, alts).length)
-          report('DISCLOSURE_WEAK', `披露 ${branchName} 第 ${k + 1} 个备选不满足“或”组 ${name}`);
-      });
+    for (const [name, alts] of groupsOf(disclosures.filter((x) => carrierOf(x) === branchName))) {
+      if (!branch) report('DISCLOSURE_MISSING', `披露 ${branchName}（组 ${name}）没有 optional 分支`);
+      else
+        branch.alternatives.forEach((alt, k) => {
+          if (!satisfiedGroupAlts(alt, alts).length)
+            report('DISCLOSURE_WEAK', `披露 ${branchName} 第 ${k + 1} 个备选不满足“或”组 ${name}`);
+        });
+    }
   }
   const declaredAdmission = union(decl.alternatives);
   for (const [perm, uses] of byPerm) {
@@ -212,13 +215,18 @@ export function checkRoute(
     } else if (o.inner.role === 'or') {
       const registered = GUARD_INNER_ALTS[carrierOf(o)];
       const alt = registered?.alts[o.inner.alt];
-      const ok =
-        registered?.group === o.inner.group && alt !== undefined && (typeof alt === 'string' || alt.includes(o.perm));
+      // 数据态备选（`data:` 字符串）不经授权器，不能承载带权限键的义务；权限备选必须含该权限键（#162 审查 P2-3）
+      const ok = registered?.group === o.inner.group && Array.isArray(alt) && alt.includes(o.perm);
       if (!ok)
         report(
           'GUARD_INNER_ALT_UNREGISTERED',
-          `${o.perm} 的内部备选 ${o.inner.group}:${o.inner.alt} 未在 GUARD_INNER_ALTS 登记`,
+          `${o.perm} 的内部备选 ${o.inner.group}:${o.inner.alt} 未在 GUARD_INNER_ALTS 登记，或不是含该权限的权限备选`,
         );
+    } else if (o.inner.role === 'when' && !INNER_CONDITIONS[o.inner.condition]) {
+      report(
+        'GUARD_INNER_CONDITION_UNREGISTERED',
+        `${o.perm} 的条件 ${o.inner.condition} 未在 INNER_CONDITIONS 登记语义`,
+      );
     }
   }
   // R7：表外的权限

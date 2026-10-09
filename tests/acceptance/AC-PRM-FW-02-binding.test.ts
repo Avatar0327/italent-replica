@@ -219,7 +219,7 @@ describe('AC-PRM-FW-02 P3 覆盖断言反向差集与统计；披露“或”组
 
   it('B-05 统计：类 × 用途 × 端点数，每类至少一个端点，合计等于突变总数', () => {
     const mutants = manifest.declared.flatMap((r) => requiredMutants(r, REQUIRED));
-    const stats = coverageStats(mutants, REQUIRED);
+    const stats = coverageStats(mutants);
     expect(stats.length).toBeGreaterThan(0);
     for (const row of stats) {
       expect(row.endpoints, `${row.kind}/${row.purpose}`).toBeGreaterThan(0);

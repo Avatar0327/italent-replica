@@ -317,7 +317,7 @@ function createGuards(key: Key): Obligation[] {
           ],
           { role: 'required' },
         ),
-        ...referenced('dimension', key, [DIMENSION_REFERENCES], { role: 'when', condition: 'payload.dimensions' }),
+        ...referenced('dimension', key, [DIMENSION_REFERENCES], { role: 'when', condition: 'dimensions.nonEmpty' }),
         COPY_CATEGORY_NAME,
       ];
   }
@@ -361,7 +361,7 @@ function updateGuards(key: Key): Obligation[] {
           ],
           { role: 'when', condition: 'categoryChanged' },
         ),
-        ...referenced('dimension', key, [DIMENSION_REFERENCES], { role: 'when', condition: 'payload.dimensions' }),
+        ...referenced('dimension', key, [DIMENSION_REFERENCES], { role: 'when', condition: 'dimensions.newReference' }),
         COPY_CATEGORY_NAME,
         {
           perm: 'guard:talent.relationUnit',

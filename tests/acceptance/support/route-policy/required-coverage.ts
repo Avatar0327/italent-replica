@@ -50,3 +50,52 @@ export function missingCoverage(expected: readonly string[], mutants: readonly R
   const actual = new Set(mutants.map((m) => `${m.kind}|${m.coverageKey}`));
   return [...new Set(expected)].filter((item) => !actual.has(item));
 }
+
+const COVERED_KINDS: ReadonlySet<string> = new Set([
+  'required→none',
+  'required→optional',
+  'or-member→none',
+  OR_GROUP_KIND,
+]);
+
+/**
+ * 生成了、期望集合里却没有的 `类别|覆盖键`（actual − expected，#162 审查 P3）：覆盖断言双向核对。
+ * 只看由准入义务推导的四类突变（披露 / 条件类突变不在 expectedMutationKeys 的范围内）。
+ */
+export function extraCoverage(expected: readonly string[], mutants: readonly RequiredMutant[]): string[] {
+  const wanted = new Set(expected);
+  return [...new Set(mutants.filter((m) => COVERED_KINDS.has(m.kind)).map((m) => `${m.kind}|${m.coverageKey}`))].filter(
+    (item) => !wanted.has(item),
+  );
+}
+
+export interface CoverageRow {
+  readonly kind: string;
+  readonly purpose: 'admission' | 'disclosure' | 'when';
+  readonly endpoints: number;
+  readonly mutants: number;
+}
+
+const PURPOSE_OF: Readonly<Record<string, CoverageRow['purpose']>> = {
+  'disclosure→none': 'disclosure',
+  'disclosure→admission': 'disclosure',
+  'conditional→none': 'when',
+};
+
+/** 突变覆盖统计：类 × 用途 × 端点数 / 突变数。 */
+export function coverageStats(mutants: readonly RequiredMutant[]): CoverageRow[] {
+  const rows = new Map<string, { kind: string; purpose: CoverageRow['purpose']; keys: Set<string>; mutants: number }>();
+  for (const m of mutants) {
+    const purpose = PURPOSE_OF[m.kind] ?? 'admission';
+    const id = `${m.kind}|${purpose}`;
+    const row = rows.get(id) ?? { kind: m.kind, purpose, keys: new Set<string>(), mutants: 0 };
+    row.keys.add(m.key);
+    rows.set(id, { ...row, mutants: row.mutants + 1 });
+  }
+  return [...rows.values()].map((r) => ({
+    kind: r.kind,
+    purpose: r.purpose,
+    endpoints: r.keys.size,
+    mutants: r.mutants,
+  }));
+}

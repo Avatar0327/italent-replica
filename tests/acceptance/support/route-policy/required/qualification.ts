@@ -355,7 +355,7 @@ function createGuards(key: Key): Obligation[] {
             svc(`${STANDARDS}#createStandard`, 'await writeCells(tx, ctx, id, levelIds, body.details, [])'),
           ],
           specRefs("references: ['category', 'level', 'target']"),
-          { role: 'when', condition: 'body.details' },
+          { role: 'when', condition: 'details.targetReference' },
         ),
       ];
     default:
@@ -416,7 +416,7 @@ function updateGuards(key: Key): Obligation[] {
           'gradeScheme',
           [GRADE_SCHEME_CHECK, call(`${TARGETS}#updateTarget`, 'await checkEvalMode(tx, ctx, mode, scheme)')],
           specRefs("references: ['targetType', 'gradeScheme']"),
-          { role: 'when', condition: 'evalMode=grade' },
+          { role: 'when', condition: 'grade.changed' },
         ),
       ];
     case 'standard':
@@ -431,7 +431,7 @@ function updateGuards(key: Key): Obligation[] {
             ),
           ],
           specRefs("references: ['category', 'level', 'target']"),
-          { role: 'when', condition: 'body.details' },
+          { role: 'when', condition: 'details.targetReference' },
         ),
       ];
     default:
@@ -569,13 +569,13 @@ const EXTRA: RequiredTable = {
       'category',
       [call(PUT_CHANNELS, "await referenced(tx, ctx, 'category', channel.targetCategoryId, isNew)")],
       CHANNEL_REFS,
-      { role: 'when', condition: 'newChannel' },
+      { role: 'when', condition: 'channels.nonEmpty' },
     ),
     ...referenced(
       'level',
       [call(PUT_CHANNELS, "await referenced(tx, ctx, 'level', channel.targetLevelId, isNew)")],
       CHANNEL_REFS,
-      { role: 'when', condition: 'newChannel' },
+      { role: 'when', condition: 'channels.nonEmpty' },
     ),
   ],
   [`GET ${BASE}/standards/:id/chart`]: [

@@ -7,9 +7,9 @@
  */
 import type { ManifestRoute, RoutePolicy } from '@italent/api';
 import type { ObservedContract } from './contract.js';
-import { declaredPerms } from './perms.js';
+import { declaredPerms, objectsOf, type PermMap, scopeMatches } from './perms.js';
 import { locate } from './required-mutate.js';
-import type { RequiredTable } from './required/types.js';
+import type { Obligation, RequiredTable } from './required/types.js';
 
 export type WeakeningKind =
   | 'all-drop-branch'
@@ -232,6 +232,8 @@ export const DISCLOSURE_WEAKENING_KINDS = [
   'scope→sibling',
   'disclosure-scope→none',
   'disclosure-scope→wrong-predicate',
+  'scope→foreign-object',
+  'scope→partial-object',
 ] as const;
 export type DisclosureWeakeningKind = (typeof DISCLOSURE_WEAKENING_KINDS)[number];
 
@@ -377,5 +379,71 @@ export function disclosureWeakeningsOf(route: ManifestRoute, table: RequiredTabl
       }
     }
   }
+  scopeBindingWeakenings(route, obligations, (kind, at, expected, mutate) => {
+    const root = rootOf();
+    mutate(root);
+    push(kind, at, expected, make(root));
+  });
   return out;
 }
+
+/**
+ * 范围按实际对象绑定（#162 审查 P2-1）：对每个“唯一满足 need 的来源节点”（准入备选或披露分支里、同一权限没有第二个
+ * 满足 need 的来源），① 把节点范围改成只登记给无关对象的 byObject（scope→foreign-object）；② 动态对象（映射 / 域有
+ * 多个对象）只给第一个对象保留原范围、其余 `*:none`（scope→partial-object，原范围为 none 时无差别不生成）。
+ * 准入里的来源期望 REQUIRED_MISSING，披露分支里的来源期望 DISCLOSURE_WEAK。
+ */
+function scopeBindingWeakenings(
+  route: ManifestRoute,
+  obligations: readonly Obligation[],
+  push: (kind: DisclosureWeakeningKind, at: string, expected: string, mutate: (root: Node) => void) => void,
+): void {
+  const decl = declaredPerms(route.policy);
+  const seen = new Set<string>();
+  const visit = (alts: readonly PermMap[], owned: readonly Obligation[], expected: string, label: string) => {
+    for (const [i, alt] of alts.entries()) {
+      for (const o of owned.filter((x) => x.need && !x.or)) {
+        const matching = new Set(
+          (alt.get(o.perm) ?? [])
+            .filter((src) => src.carrier && scopeMatches(src.scopes, o.need))
+            .map((src) => src.path),
+        );
+        if (matching.size !== 1) continue;
+        const [path] = [...matching] as [string];
+        if (seen.has(`${expected}|${path}`)) continue;
+        seen.add(`${expected}|${path}`);
+        const node = locate(rootOfPolicy(route), path);
+        const original = node?.['scope'] as Node | undefined;
+        if (!node || !original || typeof original !== 'object') continue;
+        const at = `${label}备选${i + 1}:${path || 'root'}`;
+        push('scope→foreign-object', at, expected, (root) => {
+          locate(root, path)!['scope'] = { byObject: { 'Fixture.Unrelated': original } };
+        });
+        const objects = objectsOf(node['object']);
+        if (objects && objects.length > 1 && original['mode'] !== 'none' && !('byObject' in original)) {
+          push('scope→partial-object', at, expected, (root) => {
+            locate(root, path)!['scope'] = {
+              byObject: { [objects[0]!]: original, '*': { mode: 'none', reason: '弱化反例' } },
+            };
+          });
+        }
+      }
+    }
+  };
+  visit(
+    decl.alternatives,
+    obligations.filter((o) => o.purpose === undefined),
+    'REQUIRED_MISSING',
+    '',
+  );
+  for (const [name, branch] of decl.optional) {
+    visit(
+      branch.alternatives,
+      obligations.filter((o) => o.purpose === `disclosure:${name}`),
+      'DISCLOSURE_WEAK',
+      `optional.${name}.`,
+    );
+  }
+}
+
+const rootOfPolicy = (route: ManifestRoute) => route.policy as unknown as Node;
