@@ -25,6 +25,7 @@ import {
   CONTRACT_OBJECT,
   ESTABLISHMENT_SCHEME_DATASOURCE,
   EVALUATION_AUDIT_ACTIONS,
+  EVALUATION_FLOW_OBJECTS,
   EVALUATION_OBJECTS,
   EVALUATION_ORG_OBJECTS,
   IDP_OBJECTS,
@@ -226,6 +227,29 @@ function qualificationRules(): Rule[] {
     ...appConfigRules(rest as typeof QUALIFICATION_OBJECTS, QUALIFICATION_AUDIT_ACTIONS, QUALIFICATION_ORG_AUDITED),
     ...open,
   ];
+}
+
+/**
+ * 人才评定流程对象（员工评定数据及下级）的审计查看谓词：设计 §5.1 activityPersonRule（活动谓词 ∧ 人员范围），
+ * 规则体随评定数据表由 C2-1a 注入。P0 契约先登记对象类型与这个注入位，C2 不再改本文件。
+ */
+export type EvaluationFlowAuditRule = (scope: ModuleScope, row: AuditRuleRow, viewer: AuditRuleViewer) => SQL;
+export type AuditRuleRow = Row;
+export type AuditRuleViewer = Viewer;
+
+let evaluationFlowRule: EvaluationFlowAuditRule | null = null;
+
+/** 注入（或以 null 撤销）流程对象的审计查看谓词；未注入时这些日志一律不返回（fail-closed），看全部也不例外。 */
+export function registerEvaluationFlowAuditRule(rule: EvaluationFlowAuditRule | null): void {
+  evaluationFlowRule = rule;
+}
+
+function evaluationFlowRules(): Rule[] {
+  return Object.values(EVALUATION_FLOW_OBJECTS).map(({ code }): Rule => ({
+    types: [code],
+    objectCode: code,
+    visible: (scope, row, viewer) => (evaluationFlowRule ? evaluationFlowRule(scope, row, viewer) : sql`false`),
+  }));
 }
 
 /** DEC-197：业务编号解析到当前员工范围；创建人仍取调动业务，不取联动日志执行人。 */
@@ -565,9 +589,11 @@ const RULES: readonly Rule[] = [
     );
   }),
   // R3-T02 任职资格（Qualification）与人才评定配置（TEvaluation），设计 §8：带资源集合 / 所属组织的对象按日志写入时的
-  // 所属组织裁剪，不因向下公开放宽；字典只认看全部或创建人（DEC-121）。流程对象（员工评定数据等）随 C2 登记。
+  // 所属组织裁剪，不因向下公开放宽；字典只认看全部或创建人（DEC-121）。流程对象（员工评定数据等）按注入的
+  // activityPersonRule，未注入前不返回（P0 契约）。
   ...qualificationRules(),
   ...appConfigRules(EVALUATION_OBJECTS, EVALUATION_AUDIT_ACTIONS, EVALUATION_ORG_OBJECTS),
+  ...evaluationFlowRules(),
   // R3-T07 PR-B：计划及其组成部分按计划员工、关键信息按员工（带教按被带教人）归属，与业务接口的范围一致（K-50）；
   // 关键信息另要求日志前后快照涉及的全部员工 / 组织都在范围内（带教双方、轮岗部门，第 2 轮 P2-1）
   ...IDP_PERSON_OBJECTS.map((object): Rule => {

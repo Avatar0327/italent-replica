@@ -382,6 +382,30 @@ export const APPROVAL: RequiredTable = {
         { role: 'impl', unit: `${ACCESS}#requireResubmitRight`, anchor: "if (instance.businessType === 'idp') {" },
       ],
     },
+    {
+      // R3-T02 P0 契约：personnel_change 分支经适配器调 resubmitChangeInTransaction，在空修正的提前返回之前按子集
+      // 登记的自助申请准入复核（与首次提交同一守卫）。它是“按首次提交复核当前权限”的命令内一环，由路由的
+      // approval.resubmitRight 承载；ADAPTERS 按业务类型分派，探测器不展开，故不单独声明、不承接探测事实
+      perm: 'guard:personnel.subsetRequestPolicy',
+      purpose: 'guard:approval.resubmitRight',
+      at: [
+        {
+          role: 'call',
+          unit: 'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction',
+          anchor: 'await runSubsetRequestPolicy(tx, ctx, kind',
+        },
+        {
+          role: 'impl',
+          unit: `${DIR}/adapters.ts#personnelAdapter`,
+          anchor: 'await resubmitChangeInTransaction(tx, { ...ctx, expectedRevision: 0 }, id, corrections)',
+        },
+        {
+          role: 'impl',
+          unit: 'apps/api/src/modules/personnel/subset-policy.ts#runSubsetRequestPolicy',
+          anchor: 'await POLICIES.get(kind)?.beforeRequest?.(tx, ctx, input)',
+        },
+      ],
+    },
   ],
   'POST /api/tenant/approval/instances/:id/urge': [
     initiator(

@@ -298,6 +298,10 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['approval.adminTargetScope', call('adminTargetScope'), NEAR],
     ['approval.resubmitRight', calls('requireResubmitRight', 'mayResubmit'), NEAR],
     ['personnel.selfServiceFields', call('assertSelfServiceFields'), { near: true, modules: ['personnel'] }],
+    // R3-T02 P0：人员子集按子集登记的策略（subset-policy.ts），在命令深处调用，按深闭包观测——落地前复核只登记
+    // 人员子集写路由；自助申请准入覆盖首次提交与审批中心的同单重提
+    ['personnel.subsetPolicy', call('runSubsetSavePolicy'), { modules: ['personnel'] }],
+    ['personnel.subsetRequestPolicy', call('runSubsetRequestPolicy')],
     ['personnel.viewableFilters', call('listOptions'), { near: true, modules: ['personnel'] }],
     ['contracts.importScope', calls('authorizeImport', 'checkImportScope'), { near: true, modules: ['contracts'] }],
     [

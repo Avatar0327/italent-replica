@@ -3,6 +3,8 @@
  * 对象操作与按钮经 access → authorize（requirePermission / requireObjectWrite；按钮 create / submit 为 list，其余 detail）；
  * 子集对象按 :kind 取 SUBSETS[kind].objectCode；目标人员范围经 preflight → requirePerson（404）；列表筛选 / 排序字段
  * 须可查看（listOptions → 403）；子集记录须属于该员工（loadSubset → 404）；本人申请经 requireSelf（绑定本人）。
+ * R3-T02 P0 契约：子集写入经 saveSubset 调按子集登记的落地前复核，自助申请经 createChange 调自助申请准入
+ * （subset-policy.ts；未登记的子集不调用）。
  */
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
@@ -53,6 +55,24 @@ const SUBSET_CONST: Evidence = {
   unit: 'packages/domain/src/personnel/fields.ts#SUBSETS',
   anchor: "objectCode: 'TenantBase.Education'",
 };
+const POLICY = 'apps/api/src/modules/personnel/subset-policy.ts';
+const subsetPolicy = (at: Evidence): Obligation => ({
+  perm: 'guard:personnel.subsetPolicy',
+  facts: ['guard:personnel.subsetPolicy'],
+  at: [
+    at,
+    {
+      role: 'impl',
+      unit: 'apps/api/src/modules/personnel/subsets.ts#saveSubset',
+      anchor: 'await runSubsetSavePolicy(tx, ctx, kind, { before, row, deleted, source })',
+    },
+    {
+      role: 'impl',
+      unit: `${POLICY}#runSubsetSavePolicy`,
+      anchor: 'await POLICIES.get(kind)?.beforeSave?.(tx, ctx, input)',
+    },
+  ],
+});
 const call = (file: string, method: string, path: string, anchor: string): Evidence => ({
   role: 'call',
   unit: `${file}#route:${method} /api/tenant/personnel${path}`,
@@ -281,6 +301,7 @@ export const PERSONNEL: RequiredTable = {
       "const ctx = await access(c, deps, SUBSETS[kind].objectCode, 'create', input, 'create', revision(c))",
       SUBSET_CONST,
     ),
+    subsetPolicy(subset('POST', '')('saveSubset(tx, ctx, employeeId, kind, input)')),
   ],
   'PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id': [
     op(
@@ -296,6 +317,7 @@ export const PERSONNEL: RequiredTable = {
       "const ctx = await access(c, deps, SUBSETS[kind].objectCode, 'update', input, 'update', revision(c))",
       SUBSET_CONST,
     ),
+    subsetPolicy(subset('PATCH', '/:id')('saveSubset(tx, ctx, employeeId, kind, input, id)')),
   ],
   'DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id': [
     op(
@@ -311,6 +333,7 @@ export const PERSONNEL: RequiredTable = {
       "const ctx = await access(c, deps, SUBSETS[kind].objectCode, 'delete', {}, 'delete', revision(c))",
       SUBSET_CONST,
     ),
+    subsetPolicy(subset('DELETE', '/:id')('saveSubset(tx, ctx, employeeId, kind, {}, id, true)')),
   ],
   'POST /api/tenant/personnel/change-requests': [
     {
@@ -352,6 +375,28 @@ export const PERSONNEL: RequiredTable = {
           role: 'impl',
           unit: 'apps/api/src/modules/personnel/change-requests.ts#assertSelfServiceFields',
           anchor: "throw new AppError('FORBIDDEN', '字段不在员工自助修改清单内')",
+        },
+      ],
+    },
+    {
+      perm: 'guard:personnel.subsetRequestPolicy',
+      facts: ['guard:personnel.subsetRequestPolicy'],
+      at: [
+        call(
+          'apps/api/src/modules/personnel/request-routes.ts',
+          'POST',
+          '/change-requests',
+          'const created = await createChange(tx, { ...ctx, commandId }, input)',
+        ),
+        {
+          role: 'impl',
+          unit: 'apps/api/src/modules/personnel/change-requests.ts#createChange',
+          anchor: 'await runSubsetRequestPolicy(tx, ctx, input.subset',
+        },
+        {
+          role: 'impl',
+          unit: `${POLICY}#runSubsetRequestPolicy`,
+          anchor: 'await POLICIES.get(kind)?.beforeRequest?.(tx, ctx, input)',
         },
       ],
     },

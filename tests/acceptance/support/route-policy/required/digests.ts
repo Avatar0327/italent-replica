@@ -32,6 +32,9 @@ export const DIGESTS: Digests = {
     openOwn: '2bf5722813f2',
     openTask: '6f9c0c04e106',
   },
+  'apps/api/src/modules/approval/adapters.ts': {
+    personnelAdapter: '5e08297e79d8',
+  },
   'apps/api/src/modules/approval/disclosure.ts': {
     assertCanOpen: 'd0a07eb26026',
     readDetail: '7f9e384aa276',
@@ -437,7 +440,9 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/personnel/change-requests.ts': {
     assertSelfServiceFields: '836b6ee170ad',
+    createChange: 'f6ecb10e5da4',
     requireSelf: '50f3545b50d7',
+    resubmitChangeInTransaction: '9cd09bdbc1fa',
   },
   'apps/api/src/modules/personnel/lists.ts': {
     listOptions: 'b46678e0057f',
@@ -459,6 +464,10 @@ export const DIGESTS: Digests = {
     'route:PATCH /api/tenant/personnel/employees/:id': 'c2cd4af01010',
     'route:POST /api/tenant/personnel/employees/:id/attachments': 'a58c9e435628',
   },
+  'apps/api/src/modules/personnel/subset-policy.ts': {
+    runSubsetRequestPolicy: 'a7b813f0f2cc',
+    runSubsetSavePolicy: '44cf9b874025',
+  },
   'apps/api/src/modules/personnel/subset-routes.ts': {
     'route:DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id': 'bde6aa354051',
     'route:GET /api/tenant/personnel/employees/:employeeId/subsets/:kind': 'ac1c3233b271',
@@ -470,6 +479,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/personnel/subsets.ts': {
     loadSubset: 'ce8761631bb3',
+    saveSubset: '41c8e4175207',
   },
   'apps/api/src/modules/qualification/access.ts': {
     BUTTON_LEVEL: '66011e711e8a',
