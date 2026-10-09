@@ -46,6 +46,8 @@ import { findLink, type LinkRow } from './links.js';
 import { createPerson, findPersonByEmail, loadPerson, personInput } from './people.js';
 import { type LoadedQuestionnaire, loadQuestionnaire } from './questionnaires.js';
 import { addRelation, appraiserList, confirmationView, loadRelation, removeRelation } from './relations.js';
+import { policedSub } from '../../route-policy/index.js';
+import { SURVEY360_LINK_POLICIES } from './policy.js';
 
 export const LINK_TOKEN_HEADER = 'x-survey360-token';
 
@@ -676,7 +678,8 @@ function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
 
 /** 链接入口不经租户成员中间件（外部评价者没有账号）；租户与令牌在每个处理函数里校验。 */
 export function registerLinkRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  const module = new Hono<TenantEnv>();
+  // F-039：链接子应用套登记表（SURVEY360_LINK_POLICIES），注册行不变、处理函数不变
+  const module = policedSub(router, SURVEY360_LINK_POLICIES, () => new Hono<TenantEnv>());
   module.onError((error, c) => handleError(mapDbError(error) ?? error, c));
   module.get('/', (c) =>
     linkRead(deps, undefined, async (tx, link, activity) =>

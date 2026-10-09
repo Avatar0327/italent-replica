@@ -4,7 +4,7 @@
  * 任一字段全部身份都不可编辑（含系统字段、未登记字段）→ 403 整单拒绝；任一身份可编辑即可写（并集）。
  * 这里用测试夹具路由模拟一个业务对象的编辑接口。
  */
-import { requireObjectWrite, type TenantRouteModule, tenantOf } from '@italent/api';
+import { defineTable, requireObjectWrite, type TenantRouteModule, tenantOf } from '@italent/api';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -23,6 +23,19 @@ const testDb = useTestDb();
 const PATH = '/api/tenant/test-fixture/demo-records/1';
 
 /** 夹具：模拟业务模块的编辑接口（先做字段权限校验，再执行业务写）。 */
+/** 夹具路由的声明（F-039）：createApp 要求每条注册都有声明。 */
+const demoWritePolicies = defineTable('demo', {
+  [`PUT ${PATH}`]: {
+    kind: 'member',
+    reason: '测试夹具：对象字段编辑权（requireObjectWrite）',
+    fields: { mode: 'none', reason: '测试夹具' },
+    write: {
+      fields: 'body',
+      footprint: { none: true, reason: '测试夹具' },
+      result: { none: true, reason: '测试夹具' },
+    },
+  },
+});
 const demoWriteRoute: TenantRouteModule = (router, deps) => {
   router.put(PATH, async (c) => {
     const payload = (await c.req.json()) as Record<string, unknown>;
@@ -41,7 +54,11 @@ describe('写入字段权限：全部身份都不可编辑的字段写入被拒'
 
   beforeAll(async () => {
     world = await seedPermissionWorld(testDb().db);
-    api = tenantApi(world.db, { authorize: undefined, tenantRoutes: [demoWriteRoute] });
+    api = tenantApi(world.db, {
+      authorize: undefined,
+      tenantRoutes: [demoWriteRoute],
+      routePolicies: [demoWritePolicies],
+    });
   });
 
   it('只可编辑 Name：写 Name 放行；带上只读字段、系统字段、未登记字段 → 403；叠加可编辑手机的身份后放行', async () => {

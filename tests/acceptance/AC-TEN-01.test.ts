@@ -5,7 +5,7 @@
 import { withTenant } from '@italent/db';
 import { installTenantProbe, tenantProbe, useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { probeRoutes } from './support/probe-routes.js';
+import { PROBE_POLICIES, probeRoutes } from './support/probe-routes.js';
 import { seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -36,7 +36,7 @@ describe('AC-TEN-01 两租户同名对象互不可见', () => {
 
   it('API 层：两租户的用户各自列表只含本租户记录', async () => {
     const { db } = testDb();
-    const api = tenantApi(db, { tenantRoutes: [probeRoutes] });
+    const api = tenantApi(db, { tenantRoutes: [probeRoutes], routePolicies: [PROBE_POLICIES] });
 
     const created = await api.request('POST', '/api/tenant/probes', {
       user: a.user.id,
