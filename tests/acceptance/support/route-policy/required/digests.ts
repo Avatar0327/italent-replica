@@ -19,7 +19,8 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/access.ts': {
     PROCESS_ADMIN: 'ca58b0b364f1',
-    adminScope: 'b8cd26385798',
+    adminScope: '175ed4b1418f',
+    adminTargetScope: 'e0898d859530',
     hasButton: '6dbb8ca471b1',
     isProcessAdmin: 'e5782416fefc',
     requireProcessButton: '782f172bb6ca',
@@ -28,6 +29,8 @@ export const DIGESTS: Digests = {
     requireWithdrawRight: 'e17fe05b2b0e',
   },
   'apps/api/src/modules/approval/actions.ts': {
+    adminAct: 'd76e0f4e36c7',
+    assertTargetInScope: '5a099dd0cdbe',
     openOwn: '2bf5722813f2',
     openTask: '6f9c0c04e106',
   },
@@ -44,7 +47,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/routes.ts': {
     fieldRights: '4ae7ecb6ac72',
-    registerInstanceRoutes: 'f06f5a523445',
+    registerInstanceRoutes: '345f82e37732',
     registerProcessRoutes: 'f4e5b33618f6',
     registerTaskRoutes: 'c104b87263e9',
     respondDetail: '352a1a785550',
@@ -234,12 +237,11 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/idp/intervention-service.ts': {
     ISSUE_SOURCE_FIELDS: '02d8128ce179',
     eachPlan: '453001319f02',
-    isPlanMentor: 'a064d8d1cfb0',
     issueTasks: '0da7eb1e4250',
     notOwnPlan: '235e72df46d4',
-    requireTargetInScope: 'd987c2808bcc',
+    requireTargetInScope: 'f289f167268f',
     targetHidden: '4c60647fadb8',
-    transferPlan: '64d51b8d9d07',
+    transferPlan: 'f6ed691715c9',
   },
   'apps/api/src/modules/idp/key-info-routes.ts': {
     ROUTES: '906e28eb362e',
@@ -251,6 +253,11 @@ export const DIGESTS: Digests = {
     participation: '9e6acf568844',
     requireExecutor: 'c6041bc8af4f',
     requireViewer: 'ea1df4c436f9',
+  },
+  'apps/api/src/modules/idp/plan-mentor.ts': {
+    foldMentorFailure: '71e3ad707a8b',
+    isPlanMentor: '44bbbbd03aae',
+    isStageMentor: 'ff9d76a4a999',
   },
   'apps/api/src/modules/idp/plan-routes.ts': {
     hrScopeOf: '6dc4bea09e02',

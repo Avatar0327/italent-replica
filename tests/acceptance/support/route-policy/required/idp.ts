@@ -843,7 +843,12 @@ const PLAN_ROUTES: RequiredTable = {
         {
           role: 'impl',
           unit: `${I}/intervention-service.ts#transferPlan`,
-          anchor: "if (admission === 'mentor' && error instanceof AppError) throw targetHidden()",
+          anchor: 'await foldMentorFailure(admission, targetHidden, () =>',
+        },
+        {
+          role: 'impl',
+          unit: `${I}/plan-mentor.ts#foldMentorFailure`,
+          anchor: 'throw error instanceof AppError ? hidden() : error',
         },
         {
           role: 'impl',
@@ -853,12 +858,12 @@ const PLAN_ROUTES: RequiredTable = {
         // DEC-354 / F-068：该计划当前的指导人 / 带教人例外；来源字段看不到视同不是
         {
           role: 'impl',
-          unit: `${I}/intervention-service.ts#isPlanMentor`,
+          unit: `${I}/plan-mentor.ts#isPlanMentor`,
           anchor: "viewable(sources.plan, ['tutorEmployeeId']) && plan.tutorEmployeeId === employeeId",
         },
         {
           role: 'impl',
-          unit: `${I}/intervention-service.ts#isPlanMentor`,
+          unit: `${I}/plan-mentor.ts#isPlanMentor`,
           anchor: 'if (!viewable(sources.tutorship, TUTORSHIP_FIELDS)) return false',
         },
       ],

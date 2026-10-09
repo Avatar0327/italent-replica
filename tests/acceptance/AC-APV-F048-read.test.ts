@@ -156,7 +156,8 @@ describe('T9 重放按当前范围重新裁剪（撤权 / 缩范围后）（DEC-
     const { w, s } = await scene('f048-rd-replay-scope');
     const view = await submit(w, s);
     const admin = await w.member('流程管理员');
-    const free = await w.member('接手人');
+    // F-067：转交目标须是已绑定员工且在操作人范围内，纯账号不能作为目标
+    const free = (await w.person('接手人', s.from)).userId;
     const options = {
       ifMatch: view.revision,
       idempotencyKey: 'f048-admin-transfer',
