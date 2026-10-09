@@ -131,7 +131,7 @@ const SYNC_EMPLOYEES = 'survey360.syncEmployees';
 
 /** 转发与转发预览另要对报告正文涉及的全部结果字段有查看权（reports.ts requireFullReportView，第 2 轮 P2-5）。 */
 const FULL_REPORT = 'survey360.fullReportView';
-/** 逐份答卷卡片只给持“全部活动”者或活动创建者，兼任者除外（access.ts requireCardViewer，DEC-358②）。 */
+/** 逐份答卷卡片只给持“全部活动”者或活动创建者，兼任者除外（anonymous.ts requireCardViewer，DEC-358② / DEC-364）。 */
 const SHEET_CARDS = 'survey360.sheetCards';
 /** 我的待办：只看 user_id = 当前账号的待办（todos.ts）。 */
 const TODO_RECIPIENT = 'survey360.todoRecipient';

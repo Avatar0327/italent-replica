@@ -60,6 +60,7 @@ type AuditEventRow = typeof auditEvents.$inferSelect & {
   visibleCount: number | null;
   linkagePaths: string[] | null;
   withheld: boolean | null;
+  answersWithheld: boolean | null;
 };
 
 export function registerAuditRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
@@ -87,11 +88,7 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
         const redacted = await viewer.redact(tx, page.items.map(recounted));
         return {
           items: redacted.map((row) =>
-            dataChangeView(
-              row,
-              operator(row),
-              viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row.withheld),
-            ),
+            dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row)),
           ),
           nextCursor: page.nextCursor,
           window,
@@ -121,7 +118,7 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
         // 超出保留期、范围外或只涉及隐藏字段的日志与不存在同样处理（原站“最远只能查 6 个月内”；DEC-197）
         if (!found) throw new AppError('NOT_FOUND', '日志不存在或已超出保留期');
         const row = (await viewer.redact(tx, [recounted(found)]))[0]!;
-        const fields = viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row.withheld);
+        const fields = viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row);
         const view = dataChangeView(row, (await operatorNames(tx, [row]))(row), fields);
         return {
           ...view,
@@ -302,6 +299,7 @@ function eventColumns(viewer: Awaited<ReturnType<typeof auditViewer>>) {
     visibleCount: sql<number | null>`${viewer.visibleCount}`,
     linkagePaths: sql<string[] | null>`${viewer.linkagePaths}`,
     withheld: sql<boolean | null>`${viewer.withheld}`,
+    answersWithheld: sql<boolean | null>`${viewer.answersWithheld}`,
     changes: sql<AuditFieldChange[] | null>`${viewer.eventChanges}`,
   };
 }

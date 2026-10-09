@@ -8,6 +8,7 @@
  * Excel PERCENTILE.INC 线性插值，🟡）。
  */
 import { sql, type Tx } from '@italent/db';
+import { reportTexts } from './anonymous.js';
 import { rows } from './context.js';
 import { type LoadedQuestionnaire, loadQuestionnaire } from './questionnaires.js';
 import { objectScores, type ScoreView } from './scoring.js';
@@ -38,7 +39,6 @@ interface Role {
 interface ValidSheet {
   id: string;
   role_id: string;
-  suggestion: string | null;
 }
 
 /** Excel PERCENTILE.INC：排序后在 (n-1)·p 处线性插值。 */
@@ -90,19 +90,12 @@ function scorer(scores: readonly ScoreView[]) {
 }
 
 async function textAnswers(tx: Tx, q: LoadedQuestionnaire, valid: ValidSheet[], label: (roleId: string) => object) {
-  const openFeedback = valid
-    .filter((s) => s.suggestion && s.suggestion.trim())
-    .map((s) => ({ text: s.suggestion!, ...label(s.role_id) }))
-    .sort(byText);
-  const remarks = valid.length
-    ? rows<{ item_id: string; remark: string; role_id: string }>(
-        await tx.execute(sql`SELECT a.item_id, a.remark, r.role_id FROM survey360_answers a
-          JOIN survey360_sheets s ON s.tenant_id = a.tenant_id AND s.id = a.sheet_id
-          JOIN survey360_relations r ON r.tenant_id = s.tenant_id AND r.id = s.relation_id
-          WHERE a.sheet_id = ANY(${`{${valid.map((v) => v.id).join(',')}}`}::uuid[])
-            AND a.remark IS NOT NULL AND btrim(a.remark) <> ''`),
-      )
-    : [];
+  // 文本答案只经匿名投影层取（DEC-364①）：没有答卷编号与评价者标识
+  const { suggestions, remarks } = await reportTexts(
+    tx,
+    valid.map((v) => v.id),
+  );
+  const openFeedback = suggestions.map((s) => ({ text: s.text, ...label(s.role_id) })).sort(byText);
   const items =
     q.model.type === 'rating'
       ? q.dimensions.map((d) => ({ id: d.id, text: d.name }))
@@ -112,7 +105,7 @@ async function textAnswers(tx: Tx, q: LoadedQuestionnaire, valid: ValidSheet[], 
       question: item.text,
       answers: remarks
         .filter((r) => r.item_id === item.id)
-        .map((r) => ({ text: r.remark, ...label(r.role_id) }))
+        .map((r) => ({ text: r.text, ...label(r.role_id) }))
         .sort(byText),
     }))
     .filter((entry) => entry.answers.length > 0);
@@ -201,7 +194,7 @@ async function questionnairePart(
     .map((r) => r.role_id)
     .filter((id) => q.roles.some((r) => r.roleId === id));
   const valid = rows<ValidSheet>(
-    await tx.execute(sql`SELECT s.id, r.role_id, s.suggestion FROM survey360_sheets s
+    await tx.execute(sql`SELECT s.id, r.role_id FROM survey360_sheets s
       JOIN survey360_relations r ON r.tenant_id = s.tenant_id AND r.id = s.relation_id AND NOT r.removed
       WHERE r.object_id = ${subject.objectId}::uuid AND s.questionnaire_id = ${questionnaireId}::uuid
         AND s.status = 'submitted' AND NOT s.blocked`),

@@ -8,8 +8,8 @@ export const DIGESTS: Digests = {
   'apps/api/src/audit/routes.ts': {
     auditContext: 'd5b4775d58c3',
     'route:GET /api/tenant/audit/command-failures': '9ac7295f99cb',
-    'route:GET /api/tenant/audit/data-changes': '30aac7cb21a0',
-    'route:GET /api/tenant/audit/data-changes/:id': 'b55ed977cb93',
+    'route:GET /api/tenant/audit/data-changes': 'fb535c575801',
+    'route:GET /api/tenant/audit/data-changes/:id': 'dfa96793df49',
     'route:GET /api/tenant/audit/operation-logs': 'b6857e645117',
   },
   'apps/api/src/authorization.ts': {
@@ -531,7 +531,6 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/survey360/access.ts': {
     requireActivity: '8ae13475536b',
-    requireCardViewer: 'fe3a318290e0',
     requireVisibleObject: '3d8ff28e5d4c',
     survey360FailureVisibility: '930dce9ee3c1',
   },
@@ -552,10 +551,14 @@ export const DIGESTS: Digests = {
     'route:POST /activities/:id/grants': '9bb0331447b6',
     'route:PUT /activities/:id': '382fe00cee54',
   },
+  'apps/api/src/modules/survey360/anonymous.ts': {
+    cardViewer: 'ca86845a9e51',
+    requireCardViewer: 'da40438ded65',
+  },
   'apps/api/src/modules/survey360/answering.ts': {
-    answerRead: '568fd0c2c7d8',
-    answerSave: '6877d9ec56db',
-    answerSubmit: '54074964596d',
+    answerRead: '3104992aafe7',
+    answerSave: '761d0dbf2b05',
+    answerSubmit: '00f37bfec6bd',
     avatarRoute: '5991955dd06b',
     linkRead: '25e8251fdd7d',
     linkTenant: 'f98ee9824fc6',
@@ -605,7 +608,7 @@ export const DIGESTS: Digests = {
     VIEW: '059613dc3dbf',
     'route:GET /activities/:id/progress': '559bf7619a27',
     'route:GET /activities/:id/progress/:personId': '2d394312e88d',
-    'route:POST /activities/:id/relations/:relationId/reanswer': 'cc5f90fc6c00',
+    'route:POST /activities/:id/relations/:relationId/reanswer': '48d7c23236a3',
     visibleRelation: '37229f8c1101',
   },
   'apps/api/src/modules/survey360/questionnaires.ts': {
@@ -673,9 +676,9 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/survey360/sheets.ts': {
     BLOCK: '328587d0026f',
-    'route:GET /activities/:id/sheets': '936ec6e8e503',
-    'route:POST /activities/:id/sheets/:sheetId/block': '1f853ea167ca',
-    'route:POST /activities/:id/sheets/:sheetId/unblock': '1f853ea167ca',
+    'route:GET /activities/:id/sheets': 'f6e0cc8646a8',
+    'route:POST /activities/:id/sheets/:sheetId/block': '498d2881a89b',
+    'route:POST /activities/:id/sheets/:sheetId/unblock': '498d2881a89b',
     'route:POST /activities/:id/sheets/block-suspected': '18ca8bf04eec',
     'route:POST /activities/:id/sheets/unblock-all': '18ca8bf04eec',
     visibleSheet: '6948fd26e0b9',

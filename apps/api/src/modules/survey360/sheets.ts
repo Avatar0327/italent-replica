@@ -7,14 +7,14 @@
  * - 屏蔽不立即重算：被屏蔽的答卷在下一次停用计分时不参与（scoring.ts），作答数据变化使旧报告失效；
  * - 精细化权限下只含范围内评价对象、范围内评价者的答卷，范围外的与不存在同一 404。
  */
-import { sql, survey360Answers, survey360Sheets, type Tx, eq } from '@italent/db';
-import { survey360 } from '@italent/domain';
+import { sql, survey360Sheets, type Tx, eq } from '@italent/db';
 import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
-import { type ActivityRow, requireActivity, requireCardViewer } from './access.js';
+import { type ActivityRow, requireActivity } from './access.js';
+import { type CardSheet, isSuspected, requireCardViewer, sheetCards } from './anonymous.js';
 import {
   actor,
   type Admin,
@@ -34,17 +34,7 @@ import { markDataChanged } from './changes.js';
 
 const SUSPECT_INTERVAL_MS = 2 * 60 * 60 * 1000;
 
-interface SheetRow {
-  id: string;
-  object_id: string;
-  object_name: string;
-  questionnaire_id: string;
-  role_id: string;
-  role_name: string;
-  blocked: boolean;
-  blocked_source: string | null;
-  revision: number;
-}
+type SheetRow = CardSheet;
 
 /** 范围内、已提交的答卷（未移除的评价对象与评价关系）。 */
 async function submittedSheets(tx: Tx, activityId: string, admin: Admin, sheetId?: string): Promise<SheetRow[]> {
@@ -68,57 +58,13 @@ async function submittedSheets(tx: Tx, activityId: string, admin: Admin, sheetId
   );
 }
 
-async function answersOf(tx: Tx, sheetId: string) {
-  return tx
-    .select({ itemId: survey360Answers.itemId, optionId: survey360Answers.optionId })
-    .from(survey360Answers)
-    .where(eq(survey360Answers.sheetId, sheetId));
-}
-
-function card(sheet: SheetRow, q: LoadedQuestionnaire, answers: { itemId: string; optionId: string }[]) {
-  const picked = new Map(answers.map((a) => [a.itemId, a.optionId]));
-  const option = (id: string | undefined) => q.options.find((o) => o.id === id);
-  return {
-    id: sheet.id,
-    objectId: sheet.object_id,
-    objectName: sheet.object_name,
-    questionnaireId: q.row.id,
-    questionnaireName: q.row.name,
-    role: { id: sheet.role_id, name: sheet.role_name },
-    blocked: sheet.blocked,
-    blockSource: sheet.blocked_source,
-    total: survey360.scoreSheet(q.model, sheet.role_id, picked).total,
-    items: survey360.answerableItems(q.model, sheet.role_id).map((itemId) => {
-      const chosen = option(picked.get(itemId));
-      return {
-        itemId,
-        optionLabel: chosen?.label ?? null,
-        score: chosen && !chosen.notScored ? chosen.value : null,
-      };
-    }),
-    revision: sheet.revision,
+/** 同一请求内套卷只装载一次（卡片按套卷算总分与逐题得分）。 */
+function questionnaireCache(tx: Tx) {
+  const cache = new Map<string, Promise<LoadedQuestionnaire>>();
+  return (id: string) => {
+    if (!cache.has(id)) cache.set(id, loadQuestionnaire(tx, id));
+    return cache.get(id)!;
   };
-}
-
-async function cards(tx: Tx, sheets: readonly SheetRow[]) {
-  const cache = new Map<string, LoadedQuestionnaire>();
-  const result = [];
-  for (const sheet of sheets) {
-    let q = cache.get(sheet.questionnaire_id);
-    if (!q) cache.set(sheet.questionnaire_id, (q = await loadQuestionnaire(tx, sheet.questionnaire_id)));
-    result.push(card(sheet, q, await answersOf(tx, sheet.id)));
-  }
-  return result;
-}
-
-/** 疑似无效：放弃作答（不计分选项）题量过半；关键行为套卷所有题目选择同一选项（至少两题）。 */
-function suspected(q: LoadedQuestionnaire, roleId: string, answers: { itemId: string; optionId: string }[]) {
-  const items = survey360.answerableItems(q.model, roleId);
-  const notScored = new Set(q.options.filter((o) => o.notScored).map((o) => o.id));
-  const abandoned = answers.filter((a) => notScored.has(a.optionId)).length;
-  if (items.length && abandoned / items.length > 0.5) return true;
-  if (q.model.type !== 'key_behavior' || answers.length < 2) return false;
-  return new Set(answers.map((a) => a.optionId)).size === 1;
 }
 
 function requireDisabled(activity: ActivityRow) {
@@ -161,7 +107,8 @@ export function registerSheetRoutes(module: Hono<TenantEnv>, deps: TenantRouteDe
       await requireCardViewer(tx, admin, activity);
       // 启用中“数据筛选”列表为空（原站置灰）
       if (activity.status !== 'disabled') return { items: [] };
-      return { items: await cards(tx, await submittedSheets(tx, activity.id, admin)) };
+      const found = await submittedSheets(tx, activity.id, admin);
+      return { items: await sheetCards(tx, admin, activity, found, questionnaireCache(tx)) };
     }),
   );
   for (const action of ['block', 'unblock'] as const)
@@ -182,7 +129,8 @@ export function registerSheetRoutes(module: Hono<TenantEnv>, deps: TenantRouteDe
           if (action === 'unblock' && !sheet.blocked) fail('CONFLICT', '答卷未屏蔽', 'NOT_BLOCKED');
           await setBlocked(tx, ctx, activity.id, sheet, action === 'block' ? 'manual' : null);
           await markDataChanged(tx, activity.id, ctx.now, [sheet.object_id]);
-          const [saved] = await cards(tx, [await visibleSheet(tx, activity.id, ctx.admin, sheetId)]);
+          const current = await visibleSheet(tx, activity.id, ctx.admin, sheetId);
+          const [saved] = await sheetCards(tx, ctx.admin, activity, [current], questionnaireCache(tx));
           return saved;
         },
         {
@@ -241,7 +189,7 @@ const blockSuspected: BatchRun = async (tx, ctx, activity) => {
   for (const sheet of await submittedSheets(tx, activity.id, ctx.admin)) {
     if (sheet.blocked) continue;
     const q = await loadQuestionnaire(tx, sheet.questionnaire_id);
-    if (!suspected(q, sheet.role_id, await answersOf(tx, sheet.id))) continue;
+    if (!(await isSuspected(tx, q, sheet.role_id, sheet.id))) continue;
     await setBlocked(tx, ctx, activity.id, sheet, 'suspected');
     changed.push(sheet.object_id);
   }

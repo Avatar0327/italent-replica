@@ -222,4 +222,5 @@ it('PR-A 历史计分批次升级后：不能凭它生成报告；重新计分�
     expect(await outbox(w, 'survey360.report_forward'), l.kind).toHaveLength(1);
     expect(await lastest360Cent(l), l.kind).toEqual({ ok: true, data: [] });
   }
-});
+  // 三种改法各走一遍升级 + 报告全出口，负载高时超过默认 30 秒（第 4 轮审查首跑即超时）
+}, 180_000);

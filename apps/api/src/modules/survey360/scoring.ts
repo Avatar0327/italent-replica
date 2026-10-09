@@ -5,6 +5,7 @@
  */
 import { sql, survey360Activities, survey360ScoreBatches, survey360Scores, type Tx, eq } from '@italent/db';
 import { survey360 } from '@italent/domain';
+import { scoringAnswers } from './anonymous.js';
 import { rows } from './context.js';
 import { type LoadedQuestionnaire, loadQuestionnaire } from './questionnaires.js';
 
@@ -48,13 +49,7 @@ export async function computeScores(
       JOIN survey360_roles ro ON ro.tenant_id = r.tenant_id AND ro.id = r.role_id
       WHERE s.activity_id = ${activityId}::uuid AND s.status = 'submitted' AND NOT s.blocked`),
   );
-  const answers = rows<{ sheet_id: string; item_id: string; option_id: string }>(
-    await tx.execute(sql`SELECT a.sheet_id, a.item_id, a.option_id FROM survey360_answers a
-      JOIN survey360_sheets s ON s.tenant_id = a.tenant_id AND s.id = a.sheet_id
-      WHERE s.activity_id = ${activityId}::uuid AND s.status = 'submitted' AND NOT s.blocked`),
-  );
-  const bySheet = new Map<string, Map<string, string>>();
-  for (const a of answers) bySheet.set(a.sheet_id, (bySheet.get(a.sheet_id) ?? new Map()).set(a.item_id, a.option_id));
+  const bySheet = await scoringAnswers(tx, activityId);
   const models = new Map<string, LoadedQuestionnaire>();
   const groups = new Map<string, SheetRow[]>();
   for (const s of sheets) {

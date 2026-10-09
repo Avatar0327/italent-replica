@@ -123,12 +123,17 @@ interface Rule {
   /**
    * 逐行脱敏（DEC-340③ / DEC-355② 答卷日志）：脱敏行去掉 hidden 字段，按动作再去掉 byAction 的字段；列表与详情不展示
    * 命令 ID、请求来源与对象编号，按这些条件筛选也查不到（AuditViewer.withheld）。fullResolve 返回查看人能看完整版
-   * 的活动编号子查询（null = 全部脱敏）。数据库里的快照照常保存。
+   * 的活动编号子查询（null = 全部脱敏）。数据库里的快照照常保存。answers 是逐份答案（DEC-358②）：与身份脱敏分别判断，
+   * resolve 返回查看人能看答案的活动编号子查询，其他行去掉 fields（展示与字段筛选都去掉）。
    */
   readonly desensitize?: {
     readonly hidden: readonly string[];
     readonly byAction?: Readonly<Record<string, readonly string[]>>;
     readonly fullResolve?: (deps: Deps, ctx: TenantContext) => Promise<SQL | null>;
+    readonly answers?: {
+      readonly fields: readonly string[];
+      readonly resolve: (deps: Deps, ctx: TenantContext) => Promise<SQL | null>;
+    };
   };
 }
 
@@ -331,11 +336,14 @@ const OBJECT_FIELDS = new Map<string, string[]>(
  * 作答请求的来源（IP、终端、来源页、TraceID）与答卷编号——管理员可凭自己的命令 ID 或匿名卡片编号把答卷对到具名评价
  * 关系（第 3 轮 P2-2）；清除是对具名评价关系做的，清除事件再去掉答案与评语。链接 / 待办作答的操作人本就记为“系统”。
  * DEC-355②（批准例外）：持“全部活动”且在该活动里不兼任被评价人 / 评价者的人看完整版（answerFull）。
+ * DEC-358②（第 4 轮审查 P2-1）：逐份答案（逐题选项 / 文本、发展建议）另按卡片资格判断（answerCards）——其他活动管理员
+ * 与兼任者在任何答卷日志里都看不到答案，活动创建者不兼任时看得到答案、身份仍脱敏。
  */
 const SURVEY360_SHEET_DESENSITIZE = {
   hidden: ['relationId'],
   byAction: { 'survey360.sheet.clear': ['answers', 'suggestion'] },
   fullResolve: survey360AuditScope('answerFull'),
+  answers: { fields: ['answers', 'suggestion'], resolve: survey360AuditScope('answerCards') },
 } as const;
 const inVisibleActivity: Rule['visible'] = (_scope, row, _viewer, { extra }) =>
   extra ? sql`COALESCE(${row.after}->>'activityId', '') IN (${extra})` : sql`false`;
@@ -708,6 +716,9 @@ interface ResolvedRule {
   /** 逐行脱敏（DEC-340③ / DEC-355②）：该行展示脱敏版本的谓词；fullFields 给能看完整版的行。 */
   readonly withheld?: SQL;
   readonly fullFields?: ReadonlySet<string> | undefined;
+  /** 该行不展示逐份答案的谓词（DEC-358②）；allFields 是不限字段时的对象全部字段。 */
+  readonly answersWithheld?: SQL;
+  readonly allFields?: ReadonlySet<string>;
   readonly linkage?: LinkageAudit;
   readonly rule: Rule;
   readonly scope: ModuleScope;
@@ -770,15 +781,23 @@ export interface AuditViewer {
   readonly eventChanges: SQL;
   /** 该行只展示脱敏版本（DEC-340③ / DEC-355②）：不展示对象编号、命令 ID 与来源，按它们筛选时排除。 */
   readonly withheld: SQL;
+  /** 该行不展示逐份答案（DEC-358②），与 withheld 分别判断。 */
+  readonly answersWithheld: SQL;
   /** 查询出口按查看人当前的源对象范围与源字段权裁剪“带出值”（任职资格，qualification-sources.ts）。 */
   readonly redact: SourceRedactor['redact'];
-  /** 该日志适用的查看字段；undefined = 不限字段。withheld = 该行的 withheld 列。 */
+  /** 该日志适用的查看字段；undefined = 不限字段。row = 该行的 withheld / answersWithheld 列（不传按脱敏处理）。 */
   fieldsOf(
     objectType: string,
     action?: string | null,
     paths?: readonly string[] | null,
-    withheld?: boolean | null,
+    row?: RowMasks,
   ): ReadonlySet<string> | undefined;
+}
+
+/** 逐行脱敏列（DEC-340③ / DEC-355② / DEC-358②）：false = 该行可看完整身份 / 逐份答案。 */
+interface RowMasks {
+  readonly withheld?: boolean | null;
+  readonly answersWithheld?: boolean | null;
 }
 
 const EVENT = 'audit_events';
@@ -807,7 +826,7 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
     (entry) => sql`(${eventTypes(entry.rule)}
       AND ${entry.rule.visible(entry.scope, rowOf(EVENT), viewer, entry.inputs)}
       AND ${entry.linkage?.visible ?? sql`true`}
-      AND ${entry.linkage?.matches(field) ?? fieldScope(entry.fields, field)})`,
+      AND ${entry.linkage?.matches(field) ?? entryFieldScope(entry, field)})`,
   );
   const item = itemRow();
   // transfer-linkage 目前只写数据变更事件；未来新增任务写入须单独登记逐行字段规则。
@@ -853,32 +872,70 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
       FROM jsonb_array_elements(${sql.identifier(TASK)}.items) item WHERE ${rowsCase}) END)`,
     visibleCount: sql`COALESCE(${run && !run.scope.all ? orderRunCount(run, viewer) : sql`NULL::int`},
       ${orgRun ? orgAdjustmentCount(orgRun, viewer) : sql`NULL::int`})`,
-    withheld: withheldColumn([...resolved.values()]),
+    withheld: maskColumn([...resolved.values()], 'withheld'),
+    answersWithheld: maskColumn([...resolved.values()], 'answersWithheld'),
     redact: async (tx, rows) => (sources ? sources.redact(tx, rows) : [...rows]),
-    fieldsOf: (objectType, action, paths, rowWithheld) => {
+    fieldsOf: (objectType, action, paths, row) => {
       if (objectType === TRANSFER_LINKAGE) return new ExactAuditFields(paths ?? []);
       const configured = config.get(configKey(objectType, action));
       if (configured) return configured.fields;
       if (isConfigLog(objectType, action)) return undefined;
       const rule = RULE_BY_TYPE.get(objectType);
       const entry = rule ? resolved.get(rule) : undefined;
-      if (entry?.withheld && rowWithheld === false) return entry.fullFields;
-      const fields = entry?.fields;
-      const drop = (action && rule?.desensitize?.byAction?.[action]) || [];
-      return fields && drop.length ? new Set([...fields].filter((field) => !drop.includes(field))) : fields;
+      return entry?.withheld ? maskedFields(entry, action, row) : entry?.fields;
     },
   };
 }
 
-/** 逐行脱敏列（DEC-340③ / DEC-355②）：脱敏规则的行按其谓词，其他行 false。 */
-function withheldColumn(entries: readonly ResolvedRule[]): SQL {
-  const rows = entries.filter((entry) => entry.withheld);
+/** 逐行脱敏列（DEC-340③ / DEC-355② / DEC-358②）：脱敏规则的行按其谓词，其他行 false。 */
+function maskColumn(entries: readonly ResolvedRule[], mask: 'withheld' | 'answersWithheld'): SQL {
+  const rows = entries.filter((entry) => entry[mask]);
   return rows.length
     ? sql`(CASE ${sql.join(
-        rows.map((entry) => sql`WHEN ${eventTypes(entry.rule)} THEN ${entry.withheld!}`),
+        rows.map((entry) => sql`WHEN ${eventTypes(entry.rule)} THEN ${entry[mask]!}`),
         sql` `,
       )} ELSE false END)`
     : sql`false`;
+}
+
+/**
+ * 脱敏规则的行实际展示的字段：身份完整版用 fullFields，脱敏版用 fields 再去掉 byAction；看不到逐份答案的行
+ * （DEC-358②）再去掉答案字段。两项列缺省按脱敏处理。
+ */
+function maskedFields(entry: ResolvedRule, action: string | null | undefined, row: RowMasks | undefined) {
+  const rule = entry.rule.desensitize!;
+  const full = row?.withheld === false;
+  const drop = new Set([
+    ...((!full && action && rule.byAction?.[action]) || []),
+    ...(row?.answersWithheld === false ? [] : (rule.answers?.fields ?? [])),
+  ]);
+  const base = full ? entry.fullFields : entry.fields;
+  if (!drop.size) return base;
+  return new Set([...(base ?? entry.allFields ?? [])].filter((field) => !drop.has(field)));
+}
+
+/**
+ * 脱敏规则的字段筛选与“至少一个可见字段变化”按行取同一字段集合（第 4 轮审查 P3-1：完整版行按 fullFields 筛）：
+ * 按身份完整 / 脱敏 × 答案可见 / 不可见 × byAction 动作逐支展开。
+ */
+function entryFieldScope(entry: ResolvedRule, field: string | undefined): SQL {
+  return entry.withheld ? maskedFieldScope(entry, field) : fieldScope(entry.fields, field);
+}
+
+function maskedFieldScope(entry: ResolvedRule, field: string | undefined): SQL {
+  const scope = (action: string | undefined, withheld: boolean, answersWithheld: boolean) =>
+    fieldScope(maskedFields(entry, action, { withheld, answersWithheld }), field);
+  const answers = entry.answersWithheld ?? sql`true`;
+  const action = sql`${sql.identifier(EVENT)}.action`;
+  const byAction = Object.keys(entry.rule.desensitize!.byAction ?? {}).flatMap((name) => [
+    sql`WHEN ${action} = ${name} AND ${answers} THEN ${scope(name, true, true)}`,
+    sql`WHEN ${action} = ${name} THEN ${scope(name, true, false)}`,
+  ]);
+  return sql`(CASE WHEN NOT ${entry.withheld!} AND NOT ${answers} THEN ${scope(undefined, false, false)}
+    WHEN NOT ${entry.withheld!} THEN ${scope(undefined, false, true)}
+    ${sql.join(byAction, sql` `)}
+    WHEN ${answers} THEN ${scope(undefined, true, true)}
+    ELSE ${scope(undefined, true, false)} END)`;
 }
 
 function orgAdjustmentCount(run: ResolvedRule, viewer: Viewer): SQL {
@@ -901,18 +958,22 @@ function withProtocol(fields: ReadonlySet<string> | undefined, protocol: readonl
 
 /**
  * 逐行脱敏的规则（DEC-340③ / DEC-355②）：fields（筛选与脱敏行的展示）去掉 hidden，不限字段时以对象全部字段为底；
- * fullFields 给能看完整版的行；withheld 是逐行谓词（行所在活动不在 fullResolve 的活动里）。
+ * fullFields 给能看完整版的行；withheld 是逐行谓词（行所在活动不在 fullResolve 的活动里）；answersWithheld 同理按
+ * answers.resolve（DEC-358②），没有 answers 规则时一律 true（maskedFields 不去掉任何字段）。
  */
 async function desensitized(deps: Deps, ctx: TenantContext, rule: Rule, fields: ReadonlySet<string> | undefined) {
   if (!rule.desensitize) return { fields };
   const hidden = new Set(rule.desensitize.hidden);
   const all = fields ?? new Set(OBJECT_FIELDS.get(rule.objectCode) ?? []);
   const full = rule.desensitize.fullResolve ? await rule.desensitize.fullResolve(deps, ctx) : null;
+  const cards = rule.desensitize.answers ? await rule.desensitize.answers.resolve(deps, ctx) : null;
   const activity = sql`COALESCE(${sql.identifier(EVENT)}.after->>'activityId', '')`;
   return {
     fields: new Set([...all].filter((field) => !hidden.has(field))),
     fullFields: fields,
+    allFields: all,
     withheld: full ? sql`(${activity} NOT IN (${full}))` : sql`true`,
+    answersWithheld: cards ? sql`(${activity} NOT IN (${cards}))` : sql`true`,
   };
 }
 

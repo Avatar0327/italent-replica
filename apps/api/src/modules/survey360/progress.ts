@@ -15,6 +15,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
 import { iso, requireActivity } from './access.js';
+import { sheetSnapshot } from './anonymous.js';
 import {
   actor,
   type Admin,
@@ -296,7 +297,6 @@ export function registerProgressRoutes(module: Hono<TenantEnv>, deps: TenantRout
         if (!isDone(state.status)) fail('CONFLICT', '只有已评价的评价关系可以重新作答', 'NOT_SUBMITTED');
         const sheets = await tx.select().from(survey360Sheets).where(eq(survey360Sheets.relationId, relationId));
         for (const sheet of sheets) {
-          const answers = await tx.select().from(survey360Answers).where(eq(survey360Answers.sheetId, sheet.id));
           await audit360(tx, actor(ctx), {
             action: 'survey360.sheet.clear',
             objectType: 'survey360-sheet',
@@ -305,9 +305,7 @@ export function registerProgressRoutes(module: Hono<TenantEnv>, deps: TenantRout
               activityId: activity.id,
               relationId,
               questionnaireId: sheet.questionnaireId,
-              status: sheet.status,
-              answers: answers.map((a) => ({ itemId: a.itemId, optionId: a.optionId, remark: a.remark })),
-              suggestion: sheet.suggestion,
+              ...(await sheetSnapshot(tx, sheet)),
             },
             after: { activityId: activity.id, relationId, questionnaireId: sheet.questionnaireId, status: 'cleared' },
           });

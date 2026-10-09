@@ -807,9 +807,11 @@ const sheetCards = (calls: readonly Evidence[]): Obligation => ({
     ...calls,
     {
       role: 'impl',
-      unit: `${S}/access.ts#requireCardViewer`,
+      unit: `${S}/anonymous.ts#requireCardViewer`,
       anchor: "fail('FORBIDDEN', '只有持“全部活动”权限的管理员或活动创建者可以查看逐份答卷', 'SHEET_CARDS_RESTRICTED')",
     },
+    // 匿名投影层（DEC-364①）：卡片与审计出口共用的查看人谓词
+    { role: 'impl', unit: `${S}/anonymous.ts#cardViewer`, anchor: 'participates(viewer.userId)' },
   ],
 });
 const INVITE_NEED: Evidence = {

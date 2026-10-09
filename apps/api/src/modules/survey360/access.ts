@@ -7,6 +7,7 @@ import { PERSONNEL_OBJECT } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../../routes.js';
 import { scopeSql } from '../permission/module-access.js';
+import { cardViewer, participates } from './anonymous.js';
 import { type Admin, allActivitiesOf, BUTTONS, can, fail, finePermission, isHolder, rows } from './context.js';
 import { loadPerson, personVisible } from './people.js';
 import { employeeScope } from './sync.js';
@@ -120,12 +121,16 @@ type Viewer = { tenantId: string; userId: string; timezone?: string };
  * - answer：答卷（保存、提交、屏蔽、恢复、清除）——同 relation，默认只展示脱敏版本（DEC-340③）；
  * - answerFull：能看答卷日志完整版的活动（DEC-355②）——持“全部活动”且本人（账号挂接的员工）不是**该活动**的被评价人
  *   或评价者（含已移除的）；兼任者与其他活动管理员只看脱敏版；
+ * - answerCards：答卷日志里能看逐份答案的活动（DEC-358②）——与逐份卡片同一谓词（anonymous.ts cardViewer）；与身份
+ *   脱敏（answerFull）分别判断；
  * - person：人员——持“全部活动”或精细化权限关闭（开启时不经审计看到范围外人员）；
  * - sync：同步冲突——另须“从系统管理中同步人员信息”按钮与员工信息查看权，并且只给冲突员工在查看人**当前**员工
  *   信息数据范围内的日志（与冲突清单同一 .list 范围、同一谓词，第 4 轮 R3-P2-2）：返回范围内员工编号的子查询。
  * 没有 360 身份返回 null（看不到任何 360 日志），被评价人与评价者因此不能经审计反推评价者身份。
  */
-export function survey360AuditScope(kind: 'activity' | 'relation' | 'answer' | 'answerFull' | 'person' | 'sync') {
+type AuditScopeKind = 'activity' | 'relation' | 'answer' | 'answerFull' | 'answerCards' | 'person' | 'sync';
+
+export function survey360AuditScope(kind: AuditScopeKind) {
   return async (deps: AuditDeps, ctx: Viewer): Promise<SQL | null> =>
     withTenant(deps.db, ctx.tenantId, async (tx) => {
       const tenant = { timezone: 'UTC', ...ctx };
@@ -147,38 +152,12 @@ export function survey360AuditScope(kind: 'activity' | 'relation' | 'answer' | '
           ? sql`SELECT a.id::text FROM survey360_activities a WHERE a.tenant_id = ${ctx.tenantId}::uuid
             AND NOT ${participates(ctx.userId)}`
           : null;
+      if (kind === 'answerCards')
+        return sql`SELECT a.id::text FROM survey360_activities a WHERE a.tenant_id = ${ctx.tenantId}::uuid
+          AND ${cardViewer({ userId: ctx.userId, allActivities })}`;
       return sql`SELECT a.id::text FROM survey360_activities a WHERE a.tenant_id = ${ctx.tenantId}::uuid
         AND ${activityVisibleSql({ userId: ctx.userId, allActivities })}`;
     });
-}
-
-/** 查看人账号挂接的员工是活动 a 的被评价人或评价者（含已移除的对象 / 评价关系：日志里留有当时的作答）。 */
-function participates(userId: string): SQL {
-  return sql`EXISTS (SELECT 1 FROM permission_user_person_links l
-    JOIN survey360_people p ON p.tenant_id = l.tenant_id AND p.employee_id = l.employee_id
-    WHERE l.tenant_id = a.tenant_id AND l.user_id = ${userId}::uuid
-      AND (EXISTS (SELECT 1 FROM survey360_objects o WHERE o.activity_id = a.id AND o.person_id = p.id)
-        OR EXISTS (SELECT 1 FROM survey360_relations r WHERE r.activity_id = a.id AND r.appraiser_person_id = p.id)))`;
-}
-
-/**
- * 逐份答卷卡片（逐份分数 / 答案）的查看人（DEC-358②）：持“全部活动”的管理员或该活动的创建者，且本人不是该活动的
- * 被评价人或评价者（与 DEC-355② 同一兼任规则）。其他活动管理员只看各题汇总（结果报表、报告）。
- */
-export async function requireCardViewer(
-  tx: Tx,
-  admin: Admin,
-  activity: { id: string; created_by: string },
-): Promise<void> {
-  const eligible = admin.allActivities || activity.created_by === admin.userId;
-  const [row] = eligible
-    ? rows<{ participates: boolean }>(
-        await tx.execute(sql`SELECT ${participates(admin.userId)} AS participates
-          FROM survey360_activities a WHERE a.id = ${activity.id}::uuid`),
-      )
-    : [];
-  if (!eligible || row?.participates !== false)
-    fail('FORBIDDEN', '只有持“全部活动”权限的管理员或活动创建者可以查看逐份答卷', 'SHEET_CARDS_RESTRICTED');
 }
 
 /**

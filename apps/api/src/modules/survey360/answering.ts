@@ -29,6 +29,7 @@ import { SYSTEM_USER_ID } from '../../system-actor.js';
 import type { TenantContext, TenantEnv } from '../../tenant-context.js';
 import { revision, uuidParam } from '../job/context.js';
 import { requireObject, type ActivityRow } from './access.js';
+import { ownAnswers, ownSheet, ownSheetTotal } from './anonymous.js';
 import type { AvatarReference } from '../avatar/references.js';
 import { linkAvatarContent, linkAvatars } from './avatar-links.js';
 import {
@@ -286,24 +287,6 @@ async function findSheet(tx: Tx, relationId: string, questionnaireId: string, lo
   return row;
 }
 
-async function answersOf(tx: Tx, sheetId: string) {
-  return tx
-    .select({ itemId: survey360Answers.itemId, optionId: survey360Answers.optionId, remark: survey360Answers.remark })
-    .from(survey360Answers)
-    .where(eq(survey360Answers.sheetId, sheetId))
-    .orderBy(survey360Answers.itemId);
-}
-
-async function sheetView(tx: Tx, sheet: SheetRow | undefined) {
-  if (!sheet) return { status: 'pending', revision: 0, answers: [], suggestion: null };
-  return {
-    status: sheet.status,
-    revision: sheet.revision,
-    answers: await answersOf(tx, sheet.id),
-    suggestion: sheet.suggestion,
-  };
-}
-
 /** 作答页的题目（关键行为）或基础指标（等级评定）：只给当前角色要评的条目，不给选项分值。 */
 function itemsFor(q: LoadedQuestionnaire, roleId: string) {
   const allowed = new Set(survey360.answerableItems(q.model, roleId));
@@ -398,7 +381,7 @@ async function auditSheet(
       activityId: activity.id,
       relationId: sheet.relationId,
       questionnaireId: sheet.questionnaireId,
-      ...(await sheetView(tx, sheet)),
+      ...(await ownSheet(tx, sheet)),
     },
   });
 }
@@ -415,10 +398,8 @@ async function excellenceCheck(
   const rate = q.row.excellentMaxRate;
   if (activity.form !== 'multiple' || line === null || rate === null) return;
   const model = q.model;
-  const totalOf = async (sheetId: string, role: string) =>
-    survey360.scoreSheet(model, role, new Map((await answersOf(tx, sheetId)).map((a) => [a.itemId, a.optionId]))).total;
   const excellent = async (sheetId: string, role: string) =>
-    survey360.isExcellent(await totalOf(sheetId, role), survey360.maxTotal(model, role), Number(line));
+    survey360.isExcellent(await ownSheetTotal(tx, model, role, sheetId), survey360.maxTotal(model, role), Number(line));
   if (!(await excellent(sheet.id, roleId))) return;
   const roles = new Set(model.roles.map((r) => r.roleId));
   const relations = rows<{ id: string; role_id: string; sheet_id: string | null; status: string | null }>(
@@ -491,7 +472,7 @@ function answerRead(deps: TenantRouteDeps, entryOf: EntryOf) {
           guide: questionnaire.row.guide,
           items: itemsFor(questionnaire, t.role_id),
         },
-        sheet: await sheetView(tx, await findSheet(tx, t.id, questionnaire.row.id)),
+        sheet: await ownSheet(tx, await findSheet(tx, t.id, questionnaire.row.id)),
       };
     })(c);
 }
@@ -509,7 +490,7 @@ function answerSave(deps: TenantRouteDeps, entryOf: EntryOf) {
         const { task: t, questionnaire, sheet } = await openSheet(tx, ctx, activity, link, relationId, qid);
         requireRevision(sheet?.revision ?? 0, ctx.expectedRevision);
         checkAnswers(questionnaire, t.role_id, input.answers);
-        const before = sheet ? await sheetView(tx, sheet) : null;
+        const before = sheet ? await ownSheet(tx, sheet) : null;
         let saved: SheetRow;
         if (sheet) {
           [saved] = (await tx
@@ -546,7 +527,7 @@ function answerSave(deps: TenantRouteDeps, entryOf: EntryOf) {
             })),
           );
         await auditSheet(tx, ctx, 'survey360.sheet.save', activity, before, saved);
-        return sheetView(tx, saved);
+        return ownSheet(tx, saved);
       },
       taskGuard(relationId, qid),
     )(c);
@@ -566,7 +547,7 @@ function answerSubmit(deps: TenantRouteDeps, entryOf: EntryOf) {
         const { task: t, questionnaire, sheet } = await openSheet(tx, ctx, activity, link, relationId, qid);
         if (!sheet) fail('VALIDATION_FAILED', '答卷未作答', 'INCOMPLETE');
         requireRevision(sheet!.revision, ctx.expectedRevision);
-        const answers = await answersOf(tx, sheet!.id);
+        const answers = await ownAnswers(tx, sheet!.id);
         const answered = new Map(answers.map((a) => [a.itemId, a]));
         const missing = survey360.answerableItems(questionnaire.model, t.role_id).filter((id) => !answered.has(id));
         if (missing.length) fail('VALIDATION_FAILED', '还有题目未作答', 'INCOMPLETE', { itemIds: missing });
@@ -580,9 +561,9 @@ function answerSubmit(deps: TenantRouteDeps, entryOf: EntryOf) {
           .set({ status: 'submitted', submittedAt: ctx.now, revision: sheet!.revision + 1 })
           .where(eq(survey360Sheets.id, sheet!.id))
           .returning()) as [SheetRow];
-        await auditSheet(tx, ctx, 'survey360.sheet.submit', activity, await sheetView(tx, sheet), saved);
+        await auditSheet(tx, ctx, 'survey360.sheet.submit', activity, await ownSheet(tx, sheet), saved);
         await completeTodo(tx, ctx, activity.id, link.personId);
-        return sheetView(tx, saved);
+        return ownSheet(tx, saved);
       },
       taskGuard(relationId, qid),
     )(c);
