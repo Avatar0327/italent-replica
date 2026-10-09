@@ -4,7 +4,8 @@
  *   开关 B（报告模板：文本答案中是否呈现评价角色）只影响报告文本答案的角色键；
  *   其余接口（原始数据、结果报表、进程控制、报告其余部分）在四种组合下完全相同；
  * - 受限管理员（精细化开启）：进程控制、原始数据、报告、报表只含范围内的评价对象 / 评价者，范围外 404；
- * - 审计：答卷类日志（保存、提交、屏蔽、清除）只给持“全部活动”者；有活动授权的一般管理员看不到。
+ * - 审计：答卷类日志（保存、提交、屏蔽、清除）给有活动授权的管理员看脱敏版本（DEC-340③，详见 AC-360-B-08）；
+ *   没有活动授权的一般管理员看不到。
  */
 import { randomUUID } from 'node:crypto';
 import { survey360 } from '@italent/domain';
@@ -186,7 +187,7 @@ describe('PR-B 受限管理员与无授权管理员', () => {
 });
 
 describe('PR-B 审计查看', () => {
-  it('答卷类日志只给持“全部活动”者；有活动授权的一般管理员看不到', async () => {
+  it('答卷类日志给有活动授权的管理员（脱敏，DEC-340③）；没有活动授权的一般管理员看不到', async () => {
     const s = await answered('b06d');
     const { w } = s;
     await w.transition(s.activity.id, 'disable');
@@ -196,6 +197,8 @@ describe('PR-B 审计查看', () => {
     await w.ok(w.request('POST', `${s.path}/relations/${row.relationId}/reanswer`, { ifMatch: row.revision }));
     const general = await w.member('一般管理员');
     await w.appoint(general, 'general');
+    const outsider = await w.member('无授权管理员');
+    await w.appoint(outsider, 'general');
     const current = await w.getActivity(s.activity.id);
     await w.ok(w.request('POST', `${s.path}/grants`, { ifMatch: current.revision, body: { userIds: [general] } }));
 
@@ -207,6 +210,9 @@ describe('PR-B 审计查看', () => {
     const system = await types(w.admin);
     for (const action of ['survey360.sheet.submit', 'survey360.sheet.block', 'survey360.sheet.clear'])
       expect(system).toContain(action);
-    expect(await types(general)).toEqual([]);
+    const granted = await types(general);
+    for (const action of ['survey360.sheet.submit', 'survey360.sheet.block', 'survey360.sheet.clear'])
+      expect(granted).toContain(action);
+    expect(await types(outsider)).toEqual([]);
   });
 });

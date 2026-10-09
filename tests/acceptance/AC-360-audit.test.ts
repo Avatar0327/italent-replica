@@ -57,9 +57,9 @@ describe('360 审计查看', () => {
         body: { userIds: [general] },
       }),
     );
-    // PR-B：答卷类日志（含答案与评价关系）只给持“全部活动”者，有活动授权的一般管理员看不到（身份保护）
+    // DEC-340③：答卷类日志给有活动授权的管理员看脱敏版本（不带评价关系与作答来源，AC-360-B-08）
     const granted = await types(general);
     expect(granted).toContain('survey360-relation:survey360.relation.create');
-    expect(granted.filter((t) => t.startsWith('survey360-sheet'))).toEqual([]);
+    expect(granted).toContain('survey360-sheet:survey360.sheet.submit');
   });
 });
