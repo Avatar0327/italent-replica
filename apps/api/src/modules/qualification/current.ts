@@ -99,7 +99,8 @@ export async function currentQualification(
       LIMIT 1`),
   );
   if (!row) return null;
-  return {
+  // 可信只读端口的返回值冻结：同一份数据交给多个调用方，调用方不得就地改写
+  return Object.freeze({
     recordId: row.id,
     categoryId: row.category_id,
     levelId: row.level_id,
@@ -108,7 +109,7 @@ export async function currentQualification(
     isAutoSync: row.is_auto_sync,
     finalScore: row.final_score === null ? null : Number(row.final_score),
     result: row.result,
-  };
+  });
 }
 
 export async function priorQualificationForApply(
@@ -121,15 +122,21 @@ export async function priorQualificationForApply(
   const activity = normalizedUuid(activityTypeId, '活动类型 ID');
   const current = await currentQualification(tx, tenantId, employeeId, asOf);
   if (current) {
-    return {
+    return Object.freeze({
       categoryId: current.categoryId,
       levelId: current.levelId,
       lastResult: current.result,
       obtainedDate: current.startDate,
-      source: 'subset',
-    };
+      source: 'subset' as const,
+    });
   }
-  return (
-    (await evaluationPrior?.(tx, normalizedUuid(tenantId, '租户 ID'), employeeId.toLowerCase(), activity, asOf)) ?? null
+  const fallback = await evaluationPrior?.(
+    tx,
+    normalizedUuid(tenantId, '租户 ID'),
+    employeeId.toLowerCase(),
+    activity,
+    asOf,
   );
+  // 冻结的是副本，不动提供者自己的对象
+  return fallback ? Object.freeze({ ...fallback }) : null;
 }

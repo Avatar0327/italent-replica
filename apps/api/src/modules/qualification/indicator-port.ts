@@ -75,12 +75,20 @@ interface AbilityRow {
 interface ChainRow {
   readonly start_id: string;
   readonly id: string;
+  readonly parent_id: string | null;
   readonly name: string;
+  readonly depth: number;
 }
 
-/** 指标类型从本级到根的链（含本级，最深 20 层的防御上限），按 start_id 归并为 { 名称自根到本级, 链上 id }。 */
+/** 类型树最多 100 层（路径长度上限）：超过即报错（不截断路径，也挡住数据损坏造成的环）。 */
+const TYPE_DEPTH_LIMIT = 100;
+
+/**
+ * 指标类型从本级到根的链（含本级），按 start_id 归并为自根到本级的名称。链走到深度上限仍有上级时抛 RangeError，
+ * 不返回缺层的路径。
+ */
 async function typeChains(tx: Tx, tenantId: string, typeIds: readonly string[]) {
-  const chains = new Map<string, { names: string[]; ids: string[] }>();
+  const chains = new Map<string, string[]>();
   if (!typeIds.length) return chains;
   const result = rowsOf<ChainRow>(
     await tx.execute(sql`WITH RECURSIVE chain(start_id, id, parent_id, name, depth) AS (
@@ -89,14 +97,14 @@ async function typeChains(tx: Tx, tenantId: string, typeIds: readonly string[]) 
       UNION ALL
         SELECT c.start_id, p.id, p.parent_id, p.name, c.depth + 1 FROM chain c
         JOIN ql_target_types p ON p.tenant_id = ${tenantId}::uuid AND p.id = c.parent_id
-        WHERE c.depth < 20)
-      SELECT start_id, id, name FROM chain ORDER BY start_id, depth DESC`),
+        WHERE c.depth < ${TYPE_DEPTH_LIMIT - 1})
+      SELECT start_id, id, parent_id, name, depth FROM chain ORDER BY start_id, depth DESC`),
   );
   for (const row of result) {
-    const chain = chains.get(row.start_id) ?? { names: [], ids: [] };
-    chain.names.push(row.name);
-    chain.ids.push(row.id);
-    chains.set(row.start_id, chain);
+    if (row.depth >= TYPE_DEPTH_LIMIT - 1 && row.parent_id !== null) {
+      throw new RangeError(`指标类型树超过 ${TYPE_DEPTH_LIMIT} 层，超出端口上限`);
+    }
+    chains.set(row.start_id, [...(chains.get(row.start_id) ?? []), row.name]);
   }
   return chains;
 }
@@ -107,6 +115,25 @@ function deepFreeze<T>(value: T): T {
     for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child);
   }
   return value;
+}
+
+const FAILURES = Object.freeze({
+  no_current_qualification: Object.freeze({ ok: false, reason: 'no_current_qualification' } as const),
+  no_standard: Object.freeze({ ok: false, reason: 'no_standard' } as const),
+  level_not_in_standard: Object.freeze({ ok: false, reason: 'level_not_in_standard' } as const),
+});
+
+/**
+ * 指标类型筛选（含下级类型）写在 SQL 里，和 targetIds 一样在 500 上限检查之前生效：只有筛选后的结果超限才报错。
+ * 下级展开用 UNION（去重）而不是 UNION ALL，遇到环也会终止。
+ */
+function typeScope(tenant: string, typeIds: readonly string[]): SQL {
+  return sql`AND t.type_id IN (
+    WITH RECURSIVE down(id) AS (
+        SELECT id FROM ql_target_types WHERE tenant_id = ${tenant}::uuid AND id = ANY(${uuidArray(typeIds)}::uuid[])
+      UNION
+        SELECT c.id FROM ql_target_types c JOIN down d ON c.parent_id = d.id WHERE c.tenant_id = ${tenant}::uuid)
+    SELECT id FROM down)`;
 }
 
 async function indicators(
@@ -120,14 +147,14 @@ async function indicators(
   const typeFilter = filter?.targetTypeIds?.map((id) => normalizedUuid(id, '指标类型 ID'));
   const targetFilter = filter?.targetIds?.map((id) => normalizedUuid(id, '指标 ID'));
   const current = await currentQualification(tx, tenant, employeeId, assertIsoDate(asOf));
-  if (!current) return { ok: false, reason: 'no_current_qualification' };
+  if (!current) return FAILURES.no_current_qualification;
 
   const [standard] = rowsOf<{ id: string; level_ids: string[] }>(
     await tx.execute(sql`SELECT id, level_ids FROM ql_standards
       WHERE tenant_id = ${tenant}::uuid AND category_id = ${current.categoryId}::uuid`),
   );
-  if (!standard) return { ok: false, reason: 'no_standard' };
-  if (!standard.level_ids.includes(current.levelId)) return { ok: false, reason: 'level_not_in_standard' };
+  if (!standard) return FAILURES.no_standard;
+  if (!standard.level_ids.includes(current.levelId)) return FAILURES.level_not_in_standard;
 
   const details = rowsOf<DetailRow>(
     await tx.execute(sql`SELECT d.id AS detail_id, d.target_value AS detail_target_value, d.weight,
@@ -137,18 +164,15 @@ async function indicators(
       WHERE d.tenant_id = ${tenant}::uuid AND d.standard_id = ${standard.id}::uuid
         AND d.level_id = ${current.levelId}::uuid
         ${targetFilter ? sql`AND t.id = ANY(${uuidArray(targetFilter)}::uuid[])` : sql``}
+        ${typeFilter ? typeScope(tenant, typeFilter) : sql``}
       ORDER BY t.display_order, t.code, t.id
       LIMIT ${QUALIFICATION_PORT_LIMIT + 1}`),
   );
   if (details.length > QUALIFICATION_PORT_LIMIT) {
     throw new RangeError(`一个级别的指标超过 ${QUALIFICATION_PORT_LIMIT} 个，超出端口上限`);
   }
-  const chains = await typeChains(tx, tenant, [...new Set(details.map((row) => row.type_id))]);
-  const kept = details.filter((row) => {
-    if (!typeFilter) return true;
-    const ids = chains.get(row.type_id)?.ids ?? [row.type_id];
-    return typeFilter.some((id) => ids.includes(id));
-  });
+  const kept = details;
+  const chains = await typeChains(tx, tenant, [...new Set(kept.map((row) => row.type_id))]);
   const abilities = new Map<string, AbilityRow[]>();
   if (kept.length) {
     const detailIds = uuidArray(kept.map((row) => row.detail_id));
@@ -165,7 +189,7 @@ async function indicators(
     code: row.code,
     name: row.name,
     targetTypeId: row.type_id,
-    targetTypePath: chains.get(row.type_id)?.names ?? [],
+    targetTypePath: chains.get(row.type_id) ?? [],
     evalMode: row.eval_mode,
     gradeSchemeId: row.grade_scheme_id,
     weight: row.weight === null ? null : Number(row.weight),
