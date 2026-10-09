@@ -14,8 +14,11 @@
  * “或”准入：同一 group 的义务按 `组:备选` 标注；同一备选内全部义务 AND，备选之间 OR。
  */
 
-/** 证据角色：强制调用点（抛错 / 拒绝的那一句所在处）、授权实现（辅助函数）、决定实参的常量。 */
-export type EvidenceRole = 'call' | 'impl' | 'const';
+/**
+ * 证据角色：强制调用点（抛错 / 拒绝的那一句所在处）、授权实现（辅助函数）、决定实参的常量、
+ * 强制范围判定处（`need.scope` 不是 none 的义务必须有，PR-B1；evidence.ts 对角色不做分支）。
+ */
+export type EvidenceRole = 'call' | 'impl' | 'const' | 'scope';
 
 export interface Evidence {
   readonly role: EvidenceRole;
@@ -30,6 +33,29 @@ export interface Evidence {
 
 export type Purpose = `disclosure:${string}` | `guard:${string}` | `when:${string}`;
 
+/**
+ * 义务绑定的范围（B-03）：权限必须由范围满足该要求的节点提供。名字（locator / predicate / guard）写了就要相等；
+ * 三个名字至多写一个，且与 scope 对应（point → locator，list → predicate，guard → guard）。
+ * `none` = 该权限随主对象的范围，不另行过滤。
+ */
+export interface Need {
+  readonly scope: 'point' | 'list' | 'see-all' | 'guard' | 'none';
+  readonly locator?: string;
+  readonly predicate?: string;
+  readonly guard?: string;
+}
+
+/**
+ * 守卫内部义务的内部角色（第 3 轮审查 P2）：
+ *   required  承载者必需，且该权限是其必需项；
+ *   or        承载者内部“或”的一支（备选登记在 guard-inner.ts 的 GUARD_INNER_ALTS，含不经授权器的数据态备选）；
+ *   when      条件成立时才用到，condition 为条件名。
+ */
+export type Inner =
+  | { readonly role: 'required' }
+  | { readonly role: 'or'; readonly group: string; readonly alt: string }
+  | { readonly role: 'when'; readonly condition: string };
+
 export interface Obligation {
   readonly perm: string;
   /** 缺省 = 准入。 */
@@ -38,6 +64,10 @@ export interface Obligation {
   readonly or?: string;
   /** 本义务承接的探测器原始事实（`维度:原语名` / `objectOp:编码:操作` / `or:名字`）。 */
   readonly facts?: readonly string[];
+  /** 范围绑定（B-03）：含 ≥2 个承载节点的准入备选里的 obj: / admin: 准入义务与全部披露义务必须登记。 */
+  readonly need?: Need;
+  /** 守卫内部义务（purpose = guard:*）的内部角色，必须登记。 */
+  readonly inner?: Inner;
   readonly at: readonly Evidence[];
   /** 审定备注（为什么是这个用途、现状特殊处）。 */
   readonly note?: string;

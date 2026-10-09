@@ -1,0 +1,358 @@
+{
+  "GET /api/tenant/contracts": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentContract"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentContract:view"
+    ]
+  },
+  "GET /api/tenant/contracts/employees/:id/revision": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "b5bb184b0b95",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentContract:view"
+    ]
+  },
+  "GET /api/tenant/contracts/failures": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentContract:view"
+    ]
+  },
+  "GET /api/tenant/contracts/master-data/companies": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.ContractCompany"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractCompany/TenantBase.ContractCompany.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractCompany:view"
+    ]
+  },
+  "GET /api/tenant/contracts/master-data/types": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.ContractType"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractType/TenantBase.ContractType.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractType:view"
+    ]
+  },
+  "GET /api/tenant/contracts/records/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "15411a4c6808",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentContract:view"
+    ]
+  },
+  "GET /api/tenant/contracts/requests/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "2edd6b793cb5",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": [
+      "obj:TenantBase.EmploymentContract:view"
+    ]
+  },
+  "GET /api/tenant/contracts/rules": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.ContractRenewalRule"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractRenewalRule/TenantBase.ContractRenewalRule.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractRenewalRule:view"
+    ]
+  },
+  "GET /api/tenant/contracts/settings": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.ContractSettings"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractSettings/TenantBase.ContractSettings.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractSettings:view"
+    ]
+  },
+  "POST /api/tenant/contracts/batch": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "586ee1f0aaeb",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": []
+  },
+  "POST /api/tenant/contracts/commands": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "daca302872de",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": []
+  },
+  "POST /api/tenant/contracts/imports": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ad85501a8b3a",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentContract#import@list"
+    ]
+  },
+  "POST /api/tenant/contracts/imports/errors": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ad85501a8b3a",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentContract#import@list"
+    ]
+  },
+  "POST /api/tenant/contracts/imports/preview": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ad85501a8b3a",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentContract#import@list"
+    ]
+  },
+  "POST /api/tenant/contracts/master-data/companies": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "57fd82f4ef59",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractCompany/TenantBase.ContractCompany.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractCompany:create"
+    ]
+  },
+  "POST /api/tenant/contracts/master-data/types": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "57fd82f4ef59",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractType/TenantBase.ContractType.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractType:create"
+    ]
+  },
+  "POST /api/tenant/contracts/requests/:id/cancel": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "2edd6b793cb5",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": [
+      "btn:TenantBase.EmploymentContract#withdraw@detail",
+      "obj:TenantBase.EmploymentContract:update"
+    ]
+  },
+  "POST /api/tenant/contracts/rules": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "f8e0cf6ecb62",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractRenewalRule/TenantBase.ContractRenewalRule.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractRenewalRule:create"
+    ]
+  },
+  "POST /api/tenant/contracts/todos/batch": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "269a76fa59b5",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list"
+    ],
+    "trace": []
+  },
+  "PUT /api/tenant/contracts/master-data/companies/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "57fd82f4ef59",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractCompany/TenantBase.ContractCompany.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractCompany:update"
+    ]
+  },
+  "PUT /api/tenant/contracts/master-data/types/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "57fd82f4ef59",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractType/TenantBase.ContractType.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractType:update"
+    ]
+  },
+  "PUT /api/tenant/contracts/rules/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "f8e0cf6ecb62",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractRenewalRule/TenantBase.ContractRenewalRule.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractRenewalRule:update"
+    ]
+  },
+  "PUT /api/tenant/contracts/settings": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "0e6b9e75947d",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.ContractSettings/TenantBase.ContractSettings.list"
+    ],
+    "trace": [
+      "obj:TenantBase.ContractSettings:update"
+    ]
+  }
+}

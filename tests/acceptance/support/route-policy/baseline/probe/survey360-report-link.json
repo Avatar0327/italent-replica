@@ -1,0 +1,27 @@
+{
+  "GET /api/survey360/report-link": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/survey360/report-link/reports/:reportId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": []
+  }
+}

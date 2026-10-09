@@ -5,7 +5,8 @@
  * 重验；资源守卫（options.guard）、载荷引用（refs）、隐式写入的人员（also → routeNeed）、命令前员工信息查看权
  * （preflight → routeEmployeeScope）逐个绑判定处。链接入口不经成员中间件，令牌在每个处理函数里解析（linkTenant + resolve）。
  */
-import type { Evidence, Obligation, RequiredTable } from './types.js';
+import { type Binding, bound, list, point, SCOPE_AT, withNeeds } from './scopes.js';
+import type { Evidence, Inner, Obligation, RequiredTable } from './types.js';
 
 const S = 'apps/api/src/modules/survey360';
 const CONTEXT = `${S}/context.ts`;
@@ -130,6 +131,8 @@ interface Route {
   /** POST 的只读接口（read()，如转发预览）：不经 write / 命令事务。 */
   readonly readOnly?: boolean;
   readonly extra?: (entry: Evidence) => Obligation[];
+  /** 范围绑定（B-03）：含多个承载节点的备选里 obj: 准入义务按权限键登记 need。 */
+  readonly needs?: Readonly<Record<string, Binding>>;
 }
 
 const unitOf = (r: Pick<Route, 'file' | 'method' | 'path'>) => `${S}/${r.file}#route:${r.method} ${r.path}`;
@@ -156,7 +159,8 @@ function obligations(r: Route): Obligation[] {
       at: [...common, ...ROUTE_BUTTON, ...(write ? [IN_TRANSACTION] : []), buttonConst(r.key, r.button)],
     });
   }
-  return [...out, ...(r.extra?.(entry) ?? [])];
+  const all = [...out, ...(r.extra?.(entry) ?? [])];
+  return r.needs ? withNeeds(all, r.needs) : all;
 }
 
 // ---- 守卫 ---------------------------------------------------------------------------------------------------------
@@ -198,6 +202,8 @@ const resource = (entry: Evidence, anchor: string, impls: readonly Evidence[]): 
 const activityGuard = (entry: Evidence) => resource(entry, 'guard: guarded(id)', [GUARDED, REQUIRE_ACTIVITY]);
 const objectGuard = (entry: Evidence, anchor = 'guard: objectGuard(id, objectId)') =>
   resource(entry, anchor, [OBJECT_GUARD, REQUIRE_ACTIVITY, VISIBLE_OBJECT]);
+/** 创建人本人直接放行，非创建人才判 editOthers（editableBy：row.createdBy === admin.userId 即 return）。 */
+const NOT_CREATOR: Inner = { role: 'when', condition: 'questionnaire.notCreatedBySelf' };
 /** 改 / 删他人创建的套卷：本人创建，或持 editOthers 按钮（守卫内部义务）。 */
 function editableBy(entry: Evidence, anchor: string): Obligation[] {
   const impl: Evidence = {
@@ -210,12 +216,14 @@ function editableBy(entry: Evidence, anchor: string): Obligation[] {
     {
       perm: `btn:${code('questionnaire')}#editOthers@detail`,
       purpose: 'guard:survey360.resourceGuard',
+      inner: NOT_CREATOR,
       note: '本人创建的套卷不要求该按钮',
       at: [{ ...entry, anchor }, impl, buttonConst('questionnaire', 'editOthers')],
     },
     {
       perm: `obj:${code('questionnaire')}:update`,
       purpose: 'guard:survey360.resourceGuard',
+      inner: NOT_CREATOR,
       note: 'editOthers 按 can(questionnaire, update, editOthers) 判定：数据操作与按钮同时要求',
       at: [{ ...entry, anchor }, impl],
     },
@@ -231,8 +239,19 @@ const PERSON_REFS: Evidence = {
   anchor: 'void (await referencedPerson(tx, admin, ref))',
 };
 const REQUIRE_SUPERIOR: Evidence = { role: 'impl', unit: `${S}/people.ts#requireSuperior`, anchor: 'if (id === self)' };
+/** 录入 person 才隐式新建人员（personAlso：ref.person 为空则无 also）。 */
+const PAYLOAD_PERSON = (): Inner => ({ role: 'when', condition: 'payload.person' });
+/** 导入：新建始终判；选择“同步”时只新建，不同步才另判更新（importAlso）。 */
+const IMPORT_INNER = (operation: 'create' | 'update'): Inner =>
+  operation === 'create' ? { role: 'required' } : { role: 'when', condition: 'import.notSync' };
 /** 隐式写入的 360 人员：also → routeFields → routeNeed（人员的数据操作 + 同名按钮 + 字段），命令事务内 requireNeed 重验。 */
-function also(entry: Evidence, anchor: string, operations: readonly ('create' | 'update')[], impl?: Evidence) {
+function also(
+  entry: Evidence,
+  anchor: string,
+  operations: readonly ('create' | 'update')[],
+  inner: (operation: 'create' | 'update') => Inner,
+  impl?: Evidence,
+) {
   const routeFields: Evidence = {
     role: 'impl',
     unit: `${CONTEXT}#routeFields`,
@@ -250,11 +269,13 @@ function also(entry: Evidence, anchor: string, operations: readonly ('create' | 
       {
         perm: `obj:${code('person')}:${operation}`,
         purpose: 'guard:survey360.alsoObjects',
+        inner: inner(operation),
         at: [...at, ROUTE_NEED, objectConst('person')],
       },
       {
         perm: `btn:${code('person')}#${operation}@${LEVELS[operation]}`,
         purpose: 'guard:survey360.alsoObjects',
+        inner: inner(operation),
         at: [...at, ...ROUTE_BUTTON, buttonConst('person', operation)],
       },
     ]),
@@ -307,6 +328,11 @@ const employeeView = (calls: readonly Evidence[], facts: readonly string[]): Obl
   at: [...calls, ROUTE_EMPLOYEE, SYNC_ACCESS, EMPLOYEE_CONST],
 });
 const ROUTE_EMPLOYEE_FACTS = ['object:objectContext', `objectOp:${EMPLOYEE}:view`, 'object:object.* 动作'];
+/** 人员同步三个入口：360 人员按 personScope 过滤，员工信息按 employeeScope 过滤。 */
+const PEOPLE_SYNC_NEEDS: Readonly<Record<string, Binding>> = {
+  'obj:Survey360.Person:view': bound(list('survey360.personScope'), SCOPE_AT['survey360.personScope']),
+  [`obj:${EMPLOYEE}:view`]: bound(list('survey360.employeeScope'), SCOPE_AT['survey360.employeeScope']),
+};
 
 const VIEW = (file: string, key: Key): Evidence => ({
   role: 'const',
@@ -376,6 +402,7 @@ const ROUTES: readonly Route[] = [
     path: '/people/sync-conflicts',
     key: 'person',
     button: 'sync',
+    needs: PEOPLE_SYNC_NEEDS,
     need: 'read( c, deps, SYNC',
     needConst: SYNC_NEED,
     extra: (entry) => [
@@ -392,6 +419,7 @@ const ROUTES: readonly Route[] = [
     path: '/people/sync',
     key: 'person',
     button: 'sync',
+    needs: PEOPLE_SYNC_NEEDS,
     need: 'need: SYNC',
     needConst: SYNC_NEED,
     extra: (entry) => {
@@ -405,6 +433,7 @@ const ROUTES: readonly Route[] = [
     path: '/people/sync-conflicts/:id/resolve',
     key: 'person',
     button: 'sync',
+    needs: PEOPLE_SYNC_NEEDS,
     need: 'need: SYNC',
     needConst: SYNC_NEED,
     extra: (entry) => [
@@ -664,7 +693,7 @@ const ROUTES: readonly Route[] = [
     extra: (entry) => [
       activityGuard(entry),
       refs(entry, 'refs: personRefs', PERSON_REFS),
-      ...also(entry, 'also: personAlso', ['create'], PERSON_ALSO),
+      ...also(entry, 'also: personAlso', ['create'], PAYLOAD_PERSON, PERSON_ALSO),
     ],
   },
   {
@@ -706,7 +735,7 @@ const ROUTES: readonly Route[] = [
     extra: (entry) => [
       objectGuard(entry),
       refs(entry, 'refs: personRefs', PERSON_REFS),
-      ...also(entry, 'also: personAlso', ['create'], PERSON_ALSO),
+      ...also(entry, 'also: personAlso', ['create'], PAYLOAD_PERSON, PERSON_ALSO),
     ],
   },
   {
@@ -726,6 +755,10 @@ const ROUTES: readonly Route[] = [
     key: 'relation',
     operation: 'create',
     button: 'autoAdd',
+    needs: {
+      'obj:Survey360.Relation:create': bound(point('survey360.object.byId'), SCOPE_AT['survey360.object.byId']),
+      [`obj:${EMPLOYEE}:view`]: bound(list('survey360.employeeScope'), SCOPE_AT['survey360.employeeScope(auto)']),
+    },
     need: "need: { object: 'relation', operation: 'create', button: 'autoAdd' }",
     extra: (entry) => [
       objectGuard(entry),
@@ -733,6 +766,7 @@ const ROUTES: readonly Route[] = [
         entry,
         "also: () => [{ need: { object: 'person', operation: 'create' }, fields: SYNCED_PERSON_FIELDS }]",
         ['create'],
+        () => ({ role: 'required' }),
       ),
       preflight(entry, 'employees = await routeEmployeeScope(c, deps)'),
       employeeView([{ ...entry, anchor: 'employees = await routeEmployeeScope(c, deps)' }], ROUTE_EMPLOYEE_FACTS),
@@ -755,7 +789,7 @@ const ROUTES: readonly Route[] = [
           unit: `${S}/relations.ts#importRefs`,
           anchor: 'importRefs',
         }),
-        ...also(entry, 'also: importAlso', ['create', 'update'], IMPORT_ALSO),
+        ...also(entry, 'also: importAlso', ['create', 'update'], IMPORT_INNER, IMPORT_ALSO),
         preflight(entry, 'preflight: async () => {'),
         {
           perm: 'guard:survey360.syncEmployees',

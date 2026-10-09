@@ -1,0 +1,137 @@
+{
+  "GET /api/platform/command-failures": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/platform/tenants/:tenantId": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/platform/tenants/:tenantId/licenses": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/platform/tenants": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/platform/tenants/:tenantId/seeds/backfill": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/platform/tenants/:tenantId/standard-profiles/backfill": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/platform/tenants/:tenantId/status": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/platform/users": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/platform/tenants/:tenantId/licenses/:licenseType": {
+    "all": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "error": "3631e071c213",
+      "reason": "PLATFORM_OPERATOR_REQUIRED",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  }
+}
