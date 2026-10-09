@@ -825,7 +825,10 @@ const PLAN_ROUTES: RequiredTable = {
     guard(
       'idp.transferTarget',
       [
-        call(`${I}/intervention-service.ts#transferPlan`, 'await requireTargetInScope(tx, ctx, input.toUserId)'),
+        call(
+          `${I}/intervention-service.ts#transferPlan`,
+          'await requireTargetInScope(tx, ctx, plan, input.toUserId, sources)',
+        ),
         {
           role: 'impl',
           unit: `${I}/intervention-service.ts#requireTargetInScope`,
@@ -835,6 +838,17 @@ const PLAN_ROUTES: RequiredTable = {
           role: 'impl',
           unit: `${I}/plan-access.ts#employeeInScope`,
           anchor: 'scopeAllowsInTransaction(tx, hr, { personId: employeeId })',
+        },
+        // DEC-354 / F-068：该计划当前的指导人 / 带教人例外；来源字段看不到视同不是
+        {
+          role: 'impl',
+          unit: `${I}/intervention-service.ts#isPlanMentor`,
+          anchor: "viewable(sources.plan, ['tutorEmployeeId']) && plan.tutorEmployeeId === employeeId",
+        },
+        {
+          role: 'impl',
+          unit: `${I}/intervention-service.ts#isPlanMentor`,
+          anchor: 'if (!viewable(sources.tutorship, TUTORSHIP_FIELDS)) return false',
         },
       ],
       { facts: ['guard:idp.transferTarget'] },
