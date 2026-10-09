@@ -310,6 +310,8 @@ export const PRIMITIVES: readonly Primitive[] = [
     // IDP 模板引用流程：流程查看权 + 流程范围（routes.ts processScopeFor）；新建计划所选模板须可见（plan-routes.ts templateCheck）
     ['idp.processReference', call('processScopeFor'), { modules: ['idp'] }],
     ['idp.templateVisible', call('templateCheck'), { modules: ['idp'] }],
+    // IDP 转交目标须是已绑定员工且在操作人 IDP 范围内（intervention-service.ts requireTargetInScope，F-066）
+    ['idp.transferTarget', call('requireTargetInScope'), { modules: ['idp'] }],
     ['selfService.transferInput', call('ownTransferInput'), { modules: ['self-service'] }],
     ['selfService.referenceChoices', call('referenceChoices'), { modules: ['self-service'] }],
     ['selfService.ownApplication', call('ownApplication'), { modules: ['self-service'] }],

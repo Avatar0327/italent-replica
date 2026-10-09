@@ -468,6 +468,26 @@ export const IDP_POLICIES = defineTable('idp', {
     ],
     byId: true,
   }),
+  // 转交（F-066，docs/08_设计/F-066 路由声明）：plan update + transfer@detail；转交目标须是已绑定员工且在操作人 IDP 范围内
+  // （requireTargetInScope，不存在 / 未绑定 / 范围外同为 404）；其余目标校验与本人回避经审批引擎 adminAct（kind transfer）
+  [`POST ${BASE}/plans/:id/transfer`]: writer({
+    key: 'plan',
+    operation: 'update',
+    button: 'transfer',
+    level: 'detail',
+    scope: PLAN_POINT,
+    fields: 'body',
+    result: 'idp.stillVisible',
+    guards: ['idp.transferTarget'],
+    preconditions: [
+      'openRun',
+      'assertBusinessUnchanged',
+      'assertNotNodeAssignee',
+      'assertNotRecused',
+      'assertReviewer',
+    ],
+    byId: true,
+  }),
   // 下发任务：task 新建 + issue 列表按钮，另要计划查看权（plan-routes.ts：无 → 403「无权查看发展计划」，审查第 1 轮 P3-1）
   [`POST ${BASE}/plans/tasks/issue`]: issueTasks(),
   // ---- 关键信息（按员工归属）------------------------------------------------------------------------------------

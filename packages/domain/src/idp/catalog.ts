@@ -303,6 +303,7 @@ export const IDP_OBJECTS = {
       { code: 'start', level: 'detail', requires: 'update' },
       { code: 'urge', level: 'list', requires: 'update' },
       { code: 'jump', level: 'detail', requires: 'update' },
+      { code: 'transfer', level: 'detail', requires: 'update' },
       { code: 'startNext', level: 'list', requires: 'update' },
       { code: 'terminate', level: 'list', requires: 'update' },
     ],
