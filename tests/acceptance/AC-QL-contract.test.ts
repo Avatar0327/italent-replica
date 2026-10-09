@@ -55,7 +55,7 @@ async function world(label: string) {
     expect(response.status, await response.clone().text()).toBe(200);
     revisions.set(appCode, ((await response.json()) as { revision: number }).revision);
   };
-  const tx = <T>(work: Parameters<typeof withTenant<T>>[2]) => withTenant(w.db, w.tenant.id, work);
+  const tx = <T>(work: Parameters<typeof withTenant<T>>[2]) => withTenant(testDb().db, w.tenant.id, work);
   const unitCtx = { tenantId: w.tenant.id, userId: w.as.user, now: TC_NOW, timezone: 'Asia/Shanghai' };
   return { w, assign, tx, unitCtx };
 }
@@ -120,7 +120,9 @@ describe('PR-0 ②：向下公开谓词（permission/public-down.ts，保留 IDP
     const scoped: ModuleScope = { ...EMPTY_SCOPE, orgIds: [child], hasDataPermission: true, terms: undefined };
     const holds = (scope: ModuleScope, org: string) =>
       tx(async (t) => {
-        const result = await t.execute(sql`SELECT ${publicDownSql(ctx, scope, sql`${org}::uuid`)} AS v`);
+        // 与 IDP 原实现相同：组织链顶端的上级为 NULL 时 IN 结果为 NULL，调用方按“不是 true 即不可见”处理
+        const predicate = publicDownSql(ctx, scope, sql`${org}::uuid`);
+        const result = await t.execute(sql`SELECT COALESCE(${predicate}, false) AS v`);
         const rows = (Array.isArray(result) ? result : (result as { rows: { v: boolean }[] }).rows) as { v: boolean }[];
         return rows[0]!.v;
       });
@@ -229,7 +231,11 @@ describe('PR-0 ④：QualificationIndicatorPort 登记（设计 §6.2 (1)）', (
     };
     expect(typeof registry.qualificationIndicatorPort).toBe('function');
     expect(registry.qualificationIndicatorPort!()).toBeNull();
-    const port = { indicators: async () => ({ ok: false }), listTargetTypes: async () => [], listTargets: async () => [] };
+    const port = {
+      indicators: async () => ({ ok: false }),
+      listTargetTypes: async () => [],
+      listTargets: async () => [],
+    };
     registry.registerQualificationIndicatorPort!(port);
     expect(registry.qualificationIndicatorPort!()).toBe(port);
   });
