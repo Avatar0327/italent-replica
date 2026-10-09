@@ -1,76 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { createUser, grantMembership, sql, withTenant } from '@italent/db';
-import { PRESET_PROCESSES } from '@italent/domain';
+import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { contractWorld } from './AC-CT-support.js';
-import { cmd, tenantApi, allowAll } from './support/tenant-api.js';
-import { createProcess, publishProcess } from '../../apps/api/src/modules/approval/definitions.js';
+import { approvalContractWorld } from './AC-CT-approval-support.js';
+import { allowAll } from './support/tenant-api.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
 import { runContractJobs } from '../../apps/api/src/modules/contracts/scheduler.js';
 import { dropFrozen, insertFrozen } from './support/f048.js';
 
 const testDb = useTestDb();
-/** @param options.omitAvoidSelf 节点不带自审回避开关（模拟手工新建、不传开关的流程，缺省关闭，DEC-329④） */
-async function world(label: string, options: { omitAvoidSelf?: boolean } = {}) {
-  const w = await contractWorld(testDb().db, label);
-  const approver = await createUser(
-    w.db,
-    { email: `review-${randomUUID()}@example.com`, displayName: '合成审批人' },
-    cmd(),
-  );
-  await grantMembership(w.db, { tenantId: w.session.tenant.id, userId: approver.id, expectedRevision: 0 }, cmd());
-  await withTenant(w.db, w.session.tenant.id, async (tx) => {
-    for (const preset of PRESET_PROCESSES.filter((p) => p.approvalType.startsWith('contract_'))) {
-      const ctx = {
-        tenantId: w.session.tenant.id,
-        userId: w.session.user.id,
-        timezone: 'Asia/Shanghai',
-        now: new Date('2026-10-01T01:00:00Z'),
-        commandId: randomUUID(),
-        expectedRevision: 0,
-      };
-      const { avoidSelf: _avoidSelf, ...withoutAvoidSelf } = preset.definition.nodes[0]!.actions;
-      const created = await createProcess(
-        tx,
-        ctx,
-        { code: preset.code, approvalType: preset.approvalType },
-        {
-          ...preset.definition,
-          exceptionAdminUserId: approver.id,
-          nodes: [
-            {
-              ...preset.definition.nodes[0]!,
-              ...(options.omitAvoidSelf ? { actions: withoutAvoidSelf } : {}),
-              kind: 'single',
-              approver: 'owner',
-              exits: ['approve', 'disagree'],
-            },
-          ],
-        },
-      );
-      await publishProcess(tx, { ...ctx, expectedRevision: created.revision }, created.id);
-    }
-  });
-  async function pending() {
-    return withTenant(w.db, w.session.tenant.id, async (tx) =>
-      rowsOf<{ id: string; instanceId: string; revision: number }>(
-        await tx.execute(sql`SELECT t.id,t.instance_id AS "instanceId",i.revision FROM approval_tasks t
-        JOIN approval_instances i ON i.tenant_id=t.tenant_id AND i.id=t.instance_id
-        WHERE t.status='pending' ORDER BY t.id`),
-      ),
-    );
-  }
-  const api = tenantApi(w.db, { clock: () => new Date('2026-10-01T01:00:00Z') });
-  const act = (action: string, items: { id: string; revision: number }[], user = approver.id) =>
-    api.request('POST', '/api/tenant/contracts/todos/batch', {
-      tenant: w.session.tenant.id,
-      user,
-      ifMatch: 0,
-      body: { action, items: items.map(({ id, revision }) => ({ id, revision })) },
-    });
-  return { ...w, pending, act, api };
-}
+const world = (label: string, options: { omitAvoidSelf?: boolean } = {}) =>
+  approvalContractWorld(testDb().db, label, options);
 
 describe('R2-T06 四种申请和合并待办', () => {
   it('两条续签申请为独立实例；非审批人拒绝；驳回、发起人重提、不同意复用逐单审批动作', async () => {
