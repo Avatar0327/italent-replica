@@ -1,7 +1,7 @@
 /**
  * AC-PRM-FW-01（F-039 PR-A，docs/08_设计/F-039_权限框架强制_设计.md §2.3；DEC-300 / DEC-303）：
  * 路由声明的注册校验——缺失即失败。反例按 DEC-300 的三类致命项分组：身份不匹配、缺失声明、初始化不可信；
- * 校验按**注册实例**（包装函数身份）绑定，不只看 method / path。正例核对全部 490 个端点都已登记、
+ * 校验按**注册实例**（包装函数身份）绑定，不只看 method / path。正例核对全部 493 个端点都已登记、
  * 中间件按最终路径登记、HEAD 走 GET 声明。前四组用内存 Hono + 框架；最后一组用 createApp 真实装配。
  */
 import {
@@ -318,7 +318,7 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
    * 合并 #138（F-058 账号头像）后 + 头像 5 + 360 链接头像 1 = 381；合并 #146（F-066 IDP 转交）后 + 1 = 382；
    * 合并 #144（R3-T04 准备度字典）后 + 5 = 387；R3-T02 PR-A 任职资格配置 + 51 = 438；R3-T03 PR-B（360 管理端
    * + 27、待办作答 + 5、报告收件人链接 + 2）后 = 472；
-   * DEC-361 种子回补命令 + 1 = 473；R3-T04 PR-B1（设置 2 + 分类 / 角色 / 字段目录各 5）+ 17 = 490（PR 描述以此为准）。
+   * DEC-361 种子回补命令 + 1 = 473；R3-T04 PR-B1（设置 2 + 分类 / 角色 / 字段目录各 5）+ 17 = 490；R3-T05 A1（继任记录读侧）+ 3 = 493（PR 描述以此为准）。
    */
   const EXPECTED_BY_MODULE: Readonly<Record<string, number>> = {
     root: 1,
@@ -342,6 +342,7 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     avatar: 5,
     'talent-review': 22,
     qualification: 51,
+    succession: 3,
   };
 
   it('未声明的夹具路由 → createApp 抛 ROUTE_UNDECLARED，应用无法启动', () => {
@@ -357,12 +358,12 @@ describe('AC-PRM-FW-01 createApp 真实装配', () => {
     expect(keys).toContain('DELETE /api/tenant/probes/:id');
   });
 
-  it('全部 490 个端点已声明，按模块统计一致', () => {
+  it('全部 493 个端点已声明，按模块统计一致', () => {
     const manifest = routeManifest(createApp({ db: testDb().db }));
     const byModule: Record<string, number> = {};
     for (const route of manifest.declared) byModule[route.module] = (byModule[route.module] ?? 0) + 1;
     expect(byModule).toEqual(EXPECTED_BY_MODULE);
-    expect(manifest.declared).toHaveLength(490);
+    expect(manifest.declared).toHaveLength(493);
     expect(manifest.declared.map((r) => `${r.method} ${r.path}`)).toContain(
       'POST /api/tenant/org/organizations/:id/employment-preview',
     );
