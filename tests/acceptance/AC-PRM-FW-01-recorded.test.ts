@@ -164,7 +164,7 @@ describe('AC-PRM-FW-01 recorded：收集 ↔ 冻结 双向核对', () => {
     expect(codes(findings)).toEqual(['RECORDED_STALE']);
   });
 
-  it('冻结值与收集值不同（状态码变了）→ 视为收集到的事实没有被冻结 → RECORDED_UNREGISTERED', async () => {
+  it('冻结值与收集值不同（状态码变了）→ 新值没有被冻结（RECORDED_UNREGISTERED），旧值没有被收集（RECORDED_STALE）', async () => {
     const frozen = await collect(['outcome']);
     const recorder = createRecorder();
     recorder.recordFact(GUARDED, 'outcome', await observe(json(404, { error: { code: 'NOT_FOUND' } })));
@@ -175,7 +175,7 @@ describe('AC-PRM-FW-01 recorded：收集 ↔ 冻结 双向核对', () => {
       routes: [withPre(guarded(), undefined)],
       contract,
     });
-    expect(codes(findings)).toEqual(['RECORDED_UNREGISTERED']);
+    expect(codes(findings).sort()).toEqual(['RECORDED_STALE', 'RECORDED_UNREGISTERED']);
   });
 
   it('只核对本文件负责的端点：范围外的冻结事实不报 STALE', async () => {

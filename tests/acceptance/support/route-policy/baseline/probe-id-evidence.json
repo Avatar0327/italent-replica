@@ -1,0 +1,194 @@
+{
+  "PUT /api/tenant/qualification/standards/:id/channels": {
+    "file": "apps/api/src/modules/qualification/extras.ts",
+    "anchor": "const id = uuidParam(c); const body = await parseBody(c, input.channelsPut);"
+  },
+  "PUT /api/tenant/qualification/targets/:id/grade-descriptions/:detailId": {
+    "file": "apps/api/src/modules/qualification/extras.ts",
+    "anchor": "const id = uuidParam(c); const detailId = uuidParam(c, 'detailId');"
+  },
+  "PATCH /api/tenant/employment/businesses/:id": {
+    "file": "apps/api/src/modules/employment/routes.ts",
+    "anchor": "const id = uuidParam(c); let ctx = await readContext(c, deps, 'object.update', revision(c));"
+  },
+  "PATCH /api/tenant/employment/records/:id": {
+    "file": "apps/api/src/modules/employment/routes.ts",
+    "anchor": "const id = uuidParam(c); const ctx = await readContext(c, deps, 'object.update', revision(c));"
+  },
+  "POST /api/tenant/employment/employees/:id/businesses": {
+    "file": "apps/api/src/modules/employment/routes.ts",
+    "anchor": "const id = uuidParam(c); const ctx = await readContext(c, deps, 'object.create', revision(c), id);"
+  },
+  "POST /api/tenant/employment/employees/:id/preview": {
+    "file": "apps/api/src/modules/employment/routes.ts",
+    "anchor": "const id = uuidParam(c); const ctx = await readPageContext(c, deps, 'detail', id);"
+  },
+  "POST /api/tenant/employment/employees/:id/forward-update-preview": {
+    "file": "apps/api/src/modules/employment/routes.ts",
+    "anchor": "const id = uuidParam(c); const ctx = await readPageContext(c, deps, 'detail', id);"
+  },
+  "POST /api/tenant/employment/records/:id/forward-update-preview": {
+    "file": "apps/api/src/modules/employment/routes.ts",
+    "anchor": "const id = uuidParam(c); const ctx = await readPageContext(c, deps, 'detail');"
+  },
+  "POST /api/tenant/employment/employees/:id/import/forward-update-preview": {
+    "file": "apps/api/src/modules/employment/routes.ts",
+    "anchor": "const id = uuidParam(c); const ctx = await readPageContext(c, deps, 'list', id);"
+  },
+  "POST /api/tenant/employment/employees/:id/import": {
+    "file": "apps/api/src/modules/employment/routes.ts",
+    "anchor": "const id = uuidParam(c); const ctx = await readContext(c, deps, 'object.view', revision(c), id);"
+  },
+  "PUT /api/tenant/employment/custom-fields/:id/inheritance": {
+    "file": "apps/api/src/modules/employment/routes.ts",
+    "anchor": "const id = uuidParam(c); const input = parse(z.strictObject({ inherit: z.boolean() }), await jsonBody(c));"
+  },
+  "POST /api/tenant/employment/transfers/employees/:id": {
+    "file": "apps/api/src/modules/transfer/routes.ts",
+    "anchor": "const id = uuidParam(c); const ctx = await readContext(c, deps, 'object.create', revision(c));"
+  },
+  "POST /api/tenant/employment/transfers/employees/:id/preview": {
+    "file": "apps/api/src/modules/transfer/routes.ts",
+    "anchor": "const id = uuidParam(c); const ctx = await readPageContext(c, deps, 'detail');"
+  },
+  "PUT /api/tenant/approval/processes/:id/draft": {
+    "file": "apps/api/src/modules/approval/routes.ts",
+    "anchor": "const ctx = writeCtx(c, deps); const id = uuidParam(c);"
+  },
+  "POST /api/tenant/approval/processes/:id/simulate": {
+    "file": "apps/api/src/modules/approval/routes.ts",
+    "anchor": "const ctx = readCtx(c, deps); const id = uuidParam(c);"
+  },
+  "POST /api/tenant/approval/tasks/:id/add-sign": {
+    "file": "apps/api/src/modules/approval/routes.ts",
+    "anchor": "const ctx = writeCtx(c, deps); const taskId = uuidParam(c);"
+  },
+  "POST /api/tenant/approval/tasks/:id/edit": {
+    "file": "apps/api/src/modules/approval/routes.ts",
+    "anchor": "const ctx = writeCtx(c, deps); const taskId = uuidParam(c);"
+  },
+  "PUT /api/tenant/contracts/rules/:id": {
+    "file": "apps/api/src/modules/contracts/routes.ts",
+    "anchor": "const id = c.req.param('id') ? uuidParam(c) : undefined;"
+  },
+  "PUT /api/tenant/contracts/master-data/types/:id": {
+    "file": "apps/api/src/modules/contracts/routes.ts",
+    "anchor": "body: await saveMaster(tx, ctx, kind, input, suffix ? uuidParam(c) : undefined),"
+  },
+  "PUT /api/tenant/contracts/master-data/companies/:id": {
+    "file": "apps/api/src/modules/contracts/routes.ts",
+    "anchor": "body: await saveMaster(tx, ctx, kind, input, suffix ? uuidParam(c) : undefined),"
+  },
+  "PATCH /api/tenant/job/:kind/:id": {
+    "file": "apps/api/src/modules/job/routes.ts",
+    "anchor": "const id = uuidParam(c); const input = await parseBody(c, jobPatchSchema(kind));"
+  },
+  "POST /api/tenant/account/avatar/attachments/:attachmentId/upload": {
+    "file": "apps/api/src/modules/avatar/routes.ts",
+    "anchor": "const id = uuidParam(c, 'attachmentId');"
+  },
+  "PATCH /api/tenant/establishment/schemes/:id": {
+    "file": "apps/api/src/modules/establishment/routes.ts",
+    "anchor": "const id = uuidParam(c); const input = await parseBody(c, schemePatch);"
+  },
+  "PATCH /api/tenant/establishment/capacities/:id": {
+    "file": "apps/api/src/modules/establishment/routes.ts",
+    "anchor": "const id = uuidParam(c); const input = await parseBody(c, capacityPatch);"
+  },
+  "PATCH /api/tenant/org/organizations/:id": {
+    "file": "apps/api/src/modules/org/routes.ts",
+    "anchor": "const id = orgId(c); const input = await body(c, update);"
+  },
+  "PATCH /api/tenant/org/organizations/:id/correction": {
+    "file": "apps/api/src/modules/org/routes.ts",
+    "anchor": "const id = orgId(c); const input = await body(c, correction);"
+  },
+  "POST /api/tenant/org/organizations/:id/employment-preview": {
+    "file": "apps/api/src/modules/org/routes.ts",
+    "anchor": "const id = orgId(c); const input = await body(c, update);"
+  },
+  "GET /api/tenant/idp/plans/:id/competency-candidates": {
+    "file": "apps/api/src/modules/idp/plan-routes.ts",
+    "anchor": "if (!isUuid(moduleId)) throw new AppError('VALIDATION_FAILED', 'moduleId 必须为 UUID');"
+  },
+  "POST /api/tenant/idp/plans/:id/goals": {
+    "file": "apps/api/src/modules/idp/plan-routes.ts",
+    "anchor": "return runExecutorWrite(c, deps, 201, body, async (tx, w) => {"
+  },
+  "POST /api/tenant/idp/plans/:id/goals/:goalId/tasks": {
+    "file": "apps/api/src/modules/idp/plan-routes.ts",
+    "anchor": "return runExecutorWrite(c, deps, 201, { goalId, body }, async (tx, w) => {"
+  },
+  "POST /api/tenant/idp/plans/:id/jump": {
+    "file": "apps/api/src/modules/idp/plan-routes.ts",
+    "anchor": "const hr = await idpScope(c, deps, ctx, 'plan');"
+  },
+  "POST /api/tenant/idp/plans/:id/transfer": {
+    "file": "apps/api/src/modules/idp/plan-routes.ts",
+    "anchor": "const { hr, sources } = await transferScope(c, deps, ctx);"
+  },
+  "POST /api/tenant/idp/templates/:id/modules": {
+    "file": "apps/api/src/modules/idp/routes.ts",
+    "anchor": "const templateId = uuidParam(c); const partId = operation === 'create' ? undefined : uuidParam(c, 'partId');"
+  },
+  "POST /api/tenant/idp/templates/:id/common-goals": {
+    "file": "apps/api/src/modules/idp/routes.ts",
+    "anchor": "const templateId = uuidParam(c); const partId = operation === 'create' ? undefined : uuidParam(c, 'partId');"
+  },
+  "POST /api/tenant/talent/criteria/:id/dimension-category": {
+    "file": "apps/api/src/modules/talent/routes.ts",
+    "anchor": "const id = uuidParam(c); const body = await parseBody(c, input.dimensionCategoryBatch);"
+  },
+  "POST /api/tenant/talent/criteria/:id/model-image/attachments": {
+    "file": "apps/api/src/modules/talent/model-image-routes.ts",
+    "anchor": "const id = uuidParam(c); const body = await parseBody(c, metadata);"
+  },
+  "POST /api/tenant/talent/criteria/:id/model-image/attachments/:attachmentId/upload": {
+    "file": "apps/api/src/modules/talent/model-image-routes.ts",
+    "anchor": "const id = uuidParam(c); const attachmentId = uuidParam(c, 'attachmentId');"
+  },
+  "DELETE /api/tenant/permission/dynamic-org-grants/:grantId": {
+    "file": "apps/api/src/modules/permission/http.ts",
+    "anchor": "export function idParam(c: Context, name: string): string {"
+  },
+  "DELETE /api/tenant/permission/mous/:id": {
+    "file": "apps/api/src/modules/permission/http.ts",
+    "anchor": "export function idParam(c: Context, name: string): string {"
+  },
+  "GET /api/tenant/permission/admins/:id": {
+    "file": "apps/api/src/modules/permission/http.ts",
+    "anchor": "export function idParam(c: Context, name: string): string {"
+  },
+  "GET /api/tenant/permission/dynamic-org-grants/:grantId": {
+    "file": "apps/api/src/modules/permission/http.ts",
+    "anchor": "export function idParam(c: Context, name: string): string {"
+  },
+  "GET /api/tenant/permission/mous/:id": {
+    "file": "apps/api/src/modules/permission/http.ts",
+    "anchor": "export function idParam(c: Context, name: string): string {"
+  },
+  "GET /api/tenant/permission/profiles/:id": {
+    "file": "apps/api/src/modules/permission/http.ts",
+    "anchor": "export function idParam(c: Context, name: string): string {"
+  },
+  "GET /api/tenant/permission/profiles/:id/data-scopes/:appCode": {
+    "file": "apps/api/src/modules/permission/http.ts",
+    "anchor": "export function idParam(c: Context, name: string): string {"
+  },
+  "GET /api/tenant/permission/users/:userId": {
+    "file": "apps/api/src/modules/permission/http.ts",
+    "anchor": "export function idParam(c: Context, name: string): string {"
+  },
+  "POST /api/tenant/permission/grants/:id/revoke": {
+    "file": "apps/api/src/modules/permission/http.ts",
+    "anchor": "export function idParam(c: Context, name: string): string {"
+  },
+  "POST /api/tenant/permission/users/:userId/remove": {
+    "file": "apps/api/src/modules/permission/http.ts",
+    "anchor": "export function idParam(c: Context, name: string): string {"
+  },
+  "POST /api/tenant/permission/users/:userId/status": {
+    "file": "apps/api/src/modules/permission/http.ts",
+    "anchor": "export function idParam(c: Context, name: string): string {"
+  }
+}

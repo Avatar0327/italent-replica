@@ -21,6 +21,11 @@ import {
 import { type MappedRequest, mapRequest, permClaims } from './request-perms.js';
 
 export interface DoubleConfig {
+  /**
+   * 可信注入兼容分支（data.scope.all 经 authorize 直接问）的回答，缺省 false：真实 decide() 对该动作返回 false，
+   * 全范围走 provider.scope（第 2 轮 P2-2）。要测可信注入分支时显式置 true。
+   */
+  readonly trustedScopeAll?: boolean;
   /** 缺省 / 'all' = 全允许；数组 = 授权集（表权限键语言）。 */
   readonly grants?: 'all' | readonly string[];
   /** 缺省 'all'。 */
@@ -89,9 +94,23 @@ export function createAuthorizerDouble(initial: DoubleConfig = {}): AuthorizerDo
     };
   };
 
+  /**
+   * 字段语义与真实 decide() 一致：object.create / update（含 tenant.* 写别名）必须给出字段集，且每个字段都可编辑
+   * （对象已登记、非系统字段、未被隐藏）；缺字段集即拒绝。全允许的发现模式且没有字段配置时不按静态目录限制
+   * （租户自定义字段不在静态目录里，B4b / B5 接入样本前补齐），其余情况一律严格判定。
+   */
+  const fieldsAllowed = (mapped: MappedRequest, request: AuthorizationRequest): boolean => {
+    if (mapped.kind !== 'perm' || !/^obj:.+:(create|update)$/.test(mapped.key)) return true;
+    if ((config.grants ?? 'all') === 'all' && config.fields === undefined) return true;
+    if (request.fields === undefined) return false;
+    const objectCode = mapped.key.slice('obj:'.length, mapped.key.lastIndexOf(':'));
+    const editable = visibleFields(objectCode, true);
+    return request.fields.every((field) => editable.has(field));
+  };
+
   const allowed = (mapped: MappedRequest): boolean => {
     const grants = config.grants ?? 'all';
-    if (mapped.kind === 'scope') return (config.scope ?? 'all') === 'all';
+    if (mapped.kind === 'scope') return config.trustedScopeAll === true;
     if (mapped.kind === 'unmapped') return grants === 'all';
     if (revoked.some((key) => permClaims(key, mapped.key))) return false;
     return grants === 'all' || grants.some((key) => permClaims(key, mapped.key));
@@ -99,7 +118,7 @@ export function createAuthorizerDouble(initial: DoubleConfig = {}): AuthorizerDo
 
   const answer = (request: AuthorizationRequest, via: DoubleRequest['via']): boolean => {
     const mapped = mapRequest(request);
-    const verdict = allowed(mapped);
+    const verdict = allowed(mapped) && fieldsAllowed(mapped, request);
     requests.push({
       via,
       action: request.action,

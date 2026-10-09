@@ -111,8 +111,7 @@
       "scope:data.scope.all:"
     ],
     "trace": [
-      "obj:TenantBase.Employee:view",
-      "obj:TenantBase.EmploymentRecord:view"
+      "obj:TenantBase.Employee:view"
     ]
   },
   "GET /api/tenant/employment/employees/:id/records": {
@@ -523,8 +522,7 @@
       "scope:data.scope.all:"
     ],
     "trace": [
-      "obj:TenantBase.EmploymentRecord:create",
-      "obj:TenantBase.EmploymentRecord:update"
+      "obj:TenantBase.EmploymentRecord:create"
     ]
   },
   "POST /api/tenant/employment/employees/:id/forward-update-preview": {

@@ -30,6 +30,7 @@ import {
 import type { Finding } from './support/route-policy/compare.js';
 import { ID_CHECK_EVIDENCE, checkIdCheckEvidence } from './support/route-policy/probe-id-evidence.js';
 import { checkKnownGapEvidence, KNOWN_GAPS, type KnownGapGroup } from './support/route-policy/probe-known-gaps.js';
+import { checkRedundantEvidence, REDUNDANT_OBSERVATIONS } from './support/route-policy/probe-redundant.js';
 import { permClaims } from './support/route-policy/request-perms.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
@@ -58,7 +59,8 @@ const codes = (findings: readonly Finding[]) => findings.map((f) => f.code);
 const show = (findings: readonly Finding[]) => findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n');
 const check = (routes: readonly ManifestRoute[], table: RequiredTable = REQUIRED, found = fresh) =>
   checkDiscovery(found, table, routes);
-const checkAll = () => checkDiscovery(fresh, REQUIRED, manifest.declared, KNOWN_GAPS);
+const ACCOUNT = { knownGaps: KNOWN_GAPS, redundant: REDUNDANT_OBSERVATIONS };
+const checkAll = () => checkDiscovery(fresh, REQUIRED, manifest.declared, ACCOUNT);
 const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => ({ ...base, policy });
 const withTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({ ...REQUIRED, [k]: obligations });
 
@@ -110,35 +112,56 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     expect(findings, show(findings)).toEqual([]);
   });
 
-  it('不带登记检查：未认领的"端点 × 请求键"恰好等于 KNOWN_GAPS 的全部登记对；91 项有实际用途 + 41 项冗余预取', () => {
+  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：91 项有实际用途 + 41 项冗余观测，互斥', () => {
     const open = check(manifest.declared);
     expect(codes(open).every((c) => c === 'PROBE_ADMISSION_UNCLAIMED')).toBe(true);
-    const registered = KNOWN_GAPS.flatMap((g) => g.pairs);
-    expect(registered).toHaveLength(open.length);
-    expect(new Set(registered.map(([r, k]) => `${r}\t${k}`)).size, '登记对不重复').toBe(registered.length);
-    const count = (kind: string) => KNOWN_GAPS.filter((g) => g.kind === kind).flatMap((g) => g.pairs).length;
-    expect(count('effective')).toBe(91);
-    expect(count('redundant-prefetch')).toBe(41);
-    expect(registered).toHaveLength(132);
+    const gaps = KNOWN_GAPS.flatMap((g) => g.pairs);
+    const redundant = REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs);
+    expect(gaps).toHaveLength(91);
+    expect(redundant).toHaveLength(41);
+    const all = [...gaps, ...redundant].map(([r, k]) => `${r}\t${k}`);
+    expect(new Set(all).size, '登记对不重复，两本账互斥').toBe(all.length);
+    expect(all).toHaveLength(open.length);
   });
 
-  it('台账每组写明类别、归属与源码证据，证据锚点仍出现在所指文件里', () => {
+  it('台账每组写明用途、归属与源码证据，证据锚点仍出现在所指文件里；冗余观测另写"为何不影响结果"', () => {
     for (const group of KNOWN_GAPS) {
       expect(group.owner.length, group.id).toBeGreaterThan(5);
+      expect(group.purpose.length, group.id).toBeGreaterThan(1);
       expect(group.evidence.length, group.id).toBeGreaterThan(0);
-      expect(['effective', 'redundant-prefetch'], group.id).toContain(group.kind);
+    }
+    for (const group of REDUNDANT_OBSERVATIONS) {
+      expect(group.why.length, group.id).toBeGreaterThan(20);
+      expect(group.evidence.length, group.id).toBeGreaterThan(0);
     }
     expect(checkKnownGapEvidence(KNOWN_GAPS)).toEqual([]);
+    expect(checkRedundantEvidence(REDUNDANT_OBSERVATIONS)).toEqual([]);
     const tampered: KnownGapGroup[] = KNOWN_GAPS.map((g, i) =>
       i === 0 ? { ...g, evidence: [{ ...g.evidence[0]!, anchor: 'thisSnippetDoesNotExistAnywhere()' }] } : g,
     );
     expect(codes(checkKnownGapEvidence(tampered))).toEqual(['PROBE_KNOWN_GAP_EVIDENCE']);
   });
 
+  it('DEC-367：冗余观测只是记录——不是显式表义务，也不能豁免账外的 P0；同一对不能同时登记在两本账', () => {
+    const [route0, key0] = REDUNDANT_OBSERVATIONS[0]!.pairs[0]!;
+    // 把一个冗余观测对换成"表里真有义务"不属于本测试；这里验证：删掉冗余账后，这些请求立刻变成 P0
+    const withoutRedundant = checkDiscovery(fresh, REQUIRED, manifest.declared, {
+      knownGaps: KNOWN_GAPS,
+      redundant: [],
+    });
+    expect(withoutRedundant.filter((f) => f.code === 'PROBE_ADMISSION_UNCLAIMED')).toHaveLength(41);
+    expect(withoutRedundant.some((f) => f.route === route0 && f.detail.includes(key0))).toBe(true);
+    const overlap = checkDiscovery(fresh, REQUIRED, manifest.declared, {
+      knownGaps: [...KNOWN_GAPS, { id: 'x', purpose: 'x', owner: 'xxxxxx', evidence: [], pairs: [[route0, key0]] }],
+      redundant: REDUNDANT_OBSERVATIONS,
+    });
+    expect(codes(overlap)).toContain('PROBE_ACCOUNT_OVERLAP');
+  });
+
   it('DEC-303：登记只能是已发现的精确对，不是模块级豁免——不在登记里的新漏登照常报 PROBE_ADMISSION_UNCLAIMED', () => {
     const k = 'GET /api/tenant/employment/transfers/manager';
     const dropped = REQUIRED[k]!.filter((o) => !permClaims(o.perm, fresh[k]!.trace[0]!));
-    const findings = checkDiscovery(fresh, withTable(k, dropped), manifest.declared, KNOWN_GAPS);
+    const findings = checkDiscovery(fresh, withTable(k, dropped), manifest.declared, ACCOUNT);
     expect(codes(findings)).toEqual(['PROBE_ADMISSION_UNCLAIMED']);
     expect(findings[0]!.route).toBe(k);
   });
@@ -175,7 +198,7 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
       [fixedRoute]: [...REQUIRED[fixedRoute]!, { perm: fixedKey, at: [] }],
       [brokenRoute]: REQUIRED[brokenRoute]!.filter((o) => !permClaims(o.perm, brokenKey)),
     };
-    const findings = checkDiscovery(fresh, patched, manifest.declared, KNOWN_GAPS);
+    const findings = checkDiscovery(fresh, patched, manifest.declared, ACCOUNT);
     expect(codes(findings).sort()).toEqual(['PROBE_ADMISSION_UNCLAIMED', 'PROBE_KNOWN_GAP_STALE']);
     expect(findings.find((f) => f.code === 'PROBE_ADMISSION_UNCLAIMED')!.route).toBe(brokenRoute);
     expect(findings.find((f) => f.code === 'PROBE_KNOWN_GAP_STALE')!.detail).toContain(fixedRoute);
@@ -184,7 +207,7 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
   it('精确集合：只补上旧缺口（表已认领）→ PROBE_KNOWN_GAP_STALE，必须同 PR 删登记对', () => {
     const k = 'GET /api/tenant/org/person-candidates';
     const claimed = withTable(k, [...REQUIRED[k]!, { perm: 'obj:TenantBase.Organization:{create,update}', at: [] }]);
-    const findings = checkDiscovery(fresh, claimed, manifest.declared, KNOWN_GAPS);
+    const findings = checkDiscovery(fresh, claimed, manifest.declared, ACCOUNT);
     expect(codes(findings)).toEqual(['PROBE_KNOWN_GAP_STALE']);
   });
 

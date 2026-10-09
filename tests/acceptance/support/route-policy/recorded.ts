@@ -46,9 +46,11 @@ export interface Snapshot {
 
 /** 冻结值：观测去掉品牌，只留与类别相关的字段。 */
 export type FactValue = Readonly<Record<string, unknown>>;
-export type RecordedFacts = Readonly<Record<string, Readonly<Record<string, FactValue>>>>;
+/** 端点 → 类别 → 事实列表：同端点同类别可有多条不同事实（成功 / 已提交 403 / 回滚…各一个证据用例），按规范化 JSON 升序、去重。 */
+export type RecordedFacts = Readonly<Record<string, Readonly<Record<string, readonly FactValue[]>>>>;
 
 const made = new WeakSet<object>();
+const sameValue = (a: FactValue, b: FactValue) => canonicalJson(a) === canonicalJson(b);
 
 function multisetAdded<T extends number | string>(before: readonly T[], after: readonly T[]): T[] {
   const left = new Map<T, number>();
@@ -111,14 +113,19 @@ export interface Recorder {
 }
 
 export function createRecorder(): Recorder {
-  const facts: Record<string, Record<string, FactValue>> = {};
+  const facts: Record<string, Record<string, FactValue[]>> = {};
   return {
     facts,
     recordFact(endpoint, category, observed) {
       if (!made.has(observed)) throw new Error('recordFact 只接受 observe(res, snapshot) 构造的观测，不接受字面量');
       if (!CATEGORY.test(category)) throw new Error(`recorded 类别不合法：${category}`);
       const value = valueOf(category, observed);
-      (facts[endpoint] ??= {})[category] = value;
+      const list = ((facts[endpoint] ??= {})[category] ??= []);
+      // 后写不覆盖前写：不同的观测全部保留，完全相同的重复登记只算一条
+      if (!list.some((existing) => sameValue(existing, value))) {
+        list.push(value);
+        list.sort((a, b) => canonicalJson(a).localeCompare(canonicalJson(b)));
+      }
     },
   };
 }
@@ -133,7 +140,6 @@ export interface RecordedCheck {
   readonly contract: ObservedContract;
 }
 
-const sameValue = (a: FactValue, b: FactValue) => canonicalJson(a) === canonicalJson(b);
 const PRECONDITION_PREFIX = 'precondition:';
 
 export function checkRecorded({ collected, frozen, scope, routes, contract }: RecordedCheck): Finding[] {
@@ -148,15 +154,26 @@ export function checkRecorded({ collected, frozen, scope, routes, contract }: Re
   for (const endpoint of covered) {
     const have = collected[endpoint] ?? {};
     const frozenHere = frozen[endpoint] ?? {};
-    for (const [category, value] of Object.entries(have)) {
-      const stored = frozenHere[category];
-      if (!stored)
-        report(endpoint, 'RECORDED_UNREGISTERED', `收集到 ${category}，但没有冻结（先重新生成并随 PR 评审）`);
-      else if (!sameValue(stored, value)) report(endpoint, 'RECORDED_UNREGISTERED', `${category} 的收集值与冻结值不同`);
+    for (const [category, values] of Object.entries(have)) {
+      const stored = frozenHere[category] ?? [];
+      for (const value of values) {
+        if (stored.some((existing) => sameValue(existing, value))) continue;
+        const detail = stored.length
+          ? `${category} 的收集值不在冻结值里：${canonicalJson(value).trim()}`
+          : `收集到 ${category}，但没有冻结（先重新生成并随 PR 评审）`;
+        report(endpoint, 'RECORDED_UNREGISTERED', detail);
+      }
     }
     if (declared.has(endpoint)) {
-      for (const category of Object.keys(frozenHere)) {
-        if (!have[category]) report(endpoint, 'RECORDED_STALE', `冻结了 ${category}，但本次没有证据用例收集到它`);
+      for (const [category, stored] of Object.entries(frozenHere)) {
+        for (const value of stored) {
+          if ((have[category] ?? []).some((existing) => sameValue(existing, value))) continue;
+          report(
+            endpoint,
+            'RECORDED_STALE',
+            `冻结了 ${category}：${canonicalJson(value).trim()}，但本次没有证据用例收集到它`,
+          );
+        }
       }
     }
   }
@@ -171,7 +188,7 @@ export function checkRecorded({ collected, frozen, scope, routes, contract }: Re
 function checkPreconditions(
   endpoint: string,
   route: ManifestRoute,
-  collected: Readonly<Record<string, FactValue>>,
+  collected: Readonly<Record<string, readonly FactValue[]>>,
   contract: ObservedContract,
   report: (route: string, code: string, detail: string) => void,
 ): void {
@@ -199,7 +216,7 @@ export function mergeRecorded(
   collected: RecordedFacts,
   scope: ReadonlySet<string>,
 ): RecordedFacts {
-  const out: Record<string, Readonly<Record<string, FactValue>>> = {};
+  const out: Record<string, Readonly<Record<string, readonly FactValue[]>>> = {};
   for (const [endpoint, facts] of Object.entries(frozen)) if (!scope.has(endpoint)) out[endpoint] = facts;
   for (const [endpoint, facts] of Object.entries(collected)) out[endpoint] = facts;
   return out;

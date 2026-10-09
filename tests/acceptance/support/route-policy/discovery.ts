@@ -20,7 +20,9 @@ import type { Finding } from './compare.js';
 import { type AuthorizerDouble, createAuthorizerDouble } from './double.js';
 import { domainConstants } from './domains.js';
 import { observe, PLACEHOLDER_UUID, UUID_PARAM } from './probe.js';
-import type { KnownGap } from './probe-known-gaps.js';
+import { ID_CHECK_EVIDENCE } from './probe-id-evidence.js';
+import type { KnownGapGroup } from './probe-known-gaps.js';
+import type { RedundantGroup } from './probe-redundant.js';
 import { permClaims } from './request-perms.js';
 import { REQUIRED } from './required/index.js';
 import type { RequiredTable } from './required/types.js';
@@ -128,13 +130,20 @@ const sameObservation = (a: Observed, b: Observed) =>
   a.status === b.status && a.code === b.code && a.reason === b.reason;
 
 /**
- * P3 是否适用：非法标识的观测必须是验参类结果（400 / 404），并且与占位请求的结果 O* 不同。
- * 观测等于 O* 说明失败发生在别处（如 360 链接的令牌先于标识校验一律 404），观测不携带标识校验信息；
- * 其他状态（平台非运营 403、自助服务未绑定 403 …）说明没有触达标识校验。不适用的不算通过，B4b 的覆盖台账接手。
+ * P3 是否适用：非法标识的观测必须是验参类结果（400 / 404）。
+ * 观测不同于占位请求的结果 O* → 适用（标识影响了结果）。观测**等于** O* 时不能推出没触达标识校验（标识校验可能
+ * 先失败，占位请求随后因对象不存在 / 请求体为空得到同一状态码），所以看审定过的标识校验证据（probe-id-evidence）：
+ * 有证据 → 适用；没有 → 未达（如请求体先于标识校验、360 链接令牌先于标识校验）。
+ * 其他状态（平台非运营 403、自助服务未绑定 403 …）没有触达标识校验。不适用的不算通过，B4b 的覆盖台账接手。
  */
-export function p3Applicable(found: EndpointDiscovery): boolean {
+export function p3Applicable(
+  endpoint: string,
+  found: EndpointDiscovery,
+  evidence: Readonly<Record<string, unknown>> = ID_CHECK_EVIDENCE,
+): boolean {
   const seen = found.invalidId;
-  return !!seen && (seen.status === 400 || seen.status === 404) && !sameObservation(seen, found.all);
+  if (!seen || (seen.status !== 400 && seen.status !== 404)) return false;
+  return !sameObservation(seen, found.all) || endpoint in evidence;
 }
 
 const AUTHORIZER_DIMENSIONS = ['obj:', 'btn:', 'admin:'];
@@ -190,15 +199,42 @@ export async function discoverAll(
   return out;
 }
 
-/** P0 / P3 / 映射。缺发现事实不静默放过。`knownGaps` 见 probe-known-gaps.ts：只在整库检查时传入。 */
+/** 未认领请求的两本精确账：有实际用途的已知缺口 / 冗余观测（互斥，分别核对）。 */
+export interface UnclaimedAccounting {
+  readonly knownGaps: readonly KnownGapGroup[];
+  readonly redundant: readonly RedundantGroup[];
+}
+
+const pairKey = (route: string, requestKey: string) => `${route}\t${requestKey}`;
+
+/**
+ * P0 / P3 / 映射。缺发现事实不静默放过。`accounting` 只在整库检查时传入：未认领的"端点 × 请求键"必须**恰好**等于
+ * 已知缺口 ∪ 冗余观测的登记对——不在账里的报 PROBE_ADMISSION_UNCLAIMED，在账里却已被认领（表已补）或不再被问到的
+ * 报 PROBE_KNOWN_GAP_STALE / PROBE_REDUNDANT_STALE，所以"补一处、误删另一处"两边都报。冗余观测不算义务，
+ * 也不能豁免账外的 P0。
+ */
 export function checkDiscovery(
   discoveries: Readonly<Record<string, EndpointDiscovery>>,
   table: RequiredTable,
   routes: readonly ManifestRoute[],
-  knownGaps?: readonly KnownGap[],
+  accounting?: UnclaimedAccounting,
 ): Finding[] {
   const findings: Finding[] = [];
-  const matched = new Map<string, number>();
+  const gapPairs = new Map<string, string>();
+  const redundantPairs = new Map<string, string>();
+  for (const group of accounting?.knownGaps ?? []) {
+    for (const [r, k] of group.pairs) gapPairs.set(pairKey(r, k), group.id);
+  }
+  for (const group of accounting?.redundant ?? []) {
+    for (const [r, k] of group.pairs) {
+      if (gapPairs.has(pairKey(r, k))) {
+        findings.push({ route: r, code: 'PROBE_ACCOUNT_OVERLAP', detail: `${k} 同时登记为已知缺口和冗余观测` });
+      }
+      redundantPairs.set(pairKey(r, k), group.id);
+    }
+  }
+  const seenPairs = new Set<string>();
+  const inScope = new Set(routes.map((r) => `${r.method} ${r.path}`));
   for (const route of routes) {
     const key = `${route.method} ${route.path}`;
     const report = (code: string, detail: string) => findings.push({ route: key, code, detail });
@@ -211,22 +247,22 @@ export function checkDiscovery(
     const obligations = table[key] ?? [];
     for (const requested of found.trace) {
       if (obligations.some((o) => permClaims(o.perm, requested))) continue;
-      const known = knownGaps?.find((gap) => gap.matches(key, requested));
-      if (known) matched.set(known.id, (matched.get(known.id) ?? 0) + 1);
+      const pair = pairKey(key, requested);
+      if (accounting && (gapPairs.has(pair) || redundantPairs.has(pair))) seenPairs.add(pair);
       else report('PROBE_ADMISSION_UNCLAIMED', `全允许下被问到 ${requested}，显式表没有任何义务认领（表漏登 / 错登）`);
     }
-    if (p3Applicable(found)) checkInvalidId(route, found.invalidId!, report);
+    if (p3Applicable(key, found)) checkInvalidId(route, found.invalidId!, report);
   }
-  for (const gap of knownGaps ?? []) {
-    const actual = matched.get(gap.id) ?? 0;
-    if (actual !== gap.count) {
-      findings.push({
-        route: `known-gap:${gap.id}`,
-        code: 'PROBE_KNOWN_GAP_STALE',
-        detail: `登记 ${gap.count} 个，实际命中 ${actual} 个（表已补则删规则，新增漏登须审定而不是改数字）`,
-      });
+  const stale = (pairs: Map<string, string>, code: string, hint: string) => {
+    for (const [pair, id] of pairs) {
+      const [r = '', k = ''] = pair.split('\t');
+      if (inScope.has(r) && !seenPairs.has(pair)) {
+        findings.push({ route: `account:${id}`, code, detail: `${r} × ${k} 已不再未认领（${hint}）` });
+      }
     }
-  }
+  };
+  stale(gapPairs, 'PROBE_KNOWN_GAP_STALE', '表已补 / 调用已去掉，必须同 PR 删登记对');
+  stale(redundantPairs, 'PROBE_REDUNDANT_STALE', '冗余调用已去掉 / 表已补，必须同 PR 删登记对');
   return findings;
 }
 
