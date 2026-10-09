@@ -17,6 +17,7 @@ import { createApp, routeManifest } from '@italent/api';
 import { sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
+import { exportFontReady } from '../../apps/api/src/modules/survey360/export-files.js';
 import { key, my, outbox, reportLink, reports, sceneB, type SceneB, sheets } from './AC-360-B-support.js';
 
 const testDb = useTestDb();
@@ -225,24 +226,34 @@ const CARD_DENIED = new Set<string>([
 ]);
 const isBinary = (res: Response) => /^(image\/|application\/pdf)/.test(res.headers.get('content-type') ?? '');
 
+const isDownload = (route: string) => route.endsWith('/download');
+
 /**
  * 无资格身份逐个调用清单里的端点：响应里不得有逐题选项、答卷编号与（报告正文以外的）备注 / 建议原文，并断言预期状态：
  * 卡片类 403 / 404，其余不得 5xx。二进制下载（PNG / PDF）不能用 .text() 查标记——图内 / PDF 内的内容由数据层断言：
  * 对应 JSON 端点（score-tables / 报告详情）在本循环里逐个检查，文件内容与 JSON 一致由 AC-360-F060 的版面模型测试保证。
+ * 下载端点按字体可用性分支（用 F-060 第 2 轮的 fontconfig 检测，不硬编码环境）：
+ * - 有中文字体：同其余端点（不得 5xx；成功时是二进制文件，不查标记）；
+ * - 无中文字体（如 CI 镜像）：授权失败仍是 4xx，通过授权的一律 503 EXPORT_FONT_UNAVAILABLE，响应体同样不含任何答案 / 建议 /
+ *   答卷编号（错误体不泄露内容）。
  */
 async function expectNoAnswers(s: SceneB, user: string, t: Target, who: string) {
+  const fonts = await exportFontReady();
   for (const route of ANSWER_ENDPOINTS) {
     const ids = route.endsWith('/data-changes/:id') ? t.auditIds : [undefined];
     for (const auditId of ids) {
       const res = await callAs(s, user, route, t, auditId);
       const where = `${who} ${route} → ${res.status}`;
+      const noFontDownload = isDownload(route) && !fonts;
       if (CARD_DENIED.has(route)) expect([403, 404], where).toContain(res.status);
+      else if (noFontDownload) expect(res.status === 503 || (res.status >= 400 && res.status < 500), where).toBe(true);
       else expect(res.status, where).toBeLessThan(500);
       if (isBinary(res)) {
-        expect(route.endsWith('/download'), `${where} 只有下载端点返回二进制`).toBe(true);
+        expect(isDownload(route) && fonts, `${where} 只有有字体时的下载端点返回二进制`).toBe(true);
         continue;
       }
       const text = await res.text();
+      if (noFontDownload && res.status === 503) expect(text, where).toContain('EXPORT_FONT_UNAVAILABLE');
       for (const marker of ['"optionId"', '"optionLabel"', ...t.sheetIds]) expect(text, where).not.toContain(marker);
       if (!REPORT_CONTENT.has(route)) for (const marker of t.texts) expect(text, where).not.toContain(marker);
     }
