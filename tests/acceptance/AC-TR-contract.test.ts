@@ -14,6 +14,7 @@ import {
   PRESET_PROCESSES,
   roundDecimal,
   TALENT_REVIEW_APP,
+  TALENT_REVIEW_CONFIG_OBJECTS,
   TALENT_REVIEW_OBJECTS,
 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
@@ -46,7 +47,7 @@ describe('C-02 定点舍入导出（DEC-265 / 设计 §4.2）', () => {
 });
 
 describe('C-06 应用、预置身份、审计标签、租户字段来源（DEC-043 / 121 / 216）', () => {
-  it('开通预置“盘点管理员（人才盘点）”：只带 TalentReview 应用、全部对象全部功能；只对准备度预置看全部', async () => {
+  it('开通预置“盘点管理员（人才盘点）”：只带 TalentReview 应用、全部对象全部功能；只对设置类配置对象（准备度、设置、分类、角色、字段）预置看全部', async () => {
     const { db } = testDb();
     const api = tenantApi(db, { authorize: undefined });
     const admin = await newUser(db, 'tr-preset-admin');
@@ -76,7 +77,8 @@ describe('C-06 应用、预置身份、审计标签、租户字段来源（DEC-0
         asAdmin,
       );
       const { seeAll } = (await response.json()) as { seeAll: boolean };
-      expect(seeAll, definition.code).toBe(definition.code === TALENT_REVIEW_OBJECTS.readiness.code);
+      const config = TALENT_REVIEW_CONFIG_OBJECTS.map((key) => TALENT_REVIEW_OBJECTS[key].code);
+      expect(seeAll, definition.code).toBe(config.includes(definition.code));
     }
   });
 
