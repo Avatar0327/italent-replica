@@ -181,6 +181,10 @@ describe('PR-B 重新作答', () => {
     await s.answerAs(s.person.M.id, s.rel.superior.id, ['v5', 'v5', 'v5']);
     await w.transition(s.activity.id, 'disable');
     expect(overall(await w.scores(s.activity.id, s.object.id), 'role', w.role('superior'))).toBe(5);
+    // 第 2 轮 P2-7：重算产生新的计分批次，没重新生成的旧报告仍然失效；重新生成后才恢复
+    expect((await reports(s))[0]!.status).toBe('outdated');
+    w.setNow('2026-10-01T08:00:00Z');
+    await w.ok(w.request('POST', `${s.path}/reports/generate`, { idempotencyKey: key(), body: {} }));
     expect((await reports(s))[0]!.status).toBe('generated');
   });
 
