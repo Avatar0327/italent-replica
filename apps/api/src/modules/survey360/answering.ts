@@ -4,6 +4,8 @@
  * 该链接的评价关系，一律 404，不泄露活动、对象或其他评价者是否存在。
  * 匿名开关（DEC-149）：作答页按活动设置决定是否给出评价者姓名与评价角色——关闭时对应键缺席，不是空值。
  * 作答页每次保存为草稿（断点续答，E3-R22），提交后不可再改；优秀率控制只在“一次评价多人”时生效（E3-R9）。
+ * PR-B：站内待办“去处理”由登录账号本人进入同一套作答页面与命令（todos.ts 的入口只换“怎么找到链接”）；
+ * 两个入口的写入操作人都记为“系统”，审计不留评价者账号。评价者提交全部评价对象后，其待办自动“已处理”。
  */
 import {
   and,
@@ -27,6 +29,7 @@ import { SYSTEM_USER_ID } from '../../system-actor.js';
 import type { TenantContext, TenantEnv } from '../../tenant-context.js';
 import { revision, uuidParam } from '../job/context.js';
 import { requireObject, type ActivityRow } from './access.js';
+import { ownAnswers, ownSheet, ownSheetTotal } from './anonymous.js';
 import type { AvatarReference } from '../avatar/references.js';
 import { linkAvatarContent, linkAvatars } from './avatar-links.js';
 import {
@@ -43,6 +46,7 @@ import {
   type Writer,
 } from './context.js';
 import { findLink, type LinkRow } from './links.js';
+import { completeTodo } from './todos.js';
 import { createPerson, findPersonByEmail, loadPerson, personInput } from './people.js';
 import { type LoadedQuestionnaire, loadQuestionnaire } from './questionnaires.js';
 import { addRelation, appraiserList, confirmationView, loadRelation, removeRelation } from './relations.js';
@@ -50,6 +54,7 @@ import { policedSub } from '../../route-policy/index.js';
 import { SURVEY360_LINK_POLICIES } from './policy.js';
 
 export const LINK_TOKEN_HEADER = 'x-survey360-token';
+const LINK_BASE = '/api/survey360/link';
 
 const notFound = (): never => fail('NOT_FOUND', '链接无效或已失效');
 
@@ -62,8 +67,27 @@ async function linkTenant(c: C, deps: TenantRouteDeps): Promise<{ tenant: Tenant
   return { tenant: { tenantId: tenant!.id, userId: SYSTEM_USER_ID, timezone: tenant!.timezone }, token: token! };
 }
 
-async function resolve(tx: Tx, token: string, kind?: LinkRow['kind']) {
-  const link = await findLink(tx, token);
+/**
+ * 作答入口：令牌链接，或登录账号本人的待办；caller 是命令台账的请求人；avatarBase 是本入口的头像地址前缀
+ * （F-058 头像只经本入口、按本单具名人员取，待办入口没有令牌，不能指向令牌链接的地址）。
+ */
+export interface Entry {
+  readonly tenant: TenantContext;
+  readonly caller: TenantContext;
+  readonly locate: (tx: Tx) => Promise<LinkRow | undefined>;
+  readonly avatarBase: string;
+}
+export type EntryOf = (c: C) => Promise<Entry>;
+
+function tokenEntry(deps: TenantRouteDeps): EntryOf {
+  return async (c) => {
+    const { tenant, token } = await linkTenant(c, deps);
+    return { tenant, caller: tenant, locate: (tx) => findLink(tx, token), avatarBase: LINK_BASE };
+  };
+}
+
+async function resolve(tx: Tx, locate: Entry['locate'], kind?: LinkRow['kind']) {
+  const link = await locate(tx);
   if (!link || (kind !== undefined && link.kind !== kind)) notFound();
   const [activity] = rows<ActivityRow>(
     await tx.execute(sql`SELECT * FROM survey360_activities WHERE id = ${link!.activityId}::uuid AND NOT deleted`),
@@ -83,15 +107,16 @@ async function resolve(tx: Tx, token: string, kind?: LinkRow['kind']) {
 
 function linkRead<T>(
   deps: TenantRouteDeps,
+  entryOf: EntryOf,
   kind: LinkRow['kind'] | undefined,
-  load: (tx: Tx, link: LinkRow, a: ActivityRow) => Promise<T>,
+  load: (tx: Tx, link: LinkRow, a: ActivityRow, entry: Entry) => Promise<T>,
   respond: (c: C, body: T) => Response = (c, body) => c.json(body as object),
 ) {
   return async (c: C) => {
-    const { tenant, token } = await linkTenant(c, deps);
-    const body = await withTenant(deps.db, tenant.tenantId, async (tx) => {
-      const { link, activity } = await resolve(tx, token, kind);
-      return load(tx, link, activity);
+    const entry = await entryOf(c);
+    const body = await withTenant(deps.db, entry.tenant.tenantId, async (tx) => {
+      const { link, activity } = await resolve(tx, entry.locate, kind);
+      return load(tx, link, activity, entry);
     });
     return respond(c, body);
   };
@@ -100,6 +125,7 @@ function linkRead<T>(
 /** 链接写命令：命令前与命令事务内都重新解析链接并校验任务；指纹含链接，跨链接不会互相重放。 */
 function linkWrite<T>(
   deps: TenantRouteDeps,
+  entryOf: EntryOf,
   kind: LinkRow['kind'],
   schema: z.ZodType<T>,
   execute: (
@@ -113,20 +139,20 @@ function linkWrite<T>(
 ) {
   const status = options.status ?? 200;
   return async (c: C) => {
-    const { tenant, token } = await linkTenant(c, deps);
+    const { tenant, caller, locate } = await entryOf(c);
     // 命令前（含幂等重放）先按当前状态校验链接与任务归属（第 1 轮审查 P2-4）
     const link = await withTenant(deps.db, tenant.tenantId, async (tx) => {
-      const current = await resolve(tx, token, kind);
+      const current = await resolve(tx, locate, kind);
       await options.guard?.(tx, current.link, current.activity);
       return current.link;
     });
     const expectedRevision = revision(c);
     const input = parse(schema, await jsonOrEmpty(c));
-    const result = await runCommand(deps.db, tenant, {
+    const result = await runCommand(deps.db, caller, {
       id: c.req.header('idempotency-key'),
       fingerprint: { method: c.req.method, path: c.req.path, link: link.id, revision: expectedRevision, input },
       execute: async (tx, commandId) => {
-        const current = await resolve(tx, token, kind);
+        const current = await resolve(tx, locate, kind);
         const ctx = {
           tenantId: tenant.tenantId,
           userId: SYSTEM_USER_ID,
@@ -194,11 +220,11 @@ async function sheetsOf(tx: Tx, task: TaskRow) {
   return result;
 }
 
-async function answerPage(tx: Tx, link: LinkRow, activity: ActivityRow) {
+async function answerPage(tx: Tx, link: LinkRow, activity: ActivityRow, avatarBase: string) {
   const tasks = rows<TaskRow>(
     await tx.execute(sql`${taskQuery(activity.id, link.personId)} ORDER BY o.sort, o.created_at, r.id`),
   );
-  const avatars = await linkAvatars(tx, activity.tenant_id, answerPersonIds(link, activity, tasks));
+  const avatars = await linkAvatars(tx, activity.tenant_id, answerPersonIds(link, activity, tasks), avatarBase);
   const items = [];
   for (const task of tasks)
     items.push({
@@ -261,24 +287,6 @@ async function findSheet(tx: Tx, relationId: string, questionnaireId: string, lo
   return row;
 }
 
-async function answersOf(tx: Tx, sheetId: string) {
-  return tx
-    .select({ itemId: survey360Answers.itemId, optionId: survey360Answers.optionId, remark: survey360Answers.remark })
-    .from(survey360Answers)
-    .where(eq(survey360Answers.sheetId, sheetId))
-    .orderBy(survey360Answers.itemId);
-}
-
-async function sheetView(tx: Tx, sheet: SheetRow | undefined) {
-  if (!sheet) return { status: 'pending', revision: 0, answers: [], suggestion: null };
-  return {
-    status: sheet.status,
-    revision: sheet.revision,
-    answers: await answersOf(tx, sheet.id),
-    suggestion: sheet.suggestion,
-  };
-}
-
 /** 作答页的题目（关键行为）或基础指标（等级评定）：只给当前角色要评的条目，不给选项分值。 */
 function itemsFor(q: LoadedQuestionnaire, roleId: string) {
   const allowed = new Set(survey360.answerableItems(q.model, roleId));
@@ -336,8 +344,11 @@ async function lockAppraiser(tx: Tx, tenantId: string, activityId: string, perso
   );
 }
 
+const PAUSED = '活动暂停中，请稍后评价';
+
 async function openSheet(tx: Tx, ctx: Writer, activity: ActivityRow, link: LinkRow, relationId: string, qid: string) {
-  if (activity.status !== 'enabled') fail('CONFLICT', '活动未在进行中，不能作答', 'ACTIVITY_NOT_OPEN');
+  // 原站停用期间打开作答链接提示“活动暂停中，请稍后评价”（`25` §10.3 ③）
+  if (activity.status !== 'enabled') fail('CONFLICT', PAUSED, 'ACTIVITY_NOT_OPEN');
   await lockAppraiser(tx, ctx.tenantId, activity.id, link.personId);
   // F-034 R2 / E3-R2：与替换共用活动 → 对象 → 答卷顺序；先锁活动避免新答卷外键形成反向等待。
   const [current] = rows<ActivityRow>(
@@ -345,7 +356,7 @@ async function openSheet(tx: Tx, ctx: Writer, activity: ActivityRow, link: LinkR
       WHERE id = ${activity.id}::uuid AND NOT deleted FOR KEY SHARE`),
   );
   if (!current) notFound();
-  if (current!.status !== 'enabled') fail('CONFLICT', '活动未在进行中，不能作答', 'ACTIVITY_NOT_OPEN');
+  if (current!.status !== 'enabled') fail('CONFLICT', PAUSED, 'ACTIVITY_NOT_OPEN');
   // 等锁期间可能已替换套卷，任务与套卷归属必须在取得对象锁后重新读取。
   const found = await requireTask(tx, link, current!, relationId, qid, true);
   const sheet = await findSheet(tx, relationId, qid, true);
@@ -370,7 +381,7 @@ async function auditSheet(
       activityId: activity.id,
       relationId: sheet.relationId,
       questionnaireId: sheet.questionnaireId,
-      ...(await sheetView(tx, sheet)),
+      ...(await ownSheet(tx, sheet)),
     },
   });
 }
@@ -387,10 +398,8 @@ async function excellenceCheck(
   const rate = q.row.excellentMaxRate;
   if (activity.form !== 'multiple' || line === null || rate === null) return;
   const model = q.model;
-  const totalOf = async (sheetId: string, role: string) =>
-    survey360.scoreSheet(model, role, new Map((await answersOf(tx, sheetId)).map((a) => [a.itemId, a.optionId]))).total;
   const excellent = async (sheetId: string, role: string) =>
-    survey360.isExcellent(await totalOf(sheetId, role), survey360.maxTotal(model, role), Number(line));
+    survey360.isExcellent(await ownSheetTotal(tx, model, role, sheetId), survey360.maxTotal(model, role), Number(line));
   if (!(await excellent(sheet.id, roleId))) return;
   const roles = new Set(model.roles.map((r) => r.roleId));
   const relations = rows<{ id: string; role_id: string; sheet_id: string | null; status: string | null }>(
@@ -413,15 +422,36 @@ async function excellenceCheck(
 }
 
 const task = '/tasks/:relationId/questionnaires/:questionnaireId';
+const submitTask = `${task}/submit`;
+const TODO = '/my/todos/:todoId';
 
-function registerAnswerRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  registerAnswerRead(module, deps);
-  registerAnswerWrites(module, deps);
+/**
+ * 作答页与答卷读写：令牌链接（/api/survey360/link）与站内待办（/api/tenant/survey360/my/todos/:todoId）两个入口
+ * 共用同一套处理函数（answerRead / answerSave / answerSubmit / avatarRoute），按入口各注册一次；注册路径写成字面量，
+ * F-039 静态扫描按注册处求值。
+ */
+export function registerAnswerRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps, entryOf: EntryOf) {
+  module.get(task, answerRead(deps, entryOf));
+  module.put(task, answerSave(deps, entryOf));
+  module.post(submitTask, answerSubmit(deps, entryOf));
 }
 
-function registerAnswerRead(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  module.get(task, async (c) =>
-    linkRead(deps, 'answer', async (tx, link, activity) => {
+/** 站内待办“去处理”：登录账号本人作答，与链接作答同一套页面与命令（todos.ts todoEntry）。 */
+export function registerTodoAnswerRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps, entryOf: EntryOf) {
+  module.get(`${TODO}/answer`, (c) =>
+    linkRead(deps, entryOf, 'answer', (tx, link, activity, entry) => answerPage(tx, link, activity, entry.avatarBase))(
+      c,
+    ),
+  );
+  module.get(`${TODO}/avatars/:attachmentId/content`, avatarRoute(deps, entryOf, 'answer'));
+  module.get(`${TODO}${task}`, answerRead(deps, entryOf));
+  module.put(`${TODO}${task}`, answerSave(deps, entryOf));
+  module.post(`${TODO}${submitTask}`, answerSubmit(deps, entryOf));
+}
+
+function answerRead(deps: TenantRouteDeps, entryOf: EntryOf) {
+  return async (c: C) =>
+    linkRead(deps, entryOf, 'answer', async (tx, link, activity, entry) => {
       const { task: t, questionnaire } = await requireTask(
         tx,
         link,
@@ -429,7 +459,7 @@ function registerAnswerRead(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
         uuidParam(c, 'relationId'),
         uuidParam(c, 'questionnaireId'),
       );
-      const avatars = await linkAvatars(tx, activity.tenant_id, answerPersonIds(link, activity, [t]));
+      const avatars = await linkAvatars(tx, activity.tenant_id, answerPersonIds(link, activity, [t]), entry.avatarBase);
       return {
         activity: { name: activity.name, form: activity.form, status: activity.status },
         object: { name: t.object_name, avatar: avatars.get(t.object_person_id) ?? null },
@@ -442,30 +472,25 @@ function registerAnswerRead(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
           guide: questionnaire.row.guide,
           items: itemsFor(questionnaire, t.role_id),
         },
-        sheet: await sheetView(tx, await findSheet(tx, t.id, questionnaire.row.id)),
+        sheet: await ownSheet(tx, await findSheet(tx, t.id, questionnaire.row.id)),
       };
-    })(c),
-  );
+    })(c);
 }
 
-function registerAnswerWrites(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  registerAnswerSave(module, deps);
-  registerAnswerSubmit(module, deps);
-}
-
-function registerAnswerSave(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  module.put(task, (c) => {
+function answerSave(deps: TenantRouteDeps, entryOf: EntryOf) {
+  return (c: C) => {
     const relationId = uuidParam(c, 'relationId');
     const qid = uuidParam(c, 'questionnaireId');
     return linkWrite(
       deps,
+      entryOf,
       'answer',
       answersSchema,
       async (tx, ctx, link, activity, input) => {
         const { task: t, questionnaire, sheet } = await openSheet(tx, ctx, activity, link, relationId, qid);
         requireRevision(sheet?.revision ?? 0, ctx.expectedRevision);
         checkAnswers(questionnaire, t.role_id, input.answers);
-        const before = sheet ? await sheetView(tx, sheet) : null;
+        const before = sheet ? await ownSheet(tx, sheet) : null;
         let saved: SheetRow;
         if (sheet) {
           [saved] = (await tx
@@ -502,26 +527,27 @@ function registerAnswerSave(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
             })),
           );
         await auditSheet(tx, ctx, 'survey360.sheet.save', activity, before, saved);
-        return sheetView(tx, saved);
+        return ownSheet(tx, saved);
       },
       taskGuard(relationId, qid),
     )(c);
-  });
+  };
 }
 
-function registerAnswerSubmit(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
-  module.post(`${task}/submit`, (c) => {
+function answerSubmit(deps: TenantRouteDeps, entryOf: EntryOf) {
+  return (c: C) => {
     const relationId = uuidParam(c, 'relationId');
     const qid = uuidParam(c, 'questionnaireId');
     return linkWrite(
       deps,
+      entryOf,
       'answer',
       z.object({}).passthrough(),
       async (tx, ctx, link, activity) => {
         const { task: t, questionnaire, sheet } = await openSheet(tx, ctx, activity, link, relationId, qid);
         if (!sheet) fail('VALIDATION_FAILED', '答卷未作答', 'INCOMPLETE');
         requireRevision(sheet!.revision, ctx.expectedRevision);
-        const answers = await answersOf(tx, sheet!.id);
+        const answers = await ownAnswers(tx, sheet!.id);
         const answered = new Map(answers.map((a) => [a.itemId, a]));
         const missing = survey360.answerableItems(questionnaire.model, t.role_id).filter((id) => !answered.has(id));
         if (missing.length) fail('VALIDATION_FAILED', '还有题目未作答', 'INCOMPLETE', { itemIds: missing });
@@ -535,12 +561,13 @@ function registerAnswerSubmit(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
           .set({ status: 'submitted', submittedAt: ctx.now, revision: sheet!.revision + 1 })
           .where(eq(survey360Sheets.id, sheet!.id))
           .returning()) as [SheetRow];
-        await auditSheet(tx, ctx, 'survey360.sheet.submit', activity, await sheetView(tx, sheet), saved);
-        return sheetView(tx, saved);
+        await auditSheet(tx, ctx, 'survey360.sheet.submit', activity, await ownSheet(tx, sheet), saved);
+        await completeTodo(tx, ctx, activity.id, link.personId);
+        return ownSheet(tx, saved);
       },
       taskGuard(relationId, qid),
     )(c);
-  });
+  };
 }
 
 async function loadConfirmation(tx: Tx, link: LinkRow, lock = false) {
@@ -609,8 +636,9 @@ async function bumpConfirmation(
 }
 
 function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
+  const entryOf = tokenEntry(deps);
   module.get('/confirmation/candidates', (c) =>
-    linkRead(deps, 'confirm', async (tx) => {
+    linkRead(deps, entryOf, 'confirm', async (tx) => {
       // 上级、同事、下级、其他只能从内部员工中选（E3-R19）：只列已挂接组织员工的人员
       const q = c.req.query('q')?.trim() ?? '';
       const items = rows<{ id: string; name: string; department: string | null; position: string | null }>(
@@ -624,6 +652,7 @@ function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
   module.post('/confirmation/appraisers', (c) =>
     linkWrite(
       deps,
+      entryOf,
       'confirm',
       z.strictObject({ personId: uuid.optional(), person: personInput.optional(), roleId: uuid }),
       async (tx, ctx, link, activity, input) => {
@@ -654,6 +683,7 @@ function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
       loadRelation(tx, (await loadConfirmation(tx, link)).objectId, relationId, false, removed);
     return linkWrite(
       deps,
+      entryOf,
       'confirm',
       z.object({}).passthrough(),
       async (tx, ctx, link, activity) => {
@@ -668,7 +698,7 @@ function registerConfirmRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps) {
     )(c);
   });
   module.post('/confirmation/submit', (c) =>
-    linkWrite(deps, 'confirm', z.object({}).passthrough(), async (tx, ctx, link, activity) => {
+    linkWrite(deps, entryOf, 'confirm', z.object({}).passthrough(), async (tx, ctx, link, activity) => {
       const confirmation = await openConfirmation(tx, ctx, link, activity);
       await bumpConfirmation(tx, ctx, confirmation, 'confirmed');
       return confirmPage(tx, link, activity);
@@ -682,17 +712,29 @@ export function registerLinkRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
   const module = policedSub(router, SURVEY360_LINK_POLICIES, () => new Hono<TenantEnv>());
   module.onError((error, c) => handleError(mapDbError(error) ?? error, c));
   module.get('/', (c) =>
-    linkRead(deps, undefined, async (tx, link, activity) =>
-      link.kind === 'answer' ? await answerPage(tx, link, activity) : await confirmPage(tx, link, activity),
+    linkRead(deps, tokenEntry(deps), undefined, async (tx, link, activity, entry) =>
+      link.kind === 'answer'
+        ? await answerPage(tx, link, activity, entry.avatarBase)
+        : await confirmPage(tx, link, activity),
     )(c),
   );
-  module.get('/avatars/:attachmentId/content', (c) =>
+  // 头像：令牌链接下作答与确认两种链接都可取（本单具名人员）
+  module.get('/avatars/:attachmentId/content', avatarRoute(deps, tokenEntry(deps), undefined));
+  registerAnswerRoutes(module, deps, tokenEntry(deps));
+  registerConfirmRoutes(module, deps);
+  router.route(LINK_BASE, module);
+}
+
+/** 本入口作答页 / 确认页里具名人员的头像字节（F-058）；不在本单人员集合里的与不存在同一 404。 */
+function avatarRoute(deps: TenantRouteDeps, entryOf: EntryOf, kind: LinkRow['kind'] | undefined) {
+  return (c: C) =>
     linkRead(
       deps,
-      undefined,
+      entryOf,
+      kind,
       async (tx, link, activity) => {
-        const id = c.req.param('attachmentId');
-        if (!id || !isUuid(id)) notFound();
+        const id = c.req.param('attachmentId') ?? '';
+        if (!isUuid(id)) notFound();
         const allowed = await avatarPersonIds(tx, link, activity);
         const content = await linkAvatarContent(tx, activity.tenant_id, allowed, id.toLowerCase());
         return content ?? notFound();
@@ -704,11 +746,7 @@ export function registerLinkRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
         ctx.header('Content-Type', image.contentType);
         return ctx.body(new Uint8Array(image.bytes));
       },
-    )(c),
-  );
-  registerAnswerRoutes(module, deps);
-  registerConfirmRoutes(module, deps);
-  router.route('/api/survey360/link', module);
+    )(c);
 }
 
 /** 与作答任务 / 确认页相同的当前人员集合；匿名评价者不会成为单独的图片权限来源。 */
