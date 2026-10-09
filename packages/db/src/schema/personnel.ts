@@ -940,7 +940,9 @@ export const personnelVocationalQualificationVersions = pgTable(
  * 一样必须带来源单据。类别 / 级别用复合外键指向 ql_* 配置（删除受限，被引用时配置侧先拦下成 409）；版本表只追加，
  * 不对配置设外键（历史版本里的类别 / 级别在记录改引用后允许被删）。当前资格按日期计算，不存“是否当前生效”标记（DEC-335①）。
  */
-const QUALIFICATION_SOURCES = sql`'hr_direct','self_service','info_collection','employment_sync','initialization','evaluation'`;
+const QUALIFICATION_SOURCES = sql.raw(
+  "'hr_direct','self_service','info_collection','employment_sync','initialization','evaluation'",
+);
 function qualificationFields() {
   return {
     categoryId: uuid('category_id').notNull(),

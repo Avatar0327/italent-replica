@@ -431,7 +431,8 @@ describe('AC-QL-subset 自助不开放 🟡（Q-M0-133 剩余，DEC-365③）', 
         WHERE id = ${request.id}::uuid`,
     );
     await w.db.execute(
-      sql`UPDATE personnel_change_request_versions SET values = ${payload}::jsonb WHERE request_id = ${request.id}::uuid`,
+      sql`UPDATE personnel_change_request_versions SET values = ${payload}::jsonb
+        WHERE request_id = ${request.id}::uuid`,
     );
     const state = () =>
       tx(async (t) => ({

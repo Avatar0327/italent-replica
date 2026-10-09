@@ -8,7 +8,7 @@ import { expect } from 'vitest';
 import { approvalWorld, transferScene } from './AC-APV-support.js';
 import { assignQualificationMou, type CategoryView, QL_BASE, type LevelView } from './AC-QL-support.js';
 import { createMou, createOrg } from './AC-TC-support.js';
-import { useTestDb } from '@italent/testkit';
+import type { useTestDb } from '@italent/testkit';
 
 export const rowsOf = <T>(value: unknown): T[] => (Array.isArray(value) ? value : (value as { rows: T[] }).rows) as T[];
 export const REQUESTS = '/api/tenant/personnel/change-requests';

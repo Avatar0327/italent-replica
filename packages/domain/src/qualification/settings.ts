@@ -15,7 +15,9 @@ export interface QualificationSettingSpec {
 
 const isBoolean = (value: unknown): value is boolean => typeof value === 'boolean';
 
-export const QUALIFICATION_SETTINGS = {
+export type QualificationSettingKey = 'qualification.sync_enabled' | 'qualification.auto_sync_editable';
+
+export const QUALIFICATION_SETTINGS: Readonly<Record<QualificationSettingKey, QualificationSettingSpec>> = {
   /** SW73：员工岗职位信息变动同步生成任职资格子集（C1-4 消费者读取；关闭 → 处理器 skipped）。 */
   'qualification.sync_enabled': {
     description: '任职资格：员工岗职位信息变动同步生成任职资格子集（SW73）',
@@ -29,7 +31,6 @@ export const QUALIFICATION_SETTINGS = {
     defaultValue: true,
     valid: isBoolean,
   },
-} as const satisfies Record<string, QualificationSettingSpec>;
+};
 
-export type QualificationSettingKey = keyof typeof QUALIFICATION_SETTINGS;
 export const QUALIFICATION_SETTING_KEYS = Object.keys(QUALIFICATION_SETTINGS) as QualificationSettingKey[];
