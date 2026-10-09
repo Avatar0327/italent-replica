@@ -271,6 +271,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/idp/plan-service.ts': {
     deletePlan: '2ec47c2dab32',
+    lockPlanForHr: '307fd78f78e3',
   },
   'apps/api/src/modules/idp/process-service.ts': {
     checkSubProcessChanges: 'a588784f2e76',
@@ -434,6 +435,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/personnel/lists.ts': {
     listOptions: 'b46678e0057f',
+    listSubsets: '786ed8e4a4a7',
   },
   'apps/api/src/modules/personnel/order-code-routes.ts': {
     registerOrderCodeRoutes: '18ccd809b825',
@@ -522,6 +524,7 @@ export const DIGESTS: Digests = {
     'route:POST /people': 'd88ecec3cd1a',
     'route:PUT /people/:id': '48cec120e351',
     visiblePerson: 'a44eb95d09d9',
+    visiblePersonIds: 'edef58f9a8c8',
   },
   'apps/api/src/modules/survey360/questionnaires.ts': {
     VIEW: 'd25a9ebc35d8',
@@ -540,6 +543,7 @@ export const DIGESTS: Digests = {
     objectGuard: '5462c053098f',
     personAlso: 'cc7064c933e4',
     personRefs: 'db2e291443cb',
+    registerAutoAdd: 'cf8a97ebb1c3',
     'route:DELETE /activities/:id/objects/:objectId': 'd8713a494b32',
     'route:DELETE /activities/:id/objects/:objectId/appraisers/:relationId': 'a45ec61b51cb',
     'route:GET /activities/:id/objects': 'd6fd8a742d0e',
@@ -567,6 +571,7 @@ export const DIGESTS: Digests = {
     'route:POST /people/sync-conflicts/:id/resolve': '594d6f9a3a27',
     routeEmployeeScope: '16903284399b',
     syncAccess: 'acdb0fcd53ca',
+    syncView: '2c382259735e',
   },
   'apps/api/src/modules/talent-review/access.ts': {
     WRITE_BUTTONS: '0b5ae04a7123',
@@ -618,6 +623,7 @@ export const DIGESTS: Digests = {
     imageWriteContext: 'c528c5734ebc',
     present: '6ab86b4cc2a0',
     registerModelImageRoutes: '829aa1382245',
+    write: '0ae9f770e748',
   },
   'apps/api/src/modules/talent/model-image-service.ts': {
     imageContent: 'b350cde971dd',

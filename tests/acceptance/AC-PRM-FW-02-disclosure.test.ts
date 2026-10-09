@@ -51,7 +51,10 @@ function route(key: string): ManifestRoute {
 }
 
 type Node = Record<string, unknown>;
-const withPolicy = (base: ManifestRoute, policy: unknown): ManifestRoute => ({ ...base, policy: policy as RoutePolicy });
+const withPolicy = (base: ManifestRoute, policy: unknown): ManifestRoute => ({
+  ...base,
+  policy: policy as RoutePolicy,
+});
 const codes = (findings: readonly Finding[]) => findings.map((f) => f.code);
 const show = (findings: readonly Finding[]) => findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n');
 const check = (routes: readonly ManifestRoute[], table: RequiredTable = REQUIRED) =>
@@ -100,6 +103,21 @@ describe('AC-PRM-FW-02 B-01 披露分支：位置 / 嵌套 / 名字（D1～D3）
     const found = codes(check([withPolicy(base, policy)]));
     expect(found).toContain('OPTIONAL_NESTED');
     expect(found).toContain('DISCLOSURE_MISSING');
+  });
+
+  it('披露义务的“或”组语义同准入：分支每个备选至少满足组内一个备选，全不满足 → DISCLOSURE_WEAK', () => {
+    const base = route(MANAGER);
+    const hr = entry(MANAGER).find((o) => o.purpose === 'disclosure:canViewReporting')!;
+    const others = entry(MANAGER).filter((o) => o !== hr);
+    const grouped = (second: string) =>
+      withEntry(MANAGER, [...others, { ...hr, or: 'g:hr' }, { ...hr, perm: second, or: 'g:other' }]);
+    expect(check([base], grouped('btn:TenantBase.EmploymentRecord#Transfer.Manager@detail'))).toEqual([]);
+    const policy = clone(base.policy) as unknown as Node;
+    const optional = policy['optional'] as Record<string, Node>;
+    optional['canViewReporting'] = { kind: 'any', of: [optional['canViewReporting'], clone(MEMBER)] };
+    const found = check([withPolicy(base, policy)], grouped('btn:TenantBase.EmploymentRecord#Transfer.Manager@detail'));
+    expect(codes(found)).toContain('DISCLOSURE_WEAK');
+    expect(found.find((f) => f.code === 'DISCLOSURE_WEAK')!.detail).toContain('“或”组');
   });
 
   it('D1：可选分支挂在 all.of[0] 上 → OPTIONAL_POSITION（可选分支只能挂声明根节点）', () => {
@@ -243,7 +261,9 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
     const dropped = entry(AUTO_APPRAISERS).map(({ need: _need, ...rest }) => rest as Obligation);
     expect(codes(check([base], withEntry(AUTO_APPRAISERS, dropped)))).toContain('NEED_UNBOUND');
     const canEdit = 'GET /api/tenant/talent/criteria/:id/model-image';
-    const noDisclosureNeed = entry(canEdit).map((o) => (isDisclosure(o) ? ({ ...o, need: undefined } as Obligation) : o));
+    const noDisclosureNeed = entry(canEdit).map((o) =>
+      isDisclosure(o) ? ({ ...o, need: undefined } as Obligation) : o,
+    );
     expect(codes(check([route(canEdit)], withEntry(canEdit, noDisclosureNeed)))).toContain('DISCLOSURE_NEED_UNBOUND');
   });
 });

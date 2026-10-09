@@ -1,24 +1,56 @@
 /**
  * 从声明树取**权限键**（F-039 PR-A 第 4 轮，DEC-348②；键的写法见 required/types.ts）。范围模式、字段、逐行路径、
  * 失败导入日志等是辅助元数据，不产生权限键（模型图准入与 optional.canEdit 共用 point 范围不构成冲突）。
- * 声明展开成析取范式：每个准入备选 = 一组同时成立的权限键；可选分支按名字各自汇总，不参与准入。
- * 每个键记下来源（节点路径 + 字段），供 required-mutate.ts 在声明树上精确删除 / 移动。
+ * 声明展开成析取范式：每个准入备选 = 一组同时成立的权限键；可选分支按名字各自展开成**自身**的析取范式，
+ * 不参与准入（B-01：分支内的嵌套 optional 不计入，D1～D3 把位置 / 嵌套 / 名字当作结构错误报出）。
+ * 每个键记下来源（节点路径 + 字段 + 该节点的范围），供 required-mutate.ts 在声明树上精确删除 / 移动，
+ * 供 required.ts 把 `need` 绑定到提供权限的节点（B-03）。
  */
 import type { RoutePolicy } from '@italent/api';
+import type { Need } from './required/types.js';
+
+/** 可选分支名（D3）：驼峰字母数字。节点路径按点号切分，名字里带点会找错分支（required-mutate.ts locate）。 */
+export const OPTIONAL_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/;
+
+export type ScopeMode = 'point' | 'list' | 'see-all' | 'guard' | 'none';
+/** 节点范围的签名：模式 + 名字（point = 定位器，list = 谓词，guard = 守卫名；see-all / none 无名字）。 */
+export interface ScopeSig {
+  readonly mode: ScopeMode;
+  readonly name?: string;
+}
 
 /** 节点路径沿用 weakenings.ts：根 ''，`of[i].`、`optional.<名>.` 逐层拼接。 */
 export interface PermSource {
   readonly path: string;
   readonly field:
     'kind' | 'operation' | 'button' | 'guards' | 'scope' | 'rows.operation' | 'rows.button' | 'rows.relation';
+  /** 提供者是否承载范围（object / admin 节点）。 */
+  readonly carrier: boolean;
+  /** 该节点对这个权限适用的范围签名；按对象分范围时取该对象的，无法唯一确定则列出全部。 */
+  readonly scopes: readonly ScopeSig[];
 }
 
 export type PermMap = Map<string, PermSource[]>;
 
+export interface OptionalBranch {
+  /** 分支节点路径，如 `optional.canApply.`。 */
+  readonly path: string;
+  /** 分支自身（不含嵌套 optional）的准入析取范式。 */
+  readonly alternatives: PermMap[];
+}
+
+export interface LayoutViolation {
+  readonly code: 'OPTIONAL_POSITION' | 'OPTIONAL_NESTED' | 'OPTIONAL_NAME';
+  readonly name: string;
+  readonly path: string;
+}
+
 export interface DeclaredPerms {
   readonly alternatives: PermMap[];
-  /** 可选分支名 → 该分支（含其嵌套节点）授予的权限键。 */
-  readonly optional: Map<string, PermMap>;
+  /** 挂在声明根节点上的可选分支：名字 → 自身析取范式。 */
+  readonly optional: Map<string, OptionalBranch>;
+  /** D1～D3 的结构违规（整棵声明树扫描，含不在根上的分支）。 */
+  readonly layout: LayoutViolation[];
 }
 
 type Node = Record<string, unknown>;
@@ -62,11 +94,39 @@ function scopeGuards(scope: unknown): string[] {
   return all.flatMap((one) => ((one as Node)['mode'] === 'guard' ? [String((one as Node)['guard'])] : []));
 }
 
+function sigOf(scope: unknown): ScopeSig {
+  if (!scope || typeof scope !== 'object') return { mode: 'none' };
+  const s = scope as Node;
+  switch (s['mode']) {
+    case 'point':
+      return { mode: 'point', name: String(s['locator']) };
+    case 'list':
+      return { mode: 'list', name: String(s['predicate']) };
+    case 'guard':
+      return { mode: 'guard', name: String(s['guard']) };
+    case 'see-all':
+      return { mode: 'see-all' };
+    default:
+      return { mode: 'none' };
+  }
+}
+
+/** 节点的范围签名；按对象分范围（byObject）时，静态对象取该对象的条目（缺则 `*`），动态对象列出全部条目。 */
+function scopesOf(node: Node, object: string | undefined): ScopeSig[] {
+  const scope = node['scope'] as Node | undefined;
+  if (!scope || typeof scope !== 'object' || !('byObject' in scope)) return [sigOf(scope)];
+  const by = scope['byObject'] as Node;
+  const exact = object !== undefined && !object.startsWith('{') ? (by[object] ?? by['*']) : undefined;
+  return exact ? [sigOf(exact)] : Object.values(by).map(sigOf);
+}
+
 /** 节点自身（不含 of / optional 分支）授予的权限键。 */
 export function nodePerms(node: Node, path: string): [string, PermSource][] {
   const out: [string, PermSource][] = [];
+  const carrier = node['kind'] === 'object' || node['kind'] === 'admin';
+  const scopes = scopesOf(node, objectToken(node['object']));
   const add = (perm: string | undefined, field: PermSource['field']) => {
-    if (perm) out.push([perm, { path, field }]);
+    if (perm) out.push([perm, { path, field, carrier, scopes }]);
   };
   for (const guard of (node['guards'] as string[] | undefined) ?? []) add(`guard:${guard}`, 'guards');
   for (const guard of scopeGuards(node['scope'])) add(`guard:${guard}`, 'scope');
@@ -149,26 +209,43 @@ function alternatives(node: Node, path: string): PermMap[] {
   return [self];
 }
 
-/** 一个可选分支（含其 of 与嵌套 optional）授予的全部键。 */
-function branchPerms(node: Node, path: string): PermMap {
-  const nested = Object.entries((node['optional'] as Record<string, Node> | undefined) ?? {}).map(([name, b]) =>
-    branchPerms(b, `${path}optional.${name}.`),
-  );
-  const children = ((node['of'] as Node[] | undefined) ?? []).map((b, i) => branchPerms(b, `${path}of[${i}].`));
-  return merge(own(node, path), ...children, ...nested);
-}
-
-/** 准入树里每个节点挂的可选分支（嵌套在 any / all 分支里的也算），按名字汇总。 */
-function optionalBranches(node: Node, path: string, out: Map<string, PermMap>): void {
+/** 扫描整棵声明树的可选分支：D1 只挂根、D2 不嵌套、D3 名字字符集。 */
+function layoutOf(node: Node, path: string, inBranch: boolean, out: LayoutViolation[]): void {
   for (const [name, branch] of Object.entries((node['optional'] as Record<string, Node> | undefined) ?? {})) {
-    out.set(name, merge(out.get(name) ?? new Map(), branchPerms(branch, `${path}optional.${name}.`)));
+    const at = `${path}optional.${name}.`;
+    if (!OPTIONAL_NAME_PATTERN.test(name)) out.push({ code: 'OPTIONAL_NAME', name, path: at });
+    if (inBranch) out.push({ code: 'OPTIONAL_NESTED', name, path: at });
+    else if (path !== '') out.push({ code: 'OPTIONAL_POSITION', name, path: at });
+    layoutOf(branch, at, true, out);
   }
-  ((node['of'] as Node[] | undefined) ?? []).forEach((b, i) => optionalBranches(b, `${path}of[${i}].`, out));
+  ((node['of'] as Node[] | undefined) ?? []).forEach((b, i) => layoutOf(b, `${path}of[${i}].`, inBranch, out));
 }
 
 export function declaredPerms(policy: RoutePolicy): DeclaredPerms {
   const root = policy as unknown as Node;
-  const optional = new Map<string, PermMap>();
-  optionalBranches(root, '', optional);
-  return { alternatives: alternatives(root, ''), optional };
+  const optional = new Map<string, OptionalBranch>();
+  for (const [name, branch] of Object.entries((root['optional'] as Record<string, Node> | undefined) ?? {})) {
+    const path = `optional.${name}.`;
+    optional.set(name, { path, alternatives: alternatives(branch, path) });
+  }
+  const layout: LayoutViolation[] = [];
+  layoutOf(root, '', false, layout);
+  return { alternatives: alternatives(root, ''), optional, layout };
+}
+
+/** 可选分支各备选授予的权限键并集。 */
+export function branchPerms(branch: OptionalBranch): Set<string> {
+  return new Set(branch.alternatives.flatMap((alt) => [...alt.keys()]));
+}
+
+/** 签名集合里是否有满足 need 的：模式相等，且 need 写了名字就要相等。 */
+export function scopeMatches(scopes: readonly ScopeSig[], need: Need | undefined): boolean {
+  if (!need) return true;
+  const wanted = need.locator ?? need.predicate ?? need.guard;
+  return scopes.some((sig) => sig.mode === need.scope && (wanted === undefined || sig.name === wanted));
+}
+
+/** 备选里是否有提供 perm 且范围满足 need 的来源节点。 */
+export function provides(alt: PermMap, perm: string, need?: Need): boolean {
+  return (alt.get(perm) ?? []).some((source) => scopeMatches(source.scopes, need));
 }

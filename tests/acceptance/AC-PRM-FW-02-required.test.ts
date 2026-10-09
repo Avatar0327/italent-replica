@@ -445,11 +445,17 @@ describe('AC-PRM-FW-02 显式表突变：按审定义务逐项、逐准入备选
     expect(found.filter((m) => m.kind === 'or-member→none')).toEqual([]);
   });
 
-  it('B-05 人才表单（update + 按钮 + 守卫）三项任删其一都被报出', () => {
-    const key = 'GET /api/tenant/talent/forms/:object';
-    const mutants = requiredMutants(route(key), REQUIRED).filter((m) => m.kind === 'required→none');
+  it('B-05 人才候选编辑分支（update + 按钮 + 守卫）三项任删其一都被报出', () => {
+    const key = 'GET /api/tenant/talent/candidates/owner-orgs';
+    const mutants = requiredMutants(route(key), REQUIRED).filter((m) => m.kind === 'or-member→none');
     const perms = new Set(mutants.map((m) => m.perm));
-    expect(perms.size).toBeGreaterThanOrEqual(3);
+    for (const perm of [
+      'obj:TalentCenter.TalentCriterion:update',
+      'btn:TalentCenter.TalentCriterion#update@detail',
+      'guard:talent.queryObjectIsCriterion',
+    ]) {
+      expect(perms.has(perm), perm).toBe(true);
+    }
     for (const m of mutants) expect(codes(check([m.route])), `${m.perm} @${m.at}`).toContain('REQUIRED_MISSING');
   });
 });
