@@ -137,17 +137,91 @@ const ownerUnit = (key: Ref, unit: string, anchor: string): Obligation => ({
   ],
 });
 
-const jobLinks = (key: 'category' | 'level', declared: Evidence): Obligation => ({
-  perm: `guard:ql.jobLinks(${key})`,
-  note: '关联的岗职务须有对象查看权且在职务应用的读取范围内（writeContext 解析 jobs，查看权为假 → null → 403）',
+const JOB_VIEW = impl(
+  `${SUPPORT}#writeContext`,
+  "const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: code, fields: [] })",
+);
+const JOB_FORBIDDEN = impl(
+  `${CONFIG}#jobObject`,
+  "if (access === null) throw new AppError('FORBIDDEN', `无权查看${meta.label}`)",
+);
+/** 关联类型 → [岗职务对象查看权, JOB_OBJECT_CODES 里的条目, JOB_KINDS 里的条目]（config-service 的映射表）。 */
+const JOB_TYPES = {
+  category: [
+    ['position', 'TenantBase.Position', 'positions: MODULE_OBJECTS.jobPosition.code', "position: { kind: 'positions'"],
+    ['post', 'TenantBase.JobPost', 'posts: MODULE_OBJECTS.jobPost.code', "post: { kind: 'posts'"],
+    [
+      'sequence',
+      'TenantBase.JobSequence',
+      'sequences: MODULE_OBJECTS.jobSequence.code',
+      "sequence: { kind: 'sequences'",
+    ],
+    [
+      'level_type',
+      'TenantBase.JobLevelType',
+      "'level-types': MODULE_OBJECTS.jobLevelType.code",
+      "level_type: { kind: 'level-types'",
+    ],
+  ],
+  level: [
+    ['level', 'TenantBase.JobLevel', 'levels: MODULE_OBJECTS.jobLevel.code', "level: { kind: 'levels'"],
+    ['grade', 'TenantBase.JobGrade', 'grades: MODULE_OBJECTS.jobGrade.code', "grade: { kind: 'grades'"],
+  ],
+} as const;
+
+/**
+ * 关联岗职务的守卫 + 它的内部义务：writeContext 对本端点声明的每一类岗职务都问一次对象查看权，但只有本次写入真正
+ * 关联了该类型的岗职务才用到答案（jobObject：查看权为假 → 403），所以每个岗职务查看权是 `when`（条件语义见
+ * guard-inner.ts INNER_CONDITIONS 的 jobLinkType=*）。
+ */
+const jobLinks = (key: 'category' | 'level', declared: Evidence): Obligation[] => [
+  {
+    perm: `guard:ql.jobLinks(${key})`,
+    note: '关联的岗职务须有对象查看权且在职务应用的读取范围内（writeContext 解析 jobs，查看权为假 → null → 403）',
+    at: [
+      call(`${CONFIG}#replaceJobLinks`, 'const { item, fields, label } = await jobObject(tx, ctx, linkType!, jobId)'),
+      JOB_FORBIDDEN,
+      JOB_VIEW,
+      declared,
+    ],
+  },
+  ...JOB_TYPES[key].map(([type, objectCode, codeAnchor, kindAnchor]): Obligation => ({
+    perm: `obj:${objectCode}:view`,
+    purpose: `guard:ql.jobLinks(${key})`,
+    inner: { role: 'when', condition: `jobLinkType=${type}` },
+    at: [
+      call(`${CONFIG}#replaceJobLinks`, 'const { item, fields, label } = await jobObject(tx, ctx, linkType!, jobId)'),
+      impl(`${CONFIG}#jobObject`, 'const access = ctx.jobs?.[meta.kind];'),
+      JOB_FORBIDDEN,
+      JOB_VIEW,
+      { role: 'const', unit: `${CONFIG}#JOB_KINDS`, anchor: kindAnchor },
+      { role: 'const', unit: `${MRA}#JOB_OBJECT_CODES`, anchor: codeAnchor },
+      declared,
+    ],
+  })),
+];
+
+/**
+ * 关联的岗职务已被别的类别 / 级别占用时，冲突提示带出占用对象的名称：占用对象在读取范围内（category / level 只放开查看，
+ * 恒真）且操作人对本对象名称字段可见才披露，否则用固定提示（DEC-331④ / 第 2 轮 P2-03）；只决定提示文案，不拒绝。
+ */
+const conflictName = (key: 'category' | 'level', declared: Evidence): Obligation => ({
+  perm: `obj:${code(key)}:view`,
+  purpose: 'disclosure:conflictName',
+  need: list(`ql.openRead(${key === 'category' ? 'ql_categories' : 'ql_levels'})`),
   at: [
-    call(`${CONFIG}#replaceJobLinks`, 'const { item, fields, label } = await jobObject(tx, ctx, linkType!, jobId)'),
-    impl(`${CONFIG}#jobObject`, "if (access === null) throw new AppError('FORBIDDEN', `无权查看${meta.label}`)"),
-    impl(
-      `${SUPPORT}#writeContext`,
-      "const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: code, fields: [] })",
+    call(
+      `${CONFIG}#replaceJobLinks`,
+      "throw conflict(taken.readable && fieldVisible(ctx.fields[object], 'name') ? `【${taken.name}】` : '');",
     ),
+    impl(`${SUPPORT}#writeContext`, '...(jobs.length ? { [object]: await objectFields(deps, ctx, object) } : {}),'),
+    impl(
+      `${ACCESS}#objectFields`,
+      "const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: codeOf(object), fields: [] });",
+    ),
+    objectConst(key),
     declared,
+    ...SCOPE_AT[key === 'category' ? 'ql.openRead(ql_categories)' : 'ql.openRead(ql_levels)'],
   ],
 });
 const JOB_LINKS_DERIVED: Obligation = {
@@ -196,21 +270,41 @@ function childDeletes(child: Ref, unit: string, children: Evidence, inner: Inner
     },
   ];
 }
-const CHILD_SCOPE: Obligation = {
-  perm: 'guard:ql.childScope(target)',
-  note: '等级方案连带删除的遗留描述随指标授权：所属指标须都在写范围内，否则整体 403 CHILD_OUT_OF_SCOPE（第 3 轮 R2-06）',
-  at: [
-    call(
-      `${TARGETS}#deleteGradeScheme`,
-      'await requireTargetsEditable( tx, ctx, leftovers.map((item) => item.targetId), )',
-    ),
-    impl(
-      `${TARGETS}#requireTargetsEditable`,
-      "throw new AppError('FORBIDDEN', '等级方案上有不在你管理范围内的指标手改描述，不能删除', {",
-    ),
-    specRefs("deleteScopes: ['target']"),
-  ],
-};
+const CHILD_SCOPE: Obligation[] = [
+  {
+    perm: 'guard:ql.childScope(target)',
+    note: '等级方案连带删除的遗留描述随指标授权：所属指标须都在写范围内，否则整体 403 CHILD_OUT_OF_SCOPE（第 3 轮 R2-06）',
+    at: [
+      call(
+        `${TARGETS}#deleteGradeScheme`,
+        'await requireTargetsEditable( tx, ctx, leftovers.map((item) => item.targetId), )',
+      ),
+      impl(
+        `${TARGETS}#requireTargetsEditable`,
+        "throw new AppError('FORBIDDEN', '等级方案上有不在你管理范围内的指标手改描述，不能删除', {",
+      ),
+      specRefs("deleteScopes: ['target']"),
+    ],
+  },
+  {
+    perm: `obj:${code('target')}:view`,
+    purpose: 'guard:ql.childScope(target)',
+    inner: { role: 'when', condition: 'scheme.leftovers' },
+    note:
+      'writeContext 对 deleteScopes 里的指标恒问一次查看权；查看权为假 → 指标范围 null，' +
+      '有遗留描述时 requireTargetsEditable 整体 403',
+    at: [
+      call(
+        `${TARGETS}#deleteGradeScheme`,
+        'await requireTargetsEditable( tx, ctx, leftovers.map((item) => item.targetId), )',
+      ),
+      impl(`${TARGETS}#requireTargetsEditable`, 'const scope = ctx.scopes.target;'),
+      REFERENCE_VIEW,
+      specRefs("deleteScopes: ['target']"),
+      objectConst('target'),
+    ],
+  },
+];
 
 /** 标准里通用指标覆盖写入的能力标准：指标查看权 / 字段权不通过只省略内容（projectionHidden），不拒绝。 */
 const OVERWRITTEN_CONTENT: Obligation = {
@@ -287,7 +381,8 @@ function createGuards(key: Key): Obligation[] {
           specRefs("patchSchema: input.categoryPatch, references: ['categoryClass']"),
           { role: 'required' },
         ),
-        jobLinks('category', specRefs('jobs: CATEGORY_JOBS')),
+        ...jobLinks('category', specRefs('jobs: CATEGORY_JOBS')),
+        conflictName('category', specRefs('jobs: CATEGORY_JOBS')),
       ];
     case 'level':
       return [
@@ -298,7 +393,8 @@ function createGuards(key: Key): Obligation[] {
           specRefs("references: ['layer']"),
           { role: 'when', condition: 'body.layerId' },
         ),
-        jobLinks('level', specRefs('jobs: LEVEL_JOBS')),
+        ...jobLinks('level', specRefs('jobs: LEVEL_JOBS')),
+        conflictName('level', specRefs('jobs: LEVEL_JOBS')),
       ];
     case 'targetType':
       return [
@@ -376,7 +472,8 @@ function updateGuards(key: Key): Obligation[] {
   switch (key) {
     case 'category':
       return [
-        jobLinks('category', specRefs('jobs: CATEGORY_JOBS')),
+        ...jobLinks('category', specRefs('jobs: CATEGORY_JOBS')),
+        conflictName('category', specRefs('jobs: CATEGORY_JOBS')),
         {
           ...JOB_LINKS_DERIVED,
           at: [
@@ -401,7 +498,8 @@ function updateGuards(key: Key): Obligation[] {
           specRefs("references: ['layer']"),
           { role: 'when', condition: 'layerChanged' },
         ),
-        jobLinks('level', specRefs('jobs: LEVEL_JOBS')),
+        ...jobLinks('level', specRefs('jobs: LEVEL_JOBS')),
+        conflictName('level', specRefs('jobs: LEVEL_JOBS')),
         {
           ...JOB_LINKS_DERIVED,
           at: [
@@ -451,7 +549,7 @@ function deleteGuards(key: Key): Obligation[] {
       );
     case 'gradeScheme':
       return [
-        CHILD_SCOPE,
+        ...CHILD_SCOPE,
         ...childDeletes(
           'targetGradeDescription',
           `${TARGETS}#deleteGradeScheme`,
@@ -515,7 +613,8 @@ function importRoute(key: 'category' | 'level'): Obligation[] {
           registration,
           { role: 'when', condition: 'body.layerId' },
         )),
-    jobLinks(key, registration),
+    ...jobLinks(key, registration),
+    conflictName(key, registration),
   ];
 }
 

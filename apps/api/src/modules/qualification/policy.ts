@@ -122,6 +122,24 @@ const OVERWRITTEN_CONTENT: RoutePolicy = object({
 });
 const nested = (key: Key) => (key === 'standard' ? { optional: { overwrittenContent: OVERWRITTEN_CONTENT } } : {});
 
+/**
+ * 关联的岗职务已被别的类别 / 级别占用时，409 冲突提示带出占用对象的名称：只在操作人对本对象有查看权、名称字段可见时披露，
+ * 否则用固定提示（replaceJobLinks，DEC-331④ / 第 2 轮 P2-03）。只决定提示文案，不拒绝请求；POST / PATCH / 导入共用。
+ */
+const conflictName = (key: 'category' | 'level') => ({
+  optional: {
+    conflictName: object({
+      object: Q[key].code,
+      operation: 'view',
+      button: noButton('只取字段查看权'),
+      scope: listScope(`ql.openRead(${key === 'category' ? 'ql_categories' : 'ql_levels'})`),
+      fields: fixed(['name'], 'DEC-331④', Q[key].code),
+    }),
+  },
+});
+/** 会解析岗职务的写入口才带冲突名称披露分支（列表 / 详情 / 删除没有）。 */
+const jobWrite = (key: Key) => (key === 'category' || key === 'level' ? conflictName(key) : {});
+
 function qlWrite(key: Key, fields: 'body' | 'none') {
   return write(fields === 'body' ? 'body' : none('删除不写字段'), 'ql.commandScope', commandResult(locator(key)), {
     ...(fields === 'body' ? { controls: CONTROLS } : {}),
@@ -162,6 +180,7 @@ function crud(key: Key): Record<string, RoutePolicy> {
     }),
     [`POST ${path}`]: object({
       ...base,
+      ...jobWrite(key),
       ...guards(spec.create),
       operation: 'create',
       button: button('create', 'list'),
@@ -171,6 +190,7 @@ function crud(key: Key): Record<string, RoutePolicy> {
     [`PATCH ${path}/:id`]: object({
       ...base,
       ...byId,
+      ...jobWrite(key),
       ...guards(spec.update),
       operation: 'update',
       button: button('update', 'detail'),
@@ -208,6 +228,7 @@ function importRoute(key: 'category' | 'level'): RoutePolicy {
     button: button('create', 'list'),
     scope: guardScope(`ql.ownerUnit(${key})`, NF),
     guards: [key === 'category' ? 'ql.referenced(categoryClass)' : 'ql.referenced(layer)', `ql.jobLinks(${key})`],
+    ...conflictName(key),
     fields: shape(`ql.${key}`),
     write: write('body', 'ql.commandScope', commandResult(`ql.${key}.byId`), { controls: CONTROLS, ledger: 'single' }),
     failureAudit: failureAudit(key, 'items'),
