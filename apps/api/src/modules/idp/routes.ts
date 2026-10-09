@@ -26,11 +26,11 @@ import {
   project,
   type Projection,
   projectionOf,
-  readableSql,
   requireEditable,
   requireReadable,
   rowsOf,
 } from './access.js';
+import { readableSql } from '../permission/public-down.js';
 import { runIdpCommand } from './executor.js';
 import * as input from './input.js';
 import { registerKeyInfoRoutes } from './key-info-routes.js';
