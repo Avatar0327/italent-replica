@@ -320,6 +320,32 @@ describe('AC-360-F060 R2 P2-3 资源预算、并发准入与超时', () => {
     await holder;
   });
 
+  // 第 3 轮 P3（Opus 接手）：超时后取消渲染并释放名额，不能只返回超时、让 PDF 在后台继续逐页生成
+  it('超时后取消渲染：名额在超时后很快释放（不等后台把整份 PDF 生成完）', async () => {
+    overrideFontProbe(async () => true);
+    const blocks = Array.from({ length: 1_600 }, (_, i) => ({ kind: 'text' as const, text: `第${i}行` }));
+    const doc = { title: '取消测试', blocks };
+    expect(paginate(doc, 'a4').length).toBeGreaterThan(20);
+    configureExport({ timeoutMs: 100, tenantLimit: 1, globalLimit: 1 });
+    const started = Date.now();
+    await expect(admitted('取消', (signal) => renderPdf(doc, signal))).rejects.toMatchObject({
+      details: expect.objectContaining({ reason: 'EXPORT_TIMEOUT' }),
+    });
+    // 名额释放：轮询到不再 EXPORT_BUSY 为止
+    let freed = false;
+    while (!freed && Date.now() - started < 10_000) {
+      try {
+        await admitted('取消', async () => undefined);
+        freed = true;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    }
+    expect(freed).toBe(true);
+    // 整份 20+ 页的位图 PDF 生成要数秒；取消后应在一页的渲染时间内释放
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
   it('渲染超时：EXPORT_TIMEOUT（503），不是 500，也不占着名额', async () => {
     overrideFontProbe(async () => true);
     const { s } = await scene('f060r2-timeout');
