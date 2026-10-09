@@ -7,6 +7,7 @@
  */
 import type { ManifestRoute, RoutePolicy } from '@italent/api';
 import type { ObservedContract } from './contract.js';
+import { mapSelectors, type SelectorSite } from './selectors.js';
 
 export type WeakeningKind =
   | 'all-drop-branch'
@@ -15,7 +16,10 @@ export type WeakeningKind =
   | 'relation→member'
   | 'selector→domain'
   | 'required→optional'
-  | 'leaf→optional';
+  | 'leaf→optional'
+  | 'selector→value'
+  | 'selector→path'
+  | 'selector→from';
 
 export interface Weakening {
   readonly kind: WeakeningKind;
@@ -32,6 +36,9 @@ export const WEAKENING_KINDS: readonly WeakeningKind[] = [
   'selector→domain',
   'required→optional',
   'leaf→optional',
+  'selector→value',
+  'selector→path',
+  'selector→from',
 ];
 
 type Node = Record<string, unknown>;
@@ -157,8 +164,49 @@ function swapDomain(selector: Node, values: readonly string[]): void {
   } else selector['domain'] = [...values];
 }
 
+/** 按选择器位置（mapSelectors 的 position）定位并就地修改拷贝里的 map 选择器。 */
+function editSelector(route: ManifestRoute, site: SelectorSite, change: (selector: Node) => void): ManifestRoute {
+  const root = structuredClone(route.policy) as unknown as Node;
+  let node = root;
+  for (const segment of site.position.split('.').slice(0, -1)) {
+    const indexed = /^(\w+)\[(\d+)\]$/.exec(segment);
+    node = indexed ? (node[indexed[1]!] as Node[])[Number(indexed[2])]! : (node[segment] as Node);
+  }
+  change(node[site.field] as Node);
+  return { ...route, policy: root as unknown as RoutePolicy };
+}
+
+const NEXT_SOURCE = { param: 'body', body: 'query', query: 'param' } as const;
+
+/**
+ * map 选择器的输入来源 / 映射值弱化（设计 B-07）：值全换成同域另一个合法值（映射里至少有两种不同的值才有“另一个”可换，
+ * 如任职导入预览的 view / view 不生成）、path 改成另一个参数名、from 在 param / body / query 之间换。
+ */
+function selectorWeakenings(route: ManifestRoute): Weakening[] {
+  return mapSelectors(route.policy).flatMap((site) => {
+    const values = Object.values(site.map);
+    const distinct = new Set(values.map((value) => JSON.stringify(value)));
+    const weaken = (kind: WeakeningKind, change: (selector: Node) => void): Weakening => ({
+      kind,
+      at: site.position,
+      route: editSelector(route, site, change),
+    });
+    return [
+      ...(distinct.size >= 2
+        ? [
+            weaken('selector→value', (selector) => {
+              selector['map'] = Object.fromEntries(Object.keys(site.map).map((key) => [key, values[0]]));
+            }),
+          ]
+        : []),
+      weaken('selector→path', (selector) => (selector['path'] = site.path === 'kind' ? 'object' : 'kind')),
+      weaken('selector→from', (selector) => (selector['from'] = NEXT_SOURCE[site.from])),
+    ];
+  });
+}
+
 export function weakeningsOf(route: ManifestRoute, contract: ObservedContract): Weakening[] {
-  const out: Weakening[] = [];
+  const out: Weakening[] = selectorWeakenings(route);
   const push = (kind: WeakeningKind, at: string, mutated: ManifestRoute) => out.push({ kind, at, route: mutated });
   for (const [at, node] of nodes(route.policy as unknown as Node)) {
     // 可选分支不参与准入（只决定响应里的附加披露）：删可选分支由突变套件 delete-optional 覆盖
