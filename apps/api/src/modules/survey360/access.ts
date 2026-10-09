@@ -117,7 +117,7 @@ type Viewer = { tenantId: string; userId: string; timezone?: string };
  * 对象（Activity / Relation / Answer / Person）判定，这里只给各对象的可见条件，与接口同一判定：
  * - activity：查看人可见的活动编号集合（子查询）；
  * - relation：活动内对象（评价对象、评价关系、确认单、待办、报告）——同上，且精细化生效时一律不可见（日志带人员信息）；
- * - answer：答卷（保存、提交、屏蔽、清除）——只给持“全部活动”者（PR-B 身份保护）；
+ * - answer：答卷（保存、提交、屏蔽、恢复、清除）——同 relation；审计引擎只展示脱敏版本（DEC-340③）；
  * - person：人员——持“全部活动”或精细化权限关闭（开启时不经审计看到范围外人员）；
  * - sync：同步冲突——另须“从系统管理中同步人员信息”按钮与员工信息查看权，并且只给冲突员工在查看人**当前**员工
  *   信息数据范围内的日志（与冲突清单同一 .list 范围、同一谓词，第 4 轮 R3-P2-2）：返回范围内员工编号的子查询。
@@ -138,10 +138,8 @@ export function survey360AuditScope(kind: 'activity' | 'relation' | 'answer' | '
             AND ${scopeSql(scope, { person: sql`e.id` })}`
           : null;
       }
-      if (kind === 'relation' && restricted) return null;
-      // 答卷类日志（保存、提交、屏蔽、清除）含答案与评价关系：只给持“全部活动”者，一般 / 高级管理员不能经审计
-      // 把答卷与评价者对上（PR-B 身份保护，与原始数据“评价者保密”同一口径）
-      if (kind === 'answer' && !allActivities) return null;
+      // 答卷类日志按活动可见，但一律脱敏（DEC-340③）：评价关系与作答来源由审计引擎去掉（audit/visibility.ts）
+      if ((kind === 'relation' || kind === 'answer') && restricted) return null;
       return sql`SELECT a.id::text FROM survey360_activities a WHERE a.tenant_id = ${ctx.tenantId}::uuid
         AND ${activityVisibleSql({ userId: ctx.userId, allActivities })}`;
     });

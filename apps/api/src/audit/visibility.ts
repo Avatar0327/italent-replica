@@ -245,12 +245,29 @@ export const APPROVAL_FLOW_FIELDS = [
 /**
  * R3-T03：360 日志按真实对象判定（第 3 轮 R2-P2-4）——先要该 360 对象的查看权，再按该对象的查看字段裁剪；可见条件
  * 与接口同一判定（survey360/access.ts）：活动按活动可见；评价对象 / 评价关系 / 确认单按评价关系对象、答卷按答卷
- * 对象，且活动可见、精细化权限生效时一律不可见；PR-B：答卷类日志只给持“全部活动”者；待办按评价关系对象、
+ * 对象，且活动可见、精细化权限生效时一律不可见；答卷类日志同此可见，只展示脱敏版本（DEC-340③）；待办按评价关系对象、
  * 报告生成与转发按结果对象，同评价关系的可见条件；人员按人员对象（精细化生效时不可见）；同步冲突另须同步按钮与员工
  * 信息查看权、冲突员工在查看人当前员工范围内（第 4 轮 R3-P2-2），只展示冲突协议字段；评价角色 / 设置、套卷有对象
  * 查看权即可见。活动内对象的写入一律在 after 里带 activityId，同步冲突的 after 带 employeeId。
  */
 const S360 = survey360.SURVEY360_OBJECTS;
+
+/**
+ * DEC-340③：答卷日志（保存、提交、屏蔽、恢复、清除）对任何查看人（含持“全部活动”者，兼任评价者也不豁免）只展示
+ * 脱敏版本——去掉评价关系 ID，不展示作答请求的来源（IP、终端、来源页、TraceID）与命令 ID；链接 / 待办作答的
+ * 操作人本就记为“系统”。答案本身与原始数据卡片一样不带评价者标识。
+ */
+const SURVEY360_SHEET = 'survey360-sheet';
+const SHEET_IDENTITY_FIELDS = new Set(['relationId']);
+function survey360SheetAuditFields(fields: ReadonlySet<string> | undefined): ReadonlySet<string> {
+  const all = fields ?? new Set(S360.answer.fields.map((field) => field.code));
+  return new Set([...all].filter((field) => !SHEET_IDENTITY_FIELDS.has(field)));
+}
+
+/** 不展示请求来源与命令 ID 的日志（DEC-340③）。 */
+export function auditSourceWithheld(objectType: string): boolean {
+  return objectType === SURVEY360_SHEET;
+}
 const inVisibleActivity: Rule['visible'] = (_scope, row, _viewer, { extra }) =>
   extra ? sql`COALESCE(${row.after}->>'activityId', '') IN (${extra})` : sql`false`;
 const byResolve: Rule['visible'] = (_scope, _row, _viewer, { extra }) => extra ?? sql`false`;
@@ -274,7 +291,7 @@ const survey360Rules: readonly Rule[] = [
     visible: inVisibleActivity,
   },
   {
-    types: ['survey360-sheet'],
+    types: [SURVEY360_SHEET],
     objectCode: S360.answer.code,
     objectPermission: true,
     resolve: survey360AuditScope('answer'),
@@ -762,7 +779,11 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
       rule,
       scope,
       inputs: { extra, objectFields },
-      fields: rule.types.includes('survey360-person') ? survey360PersonAuditFields(fields) : fields,
+      fields: rule.types.includes('survey360-person')
+        ? survey360PersonAuditFields(fields)
+        : rule.types.includes(SURVEY360_SHEET)
+          ? survey360SheetAuditFields(fields)
+          : fields,
     };
   }
   if (!(await canView())) return undefined;

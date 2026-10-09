@@ -49,7 +49,7 @@ import {
   queryWindow,
   tenantRetention,
 } from './query.js';
-import { auditViewer, visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
+import { auditSourceWithheld, auditViewer, visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
 import { linkageSnapshot } from './transfer-linkage.js';
 
 const BASE = '/api/tenant/audit';
@@ -273,6 +273,17 @@ function sourceView(row: {
   };
 }
 
+const WITHHELD_SOURCE = {
+  sourceAction: null,
+  sourcePage: null,
+  sourcePageType: null,
+  terminal: null,
+  clientVersion: null,
+  ip: null,
+  traceId: null,
+  commandId: null,
+} as const;
+
 function eventColumns(viewer: Awaited<ReturnType<typeof auditViewer>>) {
   return {
     ...getTableColumns(auditEvents),
@@ -317,8 +328,8 @@ function dataChangeView(
     action: row.action,
     content: auditContent(changes),
     changes,
-    ...sourceView(row),
-    commandId: row.commandId,
+    // DEC-340③：答卷日志的请求来源与命令 ID 能关联到作答的评价者，一律不展示
+    ...(auditSourceWithheld(row.objectType) ? WITHHELD_SOURCE : { ...sourceView(row), commandId: row.commandId }),
   };
 }
 
