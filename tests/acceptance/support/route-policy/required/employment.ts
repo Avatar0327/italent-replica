@@ -6,6 +6,7 @@
  * requireTransferSource / transferBusinessContext → requireManagerBusinessSource；直接调动 requireDirectTransfer；业务写范围
  * authorizeBusinessWrite；直接操作范围 requireScopedEmploymentObject（DEC-193）；联动 requireLinkedEmploymentRecord（DEC-178）。
  */
+import { bound, list, NONE, SCOPE_AT, withNeeds } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const SRC = 'apps/api/src/modules';
@@ -206,7 +207,17 @@ const INITIATOR_BUTTON = (call: Evidence, facts: readonly string[] = ['button:re
     [call, ...TRANSFER_BUTTON],
     '按钮 = 发起人（hr / manager / employee）对应的 Transfer.*',
   );
-const configWrite = (call: Evidence, object: string, operation: 'create' | 'update', write: Evidence): Obligation[] => [
+const configWrite = (call: Evidence, object: string, operation: 'create' | 'update', write: Evidence): Obligation[] =>
+  withNeeds(configWriteBase(call, object, operation, write), {
+    'admin:other_settings': bound(NONE),
+    [`obj:${object}:${operation}`]: bound(NONE),
+  });
+const configWriteBase = (
+  call: Evidence,
+  object: string,
+  operation: 'create' | 'update',
+  write: Evidence,
+): Obligation[] => [
   ob(
     'admin:other_settings',
     ['admin:tenant.employment.configuration'],
@@ -261,6 +272,7 @@ export const EMPLOYMENT: RequiredTable = {
     {
       perm: `btn:${RECORD}#Transfer.Manager@detail`,
       purpose: 'disclosure:canApply',
+      need: NONE,
       facts: ['button:buttonResource', 'button:object.button'],
       note: '只决定响应 canApply，不拒绝请求',
       at: [
@@ -277,6 +289,7 @@ export const EMPLOYMENT: RequiredTable = {
     {
       perm: `btn:${RECORD}#Transfer.Hr@detail`,
       purpose: 'disclosure:canViewReporting',
+      need: NONE,
       facts: ['button:buttonResource', 'button:object.button'],
       note: '只决定响应 canViewReporting（managerHasHr 的布尔值直接写进响应），不拒绝请求',
       at: [
@@ -378,6 +391,7 @@ export const EMPLOYMENT: RequiredTable = {
     {
       perm: 'own:approval.initiatedOrParticipated',
       purpose: 'disclosure:initiated',
+      need: NONE,
       note: 'tab=initiated 时改按本人发起的实例取数',
       at: [
         at(
@@ -391,6 +405,7 @@ export const EMPLOYMENT: RequiredTable = {
     {
       perm: 'own:approval.processedByMe',
       purpose: 'disclosure:processed',
+      need: NONE,
       note: 'tab=processed 时改按本人处理过的日志取数',
       at: [at(MGR, 'GET', '/transfers/manager/todos', 'l.actor_user_id=')],
     },
@@ -512,6 +527,7 @@ export const EMPLOYMENT: RequiredTable = {
     {
       perm: `obj:${RECORD}:create`,
       purpose: 'disclosure:fieldModes',
+      need: NONE,
       facts: ['object:object.* 动作'],
       note: '可编辑字段再按 object.create 字段编辑权降为 readonly，只影响响应',
       at: [
@@ -619,6 +635,7 @@ export const EMPLOYMENT: RequiredTable = {
     {
       perm: 'obj:TenantBase.EmploymentContract:view',
       purpose: 'disclosure:contractItems',
+      need: list('contracts.scope'),
       facts: ['object:object.* 动作'],
       note: '合同变更子项按合同查看权 / 范围 / 字段披露，不拒绝请求',
       at: [
@@ -628,6 +645,7 @@ export const EMPLOYMENT: RequiredTable = {
           '/transfers/:id/linkage',
           "visible: await deps.authorize({ ...tenant, action: 'object.view', resource: CONTRACT_OBJECT })",
         ),
+        ...SCOPE_AT['contracts.scope'],
       ],
     },
   ],
@@ -733,45 +751,54 @@ export const EMPLOYMENT: RequiredTable = {
       at(LNK, 'POST', '/transfers/linkage-items/:id/retry', 'body: await retryLinkageItem(tx, context, id, access)'),
     ),
   ],
-  'GET /api/tenant/employment/transfers/employees/:id/contracts': [
-    ob(
-      `obj:${RECORD}:view`,
-      ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view'],
-      [
-        at(LNK, 'GET', '/transfers/employees/:id/contracts', "const ctx = await readContext(c, deps, 'object.view')"),
-        READ,
-      ],
-    ),
-    ob(
-      'obj:TenantBase.EmploymentContract:view',
-      ['object:object.* 动作', 'objectOp:TenantBase.EmploymentContract:view'],
-      [
-        at(
-          LNK,
-          'GET',
-          '/transfers/employees/:id/contracts',
-          "await requirePermission(deps.authorize, { ...tenant, action: 'object.view', resource: CONTRACT_OBJECT })",
-        ),
-      ],
-    ),
-    ob(
-      'guard:contracts.employeeContractChoices',
-      [],
-      [
-        at(
-          LNK,
-          'GET',
-          '/transfers/employees/:id/contracts',
-          'await checkScope(tx, { ...ctx, scope }, employeeId, row.createdBy ?? undefined)',
-        ),
-        {
-          role: 'impl',
-          unit: `${SRC}/contracts/context.ts#checkScope`,
-          anchor: "throw new AppError('NOT_FOUND', '合同数据不存在')",
-        },
-      ],
-    ),
-  ],
+  'GET /api/tenant/employment/transfers/employees/:id/contracts': withNeeds(
+    [
+      ob(
+        `obj:${RECORD}:view`,
+        ['object:readContext(object.*)', 'objectOp:TenantBase.EmploymentRecord:view'],
+        [
+          at(LNK, 'GET', '/transfers/employees/:id/contracts', "const ctx = await readContext(c, deps, 'object.view')"),
+          READ,
+        ],
+      ),
+      ob(
+        'obj:TenantBase.EmploymentContract:view',
+        ['object:object.* 动作', 'objectOp:TenantBase.EmploymentContract:view'],
+        [
+          at(
+            LNK,
+            'GET',
+            '/transfers/employees/:id/contracts',
+            "await requirePermission(deps.authorize, { ...tenant, action: 'object.view', resource: CONTRACT_OBJECT })",
+          ),
+        ],
+      ),
+      ob(
+        'guard:contracts.employeeContractChoices',
+        [],
+        [
+          at(
+            LNK,
+            'GET',
+            '/transfers/employees/:id/contracts',
+            'await checkScope(tx, { ...ctx, scope }, employeeId, row.createdBy ?? undefined)',
+          ),
+          {
+            role: 'impl',
+            unit: `${SRC}/contracts/context.ts#checkScope`,
+            anchor: "throw new AppError('NOT_FOUND', '合同数据不存在')",
+          },
+        ],
+      ),
+    ],
+    {
+      [`obj:${RECORD}:view`]: bound(NONE),
+      'obj:TenantBase.EmploymentContract:view': bound(
+        list('contracts.employeeVisibility'),
+        SCOPE_AT['contracts.employeeVisibility'],
+      ),
+    },
+  ),
   // ---- 调动配置 --------------------------------------------------------------------------------------------------
   'GET /api/tenant/employment/transfers/settings': [
     ob(

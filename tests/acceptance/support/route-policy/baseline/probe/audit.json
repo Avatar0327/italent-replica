@@ -1,0 +1,51 @@
+{
+  "GET /api/tenant/audit/command-failures": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:audit_log",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "GET /api/tenant/audit/data-changes": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:audit_log"
+    ]
+  },
+  "GET /api/tenant/audit/data-changes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "2c646f6b8eda",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "4d0d2ddacbb1",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:audit_log"
+    ]
+  },
+  "GET /api/tenant/audit/operation-logs": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:audit_log"
+    ]
+  }
+}

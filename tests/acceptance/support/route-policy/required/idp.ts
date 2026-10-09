@@ -7,7 +7,8 @@
  * 展示器里按对象查看权省略的嵌套内容（子流程、模板模块 / 通用目标、计划内目标 / 任务 / 回顾等，projectionOf）现状由
  * 投影器 idp.* 统一登记，本表不逐个列为披露义务（转 PR-B，见 PR 描述第 5 轮止损转入项）。
  */
-import type { Evidence, Obligation, RequiredTable } from './types.js';
+import { type Binding, bound, list, NONE, point, SCOPE_AT, withNeeds } from './scopes.js';
+import type { Evidence, Inner, Obligation, RequiredTable } from './types.js';
 
 const BASE = '/api/tenant/idp';
 const I = 'apps/api/src/modules/idp';
@@ -159,12 +160,13 @@ const PROCESS_SCOPE_FOR: Evidence = {
   anchor: "if (!canView) throw new AppError('FORBIDDEN', '无权查看发展计划流程')",
 };
 /** 模板引用的流程：流程查看权（守卫内部）+ 流程范围。 */
-function processReference(entry: Evidence): Obligation[] {
+function processReference(entry: Evidence, inner: Inner = { role: 'required' }): Obligation[] {
   return [
     guard('idp.processReference', [entry, PROCESS_SCOPE_FOR], { facts: ['guard:idp.processReference'] }),
     {
       perm: `obj:${code('process')}:view`,
       purpose: 'guard:idp.processReference',
+      inner,
       facts: [`objectOp:${code('process')}:view`],
       at: [entry, PROCESS_SCOPE_FOR, objectConst('process')],
     },
@@ -346,10 +348,13 @@ const TEMPLATES: RequiredTable = {
     return [
       ...write('template', 'update', 'update', 'detail', entry, WRITE_FACTS),
       publicDown('template'),
-      ...processReference({
-        ...entry,
-        anchor: 'const process = body.processId ? await processScopeFor(c, deps, ctx) : undefined',
-      }),
+      ...processReference(
+        {
+          ...entry,
+          anchor: 'const process = body.processId ? await processScopeFor(c, deps, ctx) : undefined',
+        },
+        { role: 'when', condition: 'body.processId' },
+      ),
     ];
   })(),
   [`DELETE ${BASE}/templates/:id`]: (() => {
@@ -608,6 +613,7 @@ function executor(method: string, path: string, anchor: string, viewer = true): 
     {
       perm: `obj:${PLAN}:view`,
       purpose: 'guard:idp.executor',
+      inner: { role: 'or', group: 'executor', alt: 'hr' },
       facts: ['object:object.* 动作'],
       note: 'HR（计划查看权 + 员工在范围内）与参与人同为“看得到计划”；看不到 404',
       at: [
@@ -627,6 +633,7 @@ function executor(method: string, path: string, anchor: string, viewer = true): 
     out.push({
       perm: `obj:${PLAN}:view`,
       purpose: 'disclosure:responseView',
+      need: list('idp.planScope'),
       facts: [VIEWER_FACT],
       note: '响应按查看人呈现（HR 字段裁剪 / 参与人固定字段）',
       at: [
@@ -634,6 +641,7 @@ function executor(method: string, path: string, anchor: string, viewer = true): 
         SHOW_PLAN,
         REQUIRE_VIEWER,
         HR_SCOPE,
+        ...SCOPE_AT['idp.planScope(responseView)'],
       ],
     });
   }
@@ -708,6 +716,7 @@ const PLAN_ROUTES: RequiredTable = {
     {
       perm: `obj:${code('template')}:view`,
       purpose: 'guard:idp.templateVisible',
+      inner: { role: 'required' },
       facts: [`objectOp:${code('template')}:view`],
       at: [
         call(
@@ -950,7 +959,44 @@ function keyInfo(key: 'tutorship' | 'career' | 'workShift', segment: string): Re
   };
 }
 
-export const IDP: RequiredTable = {
+/**
+ * 范围绑定（B-03，PR-B1 审定）：含多个承载节点的准入备选里，obj: 准入义务逐条登记 need。
+ * 只有主对象带点范围（process / template / plan 的 byId）或 planScope（任务统一下发），级联删除的子对象与继承内容的
+ * 查看门禁随主对象，不另行过滤（none）。
+ */
+const none = (...keys: string[]): Record<string, Binding> => Object.fromEntries(keys.map((k) => [k, bound(NONE)]));
+const NEEDS: Readonly<Record<string, Readonly<Record<string, Binding>>>> = {
+  [`DELETE ${BASE}/processes/:id`]: {
+    [`obj:${code('process')}:delete`]: bound(point('idp.process.byId'), SCOPE_AT['idp.process.byId']),
+    ...none(`obj:${code('subProcess')}:delete`),
+  },
+  [`GET ${BASE}/approval-processes`]: none(
+    `obj:${code('process')}:view`,
+    `obj:${code('process')}:create`,
+    `obj:${code('process')}:update`,
+  ),
+  [`DELETE ${BASE}/templates/:id`]: {
+    [`obj:${code('template')}:delete`]: bound(point('idp.template.byId'), SCOPE_AT['idp.template.byId']),
+    ...none(`obj:${code('templateModule')}:delete`, `obj:${code('commonGoal')}:delete`),
+  },
+  [`POST ${BASE}/templates/:id/copy`]: {
+    [`obj:${code('template')}:create`]: bound(point('idp.template.byId'), SCOPE_AT['idp.template.byId(copy)']),
+    ...none(`obj:${code('template')}:view`, `obj:${code('templateModule')}:view`, `obj:${code('commonGoal')}:view`),
+  },
+  [`DELETE ${BASE}/plans/:id`]: {
+    [`obj:${PLAN}:delete`]: bound(point('idp.plan.byId'), SCOPE_AT['idp.plan.byId']),
+    ...none(...(['goal', 'task', 'goalReview', 'analysis', 'review'] as const).map((k) => `obj:${code(k)}:delete`)),
+  },
+  [`POST ${BASE}/plans/tasks/issue`]: {
+    [`obj:${code('task')}:create`]: bound(list('idp.planScope'), SCOPE_AT['idp.planScope(issue)']),
+    ...none(
+      `obj:${PLAN}:view`,
+      ...(['template', 'templateModule', 'commonGoal', 'goal'] as const).map((k) => `obj:${code(k)}:view`),
+    ),
+  },
+};
+
+const RAW: RequiredTable = {
   ...PROCESSES,
   ...TEMPLATES,
   ...PARTS,
@@ -959,3 +1005,7 @@ export const IDP: RequiredTable = {
   ...keyInfo('career', 'careers'),
   ...keyInfo('workShift', 'work-shifts'),
 };
+
+export const IDP: RequiredTable = Object.fromEntries(
+  Object.entries(RAW).map(([key, obligations]) => [key, NEEDS[key] ? withNeeds(obligations, NEEDS[key]) : obligations]),
+);

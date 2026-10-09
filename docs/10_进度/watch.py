@@ -259,8 +259,8 @@ def main():
                 ev.append(f"开发完成待审 #{n} {p['t']}：开发方 {p['done'][11:16]}Z 已贴“开发完成”，尚无审查发起，请发起审查")
                 stalled.add(f"{n}@done@{p['done']}")
             # 衔接超时（用户 10-09）：“开发完成”贴出 HANDOFF 分钟后仍无审查发起 → 再报一次，进度窗口须直接催审查合并窗口
-            # CI 还在跑时审查本就要等（DEC-351），不算超时；CI 无多半是与 main 冲突未触发
-            if p.get("done") and p["ci"] != "running" and mins_since(p["done"]) >= HANDOFF and f"{n}@late@{p['done']}" not in stalled:
+            # CI 还在跑或已红时审查本就要等（DEC-351），不算超时（红另有 CI red 事件）；CI 无多半是与 main 冲突未触发
+            if p.get("done") and p["ci"] in ("green", "none") and mins_since(p["done"]) >= HANDOFF and f"{n}@late@{p['done']}" not in stalled:
                 why = "CI 未触发（多半与 main 冲突），请开发方合 main 重推" if p["ci"] == "none" else f"CI {p['ci']}，仍未发起审查"
                 ev.append(f"⚠ 衔接超时 #{n} {p['t']}：“开发完成”已贴 {int(mins_since(p['done']))} 分钟，{why}——进度窗口直接催审查合并窗口")
                 stalled.add(f"{n}@late@{p['done']}")

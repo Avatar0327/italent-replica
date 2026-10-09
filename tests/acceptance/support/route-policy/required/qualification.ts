@@ -8,7 +8,8 @@
  * 写入口的 `object.* 动作` 事实是写字段权（checkWriteFields）与被引用对象 / 岗职务的查看权（writeContext），随数据
  * 操作义务承接；查看口的同一事实是投影里按源对象查看权逐节点裁剪（不拒绝），随查看义务承接。
  */
-import type { Evidence, Obligation, RequiredTable } from './types.js';
+import { list, SCOPE_AT } from './scopes.js';
+import type { Evidence, Inner, Obligation, RequiredTable } from './types.js';
 
 const BASE = '/api/tenant/qualification';
 const QL = 'apps/api/src/modules/qualification';
@@ -107,13 +108,14 @@ const REFERENCE_VIEW = call(
   "const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: codeOf(ref), fields: [] })",
 );
 /** 被引用对象：查看权为假 → 范围 null → referenced 抛 403；查看权是守卫内部义务。`declared` 决定实参的常量 / 调用。 */
-function referenced(target: Ref, calls: readonly Evidence[], declared: Evidence): Obligation[] {
+function referenced(target: Ref, calls: readonly Evidence[], declared: Evidence, inner: Inner): Obligation[] {
   const carrier = `ql.referenced(${target})`;
   return [
     { perm: `guard:${carrier}`, at: [...calls, REFERENCED_IMPL, declared] },
     {
       perm: `obj:${code(target)}:view`,
       purpose: `guard:${carrier}`,
+      inner,
       at: [REFERENCE_VIEW, declared, objectConst(target)],
     },
   ];
@@ -165,7 +167,7 @@ const JOB_LINKS_DERIVED: Obligation = {
 };
 
 const CHILD_DELETES_ROUTE = call(`${ROUTES}#registerObject`, 'childDeletes: await childDeleteRights(deps, ctx, spec)');
-function childDeletes(child: Ref, unit: string, children: Evidence): Obligation[] {
+function childDeletes(child: Ref, unit: string, children: Evidence, inner: Inner): Obligation[] {
   const carrier = `ql.childDeletes(${child})`;
   return [
     {
@@ -180,6 +182,7 @@ function childDeletes(child: Ref, unit: string, children: Evidence): Obligation[
     {
       perm: `obj:${code(child)}:delete`,
       purpose: `guard:${carrier}`,
+      inner,
       at: [
         CHILD_DELETES_ROUTE,
         impl(
@@ -213,6 +216,7 @@ const CHILD_SCOPE: Obligation = {
 const OVERWRITTEN_CONTENT: Obligation = {
   perm: `obj:${code('target')}:view`,
   purpose: 'disclosure:overwrittenContent',
+  need: list('ql.openRead(ql_targets)'),
   at: [
     call(
       `${SUPPORT}#presenter`,
@@ -227,6 +231,7 @@ const OVERWRITTEN_CONTENT: Obligation = {
       "if (!(await deps.authorize({ ...ctx, action: 'object.view', resource: codeOf(object), fields: [] }))) {",
     ),
     objectConst('target'),
+    ...SCOPE_AT['ql.openRead(ql_targets)'],
   ],
 };
 
@@ -270,6 +275,7 @@ function createGuards(key: Key): Obligation[] {
             ),
           ],
           specRefs("patchSchema: input.categoryClassPatch, references: ['categoryClass']"),
+          { role: 'when', condition: 'body.parentId' },
         ),
       ];
     case 'category':
@@ -279,6 +285,7 @@ function createGuards(key: Key): Obligation[] {
           'categoryClass',
           [svc(`${CONFIG}#createCategory`, "await referenced(tx, ctx, 'categoryClass', body.classId)")],
           specRefs("patchSchema: input.categoryPatch, references: ['categoryClass']"),
+          { role: 'required' },
         ),
         jobLinks('category', specRefs('jobs: CATEGORY_JOBS')),
       ];
@@ -289,6 +296,7 @@ function createGuards(key: Key): Obligation[] {
           'layer',
           [svc(`${CONFIG}#insertLevel`, "if (body.layerId) await referenced(tx, ctx, 'layer', body.layerId)")],
           specRefs("references: ['layer']"),
+          { role: 'when', condition: 'body.layerId' },
         ),
         jobLinks('level', specRefs('jobs: LEVEL_JOBS')),
       ];
@@ -308,6 +316,7 @@ function createGuards(key: Key): Obligation[] {
             ),
           ],
           specRefs("references: ['targetType']"),
+          { role: 'when', condition: 'body.parentId' },
         ),
       ];
     case 'target':
@@ -317,11 +326,13 @@ function createGuards(key: Key): Obligation[] {
           'targetType',
           [svc(`${TARGETS}#createTarget`, "await referenced(tx, ctx, 'targetType', body.typeId)")],
           specRefs("references: ['targetType', 'gradeScheme']"),
+          { role: 'required' },
         ),
         ...referenced(
           'gradeScheme',
           [GRADE_SCHEME_CHECK, CREATE_EVAL_MODE],
           specRefs("references: ['targetType', 'gradeScheme']"),
+          { role: 'when', condition: 'evalMode=grade' },
         ),
       ];
     case 'standard':
@@ -335,6 +346,7 @@ function createGuards(key: Key): Obligation[] {
             ),
           ],
           specRefs("references: ['category', 'level', 'target']"),
+          { role: 'required' },
         ),
         ...referenced(
           'target',
@@ -343,6 +355,7 @@ function createGuards(key: Key): Obligation[] {
             svc(`${STANDARDS}#createStandard`, 'await writeCells(tx, ctx, id, levelIds, body.details, [])'),
           ],
           specRefs("references: ['category', 'level', 'target']"),
+          { role: 'when', condition: 'details.targetReference' },
         ),
       ];
     default:
@@ -386,6 +399,7 @@ function updateGuards(key: Key): Obligation[] {
             ),
           ],
           specRefs("references: ['layer']"),
+          { role: 'when', condition: 'layerChanged' },
         ),
         jobLinks('level', specRefs('jobs: LEVEL_JOBS')),
         {
@@ -402,6 +416,7 @@ function updateGuards(key: Key): Obligation[] {
           'gradeScheme',
           [GRADE_SCHEME_CHECK, call(`${TARGETS}#updateTarget`, 'await checkEvalMode(tx, ctx, mode, scheme)')],
           specRefs("references: ['targetType', 'gradeScheme']"),
+          { role: 'when', condition: 'grade.changed' },
         ),
       ];
     case 'standard':
@@ -416,6 +431,7 @@ function updateGuards(key: Key): Obligation[] {
             ),
           ],
           specRefs("references: ['category', 'level', 'target']"),
+          { role: 'when', condition: 'details.targetReference' },
         ),
       ];
     default:
@@ -431,6 +447,7 @@ function deleteGuards(key: Key): Obligation[] {
         'targetGradeDescription',
         `${TARGETS}#deleteTarget`,
         children("children: ['targetGradeDescription'], filter:"),
+        { role: 'when', condition: 'childrenExist' },
       );
     case 'gradeScheme':
       return [
@@ -439,6 +456,7 @@ function deleteGuards(key: Key): Obligation[] {
           'targetGradeDescription',
           `${TARGETS}#deleteGradeScheme`,
           children("children: ['targetGradeDescription'], deleteScopes: ['target']"),
+          { role: 'when', condition: 'childrenExist' },
         ),
       ];
     case 'standard':
@@ -446,6 +464,7 @@ function deleteGuards(key: Key): Obligation[] {
         'developmentChannel',
         `${STANDARDS}#deleteStandard`,
         children("children: ['developmentChannel']"),
+        { role: 'when', condition: 'childrenExist' },
       );
     default:
       return [];
@@ -488,11 +507,13 @@ function importRoute(key: 'category' | 'level'): Obligation[] {
           'categoryClass',
           [call(service, "await referenced(tx, ctx, 'categoryClass', body.classId)")],
           registration,
+          { role: 'required' },
         )
       : referenced(
           'layer',
           [call(`${CONFIG}#insertLevel`, "if (body.layerId) await referenced(tx, ctx, 'layer', body.layerId)")],
           registration,
+          { role: 'when', condition: 'body.layerId' },
         )),
     jobLinks(key, registration),
   ];
@@ -548,11 +569,13 @@ const EXTRA: RequiredTable = {
       'category',
       [call(PUT_CHANNELS, "await referenced(tx, ctx, 'category', channel.targetCategoryId, isNew)")],
       CHANNEL_REFS,
+      { role: 'when', condition: 'channels.nonEmpty' },
     ),
     ...referenced(
       'level',
       [call(PUT_CHANNELS, "await referenced(tx, ctx, 'level', channel.targetLevelId, isNew)")],
       CHANNEL_REFS,
+      { role: 'when', condition: 'channels.nonEmpty' },
     ),
   ],
   [`GET ${BASE}/standards/:id/chart`]: [
@@ -581,6 +604,7 @@ const OWNER_ORGS: Obligation[] = [
   {
     perm: 'obj:TenantBase.Organization:view',
     purpose: 'disclosure:orgFields',
+    need: list('org.scope'),
     note: '组织的编码 / 名称按组织查看权与组织员工应用范围披露（DEC-309 / DEC-316②）；范围事实随披露分流',
     facts: ['object:object.* 动作', 'scope:creator scope', 'scope:requestScope', 'scope:scopeSql'],
     at: [
@@ -594,6 +618,7 @@ const OWNER_ORGS: Obligation[] = [
         unit: `${CANDIDATES}#organizationAccess`,
         anchor: 'const code = MODULE_OBJECTS.organization.code',
       },
+      ...SCOPE_AT['org.scope(qualification)'],
     ],
   },
 ];

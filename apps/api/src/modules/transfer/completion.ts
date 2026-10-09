@@ -4,6 +4,7 @@ import { AppError } from '../../errors.js';
 import { sql, type Tx } from '@italent/db';
 import { tenantLocalDate } from '@italent/domain';
 import { auditEmployment, employmentCreator, employmentScopePredicate } from '../employment/context.js';
+import { recordEventDueSql } from '../employment/record-events.js';
 import { rowsOf } from '../employment/record-store.js';
 import type { EmploymentContext, PageQuery } from '../employment/types.js';
 
@@ -30,7 +31,7 @@ function completionQuery(ctx: EmploymentContext) {
       e.payload->'meta'->'clearedFieldCodes', e.payload->'after'->'clearedFieldCodes','[]'::jsonb
     )) WITH ORDINALITY code(value,ordinality)
     WHERE e.tenant_id=${ctx.tenantId} AND e.event_type='employment.record.create'
-      AND t.start_date<=${tenantLocalDate(ctx.now, ctx.timezone)}::date
+      AND ${recordEventDueSql('e', tenantLocalDate(ctx.now, ctx.timezone))}
       AND code.value LIKE 'preset:%'
       AND (COALESCE(p.body,to_jsonb(current_record))->>lower(regexp_replace(
         substring(code.value FROM 8), '([A-Z])', '_\\1', 'g'))) IS NULL
