@@ -12,8 +12,10 @@ import {
   withTenant,
 } from '@italent/db';
 import { AppError } from '../../errors.js';
+import type { PlatformWriteContext } from '../permission/audit.js';
 import { listBalances, type LicenseBalance } from '../permission/licenses.js';
 import { type LicenseQuotaChange, setLicenseQuotaIn } from '../permission/platform.js';
+import { installMissingStandardProfiles, type StandardBackfill } from '../permission/standard-profiles.js';
 
 export async function requireTenant(db: Db, tenantId: string): Promise<Tenant> {
   const tenant = await getTenant(db, tenantId);
@@ -64,4 +66,32 @@ export async function issueLicense(
 export async function tenantBalances(db: Db, tenantId: string): Promise<LicenseBalance[]> {
   await requireTenant(db, tenantId);
   return withTenant(db, tenantId, listBalances);
+}
+
+/**
+ * 存量租户回补标准身份（DEC-289③）：平台命令（只认平台运营身份，命令台账幂等——同一命令 ID 重放返回原结果）；
+ * 回补本身也幂等，重复执行不新建任何行（permission/standard-profiles.ts）。租户审计逐个记身份安装，平台审计留一条汇总。
+ */
+export async function backfillStandardProfiles(
+  db: Db,
+  tenantId: string,
+  meta: PlatformCommandMeta,
+  now: Date,
+): Promise<StandardBackfill> {
+  await requireTenant(db, tenantId);
+  return runPlatformCommand(db, meta, 'tenant.standard_profiles.backfill', { tenantId }, async (ctx) => {
+    const write: PlatformWriteContext = { tenantId, actorUserId: meta.actorUserId, now, commandId: meta.commandId };
+    const result = await ctx.inTenant(tenantId, (tx) => installMissingStandardProfiles(tx, write));
+    await ctx.auditPlatform(
+      {
+        action: 'tenant.standard_profiles.backfill',
+        objectType: 'tenant',
+        objectId: tenantId,
+        before: null,
+        after: result,
+      },
+      tenantId,
+    );
+    return result;
+  });
 }

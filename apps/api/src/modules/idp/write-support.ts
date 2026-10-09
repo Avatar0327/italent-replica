@@ -31,7 +31,7 @@ export async function audit(
   object: IdpObject,
   operation: 'create' | 'update' | 'delete',
   id: string,
-  change: { before: unknown; after: unknown; orgId: string },
+  change: { before: unknown; after: unknown; orgId?: string; employeeId?: string },
 ) {
   await recordAudit(tx, {
     tenantId: ctx.tenantId,
@@ -43,8 +43,8 @@ export async function audit(
     after: change.after,
     commandId: ctx.commandId,
     occurredAt: ctx.now,
-    // DEC-197 归属：审计查询按查看人当前的组织范围裁剪，删除后仍可判断
-    scope: { orgId: change.orgId },
+    // DEC-197 归属：配置对象按所属组织、计划与关键信息按员工，审计查询按查看人当前的范围裁剪，删除后仍可判断
+    scope: change.employeeId ? { employeeId: change.employeeId } : { orgId: change.orgId ?? null },
   });
 }
 

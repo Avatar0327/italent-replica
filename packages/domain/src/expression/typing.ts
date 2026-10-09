@@ -11,7 +11,7 @@
 import type { CallNode, ExprNode } from './ast.js';
 import { parseDateText } from './dates.js';
 import type { FunctionRegistry, FunctionSpec } from './registry.js';
-import type { StaticKind } from './values.js';
+import type { ExpressionFieldKind, StaticKind } from './values.js';
 
 export type InferredType =
   | { readonly kind: StaticKind }
@@ -112,7 +112,7 @@ export function withRecordObjects(records: ReadonlySet<string>, spec: FunctionSp
 export interface TypeInferenceOptions {
   readonly registry: FunctionRegistry;
   /** 字段类型目录（完整字段路径或短字段名）；没有、返回 undefined 或读取出错时该字段不确定。 */
-  readonly fieldKind?: (path: string) => StaticKind | undefined;
+  readonly fieldKind?: (path: string) => ExpressionFieldKind | undefined;
 }
 
 export class TypeInference {
@@ -183,13 +183,13 @@ export class TypeInference {
   }
 
   private catalog(path: string): InferredType {
-    let kind: StaticKind | undefined;
+    let kind: ExpressionFieldKind | undefined;
     try {
       kind = this.options.fieldKind?.(path);
     } catch {
       // 字段类型目录是使用方代码：读不出时按不确定处理，由保存提示与计算期判断兜底
       return UNCERTAIN;
     }
-    return kind !== undefined && Object.hasOwn(DEFINITE, kind) ? DEFINITE[kind] : UNCERTAIN;
+    return kind !== undefined && kind !== 'multi_option' && Object.hasOwn(DEFINITE, kind) ? DEFINITE[kind] : UNCERTAIN;
   }
 }

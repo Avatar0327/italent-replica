@@ -16,6 +16,8 @@ export type FieldLookup =
       /** 值为空时的来源类型（批量求值叠加先算项目的结果时带上，日期参数据此区分真正的空日期，DEC-270②）。 */
       readonly emptyOf?: StaticKind;
     }
+  /** 批量 adapt 已返回领域值：保留日期精度等类型信息，不再按普通 JS 值重新解释。 */
+  | { readonly status: 'computed'; readonly value: ExprValue }
   | { readonly status: 'unknown' }
   | { readonly status: 'forbidden' };
 
@@ -113,7 +115,11 @@ export interface PersonnelSubsetPort {
 export interface ParameterRulePort {
   value(subjectId: string, parameters: readonly ExprValue[]): PortOutcome<PlainValue>;
 }
-/** 排名的人员范围：未提供时批量求值用本次计算对象作为范围。 */
+/**
+ * 排名的人员总体（DEC-301② / DEC-304）：由调用方（R3-T04 计算调度）给出参与排名的全体计算对象，引擎不做权限裁剪、
+ * 不决定取数身份；未提供时批量求值用本次计算对象（叠加先算项目的值）。分批计算时须给出全体，而不是本批。
+ * 批量求值中每个计算项目只调用一次，各对象共用同一总体。
+ */
 export interface RankingPort {
   population(): PortOutcome<readonly SubjectReader[]>;
 }

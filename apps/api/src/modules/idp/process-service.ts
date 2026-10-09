@@ -14,7 +14,14 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { requireCreatable, requireEditable, requireNestedWrite } from './access.js';
 import type { ProcessCreate, ProcessPatch, SubProcessInput } from './input.js';
-import { loadProcess, loadSubProcessRows, processReferenced, type ProcessView, subProcessView } from './read-model.js';
+import {
+  loadProcess,
+  loadSubProcessRows,
+  processReferenced,
+  type ProcessView,
+  type SubProcessView,
+  subProcessView,
+} from './read-model.js';
 import {
   audit,
   bumped,
@@ -33,6 +40,12 @@ type SubFields = Omit<SubProcessInput, 'id' | 'seq'>;
 
 /** 调整顺序时先把原有段整体挪开，避免逐行更新撞（流程, seq）唯一约束。 */
 const SEQ_SHIFT = 1000;
+
+/** 审计快照不带说明文本（派生值，与 fixedDate 同一门禁，DEC-309④：不能经审计绕过字段权限）。 */
+const subAudit = (view: SubProcessView) => {
+  const { ruleText: _ruleText, ...fields } = view;
+  return fields;
+};
 
 const processRecord = (view: ProcessView) => {
   const { subProcesses: _subProcesses, referenced: _referenced, ...record } = view;
@@ -105,7 +118,7 @@ export async function createProcess(tx: Tx, deps: Deps, ctx: WriteContext, input
   const after = (await loadProcess(tx, ctx.tenantId, id))!;
   await audit(tx, ctx, 'process', 'create', id, { before: null, after: processRecord(after), orgId: after.orgId });
   for (const sub of after.subProcesses) {
-    await audit(tx, ctx, 'subProcess', 'create', sub.id, { before: null, after: sub, orgId: after.orgId });
+    await audit(tx, ctx, 'subProcess', 'create', sub.id, { before: null, after: subAudit(sub), orgId: after.orgId });
   }
   return after;
 }
@@ -236,6 +249,9 @@ async function checkSubProcessChanges(
 ) {
   await requireNestedWrite(tx, deps, ctx, 'process', 'update', { subProcesses: next });
   if (plan.removed.length) await requireNestedWrite(tx, deps, ctx, 'subProcess', 'delete');
+  // DEC-309④-2：重排（含增删导致的顺序变化）改的是子流程自身的顺序，须有子流程编辑权
+  if (plan.changes.some((c) => c.row.seq !== c.index + 1))
+    await requireNestedWrite(tx, deps, ctx, 'subProcess', 'update');
   for (const item of plan.added) {
     await requireNestedWrite(tx, deps, ctx, 'subProcess', 'create', fieldsOf(item.input));
     const fields = fieldsOf(item.input);
@@ -265,7 +281,7 @@ async function applySubProcessChanges(
   for (const row of plan.removed) {
     await tx.delete(S).where(and(eq(S.tenantId, ctx.tenantId), eq(S.id, row.id)));
     await audit(tx, ctx, 'subProcess', 'delete', row.id, {
-      before: subProcessView(row, row.seq - 1),
+      before: subAudit(subProcessView(row, row.seq - 1)),
       after: null,
       orgId,
     });
@@ -287,9 +303,10 @@ async function applySubProcessChanges(
     const view = subProcessView(row, index);
     const previous = beforeViews.get(row.id);
     if (!previous) {
-      await audit(tx, ctx, 'subProcess', 'create', row.id, { before: null, after: view, orgId });
+      await audit(tx, ctx, 'subProcess', 'create', row.id, { before: null, after: subAudit(view), orgId });
     } else if (JSON.stringify(previous) !== JSON.stringify(view)) {
-      await audit(tx, ctx, 'subProcess', 'update', row.id, { before: previous, after: view, orgId });
+      const change = { before: subAudit(previous), after: subAudit(view), orgId };
+      await audit(tx, ctx, 'subProcess', 'update', row.id, change);
     }
   }
 }
@@ -306,15 +323,19 @@ async function hasNodeSettings(tx: Tx, tenantId: string, subProcessId: string): 
   return row !== undefined;
 }
 
-/** 被模板引用的流程不能删除（IDP-R5，409）；删除保留流程与各子流程的快照。 */
-export async function deleteProcess(tx: Tx, ctx: WriteContext, id: string) {
+/**
+ * 被模板引用的流程不能删除（IDP-R5，409）；删除保留流程与各子流程的快照。级联删除子流程须有子流程删除权
+ * （DEC-309④-2，不论子流程是否存在都要求，缺权整次 403），记入台账、重放复核。
+ */
+export async function deleteProcess(tx: Tx, deps: Deps, ctx: WriteContext, id: string) {
   await lockProcess(tx, ctx, id);
+  await requireNestedWrite(tx, deps, ctx, 'subProcess', 'delete');
   if (await processReferenced(tx, ctx.tenantId, id)) {
     conflict('IDP_PROCESS_REFERENCED', '流程已被模板引用，不能删除');
   }
   const before = (await loadProcess(tx, ctx.tenantId, id))!;
   for (const sub of before.subProcesses) {
-    await audit(tx, ctx, 'subProcess', 'delete', sub.id, { before: sub, after: null, orgId: before.orgId });
+    await audit(tx, ctx, 'subProcess', 'delete', sub.id, { before: subAudit(sub), after: null, orgId: before.orgId });
   }
   const P = idpProcesses;
   await tx.delete(P).where(and(eq(P.tenantId, ctx.tenantId), eq(P.id, id)));

@@ -2,7 +2,7 @@
  * R1-T07 审批中心验收夹具：合成租户、组织、人员与账号绑定；流程经公开接口建立并发布。
  * 组织负责人 / HRBP 的人员引用写入仍由 R1-T03 暂缓（Q-M0-11），此处与 AC-PRM 相同，用可信夹具追加组织版本。
  */
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   createUser,
   type Db,
@@ -78,6 +78,11 @@ export interface NodeInput {
     readonly urge?: 'inherit' | 'enabled' | 'disabled';
     /** 驳回（驳回到发起人）开关，缺省开启（F-003 第二轮，`14` §12.2）。 */
     readonly reject?: boolean;
+    /** DEC-318 节点开关：自审回避、撤回（缺省开启），驳回到上一步、跳转（缺省关闭）。 */
+    readonly avoidSelf?: boolean;
+    readonly revoke?: boolean;
+    readonly rejectToPrevious?: boolean;
+    readonly jump?: boolean;
   };
   readonly rejectCommentRequired?: boolean;
   /** DEC-104：审批记录查看权限——勾选后本节点审批人看不到审批记录与沟通。 */
@@ -201,7 +206,7 @@ export interface FixedIds {
 
 /** 以固定编号开通租户（直接写平台表，不走 createTenant：它不接受指定编号），其余同 seedTenantWithMember。 */
 async function seedFixedTenant(db: Db, label: string, tenantId: string) {
-  const suffix = randomBytes(3).toString('hex');
+  const suffix = randomUUID();
   const [tenant] = await withPlatform(db, (tx) =>
     tx
       .insert(tenants)
@@ -236,7 +241,7 @@ export async function approvalWorld(db: Db, label: string, fixed: FixedIds = {})
 
   /** @param fixedId 可信夹具：以固定编号建账号 */
   async function member(name: string, fixedId?: string): Promise<string> {
-    const suffix = randomBytes(3).toString('hex');
+    const suffix = randomUUID();
     const account = { email: `${label}-${suffix}@example.com`, displayName: name };
     const userId = fixedId ? await insertFixedUser(db, fixedId, account) : (await createUser(db, account, cmd())).id;
     await grantMembership(db, { tenantId: tenant.id, userId, expectedRevision: 0 }, cmd());
@@ -587,7 +592,7 @@ export async function grantVisibleFields(
 export async function installApprovalFallbacks(db: Db, tenantId: string, userId: string): Promise<void> {
   const ctx = { tenantId, userId, timezone: 'Asia/Shanghai', now: new Date(), expectedRevision: 0 };
   // 异常管理员用独立成员：被测模块的操作人兼任时按 DEC-091 回避，没有直线经理会拒绝提交。
-  const suffix = randomBytes(3).toString('hex');
+  const suffix = randomUUID();
   const admin = await createUser(db, { email: `fallback-${suffix}@example.com`, displayName: '夹具异常管理员' }, cmd());
   await grantMembership(db, { tenantId, userId: admin.id, expectedRevision: 0 }, cmd());
   await withTenant(db, tenantId, async (tx) => {
