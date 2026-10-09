@@ -2,7 +2,10 @@
  * F-048 PR-2 身份变化（设计 §2.2、§7、§12.1 Q13，测试 T12）：账号集合 U(S) 在发起 / 重提时冻结——
  * 冻结前已绑定的账号命中；冻结后才首次绑定的账号本轮不追溯（仍可被转交并继续办理），重提重新冻结后命中。
  */
+import { eq, users, withPlatform, withTenant } from '@italent/db';
+import { nodeRecusal } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
+import { loadRecusalFacts } from '../../apps/api/src/modules/approval/subjects.js';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld, transferScene, type InstanceView } from './AC-APV-support.js';
 import { bind, frozenOf, NODES, pendingOf, reasonOf, useSubjectMapping } from './support/f048.js';
@@ -63,8 +66,34 @@ describe('T12 冻结前后的账号绑定（DEC-329⑤）', () => {
     });
   });
 
-  it('Q13：单主体业务按冻结值判断——单主体账号未激活也在冻结值里，视为本人回避', async () => {
+  it('Q05 / Q13：单主体账号已停用也在冻结值里（不看账号状态），回避事实视为本人，节点按 avoidSelf 命中', async () => {
     const w = await approvalWorld(database().db, 'f048-identity-primary');
+    const s = await transferScene(w);
+    await w.publishedProcess({
+      nodes: [{ ...NODES.outHead, actions: { avoidSelf: true, transfer: true } }, NODES.inHrbp],
+    });
+    await withPlatform(w.db, (tx) =>
+      tx.update(users).set({ status: 'disabled' }).where(eq(users.id, s.subject.userId)),
+    );
+    const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
+    expect((await frozenOf(w, view.id)).find((row) => row.employee_id === s.subject.employeeId)?.user_id).toBe(
+      s.subject.userId,
+    );
+    const facts = await withTenant(w.db, w.tenant.id, (tx) =>
+      loadRecusalFacts(tx, w.tenant.id, {
+        id: view.id,
+        initiatorUserId: w.hr.id,
+        subjectEmployeeId: s.subject.employeeId,
+      }),
+    );
+    expect(facts.primaryUserId).toBe(s.subject.userId);
+    expect(
+      nodeRecusal({ actions: { avoidSelf: true, avoidSubjects: false } }, { userId: s.subject.userId }, facts),
+    ).toBe('self');
+  });
+
+  it('Q13：单主体账号有效时转交给本人 → 409 self（节点开 avoidSelf）', async () => {
+    const w = await approvalWorld(database().db, 'f048-identity-primary-active');
     const s = await transferScene(w);
     await w.publishedProcess({
       nodes: [{ ...NODES.outHead, actions: { avoidSelf: true, transfer: true } }, NODES.inHrbp],

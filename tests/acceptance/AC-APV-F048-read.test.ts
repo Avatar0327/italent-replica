@@ -2,11 +2,13 @@
  * F-048 PR-2 详情动作、待办与重放（设计 §6 #25～#28、#31，§8.2；测试 T8、T9a、T9b）：
  * - 详情公布的动作与命令执行共用同一判定：办理类按节点级、管理员类按实例级，命中者不公布；响应不新增主体字段（DEC-057）；
  * - 主体回避跳过的节点没有办理人：不进任何人的待办 / “我参与的”；
- * - 成功命令同键重放不重复执行，失败命令原样回放，详情按当前查看人重新读取。
+ * - 成功命令同键重放不重复执行，失败命令不入命令台账（抛错事务整体回滚），同键重发是在相同状态下重新执行、得到相同拒绝；详情按当前查看人重新读取。
  */
+import { permissionUserPersonLinks, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld, transferScene, type ApprovalWorld, type InstanceView } from './AC-APV-support.js';
+import { tenantApi } from './support/tenant-api.js';
 import { bind, injectFrozen, NODES, pendingOf, reasonOf, useSubjectMapping } from './support/f048.js';
 
 const database = useTestDb();
@@ -79,7 +81,7 @@ describe('T8 待办与我参与：subject_skip 没有办理人（DEC-057 / DEC-3
   });
 });
 
-describe('T9a 重放：成功命令不重复执行，失败命令原样回放（DEC-057 / DEC-329）', () => {
+describe('T9a 重放：成功命令不重复执行，失败命令在相同状态下重新执行得到相同拒绝（DEC-057 / DEC-329）', () => {
   it('同键同内容重放同意：任务与日志条数不变，返回当前详情', async () => {
     const { w, s } = await scene('f048-rd-replay');
     const view = await submit(w, s);
@@ -101,7 +103,7 @@ describe('T9a 重放：成功命令不重复执行，失败命令原样回放（
     expect(replayed.logs).toHaveLength(done.logs.length);
   });
 
-  it('失败命令（办理人命中冻结值）同键重放 → 回放同一个 409', async () => {
+  it('失败命令（办理人命中冻结值）同键重发 → 在相同状态下重新执行，得到相同的 409（失败不入台账）', async () => {
     const { w, s } = await scene('f048-rd-replay-fail');
     const view = await submit(w, s);
     await injectFrozen(w, view.id, s.outHead.userId);
@@ -140,5 +142,73 @@ describe('T9b 交接重放：回执按当前范围裁剪，不重复改派（DEC
     expect(second).toEqual(first);
     const after = await w.detail(view.id, init.userId);
     expect(after.tasks.filter((task) => task.origin === 'handover')).toHaveLength(1);
+  });
+});
+
+describe('T9 重放按当前范围重新裁剪（撤权 / 缩范围后）（DEC-067）', () => {
+  const narrowedApi = (w: ApprovalWorld) =>
+    tenantApi(w.db, {
+      authorize: (request) => !String(request.resource ?? '').includes('ApprovalInstance'),
+      clock: w.clock,
+    });
+
+  it('T9a 管理员转交成功后收回实例范围：同键重放按当前权限重新复核（403 APPROVAL_ADMIN_REQUIRED）、不重复执行、不返回任务信息', async () => {
+    const { w, s } = await scene('f048-rd-replay-scope');
+    const view = await submit(w, s);
+    const admin = await w.member('流程管理员');
+    const free = await w.member('接手人');
+    const options = {
+      ifMatch: view.revision,
+      idempotencyKey: 'f048-admin-transfer',
+      body: { taskId: pendingOf(view)[0]!.id, toUserId: free, reason: '转交' },
+    };
+    const first = await w.api.request('POST', `${BASE}/instances/${view.id}/admin-transfer`, {
+      ...w.as(admin),
+      ...options,
+    });
+    expect(first.status, await first.clone().text()).toBe(200);
+    const replay = await narrowedApi(w).request('POST', `${BASE}/instances/${view.id}/admin-transfer`, {
+      ...w.as(admin),
+      ...options,
+    });
+    const text = await replay.text();
+    expect(replay.status, text).toBe(403);
+    expect(JSON.parse(text)).toMatchObject({ error: { details: { reason: 'APPROVAL_ADMIN_REQUIRED' } } });
+    expect(text).not.toContain(free);
+    const after = await w.detail(view.id, s.outHead.userId);
+    expect(after.tasks.filter((task) => task.origin === 'admin_transfer')).toHaveLength(1);
+  });
+
+  it('T9b 交接回执重放：收回实例范围后，命中项只计数、不再给出实例编号', async () => {
+    const w = await approvalWorld(database().db, 'f048-rd-handover-scope');
+    const s = await transferScene(w);
+    const init = await w.person('发起人', s.from, { directManagerId: s.manager.employeeId });
+    await w.setOrgRoles(s.to, { hrbp: null });
+    await w.publishedProcess({ nodes: [NODES.outHead, NODES.inHrbp] });
+    const hrEmployee = await w.employee('操作人对应员工');
+    await withTenant(w.db, w.tenant.id, (tx) =>
+      tx
+        .insert(permissionUserPersonLinks)
+        .values({ tenantId: w.tenant.id, userId: w.hr.id, employeeId: hrEmployee.id }),
+    );
+    mapSubjects(() => [hrEmployee.id]);
+    const draft = await w.application(s.subject.employeeId, { departmentId: s.to }, { actor: init.userId });
+    let view = await w.submit(draft, init.userId);
+    view = await w.json(await w.taskAction(s.outHead.userId, pendingOf(view)[0]!.id, 'approve', view.revision));
+    const options = {
+      ...w.as(w.hr.id),
+      ifMatch: 0,
+      idempotencyKey: 'f048-handover-scope',
+      body: { fromUserId: w.exceptionAdmin, toUserId: await w.member('替代人') },
+    };
+    const first = await w.json<{ skipped: { instanceId: string; reason: string }[] }>(
+      await w.api.request('POST', `${BASE}/exception-admins/handover`, options),
+    );
+    expect(first.skipped).toEqual([{ instanceId: view.id, reason: 'APPROVAL_ADMIN_SELF' }]);
+    const replay = await narrowedApi(w).request('POST', `${BASE}/exception-admins/handover`, options);
+    const text = await replay.text();
+    expect(replay.status, text).toBe(200);
+    expect(text).not.toContain(view.id);
+    expect(JSON.parse(text)).toMatchObject({ skipped: [], unlisted: 1 });
   });
 });

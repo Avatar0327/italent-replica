@@ -6,7 +6,7 @@
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { approvalWorld, transferScene, type ApprovalWorld } from './AC-APV-support.js';
+import { approvalWorld, transferScene, type ApprovalWorld, type InstanceView } from './AC-APV-support.js';
 import { bind, NODES, pendingOf, reasonOf, snapshotOf, useSubjectMapping } from './support/f048.js';
 
 const database = useTestDb();
@@ -74,20 +74,26 @@ describe('T5 管理员干预 / 转交：操作人是集合内主体 → 403（DE
     expect(await snapshotOf(w, view.id)).toEqual(before);
   });
 
-  it('管理员跳转后重新路由：目标节点的审批人是主体 → 自动跳过（经同一路由判定）', async () => {
-    const { w, s } = await adminScene('f048-adm-jump');
-    const view = await submitted(w, s);
+  it('管理员跳转后重新路由：目标节点的审批人是冻结的主体 → 出现 subject_skip，流转到下一节点；冻结后改映射不影响', async () => {
+    const w = await approvalWorld(database().db, 'f048-adm-jump');
+    const s = await transferScene(w);
+    await w.publishedProcess({
+      nodes: [NODES.outHead, { ...NODES.inHrbp, actions: { avoidSubjects: true } }, NODES.inHead],
+    });
     mapSubjects(() => [s.inHrbp.employeeId]);
+    const view = await submitted(w, s);
     const other = await w.member('无关管理员');
-    const jumped = await w.json<{ tasks: { nodeKey: string; origin: string }[]; status: string }>(
+    // 冻结后适配器映射再变，也不影响本轮：跳转用的仍是发起时冻结的 S
+    mapSubjects(() => []);
+    const jumped = await w.json<InstanceView>(
       await w.instanceAction(other, view.id, 'admin-intervene', view.revision, {
         kind: 'jump',
         toNodeKey: 'in_hrbp',
         reason: '跳转',
       }),
     );
-    // 适配器映射对已发起的实例不再生效（冻结），跳转目标 HRBP 不在冻结的 S 中，正常派单
-    expect(jumped.tasks.some((task) => task.nodeKey === 'in_hrbp' && task.origin === 'subject_skip')).toBe(false);
+    expect(jumped.tasks.find((task) => task.nodeKey === 'in_hrbp')).toMatchObject({ origin: 'subject_skip' });
+    expect(pendingOf(jumped)).toEqual([expect.objectContaining({ nodeKey: 'in_head' })]);
   });
 });
 

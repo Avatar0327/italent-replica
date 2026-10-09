@@ -149,3 +149,105 @@ describe('T4 排队激活 / 回到原审批人（不变式）：冻结后不新�
     expect(pendingOf(back)).toEqual([expect.objectContaining({ assigneeUserId: s.outHead.userId })]);
   });
 });
+
+describe('T4 #13～#16：激活 / 回到原审批人 / 会签返回 / 会签重开命中冻结值 → 走 F8 转异常管理员（DEC-329）', () => {
+  it('#13 排队激活：下一位加签人命中冻结值 → 转异常管理员，原链不丢', async () => {
+    const { w, s } = await scene('f048-a-f8-activate');
+    const view = await submitted(w, s);
+    const [first, second] = [await w.member('加签人一'), await w.member('加签人二')];
+    const added = await w.json<InstanceView>(
+      await post(w, s.outHead.userId, pendingOf(view)[0]!.id, 'add-sign', view, {
+        userIds: [first, second],
+        type: 'before',
+      }),
+    );
+    await injectFrozen(w, view.id, second);
+    const after = await w.json<InstanceView>(
+      await w.taskAction(first, pendingOf(added)[0]!.id, 'approve', added.revision),
+    );
+    expect(pendingOf(after)).toEqual([
+      expect.objectContaining({ assigneeUserId: w.exceptionAdmin, isExceptionAdmin: true }),
+    ]);
+    expect(after.logs.some((log) => log.event === 'add_sign_exception_admin')).toBe(true);
+  });
+
+  it('#14 回到原审批人：原审批人命中冻结值 → 转异常管理员', async () => {
+    const { w, s } = await scene('f048-a-f8-return');
+    const view = await submitted(w, s);
+    const signer = await w.member('加签人');
+    const added = await w.json<InstanceView>(
+      await post(w, s.outHead.userId, pendingOf(view)[0]!.id, 'add-sign', view, { userIds: [signer], type: 'before' }),
+    );
+    await injectFrozen(w, view.id, s.outHead.userId);
+    const after = await w.json<InstanceView>(
+      await w.taskAction(signer, pendingOf(added)[0]!.id, 'approve', added.revision),
+    );
+    expect(pendingOf(after)).toEqual([
+      expect.objectContaining({ assigneeUserId: w.exceptionAdmin, isExceptionAdmin: true }),
+    ]);
+  });
+
+  /** 会签节点（不能开 avoidSubjects）里的异常管理员席位：异常任务按实例级判定，不受节点开关影响。 */
+  async function countersignScene(label: string) {
+    const w = await approvalWorld(database().db, label);
+    const s = await transferScene(w);
+    const manager = await w.person('异常管理员的经理', s.from);
+    const admin = await w.person('异常管理员', s.from, { directManagerId: manager.employeeId });
+    await w.setOrgRoles(s.to, { hrbp: null });
+    await w.publishedProcess({
+      exceptionAdminUserId: admin.userId,
+      nodes: [
+        NODES.outHead,
+        {
+          key: 'cs',
+          kind: 'countersign',
+          approvers: ['record_department_head', 'record_department_hrbp'],
+          transitionRule: { type: 'any' },
+          actions: { addSign: true, retrieve: true },
+        },
+        { key: 'last', approver: 'latest_record_department_head' },
+      ],
+    });
+    let view = await submitted(w, s);
+    view = await w.json(await w.taskAction(s.outHead.userId, pendingOf(view)[0]!.id, 'approve', view.revision));
+    const seat = pendingOf(view).find((task) => task.isExceptionAdmin)!;
+    expect(seat).toMatchObject({ nodeKey: 'cs', assigneeUserId: admin.userId });
+    return { w, s, admin, manager, view, seat };
+  }
+
+  it('#15 会签前加签返回：异常管理员席位命中冻结值（实例级）→ 转其直线经理', async () => {
+    const { w, admin, manager, view, seat } = await countersignScene('f048-a-f8-cs-return');
+    const signer = await w.member('前加签人');
+    const added = await w.json<InstanceView>(
+      await post(w, admin.userId, seat.id, 'add-sign', view, { userIds: [signer], type: 'before' }),
+    );
+    await injectFrozen(w, view.id, admin.userId);
+    const after = await w.json<InstanceView>(
+      await w.taskAction(
+        signer,
+        pendingOf(added).find((task) => task.assigneeUserId === signer)!.id,
+        'approve',
+        added.revision,
+      ),
+    );
+    expect(pendingOf(after).filter((task) => task.isExceptionAdmin)).toEqual([
+      expect.objectContaining({ assigneeUserId: manager.userId, nodeKey: 'cs' }),
+    ]);
+  });
+
+  it('#16 会签重开：被结束的异常管理员席位命中冻结值（实例级）→ 撤回重开时转其直线经理', async () => {
+    const { w, s, admin, manager, view } = await countersignScene('f048-a-f8-cs-reopen');
+    const head = pendingOf(view).find((task) => !task.isExceptionAdmin)!;
+    const flowed = await w.json<InstanceView>(await w.taskAction(s.inHead.userId, head.id, 'approve', view.revision));
+    expect(pendingOf(flowed)).toEqual([expect.objectContaining({ nodeKey: 'last' })]);
+    await injectFrozen(w, view.id, admin.userId);
+    const approved = flowed.tasks.find((task) => task.id === head.id)!;
+    const retrieved = await w.json<InstanceView>(await post(w, s.inHead.userId, approved.id, 'retrieve', flowed, {}));
+    expect(pendingOf(retrieved).map((task) => [task.assigneeUserId, task.origin])).toEqual(
+      expect.arrayContaining([
+        [s.inHead.userId, 'retrieve'],
+        [manager.userId, 'exception_admin'],
+      ]),
+    );
+  });
+});
