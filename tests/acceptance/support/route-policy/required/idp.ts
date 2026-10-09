@@ -825,16 +825,46 @@ const PLAN_ROUTES: RequiredTable = {
     guard(
       'idp.transferTarget',
       [
-        call(`${I}/intervention-service.ts#transferPlan`, 'await requireTargetInScope(tx, ctx, input.toUserId)'),
+        call(
+          `${I}/intervention-service.ts#transferPlan`,
+          'await requireTargetInScope(tx, ctx, plan, input.toUserId, sources)',
+        ),
         {
           role: 'impl',
           unit: `${I}/intervention-service.ts#requireTargetInScope`,
-          anchor: "throw new AppError('NOT_FOUND', '转交目标不存在')",
+          anchor: 'throw targetHidden()',
+        },
+        {
+          role: 'impl',
+          unit: `${I}/intervention-service.ts#targetHidden`,
+          anchor: "new AppError('NOT_FOUND', '转交目标不存在')",
+        },
+        // DEC-354：仅凭例外放行的目标，adminAct 之后的任何失败都改成与普通范围外目标相同的响应
+        {
+          role: 'impl',
+          unit: `${I}/intervention-service.ts#transferPlan`,
+          anchor: 'await foldMentorFailure(admission, targetHidden, () =>',
+        },
+        {
+          role: 'impl',
+          unit: `${I}/plan-mentor.ts#foldMentorFailure`,
+          anchor: 'throw error instanceof AppError ? hidden() : error',
         },
         {
           role: 'impl',
           unit: `${I}/plan-access.ts#employeeInScope`,
           anchor: 'scopeAllowsInTransaction(tx, hr, { personId: employeeId })',
+        },
+        // DEC-354 / F-068：该计划当前的指导人 / 带教人例外；来源字段看不到视同不是
+        {
+          role: 'impl',
+          unit: `${I}/plan-mentor.ts#isPlanMentor`,
+          anchor: "viewable(sources.plan, ['tutorEmployeeId']) && plan.tutorEmployeeId === employeeId",
+        },
+        {
+          role: 'impl',
+          unit: `${I}/plan-mentor.ts#isPlanMentor`,
+          anchor: 'if (!viewable(sources.tutorship, TUTORSHIP_FIELDS)) return false',
         },
       ],
       { facts: ['guard:idp.transferTarget'] },

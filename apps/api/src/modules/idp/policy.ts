@@ -470,7 +470,8 @@ export const IDP_POLICIES = defineTable('idp', {
     byId: true,
   }),
   // 转交（F-066，docs/08_设计/F-066 路由声明）：plan update + transfer@detail；转交目标须是已绑定员工且在操作人 IDP 范围内
-  // （requireTargetInScope，不存在 / 未绑定 / 范围外同为 404）；其余目标校验与本人回避经审批引擎 adminAct（kind transfer）
+  // （requireTargetInScope，不存在 / 未绑定 / 范围外同为 404）；例外：该计划当前的指导人 / 带教人（DEC-354，F-068）；
+  // 其余目标校验与本人回避经审批引擎 adminAct（kind transfer）
   [`POST ${BASE}/plans/:id/transfer`]: writer({
     key: 'plan',
     operation: 'update',

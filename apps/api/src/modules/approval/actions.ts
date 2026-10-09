@@ -23,7 +23,7 @@ import {
 } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import { AppError, type ErrorBody } from '../../errors.js';
+import type { ErrorBody } from '../../errors.js';
 import { assertNotAddSigner, continueAfterApproval } from './add-sign.js';
 import { mergeSeat, mergesSeat, resettle, settleCountersign } from './countersign.js';
 import type { TargetScope } from './access.js';
@@ -50,6 +50,7 @@ import {
   startOrResume,
   type Run,
 } from './engine.js';
+import { foldMentorFailure, type TargetAdmission } from '../idp/plan-mentor.js';
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
 import { assertNotRecused, eligibilityScope, recusalFactsOf } from './recusal.js';
 import { addSignAllowed, nodeParticipantsOf, urgeOpen, votesInTransition } from './rules.js';
@@ -845,7 +846,8 @@ const targetNotFound = () => approvalError('NOT_FOUND', 'APPROVAL_TARGET_NOT_FOU
  * 转给操作人自己也一样校验：“审批实例可见”与业务对象的参与权（如 IDP 计划按待办认定参与人）是不同的授权边界，
  * 自转交同样会因成为待办人扩大业务对象可见性（仍须填理由，DEC-070）。其余目标校验（有效成员、节点回避、
  * 会签重复办理人）仍由后面的 adminAct 判定。
- * 返回 `exception`：目标是靠范围外例外（DEC-358①：IDP 计划当前的指导人 / 带教人）放行的，后续任何失败都要折成同一个 404。
+ * 返回放行方式：`mentor` = 靠范围外例外（DEC-358①：IDP 计划当前的指导人 / 带教人，判定与 IDP 入口共用 idp/plan-mentor.ts）放行，
+ * 后续任何失败都要经共享的 `foldMentorFailure` 折成同一个 404。
  */
 async function assertTargetInScope(
   tx: Tx,
@@ -853,8 +855,8 @@ async function assertTargetInScope(
   input: AdminInput,
   options: AdminOptions,
   instance: Run['instance'],
-): Promise<{ readonly exception: boolean }> {
-  if (input.kind === 'jump' || options.targetChecked) return { exception: false };
+): Promise<TargetAdmission> {
+  if (input.kind === 'jump' || options.targetChecked) return 'scope';
   if (!options.targetScope) throw new Error('adminAct：转交 / 改派必须提供目标范围校验');
   const employeeId = input.toUserId ? await personOfUser(tx, ctx.tenantId, input.toUserId) : null;
   if (!employeeId) throw targetNotFound();
@@ -862,9 +864,9 @@ async function assertTargetInScope(
     await tx.execute(sql`SELECT 1 FROM approval_instances i WHERE i.tenant_id=${ctx.tenantId}
       AND i.id=${input.instanceId}::uuid AND ${options.targetScope.inScope(employeeId)}`),
   );
-  if (hit) return { exception: false };
+  if (hit) return 'scope';
   if (!(await options.targetScope.exception(tx, instance, employeeId))) throw targetNotFound();
-  return { exception: true };
+  return 'mentor';
 }
 
 /**
@@ -887,15 +889,10 @@ export async function adminAct(
       AND i.id=${input.instanceId}::uuid AND ${scope}`),
   );
   if (!covered) throw approvalError('NOT_FOUND', 'APPROVAL_NOT_FOUND', '审批实例不存在');
-  const { exception } = await assertTargetInScope(tx, ctx, input, options, run.instance);
+  const admission = await assertTargetInScope(tx, ctx, input, options, run.instance);
   // 靠例外放行的目标（范围外的指导人 / 带教人）：后续任何业务失败（版本冲突、流程已结束、待办已关闭、回避……）都折成
   // 与普通范围外拒绝完全相同的 404，否则失败响应的差异会泄露“目标是该计划的指导人 / 带教人”（DEC-358①，F-068 审查）。
-  if (!exception) return performAdmin(tx, ctx, run, input, options);
-  try {
-    return await performAdmin(tx, ctx, run, input, options);
-  } catch (error) {
-    throw error instanceof AppError ? targetNotFound() : error;
-  }
+  return foldMentorFailure(admission, targetNotFound, () => performAdmin(tx, ctx, run, input, options));
 }
 
 async function performAdmin(

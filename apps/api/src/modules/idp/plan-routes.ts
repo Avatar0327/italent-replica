@@ -33,6 +33,7 @@ import { runIdpCommand } from './executor.js';
 import * as intervention from './intervention-service.js';
 import { type HrScope, hrSees, requireViewer } from './plan-access.js';
 import * as input from './plan-input.js';
+import { mentorSourcesOf } from './plan-mentor.js';
 import * as plans from './plan-service.js';
 import { loadPlanRow, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
 import type { WriteContext } from './write-support.js';
@@ -110,6 +111,13 @@ async function stillVisible(tx: Tx, ctx: IdpContext, hr: HrScope, planId: string
 // ---- 读取 ----
 
 /** 列表摘要；projections 为 HR 的阶段带出源权限（E9 / E10，含所属流程范围 R2-4），参与人列表按固定字段集传 null。 */
+/** 转交的数据范围与目标例外（DEC-354）用到的来源字段：操作人看不到就视同不是指导人 / 带教人。 */
+async function transferScope(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: IdpContext) {
+  const hr = await idpScope(c, deps, ctx, 'plan');
+  const sources = await mentorSourcesOf(deps, ctx);
+  return { hr, sources };
+}
+
 async function summaries(tx: Tx, tenantId: string, rows: PlanRow[], asOf: string, projections: Projections | null) {
   const stages = await loadStages(
     tx,
@@ -511,12 +519,12 @@ function registerInterventions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const ctx = await idpWriteContext(c, deps, 'plan', 'update', 'transfer', 'detail', revision(c));
     const id = uuidParam(c);
     const body = await parseBody(c, input.transfer);
-    const hr = await idpScope(c, deps, ctx, 'plan');
+    const { hr, sources } = await transferScope(c, deps, ctx);
     await runIdpCommand<PlanDetail, plans.PlanWriteContext>(c, deps, ctx, {
       ...planCommand(hr),
       status: 200,
       body,
-      execute: (tx, w) => intervention.transferPlan(tx, w, id, body),
+      execute: (tx, w) => intervention.transferPlan(tx, w, id, body, sources),
       recheck: (tx) => stillVisible(tx, ctx, hr, id),
     });
     return respondPlan(c, deps, ctx, hr, id, 200);

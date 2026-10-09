@@ -205,6 +205,11 @@ const adminTarget = (code: 'adminTransfer' | 'adminIntervene'): Obligation => ({
     {
       role: 'impl',
       unit: 'apps/api/src/modules/idp/plan-mentor.ts#isStageMentor',
+      anchor: 'await isPlanMentor(tx, plan, employeeId, sources)',
+    },
+    {
+      role: 'impl',
+      unit: 'apps/api/src/modules/idp/plan-mentor.ts#isPlanMentor',
       anchor: "viewable(sources.plan, ['tutorEmployeeId']) && plan.tutorEmployeeId === employeeId",
     },
     {
@@ -215,7 +220,12 @@ const adminTarget = (code: 'adminTransfer' | 'adminIntervene'): Obligation => ({
     {
       role: 'impl',
       unit: `${ACTIONS}#adminAct`,
-      anchor: 'throw error instanceof AppError ? targetNotFound() : error',
+      anchor: 'foldMentorFailure(admission, targetNotFound, () =>',
+    },
+    {
+      role: 'impl',
+      unit: 'apps/api/src/modules/idp/plan-mentor.ts#foldMentorFailure',
+      anchor: 'throw error instanceof AppError ? hidden() : error',
     },
   ],
 });

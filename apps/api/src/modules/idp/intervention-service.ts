@@ -5,7 +5,7 @@
  * - 跳转：单个计划，只能跳到当前运行阶段审批流程版本里的节点（跨阶段 409 IDP_JUMP_CROSS_STAGE，AC-IDP-02），经审批中心的
  *   管理员跳转执行（须填原因，不代签 DEC-063）；
  * - 转交（F-066，IDP-R16）：单个计划，把当前运行阶段审批实例的当前待办转给他人，经审批中心的管理员转交执行，
- *   目标须在操作人的 IDP 范围内（本入口先校验，范围外 404）；目标其余校验（有效成员、冻结主体、同节点其他办理人）与本人回避由 adminAct 判定；
+ *   目标须在操作人的 IDP 范围内（本入口先校验，范围外 404；该计划已有的指导人 / 带教人例外，DEC-354）；目标其余校验（有效成员、冻结主体、同节点其他办理人）与本人回避由 adminAct 判定；
  * - 统一下发任务：勾选的计划须使用同一模板（AC-IDP-06），整体成功或整体失败。
  * 取锁顺序：计划（按 ID 升序）→ 审批实例。
  */
@@ -20,6 +20,7 @@ import { accessOf, type ModuleScope, type Projection, rowsOf, viewable } from '.
 import { insertTask } from './execution-service.js';
 import { employeeInScope, hrSees } from './plan-access.js';
 import type { BatchItems, JumpInput, StartNextInput, TaskIssue, TransferInput } from './plan-input.js';
+import { foldMentorFailure, isPlanMentor, type TargetAdmission, type TransferSources } from './plan-mentor.js';
 import { lockPlanForHr, type PlanWriteContext } from './plan-service.js';
 import { bumpPlan, loadPlanRow, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
 import { loadPlanDetail } from './plan-view.js';
@@ -204,46 +205,69 @@ export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, in
   return loadPlanDetail(tx, await requirePlanRow(tx, ctx.tenantId, plan.id), tenantLocalDate(ctx.now, ctx.timezone));
 }
 
+/** 转交目标被拒的唯一响应：范围外、纯账号、不存在、以及“仅凭例外放行”后的任何失败都用它（DEC-354 不可区分）。 */
+const targetHidden = () => new AppError('NOT_FOUND', '转交目标不存在');
+
 /**
- * 转交目标须是已绑定员工、且在操作人的 IDP 范围内（IDP-R16“受管理单元限制”；引用 ID 写入前校验范围）。账号不存在、
- * 未绑定员工的纯账号（先按拒绝，待产品确认）、范围外三种情况同一个 404，不暴露存在性。
+ * 转交目标须是已绑定员工、且在操作人的 IDP 范围内（IDP-R16“受管理单元限制”；引用 ID 写入前校验范围）；
+ * 例外（DEC-354）：该计划已有的指导人或带教人，即使在范围外也可以（返回 `mentor`，调用方须把其后的失败都改成同一响应）。
+ * 纯账号（未绑定员工）仍拒绝。账号不存在、未绑定员工、范围外且不是该计划指导人 / 带教人三种情况同一个 404。
  */
-async function requireTargetInScope(tx: Tx, ctx: PlanWriteContext, toUserId: string): Promise<void> {
+async function requireTargetInScope(
+  tx: Tx,
+  ctx: PlanWriteContext,
+  plan: PlanRow,
+  toUserId: string,
+  sources: TransferSources,
+): Promise<TargetAdmission> {
   const employeeId = await personOfUser(tx, ctx.tenantId, toUserId);
-  if (employeeId === null || !(await employeeInScope(tx, ctx.hr, employeeId))) {
-    throw new AppError('NOT_FOUND', '转交目标不存在');
+  if (employeeId !== null) {
+    if (await employeeInScope(tx, ctx.hr, employeeId)) return 'scope';
+    if (await isPlanMentor(tx, plan, employeeId, sources)) return 'mentor';
   }
+  throw targetHidden();
 }
 
 /**
  * 转交（F-066，IDP-R16）：把当前运行阶段审批实例的当前待办转给 `toUserId`，撤回原待办、给新人发待办。
  * 本人回避同跳转（F-048 §6 #17 / #20，DEC-321）：不查实时绑定，由 adminAct 按冻结的 U(S) 判定；转交目标的有效性、
  * 是否在冻结主体集合内也都由 adminAct 判定，这里不另写一套；adminAct 不看操作人范围，目标在范围内由本入口先校验。未指定 taskId 时只在恰有一条待办时取它。
+ * 与目标无关的校验（运行阶段、待办数）排在目标判定之前，其错误对所有目标一样；目标判定之后只有 adminAct 的失败，
+ * 对“仅凭 DEC-354 例外放行”的目标一律改成与普通范围外目标相同的响应，失败的转交不能用来探测不可见的带教 / 指导关系。
  * 计划审计只记计划对象登记的字段；新旧审批人写在审批实例的 `approval.admin.transfer` 审计里（DEC-063）。
  */
-export async function transferPlan(tx: Tx, ctx: PlanWriteContext, planId: string, input: TransferInput) {
+export async function transferPlan(
+  tx: Tx,
+  ctx: PlanWriteContext,
+  planId: string,
+  input: TransferInput,
+  sources: TransferSources,
+) {
   const plan = await lockPlanForHr(tx, ctx, planId);
-  await requireTargetInScope(tx, ctx, input.toUserId);
   const { stage, instance } = await runningInstance(tx, ctx, plan);
   const instanceId = stage.approvalInstanceId!;
   const pending = (await loadTasks(tx, ctx.tenantId, instanceId)).filter((t) => t.status === 'pending');
   if (input.taskId === undefined && pending.length > 1) {
     invalid('当前阶段有多条待办，请指定要转交的待办', { reason: 'IDP_TRANSFER_TASK_REQUIRED' });
   }
+  const admission = await requireTargetInScope(tx, ctx, plan, input.toUserId, sources);
   const taskId = input.taskId ?? pending[0]?.id;
-  await adminAct(
-    tx,
-    hrApproval(ctx, Number(instance.revision)),
-    {
-      instanceId,
-      kind: 'transfer',
-      toUserId: input.toUserId,
-      reason: input.reason ?? null,
-      ...(taskId ? { taskId } : {}),
-    },
-    sql`true`,
-    // 目标已由上面的 requireTargetInScope 按 IDP 范围校验（F-066）
-    { ownerIntervention: true, targetChecked: true },
+  // 目标已由上面的 requireTargetInScope 校验（F-066 / DEC-354），adminAct 不再查范围（targetChecked）；
+  // 仅凭例外放行的目标，adminAct 的任何失败折成与普通范围外目标相同的响应（共享归一化，同审批中心入口）
+  await foldMentorFailure(admission, targetHidden, () =>
+    adminAct(
+      tx,
+      hrApproval(ctx, Number(instance.revision)),
+      {
+        instanceId,
+        kind: 'transfer',
+        toUserId: input.toUserId,
+        reason: input.reason ?? null,
+        ...(taskId ? { taskId } : {}),
+      },
+      sql`true`,
+      { ownerIntervention: true, targetChecked: true },
+    ),
   );
   await bumpPlan(tx, ctx.tenantId, plan.id, ctx.now);
   await auditIntervention(tx, ctx, plan, 'transfer', {
