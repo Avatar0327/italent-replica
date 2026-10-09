@@ -409,6 +409,16 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     fields: projector('transfer.preview', 'transfer.preview'),
     write: previewWrite,
     ...byId,
+    // 表单字段模式：可编辑字段再按 object.create 的字段编辑权降为 readonly（visibleTransferForm），只影响响应
+    optional: {
+      fieldModes: object({
+        object: EMPLOYMENT,
+        operation: 'create',
+        button: noButton('只按字段编辑权决定 fieldModes'),
+        scope: noScope('只决定表单字段模式'),
+        fields: noFields('只决定 fieldModes 的 editable / readonly'),
+      }),
+    },
   }),
   // 发起调动：If-Match 必填；requireTransferSource(initiator, param id) → requireTransferWrite（body.fields+customFields）→
   // previewTransfer（目标范围）→ direct 时 requireDirectTransfer（设置 409 DIRECT_TRANSFER_DISABLED / 直接调动按钮 403）→
@@ -443,6 +453,16 @@ export const EMPLOYMENT_POLICIES = defineTable('employment', {
     scope: pointScope({ param: 'id' }, 'employment.business', NF_TRANSFER),
     fields: projector('transfer.linkage', 'transfer.linkage'),
     ...byId,
+    // 合同变更子项按合同查看权 + 合同范围 + 合同字段披露（readTransferLinkage 的 visibility.contract），不拒绝请求
+    optional: {
+      contractItems: object({
+        object: CONTRACT_OBJECT,
+        operation: 'view',
+        button: noButton('只按合同查看权'),
+        scope: listScope('contracts.scope'),
+        fields: noFields('只决定合同子项是否披露'),
+      }),
+    },
   }),
   // 修改联动：If-Match 必填；normalizeLinkage 400；调动可见且 kind=transfer，否则 404「调动不存在」；requireLinkageSource
   // （DEC-194：employee 单据 400，其余按单据 initiator 重走 requireTransferSource）；preauthorizeLinkage 按新旧差异授权任职字段 /

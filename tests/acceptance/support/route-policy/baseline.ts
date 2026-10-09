@@ -59,29 +59,10 @@ export async function observeContract(
     const key = `${route.method} ${route.path}`;
     const edge = edges[key];
     if (!edge) throw new Error(`边界探测缺少 ${key}`);
-    // 准入事实只在剥掉非抛错求值（披露）后展开的闭包里扫；完整闭包多出来的维度 / 对象事实记为披露事实
-    const admission = {
-      deep: hits.map((hit) => closureText(index, hit, 6, undefined, true)).join('\n'),
-      near: hits.map((hit) => closureText(index, hit, 3, undefined, true)).join('\n'),
-    };
-    const primitives = scanPrimitives(admission, route.method, module, route.path);
-    const objects = objectFacts(index, admission.near, module, dirs);
-    const full = scanPrimitives({ deep, near }, route.method, module, route.path);
-    const disclose = [
-      ...Object.keys(full).filter((dim) => !Object.hasOwn(primitives, dim) && dim !== 'or'),
-      ...objectFacts(index, near, module, dirs)
-        .filter((fact) => !objects.includes(fact))
-        .map((fact) => `obj:${fact}`),
-    ].sort();
-    routes[key] = {
-      module,
-      edge,
-      primitives: {
-        ...primitives,
-        ...(objects.length ? { objectOp: objects } : {}),
-        ...(disclose.length ? { disclose } : {}),
-      },
-    };
+    // 准入 / 披露的区分只由必需项显式表决定（required/，DEC-348②）：这里扫完整闭包，不做语法切分
+    const primitives = scanPrimitives({ deep, near }, route.method, module, route.path);
+    const objects = objectFacts(index, near, module, dirs);
+    routes[key] = { module, edge, primitives: { ...primitives, ...(objects.length ? { objectOp: objects } : {}) } };
   }
   return { routes, domains: domainConstants() };
 }

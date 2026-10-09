@@ -141,6 +141,16 @@ export const PERSONNEL_POLICIES = defineTable('personnel', {
     // includeSubsets=true 时嵌套各子集（nestedSubsets）：逐对象 object.view（无权限的子集跳过）+ 各自范围 + trimSubset
     fields: projector('personnel.employeeWithSubsets', 'personnel.employeeDetail'),
     ...byUuid,
+    // 嵌套子集只是附加披露：deps.authorize(object.view) 为假就跳过该子集，不拒绝请求（routes.ts nestedSubsets）
+    optional: {
+      nestedSubsets: object({
+        object: { from: 'mapper', mapper: 'personnel.nestedSubsets', domain: Object.keys(SUBSETS) },
+        operation: 'view',
+        button: noButton('只按子集对象查看权'),
+        scope: listScope('personnel.personScope'),
+        fields: subsetProjection,
+      }),
+    },
   }),
   [`PATCH ${EMPLOYEES}/:id`]: object({
     object: PERSONNEL_OBJECT,

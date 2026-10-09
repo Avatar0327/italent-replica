@@ -116,7 +116,14 @@ function syncSequence(kind: 'posts' | 'positions'): RoutePolicy {
     scope: pointScope({ body: 'items[*].id' }, `job.${kind}.byId`, NF_JOB),
     fields: noFields('返回 { taskId, state } 任务信封，不是对象字段'),
     guards: ['job.employmentScope', 'employment.linkage'],
-    rows: { path: 'items[*]', fields: { guard: 'job.sequenceSyncSources' }, target: { body: 'id' }, batch: 'atomic' },
+    // 逐项 writeFields(code, 'update', { sequenceId })（requireObjectWrite = object.update + 字段编辑权）：有序列的对象才判
+    rows: {
+      path: 'items[*]',
+      operation: 'update',
+      fields: { guard: 'job.sequenceSyncSources' },
+      target: { body: 'id' },
+      batch: 'atomic',
+    },
     write: write({ guard: 'job.sequenceSyncSources' }, 'job.sequenceSyncSources', none('返回任务信封，无对象可复核'), {
       preconditions: ['job.lockJobTenant'],
     }),

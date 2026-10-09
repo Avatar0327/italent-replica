@@ -55,11 +55,12 @@ export const AUDIT_POLICIES = defineTable('audit', {
   [`GET ${BASE}/command-failures`]: admin('audit_log', {
     scope: noScope('失败命令审计不按数据范围筛选（DEC-197）：只有查询筛选、保留期窗口与游标；对象编号在投影器打码'),
     fields: projector('audit.failureView', 'audit.commandFailure'),
-    // 360 链接 / 管理端的失败只给对应持有人（survey360FailureVisibility）：持“全部活动”按钮才看链接失败；不参与准入
+    // 360 链接 / 管理端的失败只给对应持有人（survey360FailureVisibility）：活动查看 + “全部活动”按钮
+    // （context.ts can(activity, view, viewAll) 先判 object.view 再判按钮）才看链接失败；不参与准入
     optional: {
       survey360LinkFailures: object({
         object: survey360.SURVEY360_OBJECTS.activity.code,
-        operation: 'button',
+        operation: 'view',
         button: button(survey360.SURVEY360_BUTTONS.allActivities, 'list'),
         scope: noScope('只决定 /api/survey360/ 路径的失败记录是否可见'),
         fields: noFields('只决定行可见'),

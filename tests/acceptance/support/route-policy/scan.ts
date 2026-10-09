@@ -7,7 +7,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
-import { splitDisclosure } from './disclosure.js';
 
 export const API_SRC = path.resolve(process.cwd(), 'apps/api/src');
 
@@ -615,26 +614,6 @@ function constantTexts(index: SourceIndex, file: string, text: string): string[]
   });
 }
 
-/**
- * 布尔授权函数：函数体直接返回授权结果（`return !!(await deps.authorize(…))` / `return deps.authorize(…)`），
- * 调用方决定它是准入还是披露（disclosure.ts R2）。只在可展开（非叶子）文件里找；叶子文件的函数按名字作原语匹配。
- */
-const evaluatorCache = new WeakMap<SourceIndex, ReadonlySet<string>>();
-export function booleanEvaluators(index: SourceIndex): ReadonlySet<string> {
-  const cached = evaluatorCache.get(index);
-  if (cached) return cached;
-  const names = new Set<string>();
-  for (const info of index.files.values()) {
-    if (LEAF_FILES.has(info.file)) continue;
-    for (const [name, text] of info.defs) {
-      const body = text.slice(text.indexOf('{') + 1).trim();
-      if (/^return (!!\()?(await )?deps\.authorize\(/.test(body)) names.add(name);
-    }
-  }
-  evaluatorCache.set(index, names);
-  return names;
-}
-
 /** 文本里 `ns.fn` 形式、ns 为命名空间 import 的引用：展开为目标文件里的 fn（叶子文件不展开）。 */
 function namespaceRefs(index: SourceIndex, file: string, text: string): { file: string; name: string }[] {
   const info = index.files.get(file);
@@ -649,19 +628,14 @@ function namespaceRefs(index: SourceIndex, file: string, text: string): { file: 
 
 /**
  * 处理函数文本 + 它（递归）引用的模块内函数文本；叶子文件不展开。`trace` 收集展开链（调试 / 统计）。
- * `admission`：每段文本先剥掉披露片段（disclosure.ts），只从剩下的部分继续展开——披露片段里调用的函数不进准入闭包。
  */
 export function closureText(
   index: SourceIndex,
   registration: StaticRegistration,
   maxDepth = 6,
   trace?: string[],
-  admission = false,
 ): string {
-  const evaluators = admission ? booleanEvaluators(index) : new Set<string>();
-  const keep = (text: string, handler = false) =>
-    admission ? splitDisclosure(text, handler, evaluators).admission : text;
-  const handlerText = keep(registration.handlerText, true);
+  const handlerText = registration.handlerText;
   const parts: string[] = [handlerText, ...constantTexts(index, registration.file, handlerText)];
   const visited = new Set<string>();
   const handlerNames = identifiers(handlerText);
@@ -687,7 +661,7 @@ export function closureText(
     if (visited.has(key)) continue;
     visited.add(key);
     trace?.push(`${item.depth}:${path.relative(API_SRC, hit.file)}#${item.name}`);
-    const text = keep(hit.text);
+    const text = hit.text;
     parts.push(text);
     parts.push(...constantTexts(index, hit.file, text));
     if (item.depth < maxDepth) {

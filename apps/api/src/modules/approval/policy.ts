@@ -169,9 +169,14 @@ function taskAction(fields: FieldsFrom, preconditions: readonly string[], extra:
     ...extra,
   });
 }
+/**
+ * 编辑权：body.fields 非空时 fieldRights 内 requireObjectWrite(快照对象, update, fields) → 403；登记为具名条件守卫
+ * approval.fieldRights（必需项表按 when:approval.fieldRights 关联快照对象的 update）。
+ */
+const editRights = { ...taskObject, guards: ['approval.fieldRights'] };
 /** 同意 / 不同意 / 驳回：body.fields 可选，字段集合与盲审可见集由 fieldRights 算（routes.ts 461–471 行）。 */
 const decision = (preconditions: readonly string[]) =>
-  taskAction({ guard: 'approval.fieldRights' }, preconditions, taskObject);
+  taskAction({ guard: 'approval.fieldRights' }, preconditions, editRights);
 /** openTask（openRun + 当前审批人）→ assertOpen（revision / pending / 业务版本）；后四项仅 body.fields 非空时执行。 */
 const APPROVE = [
   'openTask',
@@ -444,7 +449,7 @@ export const APPROVAL_POLICIES = defineTable('approval', {
     ...byId,
   }),
   // body.fields 必填（zod），空对象在命令内 editableInput → 403 APPROVAL_FIELD_NOT_EDITABLE
-  'POST /tasks/:id/edit': taskAction({ guard: 'approval.fieldRights' }, EDIT, taskObject),
+  'POST /tasks/:id/edit': taskAction({ guard: 'approval.fieldRights' }, EDIT, editRights),
   // ---- registerInstanceRoutes：发起人与管理员动作 ----------------------------------------------------------------------
   // requireResubmitRight 路由前置（发起人 403 / contract：按钮 + 范围 + requestWriteFields + corrections 字段权 /
   // personnel_change：自助按钮 + 本人绑定 403 APPROVAL_NOT_SELF）；无 content-type 时 body 视为 {}

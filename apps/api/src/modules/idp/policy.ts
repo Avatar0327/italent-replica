@@ -89,8 +89,40 @@ function reader(key: Key, scope: ReturnType<typeof listScope>, extra: { byId?: b
   });
 }
 
+/**
+ * 处理函数里随主对象一并要求的其他对象数据操作（F-039 第 4 轮补登）：级联删除子对象（DEC-309④-2，不论子对象是否
+ * 存在都要求，缺权整次 403）、复制 / 统一下发要看的源对象（看不到整次 403 / 404）。只判数据操作权，范围随主对象。
+ */
+function alongside(key: Key, operation: 'view' | 'create' | 'update' | 'delete', reason: string): RoutePolicy {
+  return object({
+    object: code(key),
+    operation,
+    button: noButton(reason),
+    scope: noScope('范围随主对象'),
+    fields: noFields('出口在主对象登记'),
+  });
+}
+/** 主对象分支 AND 随带的对象操作；写声明与非法标识留在组合层。 */
+function withAlongside(main: RoutePolicy, extra: readonly RoutePolicy[]): RoutePolicy {
+  if (!extra.length) return main;
+  const {
+    write: writePolicy,
+    invalidId,
+    ...admission
+  } = main as RoutePolicy & { write?: unknown; invalidId?: unknown };
+  return all([admission as RoutePolicy, ...extra], 'fields' in main ? main.fields : noFields('无'), {
+    ...(writePolicy ? { write: writePolicy as ReturnType<typeof idpWrite> } : {}),
+    ...(invalidId ? { invalidId: invalidId as typeof BAD_REQUEST } : {}),
+  });
+}
+
 /** 配置对象（流程 / 模板）的标准五条；写入口 currentEditable 复核（向下公开只读 403）。 */
-function configCrud(key: 'process' | 'template', path: string, guards: readonly string[] = []) {
+function configCrud(
+  key: 'process' | 'template',
+  path: string,
+  guards: readonly string[] = [],
+  cascade: readonly RoutePolicy[] = [],
+) {
   const editable = `idp.currentEditable(${key})`;
   return {
     [`GET ${path}`]: reader(key, ORG_LIST(key)),
@@ -118,23 +150,28 @@ function configCrud(key: 'process' | 'template', path: string, guards: readonly 
       guards: ['idp.publicDownReadonly', ...guards],
       byId: true,
     }),
-    [`DELETE ${path}/:id`]: writer({
-      key,
-      operation: 'delete',
-      button: 'delete',
-      level: 'detail',
-      scope: ORG_POINT(key),
-      fields: 'none',
-      result: editable,
-      guards: ['idp.publicDownReadonly'],
-      byId: true,
-    }),
+    [`DELETE ${path}/:id`]: withAlongside(
+      writer({
+        key,
+        operation: 'delete',
+        button: 'delete',
+        level: 'detail',
+        scope: ORG_POINT(key),
+        fields: 'none',
+        result: editable,
+        guards: ['idp.publicDownReadonly'],
+        byId: true,
+      }),
+      cascade,
+    ),
   };
 }
 
 /** 模板模块 / 通用目标：父模板范围内，按各自对象的数据操作权 + 同名按钮（create@list / update|delete@detail）。 */
 function templatePart(key: 'templateModule' | 'commonGoal', segment: string) {
   const path = `${BASE}/templates/:id/${segment}`;
+  // 删除发展目标模块连带其通用目标：须有通用目标删除权（DEC-309④-2，只在模块类型为 goal 时，条件守卫）
+  const cascade = key === 'templateModule' ? ['idp.goalModuleCascade'] : [];
   const part = (operation: Operation, fields: 'body' | 'none') =>
     writer({
       key,
@@ -144,7 +181,7 @@ function templatePart(key: 'templateModule' | 'commonGoal', segment: string) {
       scope: ORG_POINT('template'),
       fields,
       result: 'idp.currentEditable(template)',
-      guards: ['idp.publicDownReadonly'],
+      guards: ['idp.publicDownReadonly', ...(operation === 'delete' ? cascade : [])],
       outKey: 'template',
       byId: true,
     });
@@ -203,7 +240,11 @@ function issueTasks(): RoutePolicy {
     scope: noScope('计划范围在写分支（PLAN_LIST）'),
     fields: noFields('出口在组合层登记'),
   });
-  return all([admission as RoutePolicy, planView], out('plan'), issueWrite ? { write: issueWrite } : {});
+  // 统一下发用到的源对象（ISSUE_SOURCE_FIELDS：模板 / 模块 / 通用目标 / 目标）看不到一律 404（F-039 第 4 轮补登）
+  const sources = (['template', 'templateModule', 'commonGoal', 'goal'] as const).map((key) =>
+    alongside(key, 'view', '统一下发的源对象只判查看权'),
+  );
+  return all([admission as RoutePolicy, planView, ...sources], out('plan'), issueWrite ? { write: issueWrite } : {});
 }
 
 /** 批量干预（催办 / 启动下一阶段 / 终止）：plan update + 列表按钮；逐条回执按当前范围复核（范围外 404）。 */
@@ -216,6 +257,8 @@ function intervention(buttonCode: 'urge' | 'startNext' | 'terminate'): RoutePoli
     scope: PLAN_LIST,
     fields: 'body',
     result: 'idp.receiptRecheck',
+    // 不能干预本人为计划员工的计划（DEC-092，逐条回执 403 IDP_INTERVENE_SELF）
+    guards: ['idp.notOwnPlan'],
     // 进行中阶段的审批实例经审批引擎处理（openRun 锁运行行）
     preconditions: ['requireNew', 'openRun'],
   });
@@ -263,24 +306,47 @@ function keyInfo(key: 'tutorship' | 'career' | 'workShift', segment: string) {
 
 export const IDP_POLICIES = defineTable('idp', {
   // ---- 流程（含子流程）与候选审批流程 ---------------------------------------------------------------------------------
-  ...configCrud('process', `${BASE}/processes`),
-  [`GET ${BASE}/approval-processes`]: reader('process', noScope('候选审批流程按审批类型列出，不按 IDP 范围过滤'), {
-    outKey: 'subProcess',
-  }),
+  // 子流程写入（新建 / 修改时提交了子流程才判：子流程字段可见 + 按实际变化的子流程增删改权）为条件守卫；
+  // 删除流程级联删除子流程，不论是否存在都要子流程删除权（F-039 第 4 轮补登）
+  ...configCrud(
+    'process',
+    `${BASE}/processes`,
+    ['idp.subProcessWrites'],
+    [alongside('subProcess', 'delete', '级联删除子流程')],
+  ),
+  // 候选审批流程：流程查看权，另要流程新建或修改权之一（配置子流程才用得到；都没有 403，F-039 第 4 轮补登）
+  [`GET ${BASE}/approval-processes`]: all(
+    [
+      reader('process', noScope('候选审批流程按审批类型列出，不按 IDP 范围过滤'), { outKey: 'subProcess' }),
+      any([alongside('process', 'create', '新建或修改权之一'), alongside('process', 'update', '新建或修改权之一')]),
+    ],
+    out('subProcess'),
+  ),
   // ---- 模板：引用流程须另有流程查看权且流程在范围内（processScopeFor，DEC-178 同口径）---------------------------------
-  ...configCrud('template', `${BASE}/templates`, ['idp.processReference']),
-  [`POST ${BASE}/templates/:id/copy`]: writer({
-    key: 'template',
-    operation: 'create',
-    button: 'copy',
-    level: 'detail',
-    scope: ORG_POINT('template'),
-    fields: 'body',
-    result: 'idp.currentEditable(template)',
-    // 副本沿用原模板引用的流程：流程查看权 + 流程范围（processScopeFor）
-    guards: ['idp.processReference'],
-    byId: true,
-  }),
+  // 删除模板级联删除模块与通用目标，不论是否存在都要两者的删除权（F-039 第 4 轮补登）
+  ...configCrud(
+    'template',
+    `${BASE}/templates`,
+    ['idp.processReference'],
+    [alongside('templateModule', 'delete', '级联删除模块'), alongside('commonGoal', 'delete', '级联删除通用目标')],
+  ),
+  // 复制：继承内容须看得到模板、模块与通用目标（requireCopyViewable，整次 403）；实际继承的模块 / 通用目标在目标位置
+  // 的新建权按源模板内容判定，登记为条件守卫 idp.copyNestedWrites（F-039 第 4 轮补登）
+  [`POST ${BASE}/templates/:id/copy`]: withAlongside(
+    writer({
+      key: 'template',
+      operation: 'create',
+      button: 'copy',
+      level: 'detail',
+      scope: ORG_POINT('template'),
+      fields: 'body',
+      result: 'idp.currentEditable(template)',
+      // 副本沿用原模板引用的流程：流程查看权 + 流程范围（processScopeFor）
+      guards: ['idp.processReference', 'idp.copyNestedWrites'],
+      byId: true,
+    }),
+    (['template', 'templateModule', 'commonGoal'] as const).map((key) => alongside(key, 'view', '继承内容的查看门禁')),
+  ),
   [`POST ${BASE}/templates/:id/publish`]: writer({
     key: 'template',
     operation: 'update',
@@ -344,18 +410,24 @@ export const IDP_POLICIES = defineTable('idp', {
     result: 'idp.stillVisible',
     byId: true,
   }),
-  [`DELETE ${BASE}/plans/:id`]: writer({
-    key: 'plan',
-    operation: 'delete',
-    button: 'delete',
-    level: 'detail',
-    scope: PLAN_POINT,
-    fields: 'none',
-    result: 'idp.stillVisible',
-    // 进行中阶段先撤销审批实例（plan-service.ts cancelStageInstance → 审批引擎 openRun）
-    preconditions: ['openRun'],
-    byId: true,
-  }),
+  // 删除计划级联删除目标 / 任务 / 目标回顾 / 综述 / 回顾，各要删除权（DEC-309④-2，F-039 第 4 轮补登）
+  [`DELETE ${BASE}/plans/:id`]: withAlongside(
+    writer({
+      key: 'plan',
+      operation: 'delete',
+      button: 'delete',
+      level: 'detail',
+      scope: PLAN_POINT,
+      fields: 'none',
+      result: 'idp.stillVisible',
+      // 进行中阶段先撤销审批实例（plan-service.ts cancelStageInstance → 审批引擎 openRun）
+      preconditions: ['openRun'],
+      byId: true,
+    }),
+    (['goal', 'task', 'goalReview', 'analysis', 'review'] as const).map((key) =>
+      alongside(key, 'delete', '级联删除计划的组成对象'),
+    ),
+  ),
   // 能力候选：执行人（execution-service.ts candidates → requireExecutor(…, 'RowAddIdpGoal')：查看人 + 当前阶段在办
   // 待办人 + 节点按钮）；query.moduleId 非 UUID → 400；候选只含 id / name / definition / category
   [`GET ${BASE}/plans/:id/competency-candidates`]: relation({

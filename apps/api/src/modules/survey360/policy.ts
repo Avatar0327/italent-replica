@@ -134,8 +134,15 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
   'POST /roles': route({ key: 'settings', operation: 'create', write: { fields: 'body' } }),
   'PUT /roles/:id': route({ key: 'settings', operation: 'update', write: { fields: 'body' }, byId: true }),
   // ---- sync.ts：从系统管理中同步人员信息（sync@list）----------------------------------------------------------------
-  // 精细化下受限管理员 403 FINE_PERMISSION_RESTRICTED（people.ts requireUnrestricted，第 6 轮 R5-P2-1）
-  'GET /people/sync-conflicts': route({ key: 'person', button: BUTTONS.sync, scope: PEOPLE, guards: [UNRESTRICTED] }),
+  // 精细化下受限管理员 403 FINE_PERMISSION_RESTRICTED（people.ts requireUnrestricted，第 6 轮 R5-P2-1）；
+  // 冲突清单在事务内经 syncAccess 取员工信息范围，无员工信息查看权 403 NO_EMPLOYEE_ACCESS（F-039 第 4 轮补登）
+  'GET /people/sync-conflicts': route({
+    key: 'person',
+    button: BUTTONS.sync,
+    scope: PEOPLE,
+    guards: [UNRESTRICTED],
+    employees: true,
+  }),
   'POST /people/sync': route({
     key: 'person',
     button: BUTTONS.sync,

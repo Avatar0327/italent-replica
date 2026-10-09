@@ -42,7 +42,9 @@ function withPolicy(base: ManifestRoute, policy: RoutePolicy): ManifestRoute {
   return { ...base, policy };
 }
 
-const reported = (findings: readonly Finding[]) => findings.some((f) => /^(WEAKER|MISMATCH):/.test(f.code));
+// 第 4 轮起比较器先按必需项显式表硬比对：探测器看不到的事务内判定（级联删除权、源对象查看门禁）由 REQUIRED_* 报出
+const reported = (findings: readonly Finding[]) =>
+  findings.some((f) => /^(WEAKER|MISMATCH):|^REQUIRED_(MISSING|IN_OPTIONAL)$/.test(f.code));
 const describeFindings = (findings: readonly Finding[]) => findings.map((f) => `${f.code}: ${f.detail}`).join('\n');
 
 type Combinator = Extract<RoutePolicy, { kind: 'all' | 'any' }>;

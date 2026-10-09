@@ -1,5 +1,7 @@
 /**
  * 声明 vs 现状必测基准的比较器（F-039 PR-A §4.4「declaration-not-weaker」限定版）。内存比较，不发请求。
+ * 第一道：与必需项显式表硬比对（required.ts，DEC-348②）；准入 / 披露 / 守卫内部 / 条件准入只由表决定。
+ * 第二道（本文件）：基准事实先经表分流（admissionPrimitives），只由非准入义务承接的事实不进来；
  * 声明先展开成析取范式（features.ts），**每个备选准入路径**都要满足基准观测到的义务（实现审第 1 轮 P2-1）：
  * - 必备维度：基准观测到、且不由“或”关系原语吸收的维度，每个备选都要有（WEAKER:<维度>）；
  * - “或”关系（primitives.ts DISJUNCTIONS，如流程查看 = 管理员 或 对象查看、IDP 查看人 = HR 或 参与人）：
@@ -12,7 +14,10 @@
 import type { ManifestRoute } from '@italent/api';
 import type { ObservedContract, ObservedRoute } from './contract.js';
 import { type Alternative, declared, type Declared, type Identity, preconditionName } from './features.js';
-import { DISJUNCTIONS, GUARD_FACTS, KNOWN_GUARDS, type Obligation } from './primitives.js';
+import { DISJUNCTIONS, KNOWN_GUARDS, type Obligation } from './primitives.js';
+import { admissionPrimitives, checkRequired } from './required.js';
+import { REQUIRED } from './required/index.js';
+import type { RequiredTable } from './required/types.js';
 
 export interface Finding {
   readonly route: string;
@@ -103,39 +108,15 @@ function satisfies(dims: ReadonlySet<string>, objects: ReadonlySet<string>, need
   return coversObject(objects, code, op);
 }
 
-/**
- * 披露事实（disclosure.ts：非抛错的权限求值只决定响应里的附加披露）：准入备选或可选分支登记了即可；
- * 准入事实只能由准入备选满足，可选分支不能顶替（实现审第 2 轮 P2-1 残项）。
- */
-function compareDisclosure(
-  observed: ObservedRoute,
-  alt: Alternative,
-  optional: Alternative,
-  label: string,
-  absorbed: ReadonlySet<string>,
-  report: (code: string, detail: string) => void,
-): void {
-  const dims = new Set([...alt.dims, ...optional.dims]);
-  const objects = new Set([...alt.objects, ...optional.objects]);
-  for (const need of observed.primitives['disclose'] ?? []) {
-    if (absorbed.has(need)) continue; // “或”关系原语 / 守卫承载的判定
-    if (!satisfies(dims, objects, need as Obligation)) report('WEAKER:disclosure', `${label}缺披露 ${need}`);
-  }
-}
-
 function compareAlternative(
   observed: ObservedRoute,
   alt: Alternative,
-  optional: Alternative,
   label: string,
   report: (code: string, detail: string) => void,
 ): void {
   const dims = alt.dims;
   const ors = DISJUNCTIONS.filter((d) => observed.primitives['or']?.includes(d.name));
   const absorbed = new Set<string>(ors.flatMap((d) => d.absorbs));
-  for (const guard of observed.primitives['guard'] ?? []) {
-    for (const fact of GUARD_FACTS[guard] ?? []) absorbed.add(`obj:${fact}`);
-  }
   const names = (dim: string) => observed.primitives[dim]?.join(', ') ?? '';
   for (const dim of [...BOTH_WAYS, ...WEAKER_ONLY]) {
     if (!Object.hasOwn(observed.primitives, dim) || absorbed.has(dim)) continue;
@@ -160,7 +141,6 @@ function compareAlternative(
   for (const name of observed.primitives['precondition'] ?? []) {
     if (!alt.preconditions.has(preconditionName(name))) report('WEAKER:precondition', `${label}缺前提 ${name}`);
   }
-  compareDisclosure(observed, alt, optional, label, absorbed, report);
 }
 
 /** 选择器分支键必须等于本路由绑定的某个域。 */
@@ -182,12 +162,18 @@ function compareSelectors(
   }
 }
 
-export function compareRoute(contract: ObservedContract, route: ManifestRoute): Finding[] {
+export function compareRoute(
+  contract: ObservedContract,
+  route: ManifestRoute,
+  table: RequiredTable = REQUIRED,
+): Finding[] {
   const key = `${route.method} ${route.path}`;
-  const observed = contract.routes[key];
-  if (!observed) return [{ route: key, code: 'BASELINE_MISSING', detail: '基准没有这条端点，先重新探测' }];
+  const raw = contract.routes[key];
+  if (!raw) return [{ route: key, code: 'BASELINE_MISSING', detail: '基准没有这条端点，先重新探测' }];
+  // 第一道：与必需项显式表硬比对；第二道的输入只留准入义务承接（或无人承接的元数据）的事实
+  const findings: Finding[] = checkRequired(table, contract, [route]);
+  const observed: ObservedRoute = { ...raw, primitives: admissionPrimitives(raw, table[key] ?? []) };
   const decl = declared(route.policy);
-  const findings: Finding[] = [];
   const seen = new Set<string>();
   const report = (code: string, detail: string) => {
     if (seen.has(`${code}|${detail}`)) return;
@@ -202,7 +188,7 @@ export function compareRoute(contract: ObservedContract, route: ManifestRoute): 
 
   const many = decl.alternatives.length > 1;
   decl.alternatives.forEach((alt, i) => {
-    compareAlternative(observed, alt, decl.optional, many ? `备选 ${i + 1}/${decl.alternatives.length}：` : '', report);
+    compareAlternative(observed, alt, many ? `备选 ${i + 1}/${decl.alternatives.length}：` : '', report);
   });
 
   // “或”关系原语的各支维度也算观测到（流程查看的管理员分支）
@@ -224,6 +210,10 @@ export function compareRoute(contract: ObservedContract, route: ManifestRoute): 
   return findings;
 }
 
-export function compareDeclarations(contract: ObservedContract, routes: readonly ManifestRoute[]): Finding[] {
-  return routes.flatMap((route) => compareRoute(contract, route));
+export function compareDeclarations(
+  contract: ObservedContract,
+  routes: readonly ManifestRoute[],
+  table: RequiredTable = REQUIRED,
+): Finding[] {
+  return routes.flatMap((route) => compareRoute(contract, route, table));
 }

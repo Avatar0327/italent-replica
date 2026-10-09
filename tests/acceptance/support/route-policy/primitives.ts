@@ -390,17 +390,6 @@ export const DISJUNCTIONS: readonly Disjunction[] = [
   },
 ];
 
-/**
- * 守卫内部的对象判定（objects.ts 事实）：守卫是具名的组合 / 条件判定，基准观测到该守卫时，这些对象 × 操作事实
- * 由守卫承载（声明登记守卫即可，删守卫报 WEAKER:guard），不再要求单独的对象节点。
- */
-export const GUARD_FACTS: Readonly<Record<string, readonly string[]>> = {
-  // 模板编辑时 processId 存在才判（PATCH 为条件判定），新建 / 复制无条件
-  'idp.processReference': ['IDP.IDPProcess:view'],
-  'idp.templateVisible': ['IDP.IDPTemplate:view'],
-  'survey360.syncEmployees': ['TenantBase.EmployeeInformation:view'],
-};
-
 /** 目录里能观测到的守卫名（声明里出现这些名字时按双向比较）。 */
 export const KNOWN_GUARDS: ReadonlySet<string> = new Set(
   PRIMITIVES.filter((p) => p.dimension === 'guard').map((p) => p.name),

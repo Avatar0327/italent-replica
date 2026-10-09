@@ -16,7 +16,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
-import { checkEvidence, repoSource, type SourceReader } from './support/route-policy/evidence.js';
+import { checkEvidence, repoSource, type SourceReader, writeDigests } from './support/route-policy/evidence.js';
 import { admissionPrimitives, checkRequired } from './support/route-policy/required.js';
 import { REQUIRED_MUTATION_KINDS, requiredMutants } from './support/route-policy/required-mutate.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
@@ -94,7 +94,8 @@ describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
   });
 
   it('全表证据校验零发现：每条义务都有强制调用点证据，锚点命中，摘要与源码一致', () => {
-    const findings = checkEvidence(REQUIRED);
+    if (process.env['ROUTE_POLICY_UPDATE_DIGESTS'] === '1') writeDigests(REQUIRED);
+    const findings = checkEvidence(REQUIRED, { unused: true });
     expect(findings, show(findings)).toEqual([]);
   });
 
@@ -279,9 +280,10 @@ describe('AC-PRM-FW-02 显式表：条件准入由必需的具名条件守卫承
 
   it('360 导入评价者：删条件守卫 → REQUIRED_MISSING；员工信息查看写成无条件准入 → CONDITIONAL_AS_ADMISSION', () => {
     const base = route(IMPORT_360);
-    const text = JSON.stringify(base.policy).replaceAll('"survey360.syncEmployees",', '');
-    expect(text).not.toContain('survey360.syncEmployees');
-    expect(codes(check([withPolicy(base, JSON.parse(text) as RoutePolicy)]))).toContain('REQUIRED_MISSING');
+    const policy = base.policy as ObjectNode;
+    const stripped = { ...policy, guards: (policy.guards ?? []).filter((g) => g !== 'survey360.syncEmployees') };
+    expect(JSON.stringify(stripped)).not.toContain('survey360.syncEmployees');
+    expect(codes(check([withPolicy(base, stripped)]))).toContain('REQUIRED_MISSING');
     const employeeView: RoutePolicy = {
       kind: 'object',
       object: 'TenantBase.EmployeeInformation',
