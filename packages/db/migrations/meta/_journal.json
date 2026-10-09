@@ -544,15 +544,15 @@
     {
       "idx": 77,
       "version": "7",
-      "when": 1791560200049,
-      "tag": "0077_succession_records",
+      "when": 1791560258165,
+      "tag": "0077_survey360_b",
       "breakpoints": true
     },
     {
       "idx": 78,
       "version": "7",
-      "when": 1791560205300,
-      "tag": "0078_succession_records_rls",
+      "when": 1791560262290,
+      "tag": "0078_survey360_b_isolation",
       "breakpoints": true
     }
   ]
