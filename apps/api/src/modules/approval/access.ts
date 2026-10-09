@@ -233,10 +233,12 @@ export async function adminScope(
   for (const button of buttons)
     allowed ||= await hasButton(deps, ctx, button, button === 'adminLogs' ? 'list' : 'detail');
   if (!allowed) return null;
-  return byBusinessScope(ctx, (objectCode) =>
-    resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`),
-  );
+  return byBusinessScope(ctx, listScopeOf(deps, ctx));
 }
+
+/** 各业务对象的列表页范围（任职记录 / 合同 / IDP 计划）。 */
+const listScopeOf = (deps: TenantRouteDeps, ctx: TenantContext) => (objectCode: string) =>
+  resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
 
 /**
  * F-067：转交 / 改派目标须在操作人对该实例业务对象的管理范围内（IDP-R16“受管理单元限制”）。谓词对 approval_instances
@@ -246,9 +248,7 @@ export async function adminScope(
 export type TargetScope = (employeeId: string) => SQL;
 
 export async function adminTargetScope(deps: TenantRouteDeps, ctx: TenantContext): Promise<TargetScope> {
-  const scopes = await businessScopes((objectCode) =>
-    resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`),
-  );
+  const scopes = await businessScopes(listScopeOf(deps, ctx));
   return (employeeId) => perBusinessType(scopes, (scope) => scopeSql(scope, { person: sql`${employeeId}::uuid` }));
 }
 

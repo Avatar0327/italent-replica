@@ -117,7 +117,7 @@ const ACTIONS: readonly Action[] = [
 ];
 
 function defineSuite(name: string, build: (label: string) => Promise<Scene>) {
-  describe(`F-067 ${name}：管理员转交 / 改派目标须在操作人范围内`, () => {
+  describe(`AC-APV（补）F-067 ${name}：管理员转交 / 改派目标须在操作人范围内`, () => {
     it('范围内实例转 / 改派给范围外员工、未绑定纯账号、不存在账号：错误完全相同，实例 / 待办 / 审计 / 目标可见性不变', async () => {
       const scene = await build(`f067-deny-${name}`);
       const call = scopedApi(scene);
@@ -378,7 +378,7 @@ defineSuite('发展计划', async (label) => {
   };
 });
 
-describe('F-067 既有规则无回归（范围内目标仍走 adminAct 的其余判定）', () => {
+describe('AC-APV（补）F-067 既有规则无回归（范围内目标仍走 adminAct 的其余判定）', () => {
   it('范围内目标是同节点其他办理人 / 冻结主体回避：仍按原错误码拒绝，不被范围校验吞掉', async () => {
     const w = await approvalWorld(database().db, 'f067-regress');
     const s = await transferScene(w);

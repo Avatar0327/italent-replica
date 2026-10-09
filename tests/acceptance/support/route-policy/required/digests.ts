@@ -17,8 +17,8 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/access.ts': {
     PROCESS_ADMIN: 'ca58b0b364f1',
-    adminScope: 'b8cd26385798',
-    adminTargetScope: 'e33a9918d206',
+    adminScope: '175ed4b1418f',
+    adminTargetScope: 'ae5afabda089',
     hasButton: '6dbb8ca471b1',
     isProcessAdmin: 'e5782416fefc',
     requireProcessButton: '782f172bb6ca',
