@@ -165,6 +165,21 @@ describe('第 2 轮 P2-4 / P2-5：报告与报表的字段裁剪、转发的正�
     for (const column of table.columns) expect(column).not.toHaveProperty('scope');
   });
 
+  it('看不到套卷名 / 指标与题目名 / 模板 / 条目 ID：报告任何层级都不带这些名称（自检补充）', async () => {
+    const s = await answeredAndDisabled('r2j');
+    await s.w.ok(generate(s));
+    const user = await customAdmin(s, '看不到名称', {
+      result: ['questionnaireName', 'itemName', 'template', 'itemId'],
+    });
+    const [row] = await reports(s, user);
+    const report = await s.w.ok<Record<string, unknown>>(s.w.as(user)('GET', `${s.path}/reports/${row!.id}`));
+    const text = JSON.stringify(report);
+    for (const name of [s.q.name, '协作能力', '沟通', '支持', '主动沟通', '倾听反馈', '协作支持', '标准版'])
+      expect(text, name).not.toContain(name);
+    for (const keyName of ['dimensionId', 'itemId', 'templateName', 'question'])
+      expect(text, keyName).not.toContain(`"${keyName}":`);
+  });
+
   it('转发要求发送人对报告正文有完整查看权：看不到分数的转发人 403，不发邮件', async () => {
     const s = await answeredAndDisabled('r2e');
     await s.w.ok(generate(s));
