@@ -766,6 +766,9 @@
         "fieldsOut": [
           "org write()"
         ],
+        "guard": [
+          "personnel.subsetPolicy"
+        ],
         "object": [
           "personnel access"
         ],
@@ -8278,6 +8281,9 @@
         "fieldsOut": [
           "org write()"
         ],
+        "guard": [
+          "personnel.subsetPolicy"
+        ],
         "object": [
           "personnel access"
         ],
@@ -13139,7 +13145,8 @@
           "assertSelfServiceFields"
         ],
         "guard": [
-          "personnel.selfServiceFields"
+          "personnel.selfServiceFields",
+          "personnel.subsetRequestPolicy"
         ],
         "precondition": [
           "requireSelf"
@@ -13182,6 +13189,9 @@
         ],
         "fieldsOut": [
           "org write()"
+        ],
+        "guard": [
+          "personnel.subsetPolicy"
         ],
         "object": [
           "personnel access"

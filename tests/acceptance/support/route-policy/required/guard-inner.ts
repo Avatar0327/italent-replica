@@ -94,4 +94,7 @@ export const INNER_CONDITIONS: Readonly<Record<string, string>> = {
     '更新人才标准时 dimensions 中存在现有引用之外的新增引用才判指标查看权；只改已有引用的 weight / target、空数组都不判',
   'details.targetReference':
     '标准 details 非空：每个单元格的指标引用都判指标查看权；details 为空数组（创建 / 更新）不判；PATCH 不带 details 也不判',
+  'instance.personnelChange':
+    '审批实例业务类型为人员子集变更（personnel_change）时，同单重提经适配器调 resubmitChangeInTransaction，按子集登记的' +
+    '自助申请准入复核（R3-T02 P0）；其他业务类型不判；未登记策略的子集钩子不调用',
 };
