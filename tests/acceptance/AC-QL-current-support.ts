@@ -6,13 +6,18 @@ import { randomUUID } from 'node:crypto';
 import { type sql, withTenant } from '@italent/db';
 import { expect } from 'vitest';
 import type { useTestDb } from '@italent/testkit';
-import { qualificationWorld } from './AC-QL-support.js';
+import { QL_NOW, qualificationWorld } from './AC-QL-support.js';
 
 export const rowsOf = <T>(value: unknown): T[] => (Array.isArray(value) ? value : (value as { rows: T[] }).rows) as T[];
 
 export async function currentWorld(database: ReturnType<typeof useTestDb>, label: string) {
   const db = database().db;
-  const w = await qualificationWorld(db, label);
+  let now = QL_NOW;
+  /** 推进应用时钟：记录的创建时间不同，才能验证“开始日相同取后建的”。 */
+  const tick = () => {
+    now = new Date(now.getTime() + 60_000);
+  };
+  const w = await qualificationWorld(db, label, { clock: () => now });
   const klass = await w.categoryClass();
   const category = await w.category(klass.id);
   const otherCategory = await w.category(klass.id);
@@ -77,7 +82,7 @@ export async function currentWorld(database: ReturnType<typeof useTestDb>, label
   };
   const count = (query: ReturnType<typeof sql>) =>
     tx(async (t) => Number(rowsOf<{ n: number }>(await t.execute(query))[0]!.n));
-  return { w, db, tx, klass, category, otherCategory, p1, p2, p3, employee, record, remove, systemRecord, count };
+  return { w, db, tx, tick, klass, category, otherCategory, p1, p2, p3, employee, record, remove, systemRecord, count };
 }
 
 export type CurrentWorld = Awaited<ReturnType<typeof currentWorld>>;

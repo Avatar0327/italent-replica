@@ -74,7 +74,7 @@ describe('AC-QL-current 当前资格：单一时间轴（DEC-335①）', () => {
   });
 
   it('数据有重叠时取开始日最晚的一条；开始日相同取后建的（每人最多一条）', async () => {
-    const { w, tx, employee, record, p2 } = await currentWorld(database, 'qc-overlap');
+    const { w, tx, tick, employee, record, p2 } = await currentWorld(database, 'qc-overlap');
     const id = await employee();
     await record(id, { startDate: '2025-01-01' });
     const later = await record(id, { levelId: p2.id, startDate: '2025-06-01' });
@@ -83,6 +83,7 @@ describe('AC-QL-current 当前资格：单一时间轴（DEC-335①）', () => {
     });
     const tie = await employee();
     await record(tie, { startDate: '2025-06-01' });
+    tick();
     const newer = await record(tie, { levelId: p2.id, startDate: '2025-06-01' });
     expect(await tx((t) => currentQualification(t, w.tenant.id, tie, '2026-01-01'))).toMatchObject({
       recordId: newer.id,
