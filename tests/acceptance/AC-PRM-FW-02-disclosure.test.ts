@@ -71,12 +71,18 @@ const withEntry = (key: string, obligations: readonly Obligation[]): RequiredTab
 const MEMBER = { kind: 'member', reason: '夹具', fields: { mode: 'none', reason: '夹具' } };
 const clone = <T>(value: T): T => structuredClone(value);
 const isDisclosure = (o: Obligation) => o.purpose?.startsWith('disclosure:') ?? false;
+/** 表里的披露分支（端点 × 分支名）。设计 §1.3 实测 33 个，之后随新模块增加（任职资格 +6）。 */
+const disclosureBranches = () =>
+  Object.entries(REQUIRED).flatMap(([key, os]) => [
+    ...new Set(os.filter(isDisclosure).map((o) => `${key}|${o.purpose}`)),
+  ]);
 
 describe('AC-PRM-FW-02 B-01 披露分支：位置 / 嵌套 / 名字（D1～D3）与逐备选比较（R3）', () => {
-  it('真实声明 × 真实表零发现；33 个披露位置全部挂在根节点，名字合 D3', () => {
+  it('真实声明 × 真实表零发现；披露位置全部挂在根节点，名字合 D3，数量等于表里的披露分支数', () => {
     expect(check(manifest.declared), show(check(manifest.declared))).toEqual([]);
     const branches = manifest.declared.flatMap((r) => [...declaredPerms(r.policy).optional]);
-    expect(branches).toHaveLength(33);
+    expect(branches).toHaveLength(disclosureBranches().length);
+    expect(branches.length).toBeGreaterThanOrEqual(33);
     for (const [name, branch] of branches) {
       expect(OPTIONAL_NAME_PATTERN.test(name), name).toBe(true);
       expect(branch.path, name).toBe(`optional.${name}.`);
@@ -225,12 +231,21 @@ describe('AC-PRM-FW-02 B-03 范围绑定（need）：与“或”满足合并、
     expect(codes(check([base], table))).toContain('REQUIRED_MISSING');
   });
 
-  it('R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务缺 need → NEED_UNBOUND（现状 20 条端点）', () => {
+  it('R1c：含 ≥2 个承载节点的准入备选，其 obj: / admin: 准入义务缺 need → NEED_UNBOUND（设计 §1.3 实测 20 条端点）', () => {
     const stripped: RequiredTable = Object.fromEntries(
       Object.entries(REQUIRED).map(([key, os]) => [key, os.map(({ need: _need, ...rest }) => rest as Obligation)]),
     );
     const unbound = check(manifest.declared, stripped).filter((f) => f.code === 'NEED_UNBOUND');
-    expect(new Set(unbound.map((f) => f.route)).size).toBe(20);
+    const multi = manifest.declared.filter((r) =>
+      declaredPerms(r.policy).alternatives.some((alt) => {
+        const carriers = [...alt].flatMap(([perm, sources]) =>
+          /^(obj|admin):/.test(perm) ? sources.filter((s) => s.carrier).map((s) => s.path) : [],
+        );
+        return new Set(carriers).size >= 2;
+      }),
+    );
+    expect(multi).toHaveLength(20);
+    expect(new Set(unbound.map((f) => f.route))).toEqual(new Set(multi.map((r) => `${r.method} ${r.path}`)));
   });
 
   it('R3c：披露义务缺 need → DISCLOSURE_NEED_UNBOUND（每条披露义务一条）', () => {
@@ -292,10 +307,10 @@ describe('AC-PRM-FW-02 B-01 / B-03 结构弱化：按声明结构与表的披露
     });
   }
 
-  it('disclosure→moved 对无 of 的端点不生成；disclosure→any-member 的生成数 = 披露分支数 33', () => {
+  it('disclosure→moved 对无 of 的端点不生成；disclosure→any-member 的生成数 = 披露分支数', () => {
     const moved = all().filter((w) => w.kind === 'disclosure→moved');
     expect(moved.every((w) => ['all', 'any'].includes((w.route.policy as { kind: string }).kind))).toBe(true);
-    expect(all().filter((w) => w.kind === 'disclosure→any-member')).toHaveLength(33);
+    expect(all().filter((w) => w.kind === 'disclosure→any-member')).toHaveLength(disclosureBranches().length);
   });
 });
 
@@ -304,8 +319,8 @@ describe('AC-PRM-FW-02 守卫内部义务：内部角色 inner、GUARD_INNER_ALT
     os.filter((o) => o.purpose?.startsWith('guard:')).map((o) => [key, o] as const),
   );
 
-  it('现表 45 条守卫内部义务全部登记 inner；角色只取 required / or / when', () => {
-    expect(guards).toHaveLength(45);
+  it('现表全部守卫内部义务（PR-A 台账 45 条 + 任职资格 18 条）都登记 inner；角色只取 required / or / when', () => {
+    expect(guards.length).toBeGreaterThanOrEqual(45);
     for (const [key, o] of guards) {
       expect(['required', 'or', 'when'], `${key} ${o.perm}`).toContain(o.inner?.role);
     }
@@ -319,7 +334,7 @@ describe('AC-PRM-FW-02 守卫内部义务：内部角色 inner、GUARD_INNER_ALT
       ]),
     );
     const found = check(manifest.declared, stripped).filter((f) => f.code === 'GUARD_ROLE_UNBOUND');
-    expect(found).toHaveLength(45);
+    expect(found).toHaveLength(guards.length);
   });
 
   it('idp.executor 的内部“或”：HR（权限）或参与人（数据态，不经授权器），带证据', () => {

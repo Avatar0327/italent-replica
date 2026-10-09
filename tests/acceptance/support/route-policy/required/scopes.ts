@@ -85,6 +85,19 @@ export const SCOPE_AT = {
         "creator: creatorSql(ctx.tenantId, orgId, 'org.create', 'organization'), }),",
     ),
   ],
+  'org.scope(qualification)': [
+    scope(
+      `${M}/qualification/candidates.ts#organizationAccess`,
+      'visible: scopeSql(scope, { org: orgId, ' +
+        "creator: creatorSql(ctx.tenantId, orgId, 'org.create', 'organization'), }),",
+    ),
+  ],
+  'ql.openRead(ql_targets)': [
+    scope(
+      `${M}/qualification/route-support.ts#readableIds`,
+      'const scope = await qualificationScope(c, deps, ctx, object);',
+    ),
+  ],
   'employment.scopeSql': [
     scope(
       `${M}/job/sequence-receipts.ts#visibleSequenceReceipts`,
