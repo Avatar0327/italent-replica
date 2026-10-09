@@ -8,8 +8,7 @@
  * - 响应裁剪：顶层与嵌套层各按本对象字段权限；没有嵌套对象查看权时整段省略。
  */
 import { sql, type Tx } from '@italent/db';
-import { IDP_OBJECTS, linkedViewable, tenantLocalDate, withLinkedFields, type IdpObject } from '@italent/domain';
-import type { SQL } from 'drizzle-orm';
+import { IDP_OBJECTS, linkedViewable, withLinkedFields, type IdpObject } from '@italent/domain';
 import type { Context } from 'hono';
 import { type Authorizer, requirePermission } from '../../authorization.js';
 import { AppError } from '../../errors.js';
@@ -17,7 +16,8 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
 import { registerPersonScopedObject } from '../permission/scope-resolver.js';
-import { authorizeInTransaction, getModuleViewableFields, scopeAllows, scopeSql } from '../permission/module-access.js';
+import { authorizeInTransaction, getModuleViewableFields, scopeAllows } from '../permission/module-access.js';
+import { publicDownSql } from '../permission/public-down.js';
 import {
   button,
   objectContext,
@@ -268,50 +268,6 @@ export async function requireEditable(tx: Tx, ctx: IdpContext, scope: ModuleScop
 /** 新建 / 改所属组织：目标组织须在范围内（不因“使用用户”或向下公开放行，DEC-082）；范围外按不存在 404。 */
 export function requireCreatable(scope: ModuleScope, object: IdpObject, orgId: string): void {
   visible(scope, orgId, `${IDP_LABELS[object]}不存在`);
-}
-
-/**
- * 列表的 SQL 侧范围谓词（分页之前生效）：所属组织在范围内、命中创建人，或向下公开且范围内有其下级组织。
- * 别名列由调用方给出（如 sql`p.org_id`）。
- */
-export function readableSql(ctx: IdpContext, scope: ModuleScope, columns: { org: SQL; publicDown: SQL; creator: SQL }) {
-  if (scope.all) return sql`true`;
-  return sql`(${scopeSql(scope, { org: columns.org, creator: columns.creator })}
-    OR (${columns.publicDown} AND ${publicDownSql(ctx, scope, columns.org)}))`;
-}
-
-/** 范围内组织（按组织维度展开后的组织 ID）。 */
-function scopeOrgIds(scope: ModuleScope): string[] {
-  const terms = scope.terms ?? [{ dimension: 'management', orgIds: scope.orgIds, personIds: scope.personIds }];
-  const ids = new Set<string>();
-  for (const term of terms) {
-    if (term.dimension === 'management' || term.dimension === 'organization') term.orgIds.forEach((id) => ids.add(id));
-  }
-  return [...ids];
-}
-
-/**
- * 向下公开：对象的所属组织是查看人范围内某个组织的上级（行政维度，按租户时区当天的组织版本）。
- * 范围内组织为空时恒为 false。
- */
-function publicDownSql(ctx: IdpContext, scope: ModuleScope, org: SQL): SQL {
-  const ids = scopeOrgIds(scope);
-  if (!ids.length) return sql`false`;
-  const asOf = tenantLocalDate(ctx.now, ctx.timezone);
-  return sql`${org} IN (
-    WITH RECURSIVE up(org_id, depth) AS (
-      SELECT unnest(${`{${ids.join(',')}}`}::uuid[]), 0
-      UNION
-      SELECT l.parent_org_id, up.depth + 1 FROM up
-      CROSS JOIN LATERAL (
-        SELECT v.id FROM org_versions v
-        WHERE v.tenant_id = ${ctx.tenantId}::uuid AND v.org_id = up.org_id AND v.start_date <= ${asOf}::date
-        ORDER BY v.start_date DESC, v.version_no DESC LIMIT 1
-      ) cv
-      JOIN org_hierarchy_links l ON l.tenant_id = ${ctx.tenantId}::uuid AND l.version_id = cv.id
-        AND l.dimension = 'admin'
-      WHERE up.depth < 64
-    ) SELECT org_id FROM up)`;
 }
 
 /** 列表信封：查看人在该对象上有没有任何数据范围。 */

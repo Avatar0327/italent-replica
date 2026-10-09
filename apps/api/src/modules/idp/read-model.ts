@@ -37,6 +37,7 @@ export interface SubProcessView {
   readonly category: string;
   readonly approvalType: string;
   readonly approvalProcessId: string;
+  readonly endNoticeTemplate: string | null;
   readonly startMode: StartMode;
   readonly startTimeType: StartTimeType | null;
   readonly fixedDate: string | null;
@@ -135,6 +136,7 @@ export function subProcessView(row: SubProcessRow, index: number): SubProcessVie
     category: row.category,
     approvalType: row.approvalType,
     approvalProcessId: row.approvalProcessId,
+    endNoticeTemplate: row.endNoticeTemplate,
     ...rule,
     ruleText: startRuleText(rule, index),
   };

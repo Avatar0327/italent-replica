@@ -81,6 +81,7 @@ export const idpSubProcesses = pgTable(
     category: text('category').notNull(),
     approvalType: text('approval_type').notNull(),
     approvalProcessId: uuid('approval_process_id').notNull(),
+    endNoticeTemplate: text('end_notice_template'),
     startMode: text('start_mode').notNull(),
     startTimeType: text('start_time_type'),
     fixedDate: date('fixed_date', { mode: 'string' }),
