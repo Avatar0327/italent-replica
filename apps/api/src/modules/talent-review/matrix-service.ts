@@ -193,11 +193,13 @@ async function validateShape(tx: Tx, ctx: MatrixWriteContext, shape: Shape, curr
  */
 export async function lockPositionFields(tx: Tx, tenantId: string, fieldIds: readonly string[]): Promise<void> {
   for (const id of [...new Set(fieldIds)].sort()) {
-    await tx.execute(
-      sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId}::text || ':matrix-position:' || ${id}::text, 0))`,
-    );
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${positionLockKey(tenantId, id)})`);
   }
 }
+
+/** 位置字段占用锁的键（租户 + 字段）；并发测试的屏障用同一个键。 */
+export const positionLockKey = (tenantId: string, fieldId: string) =>
+  sql`hashtextextended(${tenantId}::text || ':matrix-position:' || ${fieldId}::text, 0)`;
 
 // ---- 子数据写入 ----------------------------------------------------------------------------------------------------
 
