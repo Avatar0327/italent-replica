@@ -498,6 +498,20 @@
       "when": 1791514592478,
       "tag": "0070_sharp_the_initiative",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1791524786955,
+      "tag": "0071_demonic_doctor_strange",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1791524826804,
+      "tag": "0072_f058_avatar_isolation",
+      "breakpoints": true
     }
   ]
 }

@@ -33,6 +33,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import { tenantOf, type TenantContext, type TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
 import { findCurrentRecord } from '../employment/read-model.js';
+import { personAvatars } from '../avatar/references.js';
 import {
   authorizeInTransaction,
   getModuleViewableFieldsInTransaction,
@@ -792,12 +793,26 @@ async function requireConflictInScope(tx: Tx, scope: ModuleScope, id: string): P
 }
 
 /** 冲突清单：嵌套候选按查看人的人员字段裁剪（候选的 personId 对应人员 id）；冲突本身是协议字段。 */
-const conflictList: Present = async (viewer, body: { items: { candidates: object[] }[] }) => {
+const conflictList: Present = async (
+  viewer,
+  body: { items: { candidates: { personId: string; name: string }[] }[] },
+) => {
   const fields = await viewer.fields('person');
+  const maySeeName = fields === undefined || fields.has('name');
+  const avatars = maySeeName
+    ? await personAvatars(
+        viewer.tx,
+        viewer.tenant.tenantId,
+        body.items.flatMap((item) => item.candidates.map((candidate) => candidate.personId)),
+      )
+    : new Map();
   return {
     items: body.items.map((item) => ({
       ...item,
-      candidates: item.candidates.map((candidate) => pick(candidate, fields, { personId: 'id' })),
+      candidates: item.candidates.map((candidate) => ({
+        ...pick(candidate, fields, { personId: 'id' }),
+        ...(maySeeName ? { avatar: avatars.get(candidate.personId) ?? null } : {}),
+      })),
     })),
   };
 };

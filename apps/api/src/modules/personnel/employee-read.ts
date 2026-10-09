@@ -4,6 +4,7 @@ import { ageOn, computeTenure, EMPLOYEE_FIELDS, tenantLocalDate, type TenureInte
 import type { SQL } from 'drizzle-orm';
 import { AppError } from '../../errors.js';
 import { camel, rows, type PersonnelContext, type Row } from './store.js';
+import { avatarSql } from '../avatar/references.js';
 
 export function employeeJoins(ctx: PersonnelContext): SQL {
   const asOf = tenantLocalDate(ctx.now, ctx.timezone);
@@ -39,6 +40,7 @@ function jobJoin(table: string, alias: string, field: string, date: string) {
     ORDER BY j.start_date DESC,j.version_no DESC LIMIT 1) ${sql.identifier(alias)} ON true`;
 }
 export const employeeAttributes = sql`e.code,COALESCE(v.name,e.name) AS employee_name,u.user_id,
+  ${avatarSql(sql`e.tenant_id`, sql`u.user_id`)} AS avatar,
   cycles.first_entry_date::text,cycles.latest_entry_date::text,r.entry_date::text,r.last_work_date::text,
   r.current_employee_status AS employee_status,r.current_entry_status AS entry_status,
   ${sortRankColumns},person_rank.order_code,

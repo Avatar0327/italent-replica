@@ -4,6 +4,8 @@ import { TransferApplication, SelfServiceShell, EmploymentList } from '../self-s
 import { transferRequest, requestError, TRANSFER_API } from './api.js';
 import { text } from './messages.js';
 import './transfer.css';
+import { PersonAvatar } from '../shared/PersonAvatar.js';
+import type { AvatarReference } from '../account/avatar-api.js';
 
 type Row = { [key: string]: string | number | boolean | null | Record<string, unknown> };
 type Result = { items: Row[]; counts?: Record<string, number | null>; pageSize?: number };
@@ -155,7 +157,7 @@ function ReadList({ tenantId, path, todos = false }: { tenantId: string; path: s
           <EmploymentList
             items={data.items}
             columns={Object.entries(labels.columns).map(([key, label]) => ({ key, label }))}
-            renderCell={displayCell}
+            renderCell={(row, key) => displayCell(row, key, tenantId)}
           />
         )
       ) : (
@@ -173,10 +175,22 @@ function ReadList({ tenantId, path, todos = false }: { tenantId: string; path: s
   );
 }
 
-function displayCell(row: Row, key: string) {
+function avatarReference(value: unknown): AvatarReference | null {
+  if (!value || typeof value !== 'object' || !('id' in value) || !('url' in value)) return null;
+  return typeof value.id === 'string' && typeof value.url === 'string' ? { id: value.id, url: value.url } : null;
+}
+
+function displayCell(row: Row, key: string, tenantId: string) {
   const display = row.display && typeof row.display === 'object' ? row.display : row;
   const value = key === 'tenure' ? row.tenure : display[key];
   if (value == null) return '—';
+  if (key === 'name')
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <PersonAvatar tenantId={tenantId} name={String(value)} avatar={avatarReference(row.avatar)} size={32} />
+        {String(value)}
+      </span>
+    );
   if (key === 'leaving') return value ? labels.leavingYes : labels.leavingNo;
   if (key === 'employeeStatus') return labels.employeeStatuses[String(value)] ?? String(value);
   if (key === 'entryStatus') return labels.entryStatuses[String(value)] ?? String(value);

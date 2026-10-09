@@ -27,6 +27,7 @@ import type { Hono } from 'hono';
 import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
+import { personAvatars, type AvatarReference } from '../avatar/references.js';
 import { findCurrentRecord } from '../employment/read-model.js';
 import { uuidParam } from '../job/context.js';
 import type { SQL } from 'drizzle-orm';
@@ -321,11 +322,22 @@ const NESTED_PERSON = { internal: 'employeeId' };
 async function withNested(viewer: Viewer, rows: readonly Record<string, unknown>[], key: 'person' | 'appraiser') {
   const relation = await viewer.fields('relation');
   const person = await viewer.fields('person');
+  const personKey = key === 'person' ? 'personId' : 'appraiserPersonId';
+  // 只为已允许出现姓名的嵌套人员补头像；人员详情范围与匿名作答页授权不在这里放宽。
+  const showAvatar = (!relation || relation.has(key)) && (!person || person.has('name'));
+  const avatars = showAvatar
+    ? await personAvatars(
+        viewer.tx,
+        viewer.tenant.tenantId,
+        rows.flatMap((row) => (typeof row[personKey] === 'string' ? [row[personKey] as string] : [])),
+      )
+    : new Map<string, AvatarReference | null>();
   return rows.map((row) => {
     const trimmed = pick(row, relation);
     const inner = trimmed[key] ? pick(trimmed[key] as object, person, NESTED_PERSON) : {};
     const { [key]: _nested, ...rest } = trimmed;
-    return Object.keys(inner).length ? { ...rest, [key]: inner } : rest;
+    const shown = 'name' in inner ? { ...inner, avatar: avatars.get(row[personKey] as string) ?? null } : inner;
+    return Object.keys(shown).length ? { ...rest, [key]: shown } : rest;
   });
 }
 

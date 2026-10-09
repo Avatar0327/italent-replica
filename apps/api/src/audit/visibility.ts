@@ -313,6 +313,22 @@ const survey360Rules: readonly Rule[] = [
 ];
 
 const RULES: readonly Rule[] = [
+  {
+    types: ['Account.Avatar'],
+    objectCode: 'Account.Avatar',
+    fixedFields: [
+      'revision',
+      'avatar',
+      'avatar.id',
+      'avatar.filename',
+      'avatar.contentType',
+      'avatar.byteSize',
+      'avatar.sha256',
+      'avatar.status',
+    ],
+    resolve: async () => sql`true`,
+    visible: (_scope, row, viewer) => sql`${row.objectId}=${viewer.userId} AND ${row.actor}=${viewer.userId}::uuid`,
+  },
   ...survey360Rules,
   {
     // DEC-216 / F-007：联动汇总按任职查看规则判定，人数按本组织本次联动的可见逐条审计重算。
