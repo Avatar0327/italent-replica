@@ -318,6 +318,10 @@ export const PRIMITIVES: readonly Primitive[] = [
     // 人才盘点准备度：按 enabled 筛选须有该字段查看权；名称实际变化要求看全部（R3-T04 路由声明）
     ['talentReview.filterFieldVisible', call('requireFilterVisible'), { modules: ['talent-review'] }],
     ['talentReview.renameRequiresSeeAll', /\bREADINESS_NAME_REQUIRES_SEE_ALL\b/, { modules: ['talent-review'] }],
+    // 人才盘点配置对象（分类 / 角色 / 字段目录）：改名要求看全部，判定在查重之前（config-kit.ts requireSeeAllToRename）
+    ['talentReview.configRenameRequiresSeeAll', /\bNAME_REQUIRES_SEE_ALL\b/, { modules: ['talent-review'] }],
+    // 新建字段时指定成对字段：另需字段更新权 + update 按钮 + pairFieldId 编辑权（config-routes.ts requirePairUpdate）
+    ['talentReview.pairRequiresUpdate', call('requirePairUpdate'), { modules: ['talent-review'] }],
     ['selfService.transferInput', call('ownTransferInput'), { modules: ['self-service'] }],
     ['selfService.referenceChoices', call('referenceChoices'), { modules: ['self-service'] }],
     ['selfService.ownApplication', call('ownApplication'), { modules: ['self-service'] }],
