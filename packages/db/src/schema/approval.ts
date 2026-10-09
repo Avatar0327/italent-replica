@@ -194,8 +194,15 @@ export const approvalProcessNodes = pgTable(
     /** DEC-104「审批记录查看权限」：勾选后本节点审批人看不到审批记录与沟通（出厂关 = 默认公开）。 */
     hideRecords: boolean('hide_records').notNull().default(false),
     rejectResubmitMode: text('reject_resubmit_mode').notNull().default('restart'),
-    /** DEC-318 K-37：自审回避是节点开关，缺省开启（原有流程不变），IDP 预置流程关闭。 */
-    avoidSelf: boolean('avoid_self').notNull().default(true),
+    /**
+     * DEC-318 K-37 / DEC-329④：自审回避是节点开关。新建节点缺省关闭（F-048 迁移只改列缺省值，存量行保持原值）；
+     * 预置流程显式写值（DEC-332①，F-048 设计 §3.3）。
+     */
+    avoidSelf: boolean('avoid_self').notNull().default(false),
+    /** F-048 / DEC-329①：多主体回避节点开关，缺省关闭（照原站 isSameExpressionSkip）。 */
+    avoidSubjects: boolean('avoid_subjects').notNull().default(false),
+    /** DEC-331⑤：命中动作，契约预留跳过 / 同意 / 不同意 / 自定义出口；取证（Q-M0-138）前只启用「跳过」。 */
+    avoidSubjectsResult: text('avoid_subjects_result').notNull().default('skip'),
     /** DEC-318 K-39：发起人撤回（isRevoke，缺省开启）、驳回到上一步、审批人跳转（缺省关闭），IDP 预置流程按原站。 */
     allowRevoke: boolean('allow_revoke').notNull().default(true),
     allowRejectPrevious: boolean('allow_reject_previous').notNull().default(false),
@@ -209,6 +216,7 @@ export const approvalProcessNodes = pgTable(
   (t) => [
     primaryKey({ columns: [t.tenantId, t.versionId, t.nodeKey] }),
     unique('approval_nodes_seq').on(t.tenantId, t.versionId, t.seq),
+    check('approval_nodes_avoid_subjects_result', sql`${t.avoidSubjectsResult} IN ('skip')`),
     foreignKey({
       name: 'approval_nodes_version_fk',
       columns: [t.tenantId, t.versionId],
@@ -426,8 +434,36 @@ export const approvalTasks = pgTable(
       sql`${t.origin} IN ('resolved','self_skip','self_skip_manager','exception_admin','same_skip',
         'history_skip','no_assignee_skip','no_assignee_approve','transfer','add_sign','admin_transfer',
         'admin_intervene','blind_review','handover','add_sign_before','add_sign_after','add_sign_return','retrieve',
-        'add_sign_parallel','countersign_reopen')`,
+        'add_sign_parallel','countersign_reopen','subject_skip')`,
     ),
+  ],
+);
+
+/**
+ * F-048：实例的主体冻结集合（设计 §5.1）。发起写第 1 轮，每次重提写新一轮完整集合（只增不减，DEC-329⑤）；行不可改
+ * （迁移触发器）。employee_id / user_id 不建外键：外键检查会对员工行、成员行取 KEY SHARE，与 lockPerson / lockEmployee
+ * 的员工行 FOR UPDATE、首次绑定的成员行 FOR UPDATE 互等（设计 §5.4）；存在性在写入前校验，员工没有删除路径。
+ */
+export const approvalInstanceSubjects = pgTable(
+  'approval_instance_subjects',
+  {
+    tenantId: tenantId(),
+    instanceId: uuid('instance_id').notNull(),
+    round: integer('round').notNull(),
+    employeeId: uuid('employee_id').notNull(),
+    /** 冻结时该员工绑定的账号（不看账号 / 成员状态，fail-closed）；无绑定为空。 */
+    userId: uuid('user_id'),
+    createdAt: utc('created_at').notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.instanceId, t.round, t.employeeId] }),
+    index('approval_instance_subjects_user').on(t.tenantId, t.instanceId, t.userId),
+    foreignKey({
+      name: 'approval_instance_subjects_instance_fk',
+      columns: [t.tenantId, t.instanceId],
+      foreignColumns: [approvalInstances.tenantId, approvalInstances.id],
+    }),
+    check('approval_instance_subjects_round', sql`${t.round} > 0`),
   ],
 );
 

@@ -1,9 +1,9 @@
 ---
 name: dev-selfcheck
-description: （DEC-317⑤ 试点：仅派发单注明“自检试点”的任务必做）开发方在 PR 上贴“开发完成，待审”之前跑的自检：用 open-code-review 的项目规则逐文件检查本次改动，再对照设计与 DEC 核一遍，把结果写进“开发完成”评论。B / C 档都适用。
+description: 所有开发任务必做（DEC-338）：开发方在 PR 上贴“开发完成，待审”之前跑的自检：用 open-code-review 的项目规则逐文件检查本次改动，再对照设计与 DEC 核一遍，把结果写进“开发完成”评论。B / C 档都适用。
 ---
 
-# 开发自检（DEC-317⑤ 试点：仅派发单注明“自检试点”的任务必做）
+# 开发自检（所有开发任务必做，DEC-338）
 
 目的：把审查里反复出现的 P2（权限与范围外泄露、数据正确性、并发幂等、行为兼容）在交审前消掉，减少审查轮数。自检不替代正式审查。
 
@@ -14,7 +14,7 @@ description: （DEC-317⑤ 试点：仅派发单注明“自检试点”的任�
    ```bash
    ocr delegate preview --from origin/main --to HEAD
    ```
-   `ocr` 不在 PATH 时用 `~/.npm-global/bin/ocr`；本机未安装就跳过第 2～3 步，只做第 4 步，并在评论里注明。
+   `ocr` 不在 PATH 时用 `~/.npm-global/bin/ocr`；本机未安装就先安装（`npm install -g --allow-scripts=@alibaba-group/open-code-review @alibaba-group/open-code-review`）。装不上时在“开发完成”评论里写明原因，并报告总编排（DEC-338③，不得跳过）。
 3. **按规则逐组审**：
    ```bash
    ocr delegate rule <上一步列出的文件…>
