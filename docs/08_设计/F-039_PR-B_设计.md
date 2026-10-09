@@ -424,7 +424,7 @@
 - 经理入口 `canViewReporting` 的义务改登准入：单撤后仍 2xx，报 `OVERDECLARED`。
 - IDP 模板复制撤通用目标 / 模板模块查看权：期望拒绝，得 403 `IDP_COPY_HIDDEN_FIELDS`，零发现；同一权限若在表里只登成纯披露，报 `PROBE_PURPOSE_MISMATCH`（审查二-1）。
 - `POST /api/tenant/idp/plans/<合法UUID>/goals`，请求体 `{}`：400 `VALIDATION_FAILED`，轨迹为空。P1 / P2 / `missing-branch` / P5 全部记“未达（validation）”，零发现，覆盖台账出现对应条目（审查二-2）。
-- **当前执行人撤计划查看权仍成功**（第 3 轮审查正例）：参与人样本新增目标，撤 `obj:IDP.Idp:view`，替身确实问到并回答 false，结果仍 201，零发现；非参与人 HR 样本撤同一权限，报拒绝；把该义务的 `inner` 改登为 `required`，报 `OVERDECLARED`；把非参与人 HR 样本的期望改登为内部“或”且不含 p，报 `GUARD_INNER_NOT_ALTERNATIVE`；删 `inner`，报 `GUARD_ROLE_UNBOUND`。
+- **当前执行人撤计划查看权仍成功**（第 3 轮审查正例）：参与人样本新增目标，撤 `obj:IDP.Idp:view`，替身确实问到并回答 false，结果仍 201，零发现；非参与人 HR 样本撤同一权限，报拒绝；把该义务的 `inner` 改登为 `required`，报 `OVERDECLARED`；把非参与人 HR 样本的 `satisfies` 误登为 `participant`（期望变成“准入不变”，实际拒绝），报 `GUARD_INNER_NOT_ALTERNATIVE`；删 `inner`，报 `GUARD_ROLE_UNBOUND`。
 - 规范化：两份样本引用不同员工，规范化后仍不相等；业务生效日期不同，规范化后仍不相等。
 - “或”组隔离：夹具里让 B 的权限兼作披露并补入 G(A)，生成 G⁻(A) 变体；把 A 的表项改成实际依赖 B，报 `PROBE_CONTROL_FAILED`。
 - 撤权结果变了但被撤请求未被问到的夹具，报 `PROBE_UNSTABLE`。
