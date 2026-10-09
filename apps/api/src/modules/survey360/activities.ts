@@ -178,7 +178,13 @@ function registerActivityCrud(module: Hono<TenantEnv>, deps: TenantRouteDeps): v
         await auditActivity(tx, ctx, 'survey360.activity.create', null, saved);
         return activityView(saved);
       },
-      { need: { object: 'activity', operation: 'create' }, fields: 'body', status: 201 },
+      {
+        need: { object: 'activity', operation: 'create' },
+        fields: 'body',
+        status: 201,
+        // 新建活动只用 userId（创建人 / 所有人），不读已有活动的可见范围：不预取“全部活动”（F-075，DEC-369）
+        admin: 'identity',
+      },
     ),
   );
 }
