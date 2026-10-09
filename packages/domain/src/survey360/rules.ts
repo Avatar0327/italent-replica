@@ -49,7 +49,8 @@ export const DEFAULT_ROLE_FIXED_TEXT = '评价者';
 
 /**
  * Lastest360Cent 端口记录的字段名（`26` §8.1：分数字段 问卷-自评总分 / 他评总分 / 角色得分 / 维度、题目分；
- * 过滤 套卷名称、维度名称、题目名称、角色名称、活动名称）。维度、题目分的字段名原站未取证，按同一命名推断。
+ * 过滤 套卷名称、维度名称、题目名称、角色名称、活动名称）。`26` §8.6 / DEC-304 确认两个分数字段别名，
+ * 原有维度、题目字段名保留以兼容旧公式。
  */
 export const SURVEY360_FIELDS = {
   activityName: '活动名称',
@@ -61,7 +62,9 @@ export const SURVEY360_FIELDS = {
   dimensionName: '维度名称',
   dimensionSelf: '维度-自评分',
   dimensionOther: '维度-他评分',
+  dimensionRole: '维度角色得分',
   questionName: '题目名称',
   questionSelf: '题目-自评分',
   questionOther: '题目-他评分',
+  questionOtherTotal: '题目-他评总分',
 } as const;
