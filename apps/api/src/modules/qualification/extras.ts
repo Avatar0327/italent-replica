@@ -30,7 +30,7 @@ import {
 } from './access.js';
 import * as config from './config-service.js';
 import * as input from './input.js';
-import { presentChannels, presentChart, presentGradeDescriptions, presentWarnings } from './presenters.js';
+import { presentChannels, presentChart, presentGradeDescriptions } from './presenters.js';
 import * as read from './read-model.js';
 import { presenter, QL_BASE, requireAllVisible, runWrite, writeContext } from './route-support.js';
 import * as standards from './standard-service.js';
@@ -275,11 +275,8 @@ function registerChannels(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const w = await writeContext(c, deps, ctx, 'standard', ['category', 'level']);
     return runWrite(c, deps, w, 'standard', body, 200, (tx, x) => standards.putChannels(tx, x, id, body), {
       recheck: (value) => requireAllVisible(deps, w, 'standard', [value.standardId]),
-      // 提示只带序号与原因（DEC-347② 🟡），且只给看得到目的地标准的人（第 3 轮 R2-01）
-      present: async ({ warnings, ...view }) => ({
-        ...(await presentChannels(c, deps, w, view)),
-        warnings: await presentWarnings(c, deps, w, warnings),
-      }),
+      // 提示只带序号与原因，不按权限裁剪：用于敦促业务方与 HR 建设标准（DEC-347② / DEC-348① / DEC-349）
+      present: async ({ warnings, ...view }) => ({ ...(await presentChannels(c, deps, w, view)), warnings }),
     });
   });
 }

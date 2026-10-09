@@ -5,9 +5,7 @@
  *   范围内（字典：看全部 ∪ 创建人）且 GradeScheme.details 可见，否则描述、名称、等级都不给；
  * - 发展通道：按 DevelopmentChannel 的字段逐条；目标类别 / 级别另须在查看人读取范围内；纵向级别 ID 随标准的
  *   levelIds，顺序号随级别的 displayOrder 字段与该级别的读取范围；
- * - 图谱：只用裁剪后的标准拼装，级别 ID 随 levelIds、顺序号随级别字段权，明细、级别描述随标准字段权；
- * - 通道保存提示（DEC-347② 🟡）：说的是目的地标准的状态，查看人须有标准查看权、目的地类别在标准读取范围内；
- *   “目标级别不在标准里”另须标准 levelIds 可见（第 3 轮 R2-01）。首次与重放都经过这里。
+ * - 图谱：只用裁剪后的标准拼装，级别 ID 随 levelIds、顺序号随级别字段权，明细、级别描述随标准字段权。
  */
 import { sql, withTenant } from '@italent/db';
 import type { Context } from 'hono';
@@ -15,17 +13,15 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import {
   accessSql,
-  codeOf,
   fieldVisible,
   objectFields,
-  qlReadable,
   type QualificationContext,
   qualificationScope,
   rowsOf,
 } from './access.js';
 import type { StandardView } from './read-model.js';
 import { presenter, readableIds } from './route-support.js';
-import type { ChannelView, ChannelWarning } from './standard-service.js';
+import type { ChannelView } from './standard-service.js';
 import type { GradeDescriptionView } from './target-service.js';
 
 /** 等级方案对查看人可读（对象查看权 + 字典范围）且明细字段可见。 */
@@ -146,26 +142,4 @@ export async function presentChart(
       ...(shown.details ? { cells: shown.details.filter((detail) => detail.levelId === levelId) } : {}),
     })),
   };
-}
-
-export async function presentWarnings(
-  c: Context<TenantEnv>,
-  deps: TenantRouteDeps,
-  ctx: QualificationContext,
-  warnings: readonly ChannelWarning[],
-) {
-  if (!warnings.length) return [];
-  if (!(await deps.authorize({ ...ctx, action: 'object.view', resource: codeOf('standard'), fields: [] }))) return [];
-  const levelIds = fieldVisible(await objectFields(deps, ctx, 'standard'), 'levelIds');
-  const scope = await qualificationScope(c, deps, ctx, 'standard');
-  const ids = [...new Set(warnings.map((warning) => warning.targetCategoryId))];
-  const readable = await withTenant(deps.db, ctx.tenantId, async (tx) => {
-    const result = await tx.execute(sql`SELECT t.id FROM ql_categories t WHERE t.tenant_id = ${ctx.tenantId}::uuid
-      AND t.id = ANY(${`{${ids.join(',')}}`}::uuid[]) AND ${qlReadable(ctx, scope, 't')}`);
-    return new Set(rowsOf<{ id: string }>(result).map((row) => row.id));
-  });
-  return warnings
-    .filter((warning) => readable.has(warning.targetCategoryId))
-    .filter((warning) => warning.reason !== 'TARGET_LEVEL_NOT_IN_STANDARD' || levelIds)
-    .map(({ index, reason }) => ({ index, reason }));
 }
