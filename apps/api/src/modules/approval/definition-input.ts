@@ -17,6 +17,7 @@ import {
   TRANSITION_RULE_TYPES,
   URGE_MODES,
   APPROVAL_TYPES,
+  avoidSubjectsViolations,
   type ApprovalNode,
   type ApprovalTypeCode,
   type ProcessDefinition,
@@ -43,6 +44,15 @@ const transitionRule = z.strictObject({
   rules: z.strictObject({ approve: exitRule.optional(), disagree: exitRule.optional() }).optional(),
 });
 
+/**
+ * DEC-331⑤：多主体回避命中动作的契约取值（跳过 / 同意 / 不同意 / 自定义出口动作）；只启用「跳过」，其余在定义校验中
+ * 明确拒绝（avoidSubjectsViolations），不当作格式错误。
+ */
+const avoidSubjectsResult = z.union([
+  z.enum(['skip', 'approve', 'disagree']),
+  z.custom<`exit:${string}`>((value) => typeof value === 'string' && /^exit:[A-Za-z][A-Za-z0-9_]{0,39}$/.test(value)),
+]);
+
 const node = z.strictObject({
   key: text(40),
   name: text(100).optional(),
@@ -60,6 +70,7 @@ const node = z.strictObject({
   historySameAssigneeSkip: z.boolean().default(false),
   sameAssigneeResult: z.enum(AUTO_RESULTS).default('approve'),
   historySameAssigneeResult: z.enum(AUTO_RESULTS).default('approve'),
+  avoidSubjectsResult: avoidSubjectsResult.default('skip'),
   formFields: codeList.default([]),
   editableFields: codeList.default([]),
   editMode: z.enum(EDIT_MODES).default('none'),
@@ -72,8 +83,12 @@ const node = z.strictObject({
       /** 驳回（驳回到发起人）开关，缺省开启（R1-T07 起的节点一直可以驳回）。 */
       reject: z.boolean().default(true),
       urge: z.enum(URGE_MODES).default('inherit'),
-      /** 自审回避（DEC-318 K-37）：缺省不给即开启，原有流程不变。 */
+      /**
+       * 自审回避（DEC-318 K-37）与多主体回避（F-048）：新建节点不给即关闭（DEC-329④）；草稿整份替换时不给的沿用该节点
+       * 当前草稿值（definitions.inheritRecusalSwitches，设计 §3.2）。
+       */
       avoidSelf: z.boolean().optional(),
+      avoidSubjects: z.boolean().optional(),
       /** 发起人撤回、驳回到上一步、审批人跳转（DEC-318 K-39）：不给即取缺省（撤回开，其余关）。 */
       revoke: z.boolean().optional(),
       rejectToPrevious: z.boolean().optional(),
@@ -163,6 +178,9 @@ export function toDefinition(input: DefinitionInput, type: ApprovalTypeCode): Pr
     },
     nodes: input.nodes.map(toNode),
   };
+  // F-048 R3-01 / DEC-331⑤：多主体回避开关与命中动作给出各自的机读原因（设计 §3.1、§14）
+  const [avoid] = definition.nodes.flatMap(avoidSubjectsViolations);
+  if (avoid) throw approvalError('VALIDATION_FAILED', avoid.reason, avoid.message);
   const violations = definitionViolations(definition, APPROVAL_TYPES[type]);
   if (violations.length)
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_DEFINITION_INVALID', violations[0]!, { violations });

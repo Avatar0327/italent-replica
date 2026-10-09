@@ -24,8 +24,26 @@ export interface PresetProcess {
 }
 
 /**
+ * 预置节点的回避开关一律显式写值，不依赖新建节点的缺省值（DEC-329④ 起缺省关闭，F-048 设计 §3.2）。按 DEC-332①：
+ * 非 IDP 预置（调动、入职、离职、转正、实习转正、退休、组织调整、新增员工、四类合同、个人信息变更、员工子集变更）都会
+ * 产生重大影响或涉及敏感信息，发起人与异动本人不能审批自己的单据，avoidSelf = true；IDP 预置不敏感、影响不大，
+ * avoidSelf = false（IDP_ACTIONS，DEC-318 K-37）。逐个预置的理由见设计 §3.3；以后新增预置（如调薪）按“是否敏感 /
+ * 是否有重大影响”逐个定值并补进该表。全部预置都是单主体业务，avoidSubjects = false。
+ */
+const PRESET_RECUSAL = { avoidSelf: true, avoidSubjects: false } as const;
+const PRESET_ACTIONS = {
+  transfer: false,
+  addSign: false,
+  copySend: false,
+  retrieve: false,
+  reject: true,
+  urge: 'inherit',
+  ...PRESET_RECUSAL,
+} as const;
+
+/**
  * 相同 / 历史相同审批人自动处理默认关闭：本租户调动流程各节点都未启用（`14` §11.10 更正 §8.3，登记册 C-008），
- * 功能仍可由管理员按节点开启。
+ * 功能仍可由管理员按节点开启。节点动作在预置缺省（PRESET_ACTIONS）上覆盖，回避开关不会因覆盖动作而丢失。
  */
 const node = (key: string, name: string, approver: ApproverExpression, extra: Partial<SingleApprovalNode> = {}) =>
   ({
@@ -40,12 +58,13 @@ const node = (key: string, name: string, approver: ApproverExpression, extra: Pa
     formFields: TRANSFER_FORM_FIELDS,
     editableFields: [],
     editMode: 'none',
-    actions: { transfer: false, addSign: false, copySend: false, retrieve: false, reject: true, urge: 'inherit' },
     rejectCommentRequired: false,
     hideRecords: false,
     rejectResubmit: 'restart',
     messageRules: [],
+    avoidSubjectsResult: 'skip',
     ...extra,
+    actions: { ...PRESET_ACTIONS, ...extra.actions },
   }) satisfies SingleApprovalNode;
 
 /**
@@ -59,6 +78,7 @@ const IDP_ACTIONS = {
   retrieve: false,
   urge: 'inherit',
   avoidSelf: false,
+  avoidSubjects: false,
   revoke: false,
   jump: true,
 } as const;
