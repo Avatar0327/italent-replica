@@ -8,8 +8,8 @@ export const DIGESTS: Digests = {
   'apps/api/src/audit/routes.ts': {
     auditContext: 'd5b4775d58c3',
     'route:GET /api/tenant/audit/command-failures': '9ac7295f99cb',
-    'route:GET /api/tenant/audit/data-changes': 'a6a532bd33ac',
-    'route:GET /api/tenant/audit/data-changes/:id': 'ba21a1e85a88',
+    'route:GET /api/tenant/audit/data-changes': '52602e4f684f',
+    'route:GET /api/tenant/audit/data-changes/:id': '3c8e83923795',
     'route:GET /api/tenant/audit/operation-logs': 'b6857e645117',
   },
   'apps/api/src/authorization.ts': {
@@ -17,7 +17,8 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/access.ts': {
     PROCESS_ADMIN: 'ca58b0b364f1',
-    adminScope: 'b8cd26385798',
+    adminScope: '175ed4b1418f',
+    adminTargetScope: 'e0898d859530',
     hasButton: '6dbb8ca471b1',
     isProcessAdmin: 'e5782416fefc',
     requireProcessButton: '782f172bb6ca',
@@ -26,6 +27,8 @@ export const DIGESTS: Digests = {
     requireWithdrawRight: 'e17fe05b2b0e',
   },
   'apps/api/src/modules/approval/actions.ts': {
+    adminAct: 'd76e0f4e36c7',
+    assertTargetInScope: '5a099dd0cdbe',
     openOwn: '2bf5722813f2',
     openTask: '6f9c0c04e106',
   },
@@ -42,7 +45,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/routes.ts': {
     fieldRights: '4ae7ecb6ac72',
-    registerInstanceRoutes: 'f06f5a523445',
+    registerInstanceRoutes: '345f82e37732',
     registerProcessRoutes: 'f4e5b33618f6',
     registerTaskRoutes: 'c104b87263e9',
     respondDetail: '352a1a785550',
@@ -222,12 +225,11 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/idp/intervention-service.ts': {
     ISSUE_SOURCE_FIELDS: '02d8128ce179',
     eachPlan: '453001319f02',
-    isPlanMentor: 'a064d8d1cfb0',
     issueTasks: '0da7eb1e4250',
     notOwnPlan: '235e72df46d4',
-    requireTargetInScope: 'd987c2808bcc',
+    requireTargetInScope: 'f289f167268f',
     targetHidden: '4c60647fadb8',
-    transferPlan: '64d51b8d9d07',
+    transferPlan: 'f6ed691715c9',
   },
   'apps/api/src/modules/idp/key-info-routes.ts': {
     ROUTES: '906e28eb362e',
@@ -239,6 +241,11 @@ export const DIGESTS: Digests = {
     participation: '9e6acf568844',
     requireExecutor: 'c6041bc8af4f',
     requireViewer: 'ea1df4c436f9',
+  },
+  'apps/api/src/modules/idp/plan-mentor.ts': {
+    foldMentorFailure: '71e3ad707a8b',
+    isPlanMentor: '44bbbbd03aae',
+    isStageMentor: 'ff9d76a4a999',
   },
   'apps/api/src/modules/idp/plan-routes.ts': {
     hrScopeOf: '6dc4bea09e02',
@@ -463,6 +470,71 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/personnel/subsets.ts': {
     loadSubset: 'ce8761631bb3',
+  },
+  'apps/api/src/modules/qualification/access.ts': {
+    BUTTON_LEVEL: '66011e711e8a',
+    qualificationContext: '73979e6cd7d6',
+    qualificationWriteContext: '699a709343fb',
+  },
+  'apps/api/src/modules/qualification/candidates.ts': {
+    OWNER_OBJECTS: '723172c5a6af',
+    organizationAccess: '47b0b9b74782',
+    registerQualificationCandidates: 'ffd06d15a688',
+  },
+  'apps/api/src/modules/qualification/config-service.ts': {
+    createCategory: '0a2f553856db',
+    createCategoryClass: '4934e7aa6f25',
+    createTargetType: 'dcb110d6140c',
+    importCategories: 'b9cc56b58730',
+    importLevels: 'd5ffdd939848',
+    insertCategory: '7f3c0129e7c1',
+    insertLevel: '26937e990b87',
+    jobObject: '430e500e3c5c',
+    patchJobLinks: 'af8a98a129e9',
+    replaceJobLinks: '83fab0a740aa',
+    updateCategory: '56253d61fa88',
+    updateLevel: '580a8785b0bd',
+  },
+  'apps/api/src/modules/qualification/extras.ts': {
+    registerChannels: '5713deee61bb',
+    registerChart: 'e0bfdb21c3a0',
+    registerCodingRules: 'c612bd75d2e8',
+    registerGradeDescriptions: 'e7472e8831c3',
+    registerImports: 'c655070d40cf',
+    registerStandardImport: '649581bc567f',
+  },
+  'apps/api/src/modules/qualification/route-support.ts': {
+    fieldEditable: '8b0a3ce9f629',
+    hideOverwritten: 'd90706c31cda',
+    presenter: '6b6a8e9bebf7',
+    readableIds: '1f253e70c4f7',
+    writeContext: '65f3e347ffb3',
+  },
+  'apps/api/src/modules/qualification/routes.ts': {
+    SPECS: '171d3aa2e074',
+    childDeleteRights: 'de08fd350c31',
+    registerObject: '3a9ea7b235c4',
+    registerQualificationRoutes: '57aae826689c',
+  },
+  'apps/api/src/modules/qualification/standard-service.ts': {
+    createStandard: '8cd995eb08ed',
+    deleteStandard: 'f67c7237490e',
+    putChannels: '1401952675fa',
+    updateStandard: 'afd0f7dfa352',
+    writeCells: '035920226799',
+  },
+  'apps/api/src/modules/qualification/store.ts': {
+    deleteChildren: '90a21b3a9cd5',
+    ownerOf: '03ae8b632d21',
+    referenced: 'b2b7d60d9139',
+  },
+  'apps/api/src/modules/qualification/target-service.ts': {
+    checkEvalMode: '6f57e66ebe1e',
+    createTarget: '6894093eddc4',
+    deleteGradeScheme: '6f32fa284235',
+    deleteTarget: 'beefd9116ae6',
+    requireTargetsEditable: '2388b4d65c3c',
+    updateTarget: 'e2604d3284cd',
   },
   'apps/api/src/modules/survey360/access.ts': {
     requireActivity: '8ae13475536b',
@@ -739,6 +811,9 @@ export const DIGESTS: Digests = {
   },
   'packages/domain/src/personnel/fields.ts': {
     SUBSETS: '12a3afeab085',
+  },
+  'packages/domain/src/qualification/catalog.ts': {
+    QUALIFICATION_OBJECTS: '5362e11495c2',
   },
   'packages/domain/src/survey360/catalog.ts': {
     SURVEY360_BUTTONS: '864363f22e8b',

@@ -30,6 +30,7 @@ import { policed, type PolicyTable, useMiddleware, verifyRouteDeclarations } fro
 import { registerTalentRoutes } from './modules/talent/routes.js';
 import { MODEL_IMAGE_BODY_LIMIT } from './modules/talent/model-image-format.js';
 import { registerIdpRoutes } from './modules/idp/routes.js';
+import { registerQualificationRoutes } from './modules/qualification/routes.js';
 import { registerAvatarRoutes } from './modules/avatar/routes.js';
 import { registerTalentReviewRoutes } from './modules/talent-review/routes.js';
 import { registerSuccessionRoutes } from './modules/succession/routes.js';
@@ -49,6 +50,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerSurvey360Routes, // R3-T03 360 度评估（含 /api/survey360/link 链接作答）
   registerTalentRoutes, // R3-T01 人才标准与指标库（TalentCenter）
   registerIdpRoutes, // R3-T07 个人发展计划（IDP）
+  registerQualificationRoutes, // R3-T02 任职资格配置（Qualification）
   registerAvatarRoutes, // F-058 账号头像与人员只读引用
   registerTalentReviewRoutes, // R3-T04 人才盘点（TalentReview；PR-A 准备度字典）
   registerSuccessionRoutes, // R3-T05 继任管理（SuccessionAndDevelopment；契约 PR 只占装配位）

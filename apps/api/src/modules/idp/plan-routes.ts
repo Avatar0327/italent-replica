@@ -33,6 +33,7 @@ import { runIdpCommand } from './executor.js';
 import * as intervention from './intervention-service.js';
 import { type HrScope, hrSees, requireViewer } from './plan-access.js';
 import * as input from './plan-input.js';
+import { mentorSourcesOf } from './plan-mentor.js';
 import * as plans from './plan-service.js';
 import { loadPlanRow, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
 import type { WriteContext } from './write-support.js';
@@ -113,10 +114,7 @@ async function stillVisible(tx: Tx, ctx: IdpContext, hr: HrScope, planId: string
 /** 转交的数据范围与目标例外（DEC-354）用到的来源字段：操作人看不到就视同不是指导人 / 带教人。 */
 async function transferScope(c: Context<TenantEnv>, deps: TenantRouteDeps, ctx: IdpContext) {
   const hr = await idpScope(c, deps, ctx, 'plan');
-  const sources: intervention.TransferSources = {
-    plan: await projectionOf(deps, ctx, 'plan'),
-    tutorship: await projectionOf(deps, ctx, 'tutorship'),
-  };
+  const sources = await mentorSourcesOf(deps, ctx);
   return { hr, sources };
 }
 
