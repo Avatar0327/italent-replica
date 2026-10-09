@@ -252,7 +252,9 @@ describe('AC-360-F034 替换套卷清空作答', () => {
       }),
     );
     const logs = (await f.audit.dataChanges({ user, tenant: w.tenantId }, { limit: '100' })).items;
-    for (const log of logs.filter((log) => log.commandId === key && log.objectType === 'survey360-sheet')) {
+    const cleared = logs.filter((log) => log.commandId === key && log.objectType === 'survey360-sheet');
+    expect(cleared).toHaveLength(2);
+    for (const log of cleared) {
       const detail = await f.audit.dataChange({ user, tenant: w.tenantId }, log.id);
       expect(detail.snapshot).not.toHaveProperty('answers');
       expect(detail.before).not.toHaveProperty('answers');
