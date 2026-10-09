@@ -124,7 +124,7 @@ export async function registerAvatar(tx: Tx, ctx: AvatarContext, input: ImageMet
     .insert(A)
     .values({ ...attachment, tenantId: ctx.tenantId, userId: ctx.userId, createdAt: ctx.now, updatedAt: ctx.now });
   await changed(tx, ctx, 'register', null, attachment);
-  return { attachment: { id: attachment.id } };
+  return { revision: ctx.expectedRevision + 1, attachment: { id: attachment.id } };
 }
 
 export async function uploadAvatar(tx: Tx, ctx: AvatarContext, id: string, base64: string) {

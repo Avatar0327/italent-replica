@@ -24,14 +24,15 @@ export const registerAvatarRoutes: TenantRouteModule = (router, deps) => {
     sameOrigin(c);
     const input = await parseBody(c, metadata);
     const result = await write(c, deps, input, (tx, ctx) => service.registerAvatar(tx, ctx, input));
-    const state = await withTenant(deps.db, tenantOf(c).tenantId, (tx) => service.presentAvatar(tx, tenantOf(c)));
-    const id = (result.body as { attachment: { id: string } }).attachment.id;
+    const registered = result.body as { revision?: number; attachment: { id: string } };
+    // 登记回执的 revision 固定到该命令；旧台账未存 revision 时，由原请求的前置版本恢复。
+    const commandRevision = registered.revision ?? revision(c) + 1;
     const attachment = await withTenant(deps.db, tenantOf(c).tenantId, async (tx) => {
       await service.ownMember(tx, tenantOf(c));
-      return service.registeredAvatar(tx, tenantOf(c), id);
+      return service.registeredAvatar(tx, tenantOf(c), registered.attachment.id);
     });
-    headers(c, state.revision);
-    return c.json({ revision: state.revision, attachment }, 201);
+    headers(c, commandRevision);
+    return c.json({ revision: commandRevision, attachment }, 201);
   });
   router.post(`${BASE}/attachments/:attachmentId/upload`, async (c) => {
     sameOrigin(c);
