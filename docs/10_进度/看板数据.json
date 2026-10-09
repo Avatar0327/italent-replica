@@ -2291,7 +2291,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-09 05:46",
+"liveUpdated": "10-09 06:29",
 "chains": [
 {
 "g": "base",
@@ -2526,8 +2526,8 @@
 "o": 2,
 "k": "run",
 "n": "任职资格 + 人才评定",
-"seg": "ev:d ds:d6 dev:a3 rev:d2 mg:w",
-"now": "#136 第 2 轮：14 类 → 7 类 P2（重放、冲突已修，字段裁剪 P2-02 仍有残留），第 3 轮修改",
+"seg": "ev:d ds:d6 dev:a4 rev:d3 mg:w",
+"now": "#136 第 3 轮：14 → 7 → 2 类 P2（编码规则存在性披露、审计可见性回退），第 4 轮修改",
 "pr": 129,
 "pd": "设计 #121 ✓ · PR-0 #129 ✓ · PR-A #136"
 },
@@ -2765,8 +2765,8 @@
 "k": "run",
 "n": "360 PR-B：邀请 / 屏蔽 / 报告 / 导出",
 "pr": 125,
-"seg": "ev:d ds:n dev:d1 rev:w1 mg:w",
-"now": "#125 开发完成，CI 绿，待首审（Astra）",
+"seg": "ev:d ds:n dev:a3 rev:d2 mg:w",
+"now": "#125 第 2 轮：3 P2（2 项匿名身份披露、1 项报告数据正确性），第 3 轮修改（Opus）",
 "pd": "PR-A1 #116 ✓ · A2 #117 ✓ · A3 #107 ✓ · PR-B #125"
 },
 {
@@ -2956,8 +2956,8 @@
 "k": "run",
 "sn": "1",
 "n": "IDP 流程干预转交",
-"seg": "ev:n ds:n dev:d1 rev:w1 mg:w",
-"now": "已转 Ready，待开发完成后首审（Sol high）",
+"seg": "ev:n ds:n dev:a2 rev:d1 mg:w",
+"now": "首轮（Sol high+fast）：1 P2 权限 + 2 P3，第 2 轮修改（Sonnet）",
 "pr": 146
 }
 ]
