@@ -41,7 +41,7 @@
 6. CI 必须全部通过；不得跳过或删除别人的测试。
 7. **节省 CI 分钟**（私有仓库按分钟计费）：推送前先在本地跑通 `pnpm lint && pnpm typecheck && pnpm test`；PR 先以 Draft 开、完成后再转 Ready；把零碎修改攒成一次推送，不要逐个小提交推送；修改 `.github/workflows/ci.yml` 必须单独开 PR 并说明对分钟消耗的影响。
 
-8. **交审前自检（必做，用户 10-09 定）**：所有开发任务在贴“开发完成，待审”之前，按 `.claude/skills/dev-selfcheck/SKILL.md` 跑一遍自检（open-code-review 项目规则 + 对照设计与 DEC），结果写进“开发完成”评论。开发由 Claude 负责（Opus 设计 / 升级接手，Sonnet 实现），审查由 Codex 负责（B 档 Sol Ultra，C 档 Astra Ultra）。
+8. **交审前自检（必做，DEC-338）**：所有开发任务在贴“开发完成，待审”之前，按 `.claude/skills/dev-selfcheck/SKILL.md` 跑一遍自检（open-code-review 项目规则 + 对照设计与 DEC），结果写进“开发完成”评论。开发由 Claude 负责（Opus 设计 / 升级接手，Sonnet 实现），审查由 Codex 负责（B 档 Sol，C 档 Astra；强度按 DEC-338 及审查强度试跑口径）。
 
 ## 4. 不确定时：开“需取证”issue，不猜
 规格没写到、写得有歧义、或规格与代码现实冲突时：
