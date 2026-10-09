@@ -124,7 +124,7 @@ export interface RecordTargetColumns {
 }
 
 /**
- * SELF 谓词（设计 §8.4 的 `succession_self_target_sql(viewer)`；定义在 0080 迁移的同名 SQL 函数里）：
+ * SELF 谓词（设计 §8.4 的 `succession_self_target_sql(viewer)`；定义在 0081 迁移的同名 SQL 函数里）：
  * 记录“是本人的” ⇔ 查看人绑定员工在 today（请求当日）是该组织的负责人，或是该职位的现任。
  */
 export const selfTargetSql = (
