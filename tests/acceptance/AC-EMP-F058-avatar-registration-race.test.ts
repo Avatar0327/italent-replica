@@ -138,8 +138,11 @@ describe('AC-EMP（补）F-058 登记命令自己的 revision', () => {
     const options = { ifMatch: 1, body: imageFixture().metadata, idempotencyKey: key };
     const registered = await json<Registration>(s.request('POST', `${BASE}/attachments`, options), 201);
     // 用库所有者模拟升级前已持久化的台账格式；生产路径仍只允许 INSERT。
-    await s.db.execute(sql`UPDATE command_ledger SET response_body=response_body-'revision'
-      WHERE tenant_id=${s.tenant.id} AND command_id=${key}`);
+    await s.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${s.tenant.id}, true)`);
+      await tx.execute(sql`UPDATE command_ledger SET response_body=response_body-'revision'
+        WHERE tenant_id=${s.tenant.id} AND command_id=${key}`);
+    });
     const deleted = await json<AvatarView>(s.request('DELETE', BASE, { ifMatch: 2 }));
     expect(deleted.revision).toBe(3);
     const response = await s.request('POST', `${BASE}/attachments`, options);
