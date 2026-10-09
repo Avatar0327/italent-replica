@@ -2,11 +2,13 @@
   "DELETE /api/tenant/talent/criteria/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "f590b0d12bc6",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -20,11 +22,13 @@
   "DELETE /api/tenant/talent/criteria/:id/model-image": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "f590b0d12bc6",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -40,11 +44,13 @@
   "DELETE /api/tenant/talent/criterion-categories/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "e5d69ce81256",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -58,11 +64,13 @@
   "DELETE /api/tenant/talent/description-types/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "cd554f3ca8bb",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -76,11 +84,13 @@
   "DELETE /api/tenant/talent/dimension-categories/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "72e6715e288b",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -94,11 +104,13 @@
   "DELETE /api/tenant/talent/dimensions/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -112,11 +124,13 @@
   "DELETE /api/tenant/talent/libraries/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "42dd5f1ec54c",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -156,6 +170,7 @@
   "GET /api/tenant/talent/candidates/owner-orgs": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "ad515d75dd28",
       "status": 400
     },
     "fieldQueries": [],
@@ -185,11 +200,13 @@
   "GET /api/tenant/talent/criteria/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "f590b0d12bc6",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -202,11 +219,13 @@
   "GET /api/tenant/talent/criteria/:id/model-image": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "f590b0d12bc6",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -219,11 +238,13 @@
   "GET /api/tenant/talent/criteria/:id/model-image/attachments/:attachmentId/content": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "f590b0d12bc6",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -250,11 +271,13 @@
   "GET /api/tenant/talent/criterion-categories/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "e5d69ce81256",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -281,11 +304,13 @@
   "GET /api/tenant/talent/description-types/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "cd554f3ca8bb",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -312,11 +337,13 @@
   "GET /api/tenant/talent/dimension-categories/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "72e6715e288b",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -343,11 +370,13 @@
   "GET /api/tenant/talent/dimensions/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -360,6 +389,7 @@
   "GET /api/tenant/talent/forms/:object": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "b1c3243b4e41",
       "status": 400
     },
     "fieldQueries": [],
@@ -386,11 +416,13 @@
   "GET /api/tenant/talent/libraries/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "42dd5f1ec54c",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -403,11 +435,13 @@
   "PATCH /api/tenant/talent/criteria/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "f590b0d12bc6",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -421,11 +455,13 @@
   "PATCH /api/tenant/talent/criterion-categories/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "e5d69ce81256",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -439,11 +475,13 @@
   "PATCH /api/tenant/talent/description-types/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "cd554f3ca8bb",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -457,11 +495,13 @@
   "PATCH /api/tenant/talent/dimension-categories/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "72e6715e288b",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -475,11 +515,13 @@
   "PATCH /api/tenant/talent/dimensions/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -493,11 +535,13 @@
   "PATCH /api/tenant/talent/libraries/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "42dd5f1ec54c",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -511,6 +555,7 @@
   "POST /api/tenant/talent/criteria": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -523,11 +568,13 @@
   "POST /api/tenant/talent/criteria/:id/dimension-category": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "1b3fa5fc3444",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -539,11 +586,13 @@
   "POST /api/tenant/talent/criteria/:id/model-image/attachments": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "ea0db8703a12",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -556,11 +605,13 @@
   "POST /api/tenant/talent/criteria/:id/model-image/attachments/:attachmentId/upload": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "505add1ab501",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -573,6 +624,7 @@
   "POST /api/tenant/talent/criterion-categories": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -585,6 +637,7 @@
   "POST /api/tenant/talent/description-types": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -597,6 +650,7 @@
   "POST /api/tenant/talent/dimension-categories": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -609,6 +663,7 @@
   "POST /api/tenant/talent/dimensions": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -621,6 +676,7 @@
   "POST /api/tenant/talent/libraries": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],

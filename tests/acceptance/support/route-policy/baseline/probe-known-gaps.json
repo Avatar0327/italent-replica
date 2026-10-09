@@ -411,7 +411,7 @@
       },
       {
         "file": "apps/api/src/modules/qualification/route-support.ts",
-        "anchor": "// 关联岗职务冲突时，已关联对象的名称按操作人对本对象名称字段的查看权带出（P2-03）"
+        "anchor": "...(jobs.length ? { [object]: await objectFields(deps, ctx, object) } : {}),"
       }
     ],
     "pairs": [
@@ -575,7 +575,7 @@
     "evidence": [
       {
         "file": "apps/api/src/modules/idp/plan-routes.ts",
-        "anchor": "/** 按查看人呈现计划当前状态（HR 字段裁剪 / 参与人固定字段集）。 */"
+        "anchor": "async function showPlan(deps: TenantRouteDeps, ctx: IdpContext, hr: HrScope, planId: string) { const projections = await planProjections(deps, ctx);"
       },
       {
         "file": "apps/api/src/modules/idp/plan-view.ts",
@@ -640,7 +640,7 @@
     "evidence": [
       {
         "file": "apps/api/src/modules/idp/routes.ts",
-        "anchor": "/** 流程：顶层按 IDPProcess、子流程按 SubProcess 字段权限；没有子流程查看权时省略整段。 */"
+        "anchor": "async function processPresenter(deps: TenantRouteDeps, ctx: IdpContext) { const top = await projectionOf(deps, ctx, 'process'); const sub = await projectionOf(deps, ctx, 'subProcess');"
       },
       {
         "file": "apps/api/src/modules/idp/routes.ts",

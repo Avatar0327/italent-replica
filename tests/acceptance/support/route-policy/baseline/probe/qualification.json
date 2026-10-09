@@ -2,11 +2,13 @@
   "DELETE /api/tenant/qualification/categories/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "1fcc3d96379f",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -20,11 +22,13 @@
   "DELETE /api/tenant/qualification/category-classes/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "97abd7327ca8",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -38,6 +42,7 @@
   "DELETE /api/tenant/qualification/grade-schemes/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "40b444a02149",
       "status": 404
     },
     "fieldQueries": [
@@ -45,6 +50,7 @@
     ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -61,11 +67,13 @@
   "DELETE /api/tenant/qualification/layers/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "0d5b7ebd67ff",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -79,11 +87,13 @@
   "DELETE /api/tenant/qualification/levels/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "f17d3c34a861",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -97,11 +107,13 @@
   "DELETE /api/tenant/qualification/standards/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "11f7419370d9",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -116,11 +128,13 @@
   "DELETE /api/tenant/qualification/target-types/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "29c51f49c7a6",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -134,11 +148,13 @@
   "DELETE /api/tenant/qualification/targets/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -153,6 +169,7 @@
   "GET /api/tenant/qualification/candidates/owner-orgs": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "71a425753a41",
       "status": 400
     },
     "fieldQueries": [],
@@ -179,11 +196,13 @@
   "GET /api/tenant/qualification/categories/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "1fcc3d96379f",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -210,11 +229,13 @@
   "GET /api/tenant/qualification/category-classes/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "97abd7327ca8",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -253,11 +274,13 @@
   "GET /api/tenant/qualification/grade-schemes/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "40b444a02149",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -284,11 +307,13 @@
   "GET /api/tenant/qualification/layers/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "0d5b7ebd67ff",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -315,11 +340,13 @@
   "GET /api/tenant/qualification/levels/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "f17d3c34a861",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -346,11 +373,13 @@
   "GET /api/tenant/qualification/standards/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "11f7419370d9",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -363,11 +392,13 @@
   "GET /api/tenant/qualification/standards/:id/channels": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "11f7419370d9",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -380,11 +411,13 @@
   "GET /api/tenant/qualification/standards/:id/chart": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "11f7419370d9",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -411,11 +444,13 @@
   "GET /api/tenant/qualification/target-types/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "29c51f49c7a6",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -442,11 +477,13 @@
   "GET /api/tenant/qualification/targets/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -459,11 +496,13 @@
   "GET /api/tenant/qualification/targets/:id/grade-descriptions": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -476,6 +515,7 @@
   "PATCH /api/tenant/qualification/categories/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "1fcc3d96379f",
       "status": 404
     },
     "fieldQueries": [
@@ -487,6 +527,7 @@
     ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -511,11 +552,13 @@
   "PATCH /api/tenant/qualification/category-classes/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "97abd7327ca8",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -530,6 +573,7 @@
   "PATCH /api/tenant/qualification/coding-rules/:item": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "e92caf556aa4",
       "status": 404
     },
     "fieldQueries": [],
@@ -542,11 +586,13 @@
   "PATCH /api/tenant/qualification/grade-schemes/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "40b444a02149",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -560,11 +606,13 @@
   "PATCH /api/tenant/qualification/layers/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "0d5b7ebd67ff",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -578,6 +626,7 @@
   "PATCH /api/tenant/qualification/levels/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "f17d3c34a861",
       "status": 404
     },
     "fieldQueries": [
@@ -587,6 +636,7 @@
     ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -607,6 +657,7 @@
   "PATCH /api/tenant/qualification/standards/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "11f7419370d9",
       "status": 404
     },
     "fieldQueries": [
@@ -614,6 +665,7 @@
     ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -632,11 +684,13 @@
   "PATCH /api/tenant/qualification/target-types/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "29c51f49c7a6",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -651,11 +705,13 @@
   "PATCH /api/tenant/qualification/targets/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -673,6 +729,7 @@
   "POST /api/tenant/qualification/categories": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -685,6 +742,7 @@
   "POST /api/tenant/qualification/categories/import": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -697,6 +755,7 @@
   "POST /api/tenant/qualification/category-classes": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -709,6 +768,7 @@
   "POST /api/tenant/qualification/grade-schemes": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -721,6 +781,7 @@
   "POST /api/tenant/qualification/layers": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -733,6 +794,7 @@
   "POST /api/tenant/qualification/levels": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -745,6 +807,7 @@
   "POST /api/tenant/qualification/levels/import": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -757,6 +820,7 @@
   "POST /api/tenant/qualification/standards": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -769,6 +833,7 @@
   "POST /api/tenant/qualification/standards/import": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "a8e52b491aee",
       "status": 400
     },
     "fieldQueries": [],
@@ -783,6 +848,7 @@
   "POST /api/tenant/qualification/target-types": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -795,6 +861,7 @@
   "POST /api/tenant/qualification/targets": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],
@@ -807,11 +874,13 @@
   "PUT /api/tenant/qualification/standards/:id/channels": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "0f36d743a1bf",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -823,11 +892,13 @@
   "PUT /api/tenant/qualification/targets/:id/grade-descriptions/:detailId": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "c19284e8b87f",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],

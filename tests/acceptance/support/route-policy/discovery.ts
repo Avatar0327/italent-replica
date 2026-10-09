@@ -4,7 +4,9 @@
  * 有 id 参数的端点再把第一个 id 换成 `not-a-uuid` 观测非法标识。**全允许只用于发现授权请求，不下结论**——
  * 验证（只给表备选的最小授权集、撤权）是 PR-B4b 的步骤二。
  *   P0   T* 的每个授权器请求必须被本端点显式表里某条义务（任意用途）认领，否则 PROBE_ADMISSION_UNCLAIMED（抓表漏登）；
- *   P3   非法标识的观测码与根节点 invalidId 相等；没写却观测到 400 / 404 也是 MISMATCH:invalidId；
+ *   P3   非法标识的观测码与根节点 invalidId 相等；没写却观测到 400 / 404 也是 MISMATCH:invalidId。适用性由**本端点的
+ *        实际行为**证明：占位请求与非法标识请求的观测（含错误体指纹）不同才适用（第 3 轮，#163 审查 P2-R2-1）；
+ *        适用性相对冻结事实变化 → PROBE_ID_APPLICABILITY_CHANGED；非法标识得到 5xx → PROBE_ID_SERVER_ERROR；
  *   映射 映射不了的授权动作 → PROBE_ACTION_UNMAPPED。
  * 未达（gap）：表里有授权器类义务（任意用途）、轨迹却是空的（验参 / 加载失败没触达授权点）→ 记原因，不算验证通过，
  * 交 PR-B4b 的覆盖台账与 Tier 1 成功样本补测。事实按模块冻结在 baseline/probe/<模块>.json。
@@ -12,15 +14,16 @@
 import { type ManifestRoute, routeManifest } from '@italent/api';
 import { ORG_EMPLOYEE_APP } from '@italent/domain';
 import type { Db } from '@italent/db';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { seedTenantWithMember, tenantApi } from '../tenant-api.js';
+import type { AppDeps } from '@italent/api';
 import { canonicalJson } from './baseline.js';
 import type { Finding } from './compare.js';
 import { type AuthorizerDouble, createAuthorizerDouble } from './double.js';
 import { domainConstants } from './domains.js';
 import { observe, PLACEHOLDER_UUID, UUID_PARAM } from './probe.js';
-import { ID_CHECK_EVIDENCE } from './probe-id-evidence.js';
 import type { KnownGapGroup } from './probe-known-gaps.js';
 import type { RedundantGroup } from './probe-redundant.js';
 import { permClaims } from './request-perms.js';
@@ -32,6 +35,11 @@ export interface Observed {
   readonly status: number;
   readonly code?: string;
   readonly reason?: string;
+  /**
+   * 错误体指纹（非 2xx 时）：`error.message` 与 `error.details` 的规范化哈希。只用来判断两次失败是不是同一处，
+   * 不解读文案：占位请求在请求体处失败、非法标识请求在标识校验处失败时，两者状态码与错误码相同而指纹不同。
+   */
+  readonly error?: string;
 }
 
 /** 未达原因（B-08 步骤二第 2 点；后三项由 PR-B4b 的守卫内部备选判定填入，本 PR 只定义接口）。 */
@@ -71,11 +79,17 @@ export interface DiscoveryRig {
   send(method: string, path: string, body?: unknown): Promise<Response>;
 }
 
+/** 测试夹具可追加的路由与登记表（真实应用之外的对照端点）。 */
+export type RigExtras = Pick<AppDeps, 'tenantRoutes' | 'routePolicies'>;
+
 /** 一个真实租户成员 + 授权替身装配的完整应用；返回路由清单供枚举。 */
-export async function createRig(db: Db): Promise<{ rig: DiscoveryRig; manifest: ReturnType<typeof routeManifest> }> {
+export async function createRig(
+  db: Db,
+  extras: RigExtras = {},
+): Promise<{ rig: DiscoveryRig; manifest: ReturnType<typeof routeManifest> }> {
   const double = createAuthorizerDouble();
   const { tenant, user } = await seedTenantWithMember(db, 'fw-discovery');
-  const api = tenantApi(db, { authorize: double.authorize });
+  const api = tenantApi(db, { ...extras, authorize: double.authorize });
   let sent = 0;
   const rig: DiscoveryRig = {
     double,
@@ -127,23 +141,59 @@ export function invalidIdPath(routePath: string): string | undefined {
 }
 
 const sameObservation = (a: Observed, b: Observed) =>
-  a.status === b.status && a.code === b.code && a.reason === b.reason;
+  a.status === b.status && a.code === b.code && a.reason === b.reason && a.error === b.error;
+
+/** 观测 + 错误体指纹（非 2xx）。2xx 响应体随数据变化，不取指纹。 */
+async function observeWithError(response: Response): Promise<Observed> {
+  const copy = response.clone();
+  const seen = await observe(response);
+  if (response.status < 300) return seen;
+  try {
+    const body = (await copy.json()) as { error?: { message?: unknown; details?: unknown } };
+    const payload = canonicalJson({ message: body.error?.message ?? null, details: body.error?.details ?? null });
+    return { ...seen, error: createHash('sha256').update(payload).digest('hex').slice(0, 12) };
+  } catch {
+    return seen;
+  }
+}
 
 /**
- * P3 是否适用：非法标识的观测必须是验参类结果（400 / 404）。
- * 观测不同于占位请求的结果 O* → 适用（标识影响了结果）。观测**等于** O* 时不能推出没触达标识校验（标识校验可能
- * 先失败，占位请求随后因对象不存在 / 请求体为空得到同一状态码），所以看审定过的标识校验证据（probe-id-evidence）：
- * 有证据 → 适用；没有 → 未达（如请求体先于标识校验、360 链接令牌先于标识校验）。
- * 其他状态（平台非运营 403、自助服务未绑定 403 …）没有触达标识校验。不适用的不算通过，B4b 的覆盖台账接手。
+ * P3 是否适用（第 3 轮，#163 审查 P2-R2-1）：非法标识的观测必须是验参类结果（400 / 404），并且**不同于**占位请求的
+ * 观测 O*（状态码、错误码、reason、错误体指纹任一不同）——即本端点的标识确实影响了结果。观测相同 = 两次请求在同一处
+ * 失败（请求体先于标识校验、标识校验被删、令牌先于标识校验），未达，不算通过，交 B4b 覆盖台账与 Tier 1 补测。
+ * 不再凭“端点在证据表里”判定：证据表证明不了本端点的校验调用与执行顺序（删校验漏报、请求体先验误报）。
+ * 其他状态（平台非运营 403、自助服务未绑定 403 …）没有触达标识校验。
  */
-export function p3Applicable(
-  endpoint: string,
-  found: EndpointDiscovery,
-  evidence: Readonly<Record<string, unknown>> = ID_CHECK_EVIDENCE,
-): boolean {
+export function p3Applicable(_endpoint: string, found: EndpointDiscovery): boolean {
   const seen = found.invalidId;
   if (!seen || (seen.status !== 400 && seen.status !== 404)) return false;
-  return !sameObservation(seen, found.all) || endpoint in evidence;
+  return !sameObservation(seen, found.all);
+}
+
+/**
+ * 适用性漂移：重新发现的 P3 适用性与冻结事实不同 → PROBE_ID_APPLICABILITY_CHANGED。删掉标识校验、改成请求体先验、
+ * 换了校验位置，都会让适用性变化（冻结文件逐字节比较也会红），这里给出可读的定位，要求复核声明与冻结事实。
+ */
+export function checkIdApplicabilityDrift(
+  fresh: Readonly<Record<string, EndpointDiscovery>>,
+  frozen: Readonly<Record<string, EndpointDiscovery>>,
+): Finding[] {
+  const findings: Finding[] = [];
+  for (const [endpoint, now] of Object.entries(fresh)) {
+    const before = frozen[endpoint];
+    if (!before) continue;
+    const was = p3Applicable(endpoint, before);
+    const is = p3Applicable(endpoint, now);
+    if (was === is) continue;
+    findings.push({
+      route: endpoint,
+      code: 'PROBE_ID_APPLICABILITY_CHANGED',
+      detail: was
+        ? '非法标识请求不再与占位请求区分（标识校验被删或移到请求体校验之后），P3 由适用变为未达，须复核'
+        : '非法标识请求开始与占位请求区分，P3 由未达变为适用，须复核声明的 invalidId',
+    });
+  }
+  return findings;
 }
 
 const AUTHORIZER_DIMENSIONS = ['obj:', 'btn:', 'admin:'];
@@ -158,7 +208,7 @@ async function send(rig: DiscoveryRig, route: ManifestRoute, routePath: string) 
   rig.double.configure({});
   rig.double.reset();
   const response = await rig.send(route.method, routePath, route.method === 'GET' ? undefined : {});
-  return { outcome: await observe(response), double: rig.double };
+  return { outcome: await observeWithError(response), double: rig.double };
 }
 
 /** 对一条端点做发现探测。`table` 只用来判定"未达"（gap），不影响轨迹。 */
@@ -250,6 +300,9 @@ export function checkDiscovery(
       const pair = pairKey(key, requested);
       if (accounting && (gapPairs.has(pair) || redundantPairs.has(pair))) seenPairs.add(pair);
       else report('PROBE_ADMISSION_UNCLAIMED', `全允许下被问到 ${requested}，显式表没有任何义务认领（表漏登 / 错登）`);
+    }
+    if (found.invalidId && found.invalidId.status >= 500) {
+      report('PROBE_ID_SERVER_ERROR', `非法标识得到 ${found.invalidId.status}，标识没有被校验`);
     }
     if (p3Applicable(key, found)) checkInvalidId(route, found.invalidId!, report);
   }

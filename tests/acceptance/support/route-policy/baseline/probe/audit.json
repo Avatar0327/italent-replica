@@ -24,11 +24,13 @@
   "GET /api/tenant/audit/data-changes/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "2c646f6b8eda",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "4d0d2ddacbb1",
       "status": 400
     },
     "scopeQueries": [],

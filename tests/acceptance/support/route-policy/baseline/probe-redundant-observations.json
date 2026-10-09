@@ -341,7 +341,7 @@
       },
       {
         "file": "apps/api/src/modules/idp/routes.ts",
-        "anchor": "/** 模板：顶层按 IDPTemplate，模块（含节点按钮配置）按 IDPTemplateModule，通用目标按 IDPTemplateCommonGoal。 */"
+        "anchor": "async function templatePresenter(deps: TenantRouteDeps, ctx: IdpContext) { const top = await projectionOf(deps, ctx, 'template'); const modules = await projectionOf(deps, ctx, 'templateModule'); const goals = await projectionOf(deps, ctx, 'commonGoal');"
       }
     ],
     "pairs": [

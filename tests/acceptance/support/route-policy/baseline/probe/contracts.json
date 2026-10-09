@@ -16,11 +16,13 @@
   "GET /api/tenant/contracts/employees/:id/revision": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "b5bb184b0b95",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -73,11 +75,13 @@
   "GET /api/tenant/contracts/records/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "15411a4c6808",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -90,11 +94,13 @@
   "GET /api/tenant/contracts/requests/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "2edd6b793cb5",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -135,6 +141,7 @@
   "POST /api/tenant/contracts/batch": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "586ee1f0aaeb",
       "status": 400
     },
     "fieldQueries": [],
@@ -149,6 +156,7 @@
   "POST /api/tenant/contracts/commands": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "daca302872de",
       "status": 400
     },
     "fieldQueries": [],
@@ -163,6 +171,7 @@
   "POST /api/tenant/contracts/imports": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "ad85501a8b3a",
       "status": 400
     },
     "fieldQueries": [],
@@ -176,6 +185,7 @@
   "POST /api/tenant/contracts/imports/errors": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "ad85501a8b3a",
       "status": 400
     },
     "fieldQueries": [],
@@ -189,6 +199,7 @@
   "POST /api/tenant/contracts/imports/preview": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "ad85501a8b3a",
       "status": 400
     },
     "fieldQueries": [],
@@ -202,6 +213,7 @@
   "POST /api/tenant/contracts/master-data/companies": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "57fd82f4ef59",
       "status": 400
     },
     "fieldQueries": [],
@@ -215,6 +227,7 @@
   "POST /api/tenant/contracts/master-data/types": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "57fd82f4ef59",
       "status": 400
     },
     "fieldQueries": [],
@@ -228,11 +241,13 @@
   "POST /api/tenant/contracts/requests/:id/cancel": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "2edd6b793cb5",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -246,6 +261,7 @@
   "POST /api/tenant/contracts/rules": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "f8e0cf6ecb62",
       "status": 400
     },
     "fieldQueries": [],
@@ -259,6 +275,7 @@
   "POST /api/tenant/contracts/todos/batch": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "269a76fa59b5",
       "status": 400
     },
     "fieldQueries": [],
@@ -270,11 +287,13 @@
   "PUT /api/tenant/contracts/master-data/companies/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "57fd82f4ef59",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -287,11 +306,13 @@
   "PUT /api/tenant/contracts/master-data/types/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "57fd82f4ef59",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -304,11 +325,13 @@
   "PUT /api/tenant/contracts/rules/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "f8e0cf6ecb62",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -321,6 +344,7 @@
   "PUT /api/tenant/contracts/settings": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "0e6b9e75947d",
       "status": 409
     },
     "fieldQueries": [],

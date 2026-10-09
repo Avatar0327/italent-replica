@@ -2,11 +2,13 @@
   "DELETE /api/tenant/establishment/schemes/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "cdbb64164602",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -34,11 +36,13 @@
   "GET /api/tenant/establishment/capacities/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "fb4d02c47250",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -51,11 +55,13 @@
   "GET /api/tenant/establishment/copy-jobs/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "53e89d9d1f72",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -68,6 +74,7 @@
   "GET /api/tenant/establishment/copy-jobs/:id/report": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "53e89d9d1f72",
       "status": 404
     },
     "fieldQueries": [
@@ -75,6 +82,7 @@
     ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -116,11 +124,13 @@
   "GET /api/tenant/establishment/schemes/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "cdbb64164602",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -143,11 +153,13 @@
   "PATCH /api/tenant/establishment/capacities/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "db9ddaf82412",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -158,11 +170,13 @@
   "PATCH /api/tenant/establishment/schemes/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "db9ddaf82412",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -173,6 +187,7 @@
   "POST /api/tenant/establishment/capacities": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "cc0e504eb09a",
       "status": 400
     },
     "fieldQueries": [],
@@ -184,6 +199,7 @@
   "POST /api/tenant/establishment/copy-jobs": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "df34312213cb",
       "status": 400
     },
     "fieldQueries": [],
@@ -195,11 +211,13 @@
   "POST /api/tenant/establishment/copy-jobs/:id/execute": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "53e89d9d1f72",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -213,6 +231,7 @@
   "POST /api/tenant/establishment/schemes": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "21c2dd04c099",
       "status": 400
     },
     "fieldQueries": [],
@@ -224,6 +243,7 @@
   "PUT /api/tenant/establishment/settings": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "a35a23d0a9c5",
       "status": 400
     },
     "fieldQueries": [],

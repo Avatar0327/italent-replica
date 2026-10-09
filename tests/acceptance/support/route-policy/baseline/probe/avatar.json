@@ -18,11 +18,13 @@
   "GET /api/tenant/avatars/:attachmentId/content": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "41362ab70fb4",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -31,6 +33,7 @@
   "POST /api/tenant/account/avatar/attachments": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "ea0db8703a12",
       "status": 400
     },
     "fieldQueries": [],
@@ -40,11 +43,13 @@
   "POST /api/tenant/account/avatar/attachments/:attachmentId/upload": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "505add1ab501",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],

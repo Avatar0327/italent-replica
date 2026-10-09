@@ -2,6 +2,7 @@
   "GET /api/platform/command-failures": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },
@@ -12,12 +13,14 @@
   "GET /api/platform/tenants/:tenantId": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },
@@ -27,12 +30,14 @@
   "GET /api/platform/tenants/:tenantId/licenses": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },
@@ -42,6 +47,7 @@
   "POST /api/platform/tenants": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },
@@ -52,12 +58,14 @@
   "POST /api/platform/tenants/:tenantId/standard-profiles/backfill": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },
@@ -67,12 +75,14 @@
   "POST /api/platform/tenants/:tenantId/status": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },
@@ -82,6 +92,7 @@
   "POST /api/platform/users": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },
@@ -92,12 +103,14 @@
   "PUT /api/platform/tenants/:tenantId/licenses/:licenseType": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "FORBIDDEN",
+      "error": "3631e071c213",
       "reason": "PLATFORM_OPERATOR_REQUIRED",
       "status": 403
     },

@@ -2,11 +2,13 @@
   "DELETE /api/tenant/talent-review/readiness-levels/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "d8ec944281e3",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -34,11 +36,13 @@
   "GET /api/tenant/talent-review/readiness-levels/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "d8ec944281e3",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -51,11 +55,13 @@
   "PATCH /api/tenant/talent-review/readiness-levels/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "d8ec944281e3",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -69,6 +75,7 @@
   "POST /api/tenant/talent-review/readiness-levels": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
       "status": 409
     },
     "fieldQueries": [],

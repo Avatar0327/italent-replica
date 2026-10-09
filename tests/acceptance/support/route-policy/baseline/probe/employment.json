@@ -2,11 +2,13 @@
   "DELETE /api/tenant/employment/businesses/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -36,11 +38,13 @@
   "GET /api/tenant/employment/businesses/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -99,11 +103,13 @@
   "GET /api/tenant/employment/employees/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "3d855d70ff10",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -117,11 +123,13 @@
   "GET /api/tenant/employment/employees/:id/records": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "3d855d70ff10",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -135,11 +143,13 @@
   "GET /api/tenant/employment/records/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "27d11d494b47",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -167,6 +177,7 @@
   "GET /api/tenant/employment/transfers/:id/linkage": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "9cacb8458d6d",
       "status": 404
     },
     "fieldQueries": [
@@ -175,6 +186,7 @@
     ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -229,6 +241,7 @@
     ],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -244,6 +257,7 @@
   "GET /api/tenant/employment/transfers/manager": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "516cbf7a0521",
       "status": 403
     },
     "fieldQueries": [],
@@ -258,6 +272,7 @@
   "GET /api/tenant/employment/transfers/manager/employees": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "516cbf7a0521",
       "status": 403
     },
     "fieldQueries": [],
@@ -272,6 +287,7 @@
   "GET /api/tenant/employment/transfers/manager/references/:field": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "516cbf7a0521",
       "status": 403
     },
     "fieldQueries": [],
@@ -286,6 +302,7 @@
   "GET /api/tenant/employment/transfers/manager/reporting": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "516cbf7a0521",
       "status": 403
     },
     "fieldQueries": [],
@@ -300,6 +317,7 @@
   "GET /api/tenant/employment/transfers/manager/search": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "516cbf7a0521",
       "status": 403
     },
     "fieldQueries": [],
@@ -314,6 +332,7 @@
   "GET /api/tenant/employment/transfers/manager/team": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "516cbf7a0521",
       "status": 403
     },
     "fieldQueries": [],
@@ -328,6 +347,7 @@
   "GET /api/tenant/employment/transfers/manager/todos": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "516cbf7a0521",
       "status": 403
     },
     "fieldQueries": [],
@@ -342,6 +362,7 @@
   "GET /api/tenant/employment/transfers/self": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "be409e90433c",
       "status": 403
     },
     "fieldQueries": [],
@@ -371,11 +392,13 @@
   "PATCH /api/tenant/employment/businesses/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "b491850815cd",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -389,11 +412,13 @@
   "PATCH /api/tenant/employment/records/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "b491850815cd",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -407,11 +432,13 @@
   "POST /api/tenant/employment/businesses/:id/activation/retry": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -426,11 +453,13 @@
   "POST /api/tenant/employment/businesses/:id/revoke": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -445,11 +474,13 @@
   "POST /api/tenant/employment/businesses/:id/submit": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -464,11 +495,13 @@
   "POST /api/tenant/employment/businesses/:id/withdraw": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "bea36a2d464b",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -483,6 +516,7 @@
   "POST /api/tenant/employment/custom-fields": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "a733fb704064",
       "status": 400
     },
     "fieldQueries": [],
@@ -496,6 +530,7 @@
   "POST /api/tenant/employment/employees": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "e366d1bb0f26",
       "status": 400
     },
     "fieldQueries": [],
@@ -510,11 +545,13 @@
   "POST /api/tenant/employment/employees/:id/businesses": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "91307cbd332c",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -528,11 +565,13 @@
   "POST /api/tenant/employment/employees/:id/forward-update-preview": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "91307cbd332c",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -546,11 +585,13 @@
   "POST /api/tenant/employment/employees/:id/import": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "89fc217aa511",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -564,11 +605,13 @@
   "POST /api/tenant/employment/employees/:id/import/forward-update-preview": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "89fc217aa511",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -582,11 +625,13 @@
   "POST /api/tenant/employment/employees/:id/preview": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "91307cbd332c",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -600,11 +645,13 @@
   "POST /api/tenant/employment/records/:id/forward-update-preview": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "b491850815cd",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -618,6 +665,7 @@
   "POST /api/tenant/employment/records/batch-edit": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "79818593e710",
       "status": 400
     },
     "fieldQueries": [],
@@ -632,11 +680,13 @@
   "POST /api/tenant/employment/transfers/employees/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "f6c564f43312",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -650,11 +700,13 @@
   "POST /api/tenant/employment/transfers/employees/:id/preview": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "f6c564f43312",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -668,11 +720,13 @@
   "POST /api/tenant/employment/transfers/linkage-items/:id/retry": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "78a0c1b7ee61",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -687,11 +741,13 @@
   "PUT /api/tenant/employment/custom-fields/:id/inheritance": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "ad2a5242b8d8",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -704,6 +760,7 @@
   "PUT /api/tenant/employment/settings": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "68e18d424555",
       "status": 400
     },
     "fieldQueries": [],
@@ -717,11 +774,13 @@
   "PUT /api/tenant/employment/transfers/:id/linkage": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "9cacb8458d6d",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -735,11 +794,13 @@
   "PUT /api/tenant/employment/transfers/forms/:formId": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "569cefdbe5e2",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "569cefdbe5e2",
       "status": 400
     },
     "scopeQueries": [
@@ -752,6 +813,7 @@
   "PUT /api/tenant/employment/transfers/settings": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "145a72658a13",
       "status": 400
     },
     "fieldQueries": [],

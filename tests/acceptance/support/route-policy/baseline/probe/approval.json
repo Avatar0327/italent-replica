@@ -24,11 +24,13 @@
   "GET /api/tenant/approval/instances/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "3bfba3fbe079",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -44,11 +46,13 @@
   "GET /api/tenant/approval/instances/:id/logs": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "3bfba3fbe079",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -64,11 +68,13 @@
   "GET /api/tenant/approval/instances/:id/tasks": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "3bfba3fbe079",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -102,11 +108,13 @@
   "GET /api/tenant/approval/processes/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "86edacba6319",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -135,6 +143,7 @@
   "POST /api/tenant/approval/exception-admins/handover": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "2ebe9103f16e",
       "status": 400
     },
     "fieldQueries": [],
@@ -147,12 +156,14 @@
   "POST /api/tenant/approval/instances/:id/admin-intervene": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "3a07c8f1d472",
       "reason": "APPROVAL_TARGET_REQUIRED",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -167,12 +178,14 @@
   "POST /api/tenant/approval/instances/:id/admin-transfer": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "3a07c8f1d472",
       "reason": "APPROVAL_TARGET_REQUIRED",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -187,11 +200,13 @@
   "POST /api/tenant/approval/instances/:id/resubmit": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "3bfba3fbe079",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -200,11 +215,13 @@
   "POST /api/tenant/approval/instances/:id/urge": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "3bfba3fbe079",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -213,11 +230,13 @@
   "POST /api/tenant/approval/instances/:id/withdraw": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "3bfba3fbe079",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -226,6 +245,7 @@
   "POST /api/tenant/approval/presets/install": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "163ad1c13e69",
       "status": 409
     },
     "fieldQueries": [],
@@ -237,6 +257,7 @@
   "POST /api/tenant/approval/processes": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "1b8d7b486291",
       "status": 400
     },
     "fieldQueries": [],
@@ -249,11 +270,13 @@
   "POST /api/tenant/approval/processes/:id/discard": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "86edacba6319",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -264,11 +287,13 @@
   "POST /api/tenant/approval/processes/:id/publish": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "86edacba6319",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -279,6 +304,7 @@
   "POST /api/tenant/approval/processes/:id/simulate": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "3e80ec81a4af",
       "status": 400
     },
     "fieldQueries": [],
@@ -287,6 +313,7 @@
     },
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -295,11 +322,13 @@
   "POST /api/tenant/approval/processes/:id/versions": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "86edacba6319",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -310,6 +339,7 @@
   "POST /api/tenant/approval/simulate": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "c3c75b76fcf0",
       "status": 400
     },
     "fieldQueries": [],
@@ -322,6 +352,7 @@
   "POST /api/tenant/approval/tasks/:id/add-sign": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "4a07abe2c3ef",
       "status": 400
     },
     "fieldQueries": [],
@@ -330,6 +361,7 @@
     },
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -338,6 +370,7 @@
   "POST /api/tenant/approval/tasks/:id/approve": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "93747f98a571",
       "status": 404
     },
     "fieldQueries": [],
@@ -346,6 +379,7 @@
     },
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -354,11 +388,13 @@
   "POST /api/tenant/approval/tasks/:id/cc": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "243a9c42a9c5",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "243a9c42a9c5",
       "status": 400
     },
     "scopeQueries": [],
@@ -367,6 +403,7 @@
   "POST /api/tenant/approval/tasks/:id/disagree": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "93747f98a571",
       "status": 404
     },
     "fieldQueries": [],
@@ -375,6 +412,7 @@
     },
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -383,6 +421,7 @@
   "POST /api/tenant/approval/tasks/:id/edit": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "074d5367ae26",
       "status": 400
     },
     "fieldQueries": [],
@@ -391,6 +430,7 @@
     },
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -399,11 +439,13 @@
   "POST /api/tenant/approval/tasks/:id/jump": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "e1791b540be9",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "e1791b540be9",
       "status": 400
     },
     "scopeQueries": [],
@@ -412,6 +454,7 @@
   "POST /api/tenant/approval/tasks/:id/reject": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "93747f98a571",
       "status": 404
     },
     "fieldQueries": [],
@@ -420,6 +463,7 @@
     },
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -428,6 +472,7 @@
   "POST /api/tenant/approval/tasks/:id/reject-previous": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "93747f98a571",
       "status": 404
     },
     "fieldQueries": [],
@@ -436,6 +481,7 @@
     },
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -444,11 +490,13 @@
   "POST /api/tenant/approval/tasks/:id/retrieve": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "93747f98a571",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],
@@ -457,11 +505,13 @@
   "POST /api/tenant/approval/tasks/:id/transfer": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "0918b13a16bc",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "0918b13a16bc",
       "status": 400
     },
     "scopeQueries": [],
@@ -470,6 +520,7 @@
   "PUT /api/tenant/approval/processes/:id/draft": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "8da9a0b6a2b0",
       "status": 400
     },
     "fieldQueries": [],
@@ -478,6 +529,7 @@
     },
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [],

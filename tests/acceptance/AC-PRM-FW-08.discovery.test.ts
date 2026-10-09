@@ -16,6 +16,7 @@ import { canonicalJson } from './support/route-policy/baseline.js';
 import { createAuthorizerDouble } from './support/route-policy/double.js';
 import {
   checkDiscovery,
+  checkIdApplicabilityDrift,
   createRig,
   discoverAll,
   discoverRoute,
@@ -24,11 +25,11 @@ import {
   p3Applicable,
   probeFilePath,
   PROBE_DIR,
+  readFrozenProbes,
   UNREACHED_REASONS,
   writeFrozenProbes,
 } from './support/route-policy/discovery.js';
 import type { Finding } from './support/route-policy/compare.js';
-import { ID_CHECK_EVIDENCE, checkIdCheckEvidence } from './support/route-policy/probe-id-evidence.js';
 import { checkKnownGapEvidence, KNOWN_GAPS, type KnownGapGroup } from './support/route-policy/probe-known-gaps.js';
 import { checkRedundantEvidence, REDUNDANT_OBSERVATIONS } from './support/route-policy/probe-redundant.js';
 import { permClaims } from './support/route-policy/request-perms.js';
@@ -326,7 +327,7 @@ describe('AC-PRM-FW-08 P0 反例：表漏登 / 错登', () => {
 });
 
 describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等', () => {
-  /** P3 适用：验参类观测（400 / 404），且不同于占位请求的结果，或有可证明的标识校验位置（ID_CHECK_EVIDENCE）。 */
+  /** P3 适用：验参类观测（400 / 404），且不同于占位请求的结果（含错误体指纹；第 3 轮由实际行为证明，不用证据表）。 */
   const applicable = () => manifest.declared.filter((r) => p3Applicable(key(r), fresh[key(r)]!));
   const declaredApplicable = () => applicable().filter((r) => r.policy.invalidId !== undefined);
 
@@ -381,7 +382,15 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     }
   });
 
-  const EVIDENCED = Object.keys(ID_CHECK_EVIDENCE);
+  /**
+   * 状态码与错误码相同、只有错误体指纹不同的端点（第 2 轮靠证据表豁免的 48 个：37 条同为 400 + permission 11 条同为 404）。
+   * 第 3 轮起由实际行为证明适用：占位请求在请求体 / 加载处失败，非法标识请求在标识校验处失败。
+   */
+  const sameStatusOnly = () =>
+    Object.entries(fresh)
+      .filter(([, d]) => d.invalidId && d.invalidId.status === d.all.status && d.invalidId.code === d.all.code)
+      .filter(([, d]) => d.invalidId!.reason === d.all.reason && d.invalidId!.error !== d.all.error)
+      .map(([k]) => k);
   /** 审查附录 B 1.3：请求体校验先于标识校验，占位请求与非法标识请求都在请求体处失败，合理未达。 */
   const BODY_FIRST = [
     'PUT /api/tenant/employment/transfers/forms/:formId',
@@ -395,20 +404,19 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     'PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id',
   ];
 
-  it('第 2 轮 P2-4：占位与非法标识观测相同的 48 个端点有标识校验证据（37 条同为 400 + permission 11 条同为 404），全部适用', () => {
-    expect(EVIDENCED).toHaveLength(48);
-    expect(EVIDENCED).toContain('GET /api/tenant/permission/profiles/:id');
-    expect(checkIdCheckEvidence()).toEqual([]);
-    for (const k of EVIDENCED) {
-      const found = fresh[k]!;
-      expect(found.invalidId, k).toEqual(found.all); // 正是"观测相同"的情形
-      expect(p3Applicable(k, found), k).toBe(true);
+  it('第 3 轮：状态码相同、错误体不同的 48 个端点由实际行为证明适用（不依赖证据表）', () => {
+    const k48 = sameStatusOnly();
+    expect(k48).toHaveLength(48);
+    expect(k48).toContain('GET /api/tenant/permission/profiles/:id');
+    expect(k48).toContain('POST /api/tenant/idp/plans/:id/goals');
+    for (const k of k48) {
+      expect(p3Applicable(k, fresh[k]!), k).toBe(true);
       expect(route(k).policy.invalidId, `${k} 真实声明有 invalidId`).toBeDefined();
     }
   });
 
-  it('48 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId（此前被误豁免）', () => {
-    for (const k of EVIDENCED) {
+  it('48 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId', () => {
+    for (const k of sameStatusOnly()) {
       const r = route(k);
       const declared = r.policy.invalidId!;
       const flipped =
@@ -423,17 +431,14 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     }
   });
 
-  it('标识校验证据被改（锚点不再出现在文件里）→ PROBE_ID_EVIDENCE_STALE；证据缺失的相同观测仍判未达', () => {
-    const k = EVIDENCED[0]!;
-    const broken = { ...ID_CHECK_EVIDENCE, [k]: { ...ID_CHECK_EVIDENCE[k]!, anchor: 'noSuchAnchorAnywhere(c)' } };
-    expect(codes(checkIdCheckEvidence(broken))).toEqual(['PROBE_ID_EVIDENCE_STALE']);
-    const { [k]: _gone, ...without } = ID_CHECK_EVIDENCE;
-    expect(p3Applicable(k, fresh[k]!, without)).toBe(false);
+  it('适用性与冻结事实零漂移（PROBE_ID_APPLICABILITY_CHANGED 为空）；非法标识没有 5xx', () => {
+    expect(checkIdApplicabilityDrift(fresh, readFrozenProbes())).toEqual([]);
+    expect(Object.entries(fresh).filter(([, d]) => (d.invalidId?.status ?? 0) >= 500)).toEqual([]);
   });
 
   it('请求体先于标识校验的 9 个端点保持合理未达（不在证据表里，观测相同 → 不适用，不能凭状态码相同误报）', () => {
     for (const k of BODY_FIRST) {
-      expect(EVIDENCED, k).not.toContain(k);
+      expect(sameStatusOnly(), k).not.toContain(k);
       expect(fresh[k]!.invalidId, k).toEqual(fresh[k]!.all);
       expect(p3Applicable(k, fresh[k]!), k).toBe(false);
     }

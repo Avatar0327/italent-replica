@@ -2,6 +2,7 @@
   "GET /api/tenant/self-service/applications": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "be409e90433c",
       "status": 403
     },
     "fieldQueries": [],
@@ -11,11 +12,13 @@
   "GET /api/tenant/self-service/applications/:id": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "be409e90433c",
       "status": 403
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "FORBIDDEN",
+      "error": "be409e90433c",
       "status": 403
     },
     "scopeQueries": [],
@@ -24,11 +27,13 @@
   "GET /api/tenant/self-service/employees/:id/records": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "be409e90433c",
       "status": 403
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "FORBIDDEN",
+      "error": "be409e90433c",
       "status": 403
     },
     "scopeQueries": [],
@@ -37,6 +42,7 @@
   "GET /api/tenant/self-service/profile": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "be409e90433c",
       "status": 403
     },
     "fieldQueries": [],
@@ -46,6 +52,7 @@
   "GET /api/tenant/self-service/transfer/references/:code": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "be409e90433c",
       "status": 403
     },
     "fieldQueries": [],
@@ -55,6 +62,7 @@
   "POST /api/tenant/self-service/transfer": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "be409e90433c",
       "status": 403
     },
     "fieldQueries": [],
@@ -67,6 +75,7 @@
   "POST /api/tenant/self-service/transfer/preview": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "be409e90433c",
       "status": 403
     },
     "fieldQueries": [],

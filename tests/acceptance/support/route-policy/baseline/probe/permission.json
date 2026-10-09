@@ -2,11 +2,13 @@
   "DELETE /api/tenant/permission/dynamic-org-grants/:grantId": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "98a428cb5fc3",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -17,11 +19,13 @@
   "DELETE /api/tenant/permission/mous/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "75c156bcd0d8",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -32,12 +36,14 @@
   "DELETE /api/tenant/permission/person-links/:userId": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "bbd8308a2199",
       "reason": "USER_BINDING_BY_PROFILE",
       "status": 403
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "FORBIDDEN",
+      "error": "bbd8308a2199",
       "reason": "USER_BINDING_BY_PROFILE",
       "status": 403
     },
@@ -75,11 +81,13 @@
   "GET /api/tenant/permission/admins/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "3da9f43d1b9d",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -90,11 +98,13 @@
   "GET /api/tenant/permission/dynamic-org-grants/:grantId": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "98a428cb5fc3",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -105,12 +115,14 @@
   "GET /api/tenant/permission/grant-prefill/:userId/:profileId": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "61935dff99bc",
       "reason": "NOT_A_MEMBER",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -151,6 +163,7 @@
   "GET /api/tenant/permission/licenses/:licenseType/seats": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "ffa88eea9a96",
       "status": 404
     },
     "fieldQueries": [],
@@ -162,6 +175,7 @@
   "GET /api/tenant/permission/me/objects/:objectCode": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "fieldQueries": [],
@@ -181,11 +195,13 @@
   "GET /api/tenant/permission/mous/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "75c156bcd0d8",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -196,12 +212,14 @@
   "GET /api/tenant/permission/person-links/:userId": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "61935dff99bc",
       "reason": "NOT_A_MEMBER",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -222,11 +240,13 @@
   "GET /api/tenant/permission/profiles/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "b842efd2f3aa",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -237,11 +257,13 @@
   "GET /api/tenant/permission/profiles/:id/data-scopes/:appCode": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "b842efd2f3aa",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -262,6 +284,7 @@
   "GET /api/tenant/permission/scope-policies/:appCode/:objectCode/:targetKind/:targetCode": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "7cf0871a5073",
       "status": 400
     },
     "fieldQueries": [],
@@ -273,12 +296,14 @@
   "GET /api/tenant/permission/scopes/:userId/:appCode": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "61935dff99bc",
       "reason": "NOT_A_MEMBER",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -299,11 +324,13 @@
   "GET /api/tenant/permission/users/:userId": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "a8d16da3a3ca",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -314,6 +341,7 @@
   "POST /api/tenant/permission/admins": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "e7cd83d34ae3",
       "status": 400
     },
     "fieldQueries": [],
@@ -325,6 +353,7 @@
   "POST /api/tenant/permission/grants": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "66ad8c209001",
       "status": 400
     },
     "fieldQueries": [],
@@ -336,11 +365,13 @@
   "POST /api/tenant/permission/grants/:id/revoke": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "98a428cb5fc3",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -351,6 +382,7 @@
   "POST /api/tenant/permission/mous": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "01fb9c57ab2f",
       "status": 400
     },
     "fieldQueries": [],
@@ -362,6 +394,7 @@
   "POST /api/tenant/permission/profiles": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "27e72fb9159c",
       "status": 400
     },
     "fieldQueries": [],
@@ -373,6 +406,7 @@
   "POST /api/tenant/permission/users": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "f6a9757a4083",
       "status": 400
     },
     "fieldQueries": [],
@@ -384,11 +418,13 @@
   "POST /api/tenant/permission/users/:userId/remove": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "a8d16da3a3ca",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -399,11 +435,13 @@
   "POST /api/tenant/permission/users/:userId/status": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "a8d16da3a3ca",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -414,11 +452,13 @@
   "PUT /api/tenant/permission/admins/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "2e23233c6250",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -429,11 +469,13 @@
   "PUT /api/tenant/permission/dynamic-org-grants/:grantId": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "d2ddad67d85a",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -444,11 +486,13 @@
   "PUT /api/tenant/permission/mous/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "01fb9c57ab2f",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -459,12 +503,14 @@
   "PUT /api/tenant/permission/person-links/:userId": {
     "all": {
       "code": "FORBIDDEN",
+      "error": "bbd8308a2199",
       "reason": "USER_BINDING_BY_PROFILE",
       "status": 403
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "FORBIDDEN",
+      "error": "bbd8308a2199",
       "reason": "USER_BINDING_BY_PROFILE",
       "status": 403
     },
@@ -474,11 +520,13 @@
   "PUT /api/tenant/permission/profiles/:id/data-scopes/:appCode": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "8f45770c3af2",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "8f45770c3af2",
       "status": 400
     },
     "scopeQueries": [],
@@ -489,11 +537,13 @@
   "PUT /api/tenant/permission/profiles/:id/objects/:objectCode": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "d88fcd648a9f",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -504,6 +554,7 @@
   "PUT /api/tenant/permission/scope-apps/:appCode": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "042582fd8620",
       "status": 400
     },
     "fieldQueries": [],
@@ -515,6 +566,7 @@
   "PUT /api/tenant/permission/scope-policies/:appCode/:objectCode/:targetKind/:targetCode": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "7cf0871a5073",
       "status": 400
     },
     "fieldQueries": [],
@@ -526,11 +578,13 @@
   "PUT /api/tenant/permission/scopes/:userId/:appCode": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "fb2a3a618fbb",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],
@@ -541,11 +595,13 @@
   "PUT /api/tenant/permission/users/:userId": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "2e064e56be8d",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "NOT_FOUND",
+      "error": "d40a65b9992b",
       "status": 404
     },
     "scopeQueries": [],

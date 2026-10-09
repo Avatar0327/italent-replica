@@ -12,7 +12,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Finding } from './compare.js';
-import { containsAnchor, repoSource, type SourceReader } from './evidence.js';
+import { containsAnchor, normalize, repoSource, type SourceReader } from './evidence.js';
 
 export interface EvidenceRef {
   /** 仓库相对路径。 */
@@ -39,7 +39,10 @@ export const baselineJson = <T>(name: string): T =>
 
 export const KNOWN_GAPS: readonly KnownGapGroup[] = baselineJson('probe-known-gaps.json');
 
-/** 证据锚点仍出现在所指文件里（调用点被改会要求复核）。 */
+/**
+ * 证据锚点仍出现在所指文件里（调用点被改会要求复核）。锚点按词法记号比较、不计注释，所以纯注释锚点规范化后为空、
+ * 对任何文件都“命中”——这类锚点直接报错（#163 第 2 轮 P3），必须指向实际代码。
+ */
 export function checkEvidenceRefs(
   groups: readonly { readonly id: string; readonly evidence: readonly EvidenceRef[] }[],
   code: string,
@@ -48,6 +51,14 @@ export function checkEvidenceRefs(
   const findings: Finding[] = [];
   for (const group of groups) {
     for (const { file, anchor } of group.evidence) {
+      if (!normalize(anchor)) {
+        findings.push({
+          route: group.id,
+          code,
+          detail: `${file} 的证据锚点规范化后为空（纯注释），检查会恒真：${anchor}`,
+        });
+        continue;
+      }
       let found = false;
       try {
         found = containsAnchor(read(file), anchor);

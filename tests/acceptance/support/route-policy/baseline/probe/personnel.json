@@ -2,11 +2,13 @@
   "DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -20,11 +22,13 @@
   "GET /api/tenant/personnel/change-requests/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "bd57906e3e9d",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -51,11 +55,13 @@
   "GET /api/tenant/personnel/employees/:employeeId/subsets/:kind": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -68,11 +74,13 @@
   "GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -85,11 +93,13 @@
   "GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/history": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -103,11 +113,13 @@
   "GET /api/tenant/personnel/employees/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -120,11 +132,13 @@
   "GET /api/tenant/personnel/employees/:id/history": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -138,11 +152,13 @@
   "GET /api/tenant/personnel/employees/:id/tenure": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
       "status": 400
     },
     "scopeQueries": [
@@ -180,6 +196,7 @@
   "PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "251885610aa1",
       "status": 400
     },
     "fieldQueries": [],
@@ -188,6 +205,7 @@
     },
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "251885610aa1",
       "status": 400
     },
     "scopeQueries": [],
@@ -196,6 +214,7 @@
   "PATCH /api/tenant/personnel/employees/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "251885610aa1",
       "status": 400
     },
     "fieldQueries": [],
@@ -204,6 +223,7 @@
     },
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "251885610aa1",
       "status": 400
     },
     "scopeQueries": [],
@@ -212,6 +232,7 @@
   "POST /api/tenant/personnel/change-requests": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "b6c0df8920ba",
       "status": 400
     },
     "fieldQueries": [],
@@ -224,6 +245,7 @@
   "POST /api/tenant/personnel/employees/:employeeId/subsets/:kind": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "251885610aa1",
       "status": 400
     },
     "fieldQueries": [],
@@ -232,6 +254,7 @@
     },
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "251885610aa1",
       "status": 400
     },
     "scopeQueries": [],
@@ -240,6 +263,7 @@
   "POST /api/tenant/personnel/employees/:id/attachments": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "b6c0df8920ba",
       "status": 400
     },
     "fieldQueries": [],
@@ -248,6 +272,7 @@
     },
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "b6c0df8920ba",
       "status": 400
     },
     "scopeQueries": [],
@@ -256,6 +281,7 @@
   "POST /api/tenant/personnel/order-code/recompute": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "6983010791dc",
       "status": 409
     },
     "fieldQueries": [],
@@ -267,6 +293,7 @@
   "PUT /api/tenant/personnel/order-code/settings": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "b6c0df8920ba",
       "status": 400
     },
     "fieldQueries": [],

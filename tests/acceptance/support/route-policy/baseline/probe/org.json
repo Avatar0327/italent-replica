@@ -2,11 +2,13 @@
   "DELETE /api/tenant/org/code-reservations/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "5dc9b998b1bb",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "2430b2c790c1",
       "status": 400
     },
     "scopeQueries": [
@@ -34,11 +36,13 @@
   "GET /api/tenant/org/organizations/:id": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "2919de60fd47",
       "status": 404
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "2430b2c790c1",
       "status": 400
     },
     "scopeQueries": [
@@ -83,11 +87,13 @@
   "PATCH /api/tenant/org/organizations/:id": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "4c5ef84ca92f",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "2430b2c790c1",
       "status": 400
     },
     "scopeQueries": [],
@@ -99,11 +105,13 @@
   "PATCH /api/tenant/org/organizations/:id/correction": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "874e0f18f923",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "2430b2c790c1",
       "status": 400
     },
     "scopeQueries": [],
@@ -114,6 +122,7 @@
   "POST /api/tenant/org/code-reservations": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "ca1763b4f20a",
       "status": 409
     },
     "fieldQueries": [],
@@ -125,6 +134,7 @@
   "POST /api/tenant/org/import": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "ca1763b4f20a",
       "status": 409
     },
     "fieldQueries": [],
@@ -136,6 +146,7 @@
   "POST /api/tenant/org/organizations": {
     "all": {
       "code": "REVISION_CONFLICT",
+      "error": "ca1763b4f20a",
       "status": 409
     },
     "fieldQueries": [],
@@ -147,11 +158,13 @@
   "POST /api/tenant/org/organizations/:id/employment-preview": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "4c5ef84ca92f",
       "status": 400
     },
     "fieldQueries": [],
     "invalidId": {
       "code": "VALIDATION_FAILED",
+      "error": "2430b2c790c1",
       "status": 400
     },
     "scopeQueries": [],
@@ -163,6 +176,7 @@
   "POST /api/tenant/org/validate": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "7a34715511f4",
       "status": 400
     },
     "fieldQueries": [],
@@ -174,6 +188,7 @@
   "PUT /api/tenant/org/settings": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "051663e54e75",
       "status": 400
     },
     "fieldQueries": [],

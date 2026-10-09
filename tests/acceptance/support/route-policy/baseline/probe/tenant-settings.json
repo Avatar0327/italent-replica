@@ -2,6 +2,7 @@
   "DELETE /api/tenant/settings/:key/override": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "a1bb9348b9aa",
       "status": 404
     },
     "fieldQueries": [],
@@ -13,6 +14,7 @@
   "GET /api/tenant/settings/:key": {
     "all": {
       "code": "NOT_FOUND",
+      "error": "a1bb9348b9aa",
       "status": 404
     },
     "fieldQueries": [],
@@ -24,6 +26,7 @@
   "PUT /api/tenant/settings/:key": {
     "all": {
       "code": "VALIDATION_FAILED",
+      "error": "26ebfe16070e",
       "status": 400
     },
     "fieldQueries": [],
