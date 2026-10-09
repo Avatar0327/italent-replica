@@ -52,7 +52,7 @@ async function underBarrier<T>(db: Db, tenantId: string, hold: (tx: Tx) => Promi
   return result as T;
 }
 
-describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('位置字段占用锁协议 · PostgreSQL 16', () => {
+describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TR-08 位置字段占用锁协议 · PostgreSQL 16', () => {
   it.each([
     ['before↔before', 'before', 'before'],
     ['after↔after', 'after', 'after'],
@@ -153,7 +153,7 @@ async function legacyTenant(label: string) {
 }
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
-  '预置补装 × 租户占用位置字段 · PostgreSQL 16（第 2 轮 P2）',
+  'AC-TR-08 / DEC-361 预置补装 × 租户占用位置字段 · PostgreSQL 16（第 2 轮 P2）',
   () => {
     it.each(['PATCH', 'POST'] as const)(
       '补装先取齐全部占用锁后停在写九宫格，%s 选两个预置各一个位置字段：只在占用锁上排队，补装完成后 409，无死锁',

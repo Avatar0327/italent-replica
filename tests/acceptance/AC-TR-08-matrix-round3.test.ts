@@ -22,7 +22,7 @@ import { errorCode, tenantApi } from './support/tenant-api.js';
 const testDb = useTestDb();
 const clock = () => TR_NOW;
 
-describe('首次 PATCH 在业务事务内复核显式提交的字段引用（第 2 轮 P2）', () => {
+describe('AC-TR-08 首次 PATCH 在业务事务内复核显式提交的字段引用（第 2 轮 P2）', () => {
   let world: PermissionWorld;
   let setup: ReturnType<typeof tenantApi>;
   const adminField = async (kind: 'option' | 'number', group: string) => {
@@ -173,7 +173,7 @@ async function order(api: ReturnType<typeof tenantApi>, path: string, as: object
   return whole;
 }
 
-describe('配置列表不按看不到的排序字段排序（第 2 轮 P2，DEC-317① 信息泄露例外）', () => {
+describe('AC-TR-08 / AC-TR-config 配置列表不按看不到的排序字段排序（第 2 轮 P2，DEC-317① 信息泄露例外）', () => {
   it.each(LISTS)('$path 看不到 sortNo：管理员只改隐藏的 sortNo，顺序与分页都不变', async ({ path, object }) => {
     const w = await listWorld(object, `trm-r3-sort-${object}`);
     const a = await w.create({ sortNo: 9 });
@@ -205,7 +205,7 @@ describe('配置列表不按看不到的排序字段排序（第 2 轮 P2，DEC-
   });
 });
 
-describe('数值轴下界按存储精度严格判断（第 2 轮 P3）', () => {
+describe('AC-TR-08 数值轴下界按存储精度严格判断（第 2 轮 P3）', () => {
   it('1e-11、2e-11 入库会被舍成 0：400，数据不变；四位小数照常', async () => {
     const w = await matrixWorld(testDb().db, 'trm-r3-precision');
     const score = (await w.numberField()).id;
