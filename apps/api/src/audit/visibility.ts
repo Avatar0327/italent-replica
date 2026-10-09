@@ -115,12 +115,14 @@ interface Rule {
   /** 不是对象字段的协议键（删除 / 移除标记、活动授权名单等），随对象字段一起展示。 */
   readonly protocol?: readonly string[];
   /**
-   * 脱敏出口（DEC-340③ 答卷日志）：对任何查看人都去掉 hidden 字段，按动作再去掉 byAction 的字段；列表与详情不展示
-   * 命令 ID、请求来源与对象编号，按这些条件筛选也查不到（auditDesensitized）。数据库里的快照照常保存。
+   * 逐行脱敏（DEC-340③ / DEC-355② 答卷日志）：脱敏行去掉 hidden 字段，按动作再去掉 byAction 的字段；列表与详情不展示
+   * 命令 ID、请求来源与对象编号，按这些条件筛选也查不到（AuditViewer.withheld）。fullResolve 返回查看人能看完整版
+   * 的活动编号子查询（null = 全部脱敏）。数据库里的快照照常保存。
    */
   readonly desensitize?: {
     readonly hidden: readonly string[];
     readonly byAction?: Readonly<Record<string, readonly string[]>>;
+    readonly fullResolve?: (deps: Deps, ctx: TenantContext) => Promise<SQL | null>;
   };
 }
 
@@ -267,14 +269,15 @@ const OBJECT_FIELDS = new Map<string, string[]>(
 );
 
 /**
- * DEC-340③：答卷日志（保存、提交、屏蔽、恢复、清除、替换套卷清空）对任何查看人（含持“全部活动”者）只给脱敏版本：
- * 去掉评价关系 ID；不展示命令 ID、作答请求的来源（IP、终端、来源页、TraceID）与答卷编号——管理员可凭自己的命令 ID
- * 或匿名卡片编号把答卷对到具名评价关系（第 3 轮 P2-2）；清除是对具名评价关系做的，清除事件再去掉答案与评语。
- * 链接 / 待办作答的操作人本就记为“系统”。答案本身与原始数据卡片一样不带评价者标识。
+ * DEC-340③：答卷日志（保存、提交、屏蔽、恢复、清除、替换套卷清空）默认只给脱敏版本：去掉评价关系 ID；不展示命令 ID、
+ * 作答请求的来源（IP、终端、来源页、TraceID）与答卷编号——管理员可凭自己的命令 ID 或匿名卡片编号把答卷对到具名评价
+ * 关系（第 3 轮 P2-2）；清除是对具名评价关系做的，清除事件再去掉答案与评语。链接 / 待办作答的操作人本就记为“系统”。
+ * DEC-355②（批准例外）：持“全部活动”且在该活动里不兼任被评价人 / 评价者的人看完整版（answerFull）。
  */
 const SURVEY360_SHEET_DESENSITIZE = {
   hidden: ['relationId'],
   byAction: { 'survey360.sheet.clear': ['answers', 'suggestion'] },
+  fullResolve: survey360AuditScope('answerFull'),
 } as const;
 const inVisibleActivity: Rule['visible'] = (_scope, row, _viewer, { extra }) =>
   extra ? sql`COALESCE(${row.after}->>'activityId', '') IN (${extra})` : sql`false`;
@@ -643,6 +646,9 @@ export function auditObjectRegistered(objectType: string): boolean {
 }
 
 interface ResolvedRule {
+  /** 逐行脱敏（DEC-340③ / DEC-355②）：该行展示脱敏版本的谓词；fullFields 给能看完整版的行。 */
+  readonly withheld?: SQL;
+  readonly fullFields?: ReadonlySet<string> | undefined;
   readonly linkage?: LinkageAudit;
   readonly rule: Rule;
   readonly scope: ModuleScope;
@@ -703,11 +709,14 @@ export interface AuditViewer {
   /** 联动逐条解析的完整可见路径与展开差异；其他对象保持原始 changes。 */
   readonly linkagePaths: SQL;
   readonly eventChanges: SQL;
-  /** 该日志适用的查看字段；undefined = 不限字段。 */
+  /** 该行只展示脱敏版本（DEC-340③ / DEC-355②）：不展示对象编号、命令 ID 与来源，按它们筛选时排除。 */
+  readonly withheld: SQL;
+  /** 该日志适用的查看字段；undefined = 不限字段。withheld = 该行的 withheld 列。 */
   fieldsOf(
     objectType: string,
     action?: string | null,
     paths?: readonly string[] | null,
+    withheld?: boolean | null,
   ): ReadonlySet<string> | undefined;
 }
 
@@ -776,25 +785,31 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
       FROM jsonb_array_elements(${sql.identifier(TASK)}.items) item WHERE ${rowsCase}) END)`,
     visibleCount: sql`COALESCE(${run && !run.scope.all ? orderRunCount(run, viewer) : sql`NULL::int`},
       ${orgRun ? orgAdjustmentCount(orgRun, viewer) : sql`NULL::int`})`,
-    fieldsOf: (objectType, action, paths) => {
+    withheld: withheldColumn([...resolved.values()]),
+    fieldsOf: (objectType, action, paths, rowWithheld) => {
       if (objectType === TRANSFER_LINKAGE) return new ExactAuditFields(paths ?? []);
       const configured = config.get(configKey(objectType, action));
       if (configured) return configured.fields;
       if (isConfigLog(objectType, action)) return undefined;
       const rule = RULE_BY_TYPE.get(objectType);
-      const fields = rule ? resolved.get(rule)?.fields : undefined;
+      const entry = rule ? resolved.get(rule) : undefined;
+      if (entry?.withheld && rowWithheld === false) return entry.fullFields;
+      const fields = entry?.fields;
       const drop = (action && rule?.desensitize?.byAction?.[action]) || [];
       return fields && drop.length ? new Set([...fields].filter((field) => !drop.includes(field))) : fields;
     },
   };
 }
 
-/** 脱敏出口的对象类型（DEC-340③）：不展示命令 ID、请求来源与对象编号，按这些条件筛选时一律排除。 */
-export const AUDIT_DESENSITIZED_TYPES: readonly string[] = RULES.filter((rule) => rule.desensitize).flatMap(
-  (rule) => rule.types,
-);
-export function auditDesensitized(objectType: string): boolean {
-  return AUDIT_DESENSITIZED_TYPES.includes(objectType);
+/** 逐行脱敏列（DEC-340③ / DEC-355②）：脱敏规则的行按其谓词，其他行 false。 */
+function withheldColumn(entries: readonly ResolvedRule[]): SQL {
+  const rows = entries.filter((entry) => entry.withheld);
+  return rows.length
+    ? sql`(CASE ${sql.join(
+        rows.map((entry) => sql`WHEN ${eventTypes(entry.rule)} THEN ${entry.withheld!}`),
+        sql` `,
+      )} ELSE false END)`
+    : sql`false`;
 }
 
 function orgAdjustmentCount(run: ResolvedRule, viewer: Viewer): SQL {
@@ -815,12 +830,21 @@ function withProtocol(fields: ReadonlySet<string> | undefined, protocol: readonl
   return fields === undefined || !protocol?.length ? fields : new Set([...fields, ...protocol]);
 }
 
-/** 脱敏出口的规则（DEC-340③）：查看字段去掉 hidden；不限字段时以对象全部字段为底。 */
-function desensitizedFields(rule: Rule, fields: ReadonlySet<string> | undefined): ReadonlySet<string> | undefined {
-  if (!rule.desensitize) return fields;
+/**
+ * 逐行脱敏的规则（DEC-340③ / DEC-355②）：fields（筛选与脱敏行的展示）去掉 hidden，不限字段时以对象全部字段为底；
+ * fullFields 给能看完整版的行；withheld 是逐行谓词（行所在活动不在 fullResolve 的活动里）。
+ */
+async function desensitized(deps: Deps, ctx: TenantContext, rule: Rule, fields: ReadonlySet<string> | undefined) {
+  if (!rule.desensitize) return { fields };
   const hidden = new Set(rule.desensitize.hidden);
   const all = fields ?? new Set(OBJECT_FIELDS.get(rule.objectCode) ?? []);
-  return new Set([...all].filter((field) => !hidden.has(field)));
+  const full = rule.desensitize.fullResolve ? await rule.desensitize.fullResolve(deps, ctx) : null;
+  const activity = sql`COALESCE(${sql.identifier(EVENT)}.after->>'activityId', '')`;
+  return {
+    fields: new Set([...all].filter((field) => !hidden.has(field))),
+    fullFields: fields,
+    withheld: full ? sql`(${activity} NOT IN (${full}))` : sql`true`,
+  };
 }
 
 async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<ResolvedRule | undefined> {
@@ -837,7 +861,7 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
     const inputs = { extra, objectFields };
     if (rule.types.includes('survey360-person'))
       return { rule, scope, inputs, fields: survey360PersonAuditFields(fields) };
-    return { rule, scope, inputs, fields: desensitizedFields(rule, fields) };
+    return { rule, scope, inputs, ...(await desensitized(deps, ctx, rule, fields)) };
   }
   if (!(await canView())) return undefined;
   const scope = await resolveModuleScope(deps, ctx, undefined, rule.objectCode, undefined, rule.view);
