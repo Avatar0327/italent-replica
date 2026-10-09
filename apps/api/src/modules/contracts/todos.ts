@@ -97,7 +97,7 @@ export function registerMergedTodos(module: Hono<TenantEnv>, deps: TenantRouteDe
 }
 
 /** 结果未知 / 存储不可写也逐条回执，但带机器可读原因，客户端按原命令 ID 回查（PR #75 第二轮 P2-8）。 */
-function receiptError(error: AppError) {
+export function receiptError(error: AppError, _entitled = false) {
   const reason = (error.details as { reason?: string } | undefined)?.reason;
   return { code: error.code, message: error.message, ...(isDefiniteFailure(error) ? {} : { reason }) };
 }
