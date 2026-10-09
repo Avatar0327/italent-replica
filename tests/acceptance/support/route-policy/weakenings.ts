@@ -7,6 +7,9 @@
  */
 import type { ManifestRoute, RoutePolicy } from '@italent/api';
 import type { ObservedContract } from './contract.js';
+import { declaredPerms, objectsOf, type PermMap, scopeMatches } from './perms.js';
+import { locate } from './required-mutate.js';
+import type { Obligation, RequiredTable } from './required/types.js';
 import { mapSelectors, type SelectorSite } from './selectors.js';
 
 export type WeakeningKind =
@@ -265,3 +268,230 @@ export function weakeningsOf(route: ManifestRoute, contract: ObservedContract): 
   }
   return out;
 }
+
+// ---- 披露语义与范围绑定（F-039 PR-B1，B-01 / B-03）------------------------------------------------------------------
+// 按声明结构与表的披露义务生成（不经比较器筛选），每一个都必须报出 expected。与上面的弱化互补：上面逐类削弱准入 / 选择器，
+// 这里削弱披露分支的结构与独立范围，以及多承载节点备选里“范围换位”。
+
+export const DISCLOSURE_WEAKENING_KINDS = [
+  'disclosure→any-member',
+  'disclosure→nested',
+  'disclosure→moved',
+  'scope→sibling',
+  'disclosure-scope→none',
+  'disclosure-scope→wrong-predicate',
+  'scope→foreign-object',
+  'scope→partial-object',
+] as const;
+export type DisclosureWeakeningKind = (typeof DISCLOSURE_WEAKENING_KINDS)[number];
+
+export interface DisclosureWeakening {
+  readonly kind: DisclosureWeakeningKind;
+  readonly at: string;
+  readonly expected: string;
+  readonly route: ManifestRoute;
+}
+
+const MEMBER_BRANCH = (): Node => ({
+  kind: 'member',
+  reason: '弱化反例',
+  fields: { mode: 'none', reason: '弱化反例' },
+});
+
+/** 披露分支（含其 of 子节点）里的所有节点。 */
+function* branchNodes(node: Node): Generator<Node> {
+  yield node;
+  for (const child of (node['of'] as Node[] | undefined) ?? []) yield* branchNodes(child);
+}
+
+const moduleOf = (key: string) => key.split(' ')[1]!.split('/').slice(0, 4).join('/');
+
+/** 同模块（路径前四段）里已登记的、与 mode 相同但名字不同的范围名字。 */
+function otherScopeName(table: RequiredTable, key: string, mode: string, used: string): string | undefined {
+  for (const [other, obligations] of Object.entries(table)) {
+    if (moduleOf(other) !== moduleOf(key)) continue;
+    for (const o of obligations) {
+      const need = o.need;
+      const name = need?.scope === mode ? (need.locator ?? need.predicate ?? need.guard) : undefined;
+      if (name && name !== used) return name;
+    }
+  }
+  return undefined;
+}
+
+const scopeNames = (scope: Node): [string, string] | undefined => {
+  if (scope['mode'] === 'point') return ['locator', String(scope['locator'])];
+  if (scope['mode'] === 'list') return ['predicate', String(scope['predicate'])];
+  return undefined;
+};
+
+export function disclosureWeakeningsOf(route: ManifestRoute, table: RequiredTable): DisclosureWeakening[] {
+  const key = `${route.method} ${route.path}`;
+  const obligations = table[key] ?? [];
+  const out: DisclosureWeakening[] = [];
+  const push = (kind: DisclosureWeakeningKind, at: string, expected: string, mutated: ManifestRoute) =>
+    out.push({ kind, at, expected, route: mutated });
+  const rootOf = () => structuredClone(route.policy) as unknown as Node;
+  const make = (root: Node): ManifestRoute => ({ ...route, policy: root as unknown as RoutePolicy });
+  const declared = (route.policy as unknown as Node)['optional'] as Record<string, Node> | undefined;
+
+  for (const name of new Set(
+    obligations.filter((o) => o.purpose?.startsWith('disclosure:')).map((o) => o.purpose!.slice(11)),
+  )) {
+    if (!declared?.[name]) continue;
+    const edit = (change: (root: Node, optional: Record<string, Node>) => void) => {
+      const root = rootOf();
+      change(root, root['optional'] as Record<string, Node>);
+      return make(root);
+    };
+    push(
+      'disclosure→any-member',
+      `optional.${name}`,
+      'DISCLOSURE_WEAK',
+      edit((_r, optional) => (optional[name] = { kind: 'any', of: [optional[name]!, MEMBER_BRANCH()] })),
+    );
+    push(
+      'disclosure→nested',
+      `optional.${name}`,
+      'OPTIONAL_NESTED',
+      edit((_r, optional) => (optional[name] = { ...MEMBER_BRANCH(), optional: { inner: optional[name]! } })),
+    );
+    const branches = (route.policy as unknown as Node)['of'];
+    if (Array.isArray(branches)) {
+      for (let i = 0; i < branches.length; i++) {
+        push(
+          'disclosure→moved',
+          `of[${i}].optional.${name}`,
+          'OPTIONAL_POSITION',
+          edit((root, optional) => {
+            const child = (root['of'] as Node[])[i]!;
+            child['optional'] = { ...((child['optional'] as Node | undefined) ?? {}), [name]: optional[name]! };
+            delete optional[name];
+          }),
+        );
+      }
+    }
+    const scoped = obligations.filter((o) => o.purpose === `disclosure:${name}` && o.need && o.need.scope !== 'none');
+    if (!scoped.length) continue;
+    push(
+      'disclosure-scope→none',
+      `optional.${name}`,
+      'DISCLOSURE_WEAK',
+      edit((_r, optional) => {
+        for (const node of branchNodes(optional[name]!))
+          if (node['scope']) node['scope'] = { mode: 'none', reason: '弱化反例' };
+      }),
+    );
+    const mode = scoped[0]!.need!.scope;
+    const used = scoped[0]!.need!.locator ?? scoped[0]!.need!.predicate ?? scoped[0]!.need!.guard ?? '';
+    const other = otherScopeName(table, key, mode, used);
+    if (other) {
+      push(
+        'disclosure-scope→wrong-predicate',
+        `optional.${name}`,
+        'DISCLOSURE_WEAK',
+        edit((_r, optional) => {
+          for (const node of branchNodes(optional[name]!)) {
+            const names = node['scope'] ? scopeNames(node['scope'] as Node) : undefined;
+            if (names) (node['scope'] as Node)[names[0]] = other;
+          }
+        }),
+      );
+    }
+  }
+
+  // scope→sibling：含 ≥2 个承载节点的准入备选里，交换每一对范围不同的承载节点的范围。
+  // 两个节点提供同一组权限（如人员子集列表：同一查看权由 personScope 列表节点与 employeeId 点校验节点共同提供）时，
+  // 交换后每条义务仍有满足 need 的来源，need 按权限键绑定看不出差别，该对不生成（PR 描述记为局限）。
+  const swapped = new Set<string>();
+  for (const [i, alt] of declaredPerms(route.policy).alternatives.entries()) {
+    const carriers = new Map<string, { scopes: string; perms: Set<string> }>();
+    for (const [perm, sources] of alt) {
+      if (!/^(obj|admin):/.test(perm)) continue;
+      for (const s of sources.filter((x) => x.carrier)) {
+        const one = carriers.get(s.path) ?? { scopes: JSON.stringify(s.scopes), perms: new Set<string>() };
+        carriers.set(s.path, { ...one, perms: one.perms.add(perm) });
+      }
+    }
+    const paths = [...carriers.keys()];
+    for (const [a, pathA] of paths.entries()) {
+      for (const pathB of paths.slice(a + 1)) {
+        const [one, other] = [carriers.get(pathA)!, carriers.get(pathB)!];
+        const samePerms = [...one.perms].sort().join() === [...other.perms].sort().join();
+        if (one.scopes === other.scopes || samePerms || swapped.has(`${pathA}|${pathB}`)) continue;
+        swapped.add(`${pathA}|${pathB}`);
+        const root = rootOf();
+        const [nodeA, nodeB] = [locate(root, pathA)!, locate(root, pathB)!];
+        [nodeA['scope'], nodeB['scope']] = [nodeB['scope'], nodeA['scope']];
+        push('scope→sibling', `备选${i + 1}:${pathA || 'root'}↔${pathB || 'root'}`, 'REQUIRED_MISSING', make(root));
+      }
+    }
+  }
+  scopeBindingWeakenings(route, obligations, (kind, at, expected, mutate) => {
+    const root = rootOf();
+    mutate(root);
+    push(kind, at, expected, make(root));
+  });
+  return out;
+}
+
+/**
+ * 范围按实际对象绑定（#162 审查 P2-1）：对每个“唯一满足 need 的来源节点”（准入备选或披露分支里、同一权限没有第二个
+ * 满足 need 的来源），① 把节点范围改成只登记给无关对象的 byObject（scope→foreign-object）；② 动态对象（映射 / 域有
+ * 多个对象）只给第一个对象保留原范围、其余 `*:none`（scope→partial-object，原范围为 none 时无差别不生成）。
+ * 准入里的来源期望 REQUIRED_MISSING，披露分支里的来源期望 DISCLOSURE_WEAK。
+ */
+function scopeBindingWeakenings(
+  route: ManifestRoute,
+  obligations: readonly Obligation[],
+  push: (kind: DisclosureWeakeningKind, at: string, expected: string, mutate: (root: Node) => void) => void,
+): void {
+  const decl = declaredPerms(route.policy);
+  const seen = new Set<string>();
+  const visit = (alts: readonly PermMap[], owned: readonly Obligation[], expected: string, label: string) => {
+    for (const [i, alt] of alts.entries()) {
+      for (const o of owned.filter((x) => x.need && !x.or)) {
+        const matching = new Set(
+          (alt.get(o.perm) ?? [])
+            .filter((src) => src.carrier && scopeMatches(src.scopes, o.need))
+            .map((src) => src.path),
+        );
+        if (matching.size !== 1) continue;
+        const [path] = [...matching] as [string];
+        if (seen.has(`${expected}|${path}`)) continue;
+        seen.add(`${expected}|${path}`);
+        const node = locate(rootOfPolicy(route), path);
+        const original = node?.['scope'] as Node | undefined;
+        if (!node || !original || typeof original !== 'object') continue;
+        const at = `${label}备选${i + 1}:${path || 'root'}`;
+        push('scope→foreign-object', at, expected, (root) => {
+          locate(root, path)!['scope'] = { byObject: { 'Fixture.Unrelated': original } };
+        });
+        const objects = objectsOf(node['object']);
+        if (objects && objects.length > 1 && original['mode'] !== 'none' && !('byObject' in original)) {
+          push('scope→partial-object', at, expected, (root) => {
+            locate(root, path)!['scope'] = {
+              byObject: { [objects[0]!]: original, '*': { mode: 'none', reason: '弱化反例' } },
+            };
+          });
+        }
+      }
+    }
+  };
+  visit(
+    decl.alternatives,
+    obligations.filter((o) => o.purpose === undefined),
+    'REQUIRED_MISSING',
+    '',
+  );
+  for (const [name, branch] of decl.optional) {
+    visit(
+      branch.alternatives,
+      obligations.filter((o) => o.purpose === `disclosure:${name}`),
+      'DISCLOSURE_WEAK',
+      `optional.${name}.`,
+    );
+  }
+}
+
+const rootOfPolicy = (route: ManifestRoute) => route.policy as unknown as Node;

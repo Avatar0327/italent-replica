@@ -3,6 +3,7 @@
  * （对象编码按 :kind 取 JOB_OBJECT_CODES）；按钮经 button；配置经 readContext('admin.other_settings')；引用对象经
  * assignmentReferences 逐个 objectContext + visibleJob。写入的字段权经 writeFields → requireObjectWrite。
  */
+import { list, SCOPE_AT } from './scopes.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const ROUTES = 'apps/api/src/modules/job/routes.ts';
@@ -144,6 +145,7 @@ const receipts = (path: string, anchor: string): Obligation[] => [
   {
     perm: 'obj:TenantBase.EmploymentRecord:view',
     purpose: 'disclosure:receiptRows',
+    need: list('employment.scopeSql'),
     facts: ['object:object.* 动作'],
     note: '任职查看权（及 sequenceId / id 字段可见）只决定回执行是否整体裁剪',
     at: [
@@ -153,6 +155,7 @@ const receipts = (path: string, anchor: string): Obligation[] => [
         unit: 'apps/api/src/modules/job/sequence-receipts.ts#visibleSequenceReceipts',
         anchor: "action: 'object.view', resource: code, fields: []",
       },
+      ...SCOPE_AT['employment.scopeSql'],
     ],
   },
 ];
