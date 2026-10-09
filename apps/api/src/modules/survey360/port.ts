@@ -82,15 +82,27 @@ function recordsOf(scores: readonly ScoreRow[]): Survey360Record[] {
           : [F.questionName, F.questionSelf, F.questionOther];
       const items = new Map(group.filter((s) => s.level === level).map((s) => [s.item_id!, s.item_name]));
       for (const [itemId, name] of items) {
+        const otherScore = pick(level, 'other', itemId);
         const item = {
           ...base,
           [nameKey]: name,
           [selfKey]: pick(level, 'self', itemId),
-          [otherKey]: pick(level, 'other', itemId),
+          [otherKey]: otherScore,
+          // DEC-304 / `26` §8.6：题目-他评总分是题目他评聚合分的别名。
+          ...(level === 'question' ? { [F.questionOtherTotal]: otherScore } : {}),
         };
         records.push({ fields: item, ...times });
         for (const role of group.filter((s) => s.level === level && s.scope === 'role' && s.item_id === itemId))
-          records.push({ fields: { ...item, [F.roleName]: role.role_name, [F.roleScore]: role.score }, ...times });
+          records.push({
+            fields: {
+              ...item,
+              [F.roleName]: role.role_name,
+              [F.roleScore]: role.score,
+              // DEC-304：维度角色得分仅指该维度、该角色的聚合分。
+              ...(level === 'dimension' ? { [F.dimensionRole]: role.score } : {}),
+            },
+            ...times,
+          });
       }
     }
   }

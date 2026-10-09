@@ -5,6 +5,8 @@ name: CI
 # - 同一分支/PR 连续推送时取消旧运行，只验证最新提交
 # - Draft PR 不跑，转 Ready 后再跑
 # - Node 22（engines 下限）只在每周定时与手动触发时补跑，日常只跑 Node 24
+# - 两种数据库各拆 3 片；lint/typecheck/build 只在每个 Node 的第 1 片跑
+# - 原必需检查名称由汇总 job 保留，任何分片失败/取消/跳过都不放行
 on:
   push:
     branches: [main]
@@ -15,6 +17,11 @@ on:
   schedule:
     - cron: '0 1 * * 1' # 每周一 09:00（北京时间）
   workflow_dispatch:
+    inputs:
+      node_22:
+        description: 同时验证 Node 22（关闭可只校准 Node 24 分片耗时）
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -24,15 +31,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: lint / typecheck / test (PGlite, Node ${{ matrix.node }})
+  check-shards:
+    name: test (PGlite, Node ${{ matrix.node }}, shard ${{ matrix.shard }}/3)
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    # F-056 两轮实测最慢片 14m33s（含 quality/安装/收尾），25 分钟约为 1.72 倍
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        node: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[22, 24]' || '[24]') }}
+        node: >-
+          ${{ fromJSON((github.event_name == 'schedule' ||
+          (github.event_name == 'workflow_dispatch' && inputs.node_22)) && '[22, 24]' || '[24]') }}
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4 # 版本取自 package.json 的 packageManager
@@ -42,15 +53,40 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+        if: matrix.shard == 1
       - run: pnpm typecheck
-      - run: pnpm test
+        if: matrix.shard == 1
+      - run: pnpm test --shard=${{ matrix.shard }}/3
       - run: pnpm build
+        if: matrix.shard == 1
 
-  test-pg:
-    name: test (PostgreSQL 16)
+  check:
+    name: lint / typecheck / test (PGlite, Node ${{ matrix.node }})
+    needs: check-shards
+    if: always() && github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    strategy:
+      matrix:
+        node: >-
+          ${{ fromJSON((github.event_name == 'schedule' ||
+          (github.event_name == 'workflow_dispatch' && inputs.node_22)) && '[22, 24]' || '[24]') }}
+    steps:
+      - name: Require every PGlite shard and quality check to succeed
+        env:
+          SHARDS_RESULT: ${{ needs.check-shards.result }}
+        run: test "$SHARDS_RESULT" = success
+
+  test-pg-shards:
+    name: test (PostgreSQL 16, shard ${{ matrix.shard }}/3)
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    # F-056 首测最慢片 9m34s（含容器启动/安装/收尾），18 分钟约为 1.88 倍
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     services:
       postgres:
         image: postgres:16
@@ -76,4 +112,16 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:pg
+      - run: pnpm test:pg --shard=${{ matrix.shard }}/3
+
+  test-pg:
+    name: test (PostgreSQL 16)
+    needs: test-pg-shards
+    if: always() && github.event.pull_request.draft != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require every PostgreSQL shard to succeed
+        env:
+          SHARDS_RESULT: ${{ needs.test-pg-shards.result }}
+        run: test "$SHARDS_RESULT" = success

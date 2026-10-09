@@ -14,6 +14,8 @@ const ENTERPRISE = '企业设置';
 const SURVEY360 = '360度评估';
 const TALENT = '人才标准';
 const IDP = '个人发展计划';
+const QUALIFICATION = '任职资格';
+const EVALUATION = '人才评定';
 
 const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'job-sequence-sync': { label: '任职序列同步任务', app: ORG_PEOPLE },
@@ -65,6 +67,23 @@ const OBJECTS: Readonly<Record<string, AuditObjectMeta>> = {
   'TalentCenter.TalentCriterionCategory': { label: '人才标准分类', app: TALENT },
   'TalentCenter.TalentCriterion': { label: '人才标准', app: TALENT },
   'TalentCenter.TalentCriterionModelImage': { label: '潜力模型图', app: TALENT },
+  'Qualification.EmploymentCategoryClassify': { label: '任职类别分类', app: QUALIFICATION },
+  'Qualification.EmploymentCategory': { label: '任职类别', app: QUALIFICATION },
+  'Qualification.Level': { label: '层级', app: QUALIFICATION },
+  'Qualification.EmploymentLevel': { label: '任职级别', app: QUALIFICATION },
+  'Qualification.TargetType': { label: '指标类型', app: QUALIFICATION },
+  'Qualification.Target': { label: '指标', app: QUALIFICATION },
+  'Qualification.GradeScheme': { label: '等级方案', app: QUALIFICATION },
+  'Qualification.TargetGradeDescription': { label: '指标等级描述', app: QUALIFICATION },
+  'Qualification.CodingRule': { label: '编码规则', app: QUALIFICATION },
+  'Qualification.QualificationStandard': { label: '任职资格标准', app: QUALIFICATION },
+  'Qualification.DevelopmentChannel': { label: '发展通道', app: QUALIFICATION },
+  'TEvaluation.ActivityType': { label: '活动类型', app: EVALUATION },
+  'TEvaluation.ActivityCycle': { label: '活动周期', app: EVALUATION },
+  'TEvaluation.GeneralScoreItem': { label: '通用评分项', app: EVALUATION },
+  'TEvaluation.ReviewGroup': { label: '评审组', app: EVALUATION },
+  'TEvaluation.EvaluationForm': { label: '评价表', app: EVALUATION },
+  'TEvaluation.EvaluationActivity': { label: '评定活动', app: EVALUATION },
   'IDP.IDPProcess': { label: '发展计划流程', app: IDP },
   'IDP.SubProcess': { label: '子流程', app: IDP },
   'IDP.IDPTemplate': { label: '发展计划模板', app: IDP },
