@@ -35,7 +35,9 @@ CREATE TRIGGER succession_records_release_readiness BEFORE INSERT OR UPDATE ON s
 --> statement-breakpoint
 -- 4) SELF 谓词（设计 §8.4；SC-R7）：记录“是本人的” ⇔ 查看人绑定的员工，在请求当日是该组织目标的负责人，或是该职位目标的现任。
 --    列表 / 地图 / 审计 / 回执共用这一个定义。版本取法同 org / job 读模型（start_date <= 当日的最新版本且 stop_date >= 当日）；
---    现任 = 当日时间轴上的主职任职，人员状态不是待入职 1 / 调出 4 / 退休 6 / 离职 8（§4.1）。按调用者权限执行（RLS 仍生效）。
+--    现任 = 当日时间轴上的主职任职，人员状态不是待入职 1 / 调出 4 / 退休 6 / 离职 8（§4.1）；任职的职位取有效任职快照
+--    （合法更正后的值在最新 is_record_snapshot 里，同 employment/personnel-reader.ts）：有快照用快照（含显式 NULL），
+--    没有快照才用原始记录，不能用 COALESCE 回退。按调用者权限执行（RLS 仍生效）。
 CREATE FUNCTION succession_self_target_sql(
   p_tenant uuid, p_user uuid, p_type text, p_org uuid, p_position uuid, p_today date
 ) RETURNS boolean
@@ -53,9 +55,15 @@ CREATE FUNCTION succession_self_target_sql(
       OR (p_type = 'position' AND p_position IS NOT NULL AND EXISTS (
         SELECT 1 FROM employment_timeline t
           JOIN employment_records r ON r.tenant_id = t.tenant_id AND r.id = t.record_id
+          LEFT JOIN LATERAL (
+            SELECT p.id, p.position_id FROM employment_payload_versions p
+            WHERE p.tenant_id = r.tenant_id AND p.employee_id = r.employee_id AND p.business_id = r.id
+              AND p.is_record_snapshot ORDER BY p.version_no DESC LIMIT 1
+          ) latest ON true
           JOIN LATERAL employment_record_status(t.tenant_id, r.id) s ON true
         WHERE t.tenant_id = p_tenant AND t.employee_id = l.employee_id AND t.valid_during @> p_today
-          AND r.position_id = p_position AND r.service_type = 'primary'
+          AND (CASE WHEN latest.id IS NULL THEN r.position_id ELSE latest.position_id END) = p_position
+          AND r.service_type = 'primary'
           AND s.employee_status NOT IN (1, 4, 6, 8)))
     )
   )

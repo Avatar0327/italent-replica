@@ -35,19 +35,33 @@ export type SuccessionAuditSpec =
     };
 
 /**
- * 继任记录日志的 SELF 谓词（§8.4：本人为目标的记录，开关为 false 时日志同样不可见）：目标取审计行写入时的快照
- * （after，删除时取 before）里的类型与目标 ID；快照里没有目标的行不属于“本人的”记录，照常按组织锚点判定。
- * 与列表 / 详情共用 succession_self_target_sql；“请求当日”按租户时区在 SQL 里取。
+ * 继任记录日志的 SELF 谓词（§8.4：本人为目标的记录，开关为 false 时日志同样不可见）。目标的确定顺序：
+ * ① 审计行快照（after，删除时 before）里的类型与目标 ID；② 快照没有时（操作日志本身没有快照，单对象日志与 items 逐行
+ * 日志都一样）按行的对象 ID 反查继任记录——目标建后不可改，反查结果与写入时一致，已软删除的记录同样可查。
+ * 两处都确定不了类型时 fail-closed（不放行）：无法证明“不是本人的”就不返回。与列表 / 详情共用
+ * succession_self_target_sql；“请求当日”按租户时区在 SQL 里取。
  */
 function recordSelfRestrict(row: SuccessionAuditRow, viewer: SuccessionAuditViewer): SQL {
-  const field = (key: string) => sql`COALESCE(${row.after}->>${key}, ${row.before}->>${key})`;
-  const uuidField = (key: string) => sql`(CASE WHEN audit_is_uuid(${field(key)}) THEN (${field(key)})::uuid END)`;
+  const objectId = sql`(CASE WHEN audit_is_uuid(${row.objectId}) THEN (${row.objectId})::uuid END)`;
+  const stored = (column: string) =>
+    sql`(SELECT r.${sql.raw(column)}::text FROM succession_records r
+      WHERE r.tenant_id = ${viewer.tenantId}::uuid AND r.id = ${objectId})`;
+  const field = (key: string, column: string) =>
+    sql`COALESCE(${row.after}->>${key}, ${row.before}->>${key}, ${stored(column)})`;
+  const uuidField = (key: string, column: string) =>
+    sql`(CASE WHEN audit_is_uuid(${field(key, column)}) THEN (${field(key, column)})::uuid END)`;
+  const type = field('successionType', 'succession_type');
   const today = sql`succession_tenant_today(${viewer.tenantId}::uuid)`;
-  return sql`NOT ${selfRecordHiddenSql(
+  const hidden = selfRecordHiddenSql(
     viewer,
-    { type: field('successionType'), org: uuidField('targetOrgId'), position: uuidField('targetPositionId') },
+    {
+      type,
+      org: uuidField('targetOrgId', 'target_org_id'),
+      position: uuidField('targetPositionId', 'target_position_id'),
+    },
     today,
-  )}`;
+  );
+  return sql`(${type} IS NOT NULL AND NOT ${hidden})`;
 }
 
 export const SUCCESSION_AUDIT: Readonly<Partial<Record<SuccessionObject, SuccessionAuditSpec>>> = {

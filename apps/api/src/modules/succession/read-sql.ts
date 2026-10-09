@@ -66,16 +66,31 @@ export async function loadIncumbentIds(
   const ids = [...new Set(positionIds)];
   const result = new Map<string, string[]>();
   if (!ids.length) return result;
+  // 任职的有效职位取有效任职快照（合法更正后的值在最新 is_record_snapshot 里；快照可以显式为 NULL = 清空，
+  // 不能 COALESCE 回退到原始记录），候选先按“原始记录或快照的职位命中”缩小，同 employment/personnel-reader.ts。
   const rows = rowsOf<{ position_id: string; employee_id: string }>(
     await tx.execute(sql`
-      SELECT r.position_id, t.employee_id
-      FROM employment_timeline t
-      JOIN employment_records r ON r.tenant_id = t.tenant_id AND r.id = t.record_id
+      WITH candidates AS (
+        SELECT id FROM employment_records
+        WHERE tenant_id = ${tenantId}::uuid AND position_id = ANY(${uuidArray(ids)})
+        UNION
+        SELECT business_id AS id FROM employment_payload_versions
+        WHERE tenant_id = ${tenantId}::uuid AND position_id = ANY(${uuidArray(ids)}) AND is_record_snapshot
+      )
+      SELECT (CASE WHEN latest.id IS NULL THEN r.position_id ELSE latest.position_id END) AS position_id, t.employee_id
+      FROM candidates c
+      JOIN employment_records r ON r.tenant_id = ${tenantId}::uuid AND r.id = c.id
+      JOIN employment_timeline t ON t.tenant_id = r.tenant_id AND t.record_id = r.id
+      LEFT JOIN LATERAL (
+        SELECT p.id, p.position_id FROM employment_payload_versions p
+        WHERE p.tenant_id = r.tenant_id AND p.employee_id = r.employee_id AND p.business_id = r.id
+          AND p.is_record_snapshot ORDER BY p.version_no DESC LIMIT 1
+      ) latest ON true
       JOIN LATERAL employment_record_status(t.tenant_id, r.id) s ON true
-      WHERE t.tenant_id = ${tenantId}::uuid AND t.valid_during @> ${asOf}::date
-        AND r.position_id = ANY(${uuidArray(ids)}) AND r.service_type = 'primary'
+      WHERE t.valid_during @> ${asOf}::date AND r.service_type = 'primary'
+        AND (CASE WHEN latest.id IS NULL THEN r.position_id ELSE latest.position_id END) = ANY(${uuidArray(ids)})
         AND s.employee_status NOT IN (${INCUMBENT_EXCLUDED_STATUSES})
-      ORDER BY r.position_id, t.start_date, t.employee_id`),
+      ORDER BY position_id, t.start_date, t.employee_id`),
   );
   for (const row of rows) result.set(row.position_id, [...(result.get(row.position_id) ?? []), row.employee_id]);
   return result;
