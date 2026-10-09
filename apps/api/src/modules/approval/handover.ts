@@ -10,7 +10,13 @@ import { lockTransferParticipants } from '../employment/transfer-locks.js';
  * F-008 / R6-3：一个事务里处理多张单（停用接管、手动交接的一批）时按全局取锁顺序逐单处理，见 LOCK_ORDER。
  */
 import { sql, type MembershipRevocation, type Tx } from '@italent/db';
-import { avoidSelfExceptionAdmin, isSelf, tenantLocalDate, type Candidate } from '@italent/domain';
+import {
+  adminRecused,
+  avoidSelfExceptionAdmin,
+  instanceRecusal,
+  tenantLocalDate,
+  type Candidate,
+} from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../../routes.js';
 import { memberInstanceScope } from './access.js';
@@ -26,9 +32,8 @@ import {
   isEligibleApprover,
   personOfUser,
   tenantAdminTakeover,
-  userOfPerson,
 } from './resolver.js';
-import { isOwnRequest } from './rules.js';
+import { loadRecusalFacts } from './subjects.js';
 import { appendLog, closeTask, insertTask, loadInstance, loadTasks, type TaskRow } from './store.js';
 
 /** 单次交接的规模上限（DEC-101：只限制单次操作规模），超出时返回 remaining 与游标，由管理员再次提交。 */
@@ -242,11 +247,11 @@ async function unlistedCount(tx: Tx, ctx: ApprovalContext, input: HandoverInput,
   return Number(row?.n ?? 0);
 }
 
-/** DEC-092：本人发起或本人为异动对象的实例，操作人不能改派（与管理员转交入口同一判断）。 */
+/** DEC-092 / DEC-329②：本人发起或本人为本单涵盖主体的实例，操作人不能改派（与管理员转交入口同一判断，实例级）。 */
 async function ownRequestBlocker(tx: Tx, ctx: ApprovalContext, instanceId: string) {
   const instance = await loadInstance(tx, ctx.tenantId, instanceId);
-  const subjectUserId = await userOfPerson(tx, ctx.tenantId, instance.subjectEmployeeId);
-  return isOwnRequest(instance, subjectUserId, ctx.userId) ? 'APPROVAL_ADMIN_SELF' : null;
+  const facts = await loadRecusalFacts(tx, ctx.tenantId, instance);
+  return instanceRecusal({ userId: ctx.userId }, facts) ? 'APPROVAL_ADMIN_SELF' : null;
 }
 
 interface Step {
@@ -270,8 +275,8 @@ async function handoverInstance(tx: Tx, ctx: ApprovalContext, instanceId: string
       userId: input.toUserId,
       personId: await personOfUser(tx, ctx.tenantId, input.toUserId),
     };
-    // DEC-091：替代人恰为本单发起人或异动本人时同样回避给其直线经理。
-    const manager = isSelf(successor, routing.facts)
+    // DEC-091 / DEC-329②：替代人恰为本单发起人或任一主体时同样回避给其直线经理。
+    const manager = adminRecused(successor, routing.facts)
       ? await directManagerOf(tx, routing.subject, successor)
       : undefined;
     const choice = avoidSelfExceptionAdmin(successor, routing.facts, manager);
@@ -466,7 +471,7 @@ async function takeoverTarget(
         WHERE i.tenant_id=${tenantId} AND i.id=${run.instance.id}::uuid AND ${successorScope}`),
     );
     const eligible = await isEligibleApprover(tx, routing.subject, successor);
-    if (covered && eligible && !isSelf(candidate, routing.facts)) {
+    if (covered && eligible && !adminRecused(candidate, routing.facts)) {
       return { userId: successor, reason: '原异常管理员停用，转交接时指定的替代人' };
     }
   }

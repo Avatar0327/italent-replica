@@ -385,6 +385,8 @@ const simulationData = z.strictObject({
   orgAncestors: z.record(z.uuid(), z.array(z.uuid()).max(100)).optional(),
   initiatorUserId: userIdInput.nullable().optional(),
   subjectUserId: userIdInput.nullable().optional(),
+  /** F-048：虚拟的主体账号集合（多主体回避仿真）。 */
+  subjectUserIds: z.array(userIdInput).max(50).optional(),
 });
 const scope = z.enum(['published', 'latest']).default('published');
 

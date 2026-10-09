@@ -8,15 +8,16 @@
 import type { Tx } from '@italent/db';
 import {
   APPROVAL_TYPES,
+  adminRecused,
   approverExpressionsOf,
   avoidSelfExceptionAdmin,
   decideNode,
   evaluateCondition,
   exitRulesOf,
   isCountersign,
-  isSelf,
   nodeExits,
   nodeKindOf,
+  recusalFacts,
   submitBlockers,
   type ApprovalNode,
   type ApprovalTypeCode,
@@ -41,6 +42,8 @@ export interface SimulationData {
   readonly orgAncestors?: Readonly<Record<string, readonly string[]>>;
   readonly initiatorUserId?: string | null;
   readonly subjectUserId?: string | null;
+  /** F-048：虚拟的主体账号集合 U(S)（多主体回避仿真，≤50）。 */
+  readonly subjectUserIds?: readonly string[];
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -80,7 +83,8 @@ function decideVirtual(
   facts: RoutingFacts,
 ): NodeDecision {
   const userId = candidateOf(expression, data, facts);
-  const candidate: Candidate = userId ? { personId: null, userId } : NOBODY;
+  // 仿真只有虚拟账号，没有人员：候选一律按账号比较
+  const candidate: Candidate = userId ? { personId: null, userId, accountSource: true } : NOBODY;
   const draft = decideNode(node, candidate, facts);
   if (draft.kind !== 'assign' || draft.selfSkippedUserId === null) return draft;
   return decideNode(node, candidate, facts, managerOf(data, candidate));
@@ -120,7 +124,11 @@ function describe(decision: NodeDecision, version: VersionView, data: Simulation
       return { status: 'exception', approverUserId: null, resolution: 'exception_admin', message };
     }
     const admin: Candidate = { personId: null, userId: version.exceptionAdminUserId };
-    const choice = avoidSelfExceptionAdmin(admin, facts, isSelf(admin, facts) ? managerOf(data, admin) : undefined);
+    const choice = avoidSelfExceptionAdmin(
+      admin,
+      facts,
+      adminRecused(admin, facts) ? managerOf(data, admin) : undefined,
+    );
     const approverUserId = choice.kind === 'assign' ? choice.userId : null;
     return { status: 'exception', approverUserId, resolution: 'exception_admin', message: decision.reason };
   }
@@ -130,10 +138,14 @@ function describe(decision: NodeDecision, version: VersionView, data: Simulation
 
 function virtualFacts(ctx: ApprovalContext, version: VersionView, data: SimulationData, index: number): RoutingFacts {
   return {
+    ...recusalFacts({
+      initiatorUserId: data.initiatorUserId ?? ctx.userId,
+      primaryEmployeeId: null,
+      primaryUserId: data.subjectUserId ?? null,
+      subjectEmployeeIds: [],
+      subjectUserIds: data.subjectUserIds ?? [],
+    }),
     isFirstNode: index === 0,
-    initiatorUserId: data.initiatorUserId ?? ctx.userId,
-    subjectEmployeeId: null,
-    subjectUserId: data.subjectUserId ?? null,
     exceptionAdminUserId: version.exceptionAdminUserId ?? '',
     previousApproverUserIds: [],
     approvedUserIds: [],
@@ -156,7 +168,7 @@ function preflight(ctx: ApprovalContext, version: VersionView, data: SimulationD
   const admin: Candidate = version.exceptionAdminUserId
     ? { personId: null, userId: version.exceptionAdminUserId }
     : NOBODY;
-  const choice = avoidSelfExceptionAdmin(admin, facts, isSelf(admin, facts) ? managerOf(data, admin) : undefined);
+  const choice = avoidSelfExceptionAdmin(admin, facts, adminRecused(admin, facts) ? managerOf(data, admin) : undefined);
   return submitBlockers(choice, first).map((blocker) => blocker.message);
 }
 
