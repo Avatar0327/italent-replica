@@ -287,7 +287,7 @@ describe('AC-PRM-FW-01 接管引擎：阶段顺序（保序主序，DEC-363①�
   });
 
   it.each([
-    ['operation', 403, 'FORBIDDEN', ['revision', `operation:${OBJECT}:create`]],
+    ['operation', 403, 'FORBIDDEN', 2],
     ['fields', 403, 'FORBIDDEN', 4],
     ['button', 403, 'FORBIDDEN', 5],
     ['scope', 404, 'NOT_FOUND', 7],
@@ -296,7 +296,7 @@ describe('AC-PRM-FW-01 接管引擎：阶段顺序（保序主序，DEC-363①�
     const res = await post(app, '{"name":"x"}');
     expect(res.status).toBe(status);
     expect(((await res.json()) as { error: { code: string } }).error.code).toBe(code);
-    expect(trace).toHaveLength(Array.isArray(upTo) ? upTo.length : upTo);
+    expect(trace).toHaveLength(upTo);
     expect(trace.some((step) => step.startsWith('handler'))).toBe(false);
   });
 

@@ -94,7 +94,7 @@ function collectNames(key: string, policy: RoutePolicy, nodes: readonly RoutePol
   const names: Names = { ambiguous: new Map(), positional: new Set() };
   for (const node of nodes) {
     for (const guard of node.guards ?? []) names.ambiguous.set(guard, 'deferred-only');
-    if (node.kind === 'object') scopeNames(key, node.scope, names);
+    if (node.kind === 'object' && !('byObject' in node.scope)) scopeNames(key, node.scope, names);
     if (node.kind === 'own') {
       if (node.locator || node.target) unsupported(key, '本人单条定位 own.locator');
       names.ambiguous.set(node.predicate, 'deferred-only');
@@ -203,7 +203,8 @@ export function compilePlan(declaration: Declaration, impls: AnyImplementations,
   });
   const executed = classify(key, collectNames(key, policy, nodes), impls, used);
   const ref = object ? staticButton(key, object.button) : undefined;
-  const view = object && !('byObject' in object.scope) && 'view' in object.scope ? object.scope.view : undefined;
+  const flat = object && !('byObject' in object.scope) ? object.scope : undefined;
+  const view = flat && 'view' in flat ? flat.view : undefined;
   const plan: EnforcePlan = {
     key,
     impls,
@@ -212,7 +213,7 @@ export function compilePlan(declaration: Declaration, impls: AnyImplementations,
     parse: parseSteps(key, policy, impls, used),
     fields: fieldsStep(key, policy, s2),
     buttons: object && ref ? [{ object: object.object as string, ref }] : [],
-    scopeObject: object && object.scope.mode !== 'none' ? { object: object.object as string, view } : undefined,
+    scopeObject: object && flat && flat.mode !== 'none' ? { object: object.object as string, view } : undefined,
     check: scopeCheck(key, object, executed, impls),
   };
   requirePrimitives(plan);
