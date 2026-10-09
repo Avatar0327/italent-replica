@@ -1,0 +1,188 @@
+{
+  "GET /api/tenant/job/:kind": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.JobGrade"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.JobGrade/TenantBase.JobGrade.list"
+    ],
+    "trace": [
+      "obj:TenantBase.JobGrade:view"
+    ]
+  },
+  "GET /api/tenant/job/:kind/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "12b30ac742a8",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.JobGrade/TenantBase.JobGrade.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.JobGrade:view"
+    ]
+  },
+  "GET /api/tenant/job/candidates/grades": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "f3b3bc1cb950",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.JobGrade:view"
+    ]
+  },
+  "GET /api/tenant/job/candidates/levels": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "f3b3bc1cb950",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.JobLevel:view"
+    ]
+  },
+  "GET /api/tenant/job/sequence-sync/messages": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/job/sequence-sync/tasks/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "613c51f2c6b2",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-found"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "f6cd3ce098b3",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/job/settings": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PATCH /api/tenant/job/:kind/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "db9ddaf82412",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.JobGrade:update"
+    ]
+  },
+  "POST /api/tenant/job/:kind": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.JobGrade:create"
+    ]
+  },
+  "POST /api/tenant/job/import": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/job/positions/sync-sequence": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.Position:view"
+    ]
+  },
+  "POST /api/tenant/job/posts/sync-sequence": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.JobPost:view"
+    ]
+  },
+  "POST /api/tenant/job/validate-assignment": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "98cb7785951c",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.JobPost:view"
+    ]
+  },
+  "PUT /api/tenant/job/settings": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "dce4a68e31ee",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  }
+}
