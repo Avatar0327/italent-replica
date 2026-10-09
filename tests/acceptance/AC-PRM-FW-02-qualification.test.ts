@@ -180,16 +180,19 @@ describe('AC-PRM-FW-02 F-074 冲突名称披露：类别 / 级别写入口 × �
     }
   });
 
-  it('反例：分支被删 → DISCLOSURE_MISSING；降成普通成员 → DISCLOSURE_WEAK', () => {
+  it('反例：分支被删 → DISCLOSURE_MISSING；范围谓词换成别的 → DISCLOSURE_WEAK', () => {
     const key = `PATCH ${BASE}/categories/:id`;
     const base = route(key);
     const policy = JSON.parse(JSON.stringify(base.policy)) as { optional?: Record<string, unknown> };
     const { conflictName: branch, ...rest } = policy.optional ?? {};
     expect(branch).toBeDefined();
     expect(codes(check([{ ...base, policy: { ...policy, optional: rest } as never }]))).toContain('DISCLOSURE_MISSING');
+    // 范围谓词换成别的：权限还在但范围不符（need 要求 ql.openRead(ql_categories)）
     const weak = {
       ...policy,
-      optional: { conflictName: { kind: 'member', reason: '夹具', fields: { mode: 'none', reason: '夹具' } } },
+      optional: {
+        conflictName: { ...(branch as object), scope: { mode: 'list', predicate: 'ql.readable(ql_categories)' } },
+      },
     };
     expect(codes(check([{ ...base, policy: weak as never }]))).toContain('DISCLOSURE_WEAK');
   });
