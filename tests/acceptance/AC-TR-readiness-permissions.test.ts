@@ -14,7 +14,7 @@ import { readinessBody, readinessOperator, type ReadinessView, TR_BASE, TR_NOW }
 const testDb = useTestDb();
 const clock = () => TR_NOW;
 
-describe('R3-T04 准备度字典权限（真实授权器）', () => {
+describe('R3-T04 准备度字典权限（真实授权器；DEC-121 / 082 / 043）', () => {
   let world: PermissionWorld;
   let setup: ReturnType<typeof tenantApi>;
   let existing: ReadinessView;

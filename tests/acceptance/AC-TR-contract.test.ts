@@ -36,7 +36,7 @@ import { seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
 
-describe('C-02 定点舍入导出', () => {
+describe('C-02 定点舍入导出（DEC-265 / 设计 §4.2）', () => {
   it('按十进制表示精确舍入：四舍五入远离 0、进位、舍去', () => {
     expect(roundDecimal(1.005, 2, 'half-up')).toBe(1.01);
     expect(roundDecimal(-2.5, 0, 'half-up')).toBe(-3);
@@ -45,7 +45,7 @@ describe('C-02 定点舍入导出', () => {
   });
 });
 
-describe('C-06 应用、预置身份、审计标签、租户字段来源', () => {
+describe('C-06 应用、预置身份、审计标签、租户字段来源（DEC-043 / 121 / 216）', () => {
   it('开通预置“盘点管理员（人才盘点）”：只带 TalentReview 应用、全部对象全部功能；只对准备度预置看全部', async () => {
     const { db } = testDb();
     const api = tenantApi(db, { authorize: undefined });
@@ -110,7 +110,7 @@ describe('C-06 应用、预置身份、审计标签、租户字段来源', () =>
   });
 });
 
-describe('C-08 盘点结果审批类型', () => {
+describe('C-08 盘点结果审批类型（DEC-309③ / 332① / 094）', () => {
   it('类型登记在 TalentReview.ResultApproval 上，适配器种类 talent_review；出厂预置节点显式开启发起人回避', () => {
     expect(APPROVAL_TYPES.talent_review_result).toMatchObject({
       objectCode: TALENT_REVIEW_OBJECTS.resultApproval.code,
@@ -140,7 +140,7 @@ describe('C-08 盘点结果审批类型', () => {
   });
 });
 
-describe('SP-15 组织健康度计算端口登记', () => {
+describe('SP-15 组织健康度计算端口登记（DEC-330）', () => {
   it('未登记 400 HEALTH_COMPUTE_UNAVAILABLE；同一实现重复登记幂等，另一个实现拒绝', () => {
     resetOrgHealthComputePortForTest();
     expect(orgHealthComputePort()).toBeNull();

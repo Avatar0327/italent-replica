@@ -295,7 +295,7 @@ export class InMemoryReads {
     if (!run) throw new SyncPortError('EXECUTION_INACTIVE', 'run 不存在');
     return run;
   }
-  protected freshRecord(_runId: string, _consumer: SyncConsumer, executionNo: number): Consumption {
+  protected freshRecord(executionNo: number): Consumption {
     return {
       status: 'running',
       executionNo,

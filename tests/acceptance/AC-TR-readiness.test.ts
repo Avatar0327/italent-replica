@@ -24,7 +24,7 @@ const testDb = useTestDb();
 const referenced = new Set<string>();
 registerReadinessReferenceGuard(async (_tx, _tenantId, id) => (referenced.has(id) ? 'TEST_REFERRER' : null));
 
-describe('R3-T04 准备度字典', () => {
+describe('R3-T04 准备度字典（DEC-301①）', () => {
   it('新建、列表按排序号、详情带 ETag；按启用状态筛选', async () => {
     const w = await readinessWorld(testDb().db, 'tr-crud');
     const later = await w.create(readinessBody({ name: '1~2 年', sortNo: 2, description: '中长期' }));

@@ -6,12 +6,7 @@
  * （撤权、取代、拨时钟）。本文件末尾对替身跑一遍。
  */
 import type { Tx } from '@italent/db';
-import {
-  SYNC_ERROR_CODES,
-  type OutcomeItem,
-  type SyncNomination,
-  type SyncTargetRegistration,
-} from '@italent/domain';
+import { SYNC_ERROR_CODES, type OutcomeItem, type SyncNomination, type SyncTargetRegistration } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
 import {
   createInMemoryTalentReviewSyncPort,
@@ -275,7 +270,7 @@ export function runSyncPortContractSuite(name: string, factory: SyncPortFactory)
     return { h, tx, begin, plan, record, outcomes, rejects };
   };
 
-  describe(`${name}：同步端口契约（SP-18）`, () => {
+  describe(`${name}：同步端口契约（SP-18；DEC-330 / 336 / 311）`, () => {
     describe('SP-02 / SP-05 / SP-06 冻结快照读取', () => {
       it('run 头只在本租户可见；对象按 objectId 分页，超过每页上限拒绝', async () => {
         const { tx } = await setup();

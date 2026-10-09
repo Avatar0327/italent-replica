@@ -68,7 +68,7 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
     for (const consumer of this.consumers) {
       const key = consumptionKey(runId, consumer);
       let record = this.state.consumptions.get(key);
-      if (!record) this.state.consumptions.set(key, (record = this.freshRecord(runId, consumer, 0)));
+      if (!record) this.state.consumptions.set(key, (record = this.freshRecord(0)));
       else if (record.status !== 'running') continue;
       Object.assign(record, { status: 'superseded', terminalCode: 'RUN_SUPERSEDED', terminalRecovery: 'terminate' });
       this.terminateRows(runId, consumer, 'superseded', 'RUN_SUPERSEDED');
@@ -132,7 +132,7 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
     const lease = { leaseOwner: input.leaseOwner, leaseUntil: this.after(input.leaseSeconds) };
     if (!record) {
       if (run.header.status === 'superseded') fail('RUN_SUPERSEDED', 'run 已被取代');
-      this.state.consumptions.set(key, { ...this.freshRecord(input.runId, input.consumer, 1), ...lease });
+      this.state.consumptions.set(key, { ...this.freshRecord(1), ...lease });
     } else if (record.status === 'running') {
       if (record.leaseUntil && record.leaseUntil > this.now()) fail('CONSUMPTION_LEASED', '另一执行持有效租约');
       // 租约已过期：接管，执行序号 + 1，旧执行此后一律 EXECUTION_INACTIVE（SP-08）
@@ -230,7 +230,7 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
     if (input.executionNo === null) {
       // C 类：只在尚无消费记录（首次计划成功之前）时允许，建记录即 aborted（SP-13）
       if (record) fail('EXECUTION_INACTIVE', '已有消费记录，须带当前执行序号');
-      this.state.consumptions.set(key, this.freshRecord(input.runId, input.consumer, 0));
+      this.state.consumptions.set(key, this.freshRecord(0));
     } else if (record?.executionNo !== input.executionNo) {
       fail('EXECUTION_INACTIVE', '执行序号不是当前执行');
     }

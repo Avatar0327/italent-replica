@@ -71,18 +71,3 @@ export async function readinessReferrer(tx: Tx, tenantId: string, readinessId: s
   }
   return null;
 }
-
-/** 测试与审计辅助：按 ID 读一条（不加锁）。 */
-export async function loadReadiness(tx: Tx, tenantId: string, id: string) {
-  const [row] = await tx
-    .select({
-      ...columns,
-      revision: R.revision,
-      createdBy: R.createdBy,
-      createdAt: R.createdAt,
-      updatedAt: R.updatedAt,
-    })
-    .from(R)
-    .where(and(eq(R.tenantId, tenantId), eq(R.id, id)));
-  return row;
-}
