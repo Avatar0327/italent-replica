@@ -3,6 +3,8 @@
  * 包装函数 → 声明、中间件函数 → 最终路径集合 都存在登记簿自己的 Map 里：键是函数对象本身，按注册实例绑定，
  * 且只在本应用内有效——同一个中间件函数在别的应用登记过，不能让本应用里的原生注册蒙混过关。
  */
+import type { EnforcePlan } from './enforce.js';
+import type { AnyImplementations } from './impl-registry.js';
 import type { PolicyTable } from './table.js';
 import type { HttpMethod, RoutePolicy } from './types.js';
 
@@ -17,7 +19,11 @@ export type RoutePolicyErrorCode =
   | 'ROUTE_DECLARATION_UNMOUNTED'
   | 'ROUTE_DECLARATION_UNUSED'
   | 'ROUTE_POLICY_INLINE_HANDLERS'
-  | 'ROUTE_POLICY_ALL_FORBIDDEN';
+  | 'ROUTE_POLICY_ALL_FORBIDDEN'
+  /** 接管 T1：已接管模块的声明有名称未归类、T1 名称缺实现、缺原语 / 输入解析器，或用了引擎尚不支持的结构。 */
+  | 'ROUTE_POLICY_IMPL_MISSING'
+  /** 接管 T1：实现登记里有声明没有用到的名称（防止登记与声明脱节）。 */
+  | 'ROUTE_POLICY_IMPL_UNUSED';
 
 /** 注册期 / 校验期的失败：应用无法启动，测试直接失败（DEC-300：缺失声明、身份不匹配始终失败）。 */
 export class RoutePolicyError extends Error {
@@ -40,6 +46,8 @@ export interface Declaration {
   expectedFullPath: string;
   readonly policy: RoutePolicy;
   seen: boolean;
+  /** 接管 T1：所在模块已接管时，verifyRouteDeclarations 编译出的执行计划；没有计划的路由按 PR-A 原样调用。 */
+  plan?: EnforcePlan;
 }
 
 export interface MiddlewareEntry {
@@ -79,6 +87,8 @@ export class RouteRegistry {
   readonly declarations: Declaration[] = [];
   readonly middleware: MiddlewareEntry[] = [];
   readonly tables = new Set<PolicyTable>();
+  /** 接管 T1：模块 → 登记的实现（implement）。 */
+  readonly implementations = new Map<string, AnyImplementations>();
   /** 用过的键按登记表绑定：两张表都有 `GET /x` 时，只有真正注册过的那张算用过（审查第 1 轮 P3-2）。 */
   private readonly usedKeys = new Map<PolicyTable, Set<string>>();
   private readonly keysByRouter = new WeakMap<object, Set<string>>();
@@ -107,6 +117,14 @@ export class RouteRegistry {
     }
     addMiddlewarePath(entry, path);
     return entry;
+  }
+
+  bindImplementations(module: string, impls: AnyImplementations): void {
+    const existing = this.implementations.get(module);
+    if (existing && existing !== impls) {
+      throw new RoutePolicyError('ROUTE_DUPLICATE_DECLARATION', `模块 ${module} 的接管实现登记了两次`);
+    }
+    this.implementations.set(module, impls);
   }
 
   markUsed(table: PolicyTable, key: string): void {
@@ -143,6 +161,7 @@ export class RouteRegistry {
       } else this.middlewareByFn.set(fn, m);
     }
     for (const t of other.tables) this.tables.add(t);
+    for (const [module, impls] of other.implementations) this.bindImplementations(module, impls);
     for (const [table, keys] of other.usedKeys) for (const key of keys) this.markUsed(table, key);
   }
 }

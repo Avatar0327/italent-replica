@@ -510,12 +510,21 @@ async function syncPage(tx: Tx, ctx: Survey360Context, items: readonly EmployeeS
   }
 }
 
-/** 员工当前任职的直线经理（与 findCurrentRecord 同一取数：当前有效的任职记录，最新快照覆盖记录上的值）。 */
-function currentManager(tenantId: string, employee: SQL, asOf: string): SQL {
-  return sql`SELECT r.kind, CASE WHEN v.id IS NULL THEN r.direct_manager_id ELSE v.direct_manager_id END AS manager_id
+/**
+ * 员工当前任职的直线经理（与 findCurrentRecord 同一取数：当前有效的任职记录，最新快照覆盖记录上的值）；
+ * column = dotted_manager_id 时取虚线经理（PR-B 报告转发“按汇报关系”）。
+ */
+export function currentManager(
+  tenantId: string,
+  employee: SQL,
+  asOf: string,
+  column: 'direct_manager_id' | 'dotted_manager_id' = 'direct_manager_id',
+): SQL {
+  const field = sql.raw(column);
+  return sql`SELECT r.kind, CASE WHEN v.id IS NULL THEN r.${field} ELSE v.${field} END AS manager_id
     FROM employment_records r
     JOIN employment_timeline t ON t.tenant_id = r.tenant_id AND t.record_id = r.id
-    LEFT JOIN LATERAL (SELECT v.id, v.direct_manager_id FROM employment_payload_versions v
+    LEFT JOIN LATERAL (SELECT v.id, v.${field} FROM employment_payload_versions v
       WHERE v.tenant_id = r.tenant_id AND v.employee_id = r.employee_id AND v.business_id = r.id
         AND v.is_record_snapshot ORDER BY v.version_no DESC LIMIT 1) v ON true
     WHERE r.tenant_id = ${tenantId}::uuid AND r.employee_id = ${employee} AND t.valid_during @> ${asOf}::date

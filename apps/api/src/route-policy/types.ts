@@ -20,6 +20,8 @@ export type MapperName = string;
 export type ShapeName = string;
 export type ProjectorName = string;
 export type PreconditionName = string;
+/** 接管 T1：模块登记的授权输入解析器名（`implement` 的 inputs 键）。 */
+export type InputName = string;
 
 /** 选择器：静态值，或由请求某处决定；动态选择器都登记有限分支清单（map 的键或 domain）。 */
 export type Selector<T> =
@@ -56,6 +58,12 @@ export type Target =
   | { readonly record: LocatorName; readonly attribute: string }
   | { readonly derived: GuardName };
 
+/**
+ * 接管 T1 的点校验事务方式（docs/08_设计/F-039_接管T1_设计.md §2.4）：`own` = 登记实现自己开事务或不需要事务（缺省）；
+ * `shared` = 与处理函数共用一个事务，由处理函数调用 `access.inScopedTx` 触发，未调用即 500（DEC-363④）。
+ */
+export type ScopeTx = 'own' | 'shared';
+
 export type ScopePolicy =
   | { readonly mode: 'list'; readonly predicate: PredicateName; readonly view?: string }
   | {
@@ -64,14 +72,16 @@ export type ScopePolicy =
       readonly locator: LocatorName;
       readonly denied: Denial;
       readonly view?: string;
+      readonly tx?: ScopeTx;
     }
   | {
       readonly mode: 'see-all';
       readonly view?: string;
       readonly creatorLocator?: LocatorName;
       readonly denied: Denial | { readonly status: 200; readonly empty: true };
+      readonly tx?: ScopeTx;
     }
-  | { readonly mode: 'guard'; readonly guard: GuardName; readonly denied: Denial }
+  | { readonly mode: 'guard'; readonly guard: GuardName; readonly denied: Denial; readonly tx?: ScopeTx }
   | { readonly mode: 'none'; readonly reason: string };
 
 export type FieldsFrom =
@@ -132,8 +142,20 @@ export interface FailureAuditPolicy {
   readonly scopeEmployee?: Target;
 }
 
+/**
+ * 接管 T1 的授权输入（设计 §2.1 S1 / S3）：只对已接管模块生效。
+ * `revision` = 写请求的 If-Match（现状 revision(c)，在任何判定之前求值）；
+ * `parse` = 按现状代码顺序解析的授权输入：`key` 是 access.input 的键（写字段取 `body`），`using` 是模块登记的解析器。
+ */
+export interface InputPolicy {
+  readonly revision?: true;
+  readonly parse?: readonly { readonly key: string; readonly using: InputName }[];
+}
+
 /** 所有 policy 共用的基础字段。 */
 export interface PolicyBase {
+  /** 接管 T1 的授权输入；未接管模块不读。 */
+  readonly input?: InputPolicy;
   /** 路径 / 查询标识非法时的现状码（org 400、permission idParam 404、job/context.uuidParam 400 …）。 */
   readonly invalidId?: Denial;
   /** 附加具名守卫（grants 的 other_settings 附加能力、person-links 固定拒绝、经理身份 …）。 */
