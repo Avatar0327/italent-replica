@@ -11,7 +11,7 @@ import { approvalError } from './context.js';
 import { mergeSeat, mergesSeat, resettle, settleCountersign } from './countersign.js';
 import { afterNodeApproved, currentRouting, exceptionAdminFor, nodeIndex, type Run } from './engine.js';
 import { notifyTodo } from './notifications.js';
-import { isEligibleApprover } from './resolver.js';
+import { canTake } from './recusal.js';
 import { addSignLink, type AddSignLink } from './rules.js';
 import {
   activateTask,
@@ -54,12 +54,12 @@ export async function continueAfterApproval(tx: Tx, run: Run, approved: TaskRow)
 }
 
 /**
- * F8：轮到排队中的加签人时先复核其资格（DEC-054 / DEC-098）；已停用或已离职即转异常管理员。接替任务挂在原排队
+ * F8：轮到排队中的加签人时先复核其资格（DEC-054 / DEC-098）与回避（F-048 canTake）；已停用、已离职即转异常管理员。接替任务挂在原排队
  * 任务下（rules.addSignLink 仍认得这条链），之后的排队加签人与返回原审批人照常进行，原链义务不丢失。
  */
 async function activateNext(tx: Tx, run: Run, next: TaskRow): Promise<void> {
   const routing = await currentRouting(tx, run, next.nodeKey);
-  if (await isEligibleApprover(tx, routing.subject, next.assigneeUserId!)) {
+  if (await canTake(tx, run, routing.subject, next, next.assigneeUserId!)) {
     await activateTask(tx, run.ctx, run.instance.id, next.id);
     await appendLog(tx, run.ctx, run.instance, {
       event: 'add_sign_next',
@@ -88,7 +88,7 @@ async function returnToSigner(
   const signer = tasks.find((candidate) => candidate.id === signerTaskId);
   if (!signer?.assigneeUserId) throw approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_TASK_CHAIN', '加签任务链不完整');
   const routing = await currentRouting(tx, run, approved.nodeKey);
-  if (!(await isEligibleApprover(tx, routing.subject, signer.assigneeUserId))) {
+  if (!(await canTake(tx, run, routing.subject, signer, signer.assigneeUserId))) {
     return handToExceptionAdmin(tx, run, signer, signer.id);
   }
   const next = await insertTask(tx, run.ctx, run.instance.id, {
@@ -121,7 +121,7 @@ async function continueBeforeChain(tx: Tx, run: Run, tasks: readonly TaskRow[], 
     throw approvalError('SERVICE_UNAVAILABLE', 'APPROVAL_TASK_CHAIN', '加签任务链不完整');
   }
   const routing = await currentRouting(tx, run, seat.nodeKey);
-  if (await isEligibleApprover(tx, routing.subject, seat.assigneeUserId)) {
+  if (await canTake(tx, run, routing.subject, seat, seat.assigneeUserId)) {
     // 回到原席位：原审批人挂起的任务恢复为待办，这一席始终只有一张任务。
     await resumeAddSigned(tx, run.ctx, run.instance.id, seat.id);
     await appendLog(tx, run.ctx, run.instance, {

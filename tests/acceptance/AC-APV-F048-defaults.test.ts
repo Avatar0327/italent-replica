@@ -2,7 +2,8 @@
  * F-048 PR-1 开关的输入 / 存储 / 回显与缺省值（docs/08_设计/F-048_审批多主体回避_设计.md §3，测试 T11）：
  * - DEC-329④：管理员新建节点不给开关即关闭；草稿整份替换漏传时沿用该节点当前值；新版本复制；回显始终显式；
  * - 存量节点保持冻结的列值；DEC-332①：预置按业务敏感度显式取值（非 IDP true、IDP false），全部预置 avoidSubjects false；
- * - R3-01：PR-1 阶段保存 / 草稿 / 发布都拒绝 avoidSubjects=true；DEC-331⑤：命中动作只启用「跳过」。
+ * - PR-2：avoidSubjects 放开——会签或无「同意」出口的节点开启 → 400 UNSUPPORTED（保存 / 草稿 / 发布 / 写入层各自复核）；
+ *   DEC-331⑤：命中动作只启用「跳过」。
  */
 import { sql } from '@italent/db';
 import { APPROVAL_TYPES, PRESET_PROCESSES, type ApprovalTypeCode } from '@italent/domain';
@@ -181,36 +182,37 @@ describe('T11 草稿整份替换与新版本', () => {
   });
 });
 
-describe('T11 R3-01：PR-1 阶段不能开启多主体回避', () => {
-  it('新建流程开启 avoidSubjects → 400 APPROVAL_AVOID_SUBJECTS_UNAVAILABLE，不建流程', async () => {
-    const w = await approvalWorld(database().db, 'f048-unavailable-create');
-    const response = await createRaw(w, 'transfer', [
-      { key: 'n1', approver: 'owner', actions: { avoidSubjects: true } },
-    ]);
-    expect(await reasonOf(response)).toMatchObject({
-      status: 400,
-      code: 'VALIDATION_FAILED',
-      reason: 'APPROVAL_AVOID_SUBJECTS_UNAVAILABLE',
-    });
+const COUNTERSIGN = { key: 'cs', kind: 'countersign', approvers: ['owner', 'record_department_head'] } as const;
+
+describe('T11 PR-2 放开 avoidSubjects：单人且有「同意」出口的节点可开启，其余 400 UNSUPPORTED', () => {
+  it('新建流程在单人节点开启 avoidSubjects → 201，回显显式 true', async () => {
+    const w = await approvalWorld(database().db, 'f048-enabled-create');
+    const created = await w.json<Process>(
+      await createRaw(w, 'transfer', [{ key: 'n1', approver: 'owner', actions: { avoidSubjects: true } }]),
+      201,
+    );
+    expect(nodeOf(created, 'n1').actions.avoidSubjects).toBe(true);
+  });
+
+  it('新建流程在会签节点 / 无「同意」出口节点开启 → 400 APPROVAL_AVOID_SUBJECTS_UNSUPPORTED，不建流程', async () => {
+    const w = await approvalWorld(database().db, 'f048-unsupported-create');
+    for (const node of [
+      { ...COUNTERSIGN, actions: { avoidSubjects: true } },
+      { key: 'n1', approver: 'owner', exits: ['disagree'], actions: { avoidSubjects: true } },
+    ]) {
+      const response = await createRaw(w, 'transfer', [node]);
+      expect(await reasonOf(response)).toMatchObject({
+        status: 400,
+        code: 'VALIDATION_FAILED',
+        reason: 'APPROVAL_AVOID_SUBJECTS_UNSUPPORTED',
+      });
+    }
     const list = await w.json<{ items: unknown[] }>(await w.request(w.hr.id, 'GET', `${BASE}/processes`));
     expect(list.items).toEqual([]);
   });
 
-  it('会签节点开启也同样拒绝', async () => {
-    const w = await approvalWorld(database().db, 'f048-unavailable-countersign');
-    const response = await createRaw(w, 'transfer', [
-      {
-        key: 'cs',
-        kind: 'countersign',
-        approvers: ['owner', 'record_department_head'],
-        actions: { avoidSubjects: true },
-      },
-    ]);
-    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNAVAILABLE' });
-  });
-
-  it('草稿替换开启 → 400，草稿前后不变', async () => {
-    const w = await approvalWorld(database().db, 'f048-unavailable-draft');
+  it('草稿替换在会签节点开启 → 400，草稿前后不变', async () => {
+    const w = await approvalWorld(database().db, 'f048-unsupported-draft');
     const created = await w.createProcess({ nodes: [{ key: 'a', approver: 'owner' }] });
     const before = await getProcess(w, created.id);
     const response = await w.request(w.hr.id, 'PUT', `${BASE}/processes/${created.id}/draft`, {
@@ -218,53 +220,53 @@ describe('T11 R3-01：PR-1 阶段不能开启多主体回避', () => {
       body: {
         name: '草稿二',
         exceptionAdminUserId: w.exceptionAdmin,
-        nodes: [{ key: 'a', approver: 'owner', actions: { avoidSubjects: true } }],
+        nodes: [{ ...COUNTERSIGN, actions: { avoidSubjects: true } }],
       },
     });
-    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNAVAILABLE' });
+    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNSUPPORTED' });
     expect(await getProcess(w, created.id)).toEqual(before);
   });
 
-  it('发布时复核：草稿里出现 avoid_subjects=true（可信夹具写入）→ 400，仍是草稿', async () => {
-    const w = await approvalWorld(database().db, 'f048-unavailable-publish');
-    const created = await w.createProcess({ nodes: [{ key: 'a', approver: 'owner' }] });
+  it('发布时复核：会签草稿里出现 avoid_subjects=true（可信夹具写入）→ 400，仍是草稿', async () => {
+    const w = await approvalWorld(database().db, 'f048-unsupported-publish');
+    const created = await w.createProcess({ nodes: [COUNTERSIGN] });
     await patchDraftNodes(w, created.id, sql`avoid_subjects=true`);
     const response = await w.request(w.hr.id, 'POST', `${BASE}/processes/${created.id}/publish`, {
       ifMatch: created.revision,
     });
-    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNAVAILABLE' });
+    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNSUPPORTED' });
     expect((await getProcess(w, created.id)).latestVersion.status).toBe('draft');
   });
 });
 
-describe('T11 R3-01：写入层独立拒绝（不依赖请求入口的校验）', () => {
-  it('草稿整份替换沿用到的 avoidSubjects=true（可信夹具写入）→ 400，草稿前后不变', async () => {
+describe('T11 写入层独立复核（不依赖请求入口的校验）', () => {
+  it('草稿整份替换沿用到的会签 avoidSubjects=true（可信夹具写入）→ 400，草稿前后不变', async () => {
     const w = await approvalWorld(database().db, 'f048-gate-inherit');
-    const created = await w.createProcess({ nodes: [{ key: 'a', approver: 'owner' }] });
+    const created = await w.createProcess({ nodes: [COUNTERSIGN] });
     await patchDraftNodes(w, created.id, sql`avoid_subjects=true`);
     const before = await getProcess(w, created.id);
     const response = await w.request(w.hr.id, 'PUT', `${BASE}/processes/${created.id}/draft`, {
       ifMatch: created.revision,
-      body: { name: '草稿二', exceptionAdminUserId: w.exceptionAdmin, nodes: [{ key: 'a', approver: 'owner' }] },
+      body: { name: '草稿二', exceptionAdminUserId: w.exceptionAdmin, nodes: [COUNTERSIGN] },
     });
-    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNAVAILABLE' });
+    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNSUPPORTED' });
     expect(await getProcess(w, created.id)).toEqual(before);
   });
 
-  it('新版本复制到 avoidSubjects=true（可信夹具写入已发布版本）→ 400，不生成草稿', async () => {
+  it('新版本复制到会签 avoidSubjects=true（可信夹具写入已发布版本）→ 400，不生成草稿', async () => {
     const w = await approvalWorld(database().db, 'f048-gate-version');
-    const published = await w.publishedProcess({ nodes: [{ key: 'a', approver: 'owner' }] });
+    const published = await w.publishedProcess({ nodes: [COUNTERSIGN] });
     await patchPublishedNodes(w, published.id, sql`avoid_subjects=true`);
     const response = await w.request(w.hr.id, 'POST', `${BASE}/processes/${published.id}/versions`, {
       ifMatch: published.revision,
     });
-    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNAVAILABLE' });
+    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNSUPPORTED' });
     expect((await getProcess(w, published.id)).latestVersion.status).toBe('published');
   });
 
-  it('异常管理员交接重发到 avoidSubjects=true（可信夹具写入已发布版本）→ 400，不重发', async () => {
+  it('异常管理员交接重发到会签 avoidSubjects=true（可信夹具写入已发布版本）→ 400，不重发', async () => {
     const w = await approvalWorld(database().db, 'f048-gate-handover');
-    const published = await w.publishedProcess({ nodes: [{ key: 'a', approver: 'owner' }] });
+    const published = await w.publishedProcess({ nodes: [COUNTERSIGN] });
     await patchPublishedNodes(w, published.id, sql`avoid_subjects=true`);
     const before = await getProcess(w, published.id);
     const successor = await w.member('新异常管理员');
@@ -272,7 +274,7 @@ describe('T11 R3-01：写入层独立拒绝（不依赖请求入口的校验）'
       ifMatch: 0,
       body: { fromUserId: w.exceptionAdmin, toUserId: successor },
     });
-    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNAVAILABLE' });
+    expect(await reasonOf(response)).toMatchObject({ status: 400, reason: 'APPROVAL_AVOID_SUBJECTS_UNSUPPORTED' });
     expect(await getProcess(w, published.id)).toEqual(before);
   });
 });
