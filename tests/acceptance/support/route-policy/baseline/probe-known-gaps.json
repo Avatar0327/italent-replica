@@ -1,0 +1,863 @@
+[
+  {
+    "id": "org.personCandidates#1",
+    "purpose": "守卫内部 OR",
+    "owner": "B1（#162）：承载者 / 内部“或”备选语义合并后补 org 表（create / update × 三个人员字段）",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/org/routes.ts",
+        "anchor": "const allowed = await anyPersonFieldEditable(deps, ctx);"
+      },
+      {
+        "file": "apps/api/src/modules/org/routes.ts",
+        "anchor": "async function anyPersonFieldEditable(deps: TenantRouteDeps, ctx: ReturnType<typeof tenantOf>): Promise<boolean> {"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/org/person-candidates",
+        "obj:TenantBase.Organization:create"
+      ]
+    ]
+  },
+  {
+    "id": "survey360.allActivities#1",
+    "purpose": "资源守卫内部备选",
+    "owner": "B1 语义补表 / 声明；360 组 Tier 1 本期不交付（DEC-356②），未排期部分转 F，退出条件：360 组 Tier 1 或接管",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/survey360/access.ts",
+        "anchor": "export function activityVisibleSql(admin: Pick<Admin, 'userId' | 'allActivities'>, alias = sql`a`): SQL {"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/access.ts",
+        "anchor": "export async function requireActivity( tx: Tx,"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/access.ts",
+        "anchor": "export async function requireVisibleObject("
+      },
+      {
+        "file": "apps/api/src/modules/survey360/context.ts",
+        "anchor": "const checked = async (tx: Tx) => { await requireNeed(tx, deps, tenant, options.need);"
+      }
+    ],
+    "pairs": [
+      [
+        "DELETE /api/tenant/survey360/activities/:id",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "DELETE /api/tenant/survey360/activities/:id",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "DELETE /api/tenant/survey360/activities/:id/grants/:userId",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "DELETE /api/tenant/survey360/activities/:id/grants/:userId",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "DELETE /api/tenant/survey360/activities/:id/objects/:objectId",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "DELETE /api/tenant/survey360/activities/:id/objects/:objectId",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "DELETE /api/tenant/survey360/activities/:id/objects/:objectId/appraisers/:relationId",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "DELETE /api/tenant/survey360/activities/:id/objects/:objectId/appraisers/:relationId",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/grants",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/objects",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/objects",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/objects/:objectId/appraisers",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/objects/:objectId/appraisers",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/objects/:objectId/scores",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/objects/:objectId/scores",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/appraisers/import",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/appraisers/import",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/disable",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/disable",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/enable",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/enable",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/grants",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/grants",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/objects",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/objects",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/objects/:objectId/appraisers",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/objects/:objectId/appraisers",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/objects/:objectId/appraisers/auto",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/objects/:objectId/appraisers/auto",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/objects/:objectId/confirmation",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/objects/:objectId/confirmation",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "PUT /api/tenant/survey360/activities/:id",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "PUT /api/tenant/survey360/activities/:id",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "PUT /api/tenant/survey360/activities/:id/objects/:objectId/questionnaires",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "PUT /api/tenant/survey360/activities/:id/objects/:objectId/questionnaires",
+        "obj:Survey360.Activity:view"
+      ]
+    ]
+  },
+  {
+    "id": "survey360.allActivities#2",
+    "purpose": "列表范围披露",
+    "owner": "B1 语义补表 / 声明；360 组 Tier 1 本期不交付（DEC-356②），未排期部分转 F，退出条件：360 组 Tier 1 或接管",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/survey360/access.ts",
+        "anchor": "export function activityVisibleSql(admin: Pick<Admin, 'userId' | 'allActivities'>, alias = sql`a`): SQL {"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/activities.ts",
+        "anchor": "module.get('/activities', (c) => read(c, deps, VIEW, async (tx, admin) => ({"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/survey360/activities",
+        "btn:Survey360.Activity#viewAll@list"
+      ]
+    ]
+  },
+  {
+    "id": "survey360.allActivities#3",
+    "purpose": "列表范围披露",
+    "owner": "B1 语义补表 / 声明；360 组 Tier 1 本期不交付（DEC-356②），未排期部分转 F，退出条件：360 组 Tier 1 或接管",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/survey360/context.ts",
+        "anchor": "const allActivities = await allActivitiesOf(tx, deps, tenant);"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/people.ts",
+        "anchor": "module.get('/people', (c) => read( c, deps,"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/survey360/people",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/people",
+        "obj:Survey360.Activity:view"
+      ]
+    ]
+  },
+  {
+    "id": "survey360.allActivities#4",
+    "purpose": "资源范围守卫",
+    "owner": "B1 语义补表 / 声明；360 组 Tier 1 本期不交付（DEC-356②），未排期部分转 F，退出条件：360 组 Tier 1 或接管",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/survey360/people.ts",
+        "anchor": "/** 当前操作人可见的人员；看不到按不存在处理（404）。 */ export async function visiblePerson(tx: Tx, admin: Admin, id: string, message = '人员不存在'): Promise<PersonRow> {"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/people.ts",
+        "anchor": "function registerPersonReads(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/people.ts",
+        "anchor": "module.put('/people/:id', (c) => { const id = uuidParam(c);"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/survey360/people/:id",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/people/:id",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "PUT /api/tenant/survey360/people/:id",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "PUT /api/tenant/survey360/people/:id",
+        "obj:Survey360.Activity:view"
+      ]
+    ]
+  },
+  {
+    "id": "survey360.allActivities#5",
+    "purpose": "精细化条件守卫",
+    "owner": "B1 语义补表 / 声明；360 组 Tier 1 本期不交付（DEC-356②），未排期部分转 F，退出条件：360 组 Tier 1 或接管",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/survey360/people.ts",
+        "anchor": "export function requireUnrestricted(admin: Admin): void {"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/people.ts",
+        "anchor": "module.get('/people/:id/link-logs', (c) =>"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/sync.ts",
+        "anchor": "module.get('/people/sync-conflicts', (c) =>"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/sync.ts",
+        "anchor": "module.post('/people/sync-conflicts/:id/resolve', (c) => {"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/survey360/people/:id/link-logs",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/people/:id/link-logs",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "GET /api/tenant/survey360/people/sync-conflicts",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/people/sync-conflicts",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/people/sync-conflicts/:id/resolve",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/people/sync-conflicts/:id/resolve",
+        "obj:Survey360.Activity:view"
+      ]
+    ]
+  },
+  {
+    "id": "survey360.allActivities#6",
+    "purpose": "精细化条件守卫",
+    "owner": "B1 语义补表 / 声明；360 组 Tier 1 本期不交付（DEC-356②），未排期部分转 F，退出条件：360 组 Tier 1 或接管",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/survey360/people.ts",
+        "anchor": "export function requireCreatable(admin: Admin): void {"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/people.ts",
+        "anchor": "module.post('/people', (c) => write( c, deps,"
+      }
+    ],
+    "pairs": [
+      [
+        "POST /api/tenant/survey360/people",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/people",
+        "obj:Survey360.Activity:view"
+      ]
+    ]
+  },
+  {
+    "id": "survey360.allActivities#7",
+    "purpose": "写范围与披露",
+    "owner": "B1 语义补表 / 声明；360 组 Tier 1 本期不交付（DEC-356②），未排期部分转 F，退出条件：360 组 Tier 1 或接管",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/survey360/sync.ts",
+        "anchor": "const keepEmail = !!ctx.admin.people; const values: Partial<PersonRow> = Object.fromEntries("
+      },
+      {
+        "file": "apps/api/src/modules/survey360/sync.ts",
+        "anchor": "if (ctx.admin.people) { result.skipped.push({ employeeId, reason: NOT_AVAILABLE });"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/sync.ts",
+        "anchor": "module.post('/people/sync', (c) => { let employees: ModuleScope | undefined;"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/sync.ts",
+        "anchor": "conflicts: admin.people ? [] : body.conflicts.filter((id) => inScope.has(conflictEmployee.get(id) ?? '')),"
+      }
+    ],
+    "pairs": [
+      [
+        "POST /api/tenant/survey360/people/sync",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/people/sync",
+        "obj:Survey360.Activity:view"
+      ]
+    ]
+  },
+  {
+    "id": "survey360.allActivities#8",
+    "purpose": "资源守卫内部备选（#125 R3-T03 PR-B 新增活动端点：requireActivity 按 allActivities 判活动可见）",
+    "owner": "B1 语义补表 / 声明；360 组 Tier 1 本期不交付（DEC-356②），未排期部分转 F，退出条件：360 组 Tier 1 或接管",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/survey360/access.ts",
+        "anchor": "export async function requireActivity( tx: Tx,"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/todos.ts",
+        "anchor": "const activity = await requireActivity(tx, ctx.admin, id, true); requireOpen(activity);"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/sheets.ts",
+        "anchor": "module.get('/activities/:id/sheets', (c) => read(c, deps, { object: 'answer' }, async (tx, admin) => { const activity = await requireActivity(tx, admin, uuidParam(c));"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/reports.ts",
+        "anchor": "module.get('/activities/:id/reports', (c) => read(c, deps, VIEW, async (tx, admin, tenant) => { const activity = await requireActivity(tx, admin, uuidParam(c));"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/progress.ts",
+        "anchor": "const activity = await requireActivity(tx, ctx.admin, id, true); await visibleRelation(tx, activity.id, ctx.admin, relationId);"
+      },
+      {
+        "file": "apps/api/src/modules/survey360/tables.ts",
+        "anchor": "read( c, deps, { object: 'result' }, async (tx, admin) => { const activity = await requireActivity(tx, admin, uuidParam(c));"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/survey360/activities/:id/progress",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/progress",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/progress/:personId",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/progress/:personId",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/reports",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/reports",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/reports/:reportId",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/reports/:reportId",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/score-tables",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/score-tables",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/sheets",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/sheets",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/invitations",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/invitations",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/relations/:relationId/reanswer",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/relations/:relationId/reanswer",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/reports/forward",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/reports/forward",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/reports/forward/preview",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/reports/forward/preview",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/reports/generate",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/reports/generate",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/sheets/:sheetId/block",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/sheets/:sheetId/block",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/sheets/:sheetId/unblock",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/sheets/:sheetId/unblock",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/sheets/block-suspected",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/sheets/block-suspected",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/sheets/unblock-all",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/sheets/unblock-all",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/todos",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/todos",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/todos/cancel",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "POST /api/tenant/survey360/activities/:id/todos/cancel",
+        "obj:Survey360.Activity:view"
+      ]
+    ]
+  },
+  {
+    "id": "qualification.referencedView#1",
+    "purpose": "级联删除范围守卫",
+    "owner": "承载者接口依赖 B1（#162）；业务后补转 F，退出条件：任职资格组 Tier 1 或接管",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/qualification/target-service.ts",
+        "anchor": "async function requireTargetsEditable(tx: Tx, ctx: WriteContext, targetIds: readonly string[]) {"
+      },
+      {
+        "file": "apps/api/src/modules/qualification/target-service.ts",
+        "anchor": "export async function deleteGradeScheme(tx: Tx, ctx: WriteContext, id: string) {"
+      }
+    ],
+    "pairs": [
+      [
+        "DELETE /api/tenant/qualification/grade-schemes/:id",
+        "obj:Qualification.Target:view"
+      ]
+    ]
+  },
+  {
+    "id": "qualification.referencedView#2",
+    "purpose": "冲突名称披露",
+    "owner": "承载者接口依赖 B1（#162）；业务后补转 F，退出条件：任职资格组 Tier 1 或接管",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/qualification/config-service.ts",
+        "anchor": "const taken = rowsOf<{ name: string; readable: boolean }>("
+      },
+      {
+        "file": "apps/api/src/modules/qualification/route-support.ts",
+        "anchor": "...(jobs.length ? { [object]: await objectFields(deps, ctx, object) } : {}),"
+      }
+    ],
+    "pairs": [
+      [
+        "PATCH /api/tenant/qualification/categories/:id",
+        "obj:Qualification.EmploymentCategory:view"
+      ],
+      [
+        "PATCH /api/tenant/qualification/levels/:id",
+        "obj:Qualification.EmploymentLevel:view"
+      ]
+    ]
+  },
+  {
+    "id": "qualification.referencedView#3",
+    "purpose": "条件引用准入",
+    "owner": "承载者接口依赖 B1（#162）；业务后补转 F，退出条件：任职资格组 Tier 1 或接管",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/qualification/config-service.ts",
+        "anchor": "async function jobObject(tx: Tx, ctx: ConfigWriteContext, linkType: string, id: string) {"
+      },
+      {
+        "file": "apps/api/src/modules/qualification/config-service.ts",
+        "anchor": "async function patchJobLinks( tx: Tx, ctx: ConfigWriteContext,"
+      },
+      {
+        "file": "apps/api/src/modules/qualification/route-support.ts",
+        "anchor": "for (const kind of jobs) { const code = JOB_OBJECT_CODES[kind];"
+      }
+    ],
+    "pairs": [
+      [
+        "PATCH /api/tenant/qualification/categories/:id",
+        "obj:TenantBase.JobLevelType:view"
+      ],
+      [
+        "PATCH /api/tenant/qualification/categories/:id",
+        "obj:TenantBase.JobPost:view"
+      ],
+      [
+        "PATCH /api/tenant/qualification/categories/:id",
+        "obj:TenantBase.JobSequence:view"
+      ],
+      [
+        "PATCH /api/tenant/qualification/categories/:id",
+        "obj:TenantBase.Position:view"
+      ],
+      [
+        "PATCH /api/tenant/qualification/levels/:id",
+        "obj:TenantBase.JobGrade:view"
+      ],
+      [
+        "PATCH /api/tenant/qualification/levels/:id",
+        "obj:TenantBase.JobLevel:view"
+      ]
+    ]
+  },
+  {
+    "id": "idp.nestedContent#1",
+    "purpose": "嵌套与来源披露",
+    "owner": "PR-B3（B-06 逐对象披露分支）",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/idp/plan-routes.ts",
+        "anchor": "const id = uuidParam(c); const hr = await idpScope(c, deps, ctx, 'plan');"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-view.ts",
+        "anchor": "KEY_INFO_KINDS.map(async (kind) => { const code = codeOf(kind);"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-view.ts",
+        "anchor": "export async function presentPlan( tx: Tx,"
+      }
+    ],
+    "pairs": [
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.Analysis:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.Career:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.GoalReview:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.IDPTemplateModule:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.Idp:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.IdpGoal:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.Review:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.SubProcess:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.Task:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.TutorShip:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:IDP.WorkShift:view"
+      ],
+      [
+        "DELETE /api/tenant/idp/plans/:id",
+        "obj:TenantBase.EmploymentRecord:view"
+      ]
+    ]
+  },
+  {
+    "id": "idp.nestedContent#2",
+    "purpose": "阶段来源披露",
+    "owner": "PR-B3（B-06 逐对象披露分支）",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/idp/plan-routes.ts",
+        "anchor": "tx, tenantId, rows.map((r) => r.id), ); return Promise.all("
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-view.ts",
+        "anchor": "export async function stagesShown( tx: Tx,"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-view.ts",
+        "anchor": "async function employmentVisible( tx: Tx,"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/idp/plans",
+        "obj:IDP.SubProcess:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans",
+        "obj:TenantBase.EmploymentRecord:view"
+      ]
+    ]
+  },
+  {
+    "id": "idp.nestedContent#3",
+    "purpose": "嵌套与来源披露",
+    "owner": "PR-B3（B-06 逐对象披露分支）",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/idp/plan-routes.ts",
+        "anchor": "async function showPlan(deps: TenantRouteDeps, ctx: IdpContext, hr: HrScope, planId: string) { const projections = await planProjections(deps, ctx);"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-view.ts",
+        "anchor": "KEY_INFO_KINDS.map(async (kind) => { const code = codeOf(kind);"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-view.ts",
+        "anchor": "export async function presentPlan( tx: Tx,"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.Analysis:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.Career:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.GoalReview:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.IDPTemplateModule:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.IdpGoal:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.Review:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.SubProcess:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.Task:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.TutorShip:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:IDP.WorkShift:view"
+      ],
+      [
+        "GET /api/tenant/idp/plans/:id",
+        "obj:TenantBase.EmploymentRecord:view"
+      ]
+    ]
+  },
+  {
+    "id": "idp.nestedContent#4",
+    "purpose": "嵌套披露",
+    "owner": "PR-B3（B-06 逐对象披露分支）",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/idp/routes.ts",
+        "anchor": "async function processPresenter(deps: TenantRouteDeps, ctx: IdpContext) { const top = await projectionOf(deps, ctx, 'process'); const sub = await projectionOf(deps, ctx, 'subProcess');"
+      },
+      {
+        "file": "apps/api/src/modules/idp/routes.ts",
+        "anchor": "function registerProcessRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps) {"
+      }
+    ],
+    "pairs": [
+      [
+        "GET /api/tenant/idp/processes",
+        "obj:IDP.SubProcess:view"
+      ]
+    ]
+  },
+  {
+    "id": "idp.nestedContent#5",
+    "purpose": "指导人条件带出源",
+    "owner": "B1 语义补 IDP 表（B3 之后）",
+    "evidence": [
+      {
+        "file": "apps/api/src/modules/idp/access.ts",
+        "anchor": "export async function replayChecks(deps: TenantRouteDeps, ctx: IdpContext, checks: readonly PermissionCheck[]) {"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-routes.ts",
+        "anchor": "const id = uuidParam(c); const body = await parseBody(c, input.planPatch);"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-service.ts",
+        "anchor": "async function objectProjection(deps: TenantRouteDeps, ctx: IdpContext, objectCode: string): Promise<Projection> {"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-service.ts",
+        "anchor": "async function resolveTutor( tx: Tx, ctx: PlanWriteContext,"
+      },
+      {
+        "file": "apps/api/src/modules/idp/plan-service.ts",
+        "anchor": "export async function updatePlan(tx: Tx, ctx: PlanWriteContext, sources: CarrySources, id: string, patch: PlanPatch) {"
+      }
+    ],
+    "pairs": [
+      [
+        "PATCH /api/tenant/idp/plans/:id",
+        "obj:TenantBase.EmploymentRecord:view"
+      ],
+      [
+        "PATCH /api/tenant/idp/plans/:id",
+        "obj:TenantBase.Organization:view"
+      ]
+    ]
+  }
+]

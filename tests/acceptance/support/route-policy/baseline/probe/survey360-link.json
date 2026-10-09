@@ -1,0 +1,117 @@
+{
+  "DELETE /api/survey360/link/confirmation/appraisers/:relationId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/survey360/link": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/survey360/link/avatars/:attachmentId/content": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/survey360/link/confirmation/candidates": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/survey360/link/tasks/:relationId/questionnaires/:questionnaireId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/survey360/link/confirmation/appraisers": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/survey360/link/confirmation/submit": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/survey360/link/tasks/:relationId/questionnaires/:questionnaireId/submit": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/survey360/link/tasks/:relationId/questionnaires/:questionnaireId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  }
+}
