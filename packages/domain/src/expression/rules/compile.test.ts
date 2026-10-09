@@ -585,6 +585,32 @@ describe('数值字面量精确展开（第 2 轮 P2：科学计数法分支不�
     expect(matches(formula, { '行1.值': 1e-21 })).toBe(true);
   });
 
+  it('批量求值路径同样精确：一批对象里只有与阈值逐位相等的那个命中 eq', () => {
+    const target = 0.0000001234567890123456;
+    const { formula } = compiled(one(fieldRow(1, NUMBER, 'eq', [target]))).compiled;
+    const subject = (id: string, value: PlainValue) => ({
+      id,
+      resolveField: (path: string): FieldLookup =>
+        path === NUMBER.path ? { status: 'found', value } : { status: 'unknown' },
+    });
+    const subjects = [
+      subject('exact', target),
+      subject('rounded', 0.00000012345678901235), // 旧实现舍入后的值
+      subject('zero', 0),
+      subject('empty', null),
+    ];
+    const batch = evaluateBatch([{ field: '盘点对象.命中', priority: 1, formula }], subjects, {
+      calendar: { today: '2026-10-09', timeZone: 'Asia/Shanghai' },
+      fieldKind: (path) => KINDS[path],
+    });
+    if (!batch.ok) throw new Error('批量求值应当成功');
+    const hit = (id: string) => {
+      const result = batch.results[id]!['盘点对象.命中']!;
+      return result.ok && result.value.kind === 'number' ? result.value.value : undefined;
+    };
+    expect(['exact', 'rounded', 'zero', 'empty'].map(hit)).toEqual([1, 0, 0, 0]);
+  });
+
   describe.each(VALUES)('值 %s：aggregate 行与 number 字段行的匹配结果与数值比较一致', (value) => {
     const other = value === 42 ? 7 : 42;
     const cases: readonly [string, RuleConditionRow['values'], RuleOperator, boolean][] = [
