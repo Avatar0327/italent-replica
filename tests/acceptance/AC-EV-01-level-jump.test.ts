@@ -96,6 +96,22 @@ describe('AC-EV-01 Q-T02-06 边界（设计推荐 🟡）', () => {
     });
   });
 
+  // 第 2 轮 P3-01：序列里的级别 ID 须唯一；重复会让位置失真，按“无法判定”处理，不猜
+  it('序列里有重复级别 ID → LEVEL_JUMP_UNDETERMINED，默认申请级别为空', () => {
+    const duplicated: LevelOrderRef[] = [
+      { id: 'P3', displayOrder: 1 },
+      { id: 'P4', displayOrder: 2 },
+      { id: 'P4', displayOrder: 3 },
+      { id: 'P5', displayOrder: 4 },
+      { id: 'P6', displayOrder: 5 },
+    ];
+    expect(checkLevelJump({ levels: duplicated, originalLevelId: 'P3', applyLevelId: 'P5', maxLevelJump: 5 })).toEqual({
+      ok: false,
+      code: 'LEVEL_JUMP_UNDETERMINED',
+    });
+    expect(defaultApplyLevelId(duplicated, 'P3')).toBeNull();
+  });
+
   it.each([-1, 1.5, Number.NaN])('最大跨级数 %s 不合法 → MAX_LEVEL_JUMP_INVALID', (bad) => {
     expect(checkLevelJump({ levels, originalLevelId: 'P3', applyLevelId: 'P4', maxLevelJump: bad })).toEqual({
       ok: false,

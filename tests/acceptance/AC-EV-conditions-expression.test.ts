@@ -156,6 +156,33 @@ describe('AC-EV-conditions 组合表达式：只引用存在的序号（validate
     });
   });
 
+  // 第 2 轮 P2-01：表达式引擎对取数函数参数里的记录字段不查字段目录，必须在本函数复核全部引用
+  it('取数函数参数里的记录字段不得绕过条件序号白名单', () => {
+    const bypass = '条件1 and PerformanceLastCent(1, 考核结果.年度 = 2026) > 0';
+    expect(validateActivityConditionExpression(bypass, seqs)).toMatchObject({
+      ok: false,
+      errors: [{ code: 'CONDITION_SEQ_UNKNOWN' }],
+    });
+    expect(validateActivityConditionExpression('PerformanceLastCent(1, 考核结果.年度 = 2026) > 0', [])).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it('取数函数即使不带字段也不允许（表达式只组合条件，不另取数）', () => {
+    expect(validateActivityConditionExpression('条件1 and PerformanceLastCent(1) > 0', seqs)).toMatchObject({
+      ok: false,
+      errors: [{ code: 'EXPRESSION_FUNCTION_NOT_ALLOWED' }],
+    });
+  });
+
+  // 第 2 轮 P3-02：条件序号是布尔字段，类型参与保存校验，先校验再求值不会到 TYPE_CONVERSION
+  it('把条件当日期用在日期函数上，保存时就拒绝', () => {
+    expect(validateActivityConditionExpression('Year(条件1) > 2020', seqs)).toMatchObject({
+      ok: false,
+      errors: [{ code: 'EXPRESSION_SYNTAX' }],
+    });
+  });
+
   it('校验过的表达式能交给 evaluateFormula 以条件序号为布尔字段求值（C2 用法的衔接）', () => {
     const subject = inMemorySubject('e1', { 条件1: true, 条件2: false, 条件3: true });
     const calendar = { today: '2026-10-09', timeZone: 'Asia/Shanghai' };
