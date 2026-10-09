@@ -1,8 +1,8 @@
 {
 "updated": "2026-10-09",
 "stats": {
-"merged": 80,
-"open": 13,
+"merged": 81,
+"open": 12,
 "dec": 347,
 "ev": "35/140"
 },
@@ -982,6 +982,10 @@
 }
 },
 "log": [
+[
+"10-09",
+"#138 F-058 人员头像合并（3 轮）"
+],
 [
 "10-09",
 "#141 F-053 合并（Sonnet 首单，2 轮）"
@@ -2271,7 +2275,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-09 03:33",
+"liveUpdated": "10-09 03:50",
 "chains": [
 {
 "g": "base",
@@ -2508,8 +2512,8 @@
 "o": 2,
 "k": "run",
 "n": "任职资格 + 人才评定",
-"seg": "ev:d ds:d6 dev:a2 rev:d1 mg:w",
-"now": "#136 PR-A 首轮：14 类 P2（多为自检可挡的老问题），第 2 轮修改（Opus，须先跑自检）",
+"seg": "ev:d ds:d6 dev:d2 rev:a2 mg:w",
+"now": "#136 第 2 轮审查中（Sol xhigh+fast，逐类复核 14 类 P2；开发方已跑两遍自检：发现 4 修 3）",
 "pr": 129,
 "pd": "设计 #121 ✓ · PR-0 #129 ✓ · PR-A #136"
 },
@@ -2636,8 +2640,8 @@
 "k": "run",
 "n": "权限框架强制",
 "u": "已核对，待开会话",
-"seg": "ev:n ds:d6 dev:a3 rev:d2 mg:w",
-"now": "实现第 2 轮（Sol xhigh）：1 类 P2 残留（optional 绕过必需准入），第 3 轮修改",
+"seg": "ev:n ds:d6 dev:d3 rev:a3 mg:w",
+"now": "实现第 3 轮审查中（Sol xhigh + priority）",
 "pr": 110,
 "up": "10-07 调到 Max",
 "nx": "R3 全部模块（各 PR 合并后补声明）",
@@ -2715,8 +2719,8 @@
 "k": "run",
 "n": "审批多主体回避",
 "nx": "R3-T04 写代码",
-"seg": "ev:n ds:d4 dev:a1 rev:w mg:w",
-"now": "PR-2 判定接入开工（#145 Draft，Sonnet）；须在 T04 PR-D 前合并",
+"seg": "ev:n ds:d4 dev:d1 rev:a1 mg:w",
+"now": "PR-2 #145 首审中（Astra Ultra）",
 "pr": 135,
 "pd": "设计 #128 ✓ · PR-1 #135 ✓ · PR-2 #145",
 "sn": "1"
@@ -2873,12 +2877,13 @@
 "id": "F-058",
 "g": "s360",
 "o": 6,
-"k": "run",
+"k": "done",
 "cx": "1",
 "n": "范围外上级头像",
-"seg": "ev:n ds:n dev:a3 rev:d2 mg:w",
-"now": "第 2 轮：只剩迁移未接 #135 的 0071；第 3 轮修改（Codex）",
-"pr": 138
+"seg": "ev:n ds:n dev:d3 rev:a3 mg:w",
+"now": "第 3 轮窄审中（迁移 0072 / 0073）",
+"pr": 138,
+"u": "10-09 #138 合并（813395f），Codex 开发 3 轮"
 },
 {
 "id": "F-SC2",
