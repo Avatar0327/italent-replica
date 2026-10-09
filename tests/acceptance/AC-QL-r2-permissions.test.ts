@@ -615,7 +615,7 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
       expect(await reasonOf(loop)).toBe('CHANNEL_SELF_LOOP');
     });
 
-    it('③ 编码规则可见范围 = 看全部 ∪ 创建人：只有创建人维度时看得到自己建的、看不到别人的', async () => {
+    it('③ 编码规则可见范围 = 看全部 ∪ 创建人：只有创建人维度时看得到自己建的，别人的只见缺省占位', async () => {
       // 别人（管理员）先建好“类别”这一项
       const rules = await ok<{ items: { item: string; revision: number }[] }>(await data.admin('GET', '/coding-rules'));
       const category = rules.items.find((item) => item.item === 'category')!;
@@ -640,13 +640,14 @@ describe('任职资格配置第 2 轮：权限与裁剪', () => {
             await op.request('GET', '/coding-rules'),
           )
         ).items;
-      expect((await listed(first)).map((item) => item.item)).not.toContain('category');
+      // 别人建过的项对其照样是缺省占位（第 3 轮 R2-02：不透露是否已被别人建过）
+      expect((await listed(first)).find((item) => item.item === 'category')).toMatchObject({ prefix: '', revision: 0 });
       const blank = (await listed(first)).find((item) => item.item === 'target')!;
       await ok(
         await first.request('PATCH', '/coding-rules/target', { ifMatch: blank.revision, body: { prefix: 'MINE' } }),
       );
       expect((await listed(first)).find((item) => item.item === 'target')).toMatchObject({ prefix: 'MINE' });
-      expect((await listed(second)).map((item) => item.item)).not.toContain('target');
+      expect((await listed(second)).find((item) => item.item === 'target')).toMatchObject({ prefix: '', revision: 0 });
       const foreign = await second.request('PATCH', '/coding-rules/target', { ifMatch: 1, body: { prefix: 'THEIRS' } });
       expect(foreign.status).toBe(404);
       const admin = await ok<{ items: { item: string; prefix: string }[] }>(await data.admin('GET', '/coding-rules'));

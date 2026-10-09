@@ -3,7 +3,8 @@
  * - seed：上级部 / 下级部 / 其他部三个组织；管理员（单一授权管理单元）在上级部建一套向下公开的对象，在其他部建
  *   范围外类别；另建职务序列、职级（引入 / 关联用）；`adminIn(org)` 让管理员切到某个组织下继续建对象；
  * - operator：按选项授予 Qualification 各对象的数据操作、字段查看 / 编辑、按钮，岗职务对象看全部，Qualification
- *   看全部，日志审计管理员；返回请求函数与撤销范围等操作。
+ *   看全部，日志审计管理员；返回请求函数与撤销范围等操作；
+ * - creatorOnly：某对象的企业范围策略只认“使用用户”维度（创建人 / 所属人）。
  */
 import { randomUUID } from 'node:crypto';
 import { MODULE_OBJECTS, QUALIFICATION_OBJECTS } from '@italent/domain';
@@ -201,10 +202,9 @@ export async function operator(world: PermissionWorld, options: OperatorOptions)
   const jobs = options.sequenceHidden !== undefined;
   const apps = jobs ? [QL_APP, 'TenantBase'] : [QL_APP];
   const profile = await createProfile(world, `ql-${randomUUID().slice(0, 8)}`, { apps });
-  for (const key of Object.keys(QUALIFICATION_OBJECTS) as ObjectKey[]) {
-    if (options.noObject?.includes(key)) continue;
+  const apply = async (key: ObjectKey, hiddenFields: readonly string[]) => {
     const definition = QUALIFICATION_OBJECTS[key];
-    const hidden = new Set(options.hidden?.[key] ?? []);
+    const hidden = new Set(hiddenFields);
     const readonly = new Set(options.readonly?.[key] ?? []);
     const response = await setObjectPermission(
       world,
@@ -221,6 +221,9 @@ export async function operator(world: PermissionWorld, options: OperatorOptions)
       definition.code,
     );
     expect(response.status, await response.clone().text()).toBe(200);
+  };
+  for (const key of Object.keys(QUALIFICATION_OBJECTS) as ObjectKey[]) {
+    if (!options.noObject?.includes(key)) await apply(key, options.hidden?.[key] ?? []);
   }
   if (jobs) await allowJobs(world, profile, options.sequenceHidden!);
   if (options.seeAll) await seeAll(world, profile.id, QL_APP);
@@ -257,6 +260,8 @@ export async function operator(world: PermissionWorld, options: OperatorOptions)
     revoke: () => assign({ kind: 'default' }),
     /** 撤销身份级看全部。 */
     revokeSeeAll: () => seeAll(world, profile.id, QL_APP, false),
+    /** 改某对象的隐藏字段（其余授权不变）。 */
+    hide: (key: ObjectKey, fields: readonly string[]) => apply(key, fields),
   };
 }
 
@@ -300,4 +305,18 @@ async function allowJobs(world: PermissionWorld, profile: Awaited<ReturnType<typ
 /** 错误响应的 reason。 */
 export async function reasonOf(response: Response): Promise<string | undefined> {
   return ((await response.clone().json()) as { error?: { details?: { reason?: string } } }).error?.details?.reason;
+}
+
+const policyRevisions = new Map<string, number>();
+
+/** 某对象的企业范围策略改为只认“使用用户”维度（DEC-347③ 等创建人口径的用例）。 */
+export async function creatorOnly(world: PermissionWorld, key: ObjectKey) {
+  const object = QUALIFICATION_OBJECTS[key].code;
+  const response = await world.api.request(
+    'PUT',
+    `/api/tenant/permission/scope-policies/${QL_APP}/${object}/entity/${object}`,
+    { ...world.asAdmin, ifMatch: policyRevisions.get(object) ?? 0, body: { rules: [{ dimension: 'using_user' }] } },
+  );
+  expect(response.status, await response.clone().text()).toBe(200);
+  policyRevisions.set(object, ((await response.json()) as { revision: number }).revision);
 }
