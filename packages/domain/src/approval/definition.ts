@@ -4,7 +4,9 @@
 import { conditionViolations } from './conditions.js';
 import { transitionRuleViolations } from './countersign.js';
 import {
+  approverExpressionsOf,
   hasExit,
+  IDP_ONLY_APPROVERS,
   isCountersign,
   nodeExits,
   type ApprovalNode,
@@ -47,6 +49,10 @@ export function definitionViolations(definition: ProcessDefinition, type: Approv
       violations.push(`节点 ${node.key}：${type.name}审批不支持审批中编辑（DEC-105）`);
     }
     violations.push(...nodeShapeViolations(node));
+    const idpOnly = approverExpressionsOf(node).filter((expression) => IDP_ONLY_APPROVERS.has(expression));
+    if (type.adapter !== 'idp' && idpOnly.length) {
+      violations.push(`节点 ${node.key} 的审批人“发展计划 - 员工本人 / 指导人”只能用于发展计划审批（K-09）`);
+    }
   }
   return violations;
 }

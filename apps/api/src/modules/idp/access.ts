@@ -8,7 +8,7 @@
  * - 响应裁剪：顶层与嵌套层各按本对象字段权限；没有嵌套对象查看权时整段省略。
  */
 import { sql, type Tx } from '@italent/db';
-import { IDP_OBJECTS, tenantLocalDate, type IdpObject } from '@italent/domain';
+import { IDP_OBJECTS, linkedViewable, tenantLocalDate, withLinkedFields, type IdpObject } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { type Authorizer, requirePermission } from '../../authorization.js';
@@ -16,6 +16,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
+import { registerPersonScopedObject } from '../permission/scope-resolver.js';
 import { authorizeInTransaction, getModuleViewableFields, scopeAllows, scopeSql } from '../permission/module-access.js';
 import {
   button,
@@ -38,6 +39,15 @@ export const IDP_LABELS: Readonly<Record<IdpObject, string>> = {
   template: '发展计划模板',
   templateModule: '模板模块',
   commonGoal: '模板通用目标',
+  plan: '发展计划',
+  goal: '发展目标',
+  task: '目标任务',
+  goalReview: '目标回顾',
+  analysis: '综述',
+  review: '回顾',
+  tutorship: '带教信息',
+  career: '职业发展信息',
+  workShift: '轮岗信息',
 };
 
 /** 审计动作前缀（`<前缀>.create|update|delete`）；审计查询的查看规则按它登记（audit/visibility.ts）。 */
@@ -47,7 +57,38 @@ export const IDP_AUDIT_ACTIONS: Readonly<Record<IdpObject, string>> = {
   template: 'idp.template',
   templateModule: 'idp.template-module',
   commonGoal: 'idp.common-goal',
+  plan: 'idp.plan',
+  goal: 'idp.goal',
+  task: 'idp.task',
+  goalReview: 'idp.goal-review',
+  analysis: 'idp.analysis',
+  review: 'idp.review',
+  tutorship: 'idp.tutorship',
+  career: 'idp.career',
+  workShift: 'idp.work-shift',
 };
+
+/** 配置对象按所属组织归属；计划及其组成部分、关键信息按员工归属（审计查看规则 audit/visibility.ts，DEC-197）。 */
+export const IDP_ORG_OBJECTS: readonly IdpObject[] = [
+  'process',
+  'subProcess',
+  'template',
+  'templateModule',
+  'commonGoal',
+];
+export const IDP_PERSON_OBJECTS: readonly IdpObject[] = [
+  'plan',
+  'goal',
+  'task',
+  'goalReview',
+  'analysis',
+  'review',
+  'tutorship',
+  'career',
+  'workShift',
+];
+// 计划与关键信息按员工归属：组织类数据范围对它们带出“按人员”的谓词（K-50）
+for (const object of IDP_PERSON_OBJECTS) registerPersonScopedObject(IDP_OBJECTS[object].code);
 
 export const codeOf = (object: IdpObject) => IDP_OBJECTS[object].code;
 
@@ -90,7 +131,9 @@ export function checkWriteFields(
   operation: 'create' | 'update',
   payload: Readonly<Record<string, unknown>>,
 ) {
-  return writeFields(deps, ctx, codeOf(object), operation, payload);
+  const code = codeOf(object);
+  const fields = withLinkedFields(code, Object.keys(payload));
+  return writeFields(deps, ctx, code, operation, Object.fromEntries(fields.map((f) => [f, payload[f] ?? null])));
 }
 
 /**
@@ -104,7 +147,9 @@ export type PermissionCheck =
       readonly operation: 'create' | 'update' | 'delete';
       readonly fields: readonly string[];
     }
-  | { readonly kind: 'view'; readonly object: IdpObject; readonly fields: readonly string[] };
+  | { readonly kind: 'view'; readonly object: IdpObject; readonly fields: readonly string[]; readonly carry?: true }
+  /** 带出值的非 IDP 源对象（任职记录 / 组织，E3）：重放时复核对象查看权与字段查看权。 */
+  | { readonly kind: 'source'; readonly objectCode: string; readonly fields: readonly string[] };
 
 /** 带“已用权限记录”的上下文：服务层每判定一项就记一项。 */
 export interface CheckedContext extends IdpContext {
@@ -129,7 +174,7 @@ export async function requireNestedWrite(
     kind: 'write',
     object,
     operation,
-    fields: operation === 'delete' ? [] : Object.keys(payload),
+    fields: operation === 'delete' ? [] : withLinkedFields(codeOf(object), Object.keys(payload)),
   };
   // 在调用方事务内判定（不另开连接，避免与本事务的行锁互等）
   await requireWrite(authorizeInTransaction(deps.authorize, tx), ctx, check);
@@ -147,19 +192,42 @@ export function requireViewable(ctx: CheckedContext, projection: Projection, obj
   ctx.checks?.push(check);
 }
 
-const viewable = (projection: Projection, fields: readonly string[]) =>
+export const viewable = (projection: Projection, fields: readonly string[]) =>
   projection !== null && (projection === undefined || fields.every((field) => projection.has(field)));
 
-/** 幂等重放（与首次执行）返回前，按当前权限复核命令实际用到的每一项权限。 */
+const sourceHidden = () => new AppError('FORBIDDEN', '看不到带出值的来源字段', { reason: 'IDP_CARRY_SOURCE_HIDDEN' });
+
+/** 某对象的字段投影（没有对象查看权为 null）。 */
+export async function objectFields(deps: TenantRouteDeps, ctx: IdpContext, objectCode: string): Promise<Projection> {
+  if (!(await deps.authorize({ ...ctx, action: 'object.view', resource: objectCode, fields: [] }))) return null;
+  return linkedViewable(objectCode, await getModuleViewableFields(deps, ctx, objectCode));
+}
+
+/**
+ * 幂等重放（与首次执行）返回前，按当前权限复核命令实际用到的每一项权限：嵌套写权限、复制继承字段与带出值源字段的
+ * 查看权（第 2 轮 P2-6：带出源看不到了 → 403 IDP_CARRY_SOURCE_HIDDEN）。
+ */
 export async function replayChecks(deps: TenantRouteDeps, ctx: IdpContext, checks: readonly PermissionCheck[]) {
-  const projections = new Map<IdpObject, Projection>();
+  const projections = new Map<string, Projection>();
+  const fieldsOf = async (code: string) => {
+    if (!projections.has(code)) projections.set(code, await objectFields(deps, ctx, code));
+    return projections.get(code)!;
+  };
   for (const check of checks) {
     if (check.kind === 'write') {
       await requireWrite(deps.authorize, ctx, check);
       continue;
     }
-    if (!projections.has(check.object)) projections.set(check.object, await projectionOf(deps, ctx, check.object));
-    requireViewable(ctx, projections.get(check.object)!, check.object, [...check.fields]);
+    if (check.kind === 'source') {
+      if (!viewable(await fieldsOf(check.objectCode), check.fields)) throw sourceHidden();
+      continue;
+    }
+    const projection = await fieldsOf(codeOf(check.object));
+    if (check.carry) {
+      if (!viewable(projection, check.fields)) throw sourceHidden();
+      continue;
+    }
+    requireViewable(ctx, projection, check.object, [...check.fields]);
   }
 }
 
@@ -255,9 +323,7 @@ export function listEnvelope(page: { page: number; pageSize: number }, scope: Mo
 export type Projection = ReadonlySet<string> | undefined | null;
 
 export async function projectionOf(deps: TenantRouteDeps, ctx: IdpContext, object: IdpObject): Promise<Projection> {
-  const code = codeOf(object);
-  if (!(await deps.authorize({ ...ctx, action: 'object.view', resource: code, fields: [] }))) return null;
-  return getModuleViewableFields(deps, ctx, code);
+  return objectFields(deps, ctx, codeOf(object));
 }
 
 export function project<T extends object>(value: T, fields: Projection): Partial<T> {

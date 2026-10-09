@@ -15,6 +15,8 @@ import {
 } from '@italent/db';
 import {
   EDITABLE_AFTER_REFERENCED,
+  encodeKeyInfoBlocks,
+  KEY_INFO_BLOCK_FIELDS,
   KEY_INFO_SOURCES,
   type ModuleType,
   nodeButtonsOf,
@@ -248,6 +250,7 @@ export async function setTemplateStatus(tx: Tx, ctx: WriteContext, id: string, s
       .for('share');
     if (!process?.enabled) conflict('IDP_PROCESS_DISABLED', '模板引用的流程已停用，不能发布');
   }
+  const warnings = status === 'published' ? await discardedApprovals(tx, ctx.tenantId, row.processId) : [];
   const T = idpTemplates;
   await tx
     .update(T)
@@ -259,12 +262,37 @@ export async function setTemplateStatus(tx: Tx, ctx: WriteContext, id: string, s
     after: templateRecord(after),
     orgId: after.orgId,
   });
-  return after;
+  return { ...after, warnings };
 }
 
-/** 被计划引用的模板不能删除（🟡 K-25）；删除保留模板、模块、通用目标的快照。 */
-export async function deleteTemplate(tx: Tx, ctx: WriteContext, id: string) {
+export interface PublishWarning {
+  readonly code: 'IDP_APPROVAL_PROCESS_DISCARDED';
+  readonly subProcessId: string;
+}
+
+/**
+ * 审批流程废弃后（DEC-309④-3）：配置照常保存、发布照常成功，但提示哪些子流程引用的审批流程已废弃（提示不拦截）；
+ * 阶段开启时失败（stage-service.openStage）。
+ */
+async function discardedApprovals(tx: Tx, tenantId: string, processId: string): Promise<PublishWarning[]> {
+  const rows = rowsOf<{ id: string }>(
+    await tx.execute(sql`SELECT s.id FROM idp_sub_processes s
+      JOIN approval_processes p ON p.tenant_id = s.tenant_id AND p.id = s.approval_process_id
+      WHERE s.tenant_id = ${tenantId} AND s.process_id = ${processId}::uuid
+        AND (p.status <> 'active' OR p.current_version_id IS NULL)
+      ORDER BY s.seq`),
+  );
+  return rows.map((r) => ({ code: 'IDP_APPROVAL_PROCESS_DISCARDED', subProcessId: r.id }));
+}
+
+/**
+ * 被计划引用的模板不能删除（🟡 K-25）；删除保留模板、模块、通用目标的快照。级联删除模块与通用目标须有两者的删除权
+ * （DEC-309④-2，不论是否存在都要求，避免以存在性泄露隐藏内容；缺权整次 403），记入台账、重放复核。
+ */
+export async function deleteTemplate(tx: Tx, deps: Deps, ctx: WriteContext, id: string) {
   await lockTemplate(tx, ctx, id);
+  await requireNestedWrite(tx, deps, ctx, 'templateModule', 'delete');
+  await requireNestedWrite(tx, deps, ctx, 'commonGoal', 'delete');
   if (await referenced(tx, ctx, id)) conflict('IDP_TEMPLATE_REFERENCED', '模板已被发展计划引用，不能删除');
   const before = (await loadTemplate(tx, ctx.tenantId, id))!;
   for (const goal of before.commonGoals) {
@@ -426,7 +454,7 @@ function allowedSettings(type: ModuleType): ReadonlySet<string> {
     type === 'goal'
       ? GOAL_SETTINGS
       : type === 'key_info'
-        ? ['keyInfoSources']
+        ? ['keyInfoSources', 'keyInfoBlocks']
         : type === 'talent_review'
           ? REVIEW_SETTINGS
           : [];
@@ -533,10 +561,33 @@ async function moduleSnapshot(tx: Tx, ctx: WriteContext, row: ModuleRow) {
   return moduleView(row, nodes.get(row.id) ?? []);
 }
 
-function moduleColumns(input: ModuleCreate | ModulePatch): Partial<ModuleRow> {
-  const { nodeSettings: _nodes, ...fields } = input as ModuleCreate;
+/**
+ * 关键信息区块（DEC-318 K-35 补充）：区块不重复；展示字段须在该区块的可选字段里且不重复（🟡 可选字段为推断）。
+ * 与旧的 keyInfoSources 二选一；只给 keyInfoSources 时保留仍在的区块已选字段。
+ */
+function keyInfoColumns(input: ModuleCreate | ModulePatch, existing?: ModuleRow): Partial<ModuleRow> {
+  const { keyInfoBlocks: blocks, keyInfoSources: sources } = input;
+  if (blocks && sources) invalid('keyInfoBlocks 与 keyInfoSources 只能给一个');
+  if (sources) {
+    const kept = (existing?.keyInfoFields ?? []).filter((f) => sources.some((block) => f.startsWith(`${block}.`)));
+    return { keyInfoSources: sources, keyInfoFields: kept };
+  }
+  if (!blocks) return {};
+  if (new Set(blocks.map((b) => b.block)).size !== blocks.length) invalid('关键信息区块不能重复');
+  for (const { block, fields = [] } of blocks) {
+    const options: readonly string[] = KEY_INFO_BLOCK_FIELDS[block].options;
+    const bad = fields.filter((f) => !options.includes(f));
+    if (bad.length || new Set(fields).size !== fields.length) {
+      invalid(`区块 ${block} 的展示字段只能从可选字段里选且不重复`, { block, fields: bad });
+    }
+  }
+  return encodeKeyInfoBlocks(blocks);
+}
+
+function moduleColumns(input: ModuleCreate | ModulePatch, existing?: ModuleRow): Partial<ModuleRow> {
+  const { nodeSettings: _nodes, keyInfoBlocks: _blocks, keyInfoSources: _sources, ...fields } = input as ModuleCreate;
   const { moduleType: _type, ...rest } = fields;
-  return rest as Partial<ModuleRow>;
+  return { ...(rest as Partial<ModuleRow>), ...keyInfoColumns(input, existing) };
 }
 
 /** IDP-R12：被计划引用的模板不能增删模块（409 IDP_TEMPLATE_REFERENCED）。 */
@@ -589,7 +640,7 @@ export async function updateModule(
     conflict('IDP_TEMPLATE_REFERENCED', '模板已被发展计划引用，只能修改基本信息、关键信息、发展目标模块');
   }
   checkSettingKeys(type, patch);
-  const columns = moduleColumns(patch);
+  const columns = moduleColumns(patch, row);
   if (type === 'goal') checkGoalSettings({ ...row, ...columns } as ModuleRow);
   if (patch.nodeSettings) await validateNodeSettings(tx, ctx, template, type, patch.nodeSettings);
   const before = await moduleSnapshot(tx, ctx, row);
@@ -606,11 +657,15 @@ export async function updateModule(
   return finish(tx, ctx, templateId);
 }
 
-/** 基本信息模块固定不可删（IDP-R7）；删除发展目标模块连带其通用目标（各留快照）。 */
-export async function deleteModule(tx: Tx, ctx: WriteContext, templateId: string, moduleId: string) {
+/**
+ * 基本信息模块固定不可删（IDP-R7）；删除发展目标模块连带其通用目标（各留快照），须有通用目标删除权（DEC-309④-2，
+ * 不论该模块下是否有通用目标都要求）。
+ */
+export async function deleteModule(tx: Tx, deps: Deps, ctx: WriteContext, templateId: string, moduleId: string) {
   const template = await lockTemplate(tx, ctx, templateId);
   const row = await loadModule(tx, ctx, templateId, moduleId);
   if (row.moduleType === 'basic') conflict('IDP_BASIC_MODULE_FIXED', '基本信息模块固定，不能删除');
+  if (row.moduleType === 'goal') await requireNestedWrite(tx, deps, ctx, 'commonGoal', 'delete');
   if (await referenced(tx, ctx, templateId)) conflict('IDP_TEMPLATE_REFERENCED', '模板已被发展计划引用，不能增删模块');
   const goals = (await loadCommonGoals(tx, ctx.tenantId, templateId)).filter((g) => g.moduleId === moduleId);
   for (const goal of goals) {

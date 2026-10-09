@@ -80,7 +80,7 @@ export async function seedTenantWithMember(
   label: string,
   timezone?: string,
 ): Promise<{ tenant: Tenant; user: User }> {
-  const suffix = randomBytes(3).toString('hex');
+  const suffix = randomUUID();
   const tenant = await createTenant(db, { code: `${label}-${suffix}`, name: `租户${label}`, timezone }, cmd());
   const user = await createUser(db, { email: `${label}-${suffix}@example.com`, displayName: `${label} 管理员` }, cmd());
   await grantMembership(db, { tenantId: tenant.id, userId: user.id, expectedRevision: 0 }, cmd());

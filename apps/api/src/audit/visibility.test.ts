@@ -164,12 +164,28 @@ describe('写入审计的对象类型都已登记查看规则（PR #75 第三轮
       'transfer-request',
       'transfer_form',
       'transfer_settings',
+      // R3-T01 人才标准
+      'TalentCenter.DimensionLibrary',
+      'TalentCenter.Category',
+      'TalentCenter.DescriptionType',
+      'TalentCenter.Dimension',
+      'TalentCenter.TalentCriterionCategory',
+      'TalentCenter.TalentCriterion',
       // R3-T07 个人发展计划配置
       'IDP.IDPProcess',
       'IDP.SubProcess',
       'IDP.IDPTemplate',
       'IDP.IDPTemplateModule',
       'IDP.IDPTemplateCommonGoal',
+      'IDP.Idp',
+      'IDP.IdpGoal',
+      'IDP.Task',
+      'IDP.GoalReview',
+      'IDP.Analysis',
+      'IDP.Review',
+      'IDP.TutorShip',
+      'IDP.Career',
+      'IDP.WorkShift',
     ]);
 
   it.each(written)('%s', (objectType) => {

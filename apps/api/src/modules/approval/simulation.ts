@@ -87,6 +87,14 @@ function decideVirtual(
 }
 
 function describe(decision: NodeDecision, version: VersionView, data: SimulationData, facts: RoutingFacts) {
+  if (decision.kind === 'no_assignee') {
+    return {
+      status: 'exception',
+      approverUserId: null,
+      resolution: 'no_assignee',
+      message: `${decision.reason}，推进到本节点将报错`,
+    };
+  }
   if (decision.kind === 'first_node_empty') {
     return {
       status: 'exception',

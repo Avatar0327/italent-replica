@@ -98,6 +98,16 @@ const moduleSettings = {
   taskEnabled: z.boolean().optional(),
   checkNoneGoal: z.boolean().optional(),
   keyInfoSources: z.array(z.enum(KEY_INFO_SOURCES)).max(KEY_INFO_SOURCES.length).optional(),
+  /** 关键信息区块与各区块的展示字段（DEC-318 K-35 补充）；字段不给取缺省，可选字段在服务层按区块校验。 */
+  keyInfoBlocks: z
+    .array(
+      z.strictObject({
+        block: z.enum(KEY_INFO_SOURCES),
+        fields: z.array(z.string().max(60)).min(1).max(20).optional(),
+      }),
+    )
+    .max(KEY_INFO_SOURCES.length)
+    .optional(),
   reviewTimeBasis: z.enum(REVIEW_TIME_BASES).nullable().optional(),
   planTimeBasis: z.enum(PLAN_TIME_BASES).nullable().optional(),
   reviewCategoryIds: z.array(uuid).max(50).nullable().optional(),
