@@ -121,6 +121,12 @@ function route(r: Route): RoutePolicy {
 }
 
 const RESOURCE = 'survey360.resourceGuard';
+/**
+ * 活动资源守卫（与 #178 F-073 同名同口径）：活动可见 = allActivities（Activity 查看权 + 全部活动按钮 viewAll）或 本人
+ * 创建 / 被授权，不可见 404（access.ts requireActivity）。F-060 先给报告 / 报表的 JSON 与下载 4 个端点正式登记，
+ * 其余活动端点由 #178 统一接入。
+ */
+const ACTIVITY_SCOPE = 'survey360.activityScope';
 const REFS = 'survey360.payloadRefs';
 const ALSO = 'survey360.alsoObjects';
 const PREFLIGHT = 'survey360.preflight';
@@ -430,9 +436,19 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
   'GET /report-template': route({ key: 'settings' }),
   'PUT /report-template': route({ key: 'settings', operation: 'update', write: { fields: 'body' } }),
   'GET /activities/:id/reports': route({ key: 'result', scope: ACTIVITY, byId: true }),
-  'GET /activities/:id/reports/:reportId': route({ key: 'result', scope: ACTIVITY, byId: true }),
+  'GET /activities/:id/reports/:reportId': route({
+    key: 'result',
+    scope: ACTIVITY,
+    guards: [ACTIVITY_SCOPE],
+    byId: true,
+  }),
   // F-060：下载 = 同一份（已按查看人裁剪的）报告 / 报表数据生成的 PDF / PNG，权限、范围、字段裁剪与上面的 GET 一致
-  'GET /activities/:id/reports/:reportId/download': route({ key: 'result', scope: ACTIVITY, byId: true }),
+  'GET /activities/:id/reports/:reportId/download': route({
+    key: 'result',
+    scope: ACTIVITY,
+    guards: [ACTIVITY_SCOPE],
+    byId: true,
+  }),
   'POST /activities/:id/reports/generate': route({
     key: 'result',
     operation: 'update',
@@ -461,8 +477,13 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     byId: true,
   }),
   // tables.ts
-  'GET /activities/:id/score-tables': route({ key: 'result', scope: ACTIVITY, byId: true }),
-  'GET /activities/:id/score-tables/download': route({ key: 'result', scope: ACTIVITY, byId: true }),
+  'GET /activities/:id/score-tables': route({ key: 'result', scope: ACTIVITY, guards: [ACTIVITY_SCOPE], byId: true }),
+  'GET /activities/:id/score-tables/download': route({
+    key: 'result',
+    scope: ACTIVITY,
+    guards: [ACTIVITY_SCOPE],
+    byId: true,
+  }),
   // questionnaires.ts：套卷模板与套卷同表同结构，模板入口只取模板（改 / 删他人模板同样要 editOthers）
   'GET /questionnaire-templates': route({ key: 'questionnaire' }),
   'GET /questionnaire-templates/:id': route({ key: 'questionnaire', byId: true }),

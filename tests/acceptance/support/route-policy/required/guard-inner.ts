@@ -16,8 +16,35 @@ export interface GuardInnerAlts {
 
 const APPROVAL = 'apps/api/src/modules/approval';
 const IDP = 'apps/api/src/modules/idp';
+const SURVEY360 = 'apps/api/src/modules/survey360';
 
 export const GUARD_INNER_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
+  // 360 活动可见（requireActivity，与 #178 F-073 同名同口径）：全部活动（Activity 查看权 + viewAll 按钮，AND）或
+  // 本人创建 / 被授权（数据态，不经授权器）；不可见 404。F-060 先用于报告 / 报表的 JSON 与下载 4 个端点
+  'survey360.activityScope': {
+    group: 'activityVisible',
+    alts: {
+      allActivities: ['obj:Survey360.Activity:view', 'btn:Survey360.Activity#viewAll@list'],
+      ownerOrGranted: 'data:survey360.activityOwnerOrGrant',
+    },
+    at: [
+      {
+        role: 'call',
+        unit: `${SURVEY360}/access.ts#requireActivity`,
+        anchor: "if (!row) fail('NOT_FOUND', '活动不存在')",
+      },
+      {
+        role: 'impl',
+        unit: `${SURVEY360}/access.ts#activityVisibleSql`,
+        anchor: 'if (admin.allActivities) return sql`true`;',
+      },
+      {
+        role: 'impl',
+        unit: `${SURVEY360}/access.ts#activityVisibleSql`,
+        anchor: '::uuid OR EXISTS (SELECT 1 FROM survey360_activity_grants g',
+      },
+    ],
+  },
   // 审批详情 / 任务 / 日志可打开：发起人、参与审批人或被抄送人（数据态），或范围内的流程管理员（转交 / 干预按钮）
   'approval.canOpen': {
     group: 'canOpen',
@@ -69,6 +96,15 @@ export const GUARD_INNER_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
 };
 
 /**
+ * 类别 / 级别写入口的岗职务关联：writeContext 对声明的每类岗职务恒问一次查看权，但只有本次写入后有效关联非空且关联类型为
+ * 该类（jobObject：查看权为假 → 403）才用到答案。POST / 导入：jobLinks 非空；PATCH：jobLinks 非空，或只给 jobLinkType 且
+ * 与现值相同时按已有关联逐个判；jobLinks 为空数组、改类型清空已有关联、两项都不带（patchJobLinks 直接返回）都不判。
+ */
+const jobLinkType = (type: string, label: string) =>
+  `关联类型为 ${type}（${label}）且本次写入后有效关联非空才判${label}的查看权：POST / 导入 jobLinks 非空；PATCH jobLinks 非空，` +
+  '或只给 jobLinkType 且与现值相同时按已有关联逐个判；jobLinks 空数组、改类型清空已有关联、两项都不带不判';
+
+/**
  * 守卫内部 `when` 条件的语义登记（#162 审查 P2-2）：条件名是 B4b 撤权预期分流的依据，必须与真实路由代码一致。
  * 凡涉及数组 / 引用的条件都写明空数组、已有引用与新增引用的语义；表里用到的条件必须登记
  * （GUARD_INNER_CONDITION_UNREGISTERED）。
@@ -92,6 +128,18 @@ export const INNER_CONDITIONS: Readonly<Record<string, string>> = {
   'dimensions.nonEmpty': '创建人才标准时 dimensions 非空：每条都是新增引用，逐个判指标查看权；空数组不判',
   'dimensions.newReference':
     '更新人才标准时 dimensions 中存在现有引用之外的新增引用才判指标查看权；只改已有引用的 weight / target、空数组都不判',
+  'scheme.leftovers':
+    '删除等级方案时方案明细上遗留有手改的指标等级描述（leftovers 非空）才判所属指标的查看权与写范围：无查看权 → 范围 null → ' +
+    '整体 403 CHILD_OUT_OF_SCOPE；没有遗留描述（空数组）不判，writeContext 恒问的指标查看权不影响结果',
+  'jobLinkType=position': jobLinkType('position', '职位'),
+  'jobLinkType=post': jobLinkType('post', '职务'),
+  'jobLinkType=sequence': jobLinkType('sequence', '职务序列'),
+  'jobLinkType=level_type': jobLinkType('level_type', '职级类别'),
+  'jobLinkType=level': jobLinkType('level', '职级'),
+  'jobLinkType=grade': jobLinkType('grade', '职等'),
   'details.targetReference':
     '标准 details 非空：每个单元格的指标引用都判指标查看权；details 为空数组（创建 / 更新）不判；PATCH 不带 details 也不判',
+  'instance.personnelChange':
+    '审批实例业务类型为人员子集变更（personnel_change）时，同单重提经适配器调 resubmitChangeInTransaction，按子集登记的' +
+    '自助申请准入复核（R3-T02 P0）；其他业务类型不判；未登记策略的子集钩子不调用',
 };

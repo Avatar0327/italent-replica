@@ -5,7 +5,7 @@
  * - 评价表、评审组、评定活动的“所属组织”是必填、手选的业务字段（原站 OIdDepartment / Organization，部门单选，
  *   Q-M0-132 🟢；DEC-324②）；所属人是系统字段。原站没有资源集合，也没有向下公开（设计 §5.1，不做）。
  * - 活动类型、活动周期、通用评分项没有组织字段（字典，DEC-121 同口径）。
- * 本目录只含配置对象（PR-A / PR-B）；员工评定数据等流程对象随 C2 登记。
+ * 本目录只含配置对象（PR-A / PR-B）；员工评定数据等流程对象见 flow-catalog.ts（P0 契约冻结）。
  */
 import type { ButtonDefinition, ObjectDefinition } from '../permission/object-permission.js';
 
@@ -30,6 +30,16 @@ function object(code: string, fields: readonly string[], system: readonly string
   };
 }
 
+const ACTIVITY_FLOW_BUTTONS: readonly ButtonDefinition[] = [
+  { code: 'publish', level: 'list_row', requires: 'update' },
+  { code: 'unpublish', level: 'list_row', requires: 'update' },
+  { code: 'complete', level: 'list_row', requires: 'update' },
+];
+
+function withButtons(definition: ObjectDefinition, buttons: readonly ButtonDefinition[]): ObjectDefinition {
+  return { ...definition, buttons: [...definition.buttons, ...buttons] };
+}
+
 export const EVALUATION_OBJECTS = {
   /** 活动类型：无“同步任职记录”（DEC-025）。 */
   activityType: object('ActivityType', ['name', 'enabled', 'displayOrder', 'syncQualification']),
@@ -44,30 +54,36 @@ export const EVALUATION_OBJECTS = {
     ['code', 'name', 'ownerOrgId', 'enabled', 'scoreMode', 'fullScore', 'passScore', 'totalRule', 'items'],
     ['ownerId'],
   ),
-  /** 评定活动：参评条件与环节随活动整份提交；状态与报名数由流程维护（只读）。 */
-  evaluationActivity: object(
-    'EvaluationActivity',
-    [
-      'code',
-      'name',
-      'typeId',
-      'cycleId',
-      'year',
-      'startDate',
-      'endDate',
-      'ownerOrgId',
-      'orgRange',
-      'managerEmployeeId',
-      'applicantMode',
-      'categoryIds',
-      'levelIds',
-      'maxLevelJump',
-      'effectiveDate',
-      'noticeOrgRange',
-      'conditions',
-      'chains',
-    ],
-    ['ownerId', 'status', 'applyCount'],
+  /**
+   * 评定活动：参评条件与环节随活动整份提交；状态与报名数由流程维护（只读）。行操作发布 / 取消发布 / 完成（规格 24
+   * EV-R14 / R15、Q-M0-136）是活动级整体操作（设计 §5.1），按钮由 P0 契约随流程对象一起冻结。
+   */
+  evaluationActivity: withButtons(
+    object(
+      'EvaluationActivity',
+      [
+        'code',
+        'name',
+        'typeId',
+        'cycleId',
+        'year',
+        'startDate',
+        'endDate',
+        'ownerOrgId',
+        'orgRange',
+        'managerEmployeeId',
+        'applicantMode',
+        'categoryIds',
+        'levelIds',
+        'maxLevelJump',
+        'effectiveDate',
+        'noticeOrgRange',
+        'conditions',
+        'chains',
+      ],
+      ['ownerId', 'status', 'applyCount'],
+    ),
+    ACTIVITY_FLOW_BUTTONS,
   ),
 } as const satisfies Record<string, ObjectDefinition>;
 

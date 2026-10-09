@@ -180,6 +180,81 @@ const REQUIRE_ACTIVITY: Evidence = {
   unit: `${S}/access.ts#requireActivity`,
   anchor: "if (!row) fail('NOT_FOUND', '活动不存在')",
 };
+// ---- 活动资源守卫 survey360.activityScope（与 #178 F-073 同名同口径；F-060 先登记报告 / 报表 4 个端点）-----------------
+// 全允许探测在 read() 上问到两个授权请求：Activity 查看权 + 全部活动按钮 viewAll（context.ts allActivitiesOf → can，
+// 先判查看权、通过才判按钮）。它决定 admin.allActivities：活动可见 = allActivities 或 本人创建 / 被授权，不可见 404。
+// 登记为承载者守卫的内部“或”备选（allActivities 支内两个权限 AND），不整体 optional、不进已知缺口账本。
+const VIEW_ALL = 'btn:Survey360.Activity#viewAll@list';
+const LOAD_ADMIN_READ: Evidence = {
+  role: 'impl',
+  unit: `${CONTEXT}#read`,
+  anchor: 'const admin = await loadAdmin(tx, deps, tenant, people);',
+};
+const ALL_ACTIVITIES_CHAIN: Evidence[] = [
+  {
+    role: 'impl',
+    unit: `${CONTEXT}#allActivitiesOf`,
+    anchor: "return can(tx, deps, tenant, 'activity', 'view', BUTTONS.allActivities);",
+  },
+  {
+    role: 'impl',
+    unit: `${CONTEXT}#loadAdmin`,
+    anchor: 'const allActivities = await allActivitiesOf(tx, deps, tenant);',
+  },
+];
+const CAN_VIEW: Evidence = {
+  role: 'impl',
+  unit: `${CONTEXT}#can`,
+  anchor:
+    'if (!(await authorize({ ...tenant, action: `object.${operation}`, resource: code, fields: [] }))) return false;',
+};
+const CAN_BUTTON: Evidence = {
+  role: 'impl',
+  unit: `${CONTEXT}#can`,
+  anchor: "return authorize({ ...tenant, action: 'object.button', resource });",
+};
+const VIEW_ALL_CONST: Evidence[] = [
+  { role: 'const', unit: `${CATALOG}#SURVEY360_BUTTONS`, anchor: "allActivities: 'viewAll'" },
+  {
+    role: 'const',
+    unit: `${CATALOG}#SURVEY360_OBJECTS>activity`,
+    anchor: "button(SURVEY360_BUTTONS.allActivities, 'list')",
+  },
+];
+const ACTIVITY_VISIBLE: Evidence = {
+  role: 'impl',
+  unit: `${S}/access.ts#activityVisibleSql`,
+  anchor: 'if (admin.allActivities) return sql`true`;',
+};
+/**
+ * 承载者准入 + allActivities 支的两个内部权限。calls 是处理函数到 requireActivity 的真实调用链：报告经
+ * registerReportViewRoutes 的 detail，报表经 scoreTables（JSON 与下载共用，F-060）。
+ */
+function activityScopeVia(entry: Evidence, calls: readonly Evidence[]): Obligation[] {
+  const base = [entry, LOAD_ADMIN_READ, ...ALL_ACTIVITIES_CHAIN, ACTIVITY_VISIBLE];
+  const inner = { role: 'or', group: 'activityVisible', alt: 'allActivities' } as const;
+  const purpose = 'guard:survey360.activityScope' as const;
+  return [
+    { perm: purpose, at: [...calls, REQUIRE_ACTIVITY, ACTIVITY_VISIBLE] },
+    { perm: `obj:${code('activity')}:view`, purpose, inner, at: [...base, CAN_VIEW, objectConst('activity')] },
+    { perm: VIEW_ALL, purpose, inner, at: [...base, CAN_BUTTON, ...VIEW_ALL_CONST] },
+  ];
+}
+const REPORT_DETAIL: Evidence = {
+  role: 'call',
+  unit: `${S}/reports.ts#registerReportViewRoutes>detail`,
+  anchor: 'const activity = await requireActivity(tx, admin, uuidParam(c));',
+};
+const SCORE_TABLES: Evidence = {
+  role: 'call',
+  unit: `${S}/tables.ts#scoreTables`,
+  anchor: 'const activity = await requireActivity(tx, admin, id);',
+};
+const reportScope = (entry: Evidence) =>
+  activityScopeVia(entry, [{ ...entry, anchor: 'detail(c, tx, admin, tenant)' }, REPORT_DETAIL]);
+const tableScope = (entry: Evidence) =>
+  activityScopeVia(entry, [{ ...entry, anchor: 'scoreTables(tx, admin, uuidParam(c), c.req.query())' }, SCORE_TABLES]);
+
 const VISIBLE_OBJECT: Evidence = {
   role: 'impl',
   unit: `${S}/access.ts#requireVisibleObject`,
@@ -1051,6 +1126,7 @@ const PR_B_ROUTES: readonly Route[] = [
     key: 'result',
     need: 'read(c, deps, VIEW',
     needConst: VIEW('reports.ts', 'result'),
+    extra: reportScope,
   },
   // F-060：下载 PDF 与详情共用 detail，权限 / 范围 / 字段裁剪相同
   {
@@ -1060,6 +1136,7 @@ const PR_B_ROUTES: readonly Route[] = [
     key: 'result',
     need: 'read(c, deps, VIEW',
     needConst: VIEW('reports.ts', 'result'),
+    extra: reportScope,
   },
   {
     file: 'reports.ts',
@@ -1112,6 +1189,7 @@ const PR_B_ROUTES: readonly Route[] = [
     key: 'result',
     need: "read( c, deps, { object: 'result' }",
     opFact: false,
+    extra: tableScope,
   },
   // F-060：下载 PNG 与清单共用 scoreTables，权限 / 范围 / 字段裁剪相同
   {
@@ -1121,6 +1199,7 @@ const PR_B_ROUTES: readonly Route[] = [
     key: 'result',
     need: "read( c, deps, { object: 'result' }",
     opFact: false,
+    extra: tableScope,
   },
   ...templateRoutes(),
 ];
