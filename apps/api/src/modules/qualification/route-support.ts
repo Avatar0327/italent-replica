@@ -98,7 +98,7 @@ export interface Outcome<T> {
 
 /**
  * 命令执行：范围在事务外按当前权限解析，首次执行在事务内逐个复核（行锁之后）；首次与幂等重放都按当前范围复核结果
- * 对象（撤权后重放 404），响应按当前字段权限裁剪（AGENTS §10，第 2 轮 P2-01）。
+ * 对象（撤权后重放 404；只放开查看的对象按 DEC-352 有查看权即可见，不再按范围复核），响应按当前字段权限裁剪（AGENTS §10，第 2 轮 P2-01）。
  */
 export async function runWrite<T>(
   c: Context<TenantEnv>,
