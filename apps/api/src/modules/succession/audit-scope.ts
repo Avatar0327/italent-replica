@@ -56,7 +56,8 @@ function recordSelfRestrict(row: SuccessionAuditRow, viewer: SuccessionAuditView
   const today = sql`succession_tenant_today(${viewer.tenantId}::uuid)`;
   const hidden = selfRecordHiddenSql(viewer, { type, org, position }, today);
   // 目标确定 ⇔ 类型合法，且有与类型对应的目标 UUID；残缺快照（类型非法 / 缺目标 / 目标不是 UUID）一律不放行
-  const determined = sql`((${type} = 'org' AND ${org} IS NOT NULL) OR (${type} = 'position' AND ${position} IS NOT NULL))`;
+  const determined = sql`(
+    (${type} = 'org' AND ${org} IS NOT NULL) OR (${type} = 'position' AND ${position} IS NOT NULL))`;
   return sql`(${determined} AND NOT ${hidden})`;
 }
 
