@@ -1,14 +1,16 @@
 /**
  * 应用级登记表（F-039 PR-A）：根路由器的 `/healthz`，以及直接挂在租户路由器上的模块登记表的合并。
- * 子应用（employment / approval / contracts / self-service）在各自 routes.ts 里经 policedSub 套自己的表；
+ * 子应用（employment / approval / contracts / self-service / survey360 两个）在各自路由文件里经 policedSub 套自己的表；
  * 平台路由器在 modules/platform/routes.ts 套 PLATFORM_POLICIES。新模块：写好 policy.ts 后在这里追加一行。
  */
 import { AUDIT_POLICIES } from './audit/policy.js';
 import { ESTABLISHMENT_POLICIES } from './modules/establishment/policy.js';
+import { IDP_POLICIES } from './modules/idp/policy.js';
 import { JOB_POLICIES } from './modules/job/policy.js';
 import { ORG_POLICIES } from './modules/org/policy.js';
 import { PERMISSION_POLICIES } from './modules/permission/policy.js';
 import { PERSONNEL_POLICIES } from './modules/personnel/policy.js';
+import { TALENT_POLICIES } from './modules/talent/policy.js';
 import { TENANT_SETTING_POLICIES } from './modules/tenant-settings/policy.js';
 import { defineTable, mergeTables, type PolicyTable } from './route-policy/index.js';
 import { publicRoute } from './route-policy/presets.js';
@@ -28,6 +30,8 @@ export function tenantPolicyTable(extra: readonly PolicyTable[] = []): PolicyTab
     ESTABLISHMENT_POLICIES,
     PERSONNEL_POLICIES,
     AUDIT_POLICIES,
+    TALENT_POLICIES,
+    IDP_POLICIES,
     ...extra,
   ]);
 }

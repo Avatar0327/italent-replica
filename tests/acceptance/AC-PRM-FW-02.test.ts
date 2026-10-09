@@ -55,10 +55,10 @@ describe('AC-PRM-FW-02 现状必测基准（独立于声明）', () => {
     expect(canonicalJson(fresh)).not.toMatch(/"kind"/);
   });
 
-  it('基准覆盖全部已声明端点（228），键是 METHOD 最终路径', () => {
+  it('基准覆盖全部已声明端点（375），键是 METHOD 最终路径', () => {
     const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
     expect(Object.keys(fresh.routes).sort()).toEqual(declared);
-    expect(declared).toHaveLength(228);
+    expect(declared).toHaveLength(375);
   });
 
   it('边界探测：租户接口匿名 401、非成员 403；平台接口非运营身份 403 PLATFORM_OPERATOR_REQUIRED；/healthz 都 200', () => {
@@ -175,7 +175,7 @@ describe('AC-PRM-FW-02 突变套件：第 5 轮列出的每类削弱都被报出
     const byName = Object.fromEntries(MUTATIONS.map((m) => [m.name, mutants.filter((x) => x.name === m.name).length]));
     const summary = { routes: manifest.declared.length, facts, domains: Object.keys(frozen.domains).length };
     console.info(JSON.stringify({ ...summary, mutants: mutants.length, byName }));
-    expect(facts).toBeGreaterThan(228 * 3);
-    expect(mutants.length).toBeGreaterThan(228);
+    expect(facts).toBeGreaterThan(375 * 3);
+    expect(mutants.length).toBeGreaterThan(375);
   });
 });

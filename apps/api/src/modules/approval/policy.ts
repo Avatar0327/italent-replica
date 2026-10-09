@@ -180,6 +180,10 @@ const APPROVE = [
 const DISAGREE = ['openTask', 'assertOpen', 'assertExit', 'votesInTransition', 'blindReview', 'assertNotSelf'];
 /** 驳回意见必填（node.rejectCommentRequired，DEC-059）是内联校验，无函数名。 */
 const REJECT = ['openTask', 'assertOpen', 'assertRejectEnabled', 'blindReview', 'assertNotSelf'];
+/** 驳回到上一步（rejectToPreviousTask）：节点开关与“第一个节点没有上一步”内联 409；盲审与本人回避同驳回。 */
+const REJECT_PREVIOUS = ['openTask', 'assertOpen', 'blindReview', 'assertNotSelf', 'assertNotAddSigner'];
+/** 跳转（jumpTask）：节点跳转开关与“只能跳到其他节点”内联；本人回避、加签人限制。 */
+const JUMP = ['openTask', 'assertOpen', 'assertNotSelf', 'assertNotAddSigner'];
 /** 节点转交开关（异常管理员例外 DEC-069）与「不能转交给自己」是内联校验；无盲审。 */
 const TRANSFER = ['openTask', 'assertOpen', 'assertReviewer', 'assertNotNodeAssignee'];
 /** 节点加签开关内联；parallel / before 不盲审，after 含本人同意才 blindReview + assertNotSelf（DEC-095）。 */
@@ -370,6 +374,9 @@ export const APPROVAL_POLICIES = defineTable('approval', {
   'POST /tasks/:id/approve': decision(APPROVE),
   'POST /tasks/:id/disagree': decision(DISAGREE),
   'POST /tasks/:id/reject': decision(REJECT),
+  'POST /tasks/:id/reject-previous': decision(REJECT_PREVIOUS),
+  // toNodeKey / comment 是动作参数，不提取字段
+  'POST /tasks/:id/jump': taskAction(none('toNodeKey / comment 是动作参数'), JUMP),
   'POST /tasks/:id/transfer': taskAction(none('toUserId / comment 是动作参数'), TRANSFER),
   // fieldRights(taskId, undefined)：不提取编辑字段，只算盲审可见集（后加签含本人同意，DEC-095）
   'POST /tasks/:id/add-sign': taskAction({ guard: 'approval.fieldRights' }, ADD_SIGN, taskObject),

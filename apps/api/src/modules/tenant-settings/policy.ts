@@ -7,7 +7,11 @@ import { defineTable } from '../../route-policy/index.js';
 import { admin, noFields, none, write } from '../../route-policy/presets.js';
 
 const settingFields = noFields('配置值没有字段目录');
-const settingWrite = write(none('配置值，无字段目录'), 'config.audited:tenant_setting_override', none('配置对象无范围'));
+const settingWrite = write(
+  none('配置值，无字段目录'),
+  'config.audited:tenant_setting_override',
+  none('配置对象无范围'),
+);
 
 export const TENANT_SETTING_POLICIES = defineTable('tenant-settings', {
   'GET /api/tenant/settings/:key': admin('other_settings', { alias: 'tenant.settings.read', fields: settingFields }),

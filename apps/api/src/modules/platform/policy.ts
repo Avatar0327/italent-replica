@@ -1,5 +1,5 @@
 /**
- * 平台运营层路由的现状声明（F-039 PR-A；附录 A「/api/platform」7 条）。
+ * 平台运营层路由的现状声明（F-039 PR-A；附录 A「/api/platform」7 条 + DEC-289③ 标准身份回补 1 条）。
  * 全部只认平台运营身份（platformContext），无字段目录；写路由是平台命令（Idempotency-Key + If-Match，platform.ledger）。
  */
 import { defineTable } from '../../route-policy/index.js';
@@ -16,6 +16,8 @@ export const PLATFORM_POLICIES = defineTable('platform', {
   'GET /api/platform/command-failures': platform(),
   'GET /api/platform/tenants/:tenantId': platform(byTenant),
   'POST /api/platform/tenants/:tenantId/status': platform({ ...byTenant, write: platformCommand }),
+  // DEC-289③：存量租户回补开通后新增的标准身份；请求体须为空对象，只补缺失编码（平台命令台账）
+  'POST /api/platform/tenants/:tenantId/standard-profiles/backfill': platform({ ...byTenant, write: platformCommand }),
   'GET /api/platform/tenants/:tenantId/licenses': platform(byTenant),
   // licenseType 不合法另报 400 VALIDATION_FAILED（不是 invalidId）
   'PUT /api/platform/tenants/:tenantId/licenses/:licenseType': platform({ ...byTenant, write: platformCommand }),
