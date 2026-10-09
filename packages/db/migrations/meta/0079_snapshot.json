@@ -1,5 +1,5 @@
 {
-  "id": "7c746eee-6cff-4574-a5cf-d2abf84a411d",
+  "id": "c83cbff8-46e7-46a3-a7c7-03f021f9528b",
   "prevId": "2796b215-f966-4f0d-b9e9-6ade48405edc",
   "version": "7",
   "dialect": "postgresql",
@@ -37020,6 +37020,14 @@
           "columns": [
             "tenant_id",
             "id"
+          ]
+        },
+        "ev_activity_types_name": {
+          "name": "ev_activity_types_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "name"
           ]
         }
       },

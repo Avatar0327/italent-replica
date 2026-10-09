@@ -9,7 +9,8 @@ CREATE TABLE "ev_activity_types" (
 	"created_by" uuid NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "ev_activity_types_tenant_id" UNIQUE("tenant_id","id")
+	CONSTRAINT "ev_activity_types_tenant_id" UNIQUE("tenant_id","id"),
+	CONSTRAINT "ev_activity_types_name" UNIQUE("tenant_id","name")
 );
 --> statement-breakpoint
 ALTER TABLE "ev_activity_types" ADD CONSTRAINT "ev_activity_types_tenant_id_tenants_id_fk" FOREIGN KEY ("tenant_id") REFERENCES "public"."tenants"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

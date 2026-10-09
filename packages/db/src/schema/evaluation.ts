@@ -21,7 +21,7 @@ const tracked = () => ({
 const displayOrder = () => integer('display_order').notNull().default(0);
 const enabled = () => boolean('enabled').notNull().default(true);
 
-/** 活动类型 ActivityType：名称、启用、顺序号、是否同步任职资格子集（设计 §3.2）。名称是否唯一规格未写，不加唯一约束（TODO(需取证 #171)）。 */
+/** 活动类型 ActivityType：名称、启用、顺序号、是否同步任职资格子集（设计 §3.2）。名称租户内唯一，顺序号不要求唯一（Q-M0-152 / #171，照原站）。 */
 export const evActivityTypes = pgTable(
   'ev_activity_types',
   {
@@ -35,6 +35,7 @@ export const evActivityTypes = pgTable(
   },
   (t) => [
     unique('ev_activity_types_tenant_id').on(t.tenantId, t.id),
+    unique('ev_activity_types_name').on(t.tenantId, t.name),
     index('ev_activity_types_order').on(t.tenantId, t.displayOrder),
   ],
 );

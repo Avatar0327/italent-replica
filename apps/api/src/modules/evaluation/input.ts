@@ -4,7 +4,7 @@
  */
 import { z } from 'zod';
 
-// TODO(需取证 #171): 名称是否租户内唯一、重名提示，规格未写，暂不拦截重名
+// 名称租户内唯一由库内约束 + service 转 409（Q-M0-152）；这里 trim，所以首尾空白不构成不同名称
 const name = z.string().trim().min(1).max(100);
 const order = z.int().min(0).max(1_000_000);
 

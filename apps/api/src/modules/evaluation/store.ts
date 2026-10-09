@@ -2,7 +2,7 @@
  * 人才评定配置写入的公共部分（设计 §3.2、§5.1、§8）：每个写入在命令台账的同一租户事务里完成“业务写 + 审计”
  * （DEC-019 / 216）。取锁顺序：被引用方 FOR SHARE → 本对象行 FOR UPDATE（B1a 只有本对象，无被引用方）。
  */
-import { sql, type Tx } from '@italent/db';
+import { pgErrorCode, sql, type Tx } from '@italent/db';
 import { EVALUATION_AUDIT_ACTIONS } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
 import { AppError } from '../../errors.js';
@@ -87,6 +87,18 @@ export async function audit(
     commandId: ctx.commandId,
     occurredAt: ctx.now,
   });
+}
+
+/**
+ * 唯一约束冲突（并发兜底与常规重名都走这里）转成 409：专用 reason + 调用方给出的提示。事务随后整体回滚，业务与审计都不留。
+ */
+export async function guardUnique<T>(work: () => Promise<T>, conflict: () => AppError): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    if (pgErrorCode(error) === '23505') throw conflict();
+    throw error;
+  }
 }
 
 /** 原生 SQL 参数：时间一律传 ISO 字符串（postgres-js 不接受 Date 参数，PGlite 接受，见 idp 同法）。 */
