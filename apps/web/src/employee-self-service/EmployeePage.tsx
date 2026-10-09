@@ -7,6 +7,8 @@ import { text } from './messages.js';
 import type { Application, OwnRecord, Profile } from './types.js';
 import '../transfer/transfer.css';
 import './employee.css';
+import { PersonAvatar } from '../shared/PersonAvatar.js';
+import { accountText } from '../account/messages.js';
 
 const BASE = '/api/tenant/self-service';
 export function EmployeePage() {
@@ -252,7 +254,11 @@ function WorkspaceContent({ tenantId, state }: { tenantId: string; state: Return
     <>
       {profile && tab === 'profile' && (
         <>
-          <h2>{profile.employee.name}</h2>
+          <h2 className="person-avatar-heading">
+            <PersonAvatar tenantId={tenantId} name={profile.employee.name} avatar={profile.employee.avatar} />
+            {profile.employee.name}
+          </h2>
+          <a href="/account">{accountText.title}</a>
           <p>
             {text.code}：{profile.employee.code}
           </p>

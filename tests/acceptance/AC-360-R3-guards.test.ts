@@ -1220,7 +1220,7 @@ const ROUTE_CASES: Record<string, RouteCases> = {
       const body = await json(
         await expectStatus(admin(env, env.users.tPerson)('GET', `/activities/${env.T.id}/objects`), 200),
       );
-      expect(body.items![0]!.person).toEqual({ name: '被评价人' });
+      expect(body.items![0]!.person).toEqual({ name: '被评价人', avatar: null });
       noMarkers(body, env.emails);
     },
   },
@@ -1589,6 +1589,24 @@ const ROUTE_CASES: Record<string, RouteCases> = {
       noMarkers(body, ['作答甲', '作答乙']);
     },
   },
+  [`GET ${LINK}/avatars/:attachmentId/content`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(
+        env.w.api.request('GET', `${LINK}/avatars/${randomUUID()}/content`, { tenant: env.w.tenantId }),
+        404,
+      )),
+    outOfScope: async (env) =>
+      void (await expectStatus(
+        env.w.api.request('GET', `${LINK}/avatars/${randomUUID()}/content`, {
+          tenant: env.w2.tenantId,
+          headers: { 'x-survey360-token': env.L.t1 },
+        }),
+        404,
+      )),
+    trimming: {
+      na: '仅返回授权图片字节，没有人员字段投影；实名名单、匿名、真实字节和响应头由 AC-EMP-F058-avatar-token 覆盖',
+    },
+  },
   [`GET ${LINK}/tasks/:relationId/questionnaires/:questionnaireId`]: {
     unauthorized: async (env) =>
       void (await expectStatus(
@@ -1692,7 +1710,10 @@ const ROUTE_CASES: Record<string, RouteCases> = {
     trimming: async (env) => {
       const body = await json(await expectStatus(env.w.link(env.L.tc)('GET', '/confirmation/candidates'), 200));
       expect(body.items!.length).toBeGreaterThan(0);
-      for (const item of body.items!) expect(keysOf(item)).toEqual(['department', 'id', 'name', 'position']);
+      for (const item of body.items!) {
+        expect(keysOf(item)).toEqual(['avatar', 'department', 'id', 'name', 'position']);
+        expect(item.avatar).toBeNull();
+      }
       noMarkers(body, env.emails);
     },
   },

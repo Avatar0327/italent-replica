@@ -1,9 +1,11 @@
 import { pgErrorCode, withTenant, type Tx } from '@italent/db';
+import { PERSONNEL_OBJECT } from '@italent/domain';
 import type { Context } from 'hono';
 import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
+import { employeeAvatars } from '../avatar/references.js';
 import { authorizeTx, requirePerson, trim, type AccessContext } from './access.js';
 import type { Row } from './store.js';
 
@@ -40,8 +42,14 @@ export async function write(
     },
   });
   // Replays are a read under current rights, not a cached authorization decision.
-  await withTenant(deps.db, ctx.tenantId, (tx) => requirePerson(tx, ctx, employeeId));
-  const value = result.body as Row;
+  const value = await withTenant(deps.db, ctx.tenantId, async (tx) => {
+    await requirePerson(tx, ctx, employeeId);
+    const receipt = result.body as Row;
+    // DEC-327：头像是当前账号投影，不能随旧业务回执冻结；其余字段和 revision 保留原命令结果。
+    if (ctx.objectCode !== PERSONNEL_OBJECT || c.req.method !== 'PATCH') return receipt;
+    const avatars = await employeeAvatars(tx, ctx.tenantId, [employeeId]);
+    return { ...receipt, avatar: avatars.get(employeeId) ?? null };
+  });
   if (value.revision !== undefined) c.header('ETag', `"${value.revision}"`);
   return c.json(await trim(deps, ctx, ctx.objectCode, value), result.status);
 }
