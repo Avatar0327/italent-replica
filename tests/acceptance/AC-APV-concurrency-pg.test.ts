@@ -553,8 +553,10 @@ describe.runIf(realPostgres)('真 PostgreSQL 强制锁竞争', () => {
     const user = await getUser(db, shared.id);
     const revokedRevision = await membershipRevision(r, shared.id);
     const [disabled, regranted, order, approved] = await withTenant(db, t.tenant.id, async (barrier) => {
-      await barrier.execute(sql`SELECT id FROM employment_employees
-        WHERE tenant_id=${t.tenant.id} AND id=${st.subject.employeeId}::uuid FOR UPDATE`);
+      // F-069：全局停用在锁账号行之前先按全局锁序预取员工 / 业务 / 组织锁，员工行上的排队发生在持账号行锁之前；
+      // 要让停用“已持账号行锁”时停住，屏障改锁实例行（实例锁在锁账号行之后的接管里才取，与重新激活串行的协议不变）。
+      await barrier.execute(sql`SELECT id FROM approval_instances
+        WHERE tenant_id=${t.tenant.id} AND id=${j2.id}::uuid FOR UPDATE`);
       const disable = outcomeOf(
         setUserStatus(db, { userId: shared.id, status: 'disabled', expectedRevision: user!.revision }, cmd()),
       );

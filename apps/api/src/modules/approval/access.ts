@@ -23,6 +23,7 @@ import { requirePermission } from '../../authorization.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { employmentCreator } from '../employment/context.js';
+import { isStageMentor, mentorSourcesOf } from '../idp/plan-mentor.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
 import {
   authorizeInTransaction,
@@ -31,6 +32,7 @@ import {
   scopeSql,
   type ModuleScope,
 } from '../permission/module-access.js';
+import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { requireObjectWrite } from '../permission/object-write.js';
 import { approvalError, rowsOf } from './context.js';
 import { personOfUser } from './resolver.js';
@@ -233,22 +235,68 @@ export async function adminScope(
   for (const button of buttons)
     allowed ||= await hasButton(deps, ctx, button, button === 'adminLogs' ? 'list' : 'detail');
   if (!allowed) return null;
-  return byBusinessScope(ctx, (objectCode) =>
-    resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`),
-  );
+  return byBusinessScope(ctx, listScopeOf(deps, ctx));
+}
+
+/** 各业务对象的列表页范围（任职记录 / 合同 / IDP 计划）。 */
+const listScopeOf = (deps: TenantRouteDeps, ctx: TenantContext) => (objectCode: string) =>
+  resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`);
+
+/**
+ * F-067：转交 / 改派目标须在操作人对该实例业务对象的管理范围内（IDP-R16“受管理单元限制”）。`inScope` 对 approval_instances
+ * 别名 i，只取实例的业务类型来选范围对象（与实例范围同一映射，DEC-043），目标员工按人员 / 组织维度判断；“使用用户”
+ * 维度针对的是业务创建人，对目标员工不成立（默认拒绝）。
+ * `exception`：范围外也可作为目标的例外（DEC-358①，同 DEC-354）——IDP 审批待办的目标可以是该计划当前的指导人 / 带教人。
+ */
+export interface TargetScope {
+  readonly inScope: (employeeId: string) => SQL;
+  readonly exception: (
+    tx: Tx,
+    instance: { readonly businessType: string; readonly businessId: string },
+    employeeId: string,
+  ) => Promise<boolean>;
+}
+
+export async function adminTargetScope(
+  deps: TenantRouteDeps,
+  ctx: TenantContext & ScopeBusinessContext,
+): Promise<TargetScope> {
+  const scopes = await businessScopes(listScopeOf(deps, ctx));
+  const mentorSources = await mentorSourcesOf(deps, ctx);
+  return {
+    inScope: (employeeId) => perBusinessType(scopes, (scope) => scopeSql(scope, { person: sql`${employeeId}::uuid` })),
+    exception: async (tx, instance, employeeId) =>
+      instance.businessType === 'idp' &&
+      (await isStageMentor(tx, ctx.tenantId, instance.businessId, employeeId, mentorSources)),
+  };
+}
+
+interface BusinessScopes {
+  readonly employment: ModuleScope;
+  readonly contract: ModuleScope;
+  readonly idp: ModuleScope;
+}
+
+async function businessScopes(resolve: (objectCode: string) => Promise<ModuleScope>): Promise<BusinessScopes> {
+  return {
+    employment: await resolve(MODULE_OBJECTS.employmentRecord.code),
+    contract: await resolve(CONTRACT_OBJECT),
+    idp: await resolve(IDP_PLAN_OBJECT),
+  };
 }
 
 /**
  * 各业务实例按所属应用的数据范围判断（DEC-043）：合同按合同对象，发展计划按 IDP 应用（计划对象，K-50：员工当前任职
  * 在范围内），其余（任职、员工子集）按任职记录。IDP 不能落进任职记录的 TenantBase 范围（PR #115 第 2 轮 P1）。
  */
+function perBusinessType(scopes: BusinessScopes, predicate: (scope: ModuleScope) => SQL): SQL {
+  return sql`((i.business_type='contract' AND ${predicate(scopes.contract)})
+    OR (i.business_type='idp' AND ${predicate(scopes.idp)})
+    OR (i.business_type NOT IN ('contract','idp') AND ${predicate(scopes.employment)}))`;
+}
+
 async function byBusinessScope(ctx: TenantContext, resolve: (objectCode: string) => Promise<ModuleScope>) {
-  const employment = await resolve(MODULE_OBJECTS.employmentRecord.code);
-  const contract = await resolve(CONTRACT_OBJECT);
-  const idp = await resolve(IDP_PLAN_OBJECT);
-  return sql`((i.business_type='contract' AND ${instanceScopeSql(ctx, contract)})
-    OR (i.business_type='idp' AND ${instanceScopeSql(ctx, idp)})
-    OR (i.business_type NOT IN ('contract','idp') AND ${instanceScopeSql(ctx, employment)}))`;
+  return perBusinessType(await businessScopes(resolve), (scope) => instanceScopeSql(ctx, scope));
 }
 
 /**
