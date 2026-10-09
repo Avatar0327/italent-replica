@@ -4,6 +4,7 @@
  * 分类 category-classes、类别 categories（含引入 categories/import）、层级 layers、级别 levels（含引入 levels/import）、
  * 指标类型 target-types、指标 targets（含等级描述 targets/:id/grade-descriptions）、等级方案 grade-schemes、
  * 编码规则 coding-rules、标准 standards（含编辑导入 standards/import、发展通道 standards/:id/channels、图谱 standards/:id/chart）。
+ * 另有新建时的所属管理单元候选 candidates/owner-orgs（DEC-339）。
  * 写入走命令台账（幂等、revision 409），首次执行与幂等重放都按当前功能权限、按钮与范围复核。
  */
 import { sql, withTenant, type Tx } from '@italent/db';
@@ -38,6 +39,7 @@ import {
   rowsOf,
   trimQualification,
 } from './access.js';
+import { registerQualificationCandidates } from './candidates.js';
 import * as config from './config-service.js';
 import * as input from './input.js';
 import * as read from './read-model.js';
@@ -171,6 +173,7 @@ const SPECS = {
 } as const;
 
 export function registerQualificationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerQualificationCandidates(router, deps, QL_BASE);
   registerImports(router, deps);
   registerTargetExtras(router, deps);
   registerStandardExtras(router, deps);

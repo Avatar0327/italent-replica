@@ -1,6 +1,8 @@
 /**
  * 任职资格各接口的请求结构（只做结构校验，不读库）。严格对象：未登记的键（资源集合、所属人由系统填写，DEC-324②；
  * 标准的类别与级别范围建后不可改，QL-R8 / QL-R18）一律 400。数组设上限（AGENTS §10「批量」）。
+ * 新建时的 ownerOrgId 只表示“从创建人的多个授权管理单元里选的那一个”（DEC-339，同 #106 DEC-294 补充）：只有一个时
+ * 可省略，由服务端填写与校验；建后不可改。
  */
 import { z } from 'zod';
 
@@ -27,6 +29,7 @@ export const CATEGORY_LINKS = ['position', 'post', 'sequence', 'level_type'] as 
 export const LEVEL_LINKS = ['level', 'grade'] as const;
 
 const common = { enabled: z.boolean().optional(), publicDown: z.boolean().optional() };
+const ownerOrgId = uuid.optional();
 
 export const categoryClassCreate = z.strictObject({
   code,
@@ -34,8 +37,9 @@ export const categoryClassCreate = z.strictObject({
   parentId: uuid.nullable().optional(),
   displayOrder: order.optional(),
   ...common,
+  ownerOrgId,
 });
-export const categoryClassPatch = categoryClassCreate.omit({ parentId: true }).partial();
+export const categoryClassPatch = categoryClassCreate.omit({ parentId: true, ownerOrgId: true }).partial();
 
 const jobLinks = z.array(uuid).max(MAX_JOB_LINKS);
 export const categoryCreate = z.strictObject({
@@ -45,8 +49,9 @@ export const categoryCreate = z.strictObject({
   jobLinkType: z.enum(CATEGORY_LINKS).nullable().optional(),
   jobLinks: jobLinks.optional(),
   ...common,
+  ownerOrgId,
 });
-export const categoryPatch = categoryCreate.omit({ classId: true }).partial();
+export const categoryPatch = categoryCreate.omit({ classId: true, ownerOrgId: true }).partial();
 
 /** 引入（QL-R1 / QL-R2）：每个岗职务生成一个对象；编码 / 名称缺省取自岗职务（须看得到，DEC-309 #4）。 */
 const importItem = z.strictObject({ jobObjectId: uuid, code: code.optional(), name: name.optional() });
@@ -54,11 +59,13 @@ export const categoryImport = z.strictObject({
   classId: uuid,
   jobLinkType: z.enum(CATEGORY_LINKS),
   items: z.array(importItem).min(1).max(MAX_IMPORT_ITEMS),
+  ownerOrgId,
 });
 export const levelImport = z.strictObject({
   jobLinkType: z.enum(LEVEL_LINKS),
   layerId: uuid.nullable().optional(),
   items: z.array(importItem).min(1).max(MAX_IMPORT_ITEMS),
+  ownerOrgId,
 });
 
 export const layerCreate = z.strictObject({ name, displayOrder: order.optional(), enabled: z.boolean().optional() });
@@ -72,8 +79,9 @@ export const levelCreate = z.strictObject({
   jobLinkType: z.enum(LEVEL_LINKS).nullable().optional(),
   jobLinks: jobLinks.optional(),
   ...common,
+  ownerOrgId,
 });
-export const levelPatch = levelCreate.partial();
+export const levelPatch = levelCreate.omit({ ownerOrgId: true }).partial();
 
 export const targetTypeCreate = z.strictObject({
   code: code.optional(),
@@ -81,8 +89,9 @@ export const targetTypeCreate = z.strictObject({
   parentId: uuid.nullable().optional(),
   displayOrder: order.optional(),
   ...common,
+  ownerOrgId,
 });
-export const targetTypePatch = targetTypeCreate.omit({ parentId: true }).partial();
+export const targetTypePatch = targetTypeCreate.omit({ parentId: true, ownerOrgId: true }).partial();
 
 export const targetCreate = z.strictObject({
   code: code.optional(),
@@ -96,8 +105,9 @@ export const targetCreate = z.strictObject({
   /** 确认框（DEC-334①）：会覆盖写入各标准的能力标准时必须带 true。 */
   confirmOverwrite: z.boolean().optional(),
   ...common,
+  ownerOrgId,
 });
-export const targetPatch = targetCreate.omit({ typeId: true }).partial();
+export const targetPatch = targetCreate.omit({ typeId: true, ownerOrgId: true }).partial();
 
 const gradeDetail = z.strictObject({
   id: uuid.optional(),

@@ -116,12 +116,11 @@ export async function referenced(
 
 /**
  * 新建带资源集合的对象：资源集合 = 创建人在 Qualification 应用的授权管理单元（DEC-324②，同 DEC-294③），
- * 再按新建授权复核（DEC-082：只看管理范围）。没有单元 403、一个自动填写。
- * TODO(R3-T02 待用户决定)：有多个授权管理单元时怎么定尚未定（PR-A 描述），暂按公共实现返回 400
- * MANAGEMENT_UNIT_REQUIRED，不接受请求里的选择。
+ * 再按新建授权复核（DEC-082：只看管理范围）。DEC-339（同 #106）：没有单元 403；只有一个自动填写；多个时必须由请求
+ * 显式选一个，不选 400 MANAGEMENT_UNIT_REQUIRED，不自动挑；选了不属于本人的单元与不存在同一个 404。
  */
-export async function ownerOf(tx: Tx, ctx: WriteContext, object: QualificationObject) {
-  const orgId = await chooseUnit(tx, ctx, QUALIFICATION_APP, undefined);
+export async function ownerOf(tx: Tx, ctx: WriteContext, object: QualificationObject, requested: string | undefined) {
+  const orgId = await chooseUnit(tx, ctx, QUALIFICATION_APP, requested);
   visible(ctx.scope, orgId, `${QUALIFICATION_LABELS[object]}不存在`);
   return { ownerId: ctx.userId, ownerOrgId: orgId };
 }

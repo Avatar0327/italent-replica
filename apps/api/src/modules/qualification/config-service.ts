@@ -118,7 +118,7 @@ export async function createCategoryClass(tx: Tx, ctx: WriteContext, body: input
     if (level > 5) throw new AppError('VALIDATION_FAILED', '任职类别分类最多 5 级', { reason: 'CLASS_TOO_DEEP' });
   }
   await requireCodeAvailable(tx, ctx, 'categoryClass', body.code);
-  const owner = await ownerOf(tx, ctx, 'categoryClass');
+  const owner = await ownerOf(tx, ctx, 'categoryClass', body.ownerOrgId);
   const result = await guardUnique(() =>
     tx.execute(sql`INSERT INTO ql_category_classes (tenant_id, code, name, parent_id, level, display_order, enabled,
       public_down, owner_id, owner_org_id, created_by, created_at, updated_at)
@@ -198,11 +198,12 @@ async function insertCategory(
     jobLinkType?: string | null;
     enabled?: boolean;
     publicDown?: boolean;
+    ownerOrgId?: string;
   },
 ) {
   const code = await autoCode(tx, ctx, 'category', body.code);
   await requireCodeAvailable(tx, ctx, 'category', code);
-  const owner = await ownerOf(tx, ctx, 'category');
+  const owner = await ownerOf(tx, ctx, 'category', body.ownerOrgId);
   const result = await guardUnique(() =>
     tx.execute(sql`INSERT INTO ql_categories (tenant_id, code, name, class_id, job_link_type, enabled, public_down,
       owner_id, owner_org_id, created_by, created_at, updated_at)
@@ -241,6 +242,8 @@ async function importedName(
 /** 引入任职类别（QL-R1、AC-QL-01）：每个岗职务生成一个类别并建立关联；整批成功或整批失败。 */
 export async function importCategories(tx: Tx, ctx: ConfigWriteContext, body: input.CategoryImport) {
   await referenced(tx, ctx, 'categoryClass', body.classId);
+  // 整批同一个所属管理单元，先于逐条解析岗职务定下来（DEC-339）
+  const { ownerOrgId } = await ownerOf(tx, ctx, 'category', body.ownerOrgId);
   const items: JobLinked[] = [];
   for (const item of body.items) {
     const named = await importedName(tx, ctx, body.jobLinkType, item);
@@ -248,6 +251,7 @@ export async function importCategories(tx: Tx, ctx: ConfigWriteContext, body: in
       ...named,
       classId: body.classId,
       jobLinkType: body.jobLinkType,
+      ownerOrgId,
     });
     await replaceJobLinks(tx, ctx, 'category', id, body.jobLinkType, [item.jobObjectId]);
     const after = await reload<JobLinked>(tx, ctx, 'category', id);
@@ -365,13 +369,14 @@ async function insertLevel(
     jobLinkType?: string | null;
     enabled?: boolean;
     publicDown?: boolean;
+    ownerOrgId?: string;
   },
 ) {
   if (body.layerId) await referenced(tx, ctx, 'layer', body.layerId);
   const code = await autoCode(tx, ctx, 'level', body.code);
   await requireCodeAvailable(tx, ctx, 'level', code);
   const order = await levelOrder(tx, ctx, body.displayOrder);
-  const owner = await ownerOf(tx, ctx, 'level');
+  const owner = await ownerOf(tx, ctx, 'level', body.ownerOrgId);
   const result = await guardUnique(() =>
     tx.execute(sql`INSERT INTO ql_levels (tenant_id, code, name, display_order, layer_id, job_link_type, enabled,
       public_down, owner_id, owner_org_id, created_by, created_at, updated_at)
@@ -392,6 +397,7 @@ export async function createLevel(tx: Tx, ctx: ConfigWriteContext, body: input.L
 
 /** 引入任职级别（QL-R2）：每个职级 / 职等生成一个级别，顺序号依次递增。 */
 export async function importLevels(tx: Tx, ctx: ConfigWriteContext, body: input.LevelImport) {
+  const { ownerOrgId } = await ownerOf(tx, ctx, 'level', body.ownerOrgId);
   const items: JobLinked[] = [];
   for (const item of body.items) {
     const named = await importedName(tx, ctx, body.jobLinkType, item);
@@ -399,6 +405,7 @@ export async function importLevels(tx: Tx, ctx: ConfigWriteContext, body: input.
       ...named,
       layerId: body.layerId ?? null,
       jobLinkType: body.jobLinkType,
+      ownerOrgId,
     });
     await replaceJobLinks(tx, ctx, 'level', id, body.jobLinkType, [item.jobObjectId]);
     const after = await reload<JobLinked>(tx, ctx, 'level', id);
@@ -454,7 +461,7 @@ export async function createTargetType(tx: Tx, ctx: WriteContext, body: input.Ta
   if (body.parentId) await referenced(tx, ctx, 'targetType', body.parentId);
   const code = await autoCode(tx, ctx, 'target_type', body.code);
   await requireCodeAvailable(tx, ctx, 'targetType', code);
-  const owner = await ownerOf(tx, ctx, 'targetType');
+  const owner = await ownerOf(tx, ctx, 'targetType', body.ownerOrgId);
   const result = await guardUnique(() =>
     tx.execute(sql`INSERT INTO ql_target_types (tenant_id, code, name, parent_id, display_order, enabled, public_down,
       owner_id, owner_org_id, created_by, created_at, updated_at)

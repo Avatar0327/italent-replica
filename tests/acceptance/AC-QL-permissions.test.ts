@@ -6,7 +6,9 @@
  * - 带出值 #1：新建标准时非通用指标的说明只有操作人当前对 Target.description 有查看权才复制，否则能力标准留空；
  * - 带出值 #2：通用指标覆盖写入的能力标准，读取时按查看人当前对 Target.description 的查看权给出，看不到只留标记；
  * - 带出值 #3：未手改的指标等级描述是等级明细描述的投影，看不到 GradeScheme.details 就不给描述；
- * - 带出值 #4：引入类别时编码 / 名称缺省取自岗职务，看不到岗职务的这两个字段就不带出（须自己填）。
+ * - 带出值 #4：引入类别时编码 / 名称缺省取自岗职务，看不到岗职务的这两个字段就不带出（须自己填）；
+ * - DEC-339 资源集合（同 #106）：只有一个授权管理单元时自动填写；多个时新建必须显式选一个，不选 400
+ *   MANAGEMENT_UNIT_REQUIRED，选了不属于本人的单元与不存在同一个 404；候选只列本人的授权管理单元。
  */
 import { randomUUID } from 'node:crypto';
 import { MODULE_OBJECTS, QUALIFICATION_OBJECTS } from '@italent/domain';
@@ -366,5 +368,62 @@ describe('任职资格配置的数据范围与向下公开', () => {
     const carried = await importInto(visibleOp, { jobObjectId: data.sequences[1] });
     expect(carried.status, await carried.clone().text()).toBe(201);
     expect(((await carried.json()) as { items: CategoryView[] }).items[0]).toMatchObject({ name: '保密序列乙' });
+  });
+
+  it('DEC-339：一个单元自动填写；多个单元不选 400、选范围外 404、选了按所选填写；候选只列本人单元', async () => {
+    const reason = async (response: Response) =>
+      ((await response.json()) as { error: { details?: { reason?: string } } }).error.details?.reason;
+    const single = await operator(world, { mouId: data.childMou });
+    const auto = await single.request('POST', '/target-types', { ifMatch: 0, body: { code: 'TSINGLE', name: '单' } });
+    expect(auto.status, await auto.clone().text()).toBe(201);
+    expect(await auto.json()).toMatchObject({ ownerOrgId: data.child });
+
+    const setup = tenantApi(world.db, { clock: () => QL_NOW });
+    const multiMou = await createMou(setup, world.asAdmin, [data.child, data.outside], '多单元');
+    const multi = await operator(world, { mouId: multiMou });
+    const candidates = await multi.request('GET', '/candidates/owner-orgs?object=targetType');
+    expect(candidates.status, await candidates.clone().text()).toBe(200);
+    const items = ((await candidates.json()) as { items: Record<string, unknown>[] }).items;
+    expect(items.map((item) => item.id).sort()).toEqual([data.child, data.outside].sort());
+    // 没有组织对象的查看权：只给 ID，不带编码 / 名称（DEC-316②）
+    for (const item of items) expect(Object.keys(item)).toEqual(['id']);
+
+    const before = await multi.request('GET', '/target-types');
+    const countBefore = ((await before.json()) as { items: unknown[] }).items.length;
+    const missing = await multi.request('POST', '/target-types', { ifMatch: 0, body: { code: 'TMULTI', name: '多' } });
+    expect(missing.status).toBe(400);
+    expect(await reason(missing)).toBe('MANAGEMENT_UNIT_REQUIRED');
+    const imported = await multi.request('POST', '/levels/import', {
+      ifMatch: 0,
+      body: { jobLinkType: 'level', items: [{ jobObjectId: randomUUID(), code: 'LX', name: '级' }] },
+    });
+    expect(imported.status).toBe(400);
+
+    const notFound = new Set<string>();
+    for (const ownerOrgId of [data.parent, randomUUID()]) {
+      const response = await multi.request('POST', '/target-types', {
+        ifMatch: 0,
+        body: { code: 'TMULTI', name: '多', ownerOrgId },
+      });
+      expect(response.status).toBe(404);
+      notFound.add(JSON.stringify(await response.json()));
+    }
+    expect(notFound.size).toBe(1);
+    const after = await multi.request('GET', '/target-types');
+    expect(((await after.json()) as { items: unknown[] }).items).toHaveLength(countBefore);
+
+    const chosen = await multi.request('POST', '/target-types', {
+      ifMatch: 0,
+      body: { code: 'TMULTI', name: '多', ownerOrgId: data.outside },
+    });
+    expect(chosen.status, await chosen.clone().text()).toBe(201);
+    const created = (await chosen.json()) as { id: string; revision: number; ownerOrgId: string };
+    expect(created.ownerOrgId).toBe(data.outside);
+    // 建后不可改：修改请求带 ownerOrgId 按严格结构 400
+    const move = await multi.request('PATCH', `/target-types/${created.id}`, {
+      ifMatch: created.revision,
+      body: { ownerOrgId: data.child },
+    });
+    expect(move.status).toBe(400);
   });
 });

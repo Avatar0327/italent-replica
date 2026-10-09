@@ -52,7 +52,7 @@ export async function createTarget(tx: Tx, ctx: WriteContext, body: input.Target
   await checkEvalMode(tx, ctx, body.evalMode, body.gradeSchemeId);
   const code = await autoCode(tx, ctx, 'target', body.code);
   await requireCodeAvailable(tx, ctx, 'target', code);
-  const owner = await ownerOf(tx, ctx, 'target');
+  const owner = await ownerOf(tx, ctx, 'target', body.ownerOrgId);
   const result = await guardUnique(() =>
     tx.execute(sql`INSERT INTO ql_targets (tenant_id, code, name, type_id, description, is_common, eval_mode,
       grade_scheme_id, display_order, enabled, public_down, owner_id, owner_org_id, created_by, created_at, updated_at)

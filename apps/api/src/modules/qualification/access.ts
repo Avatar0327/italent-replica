@@ -255,8 +255,8 @@ export async function qualificationWriteContext(
   return ctx;
 }
 
-/** 请求控制项不是写字段（确认覆盖、引入的来源条目）。 */
-const CONTROLS: ReadonlySet<string> = new Set(['confirmOverwrite', 'items']);
+/** 不是写字段的控制键：确认框、引入条目、所属管理单元的选择（系统字段，由 ownerOf 校验，DEC-339）。 */
+const CONTROLS: ReadonlySet<string> = new Set(['confirmOverwrite', 'items', 'ownerOrgId']);
 
 /** 载荷字段编辑权（含显式清空），键即字段编码。 */
 export function checkWriteFields(
