@@ -124,7 +124,7 @@ describe('AC-EV-conditions 组合表达式：只引用存在的序号（validate
 
   it('引用不存在的序号 → CONDITION_SEQ_UNKNOWN，带行列', () => {
     const result = validateActivityConditionExpression('条件1 and 条件9', seqs);
-    expect(result).toMatchObject({ ok: false, errors: [{ code: 'CONDITION_SEQ_UNKNOWN', line: 1, column: 8 }] });
+    expect(result).toMatchObject({ ok: false, errors: [{ code: 'CONDITION_SEQ_UNKNOWN', line: 1, column: 9 }] });
   });
 
   it('引用条件以外的字段 → CONDITION_SEQ_UNKNOWN（不借表达式读别的数据）', () => {
