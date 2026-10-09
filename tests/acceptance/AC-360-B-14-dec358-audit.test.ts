@@ -133,7 +133,7 @@ describe('DEC-358② 答卷日志里的逐份答案', () => {
  * “活动 / 套卷元数据新增”的伪差异；无资格查看人看到的日志不得带答案、建议、答卷编号与评价关系，且 before / after 的
  * 元数据对称，差异只剩真实变化（修订号等），不出现 activityId / questionnaireId 的凭空新增。
  */
-describe('同一草稿再次保存、只改建议', () => {
+describe('AC-360-B-14 / F-060 同一草稿再次保存、只改建议', () => {
   async function resave(label: string) {
     const s = await sceneB(testDb().db, label);
     const options = s.q.scales[0]!.options;

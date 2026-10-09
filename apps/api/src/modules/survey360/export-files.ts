@@ -33,7 +33,7 @@ export interface Doc {
 
 /** 控制字符会让 SVG / PDF 变成非法文档；换行保留。 */
 const clean = (value: unknown): string => {
-  const raw = typeof value === 'string' ? value : value == null ? '' : String(value);
+  const raw = typeof value === 'string' ? value : String(value ?? '');
   return [...raw].filter((c) => c === '\n' || (c.charCodeAt(0) >= 0x20 && c.charCodeAt(0) !== 0x7f)).join('');
 };
 
@@ -314,6 +314,10 @@ const A4 = { width: 794, height: 1123 };
 const MARGIN = 48;
 const SIZE = { title: 26, heading: 18, body: 13, cell: 12 };
 const PAD = 6;
+const LONG_WIDTH = 1100;
+const BLOCK_SIZE = { title: SIZE.title, heading: SIZE.heading, text: SIZE.body } as const;
+/** 标题 / 小节标题与上一块之间的留白（页首不留）。 */
+const BLOCK_GAP = { title: 18, heading: 10, text: 0 } as const;
 const CELL_LINE = Math.round(SIZE.cell * 1.5);
 const HEAD_FILL = '#eef1f6';
 
@@ -395,9 +399,9 @@ class Layout {
   block(block: Block) {
     const inner = this.width - 2 * MARGIN;
     if (block.kind === 'table') return this.table(block, inner);
-    const size = block.kind === 'title' ? SIZE.title : block.kind === 'heading' ? SIZE.heading : SIZE.body;
+    const size = BLOCK_SIZE[block.kind];
     // 标题 / 小节标题与上一块之间留白（页首不留）
-    if (this.y > MARGIN) this.y += block.kind === 'title' ? 18 : block.kind === 'heading' ? 10 : 0;
+    if (this.y > MARGIN) this.y += BLOCK_GAP[block.kind];
     for (const l of wrap(block.text, inner, size)) this.line(l, size, block.kind !== 'text', 0);
     this.y += block.kind === 'text' ? 6 : 8;
   }
@@ -449,7 +453,7 @@ class Layout {
 }
 
 export function paginate(doc: Doc, mode: 'long' | 'a4'): Page[] {
-  const layout = new Layout(mode === 'a4' ? A4.width : 1100, mode === 'a4' ? A4.height : undefined);
+  const layout = mode === 'a4' ? new Layout(A4.width, A4.height) : new Layout(LONG_WIDTH, undefined);
   for (const block of doc.blocks) layout.block(block);
   const pages = layout.finish();
   if (pages.length > EXPORT_PAGE_LIMIT)

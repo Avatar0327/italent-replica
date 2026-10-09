@@ -363,7 +363,7 @@ describe('DEC-364② 匿名活动的答卷出口枚举', () => {
 });
 
 /** F-060（#125 第 5 轮 P3-1）：进入有效读取 / 成功分支后的本人 / 他人边界。 */
-describe('F-060 有效资源、成功状态与本人 / 他人边界', () => {
+describe('AC-360-B-15 / F-060 有效资源、成功状态与本人 / 他人边界', () => {
   const OPTION = (s: SceneB, k: string) => s.q.scales[0]!.options.find((o) => o.key === k)!.id;
   const answersOf = (s: SceneB, picks: readonly string[], suggestion: string) => ({
     answers: s.q.questions.map((question, i) => ({ itemId: question.id, optionId: OPTION(s, picks[i]!) })),

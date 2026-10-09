@@ -4,7 +4,8 @@
  * - 列 = 自评、各角色（按角色顺序）、他评，保留 4 位小数；某列在整张清单里没有任何有效分数时整列消失，不加
  *   “已屏蔽 / 未作答”标记；单人角色照常单列（DEC-149）；
  * - 只有聚合分，没有评价者信息；精细化下只含范围内的评价对象。
- * “下载”是前端截取整块报表视图的 PNG（W-668），后端不提供 Excel 或其他数据导出。
+ * “下载”是整块报表视图的 PNG 截图（W-668）：GET …/score-tables/download 用同一份已裁剪的清单数据生成 PNG（F-060，
+export-files.ts），后端不提供 Excel 或其他数据导出。
  */
 import { sql, type Tx } from '@italent/db';
 import type { Hono } from 'hono';

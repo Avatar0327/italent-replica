@@ -56,7 +56,7 @@ const LEVELS = ['questionnaire', 'composite', 'basic', 'question'] as const;
 const uuidIn = (text: string) => /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/.test(text);
 const PNG_MAGIC = '89504e470d0a1a0a';
 
-describe('F-060 版面模型与 JSON 数据一致（不依赖字体）', () => {
+describe('AC-360-F060 版面模型与 JSON 数据一致（不依赖字体）', () => {
   it('结果报表：四种清单的名称、列头、4 位小数分数逐项出现，没有任何 ID', async () => {
     const { s } = await answered('f060-t1');
     for (const level of LEVELS) {
@@ -132,7 +132,7 @@ async function file(s: SceneB, path: string, user?: string) {
   return user ? s.w.as(user)('GET', path) : s.w.request('GET', path);
 }
 
-describe('F-060 报表 PNG 下载', () => {
+describe('AC-360-F060 报表 PNG 下载', () => {
   it('下载内容与 score-tables JSON 一致：同一份数据生成、确定性、是有效的 PNG 附件', async () => {
     const { s } = await answered('f060-p1');
     for (const level of LEVELS) {
@@ -185,7 +185,7 @@ describe('F-060 报表 PNG 下载', () => {
   });
 });
 
-describe('F-060 报告 PDF 下载', () => {
+describe('AC-360-F060 报告 PDF 下载', () => {
   it('管理端：内容与报告 JSON 一致，有效 PDF 附件，确定性', async () => {
     const { s, reportId } = await answered('f060-d1');
     const json = await s.w.ok<Record<string, unknown>>(s.w.request('GET', `${s.path}/reports/${reportId}`));
@@ -254,7 +254,7 @@ describe('F-060 报告 PDF 下载', () => {
   });
 });
 
-describe('F-060 受限管理员只得到范围内的文件', () => {
+describe('AC-360-F060 受限管理员只得到范围内的文件', () => {
   it('精细化权限：范围内的报告 / 报表 PNG 与 JSON 同口径；范围外报告 404', async () => {
     const { s, reportId } = await answered('f060-r1');
     const { w } = s;
