@@ -189,8 +189,8 @@ function json(c: Context, body: unknown): Response {
 function registerFixture(app: Hono, trace: Trace, options: FixtureOptions): void {
   const router = policed(app, defineTable(MODULE, POLICIES));
   router.get('/items', async (c) => {
-    const access = accessOf<Ctx, Scope, string>(c);
     trace.push('handler:before-scope');
+    const access = accessOf<Ctx, Scope, string>(c);
     const scope = await access.getScope();
     const again = await access.getScope();
     trace.push(`handler:scope:${scope.id}:${again === scope}`);
@@ -336,7 +336,8 @@ describe('AC-PRM-FW-01 接管引擎：范围（设计 §2.2 / §2.4）', () => {
   it('列表：引擎不提前解析；处理函数显式 getScope()，同一请求只解析一次', async () => {
     const { app, trace } = fixtureApp();
     expect(await (await app.request('/items')).json()).toEqual({ scope: 1 });
-    expect(trace).toEqual([`operation:${OBJECT}:view`, 'handler:before-scope', `scope:${OBJECT}:`, 'handler:scope:1:true']);
+    const expected = [`operation:${OBJECT}:view`, 'handler:before-scope', `scope:${OBJECT}:`, 'handler:scope:1:true'];
+    expect(trace).toEqual(expected);
   });
 
   it('本人 AND 对象：本人谓词是 T2（不执行），对象分支照常', async () => {
@@ -423,6 +424,7 @@ describe('AC-PRM-FW-01 接管引擎：列表范围在事务外解析（PGlite �
         // 与真实授权器相同：范围解析自己开一个租户事务
         scope: async () => withTenant(db, TENANT, async (tx) => (await tx.execute(sql`SELECT 1`)) && { id: 1 }),
       },
+      inputs: {},
       t1: {},
       deferred: { 'fixture.listSql': 'T2' },
     });
@@ -445,7 +447,10 @@ describe('AC-PRM-FW-01 接管引擎：启动期检查（ROUTE_POLICY_IMPL_MISSIN
     ['未归类的守卫名', variant({ deferred: { 'fixture.listSql': 'T2', 'fixture.recipient': 'T2' } })],
     ['T1 定位器没有登记实现', variant({ t1: { 'fixture.requester': async () => undefined } })],
     ['输入解析器缺失', variant({ inputs: { 'fixture.id': () => '1' } })],
-    ['缺原语（transaction）', (t: Trace) => ({ ...fixtureImpl(t), primitives: { ...fixtureImpl(t).primitives, transaction: undefined } })],
+    [
+      '缺原语（transaction）',
+      (t: Trace) => ({ ...fixtureImpl(t), primitives: { ...fixtureImpl(t).primitives, transaction: undefined } }),
+    ],
     [
       '同一名称既登记实现又登记延后',
       (t: Trace) => ({ ...fixtureImpl(t), deferred: { ...fixtureImpl(t).deferred, 'fixture.byId': 'T3' as const } }),
@@ -460,7 +465,10 @@ describe('AC-PRM-FW-01 接管引擎：启动期检查（ROUTE_POLICY_IMPL_MISSIN
   });
 
   it('登记了声明里没有用到的名称 → ROUTE_POLICY_IMPL_UNUSED', () => {
-    const impl = (t: Trace) => ({ ...fixtureImpl(t), deferred: { ...fixtureImpl(t).deferred, 'fixture.stale': 'T3' as const } });
+    const impl = (t: Trace) => ({
+      ...fixtureImpl(t),
+      deferred: { ...fixtureImpl(t).deferred, 'fixture.stale': 'T3' as const },
+    });
     expect(startupFailure(() => fixtureApp({ impl })).code).toBe('ROUTE_POLICY_IMPL_UNUSED');
   });
 
