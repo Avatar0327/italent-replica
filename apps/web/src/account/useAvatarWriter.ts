@@ -42,7 +42,7 @@ export function useAvatarWriter(tenantId: string, reader: AvatarReader, saved: (
     } catch (cause) {
       if (!live.current) return;
       const rejected = cause instanceof AvatarApiError;
-      let error = text.uncertain;
+      let error: string = text.uncertain;
       if (rejected) error = cause.status === 409 ? text.conflict : cause.message;
       setState({
         ...INITIAL,
