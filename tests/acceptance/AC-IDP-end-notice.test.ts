@@ -40,7 +40,9 @@ describe('AC-IDP（补）子流程结束通知模板', () => {
     expect(await replay.json()).toEqual(updated);
     const conflict = await w.request('PATCH', `/processes/${process.id}`, {
       ...request,
-      body: { subProcesses: inputs(updated) },
+      body: {
+        subProcesses: inputs(updated).map((sub, i) => (i === 0 ? { ...sub, endNoticeTemplate: 'IDP.Other' } : sub)),
+      },
     });
     expect(conflict.status).toBe(409);
     expect(await conflict.json()).toMatchObject({ error: { code: 'IDEMPOTENCY_CONFLICT' } });
