@@ -362,7 +362,8 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
       entries.map((e) => `${key} @${e.position}`),
     );
     expect(declaredSites.length).toBeGreaterThanOrEqual(29);
-    expect(new Set(Object.keys(BRANCH_INPUTS)).size).toBe(22);
+    expect(new Set(Object.keys(BRANCH_INPUTS)).size).toBe(23);
+    expect(declaredSites).toHaveLength(31);
     expect([...registered].sort()).toEqual([...declaredSites].sort());
     expect(new Set(registered).size).toBe(registered.length);
   });
@@ -382,7 +383,7 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
     }
   });
 
-  it('真实声明 × 真实登记：29 个 map 选择器（含 failureAudit.objectType 共 30 个位置）零发现', () => {
+  it('真实声明 × 真实登记：31 个 map 选择器位置（23 条端点；设计估算 29 个，另含 failureAudit.objectType 与任职资格 owner-orgs）零发现', () => {
     const findings = compare(manifest.declared);
     expect(findings, show(findings)).toEqual([]);
   });

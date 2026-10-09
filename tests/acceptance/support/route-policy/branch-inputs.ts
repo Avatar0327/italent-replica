@@ -205,6 +205,12 @@ export const BRANCH_INPUTS: Readonly<Record<string, readonly BranchInput[]>> = {
       impl(`${SRC}/talent/candidates.ts#ownerObject`, "c.req.query('object')"),
     ]),
   ],
+  'GET /api/tenant/qualification/candidates/owner-orgs': [
+    input('object', 'qualification.ownerUnitObject', 'query', 'object', [
+      call(`${SRC}/qualification/candidates.ts#registerQualificationCandidates`, 'const object = ownerObject(c)'),
+      impl(`${SRC}/qualification/candidates.ts#ownerObject`, "c.req.query('object')"),
+    ]),
+  ],
   'GET /api/tenant/talent/forms/:object': [
     input('of[0].object', 'talent.object', 'param', 'object', FORM_OBJECT),
     input('of[0].operation', 'talent.formOperation', 'query', 'operation', FORM_OPERATION),

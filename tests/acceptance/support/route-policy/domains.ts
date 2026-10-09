@@ -10,6 +10,7 @@ import {
   CONTRACT_OBJECT,
   contractAction,
   IDP_OBJECTS,
+  QUALIFICATION_OBJECTS,
   QUALIFICATION_OWNED_OBJECTS,
   SUBSETS,
   TALENT_OBJECTS,
@@ -162,6 +163,7 @@ const TALENT_ANCHORS = [
   "criterionCategory: object( 'TalentCriterionCategory'",
   "criterion: object( 'TalentCriterion'",
 ];
+const QUALIFICATION_CATALOG = 'packages/domain/src/qualification/catalog.ts#QUALIFICATION_OBJECTS';
 const AUTHORIZE_IMPORT = `${MODULES}/employment/routes.ts#authorizeImport`;
 const EMPLOYMENT_CREATE = "if (!preview) await requireEmploymentWrite(ctx, 'create', item.business as object";
 const EMPLOYMENT_UPDATE = "if (!preview) await requireEmploymentWrite(ctx, 'update', patch, 'Employment.Edit')";
@@ -281,6 +283,25 @@ export const BRANCH_VALUES: Readonly<Record<string, readonly BranchValueEntry[]>
         ...TALENT_ANCHORS.filter((anchor) => !anchor.startsWith('descriptionType')).map((anchor) =>
           evidence('const', TALENT_CATALOG, anchor),
         ),
+      ],
+    },
+  ],
+  'qualification.ownerUnitObject': [
+    {
+      field: 'object',
+      values: Object.fromEntries(
+        QUALIFICATION_OWNED_OBJECTS.filter((key) => key !== 'standard').map((key) => [
+          key,
+          QUALIFICATION_OBJECTS[key].code,
+        ]),
+      ),
+      at: [
+        evidence('const', `${MODULES}/qualification/candidates.ts#OWNER_OBJECTS`, "(object) => object !== 'standard'"),
+        evidence('const', QUALIFICATION_CATALOG, "categoryClass: owned( 'EmploymentCategoryClassify'"),
+        evidence('const', QUALIFICATION_CATALOG, "category: owned( 'EmploymentCategory'"),
+        evidence('const', QUALIFICATION_CATALOG, "level: owned( 'EmploymentLevel'"),
+        evidence('const', QUALIFICATION_CATALOG, "targetType: owned( 'TargetType'"),
+        evidence('const', QUALIFICATION_CATALOG, "target: owned( 'Target'"),
       ],
     },
   ],
