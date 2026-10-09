@@ -66,9 +66,9 @@ const ACTIVITY_ENDPOINTS = () =>
     .sort();
 
 describe('AC-PRM-FW-02 F-073 已知缺口账本：survey360 的 87 项精确删除，其余账不动', () => {
-  it('账本里不再有 survey360 组；org / qualification / idp 三类共 38 项与冗余观测 59 项不变', () => {
+  it('账本里不再有 survey360 组；org / idp 两类共 29 项（任职资格已由 F-074 补完）与冗余观测 59 项不变', () => {
     expect(KNOWN_GAPS.filter((g) => g.id.startsWith('survey360'))).toEqual([]);
-    expect(KNOWN_GAPS.flatMap((g) => g.pairs)).toHaveLength(38);
+    expect(KNOWN_GAPS.flatMap((g) => g.pairs)).toHaveLength(29);
     expect(REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs)).toHaveLength(59);
   });
 });
