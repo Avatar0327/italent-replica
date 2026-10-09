@@ -358,7 +358,7 @@ const REPLAY_CASES: Record<string, Case | NotApplicable> = {
     expect(await replay.clone().json()).toEqual(saved);
     expect(await replay.clone().json()).toMatchObject({
       superiorPersonId: env.people.b1.id,
-      superior: { id: env.people.b1.id, name: env.people.b1.name },
+      superior: { id: env.people.b1.id, name: env.people.b1.name, avatar: null },
     });
     const replayText = await replay.text();
     expect(replayText).not.toContain(env.people.b1.email);

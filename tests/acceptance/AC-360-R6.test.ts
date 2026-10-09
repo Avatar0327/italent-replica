@@ -6,7 +6,7 @@
  * - DEC-319① 可见下属的上级在范围外：原样 PUT 回去，上级没有改动，不重新校验可见性（200、上级不变）；
  *   真的改成另一个范围外的人仍 400 SUPERIOR_NOT_FOUND。
  * - F-057 / DEC-325③ 修订 DEC-319②：详情、列表、重放回执显示范围外上级姓名，仍不带邮箱、部门等其他字段；
- *   拿上级 ID 调 GET /people/:id，与“不存在”同样 404。头像来源待总编排确认，当前测试只固定已确认的姓名边界。
+ *   拿上级 ID 调 GET /people/:id，与“不存在”同样 404。DEC-327：头像留空，真实头像由 F-058 后补。
  */
 import { randomUUID } from 'node:crypto';
 import { survey360 } from '@italent/domain';
@@ -17,8 +17,6 @@ import { fullAccess, type PersonView, world360, type World360 } from './AC-360-s
 
 const testDb = useTestDb();
 const APP = survey360.SURVEY360_APP;
-
-// TODO(需取证 #126)：明确 F-057 的头像来源与授权契约后补齐头像断言，不能把证件照当作头像。
 
 interface SyncPage {
   created: { personId: string; employeeId: string }[];
@@ -356,7 +354,7 @@ describe('F-057 / DEC-325③ 范围外上级显示姓名，仍不披露其他字
     const noBossPrivateFields = (text: string) => {
       for (const marker of markers) expect(text).not.toContain(marker);
     };
-    const bossSummary = { id: boss.id, name: boss.name };
+    const bossSummary = { id: boss.id, name: boss.name, avatar: null };
 
     // ① 详情
     const detail = await s.as('GET', `/people/${sub.id}`);
