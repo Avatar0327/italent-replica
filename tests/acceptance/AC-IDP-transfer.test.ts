@@ -71,7 +71,7 @@ async function rebindToOwner(w: PlanWorld) {
   });
 }
 
-describe('F-066 转交：成功路径', () => {
+describe('AC-IDP（补）F-066 转交：成功路径', () => {
   it('所有者转交当前待办：原待办关闭、新审批人收到待办，计划 revision +1，计划审计与审批审计各一条', async () => {
     const { w, plan } = await atApprovePlan('idp-tr-ok');
     const before = await w.instanceOf(plan, 1);
@@ -124,7 +124,7 @@ describe('F-066 转交：成功路径', () => {
   });
 });
 
-describe('F-066 转交：权限、范围与状态', () => {
+describe('AC-IDP（补）F-066 转交：权限、范围与状态（DEC-067 revision / 幂等）', () => {
   it('范围内且有按钮权的 HR 成功；无按钮整次 403；范围外 404；业务与审计不变', async () => {
     const { w, plan } = await atApprovePlan('idp-tr-perm');
     const pw = await permissionWorldOf(w);
@@ -204,7 +204,7 @@ describe('F-066 转交：权限、范围与状态', () => {
   });
 });
 
-describe('F-066 转交：本人回避（DEC-321 / F-048 §6 #17 #20）', () => {
+describe('AC-IDP（补）F-066 转交：本人回避（DEC-321 / F-048 §6 #17 #20）', () => {
   it('计划员工本人（非所有者）转交自己计划的待办：403 APPROVAL_ADMIN_SELF，计划与审计不变', async () => {
     const { w, plan } = await atApprovePlan('idp-tr-self');
     const response = await transfer(w, plan, { toUserId: w.outsider.userId }, w.employee.userId);
