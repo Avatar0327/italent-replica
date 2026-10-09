@@ -1,9 +1,9 @@
 /**
  * DEC-340③：答卷审计（保存、提交、屏蔽、恢复、清除）给有活动授权的管理员看**脱敏版本**——不带任何能关联到评价者的
- * 信息：评价关系 ID、评价者人员 ID / 姓名 / 邮箱 / 账号；评价者本人作答（保存、提交）的请求来源（IP、终端、来源页、
- * TraceID）与命令 ID 也不展示（屏蔽、清除等由管理员发起，来源是管理员自己的，照常展示）。
- * 持“全部活动”者看完整版（F-034 删除快照口径），但兼任该活动的被评价人或评价者时不豁免，同样只看脱敏版本；没有
- * 活动授权的管理员看不到；作答入口（链接 / 待办）的失败审计仍只给持“全部活动”者（第 2 轮 P2-1 的反例保持拒绝）。
+ * 信息：评价关系 ID、评价者人员 ID / 姓名 / 邮箱 / 账号，也不展示请求来源（IP、终端、来源页、TraceID）、命令 ID 与
+ * 答卷编号（第 3 轮 P2-2：管理员可凭自己的命令 ID 或匿名卡片编号把答卷关联到具名评价关系）。
+ * 按 DEC-340③ 原文，持“全部活动”者同样只看脱敏版本（兼任与否都一样，第 3 轮清单：在产品另行批准前不给完整版）；
+ * 没有活动授权的管理员看不到；作答入口（链接 / 待办）的失败审计仍只给持“全部活动”且不兼任的人（第 3 轮 P2-1）。
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -54,15 +54,13 @@ async function sheetEvents(s: SceneB, user: string) {
   return Promise.all(items.map(async (item) => ({ item, detail: await audit.dataChange(as, item.id) })));
 }
 
-const SOURCE_WITHHELD = ['survey360.sheet.save', 'survey360.sheet.submit'];
-
 function expectDesensitized(s: SceneB, events: Awaited<ReturnType<typeof sheetEvents>>) {
   const markers = identityMarkers(s);
   for (const { item, detail } of events) {
     const text = JSON.stringify([item, detail]);
     expect(text, item.action).not.toContain('"relationId"');
     for (const marker of markers) expect(text, `${item.action} ${marker}`).not.toContain(marker);
-    if (!SOURCE_WITHHELD.includes(item.action)) continue;
+    expect(item.objectId, `${item.action} 答卷编号`).toBeNull();
     for (const view of [item, detail])
       expect(
         {
@@ -101,7 +99,7 @@ describe('DEC-340③ 答卷审计脱敏', () => {
     expectDesensitized(s, events);
   });
 
-  it('持“全部活动”者兼任评价者 / 被评价人时不豁免：同样只看脱敏版本；不兼任的看完整版', async () => {
+  it('持“全部活动”者不论是否兼任评价者 / 被评价人，都只看脱敏版本（DEC-340③ 原文）', async () => {
     const s = await scene('d340b');
     // 上级 M 是本活动的评价者、T 是被评价人，同时持“全部活动”（360 系统管理员身份）
     for (const user of [s.user.M, s.user.T]) {
@@ -111,13 +109,8 @@ describe('DEC-340③ 答卷审计脱敏', () => {
       for (const action of ACTIONS) expect(actions, action).toContain(action);
       expectDesensitized(s, events);
     }
-    // 不兼任的“全部活动”持有人（租户 360 系统管理员）：完整版，带评价关系与命令 ID
-    const full = await sheetEvents(s, s.w.admin);
-    const text = JSON.stringify(full);
-    expect(text).toContain('"relationId"');
-    expect(text).toContain(s.rel.p1.id);
-    const block = full.find((e) => e.item.action === 'survey360.sheet.block')!;
-    expect(block.item.commandId).not.toBeNull();
+    // 不兼任的“全部活动”持有人（租户 360 系统管理员）：同样脱敏
+    expectDesensitized(s, await sheetEvents(s, s.w.admin));
   });
 
   it('没有活动授权的管理员看不到；作答入口的失败审计对活动管理员仍不可见', async () => {

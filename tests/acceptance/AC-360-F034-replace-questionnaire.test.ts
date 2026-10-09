@@ -92,12 +92,15 @@ describe('AC-360-F034 替换套卷清空作答', () => {
     );
     expect(rows(counts)).toEqual([{ sheets: 1, answers: 2 }]);
     const logs = (await f.audit.dataChanges({ user: w.admin, tenant: w.tenantId }, { limit: '100' })).items;
-    const cleared = logs.filter((log) => log.commandId === key && log.objectType === 'survey360-sheet');
+    // DEC-340③（PR #125 第 3 轮）：答卷日志一律脱敏——不带命令 ID、答卷编号与评价关系，按动作取替换清空的删除快照
+    const cleared = logs.filter((log) => log.action === 'survey360.sheet.delete');
     expect(cleared).toHaveLength(2);
     for (const log of cleared) {
       expect(log.operation).toBe('delete');
+      expect(log.commandId).toBeNull();
       const detail = await f.audit.dataChange({ user: w.admin, tenant: w.tenantId }, log.id);
-      expect(detail.snapshot).toMatchObject({ relationId: relation.id, answers: expect.any(Array) });
+      expect(detail.snapshot).toMatchObject({ answers: expect.any(Array) });
+      expect(detail.snapshot).not.toHaveProperty('relationId');
       expect(detail.snapshot!.answers).toHaveLength(2);
     }
     expect(logs.filter((log) => log.commandId === key && log.objectType === 'survey360-object')).toHaveLength(1);
@@ -252,7 +255,8 @@ describe('AC-360-F034 替换套卷清空作答', () => {
       }),
     );
     const logs = (await f.audit.dataChanges({ user, tenant: w.tenantId }, { limit: '100' })).items;
-    const cleared = logs.filter((log) => log.commandId === key && log.objectType === 'survey360-sheet');
+    // DEC-340③（PR #125 第 3 轮）：答卷日志不带命令 ID，按动作取替换清空的删除快照
+    const cleared = logs.filter((log) => log.action === 'survey360.sheet.delete');
     expect(cleared).toHaveLength(2);
     for (const log of cleared) {
       const detail = await f.audit.dataChange({ user, tenant: w.tenantId }, log.id);
