@@ -167,6 +167,27 @@ export function analyzeCalcItems(
   };
 }
 
+/**
+ * 授权复核用（与业务分析分开）：逐个项目、逐个引用检查公式里的字段是否都在调用方给出的可见字段里——只认可见字段的完整路径
+ * 与项目 / 方案固定字段，不做类型、重名、停用等业务判断，也不在第一个业务错误处停下（PR #184 第 2 轮：分析器先报重名就返回，
+ * 后面项目里已撤出范围的字段会漏检）。返回第一个含不可见 / 不存在字段引用的项目及其 UNKNOWN_FIELD 问题；全部可见返回 null。
+ */
+export function unreferenceableItem(
+  items: readonly Pick<CalcItemInput, 'formula'>[],
+  visible: readonly Pick<FormulaField, 'name'>[],
+): { readonly item: number; readonly issues: CalcIssue[] } | null {
+  const paths = new Set(visible.map((field) => formulaPath(field.name)));
+  const isKnownField = (path: string) => paths.has(path) || path in FORMULA_CONTEXT_FIELDS;
+  const registry = createDefaultRegistry();
+  for (const [index, item] of items.entries()) {
+    const checked = validateFormula(item.formula, { isKnownField, registry });
+    if (checked.ok) continue;
+    const unknown = checked.errors.filter((error) => error.code === 'UNKNOWN_FIELD');
+    if (unknown.length > 0) return { item: index, issues: unknown.map(toIssue) };
+  }
+  return null;
+}
+
 const toIssue = (error: { code: string; message: string; line: number; column: number }): CalcIssue => ({
   code: error.code,
   message: error.message,

@@ -31,7 +31,14 @@ import {
 import { type CalcItemBody, calcRuleCreate, type CalcRulePatch, calcRulePatch } from './calc-rule-input.js';
 import * as rules from './calc-rule-service.js';
 import type { CatalogAccess } from './calc-rule-service.js';
-import { CALC_RULE, type CalcRuleRow, loadCalcRuleView, visibleOrder, withItems } from './calc-rule-view.js';
+import {
+  CALC_RULE,
+  type CalcRuleRow,
+  type CalcRuleView,
+  loadCalcRuleView,
+  visibleOrder,
+  withItems,
+} from './calc-rule-view.js';
 import { listConfig } from './config-kit.js';
 
 const CALC_RULES = `${TALENT_REVIEW_BASE}/calc-rules`;
@@ -49,7 +56,10 @@ async function requireCatalogAccess(c: Context<TenantEnv>, deps: TenantRouteDeps
   return { scope, columns: viewable === undefined || REFERENCE_COLUMNS.every((column) => viewable.has(column)) };
 }
 
-/** 只提交启用时的保存提示是附带的：没有字段目录查看权就不给提示，不因此拒绝启用。 */
+/**
+ * 只提交启用时不拒绝没有字段目录查看权的人（启用不引用新字段）；提示照常检测，看不到的字段一律不显示名称（presentHints），
+ * 不静默省略（DEC-274）。
+ */
 async function optionalCatalogAccess(c: Context<TenantEnv>, deps: TenantRouteDeps) {
   try {
     return await requireCatalogAccess(c, deps);
@@ -59,7 +69,7 @@ async function optionalCatalogAccess(c: Context<TenantEnv>, deps: TenantRouteDep
   }
 }
 
-/** 提交计算项目必须有字段目录访问；只提交启用时是附带提示，访问不到就不给提示。 */
+/** 提交计算项目必须有字段目录访问；只提交启用时字段目录访问只决定提示里显示哪些字段名。 */
 function patchCatalogAccess(c: Context<TenantEnv>, deps: TenantRouteDeps, body: CalcRulePatch) {
   if (body.items !== undefined) return requireCatalogAccess(c, deps);
   return body.enabled === true ? optionalCatalogAccess(c, deps) : Promise.resolve(undefined);
@@ -67,7 +77,8 @@ function patchCatalogAccess(c: Context<TenantEnv>, deps: TenantRouteDeps, body: 
 
 /**
  * 命令执行：范围在事务外按当前权限解析，首次执行在事务内行锁后复核；幂等重放按当前范围复核结果对象
- * （撤范围后重放 404，AGENTS §10），响应按当前字段权限裁剪。
+ * （撤范围后重放 404，AGENTS §10），响应按当前字段权限裁剪。保存 / 启用提示（hinted）不进命令台账，
+ * 每次响应按当前字段目录授权重新生成（首次与重放同一套裁剪）。
  */
 async function runWrite(
   c: Context<TenantEnv>,
@@ -75,10 +86,10 @@ async function runWrite(
   ctx: TalentReviewContext,
   body: object,
   status: 200 | 201,
-  execute: (tx: Tx, ctx: rules.CalcWriteContext) => Promise<rules.CalcWriteView>,
-  fieldAccess?: CatalogAccess,
-  referenced: readonly CalcItemBody[] = [],
+  execute: (tx: Tx, ctx: rules.CalcWriteContext) => Promise<CalcRuleView>,
+  options: { fieldAccess?: CatalogAccess; referenced?: readonly CalcItemBody[]; hinted?: boolean } = {},
 ) {
+  const { fieldAccess, referenced = [], hinted = false } = options;
   const scope = await reviewScope(c, deps, ctx, 'calcRule');
   // 引用范围的授权复核放在命令之前（只读、不写任何东西）：幂等重放不再执行命令，撤范围后重放按新命令同样拒绝；
   // 首次执行在命令事务内还会再判一次（prepareItems），拒绝时整个事务回滚，不留业务、revision、台账与审计
@@ -95,8 +106,17 @@ async function runWrite(
       body: await execute(tx, { ...ctx, commandId, scope, ...(fieldAccess ? { fieldAccess } : {}) }),
     }),
   });
-  const view = result.body as rules.CalcWriteView;
-  requireConfigVisible(scope, 'calcRule', view.createdBy as string | null);
+  // 台账里缓存的结果不带提示；旧版本缓存过的提示也一律丢弃，不原样返回
+  const { hints: _cached, ...stored } = result.body as rules.CalcWriteView;
+  requireConfigVisible(scope, 'calcRule', stored.createdBy as string | null);
+  const view: rules.CalcWriteView = hinted
+    ? {
+        ...stored,
+        hints: await withTenant(deps.db, ctx.tenantId, (tx) =>
+          rules.presentHints(tx, ctx.tenantId, stored.items, fieldAccess),
+        ),
+      }
+    : stored;
   if (c.req.method !== 'DELETE') c.header('ETag', `"${view.revision}"`);
   return c.json((await trimReview(deps, ctx, 'calcRule', [view]))[0], result.status);
 }
@@ -138,7 +158,11 @@ export function registerCalcRuleRoutes(router: Hono<TenantEnv>, deps: TenantRout
     const body = await parseBody(c, calcRuleCreate);
     await checkWriteFields(deps, ctx, 'calcRule', 'create', body);
     const access = await requireCatalogAccess(c, deps);
-    return runWrite(c, deps, ctx, body, 201, (tx, w) => rules.createCalcRule(tx, w, body), access, body.items);
+    return runWrite(c, deps, ctx, body, 201, (tx, w) => rules.createCalcRule(tx, w, body), {
+      fieldAccess: access,
+      referenced: body.items,
+      hinted: true,
+    });
   });
   router.patch(`${CALC_RULES}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'calcRule', 'update', revision(c));
@@ -146,7 +170,11 @@ export function registerCalcRuleRoutes(router: Hono<TenantEnv>, deps: TenantRout
     const body = await parseBody(c, calcRulePatch);
     await checkWriteFields(deps, ctx, 'calcRule', 'update', body);
     const access = await patchCatalogAccess(c, deps, body);
-    return runWrite(c, deps, ctx, body, 200, (tx, w) => rules.updateCalcRule(tx, w, id, body), access, body.items);
+    return runWrite(c, deps, ctx, body, 200, (tx, w) => rules.updateCalcRule(tx, w, id, body), {
+      ...(access ? { fieldAccess: access } : {}),
+      referenced: body.items ?? [],
+      hinted: body.items !== undefined || body.enabled === true,
+    });
   });
   router.delete(`${CALC_RULES}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'calcRule', 'delete', revision(c));

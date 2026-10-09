@@ -25,6 +25,7 @@ import {
   formulaReferences,
   type FormulaField,
   targetNotAllowed,
+  unreferenceableItem,
 } from '@italent/domain';
 import { AppError } from '../../errors.js';
 import { notFoundMessage, requireConfigCreatable, requireConfigVisible, type ModuleScope } from './access.js';
@@ -51,20 +52,16 @@ export interface CalcWriteContext extends WriteContext {
   /** 请求不带计算项目时为空。 */
   readonly fieldAccess?: CatalogAccess;
 }
-/** 写响应：规则聚合 + 保存提示（提交了 items 或启用时出现；不进审计）。 */
+/** 写响应：规则聚合 + 保存提示（提交了 items 或启用时出现；不进审计、不进命令台账，每次响应按当前授权生成）。 */
 export type CalcWriteView = CalcRuleView & { hints?: CalcHints };
 
 const reject = (reason: string, message: string, extra: object = {}) =>
   new AppError('VALIDATION_FAILED', message, { reason, ...extra });
 
-/** 当前操作人可引用的盘点字段：字段目录对象范围内可见，且四个相关列都有查看权。 */
-async function loadVisibleCatalog(
-  tx: Tx,
-  tenantId: string,
-  access: CatalogAccess | undefined,
-): Promise<FormulaField[]> {
-  if (!access) throw new Error('计算项目缺少字段目录访问');
-  if (!access.columns) return [];
+type CatalogRow = FormulaField & { readonly createdBy: string | null };
+
+/** 租户的全部盘点字段（不按查看人过滤）：只用于计算不暴露名称的提示，以及按查看人过滤出可引用的目录。 */
+async function loadFullCatalog(tx: Tx, tenantId: string): Promise<CatalogRow[]> {
   const rows = await tx
     .select({
       id: F.id,
@@ -76,6 +73,12 @@ async function loadVisibleCatalog(
     })
     .from(F)
     .where(eq(F.tenantId, tenantId));
+  return rows.map((r) => ({ ...r, kind: r.kind as FormulaField['kind'] }));
+}
+
+/** 查看人能引用的字段：没有字段目录访问、缺四列任一列查看权时为空；否则按字段目录范围过滤。 */
+function visibleOf(rows: readonly CatalogRow[], access: CatalogAccess | undefined): FormulaField[] {
+  if (!access?.columns) return [];
   const visible = (createdBy: string | null) => {
     try {
       requireConfigVisible(access.scope, 'field', createdBy);
@@ -84,9 +87,17 @@ async function loadVisibleCatalog(
       return false;
     }
   };
-  return rows
-    .filter((r) => visible(r.createdBy))
-    .map(({ createdBy: _createdBy, ...r }) => ({ ...r, kind: r.kind as FormulaField['kind'] }));
+  return rows.filter((r) => visible(r.createdBy)).map(({ createdBy: _createdBy, ...r }) => r);
+}
+
+/** 当前操作人可引用的盘点字段：字段目录对象范围内可见，且四个相关列都有查看权。 */
+async function loadVisibleCatalog(
+  tx: Tx,
+  tenantId: string,
+  access: CatalogAccess | undefined,
+): Promise<FormulaField[]> {
+  if (!access) throw new Error('计算项目缺少字段目录访问');
+  return visibleOf(await loadFullCatalog(tx, tenantId), access);
 }
 
 const failure = (analysis: Extract<CalcAnalysis, { ok: false }>) => {
@@ -157,26 +168,48 @@ async function prepareItems(
   return analysis;
 }
 
-/** 已存项目的保存提示（启用时给出，DEC-274：不阻断）；字段已不可引用时不给提示。 */
-async function storedHints(tx: Tx, ctx: CalcWriteContext, view: CalcRuleView): Promise<CalcHints | undefined> {
-  if (!ctx.fieldAccess) return undefined;
-  const catalog = await loadVisibleCatalog(tx, ctx.tenantId, ctx.fieldAccess);
-  const byId = new Set(catalog.map((field) => field.id));
-  const items = view.items.map(({ targetFieldId, priority, formula, description }) => ({
-    targetFieldId,
-    priority,
-    formula,
-    description,
-  }));
-  if (items.some((item) => !byId.has(item.targetFieldId))) return undefined;
+const CYCLE_HIDDEN = '存在循环依赖，涉及当前不可见的字段（不显示字段名称）；允许保存，计算时将整次失败';
+const OTHER_HIDDEN = '部分保存提示涉及当前不可见的字段，未显示';
+const UNVERIFIABLE = '部分公式当前无法完整校验（引用的字段可能已改名、删除或重名），请检查后重新保存';
+const aboutCycles = (warning: string) => warning.includes('循环') || warning.includes('成环');
+
+/**
+ * 写响应里的保存提示（DEC-274：保存或启用时检测，不阻断）。首次执行与幂等重放走同一套：每次按**当前**授权生成，不用命令台账里
+ * 缓存的提示（PR #184 第 2 轮：重放返回旧提示，泄露撤权后看不到的字段名）。
+ * 检测在全部字段上做（看不到字段的人也要得到循环提示，不能静默省略）；输出按查看人裁剪：涉及看不到的字段路径的提示一律
+ * 换成不含名称的提示，代表环里有看不到的字段就不列出该环。顺序与成环项目只给目标字段 id（规则自身的数据）。
+ */
+export async function presentHints(
+  tx: Tx,
+  tenantId: string,
+  items: readonly Pick<CalcItemBody, 'targetFieldId' | 'priority' | 'formula' | 'description'>[],
+  access: CatalogAccess | undefined,
+): Promise<CalcHints> {
+  const full = await loadFullCatalog(tx, tenantId);
+  const fullIds = new Set(full.map((field) => field.id));
+  const order = items.map((item) => item.targetFieldId);
+  if (items.some((item) => !fullIds.has(item.targetFieldId))) {
+    return { order, warnings: [UNVERIFIABLE], cycles: [], blocked: [] };
+  }
   const held = new Map(items.map((item) => [item.targetFieldId, item.formula]));
-  const analysis = analyzeCalcItems(items, catalog, held);
-  return analysis.ok ? analysis.hints : undefined;
+  const analysis = analyzeCalcItems(items, full, held);
+  if (!analysis.ok) return { order, warnings: [UNVERIFIABLE], cycles: [], blocked: [] };
+  const visiblePaths = new Set(visibleOf(full, access).map((field) => formulaPath(field.name)));
+  const hidden = [...new Set(full.map((field) => formulaPath(field.name)))].filter((path) => !visiblePaths.has(path));
+  const leaks = (text: string) => hidden.some((path) => text.includes(path));
+  const { hints } = analysis;
+  const cycles = hints.cycles.filter((cycle) => !cycle.some(leaks));
+  const dropped = hints.warnings.filter(leaks);
+  const warnings = hints.warnings.filter((warning) => !leaks(warning));
+  if (cycles.length < hints.cycles.length || dropped.some(aboutCycles)) warnings.push(CYCLE_HIDDEN);
+  if (dropped.some((warning) => !aboutCycles(warning))) warnings.push(OTHER_HIDDEN);
+  return { ...hints, warnings, cycles };
 }
 
 /**
- * 命令重放的授权复核（与业务校验分开）：目标字段与公式引用的字段在**当前**字段目录范围和列权限下仍可引用——
- * 幂等重放不再执行命令，撤销后原命令重放同样按新命令的结果拒绝（目标 404，公式里的字段为未知字段 400）。
+ * 引用的授权复核（与业务校验分开，首次执行与幂等重放共用、在命令之前）：目标字段与公式引用的全部字段在**当前**字段目录
+ * 范围和列权限下仍可引用。逐个项目、逐个引用独立检查，不依赖遇到首个业务错误就返回的分析器（PR #184 第 2 轮 P2-02）。
+ * 目标不可引用 404；公式里的字段不可引用 400 FORMULA_INVALID（UNKNOWN_FIELD，与不存在的字段名同一个结果）。
  */
 export async function requireItemsReferenceable(
   tx: Tx,
@@ -187,9 +220,8 @@ export async function requireItemsReferenceable(
   const catalog = await loadVisibleCatalog(tx, tenantId, access);
   const ids = new Set(catalog.map((field) => field.id));
   if (items.some((item) => !ids.has(item.targetFieldId))) throw new AppError('NOT_FOUND', notFoundMessage('field'));
-  const held = new Map(items.map((item) => [item.targetFieldId, item.formula]));
-  const analysis = analyzeCalcItems(items, catalog, held);
-  if (!analysis.ok && analysis.issues?.some((issue) => issue.code === 'UNKNOWN_FIELD')) throw failure(analysis);
+  const blocked = unreferenceableItem(items, catalog);
+  if (blocked) throw reject('FORMULA_INVALID', '公式不合法', blocked);
 }
 
 const itemRow = (ctx: CalcWriteContext, ruleId: string, item: CalcItemBody, index: number, usesRanking: boolean) => ({
@@ -203,16 +235,15 @@ const itemRow = (ctx: CalcWriteContext, ruleId: string, item: CalcItemBody, inde
   usesRanking,
 });
 
-export async function createCalcRule(tx: Tx, ctx: CalcWriteContext, input: CalcRuleCreate): Promise<CalcWriteView> {
+export async function createCalcRule(tx: Tx, ctx: CalcWriteContext, input: CalcRuleCreate): Promise<CalcRuleView> {
   const { items, ...columns } = input;
   // 新建范围先于一切读取：范围为空的人对任何字段引用都得到同一个结果
   requireConfigCreatable(ctx.scope, 'calcRule');
   const analysis = await prepareItems(tx, ctx, items, new Map());
-  const created = await createConfig(tx, CALC_RULE, ctx, columns, async (id) => {
+  return createConfig(tx, CALC_RULE, ctx, columns, async (id) => {
     if (items.length === 0) return;
     await tx.insert(I).values(items.map((item, index) => itemRow(ctx, id, item, index, analysis.usesRanking[index]!)));
   });
-  return { ...created, hints: analysis.hints };
 }
 
 /** 按目标字段对应整组替换：相同目标更新、缺的删除、新的新增。 */
@@ -248,7 +279,7 @@ export async function updateCalcRule(
   ctx: CalcWriteContext,
   id: string,
   patch: CalcRulePatch,
-): Promise<CalcWriteView> {
+): Promise<CalcRuleView> {
   await lockConfigRow(tx, CALC_RULE, ctx, id);
   const before = (await loadCalcRuleView(tx, ctx.tenantId, id))!;
   requireSeeAllToRename(ctx, before, patch.name);
@@ -264,10 +295,8 @@ export async function updateCalcRule(
   if (items && analysis) await syncItems(tx, ctx, id, items, analysis.usesRanking);
   const after = (await loadCalcRuleView(tx, ctx.tenantId, id))!;
   await auditConfig(tx, ctx, 'calcRule', 'update', id, before, after);
-  if (analysis) return { ...after, hints: analysis.hints };
-  // 只提交启用也要给出不阻断的提示（循环依赖仍允许启用，DEC-274）
-  const hints = patch.enabled === true ? await storedHints(tx, ctx, after) : undefined;
-  return hints ? { ...after, hints } : after;
+  // 保存 / 启用提示不在命令里生成：响应时按当前授权给出（presentHints），首次与重放一致
+  return after;
 }
 
 export const deleteCalcRule = (tx: Tx, ctx: CalcWriteContext, id: string): Promise<CalcRuleView> =>
@@ -288,9 +317,11 @@ registerConfigReferenceGuard('field', async (tx, tenantId, fieldId) => {
     .where(and(eq(F.tenantId, tenantId), eq(F.id, fieldId)));
   if (!field) return null;
   const path = formulaPath(field.name);
+  // 候选只按字段名文本粗筛（字段名在公式里是连续的标识符，词法上不能拆开、没有转义），再用解析器按规范化路径精确判定：
+  // `盘点对象 . 来源`、点号两侧的换行 / 制表符都是合法写法，按完整路径的连续文本筛会漏（PR #184 第 2 轮）
   const candidates = await tx
     .select({ formula: I.formula })
     .from(I)
-    .where(and(eq(I.tenantId, tenantId), sql`strpos(${I.formula}, ${path}) > 0`));
+    .where(and(eq(I.tenantId, tenantId), sql`strpos(${I.formula}, ${field.name}) > 0`));
   return candidates.some((row) => formulaReferences(row.formula).includes(path)) ? 'CALC_RULE' : null;
 });
