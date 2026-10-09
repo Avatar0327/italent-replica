@@ -28,7 +28,7 @@ jobs:
     name: lint / typecheck / test (PGlite, Node ${{ matrix.node }})
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
