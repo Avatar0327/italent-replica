@@ -28,7 +28,7 @@ jobs:
     name: lint / typecheck / test (PGlite, Node ${{ matrix.node }})
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -50,7 +50,7 @@ jobs:
     name: test (PostgreSQL 16)
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:16
