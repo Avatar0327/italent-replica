@@ -252,3 +252,76 @@ describe('AC-PRM-FW-01 recorded：冻结文件', () => {
     expect(Object.keys(replaced)).toEqual(['GET /b']);
   });
 });
+
+describe('AC-PRM-FW-01 recorded：同端点同类别的多条事实全部保留（第 2 轮 P2-5）', () => {
+  const GUARDED = 'POST /api/tenant/approval/tasks/:id/approve';
+  /** 前提类别要求声明里有同名前提（否则另报 WEAKER:precondition），其他类别不声明前提。 */
+  const routeFor = (category: string) =>
+    withPre(
+      routes.find((r) => `${r.method} ${r.path}` === GUARDED)!,
+      category.startsWith('precondition:') ? ['approval.assertOpen'] : undefined,
+    );
+  const CATEGORIES = ['outcome', 'ledger', 'fixedKeys', 'precondition:approval.assertOpen'] as const;
+
+  /** 同一审批同意入口：已提交的盲审 403（台账 +1）与普通 404 回滚（台账 +0），两个不同的证据用例。 */
+  async function twoObservations() {
+    const first = await observe(json(403, { error: { code: 'FORBIDDEN' }, a: 1 }), {
+      ledger: { before: [], after: [403] },
+    });
+    const second = await observe(json(404, { error: { code: 'NOT_FOUND' }, b: 2 }), {
+      ledger: { before: [], after: [] },
+    });
+    return { first, second };
+  }
+  const check = (category: string, collected: RecordedFacts, frozen: RecordedFacts) =>
+    checkRecorded({ collected, frozen, scope: new Set([GUARDED]), routes: [routeFor(category)], contract });
+
+  it.each(CATEGORIES)(
+    '%s：先后两条不同事实都保留；一致 → 零发现；删掉先登记的证据 → RECORDED_STALE',
+    async (category) => {
+      const { first, second } = await twoObservations();
+      const both = createRecorder();
+      both.recordFact(GUARDED, category, first);
+      both.recordFact(GUARDED, category, second);
+      expect(both.facts[GUARDED]![category], '两条都保留').toHaveLength(2);
+      const frozen = both.facts;
+      expect(check(category, frozen, frozen)).toEqual([]);
+
+      const onlySecond = createRecorder();
+      onlySecond.recordFact(GUARDED, category, second);
+      const stale = check(category, onlySecond.facts, frozen);
+      expect(codes(stale), `${category}：删前一证据`).toEqual(['RECORDED_STALE']);
+
+      const onlyFirst = createRecorder();
+      onlyFirst.recordFact(GUARDED, category, first);
+      expect(codes(check(category, onlyFirst.facts, frozen)), `${category}：删后一证据`).toEqual(['RECORDED_STALE']);
+    },
+  );
+
+  it.each(CATEGORIES)(
+    '%s：新增一条冻结里没有的事实 → RECORDED_UNREGISTERED；同一事实重复登记只算一条',
+    async (category) => {
+      const { first, second } = await twoObservations();
+      const frozenRecorder = createRecorder();
+      frozenRecorder.recordFact(GUARDED, category, first);
+      const collected = createRecorder();
+      collected.recordFact(GUARDED, category, first);
+      collected.recordFact(GUARDED, category, first);
+      expect(collected.facts[GUARDED]![category]).toHaveLength(1);
+      expect(check(category, collected.facts, frozenRecorder.facts)).toEqual([]);
+      collected.recordFact(GUARDED, category, second);
+      expect(codes(check(category, collected.facts, frozenRecorder.facts))).toEqual(['RECORDED_UNREGISTERED']);
+    },
+  );
+
+  it('冻结文件里事实按类别是数组且顺序稳定：登记顺序不同、内容相同 → 规范化后相等', async () => {
+    const { first, second } = await twoObservations();
+    const a = createRecorder();
+    a.recordFact(GUARDED, 'outcome', first);
+    a.recordFact(GUARDED, 'outcome', second);
+    const b = createRecorder();
+    b.recordFact(GUARDED, 'outcome', second);
+    b.recordFact(GUARDED, 'outcome', first);
+    expect(canonicalJson(a.facts)).toBe(canonicalJson(b.facts));
+  });
+});

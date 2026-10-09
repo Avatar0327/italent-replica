@@ -13,6 +13,7 @@ import {
   resolveModuleScope,
   scopeAllows,
 } from '../../apps/api/src/modules/permission/module-access.js';
+import { objectCatalog } from '../../apps/api/src/modules/permission/catalog.js';
 import { createAuthorizerDouble } from './support/route-policy/double.js';
 import { mapRequest, permClaims } from './support/route-policy/request-perms.js';
 
@@ -190,5 +191,111 @@ describe('AC-PRM-FW-08 授权替身：集内允许、集外拒绝，全部记录
     expect(double.requests).toEqual([]);
     expect(await double.authorize(req('object.view', EMP))).toBe(true);
     expect(await double.authorize(req('object.update', EMP, []))).toBe(false);
+  });
+});
+
+/** 对象目录里第一个可编辑（非系统）字段，以及一个系统字段。 */
+function fieldsOf(objectCode: string) {
+  const fields = objectCatalog.get(objectCode)!.fields;
+  return { editable: fields.filter((f) => !f.system).map((f) => f.code), system: fields.find((f) => f.system)!.code };
+}
+const ORG = 'TenantBase.Organization';
+const WRITE_ALIASES = ['org', 'job', 'establishment', 'employment'].flatMap((module) =>
+  ['write', 'create', 'update'].map((verb) => `tenant.${module}.${verb}`),
+);
+
+describe('AC-PRM-FW-08 替身字段语义（第 2 轮 P2-1）：授权回答与字段提供器一致，操作 / 字段两维独立撤权', () => {
+  const OWN = ['personInChargeId', 'hrbpId', 'shopOwnerId'];
+
+  it('授予组织 create / update、隐藏三个人员字段：逐字段的 create / update 全部拒绝；未隐藏字段仍允许', async () => {
+    const double = createAuthorizerDouble({
+      grants: [`obj:${ORG}:{create,update}`],
+      fields: { hideFields: { [ORG]: OWN } },
+    });
+    const visible = fieldsOf(ORG).editable.find((f) => !OWN.includes(f))!;
+    for (const op of ['object.create', 'object.update']) {
+      for (const field of OWN) expect(await double.authorize(req(op, ORG, [field])), `${op} ${field}`).toBe(false);
+      expect(await double.authorize(req(op, ORG, [visible])), `${op} ${visible}`).toBe(true);
+      expect(await double.authorize(req(op, ORG, [visible, OWN[0]!])), `${op} 混合`).toBe(false);
+    }
+  });
+
+  it('授权集模式下：缺失字段集、系统字段、未知字段一律拒绝；空字段集（不写任何字段）允许', async () => {
+    const double = createAuthorizerDouble({ grants: [`obj:${ORG}:{create,update}`] });
+    const { system } = fieldsOf(ORG);
+    expect(await double.authorize(req('object.create', ORG))).toBe(false);
+    expect(await double.authorize(req('object.update', ORG, [system]))).toBe(false);
+    expect(await double.authorize(req('object.update', ORG, ['noSuchField']))).toBe(false);
+    expect(await double.authorize(req('object.update', ORG, []))).toBe(true);
+    expect(await double.authorize(req('object.view', ORG))).toBe(false); // 没授 view：操作维度仍独立
+  });
+
+  it('两维独立：撤掉 update 操作而字段仍可见 → update 拒绝、create 照常；撤字段不影响 view / delete', async () => {
+    const double = createAuthorizerDouble({
+      grants: [`obj:${ORG}:{view,create,update,delete}`],
+      fields: { hideFields: { [ORG]: OWN } },
+    });
+    const field = fieldsOf(ORG).editable.find((f) => !OWN.includes(f))!;
+    double.revoke(`obj:${ORG}:update`);
+    expect(await double.authorize(req('object.update', ORG, [field]))).toBe(false);
+    expect(await double.authorize(req('object.create', ORG, [field]))).toBe(true);
+    expect(await double.authorize(req('object.view', ORG))).toBe(true);
+    expect(await double.authorize(req('object.delete', ORG))).toBe(true);
+  });
+
+  it('全允许发现模式（无字段配置）不受静态目录限制；一旦给了字段配置同样按字段语义判定', async () => {
+    const double = createAuthorizerDouble();
+    expect(await double.authorize(req('object.create', ORG))).toBe(true);
+    expect(await double.authorize(req('object.update', ORG, ['tenantCustomField']))).toBe(true);
+    double.configure({ fields: { hideFields: { [ORG]: OWN } } });
+    expect(await double.authorize(req('object.update', ORG, [OWN[0]!]))).toBe(false);
+    expect(await double.authorize(req('object.update', ORG))).toBe(false);
+  });
+
+  it('全部 12 个写别名 tenant.{org,job,establishment,employment}.{write,create,update}：普通与事务内都按字段语义判定', async () => {
+    expect(WRITE_ALIASES).toHaveLength(12);
+    for (const alias of WRITE_ALIASES) {
+      const target = MODULE_ACTIONS[alias]!;
+      expect(target.kind, alias).toBe('object');
+      const objectCode = (target as { objectCode: string }).objectCode;
+      const operation = (target as { operation: string }).operation;
+      const { editable, system } = fieldsOf(objectCode);
+      const hidden = editable[0]!;
+      const double = createAuthorizerDouble({
+        grants: [`obj:${objectCode}:${operation}`],
+        fields: { hideFields: { [objectCode]: [hidden] } },
+      });
+      const bound = authorizeInTransaction(double.authorize, {} as Tx);
+      for (const [label, authorize] of [
+        ['普通', double.authorize],
+        ['事务内', bound],
+      ] as const) {
+        expect(await authorize(req(alias, undefined, [])), `${label} ${alias} 空字段集`).toBe(true);
+        expect(await authorize(req(alias, undefined, [editable[1]!])), `${label} ${alias} 可见字段`).toBe(true);
+        expect(await authorize(req(alias, undefined, [hidden])), `${label} ${alias} 隐藏字段`).toBe(false);
+        expect(await authorize(req(alias, undefined)), `${label} ${alias} 缺字段集`).toBe(false);
+        expect(await authorize(req(alias, undefined, [system])), `${label} ${alias} 系统字段`).toBe(false);
+        expect(await authorize(req(alias, undefined, ['noSuchField'])), `${label} ${alias} 未知字段`).toBe(false);
+      }
+    }
+  });
+});
+
+describe('AC-PRM-FW-08 替身 data.scope.all（第 2 轮 P2-2）：与真实 decide() 一致，缺省拒绝；可信注入须显式配置', () => {
+  it('缺省 data.scope.all 回答 false（真实 decide 对它返回 false，全范围走 provider.scope）；范围提供器仍可答 all', async () => {
+    const double = createAuthorizerDouble({ scope: 'all' });
+    expect(await double.authorize(req('data.scope.all'))).toBe(false);
+    expect(double.requests[0]).toMatchObject({ mapped: { kind: 'scope' }, allowed: false });
+    const scope = await resolveModuleScope(deps(double.authorize), timezoneCtx, undefined, EMP);
+    expect(scope.all).toBe(true);
+  });
+
+  it('测试可信注入兼容分支时显式配置 trustedScopeAll: true；事务内同样遵守', async () => {
+    const double = createAuthorizerDouble({ trustedScopeAll: true });
+    expect(await double.authorize(req('data.scope.all'))).toBe(true);
+    const bound = authorizeInTransaction(double.authorize, {} as Tx);
+    expect(await bound(req('data.scope.all'))).toBe(true);
+    double.configure({});
+    expect(await double.authorize(req('data.scope.all'))).toBe(false);
   });
 });

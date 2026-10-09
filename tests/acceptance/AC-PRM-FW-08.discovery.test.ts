@@ -28,7 +28,8 @@ import {
   writeFrozenProbes,
 } from './support/route-policy/discovery.js';
 import type { Finding } from './support/route-policy/compare.js';
-import { KNOWN_UNCLAIMED } from './support/route-policy/probe-known-gaps.js';
+import { ID_CHECK_EVIDENCE, checkIdCheckEvidence } from './support/route-policy/probe-id-evidence.js';
+import { checkKnownGapEvidence, KNOWN_GAPS, type KnownGapGroup } from './support/route-policy/probe-known-gaps.js';
 import { permClaims } from './support/route-policy/request-perms.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
@@ -57,7 +58,7 @@ const codes = (findings: readonly Finding[]) => findings.map((f) => f.code);
 const show = (findings: readonly Finding[]) => findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n');
 const check = (routes: readonly ManifestRoute[], table: RequiredTable = REQUIRED, found = fresh) =>
   checkDiscovery(found, table, routes);
-const checkAll = () => checkDiscovery(fresh, REQUIRED, manifest.declared, KNOWN_UNCLAIMED);
+const checkAll = () => checkDiscovery(fresh, REQUIRED, manifest.declared, KNOWN_GAPS);
 const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => ({ ...base, policy });
 const withTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({ ...REQUIRED, [k]: obligations });
 
@@ -104,46 +105,111 @@ describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
 });
 
 describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
-  it('全部端点零发现（P0 认领、P3 非法标识、映射）；已发现的 134 个表漏登只经 KNOWN_UNCLAIMED 钉死登记', () => {
+  it('全部端点零发现（P0 认领、P3 非法标识、映射）；未认领的请求只经精确的 KNOWN_GAPS 逐对登记', () => {
     const findings = checkAll();
     expect(findings, show(findings)).toEqual([]);
   });
 
-  it('不带登记检查：恰好 134 个"端点 × 请求键"表漏登，全部被 KNOWN_UNCLAIMED 的 5 类规则覆盖（每类写明归属与原因）', () => {
+  it('不带登记检查：未认领的"端点 × 请求键"恰好等于 KNOWN_GAPS 的全部登记对；91 项有实际用途 + 41 项冗余预取', () => {
     const open = check(manifest.declared);
     expect(codes(open).every((c) => c === 'PROBE_ADMISSION_UNCLAIMED')).toBe(true);
-    expect(open).toHaveLength(134);
-    expect(KNOWN_UNCLAIMED.reduce((sum, gap) => sum + gap.count, 0)).toBe(134);
-    for (const gap of KNOWN_UNCLAIMED) {
-      expect(gap.owner.length, gap.id).toBeGreaterThan(5);
-      expect(gap.why.length, gap.id).toBeGreaterThan(20);
+    const registered = KNOWN_GAPS.flatMap((g) => g.pairs);
+    expect(registered).toHaveLength(open.length);
+    expect(new Set(registered.map(([r, k]) => `${r}\t${k}`)).size, '登记对不重复').toBe(registered.length);
+    const count = (kind: string) => KNOWN_GAPS.filter((g) => g.kind === kind).flatMap((g) => g.pairs).length;
+    expect(count('effective')).toBe(91);
+    expect(count('redundant-prefetch')).toBe(41);
+    expect(registered).toHaveLength(132);
+  });
+
+  it('台账每组写明类别、归属与源码证据，证据锚点仍出现在所指文件里', () => {
+    for (const group of KNOWN_GAPS) {
+      expect(group.owner.length, group.id).toBeGreaterThan(5);
+      expect(group.evidence.length, group.id).toBeGreaterThan(0);
+      expect(['effective', 'redundant-prefetch'], group.id).toContain(group.kind);
     }
+    expect(checkKnownGapEvidence(KNOWN_GAPS)).toEqual([]);
+    const tampered: KnownGapGroup[] = KNOWN_GAPS.map((g, i) =>
+      i === 0 ? { ...g, evidence: [{ ...g.evidence[0]!, anchor: 'thisSnippetDoesNotExistAnywhere()' }] } : g,
+    );
+    expect(codes(checkKnownGapEvidence(tampered))).toEqual(['PROBE_KNOWN_GAP_EVIDENCE']);
   });
 
-  it('棘轮：表补上一条认领 → 规则命中数少于登记 → PROBE_KNOWN_GAP_STALE（必须同 PR 删规则）', () => {
-    const k = 'GET /api/tenant/org/person-candidates';
-    const claimed = withTable(k, [...REQUIRED[k]!, { perm: 'obj:TenantBase.Organization:{create,update}', at: [] }]);
-    const findings = checkDiscovery(fresh, claimed, manifest.declared, KNOWN_UNCLAIMED);
-    expect(codes(findings)).toEqual(['PROBE_KNOWN_GAP_STALE']);
-    expect(findings[0]!.route).toBe('known-gap:org.personCandidates');
-  });
-
-  it('棘轮：规则不吸收新漏登——登记范围之外的端点 / 请求键照常报 PROBE_ADMISSION_UNCLAIMED', () => {
+  it('DEC-303：登记只能是已发现的精确对，不是模块级豁免——不在登记里的新漏登照常报 PROBE_ADMISSION_UNCLAIMED', () => {
     const k = 'GET /api/tenant/employment/transfers/manager';
     const dropped = REQUIRED[k]!.filter((o) => !permClaims(o.perm, fresh[k]!.trace[0]!));
-    const findings = checkDiscovery(fresh, withTable(k, dropped), manifest.declared, KNOWN_UNCLAIMED);
+    const findings = checkDiscovery(fresh, withTable(k, dropped), manifest.declared, KNOWN_GAPS);
     expect(codes(findings)).toEqual(['PROBE_ADMISSION_UNCLAIMED']);
     expect(findings[0]!.route).toBe(k);
   });
 
-  it('棘轮：规则数量被多命中（来了新的同类漏登）→ PROBE_KNOWN_GAP_STALE，不能靠改数字消化', () => {
-    const k = 'GET /api/tenant/survey360/roles';
-    expect(fresh[k], '前提：端点存在').toBeDefined();
-    const bumped = KNOWN_UNCLAIMED.map((gap) =>
-      gap.id === 'survey360.allActivities' ? { ...gap, count: gap.count - 1 } : gap,
-    );
-    const findings = checkDiscovery(fresh, REQUIRED, manifest.declared, bumped);
+  /** 审查原文三组替换反例：补上一个旧缺口，同时误删同类另一端点的合法登记（总数不变）。 */
+  const REPLACEMENTS = [
+    {
+      name: 'survey360',
+      fixed: ['DELETE /api/tenant/survey360/activities/:id', 'btn:Survey360.Activity#viewAll@list'],
+      broken: ['GET /api/tenant/survey360/activities', 'obj:Survey360.Activity:view'],
+    },
+    {
+      name: 'qualification',
+      fixed: ['DELETE /api/tenant/qualification/grade-schemes/:id', 'obj:Qualification.Target:view'],
+      broken: ['GET /api/tenant/qualification/categories', 'obj:Qualification.EmploymentCategory:view'],
+    },
+    {
+      name: 'idp',
+      fixed: ['DELETE /api/tenant/idp/plans/:id', 'obj:IDP.Analysis:view'],
+      broken: ['DELETE /api/tenant/idp/plans/:id/goals/:goalId', 'obj:IDP.Idp:view'],
+    },
+  ] as const;
+
+  it.each(REPLACEMENTS)('精确集合：%s 补一个旧缺口同时误删另一处合法登记 → 两处都报出', ({ fixed, broken }) => {
+    const [fixedRoute, fixedKey] = fixed;
+    const [brokenRoute, brokenKey] = broken;
+    expect(
+      KNOWN_GAPS.flatMap((g) => g.pairs).some(([r, k]) => r === fixedRoute && k === fixedKey),
+      '前提：旧缺口已登记',
+    ).toBe(true);
+    expect(fresh[brokenRoute]!.trace, '前提：该键确被问到').toContain(brokenKey);
+    const patched: RequiredTable = {
+      ...REQUIRED,
+      [fixedRoute]: [...REQUIRED[fixedRoute]!, { perm: fixedKey, at: [] }],
+      [brokenRoute]: REQUIRED[brokenRoute]!.filter((o) => !permClaims(o.perm, brokenKey)),
+    };
+    const findings = checkDiscovery(fresh, patched, manifest.declared, KNOWN_GAPS);
+    expect(codes(findings).sort()).toEqual(['PROBE_ADMISSION_UNCLAIMED', 'PROBE_KNOWN_GAP_STALE']);
+    expect(findings.find((f) => f.code === 'PROBE_ADMISSION_UNCLAIMED')!.route).toBe(brokenRoute);
+    expect(findings.find((f) => f.code === 'PROBE_KNOWN_GAP_STALE')!.detail).toContain(fixedRoute);
+  });
+
+  it('精确集合：只补上旧缺口（表已认领）→ PROBE_KNOWN_GAP_STALE，必须同 PR 删登记对', () => {
+    const k = 'GET /api/tenant/org/person-candidates';
+    const claimed = withTable(k, [...REQUIRED[k]!, { perm: 'obj:TenantBase.Organization:{create,update}', at: [] }]);
+    const findings = checkDiscovery(fresh, claimed, manifest.declared, KNOWN_GAPS);
     expect(codes(findings)).toEqual(['PROBE_KNOWN_GAP_STALE']);
+  });
+
+  it('替身默认不回答 data.scope.all（P2-2）：employment 员工详情 / 新增任职不再触发兼容分支的 EmploymentRecord 请求', () => {
+    const detail = fresh['GET /api/tenant/employment/employees/:id']!;
+    expect(detail.trace).not.toContain('obj:TenantBase.EmploymentRecord:view');
+    const create = fresh['POST /api/tenant/employment/employees/:id/businesses']!;
+    expect(create.trace).not.toContain('obj:TenantBase.EmploymentRecord:update');
+    expect(KNOWN_GAPS.map((g) => g.id).join()).not.toContain('trustedScopeBypass');
+  });
+
+  it('真实 HTTP（P2-1 回归）：授予组织 create / update、隐藏三个人员字段 → person-candidates 与真实授权一致返回 403', async () => {
+    const { rig } = await createRig(testDb().db);
+    const ORG = 'TenantBase.Organization';
+    rig.double.configure({
+      grants: [`obj:${ORG}:{create,update}`],
+      fields: { hideFields: { [ORG]: ['personInChargeId', 'hrbpId', 'shopOwnerId'] } },
+    });
+    const denied = await rig.send('GET', '/api/tenant/org/person-candidates');
+    expect(denied.status).toBe(403);
+    rig.double.configure({
+      grants: [`obj:${ORG}:{create,update}`],
+      fields: { hideFields: { [ORG]: ['personInChargeId', 'hrbpId'] } },
+    });
+    expect((await rig.send('GET', '/api/tenant/org/person-candidates')).status).toBe(200);
   });
 
   it('轨迹里确有授权器请求：多数端点触达了授权点（统计），无映射失败', () => {
@@ -237,8 +303,8 @@ describe('AC-PRM-FW-08 P0 反例：表漏登 / 错登', () => {
 });
 
 describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等', () => {
-  /** P3 适用：验参类观测（400 / 404）且不同于占位请求的结果。 */
-  const applicable = () => manifest.declared.filter((r) => p3Applicable(fresh[key(r)]!));
+  /** P3 适用：验参类观测（400 / 404），且不同于占位请求的结果，或有可证明的标识校验位置（ID_CHECK_EVIDENCE）。 */
+  const applicable = () => manifest.declared.filter((r) => p3Applicable(key(r), fresh[key(r)]!));
   const declaredApplicable = () => applicable().filter((r) => r.policy.invalidId !== undefined);
 
   it('真实声明：适用的端点登记的 invalidId 都等于观测码；没登记的没有观测到 400 / 404', () => {
@@ -253,12 +319,12 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
   it('不适用的观测不报：平台非运营 / 自助未绑定的 403、360 链接令牌先于标识校验的 404（等于占位结果）', () => {
     const platform = fresh['GET /api/platform/tenants/:tenantId']!;
     expect(platform.invalidId).toMatchObject({ status: 403, code: 'FORBIDDEN' });
-    expect(p3Applicable(platform)).toBe(false);
+    expect(p3Applicable('GET /api/platform/tenants/:tenantId', platform)).toBe(false);
     const link = fresh['GET /api/survey360/link/tasks/:relationId/questionnaires/:questionnaireId']!;
     expect(link.invalidId).toEqual(link.all);
-    expect(p3Applicable(link)).toBe(false);
+    expect(p3Applicable('GET /api/survey360/link/tasks/:relationId/questionnaires/:questionnaireId', link)).toBe(false);
     const selfService = fresh['GET /api/tenant/self-service/applications/:id']!;
-    expect(p3Applicable(selfService)).toBe(false);
+    expect(p3Applicable('GET /api/tenant/self-service/applications/:id', selfService)).toBe(false);
   });
 
   it('invalidId 改码（400 → 404 / 404 → 400）→ MISMATCH:invalidId', () => {
@@ -289,6 +355,64 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     for (const r of victims.filter((_x, i) => i % 15 === 0)) {
       const { invalidId: _drop, ...rest } = r.policy;
       expect(codes(check([withPolicy(r, rest as RoutePolicy)])), key(r)).toContain('MISMATCH:invalidId');
+    }
+  });
+
+  const EVIDENCED = Object.keys(ID_CHECK_EVIDENCE);
+  /** 审查附录 B 1.3：请求体校验先于标识校验，占位请求与非法标识请求都在请求体处失败，合理未达。 */
+  const BODY_FIRST = [
+    'PUT /api/tenant/employment/transfers/forms/:formId',
+    'PUT /api/tenant/permission/profiles/:id/data-scopes/:appCode',
+    'POST /api/tenant/approval/tasks/:id/jump',
+    'POST /api/tenant/approval/tasks/:id/transfer',
+    'POST /api/tenant/approval/tasks/:id/cc',
+    'PATCH /api/tenant/personnel/employees/:id',
+    'POST /api/tenant/personnel/employees/:id/attachments',
+    'POST /api/tenant/personnel/employees/:employeeId/subsets/:kind',
+    'PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id',
+  ];
+
+  it('第 2 轮 P2-4：占位与非法标识观测相同的 48 个端点有标识校验证据（37 条同为 400 + permission 11 条同为 404），全部适用', () => {
+    expect(EVIDENCED).toHaveLength(48);
+    expect(EVIDENCED).toContain('GET /api/tenant/permission/profiles/:id');
+    expect(checkIdCheckEvidence()).toEqual([]);
+    for (const k of EVIDENCED) {
+      const found = fresh[k]!;
+      expect(found.invalidId, k).toEqual(found.all); // 正是"观测相同"的情形
+      expect(p3Applicable(k, found), k).toBe(true);
+      expect(route(k).policy.invalidId, `${k} 真实声明有 invalidId`).toBeDefined();
+    }
+  });
+
+  it('48 个端点把 invalidId 改成另一个状态码、或删掉声明 → MISMATCH:invalidId（此前被误豁免）', () => {
+    for (const k of EVIDENCED) {
+      const r = route(k);
+      const declared = r.policy.invalidId!;
+      const flipped =
+        declared.status === 400
+          ? { status: 404 as const, code: 'NOT_FOUND' as const }
+          : { status: 400 as const, code: 'VALIDATION_FAILED' as const };
+      expect(codes(check([withPolicy(r, { ...r.policy, invalidId: flipped } as RoutePolicy)])), `${k} 改码`).toContain(
+        'MISMATCH:invalidId',
+      );
+      const { invalidId: _drop, ...rest } = r.policy;
+      expect(codes(check([withPolicy(r, rest as RoutePolicy)])), `${k} 删声明`).toContain('MISMATCH:invalidId');
+    }
+  });
+
+  it('标识校验证据被改（锚点不再出现在文件里）→ PROBE_ID_EVIDENCE_STALE；证据缺失的相同观测仍判未达', () => {
+    const k = EVIDENCED[0]!;
+    const broken = { ...ID_CHECK_EVIDENCE, [k]: { ...ID_CHECK_EVIDENCE[k]!, anchor: 'noSuchAnchorAnywhere(c)' } };
+    expect(codes(checkIdCheckEvidence(broken))).toEqual(['PROBE_ID_EVIDENCE_STALE']);
+    const { [k]: _gone, ...without } = ID_CHECK_EVIDENCE;
+    expect(p3Applicable(k, fresh[k]!, without)).toBe(false);
+  });
+
+  it('请求体先于标识校验的 9 个端点保持合理未达（不在证据表里，观测相同 → 不适用，不能凭状态码相同误报）', () => {
+    for (const k of BODY_FIRST) {
+      expect(EVIDENCED, k).not.toContain(k);
+      expect(fresh[k]!.invalidId, k).toEqual(fresh[k]!.all);
+      expect(p3Applicable(k, fresh[k]!), k).toBe(false);
     }
   });
 
