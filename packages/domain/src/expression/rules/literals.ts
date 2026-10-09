@@ -17,11 +17,23 @@ const fail = (failure: LiteralFailure): LiteralResult => ({ ok: false, failure }
 const MULTI_DELIMITER = '|';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** 十进制文本，绝不出现科学计数法（引擎词法不认）；-0 归一为 0。 */
+const EXPONENT_FORM = /^(-?)(\d+)(?:\.(\d+))?e([+-]\d+)$/;
+
+/**
+ * 十进制文本，绝不出现科学计数法（引擎词法不认）。`String(value)` 是能还原该 double 的最短表示，
+ * 带指数时把有效数字和指数**精确展开**（只挪小数点、补零，不舍入），所以引擎 `Number(文本)` 读回的就是原值；
+ * 不能用 `toLocaleString` 之类的格式化——它按小数位数舍入，会让同值比较和阈值比较结果翻转。
+ */
 export function formatNumberLiteral(value: number): string {
   const text = String(value);
-  if (!/e/i.test(text)) return text;
-  return value.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 20 });
+  const parts = EXPONENT_FORM.exec(text);
+  if (!parts) return text;
+  const [, sign, whole, fraction = '', exponent] = parts;
+  const digits = `${whole}${fraction}`;
+  const pointAt = whole!.length + Number(exponent);
+  if (pointAt <= 0) return `${sign}0.${'0'.repeat(-pointAt)}${digits}`;
+  if (pointAt >= digits.length) return `${sign}${digits}${'0'.repeat(pointAt - digits.length)}`;
+  return `${sign}${digits.slice(0, pointAt)}.${digits.slice(pointAt)}`;
 }
 
 const quote = (value: string): LiteralResult => (/["\r\n]/.test(value) ? fail('LITERAL_INVALID') : ok(`"${value}"`));

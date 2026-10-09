@@ -28,9 +28,10 @@ export type RowExpressionParseResult =
 /** 行号位数上限：远超行数上限 50，只为避免超出安全整数。 */
 const MAX_ROW_NO_DIGITS = 9;
 
+/** `invalid` = 词法错误：不立即抛出，等解析器走到它才报，这样更早位置的语法错误（含括号过深）优先。 */
 type Token =
   | { readonly kind: 'int'; readonly rowNo: number; readonly offset: number }
-  | { readonly kind: 'and' | 'or' | '(' | ')' | 'end'; readonly offset: number };
+  | { readonly kind: 'and' | 'or' | '(' | ')' | 'end' | 'invalid'; readonly offset: number };
 
 class ParseFailure extends Error {
   constructor(readonly error: RowExpressionError) {
@@ -58,17 +59,15 @@ class Lexer {
     }
     if (isDigit(ch)) return this.integer(start);
     if (isAsciiLetter(ch)) return this.keyword(start);
-    throw new ParseFailure({ code: 'RULE_EXPRESSION_SYNTAX', offset: start });
+    return { kind: 'invalid', offset: start };
   }
 
   private integer(start: number): Token {
     let end = start;
     while (end < this.source.length && isDigit(this.source[end]!)) end++;
     const digits = this.source.slice(start, end);
-    if (digits[0] === '0' || digits.length > MAX_ROW_NO_DIGITS) {
-      throw new ParseFailure({ code: 'RULE_EXPRESSION_SYNTAX', offset: start });
-    }
     this.offset = end;
+    if (digits[0] === '0' || digits.length > MAX_ROW_NO_DIGITS) return { kind: 'invalid', offset: start };
     return { kind: 'int', rowNo: Number(digits), offset: start };
   }
 
@@ -76,9 +75,8 @@ class Lexer {
     let end = start;
     while (end < this.source.length && isAsciiLetter(this.source[end]!)) end++;
     const word = this.source.slice(start, end).toLowerCase();
-    if (word !== 'and' && word !== 'or') throw new ParseFailure({ code: 'RULE_EXPRESSION_SYNTAX', offset: start });
     this.offset = end;
-    return { kind: word, offset: start };
+    return word === 'and' || word === 'or' ? { kind: word, offset: start } : { kind: 'invalid', offset: start };
   }
 }
 
@@ -101,7 +99,8 @@ class Parser {
 
   private advance(): Token {
     const token = this.current;
-    if (token.kind !== 'end') this.current = this.lexer.next();
+    // 词法错误之后不再往下切词：后面的内容没有意义，也保证报出的是最早的错误位置
+    if (token.kind !== 'end' && token.kind !== 'invalid') this.current = this.lexer.next();
     return token;
   }
 
@@ -114,7 +113,8 @@ class Parser {
     const operands: RowExpressionNode[] = [];
     do {
       const operand = op === 'or' ? this.parseChain('and') : this.parseFactor();
-      if (operand.kind === op) operands.push(...operand.operands);
+      // 不用 push(...展开)：参数个数过多会 RangeError；引用预算之外也不会走到这里
+      if (operand.kind === op) for (const inner of operand.operands) operands.push(inner);
       else operands.push(operand);
     } while (this.current.kind === op && this.advance());
     return operands.length === 1 ? operands[0]! : { kind: op, operands };
@@ -123,6 +123,9 @@ class Parser {
   private parseFactor(): RowExpressionNode {
     const token = this.advance();
     if (token.kind === 'int') {
+      if (this.refs.length >= RULE_LIMITS.maxExpressionRefs) {
+        throw new ParseFailure({ code: 'RULE_TOO_LARGE', offset: token.offset });
+      }
       this.refs.push({ rowNo: token.rowNo, offset: token.offset });
       return { kind: 'row', rowNo: token.rowNo };
     }

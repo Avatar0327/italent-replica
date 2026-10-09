@@ -128,15 +128,17 @@ export function buildRowCode(
     code: { text, parenthesized, path, engineKind, valueMissing },
   });
 
+  // 候选值上限对所有运算符一视同仁（is_empty / not_empty 的多余值虽被忽略，也不应无限长）
+  const values = row.values ?? [];
+  if (values.length > RULE_LIMITS.maxValuesPerRow) {
+    return { ok: false, error: { code: 'RULE_TOO_LARGE', rowNo: row.rowNo } };
+  }
   if (!operatorAllowed(row.operator, kind)) return invalid(row.rowNo, 'OPERATOR_INVALID');
   if (row.operator === 'is_empty') return done(`IsEmpty(${path})`, false);
   if (row.operator === 'not_empty') return done(`not IsEmpty(${path})`, false);
 
-  const values = row.values ?? [];
   // 值列为空：整行按“不满足”，保存时给警告而不是拦截（DEC-305④）
   if (values.length === 0) return done('false', false, true);
-  if (values.length > RULE_LIMITS.maxValuesPerRow)
-    return { ok: false, error: { code: 'RULE_TOO_LARGE', rowNo: row.rowNo } };
   if (!valueCountMatches(row.operator, values.length)) return invalid(row.rowNo, 'VALUE_COUNT');
 
   const literals: string[] = [];

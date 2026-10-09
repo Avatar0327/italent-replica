@@ -9,6 +9,11 @@ export const RULE_LIMITS = {
   maxRows: 50,
   maxValuesPerRow: 20,
   maxParenDepth: 20,
+  /**
+   * 组合表达式里行引用的次数上限。一次引用发码至少 3 词（括号 + `false`），引擎 800 词的上限决定了
+   * 超过 200 次的表达式不可能编译成功，所以在解析阶段就拒绝，避免对超长输入做无谓的展开。
+   */
+  maxExpressionRefs: 200,
 } as const;
 
 export type RuleErrorCode =

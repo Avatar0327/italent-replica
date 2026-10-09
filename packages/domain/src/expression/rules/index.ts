@@ -9,7 +9,7 @@ export {
   type RuleRowInvalidReason,
   type RuleWarning,
 } from './diagnostics.js';
-export { describeRuleFailure, locateRuleRow, type RuleFailureReport } from './failures.js';
+export { describeRuleFailure, locateRuleRow, renderRuleFailureText, type RuleFailureReport } from './failures.js';
 export {
   parseRowExpression,
   type RowExpressionError,

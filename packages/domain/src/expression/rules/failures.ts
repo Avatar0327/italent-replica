@@ -31,16 +31,36 @@ const FALLBACK_TEXT = '条件表达式出错';
 
 /** offset 落在哪个行引用区间（左闭右开）就是哪一行；同一行多处引用都能命中。 */
 export function locateRuleRow(rowSpans: CompiledRuleSet['rowSpans'], offset: number | undefined): number | undefined {
-  if (offset === undefined) return undefined;
+  if (offset === undefined || offset < 0) return undefined;
   return rowSpans.find((span) => offset >= span.start && offset < span.end)?.rowNo;
+}
+
+/**
+ * 失败位置的字符偏移：优先 offset；引擎有时只给行列。生成的公式恒为单行（值里的换行已被拒绝），
+ * 所以第 1 行的第 n 列就是偏移 n - 1；多行位置不猜。
+ */
+function offsetOf(failure: ComputationFailure): number | undefined {
+  if (failure.offset !== undefined) return failure.offset;
+  return failure.line === 1 && failure.column !== undefined ? failure.column - 1 : undefined;
+}
+
+/**
+ * 按错误码和行号渲染固定文案。列表、详情、失败明细、通知、审计只存 `code` + `rowNo`，
+ * 展示时统一走这里重新渲染，不存文案、不用引擎 message（§3.4）。
+ */
+export function renderRuleFailureText(code: FailureCode, rowNo?: number): string {
+  const reason = REASONS[code];
+  return rowNo === undefined || reason === undefined ? FALLBACK_TEXT : `第 ${rowNo} 行条件出错：${reason}`;
 }
 
 export function describeRuleFailure(
   failure: ComputationFailure,
   rowSpans: CompiledRuleSet['rowSpans'],
 ): RuleFailureReport {
-  const rowNo = locateRuleRow(rowSpans, failure.offset);
-  const reason = REASONS[failure.code];
-  if (rowNo === undefined || reason === undefined) return { code: failure.code, text: FALLBACK_TEXT };
-  return { code: failure.code, rowNo, text: `第 ${rowNo} 行条件出错：${reason}` };
+  const rowNo = locateRuleRow(rowSpans, offsetOf(failure));
+  const text = renderRuleFailureText(failure.code, rowNo);
+  // 没有对应固定文案的错误码即使定位到行也不带行号，与文案保持一致
+  return rowNo === undefined || REASONS[failure.code] === undefined
+    ? { code: failure.code, text }
+    : { code: failure.code, rowNo, text };
 }
