@@ -30,6 +30,7 @@ import {
 import { registerQualificationCandidates } from './candidates.js';
 import * as config from './config-service.js';
 import { registerExtras } from './extras.js';
+import { installQualificationIndicatorPort } from './indicator-port.js';
 import './subset-policy.js'; // 登记 qualification 子集策略（C1-1）
 import * as input from './input.js';
 import * as read from './read-model.js';
@@ -181,6 +182,8 @@ const SPECS = {
 } as const;
 
 export function registerQualificationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  // 指标端口随装配登记（C1-3；PR-0 契约：未装配时为 null）
+  installQualificationIndicatorPort();
   registerQualificationCandidates(router, deps);
   registerExtras(router, deps);
   for (const spec of Object.values(SPECS)) registerObject(router, deps, spec as ObjectRoutes<object, object>);
