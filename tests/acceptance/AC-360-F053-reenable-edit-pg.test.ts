@@ -2,132 +2,34 @@
  * F-053（#107 PR-A3 第 5 轮自检疑点 c，DEC-319③）：编辑“已使用的套卷”与“重新启用活动”并发。
  * 真实 PG 交错：编辑先持锁、启用先持锁、编辑与评价者保存 / 提交在重新启用前后交错，断言计分、作答与审计一致。
  * 不变量（25 §3.1 E3-R2）：套卷被编辑的提交点，不得有任何用到它的活动处于启用状态；启用校验看到的内容就是启用时的内容。
+ * 多套卷取锁顺序（启用 × 新增对象 / 替换套卷）见 AC-360-F053-lock-order-pg.test.ts。
  */
-import { type Db, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as context from '../../apps/api/src/modules/survey360/context.js';
-import { overall, type QuestionnaireView, type World360, world360 } from './AC-360-support.js';
+import { overall, world360 } from './AC-360-support.js';
+import {
+  auditCount,
+  auditOf,
+  blockedOrDone,
+  edit,
+  editAudits,
+  editContent,
+  EDIT_TEXT,
+  enable,
+  expectBlocked,
+  get,
+  pauseAt,
+  QUESTIONNAIRE_LOCK,
+  questionnaireOf,
+  snapshot,
+  started,
+} from './AC-360-F053-support.js';
 
 const testDb = useTestDb();
 afterEach(() => vi.restoreAllMocks());
 
-function signal() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
-}
-
-/** 请求要么在真实数据库锁上等待（返回 'blocked'），要么已经结束（返回响应，说明两条路径没有被串行化）。 */
-async function blockedOrDone(db: Db, pattern: string, request: Promise<Response>): Promise<'blocked' | Response> {
-  let done: Response | undefined;
-  void request.then((res) => {
-    done = res;
-  });
-  const deadline = Date.now() + 8000;
-  while (Date.now() < deadline) {
-    if (done) return done;
-    const waiting = context.rows<{ n: number }>(
-      await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
-        WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE ${pattern}`),
-    );
-    if (waiting[0]!.n > 0) return 'blocked';
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  throw new Error('请求既未结束也未观测到真实锁等待');
-}
-
-/** 命令在 audit360 处暂停：此时业务写入已完成、事务未提交，持有的锁仍在。 */
-function pauseAt(action: string) {
-  const reached = signal();
-  const release = signal();
-  const original = context.audit360;
-  vi.spyOn(context, 'audit360').mockImplementation(async (...args) => {
-    await original(...args);
-    if (args[2].action === action) {
-      reached.resolve();
-      await release.promise;
-    }
-  });
-  return { reached, release };
-}
-
-async function started(reached: ReturnType<typeof signal>, request: Promise<Response>) {
-  await Promise.race([
-    reached.promise,
-    request.then((res) => {
-      throw new Error('请求未到暂停点：' + res.status);
-    }),
-  ]);
-}
-
-async function expectBlocked(db: Db, request: Promise<Response>) {
-  const outcome = await blockedOrDone(db, '%survey360_questionnaires%', request);
-  expect(outcome === 'blocked' ? 'blocked' : `未等待套卷锁，已返回 ${outcome.status}`).toBe('blocked');
-}
-
-const EDIT_TEXT = '主动沟通（修订）';
-
-/** 他评套卷：上级 / 同事等角色同 AC-360-03；q1 权重改 3 后，上级 v4 + v2 的角色分 3.0 → 3.5。 */
-async function questionnaireOf(w: World360, used: boolean) {
-  const q = await w.enableQuestionnaire(await w.keyBehavior());
-  const activity = await w.activity();
-  const target = await w.person('评价对象');
-  const object = await w.object(activity.id, target.id, [q.id]);
-  const a = await w.person('评价者甲');
-  const b = await w.person('评价者乙');
-  const relationA = await w.appraiser(activity.id, object.id, a.id, 'superior');
-  const relationB = await w.appraiser(activity.id, object.id, b.id, 'peer');
-  const ctx = { q, activity, object, a, b, relationA, relationB };
-  if (!used) return ctx;
-  await w.transition(activity.id, 'enable');
-  const tokenA = await w.token(activity.id, a.id);
-  const done = await w.answer(tokenA, relationA.id, q, ['v4', 'v2']);
-  await w.ok(done as Response);
-  await w.transition(activity.id, 'disable'); // 套卷已使用、活动已停用，等待“重新启用”
-  return ctx;
-}
-
-const get = (w: World360, id: string) =>
-  w.ok<QuestionnaireView & { revision: number }>(w.request('GET', `/questionnaires/${id}`));
-
-function editContent(w: World360, q1Weight: number, withoutRole?: string) {
-  const content = w.keyBehaviorContent({ self: 0, superior: 5, peer: 3, subordinate: 2 });
-  return {
-    ...content,
-    roles: content.roles.filter((r) => r.key !== withoutRole),
-    questions: [{ ...content.questions[0]!, text: EDIT_TEXT, weight: q1Weight }, content.questions[1]!],
-  };
-}
-
-async function edit(w: World360, id: string, content: ReturnType<typeof editContent>) {
-  const current = await get(w, id);
-  return w.request('PUT', `/questionnaires/${id}`, { ifMatch: current.revision, body: { content } });
-}
-
-async function enable(w: World360, activityId: string) {
-  const current = await w.getActivity(activityId);
-  return w.request('POST', `/activities/${activityId}/enable`, { ifMatch: current.revision });
-}
-
-async function snapshot(w: World360, ctx: Awaited<ReturnType<typeof questionnaireOf>>) {
-  const q = await get(w, ctx.q.id);
-  const activity = await w.getActivity(ctx.activity.id);
-  const counts = await withTenant(w.db, w.tenantId, async (tx) =>
-    context.rows<{ sheets: number; submitted: number; answers: number; batches: number }>(
-      await tx.execute(sql`SELECT
-        (SELECT count(*)::int FROM survey360_sheets WHERE activity_id = ${ctx.activity.id}) AS sheets,
-        (SELECT count(*)::int FROM survey360_sheets WHERE activity_id = ${ctx.activity.id} AND status = 'submitted')
-          AS submitted,
-        (SELECT count(*)::int FROM survey360_answers an JOIN survey360_sheets s
-          ON s.tenant_id = an.tenant_id AND s.id = an.sheet_id WHERE s.activity_id = ${ctx.activity.id}) AS answers,
-        (SELECT count(*)::int FROM survey360_score_batches WHERE activity_id = ${ctx.activity.id}) AS batches`),
-    ),
-  );
-  return { text: q.questions[0]!.text, status: q.status, activity: activity.status, ...counts[0]! };
-}
+const reasonOf = async (res: Response) =>
+  ((await res.json()) as { error: { details?: { reason?: string } } }).error.details?.reason;
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
   'AC-360-09 / F-053（DEC-319③）真实 PG：已使用套卷编辑 × 重新启用活动',
@@ -135,6 +37,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
     it('编辑先持锁（已过“无启用活动”检查、未提交）：重新启用必须等编辑提交；两者先后成功，计分用修订后的权重', async () => {
       const w = await world360(testDb().db, 'f053-edit-first');
       const ctx = await questionnaireOf(w, true);
+      const before = await snapshot(w, ctx);
+      const editsBefore = await editAudits(w, ctx.q.id);
       const gate = pauseAt('survey360.questionnaire.update');
       const editing = edit(w, ctx.q.id, editContent(w, 3));
       let enabling: Promise<Response> | undefined;
@@ -149,13 +53,17 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
         gate.release.resolve();
         await w.ok(editing);
         await w.ok(enabling);
-        expect(await snapshot(w, ctx)).toMatchObject({
-          text: EDIT_TEXT,
-          activity: 'enabled',
-          sheets: 1,
-          submitted: 1,
-          answers: 2,
+        const after = await snapshot(w, ctx);
+        expect(after).toMatchObject({ text: EDIT_TEXT, activity: 'enabled', sheets: 1, submitted: 1, answers: 2 });
+        // 旧答卷与答案逐行不变（编辑只改文字 / 权重，选项 ID 稳定）
+        expect(after.sheetRows).toEqual(before.sheetRows);
+        expect(after.answerRows).toEqual(before.answerRows);
+        // 审计：恰好多一条成功的编辑审计，内容是修订后的套卷；启用审计 2 条（首次 + 重新启用）
+        expect(await editAudits(w, ctx.q.id)).toEqual({
+          total: editsBefore.total + 1,
+          revised: editsBefore.revised + 1,
         });
+        expect(await auditOf(w, 'survey360.activity.enable', ctx.activity.id)).toHaveLength(2);
         // 重新启用后评价者乙在修订后的套卷上保存并提交，停用后全部按修订后的权重重新计分
         const tokenB = await w.token(ctx.activity.id, ctx.b.id);
         await w.ok((await w.answer(tokenB, ctx.relationB.id, await get(w, ctx.q.id), ['v3', 'v3'])) as Response);
@@ -174,12 +82,23 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
       const w = await world360(testDb().db, 'f053-enable-first');
       const ctx = await questionnaireOf(w, true);
       const before = await snapshot(w, ctx);
+      const editsBefore = await editAudits(w, ctx.q.id);
       const revision = (await get(w, ctx.q.id)).revision;
+      const tokenB = await w.token(ctx.activity.id, ctx.b.id);
+      const path = `/tasks/${ctx.relationB.id}/questionnaires/${ctx.q.id}`;
       const gate = pauseAt('survey360.activity.enable');
       const enabling = enable(w, ctx.activity.id);
       let editing: Promise<Response> | undefined;
       try {
         await started(gate.reached, enabling);
+        // 启用事务未提交期间：评价者保存仍被拒（活动还是停用），不留答卷
+        const answers = ctx.q.questions.map((q) => ({
+          itemId: q.id,
+          optionId: ctx.q.scales[0]!.options.find((o) => o.key === 'v3')!.id,
+        }));
+        const early = await w.link(tokenB)('PUT', path, { ifMatch: 0, body: { answers } });
+        expect(early.status).toBe(409);
+        expect(await reasonOf(early)).toBe('ACTIVITY_NOT_OPEN');
         editing = edit(w, ctx.q.id, editContent(w, 3));
         const outcome = await blockedOrDone(w.db, '%survey360_questionnaires%', editing);
         expect(
@@ -192,12 +111,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
         await w.ok(enabling);
         const rejected = await editing;
         expect(rejected.status).toBe(409);
-        expect(await rejected.json()).toMatchObject({ error: { details: { reason: 'ACTIVITY_ENABLED' } } });
-        const after = await snapshot(w, ctx);
-        expect(after).toEqual({ ...before, activity: 'enabled' });
+        expect(await reasonOf(rejected)).toBe('ACTIVITY_ENABLED');
+        expect(await snapshot(w, ctx)).toEqual({ ...before, activity: 'enabled' });
         expect((await get(w, ctx.q.id)).revision).toBe(revision);
+        // 审计：被拒的编辑不留成功审计，启用审计多一条
+        expect(await editAudits(w, ctx.q.id)).toEqual(editsBefore);
+        expect(await auditOf(w, 'survey360.activity.enable', ctx.activity.id)).toHaveLength(2);
         // 活动启用期间评价者乙按原套卷保存并提交；停用后计分仍用原权重
-        const tokenB = await w.token(ctx.activity.id, ctx.b.id);
         await w.ok((await w.answer(tokenB, ctx.relationB.id, await get(w, ctx.q.id), ['v3', 'v3'])) as Response);
         await w.transition(ctx.activity.id, 'disable');
         const rows = await w.scores(ctx.activity.id, ctx.object.id);
@@ -208,7 +128,7 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
       }
     });
 
-    it('编辑先持锁期间：评价者保存被“活动未启用”拒绝且不留答卷；重新启用后保存 / 提交落在修订后的套卷上', async () => {
+    it('编辑先持锁期间：评价者保存 / 提交被“活动未启用”拒绝且不留答卷与审计；重新启用后保存 / 提交落在修订后的套卷上', async () => {
       const w = await world360(testDb().db, 'f053-rater');
       const ctx = await questionnaireOf(w, true);
       const tokenB = await w.token(ctx.activity.id, ctx.b.id);
@@ -217,6 +137,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
         itemId: q.id,
         optionId: ctx.q.scales[0]!.options.find((o) => o.key === 'v3')!.id,
       }));
+      const saves = await auditCount(w, 'survey360.sheet.save');
+      const submits = await auditCount(w, 'survey360.sheet.submit');
       const gate = pauseAt('survey360.questionnaire.update');
       const editing = edit(w, ctx.q.id, editContent(w, 3));
       let enabling: Promise<Response> | undefined;
@@ -226,8 +148,14 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
         await expectBlocked(w.db, enabling);
         const early = await w.link(tokenB)('PUT', path, { ifMatch: 0, body: { answers } });
         expect(early.status).toBe(409);
-        expect(await early.json()).toMatchObject({ error: { details: { reason: 'ACTIVITY_NOT_OPEN' } } });
+        expect(await reasonOf(early)).toBe('ACTIVITY_NOT_OPEN');
+        // 重新启用前的提交请求同样被拒
+        const earlySubmit = await w.link(tokenB)('POST', `${path}/submit`, { ifMatch: 0 });
+        expect(earlySubmit.status).toBe(409);
+        expect(await reasonOf(earlySubmit)).toBe('ACTIVITY_NOT_OPEN');
         expect(await snapshot(w, ctx)).toMatchObject({ sheets: 1, answers: 2, activity: 'disabled' });
+        expect(await auditCount(w, 'survey360.sheet.save')).toBe(saves);
+        expect(await auditCount(w, 'survey360.sheet.submit')).toBe(submits);
         gate.release.resolve();
         await w.ok(editing);
         await w.ok(enabling);
@@ -236,6 +164,8 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
         const page = await w.ok<{ questionnaire: { items: { text: string }[] } }>(w.link(tokenB)('GET', path));
         expect(page.questionnaire.items.map((i) => i.text)).toContain(EDIT_TEXT);
         expect(await snapshot(w, ctx)).toMatchObject({ sheets: 2, submitted: 2, answers: 4 });
+        expect(await auditCount(w, 'survey360.sheet.save')).toBe(saves + 1);
+        expect(await auditCount(w, 'survey360.sheet.submit')).toBe(submits + 1);
       } finally {
         gate.release.resolve();
         await Promise.allSettled([editing, ...(enabling ? [enabling] : [])]);
@@ -256,49 +186,90 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
         await w.ok(editing);
         const rejected = await enabling;
         expect(rejected.status, '活动按编辑前的角色通过校验 → 启用后存在评价角色不在套卷里的关系').toBe(400);
-        expect(await rejected.json()).toMatchObject({ error: { details: { reason: 'ROLE_NOT_IN_QUESTIONNAIRE' } } });
+        expect(await reasonOf(rejected)).toBe('ROLE_NOT_IN_QUESTIONNAIRE');
         expect(await snapshot(w, ctx)).toMatchObject({ activity: 'draft', status: 'enabled', sheets: 0 });
+        expect((await editAudits(w, ctx.q.id)).revised).toBe(1);
+        expect(await auditOf(w, 'survey360.activity.enable', ctx.activity.id)).toHaveLength(0);
       } finally {
         gate.release.resolve();
         await Promise.allSettled([editing, ...(enabling ? [enabling] : [])]);
       }
     });
 
-    it('相邻入口：已启用活动给评价对象加用该套卷，与编辑互斥（外键锁），任一先后都不留“启用中被改”', async () => {
-      const w = await world360(testDb().db, 'f053-add-object');
-      const ctx = await questionnaireOf(w, true); // 套卷已使用、第一个活动已停用
-      const other = await w.enableQuestionnaire(await w.keyBehavior());
-      const live = await w.activity();
-      await w.object(live.id, (await w.person('在线对象')).id, [other.id]);
-      await w.transition(live.id, 'enable'); // 另一个活动正在进行，但没用到 ctx.q
-      const addObject = async () =>
-        w.request('POST', `/activities/${live.id}/objects`, {
-          ifMatch: 0,
-          body: { personId: (await w.person('新增对象')).id, questionnaireIds: [ctx.q.id] },
-        });
-      // 编辑先：加对象等编辑提交，随后用的就是修订后的套卷
-      const editGate = pauseAt('survey360.questionnaire.update');
-      const editing = edit(w, ctx.q.id, editContent(w, 3));
-      let adding: Promise<Response> | undefined;
-      try {
-        await started(editGate.reached, editing);
-        adding = addObject();
-        const outcome = await blockedOrDone(w.db, '%survey360_object_questionnaires%', adding);
-        expect(outcome === 'blocked' ? 'blocked' : `加对象未等待编辑，已返回 ${outcome.status}`).toBe('blocked');
-        editGate.release.resolve();
-        await w.ok(editing);
-        await w.ok(adding, 201);
-      } finally {
-        editGate.release.resolve();
-        await Promise.allSettled([editing, ...(adding ? [adding] : [])]);
+    // 相邻入口：已启用活动里给评价对象加 / 换用该套卷，与编辑靠套卷行锁 / 外键锁互斥（修复前后都应成立）
+    describe.each([
+      { entry: '新增评价对象', pauseOn: 'survey360.object.create' },
+      { entry: '替换评价对象的套卷', pauseOn: 'survey360.object.questionnaires' },
+    ])('相邻入口：$entry × 编辑', ({ entry, pauseOn }) => {
+      async function setup(label: string) {
+        const w = await world360(testDb().db, label);
+        const ctx = await questionnaireOf(w, true); // 套卷已使用、第一个活动已停用
+        const other = await w.enableQuestionnaire(await w.keyBehavior());
+        const live = await w.activity();
+        const liveObject = await w.object(live.id, (await w.person('在线对象')).id, [other.id]);
+        await w.transition(live.id, 'enable'); // 另一个活动正在进行，但还没用到 ctx.q
+        const newcomer = (await w.person('新增对象')).id;
+        const run = () =>
+          entry === '新增评价对象'
+            ? w.request('POST', `/activities/${live.id}/objects`, {
+                ifMatch: 0,
+                body: { personId: newcomer, questionnaireIds: [ctx.q.id] },
+              })
+            : w.request('PUT', `/activities/${live.id}/objects/${liveObject.id}/questionnaires`, {
+                ifMatch: liveObject.revision,
+                body: { questionnaireIds: [ctx.q.id] },
+              });
+        return { w, ctx, run };
       }
-      // 活动已在用该套卷：之后的编辑一律拒绝
-      const late = await edit(w, ctx.q.id, editContent(w, 2));
-      expect(late.status).toBe(409);
-      expect(await late.json()).toMatchObject({ error: { details: { reason: 'ACTIVITY_ENABLED' } } });
+
+      it('编辑先持锁：入口等编辑提交，随后用的就是修订后的套卷；之后再编辑一律拒绝', async () => {
+        const { w, ctx, run } = await setup('f053-adj-edit-first');
+        const gate = pauseAt('survey360.questionnaire.update');
+        const editing = edit(w, ctx.q.id, editContent(w, 3));
+        let running: Promise<Response> | undefined;
+        try {
+          await started(gate.reached, editing);
+          running = run();
+          await expectBlocked(w.db, running, QUESTIONNAIRE_LOCK);
+          gate.release.resolve();
+          await w.ok(editing);
+          expect((await running).status).toBeLessThan(300);
+        } finally {
+          gate.release.resolve();
+          await Promise.allSettled([editing, ...(running ? [running] : [])]);
+        }
+        expect((await editAudits(w, ctx.q.id)).revised).toBe(1);
+        const late = await edit(w, ctx.q.id, editContent(w, 2));
+        expect(late.status).toBe(409);
+        expect(await reasonOf(late)).toBe('ACTIVITY_ENABLED');
+      });
+
+      it('入口先持锁：编辑等入口提交，再被“活动启用中”拒绝，套卷不变、不留成功审计', async () => {
+        const { w, ctx, run } = await setup('f053-adj-entry-first');
+        const revision = (await get(w, ctx.q.id)).revision;
+        const editsBefore = await editAudits(w, ctx.q.id);
+        const gate = pauseAt(pauseOn);
+        const running = run();
+        let editing: Promise<Response> | undefined;
+        try {
+          await started(gate.reached, running);
+          editing = edit(w, ctx.q.id, editContent(w, 3));
+          await expectBlocked(w.db, editing);
+          gate.release.resolve();
+          expect((await running).status).toBeLessThan(300);
+          const rejected = await editing;
+          expect(rejected.status).toBe(409);
+          expect(await reasonOf(rejected)).toBe('ACTIVITY_ENABLED');
+        } finally {
+          gate.release.resolve();
+          await Promise.allSettled([running, ...(editing ? [editing] : [])]);
+        }
+        expect((await get(w, ctx.q.id)).revision).toBe(revision);
+        expect(await editAudits(w, ctx.q.id)).toEqual(editsBefore);
+      });
     });
 
-    it('两个活动共用一套卷同时启用并有编辑：不死锁、无 5xx，响应与最终状态一致', async () => {
+    it('两个活动共用一套卷同时启用并有编辑：不死锁，两次启用都成功，编辑只可能成功或被“活动启用中”拒绝', async () => {
       const w = await world360(testDb().db, 'f053-deadlock');
       const first = await questionnaireOf(w, true);
       const second = await w.activity();
@@ -308,14 +279,17 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
         enable(w, second.id),
         edit(w, first.q.id, editContent(w, 3)),
       ]);
-      for (const res of [a, b, c]) expect([200, 400, 409], await res.clone().text()).toContain(res.status);
-      expect((await w.getActivity(first.activity.id)).status).toBe(a.status === 200 ? 'enabled' : 'disabled');
-      expect((await w.getActivity(second.id)).status).toBe(b.status === 200 ? 'enabled' : 'draft');
+      // 启用不是冲突方：任何非 200（含被映射成 409 REVISION_CONFLICT 的死锁牺牲者）都不通过
+      expect([a.status, b.status], await a.clone().text()).toEqual([200, 200]);
+      expect((await w.getActivity(first.activity.id)).status).toBe('enabled');
+      expect((await w.getActivity(second.id)).status).toBe('enabled');
       const edited = (await get(w, first.q.id)).questions[0]!.text === EDIT_TEXT;
       expect(edited).toBe(c.status === 200);
-      // 编辑成功 ⇒ 它提交时没有活动在启用状态：此后启用的活动，启用校验看到的就是修订后的内容
-      if (c.status === 409)
-        expect(await c.json()).toMatchObject({ error: { details: { reason: 'ACTIVITY_ENABLED' } } });
+      // 编辑成功 ⇒ 它排在两次启用之前；否则必是被启用中的活动拒绝（不是 REVISION_CONFLICT 等其他 409）
+      if (c.status !== 200) {
+        expect(c.status).toBe(409);
+        expect(await reasonOf(c)).toBe('ACTIVITY_ENABLED');
+      }
     });
   },
 );
