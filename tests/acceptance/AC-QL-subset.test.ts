@@ -424,16 +424,21 @@ describe('AC-QL-subset 自助不开放 🟡（Q-M0-133 剩余，DEC-365③）', 
     expect(returned.status).toBe('returned');
     // 夹具：把这张待审批申请改成 qualification 子集（自助入口已不可能产生它）
     const values = { categoryId: randomUUID(), levelId: randomUUID(), startDate: '2026-02-01' };
-    // 可信夹具：以库所有者身份改（应用角色对申请表只有 status / revision 的更新权；载荷以最新版本为准）
+    // 可信夹具：以库所有者身份改（应用角色对申请表只有 status / revision 的更新权；载荷以最新版本为准）。
+    // 真 PG 上表启用了强制行级安全，所有者也要带租户上下文；改不到行就让用例失败，不静默跳过。
     const payload = JSON.stringify(values);
-    await w.db.execute(
-      sql`UPDATE personnel_change_requests SET subset = 'qualification', values = ${payload}::jsonb
-        WHERE id = ${request.id}::uuid`,
-    );
-    await w.db.execute(
-      sql`UPDATE personnel_change_request_versions SET values = ${payload}::jsonb
-        WHERE request_id = ${request.id}::uuid`,
-    );
+    await w.db.transaction(async (t) => {
+      await t.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
+      const changed = rowsOf<{ id: string }>(
+        await t.execute(sql`UPDATE personnel_change_requests SET subset = 'qualification', values = ${payload}::jsonb
+          WHERE id = ${request.id}::uuid RETURNING id`),
+      );
+      const versions = rowsOf<{ id: string }>(
+        await t.execute(sql`UPDATE personnel_change_request_versions SET values = ${payload}::jsonb
+          WHERE request_id = ${request.id}::uuid RETURNING id`),
+      );
+      expect([changed.length, versions.length]).toEqual([1, 1]);
+    });
     const state = () =>
       tx(async (t) => ({
         request: rowsOf<{ status: string; revision: number }>(
