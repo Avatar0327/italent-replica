@@ -227,10 +227,13 @@ async function isPlanMentor(tx: Tx, plan: PlanRow, employeeId: string, sources: 
   return hit !== undefined;
 }
 
+/** 转交目标被拒的唯一响应：范围外、纯账号、不存在、以及“仅凭例外放行”后的任何失败都用它（DEC-354 不可区分）。 */
+const targetHidden = () => new AppError('NOT_FOUND', '转交目标不存在');
+
 /**
  * 转交目标须是已绑定员工、且在操作人的 IDP 范围内（IDP-R16“受管理单元限制”；引用 ID 写入前校验范围）；
- * 例外（DEC-354）：该计划已有的指导人或带教人，即使在范围外也可以。纯账号（未绑定员工）仍拒绝。账号不存在、
- * 未绑定员工、范围外且不是该计划指导人 / 带教人三种情况同一个 404（同一响应），不暴露存在性。
+ * 例外（DEC-354）：该计划已有的指导人或带教人，即使在范围外也可以（返回 `mentor`，调用方须把其后的失败都改成同一响应）。
+ * 纯账号（未绑定员工）仍拒绝。账号不存在、未绑定员工、范围外且不是该计划指导人 / 带教人三种情况同一个 404。
  */
 async function requireTargetInScope(
   tx: Tx,
@@ -238,18 +241,21 @@ async function requireTargetInScope(
   plan: PlanRow,
   toUserId: string,
   sources: TransferSources,
-): Promise<void> {
+): Promise<'scope' | 'mentor'> {
   const employeeId = await personOfUser(tx, ctx.tenantId, toUserId);
-  const allowed =
-    employeeId !== null &&
-    ((await employeeInScope(tx, ctx.hr, employeeId)) || (await isPlanMentor(tx, plan, employeeId, sources)));
-  if (!allowed) throw new AppError('NOT_FOUND', '转交目标不存在');
+  if (employeeId !== null) {
+    if (await employeeInScope(tx, ctx.hr, employeeId)) return 'scope';
+    if (await isPlanMentor(tx, plan, employeeId, sources)) return 'mentor';
+  }
+  throw targetHidden();
 }
 
 /**
  * 转交（F-066，IDP-R16）：把当前运行阶段审批实例的当前待办转给 `toUserId`，撤回原待办、给新人发待办。
  * 本人回避同跳转（F-048 §6 #17 / #20，DEC-321）：不查实时绑定，由 adminAct 按冻结的 U(S) 判定；转交目标的有效性、
  * 是否在冻结主体集合内也都由 adminAct 判定，这里不另写一套；adminAct 不看操作人范围，目标在范围内由本入口先校验。未指定 taskId 时只在恰有一条待办时取它。
+ * 与目标无关的校验（运行阶段、待办数）排在目标判定之前，其错误对所有目标一样；目标判定之后只有 adminAct 的失败，
+ * 对“仅凭 DEC-354 例外放行”的目标一律改成与普通范围外目标相同的响应，失败的转交不能用来探测不可见的带教 / 指导关系。
  * 计划审计只记计划对象登记的字段；新旧审批人写在审批实例的 `approval.admin.transfer` 审计里（DEC-063）。
  */
 export async function transferPlan(
@@ -260,27 +266,32 @@ export async function transferPlan(
   sources: TransferSources,
 ) {
   const plan = await lockPlanForHr(tx, ctx, planId);
-  await requireTargetInScope(tx, ctx, plan, input.toUserId, sources);
   const { stage, instance } = await runningInstance(tx, ctx, plan);
   const instanceId = stage.approvalInstanceId!;
   const pending = (await loadTasks(tx, ctx.tenantId, instanceId)).filter((t) => t.status === 'pending');
   if (input.taskId === undefined && pending.length > 1) {
     invalid('当前阶段有多条待办，请指定要转交的待办', { reason: 'IDP_TRANSFER_TASK_REQUIRED' });
   }
+  const admission = await requireTargetInScope(tx, ctx, plan, input.toUserId, sources);
   const taskId = input.taskId ?? pending[0]?.id;
-  await adminAct(
-    tx,
-    hrApproval(ctx, Number(instance.revision)),
-    {
-      instanceId,
-      kind: 'transfer',
-      toUserId: input.toUserId,
-      reason: input.reason ?? null,
-      ...(taskId ? { taskId } : {}),
-    },
-    sql`true`,
-    { ownerIntervention: true },
-  );
+  try {
+    await adminAct(
+      tx,
+      hrApproval(ctx, Number(instance.revision)),
+      {
+        instanceId,
+        kind: 'transfer',
+        toUserId: input.toUserId,
+        reason: input.reason ?? null,
+        ...(taskId ? { taskId } : {}),
+      },
+      sql`true`,
+      { ownerIntervention: true },
+    );
+  } catch (error) {
+    if (admission === 'mentor' && error instanceof AppError) throw targetHidden();
+    throw error;
+  }
   await bumpPlan(tx, ctx.tenantId, plan.id, ctx.now);
   await auditIntervention(tx, ctx, plan, 'transfer', {
     before: { stageId: stage.id },

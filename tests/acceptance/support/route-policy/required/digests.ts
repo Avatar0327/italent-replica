@@ -225,8 +225,9 @@ export const DIGESTS: Digests = {
     isPlanMentor: 'a064d8d1cfb0',
     issueTasks: '0da7eb1e4250',
     notOwnPlan: '235e72df46d4',
-    requireTargetInScope: '4a5a3e9122c7',
-    transferPlan: '758ec6865c9c',
+    requireTargetInScope: 'd987c2808bcc',
+    targetHidden: '4c60647fadb8',
+    transferPlan: '64d51b8d9d07',
   },
   'apps/api/src/modules/idp/key-info-routes.ts': {
     ROUTES: '906e28eb362e',
