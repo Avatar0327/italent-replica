@@ -35,7 +35,8 @@ jobs:
     name: test (PGlite, Node ${{ matrix.node }}, shard ${{ matrix.shard }}/3)
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    # F-056 首测最慢片 11m13s（含 quality/安装/收尾），20 分钟约为 1.78 倍
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -80,7 +81,8 @@ jobs:
     name: test (PostgreSQL 16, shard ${{ matrix.shard }}/3)
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    # F-056 首测最慢片 9m34s（含容器启动/安装/收尾），18 分钟约为 1.88 倍
+    timeout-minutes: 18
     strategy:
       fail-fast: false
       matrix:
