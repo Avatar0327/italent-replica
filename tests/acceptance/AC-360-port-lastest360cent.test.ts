@@ -111,7 +111,7 @@ describe('Lastest360Cent 数据源', () => {
     });
   });
 
-  it('记录只有聚合分，没有评价者标识', async () => {
+  it('AC-EXP-11 / DEC-304：记录只有聚合分，没有评价者标识', async () => {
     const w = await world360(testDb().db, 'p2');
     const s = await scored(w);
     await w.transition(s.activity.id, 'disable');

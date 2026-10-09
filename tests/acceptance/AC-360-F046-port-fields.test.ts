@@ -66,8 +66,11 @@ async function fixture() {
       relations.push({ role, relation: await w.appraiser(activity.id, object.id, raters[role].id, role) });
     w.setNow(`2026-10-0${i + 1}T01:00:00Z`);
     await w.transition(activity.id, 'enable');
-    for (const { role, relation } of relations)
-      await w.ok(await w.answer(await w.token(activity.id, raters[role].id), relation.id, q, picks[role]));
+    for (const { role, relation } of relations) {
+      const submitted = await w.answer(await w.token(activity.id, raters[role].id), relation.id, q, picks[role]);
+      if (!(submitted instanceof Response)) throw new Error('作答未提交');
+      await w.ok(submitted);
+    }
     const endAt = `2026-10-0${i + 4}T01:00:00Z`;
     const reportGeneratedAt = `2026-10-0${i + 6}T01:00:00Z`;
     w.setNow(endAt);
