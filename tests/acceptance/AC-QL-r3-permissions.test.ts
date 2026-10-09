@@ -61,7 +61,7 @@ describe('任职资格配置第 3 轮：提示、审计与级联的范围', () =
   const warningsOf = async (response: Response) =>
     ((await ok<{ warnings?: Warning[] }>(response)).warnings ?? []) as Warning[];
 
-  describe('R2-01 通道提示只给看得到目的地标准的人（DEC-347② 🟡 / DEC-309）', () => {
+  describe('R2-01 通道提示只给看得到目的地标准的人（DEC-347② / DEC-348① / DEC-309）', () => {
     it('没有标准查看权：目的地有没有标准、包含哪些级别都不提示；有权的照常提示', async () => {
       const set = await channelSet();
       const blind = await childOp({ noObject: ['standard'] });
@@ -139,7 +139,7 @@ describe('任职资格配置第 3 轮：提示、审计与级联的范围', () =
     });
   });
 
-  describe('R2-06 删除等级方案：遗留描述所属指标须在操作人的写范围内', () => {
+  describe('R2-06 删除等级方案：遗留描述所属指标须在操作人的写范围内（DEC-338 自检规则）', () => {
     it('范围外指标在旧方案上留有手改描述：整体拒绝，描述还在；管理员删除照常', async () => {
       // 等级方案是字典（新建要看全部，之后按创建人，DEC-121）：操作人先在看全部下建方案，撤销后按创建人维度管
       // 自己的方案，指标仍按管理单元（下级部）
@@ -224,6 +224,25 @@ describe('任职资格配置第 3 轮：提示、审计与级联的范围', () =
       expect(await failed('category')).toHaveLength(1);
       expect(await failed('level')).toHaveLength(1);
       expect(await failed('standard')).toHaveLength(1);
+    });
+
+    it('标准导入写了范围外或不存在的类别编码：失败日志都归到操作人自己的单元，不能借日志可见与否试探存在性', async () => {
+      const op = await childOp({ auditor: true });
+      const audit = auditApi(testDb().db, QL_NOW.toISOString(), { authorize: undefined });
+      const visibleFailures = async () =>
+        (await audit.operationLogs(op.as, { objectType: QUALIFICATION_OBJECTS.standard.code })).items.filter(
+          (log) => log.operator.userId === op.userId && log.failureCount > 0,
+        ).length;
+      for (const categoryCode of [data.foreign.code, code('NONE')]) {
+        const response = await op.request('POST', '/standards/import', {
+          body: {
+            standards: [{ categoryCode, revision: 1 }],
+            rows: [{ categoryCode, levelCode: code(), targetCode: code(), content: '内容' }],
+          },
+        });
+        expect(response.status).toBeGreaterThanOrEqual(400);
+      }
+      expect(await visibleFailures()).toBe(2);
     });
   });
 });

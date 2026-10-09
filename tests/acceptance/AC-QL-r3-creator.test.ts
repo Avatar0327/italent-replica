@@ -77,7 +77,7 @@ describe('任职资格配置第 3 轮：创建人范围', () => {
     });
   });
 
-  describe('R2-04 标准 / 通道审计锚在所属类别的 owner 上（设计 §5.1 / §8）', () => {
+  describe('R2-04 标准 / 通道审计锚在所属类别的 owner 上（DEC-197，设计 §5.1 / §8）', () => {
     it('别人类别下自己建的标准与通道：撤销看全部后业务 404、审计查不到；自己类别下的照常可查', async () => {
       const admin = await data.adminIn(data.parent);
       const klass = await admin<{ id: string }>('/category-classes', { code: code(), name: '他人分类' });
