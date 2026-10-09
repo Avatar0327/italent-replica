@@ -16,6 +16,7 @@ import type { PlatformWriteContext } from '../permission/audit.js';
 import { listBalances, type LicenseBalance } from '../permission/licenses.js';
 import { type LicenseQuotaChange, setLicenseQuotaIn } from '../permission/platform.js';
 import { installMissingStandardProfiles, type StandardBackfill } from '../permission/standard-profiles.js';
+import { installMissingSeeds, seedModules, type SeedReportItem, type SeedWriteContext } from '../../seeds/index.js';
 
 export async function requireTenant(db: Db, tenantId: string): Promise<Tenant> {
   const tenant = await getTenant(db, tenantId);
@@ -94,4 +95,37 @@ export async function backfillStandardProfiles(
     );
     return result;
   });
+}
+
+/**
+ * 存量租户回补预置数据（DEC-361）：平台命令（只认平台运营身份、显式指定租户、命令台账幂等）；按种子登记表逐项
+ * 补装缺失的预置编码，不覆盖租户定制，重复执行无副作用；租户审计由各登记项同事务写，平台审计留一条汇总。
+ */
+export async function backfillSeeds(
+  db: Db,
+  tenantId: string,
+  input: { readonly modules?: readonly string[] },
+  meta: PlatformCommandMeta,
+  now: Date,
+): Promise<{ items: SeedReportItem[] }> {
+  await requireTenant(db, tenantId);
+  const unknown = (input.modules ?? []).filter((module) => !seedModules().includes(module));
+  if (unknown.length > 0) {
+    throw new AppError('VALIDATION_FAILED', '未知的预置数据模块', { reason: 'SEED_MODULE_UNKNOWN', unknown });
+  }
+  return runPlatformCommand(
+    db,
+    meta,
+    'tenant.seeds.backfill',
+    { tenantId, modules: input.modules ?? null },
+    async (ctx) => {
+      const write: SeedWriteContext = { tenantId, actorUserId: meta.actorUserId, now, commandId: meta.commandId };
+      const items = await ctx.inTenant(tenantId, (tx) => installMissingSeeds(tx, write, input));
+      await ctx.auditPlatform(
+        { action: 'tenant.seeds.backfill', objectType: 'tenant', objectId: tenantId, before: null, after: { items } },
+        tenantId,
+      );
+      return { items };
+    },
+  );
 }
