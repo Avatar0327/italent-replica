@@ -2,9 +2,11 @@
  * 作答 / 确认链接（E3-R20）：一个评价者在一个活动内只有一个作答链接；确认链接按确认单一份。
  * 令牌只在邀请邮件（outbox）里出现一次，库里只存 SHA-256 摘要；请求经 X-Survey360-Token 头传递，
  * 不进入路径、失败命令审计与访问日志。邮件只写 outbox（pending），不接真实发送（派发单）。
+ * PR-B：重发邮件邀请时轮换令牌（旧链接作废、发新链接），同一时刻一个评价者仍只有一个有效链接；
+ * 最后发送时间（last_sent_at）邮件与站内待办都计入（`25` §10.2 更正）。
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, survey360Links, survey360Outbox, type Tx } from '@italent/db';
+import { and, eq, sql, survey360Links, survey360Outbox, type Tx } from '@italent/db';
 import type { PersonRow } from './people.js';
 
 export function hashToken(token: string): string {
@@ -14,6 +16,7 @@ export function hashToken(token: string): string {
 interface LinkContext {
   readonly tenantId: string;
   readonly commandId: string;
+  readonly now: Date;
 }
 
 async function issue(
@@ -36,6 +39,7 @@ async function issue(
     personId: input.person.id,
     confirmationId: input.confirmationId ?? null,
     tokenHash: hashToken(token),
+    lastSentAt: ctx.now,
   });
   await tx.insert(survey360Outbox).values({
     tenantId: ctx.tenantId,
@@ -70,6 +74,32 @@ export async function ensureAnswerLink(tx: Tx, ctx: LinkContext, activityId: str
   if (existing) return false;
   await issue(tx, ctx, { kind: 'answer', activityId, person, eventType: 'survey360.answer_invitation' });
   return true;
+}
+
+/**
+ * 重发邮件邀请（PR-B）：作废该评价者当前的作答链接、发新链接与邀请邮件；答卷挂在评价关系上，不受链接轮换影响。
+ */
+export async function reissueAnswerLink(tx: Tx, ctx: LinkContext, activityId: string, person: PersonRow) {
+  await tx
+    .update(survey360Links)
+    .set({ revoked: true })
+    .where(
+      and(
+        eq(survey360Links.activityId, activityId),
+        eq(survey360Links.personId, person.id),
+        eq(survey360Links.kind, 'answer'),
+        eq(survey360Links.revoked, false),
+      ),
+    );
+  await issue(tx, ctx, { kind: 'answer', activityId, person, eventType: 'survey360.answer_invitation' });
+}
+
+/** 站内待办发送也计入最后发送时间。 */
+export async function markSent(tx: Tx, activityId: string, personIds: readonly string[], at: Date) {
+  if (!personIds.length) return;
+  await tx.execute(sql`UPDATE survey360_links SET last_sent_at = ${at.toISOString()}::timestamptz
+    WHERE activity_id = ${activityId}::uuid AND kind = 'answer' AND NOT revoked
+      AND person_id = ANY(${`{${personIds.join(',')}}`}::uuid[])`);
 }
 
 export async function issueConfirmLink(
