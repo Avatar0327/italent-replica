@@ -2275,7 +2275,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-09 03:50",
+"liveUpdated": "10-09 03:59",
 "chains": [
 {
 "g": "base",
@@ -2640,12 +2640,13 @@
 "k": "run",
 "n": "权限框架强制",
 "u": "已核对，待开会话",
-"seg": "ev:n ds:d6 dev:d3 rev:a3 mg:w",
-"now": "实现第 3 轮审查中（Sol xhigh + priority）",
+"seg": "ev:n ds:d6 dev:w4 rev:d3 mg:w",
+"now": "实现第 3 轮：P2-1 同类又回退（optional 绕过必需按钮），已建议第 4 轮改结构",
 "pr": 110,
 "up": "10-07 调到 Max",
 "nx": "R3 全部模块（各 PR 合并后补声明）",
-"pd": "设计 + 实现 PR-A #110"
+"pd": "设计 + 实现 PR-A #110",
+"need": "1"
 },
 {
 "id": "F-040",
