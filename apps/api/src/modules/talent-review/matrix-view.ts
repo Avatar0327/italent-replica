@@ -52,6 +52,7 @@ export interface RatioGroupView {
   readonly controlScope: string;
   readonly controlMode: string;
   readonly minPopulation: number;
+  readonly sortNo: number;
   readonly rules: RatioRuleView[];
 }
 export type MatrixView = MatrixRow & {
@@ -124,6 +125,7 @@ async function loadGroups(tx: Tx, tenantId: string, ids: string[]) {
       controlScope: g.controlScope,
       controlMode: g.controlMode,
       minPopulation: g.minPopulation,
+      sortNo: g.sortNo,
       rules: rules.filter((rule) => rule.groupId === g.id).map(ruleView),
     } satisfies RatioGroupView,
   }));
@@ -173,5 +175,19 @@ export async function withChildren(tx: Tx, tenantId: string, rows: MatrixRow[]):
     ratioGroups: byMatrix(groups, r.id as string).map((g) => g.view),
   })) as MatrixView[];
 }
+
+/**
+ * 列表排序键：规格的默认排序是 sortNo、code，但看不到的字段不能影响顺序与分页（管理员改隐藏值就会改变第一页），
+ * 所以只取查看人可见的那些；两者都不可见时只剩稳定标识 id（config-kit 的 listConfig 总是追加）。
+ */
+export const visibleOrder = (viewable: ReadonlySet<string> | undefined) =>
+  (
+    [
+      ['sortNo', M.sortNo],
+      ['code', M.code],
+    ] as const
+  )
+    .filter(([field]) => viewable === undefined || viewable.has(field))
+    .map(([, column]) => column);
 
 export const loadMatrixView = (tx: Tx, tenantId: string, id: string) => MATRIX.load!(tx, tenantId, id);

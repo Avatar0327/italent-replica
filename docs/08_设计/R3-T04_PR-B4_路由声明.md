@@ -7,7 +7,7 @@
 ## 1. 共用契约
 
 - 应用 `TalentReview`；对象 = `TalentReview.Matrix`（`create@list / update@detail / delete@detail`），字段见 `packages/domain/src/talent-review/catalog.ts`（`positionFields / axisLevels / cells / ratioGroups` 是嵌套字段，权限随字段）。
-- 数据范围按（用户 × TalentReview）解析，缺省为空。九宫格没有组织字段，只认**看全部或创建人**（DEC-121），新建只有看全部可建（DEC-082）。列表在 SQL 分页前按 `configScopeSql(created_by)` 过滤；详情、写入、重放中，不存在与范围外同为 `404 NOT_FOUND`。预置九宫格 `created_by` 为空（系统），只有看全部可见。
+- 数据范围按（用户 × TalentReview）解析，缺省为空。九宫格没有组织字段，只认**看全部或创建人**（DEC-121），新建只有看全部可建（DEC-082）。列表在 SQL 分页前按 `configScopeSql(created_by)` 过滤；详情、写入、重放中，不存在与范围外同为 `404 NOT_FOUND`。预置九宫格的 `created_by` = 开通 / 回补命令的操作人（开通租户时为开通命令的操作人，无操作人时为空）。看全部的人始终可见；只有创建人范围的人，仅当自己就是该操作人时才看到预置九宫格（创建人为空则不可见）。
 - 标准身份“盘点管理员（人才盘点）”对 `TalentReview.Matrix` 预置看全部（`TALENT_REVIEW_CONFIG_OBJECTS` 追加 `matrix`，实体级；存量租户的标准身份补装随 F-061）。
 - 响应按对象当前字段查看权裁剪（`trimModuleResponse`，键缺席）；写响应与幂等重放同样按当前权限裁剪。
 - REV = 缺或非法 `If-Match` 时 `400 REVISION_REQUIRED`；revision 不符 `409 REVISION_CONFLICT`；新建要求 revision = 0。IDEM = 缺 `Idempotency-Key` 时 `400 IDEMPOTENCY_KEY_REQUIRED`；同键异内容 `409 IDEMPOTENCY_CONFLICT`。
@@ -20,7 +20,7 @@
 
 | 方法 | 路径 | 类型 | 对象·操作·按钮 | 范围 | 字段 | 其他 |
 |---|---|---|---|---|---|---|
-| GET | `/matrices` | object | Matrix；view；无按钮 | list `configScopeSql(created_by)`，分页前过滤 | projector 裁剪；带 `enabled` 筛选而无 `enabled` 查看权 → 403 `FILTER_FIELD_HIDDEN` | 信封 `hasDataPermission`；排序 sortNo + 编码；每条带完整聚合 |
+| GET | `/matrices` | object | Matrix；view；无按钮 | list `configScopeSql(created_by)`，分页前过滤 | projector 裁剪；带 `enabled` 筛选而无 `enabled` 查看权 → 403 `FILTER_FIELD_HIDDEN` | 信封 `hasDataPermission`；排序键只取查看人可见的 sortNo、code，再以 id 收尾（隐藏字段不影响顺序与分页）；每条带完整聚合 |
 | GET | `/matrices/:id` | object | 同上 | point id → `requireConfigVisible(createdBy)`；范围外与不存在同为 404 | 同列表 | UUID 规范为小写；ETag = revision |
 | POST | `/matrices` | object | Matrix；create；create@list；**另需字段目录 `TalentReview.Field` 的 view（`requireFieldReference`，条件守卫 `talentReview.matrixFieldReference`）** | `requireConfigCreatable`（只有看全部可建，否则 404）；引用字段按字段目录范围判定可见 | 严格结构；逐字段编辑权；返回按当前查看权投影 | REV（=0）、IDEM；201；错误见 §3 |
 | PATCH | `/matrices/:id` | object | Matrix；update；update@detail；带字段引用时同上 | 行锁 → `requireConfigVisible` → REV；返回前复核 | 严格结构（不收编码，400）；逐字段编辑权（含 `zFieldId: null` 显式清空）；**改名要求看全部**（`NAME_REQUIRES_SEE_ALL`）；**改位置字段要求看全部**（`MATRIX_POSITION_REQUIRES_SEE_ALL`），判定都在任何查重之前 | REV、IDEM；`axisLevels` 与 `cells` 必须同时提交（否则 400） |
@@ -34,7 +34,7 @@
 | 规则 | 码 | 依据 |
 |---|---|---|
 | 编码 / 名称租户唯一 | 409 `MATRIX_DUPLICATE`（规则组名在九宫格内唯一：409 `RATIO_GROUP_DUPLICATE`） | 设计 §2 通用约定 |
-| 位置字段租户内唯一：覆盖 before-before、after-after、两向 before-after、同一九宫格 before = after；并发由库唯一约束兜底，恰一个成功 | 409 `MATRIX_POSITION_FIELD_IN_USE` | 设计 §2.2、D-20、AC-TR-08 |
+| 位置字段租户内唯一（新建、修改位置字段、预置补装三个写入口先按统一顺序取这批字段的占用锁，互换 / 反序占用只会得到 409，不会死锁）：覆盖 before-before、after-after、两向 before-after、同一九宫格 before = after；并发由库唯一约束兜底，恰一个成功 | 409 `MATRIX_POSITION_FIELD_IN_USE` | 设计 §2.2、D-20、AC-TR-08 |
 | 保存命令恰两行（before / after 各一） | 400 `MATRIX_POSITION_FIELDS_INCOMPLETE` | 设计 §2.2、P3-01 |
 | 位置字段必须是“位置”分组的数值字段 | 400 `MATRIX_POSITION_FIELD_KIND` | 设计 §2.7（位置字段 number、`system_written`） |
 | X ≠ Y；轴字段为单选或数值 | 400 `MATRIX_AXIS_SAME_FIELD` / `MATRIX_AXIS_FIELD_KIND` | TR-R31 |
@@ -44,7 +44,8 @@
 | 被比例规则引用的格子不能删 | 409 `MATRIX_CELL_IN_USE` | TR-R33 |
 | 范围运算（between）需要上限且 ≥ 下限，其他运算不带上限；格子集合非空、无重复、属于本九宫格；一组至少一条规则；组内规则为“且”（PR-D 求值） | 400 `RATIO_RULE_INVALID` / `RATIO_RULE_CELL_UNKNOWN` | TR-R33 |
 | 默认规则组至多一个（设为默认会取消原默认） | — | TR-R33“一组为默认” |
-| 引用字段不存在或不在字段目录范围内 | 404 `NOT_FOUND`（同一个响应，不暴露隐藏字段的存在与类型） | AGENTS §10 权限、OCR 路由规则 |
+| 数值轴下界最多四位小数（存储精度 numeric(14,4)，超精度会被舍入而不再严格递增） | 400 `VALIDATION_FAILED` | 🟡 设计自定项 D-B4-1（需取证 #181） |
+| 引用字段不存在或不在字段目录范围内（幂等重放时按当前字段目录范围重新复核） | 404 `NOT_FOUND`（同一个响应，不暴露隐藏字段的存在与类型） | AGENTS §10 权限、OCR 路由规则 |
 
 ## 4. 查看人 × 接口 × 字段
 
@@ -69,7 +70,7 @@
 | `PATCH /matrices/:id` | 同上（编码不收） | 未提交字段保留；`axisLevels` / `cells` 未提交则保留；格子按格子号原位更新 | revision + 1 | 更新人 / 时间 | `AC-TR-08-matrix`、`-sidechannel` |
 | `DELETE /matrices/:id` | — | — | 级联删子数据 | — | `AC-TR-08-matrix`、`-ratio` |
 | 规则组增改删 | 名称、是否默认、控制范围 / 方式、起始人数、规则 | 组 id 与未提交字段保留 | 九宫格 revision + 1；设为默认时取消原默认 | — | `AC-TR-08-matrix-ratio` |
-| 种子补装 `registerSeed('talent-review/preset-matrices')` | — | 已有编码不覆盖 | 预置字段按编码取 id | 系统写入 + 审计 | `AC-TR-08-matrix-preset` |
+| 种子补装 `registerSeed('talent-review/preset-matrices')` | — | 已有编码不覆盖；依赖字段被停用 / 改属性 / 位置字段已被占用时不装，补装结果 `skipped[{code,reason}]` 给出原因（`MATRIX_FIELD_DISABLED / MATRIX_POSITION_FIELD_KIND / MATRIX_POSITION_FIELD_IN_USE / MATRIX_FIELD_MISSING`），恢复后再补装 | 预置字段按编码取 id | 系统写入 + 审计 | `AC-TR-08-matrix-preset`、`-round2` |
 
 ## 6. 引用守卫（非路由）
 

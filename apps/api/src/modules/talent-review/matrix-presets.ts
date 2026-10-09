@@ -15,8 +15,9 @@ import {
 } from '@italent/db';
 import { presetAxisLevels, presetCells, TALENT_REVIEW_PRESET_MATRICES, type PresetMatrix } from '@italent/domain';
 import { recordAudit } from '../../audit/record.js';
-import { registerSeed, type SeedWriteContext } from '../../seeds/registry.js';
+import { registerSeed, type SeedInstallResult, type SeedSkip, type SeedWriteContext } from '../../seeds/registry.js';
 import { codeOf, TALENT_REVIEW_AUDIT_ACTIONS } from './access.js';
+import { lockPositionFields, type MatrixShape, presetShapeProblem } from './matrix-service.js';
 import { loadMatrixView } from './matrix-view.js';
 
 const fieldCodes = (matrix: PresetMatrix) => [
@@ -26,27 +27,63 @@ const fieldCodes = (matrix: PresetMatrix) => [
   matrix.positionFieldCodes.after,
 ];
 
-async function installMatrices(tx: Tx, write: SeedWriteContext, missing: readonly string[]): Promise<void> {
+const shapeOf = (preset: PresetMatrix, idOf: (code: string) => string | undefined): MatrixShape | null => {
+  const ids = fieldCodes(preset).map(idOf);
+  if (ids.some((id) => id === undefined)) return null;
+  const [x, y, before, after] = ids as string[];
+  return {
+    xFieldId: x!,
+    yFieldId: y!,
+    zFieldId: null,
+    positionFields: [
+      { role: 'before', fieldId: before! },
+      { role: 'after', fieldId: after! },
+    ],
+    axisLevels: presetAxisLevels().map((level) => ({ ...level, optionValues: [...level.optionValues] })),
+    cells: presetCells(preset),
+  };
+};
+
+/**
+ * 预置九宫格依赖的预置字段可能已被存量租户定制（停用、改分组）或位置字段被自建九宫格占用：按普通创建同一套校验判定，
+ * 不可用就不装并在结果里给出原因，不覆盖定制、不撞约束（可恢复后再补装）。
+ */
+async function installMatrices(
+  tx: Tx,
+  write: SeedWriteContext,
+  missing: readonly string[],
+): Promise<SeedInstallResult> {
   const presets = TALENT_REVIEW_PRESET_MATRICES.filter((matrix) => missing.includes(matrix.code));
   const fields = await tx
     .select({ id: F.id, code: F.code })
     .from(F)
     .where(inArray(F.code, [...new Set(presets.flatMap(fieldCodes))]));
-  const idOf = (code: string) => {
-    const field = fields.find((f) => f.code === code);
-    if (!field) throw new Error(`预置九宫格依赖的预置字段 ${code} 不存在`);
-    return field.id;
-  };
+  const idOf = (code: string) => fields.find((f) => f.code === code)?.id;
+  const skipped: SeedSkip[] = [];
   for (const [index, preset] of TALENT_REVIEW_PRESET_MATRICES.entries()) {
     if (!missing.includes(preset.code)) continue;
+    const shape = shapeOf(preset, idOf);
+    // 位置字段占用锁在核验之前取，核验与插入之间不会被并发的占用插队
+    if (shape) {
+      await lockPositionFields(
+        tx,
+        write.tenantId,
+        shape.positionFields.map((p) => p.fieldId),
+      );
+    }
+    const problem = shape ? await presetShapeProblem(tx, write.tenantId, shape) : 'MATRIX_FIELD_MISSING';
+    if (!shape || problem) {
+      skipped.push({ code: preset.code, reason: problem ?? 'MATRIX_FIELD_MISSING' });
+      continue;
+    }
     const [created] = await tx
       .insert(M)
       .values({
         tenantId: write.tenantId,
         code: preset.code,
         name: preset.name,
-        xFieldId: idOf(preset.xFieldCode),
-        yFieldId: idOf(preset.yFieldCode),
+        xFieldId: shape.xFieldId,
+        yFieldId: shape.yFieldId,
         preset: true,
         sortNo: (index + 1) * 10,
         createdBy: write.actorUserId,
@@ -56,19 +93,9 @@ async function installMatrices(tx: Tx, write: SeedWriteContext, missing: readonl
       })
       .returning({ id: M.id });
     const base = { tenantId: write.tenantId, matrixId: created!.id };
-    await tx.insert(P).values([
-      { ...base, fieldId: idOf(preset.positionFieldCodes.before), role: 'before' },
-      { ...base, fieldId: idOf(preset.positionFieldCodes.after), role: 'after' },
-    ]);
-    await tx.insert(L).values(
-      presetAxisLevels().map((level) => ({
-        ...base,
-        ...level,
-        lowerBound: null,
-        optionValues: [...level.optionValues],
-      })),
-    );
-    await tx.insert(C).values(presetCells(preset).map((cell) => ({ ...base, ...cell })));
+    await tx.insert(P).values(shape.positionFields.map((p) => ({ ...base, ...p })));
+    await tx.insert(L).values(shape.axisLevels.map((level) => ({ ...base, ...level, lowerBound: null })));
+    await tx.insert(C).values(shape.cells.map((cell) => ({ ...base, ...cell })));
     await recordAudit(tx, {
       tenantId: write.tenantId,
       actorUserId: write.actorUserId,
@@ -81,6 +108,7 @@ async function installMatrices(tx: Tx, write: SeedWriteContext, missing: readonl
       occurredAt: write.now,
     });
   }
+  return { skipped };
 }
 
 registerSeed({

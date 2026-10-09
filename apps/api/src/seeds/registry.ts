@@ -28,8 +28,19 @@ export interface SeedEntry {
   readonly codes: readonly string[];
   /** 当前租户里已经存在的预置项编码（含被定制 / 停用的）。 */
   readonly existing: (tx: Tx, tenantId: string) => Promise<ReadonlySet<string>>;
-  /** 只构造并写入 missing 里的编码（含它们的子数据与审计）。 */
-  readonly install: (tx: Tx, write: SeedWriteContext, missing: readonly string[]) => Promise<void>;
+  /**
+   * 只构造并写入 missing 里的编码（含它们的子数据与审计）。依赖的租户数据不可用（如被停用 / 改了属性的字段）时，
+   * 不装该编码并在返回值的 skipped 里给出受控原因，不报错、不覆盖租户定制；其余编码照常安装。
+   */
+  readonly install: (tx: Tx, write: SeedWriteContext, missing: readonly string[]) => Promise<SeedInstallResult | void>;
+}
+
+export interface SeedSkip {
+  readonly code: string;
+  readonly reason: string;
+}
+export interface SeedInstallResult {
+  readonly skipped?: readonly SeedSkip[];
 }
 
 export interface SeedReportItem {
@@ -39,6 +50,8 @@ export interface SeedReportItem {
   readonly installed: readonly string[];
   /** 预置编码里租户已有的个数（不论是否被定制）。 */
   readonly existing: number;
+  /** 依赖不可用而没有安装的编码与原因（没有时不出现）。 */
+  readonly skipped?: readonly SeedSkip[];
 }
 
 const entries: SeedEntry[] = [];
@@ -69,13 +82,16 @@ export async function installMissingSeeds(
     if (filter.modules && !filter.modules.includes(entry.module)) continue;
     const have = await entry.existing(tx, write.tenantId);
     const missing = entry.codes.filter((code) => !have.has(code));
-    if (missing.length > 0) await entry.install(tx, write, missing);
+    const result = missing.length > 0 ? await entry.install(tx, write, missing) : undefined;
+    const skipped = result?.skipped ?? [];
+    const skippedCodes = new Set(skipped.map((item) => item.code));
     report.push({
       module: entry.module,
       key: entry.key,
       version: entry.version,
-      installed: missing,
+      installed: missing.filter((code) => !skippedCodes.has(code)),
       existing: entry.codes.length - missing.length,
+      ...(skipped.length > 0 ? { skipped } : {}),
     });
   }
   return report;

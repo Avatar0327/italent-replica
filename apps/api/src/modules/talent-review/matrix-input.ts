@@ -20,6 +20,12 @@ const name = z.string().trim().min(1).max(50);
 const sortNo = z.int().min(0).max(1_000_000);
 const levelNo = z.int().min(1).max(MATRIX_MAX_LEVELS);
 const twoDecimals = (value: number) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-9;
+/** 数值轴下界按存储精度（numeric(14,4)，4 位小数）：超精度输入入库会被舍入，可能不再严格递增，所以直接拒绝。 */
+const storedBound = z
+  .number()
+  .min(-1e9)
+  .max(1e9)
+  .refine((value) => Math.abs(value * 1e4 - Math.round(value * 1e4)) < 1e-6, '下界最多四位小数');
 const percent = z.number().min(0).max(100).refine(twoDecimals, '百分比最多两位小数');
 
 const positionField = z.strictObject({ role: z.enum(MATRIX_POSITION_ROLES), fieldId: uuid });
@@ -28,7 +34,7 @@ const axisLevel = z.strictObject({
   levelNo,
   name,
   optionValues: z.array(z.string().min(1).max(50)).max(200).default([]),
-  lowerBound: z.number().min(-1e9).max(1e9).nullable().default(null),
+  lowerBound: storedBound.nullable().default(null),
 });
 const cell = z.strictObject({
   cellNo: z.int().min(1).max(99),

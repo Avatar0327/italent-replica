@@ -95,13 +95,27 @@ const invalid = (v: MatrixViolation) => new AppError('VALIDATION_FAILED', v.mess
 const reject = (reason: string, message: string) => invalid({ reason, message });
 
 /** 新引用的字段：不存在与不在字段目录范围内同一个 404；任何属性判断都在可见性之后。 */
-function requireVisibleRefs(ctx: MatrixWriteContext, facts: Map<string, FieldFacts>, ids: readonly string[]) {
+function requireVisibleRefs(scope: ModuleScope | undefined, facts: Map<string, FieldFacts>, ids: readonly string[]) {
   for (const id of ids) {
     const field = facts.get(id);
     if (!field) throw new AppError('NOT_FOUND', notFoundMessage('field'));
-    if (!ctx.fieldScope) throw new Error('引用字段缺少字段目录范围');
-    requireConfigVisible(ctx.fieldScope, 'field', field.createdBy);
+    if (!scope) throw new Error('引用字段缺少字段目录范围');
+    requireConfigVisible(scope, 'field', field.createdBy);
   }
+}
+
+/**
+ * 命令重放的授权复核（与业务校验分开）：请求里引用的字段在**当前**字段目录范围内仍须可见——幂等重放不再执行命令，
+ * 撤销范围后原命令重放同样 404（AGENTS §10）。
+ */
+export async function requireReferencesVisible(
+  tx: Tx,
+  tenantId: string,
+  ids: readonly string[],
+  scope: ModuleScope,
+): Promise<void> {
+  const unique = [...new Set(ids)];
+  requireVisibleRefs(scope, await loadFieldFacts(tx, tenantId, unique), unique);
 }
 
 interface Shape {
@@ -168,8 +182,21 @@ async function validateShape(tx: Tx, ctx: MatrixWriteContext, shape: Shape, curr
   const ids = refIds(shape);
   const added = ids.filter((id) => !current.includes(id));
   const facts = await loadFieldFacts(tx, ctx.tenantId, ids);
-  requireVisibleRefs(ctx, facts, added);
+  requireVisibleRefs(ctx.fieldScope, facts, added);
   checkAgainstFields(shape, facts, added);
+}
+
+/**
+ * 位置字段占用的写入口（新建、修改位置字段、预置补装）先按统一顺序取这批字段的占用锁，再删旧插新：
+ * 两个九宫格互占对方字段、或按相反顺序占用同一对字段时，各自先持有部分行再等对方会死锁（40P01 → 500）。
+ * 取锁顺序固定后只会排队，随后由唯一约束给出受控的占用冲突（409）。
+ */
+export async function lockPositionFields(tx: Tx, tenantId: string, fieldIds: readonly string[]): Promise<void> {
+  for (const id of [...new Set(fieldIds)].sort()) {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId}::text || ':matrix-position:' || ${id}::text, 0))`,
+    );
+  }
 }
 
 // ---- 子数据写入 ----------------------------------------------------------------------------------------------------
@@ -255,6 +282,11 @@ export async function createMatrix(tx: Tx, ctx: MatrixWriteContext, input: Matri
   requireConfigCreatable(ctx.scope, 'matrix');
   const shape: Shape = { ...input, zFieldId: input.zFieldId ?? null };
   await validateShape(tx, ctx, shape, []);
+  await lockPositionFields(
+    tx,
+    ctx.tenantId,
+    positionFields.map((p) => p.fieldId),
+  );
   return createConfig(tx, MATRIX, ctx, columns, async (id) => {
     await insertPositions(tx, ctx, id, positionFields);
     await tx.insert(L).values(levelRows(ctx, id, axisLevels));
@@ -307,6 +339,10 @@ export async function updateMatrix(
       .where(and(eq(M.tenantId, ctx.tenantId), eq(M.id, id))),
   );
   if (repoint) {
+    await lockPositionFields(tx, ctx.tenantId, [
+      ...before.positionFields.map((p) => p.fieldId),
+      ...positionFields.map((p) => p.fieldId),
+    ]);
     await tx.delete(P).where(and(eq(P.tenantId, ctx.tenantId), eq(P.matrixId, id)));
     await insertPositions(tx, ctx, id, positionFields);
   }
@@ -495,3 +531,35 @@ registerConfigReferenceGuard('field', async (tx, tenantId, fieldId) => {
     .limit(1);
   return position.length > 0 ? 'MATRIX' : null;
 });
+
+/**
+ * 预置补装用：依赖字段是否可用——与普通创建同一套属性校验（轴字段类型与分段、位置字段是“位置”分组的数值字段、已启用），
+ * 另查位置字段是否已被其他九宫格占用。返回原因码；可用返回 null。租户定制过的字段按定制后的状态判定，不覆盖。
+ */
+export async function presetShapeProblem(tx: Tx, tenantId: string, shape: Shape): Promise<string | null> {
+  const ids = refIds(shape);
+  const facts = await loadFieldFacts(tx, tenantId, ids);
+  if (ids.some((id) => !facts.has(id))) return 'MATRIX_FIELD_MISSING';
+  try {
+    checkAgainstFields(shape, facts, ids);
+  } catch (error) {
+    if (error instanceof AppError) return (error.details as { reason: string }).reason;
+    throw error;
+  }
+  const occupied = await tx
+    .select({ id: P.id })
+    .from(P)
+    .where(
+      and(
+        eq(P.tenantId, tenantId),
+        inArray(
+          P.fieldId,
+          shape.positionFields.map((p) => p.fieldId),
+        ),
+      ),
+    )
+    .limit(1);
+  return occupied.length > 0 ? 'MATRIX_POSITION_FIELD_IN_USE' : null;
+}
+
+export type { Shape as MatrixShape };

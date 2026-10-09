@@ -307,7 +307,7 @@ const MATRIX_REQUIRED: RequiredTable = {
     ...matrixChange('registerMatrixRoutes', 'update'),
     RENAME_GUARD,
     MATRIX_POSITION_GUARD,
-    ...matrixReference('const fieldScope = referencesFields(body) ? await requireFieldReference(c, deps) : undefined'),
+    ...matrixReference('const fieldScope = references.length > 0 ? await requireFieldReference(c, deps) : undefined'),
   ],
   [`DELETE ${MTX_BASE}/:id`]: matrixChange('registerMatrixRoutes', 'delete'),
   [`POST ${MTX_BASE}/:id/ratio-groups`]: matrixChange('registerRatioGroupRoutes', 'update'),
