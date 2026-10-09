@@ -111,7 +111,7 @@ describe('C-06 应用、预置身份、审计标签、租户字段来源（DEC-0
 });
 
 describe('C-08 盘点结果审批类型（DEC-309③ / 332① / 094）', () => {
-  it('类型登记在 TalentReview.ResultApproval 上，适配器种类 talent_review；出厂预置节点显式开启发起人回避', () => {
+  it('类型登记在 TalentReview.ResultApproval 上，适配器种类 talent_review；出厂预置节点显式开启发起人回避与多主体回避（D-34）', () => {
     expect(APPROVAL_TYPES.talent_review_result).toMatchObject({
       objectCode: TALENT_REVIEW_OBJECTS.resultApproval.code,
       adapter: 'talent_review',
@@ -120,7 +120,7 @@ describe('C-08 盘点结果审批类型（DEC-309③ / 332① / 094）', () => {
     const preset = PRESET_PROCESSES.find((process) => process.approvalType === 'talent_review_result')!;
     expect(preset.definition.nodes.length).toBeGreaterThan(0);
     for (const node of preset.definition.nodes) {
-      expect(node.actions).toMatchObject({ avoidSelf: true, avoidSubjects: false });
+      expect(node.actions).toMatchObject({ avoidSelf: true, avoidSubjects: true });
     }
   });
 
