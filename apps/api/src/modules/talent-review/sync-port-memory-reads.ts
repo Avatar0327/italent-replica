@@ -293,7 +293,7 @@ export class InMemoryReads {
           rows.push({ status: 'forbidden', orgId, context });
           continue;
         }
-        const row = this.txs.get(m, this.state.health, healthKey(context, orgId));
+        const row = this.get(m, this.state.health, healthKey(context, orgId));
         if (!row) {
           rows.push({ status: 'absent', orgId, context, revision: 0 });
           continue;
@@ -440,9 +440,8 @@ export class InMemoryReads {
     tx: MemoryTx,
     input: OrgHealthWriteCommand | OrgHealthResetCommand,
   ): Promise<OrgHealthWriteReceipt> {
-    // 多组织统一按组织 ID 升序取锁（R2-03）；同一命令里组织重复是调用错误
+    // 多组织统一按组织 ID 升序取锁（R2-03），逆序给组织的两个回写不会互相等成环；行锁可重入，重复组织不会自锁
     const rows = [...input.rows].sort((a, b) => cmp(a.orgId, b.orgId));
-    if (new Set(rows.map((row) => row.orgId)).size !== rows.length) throw new RangeError('同一回写命令里组织重复');
     if (input.tenantId !== this.data.tenantId) return { items: rows.map((row) => rejected(row.orgId, 'FORBIDDEN')) };
     const credential = input.credential;
     const actor = credential.kind === 'compute' ? credential.principalUserId : credential.userId;
