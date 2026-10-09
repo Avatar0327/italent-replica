@@ -233,7 +233,9 @@ const calcCatalog = (anchor: string): Obligation[] => [
   {
     perm: `guard:${CALC_CATALOG}`,
     facts: [`guard:${CALC_CATALOG}`],
-    note: '条件守卫：提交计算项目（POST；PATCH 带 items）时，另需字段目录的对象查看权，公式与目标字段只在其范围内可见的字段里解析',
+    note:
+      '条件守卫：提交计算项目（POST；PATCH 带 items）时另需字段目录的对象查看权，' +
+      '公式与目标字段只在其范围与 name / kind / enabled / systemWritten 列权限内可引用的字段里解析',
     at: [calcCall(anchor)],
   },
   {
@@ -268,12 +270,12 @@ const CALC_REQUIRED: RequiredTable = {
   ],
   [`POST ${CALC_BASE}`]: [
     ...calcChange('create'),
-    ...calcCatalog('const fieldScope = await requireCatalogAccess(c, deps)'),
+    ...calcCatalog('const access = await requireCatalogAccess(c, deps)'),
   ],
   [`PATCH ${CALC_BASE}/:id`]: [
     ...calcChange('update'),
     RENAME_GUARD,
-    ...calcCatalog('const fieldScope = body.items !== undefined ? await requireCatalogAccess(c, deps) : undefined'),
+    ...calcCatalog('const access = await patchCatalogAccess(c, deps, body)'),
   ],
   [`DELETE ${CALC_BASE}/:id`]: calcChange('delete'),
 };

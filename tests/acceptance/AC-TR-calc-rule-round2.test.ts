@@ -65,8 +65,8 @@ describe('P2-01 隐藏的默认排序字段不影响列表顺序与分页', () =
   it('看不到 sortNo：按可见的 name 排序，管理员改隐藏的 sortNo 不改变第一页', async () => {
     const w = await calcWorld(testDb().db, 'trk-r2-sort-primary');
     const [a, b] = [await w.numberField(), await w.numberField()];
-    const first = await w.create(calcBody([calcItem(a, '1')], { name: '甲规则', sortNo: 9 }));
-    const second = await w.create(calcBody([calcItem(b, '1')], { name: '乙规则', sortNo: 1 }));
+    const first = await w.create(calcBody([calcItem(a, '1')], { name: 'A规则', sortNo: 9 }));
+    const second = await w.create(calcBody([calcItem(b, '1')], { name: 'B规则', sortNo: 1 }));
     const api = hiding('sortNo');
     expect([await ids(api, w, '?pageSize=1&page=1'), await ids(api, w, '?pageSize=1&page=2')]).toEqual([
       [first.id],

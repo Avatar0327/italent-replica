@@ -12,8 +12,10 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { booleanQuery, pageQuery, parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
+import { getModuleViewableFields } from '../permission/module-access.js';
 import {
   checkWriteFields,
+  codeOf,
   configEnvelope,
   configScopeSql,
   notFoundMessage,
@@ -24,20 +26,43 @@ import {
   reviewWriteContext,
   TALENT_REVIEW_BASE,
   trimReview,
-  type ModuleScope,
   type TalentReviewContext,
 } from './access.js';
-import { calcRuleCreate, calcRulePatch } from './calc-rule-input.js';
+import { type CalcItemBody, calcRuleCreate, type CalcRulePatch, calcRulePatch } from './calc-rule-input.js';
 import * as rules from './calc-rule-service.js';
-import { CALC_RULE, type CalcRuleRow, loadCalcRuleView, withItems } from './calc-rule-view.js';
+import type { CatalogAccess } from './calc-rule-service.js';
+import { CALC_RULE, type CalcRuleRow, loadCalcRuleView, visibleOrder, withItems } from './calc-rule-view.js';
 import { listConfig } from './config-kit.js';
 
 const CALC_RULES = `${TALENT_REVIEW_BASE}/calc-rules`;
 
-/** 公式与目标字段引用盘点字段目录 = 读取字段目录：另需字段目录的对象查看权，并按其范围解析可见字段。 */
-async function requireCatalogAccess(c: Context<TenantEnv>, deps: TenantRouteDeps): Promise<ModuleScope> {
+/** 引用盘点字段需要查看人对字段目录这四列的查看权（名称、类型、启用状态、系统写入）。 */
+const REFERENCE_COLUMNS = ['name', 'kind', 'enabled', 'systemWritten'];
+
+/**
+ * 公式与目标字段引用盘点字段目录 = 读取字段目录：另需字段目录的对象查看权，并按其范围与列权限解析可引用的字段。
+ */
+async function requireCatalogAccess(c: Context<TenantEnv>, deps: TenantRouteDeps): Promise<CatalogAccess> {
   const ctx = await reviewContext(c, deps, 'field');
-  return reviewScope(c, deps, ctx, 'field');
+  const scope = await reviewScope(c, deps, ctx, 'field');
+  const viewable = await getModuleViewableFields(deps, ctx, codeOf('field'));
+  return { scope, columns: viewable === undefined || REFERENCE_COLUMNS.every((column) => viewable.has(column)) };
+}
+
+/** 只提交启用时的保存提示是附带的：没有字段目录查看权就不给提示，不因此拒绝启用。 */
+async function optionalCatalogAccess(c: Context<TenantEnv>, deps: TenantRouteDeps) {
+  try {
+    return await requireCatalogAccess(c, deps);
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'FORBIDDEN') return undefined;
+    throw error;
+  }
+}
+
+/** 提交计算项目必须有字段目录访问；只提交启用时是附带提示，访问不到就不给提示。 */
+function patchCatalogAccess(c: Context<TenantEnv>, deps: TenantRouteDeps, body: CalcRulePatch) {
+  if (body.items !== undefined) return requireCatalogAccess(c, deps);
+  return body.enabled === true ? optionalCatalogAccess(c, deps) : Promise.resolve(undefined);
 }
 
 /**
@@ -51,7 +76,8 @@ async function runWrite(
   body: object,
   status: 200 | 201,
   execute: (tx: Tx, ctx: rules.CalcWriteContext) => Promise<rules.CalcWriteView>,
-  fieldScope?: ModuleScope,
+  fieldAccess?: CatalogAccess,
+  referenced: readonly CalcItemBody[] = [],
 ) {
   const scope = await reviewScope(c, deps, ctx, 'calcRule');
   const result = await runCommand(deps.db, ctx, {
@@ -59,11 +85,17 @@ async function runWrite(
     fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
     execute: async (tx, commandId) => ({
       status,
-      body: await execute(tx, { ...ctx, commandId, scope, ...(fieldScope ? { fieldScope } : {}) }),
+      body: await execute(tx, { ...ctx, commandId, scope, ...(fieldAccess ? { fieldAccess } : {}) }),
     }),
   });
   const view = result.body as rules.CalcWriteView;
   requireConfigVisible(scope, 'calcRule', view.createdBy as string | null);
+  // 幂等重放不再执行命令：请求里的目标字段与公式引用按当前字段目录范围与列权限重新复核（授权复核，与业务校验分开）
+  if (fieldAccess && referenced.length > 0) {
+    await withTenant(deps.db, ctx.tenantId, (tx) =>
+      rules.requireItemsReferenceable(tx, ctx.tenantId, referenced, fieldAccess),
+    );
+  }
   if (c.req.method !== 'DELETE') c.header('ETag', `"${view.revision}"`);
   return c.json((await trimReview(deps, ctx, 'calcRule', [view]))[0], result.status);
 }
@@ -76,9 +108,11 @@ export function registerCalcRuleRoutes(router: Hono<TenantEnv>, deps: TenantRout
     // 筛选字段同样受字段查看权约束：看不到 enabled 的人不能用筛选还原启用状态
     if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'calcRule', 'enabled');
     const scope = await reviewScope(c, deps, ctx, 'calcRule');
+    const orderBy = visibleOrder(await getModuleViewableFields(deps, ctx, codeOf('calcRule')));
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const found = await listConfig(tx, CALC_RULE, ctx.tenantId, {
         ...page,
+        orderBy,
         enabled,
         visible: configScopeSql(scope, 'talent_review_calc_rules'),
       });
@@ -102,16 +136,16 @@ export function registerCalcRuleRoutes(router: Hono<TenantEnv>, deps: TenantRout
     requireNew(ctx.expectedRevision);
     const body = await parseBody(c, calcRuleCreate);
     await checkWriteFields(deps, ctx, 'calcRule', 'create', body);
-    const fieldScope = await requireCatalogAccess(c, deps);
-    return runWrite(c, deps, ctx, body, 201, (tx, w) => rules.createCalcRule(tx, w, body), fieldScope);
+    const access = await requireCatalogAccess(c, deps);
+    return runWrite(c, deps, ctx, body, 201, (tx, w) => rules.createCalcRule(tx, w, body), access, body.items);
   });
   router.patch(`${CALC_RULES}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'calcRule', 'update', revision(c));
     const id = uuidParam(c);
     const body = await parseBody(c, calcRulePatch);
     await checkWriteFields(deps, ctx, 'calcRule', 'update', body);
-    const fieldScope = body.items !== undefined ? await requireCatalogAccess(c, deps) : undefined;
-    return runWrite(c, deps, ctx, body, 200, (tx, w) => rules.updateCalcRule(tx, w, id, body), fieldScope);
+    const access = await patchCatalogAccess(c, deps, body);
+    return runWrite(c, deps, ctx, body, 200, (tx, w) => rules.updateCalcRule(tx, w, id, body), access, body.items);
   });
   router.delete(`${CALC_RULES}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'calcRule', 'delete', revision(c));

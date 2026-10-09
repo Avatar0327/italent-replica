@@ -21,25 +21,25 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('计算规则保存与字
     mutate: (tx: Parameters<Parameters<typeof withTenant>[2]>[0]) => Promise<void>,
     request: () => Promise<Response>,
   ) {
-    return withTenant(testDb().db, w.as.tenant, async (tx) => {
+    const { pending } = await withTenant(testDb().db, w.as.tenant, async (tx) => {
       await tx.execute(sql`SELECT id FROM talent_review_fields WHERE id = ${fieldId}::uuid FOR UPDATE`);
       const pending = request();
       await waitForBlocked(testDb().db, 1);
       await mutate(tx);
-      return pending;
+      return { pending };
     });
+    return pending;
   }
 
   it('目标字段在校验后被删除：受控 404，不落库、无 500', async () => {
     const w = await calcWorld(testDb().db, 'trk-lock-delete');
     const target = await w.numberField();
-    const pending = await interleave(
+    const response = await interleave(
       w,
       target.id,
       async (tx) => void (await tx.delete(talentReviewFields).where(eq(talentReviewFields.id, target.id))),
       () => w.post(calcBody([calcItem(target, '1')])),
     );
-    const response = await pending;
     expect(response.status, await response.clone().text()).toBe(404);
     expect((await w.list()).items).toEqual([]);
   });

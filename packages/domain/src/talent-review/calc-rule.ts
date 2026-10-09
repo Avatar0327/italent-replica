@@ -31,6 +31,7 @@ export interface FormulaField {
   readonly name: string;
   readonly kind: TalentReviewFieldKind;
   readonly systemWritten: boolean;
+  readonly enabled: boolean;
 }
 export interface CalcItemInput {
   readonly targetFieldId: string;
@@ -61,11 +62,19 @@ export interface CalcHints {
   /** 成环或依赖成环、无法计算的项目（目标字段 id）。 */
   readonly blocked: string[];
 }
+export type CalcFailureReason =
+  'FORMULA_INVALID' | 'MULTI_OPTION_IN_FORMULA' | 'CALC_FIELD_NAME_AMBIGUOUS' | 'CALC_FORMULA_FIELD_DISABLED';
 export type CalcAnalysis =
-  | { readonly ok: true; readonly usesRanking: boolean[]; readonly hints: CalcHints }
+  | {
+      readonly ok: true;
+      readonly usesRanking: boolean[];
+      readonly hints: CalcHints;
+      /** 目标字段与公式引用的全部盘点字段 id：保存前按序加锁、锁内复核。 */
+      readonly fieldIds: string[];
+    }
   | {
       readonly ok: false;
-      readonly reason: 'FORMULA_INVALID' | 'MULTI_OPTION_IN_FORMULA';
+      readonly reason: CalcFailureReason;
       readonly item: number;
       readonly message: string;
       readonly issues?: CalcIssue[];
@@ -74,11 +83,23 @@ export type CalcAnalysis =
 
 const staticKind = (kind: TalentReviewFieldKind): ExpressionFieldKind => (kind === 'option' ? 'text' : kind);
 
+/** 公式里引用的字段路径（语法不合法时为空）；已存公式的引用判定共用，不依赖字段目录。 */
+export function formulaReferences(formula: string): string[] {
+  const parsed = validateFormula(formula, { isKnownField: () => true });
+  return parsed.ok ? [...parsed.fields] : [];
+}
+
 /**
- * 分析一条规则的全部计算项目。`catalog` 是调用方可见的盘点字段（含全部目标字段）；重名字段的写法有歧义，不进入公式字段目录。
- * 返回第一个不合法的项目（下标 = items 下标）；通过时给出每项的 uses_ranking 与保存提示。
+ * 分析一条规则的全部计算项目——字段绑定只做一次：公式里的字段只认调用方给出的、可见字段的**完整路径**（`盘点对象.<名>`，
+ * 重名字段有歧义不进字段目录；不接受目标字段的短名），类型检查、依赖排序、uses_ranking、多选与停用判定都基于这同一个绑定。
+ * `held`：规则里已有项目的现存公式（目标字段 id → 公式），用来区分“保留已有引用”和“新增引用”（停用后不可新引用，设计 §7）。
+ * 返回第一个不合法的项目（下标 = items 下标）；通过时给出每项的 uses_ranking、保存提示与引用的字段 id。
  */
-export function analyzeCalcItems(items: readonly CalcItemInput[], catalog: readonly FormulaField[]): CalcAnalysis {
+export function analyzeCalcItems(
+  items: readonly CalcItemInput[],
+  catalog: readonly FormulaField[],
+  held: ReadonlyMap<string, string> = new Map(),
+): CalcAnalysis {
   const counts = new Map<string, number>();
   for (const field of catalog) counts.set(field.name, (counts.get(field.name) ?? 0) + 1);
   const byPath = new Map(
@@ -90,45 +111,53 @@ export function analyzeCalcItems(items: readonly CalcItemInput[], catalog: reado
     const field = byPath.get(path);
     return field ? staticKind(field.kind) : FORMULA_CONTEXT_FIELDS[path];
   };
+  const fail = (reason: CalcFailureReason, item: number, message: string, extra: object = {}): CalcAnalysis => ({
+    ok: false,
+    reason,
+    item,
+    message,
+    ...extra,
+  });
+  const registry = createDefaultRegistry();
   const compItems = items.map((item) => ({
     field: formulaPath(byId.get(item.targetFieldId)!.name),
     priority: item.priority,
     formula: item.formula,
     ...(item.description ? { description: item.description } : {}),
   }));
-  const registry = createDefaultRegistry();
-  // 先按名称找出多选字段的引用并给出专用错误码（引擎遇到带多选类型的字段会报参数类型错误，信息不够明确）；
-  // 其他语法 / 函数 / 字段错误留给下面的依赖排序统一报告
   const usesRanking: boolean[] = [];
-  for (const [index, item] of compItems.entries()) {
-    const checked = validateFormula(item.formula, { isKnownField, registry });
-    const multi = checked.ok ? checked.fields.filter((path) => byPath.get(path)?.kind === 'multi_option') : [];
-    if (multi.length > 0) {
-      return {
-        ok: false,
-        reason: 'MULTI_OPTION_IN_FORMULA',
-        item: index,
-        message: '公式不能引用多选字段',
-        fields: multi,
-      };
+  const fieldIds = new Set(items.map((item) => item.targetFieldId));
+  for (const [index, item] of items.entries()) {
+    if (counts.get(byId.get(item.targetFieldId)!.name)! > 1) {
+      return fail('CALC_FIELD_NAME_AMBIGUOUS', index, '目标字段与其他字段重名，公式无法区分，请先修改字段名称');
     }
-    usesRanking.push(
-      checked.ok && checked.functions.some((name) => registry.resolve(name)?.skipInTodoTrigger === true),
-    );
+    const formula = compItems[index]!.formula;
+    // 先不带类型，按名称找出多选字段的引用并给出专用错误码（带类型时引擎报笼统的参数类型错误）
+    const untyped = validateFormula(formula, { isKnownField, registry });
+    if (!untyped.ok) return fail('FORMULA_INVALID', index, '公式不合法', { issues: untyped.errors.map(toIssue) });
+    const multi = untyped.fields.filter((path) => byPath.get(path)?.kind === 'multi_option');
+    if (multi.length > 0) return fail('MULTI_OPTION_IN_FORMULA', index, '公式不能引用多选字段', { fields: multi });
+    const typed = validateFormula(formula, { isKnownField, fieldKind, registry });
+    if (!typed.ok) return fail('FORMULA_INVALID', index, '公式不合法', { issues: typed.errors.map(toIssue) });
+    const kept = new Set(formulaReferences(held.get(item.targetFieldId) ?? ''));
+    for (const path of typed.fields) {
+      const field = byPath.get(path);
+      if (!field) continue;
+      fieldIds.add(field.id);
+      if (!field.enabled && !kept.has(path)) {
+        return fail('CALC_FORMULA_FIELD_DISABLED', index, '公式引用的字段已停用，不能新引用', { fields: [path] });
+      }
+    }
+    usesRanking.push(typed.functions.some((name) => registry.resolve(name)?.skipInTodoTrigger === true));
   }
   const ordering = orderComputationItems(compItems, { isKnownField, fieldKind, registry });
-  if (!ordering.ok) {
-    const { failure } = ordering;
-    const index = 'field' in failure ? compItems.findIndex((item) => item.field === failure.field) : -1;
-    const { code, message } = failure;
-    const issue = 'line' in failure ? { code, message, line: failure.line, column: failure.column } : { code, message };
-    return { ok: false, reason: 'FORMULA_INVALID', item: Math.max(index, 0), message, issues: [issue] };
-  }
+  if (!ordering.ok) return fail('FORMULA_INVALID', 0, ordering.failure.message);
   const idOfPath = new Map(compItems.map((item, index) => [item.field, items[index]!.targetFieldId]));
   const ids = (paths: readonly string[]) => paths.map((path) => idOfPath.get(path)!);
   return {
     ok: true,
     usesRanking,
+    fieldIds: [...fieldIds],
     hints: {
       order: ids(ordering.order.map((item) => item.field)),
       warnings: [...ordering.warnings],
@@ -137,3 +166,10 @@ export function analyzeCalcItems(items: readonly CalcItemInput[], catalog: reado
     },
   };
 }
+
+const toIssue = (error: { code: string; message: string; line: number; column: number }): CalcIssue => ({
+  code: error.code,
+  message: error.message,
+  line: error.line,
+  column: error.column,
+});

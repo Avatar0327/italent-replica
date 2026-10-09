@@ -16,7 +16,7 @@
 
 | 方法 | 路径 | 类型 | 对象·操作·按钮 | 范围 | 字段 | 其他 |
 |---|---|---|---|---|---|---|
-| GET | `/calc-rules` | object | CalcRule；view；无按钮 | list `configScopeSql(created_by)`，分页前过滤 | projector 裁剪；带 `enabled` 筛选而无 `enabled` 查看权 → 403 `FILTER_FIELD_HIDDEN` | 信封 `hasDataPermission`；每条带完整聚合（不含 `hints`） |
+| GET | `/calc-rules` | object | CalcRule；view；无按钮 | list `configScopeSql(created_by)`，分页前过滤 | projector 裁剪；带 `enabled` 筛选而无 `enabled` 查看权 → 403 `FILTER_FIELD_HIDDEN` | 信封 `hasDataPermission`；排序键只取查看人可见的 sortNo、name，再以 id 收尾（隐藏字段不影响顺序与分页）；每条带完整聚合（不含 `hints`） |
 | GET | `/calc-rules/:id` | object | 同上 | point id → `requireConfigVisible(createdBy)`；范围外与不存在同为 404 | 同列表 | ETag = revision |
 | POST | `/calc-rules` | object | CalcRule；create；create@list；**另需字段目录 `TalentReview.Field` 的 view（`requireCatalogAccess`，条件守卫 `talentReview.calcRuleFieldCatalog`）** | `requireConfigCreatable`（只有看全部可建，否则 404）；目标字段与公式字段按字段目录范围解析可见 | 严格结构；逐字段编辑权；返回含 `hints`（经 `hints` 字段查看权裁剪） | REV（=0）、IDEM；201 |
 | PATCH | `/calc-rules/:id` | object | CalcRule；update；update@detail；带 `items` 时同上 | 行锁 → `requireConfigVisible` → REV；返回前复核 | 严格结构；逐字段编辑权（含 `items: []` 显式清空）；**改名要求看全部**（`NAME_REQUIRES_SEE_ALL`，在查重之前） | REV、IDEM；`items` 整组替换 |
@@ -28,21 +28,24 @@
 |---|---|---|
 | 规则名称租户唯一 | 409 `CALC_RULE_DUPLICATE` | 设计 §2 通用约定 |
 | 计算项目按目标字段对应：规则内目标字段唯一；保存后只读（改目标 = 删除再新增） | 400 `CALC_ITEM_TARGET_DUPLICATE` | 设计 §2.2、§7（目标字段保存后只读） |
-| 目标字段不存在 / 不在字段目录范围内 | 404 `NOT_FOUND`（同一个响应） | AGENTS §10、OCR 路由规则 |
+| 目标字段不存在 / 不在字段目录范围内 / 查看人缺字段目录 name、kind、enabled、systemWritten 任一列查看权 | 404 `NOT_FOUND`（同一个响应；幂等重放时按当前范围与列权限重新复核） | AGENTS §10、OCR 路由规则 |
 | 目标字段不能是多选、系统写入字段 | 400 `TARGET_FIELD_NOT_ALLOWED`（带项目下标 `item`） | 设计 §4.5(d) 表 |
-| 新选作目标的字段须已启用 | 400 `CALC_TARGET_DISABLED` | 设计 §7 启停行 |
+| 新选作目标的字段须已启用；公式**新增**引用的字段须已启用（保留已有引用不受影响） | 400 `CALC_TARGET_DISABLED` / `CALC_FORMULA_FIELD_DISABLED` | 设计 §7 启停行 |
+| 目标字段与其他字段重名（公式无法区分） | 400 `CALC_FIELD_NAME_AMBIGUOUS` | 🟡 C-B5-1 |
 | 保存校验 validateFormula：语法、函数、参数个数、未知字段、类型 | 400 `FORMULA_INVALID`（带 `item`、`issues[{code,message,line,column}]`） | 设计 §4.3、DEC-287 |
 | 公式引用多选字段 | 400 `MULTI_OPTION_IN_FORMULA`（带 `item`、`fields`） | DEC-314②（取证前禁用 🟡） |
 | 循环依赖、优先级与依赖矛盾、类型不确定：**只提示、不拦截**，写响应的 `hints`（`order / warnings / cycles / blocked`）给出 | — | DEC-274、DEC-287② |
 | `uses_ranking` 由公式用到的函数派生（排名函数 `skipInTodoTrigger`） | — | DEC-260 |
 | 规则 `revision` 随规则或其项目的任何保存 +1 | — | 设计 §2.2（run 冻结核对“规则已改”） |
+| 保存前按排序后的字段 id 取被引用字段（目标 + 公式引用）的行共享锁，锁内重新分析：字段被并发删除 / 改名 / 停用时得到受控的 404 / 400，不落到外键错误 | 404 / 400 / 409 `CALC_FIELD_CHANGED` | AGENTS §10 并发、与 #182 位置字段锁序同口径 |
+| 只提交 `{ enabled: true }` 也分析已存项目并返回不阻断的 `hints`（循环仍允许启用；查看人没有字段目录访问时不给提示、不拒绝启用） | — | DEC-274 |
 
 ## 4. 设计自定项（🟡）
 
-- **C-B5-1 公式按字段名引用盘点字段**：`盘点对象.<字段名>`（`26` §8 原站写法），固定字段 `盘点活动.项目名称 / 盘点活动.盘点年度 / 盘点对象.盘点方案`；字段目录里重名的字段不进公式字段目录。字段改名不会改写已存公式——B1 的字段名没有唯一约束也没有改名联动，设计未规定；需要总编排决定是否改成按编码 / id 存公式或加改名守卫（已写进 PR 描述“待决策”）。
+- **C-B5-1 公式按字段名引用盘点字段**：只认完整路径 `盘点对象.<字段名>`（`26` §8 原站写法，**不接受目标字段短名**，字段绑定只做一次，类型检查 / 依赖排序 / `uses_ranking` 基于同一结果），固定字段 `盘点活动.项目名称 / 盘点活动.盘点年度 / 盘点对象.盘点方案`；字段目录里重名的字段不进公式字段目录。**P2-06 待决**：字段改名 / 重名不会改写已存公式；仅被公式引用的字段删除已拒绝（`FIELD_IN_USE`，referrer = `CALC_RULE`），长期身份方案（改按字段 id / 编码绑定，或加改名守卫）待总编排定。字段改名不会改写已存公式——B1 的字段名没有唯一约束也没有改名联动，设计未规定；需要总编排决定是否改成按编码 / id 存公式或加改名守卫（已写进 PR 描述“待决策”）。
 - **C-B5-2** 公式和目标字段只在**当前操作人可见**的字段里解析：看不到的字段名与不存在的字段名同为未知字段，不暴露隐藏字段。
-- **C-B5-3** 启用（`enabled: true`）不重新分析公式：公式在最近一次提交 `items` 时已校验；不带 `items` 的修改不需要字段目录权限。
-- **C-B5-4** `hints` 只在提交了 `items` 的写响应里出现（GET 不带）；设计未规定提示的载体。
+- **C-B5-3** 只提交 `{ enabled: true }` 也分析已存项目并返回 `hints`（不阻断）；不带 `items` 也不启用的修改不需要字段目录权限。
+- **C-B5-4** `hints` 只在提交了 `items` 或启用的写响应里出现（GET 不带）；设计未规定提示的载体。
 
 ## 5. 查看人 × 接口 × 字段
 
@@ -71,4 +74,4 @@
 | 名称 | 位置 | 说明 |
 |---|---|---|
 | `registerConfigReferenceGuard('calcRule', guard)` | `config-kit.ts` | 项目（B7）引用计算规则时登记；删除时同事务询问，409 `CALC_RULE_IN_USE` |
-| `registerConfigReferenceGuard('field', …)`（本 PR 登记） | `calc-rule-service.ts` | 被计算项目作目标的字段不能删（`FIELD_IN_USE`，referrer = `CALC_RULE`）；库外键 restrict 兜底。公式里按名称引用的字段无法守卫（C-B5-1） |
+| `registerConfigReferenceGuard('field', …)`（本 PR 登记） | `calc-rule-service.ts` | 被计算项目作目标、或被公式（完整路径）引用的字段不能删（`FIELD_IN_USE`，referrer = `CALC_RULE`）；目标字段另有库外键 restrict 兜底。改名不受守卫（P2-06 待决） |

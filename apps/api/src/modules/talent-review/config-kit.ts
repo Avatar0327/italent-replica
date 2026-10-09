@@ -86,7 +86,14 @@ export function listConfig(
   tx: Tx,
   spec: Pick<ConfigSpec<never>, 'table' | 'view' | 'orderBy'>,
   tenantId: string,
-  query: { limit: number; offset: number; enabled?: boolean; visible: SQL },
+  query: {
+    limit: number;
+    offset: number;
+    enabled?: boolean;
+    visible: SQL;
+    /** 调用方按查看人可见字段给出的排序键（隐藏字段不能影响顺序与分页）；缺省 = 规格的默认排序。 */
+    orderBy?: readonly AnyPgColumn[];
+  },
 ) {
   const filters = [eq(spec.table.tenantId, tenantId), query.visible];
   if (query.enabled !== undefined) filters.push(eq(spec.table.enabled, query.enabled));
@@ -94,7 +101,7 @@ export function listConfig(
     .select(spec.view)
     .from(spec.table)
     .where(and(...filters))
-    .orderBy(...spec.orderBy.map((column) => asc(column)), asc(spec.table.id))
+    .orderBy(...(query.orderBy ?? spec.orderBy).map((column) => asc(column)), asc(spec.table.id))
     .limit(query.limit)
     .offset(query.offset);
 }
