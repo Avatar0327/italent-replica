@@ -9,6 +9,7 @@ import { eq, permissionUserPersonLinks, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { idpOperator } from './AC-IDP-permission-support.js';
+import { addMember } from './AC-PRM-support.js';
 import { errorOf, permissionWorldOf, planWorld, type PlanView, type PlanWorld } from './AC-IDP-plan-support.js';
 
 const testDb = useTestDb();
@@ -110,7 +111,7 @@ describe('AC-IDP（补）F-066 转交：成功路径', () => {
     expect(JSON.stringify(log)).not.toContain(w.outsider.userId);
   });
 
-  it('当前阶段有多个待办时须指定 taskId；taskId 不属于该实例的待办 409，业务不变', async () => {
+  it('taskId 不属于该实例的待办：409 APPROVAL_TASK_CLOSED，业务不变；指定正确 taskId 成功', async () => {
     const { w, plan } = await atApprovePlan('idp-tr-task');
     const instance = await w.instanceOf(plan, 1);
     const bad = await transfer(w, plan, {
@@ -118,9 +119,56 @@ describe('AC-IDP（补）F-066 转交：成功路径', () => {
       taskId: '00000000-0000-4000-8000-000000000001',
     });
     expect(await errorOf(bad)).toMatchObject({ status: 409, reason: 'APPROVAL_TASK_CLOSED' });
+    expect(await w.readPlan(plan.id)).toMatchObject({ revision: plan.revision });
     const taskId = instance.tasks.find((t) => t.status === 'pending')!.id;
     const good = await transfer(w, plan, { toUserId: w.outsider.userId, taskId });
     expect(good.status, await good.clone().text()).toBe(200);
+  });
+
+  it('会签节点有两条待办：省略 taskId 400 IDP_TRANSFER_TASK_REQUIRED；指定 taskId 成功；转给另一名在办会签人被拒', async () => {
+    const countersign = {
+      key: 'set_goals',
+      name: '会签制定目标',
+      kind: 'countersign',
+      approvers: ['idp_employee', 'idp_tutor'],
+      transitionRule: { type: 'all' },
+      actions: { avoidSelf: false, reject: false, jump: true, revoke: false },
+    };
+    const w = await planWorld(testDb().db, 'idp-tr-countersign', {
+      planNodes: [
+        countersign,
+        {
+          key: 'approve_plan',
+          name: '审批发展计划',
+          approver: 'idp_tutor',
+          actions: { avoidSelf: false, reject: true, rejectToPrevious: true, jump: true, revoke: false },
+        },
+      ],
+    });
+    const plan = await w.startedPlan();
+    const instance = await w.instanceOf(plan, 1);
+    const pending = instance.tasks.filter((t) => t.status === 'pending');
+    expect(pending.map((t) => t.assigneeUserId).sort()).toEqual([w.employee.userId, w.manager.userId].sort());
+
+    const omitted = await transfer(w, plan, { toUserId: w.outsider.userId });
+    expect(await errorOf(omitted)).toMatchObject({ status: 400, reason: 'IDP_TRANSFER_TASK_REQUIRED' });
+    expect(await w.readPlan(plan.id)).toMatchObject({ revision: plan.revision });
+
+    const managerTask = pending.find((t) => t.assigneeUserId === w.manager.userId)!;
+    const employeeTask = pending.find((t) => t.assigneeUserId === w.employee.userId)!;
+    const duplicate = await transfer(w, plan, { toUserId: w.manager.userId, taskId: employeeTask.id });
+    expect(await errorOf(duplicate)).toMatchObject({ status: 400, reason: 'APPROVAL_ALREADY_NODE_ASSIGNEE' });
+    expect(await w.readPlan(plan.id)).toMatchObject({ revision: plan.revision });
+
+    const done = await transfer(w, plan, { toUserId: w.outsider.userId, taskId: managerTask.id });
+    expect(done.status, await done.clone().text()).toBe(200);
+    const after = await w.instanceOf(await w.readPlan(plan.id), 1);
+    expect(
+      after.tasks
+        .filter((t) => t.status === 'pending')
+        .map((t) => t.assigneeUserId)
+        .sort(),
+    ).toEqual([w.employee.userId, w.outsider.userId].sort());
   });
 });
 
@@ -201,6 +249,47 @@ describe('AC-IDP（补）F-066 转交：权限、范围与状态（DEC-067 revis
     expect((await w.readPlan(plan.id)).revision).toBe(plan.revision + 1);
     const conflict = await transfer(w, plan, { ...body, reason: '另一个原因' }, w.hrUser, { idempotencyKey: key });
     expect(await errorOf(conflict)).toMatchObject({ status: 409, code: 'IDEMPOTENCY_CONFLICT' });
+  });
+});
+
+describe('AC-IDP（补）F-066 转交目标须在操作人的 IDP 范围内（IDP-R16 受管理单元限制；引用 ID 写入前校验范围）', () => {
+  it('范围内计划转给范围外员工：404，计划与待办不变、范围外员工仍看不到计划；与目标不存在 / 纯账号同一结果', async () => {
+    const { w, plan } = await atApprovePlan('idp-tr-target-scope');
+    const pw = await permissionWorldOf(w);
+    const stranger = await w.person('范围外员工', await w.org('范围外部门'));
+    const plain = await addMember(pw, 'plain-account');
+    const hr = await idpOperator(pw, { orgId: w.dept });
+    const attempt = async (toUserId: string) => {
+      const response = await hr.request('POST', `/plans/${plan.id}/transfer`, {
+        ifMatch: plan.revision,
+        body: { toUserId },
+      });
+      return errorOf(response);
+    };
+    const outside = await attempt(stranger.userId);
+    expect(outside).toMatchObject({ status: 404 });
+    expect(await attempt(plain.id), '未绑定员工的纯账号先按拒绝（待定）').toEqual(outside);
+    expect(await attempt('00000000-0000-4000-8000-0000000000aa'), '不存在的账号').toEqual(outside);
+
+    expect(await w.readPlan(plan.id)).toMatchObject({ revision: plan.revision });
+    const instance = await w.instanceOf(plan, 1);
+    expect(instance.tasks.filter((t) => t.status === 'pending').map((t) => t.assigneeUserId)).toEqual([
+      w.manager.userId,
+    ]);
+    expect((await w.realHttp(stranger.userId, 'GET', `${IDP}/plans/${plan.id}`)).status).toBe(404);
+    expect(await interventionLogs(w, plan.id)).toEqual([]);
+  });
+
+  it('目标在操作人范围内（含下级组织）成功', async () => {
+    const { w, plan } = await atApprovePlan('idp-tr-target-in');
+    const pw = await permissionWorldOf(w);
+    const child = await w.person('下级组织员工', await w.org('下级部门', w.dept));
+    const hr = await idpOperator(pw, { orgId: w.dept });
+    const response = await hr.request('POST', `/plans/${plan.id}/transfer`, {
+      ifMatch: plan.revision,
+      body: { toUserId: child.userId },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
   });
 });
 
