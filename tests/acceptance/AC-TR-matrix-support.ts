@@ -45,7 +45,13 @@ export interface MatrixView {
     color: string;
     countsGreen: boolean;
   }[];
-  readonly ratioGroups: { id: string; name: string; isDefault: boolean; rules: Record<string, unknown>[] }[];
+  readonly ratioGroups: {
+    id: string;
+    name: string;
+    sortNo: number;
+    isDefault: boolean;
+    rules: Record<string, unknown>[];
+  }[];
   readonly [key: string]: unknown;
 }
 export interface MatrixRefs {

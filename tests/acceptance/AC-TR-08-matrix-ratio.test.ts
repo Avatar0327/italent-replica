@@ -175,7 +175,7 @@ describe('比例规则组（TR-R33）', () => {
     expect((await w.request('DELETE', `${MATRICES}/${matrix.id}`, { ifMatch: 4 })).status).toBe(200);
   });
 
-  it('规则组按创建顺序排列：删除中间的组后新增的组排在最后', async () => {
+  it('规则组按创建顺序排列：删除中间的组后新增的组序号是 MAX+1，排在最后', async () => {
     const w = await matrixWorld(testDb().db, 'trm-ratio-order');
     const matrix = await w.create();
     let view = matrix;
@@ -186,7 +186,13 @@ describe('比例规则组（TR-R33）', () => {
       });
       view = (await response.json()) as MatrixView;
     }
-    const middle = view.ratioGroups[0]!;
+    expect(view.ratioGroups.map((group) => [group.name, group.sortNo])).toEqual([
+      ['甲', 1],
+      ['乙', 2],
+      ['丙', 3],
+    ]);
+    const middle = view.ratioGroups[1]!;
+    expect(middle.name).toBe('乙');
     const removed = await w.request('DELETE', `${MATRICES}/${matrix.id}/ratio-groups/${middle.id}`, {
       ifMatch: view.revision,
     });
@@ -195,7 +201,11 @@ describe('比例规则组（TR-R33）', () => {
       ifMatch: view.revision,
       body: ratioGroupBody({ name: '丁' }),
     });
-    expect(((await added.json()) as MatrixView).ratioGroups.map((group) => group.name)).toEqual(['乙', '丙', '丁']);
+    expect(((await added.json()) as MatrixView).ratioGroups.map((group) => [group.name, group.sortNo])).toEqual([
+      ['甲', 1],
+      ['丙', 3],
+      ['丁', 4],
+    ]);
   });
 
   it('规则组变更记入九宫格的数据变更日志（ratioGroups 字段）', async () => {
