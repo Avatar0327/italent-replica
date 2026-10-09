@@ -5,8 +5,8 @@
  *   关联日志，以及成功后收窄范围再用原键重放，调用人看到的都与“没有隐藏人员”时的某个合法结果相同。
  * - DEC-319① 可见下属的上级在范围外：原样 PUT 回去，上级没有改动，不重新校验可见性（200、上级不变）；
  *   真的改成另一个范围外的人仍 400 SUPERIOR_NOT_FOUND。
- * - DEC-319② 范围外上级只给 ID：人员详情、列表、审计、重放回执只带 superiorPersonId，不带经理的姓名、邮箱、
- *   部门等任何字段；拿这个 ID 调 GET /people/:id，与“不存在”同样 404。
+ * - F-057 / DEC-325③ 修订 DEC-319②：详情、列表、重放回执显示范围外上级姓名，仍不带邮箱、部门等其他字段；
+ *   拿上级 ID 调 GET /people/:id，与“不存在”同样 404。DEC-327：头像留空，真实头像由 F-058 后补。
  */
 import { randomUUID } from 'node:crypto';
 import { survey360 } from '@italent/domain';
@@ -345,26 +345,30 @@ describe('DEC-319① 可见下属的上级在范围外：上级没有改动时�
   });
 });
 
-describe('DEC-319② 范围外上级只给 ID：五个出口都不带经理的任何字段', () => {
-  it('详情、列表、审计、重放回执只带 superiorPersonId；用该 ID 调 GET /people/:id 与不存在同样 404', async () => {
+describe('F-057 / DEC-325③ 范围外上级显示姓名，仍不披露其他字段', () => {
+  it('详情、列表、重放回执显示上级姓名；审计不越权；上级独立点查仍与不存在同样 404', async () => {
     const s = await scene('r6h');
     const sub = s.personOf(s.subordinate.id);
     const boss = s.personOf(s.outsideBoss.id);
-    const markers = [boss.name, s.bossEmail, '乙部门'];
-    const noBossFields = (text: string) => {
+    const markers = [s.bossEmail, '乙部门'];
+    const noBossPrivateFields = (text: string) => {
       for (const marker of markers) expect(text).not.toContain(marker);
     };
+    const bossSummary = { id: boss.id, name: boss.name, avatar: null };
 
     // ① 详情
     const detail = await s.as('GET', `/people/${sub.id}`);
     const detailText = await detail.clone().text();
-    expect(((await detail.json()) as PersonView).superiorPersonId).toBe(boss.id);
-    noBossFields(detailText);
+    expect(await detail.json()).toMatchObject({ superiorPersonId: boss.id, superior: bossSummary });
+    noBossPrivateFields(detailText);
     // ② 列表
     const list = await s.w.ok<{ items: PersonView[] }>(s.as('GET', '/people?pageSize=200'));
-    expect(list.items.find((p) => p.id === sub.id)!.superiorPersonId).toBe(boss.id);
+    expect(list.items.find((p) => p.id === sub.id)).toMatchObject({
+      superiorPersonId: boss.id,
+      superior: bossSummary,
+    });
     expect(list.items.map((p) => p.id)).not.toContain(boss.id);
-    noBossFields(JSON.stringify(list));
+    noBossPrivateFields(JSON.stringify(list));
     // ③ 审计：360 的数据变更日志列表与详情（经理作为组织员工的信息本就对该管理员可见，只核 360 日志）
     const audit = auditApi(testDb().db, '2026-10-01T02:00:00Z', { authorize: s.w.authorize });
     const viewer = { user: s.admin, tenant: s.w.tenantId };
@@ -372,8 +376,15 @@ describe('DEC-319② 范围外上级只给 ID：五个出口都不带经理的�
       i.objectType.startsWith('survey360'),
     );
     expect(logs.length).toBeGreaterThan(0);
-    noBossFields(JSON.stringify(logs));
-    for (const log of logs) noBossFields(JSON.stringify(await audit.dataChange(viewer, log.id)));
+    // 精细化受限管理员仍不可查看人员日志，F-057 不扩张审计对象范围。
+    expect(logs.some((log) => log.objectType === 'survey360-person')).toBe(false);
+    expect(JSON.stringify(logs)).not.toContain(boss.name);
+    noBossPrivateFields(JSON.stringify(logs));
+    for (const log of logs) {
+      const entry = JSON.stringify(await audit.dataChange(viewer, log.id));
+      expect(entry).not.toContain(boss.name);
+      noBossPrivateFields(entry);
+    }
     // ④ 重放回执：原样 PUT 后用原键重放
     const seen = (await s.w.ok<PersonView>(s.as('GET', `/people/${sub.id}`))) as PersonView & Record<string, unknown>;
     const key = randomUUID();
@@ -388,8 +399,8 @@ describe('DEC-319② 范围外上级只给 ID：五个出口都不带经理的�
     const replayText = await replay.clone().text();
     expect(replay.status).toBe(200);
     expect(await replay.json()).toEqual(first);
-    expect(first.superiorPersonId).toBe(boss.id);
-    noBossFields(replayText);
+    expect(first).toMatchObject({ superiorPersonId: boss.id, superior: bossSummary });
+    noBossPrivateFields(replayText);
     // ⑤ GET 范围外经理：与不存在的人员同样 404
     const hiddenBoss = await s.as('GET', `/people/${boss.id}`);
     const missing = await s.as('GET', `/people/${randomUUID()}`);
