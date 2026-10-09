@@ -202,6 +202,20 @@ describe('AC-PRM-FW-01 初始化不可信（始终失败）', () => {
     expect(failure(() => verifyRouteDeclarations(app)).code).toBe('ROUTE_DECLARATION_UNUSED');
   });
 
+  it('两个子表都声明 GET /x、只有一个注册 → 另一个子表的键 ROUTE_DECLARATION_UNUSED（已用键按登记表绑定）', () => {
+    const app2 = new Hono();
+    const root2 = policed(app2, table('root'));
+    const one = policedSub(root2, table('one', 'GET /x'), () => new Hono());
+    const two = policedSub(root2, table('two', 'GET /x', 'GET /y'), () => new Hono());
+    one.get('/x', ok);
+    two.get('/y', ok);
+    root2.route('/a', one);
+    root2.route('/b', two);
+    const unused = failure(() => verifyRouteDeclarations(app2));
+    expect(unused.code).toBe('ROUTE_DECLARATION_UNUSED');
+    expect(unused.message).toContain('two');
+  });
+
   it('子应用已声明但没有挂载 → ROUTE_DECLARATION_UNMOUNTED', () => {
     const app = new Hono();
     const root = policed(app, table('root'));
@@ -263,6 +277,18 @@ describe('AC-PRM-FW-01 正例', () => {
     expect(manifest.declared).toEqual([
       { key: 'GET /leaf', method: 'GET', path: '/api/sub/leaf', module: 'inner', policy: member },
     ]);
+  });
+
+  it('根与子应用复用同一个中间件函数、各自登记 "*"：两处最终路径都保留，不误报 MISMATCH', () => {
+    const app = new Hono();
+    const root = policed(app, table('root'));
+    useMiddleware(root, '*', passThrough, 'shared');
+    const sub = policedSub(root, table('sub', 'GET /leaf'), () => new Hono());
+    useMiddleware(sub, '*', passThrough, 'shared');
+    sub.get('/leaf', ok);
+    mount(root, '/api', sub);
+    const manifest = verifyRouteDeclarations(app);
+    expect(manifest.middleware).toEqual([{ label: 'shared', paths: ['/*', '/api/*'] }]);
   });
 
   it('HEAD 命中 GET 声明：200、空体；运行时自检按有效方法 GET 核对', async () => {
