@@ -230,6 +230,9 @@ describe('AC-EMP（补）F-058 本人头像与租户授权', () => {
       );
       expect(await read(s.request)).toEqual(before);
     }
+    await error(s.request('DELETE', BASE, { ifMatch: before.revision, body: { userId: randomUUID() } }),
+      400, 'VALIDATION_FAILED');
+    expect(await read(s.request)).toEqual(before);
   });
 
   it('未登录、非成员与已撤销成员不能读写头像；成功命令重放也重新检查当前成员', async () => {
