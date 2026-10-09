@@ -10,48 +10,18 @@
  * - 重提与管理员干预并发：一方成功，另一方 409，不死锁。
  */
 import { randomUUID } from 'node:crypto';
-import { createUser, grantMembership, permissionUserPersonLinks, sql, withTenant, type Db } from '@italent/db';
+import { createUser, grantMembership, permissionUserPersonLinks, sql, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { approvalWorld, transferScene, type ApprovalWorld, type InstanceView } from './AC-APV-support.js';
 import { cmd } from './support/tenant-api.js';
 import { frozenOf, NODES, pendingOf, reasonOf, rowsOf, useSubjectMapping } from './support/f048.js';
+import { settledOrBlocked, waitForBlocked } from './support/pg-interleave.js';
 
 const database = useTestDb();
 const mapSubjects = useSubjectMapping();
 const realPostgres = Boolean(process.env.TEST_DATABASE_URL);
 const BASE = '/api/tenant/approval';
-
-async function lockWaiters(db: Db): Promise<number> {
-  const [row] = rowsOf<{ n: number }>(
-    await db.execute(sql`SELECT count(*)::int AS n FROM pg_stat_activity
-      WHERE datname=current_database() AND wait_event_type='Lock'`),
-  );
-  return Number(row?.n);
-}
-
-/** 等到请求结束或恰有 expected 个会话在等锁，返回先发生的那一个。 */
-async function settledOrBlocked(db: Db, request: Promise<unknown>, expected: number) {
-  let settled = false;
-  void request.then(
-    () => (settled = true),
-    () => (settled = true),
-  );
-  for (let i = 0; i < 200; i++) {
-    if (settled) return 'settled';
-    if ((await lockWaiters(db)) === expected) return 'blocked';
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`等待请求结束或 ${expected} 个会话阻塞超时`);
-}
-
-async function waitForBlocked(db: Db, expected: number) {
-  for (let i = 0; i < 200; i++) {
-    if ((await lockWaiters(db)) === expected) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`等待 ${expected} 个会话阻塞超时`);
-}
 
 async function scene(label: string) {
   const w = await approvalWorld(database().db, label);
