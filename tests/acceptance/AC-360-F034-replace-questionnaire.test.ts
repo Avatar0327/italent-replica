@@ -84,7 +84,7 @@ describe('AC-360-F034 替换套卷清空作答', () => {
     expect((await w.link(token)('GET', `/tasks/${relation.id}/questionnaires/${old.id}`)).status).toBe(404);
     for (const q of [retained, next]) {
       const page = await w.ok<{ sheet: unknown }>(w.link(token)('GET', `/tasks/${relation.id}/questionnaires/${q.id}`));
-      expect(page.sheet).toBeNull();
+      expect(page.sheet).toEqual({ status: 'pending', revision: 0, answers: [], suggestion: null });
     }
     const counts = await withTenant(w.db, w.tenantId, (tx) =>
       tx.execute(sql`SELECT (SELECT count(*)::int FROM survey360_sheets) AS sheets,
@@ -127,6 +127,8 @@ describe('AC-360-F034 替换套卷清空作答', () => {
       }),
     );
     expect(saved.revision).toBe(f.object.revision);
+    expect(saved.personId).toBe(f.object.personId);
+    expect(saved.activityId).toBe(f.activity.id);
     expect(await state(f.w, f.activity.id)).toEqual(before);
   });
 
