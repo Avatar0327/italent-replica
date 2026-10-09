@@ -125,7 +125,7 @@ export async function createCategoryClass(tx: Tx, ctx: WriteContext, body: input
       VALUES (${ctx.tenantId}, ${body.code}, ${body.name}, ${body.parentId ?? null}, ${level},
         ${body.displayOrder ?? 0},
         ${body.enabled ?? true}, ${body.publicDown ?? false}, ${owner.ownerId}, ${owner.ownerOrgId},
-        ${ctx.userId}, ${ctx.now}, ${ctx.now}) RETURNING id`),
+        ${ctx.userId}, ${ctx.now.toISOString()}, ${ctx.now.toISOString()}) RETURNING id`),
   );
   const id = rowsOf<{ id: string }>(result)[0]!.id;
   const after = await reload<OwnedView>(tx, ctx, 'categoryClass', id);
@@ -208,7 +208,7 @@ async function insertCategory(
       owner_id, owner_org_id, created_by, created_at, updated_at)
       VALUES (${ctx.tenantId}, ${code}, ${body.name}, ${body.classId}, ${body.jobLinkType ?? null},
         ${body.enabled ?? true}, ${body.publicDown ?? false}, ${owner.ownerId}, ${owner.ownerOrgId},
-        ${ctx.userId}, ${ctx.now}, ${ctx.now}) RETURNING id`),
+        ${ctx.userId}, ${ctx.now.toISOString()}, ${ctx.now.toISOString()}) RETURNING id`),
   );
   return { id: rowsOf<{ id: string }>(result)[0]!.id, orgId: owner.ownerOrgId };
 }
@@ -301,7 +301,7 @@ export async function createLayer(tx: Tx, ctx: WriteContext, body: input.LayerCr
     () =>
       tx.execute(sql`INSERT INTO ql_layers (tenant_id, name, display_order, enabled, created_by, created_at, updated_at)
         VALUES (${ctx.tenantId}, ${body.name}, ${body.displayOrder ?? 0}, ${body.enabled ?? true}, ${ctx.userId},
-          ${ctx.now}, ${ctx.now}) RETURNING id`),
+          ${ctx.now.toISOString()}, ${ctx.now.toISOString()}) RETURNING id`),
     '名称',
   );
   const id = rowsOf<{ id: string }>(result)[0]!.id;
@@ -377,7 +377,7 @@ async function insertLevel(
       public_down, owner_id, owner_org_id, created_by, created_at, updated_at)
       VALUES (${ctx.tenantId}, ${code}, ${body.name}, ${order}, ${body.layerId ?? null}, ${body.jobLinkType ?? null},
         ${body.enabled ?? true}, ${body.publicDown ?? false}, ${owner.ownerId}, ${owner.ownerOrgId},
-        ${ctx.userId}, ${ctx.now}, ${ctx.now}) RETURNING id`),
+        ${ctx.userId}, ${ctx.now.toISOString()}, ${ctx.now.toISOString()}) RETURNING id`),
   );
   return { id: rowsOf<{ id: string }>(result)[0]!.id, orgId: owner.ownerOrgId };
 }
@@ -460,7 +460,7 @@ export async function createTargetType(tx: Tx, ctx: WriteContext, body: input.Ta
       owner_id, owner_org_id, created_by, created_at, updated_at)
       VALUES (${ctx.tenantId}, ${code}, ${body.name}, ${body.parentId ?? null}, ${body.displayOrder ?? 0},
         ${body.enabled ?? true}, ${body.publicDown ?? false}, ${owner.ownerId}, ${owner.ownerOrgId},
-        ${ctx.userId}, ${ctx.now}, ${ctx.now}) RETURNING id`),
+        ${ctx.userId}, ${ctx.now.toISOString()}, ${ctx.now.toISOString()}) RETURNING id`),
   );
   const id = rowsOf<{ id: string }>(result)[0]!.id;
   const after = await reload<OwnedView>(tx, ctx, 'targetType', id);
@@ -533,7 +533,7 @@ export async function updateCodingRule(tx: Tx, ctx: WriteContext, item: CodingIt
   const before = view<CodingRuleView>(current);
   await tx.execute(sql`UPDATE ql_coding_rules SET enabled = ${body.enabled ?? current.enabled},
     prefix = ${body.prefix ?? current.prefix}, next_seq = ${body.nextSeq ?? current.next_seq},
-    revision = ${ctx.expectedRevision + 1}, updated_at = ${ctx.now}
+    revision = ${ctx.expectedRevision + 1}, updated_at = ${ctx.now.toISOString()}
     WHERE tenant_id = ${ctx.tenantId} AND item = ${item}`);
   const after = (await listCodingRules(tx, ctx.tenantId)).find((rule) => rule.item === item)!;
   await audit(tx, ctx, 'codingRule', 'update', after.id!, { before, after });

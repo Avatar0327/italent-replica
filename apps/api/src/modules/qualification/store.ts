@@ -204,11 +204,10 @@ export async function audit(
   });
 }
 
-export const created = (ctx: QualificationContext) => ({
-  createdBy: ctx.userId,
-  createdAt: ctx.now,
-  updatedAt: ctx.now,
+/** 原生 SQL 参数：时间一律传 ISO 字符串（postgres-js 不接受 Date 参数，PGlite 接受，见 idp 同法）。 */
+export const bumped = (ctx: QualificationContext) => ({
+  revision: ctx.expectedRevision + 1,
+  updatedAt: ctx.now.toISOString(),
 });
-export const bumped = (ctx: QualificationContext) => ({ revision: ctx.expectedRevision + 1, updatedAt: ctx.now });
 
 export { rowsOf };

@@ -59,7 +59,7 @@ export async function createTarget(tx: Tx, ctx: WriteContext, body: input.Target
       VALUES (${ctx.tenantId}, ${code}, ${body.name}, ${body.typeId}, ${body.description ?? null},
         ${body.isCommon ?? false}, ${body.evalMode}, ${body.gradeSchemeId ?? null}, ${body.displayOrder ?? 0},
         ${body.enabled ?? true}, ${body.publicDown ?? false}, ${owner.ownerId}, ${owner.ownerOrgId},
-        ${ctx.userId}, ${ctx.now}, ${ctx.now}) RETURNING id`),
+        ${ctx.userId}, ${ctx.now.toISOString()}, ${ctx.now.toISOString()}) RETURNING id`),
   );
   const id = rowsOf<{ id: string }>(result)[0]!.id;
   const after = await reloadTarget(tx, ctx, id);
@@ -103,7 +103,7 @@ async function overwriteStandards(
       FROM ql_standard_details d WHERE d.tenant_id = ${ctx.tenantId} AND d.standard_id = ${standardId}::uuid
         AND d.target_id = ${targetId}::uuid`);
     const standard = rowsOf<{ owner_org_id: string }>(
-      await tx.execute(sql`UPDATE ql_standards SET revision = revision + 1, updated_at = ${ctx.now}
+      await tx.execute(sql`UPDATE ql_standards SET revision = revision + 1, updated_at = ${ctx.now.toISOString()}
         WHERE tenant_id = ${ctx.tenantId} AND id = ${standardId}::uuid RETURNING owner_org_id`),
     )[0]!;
     await audit(tx, ctx, 'standard', 'common-overwrite', standardId, {
@@ -209,7 +209,7 @@ export async function createGradeScheme(tx: Tx, ctx: WriteContext, body: input.G
     () =>
       tx.execute(sql`INSERT INTO ql_grade_schemes (tenant_id, name, description, enabled, created_by, created_at,
         updated_at) VALUES (${ctx.tenantId}, ${body.name}, ${body.description ?? null}, ${body.enabled ?? true},
-        ${ctx.userId}, ${ctx.now}, ${ctx.now}) RETURNING id`),
+        ${ctx.userId}, ${ctx.now.toISOString()}, ${ctx.now.toISOString()}) RETURNING id`),
     '等级方案名称',
   );
   const id = rowsOf<{ id: string }>(result)[0]!.id;
@@ -252,7 +252,7 @@ export async function updateGradeScheme(tx: Tx, ctx: WriteContext, id: string, b
         message: '等级明细已被任职资格标准的目标等级引用，不能删除',
         reason: 'GRADE_DETAIL_IN_USE',
       });
-      await tx.execute(sql`UPDATE ql_grade_details SET deleted_at = ${ctx.now}
+      await tx.execute(sql`UPDATE ql_grade_details SET deleted_at = ${ctx.now.toISOString()}
         WHERE tenant_id = ${ctx.tenantId} AND id = ${detailId}::uuid`);
     }
   }
@@ -325,11 +325,12 @@ export async function putGradeDescription(
   const before = await gradeDescriptions(tx, ctx.tenantId, targetId);
   await tx.execute(sql`INSERT INTO ql_target_grade_descriptions (tenant_id, target_id, grade_detail_id, description,
       updated_by, updated_at)
-    VALUES (${ctx.tenantId}, ${targetId}, ${detailId}, ${description}, ${ctx.userId}, ${ctx.now})
+    VALUES (${ctx.tenantId}, ${targetId}, ${detailId}, ${description}, ${ctx.userId}, ${ctx.now.toISOString()})
     ON CONFLICT (tenant_id, target_id, grade_detail_id)
     DO UPDATE SET description = EXCLUDED.description, updated_by = EXCLUDED.updated_by,
       updated_at = EXCLUDED.updated_at`);
-  await tx.execute(sql`UPDATE ql_targets SET revision = ${ctx.expectedRevision + 1}, updated_at = ${ctx.now}
+  await tx.execute(sql`UPDATE ql_targets SET revision = ${ctx.expectedRevision + 1},
+    updated_at = ${ctx.now.toISOString()}
     WHERE tenant_id = ${ctx.tenantId} AND id = ${targetId}::uuid`);
   const after = await gradeDescriptions(tx, ctx.tenantId, targetId);
   await audit(tx, ctx, 'targetGradeDescription', 'update', targetId, {

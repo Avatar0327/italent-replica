@@ -212,7 +212,7 @@ export async function createStandard(tx: Tx, ctx: WriteContext, body: input.Stan
         created_by, created_at, updated_at)
       VALUES (${ctx.tenantId}, ${body.categoryId}, ${body.name}, ${body.enabled ?? true},
         ${`{${levelIds.join(',')}}`}::uuid[], ${category!.owner_id as string}, ${category!.owner_org_id as string},
-        ${ctx.userId}, ${ctx.now}, ${ctx.now}) RETURNING id`),
+        ${ctx.userId}, ${ctx.now.toISOString()}, ${ctx.now.toISOString()}) RETURNING id`),
   )[0]!.id;
   await writeCells(tx, ctx, id, levelIds, body.details, []);
   await writeLevelDescriptions(tx, ctx, id, levelIds, body.levelDescriptions);
@@ -391,7 +391,7 @@ export async function importStandardDetails(tx: Tx, ctx: WriteContext, body: inp
     abilities += rows.length;
   }
   for (const standardId of standards) {
-    await tx.execute(sql`UPDATE ql_standards SET revision = revision + 1, updated_at = ${ctx.now}
+    await tx.execute(sql`UPDATE ql_standards SET revision = revision + 1, updated_at = ${ctx.now.toISOString()}
       WHERE tenant_id = ${ctx.tenantId} AND id = ${standardId}::uuid`);
     const after = await reloadStandard(tx, ctx, standardId);
     await audit(tx, ctx, 'standard', 'import', standardId, {
@@ -461,7 +461,8 @@ export async function putChannels(tx: Tx, ctx: WriteContext, standardId: string,
       VALUES (${ctx.tenantId}, ${standardId}, ${channel.levelId}, ${channel.targetCategoryId}, ${channel.targetLevelId})
       ON CONFLICT DO NOTHING`);
   }
-  await tx.execute(sql`UPDATE ql_standards SET revision = ${ctx.expectedRevision + 1}, updated_at = ${ctx.now}
+  await tx.execute(sql`UPDATE ql_standards SET revision = ${ctx.expectedRevision + 1},
+    updated_at = ${ctx.now.toISOString()}
     WHERE tenant_id = ${ctx.tenantId} AND id = ${standardId}::uuid`);
   const after = await loadChannels(tx, ctx.tenantId, standardId);
   await audit(tx, ctx, 'developmentChannel', 'update', standardId, {
