@@ -18,7 +18,15 @@ import type { Context } from 'hono';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { requestScope, type ModuleScope } from '../permission/module-route-access.js';
+import { getModuleViewableFields, scopeSql, trimModuleResponse } from '../permission/module-access.js';
+import {
+  button,
+  hasCreatorScope,
+  objectContext,
+  requestScope,
+  writeFields,
+  type ModuleScope,
+} from '../permission/module-route-access.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { readableSql, type PublicDownContext } from '../permission/public-down.js';
 
@@ -163,4 +171,131 @@ export async function assertQualificationRefs(
 
 export function rowsOf<T>(result: unknown): T[] {
   return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
+}
+
+/** 对象的范围锚点类型：带资源集合（owner 列组）、字典（创建人）、标准（锚在所属类别上）。 */
+export type AnchorKind = 'owned' | 'dictionary' | 'standard';
+
+export const ANCHOR: Readonly<Record<QualificationObject, AnchorKind>> = {
+  categoryClass: 'owned',
+  category: 'owned',
+  layer: 'dictionary',
+  level: 'owned',
+  targetType: 'owned',
+  target: 'owned',
+  gradeScheme: 'dictionary',
+  targetGradeDescription: 'owned',
+  codingRule: 'dictionary',
+  standard: 'standard',
+  developmentChannel: 'standard',
+};
+
+/**
+ * 某行在查看人当前范围下的可写 / 可读谓词（别名 t 指向对象表）。可写只认数据范围（所属管理单元、“使用用户”按所属人；
+ * 字典按创建人）；可读另加向下公开（字典与可写相同）。标准经 ql_categories 锚在类别上。
+ */
+export function accessSql(ctx: PublicDownContext, scope: ModuleScope, kind: AnchorKind, alias = 't') {
+  if (kind === 'dictionary') {
+    const own = scopeSql(scope, { creator: column(alias, 'created_by') });
+    return { editable: own, readable: own };
+  }
+  if (kind === 'owned') {
+    return {
+      editable: scopeSql(scope, { org: column(alias, 'owner_org_id'), creator: column(alias, 'owner_id') }),
+      readable: qlReadable(ctx, scope, alias),
+    };
+  }
+  const anchored = (predicate: SQL) => sql`EXISTS (SELECT 1 FROM ql_categories qa
+    WHERE qa.tenant_id = ${column(alias, 'tenant_id')} AND qa.id = ${column(alias, 'category_id')} AND ${predicate})`;
+  return {
+    editable: anchored(scopeSql(scope, { org: sql`qa.owner_org_id`, creator: sql`qa.owner_id` })),
+    readable: qlStandardReadable(ctx, scope, alias),
+  };
+}
+
+export type Access = 'edit' | 'view' | 'none';
+
+/** 读取：不可见与不存在同为 404。 */
+export function requireReadable(access: Access, object: QualificationObject): void {
+  if (access === 'none') throw new AppError('NOT_FOUND', `${QUALIFICATION_LABELS[object]}不存在`);
+}
+
+/** 写入：不可见 404；仅因向下公开可见 403（设计 §5.1）。 */
+export function requireEditable(access: Access, object: QualificationObject): void {
+  requireReadable(access, object);
+  if (access === 'view') {
+    throw new AppError('FORBIDDEN', `${QUALIFICATION_LABELS[object]}由上级组织向下公开，只能查看与选用`, {
+      reason: 'QL_PUBLIC_DOWN_READONLY',
+    });
+  }
+}
+
+export function qualificationContext(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  object: QualificationObject,
+  operation: 'view' | 'create' | 'update' | 'delete' = 'view',
+  expectedRevision = 0,
+): Promise<QualificationContext> {
+  return objectContext(c, deps, codeOf(object), operation, expectedRevision);
+}
+
+const BUTTON_LEVEL = { create: 'list', update: 'detail', delete: 'detail' } as const;
+
+/** 写入口：数据操作权 + 按钮（REQ-PRM-001 R6），在命令台账之前校验，首次与幂等重放都经过这里。 */
+export async function qualificationWriteContext(
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  object: QualificationObject,
+  operation: 'create' | 'update' | 'delete',
+  expectedRevision: number,
+): Promise<QualificationContext> {
+  const ctx = await qualificationContext(c, deps, object, operation, expectedRevision);
+  await button(deps, ctx, codeOf(object), operation, BUTTON_LEVEL[operation]);
+  return ctx;
+}
+
+/** 请求控制项不是写字段（确认覆盖、引入的来源条目）。 */
+const CONTROLS: ReadonlySet<string> = new Set(['confirmOverwrite', 'items']);
+
+/** 载荷字段编辑权（含显式清空），键即字段编码。 */
+export function checkWriteFields(
+  deps: TenantRouteDeps,
+  ctx: QualificationContext,
+  object: QualificationObject,
+  operation: 'create' | 'update',
+  payload: Readonly<Record<string, unknown>>,
+) {
+  const fields = Object.fromEntries(Object.entries(payload).filter(([key]) => !CONTROLS.has(key)));
+  return writeFields(deps, ctx, codeOf(object), operation, fields);
+}
+
+export const qualificationScope = (
+  c: Context<TenantEnv>,
+  deps: TenantRouteDeps,
+  ctx: QualificationContext,
+  object: QualificationObject,
+) => requestScope(c, deps, ctx, codeOf(object === 'standard' || object === 'developmentChannel' ? 'category' : object));
+
+/** 查看人当前对某对象的可见字段（undefined = 全部；没有查看权为空集）。 */
+export async function objectFields(deps: TenantRouteDeps, ctx: QualificationContext, object: QualificationObject) {
+  const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: codeOf(object), fields: [] });
+  if (!canView) return new Set<string>() as ReadonlySet<string>;
+  return getModuleViewableFields(deps, ctx, codeOf(object));
+}
+
+export const fieldVisible = (fields: ReadonlySet<string> | undefined, field: string) =>
+  fields === undefined || fields.has(field);
+
+export const trimQualification = <T extends object>(
+  deps: TenantRouteDeps,
+  ctx: QualificationContext,
+  object: QualificationObject,
+  value: T[],
+): Promise<Partial<T>[]> => trimModuleResponse(deps, ctx, codeOf(object), value) as Promise<Partial<T>[]>;
+
+/** 列表信封：查看人在该对象上有没有任何数据范围（字典看看全部或创建人）。 */
+export function listEnvelope(page: { page: number; pageSize: number }, scope: ModuleScope, kind: AnchorKind) {
+  const hasDataPermission = scope.all || (kind === 'dictionary' ? hasCreatorScope(scope) : scope.hasDataPermission);
+  return { page: page.page, pageSize: page.pageSize, hasDataPermission };
 }

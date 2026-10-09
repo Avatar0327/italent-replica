@@ -4,10 +4,12 @@
  * - 读取 = 所属管理单元在范围内 ∪（向下公开 ∧ 范围内有其下级组织）；仅因向下公开可见的对象写入 403
  *   QL_PUBLIC_DOWN_READONLY；不向下公开的上级对象与范围外对象同一个 404；新建的向下公开缺省 false；
  * - 带出值 #1：新建标准时非通用指标的说明只有操作人当前对 Target.description 有查看权才复制，否则能力标准留空；
- * - 带出值 #2：通用指标覆盖写入的能力标准，读取时按查看人当前对 Target.description 的查看权给出，看不到只留标记。
+ * - 带出值 #2：通用指标覆盖写入的能力标准，读取时按查看人当前对 Target.description 的查看权给出，看不到只留标记；
+ * - 带出值 #3：未手改的指标等级描述是等级明细描述的投影，看不到 GradeScheme.details 就不给描述；
+ * - 带出值 #4：引入类别时编码 / 名称缺省取自岗职务，看不到岗职务的这两个字段就不带出（须自己填）。
  */
 import { randomUUID } from 'node:crypto';
-import { QUALIFICATION_OBJECTS } from '@italent/domain';
+import { MODULE_OBJECTS, QUALIFICATION_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -46,6 +48,8 @@ interface Data {
   readonly plainTarget: string;
   readonly commonTarget: string;
   readonly standardId: string;
+  readonly gradeTarget: string;
+  readonly sequences: readonly string[];
 }
 
 async function seed(world: PermissionWorld): Promise<Data> {
@@ -105,6 +109,28 @@ async function seed(world: PermissionWorld): Promise<Data> {
     levelIds: [level.id],
     details: [{ levelId: level.id, targetId: commonTarget.id }],
   });
+  const scheme = await create<{ id: string }>('/grade-schemes', {
+    name: `方案${code()}`,
+    details: [{ name: '初级', grade: 1, description: '明细保密描述' }],
+  });
+  const gradeTarget = await create<{ id: string }>('/targets', {
+    code: code(),
+    name: '评级指标',
+    typeId: type.id,
+    evalMode: 'grade',
+    gradeSchemeId: scheme.id,
+    publicDown: true,
+  });
+  const sequences: string[] = [];
+  for (const name of ['保密序列甲', '保密序列乙']) {
+    const response = await setup.request('POST', '/api/tenant/job/sequences', {
+      ...world.asAdmin,
+      ifMatch: 0,
+      body: { name, code: code(), startDate: '2020-01-01' },
+    });
+    expect(response.status, await response.clone().text()).toBe(201);
+    sequences.push(((await response.json()) as { id: string }).id);
+  }
   await as(outside);
   const foreignClass = await create<{ id: string }>('/category-classes', { code: code(), name: '外分类' });
   const foreign = await create<CategoryView>('/categories', { code: code(), name: '外类', classId: foreignClass.id });
@@ -121,14 +147,18 @@ async function seed(world: PermissionWorld): Promise<Data> {
     plainTarget: plainTarget.id,
     commonTarget: commonTarget.id,
     standardId: standard.id,
+    gradeTarget: gradeTarget.id,
+    sequences,
   };
 }
 
 async function operator(
   world: PermissionWorld,
-  options: { mouId?: string; hidden?: Partial<Record<ObjectKey, string[]>> },
+  options: { mouId?: string; hidden?: Partial<Record<ObjectKey, string[]>>; sequenceHidden?: string[] },
 ) {
-  const profile = await createProfile(world, `ql-${randomUUID().slice(0, 8)}`, { apps: [QL_APP] });
+  const jobs = options.sequenceHidden !== undefined;
+  const apps = jobs ? [QL_APP, 'TenantBase'] : [QL_APP];
+  const profile = await createProfile(world, `ql-${randomUUID().slice(0, 8)}`, { apps });
   for (const key of Object.keys(QUALIFICATION_OBJECTS) as ObjectKey[]) {
     const definition = QUALIFICATION_OBJECTS[key];
     const hidden = new Set(options.hidden?.[key] ?? []);
@@ -148,6 +178,7 @@ async function operator(
     );
     expect(response.status, await response.clone().text()).toBe(200);
   }
+  if (jobs) await allowSequences(world, profile, options.sequenceHidden!);
   await makeGrantable(world, [profile.id]);
   const user = await addMember(world, `ql-op-${randomUUID().slice(0, 4)}`);
   expect((await grant(world, user.id, profile.id)).status).toBe(201);
@@ -163,6 +194,36 @@ async function operator(
   const request = (method: string, path: string, extra: Parameters<typeof world.api.request>[2] = {}) =>
     world.api.request(method, `${QL_BASE}${path}`, { ...as, ...extra });
   return { request };
+}
+
+/** 组织员工侧：职务序列看全部（序列无组织字段），按需隐藏字段。 */
+async function allowSequences(
+  world: PermissionWorld,
+  profile: Awaited<ReturnType<typeof createProfile>>,
+  hidden: string[],
+) {
+  const definition = MODULE_OBJECTS.jobSequence;
+  const response = await setObjectPermission(
+    world,
+    profile,
+    {
+      dataOperations: { create: false, update: false, delete: false },
+      fields: definition.fields.map((field) => ({
+        fieldCode: field.code,
+        view: !hidden.includes(field.code),
+        edit: false,
+      })),
+      buttons: [],
+    },
+    definition.code,
+  );
+  expect(response.status, await response.clone().text()).toBe(200);
+  const scope = await world.api.request('PUT', `${BASE}/profiles/${profile.id}/data-scopes/TenantBase`, {
+    ...world.asAdmin,
+    ifMatch: 0,
+    body: { targetKind: 'app', targetCode: '', seeAll: true },
+  });
+  expect(scope.status, await scope.clone().text()).toBe(200);
 }
 
 describe('任职资格配置的数据范围与向下公开', () => {
@@ -259,5 +320,51 @@ describe('任职资格配置的数据范围与向下公开', () => {
     const visibleOp = await operator(world, { mouId: data.childMou });
     const shown = (await (await visibleOp.request('GET', `/standards/${data.standardId}`)).json()) as StandardView;
     expect(shown.details[0]!.abilities[0]).toMatchObject({ content: '通用保密说明', source: 'common_overwrite' });
+  });
+
+  it('带出值 #3：看不到等级方案明细时，未手改的指标等级描述不给值', async () => {
+    type Descriptions = { items: { gradeDetailId: string; description?: string; modified: boolean }[] };
+    const read = async (op: Awaited<ReturnType<typeof operator>>) => {
+      const response = await op.request('GET', `/targets/${data.gradeTarget}/grade-descriptions`);
+      expect(response.status, await response.clone().text()).toBe(200);
+      return ((await response.json()) as Descriptions).items;
+    };
+    const hidden = await read(await operator(world, { mouId: data.childMou, hidden: { gradeScheme: ['details'] } }));
+    expect(hidden).toHaveLength(1);
+    expect(hidden[0]).toMatchObject({ modified: false });
+    expect(hidden[0]).not.toHaveProperty('description');
+    const shown = await read(await operator(world, { mouId: data.childMou }));
+    expect(shown[0]).toMatchObject({ description: '明细保密描述', modified: false });
+  });
+
+  it('带出值 #4：看不到岗职务的编码 / 名称时，引入不带出（须自己填）；看得到时带出', async () => {
+    const importInto = async (op: Awaited<ReturnType<typeof operator>>, item: Record<string, unknown>) => {
+      const klass = (await (
+        await op.request('POST', '/category-classes', {
+          ifMatch: 0,
+          body: { code: `K${randomUUID().slice(0, 5)}`, name: '分类' },
+        })
+      ).json()) as { id: string };
+      return op.request('POST', '/categories/import', {
+        ifMatch: 0,
+        body: { classId: klass.id, jobLinkType: 'sequence', items: [item] },
+      });
+    };
+    const hiddenOp = await operator(world, { mouId: data.childMou, sequenceHidden: ['code', 'name'] });
+    const missing = await importInto(hiddenOp, { jobObjectId: data.sequences[0] });
+    expect(missing.status, await missing.clone().text()).toBe(400);
+    expect(((await missing.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe(
+      'NAME_REQUIRED',
+    );
+    const filled = await importInto(hiddenOp, { jobObjectId: data.sequences[0], code: 'QSELF', name: '自填名称' });
+    expect(filled.status, await filled.clone().text()).toBe(201);
+    expect(((await filled.json()) as { items: CategoryView[] }).items[0]).toMatchObject({
+      code: 'QSELF',
+      name: '自填名称',
+    });
+    const visibleOp = await operator(world, { mouId: data.childMou, sequenceHidden: [] });
+    const carried = await importInto(visibleOp, { jobObjectId: data.sequences[1] });
+    expect(carried.status, await carried.clone().text()).toBe(201);
+    expect(((await carried.json()) as { items: CategoryView[] }).items[0]).toMatchObject({ name: '保密序列乙' });
   });
 });
