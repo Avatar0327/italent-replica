@@ -180,6 +180,55 @@ const adminAction = (code: 'adminTransfer' | 'adminIntervene'): Obligation => ({
     ...ADMIN_SCOPE,
   ],
 });
+/**
+ * F-067：转交 / 改派目标须是已绑定员工且在操作人对该业务对象的范围内（不存在 / 未绑定 / 范围外同为 404）；
+ * 例外（DEC-358①）：IDP 待办的目标可以是该计划当前的指导人 / 带教人（来源字段看不到视同不是），靠例外放行的目标
+ * 后续任何失败都折成同一个 404。
+ */
+const adminTarget = (code: 'adminTransfer' | 'adminIntervene'): Obligation => ({
+  perm: 'guard:approval.adminTargetScope',
+  facts: ['guard:approval.adminTargetScope'],
+  note: `${code}：目标范围随实例业务类型选对象（同 adminScope 的映射），跳转不校验目标，转给操作人自己同样校验`,
+  at: [
+    fn('registerInstanceRoutes', 'const targetScope = await adminTargetScope(deps, ctx)'),
+    fn('registerInstanceRoutes', 'adminAct(tx, context, input, scopeSql, { targetScope })'),
+    {
+      role: 'impl',
+      unit: `${ACCESS}#adminTargetScope`,
+      anchor: 'perBusinessType(scopes, (scope) => scopeSql(scope, { person: sql`${employeeId}::uuid` }))',
+    },
+    {
+      role: 'impl',
+      unit: `${ACCESS}#adminTargetScope`,
+      anchor: 'isStageMentor(tx, ctx.tenantId, instance.businessId, employeeId, mentorSources)',
+    },
+    {
+      role: 'impl',
+      unit: 'apps/api/src/modules/idp/plan-mentor.ts#isStageMentor',
+      anchor: 'await isPlanMentor(tx, plan, employeeId, sources)',
+    },
+    {
+      role: 'impl',
+      unit: 'apps/api/src/modules/idp/plan-mentor.ts#isPlanMentor',
+      anchor: "viewable(sources.plan, ['tutorEmployeeId']) && plan.tutorEmployeeId === employeeId",
+    },
+    {
+      role: 'impl',
+      unit: `${ACTIONS}#assertTargetInScope`,
+      anchor: 'if (!(await options.targetScope.exception(tx, instance, employeeId))) throw targetNotFound()',
+    },
+    {
+      role: 'impl',
+      unit: `${ACTIONS}#adminAct`,
+      anchor: 'foldMentorFailure(admission, targetNotFound, () =>',
+    },
+    {
+      role: 'impl',
+      unit: 'apps/api/src/modules/idp/plan-mentor.ts#foldMentorFailure',
+      anchor: 'throw error instanceof AppError ? hidden() : error',
+    },
+  ],
+});
 
 export const APPROVAL: RequiredTable = {
   'GET /api/tenant/approval/types': processView(route('GET', '/types', 'await requireProcessView(deps, tenantCtx(c))')),
@@ -363,6 +412,12 @@ export const APPROVAL: RequiredTable = {
       ],
     },
   ],
-  'POST /api/tenant/approval/instances/:id/admin-transfer': [adminAction('adminTransfer')],
-  'POST /api/tenant/approval/instances/:id/admin-intervene': [adminAction('adminIntervene')],
+  'POST /api/tenant/approval/instances/:id/admin-transfer': [
+    adminAction('adminTransfer'),
+    adminTarget('adminTransfer'),
+  ],
+  'POST /api/tenant/approval/instances/:id/admin-intervene': [
+    adminAction('adminIntervene'),
+    adminTarget('adminIntervene'),
+  ],
 };
