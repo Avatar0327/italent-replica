@@ -35,8 +35,8 @@ jobs:
     name: test (PGlite, Node ${{ matrix.node }}, shard ${{ matrix.shard }}/3)
     if: github.event.pull_request.draft != true
     runs-on: ubuntu-24.04
-    # F-056 首测最慢片 11m13s（含 quality/安装/收尾），20 分钟约为 1.78 倍
-    timeout-minutes: 20
+    # F-056 两轮实测最慢片 14m33s（含 quality/安装/收尾），25 分钟约为 1.72 倍
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
