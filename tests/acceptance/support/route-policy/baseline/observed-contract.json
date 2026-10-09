@@ -3387,6 +3387,9 @@
       },
       "module": "evaluation",
       "primitives": {
+        "guard": [
+          "ev.filterFieldVisible"
+        ],
         "object": [
           "objectContext"
         ],
@@ -7440,12 +7443,16 @@
         "fieldsOut": [
           "trimModuleResponse"
         ],
+        "guard": [
+          "ev.nameRequiresSeeAll"
+        ],
         "object": [
           "objectContext"
         ],
         "scope": [
           "creator scope",
           "requestScope",
+          "scope.all",
           "scopeSql"
         ]
       }

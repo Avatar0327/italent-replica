@@ -318,6 +318,9 @@ export const PRIMITIVES: readonly Primitive[] = [
     // 人才盘点准备度：按 enabled 筛选须有该字段查看权；名称实际变化要求看全部（R3-T04 路由声明）
     ['talentReview.filterFieldVisible', call('requireFilterVisible'), { modules: ['talent-review'] }],
     ['talentReview.renameRequiresSeeAll', /\bREADINESS_NAME_REQUIRES_SEE_ALL\b/, { modules: ['talent-review'] }],
+    // 人才评定配置字典：按 enabled 筛选须有该字段查看权；只有创建人范围的人改名被拒（R3-T02 B1a 路由声明）
+    ['ev.filterFieldVisible', call('requireFilterVisible'), { modules: ['evaluation'] }],
+    ['ev.nameRequiresSeeAll', /\bACTIVITY_TYPE_NAME_REQUIRES_SEE_ALL\b/, { modules: ['evaluation'] }],
     ['selfService.transferInput', call('ownTransferInput'), { modules: ['self-service'] }],
     ['selfService.referenceChoices', call('referenceChoices'), { modules: ['self-service'] }],
     ['selfService.ownApplication', call('ownApplication'), { modules: ['self-service'] }],

@@ -38,9 +38,21 @@ export type ActivityTypeView = Tracked & {
   readonly syncQualification: boolean;
 };
 
-const ORDER: Readonly<Partial<Record<EvaluationObject, SQL>>> = {
-  activityType: sql`t.display_order, t.name`,
+/**
+ * 列表排序键（字段编码 → 列）：只用查看人看得到的字段排序，否则排序结果会泄露被裁掉字段的相对高低；
+ * 都看不到时只按主键（不携带业务含义）。
+ */
+const ORDER: Readonly<Partial<Record<EvaluationObject, readonly (readonly [string, string])[]>>> = {
+  activityType: [
+    ['displayOrder', 'display_order'],
+    ['name', 'name'],
+  ],
 };
+
+export function orderBy(object: EvaluationObject, visible: ReadonlySet<string> | undefined): SQL {
+  const keys = (ORDER[object] ?? []).filter(([field]) => visible === undefined || visible.has(field));
+  return sql.join([...keys.map(([, column]) => sql`t.${sql.identifier(column)}`), sql`t.id`], sql`, `);
+}
 
 /** 列表：`readable` 是作用在别名 t 上的范围谓词（分页之前生效）。 */
 export async function listRows(
@@ -50,10 +62,11 @@ export async function listRows(
   readable: SQL,
   page: Page,
   filter: SQL = sql`true`,
+  order: SQL = sql`t.id`,
 ): Promise<Record<string, unknown>[]> {
   const result = await tx.execute(sql`SELECT t.* FROM ${sql.identifier(tableOf(object))} t
     WHERE t.tenant_id = ${tenantId}::uuid AND ${readable} AND ${filter}
-    ORDER BY ${ORDER[object] ?? sql`t.id`}, t.id LIMIT ${page.limit} OFFSET ${page.offset}`);
+    ORDER BY ${order} LIMIT ${page.limit} OFFSET ${page.offset}`);
   return rowsOf(result);
 }
 

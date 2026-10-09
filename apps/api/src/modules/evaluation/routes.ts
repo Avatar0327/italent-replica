@@ -6,8 +6,7 @@
  * B1a：活动类型 activity-types。
  */
 import { sql, withTenant, type Tx } from '@italent/db';
-import type { SQL } from 'drizzle-orm';
-import type { Context, Hono } from 'hono';
+import type { Hono } from 'hono';
 import type { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
@@ -20,8 +19,10 @@ import {
   evaluationScope,
   evaluationWriteContext,
   listEnvelope,
+  requireFilterVisible,
   requireVisible,
   scopePredicate,
+  viewableFields,
 } from './access.js';
 import * as input from './input.js';
 import * as read from './read-model.js';
@@ -35,14 +36,12 @@ interface ObjectRoutes<Create, Patch> {
   readonly path: string;
   readonly createSchema: z.ZodType<Create>;
   readonly patchSchema: z.ZodType<Patch>;
-  readonly filter?: (c: Context) => SQL;
+  /** 列表筛选：查询参数 → 对象字段；带了参数就要求该字段的查看权（`requireFilterVisible`）。 */
+  readonly filters?: readonly { readonly param: string; readonly field: string; readonly column: string }[];
   create(tx: Tx, ctx: WriteContext, body: Create): Promise<View>;
   update(tx: Tx, ctx: WriteContext, id: string, body: Patch): Promise<View>;
   remove(tx: Tx, ctx: WriteContext, id: string): Promise<View>;
 }
-
-const eq = (column: string, value: string | boolean | undefined) =>
-  value === undefined ? sql`true` : sql`${sql.identifier('t')}.${sql.identifier(column)} = ${value}`;
 
 const SPECS = {
   activityType: {
@@ -50,7 +49,7 @@ const SPECS = {
     path: 'activity-types',
     createSchema: input.activityTypeCreate,
     patchSchema: input.activityTypePatch,
-    filter: (c: Context) => eq('enabled', booleanQuery(c, 'enabled')),
+    filters: [{ param: 'enabled', field: 'enabled', column: 'enabled' }],
     create: activityTypes.createActivityType,
     update: activityTypes.updateActivityType,
     remove: activityTypes.deleteActivityType,
@@ -72,9 +71,24 @@ function registerObject<Create extends object, Patch extends object>(
     const ctx = await evaluationContext(c, deps, spec.object);
     const page = pageQuery(c);
     const scope = await evaluationScope(c, deps, ctx, spec.object);
-    const filter = spec.filter?.(c) ?? sql`true`;
+    const fields = await viewableFields(deps, ctx, spec.object);
+    const conditions = (spec.filters ?? []).flatMap(({ param, field, column }) => {
+      const value = booleanQuery(c, param);
+      if (value === undefined) return [];
+      requireFilterVisible(fields, field);
+      return [sql`t.${sql.identifier(column)} = ${value}`];
+    });
+    const filter = conditions.length ? sql.join(conditions, sql` AND `) : sql`true`;
     const rows = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      read.listRows(tx, ctx.tenantId, spec.object, scopePredicate(scope, spec.object), page, filter),
+      read.listRows(
+        tx,
+        ctx.tenantId,
+        spec.object,
+        scopePredicate(scope, spec.object),
+        page,
+        filter,
+        read.orderBy(spec.object, fields),
+      ),
     );
     return c.json({
       ...listEnvelope(page, scope),

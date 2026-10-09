@@ -89,6 +89,8 @@ const HUB_FUNCTIONS = new Set([
  */
 const DISPATCH: Readonly<Record<string, readonly (readonly [string, string])[]>> = {
   'modules/talent/routes.ts#forms': [['modules/talent/form-access.ts', 'talentFormHandler']],
+  // 评定配置的通用注册器按 spec 分派服务函数（spec.update 只出现在 PATCH 处理函数里）；B1b 起为各对象追加
+  'modules/evaluation/routes.ts#update': [['modules/evaluation/activity-type-service.ts', 'updateActivityType']],
 };
 
 const REGISTER_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'on']);

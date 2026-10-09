@@ -41,6 +41,11 @@ const COLUMNS = {
 
 export async function updateActivityType(tx: Tx, ctx: WriteContext, id: string, body: input.ActivityTypePatch) {
   const row = await lockEditable(tx, ctx, 'activityType', id);
+  // 名称唯一是租户级约束：只有创建人范围的人改名，撞名提示会暴露范围外对象的名称是否存在，所以改名要求看全部；
+  // 判定在查重之前，撞名与不撞名同一响应（照 talent-review 准备度字典的同类处理）
+  if (body.name !== undefined && body.name !== row.name && !ctx.scope.all) {
+    throw new AppError('FORBIDDEN', '修改名称需要看全部的数据范围', { reason: 'ACTIVITY_TYPE_NAME_REQUIRES_SEE_ALL' });
+  }
   // 被活动引用的类型不能停用（原站“停用”置灰）；只拦 启用 → 停用，B5 登记引用方
   if (body.enabled === false && row.enabled === true) await rejectInUse(tx, ctx, 'activityType', id, 'disable');
   const before = await reload<ActivityTypeView>(tx, ctx.tenantId, 'activityType', id);

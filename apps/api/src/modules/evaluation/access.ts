@@ -13,7 +13,7 @@ import type { Context } from 'hono';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
-import { scopeSql, trimModuleResponse } from '../permission/module-access.js';
+import { getModuleViewableFields, scopeSql, trimModuleResponse } from '../permission/module-access.js';
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import {
   button,
@@ -107,6 +107,20 @@ export const trimEvaluation = <T extends object>(
   object: EvaluationObject,
   value: T[],
 ): Promise<Partial<T>[]> => trimModuleResponse(deps, ctx, codeOf(object), value) as Promise<Partial<T>[]>;
+
+/** 查看人当前对某对象的可见字段（undefined = 全部）。 */
+export const viewableFields = (deps: TenantRouteDeps, ctx: EvaluationContext, object: EvaluationObject) =>
+  getModuleViewableFields(deps, ctx, codeOf(object));
+
+/**
+ * 列表筛选用到的字段须有查看权，否则 403 FILTER_FIELD_HIDDEN：不能用筛选结果还原被裁掉的字段值（照 talent-review
+ * requireFilterVisible）。
+ */
+export function requireFilterVisible(fields: ReadonlySet<string> | undefined, field: string): void {
+  if (fields !== undefined && !fields.has(field)) {
+    throw new AppError('FORBIDDEN', '无权按该字段筛选', { reason: 'FILTER_FIELD_HIDDEN', field });
+  }
+}
 
 /** 列表信封：查看人在该对象上有没有任何数据范围（字典看看全部或创建人）。 */
 export function listEnvelope(page: { page: number; pageSize: number }, scope: ModuleScope) {
