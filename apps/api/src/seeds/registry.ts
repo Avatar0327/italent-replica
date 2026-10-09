@@ -4,10 +4,12 @@
  * 缺的怎么装（install）。规则由 installMissingSeeds 统一保证：
  * - 只补缺失的编码；已有编码（包括租户改名、停用、定制过的）不动，重复执行无副作用；
  * - 安装在调用方的租户事务里执行，登记项自己同事务写业务数据与审计（DEC-216，actor 为开通 / 回补命令的操作人）；
- * - 预置清单变化时登记项的 version +1，只用于回补报告，不触发覆盖。
+ * - 预置清单变化时登记项的 version +1，只用于回补报告，不触发覆盖；
+ * - 读取已有编码之前先取租户级事务锁（开通与回补共用）：并发的回补 / 开通排队，后到者等前者提交后读到“已存在”，
+ *   不会两边都读到缺失再撞唯一约束（DEC-361 R2-01）。
  * 接入方式见 docs/08_设计/DEC-361_种子补装登记表.md；各模块在 seeds/index.ts 加一行 import 即可被收录。
  */
-import type { Tx } from '@italent/db';
+import { sql, type Tx } from '@italent/db';
 
 export interface SeedWriteContext {
   readonly tenantId: string;
@@ -57,6 +59,8 @@ export async function installMissingSeeds(
   write: SeedWriteContext,
   filter: { readonly modules?: readonly string[] } = {},
 ): Promise<SeedReportItem[]> {
+  // 租户级互斥：不同模块筛选、不同命令 ID 的回补与开通都在同一把锁上排队
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${write.tenantId}:seed-install`}, 0))`);
   const report: SeedReportItem[] = [];
   for (const entry of entries) {
     if (filter.modules && !filter.modules.includes(entry.module)) continue;
