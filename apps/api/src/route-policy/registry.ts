@@ -46,6 +46,28 @@ export interface MiddlewareEntry {
   readonly label: string;
   /** 允许出现的最终路径（mount 时把本地路径替换为挂载后的路径）。 */
   readonly paths: Set<string>;
+  /**
+   * 每条路径登记了几次：同一个中间件函数在根与（共用登记簿的）子应用各登记 '*'，两次都是 `/*`；挂载时只把子应用
+   * 那一次移到 `/api/*`，根的 `/*` 仍保留（审查第 1 轮 P3-2）。
+   */
+  readonly counts: Map<string, number>;
+}
+
+/** 给中间件登记加一条允许路径。 */
+export function addMiddlewarePath(entry: MiddlewareEntry, path: string): void {
+  entry.counts.set(path, (entry.counts.get(path) ?? 0) + 1);
+  entry.paths.add(path);
+}
+
+/** 挂载回填：把一次在 from 的登记移到 to。 */
+export function moveMiddlewarePath(entry: MiddlewareEntry, from: string, to: string): void {
+  const left = (entry.counts.get(from) ?? 1) - 1;
+  if (left > 0) entry.counts.set(from, left);
+  else {
+    entry.counts.delete(from);
+    entry.paths.delete(from);
+  }
+  addMiddlewarePath(entry, to);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
@@ -57,7 +79,8 @@ export class RouteRegistry {
   readonly declarations: Declaration[] = [];
   readonly middleware: MiddlewareEntry[] = [];
   readonly tables = new Set<PolicyTable>();
-  readonly usedKeys = new Set<string>();
+  /** 用过的键按登记表绑定：两张表都有 `GET /x` 时，只有真正注册过的那张算用过（审查第 1 轮 P3-2）。 */
+  private readonly usedKeys = new Map<PolicyTable, Set<string>>();
   private readonly keysByRouter = new WeakMap<object, Set<string>>();
   private readonly declarationByWrapper = new Map<AnyFn, Declaration>();
   private readonly middlewareByFn = new Map<AnyFn, MiddlewareEntry>();
@@ -78,12 +101,22 @@ export class RouteRegistry {
   bindMiddleware(fn: AnyFn, path: string, label: string): MiddlewareEntry {
     let entry = this.middlewareByFn.get(fn);
     if (!entry) {
-      entry = { label, paths: new Set() };
+      entry = { label, paths: new Set(), counts: new Map() };
       this.middlewareByFn.set(fn, entry);
       this.middleware.push(entry);
     }
-    entry.paths.add(path);
+    addMiddlewarePath(entry, path);
     return entry;
+  }
+
+  markUsed(table: PolicyTable, key: string): void {
+    let keys = this.usedKeys.get(table);
+    if (!keys) this.usedKeys.set(table, (keys = new Set()));
+    keys.add(key);
+  }
+
+  isUsed(table: PolicyTable, key: string): boolean {
+    return this.usedKeys.get(table)?.has(key) ?? false;
   }
 
   declarationOf(fn: AnyFn): Declaration | undefined {
@@ -100,9 +133,17 @@ export class RouteRegistry {
     for (const d of other.declarations) if (!this.declarations.includes(d)) this.declarations.push(d);
     for (const m of other.middleware) if (!this.middleware.includes(m)) this.middleware.push(m);
     for (const [fn, d] of other.declarationByWrapper) this.declarationByWrapper.set(fn, d);
-    for (const [fn, m] of other.middlewareByFn) this.middlewareByFn.set(fn, m);
+    for (const [fn, m] of other.middlewareByFn) {
+      // 同一个中间件函数在两层各自登记（根与子应用都 use('*')）：合并允许路径，不覆盖本层已登记的条目
+      const mine = this.middlewareByFn.get(fn);
+      if (mine && mine !== m) {
+        for (const [path, count] of m.counts) for (let i = 0; i < count; i++) addMiddlewarePath(mine, path);
+        const index = this.middleware.indexOf(m);
+        if (index >= 0) this.middleware.splice(index, 1);
+      } else this.middlewareByFn.set(fn, m);
+    }
     for (const t of other.tables) this.tables.add(t);
-    for (const k of other.usedKeys) this.usedKeys.add(k);
+    for (const [table, keys] of other.usedKeys) for (const key of keys) this.markUsed(table, key);
   }
 }
 

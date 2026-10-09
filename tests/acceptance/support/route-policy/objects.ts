@@ -56,10 +56,27 @@ function callsOf(text: string, fn: string): string[][] {
 
 const quoted = (arg: string | undefined) => /^'([^']*)'$/.exec(arg ?? '')?.[1];
 
+/** 各模块 `codeOf(key)` 的对象目录（talent/access.ts、idp/access.ts）。 */
+const CODE_OF: Readonly<Record<string, Readonly<Record<string, { code: string }>>>> = {
+  talent: domain.TALENT_OBJECTS,
+  idp: domain.IDP_OBJECTS,
+};
+/**
+ * 人才标准的通用处理器按分派到的对象工作（routes.ts registerObject / forms）：`spec.object` 的取值域是六个人才对象，
+ * 事实记为六个编码的集合（声明里该路由的对象节点覆盖其一即可）。
+ */
+const DISPATCHED: Readonly<Record<string, readonly string[]>> = {
+  talent: Object.values(domain.TALENT_OBJECTS).map((o) => o.code),
+};
+
 /** 常量解析：字面量、模块常量（本模块目录内唯一定义）、@italent/domain 导出（含属性链与 [变量] 全集）。 */
 class Resolver {
   private readonly consts = new Map<string, string>();
-  constructor(index: SourceIndex, dirs: readonly string[]) {
+  constructor(
+    index: SourceIndex,
+    dirs: readonly string[],
+    private readonly module: string,
+  ) {
     const defs = new Map<string, Set<string>>();
     for (const info of index.files.values()) {
       if (!dirs.some((dir) => info.file.startsWith(dir + path.sep) || info.file === dir)) continue;
@@ -80,6 +97,9 @@ class Resolver {
     if (depth > 4) return undefined;
     const literal = quoted(text);
     if (literal !== undefined) return CODE.test(literal) ? [literal] : undefined;
+    const codeOf = /^codeOf\('(\w+)'\)$/.exec(text);
+    if (codeOf) return one(CODE_OF[this.module]?.[codeOf[1]!]?.code);
+    if (text === 'spec.object' || text === 'codeOf(spec.object)') return DISPATCHED[this.module]?.slice();
     const template = /^`\$\{(\w+)\}\.(\w+)`$/.exec(text);
     if (template) {
       const prefix = this.value(template[1]!, depth);
@@ -119,8 +139,11 @@ class Resolver {
 type Extract = (args: string[], resolver: Resolver) => [string[] | undefined, Op | undefined] | undefined;
 
 const TALENT_WRITE: Record<string, Op> = { create: 'create', update: 'update', delete: 'delete' };
-const talentCode = (key: string | undefined) =>
-  key ? (domain.TALENT_OBJECTS as Record<string, { code: string }>)[key]?.code : undefined;
+const talentKey = (arg: string | undefined) => (arg === 'spec.object' ? 'spec.object' : quoted(arg));
+const talentCodes = (key: string | undefined): string[] | undefined =>
+  key === 'spec.object'
+    ? DISPATCHED['talent']?.slice()
+    : one(key ? domain.TALENT_OBJECTS[key as never]?.['code'] : undefined);
 const idpCode = (key: string | undefined) =>
   key ? (domain.IDP_OBJECTS as Record<string, { code: string }>)[key]?.code : undefined;
 const one = (code: string | undefined) => (code ? [code] : undefined);
@@ -148,12 +171,12 @@ const SHAPES: readonly { fn: string; modules?: readonly string[]; extract: Extra
   {
     fn: 'talentContext',
     modules: ['talent'],
-    extract: (args) => [one(talentCode(quoted(args[2]))), opAt(args, 3, 'view')],
+    extract: (args) => [talentCodes(talentKey(args[2])), opAt(args, 3, 'view')],
   },
   {
     fn: 'talentWriteContext',
     modules: ['talent'],
-    extract: (args) => [one(talentCode(quoted(args[2]))), TALENT_WRITE[quoted(args[3]) ?? '']],
+    extract: (args) => [talentCodes(talentKey(args[2])), TALENT_WRITE[quoted(args[3]) ?? '']],
   },
   { fn: 'idpContext', modules: ['idp'], extract: (args) => [one(idpCode(quoted(args[2]))), opAt(args, 3, 'view')] },
   { fn: 'idpWriteContext', modules: ['idp'], extract: (args) => [one(idpCode(quoted(args[2]))), opAt(args, 3)] },
@@ -185,10 +208,19 @@ const SHAPES: readonly { fn: string; modules?: readonly string[]; extract: Extra
   },
 ];
 
+/** `const ok = await deps.authorize({ …, action: 'object.<op>', resource: X }); if (!ok) throw …`：等同 requirePermission。 */
+const AUTHORIZE_THEN_THROW = /const (\w+) = await deps\.authorize\(\{([^{}]*)\}\);\s*if \(!\1\) throw\b/g;
+
 /** 近闭包文本 → `编码(|编码…):操作` 事实（排序去重）。 */
 export function objectFacts(index: SourceIndex, near: string, module: string, dirs: readonly string[]): string[] {
-  const resolver = new Resolver(index, dirs);
+  const resolver = new Resolver(index, dirs, module);
   const facts = new Set<string>();
+  for (const match of near.matchAll(AUTHORIZE_THEN_THROW)) {
+    const action = /action:\s*'object\.(view|create|update|delete)'/.exec(match[2]!)?.[1];
+    const resource = /resource:\s*([^,]+?)\s*(?:,|$)/.exec(match[2]!)?.[1];
+    const codes = resource ? resolver.codes(resource) : undefined;
+    if (action && codes?.length) facts.add(`${[...new Set(codes)].sort().join('|')}:${action}`);
+  }
   for (const shape of SHAPES) {
     if (shape.modules && !shape.modules.includes(module)) continue;
     for (const args of callsOf(near, shape.fn)) {

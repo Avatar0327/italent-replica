@@ -116,6 +116,8 @@ const RESOURCE = 'survey360.resourceGuard';
 const REFS = 'survey360.payloadRefs';
 const ALSO = 'survey360.alsoObjects';
 const PREFLIGHT = 'survey360.preflight';
+/** 同步冲突与人员关联日志只给不受限的管理员（people.ts requireUnrestricted）。 */
+const UNRESTRICTED = 'survey360.unrestricted';
 
 export const SURVEY360_POLICIES = defineTable('survey360', {
   // ---- settings.ts ------------------------------------------------------------------------------------------------
@@ -130,7 +132,8 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
   'POST /roles': route({ key: 'settings', operation: 'create', write: { fields: 'body' } }),
   'PUT /roles/:id': route({ key: 'settings', operation: 'update', write: { fields: 'body' }, byId: true }),
   // ---- sync.ts：从系统管理中同步人员信息（sync@list）----------------------------------------------------------------
-  'GET /people/sync-conflicts': route({ key: 'person', button: BUTTONS.sync, scope: PEOPLE }),
+  // 精细化下受限管理员 403 FINE_PERMISSION_RESTRICTED（people.ts requireUnrestricted，第 6 轮 R5-P2-1）
+  'GET /people/sync-conflicts': route({ key: 'person', button: BUTTONS.sync, scope: PEOPLE, guards: [UNRESTRICTED] }),
   'POST /people/sync': route({
     key: 'person',
     button: BUTTONS.sync,
@@ -142,7 +145,7 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     key: 'person',
     button: BUTTONS.sync,
     scope: PEOPLE,
-    write: { fields: 'none', guards: [RESOURCE, REFS, PREFLIGHT] },
+    write: { fields: 'none', guards: [RESOURCE, REFS, PREFLIGHT, UNRESTRICTED] },
     byId: true,
     employees: true,
   }),
@@ -150,7 +153,13 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
   'GET /people': route({ key: 'person', scope: PEOPLE }),
   'GET /people/:id': route({ key: 'person', scope: PERSON, byId: true }),
   // 关联日志属“同步人员信息”（一般管理员看不到）；看不到的人员 404，看得到但受限（精细化）403
-  'GET /people/:id/link-logs': route({ key: 'person', button: BUTTONS.sync, scope: PERSON, byId: true }),
+  'GET /people/:id/link-logs': route({
+    key: 'person',
+    button: BUTTONS.sync,
+    scope: PERSON,
+    guards: [UNRESTRICTED],
+    byId: true,
+  }),
   'POST /people': route({
     key: 'person',
     operation: 'create',
@@ -307,9 +316,12 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
 
 /** 链接作答 / 确认：令牌守卫在每个处理函数里（linkTenant + resolve），命令前与命令事务内各解析一次链接。 */
 const TOKEN = ['survey360.linkToken'];
-const linkRead = (reason: string): RoutePolicy => publicRoute(reason, 'DEC-280 / DEC-291 Q2', TOKEN);
-const linkWrite = (reason: string, fields: 'body' | 'none'): RoutePolicy =>
+/** 带 :relationId / :questionnaireId 的入口：answering.ts uuidParam，非 UUID → 400 VALIDATION_FAILED（审查第 1 轮 P3-1）。 */
+const linkRead = (reason: string, extra: { invalidId?: typeof BAD_REQUEST } = {}): RoutePolicy =>
+  publicRoute(reason, 'DEC-280 / DEC-291 Q2', TOKEN, extra);
+const linkWrite = (reason: string, fields: 'body' | 'none', extra: { invalidId?: typeof BAD_REQUEST } = {}) =>
   publicRoute(reason, 'DEC-280 / DEC-291 Q2', TOKEN, {
+    ...extra,
     write: write(
       fields === 'body' ? 'body' : none('删除评价者只给 relationId'),
       'survey360.linkResolve',
@@ -320,11 +332,18 @@ const linkWrite = (reason: string, fields: 'body' | 'none'): RoutePolicy =>
 
 export const SURVEY360_LINK_POLICIES = defineTable('survey360-link', {
   'GET /': linkRead('链接主页：作答链接给任务清单、确认链接给确认单'),
-  'GET /tasks/:relationId/questionnaires/:questionnaireId': linkRead('作答页：只读本链接评价者的任务（requireTask）'),
-  'PUT /tasks/:relationId/questionnaires/:questionnaireId': linkWrite('保存答卷（If-Match 答卷 revision）', 'body'),
-  'POST /tasks/:relationId/questionnaires/:questionnaireId/submit': linkWrite('提交答卷', 'body'),
+  'GET /tasks/:relationId/questionnaires/:questionnaireId': linkRead(
+    '作答页：只读本链接评价者的任务（requireTask）',
+    byId,
+  ),
+  'PUT /tasks/:relationId/questionnaires/:questionnaireId': linkWrite(
+    '保存答卷（If-Match 答卷 revision）',
+    'body',
+    byId,
+  ),
+  'POST /tasks/:relationId/questionnaires/:questionnaireId/submit': linkWrite('提交答卷', 'body', byId),
   'GET /confirmation/candidates': linkRead('确认链接：候选评价者'),
   'POST /confirmation/appraisers': linkWrite('确认人添加评价者', 'body'),
-  'DELETE /confirmation/appraisers/:relationId': linkWrite('确认人删除评价者', 'none'),
+  'DELETE /confirmation/appraisers/:relationId': linkWrite('确认人删除评价者', 'none', byId),
   'POST /confirmation/submit': linkWrite('确认人提交', 'body'),
 });

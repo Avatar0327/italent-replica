@@ -12,7 +12,14 @@
 import type { Context, Env, Hono, Next } from 'hono';
 import { routePath } from 'hono/route';
 import { AppError } from '../errors.js';
-import { attachRegistry, type Declaration, registryOf, RoutePolicyError, type RouteRegistry } from './registry.js';
+import {
+  attachRegistry,
+  type Declaration,
+  moveMiddlewarePath,
+  registryOf,
+  RoutePolicyError,
+  type RouteRegistry,
+} from './registry.js';
 import { METHODS, type PolicyTable, policyKey } from './table.js';
 import type { HttpMethod, RoutePolicy } from './types.js';
 
@@ -159,8 +166,7 @@ export function mount<E extends Env, S extends Env>(router: Hono<E>, prefix: str
     }
     const middleware = subRegistry.middlewareOf(fn);
     if (middleware) {
-      middleware.paths.delete(subRoute.path);
-      middleware.paths.add(parentRoute.path);
+      moveMiddlewarePath(middleware, subRoute.path, parentRoute.path);
     }
   });
   registry.absorb(subRegistry);
@@ -188,7 +194,7 @@ function declareFromTable(
   const key = policyKey(method, path);
   const hit = table.lookup(key);
   if (!hit) throw new RoutePolicyError('ROUTE_UNDECLARED', `${key} 不在登记表 ${table.name} 里，拒绝注册`);
-  registry.usedKeys.add(key);
+  registry.markUsed(table, key);
   declare(
     target as unknown as Hono<Env>,
     method.toUpperCase() as HttpMethod,

@@ -964,6 +964,9 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:delete"
+        ],
         "scope": [
           "requestScope",
           "visible()"
@@ -1040,6 +1043,9 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:delete"
+        ],
         "scope": [
           "requestScope",
           "visible()"
@@ -1076,6 +1082,9 @@
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:delete"
         ],
         "scope": [
           "requestScope",
@@ -1114,6 +1123,9 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:delete"
+        ],
         "scope": [
           "requestScope",
           "visible()"
@@ -1151,6 +1163,9 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:delete"
+        ],
         "scope": [
           "requestScope",
           "visible()"
@@ -1187,6 +1202,9 @@
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:delete"
         ],
         "scope": [
           "requestScope",
@@ -4885,6 +4903,9 @@
         "button": [
           "survey360 need button"
         ],
+        "guard": [
+          "survey360.unrestricted"
+        ],
         "object": [
           "survey360 read/write(need)"
         ],
@@ -4912,6 +4933,9 @@
       "primitives": {
         "button": [
           "survey360 need button"
+        ],
+        "guard": [
+          "survey360.unrestricted"
         ],
         "object": [
           "object.* 动作",
@@ -5130,6 +5154,9 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
+        ],
         "scope": [
           "creator scope",
           "requestScope",
@@ -5158,11 +5185,11 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
+        ],
         "scope": [
-          "creator scope",
           "requestScope",
-          "scope.all",
-          "scopeSql",
           "visible()"
         ]
       }
@@ -5249,6 +5276,9 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
+        ],
         "scope": [
           "creator scope",
           "requestScope",
@@ -5277,11 +5307,11 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
+        ],
         "scope": [
-          "creator scope",
           "requestScope",
-          "scope.all",
-          "scopeSql",
           "visible()"
         ]
       }
@@ -5305,6 +5335,9 @@
       "primitives": {
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
         ],
         "scope": [
           "creator scope",
@@ -5334,11 +5367,11 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
+        ],
         "scope": [
-          "creator scope",
           "requestScope",
-          "scope.all",
-          "scopeSql",
           "visible()"
         ]
       }
@@ -5362,6 +5395,9 @@
       "primitives": {
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
         ],
         "scope": [
           "creator scope",
@@ -5391,11 +5427,11 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
+        ],
         "scope": [
-          "creator scope",
           "requestScope",
-          "scope.all",
-          "scopeSql",
           "visible()"
         ]
       }
@@ -5419,6 +5455,9 @@
       "primitives": {
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
         ],
         "scope": [
           "creator scope",
@@ -5448,11 +5487,11 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
+        ],
         "scope": [
-          "creator scope",
           "requestScope",
-          "scope.all",
-          "scopeSql",
           "visible()"
         ]
       }
@@ -5484,6 +5523,9 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
+        ],
         "scope": [
           "resolveModuleScope",
           "visible()"
@@ -5509,6 +5551,9 @@
       "primitives": {
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
         ],
         "scope": [
           "creator scope",
@@ -5538,11 +5583,11 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:view"
+        ],
         "scope": [
-          "creator scope",
           "requestScope",
-          "scope.all",
-          "scopeSql",
           "visible()"
         ]
       }
@@ -5973,9 +6018,15 @@
         "fieldsIn": [
           "writeFields"
         ],
+        "guard": [
+          "idp.processReference"
+        ],
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "IDP.IDPProcess:view"
         ],
         "scope": [
           "creator scope",
@@ -6396,6 +6447,9 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:update"
+        ],
         "scope": [
           "requestScope",
           "visible()"
@@ -6435,6 +6489,9 @@
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:update"
         ],
         "scope": [
           "requestScope",
@@ -6476,6 +6533,9 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:update"
+        ],
         "scope": [
           "requestScope",
           "visible()"
@@ -6515,6 +6575,9 @@
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:update"
         ],
         "scope": [
           "requestScope",
@@ -6556,6 +6619,9 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:update"
+        ],
         "scope": [
           "requestScope",
           "visible()"
@@ -6595,6 +6661,9 @@
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:update"
         ],
         "scope": [
           "requestScope",
@@ -9055,11 +9124,15 @@
         "fieldsIn": [
           "writeFields"
         ],
+        "guard": [
+          "idp.templateVisible"
+        ],
         "object": [
           "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
+          "IDP.IDPTemplate:view",
           "IDP.Idp:create"
         ],
         "or": [
@@ -9302,6 +9375,7 @@
           "objectContext"
         ],
         "objectOp": [
+          "IDP.Idp:view",
           "IDP.Task:create"
         ],
         "scope": [
@@ -9446,9 +9520,15 @@
         "fieldsIn": [
           "writeFields"
         ],
+        "guard": [
+          "idp.processReference"
+        ],
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "IDP.IDPProcess:view"
         ],
         "scope": [
           "creator scope",
@@ -9514,9 +9594,15 @@
         "fieldsIn": [
           "writeFields"
         ],
+        "guard": [
+          "idp.processReference"
+        ],
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "IDP.IDPProcess:view"
         ],
         "scope": [
           "creator scope",
@@ -11064,6 +11150,9 @@
         "command": [
           "write() / command()"
         ],
+        "guard": [
+          "survey360.unrestricted"
+        ],
         "object": [
           "object.* 动作",
           "objectContext",
@@ -11202,6 +11291,9 @@
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:create"
         ],
         "scope": [
           "requestScope",
@@ -11361,6 +11453,9 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:create"
+        ],
         "scope": [
           "requestScope",
           "visible()"
@@ -11400,6 +11495,9 @@
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:create"
         ],
         "scope": [
           "requestScope",
@@ -11441,6 +11539,9 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:create"
+        ],
         "scope": [
           "requestScope",
           "visible()"
@@ -11481,6 +11582,9 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:create"
+        ],
         "scope": [
           "requestScope",
           "visible()"
@@ -11520,6 +11624,9 @@
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Category|TalentCenter.DescriptionType|TalentCenter.Dimension|TalentCenter.DimensionLibrary|TalentCenter.TalentCriterion|TalentCenter.TalentCriterionCategory:create"
         ],
         "scope": [
           "requestScope",

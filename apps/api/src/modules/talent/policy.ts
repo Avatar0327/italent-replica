@@ -205,6 +205,19 @@ function crud(key: Key): Record<string, RoutePolicy> {
 const OWN_UNITS = noScope('只返回本人在 TalentCenter 的授权管理单元（DEC-294③），有界 200');
 const UNITS_OUT = projector('talent.ownerUnits', 'talent.ownerUnit');
 const CRIT_DETAIL = pointScope({ param: 'id' }, 'talent.criterion.byId', NF);
+/** 表单对象（:object）：人才标准六对象。 */
+const FORM_OBJECT = {
+  from: 'param' as const,
+  path: 'object',
+  map: {
+    library: LIB,
+    dimensionCategory: CAT,
+    descriptionType: TYPE,
+    dimension: DIM,
+    criterionCategory: CCAT,
+    criterion: CRIT,
+  },
+};
 const CRIT_VIEW: RoutePolicy = object({
   object: CRIT,
   operation: 'view',
@@ -315,30 +328,33 @@ export const TALENT_POLICIES = defineTable('talent', {
       },
     },
   ),
-  // F-035 表单权限契约：object × operation（create / update）选择；update 时 query.id 走详情定位器
-  [`GET ${BASE}/forms/:object`]: object({
-    object: {
-      from: 'param',
-      path: 'object',
-      map: {
-        library: LIB,
-        dimensionCategory: CAT,
-        descriptionType: TYPE,
-        dimension: DIM,
-        criterionCategory: CCAT,
-        criterion: CRIT,
-      },
-    },
-    operation: { from: 'query', path: 'operation', map: { create: 'create', update: 'update' } },
-    button: {
-      from: 'query',
-      path: 'operation',
-      map: { create: button('create', 'list'), update: button('update', 'detail') },
-    },
-    scope: pointScope({ query: 'id' }, 'talent.<object>.byId', NF),
-    fields: projector('talent.formAccess', 'talent.formAccess'),
-    invalidId: BAD_REQUEST,
-  }),
+  // F-035 表单权限契约（form-access.ts talentFormHandler）：operation（create / update，其余 400）的数据操作权 + 按钮
+  // （talentWriteContext），再要同对象的查看权（talentContext）；update 时 query.id 按详情范围定位（不可见 404），
+  // create 不按范围拒绝——授权管理单元为空或无可用新建范围随 200 返回 blockedReason（审查第 1 轮 P3-1）
+  [`GET ${BASE}/forms/:object`]: all(
+    [
+      object({
+        object: FORM_OBJECT,
+        operation: { from: 'query', path: 'operation', map: { create: 'create', update: 'update' } },
+        button: {
+          from: 'query',
+          path: 'operation',
+          map: { create: button('create', 'list'), update: button('update', 'detail') },
+        },
+        scope: guardScope('talent.formScope(operation)', NF),
+        fields: noFields('组合层声明出口'),
+      }),
+      object({
+        object: FORM_OBJECT,
+        operation: 'view',
+        button: noButton('查看权只判开关'),
+        scope: noScope('范围在操作分支（update 的 query.id）'),
+        fields: noFields('组合层声明出口'),
+      }),
+    ],
+    projector('talent.formAccess', 'talent.formAccess'),
+    { invalidId: BAD_REQUEST },
+  ),
   // ---- model-image-routes.ts：潜力模型图片（F-038）------------------------------------------------------------------
   [`GET ${BASE}/criteria/:id/model-image`]: object({
     ...byId,
@@ -367,20 +383,19 @@ export const TALENT_POLICIES = defineTable('talent', {
     guards: ['talent.attachmentCurrent'],
     fields: fixed(['<binary>'], 'F-038：图片二进制，contentType 白名单、nosniff、no-store'),
   }),
+  // 登记回执 `{ revision, attachment }`（attachment = registeredImage：id / status / revision / filename / contentType /
+  // byteSize / sha256，Q-M0-126）；上传 / 删图回执经 present：revision / modelImage / canEdit（审查第 1 轮 P3-1）
   [`POST ${BASE}/criteria/:id/model-image/attachments`]: modelImageWrite(
     'metadata',
-    fixed(
-      ['id', 'status', 'revision', 'filename', 'contentType', 'byteSize', 'sha256'],
-      'F-038 图片元数据（Q-M0-126）',
-    ),
+    fixed(['revision', 'attachment'], 'F-038 图片登记回执（model-image-routes.ts）'),
   ),
   [`POST ${BASE}/criteria/:id/model-image/attachments/:attachmentId/upload`]: modelImageWrite(
     'modelImage',
-    fixed(['revision', 'modelImage'], 'F-038 上传回执：当前图片元数据 / revision，不返回字节'),
+    fixed(['revision', 'modelImage', 'canEdit'], 'F-038 上传回执：当前图片元数据 / revision / canEdit，不返回字节'),
     { guards: ['talent.attachmentRegistered'] },
   ),
   [`DELETE ${BASE}/criteria/:id/model-image`]: modelImageWrite(
     'clear',
-    fixed(['revision', 'modelImage'], 'F-038 删图回执：modelImage = null'),
+    fixed(['revision', 'modelImage', 'canEdit'], 'F-038 删图回执：modelImage = null'),
   ),
 });

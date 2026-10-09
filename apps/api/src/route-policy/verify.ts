@@ -99,7 +99,7 @@ export function verifyRouteDeclarations<E extends Env>(app: Hono<E>): RouteManif
   }
   for (const table of registry.tables) {
     for (const key of table.keys()) {
-      if (!registry.usedKeys.has(key))
+      if (!registry.isUsed(table, key))
         fail('ROUTE_DECLARATION_UNUSED', `登记表 ${table.name} 的 ${key} 没有对应的注册`);
     }
   }

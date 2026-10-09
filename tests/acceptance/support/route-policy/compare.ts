@@ -12,7 +12,7 @@
 import type { ManifestRoute } from '@italent/api';
 import type { ObservedContract, ObservedRoute } from './contract.js';
 import { type Alternative, declared, type Declared, type Identity, preconditionName } from './features.js';
-import { DISJUNCTIONS, KNOWN_GUARDS, type Obligation } from './primitives.js';
+import { DISJUNCTIONS, GUARD_FACTS, KNOWN_GUARDS, type Obligation } from './primitives.js';
 
 export interface Finding {
   readonly route: string;
@@ -122,6 +122,9 @@ function compareAlternative(
   const dims = altDims(alt, optional);
   const ors = DISJUNCTIONS.filter((d) => observed.primitives['or']?.includes(d.name));
   const absorbed = new Set<string>(ors.flatMap((d) => d.absorbs));
+  for (const guard of observed.primitives['guard'] ?? []) {
+    for (const fact of GUARD_FACTS[guard] ?? []) absorbed.add(`obj:${fact}`);
+  }
   const names = (dim: string) => observed.primitives[dim]?.join(', ') ?? '';
   for (const dim of [...BOTH_WAYS, ...WEAKER_ONLY]) {
     if (!Object.hasOwn(observed.primitives, dim) || absorbed.has(dim)) continue;

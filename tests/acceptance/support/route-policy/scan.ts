@@ -557,7 +557,11 @@ export function matchRegistrations(
   const exact = candidates.filter((r) => r.exactPath === localPath);
   if (exact.length) return exact;
   const best = Math.min(...candidates.map((r) => r.wildcards));
-  return candidates.filter((r) => r.wildcards === best);
+  // 通配一样多时取字面量更长（更具体）的：`…/talent/*/:id/dimension-category` 优先于 `…/talent/*`
+  const fewest = candidates.filter((r) => r.wildcards === best);
+  const literal = (r: StaticRegistration) => r.pattern?.source.replace(/\.\*\?/g, '').length ?? 0;
+  const longest = Math.max(...fewest.map(literal));
+  return fewest.filter((r) => literal(r) === longest);
 }
 
 // ---- 闭包文本 ------------------------------------------------------------------------------------------------------

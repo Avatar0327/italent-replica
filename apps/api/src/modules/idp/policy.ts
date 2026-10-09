@@ -12,6 +12,7 @@
 import { IDP_OBJECTS } from '@italent/domain';
 import { defineTable, type RoutePolicy } from '../../route-policy/index.js';
 import {
+  all,
   any,
   BAD_REQUEST,
   button,
@@ -20,6 +21,7 @@ import {
   guardScope,
   listScope,
   noButton,
+  noFields,
   none,
   noScope,
   NOT_FOUND,
@@ -181,6 +183,29 @@ function executor(fields: 'body' | 'none'): RoutePolicy {
   });
 }
 
+/** 下发任务：task create + issue@list，AND 计划 view（只判开关；计划范围在写分支的 PLAN_LIST）。 */
+function issueTasks(): RoutePolicy {
+  const issue = writer({
+    key: 'task',
+    operation: 'create',
+    button: 'issue',
+    level: 'list',
+    scope: PLAN_LIST,
+    fields: 'body',
+    result: 'idp.receiptRecheck',
+    outKey: 'plan',
+  });
+  const { write: issueWrite, ...admission } = issue;
+  const planView = object({
+    object: code('plan'),
+    operation: 'view',
+    button: noButton('只判计划查看权'),
+    scope: noScope('计划范围在写分支（PLAN_LIST）'),
+    fields: noFields('出口在组合层登记'),
+  });
+  return all([admission as RoutePolicy, planView], out('plan'), issueWrite ? { write: issueWrite } : {});
+}
+
 /** 批量干预（催办 / 启动下一阶段 / 终止）：plan update + 列表按钮；逐条回执按当前范围复核（范围外 404）。 */
 function intervention(buttonCode: 'urge' | 'startNext' | 'terminate'): RoutePolicy {
   return writer({
@@ -252,6 +277,8 @@ export const IDP_POLICIES = defineTable('idp', {
     scope: ORG_POINT('template'),
     fields: 'body',
     result: 'idp.currentEditable(template)',
+    // 副本沿用原模板引用的流程：流程查看权 + 流程范围（processScopeFor）
+    guards: ['idp.processReference'],
     byId: true,
   }),
   [`POST ${BASE}/templates/:id/publish`]: writer({
@@ -363,16 +390,8 @@ export const IDP_POLICIES = defineTable('idp', {
     preconditions: ['openRun', 'assertBusinessUnchanged', 'assertNotNodeAssignee', 'assertNotSelf', 'assertReviewer'],
     byId: true,
   }),
-  [`POST ${BASE}/plans/tasks/issue`]: writer({
-    key: 'task',
-    operation: 'create',
-    button: 'issue',
-    level: 'list',
-    scope: PLAN_LIST,
-    fields: 'body',
-    result: 'idp.receiptRecheck',
-    outKey: 'plan',
-  }),
+  // 下发任务：task 新建 + issue 列表按钮，另要计划查看权（plan-routes.ts：无 → 403「无权查看发展计划」，审查第 1 轮 P3-1）
+  [`POST ${BASE}/plans/tasks/issue`]: issueTasks(),
   // ---- 关键信息（按员工归属）------------------------------------------------------------------------------------
   ...keyInfo('tutorship', 'tutorships'),
   ...keyInfo('career', 'careers'),
