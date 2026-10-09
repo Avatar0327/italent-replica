@@ -32,6 +32,8 @@ export const ERROR_STATUS = {
   NOT_FOUND: 404,
   // F-039：路由声明的运行时自检失败（注册实例与声明的 method / 路径不一致），fail-closed
   ROUTE_POLICY_MISMATCH: 500,
+  // F-039 接管 T1：shared 点校验未完成就返回，丢弃响应（DEC-363④，fail-closed）
+  ROUTE_POLICY_UNCHECKED: 500,
   INTERNAL_ERROR: 500,
 } as const satisfies Record<string, ContentfulStatusCode>;
 
