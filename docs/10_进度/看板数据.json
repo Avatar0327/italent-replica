@@ -1,7 +1,7 @@
 {
 "updated": "2026-10-09",
 "stats": {
-"merged": 76,
+"merged": 77,
 "open": 14,
 "dec": 345,
 "ev": "34/137"
@@ -2257,7 +2257,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-09 02:07",
+"liveUpdated": "10-09 02:14",
 "chains": [
 {
 "g": "base",
@@ -2621,8 +2621,8 @@
 "k": "run",
 "n": "权限框架强制",
 "u": "已核对，待开会话",
-"seg": "ev:n ds:d6 dev:a2 rev:d1 mg:w",
-"now": "实现审第 1 轮：2 类 P2，第 2 轮修改中（Opus）",
+"seg": "ev:n ds:d6 dev:d2 rev:a2 mg:w",
+"now": "实现第 2 轮审查中（Sol xhigh + priority）",
 "pr": 110,
 "up": "10-07 调到 Max",
 "nx": "R3 全部模块（各 PR 合并后补声明）",
@@ -2700,8 +2700,8 @@
 "k": "run",
 "n": "审批多主体回避",
 "nx": "R3-T04 写代码",
-"seg": "ev:n ds:d4 dev:a2 rev:d1 mg:w",
-"now": "PR-1 首轮：1 P2（新增默认字段破坏旧命令幂等重放）；第 2 轮修改",
+"seg": "ev:n ds:d4 dev:d2 rev:d2 mg:a",
+"now": "PR-1 第 2 轮（Sol xhigh+fast）：可以合并",
 "pr": 135,
 "pd": "设计 #128 ✓ · 实现 PR-1 #135"
 },
@@ -2909,8 +2909,8 @@
 "k": "run",
 "pr": 139,
 "n": "文档 PR 必需检查快速通过",
-"seg": "ev:n ds:n dev:d1 rev:w1 mg:w",
-"now": "#139 待审（#140 为临时实测，不合并）"
+"seg": "ev:n ds:n dev:a2 rev:d1 mg:w",
+"now": "首轮（Sol high+fast）：1 P2（.claude/** 白名单会把脚本 / 配置当文档放行），第 2 轮修改"
 }
 ]
 }
