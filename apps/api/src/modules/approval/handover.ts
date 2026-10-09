@@ -110,11 +110,13 @@ export async function handoverExceptionAdmin(
   if (!(await isEligibleApprover(tx, { tenantId: ctx.tenantId, asOf }, input.toUserId))) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '替代人已离职或不是本租户有效成员');
   }
-  await designateSuccessor(tx, ctx, input);
-  const processes = await republishProcesses(tx, ctx, input);
   const instances = scope ? await transferableInstances(tx, ctx, input, scope) : [];
   const batch = instances.slice(0, BATCH);
-  await lockHandoverParticipants(tx, ctx, batch);
+  // F-065：员工 → 业务 → 组织的锁必须先于登记替代人 / 重发流程（二者的外键对来源账号与替代人的成员行取 KEY SHARE）。
+  // 入职绑定账号的顺序是组织锁 → 成员行 FOR UPDATE，反过来先持成员行再等组织锁会与它成环（org/locks.ts 全局锁序）。
+  await lockHandoverParticipants(tx, ctx, batch, { organization: true });
+  await designateSuccessor(tx, ctx, input);
+  const processes = await republishProcesses(tx, ctx, input);
   let tasks = 0;
   const skipped: SkippedInstance[] = [];
   // R6-3：选批与游标仍按实例编号（对外不变）；批内按全局取锁顺序逐单处理（一批一个事务，批与批之间锁已释放）。
@@ -384,7 +386,9 @@ export async function takeOverOnDeactivation(
     if (page.length < BATCH) break;
     after = page.at(-1)!;
   }
-  await lockHandoverParticipants(tx, ctx, instances);
+  // F-065：全局停用已持账号行 NO KEY UPDATE，不预取组织锁（入职首次绑定是组织锁 → 账号行 FOR SHARE，会成环）；
+  // 需要组织锁的调动实例在 openRun 时按既有顺序取得
+  await lockHandoverParticipants(tx, ctx, instances, { organization: false });
   for (const { id } of instances)
     await takeOverInstance(tx, ctx, id, userId, successor, successorScope, options.settle ?? true);
 }
@@ -485,11 +489,17 @@ async function takeoverTarget(
 }
 
 /**
- * 交接前统一取锁：员工（任职业务的参与闭包）→ 各业务的业务行（适配器 lockMany，按业务自己的规范顺序）→ 之后逐单锁
- * 实例。发展计划的批量干预按计划 ID 升序锁计划再锁实例，这里同样先按计划 ID 升序锁齐本批的计划，两边锁序一致，
+ * 交接前统一取锁：员工（任职业务的参与闭包）→ 各业务的业务行与资源锁（适配器 lockMany，按业务自己的规范顺序）→ 之后逐单锁
+ * 实例。手动交接（organization: true）还须在登记替代人（成员行 KEY SHARE）之前取组织锁（F-065）；停用接管不预取。
+ * 发展计划的批量干预按计划 ID 升序锁计划再锁实例，这里同样先按计划 ID 升序锁齐本批的计划，两边锁序一致，
  * 不会交错互等（PR #115 第 2 轮 P3-2）。
  */
-async function lockHandoverParticipants(tx: Tx, ctx: ApprovalContext, batch: readonly LockKey[]) {
+async function lockHandoverParticipants(
+  tx: Tx,
+  ctx: ApprovalContext,
+  batch: readonly LockKey[],
+  options: { readonly organization: boolean },
+) {
   const employees = [...new Set(batch.map((item) => item.employee_id))]
     .filter((id) => id !== '00000000-0000-0000-0000-000000000000')
     .sort();
@@ -501,5 +511,5 @@ async function lockHandoverParticipants(tx: Tx, ctx: ApprovalContext, batch: rea
   );
   const byType = new Map<BusinessType, string[]>();
   for (const row of rows) byType.set(row.business_type, [...(byType.get(row.business_type) ?? []), row.business_id]);
-  for (const [type, ids] of byType) await ADAPTERS[type].lockMany?.(tx, ctx, ids);
+  for (const [type, ids] of byType) await ADAPTERS[type].lockMany?.(tx, ctx, ids, options);
 }

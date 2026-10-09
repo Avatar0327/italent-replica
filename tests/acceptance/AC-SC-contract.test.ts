@@ -29,6 +29,11 @@ import {
 import { transitionEmployment } from '../../apps/api/src/modules/employment/transitions.js';
 import { objectCatalog } from '../../apps/api/src/modules/permission/catalog.js';
 import { scopeAppOf } from '../../apps/api/src/modules/permission/module-access.js';
+import { PLATFORM_MODULES } from '../../apps/api/src/modules/platform/routes.js';
+import {
+  registerSuccessionPlatformRoutes,
+  SUCCESSION_PLATFORM_POLICIES,
+} from '../../apps/api/src/modules/succession/platform-routes.js';
 import { installSuccessionPorts } from '../../apps/api/src/modules/succession/ports.js';
 import { startSuccessionScheduler, type SuccessionJob } from '../../apps/api/src/modules/succession/scheduler.js';
 import {
@@ -49,6 +54,7 @@ import {
 } from './AC-PRM-support.js';
 import { memberWithAdminRole } from './AC-PRM-users-support.js';
 import { newUser, provisioned, seedOperator } from './support/platform-api.js';
+import { moduleDirs } from './support/route-policy/scan.js';
 import { errorCode, seedTenantWithMember, tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -556,5 +562,21 @@ describe('对外端口与定时任务登记位（SP-15 / DEC-330、§4.6 / DEC-3
     await scheduler.stop();
     expect(ran).toEqual(['exit_sweep', 'position_risk']);
     expect(errors).toEqual(['exit_sweep']);
+  });
+});
+
+describe('平台装配登记位（拆分方案 v2 P0；设计 §2.2 #19；DEC-357）', () => {
+  it('平台路由器装配继任平台模块；继任平台声明表为空（P0 不新增任何路由）', () => {
+    expect(PLATFORM_MODULES).toContain(registerSuccessionPlatformRoutes);
+    expect(SUCCESSION_PLATFORM_POLICIES.keys()).toEqual([]);
+  });
+
+  it('F-039 扫描：/api/platform/succession 归继任平台模块，其余平台路径仍归平台模块', () => {
+    const succession = moduleDirs('/api/platform/succession/jobs/run');
+    expect(succession.module).toBe('succession-platform');
+    expect(succession.prefix).toBe('/api/platform/succession');
+    expect(succession.dirs.some((dir) => dir.endsWith('modules/succession'))).toBe(true);
+    expect(moduleDirs('/api/platform/tenants').module).toBe('platform');
+    expect(moduleDirs('/api/platform/successions').module).toBe('platform');
   });
 });

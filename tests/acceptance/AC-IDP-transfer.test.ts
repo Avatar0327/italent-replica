@@ -268,7 +268,7 @@ describe('AC-IDP（补）F-066 转交目标须在操作人的 IDP 范围内（ID
     };
     const outside = await attempt(stranger.userId);
     expect(outside).toMatchObject({ status: 404 });
-    expect(await attempt(plain.id), '未绑定员工的纯账号先按拒绝（待定）').toEqual(outside);
+    expect(await attempt(plain.id), '未绑定员工的纯账号仍拒绝（DEC-354）').toEqual(outside);
     expect(await attempt('00000000-0000-4000-8000-0000000000aa'), '不存在的账号').toEqual(outside);
 
     expect(await w.readPlan(plan.id)).toMatchObject({ revision: plan.revision });
