@@ -79,6 +79,10 @@ export interface OperatorOptions {
   readonly readonly?: readonly string[];
   readonly buttons?: boolean;
   readonly view?: boolean;
+  /** 数据操作权，缺省全开。 */
+  readonly operations?: { create: boolean; update: boolean; delete: boolean };
+  /** 即使 buttons 为真也不授予的按钮编码。 */
+  readonly omitButtons?: readonly string[];
 }
 
 /** 真实授权器下的操作人：身份只带 TalentReview 应用与指定对象，按需配置看全部、隐藏字段、按钮。 */
@@ -92,13 +96,17 @@ export async function configOperator(world: PermissionWorld, object: ConfigObjec
       world,
       profile,
       {
-        dataOperations: { create: true, update: true, delete: true },
+        dataOperations: options.operations ?? { create: true, update: true, delete: true },
         fields: definition.fields.map((field) => ({
           fieldCode: field.code,
           view: !hidden.has(field.code),
           edit: !field.system && !hidden.has(field.code) && !locked.has(field.code),
         })),
-        buttons: buttons ? definition.buttons.map((button) => ({ buttonCode: button.code, level: button.level })) : [],
+        buttons: buttons
+          ? definition.buttons
+              .filter((button) => !options.omitButtons?.includes(button.code))
+              .map((button) => ({ buttonCode: button.code, level: button.level }))
+          : [],
       },
       definition.code,
     );
