@@ -100,9 +100,10 @@ async function sendTodos(tx: Tx, ctx: Survey360Context, activityId: string, pers
 }
 
 async function cancelTodos(tx: Tx, ctx: Survey360Context, activityId: string, personIds?: readonly string[]) {
-  const visible = [...byAppraiser(await relationStates(tx, activityId, ctx.admin)).keys()].filter(
-    (id) => !personIds || personIds.includes(id),
-  );
+  // 受限管理员只取消范围内看来尚未完成的评价者的待办：回执人数不随范围外任务变化（第 2 轮 P2-3）
+  const visible = [...byAppraiser(await relationStates(tx, activityId, ctx.admin)).values()]
+    .filter((p) => (!personIds || personIds.includes(p.personId)) && (!ctx.admin.people || !isComplete(p)))
+    .map((p) => p.personId);
   const cancelled = visible.length
     ? rows<{ id: string; person_id: string; status: string }>(
         await tx.execute(sql`UPDATE survey360_todos SET status = 'done', done_reason = 'cancelled',

@@ -225,10 +225,17 @@ export function trimBody(fields: ReadonlySet<string> | undefined, body: unknown)
   return pick(body, fields);
 }
 
-/** 嵌套层（报告快照、报表列头）里与对象字段同名的键：查看人看不到该字段时，任何层级都去掉。 */
-export function trimNested(fields: ReadonlySet<string> | undefined, body: unknown, keys: readonly string[]): unknown {
+/**
+ * 嵌套层（报告快照、报表列头）的键 → 决定它可见的对象字段（第 2 轮 P2-4）：同一个值的各种表示（分数的 self / other /
+ * gap / value / reference、报表的 values）都归到同一个字段，查看人看不到该字段时任何层级都去掉。
+ */
+export function trimAliases(
+  fields: ReadonlySet<string> | undefined,
+  body: unknown,
+  aliases: Readonly<Record<string, string>>,
+): unknown {
   if (fields === undefined) return body;
-  const hidden = new Set(keys.filter((k) => !fields.has(k)));
+  const hidden = new Set(Object.keys(aliases).filter((key) => !fields.has(aliases[key]!)));
   if (!hidden.size) return body;
   const walk = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(walk);

@@ -113,20 +113,3 @@ export async function objectScores(tx: Tx, batchId: string | null, objectId: str
     raterCount: Number(r.rater_count),
   }));
 }
-
-/**
- * 作答数据变化（清除作答、屏蔽 / 取消屏蔽，PR-B）：记下变化时间，到下一次计分前都是“数据发生变化”——已生成的报告
- * 不可查看、不可重新生成，须启用 → 停用重算（`25` §10.3 ⑫）；报告不再算“已生成”，Lastest360Cent 不再计入
- * （DEC-262②）。报表读的是计分批次，重算前仍是旧结果。
- */
-export async function markDataChanged(tx: Tx, activityId: string, now: Date): Promise<void> {
-  await tx.update(survey360Activities).set({ dataChangedAt: now }).where(eq(survey360Activities.id, activityId));
-  await tx.execute(
-    sql`UPDATE survey360_objects SET report_generated_at = NULL WHERE activity_id = ${activityId}::uuid`,
-  );
-}
-
-/** 活动作答数据在最近一次计分之后有变化（报告失效）：计分时清空变化时间。 */
-export function dataChanged(activity: { data_changed_at: Date | string | null }): boolean {
-  return activity.data_changed_at !== null;
-}

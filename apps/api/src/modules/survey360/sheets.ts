@@ -30,7 +30,7 @@ import {
 } from './context.js';
 import { personFilter } from './people.js';
 import { type LoadedQuestionnaire, loadQuestionnaire } from './questionnaires.js';
-import { markDataChanged } from './scoring.js';
+import { markDataChanged } from './changes.js';
 
 const SUSPECT_INTERVAL_MS = 2 * 60 * 60 * 1000;
 

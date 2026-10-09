@@ -89,6 +89,7 @@ interface Env {
     | 'tProgress'
     | 'tAnswer'
     | 'tReport'
+    | 'tForward'
     | 'tTemplate'
     | 'tTemplateRev'
     | 'tQOwner',
@@ -261,6 +262,11 @@ async function buildEnv(): Promise<Env> {
         buttons: ['forwardReport'],
       },
     ]),
+    // 对报告正文有完整查看权，只看不到收件人邮箱：转发预览按字段裁剪（第 2 轮 P2-5 起看不到正文的转发人 403）
+    tForward: await custom(w, '看不到收件人邮箱', [
+      { object: 'activity' },
+      { object: 'result', ops: { update: true }, hide: ['recipientEmail'], buttons: ['forwardReport'] },
+    ]),
     tTemplate: await custom(w, '看不到文本角色开关', [{ object: 'settings', hide: ['showTextRole'] }]),
     // 能新建 / 编辑套卷模板（含指导语），看不到创建人
     tQOwner: await custom(w, '看不到创建人', [full('questionnaire', ['createdBy'])]),
@@ -305,7 +311,7 @@ async function buildEnv(): Promise<Env> {
   await w.transition(sc.id, 'enable');
   await w.answer(await w.token(sc.id, rater.id), rS.id, q, ['v4', 'v4']);
   await w.transition(sc.id, 'disable');
-  await grantTo(w, sc.id, [users.tResult, users.tProgress, users.tAnswer, users.tReport]);
+  await grantTo(w, sc.id, [users.tResult, users.tProgress, users.tAnswer, users.tReport, users.tForward]);
 
   // 自动添加：评价对象是已挂接的 Tg
   const au = await w.activity({ name: '自动添加活动' });
@@ -2056,9 +2062,16 @@ const PR_B_CASES: Record<string, RouteCases> = {
       )),
     trimming: async (env) => {
       await prb(env);
+      // 看不到报告正文（生成时间、套卷）的转发人：预览同转发一样 403
+      await expectStatus(
+        admin(env, env.users.tReport)('POST', `/activities/${env.SC.id}/reports/forward/preview`, {
+          body: { mode: 'others', others: [{ name: 'Y', email: 'guard-y@example.com' }] },
+        }),
+        403,
+      );
       const body = await json(
         await expectStatus(
-          admin(env, env.users.tReport)('POST', `/activities/${env.SC.id}/reports/forward/preview`, {
+          admin(env, env.users.tForward)('POST', `/activities/${env.SC.id}/reports/forward/preview`, {
             body: { mode: 'others', others: [{ name: 'Y', email: 'guard-y@example.com' }] },
           }),
           200,

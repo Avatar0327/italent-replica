@@ -13,7 +13,7 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
 import { requireActivity } from './access.js';
-import { fail, parse, type Present, read, rows, trimBody, trimNested } from './context.js';
+import { fail, parse, type Present, read, rows, trimAliases, trimBody } from './context.js';
 import { personFilter } from './people.js';
 
 const query = z.strictObject({
@@ -48,10 +48,11 @@ function levelSql(level: z.infer<typeof query>['level']) {
   return sql`sc.level = 'dimension' AND ${level === 'composite' ? hasChildren : sql`NOT ${hasChildren}`}`;
 }
 
-/** 逐行按结果对象字段裁剪；列头里的角色名 / 角色 ID 同样按字段权限去掉。 */
+/** 逐行按结果对象字段裁剪；列头里的角色、口径与行里的分数值同样按字段权限去掉（第 2 轮 P2-4）。 */
+const ALIASES = { roleId: 'roleId', roleName: 'roleName', scope: 'scope', values: 'score' } as const;
 const present: Present = async (viewer, body: unknown) => {
   const fields = await viewer.fields('result');
-  return trimNested(fields, trimBody(fields, body), ['roleId', 'roleName']);
+  return trimAliases(fields, trimBody(fields, body), ALIASES);
 };
 
 export function registerTableRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {

@@ -4,7 +4,7 @@
  *   总进度 = 已完成评价者 / 全部评价者；被屏蔽的答卷仍算已完成（原站口径，与个人报告的评价关系表不同）；
  * - 进度明细：每个评价对象一行，状态 未开始 / 进行中 / 已评价 / 已评价(被屏蔽)，只列权限范围内的评价对象；
  * - 重新作答：只对已评价（含被屏蔽）的行；启用中、停用后都可；清除答卷与答案（审计留快照），不重发待办 / 邮件、
- *   不改最后发送时间；活动作答数据变化，旧报告失效（scoring.ts markDataChanged）。
+ *   不改最后发送时间；活动作答数据变化，旧报告失效（changes.ts markDataChanged）。
  * 精细化权限生效时，评价对象与评价者都要在范围内（与人员列表同一谓词），进度与总进度只按范围内的计。
  */
 import { sql, survey360Answers, survey360Relations, survey360Sheets, type Tx, eq, inArray } from '@italent/db';
@@ -14,9 +14,21 @@ import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
 import { iso, requireActivity } from './access.js';
-import { actor, type Admin, audit360, fail, read, requireRevision, rows, trimAs, write } from './context.js';
+import {
+  actor,
+  type Admin,
+  audit360,
+  fail,
+  pick,
+  type Present,
+  read,
+  requireRevision,
+  rows,
+  trimAs,
+  write,
+} from './context.js';
 import { personFilter } from './people.js';
-import { markDataChanged } from './scoring.js';
+import { markDataChanged } from './changes.js';
 
 export type RelationStatus = 'not_started' | 'in_progress' | 'submitted' | 'submitted_blocked';
 
@@ -141,6 +153,21 @@ interface AppraiserRow {
   last_sent_at: Date | string | null;
   email_state: string | null;
   todo: string | null;
+  todo_reason: string | null;
+}
+
+/**
+ * 查看人看到的待办状态（第 2 轮 P2-3）：受限管理员按范围内的完成情况给出“已处理 / 待处理”，不随范围外任务的完成而
+ * 变化；取消过的一律“已处理”。不受限的管理员看真实状态。
+ */
+export function todoView(
+  admin: Admin,
+  todo: { status: string | null; reason: string | null },
+  progress: AppraiserProgress,
+): 'open' | 'done' | null {
+  if (!todo.status) return null;
+  if (!admin.people || todo.reason === 'cancelled') return todo.status as 'open' | 'done';
+  return isComplete(progress) ? 'done' : 'open';
 }
 
 async function progressView(tx: Tx, activityId: string, admin: Admin) {
@@ -156,7 +183,9 @@ async function progressView(tx: Tx, activityId: string, admin: Admin) {
             AND x.event_type = 'survey360.answer_invitation' AND x.payload->>'activityId' = ${activityId}
             ORDER BY x.created_at DESC, x.id DESC LIMIT 1) AS email_state,
           (SELECT t.status FROM survey360_todos t WHERE t.tenant_id = p.tenant_id
-            AND t.activity_id = ${activityId}::uuid AND t.person_id = p.id) AS todo
+            AND t.activity_id = ${activityId}::uuid AND t.person_id = p.id) AS todo,
+          (SELECT t.done_reason FROM survey360_todos t WHERE t.tenant_id = p.tenant_id
+            AND t.activity_id = ${activityId}::uuid AND t.person_id = p.id) AS todo_reason
           FROM survey360_people p WHERE p.id = ANY(${`{${ids.join(',')}}`}::uuid[]) ORDER BY p.name, p.id`),
       )
     : [];
@@ -170,7 +199,7 @@ async function progressView(tx: Tx, activityId: string, admin: Admin) {
       lastSentAt: iso(p.last_sent_at),
       progress: { done: item.done, total: item.total },
       emailState: p.email_state,
-      todo: p.todo,
+      todo: todoView(admin, { status: p.todo, reason: p.todo_reason }, item),
     };
   });
   return { total: { completed: items.filter((i) => i.status === 'completed').length, all: items.length }, items };
@@ -197,6 +226,21 @@ async function visibleRelation(tx: Tx, activityId: string, admin: Admin, relatio
 
 const VIEW = { object: 'relation' } as const;
 
+/** 进度明细：items 逐行、appraiser 信封都按评价关系对象的查看字段裁剪（第 2 轮 P2-2）。 */
+const detailPresent: Present = async (viewer, body: { appraiser: object; items: object[] }) => {
+  const fields = await viewer.fields('relation');
+  return { appraiser: pick(body.appraiser, fields), items: body.items.map((row) => pick(row, fields)) };
+};
+
+async function progressDetail(tx: Tx, activityId: string, admin: Admin, personId: string) {
+  const states = await relationStates(tx, activityId, admin, { appraiserId: personId });
+  if (!states.length) fail('NOT_FOUND', '评价者不存在');
+  const [person] = rows<{ name: string }>(
+    await tx.execute(sql`SELECT name FROM survey360_people WHERE id = ${personId}::uuid`),
+  );
+  return { appraiser: { personId, name: person!.name }, items: states.map(detailItem) };
+}
+
 export function registerProgressRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   module.get('/activities/:id/progress', (c) =>
     read(c, deps, VIEW, async (tx, admin) =>
@@ -204,16 +248,14 @@ export function registerProgressRoutes(module: Hono<TenantEnv>, deps: TenantRout
     ),
   );
   module.get('/activities/:id/progress/:personId', (c) =>
-    read(c, deps, VIEW, async (tx, admin) => {
-      const activity = await requireActivity(tx, admin, uuidParam(c));
-      const personId = uuidParam(c, 'personId');
-      const states = await relationStates(tx, activity.id, admin, { appraiserId: personId });
-      if (!states.length) fail('NOT_FOUND', '评价者不存在');
-      const [person] = rows<{ name: string }>(
-        await tx.execute(sql`SELECT name FROM survey360_people WHERE id = ${personId}::uuid`),
-      );
-      return { appraiser: { personId, name: person!.name }, items: states.map(detailItem) };
-    }),
+    read(
+      c,
+      deps,
+      VIEW,
+      async (tx, admin) =>
+        progressDetail(tx, (await requireActivity(tx, admin, uuidParam(c))).id, admin, uuidParam(c, 'personId')),
+      detailPresent,
+    ),
   );
   module.post('/activities/:id/relations/:relationId/reanswer', (c) => {
     const id = uuidParam(c);

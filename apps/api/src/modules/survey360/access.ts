@@ -149,7 +149,7 @@ export function survey360AuditScope(kind: 'activity' | 'relation' | 'answer' | '
 
 /**
  * 失败命令审计的 360 裁剪（第 1 轮审查 P2-5）：失败记录带请求来源（IP、终端、时间、命令 ID、TraceID），
- * 匿名作答 / 确认链接的失败只给持“全部活动”者（360 系统管理员），360 管理端命令的失败只给 360 身份持有人；
+ * 匿名作答 / 确认链接与站内待办作答的失败只给持“全部活动”者（360 系统管理员），360 管理端命令的失败只给 360 身份持有人；
  * 其他查看人（含只持日志审计能力者）看不到，无法据此关联评价者身份。谓词作用于 audit_command_failures 的 path 列。
  */
 export async function survey360FailureVisibility(deps: AuditDeps, ctx: Viewer, path: SQL) {
@@ -157,6 +157,8 @@ export async function survey360FailureVisibility(deps: AuditDeps, ctx: Viewer, p
     link: await allActivitiesOf(tx, deps, { timezone: 'UTC', ...ctx }),
     manage: await isHolder(tx, ctx.userId),
   }));
-  return sql`(CASE WHEN ${path} LIKE '/api/survey360/%' THEN ${link ? sql`true` : sql`false`}
+  // 作答入口：令牌链接与站内待办“去处理”（/my/，带评价者本人账号）同一口径（PR-B 第 2 轮 P2-1）
+  return sql`(CASE WHEN ${path} LIKE '/api/survey360/%' OR ${path} LIKE '/api/tenant/survey360/my/%'
+      THEN ${link ? sql`true` : sql`false`}
     WHEN ${path} LIKE '/api/tenant/survey360/%' THEN ${manage ? sql`true` : sql`false`} ELSE true END)`;
 }
