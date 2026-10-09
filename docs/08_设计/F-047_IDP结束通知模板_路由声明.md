@@ -2,7 +2,7 @@
 
 > 依据：规格 `28` §1、F-047，DEC-307、DEC-309④、DEC-318、DEC-321。
 > 格式沿用 F-039 的逐路由声明与已合并的 R3-T01、F-038 路由声明。
-> 范围：现有流程列表、详情、新建、修改共 4 条路由的子流程配置字段扩展；不新增路由。
+> 范围：现有流程列表、详情、新建、修改、删除共 5 条路由的子流程配置字段扩展；不新增路由。
 
 ## 1. 共用契约
 
@@ -24,7 +24,8 @@
   新建要求 revision = 0。IDEM = 缺 `Idempotency-Key` 时 `400 IDEMPOTENCY_KEY_REQUIRED`；
   同键异内容 `409 IDEMPOTENCY_CONFLICT`。命令指纹含 method / path / revision / 解析后的输入。
 - 业务变更、字段级审计与命令台账在同一租户事务中写入。重放不重复写入；返回前先复核实际用到的嵌套权限，
-  再按父流程当前行重新校验可编辑范围，最后按当前字段权限裁剪。
+  再按父流程当前行重新校验可编辑范围；删除后没有当前行时按删除时的受控快照归属判定当前可写性，
+  最后按当前字段权限裁剪。
 - 本任务补齐配置保存、编辑、读取与审计。没有新增通知触发时点、收件人、渠道、模板内容展开或发送规则；
   站内待办与现有通知能力继续按既有契约执行。DEC-307 的目标候选、DEC-318 的审批节点与发起人、
   DEC-321 的所有者干预与已保存目标重放口径保持既有实现。
@@ -39,13 +40,15 @@
 | GET | `/processes/:id` | A | object | PROC；view；无按钮 | point id → 当前父流程 → `idp.requireReadable`；范围外与不存在同为 404 NOT_FOUND | 同列表投影，未配置时字段可见才返回 null | — | UUID 规范为小写；非法标识 400 VALIDATION_FAILED；ETag 为流程 revision |
 | POST | `/processes` | A | all[object, object] | PROC；create；create@list；嵌套 SUB create | guard `idp.requireCreatable(process)` + 同租户所属组织存在；返回前按新流程当前行 `requireEditable` | 输入严格结构；PROC 顶层字段与 SUB 新建字段分别检查编辑权，包含显式提交的 endNoticeTemplate；返回按当前 PROC / SUB 查看权投影 | fields body → `idp.createProcess` / `idp.runIdpCommand`；父流程 + 子流程 + 审计同事务；ledger single | REV、IDEM；子流程数量及开启规则沿用现有校验；201；ETag |
 | PATCH | `/processes/:id` | A | object（嵌套写按实际变化附加 SUB 操作权） | PROC；update；update@detail；结束通知模板实际变化须 SUB update + 字段编辑权 | point id → 父流程行锁 → `idp.requireEditable` → REV；子流程行锁；返回前按当前父流程复核 | 顶层 PROC；整组子流程实际变化检查 PROC.subProcesses 与 SUB 对应字段；省略保留、显式 null 清空；返回同列表投影 | fields body → `idp.updateProcess / replaceSubProcesses` / `idp.runIdpCommand`；仅变化段写子流程审计；ledger single | UUID 非法 400；REV、IDEM；被模板引用时，既有顺序 / 增删 / 开启方式限制不变；200；ETag |
+| DELETE | `/processes/:id` | A | all[object, object] | PROC；delete；delete@detail；嵌套 SUB delete（无子流程也要求） | point id → 父流程行锁 → `idp.requireEditable` → REV；首次返回与重放按删除时的受控快照归属复核当前可编辑范围 | 无字段赋值，不要求模板字段编辑权；删除前 ProcessView 按当前 PROC / SUB 查看权投影，结束通知模板无查看权时省略 | retained snapshot → `idp.deleteProcess` / `idp.runIdpCommand`；父流程与级联子流程删除、删除快照审计同事务；ledger single | UUID 非法 400；REV、IDEM；被模板引用时 409 IDP_PROCESS_REFERENCED；200；无 ETag |
 
 POST / PATCH 仍执行统一的同源与 JSON 请求校验；命令重放仍要求当前的 PROC 操作权、按钮、
-实际使用过的 SUB 操作 / 字段编辑权与父流程可编辑范围。
+实际使用过的 SUB 操作 / 字段编辑权与父流程可编辑范围。DELETE 沿用统一写请求校验与当前 PROC delete / SUB delete 权限，
+删除响应和重放均按当前字段查看权裁剪受控快照。
 
 ## 3. 查看人 × 接口 × 字段
 
-| 查看人 | 流程列表 / 详情 | 新建 / 修改与重放 | 审计 |
+| 查看人 | 流程列表 / 详情 | 新建 / 修改 / 删除与重放 | 审计 |
 |---|---|---|---|
 | 有 PROC 查看权，范围内，且 PROC.subProcesses 与 SUB 查看权、SUB.endNoticeTemplate 查看权均满足 | 返回结束通知模板的当前值，未配置为 null | 另按 PROC 操作权、按钮与实际变化的 SUB 操作 / 字段编辑权校验 | 另需日志审计入口权、SUB 查看权、SUB 字段查看权与当前 IDP 范围 |
 | 有流程查看权，缺 SUB.endNoticeTemplate 查看权 | 可见子流程里省略该字段 | 写入由编辑权独立判断；首次响应和重放仍省略该字段 | 模板值按 SUB 字段权限裁剪 |
@@ -55,6 +58,9 @@ POST / PATCH 仍执行统一的同源与 JSON 请求校验；命令重放仍要�
 | 范围外 / 空范围 | 列表过滤；详情 404 NOT_FOUND | 首次和重放按当前可编辑范围拒绝，业务不变 | 当前范围不满足时不显示 |
 | 无 PROC 查看权 | 403 FORBIDDEN | 写入口另按操作权与按钮判断；返回不带无查看权的内容 | 按独立日志入口与 SUB 当前权限判断 |
 | 其他租户下的流程 | 当前租户列表不带出，详情 404 | 404，业务不变 | 不显示 |
+
+删除流程另须 PROC delete、delete@detail 与 SUB delete；结束通知模板字段的编辑权不替代或限制对象删除权，
+但删除响应中的字段仍按当前查看权裁剪。
 
 ## 4. 审计登记
 
