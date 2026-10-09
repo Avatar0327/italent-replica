@@ -2,8 +2,9 @@
  * 同步端口替身（《R3-T04/T05 同步协议》SP-18）：createInMemoryTalentReviewSyncPort(data) 按协议实现全部方法，
  * 供 R3-T05 / T06 在 T04 PR-D 之前开发与测试，并与真实实现跑同一套契约（tests/acceptance/support/sync-port-contract.ts）。
  * - 回执组合与状态转换用领域层同一份规则（sync-outcomes.ts）；每个方法先校验租户，再校验协议，最后写入；
- * - 事务边界（SP-11）：每个事务只回滚自己的写入；消费记录按 S / X 锁等待（执行页断言取 S，接管 / 终止 / 完成 / 取代取 X）；
- *   完成只能在独立终结事务里做，执行页内调用 completeConsumption 是协议违例；
+ * - 事务边界（SP-11）：写入暂存到提交时发布，回滚只丢弃本事务的写入；消费记录按 S / X 锁等待（执行页断言取 S，
+ *   接管 / 计划 / 终止 / 完成 / 取代取 X）；执行页在 S 锁之外再对页证明与回执行各取 X 锁（按键排序），
+ *   同页重放、跨页同目标都等前一事务结束（第 3 轮 R2-02）；完成只能在独立终结事务里做；
  * - 幂等（DEC-067）：计划提交与执行页都按完整内容指纹比较，同键异内容拒绝，比较在返回已有证明之前。
  * 读取（三档选择器、健康度）见 sync-port-memory-reads.ts，事务与锁见 sync-port-memory-tx.ts。
  */
@@ -50,8 +51,10 @@ const rowKey = (runId: string, consumer: string, kind: RowKind, rowId: string) =
   `${runId}|${consumer}|${kind}|${rowId}`;
 const consumptionKey = (runId: string, consumer: string) => `${runId}|${consumer}`;
 const commitKey = (runId: string, consumer: string, pageCommandId: string) => `${runId}|${consumer}|${pageCommandId}`;
-/** 消费记录锁：消费记录、它的回执行与页证明都挂在这把锁下（S = 执行页 / 读取，X = 接管 / 计划 / 终结）。 */
+/** 消费记录锁（S = 执行页，X = 接管 / 计划 / 终结）；回执行与页证明另有各自的写锁（R2-02）。 */
 const recordLock = (runId: string, consumer: string) => `consumption|${runId}|${consumer}`;
+const rowLock = (key: string) => `outcome|${key}`;
+const commitLock = (key: string) => `commit|${key}`;
 const C_CLASS: readonly SyncErrorCode[] = ['SCOPE_REQUIRED', 'ACTOR_SCOPE_EXCEEDED', 'UNSUPPORTED_TRIGGER'];
 const outcomeDigest = (item: OutcomeItem) => [
   item.rowKind,
@@ -83,10 +86,10 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
     const terminal = { status: 'superseded', terminalCode: 'RUN_SUPERSEDED', terminalRecovery: 'terminate' } as const;
     for (const consumer of this.consumers) {
       const key = consumptionKey(runId, consumer);
-      const record = this.state.consumptions.get(key);
+      const record = this.get(m, this.state.consumptions, key);
       if (record && record.status !== 'running') continue;
       this.set(m, this.state.consumptions, key, { ...(record ?? this.freshRecord(0)), ...terminal });
-      this.terminateRows(m, runId, consumer, 'superseded', 'RUN_SUPERSEDED');
+      await this.terminateRows(m, runId, consumer, 'superseded', 'RUN_SUPERSEDED');
     }
   }
 
@@ -95,9 +98,7 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
   }
 
   authorizeSourceRead(tx: Tx, input: Args<'authorizeSourceRead'>): Promise<SourceReadAuthorization> {
-    return this.txs.within(tx, async (m) => {
-      this.requireRun(input.tenantId, input.runId);
-      await this.txs.lock(m, recordLock(input.runId, input.consumer), 'S');
+    return this.txs.within(tx, async () => {
       const run = this.requireRun(input.tenantId, input.runId);
       const empty = { objectIds: [], fields: {}, sources: [], orgIds: [], orgFields: {} };
       if (run.header.status === 'superseded') return { ok: false, runStatus: 'superseded', forbidden: empty };
@@ -153,7 +154,7 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
       await this.txs.lock(m, recordLock(input.runId, input.consumer), 'X');
       const run = this.requireRun(input.tenantId, input.runId);
       const key = consumptionKey(input.runId, input.consumer);
-      const record = this.state.consumptions.get(key);
+      const record = this.get(m, this.state.consumptions, key);
       const lease = { leaseOwner: input.leaseOwner, leaseUntil: this.after(input.leaseSeconds) };
       if (!record) {
         if (run.header.status === 'superseded') fail('RUN_SUPERSEDED', 'run 已被取代');
@@ -163,7 +164,7 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
         // 租约已过期：接管，执行序号 + 1，旧执行此后一律 EXECUTION_INACTIVE（SP-08）
         this.set(m, this.state.consumptions, key, { ...record, executionNo: record.executionNo + 1, ...lease });
       }
-      return this.stateOf(input.runId, input.consumer);
+      return this.stateOf(m, input.runId, input.consumer);
     });
   }
 
@@ -173,7 +174,7 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
       if (record.leaseOwner !== input.leaseOwner) fail('EXECUTION_INACTIVE', '租约持有人不符');
       const key = consumptionKey(input.runId, input.consumer);
       this.set(m, this.state.consumptions, key, { ...record, leaseUntil: this.after(input.leaseSeconds) });
-      return this.stateOf(input.runId, input.consumer);
+      return this.stateOf(m, input.runId, input.consumer);
     });
   }
 
@@ -184,21 +185,23 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
       const digest = JSON.stringify([input.targets, input.planOutcomes.map(outcomeDigest)]);
       if (record.sealed) {
         if (record.planCommandId === input.planCommandId && record.planDigest === digest && record.planCommit) {
-          return { state: this.stateOf(input.runId, input.consumer), pageCommit: record.planCommit };
+          return { state: this.stateOf(m, input.runId, input.consumer), pageCommit: record.planCommit };
         }
         fail('TARGETS_ALREADY_SEALED', '目标已封存');
       }
       const run = this.requireRun(input.tenantId, input.runId);
       validateTargets(input.targets, new Set(run.nominations.map((n) => n.nominationId)));
       const targetKeys = new Set<string>(input.targets.map((t) => t.targetKey));
-      const writes = this.checkItems(input, input.planOutcomes, 'plan', targetKeys);
-      for (const targetKey of targetKeys) this.putRow(m, input, pendingRow('target', targetKey, this.now()));
+      const writes = this.checkItems(m, input, input.planOutcomes, 'plan', targetKeys);
+      const newRows = [...targetKeys].map((targetKey) => pendingRow('target', targetKey, this.now()));
+      await this.lockRows(m, input, [...newRows, ...writes]);
+      for (const row of newRows) this.putRow(m, input, row);
       this.applyItems(m, input, writes, pageCommandId);
-      const pageCommit = this.commit(m, input, 0, pageCommandId, 'plan', input.planOutcomes, digest);
+      const pageCommit = await this.commit(m, input, 0, pageCommandId, 'plan', input.planOutcomes, digest);
       const sealed = { sealed: true, targetCount: targetKeys.size, planCommandId: input.planCommandId };
       const key = consumptionKey(input.runId, input.consumer);
       this.set(m, this.state.consumptions, key, { ...record, ...sealed, planDigest: digest, planCommit: pageCommit });
-      return { state: this.stateOf(input.runId, input.consumer), pageCommit };
+      return { state: this.stateOf(m, input.runId, input.consumer), pageCommit };
     });
   }
 
@@ -221,7 +224,10 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
       const expected = pageCommandIdOf(input.runId, input.consumer, input.executionNo, input.pageNo);
       if (input.pageNo < 1 || input.pageCommandId !== expected) fail('OUTCOME_NOT_ALLOWED', '执行页命令身份不合法');
       const digest = JSON.stringify(input.items.map(outcomeDigest));
-      const existing = this.state.commits.get(commitKey(input.runId, input.consumer, input.pageCommandId));
+      // 先取本页证明的 X 锁再查是否已提交：并发同页重放等先到的结束，读到的是已提交的证明（R2-02）
+      const pageKey = commitKey(input.runId, input.consumer, input.pageCommandId);
+      await this.txs.lock(m, commitLock(pageKey), 'X');
+      const existing = this.get(m, this.state.commits, pageKey);
       if (existing) {
         // 同页重放须同内容（DEC-067）：比较在返回已有证明之前
         if (existing.digest !== digest) fail('IDEMPOTENCY_CONFLICT', '同一页命令的回执内容不同');
@@ -231,7 +237,9 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
       if (!input.items.some((item) => item.rowKind === 'target' || item.rowKind === 'org_health')) {
         fail('OUTCOME_NOT_ALLOWED', '执行页必须包含本页目标行的终态');
       }
-      const writes = this.checkItems(input, input.items, 'execute', new Set());
+      // 本页涉及的回执行先按键排序取 X 锁再校验：跨页写同一行的事务等前一页结束，读到它提交后的状态（R2-02）
+      await this.lockRows(m, input, input.items);
+      const writes = this.checkItems(m, input, input.items, 'execute', new Set());
       m.page = true;
       this.applyItems(m, input, writes, input.pageCommandId);
       return this.commit(m, input, input.pageNo, input.pageCommandId, 'execute', input.items, digest);
@@ -239,18 +247,18 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
   }
 
   getPageCommit(tx: Tx, input: Args<'getPageCommit'>) {
+    // 只读已提交的证明与本事务自己的写入，不取锁：执行页未提交时返回 null（R2-02）
     return this.txs.within(tx, async (m) => {
       this.requireRun(input.tenantId, input.runId);
-      await this.txs.lock(m, recordLock(input.runId, input.consumer), 'S');
-      return this.state.commits.get(commitKey(input.runId, input.consumer, input.pageCommandId))?.commit ?? null;
+      const pageKey = commitKey(input.runId, input.consumer, input.pageCommandId);
+      return this.get(m, this.state.commits, pageKey)?.commit ?? null;
     });
   }
 
   getOutcomes(tx: Tx, input: Args<'getOutcomes'>): Promise<Page<OutcomeItem>> {
     return this.txs.within(tx, async (m) => {
       this.requireRun(input.tenantId, input.runId);
-      await this.txs.lock(m, recordLock(input.runId, input.consumer), 'S');
-      const rows = this.rowsOf(input.runId, input.consumer)
+      const rows = this.rowsOf(m, input.runId, input.consumer)
         .filter((row) => !input.rowKind || row.rowKind === input.rowKind)
         .filter((row) => !input.pageCommandId || row.pageCommandId === input.pageCommandId);
       const cursor = (row: OutcomeItem) => `${ROW_KINDS.indexOf(row.rowKind)}|${row.rowId}`;
@@ -264,19 +272,19 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
       this.requireRun(input.tenantId, input.runId);
       if (m.page) fail('OUTCOME_NOT_ALLOWED', '完成须在执行页提交后的独立终结事务里做');
       await this.txs.lock(m, recordLock(input.runId, input.consumer), 'X');
-      const record = this.state.consumptions.get(consumptionKey(input.runId, input.consumer));
+      const record = this.get(m, this.state.consumptions, consumptionKey(input.runId, input.consumer));
       if (record?.status === 'completed' && record.executionNo === input.executionNo) {
-        return this.stateOf(input.runId, input.consumer);
+        return this.stateOf(m, input.runId, input.consumer);
       }
       const active = await this.activeRecord(m, input, 'X');
       if (!active.sealed) fail('TARGETS_NOT_SEALED', '目标尚未封存');
-      const blocker = completionBlocker(countOutcomes(this.rowsOf(input.runId, input.consumer)));
+      const blocker = completionBlocker(countOutcomes(this.rowsOf(m, input.runId, input.consumer)));
       if (blocker) fail(blocker, blocker === 'PENDING_ROWS_REMAIN' ? '仍有待处理行' : '仍有可重试的失败行');
       this.set(m, this.state.consumptions, consumptionKey(input.runId, input.consumer), {
         ...active,
         status: 'completed',
       });
-      return this.stateOf(input.runId, input.consumer);
+      return this.stateOf(m, input.runId, input.consumer);
     });
   }
 
@@ -285,8 +293,8 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
       this.requireRun(input.tenantId, input.runId);
       await this.txs.lock(m, recordLock(input.runId, input.consumer), 'X');
       const key = consumptionKey(input.runId, input.consumer);
-      const record = this.state.consumptions.get(key);
-      if (record && record.status !== 'running') return this.stateOf(input.runId, input.consumer); // 终态幂等，不改码
+      const record = this.get(m, this.state.consumptions, key);
+      if (record && record.status !== 'running') return this.stateOf(m, input.runId, input.consumer); // 终态幂等，不改码
       // SP-13：C 类码只在首次计划成功前、尚无消费记录时以 executionNo = null 使用；null 也只用于 C 类
       const cClass = C_CLASS.includes(input.code);
       const allowed = cClass
@@ -301,8 +309,8 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
       const base = record ?? this.freshRecord(0);
       const terminal = { status: 'aborted' as const, terminalCode: input.code, terminalRecovery: input.recovery };
       this.set(m, this.state.consumptions, key, { ...base, ...terminal });
-      this.terminateRows(m, input.runId, input.consumer, 'aborted', input.code);
-      return this.stateOf(input.runId, input.consumer);
+      await this.terminateRows(m, input.runId, input.consumer, 'aborted', input.code);
+      return this.stateOf(m, input.runId, input.consumer);
     });
   }
 
@@ -313,7 +321,7 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
     this.requireRun(input.tenantId, input.runId);
     await this.txs.lock(m, recordLock(input.runId, input.consumer), mode);
     const run = this.requireRun(input.tenantId, input.runId);
-    const record = this.state.consumptions.get(consumptionKey(input.runId, input.consumer));
+    const record = this.get(m, this.state.consumptions, consumptionKey(input.runId, input.consumer));
     if (run.header.status === 'superseded' || record?.status === 'superseded') fail('RUN_SUPERSEDED', 'run 已被取代');
     if (!record || record.status !== 'running' || record.executionNo !== input.executionNo) {
       fail('EXECUTION_INACTIVE', '执行已失效');
@@ -323,6 +331,7 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
 
   /** 校验整批回执：组合表（SP-14）、行存在、批内不重复、状态转换（SP-12）；任一不合格整调用不写。 */
   private checkItems(
+    m: MemoryTx,
     run: RunConsumer,
     items: readonly OutcomeItem[],
     phase: OutcomePhase,
@@ -333,7 +342,7 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
     const writes: OutcomeItem[] = [];
     for (const item of items) {
       const key = rowKey(run.runId, run.consumer, item.rowKind, item.rowId);
-      const current = this.state.outcomes.get(key);
+      const current = this.get(m, this.state.outcomes, key);
       const exists = current || (item.rowKind === 'target' && newTargets.has(item.rowId));
       if (!exists || seen.has(key) || !outcomeAllowed(item, phase, { nominationKind: (id) => kinds.get(id) })) {
         fail('OUTCOME_NOT_ALLOWED', '回执组合不在协议表内', { rowKind: item.rowKind, rowId: item.rowId });
@@ -355,7 +364,7 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
   }
 
   /** 页提交证明：只取协议字段，不把调用参数（items / targets / planOutcomes）带进 DTO。 */
-  private commit(
+  private async commit(
     m: MemoryTx,
     run: Execution,
     pageNo: number,
@@ -363,7 +372,9 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
     kind: PageCommit['kind'],
     items: readonly OutcomeItem[],
     digest: string,
-  ): PageCommit {
+  ): Promise<PageCommit> {
+    const pageKey = commitKey(run.runId, run.consumer, pageCommandId);
+    await this.txs.lock(m, commitLock(pageKey), 'X');
     const commit: PageCommit = {
       runId: run.runId,
       consumer: run.consumer,
@@ -374,24 +385,33 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
       rowCount: items.length,
       committedAt: this.now(),
     };
-    this.set(m, this.state.commits, commitKey(run.runId, run.consumer, pageCommandId), { commit, digest });
+    this.set(m, this.state.commits, pageKey, { commit, digest });
     return commit;
   }
 
-  private terminateRows(
+  private async terminateRows(
     m: MemoryTx,
     runId: string,
     consumer: SyncConsumer,
     status: 'aborted' | 'superseded',
     code: SyncErrorCode,
   ) {
-    for (const row of this.rowsOf(runId, consumer)) {
-      if (row.status !== 'pending' && !(row.status === 'failed' && row.recovery === 'retry_same_run')) continue;
+    // 消费记录 X 锁已排除执行页；回执行写锁照样按键排序取，与执行页同一套规则
+    const open = (row: OutcomeItem) =>
+      row.status === 'pending' || (row.status === 'failed' && row.recovery === 'retry_same_run');
+    await this.lockRows(m, { runId, consumer }, this.rowsOf(m, runId, consumer).filter(open));
+    for (const row of this.rowsOf(m, runId, consumer).filter(open)) {
       const next = { ...row, status, recovery: 'none' as const, errorCode: code, updatedAt: this.now() };
       if (!outcomeAllowed(next, 'terminate', { nominationKind: () => undefined }))
         throw new Error(`终止码 ${code} 不合法`);
       this.putRow(m, { runId, consumer }, next);
     }
+  }
+
+  /** 回执行写锁：按行键排序后逐个取 X，多行写入之间没有锁序环。 */
+  private async lockRows(m: MemoryTx, run: { runId: string; consumer: string }, rows: readonly OutcomeItem[]) {
+    const keys = [...new Set(rows.map((row) => rowKey(run.runId, run.consumer, row.rowKind, row.rowId)))].sort(cmp);
+    for (const key of keys) await this.txs.lock(m, rowLock(key), 'X');
   }
 
   private putRow(m: MemoryTx, run: { runId: string; consumer: string }, row: OutcomeItem) {
@@ -404,8 +424,8 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
     this.set(m, this.state.outcomes, rowKey(run.runId, run.consumer, row.rowKind, row.rowId), clean);
   }
 
-  private stateOf(runId: string, consumer: SyncConsumer): ConsumptionState {
-    const record = this.state.consumptions.get(consumptionKey(runId, consumer))!;
+  private stateOf(m: MemoryTx, runId: string, consumer: SyncConsumer): ConsumptionState {
+    const record = this.get(m, this.state.consumptions, consumptionKey(runId, consumer))!;
     return {
       runId,
       consumer,
@@ -417,7 +437,7 @@ export class InMemorySyncPort extends InMemoryReads implements TalentReviewSyncP
       targetCount: record.targetCount,
       terminalCode: record.terminalCode,
       terminalRecovery: record.terminalRecovery,
-      counts: countOutcomes(this.rowsOf(runId, consumer)),
+      counts: countOutcomes(this.rowsOf(m, runId, consumer)),
     };
   }
 

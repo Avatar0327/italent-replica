@@ -1,8 +1,10 @@
 /**
- * 同步端口替身的事务与锁（《R3-T04/T05 同步协议》SP-09 / SP-11 的三个事务边界）：
- * - 每个事务只记自己的撤销日志，失败只回滚本事务写过的键，不覆盖其他已提交事务（替代整状态快照回滚）；
- * - 写同一个键之前必须持有它的 X 锁（严格两阶段：锁到事务结束才放），所以撤销时不会和别的事务的写入交叉；
- * - 消费记录按 S / X 锁等待：执行页 assertExecutionActive 取 S，接管 / 终止 / 完成 / 取代取 X，冲突时挂起等待对方结束。
+ * 同步端口替身的事务与锁（《R3-T04/T05 同步协议》SP-09 / SP-11 的三个事务边界；第 3 轮 R2-02 / R2-03）：
+ * - 写入先暂存在本事务里，提交时一次发布、回滚时直接丢弃：其他事务只读到已提交的数据（与 PostgreSQL 读已提交一致），
+ *   回滚不会覆盖别人已提交的结果；
+ * - 写任何键之前先取该键的 X 锁（回执行、页证明、健康度行、命令台账各一把），锁到事务结束才放，同键写入互相等待；
+ * - 消费记录另有 S / X 锁：执行页 assertExecutionActive 取 S，接管 / 计划 / 终止 / 完成 / 取代取 X；
+ * - 读取不取锁，所以不存在读写之间的锁序环；多键写入由调用方按键排序后取锁。
  * 方法收到的若不是本替身开的事务（调用方没有开事务），按单语句自动提交执行。
  */
 import type { Tx } from '@italent/db';
@@ -11,8 +13,9 @@ const TX = Symbol('memoryTx');
 
 export interface MemoryTx {
   readonly id: number;
-  readonly undo: (() => void)[];
   readonly locks: Set<string>;
+  /** 本事务暂存的写入：目标表 → 键 → 新值。 */
+  readonly writes: Map<Map<unknown, unknown>, Map<unknown, unknown>>;
   /** 本事务已作为执行页断言或写过执行页回执：完成只能在独立终结事务里做（SP-11 第 3 个边界）。 */
   page: boolean;
 }
@@ -25,15 +28,13 @@ export class MemoryTransactions {
   private waiters: (() => void)[] = [];
 
   async run<T>(work: (tx: Tx) => Promise<T>): Promise<T> {
-    const tx: MemoryTx = { id: ++this.seq, undo: [], locks: new Set(), page: false };
+    const tx: MemoryTx = { id: ++this.seq, locks: new Set(), writes: new Map(), page: false };
     try {
       const result = await work({ [TX]: tx } as unknown as Tx);
-      this.end(tx);
+      for (const [map, writes] of tx.writes) for (const [key, value] of writes) map.set(key, value);
       return result;
-    } catch (error) {
-      for (const undo of tx.undo.reverse()) undo();
+    } finally {
       this.end(tx);
-      throw error;
     }
   }
 
@@ -68,12 +69,24 @@ export class MemoryTransactions {
     }
   }
 
-  /** 事务内写一个键：记下旧值供本事务回滚（调用方须已持有该键所属的 X 锁）。 */
+  /** 读一个键：本事务暂存的写入优先，其次是已提交的值。 */
+  get<K, V>(tx: MemoryTx, map: Map<K, V>, key: K): V | undefined {
+    const writes = tx.writes.get(map as Map<unknown, unknown>);
+    return writes?.has(key) ? (writes.get(key) as V) : map.get(key);
+  }
+
+  /** 本事务看到的整张表：已提交的值叠加本事务的暂存写入。 */
+  view<K, V>(tx: MemoryTx, map: Map<K, V>): Map<K, V> {
+    const merged = new Map(map);
+    for (const [key, value] of tx.writes.get(map as Map<unknown, unknown>) ?? []) merged.set(key as K, value as V);
+    return merged;
+  }
+
+  /** 暂存一次写入（调用方须已持有该键的 X 锁），提交时发布。 */
   set<K, V>(tx: MemoryTx, map: Map<K, V>, key: K, value: V): void {
-    const had = map.has(key);
-    const previous = map.get(key);
-    tx.undo.push(() => (had ? map.set(key, previous as V) : map.delete(key)));
-    map.set(key, value);
+    const target = map as Map<unknown, unknown>;
+    if (!tx.writes.has(target)) tx.writes.set(target, new Map());
+    tx.writes.get(target)!.set(key, value);
   }
 
   private end(tx: MemoryTx): void {

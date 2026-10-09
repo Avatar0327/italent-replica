@@ -282,7 +282,7 @@ export class InMemoryReads {
   }
 
   // ---- 健康度（SP-15 / SP-16）----
-  /** 回写前读版本（SP-16）：逐行取 S 锁，不读到其他事务未提交的回写。 */
+  /** 回写前读版本（SP-16）：只读已提交的值与本事务自己的写入，不取锁（与回写之间没有锁序环，第 3 轮 R2-03）。 */
   readOrgHealthRows(tx: Tx, input: Args<'readOrgHealthRows'>): Promise<readonly OrgHealthRowState[]> {
     return this.txs.within(tx, async (m) => {
       const denied = this.deniedFor(input.viewer);
@@ -293,8 +293,7 @@ export class InMemoryReads {
           rows.push({ status: 'forbidden', orgId, context });
           continue;
         }
-        await this.txs.lock(m, `health|${healthKey(context, orgId)}`, 'S');
-        const row = this.state.health.get(healthKey(context, orgId));
+        const row = this.txs.get(m, this.state.health, healthKey(context, orgId));
         if (!row) {
           rows.push({ status: 'absent', orgId, context, revision: 0 });
           continue;
@@ -344,9 +343,13 @@ export class InMemoryReads {
       terminalRecovery: null,
     };
   }
-  protected rowsOf(runId: string, consumer: string): OutcomeItem[] {
+  /** 本事务看到的回执行（已提交 + 本事务暂存）。 */
+  protected rowsOf(m: MemoryTx, runId: string, consumer: string): OutcomeItem[] {
     const prefix = `${runId}|${consumer}|`;
-    return [...this.state.outcomes].filter(([key]) => key.startsWith(prefix)).map(([, row]) => row);
+    return [...this.txs.view(m, this.state.outcomes)].filter(([key]) => key.startsWith(prefix)).map(([, row]) => row);
+  }
+  protected get<K, V>(tx: MemoryTx, map: Map<K, V>, key: K): V | undefined {
+    return this.txs.get(tx, map, key);
   }
   protected set<K, V>(tx: MemoryTx, map: Map<K, V>, key: K, value: V): void {
     this.txs.set(tx, map, key, value);
@@ -410,7 +413,8 @@ export class InMemoryReads {
 
   /**
    * 员工查询 match = null（取该对象自己的提名）；组织 / 职位查询取来源内全部对象中匹配的提名。按 viewer 裁剪：
-   * 查看人无权读的源员工的提名不出现，提名表单字段逐个 forbidden（继任者姓名的显示另由消费方按 DEC-311 处理）。
+   * 查看人无权读的源员工的提名不出现；固定字段有任一被隐藏，整条提名不出现；表单字段逐个 forbidden
+   * （继任者姓名的显示另由消费方按 DEC-311 处理）。
    */
   private succession(
     found: ReturnType<InMemoryReads['resolve']>,
@@ -423,19 +427,22 @@ export class InMemoryReads {
     if (objects.every((o) => o.succession === null)) {
       return { status: 'module_absent' as const, nominations: [], source: found.source };
     }
-    const nominations = objects
-      .flatMap((o) => o.succession ?? [])
+    // 提名固定字段（准备度、目标、继任者等）是普通值，类型表达不了单个字段 forbidden：有任一被隐藏就整条不返回（R2-01）
+    const fixedHidden = NOMINATION_FIXED_FIELDS.some((field) => denied.fieldCodes.includes(field));
+    const nominations = (fixedHidden ? [] : objects.flatMap((o) => o.succession ?? []))
       .filter((n) => (match ? match(n) : true) && !denied.employeeIds.includes(n.employeeId))
       .map((n) => ({ ...n, formValues: trimForm(n.formValues, denied) }));
     return { status: 'value' as const, nominations, source: found.source };
   }
 
-  /** 逐组织：租户 → 当前凭据授权 → 命令台账（完整指纹）→ 行锁内 CAS（SP-16）；按 orgId 升序处理。 */
+  /** 逐组织：租户 → 当前凭据授权 → 命令台账（完整指纹）→ 行锁内 CAS（SP-16）；按 orgId 升序取锁与处理。 */
   private async writeHealth(
     tx: MemoryTx,
     input: OrgHealthWriteCommand | OrgHealthResetCommand,
   ): Promise<OrgHealthWriteReceipt> {
+    // 多组织统一按组织 ID 升序取锁（R2-03）；同一命令里组织重复是调用错误
     const rows = [...input.rows].sort((a, b) => cmp(a.orgId, b.orgId));
+    if (new Set(rows.map((row) => row.orgId)).size !== rows.length) throw new RangeError('同一回写命令里组织重复');
     if (input.tenantId !== this.data.tenantId) return { items: rows.map((row) => rejected(row.orgId, 'FORBIDDEN')) };
     const credential = input.credential;
     const actor = credential.kind === 'compute' ? credential.principalUserId : credential.userId;
@@ -445,7 +452,7 @@ export class InMemoryReads {
     const ledgerKey = `ledger|${credential.commandId}`;
     await this.txs.lock(tx, ledgerKey, 'X');
     const digest = JSON.stringify([input.tenantId, credential, input.context, input.rows]);
-    const first = this.state.healthLedger.get(ledgerKey);
+    const first = this.get(tx, this.state.healthLedger, ledgerKey);
     if (first) {
       if (first.digest !== digest) throw new SyncPortError('IDEMPOTENCY_CONFLICT', '同一命令 ID 的内容不同');
       // 重放按当前授权重判：撤权后不再返回原 written 回执与真实值
@@ -467,7 +474,7 @@ export class InMemoryReads {
       const key = healthKey(input.context, row.orgId);
       await this.txs.lock(tx, `health|${key}`, 'X');
       const outcome = ended ? 'PROJECT_ENDED' : this.applyHealth(tx, credential.kind, input.context, row);
-      const now = this.state.health.get(key);
+      const now = this.get(tx, this.state.health, key);
       items.push({
         orgId: row.orgId,
         outcome,
@@ -488,7 +495,7 @@ export class InMemoryReads {
     row: OrgHealthWriteCommand['rows'][number],
   ): OrgHealthOutcome {
     const key = healthKey(context, row.orgId);
-    const current = this.state.health.get(key);
+    const current = this.get(tx, this.state.health, key);
     // compute 遇手动值保留，优先于版本判断；reset 是覆盖手动值的明确例外（DEC-305④）
     if (kind === 'compute' && current?.manual) return 'MANUAL_KEPT';
     if ((current?.revision ?? 0) !== row.expectedRevision) return 'REVISION_CONFLICT';
@@ -514,6 +521,23 @@ export class InMemoryReads {
     return 'written';
   }
 }
+
+/** 提名的固定字段（formValues 之外），字段编码与 SyncNomination 的键一致。 */
+const NOMINATION_FIXED_FIELDS: readonly (keyof SyncNomination)[] = [
+  'nominationId',
+  'objectId',
+  'employeeId',
+  'kind',
+  'direction',
+  'orgId',
+  'positionId',
+  'successorEmployeeId',
+  'readinessId',
+  'readinessCode',
+  'sortNo',
+  'createdAt',
+  'syncEligible',
+];
 
 function trimForm(values: Readonly<Record<string, FieldRead>>, denied: Denied): Record<string, FieldRead> {
   return Object.fromEntries(
