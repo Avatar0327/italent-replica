@@ -39,7 +39,7 @@
    - **恢复点**：本次做了什么、验证结果、遗留事项（写在 PR 描述里即可）。
    开发窗口**不要修改** `docs/00_状态/00_会话状态与恢复点.md`：这个共用文件只由编排窗口在 PR 合并后统一补写 RP，避免各 PR 在同一文件末尾反复冲突（2026-10-04 用户决定）。
 6. CI 必须全部通过；不得跳过或删除别人的测试。
-7. **节省 CI 分钟**（私有仓库按分钟计费）：推送前先在本地跑通 `pnpm lint && pnpm typecheck && pnpm test`；PR 先以 Draft 开、完成后再转 Ready；把零碎修改攒成一次推送，不要逐个小提交推送；修改 `.github/workflows/ci.yml` 必须单独开 PR 并说明对分钟消耗的影响。
+7. **本地验证与 CI 分工（DEC-351）**：推送前本地只跑 `pnpm lint && pnpm typecheck` 和本次改动涉及的测试文件，**不要等本地全量 `pnpm test`**；全量交给 CI 分片。本地验证及自检完成后转 Ready，并在 PR 贴“开发完成，待审”；CI 不绿时，审查合并窗口不发起审查，开发方修好后再推送。节省 CI 分钟（私有仓库按分钟计费）的约定保留：PR 先以 Draft 开发；把零碎修改攒成一次推送，不要逐个小提交推送；修改 `.github/workflows/ci.yml` 必须单独开 PR 并说明对分钟消耗的影响。
 
 8. **交审前自检（必做，DEC-338）**：所有开发任务在贴“开发完成，待审”之前，按 `.claude/skills/dev-selfcheck/SKILL.md` 跑一遍自检（open-code-review 项目规则 + 对照设计与 DEC），结果写进“开发完成”评论。开发由 Claude 负责：Opus 负责规划、设计与契约 PR，Sonnet 负责实现；同类 P2 连续两轮没修好，在同一分支换 Opus 接手。审查由 Codex 负责（DEC-340①）：C 档设计审与代码首轮用 Astra Ultra；C 档代码第 2 轮起用 Sol xhigh + priority；B 档用 Sol high + priority。
 
