@@ -85,7 +85,8 @@ const FAILED_RULES: Partial<Record<SyncErrorCode, readonly FailedRule[]>> = {
 
 /** R12：跳过原因与可用行种类。 */
 const SKIP_REASONS: Readonly<Record<string, readonly RowKind[]>> = {
-  direction_target: ['nomination'],
+  // 对象只有 target 方向提名时，全部提名 skipped ⇒ 对象聚合同为 skipped（SP-12）
+  direction_target: ['nomination', 'object'],
   object_terminated: ['nomination', 'object'],
   no_nominations: ['object'],
   not_provided: ['org_health'],

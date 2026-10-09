@@ -11,7 +11,8 @@ import type { Context } from 'hono';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { registerObjectDefinition } from '../permission/catalog.js';
-import { scopeSql } from '../permission/module-access.js';
+import { getModuleViewableFields, scopeSql } from '../permission/module-access.js';
+import { AppError } from '../../errors.js';
 import {
   button,
   hasCreatorScope,
@@ -92,6 +93,19 @@ export function requireConfigVisible(scope: ModuleScope, object: TalentReviewObj
 /** 配置对象新建：只有看全部可建（DEC-082 / DEC-121），否则按不存在 404。 */
 export function requireConfigCreatable(scope: ModuleScope, object: TalentReviewObject) {
   visible(scope, undefined, notFound(object));
+}
+
+/** 列表筛选用到的字段须有查看权，否则 403（不能用筛选结果还原被裁掉的字段值）。 */
+export async function requireFilterVisible(
+  deps: TenantRouteDeps,
+  ctx: TalentReviewContext,
+  object: TalentReviewObject,
+  field: string,
+): Promise<void> {
+  const fields = await getModuleViewableFields(deps, ctx, codeOf(object));
+  if (fields !== undefined && !fields.has(field)) {
+    throw new AppError('FORBIDDEN', '无权按该字段筛选', { reason: 'FILTER_FIELD_HIDDEN', field });
+  }
 }
 
 /** 列表的 SQL 侧范围谓词（分页之前生效）：配置对象按创建人。 */

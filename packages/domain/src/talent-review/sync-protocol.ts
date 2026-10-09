@@ -132,6 +132,8 @@ export interface ReviewFieldReadResult {
   readonly source: ReviewSource | null;
 }
 export interface GreenRateResult {
+  /** value = 有可读来源；unavailable = 没有来源；forbidden = 查看人无权读该组织（数值为 0 / null，不带来源）。 */
+  readonly status: 'value' | 'unavailable' | 'forbidden';
   readonly green: number;
   readonly placed: number;
   /** 分母 0 或缺参考九宫格 → null（DEC-305④）。 */
@@ -215,6 +217,8 @@ export interface SourceReadAuthorization {
     readonly fields: Readonly<Record<string, readonly string[]>>;
     readonly sources: readonly { readonly objectId: string; readonly source: string }[];
     readonly orgIds: readonly string[];
+    /** 组织 ID → 本页请求字段中被撤权的健康度字段（健康度页只给组织与字段时，SP-14 R7 字段撤权据此执行）。 */
+    readonly orgFields: Readonly<Record<string, readonly string[]>>;
   };
 }
 

@@ -1,7 +1,9 @@
 /**
  * 同步端口替身的状态、测试控制面与读取部分（SP-06 三档选择器、SP-15 / SP-16 健康度、准备度）。
- * 无 run 的读取按 viewer 当前授权逐字段 / 逐员工 / 逐组织返回 forbidden；健康度回写按凭据逐组织授权、锁内 CAS、
- * 命令台账幂等（同键异内容 IDEMPOTENCY_CONFLICT）。
+ * - 无 run 的读取按 viewer 当前授权逐字段 / 逐员工 / 逐组织返回 forbidden，组织 / 职位聚合不带查看人无权读的源员工的提名，
+ *   提名表单字段逐个裁剪；绿化率不计查看人无权读的员工，组织无权时 forbidden 且不带数值与来源；
+ * - 健康度回写先校验租户，再逐组织按当前凭据授权，最后才查命令台账（同键须同指纹，DEC-067）；重放同样按当前授权重判，
+ *   被拒的行不带真实等级、版本与手动标记。写入在本替身的事务里进行（sync-port-memory-tx.ts）。
  */
 import type { Tx } from '@italent/db';
 import type {
@@ -10,6 +12,7 @@ import type {
   GreenRateResult,
   IsoDate,
   OrgHealthContext,
+  OrgHealthOutcome,
   OrgHealthResetCommand,
   OrgHealthRowState,
   OrgHealthWriteCommand,
@@ -29,10 +32,11 @@ import type {
   SyncRunHeader,
 } from '@italent/domain';
 import type { ReadinessLevel } from './readiness-port.js';
+import { MemoryTransactions, type MemoryTx } from './sync-port-memory-tx.js';
 import { SyncPortError, type TalentReviewSyncPort } from './sync-port.js';
 
 export interface InMemorySyncRun {
-  header: SyncRunHeader;
+  readonly header: SyncRunHeader;
   readonly objects: readonly SyncObjectResult[];
   readonly nominations: readonly SyncNomination[];
   readonly orgHealth: readonly SyncOrgHealth[];
@@ -60,6 +64,7 @@ export interface InMemoryReviewSource {
     };
   }[];
 }
+type SourceObject = InMemoryReviewSource['objects'][number];
 export interface InMemoryHealthRow {
   readonly context: OrgHealthContext;
   readonly orgId: string;
@@ -82,18 +87,18 @@ export interface InMemorySyncData {
   readonly readiness?: readonly ReadinessLevel[];
 }
 
-interface Consumption {
-  status: ConsumptionState['status'];
-  executionNo: number;
-  leaseOwner: string | null;
-  leaseUntil: Date | null;
-  sealed: boolean;
-  targetCount: number;
-  planCommandId: string | null;
-  planDigest: string | null;
-  planCommit: PageCommit | null;
-  terminalCode: ConsumptionState['terminalCode'];
-  terminalRecovery: ConsumptionState['terminalRecovery'];
+export interface Consumption {
+  readonly status: ConsumptionState['status'];
+  readonly executionNo: number;
+  readonly leaseOwner: string | null;
+  readonly leaseUntil: Date | null;
+  readonly sealed: boolean;
+  readonly targetCount: number;
+  readonly planCommandId: string | null;
+  readonly planDigest: string | null;
+  readonly planCommit: PageCommit | null;
+  readonly terminalCode: ConsumptionState['terminalCode'];
+  readonly terminalRecovery: ConsumptionState['terminalRecovery'];
 }
 interface Denied {
   employeeIds: string[];
@@ -102,52 +107,56 @@ interface Denied {
 }
 export interface MemoryState {
   now: Date;
-  runs: Map<string, InMemorySyncRun>;
-  consumptions: Map<string, Consumption>;
-  outcomes: Map<string, OutcomeItem>;
-  commits: Map<string, PageCommit>;
+  readonly runs: Map<string, InMemorySyncRun>;
+  readonly consumptions: Map<string, Consumption>;
+  readonly outcomes: Map<string, OutcomeItem>;
+  /** 页提交证明与该页回执的完整指纹（同页重放须同内容）。 */
+  readonly commits: Map<string, { readonly commit: PageCommit; readonly digest: string }>;
   /** 源读取主体的撤权（SP-07）。 */
-  revoked: { principal: boolean; owner: boolean; project: boolean } & Denied & {
+  readonly revoked: { principal: boolean; owner: boolean; project: boolean } & Denied & {
       objectIds: string[];
       sources: { objectId: string; source: string }[];
     };
   /** 无 run 读取的查看人撤权（SP-06）。 */
-  viewers: Map<string, Denied>;
+  readonly viewers: Map<string, Denied>;
   /** 健康度回写授权：forbidden = 缺按钮 / 对象权；orgIds = 不在范围的组织（SP-16）。 */
-  healthAccess: Map<string, { forbidden: boolean; orgIds: string[] }>;
-  health: Map<string, InMemoryHealthRow>;
-  healthLedger: Map<string, { digest: string; receipt: OrgHealthWriteReceipt }>;
-  endedProjects: string[];
+  readonly healthAccess: Map<string, { forbidden: boolean; orgIds: string[] }>;
+  readonly health: Map<string, InMemoryHealthRow>;
+  readonly healthLedger: Map<string, { readonly digest: string; readonly receipt: OrgHealthWriteReceipt }>;
+  readonly endedProjects: string[];
 }
+
+type Args<K extends keyof TalentReviewSyncPort> = Parameters<TalentReviewSyncPort[K]>[1];
+type HealthItem = OrgHealthWriteReceipt['items'][number];
 
 const healthKey = (context: OrgHealthContext, orgId: string) =>
   `${context.projectId}|${context.meetingId ?? ''}|${orgId}`;
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const effectiveDate = (s: InMemoryReviewSource) => s.businessDate ?? s.periodStartDate;
+const NONE: Denied = { employeeIds: [], fieldCodes: [], orgIds: [] };
+/** 被拒的健康度行：不带存在性、版本与值。 */
+const rejected = (orgId: string, outcome: 'FORBIDDEN' | 'OUT_OF_SCOPE'): HealthItem => ({
+  orgId,
+  outcome,
+  currentRevision: 0,
+  currentLevelId: null,
+  currentManual: false,
+});
 
 export class InMemoryReads {
-  protected state: MemoryState;
+  protected readonly state: MemoryState;
   protected readonly consumers: readonly SyncConsumer[];
+  protected readonly txs = new MemoryTransactions();
 
   constructor(protected readonly data: InMemorySyncData) {
     this.consumers = data.consumers ?? ['succession'];
-    const now = data.now ?? new Date('2026-10-09T00:00:00Z');
     this.state = {
-      now,
+      now: data.now ?? new Date('2026-10-09T00:00:00Z'),
       runs: new Map((data.runs ?? []).map((run) => [run.header.runId, structuredClone(run)])),
       consumptions: new Map(),
       outcomes: new Map(),
       commits: new Map(),
-      revoked: {
-        principal: false,
-        owner: false,
-        project: false,
-        objectIds: [],
-        employeeIds: [],
-        fieldCodes: [],
-        sources: [],
-        orgIds: [],
-      },
+      revoked: { principal: false, owner: false, project: false, ...structuredClone(NONE), objectIds: [], sources: [] },
       viewers: new Map(),
       healthAccess: new Map(),
       health: new Map((data.healthRows ?? []).map((row) => [healthKey(row.context, row.orgId), row])),
@@ -157,7 +166,7 @@ export class InMemoryReads {
     for (const run of this.state.runs.values()) this.prebuild(run);
   }
 
-  // ---- 测试控制面 ----
+  // ---- 测试控制面（非事务）----
   now(): Date {
     return this.state.now;
   }
@@ -178,7 +187,7 @@ export class InMemoryReads {
     });
   }
   denyViewer(userId: string, denied: Partial<Denied>): void {
-    this.state.viewers.set(userId, { employeeIds: [], fieldCodes: [], orgIds: [], ...denied });
+    this.state.viewers.set(userId, { ...structuredClone(NONE), ...denied });
   }
   denyHealthWrite(userId: string, access: { forbidden?: boolean; orgIds?: string[] }): void {
     this.state.healthAccess.set(userId, { forbidden: access.forbidden ?? false, orgIds: access.orgIds ?? [] });
@@ -196,7 +205,7 @@ export class InMemoryReads {
 
   async readReviewFields(
     _tx: Tx,
-    input: Parameters<TalentReviewSyncPort['readReviewFields']>[1],
+    input: Args<'readReviewFields'>,
   ): Promise<ReadonlyMap<string, ReviewFieldReadResult>> {
     const denied = this.deniedFor(input.viewer);
     const result = new Map<string, ReviewFieldReadResult>();
@@ -214,58 +223,72 @@ export class InMemoryReads {
     return result;
   }
 
-  async readSuccessionEntries(
-    _tx: Tx,
-    input: Parameters<TalentReviewSyncPort['readSuccessionEntries']>[1],
-  ): Promise<readonly SuccessionReadResult[]> {
+  async readSuccessionEntries(_tx: Tx, input: Args<'readSuccessionEntries'>): Promise<readonly SuccessionReadResult[]> {
     const denied = this.deniedFor(input.viewer);
+    const forbidden = { status: 'forbidden' as const, nominations: [], source: null };
     const byEmployee = (input.employeeIds ?? []).map((employeeId) => {
       const base = { employeeId, orgId: null, positionId: null };
-      if (denied.employeeIds.includes(employeeId))
-        return { ...base, status: 'forbidden' as const, nominations: [], source: null };
+      if (denied.employeeIds.includes(employeeId)) return { ...base, ...forbidden };
       const found = this.resolve(input.tenantId, (o) => o.employeeId === employeeId, input.context);
-      return { ...base, ...this.succession(found, null) };
+      return { ...base, ...this.succession(found, null, denied) };
     });
     const byOrg = (input.orgIds ?? []).map((orgId) => {
       const base = { employeeId: null, orgId, positionId: null };
-      if (denied.orgIds.includes(orgId))
-        return { ...base, status: 'forbidden' as const, nominations: [], source: null };
+      if (denied.orgIds.includes(orgId)) return { ...base, ...forbidden };
       const found = this.resolve(input.tenantId, (o) => o.orgId === orgId, input.context);
       const match = (n: SyncNomination) => n.kind === 'org' && n.direction === 'successor' && n.orgId === orgId;
-      return { ...base, ...this.succession(found, match) };
+      return { ...base, ...this.succession(found, match, denied) };
     });
-    return [...byEmployee, ...byOrg];
+    const byPosition = (input.positionIds ?? []).map((positionId) => {
+      const match = (n: SyncNomination) =>
+        n.kind === 'position' && n.direction === 'successor' && n.positionId === positionId;
+      const found = this.resolve(input.tenantId, (o) => !!o.succession?.some(match), input.context);
+      return { employeeId: null, orgId: null, positionId, ...this.succession(found, match, denied) };
+    });
+    return [...byEmployee, ...byOrg, ...byPosition];
   }
 
-  async greenRate(
-    _tx: Tx,
-    input: Parameters<TalentReviewSyncPort['greenRate']>[1],
-  ): Promise<ReadonlyMap<string, GreenRateResult>> {
+  async greenRate(_tx: Tx, input: Args<'greenRate'>): Promise<ReadonlyMap<string, GreenRateResult>> {
+    const denied = this.deniedFor(input.viewer);
     const result = new Map<string, GreenRateResult>();
+    const empty = { green: 0, placed: 0, rate: null, source: null };
     for (const orgId of input.orgIds) {
+      if (denied.orgIds.includes(orgId)) {
+        result.set(orgId, { status: 'forbidden', ...empty });
+        continue;
+      }
       const found = this.resolve(input.tenantId, (o) => o.orgId === orgId, input.context);
-      const placed = (found?.raw.objects ?? []).filter((o) => o.orgId === orgId && !o.terminated && o.placement);
+      const placed = (found?.raw.objects ?? []).filter(
+        (o) => o.orgId === orgId && !o.terminated && o.placement && !denied.employeeIds.includes(o.employeeId),
+      );
       const matrixId = placed[0]?.placement?.matrixId;
+      if (!found || !matrixId) {
+        result.set(orgId, { status: 'unavailable', ...empty });
+        continue;
+      }
       const counted = placed.filter((o) => o.placement!.placement !== null);
       const green = counted.filter((o) => o.placement!.countsGreen).length;
-      // 分母 0 或缺参考九宫格 → rate = null（DEC-305④）
-      const rate = counted.length && matrixId ? green / counted.length : null;
-      const source = found && matrixId ? { ...found.source, matrixId } : null;
-      result.set(orgId, { green, placed: counted.length, rate, source });
+      // 分母 0 → rate = null（DEC-305④）
+      const rate = counted.length ? green / counted.length : null;
+      result.set(orgId, {
+        status: 'value',
+        green,
+        placed: counted.length,
+        rate,
+        source: { ...found.source, matrixId },
+      });
     }
     return result;
   }
 
   // ---- 健康度（SP-15 / SP-16）----
-  async readOrgHealthRows(
-    _tx: Tx,
-    input: Parameters<TalentReviewSyncPort['readOrgHealthRows']>[1],
-  ): Promise<readonly OrgHealthRowState[]> {
+  async readOrgHealthRows(_tx: Tx, input: Args<'readOrgHealthRows'>): Promise<readonly OrgHealthRowState[]> {
     const denied = this.deniedFor(input.viewer);
     return input.orgIds.map((orgId): OrgHealthRowState => {
       const context = input.context;
-      if (input.tenantId !== this.data.tenantId || denied.orgIds.includes(orgId))
+      if (input.tenantId !== this.data.tenantId || denied.orgIds.includes(orgId)) {
         return { status: 'forbidden', orgId, context };
+      }
       const row = this.state.health.get(healthKey(context, orgId));
       if (!row) return { status: 'absent', orgId, context, revision: 0 };
       const { levelId, levelCode, manual, method, revision, status } = row;
@@ -273,12 +296,12 @@ export class InMemoryReads {
     });
   }
 
-  async recordOrgHealth(_tx: Tx, input: OrgHealthWriteCommand): Promise<OrgHealthWriteReceipt> {
-    return this.writeHealth(input);
+  recordOrgHealth(tx: Tx, input: OrgHealthWriteCommand): Promise<OrgHealthWriteReceipt> {
+    return this.txs.within(tx, (m) => this.writeHealth(m, input));
   }
 
-  async resetOrgHealth(_tx: Tx, input: OrgHealthResetCommand): Promise<OrgHealthWriteReceipt> {
-    return this.writeHealth(input);
+  resetOrgHealth(tx: Tx, input: OrgHealthResetCommand): Promise<OrgHealthWriteReceipt> {
+    return this.txs.within(tx, (m) => this.writeHealth(m, input));
   }
 
   async listReadinessLevels(_tx: Tx, input: { tenantId: string }): Promise<readonly ReadinessLevel[]> {
@@ -290,6 +313,7 @@ export class InMemoryReads {
   protected findRun(tenantId: string, runId: string) {
     return tenantId === this.data.tenantId ? this.state.runs.get(runId) : undefined;
   }
+  /** 租户先于一切：不存在或其他租户的 run 一律视为没有可用执行。 */
   protected requireRun(tenantId: string, runId: string): InMemorySyncRun {
     const run = this.findRun(tenantId, runId);
     if (!run) throw new SyncPortError('EXECUTION_INACTIVE', 'run 不存在');
@@ -313,6 +337,9 @@ export class InMemoryReads {
   protected rowsOf(runId: string, consumer: string): OutcomeItem[] {
     const prefix = `${runId}|${consumer}|`;
     return [...this.state.outcomes].filter(([key]) => key.startsWith(prefix)).map(([, row]) => row);
+  }
+  protected set<K, V>(tx: MemoryTx, map: Map<K, V>, key: K, value: V): void {
+    this.txs.set(tx, map, key, value);
   }
 
   /** 冻结时为每个已登记消费方的每个 nomination / object / org_health 行预建 pending 回执（SP-02）。 */
@@ -339,25 +366,17 @@ export class InMemoryReads {
   }
 
   private deniedFor(viewer: SourceViewer): Denied {
-    return this.state.viewers.get(viewer.userId) ?? { employeeIds: [], fieldCodes: [], orgIds: [] };
+    return this.state.viewers.get(viewer.userId) ?? NONE;
   }
 
   /** 三档选择器 resolveReviewSource（SP-06）；terminated 对象不计。 */
-  private resolve(
-    tenantId: string,
-    has: (o: InMemoryReviewSource['objects'][number]) => boolean,
-    context: ReviewSourceContext,
-  ) {
+  private resolve(tenantId: string, has: (o: SourceObject) => boolean, context: ReviewSourceContext) {
     if (tenantId !== this.data.tenantId) return null;
     const sources = (this.data.sources ?? []).filter((s) => s.objects.some((o) => has(o) && !o.terminated));
     const pick = (source: InMemoryReviewSource | undefined, tier: 1 | 2 | 3) => {
       if (!source) return null;
-      const reviewSource: ReviewSource = {
-        projectId: source.projectId,
-        meetingId: source.meetingId,
-        tier,
-        businessDate: source.businessDate,
-      };
+      const { projectId, meetingId, businessDate } = source;
+      const reviewSource: ReviewSource = { projectId, meetingId, tier, businessDate };
       return { source: reviewSource, raw: source, object: source.objects.find((o) => has(o) && !o.terminated) };
     };
     // tier 1：给了校准会只取会中对象（不在会中 → tier 2，不降级为项目）；否则取触发项目的对象
@@ -379,68 +398,90 @@ export class InMemoryReads {
     return pick(last, 3);
   }
 
-  /** 员工查询 match = null（取该对象自己的提名）；组织查询取来源内全部对象中匹配的提名。 */
-  private succession(found: ReturnType<InMemoryReads['resolve']>, match: ((n: SyncNomination) => boolean) | null) {
+  /**
+   * 员工查询 match = null（取该对象自己的提名）；组织 / 职位查询取来源内全部对象中匹配的提名。按 viewer 裁剪：
+   * 查看人无权读的源员工的提名不出现，提名表单字段逐个 forbidden（继任者姓名的显示另由消费方按 DEC-311 处理）。
+   */
+  private succession(
+    found: ReturnType<InMemoryReads['resolve']>,
+    match: ((n: SyncNomination) => boolean) | null,
+    denied: Denied,
+  ) {
     if (!found) return { status: 'unavailable' as const, nominations: [], source: null };
-    const lists = match
-      ? found.raw.objects.filter((o) => !o.terminated).map((o) => o.succession)
-      : [found.object!.succession];
+    const objects = match ? found.raw.objects.filter((o) => !o.terminated) : [found.object!];
     // module_absent（所用模板都没有继任模块）与 value + []（有模块、零提名）分开（A-19）
-    if (lists.every((list) => list === null))
+    if (objects.every((o) => o.succession === null)) {
       return { status: 'module_absent' as const, nominations: [], source: found.source };
-    const nominations = lists.flatMap((list) => list ?? []).filter(match ?? (() => true));
+    }
+    const nominations = objects
+      .flatMap((o) => o.succession ?? [])
+      .filter((n) => (match ? match(n) : true) && !denied.employeeIds.includes(n.employeeId))
+      .map((n) => ({ ...n, formValues: trimForm(n.formValues, denied) }));
     return { status: 'value' as const, nominations, source: found.source };
   }
 
-  /** 逐组织授权、锁内 CAS、命令台账（SP-16）；按 orgId 升序处理。 */
-  private writeHealth(input: OrgHealthWriteCommand | OrgHealthResetCommand): OrgHealthWriteReceipt {
+  /** 逐组织：租户 → 当前凭据授权 → 命令台账（完整指纹）→ 行锁内 CAS（SP-16）；按 orgId 升序处理。 */
+  private async writeHealth(
+    tx: MemoryTx,
+    input: OrgHealthWriteCommand | OrgHealthResetCommand,
+  ): Promise<OrgHealthWriteReceipt> {
+    const rows = [...input.rows].sort((a, b) => cmp(a.orgId, b.orgId));
+    if (input.tenantId !== this.data.tenantId) return { items: rows.map((row) => rejected(row.orgId, 'FORBIDDEN')) };
     const credential = input.credential;
-    const ledgerKey = `${credential.kind}:${credential.commandId}`;
-    const digest = JSON.stringify([input.context, input.rows]);
-    const first = this.state.healthLedger.get(ledgerKey);
-    if (first) {
-      if (first.digest === digest) return first.receipt;
-      throw new SyncPortError('IDEMPOTENCY_CONFLICT', '同一命令 ID 的内容不同');
-    }
     const actor = credential.kind === 'compute' ? credential.principalUserId : credential.userId;
     const access = this.state.healthAccess.get(actor) ?? { forbidden: false, orgIds: [] };
+    const denial = (orgId: string) =>
+      access.forbidden ? ('FORBIDDEN' as const) : access.orgIds.includes(orgId) ? ('OUT_OF_SCOPE' as const) : null;
+    const ledgerKey = `ledger|${credential.commandId}`;
+    await this.txs.lock(tx, ledgerKey, 'X');
+    const digest = JSON.stringify([input.tenantId, credential, input.context, input.rows]);
+    const first = this.state.healthLedger.get(ledgerKey);
+    if (first) {
+      if (first.digest !== digest) throw new SyncPortError('IDEMPOTENCY_CONFLICT', '同一命令 ID 的内容不同');
+      // 重放按当前授权重判：撤权后不再返回原 written 回执与真实值
+      return {
+        items: first.receipt.items.map((item) => {
+          const denied = denial(item.orgId);
+          return denied ? rejected(item.orgId, denied) : item;
+        }),
+      };
+    }
     const ended = this.state.endedProjects.includes(input.context.projectId);
-    const items = [...input.rows]
-      .sort((a, b) => cmp(a.orgId, b.orgId))
-      .map((row) => {
-        const key = healthKey(input.context, row.orgId);
-        const current = this.state.health.get(key);
-        const snapshot = () => {
-          const now = this.state.health.get(key);
-          return {
-            currentRevision: now?.revision ?? 0,
-            currentLevelId: now?.levelId ?? null,
-            currentManual: now?.manual ?? false,
-          };
-        };
-        const outcome = access.forbidden
-          ? 'FORBIDDEN'
-          : access.orgIds.includes(row.orgId)
-            ? 'OUT_OF_SCOPE'
-            : ended
-              ? 'PROJECT_ENDED'
-              : this.applyHealth(credential.kind, input.context, row, current);
-        return { orgId: row.orgId, outcome, ...snapshot() } as const;
+    const items: HealthItem[] = [];
+    for (const row of rows) {
+      const denied = denial(row.orgId);
+      if (denied) {
+        items.push(rejected(row.orgId, denied));
+        continue;
+      }
+      const key = healthKey(input.context, row.orgId);
+      await this.txs.lock(tx, `health|${key}`, 'X');
+      const outcome = ended ? 'PROJECT_ENDED' : this.applyHealth(tx, credential.kind, input.context, row);
+      const now = this.state.health.get(key);
+      items.push({
+        orgId: row.orgId,
+        outcome,
+        currentRevision: now?.revision ?? 0,
+        currentLevelId: now?.levelId ?? null,
+        currentManual: now?.manual ?? false,
       });
+    }
     const receipt = { items };
-    this.state.healthLedger.set(ledgerKey, { digest, receipt });
+    this.set(tx, this.state.healthLedger, ledgerKey, { digest, receipt });
     return receipt;
   }
 
   private applyHealth(
+    tx: MemoryTx,
     kind: 'compute' | 'assign' | 'reset',
     context: OrgHealthContext,
     row: OrgHealthWriteCommand['rows'][number],
-    current: InMemoryHealthRow | undefined,
-  ) {
+  ): OrgHealthOutcome {
+    const key = healthKey(context, row.orgId);
+    const current = this.state.health.get(key);
     // compute 遇手动值保留，优先于版本判断；reset 是覆盖手动值的明确例外（DEC-305④）
-    if (kind === 'compute' && current?.manual) return 'MANUAL_KEPT' as const;
-    if ((current?.revision ?? 0) !== row.expectedRevision) return 'REVISION_CONFLICT' as const;
+    if (kind === 'compute' && current?.manual) return 'MANUAL_KEPT';
+    if ((current?.revision ?? 0) !== row.expectedRevision) return 'REVISION_CONFLICT';
     const manual = kind === 'assign';
     const next: InMemoryHealthRow = {
       context,
@@ -458,8 +499,17 @@ export class InMemoryReads {
       current.status === next.status &&
       current.manual === next.manual &&
       current.method === next.method;
-    if (same) return 'unchanged' as const;
-    this.state.health.set(healthKey(context, row.orgId), next);
-    return 'written' as const;
+    if (same) return 'unchanged';
+    this.set(tx, this.state.health, key, next);
+    return 'written';
   }
+}
+
+function trimForm(values: Readonly<Record<string, FieldRead>>, denied: Denied): Record<string, FieldRead> {
+  return Object.fromEntries(
+    Object.entries(values).map(([code, read]) => [
+      code,
+      denied.fieldCodes.includes(code) ? { status: 'forbidden' as const, value: null } : read,
+    ]),
+  );
 }

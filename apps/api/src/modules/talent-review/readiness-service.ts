@@ -130,6 +130,13 @@ export async function createReadiness(tx: Tx, ctx: WriteContext, input: Readines
 export async function updateReadiness(tx: Tx, ctx: WriteContext, id: string, patch: ReadinessPatch) {
   await lockForWrite(tx, ctx, id);
   const before = (await loadReadinessView(tx, ctx.tenantId, id))!;
+  // 名称租户唯一：只有创建人范围的人改名时，撞上他人隐藏记录的 409 与成功之间的差异会暴露该记录存在（第 2 轮 P2-01）。
+  // 所以改名要求看全部（与新建同口径，DEC-082 / 121），在任何查重之前判定，目标名称是否被占用都同一个 403。
+  if (patch.name !== undefined && patch.name !== before.name && !ctx.scope.all) {
+    throw new AppError('FORBIDDEN', '只有能查看全部准备度的人可以修改名称', {
+      reason: 'READINESS_NAME_REQUIRES_SEE_ALL',
+    });
+  }
   await unique(() =>
     tx
       .update(R)

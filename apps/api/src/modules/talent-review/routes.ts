@@ -18,6 +18,7 @@ import {
   requireConfigVisible,
   reviewContext,
   reviewScope,
+  requireFilterVisible,
   reviewWriteContext,
   TALENT_REVIEW_BASE,
   trimReview,
@@ -33,6 +34,8 @@ export function registerTalentReviewRoutes(router: Hono<TenantEnv>, deps: Tenant
     const ctx = await reviewContext(c, deps, 'readiness');
     const page = pageQuery(c);
     const enabled = booleanQuery(c, 'enabled');
+    // 筛选字段同样受字段查看权约束：看不到 enabled 的人不能用筛选还原启用状态（第 2 轮 P2-01）
+    if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'readiness', 'enabled');
     const scope = await reviewScope(c, deps, ctx, 'readiness');
     const visible = configScopeSql(scope, 'talent_readiness_levels');
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
