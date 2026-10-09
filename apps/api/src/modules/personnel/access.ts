@@ -114,5 +114,7 @@ export async function trim(deps: TenantRouteDeps, ctx: PersonnelContext, objectC
   return trimWithFields(value, fields);
 }
 export function trimWithFields(value: Row, fields: ReadonlySet<string> | undefined) {
-  return Object.fromEntries(Object.entries(value).filter(([key]) => fields === undefined || fields.has(key)));
+  return Object.fromEntries(
+    Object.entries(value).filter(([key]) => fields === undefined || fields.has(key === 'avatar' ? 'name' : key)),
+  );
 }

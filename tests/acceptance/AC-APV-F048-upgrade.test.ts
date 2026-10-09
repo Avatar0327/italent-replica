@@ -24,10 +24,15 @@ async function withoutSubjectsTable<T>(db: Db, run: () => Promise<T>): Promise<T
   await db.execute(sql`CREATE TABLE approval_instance_subjects (tenant_id uuid NOT NULL, instance_id uuid NOT NULL,
     round integer NOT NULL, employee_id uuid NOT NULL, user_id uuid, created_at timestamptz NOT NULL)`);
   await db.execute(sql`GRANT SELECT, INSERT ON approval_instance_subjects TO app_user`);
+  // 当前接口会读取头像；旧库的前置夹具临时用空表适配，升级前撤掉，由正式迁移重建。
+  await db.execute(sql`CREATE TABLE account_avatar_attachments
+    (tenant_id uuid NOT NULL, user_id uuid NOT NULL, id uuid NOT NULL, status text NOT NULL)`);
+  await db.execute(sql`GRANT SELECT ON account_avatar_attachments TO app_user`);
   try {
     return await run();
   } finally {
     await db.execute(sql`DROP TABLE approval_instance_subjects`);
+    await db.execute(sql`DROP TABLE account_avatar_attachments`);
   }
 }
 

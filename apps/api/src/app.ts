@@ -30,6 +30,7 @@ import { policed, type PolicyTable, useMiddleware, verifyRouteDeclarations } fro
 import { registerTalentRoutes } from './modules/talent/routes.js';
 import { MODEL_IMAGE_BODY_LIMIT } from './modules/talent/model-image-format.js';
 import { registerIdpRoutes } from './modules/idp/routes.js';
+import { registerAvatarRoutes } from './modules/avatar/routes.js';
 
 /** 租户业务模块：新模块只在此追加一行注册，不改其他装配逻辑。 */
 const TENANT_MODULES: readonly TenantRouteModule[] = [
@@ -46,6 +47,7 @@ const TENANT_MODULES: readonly TenantRouteModule[] = [
   registerSurvey360Routes, // R3-T03 360 度评估（含 /api/survey360/link 链接作答）
   registerTalentRoutes, // R3-T01 人才标准与指标库（TalentCenter）
   registerIdpRoutes, // R3-T07 个人发展计划（IDP）
+  registerAvatarRoutes, // F-058 账号头像与人员只读引用
 ];
 
 export interface AppDeps {
@@ -76,6 +78,11 @@ export function createApp(deps: AppDeps = {}): Hono {
     '*',
     limitBody(DEFAULT_BODY_LIMIT, [
       ...PERMISSION_BODY_LIMITS,
+      {
+        method: 'POST',
+        path: /^\/api\/tenant\/account\/avatar\/attachments\/[^/]+\/upload$/,
+        maxSize: MODEL_IMAGE_BODY_LIMIT,
+      },
       {
         method: 'POST',
         path: /^\/api\/tenant\/talent\/criteria\/[^/]+\/model-image\/attachments\/[^/]+\/upload$/,

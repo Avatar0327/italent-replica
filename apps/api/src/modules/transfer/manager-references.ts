@@ -6,6 +6,7 @@ import { AppError } from '../../errors.js';
 import type { EmploymentContext, PageQuery } from '../employment/types.js';
 import { managerIdentity } from '../permission/manager-identity.js';
 import { scopeRows } from '../permission/scope-hierarchy.js';
+import { employeeAvatars, type AvatarReference } from '../avatar/references.js';
 import { scopeSql } from '../permission/module-access.js';
 import { currentPersons } from '../permission/scope-persons.js';
 import { jobTables, type JobKind } from '../job/metadata.js';
@@ -69,7 +70,7 @@ export async function readManagerReferences(
   field: string,
   q: ManagerReferenceQuery,
   page: Pick<PageQuery, 'limit' | 'offset'>,
-): Promise<{ id: string; name: string }[]> {
+): Promise<{ id: string; name: string; avatar?: AvatarReference | null }[]> {
   const base = await managerReferenceQuery(tx, ctx, q);
   if (q.departmentId) {
     const allowed = scopeRows(
@@ -113,12 +114,19 @@ export async function readManagerReferences(
         ${q.postId ? sql`AND p.object_id=${q.postId}::uuid` : sql``}
     )`;
   } else throw new AppError('FORBIDDEN', '无权查看调动参照');
-  return scopeRows(
+  const items = scopeRows<{ id: string; name: string }>(
     await tx.execute(sql`${base} SELECT id,name FROM (${choices}) choices WHERE true
     ${q.name ? sql`AND name ILIKE ${`%${q.name}%`}` : sql``}
     ${q.id ? sql`AND id=${q.id}::uuid` : sql``}
     ORDER BY name,id LIMIT ${page.limit} OFFSET ${page.offset}`),
   );
+  if (!['directManagerId', 'dottedManagerId', 'addedSubordinateIds'].includes(field)) return items;
+  const avatars = await employeeAvatars(
+    tx,
+    ctx.tenantId,
+    items.map((item) => item.id),
+  );
+  return items.map((item) => ({ ...item, avatar: avatars.get(item.id) ?? null }));
 }
 
 /** 提交只校验显式变更；只读继承不要求历史值仍在候选中。与选择器使用相同谓词。 */
