@@ -62,9 +62,9 @@ const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => 
 const withTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({ ...REQUIRED, [k]: obligations });
 
 describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
-  it('覆盖全部已声明端点（387），每个模块一个冻结文件，条目数与模块端点数一致', () => {
+  it('覆盖全部已声明端点（438），每个模块一个冻结文件，条目数与模块端点数一致', () => {
     expect(Object.keys(fresh).sort()).toEqual(manifest.declared.map(key).sort());
-    expect(manifest.declared).toHaveLength(387);
+    expect(manifest.declared).toHaveLength(438);
     const groups = groupByModule(fresh);
     const files = readdirSync(PROBE_DIR).filter((f) => f.endsWith('.json'));
     expect(files.sort()).toEqual(
@@ -104,16 +104,16 @@ describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
 });
 
 describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
-  it('全部端点零发现（P0 认领、P3 非法标识、映射）；已发现的 119 个表漏登只经 KNOWN_UNCLAIMED 钉死登记', () => {
+  it('全部端点零发现（P0 认领、P3 非法标识、映射）；已发现的 134 个表漏登只经 KNOWN_UNCLAIMED 钉死登记', () => {
     const findings = checkAll();
     expect(findings, show(findings)).toEqual([]);
   });
 
-  it('不带登记检查：恰好 119 个"端点 × 请求键"表漏登，全部被 KNOWN_UNCLAIMED 的 4 类规则覆盖（每类写明归属与原因）', () => {
+  it('不带登记检查：恰好 134 个"端点 × 请求键"表漏登，全部被 KNOWN_UNCLAIMED 的 5 类规则覆盖（每类写明归属与原因）', () => {
     const open = check(manifest.declared);
     expect(codes(open).every((c) => c === 'PROBE_ADMISSION_UNCLAIMED')).toBe(true);
-    expect(open).toHaveLength(119);
-    expect(KNOWN_UNCLAIMED.reduce((sum, gap) => sum + gap.count, 0)).toBe(119);
+    expect(open).toHaveLength(134);
+    expect(KNOWN_UNCLAIMED.reduce((sum, gap) => sum + gap.count, 0)).toBe(134);
     for (const gap of KNOWN_UNCLAIMED) {
       expect(gap.owner.length, gap.id).toBeGreaterThan(5);
       expect(gap.why.length, gap.id).toBeGreaterThan(20);

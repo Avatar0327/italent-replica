@@ -1,6 +1,6 @@
 /**
  * 发现探测 P0 实测出的"表漏登"棘轮（F-039 PR-B4a，docs/08_设计/F-039_PR-B_设计.md B-08 P0）。
- * 全允许探测第一次对真实声明 + 显式表运行，就发现 4 类表里没有登记的授权请求（共 119 个"端点 × 请求键"）。
+ * 全允许探测第一次对真实声明 + 显式表运行，就发现 5 类表里没有登记的授权请求（共 134 个"端点 × 请求键"）。
  * 它们归属别的 PR 的文件（IDP 归 B3 / B5h；required/types.ts 的承载者规则归 B1）或需要读源码另做审定（survey360、
  * employment），按"PR-B4a 只改本 PR 文件"的约束不在这里改表，改为**显式登记、逐类钉死数量**：
  *   - 登记项只能减不能增：规则命中的"端点 × 请求键"数必须恰好等于 count（多一个 = 新漏登，少一个 = 表已补，必须删规则）；
@@ -52,6 +52,16 @@ export const KNOWN_UNCLAIMED: readonly KnownGap[] = [
     matches: (route, key) =>
       under('/api/tenant/survey360')(route) &&
       ['obj:Survey360.Activity:view', 'btn:Survey360.Activity#viewAll@list'].includes(key),
+  },
+  {
+    id: 'qualification.referencedView',
+    owner: '表与声明审定（R3-T02 后续 PR / 另开 F 任务）',
+    why:
+      'qualification/access.ts writeContext、route-support.ts：写入口先对载荷可能引用的对象 / 岗职务逐个解析 object.view，' +
+      '为假再在 store.referenced 抛 403（条件准入：只有载荷真引用该对象才拒绝）；表把它们当 object.* 动作事实挂在数据操作' +
+      '义务下，没有逐对象的条件义务，条件守卫承载者也未声明',
+    count: 15,
+    matches: (route, key) => under('/api/tenant/qualification')(route) && /^obj:[^:]+:view$/.test(key),
   },
   {
     id: 'idp.nestedContent',
