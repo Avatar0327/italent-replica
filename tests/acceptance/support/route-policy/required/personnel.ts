@@ -7,6 +7,7 @@
  * （subset-policy.ts；未登记的子集不调用）。
  */
 import { bound, list, SCOPE_AT, withNeeds } from './scopes.js';
+import { QL_POLICY, QL_REQUEST_EVIDENCE, QL_SAVE, QL_SAVE_EVIDENCE } from './qualification-subset-evidence.js';
 import type { Evidence, Obligation, RequiredTable } from './types.js';
 
 const ROUTES = 'apps/api/src/modules/personnel/routes.ts';
@@ -16,7 +17,7 @@ const PERSON = 'TenantBase.EmployeeInformation';
 const SUBSET =
   '{TenantBase.Awards,TenantBase.Certificate,TenantBase.Education,TenantBase.EstimationResult,TenantBase.Family,' +
   'TenantBase.Languageability,TenantBase.ProfessionalTechnicalPostInfo,TenantBase.ProjectExperience,' +
-  'TenantBase.Punish,TenantBase.Skill,TenantBase.Training,' +
+  'TenantBase.Punish,TenantBase.Qualification,TenantBase.Skill,TenantBase.Training,' +
   'TenantBase.VocationalQualificationInfo,TenantBase.jobhistory}';
 const ACCESS_IMPL: Evidence = {
   role: 'impl',
@@ -72,8 +73,39 @@ const subsetPolicy = (at: Evidence): Obligation => ({
       unit: `${POLICY}#runSubsetSavePolicy`,
       anchor: 'await POLICIES.get(kind)?.beforeSave?.(tx, ctx, input)',
     },
+    ...QL_SAVE_EVIDENCE,
   ],
 });
+/**
+ * qualification 子集的新引用校验（assertRefs）向授权器问类别 / 级别的对象查看权：只在人工来源带来新引用时才问
+ * （条件语义见 guard-inner.ts 的 qualification.newCategoryRef / newLevelRef）。HR 新增、更换引用的 PATCH 会产生；
+ * 删除、只改日期的 PATCH 不产生。
+ */
+const QL_REF_OBJECTS = [
+  ['Qualification.EmploymentCategory', 'qualification.newCategoryRef', "['category', refs.categoryIds]"],
+  ['Qualification.EmploymentLevel', 'qualification.newLevelRef', "['level', refs.levelIds]"],
+] as const;
+const qualificationRefs = (at: Evidence): Obligation[] =>
+  QL_REF_OBJECTS.map(([object, condition, pair]): Obligation => ({
+    perm: `obj:${object}:view`,
+    purpose: 'guard:personnel.subsetPolicy',
+    inner: { role: 'when', condition },
+    at: [
+      at,
+      QL_SAVE('if (human) await assertRefs(tx, ctx, newRefs(before, row));'),
+      { role: 'impl', unit: `${QL_POLICY}#assertRefs`, anchor: pair },
+      {
+        role: 'impl',
+        unit: `${QL_POLICY}#assertRefs`,
+        anchor: "action: 'object.view', resource: code,",
+      },
+      {
+        role: 'const',
+        unit: 'apps/api/src/modules/qualification/access.ts#codeOf',
+        anchor: 'QUALIFICATION_OBJECTS[object].code',
+      },
+    ],
+  }));
 const call = (file: string, method: string, path: string, anchor: string): Evidence => ({
   role: 'call',
   unit: `${file}#route:${method} /api/tenant/personnel${path}`,
@@ -309,6 +341,7 @@ export const PERSONNEL: RequiredTable = {
       SUBSET_CONST,
     ),
     subsetPolicy(subset('POST', '')('saveSubset(tx, ctx, employeeId, kind, input)')),
+    ...qualificationRefs(subset('POST', '')('saveSubset(tx, ctx, employeeId, kind, input)')),
   ],
   'PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id': [
     op(
@@ -325,6 +358,7 @@ export const PERSONNEL: RequiredTable = {
       SUBSET_CONST,
     ),
     subsetPolicy(subset('PATCH', '/:id')('saveSubset(tx, ctx, employeeId, kind, input, id)')),
+    ...qualificationRefs(subset('PATCH', '/:id')('saveSubset(tx, ctx, employeeId, kind, input, id)')),
   ],
   'DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id': [
     op(
@@ -405,6 +439,7 @@ export const PERSONNEL: RequiredTable = {
           unit: `${POLICY}#runSubsetRequestPolicy`,
           anchor: 'await POLICIES.get(kind)?.beforeRequest?.(tx, ctx, input)',
         },
+        ...QL_REQUEST_EVIDENCE,
       ],
     },
   ],

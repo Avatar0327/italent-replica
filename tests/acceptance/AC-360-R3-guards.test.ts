@@ -10,6 +10,13 @@ import { survey360 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { EMPTY_SCOPE } from '../../apps/api/src/modules/permission/scope-types.js';
+import {
+  exportFontReady,
+  renderPdf,
+  renderPng,
+  reportDocument,
+  scoreTableDocument,
+} from '../../apps/api/src/modules/survey360/export-files.js';
 import { loginEmailOf } from './AC-EMP-support.js';
 import type { RequestOptions } from './support/tenant-api.js';
 import {
@@ -2639,6 +2646,106 @@ const PR_B_CASES: Record<string, RouteCases> = {
   },
 };
 Object.assign(ROUTE_CASES, PR_B_CASES);
+
+/**
+ * F-060：报表 PNG / 报告 PDF 下载。三类反向用例与对应 JSON 接口同口径；字段裁剪格另断言文件由“裁剪后的 JSON”生成
+ * （逐字节等于把该 JSON 交给渲染函数的结果；服务器无中文字体时按 503 EXPORT_FONT_UNAVAILABLE 断言）。
+ */
+const downloadStatus = async () => ((await exportFontReady()) ? 200 : 503);
+const sameFile = async (res: Response, expected: () => Promise<Buffer>) => {
+  if (res.status === 200) expect(Buffer.from(await res.arrayBuffer()).equals(await expected())).toBe(true);
+};
+const F060_CASES: Record<string, RouteCases> = {
+  [`GET ${S}/activities/:id/score-tables/download`]: {
+    unauthorized: async (env) =>
+      void (await expectStatus(
+        admin(env, env.users.onlyActivity)('GET', `/activities/${env.SC.id}/score-tables/download?level=questionnaire`),
+        403,
+      )),
+    outOfScope: async (env) =>
+      void (await expectStatus(
+        admin(env, env.users.general)('GET', `/activities/${env.SC.id}/score-tables/download?level=questionnaire`),
+        404,
+      )),
+    trimming: async (env) => {
+      const as = admin(env, env.users.tResult);
+      const path = `/activities/${env.SC.id}/score-tables`;
+      const body = await json(await expectStatus(as('GET', `${path}?level=questionnaire`), 200));
+      without(body, 'roleName');
+      const name = (await json(await expectStatus(sa(env)('GET', `/activities/${env.SC.id}`), 200))).name as string;
+      const file = await expectStatus(as('GET', `${path}/download?level=questionnaire`), await downloadStatus());
+      await sameFile(file, () => renderPng(scoreTableDocument(body as never, { activityName: name })));
+    },
+  },
+  [`GET ${S}/activities/:id/reports/:reportId/download`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        admin(env, env.users.onlyActivity)('GET', `/activities/${env.SC.id}/reports/${p.reportId}/download`),
+        403,
+      );
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        admin(env, env.users.general)('GET', `/activities/${env.SC.id}/reports/${p.reportId}/download`),
+        404,
+      );
+      // 报告须属于该活动
+      await expectStatus(sa(env)('GET', `/activities/${env.A.id}/reports/${p.reportId}/download`), 404);
+    },
+    trimming: async (env) => {
+      const p = await prb(env);
+      const as = admin(env, env.users.tReport);
+      const path = `/activities/${env.SC.id}/reports/${p.reportId}`;
+      const body = await json(await expectStatus(as('GET', path), 200));
+      expect(body).not.toHaveProperty('questionnaires');
+      const file = await expectStatus(as('GET', `${path}/download`), await downloadStatus());
+      await sameFile(file, () => renderPdf(reportDocument(body as never)));
+    },
+  },
+  [`GET /api/survey360/report-link/reports/:reportId/download`]: {
+    unauthorized: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        env.w.api.request('GET', `/api/survey360/report-link/reports/${p.reportId}/download`, {
+          tenant: env.w.tenantId,
+        }),
+        404,
+      );
+    },
+    outOfScope: async (env) => {
+      const p = await prb(env);
+      await expectStatus(
+        env.w.api.request('GET', `/api/survey360/report-link/reports/${randomUUID()}/download`, {
+          tenant: env.w.tenantId,
+          headers: { 'x-survey360-token': p.reportToken },
+        }),
+        404,
+      );
+      // 他租户：同一令牌换租户头即 404
+      await expectStatus(
+        env.w.api.request('GET', `/api/survey360/report-link/reports/${p.reportId}/download`, {
+          tenant: env.w2.tenantId,
+          headers: { 'x-survey360-token': p.reportToken },
+        }),
+        404,
+      );
+    },
+    trimming: async (env) => {
+      const p = await prb(env);
+      const request = (suffix: string) =>
+        env.w.api.request('GET', `/api/survey360/report-link/reports/${p.reportId}${suffix}`, {
+          tenant: env.w.tenantId,
+          headers: { 'x-survey360-token': p.reportToken },
+        });
+      const body = await json(await expectStatus(request(''), 200));
+      const file = await expectStatus(request('/download'), await downloadStatus());
+      await sameFile(file, () => renderPdf(reportDocument(body as never)));
+    },
+  },
+};
+Object.assign(ROUTE_CASES, F060_CASES);
 
 describe('路由 × 守卫：三类反向用例（表驱动）', () => {
   let env: Env;

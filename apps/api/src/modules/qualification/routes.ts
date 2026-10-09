@@ -30,6 +30,7 @@ import {
 import { registerQualificationCandidates } from './candidates.js';
 import * as config from './config-service.js';
 import { registerExtras } from './extras.js';
+import './subset-policy.js'; // 登记 qualification 子集策略（C1-1）
 import * as input from './input.js';
 import * as read from './read-model.js';
 import { fieldEditable, presenter, QL_BASE, runWrite, type View, writeContext } from './route-support.js';
