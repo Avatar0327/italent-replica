@@ -9,12 +9,10 @@
  * `variant` 选择分支值表里同一（域, 字段）的多个条目之一（任职导入预览与导入的逐行操作值不同）。
  */
 import type { Evidence } from './required/types.js';
-import type { BranchField } from './selectors.js';
 
 export interface BranchInput {
   /** 选择器位置：节点路径 + 字段，如 `of[0].object`、`rows.operation`、`failureAudit.objectType`。 */
   readonly position: string;
-  readonly field: BranchField;
   /** 域名（domains.ts 的域键）。 */
   readonly domain: string;
   readonly from: 'param' | 'body' | 'query';
@@ -35,8 +33,7 @@ const input = (
   at: readonly Evidence[],
   variant?: string,
 ): BranchInput => {
-  const field = position.split('.').at(-1) as BranchField;
-  return { position, field, domain, from, path, ...(variant ? { variant } : {}), at };
+  return { position, domain, from, path, ...(variant ? { variant } : {}), at };
 };
 
 // ---- 职务（job/routes.ts）：`:kind` 经 objectKind 取路径参数并校验；导入取 body.kind ---------------------------------

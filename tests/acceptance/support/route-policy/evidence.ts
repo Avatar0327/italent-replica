@@ -225,7 +225,7 @@ function branchUses(branch: BranchBindings | false): BranchUse[] {
   if (!branch) return [];
   const inputs = Object.entries(branch.inputs).flatMap(([key, entries]) =>
     entries.flatMap((input) =>
-      input.at.map((evidence) => ({ route: key, label: `输入来源 @${input.position}`, evidence })),
+      input.at.map((evidence) => ({ route: key, label: `${key} 输入来源 @${input.position}`, evidence })),
     ),
   );
   const values = Object.entries(branch.values).flatMap(([domain, entries]) =>
@@ -243,9 +243,15 @@ function branchUses(branch: BranchBindings | false): BranchUse[] {
 /** 证据单元 → 引用它的义务 / 登记项（含选择器绑定表）。 */
 export function usesOf(table: RequiredTable, branch: BranchBindings | false = BRANCH_BINDINGS): Map<string, Use[]> {
   const users = new Map<string, Use[]>();
-  const push = (unit: string, use: Use) => users.set(unit, [...(users.get(unit) ?? []), use]);
+  const push = (unit: string, use: Use) => {
+    const list = users.get(unit) ?? [];
+    // 同一义务（或登记项）对同一单元的多条证据只算一次；标签带序号，同端点同权限的不同义务不会合并
+    if (!list.some((existing) => existing.label === use.label)) users.set(unit, [...list, use]);
+  };
   for (const [key, obligations] of Object.entries(table)) {
-    for (const o of obligations) for (const e of o.at) push(e.unit, { route: key, label: `${key} ${o.perm}` });
+    for (const [index, o] of obligations.entries()) {
+      for (const e of o.at) push(e.unit, { route: key, label: `${key} #${index + 1} ${o.perm}` });
+    }
   }
   for (const { evidence, ...use } of branchUses(branch)) push(evidence.unit, use);
   return users;

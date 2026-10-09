@@ -193,6 +193,12 @@ function compareBranchBindings(
     const values = (bindings.values[entry.domain] ?? []).filter(
       (v) => v.field === site.field && v.variant === entry.variant,
     );
+    if (values.length > 1) {
+      report(
+        'TABLE_CONFLICT',
+        `域 ${entry.domain} 的 ${site.field}${entry.variant ? `#${entry.variant}` : ''} 登记了 ${values.length} 条`,
+      );
+    }
     if (!values.length) {
       report(
         'BRANCH_VALUE_UNBOUND',

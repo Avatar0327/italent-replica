@@ -59,6 +59,8 @@ interface Reexport {
   readonly spec: string;
   /** 导出名 → 目标文件里的原名；缺省 = `export *`。 */
   readonly names?: ReadonlyMap<string, string>;
+  /** `export * as <名> from …`：把整个模块作为命名空间导出。 */
+  readonly namespace?: string;
 }
 interface FileInfo {
   readonly sf: ts.SourceFile;
@@ -76,6 +78,7 @@ export interface ClosureEnv {
   readonly findNode: (sf: ts.SourceFile, unit: string, name: string) => ts.Node;
   readonly infos: Map<string, FileInfo | undefined>;
   readonly edges: Map<string, Edges>;
+  readonly namespaces: Map<string, ReadonlyMap<string, NamespaceTarget>>;
 }
 
 export function createClosureEnv(
@@ -83,7 +86,7 @@ export function createClosureEnv(
   boundary: readonly BoundaryEntry[],
   findNode: ClosureEnv['findNode'],
 ): ClosureEnv {
-  return { read, boundary, findNode, infos: new Map(), edges: new Map() };
+  return { read, boundary, findNode, infos: new Map(), edges: new Map(), namespaces: new Map() };
 }
 
 interface DeclRef {
@@ -143,7 +146,9 @@ function moduleBindings(sf: ts.SourceFile) {
           : undefined;
       const exports =
         statement.exportClause && ts.isNamedExports(statement.exportClause) ? statement.exportClause : undefined;
-      if (spec && !statement.exportClause) reexports.push({ spec });
+      if (spec && statement.exportClause && ts.isNamespaceExport(statement.exportClause)) {
+        reexports.push({ spec, namespace: statement.exportClause.name.text });
+      } else if (spec && !statement.exportClause) reexports.push({ spec });
       else if (spec && exports) {
         const names = new Map(
           exports.elements.filter((e) => !e.isTypeOnly).map((e) => [e.name.text, (e.propertyName ?? e.name).text]),
@@ -185,13 +190,12 @@ function resolveModule(env: ClosureEnv, from: string, spec: string): Target {
   return fileInfo(env, index) ? { file: index } : 'missing';
 }
 
-/** 文件导出的某个名字最终落在哪个顶层声明（跟随 `export … from` 与导入后再导出）；边界文件返回 'boundary'。 */
-function exportedDecl(
-  env: ClosureEnv,
-  file: string,
-  name: string,
-  seen = new Set<string>(),
-): DeclRef | 'boundary' | undefined {
+type Exported = DeclRef | { readonly namespace: string } | 'boundary' | undefined;
+/** 命名空间绑定指向的模块文件；边界内的模块不展开；找不到模块的记原说明符。 */
+type NamespaceTarget = { readonly file: string } | 'boundary' | { readonly missing: string };
+
+/** 文件导出的某个名字最终落在哪个顶层声明（跟随 `export … from`、`export * as`、导入后再导出）；边界文件返回 'boundary'。 */
+function exportedDecl(env: ClosureEnv, file: string, name: string, seen = new Set<string>()): Exported {
   if (seen.has(`${file}#${name}`)) return undefined;
   seen.add(`${file}#${name}`);
   if (inBoundary(file, env.boundary)) return 'boundary';
@@ -200,18 +204,49 @@ function exportedDecl(
   const local = info.exportedAs.get(name) ?? name;
   if (info.decls.has(local)) return { file, name: local };
   const imported = info.imports.get(local);
-  if (imported && imported.imported !== '*') {
+  if (imported) {
     const target = resolveModule(env, file, imported.spec);
-    if (typeof target === 'object') return exportedDecl(env, target.file, imported.imported, seen);
+    if (typeof target === 'object') {
+      return imported.imported === '*'
+        ? { namespace: target.file }
+        : exportedDecl(env, target.file, imported.imported, seen);
+    }
   }
   for (const reexport of info.reexports) {
-    const original = reexport.names ? reexport.names.get(name) : name;
-    if (!original) continue;
     const target = resolveModule(env, file, reexport.spec);
-    const found = typeof target === 'object' ? exportedDecl(env, target.file, original, seen) : undefined;
+    if (typeof target !== 'object') continue;
+    if (reexport.namespace !== undefined) {
+      if (reexport.namespace === name) return { namespace: target.file };
+      continue;
+    }
+    const original = reexport.names ? reexport.names.get(name) : name;
+    const found = original ? exportedDecl(env, target.file, original, seen) : undefined;
     if (found) return found;
   }
   return undefined;
+}
+
+/** 文件里每个本地名若是命名空间（`import * as ns`，或具名导入的是 `export * as ns` 转出的模块），指向哪个模块。 */
+function namespaceBindings(env: ClosureEnv, file: string): ReadonlyMap<string, NamespaceTarget> {
+  const cached = env.namespaces.get(file);
+  if (cached) return cached;
+  const out = new Map<string, NamespaceTarget>();
+  const info = fileInfo(env, file);
+  for (const [local, binding] of info?.imports ?? []) {
+    const target = resolveModule(env, file, binding.spec);
+    if (target === 'external') continue;
+    if (target === 'missing') {
+      if (binding.imported === '*') out.set(local, { missing: binding.spec });
+      continue;
+    }
+    const found =
+      binding.imported === '*' ? { namespace: target.file } : exportedDecl(env, target.file, binding.imported);
+    if (found && typeof found === 'object' && 'namespace' in found) {
+      out.set(local, inBoundary(found.namespace, env.boundary) ? 'boundary' : { file: found.namespace });
+    }
+  }
+  env.namespaces.set(file, out);
+  return out;
 }
 
 function scopeOf(node: ts.Node): Set<string> | undefined {
@@ -315,26 +350,34 @@ function collectRefs(roots: readonly ts.Node[], namespaces: ReadonlySet<string>)
 function edgesFor(env: ClosureEnv, file: string, nodes: readonly ts.Node[]): Edges {
   const info = fileInfo(env, file);
   if (!info) return { deps: [], unresolved: [] };
-  const namespaces = new Set([...info.imports].filter(([, v]) => v.imported === '*').map(([name]) => name));
-  const refs = collectRefs(nodes, namespaces);
+  const namespaces = namespaceBindings(env, file);
+  const refs = collectRefs(nodes, new Set(namespaces.keys()));
   const deps = new Map<string, DeclRef>();
   const unresolved: Unresolved[] = refs.unresolved.map((u) => ({ file, ...u }));
-  const add = (found: DeclRef | 'boundary' | undefined) => {
-    if (found && found !== 'boundary') deps.set(idOf(found), found);
+  const miss = (detail: string) => unresolved.push({ file, reason: 'import-unresolvable', detail });
+  // 内部（非边界、非第三方）导入解析不了时登记在调用方文件，不管目标在 apps/ 还是 packages/
+  const add = (found: Exported, label: string) => {
+    if (found === 'boundary') return;
+    if (found && 'name' in found) deps.set(idOf(found), found);
+    else miss(`${label}：目标模块里找不到这个导出`);
   };
-  const viaImport = (binding: ImportBinding, name: string) => {
-    const target = resolveModule(env, file, binding.spec);
-    if (target === 'missing') {
-      unresolved.push({ file, reason: 'import-unresolvable', detail: `${binding.spec}（引用 ${name}）` });
-    } else if (target !== 'external') add(exportedDecl(env, target.file, name));
+  const viaImport = (spec: string, name: string) => {
+    const target = resolveModule(env, file, spec);
+    if (target === 'missing') miss(`${spec}（引用 ${name}）：找不到模块`);
+    else if (target !== 'external') add(exportedDecl(env, target.file, name), `${spec} 的 ${name}`);
   };
   for (const name of refs.names) {
     const binding = info.imports.get(name);
-    if (info.decls.has(name)) add({ file, name });
-    else if (binding) viaImport(binding, binding.imported);
+    if (info.decls.has(name)) add({ file, name }, name);
+    else if (binding && !namespaces.has(name)) viaImport(binding.spec, binding.imported);
   }
-  for (const [namespace, member] of refs.members) viaImport(info.imports.get(namespace)!, member);
-  for (const { spec, name } of refs.imports) viaImport({ spec, imported: name }, name);
+  for (const [namespace, member] of refs.members) {
+    const target = namespaces.get(namespace);
+    if (!target || target === 'boundary') continue;
+    if ('missing' in target) miss(`${target.missing}（引用 ${namespace}.${member}）：找不到模块`);
+    else add(exportedDecl(env, target.file, member), `${namespace}.${member}`);
+  }
+  for (const { spec, name } of refs.imports) viaImport(spec, name);
   return { deps: [...deps.values()], unresolved };
 }
 

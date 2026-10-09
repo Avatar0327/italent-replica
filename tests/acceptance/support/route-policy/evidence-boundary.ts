@@ -25,10 +25,17 @@ export function inBoundary(file: string, boundary: readonly BoundaryEntry[] = EV
   return boundary.some((entry) => (entry.path.endsWith('/') ? file.startsWith(entry.path) : file === entry.path));
 }
 
-/** 清单形状：每条有理由；`modules/<模块>/` 下除 `modules/permission/` 以外不允许出现。 */
+/** 业务目录：边界目录不得等于或覆盖它们（`apps/`、`apps/api/src/` 这样的祖先目录会把整个 modules 带进边界）。 */
+const BUSINESS_DIRS: readonly string[] = ['apps/api/src/modules/', 'packages/domain/'];
+
+/** 清单形状：每条有理由；不得覆盖业务目录；`modules/<模块>/` 下除 `modules/permission/` 以外不允许出现。 */
 export function assertBoundaryShape(boundary: readonly BoundaryEntry[]): void {
   for (const entry of boundary) {
     if (!entry.reason.trim()) throw new Error(`边界清单 ${entry.path} 缺理由`);
+    if (entry.path.endsWith('/')) {
+      const covered = BUSINESS_DIRS.find((dir) => dir.startsWith(entry.path));
+      if (covered) throw new Error(`边界清单的目录 ${entry.path} 覆盖了业务目录 ${covered}`);
+    }
     const module = /^apps\/api\/src\/modules\/([^/]+)\//.exec(entry.path)?.[1];
     if (module && module !== 'permission') {
       throw new Error(`边界清单不得放模块内文件（apps/api/src/modules/${module}/…）：${entry.path}`);
