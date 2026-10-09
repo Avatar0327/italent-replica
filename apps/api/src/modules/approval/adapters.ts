@@ -93,14 +93,20 @@ export interface BusinessAdapter {
   /**
    * 批量操作（异常管理员交接 / 停用接管）在逐单锁实例之前，按业务自己的规范顺序一次锁齐本批业务行（R3-T07 P3-2：
    * 发展计划按计划 ID 升序，与 IDP 批量干预一致）。没有批量锁序要求的业务不实现。
-   * @param options.organization 是否提前取组织锁（F-065）：手动交接在登记替代人（成员行 KEY SHARE）之前需要；停用接管
-   *   已持有账号行 / 成员行的锁，不得再等组织锁（入职绑定是“组织锁 → 账号行”，反过来成环），传 false。
+   * @param options.organization 是否提前取组织锁（F-065）。两条路径要区分：
+   *   - 手动交接（true）：登记替代人（成员行 KEY SHARE）之前取，因为入职首次绑定是“组织锁 → 成员行 FOR UPDATE”；
+   *   - 全局停用（true，F-069）：在锁账号行之前预取；锁账号行后核对当前有效成员是否都已预取，未覆盖的租户即 409，
+   *     持账号锁时不再补取；
+   *   - 撤销成员关系（false）：没有账号锁前缀，最后才对成员行 NO KEY UPDATE，不预取，调动实例在 openRun 时按既有顺序取得。
+   * @param options.reassignFrom 仅手动交接传入（F-070）：原异常管理员。组织锁是租户粒度（org/locks.ts），不能收窄到单个
+   *   组织，只能收窄“要不要取”：批里没有调动、也不可能会签合席（本激活里除待转任务外没有别的占席任务）时只是改派、
+   *   不推进业务，不取。
    */
   lockMany?(
     tx: Tx,
     ctx: ApprovalContext,
     businessIds: readonly string[],
-    options: { readonly organization: boolean },
+    options: { readonly organization: boolean; readonly reassignFrom?: string },
   ): Promise<void>;
   /** 同意前的业务前提（R3-T07 无目标校验 IDP-R10）；不满足时抛错，任务不动。 */
   beforeApprove?(tx: Tx, ctx: ApprovalContext, businessId: string, nodeKey: string): Promise<void>;
@@ -245,6 +251,27 @@ async function completedTransferDates(
   return { ...dates, actualEffectiveDate: business.effectiveDate };
 }
 
+/**
+ * F-070：手动交接的这批任职业务里，是否有待转任务可能触发会签合席（合席结算才可能推进业务、落地时取组织锁）。
+ * 合席要求替代人（或回避后的直线经理）已在本激活占着一席，所以本激活里除待转任务外没有别的占席任务就不可能合席。
+ * 这是合席条件的超集（只会多取、不会漏取）；此时已持员工锁，任职业务实例的任务集合不会再被别的命令改写。
+ * 实例没有异动员工（取不到员工锁）时无法保证，保守按可能合席处理。
+ */
+async function mayMergeSeat(tx: Tx, ctx: ApprovalContext, businessIds: readonly string[], from: string) {
+  const [row] = rowsOf<{ found: boolean }>(
+    await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM approval_instances i
+      JOIN approval_tasks t ON t.tenant_id=i.tenant_id AND t.instance_id=i.id
+      WHERE i.tenant_id=${ctx.tenantId} AND i.status='running'
+        AND i.business_id = ANY(${`{${businessIds.join(',')}}`}::uuid[])
+        AND t.status='pending' AND t.is_exception_admin AND t.assignee_user_id=${from}::uuid
+        AND (i.subject_employee_id IS NULL OR EXISTS (SELECT 1 FROM approval_tasks s
+          WHERE s.tenant_id=t.tenant_id AND s.instance_id=t.instance_id AND s.id<>t.id
+            AND s.activation_id IS NOT DISTINCT FROM t.activation_id
+            AND s.status IN ('pending','queued','add_signed','approved','disagreed')))) AS found`),
+  );
+  return Boolean(row?.found);
+}
+
 const employmentAdapter: BusinessAdapter = {
   async lock(tx, ctx, businessId) {
     const [owner] = rowsOf<{ employee_id: string; kind: string }>(
@@ -274,7 +301,11 @@ const employmentAdapter: BusinessAdapter = {
         WHERE b.tenant_id=${ctx.tenantId} AND b.id = ANY(${`{${businessIds.join(',')}}`}::uuid[])`),
     );
     if (kinds.some((row) => row.kind === 'transfer')) await lockEstablishment(tx, ctx, { initializeDefault: false });
-    else if (kinds.length) await lockOrganizationSettings(tx, ctx.tenantId);
+    else if (
+      kinds.length &&
+      (!options.reassignFrom || (await mayMergeSeat(tx, ctx, businessIds, options.reassignFrom)))
+    )
+      await lockOrganizationSettings(tx, ctx.tenantId);
   },
   async snapshot(tx, ctx, businessId) {
     const asOf = tenantLocalDate(ctx.now, ctx.timezone);
