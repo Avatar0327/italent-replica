@@ -4,11 +4,12 @@
  */
 import { sql, type Tx } from '@italent/db';
 import {
+  adminRecused,
   avoidSelfExceptionAdmin,
-  isSelf,
   type ApproverExpression,
   type Candidate,
   type ExceptionAdminChoice,
+  type RecusalFacts,
   type RoutingFacts,
 } from '@italent/domain';
 import { findCurrentRecord } from '../employment/read-model.js';
@@ -132,7 +133,7 @@ async function tenantAdminPage(tx: Tx, tenantId: string, excludeUserId?: string,
 export async function tenantAdminTakeover(
   tx: Tx,
   subject: RoutingSubject,
-  facts: Pick<RoutingFacts, 'initiatorUserId' | 'subjectEmployeeId' | 'subjectUserId' | 'chainUserIds'>,
+  facts: RecusalFacts & Pick<RoutingFacts, 'chainUserIds'>,
   excludeUserId?: string,
 ): Promise<ExceptionAdminChoice | null> {
   let blocked: ExceptionAdminChoice | null = null;
@@ -143,7 +144,7 @@ export async function tenantAdminTakeover(
     for (const { user_id: userId } of page) {
       if (!(await isEligibleApprover(tx, subject, userId))) continue;
       const admin: Candidate = { userId, personId: await personOfUser(tx, subject.tenantId, userId) };
-      const manager = isSelf(admin, facts as RoutingFacts) ? await directManagerOf(tx, subject, admin) : undefined;
+      const manager = adminRecused(admin, facts) ? await directManagerOf(tx, subject, admin) : undefined;
       const choice = avoidSelfExceptionAdmin(admin, facts, manager);
       if (choice.kind === 'assign') return choice;
       blocked = choice;
@@ -241,7 +242,12 @@ async function resolveFresh(tx: Tx, subject: RoutingSubject, expression: Approve
     case 'owner': {
       // 派单前复核资格（C-非5 / F6）：发起人已停用或已离职时按“审批人为空”处理（DEC-098）。
       if (!(await isEligibleApprover(tx, subject, subject.initiatorUserId))) return NOBODY;
-      return { personId: await personOfUser(tx, tenantId, subject.initiatorUserId), userId: subject.initiatorUserId };
+      // 账号来源：回避只按账号比较，不依赖这里可能为空（外部账号）的 personId（设计 §2.3，R2-02）
+      return {
+        personId: await personOfUser(tx, tenantId, subject.initiatorUserId),
+        userId: subject.initiatorUserId,
+        accountSource: true,
+      };
     }
     case 'direct_manager':
       // DEC-230：取流程主体而非发起人；findCurrentRecord 只读已生效的主职时间线。

@@ -14,7 +14,7 @@ STATE = os.path.expanduser("~/.cache/italent-progress-watch.json")
 INTERVAL = 180
 STALL = 90  # 分钟（审查发起时编排会在 PR 贴一行评论，据此区分在审与停摆）
 READY = 10  # 分钟：提交后这么久、CI 绿（或无 CI）且无送审评论 → 提醒审查合并窗口
-READY_DRAFT = 45  # Draft 多为开发中，门槛放宽
+READY_DRAFT = 20  # Draft 停 20 分钟无新提交 → 可能已完成但没转 Ready（用户 10-09：#144 漏报）
 HANDOFF = 15  # 分钟：开发完成后仍未发起审查 → 衔接超时，进度窗口直接催
 OPUS_REMIND = 60  # 分钟：claude.ai/code 的 Opus 审查会话本机看不到，发起后这么久 PR 上仍无“审查原文 / 结论”就提醒去看会话，之后每 60 分钟再提醒
 

@@ -109,15 +109,15 @@ export function publishViolations(definition: ProcessDefinition): DefinitionViol
 
 /**
  * F-048 多主体回避开关的定义校验（设计 §3.1、§14）。保存、草稿与发布共用。
- * - R3-01：运行判定随 PR-2 接入前，任何节点都不能开启 avoidSubjects，避免“开关已开、仍派单给主体本人”的版本；
+ * - 与 DEC-106 的“跳过”相同：只有单人审批节点、且有「同意」出口时可开启（会签节点是否可用待 Q-M0-138）；
  * - DEC-331⑤：命中动作只启用「跳过」，其余预留取值（同意 / 不同意 / 自定义出口）待 Q-M0-138 取证后另行放开。
  */
 export function avoidSubjectsViolations(node: ApprovalNode): DefinitionViolation[] {
   const violations: DefinitionViolation[] = [];
-  if (avoidsSubjects(node)) {
+  if (avoidsSubjects(node) && (isCountersign(node) || !hasExit(node, 'approve'))) {
     violations.push({
-      reason: 'APPROVAL_AVOID_SUBJECTS_UNAVAILABLE',
-      message: `节点 ${node.name}：多主体回避尚未启用`,
+      reason: 'APPROVAL_AVOID_SUBJECTS_UNSUPPORTED',
+      message: `节点 ${node.name}：多主体回避只能用于有「同意」出口的单人审批节点`,
     });
   }
   const result = node.avoidSubjectsResult;

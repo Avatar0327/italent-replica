@@ -63,7 +63,7 @@ export async function listInstances(
     filter.role === 'initiated'
       ? sql`i.initiator_user_id=${userId}::uuid`
       : sql`(EXISTS (SELECT 1 FROM approval_tasks t WHERE t.tenant_id=i.tenant_id AND t.instance_id=i.id
-          AND t.assignee_user_id=${userId}::uuid AND t.origin<>'self_skip')
+          AND t.assignee_user_id=${userId}::uuid AND t.origin NOT IN ('self_skip','subject_skip'))
         OR EXISTS (SELECT 1 FROM approval_instance_ccs c WHERE c.tenant_id=i.tenant_id AND c.instance_id=i.id
           AND c.user_id=${userId}::uuid))`;
   const rows = rowsOf(
