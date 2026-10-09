@@ -284,11 +284,13 @@ const WITHDRAW = ['openOwn', 'openRun'];
 /** 重提：状态须 returned（personnel_change 另可 withdrawn）内联；contract 分支事务内复查同一字段集；employment 适配器拒绝。 */
 const RESUBMIT = ['openOwn', 'openRun', 'requireResubmitRight', 'adapter.resubmit'];
 /**
- * adminAct：范围覆盖（404）→ revision → running → 业务版本 → DEC-092 / DEC-329② 实例级回避（instanceRecusal）；jump 不改派
- * 任务，其余三项仅非 jump（改派对象 assertReviewer 内含 assertNotRecused）。
+ * adminAct：范围覆盖（404）→ 目标范围（F-067，非 jump；不存在 / 未绑定 / 范围外同为 404 NOT_FOUND / APPROVAL_TARGET_NOT_FOUND）
+ * → revision → running → 业务版本 → DEC-092 / DEC-329② 实例级回避（instanceRecusal）；jump 不改派任务，其余三项仅非 jump
+ * （改派对象 assertReviewer 内含 assertNotRecused）。
  */
 const ADMIN = [
   'openRun',
+  'assertTargetInScope',
   'assertRevision',
   'assertBusinessUnchanged',
   'instanceRecusal',
@@ -310,6 +312,7 @@ function adminAction(code: 'adminTransfer' | 'adminIntervene'): RoutePolicy {
       ADMIN_REOPEN,
       { preconditions: ADMIN },
     ),
+    guards: ['approval.adminTargetScope'],
     ...byId,
   });
 }

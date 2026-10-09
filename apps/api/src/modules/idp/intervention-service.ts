@@ -20,6 +20,7 @@ import { accessOf, type ModuleScope, type Projection, rowsOf, viewable } from '.
 import { insertTask } from './execution-service.js';
 import { employeeInScope, hrSees } from './plan-access.js';
 import type { BatchItems, JumpInput, StartNextInput, TaskIssue, TransferInput } from './plan-input.js';
+import { foldMentorFailure, isPlanMentor, type TargetAdmission, type TransferSources } from './plan-mentor.js';
 import { lockPlanForHr, type PlanWriteContext } from './plan-service.js';
 import { bumpPlan, loadPlanRow, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
 import { loadPlanDetail } from './plan-view.js';
@@ -204,29 +205,6 @@ export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, in
   return loadPlanDetail(tx, await requirePlanRow(tx, ctx.tenantId, plan.id), tenantLocalDate(ctx.now, ctx.timezone));
 }
 
-/** 转交目标例外的来源字段投影（事务外按操作人当前权限解析，看不到视同不是，DEC-309 / E3）。 */
-export interface TransferSources {
-  readonly plan: Projection;
-  readonly tutorship: Projection;
-}
-
-const TUTORSHIP_FIELDS = ['tutorEmployeeId', 'tuteeEmployeeId', 'startDate', 'endDate'] as const;
-
-/**
- * 目标是该计划“当前登记”的指导人（计划行的 tutor_employee_id，取当前值而非开始时冻结值），或带教期间与计划期间有交集
- * 的带教人（带教人 = 目标、被带教人 = 计划员工，IDP-R7 同一交集口径）；改掉指导人、删掉带教记录后立即失效（DEC-354）。
- */
-async function isPlanMentor(tx: Tx, plan: PlanRow, employeeId: string, sources: TransferSources): Promise<boolean> {
-  if (viewable(sources.plan, ['tutorEmployeeId']) && plan.tutorEmployeeId === employeeId) return true;
-  if (!viewable(sources.tutorship, TUTORSHIP_FIELDS)) return false;
-  const [hit] = rowsOf<{ id: string }>(
-    await tx.execute(sql`SELECT id FROM idp_tutorships WHERE tenant_id = ${plan.tenantId}
-      AND tutor_employee_id = ${employeeId}::uuid AND tutee_employee_id = ${plan.employeeId}::uuid
-      AND start_date <= ${plan.endDate}::date AND (end_date IS NULL OR end_date >= ${plan.startDate}::date) LIMIT 1`),
-  );
-  return hit !== undefined;
-}
-
 /** 转交目标被拒的唯一响应：范围外、纯账号、不存在、以及“仅凭例外放行”后的任何失败都用它（DEC-354 不可区分）。 */
 const targetHidden = () => new AppError('NOT_FOUND', '转交目标不存在');
 
@@ -241,7 +219,7 @@ async function requireTargetInScope(
   plan: PlanRow,
   toUserId: string,
   sources: TransferSources,
-): Promise<'scope' | 'mentor'> {
+): Promise<TargetAdmission> {
   const employeeId = await personOfUser(tx, ctx.tenantId, toUserId);
   if (employeeId !== null) {
     if (await employeeInScope(tx, ctx.hr, employeeId)) return 'scope';
@@ -274,8 +252,10 @@ export async function transferPlan(
   }
   const admission = await requireTargetInScope(tx, ctx, plan, input.toUserId, sources);
   const taskId = input.taskId ?? pending[0]?.id;
-  try {
-    await adminAct(
+  // 目标已由上面的 requireTargetInScope 校验（F-066 / DEC-354），adminAct 不再查范围（targetChecked）；
+  // 仅凭例外放行的目标，adminAct 的任何失败折成与普通范围外目标相同的响应（共享归一化，同审批中心入口）
+  await foldMentorFailure(admission, targetHidden, () =>
+    adminAct(
       tx,
       hrApproval(ctx, Number(instance.revision)),
       {
@@ -286,12 +266,9 @@ export async function transferPlan(
         ...(taskId ? { taskId } : {}),
       },
       sql`true`,
-      { ownerIntervention: true },
-    );
-  } catch (error) {
-    if (admission === 'mentor' && error instanceof AppError) throw targetHidden();
-    throw error;
-  }
+      { ownerIntervention: true, targetChecked: true },
+    ),
+  );
   await bumpPlan(tx, ctx.tenantId, plan.id, ctx.now);
   await auditIntervention(tx, ctx, plan, 'transfer', {
     before: { stageId: stage.id },
