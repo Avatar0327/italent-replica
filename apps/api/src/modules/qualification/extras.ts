@@ -13,6 +13,7 @@ import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import { tenantOf, type TenantEnv } from '../../tenant-context.js';
 import type { ScopedJobKind } from '../permission/module-contracts.js';
+import { type ModuleScope, resolveModuleScope, scopeSql } from '../permission/module-access.js';
 import { authorizedUnits } from '../permission/owner-units.js';
 import { parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
 import {
@@ -52,15 +53,19 @@ export function registerExtras(router: Hono<TenantEnv>, deps: TenantRouteDeps): 
  * 导入 / 引入失败时的任务级日志（DEC-199）：只取行数与可识别的归属编号，不存其他输入值。归属按实际操作的管理单元
  * / 目标锚点登记（第 3 轮 R2-07），让操作人与该单元的审计员经授权查询找得到：
  * - 引入类别 / 级别：请求选定的授权管理单元，没选时取唯一的授权管理单元（与新建时自动填同一口径，DEC-339）；
- * - 标准导入：行里类别的所属组织与其标准（标准锚在类别上）；类别找不到时退回唯一的授权管理单元。
+ * - 标准导入：行里类别的所属组织与其标准（标准锚在类别上），只认操作人当前写范围内的类别；范围外与找不到的一样
+ *   退回唯一的授权管理单元——日志查不查得到不能成为范围外类别是否存在的探针。
  */
 function importTask(c: Context<TenantEnv>, deps: TenantRouteDeps, object: QualificationObject, key: 'items' | 'rows') {
   return c.req
     .json()
     .catch(() => undefined)
-    .then((raw: Record<string, unknown> | undefined) => {
+    .then(async (raw: Record<string, unknown> | undefined) => {
       const rows = rawImportRows(raw, key);
       const tenant = tenantOf(c);
+      // 标准的写范围即类别的（设计 §5.1）；在日志事务之外先解析
+      const scope =
+        object === 'standard' ? await resolveModuleScope(deps, tenant, undefined, codeOf('category')) : undefined;
       const requested = rawUuid(raw?.ownerOrgId);
       const categoryCodes = rows.map((row) => (typeof row.categoryCode === 'string' ? row.categoryCode : ''));
       return {
@@ -72,7 +77,7 @@ function importTask(c: Context<TenantEnv>, deps: TenantRouteDeps, object: Qualif
         resolveAnchors: async (tx: Tx) => {
           const unit = await operatingUnit(tx, deps, tenant, requested);
           if (object !== 'standard') return rows.map(() => ({ objectId: null, orgId: unit }));
-          const anchors = await categoryAnchors(tx, tenant.tenantId, categoryCodes);
+          const anchors = await categoryAnchors(tx, tenant.tenantId, categoryCodes, scope!);
           return categoryCodes.map((code) => anchors.get(code) ?? { objectId: null, orgId: unit });
         },
       };
@@ -91,16 +96,17 @@ async function operatingUnit(
   return units.length === 1 ? units[0]!.id : null;
 }
 
-async function categoryAnchors(tx: Tx, tenantId: string, codes: readonly string[]) {
+async function categoryAnchors(tx: Tx, tenantId: string, codes: readonly string[], scope: ModuleScope) {
   const wanted = [...new Set(codes.filter(Boolean))];
   if (!wanted.length) return new Map<string, { objectId: string | null; orgId: string }>();
   const rows = rowsOf<{ code: string; owner_org_id: string; standard_id: string | null }>(
     await tx.execute(sql`SELECT c.code, c.owner_org_id, s.id AS standard_id FROM ql_categories c
       LEFT JOIN ql_standards s ON s.tenant_id = c.tenant_id AND s.category_id = c.id
-      WHERE c.tenant_id = ${tenantId}::uuid AND c.code IN (${sql.join(
-        wanted.map((code) => sql`${code}`),
-        sql`, `,
-      )})`),
+      WHERE c.tenant_id = ${tenantId}::uuid
+        AND ${scopeSql(scope, { org: sql`c.owner_org_id`, creator: sql`c.owner_id` })} AND c.code IN (${sql.join(
+          wanted.map((code) => sql`${code}`),
+          sql`, `,
+        )})`),
   );
   return new Map(rows.map((row) => [row.code, { objectId: row.standard_id, orgId: row.owner_org_id }]));
 }
