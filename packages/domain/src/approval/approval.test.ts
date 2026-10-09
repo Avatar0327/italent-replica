@@ -55,6 +55,7 @@ describe('发起条件（`14` §1.1）', () => {
   });
 });
 
+// F-048 PR-1（DEC-329④）：新建节点的自审回避缺省关闭；本组用例验证自审口径，节点显式开启
 const node = (extra: Partial<SingleApprovalNode> = {}): SingleApprovalNode => ({
   key: 'n',
   name: '节点',
@@ -67,7 +68,15 @@ const node = (extra: Partial<SingleApprovalNode> = {}): SingleApprovalNode => ({
   formFields: [],
   editableFields: [],
   editMode: 'none',
-  actions: { transfer: false, addSign: false, copySend: false, retrieve: false, reject: true, urge: 'inherit' },
+  actions: {
+    transfer: false,
+    addSign: false,
+    copySend: false,
+    retrieve: false,
+    reject: true,
+    urge: 'inherit',
+    avoidSelf: true,
+  },
   rejectCommentRequired: false,
   hideRecords: false,
   rejectResubmit: 'restart',
