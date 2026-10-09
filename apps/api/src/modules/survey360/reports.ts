@@ -386,11 +386,15 @@ const VIEW = { object: 'result' } as const;
 
 /**
  * 报告快照的嵌套键 → 结果对象字段（第 2 轮 P2-4）：分数的各种表示（自评 / 他评 / 差值 / 概况值 / 参照标准）都归
- * score，评价关系表的完成 / 邀请人数与完成率归 raterCount；看不到该字段时任何层级都去掉。
+ * score，评价关系表的完成 / 邀请人数与完成率归 raterCount；指标 / 题目的名称、定义与编号归 itemName / itemId，
+ * 模板名归 template；看不到该字段时任何层级都去掉。
  */
 export const REPORT_ALIASES: Readonly<Record<string, string>> = {
   ...Object.fromEntries(['score', 'self', 'other', 'gap', 'value', 'reference'].map((k) => [k, 'score'])),
   ...Object.fromEntries(['completed', 'invited', 'rate'].map((k) => [k, 'raterCount'])),
+  ...Object.fromEntries(['name', 'question', 'definition', 'highest', 'lowest'].map((k) => [k, 'itemName'])),
+  dimensionId: 'itemId',
+  templateName: 'template',
   ...Object.fromEntries(
     [
       'roleId',
@@ -406,13 +410,28 @@ export const REPORT_ALIASES: Readonly<Record<string, string>> = {
     ].map((k) => [k, k]),
   ),
 };
-const reportPresent: Present = async (viewer, body: unknown) => {
-  const fields = await viewer.fields('result');
-  return trimAliases(fields, trimBody(fields, body), REPORT_ALIASES);
-};
+
+/** 套卷一层的 name 是套卷名（questionnaireName），其下各层的 name 才是指标 / 题目名。 */
+function trimReport(fields: ReadonlySet<string> | undefined, body: unknown): unknown {
+  const top = trimBody(fields, body) as { questionnaires?: unknown };
+  if (fields === undefined || !Array.isArray(top.questionnaires)) return trimAliases(fields, top, REPORT_ALIASES);
+  const questionnaires = top.questionnaires.map(({ name, ...rest }: Record<string, unknown>) => ({
+    ...(fields.has('questionnaireName') ? { name } : {}),
+    ...(trimAliases(fields, rest, REPORT_ALIASES) as object),
+  }));
+  return { ...(trimAliases(fields, { ...top, questionnaires: [] }, REPORT_ALIASES) as object), questionnaires };
+}
+
+const reportPresent: Present = async (viewer, body: unknown) => trimReport(await viewer.fields('result'), body);
 
 /** 转发让收件人看到整份报告：发送人须能看到报告正文涉及的全部结果字段，否则 403（第 2 轮 P2-5）。 */
-const REPORT_FIELDS = ['cover', 'questionnaires', 'statement', ...new Set(Object.values(REPORT_ALIASES))];
+const REPORT_FIELDS = [
+  'cover',
+  'questionnaires',
+  'statement',
+  'questionnaireName',
+  ...new Set(Object.values(REPORT_ALIASES)),
+];
 async function requireFullReportView(tx: Tx, deps: TenantRouteDeps, tenant: TenantContext) {
   const fields = await getModuleViewableFieldsInTransaction(deps, tenant, OBJECTS.result.code, tx);
   if (fields && REPORT_FIELDS.some((f) => !fields.has(f)))
