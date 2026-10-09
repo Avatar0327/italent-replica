@@ -8,6 +8,7 @@ import { cmd, tenantApi, allowAll } from './support/tenant-api.js';
 import { createProcess, publishProcess } from '../../apps/api/src/modules/approval/definitions.js';
 import { rowsOf } from '../../apps/api/src/modules/contracts/context.js';
 import { runContractJobs } from '../../apps/api/src/modules/contracts/scheduler.js';
+import { insertFrozen } from './support/f048.js';
 
 const testDb = useTestDb();
 async function world(label: string) {
@@ -65,7 +66,7 @@ async function world(label: string) {
       ifMatch: 0,
       body: { action, items: items.map(({ id, revision }) => ({ id, revision })) },
     });
-  return { ...w, pending, act };
+  return { ...w, pending, act, api };
 }
 
 describe('R2-T06 四种申请和合并待办', () => {
@@ -156,5 +157,54 @@ describe('R2-T06 四种申请和合并待办', () => {
     await sweep();
     await sweep();
     expect(await w.list()).toHaveLength(2);
+  });
+});
+
+describe('F-048 T9d 合并待办逐条回避', () => {
+  it('3 条待办其中 1 条办理人命中冻结值：该条 409，其余成功；同键重放逐条回执相同', async () => {
+    const w = await world('ctf048batch');
+    const created = [
+      await w.create(),
+      await w.create({ typeId: w.otherType.id }),
+      await w.create({ endDate: '2026-10-31' }),
+    ];
+    const result = await w.request('POST', '/batch', {
+      ifMatch: 0,
+      body: {
+        items: created.map((c) => ({
+          revision: c.revision,
+          command: {
+            operation: 'renew',
+            mode: 'application',
+            employeeId: w.employee.id,
+            targetId: c.id,
+            fields: { effectiveDate: '2026-10-01', endDate: '2027-09-30' },
+          },
+        })),
+      },
+    });
+    expect(result.status, await result.clone().text()).toBe(200);
+    const tasks = await w.pending();
+    expect(tasks).toHaveLength(3);
+    const [owner] = await withTenant(w.db, w.session.tenant.id, async (tx) =>
+      rowsOf<{ assignee_user_id: string }>(
+        await tx.execute(sql`SELECT assignee_user_id::text FROM approval_tasks WHERE id=${tasks[0]!.id}::uuid`),
+      ),
+    );
+    const approver = owner!.assignee_user_id;
+    await insertFrozen(w.db, w.session.tenant.id, tasks[1]!.instanceId, approver);
+    const send = () =>
+      w.api.request('POST', '/api/tenant/contracts/todos/batch', {
+        tenant: w.session.tenant.id,
+        user: approver,
+        ifMatch: 0,
+        idempotencyKey: 'f048-batch',
+        body: { action: 'approve', items: tasks.map(({ id, revision }) => ({ id, revision })) },
+      });
+    const first = (await (await send()).json()) as { items: { status: number }[] };
+    expect(first.items.map((item) => item.status)).toEqual([200, 409, 200]);
+    expect(await w.pending()).toEqual([expect.objectContaining({ id: tasks[1]!.id })]);
+    const replay = (await (await send()).json()) as { items: { status: number }[] };
+    expect(replay).toEqual(first);
   });
 });
