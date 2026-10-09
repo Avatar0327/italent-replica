@@ -8,10 +8,13 @@
  *   直接拒绝。模块的路由文件因此不用改：注册行照旧，声明集中在模块级 policy.ts。
  * - PR-A 的包装只做运行时自检（有效方法 HEAD → GET、routePath 与声明一致），然后原样调用处理函数：
  *   不解析请求体、不鉴权、不改响应（DEC-297④ / DEC-300）。
+ * - 接管 T1：所在模块列在 TAKEN_OVER_MODULES 时，verifyRouteDeclarations 给声明编译执行计划，包装改由引擎
+ *   按声明执行准入后再调用处理函数（enforce.ts）；未接管模块没有计划，行为不变。
  */
 import type { Context, Env, Hono, Next } from 'hono';
 import { routePath } from 'hono/route';
 import { AppError } from '../errors.js';
+import { runPlan } from './enforce.js';
 import {
   attachRegistry,
   type Declaration,
@@ -77,6 +80,8 @@ function wrap<E extends Env>(handler: RouteHandler<E>, declaration: Declaration)
         path: actual,
       });
     }
+    // 接管 T1：模块已接管时由引擎按声明执行准入；否则原样调用（PR-A 行为，零变化）
+    if (declaration.plan) return runPlan(declaration.plan, c as Context, next, handler as never);
     return handler(c, next);
   };
 }

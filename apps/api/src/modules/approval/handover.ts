@@ -114,7 +114,7 @@ export async function handoverExceptionAdmin(
   const batch = instances.slice(0, BATCH);
   // F-065：员工 → 业务 → 组织的锁必须先于登记替代人 / 重发流程（二者的外键对来源账号与替代人的成员行取 KEY SHARE）。
   // 入职绑定账号的顺序是组织锁 → 成员行 FOR UPDATE，反过来先持成员行再等组织锁会与它成环（org/locks.ts 全局锁序）。
-  await lockHandoverParticipants(tx, ctx, batch, { organization: true });
+  await lockHandoverParticipants(tx, ctx, batch, { organization: true, reassignFrom: input.fromUserId });
   await designateSuccessor(tx, ctx, input);
   const processes = await republishProcesses(tx, ctx, input);
   let tasks = 0;
@@ -360,11 +360,41 @@ export async function takeOverOnDeactivation(
   revocation: MembershipRevocation,
   options: { readonly settle?: boolean } = {},
 ) {
-  const { tenantId, userId, timezone, actorUserId, commandId } = revocation;
+  const { tenantId, userId } = revocation;
   // 先关派单闸（排他，可以等）：此后的派单拿不到闸、不会再派给他；已拿到闸的派单提交后，下面的扫描能看到。
   await closeAssigneeGate(tx, tenantId, userId);
   await assertNotActiveExceptionAdmin(tx, tenantId, userId);
-  const ctx: ApprovalContext = {
+  const ctx = deactivationContext(deps, revocation);
+  const successor = await designatedSuccessor(tx, tenantId, userId);
+  const successorScope = successor
+    ? await memberInstanceScope(deps, { tenantId, userId: successor, timezone: revocation.timezone }, tx)
+    : null;
+  // F-017：会签合席可能推进业务。跨页先收齐参与闭包，不能在持实例锁后追加较小员工锁。
+  const instances = await allPendingInLockOrder(tx, tenantId, userId);
+  // F-065：撤销成员关系不预取组织锁（入职首次绑定是组织锁 → 成员行 FOR UPDATE，会成环），调动实例在 openRun 时按既有顺序取得。
+  // F-069：全局停用的组织锁已由 prelockOnDeactivation 在锁账号行之前取齐，这里只是重入；已关闸，待转集合不会再增加。
+  await lockHandoverParticipants(tx, ctx, instances, { organization: false });
+  for (const { id } of instances)
+    await takeOverInstance(tx, ctx, id, userId, successor, successorScope, options.settle ?? true);
+}
+
+/**
+ * F-069：全局停用账号在锁 users 行（NO KEY UPDATE）之前的预取。入职首次绑定的锁序是“员工 → 组织 → users 行 FOR SHARE”
+ * （org/locks.ts 全局锁序，账号行排在组织锁之后）；停用若已持账号行锁、再因调动接管（openRun → lockEstablishment）等组织锁，
+ * 就与持组织锁等账号行的入职成环（40P01）。所以先按手动交接的同一顺序取齐：派单闸 → 员工闭包 → 业务 → 组织（organization: true）；
+ * 之后的 takeOverOnDeactivation 重入这些锁。闸一关，待转的在途实例集合只会减少、不会增加，预取覆盖接管将要锁的全部实例。
+ * 撤销成员关系不走这里：它不锁 users 行，也不持成员行锁进入接管（F-065）。
+ */
+export async function prelockOnDeactivation(tx: Tx, deps: TenantRouteDeps, revocation: MembershipRevocation) {
+  const { tenantId, userId } = revocation;
+  await closeAssigneeGate(tx, tenantId, userId);
+  const instances = await allPendingInLockOrder(tx, tenantId, userId);
+  await lockHandoverParticipants(tx, deactivationContext(deps, revocation), instances, { organization: true });
+}
+
+function deactivationContext(deps: TenantRouteDeps, revocation: MembershipRevocation): ApprovalContext {
+  const { tenantId, userId, timezone, actorUserId, commandId } = revocation;
+  return {
     tenantId,
     userId: actorUserId ?? userId,
     actorUserId,
@@ -373,24 +403,18 @@ export async function takeOverOnDeactivation(
     commandId,
     expectedRevision: 0,
   };
-  const successor = await designatedSuccessor(tx, tenantId, userId);
-  const successorScope = successor
-    ? await memberInstanceScope(deps, { tenantId, userId: successor, timezone }, tx)
-    : null;
-  // F-017：会签合席可能推进业务。跨页先收齐参与闭包，不能在持实例锁后追加较小员工锁。
+}
+
+/** 停用者名下全部待转的在途实例（跨页收齐，沿全局取锁顺序）。 */
+async function allPendingInLockOrder(tx: Tx, tenantId: string, userId: string): Promise<LockKey[]> {
   let after: LockKey | null = null;
   const instances: LockKey[] = [];
   for (;;) {
     const page = await pendingInLockOrder(tx, tenantId, userId, after);
     instances.push(...page);
-    if (page.length < BATCH) break;
+    if (page.length < BATCH) return instances;
     after = page.at(-1)!;
   }
-  // F-065：全局停用已持账号行 NO KEY UPDATE，不预取组织锁（入职首次绑定是组织锁 → 账号行 FOR SHARE，会成环）；
-  // 需要组织锁的调动实例在 openRun 时按既有顺序取得
-  await lockHandoverParticipants(tx, ctx, instances, { organization: false });
-  for (const { id } of instances)
-    await takeOverInstance(tx, ctx, id, userId, successor, successorScope, options.settle ?? true);
 }
 
 /**
@@ -490,7 +514,9 @@ async function takeoverTarget(
 
 /**
  * 交接前统一取锁：员工（任职业务的参与闭包）→ 各业务的业务行与资源锁（适配器 lockMany，按业务自己的规范顺序）→ 之后逐单锁
- * 实例。手动交接（organization: true）还须在登记替代人（成员行 KEY SHARE）之前取组织锁（F-065）；停用接管不预取。
+ * 实例。组织锁按路径区分（见适配器 lockMany 的 options）：手动交接（organization: true）在登记替代人（成员行 KEY SHARE）
+ * 之前取（F-065），但批里没有调动、也不可能会签合席时不取（reassignFrom，F-070）；全局停用在锁账号行之前同样以 true
+ * 预取（F-069）；撤销成员关系的接管没有账号锁前缀，不预取。
  * 发展计划的批量干预按计划 ID 升序锁计划再锁实例，这里同样先按计划 ID 升序锁齐本批的计划，两边锁序一致，
  * 不会交错互等（PR #115 第 2 轮 P3-2）。
  */
@@ -498,7 +524,7 @@ async function lockHandoverParticipants(
   tx: Tx,
   ctx: ApprovalContext,
   batch: readonly LockKey[],
-  options: { readonly organization: boolean },
+  options: { readonly organization: boolean; readonly reassignFrom?: string },
 ) {
   const employees = [...new Set(batch.map((item) => item.employee_id))]
     .filter((id) => id !== '00000000-0000-0000-0000-000000000000')

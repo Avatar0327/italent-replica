@@ -13,6 +13,16 @@ export type { TenantRouteDeps, TenantRouteModule } from './routes.js';
 // F-039 路由权限声明框架（PR-A：登记与缺失即失败）；Hono 及其类型一并导出，供测试与扩展构造路由器
 export { Hono, type Context, type Next } from 'hono';
 export {
+  accessOf,
+  type CheckArgs,
+  type DeferredStage,
+  type EnforcePrimitives,
+  implement,
+  type ModuleImplementations,
+  RouteAccess,
+  TAKEN_OVER_MODULES,
+  type T1Check,
+  type VerifyOptions,
   declare,
   declareEach,
   defineTable,
