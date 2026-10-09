@@ -62,6 +62,46 @@ def snapshot():
     return out
 
 
+QUOTA_LOG = os.path.expanduser("~/.cache/italent-codex-quota.jsonl")
+
+
+def quota_snapshot():
+    """额度试跑（用户 10-09）：每轮记一行——Codex 周额度已用百分比 + 最近 15 分钟活跃的审查 / 开发会话（含子线程归并到主会话）。
+    之后挑“只有一单在跑”的时段，按 Δ百分比 / Δtoken 对比 模型 × 强度 × 速度档。只写本地文件，不发事件。"""
+    import glob, re, json
+    now = time.time()
+    used, sess = None, {}
+    for f in glob.glob(os.path.expanduser("~/.codex/sessions/*/*/*/*.jsonl")):
+        if now - os.path.getmtime(f) > 900:
+            continue
+        try:
+            txt = open(f, encoding="utf8", errors="ignore").read()
+        except OSError:
+            continue
+        head = "\n".join(txt.split("\n", 80)[:80])
+        sid = f[-42:-6]
+        par = re.search(r'"(?:forked_from_id|parent_thread_id)":"([^"]+)"', head)
+        cwd = re.search(r'"cwd":"([^"]*)"', head)
+        eff = re.search(r'"(?:reasoning_)?effort":"(\w+)"', head)
+        mdl = re.search(r'"model":"([^"]+)"', head)
+        tier = re.search(r'"service_tier":"(\w+)"', head)
+        tok = re.findall(r'"total_token_usage":\{"input_tokens":(\d+),"cached_input_tokens":(\d+)[^}]*"output_tokens":(\d+)', txt)
+        up = re.findall(r'"primary":\{"used_percent":([0-9.]+)', txt)
+        if up:
+            used = max(used or 0, float(up[-1]))
+        sess[sid] = {"root": par.group(1) if par else sid, "cwd": os.path.basename(cwd.group(1)) if cwd else "",
+                     "model": mdl.group(1) if mdl else "", "effort": eff.group(1) if eff else "",
+                     "tier": tier.group(1) if tier else "", "unc": int(tok[-1][0]) - int(tok[-1][1]) if tok else 0,
+                     "cached": int(tok[-1][1]) if tok else 0, "out": int(tok[-1][2]) if tok else 0}
+    if not sess:
+        return
+    try:
+        with open(QUOTA_LOG, "a", encoding="utf8") as fh:
+            fh.write(json.dumps({"t": time.strftime("%Y-%m-%dT%H:%M:%S"), "used": used, "sessions": sess}, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def codex_results():
     """本机 ChatGPT 应用的审查会话：统计每个会话文件里 task_complete 的次数，并从内容中认出 PR 号。"""
     import glob, re
@@ -192,6 +232,10 @@ def main():
             for n in prev:
                 if n not in cur and n not in paused_now:
                     ev.append(f"#{n} 已合并或关闭")
+        try:
+            quota_snapshot()
+        except Exception:
+            pass
         cx = codex_results()
         if cprev is not None:
             for k, (cnt, pr) in cx.items():

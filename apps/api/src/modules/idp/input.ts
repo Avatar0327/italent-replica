@@ -27,6 +27,8 @@ const subProcess = z.strictObject({
   category: z.enum(SUB_PROCESS_CATEGORIES),
   approvalType: z.enum(IDP_APPROVAL_TYPES),
   approvalProcessId: uuid,
+  /** 28 §1：复用现有通知的模板编码；省略时不修改既有配置，显式 null 清空。 */
+  endNoticeTemplate: z.string().trim().min(1).max(200).nullable().optional(),
   startMode: z.enum(START_MODES),
   startTimeType: z.enum(START_TIME_TYPES).nullable().default(null),
   fixedDate: isoDate.nullable().default(null),
