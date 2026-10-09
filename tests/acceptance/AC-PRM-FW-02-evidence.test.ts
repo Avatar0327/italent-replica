@@ -519,3 +519,178 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：新结构弱化（按声明�
     expect(codes(compare([route(TALENT_FORM)], BRANCH_BINDINGS))).toEqual(codes(compare([route(TALENT_FORM)])));
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// 第 2 轮（#165 首轮审查 P2-1 / P3-1～3）
+// ---------------------------------------------------------------------------------------------------------------
+
+const NS_GATE = `${FIX}/ns-gate.ts`;
+const NS_FILES: Record<string, string> = {
+  'packages/fixture/src/index.ts':
+    "export * as rules from './rules.js';\nexport function present(role: string) {\n  return role;\n}\n",
+  'packages/fixture/src/rules.ts': 'export function applies(role: string) {\n  return role.length > 0;\n}\n',
+  [NS_GATE]: [
+    "import { rules } from '@italent/fixture';",
+    'export function gate(role: string) {',
+    "  if (!rules.applies(role)) throw new Error('denied');",
+    '  return role;',
+    '}',
+    '',
+  ].join('\n'),
+};
+const NS_TABLE: RequiredTable = {
+  'GET /api/tenant/fixture-ns': [
+    {
+      perm: 'btn:Fixture#open@list',
+      at: [{ role: 'call', unit: `${NS_GATE}#gate`, anchor: "throw new Error('denied')" }],
+    },
+  ],
+};
+const nsAfter = (change: (files: Record<string, string>) => Record<string, string>) => {
+  const { base } = baseline(NS_FILES, NS_TABLE);
+  return checkEvidence(NS_TABLE, { ...base, read: readerOf(change(NS_FILES)) });
+};
+const nsGate = (replace: [string, string][]) => (files: Record<string, string>) => ({
+  ...files,
+  [NS_GATE]: replace.reduce((text, [from, to]) => text.replace(from, to), files[NS_GATE]!),
+});
+
+describe('AC-PRM-FW-02 证据闭包（B-02 第 2 轮 P2-1）：命名空间转导出与导入解析失败不得静默', () => {
+  it('export * as rules from … 的成员进入闭包：rules.applies 改动 → EVIDENCE_STALE', () => {
+    const { table, base } = baseline(NS_FILES, NS_TABLE);
+    expect(checkEvidence(table, base)).toEqual([]);
+    const [report] = closureReports(table, base.read, false);
+    expect(Object.keys(report!.deps)).toEqual(['packages/fixture/src/rules.ts#applies']);
+    const found = nsAfter((files) => ({
+      ...files,
+      'packages/fixture/src/rules.ts': 'export function applies(role: string) {\n  return true;\n}\n',
+    }));
+    expect(
+      found.some((f) => f.code === 'EVIDENCE_STALE' && f.detail.includes('applies')),
+      show(found),
+    ).toBe(true);
+  });
+
+  it('真实链：360 作答路由 → survey360.answerableItems → applies 改成 return true → 全表 EVIDENCE_STALE', () => {
+    const file = 'packages/domain/src/survey360/scoring.ts';
+    const original = repoSource(file);
+    const patched = original.replace('return roleIds.length === 0 || roleIds.includes(roleId);', 'return true;');
+    expect(patched, '补丁没有生效').not.toBe(original);
+    const reader: SourceReader = (path) => (path === file ? patched : repoSource(path));
+    const found = checkEvidence(REQUIRED, { read: reader });
+    expect(
+      found.some((f) => f.code === 'EVIDENCE_STALE' && f.detail.includes('scoring.ts#applies')),
+      show(found),
+    ).toBe(true);
+  });
+
+  it('命名空间转导出的计算成员访问 / 整体外传 → EVIDENCE_CLOSURE_UNRESOLVED（登记在调用方文件）', () => {
+    const computed = nsAfter(nsGate([['rules.applies(role)', 'rules[role](role)']]));
+    const hit = computed.find((f) => f.code === 'EVIDENCE_CLOSURE_UNRESOLVED');
+    expect(hit?.detail, show(computed)).toContain(NS_GATE);
+    const escaped = nsAfter(nsGate([['!rules.applies(role)', '!Object.keys(rules).length']]));
+    expect(codes(escaped)).toContain('EVIDENCE_CLOSURE_UNRESOLVED');
+  });
+
+  it('modules 内导入包里不存在的值（目标在 packages/）→ EVIDENCE_CLOSURE_UNRESOLVED，不能静默丢弃', () => {
+    const found = nsAfter(
+      nsGate([
+        ["import { rules } from '@italent/fixture';", "import { rules, absent } from '@italent/fixture';"],
+        ['!rules.applies(role)', '!rules.applies(role) || absent(role)'],
+      ]),
+    );
+    const hit = found.find((f) => f.code === 'EVIDENCE_CLOSURE_UNRESOLVED');
+    expect(hit?.detail, show(found)).toContain('absent');
+    expect(hit?.detail).toContain(NS_GATE);
+  });
+
+  it('相对导入的模块里不存在该导出同样报；成员不存在的命名空间访问也报', () => {
+    const relative = afterChange({
+      ...FIXTURE_FILES,
+      [`${FIX}/gate.ts`]: FIXTURE_FILES[`${FIX}/gate.ts`]!.replace(
+        "import { allowed } from './helper.js';",
+        "import { allowed, nope } from './helper.js';",
+      ).replace('return levelOf(kind);', 'return nope(kind);'),
+    });
+    expect(codes(relative)).toContain('EVIDENCE_CLOSURE_UNRESOLVED');
+    const member = nsAfter(nsGate([['rules.applies(role)', 'rules.gone(role)']]));
+    expect(codes(member)).toContain('EVIDENCE_CLOSURE_UNRESOLVED');
+  });
+
+  it('只在类型位置使用的导入（interface / import type）不报', () => {
+    const files = {
+      ...FIXTURE_FILES,
+      [`${FIX}/helper.ts`]: `${FIXTURE_FILES[`${FIX}/helper.ts`]}export interface Shape {\n  kind: string;\n}\n`,
+      [`${FIX}/gate.ts`]: FIXTURE_FILES[`${FIX}/gate.ts`]!.replace(
+        "import { allowed } from './helper.js';",
+        "import { allowed, Shape } from './helper.js';",
+      ).replace('gate(kind: string)', 'gate(kind: string, _shape?: Shape)'),
+    };
+    const { table, base } = baseline(files);
+    expect(checkEvidence(table, base)).toEqual([]);
+  });
+});
+
+describe('AC-PRM-FW-02 噪声统计按独立义务 / 登记项计数（第 2 轮 P3-1）', () => {
+  it('同一单元的引用标签互不相同：同端点同权限不同用途的义务、不同端点的输入来源不会被合并', () => {
+    const uses = usesOf(REQUIRED);
+    for (const [unit, refs] of uses) {
+      const labels = refs.map((use) => use.label);
+      expect(new Set(labels).size, `${unit} 的引用标签重复`).toBe(labels.length);
+    }
+    const table: RequiredTable = {
+      'GET /a': [
+        { perm: 'btn:X#y@list', at: [GATE_CALL] },
+        { perm: 'btn:X#y@list', purpose: 'disclosure:z', at: [GATE_CALL] },
+      ],
+    };
+    expect(usesOf(table, false).get(GATE_CALL.unit)).toHaveLength(2);
+    const inputs = Object.entries(BRANCH_INPUTS)
+      .flatMap(([key, entries]) => entries.map((input) => ({ key, input })))
+      .filter(({ input }) => input.position === 'object' && input.at.some((e) => e.unit.endsWith('#objectKind')));
+    expect(inputs.length).toBeGreaterThan(1);
+    const objectKind = [...usesOf({}).get(inputs[0]!.input.at.find((e) => e.unit.endsWith('#objectKind'))!.unit)!];
+    expect(new Set(objectKind.map((u) => u.label)).size).toBe(objectKind.length);
+    expect(objectKind.length).toBeGreaterThanOrEqual(inputs.length);
+  });
+});
+
+describe('AC-PRM-FW-02 边界清单不得覆盖业务目录（第 2 轮 P3-2）', () => {
+  const entry = (path: string) => [{ path, reason: '夹具' }];
+  for (const path of [
+    'apps/',
+    'apps/api/',
+    'apps/api/src/',
+    'apps/api/src/modules/',
+    'packages/',
+    'packages/domain/',
+  ]) {
+    it(`目录 ${path} → 拒绝`, () => {
+      expect(() => assertBoundaryShape(entry(path))).toThrow(/业务目录|modules/);
+    });
+  }
+  it('permission 目录与 packages/db/ 允许；模块内目录仍拒绝', () => {
+    expect(() => assertBoundaryShape(entry('apps/api/src/modules/permission/'))).not.toThrow();
+    expect(() => assertBoundaryShape(entry('packages/db/'))).not.toThrow();
+    expect(() => assertBoundaryShape(entry('apps/api/src/modules/job/'))).toThrow(/modules/);
+  });
+});
+
+describe('AC-PRM-FW-02 分支值登记唯一、输入来源字段不冗余（第 2 轮 P3-3）', () => {
+  it('同一 (域, 字段, 变体) 登记两条 → TABLE_CONFLICT', () => {
+    const entries = BRANCH_VALUES['talent.object']!;
+    const doubled = { ...BRANCH_VALUES, 'talent.object': [...entries, { ...entries[0]! }] };
+    const found = compare([route(TALENT_FORM)], { inputs: BRANCH_INPUTS, values: doubled });
+    expect(codes(found)).toContain('TABLE_CONFLICT');
+  });
+
+  it('真实登记全表唯一；BranchInput 不再带冗余的 field（字段由位置推出）', () => {
+    for (const [domain, entries] of Object.entries(BRANCH_VALUES)) {
+      const keys = entries.map((e) => `${e.field}#${e.variant ?? ''}`);
+      expect(new Set(keys).size, domain).toBe(keys.length);
+    }
+    for (const entries of Object.values(BRANCH_INPUTS)) {
+      for (const input of entries) expect('field' in input, input.position).toBe(false);
+    }
+  });
+});
