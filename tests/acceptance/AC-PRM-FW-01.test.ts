@@ -51,10 +51,11 @@ function failure(run: () => unknown): RoutePolicyError {
   throw new Error('期望抛出 RoutePolicyError，实际没有抛错');
 }
 
-function lastHandler(app: Hono): (c: Context, next: Next) => unknown {
+type RawHandler = (c: Context, next: Next) => Promise<Response>;
+function lastHandler(app: Hono): RawHandler {
   const entry = rawRouter(app).routes.at(-1);
   if (!entry) throw new Error('路由表为空');
-  return entry.handler as (c: Context, next: Next) => unknown;
+  return entry.handler as RawHandler;
 }
 
 describe('AC-PRM-FW-01 身份不匹配（始终失败）', () => {
@@ -260,7 +261,7 @@ describe('AC-PRM-FW-01 正例', () => {
       { label: 'mw-inner', paths: ['/api/sub/*'] },
     ]);
     expect(manifest.declared).toEqual([
-      { key: 'GET /leaf', method: 'GET', path: '/api/sub/leaf', module: 'inner', policy: member, source: String(ok) },
+      { key: 'GET /leaf', method: 'GET', path: '/api/sub/leaf', module: 'inner', policy: member },
     ]);
   });
 

@@ -34,7 +34,7 @@ let frozen: ObservedContract;
 beforeAll(async () => {
   const api = tenantApi(testDb().db, { authorize: undefined });
   manifest = routeManifest(api.app);
-  fresh = await observeContract(api, manifest);
+  fresh = await observeContract(testDb().db, api, manifest);
   if (process.env.ROUTE_POLICY_UPDATE_BASELINE === '1') writeFrozenContract(fresh);
   const stored = readFrozenContract();
   if (!stored) throw new Error(`冻结基准不存在：先用 ROUTE_POLICY_UPDATE_BASELINE=1 生成 ${BASELINE_PATH}`);
@@ -139,6 +139,7 @@ describe('AC-PRM-FW-02 突变套件：第 5 轮列出的每类削弱都被报出
         'fields→none',
         'write.fields→none',
         'delete-write',
+        'postcheck→none',
         'delete-precondition',
         'delete-guard',
         'delete-branch',
@@ -151,7 +152,9 @@ describe('AC-PRM-FW-02 突变套件：第 5 轮列出的每类削弱都被报出
 
   for (const mutation of MUTATIONS) {
     it(`${mutation.name} → ${mutation.expected}`, () => {
-      const mutants = manifest.declared.flatMap((route) => mutantsOf(route).filter((m) => m.name === mutation.name));
+      const mutants = manifest.declared.flatMap((route) =>
+        mutantsOf(route, frozen).filter((m) => m.name === mutation.name),
+      );
       expect(mutants.length, `没有任何真实声明能施加突变 ${mutation.name}`).toBeGreaterThan(0);
       const undetected = mutants.filter(
         (m) => !codes(compareDeclarations(frozen, [m.route])).some((code) => code.startsWith(mutation.expected)),
@@ -168,7 +171,7 @@ describe('AC-PRM-FW-02 突变套件：第 5 轮列出的每类削弱都被报出
       (sum, entry) => sum + 3 + Object.values(entry.primitives).reduce((n, names) => n + names.length, 0),
       0,
     );
-    const mutants = manifest.declared.flatMap((route) => mutantsOf(route));
+    const mutants = manifest.declared.flatMap((route) => mutantsOf(route, frozen));
     const byName = Object.fromEntries(MUTATIONS.map((m) => [m.name, mutants.filter((x) => x.name === m.name).length]));
     const summary = { routes: manifest.declared.length, facts, domains: Object.keys(frozen.domains).length };
     console.info(JSON.stringify({ ...summary, mutants: mutants.length, byName }));

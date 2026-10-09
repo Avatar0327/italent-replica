@@ -10,6 +10,29 @@ export {
   identityResolverFromEnv,
 } from './identity.js';
 export type { TenantRouteDeps, TenantRouteModule } from './routes.js';
+// F-039 路由权限声明框架（PR-A：登记与缺失即失败）；Hono 及其类型一并导出，供测试与扩展构造路由器
+export { Hono, type Context, type Next } from 'hono';
+export {
+  declare,
+  declareEach,
+  defineTable,
+  type ManifestRoute,
+  mergeTables,
+  mount,
+  policed,
+  policedSub,
+  type PolicyTable,
+  rawRouter,
+  type RouteManifest,
+  routeManifest,
+  RoutePolicyError,
+  type RoutePolicyErrorCode,
+  useMiddleware,
+  verifyRouteDeclarations,
+} from './route-policy/index.js';
+export type * from './route-policy/types.js';
+// 路由层的职务对象分支域（:kind → 对象编码），供声明的分支清单与现状基准核对
+export { JOB_OBJECT_CODES } from './modules/permission/module-route-access.js';
 export { TENANT_HEADER, type TenantContext, tenantContext, type TenantEnv, tenantOf } from './tenant-context.js';
 export {
   bootstrapTenantAdmin,

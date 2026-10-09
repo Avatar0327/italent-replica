@@ -30,6 +30,8 @@ export const ERROR_STATUS = {
   SERVICE_UNAVAILABLE: 503,
   LINKED_RECORD_OUT_OF_SCOPE: 404,
   NOT_FOUND: 404,
+  // F-039：路由声明的运行时自检失败（注册实例与声明的 method / 路径不一致），fail-closed
+  ROUTE_POLICY_MISMATCH: 500,
   INTERNAL_ERROR: 500,
 } as const satisfies Record<string, ContentfulStatusCode>;
 

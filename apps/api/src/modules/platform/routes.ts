@@ -27,6 +27,8 @@ import { LICENSE_TYPE } from '../permission/licenses.js';
 import { operatorOf, platformContext, type PlatformEnv } from './context.js';
 import { changeTenantLifecycle, issueLicense, requireTenant, tenantBalances } from './operations.js';
 import { provisionTenant, tenantView } from './provisioning.js';
+import { policed, useMiddleware } from '../../route-policy/index.js';
+import { PLATFORM_POLICIES } from './policy.js';
 
 const COMMAND_ID = /^[A-Za-z0-9:_-]{1,100}$/;
 const userId = z.uuid();
@@ -91,9 +93,10 @@ function tenantParam(c: Context): string {
 }
 
 export function createPlatformRouter(db: Db, identity: IdentityResolver, clock: () => Date): Hono<PlatformEnv> {
-  const router = new Hono<PlatformEnv>();
-  router.use('/api/platform/*', platformContext(db, identity));
-  router.use('/api/platform/*', capturePlatformFailures(db));
+  // F-039：平台路由器套登记表（PLATFORM_POLICIES），中间件经 useMiddleware 登记
+  const router = policed(new Hono<PlatformEnv>(), PLATFORM_POLICIES);
+  useMiddleware(router, '/api/platform/*', platformContext(db, identity), 'platformContext');
+  useMiddleware(router, '/api/platform/*', capturePlatformFailures(db), 'capturePlatformFailures');
 
   router.post('/api/platform/users', async (c) => {
     const body = await parseBody(c, userBody);
