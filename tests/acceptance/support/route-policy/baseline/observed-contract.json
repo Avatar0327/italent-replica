@@ -9518,6 +9518,57 @@
         ]
       }
     },
+    "POST /api/tenant/idp/plans/:id/transfer": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "idp",
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "command": [
+          "assertRevision",
+          "revision(c)"
+        ],
+        "guard": [
+          "idp.transferTarget"
+        ],
+        "object": [
+          "object.* 动作",
+          "objectContext"
+        ],
+        "objectOp": [
+          "IDP.Idp:update"
+        ],
+        "or": [
+          "idp.requireViewer"
+        ],
+        "precondition": [
+          "assertBusinessUnchanged",
+          "assertNotNodeAssignee",
+          "assertNotRecused",
+          "assertReviewer",
+          "openRun"
+        ],
+        "scope": [
+          "requestScope",
+          "resolveModuleScope",
+          "visible()"
+        ]
+      }
+    },
     "POST /api/tenant/idp/plans/start-next": {
       "edge": {
         "anonymous": {

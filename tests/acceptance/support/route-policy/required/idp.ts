@@ -814,6 +814,32 @@ const PLAN_ROUTES: RequiredTable = {
       VIEWER_FACT,
     ]),
   ],
+  // 转交（F-066）：plan update + transfer@detail；转交目标须是已绑定员工且在操作人 IDP 范围内（不存在 / 未绑定 / 范围外同为 404）
+  [`POST ${BASE}/plans/:id/transfer`]: [
+    ...planWrite('POST', '/plans/:id/transfer', 'update', 'transfer', 'detail', [
+      'object:objectContext',
+      `objectOp:${PLAN}:update`,
+      'object:object.* 动作',
+      VIEWER_FACT,
+    ]),
+    guard(
+      'idp.transferTarget',
+      [
+        call(`${I}/intervention-service.ts#transferPlan`, 'await requireTargetInScope(tx, ctx, input.toUserId)'),
+        {
+          role: 'impl',
+          unit: `${I}/intervention-service.ts#requireTargetInScope`,
+          anchor: "throw new AppError('NOT_FOUND', '转交目标不存在')",
+        },
+        {
+          role: 'impl',
+          unit: `${I}/plan-access.ts#employeeInScope`,
+          anchor: 'scopeAllowsInTransaction(tx, hr, { personId: employeeId })',
+        },
+      ],
+      { facts: ['guard:idp.transferTarget'] },
+    ),
+  ],
   [`POST ${BASE}/plans/tasks/issue`]: (() => {
     const entry = planRoute(
       'POST',
