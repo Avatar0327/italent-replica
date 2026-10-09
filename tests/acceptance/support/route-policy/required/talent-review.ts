@@ -201,7 +201,122 @@ function cfgObject(key: string, label: string, register: string, base: string, c
 const BASE_ROOT = '/api/tenant/talent-review';
 const SETTINGS_OBJECT = 'TalentReview.Settings';
 
+// ---- R3-T04 PR-B4：九宫格（modules/talent-review/matrix-routes.ts） -----------------------------------------------
+const MTX = `${T}/matrix-routes.ts`;
+const MATRIX_OBJECT = 'TalentReview.Matrix';
+const matrixConst = (key: string, label: string): Evidence => ({
+  role: 'const',
+  unit: `${CATALOG}>${key}`,
+  anchor: `object('${label}'`,
+});
+const matrixCall = (register: string, anchor: string): Evidence => ({
+  role: 'call',
+  unit: `${MTX}#${register}`,
+  anchor,
+});
+const matrixView = (anchor: string): Obligation => ({
+  perm: `obj:${MATRIX_OBJECT}:view`,
+  facts: ['object:objectContext'],
+  at: [matrixCall('registerMatrixRoutes', anchor), ...CONTEXT, matrixConst('matrix', 'Matrix')],
+});
+/** 九宫格写入口：操作权 + 按钮（规则组写入也是九宫格的 update）。 */
+function matrixChange(register: string, operation: Exclude<Operation, 'view'>): Obligation[] {
+  const entry = matrixCall(
+    register,
+    `const ctx = await reviewWriteContext(c, deps, 'matrix', '${operation}', revision(c))`,
+  );
+  const level = operation === 'create' ? 'list' : 'detail';
+  return [
+    {
+      perm: `obj:${MATRIX_OBJECT}:${operation}`,
+      facts: ['object:objectContext'],
+      at: [entry, ...CONTEXT, matrixConst('matrix', 'Matrix')],
+    },
+    {
+      perm: `btn:${MATRIX_OBJECT}#${operation}@${level}`,
+      facts: ['button:button()'],
+      at: [
+        entry,
+        ...BUTTON,
+        { role: 'const', unit: `${ACCESS}#WRITE_BUTTONS`, anchor: `${operation}: ['${operation}', '${level}']` },
+      ],
+    },
+  ];
+}
+const MATRIX_FIELD_REFERENCE = 'talentReview.matrixFieldReference';
+/** 引用盘点字段 = 读取字段目录：请求带字段引用时另需字段目录的对象查看权（requireFieldReference）。 */
+const matrixReference = (anchor: string): Obligation[] => [
+  {
+    perm: `guard:${MATRIX_FIELD_REFERENCE}`,
+    facts: [`guard:${MATRIX_FIELD_REFERENCE}`],
+    note: '条件守卫：请求体带轴 / 第三维度 / 位置字段引用时，另需字段目录的对象查看权，字段可见性在命令内按字段目录范围判定',
+    at: [matrixCall('registerMatrixRoutes', anchor)],
+  },
+  {
+    perm: 'obj:TalentReview.Field:view',
+    purpose: `when:${MATRIX_FIELD_REFERENCE}`,
+    at: [
+      {
+        role: 'call',
+        unit: `${MTX}#requireFieldReference`,
+        anchor: "const ctx = await reviewContext(c, deps, 'field')",
+      },
+      ...CONTEXT,
+      FIELD_OBJECT_CONST,
+    ],
+  },
+];
+const MATRIX_POSITION_GUARD: Obligation = {
+  perm: 'guard:talentReview.matrixPositionRequiresSeeAll',
+  facts: ['guard:talentReview.matrixPositionRequiresSeeAll'],
+  note: '改位置字段且不是看全部 → 403 MATRIX_POSITION_REQUIRES_SEE_ALL（在查重之前判定，不暴露隐藏九宫格占用）',
+  at: [
+    {
+      role: 'call',
+      unit: `${T}/matrix-service.ts#updateMatrix`,
+      anchor:
+        "if (repoint && !ctx.scope.all) { throw new AppError('FORBIDDEN', '只有能查看全部的人可以修改位置字段', {",
+    },
+  ],
+};
+const MATRIX_FILTER_GUARD: Obligation = {
+  ...FILTER_GUARD,
+  at: [
+    {
+      role: 'call',
+      unit: `${MTX}#registerMatrixRoutes`,
+      anchor: "if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'matrix', 'enabled')",
+    },
+    ...FILTER_GUARD.at.slice(1),
+  ],
+};
+const MTX_BASE = `${BASE_ROOT}/matrices`;
+const MATRIX_REQUIRED: RequiredTable = {
+  [`GET ${MTX_BASE}`]: [
+    matrixView("router.get(MATRICES, async (c) => { const ctx = await reviewContext(c, deps, 'matrix')"),
+    MATRIX_FILTER_GUARD,
+  ],
+  [`GET ${MTX_BASE}/:id`]: [
+    matrixView("router.get(`${MATRICES}/:id`, async (c) => { const ctx = await reviewContext(c, deps, 'matrix')"),
+  ],
+  [`POST ${MTX_BASE}`]: [
+    ...matrixChange('registerMatrixRoutes', 'create'),
+    ...matrixReference('const fieldScope = await requireFieldReference(c, deps)'),
+  ],
+  [`PATCH ${MTX_BASE}/:id`]: [
+    ...matrixChange('registerMatrixRoutes', 'update'),
+    RENAME_GUARD,
+    MATRIX_POSITION_GUARD,
+    ...matrixReference('const fieldScope = referencesFields(body) ? await requireFieldReference(c, deps) : undefined'),
+  ],
+  [`DELETE ${MTX_BASE}/:id`]: matrixChange('registerMatrixRoutes', 'delete'),
+  [`POST ${MTX_BASE}/:id/ratio-groups`]: matrixChange('registerRatioGroupRoutes', 'update'),
+  [`PATCH ${MTX_BASE}/:id/ratio-groups/:groupId`]: matrixChange('registerRatioGroupRoutes', 'update'),
+  [`DELETE ${MTX_BASE}/:id/ratio-groups/:groupId`]: matrixChange('registerRatioGroupRoutes', 'update'),
+};
+
 export const TALENT_REVIEW: RequiredTable = {
+  ...MATRIX_REQUIRED,
   ...cfgObject('category', 'Category', 'registerCategories', 'categories', 'CATEGORIES'),
   ...cfgObject('role', 'Role', 'registerRoles', 'roles', 'ROLES'),
   ...cfgObject('field', 'Field', 'registerFields', 'fields', 'FIELDS'),

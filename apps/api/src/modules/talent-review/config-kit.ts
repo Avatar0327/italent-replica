@@ -19,7 +19,7 @@ import {
   type TalentReviewContext,
 } from './access.js';
 
-export type ConfigObject = 'category' | 'role' | 'field';
+export type ConfigObject = 'category' | 'role' | 'field' | 'matrix';
 
 export interface WriteContext extends TalentReviewContext {
   readonly scope: ModuleScope;
@@ -53,7 +53,7 @@ export interface ConfigSpec<V extends { id: string; name: string }> {
 
 /** 返回引用方编码（如 'TEMPLATE_MODULE'）表示被引用；返回 null 表示未引用。 */
 export type ConfigReferenceGuard = (tx: Tx, tenantId: string, id: string) => Promise<string | null>;
-const guards: Record<ConfigObject, ConfigReferenceGuard[]> = { category: [], role: [], field: [] };
+const guards: Record<ConfigObject, ConfigReferenceGuard[]> = { category: [], role: [], field: [], matrix: [] };
 
 /** 引用方（项目、模板、公式…）在加载时登记；删除时同事务逐个询问。 */
 export function registerConfigReferenceGuard(object: ConfigObject, guard: ConfigReferenceGuard): void {
@@ -216,11 +216,11 @@ export async function deleteConfig<V extends { id: string; name: string }>(
   spec: ConfigSpec<V>,
   ctx: WriteContext,
   id: string,
-  beforeDelete?: (before: V) => void,
+  beforeDelete?: (before: V) => void | Promise<void>,
 ): Promise<V> {
   await lockConfigRow(tx, spec, ctx, id);
   const before = (await loadConfig(tx, spec, ctx.tenantId, id))!;
-  beforeDelete?.(before);
+  await beforeDelete?.(before);
   const referrer = await configReferrer(tx, ctx.tenantId, spec.object, id);
   if (referrer) {
     throw new AppError('CONFLICT', `${spec.label}已被引用，不能删除，可以停用`, { reason: spec.inUse, referrer });

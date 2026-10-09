@@ -17,6 +17,7 @@ import {
   seeAll,
   write,
 } from '../../route-policy/presets.js';
+import { MATRIX_POLICIES } from './matrix-policy.js';
 
 const PATH = '/api/tenant/talent-review/readiness-levels';
 const RDY = TALENT_REVIEW_OBJECTS.readiness.code;
@@ -98,6 +99,7 @@ const SETTINGS_CODE = TALENT_REVIEW_OBJECTS.settings.code;
 const SETTINGS_FIELDS = projector('talentReview.settings', 'talentReview.settings');
 
 export const TALENT_REVIEW_POLICIES = defineTable('talent-review', {
+  ...MATRIX_POLICIES,
   ...configRoutes('category', '/api/tenant/talent-review/categories', 'talent_review_categories'),
   ...configRoutes('role', '/api/tenant/talent-review/roles', 'talent_review_roles'),
   // 新建时指定成对字段 = 同时修改另一端：另需更新权、update 按钮与 pairFieldId 编辑权（requirePairUpdate）

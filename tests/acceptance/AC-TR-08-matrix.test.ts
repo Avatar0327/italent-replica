@@ -254,11 +254,15 @@ describe('轴、分段与格子（TR-R31）', () => {
     const w = await matrixWorld(testDb().db, `trm-shape-${reason}`);
     const created = await w.create();
     const text = { text: (await w.textField()).id };
-    const patch = mutate(created, text);
-    const edit = await w.request('PATCH', `${MATRICES}/${created.id}`, { ifMatch: 1, body: patch });
+    const whole = (m: MatrixView) => ({ axisLevels: m.axisLevels, cells: m.cells });
+    const edit = await w.request('PATCH', `${MATRICES}/${created.id}`, {
+      ifMatch: 1,
+      body: { ...whole(created), ...mutate(created, text) },
+    });
     expect([edit.status, await reasonOf(edit)]).toEqual([400, reason]);
-    const fresh = await w.post({ ...matrixBody(await w.refs()), ...mutate(created, text) });
-    expect(fresh.status).toBe(400);
+    const base = matrixBody(await w.refs()) as unknown as MatrixView;
+    const fresh = await w.post({ ...base, ...mutate(base, text) });
+    expect([fresh.status, await reasonOf(fresh)]).toEqual([400, reason]);
     expect((await w.read(created.id)).body).toEqual(created);
     expect((await w.list()).items).toHaveLength(1);
   });
@@ -318,7 +322,7 @@ describe('轴、分段与格子（TR-R31）', () => {
     const withGroup = (await group.json()) as MatrixView;
     const shrink = {
       axisLevels: created.axisLevels.filter((l) => l.levelNo !== 3),
-      cells: created.cells.filter((c) => c.cellNo <= 4),
+      cells: created.cells.filter((c) => c.xLevelNo <= 2 && c.yLevelNo <= 2),
     };
     const blocked = await w.request('PATCH', `${MATRICES}/${created.id}`, {
       ifMatch: withGroup.revision,
@@ -397,7 +401,9 @@ describe('修改、幂等、删除与审计', () => {
     expect(update.changes.map((change) => change.field)).toEqual(['name']);
     const removed = await audit.dataChange(w.as, items.find((entry) => entry.operation === 'delete')!.id);
     expect(removed.snapshot).toMatchObject({ id: created.id, name: '审计改名' });
-    const made = await audit.dataChange(w.as, items.find((entry) => entry.operation === 'create')!.id);
-    expect(made.snapshot).toMatchObject({ cells: expect.any(Array), positionFields: expect.any(Array) });
+    const made = items.find((entry) => entry.operation === 'create')!;
+    expect(made.changes.map((change) => change.field)).toEqual(
+      expect.arrayContaining(['cells', 'positionFields', 'axisLevels', 'code', 'name']),
+    );
   });
 });

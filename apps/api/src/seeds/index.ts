@@ -4,6 +4,7 @@
  */
 // 各模块的种子登记（加载即 registerSeed）
 import '../modules/talent-review/presets.js';
+import '../modules/talent-review/matrix-presets.js';
 
 export { installMissingSeeds, registeredSeeds, seedModules } from './registry.js';
 export type { SeedReportItem, SeedWriteContext } from './registry.js';

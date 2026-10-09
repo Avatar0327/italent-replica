@@ -37,7 +37,14 @@ export interface MatrixView {
   readonly zFieldId: string | null;
   readonly positionFields: { role: string; fieldId: string }[];
   readonly axisLevels: Record<string, unknown>[];
-  readonly cells: { cellNo: number; name: string; color: string; countsGreen: boolean }[];
+  readonly cells: {
+    cellNo: number;
+    xLevelNo: number;
+    yLevelNo: number;
+    name: string;
+    color: string;
+    countsGreen: boolean;
+  }[];
   readonly ratioGroups: { id: string; name: string; isDefault: boolean; rules: Record<string, unknown>[] }[];
   readonly [key: string]: unknown;
 }
