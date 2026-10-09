@@ -20,15 +20,15 @@ export interface EdgeFacts {
   readonly member: EdgeObservation;
 }
 
-const PLACEHOLDER_UUID = '00000000-0000-4000-8000-000000000001';
-const UUID_PARAM = /(^id$|Id$)/;
+export const PLACEHOLDER_UUID = '00000000-0000-4000-8000-000000000001';
+export const UUID_PARAM = /(^id$|Id$)/;
 
 /** `:id` / `:userId` 一类换成固定 UUID，其他参数换成 `probe`。 */
 export function instantiatePath(path: string): string {
   return path.replace(/:([A-Za-z]+)/g, (_match, name: string) => (UUID_PARAM.test(name) ? PLACEHOLDER_UUID : 'probe'));
 }
 
-async function observe(response: Response): Promise<EdgeObservation> {
+export async function observe(response: Response): Promise<EdgeObservation> {
   const text = await response.text();
   if (!text) return { status: response.status };
   try {
