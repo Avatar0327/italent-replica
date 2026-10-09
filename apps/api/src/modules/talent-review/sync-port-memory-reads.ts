@@ -282,17 +282,27 @@ export class InMemoryReads {
   }
 
   // ---- 健康度（SP-15 / SP-16）----
-  async readOrgHealthRows(_tx: Tx, input: Args<'readOrgHealthRows'>): Promise<readonly OrgHealthRowState[]> {
-    const denied = this.deniedFor(input.viewer);
-    return input.orgIds.map((orgId): OrgHealthRowState => {
+  /** 回写前读版本（SP-16）：逐行取 S 锁，不读到其他事务未提交的回写。 */
+  readOrgHealthRows(tx: Tx, input: Args<'readOrgHealthRows'>): Promise<readonly OrgHealthRowState[]> {
+    return this.txs.within(tx, async (m) => {
+      const denied = this.deniedFor(input.viewer);
       const context = input.context;
-      if (input.tenantId !== this.data.tenantId || denied.orgIds.includes(orgId)) {
-        return { status: 'forbidden', orgId, context };
+      const rows: OrgHealthRowState[] = [];
+      for (const orgId of input.orgIds) {
+        if (input.tenantId !== this.data.tenantId || denied.orgIds.includes(orgId)) {
+          rows.push({ status: 'forbidden', orgId, context });
+          continue;
+        }
+        await this.txs.lock(m, `health|${healthKey(context, orgId)}`, 'S');
+        const row = this.state.health.get(healthKey(context, orgId));
+        if (!row) {
+          rows.push({ status: 'absent', orgId, context, revision: 0 });
+          continue;
+        }
+        const { levelId, levelCode, manual, method, revision, status } = row;
+        rows.push({ status, orgId, context, levelId, levelCode, manual, method, revision });
       }
-      const row = this.state.health.get(healthKey(context, orgId));
-      if (!row) return { status: 'absent', orgId, context, revision: 0 };
-      const { levelId, levelCode, manual, method, revision, status } = row;
-      return { status, orgId, context, levelId, levelCode, manual, method, revision };
+      return rows;
     });
   }
 
