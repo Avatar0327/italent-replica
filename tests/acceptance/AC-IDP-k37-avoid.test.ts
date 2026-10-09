@@ -76,7 +76,7 @@ describe('K-37：回避是节点开关', () => {
   });
 });
 
-describe('F-048 T11 IDP：缺省关闭与存量在途实例', () => {
+describe('F-048 T11 IDP：缺省关闭与存量在途实例（DEC-329④）', () => {
   it('手工新建且不传开关：员工节点由员工本人收到待办（缺省关闭，不被自审回避）', async () => {
     const w = await planWorld(testDb().db, 'idp-f048-default', {
       nodes: { idp_employee: { actions: { avoidSelf: undefined } }, idp_tutor: { actions: { avoidSelf: undefined } } },

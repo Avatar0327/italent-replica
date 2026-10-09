@@ -22,7 +22,7 @@ async function adminScene(label: string) {
 const submitted = async (w: ApprovalWorld, s: Awaited<ReturnType<typeof transferScene>>) =>
   w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
 
-describe('T5 管理员干预 / 转交：操作人是集合内主体 → 403', () => {
+describe('T5 管理员干预 / 转交：操作人是集合内主体 → 403（DEC-092 / DEC-329②）', () => {
   it('集合内的非单主体成员（冻结账号）做管理员转交 / 干预 → 403 APPROVAL_ADMIN_SELF，前后一致；无关管理员可处理', async () => {
     const { w, s } = await adminScene('f048-adm-member');
     const subjectAdmin = await w.employee('集合成员管理员');
@@ -91,7 +91,7 @@ describe('T5 管理员干预 / 转交：操作人是集合内主体 → 403', ()
   });
 });
 
-describe('T6 异常管理员是集合内主体：转其直线经理 / 提交预检 409', () => {
+describe('T6 异常管理员是集合内主体：转其直线经理 / 提交预检 409（DEC-092 / DEC-329②）', () => {
   async function exceptionScene(label: string, withManager: boolean) {
     const w = await approvalWorld(database().db, label);
     const s = await transferScene(w);

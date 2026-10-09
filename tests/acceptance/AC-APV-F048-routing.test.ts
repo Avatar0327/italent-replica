@@ -19,7 +19,7 @@ async function approveCurrent(w: ApprovalWorld, view: InstanceView, actor: strin
   return w.json<InstanceView>(await w.taskAction(actor, pendingOf(view)[0]!.id, 'approve', view.revision));
 }
 
-describe('T2 单人节点多主体回避：自动跳过', () => {
+describe('T2 单人节点多主体回避：自动跳过（DEC-329①）', () => {
   it('主体 B 被解析为审批人 → subject_skip（处理人系统、候选记 B），流转下一节点；无同意消息', async () => {
     const w = await approvalWorld(database().db, 'f048-r-skip');
     const s = await transferScene(w);
@@ -134,7 +134,7 @@ describe('T2 单人节点多主体回避：自动跳过', () => {
   });
 });
 
-describe('T3 / 定义校验：会签或无「同意」出口的节点不能开启 avoidSubjects', () => {
+describe('T3 / 定义校验：会签或无「同意」出口的节点不能开启 avoidSubjects（DEC-329①）', () => {
   const create = (w: ApprovalWorld, nodes: Record<string, unknown>[]) =>
     w.request(w.hr.id, 'POST', `${BASE}/processes`, {
       ifMatch: 0,
@@ -200,7 +200,7 @@ describe('T3 / 定义校验：会签或无「同意」出口的节点不能开�
   });
 });
 
-describe('T9c 重提追加主体：同一命令内即命中（缓存已刷新）', () => {
+describe('T9c 重提追加主体：同一命令内即命中（缓存已刷新）（DEC-329①）', () => {
   it('第 1 轮不含 B；驳回后适配器给出 B，重提时 B 作为首节点审批人被自动跳过', async () => {
     const w = await approvalWorld(database().db, 'f048-r-resubmit');
     const s = await transferScene(w);
@@ -225,7 +225,7 @@ describe('T9c 重提追加主体：同一命令内即命中（缓存已刷新）
   });
 });
 
-describe('T14 R2-04：subject_skip 是系统处理，不阻断前一节点审批人的撤回', () => {
+describe('T14 R2-04：subject_skip 是系统处理，不阻断前一节点审批人的撤回（DEC-329①）', () => {
   it('A 同意 → 下一节点被主体回避跳过 → 再下一节点待办 → A 仍可撤回；撤回后被跳过节点重新判定', async () => {
     const w = await approvalWorld(database().db, 'f048-r-retrieve');
     const s = await transferScene(w);

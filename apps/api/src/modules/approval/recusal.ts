@@ -56,13 +56,12 @@ export async function assertNotRecused(
     role === 'cc',
   );
   if (!hit) return;
-  const message =
-    role === 'cc'
-      ? '不能抄送给本单涵盖的人员'
-      : hit === 'self'
-        ? '发起人或异动本人不能审批自己的单据'
-        : '本单涵盖的人员不能审批自己的单据';
-  throw approvalError('CONFLICT', 'APPROVAL_SELF_REVIEW', message, { recusal: hit });
+  throw approvalError('CONFLICT', 'APPROVAL_SELF_REVIEW', messageOf(role, hit), { recusal: hit });
+}
+
+function messageOf(role: RecusalRole, hit: 'self' | 'subjects'): string {
+  if (role === 'cc') return '不能抄送给本单涵盖的人员';
+  return hit === 'self' ? '发起人或异动本人不能审批自己的单据' : '本单涵盖的人员不能审批自己的单据';
 }
 
 async function recusalOf(

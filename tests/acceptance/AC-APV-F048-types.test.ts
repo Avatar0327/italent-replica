@@ -49,7 +49,7 @@ async function legacyFacts(w: ApprovalWorld, view: InstanceView) {
   );
 }
 
-describe('T11 离职', () => {
+describe('T11 离职（DEC-329④）', () => {
   const LEAVE = { field: 'processCode', value: 'DimissionProcessNew' };
   async function leaveApplication(w: ApprovalWorld, employeeId: string) {
     const employee = await w.json<{ revision: number }>(
@@ -92,7 +92,7 @@ describe('T11 离职', () => {
   });
 });
 
-describe('T11 员工子集变更', () => {
+describe('T11 员工子集变更（DEC-329④）', () => {
   async function scene(label: string, node: Record<string, unknown>) {
     const w = await approvalWorld(database().db, label);
     const s = await transferScene(w);

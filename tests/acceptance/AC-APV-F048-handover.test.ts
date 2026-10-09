@@ -46,7 +46,7 @@ const handover = (w: ApprovalWorld, operator: string, toUserId: string) =>
     body: { fromUserId: w.exceptionAdmin, toUserId },
   });
 
-describe('T7 交接', () => {
+describe('T7 交接（DEC-123 / DEC-329②）', () => {
   it('操作人是集合内主体（非发起人）→ 该单 skipped APPROVAL_ADMIN_SELF，任务不动', async () => {
     const { w, s, init } = await exceptionInstance('f048-ho-operator');
     const hrEmployee = await w.employee('操作人对应员工');
@@ -117,7 +117,7 @@ describe('T7 交接', () => {
   });
 });
 
-describe('T7 救援（R2-03）：路由失败时救援动作仍可用', () => {
+describe('T7 救援（R2-03）：路由失败时救援动作仍可用（DEC-123 / DEC-329②）', () => {
   it('下一节点异常管理员命中且直线经理已离职：人工同意 409 整单回滚；撤回、改派给显式 W、交接都成功', async () => {
     const w = await approvalWorld(database().db, 'f048-ho-rescue');
     const s = await transferScene(w);

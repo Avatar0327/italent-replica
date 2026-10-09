@@ -66,7 +66,7 @@ async function returned(w: ApprovalWorld, s: Awaited<ReturnType<typeof transferS
   return { draft, view: back, resubmit: () => w.submitRaw({ id: draft.id, revision: business.revision }) };
 }
 
-describe.runIf(realPostgres)('F-048 冻结与并发写入交错', () => {
+describe.runIf(realPostgres)('F-048 冻结与并发写入交错（DEC-329⑤）', () => {
   it('P3：持集合内员工行 FOR UPDATE 未提交时，发起 / 重提冻结不等待（先于持锁方提交）', async () => {
     const { w, s } = await scene('f048-pg-p3');
     const member = await w.person('集合成员', s.from);
@@ -159,7 +159,7 @@ describe.runIf(realPostgres)('F-048 冻结与并发写入交错', () => {
   });
 });
 
-describe.runIf(realPostgres)('F-048 重提与管理员干预并发', () => {
+describe.runIf(realPostgres)('F-048 重提与管理员干预并发（DEC-329⑤）', () => {
   it('同一实例：重提与管理员干预同时排队，一方成功、另一方 409，不死锁；第 2 轮冻结只写一次', async () => {
     const { w, s } = await scene('f048-pg-resubmit-admin');
     const { draft, view, resubmit } = await returned(w, s);

@@ -11,7 +11,7 @@ const database = useTestDb();
 const mapSubjects = useSubjectMapping();
 const BASE = '/api/tenant/approval';
 
-describe('T12 冻结前后的账号绑定', () => {
+describe('T12 冻结前后的账号绑定（DEC-329⑤）', () => {
   it('冻结前已绑定 → 转交命中 409；冻结后首次绑定 → 本轮不命中且可继续办理，重提后命中', async () => {
     const w = await approvalWorld(database().db, 'f048-identity');
     const s = await transferScene(w);

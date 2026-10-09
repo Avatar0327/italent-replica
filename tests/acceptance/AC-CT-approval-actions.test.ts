@@ -163,7 +163,7 @@ describe('R2-T06 四种申请和合并待办', () => {
   });
 });
 
-describe('F-048 T9d 合并待办逐条回避', () => {
+describe('F-048 T9d 合并待办逐条回避（DEC-329）', () => {
   it('3 条待办其中 1 条办理人命中冻结值：该条 409，其余成功；同键重放逐条回执相同', async () => {
     const w = await world('ctf048batch');
     const thirdType = await w.request('POST', '/master-data/types', {
@@ -217,7 +217,7 @@ describe('F-048 T9d 合并待办逐条回避', () => {
   });
 });
 
-describe('F-048 T11 合同审批：缺省关闭与存量在途实例', () => {
+describe('F-048 T11 合同审批：缺省关闭与存量在途实例（DEC-329④）', () => {
   async function terminateApplication(w: Awaited<ReturnType<typeof world>>) {
     const original = await w.create();
     const result = await w.request('POST', '/commands', {

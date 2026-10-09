@@ -26,7 +26,7 @@ async function scene(label: string) {
 const submit = async (w: ApprovalWorld, s: Awaited<ReturnType<typeof transferScene>>) =>
   w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
 
-describe('T8 详情动作：与命令同一判定', () => {
+describe('T8 详情动作：与命令同一判定（DEC-057 / DEC-329）', () => {
   it('办理类：节点级命中者不公布 approve / reject / transfer / addSign / cc；未命中者照常', async () => {
     const { w, s } = await scene('f048-rd-actions');
     const view = await submit(w, s);
@@ -63,7 +63,7 @@ describe('T8 详情动作：与命令同一判定', () => {
   });
 });
 
-describe('T8 待办与我参与：subject_skip 没有办理人', () => {
+describe('T8 待办与我参与：subject_skip 没有办理人（DEC-057 / DEC-329）', () => {
   it('被主体回避跳过的审批人没有待办，也不在“我参与的”里；下一节点审批人有待办', async () => {
     const w = await approvalWorld(database().db, 'f048-rd-todos');
     const s = await transferScene(w);
@@ -79,7 +79,7 @@ describe('T8 待办与我参与：subject_skip 没有办理人', () => {
   });
 });
 
-describe('T9a 重放：成功命令不重复执行，失败命令原样回放', () => {
+describe('T9a 重放：成功命令不重复执行，失败命令原样回放（DEC-057 / DEC-329）', () => {
   it('同键同内容重放同意：任务与日志条数不变，返回当前详情', async () => {
     const { w, s } = await scene('f048-rd-replay');
     const view = await submit(w, s);
@@ -118,7 +118,7 @@ describe('T9a 重放：成功命令不重复执行，失败命令原样回放', 
   });
 });
 
-describe('T9b 交接重放：回执按当前范围裁剪，不重复改派', () => {
+describe('T9b 交接重放：回执按当前范围裁剪，不重复改派（DEC-057 / DEC-329）', () => {
   it('同键同内容重放交接：回执一致，任务只改派一次', async () => {
     const w = await approvalWorld(database().db, 'f048-rd-handover');
     const s = await transferScene(w);

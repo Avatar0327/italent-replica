@@ -115,7 +115,7 @@ describe('AC-APV-31 仿真支持会签节点', () => {
   });
 });
 
-describe('F-048 T10 仿真支持多主体回避', () => {
+describe('F-048 T10 仿真支持多主体回避（DEC-329①）', () => {
   const MULTI: NodeInput = { ...TRANSFER_NODES[0]!, actions: { avoidSelf: false, avoidSubjects: true } };
 
   it('subjectUserIds（虚拟，作为 U(S)）命中节点审批人 → 标「多主体回避跳过」，不产生待办与消息；未命中照常', async () => {

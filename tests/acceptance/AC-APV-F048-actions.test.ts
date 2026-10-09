@@ -29,7 +29,7 @@ async function submitted(w: ApprovalWorld, s: Awaited<ReturnType<typeof transfer
 const post = (w: ApprovalWorld, actor: string, taskId: string, action: string, view: InstanceView, body: object) =>
   w.request(actor, 'POST', `${BASE}/tasks/${taskId}/${action}`, { ifMatch: view.revision, body });
 
-describe('T4 办理人命中冻结值（防御）：409，任务不动', () => {
+describe('T4 办理人命中冻结值（防御）：409，任务不动（DEC-329）', () => {
   const cases: [string, (s: { other: string }) => object][] = [
     ['approve', () => ({})],
     ['reject', () => ({})],
@@ -78,7 +78,7 @@ describe('T4 办理人命中冻结值（防御）：409，任务不动', () => {
   });
 });
 
-describe('T4 目标与抄送', () => {
+describe('T4 目标与抄送（DEC-329）', () => {
   it('转交 / 加签目标是主体（账号在冻结 U(S) 中）→ 409，整批不加；无关目标可转交', async () => {
     const { w, s } = await scene('f048-a-target');
     mapSubjects(() => [s.inHead.employeeId]);
@@ -135,7 +135,7 @@ describe('T4 目标与抄送', () => {
   });
 });
 
-describe('T4 排队激活 / 回到原审批人（不变式）：冻结后不新增命中，加签链照常走完', () => {
+describe('T4 排队激活 / 回到原审批人（不变式）：冻结后不新增命中，加签链照常走完（DEC-329）', () => {
   it('前加签：加签人同意后回到原审批人，原审批人（非主体）继续办理', async () => {
     const { w, s } = await scene('f048-a-chain');
     const view = await submitted(w, s);
