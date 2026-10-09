@@ -530,15 +530,22 @@
     {
       "idx": 75,
       "version": "7",
-      "when": 1791550276629,
-      "tag": "0075_survey360_b",
+      "when": 1791549316542,
+      "tag": "0075_succession_settings_seed",
       "breakpoints": true
     },
     {
       "idx": 76,
       "version": "7",
-      "when": 1791550280698,
-      "tag": "0076_survey360_b_isolation",
+      "when": 1791554295093,
+      "tag": "0076_survey360_b",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1791554299062,
+      "tag": "0077_survey360_b_isolation",
       "breakpoints": true
     }
   ]

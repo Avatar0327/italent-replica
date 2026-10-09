@@ -839,7 +839,7 @@ const LOAD_SOURCE: Evidence = {
 /** 套卷模板与套卷共用同一套处理函数（questionnaires.ts for…of [QUESTIONNAIRES, TEMPLATES]）。 */
 function templateRoutes(): Route[] {
   const base = '/questionnaire-templates';
-  return [
+  const routes: Omit<Route, 'file' | 'key'>[] = [
     { method: 'GET', path: base, need: 'read(c, deps, VIEW', needConst: VIEW('questionnaires.ts', 'questionnaire') },
     {
       method: 'GET',
@@ -882,7 +882,8 @@ function templateRoutes(): Route[] {
         ]),
       ],
     })),
-  ].map((r) => ({ file: 'questionnaires.ts', key: 'questionnaire' as const, ...r }));
+  ];
+  return routes.map((r) => ({ file: 'questionnaires.ts', key: 'questionnaire' as const, ...r }));
 }
 
 const PR_B_ROUTES: readonly Route[] = [
