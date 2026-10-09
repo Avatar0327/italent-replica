@@ -128,7 +128,14 @@ def codex_results():
         cwd0 = re.search(r'"cwd":"([^"]*)"', txt.split("\n", 1)[0])
         mw = re.search(r"/wt-(\d+)$", cwd0.group(1)) if cwd0 else None  # 审查会话的工作目录 wt-NNN 最可靠
         links = re.findall(r"italent-replica/pull/(\d+)", txt)
-        pr = mw.group(1) if mw else (max(set(links), key=links.count) if links else "")
+        pp = ""  # 首条真实提示里写的 PR 号最可靠（审查会话会复用别的 PR 的 wt-NNN 目录，如 #141 在 wt-132 里审）
+        for line in txt.split("\n")[:400]:
+            if '"role":"user"' in line and "AGENTS.md" not in line and "environment_context" not in line:
+                mp = re.search(r"PR\s*#(\d{2,3})\b", line)
+                if mp:
+                    pp = mp.group(1)
+                    break
+        pr = pp or (mw.group(1) if mw else (max(set(links), key=links.count) if links else ""))
         if not pr:
             prompt = ""
             for line in txt.split("\n")[:400]:
