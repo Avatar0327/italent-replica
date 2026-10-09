@@ -7,7 +7,8 @@
  * - 权限：数据操作、按钮、字段查看与编辑（含越权改隐藏字段）；
  * - 幂等重放按当前范围与字段权复核（首次与重放都复核）；
  * - 审计与业务写同事务，审计对象 / 动作与目录一致；
- * - 被引用拒删的钩子位（B4 / B5 在此登记引用方）。
+ * - 名称租户内唯一、顺序号不唯一、同步开关默认否（Q-M0-152，#171）；
+ * - 被引用拒删 / 拒停用的钩子位（B4 / B5 / C2 在此登记引用方）。
  */
 import { randomUUID } from 'node:crypto';
 import { sql, withTenant } from '@italent/db';
@@ -202,7 +203,7 @@ describe('AC-EV-config-dicts 活动类型', () => {
       expect(await detailStatus(mine, foreign.id)).toBe(404);
 
       const renamed = await ok<ActivityTypeView>(
-        await mine.request('PATCH', `${PATH}/${own.id}`, { ifMatch: own.revision, body: { name: name('改名') } }),
+        await mine.request('PATCH', `${PATH}/${own.id}`, { ifMatch: own.revision, body: { displayOrder: 9 } }),
       );
       expect(renamed.revision).toBe(own.revision + 1);
       const denied = await mine.request('PATCH', `${PATH}/${foreign.id}`, {
@@ -421,6 +422,75 @@ describe('AC-EV-config-dicts 活动类型', () => {
       const stale = await op.request('PATCH', `${PATH}/${made.id}`, { ifMatch: 99, body: { name: name() } });
       expect(stale.status).toBe(409);
       expect(await count()).toBe(before);
+    });
+  });
+
+  describe('P2-01 列表筛选与排序不泄露无查看权的字段（第 2 轮，照 talent-review requireFilterVisible）', () => {
+    it('没有 enabled 查看权：?enabled=true / false 都是 403 FILTER_FIELD_HIDDEN，不带筛选的列表照常；有查看权照常筛选', async () => {
+      const full = await admin();
+      const on = await created(full);
+      const off = await created(full, { enabled: false });
+      const blind = await operator(world, { seeAll: true, hidden: { activityType: ['enabled'] } });
+      for (const value of ['true', 'false']) {
+        const response = await blind.request('GET', `${PATH}?enabled=${value}&pageSize=100`);
+        expect(response.status, value).toBe(403);
+        expect(await errorOf(response)).toEqual({ code: 'FORBIDDEN', reason: 'FILTER_FIELD_HIDDEN' });
+      }
+      const plain = await list(blind, 'pageSize=100');
+      const rows = plain.items.filter((item) => item.id === on.id || item.id === off.id);
+      expect(rows).toHaveLength(2);
+      for (const row of rows) expect(row).not.toHaveProperty('enabled');
+      expect((await list(full, 'enabled=false&pageSize=100')).items.map((item) => item.id)).toContain(off.id);
+    });
+
+    it('没有 displayOrder 查看权：列表不再按顺序号排序（改按可见的名称），顺序号的相对高低还原不出来', async () => {
+      const label = name('序泄');
+      const full = await admin();
+      // 名称升序与顺序号升序相反
+      const rows = [
+        await created(full, { name: `${label}-a`, displayOrder: 3 }),
+        await created(full, { name: `${label}-b`, displayOrder: 2 }),
+        await created(full, { name: `${label}-c`, displayOrder: 1 }),
+      ];
+      const mine = (page: Page) => page.items.filter((item) => item.name?.startsWith(label)).map((item) => item.id);
+      expect(mine(await list(full, 'pageSize=100'))).toEqual([rows[2]!.id, rows[1]!.id, rows[0]!.id]);
+      const blind = await operator(world, { seeAll: true, hidden: { activityType: ['displayOrder'] } });
+      expect(mine(await list(blind, 'pageSize=100'))).toEqual(rows.map((row) => row.id));
+    });
+
+    it('顺序号与名称都没有查看权：只按不携带业务含义的稳定主键排序', async () => {
+      const full = await admin();
+      for (let i = 0; i < 4; i++) await created(full, { displayOrder: 10 - i });
+      const blind = await operator(world, { seeAll: true, hidden: { activityType: ['displayOrder', 'name'] } });
+      const ids = (await list(blind, 'pageSize=100')).items.map((item) => item.id as string);
+      expect(ids.length).toBeGreaterThan(3);
+      expect(ids).toEqual([...ids].sort());
+    });
+  });
+
+  describe('改名的信息泄露（名称唯一是租户级约束）', () => {
+    it('只有创建人范围的人改名：403 ACTIVITY_TYPE_NAME_REQUIRES_SEE_ALL，判定在查重之前，撞名与不撞名同一响应；不改名的修改照常', async () => {
+      const seeAll = await operator(creatorWorld, { seeAll: true });
+      const mine = await operator(creatorWorld, { seeAll: true });
+      const own = await created(mine);
+      const hidden = await created(seeAll, { name: name('范围外') });
+      await mine.revokeSeeAll();
+      for (const target of [hidden.name, name('全新')]) {
+        const response = await mine.request('PATCH', `${PATH}/${own.id}`, {
+          ifMatch: own.revision,
+          body: { name: target },
+        });
+        expect(response.status, target).toBe(403);
+        expect((await errorOf(response)).reason).toBe('ACTIVITY_TYPE_NAME_REQUIRES_SEE_ALL');
+      }
+      expect(await ok<ActivityTypeView>(await mine.request('GET', `${PATH}/${own.id}`))).toEqual(own);
+      const keep = await ok<ActivityTypeView>(
+        await mine.request('PATCH', `${PATH}/${own.id}`, {
+          ifMatch: own.revision,
+          body: { name: own.name, displayOrder: 4 },
+        }),
+      );
+      expect(keep).toMatchObject({ name: own.name, displayOrder: 4 });
     });
   });
 
