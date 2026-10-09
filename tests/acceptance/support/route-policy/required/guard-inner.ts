@@ -17,7 +17,7 @@ export interface GuardInnerAlts {
 const APPROVAL = 'apps/api/src/modules/approval';
 const IDP = 'apps/api/src/modules/idp';
 
-export const GUARD_INNER_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
+const CORE_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
   // 审批详情 / 任务 / 日志可打开：发起人、参与审批人或被抄送人（数据态），或范围内的流程管理员（转交 / 干预按钮）
   'approval.canOpen': {
     group: 'canOpen',
@@ -68,6 +68,118 @@ export const GUARD_INNER_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
   },
 };
 
+const SURVEY360 = 'apps/api/src/modules/survey360';
+/** allActivities（context.ts allActivitiesOf → can）的两个授权请求：Activity 查看权 + 全部活动按钮 viewAll。 */
+const ALL_ACTIVITIES = ['obj:Survey360.Activity:view', 'btn:Survey360.Activity#viewAll@list'] as const;
+const FINE_OFF: Evidence = {
+  role: 'impl',
+  unit: `${SURVEY360}/context.ts#loadAdmin`,
+  anchor:
+    'if (allActivities || !(await finePermission(tx))) return { userId: tenant.userId, allActivities, people: null };',
+};
+/**
+ * 精细化开启且没有 viewAll 时，人员数据范围为全部（`scope.all`）同样让 admin.people 为 null，即不受精细化限制
+ * （loadAdmin，#178 第 2 轮 P2-1）。数据态备选，不经授权器。
+ */
+const PEOPLE_ALL: Evidence = {
+  role: 'impl',
+  unit: `${SURVEY360}/context.ts#loadAdmin`,
+  anchor: 'return { userId: tenant.userId, allActivities, people: scope.all ? null : scope };',
+};
+const PERSON_SCOPE_ALL = 'data:survey360.personScopeAll';
+
+// F-073：survey360 的 allActivities 按用途分别登记（不整体 optional）
+const SURVEY360_ALTS: Readonly<Record<string, GuardInnerAlts>> = {
+  // 活动可见（requireActivity）：全部活动 或 本人创建 / 被授权，不可见 404
+  'survey360.activityScope': {
+    group: 'activityVisible',
+    alts: { allActivities: ALL_ACTIVITIES, ownerOrGranted: 'data:survey360.activityOwnerOrGrant' },
+    at: [
+      {
+        role: 'call',
+        unit: `${SURVEY360}/access.ts#requireActivity`,
+        anchor: "if (!row) fail('NOT_FOUND', '活动不存在')",
+      },
+      {
+        role: 'impl',
+        unit: `${SURVEY360}/access.ts#activityVisibleSql`,
+        anchor: 'if (admin.allActivities) return sql`true`;',
+      },
+      {
+        role: 'impl',
+        unit: `${SURVEY360}/access.ts#activityVisibleSql`,
+        anchor: '::uuid OR EXISTS (SELECT 1 FROM survey360_activity_grants g',
+      },
+    ],
+  },
+  // 人员可见（visiblePerson）：不受精细化限制（全部活动 / 精细化关闭 / 人员数据范围为全部），否则人员须在范围内
+  'survey360.personVisible': {
+    group: 'personVisible',
+    alts: {
+      allActivities: ALL_ACTIVITIES,
+      finePermissionOff: 'data:survey360.finePermissionOff',
+      personScopeAll: PERSON_SCOPE_ALL,
+      personInScope: 'data:survey360.personInPeopleScope',
+    },
+    at: [
+      {
+        role: 'call',
+        unit: `${SURVEY360}/people.ts#visiblePerson`,
+        anchor: "if (!(await personVisible(tx, admin, person))) fail('NOT_FOUND', message)",
+      },
+      { role: 'impl', unit: `${SURVEY360}/people.ts#personVisible`, anchor: 'if (!admin.people) return true;' },
+      {
+        role: 'impl',
+        unit: `${SURVEY360}/people.ts#personVisible`,
+        anchor:
+          'return scopeAllowsInTransaction(tx, admin.people, ' +
+          '{ personId: person.employeeId, creatorId: person.createdBy });',
+      },
+      FINE_OFF,
+      PEOPLE_ALL,
+    ],
+  },
+  // 同步冲突与关联日志只给不受限的管理员（requireUnrestricted）：全部活动 / 精细化关闭 / 人员数据范围为全部
+  'survey360.unrestricted': {
+    group: 'unrestricted',
+    alts: {
+      allActivities: ALL_ACTIVITIES,
+      finePermissionOff: 'data:survey360.finePermissionOff',
+      personScopeAll: PERSON_SCOPE_ALL,
+    },
+    at: [
+      {
+        role: 'call',
+        unit: `${SURVEY360}/people.ts#requireUnrestricted`,
+        anchor: 'if (admin.people)',
+      },
+      FINE_OFF,
+      PEOPLE_ALL,
+    ],
+  },
+  // 精细化生效时不新建 360 人员（requireCreatable）：全部活动 / 精细化关闭 / 人员数据范围为全部
+  'survey360.personCreatable': {
+    group: 'unrestricted',
+    alts: {
+      allActivities: ALL_ACTIVITIES,
+      finePermissionOff: 'data:survey360.finePermissionOff',
+      personScopeAll: PERSON_SCOPE_ALL,
+    },
+    at: [
+      {
+        role: 'call',
+        unit: `${SURVEY360}/people.ts#requireCreatable`,
+        anchor:
+          "if (admin.people) fail('FORBIDDEN', '开启精细化权限后只能选择可见的人员，不能新建人员', 'PERSON_NOT_AVAILABLE');",
+      },
+      FINE_OFF,
+      PEOPLE_ALL,
+    ],
+  },
+};
+
+export const GUARD_INNER_ALTS: Readonly<Record<string, GuardInnerAlts>> = { ...CORE_ALTS, ...SURVEY360_ALTS };
+
 /**
  * 类别 / 级别写入口的岗职务关联：writeContext 对声明的每类岗职务恒问一次查看权，但只有本次写入后有效关联非空且关联类型为
  * 该类（jobObject：查看权为假 → 403）才用到答案。POST / 导入：jobLinks 非空；PATCH：jobLinks 非空，或只给 jobLinkType 且
@@ -112,6 +224,12 @@ export const INNER_CONDITIONS: Readonly<Record<string, string>> = {
   'jobLinkType=grade': jobLinkType('grade', '职等'),
   'details.targetReference':
     '标准 details 非空：每个单元格的指标引用都判指标查看权；details 为空数组（创建 / 更新）不判；PATCH 不带 details 也不判',
+  'qualification.newCategoryRef':
+    '任职资格子集（kind=qualification）的人工来源写入（HR 直写、信息采集）带来新引用才判类别查看权：新增，或 categoryId ' +
+    '按小写 UUID 规范化后与现值不同；只改日期、原样带回同一 UUID（含大小写不同）、删除、系统 / 自助来源都不判（R3-T02 C1-1）',
+  'qualification.newLevelRef':
+    '任职资格子集（kind=qualification）的人工来源写入（HR 直写、信息采集）带来新引用才判级别查看权：新增，或 levelId ' +
+    '按小写 UUID 规范化后与现值不同；只改日期、原样带回同一 UUID（含大小写不同）、删除、系统 / 自助来源都不判（R3-T02 C1-1）',
   'instance.personnelChange':
     '审批实例业务类型为人员子集变更（personnel_change）时，同单重提经适配器调 resubmitChangeInTransaction，按子集登记的' +
     '自助申请准入复核（R3-T02 P0）；其他业务类型不判；未登记策略的子集钩子不调用',
