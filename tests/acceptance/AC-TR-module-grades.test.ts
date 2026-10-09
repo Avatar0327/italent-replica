@@ -6,11 +6,12 @@
  *   上界 − 0.0001 → 本段；上界 → 下一段；最后一段含上界；低于第一段 / 高于最后一段 → 无匹配）；
  * - 被模板引用不可删（409 MODULE_GRADE_IN_USE）。负向用例断言具体响应码，并前后各读一次对比。
  */
-import { matchModuleGradeByCount, matchModuleGradeByScore } from '@italent/domain';
+import { matchModuleGradeByCount, matchModuleGradeByScore, TALENT_REVIEW_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { registerConfigReferenceGuard } from '../../apps/api/src/modules/talent-review/config-kit.js';
-import { moduleGradeBody, scoreItems, scoringWorld, type ConfigView } from './AC-TR-scoring-support.js';
+import { auditApi } from './AC-AUD-support.js';
+import { TR_NOW, moduleGradeBody, scoreItems, scoringWorld, type ConfigView } from './AC-TR-scoring-support.js';
 import { errorCode } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -144,5 +145,10 @@ describe('模块等级 · 配置规则（TR-R15 / R20）', () => {
     referenced.delete(grade.id);
     expect((await w.request('DELETE', `/module-grades/${grade.id}`, { ifMatch: 1 })).status).toBe(200);
     expect((await w.request('GET', `/module-grades/${grade.id}`)).status).toBe(404);
+    const audit = auditApi(testDb().db, TR_NOW.toISOString());
+    const objectType = TALENT_REVIEW_OBJECTS.moduleGrade.code;
+    const { items } = await audit.dataChanges(w.as, { objectType, operation: 'delete', limit: '10' });
+    const removed = await audit.dataChange(w.as, items[0]!.id);
+    expect((removed.snapshot as GradeView).items).toHaveLength(grade.items.length); // 子表一并快照
   });
 });

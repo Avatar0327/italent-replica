@@ -175,5 +175,6 @@ describe('评价规则 · 通用写入规则（DEC-067 / DEC-216）', () => {
     expect(update.changes.map((change) => change.field)).toEqual(['name']);
     const removed = await audit.dataChange(w.as, items.find((entry) => entry.operation === 'delete')!.id);
     expect(removed.snapshot).toMatchObject({ id: rule.id, name: '改名' });
+    expect((removed.snapshot as RuleView).levels).toHaveLength(3); // 子表一并快照
   });
 });

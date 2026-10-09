@@ -29,6 +29,7 @@ describe.each([
     path: '/score-rules',
     body: () => gradeRuleBody({ name: `权限规则${Math.random()}` }),
     secret: 'allowUnable',
+    nested: 'levels',
     attempt: { allowUnable: true },
     patch: { enabled: false },
     filter: 'enabled',
@@ -38,13 +39,14 @@ describe.each([
     path: '/module-grades',
     body: () => moduleGradeBody({ name: `权限等级${Math.random()}` }),
     secret: 'items',
+    nested: 'items',
     attempt: { items: scoreItems(0, 1) },
     patch: { enabled: false },
     filter: 'enabled',
   },
 ] as const)(
   '配置对象权限 · $object（DEC-121 / 082 / 043）',
-  ({ object, path, body, secret, attempt, patch, filter }) => {
+  ({ object, path, body, secret, nested, attempt, patch, filter }) => {
     let world: PermissionWorld;
     let setup: ReturnType<typeof tenantApi>;
     let existing: ConfigView;
@@ -80,10 +82,15 @@ describe.each([
     });
 
     it('看全部：可见他人建的；隐藏字段键缺席、写隐藏 / 只读字段 403 数据不变；看不到筛选字段不能筛选', async () => {
-      const operator = await configOperator(world, object, { seeAll: true, hidden: [secret], readonly: ['name'] });
+      const operator = await configOperator(world, object, {
+        seeAll: true,
+        hidden: [secret, nested],
+        readonly: ['name'],
+      });
       const detail = (await (await operator.request('GET', `${path}/${existing.id}`)).json()) as object;
       expect(detail).toMatchObject({ id: existing.id });
       expect(detail).not.toHaveProperty(secret);
+      expect(detail).not.toHaveProperty(nested); // 子表（等级 / 项）同样按字段查看权裁剪
       for (const payload of [attempt, { name: '改' }]) {
         const response = await operator.request('PATCH', `${path}/${existing.id}`, { ifMatch: 1, body: payload });
         expect(response.status, JSON.stringify(payload)).toBe(403);
