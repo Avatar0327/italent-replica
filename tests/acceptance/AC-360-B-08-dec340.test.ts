@@ -1,14 +1,15 @@
 /**
- * DEC-340③：答卷审计（保存、提交、屏蔽、恢复、清除）给有活动授权的管理员看**脱敏版本**——不带任何能关联到评价者的
- * 信息：评价关系 ID、评价者人员 ID / 姓名 / 邮箱 / 账号，也不展示请求来源（IP、终端、来源页、TraceID）、命令 ID 与
- * 答卷编号（第 3 轮 P2-2：管理员可凭自己的命令 ID 或匿名卡片编号把答卷关联到具名评价关系）。
- * 按 DEC-340③ 原文，持“全部活动”者同样只看脱敏版本（兼任与否都一样，第 3 轮清单：在产品另行批准前不给完整版）；
- * 没有活动授权的管理员看不到；作答入口（链接 / 待办）的失败审计仍只给持“全部活动”且不兼任的人（第 3 轮 P2-1）。
+ * DEC-340③ / DEC-355②：答卷审计（保存、提交、屏蔽、恢复、清除）给有活动授权的管理员看**脱敏版本**——不带任何能
+ * 关联到评价者的信息：评价关系 ID、评价者人员 ID / 姓名 / 邮箱 / 账号，也不展示请求来源（IP、终端、来源页、TraceID）、
+ * 命令 ID 与答卷编号（第 3 轮 P2-2：管理员可凭自己的命令 ID 或匿名卡片编号把答卷关联到具名评价关系）。
+ * DEC-355②（批准例外）：持“全部活动”且**在该活动里**不兼任被评价人 / 评价者的人看完整版（评价关系、答案、来源）；
+ * 兼任者与其他活动管理员看脱敏版。没有活动授权的管理员看不到；作答入口（链接 / 待办）的失败审计仍只给持“全部活动”
+ * 且不兼任任何活动的人（第 3 轮 P2-1）。
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { auditApi } from './AC-AUD-support.js';
-import { key, my, progressDetail, sceneB, type SceneB, sheets, type TodoView } from './AC-360-B-support.js';
+import { key, my, progressDetail, sceneB, type SceneB, sheets, type TodoView, userOf } from './AC-360-B-support.js';
 
 const testDb = useTestDb();
 
@@ -47,11 +48,29 @@ function identityMarkers(s: SceneB): string[] {
   ];
 }
 
-async function sheetEvents(s: SceneB, user: string) {
+async function sheetEvents(s: SceneB, user: string, query: Record<string, string> = {}) {
   const audit = auditApi(s.w.db, '2026-10-01T02:00:00Z', { authorize: s.w.authorize });
   const as = { user, tenant: s.w.tenantId };
-  const items = (await audit.dataChanges(as, { limit: '100' })).items.filter((i) => i.objectType === 'survey360-sheet');
+  const items = (await audit.dataChanges(as, { limit: '100', ...query })).items.filter(
+    (i) => i.objectType === 'survey360-sheet',
+  );
   return Promise.all(items.map(async (item) => ({ item, detail: await audit.dataChange(as, item.id) })));
+}
+
+/** 完整版（DEC-355②）：带评价关系、答卷编号、命令 ID，清除事件带答案与评语；可按命令 ID 筛到。 */
+async function expectFull(s: SceneB, user: string) {
+  const events = await sheetEvents(s, user);
+  const actions = new Set(events.map((e) => e.item.action));
+  for (const action of ACTIONS) expect(actions, action).toContain(action);
+  const text = JSON.stringify(events);
+  expect(text).toContain('"relationId"');
+  expect(text).toContain(s.rel.p1.id);
+  const clear = events.find((e) => e.item.action === 'survey360.sheet.clear')!;
+  expect(clear.item.objectId).not.toBeNull();
+  expect(clear.item.commandId).not.toBeNull();
+  expect(JSON.stringify(clear.detail)).toContain('同事建议');
+  const byCommand = await sheetEvents(s, user, { commandId: clear.item.commandId! });
+  expect(byCommand.map((e) => e.item.id)).toContain(clear.item.id);
 }
 
 function expectDesensitized(s: SceneB, events: Awaited<ReturnType<typeof sheetEvents>>) {
@@ -99,7 +118,7 @@ describe('DEC-340③ 答卷审计脱敏', () => {
     expectDesensitized(s, events);
   });
 
-  it('持“全部活动”者不论是否兼任评价者 / 被评价人，都只看脱敏版本（DEC-340③ 原文）', async () => {
+  it('兼任本活动评价者 / 被评价人的“全部活动”持有人只看脱敏版本（DEC-355②）', async () => {
     const s = await scene('d340b');
     // 上级 M 是本活动的评价者、T 是被评价人，同时持“全部活动”（360 系统管理员身份）
     for (const user of [s.user.M, s.user.T]) {
@@ -108,9 +127,23 @@ describe('DEC-340③ 答卷审计脱敏', () => {
       const actions = new Set(events.map((e) => e.item.action));
       for (const action of ACTIONS) expect(actions, action).toContain(action);
       expectDesensitized(s, events);
+      // 脱敏行按命令 ID 筛选查不到（第 3 轮 P2-2 保持）
+      const clearedByAdmin = (await sheetEvents(s, s.w.admin)).find((e) => e.item.action === 'survey360.sheet.clear')!;
+      expect(await sheetEvents(s, user, { commandId: clearedByAdmin.item.commandId! })).toEqual([]);
     }
-    // 不兼任的“全部活动”持有人（租户 360 系统管理员）：同样脱敏
-    expectDesensitized(s, await sheetEvents(s, s.w.admin));
+  });
+
+  it('持“全部活动”且在本活动不兼任的人看完整版：评价关系、答案、来源与命令 ID（DEC-355②）', async () => {
+    const s = await scene('d355');
+    const { w } = s;
+    // 租户 360 系统管理员（没有挂接任何被评价人 / 评价者）
+    await expectFull(s, w.admin);
+    // 虚线经理 D 是另一活动的被评价人、不参与本活动：本活动的日志看完整版（按活动判定，不是“任一活动”）
+    const other = await w.activity({ name: '另一活动' });
+    await w.object(other.id, s.person.D.id, [s.q.id]);
+    const d = await userOf(w, s.employees.D.id);
+    await w.appoint(d, 'system');
+    await expectFull(s, d);
   });
 
   it('没有活动授权的管理员看不到；作答入口的失败审计对活动管理员仍不可见', async () => {
