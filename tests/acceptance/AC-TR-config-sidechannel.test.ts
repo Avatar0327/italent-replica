@@ -35,7 +35,7 @@ function controlled(options: { creatorOnly: boolean; fields: ReadonlySet<string>
   return tenantApi(testDb().db, { authorize, clock: () => TR_NOW });
 }
 
-describe.each(Object.keys(CONFIG_KINDS) as ConfigKind[])('配置对象旁路泄露 · %s', (kind) => {
+describe.each(Object.keys(CONFIG_KINDS) as ConfigKind[])('配置对象旁路泄露（DEC-121 / DEC-082）· %s', (kind) => {
   const { path } = CONFIG_KINDS[kind];
   const fields = new Set(TALENT_REVIEW_OBJECTS[kind].fields.map((field) => field.code));
 

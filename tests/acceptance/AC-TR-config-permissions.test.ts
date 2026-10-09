@@ -124,7 +124,7 @@ describe.each(Object.keys(CONFIG_KINDS) as ConfigKind[])('配置对象权限 · 
   });
 });
 
-describe('租户设置权限（单例资源，只有看全部可读写）', () => {
+describe('租户设置权限（单例资源，只有看全部可读写；DEC-121 / 082）', () => {
   let world: PermissionWorld;
   let setup: ReturnType<typeof tenantApi>;
   const adminRead = async () => (await setup.request('GET', `${TR_BASE}/settings`, world.asAdmin)).json();

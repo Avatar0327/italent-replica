@@ -22,7 +22,7 @@ for (const kind of ['category', 'role'] as const) {
 const reasonOf = async (response: Response) =>
   ((await response.json()) as { error: { details: { reason: string } } }).error.details.reason;
 
-describe.each(['category', 'role'] as const)('盘点配置 CRUD · %s', (kind) => {
+describe.each(['category', 'role'] as const)('盘点配置 CRUD（DEC-067 / DEC-216）· %s', (kind) => {
   const { path, duplicate, inUse } = CONFIG_KINDS[kind];
 
   it('新建、列表按排序号、详情带 ETag；按启用状态筛选；其他租户看不到', async () => {
@@ -114,7 +114,7 @@ describe.each(['category', 'role'] as const)('盘点配置 CRUD · %s', (kind) =
   });
 });
 
-describe('盘点角色（设计 §2.2、§3.4）', () => {
+describe('盘点角色（设计 §2.2、§3.4；DEC-067）', () => {
   it('编码租户唯一且建后不可改；执行人解析方式限四种', async () => {
     const w = await configWorld(testDb().db, 'trc-role');
     const role = await w.create('role', configBody('role', { resolver: 'designated' }));

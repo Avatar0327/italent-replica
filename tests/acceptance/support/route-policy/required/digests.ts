@@ -577,9 +577,9 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/talent-review/config-routes.ts': {
     listResponse: 'e3a37c9329ff',
-    registerCategories: '1c2039a34ebe',
+    registerCategories: '21d48677b1eb',
     registerFields: 'fd4b09a41a60',
-    registerRoles: 'f9cfdcf8d767',
+    registerRoles: '9bbaa68d1347',
     registerSettings: '162387861cef',
   },
   'apps/api/src/modules/talent-review/readiness-service.ts': {

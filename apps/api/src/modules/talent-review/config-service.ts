@@ -1,18 +1,8 @@
 /**
- * 盘点分类与盘点角色的读写（设计 §2.2、§7 配置 CRUD 行）：通用骨架见 config-kit.ts；角色编码建后不可改（输入不收）。
+ * 盘点分类与盘点角色的对象描述（设计 §2.2、§7 配置 CRUD 行）：读写走 config-kit.ts 的通用骨架；角色编码建后不可改（输入不收）。
  */
 import { talentReviewCategories as C, talentReviewRoles as R } from '@italent/db';
-import {
-  type ConfigSpec,
-  type ConfigTable,
-  createConfig,
-  deleteConfig,
-  listConfig,
-  loadConfig,
-  updateConfig,
-  type WriteContext,
-} from './config-kit.js';
-import type { CategoryCreate, CategoryPatch, RoleCreate, RolePatch } from './config-input.js';
+import type { ConfigSpec, ConfigTable } from './config-kit.js';
 
 const audited = (t: typeof C | typeof R) => ({
   id: t.id,
@@ -48,21 +38,3 @@ export const ROLE: ConfigSpec<RoleView & Named> = {
   duplicate: 'ROLE_DUPLICATE',
   inUse: 'ROLE_IN_USE',
 };
-
-export { listConfig, loadConfig };
-export const createCategory = (tx: Parameters<typeof createConfig>[0], ctx: WriteContext, input: CategoryCreate) =>
-  createConfig(tx, CATEGORY, ctx, input);
-export const updateCategory = (
-  tx: Parameters<typeof createConfig>[0],
-  ctx: WriteContext,
-  id: string,
-  p: CategoryPatch,
-) => updateConfig(tx, CATEGORY, ctx, id, p);
-export const deleteCategory = (tx: Parameters<typeof createConfig>[0], ctx: WriteContext, id: string) =>
-  deleteConfig(tx, CATEGORY, ctx, id);
-export const createRole = (tx: Parameters<typeof createConfig>[0], ctx: WriteContext, input: RoleCreate) =>
-  createConfig(tx, ROLE, ctx, input);
-export const updateRole = (tx: Parameters<typeof createConfig>[0], ctx: WriteContext, id: string, p: RolePatch) =>
-  updateConfig(tx, ROLE, ctx, id, p);
-export const deleteRole = (tx: Parameters<typeof createConfig>[0], ctx: WriteContext, id: string) =>
-  deleteConfig(tx, ROLE, ctx, id);

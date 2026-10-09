@@ -13,7 +13,6 @@ import {
   type ConfigTable,
   createConfig,
   deleteConfig,
-  listConfig,
   lockConfigRow,
   requireSeeAllToRename,
   uniqueOr,
@@ -92,10 +91,6 @@ export async function withOptions(tx: Tx, tenantId: string, rows: Omit<FieldView
   }));
 }
 
-export async function listFieldViews(tx: Tx, tenantId: string, query: Parameters<typeof listConfig>[3]) {
-  const rows = (await listConfig(tx, FIELD, tenantId, query)) as Omit<FieldView, 'options'>[];
-  return withOptions(tx, tenantId, rows);
-}
 export const loadFieldView = (tx: Tx, tenantId: string, id: string) => FIELD.load!(tx, tenantId, id);
 
 const invalid = (reason: string, message: string, extra: object = {}) =>

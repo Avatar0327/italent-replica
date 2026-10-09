@@ -27,7 +27,7 @@ interface SettingsView {
   readonly systemPrincipalUserId: string | null;
 }
 
-describe('盘点租户设置（设计 §2.2）', () => {
+describe('盘点租户设置（设计 §2.2；DEC-306⑤ 系统主体；DEC-067）', () => {
   it('没有记录时返回默认值与 revision 0；首次保存 If-Match 0 建立，之后按 revision 乐观锁', async () => {
     const w = await configWorld(testDb().db, 'trc-settings');
     const initial = await w.request('GET', '/settings');

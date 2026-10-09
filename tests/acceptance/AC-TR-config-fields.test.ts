@@ -32,7 +32,7 @@ interface FieldView extends ConfigView {
   readonly pairFieldId: string | null;
 }
 
-describe('盘点字段目录（设计 §2.2）', () => {
+describe('盘点字段目录（设计 §2.2；DEC-257）', () => {
   it('六种类型；number 默认小数位 2、范围 0～4；非 number 不得带小数位', async () => {
     const w = await configWorld(testDb().db, 'trc-field-kinds');
     const number = (await w.create('field', fieldBody({ kind: 'number' }))) as FieldView;
@@ -145,7 +145,7 @@ describe('盘点字段目录（设计 §2.2）', () => {
   });
 });
 
-describe('预置盘点字段（设计 §2.7）', () => {
+describe('预置盘点字段（设计 §2.7；DEC-306①）', () => {
   const countRows = (tenant: string) =>
     withTenant(testDb().db, tenant, async (tx) => {
       const result = await tx.execute(sql`SELECT count(*)::int AS n FROM talent_review_fields WHERE preset = true`);

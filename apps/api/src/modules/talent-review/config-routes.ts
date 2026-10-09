@@ -36,7 +36,16 @@ import {
   rolePatch,
   settingsPatch,
 } from './config-input.js';
-import { listConfig, loadConfig, type ConfigObject, type ConfigSpec, type WriteContext } from './config-kit.js';
+import {
+  createConfig,
+  deleteConfig,
+  listConfig,
+  loadConfig,
+  updateConfig,
+  type ConfigObject,
+  type ConfigSpec,
+  type WriteContext,
+} from './config-kit.js';
 import * as simple from './config-service.js';
 import * as fields from './field-service.js';
 import * as settings from './settings-service.js';
@@ -163,7 +172,7 @@ function registerCategories(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const body = await parseBody(c, categoryCreate);
     await checkWriteFields(deps, ctx, 'category', 'create', body);
     return runWrite(c, deps, ctx, 'category', body, 201, visibleTo('category'), (tx, w) =>
-      simple.createCategory(tx, w, body),
+      createConfig(tx, simple.CATEGORY, w, body),
     );
   });
   router.patch(`${CATEGORIES}/:id`, async (c) => {
@@ -172,14 +181,14 @@ function registerCategories(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     const body = await parseBody(c, categoryPatch);
     await checkWriteFields(deps, ctx, 'category', 'update', body);
     return runWrite(c, deps, ctx, 'category', body, 200, visibleTo('category'), (tx, w) =>
-      simple.updateCategory(tx, w, id, body),
+      updateConfig(tx, simple.CATEGORY, w, id, body),
     );
   });
   router.delete(`${CATEGORIES}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'category', 'delete', revision(c));
     const id = uuidParam(c);
     return runWrite(c, deps, ctx, 'category', { id }, 200, visibleTo('category'), (tx, w) =>
-      simple.deleteCategory(tx, w, id),
+      deleteConfig(tx, simple.CATEGORY, w, id),
     );
   });
 }
@@ -198,19 +207,25 @@ function registerRoles(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     requireNew(ctx.expectedRevision);
     const body = await parseBody(c, roleCreate);
     await checkWriteFields(deps, ctx, 'role', 'create', body);
-    return runWrite(c, deps, ctx, 'role', body, 201, visibleTo('role'), (tx, w) => simple.createRole(tx, w, body));
+    return runWrite(c, deps, ctx, 'role', body, 201, visibleTo('role'), (tx, w) =>
+      createConfig(tx, simple.ROLE, w, body),
+    );
   });
   router.patch(`${ROLES}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'role', 'update', revision(c));
     const id = uuidParam(c);
     const body = await parseBody(c, rolePatch);
     await checkWriteFields(deps, ctx, 'role', 'update', body);
-    return runWrite(c, deps, ctx, 'role', body, 200, visibleTo('role'), (tx, w) => simple.updateRole(tx, w, id, body));
+    return runWrite(c, deps, ctx, 'role', body, 200, visibleTo('role'), (tx, w) =>
+      updateConfig(tx, simple.ROLE, w, id, body),
+    );
   });
   router.delete(`${ROLES}/:id`, async (c) => {
     const ctx = await reviewWriteContext(c, deps, 'role', 'delete', revision(c));
     const id = uuidParam(c);
-    return runWrite(c, deps, ctx, 'role', { id }, 200, visibleTo('role'), (tx, w) => simple.deleteRole(tx, w, id));
+    return runWrite(c, deps, ctx, 'role', { id }, 200, visibleTo('role'), (tx, w) =>
+      deleteConfig(tx, simple.ROLE, w, id),
+    );
   });
 }
 

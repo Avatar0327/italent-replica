@@ -23,7 +23,7 @@ PR-A 的准备度字典是最简单的配置对象（1 张表、5 条路由）�
 
 | 子 PR | 内容（设计章节） | 主要表 | 估算 | 前置 |
 |---|---|---|---|---|
-| **B1 配置骨架与字段目录** | 提取配置对象通用骨架（列表 / 详情 / 增改删 / 审计 / 引用守卫登记，供 B2～B5 复用）；租户设置（含系统主体指定，§4.1）；盘点分类；盘点角色；字段目录 + 选项（pair 双向一致、多选标记、预置字段种子 §2.7）；字段权限目录接入 `registerTenantFieldSource`（PR-A 已留扩展点） | settings、categories、roles、fields、field_options | 1400 | — |
+| **B1 配置骨架与字段目录** | 提取配置对象通用骨架（列表 / 详情 / 增改删 / 审计 / 引用守卫登记，供 B2～B5 复用）；租户设置（含系统主体指定，§4.1）；盘点分类；盘点角色；字段目录 + 选项（pair 双向一致、多选标记、预置字段种子 §2.7）；字段权限目录接入 `registerTenantFieldSource` **顺延到 PR-C**（`TalentReview.Object` 对象随 PR-C 才登记，B1 里接入无法验证；B1 实施时确定） | settings、categories、roles、fields、field_options | 1400 | — |
 | **B2 评价规则、模块等级、字段映射** | 评价规则 + 等级；模块等级 + 项（区间含下界不含上界）；字段映射（类型相同、选项值集合相同）；被模板引用拒删（守卫登记，B6 接入） | score_rules、_levels、module_grades、_items、field_mappings | 1200 | B1 |
 | **B3 表单三档与流程定义** | 盘点内容表单 + 字段三档 + required（§2.2、DEC-306①）；预置四个表单；流程定义 + 节点 + 角色（countersign 约束、node_key 不可改）；`AC-TR-form-permissions`（定义侧） | forms、form_fields、flows、nodes、node_roles | 1300 | B1 |
 | **B4 九宫格** | 九宫格、轴分段、格子、位置字段占用（租户内唯一 + 每九宫格最多两行 + 保存命令恰两行 `MATRIX_POSITION_FIELDS_INCOMPLETE`）、比例规则组与规则与格子集合；预置两个九宫格；`AC-TR-08-matrix` + 真 PG 交叉列并发 | matrices、axis_levels、cells、position_fields、ratio_rule_groups、_rules、_rule_cells | 1500 | B1 |
