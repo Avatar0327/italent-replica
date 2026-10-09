@@ -9,12 +9,12 @@
  *   选的，这里只靠外键保证引用存在。
  * 取锁限制（P0 subset-policy.ts）：钩子在员工锁之后调用，只做读取与判断，不取新的员工锁，拒绝时抛错、不写数据。
  *
- * 钩子的签名里没有授权器，所以在装配路由时由 bindQualificationSubsetPolicy 绑定（最近一次装配的 deps 生效）；
- * 未绑定时人工来源 fail-closed（503）。
+ * 钩子的签名里没有授权器，所以取自命令上下文里的 ctx.authorize（personnel access() 填入处理本次请求的应用的授权器；
+ * 信息采集等可信入口由调用方带上），不用进程全局：同进程装配多个应用时各用各的。只在有新引用时才需要授权器；
+ * 没带授权器 fail-closed（503）。
  */
 import type { Tx } from '@italent/db';
 import { AppError } from '../../errors.js';
-import type { TenantRouteDeps } from '../../routes.js';
 import { authorizeInTransaction, resolveModuleScopeInTransaction } from '../permission/module-access.js';
 import type { PersonnelContext, Row } from '../personnel/store.js';
 import { registerSubsetPolicy, type SubsetSaveCheck } from '../personnel/subset-policy.js';
@@ -27,15 +27,6 @@ import {
   type QualificationRefs,
 } from './access.js';
 import './settings.js';
-
-type PolicyDeps = Pick<TenantRouteDeps, 'authorize' | 'clock'>;
-
-let bound: PolicyDeps | null = null;
-
-/** 绑定授权器与时钟（装配路由时调用）；测试可重绑以模拟不同的查看权。 */
-export function bindQualificationSubsetPolicy(deps: PolicyDeps): void {
-  bound = { authorize: deps.authorize, clock: deps.clock };
-}
 
 const SELF_SERVICE_CLOSED = () =>
   new AppError('FORBIDDEN', '员工暂不能自助修改任职资格', { reason: 'QUALIFICATION_SELF_SERVICE_CLOSED' });
@@ -58,16 +49,26 @@ function requireText(row: Row, field: 'categoryId' | 'levelId' | 'startDate'): v
   }
 }
 
-/** 新引用：新增，或相对修改前换了类别 / 级别（已有引用在配置停用后照常保留，DEC-281⑧）。 */
+/** 引用 ID 规范化为小写 UUID（DEC-194），写回待落库的行：库里只存规范形式，比较也按规范形式。 */
+function canonicalRefs(row: Row): void {
+  for (const field of ['categoryId', 'levelId'] as const) row[field] = String(row[field]).toLowerCase();
+}
+
+/**
+ * 新引用：新增，或相对修改前换了类别 / 级别（已有引用在配置停用后照常保留，DEC-281⑧）。两边都按规范化后的 UUID 比较，
+ * 所以原样带回大小写不同的同一个 UUID 不算新引用。
+ */
 function newRefs(before: Row | null, row: Row): QualificationRefs {
-  const changed = (field: 'categoryId' | 'levelId') => (before?.[field] === row[field] ? [] : [String(row[field])]);
+  const changed = (field: 'categoryId' | 'levelId') =>
+    String(before?.[field] ?? '').toLowerCase() === row[field] ? [] : [String(row[field])];
   return { categoryIds: changed('categoryId'), levelIds: changed('levelId') };
 }
 
 async function assertRefs(tx: Tx, ctx: PersonnelContext, refs: QualificationRefs): Promise<void> {
   if (!refs.categoryIds?.length && !refs.levelIds?.length) return;
-  if (!bound) throw new AppError('SERVICE_UNAVAILABLE', '任职资格子集策略未就绪');
-  const authorize = authorizeInTransaction(bound.authorize, tx);
+  if (!ctx.authorize) throw new AppError('SERVICE_UNAVAILABLE', '任职资格子集策略缺少授权器');
+  const deps = { authorize: ctx.authorize, clock: () => ctx.now };
+  const authorize = authorizeInTransaction(deps.authorize, tx);
   const scopes: Partial<
     Record<QualificationRefObject, Awaited<ReturnType<typeof resolveModuleScopeInTransaction>> | null>
   > = {};
@@ -85,7 +86,7 @@ async function assertRefs(tx: Tx, ctx: PersonnelContext, refs: QualificationRefs
       resource: code,
       fields: [],
     });
-    scopes[object] = visible ? await resolveModuleScopeInTransaction(bound, ctx, tx, code) : null;
+    scopes[object] = visible ? await resolveModuleScopeInTransaction(deps, ctx, tx, code) : null;
   }
   const access: QualificationRefAccess = { ctx, scopes };
   await assertQualificationRefs(tx, access, refs);
@@ -103,6 +104,7 @@ registerSubsetPolicy('qualification', {
     requireText(row, 'categoryId');
     requireText(row, 'levelId');
     requireText(row, 'startDate');
+    canonicalRefs(row);
     // 未显式给出时的缺省：任职同步生成的行是自动同步数据，其余（手工 / 初始化 / 评定）不是（规格 23 §10 IfAutoSync）
     row.isAutoSync ??= source.type === 'employment_sync';
     if (human) await assertRefs(tx, ctx, newRefs(before, row));

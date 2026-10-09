@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql, type Tx } from '@italent/db';
 import type { SQL } from 'drizzle-orm';
+import type { Authorizer } from '../../authorization.js';
 import type { TenantContext } from '../../tenant-context.js';
 import { AppError } from '../../errors.js';
 import { auditActor } from '../../system-actor.js';
@@ -11,6 +12,12 @@ export interface PersonnelContext extends TenantContext {
   readonly expectedRevision: number;
   readonly commandId: string;
   readonly now: Date;
+  /**
+   * 处理本次请求的应用的授权器（access() 填入，随命令上下文一路带到子集策略）。子集策略需要“操作人对被引用对象的查看权”
+   * （R3-T02 C1-1），钩子签名里没有授权器，所以放在上下文里而不是进程全局：同进程里装配了多个应用时，各用各的。
+   * 可信入口（信息采集）由调用方显式带上；系统后台写入不带。
+   */
+  readonly authorize?: Authorizer;
 }
 export function rows<T = Row>(value: unknown): T[] {
   return (Array.isArray(value) ? value : (value as { rows: T[] }).rows) as T[];
