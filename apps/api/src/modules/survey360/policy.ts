@@ -131,6 +131,8 @@ const SYNC_EMPLOYEES = 'survey360.syncEmployees';
 
 /** 转发与转发预览另要对报告正文涉及的全部结果字段有查看权（reports.ts requireFullReportView，第 2 轮 P2-5）。 */
 const FULL_REPORT = 'survey360.fullReportView';
+/** 逐份答卷卡片只给持“全部活动”者或活动创建者，兼任者除外（access.ts requireCardViewer，DEC-358②）。 */
+const SHEET_CARDS = 'survey360.sheetCards';
 /** 我的待办：只看 user_id = 当前账号的待办（todos.ts）。 */
 const TODO_RECIPIENT = 'survey360.todoRecipient';
 const TODO_KEYS = ['id', 'activityId', 'title', 'content', 'status', 'sentAt', 'doneAt'];
@@ -396,7 +398,7 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
   // 提交答卷
   'POST /my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/submit': todoWrite(),
   // sheets.ts：原始数据按答卷查看；屏蔽 / 取消屏蔽 / 屏蔽疑似 / 恢复是答卷的 block 按钮
-  'GET /activities/:id/sheets': route({ key: 'answer', scope: ACTIVITY, byId: true }),
+  'GET /activities/:id/sheets': route({ key: 'answer', scope: ACTIVITY, guards: [SHEET_CARDS], byId: true }),
   ...Object.fromEntries(
     ['block', 'unblock'].map((action) => [
       `POST /activities/:id/sheets/:sheetId/${action}`,
@@ -405,7 +407,7 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
         operation: 'update',
         button: 'block',
         scope: ACTIVITY,
-        write: { fields: 'none', guards: [RESOURCE] },
+        write: { fields: 'none', guards: [RESOURCE, SHEET_CARDS] },
         byId: true,
       }),
     ]),

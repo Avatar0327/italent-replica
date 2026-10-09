@@ -62,8 +62,9 @@ describe('第 3 轮 P2-2：具名清除命令不能关联脱敏审计中的答�
     await w.appoint(s.user.T, 'general');
     await grantActivity(s, s.user.T);
     const asT = w.as(s.user.T);
-    // 重新作答前，T 能看到两张同角色的匿名卡片（编号 + 逐题答案）
-    const cards = await sheets(s, s.user.T);
+    // DEC-358②：T 是一般活动管理员（且兼任被评价人），看不到逐份卡片；卡片编号由系统管理员取来，核对审计里也不出现
+    expect((await asT('GET', `${s.path}/sheets`)).status).toBe(403);
+    const cards = await sheets(s, w.admin);
     const [p1Sheet] = await withTenant(w.db, w.tenantId, async (tx) => {
       const found = await tx.execute(sql`SELECT id FROM survey360_sheets WHERE relation_id = ${s.rel.p1.id}::uuid`);
       return (Array.isArray(found) ? found : (found as { rows: unknown[] }).rows) as { id: string }[];

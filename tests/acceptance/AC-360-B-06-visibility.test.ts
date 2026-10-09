@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { auditApi } from './AC-AUD-support.js';
 import type { PersonView } from './AC-360-support.js';
 import {
+  errorOf,
   hire,
   key,
   my,
@@ -147,18 +148,20 @@ describe('PR-B 受限管理员与无授权管理员', () => {
     // 范围内：T、M、P1、P2；外部客户（无员工、无汇报关系）与乙部门两人都在范围外（fail-closed）
     expect(view.total.all).toBe(4);
     expect((await as('GET', `${s.path}/progress/${personOf(outsider.id).id}`)).status).toBe(404);
-    const cards = await sheets(s, admin);
-    expect(cards.map((c) => c.objectId)).not.toContain(outsideObject.id);
-    expect(cards.filter((c) => c.role.name === '同事')).toHaveLength(1);
+    // DEC-358②：受限管理员（被授权、非创建者）看不到逐份卡片，只看汇总（报告、报表仍只含范围内）
+    const cards = await as('GET', `${s.path}/sheets`);
+    expect(cards.status).toBe(403);
+    expect((await errorOf(cards)).details?.reason).toBe('SHEET_CARDS_RESTRICTED');
     expect((await reports(s, admin)).map((r) => r.objectId)).toEqual([s.object.id]);
     const tables = await w.ok<{ items: { objectId: string }[] }>(
       as('GET', `${s.path}/score-tables?level=questionnaire`),
     );
     expect(tables.items.map((i) => i.objectId)).toEqual([s.object.id]);
     const outsideCard = (await sheets(s)).find((c) => c.objectId === outsideObject.id)!;
+    // 按编号屏蔽同样先按卡片查看人判定（DEC-358②），范围外的卡片与范围内的一样拿不到
     expect(
       (await as('POST', `${s.path}/sheets/${outsideCard.id}/block`, { ifMatch: outsideCard.revision })).status,
-    ).toBe(404);
+    ).toBe(403);
     expect((await as('POST', `${s.path}/relations/${outsideSelf.id}/reanswer`, { ifMatch: 1 })).status).toBe(404);
     expect((await as('GET', `${s.path}/reports/${randomUUID()}`)).status).toBe(404);
   });

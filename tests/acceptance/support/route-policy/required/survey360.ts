@@ -799,6 +799,19 @@ const VISIBLE_SHEET: Evidence = {
   unit: `${S}/sheets.ts#visibleSheet`,
   anchor: "if (!sheet) fail('NOT_FOUND', '答卷不存在')",
 };
+/** DEC-358②：逐份卡片的查看人（持“全部活动”或活动创建者，兼任者除外）。 */
+const sheetCards = (calls: readonly Evidence[]): Obligation => ({
+  perm: 'guard:survey360.sheetCards',
+  note: '逐份答卷卡片只给持“全部活动”者或活动创建者，兼任被评价人 / 评价者除外（DEC-358②）',
+  at: [
+    ...calls,
+    {
+      role: 'impl',
+      unit: `${S}/access.ts#requireCardViewer`,
+      anchor: "fail('FORBIDDEN', '只有持“全部活动”权限的管理员或活动创建者可以查看逐份答卷', 'SHEET_CARDS_RESTRICTED')",
+    },
+  ],
+});
 const INVITE_NEED: Evidence = {
   role: 'const',
   unit: `${S}/todos.ts#registerTodoRoutes>INVITE`,
@@ -939,6 +952,7 @@ const PR_B_ROUTES: readonly Route[] = [
     key: 'answer',
     need: "read(c, deps, { object: 'answer' }",
     opFact: false,
+    extra: (entry) => [sheetCards([{ ...entry, anchor: 'await requireCardViewer(tx, admin, activity)' }])],
   },
   ...['block', 'unblock'].map((action): Route => ({
     file: 'sheets.ts',
@@ -950,9 +964,10 @@ const PR_B_ROUTES: readonly Route[] = [
     need: 'need: BLOCK',
     needConst: BLOCK_NEED,
     extra: (entry) => [
-      resource(entry, 'await visibleSheet(tx, (await requireActivity(tx, admin, id)).id, admin, sheetId)', [
-        REQUIRE_ACTIVITY,
-        VISIBLE_SHEET,
+      resource(entry, 'await visibleSheet(tx, activity.id, admin, sheetId)', [REQUIRE_ACTIVITY, VISIBLE_SHEET]),
+      sheetCards([
+        { ...entry, anchor: 'await requireCardViewer(tx, admin, activity)' },
+        { ...entry, anchor: 'await requireCardViewer(tx, ctx.admin, activity)' },
       ]),
     ],
   })),

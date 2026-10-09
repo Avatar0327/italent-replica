@@ -14,7 +14,7 @@ import { z } from 'zod';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
 import { uuidParam } from '../job/context.js';
-import { type ActivityRow, requireActivity } from './access.js';
+import { type ActivityRow, requireActivity, requireCardViewer } from './access.js';
 import {
   actor,
   type Admin,
@@ -157,6 +157,8 @@ export function registerSheetRoutes(module: Hono<TenantEnv>, deps: TenantRouteDe
   module.get('/activities/:id/sheets', (c) =>
     read(c, deps, { object: 'answer' }, async (tx, admin) => {
       const activity = await requireActivity(tx, admin, uuidParam(c));
+      // DEC-358②：逐份卡片只给“全部活动”持有人与活动创建者（兼任者除外），其他人只看各题汇总
+      await requireCardViewer(tx, admin, activity);
       // 启用中“数据筛选”列表为空（原站置灰）
       if (activity.status !== 'disabled') return { items: [] };
       return { items: await cards(tx, await submittedSheets(tx, activity.id, admin)) };
@@ -172,6 +174,7 @@ export function registerSheetRoutes(module: Hono<TenantEnv>, deps: TenantRouteDe
         z.object({}).passthrough(),
         async (tx, ctx) => {
           const activity = await requireActivity(tx, ctx.admin, id, true);
+          await requireCardViewer(tx, ctx.admin, activity);
           const sheet = await visibleSheet(tx, activity.id, ctx.admin, sheetId);
           requireDisabled(activity);
           requireRevision(sheet.revision, ctx.expectedRevision);
@@ -185,8 +188,11 @@ export function registerSheetRoutes(module: Hono<TenantEnv>, deps: TenantRouteDe
         {
           need: BLOCK,
           fields: 'none',
+          // 按编号屏蔽会返回单张卡片：与卡片列表同一查看人（DEC-358②）
           guard: async (tx, admin) => {
-            await visibleSheet(tx, (await requireActivity(tx, admin, id)).id, admin, sheetId);
+            const activity = await requireActivity(tx, admin, id);
+            await requireCardViewer(tx, admin, activity);
+            await visibleSheet(tx, activity.id, admin, sheetId);
           },
           // 单张卡片：卡片自带逐题得分 items，不是列表信封，按单个对象裁剪
           present: async (viewer, body: object) => pick(body, await viewer.fields('answer')),

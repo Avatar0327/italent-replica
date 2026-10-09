@@ -162,6 +162,26 @@ function participates(userId: string): SQL {
 }
 
 /**
+ * 逐份答卷卡片（逐份分数 / 答案）的查看人（DEC-358②）：持“全部活动”的管理员或该活动的创建者，且本人不是该活动的
+ * 被评价人或评价者（与 DEC-355② 同一兼任规则）。其他活动管理员只看各题汇总（结果报表、报告）。
+ */
+export async function requireCardViewer(
+  tx: Tx,
+  admin: Admin,
+  activity: { id: string; created_by: string },
+): Promise<void> {
+  const eligible = admin.allActivities || activity.created_by === admin.userId;
+  const [row] = eligible
+    ? rows<{ participates: boolean }>(
+        await tx.execute(sql`SELECT ${participates(admin.userId)} AS participates
+          FROM survey360_activities a WHERE a.id = ${activity.id}::uuid`),
+      )
+    : [];
+  if (!eligible || row?.participates !== false)
+    fail('FORBIDDEN', '只有持“全部活动”权限的管理员或活动创建者可以查看逐份答卷', 'SHEET_CARDS_RESTRICTED');
+}
+
+/**
  * 查看人账号挂接的员工在任一活动里是被评价人或评价者（含已移除的对象 / 评价关系）。失败审计不带活动编号（令牌
  * 链接的路径里没有可解析的活动），只能按“任一活动”从严判定（PR-B 第 3 轮 P2-1）。
  */

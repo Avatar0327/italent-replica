@@ -248,8 +248,9 @@ async function buildEnv(): Promise<Env> {
       { object: 'activity' },
       { object: 'relation', hide: ['email', 'roleName'] },
     ]),
+    // DEC-358②：逐份卡片只给持“全部活动”者或活动创建者，字段裁剪用例的查看人持“全部活动”（不兼任任何活动）
     tAnswer: await custom(w, '答卷看不到总分', [
-      { object: 'activity' },
+      { object: 'activity', buttons: ['viewAll'] },
       { object: 'relation', hide: ['roleName'] },
       { object: 'answer', ops: { update: true }, hide: ['total'], buttons: ['block', 'reanswer'] },
     ]),

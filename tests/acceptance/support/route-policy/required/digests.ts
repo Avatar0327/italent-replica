@@ -464,6 +464,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/survey360/access.ts': {
     requireActivity: '8ae13475536b',
+    requireCardViewer: 'fe3a318290e0',
     requireVisibleObject: '3d8ff28e5d4c',
     survey360FailureVisibility: '930dce9ee3c1',
   },
@@ -605,9 +606,9 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/survey360/sheets.ts': {
     BLOCK: '328587d0026f',
-    'route:GET /activities/:id/sheets': '543d15cee789',
-    'route:POST /activities/:id/sheets/:sheetId/block': 'c6c1ce03a600',
-    'route:POST /activities/:id/sheets/:sheetId/unblock': 'c6c1ce03a600',
+    'route:GET /activities/:id/sheets': '936ec6e8e503',
+    'route:POST /activities/:id/sheets/:sheetId/block': '1f853ea167ca',
+    'route:POST /activities/:id/sheets/:sheetId/unblock': '1f853ea167ca',
     'route:POST /activities/:id/sheets/block-suspected': '18ca8bf04eec',
     'route:POST /activities/:id/sheets/unblock-all': '18ca8bf04eec',
     visibleSheet: '6948fd26e0b9',
