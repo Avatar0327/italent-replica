@@ -393,7 +393,13 @@ export const APPROVAL: RequiredTable = {
       // approval.resubmitRight 承载；ADAPTERS 按业务类型分派，探测器不展开，故不单独声明、不承接探测事实
       perm: 'guard:personnel.subsetRequestPolicy',
       purpose: 'guard:approval.resubmitRight',
+      inner: { role: 'when', condition: 'instance.personnelChange' },
       at: [
+        {
+          role: 'impl',
+          unit: `${DIR}/adapters.ts#ADAPTERS`,
+          anchor: 'personnel_change: personnelAdapter',
+        },
         {
           role: 'call',
           unit: 'apps/api/src/modules/personnel/change-requests.ts#resubmitChangeInTransaction',
