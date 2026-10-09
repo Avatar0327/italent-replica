@@ -70564,7 +70564,7 @@ export const DEPENDENCIES: Readonly<Record<string, Readonly<Record<string, strin
     'apps/api/src/modules/qualification/extras.ts#registerImports': 'c655070d40cf',
     'apps/api/src/modules/qualification/extras.ts#registerStandardImport': '649581bc567f',
     'apps/api/src/modules/qualification/indicator-port.ts#deepFreeze': '21d221f343f0',
-    'apps/api/src/modules/qualification/indicator-port.ts#indicators': '83d36b1da5a0',
+    'apps/api/src/modules/qualification/indicator-port.ts#indicators': '7c94e751229a',
     'apps/api/src/modules/qualification/indicator-port.ts#installQualificationIndicatorPort': '32af27d5e6c5',
     'apps/api/src/modules/qualification/indicator-port.ts#listTargets': 'f780c4f1ce7d',
     'apps/api/src/modules/qualification/indicator-port.ts#listTargetTypes': '8b60d2507de4',
