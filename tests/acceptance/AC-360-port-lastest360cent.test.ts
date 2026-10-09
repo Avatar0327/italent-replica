@@ -133,9 +133,11 @@ describe('Lastest360Cent 数据源', () => {
       '维度名称',
       '维度-自评分',
       '维度-他评分',
+      '维度角色得分',
       '题目名称',
       '题目-自评分',
       '题目-他评分',
+      '题目-他评总分',
     ]);
     for (const row of rows) for (const key of Object.keys(row.fields)) expect(allowed.has(key), key).toBe(true);
     expect(JSON.stringify(rows)).not.toContain('评价者');
