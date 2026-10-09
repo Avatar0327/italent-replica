@@ -1,0 +1,910 @@
+{
+  "DELETE /api/tenant/qualification/categories/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "1fcc3d96379f",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategory/-"
+    ],
+    "trace": [
+      "btn:Qualification.EmploymentCategory#delete@detail",
+      "obj:Qualification.EmploymentCategory:delete"
+    ]
+  },
+  "DELETE /api/tenant/qualification/category-classes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "97abd7327ca8",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategoryClassify/-"
+    ],
+    "trace": [
+      "btn:Qualification.EmploymentCategoryClassify#delete@detail",
+      "obj:Qualification.EmploymentCategoryClassify:delete"
+    ]
+  },
+  "DELETE /api/tenant/qualification/grade-schemes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "40b444a02149",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:Qualification.Target"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.GradeScheme/-",
+      "scope:Qualification/Qualification.Target/-"
+    ],
+    "trace": [
+      "btn:Qualification.GradeScheme#delete@detail",
+      "obj:Qualification.GradeScheme:delete",
+      "obj:Qualification.Target:view",
+      "obj:Qualification.TargetGradeDescription:delete"
+    ]
+  },
+  "DELETE /api/tenant/qualification/layers/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "0d5b7ebd67ff",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.Level/-"
+    ],
+    "trace": [
+      "btn:Qualification.Level#delete@detail",
+      "obj:Qualification.Level:delete"
+    ]
+  },
+  "DELETE /api/tenant/qualification/levels/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "f17d3c34a861",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentLevel/-"
+    ],
+    "trace": [
+      "btn:Qualification.EmploymentLevel#delete@detail",
+      "obj:Qualification.EmploymentLevel:delete"
+    ]
+  },
+  "DELETE /api/tenant/qualification/standards/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "11f7419370d9",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategory/-"
+    ],
+    "trace": [
+      "btn:Qualification.QualificationStandard#delete@detail",
+      "obj:Qualification.DevelopmentChannel:delete",
+      "obj:Qualification.QualificationStandard:delete"
+    ]
+  },
+  "DELETE /api/tenant/qualification/target-types/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "29c51f49c7a6",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.TargetType/-"
+    ],
+    "trace": [
+      "btn:Qualification.TargetType#delete@detail",
+      "obj:Qualification.TargetType:delete"
+    ]
+  },
+  "DELETE /api/tenant/qualification/targets/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.Target/-"
+    ],
+    "trace": [
+      "btn:Qualification.Target#delete@detail",
+      "obj:Qualification.Target:delete",
+      "obj:Qualification.TargetGradeDescription:delete"
+    ]
+  },
+  "GET /api/tenant/qualification/candidates/owner-orgs": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "71a425753a41",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/qualification/categories": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Qualification.EmploymentCategory"
+    ],
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategory/Qualification.EmploymentCategory.list"
+    ],
+    "trace": [
+      "obj:Qualification.EmploymentCategory:view"
+    ]
+  },
+  "GET /api/tenant/qualification/categories/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "1fcc3d96379f",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategory/Qualification.EmploymentCategory.detail"
+    ],
+    "trace": [
+      "obj:Qualification.EmploymentCategory:view"
+    ]
+  },
+  "GET /api/tenant/qualification/category-classes": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Qualification.EmploymentCategoryClassify"
+    ],
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategoryClassify/Qualification.EmploymentCategoryClassify.list"
+    ],
+    "trace": [
+      "obj:Qualification.EmploymentCategoryClassify:view"
+    ]
+  },
+  "GET /api/tenant/qualification/category-classes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "97abd7327ca8",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategoryClassify/Qualification.EmploymentCategoryClassify.detail"
+    ],
+    "trace": [
+      "obj:Qualification.EmploymentCategoryClassify:view"
+    ]
+  },
+  "GET /api/tenant/qualification/coding-rules": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Qualification.CodingRule"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "obj:Qualification.CodingRule:view"
+    ]
+  },
+  "GET /api/tenant/qualification/grade-schemes": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Qualification.GradeScheme"
+    ],
+    "scopeQueries": [
+      "scope:Qualification/Qualification.GradeScheme/Qualification.GradeScheme.list"
+    ],
+    "trace": [
+      "obj:Qualification.GradeScheme:view"
+    ]
+  },
+  "GET /api/tenant/qualification/grade-schemes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "40b444a02149",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.GradeScheme/Qualification.GradeScheme.detail"
+    ],
+    "trace": [
+      "obj:Qualification.GradeScheme:view"
+    ]
+  },
+  "GET /api/tenant/qualification/layers": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Qualification.Level"
+    ],
+    "scopeQueries": [
+      "scope:Qualification/Qualification.Level/Qualification.Level.list"
+    ],
+    "trace": [
+      "obj:Qualification.Level:view"
+    ]
+  },
+  "GET /api/tenant/qualification/layers/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "0d5b7ebd67ff",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.Level/Qualification.Level.detail"
+    ],
+    "trace": [
+      "obj:Qualification.Level:view"
+    ]
+  },
+  "GET /api/tenant/qualification/levels": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Qualification.EmploymentLevel"
+    ],
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentLevel/Qualification.EmploymentLevel.list"
+    ],
+    "trace": [
+      "obj:Qualification.EmploymentLevel:view"
+    ]
+  },
+  "GET /api/tenant/qualification/levels/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "f17d3c34a861",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentLevel/Qualification.EmploymentLevel.detail"
+    ],
+    "trace": [
+      "obj:Qualification.EmploymentLevel:view"
+    ]
+  },
+  "GET /api/tenant/qualification/standards": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Qualification.QualificationStandard"
+    ],
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategory/Qualification.EmploymentCategory.list"
+    ],
+    "trace": [
+      "obj:Qualification.QualificationStandard:view"
+    ]
+  },
+  "GET /api/tenant/qualification/standards/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "11f7419370d9",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategory/Qualification.EmploymentCategory.detail"
+    ],
+    "trace": [
+      "obj:Qualification.QualificationStandard:view"
+    ]
+  },
+  "GET /api/tenant/qualification/standards/:id/channels": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "11f7419370d9",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategory/Qualification.EmploymentCategory.detail"
+    ],
+    "trace": [
+      "obj:Qualification.DevelopmentChannel:view"
+    ]
+  },
+  "GET /api/tenant/qualification/standards/:id/chart": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "11f7419370d9",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategory/Qualification.EmploymentCategory.detail"
+    ],
+    "trace": [
+      "obj:Qualification.QualificationStandard:view"
+    ]
+  },
+  "GET /api/tenant/qualification/target-types": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Qualification.TargetType"
+    ],
+    "scopeQueries": [
+      "scope:Qualification/Qualification.TargetType/Qualification.TargetType.list"
+    ],
+    "trace": [
+      "obj:Qualification.TargetType:view"
+    ]
+  },
+  "GET /api/tenant/qualification/target-types/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "29c51f49c7a6",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.TargetType/Qualification.TargetType.detail"
+    ],
+    "trace": [
+      "obj:Qualification.TargetType:view"
+    ]
+  },
+  "GET /api/tenant/qualification/targets": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Qualification.Target"
+    ],
+    "scopeQueries": [
+      "scope:Qualification/Qualification.Target/Qualification.Target.list"
+    ],
+    "trace": [
+      "obj:Qualification.Target:view"
+    ]
+  },
+  "GET /api/tenant/qualification/targets/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.Target/Qualification.Target.detail"
+    ],
+    "trace": [
+      "obj:Qualification.Target:view"
+    ]
+  },
+  "GET /api/tenant/qualification/targets/:id/grade-descriptions": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.Target/Qualification.Target.detail"
+    ],
+    "trace": [
+      "obj:Qualification.Target:view"
+    ]
+  },
+  "PATCH /api/tenant/qualification/categories/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "1fcc3d96379f",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:Qualification.EmploymentCategory",
+      "fields:TenantBase.JobLevelType",
+      "fields:TenantBase.JobPost",
+      "fields:TenantBase.JobSequence",
+      "fields:TenantBase.Position"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategory/-",
+      "scope:Qualification/Qualification.EmploymentCategoryClassify/-",
+      "scope:TenantBase/TenantBase.JobLevelType/-",
+      "scope:TenantBase/TenantBase.JobPost/-",
+      "scope:TenantBase/TenantBase.JobSequence/-",
+      "scope:TenantBase/TenantBase.Position/-"
+    ],
+    "trace": [
+      "btn:Qualification.EmploymentCategory#update@detail",
+      "obj:Qualification.EmploymentCategory:update",
+      "obj:Qualification.EmploymentCategory:view",
+      "obj:Qualification.EmploymentCategoryClassify:view",
+      "obj:TenantBase.JobLevelType:view",
+      "obj:TenantBase.JobPost:view",
+      "obj:TenantBase.JobSequence:view",
+      "obj:TenantBase.Position:view"
+    ]
+  },
+  "PATCH /api/tenant/qualification/category-classes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "97abd7327ca8",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategoryClassify/-"
+    ],
+    "trace": [
+      "btn:Qualification.EmploymentCategoryClassify#update@detail",
+      "obj:Qualification.EmploymentCategoryClassify:update",
+      "obj:Qualification.EmploymentCategoryClassify:view"
+    ]
+  },
+  "PATCH /api/tenant/qualification/coding-rules/:item": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "e92caf556aa4",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-found"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PATCH /api/tenant/qualification/grade-schemes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "40b444a02149",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.GradeScheme/-"
+    ],
+    "trace": [
+      "btn:Qualification.GradeScheme#update@detail",
+      "obj:Qualification.GradeScheme:update"
+    ]
+  },
+  "PATCH /api/tenant/qualification/layers/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "0d5b7ebd67ff",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.Level/-"
+    ],
+    "trace": [
+      "btn:Qualification.Level#update@detail",
+      "obj:Qualification.Level:update"
+    ]
+  },
+  "PATCH /api/tenant/qualification/levels/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "f17d3c34a861",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:Qualification.EmploymentLevel",
+      "fields:TenantBase.JobGrade",
+      "fields:TenantBase.JobLevel"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentLevel/-",
+      "scope:Qualification/Qualification.Level/-",
+      "scope:TenantBase/TenantBase.JobGrade/-",
+      "scope:TenantBase/TenantBase.JobLevel/-"
+    ],
+    "trace": [
+      "btn:Qualification.EmploymentLevel#update@detail",
+      "obj:Qualification.EmploymentLevel:update",
+      "obj:Qualification.EmploymentLevel:view",
+      "obj:Qualification.Level:view",
+      "obj:TenantBase.JobGrade:view",
+      "obj:TenantBase.JobLevel:view"
+    ]
+  },
+  "PATCH /api/tenant/qualification/standards/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "11f7419370d9",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:Qualification.Target"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategory/-",
+      "scope:Qualification/Qualification.EmploymentLevel/-",
+      "scope:Qualification/Qualification.Target/-"
+    ],
+    "trace": [
+      "btn:Qualification.QualificationStandard#update@detail",
+      "obj:Qualification.EmploymentCategory:view",
+      "obj:Qualification.EmploymentLevel:view",
+      "obj:Qualification.QualificationStandard:update",
+      "obj:Qualification.Target:view"
+    ]
+  },
+  "PATCH /api/tenant/qualification/target-types/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "29c51f49c7a6",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.TargetType/-"
+    ],
+    "trace": [
+      "btn:Qualification.TargetType#update@detail",
+      "obj:Qualification.TargetType:update",
+      "obj:Qualification.TargetType:view"
+    ]
+  },
+  "PATCH /api/tenant/qualification/targets/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "68fd0a5c67f1",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Qualification/Qualification.GradeScheme/-",
+      "scope:Qualification/Qualification.Target/-",
+      "scope:Qualification/Qualification.TargetType/-"
+    ],
+    "trace": [
+      "btn:Qualification.Target#update@detail",
+      "obj:Qualification.GradeScheme:view",
+      "obj:Qualification.Target:update",
+      "obj:Qualification.TargetType:view"
+    ]
+  },
+  "POST /api/tenant/qualification/categories": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Qualification.EmploymentCategory#create@list",
+      "obj:Qualification.EmploymentCategory:create"
+    ]
+  },
+  "POST /api/tenant/qualification/categories/import": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Qualification.EmploymentCategory#create@list",
+      "obj:Qualification.EmploymentCategory:create"
+    ]
+  },
+  "POST /api/tenant/qualification/category-classes": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Qualification.EmploymentCategoryClassify#create@list",
+      "obj:Qualification.EmploymentCategoryClassify:create"
+    ]
+  },
+  "POST /api/tenant/qualification/grade-schemes": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Qualification.GradeScheme#create@list",
+      "obj:Qualification.GradeScheme:create"
+    ]
+  },
+  "POST /api/tenant/qualification/layers": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Qualification.Level#create@list",
+      "obj:Qualification.Level:create"
+    ]
+  },
+  "POST /api/tenant/qualification/levels": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Qualification.EmploymentLevel#create@list",
+      "obj:Qualification.EmploymentLevel:create"
+    ]
+  },
+  "POST /api/tenant/qualification/levels/import": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Qualification.EmploymentLevel#create@list",
+      "obj:Qualification.EmploymentLevel:create"
+    ]
+  },
+  "POST /api/tenant/qualification/standards": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Qualification.QualificationStandard#create@list",
+      "obj:Qualification.QualificationStandard:create"
+    ]
+  },
+  "POST /api/tenant/qualification/standards/import": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "a8e52b491aee",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:Qualification/Qualification.EmploymentCategory/-"
+    ],
+    "trace": [
+      "btn:Qualification.QualificationStandard#update@detail",
+      "obj:Qualification.QualificationStandard:update"
+    ]
+  },
+  "POST /api/tenant/qualification/target-types": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Qualification.TargetType#create@list",
+      "obj:Qualification.TargetType:create"
+    ]
+  },
+  "POST /api/tenant/qualification/targets": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "error": "f12e1e2b793f",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Qualification.Target#create@list",
+      "obj:Qualification.Target:create"
+    ]
+  },
+  "PUT /api/tenant/qualification/standards/:id/channels": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "0f36d743a1bf",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Qualification.DevelopmentChannel#update@detail",
+      "obj:Qualification.DevelopmentChannel:update"
+    ]
+  },
+  "PUT /api/tenant/qualification/targets/:id/grade-descriptions/:detailId": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "c19284e8b87f",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Qualification.Target#update@detail",
+      "obj:Qualification.Target:update"
+    ]
+  }
+}

@@ -5,7 +5,8 @@
  * spec.path 拼出，证据绑注册函数 + spec 常量）；被引用对象经 runTalentWrite → referenceAccess（查看权为假 → 范围 null）
  * → write-support.referenced 抛 403。人才标准里嵌套的指标内容按指标查看权披露（nestedDimension，不拒绝）。
  */
-import type { Evidence, Obligation, RequiredTable } from './types.js';
+import { bound, guardScope, list, NONE, point, SCOPE_AT, withNeeds } from './scopes.js';
+import type { Evidence, Inner, Obligation, RequiredTable } from './types.js';
 
 const BASE = '/api/tenant/talent';
 const T = 'apps/api/src/modules/talent';
@@ -170,7 +171,7 @@ const REFERENCE_ACCESS: Evidence[] = [
       "const canView = await deps.authorize({ ...ctx, action: 'object.view', resource: codeOf(object), fields: [] })",
   },
 ];
-function referenced(target: Key, owner: Key, calls: readonly Evidence[]): Obligation[] {
+function referenced(target: Key, owner: Key, calls: readonly Evidence[], inner: Inner): Obligation[] {
   const carrier = `talent.referenced(${target})`;
   const references: Evidence = {
     role: 'const',
@@ -182,6 +183,7 @@ function referenced(target: Key, owner: Key, calls: readonly Evidence[]): Obliga
     {
       perm: `obj:${code(target)}:view`,
       purpose: `guard:${carrier}`,
+      inner,
       at: [...REFERENCE_ACCESS, references, objectConst(target)],
     },
   ];
@@ -233,6 +235,7 @@ const DIMENSION_REFERENCES: Evidence = {
 const NESTED_DIMENSION: Obligation = {
   perm: `obj:${DIM}:view`,
   purpose: 'disclosure:nestedDimension',
+  need: list('talent.ownedScope(talent_dimensions)'),
   at: [
     { role: 'call', unit: `${ROUTES}#presenter`, anchor: 'const nested = await nestedDimensionReader(c, deps, ctx)' },
     {
@@ -242,6 +245,7 @@ const NESTED_DIMENSION: Obligation = {
     },
     { role: 'impl', unit: `${ACCESS}#nestedDimensionReader`, anchor: 'if (!canView) return () => undefined' },
     objectConst('dimension'),
+    ...SCOPE_AT['talent.ownedScope(talent_dimensions)'],
   ],
 };
 const nested = (key: Key) => (key === 'criterion' ? [NESTED_DIMENSION] : []);
@@ -263,7 +267,7 @@ function createGuards(key: Key): Obligation[] {
       return [ownerUnit('library')];
     case 'dimensionCategory':
       return [
-        ...referenced('library', key, [lib]),
+        ...referenced('library', key, [lib], { role: 'required' }),
         LIBRARY_CREATABLE(
           call(
             `${SERVICE.library}#createDimensionCategory`,
@@ -276,17 +280,22 @@ function createGuards(key: Key): Obligation[] {
       return [];
     case 'dimension':
       return [
-        ...referenced('library', key, [dimLib]),
+        ...referenced('library', key, [dimLib], { role: 'required' }),
         LIBRARY_CREATABLE(
           call(`${SERVICE.dimension}#createDimension`, "requireLibraryCreatable(ctx, 'dimension', library)"),
         ),
-        ...referenced('dimensionCategory', key, [
-          category,
-          call(
-            `${SERVICE.dimension}#createDimension`,
-            'await referencedCategory(tx, ctx, input.libraryId, input.categoryId)',
-          ),
-        ]),
+        ...referenced(
+          'dimensionCategory',
+          key,
+          [
+            category,
+            call(
+              `${SERVICE.dimension}#createDimension`,
+              'await referencedCategory(tx, ctx, input.libraryId, input.categoryId)',
+            ),
+          ],
+          { role: 'when', condition: 'payload.categoryId' },
+        ),
         ownerUnit('dimension'),
         descriptionTypeChoice(
           call(`${SERVICE.dimension}#createDimension`, 'await checkSuggestionTypes(tx, ctx, suggestions, [])'),
@@ -297,13 +306,18 @@ function createGuards(key: Key): Obligation[] {
     case 'criterion':
       return [
         ownerUnit('criterion'),
-        ...referenced('criterionCategory', key, [
-          call(
-            `${SERVICE.criterion}#createCriterion`,
-            "await referenced(tx, ctx, 'criterionCategory', input.categoryId)",
-          ),
-        ]),
-        ...referenced('dimension', key, [DIMENSION_REFERENCES]),
+        ...referenced(
+          'criterionCategory',
+          key,
+          [
+            call(
+              `${SERVICE.criterion}#createCriterion`,
+              "await referenced(tx, ctx, 'criterionCategory', input.categoryId)",
+            ),
+          ],
+          { role: 'required' },
+        ),
+        ...referenced('dimension', key, [DIMENSION_REFERENCES], { role: 'when', condition: 'dimensions.nonEmpty' }),
         COPY_CATEGORY_NAME,
       ];
   }
@@ -312,13 +326,21 @@ function updateGuards(key: Key): Obligation[] {
   switch (key) {
     case 'dimension':
       return [
-        ...referenced('dimensionCategory', key, [
-          call(`${SERVICE.dimension}#referencedCategory`, "await referenced(tx, ctx, 'dimensionCategory', categoryId)"),
-          call(
-            `${SERVICE.dimension}#updateDimension`,
-            'await referencedCategory(tx, ctx, before.libraryId, fields.categoryId)',
-          ),
-        ]),
+        ...referenced(
+          'dimensionCategory',
+          key,
+          [
+            call(
+              `${SERVICE.dimension}#referencedCategory`,
+              "await referenced(tx, ctx, 'dimensionCategory', categoryId)",
+            ),
+            call(
+              `${SERVICE.dimension}#updateDimension`,
+              'await referencedCategory(tx, ctx, before.libraryId, fields.categoryId)',
+            ),
+          ],
+          { role: 'when', condition: 'categoryChanged' },
+        ),
         descriptionTypeChoice(
           call(
             `${SERVICE.dimension}#updateDimension`,
@@ -328,13 +350,18 @@ function updateGuards(key: Key): Obligation[] {
       ];
     case 'criterion':
       return [
-        ...referenced('criterionCategory', key, [
-          call(
-            `${SERVICE.criterion}#updateCriterion`,
-            "await referenced(tx, ctx, 'criterionCategory', fields.categoryId)",
-          ),
-        ]),
-        ...referenced('dimension', key, [DIMENSION_REFERENCES]),
+        ...referenced(
+          'criterionCategory',
+          key,
+          [
+            call(
+              `${SERVICE.criterion}#updateCriterion`,
+              "await referenced(tx, ctx, 'criterionCategory', fields.categoryId)",
+            ),
+          ],
+          { role: 'when', condition: 'categoryChanged' },
+        ),
+        ...referenced('dimension', key, [DIMENSION_REFERENCES], { role: 'when', condition: 'dimensions.newReference' }),
         COPY_CATEGORY_NAME,
         {
           perm: 'guard:talent.relationUnit',
@@ -395,6 +422,10 @@ const IMAGE_WRITE = call(
 );
 function imageWrite(route: string, guards: Obligation[] = []): Obligation[] {
   const entry = imageRoute(route);
+  const scoped = bound(point('talent.criterion.byId'), SCOPE_AT['talent.criterion.byId']);
+  return withNeeds(imageWriteBase(entry, guards), { [`obj:${CRIT}:update`]: scoped, [`obj:${CRIT}:view`]: scoped });
+}
+function imageWriteBase(entry: Evidence, guards: Obligation[]): Obligation[] {
   return [
     {
       perm: `obj:${CRIT}:update`,
@@ -417,14 +448,21 @@ const MODEL_IMAGE: RequiredTable = {
     {
       perm: `obj:${CRIT}:update`,
       purpose: 'disclosure:canEdit',
+      need: point('talent.criterion.byId'),
       facts: [`objectOp:${CRIT}:update`],
-      at: [CAN_EDIT, { role: 'impl', unit: `${IMAGE}#present`, anchor: 'canEdit = true' }, ...CONTEXT],
+      at: [
+        CAN_EDIT,
+        { role: 'impl', unit: `${IMAGE}#present`, anchor: 'canEdit = true' },
+        ...CONTEXT,
+        ...SCOPE_AT['talent.criterion.byId(present)'],
+      ],
     },
     {
       perm: `btn:${CRIT}#update@detail`,
       purpose: 'disclosure:canEdit',
+      need: point('talent.criterion.byId'),
       facts: ['button:button()'],
-      at: [CAN_EDIT, ...WRITE_CONTEXT, BUTTON_CONST['update']!],
+      at: [CAN_EDIT, ...WRITE_CONTEXT, BUTTON_CONST['update']!, ...SCOPE_AT['talent.criterion.byId(present)']],
     },
   ],
   [`GET ${BASE}/criteria/:id/model-image/attachments/:attachmentId/content`]: [
@@ -538,6 +576,7 @@ const OWNER_ORGS: Obligation[] = [
   {
     perm: 'obj:TenantBase.Organization:view',
     purpose: 'disclosure:orgFields',
+    need: list('org.scope'),
     note: '组织的编码 / 名称按组织查看权与组织员工应用范围披露（DEC-309 / DEC-316②）；范围事实随披露分流',
     facts: ['object:object.* 动作', 'scope:creator scope', 'scope:requestScope', 'scope:scopeSql'],
     at: [
@@ -552,6 +591,7 @@ const OWNER_ORGS: Obligation[] = [
         unit: `${CANDIDATES}#organizationAccess`,
         anchor: 'const code = MODULE_OBJECTS.organization.code',
       },
+      ...SCOPE_AT['org.scope'],
     ],
   },
 ];
@@ -560,28 +600,37 @@ const OWNER_ORGS: Obligation[] = [
 const FORM = `${T}/form-access.ts#talentFormHandler`;
 const FORM_ROUTE = call(`${ROUTES}#registerTalentRoutes`, 'return forms[object as TalentObject](c)');
 const FORM_WRITE = call(FORM, 'const ctx = await talentWriteContext(c, deps, spec.object, operation, 0)');
-const FORMS: Obligation[] = [
-  {
-    perm: `obj:${SIX}:{create,update}`,
-    facts: ['object:objectContext', `objectOp:${OPS_UNION}:create|update`],
-    at: [FORM_ROUTE, FORM_WRITE, ...CONTEXT],
-  },
-  {
-    perm: `btn:${SIX}#{create@list,update@detail}`,
-    facts: ['button:button()'],
-    at: [FORM_ROUTE, FORM_WRITE, ...WRITE_CONTEXT, BUTTON_CONST['create']!, BUTTON_CONST['update']!],
-  },
-  {
-    perm: 'guard:talent.formScope(operation)',
-    note: 'update 按详情范围定位（不可见 404）；create 不按范围拒绝，无可用单元 / 范围随 200 返回 blockedReason',
-    at: [FORM_ROUTE, call(FORM, 'requireVisible(scope, spec.object, spec.owner(found))')],
-  },
-  {
-    perm: `obj:${SIX}:view`,
-    facts: [`objectOp:${OPS_UNION}:view`],
-    at: [FORM_ROUTE, call(FORM, 'await talentContext(c, deps, spec.object)'), ...CONTEXT],
-  },
-];
+const FORMS: Obligation[] = withNeeds(formsBase(), {
+  [`obj:${SIX}:{create,update}`]: bound(
+    guardScope('talent.formScope(operation)'),
+    SCOPE_AT['talent.formScope(operation)'],
+  ),
+  [`obj:${SIX}:view`]: bound(NONE),
+});
+function formsBase(): Obligation[] {
+  return [
+    {
+      perm: `obj:${SIX}:{create,update}`,
+      facts: ['object:objectContext', `objectOp:${OPS_UNION}:create|update`],
+      at: [FORM_ROUTE, FORM_WRITE, ...CONTEXT],
+    },
+    {
+      perm: `btn:${SIX}#{create@list,update@detail}`,
+      facts: ['button:button()'],
+      at: [FORM_ROUTE, FORM_WRITE, ...WRITE_CONTEXT, BUTTON_CONST['create']!, BUTTON_CONST['update']!],
+    },
+    {
+      perm: 'guard:talent.formScope(operation)',
+      note: 'update 按详情范围定位（不可见 404）；create 不按范围拒绝，无可用单元 / 范围随 200 返回 blockedReason',
+      at: [FORM_ROUTE, call(FORM, 'requireVisible(scope, spec.object, spec.owner(found))')],
+    },
+    {
+      perm: `obj:${SIX}:view`,
+      facts: [`objectOp:${OPS_UNION}:view`],
+      at: [FORM_ROUTE, call(FORM, 'await talentContext(c, deps, spec.object)'), ...CONTEXT],
+    },
+  ];
+}
 const BATCH = call(
   `${ROUTES}#registerDimensionCategoryBatch`,
   "const ctx = await talentWriteContext(c, deps, 'criterion', 'setDimensionCategory', revision(c))",

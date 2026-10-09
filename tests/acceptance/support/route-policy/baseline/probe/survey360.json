@@ -1,0 +1,1383 @@
+{
+  "DELETE /api/tenant/survey360/activities/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#delete@detail",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:delete",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "DELETE /api/tenant/survey360/activities/:id/grants/:userId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#update@detail",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:update",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "DELETE /api/tenant/survey360/activities/:id/objects/:objectId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#delete@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:delete"
+    ]
+  },
+  "DELETE /api/tenant/survey360/activities/:id/objects/:objectId/appraisers/:relationId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#delete@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:delete"
+    ]
+  },
+  "DELETE /api/tenant/survey360/questionnaire-templates/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "e46908ae83ab",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#delete@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:delete"
+    ]
+  },
+  "DELETE /api/tenant/survey360/questionnaires/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "11e6f9a47534",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#delete@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:delete"
+    ]
+  },
+  "GET /api/tenant/survey360/activities": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Activity"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/grants": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/objects": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/objects/:objectId/appraisers": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/objects/:objectId/scores": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Result:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/progress": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/progress/:personId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/reports": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Result:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/reports/:reportId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Result:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/score-tables": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Result:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/sheets": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Answer:view"
+    ]
+  },
+  "GET /api/tenant/survey360/my/todos": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/survey360/my/todos/:todoId/answer": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/survey360/my/todos/:todoId/avatars/:attachmentId/content": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/survey360/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/survey360/people": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Person"
+    ],
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.list"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:view"
+    ]
+  },
+  "GET /api/tenant/survey360/people/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:view"
+    ]
+  },
+  "GET /api/tenant/survey360/people/:id/link-logs": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Person#sync@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:view"
+    ]
+  },
+  "GET /api/tenant/survey360/people/sync-conflicts": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Person",
+      "fields:TenantBase.EmployeeInformation",
+      "fields:TenantBase.EmploymentRecord"
+    ],
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.list",
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Person#sync@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:view",
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "GET /api/tenant/survey360/questionnaire-templates": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Questionnaire"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:view"
+    ]
+  },
+  "GET /api/tenant/survey360/questionnaire-templates/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "e46908ae83ab",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:view"
+    ]
+  },
+  "GET /api/tenant/survey360/questionnaires": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Questionnaire"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:view"
+    ]
+  },
+  "GET /api/tenant/survey360/questionnaires/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "11e6f9a47534",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:view"
+    ]
+  },
+  "GET /api/tenant/survey360/report-template": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Settings"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Settings:view"
+    ]
+  },
+  "GET /api/tenant/survey360/roles": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Settings"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Settings:view"
+    ]
+  },
+  "GET /api/tenant/survey360/settings": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Settings"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Settings:view"
+    ]
+  },
+  "POST /api/tenant/survey360/activities": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "a14f0554763b",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#create@list",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:create",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/appraisers/import": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#import@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:create"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/disable": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#disable@detail",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:update",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/enable": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#enable@detail",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:update",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/grants": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#update@detail",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:update",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/invitations": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#invite@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:update"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/objects": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:create"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/objects/:objectId/appraisers": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:create"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/objects/:objectId/appraisers/auto": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#autoAdd@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:create"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/objects/:objectId/confirmation": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#invite@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:update"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/relations/:relationId/reanswer": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Answer#reanswer@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Answer:update"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/reports/forward": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Result#forwardReport@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Result:update"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/reports/forward/preview": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Result#forwardReport@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Result:view"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/reports/generate": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Result#generateReport@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Result:update"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/sheets/:sheetId/block": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Answer#block@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Answer:update"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/sheets/:sheetId/unblock": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Answer#block@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Answer:update"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/sheets/block-suspected": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Answer#block@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Answer:update"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/sheets/unblock-all": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Answer#block@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Answer:update"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/todos": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#invite@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:update"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/todos/cancel": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#invite@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:update"
+    ]
+  },
+  "POST /api/tenant/survey360/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/submit": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/survey360/people": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ec1022d9f025",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Person#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:create"
+    ]
+  },
+  "POST /api/tenant/survey360/people/sync": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Person",
+      "fields:TenantBase.EmployeeInformation",
+      "fields:TenantBase.EmploymentRecord"
+    ],
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-",
+      "scope:TenantBase/TenantBase.EmployeeInformation/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Person#sync@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:view",
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "POST /api/tenant/survey360/people/sync-conflicts/:id/resolve": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "869df9420152",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-",
+      "scope:TenantBase/TenantBase.EmployeeInformation/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Person#sync@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:view",
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "POST /api/tenant/survey360/questionnaire-templates": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ef7787048d41",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:create"
+    ]
+  },
+  "POST /api/tenant/survey360/questionnaire-templates/:id/instantiate": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "e46908ae83ab",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:create"
+    ]
+  },
+  "POST /api/tenant/survey360/questionnaires": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "ef7787048d41",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:create"
+    ]
+  },
+  "POST /api/tenant/survey360/questionnaires/:id/enable": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "11e6f9a47534",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#enable@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:update"
+    ]
+  },
+  "POST /api/tenant/survey360/questionnaires/:id/save-as-template": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "11e6f9a47534",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:create"
+    ]
+  },
+  "POST /api/tenant/survey360/roles": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "166561f2cc8d",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Settings#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Settings:create"
+    ]
+  },
+  "PUT /api/tenant/survey360/activities/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#update@detail",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:update",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "PUT /api/tenant/survey360/activities/:id/objects/:objectId/questionnaires": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#update@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:update"
+    ]
+  },
+  "PUT /api/tenant/survey360/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "4a5f9ae37b40",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/tenant/survey360/people/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "dd3b675d03b7",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Person#update@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:update"
+    ]
+  },
+  "PUT /api/tenant/survey360/questionnaire-templates/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "e46908ae83ab",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#update@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:update"
+    ]
+  },
+  "PUT /api/tenant/survey360/questionnaires/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "11e6f9a47534",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#update@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:update"
+    ]
+  },
+  "PUT /api/tenant/survey360/report-template": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Settings"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Settings#update@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Settings:update"
+    ]
+  },
+  "PUT /api/tenant/survey360/roles/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "841a977da3d4",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Settings#update@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Settings:update"
+    ]
+  },
+  "PUT /api/tenant/survey360/settings": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "error": "2ce13aaac7e0",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Settings#finePermission@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Settings:update"
+    ]
+  }
+}

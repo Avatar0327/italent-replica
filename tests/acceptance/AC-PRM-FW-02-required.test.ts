@@ -18,6 +18,7 @@ import { compareDeclarations, type Finding } from './support/route-policy/compar
 import type { ObservedContract } from './support/route-policy/contract.js';
 import { checkEvidence, repoSource, type SourceReader, writeDigests } from './support/route-policy/evidence.js';
 import { admissionPrimitives, checkRequired } from './support/route-policy/required.js';
+import { expectedMutationKeys, missingCoverage } from './support/route-policy/required-coverage.js';
 import { REQUIRED_MUTATION_KINDS, requiredMutants } from './support/route-policy/required-mutate.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
@@ -75,10 +76,10 @@ function only(key: string, obligations: readonly Obligation[] = entry(key)): Req
 type ObjectNode = Extract<RoutePolicy, { kind: 'object' }>;
 
 describe('AC-PRM-FW-02 显式必需项表：形状与完整性', () => {
-  it('表键与运行时 472 个端点完全相等（缺一条、多一条都失败）', () => {
+  it('表键与运行时 473 个端点完全相等（缺一条、多一条都失败）', () => {
     const declared = manifest.declared.map((r) => `${r.method} ${r.path}`).sort();
     expect(Object.keys(REQUIRED).sort()).toEqual(declared);
-    expect(declared).toHaveLength(472);
+    expect(declared).toHaveLength(473);
   });
 
   it('表文件只放字面量：不 import 声明、产品代码或探测器（不得从候选声明重新生成）', () => {
@@ -404,12 +405,57 @@ describe('AC-PRM-FW-02 显式表突变：按审定义务逐项、逐准入备选
     });
   }
 
-  it('实例覆盖可核对：每条准入义务在它出现的每个声明备选里都有 required→none 突变', () => {
+  it('B-05 覆盖断言：期望集合（端点 | 权限 | 备选 | 来源路径，由表义务与声明备选独立推导）= 实际生成的 required→none 集合', () => {
+    const expected = manifest.declared.flatMap((r) => expectedMutationKeys(r, REQUIRED));
     const mutants = manifest.declared.flatMap((r) => requiredMutants(r, REQUIRED));
-    const covered = new Set(mutants.filter((m) => m.kind === 'required→none').map((m) => `${m.key}|${m.perm}`));
-    const admission = Object.entries(REQUIRED).flatMap(([key, obligations]) =>
-      obligations.filter((o) => !o.purpose && !o.or).map((o) => `${key}|${o.perm}`),
-    );
-    expect(admission.filter((item) => !covered.has(item))).toEqual([]);
+    const gaps = missingCoverage(expected, mutants);
+    expect(gaps, gaps.join('\n')).toEqual([]);
+    expect(expected.length).toBeGreaterThan(0);
+    // 类 × 用途 × 端点计数：每类突变至少覆盖一个端点
+    const perKind = new Map<string, Set<string>>();
+    for (const m of mutants) perKind.set(m.kind, (perKind.get(m.kind) ?? new Set()).add(m.key));
+    for (const kind of REQUIRED_MUTATION_KINDS) expect(perKind.get(kind)?.size ?? 0, kind).toBeGreaterThan(0);
+  });
+
+  it('B-05 覆盖断言本身可失败：夹具里少生成一个备选的突变，断言报缺口', () => {
+    const key = 'GET /api/tenant/idp/approval-processes';
+    const expected = expectedMutationKeys(route(key), REQUIRED);
+    const mutants = requiredMutants(route(key), REQUIRED);
+    expect(missingCoverage(expected, mutants)).toEqual([]);
+    const lacking = mutants.filter((m) => !m.coverageKey.includes('|2|'));
+    expect(missingCoverage(expected, lacking).length).toBeGreaterThan(0);
+  });
+
+  it('B-05 “或”组：|S|=1 对组内备选每个权限生成 or-member→none；|S|>1 生成 or-group→none，都报 REQUIRED_MISSING', () => {
+    const key = 'GET /api/tenant/idp/approval-processes';
+    const members = requiredMutants(route(key), REQUIRED).filter((m) => m.kind === 'or-member→none');
+    expect(members.map((m) => `${m.perm}@${m.at.split(':')[0]}`).sort()).toEqual([
+      'obj:IDP.IDPProcess:create@备选1',
+      'obj:IDP.IDPProcess:update@备选2',
+    ]);
+    // 夹具：任一备选同时含 create 与 update（|S|=2）→ 删单个成员仍满足，必须整组删
+    const base = route(key);
+    const both = JSON.parse(JSON.stringify(base.policy)) as { of: { kind: string; of?: unknown[] }[] };
+    const group = both.of[1]!;
+    group.kind = 'all';
+    const found = requiredMutants({ ...base, policy: both as unknown as RoutePolicy }, REQUIRED);
+    const groups = found.filter((m) => m.kind === 'or-group→none');
+    expect(groups.length).toBeGreaterThan(0);
+    for (const m of groups) expect(codes(check([m.route])), `${m.perm} @${m.at}`).toContain('REQUIRED_MISSING');
+    expect(found.filter((m) => m.kind === 'or-member→none')).toEqual([]);
+  });
+
+  it('B-05 人才候选编辑分支（update + 按钮 + 守卫）三项任删其一都被报出', () => {
+    const key = 'GET /api/tenant/talent/candidates/owner-orgs';
+    const mutants = requiredMutants(route(key), REQUIRED).filter((m) => m.kind === 'or-member→none');
+    const perms = new Set(mutants.map((m) => m.perm));
+    for (const perm of [
+      'obj:TalentCenter.TalentCriterion:update',
+      'btn:TalentCenter.TalentCriterion#update@detail',
+      'guard:talent.queryObjectIsCriterion',
+    ]) {
+      expect(perms.has(perm), perm).toBe(true);
+    }
+    for (const m of mutants) expect(codes(check([m.route])), `${m.perm} @${m.at}`).toContain('REQUIRED_MISSING');
   });
 });
