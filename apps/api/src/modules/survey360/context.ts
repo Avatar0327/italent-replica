@@ -152,8 +152,8 @@ async function routeNeed(c: C, deps: TenantRouteDeps, need: Need): Promise<Scope
   return ctx;
 }
 
-/** 会读写 360 人员的对象：人员、评价关系（评价对象 / 评价者）、结果。 */
-const PERSON_OBJECTS: ReadonlySet<ObjectKey> = new Set(['person', 'relation', 'result']);
+/** 会读写 360 人员的对象：人员、评价关系（评价对象 / 评价者）、结果、答卷（PR-B 原始数据、屏蔽与重新作答）。 */
+const PERSON_OBJECTS: ReadonlySet<ObjectKey> = new Set(['person', 'relation', 'result', 'answer']);
 
 /**
  * 路由层取（用户 × Survey360）数据范围（requestScope），按 360 人员改写：管理单元 / 组织条件按挂接员工的当前任职
@@ -224,6 +224,30 @@ export function trimBody(fields: ReadonlySet<string> | undefined, body: unknown)
   const items = (body as { items?: unknown }).items;
   if (Array.isArray(items)) return { ...body, items: items.map((row: object) => pick(row, fields)) };
   return pick(body, fields);
+}
+
+/**
+ * 嵌套层（报告快照、报表列头）的键 → 决定它可见的对象字段（第 2 轮 P2-4）：同一个值的各种表示（分数的 self / other /
+ * gap / value / reference、报表的 values）都归到同一个字段，查看人看不到该字段时任何层级都去掉。
+ */
+export function trimAliases(
+  fields: ReadonlySet<string> | undefined,
+  body: unknown,
+  aliases: Readonly<Record<string, string>>,
+): unknown {
+  if (fields === undefined) return body;
+  const hidden = new Set(Object.keys(aliases).filter((key) => !fields.has(aliases[key]!)));
+  if (!hidden.size) return body;
+  const walk = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(walk);
+    if (value === null || typeof value !== 'object') return value;
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([k]) => !hidden.has(k))
+        .map(([k, v]) => [k, walk(v)]),
+    );
+  };
+  return walk(body);
 }
 
 /** 按某个 360 对象的查看字段裁剪。 */

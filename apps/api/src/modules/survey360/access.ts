@@ -7,6 +7,7 @@ import { PERSONNEL_OBJECT } from '@italent/domain';
 import type { SQL } from 'drizzle-orm';
 import type { TenantRouteDeps } from '../../routes.js';
 import { scopeSql } from '../permission/module-access.js';
+import { cardViewer, participates } from './anonymous.js';
 import { type Admin, allActivitiesOf, BUTTONS, can, fail, finePermission, isHolder, rows } from './context.js';
 import { loadPerson, personVisible } from './people.js';
 import { employeeScope } from './sync.js';
@@ -33,6 +34,9 @@ export interface ActivityRow {
   readonly ended_at: Date | string | null;
   readonly score_batch_id: string | null;
   readonly scored_at: Date | string | null;
+  readonly data_changed_at: Date | string | null;
+  readonly suspect_blocked_at: Date | string | null;
+  readonly reports_requested_at: Date | string | null;
   readonly revision: number;
   readonly created_by: string;
 }
@@ -113,13 +117,20 @@ type Viewer = { tenantId: string; userId: string; timezone?: string };
  * 审计查看（DEC-216，audit/visibility.ts 登记；第 3 轮 R2-P2-4 按真实对象）：对象查看权与字段裁剪由审计引擎按规则的
  * 对象（Activity / Relation / Answer / Person）判定，这里只给各对象的可见条件，与接口同一判定：
  * - activity：查看人可见的活动编号集合（子查询）；
- * - relation：活动内对象（评价对象、评价关系、确认单、答卷）——同上，且精细化生效时一律不可见（日志带人员信息）；
+ * - relation：活动内对象（评价对象、评价关系、确认单、待办、报告）——同上，且精细化生效时一律不可见（日志带人员信息）；
+ * - answer：答卷（保存、提交、屏蔽、恢复、清除）——同 relation，默认只展示脱敏版本（DEC-340③）；
+ * - answerFull：能看答卷日志完整版的活动（DEC-355②）——持“全部活动”且本人（账号挂接的员工）不是**该活动**的被评价人
+ *   或评价者（含已移除的）；兼任者与其他活动管理员只看脱敏版；
+ * - answerCards：答卷日志里能看逐份答案的活动（DEC-358②）——与逐份卡片同一谓词（anonymous.ts cardViewer）；与身份
+ *   脱敏（answerFull）分别判断；
  * - person：人员——持“全部活动”或精细化权限关闭（开启时不经审计看到范围外人员）；
  * - sync：同步冲突——另须“从系统管理中同步人员信息”按钮与员工信息查看权，并且只给冲突员工在查看人**当前**员工
  *   信息数据范围内的日志（与冲突清单同一 .list 范围、同一谓词，第 4 轮 R3-P2-2）：返回范围内员工编号的子查询。
  * 没有 360 身份返回 null（看不到任何 360 日志），被评价人与评价者因此不能经审计反推评价者身份。
  */
-export function survey360AuditScope(kind: 'activity' | 'relation' | 'person' | 'sync') {
+type AuditScopeKind = 'activity' | 'relation' | 'answer' | 'answerFull' | 'answerCards' | 'person' | 'sync';
+
+export function survey360AuditScope(kind: AuditScopeKind) {
   return async (deps: AuditDeps, ctx: Viewer): Promise<SQL | null> =>
     withTenant(deps.db, ctx.tenantId, async (tx) => {
       const tenant = { timezone: 'UTC', ...ctx };
@@ -134,22 +145,51 @@ export function survey360AuditScope(kind: 'activity' | 'relation' | 'person' | '
             AND ${scopeSql(scope, { person: sql`e.id` })}`
           : null;
       }
-      if (kind === 'relation' && restricted) return null;
+      // 答卷类日志按活动可见，默认脱敏（DEC-340③）：评价关系与作答来源由审计引擎去掉（audit/visibility.ts）
+      if ((kind === 'relation' || kind === 'answer') && restricted) return null;
+      if (kind === 'answerFull')
+        return allActivities
+          ? sql`SELECT a.id::text FROM survey360_activities a WHERE a.tenant_id = ${ctx.tenantId}::uuid
+            AND NOT ${participates(ctx.userId)}`
+          : null;
+      if (kind === 'answerCards')
+        return sql`SELECT a.id::text FROM survey360_activities a WHERE a.tenant_id = ${ctx.tenantId}::uuid
+          AND ${cardViewer({ userId: ctx.userId, allActivities })}`;
       return sql`SELECT a.id::text FROM survey360_activities a WHERE a.tenant_id = ${ctx.tenantId}::uuid
         AND ${activityVisibleSql({ userId: ctx.userId, allActivities })}`;
     });
 }
 
 /**
+ * 查看人账号挂接的员工在任一活动里是被评价人或评价者（含已移除的对象 / 评价关系）。失败审计不带活动编号（令牌
+ * 链接的路径里没有可解析的活动），只能按“任一活动”从严判定（PR-B 第 3 轮 P2-1）。
+ */
+async function participatesAnywhere(tx: Tx, userId: string): Promise<boolean> {
+  const [row] = rows<{ found: boolean }>(
+    await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM permission_user_person_links l
+      JOIN survey360_people p ON p.tenant_id = l.tenant_id AND p.employee_id = l.employee_id
+      WHERE l.user_id = ${userId}::uuid
+        AND (EXISTS (SELECT 1 FROM survey360_objects o WHERE o.tenant_id = p.tenant_id AND o.person_id = p.id)
+          OR EXISTS (SELECT 1 FROM survey360_relations r
+            WHERE r.tenant_id = p.tenant_id AND r.appraiser_person_id = p.id))) AS found`),
+  );
+  return row!.found;
+}
+
+/**
  * 失败命令审计的 360 裁剪（第 1 轮审查 P2-5）：失败记录带请求来源（IP、终端、时间、命令 ID、TraceID），
- * 匿名作答 / 确认链接的失败只给持“全部活动”者（360 系统管理员），360 管理端命令的失败只给 360 身份持有人；
+ * 匿名作答 / 确认链接与站内待办作答的失败只给持“全部活动”且本人不是任何活动的被评价人 / 评价者的人（兼任不豁免，
+ * 第 3 轮 P2-1：失败记录带评价者的账号、路径与来源，无法脱敏）；360 管理端命令的失败只给 360 身份持有人；
  * 其他查看人（含只持日志审计能力者）看不到，无法据此关联评价者身份。谓词作用于 audit_command_failures 的 path 列。
  */
 export async function survey360FailureVisibility(deps: AuditDeps, ctx: Viewer, path: SQL) {
   const { link, manage } = await withTenant(deps.db, ctx.tenantId, async (tx) => ({
-    link: await allActivitiesOf(tx, deps, { timezone: 'UTC', ...ctx }),
+    link:
+      (await allActivitiesOf(tx, deps, { timezone: 'UTC', ...ctx })) && !(await participatesAnywhere(tx, ctx.userId)),
     manage: await isHolder(tx, ctx.userId),
   }));
-  return sql`(CASE WHEN ${path} LIKE '/api/survey360/%' THEN ${link ? sql`true` : sql`false`}
+  // 作答入口：令牌链接与站内待办“去处理”（/my/，带评价者本人账号）同一口径（PR-B 第 2 轮 P2-1）
+  return sql`(CASE WHEN ${path} LIKE '/api/survey360/%' OR ${path} LIKE '/api/tenant/survey360/my/%'
+      THEN ${link ? sql`true` : sql`false`}
     WHEN ${path} LIKE '/api/tenant/survey360/%' THEN ${manage ? sql`true` : sql`false`} ELSE true END)`;
 }
