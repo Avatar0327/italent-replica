@@ -14,6 +14,7 @@ import { PERSONNEL_POLICIES } from './modules/personnel/policy.js';
 import { QUALIFICATION_POLICIES } from './modules/qualification/policy.js';
 import { TALENT_POLICIES } from './modules/talent/policy.js';
 import { TALENT_REVIEW_POLICIES } from './modules/talent-review/policy.js';
+import { SUCCESSION_POLICIES } from './modules/succession/policy.js';
 import { TENANT_SETTING_POLICIES } from './modules/tenant-settings/policy.js';
 import { defineTable, mergeTables, type PolicyTable } from './route-policy/index.js';
 import { publicRoute } from './route-policy/presets.js';
@@ -38,6 +39,7 @@ export function tenantPolicyTable(extra: readonly PolicyTable[] = []): PolicyTab
     AVATAR_POLICIES,
     TALENT_REVIEW_POLICIES,
     QUALIFICATION_POLICIES,
+    SUCCESSION_POLICIES,
     ...extra,
   ]);
 }

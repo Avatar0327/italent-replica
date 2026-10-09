@@ -38,6 +38,8 @@ import {
   SUBSETS,
   survey360,
   TALENT_OBJECTS,
+  SUCCESSION_OBJECTS,
+  type SuccessionObject,
   TALENT_REVIEW_CONFIG_OBJECTS,
   TALENT_REVIEW_OBJECTS,
 } from '@italent/domain';
@@ -68,6 +70,8 @@ import {
 } from '../modules/talent/access.js';
 import { MODEL_IMAGE_AUDIT_TYPE } from '../modules/talent/model-image-service.js';
 import { TALENT_REVIEW_AUDIT_ACTIONS } from '../modules/talent-review/access.js';
+import { SUCCESSION_AUDIT_ACTIONS } from '../modules/succession/access.js';
+import { SUCCESSION_AUDIT, type SuccessionAuditSpec } from '../modules/succession/audit-scope.js';
 import {
   ExactAuditFields,
   resolveLinkageAudit,
@@ -236,6 +240,36 @@ function transferLinkageRule(): Rule {
       return sql`(${employee} IS NOT NULL AND ${person.visible(scope, { ...row, employee }, viewer, inputs)})`;
     },
   };
+}
+
+/**
+ * R3-T05 继任（设计 §8.4）：规则种类与对象自己的谓词登记在 modules/succession/audit-scope.ts，这里只套用通用谓词，
+ * 后续 PR 不再改本文件。org 按写入时的所属组织（“使用用户”按保留的创建元数据，DEC-198）；seeAll 只认看全部；
+ * rows 由任务对象提供逐行归属谓词，未提供时不返回。
+ */
+function successionRules(): Rule[] {
+  return (Object.entries(SUCCESSION_AUDIT) as [SuccessionObject, SuccessionAuditSpec][]).map(([object, spec]) => {
+    const code = SUCCESSION_OBJECTS[object].code;
+    if (spec.kind === 'seeAll') return { types: [code], objectCode: code, visible: (scope) => seeAllOnly(scope) };
+    if (spec.kind === 'rows') {
+      const rows = spec.visible;
+      return {
+        types: [code],
+        objectCode: code,
+        visible: (scope, row, viewer) => rows?.(scope, row, viewer) ?? sql`false`,
+      };
+    }
+    const base = orgRule([code], code, (row, viewer) =>
+      creatorSql(viewer.tenantId, row.objectId, `${SUCCESSION_AUDIT_ACTIONS[object]}.create`, code),
+    );
+    const restrict = spec.restrict;
+    if (!restrict) return base;
+    return {
+      ...base,
+      visible: (scope, row, viewer, inputs) =>
+        sql`(${base.visible(scope, row, viewer, inputs)} AND ${restrict(row, viewer)})`,
+    };
+  });
 }
 
 /** 审批日志的流程字段白名单（状态、节点、任务、审批人、意见等）；不含被隐藏字段清单等其他键。 */
@@ -489,6 +523,7 @@ const RULES: readonly Rule[] = [
         }),
     };
   }),
+  ...successionRules(),
   {
     // Q-M0-126：模型图没有独立可见性设置，日志同样随标准对象查看权与当前管理单元范围。
     ...orgRule([MODEL_IMAGE_AUDIT_TYPE], TALENT_OBJECTS.criterion.code, (row, viewer) =>
