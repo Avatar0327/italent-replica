@@ -7,6 +7,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
+import { splitDisclosure } from './disclosure.js';
 
 export const API_SRC = path.resolve(process.cwd(), 'apps/api/src');
 
@@ -616,20 +617,23 @@ function namespaceRefs(index: SourceIndex, file: string, text: string): { file: 
   return out;
 }
 
-/** 处理函数文本 + 它（递归）引用的模块内函数文本；叶子文件不展开。`trace` 收集展开链（调试 / 统计）。 */
+/**
+ * 处理函数文本 + 它（递归）引用的模块内函数文本；叶子文件不展开。`trace` 收集展开链（调试 / 统计）。
+ * `admission`：每段文本先剥掉披露片段（disclosure.ts），只从剩下的部分继续展开——披露片段里调用的函数不进准入闭包。
+ */
 export function closureText(
   index: SourceIndex,
   registration: StaticRegistration,
   maxDepth = 6,
   trace?: string[],
+  admission = false,
 ): string {
-  const parts: string[] = [
-    registration.handlerText,
-    ...constantTexts(index, registration.file, registration.handlerText),
-  ];
+  const keep = (text: string, handler = false) => (admission ? splitDisclosure(text, handler).admission : text);
+  const handlerText = keep(registration.handlerText, true);
+  const parts: string[] = [handlerText, ...constantTexts(index, registration.file, handlerText)];
   const visited = new Set<string>();
-  const handlerNames = identifiers(registration.handlerText);
-  const words = new Set([...registration.handlerText.matchAll(/\b[A-Za-z_$][\w$]*\b/g)].map((m) => m[0]));
+  const handlerNames = identifiers(handlerText);
+  const words = new Set([...handlerText.matchAll(/\b[A-Za-z_$][\w$]*\b/g)].map((m) => m[0]));
   const dispatched = [...words].flatMap((name) =>
     (DISPATCH[`${path.relative(API_SRC, registration.file)}#${name}`] ?? []).map(([file, target]) => ({
       file: path.join(API_SRC, file),
@@ -640,7 +644,7 @@ export function closureText(
   const queue: { file: string; name: string; depth: number }[] = [
     ...handlerNames.map((name) => ({ file: registration.file, name, depth: 0 })),
     ...registration.extraRoots.map((name) => ({ file: registration.file, name, depth: 0 })),
-    ...namespaceRefs(index, registration.file, registration.handlerText).map((ref) => ({ ...ref, depth: 0 })),
+    ...namespaceRefs(index, registration.file, handlerText).map((ref) => ({ ...ref, depth: 0 })),
     ...dispatched,
   ];
   while (queue.length) {
@@ -651,11 +655,12 @@ export function closureText(
     if (visited.has(key)) continue;
     visited.add(key);
     trace?.push(`${item.depth}:${path.relative(API_SRC, hit.file)}#${item.name}`);
-    parts.push(hit.text);
-    parts.push(...constantTexts(index, hit.file, hit.text));
+    const text = keep(hit.text);
+    parts.push(text);
+    parts.push(...constantTexts(index, hit.file, text));
     if (item.depth < maxDepth) {
-      for (const name of identifiers(hit.text)) queue.push({ file: hit.file, name, depth: item.depth + 1 });
-      for (const ref of namespaceRefs(index, hit.file, hit.text)) queue.push({ ...ref, depth: item.depth + 1 });
+      for (const name of identifiers(text)) queue.push({ file: hit.file, name, depth: item.depth + 1 });
+      for (const ref of namespaceRefs(index, hit.file, text)) queue.push({ ...ref, depth: item.depth + 1 });
     }
   }
   return parts.join('\n');

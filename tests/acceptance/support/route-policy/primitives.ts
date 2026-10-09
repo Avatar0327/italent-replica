@@ -293,6 +293,8 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['permission.grantScopesRequireOtherSettings', /scopes[\s\S]{0,160}other_settings/, { modules: ['permission'] }],
     ['permission.personLinksReadOnly', /\bUSER_BINDING_BY_PROFILE\b/],
     ['survey360.unrestricted', call('requireUnrestricted'), { modules: ['survey360'] }],
+    // 导入评价者选“同步”（body.sync === true）时才要员工信息查看权与范围（relations.ts preflight）
+    ['survey360.syncEmployees', /if \(body\?\.sync === true\) await routeEmployeeScope\(/, { modules: ['survey360'] }],
     // IDP 模板引用流程：流程查看权 + 流程范围（routes.ts processScopeFor）；新建计划所选模板须可见（plan-routes.ts templateCheck）
     ['idp.processReference', call('processScopeFor'), { modules: ['idp'] }],
     ['idp.templateVisible', call('templateCheck'), { modules: ['idp'] }],
@@ -384,6 +386,7 @@ export const GUARD_FACTS: Readonly<Record<string, readonly string[]>> = {
   // 模板编辑时 processId 存在才判（PATCH 为条件判定），新建 / 复制无条件
   'idp.processReference': ['IDP.IDPProcess:view'],
   'idp.templateVisible': ['IDP.IDPTemplate:view'],
+  'survey360.syncEmployees': ['TenantBase.EmployeeInformation:view'],
 };
 
 /** 目录里能观测到的守卫名（声明里出现这些名字时按双向比较）。 */

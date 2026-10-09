@@ -35,13 +35,6 @@ const WEAKER_ONLY = [
   'failureAudit',
   'postcheck',
 ] as const;
-/**
- * 可选分支（不参与准入）只决定响应里按权限附加的披露（canEdit / canApply、接收行、组织字段…），处理函数为此做的
- * 对象 / 按钮 / 范围判定与出口裁剪会被静态探测观测到，可由可选分支满足；准入专属的义务（管理员、本人、关系、
- * 本人数据、点校验、写入字段、复核）不行。
- */
-const OPTIONAL_SATISFIES: ReadonlySet<string> = new Set(['fieldsOut', 'button', 'object', 'scope']);
-
 /** 匿名请求不被 401 拦下的路由不经成员中间件（/healthz、360 链接作答：令牌不对按 404）。 */
 export function observedIdentity(key: string, route: ObservedRoute): Identity {
   if (route.edge.anonymous.status !== 401) return 'public';
@@ -92,24 +85,36 @@ function compareIdentity(observed: ObservedRoute, key: string, decl: Declared): 
   return out;
 }
 
-/** 一个备选（并上可选分支里能满足出口类维度的部分）的维度集合。 */
-function altDims(alt: Alternative, optional: Alternative): Set<string> {
-  const dims = new Set(alt.dims);
-  for (const dim of optional.dims) if (OPTIONAL_SATISFIES.has(dim)) dims.add(dim);
-  return dims;
+/** 对象 × 数据操作是否有对象节点覆盖（编码 * = 任一对象）。 */
+function coversObject(objects: ReadonlySet<string>, code: string, op: string): boolean {
+  return code === '*' ? [...objects].some((entry) => entry.endsWith(`:${op}`)) : objects.has(`${code}:${op}`);
 }
 
-/** 对象 × 数据操作是否有对象节点覆盖（编码 * = 任一对象；可选分支的披露判定也算）。 */
-function coversObject(alt: Alternative, optional: Alternative, code: string, op: string): boolean {
-  const has = (set: ReadonlySet<string>) =>
-    code === '*' ? [...set].some((entry) => entry.endsWith(`:${op}`)) : set.has(`${code}:${op}`);
-  return has(alt.objects) || has(optional.objects);
-}
-
-function satisfies(dims: ReadonlySet<string>, alt: Alternative, optional: Alternative, need: Obligation): boolean {
+/** 维度或对象义务（`obj:编码:操作`）是否由给定的维度 / 对象集合满足。 */
+function satisfies(dims: ReadonlySet<string>, objects: ReadonlySet<string>, need: Obligation): boolean {
   if (!need.startsWith('obj:')) return declaredHas(dims, need);
   const [, code = '', op = ''] = need.split(':');
-  return coversObject(alt, optional, code, op);
+  return coversObject(objects, code, op);
+}
+
+/**
+ * 披露事实（disclosure.ts：非抛错的权限求值只决定响应里的附加披露）：准入备选或可选分支登记了即可；
+ * 准入事实只能由准入备选满足，可选分支不能顶替（实现审第 2 轮 P2-1 残项）。
+ */
+function compareDisclosure(
+  observed: ObservedRoute,
+  alt: Alternative,
+  optional: Alternative,
+  label: string,
+  absorbed: ReadonlySet<string>,
+  report: (code: string, detail: string) => void,
+): void {
+  const dims = new Set([...alt.dims, ...optional.dims]);
+  const objects = new Set([...alt.objects, ...optional.objects]);
+  for (const need of observed.primitives['disclose'] ?? []) {
+    if (absorbed.has(need)) continue; // “或”关系原语 / 守卫承载的判定
+    if (!satisfies(dims, objects, need as Obligation)) report('WEAKER:disclosure', `${label}缺披露 ${need}`);
+  }
 }
 
 function compareAlternative(
@@ -119,7 +124,7 @@ function compareAlternative(
   label: string,
   report: (code: string, detail: string) => void,
 ): void {
-  const dims = altDims(alt, optional);
+  const dims = alt.dims;
   const ors = DISJUNCTIONS.filter((d) => observed.primitives['or']?.includes(d.name));
   const absorbed = new Set<string>(ors.flatMap((d) => d.absorbs));
   for (const guard of observed.primitives['guard'] ?? []) {
@@ -131,15 +136,15 @@ function compareAlternative(
     if (!declaredHas(dims, dim)) report(`WEAKER:${dim}`, `${label}缺 ${dim}（现状有 ${names(dim)}）`);
   }
   for (const or of ors) {
-    if (or.branches.some((branch) => branch.every((need) => satisfies(dims, alt, optional, need)))) continue;
+    if (or.branches.some((branch) => branch.every((need) => satisfies(dims, alt.objects, need)))) continue;
     const want = or.branches.map((branch) => branch.join('+')).join(' 或 ');
     report('WEAKER:or', `${label}不满足 ${or.name}（现状要求 ${want}）`);
   }
-  // 对象 × 数据操作：每条事实（编码集合:操作）都要有对象节点覆盖（可选分支的披露判定也算）
+  // 对象 × 数据操作：每条准入事实（编码集合:操作）都要有准入备选里的对象节点覆盖
   for (const fact of observed.primitives['objectOp'] ?? []) {
     if (absorbed.has(`obj:${fact}`)) continue;
     const [codes = '', op = ''] = fact.split(':');
-    if (!codes.split('|').some((code) => coversObject(alt, optional, code, op))) {
+    if (!codes.split('|').some((code) => coversObject(alt.objects, code, op))) {
       report('WEAKER:object', `${label}缺对象操作 ${fact}`);
     }
   }
@@ -149,6 +154,7 @@ function compareAlternative(
   for (const name of observed.primitives['precondition'] ?? []) {
     if (!alt.preconditions.has(preconditionName(name))) report('WEAKER:precondition', `${label}缺前提 ${name}`);
   }
+  compareDisclosure(observed, alt, optional, label, absorbed, report);
 }
 
 /** 选择器分支键必须等于本路由绑定的某个域。 */

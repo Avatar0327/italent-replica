@@ -212,8 +212,13 @@ function allNodes(policy: RoutePolicy): RoutePolicy[] {
   return [policy, ...children.flatMap(allNodes)];
 }
 
+/** 身份只看准入节点（可选分支不参与准入）。 */
+function admissionNodes(policy: RoutePolicy): RoutePolicy[] {
+  return [policy, ...('of' in policy ? policy.of.flatMap(admissionNodes) : [])];
+}
+
 function identityOf(policy: RoutePolicy): Identity {
-  const kinds = allNodes(policy).map((node) => node.kind);
+  const kinds = admissionNodes(policy).map((node) => node.kind);
   if (kinds.includes('public')) return 'public';
   if (kinds.includes('platform')) return 'platform';
   return 'tenant';

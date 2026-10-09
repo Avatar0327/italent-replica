@@ -271,7 +271,6 @@
           "runCommand / runWrite"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -420,7 +419,6 @@
           "revision(c)"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -540,7 +538,6 @@
           "runCommand / runWrite"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -575,7 +572,6 @@
           "runCommand / runWrite"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -961,7 +957,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -1040,7 +1035,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -1080,7 +1074,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -1120,7 +1113,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -1160,7 +1152,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -1200,7 +1191,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -2326,9 +2316,8 @@
       },
       "module": "employment",
       "primitives": {
-        "button": [
-          "buttonResource",
-          "object.button"
+        "disclose": [
+          "button"
         ],
         "guard": [
           "transfer.managerIdentity"
@@ -2420,9 +2409,8 @@
       },
       "module": "employment",
       "primitives": {
-        "button": [
-          "buttonResource",
-          "object.button"
+        "disclose": [
+          "button"
         ],
         "guard": [
           "transfer.managerIdentity"
@@ -2875,7 +2863,6 @@
       "module": "idp",
       "primitives": {
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -2903,7 +2890,6 @@
       "module": "idp",
       "primitives": {
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -3016,8 +3002,8 @@
       },
       "module": "idp",
       "primitives": {
-        "object": [
-          "object.* 动作"
+        "disclose": [
+          "object"
         ],
         "or": [
           "idp.requireExecutor"
@@ -3048,7 +3034,6 @@
       "module": "idp",
       "primitives": {
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -3079,7 +3064,6 @@
       "module": "idp",
       "primitives": {
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -3109,7 +3093,6 @@
       "module": "idp",
       "primitives": {
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -3140,7 +3123,6 @@
       "module": "idp",
       "primitives": {
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -3170,7 +3152,6 @@
       "module": "idp",
       "primitives": {
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -3198,7 +3179,6 @@
       "module": "idp",
       "primitives": {
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -3226,7 +3206,6 @@
       "module": "idp",
       "primitives": {
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -3254,7 +3233,6 @@
       "module": "idp",
       "primitives": {
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -3427,8 +3405,8 @@
       },
       "module": "job",
       "primitives": {
-        "object": [
-          "object.* 动作"
+        "disclose": [
+          "object"
         ],
         "own": [
           "recipientUserId = 本人"
@@ -3457,8 +3435,8 @@
       },
       "module": "job",
       "primitives": {
-        "object": [
-          "object.* 动作"
+        "disclose": [
+          "object"
         ],
         "own": [
           "recipientUserId = 本人"
@@ -5114,11 +5092,13 @@
         "button": [
           "button()"
         ],
+        "disclose": [
+          "scope"
+        ],
         "domain": [
           "talent.ownerUnitObject"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -5126,11 +5106,6 @@
         ],
         "or": [
           "talent.candidateContext"
-        ],
-        "scope": [
-          "creator scope",
-          "requestScope",
-          "scopeSql"
         ]
       }
     },
@@ -5211,14 +5186,14 @@
       },
       "module": "talent",
       "primitives": {
-        "button": [
-          "button()"
+        "disclose": [
+          "button",
+          "obj:TalentCenter.TalentCriterion:update"
         ],
         "object": [
           "objectContext"
         ],
         "objectOp": [
-          "TalentCenter.TalentCriterion:update",
           "TalentCenter.TalentCriterion:view"
         ],
         "scope": [
@@ -5829,7 +5804,6 @@
           "writeFields"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -5983,7 +5957,6 @@
           "writeFields"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -6125,7 +6098,6 @@
           "writeFields"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -6163,7 +6135,6 @@
           "writeFields"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -6444,7 +6415,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -6487,7 +6457,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -6530,7 +6499,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -6573,7 +6541,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -6616,7 +6583,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -6659,7 +6625,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -6859,12 +6824,13 @@
         "admin": [
           "requireProcessButton"
         ],
-        "button": [
-          "adminScope(buttons)"
-        ],
         "command": [
           "assertRevision",
           "write() / command()"
+        ],
+        "disclose": [
+          "button",
+          "scope"
         ],
         "fieldsOut": [
           "disclose*"
@@ -6874,9 +6840,6 @@
         ],
         "precondition": [
           "openRun"
-        ],
-        "scope": [
-          "adminScope"
         ]
       }
     },
@@ -9088,7 +9051,6 @@
           "writeFields"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -9485,7 +9447,6 @@
           "writeFields"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -9732,7 +9693,6 @@
           "writeFields"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -9770,7 +9730,6 @@
           "writeFields"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -10781,6 +10740,9 @@
         "fieldsIn": [
           "survey360 write(fields)"
         ],
+        "guard": [
+          "survey360.syncEmployees"
+        ],
         "object": [
           "object.* 动作",
           "objectContext",
@@ -11289,7 +11251,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -11332,7 +11293,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "scope": [
@@ -11450,7 +11410,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -11493,7 +11452,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -11536,7 +11494,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -11579,7 +11536,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [
@@ -11622,7 +11578,6 @@
           "trimModuleResponse"
         ],
         "object": [
-          "object.* 动作",
           "objectContext"
         ],
         "objectOp": [

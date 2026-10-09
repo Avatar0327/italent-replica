@@ -224,8 +224,8 @@ const hasButton = (nodes: readonly RoutePolicy[]) =>
   nodes.some((node) => 'button' in node && !!node.button && !isNone(node.button));
 
 /**
- * 删可选分支：只在可选分支是基准事实在声明里的**唯一**来源时才是削弱——基准观测到的对象 × 操作只由可选分支的
- * 对象节点覆盖，或基准观测到按钮判定而准入节点都不登记按钮（按声明结构与基准事实判断，不经比较器）。
+ * 删可选分支：只在可选分支是基准**披露事实**在声明里的唯一来源时才是削弱——披露的对象 × 操作只由可选分支的
+ * 对象节点覆盖，或披露的按钮判定而准入节点都不登记按钮（按声明结构与基准事实判断，不经比较器）。
  */
 function deleteOptional(route: ManifestRoute, facts: readonly string[], button: boolean): ManifestRoute | undefined {
   const optional = Object.values(route.policy.optional ?? {});
@@ -334,7 +334,10 @@ export function mutantsOf(route: ManifestRoute, contract: ObservedContract): Mut
     if (declaredGuards.has(name)) push('delete-guard', deleteNamed(route, 'guards', name));
   }
   for (const mutated of deleteBranches(route)) push('delete-branch', mutated);
-  push('delete-optional', deleteOptional(route, observed.primitives['objectOp'] ?? [], has('button')));
+  // 披露事实（disclosure.ts）：删可选分支后由它承载的披露就没有登记了
+  const disclose = observed.primitives['disclose'] ?? [];
+  const discloseFacts = disclose.filter((d) => d.startsWith('obj:')).map((d) => d.slice(4));
+  push('delete-optional', deleteOptional(route, discloseFacts, disclose.includes('button')));
   push('kind→member', kindToMember(route));
   for (const mutated of dropDomainValues(route)) push('domain-drop-value', mutated);
   if (has('failureAudit')) push('delete-failureAudit', deleteFailureAudit(route));

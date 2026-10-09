@@ -118,6 +118,8 @@ const ALSO = 'survey360.alsoObjects';
 const PREFLIGHT = 'survey360.preflight';
 /** 同步冲突与人员关联日志只给不受限的管理员（people.ts requireUnrestricted）。 */
 const UNRESTRICTED = 'survey360.unrestricted';
+/** 导入评价者 body.sync === true 时：员工信息查看权 + 当前员工信息范围（relations.ts preflight → routeEmployeeScope）。 */
+const SYNC_EMPLOYEES = 'survey360.syncEmployees';
 
 export const SURVEY360_POLICIES = defineTable('survey360', {
   // ---- settings.ts ------------------------------------------------------------------------------------------------
@@ -300,9 +302,9 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     operation: 'create',
     button: 'import',
     scope: ACTIVITY,
-    write: { fields: 'derived', guards: [RESOURCE, REFS, ALSO, PREFLIGHT], results: true },
+    // 选“同步”（body.sync === true）时才另要员工信息查看权与范围：条件准入登记为守卫（审查第 2 轮 P3-1）
+    write: { fields: 'derived', guards: [RESOURCE, REFS, ALSO, PREFLIGHT, SYNC_EMPLOYEES], results: true },
     byId: true,
-    employees: true,
   }),
   'POST /activities/:id/objects/:objectId/confirmation': route({
     key: 'relation',
