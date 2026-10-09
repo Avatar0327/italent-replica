@@ -4,12 +4,18 @@ import { AppError } from '../../errors.js';
 import { personAvatars, type AvatarReference } from '../avatar/references.js';
 import { avatarContentBytes } from '../avatar/service.js';
 
-export async function linkAvatars(tx: Tx, tenantId: string, personIds: readonly string[]) {
+/** base 是作答入口的地址前缀：令牌链接 /api/survey360/link，待办 /api/tenant/survey360/my/todos/:todoId（PR-B）。 */
+export async function linkAvatars(
+  tx: Tx,
+  tenantId: string,
+  personIds: readonly string[],
+  base = '/api/survey360/link',
+) {
   const avatars = await personAvatars(tx, tenantId, personIds);
   return new Map(
     [...avatars].map(([personId, avatar]) => [
       personId,
-      avatar ? { id: avatar.id, url: `/api/survey360/link/avatars/${avatar.id}/content` } : null,
+      avatar ? { id: avatar.id, url: `${base}/avatars/${avatar.id}/content` } : null,
     ]),
   ) satisfies Map<string, AvatarReference | null>;
 }
