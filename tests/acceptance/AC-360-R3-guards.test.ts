@@ -1220,7 +1220,7 @@ const ROUTE_CASES: Record<string, RouteCases> = {
       const body = await json(
         await expectStatus(admin(env, env.users.tPerson)('GET', `/activities/${env.T.id}/objects`), 200),
       );
-      expect(body.items![0]!.person).toEqual({ name: '被评价人' });
+      expect(body.items![0]!.person).toEqual({ name: '被评价人', avatar: null });
       noMarkers(body, env.emails);
     },
   },

@@ -360,9 +360,9 @@ describe('R2-P2-3 嵌套候选、汇总信封与关联日志按查看人字段�
     expect(list.items).toHaveLength(1);
     expect(list.items[0]).not.toHaveProperty('roleId');
     expect(JSON.stringify(list)).not.toContain(w.role('peer'));
-    expect(list.items[0]!.appraiser).toEqual({ name: '同事甲', internal: false });
+    expect(list.items[0]!.appraiser).toEqual({ name: '同事甲', internal: false, avatar: null });
     const objects = await w.ok<{ items: { person: Record<string, unknown> }[] }>(u('GET', base));
-    expect(objects.items[0]!.person).toEqual({ name: '被评价人' });
+    expect(objects.items[0]!.person).toEqual({ name: '被评价人', avatar: null });
     expect(JSON.stringify(objects)).not.toContain(s.target.email);
   });
 });

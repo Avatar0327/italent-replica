@@ -10,7 +10,8 @@ const { createRoot } = requireWeb('react-dom/client');
 const settingsPath = resolve('apps/web/src/account/AvatarSettings.tsx');
 const avatarPath = resolve('apps/web/src/shared/PersonAvatar.tsx');
 const BASE = '/api/tenant/account/avatar';
-const CONTENT = '/api/tenant/avatars/current/content';
+const AVATAR_ID = 'f0580000-0000-4000-8000-000000000001';
+const CONTENT = `/api/tenant/avatars/${AVATAR_ID}/content`;
 
 interface AvatarReference {
   id: string;
@@ -32,6 +33,7 @@ let requests: RecordedRequest[];
 let uploadUnknown: boolean;
 let conflict: boolean;
 let contentDenied: boolean;
+let readDenied: boolean;
 const createUrl = vi.fn<(blob: Blob) => string>();
 const revokeUrl = vi.fn<(url: string) => void>();
 
@@ -49,7 +51,8 @@ async function mockFetch(input: string | URL | Request, init: RequestInit = {}) 
   const headers = new Headers(init.headers);
   const body = init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
   requests.push({ path, method, headers, body });
-  if (method === 'GET' && path === BASE) return json(view());
+  if (method === 'GET' && path === BASE)
+    return readDenied ? json({ error: { code: 'FORBIDDEN', message: '当前账号不可用' } }, 403) : json(view());
   if (method === 'GET' && path.endsWith('/content')) {
     if (contentDenied) return json({ error: { code: 'NOT_FOUND', message: '头像不存在' } }, 404);
     return new Response(new Uint8Array([137, 80, 78, 71]), { headers: { 'content-type': 'image/png' } });
@@ -57,11 +60,11 @@ async function mockFetch(input: string | URL | Request, init: RequestInit = {}) 
   if (conflict) return json({ error: { code: 'REVISION_CONFLICT', message: '头像已变更' } }, 409);
   if (method === 'POST' && path === `${BASE}/attachments`) {
     revision = 11;
-    return json({ revision, attachment: { ...body, id: 'current', status: 'registered' } }, 201);
+    return json({ revision, attachment: { ...body, id: AVATAR_ID, status: 'registered' } }, 201);
   }
-  if (method === 'POST' && path === `${BASE}/attachments/current/upload`) {
+  if (method === 'POST' && path === `${BASE}/attachments/${AVATAR_ID}/upload`) {
     revision = 29;
-    current = { id: 'current', url: CONTENT };
+    current = { id: AVATAR_ID, url: CONTENT };
     if (uploadUnknown) {
       uploadUnknown = false;
       throw new TypeError('network disconnected');
@@ -87,6 +90,7 @@ beforeEach(() => {
   uploadUnknown = false;
   conflict = false;
   contentDenied = false;
+  readDenied = false;
   createUrl.mockReset().mockImplementation(() => `blob:avatar-${createUrl.mock.calls.length}`);
   revokeUrl.mockReset();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -151,7 +155,7 @@ describe('AC-EMP-F058：本人个人设置头像及通用人员头像', () => {
     contentDenied = true;
     await act(async () =>
       root.render(
-        createElement(PersonAvatar, { tenantId: 'tenant', name: 'Jane Doe', avatar: { id: 'current', url: CONTENT } }),
+        createElement(PersonAvatar, { tenantId: 'tenant', name: 'Jane Doe', avatar: { id: AVATAR_ID, url: CONTENT } }),
       ),
     );
     await vi.waitFor(() => expect(requests).toHaveLength(1));
@@ -163,7 +167,7 @@ describe('AC-EMP-F058：本人个人设置头像及通用人员头像', () => {
     const { PersonAvatar } = await import(avatarPath);
     await act(async () =>
       root.render(
-        createElement(PersonAvatar, { tenantId: 'tenant', name: '合成员工', avatar: { id: 'current', url: CONTENT } }),
+        createElement(PersonAvatar, { tenantId: 'tenant', name: '合成员工', avatar: { id: AVATAR_ID, url: CONTENT } }),
       ),
     );
     await vi.waitFor(() => expect(host.querySelector('img')).toBeTruthy());
@@ -171,6 +175,59 @@ describe('AC-EMP-F058：本人个人设置头像及通用人员头像', () => {
     expect(host.querySelector('img')!.getAttribute('src')).toBe('blob:avatar-1');
     await act(async () => root.unmount());
     mounted = false;
+    expect(revokeUrl).toHaveBeenCalledWith('blob:avatar-1');
+  });
+
+  it('头像引用须为匹配的 UUID 内容路径，规范大小写后读取且不请求任意地址', async () => {
+    const { PersonAvatar } = await import(avatarPath);
+    await act(async () =>
+      root.render(
+        createElement(PersonAvatar, {
+          tenantId: 'tenant',
+          name: '合成员工',
+          avatar: { id: AVATAR_ID.toUpperCase(), url: `/api/tenant/avatars/${AVATAR_ID.toUpperCase()}/content` },
+        }),
+      ),
+    );
+    await vi.waitFor(() => expect(host.querySelector('img')).toBeTruthy());
+    expect(requests[0]!.path).toBe(CONTENT);
+    await act(async () =>
+      root.render(
+        createElement(PersonAvatar, {
+          tenantId: 'tenant',
+          name: '合成员工',
+          avatar: { id: AVATAR_ID, url: 'https://example.com/avatar.png' },
+        }),
+      ),
+    );
+    expect(host.querySelector('img')).toBeNull();
+    expect(revokeUrl).toHaveBeenCalledWith('blob:avatar-1');
+    expect(requests).toHaveLength(1);
+    await act(async () =>
+      root.render(
+        createElement(PersonAvatar, {
+          tenantId: 'tenant',
+          name: '合成员工',
+          avatar: { id: 'invalid', url: '/api/tenant/avatars/invalid/content' },
+        }),
+      ),
+    );
+    expect(requests).toHaveLength(1);
+  });
+
+  it('已有图片在切换租户的同次渲染消失，释放旧租户 blob URL', async () => {
+    const { PersonAvatar } = await import(avatarPath);
+    await act(async () =>
+      root.render(
+        createElement(PersonAvatar, { tenantId: 'old', name: '旧租户员工', avatar: { id: AVATAR_ID, url: CONTENT } }),
+      ),
+    );
+    await vi.waitFor(() => expect(host.querySelector('img')).toBeTruthy());
+    await act(async () =>
+      root.render(createElement(PersonAvatar, { tenantId: 'new', name: '新租户员工', avatar: null })),
+    );
+    expect(host.querySelector('img')).toBeNull();
+    expect(host.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('新租户员工的头像');
     expect(revokeUrl).toHaveBeenCalledWith('blob:avatar-1');
   });
 
@@ -223,6 +280,25 @@ describe('AC-EMP-F058：本人个人设置头像及通用人员头像', () => {
     expect(button('删除头像')!.disabled).toBe(false);
   });
 
+  it('结果未知后的回查失败持续冻结写入，再次回查成功才允许显式提交', async () => {
+    uploadUnknown = true;
+    await renderSettings();
+    await selectFile(file());
+    await click('保存头像');
+    await vi.waitFor(() => expect(host.querySelector('[role="alert"]')?.textContent).toContain('尚未确认'));
+    readDenied = true;
+    await click('刷新');
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('当前账号不可用');
+    expect(button('保存头像')!.disabled).toBe(true);
+    expect(host.querySelector('img')).toBeNull();
+    expect(writes()).toHaveLength(2);
+    readDenied = false;
+    await click('刷新');
+    await vi.waitFor(() => expect(host.querySelector('img')).toBeTruthy());
+    expect(button('删除头像')!.disabled).toBe(false);
+    expect(writes()).toHaveLength(2);
+  });
+
   it('409 要求显式刷新后重新提交，不能自动修改 revision 重试', async () => {
     conflict = true;
     await renderSettings();
@@ -254,11 +330,43 @@ describe('AC-EMP-F058：本人个人设置头像及通用人员头像', () => {
     await act(async () => root.render(createElement(AvatarSettings, { tenantId: 'old-tenant' })));
     await renderSettings('new-tenant');
     await act(async () =>
-      finishOld(json({ revision: 2, name: '旧租户员工', avatar: { id: 'current', url: CONTENT } })),
+      finishOld(json({ revision: 2, name: '旧租户员工', avatar: { id: AVATAR_ID, url: CONTENT } })),
     );
     expect(host.textContent).not.toContain('旧租户员工');
     expect(host.querySelector('img')).toBeNull();
     expect(createUrl).not.toHaveBeenCalled();
     expect(requests.some((request) => request.path.endsWith('/content'))).toBe(false);
+  });
+
+  it('员工自助档案显示只读账号头像，并提供个人设置入口', async () => {
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input).endsWith('/self-service/profile'))
+        return json({
+          timezone: 'Asia/Shanghai',
+          today: '2026-10-09',
+          employee: {
+            id: 'synthetic-employee',
+            name: '合成员工',
+            code: 'SYNTHETIC',
+            revision: 1,
+            avatar: { id: AVATAR_ID, url: CONTENT },
+          },
+          record: null,
+        });
+      return mockFetch(input, init);
+    });
+    const { EmployeePage } = await import(resolve('apps/web/src/employee-self-service/EmployeePage.tsx'));
+    await act(async () => root.render(createElement(EmployeePage)));
+    const input = host.querySelector('input')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'tenant');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      host.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    await vi.waitFor(() => expect(host.textContent).toContain('合成员工'));
+    await vi.waitFor(() => expect(host.querySelector('img')).toBeTruthy());
+    expect(host.querySelector('a[href="/account"]')?.textContent).toBe('个人设置');
+    expect(host.querySelector('input[type="file"]')).toBeNull();
+    expect(writes()).toHaveLength(0);
   });
 });

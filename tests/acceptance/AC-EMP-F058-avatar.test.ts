@@ -421,18 +421,20 @@ describe('AC-EMP（补）F-058 图片内容、并发、幂等与审计', () => {
 describe('AC-EMP（补）F-058 员工档案与人员头像引用', () => {
   it('员工头像按账号人员绑定同步，证件照字段不能作为头像，也不能经员工档案手改', async () => {
     const s = await personnelSession(testDb().db, 'f058-personnel');
-    const idPhoto = randomUUID();
     await withTenant(testDb().db, s.tenant.id, (tx) =>
       tx.execute(sql`INSERT INTO permission_user_person_links(tenant_id,user_id,employee_id)
         VALUES(${s.tenant.id},${s.user.id},${s.employee.id})`),
     );
-    await withTenant(testDb().db, s.tenant.id, (tx) =>
-      tx.execute(sql`INSERT INTO personnel_attachments
-        (id, tenant_id, employee_id, purpose, filename, content_type, byte_size, sha256, created_by)
-        VALUES (${idPhoto}, ${s.tenant.id}, ${s.employee.id}, 'photo', 'synthetic-id-photo.png',
-          'image/png', ${imageFixture().metadata.byteSize}, ${imageFixture().metadata.sha256}, ${s.user.id})`),
-    );
-    await json(s.request('PATCH', `/employees/${s.employee.id}`, { ifMatch: 0, body: { idPhoto } }));
+    const idPhoto = randomUUID();
+    // 已有档案证件照是独立夹具，不经本任务头像路由生成。
+    await testDb().db.execute(sql`INSERT INTO personnel_attachments
+      (id,tenant_id,employee_id,purpose,filename,content_type,byte_size,sha256,created_by)
+      VALUES (${idPhoto},${s.tenant.id},${s.employee.id},'photo','synthetic-id-photo.png','image/png',
+        ${imageFixture().metadata.byteSize},${imageFixture().metadata.sha256},${s.user.id})`);
+    await testDb().db.execute(sql`INSERT INTO personnel_employee_versions
+      (id,tenant_id,employee_id,revision,command_id,created_by,name,id_photo)
+      VALUES (${randomUUID()},${s.tenant.id},${s.employee.id},1,${randomUUID()},${s.user.id},
+        ${s.employee.name},${idPhoto})`);
     const account: AvatarRequest = (method, path, options = {}) => s.api.request(method, path, { ...options, ...s.as });
     const before = await json<Record<string, unknown>>(s.request('GET', `/employees/${s.employee.id}`));
     expect(before.idPhoto).toBe(idPhoto);
@@ -440,6 +442,12 @@ describe('AC-EMP（补）F-058 员工档案与人员头像引用', () => {
     const registered = await register(account, 1);
     const uploaded = await upload(account, registered);
     expect(await json(s.request('GET', `/employees/${s.employee.id}`))).toMatchObject({ avatar: uploaded.avatar });
+    expect(await json(account('GET', `/api/tenant/employment/employees/${s.employee.id}`))).toMatchObject({
+      avatar: uploaded.avatar,
+    });
+    expect(await json(account('GET', '/api/tenant/self-service/profile'))).toMatchObject({
+      employee: { id: s.employee.id, avatar: uploaded.avatar },
+    });
     await error(
       s.request('PATCH', `/employees/${s.employee.id}`, { ifMatch: before.revision as number, body: { avatar: null } }),
       400,
