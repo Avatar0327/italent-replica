@@ -60,6 +60,11 @@ import { loadMatrixView, MATRIX, type MatrixView } from './matrix-view.js';
 export interface MatrixWriteContext extends WriteContext {
   /** 引用字段目录对象所需的范围；请求不带任何字段引用时为空。 */
   readonly fieldScope?: ModuleScope;
+  /**
+   * 请求体里显式提交的字段引用（轴、第三维度、位置字段）。首次执行在业务事务内、任何写入之前按当前字段目录范围复核
+   * 全部这些引用（原样带上的已有引用也算），拒绝时整个命令回滚：业务、revision、台账、审计都不留痕。
+   */
+  readonly references?: readonly string[];
 }
 
 // ---- 引用字段：校验与可见性 --------------------------------------------------------------------------------------
@@ -73,12 +78,17 @@ interface FieldFacts {
   readonly optionValues: Set<string>;
 }
 
-async function loadFieldFacts(tx: Tx, tenantId: string, ids: string[]): Promise<Map<string, FieldFacts>> {
+/**
+ * 读引用字段的属性。写入路径（lock = true）对这些字段行加 FOR KEY SHARE：与字段删除（行 FOR UPDATE）互斥，
+ * 字段先被删就读不到（404），读到了就保证提交前不被删（删除方随后看到占用 → 409 FIELD_IN_USE），不会在插入时撞外键 500。
+ */
+async function loadFieldFacts(tx: Tx, tenantId: string, ids: string[], lock = false): Promise<Map<string, FieldFacts>> {
   if (ids.length === 0) return new Map();
-  const fields = await tx
+  const query = tx
     .select({ id: F.id, kind: F.kind, group: F.group, enabled: F.enabled, createdBy: F.createdBy })
     .from(F)
     .where(and(eq(F.tenantId, tenantId), inArray(F.id, ids)));
+  const fields = await (lock ? query.for('key share') : query);
   const options = await tx
     .select({ fieldId: O.fieldId, value: O.value })
     .from(O)
@@ -181,15 +191,22 @@ async function validateShape(tx: Tx, ctx: MatrixWriteContext, shape: Shape, curr
   checkStructure(shape);
   const ids = refIds(shape);
   const added = ids.filter((id) => !current.includes(id));
-  const facts = await loadFieldFacts(tx, ctx.tenantId, ids);
+  const facts = await loadFieldFacts(tx, ctx.tenantId, ids, true);
   requireVisibleRefs(ctx.fieldScope, facts, added);
   checkAgainstFields(shape, facts, added);
 }
 
 /**
- * 位置字段占用的写入口（新建、修改位置字段、预置补装）先按统一顺序取这批字段的占用锁，再删旧插新：
- * 两个九宫格互占对方字段、或按相反顺序占用同一对字段时，各自先持有部分行再等对方会死锁（40P01 → 500）。
- * 取锁顺序固定后只会排队，随后由唯一约束给出受控的占用冲突（409）。
+ * 位置字段占用的锁协议（PR #182 第 1 / 2 轮死锁；所有写位置字段占用行的入口都遵守）：
+ * 1. 至多先取**一个**九宫格行锁（修改 / 删除；新建与预置补装没有）；
+ * 2. 然后在本事务**任何写入之前**，把本事务涉及的**全部**位置字段（旧占用 ∪ 新占用；补装 = 所有待装预置的位置字段）
+ *    合在一起按字段 id 排序，**一次**取齐占用锁（pg_advisory_xact_lock，事务结束释放）——不分批、不在写入之后补取；
+ * 3. 之后才读引用字段（FOR KEY SHARE）、写九宫格行、删旧占用、插新占用。
+ * 取锁之后不会再等任何九宫格行锁或占用锁，所以占用锁的等待只会排队、不会成环；随后由唯一约束给出受控的占用冲突（409）。
+ * 入口：新建（createMatrix）、修改位置字段（updateMatrix）、删除（deleteMatrix）、预置补装（matrix-presets.ts）。
+ * 字段停用 / 删除只取字段行锁，不取九宫格行锁与占用锁；写入方对引用字段只取 KEY SHARE，删除方等写入方结束后由引用守卫判定。
+ * 补装里因依赖不可用而跳过的预置，其字段锁留到事务结束：补装取锁后不再等待其他锁，多持有只会让并发写入方多排一会儿，不会成环。
+ * 补装事务在这一步之前只插入新的预置行（预置字段等），并发事务看不到未提交的新行，不会等它们。
  */
 export async function lockPositionFields(tx: Tx, tenantId: string, fieldIds: readonly string[]): Promise<void> {
   for (const id of [...new Set(fieldIds)].sort()) {
@@ -283,12 +300,12 @@ export async function createMatrix(tx: Tx, ctx: MatrixWriteContext, input: Matri
   // 新建范围先于一切读取：范围为空的人对任何字段引用都得到同一个结果
   requireConfigCreatable(ctx.scope, 'matrix');
   const shape: Shape = { ...input, zFieldId: input.zFieldId ?? null };
-  await validateShape(tx, ctx, shape, []);
   await lockPositionFields(
     tx,
     ctx.tenantId,
     positionFields.map((p) => p.fieldId),
   );
+  await validateShape(tx, ctx, shape, []);
   return createConfig(tx, MATRIX, ctx, columns, async (id) => {
     await insertPositions(tx, ctx, id, positionFields);
     await tx.insert(L).values(levelRows(ctx, id, axisLevels));
@@ -317,6 +334,17 @@ export async function updateMatrix(
       reason: 'MATRIX_POSITION_REQUIRES_SEE_ALL',
     });
   }
+  // 显式提交的引用（含原样带上的已有引用）在任何写入之前按当前字段目录范围复核
+  if (ctx.references && ctx.references.length > 0) {
+    if (!ctx.fieldScope) throw new Error('引用字段缺少字段目录范围');
+    await requireReferencesVisible(tx, ctx.tenantId, ctx.references, ctx.fieldScope);
+  }
+  if (repoint) {
+    await lockPositionFields(tx, ctx.tenantId, [
+      ...before.positionFields.map((p) => p.fieldId),
+      ...positionFields.map((p) => p.fieldId),
+    ]);
+  }
   const held = heldRefs(before);
   const shape: Shape = {
     xFieldId: patch.xFieldId ?? held.xFieldId,
@@ -341,10 +369,6 @@ export async function updateMatrix(
       .where(and(eq(M.tenantId, ctx.tenantId), eq(M.id, id))),
   );
   if (repoint) {
-    await lockPositionFields(tx, ctx.tenantId, [
-      ...before.positionFields.map((p) => p.fieldId),
-      ...positionFields.map((p) => p.fieldId),
-    ]);
     await tx.delete(P).where(and(eq(P.tenantId, ctx.tenantId), eq(P.matrixId, id)));
     await insertPositions(tx, ctx, id, positionFields);
   }
@@ -357,6 +381,12 @@ export async function updateMatrix(
 export function deleteMatrix(tx: Tx, ctx: MatrixWriteContext, id: string): Promise<MatrixView> {
   return deleteConfig(tx, MATRIX, ctx, id, async (before) => {
     if (before.preset) throw new AppError('CONFLICT', '预置九宫格不能删除，可以停用', { reason: 'MATRIX_PRESET' });
+    // 删除会释放位置字段占用（级联删占用行）：同样在写入之前取这批字段的占用锁（锁协议见 lockPositionFields）
+    await lockPositionFields(
+      tx,
+      ctx.tenantId,
+      (before.positionFields as PositionFieldBody[]).map((p) => p.fieldId),
+    );
     // 规则对格子的引用是 NO ACTION，同一条语句里级联的先后不定：先删规则组（级联规则与格子集合），再删九宫格。
     // 之后被引用守卫拒绝时整个命令事务回滚，规则组不会丢
     await tx.delete(G).where(and(eq(G.tenantId, ctx.tenantId), eq(G.matrixId, id)));
@@ -540,7 +570,7 @@ registerConfigReferenceGuard('field', async (tx, tenantId, fieldId) => {
  */
 export async function presetShapeProblem(tx: Tx, tenantId: string, shape: Shape): Promise<string | null> {
   const ids = refIds(shape);
-  const facts = await loadFieldFacts(tx, tenantId, ids);
+  const facts = await loadFieldFacts(tx, tenantId, ids, true);
   if (ids.some((id) => !facts.has(id))) return 'MATRIX_FIELD_MISSING';
   try {
     checkAgainstFields(shape, facts, ids);

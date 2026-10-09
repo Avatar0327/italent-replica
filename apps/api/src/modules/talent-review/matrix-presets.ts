@@ -59,18 +59,18 @@ async function installMatrices(
     .from(F)
     .where(inArray(F.code, [...new Set(presets.flatMap(fieldCodes))]));
   const idOf = (code: string) => fields.find((f) => f.code === code)?.id;
+  const shapes = new Map(presets.map((preset) => [preset.code, shapeOf(preset, idOf)]));
+  // 锁协议（matrix-service.ts lockPositionFields）：写入之前把所有待装预置的位置字段合在一起排序、一次取齐占用锁。
+  // 逐个预置分批取会让第二批取到更小的字段 id，与租户的修改 / 新建交错成死锁环（PR #182 第 2 轮）
+  await lockPositionFields(
+    tx,
+    write.tenantId,
+    [...shapes.values()].flatMap((shape) => shape?.positionFields.map((p) => p.fieldId) ?? []),
+  );
   const skipped: SeedSkip[] = [];
   for (const [index, preset] of TALENT_REVIEW_PRESET_MATRICES.entries()) {
     if (!missing.includes(preset.code)) continue;
-    const shape = shapeOf(preset, idOf);
-    // 位置字段占用锁在核验之前取，核验与插入之间不会被并发的占用插队
-    if (shape) {
-      await lockPositionFields(
-        tx,
-        write.tenantId,
-        shape.positionFields.map((p) => p.fieldId),
-      );
-    }
+    const shape = shapes.get(preset.code) ?? null;
     const problem = shape ? await presetShapeProblem(tx, write.tenantId, shape) : 'MATRIX_FIELD_MISSING';
     if (!shape || problem) {
       skipped.push({ code: preset.code, reason: problem ?? 'MATRIX_FIELD_MISSING' });

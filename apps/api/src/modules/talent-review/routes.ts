@@ -9,9 +9,11 @@ import { runCommand } from '../../commands.js';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantEnv } from '../../tenant-context.js';
+import { getModuleViewableFields } from '../permission/module-access.js';
 import { booleanQuery, pageQuery, parseBody, requireNew, revision, uuidParam } from '../talent/http.js';
 import {
   checkWriteFields,
+  codeOf,
   configEnvelope,
   configScopeSql,
   notFoundMessage,
@@ -42,8 +44,10 @@ export function registerTalentReviewRoutes(router: Hono<TenantEnv>, deps: Tenant
     if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'readiness', 'enabled');
     const scope = await reviewScope(c, deps, ctx, 'readiness');
     const visible = configScopeSql(scope, 'talent_readiness_levels');
+    // 排序只用查看人看得到的字段（隐藏的 sortNo / code 不能影响顺序与分页）
+    const viewable = await getModuleViewableFields(deps, ctx, codeOf('readiness'));
     const items = await withTenant(deps.db, ctx.tenantId, (tx) =>
-      readiness.listReadinessViews(tx, ctx.tenantId, { ...page, enabled, visible }),
+      readiness.listReadinessViews(tx, ctx.tenantId, { ...page, enabled, visible, viewable }),
     );
     return c.json({ ...configEnvelope(page, scope), items: await trimReview(deps, ctx, 'readiness', items) });
   });

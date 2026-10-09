@@ -17,6 +17,7 @@ import {
   TALENT_REVIEW_AUDIT_ACTIONS,
   type TalentReviewContext,
 } from './access.js';
+import { type OrderKey, visibleOrder } from './config-kit.js';
 import type { ReadinessCreate, ReadinessPatch } from './readiness-input.js';
 import { readinessReferrer } from './readiness-port.js';
 
@@ -49,10 +50,16 @@ export async function loadReadinessView(tx: Tx, tenantId: string, id: string) {
   return row;
 }
 
+/** 列表默认排序键；只用查看人看得到的那些（config-kit visibleOrder），以 id 收尾。 */
+const LIST_ORDER: readonly OrderKey[] = [
+  ['sortNo', R.sortNo],
+  ['code', R.code],
+];
+
 export function listReadinessViews(
   tx: Tx,
   tenantId: string,
-  query: { limit: number; offset: number; enabled?: boolean; visible: SQL },
+  query: { limit: number; offset: number; enabled?: boolean; visible: SQL; viewable: ReadonlySet<string> | undefined },
 ) {
   const filters = [eq(R.tenantId, tenantId), query.visible];
   if (query.enabled !== undefined) filters.push(eq(R.enabled, query.enabled));
@@ -60,7 +67,7 @@ export function listReadinessViews(
     .select(view)
     .from(R)
     .where(and(...filters))
-    .orderBy(asc(R.sortNo), asc(R.code), asc(R.id))
+    .orderBy(...visibleOrder(LIST_ORDER, query.viewable).map((column) => asc(column)), asc(R.id))
     .limit(query.limit)
     .offset(query.offset);
 }

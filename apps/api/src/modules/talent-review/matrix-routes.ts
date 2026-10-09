@@ -32,7 +32,7 @@ import {
 import { listConfig } from './config-kit.js';
 import { matrixCreate, type MatrixPatch, matrixPatch, ratioGroupCreate, ratioGroupPatch } from './matrix-input.js';
 import * as matrices from './matrix-service.js';
-import { loadMatrixView, MATRIX, type MatrixRow, type MatrixView, visibleOrder, withChildren } from './matrix-view.js';
+import { loadMatrixView, MATRIX, type MatrixRow, type MatrixView, withChildren } from './matrix-view.js';
 
 const MATRICES = `${TALENT_REVIEW_BASE}/matrices`;
 const GROUPS = `${MATRICES}/:id/ratio-groups`;
@@ -52,8 +52,9 @@ const referencedFields = (body: Partial<MatrixPatch>): string[] =>
   );
 
 /**
- * 命令执行：范围在事务外按当前权限解析，首次执行在事务内行锁后复核；幂等重放按当前范围复核结果对象
- * （撤范围后重放 404，AGENTS §10），响应按当前字段权限裁剪。
+ * 命令执行：范围在事务外按当前权限解析，首次执行在事务内行锁后复核（请求里的字段引用也在事务内、写入之前复核，
+ * 拒绝时整个命令回滚）；幂等重放不再执行命令，按当前范围复核结果对象与请求里的字段引用（撤范围后重放 404，AGENTS §10），
+ * 响应按当前字段权限裁剪。
  */
 async function runWrite(
   c: Context<TenantEnv>,
@@ -66,18 +67,21 @@ async function runWrite(
   references: readonly string[] = [],
 ) {
   const scope = await reviewScope(c, deps, ctx, 'matrix');
+  let executed = false;
   const result = await runCommand(deps.db, ctx, {
     id: c.req.header('idempotency-key'),
     fingerprint: { method: c.req.method, path: c.req.path, expectedRevision: ctx.expectedRevision, input: body },
-    execute: async (tx, commandId) => ({
-      status,
-      body: await execute(tx, { ...ctx, commandId, scope, ...(fieldScope ? { fieldScope } : {}) }),
-    }),
+    execute: async (tx, commandId) => {
+      const view = await execute(tx, { ...ctx, commandId, scope, references, ...(fieldScope ? { fieldScope } : {}) });
+      executed = true;
+      return { status, body: view };
+    },
   });
   const view = result.body as MatrixView;
   requireConfigVisible(scope, 'matrix', view.createdBy as string | null);
-  // 幂等重放不再执行命令：请求里引用的字段按当前字段目录范围重新复核（首次执行时命令内已判定，这里是授权复核）
-  if (fieldScope && references.length > 0) {
+  // 幂等重放不再执行命令：请求里引用的字段按当前字段目录范围重新复核（授权复核，与业务校验分开）。
+  // 本请求里命令已执行过时，引用已在业务事务内、写入之前按同一范围复核过，不在提交之后再判
+  if (!executed && fieldScope && references.length > 0) {
     await withTenant(deps.db, ctx.tenantId, (tx) =>
       matrices.requireReferencesVisible(tx, ctx.tenantId, references, fieldScope),
     );
@@ -94,11 +98,11 @@ export function registerMatrixRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
     // 筛选字段同样受字段查看权约束：看不到 enabled 的人不能用筛选还原启用状态
     if (enabled !== undefined) await requireFilterVisible(deps, ctx, 'matrix', 'enabled');
     const scope = await reviewScope(c, deps, ctx, 'matrix');
-    const orderBy = visibleOrder(await getModuleViewableFields(deps, ctx, codeOf('matrix')));
+    const viewable = await getModuleViewableFields(deps, ctx, codeOf('matrix'));
     const items = await withTenant(deps.db, ctx.tenantId, async (tx) => {
       const rows = await listConfig(tx, MATRIX, ctx.tenantId, {
         ...page,
-        orderBy,
+        viewable,
         enabled,
         visible: configScopeSql(scope, 'talent_review_matrices'),
       });

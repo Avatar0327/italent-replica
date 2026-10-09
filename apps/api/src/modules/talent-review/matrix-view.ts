@@ -69,7 +69,10 @@ export const MATRIX: ConfigSpec<MatrixView> = {
   label: '九宫格',
   table: M as unknown as ConfigTable,
   view: row,
-  orderBy: [M.sortNo, M.code],
+  orderBy: [
+    ['sortNo', M.sortNo],
+    ['code', M.code],
+  ],
   duplicate: 'MATRIX_DUPLICATE',
   inUse: 'MATRIX_IN_USE',
   load: async (tx, tenantId, id) => (await withChildren(tx, tenantId, await selectRows(tx, tenantId, [id])))[0],
@@ -175,19 +178,5 @@ export async function withChildren(tx: Tx, tenantId: string, rows: MatrixRow[]):
     ratioGroups: byMatrix(groups, r.id as string).map((g) => g.view),
   })) as MatrixView[];
 }
-
-/**
- * 列表排序键：规格的默认排序是 sortNo、code，但看不到的字段不能影响顺序与分页（管理员改隐藏值就会改变第一页），
- * 所以只取查看人可见的那些；两者都不可见时只剩稳定标识 id（config-kit 的 listConfig 总是追加）。
- */
-export const visibleOrder = (viewable: ReadonlySet<string> | undefined) =>
-  (
-    [
-      ['sortNo', M.sortNo],
-      ['code', M.code],
-    ] as const
-  )
-    .filter(([field]) => viewable === undefined || viewable.has(field))
-    .map(([, column]) => column);
 
 export const loadMatrixView = (tx: Tx, tenantId: string, id: string) => MATRIX.load!(tx, tenantId, id);
