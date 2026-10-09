@@ -18,7 +18,7 @@ import {
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { ADAPTERS } from '../../../../apps/api/src/modules/approval/adapters.js';
-import type { BranchInput } from './branch-inputs.js';
+import { BRANCH_INPUTS, type BranchInput } from './branch-inputs.js';
 import type { Evidence } from './required/types.js';
 import { API_SRC } from './scan.js';
 import type { BranchField } from './selectors.js';
@@ -324,3 +324,6 @@ export const BRANCH_VALUES: Readonly<Record<string, readonly BranchValueEntry[]>
     },
   ],
 };
+
+/** 真实登记（compareDeclarations / checkEvidence 的缺省）。 */
+export const BRANCH_BINDINGS: BranchBindings = { inputs: BRANCH_INPUTS, values: BRANCH_VALUES };

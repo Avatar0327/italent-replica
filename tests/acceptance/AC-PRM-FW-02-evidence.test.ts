@@ -13,7 +13,7 @@ import { readFrozenContract } from './support/route-policy/baseline.js';
 import { BRANCH_INPUTS, type BranchInput } from './support/route-policy/branch-inputs.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
-import { BRANCH_VALUES, type BranchBindings } from './support/route-policy/domains.js';
+import { BRANCH_BINDINGS, BRANCH_VALUES, type BranchBindings } from './support/route-policy/domains.js';
 import { assertBoundaryShape, EVIDENCE_BOUNDARY } from './support/route-policy/evidence-boundary.js';
 import { MAX_DEPTH } from './support/route-policy/evidence-closure.js';
 import {
@@ -351,7 +351,6 @@ function editAt(key: string, position: string, change: (selector: Node) => void)
 
 const compare = (routes: readonly ManifestRoute[], bindings?: BranchBindings) =>
   compareDeclarations(frozen, routes, REQUIRED, bindings);
-const REAL: BranchBindings = { inputs: BRANCH_INPUTS, values: BRANCH_VALUES };
 
 describe('AC-PRM-FW-02 选择器绑定（B-07）：登记完整性', () => {
   it('声明里的 map 选择器位置 = 输入来源表登记的位置（双向，端点 × 位置）', () => {
@@ -516,7 +515,7 @@ describe('AC-PRM-FW-02 选择器绑定（B-07）：新结构弱化（按声明�
     });
   }
 
-  it('REAL 登记 = 默认登记（compareDeclarations 不传第四参数时用真实登记）', () => {
-    expect(codes(compare([route(TALENT_FORM)], REAL))).toEqual(codes(compare([route(TALENT_FORM)])));
+  it('真实登记 = 默认登记（compareDeclarations 不传第四参数时用真实登记）', () => {
+    expect(codes(compare([route(TALENT_FORM)], BRANCH_BINDINGS))).toEqual(codes(compare([route(TALENT_FORM)])));
   });
 });

@@ -12,9 +12,8 @@ import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
-import { BRANCH_INPUTS } from './branch-inputs.js';
 import type { Finding } from './compare.js';
-import { BRANCH_VALUES, type BranchBindings } from './domains.js';
+import { BRANCH_BINDINGS, type BranchBindings } from './domains.js';
 import { type BoundaryEntry, EVIDENCE_BOUNDARY, inBoundary } from './evidence-boundary.js';
 import {
   type Closure,
@@ -31,9 +30,6 @@ export type { SourceReader } from './evidence-closure.js';
 
 /** 证据单元 → 依赖单元 → 依赖摘要（required/digests.ts 的 DEPENDENCIES 段，B-02）。 */
 export type Dependencies = Readonly<Record<string, Readonly<Record<string, string>>>>;
-
-/** 选择器绑定的两张表（B-07）：输入来源表与分支值表，证据与表里的义务同样进摘要与闭包。 */
-export const BRANCH_BINDINGS: BranchBindings = { inputs: BRANCH_INPUTS, values: BRANCH_VALUES };
 
 const ROOT = process.cwd();
 const DIGESTS_PATH = path.resolve(ROOT, 'tests/acceptance/support/route-policy/required/digests.ts');

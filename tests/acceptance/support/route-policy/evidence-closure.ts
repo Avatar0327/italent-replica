@@ -348,7 +348,7 @@ function declEdges(env: ClosureEnv, ref: DeclRef): Edges {
   return edges;
 }
 
-export function declText(env: ClosureEnv, ref: DeclRef): string {
+function declText(env: ClosureEnv, ref: DeclRef): string {
   const info = fileInfo(env, ref.file);
   return (info?.decls.get(ref.name) ?? []).map((node) => node.getText(info!.sf)).join('\n');
 }

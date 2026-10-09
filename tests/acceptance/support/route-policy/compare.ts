@@ -13,9 +13,8 @@
  * 本人绑定、目录内已知守卫名。对象 / 范围 / 字段 / 关系 / 按钮的“声明多于现状”需要多维身份探测，按 DEC-303 留给 PR-B。
  */
 import type { ManifestRoute } from '@italent/api';
-import { BRANCH_INPUTS } from './branch-inputs.js';
 import type { ObservedContract, ObservedRoute } from './contract.js';
-import { BRANCH_VALUES, type BranchBindings } from './domains.js';
+import { BRANCH_BINDINGS, type BranchBindings } from './domains.js';
 import { type Alternative, declared, type Declared, type Identity, preconditionName } from './features.js';
 import { DISJUNCTIONS, KNOWN_GUARDS, type Obligation } from './primitives.js';
 import { admissionPrimitives, checkRequired } from './required.js';
@@ -147,8 +146,6 @@ function compareAlternative(
   }
 }
 
-const DEFAULT_BINDINGS: BranchBindings = { inputs: BRANCH_INPUTS, values: BRANCH_VALUES };
-
 /** 值的规范化比较（键排序），映射值可以是字符串或 `{ code, level }` 这样的按钮引用。 */
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -239,7 +236,7 @@ export function compareRoute(
   contract: ObservedContract,
   route: ManifestRoute,
   table: RequiredTable = REQUIRED,
-  bindings: BranchBindings = DEFAULT_BINDINGS,
+  bindings: BranchBindings = BRANCH_BINDINGS,
 ): Finding[] {
   const key = `${route.method} ${route.path}`;
   const raw = contract.routes[key];
@@ -288,7 +285,7 @@ export function compareDeclarations(
   contract: ObservedContract,
   routes: readonly ManifestRoute[],
   table: RequiredTable = REQUIRED,
-  bindings: BranchBindings = DEFAULT_BINDINGS,
+  bindings: BranchBindings = BRANCH_BINDINGS,
 ): Finding[] {
   return routes.flatMap((route) => compareRoute(contract, route, table, bindings));
 }

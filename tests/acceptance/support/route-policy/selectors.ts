@@ -8,8 +8,6 @@ import type { RoutePolicy } from '@italent/api';
 
 export type BranchField = 'object' | 'operation' | 'button' | 'relation' | 'objectType';
 
-export const BRANCH_FIELDS: readonly BranchField[] = ['object', 'operation', 'button', 'relation', 'objectType'];
-
 export interface SelectorSite {
   /** `节点路径 + 字段`，如 `of[0].object`、`rows.operation`。 */
   readonly position: string;
