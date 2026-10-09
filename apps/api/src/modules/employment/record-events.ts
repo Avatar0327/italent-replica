@@ -68,7 +68,8 @@ export type RecordEventRecheck =
 /**
  * 处理时复核：以**当前**时间轴为准，事件写出时的日期作废。
  * 调用方必须已持该员工的 `lockEmploymentEmployee` 锁；任职删除 / 改期同样先持这把锁，两者因此串行。
- * 读取复用 read-model 的时间轴读取；不带数据范围（系统消费者，不代表某个操作人）。
+ * 读取复用 read-model 的时间轴读取；不带数据范围——只给后台消费者判断“该不该处理”，
+ * 返回的 record 不得原样透出到任何响应、审计或通知（透出须另按查看人的范围与字段权裁剪）。
  */
 export async function recheckRecordEvent(
   tx: Tx,

@@ -80,7 +80,7 @@ function holdLockThen(w: F055World, mutate: (tx: Tx) => Promise<void>) {
   return { held: held.promise, release: release.resolve, done };
 }
 
-describe.skipIf(!process.env.TEST_DATABASE_URL)('F-055 真 PG：删除 × 消费交错', () => {
+describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EMP-F055 真 PG：删除 × 消费交错', () => {
   it('删除先提交：消费者取数后在员工锁上等待，放行后复核 gone → skipped，不写派生数据', async () => {
     const w = await setup('f055-pg-delete-first');
     const id = await w.transfer('2026-10-01');
@@ -131,7 +131,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('F-055 真 PG：删除 × 消费
   });
 });
 
-describe.skipIf(!process.env.TEST_DATABASE_URL)('F-055 真 PG：改期（删除后以新日期重存）× 消费交错', () => {
+describe.skipIf(!process.env.TEST_DATABASE_URL)('AC-EMP-F055 真 PG：改期（删除后以新日期重存）× 消费交错', () => {
   it('改期先提交：消费者取数后在员工锁上等待，旧事件复核 gone；新事件 not_yet，到新日期才处理', async () => {
     const w = await setup('f055-pg-move-first');
     const old = await w.transfer('2026-10-01');

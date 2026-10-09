@@ -6,10 +6,10 @@
  */
 import { randomUUID } from 'node:crypto';
 import { APP_ROLE, sql, withTenant, type Db, type Tx } from '@italent/db';
-import { tenantLocalDate } from '@italent/domain';
 import { expect } from 'vitest';
 import {
   recheckRecordEvent,
+  recordEventToday,
   recordEventDueSql,
   recordEventReadySql,
   type RecordEventRecheck,
@@ -170,7 +170,7 @@ export async function probeEnqueue(db: Db, tenantId: string) {
  * 每行单独事务：员工锁 → 复核 → 同事务写派生数据并更新队列行。
  */
 export async function probeRound(db: Db, ctx: EmploymentContext, step: ProbeStep = {}) {
-  const today = tenantLocalDate(ctx.now, ctx.timezone);
+  const today = recordEventToday(ctx);
   const picked = await withTenant(db, ctx.tenantId, async (tx) =>
     rowsOf<{ outboxId: string; employeeId: string; recordId: string }>(
       await tx.execute(sql`SELECT q.outbox_id AS "outboxId", e.employee_id AS "employeeId", e.object_id AS "recordId"

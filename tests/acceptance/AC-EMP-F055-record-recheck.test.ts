@@ -7,7 +7,7 @@ import { f055World } from './AC-EMP-F055-support.js';
 
 const database = useTestDb();
 
-describe('F-055 recheckRecordEvent', () => {
+describe('AC-EMP-F055 recheckRecordEvent', () => {
   it('未到期 not_yet（带当前生效日）；到期 effective（带记录）', async () => {
     const w = await f055World(database().db, 'f055-recheck-basic');
     const id = await w.transfer('2026-10-05');

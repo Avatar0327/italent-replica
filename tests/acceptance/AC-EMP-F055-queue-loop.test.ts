@@ -28,7 +28,7 @@ async function setup(label: string) {
   return { w, round };
 }
 
-describe('F-055 状态队列取数循环', () => {
+describe('AC-EMP-F055 状态队列取数循环', () => {
   it('① 保存未来离职 → 删除 → 跑一轮：行被取到并 skipped: RECORD_NOT_EFFECTIVE，不留 pending，无派生数据', async () => {
     const { w, round } = await setup('f055-loop-deleted');
     const id = await w.leave('2026-10-19');

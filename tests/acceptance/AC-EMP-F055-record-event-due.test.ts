@@ -20,7 +20,7 @@ const only = async (map: Map<string, boolean>) => {
   return [...map.values()][0];
 };
 
-describe('F-055 recordEventDueSql：生效日前为假、当天为真', () => {
+describe('AC-EMP-F055 recordEventDueSql：生效日前为假、当天为真', () => {
   it('直接保存未来生效的调动：写出时就有事件，但生效日前一天为假、当天为真', async () => {
     const w = await f055World(database().db, 'f055-due-transfer');
     const id = await w.transfer('2026-10-05');
@@ -101,7 +101,7 @@ describe('F-055 recordEventDueSql：生效日前为假、当天为真', () => {
   });
 });
 
-describe('F-055 租户时区跨日边界（DEC-056）', () => {
+describe('AC-EMP-F055 租户时区跨日边界（DEC-056）', () => {
   it('UTC 比租户本地日期早一天：上海 10-05 00:30 已到期，UTC 日期仍是 10-04', async () => {
     const w = await f055World(database().db, 'f055-tz-shanghai', { timezone: 'Asia/Shanghai' });
     const id = await w.transfer('2026-10-05');
@@ -129,7 +129,7 @@ describe('F-055 租户时区跨日边界（DEC-056）', () => {
   });
 });
 
-describe('F-055 recordEventReadySql：到期或记录已消失', () => {
+describe('AC-EMP-F055 recordEventReadySql：到期或记录已消失', () => {
   it('生效日前删除的记录：当天之前即为真；仍在时间轴上且未到期为假；严格谓词对已删除记录始终为假', async () => {
     const w = await f055World(database().db, 'f055-ready');
     const kept = await w.transfer('2026-10-20');
@@ -144,7 +144,7 @@ describe('F-055 recordEventReadySql：到期或记录已消失', () => {
   });
 });
 
-describe('F-055 回归：transfer/completion.ts 行为不变（严格谓词）', () => {
+describe('AC-EMP-F055 回归：transfer/completion.ts 行为不变（严格谓词）', () => {
   async function completionIds(w: Awaited<ReturnType<typeof f055World>>, at: string) {
     w.session.setNow(at);
     const response = await w.session.request('GET', '/completion-todos');
