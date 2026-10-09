@@ -110,11 +110,13 @@ export async function handoverExceptionAdmin(
   if (!(await isEligibleApprover(tx, { tenantId: ctx.tenantId, asOf }, input.toUserId))) {
     throw approvalError('VALIDATION_FAILED', 'APPROVAL_USER_INVALID', '替代人已离职或不是本租户有效成员');
   }
-  await designateSuccessor(tx, ctx, input);
-  const processes = await republishProcesses(tx, ctx, input);
   const instances = scope ? await transferableInstances(tx, ctx, input, scope) : [];
   const batch = instances.slice(0, BATCH);
+  // F-065：员工 → 业务 → 组织的锁必须先于登记替代人 / 重发流程（二者的外键对来源账号与替代人的成员行取 KEY SHARE）。
+  // 入职绑定账号的顺序是组织锁 → 成员行 FOR UPDATE，反过来先持成员行再等组织锁会与它成环（org/locks.ts 全局锁序）。
   await lockHandoverParticipants(tx, ctx, batch);
+  await designateSuccessor(tx, ctx, input);
+  const processes = await republishProcesses(tx, ctx, input);
   let tasks = 0;
   const skipped: SkippedInstance[] = [];
   // R6-3：选批与游标仍按实例编号（对外不变）；批内按全局取锁顺序逐单处理（一批一个事务，批与批之间锁已释放）。
@@ -485,8 +487,8 @@ async function takeoverTarget(
 }
 
 /**
- * 交接前统一取锁：员工（任职业务的参与闭包）→ 各业务的业务行（适配器 lockMany，按业务自己的规范顺序）→ 之后逐单锁
- * 实例。发展计划的批量干预按计划 ID 升序锁计划再锁实例，这里同样先按计划 ID 升序锁齐本批的计划，两边锁序一致，
+ * 交接前统一取锁：员工（任职业务的参与闭包）→ 各业务的业务行与资源锁（适配器 lockMany，按业务自己的规范顺序，任职业务
+ * 含组织锁）→ 之后逐单锁实例。登记替代人等会对成员行取 KEY SHARE 的写入必须排在这些锁之后（F-065）。发展计划的批量干预按计划 ID 升序锁计划再锁实例，这里同样先按计划 ID 升序锁齐本批的计划，两边锁序一致，
  * 不会交错互等（PR #115 第 2 轮 P3-2）。
  */
 async function lockHandoverParticipants(tx: Tx, ctx: ApprovalContext, batch: readonly LockKey[]) {

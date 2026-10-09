@@ -7,6 +7,7 @@ import { lockTransferBusiness } from '../employment/transfer-locks.js';
  * 并在审批结束时调用各模块已有的可信端口（任职状态机 / 申请落地），与审批写入同事务。
  */
 import { lockEstablishment } from '../establishment/store.js';
+import { lockOrganizationSettings } from '../org/locks.js';
 import { contractAdapter } from '../contracts/adapter.js';
 import { idpAdapter } from '../idp/approval-adapter.js';
 import { talentReviewAdapter } from '../talent-review/approval-adapter.js';
@@ -251,6 +252,21 @@ const employmentAdapter: BusinessAdapter = {
       WHERE tenant_id=${ctx.tenantId} AND id=${businessId}::uuid FOR UPDATE`);
     // org/locks.ts：员工 / 业务 → 组织 → 编制 → 实例；审批推进时只重入资源锁。
     if (owner.kind === 'transfer') await lockEstablishment(tx, ctx, { initializeDefault: false });
+  },
+  /**
+   * F-065：批量交接在登记替代人（对成员行取 KEY SHARE）之前取齐组织锁，顺序与 lock 一致（员工 / 业务 → 组织 → 编制）。
+   * 入职绑定账号是“组织锁 → 成员行 FOR UPDATE”；交接若先持成员行再等组织锁就与它成环。会签合席结算可能推进任一种任职
+   * 业务（落地时校验部门要取组织锁），所以只要批里有任职业务就取组织锁，调动另取编制锁。
+   */
+  async lockMany(tx, ctx, businessIds) {
+    const kinds = rowsOf<{ kind: string | null }>(
+      await tx.execute(sql`SELECT (SELECT kind FROM employment_payload_versions p
+        WHERE p.tenant_id=b.tenant_id AND p.business_id=b.id ORDER BY version_no DESC LIMIT 1) AS kind
+        FROM employment_business_objects b
+        WHERE b.tenant_id=${ctx.tenantId} AND b.id = ANY(${`{${businessIds.join(',')}}`}::uuid[])`),
+    );
+    if (kinds.some((row) => row.kind === 'transfer')) await lockEstablishment(tx, ctx, { initializeDefault: false });
+    else if (kinds.length) await lockOrganizationSettings(tx, ctx.tenantId);
   },
   async snapshot(tx, ctx, businessId) {
     const asOf = tenantLocalDate(ctx.now, ctx.timezone);

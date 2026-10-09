@@ -5,9 +5,9 @@
  * - 冻结语句与并发首次绑定交错：冻结读到语句开始时已提交的绑定，绝不出现半截；
  * - 真实交接 × 真实建档绑定 × 重提冻结（R2-01 的无锁边结论）：绑定提交后重提冻结读到它，三者无死锁；
  * - 重提 × 交接批处理：既有组织锁序下排队，放行后都完成。
- * 附记：用同一个来源成员（交接 KEY SHARE）与入职绑定同时交错，会撞上交接（成员 KEY SHARE → 组织锁）与入职（组织锁 → 成员 FOR UPDATE）
- * 的既有锁序差异而死锁，与冻结无关，已在 PR 描述记为存量问题，不在本 PR 改。
  * - 重提与管理员干预并发：一方成功，另一方 409，不死锁。
+ * 附记：用同一个来源成员（交接 KEY SHARE）与入职绑定交错曾因锁序相反而死锁，已由 F-065 修复并另有测试，见
+ * AC-APV-F065-handover-binding-lock；本文件仍用不同账号，只证明冻结不新增锁边。
  */
 import { randomUUID } from 'node:crypto';
 import { createUser, grantMembership, permissionUserPersonLinks, sql, withTenant } from '@italent/db';
