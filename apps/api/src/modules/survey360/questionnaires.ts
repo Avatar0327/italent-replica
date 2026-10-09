@@ -650,7 +650,7 @@ function registerQuestionnaireUpdate(module: Hono<TenantEnv>, deps: TenantRouteD
         }
         // 已使用套卷改权重 / 计分方式：用到它的活动计分组成变了，旧报告失效（第 2 轮 P2-7）
         if (current.row.status === 'used' && (input.content || input.scoreMethod !== undefined))
-          await markQuestionnaireChanged(tx, id, ctx.now);
+          await markQuestionnaireChanged(tx, id);
         await tx
           .update(survey360Questionnaires)
           .set({

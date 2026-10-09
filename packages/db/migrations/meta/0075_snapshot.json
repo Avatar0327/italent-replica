@@ -1,6 +1,6 @@
 {
-  "id": "18cf89c3-9a74-48ea-bbb4-7f1b5b9403ad",
-  "prevId": "d6fac083-ce4e-4052-ab91-41301378b61d",
+  "id": "7c8d375d-e03a-4aff-8e87-72b515a31105",
+  "prevId": "9aa04b0c-ec01-4855-980d-cf213c059143",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -30357,11 +30357,12 @@
           "notNull": true,
           "default": false
         },
-        "scoring_changed_at": {
-          "name": "scoring_changed_at",
-          "type": "timestamp with time zone",
+        "scoring_revision": {
+          "name": "scoring_revision",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": 0
         },
         "deleted": {
           "name": "deleted",
@@ -31598,6 +31599,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "questionnaire_revisions": {
+          "name": "questionnaire_revisions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         }
       },
       "indexes": {},

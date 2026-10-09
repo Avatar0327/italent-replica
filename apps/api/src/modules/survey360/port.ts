@@ -14,6 +14,7 @@ import { sql, type Tx } from '@italent/db';
 import { type Survey360Port, type Survey360Record, survey360 } from '@italent/domain';
 import { type ModuleScope, scopeSql } from '../permission/module-access.js';
 import { rows } from './context.js';
+import { questionnaireChangedSince } from './changes.js';
 
 const F = survey360.SURVEY360_FIELDS;
 /** 每条记录都带齐全部字段（不适用的为空）：过滤表达式引用到记录里没有的键会报“找不到字段”。 */
@@ -131,11 +132,8 @@ export async function loadSurvey360Port(tx: Tx, input: Survey360PortInput): Prom
           JOIN survey360_activities a ON a.tenant_id = o.tenant_id AND a.id = o.activity_id AND NOT a.deleted
             AND a.status = 'disabled' AND a.ended_at IS NOT NULL AND a.score_batch_id IS NOT NULL
             AND o.report_generated_at IS NOT NULL AND o.report_generated_at >= a.ended_at
-            -- 报告生成后用到的套卷改过计分口径：报告失效，不再计入（PR-B 第 2 轮 P2-7，changes.ts）
-            AND NOT EXISTS (SELECT 1 FROM survey360_object_questionnaires oq
-              JOIN survey360_questionnaires cq ON cq.tenant_id = oq.tenant_id AND cq.id = oq.questionnaire_id
-              WHERE oq.tenant_id = o.tenant_id AND oq.object_id = o.id
-                AND cq.scoring_changed_at > o.report_generated_at)
+            -- 当前批次之后用到的套卷改过计分口径：报告失效，不再计入（PR-B 第 2 / 3 轮，changes.ts）
+            AND NOT ${questionnaireChangedSince(sql`a.score_batch_id`, sql`o.id`)}
           JOIN survey360_scores sc ON sc.tenant_id = a.tenant_id AND sc.batch_id = a.score_batch_id
             AND sc.object_id = o.id
           JOIN survey360_questionnaires q ON q.tenant_id = sc.tenant_id AND q.id = sc.questionnaire_id

@@ -61,7 +61,8 @@ ALTER TABLE "survey360_activities" ADD COLUMN "suspect_blocked_at" timestamp wit
 ALTER TABLE "survey360_activities" ADD COLUMN "reports_requested_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "survey360_links" ADD COLUMN "last_sent_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "survey360_questionnaires" ADD COLUMN "template" boolean DEFAULT false NOT NULL;--> statement-breakpoint
-ALTER TABLE "survey360_questionnaires" ADD COLUMN "scoring_changed_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "survey360_questionnaires" ADD COLUMN "scoring_revision" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "survey360_score_batches" ADD COLUMN "questionnaire_revisions" jsonb DEFAULT '{}'::jsonb NOT NULL;--> statement-breakpoint
 ALTER TABLE "survey360_sheets" ADD COLUMN "blocked" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "survey360_sheets" ADD COLUMN "blocked_source" text;--> statement-breakpoint
 ALTER TABLE "survey360_sheets" ADD COLUMN "blocked_at" timestamp with time zone;--> statement-breakpoint

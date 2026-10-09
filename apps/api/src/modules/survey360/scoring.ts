@@ -16,11 +16,27 @@ interface SheetRow {
   is_self: boolean;
 }
 
+/**
+ * 计分用到的套卷按 ID 升序加共享锁（调用方已持有活动行锁，顺序 活动 → 套卷，与 F-053 一致），并记下各自的计分口径
+ * 版本：正在修改的套卷（持行锁）先提交、再计分；计分期间的修改要等计分提交，之后版本必然高于本批次（第 3 轮 P2-3）。
+ */
+async function lockedRevisions(tx: Tx, activityId: string): Promise<Record<string, number>> {
+  const found = rows<{ id: string; scoring_revision: number }>(
+    await tx.execute(sql`SELECT q.id, q.scoring_revision FROM survey360_questionnaires q
+      WHERE q.id IN (SELECT oq.questionnaire_id FROM survey360_object_questionnaires oq
+        JOIN survey360_objects o ON o.tenant_id = oq.tenant_id AND o.id = oq.object_id AND NOT o.removed
+        WHERE o.activity_id = ${activityId}::uuid)
+      ORDER BY q.id FOR SHARE`),
+  );
+  return Object.fromEntries(found.map((q) => [q.id, Number(q.scoring_revision)]));
+}
+
 export async function computeScores(
   tx: Tx,
   ctx: { tenantId: string; commandId: string; now: Date },
   activityId: string,
 ) {
+  const questionnaireRevisions = await lockedRevisions(tx, activityId);
   const sheets = rows<SheetRow>(
     await tx.execute(sql`SELECT s.id AS sheet_id, r.object_id, s.questionnaire_id, r.role_id,
         (ro.code = 'self') AS is_self
@@ -49,7 +65,7 @@ export async function computeScores(
   }
   const [batch] = await tx
     .insert(survey360ScoreBatches)
-    .values({ tenantId: ctx.tenantId, activityId, commandId: ctx.commandId })
+    .values({ tenantId: ctx.tenantId, activityId, commandId: ctx.commandId, questionnaireRevisions })
     .returning();
   const values = [];
   for (const [k, group] of groups) {

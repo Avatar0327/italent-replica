@@ -201,10 +201,11 @@ export const survey360Questionnaires = pgTable(
     /** 题库里的套卷模板（PR-B，E3-R10）：与套卷同表同结构，引用即复制；套卷入口与模板入口互不可见。 */
     template: boolean('template').notNull().default(false),
     /**
-     * 已使用套卷的计分口径（内容 / 权重 / 计分方式）最近一次修改时间（PR-B 第 2 轮 P2-7）：晚于活动计分时间的，
-     * 用到它的活动报告失效。只记在套卷上，不在套卷编辑里写活动 / 对象行（锁顺序 活动 → 套卷，F-053）。
+     * 已使用套卷的计分口径（内容 / 权重 / 计分方式）版本（PR-B 第 2 / 3 轮 P2-7、P2-3）：每改一次在套卷行锁内 +1，
+     * 高于计分批次记下的版本时，用到它的活动报告失效。只记在套卷上，不在套卷编辑里写活动 / 对象行（锁顺序
+     * 活动 → 套卷，F-053）；用锁内递增的版本号而不是请求时间，等锁期间的计分不会被误判为“口径未变”。
      */
-    scoringChangedAt: timestamp('scoring_changed_at', { withTimezone: true }),
+    scoringRevision: integer('scoring_revision').notNull().default(0),
     deleted: boolean('deleted').notNull().default(false),
     revision: revision(),
     createdBy: uuid('created_by').notNull(),
@@ -670,6 +671,8 @@ export const survey360ScoreBatches = pgTable(
     activityId: uuid('activity_id').notNull(),
     commandId: text('command_id').notNull(),
     computedAt: createdAt(),
+    /** 本次计分用到的各套卷计分口径版本（套卷 ID → scoring_revision，PR-B 第 3 轮 P2-3）。 */
+    questionnaireRevisions: jsonb('questionnaire_revisions').$type<Record<string, number>>().notNull().default({}),
   },
   (t) => [
     unique('survey360_score_batches_tenant_id').on(t.tenantId, t.id),

@@ -49,19 +49,21 @@ import {
   queryWindow,
   tenantRetention,
 } from './query.js';
-import { auditViewer, visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
+import {
+  AUDIT_DESENSITIZED_TYPES,
+  auditDesensitized,
+  auditViewer,
+  visibleChanges,
+  visibleErrorReport,
+  visibleValue,
+} from './visibility.js';
 import { linkageSnapshot } from './transfer-linkage.js';
 
 const BASE = '/api/tenant/audit';
 const CODE = /^[A-Za-z0-9_.:#-]{1,200}$/;
 const FIELD = /^[A-Za-z0-9_.:-]{1,100}$/;
 
-type AuditEventRow = typeof auditEvents.$inferSelect & {
-  visibleCount: number | null;
-  linkagePaths: string[] | null;
-  withheld: boolean | null;
-  sourceWithheld: boolean | null;
-};
+type AuditEventRow = typeof auditEvents.$inferSelect & { visibleCount: number | null; linkagePaths: string[] | null };
 
 export function registerAuditRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerDataChanges(router, deps);
@@ -89,11 +91,7 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
           items: page.items
             .map(recounted)
             .map((row) =>
-              dataChangeView(
-                row,
-                operator(row),
-                viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row.withheld),
-              ),
+              dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action, row.linkagePaths)),
             ),
           nextCursor: page.nextCursor,
           window,
@@ -123,7 +121,7 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
         // 超出保留期、范围外或只涉及隐藏字段的日志与不存在同样处理（原站“最远只能查 6 个月内”；DEC-197）
         if (!found) throw new AppError('NOT_FOUND', '日志不存在或已超出保留期');
         const row = recounted(found);
-        const fields = viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row.withheld);
+        const fields = viewer.fieldsOf(row.objectType, row.action, row.linkagePaths);
         const view = dataChangeView(row, (await operatorNames(tx, [row]))(row), fields);
         return {
           ...view,
@@ -218,6 +216,14 @@ function dataChangeFilters(c: Context): SQL[] {
   if (actor) conditions.push(sql`${t.actorUserId} = ${actor}::uuid`);
   if (commandId) conditions.push(sql`${t.commandId} = ${commandId}`);
   if (sourceAction) conditions.push(sql`${t.sourceAction} = ${sourceAction.slice(0, 100)}`);
+  // DEC-340③：脱敏出口不展示对象编号、命令 ID 与来源，按它们筛选也不能命中（否则凭条数即可关联匿名答卷）
+  if (objectId || commandId || sourceAction)
+    conditions.push(
+      sql`${t.objectType} NOT IN (${sql.join(
+        AUDIT_DESENSITIZED_TYPES.map((type) => sql`${type}`),
+        sql`, `,
+      )})`,
+    );
   // 升级前的历史行已在迁移 0058 回填 operation / changes（P2-3），筛选与展示口径一致
   if (operation) conditions.push(sql`${t.operation} = ${operation}`);
   // 字段可以是展开后的 a.b 形式，按末段匹配；联动由 viewer 对展开后的可见变化筛选。
@@ -300,8 +306,6 @@ function eventColumns(viewer: Awaited<ReturnType<typeof auditViewer>>) {
     after: linkageSnapshot(sql`${auditEvents.after}`),
     visibleCount: sql<number | null>`${viewer.visibleCount}`,
     linkagePaths: sql<string[] | null>`${viewer.linkagePaths}`,
-    withheld: sql<boolean | null>`${viewer.withheld}`,
-    sourceWithheld: sql<boolean | null>`${viewer.sourceWithheld}`,
     changes: sql<AuditFieldChange[] | null>`${viewer.eventChanges}`,
   };
 }
@@ -324,6 +328,7 @@ function dataChangeView(
 ) {
   const operation = (row.operation ?? auditOperationOf(row.action, row.before, row.after)) as AuditOperation;
   const stored = (row.changes as AuditFieldChange[] | null) ?? diffAuditFields(row.before, row.after);
+  const desensitized = auditDesensitized(row.objectType);
   const changes = renderAuditChanges(visibleChanges(stored, fields));
   const meta = auditObjectMeta(row.objectType);
   return {
@@ -335,12 +340,12 @@ function dataChangeView(
     app: meta.app,
     objectType: row.objectType,
     objectLabel: meta.label,
-    objectId: row.objectId,
+    // DEC-340③：脱敏出口不展示对象编号、命令 ID 与请求来源（能把匿名答卷关联到具名评价关系）
+    objectId: desensitized ? null : row.objectId,
     action: row.action,
     content: auditContent(changes),
     changes,
-    // DEC-340③：评价者本人作答的请求来源与命令 ID 能关联到评价者，脱敏行不展示
-    ...(row.sourceWithheld ? WITHHELD_SOURCE : { ...sourceView(row), commandId: row.commandId }),
+    ...(desensitized ? WITHHELD_SOURCE : { ...sourceView(row), commandId: row.commandId }),
   };
 }
 

@@ -5,7 +5,8 @@
  * 活动内的变化记在活动上（markDataChanged）；套卷的变化记在套卷上（markQuestionnaireChanged），两者由
  * scoringChanged 合并判断。
  */
-import { eq, sql, survey360Activities, survey360Questionnaires, type Tx } from '@italent/db';
+import { eq, sql, survey360Activities, type Tx } from '@italent/db';
+import type { SQL } from 'drizzle-orm';
 import { rows } from './context.js';
 
 /**
@@ -25,14 +26,13 @@ export async function markDataChanged(
 }
 
 /**
- * 已使用套卷改了计分口径（内容 / 权重 / 计分方式）：只在套卷上记时间，不写活动 / 评价对象行——套卷编辑持有套卷锁，
- * 再去锁活动会与启用、替换套卷的 活动 → 套卷 顺序反向等待（F-053）。用到它的活动在 scoringChanged 里按时间比对。
+ * 已使用套卷改了计分口径（内容 / 权重 / 计分方式）：只在套卷上把版本号 +1，不写活动 / 评价对象行——套卷编辑持有
+ * 套卷锁，再去锁活动会与启用、替换套卷的 活动 → 套卷 顺序反向等待（F-053）。版本号在套卷行锁内递增，不取请求时间：
+ * 编辑等锁期间完成的计分记下的是旧版本，编辑提交后必然判为“已变化”（第 3 轮 P2-3）。
  */
-export async function markQuestionnaireChanged(tx: Tx, questionnaireId: string, now: Date): Promise<void> {
-  await tx
-    .update(survey360Questionnaires)
-    .set({ scoringChangedAt: now })
-    .where(eq(survey360Questionnaires.id, questionnaireId));
+export async function markQuestionnaireChanged(tx: Tx, questionnaireId: string): Promise<void> {
+  await tx.execute(sql`UPDATE survey360_questionnaires SET scoring_revision = scoring_revision + 1
+    WHERE id = ${questionnaireId}::uuid`);
 }
 
 /** 最近一次计分之后计分组成有变化：生成被拦、已生成的报告失效。计分时清空。 */
@@ -41,22 +41,31 @@ export function dataChanged(activity: { data_changed_at: Date | string | null })
 }
 
 /**
+ * 某套卷当前的计分口径版本高于计分批次记下的版本（批次没记的套卷视为未变：该批次没用它计分）。activity / object
+ * 是 SQL 别名所在的列：活动的当前批次与评价对象。报告查看 / 生成 / 转发与 Lastest360Cent 共用这一判定。
+ */
+export function questionnaireChangedSince(batchId: SQL, objectId: SQL): SQL {
+  return sql`EXISTS (SELECT 1 FROM survey360_object_questionnaires coq
+    JOIN survey360_questionnaires cq ON cq.tenant_id = coq.tenant_id AND cq.id = coq.questionnaire_id
+    JOIN survey360_score_batches cb ON cb.tenant_id = coq.tenant_id AND cb.id = ${batchId}
+    WHERE coq.object_id = ${objectId}
+      AND cq.scoring_revision > COALESCE((cb.questionnaire_revisions ->> cq.id::text)::int, cq.scoring_revision))`;
+}
+
+/**
  * 活动的报告是否失效：计分组成在计分后有变化（dataChanged），或活动内（未移除的评价对象）用到的套卷在最近一次
  * 计分之后改过计分口径。
  */
 export async function scoringChanged(
   tx: Tx,
-  activity: { id: string; data_changed_at: Date | string | null; scored_at: Date | string | null },
+  activity: { id: string; data_changed_at: Date | string | null; score_batch_id: string | null },
 ): Promise<boolean> {
   if (dataChanged(activity)) return true;
-  if (activity.scored_at === null) return false;
-  const scoredAt = new Date(activity.scored_at).toISOString();
+  if (activity.score_batch_id === null) return false;
   const [row] = rows<{ changed: boolean }>(
     await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM survey360_objects o
-      JOIN survey360_object_questionnaires oq ON oq.tenant_id = o.tenant_id AND oq.object_id = o.id
-      JOIN survey360_questionnaires q ON q.tenant_id = oq.tenant_id AND q.id = oq.questionnaire_id
       WHERE o.activity_id = ${activity.id}::uuid AND NOT o.removed
-        AND q.scoring_changed_at > ${scoredAt}::timestamptz) AS changed`),
+        AND ${questionnaireChangedSince(sql`${activity.score_batch_id}::uuid`, sql`o.id`)}) AS changed`),
   );
   return row!.changed;
 }
