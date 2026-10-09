@@ -93,8 +93,11 @@ async function checkEnable(tx: Tx, activityId: string): Promise<string[]> {
     ids.forEach((id) => used.add(id));
   }
   const rolesOf = new Map<string, Set<string>>();
-  for (const id of used) {
-    const q = await loadQuestionnaire(tx, id);
+  // F-053：锁顺序 活动 → 套卷（按 id 升序）。套卷编辑 / 删除只锁套卷（先锁套卷再查“有无启用活动”），启用若不锁套卷，
+  // 两边互相看不见对方未提交的写入：编辑提交时活动已启用，或活动按编辑前的内容通过校验。行锁（FOR UPDATE）而非
+  // 共享锁：随后的 markUsed 要改同一行，共享锁会让两个并发启用互相等待成死锁。
+  for (const id of [...used].sort()) {
+    const q = await loadQuestionnaire(tx, id, true);
     if (q.row.status === 'draft')
       fail('CONFLICT', '套卷尚未启用', 'QUESTIONNAIRE_NOT_ENABLED', { questionnaireId: id });
     const issues = survey360.validateQuestionnaire(q.model);

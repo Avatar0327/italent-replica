@@ -262,6 +262,40 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-360-F053 真实 PG：
     }
   });
 
+  it('相邻入口：已启用活动给评价对象加用该套卷，与编辑互斥（外键锁），任一先后都不留“启用中被改”', async () => {
+    const w = await world360(testDb().db, 'f053-add-object');
+    const ctx = await questionnaireOf(w, true); // 套卷已使用、第一个活动已停用
+    const other = await w.enableQuestionnaire(await w.keyBehavior());
+    const live = await w.activity();
+    await w.object(live.id, (await w.person('在线对象')).id, [other.id]);
+    await w.transition(live.id, 'enable'); // 另一个活动正在进行，但没用到 ctx.q
+    const addObject = async () =>
+      w.request('POST', `/activities/${live.id}/objects`, {
+        ifMatch: 0,
+        body: { personId: (await w.person('新增对象')).id, questionnaireIds: [ctx.q.id] },
+      });
+    // 编辑先：加对象等编辑提交，随后用的就是修订后的套卷
+    const editGate = pauseAt('survey360.questionnaire.update');
+    const editing = edit(w, ctx.q.id, editContent(w, 3));
+    let adding: Promise<Response> | undefined;
+    try {
+      await started(editGate.reached, editing);
+      adding = addObject();
+      const outcome = await blockedOrDone(w.db, '%survey360_object_questionnaires%', adding);
+      expect(outcome === 'blocked' ? 'blocked' : `加对象未等待编辑，已返回 ${outcome.status}`).toBe('blocked');
+      editGate.release.resolve();
+      await w.ok(editing);
+      await w.ok(adding, 201);
+    } finally {
+      editGate.release.resolve();
+      await Promise.allSettled([editing, ...(adding ? [adding] : [])]);
+    }
+    // 活动已在用该套卷：之后的编辑一律拒绝
+    const late = await edit(w, ctx.q.id, editContent(w, 2));
+    expect(late.status).toBe(409);
+    expect(await late.json()).toMatchObject({ error: { details: { reason: 'ACTIVITY_ENABLED' } } });
+  });
+
   it('两个活动共用一套卷同时启用并有编辑：不死锁、无 5xx，响应与最终状态一致', async () => {
     const w = await world360(testDb().db, 'f053-deadlock');
     const first = await questionnaireOf(w, true);
