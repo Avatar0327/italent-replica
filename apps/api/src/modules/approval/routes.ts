@@ -88,6 +88,8 @@ import {
   type LogView,
   type TaskRow,
 } from './store.js';
+import { policedSub } from '../../route-policy/index.js';
+import { APPROVAL_POLICIES } from './policy.js';
 
 type C = Context<TenantEnv>;
 
@@ -229,7 +231,8 @@ async function processResponse(c: C, deps: TenantRouteDeps, result: CommandResul
 
 export const registerApprovalRoutes: TenantRouteModule = (router, deps) => {
   registerHooks(deps);
-  const module = new Hono<TenantEnv>();
+  // F-039：子应用套本模块登记表（APPROVAL_POLICIES），注册行不变、处理函数不变
+  const module = policedSub(router, APPROVAL_POLICIES, () => new Hono<TenantEnv>());
   module.onError(handleError);
   registerProcessRoutes(module, deps);
   registerTenantConfigRoutes(module, deps);
