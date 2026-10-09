@@ -12,6 +12,7 @@ import { ORG_POLICIES } from './modules/org/policy.js';
 import { PERMISSION_POLICIES } from './modules/permission/policy.js';
 import { PERSONNEL_POLICIES } from './modules/personnel/policy.js';
 import { TALENT_POLICIES } from './modules/talent/policy.js';
+import { TALENT_REVIEW_POLICIES } from './modules/talent-review/policy.js';
 import { TENANT_SETTING_POLICIES } from './modules/tenant-settings/policy.js';
 import { defineTable, mergeTables, type PolicyTable } from './route-policy/index.js';
 import { publicRoute } from './route-policy/presets.js';
@@ -34,6 +35,7 @@ export function tenantPolicyTable(extra: readonly PolicyTable[] = []): PolicyTab
     TALENT_POLICIES,
     IDP_POLICIES,
     AVATAR_POLICIES,
+    TALENT_REVIEW_POLICIES,
     ...extra,
   ]);
 }

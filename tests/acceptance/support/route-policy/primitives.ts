@@ -312,6 +312,9 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['idp.templateVisible', call('templateCheck'), { modules: ['idp'] }],
     // IDP 转交目标须是已绑定员工且在操作人 IDP 范围内（intervention-service.ts requireTargetInScope，F-066）
     ['idp.transferTarget', call('requireTargetInScope'), { modules: ['idp'] }],
+    // 人才盘点准备度：按 enabled 筛选须有该字段查看权；名称实际变化要求看全部（R3-T04 路由声明）
+    ['talentReview.filterFieldVisible', call('requireFilterVisible'), { modules: ['talent-review'] }],
+    ['talentReview.renameRequiresSeeAll', /\bREADINESS_NAME_REQUIRES_SEE_ALL\b/, { modules: ['talent-review'] }],
     ['selfService.transferInput', call('ownTransferInput'), { modules: ['self-service'] }],
     ['selfService.referenceChoices', call('referenceChoices'), { modules: ['self-service'] }],
     ['selfService.ownApplication', call('ownApplication'), { modules: ['self-service'] }],

@@ -16,7 +16,7 @@ import { ADAPTERS } from '../../apps/api/src/modules/approval/adapters.js';
 import { readFrozenContract } from './support/route-policy/baseline.js';
 import { compareDeclarations, type Finding } from './support/route-policy/compare.js';
 import type { ObservedContract } from './support/route-policy/contract.js';
-import { domainConstants } from './support/route-policy/domains.js';
+import { domainConstants, NO_SNAPSHOT_YET } from './support/route-policy/domains.js';
 import { WEAKENING_KINDS, weakeningsOf } from './support/route-policy/weakenings.js';
 import { tenantApi } from './support/tenant-api.js';
 
@@ -169,7 +169,9 @@ describe('AC-PRM-FW-02 审批任务业务域来自运行时适配器（含 IDP�
     expect(domains['approval.businessType']).toEqual(Object.keys(ADAPTERS).sort());
     expect(domains['approval.businessType']).toContain('idp');
     const typeObjects = Object.values(APPROVAL_TYPES)
+      // 占位适配器（NO_SNAPSHOT_YET）还没有快照，不产生任务业务对象
       .filter((type) => Object.hasOwn(ADAPTERS, type.adapter) && type.adapter !== 'personnel_change')
+      .filter((type) => !Object.hasOwn(NO_SNAPSHOT_YET, type.adapter))
       .map((type) => type.objectCode);
     const subsetObjects = Object.values(SUBSETS).map((subset) => subset.objectCode);
     expect(domains['approval.taskObject']).toEqual([...new Set([...typeObjects, ...subsetObjects])].sort());

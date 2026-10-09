@@ -5,6 +5,7 @@ import { CONTRACT_FIELDS, CONTRACT_OBJECT } from '../contracts/rules.js';
  */
 import { MODULE_OBJECTS } from '../permission/module-actions.js';
 import { IDP_APP } from '../idp/catalog.js';
+import { TALENT_REVIEW_OBJECTS } from '../talent-review/catalog.js';
 import { PERSONNEL_OBJECT } from '../personnel/catalog.js';
 import { EMPLOYEE_EDITABLE_FIELDS, SUBSETS, type SubsetKind } from '../personnel/fields.js';
 
@@ -350,8 +351,10 @@ const employeeInfoFormFields = EMPLOYEE_EDITABLE_FIELDS.filter((f) => !f.system)
 /**
  * employee_info：个人信息变更（员工信息主表），发起入口留待后续业务接入（DEC-116），尚无运行时适配器。
  * idp：个人发展计划的子流程（R3-T07）：PR-A 登记类型供子流程引用与节点配置，PR-B 接入运行时适配器（一个阶段一条实例）。
+ * talent_review：盘点结果审批（R3-T04 C-08）：PR-A 登记类型与预置流程，发起入口与运行时适配器随 PR-D 接入（集合审批）。
  */
-export type ApprovalAdapterKind = 'employment' | 'personnel_change' | 'employee_info' | 'contract' | 'idp';
+export type ApprovalAdapterKind =
+  'employment' | 'personnel_change' | 'employee_info' | 'contract' | 'idp' | 'talent_review';
 export interface ApprovalTypeDefinition {
   readonly code: string;
   readonly name: string;
@@ -446,6 +449,18 @@ export const APPROVAL_TYPES = {
   idp_plan: idpType('idp_plan', '制定计划'),
   idp_mid_review: idpType('idp_mid_review', '中期回顾'),
   idp_final_review: idpType('idp_final_review', '末期回顾'),
+  // R3-T04 设计 §3.3（N12）：集合审批，一单涵盖多个被盘点人；审批中编辑开放校准后字段随 PR-D 接入后再开
+  talent_review_result: {
+    code: 'talent_review_result',
+    name: '盘点结果审批',
+    objectCode: TALENT_REVIEW_OBJECTS.resultApproval.code,
+    adapter: 'talent_review',
+    defaultProcessCode: null,
+    conditionFields: [],
+    formFields: [],
+    readonlyFields: [],
+    approvalEdit: false,
+  },
   personnel_change: {
     code: 'personnel_change',
     name: '员工子集变更',

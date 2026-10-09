@@ -186,6 +186,8 @@ describe('写入审计的对象类型都已登记查看规则（PR #75 第三轮
       'IDP.TutorShip',
       'IDP.Career',
       'IDP.WorkShift',
+      // R3-T04 人才盘点（PR-A）
+      'TalentReview.Readiness',
     ]);
 
   it.each(written)('%s', (objectType) => {

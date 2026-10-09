@@ -43,6 +43,15 @@ const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes
   'IDP_OBJECTS.plan.code': { adapter: 'idp', codes: [IDP_OBJECTS.plan.code] },
 };
 
+/**
+ * 只占位、还没有快照的适配器（所有回调都拒绝，不会产生任务，也就没有任务业务对象）。接入快照时必须从这里移除，
+ * 并把它的 fieldObjectCode 表达式登记到上表（否则上面的检查直接失败）。
+ */
+export const NO_SNAPSHOT_YET: Readonly<Record<string, string>> = {
+  // talent-review/approval-adapter.ts：R3-T04 PR-A 只占业务类型位置，PR-D 接入前任何回调 409
+  talent_review: 'TALENT_REVIEW_APPROVAL_UNAVAILABLE',
+};
+
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const file = path.join(dir, name);
@@ -66,7 +75,10 @@ function approvalTaskObjects(): string[] {
       adapters.add(resolved.adapter);
     }
   }
-  const missing = Object.keys(ADAPTERS).filter((key) => !adapters.has(key));
+  for (const key of Object.keys(NO_SNAPSHOT_YET)) {
+    if (adapters.has(key)) throw new Error(`审批适配器 ${key} 已有 fieldObjectCode 来源，从 NO_SNAPSHOT_YET 移除`);
+  }
+  const missing = Object.keys(ADAPTERS).filter((key) => !adapters.has(key) && !Object.hasOwn(NO_SNAPSHOT_YET, key));
   if (missing.length) throw new Error(`审批适配器 ${missing.join(' / ')} 没有找到 fieldObjectCode 来源`);
   return [...codes].sort();
 }

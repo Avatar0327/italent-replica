@@ -542,6 +542,7 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['survey360-link', '/api/survey360/link', [path.join(modules, 'survey360')]],
     ['talent', '/api/tenant/talent', [path.join(modules, 'talent')]],
     ['idp', '/api/tenant/idp', [path.join(modules, 'idp')]],
+    ['talent-review', '/api/tenant/talent-review', [path.join(modules, 'talent-review')]],
     ['avatar', '/api/tenant/account', [path.join(modules, 'avatar')]],
     ['avatar', '/api/tenant/avatars', [path.join(modules, 'avatar')]],
   ];

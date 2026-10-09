@@ -22,14 +22,15 @@ function digitsArg(call: FunctionCall, index: number): number {
 }
 
 /** 按绝对值舍入的方式：四舍五入（远离 0）、远离 0 进位、趋向 0 舍去。 */
-type Rounding = 'half-up' | 'up' | 'down';
+export type Rounding = 'half-up' | 'up' | 'down';
 
 /**
  * 按输入值的十进制表示精确舍入（PR #108 第 3 轮清单 P3）：取能精确还原该双精度数的最短十进制写法（toExponential），
  * 用 BigInt 定点舍入，不做任何浮点误差修正。因此 RoundDown(0.9999999999999999) = 0、RoundUP(1.0000000000000002) = 2；
  * 运算产生的尾差也按输入值计算，如 1.1 * 3 的输入值是 3.3000000000000003，RoundUP(1.1 * 3, 1) = 3.4。
+ * C-02：导出给人才盘点的指标 / 模块算分（R3-T04 设计 §4.2），保证算分精度与公式里的 Round 系列一致。
  */
-function roundDecimal(value: number, digits: number, mode: Rounding): number {
+export function roundDecimal(value: number, digits: number, mode: Rounding): number {
   if (value === 0 || !Number.isFinite(value)) return value;
   const [mantissa = '', exponent = '0'] = Math.abs(value).toExponential().split('e');
   const significand = mantissa.replace('.', '');

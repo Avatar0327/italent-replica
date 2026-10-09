@@ -18,6 +18,7 @@ import { ROOT } from './root.js';
 import { SELF_SERVICE } from './self-service.js';
 import { SURVEY360 } from './survey360.js';
 import { TALENT } from './talent.js';
+import { TALENT_REVIEW } from './talent-review.js';
 import { TENANT_SETTINGS } from './tenant-settings.js';
 import type { Obligation, RequiredTable } from './types.js';
 
@@ -38,6 +39,7 @@ const PARTS: readonly RequiredTable[] = [
   TALENT,
   SURVEY360,
   IDP,
+  TALENT_REVIEW,
 ];
 
 function mergeParts(parts: readonly RequiredTable[]): RequiredTable {

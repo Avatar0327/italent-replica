@@ -566,6 +566,18 @@ export const DIGESTS: Digests = {
     routeEmployeeScope: '16903284399b',
     syncAccess: 'acdb0fcd53ca',
   },
+  'apps/api/src/modules/talent-review/access.ts': {
+    WRITE_BUTTONS: '0b5ae04a7123',
+    requireFilterVisible: 'ad6d52e7a446',
+    reviewContext: 'a98e74068a24',
+    reviewWriteContext: '007b2d9a1eb5',
+  },
+  'apps/api/src/modules/talent-review/readiness-service.ts': {
+    updateReadiness: '6ebb3ee4b3e3',
+  },
+  'apps/api/src/modules/talent-review/routes.ts': {
+    registerTalentReviewRoutes: 'cdb0f96da9cd',
+  },
   'apps/api/src/modules/talent/access.ts': {
     DATA_OPERATION: 'bb93cac2ac78',
     WRITE_BUTTONS: '2aa15fb156ec',
@@ -735,6 +747,9 @@ export const DIGESTS: Digests = {
     'SURVEY360_OBJECTS>result': '6dc0acd868d7',
     'SURVEY360_OBJECTS>settings': '8f7c0aca5b9e',
     crud: 'a441bd24abb2',
+  },
+  'packages/domain/src/talent-review/catalog.ts': {
+    'TALENT_REVIEW_OBJECTS>readiness': 'a1857e585c0c',
   },
   'packages/domain/src/talent/catalog.ts': {
     'TALENT_OBJECTS>criterion': '48b1c187e566',
