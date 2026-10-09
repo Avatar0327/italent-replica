@@ -49,6 +49,18 @@ async function getProcess(w: ApprovalWorld, id: string): Promise<Process> {
   return w.json<Process>(await w.request(w.hr.id, 'GET', `${BASE}/processes/${id}`));
 }
 
+/**
+ * 可信夹具：以连接角色（表属主）在本租户上下文里直写草稿节点（应用角色对节点表没有 UPDATE 权限）。真 PG 上表强制 RLS，
+ * 须先设 app.tenant_id 才看得到本租户的行。
+ */
+async function patchDraftNodes(w: ApprovalWorld, processId: string, set: ReturnType<typeof sql>) {
+  await w.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${w.tenant.id}, true)`);
+    await tx.execute(sql`UPDATE approval_process_nodes SET ${set} WHERE tenant_id=${w.tenant.id}
+      AND version_id IN (SELECT id FROM approval_process_versions WHERE process_id=${processId}::uuid)`);
+  });
+}
+
 const nodeOf = (process: Process, key: string) => process.latestVersion.nodes.find((node) => node.key === key)!;
 
 describe('T11 新建节点缺省关闭、回显显式（DEC-329④）', () => {
@@ -99,8 +111,7 @@ describe('T11 新建节点缺省关闭、回显显式（DEC-329④）', () => {
       nodes: [{ key: 'owner_node', approver: 'owner', actions: { avoidSelf: false } }],
     });
     // 可信夹具（连接角色直写）：模拟迁移前写入、列值为 true 的节点（迁移只改列缺省值，不改存量行）
-    await w.db.execute(sql`UPDATE approval_process_nodes SET avoid_self=true WHERE tenant_id=${w.tenant.id}
-      AND version_id IN (SELECT id FROM approval_process_versions WHERE process_id=${created.id}::uuid)`);
+    await patchDraftNodes(w, created.id, sql`avoid_self=true`);
     const process = await getProcess(w, created.id);
     expect(nodeOf(process, 'owner_node').actions.avoidSelf).toBe(true);
     await w.publish(process as never);
@@ -203,8 +214,7 @@ describe('T11 R3-01：PR-1 阶段不能开启多主体回避', () => {
   it('发布时复核：草稿里出现 avoid_subjects=true（可信夹具写入）→ 400，仍是草稿', async () => {
     const w = await approvalWorld(database().db, 'f048-unavailable-publish');
     const created = await w.createProcess({ nodes: [{ key: 'a', approver: 'owner' }] });
-    await w.db.execute(sql`UPDATE approval_process_nodes SET avoid_subjects=true WHERE tenant_id=${w.tenant.id}
-      AND version_id IN (SELECT id FROM approval_process_versions WHERE process_id=${created.id}::uuid)`);
+    await patchDraftNodes(w, created.id, sql`avoid_subjects=true`);
     const response = await w.request(w.hr.id, 'POST', `${BASE}/processes/${created.id}/publish`, {
       ifMatch: created.revision,
     });
