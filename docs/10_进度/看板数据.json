@@ -1,8 +1,8 @@
 {
 "updated": "2026-10-09",
 "stats": {
-"merged": 85,
-"open": 10,
+"merged": 86,
+"open": 9,
 "dec": 351,
 "ev": "34/140"
 },
@@ -982,6 +982,10 @@
 }
 },
 "log": [
+[
+"10-09",
+"#146 F-066 合并（Sonnet 2 轮），IDP 流程干预五种齐"
+],
 [
 "10-09",
 "#147 合并：AGENTS §3.7 本地只跑相关测试，全量交 CI（DEC-351）"
@@ -2291,7 +2295,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-09 06:40",
+"liveUpdated": "10-09 06:59",
 "chains": [
 {
 "g": "base",
@@ -2654,8 +2658,8 @@
 "k": "run",
 "n": "权限框架强制",
 "u": "已核对，待开会话",
-"seg": "ev:n ds:d6 dev:a4 rev:d3 mg:w",
-"now": "第 4 轮修法说明已确认（含 2 项补充），Opus 开始写代码",
+"seg": "ev:n ds:d6 dev:d4 rev:d4 mg:a",
+"now": "第 4 轮（改结构）：可以合并，剩余检测不足转 PR-B；合并前须合 main 补 #146 转交路由声明",
 "pr": 110,
 "up": "10-07 调到 Max",
 "nx": "R3 全部模块（各 PR 合并后补声明）",
@@ -2953,12 +2957,13 @@
 "id": "F-066",
 "g": "idp",
 "o": 3,
-"k": "run",
+"k": "done",
 "sn": "1",
 "n": "IDP 流程干预转交",
-"seg": "ev:n ds:n dev:a2 rev:d1 mg:w",
-"now": "首轮（Sol high+fast）：1 P2 权限 + 2 P3，第 2 轮修改（Sonnet）",
-"pr": 146
+"seg": "ev:n ds:n dev:d2 rev:d2 mg:a",
+"now": "第 2 轮：可以合并（剩 1 P3 文案可后补）",
+"pr": 146,
+"u": "10-09 #146 合并（4f9d566），Sonnet 2 轮；IDP 五种干预齐"
 }
 ]
 }
