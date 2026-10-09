@@ -1,9 +1,9 @@
 {
 "updated": "2026-10-09",
 "stats": {
-"merged": 84,
-"open": 9,
-"dec": 350,
+"merged": 85,
+"open": 10,
+"dec": 351,
 "ev": "34/140"
 },
 "tasks": {
@@ -982,6 +982,10 @@
 }
 },
 "log": [
+[
+"10-09",
+"#147 合并：AGENTS §3.7 本地只跑相关测试，全量交 CI（DEC-351）"
+],
 [
 "10-09",
 "#145 F-048 PR-2 合并（Sonnet，2 轮）：F-048 完成，T04 前置全部清零"
@@ -2287,7 +2291,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-09 05:04",
+"liveUpdated": "10-09 06:21",
 "chains": [
 {
 "g": "base",
@@ -2488,8 +2492,8 @@
 "k": "run",
 "n": "人才盘点",
 "u": "已核对：#108 合并后派（C 档、Fable、先设计）",
-"seg": "ev:d ds:d8 dev:a1 rev:w mg:w",
-"now": "#144 PR-A 契约（Opus High，DEC-338①）：合并 main → 自检 → 转 Ready；PR-B / C / D 改派 Sonnet",
+"seg": "ev:d ds:d8 dev:a2 rev:d1 mg:w",
+"now": "#144 PR-A 首轮：9 P2 + 3 类 P3（多为同步替身 / 契约套件不符协议，T05 将依赖），第 2 轮修改（Opus）",
 "pr": 113,
 "pd": "设计 #113 ✓ · PR-A #144"
 },
@@ -2522,8 +2526,8 @@
 "o": 2,
 "k": "run",
 "n": "任职资格 + 人才评定",
-"seg": "ev:d ds:d6 dev:a3 rev:d2 mg:w",
-"now": "#136 第 2 轮：14 类 → 7 类 P2（重放、冲突已修，字段裁剪 P2-02 仍有残留），第 3 轮修改",
+"seg": "ev:d ds:d6 dev:a4 rev:d3 mg:w",
+"now": "#136 第 3 轮：14 → 7 → 2 类 P2（编码规则存在性披露、审计可见性回退），第 4 轮修改",
 "pr": 129,
 "pd": "设计 #121 ✓ · PR-0 #129 ✓ · PR-A #136"
 },
@@ -2952,8 +2956,9 @@
 "k": "run",
 "sn": "1",
 "n": "IDP 流程干预转交",
-"seg": "ev:n ds:n dev:a1 rev:w mg:w",
-"now": "派发（Sonnet）"
+"seg": "ev:n ds:n dev:a2 rev:d1 mg:w",
+"now": "首轮（Sol high+fast）：1 P2 权限 + 2 P3，第 2 轮修改（Sonnet）",
+"pr": 146
 }
 ]
 }
