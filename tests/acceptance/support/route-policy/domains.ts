@@ -10,6 +10,7 @@ import {
   CONTRACT_OBJECT,
   contractAction,
   IDP_OBJECTS,
+  QUALIFICATION_OWNED_OBJECTS,
   SUBSETS,
   TALENT_OBJECTS,
 } from '@italent/domain';
@@ -121,6 +122,8 @@ export function domainConstants(): Record<string, string[]> {
     'talent.ownerUnitObject': Object.keys(TALENT_OBJECTS)
       .filter((key) => key !== 'descriptionType')
       .sort(),
+    // 任职资格新建时可选所属管理单元的五对象（qualification/candidates.ts ownerObject；标准随类别，不在此列）
+    'qualification.ownerUnitObject': QUALIFICATION_OWNED_OBJECTS.filter((key) => key !== 'standard').sort(),
   };
 }
 
