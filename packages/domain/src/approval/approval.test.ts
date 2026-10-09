@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { conditionViolations, evaluateCondition } from './conditions.js';
 import { publishViolations } from './definition.js';
 import { PRESET_PROCESSES } from './presets.js';
+import { recusalFacts } from './recusal.js';
 import { avoidSelfExceptionAdmin, decideNode, type Candidate, type RoutingFacts } from './routing.js';
 import { TRANSFER_DETAIL_VIEW } from './transfer-view.js';
 import {
@@ -84,10 +85,14 @@ const node = (extra: Partial<SingleApprovalNode> = {}): SingleApprovalNode => ({
   ...extra,
 });
 const facts = (extra: Partial<RoutingFacts> = {}): RoutingFacts => ({
+  ...recusalFacts({
+    initiatorUserId: 'initiator',
+    primaryEmployeeId: 'subject-person',
+    primaryUserId: 'subject-user',
+    subjectEmployeeIds: [],
+    subjectUserIds: [],
+  }),
   isFirstNode: false,
-  initiatorUserId: 'initiator',
-  subjectEmployeeId: 'subject-person',
-  subjectUserId: 'subject-user',
   exceptionAdminUserId: 'admin',
   previousApproverUserIds: [],
   approvedUserIds: [],
@@ -112,12 +117,50 @@ describe('节点审批人决策（DEC-054 / DEC-068）', () => {
       userId: 'boss',
     });
     expect(avoidSelfExceptionAdmin(person('initiator'), facts()).kind).toBe('unavailable');
-    expect(avoidSelfExceptionAdmin(person('x', 'subject-person'), facts(), person('subject-user')).kind).toBe(
+    // 异常管理员是账号来源，只按账号比较（设计 §2.3）；直线经理是员工来源，人员 ID 也比较
+    expect(avoidSelfExceptionAdmin(person('x', 'subject-person'), facts()).kind).toBe('assign');
+    expect(avoidSelfExceptionAdmin(person('subject-user'), facts(), person('m', 'subject-person')).kind).toBe(
       'unavailable',
     );
     expect(avoidSelfExceptionAdmin(person('initiator'), facts({ chainUserIds: ['boss'] }), person('boss')).kind).toBe(
       'unavailable',
     );
+  });
+  it('F-048 多主体回避：命中冻结的主体集合 → subject_skip（处理人系统）；自审先判；账号来源只比较账号', () => {
+    const multi = (extra: Partial<SingleApprovalNode['actions']> = {}) =>
+      node({ actions: { ...node().actions, avoidSelf: false, avoidSubjects: true, ...extra } });
+    const set = facts({
+      ...recusalFacts({
+        initiatorUserId: 'initiator',
+        primaryEmployeeId: null,
+        primaryUserId: null,
+        subjectEmployeeIds: ['p2'],
+        subjectUserIds: ['u2'],
+      }),
+    });
+    // 员工来源命中人员 ID 或账号；跳过不计任何人的同意，先于相同 / 历史相同审批人自动处理
+    const sameToo = facts({ ...set, previousApproverUserIds: ['u9'] });
+    expect(decideNode(multi(), person('u9', 'p2'), sameToo)).toMatchObject({
+      kind: 'auto',
+      outcome: 'subject_skip',
+      result: 'skip',
+      userId: 'u9',
+    });
+    expect(decideNode(multi(), person('u2'), set)).toMatchObject({ kind: 'auto', outcome: 'subject_skip' });
+    // 账号来源只看账号：personId 命中不算
+    expect(decideNode(multi(), { userId: 'u9', personId: 'p2', accountSource: true }, set).kind).toBe('assign');
+    // 开关关闭不回避；自审与多主体同时命中走自审（改派直线经理）
+    expect(decideNode(node({ actions: { ...node().actions, avoidSelf: false } }), person('u2'), set).kind).toBe(
+      'assign',
+    );
+    expect(decideNode(multi({ avoidSelf: true }), person('initiator'), set, person('boss'))).toMatchObject({
+      kind: 'assign',
+      origin: 'self_skip_manager',
+    });
+    // 自审改派后的直线经理也是主体 → 无效，转异常管理员
+    expect(decideNode(multi({ avoidSelf: true }), person('initiator'), set, person('u2'))).toMatchObject({
+      origin: 'exception_admin',
+    });
   });
   it('自审优先于相同审批人跳过：转直线经理；经理为空 / 本人 / 已在链上转异常管理员', () => {
     const self = person('initiator');

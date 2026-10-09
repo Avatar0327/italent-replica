@@ -161,7 +161,8 @@ export function terminatePlans(tx: Tx, ctx: PlanWriteContext, input: BatchItems)
 /** 跳转（K-43）：只能在当前运行阶段的审批流程版本内跳（AC-IDP-02）。 */
 export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, input: JumpInput) {
   const plan = await lockPlanForHr(tx, ctx, planId);
-  await notOwnPlan(tx, ctx, plan);
+  // F-048 §6 #20：本人回避不在这里查实时绑定，由 adminAct 按发起 / 重提时冻结的 U(S) 判定（I′：所有者豁免，主体回避）；
+  // 冻结之后才首次绑定到该员工的所有者本轮不追溯（DEC-329⑤）。催办、终止、开启下一阶段仍用 notOwnPlan。
   const stage = await runningStage(tx, plan);
   if (!stage) conflict('IDP_NO_RUNNING_STAGE', '计划没有进行中的阶段');
   const [instance] = rowsOf<{ revision: number; version_id: string; status: string }>(
