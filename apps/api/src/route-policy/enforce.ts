@@ -226,6 +226,10 @@ function uncheckedResponse(key: string): Response {
   return new Response(JSON.stringify(body), { status: 500, headers: { 'content-type': 'application/json' } });
 }
 
+/**
+ * S1～S6。各步按声明顺序**逐个** await：顺序就是现状的错误优先级（保序，DEC-363①），不能并行。
+ * 原语上的非空断言由启动期 requirePrimitives 保证（缺原语时应用无法启动）。
+ */
 async function admit(plan: EnforcePlan, c: Context, access: RouteAccess): Promise<void> {
   const p = plan.impls.primitives;
   const expectedRevision = plan.revision ? p.revision!(c) : 0;
