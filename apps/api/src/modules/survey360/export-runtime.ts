@@ -87,7 +87,7 @@ export interface ExportConfig {
   pixelBudget: number;
 }
 
-const DEFAULTS: Readonly<ExportConfig> = { globalLimit: 4, tenantLimit: 2, timeoutMs: 30_000, pixelBudget: 40_000_000 };
+const DEFAULTS: Readonly<ExportConfig> = { globalLimit: 3, tenantLimit: 2, timeoutMs: 60_000, pixelBudget: 40_000_000 };
 let config: ExportConfig = { ...DEFAULTS };
 
 export const exportConfig = (): Readonly<ExportConfig> => config;
