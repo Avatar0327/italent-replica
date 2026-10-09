@@ -540,6 +540,20 @@
       "when": 1791554628637,
       "tag": "0076_qualification_config",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1791560200049,
+      "tag": "0077_succession_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1791560205300,
+      "tag": "0078_succession_records_rls",
+      "breakpoints": true
     }
   ]
 }
