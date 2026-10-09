@@ -1,0 +1,418 @@
+[
+  {
+    "body": {
+      "hasDataPermission": true,
+      "items": [
+        {
+          "currentStageName": "制定计划",
+          "employeeId": "<id:2>",
+          "endDate": "2026-12-31",
+          "id": "<id:1>",
+          "name": "甲计划",
+          "processId": "<id:4>",
+          "revision": 3,
+          "stages": [
+            {
+              "approvalInstanceId": "<id:8>",
+              "attemptCount": 1,
+              "dueDate": "2026-01-01",
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:6>",
+              "name": "制定计划",
+              "seq": 1,
+              "status": "running",
+              "subProcessId": "<id:7>"
+            },
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": null,
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:9>",
+              "name": "中期回顾",
+              "seq": 2,
+              "status": "pending",
+              "subProcessId": "<id:10>"
+            },
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": null,
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:11>",
+              "name": "期末回顾",
+              "seq": 3,
+              "status": "pending",
+              "subProcessId": "<id:12>"
+            }
+          ],
+          "startDate": "2026-01-01",
+          "status": "running",
+          "templateId": "<id:3>",
+          "tutorEmployeeId": "<id:5>",
+          "tutorRole": "direct_manager"
+        },
+        {
+          "currentStageName": null,
+          "employeeId": "<id:14>",
+          "endDate": "2026-12-31",
+          "id": "<id:13>",
+          "name": "乙计划",
+          "processId": "<id:4>",
+          "revision": 1,
+          "stages": [
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": "2026-01-01",
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:15>",
+              "name": "制定计划",
+              "seq": 1,
+              "status": "pending",
+              "subProcessId": "<id:7>"
+            },
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": null,
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:16>",
+              "name": "中期回顾",
+              "seq": 2,
+              "status": "pending",
+              "subProcessId": "<id:10>"
+            },
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": null,
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:17>",
+              "name": "期末回顾",
+              "seq": 3,
+              "status": "pending",
+              "subProcessId": "<id:12>"
+            }
+          ],
+          "startDate": "2026-01-01",
+          "status": "not_started",
+          "templateId": "<id:3>",
+          "tutorEmployeeId": "<id:5>",
+          "tutorRole": "other"
+        }
+      ],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "HR GET /plans",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": true,
+      "items": [
+        {
+          "currentStageName": null,
+          "employeeId": "<id:14>",
+          "endDate": "2026-12-31",
+          "id": "<id:13>",
+          "name": "乙计划",
+          "processId": "<id:4>",
+          "revision": 1,
+          "stages": [
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": "2026-01-01",
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:15>",
+              "name": "制定计划",
+              "seq": 1,
+              "status": "pending",
+              "subProcessId": "<id:7>"
+            },
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": null,
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:16>",
+              "name": "中期回顾",
+              "seq": 2,
+              "status": "pending",
+              "subProcessId": "<id:10>"
+            },
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": null,
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:17>",
+              "name": "期末回顾",
+              "seq": 3,
+              "status": "pending",
+              "subProcessId": "<id:12>"
+            }
+          ],
+          "startDate": "2026-01-01",
+          "status": "not_started",
+          "templateId": "<id:3>",
+          "tutorEmployeeId": "<id:5>",
+          "tutorRole": "other"
+        }
+      ],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "HR GET /plans 按状态",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": true,
+      "items": [
+        {
+          "currentStageName": "制定计划",
+          "employeeId": "<id:2>",
+          "endDate": "2026-12-31",
+          "id": "<id:1>",
+          "name": "甲计划",
+          "processId": "<id:4>",
+          "revision": 3,
+          "stages": [
+            {
+              "approvalInstanceId": "<id:8>",
+              "attemptCount": 1,
+              "dueDate": "2026-01-01",
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:6>",
+              "name": "制定计划",
+              "seq": 1,
+              "status": "running",
+              "subProcessId": "<id:7>"
+            },
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": null,
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:9>",
+              "name": "中期回顾",
+              "seq": 2,
+              "status": "pending",
+              "subProcessId": "<id:10>"
+            },
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": null,
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:11>",
+              "name": "期末回顾",
+              "seq": 3,
+              "status": "pending",
+              "subProcessId": "<id:12>"
+            }
+          ],
+          "startDate": "2026-01-01",
+          "status": "running",
+          "templateId": "<id:3>",
+          "tutorEmployeeId": "<id:5>",
+          "tutorRole": "direct_manager"
+        }
+      ],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "HR GET /plans 另一状态",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": true,
+      "items": [
+        {
+          "currentStageName": null,
+          "employeeId": "<id:14>",
+          "endDate": "2026-12-31",
+          "id": "<id:13>",
+          "name": "乙计划",
+          "processId": "<id:4>",
+          "revision": 1,
+          "stages": [
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": "2026-01-01",
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:15>",
+              "name": "制定计划",
+              "seq": 1,
+              "status": "pending",
+              "subProcessId": "<id:7>"
+            },
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": null,
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:16>",
+              "name": "中期回顾",
+              "seq": 2,
+              "status": "pending",
+              "subProcessId": "<id:10>"
+            },
+            {
+              "approvalInstanceId": null,
+              "attemptCount": 0,
+              "dueDate": null,
+              "endedOn": null,
+              "failureReason": null,
+              "id": "<id:17>",
+              "name": "期末回顾",
+              "seq": 3,
+              "status": "pending",
+              "subProcessId": "<id:12>"
+            }
+          ],
+          "startDate": "2026-01-01",
+          "status": "not_started",
+          "templateId": "<id:3>",
+          "tutorEmployeeId": "<id:5>",
+          "tutorRole": "other"
+        }
+      ],
+      "page": 2,
+      "pageSize": 1
+    },
+    "name": "HR GET /plans 分页",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "message": "status 不合法"
+      }
+    },
+    "name": "HR GET /plans 非法状态",
+    "status": 400
+  },
+  {
+    "body": {
+      "hasDataPermission": true,
+      "items": [
+        {
+          "createdAt": "<ts>",
+          "createdBy": "<id:19>",
+          "description": null,
+          "id": "<id:3>",
+          "name": "f075idp模板<x>",
+          "orgId": "<id:18>",
+          "processId": "<id:4>",
+          "publicDown": true,
+          "revision": 7,
+          "status": "published",
+          "updatedAt": "<ts>"
+        }
+      ],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "HR GET /templates",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": true,
+      "items": [],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "HR GET /templates 草稿",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": true,
+      "items": [
+        {
+          "createdAt": "<ts>",
+          "createdBy": "<id:19>",
+          "description": null,
+          "id": "<id:3>",
+          "name": "f075idp模板<x>",
+          "orgId": "<id:18>",
+          "processId": "<id:4>",
+          "publicDown": true,
+          "revision": 7,
+          "status": "published",
+          "updatedAt": "<ts>"
+        }
+      ],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "HR GET /templates 已发布",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": true,
+      "items": [
+        {
+          "createdAt": "<ts>",
+          "createdBy": "<id:19>",
+          "description": null,
+          "id": "<id:3>",
+          "name": "f075idp模板<x>",
+          "orgId": "<id:18>",
+          "processId": "<id:4>",
+          "publicDown": true,
+          "revision": 7,
+          "status": "published",
+          "updatedAt": "<ts>"
+        }
+      ],
+      "page": 1,
+      "pageSize": 50
+    },
+    "name": "HR GET /templates 按流程",
+    "status": 200
+  },
+  {
+    "body": {
+      "hasDataPermission": true,
+      "items": [],
+      "page": 2,
+      "pageSize": 1
+    },
+    "name": "HR GET /templates 分页",
+    "status": 200
+  },
+  {
+    "body": {
+      "error": {
+        "code": "VALIDATION_FAILED",
+        "message": "status 不合法"
+      }
+    },
+    "name": "HR GET /templates 非法状态",
+    "status": 400
+  }
+]

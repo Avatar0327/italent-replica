@@ -499,6 +499,7 @@ function registerReportViewRoutes(module: Hono<TenantEnv>, deps: TenantRouteDeps
       VIEW,
       (tx, admin, tenant) => detail(c, tx, admin, tenant),
       reportPresent,
+      'full',
       (cc, report) => reportPdf(tenantOf(cc).tenantId, report),
     ),
   );

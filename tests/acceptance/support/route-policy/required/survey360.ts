@@ -316,8 +316,16 @@ const unrestricted = (entry: Evidence, anchor: string): Obligation => ({
 // 活动可见、人员可见、受限管理员的 403、列表与同步结果的范围广度。
 const VIEW_ALL = 'btn:Survey360.Activity#viewAll@list';
 const LOAD_ADMIN: Readonly<Record<'read' | 'write', Evidence>> = {
-  read: { role: 'impl', unit: `${CONTEXT}#read`, anchor: 'const admin = await loadAdmin(tx, deps, tenant, people);' },
-  write: { role: 'impl', unit: `${CONTEXT}#write`, anchor: 'const admin = await loadAdmin(tx, deps, tenant, people);' },
+  read: {
+    role: 'impl',
+    unit: `${CONTEXT}#read`,
+    anchor: 'const admin = await loadAdmin(tx, deps, tenant, people, adminMode);',
+  },
+  write: {
+    role: 'impl',
+    unit: `${CONTEXT}#write`,
+    anchor: 'const admin = await loadAdmin(tx, deps, tenant, people, options.admin);',
+  },
 };
 const ALL_ACTIVITIES_CHAIN: Evidence[] = [
   {

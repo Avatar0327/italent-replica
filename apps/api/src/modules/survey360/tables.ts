@@ -170,6 +170,7 @@ export function registerTableRoutes(module: Hono<TenantEnv>, deps: TenantRouteDe
       { object: 'result' },
       (tx, admin) => scoreTables(tx, admin, uuidParam(c), c.req.query()),
       downloadPresent,
+      'full',
       async (c, { activityName, body }: Loaded) => {
         const png = await admitted(tenantOf(c).tenantId, (signal) =>
           renderPng(scoreTableDocument(body, { activityName }), signal),
