@@ -61,13 +61,15 @@ describe('K-37：回避是节点开关', () => {
     expect(await errorOf(reassigned)).toMatchObject({ status: 409, reason: 'APPROVAL_SELF_REVIEW' });
   });
 
-  it('其他审批类型不配置开关：保持现状，异动本人仍被自审跳过，读回定义不含 avoidSelf', async () => {
+  // F-048 PR-1（DEC-329④）：新建节点缺省改为关闭，回显改为始终显式；夹具 createProcess 不给时显式发送 true，
+  // 缺省关闭本身见 AC-APV-F048-defaults（T11）。
+  it('其他审批类型开启自审回避：异动本人仍被自审跳过，读回定义显式 avoidSelf=true', async () => {
     const w = await approvalWorld(testDb().db, 'idp-k37-regress');
     const s = await transferScene(w);
     // 员工本人恰为调出部门负责人：第一个节点解析到本人 → 自审跳过转其直线经理
     await w.setOrgRoles(s.from, { head: s.subject.employeeId });
     const process = await w.publishedProcess({ nodes: [TRANSFER_NODES[0]!, TRANSFER_NODES[1]!] });
-    expect(process.currentVersion!.nodes[0]!.actions).not.toHaveProperty('avoidSelf');
+    expect(process.currentVersion!.nodes[0]!.actions).toMatchObject({ avoidSelf: true, avoidSubjects: false });
     const view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     expect(current(view)).toMatchObject({ assigneeUserId: s.manager.userId, origin: 'self_skip_manager' });
   });

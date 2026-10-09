@@ -143,10 +143,15 @@ export interface NodeActions {
   readonly urge: UrgeMode;
   /**
    * 自审回避（DEC-058 / DEC-068 / DEC-091 的“发起人 / 异动本人不审批自己的单据”）：路由时自审跳过转直线经理、办理时
-   * 拒绝本人。DEC-318 K-37 起是节点开关（原站跳过类开关都是节点级）；缺省（未给出）即开启，原有流程行为不变。
-   * IDP 预置流程关闭（员工处理自己计划的节点是正常路径）。
+   * 拒绝本人。DEC-318 K-37 起是节点开关；DEC-329④ 起新建节点缺省关闭（未给出即关闭）。输入边界、加载与预置都显式给值
+   * （F-048 设计 §3.2）；预置按业务敏感度取值（DEC-332①，§3.3）。
    */
   readonly avoidSelf?: boolean;
+  /**
+   * 多主体回避（F-048，DEC-329①）：节点审批人命中实例冻结的主体集合时，按 avoidSubjectsResult 自动处理。缺省关闭（照原站
+   * isSameExpressionSkip）。F-048 PR-1 阶段定义校验拒绝开启，运行判定随 PR-2 接入时放开（设计 §14，R3-01）。
+   */
+  readonly avoidSubjects?: boolean;
   /** 发起人撤回（原站 isRevoke，DEC-318 K-39）：缺省开启（原有流程不变），IDP 预置流程关闭。 */
   readonly revoke?: boolean;
   /**
@@ -167,10 +172,23 @@ export const rejectToPreviousAllowed = (node: { readonly actions?: Pick<NodeActi
 /** 审批人跳转：显式开启才可用。 */
 export const jumpAllowed = (node: { readonly actions?: Pick<NodeActions, 'jump'> }) => node.actions?.jump === true;
 
-/** 节点是否自审回避：未给出即开启（NodeActions.avoidSelf）。 */
+/** 节点是否自审回避：显式开启才回避（DEC-329④，新建节点缺省关闭）。 */
 export function avoidsSelf(node: { readonly actions?: Pick<NodeActions, 'avoidSelf'> }): boolean {
-  return node.actions?.avoidSelf !== false;
+  return node.actions?.avoidSelf === true;
 }
+
+/** 节点是否多主体回避：显式开启才回避（F-048，DEC-329①）。 */
+export function avoidsSubjects(node: { readonly actions?: Pick<NodeActions, 'avoidSubjects'> }): boolean {
+  return node.actions?.avoidSubjects === true;
+}
+
+/**
+ * 多主体回避命中后的动作（DEC-331⑤，规格 14 §11.6）：契约预留跳过 / 同意 / 不同意 / 自定义出口动作；取证（Q-M0-138）前
+ * 只启用「跳过」（DEC-329①），其余取值的启用条件见 F-048 设计 §3.1。
+ */
+export type AvoidSubjectsResult = 'skip' | 'approve' | 'disagree' | `exit:${string}`;
+export const ENABLED_AVOID_SUBJECTS_RESULTS: readonly AvoidSubjectsResult[] = ['skip'];
+export const DEFAULT_AVOID_SUBJECTS_RESULT: AvoidSubjectsResult = 'skip';
 
 /** 节点是否开启驳回：未给出即开启（NodeActions.reject）。 */
 export function rejectAllowed(node: Pick<ApprovalNode, 'actions'>): boolean {
@@ -203,6 +221,8 @@ interface ApprovalNodeBase {
   readonly hideRecords: boolean;
   readonly rejectResubmit: RejectResubmitMode;
   readonly messageRules: readonly MessageRule[];
+  /** 多主体回避命中后的动作（DEC-331⑤）；缺省「跳过」。 */
+  readonly avoidSubjectsResult?: AvoidSubjectsResult;
   /** 出口动作（DEC-144）；缺省只有「同意」（DEFAULT_EXITS）。 */
   readonly exits?: readonly NodeExit[];
 }
