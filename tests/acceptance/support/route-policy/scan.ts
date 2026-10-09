@@ -83,6 +83,14 @@ const HUB_FUNCTIONS = new Set([
   'modules/idp/routes.ts#write',
 ]);
 
+/**
+ * 动态分派表（处理函数按请求参数从局部对象里取处理器，静态展开跟不过去）：键 = 相对路径#分派表名，
+ * 值 = 分派到的处理器工厂。闭包展开时把工厂当作处理函数的直接调用（审查第 1 轮 P3-1：人才表单）。
+ */
+const DISPATCH: Readonly<Record<string, readonly (readonly [string, string])[]>> = {
+  'modules/talent/routes.ts#forms': [['modules/talent/form-access.ts', 'talentFormHandler']],
+};
+
 const REGISTER_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'on']);
 /** 只把路由器变量上的调用当注册，避免把 `config.get(tx, key)` 之类当成路由。 */
 const ROUTER_NAMES = /^(router|module|app|sub|api|root)$/;
@@ -103,6 +111,8 @@ interface FileInfo {
   readonly consts: Map<string, ts.Expression>;
   /** 相对 import：本地名字 → 目标文件与原名（处理 `adminGuard as guard`）。 */
   readonly imports: Map<string, { readonly file: string; readonly name: string }>;
+  /** `import * as ns from './x.js'`：命名空间 → 目标文件（`ns.fn(…)` 按目标文件里的 fn 展开）。 */
+  readonly namespaces: Map<string, string>;
   /** `export { a } from './x.js'`：名字 → 目标文件；`export * from` 列表。 */
   readonly reexports: Map<string, string>;
   readonly starExports: string[];
@@ -156,6 +166,7 @@ function indexFile(file: string): FileInfo {
   const defs = new Map<string, string>();
   const consts = new Map<string, ts.Expression>();
   const imports = new Map<string, { file: string; name: string }>();
+  const namespaces = new Map<string, string>();
   const reexports = new Map<string, string>();
   const starExports: string[] = [];
   for (const statement of sf.statements) {
@@ -178,6 +189,7 @@ function indexFile(file: string): FileInfo {
           imports.set(element.name.text, { file: target, name: element.propertyName?.text ?? element.name.text });
         }
       }
+      if (ts.isNamespaceImport(bindings)) namespaces.set(bindings.name.text, target);
     }
     if (ts.isExportDeclaration(statement) && statement.moduleSpecifier) {
       const target = resolveRelative(file, (statement.moduleSpecifier as ts.StringLiteral).text);
@@ -187,7 +199,7 @@ function indexFile(file: string): FileInfo {
       } else starExports.push(target);
     }
   }
-  return { file, sf, defs, consts, imports, reexports, starExports };
+  return { file, sf, defs, consts, imports, namespaces, reexports, starExports };
 }
 
 export function indexSources(root = API_SRC): SourceIndex {
@@ -588,6 +600,18 @@ function constantTexts(index: SourceIndex, file: string, text: string): string[]
   });
 }
 
+/** 文本里 `ns.fn` 形式、ns 为命名空间 import 的引用：展开为目标文件里的 fn（叶子文件不展开）。 */
+function namespaceRefs(index: SourceIndex, file: string, text: string): { file: string; name: string }[] {
+  const info = index.files.get(file);
+  if (!info?.namespaces.size) return [];
+  const out: { file: string; name: string }[] = [];
+  for (const match of text.matchAll(/\b([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\b/g)) {
+    const target = info.namespaces.get(match[1]!);
+    if (target && !LEAF_FILES.has(target)) out.push({ file: target, name: match[2]! });
+  }
+  return out;
+}
+
 /** 处理函数文本 + 它（递归）引用的模块内函数文本；叶子文件不展开。`trace` 收集展开链（调试 / 统计）。 */
 export function closureText(
   index: SourceIndex,
@@ -600,9 +624,20 @@ export function closureText(
     ...constantTexts(index, registration.file, registration.handlerText),
   ];
   const visited = new Set<string>();
+  const handlerNames = identifiers(registration.handlerText);
+  const words = new Set([...registration.handlerText.matchAll(/\b[A-Za-z_$][\w$]*\b/g)].map((m) => m[0]));
+  const dispatched = [...words].flatMap((name) =>
+    (DISPATCH[`${path.relative(API_SRC, registration.file)}#${name}`] ?? []).map(([file, target]) => ({
+      file: path.join(API_SRC, file),
+      name: target,
+      depth: 0,
+    })),
+  );
   const queue: { file: string; name: string; depth: number }[] = [
-    ...identifiers(registration.handlerText).map((name) => ({ file: registration.file, name, depth: 0 })),
+    ...handlerNames.map((name) => ({ file: registration.file, name, depth: 0 })),
     ...registration.extraRoots.map((name) => ({ file: registration.file, name, depth: 0 })),
+    ...namespaceRefs(index, registration.file, registration.handlerText).map((ref) => ({ ...ref, depth: 0 })),
+    ...dispatched,
   ];
   while (queue.length) {
     const item = queue.shift()!;
@@ -616,6 +651,7 @@ export function closureText(
     parts.push(...constantTexts(index, hit.file, hit.text));
     if (item.depth < maxDepth) {
       for (const name of identifiers(hit.text)) queue.push({ file: hit.file, name, depth: item.depth + 1 });
+      for (const ref of namespaceRefs(index, hit.file, hit.text)) queue.push({ ...ref, depth: item.depth + 1 });
     }
   }
   return parts.join('\n');

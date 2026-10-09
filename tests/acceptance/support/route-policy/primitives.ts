@@ -7,11 +7,14 @@
  *   避免把业务深处共用函数里的判定算到每条路由头上；`modules`：只对这些模块的路由生效（同名函数跨模块）。
  * `name` 是写进基准的名字：守卫 / 前提用声明里要出现的名字（守卫点分名、前提为真实函数名），其他维度只记原语本身。
  */
+import { TALENT_OBJECTS } from '@italent/domain';
+
 export type Dimension =
   | 'admin'
   | 'object'
   | 'button'
   | 'scope'
+  | 'scopePoint'
   | 'fieldsOut'
   | 'fieldsIn'
   | 'relation'
@@ -21,7 +24,9 @@ export type Dimension =
   | 'postcheck'
   | 'precondition'
   | 'guard'
-  | 'failureAudit';
+  | 'failureAudit'
+  /** 本路由处理函数绑定的分支域（名字 = domains.ts 的域键）。 */
+  | 'domain';
 
 export interface Primitive {
   readonly dimension: Dimension;
@@ -32,6 +37,8 @@ export interface Primitive {
   readonly getOnly?: boolean;
   readonly near?: boolean;
   readonly modules?: readonly string[];
+  /** 只对最终路径匹配的路由生效（同一处理函数注册到多条路径、按路径参数有无走不同分支时）。 */
+  readonly paths?: RegExp;
 }
 
 const call = (fn: string) => new RegExp(`\\b${fn}\\s*\\(`);
@@ -45,6 +52,8 @@ const personnelAccess = (operations: string, withButton = false) =>
 const CONFIG_OBJECTS = /ContractSettings|ContractRenewalRule|EmploymentSettings|EmploymentCustomField/;
 /** transfer/routes.ts configurationContext：GET 查 object.view，写查 tenant.employment.configuration.write 别名。 */
 const CONFIGURATION_TERNARY = /write \? 'tenant\.employment\.configuration\.write' : 'object\.view'/;
+/** approval requireProcessButton(…, 'simulate' | 'simulateByObject') = requireProcessView。 */
+const SIMULATE_BUTTON = /requireProcessButton\([^)]*'simulate/;
 
 type Entry = readonly [string, RegExp, Partial<Omit<Primitive, 'dimension' | 'name' | 'pattern'>>?];
 function dimension(dim: Dimension, entries: readonly Entry[]): Primitive[] {
@@ -64,8 +73,8 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['tenant.settings.*', quoted('tenant.settings.')],
     ['tenant.employment.configuration', quoted('tenant.employment.configuration'), WRITE],
     ['isProcessAdmin', call('isProcessAdmin')],
-    ['requireProcessView', call('requireProcessView')],
-    ['requireProcessButton', call('requireProcessButton')],
+    // 仿真按钮 = 流程查看（管理员 或 对象查看），见 DISJUNCTIONS
+    ['requireProcessButton', call('requireProcessButton'), { unless: SIMULATE_BUTTON }],
     ['auditContext', call('auditContext')],
   ]),
   ...dimension('object', [
@@ -75,7 +84,6 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['readContext(object.*)', /readContext\(\s*c,\s*deps,\s*(?:'object\.|action)/],
     ['readPageContext', call('readPageContext')],
     ['personnel access', /\baccess\(\s*c,\s*deps/, { modules: ['personnel'] }],
-    ['requireProcessView', call('requireProcessView')],
     // 360 read() / write()：路由层 objectContext(need)（context.ts routeNeed）
     ['survey360 read/write(need)', /\b(read|write)(<[^>]*>)?\(\s*c,/, { modules: ['survey360'] }],
     ['idp part write', /\bwrite\(\s*'(templateModule|commonGoal)'/, { modules: ['idp'] }],
@@ -138,6 +146,19 @@ export const PRIMITIVES: readonly Primitive[] = [
     ],
     ['creator scope', calls('hasCreatorScope', 'creatorSql', 'scopeAllows'), NEAR],
   ]),
+  // 点校验：按单个目标（路径参数 / 请求体 / 记录属性）判定范围，范围外拒绝（与列表谓词区分，审查第 1 轮 P2-1）
+  ...dimension('scopePoint', [
+    // 子集列表与按员工子集列表共用处理函数：只有带 :employeeId 的路径才做 preflight（subset-routes.ts）
+    [
+      'requirePerson / preflight',
+      calls('requirePerson', 'preflight'),
+      { near: true, modules: ['personnel'], paths: /^(?!\/api\/tenant\/personnel\/subsets\/)/ },
+    ],
+    // 候选列表里的 visibleJob 是 assignmentReferences 守卫内部对 query 引用的校验（守卫 job.assignmentReferences 已登记）
+    ['visibleJob', call('visibleJob'), { near: true, unless: /\bassignmentReferences\(/ }],
+    ['employment point', calls('requireEmploymentScope', 'requireScopedEmploymentObject'), NEAR],
+    ['survey360 point', calls('requireActivity', 'requireVisibleObject'), { modules: ['survey360'] }],
+  ]),
   ...dimension('fieldsOut', [
     ['trimModuleResponse', call('trimModuleResponse')],
     ['trim()', /\btrim\(\s*deps/],
@@ -183,6 +204,8 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['instanceOfTask', call('instanceOfTask'), NEAR],
     ['currentAssignee（assertOpen / openTask）', calls('assertOpen', 'openTask'), NEAR],
     ['retrievable（retrievableTask）', call('retrievableTask'), NEAR],
+    // IDP 执行人：当前阶段在办待办人 + 节点按钮（plan-access.ts requireExecutor）
+    ['idp executor（requireExecutor）', call('requireExecutor'), { near: true, modules: ['idp'] }],
     [
       'initiator（withdraw / resubmit right）',
       calls('requireWithdrawRight', 'requireResubmitRight', 'mayResubmit'),
@@ -277,6 +300,76 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['job.employmentScope', call('authorizeSequenceTargets'), { modules: ['job'] }],
   ]),
   ...dimension('failureAudit', [['withFailedImportLog', call('withFailedImportLog'), NEAR]]),
+  // 分支域绑定：处理函数按哪个有限域分派（声明的选择器键必须等于本路由绑定的域，不能借别的模块同形的域）
+  ...dimension('domain', [
+    ['job.kind', /\bJOB_KINDS\b|\bJOB_OBJECT_CODES\b|\bobjectKind\(/, { modules: ['job'] }],
+    ['import.rowOperation', /'update'\s*:\s*'create'/, { modules: ['org', 'job'] }],
+    ['personnel.subset', /\bsubsetKind\(|\bSUBSETS\[/, { modules: ['personnel'] }],
+    ['approval.taskObject', call('fieldRights'), { modules: ['approval'] }],
+    ['transfer.initiator', /\binitiator\b/, { modules: ['employment'] }],
+    ['employment.importRowOperation', /operation === 'edit'/, { modules: ['employment'] }],
+    ['contracts.operation', /\bcontractAction\(|\bCONTRACT_FLOW\b/, { modules: ['contracts'] }],
+    ['contracts.commandButton', /\bcontractAction\(|\bCONTRACT_FLOW\b/, { modules: ['contracts'] }],
+    ['contracts.importMode', /'initialize'/, { modules: ['contracts'] }],
+    ['contracts.todoAction', /'decline'/, { modules: ['contracts'] }],
+    ['talent.object', /\bforms\[object/, { modules: ['talent'] }],
+    ['talent.formOperation', /operation !== 'create' && operation !== 'update'/, { modules: ['talent'] }],
+    ['talent.ownerUnitObject', call('ownerObject'), { modules: ['talent'] }],
+  ]),
+];
+
+/**
+ * “或”关系原语：现状代码里的准入是几条路径之一成立即可。基准记为 `or` 维度（名字），比较器要求声明的每个备选
+ * 至少满足其中一支；`absorbs` 里的维度只经这类原语观测到（如 HR 分支里解析查看权与范围但不拒绝），不再作必备维度。
+ * 分支义务可以是维度名，也可以是对象 × 数据操作 `obj:<编码 | *>:<操作>`（* = 任一对象）；`absorbs` 里的 `obj:` 项
+ * 是原语内部的对象判定事实（objects.ts），同样不再作必备事实。原语按调用点登记。
+ */
+export type Obligation = Dimension | `obj:${string}`;
+export interface Disjunction {
+  readonly name: string;
+  readonly pattern: RegExp;
+  readonly modules: readonly string[];
+  readonly branches: readonly (readonly Obligation[])[];
+  readonly absorbs: readonly Obligation[];
+}
+
+/** 人才标准对象编码（talent/access.ts codeOf）。 */
+const CRITERION = TALENT_OBJECTS.criterion.code;
+
+export const DISJUNCTIONS: readonly Disjunction[] = [
+  {
+    // approval/access.ts requireProcessView：isProcessAdmin 或 object.view 流程对象；仿真按钮同此
+    name: 'approval.requireProcessView',
+    pattern: new RegExp(`\\brequireProcessView\\(|${SIMULATE_BUTTON.source}`),
+    modules: ['approval'],
+    branches: [['admin'], ['object']],
+    absorbs: ['admin', 'object'],
+  },
+  {
+    // idp/plan-access.ts requireViewer：HR（计划查看权且员工在范围内）或 参与人（本人 / 指导人 / 当前待办人），都不是 404
+    name: 'idp.requireViewer',
+    pattern: call('requireViewer'),
+    modules: ['idp'],
+    branches: [['object', 'scope'], ['relation']],
+    absorbs: ['object', 'scope'],
+  },
+  {
+    // idp/plan-access.ts requireExecutor：（参与人 或 HR 看得到）且 当前阶段在办待办人 且 节点按钮——关系必备，
+    // HR 范围的解析只用于“看得到”判断，不单独拒绝
+    name: 'idp.requireExecutor',
+    pattern: call('requireExecutor'),
+    modules: ['idp'],
+    branches: [['relation']],
+    absorbs: ['object', 'scope'],
+  },
+  {
+    // talent/candidates.ts candidateContext：所选对象的新建权；人才标准另接受 编辑数据操作权 + 编辑按钮（DEC-316③）
+    name: 'talent.candidateContext',
+    pattern: call('candidateContext'),
+    modules: ['talent'],
+    branches: [['obj:*:create'], [`obj:${CRITERION}:update`, 'button']],
+    absorbs: ['button', `obj:${CRITERION}:update`],
+  },
 ];
 
 /** 目录里能观测到的守卫名（声明里出现这些名字时按双向比较）。 */
@@ -300,7 +393,12 @@ export interface Closures {
 }
 
 /** 对闭包文本匹配目录，得到 维度 → 命中的名字（排序去重）。 */
-export function scanPrimitives(closures: Closures, method: string, module: string): Record<string, string[]> {
+export function scanPrimitives(
+  closures: Closures,
+  method: string,
+  module: string,
+  routePath = '',
+): Record<string, string[]> {
   const deep = closures.deep.replace(/\s+/g, ' '); // 跨行调用（`write(\n  c,`）也按单行匹配
   const near = closures.near.replace(/\s+/g, ' ');
   const found: Record<string, Set<string>> = {};
@@ -308,10 +406,14 @@ export function scanPrimitives(closures: Closures, method: string, module: strin
     if (method === 'GET' && (WRITE_ONLY_DIMENSIONS.has(primitive.dimension) || primitive.writeOnly)) continue;
     if (method !== 'GET' && primitive.getOnly) continue;
     if (primitive.modules && !primitive.modules.includes(module)) continue;
+    if (primitive.paths && !primitive.paths.test(routePath)) continue;
     const text = primitive.near ? near : deep;
     if (!primitive.pattern.test(text)) continue;
     if (primitive.unless?.test(text)) continue;
     (found[primitive.dimension] ??= new Set()).add(primitive.name);
+  }
+  for (const or of DISJUNCTIONS) {
+    if (or.modules.includes(module) && or.pattern.test(deep)) (found['or'] ??= new Set()).add(or.name);
   }
   return Object.fromEntries(
     Object.entries(found)

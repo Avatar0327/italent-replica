@@ -164,7 +164,10 @@ describe('AC-PRM-FW-02 突变套件：第 5 轮列出的每类削弱都被报出
       );
       expect(mutants.length, `没有任何真实声明能施加突变 ${mutation.name}`).toBeGreaterThan(0);
       const undetected = mutants.filter(
-        (m) => !codes(compareDeclarations(frozen, [m.route])).some((code) => code.startsWith(mutation.expected)),
+        (m) =>
+          !codes(compareDeclarations(frozen, [m.route])).some((code) =>
+            mutation.expected.split('|').some((expected) => code.startsWith(expected)),
+          ),
       );
       expect(
         undetected.map((m) => `${m.route.method} ${m.route.path}`),

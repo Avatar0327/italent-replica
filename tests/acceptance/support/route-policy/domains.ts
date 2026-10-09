@@ -4,11 +4,72 @@
  * 删一个值就对不上任何域（WEAKER:domain）。常量变了基准必须跟着变（FW-02 freshness）。
  */
 import { JOB_OBJECT_CODES } from '@italent/api';
-import { CONTRACT_FLOW, CONTRACT_OBJECT, contractAction, SUBSETS, TALENT_OBJECTS } from '@italent/domain';
+import {
+  APPROVAL_TYPES,
+  CONTRACT_FLOW,
+  CONTRACT_OBJECT,
+  contractAction,
+  IDP_OBJECTS,
+  SUBSETS,
+  TALENT_OBJECTS,
+} from '@italent/domain';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import path from 'node:path';
+import { ADAPTERS } from '../../../../apps/api/src/modules/approval/adapters.js';
+import { API_SRC } from './scan.js';
 
 const CONTRACT_MODES = ['direct', 'application'] as const;
-/** 任职记录对象编码（apps/api/src/modules/employment/context.ts EMPLOYMENT_OBJECT）。 */
-const EMPLOYMENT_RECORD_OBJECT = 'TenantBase.EmploymentRecord';
+
+/**
+ * 审批适配器快照 `fieldObjectCode:` 的表达式 → 所属适配器与对象编码（审查第 1 轮 P2-2：从实际适配器生成，不手抄数组）。
+ * 源码里出现目录外的表达式、或运行时适配器（ADAPTERS）有键没被任何表达式覆盖，基准生成即失败，必须先在这里登记。
+ */
+const FIELD_OBJECT_EXPRESSIONS: Readonly<Record<string, { adapter: string; codes: readonly string[] }>> = {
+  // approval/adapters.ts 任职适配器：APPROVAL_TYPES[approvalType].objectCode（任职记录类审批类型）
+  'type.objectCode': {
+    adapter: 'employment',
+    codes: Object.values(APPROVAL_TYPES)
+      .filter((type) => type.adapter === 'employment')
+      .map((type) => type.objectCode),
+  },
+  // approval/adapters.ts 员工子集适配器
+  'SUBSETS[subset].objectCode': {
+    adapter: 'personnel_change',
+    codes: Object.values(SUBSETS).map((subset) => subset.objectCode),
+  },
+  // contracts/adapter.ts
+  CONTRACT_OBJECT: { adapter: 'contract', codes: [CONTRACT_OBJECT] },
+  // idp/approval-adapter.ts
+  'IDP_OBJECTS.plan.code': { adapter: 'idp', codes: [IDP_OBJECTS.plan.code] },
+};
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const file = path.join(dir, name);
+    if (statSync(file).isDirectory()) return sourceFiles(file);
+    // 登记表（policy.ts）是声明，不是现状来源
+    return file.endsWith('.ts') && name !== 'policy.ts' ? [file] : [];
+  });
+}
+
+/** 审批任务业务对象域：扫描全部 `fieldObjectCode: <表达式>`，按上表解析；每个运行时适配器都要有来源。 */
+function approvalTaskObjects(): string[] {
+  const codes = new Set<string>();
+  const adapters = new Set<string>();
+  for (const file of sourceFiles(API_SRC)) {
+    for (const match of readFileSync(file, 'utf8').matchAll(/\bfieldObjectCode:\s*([^,\n}]+?)\s*,/g)) {
+      const expression = match[1]!;
+      const resolved = FIELD_OBJECT_EXPRESSIONS[expression];
+      if (!resolved)
+        throw new Error(`审批适配器字段对象表达式未登记：${expression}（${path.relative(API_SRC, file)}）`);
+      for (const code of resolved.codes) codes.add(code);
+      adapters.add(resolved.adapter);
+    }
+  }
+  const missing = Object.keys(ADAPTERS).filter((key) => !adapters.has(key));
+  if (missing.length) throw new Error(`审批适配器 ${missing.join(' / ')} 没有找到 fieldObjectCode 来源`);
+  return [...codes].sort();
+}
 
 export function domainConstants(): Record<string, string[]> {
   const operations = Object.keys(CONTRACT_FLOW);
@@ -29,14 +90,10 @@ export function domainConstants(): Record<string, string[]> {
     'contracts.importMode': ['add', 'change', 'edit', 'initialize'],
     // apps/api/src/modules/transfer/service.ts `initiator: z.enum([...])`
     'transfer.initiator': ['employee', 'hr', 'manager'],
-    // 审批任务所属业务对象：任职记录、合同、人员子集（personnel_change）
-    'approval.taskObject': [
-      EMPLOYMENT_RECORD_OBJECT,
-      CONTRACT_OBJECT,
-      ...Object.values(SUBSETS).map((subset) => subset.objectCode),
-    ].sort(),
-    // 重提 / 撤回权按业务类型分支（approval/access.ts）
-    'approval.businessType': ['contract', 'employment', 'personnel_change'],
+    // 审批任务所属业务对象：运行时适配器快照的 fieldObjectCode（任职记录、合同、人员子集、IDP 计划）
+    'approval.taskObject': approvalTaskObjects(),
+    // 重提 / 撤回权按业务类型分支（approval/access.ts）：运行时适配器的键
+    'approval.businessType': Object.keys(ADAPTERS).sort(),
     // 经理待办页签（transfer/manager-routes.ts）
     'manager.tab': ['initiated', 'pending', 'processed'],
     // 导入逐行操作（org / job import-service）；任职导入逐行为 create / edit（employment/forward-import.ts）
@@ -44,6 +101,8 @@ export function domainConstants(): Record<string, string[]> {
     'employment.importRowOperation': ['create', 'edit'],
     // 人才标准六对象（forms/:object）与可选所属管理单元的五对象（candidates/owner-orgs，字典不设单元）
     'talent.object': Object.keys(TALENT_OBJECTS).sort(),
+    // 人才表单的 operation 查询参数（talent/form-access.ts talentFormHandler：create / update，其余 400）
+    'talent.formOperation': ['create', 'update'],
     'talent.ownerUnitObject': Object.keys(TALENT_OBJECTS)
       .filter((key) => key !== 'descriptionType')
       .sort(),

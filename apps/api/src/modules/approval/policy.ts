@@ -33,6 +33,7 @@ import {
   APPROVAL_INSTANCE_OBJECT,
   APPROVAL_PROCESS_OBJECT,
   CONTRACT_OBJECT,
+  IDP_OBJECTS,
   MODULE_OBJECTS,
   SUBSETS,
 } from '@italent/domain';
@@ -126,11 +127,15 @@ const processCommand = commandWrite(PROCESS_CONFIG, noProcessScope);
 const processAdmin = (extra: PolicyBase = {}) => admin('process_matrix', { fields: PROCESS_ALL, ...extra });
 
 // ---- 任务动作（§3.3 八个动作）-----------------------------------------------------------------------------------------
-/** 任务所属业务快照的字段对象（adapters.ts snapshot.fieldObjectCode）：任职记录 / 合同 / 人员子集各对象。 */
+/**
+ * 任务所属业务快照的字段对象（adapters.ts snapshot.fieldObjectCode）：任职记录 / 合同 / 人员子集各对象 /
+ * IDP 计划（idp/approval-adapter.ts，R3-T07）。
+ */
 const TASK_OBJECT_DOMAIN = [
   MODULE_OBJECTS.employmentRecord.code,
   CONTRACT_OBJECT,
   ...Object.values(SUBSETS).map((subset) => subset.objectCode),
+  IDP_OBJECTS.plan.code,
 ];
 const TASK_OBJECT: ObjectSelector = {
   from: 'record',

@@ -3,9 +3,11 @@
     "approval.businessType": [
       "contract",
       "employment",
+      "idp",
       "personnel_change"
     ],
     "approval.taskObject": [
+      "IDP.Idp",
       "TenantBase.Awards",
       "TenantBase.Certificate",
       "TenantBase.Education",
@@ -92,6 +94,10 @@
       "training",
       "vocational-qualification"
     ],
+    "talent.formOperation": [
+      "create",
+      "update"
+    ],
     "talent.object": [
       "criterion",
       "criterionCategory",
@@ -162,6 +168,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite",
           "transfer write",
@@ -191,6 +200,9 @@
           "scope.all",
           "scopeSql",
           "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -221,6 +233,9 @@
         ],
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:delete"
         ],
         "postcheck": [
           "establishment check*"
@@ -293,6 +308,12 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "IDP.Idp:delete"
+        ],
+        "precondition": [
+          "openRun"
+        ],
         "scope": [
           "creator scope",
           "requestScope",
@@ -326,6 +347,13 @@
         "object": [
           "object.* 动作"
         ],
+        "or": [
+          "idp.requireExecutor",
+          "idp.requireViewer"
+        ],
+        "relation": [
+          "idp executor（requireExecutor）"
+        ],
         "scope": [
           "requestScope",
           "resolveModuleScope"
@@ -354,6 +382,13 @@
         ],
         "object": [
           "object.* 动作"
+        ],
+        "or": [
+          "idp.requireExecutor",
+          "idp.requireViewer"
+        ],
+        "relation": [
+          "idp executor（requireExecutor）"
         ],
         "scope": [
           "requestScope",
@@ -446,6 +481,9 @@
         ],
         "object": [
           "idp part write"
+        ],
+        "scope": [
+          "creator scope"
         ]
       }
     },
@@ -471,6 +509,9 @@
         ],
         "object": [
           "idp part write"
+        ],
+        "scope": [
+          "creator scope"
         ]
       }
     },
@@ -573,6 +614,9 @@
         ],
         "object": [
           "org context(read|create|update|delete)"
+        ],
+        "objectOp": [
+          "TenantBase.Organization:delete"
         ],
         "scope": [
           "requestScope",
@@ -684,11 +728,17 @@
           "revision(c)",
           "write() / command()"
         ],
+        "domain": [
+          "personnel.subset"
+        ],
         "fieldsOut": [
           "org write()"
         ],
         "object": [
           "personnel access"
+        ],
+        "objectOp": [
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:delete"
         ],
         "scope": [
           "personnel access"
@@ -750,6 +800,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -778,6 +831,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -809,6 +865,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -840,6 +899,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -936,9 +998,14 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.TalentCriterion:update",
+          "TalentCenter.TalentCriterion:view"
+        ],
         "scope": [
           "requestScope",
-          "resolveModuleScope"
+          "resolveModuleScope",
+          "visible()"
         ]
       }
     },
@@ -1393,15 +1460,14 @@
       "module": "approval",
       "primitives": {
         "admin": [
-          "isProcessAdmin",
-          "requireProcessView"
+          "isProcessAdmin"
         ],
         "fieldsOut": [
           "trimModuleResponse",
           "trimProcess"
         ],
-        "object": [
-          "requireProcessView"
+        "or": [
+          "approval.requireProcessView"
         ]
       }
     },
@@ -1423,15 +1489,14 @@
       "module": "approval",
       "primitives": {
         "admin": [
-          "isProcessAdmin",
-          "requireProcessView"
+          "isProcessAdmin"
         ],
         "fieldsOut": [
           "trimModuleResponse",
           "trimProcess"
         ],
-        "object": [
-          "requireProcessView"
+        "or": [
+          "approval.requireProcessView"
         ]
       }
     },
@@ -1473,11 +1538,8 @@
       },
       "module": "approval",
       "primitives": {
-        "admin": [
-          "requireProcessView"
-        ],
-        "object": [
-          "requireProcessView"
+        "or": [
+          "approval.requireProcessView"
         ]
       }
     },
@@ -1877,6 +1939,9 @@
         "button": [
           "requireTransferButton"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsOut": [
           "trimEmploymentResponse"
         ],
@@ -1948,6 +2013,9 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentCustomField:view"
         ]
       }
     },
@@ -2092,6 +2160,9 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:view"
         ]
       }
     },
@@ -2115,6 +2186,9 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
         ],
         "scope": [
           "checkScope",
@@ -2145,6 +2219,9 @@
       "primitives": {
         "button": [
           "requireTransferButton"
+        ],
+        "domain": [
+          "transfer.initiator"
         ],
         "object": [
           "readPageContext"
@@ -2202,6 +2279,10 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentContract:view",
+          "TenantBase.EmploymentRecord:view"
         ],
         "scope": [
           "checkScope",
@@ -2503,6 +2584,9 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:view"
+        ],
         "scope": [
           "creator scope",
           "requestScope",
@@ -2533,6 +2617,9 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:view"
+        ],
         "scope": [
           "establishment visible*/check*",
           "requestScope"
@@ -2561,6 +2648,9 @@
         ],
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:view"
         ],
         "scope": [
           "establishment visible*/check*",
@@ -2591,6 +2681,9 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:view"
+        ],
         "scope": [
           "establishment visible*/check*",
           "requestScope"
@@ -2619,6 +2712,9 @@
         ],
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:view"
         ],
         "own": [
           "listTodos / listNotifications / listInstances"
@@ -2652,6 +2748,9 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:view"
+        ],
         "scope": [
           "creator scope",
           "requestScope",
@@ -2682,6 +2781,9 @@
         ],
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:view"
         ],
         "scope": [
           "establishment visible*/check*",
@@ -2731,6 +2833,9 @@
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "IDP.IDPProcess:view"
         ]
       }
     },
@@ -2833,6 +2938,9 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "IDP.Idp:view"
+        ],
         "scope": [
           "creator scope",
           "requestScope",
@@ -2863,6 +2971,9 @@
         "object": [
           "object.* 动作"
         ],
+        "or": [
+          "idp.requireViewer"
+        ],
         "scope": [
           "requestScope",
           "resolveModuleScope",
@@ -2890,6 +3001,12 @@
         "object": [
           "object.* 动作"
         ],
+        "or": [
+          "idp.requireExecutor"
+        ],
+        "relation": [
+          "idp executor（requireExecutor）"
+        ],
         "scope": [
           "requestScope"
         ]
@@ -2915,6 +3032,9 @@
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "IDP.IDPProcess:view"
         ],
         "scope": [
           "requestScope",
@@ -2944,6 +3064,9 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "IDP.IDPProcess:view"
+        ],
         "scope": [
           "creator scope",
           "requestScope"
@@ -2970,6 +3093,9 @@
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "IDP.IDPTemplate:view"
         ],
         "scope": [
           "requestScope",
@@ -2998,6 +3124,9 @@
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "IDP.IDPTemplate:view"
         ],
         "scope": [
           "creator scope",
@@ -3134,6 +3263,9 @@
       },
       "module": "job",
       "primitives": {
+        "domain": [
+          "job.kind"
+        ],
         "fieldsOut": [
           "trimModuleResponse"
         ],
@@ -3165,6 +3297,9 @@
       },
       "module": "job",
       "primitives": {
+        "domain": [
+          "job.kind"
+        ],
         "fieldsOut": [
           "trimModuleResponse"
         ],
@@ -3173,6 +3308,9 @@
         ],
         "scope": [
           "requestScope",
+          "visibleJob"
+        ],
+        "scopePoint": [
           "visibleJob"
         ]
       }
@@ -3194,6 +3332,9 @@
       },
       "module": "job",
       "primitives": {
+        "domain": [
+          "job.kind"
+        ],
         "fieldsOut": [
           "trimModuleResponse"
         ],
@@ -3230,6 +3371,9 @@
       },
       "module": "job",
       "primitives": {
+        "domain": [
+          "job.kind"
+        ],
         "fieldsOut": [
           "trimModuleResponse"
         ],
@@ -3353,6 +3497,9 @@
         "object": [
           "org context(read|create|update|delete)"
         ],
+        "objectOp": [
+          "TenantBase.Organization:view"
+        ],
         "scope": [
           "creator scope",
           "requestScope",
@@ -3382,6 +3529,9 @@
         ],
         "object": [
           "org context(read|create|update|delete)"
+        ],
+        "objectOp": [
+          "TenantBase.Organization:view"
         ],
         "scope": [
           "creator scope",
@@ -3453,6 +3603,9 @@
         ],
         "object": [
           "org context(read|create|update|delete)"
+        ],
+        "objectOp": [
+          "TenantBase.Organization:view"
         ]
       }
     },
@@ -3963,8 +4116,14 @@
         "object": [
           "personnel access"
         ],
+        "objectOp": [
+          "TenantBase.PersonalInformationChange:view"
+        ],
         "scope": [
           "personnel access",
+          "requirePerson / preflight"
+        ],
+        "scopePoint": [
           "requirePerson / preflight"
         ],
         "self": [
@@ -3998,6 +4157,9 @@
         "object": [
           "personnel access"
         ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view"
+        ],
         "scope": [
           "personScope",
           "personnel access"
@@ -4021,6 +4183,9 @@
       },
       "module": "personnel",
       "primitives": {
+        "domain": [
+          "personnel.subset"
+        ],
         "fieldsOut": [
           "trimWithFields / trimSubset"
         ],
@@ -4030,9 +4195,15 @@
         "object": [
           "personnel access"
         ],
+        "objectOp": [
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
+        ],
         "scope": [
           "personScope",
           "personnel access",
+          "requirePerson / preflight"
+        ],
+        "scopePoint": [
           "requirePerson / preflight"
         ]
       }
@@ -4054,14 +4225,23 @@
       },
       "module": "personnel",
       "primitives": {
+        "domain": [
+          "personnel.subset"
+        ],
         "fieldsOut": [
           "trim()"
         ],
         "object": [
           "personnel access"
         ],
+        "objectOp": [
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
+        ],
         "scope": [
           "personnel access",
+          "requirePerson / preflight"
+        ],
+        "scopePoint": [
           "requirePerson / preflight"
         ]
       }
@@ -4086,14 +4266,23 @@
         "button": [
           "personnel access(button)"
         ],
+        "domain": [
+          "personnel.subset"
+        ],
         "fieldsOut": [
           "trimWithFields / trimSubset"
         ],
         "object": [
           "personnel access"
         ],
+        "objectOp": [
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
+        ],
         "scope": [
           "personnel access",
+          "requirePerson / preflight"
+        ],
+        "scopePoint": [
           "requirePerson / preflight"
         ]
       }
@@ -4115,6 +4304,9 @@
       },
       "module": "personnel",
       "primitives": {
+        "domain": [
+          "personnel.subset"
+        ],
         "fieldsOut": [
           "trim()",
           "trimWithFields / trimSubset"
@@ -4123,11 +4315,17 @@
           "object.* 动作",
           "personnel access"
         ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view"
+        ],
         "scope": [
           "personScope",
           "personnel access",
           "requirePerson / preflight",
           "resolveModuleScope"
+        ],
+        "scopePoint": [
+          "requirePerson / preflight"
         ]
       }
     },
@@ -4157,8 +4355,14 @@
         "object": [
           "personnel access"
         ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view"
+        ],
         "scope": [
           "personnel access",
+          "requirePerson / preflight"
+        ],
+        "scopePoint": [
           "requirePerson / preflight"
         ]
       }
@@ -4186,8 +4390,14 @@
         "object": [
           "personnel access"
         ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view"
+        ],
         "scope": [
           "personnel access",
+          "requirePerson / preflight"
+        ],
+        "scopePoint": [
           "requirePerson / preflight"
         ]
       }
@@ -4231,6 +4441,9 @@
       },
       "module": "personnel",
       "primitives": {
+        "domain": [
+          "personnel.subset"
+        ],
         "fieldsOut": [
           "trimWithFields / trimSubset"
         ],
@@ -4239,6 +4452,9 @@
         ],
         "object": [
           "personnel access"
+        ],
+        "objectOp": [
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:view"
         ],
         "scope": [
           "personScope",
@@ -4478,6 +4694,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -4503,6 +4722,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -4529,6 +4751,9 @@
         "scope": [
           "scopeSql",
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -4555,6 +4780,9 @@
         "scope": [
           "scopeSql",
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -4580,6 +4808,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -4799,6 +5030,9 @@
       "primitives": {
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Dimension:view"
         ]
       }
     },
@@ -4824,6 +5058,9 @@
         ],
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.Dimension:view"
         ],
         "scope": [
           "creator scope",
@@ -4853,9 +5090,18 @@
         "button": [
           "button()"
         ],
+        "domain": [
+          "talent.ownerUnitObject"
+        ],
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "TalentCenter.TalentCriterion:update"
+        ],
+        "or": [
+          "talent.candidateContext"
         ],
         "scope": [
           "creator scope",
@@ -4944,8 +5190,13 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.TalentCriterion:update",
+          "TalentCenter.TalentCriterion:view"
+        ],
         "scope": [
-          "resolveModuleScope"
+          "resolveModuleScope",
+          "visible()"
         ]
       }
     },
@@ -4969,8 +5220,12 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.TalentCriterion:view"
+        ],
         "scope": [
-          "resolveModuleScope"
+          "resolveModuleScope",
+          "visible()"
         ]
       }
     },
@@ -5218,7 +5473,22 @@
         }
       },
       "module": "talent",
-      "primitives": {}
+      "primitives": {
+        "button": [
+          "button()"
+        ],
+        "domain": [
+          "talent.formOperation",
+          "talent.object"
+        ],
+        "object": [
+          "objectContext"
+        ],
+        "scope": [
+          "resolveModuleScope",
+          "visible()"
+        ]
+      }
     },
     "GET /api/tenant/talent/libraries": {
       "edge": {
@@ -5317,6 +5587,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite",
           "transfer write"
@@ -5332,6 +5605,9 @@
           "object.* 动作",
           "readContext(object.*)"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
         "precondition": [
           "transferBusinessContext"
         ],
@@ -5341,6 +5617,9 @@
           "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -5380,12 +5659,18 @@
           "object.* 动作",
           "readContext(object.*)"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
         "scope": [
           "employment scope",
           "employment visibility",
           "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -5416,6 +5701,9 @@
         ],
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:update"
         ],
         "postcheck": [
           "establishment check*"
@@ -5455,6 +5743,9 @@
         ],
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:update"
         ],
         "postcheck": [
           "establishment check*"
@@ -5533,7 +5824,15 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "IDP.Idp:update"
+        ],
+        "or": [
+          "idp.requireViewer"
+        ],
         "scope": [
+          "creator scope",
+          "employment visibility",
           "requestScope",
           "resolveModuleScope",
           "visible()"
@@ -5563,6 +5862,13 @@
         "object": [
           "object.* 动作"
         ],
+        "or": [
+          "idp.requireExecutor",
+          "idp.requireViewer"
+        ],
+        "relation": [
+          "idp executor（requireExecutor）"
+        ],
         "scope": [
           "requestScope",
           "resolveModuleScope"
@@ -5591,6 +5897,13 @@
         ],
         "object": [
           "object.* 动作"
+        ],
+        "or": [
+          "idp.requireExecutor",
+          "idp.requireViewer"
+        ],
+        "relation": [
+          "idp executor（requireExecutor）"
         ],
         "scope": [
           "requestScope",
@@ -5629,7 +5942,8 @@
           "objectContext"
         ],
         "scope": [
-          "creator scope"
+          "creator scope",
+          "visible()"
         ]
       }
     },
@@ -5665,7 +5979,8 @@
         ],
         "scope": [
           "creator scope",
-          "requestScope"
+          "requestScope",
+          "visible()"
         ]
       }
     },
@@ -5694,6 +6009,9 @@
         ],
         "object": [
           "idp part write"
+        ],
+        "scope": [
+          "creator scope"
         ]
       }
     },
@@ -5722,6 +6040,9 @@
         ],
         "object": [
           "idp part write"
+        ],
+        "scope": [
+          "creator scope"
         ]
       }
     },
@@ -5823,6 +6144,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "job.kind"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite",
           "requireObjectWrite",
@@ -5849,6 +6173,10 @@
           "scope.all",
           "scopeSql",
           "visible()",
+          "visibleJob"
+        ],
+        "scopePoint": [
+          "employment point",
           "visibleJob"
         ]
       }
@@ -5890,6 +6218,9 @@
         ],
         "object": [
           "org context(read|create|update|delete)"
+        ],
+        "objectOp": [
+          "TenantBase.Organization:update"
         ],
         "postcheck": [
           "org result"
@@ -5934,6 +6265,9 @@
         "object": [
           "org context(read|create|update|delete)"
         ],
+        "objectOp": [
+          "TenantBase.Organization:update"
+        ],
         "scope": [
           "creator scope",
           "requestScope",
@@ -5966,6 +6300,9 @@
           "revision(c)",
           "write() / command()"
         ],
+        "domain": [
+          "personnel.subset"
+        ],
         "fieldsIn": [
           "personnel access(create|update)"
         ],
@@ -5974,6 +6311,9 @@
         ],
         "object": [
           "personnel access"
+        ],
+        "objectOp": [
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:update"
         ],
         "scope": [
           "personnel access"
@@ -6013,6 +6353,9 @@
         ],
         "object": [
           "personnel access"
+        ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:update"
         ],
         "scope": [
           "personnel access"
@@ -6778,8 +7121,8 @@
       },
       "module": "approval",
       "primitives": {
-        "admin": [
-          "requireProcessButton"
+        "or": [
+          "approval.requireProcessView"
         ]
       }
     },
@@ -6829,8 +7172,8 @@
       },
       "module": "approval",
       "primitives": {
-        "admin": [
-          "requireProcessButton"
+        "or": [
+          "approval.requireProcessView"
         ]
       }
     },
@@ -6854,6 +7197,9 @@
         "command": [
           "assertRevision",
           "write() / command()"
+        ],
+        "domain": [
+          "approval.taskObject"
         ],
         "fieldsIn": [
           "fieldRights"
@@ -6900,6 +7246,9 @@
         "command": [
           "assertRevision",
           "write() / command()"
+        ],
+        "domain": [
+          "approval.taskObject"
         ],
         "fieldsIn": [
           "fieldRights"
@@ -6981,6 +7330,9 @@
           "assertRevision",
           "write() / command()"
         ],
+        "domain": [
+          "approval.taskObject"
+        ],
         "fieldsIn": [
           "fieldRights"
         ],
@@ -7022,6 +7374,9 @@
         "command": [
           "assertRevision",
           "write() / command()"
+        ],
+        "domain": [
+          "approval.taskObject"
         ],
         "fieldsIn": [
           "fieldRights"
@@ -7101,6 +7456,9 @@
           "assertRevision",
           "write() / command()"
         ],
+        "domain": [
+          "approval.taskObject"
+        ],
         "fieldsIn": [
           "fieldRights"
         ],
@@ -7142,6 +7500,9 @@
         "command": [
           "assertRevision",
           "write() / command()"
+        ],
+        "domain": [
+          "approval.taskObject"
         ],
         "fieldsIn": [
           "fieldRights"
@@ -7261,6 +7622,10 @@
         "command": [
           "write() / command()"
         ],
+        "domain": [
+          "contracts.commandButton",
+          "contracts.operation"
+        ],
         "fieldsIn": [
           "checkFields"
         ],
@@ -7299,6 +7664,10 @@
         "command": [
           "write() / command()"
         ],
+        "domain": [
+          "contracts.commandButton",
+          "contracts.operation"
+        ],
         "fieldsIn": [
           "checkFields"
         ],
@@ -7336,6 +7705,9 @@
         ],
         "command": [
           "write() / command()"
+        ],
+        "domain": [
+          "contracts.importMode"
         ],
         "failureAudit": [
           "withFailedImportLog"
@@ -7382,6 +7754,9 @@
           "buttonResource",
           "object.button"
         ],
+        "domain": [
+          "contracts.importMode"
+        ],
         "fieldsIn": [
           "checkFields"
         ],
@@ -7420,6 +7795,9 @@
         "button": [
           "buttonResource",
           "object.button"
+        ],
+        "domain": [
+          "contracts.importMode"
         ],
         "fieldsIn": [
           "checkFields"
@@ -7598,6 +7976,9 @@
           "assertRevision",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "contracts.todoAction"
+        ],
         "guard": [
           "approval.resubmitRight"
         ],
@@ -7642,6 +8023,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite"
         ],
@@ -7655,6 +8039,9 @@
         "object": [
           "object.* 动作",
           "readContext(object.*)"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
           "employment visibility",
@@ -7689,6 +8076,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite",
           "transfer write",
@@ -7718,6 +8108,9 @@
           "scope.all",
           "scopeSql",
           "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -7746,6 +8139,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite",
           "transfer write",
@@ -7775,6 +8171,9 @@
           "scope.all",
           "scopeSql",
           "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -7803,6 +8202,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite",
           "transfer write",
@@ -7832,6 +8234,9 @@
           "scope.all",
           "scopeSql",
           "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -7865,6 +8270,9 @@
         ],
         "fieldsOut": [
           "employment runWrite()"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentCustomField:create"
         ]
       }
     },
@@ -7900,9 +8308,15 @@
           "object.* 动作",
           "readContext(object.*)"
         ],
+        "objectOp": [
+          "TenantBase.Employee:create"
+        ],
         "scope": [
           "employment scope",
           "readContext（非配置对象）"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -7946,11 +8360,17 @@
           "object.* 动作",
           "readContext(object.*)"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create"
+        ],
         "scope": [
           "employment scope",
           "employment visibility",
           "scope.all",
           "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -7990,6 +8410,9 @@
         "scope": [
           "employment scope",
           "readPageContext"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -8019,6 +8442,10 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "employment.importRowOperation",
+          "transfer.initiator"
+        ],
         "failureAudit": [
           "withFailedImportLog"
         ],
@@ -8040,6 +8467,9 @@
           "object.* 动作",
           "readContext(object.*)"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:view"
+        ],
         "postcheck": [
           "employment result"
         ],
@@ -8048,6 +8478,9 @@
           "employment visibility",
           "scope.all",
           "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -8072,6 +8505,10 @@
           "object.button",
           "requireTransferButton"
         ],
+        "domain": [
+          "employment.importRowOperation",
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite",
           "transfer write"
@@ -8095,6 +8532,9 @@
           "readPageContext",
           "scope.all",
           "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -8130,6 +8570,9 @@
           "employment visibility",
           "readPageContext",
           "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -8171,6 +8614,9 @@
           "readPageContext",
           "scope.all",
           "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -8209,12 +8655,18 @@
           "object.* 动作",
           "readContext(object.*)"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
         "scope": [
           "employment scope",
           "employment visibility",
           "readContext（非配置对象）",
           "scope.all",
           "scopeSql"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -8245,6 +8697,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "checkFields",
           "linkage write",
@@ -8266,6 +8721,9 @@
           "readContext(object.*)",
           "requireObjectWrite（对象写操作权）"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:create"
+        ],
         "scope": [
           "checkScope",
           "employment scope",
@@ -8273,6 +8731,9 @@
           "scope.all",
           "scopeSql",
           "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -8296,6 +8757,9 @@
         "button": [
           "requireTransferButton"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "transfer write"
         ],
@@ -8315,6 +8779,9 @@
           "employment scope",
           "employment visibility",
           "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ]
       }
     },
@@ -8356,6 +8823,9 @@
           "readContext(object.*)",
           "requireObjectWrite（对象写操作权）"
         ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
+        ],
         "scope": [
           "employment visibility",
           "readContext（非配置对象）",
@@ -8391,6 +8861,9 @@
         ],
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:create"
         ],
         "scope": [
           "creator scope",
@@ -8430,6 +8903,9 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:create"
+        ],
         "scope": [
           "establishment visible*/check*",
           "requestScope"
@@ -8467,6 +8943,9 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:update"
+        ],
         "scope": [
           "creator scope",
           "establishment visible*/check*",
@@ -8502,6 +8981,9 @@
         ],
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "TenantBase.OrganizationEstablishment:create"
         ],
         "scope": [
           "requestScope",
@@ -8577,8 +9059,15 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "IDP.Idp:create"
+        ],
+        "or": [
+          "idp.requireViewer"
+        ],
         "scope": [
           "creator scope",
+          "employment visibility",
           "requestScope",
           "resolveModuleScope",
           "visible()"
@@ -8607,6 +9096,13 @@
         ],
         "object": [
           "object.* 动作"
+        ],
+        "or": [
+          "idp.requireExecutor",
+          "idp.requireViewer"
+        ],
+        "relation": [
+          "idp executor（requireExecutor）"
         ],
         "scope": [
           "requestScope",
@@ -8637,6 +9133,13 @@
         "object": [
           "object.* 动作"
         ],
+        "or": [
+          "idp.requireExecutor",
+          "idp.requireViewer"
+        ],
+        "relation": [
+          "idp executor（requireExecutor）"
+        ],
         "scope": [
           "requestScope",
           "resolveModuleScope"
@@ -8664,11 +9167,25 @@
           "button()"
         ],
         "command": [
+          "assertRevision",
           "revision(c)"
         ],
         "object": [
           "object.* 动作",
           "objectContext"
+        ],
+        "objectOp": [
+          "IDP.Idp:update"
+        ],
+        "or": [
+          "idp.requireViewer"
+        ],
+        "precondition": [
+          "assertBusinessUnchanged",
+          "assertNotNodeAssignee",
+          "assertNotSelf",
+          "assertReviewer",
+          "openRun"
         ],
         "scope": [
           "requestScope",
@@ -8704,6 +9221,12 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "IDP.Idp:update"
+        ],
+        "or": [
+          "idp.requireViewer"
+        ],
         "scope": [
           "requestScope",
           "resolveModuleScope",
@@ -8736,6 +9259,12 @@
         ],
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "IDP.Idp:update"
+        ],
+        "precondition": [
+          "openRun"
         ],
         "scope": [
           "requestScope"
@@ -8772,7 +9301,11 @@
           "object.* 动作",
           "objectContext"
         ],
+        "objectOp": [
+          "IDP.Task:create"
+        ],
         "scope": [
+          "creator scope",
           "requestScope"
         ]
       }
@@ -8802,6 +9335,12 @@
         ],
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "IDP.Idp:update"
+        ],
+        "precondition": [
+          "openRun"
         ],
         "scope": [
           "requestScope"
@@ -8833,6 +9372,12 @@
         ],
         "object": [
           "objectContext"
+        ],
+        "objectOp": [
+          "IDP.Idp:update"
+        ],
+        "precondition": [
+          "openRun"
         ],
         "scope": [
           "requestScope"
@@ -8870,7 +9415,8 @@
           "objectContext"
         ],
         "scope": [
-          "creator scope"
+          "creator scope",
+          "visible()"
         ]
       }
     },
@@ -8906,7 +9452,8 @@
         ],
         "scope": [
           "creator scope",
-          "requestScope"
+          "requestScope",
+          "visible()"
         ]
       }
     },
@@ -8935,6 +9482,9 @@
         ],
         "object": [
           "idp part write"
+        ],
+        "scope": [
+          "creator scope"
         ]
       }
     },
@@ -8970,7 +9520,8 @@
         ],
         "scope": [
           "creator scope",
-          "requestScope"
+          "requestScope",
+          "visible()"
         ]
       }
     },
@@ -8999,6 +9550,9 @@
         ],
         "object": [
           "idp part write"
+        ],
+        "scope": [
+          "creator scope"
         ]
       }
     },
@@ -9162,6 +9716,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "job.kind"
+        ],
         "fieldsIn": [
           "writeFields"
         ],
@@ -9205,6 +9762,10 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "import.rowOperation",
+          "job.kind"
+        ],
         "failureAudit": [
           "withFailedImportLog"
         ],
@@ -9227,6 +9788,9 @@
           "resolveModuleScope",
           "scope.all",
           "visible()",
+          "visibleJob"
+        ],
+        "scopePoint": [
           "visibleJob"
         ]
       }
@@ -9255,6 +9819,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "job.kind"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite",
           "writeFields"
@@ -9270,6 +9837,9 @@
           "employment visibility",
           "requestScope",
           "resolveModuleScope",
+          "visibleJob"
+        ],
+        "scopePoint": [
           "visibleJob"
         ]
       }
@@ -9298,6 +9868,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "job.kind"
+        ],
         "fieldsIn": [
           "requireEmploymentWrite",
           "writeFields"
@@ -9313,6 +9886,9 @@
           "employment visibility",
           "requestScope",
           "resolveModuleScope",
+          "visibleJob"
+        ],
+        "scopePoint": [
           "visibleJob"
         ]
       }
@@ -9336,6 +9912,9 @@
       "primitives": {
         "button": [
           "button()"
+        ],
+        "domain": [
+          "job.kind"
         ],
         "guard": [
           "job.assignmentReferences"
@@ -9383,6 +9962,9 @@
         "object": [
           "org context(read|create|update|delete)"
         ],
+        "objectOp": [
+          "TenantBase.Organization:create"
+        ],
         "scope": [
           "requestScope",
           "visible()"
@@ -9414,6 +9996,9 @@
           "revision(c)",
           "write() / command()"
         ],
+        "domain": [
+          "import.rowOperation"
+        ],
         "failureAudit": [
           "withFailedImportLog"
         ],
@@ -9428,6 +10013,9 @@
         ],
         "object": [
           "org context(read|create|update|delete)"
+        ],
+        "objectOp": [
+          "TenantBase.Organization:view"
         ],
         "postcheck": [
           "org result"
@@ -9474,6 +10062,9 @@
         "object": [
           "org context(read|create|update|delete)"
         ],
+        "objectOp": [
+          "TenantBase.Organization:create"
+        ],
         "scope": [
           "creator scope",
           "requestScope",
@@ -9507,6 +10098,9 @@
         ],
         "object": [
           "org context(read|create|update|delete)"
+        ],
+        "objectOp": [
+          "TenantBase.Organization:update"
         ],
         "postcheck": [
           "org result"
@@ -9552,6 +10146,9 @@
         ],
         "object": [
           "org context(read|create|update|delete)"
+        ],
+        "objectOp": [
+          "TenantBase.Organization:create"
         ],
         "scope": [
           "creator scope",
@@ -9797,6 +10394,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "personnel.subset"
+        ],
         "fieldsIn": [
           "assertSelfServiceFields"
         ],
@@ -9836,6 +10436,9 @@
           "revision(c)",
           "write() / command()"
         ],
+        "domain": [
+          "personnel.subset"
+        ],
         "fieldsIn": [
           "personnel access(create|update)"
         ],
@@ -9844,6 +10447,9 @@
         ],
         "object": [
           "personnel access"
+        ],
+        "objectOp": [
+          "TenantBase.Awards|TenantBase.Certificate|TenantBase.Education|TenantBase.EstimationResult|TenantBase.Family|TenantBase.Languageability|TenantBase.ProfessionalTechnicalPostInfo|TenantBase.ProjectExperience|TenantBase.Punish|TenantBase.Skill|TenantBase.Training|TenantBase.VocationalQualificationInfo|TenantBase.jobhistory:create"
         ],
         "scope": [
           "personnel access"
@@ -9879,6 +10485,9 @@
         ],
         "object": [
           "personnel access"
+        ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:update"
         ],
         "scope": [
           "personnel access"
@@ -9969,6 +10578,9 @@
           "scope.all",
           "scopeSql"
         ],
+        "scopePoint": [
+          "employment point"
+        ],
         "self": [
           "selfAccess",
           "transferFieldAccess"
@@ -10016,6 +10628,9 @@
         "scope": [
           "employment scope",
           "visible()"
+        ],
+        "scopePoint": [
+          "employment point"
         ],
         "self": [
           "selfAccess",
@@ -10085,10 +10700,16 @@
           "objectContext",
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view"
+        ],
         "scope": [
           "requestScope",
           "scopeSql",
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -10120,6 +10741,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -10151,6 +10775,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -10179,6 +10806,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -10213,6 +10843,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -10247,6 +10880,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -10281,12 +10917,18 @@
           "objectContext",
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view"
+        ],
         "scope": [
           "employment visibility",
           "requestScope",
           "scope.all",
           "scopeSql",
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -10321,6 +10963,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -10386,6 +11031,9 @@
           "objectContext",
           "survey360 read/write(need)"
         ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view"
+        ],
         "scope": [
           "requestScope",
           "scopeSql",
@@ -10420,6 +11068,9 @@
           "object.* 动作",
           "objectContext",
           "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "TenantBase.EmployeeInformation:view"
         ],
         "scope": [
           "requestScope",
@@ -10626,9 +11277,14 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.TalentCriterion:update",
+          "TalentCenter.TalentCriterion:view"
+        ],
         "scope": [
           "requestScope",
-          "resolveModuleScope"
+          "resolveModuleScope",
+          "visible()"
         ]
       }
     },
@@ -10660,9 +11316,14 @@
         "object": [
           "objectContext"
         ],
+        "objectOp": [
+          "TalentCenter.TalentCriterion:update",
+          "TalentCenter.TalentCriterion:view"
+        ],
         "scope": [
           "requestScope",
-          "resolveModuleScope"
+          "resolveModuleScope",
+          "visible()"
         ]
       }
     },
@@ -11103,6 +11764,9 @@
         ],
         "fieldsOut": [
           "employment runWrite()"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentCustomField:update"
         ]
       }
     },
@@ -11136,6 +11800,9 @@
         ],
         "fieldsOut": [
           "employment runWrite()"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
         ]
       }
     },
@@ -11166,6 +11833,9 @@
           "revision(c)",
           "runCommand / runWrite"
         ],
+        "domain": [
+          "transfer.initiator"
+        ],
         "fieldsIn": [
           "checkFields",
           "linkage write",
@@ -11184,6 +11854,9 @@
           "object.* 动作",
           "readContext(object.*)",
           "requireObjectWrite（对象写操作权）"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentRecord:update"
         ],
         "scope": [
           "checkScope",
@@ -11254,6 +11927,9 @@
         ],
         "fieldsOut": [
           "employment runWrite()"
+        ],
+        "objectOp": [
+          "TenantBase.EmploymentSettings:update"
         ]
       }
     },
@@ -11307,6 +11983,13 @@
         "object": [
           "object.* 动作"
         ],
+        "or": [
+          "idp.requireExecutor",
+          "idp.requireViewer"
+        ],
+        "relation": [
+          "idp executor（requireExecutor）"
+        ],
         "scope": [
           "requestScope",
           "resolveModuleScope"
@@ -11335,6 +12018,13 @@
         ],
         "object": [
           "object.* 动作"
+        ],
+        "or": [
+          "idp.requireExecutor",
+          "idp.requireViewer"
+        ],
+        "relation": [
+          "idp executor（requireExecutor）"
         ],
         "scope": [
           "requestScope",
@@ -11748,6 +12438,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },
@@ -11782,6 +12475,9 @@
         ],
         "scope": [
           "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
         ]
       }
     },

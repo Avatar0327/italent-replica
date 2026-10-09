@@ -11,6 +11,7 @@ import path from 'node:path';
 import type { tenantApi } from '../tenant-api.js';
 import type { ObservedContract, ObservedRoute } from './contract.js';
 import { domainConstants } from './domains.js';
+import { objectFacts } from './objects.js';
 import { scanPrimitives } from './primitives.js';
 import { probeEdges } from './probe.js';
 import { closureText, indexSources, matchRegistrations, moduleDirs, scanRegistrations } from './scan.js';
@@ -58,7 +59,9 @@ export async function observeContract(
     const key = `${route.method} ${route.path}`;
     const edge = edges[key];
     if (!edge) throw new Error(`边界探测缺少 ${key}`);
-    routes[key] = { module, edge, primitives: scanPrimitives({ deep, near }, route.method, module) };
+    const primitives = scanPrimitives({ deep, near }, route.method, module, route.path);
+    const objects = objectFacts(index, near, module, dirs);
+    routes[key] = { module, edge, primitives: objects.length ? { ...primitives, objectOp: objects } : primitives };
   }
   return { routes, domains: domainConstants() };
 }

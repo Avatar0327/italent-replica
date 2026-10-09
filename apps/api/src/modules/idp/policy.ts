@@ -16,6 +16,7 @@ import {
   BAD_REQUEST,
   button,
   denied,
+  fixed,
   guardScope,
   listScope,
   noButton,
@@ -190,7 +191,8 @@ function intervention(buttonCode: 'urge' | 'startNext' | 'terminate'): RoutePoli
     scope: PLAN_LIST,
     fields: 'body',
     result: 'idp.receiptRecheck',
-    preconditions: ['requireNew'],
+    // 进行中阶段的审批实例经审批引擎处理（openRun 锁运行行）
+    preconditions: ['requireNew', 'openRun'],
   });
 }
 
@@ -323,10 +325,19 @@ export const IDP_POLICIES = defineTable('idp', {
     scope: PLAN_POINT,
     fields: 'none',
     result: 'idp.stillVisible',
+    // 进行中阶段先撤销审批实例（plan-service.ts cancelStageInstance → 审批引擎 openRun）
+    preconditions: ['openRun'],
     byId: true,
   }),
-  // 能力候选：查看人（HR 或参与人）；query.moduleId 非 UUID → 400
-  [`GET ${BASE}/plans/:id/competency-candidates`]: PLAN_VIEWER,
+  // 能力候选：执行人（execution-service.ts candidates → requireExecutor(…, 'RowAddIdpGoal')：查看人 + 当前阶段在办
+  // 待办人 + 节点按钮）；query.moduleId 非 UUID → 400；候选只含 id / name / definition / category
+  [`GET ${BASE}/plans/:id/competency-candidates`]: relation({
+    relation: 'idp.executor',
+    target: { param: 'id' },
+    denied: NODE_DENIED,
+    fields: fixed(['id', 'name', 'definition', 'category'], 'competency.ts competencyCandidates 固定键'),
+    ...byId,
+  }),
   // ---- 计划执行（执行人 + 节点按钮）--------------------------------------------------------------------------------
   [`POST ${BASE}/plans/:id/goals`]: executor('body'),
   [`PATCH ${BASE}/plans/:id/goals/:goalId`]: executor('body'),
@@ -340,6 +351,7 @@ export const IDP_POLICIES = defineTable('idp', {
   [`POST ${BASE}/plans/urge`]: intervention('urge'),
   [`POST ${BASE}/plans/start-next`]: intervention('startNext'),
   [`POST ${BASE}/plans/terminate`]: intervention('terminate'),
+  // 跳转经审批引擎管理员动作（intervention-service.ts jumpPlan → adminAct(kind jump)）
   [`POST ${BASE}/plans/:id/jump`]: writer({
     key: 'plan',
     operation: 'update',
@@ -348,6 +360,7 @@ export const IDP_POLICIES = defineTable('idp', {
     scope: PLAN_POINT,
     fields: 'body',
     result: 'idp.stillVisible',
+    preconditions: ['openRun', 'assertBusinessUnchanged', 'assertNotNodeAssignee', 'assertNotSelf', 'assertReviewer'],
     byId: true,
   }),
   [`POST ${BASE}/plans/tasks/issue`]: writer({

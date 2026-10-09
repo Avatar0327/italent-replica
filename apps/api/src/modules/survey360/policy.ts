@@ -8,9 +8,10 @@
  * 数据范围：活动按 activityVisibleSql（全部活动按钮 ∪ 本人创建 ∪ 被授权，不可见 = 404）；人员 / 评价关系 / 结果
  * 另按（用户 × Survey360）人员范围（routePeople，精细化权限开启时生效，DEC-280⑤、DEC-289①）。
  */
-import { survey360 } from '@italent/domain';
+import { PERSONNEL_OBJECT, survey360 } from '@italent/domain';
 import { defineTable, type RoutePolicy, type WritePolicy } from '../../route-policy/index.js';
 import {
+  all,
   BAD_REQUEST,
   button,
   listScope,
@@ -59,9 +60,29 @@ interface Route {
   };
   readonly guards?: readonly string[];
   readonly byId?: boolean;
+  /** 另要员工信息查看权与其范围（sync.ts routeEmployeeScope：objectContext(PERSONNEL_OBJECT, 'view')）。 */
+  readonly employees?: boolean;
 }
 
+/** 同步 / 自动带出 / 导入评价者按员工信息范围取人：员工信息查看权（无 → 403）+ 当前员工信息范围。 */
+const EMPLOYEE_VIEW = object({
+  object: PERSONNEL_OBJECT,
+  operation: 'view',
+  button: noButton('routeEmployeeScope 只查员工信息的查看权'),
+  scope: listScope('survey360.employeeScope'),
+  fields: noFields('只取范围，出口在 360 对象分支登记'),
+});
+
 function route(r: Route): RoutePolicy {
+  if (r.employees) {
+    const { employees: _employees, ...rest } = r;
+    const main = route(rest);
+    const { write: writePolicy, invalidId, ...admission } = main;
+    return all([admission as RoutePolicy, EMPLOYEE_VIEW], 'fields' in main ? main.fields : noFields('无'), {
+      ...(writePolicy ? { write: writePolicy } : {}),
+      ...(invalidId ? { invalidId } : {}),
+    });
+  }
   const operation = r.operation ?? 'view';
   const guards = [...(r.guards ?? []), ...(r.write?.guards ?? [])];
   let writePolicy: WritePolicy | undefined;
@@ -115,6 +136,7 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     button: BUTTONS.sync,
     scope: PEOPLE,
     write: { fields: 'none', guards: [PREFLIGHT] },
+    employees: true,
   }),
   'POST /people/sync-conflicts/:id/resolve': route({
     key: 'person',
@@ -122,6 +144,7 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     scope: PEOPLE,
     write: { fields: 'none', guards: [RESOURCE, REFS, PREFLIGHT] },
     byId: true,
+    employees: true,
   }),
   // ---- people.ts ----------------------------------------------------------------------------------------------------
   'GET /people': route({ key: 'person', scope: PEOPLE }),
@@ -261,6 +284,7 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     scope: ACTIVITY_OBJECT,
     write: { fields: 'derived', guards: [RESOURCE, ALSO, PREFLIGHT] },
     byId: true,
+    employees: true,
   }),
   'POST /activities/:id/appraisers/import': route({
     key: 'relation',
@@ -269,6 +293,7 @@ export const SURVEY360_POLICIES = defineTable('survey360', {
     scope: ACTIVITY,
     write: { fields: 'derived', guards: [RESOURCE, REFS, ALSO, PREFLIGHT], results: true },
     byId: true,
+    employees: true,
   }),
   'POST /activities/:id/objects/:objectId/confirmation': route({
     key: 'relation',
