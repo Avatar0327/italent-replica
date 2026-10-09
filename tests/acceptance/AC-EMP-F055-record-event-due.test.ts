@@ -89,15 +89,15 @@ describe('F-055 recordEventDueSql：生效日前为假、当天为真', () => {
     expect(await only(await w.gate('due', '2026-10-20', adjustment.objectId))).toBe(true);
   });
 
-  it('调动改期后按新日期判断', async () => {
-    const w = await f055World(database().db, 'f055-due-move');
-    const id = await w.transfer('2026-10-20');
-    await w.moveTimeline(id, '2026-10-03');
-    expect(await only(await w.gate('due', '2026-10-02', id))).toBe(false);
-    expect(await only(await w.gate('due', '2026-10-03', id))).toBe(true);
-    await w.moveTimeline(id, '2026-10-25');
-    expect(await only(await w.gate('due', '2026-10-24', id))).toBe(false);
-    expect(await only(await w.gate('due', '2026-10-25', id))).toBe(true);
+  it('调动改期（生效日不可原地改，改期 = 删除后以新日期重存）：旧事件对应记录消失，新事件按新日期判断', async () => {
+    const w = await f055World(database().db, 'f055-due-reschedule');
+    const old = await w.transfer('2026-10-20');
+    const moved = await w.reschedule(old, '2026-10-25');
+    expect(moved).not.toBe(old);
+    expect(await only(await w.gate('due', '2026-10-30', old))).toBe(false);
+    expect(await only(await w.gate('ready', '2026-10-02', old))).toBe(true);
+    expect(await only(await w.gate('due', '2026-10-24', moved))).toBe(false);
+    expect(await only(await w.gate('due', '2026-10-25', moved))).toBe(true);
   });
 });
 
@@ -152,19 +152,21 @@ describe('F-055 回归：transfer/completion.ts 行为不变（严格谓词）',
     return ((await response.json()) as { items: { id: string }[] }).items.map((item) => item.id);
   }
 
+  /** 经调动入口保存并清空直线经理（DEC-163：到期后产生“待补全”待办）。 */
   async function clearingTransfer(w: Awaited<ReturnType<typeof f055World>>, employeeId: string, date: string) {
     const employee = await w.session.getEmployee(employeeId);
-    const business = await w.session.business(
-      employeeId,
-      {
-        kind: 'transfer',
+    const saved = await w.session.request('POST', `/transfers/employees/${employeeId}`, {
+      ifMatch: employee.revision,
+      body: {
+        initiator: 'hr',
+        transferTypeCode: 'cross_department',
         mode: 'direct',
         effectiveDate: date,
         fields: { departmentId: w.to.id, directManagerId: null },
       },
-      employee.revision,
-    );
-    return business.id;
+    });
+    expect(saved.status).toBe(201);
+    return ((await saved.json()) as { id: string }).id;
   }
 
   it('未来记录到期前不产生待办，到期后产生；生效日前删除的记录永不产生待办', async () => {
@@ -178,6 +180,7 @@ describe('F-055 回归：transfer/completion.ts 行为不变（严格谓词）',
     expect(await completionIds(w, '2026-10-04T01:00:00Z')).toEqual([]);
     await w.runScheduler('2026-10-05T01:00:00Z');
     const due = await completionIds(w, '2026-10-05T01:00:00Z');
+
     expect(due).toContain(future);
     expect(due).not.toContain(removed);
     await w.runScheduler('2026-10-20T01:00:00Z');

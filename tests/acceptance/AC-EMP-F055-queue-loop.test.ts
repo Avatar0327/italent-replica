@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   f055World,
   installProbeQueue,
+  probeBaseline,
   probeDerived,
   probeEnqueue,
   probeRound,
@@ -19,6 +20,7 @@ const database = useTestDb();
 async function setup(label: string) {
   const w = await f055World(database().db, label);
   await installProbeQueue(w.db);
+  await probeBaseline(w.db, w.tenantId);
   const round = async (at: string) => {
     await probeEnqueue(w.db, w.tenantId);
     return probeRound(w.db, w.context(at));
@@ -51,30 +53,36 @@ describe('F-055 状态队列取数循环', () => {
     expect(await probeDerived(w.db, w.tenantId, id)).toEqual([{ effectiveDate: '2026-10-05' }]);
   });
 
-  it('③ 改期后按新日期取：原日期到了不取，新日期到了才取', async () => {
+  it('③ 改期（删除后以新日期重存）后按新日期取：旧事件 skipped，新事件到新日期才处理', async () => {
     const { w, round } = await setup('f055-loop-moved');
-    const id = await w.transfer('2026-10-05');
-    await w.moveTimeline(id, '2026-10-15');
-    expect(await round('2026-10-05T01:00:00Z')).toEqual([]);
+    const old = await w.transfer('2026-10-05');
+    const moved = await w.reschedule(old, '2026-10-15');
+    expect((await round('2026-10-05T01:00:00Z')).map((row) => row.recordId)).toEqual([old]);
+    expect(await probeState(w.db, w.tenantId, old)).toEqual([{ state: 'skipped', reason: 'RECORD_NOT_EFFECTIVE' }]);
     expect(await round('2026-10-14T01:00:00Z')).toEqual([]);
-    expect(await probeDerived(w.db, w.tenantId, id)).toEqual([]);
-    expect((await round('2026-10-15T01:00:00Z')).map((row) => row.recordId)).toEqual([id]);
-    expect(await probeDerived(w.db, w.tenantId, id)).toEqual([{ effectiveDate: '2026-10-15' }]);
+    expect(await probeDerived(w.db, w.tenantId, moved)).toEqual([]);
+    expect((await round('2026-10-15T01:00:00Z')).map((row) => row.recordId)).toEqual([moved]);
+    expect(await probeDerived(w.db, w.tenantId, moved)).toEqual([{ effectiveDate: '2026-10-15' }]);
+    expect(await probeDerived(w.db, w.tenantId, old)).toEqual([]);
   });
 
-  it('④ 取数后、持锁前被改期到未来：复核为 not_yet，回 pending，不写派生数据，之后到期再处理', async () => {
+  it('④ 取数后、持锁前被改期（删除重存）：旧事件复核 gone 不写派生数据；新事件另行入队，到期再处理', async () => {
     const { w, round } = await setup('f055-loop-moved-after-pick');
-    const id = await w.transfer('2026-10-03');
+    const old = await w.transfer('2026-10-03');
     await probeEnqueue(w.db, w.tenantId);
-    let moved = false;
-    const picked = await probeRoundWithMove(w, id, '2026-10-30', () => (moved = true));
-    expect(moved).toBe(true);
-    expect(picked.map((row) => row.recordId)).toEqual([id]);
-    expect(await probeState(w.db, w.tenantId, id)).toEqual([{ state: 'pending', reason: null }]);
-    expect(await probeDerived(w.db, w.tenantId, id)).toEqual([]);
+    let moved = '';
+    const picked = await probeRound(w.db, w.context('2026-10-03T01:00:00Z'), {
+      beforeLock: async () => {
+        if (!moved) moved = await w.reschedule(old, '2026-10-30');
+      },
+    });
+    expect(picked.map((row) => row.recordId)).toEqual([old]);
+    expect(await probeState(w.db, w.tenantId, old)).toEqual([{ state: 'skipped', reason: 'RECORD_NOT_EFFECTIVE' }]);
+    expect(await probeDerived(w.db, w.tenantId, old)).toEqual([]);
     expect(await round('2026-10-29T01:00:00Z')).toEqual([]);
-    expect((await round('2026-10-30T01:00:00Z')).map((row) => row.recordId)).toEqual([id]);
-    expect(await probeState(w.db, w.tenantId, id)).toEqual([{ state: 'done', reason: null }]);
+    expect(await probeState(w.db, w.tenantId, moved)).toEqual([{ state: 'pending', reason: null }]);
+    expect((await round('2026-10-30T01:00:00Z')).map((row) => row.recordId)).toEqual([moved]);
+    expect(await probeState(w.db, w.tenantId, moved)).toEqual([{ state: 'done', reason: null }]);
   });
 
   it('⑤ 重复入队只一行', async () => {
@@ -86,17 +94,3 @@ describe('F-055 状态队列取数循环', () => {
     expect(await probeState(w.db, w.tenantId, id)).toHaveLength(1);
   });
 });
-
-async function probeRoundWithMove(
-  w: Awaited<ReturnType<typeof setup>>['w'],
-  recordId: string,
-  newDate: string,
-  onMoved: () => void,
-) {
-  return probeRound(w.db, w.context('2026-10-03T01:00:00Z'), {
-    beforeLock: async () => {
-      await w.moveTimeline(recordId, newDate);
-      onMoved();
-    },
-  });
-}

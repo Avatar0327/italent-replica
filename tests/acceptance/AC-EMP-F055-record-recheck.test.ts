@@ -35,14 +35,14 @@ describe('F-055 recheckRecordEvent', () => {
     expect(await w.recheck(application.id, '2026-10-21')).toEqual({ kind: 'gone', reason: 'RECORD_NOT_EFFECTIVE' });
   });
 
-  it('改期后返回新的 not_yet 日期；改到今天或更早则变为 effective', async () => {
+  it('改期（删除后以新日期重存）：旧记录 gone，新记录返回新的 not_yet 日期，到期后 effective', async () => {
     const w = await f055World(database().db, 'f055-recheck-moved');
-    const id = await w.transfer('2026-10-20');
-    expect(await w.recheck(id, '2026-10-10')).toEqual({ kind: 'not_yet', effectiveDate: '2026-10-20' });
-    await w.moveTimeline(id, '2026-10-30');
-    expect(await w.recheck(id, '2026-10-25')).toEqual({ kind: 'not_yet', effectiveDate: '2026-10-30' });
-    await w.moveTimeline(id, '2026-10-08');
-    expect((await w.recheck(id, '2026-10-10')).kind).toBe('effective');
+    const old = await w.transfer('2026-10-20');
+    expect(await w.recheck(old, '2026-10-10')).toEqual({ kind: 'not_yet', effectiveDate: '2026-10-20' });
+    const moved = await w.reschedule(old, '2026-10-30');
+    expect(await w.recheck(old, '2026-10-10')).toEqual({ kind: 'gone', reason: 'RECORD_NOT_EFFECTIVE' });
+    expect(await w.recheck(moved, '2026-10-25')).toEqual({ kind: 'not_yet', effectiveDate: '2026-10-30' });
+    expect((await w.recheck(moved, '2026-10-30')).kind).toBe('effective');
   });
 
   it('跨租户记录 ID 读不到 → gone（不泄露存在性）', async () => {

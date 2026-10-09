@@ -4,14 +4,16 @@
  * - 写入方先持锁：消费者取数后在员工锁上真实等待，提交后按新状态复核；
  * - 消费者先持锁：删除 / 改期在锁上真实等待，消费者提交后才继续，派生数据按消费时的状态写下。
  */
+import { randomUUID } from 'node:crypto';
 import { sql, withTenant, type Db, type Tx } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
-import { lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
+import { insertEmploymentRow, lockEmploymentEmployee } from '../../apps/api/src/modules/employment/record-store.js';
 import { removeEmploymentTimeline } from '../../apps/api/src/modules/employment/timeline.js';
 import {
   f055World,
   installProbeQueue,
+  probeBaseline,
   probeDerived,
   probeEnqueue,
   probeRound,
@@ -47,8 +49,22 @@ async function waitForLock(db: Db, finished: () => boolean) {
 async function setup(label: string) {
   const w = await f055World(database().db, label);
   await installProbeQueue(w.db);
-  await probeEnqueue(w.db, w.tenantId);
+  await probeBaseline(w.db, w.tenantId);
   return w;
+}
+
+/** 删除命令在员工锁内的数据变更：墓碑 + 摘掉时间轴（与 transitions.ts 的 deleteEmploymentBusiness 同序）。 */
+async function deleteInTx(w: F055World, tx: Tx, recordId: string) {
+  const ctx = w.context('2026-10-10T01:00:00Z');
+  await insertEmploymentRow(tx, 'employment_record_tombstones', {
+    id: randomUUID(),
+    tenantId: w.tenantId,
+    employeeId: w.subject.employee.id,
+    recordId,
+    commandId: ctx.commandId,
+    createdAt: ctx.now.toISOString(),
+  });
+  await removeEmploymentTimeline(tx, ctx, w.subject.employee.id, recordId, false);
 }
 
 /** 写入方：先持员工锁，等放行后执行写入并提交（等价于删除 / 改期命令在员工锁内的时间轴变更）。 */
@@ -68,8 +84,9 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('F-055 真 PG：删除 × 消费
   it('删除先提交：消费者取数后在员工锁上等待，放行后复核 gone → skipped，不写派生数据', async () => {
     const w = await setup('f055-pg-delete-first');
     const id = await w.transfer('2026-10-01');
+    await probeEnqueue(w.db, w.tenantId);
     const deleter = holdLockThen(w, async (tx) => {
-      await removeEmploymentTimeline(tx, w.context('2026-10-10T01:00:00Z'), w.subject.employee.id, id, false);
+      await deleteInTx(w, tx, id);
     });
     await deleter.held;
     let consumed = false;
@@ -88,6 +105,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('F-055 真 PG：删除 × 消费
   it('消费者先提交：真实删除命令在员工锁上等待，消费者提交后删除照常成功，派生数据按消费时的状态保留', async () => {
     const w = await setup('f055-pg-consume-first');
     const id = await w.transfer('2026-10-01');
+    await probeEnqueue(w.db, w.tenantId);
     const rechecked = signal();
     const release = signal();
     const consumer = probeRound(w.db, w.context('2026-10-10T01:00:00Z'), {
@@ -113,32 +131,38 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('F-055 真 PG：删除 × 消费
   });
 });
 
-describe.skipIf(!process.env.TEST_DATABASE_URL)('F-055 真 PG：改期 × 消费交错', () => {
-  it('改期先提交（挪到未来）：消费者只按提交后的日期判断 → not_yet，回 pending，不写派生数据', async () => {
+describe.skipIf(!process.env.TEST_DATABASE_URL)('F-055 真 PG：改期（删除后以新日期重存）× 消费交错', () => {
+  it('改期先提交：消费者取数后在员工锁上等待，旧事件复核 gone；新事件 not_yet，到新日期才处理', async () => {
     const w = await setup('f055-pg-move-first');
-    const id = await w.transfer('2026-10-01');
-    const mover = holdLockThen(w, (tx) => w.moveTimelineIn(tx, id, '2026-10-30'));
-    await mover.held;
+    const old = await w.transfer('2026-10-01');
+    await probeEnqueue(w.db, w.tenantId);
+    const deleter = holdLockThen(w, async (tx) => {
+      await deleteInTx(w, tx, old);
+    });
+    await deleter.held;
     let consumed = false;
     const consumer = probeRound(w.db, w.context('2026-10-10T01:00:00Z')).then((picked) => {
       consumed = true;
       return picked;
     });
     await waitForLock(w.db, () => consumed);
-    mover.release();
-    await mover.done;
-    expect((await consumer).map((row) => row.recordId)).toEqual([id]);
-    expect(await probeState(w.db, w.tenantId, id)).toEqual([{ state: 'pending', reason: null }]);
-    expect(await probeDerived(w.db, w.tenantId, id)).toEqual([]);
-    // 新日期到了再处理
+    deleter.release();
+    await deleter.done;
+    await consumer;
+    expect(await probeState(w.db, w.tenantId, old)).toEqual([{ state: 'skipped', reason: 'RECORD_NOT_EFFECTIVE' }]);
+    const moved = await w.transfer('2026-10-30');
+    await probeEnqueue(w.db, w.tenantId);
+    await probeRound(w.db, w.context('2026-10-29T01:00:00Z'));
+    expect(await probeState(w.db, w.tenantId, moved)).toEqual([{ state: 'pending', reason: null }]);
+    expect(await probeDerived(w.db, w.tenantId, moved)).toEqual([]);
     await probeRound(w.db, w.context('2026-10-30T01:00:00Z'));
-    expect(await probeState(w.db, w.tenantId, id)).toEqual([{ state: 'done', reason: null }]);
-    expect(await probeDerived(w.db, w.tenantId, id)).toEqual([{ effectiveDate: '2026-10-30' }]);
+    expect(await probeDerived(w.db, w.tenantId, moved)).toEqual([{ effectiveDate: '2026-10-30' }]);
   });
 
-  it('消费者先提交：改期在员工锁上等待，消费者提交后改期照常落地，派生数据按消费时的日期保留', async () => {
+  it('消费者先提交：改期的删除在员工锁上等待，消费者提交后改期照常落地；新事件按新日期单独处理', async () => {
     const w = await setup('f055-pg-consume-then-move');
-    const id = await w.transfer('2026-10-01');
+    const old = await w.transfer('2026-10-01');
+    await probeEnqueue(w.db, w.tenantId);
     const rechecked = signal();
     const release = signal();
     const consumer = probeRound(w.db, w.context('2026-10-10T01:00:00Z'), {
@@ -149,18 +173,20 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)('F-055 真 PG：改期 × 消费
     });
     await rechecked.promise;
     let finished = false;
-    const mover = withTenant(w.db, w.tenantId, async (tx) => {
-      await lockEmploymentEmployee(tx, w.context('2026-10-10T01:00:00Z'), w.subject.employee.id);
-      await w.moveTimelineIn(tx, id, '2026-10-30');
-    }).then(() => {
+    const moving = w.reschedule(old, '2026-10-30').then((id) => {
       finished = true;
+      return id;
     });
     await waitForLock(w.db, () => finished);
     release.resolve();
     await consumer;
-    await mover;
-    expect(await probeState(w.db, w.tenantId, id)).toEqual([{ state: 'done', reason: null }]);
-    expect(await probeDerived(w.db, w.tenantId, id)).toEqual([{ effectiveDate: '2026-10-01' }]);
-    expect(await w.recheck(id, '2026-10-10')).toEqual({ kind: 'not_yet', effectiveDate: '2026-10-30' });
+    const moved = await moving;
+    expect(await probeState(w.db, w.tenantId, old)).toEqual([{ state: 'done', reason: null }]);
+    expect(await probeDerived(w.db, w.tenantId, old)).toEqual([{ effectiveDate: '2026-10-01' }]);
+    expect(await w.recheck(old, '2026-10-10')).toEqual({ kind: 'gone', reason: 'RECORD_NOT_EFFECTIVE' });
+    expect(await w.recheck(moved, '2026-10-10')).toEqual({ kind: 'not_yet', effectiveDate: '2026-10-30' });
+    await probeEnqueue(w.db, w.tenantId);
+    await probeRound(w.db, w.context('2026-10-30T01:00:00Z'));
+    expect(await probeDerived(w.db, w.tenantId, moved)).toEqual([{ effectiveDate: '2026-10-30' }]);
   });
 });

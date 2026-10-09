@@ -1,6 +1,6 @@
 /**
  * F-055 夹具：任职事件生效日门禁（R3-T02 实现拆分方案 §10）。
- * - 业务保存 / 删除 / 改期经真实入口（改期没有生产入口，直接挪时间轴行，等价于订阅方看到的结果）；
+ * - 业务保存 / 删除 / 改期（= 删除后重存）都经真实入口；
  * - 探针队列严格按 §10.2 的消费方约定实现：recordEventReadySql 取数 → 员工锁 → recheckRecordEvent → 更新队列；
  *   C1-4 / C2-1b 的真实调度器各自再用同一组用例重跑。
  */
@@ -89,27 +89,13 @@ export async function f055World(db: Db, label: string, options: { timezone?: str
     );
   }
 
-  /** 把已落在时间轴上的记录挪到新生效日（没有生产入口，等价于改期后的时间轴状态）。 */
-  async function moveTimeline(recordId: string, newDate: string) {
-    await withTenant(db, tenantId, async (tx) => moveTimelineIn(tx, recordId, newDate));
-  }
-
-  async function moveTimelineIn(tx: Tx, recordId: string, newDate: string) {
-    const [self] = rowsOf<{ employeeId: string }>(
-      await tx.execute(sql`SELECT employee_id AS "employeeId" FROM employment_timeline
-        WHERE tenant_id=${tenantId} AND record_id=${recordId}::uuid`),
-    );
-    expect(self).toBeDefined();
-    await tx.execute(sql`SET CONSTRAINTS ALL DEFERRED`);
-    // 前一条的区间截到新日期，自己从新日期起（与改期后的时间轴形态一致）
-    await tx.execute(sql`UPDATE employment_timeline p
-      SET valid_during=daterange(p.start_date, ${newDate}::date, '[)')
-      WHERE p.tenant_id=${tenantId} AND p.employee_id=${self!.employeeId}::uuid
-        AND upper(p.valid_during)=(SELECT start_date FROM employment_timeline
-          WHERE tenant_id=${tenantId} AND record_id=${recordId}::uuid)`);
-    await tx.execute(sql`UPDATE employment_timeline
-      SET start_date=${newDate}::date, valid_during=daterange(${newDate}::date, upper(valid_during), '[)')
-      WHERE tenant_id=${tenantId} AND record_id=${recordId}::uuid`);
+  /**
+   * 改期：已落在时间轴上的记录生效日不可改（迁移 0013 只放行 valid_during），生产里的改期 = 删除后以新生效日重存，
+   * 旧事件对应的记录消失（gone），新事件按新日期走门禁。返回新记录标识。
+   */
+  async function reschedule(recordId: string, newDate: string): Promise<string> {
+    await remove(recordId);
+    return transfer(newDate);
   }
 
   /** 逐事件求值谓词：返回 事件 ID → 门禁结果。 */
@@ -138,8 +124,7 @@ export async function f055World(db: Db, label: string, options: { timezone?: str
     leave,
     remove,
     events,
-    moveTimeline,
-    moveTimelineIn,
+    reschedule,
     gate,
     recheck,
   };
@@ -147,13 +132,21 @@ export async function f055World(db: Db, label: string, options: { timezone?: str
 
 /** 探针队列：每个（事件）一行；派生表模拟订阅方写下的派生数据（子集、终止评定）。 */
 export async function installProbeQueue(db: Db) {
-  await db.execute(sql`CREATE TABLE f055_probe_queue (
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS f055_probe_queue (
     tenant_id uuid NOT NULL, outbox_id uuid NOT NULL, state text NOT NULL DEFAULT 'pending',
     reason text, effective_date date, PRIMARY KEY (tenant_id, outbox_id))`);
-  await db.execute(sql`CREATE TABLE f055_probe_derived (
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS f055_probe_derived (
     tenant_id uuid NOT NULL, record_id uuid NOT NULL, effective_date date, PRIMARY KEY (tenant_id, record_id))`);
   for (const table of ['f055_probe_queue', 'f055_probe_derived'])
     await db.execute(sql.raw(`GRANT ALL ON ${table} TO ${APP_ROLE.tenant}`));
+}
+
+/** 夹具自带的入职事件视为已处理，让用例只关心自己保存的记录。 */
+export async function probeBaseline(db: Db, tenantId: string) {
+  await probeEnqueue(db, tenantId);
+  await withTenant(db, tenantId, (tx) =>
+    tx.execute(sql`UPDATE f055_probe_queue SET state='done' WHERE tenant_id=${tenantId}`),
+  );
 }
 
 export interface ProbeStep {
