@@ -57,6 +57,9 @@ describe('360 审计查看', () => {
         body: { userIds: [general] },
       }),
     );
-    expect(await types(general)).toContain('survey360-sheet:survey360.sheet.submit');
+    // DEC-340③：答卷类日志给有活动授权的管理员看脱敏版本（不带评价关系与作答来源，AC-360-B-08）
+    const granted = await types(general);
+    expect(granted).toContain('survey360-relation:survey360.relation.create');
+    expect(granted).toContain('survey360-sheet:survey360.sheet.submit');
   });
 });
