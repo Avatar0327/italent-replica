@@ -128,6 +128,66 @@ describe('DEC-358② 答卷日志里的逐份答案', () => {
   });
 });
 
+/**
+ * F-060（#125 第 5 轮 P3-2）：同一草稿再次保存、只改建议。保存审计的 before 缺活动 / 套卷元数据而 after 有时，会多出一条
+ * “活动 / 套卷元数据新增”的伪差异；无资格查看人看到的日志不得带答案、建议、答卷编号与评价关系，且 before / after 的
+ * 元数据对称，差异只剩真实变化（修订号等），不出现 activityId / questionnaireId 的凭空新增。
+ */
+describe('同一草稿再次保存、只改建议', () => {
+  async function resave(label: string) {
+    const s = await sceneB(testDb().db, label);
+    const options = s.q.scales[0]!.options;
+    const call = s.w.link(await s.w.token(s.activity.id, s.person.P1.id));
+    const path = `/tasks/${s.rel.p1.id}/questionnaires/${s.q.id}`;
+    const answers = s.q.questions.map((q, i) => ({
+      itemId: q.id,
+      optionId: options.find((o) => o.key === ['v4', 'v3', 'v4'][i])!.id,
+    }));
+    const first = await s.w.ok<{ revision: number }>(
+      call('PUT', path, { ifMatch: 0, body: { answers, suggestion: '首存建议' } }),
+    );
+    // 答案不变，只改建议
+    await s.w.ok(call('PUT', path, { ifMatch: first.revision, body: { answers, suggestion: '改后建议' } }));
+    return s;
+  }
+
+  const saves = (events: Awaited<ReturnType<typeof sheetEvents>>) =>
+    events.filter((e) => e.item.action === 'survey360.sheet.save');
+
+  it('一般活动管理员：保存日志看不到答案 / 建议 / 答卷编号 / 评价关系，按答案字段筛选查不到', async () => {
+    const s = await resave('d358au-resave-a');
+    const general = await s.w.member('一般活动管理员');
+    await s.w.appoint(general, 'general');
+    await grantActivity(s, s.activity.id, general);
+    const events = await sheetEvents(s, general);
+    expect(saves(events).length, '保存日志对一般活动管理员仍可见（修订号等真实变化）').toBeGreaterThan(0);
+    for (const { item, detail } of events) {
+      const text = JSON.stringify([item, detail]);
+      for (const marker of [...answerMarkers(s), '首存建议', '改后建议', '"relationId"', s.rel.p1.id, '"optionId"'])
+        expect(text, `${item.action} ${marker}`).not.toContain(marker);
+      expect(item.objectId, '答卷编号').toBeNull();
+    }
+    for (const field of ['answers', 'suggestion', 'relationId'])
+      expect(await sheetEvents(s, general, { field }), `按 ${field} 筛选`).toEqual([]);
+  });
+
+  it('保存审计 before / after 元数据对称：差异里没有 activityId / questionnaireId 的凭空新增', async () => {
+    const s = await resave('d358au-resave-b');
+    const events = saves(await sheetEvents(s, s.w.admin));
+    expect(events.length).toBe(2);
+    for (const { detail } of events) {
+      const before = detail.before as Record<string, unknown> | null;
+      const after = detail.after as Record<string, unknown>;
+      for (const field of ['activityId', 'relationId', 'questionnaireId'])
+        expect(before, `before 缺 ${field}`).toHaveProperty(field);
+      expect(before?.activityId).toBe(after.activityId);
+    }
+    // 完整版查看人看得到真实变化：建议由首存变为改后
+    const second = events.find((e) => JSON.stringify(e.detail.after).includes('改后建议'));
+    expect(JSON.stringify(second!.detail.before)).toContain('首存建议');
+  });
+});
+
 /** creator 创建的活动：评价对象 T，评价者 P1（同事）与上级，作答（带建议）后停用。 */
 async function activityBy(s: SceneB, creator: string, superiorPersonId: string, suggestion: string) {
   const { w } = s;
