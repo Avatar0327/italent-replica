@@ -252,7 +252,8 @@ describe('AC-360-F034 替换套卷清空作答', () => {
       }),
     );
     const logs = (await f.audit.dataChanges({ user, tenant: w.tenantId }, { limit: '100' })).items;
-    const cleared = logs.filter((log) => log.commandId === key && log.objectType === 'survey360-sheet');
+    // DEC-340③ / DEC-355②（PR #125）：活动管理员看答卷日志的脱敏版本，不带命令 ID，按动作取替换清空的删除快照
+    const cleared = logs.filter((log) => log.action === 'survey360.sheet.delete');
     expect(cleared).toHaveLength(2);
     for (const log of cleared) {
       const detail = await f.audit.dataChange({ user, tenant: w.tenantId }, log.id);
