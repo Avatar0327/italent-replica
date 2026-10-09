@@ -1,11 +1,11 @@
 /**
  * AC-EV-01 跨级纯函数（R3-T02 设计 §7.1 第 4 条、P2-06；DEC-372 跨级口径；Q-T02-06 其余边界按设计推荐 🟡，DEC-334②）。
  * max_level_jump = N 表示“最多比原级别高出 N 级”：+N 允许，+N+1 拒绝（EV_XL 实测：可跨 1 级时 +1 成功、+2 / +3 被拒）；
- * 为空 = 不限 🟡。高出的级数 = rank(申请级别) − rank(原级别)；rank 是级别在有序序列（按顺序号升序）里的位置，
+ * 必填、只能选 1～5、没有“不限”（Q-M0-154）。高出的级数 = rank(申请级别) − rank(原级别)；rank 是级别在有序序列（按顺序号升序）里的位置，
  * 不直接用顺序号相减。序列 = 申请类别标准的级别范围；原级别为空视为最低级的前一级；原级别不在序列里 →
  * LEVEL_JUMP_UNDETERMINED；申请不高于原级别允许。
  */
-import { checkLevelJump, defaultApplyLevelId, type LevelOrderRef } from '@italent/domain';
+import { checkLevelJump, defaultApplyLevelId, LEVEL_JUMP_LIMITS, type LevelOrderRef } from '@italent/domain';
 import { describe, expect, it } from 'vitest';
 
 const sequence = (orders: readonly number[]): LevelOrderRef[] =>
@@ -36,28 +36,28 @@ describe.each(Object.entries(SEQUENCES))('AC-EV-01 / DEC-372 原 P3、最多高�
   });
 });
 
-describe('AC-EV-01 / DEC-372 max_level_jump 的取值', () => {
+describe('AC-EV-01 / DEC-372 max_level_jump 的取值（Q-M0-154：必填，只能 1～5，没有“不限”）', () => {
   const levels = SEQUENCES.不连续;
-  const check = (maxLevelJump: number | null, apply: string) =>
-    checkLevelJump({ levels, originalLevelId: 'P3', applyLevelId: apply, maxLevelJump });
+  const check = (maxLevelJump: number | null | undefined, apply: string) =>
+    checkLevelJump({ levels, originalLevelId: 'P3', applyLevelId: apply, maxLevelJump: maxLevelJump as number });
 
   it('N = 2：+2 允许、+3 拒绝', () => {
     expect(check(2, 'P5')).toEqual({ ok: true, raisedLevels: 2 });
     expect(check(2, 'P6')).toEqual({ ok: false, code: 'LEVEL_JUMP_EXCEEDED', raisedLevels: 3 });
   });
 
-  it('N = 0：任何升级都拒绝，不升级允许', () => {
-    expect(check(0, 'P4')).toEqual({ ok: false, code: 'LEVEL_JUMP_EXCEEDED', raisedLevels: 1 });
-    expect(check(0, 'P3')).toEqual({ ok: true, raisedLevels: 0 });
+  it('取值范围 1～5 内的整数都合法', () => {
+    expect([...LEVEL_JUMP_LIMITS.values]).toEqual([1, 2, 3, 4, 5]);
+    for (const n of LEVEL_JUMP_LIMITS.values) expect(check(n, 'P4')).toEqual({ ok: true, raisedLevels: 1 });
   });
 
-  it('为空 = 不限 🟡（DEC-372②）', () => {
-    expect(check(null, 'P6')).toEqual({ ok: true, raisedLevels: 3 });
-  });
-
-  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])('最大跨级数 %s 不合法 → MAX_LEVEL_JUMP_INVALID', (bad) => {
-    expect(check(bad, 'P4')).toEqual({ ok: false, code: 'MAX_LEVEL_JUMP_INVALID' });
-  });
+  it.each([null, undefined, 0, 6, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    '%s 属于配置非法 → MAX_LEVEL_JUMP_INVALID（空值不再表示不限）',
+    (bad) => {
+      expect(check(bad, 'P4')).toEqual({ ok: false, code: 'MAX_LEVEL_JUMP_INVALID' });
+      expect(check(bad, 'P3')).toEqual({ ok: false, code: 'MAX_LEVEL_JUMP_INVALID' });
+    },
+  );
 });
 
 describe('AC-EV-01 序列顺序与输入顺序无关', () => {
@@ -105,11 +105,11 @@ describe('AC-EV-01 Q-T02-06 边界（设计推荐 🟡）', () => {
   });
 
   it('申请不高于原级别允许，不算负数的级数', () => {
-    expect(checkLevelJump({ levels, originalLevelId: 'P5', applyLevelId: 'P5', maxLevelJump: 0 })).toEqual({
+    expect(checkLevelJump({ levels, originalLevelId: 'P5', applyLevelId: 'P5', maxLevelJump: 1 })).toEqual({
       ok: true,
       raisedLevels: 0,
     });
-    expect(checkLevelJump({ levels, originalLevelId: 'P5', applyLevelId: 'P3', maxLevelJump: 0 })).toEqual({
+    expect(checkLevelJump({ levels, originalLevelId: 'P5', applyLevelId: 'P3', maxLevelJump: 1 })).toEqual({
       ok: true,
       raisedLevels: 0,
     });
