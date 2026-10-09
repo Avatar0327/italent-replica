@@ -58,6 +58,8 @@ import {
 import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
 import { survey360AuditScope } from '../modules/survey360/access.js';
+import { OPEN_READ } from '../modules/qualification/access.js';
+import { qualificationSources, type SourceRedactor } from './qualification-sources.js';
 import { survey360PersonAuditFields } from './survey360-person.js';
 import { IDP_AUDIT_ACTIONS, IDP_ORG_OBJECTS, IDP_PERSON_OBJECTS } from '../modules/idp/access.js';
 import { KEY_INFO, keyInfoScopeSql, keyInfoSnapshot, type KeyInfoSpec } from '../modules/idp/key-info-scope.js';
@@ -212,6 +214,28 @@ function appConfigRules<K extends string>(
       visible: (scope, row, viewer) => scopeSql(scope, { creator: ownedBy(row, creator(row, viewer)) }),
     };
   });
+}
+
+/**
+ * R3-T02 任职资格（设计 §8）：DEC-352 只放开查看的对象（类别、级别、指标、指标等级描述、编码规则、标准、发展通道）
+ * 的日志与业务同口径——有日志审计与该对象的查看权即可见，不按管理单元 / 创建人裁剪（字段与带出值照常按查看人当前
+ * 权限裁剪）；其余（分类、指标类型按所属组织，层级、等级方案按字典）仍按 appConfigRules。
+ */
+function qualificationRules(): Rule[] {
+  const keys = Object.keys(QUALIFICATION_OBJECTS) as (keyof typeof QUALIFICATION_OBJECTS)[];
+  const rest = Object.fromEntries(
+    keys.filter((key) => !OPEN_READ.has(key)).map((key) => [key, QUALIFICATION_OBJECTS[key]]),
+  );
+  const open = keys
+    .filter((key) => OPEN_READ.has(key))
+    .map((key): Rule => {
+      const code = QUALIFICATION_OBJECTS[key].code;
+      return { types: [code], objectCode: code, visible: () => sql`true` };
+    });
+  return [
+    ...appConfigRules(rest as typeof QUALIFICATION_OBJECTS, QUALIFICATION_AUDIT_ACTIONS, QUALIFICATION_ORG_AUDITED),
+    ...open,
+  ];
 }
 
 /** DEC-197：业务编号解析到当前员工范围；创建人仍取调动业务，不取联动日志执行人。 */
@@ -587,7 +611,7 @@ const RULES: readonly Rule[] = [
   }),
   // R3-T02 任职资格（Qualification）与人才评定配置（TEvaluation），设计 §8：带资源集合 / 所属组织的对象按日志写入时的
   // 所属组织裁剪，不因向下公开放宽；字典只认看全部或创建人（DEC-121）。流程对象（员工评定数据等）随 C2 登记。
-  ...appConfigRules(QUALIFICATION_OBJECTS, QUALIFICATION_AUDIT_ACTIONS, QUALIFICATION_ORG_AUDITED),
+  ...qualificationRules(),
   ...appConfigRules(EVALUATION_OBJECTS, EVALUATION_AUDIT_ACTIONS, EVALUATION_ORG_OBJECTS),
   // R3-T07 PR-B：计划及其组成部分按计划员工、关键信息按员工（带教按被带教人）归属，与业务接口的范围一致（K-50）；
   // 关键信息另要求日志前后快照涉及的全部员工 / 组织都在范围内（带教双方、轮岗部门，第 2 轮 P2-1）
@@ -746,6 +770,8 @@ export interface AuditViewer {
   readonly eventChanges: SQL;
   /** 该行只展示脱敏版本（DEC-340③ / DEC-355②）：不展示对象编号、命令 ID 与来源，按它们筛选时排除。 */
   readonly withheld: SQL;
+  /** 查询出口按查看人当前的源对象范围与源字段权裁剪“带出值”（任职资格，qualification-sources.ts）。 */
+  readonly redact: SourceRedactor['redact'];
   /** 该日志适用的查看字段；undefined = 不限字段。withheld = 该行的 withheld 列。 */
   fieldsOf(
     objectType: string,
@@ -756,6 +782,12 @@ export interface AuditViewer {
 }
 
 const EVENT = 'audit_events';
+/** 日志里带“带出值”或引用、需要按源对象裁剪的对象类型（R3-T02 第 2 轮 P2-05、第 3 轮 R2-03）。 */
+const SOURCE_TYPES = new Set([
+  QUALIFICATION_OBJECTS.standard.code,
+  QUALIFICATION_OBJECTS.targetGradeDescription.code,
+  QUALIFICATION_OBJECTS.developmentChannel.code,
+]);
 const TASK = 'audit_operation_logs';
 
 /** 在查询事务之外解析（范围解析各自开租户事务）；返回的谓词放进查询的 WHERE，分页之前生效。 */
@@ -770,6 +802,7 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
   }
   const config = await resolveConfigFields(deps, ctx, present);
   const viewer = { tenantId: ctx.tenantId, userId: ctx.userId };
+  const sources = present.some((type) => SOURCE_TYPES.has(type)) ? await qualificationSources(deps, ctx) : undefined;
   const events = [...resolved.values()].map(
     (entry) => sql`(${eventTypes(entry.rule)}
       AND ${entry.rule.visible(entry.scope, rowOf(EVENT), viewer, entry.inputs)}
@@ -821,6 +854,7 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
     visibleCount: sql`COALESCE(${run && !run.scope.all ? orderRunCount(run, viewer) : sql`NULL::int`},
       ${orgRun ? orgAdjustmentCount(orgRun, viewer) : sql`NULL::int`})`,
     withheld: withheldColumn([...resolved.values()]),
+    redact: async (tx, rows) => (sources ? sources.redact(tx, rows) : [...rows]),
     fieldsOf: (objectType, action, paths, rowWithheld) => {
       if (objectType === TRANSFER_LINKAGE) return new ExactAuditFields(paths ?? []);
       const configured = config.get(configKey(objectType, action));

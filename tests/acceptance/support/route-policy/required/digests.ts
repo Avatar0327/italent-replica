@@ -8,8 +8,8 @@ export const DIGESTS: Digests = {
   'apps/api/src/audit/routes.ts': {
     auditContext: 'd5b4775d58c3',
     'route:GET /api/tenant/audit/command-failures': '9ac7295f99cb',
-    'route:GET /api/tenant/audit/data-changes': '06da1907d44a',
-    'route:GET /api/tenant/audit/data-changes/:id': '18d2b0c3c64a',
+    'route:GET /api/tenant/audit/data-changes': '30aac7cb21a0',
+    'route:GET /api/tenant/audit/data-changes/:id': 'b55ed977cb93',
     'route:GET /api/tenant/audit/operation-logs': 'b6857e645117',
   },
   'apps/api/src/authorization.ts': {
@@ -464,6 +464,71 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/personnel/subsets.ts': {
     loadSubset: 'ce8761631bb3',
   },
+  'apps/api/src/modules/qualification/access.ts': {
+    BUTTON_LEVEL: '66011e711e8a',
+    qualificationContext: '73979e6cd7d6',
+    qualificationWriteContext: '699a709343fb',
+  },
+  'apps/api/src/modules/qualification/candidates.ts': {
+    OWNER_OBJECTS: '723172c5a6af',
+    organizationAccess: '47b0b9b74782',
+    registerQualificationCandidates: 'ffd06d15a688',
+  },
+  'apps/api/src/modules/qualification/config-service.ts': {
+    createCategory: '0a2f553856db',
+    createCategoryClass: '4934e7aa6f25',
+    createTargetType: 'dcb110d6140c',
+    importCategories: 'b9cc56b58730',
+    importLevels: 'd5ffdd939848',
+    insertCategory: '7f3c0129e7c1',
+    insertLevel: '26937e990b87',
+    jobObject: '430e500e3c5c',
+    patchJobLinks: 'af8a98a129e9',
+    replaceJobLinks: '83fab0a740aa',
+    updateCategory: '56253d61fa88',
+    updateLevel: '580a8785b0bd',
+  },
+  'apps/api/src/modules/qualification/extras.ts': {
+    registerChannels: '5713deee61bb',
+    registerChart: 'e0bfdb21c3a0',
+    registerCodingRules: 'c612bd75d2e8',
+    registerGradeDescriptions: 'e7472e8831c3',
+    registerImports: 'c655070d40cf',
+    registerStandardImport: '649581bc567f',
+  },
+  'apps/api/src/modules/qualification/route-support.ts': {
+    fieldEditable: '8b0a3ce9f629',
+    hideOverwritten: 'd90706c31cda',
+    presenter: '6b6a8e9bebf7',
+    readableIds: '1f253e70c4f7',
+    writeContext: '65f3e347ffb3',
+  },
+  'apps/api/src/modules/qualification/routes.ts': {
+    SPECS: '171d3aa2e074',
+    childDeleteRights: 'de08fd350c31',
+    registerObject: '3a9ea7b235c4',
+    registerQualificationRoutes: '57aae826689c',
+  },
+  'apps/api/src/modules/qualification/standard-service.ts': {
+    createStandard: '8cd995eb08ed',
+    deleteStandard: 'f67c7237490e',
+    putChannels: '1401952675fa',
+    updateStandard: 'afd0f7dfa352',
+    writeCells: '035920226799',
+  },
+  'apps/api/src/modules/qualification/store.ts': {
+    deleteChildren: '90a21b3a9cd5',
+    ownerOf: '03ae8b632d21',
+    referenced: 'b2b7d60d9139',
+  },
+  'apps/api/src/modules/qualification/target-service.ts': {
+    checkEvalMode: '6f57e66ebe1e',
+    createTarget: '6894093eddc4',
+    deleteGradeScheme: '6f32fa284235',
+    deleteTarget: 'beefd9116ae6',
+    requireTargetsEditable: '2388b4d65c3c',
+    updateTarget: 'e2604d3284cd',
+  },
   'apps/api/src/modules/survey360/access.ts': {
     requireActivity: '8ae13475536b',
     requireCardViewer: 'fe3a318290e0',
@@ -806,6 +871,9 @@ export const DIGESTS: Digests = {
   },
   'packages/domain/src/personnel/fields.ts': {
     SUBSETS: '12a3afeab085',
+  },
+  'packages/domain/src/qualification/catalog.ts': {
+    QUALIFICATION_OBJECTS: '5362e11495c2',
   },
   'packages/domain/src/survey360/catalog.ts': {
     SURVEY360_BUTTONS: '864363f22e8b',
