@@ -519,6 +519,13 @@
       "when": 1791532410185,
       "tag": "0073_f058_avatar_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1791537603883,
+      "tag": "0074_talent_review_readiness",
+      "breakpoints": true
     }
   ]
 }

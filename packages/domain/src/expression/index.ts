@@ -59,6 +59,8 @@ export {
   type PanelCategory,
   type PanelEntry,
 } from './functions/index.js';
+/** C-02：定点舍入（R3-T04 指标 / 模块算分精度与 Round 系列函数同一实现）。 */
+export { roundDecimal, type Rounding } from './functions/math.js';
 export { tokenize, type SyntaxIssue, type SyntaxIssueCode, type Token, type TokenKind } from './lexer.js';
 export { parseFormula, type ParseResult } from './parser.js';
 export {

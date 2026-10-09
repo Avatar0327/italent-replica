@@ -11,6 +11,7 @@ import type { ObjectDefinition, ObjectPermission } from '../permission/object-pe
 import { PERSONNEL_OBJECTS } from '../personnel/catalog.js';
 import { SURVEY360_APP, SURVEY360_PROFILES } from '../survey360/catalog.js';
 import { TALENT_APP, TALENT_OBJECTS } from '../talent/catalog.js';
+import { TALENT_REVIEW_APP, TALENT_REVIEW_CONFIG_OBJECTS, TALENT_REVIEW_OBJECTS } from '../talent-review/catalog.js';
 
 /**
  * 编制方案的“看全部”目标（数据源类）：编制方案与组织编制共用对象 OrganizationEstablishment，对象级看全部会连带放开
@@ -137,6 +138,23 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
     objects: Object.values(TALENT_OBJECTS).map(full),
     hr: false,
     seeAll: [{ appCode: TALENT_APP, targetKind: 'entity', targetCode: TALENT_OBJECTS.descriptionType.code }],
+  },
+  {
+    // R3-T04 设计 §6.1（C-06）：盘点管理员，拥有人才盘点全部功能，可见数据按（用户 × TalentReview）的范围控制，
+    // 不预置看全部；只对没有组织字段的设置类对象（准备度等）按 DEC-121 预置看全部，否则管理员无法维护字典。
+    // 许可归属未取证（🟡），与人才标准管理员同口径不占名额。
+    code: 'standard_talent_review_admin',
+    name: '盘点管理员（人才盘点）',
+    description: '拥有人才盘点的全部功能，可见数据按数据范围控制',
+    licenseType: null,
+    apps: [TALENT_REVIEW_APP],
+    objects: Object.values(TALENT_REVIEW_OBJECTS).map(full),
+    hr: false,
+    seeAll: TALENT_REVIEW_CONFIG_OBJECTS.map((key) => ({
+      appCode: TALENT_REVIEW_APP,
+      targetKind: 'entity' as const,
+      targetCode: TALENT_REVIEW_OBJECTS[key].code,
+    })),
   },
   {
     // 经理自助须显式授权（C-003 复核，06 §8）；数据范围由汇报关系规则给出，不预置看全部

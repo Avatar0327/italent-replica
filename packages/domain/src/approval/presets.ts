@@ -28,7 +28,7 @@ export interface PresetProcess {
  * 非 IDP 预置（调动、入职、离职、转正、实习转正、退休、组织调整、新增员工、四类合同、个人信息变更、员工子集变更）都会
  * 产生重大影响或涉及敏感信息，发起人与异动本人不能审批自己的单据，avoidSelf = true；IDP 预置不敏感、影响不大，
  * avoidSelf = false（IDP_ACTIONS，DEC-318 K-37）。逐个预置的理由见设计 §3.3；以后新增预置（如调薪）按“是否敏感 /
- * 是否有重大影响”逐个定值并补进该表。全部预置都是单主体业务，avoidSubjects = false。
+ * 是否有重大影响”逐个定值并补进该表。单主体业务的预置 avoidSubjects = false；集合审批的盘点结果审批为 true（D-34）。
  */
 const PRESET_RECUSAL = { avoidSelf: true, avoidSubjects: false } as const;
 const PRESET_ACTIONS = {
@@ -259,6 +259,26 @@ export const PRESET_PROCESSES: readonly PresetProcess[] = [
       ],
     }),
   })),
+  {
+    // R3-T04 设计 §3.3（D-34，DEC-332①）：盘点结果涉及绩效、潜力等人才评价，影响晋升与继任，敏感且有重大影响，
+    // 审批节点显式 avoidSelf = true；集合审批一单涵盖多个被盘点人，avoidSubjects = true（D-34）。预置一旦安装即成为
+    // 存量配置，不能等 PR-D 再改模板；节点结构未取证（TODO(需取证 #38) 同口径），由租户调整后发布。
+    presetKey: 'standard_talent_review_result',
+    code: 'StandardTalentReviewResult',
+    approvalType: 'talent_review_result',
+    definition: draft({
+      name: '标准盘点结果审批流程',
+      description: '出厂预置：节点结构待按本租户实际流程核对，发布前须配置异常管理员',
+      priority: 0,
+      ...standardCondition('talent_review_result'),
+      nodes: [
+        node('department_head', '部门负责人审批', 'latest_record_department_head', {
+          formFields: [],
+          actions: { ...PRESET_ACTIONS, avoidSubjects: true },
+        }),
+      ],
+    }),
+  },
   {
     presetKey: 'standard_personnel_change',
     code: 'StandardPersonnelChange',

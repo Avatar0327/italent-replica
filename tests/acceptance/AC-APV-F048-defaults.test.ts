@@ -1,7 +1,8 @@
 /**
  * F-048 PR-1 开关的输入 / 存储 / 回显与缺省值（docs/08_设计/F-048_审批多主体回避_设计.md §3，测试 T11）：
  * - DEC-329④：管理员新建节点不给开关即关闭；草稿整份替换漏传时沿用该节点当前值；新版本复制；回显始终显式；
- * - 存量节点保持冻结的列值；DEC-332①：预置按业务敏感度显式取值（非 IDP true、IDP false），全部预置 avoidSubjects false；
+ * - 存量节点保持冻结的列值；DEC-332①：预置按业务敏感度显式取值（非 IDP true、IDP false），avoidSubjects 只有集合审批的
+ *   盘点结果审批预置为 true（R3-T04 设计 §3.3 D-34），其余单主体预置 false；
  * - PR-2：avoidSubjects 放开——会签或无「同意」出口的节点开启 → 400 UNSUPPORTED（保存 / 草稿 / 发布 / 写入层各自复核）；
  *   DEC-331⑤：命中动作只启用「跳过」。
  */
@@ -300,7 +301,7 @@ describe('T11 DEC-331⑤：命中动作只启用「跳过」', () => {
 });
 
 describe('T11 DEC-332①：预置按业务敏感度显式取值（设计 §3.3）', () => {
-  it('非 IDP 预置 avoidSelf=true，IDP 预置 avoidSelf=false，全部 avoidSubjects=false', async () => {
+  it('非 IDP 预置 avoidSelf=true，IDP 预置 avoidSelf=false；只有盘点结果审批 avoidSubjects=true（D-34）', async () => {
     const w = await approvalWorld(database().db, 'f048-presets');
     const installed = await w.json<{ items: Process[] }>(
       await w.request(w.hr.id, 'POST', `${BASE}/presets/install`, { ifMatch: 0 }),
@@ -309,10 +310,12 @@ describe('T11 DEC-332①：预置按业务敏感度显式取值（设计 §3.3�
     for (const item of installed.items) {
       const process = await getProcess(w, item.id);
       const idp = item.approvalType.startsWith('idp_');
+      // R3-T04 设计 §3.3 D-34：集合审批（一单多个被盘点人）的盘点结果审批预置显式开启多主体回避
+      const collective = item.approvalType === 'talent_review_result';
       for (const node of process.latestVersion.nodes) {
         expect(node.actions, `${item.approvalType}.${node.key}`).toMatchObject({
           avoidSelf: !idp,
-          avoidSubjects: false,
+          avoidSubjects: collective,
         });
         expect(node.avoidSubjectsResult).toBe('skip');
       }
