@@ -16,6 +16,7 @@ import { saveInformationCollection } from '../../apps/api/src/modules/personnel/
 import { saveSubset } from '../../apps/api/src/modules/personnel/subsets.js';
 import type { InstanceView } from './AC-APV-support.js';
 import { QL_BASE } from './AC-QL-support.js';
+import { allowAll, tenantApi } from './support/tenant-api.js';
 import { REQUESTS, rowsOf, SETTING_EDITABLE, SETTING_SYNC, subsetScene } from './AC-QL-subset-support.js';
 
 const database = useTestDb();
@@ -206,27 +207,37 @@ describe('AC-QL-subset 引用校验：类别 / 级别须对操作人可见且启
     expect((await rows())[0]).toMatchObject({ category_id: catalog.otherCategory.id, end_date: '2027-01-01' });
   });
 
-  it('操作人没有类别 / 级别的查看权 → 403，数据不变（授权钩子按操作人判定）', async () => {
-    const { w, path, add, rows, catalog } = await subsetScene(database, 'qs-refs-view');
-    const { bindQualificationSubsetPolicy } = await import('../../apps/api/src/modules/qualification/subset-policy.js');
-    const viewable = new Set<string>(['Qualification.EmploymentCategory', 'Qualification.EmploymentLevel']);
-    // 模拟真实授权器对 Qualification 应用对象的判定：只认 object.view 的资源编码
-    const authorize = ((request: { action: string; resource?: string }) =>
+  /** 模拟真实授权器对 Qualification 应用对象的判定：只认 object.view 的资源编码，其余全放行。 */
+  const authorizerOf = (viewable: ReadonlySet<string>) =>
+    ((request: { action: string; resource?: string }) =>
       request.action === 'object.view' ? viewable.has(request.resource ?? '') : true) as never;
-    bindQualificationSubsetPolicy({ authorize, clock: w.clock });
-    expect((await add()).status).toBe(201);
+  const BOTH = ['Qualification.EmploymentCategory', 'Qualification.EmploymentLevel'];
+
+  it('操作人没有类别 / 级别的查看权 → 403，数据不变（授权器取自实际处理请求的应用）', async () => {
+    const { w, path, rows, catalog } = await subsetScene(database, 'qs-refs-view');
+    const strict = (viewable: string[]) =>
+      tenantApi(w.db, { clock: w.clock, authorize: authorizerOf(new Set(viewable)) });
+    const post = (api: ReturnType<typeof tenantApi>, extra: Record<string, unknown> = {}) =>
+      api.request('POST', path, {
+        user: w.hr.id,
+        tenant: w.tenant.id,
+        ifMatch: 0,
+        body: { categoryId: catalog.category.id, levelId: catalog.level.id, startDate: '2026-01-01', ...extra },
+      });
+    const both = strict(BOTH);
+    expect((await post(both)).status).toBe(201);
     const before = await rows();
 
-    viewable.delete('Qualification.EmploymentCategory');
-    const noCategory = await add({ categoryId: catalog.otherCategory.id });
+    const noCategory = await post(strict(['Qualification.EmploymentLevel']), { categoryId: catalog.otherCategory.id });
     expect(noCategory.status, await noCategory.clone().text()).toBe(403);
-    viewable.add('Qualification.EmploymentCategory');
-    viewable.delete('Qualification.EmploymentLevel');
-    const noLevel = await add({ levelId: catalog.otherLevel.id });
+    const noLevel = await post(strict(['Qualification.EmploymentCategory']), { levelId: catalog.otherLevel.id });
     expect(noLevel.status).toBe(403);
+    expect(await rows()).toEqual(before);
+
     // 只改日期不涉及新引用：不需要查看权
-    const record = before[0]!;
-    const dated = await w.request(w.hr.id, 'PATCH', `${path}/${String(record.id)}`, {
+    const dated = await strict([]).request('PATCH', `${path}/${String(before[0]!.id)}`, {
+      user: w.hr.id,
+      tenant: w.tenant.id,
       ifMatch: 1,
       body: { endDate: '2027-02-02' },
     });
@@ -234,33 +245,118 @@ describe('AC-QL-subset 引用校验：类别 / 级别须对操作人可见且启
     expect(await rows()).toHaveLength(1);
   });
 
+  it('多个应用装配在同一进程：后装配的宽松应用不覆盖先装配应用的授权器（两种装配顺序、交错请求）', async () => {
+    const { w, path, rows, catalog } = await subsetScene(database, 'qs-refs-two-apps');
+    const denyCategory = () =>
+      tenantApi(w.db, { clock: w.clock, authorize: authorizerOf(new Set(['Qualification.EmploymentLevel'])) });
+    const allowAllApp = () => tenantApi(w.db, { clock: w.clock });
+    const post = (api: ReturnType<typeof tenantApi>, categoryId: string) =>
+      api.request('POST', path, {
+        user: w.hr.id,
+        tenant: w.tenant.id,
+        ifMatch: 0,
+        body: { categoryId, levelId: catalog.level.id, startDate: '2026-01-01' },
+      });
+
+    // 顺序 1：先装配“无类别查看权”的应用，再装配 allowAll 应用
+    const strictFirst = denyCategory();
+    const lenientSecond = allowAllApp();
+    expect((await post(strictFirst, catalog.category.id)).status).toBe(403);
+    expect((await post(lenientSecond, catalog.category.id)).status).toBe(201);
+    expect((await post(strictFirst, catalog.otherCategory.id)).status).toBe(403);
+    // 顺序 2：先 allowAll 再严格
+    const lenientFirst = allowAllApp();
+    const strictSecond = denyCategory();
+    expect((await post(lenientFirst, catalog.otherCategory.id)).status).toBe(201);
+    expect((await post(strictSecond, catalog.category.id)).status).toBe(403);
+    expect((await post(lenientFirst, catalog.category.id)).status).toBe(201);
+    expect(await rows()).toHaveLength(3);
+  });
+
   it('信息采集入口按同一策略校验（DEC-087）：停用类别 400，成功时来源 info_collection', async () => {
     const { w, s, tx, catalog, base, rows } = await subsetScene(database, 'qs-collect');
-    const ctx = () => ({
+    // 信息采集是可信入口：调用方在上下文里带上授权器（人工来源的新引用需要它），不依赖进程全局
+    const ctx = (authorize: unknown = allowAll) => ({
       tenantId: w.tenant.id,
       userId: w.hr.id,
       timezone: 'Asia/Shanghai',
       now: w.clock(),
       commandId: randomUUID(),
       expectedRevision: 0,
+      ...(authorize ? { authorize: authorize as typeof allowAll } : {}),
     });
-    await expect(
+    const collect = (context: ReturnType<typeof ctx>, extra: Record<string, unknown> = {}) =>
       tx((t) =>
-        saveInformationCollection(
-          t,
-          ctx(),
-          s.subject.employeeId,
-          'qualification',
-          randomUUID(),
-          base({ categoryId: catalog.disabledCategory.id }),
-        ),
-      ),
-    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+        saveInformationCollection(t, context, s.subject.employeeId, 'qualification', randomUUID(), base(extra)),
+      );
+    await expect(collect(ctx(), { categoryId: catalog.disabledCategory.id })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+    });
     expect(await rows()).toEqual([]);
-    const saved = await tx((t) =>
-      saveInformationCollection(t, ctx(), s.subject.employeeId, 'qualification', randomUUID(), base()),
-    );
+    // 上下文里的授权器说没有查看权 → 403；没带授权器 → 503（fail-closed，不借用别的应用的授权器）
+    const denied = (() => false) as never;
+    await expect(collect(ctx(denied))).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(collect(ctx(null))).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
+    expect(await rows()).toEqual([]);
+    const saved = await collect(ctx());
     expect(saved).toMatchObject({ sourceType: 'info_collection' });
+  });
+});
+
+describe('AC-QL-subset 第 1 轮 P2-2：引用 UUID 大小写不同不算新引用（DEC-194 先规范化）', () => {
+  const upper = (id: string) => id.toUpperCase();
+
+  it('原样带回大写的同一类别 / 级别：引用事后停用也不重新校验（200，库里仍存小写）', async () => {
+    const { w, path, addOk, rows, catalog } = await subsetScene(database, 'qs-uuid-case-disabled');
+    const record = await addOk();
+    for (const [kind, id] of [
+      ['categories', catalog.category.id],
+      ['levels', catalog.level.id],
+    ] as const) {
+      const config = await w.json<{ revision: number }>(await w.request(w.hr.id, 'GET', `${QL_BASE}/${kind}/${id}`));
+      const disabled = await w.request(w.hr.id, 'PATCH', `${QL_BASE}/${kind}/${id}`, {
+        ifMatch: config.revision,
+        body: { enabled: false },
+      });
+      expect(disabled.status, await disabled.clone().text()).toBe(200);
+    }
+    const patched = await w.request(w.hr.id, 'PATCH', `${path}/${record.id}`, {
+      ifMatch: 1,
+      body: { categoryId: upper(catalog.category.id), levelId: upper(catalog.level.id), endDate: '2027-01-01' },
+    });
+    expect(patched.status, await patched.clone().text()).toBe(200);
+    expect((await rows())[0]).toMatchObject({
+      category_id: catalog.category.id,
+      level_id: catalog.level.id,
+      end_date: '2027-01-01',
+    });
+  });
+
+  it.each([
+    ['categoryId', 'Qualification.EmploymentCategory'],
+    ['levelId', 'Qualification.EmploymentLevel'],
+  ])('原样带回大写的同一 %s：事后失去 %s 查看权也不重新校验（200）；换成别的引用仍 403', async (field, object) => {
+    const scene = await subsetScene(database, `qs-uuid-case-view-${field}`);
+    const { w, path, addOk, catalog } = scene;
+    const record = await addOk();
+    const noView = tenantApi(w.db, {
+      clock: w.clock,
+      authorize: ((request: { action: string; resource?: string }) =>
+        !(request.action === 'object.view' && request.resource === object)) as never,
+    });
+    const current = field === 'categoryId' ? catalog.category.id : catalog.level.id;
+    const other = field === 'categoryId' ? catalog.otherCategory.id : catalog.otherLevel.id;
+    const patch = (value: string, revision: number) =>
+      noView.request('PATCH', `${path}/${record.id}`, {
+        user: w.hr.id,
+        tenant: w.tenant.id,
+        ifMatch: revision,
+        body: { [field]: value, endDate: '2027-01-01' },
+      });
+    const same = await patch(upper(current), 1);
+    expect(same.status, await same.clone().text()).toBe(200);
+    const changed = await patch(other, 2);
+    expect(changed.status, await changed.clone().text()).toBe(403);
   });
 });
 
