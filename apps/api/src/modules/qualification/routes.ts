@@ -30,6 +30,7 @@ import {
 import { registerQualificationCandidates } from './candidates.js';
 import * as config from './config-service.js';
 import { registerExtras } from './extras.js';
+import { bindQualificationSubsetPolicy } from './subset-policy.js';
 import * as input from './input.js';
 import * as read from './read-model.js';
 import { fieldEditable, presenter, QL_BASE, runWrite, type View, writeContext } from './route-support.js';
@@ -169,6 +170,8 @@ const SPECS = {
 } as const;
 
 export function registerQualificationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  // 子集策略的钩子签名里没有授权器，随路由装配绑定（C1-1）
+  bindQualificationSubsetPolicy(deps);
   registerQualificationCandidates(router, deps);
   registerExtras(router, deps);
   for (const spec of Object.values(SPECS)) registerObject(router, deps, spec as ObjectRoutes<object, object>);

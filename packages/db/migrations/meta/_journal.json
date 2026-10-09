@@ -561,6 +561,20 @@
       "when": 1791570699834,
       "tag": "0079_talent_review_config",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1791577299650,
+      "tag": "0080_qualification_subset",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1791577306610,
+      "tag": "0081_qualification_subset_isolation",
+      "breakpoints": true
     }
   ]
 }

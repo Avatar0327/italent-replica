@@ -424,10 +424,14 @@ describe('AC-QL-subset 自助不开放 🟡（Q-M0-133 剩余，DEC-365③）', 
     expect(returned.status).toBe('returned');
     // 夹具：把这张待审批申请改成 qualification 子集（自助入口已不可能产生它）
     const values = { categoryId: randomUUID(), levelId: randomUUID(), startDate: '2026-02-01' };
-    // 可信夹具：以库所有者身份改（应用角色对申请表只有 status / revision 的更新权）
+    // 可信夹具：以库所有者身份改（应用角色对申请表只有 status / revision 的更新权；载荷以最新版本为准）
+    const payload = JSON.stringify(values);
     await w.db.execute(
-      sql`UPDATE personnel_change_requests SET subset = 'qualification', values = ${JSON.stringify(values)}::jsonb
+      sql`UPDATE personnel_change_requests SET subset = 'qualification', values = ${payload}::jsonb
         WHERE id = ${request.id}::uuid`,
+    );
+    await w.db.execute(
+      sql`UPDATE personnel_change_request_versions SET values = ${payload}::jsonb WHERE request_id = ${request.id}::uuid`,
     );
     const state = () =>
       tx(async (t) => ({
