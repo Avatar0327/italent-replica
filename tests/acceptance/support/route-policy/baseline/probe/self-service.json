@@ -1,0 +1,79 @@
+{
+  "GET /api/tenant/self-service/applications": {
+    "all": {
+      "code": "FORBIDDEN",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/self-service/applications/:id": {
+    "all": {
+      "code": "FORBIDDEN",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/self-service/employees/:id/records": {
+    "all": {
+      "code": "FORBIDDEN",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/self-service/profile": {
+    "all": {
+      "code": "FORBIDDEN",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/self-service/transfer/references/:code": {
+    "all": {
+      "code": "FORBIDDEN",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/self-service/transfer": {
+    "all": {
+      "code": "FORBIDDEN",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/self-service/transfer/preview": {
+    "all": {
+      "code": "FORBIDDEN",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-asked"
+    },
+    "scopeQueries": [],
+    "trace": []
+  }
+}

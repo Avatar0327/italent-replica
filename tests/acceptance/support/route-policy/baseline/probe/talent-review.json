@@ -1,0 +1,81 @@
+{
+  "DELETE /api/tenant/talent-review/readiness-levels/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Readiness/-"
+    ],
+    "trace": [
+      "btn:TalentReview.Readiness#delete@detail",
+      "obj:TalentReview.Readiness:delete"
+    ]
+  },
+  "GET /api/tenant/talent-review/readiness-levels": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TalentReview.Readiness"
+    ],
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Readiness/TalentReview.Readiness.list"
+    ],
+    "trace": [
+      "obj:TalentReview.Readiness:view"
+    ]
+  },
+  "GET /api/tenant/talent-review/readiness-levels/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Readiness/TalentReview.Readiness.detail"
+    ],
+    "trace": [
+      "obj:TalentReview.Readiness:view"
+    ]
+  },
+  "PATCH /api/tenant/talent-review/readiness-levels/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TalentReview/TalentReview.Readiness/-"
+    ],
+    "trace": [
+      "btn:TalentReview.Readiness#update@detail",
+      "obj:TalentReview.Readiness:update"
+    ]
+  },
+  "POST /api/tenant/talent-review/readiness-levels": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:TalentReview.Readiness#create@list",
+      "obj:TalentReview.Readiness:create"
+    ]
+  }
+}

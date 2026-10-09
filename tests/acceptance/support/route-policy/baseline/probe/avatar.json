@@ -1,0 +1,53 @@
+{
+  "DELETE /api/tenant/account/avatar": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/account/avatar": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/avatars/:attachmentId/content": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/account/avatar/attachments": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/account/avatar/attachments/:attachmentId/upload": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  }
+}

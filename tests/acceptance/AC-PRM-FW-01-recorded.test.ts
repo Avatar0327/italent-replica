@@ -24,7 +24,9 @@ import {
   RECORDED_PATH,
   readFrozenRecorded,
   type RecordedFacts,
+  writeFrozenRecorded,
 } from './support/route-policy/recorded.js';
+import { preconditionName } from './support/route-policy/features.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
@@ -37,6 +39,10 @@ beforeAll(() => {
   const stored = readFrozenContract();
   if (!stored) throw new Error('冻结基准不存在：先跑 AC-PRM-FW-02.test.ts 生成');
   contract = stored;
+  // 本文件没有真实证据用例（首批事实随模块组），重新生成只保证文件存在、保留其他组已冻结的事实
+  if (process.env.ROUTE_POLICY_UPDATE_BASELINE === '1') {
+    writeFrozenRecorded(mergeRecorded(readFrozenRecorded(), {}, new Set()));
+  }
 });
 
 const codes = (findings: readonly Finding[]) => findings.map((f) => f.code);
@@ -46,11 +52,14 @@ const withPre = (route: ManifestRoute, names: readonly string[] | undefined): Ma
   if (!names) delete (write as { preconditions?: unknown }).preconditions;
   return { ...route, policy: { ...policy, write } as RoutePolicy };
 };
-/** 声明了前提、静态原语也探测得到的写端点（其前提不需要 recorded 补）。 */
+/** 声明的前提全部被静态原语探测到的写端点（其前提不需要 recorded 补）。 */
 const staticRoute = () =>
   routes.find((r) => {
     const names = (r.policy as { write?: { preconditions?: readonly string[] } }).write?.preconditions ?? [];
-    return names.length > 0 && (contract.routes[`${r.method} ${r.path}`]?.primitives['precondition'] ?? []).length > 0;
+    const seen = new Set(
+      (contract.routes[`${r.method} ${r.path}`]?.primitives['precondition'] ?? []).map(preconditionName),
+    );
+    return names.length > 0 && names.every((name) => seen.has(preconditionName(name)));
   })!;
 
 const json = (status: number, body: unknown) =>
@@ -149,7 +158,7 @@ describe('AC-PRM-FW-01 recorded：收集 ↔ 冻结 双向核对', () => {
       collected: {},
       frozen,
       scope: new Set([GUARDED]),
-      routes: [guarded()],
+      routes: [withPre(guarded(), undefined)],
       contract,
     });
     expect(codes(findings)).toEqual(['RECORDED_STALE']);
@@ -163,7 +172,7 @@ describe('AC-PRM-FW-01 recorded：收集 ↔ 冻结 双向核对', () => {
       collected: recorder.facts,
       frozen,
       scope: new Set([GUARDED]),
-      routes: [guarded()],
+      routes: [withPre(guarded(), undefined)],
       contract,
     });
     expect(codes(findings)).toEqual(['RECORDED_UNREGISTERED']);
@@ -227,6 +236,9 @@ describe('AC-PRM-FW-01 recorded：冻结文件', () => {
     expect(canonicalJson(frozen)).toBe(readFileSync(RECORDED_PATH, 'utf8'));
     const declared = new Set(routes.map((r) => `${r.method} ${r.path}`));
     for (const key of Object.keys(frozen)) expect(declared.has(key), key).toBe(true);
+    // 真实冻结文件对真实声明的核对（本文件不负责任何端点，只核对冻结的端点还存在）
+    const findings = checkRecorded({ collected: {}, frozen, scope: new Set(), routes, contract });
+    expect(findings).toEqual([]);
   });
 
   it('mergeRecorded：只替换本文件负责的端点，其余模块组的冻结事实原样保留', async () => {

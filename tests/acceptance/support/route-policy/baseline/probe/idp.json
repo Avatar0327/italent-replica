@@ -1,0 +1,1001 @@
+{
+  "DELETE /api/tenant/idp/careers/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Career/-"
+    ],
+    "trace": [
+      "btn:IDP.Career#delete@detail",
+      "obj:IDP.Career:delete"
+    ]
+  },
+  "DELETE /api/tenant/idp/plans/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:IDP.Analysis",
+      "fields:IDP.Career",
+      "fields:IDP.GoalReview",
+      "fields:IDP.IDPTemplateModule",
+      "fields:IDP.Idp",
+      "fields:IDP.IdpGoal",
+      "fields:IDP.Review",
+      "fields:IDP.SubProcess",
+      "fields:IDP.Task",
+      "fields:IDP.TutorShip",
+      "fields:IDP.WorkShift",
+      "fields:TenantBase.EmploymentRecord"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Career/IDP.Career.detail",
+      "scope:IDP/IDP.IDPProcess/IDP.IDPProcess.detail",
+      "scope:IDP/IDP.IDPTemplate/IDP.IDPTemplate.detail",
+      "scope:IDP/IDP.Idp/-",
+      "scope:IDP/IDP.TutorShip/IDP.TutorShip.detail",
+      "scope:IDP/IDP.WorkShift/IDP.WorkShift.detail",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail"
+    ],
+    "trace": [
+      "btn:IDP.Idp#delete@detail",
+      "obj:IDP.Analysis:view",
+      "obj:IDP.Career:view",
+      "obj:IDP.GoalReview:view",
+      "obj:IDP.IDPTemplateModule:view",
+      "obj:IDP.Idp:delete",
+      "obj:IDP.Idp:view",
+      "obj:IDP.IdpGoal:view",
+      "obj:IDP.Review:view",
+      "obj:IDP.SubProcess:view",
+      "obj:IDP.Task:view",
+      "obj:IDP.TutorShip:view",
+      "obj:IDP.WorkShift:view",
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "DELETE /api/tenant/idp/plans/:id/goals/:goalId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/-"
+    ],
+    "trace": [
+      "obj:IDP.Idp:view"
+    ]
+  },
+  "DELETE /api/tenant/idp/plans/:id/goals/:goalId/tasks/:taskId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/-"
+    ],
+    "trace": [
+      "obj:IDP.Idp:view"
+    ]
+  },
+  "DELETE /api/tenant/idp/processes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPProcess/-"
+    ],
+    "trace": [
+      "btn:IDP.IDPProcess#delete@detail",
+      "obj:IDP.IDPProcess:delete"
+    ]
+  },
+  "DELETE /api/tenant/idp/templates/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPTemplate/-"
+    ],
+    "trace": [
+      "btn:IDP.IDPTemplate#delete@detail",
+      "obj:IDP.IDPTemplate:delete"
+    ]
+  },
+  "DELETE /api/tenant/idp/templates/:id/common-goals/:partId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPTemplate/-"
+    ],
+    "trace": [
+      "btn:IDP.IDPTemplateCommonGoal#delete@detail",
+      "obj:IDP.IDPTemplateCommonGoal:delete"
+    ]
+  },
+  "DELETE /api/tenant/idp/templates/:id/modules/:partId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPTemplate/-"
+    ],
+    "trace": [
+      "btn:IDP.IDPTemplateModule#delete@detail",
+      "obj:IDP.IDPTemplateModule:delete"
+    ]
+  },
+  "DELETE /api/tenant/idp/tutorships/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.TutorShip/-"
+    ],
+    "trace": [
+      "btn:IDP.TutorShip#delete@detail",
+      "obj:IDP.TutorShip:delete"
+    ]
+  },
+  "DELETE /api/tenant/idp/work-shifts/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.WorkShift/-"
+    ],
+    "trace": [
+      "btn:IDP.WorkShift#delete@detail",
+      "obj:IDP.WorkShift:delete"
+    ]
+  },
+  "GET /api/tenant/idp/approval-processes": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:IDP.IDPProcess:create",
+      "obj:IDP.IDPProcess:view"
+    ]
+  },
+  "GET /api/tenant/idp/careers": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:IDP.Career"
+    ],
+    "scopeQueries": [
+      "scope:IDP/IDP.Career/IDP.Career.list"
+    ],
+    "trace": [
+      "obj:IDP.Career:view"
+    ]
+  },
+  "GET /api/tenant/idp/careers/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Career/IDP.Career.detail"
+    ],
+    "trace": [
+      "obj:IDP.Career:view"
+    ]
+  },
+  "GET /api/tenant/idp/my-plans": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/idp/plans": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:IDP.Analysis",
+      "fields:IDP.Career",
+      "fields:IDP.GoalReview",
+      "fields:IDP.IDPTemplateModule",
+      "fields:IDP.Idp",
+      "fields:IDP.IdpGoal",
+      "fields:IDP.Review",
+      "fields:IDP.SubProcess",
+      "fields:IDP.Task",
+      "fields:IDP.TutorShip",
+      "fields:IDP.WorkShift",
+      "fields:TenantBase.EmploymentRecord"
+    ],
+    "scopeQueries": [
+      "scope:IDP/IDP.Career/IDP.Career.detail",
+      "scope:IDP/IDP.IDPProcess/IDP.IDPProcess.detail",
+      "scope:IDP/IDP.IDPTemplate/IDP.IDPTemplate.detail",
+      "scope:IDP/IDP.Idp/IDP.Idp.list",
+      "scope:IDP/IDP.TutorShip/IDP.TutorShip.detail",
+      "scope:IDP/IDP.WorkShift/IDP.WorkShift.detail",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail"
+    ],
+    "trace": [
+      "obj:IDP.Analysis:view",
+      "obj:IDP.Career:view",
+      "obj:IDP.GoalReview:view",
+      "obj:IDP.IDPTemplateModule:view",
+      "obj:IDP.Idp:view",
+      "obj:IDP.IdpGoal:view",
+      "obj:IDP.Review:view",
+      "obj:IDP.SubProcess:view",
+      "obj:IDP.Task:view",
+      "obj:IDP.TutorShip:view",
+      "obj:IDP.WorkShift:view",
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/idp/plans/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:IDP.Analysis",
+      "fields:IDP.Career",
+      "fields:IDP.GoalReview",
+      "fields:IDP.IDPTemplateModule",
+      "fields:IDP.Idp",
+      "fields:IDP.IdpGoal",
+      "fields:IDP.Review",
+      "fields:IDP.SubProcess",
+      "fields:IDP.Task",
+      "fields:IDP.TutorShip",
+      "fields:IDP.WorkShift",
+      "fields:TenantBase.EmploymentRecord"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Career/IDP.Career.detail",
+      "scope:IDP/IDP.IDPProcess/IDP.IDPProcess.detail",
+      "scope:IDP/IDP.IDPTemplate/IDP.IDPTemplate.detail",
+      "scope:IDP/IDP.Idp/IDP.Idp.detail",
+      "scope:IDP/IDP.TutorShip/IDP.TutorShip.detail",
+      "scope:IDP/IDP.WorkShift/IDP.WorkShift.detail",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail"
+    ],
+    "trace": [
+      "obj:IDP.Analysis:view",
+      "obj:IDP.Career:view",
+      "obj:IDP.GoalReview:view",
+      "obj:IDP.IDPTemplateModule:view",
+      "obj:IDP.Idp:view",
+      "obj:IDP.IdpGoal:view",
+      "obj:IDP.Review:view",
+      "obj:IDP.SubProcess:view",
+      "obj:IDP.Task:view",
+      "obj:IDP.TutorShip:view",
+      "obj:IDP.WorkShift:view",
+      "obj:TenantBase.EmploymentRecord:view"
+    ]
+  },
+  "GET /api/tenant/idp/plans/:id/competency-candidates": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/idp/processes": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:IDP.IDPProcess",
+      "fields:IDP.SubProcess"
+    ],
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPProcess/IDP.IDPProcess.list"
+    ],
+    "trace": [
+      "obj:IDP.IDPProcess:view",
+      "obj:IDP.SubProcess:view"
+    ]
+  },
+  "GET /api/tenant/idp/processes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPProcess/IDP.IDPProcess.detail"
+    ],
+    "trace": [
+      "obj:IDP.IDPProcess:view"
+    ]
+  },
+  "GET /api/tenant/idp/templates": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:IDP.IDPTemplate",
+      "fields:IDP.IDPTemplateCommonGoal",
+      "fields:IDP.IDPTemplateModule"
+    ],
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPTemplate/IDP.IDPTemplate.list"
+    ],
+    "trace": [
+      "obj:IDP.IDPTemplate:view",
+      "obj:IDP.IDPTemplateCommonGoal:view",
+      "obj:IDP.IDPTemplateModule:view"
+    ]
+  },
+  "GET /api/tenant/idp/templates/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPTemplate/IDP.IDPTemplate.detail"
+    ],
+    "trace": [
+      "obj:IDP.IDPTemplate:view"
+    ]
+  },
+  "GET /api/tenant/idp/tutorships": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:IDP.TutorShip"
+    ],
+    "scopeQueries": [
+      "scope:IDP/IDP.TutorShip/IDP.TutorShip.list"
+    ],
+    "trace": [
+      "obj:IDP.TutorShip:view"
+    ]
+  },
+  "GET /api/tenant/idp/tutorships/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.TutorShip/IDP.TutorShip.detail"
+    ],
+    "trace": [
+      "obj:IDP.TutorShip:view"
+    ]
+  },
+  "GET /api/tenant/idp/work-shifts": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:IDP.WorkShift"
+    ],
+    "scopeQueries": [
+      "scope:IDP/IDP.WorkShift/IDP.WorkShift.list"
+    ],
+    "trace": [
+      "obj:IDP.WorkShift:view"
+    ]
+  },
+  "GET /api/tenant/idp/work-shifts/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.WorkShift/IDP.WorkShift.detail"
+    ],
+    "trace": [
+      "obj:IDP.WorkShift:view"
+    ]
+  },
+  "PATCH /api/tenant/idp/careers/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Career/-"
+    ],
+    "trace": [
+      "btn:IDP.Career#update@detail",
+      "obj:IDP.Career:update"
+    ]
+  },
+  "PATCH /api/tenant/idp/plans/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmploymentRecord",
+      "fields:TenantBase.Organization"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/-",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.detail",
+      "scope:TenantBase/TenantBase.Organization/TenantBase.Organization.detail"
+    ],
+    "trace": [
+      "btn:IDP.Idp#update@detail",
+      "obj:IDP.Idp:update",
+      "obj:TenantBase.EmploymentRecord:view",
+      "obj:TenantBase.Organization:view"
+    ]
+  },
+  "PATCH /api/tenant/idp/plans/:id/goals/:goalId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/-"
+    ],
+    "trace": [
+      "obj:IDP.Idp:view"
+    ]
+  },
+  "PATCH /api/tenant/idp/plans/:id/goals/:goalId/tasks/:taskId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/-"
+    ],
+    "trace": [
+      "obj:IDP.Idp:view"
+    ]
+  },
+  "PATCH /api/tenant/idp/processes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPProcess/-"
+    ],
+    "trace": [
+      "btn:IDP.IDPProcess#update@detail",
+      "obj:IDP.IDPProcess:update"
+    ]
+  },
+  "PATCH /api/tenant/idp/templates/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPTemplate/-"
+    ],
+    "trace": [
+      "btn:IDP.IDPTemplate#update@detail",
+      "obj:IDP.IDPTemplate:update"
+    ]
+  },
+  "PATCH /api/tenant/idp/templates/:id/common-goals/:partId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPTemplate/-"
+    ],
+    "trace": [
+      "btn:IDP.IDPTemplateCommonGoal#update@detail",
+      "obj:IDP.IDPTemplateCommonGoal:update"
+    ]
+  },
+  "PATCH /api/tenant/idp/templates/:id/modules/:partId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPTemplate/-"
+    ],
+    "trace": [
+      "btn:IDP.IDPTemplateModule#update@detail",
+      "obj:IDP.IDPTemplateModule:update"
+    ]
+  },
+  "PATCH /api/tenant/idp/tutorships/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.TutorShip/-"
+    ],
+    "trace": [
+      "btn:IDP.TutorShip#update@detail",
+      "obj:IDP.TutorShip:update"
+    ]
+  },
+  "PATCH /api/tenant/idp/work-shifts/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.WorkShift/-"
+    ],
+    "trace": [
+      "btn:IDP.WorkShift#update@detail",
+      "obj:IDP.WorkShift:update"
+    ]
+  },
+  "POST /api/tenant/idp/careers": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.Career#create@list",
+      "obj:IDP.Career:create"
+    ]
+  },
+  "POST /api/tenant/idp/plans": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.Idp#create@list",
+      "obj:IDP.Idp:create"
+    ]
+  },
+  "POST /api/tenant/idp/plans/:id/goals": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/idp/plans/:id/goals/:goalId/tasks": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/idp/plans/:id/jump": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.Idp#jump@detail",
+      "obj:IDP.Idp:update"
+    ]
+  },
+  "POST /api/tenant/idp/plans/:id/start": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/-"
+    ],
+    "trace": [
+      "btn:IDP.Idp#start@detail",
+      "obj:IDP.Idp:update"
+    ]
+  },
+  "POST /api/tenant/idp/plans/:id/transfer": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.Idp#transfer@detail",
+      "obj:IDP.Idp:update"
+    ]
+  },
+  "POST /api/tenant/idp/plans/start-next": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.Idp#startNext@list",
+      "obj:IDP.Idp:update"
+    ]
+  },
+  "POST /api/tenant/idp/plans/tasks/issue": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.Task#issue@list",
+      "obj:IDP.Task:create"
+    ]
+  },
+  "POST /api/tenant/idp/plans/terminate": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.Idp#terminate@list",
+      "obj:IDP.Idp:update"
+    ]
+  },
+  "POST /api/tenant/idp/plans/urge": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.Idp#urge@list",
+      "obj:IDP.Idp:update"
+    ]
+  },
+  "POST /api/tenant/idp/processes": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.IDPProcess#create@list",
+      "obj:IDP.IDPProcess:create"
+    ]
+  },
+  "POST /api/tenant/idp/templates": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.IDPTemplate#create@list",
+      "obj:IDP.IDPTemplate:create"
+    ]
+  },
+  "POST /api/tenant/idp/templates/:id/common-goals": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.IDPTemplateCommonGoal#create@list",
+      "obj:IDP.IDPTemplateCommonGoal:create"
+    ]
+  },
+  "POST /api/tenant/idp/templates/:id/copy": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.IDPTemplate#copy@detail",
+      "obj:IDP.IDPTemplate:create"
+    ]
+  },
+  "POST /api/tenant/idp/templates/:id/modules": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.IDPTemplateModule#create@list",
+      "obj:IDP.IDPTemplateModule:create"
+    ]
+  },
+  "POST /api/tenant/idp/templates/:id/publish": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPTemplate/-"
+    ],
+    "trace": [
+      "btn:IDP.IDPTemplate#publish@detail",
+      "obj:IDP.IDPTemplate:update"
+    ]
+  },
+  "POST /api/tenant/idp/templates/:id/unpublish": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.IDPTemplate/-"
+    ],
+    "trace": [
+      "btn:IDP.IDPTemplate#unpublish@detail",
+      "obj:IDP.IDPTemplate:update"
+    ]
+  },
+  "POST /api/tenant/idp/tutorships": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.TutorShip#create@list",
+      "obj:IDP.TutorShip:create"
+    ]
+  },
+  "POST /api/tenant/idp/work-shifts": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:IDP.WorkShift#create@list",
+      "obj:IDP.WorkShift:create"
+    ]
+  },
+  "PUT /api/tenant/idp/plans/:id/goals/:goalId/review": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/-"
+    ],
+    "trace": [
+      "obj:IDP.Idp:view"
+    ]
+  },
+  "PUT /api/tenant/idp/plans/:id/modules/:moduleId/content": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/-"
+    ],
+    "trace": [
+      "obj:IDP.Idp:view"
+    ]
+  }
+}

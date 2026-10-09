@@ -1,0 +1,714 @@
+{
+  "DELETE /api/tenant/survey360/activities/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#delete@detail",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:delete",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "DELETE /api/tenant/survey360/activities/:id/grants/:userId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#update@detail",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:update",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "DELETE /api/tenant/survey360/activities/:id/objects/:objectId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#delete@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:delete"
+    ]
+  },
+  "DELETE /api/tenant/survey360/activities/:id/objects/:objectId/appraisers/:relationId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#delete@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:delete"
+    ]
+  },
+  "DELETE /api/tenant/survey360/questionnaires/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#delete@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:delete"
+    ]
+  },
+  "GET /api/tenant/survey360/activities": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Activity"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/grants": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/objects": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/objects/:objectId/appraisers": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/objects/:objectId/scores": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Result:view"
+    ]
+  },
+  "GET /api/tenant/survey360/people": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Person"
+    ],
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.list"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:view"
+    ]
+  },
+  "GET /api/tenant/survey360/people/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:view"
+    ]
+  },
+  "GET /api/tenant/survey360/people/:id/link-logs": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Person#sync@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:view"
+    ]
+  },
+  "GET /api/tenant/survey360/people/sync-conflicts": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Person",
+      "fields:TenantBase.EmployeeInformation",
+      "fields:TenantBase.EmploymentRecord"
+    ],
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.list",
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Person#sync@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:view",
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "GET /api/tenant/survey360/questionnaires": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Questionnaire"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:view"
+    ]
+  },
+  "GET /api/tenant/survey360/questionnaires/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:view"
+    ]
+  },
+  "GET /api/tenant/survey360/roles": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Settings"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Settings:view"
+    ]
+  },
+  "GET /api/tenant/survey360/settings": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Settings"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Settings:view"
+    ]
+  },
+  "POST /api/tenant/survey360/activities": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#create@list",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:create",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/appraisers/import": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#import@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:create"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/disable": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#disable@detail",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:update",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/enable": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#enable@detail",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:update",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/grants": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#update@detail",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:update",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/objects": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:create"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/objects/:objectId/appraisers": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:create"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/objects/:objectId/appraisers/auto": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#autoAdd@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:create"
+    ]
+  },
+  "POST /api/tenant/survey360/activities/:id/objects/:objectId/confirmation": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#invite@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:update"
+    ]
+  },
+  "POST /api/tenant/survey360/people": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Person#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:create"
+    ]
+  },
+  "POST /api/tenant/survey360/people/sync": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Survey360.Person",
+      "fields:TenantBase.EmployeeInformation",
+      "fields:TenantBase.EmploymentRecord"
+    ],
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-",
+      "scope:TenantBase/TenantBase.EmployeeInformation/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Person#sync@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:view",
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "POST /api/tenant/survey360/people/sync-conflicts/:id/resolve": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-",
+      "scope:TenantBase/TenantBase.EmployeeInformation/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Person#sync@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:view",
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "POST /api/tenant/survey360/questionnaires": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:create"
+    ]
+  },
+  "POST /api/tenant/survey360/questionnaires/:id/enable": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#enable@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:update"
+    ]
+  },
+  "POST /api/tenant/survey360/roles": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Settings#create@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Settings:create"
+    ]
+  },
+  "PUT /api/tenant/survey360/activities/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#update@detail",
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:update",
+      "obj:Survey360.Activity:view"
+    ]
+  },
+  "PUT /api/tenant/survey360/activities/:id/objects/:objectId/questionnaires": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Relation#update@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Relation:update"
+    ]
+  },
+  "PUT /api/tenant/survey360/people/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/-"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Person#update@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Person:update"
+    ]
+  },
+  "PUT /api/tenant/survey360/questionnaires/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Questionnaire#update@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Questionnaire:update"
+    ]
+  },
+  "PUT /api/tenant/survey360/roles/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Settings#update@detail",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Settings:update"
+    ]
+  },
+  "PUT /api/tenant/survey360/settings": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "btn:Survey360.Settings#finePermission@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Settings:update"
+    ]
+  }
+}

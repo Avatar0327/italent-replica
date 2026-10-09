@@ -1,0 +1,278 @@
+{
+  "DELETE /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Awards/-"
+    ],
+    "trace": [
+      "btn:TenantBase.Awards#delete@detail",
+      "obj:TenantBase.Awards:delete"
+    ]
+  },
+  "GET /api/tenant/personnel/change-requests/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.PersonalInformationChange/TenantBase.PersonalInformationChange.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.PersonalInformationChange:view"
+    ]
+  },
+  "GET /api/tenant/personnel/employees": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.list"
+    ],
+    "trace": [
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "GET /api/tenant/personnel/employees/:employeeId/subsets/:kind": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Awards/TenantBase.Awards.list"
+    ],
+    "trace": [
+      "obj:TenantBase.Awards:view"
+    ]
+  },
+  "GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Awards/TenantBase.Awards.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.Awards:view"
+    ]
+  },
+  "GET /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id/history": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Awards/TenantBase.Awards.detail"
+    ],
+    "trace": [
+      "btn:TenantBase.Awards#history@detail",
+      "obj:TenantBase.Awards:view"
+    ]
+  },
+  "GET /api/tenant/personnel/employees/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "GET /api/tenant/personnel/employees/:id/history": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.detail"
+    ],
+    "trace": [
+      "btn:TenantBase.EmployeeInformation#history@detail",
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "GET /api/tenant/personnel/employees/:id/tenure": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.EmployeeInformation/TenantBase.EmployeeInformation.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.EmployeeInformation:view"
+    ]
+  },
+  "GET /api/tenant/personnel/order-code/settings": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "GET /api/tenant/personnel/subsets/:kind": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.Awards",
+      "fields:TenantBase.EmployeeInformation"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Awards/TenantBase.Awards.list"
+    ],
+    "trace": [
+      "obj:TenantBase.Awards:view"
+    ]
+  },
+  "PATCH /api/tenant/personnel/employees/:employeeId/subsets/:kind/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PATCH /api/tenant/personnel/employees/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/personnel/change-requests": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/personnel/employees/:employeeId/subsets/:kind": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/personnel/employees/:id/attachments": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/personnel/order-code/recompute": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/personnel/order-code/settings": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  }
+}

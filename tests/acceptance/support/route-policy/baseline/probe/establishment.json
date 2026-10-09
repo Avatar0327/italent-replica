@@ -1,0 +1,235 @@
+{
+  "DELETE /api/tenant/establishment/schemes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OrganizationEstablishment/-"
+    ],
+    "trace": [
+      "btn:TenantBase.OrganizationEstablishment#delete@detail",
+      "obj:TenantBase.OrganizationEstablishment:delete"
+    ]
+  },
+  "GET /api/tenant/establishment/capacities": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.OrganizationEstablishment"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OrganizationEstablishment/TenantBase.OrganizationEstablishment.list"
+    ],
+    "trace": [
+      "obj:TenantBase.OrganizationEstablishment:view"
+    ]
+  },
+  "GET /api/tenant/establishment/capacities/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OrganizationEstablishment/TenantBase.OrganizationEstablishment.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.OrganizationEstablishment:view"
+    ]
+  },
+  "GET /api/tenant/establishment/copy-jobs/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OrganizationEstablishment/TenantBase.OrganizationEstablishment.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.OrganizationEstablishment:view"
+    ]
+  },
+  "GET /api/tenant/establishment/copy-jobs/:id/report": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [
+      "fields:TenantBase.OrganizationEstablishment"
+    ],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OrganizationEstablishment/TenantBase.OrganizationEstablishment.detail"
+    ],
+    "trace": [
+      "btn:TenantBase.OrganizationEstablishment#report@detail",
+      "obj:TenantBase.OrganizationEstablishment:view"
+    ]
+  },
+  "GET /api/tenant/establishment/notifications": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.OrganizationEstablishment"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OrganizationEstablishment/TenantBase.OrganizationEstablishment.list"
+    ],
+    "trace": [
+      "obj:TenantBase.OrganizationEstablishment:view"
+    ]
+  },
+  "GET /api/tenant/establishment/schemes": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.OrganizationEstablishment"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OrganizationEstablishment/TenantBase.OrganizationEstablishment.list"
+    ],
+    "trace": [
+      "obj:TenantBase.OrganizationEstablishment:view"
+    ]
+  },
+  "GET /api/tenant/establishment/schemes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OrganizationEstablishment/TenantBase.OrganizationEstablishment.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.OrganizationEstablishment:view"
+    ]
+  },
+  "GET /api/tenant/establishment/settings": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PATCH /api/tenant/establishment/capacities/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.OrganizationEstablishment:update"
+    ]
+  },
+  "PATCH /api/tenant/establishment/schemes/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.OrganizationEstablishment:update"
+    ]
+  },
+  "POST /api/tenant/establishment/capacities": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.OrganizationEstablishment:create"
+    ]
+  },
+  "POST /api/tenant/establishment/copy-jobs": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.OrganizationEstablishment:create"
+    ]
+  },
+  "POST /api/tenant/establishment/copy-jobs/:id/execute": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.OrganizationEstablishment/-"
+    ],
+    "trace": [
+      "btn:TenantBase.OrganizationEstablishment#execute@detail",
+      "obj:TenantBase.OrganizationEstablishment:update"
+    ]
+  },
+  "POST /api/tenant/establishment/schemes": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.OrganizationEstablishment:create"
+    ]
+  },
+  "PUT /api/tenant/establishment/settings": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  }
+}

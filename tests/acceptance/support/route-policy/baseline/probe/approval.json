@@ -1,0 +1,486 @@
+{
+  "GET /api/tenant/approval/admin-logs": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/IDP.Idp.list",
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list"
+    ],
+    "trace": [
+      "btn:TenantBase.ApprovalInstance#adminLogs@list"
+    ]
+  },
+  "GET /api/tenant/approval/instances": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/approval/instances/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/IDP.Idp.list",
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list"
+    ],
+    "trace": [
+      "btn:TenantBase.ApprovalInstance#adminIntervene@detail",
+      "btn:TenantBase.ApprovalInstance#adminTransfer@detail"
+    ]
+  },
+  "GET /api/tenant/approval/instances/:id/logs": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/IDP.Idp.list",
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list"
+    ],
+    "trace": [
+      "btn:TenantBase.ApprovalInstance#adminIntervene@detail",
+      "btn:TenantBase.ApprovalInstance#adminTransfer@detail"
+    ]
+  },
+  "GET /api/tenant/approval/instances/:id/tasks": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/IDP.Idp.list",
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list"
+    ],
+    "trace": [
+      "btn:TenantBase.ApprovalInstance#adminIntervene@detail",
+      "btn:TenantBase.ApprovalInstance#adminTransfer@detail"
+    ]
+  },
+  "GET /api/tenant/approval/notifications": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/approval/processes": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "GET /api/tenant/approval/processes/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "GET /api/tenant/approval/todos": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/approval/types": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "POST /api/tenant/approval/exception-admins/handover": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/instances/:id/admin-intervene": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "reason": "APPROVAL_TARGET_REQUIRED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/IDP.Idp.list",
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list"
+    ],
+    "trace": [
+      "btn:TenantBase.ApprovalInstance#adminIntervene@detail"
+    ]
+  },
+  "POST /api/tenant/approval/instances/:id/admin-transfer": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "reason": "APPROVAL_TARGET_REQUIRED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:IDP/IDP.Idp/IDP.Idp.list",
+      "scope:TenantBase/TenantBase.EmploymentContract/TenantBase.EmploymentContract.list",
+      "scope:TenantBase/TenantBase.EmploymentRecord/TenantBase.EmploymentRecord.list"
+    ],
+    "trace": [
+      "btn:TenantBase.ApprovalInstance#adminTransfer@detail"
+    ]
+  },
+  "POST /api/tenant/approval/instances/:id/resubmit": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/instances/:id/urge": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/instances/:id/withdraw": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/presets/install": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "POST /api/tenant/approval/processes": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/processes/:id/discard": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "POST /api/tenant/approval/processes/:id/publish": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "POST /api/tenant/approval/processes/:id/simulate": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/processes/:id/versions": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:process_matrix"
+    ]
+  },
+  "POST /api/tenant/approval/simulate": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/tasks/:id/add-sign": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/tasks/:id/approve": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-found"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/tasks/:id/cc": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/tasks/:id/disagree": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-found"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/tasks/:id/edit": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/tasks/:id/jump": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/tasks/:id/reject": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-found"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/tasks/:id/reject-previous": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "not-found"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/tasks/:id/retrieve": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "POST /api/tenant/approval/tasks/:id/transfer": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/tenant/approval/processes/:id/draft": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "gap": {
+      "reason": "validation"
+    },
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": []
+  }
+}

@@ -8,7 +8,7 @@
  * 发现事实按模块冻结在 support/route-policy/baseline/probe/<模块>.json（逐字节比较，
  * ROUTE_POLICY_UPDATE_BASELINE=1 重新生成并随 PR 评审）；步骤二（按备选的最小对照）留给 PR-B4b。
  */
-import { type ManifestRoute, routeManifest, type RoutePolicy } from '@italent/api';
+import type { ManifestRoute, RoutePolicy } from '@italent/api';
 import { useTestDb } from '@italent/testkit';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -21,12 +21,14 @@ import {
   discoverRoute,
   type EndpointDiscovery,
   groupByModule,
+  p3Applicable,
   probeFilePath,
   PROBE_DIR,
   UNREACHED_REASONS,
   writeFrozenProbes,
 } from './support/route-policy/discovery.js';
 import type { Finding } from './support/route-policy/compare.js';
+import { KNOWN_UNCLAIMED } from './support/route-policy/probe-known-gaps.js';
 import { permClaims } from './support/route-policy/request-perms.js';
 import { REQUIRED } from './support/route-policy/required/index.js';
 import type { Obligation, RequiredTable } from './support/route-policy/required/types.js';
@@ -55,6 +57,7 @@ const codes = (findings: readonly Finding[]) => findings.map((f) => f.code);
 const show = (findings: readonly Finding[]) => findings.map((f) => `${f.route} ${f.code}: ${f.detail}`).join('\n');
 const check = (routes: readonly ManifestRoute[], table: RequiredTable = REQUIRED, found = fresh) =>
   checkDiscovery(found, table, routes);
+const checkAll = () => checkDiscovery(fresh, REQUIRED, manifest.declared, KNOWN_UNCLAIMED);
 const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => ({ ...base, policy });
 const withTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({ ...REQUIRED, [k]: obligations });
 
@@ -101,9 +104,46 @@ describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
 });
 
 describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
-  it('全部端点零发现（P0 认领、P3 非法标识、映射）', () => {
-    const findings = check(manifest.declared);
+  it('全部端点零发现（P0 认领、P3 非法标识、映射）；已发现的 119 个表漏登只经 KNOWN_UNCLAIMED 钉死登记', () => {
+    const findings = checkAll();
     expect(findings, show(findings)).toEqual([]);
+  });
+
+  it('不带登记检查：恰好 119 个"端点 × 请求键"表漏登，全部被 KNOWN_UNCLAIMED 的 4 类规则覆盖（每类写明归属与原因）', () => {
+    const open = check(manifest.declared);
+    expect(codes(open).every((c) => c === 'PROBE_ADMISSION_UNCLAIMED')).toBe(true);
+    expect(open).toHaveLength(119);
+    expect(KNOWN_UNCLAIMED.reduce((sum, gap) => sum + gap.count, 0)).toBe(119);
+    for (const gap of KNOWN_UNCLAIMED) {
+      expect(gap.owner.length, gap.id).toBeGreaterThan(5);
+      expect(gap.why.length, gap.id).toBeGreaterThan(20);
+    }
+  });
+
+  it('棘轮：表补上一条认领 → 规则命中数少于登记 → PROBE_KNOWN_GAP_STALE（必须同 PR 删规则）', () => {
+    const k = 'GET /api/tenant/org/person-candidates';
+    const claimed = withTable(k, [...REQUIRED[k]!, { perm: 'obj:TenantBase.Organization:{create,update}', at: [] }]);
+    const findings = checkDiscovery(fresh, claimed, manifest.declared, KNOWN_UNCLAIMED);
+    expect(codes(findings)).toEqual(['PROBE_KNOWN_GAP_STALE']);
+    expect(findings[0]!.route).toBe('known-gap:org.personCandidates');
+  });
+
+  it('棘轮：规则不吸收新漏登——登记范围之外的端点 / 请求键照常报 PROBE_ADMISSION_UNCLAIMED', () => {
+    const k = 'GET /api/tenant/employment/transfers/manager';
+    const dropped = REQUIRED[k]!.filter((o) => !permClaims(o.perm, fresh[k]!.trace[0]!));
+    const findings = checkDiscovery(fresh, withTable(k, dropped), manifest.declared, KNOWN_UNCLAIMED);
+    expect(codes(findings)).toEqual(['PROBE_ADMISSION_UNCLAIMED']);
+    expect(findings[0]!.route).toBe(k);
+  });
+
+  it('棘轮：规则数量被多命中（来了新的同类漏登）→ PROBE_KNOWN_GAP_STALE，不能靠改数字消化', () => {
+    const k = 'GET /api/tenant/survey360/roles';
+    expect(fresh[k], '前提：端点存在').toBeDefined();
+    const bumped = KNOWN_UNCLAIMED.map((gap) =>
+      gap.id === 'survey360.allActivities' ? { ...gap, count: gap.count - 1 } : gap,
+    );
+    const findings = checkDiscovery(fresh, REQUIRED, manifest.declared, bumped);
+    expect(codes(findings)).toEqual(['PROBE_KNOWN_GAP_STALE']);
   });
 
   it('轨迹里确有授权器请求：多数端点触达了授权点（统计），无映射失败', () => {
@@ -120,7 +160,7 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     expect(codes(check([route('POST /api/tenant/idp/plans/:id/goals')]))).toEqual([]); // 未达不是失败
   });
 
-  it('gap 只记"表里有授权器类准入义务却没问到"的端点；原因取自观测状态（400 validation / 404 not-found / 其他 not-asked）', () => {
+  it('gap 只记"表里有授权器类义务（任意用途）却没问到"的端点；原因取自观测状态（400 validation / 404 not-found / 其他 not-asked）', () => {
     expect(UNREACHED_REASONS).toEqual(
       expect.arrayContaining([
         'validation',
@@ -144,7 +184,18 @@ describe('AC-PRM-FW-08 P0 反例：表漏登 / 错登', () => {
   /** 轨迹含 Transfer.Hr 按钮的端点（经理页 canViewReporting 的披露判定）。 */
   const HR = 'btn:TenantBase.EmploymentRecord#Transfer.Hr@detail';
   const MANAGER_BTN = 'btn:TenantBase.EmploymentRecord#Transfer.Manager@detail';
-  const hrRoute = () => Object.keys(fresh).find((k) => fresh[k]!.trace.includes(HR));
+  const hrRoute = () =>
+    Object.keys(fresh).find((k) => fresh[k]!.trace.includes(HR) && REQUIRED[k]!.some((o) => o.perm === HR));
+  /** 轨迹里某个键只被非准入义务（披露 / 守卫内部 / 条件准入）认领的端点。 */
+  const nonAdmissionOnly = () => {
+    for (const [k, found] of Object.entries(fresh)) {
+      for (const requested of found.trace) {
+        const claimers = REQUIRED[k]!.filter((o) => permClaims(o.perm, requested));
+        if (claimers.length && claimers.every((o) => o.purpose !== undefined)) return { k, requested, claimers };
+      }
+    }
+    return undefined;
+  };
 
   it('表把 Transfer.Hr 错登成 Transfer.Manager → PROBE_ADMISSION_UNCLAIMED（审查原文例）', () => {
     const k = hrRoute();
@@ -165,13 +216,10 @@ describe('AC-PRM-FW-08 P0 反例：表漏登 / 错登', () => {
   });
 
   it('任何用途都认领：纯披露 / 守卫内部 / 条件准入的权限同样算已登记（不因用途报 P0）', () => {
-    const k = hrRoute()!;
-    const purposes = REQUIRED[k]!.filter((o) => o.perm === HR).map((o) => o.purpose);
-    expect(
-      purposes.some((p) => p?.startsWith('disclosure:')),
-      '前提：该端点把 Hr 登成披露',
-    ).toBe(true);
-    expect(codes(check([route(k)]))).toEqual([]);
+    const found = nonAdmissionOnly();
+    expect(found, '前提：存在只被非准入义务认领的授权请求').toBeDefined();
+    expect(found!.claimers.every((o) => o.purpose !== undefined)).toBe(true);
+    expect(codes(check([route(found!.k)])), found!.k).toEqual([]);
   });
 
   it('轨迹为空的端点 P0 不适用：表即使多登义务也不在这里报', () => {
@@ -188,21 +236,36 @@ describe('AC-PRM-FW-08 P0 反例：表漏登 / 错登', () => {
 });
 
 describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等', () => {
-  const declaredInvalid = () =>
-    manifest.declared.filter((r) => r.policy.invalidId !== undefined && fresh[key(r)]!.invalidId !== undefined);
-  const undeclaredButObserved = () =>
-    manifest.declared.filter((r) => {
-      const seen = fresh[key(r)]!.invalidId;
-      return r.policy.invalidId === undefined && (seen?.status === 400 || seen?.status === 404);
-    });
+  /** P3 适用：验参类观测（400 / 404）且不同于占位请求的结果。 */
+  const applicable = () => manifest.declared.filter((r) => p3Applicable(fresh[key(r)]!));
+  const declaredApplicable = () => applicable().filter((r) => r.policy.invalidId !== undefined);
 
-  it('真实声明：登记了 invalidId 的端点观测码相等；没登记的没有观测到 400 / 404', () => {
-    expect(declaredInvalid().length).toBeGreaterThan(20);
-    expect(undeclaredButObserved().map(key)).toEqual([]);
+  it('真实声明：适用的端点登记的 invalidId 都等于观测码；没登记的没有观测到 400 / 404', () => {
+    expect(declaredApplicable().length).toBeGreaterThan(100);
+    expect(
+      applicable()
+        .filter((r) => r.policy.invalidId === undefined)
+        .map(key),
+    ).toEqual([]);
+  });
+
+  it('不适用的观测不报：平台非运营 / 自助未绑定的 403、360 链接令牌先于标识校验的 404（等于占位结果）', () => {
+    const platform = fresh['GET /api/platform/tenants/:tenantId']!;
+    expect(platform.invalidId).toMatchObject({ status: 403, code: 'FORBIDDEN' });
+    expect(p3Applicable(platform)).toBe(false);
+    const link = fresh['GET /api/survey360/link/tasks/:relationId/questionnaires/:questionnaireId']!;
+    expect(link.invalidId).toEqual(link.all);
+    expect(p3Applicable(link)).toBe(false);
+    const selfService = fresh['GET /api/tenant/self-service/applications/:id']!;
+    expect(p3Applicable(selfService)).toBe(false);
   });
 
   it('invalidId 改码（400 → 404 / 404 → 400）→ MISMATCH:invalidId', () => {
-    for (const r of declaredInvalid().slice(0, 6)) {
+    const picks = [
+      declaredApplicable().find((r) => r.policy.invalidId!.status === 400)!,
+      declaredApplicable().find((r) => r.policy.invalidId!.status === 404)!,
+    ];
+    for (const r of picks) {
       const declared = r.policy.invalidId!;
       const flipped =
         declared.status === 400
@@ -213,16 +276,22 @@ describe('AC-PRM-FW-08 P3 非法标识：观测码与根节点 invalidId 相等'
     }
   });
 
+  it('改 error.code 不改状态码也报（400 VALIDATION_FAILED → 400 REVISION_REQUIRED）', () => {
+    const r = declaredApplicable().find((x) => x.policy.invalidId!.code === 'VALIDATION_FAILED')!;
+    const changed = { ...r.policy, invalidId: { status: 400 as const, code: 'REVISION_REQUIRED' as const } };
+    expect(codes(check([withPolicy(r, changed as RoutePolicy)])), key(r)).toContain('MISMATCH:invalidId');
+  });
+
   it('没写 invalidId 但观测到 400 / 404：删掉声明里的 invalidId → MISMATCH:invalidId', () => {
-    const victims = declaredInvalid().filter((r) => [400, 404].includes(fresh[key(r)]!.invalidId!.status));
-    expect(victims.length).toBeGreaterThan(10);
-    for (const r of victims.slice(0, 6)) {
+    const victims = declaredApplicable();
+    expect(victims.length).toBeGreaterThan(100);
+    for (const r of victims.filter((_x, i) => i % 15 === 0)) {
       const { invalidId: _drop, ...rest } = r.policy;
       expect(codes(check([withPolicy(r, rest as RoutePolicy)])), key(r)).toContain('MISMATCH:invalidId');
     }
   });
 
-  it('没有 id 参数的端点不做 P3（没有观测就不报）', () => {
+  it('没有 id 参数的端点没有观测，不做 P3', () => {
     const plain = manifest.declared.find((r) => fresh[key(r)]!.invalidId === undefined)!;
     const withInvalid = withPolicy(plain, {
       ...plain.policy,

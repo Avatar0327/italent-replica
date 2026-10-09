@@ -1,0 +1,556 @@
+{
+  "DELETE /api/tenant/permission/dynamic-org-grants/:grantId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "DELETE /api/tenant/permission/mous/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "DELETE /api/tenant/permission/person-links/:userId": {
+    "all": {
+      "code": "FORBIDDEN",
+      "reason": "USER_BINDING_BY_PROFILE",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "reason": "USER_BINDING_BY_PROFILE",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/permission/admin-menus": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/permission/admin-roles": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:admin_manage"
+    ]
+  },
+  "GET /api/tenant/permission/admins": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:admin_manage"
+    ]
+  },
+  "GET /api/tenant/permission/admins/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:admin_manage"
+    ]
+  },
+  "GET /api/tenant/permission/dynamic-org-grants/:grantId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "GET /api/tenant/permission/grant-prefill/:userId/:profileId": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "reason": "NOT_A_MEMBER",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "GET /api/tenant/permission/grantable-profiles": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_grant"
+    ]
+  },
+  "GET /api/tenant/permission/grants": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_grant"
+    ]
+  },
+  "GET /api/tenant/permission/licenses": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:license_balance"
+    ]
+  },
+  "GET /api/tenant/permission/licenses/:licenseType/seats": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:license_usage"
+    ]
+  },
+  "GET /api/tenant/permission/me/objects/:objectCode": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": []
+  },
+  "GET /api/tenant/permission/mous": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:mou_manage"
+    ]
+  },
+  "GET /api/tenant/permission/mous/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:mou_manage"
+    ]
+  },
+  "GET /api/tenant/permission/person-links/:userId": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "reason": "NOT_A_MEMBER",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "GET /api/tenant/permission/profiles": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:profile_manage"
+    ]
+  },
+  "GET /api/tenant/permission/profiles/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:profile_manage"
+    ]
+  },
+  "GET /api/tenant/permission/profiles/:id/data-scopes/:appCode": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "GET /api/tenant/permission/scope-apps/:appCode": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "GET /api/tenant/permission/scope-policies/:appCode/:objectCode/:targetKind/:targetCode": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "GET /api/tenant/permission/scopes/:userId/:appCode": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "reason": "NOT_A_MEMBER",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "GET /api/tenant/permission/users": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_manage"
+    ]
+  },
+  "GET /api/tenant/permission/users/:userId": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_manage"
+    ]
+  },
+  "POST /api/tenant/permission/admins": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:admin_manage"
+    ]
+  },
+  "POST /api/tenant/permission/grants": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_grant"
+    ]
+  },
+  "POST /api/tenant/permission/grants/:id/revoke": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_grant"
+    ]
+  },
+  "POST /api/tenant/permission/mous": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "POST /api/tenant/permission/profiles": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:profile_manage"
+    ]
+  },
+  "POST /api/tenant/permission/users": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_manage"
+    ]
+  },
+  "POST /api/tenant/permission/users/:userId/remove": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_manage"
+    ]
+  },
+  "POST /api/tenant/permission/users/:userId/status": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_manage"
+    ]
+  },
+  "PUT /api/tenant/permission/admins/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:admin_manage"
+    ]
+  },
+  "PUT /api/tenant/permission/dynamic-org-grants/:grantId": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/permission/mous/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/permission/person-links/:userId": {
+    "all": {
+      "code": "FORBIDDEN",
+      "reason": "USER_BINDING_BY_PROFILE",
+      "status": 403
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "FORBIDDEN",
+      "reason": "USER_BINDING_BY_PROFILE",
+      "status": 403
+    },
+    "scopeQueries": [],
+    "trace": []
+  },
+  "PUT /api/tenant/permission/profiles/:id/data-scopes/:appCode": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/permission/profiles/:id/objects/:objectCode": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:profile_manage"
+    ]
+  },
+  "PUT /api/tenant/permission/scope-apps/:appCode": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/permission/scope-policies/:appCode/:objectCode/:targetKind/:targetCode": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/permission/scopes/:userId/:appCode": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/permission/users/:userId": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "scopeQueries": [],
+    "trace": [
+      "admin:user_manage"
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "DELETE /api/tenant/settings/:key/override": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "GET /api/tenant/settings/:key": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "PUT /api/tenant/settings/:key": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  }
+}

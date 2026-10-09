@@ -1,0 +1,185 @@
+{
+  "DELETE /api/tenant/org/code-reservations/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Organization/-"
+    ],
+    "trace": [
+      "btn:TenantBase.Organization#release@detail",
+      "obj:TenantBase.Organization:delete"
+    ]
+  },
+  "GET /api/tenant/org/organizations": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.Organization"
+    ],
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Organization/TenantBase.Organization.list"
+    ],
+    "trace": [
+      "obj:TenantBase.Organization:view"
+    ]
+  },
+  "GET /api/tenant/org/organizations/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:TenantBase/TenantBase.Organization/TenantBase.Organization.detail"
+    ],
+    "trace": [
+      "obj:TenantBase.Organization:view"
+    ]
+  },
+  "GET /api/tenant/org/person-candidates": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.Organization:create"
+    ]
+  },
+  "GET /api/tenant/org/settings": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  },
+  "GET /api/tenant/org/views": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:TenantBase.Organization"
+    ],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.Organization:view"
+    ]
+  },
+  "PATCH /api/tenant/org/organizations/:id": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:TenantBase.Organization#update@detail",
+      "obj:TenantBase.Organization:update"
+    ]
+  },
+  "PATCH /api/tenant/org/organizations/:id/correction": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.Organization:update"
+    ]
+  },
+  "POST /api/tenant/org/code-reservations": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.Organization:create"
+    ]
+  },
+  "POST /api/tenant/org/import": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.Organization:view"
+    ]
+  },
+  "POST /api/tenant/org/organizations": {
+    "all": {
+      "code": "REVISION_CONFLICT",
+      "status": 409
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.Organization:create"
+    ]
+  },
+  "POST /api/tenant/org/organizations/:id/employment-preview": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "scopeQueries": [],
+    "trace": [
+      "btn:TenantBase.Organization#update@detail",
+      "obj:TenantBase.Organization:update"
+    ]
+  },
+  "POST /api/tenant/org/validate": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:TenantBase.Organization:create"
+    ]
+  },
+  "PUT /api/tenant/org/settings": {
+    "all": {
+      "code": "VALIDATION_FAILED",
+      "status": 400
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "admin:other_settings"
+    ]
+  }
+}
