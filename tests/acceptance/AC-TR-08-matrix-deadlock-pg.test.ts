@@ -2,6 +2,8 @@
  * AC-TR-08-matrix-deadlock-pg · 位置字段占用的锁协议（真 PG；PGlite 单连接无法并发）。
  * - PR #182 第 1 轮 P2-01：两个九宫格互换对方占用的位置字段，各自先删旧占用再插新占用 → 40P01 死锁（500）；
  * - 第 2 轮 P2：预置补装两个预置分批取锁，第二批可能取更小的字段 → 与租户 PATCH / POST 交错成咨询锁死锁环。
+ * - 第 3 轮 P2-01：X-Tenant-Id 大小写不同（中间件保留原大小写）时锁键不同，等于没有锁 → 互换 40P01、补装撞 23505（500）。
+ *   锁键先把租户与字段 UUID 规范化（PostgreSQL 规范文本）再哈希。
  * 统一锁协议（matrix-service.ts lockPositionFields）：所有写位置字段占用的事务，在任何写入之前一次性按排序取齐
  * 本事务涉及的全部位置字段的占用锁。屏障停在“占用锁 / 删插”阶段并断言等待的锁类型，证明交错确实发生在那里。
  */
@@ -53,43 +55,61 @@ async function underBarrier<T>(db: Db, tenantId: string, hold: (tx: Tx) => Promi
 }
 
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('AC-TR-08 位置字段占用锁协议 · PostgreSQL 16', () => {
-  it.each([
+  const SWAPS = [
     ['before↔before', 'before', 'before'],
     ['after↔after', 'after', 'after'],
     ['before↔after', 'before', 'after'],
     ['after↔before', 'after', 'before'],
-  ] as const)(
+  ] as const;
+  it.each([
+    ...SWAPS.map(([name, x, y]) => [name, x, y, false] as const),
+    ...SWAPS.map(([name, x, y]) => [`${name}（租户头大小写不同）`, x, y, true] as const),
+  ])(
     '两个九宫格互换对方的位置字段 · %s：两者都在占用锁上排队，结果 409 + 409，无死锁、完整回滚',
-    async (_n, x, y) => {
-      const w = await matrixWorld(testDb().db, `trm-dl-${x}-${y}`);
-      const a = await w.create();
-      const b = await w.create();
-      // 真正的角色互换：A 的 x 角色拿 B 的 y 角色字段，B 的 y 角色拿 A 的 x 角色字段（第 1 轮复现的目标）
-      const takeA = fieldOf(b, y);
-      const takeB = fieldOf(a, x);
-      const patch = (m: MatrixView, role: Role, taken: string) =>
-        w.request('PATCH', `${MATRICES}/${m.id}`, {
-          ifMatch: 1,
-          body: {
-            positionFields: [
-              { role, fieldId: taken },
-              { role: other(role), fieldId: fieldOf(m, other(role)) },
-            ],
-          },
+    async (_n, x, y, mixedCase) => {
+      const w = await matrixWorld(testDb().db, `trm-dl-${x}-${y}-${mixedCase}`);
+      // 第 3 轮 P2-01：B 的请求用大写的 X-Tenant-Id（中间件按原样接受）
+      const whoB = mixedCase ? { ...w.as, tenant: w.as.tenant.toUpperCase() } : w.as;
+      // 交错时机有随机性：每种组合连跑 3 轮（每轮新建两个九宫格）
+      for (let round = 0; round < 3; round += 1) {
+        const a = await w.create();
+        const b = await w.create();
+        // 真正的角色互换：A 的 x 角色拿 B 的 y 角色字段，B 的 y 角色拿 A 的 x 角色字段（第 1 轮复现的目标）
+        const takeA = fieldOf(b, y);
+        const takeB = fieldOf(a, x);
+        const patch = (m: MatrixView, role: Role, taken: string, who = w.as) =>
+          w.request(
+            'PATCH',
+            `${MATRICES}/${m.id}`,
+            {
+              ifMatch: 1,
+              body: {
+                positionFields: [
+                  { role, fieldId: taken },
+                  { role: other(role), fieldId: fieldOf(m, other(role)) },
+                ],
+              },
+            },
+            who,
+          );
+        const responses = await underBarrier(testDb().db, w.as.tenant, async (tx) => {
+          // 屏障按两种大小写各取一次（规范化后是同一把锁，咨询锁可重入）：两个修改无论用哪种写法都停在占用锁上
+          for (const id of [takeA, takeB]) {
+            for (const tenant of [w.as.tenant, w.as.tenant.toUpperCase()]) {
+              await tx.execute(sql`SELECT pg_advisory_xact_lock(${positionLockKey(tenant, id)})`);
+            }
+          }
+          const pending = [patch(a, x, takeA), patch(b, y, takeB, whoB)];
+          // 两个修改都已过行锁、停在占用锁（咨询锁）上，删插还没开始
+          await waitForWaits(testDb().db, { advisory: 2 });
+          return pending;
         });
-      const responses = await underBarrier(testDb().db, w.as.tenant, async (tx) => {
-        for (const id of [takeA, takeB])
-          await tx.execute(sql`SELECT pg_advisory_xact_lock(${positionLockKey(w.as.tenant, id)})`);
-        const pending = [patch(a, x, takeA), patch(b, y, takeB)];
-        // 两个修改都已过行锁、停在占用锁（咨询锁）上，删插还没开始
-        await waitForWaits(testDb().db, { advisory: 2 });
-        return pending;
-      });
-      const settled = await Promise.all(responses);
-      for (const response of settled) expect([response.status, await errorCode(response)]).toEqual([409, 'CONFLICT']);
-      const now = [(await w.read(a.id)).body, (await w.read(b.id)).body];
-      expect(now.map((m) => m.revision)).toEqual([1, 1]);
-      expect(now.map((m) => m.positionFields)).toEqual([a.positionFields, b.positionFields]);
+        const settled = await Promise.all(responses);
+        for (const response of settled) expect([response.status, await errorCode(response)]).toEqual([409, 'CONFLICT']);
+        const now = [(await w.read(a.id)).body, (await w.read(b.id)).body];
+        expect(now.map((m) => m.revision)).toEqual([1, 1]);
+        expect(now.map((m) => m.positionFields)).toEqual([a.positionFields, b.positionFields]);
+      }
     },
   );
 
@@ -155,27 +175,43 @@ async function legacyTenant(label: string) {
 describe.runIf(Boolean(process.env.TEST_DATABASE_URL))(
   'AC-TR-08 / DEC-361 预置补装 × 租户占用位置字段 · PostgreSQL 16（第 2 轮 P2）',
   () => {
-    it.each(['PATCH', 'POST'] as const)(
-      '补装先取齐全部占用锁后停在写九宫格，%s 选两个预置各一个位置字段：只在占用锁上排队，补装完成后 409，无死锁',
-      async (method) => {
-        const { w, backfill, ids } = await legacyTenant(`trm-dl-seed-${method}`);
+    it.each([
+      ['PATCH', false],
+      ['POST', false],
+      ['PATCH', true],
+      ['POST', true],
+    ] as const)(
+      '补装先取齐全部占用锁后停在写九宫格，%s（租户头大写：%s）选两个预置各一个位置字段：只在占用锁上排队，补装完成后 409，无死锁',
+      async (method, upper) => {
+        const { w, backfill, ids } = await legacyTenant(`trm-dl-seed-${method}-${upper}`);
         const own = method === 'PATCH' ? await w.create() : undefined;
+        // 第 3 轮 P2-01：租户用户的请求用大写的 X-Tenant-Id；补装按库里的租户 id（小写）取锁
+        const who = upper ? { ...w.as, tenant: w.as.tenant.toUpperCase() } : w.as;
         const fields = {
           before: ids.appraisal_potential_cell_before!,
           after: ids.achievement_capability_cell_after!,
         };
         const occupy = () =>
           own
-            ? w.request('PATCH', `${MATRICES}/${own.id}`, {
-                ifMatch: 1,
-                body: {
-                  positionFields: [
-                    { role: 'before', fieldId: fields.before },
-                    { role: 'after', fieldId: fields.after },
-                  ],
+            ? w.request(
+                'PATCH',
+                `${MATRICES}/${own.id}`,
+                {
+                  ifMatch: 1,
+                  body: {
+                    positionFields: [
+                      { role: 'before', fieldId: fields.before },
+                      { role: 'after', fieldId: fields.after },
+                    ],
+                  },
                 },
-              })
-            : w.refs().then((refs) => w.post(matrixBody({ ...refs, ...fields })));
+                who,
+              )
+            : w
+                .refs()
+                .then((refs) =>
+                  w.request('POST', MATRICES, { ifMatch: 0, body: matrixBody({ ...refs, ...fields }) }, who),
+                );
         const refs = await w.refs();
         const { seeding, occupying } = await underBarrier(testDb().db, w.as.tenant, async (tx) => {
           // 屏障：未提交的同编码九宫格，让补装停在插入第一个预置九宫格（唯一索引等本事务结束）
