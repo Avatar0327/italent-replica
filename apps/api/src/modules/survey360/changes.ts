@@ -41,15 +41,17 @@ export function dataChanged(activity: { data_changed_at: Date | string | null })
 }
 
 /**
- * 某套卷当前的计分口径版本高于计分批次记下的版本（批次没记的套卷视为未变：该批次没用它计分）。activity / object
- * 是 SQL 别名所在的列：活动的当前批次与评价对象。报告查看 / 生成 / 转发与 Lastest360Cent 共用这一判定。
+ * 某套卷当前的计分口径版本高于计分批次记下的版本。批次没记版本的套卷一律视为已变化：PR-A 留下的历史批次升级后
+ * 版本映射为空，而 PR-A 允许停用后修改已使用套卷，又没有记修改时间，无法证明计分后没改过（第 4 轮 P2-2）；新批次
+ * 记下计分时活动内全部套卷，之后新挂的套卷本身已标记数据变化。activity / object 是 SQL 别名所在的列：活动的当前批次
+ * 与评价对象。报告查看 / 生成 / 转发与 Lastest360Cent 共用这一判定。
  */
 export function questionnaireChangedSince(batchId: SQL, objectId: SQL): SQL {
   return sql`EXISTS (SELECT 1 FROM survey360_object_questionnaires coq
     JOIN survey360_questionnaires cq ON cq.tenant_id = coq.tenant_id AND cq.id = coq.questionnaire_id
     JOIN survey360_score_batches cb ON cb.tenant_id = coq.tenant_id AND cb.id = ${batchId}
     WHERE coq.object_id = ${objectId}
-      AND cq.scoring_revision > COALESCE((cb.questionnaire_revisions ->> cq.id::text)::int, cq.scoring_revision))`;
+      AND cq.scoring_revision > COALESCE((cb.questionnaire_revisions ->> cq.id::text)::int, -1))`;
 }
 
 /**
