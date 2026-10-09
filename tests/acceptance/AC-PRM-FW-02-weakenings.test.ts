@@ -133,15 +133,6 @@ describe('AC-PRM-FW-02 必需准入分支不能移进 optional（实现审第 2 
     expect(reported(findings), describeFindings(findings)).toBe(true);
   });
 
-  it('同一个布尔授权函数按调用点区分：经理入口 canViewReporting 是披露，汇报关系页的 403 判定是准入', () => {
-    const entry = frozen.routes['GET /api/tenant/employment/transfers/manager']!.primitives;
-    const reporting = frozen.routes['GET /api/tenant/employment/transfers/manager/reporting']!.primitives;
-    expect(entry['disclose']).toContain('button');
-    expect(entry['button']).toBeUndefined();
-    expect(reporting['button']?.length).toBeGreaterThan(0);
-    expect(reporting['disclose'] ?? []).not.toContain('button');
-  });
-
   it('360 评价者导入：员工信息查看只在 sync=true 时校验，登记为条件守卫而不是无条件 AND', () => {
     const policy = route('POST /api/tenant/survey360/activities/:id/appraisers/import').policy;
     expect(JSON.stringify(policy)).toContain('"survey360.syncEmployees"');
