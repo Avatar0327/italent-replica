@@ -40,6 +40,32 @@ export const TALENT_REVIEW_OBJECTS = {
    * 只认看全部或创建人（DEC-121），新建只有看全部可建（DEC-082）。编码建后不可改（引用方同时保存 id 与 code）。
    */
   readiness: object('Readiness', ['code', 'name', 'description', 'color', 'sortNo', 'enabled']),
+  /** 盘点租户设置（设计 §2.2 settings）：单例资源，只有更新入口；没有组织字段，读写都要看全部。 */
+  settings: object(
+    'Settings',
+    ['allowSecondaryKeyPositionNomination', 'selfResultVisible', 'doneHideSuccession', 'systemPrincipalUserId'],
+    [],
+    [{ code: 'update', level: 'detail', requires: 'update' }],
+  ),
+  /** 盘点分类（TR-R9）。设置类配置对象，没有组织字段（DEC-121）。 */
+  category: object('Category', ['name', 'sortNo', 'enabled']),
+  /** 盘点角色（设计 §3.4）：评价流程步骤的执行人角色，编码建后不可改。 */
+  role: object('Role', ['code', 'name', 'resolver', 'sortNo', 'enabled']),
+  /** 盘点字段目录（设计 §2.2）：预置与自定义一视同仁；选项随字段整组维护（options 是嵌套字段，权限随字段）。 */
+  field: object('Field', [
+    'code',
+    'name',
+    'kind',
+    'group',
+    'preset',
+    'systemWritten',
+    'pairRole',
+    'pairFieldId',
+    'precision',
+    'options',
+    'sortNo',
+    'enabled',
+  ]),
   /**
    * 盘点结果审批（设计 §3.3、§2.6；N12）：审批类型 talent_review_result 的业务对象（集合审批，一单多个被盘点人）。
    * 发起 / 撤回入口随 PR-D 接入；本 PR 只登记对象，供审批类型与标准身份引用。
@@ -60,11 +86,21 @@ export type TalentReviewObject = keyof typeof TALENT_REVIEW_OBJECTS;
 /** 审计日志的对象中文名（audit/labels.ts 统一展开，后续 PR 只在这里追加）。 */
 export const TALENT_REVIEW_OBJECT_LABELS: Readonly<Record<TalentReviewObject, string>> = {
   readiness: '准备度',
+  settings: '盘点设置',
+  category: '盘点分类',
+  role: '盘点角色',
+  field: '盘点字段',
   resultApproval: '盘点结果审批',
 };
 
 /** 没有组织字段的设置类对象：数据范围只认看全部或创建人（DEC-121）。 */
-export const TALENT_REVIEW_CONFIG_OBJECTS: readonly TalentReviewObject[] = ['readiness'];
+export const TALENT_REVIEW_CONFIG_OBJECTS: readonly TalentReviewObject[] = [
+  'readiness',
+  'settings',
+  'category',
+  'role',
+  'field',
+];
 
 /** 准备度颜色：#RRGGBB（原站字典每项带颜色，`27` 补充 W-617）。 */
 export const READINESS_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
