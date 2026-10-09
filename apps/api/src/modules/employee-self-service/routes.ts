@@ -15,9 +15,12 @@ import { discloseOwnRecord } from './disclosure.js';
 import { visibleFields } from './field-disclosure.js';
 import { referenceChoices } from './references.js';
 import { loadEmploymentBusiness } from '../employment/read-model.js';
+import { policedSub } from '../../route-policy/index.js';
+import { SELF_SERVICE_POLICIES } from './policy.js';
 
 export const registerEmployeeSelfServiceRoutes: TenantRouteModule = (router, deps) => {
-  const module = new Hono<TenantEnv>();
+  // F-039：子应用套本模块登记表（SELF_SERVICE_POLICIES），注册行不变、处理函数不变
+  const module = policedSub(router, SELF_SERVICE_POLICIES, () => new Hono<TenantEnv>());
   module.onError((error, c) =>
     error instanceof EmploymentError
       ? c.json({ error: { code: error.code, message: error.message, details: error.details } }, error.status)
