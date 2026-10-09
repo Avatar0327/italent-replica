@@ -17,14 +17,15 @@ import { requestScope } from '../permission/module-route-access.js';
 import { authorizedUnits } from '../permission/owner-units.js';
 import { creatorSql } from '../permission/scope-audit.js';
 import { fieldVisible, qualificationContext, type QualificationContext, type QualificationObject } from './access.js';
+import { QL_BASE } from './route-support.js';
 
 /** 由创建人选所属管理单元的对象：带资源集合、且不随别的对象（标准随类别，不在此列）。 */
 const OWNER_OBJECTS: readonly QualificationObject[] = QUALIFICATION_OWNED_OBJECTS.filter(
   (object) => object !== 'standard',
 );
 
-export function registerQualificationCandidates(router: Hono<TenantEnv>, deps: TenantRouteDeps, base: string): void {
-  router.get(`${base}/candidates/owner-orgs`, async (c) => {
+export function registerQualificationCandidates(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  router.get(`${QL_BASE}/candidates/owner-orgs`, async (c) => {
     const object = ownerObject(c);
     // 只返回当前用户自己的授权管理单元（不按任职资格的数据范围另行放大或缩小）
     const ctx = await qualificationContext(c, deps, object, 'create');

@@ -11,6 +11,7 @@ import { JOB_POLICIES } from './modules/job/policy.js';
 import { ORG_POLICIES } from './modules/org/policy.js';
 import { PERMISSION_POLICIES } from './modules/permission/policy.js';
 import { PERSONNEL_POLICIES } from './modules/personnel/policy.js';
+import { QUALIFICATION_POLICIES } from './modules/qualification/policy.js';
 import { TALENT_POLICIES } from './modules/talent/policy.js';
 import { TALENT_REVIEW_POLICIES } from './modules/talent-review/policy.js';
 import { TENANT_SETTING_POLICIES } from './modules/tenant-settings/policy.js';
@@ -36,6 +37,7 @@ export function tenantPolicyTable(extra: readonly PolicyTable[] = []): PolicyTab
     IDP_POLICIES,
     AVATAR_POLICIES,
     TALENT_REVIEW_POLICIES,
+    QUALIFICATION_POLICIES,
     ...extra,
   ]);
 }

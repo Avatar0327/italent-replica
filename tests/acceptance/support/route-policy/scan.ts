@@ -543,6 +543,7 @@ export function moduleDirs(fullPath: string): RouteModule {
     ['talent', '/api/tenant/talent', [path.join(modules, 'talent')]],
     ['idp', '/api/tenant/idp', [path.join(modules, 'idp')]],
     ['talent-review', '/api/tenant/talent-review', [path.join(modules, 'talent-review')]],
+    ['qualification', '/api/tenant/qualification', [path.join(modules, 'qualification')]],
     ['avatar', '/api/tenant/account', [path.join(modules, 'avatar')]],
     ['avatar', '/api/tenant/avatars', [path.join(modules, 'avatar')]],
   ];

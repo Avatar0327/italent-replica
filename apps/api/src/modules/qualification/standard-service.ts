@@ -506,7 +506,7 @@ export async function importStandardDetails(tx: Tx, ctx: WriteContext, body: inp
     });
   }
   // 任务级日志（DEC-199，P2-12）：逐行成功。逐行锚点存所属类别（对象编号）与其所属组织——标准锚在类别上，
-  // 标准删除后仍能按类别归属判断（第 4 轮 R3-02，audit/visibility.ts categoryAnchoredRule）
+  // 标准删除后仍能按类别归属判断（第 4 轮 R3-02）
   await recordImportLog(
     tx,
     { ...ctx, actorUserId: auditActor(ctx.userId) },

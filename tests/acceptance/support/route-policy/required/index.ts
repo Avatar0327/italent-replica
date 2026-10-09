@@ -14,6 +14,7 @@ import { JOB } from './job.js';
 import { ORG } from './org.js';
 import { PERMISSION } from './permission.js';
 import { PERSONNEL } from './personnel.js';
+import { QUALIFICATION } from './qualification.js';
 import { ROOT } from './root.js';
 import { SELF_SERVICE } from './self-service.js';
 import { SURVEY360 } from './survey360.js';
@@ -40,6 +41,7 @@ const PARTS: readonly RequiredTable[] = [
   SURVEY360,
   IDP,
   TALENT_REVIEW,
+  QUALIFICATION,
 ];
 
 function mergeParts(parts: readonly RequiredTable[]): RequiredTable {

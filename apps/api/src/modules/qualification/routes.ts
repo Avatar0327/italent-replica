@@ -169,7 +169,7 @@ const SPECS = {
 } as const;
 
 export function registerQualificationRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
-  registerQualificationCandidates(router, deps, QL_BASE);
+  registerQualificationCandidates(router, deps);
   registerExtras(router, deps);
   for (const spec of Object.values(SPECS)) registerObject(router, deps, spec as ObjectRoutes<object, object>);
 }
@@ -230,14 +230,14 @@ function registerObject<Create extends object, Patch extends object>(
     const id = uuidParam(c);
     const w = {
       ...(await writeContext(c, deps, ctx, spec.object, spec.deleteScopes ?? [])),
-      childDeletes: await childDeletes(deps, ctx, spec),
+      childDeletes: await childDeleteRights(deps, ctx, spec),
     };
     return runWrite(c, deps, w, spec.object, { id }, 200, (tx, x) => spec.remove(tx, x, id));
   });
 }
 
 /** 子对象的删除数据操作权按当前授权解析；命令内只在确有子对象时才要求（首次与重放都经过这里）。 */
-async function childDeletes(
+async function childDeleteRights(
   deps: TenantRouteDeps,
   ctx: QualificationContext,
   spec: { children?: readonly QualificationObject[] },
