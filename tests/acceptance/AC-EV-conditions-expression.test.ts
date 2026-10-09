@@ -190,3 +190,55 @@ describe('AC-EV-conditions 组合表达式：只引用存在的序号（validate
     expect(result).toEqual({ ok: true, value: { kind: 'boolean', value: true } });
   });
 });
+
+// 第 3 轮 P2-R2-01（Opus 接手，DEC-338⑤）：设计 §6.1“明细负责取数、组合式只组合已计算的条件”。
+// recordObjects 只表示参数里的记录字段作用域，不是“访问外部数据”的标记；改为组合式允许的纯函数白名单。
+describe('AC-EV-conditions 组合表达式：只允许纯组合函数（第 3 轮 P2-R2-01）', () => {
+  const seqs = [1, 2, 3];
+  const rejected = (expression: string) => {
+    const result = validateActivityConditionExpression(expression, seqs);
+    expect(result.ok, expression).toBe(false);
+    const codes = result.ok ? [] : result.errors.map((error) => error.code);
+    expect(codes, expression).toContain('EXPRESSION_FUNCTION_NOT_ALLOWED');
+  };
+
+  it('按参数规则取数（含中文别名）不允许', () => {
+    rejected('条件1 and ParameterRuleData("合成参数") = 1');
+    rejected('条件1 and 按照参数规则获取数据("合成参数") = 1');
+  });
+
+  it('评定结果类函数不允许：模块结果、模块数、模块评委平均分、评委数、评委平均分（含中文别名）', () => {
+    rejected('条件1 and ModuleResult("模块A") = "通过"');
+    rejected('条件1 and CountModulesWithResult("通过") > 0');
+    rejected('条件1 and ModuleJudgeAverage("模块A") > 0');
+    rejected('条件1 and CountJudgesWithResult("通过") > 0');
+    rejected('条件1 and JudgeAverage() > 0');
+    rejected('条件1 and 所有评委平均分() > 0');
+  });
+
+  it('排名不允许，包括经 Def 数值变量满足参数检查的写法', () => {
+    rejected('Def(x, ToNumber(条件1)); 条件1 and Ranking("排序号", x) > 0');
+    rejected('Def(x, ToNumber(条件1)); 条件1 and 排名("排序号", x) > 0');
+  });
+
+  it('Def 绑定里的取数函数同样拦截', () => {
+    rejected('Def(y, JudgeAverage()); 条件1 and y > 0');
+    rejected('定义(y, ParameterRuleData("合成参数")); 条件1 and y = 1');
+  });
+
+  it('依赖运行环境的日期函数也不在白名单（组合式只看已计算的条件）', () => {
+    rejected('条件1 and Today() > ToDate("2026-01-01")');
+  });
+
+  it('白名单内的纯函数照常通过：逻辑、IF、IN、类型转换、取余', () => {
+    for (const expression of [
+      'AND(条件1, OR(条件2, 条件3))',
+      'IF(条件1, 条件2, 条件3)',
+      'ToNumber(条件1) + ToNumber(条件2) + ToNumber(条件3) >= 2',
+      'Mod(ToNumber(条件1) + ToNumber(条件2), 2) = 1',
+      'Def(n, ToNumber(条件1) + ToNumber(条件2)); n >= 1 and 条件3',
+    ]) {
+      expect(validateActivityConditionExpression(expression, seqs).ok, expression).toBe(true);
+    }
+  });
+});
