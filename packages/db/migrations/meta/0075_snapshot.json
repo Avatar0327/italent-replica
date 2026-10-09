@@ -1,6 +1,6 @@
 {
-  "id": "a4805fda-fcba-460c-a1b4-60cb9544825d",
-  "prevId": "b546a2b9-e4a6-4fab-9cf8-c028304b19ec",
+  "id": "069a3778-c5d6-42ef-bdcc-026c99ef559a",
+  "prevId": "a4805fda-fcba-460c-a1b4-60cb9544825d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -33598,6 +33598,2667 @@
         "talent_model_image_attachments_uploaded": {
           "name": "talent_model_image_attachments_uploaded",
           "value": "\"talent_model_image_attachments\".\"status\" <> 'uploaded' OR \"talent_model_image_attachments\".\"content_base64\" IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ql_ability_details": {
+      "name": "ql_ability_details",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "detail_id": {
+          "name": "detail_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "target_value": {
+          "name": "target_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_grade_id": {
+          "name": "target_grade_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "weight": {
+          "name": "weight",
+          "type": "numeric(7, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
+        "source_target_id": {
+          "name": "source_target_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "ql_ability_details_detail": {
+          "name": "ql_ability_details_detail",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "detail_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ql_ability_details_tenant_id_tenants_id_fk": {
+          "name": "ql_ability_details_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_ability_details",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_ability_details_detail_fk": {
+          "name": "ql_ability_details_detail_fk",
+          "tableFrom": "ql_ability_details",
+          "tableTo": "ql_standard_details",
+          "columnsFrom": [
+            "tenant_id",
+            "detail_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ql_ability_details_grade_fk": {
+          "name": "ql_ability_details_grade_fk",
+          "tableFrom": "ql_ability_details",
+          "tableTo": "ql_grade_details",
+          "columnsFrom": [
+            "tenant_id",
+            "target_grade_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ql_ability_details_source": {
+          "name": "ql_ability_details_source",
+          "value": "\"ql_ability_details\".\"source\" IN ('manual', 'copied', 'common_overwrite')"
+        },
+        "ql_ability_details_source_target": {
+          "name": "ql_ability_details_source_target",
+          "value": "(\"ql_ability_details\".\"source\" = 'manual') = (\"ql_ability_details\".\"source_target_id\" IS NULL)"
+        },
+        "ql_ability_details_weight": {
+          "name": "ql_ability_details_weight",
+          "value": "\"ql_ability_details\".\"weight\" IS NULL OR \"ql_ability_details\".\"weight\" BETWEEN 0 AND 100"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ql_categories": {
+      "name": "ql_categories",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "class_id": {
+          "name": "class_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_link_type": {
+          "name": "job_link_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "public_down": {
+          "name": "public_down",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ql_categories_class": {
+          "name": "ql_categories_class",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "class_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ql_categories_owner_org": {
+          "name": "ql_categories_owner_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ql_categories_tenant_id_tenants_id_fk": {
+          "name": "ql_categories_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_categories",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_categories_class_fk": {
+          "name": "ql_categories_class_fk",
+          "tableFrom": "ql_categories",
+          "tableTo": "ql_category_classes",
+          "columnsFrom": [
+            "tenant_id",
+            "class_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ql_categories_owner_org_fk": {
+          "name": "ql_categories_owner_org_fk",
+          "tableFrom": "ql_categories",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_categories_tenant_id": {
+          "name": "ql_categories_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "ql_categories_code": {
+          "name": "ql_categories_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ql_categories_code_format": {
+          "name": "ql_categories_code_format",
+          "value": "\"ql_categories\".\"code\" ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$'"
+        },
+        "ql_categories_job_link_type": {
+          "name": "ql_categories_job_link_type",
+          "value": "\"ql_categories\".\"job_link_type\" IS NULL OR \"ql_categories\".\"job_link_type\" IN ('position', 'post', 'sequence', 'level_type')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ql_category_classes": {
+      "name": "ql_category_classes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "level": {
+          "name": "level",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "public_down": {
+          "name": "public_down",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ql_category_classes_parent": {
+          "name": "ql_category_classes_parent",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ql_category_classes_owner_org": {
+          "name": "ql_category_classes_owner_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ql_category_classes_tenant_id_tenants_id_fk": {
+          "name": "ql_category_classes_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_category_classes",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_category_classes_parent_fk": {
+          "name": "ql_category_classes_parent_fk",
+          "tableFrom": "ql_category_classes",
+          "tableTo": "ql_category_classes",
+          "columnsFrom": [
+            "tenant_id",
+            "parent_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ql_category_classes_owner_org_fk": {
+          "name": "ql_category_classes_owner_org_fk",
+          "tableFrom": "ql_category_classes",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_category_classes_tenant_id": {
+          "name": "ql_category_classes_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "ql_category_classes_code": {
+          "name": "ql_category_classes_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ql_category_classes_code_format": {
+          "name": "ql_category_classes_code_format",
+          "value": "\"ql_category_classes\".\"code\" ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$'"
+        },
+        "ql_category_classes_level": {
+          "name": "ql_category_classes_level",
+          "value": "\"ql_category_classes\".\"level\" BETWEEN 1 AND 5"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ql_category_job_links": {
+      "name": "ql_category_job_links",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_link_type": {
+          "name": "job_link_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_object_id": {
+          "name": "job_object_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "ql_category_job_links_category": {
+          "name": "ql_category_job_links_category",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "category_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ql_category_job_links_tenant_id_tenants_id_fk": {
+          "name": "ql_category_job_links_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_category_job_links",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_category_job_links_category_fk": {
+          "name": "ql_category_job_links_category_fk",
+          "tableFrom": "ql_category_job_links",
+          "tableTo": "ql_categories",
+          "columnsFrom": [
+            "tenant_id",
+            "category_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_category_job_links_object": {
+          "name": "ql_category_job_links_object",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "job_link_type",
+            "job_object_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ql_category_job_links_type": {
+          "name": "ql_category_job_links_type",
+          "value": "\"ql_category_job_links\".\"job_link_type\" IN ('position', 'post', 'sequence', 'level_type')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ql_coding_rules": {
+      "name": "ql_coding_rules",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "item": {
+          "name": "item",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "prefix": {
+          "name": "prefix",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "''"
+        },
+        "next_seq": {
+          "name": "next_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ql_coding_rules_tenant_id_tenants_id_fk": {
+          "name": "ql_coding_rules_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_coding_rules",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_coding_rules_item": {
+          "name": "ql_coding_rules_item",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "item"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ql_coding_rules_item_check": {
+          "name": "ql_coding_rules_item_check",
+          "value": "\"ql_coding_rules\".\"item\" IN ('category', 'level', 'target_type', 'target')"
+        },
+        "ql_coding_rules_next_seq": {
+          "name": "ql_coding_rules_next_seq",
+          "value": "\"ql_coding_rules\".\"next_seq\" >= 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ql_development_channels": {
+      "name": "ql_development_channels",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "standard_id": {
+          "name": "standard_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level_id": {
+          "name": "level_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_category_id": {
+          "name": "target_category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_level_id": {
+          "name": "target_level_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ql_development_channels_tenant_id_tenants_id_fk": {
+          "name": "ql_development_channels_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_development_channels",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_development_channels_standard_fk": {
+          "name": "ql_development_channels_standard_fk",
+          "tableFrom": "ql_development_channels",
+          "tableTo": "ql_standards",
+          "columnsFrom": [
+            "tenant_id",
+            "standard_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ql_development_channels_level_fk": {
+          "name": "ql_development_channels_level_fk",
+          "tableFrom": "ql_development_channels",
+          "tableTo": "ql_levels",
+          "columnsFrom": [
+            "tenant_id",
+            "level_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ql_development_channels_category_fk": {
+          "name": "ql_development_channels_category_fk",
+          "tableFrom": "ql_development_channels",
+          "tableTo": "ql_categories",
+          "columnsFrom": [
+            "tenant_id",
+            "target_category_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ql_development_channels_target_level_fk": {
+          "name": "ql_development_channels_target_level_fk",
+          "tableFrom": "ql_development_channels",
+          "tableTo": "ql_levels",
+          "columnsFrom": [
+            "tenant_id",
+            "target_level_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_development_channels_path": {
+          "name": "ql_development_channels_path",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "standard_id",
+            "level_id",
+            "target_category_id",
+            "target_level_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ql_grade_details": {
+      "name": "ql_grade_details",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scheme_id": {
+          "name": "scheme_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grade": {
+          "name": "grade",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "score": {
+          "name": "score",
+          "type": "numeric(9, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "ql_grade_details_scheme": {
+          "name": "ql_grade_details_scheme",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scheme_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ql_grade_details_tenant_id_tenants_id_fk": {
+          "name": "ql_grade_details_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_grade_details",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_grade_details_scheme_fk": {
+          "name": "ql_grade_details_scheme_fk",
+          "tableFrom": "ql_grade_details",
+          "tableTo": "ql_grade_schemes",
+          "columnsFrom": [
+            "tenant_id",
+            "scheme_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_grade_details_tenant_id": {
+          "name": "ql_grade_details_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ql_grade_schemes": {
+      "name": "ql_grade_schemes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ql_grade_schemes_tenant_id_tenants_id_fk": {
+          "name": "ql_grade_schemes_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_grade_schemes",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_grade_schemes_tenant_id": {
+          "name": "ql_grade_schemes_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "ql_grade_schemes_name": {
+          "name": "ql_grade_schemes_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ql_layers": {
+      "name": "ql_layers",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ql_layers_tenant_id_tenants_id_fk": {
+          "name": "ql_layers_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_layers",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_layers_tenant_id": {
+          "name": "ql_layers_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "ql_layers_name": {
+          "name": "ql_layers_name",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ql_level_descriptions": {
+      "name": "ql_level_descriptions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "standard_id": {
+          "name": "standard_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level_id": {
+          "name": "level_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ql_level_descriptions_tenant_id_tenants_id_fk": {
+          "name": "ql_level_descriptions_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_level_descriptions",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_level_descriptions_standard_fk": {
+          "name": "ql_level_descriptions_standard_fk",
+          "tableFrom": "ql_level_descriptions",
+          "tableTo": "ql_standards",
+          "columnsFrom": [
+            "tenant_id",
+            "standard_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ql_level_descriptions_level_fk": {
+          "name": "ql_level_descriptions_level_fk",
+          "tableFrom": "ql_level_descriptions",
+          "tableTo": "ql_levels",
+          "columnsFrom": [
+            "tenant_id",
+            "level_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_level_descriptions_pair": {
+          "name": "ql_level_descriptions_pair",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "standard_id",
+            "level_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ql_level_job_links": {
+      "name": "ql_level_job_links",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level_id": {
+          "name": "level_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_link_type": {
+          "name": "job_link_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "job_object_id": {
+          "name": "job_object_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "ql_level_job_links_level": {
+          "name": "ql_level_job_links_level",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "level_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ql_level_job_links_tenant_id_tenants_id_fk": {
+          "name": "ql_level_job_links_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_level_job_links",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_level_job_links_level_fk": {
+          "name": "ql_level_job_links_level_fk",
+          "tableFrom": "ql_level_job_links",
+          "tableTo": "ql_levels",
+          "columnsFrom": [
+            "tenant_id",
+            "level_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_level_job_links_object": {
+          "name": "ql_level_job_links_object",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "job_link_type",
+            "job_object_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ql_level_job_links_type": {
+          "name": "ql_level_job_links_type",
+          "value": "\"ql_level_job_links\".\"job_link_type\" IN ('level', 'grade')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ql_levels": {
+      "name": "ql_levels",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "layer_id": {
+          "name": "layer_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "job_link_type": {
+          "name": "job_link_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "public_down": {
+          "name": "public_down",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ql_levels_layer": {
+          "name": "ql_levels_layer",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "layer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ql_levels_owner_org": {
+          "name": "ql_levels_owner_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ql_levels_tenant_id_tenants_id_fk": {
+          "name": "ql_levels_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_levels",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_levels_layer_fk": {
+          "name": "ql_levels_layer_fk",
+          "tableFrom": "ql_levels",
+          "tableTo": "ql_layers",
+          "columnsFrom": [
+            "tenant_id",
+            "layer_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ql_levels_owner_org_fk": {
+          "name": "ql_levels_owner_org_fk",
+          "tableFrom": "ql_levels",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_levels_tenant_id": {
+          "name": "ql_levels_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "ql_levels_code": {
+          "name": "ql_levels_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        },
+        "ql_levels_display_order": {
+          "name": "ql_levels_display_order",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "display_order"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ql_levels_code_format": {
+          "name": "ql_levels_code_format",
+          "value": "\"ql_levels\".\"code\" ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$'"
+        },
+        "ql_levels_job_link_type": {
+          "name": "ql_levels_job_link_type",
+          "value": "\"ql_levels\".\"job_link_type\" IS NULL OR \"ql_levels\".\"job_link_type\" IN ('level', 'grade')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ql_standard_details": {
+      "name": "ql_standard_details",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "standard_id": {
+          "name": "standard_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "level_id": {
+          "name": "level_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_value": {
+          "name": "target_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "weight": {
+          "name": "weight",
+          "type": "numeric(7, 2)",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "ql_standard_details_target": {
+          "name": "ql_standard_details_target",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "target_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ql_standard_details_tenant_id_tenants_id_fk": {
+          "name": "ql_standard_details_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_standard_details",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_standard_details_standard_fk": {
+          "name": "ql_standard_details_standard_fk",
+          "tableFrom": "ql_standard_details",
+          "tableTo": "ql_standards",
+          "columnsFrom": [
+            "tenant_id",
+            "standard_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ql_standard_details_level_fk": {
+          "name": "ql_standard_details_level_fk",
+          "tableFrom": "ql_standard_details",
+          "tableTo": "ql_levels",
+          "columnsFrom": [
+            "tenant_id",
+            "level_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ql_standard_details_target_fk": {
+          "name": "ql_standard_details_target_fk",
+          "tableFrom": "ql_standard_details",
+          "tableTo": "ql_targets",
+          "columnsFrom": [
+            "tenant_id",
+            "target_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_standard_details_tenant_id": {
+          "name": "ql_standard_details_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "ql_standard_details_cell": {
+          "name": "ql_standard_details_cell",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "standard_id",
+            "level_id",
+            "target_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ql_standard_details_weight": {
+          "name": "ql_standard_details_weight",
+          "value": "\"ql_standard_details\".\"weight\" IS NULL OR \"ql_standard_details\".\"weight\" BETWEEN 0 AND 100"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ql_standards": {
+      "name": "ql_standards",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_id": {
+          "name": "category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "level_ids": {
+          "name": "level_ids",
+          "type": "uuid[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ql_standards_owner_org": {
+          "name": "ql_standards_owner_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ql_standards_tenant_id_tenants_id_fk": {
+          "name": "ql_standards_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_standards",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_standards_category_fk": {
+          "name": "ql_standards_category_fk",
+          "tableFrom": "ql_standards",
+          "tableTo": "ql_categories",
+          "columnsFrom": [
+            "tenant_id",
+            "category_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ql_standards_owner_org_fk": {
+          "name": "ql_standards_owner_org_fk",
+          "tableFrom": "ql_standards",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_standards_tenant_id": {
+          "name": "ql_standards_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "ql_standards_category": {
+          "name": "ql_standards_category",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "category_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ql_standards_level_ids": {
+          "name": "ql_standards_level_ids",
+          "value": "cardinality(\"ql_standards\".\"level_ids\") BETWEEN 1 AND 100"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ql_target_grade_descriptions": {
+      "name": "ql_target_grade_descriptions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grade_detail_id": {
+          "name": "grade_detail_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ql_target_grade_descriptions_tenant_id_tenants_id_fk": {
+          "name": "ql_target_grade_descriptions_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_target_grade_descriptions",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_target_grade_descriptions_target_fk": {
+          "name": "ql_target_grade_descriptions_target_fk",
+          "tableFrom": "ql_target_grade_descriptions",
+          "tableTo": "ql_targets",
+          "columnsFrom": [
+            "tenant_id",
+            "target_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ql_target_grade_descriptions_detail_fk": {
+          "name": "ql_target_grade_descriptions_detail_fk",
+          "tableFrom": "ql_target_grade_descriptions",
+          "tableTo": "ql_grade_details",
+          "columnsFrom": [
+            "tenant_id",
+            "grade_detail_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_target_grade_descriptions_pair": {
+          "name": "ql_target_grade_descriptions_pair",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "target_id",
+            "grade_detail_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ql_target_types": {
+      "name": "ql_target_types",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "public_down": {
+          "name": "public_down",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ql_target_types_parent": {
+          "name": "ql_target_types_parent",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "parent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ql_target_types_owner_org": {
+          "name": "ql_target_types_owner_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ql_target_types_tenant_id_tenants_id_fk": {
+          "name": "ql_target_types_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_target_types",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_target_types_parent_fk": {
+          "name": "ql_target_types_parent_fk",
+          "tableFrom": "ql_target_types",
+          "tableTo": "ql_target_types",
+          "columnsFrom": [
+            "tenant_id",
+            "parent_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ql_target_types_owner_org_fk": {
+          "name": "ql_target_types_owner_org_fk",
+          "tableFrom": "ql_target_types",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_target_types_tenant_id": {
+          "name": "ql_target_types_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "ql_target_types_code": {
+          "name": "ql_target_types_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ql_target_types_code_format": {
+          "name": "ql_target_types_code_format",
+          "value": "\"ql_target_types\".\"code\" ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.ql_targets": {
+      "name": "ql_targets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type_id": {
+          "name": "type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_common": {
+          "name": "is_common",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "eval_mode": {
+          "name": "eval_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "grade_scheme_id": {
+          "name": "grade_scheme_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_org_id": {
+          "name": "owner_org_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "public_down": {
+          "name": "public_down",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ql_targets_type": {
+          "name": "ql_targets_type",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "type_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ql_targets_grade_scheme": {
+          "name": "ql_targets_grade_scheme",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "grade_scheme_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ql_targets_owner_org": {
+          "name": "ql_targets_owner_org",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ql_targets_tenant_id_tenants_id_fk": {
+          "name": "ql_targets_tenant_id_tenants_id_fk",
+          "tableFrom": "ql_targets",
+          "tableTo": "tenants",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ql_targets_type_fk": {
+          "name": "ql_targets_type_fk",
+          "tableFrom": "ql_targets",
+          "tableTo": "ql_target_types",
+          "columnsFrom": [
+            "tenant_id",
+            "type_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ql_targets_grade_scheme_fk": {
+          "name": "ql_targets_grade_scheme_fk",
+          "tableFrom": "ql_targets",
+          "tableTo": "ql_grade_schemes",
+          "columnsFrom": [
+            "tenant_id",
+            "grade_scheme_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "ql_targets_owner_org_fk": {
+          "name": "ql_targets_owner_org_fk",
+          "tableFrom": "ql_targets",
+          "tableTo": "org_objects",
+          "columnsFrom": [
+            "tenant_id",
+            "owner_org_id"
+          ],
+          "columnsTo": [
+            "tenant_id",
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ql_targets_tenant_id": {
+          "name": "ql_targets_tenant_id",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "id"
+          ]
+        },
+        "ql_targets_code": {
+          "name": "ql_targets_code",
+          "nullsNotDistinct": false,
+          "columns": [
+            "tenant_id",
+            "code"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "ql_targets_code_format": {
+          "name": "ql_targets_code_format",
+          "value": "\"ql_targets\".\"code\" ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,49}$'"
+        },
+        "ql_targets_eval_mode": {
+          "name": "ql_targets_eval_mode",
+          "value": "(\"ql_targets\".\"eval_mode\" = 'score' AND \"ql_targets\".\"grade_scheme_id\" IS NULL)\n        OR (\"ql_targets\".\"eval_mode\" = 'grade' AND \"ql_targets\".\"grade_scheme_id\" IS NOT NULL)"
         }
       },
       "isRLSEnabled": false
