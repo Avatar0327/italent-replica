@@ -12,6 +12,7 @@ export type MatrixAxis = (typeof MATRIX_AXES)[number];
 export const MATRIX_AXIS_FIELD_KINDS = ['option', 'number'] as const;
 /** 位置字段：校准前 / 后的格子号，只能是“位置”分组的数值字段（设计 §2.7）。 */
 export const MATRIX_POSITION_FIELD_GROUP = 'position';
+// TODO(需取证 #181) 轴分段结构（段数、数值轴）、预置格子名称 / 颜色 / 编号原站口径
 export const MATRIX_MIN_LEVELS = 2;
 export const MATRIX_MAX_LEVELS = 9;
 

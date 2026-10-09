@@ -175,6 +175,29 @@ describe('比例规则组（TR-R33）', () => {
     expect((await w.request('DELETE', `${MATRICES}/${matrix.id}`, { ifMatch: 4 })).status).toBe(200);
   });
 
+  it('规则组按创建顺序排列：删除中间的组后新增的组排在最后', async () => {
+    const w = await matrixWorld(testDb().db, 'trm-ratio-order');
+    const matrix = await w.create();
+    let view = matrix;
+    for (const name of ['甲', '乙', '丙']) {
+      const response = await w.request('POST', `${MATRICES}/${matrix.id}/ratio-groups`, {
+        ifMatch: view.revision,
+        body: ratioGroupBody({ name }),
+      });
+      view = (await response.json()) as MatrixView;
+    }
+    const middle = view.ratioGroups[0]!;
+    const removed = await w.request('DELETE', `${MATRICES}/${matrix.id}/ratio-groups/${middle.id}`, {
+      ifMatch: view.revision,
+    });
+    view = (await removed.json()) as MatrixView;
+    const added = await w.request('POST', `${MATRICES}/${matrix.id}/ratio-groups`, {
+      ifMatch: view.revision,
+      body: ratioGroupBody({ name: '丁' }),
+    });
+    expect(((await added.json()) as MatrixView).ratioGroups.map((group) => group.name)).toEqual(['乙', '丙', '丁']);
+  });
+
   it('规则组变更记入九宫格的数据变更日志（ratioGroups 字段）', async () => {
     const w = await matrixWorld(testDb().db, 'trm-ratio-audit');
     const audit = auditApi(testDb().db, TR_NOW.toISOString());

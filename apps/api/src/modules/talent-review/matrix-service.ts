@@ -30,6 +30,7 @@ import {
   checkCells,
   checkRatioRule,
   MATRIX_AXES,
+  MATRIX_AXIS_FIELD_KINDS,
   MATRIX_POSITION_FIELD_GROUP,
   type MatrixViolation,
 } from '@italent/domain';
@@ -139,7 +140,7 @@ function checkStructure(shape: Shape) {
 function checkAgainstFields(shape: Shape, facts: Map<string, FieldFacts>, added: readonly string[]) {
   const axisFields = { x: facts.get(shape.xFieldId)!, y: facts.get(shape.yFieldId)! };
   for (const field of Object.values(axisFields)) {
-    if (field.kind !== 'option' && field.kind !== 'number') {
+    if (!(MATRIX_AXIS_FIELD_KINDS as readonly string[]).includes(field.kind)) {
       throw reject('MATRIX_AXIS_FIELD_KIND', '九宫格的轴只能是单选或数值字段');
     }
   }
@@ -395,7 +396,12 @@ export async function createRatioGroup(tx: Tx, ctx: MatrixWriteContext, id: stri
   const before = (await loadMatrixView(tx, ctx.tenantId, id))!;
   checkRules(input.rules, before);
   if (input.isDefault) await clearDefault(tx, ctx, id);
-  const sortNo = before.ratioGroups.length + 1;
+  // 取最大序号 + 1：删除过的组留下的空档不会让新组与现有组同序号
+  const [last] = await tx
+    .select({ top: sql<number>`coalesce(max(${G.sortNo}), 0)::int` })
+    .from(G)
+    .where(and(eq(G.tenantId, ctx.tenantId), eq(G.matrixId, id)));
+  const sortNo = (last?.top ?? 0) + 1;
   let groupId: string;
   try {
     const [created] = await tx

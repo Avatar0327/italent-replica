@@ -38,8 +38,8 @@
 | 保存命令恰两行（before / after 各一） | 400 `MATRIX_POSITION_FIELDS_INCOMPLETE` | 设计 §2.2、P3-01 |
 | 位置字段必须是“位置”分组的数值字段 | 400 `MATRIX_POSITION_FIELD_KIND` | 设计 §2.7（位置字段 number、`system_written`） |
 | X ≠ Y；轴字段为单选或数值 | 400 `MATRIX_AXIS_SAME_FIELD` / `MATRIX_AXIS_FIELD_KIND` | TR-R31 |
-| 轴分段 2～9 段、序号连续；单选轴选项值属于字段且各段不重复；数值轴第一段无下界、其余下界递增 | 400 `MATRIX_LEVELS_INVALID` | 🟡 设计自定项 D-B4-1 |
-| 格子铺满 X 段 × Y 段网格，格子号唯一 | 400 `MATRIX_CELLS_INCOMPLETE` | 🟡 设计自定项 D-B4-1 |
+| 轴分段 2～9 段、序号连续；单选轴选项值属于字段且各段不重复；数值轴第一段无下界、其余下界递增 | 400 `MATRIX_LEVELS_INVALID` | 🟡 设计自定项 D-B4-1（需取证 #181） |
+| 格子铺满 X 段 × Y 段网格，格子号唯一 | 400 `MATRIX_CELLS_INCOMPLETE` | 🟡 设计自定项 D-B4-1（需取证 #181） |
 | 新引用已停用的字段 | 400 `MATRIX_FIELD_DISABLED` | 设计 §7 启停行（停用后不可新引用） |
 | 被比例规则引用的格子不能删 | 409 `MATRIX_CELL_IN_USE` | TR-R33 |
 | 范围运算（between）需要上限且 ≥ 下限，其他运算不带上限；格子集合非空、无重复、属于本九宫格；一组至少一条规则；组内规则为“且”（PR-D 求值） | 400 `RATIO_RULE_INVALID` / `RATIO_RULE_CELL_UNKNOWN` | TR-R33 |

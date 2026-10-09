@@ -30,7 +30,7 @@ import {
 import { listConfig } from './config-kit.js';
 import { matrixCreate, matrixPatch, ratioGroupCreate, ratioGroupPatch } from './matrix-input.js';
 import * as matrices from './matrix-service.js';
-import { loadMatrixView, MATRIX, type MatrixView, withChildren } from './matrix-view.js';
+import { loadMatrixView, MATRIX, type MatrixRow, type MatrixView, withChildren } from './matrix-view.js';
 
 const MATRICES = `${TALENT_REVIEW_BASE}/matrices`;
 const GROUPS = `${MATRICES}/:id/ratio-groups`;
@@ -88,7 +88,7 @@ export function registerMatrixRoutes(router: Hono<TenantEnv>, deps: TenantRouteD
         enabled,
         visible: configScopeSql(scope, 'talent_review_matrices'),
       });
-      return withChildren(tx, ctx.tenantId, rows as never);
+      return withChildren(tx, ctx.tenantId, rows as MatrixRow[]);
     });
     return c.json({ ...configEnvelope(page, scope), items: await trimReview(deps, ctx, 'matrix', items) });
   });

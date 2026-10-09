@@ -82,6 +82,8 @@ const selectRows = (tx: Tx, tenantId: string, ids: string[]) =>
 
 const number = (value: string | null) => (value === null ? null : Number(value));
 
+/** 位置字段按 before、after 的顺序给出。 */
+const roleRank = (role: string) => (role === 'before' ? 0 : 1);
 const byMatrix = <T extends { matrixId: string }>(rows: T[], id: string) => rows.filter((r) => r.matrixId === id);
 
 /** 规则组 → 规则 → 规则的格子集合，一次三查。 */
@@ -152,7 +154,7 @@ export async function withChildren(tx: Tx, tenantId: string, rows: MatrixRow[]):
     name: r.name as string,
     positionFields: byMatrix(positions, r.id as string)
       .map((p) => ({ role: p.role, fieldId: p.fieldId }))
-      .sort((a, b) => (a.role === b.role ? 0 : a.role === 'before' ? -1 : 1)),
+      .sort((a, b) => roleRank(a.role) - roleRank(b.role)),
     axisLevels: byMatrix(levels, r.id as string).map((l) => ({
       axis: l.axis,
       levelNo: l.levelNo,
