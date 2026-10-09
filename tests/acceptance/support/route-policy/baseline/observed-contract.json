@@ -7058,7 +7058,7 @@
         "precondition": [
           "assertBusinessUnchanged",
           "assertNotNodeAssignee",
-          "assertNotSelf",
+          "assertNotRecused",
           "assertReviewer",
           "openRun"
         ],
@@ -7097,7 +7097,7 @@
         "precondition": [
           "assertBusinessUnchanged",
           "assertNotNodeAssignee",
-          "assertNotSelf",
+          "assertNotRecused",
           "assertReviewer",
           "openRun"
         ],
@@ -7430,7 +7430,7 @@
           "assertAddSigners",
           "assertBusinessUnchanged",
           "assertNotNodeAssignee",
-          "assertNotSelf",
+          "assertNotRecused",
           "assertOpen",
           "assertReviewer",
           "blindReview",
@@ -7478,7 +7478,7 @@
           "assertBusinessUnchanged",
           "assertExit",
           "assertNotBlindAfterEdit",
-          "assertNotSelf",
+          "assertNotRecused",
           "assertOpen",
           "blindReview",
           "openRun",
@@ -7516,6 +7516,7 @@
         ],
         "precondition": [
           "assertBusinessUnchanged",
+          "assertNotRecused",
           "assertOpen",
           "openRun",
           "openTask"
@@ -7559,7 +7560,7 @@
         "precondition": [
           "assertBusinessUnchanged",
           "assertExit",
-          "assertNotSelf",
+          "assertNotRecused",
           "assertOpen",
           "blindReview",
           "openRun",
@@ -7605,6 +7606,7 @@
           "assertApprovalEdit",
           "assertBusinessUnchanged",
           "assertNotBlindAfterEdit",
+          "assertNotRecused",
           "assertOpen",
           "openRun",
           "openTask"
@@ -7641,7 +7643,7 @@
         ],
         "precondition": [
           "assertBusinessUnchanged",
-          "assertNotSelf",
+          "assertNotRecused",
           "assertOpen",
           "openRun",
           "openTask"
@@ -7684,7 +7686,7 @@
         ],
         "precondition": [
           "assertBusinessUnchanged",
-          "assertNotSelf",
+          "assertNotRecused",
           "assertOpen",
           "assertRejectEnabled",
           "blindReview",
@@ -7729,7 +7731,7 @@
         ],
         "precondition": [
           "assertBusinessUnchanged",
-          "assertNotSelf",
+          "assertNotRecused",
           "assertOpen",
           "blindReview",
           "openRun",
@@ -7767,6 +7769,7 @@
         ],
         "precondition": [
           "assertBusinessUnchanged",
+          "assertNotRecused",
           "openRun",
           "retrievableTask"
         ],
@@ -7803,7 +7806,7 @@
         "precondition": [
           "assertBusinessUnchanged",
           "assertNotNodeAssignee",
-          "assertNotSelf",
+          "assertNotRecused",
           "assertOpen",
           "assertReviewer",
           "openRun",
@@ -8213,7 +8216,7 @@
           "assertBusinessUnchanged",
           "assertExit",
           "assertNotBlindAfterEdit",
-          "assertNotSelf",
+          "assertNotRecused",
           "assertOpen",
           "assertRejectEnabled",
           "blindReview",
@@ -9427,7 +9430,7 @@
         "precondition": [
           "assertBusinessUnchanged",
           "assertNotNodeAssignee",
-          "assertNotSelf",
+          "assertNotRecused",
           "assertReviewer",
           "openRun"
         ],

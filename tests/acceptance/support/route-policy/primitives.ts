@@ -258,7 +258,7 @@ export const PRIMITIVES: readonly Primitive[] = [
       'openTask',
       'openRun',
       'blindReview',
-      'assertNotSelf',
+      'assertNotRecused',
       'assertBusinessUnchanged',
       'assertExit',
       'assertRejectEnabled',

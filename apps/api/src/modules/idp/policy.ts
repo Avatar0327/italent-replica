@@ -387,7 +387,13 @@ export const IDP_POLICIES = defineTable('idp', {
     scope: PLAN_POINT,
     fields: 'body',
     result: 'idp.stillVisible',
-    preconditions: ['openRun', 'assertBusinessUnchanged', 'assertNotNodeAssignee', 'assertNotSelf', 'assertReviewer'],
+    preconditions: [
+      'openRun',
+      'assertBusinessUnchanged',
+      'assertNotNodeAssignee',
+      'assertNotRecused',
+      'assertReviewer',
+    ],
     byId: true,
   }),
   // 下发任务：task 新建 + issue 列表按钮，另要计划查看权（plan-routes.ts：无 → 403「无权查看发展计划」，审查第 1 轮 P3-1）

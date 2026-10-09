@@ -27,7 +27,9 @@
  *   body.fields 非空时 requireObjectWrite(update) 判定（routes.ts fieldRights 461–471 行）。
  * - 两条仿真 POST 附录 A 无写足迹；按「写路由必有 write」登记三项 none（只读仿真：不开命令事务、不落库、不进台账）。
  * - preconditions 按代码补齐：cc 也调 assertOpen；disagree 多一项 votesInTransition（会签前加签人不能点不同意）；add-sign
- *   的 blindReview / assertNotSelf 仅 type === 'after'；approve 的编辑类前提仅 body.fields 非空时执行。
+ *   的 blindReview 仅 type === 'after'；approve 的编辑类前提仅 body.fields 非空时执行。
+ * - 回避（F-048 PR-2）：openTask 统一按冻结值判定办理人 assertNotRecused（actor）；转交 / 加签 / 改派对象在
+ *   assertReviewer 里判定（target）；抄送对象按 avoidSubjects 判定（cc）；管理员动作另按实例级 instanceRecusal。
  */
 import {
   APPROVAL_INSTANCE_OBJECT,
@@ -178,7 +180,7 @@ const APPROVE = [
   'assertOpen',
   'assertExit',
   'blindReview',
-  'assertNotSelf',
+  'assertNotRecused',
   'assertApprovalEdit',
   'assertNotAddSigner',
   'editableInput',
@@ -192,7 +194,7 @@ const DISAGREE = [
   'assertExit',
   'votesInTransition',
   'blindReview',
-  'assertNotSelf',
+  'assertNotRecused',
 ];
 /** 驳回意见必填（node.rejectCommentRequired，DEC-059）是内联校验，无函数名。 */
 const REJECT = [
@@ -202,7 +204,7 @@ const REJECT = [
   'assertOpen',
   'assertRejectEnabled',
   'blindReview',
-  'assertNotSelf',
+  'assertNotRecused',
 ];
 /** 驳回到上一步（rejectToPreviousTask）：节点开关与“第一个节点没有上一步”内联 409；盲审与本人回避同驳回。 */
 const REJECT_PREVIOUS = [
@@ -211,11 +213,11 @@ const REJECT_PREVIOUS = [
   'assertBusinessUnchanged',
   'assertOpen',
   'blindReview',
-  'assertNotSelf',
+  'assertNotRecused',
   'assertNotAddSigner',
 ];
 /** 跳转（jumpTask）：节点跳转开关与“只能跳到其他节点”内联；本人回避、加签人限制。 */
-const JUMP = ['openTask', 'openRun', 'assertBusinessUnchanged', 'assertOpen', 'assertNotSelf', 'assertNotAddSigner'];
+const JUMP = ['openTask', 'openRun', 'assertBusinessUnchanged', 'assertOpen', 'assertNotRecused', 'assertNotAddSigner'];
 /** 节点转交开关（异常管理员例外 DEC-069）与「不能转交给自己」是内联校验；无盲审。 */
 const TRANSFER = [
   'openTask',
@@ -224,9 +226,9 @@ const TRANSFER = [
   'assertOpen',
   'assertReviewer',
   'assertNotNodeAssignee',
-  'assertNotSelf',
+  'assertNotRecused',
 ];
-/** 节点加签开关内联；parallel / before 不盲审，after 含本人同意才 blindReview + assertNotSelf（DEC-095）。 */
+/** 节点加签开关内联；parallel / before 不盲审，after 含本人同意才 blindReview（DEC-095）。 */
 const ADD_SIGN = [
   'openTask',
   'openRun',
@@ -238,18 +240,19 @@ const ADD_SIGN = [
   'assertAddSigners',
   'assertNotNodeAssignee',
   'blindReview',
-  'assertNotSelf',
+  'assertNotRecused',
 ];
 /** 节点抄送开关内联；抄送对象须是有效账号（isActiveAccount）；无盲审。 */
-const CC = ['openTask', 'openRun', 'assertBusinessUnchanged', 'assertOpen', 'isActiveAccount'];
+const CC = ['openTask', 'openRun', 'assertBusinessUnchanged', 'assertOpen', 'isActiveAccount', 'assertNotRecused'];
 /** retrieveTask 不走 openTask：openRun 后自行校验 revision / 业务版本 / 本人任务，再按 rules.retrievableTask 判定。 */
-const RETRIEVE = ['openRun', 'assertRevision', 'assertBusinessUnchanged', 'retrievableTask'];
+const RETRIEVE = ['openRun', 'assertRevision', 'assertBusinessUnchanged', 'assertNotRecused', 'retrievableTask'];
 /** editMode === 'separate' 内联；assertNotBlindAfterEdit 抛错回滚（不是 Outcome）。 */
 const EDIT = [
   'openTask',
   'openRun',
   'assertBusinessUnchanged',
   'assertOpen',
+  'assertNotRecused',
   'assertApprovalEdit',
   'assertNotAddSigner',
   'editableInput',
@@ -275,14 +278,17 @@ const URGE = ['openOwn', 'openRun', 'urgeOpen', 'assertUrgeInterval'];
 const WITHDRAW = ['openOwn', 'openRun'];
 /** 重提：状态须 returned（personnel_change 另可 withdrawn）内联；contract 分支事务内复查同一字段集；employment 适配器拒绝。 */
 const RESUBMIT = ['openOwn', 'openRun', 'requireResubmitRight', 'adapter.resubmit'];
-/** adminAct：范围覆盖（404）→ revision → running → 业务版本 → DEC-092 本人回避；jump 不改派任务，其余两项仅非 jump。 */
+/**
+ * adminAct：范围覆盖（404）→ revision → running → 业务版本 → DEC-092 / DEC-329② 实例级回避（instanceRecusal）；jump 不改派
+ * 任务，其余三项仅非 jump（改派对象 assertReviewer 内含 assertNotRecused）。
+ */
 const ADMIN = [
   'openRun',
-  'assertNotSelf',
   'assertRevision',
   'assertBusinessUnchanged',
-  'isOwnRequest',
+  'instanceRecusal',
   'assertReviewer',
+  'assertNotRecused',
   'assertNotNodeAssignee',
 ];
 /** 管理员转交 / 干预：只校验按钮（无按钮 403 FORBIDDEN / APPROVAL_ADMIN_REQUIRED），不加 update 数据操作（§2.4）。 */
