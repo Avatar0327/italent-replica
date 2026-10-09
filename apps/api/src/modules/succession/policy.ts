@@ -5,7 +5,7 @@
  *
  * A1（记录读侧）：
  * - #1 GET /readiness：Succession.Record 查看权即可，准备度是共享字典（HR 读字典契约，§8.3），不按数据范围裁剪；
- * - #2 GET /records、/records/:id：范围锚点 = 目标组织（职位继任 = 职位 asOf 当日所属组织）∪ 创建人；SELF 过滤
+ * - #2 GET /records、/records/:id：范围锚点 = 目标组织（职位继任 = 职位请求当日所属组织（DEC-368①））∪ 创建人；SELF 过滤
  *   （succession.selfHidden：开关为 false 时本人为目标的记录不返回、不计数、详情 404）；范围外与不存在同一个 404。
  */
 import { SUCCESSION_OBJECTS } from '@italent/domain';
