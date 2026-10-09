@@ -250,6 +250,10 @@ def main():
             if p.get("done") and f"{n}@done@{p['done']}" not in stalled:
                 ev.append(f"开发完成待审 #{n} {p['t']}：开发方 {p['done'][11:16]}Z 已贴“开发完成”，尚无审查发起，请发起审查")
                 stalled.add(f"{n}@done@{p['done']}")
+            # 衔接超时（用户 10-09）：“开发完成”贴出 HANDOFF 分钟后仍无审查发起 → 再报一次，进度窗口须直接催审查合并窗口
+            if p.get("done") and mins_since(p["done"]) >= HANDOFF and f"{n}@late@{p['done']}" not in stalled:
+                ev.append(f"⚠ 衔接超时 #{n} {p['t']}：“开发完成”已贴 {int(mins_since(p['done']))} 分钟仍未发起审查——进度窗口直接催审查合并窗口")
+                stalled.add(f"{n}@late@{p['done']}")
             k2 = f"{n}@ready@{p['head']}"
             if p["ci"] in ("green", "none") and mins_since(p["commit"]) >= (READY_DRAFT if p["draft"] else READY) and not p.get("handled") and k2 not in stalled:
                 ev.append(f"待送审 #{n} {p['t']}：最新提交 {p['head']} 已 {int(mins_since(p['commit']))} 分钟、CI {'绿' if p['ci'] == 'green' else '无'}，提交后 PR 上没有审查发起 / 排队 / 修改清单评论——开发方可能已完成，请确认并发起审查")
