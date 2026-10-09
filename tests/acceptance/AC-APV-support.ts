@@ -630,7 +630,15 @@ export async function installApprovalFallbacks(db: Db, tenantId: string, userId:
               formFields: [],
               editableFields: [],
               editMode: 'none',
-              actions: { transfer: false, addSign: false, copySend: false, retrieve: false, urge: 'inherit' },
+              // F-048 PR-1（DEC-329④）：新建节点自审回避缺省关闭；兜底流程依赖发起人自审跳过，显式开启
+              actions: {
+                transfer: false,
+                addSign: false,
+                copySend: false,
+                retrieve: false,
+                urge: 'inherit',
+                avoidSelf: true,
+              },
               rejectCommentRequired: false,
               hideRecords: false,
               rejectResubmit: 'restart',

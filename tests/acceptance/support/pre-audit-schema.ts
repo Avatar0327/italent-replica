@@ -2,7 +2,7 @@
  * 升级测试夹具（R1-T16）：在迁移 0057 / 0058 之前的结构上用当前接口造前置数据时，审计写入会带上 R1-T16 新增的列，
  * 并在解析引用名称时调用 0058 的 current_tenant_timezone()。这里临时补出这些列与函数，前置步骤跑完即撤掉，
  * 再由测试执行升级迁移；前置步骤写入的审计行只保留升级前就有的列，等同历史数据。已升级的库直接执行。
- * R3-T07（DEC-318）起审批流程节点多了 4 个开关列，当前接口装审批流程时会写它们：旧结构上同样临时补出（取迁移的
+ * R3-T07（DEC-318）起审批流程节点多了 4 个开关列（F-048 再加 2 个），当前接口装审批流程时会写它们：旧结构上同样临时补出（取迁移的
  * 缺省值），前置步骤后撤掉，由升级迁移按缺省值补回。
  */
 import { type Db, sql } from '@italent/db';
@@ -22,9 +22,11 @@ const COLUMNS = [
   ['scope_org_id', 'uuid'],
 ] as const;
 
-/** 审批流程节点开关列（迁移 0069，缺省值与迁移一致）。 */
+/** 审批流程节点开关列（迁移 0069、F-048 迁移 0070，缺省值与迁移一致；avoid_self 写入时总带显式值）。 */
 const NODE_COLUMNS = [
   ['avoid_self', 'boolean NOT NULL DEFAULT true'],
+  ['avoid_subjects', 'boolean NOT NULL DEFAULT false'],
+  ['avoid_subjects_result', "text NOT NULL DEFAULT 'skip'"],
   ['allow_revoke', 'boolean NOT NULL DEFAULT true'],
   ['allow_reject_previous', 'boolean NOT NULL DEFAULT false'],
   ['allow_jump', 'boolean NOT NULL DEFAULT false'],
