@@ -111,6 +111,13 @@ interface Rule {
   readonly objectPermission?: boolean;
   /** 不是对象字段的协议键（删除 / 移除标记、活动授权名单等），随对象字段一起展示。 */
   readonly protocol?: readonly string[];
+  /**
+   * 逐行脱敏（DEC-340③ 答卷日志）：返回查看人能看完整版的活动编号子查询，其余可见行只展示 desensitize 后的字段，
+   * 其中 sourceActions 的行（评价者本人发起的命令）另不展示请求来源与命令 ID；返回 null 表示全部脱敏。
+   */
+  readonly fullResolve?: (deps: Deps, ctx: TenantContext) => Promise<SQL | null>;
+  readonly desensitize?: (fields: ReadonlySet<string> | undefined) => ReadonlySet<string>;
+  readonly sourceActions?: readonly string[];
 }
 
 type Deps = TenantRouteDeps;
@@ -253,20 +260,14 @@ export const APPROVAL_FLOW_FIELDS = [
 const S360 = survey360.SURVEY360_OBJECTS;
 
 /**
- * DEC-340③：答卷日志（保存、提交、屏蔽、恢复、清除）对任何查看人（含持“全部活动”者，兼任评价者也不豁免）只展示
- * 脱敏版本——去掉评价关系 ID，不展示作答请求的来源（IP、终端、来源页、TraceID）与命令 ID；链接 / 待办作答的
- * 操作人本就记为“系统”。答案本身与原始数据卡片一样不带评价者标识。
+ * DEC-340③：答卷日志（保存、提交、屏蔽、恢复、清除、替换套卷清空）给有活动授权的管理员看脱敏版本——去掉评价关系
+ * ID，不展示作答请求的来源（IP、终端、来源页、TraceID）与命令 ID；链接 / 待办作答的操作人本就记为“系统”。答案本身
+ * 与原始数据卡片一样不带评价者标识。持“全部活动”者看完整版，但兼任该活动被评价人 / 评价者时不豁免。
  */
-const SURVEY360_SHEET = 'survey360-sheet';
 const SHEET_IDENTITY_FIELDS = new Set(['relationId']);
 function survey360SheetAuditFields(fields: ReadonlySet<string> | undefined): ReadonlySet<string> {
   const all = fields ?? new Set(S360.answer.fields.map((field) => field.code));
   return new Set([...all].filter((field) => !SHEET_IDENTITY_FIELDS.has(field)));
-}
-
-/** 不展示请求来源与命令 ID 的日志（DEC-340③）。 */
-export function auditSourceWithheld(objectType: string): boolean {
-  return objectType === SURVEY360_SHEET;
 }
 const inVisibleActivity: Rule['visible'] = (_scope, row, _viewer, { extra }) =>
   extra ? sql`COALESCE(${row.after}->>'activityId', '') IN (${extra})` : sql`false`;
@@ -291,10 +292,14 @@ const survey360Rules: readonly Rule[] = [
     visible: inVisibleActivity,
   },
   {
-    types: [SURVEY360_SHEET],
+    types: ['survey360-sheet'],
     objectCode: S360.answer.code,
     objectPermission: true,
     resolve: survey360AuditScope('answer'),
+    fullResolve: survey360AuditScope('answerFull'),
+    desensitize: survey360SheetAuditFields,
+    // 链接 / 待办作答由评价者本人发起，请求来源与命令 ID 能关联到评价者；屏蔽、清除等由管理员发起，照常展示
+    sourceActions: ['survey360.sheet.save', 'survey360.sheet.submit'],
     visible: inVisibleActivity,
   },
   {
@@ -602,6 +607,9 @@ export function auditObjectRegistered(objectType: string): boolean {
 }
 
 interface ResolvedRule {
+  /** 逐行脱敏的行（DEC-340③）：该行为 true 时按 fields 展示、不展示来源；为 false 时按 fullFields 展示。 */
+  readonly withheld?: SQL;
+  readonly fullFields?: ReadonlySet<string> | undefined;
   readonly linkage?: LinkageAudit;
   readonly rule: Rule;
   readonly scope: ModuleScope;
@@ -661,12 +669,17 @@ export interface AuditViewer {
   readonly visibleCount: SQL;
   /** 联动逐条解析的完整可见路径与展开差异；其他对象保持原始 changes。 */
   readonly linkagePaths: SQL;
+  /** 该行只展示脱敏版本（DEC-340③）：字段按脱敏字段裁剪。 */
+  readonly withheld: SQL;
+  /** 该行不展示请求来源与命令 ID（脱敏行里评价者本人发起的命令）。 */
+  readonly sourceWithheld: SQL;
   readonly eventChanges: SQL;
-  /** 该日志适用的查看字段；undefined = 不限字段。 */
+  /** 该日志适用的查看字段；undefined = 不限字段。withheld = 该行的 withheld 列。 */
   fieldsOf(
     objectType: string,
     action?: string | null,
     paths?: readonly string[] | null,
+    withheld?: boolean | null,
   ): ReadonlySet<string> | undefined;
 }
 
@@ -722,6 +735,7 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
       THEN ${capacityAuditChanges(capacityFields, sql`audit_events.changes`)} ELSE audit_events.changes END`
       : sql`audit_events.changes`;
   return {
+    ...withheldColumns([...resolved.values()]),
     linkagePaths: linkage
       ? sql`CASE WHEN audit_events.object_type=${TRANSFER_LINKAGE} THEN ${linkage.paths} END`
       : sql`NULL::text[]`,
@@ -735,14 +749,35 @@ export async function auditViewer(deps: Deps, ctx: TenantContext, field?: string
       FROM jsonb_array_elements(${sql.identifier(TASK)}.items) item WHERE ${rowsCase}) END)`,
     visibleCount: sql`COALESCE(${run && !run.scope.all ? orderRunCount(run, viewer) : sql`NULL::int`},
       ${orgRun ? orgAdjustmentCount(orgRun, viewer) : sql`NULL::int`})`,
-    fieldsOf: (objectType, action, paths) => {
+    fieldsOf: (objectType, action, paths, rowWithheld) => {
       if (objectType === TRANSFER_LINKAGE) return new ExactAuditFields(paths ?? []);
       const configured = config.get(configKey(objectType, action));
       if (configured) return configured.fields;
       if (isConfigLog(objectType, action)) return undefined;
       const rule = RULE_BY_TYPE.get(objectType);
-      return rule ? resolved.get(rule)?.fields : undefined;
+      const entry = rule ? resolved.get(rule) : undefined;
+      if (entry?.withheld && rowWithheld === false) return entry.fullFields;
+      return entry?.fields;
     },
+  };
+}
+
+/** 逐行脱敏的两列（DEC-340③）：withheld 按脱敏字段展示；sourceWithheld 另不展示请求来源与命令 ID。 */
+function withheldColumns(entries: readonly ResolvedRule[]): { withheld: SQL; sourceWithheld: SQL } {
+  const rows = entries.filter((entry) => entry.withheld);
+  const perRow = (value: (entry: ResolvedRule) => SQL) =>
+    rows.length
+      ? sql`(CASE ${sql.join(
+          rows.map((entry) => sql`WHEN ${eventTypes(entry.rule)} THEN ${value(entry)}`),
+          sql` `,
+        )} ELSE false END)`
+      : sql`false`;
+  const action = sql`${sql.identifier(EVENT)}.action`;
+  return {
+    withheld: perRow((entry) => entry.withheld!),
+    sourceWithheld: perRow(
+      (entry) => sql`(${entry.withheld!} AND ${action} = ANY(${textArray(entry.rule.sourceActions ?? [])}))`,
+    ),
   };
 }
 
@@ -764,6 +799,21 @@ function withProtocol(fields: ReadonlySet<string> | undefined, protocol: readonl
   return fields === undefined || !protocol?.length ? fields : new Set([...fields, ...protocol]);
 }
 
+/**
+ * 逐行脱敏的规则：fields（筛选与脱敏行的展示）取脱敏字段，fullFields 给能看完整版的行；withheld 是逐行谓词。
+ * 不脱敏的规则原样返回 fields。
+ */
+async function desensitized(deps: Deps, ctx: TenantContext, rule: Rule, fields: ReadonlySet<string> | undefined) {
+  if (!rule.desensitize) return { fields };
+  const full = rule.fullResolve ? await rule.fullResolve(deps, ctx) : null;
+  const activity = sql`COALESCE(${sql.identifier(EVENT)}.after->>'activityId', '')`;
+  return {
+    fields: rule.desensitize(fields),
+    fullFields: fields,
+    withheld: full ? sql`(${activity} NOT IN (${full}))` : sql`true`,
+  };
+}
+
 async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<ResolvedRule | undefined> {
   const fixed = rule.fixedFields ? new Set(rule.fixedFields) : undefined;
   // 与业务接口 objectContext 同一开关：没有该对象的查看权限，审计里也看不到（第三轮 P1-3）
@@ -775,16 +825,10 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
     const scope = { all: false, hasDataPermission: true } as ModuleScope;
     const objectFields = rule.objectPermission ? await getModuleViewableFields(deps, ctx, rule.objectCode) : undefined;
     const fields = fixed ?? withProtocol(objectFields, rule.protocol);
-    return {
-      rule,
-      scope,
-      inputs: { extra, objectFields },
-      fields: rule.types.includes('survey360-person')
-        ? survey360PersonAuditFields(fields)
-        : rule.types.includes(SURVEY360_SHEET)
-          ? survey360SheetAuditFields(fields)
-          : fields,
-    };
+    const inputs = { extra, objectFields };
+    if (rule.types.includes('survey360-person'))
+      return { rule, scope, inputs, fields: survey360PersonAuditFields(fields) };
+    return { rule, scope, inputs, ...(await desensitized(deps, ctx, rule, fields)) };
   }
   if (!(await canView())) return undefined;
   const scope = await resolveModuleScope(deps, ctx, undefined, rule.objectCode, undefined, rule.view);

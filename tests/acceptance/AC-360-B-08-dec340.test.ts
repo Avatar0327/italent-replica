@@ -1,6 +1,7 @@
 /**
  * DEC-340③：答卷审计（保存、提交、屏蔽、恢复、清除）给有活动授权的管理员看**脱敏版本**——不带任何能关联到评价者的
- * 信息：评价关系 ID、评价者人员 ID / 姓名 / 邮箱 / 账号，以及作答请求的来源（IP、终端、来源页、TraceID、命令 ID）。
+ * 信息：评价关系 ID、评价者人员 ID / 姓名 / 邮箱 / 账号；评价者本人作答（保存、提交）的请求来源（IP、终端、来源页、
+ * TraceID）与命令 ID 也不展示（屏蔽、清除等由管理员发起，来源是管理员自己的，照常展示）。
  * 持“全部活动”者看完整版（F-034 删除快照口径），但兼任该活动的被评价人或评价者时不豁免，同样只看脱敏版本；没有
  * 活动授权的管理员看不到；作答入口（链接 / 待办）的失败审计仍只给持“全部活动”者（第 2 轮 P2-1 的反例保持拒绝）。
  */
@@ -53,12 +54,15 @@ async function sheetEvents(s: SceneB, user: string) {
   return Promise.all(items.map(async (item) => ({ item, detail: await audit.dataChange(as, item.id) })));
 }
 
+const SOURCE_WITHHELD = ['survey360.sheet.save', 'survey360.sheet.submit'];
+
 function expectDesensitized(s: SceneB, events: Awaited<ReturnType<typeof sheetEvents>>) {
   const markers = identityMarkers(s);
   for (const { item, detail } of events) {
     const text = JSON.stringify([item, detail]);
     expect(text, item.action).not.toContain('"relationId"');
     for (const marker of markers) expect(text, `${item.action} ${marker}`).not.toContain(marker);
+    if (!SOURCE_WITHHELD.includes(item.action)) continue;
     for (const view of [item, detail])
       expect(
         {

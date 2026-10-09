@@ -178,7 +178,7 @@ export function registerSheetRoutes(module: Hono<TenantEnv>, deps: TenantRouteDe
           if (action === 'block' && sheet.blocked) fail('CONFLICT', '答卷已屏蔽', 'ALREADY_BLOCKED');
           if (action === 'unblock' && !sheet.blocked) fail('CONFLICT', '答卷未屏蔽', 'NOT_BLOCKED');
           await setBlocked(tx, ctx, activity.id, sheet, action === 'block' ? 'manual' : null);
-          await markDataChanged(tx, activity.id, ctx.now);
+          await markDataChanged(tx, activity.id, ctx.now, [sheet.object_id]);
           const [saved] = await cards(tx, [await visibleSheet(tx, activity.id, ctx.admin, sheetId)]);
           return saved;
         },
@@ -223,27 +223,27 @@ function registerBatchBlocking(module: Hono<TenantEnv>, deps: TenantRouteDeps): 
     const last = activity.suspect_blocked_at ? new Date(activity.suspect_blocked_at).getTime() : null;
     if (last !== null && ctx.now.getTime() - last < SUSPECT_INTERVAL_MS)
       fail('CONFLICT', '此功能2小时内仅允许使用一次', 'RATE_LIMITED');
-    let blocked = 0;
+    const changed: string[] = [];
     for (const sheet of await submittedSheets(tx, activity.id, ctx.admin)) {
       if (sheet.blocked) continue;
       const q = await loadQuestionnaire(tx, sheet.questionnaire_id);
       if (!suspected(q, sheet.role_id, await answersOf(tx, sheet.id))) continue;
       await setBlocked(tx, ctx, activity.id, sheet, 'suspected');
-      blocked += 1;
+      changed.push(sheet.object_id);
     }
     await tx.execute(sql`UPDATE survey360_activities SET suspect_blocked_at = ${ctx.now.toISOString()}::timestamptz
       WHERE id = ${activity.id}::uuid`);
-    if (blocked) await markDataChanged(tx, activity.id, ctx.now);
-    return { blocked };
+    if (changed.length) await markDataChanged(tx, activity.id, ctx.now, changed);
+    return { blocked: changed.length };
   });
   batch('unblock-all', async (tx, ctx, activity) => {
-    let unblocked = 0;
+    const changed: string[] = [];
     for (const sheet of await submittedSheets(tx, activity.id, ctx.admin)) {
       if (!sheet.blocked) continue;
       await setBlocked(tx, ctx, activity.id, sheet, null);
-      unblocked += 1;
+      changed.push(sheet.object_id);
     }
-    if (unblocked) await markDataChanged(tx, activity.id, ctx.now);
-    return { unblocked };
+    if (changed.length) await markDataChanged(tx, activity.id, ctx.now, changed);
+    return { unblocked: changed.length };
   });
 }

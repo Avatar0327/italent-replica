@@ -49,14 +49,19 @@ import {
   queryWindow,
   tenantRetention,
 } from './query.js';
-import { auditSourceWithheld, auditViewer, visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
+import { auditViewer, visibleChanges, visibleErrorReport, visibleValue } from './visibility.js';
 import { linkageSnapshot } from './transfer-linkage.js';
 
 const BASE = '/api/tenant/audit';
 const CODE = /^[A-Za-z0-9_.:#-]{1,200}$/;
 const FIELD = /^[A-Za-z0-9_.:-]{1,100}$/;
 
-type AuditEventRow = typeof auditEvents.$inferSelect & { visibleCount: number | null; linkagePaths: string[] | null };
+type AuditEventRow = typeof auditEvents.$inferSelect & {
+  visibleCount: number | null;
+  linkagePaths: string[] | null;
+  withheld: boolean | null;
+  sourceWithheld: boolean | null;
+};
 
 export function registerAuditRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
   registerDataChanges(router, deps);
@@ -84,7 +89,11 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
           items: page.items
             .map(recounted)
             .map((row) =>
-              dataChangeView(row, operator(row), viewer.fieldsOf(row.objectType, row.action, row.linkagePaths)),
+              dataChangeView(
+                row,
+                operator(row),
+                viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row.withheld),
+              ),
             ),
           nextCursor: page.nextCursor,
           window,
@@ -114,7 +123,7 @@ function registerDataChanges(router: Hono<TenantEnv>, deps: TenantRouteDeps): vo
         // 超出保留期、范围外或只涉及隐藏字段的日志与不存在同样处理（原站“最远只能查 6 个月内”；DEC-197）
         if (!found) throw new AppError('NOT_FOUND', '日志不存在或已超出保留期');
         const row = recounted(found);
-        const fields = viewer.fieldsOf(row.objectType, row.action, row.linkagePaths);
+        const fields = viewer.fieldsOf(row.objectType, row.action, row.linkagePaths, row.withheld);
         const view = dataChangeView(row, (await operatorNames(tx, [row]))(row), fields);
         return {
           ...view,
@@ -291,6 +300,8 @@ function eventColumns(viewer: Awaited<ReturnType<typeof auditViewer>>) {
     after: linkageSnapshot(sql`${auditEvents.after}`),
     visibleCount: sql<number | null>`${viewer.visibleCount}`,
     linkagePaths: sql<string[] | null>`${viewer.linkagePaths}`,
+    withheld: sql<boolean | null>`${viewer.withheld}`,
+    sourceWithheld: sql<boolean | null>`${viewer.sourceWithheld}`,
     changes: sql<AuditFieldChange[] | null>`${viewer.eventChanges}`,
   };
 }
@@ -328,8 +339,8 @@ function dataChangeView(
     action: row.action,
     content: auditContent(changes),
     changes,
-    // DEC-340③：答卷日志的请求来源与命令 ID 能关联到作答的评价者，一律不展示
-    ...(auditSourceWithheld(row.objectType) ? WITHHELD_SOURCE : { ...sourceView(row), commandId: row.commandId }),
+    // DEC-340③：评价者本人作答的请求来源与命令 ID 能关联到评价者，脱敏行不展示
+    ...(row.sourceWithheld ? WITHHELD_SOURCE : { ...sourceView(row), commandId: row.commandId }),
   };
 }
 

@@ -226,7 +226,7 @@ export async function addRelation(
     .returning();
   // 启用中的活动新加评价者：发放（或沿用）作答链接
   if (activity.status === 'enabled') await ensureAnswerLink(tx, ctx, activity.id, appraiser);
-  await markDataChanged(tx, activity.id, ctx.now);
+  await markDataChanged(tx, activity.id, ctx.now, [objectId]);
   await auditRelation(tx, ctx, 'survey360.relation.create', null, row!);
   return row!;
 }
@@ -237,7 +237,7 @@ export async function removeRelation(tx: Tx, ctx: Writer, relation: RelationRow)
     .set({ removed: true, revision: relation.revision + 1 })
     .where(eq(survey360Relations.id, relation.id))
     .returning();
-  await markDataChanged(tx, relation.activityId, ctx.now);
+  await markDataChanged(tx, relation.activityId, ctx.now, [relation.objectId]);
   await auditRelation(tx, ctx, 'survey360.relation.remove', relation, saved!);
   return saved!;
 }
@@ -543,7 +543,7 @@ function registerObjectCreation(module: Hono<TenantEnv>, deps: TenantRouteDeps):
             input.questionnaireIds.map((q) => ({ tenantId: ctx.tenantId, objectId: row!.id, questionnaireId: q })),
           );
         if (activity.status === 'enabled') await markUsed(tx, input.questionnaireIds);
-        await markDataChanged(tx, activity.id, ctx.now);
+        await markDataChanged(tx, activity.id, ctx.now, [row!.id]);
         const view = objectView(row!, input.questionnaireIds);
         await audit360(tx, actor(ctx), {
           action: 'survey360.object.create',
@@ -607,7 +607,7 @@ function registerObjectQuestionnaires(module: Hono<TenantEnv>, deps: TenantRoute
           .insert(survey360ObjectQuestionnaires)
           .values(input.questionnaireIds.map((q) => ({ tenantId: ctx.tenantId, objectId, questionnaireId: q })));
         if (activity.status === 'enabled') await markUsed(tx, input.questionnaireIds);
-        await markDataChanged(tx, activity.id, ctx.now);
+        await markDataChanged(tx, activity.id, ctx.now, [objectId]);
         const [saved] = await tx
           .update(survey360Objects)
           .set({ revision: object.revision + 1, reportGeneratedAt: null })
@@ -670,7 +670,7 @@ function registerObjectRemoval(module: Hono<TenantEnv>, deps: TenantRouteDeps): 
           .update(survey360Objects)
           .set({ removed: true, revision: object.revision + 1 })
           .where(eq(survey360Objects.id, objectId));
-        await markDataChanged(tx, id, ctx.now);
+        await markDataChanged(tx, id, ctx.now, [objectId]);
         await audit360(tx, actor(ctx), {
           action: 'survey360.object.remove',
           objectType: 'survey360-object',

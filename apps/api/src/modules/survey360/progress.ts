@@ -302,7 +302,7 @@ export function registerProgressRoutes(module: Hono<TenantEnv>, deps: TenantRout
           .update(survey360Relations)
           .set({ revision: locked!.revision + 1 })
           .where(eq(survey360Relations.id, relationId));
-        await markDataChanged(tx, activity.id, ctx.now);
+        await markDataChanged(tx, activity.id, ctx.now, [state.objectId]);
         return detailItem(await visibleRelation(tx, activity.id, ctx.admin, relationId));
       },
       {
