@@ -3,14 +3,19 @@
  * 发码结果既断言公式文本，也交给 R3-T00 引擎真实求值，证明空值守卫与引擎语义一致。
  */
 import { describe, expect, it } from 'vitest';
-import { evaluateFormula } from '../engine.js';
-import { inMemorySubject, type FieldLookup } from '../ports.js';
+import { evaluateBatch, evaluateFormula } from '../engine.js';
+import type { FieldLookup } from '../ports.js';
 import type { ExpressionFieldKind, PlainValue } from '../values.js';
 import { compileRuleSet, RULE_COMPILER_VERSION, RULE_LIMITS, type RuleFieldCatalog } from './compile.js';
 import type { RuleConditionRow, RuleFieldRef, RuleOperator, RuleSet } from './types.js';
 
 const NUMBER: RuleFieldRef = { object: 'review_object', code: 'score', path: '盘点对象.得分', kind: 'number' };
-const GRID: RuleFieldRef = { object: 'review_object', code: 'grid', path: '盘点对象.绩效_潜力九宫格位置_after', kind: 'number' };
+const GRID: RuleFieldRef = {
+  object: 'review_object',
+  code: 'grid',
+  path: '盘点对象.绩效_潜力九宫格位置_after',
+  kind: 'number',
+};
 const TEXT: RuleFieldRef = { object: 'employee', code: 'name', path: '员工.姓名', kind: 'text' };
 const DATE: RuleFieldRef = { object: 'employment', code: 'entry', path: '任职.入职日期', kind: 'date' };
 const FLAG: RuleFieldRef = { object: 'employee', code: 'flag', path: '员工.是否关键', kind: 'boolean' };
@@ -112,9 +117,9 @@ describe('发码表（§3.2）：公式文本', () => {
     expect(formulaOf(fieldRow(1, GRID, 'eq', [7, 8, 9]))).toBe(
       'IF((not IsEmpty(盘点对象.绩效_潜力九宫格位置_after) and IN(盘点对象.绩效_潜力九宫格位置_after, 7, 8, 9)), 1, 0)',
     );
-    expect(compiled({ rows: [aggRow(1, 'not_empty'), aggRow(2, 'not_empty')], expression: '1 and 2' }).compiled.formula).toBe(
-      'IF((not IsEmpty(行1.值)) and (not IsEmpty(行2.值)), 1, 0)',
-    );
+    expect(
+      compiled({ rows: [aggRow(1, 'not_empty'), aggRow(2, 'not_empty')], expression: '1 and 2' }).compiled.formula,
+    ).toBe('IF((not IsEmpty(行1.值)) and (not IsEmpty(行2.值)), 1, 0)');
     expect(formulaOf(aggRow(1, 'ge', [0.3]))).toBe('IF((not IsEmpty(行1.值) and 行1.值 >= 0.3), 1, 0)');
   });
 
@@ -123,14 +128,18 @@ describe('发码表（§3.2）：公式文本', () => {
     expect(formulaOf(aggRow(1, 'gt', [0.0000001]))).toContain('行1.值 > 0.0000001');
     expect(formulaOf(aggRow(1, 'lt', [1e21]))).toContain('行1.值 < 1000000000000000000000');
     expect(formulaOf(aggRow(1, 'lt', [-0]))).toContain('行1.值 < 0)');
-    expect(formulaOf(fieldRow(1, TEXT, 'eq', ['张三']))).toBe('IF((not IsEmpty(员工.姓名) and 员工.姓名 = "张三"), 1, 0)');
+    expect(formulaOf(fieldRow(1, TEXT, 'eq', ['张三']))).toBe(
+      'IF((not IsEmpty(员工.姓名) and 员工.姓名 = "张三"), 1, 0)',
+    );
     expect(formulaOf(fieldRow(1, OPTION, 'eq', ['P5', 'P6']))).toBe(
       'IF((not IsEmpty(继任者.职级) and IN(继任者.职级, "P5", "P6")), 1, 0)',
     );
     expect(formulaOf(fieldRow(1, DATE, 'ge', ['2024-02-29']))).toBe(
       'IF((not IsEmpty(任职.入职日期) and 任职.入职日期 >= "2024-02-29"), 1, 0)',
     );
-    expect(formulaOf(fieldRow(1, FLAG, 'eq', [true]))).toBe('IF((not IsEmpty(员工.是否关键) and 员工.是否关键 = true), 1, 0)');
+    expect(formulaOf(fieldRow(1, FLAG, 'eq', [true]))).toBe(
+      'IF((not IsEmpty(员工.是否关键) and 员工.是否关键 = true), 1, 0)',
+    );
   });
 
   it('组合：and 先于 or，括号保留语义；同一行多次引用', () => {
@@ -206,6 +215,34 @@ describe('空值守卫（R3-06）：引擎真实求值', () => {
     expect(matches(flag, { [FLAG.path]: null })).toBe(false);
   });
 
+  it('批量求值路径与逐人求值一致（宿主按页批量算时同样守卫空值）', () => {
+    const { formula } = compiled(one(fieldRow(1, NUMBER, 'ne', [4]))).compiled;
+    const subject = (id: string, value: PlainValue) => ({
+      id,
+      resolveField: (path: string): FieldLookup =>
+        path === NUMBER.path ? { status: 'found', value } : { status: 'unknown' },
+    });
+    const subjects = [subject('empty', null), subject('four', 4), subject('five', 5), subject('zero', 0)];
+    const batch = evaluateBatch([{ field: '盘点对象.命中', priority: 1, formula }], subjects, {
+      calendar: { today: '2026-10-09', timeZone: 'Asia/Shanghai' },
+      fieldKind: (path) => KINDS[path],
+    });
+    if (!batch.ok) throw new Error('批量求值应当成功');
+    const hit = (id: string) => {
+      const result = batch.results[id]!['盘点对象.命中']!;
+      return result.ok && result.value.kind === 'number' ? result.value.value : undefined;
+    };
+    expect(['empty', 'four', 'five', 'zero'].map(hit)).toEqual([0, 0, 1, 1]);
+    for (const [id, value] of [
+      ['empty', null],
+      ['four', 4],
+      ['five', 5],
+      ['zero', 0],
+    ] as const) {
+      expect(matches(formula, { [NUMBER.path]: value })).toBe(hit(id) === 1);
+    }
+  });
+
   it('组合求值：and / or 优先级与括号', () => {
     const rows = [aggRow(1, 'ge', [10]), aggRow(2, 'ge', [5]), aggRow(3, 'is_empty')];
     const evalWith = (expression: string, v1: number | null, v2: number | null, v3: number | null) =>
@@ -222,7 +259,9 @@ describe('多选字段（Q-SC-23）', () => {
   it('取证前一律拒绝：任何运算符都是 400 RULE_FIELD_NOT_ALLOWED，定位到行', () => {
     for (const operator of ['is_empty', 'not_empty', 'eq', 'ne'] as const) {
       const values = operator === 'eq' || operator === 'ne' ? ['a'] : undefined;
-      expect(errorsOf(one(fieldRow(3, MULTI, operator, values)))).toEqual([{ code: 'RULE_FIELD_NOT_ALLOWED', rowNo: 3 }]);
+      expect(errorsOf(one(fieldRow(3, MULTI, operator, values)))).toEqual([
+        { code: 'RULE_FIELD_NOT_ALLOWED', rowNo: 3 },
+      ]);
     }
   });
 
@@ -263,7 +302,9 @@ describe('多选字段（Q-SC-23）', () => {
 
     it('值内含 | " 或换行 → RULE_LITERAL_INVALID', () => {
       for (const bad of ['a|b', 'a"b', 'a\nb', 'a\rb']) {
-        expect(errorsOf(one(fieldRow(2, MULTI, 'eq', [bad])), open)).toEqual([{ code: 'RULE_LITERAL_INVALID', rowNo: 2 }]);
+        expect(errorsOf(one(fieldRow(2, MULTI, 'eq', [bad])), open)).toEqual([
+          { code: 'RULE_LITERAL_INVALID', rowNo: 2 },
+        ]);
       }
     });
   });
@@ -281,7 +322,9 @@ describe('字面量安全（scanString 无转义）', () => {
   });
 
   it('值里的注入尝试只是一个文本值：")) or (1 = 1" 被引号包住且被拒绝', () => {
-    expect(errorsOf(one(fieldRow(1, TEXT, 'eq', ['x") or (1 = 1 or ("']))).map((e) => e.code)).toEqual(['RULE_LITERAL_INVALID']);
+    expect(errorsOf(one(fieldRow(1, TEXT, 'eq', ['x") or (1 = 1 or ("']))).map((e) => e.code)).toEqual([
+      'RULE_LITERAL_INVALID',
+    ]);
   });
 
   it('错误里不带任何值', () => {
@@ -294,26 +337,41 @@ describe('逐行校验（RULE_ROW_INVALID n + reason）', () => {
     errorsOf(one(row), options).map((e) => `${e.code}:${e.rowNo}:${e.reason}`);
 
   it('字段不存在 / 与目录不一致 / 路径不合法 / 缺失', () => {
-    expect(reasonOf(fieldRow(1, { ...NUMBER, code: 'missing' }, 'eq', [1]))).toEqual(['RULE_ROW_INVALID:1:FIELD_UNKNOWN']);
-    expect(reasonOf(fieldRow(1, { ...NUMBER, kind: 'text' }, 'eq', ['1']))).toEqual(['RULE_ROW_INVALID:1:FIELD_MISMATCH']);
-    expect(reasonOf(fieldRow(1, { ...NUMBER, path: '盘点对象.其他' }, 'eq', [1]))).toEqual(['RULE_ROW_INVALID:1:FIELD_MISMATCH']);
+    expect(reasonOf(fieldRow(1, { ...NUMBER, code: 'missing' }, 'eq', [1]))).toEqual([
+      'RULE_ROW_INVALID:1:FIELD_UNKNOWN',
+    ]);
+    expect(reasonOf(fieldRow(1, { ...NUMBER, kind: 'text' }, 'eq', ['1']))).toEqual([
+      'RULE_ROW_INVALID:1:FIELD_MISMATCH',
+    ]);
+    expect(reasonOf(fieldRow(1, { ...NUMBER, path: '盘点对象.其他' }, 'eq', [1]))).toEqual([
+      'RULE_ROW_INVALID:1:FIELD_MISMATCH',
+    ]);
     expect(reasonOf({ rowNo: 1, kind: 'field', operator: 'not_empty' })).toEqual(['RULE_ROW_INVALID:1:FIELD_MISSING']);
+  });
+
+  it('引擎词法认不出的路径（如纯数字对象名）按行定位为 ENGINE，不透出引擎文案', () => {
+    const digits: RuleFieldRef = { ...NUMBER, code: 'digits', path: '360.得分' };
+    const result = compileRuleSet(one(fieldRow(1, digits, 'not_empty')), { resolve: () => digits });
+    expect(result).toEqual({ ok: false, errors: [{ code: 'RULE_ROW_INVALID', rowNo: 1, reason: 'ENGINE' }] });
   });
 
   it('目录给出的路径含运算符 / 引号 / 空白等字符时拒绝，不拼进公式', () => {
     const evil: RuleFieldRef = { ...NUMBER, code: 'evil', path: '盘点对象.a) or (1 = 1' };
     const evilCatalog: RuleFieldCatalog = { resolve: () => evil };
     const result = compileRuleSet(one(fieldRow(1, evil, 'not_empty')), evilCatalog);
-    expect(result).toEqual({ ok: false, errors: [{ code: 'RULE_ROW_INVALID', rowNo: 1, reason: 'FIELD_PATH_INVALID' }] });
+    expect(result).toEqual({
+      ok: false,
+      errors: [{ code: 'RULE_ROW_INVALID', rowNo: 1, reason: 'FIELD_PATH_INVALID' }],
+    });
   });
 
   it('运算符与字段类型不匹配：文本只能 = ≠ 空；多选以外的布尔 / 选项同理', () => {
     expect(reasonOf(fieldRow(1, TEXT, 'gt', ['a']))).toEqual(['RULE_ROW_INVALID:1:OPERATOR_INVALID']);
     expect(reasonOf(fieldRow(1, OPTION, 'between', ['P5', 'P6']))).toEqual(['RULE_ROW_INVALID:1:OPERATOR_INVALID']);
     expect(reasonOf(fieldRow(1, FLAG, 'ge', [true]))).toEqual(['RULE_ROW_INVALID:1:OPERATOR_INVALID']);
-    expect(reasonOf({ rowNo: 1, kind: 'field', field: NUMBER, operator: 'bogus' as RuleOperator, values: [1] })).toEqual([
-      'RULE_ROW_INVALID:1:OPERATOR_INVALID',
-    ]);
+    expect(
+      reasonOf({ rowNo: 1, kind: 'field', field: NUMBER, operator: 'bogus' as RuleOperator, values: [1] }),
+    ).toEqual(['RULE_ROW_INVALID:1:OPERATOR_INVALID']);
   });
 
   it('值个数：gt / lt / ge / le 恰 1 个，between 恰 2 个，eq / ne 至少 1 个', () => {
@@ -421,7 +479,10 @@ describe('组合表达式与引用', () => {
   });
 
   it('rowSpans 对带守卫的行同样切出整行（括号即子式本身）', () => {
-    const { compiled: result } = compiled({ rows: [fieldRow(1, NUMBER, 'eq', [1, 2]), aggRow(2, 'is_empty')], expression: '1 or 2' });
+    const { compiled: result } = compiled({
+      rows: [fieldRow(1, NUMBER, 'eq', [1, 2]), aggRow(2, 'is_empty')],
+      expression: '1 or 2',
+    });
     expect(result.formula.slice(result.rowSpans[0]!.start, result.rowSpans[0]!.end)).toBe(
       '(not IsEmpty(盘点对象.得分) and IN(盘点对象.得分, 1, 2))',
     );

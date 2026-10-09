@@ -50,8 +50,14 @@ describe('describeRuleFailure：固定文案映射（§3.4 表）', () => {
   });
 
   it('其他错误码或定位不到行 → “条件表达式出错”', () => {
-    expect(describeRuleFailure(at('INTERNAL_ERROR'), SPANS)).toEqual({ code: 'INTERNAL_ERROR', text: '条件表达式出错' });
-    expect(describeRuleFailure(at('DATA_FORBIDDEN'), SPANS)).toEqual({ code: 'DATA_FORBIDDEN', text: '条件表达式出错' });
+    expect(describeRuleFailure(at('INTERNAL_ERROR'), SPANS)).toEqual({
+      code: 'INTERNAL_ERROR',
+      text: '条件表达式出错',
+    });
+    expect(describeRuleFailure(at('DATA_FORBIDDEN'), SPANS)).toEqual({
+      code: 'DATA_FORBIDDEN',
+      text: '条件表达式出错',
+    });
     expect(describeRuleFailure(at('TYPE_CONVERSION', 12), SPANS)).toEqual({
       code: 'TYPE_CONVERSION',
       text: '条件表达式出错',

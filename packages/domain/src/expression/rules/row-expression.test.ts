@@ -18,13 +18,19 @@ const row = (rowNo: number): RowExpressionNode => ({ kind: 'row', rowNo });
 
 describe('parseRowExpression：文法 expr := term (or term)*; term := factor (and factor)*', () => {
   it('and 比 or 先结合；连续同类运算展平', () => {
-    expect(parsed('1 or 2 and 3').root).toEqual({ kind: 'or', operands: [row(1), { kind: 'and', operands: [row(2), row(3)] }] });
+    expect(parsed('1 or 2 and 3').root).toEqual({
+      kind: 'or',
+      operands: [row(1), { kind: 'and', operands: [row(2), row(3)] }],
+    });
     expect(parsed('1 and 2 and 3').root).toEqual({ kind: 'and', operands: [row(1), row(2), row(3)] });
     expect(parsed('1 or 2 or 3').root).toEqual({ kind: 'or', operands: [row(1), row(2), row(3)] });
   });
 
   it('括号改变结合；多余括号不产生节点', () => {
-    expect(parsed('(1 or 2) and 3').root).toEqual({ kind: 'and', operands: [{ kind: 'or', operands: [row(1), row(2)] }, row(3)] });
+    expect(parsed('(1 or 2) and 3').root).toEqual({
+      kind: 'and',
+      operands: [{ kind: 'or', operands: [row(1), row(2)] }, row(3)],
+    });
     expect(parsed('((1))').root).toEqual(row(1));
     expect(parsed('1 and (2 and 3)').root).toEqual({ kind: 'and', operands: [row(1), row(2), row(3)] });
   });
@@ -42,8 +48,8 @@ describe('parseRowExpression：文法 expr := term (or term)*; term := factor (a
     const result = parsed('1 and (2 or 1)');
     expect(result.refs).toEqual([
       { rowNo: 1, offset: 0 },
-      { rowNo: 2, offset: 8 },
-      { rowNo: 1, offset: 13 },
+      { rowNo: 2, offset: 7 },
+      { rowNo: 1, offset: 12 },
     ]);
   });
 });
