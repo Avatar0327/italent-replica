@@ -18,6 +18,7 @@ export const DIGESTS: Digests = {
   'apps/api/src/modules/approval/access.ts': {
     PROCESS_ADMIN: 'ca58b0b364f1',
     adminScope: 'b8cd26385798',
+    adminTargetScope: 'e33a9918d206',
     hasButton: '6dbb8ca471b1',
     isProcessAdmin: 'e5782416fefc',
     requireProcessButton: '782f172bb6ca',
@@ -26,6 +27,7 @@ export const DIGESTS: Digests = {
     requireWithdrawRight: 'e17fe05b2b0e',
   },
   'apps/api/src/modules/approval/actions.ts': {
+    assertTargetInScope: '1afae3e58ca0',
     openOwn: '2bf5722813f2',
     openTask: '6f9c0c04e106',
   },
@@ -42,7 +44,7 @@ export const DIGESTS: Digests = {
   },
   'apps/api/src/modules/approval/routes.ts': {
     fieldRights: '4ae7ecb6ac72',
-    registerInstanceRoutes: 'f06f5a523445',
+    registerInstanceRoutes: '345f82e37732',
     registerProcessRoutes: 'f4e5b33618f6',
     registerTaskRoutes: 'c104b87263e9',
     respondDetail: '352a1a785550',
@@ -225,7 +227,7 @@ export const DIGESTS: Digests = {
     issueTasks: '0da7eb1e4250',
     notOwnPlan: '235e72df46d4',
     requireTargetInScope: 'cb90d6c4ca66',
-    transferPlan: 'e0e4fe86c81a',
+    transferPlan: '19a9e9ebab0d',
   },
   'apps/api/src/modules/idp/key-info-routes.ts': {
     ROUTES: '906e28eb362e',

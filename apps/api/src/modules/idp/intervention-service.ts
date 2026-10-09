@@ -242,7 +242,8 @@ export async function transferPlan(tx: Tx, ctx: PlanWriteContext, planId: string
       ...(taskId ? { taskId } : {}),
     },
     sql`true`,
-    { ownerIntervention: true },
+    // 目标已由上面的 requireTargetInScope 按 IDP 范围校验（F-066）
+    { ownerIntervention: true, targetChecked: true },
   );
   await bumpPlan(tx, ctx.tenantId, plan.id, ctx.now);
   await auditIntervention(tx, ctx, plan, 'transfer', {

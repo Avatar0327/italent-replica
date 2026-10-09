@@ -180,6 +180,26 @@ const adminAction = (code: 'adminTransfer' | 'adminIntervene'): Obligation => ({
     ...ADMIN_SCOPE,
   ],
 });
+/** F-067：转交 / 改派目标须是已绑定员工且在操作人对该业务对象的范围内（不存在 / 未绑定 / 范围外同为 404）。 */
+const adminTarget = (code: 'adminTransfer' | 'adminIntervene'): Obligation => ({
+  perm: 'guard:approval.adminTargetScope',
+  facts: ['guard:approval.adminTargetScope'],
+  note: `${code}：目标范围随实例业务类型选对象（同 adminScope 的映射），跳转与转给操作人自己不校验目标`,
+  at: [
+    fn('registerInstanceRoutes', 'const targetScope = await adminTargetScope(deps, ctx)'),
+    fn('registerInstanceRoutes', 'adminAct(tx, context, input, scopeSql, { targetScope })'),
+    {
+      role: 'impl',
+      unit: `${ACCESS}#adminTargetScope`,
+      anchor: 'perBusinessType(scopes, (scope) => scopeSql(scope, { person: sql`${employeeId}::uuid` }))',
+    },
+    {
+      role: 'impl',
+      unit: `${ACTIONS}#assertTargetInScope`,
+      anchor: "throw approvalError('NOT_FOUND', 'APPROVAL_TARGET_NOT_FOUND', '转交目标不存在')",
+    },
+  ],
+});
 
 export const APPROVAL: RequiredTable = {
   'GET /api/tenant/approval/types': processView(route('GET', '/types', 'await requireProcessView(deps, tenantCtx(c))')),
@@ -363,6 +383,12 @@ export const APPROVAL: RequiredTable = {
       ],
     },
   ],
-  'POST /api/tenant/approval/instances/:id/admin-transfer': [adminAction('adminTransfer')],
-  'POST /api/tenant/approval/instances/:id/admin-intervene': [adminAction('adminIntervene')],
+  'POST /api/tenant/approval/instances/:id/admin-transfer': [
+    adminAction('adminTransfer'),
+    adminTarget('adminTransfer'),
+  ],
+  'POST /api/tenant/approval/instances/:id/admin-intervene': [
+    adminAction('adminIntervene'),
+    adminTarget('adminIntervene'),
+  ],
 };

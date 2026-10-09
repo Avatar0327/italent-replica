@@ -7234,11 +7234,15 @@
         "fieldsOut": [
           "approval views"
         ],
+        "guard": [
+          "approval.adminTargetScope"
+        ],
         "precondition": [
           "assertBusinessUnchanged",
           "assertNotNodeAssignee",
           "assertNotRecused",
           "assertReviewer",
+          "assertTargetInScope",
           "openRun"
         ],
         "scope": [
@@ -7273,11 +7277,15 @@
         "fieldsOut": [
           "approval views"
         ],
+        "guard": [
+          "approval.adminTargetScope"
+        ],
         "precondition": [
           "assertBusinessUnchanged",
           "assertNotNodeAssignee",
           "assertNotRecused",
           "assertReviewer",
+          "assertTargetInScope",
           "openRun"
         ],
         "scope": [
@@ -9612,6 +9620,7 @@
           "assertNotNodeAssignee",
           "assertNotRecused",
           "assertReviewer",
+          "assertTargetInScope",
           "openRun"
         ],
         "scope": [
@@ -9703,6 +9712,7 @@
           "assertNotNodeAssignee",
           "assertNotRecused",
           "assertReviewer",
+          "assertTargetInScope",
           "openRun"
         ],
         "scope": [

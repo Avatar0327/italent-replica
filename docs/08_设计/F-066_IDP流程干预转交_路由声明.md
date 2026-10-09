@@ -13,7 +13,7 @@
   计划所有者（发起人）可干预；计划员工本人及冻结的 U(S) 回避，`403 APPROVAL_ADMIN_SELF`；冻结之后才首次绑定到该员工的所有者本轮不追溯。
 - 转交目标先由本入口校验范围：目标须是已绑定员工，且该员工在操作人的 IDP 范围内（IDP-R16“受管理单元限制”）。账号不存在、
   未绑定员工的纯账号（待产品确认，先按拒绝）、范围外三种情况同为 `404 NOT_FOUND`，不暴露存在性。`adminAct` 本身不看操作人范围，
-  审批中心通用的 `admin-transfer / admin-intervene` 不在本 PR 改动范围（另开 F）。
+  审批中心通用的 `admin-transfer / admin-intervene` 的同类校验由 F-067 补齐（`adminAct` 的 `targetScope`；本入口已自校验，传 `targetChecked`）。
 - 其余目标校验由 `adminAct` 判定，IDP 不另写一套：目标须是有效的租户成员（`400 APPROVAL_USER_INVALID`）；
   目标回避同时受节点 `avoidSelf`（发起人，即所有者）和 `avoidSubjects`（冻结主体集合）两个开关影响，命中 `409 APPROVAL_SELF_REVIEW`
   （预置 IDP 节点两项都未开启）；不能转给同节点其他在办的办理人（`400 APPROVAL_ALREADY_NODE_ASSIGNEE`，会签场景）。

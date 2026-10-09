@@ -194,7 +194,8 @@ describe('AC-APV-17 / AC-APV-20 管理员不得代签，只能转交或干预', 
     const w = await approvalWorld(database().db, 'apv-admin');
     const s = await transferScene(w);
     const admin = await w.member('流程管理员');
-    const other = await w.member('新审批人');
+    // F-067：转交目标须是已绑定员工且在操作人范围内，纯账号不能作为目标
+    const other = (await w.person('新审批人', s.from)).userId;
     await w.publishedProcess({ nodes: TRANSFER_NODES });
     let view = await w.submit(await w.application(s.subject.employeeId, { departmentId: s.to }));
     const task = current(view);

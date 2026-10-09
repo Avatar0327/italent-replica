@@ -26,6 +26,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { ErrorBody } from '../../errors.js';
 import { assertNotAddSigner, continueAfterApproval } from './add-sign.js';
 import { mergeSeat, mergesSeat, resettle, settleCountersign } from './countersign.js';
+import type { TargetScope } from './access.js';
 import { ADAPTERS } from './adapters.js';
 import {
   approvalError,
@@ -52,7 +53,7 @@ import {
 import { applyMessageRules, notifyTodo, notifyUrge } from './notifications.js';
 import { assertNotRecused, eligibilityScope, recusalFactsOf } from './recusal.js';
 import { addSignAllowed, nodeParticipantsOf, urgeOpen, votesInTransition } from './rules.js';
-import { isEligibleApprover } from './resolver.js';
+import { isEligibleApprover, personOfUser } from './resolver.js';
 import { appendLog, cancelPending, closeTask, insertTask, instanceOfTask, loadTasks, type TaskRow } from './store.js';
 
 export interface Outcome {
@@ -830,17 +831,45 @@ export interface AdminInput {
   readonly reason: string | null;
 }
 
+export interface AdminOptions {
+  readonly ownerIntervention?: boolean;
+  readonly targetScope?: TargetScope;
+  readonly targetChecked?: boolean;
+}
+
+/**
+ * F-067：转交 / 改派目标须是已绑定员工、且在操作人对该实例业务对象的管理范围内，否则目标会因成为待办人而获得业务对象
+ * 的可见性。账号不存在、未绑定员工的纯账号（待产品确认，先按拒绝）、范围外三种情况同一个 404，不暴露存在性。
+ * 转给操作人自己不看目标范围：操作人本就看得到该实例，不产生新的可见性（仍须填理由，DEC-070）。其余目标校验
+ * （有效成员、节点回避、会签重复办理人）仍由后面的 adminAct 判定。
+ */
+async function assertTargetInScope(tx: Tx, ctx: ApprovalContext, input: AdminInput, options: AdminOptions) {
+  if (input.kind === 'jump' || options.targetChecked) return;
+  if (!options.targetScope) throw new Error('adminAct：转交 / 改派必须提供目标范围校验');
+  if (input.toUserId === ctx.userId) return;
+  const employeeId = input.toUserId ? await personOfUser(tx, ctx.tenantId, input.toUserId) : null;
+  const [hit] = employeeId
+    ? rowsOf(
+        await tx.execute(sql`SELECT 1 FROM approval_instances i WHERE i.tenant_id=${ctx.tenantId}
+          AND i.id=${input.instanceId}::uuid AND ${options.targetScope(employeeId)}`),
+      )
+    : [];
+  if (!hit) throw approvalError('NOT_FOUND', 'APPROVAL_TARGET_NOT_FOUND', '转交目标不存在');
+}
+
 /**
  * 管理员转交 / 干预（DEC-063 / DEC-070）：每次操作单独写审计，原审批人、新审批人、原因齐全。
  * @param options.ownerIntervention 业务模块内流程所有者的流程干预（IDP 计划所有者的阶段内跳转，DEC-318 K-38 / DEC-321）：发起人
  *   就是所有者本人，不按 DEC-092 的“本人发起”回避；“本人为异动对象”仍回避。审批中心的管理员入口不传。
+ * @param options.targetScope 转交 / 改派目标须在操作人对业务对象的管理范围内（F-067，IDP-R16）：非跳转的动作必须给出，
+ *   或由调用方声明 `targetChecked`（调用方已按自己的范围校验过目标，如 IDP 计划转交，F-066）；两者都没有按编程错误拒绝，不默认放行。
  */
 export async function adminAct(
   tx: Tx,
   ctx: ApprovalContext,
   input: AdminInput,
   scope: SQL,
-  options: { readonly ownerIntervention?: boolean } = {},
+  options: AdminOptions = {},
 ): Promise<Outcome> {
   const run = await openRun(tx, ctx, input.instanceId);
   const [covered] = rowsOf(
@@ -848,6 +877,7 @@ export async function adminAct(
       AND i.id=${input.instanceId}::uuid AND ${scope}`),
   );
   if (!covered) throw approvalError('NOT_FOUND', 'APPROVAL_NOT_FOUND', '审批实例不存在');
+  await assertTargetInScope(tx, ctx, input, options);
   assertRevision(ctx.expectedRevision, run.instance.revision);
   if (run.instance.status !== 'running') throw approvalError('CONFLICT', 'APPROVAL_CLOSED', '流程不在审批中');
   assertBusinessUnchanged(run);

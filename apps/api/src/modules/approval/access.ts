@@ -239,16 +239,45 @@ export async function adminScope(
 }
 
 /**
+ * F-067：转交 / 改派目标须在操作人对该实例业务对象的管理范围内（IDP-R16“受管理单元限制”）。谓词对 approval_instances
+ * 别名 i，只取实例的业务类型来选范围对象（与实例范围同一映射，DEC-043），目标员工按人员 / 组织维度判断；“使用用户”
+ * 维度针对的是业务创建人，对目标员工不成立（默认拒绝）。
+ */
+export type TargetScope = (employeeId: string) => SQL;
+
+export async function adminTargetScope(deps: TenantRouteDeps, ctx: TenantContext): Promise<TargetScope> {
+  const scopes = await businessScopes((objectCode) =>
+    resolveModuleScope(deps, ctx, undefined, objectCode, `${objectCode}.list`),
+  );
+  return (employeeId) => perBusinessType(scopes, (scope) => scopeSql(scope, { person: sql`${employeeId}::uuid` }));
+}
+
+interface BusinessScopes {
+  readonly employment: ModuleScope;
+  readonly contract: ModuleScope;
+  readonly idp: ModuleScope;
+}
+
+async function businessScopes(resolve: (objectCode: string) => Promise<ModuleScope>): Promise<BusinessScopes> {
+  return {
+    employment: await resolve(MODULE_OBJECTS.employmentRecord.code),
+    contract: await resolve(CONTRACT_OBJECT),
+    idp: await resolve(IDP_PLAN_OBJECT),
+  };
+}
+
+/**
  * 各业务实例按所属应用的数据范围判断（DEC-043）：合同按合同对象，发展计划按 IDP 应用（计划对象，K-50：员工当前任职
  * 在范围内），其余（任职、员工子集）按任职记录。IDP 不能落进任职记录的 TenantBase 范围（PR #115 第 2 轮 P1）。
  */
+function perBusinessType(scopes: BusinessScopes, predicate: (scope: ModuleScope) => SQL): SQL {
+  return sql`((i.business_type='contract' AND ${predicate(scopes.contract)})
+    OR (i.business_type='idp' AND ${predicate(scopes.idp)})
+    OR (i.business_type NOT IN ('contract','idp') AND ${predicate(scopes.employment)}))`;
+}
+
 async function byBusinessScope(ctx: TenantContext, resolve: (objectCode: string) => Promise<ModuleScope>) {
-  const employment = await resolve(MODULE_OBJECTS.employmentRecord.code);
-  const contract = await resolve(CONTRACT_OBJECT);
-  const idp = await resolve(IDP_PLAN_OBJECT);
-  return sql`((i.business_type='contract' AND ${instanceScopeSql(ctx, contract)})
-    OR (i.business_type='idp' AND ${instanceScopeSql(ctx, idp)})
-    OR (i.business_type NOT IN ('contract','idp') AND ${instanceScopeSql(ctx, employment)}))`;
+  return perBusinessType(await businessScopes(resolve), (scope) => instanceScopeSql(ctx, scope));
 }
 
 /**
