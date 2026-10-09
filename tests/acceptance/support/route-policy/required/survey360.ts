@@ -13,12 +13,13 @@ const CATALOG = 'packages/domain/src/survey360/catalog.ts';
 const BASE = '/api/tenant/survey360';
 const EMPLOYEE = 'TenantBase.EmployeeInformation';
 
-type Key = 'activity' | 'relation' | 'result' | 'questionnaire' | 'person' | 'settings';
+type Key = 'activity' | 'relation' | 'result' | 'answer' | 'questionnaire' | 'person' | 'settings';
 type Operation = 'view' | 'create' | 'update' | 'delete';
 const NAMES: Readonly<Record<Key, string>> = {
   activity: 'Activity',
   relation: 'Relation',
   result: 'Result',
+  answer: 'Answer',
   questionnaire: 'Questionnaire',
   person: 'Person',
   settings: 'Settings',
@@ -78,6 +79,10 @@ const BUTTON_ANCHORS: Readonly<Record<string, string>> = {
   sync: "button(SURVEY360_BUTTONS.sync, 'list')",
   finePermission: "button(SURVEY360_BUTTONS.finePermission, 'list', 'update')",
   editOthers: "button(SURVEY360_BUTTONS.editOthers, 'detail', 'update')",
+  block: "button('block', 'detail', 'update')",
+  reanswer: "button('reanswer', 'detail', 'update')",
+  generateReport: "button('generateReport', 'list', 'update')",
+  forwardReport: "button('forwardReport', 'list', 'update')",
 };
 function buttonConst(key: Key, button: string): Evidence {
   // 活动 / 评价关系 / 套卷的增删改按钮来自公共 crud 常量；人员与设置在各自对象里逐个登记
@@ -102,6 +107,10 @@ const LEVELS: Readonly<Record<string, string>> = {
   sync: 'list',
   finePermission: 'list',
   editOthers: 'detail',
+  block: 'detail',
+  reanswer: 'detail',
+  generateReport: 'list',
+  forwardReport: 'list',
 };
 
 interface Route {
@@ -118,6 +127,8 @@ interface Route {
   readonly needConst?: Evidence;
   /** 探测器取不到对象.操作事实（need 是内联字面量且不是标准写法）时为 false。 */
   readonly opFact?: boolean;
+  /** POST 的只读接口（read()，如转发预览）：不经 write / 命令事务。 */
+  readonly readOnly?: boolean;
   readonly extra?: (entry: Evidence) => Obligation[];
 }
 
@@ -126,7 +137,7 @@ const unitOf = (r: Pick<Route, 'file' | 'method' | 'path'>) => `${S}/${r.file}#r
 function obligations(r: Route): Obligation[] {
   const operation = r.operation ?? 'view';
   const entry = call(unitOf(r), r.need);
-  const write = operation !== 'view' || r.method !== 'GET';
+  const write = !r.readOnly && (operation !== 'view' || r.method !== 'GET');
   const common = [entry, ...(r.needConst ? [r.needConst] : []), write ? WRITE : READ];
   const out: Obligation[] = [
     {
@@ -516,7 +527,7 @@ const ROUTES: readonly Route[] = [
     operation: 'update',
     button: 'update',
     need: "need: { object: 'questionnaire', operation: 'update' }",
-    extra: (entry) => editableBy(entry, 'guard: editableBy(deps, tenantOf(c), id)'),
+    extra: (entry) => editableBy(entry, 'guard: editableBy(deps, tenantOf(c), id, false, template)'),
   },
   {
     file: 'questionnaires.ts',
@@ -536,7 +547,7 @@ const ROUTES: readonly Route[] = [
     operation: 'delete',
     button: 'delete',
     need: "need: { object: 'questionnaire', operation: 'delete' }",
-    extra: (entry) => editableBy(entry, 'guard: editableBy(deps, tenantOf(c), id, true)'),
+    extra: (entry) => editableBy(entry, 'guard: editableBy(deps, tenantOf(c), id, true, template)'),
   },
   // ---- activities.ts ----------------------------------------------------------------------------------------------
   {
@@ -777,7 +788,294 @@ const ROUTES: readonly Route[] = [
   },
 ];
 
+// ---- PR-B（docs/08_设计/R3-T03_360度评估PR-B_路由声明.md）----------------------------------------------------------
+const VISIBLE_RELATION: Evidence = {
+  role: 'impl',
+  unit: `${S}/progress.ts#visibleRelation`,
+  anchor: "if (!state) fail('NOT_FOUND', '评价关系不存在')",
+};
+const VISIBLE_SHEET: Evidence = {
+  role: 'impl',
+  unit: `${S}/sheets.ts#visibleSheet`,
+  anchor: "if (!sheet) fail('NOT_FOUND', '答卷不存在')",
+};
+/** DEC-358②：逐份卡片的查看人（持“全部活动”或活动创建者，兼任者除外）。 */
+const sheetCards = (calls: readonly Evidence[]): Obligation => ({
+  perm: 'guard:survey360.sheetCards',
+  note: '逐份答卷卡片只给持“全部活动”者或活动创建者，兼任被评价人 / 评价者除外（DEC-358②）',
+  at: [
+    ...calls,
+    {
+      role: 'impl',
+      unit: `${S}/anonymous.ts#requireCardViewer`,
+      anchor: "fail('FORBIDDEN', '只有持“全部活动”权限的管理员或活动创建者可以查看逐份答卷', 'SHEET_CARDS_RESTRICTED')",
+    },
+    // 匿名投影层（DEC-364①）：卡片与审计出口共用的查看人谓词
+    { role: 'impl', unit: `${S}/anonymous.ts#cardViewer`, anchor: 'participates(viewer.userId)' },
+  ],
+});
+const INVITE_NEED: Evidence = {
+  role: 'const',
+  unit: `${S}/todos.ts#registerTodoRoutes>INVITE`,
+  anchor: "{ object: 'relation', operation: 'update', button: 'invite' }",
+};
+const BLOCK_NEED: Evidence = {
+  role: 'const',
+  unit: `${S}/sheets.ts#BLOCK`,
+  anchor: "{ object: 'answer', operation: 'update', button: 'block' }",
+};
+/** 报告生成 / 转发共用的命令处理函数（reports.ts command 工厂）：need 的按钮来自注册处实参。 */
+const REPORT_COMMAND: Evidence = {
+  role: 'impl',
+  unit: `${S}/reports.ts#registerReportRoutes>command`,
+  anchor: "need: { object: 'result', operation: 'update', button }",
+};
+const REPORT_COMMAND_GUARD: Evidence = {
+  role: 'impl',
+  unit: `${S}/reports.ts#registerReportRoutes>command`,
+  anchor: 'await requireActivity(tx, admin, id)',
+};
+const FULL_REPORT_IMPL: Evidence = {
+  role: 'impl',
+  unit: `${S}/reports.ts#requireFullReportView`,
+  anchor: "fail('FORBIDDEN', '对报告内容没有完整的查看权限，不能转发', 'REPORT_FIELDS_RESTRICTED')",
+};
+const fullReport = (calls: readonly Evidence[]): Obligation => ({
+  perm: 'guard:survey360.fullReportView',
+  note: '转发与预览另要对报告正文涉及的全部结果字段有查看权（第 2 轮 P2-5）',
+  at: [...calls, FULL_REPORT_IMPL],
+});
+const ACTIVITY_GUARD = 'guard: async (tx, admin) => void (await requireActivity(tx, admin, id))';
+const LOAD_SOURCE: Evidence = {
+  role: 'impl',
+  unit: `${S}/questionnaires.ts#questionnaireRow`,
+  anchor: "if (!row) fail('NOT_FOUND', template ? '套卷模板不存在' : '套卷不存在')",
+};
+/** 套卷模板与套卷共用同一套处理函数（questionnaires.ts for…of [QUESTIONNAIRES, TEMPLATES]）。 */
+function templateRoutes(): Route[] {
+  const base = '/questionnaire-templates';
+  const routes: Omit<Route, 'file' | 'key'>[] = [
+    { method: 'GET', path: base, need: 'read(c, deps, VIEW', needConst: VIEW('questionnaires.ts', 'questionnaire') },
+    {
+      method: 'GET',
+      path: `${base}/:id`,
+      need: 'read(c, deps, VIEW',
+      needConst: VIEW('questionnaires.ts', 'questionnaire'),
+    },
+    {
+      method: 'POST',
+      path: base,
+      operation: 'create',
+      button: 'create',
+      need: "need: { object: 'questionnaire', operation: 'create' }",
+    },
+    {
+      method: 'PUT',
+      path: `${base}/:id`,
+      operation: 'update',
+      button: 'update',
+      need: "need: { object: 'questionnaire', operation: 'update' }",
+      extra: (entry: Evidence) => editableBy(entry, 'guard: editableBy(deps, tenantOf(c), id, false, template)'),
+    },
+    {
+      method: 'DELETE',
+      path: `${base}/:id`,
+      operation: 'delete',
+      button: 'delete',
+      need: "need: { object: 'questionnaire', operation: 'delete' }",
+      extra: (entry: Evidence) => editableBy(entry, 'guard: editableBy(deps, tenantOf(c), id, true, template)'),
+    },
+    ...['/questionnaires/:id/save-as-template', `${base}/:id/instantiate`].map((path) => ({
+      method: 'POST' as const,
+      path,
+      operation: 'create' as const,
+      button: 'create',
+      need: "need: { object: 'questionnaire', operation: 'create' }",
+      extra: (entry: Evidence) => [
+        resource(entry, 'guard: async (tx) => void (await loadQuestionnaire(tx, id, false, fromTemplate))', [
+          LOAD_SOURCE,
+        ]),
+      ],
+    })),
+  ];
+  return routes.map((r) => ({ file: 'questionnaires.ts', key: 'questionnaire' as const, ...r }));
+}
+
+const PR_B_ROUTES: readonly Route[] = [
+  // progress.ts
+  {
+    file: 'progress.ts',
+    method: 'GET',
+    path: '/activities/:id/progress',
+    key: 'relation',
+    need: 'read(c, deps, VIEW',
+    needConst: VIEW('progress.ts', 'relation'),
+  },
+  {
+    file: 'progress.ts',
+    method: 'GET',
+    path: '/activities/:id/progress/:personId',
+    key: 'relation',
+    need: 'read( c, deps, VIEW',
+    needConst: VIEW('progress.ts', 'relation'),
+  },
+  {
+    file: 'progress.ts',
+    method: 'POST',
+    path: '/activities/:id/relations/:relationId/reanswer',
+    key: 'answer',
+    operation: 'update',
+    button: 'reanswer',
+    need: "need: { object: 'answer', operation: 'update', button: 'reanswer' }",
+    extra: (entry) => [
+      resource(entry, 'await visibleRelation(tx, (await requireActivity(tx, admin, id)).id, admin, relationId)', [
+        REQUIRE_ACTIVITY,
+        VISIBLE_RELATION,
+      ]),
+    ],
+  },
+  // todos.ts：发送 / 取消待办、邮件邀请
+  ...['/todos', '/todos/cancel', '/invitations'].map((path): Route => ({
+    file: 'todos.ts',
+    method: 'POST',
+    path: `/activities/:id${path}`,
+    key: 'relation',
+    operation: 'update',
+    button: 'invite',
+    need: 'need: INVITE',
+    needConst: INVITE_NEED,
+    extra: (entry) => [resource(entry, ACTIVITY_GUARD, [REQUIRE_ACTIVITY])],
+  })),
+  // sheets.ts：原始数据、屏蔽 / 取消屏蔽、屏蔽疑似、恢复
+  {
+    file: 'sheets.ts',
+    method: 'GET',
+    path: '/activities/:id/sheets',
+    key: 'answer',
+    need: "read(c, deps, { object: 'answer' }",
+    opFact: false,
+    extra: (entry) => [sheetCards([{ ...entry, anchor: 'await requireCardViewer(tx, admin, activity)' }])],
+  },
+  ...['block', 'unblock'].map((action): Route => ({
+    file: 'sheets.ts',
+    method: 'POST',
+    path: `/activities/:id/sheets/:sheetId/${action}`,
+    key: 'answer',
+    operation: 'update',
+    button: 'block',
+    need: 'need: BLOCK',
+    needConst: BLOCK_NEED,
+    extra: (entry) => [
+      resource(entry, 'await visibleSheet(tx, activity.id, admin, sheetId)', [REQUIRE_ACTIVITY, VISIBLE_SHEET]),
+      sheetCards([
+        { ...entry, anchor: 'await requireCardViewer(tx, admin, activity)' },
+        { ...entry, anchor: 'await requireCardViewer(tx, ctx.admin, activity)' },
+      ]),
+    ],
+  })),
+  ...['block-suspected', 'unblock-all'].map((path): Route => ({
+    file: 'sheets.ts',
+    method: 'POST',
+    path: `/activities/:id/sheets/${path}`,
+    key: 'answer',
+    operation: 'update',
+    button: 'block',
+    need: 'need: BLOCK',
+    needConst: BLOCK_NEED,
+    extra: (entry) => [resource(entry, ACTIVITY_GUARD, [REQUIRE_ACTIVITY])],
+  })),
+  // reports.ts：报告模板、报告、生成、转发与预览
+  {
+    file: 'reports.ts',
+    method: 'GET',
+    path: '/report-template',
+    key: 'settings',
+    need: "read(c, deps, { object: 'settings' }",
+    opFact: false,
+  },
+  {
+    file: 'reports.ts',
+    method: 'PUT',
+    path: '/report-template',
+    key: 'settings',
+    operation: 'update',
+    button: 'update',
+    need: "need: { object: 'settings', operation: 'update' }",
+  },
+  {
+    file: 'reports.ts',
+    method: 'GET',
+    path: '/activities/:id/reports',
+    key: 'result',
+    need: 'read(c, deps, VIEW',
+    needConst: VIEW('reports.ts', 'result'),
+  },
+  {
+    file: 'reports.ts',
+    method: 'GET',
+    path: '/activities/:id/reports/:reportId',
+    key: 'result',
+    need: 'read( c, deps, VIEW',
+    needConst: VIEW('reports.ts', 'result'),
+  },
+  {
+    file: 'reports.ts',
+    method: 'POST',
+    path: '/activities/:id/reports/generate',
+    key: 'result',
+    operation: 'update',
+    button: 'generateReport',
+    need: "command( 'generateReport'",
+    needConst: REPORT_COMMAND,
+    extra: (entry) => [resource(entry, "command( 'generateReport'", [REPORT_COMMAND_GUARD, REQUIRE_ACTIVITY])],
+  },
+  {
+    file: 'reports.ts',
+    method: 'POST',
+    path: '/activities/:id/reports/forward',
+    key: 'result',
+    operation: 'update',
+    button: 'forwardReport',
+    need: "command( 'forwardReport'",
+    needConst: REPORT_COMMAND,
+    extra: (entry) => [
+      resource(entry, "command( 'forwardReport'", [REPORT_COMMAND_GUARD, REQUIRE_ACTIVITY]),
+      fullReport([
+        { ...entry, anchor: "command( 'forwardReport'" },
+        {
+          role: 'impl',
+          unit: `${S}/reports.ts#registerReportRoutes>command`,
+          anchor: 'if (fullView) await requireFullReportView(tx, deps, tenantOf(c))',
+        },
+      ]),
+    ],
+  },
+  {
+    file: 'reports.ts',
+    method: 'POST',
+    path: '/activities/:id/reports/forward/preview',
+    key: 'result',
+    button: 'forwardReport',
+    readOnly: true,
+    need: "read(c, deps, { ...VIEW, button: 'forwardReport' }",
+    needConst: VIEW('reports.ts', 'result'),
+    extra: (entry) => [fullReport([{ ...entry, anchor: 'await requireFullReportView(tx, deps, tenant)' }])],
+  },
+  // tables.ts
+  {
+    file: 'tables.ts',
+    method: 'GET',
+    path: '/activities/:id/score-tables',
+    key: 'result',
+    need: "read( c, deps, { object: 'result' }",
+    opFact: false,
+  },
+  ...templateRoutes(),
+];
+
 // ---- 作答 / 确认链接（answering.ts）：令牌守卫在每个处理函数里 -----------------------------------------------------
+// PR-B：链接与站内待办两个入口共用作答处理函数（answerRead / answerSave / answerSubmit / avatarRoute），入口由
+// entryOf 决定——链接入口为 tokenEntry（linkTenant 解析租户与令牌），待办入口为 todoEntry（本人账号的待办）。
 const ANSWERING = `${S}/answering.ts`;
 const LINK_TOKEN: Evidence[] = [
   {
@@ -785,6 +1083,7 @@ const LINK_TOKEN: Evidence[] = [
     unit: `${ANSWERING}#linkTenant`,
     anchor: 'if (!tenantId || !isUuid(tenantId) || !token || token.length > 200) notFound()',
   },
+  { role: 'impl', unit: `${ANSWERING}#tokenEntry`, anchor: 'const { tenant, token } = await linkTenant(c, deps)' },
   {
     role: 'impl',
     unit: `${ANSWERING}#resolve`,
@@ -794,29 +1093,92 @@ const LINK_TOKEN: Evidence[] = [
 const LINK_READ: Evidence = {
   role: 'impl',
   unit: `${ANSWERING}#linkRead`,
-  anchor: 'const { link, activity } = await resolve(tx, token, kind)',
+  anchor: 'const { link, activity } = await resolve(tx, entry.locate, kind)',
 };
 const LINK_WRITE: Evidence = {
   role: 'impl',
   unit: `${ANSWERING}#linkWrite`,
-  anchor: 'const current = await resolve(tx, token, kind)',
+  anchor: 'const current = await resolve(tx, locate, kind)',
 };
-const LINKS: readonly [string, string, string][] = [
-  ['GET', '/', 'linkRead(deps, undefined'],
-  ['GET', '/avatars/:attachmentId/content', 'linkRead( deps, undefined'],
-  ['GET', '/tasks/:relationId/questionnaires/:questionnaireId', "linkRead(deps, 'answer'"],
-  ['PUT', '/tasks/:relationId/questionnaires/:questionnaireId', "return linkWrite( deps, 'answer'"],
-  ['POST', '/tasks/:relationId/questionnaires/:questionnaireId/submit', "return linkWrite( deps, 'answer'"],
-  ['GET', '/confirmation/candidates', "linkRead(deps, 'confirm'"],
-  ['POST', '/confirmation/appraisers', "linkWrite( deps, 'confirm'"],
-  ['DELETE', '/confirmation/appraisers/:relationId', "return linkWrite( deps, 'confirm'"],
-  ['POST', '/confirmation/submit', "linkWrite(deps, 'confirm'"],
+const LINK_ANSWERS: Evidence = {
+  role: 'impl',
+  unit: `${ANSWERING}#registerLinkRoutes`,
+  anchor: 'registerAnswerRoutes(module, deps, tokenEntry(deps))',
+};
+const CONFIRM_ENTRY: Evidence = {
+  role: 'impl',
+  unit: `${ANSWERING}#registerConfirmRoutes`,
+  anchor: 'const entryOf = tokenEntry(deps)',
+};
+const handler = (name: string, anchor: string): Evidence => ({ role: 'impl', unit: `${ANSWERING}#${name}`, anchor });
+const TASK = '/tasks/:relationId/questionnaires/:questionnaireId';
+const ANSWER_READ = handler('answerRead', "linkRead(deps, entryOf, 'answer'");
+const ANSWER_SAVE = handler('answerSave', "return linkWrite( deps, entryOf, 'answer'");
+const ANSWER_SUBMIT = handler('answerSubmit', "return linkWrite( deps, entryOf, 'answer'");
+const AVATAR = handler('avatarRoute', 'linkRead( deps, entryOf, kind');
+const LINKS: readonly [string, string, string, readonly Evidence[]][] = [
+  ['GET', '/', 'linkRead(deps, tokenEntry(deps), undefined', []],
+  ['GET', '/avatars/:attachmentId/content', 'avatarRoute(deps, tokenEntry(deps), undefined)', [AVATAR]],
+  ['GET', TASK, 'answerRead(deps, entryOf)', [LINK_ANSWERS, ANSWER_READ]],
+  ['PUT', TASK, 'answerSave(deps, entryOf)', [LINK_ANSWERS, ANSWER_SAVE]],
+  ['POST', `${TASK}/submit`, 'answerSubmit(deps, entryOf)', [LINK_ANSWERS, ANSWER_SUBMIT]],
+  ['GET', '/confirmation/candidates', "linkRead(deps, entryOf, 'confirm'", [CONFIRM_ENTRY]],
+  ['POST', '/confirmation/appraisers', "linkWrite( deps, entryOf, 'confirm'", [CONFIRM_ENTRY]],
+  ['DELETE', '/confirmation/appraisers/:relationId', "return linkWrite( deps, entryOf, 'confirm'", [CONFIRM_ENTRY]],
+  ['POST', '/confirmation/submit', "linkWrite(deps, entryOf, 'confirm'", [CONFIRM_ENTRY]],
+];
+
+// ---- 我的待办与待办作答（todos.ts、answering.ts）：只看 / 只答本人账号的待办 -----------------------------------------
+const TODO_ENTRY: Evidence[] = [
+  {
+    role: 'impl',
+    unit: `${S}/routes.ts#registerSurvey360Routes`,
+    anchor: 'registerTodoAnswerRoutes(module, deps, todoEntry())',
+  },
+  { role: 'impl', unit: `${S}/todos.ts#todoEntry`, anchor: 'AND t.user_id =' },
+];
+const TODO = '/my/todos/:todoId';
+const TODO_ANSWERS: readonly [string, string, string, readonly Evidence[]][] = [
+  ['GET', `${TODO}/answer`, "linkRead(deps, entryOf, 'answer'", [LINK_READ]],
+  ['GET', `${TODO}/avatars/:attachmentId/content`, "avatarRoute(deps, entryOf, 'answer')", [AVATAR, LINK_READ]],
+  ['GET', `${TODO}${TASK}`, 'answerRead(deps, entryOf)', [ANSWER_READ, LINK_READ]],
+  ['PUT', `${TODO}${TASK}`, 'answerSave(deps, entryOf)', [ANSWER_SAVE, LINK_WRITE]],
+  ['POST', `${TODO}${TASK}/submit`, 'answerSubmit(deps, entryOf)', [ANSWER_SUBMIT, LINK_WRITE]],
+];
+const todoRecipient = (at: readonly Evidence[]): Obligation[] => [
+  { perm: 'own:survey360.todoRecipient', note: '本人账号的待办（别人的待办与不存在同一 404）', at },
+];
+
+// ---- 报告转发的收件人链接（reports.ts registerReportLinkRoutes）：令牌守卫在每个处理函数里 ----------------------------
+const REPORT_LINK = `${S}/reports.ts`;
+const REPORT_LINK_TOKEN: Evidence[] = [
+  {
+    role: 'impl',
+    unit: `${REPORT_LINK}#registerReportLinkRoutes>resolve`,
+    anchor: "if (!tenantId || !isUuid(tenantId) || !token || token.length > 200) fail('NOT_FOUND', '链接无效或已失效')",
+  },
+  {
+    role: 'impl',
+    unit: `${REPORT_LINK}#registerReportLinkRoutes>linkOf`,
+    anchor: "if (!link) fail('NOT_FOUND', '链接无效或已失效')",
+  },
+];
+const reportLinkToken = (path: string, extra: readonly string[]): Obligation[] => [
+  {
+    perm: 'guard:survey360.reportLinkToken',
+    note: '收件人凭链接令牌访问，不经成员中间件（与作答链接同口径）',
+    at: [
+      call(`${REPORT_LINK}#route:GET ${path}`, 'const { tenantId, hash } = await resolve(c)'),
+      ...extra.map((anchor) => call(`${REPORT_LINK}#route:GET ${path}`, anchor)),
+      ...REPORT_LINK_TOKEN,
+    ],
+  },
 ];
 
 export const SURVEY360: RequiredTable = {
-  ...Object.fromEntries(ROUTES.map((r) => [`${r.method} ${BASE}${r.path}`, obligations(r)])),
+  ...Object.fromEntries([...ROUTES, ...PR_B_ROUTES].map((r) => [`${r.method} ${BASE}${r.path}`, obligations(r)])),
   ...Object.fromEntries(
-    LINKS.map(([method, path, anchor]) => [
+    LINKS.map(([method, path, anchor, impls]) => [
       `${method} /api/survey360/link${path === '/' ? '' : path}`,
       [
         {
@@ -824,6 +1186,7 @@ export const SURVEY360: RequiredTable = {
           note: '外部评价者凭链接令牌访问，不经成员中间件（DEC-280 / DEC-291 Q2）',
           at: [
             call(`${ANSWERING}#route:${method} ${path}`, anchor),
+            ...impls,
             method === 'GET' ? LINK_READ : LINK_WRITE,
             ...LINK_TOKEN,
           ],
@@ -831,4 +1194,15 @@ export const SURVEY360: RequiredTable = {
       ],
     ]),
   ),
+  [`GET ${BASE}/my/todos`]: todoRecipient([call(`${S}/todos.ts#route:GET /my/todos`, 'WHERE t.user_id =')]),
+  ...Object.fromEntries(
+    TODO_ANSWERS.map(([method, path, anchor, impls]) => [
+      `${method} ${BASE}${path}`,
+      todoRecipient([call(`${ANSWERING}#route:${method} ${path}`, anchor), ...impls, ...TODO_ENTRY]),
+    ]),
+  ),
+  'GET /api/survey360/report-link': reportLinkToken('/', []),
+  'GET /api/survey360/report-link/reports/:reportId': reportLinkToken('/reports/:reportId', [
+    "if (!link.reportIds.includes(reportId)) fail('NOT_FOUND', '报告不存在')",
+  ]),
 };

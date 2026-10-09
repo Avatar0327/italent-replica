@@ -5,7 +5,9 @@
  */
 import type { Env, Hono } from 'hono';
 import { rawRouter, unwrapComposed } from './declare.js';
+import { compilePlan, type UsedNames } from './enforce.js';
 import { type Declaration, registryOf, type RouteRegistry, RoutePolicyError } from './registry.js';
+import { TAKEN_OVER_MODULES } from './takeover.js';
 import type { RoutePolicy } from './types.js';
 
 /** 运行时清单里的一条已声明端点：`key` 是登记表键（METHOD 本地路径），`path` 是挂载后的最终路径。 */
@@ -73,11 +75,36 @@ function checkEntry(
   return declaration;
 }
 
+export interface VerifyOptions {
+  /** 已接管模块；缺省为 TAKEN_OVER_MODULES（唯一来源，§2.5）。只有引擎测试用夹具模块时才传。 */
+  readonly takenOver?: readonly string[];
+}
+
+/** 接管 T1：给已接管模块的每条声明编译执行计划；任何缺口都让应用无法启动（DEC-363④）。 */
+function compileTakeover(registry: RouteRegistry, takenOver: readonly string[]): void {
+  for (const module of takenOver) {
+    const declarations = registry.declarations.filter((d) => d.module === module);
+    if (declarations.length === 0) fail('ROUTE_POLICY_IMPL_MISSING', `接管列表里的模块 ${module} 没有任何声明`);
+    const impls = registry.implementations.get(module);
+    if (!impls) fail('ROUTE_POLICY_IMPL_MISSING', `已接管模块 ${module} 没有登记实现（implement）`);
+    const used: UsedNames = { t1: new Set(), deferred: new Set(), inputs: new Set() };
+    const plans = declarations.map((d) => [d, compilePlan(d, impls, used)] as const);
+    const unused = [
+      ...Object.keys(impls.t1 ?? {}).filter((name) => !used.t1.has(name)),
+      ...Object.keys(impls.deferred ?? {}).filter((name) => !used.deferred.has(name)),
+      ...Object.keys(impls.inputs ?? {}).filter((name) => !used.inputs.has(name)),
+    ];
+    if (unused.length > 0)
+      fail('ROUTE_POLICY_IMPL_UNUSED', `模块 ${module} 登记了声明没有用到的名称：${unused.join('、')}`);
+    for (const [declaration, plan] of plans) declaration.plan = plan;
+  }
+}
+
 /**
  * 校验并封闭。返回运行时清单（已声明端点与中间件），供 FW-01 统计与现状必测基准对账。
  * 任何失败都抛 RoutePolicyError（DEC-300：缺失声明与身份不匹配始终失败）。
  */
-export function verifyRouteDeclarations<E extends Env>(app: Hono<E>): RouteManifest {
+export function verifyRouteDeclarations<E extends Env>(app: Hono<E>, options: VerifyOptions = {}): RouteManifest {
   const target = rawRouter(app) as unknown as Sealable;
   const registry = registryOf(target);
   const seenPaths = new Map<string, Declaration>();
@@ -103,6 +130,7 @@ export function verifyRouteDeclarations<E extends Env>(app: Hono<E>): RouteManif
         fail('ROUTE_DECLARATION_UNUSED', `登记表 ${table.name} 的 ${key} 没有对应的注册`);
     }
   }
+  compileTakeover(registry, options.takenOver ?? TAKEN_OVER_MODULES);
   // 封闭：预构建匹配器后 Hono 自身拒绝再 add（实测），再冻结 routes 数组
   target.router.match('GET', '/__route_policy_seal__');
   Object.freeze(target.routes);
