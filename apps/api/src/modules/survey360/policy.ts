@@ -345,6 +345,9 @@ export const SURVEY360_LINK_POLICIES = defineTable('survey360-link', {
   ),
   'POST /tasks/:relationId/questionnaires/:questionnaireId/submit': linkWrite('提交答卷', 'body', byId),
   'GET /confirmation/candidates': linkRead('确认链接：候选评价者'),
+  // F-058：本单人员集合（avatarPersonIds：作答任务 / 确认页的评价对象与评价者）里的当前有效头像；集合外、
+  // 非 UUID、不存在一律 404（linkRead 内 notFound）
+  'GET /avatars/:attachmentId/content': linkRead('作答 / 确认页人员头像：只给本单人员集合的当前头像字节'),
   'POST /confirmation/appraisers': linkWrite('确认人添加评价者', 'body'),
   'DELETE /confirmation/appraisers/:relationId': linkWrite('确认人删除评价者', 'none', byId),
   'POST /confirmation/submit': linkWrite('确认人提交', 'body'),

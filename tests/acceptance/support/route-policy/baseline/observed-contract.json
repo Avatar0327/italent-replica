@@ -143,6 +143,30 @@
         ]
       }
     },
+    "DELETE /api/tenant/account/avatar": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "REVISION_REQUIRED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "avatar",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ]
+      }
+    },
     "DELETE /api/tenant/employment/businesses/:id": {
       "edge": {
         "anonymous": {
@@ -1280,6 +1304,24 @@
       "module": "survey360-link",
       "primitives": {}
     },
+    "GET /api/survey360/link/avatars/:attachmentId/content": {
+      "edge": {
+        "anonymous": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "NOT_FOUND",
+          "status": 404
+        }
+      },
+      "module": "survey360-link",
+      "primitives": {}
+    },
     "GET /api/survey360/link/confirmation/candidates": {
       "edge": {
         "anonymous": {
@@ -1314,6 +1356,23 @@
         }
       },
       "module": "survey360-link",
+      "primitives": {}
+    },
+    "GET /api/tenant/account/avatar": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "status": 200
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "avatar",
       "primitives": {}
     },
     "GET /api/tenant/approval/admin-logs": {
@@ -1656,6 +1715,24 @@
           "auditViewer"
         ]
       }
+    },
+    "GET /api/tenant/avatars/:attachmentId/content": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "avatar",
+      "primitives": {}
     },
     "GET /api/tenant/contracts": {
       "edge": {
@@ -6801,6 +6878,54 @@
         "command": [
           "revision(c)",
           "runCommand / runWrite"
+        ]
+      }
+    },
+    "POST /api/tenant/account/avatar/attachments": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "avatar",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
+        ]
+      }
+    },
+    "POST /api/tenant/account/avatar/attachments/:attachmentId/upload": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "VALIDATION_FAILED",
+          "status": 400
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "avatar",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite",
+          "write() / command()"
         ]
       }
     },

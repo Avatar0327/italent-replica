@@ -4,6 +4,7 @@
  * 平台路由器在 modules/platform/routes.ts 套 PLATFORM_POLICIES。新模块：写好 policy.ts 后在这里追加一行。
  */
 import { AUDIT_POLICIES } from './audit/policy.js';
+import { AVATAR_POLICIES } from './modules/avatar/policy.js';
 import { ESTABLISHMENT_POLICIES } from './modules/establishment/policy.js';
 import { IDP_POLICIES } from './modules/idp/policy.js';
 import { JOB_POLICIES } from './modules/job/policy.js';
@@ -32,6 +33,7 @@ export function tenantPolicyTable(extra: readonly PolicyTable[] = []): PolicyTab
     AUDIT_POLICIES,
     TALENT_POLICIES,
     IDP_POLICIES,
+    AVATAR_POLICIES,
     ...extra,
   ]);
 }
