@@ -7,6 +7,7 @@
  * - P3 覆盖断言补反向差集与统计；披露“或”组按分支逐个检查。
  */
 import { type ManifestRoute, routeManifest, type RouteManifest, type RoutePolicy } from '@italent/api';
+import { SUBSETS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { readFrozenContract } from './support/route-policy/baseline.js';
@@ -93,6 +94,67 @@ describe('AC-PRM-FW-02 P2-1 范围按实际对象逐项选择（审查 #162 第 
       missed.map((w) => `${w.route.method} ${w.route.path} @${w.at}`),
       '未报出',
     ).toEqual([]);
+  });
+
+  // 第 3 轮（#162 第 2 轮审查 P2-1 残项）：对象型 mapper 的 domain 是**输入键**（子集名），真实路由按
+  // SUBSETS[kind].objectCode 判权与解析范围（personnel/routes.ts nestedSubsets）；范围必须按实际输出对象选择
+  const nestedSubsetsWith = (keyed: (key: string, code: string) => string, fallbackNone: boolean) => {
+    const base = route(NESTED_SUBSETS);
+    const policy = clone(base.policy) as unknown as Node;
+    const branch = (policy['optional'] as Record<string, Node>)['nestedSubsets']!;
+    const selector = branch['object'] as { domain: readonly string[] };
+    const original = branch['scope'];
+    const byObject: Record<string, unknown> = Object.fromEntries(
+      selector.domain.map((key) => [keyed(key, SUBSETS[key as keyof typeof SUBSETS].objectCode), clone(original)]),
+    );
+    if (fallbackNone) byObject['*'] = clone(NONE_SCOPE);
+    branch['scope'] = { byObject };
+    return withPolicy(base, policy);
+  };
+
+  it('对象型 mapper：byObject 用 13 个子集名（输入键）登记范围、其余 *:none → 13 个实际对象都落入 none，报 DISCLOSURE_WEAK', () => {
+    const findings = check([nestedSubsetsWith((key) => key, true)]);
+    const weak = findings.filter((f) => f.code === 'DISCLOSURE_WEAK');
+    expect(weak.length, show(findings)).toBeGreaterThan(0);
+    expect(weak.map((f) => f.detail).join('\n')).toContain('范围不符');
+  });
+
+  it('对象型 mapper：byObject 用 13 个实际对象编码完整登记同一范围 → 零发现（不误报）', () => {
+    const findings = check([nestedSubsetsWith((_key, code) => code, false)]);
+    expect(findings, show(findings)).toEqual([]);
+  });
+
+  it('对象型 mapper：只给 TenantBase.Education 登记范围、其余 *:none（按实际编码的部分对象）→ DISCLOSURE_WEAK', () => {
+    const findings = check([
+      nestedSubsetsWith((key, code) => (key === 'education' ? code : `Fixture.Skip.${key}`), true),
+    ]);
+    expect(codes(findings)).toContain('DISCLOSURE_WEAK');
+  });
+
+  it('对象型 mapper 未登记实际输出对象（或域里有未登记的输入键）→ OBJECT_MAPPER_UNMAPPED', () => {
+    const base = route(NESTED_SUBSETS);
+    const unknownMapper = clone(base.policy) as unknown as Node;
+    const branchA = (unknownMapper['optional'] as Record<string, Node>)['nestedSubsets']!;
+    branchA['object'] = { ...(branchA['object'] as Node), mapper: 'fixture.unknownMapper' };
+    expect(codes(check([withPolicy(base, unknownMapper)]))).toContain('OBJECT_MAPPER_UNMAPPED');
+    const unknownKey = clone(base.policy) as unknown as Node;
+    const branchB = (unknownKey['optional'] as Record<string, Node>)['nestedSubsets']!;
+    const selector = branchB['object'] as { domain: string[] };
+    branchB['object'] = { ...(branchB['object'] as Node), domain: [...selector.domain, 'fixture-subset'] };
+    expect(codes(check([withPolicy(base, unknownKey)]))).toContain('OBJECT_MAPPER_UNMAPPED');
+  });
+
+  it('弱化生成器按 mapper 实际输出对象生成 scope→partial-object：保留项的键是实际对象编码，且报出', () => {
+    const partial = disclosureWeakeningsOf(route(NESTED_SUBSETS), REQUIRED).filter(
+      (w) => w.kind === 'scope→partial-object',
+    );
+    expect(partial.length).toBeGreaterThan(0);
+    for (const w of partial) {
+      const branch = ((w.route.policy as unknown as Node)['optional'] as Record<string, Node>)['nestedSubsets']!;
+      const keys = Object.keys((branch['scope'] as { byObject: Node }).byObject);
+      expect(keys).toEqual([SUBSETS.education.objectCode, '*']);
+      expect(codes(check([w.route]))).toContain(w.expected);
+    }
   });
 
   it('生成弱化 scope→partial-object（动态对象只给部分对象保留范围，其余 *:none）：全部报出', () => {
