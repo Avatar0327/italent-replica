@@ -59,8 +59,11 @@ export async function installMissingSeeds(
   write: SeedWriteContext,
   filter: { readonly modules?: readonly string[] } = {},
 ): Promise<SeedReportItem[]> {
-  // 租户级互斥：不同模块筛选、不同命令 ID 的回补与开通都在同一把锁上排队
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${write.tenantId}:seed-install`}, 0))`);
+  // 租户级互斥：不同模块筛选、不同命令 ID 的回补与开通都在同一把锁上排队。锁键用 PostgreSQL 的 uuid 规范文本：
+  // 平台入口接受大小写不同的同一租户 UUID，按字符串哈希会得到不同的锁（DEC-361 R2-01 残项）
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended((${write.tenantId}::uuid)::text || ':seed-install', 0))`,
+  );
   const report: SeedReportItem[] = [];
   for (const entry of entries) {
     if (filter.modules && !filter.modules.includes(entry.module)) continue;
