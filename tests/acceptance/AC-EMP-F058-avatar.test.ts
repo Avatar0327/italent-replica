@@ -230,8 +230,11 @@ describe('AC-EMP（补）F-058 本人头像与租户授权', () => {
       );
       expect(await read(s.request)).toEqual(before);
     }
-    await error(s.request('DELETE', BASE, { ifMatch: before.revision, body: { userId: randomUUID() } }),
-      400, 'VALIDATION_FAILED');
+    await error(
+      s.request('DELETE', BASE, { ifMatch: before.revision, body: { userId: randomUUID() } }),
+      400,
+      'VALIDATION_FAILED',
+    );
     expect(await read(s.request)).toEqual(before);
   });
 
@@ -429,15 +432,18 @@ describe('AC-EMP（补）F-058 员工档案与人员头像引用', () => {
         VALUES(${s.tenant.id},${s.user.id},${s.employee.id})`),
     );
     const idPhoto = randomUUID();
-    // 已有档案证件照是独立夹具，不经本任务头像路由生成。
-    await testDb().db.execute(sql`INSERT INTO personnel_attachments
-      (id,tenant_id,employee_id,purpose,filename,content_type,byte_size,sha256,created_by)
-      VALUES (${idPhoto},${s.tenant.id},${s.employee.id},'photo','synthetic-id-photo.png','image/png',
-        ${imageFixture().metadata.byteSize},${imageFixture().metadata.sha256},${s.user.id})`);
-    await testDb().db.execute(sql`INSERT INTO personnel_employee_versions
-      (id,tenant_id,employee_id,revision,command_id,created_by,name,id_photo)
-      VALUES (${randomUUID()},${s.tenant.id},${s.employee.id},1,${randomUUID()},${s.user.id},
-        ${s.employee.name},${idPhoto})`);
+    // 证件照独立夹具不经头像路由；迁移 owner 按租户构造，兼容非 superuser 的 FORCE RLS 测试库。
+    await testDb().db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT set_config('app.tenant_id', ${s.tenant.id}, true)`);
+      await tx.execute(sql`INSERT INTO personnel_attachments
+        (id,tenant_id,employee_id,purpose,filename,content_type,byte_size,sha256,created_by)
+        VALUES (${idPhoto},${s.tenant.id},${s.employee.id},'photo','synthetic-id-photo.png','image/png',
+          ${imageFixture().metadata.byteSize},${imageFixture().metadata.sha256},${s.user.id})`);
+      await tx.execute(sql`INSERT INTO personnel_employee_versions
+        (id,tenant_id,employee_id,revision,command_id,created_by,name,id_photo)
+        VALUES (${randomUUID()},${s.tenant.id},${s.employee.id},1,${randomUUID()},${s.user.id},
+          ${s.employee.name},${idPhoto})`);
+    });
     const account: AvatarRequest = (method, path, options = {}) => s.api.request(method, path, { ...options, ...s.as });
     const before = await json<Record<string, unknown>>(s.request('GET', `/employees/${s.employee.id}`));
     expect(before.idPhoto).toBe(idPhoto);

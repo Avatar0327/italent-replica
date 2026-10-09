@@ -255,6 +255,29 @@ describe('AC-EMP-F058：本人个人设置头像及通用人员头像', () => {
     expect(writes().every((request) => request.path.startsWith(BASE))).toBe(true);
   });
 
+  it('删除明确拒绝时保留旧头像，不因额外回查断网而清图', async () => {
+    current = { id: AVATAR_ID, url: CONTENT };
+    await renderSettings();
+    await vi.waitFor(() => expect(host.querySelector('img')).toBeTruthy());
+    const oldUrl = host.querySelector('img')!.getAttribute('src');
+    let deleteRejected = false;
+    vi.mocked(fetch).mockImplementation(async (input, init = {}) => {
+      if (init.method === 'DELETE') {
+        deleteRejected = true;
+        requests.push({ path: String(input), method: 'DELETE', headers: new Headers(init.headers), body: undefined });
+        return json({ error: { code: 'INVALID_OPERATION', message: '删除未执行' } }, 400);
+      }
+      if (deleteRejected && String(input) === BASE) throw new TypeError('读取暂时断线');
+      return mockFetch(input, init);
+    });
+    await click('删除头像');
+    await vi.waitFor(() => expect(host.querySelector('[role="alert"]')).toBeTruthy());
+    expect(host.querySelector('img')?.getAttribute('src')).toBe(oldUrl);
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('删除未执行');
+    expect(writes()).toHaveLength(1);
+    expect(current).toEqual({ id: AVATAR_ID, url: CONTENT });
+  });
+
   it('超过 5MB 或伪扩展名格式在上传前拒绝且不创建命令', async () => {
     await renderSettings();
     await selectFile(file(5 * 1024 * 1024 + 1));
