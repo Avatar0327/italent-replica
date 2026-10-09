@@ -11,8 +11,9 @@ export const avatarReference = (id: string): AvatarReference => ({ id, url: `/ap
 
 export function avatarSql(tenantId: string | SQL, userId: SQL) {
   return sql`(SELECT jsonb_build_object('id',a.id,'url','/api/tenant/avatars/'||a.id||'/content')
-    FROM account_avatar_attachments a JOIN tenant_memberships m ON m.tenant_id=a.tenant_id AND m.user_id=a.user_id
-    WHERE a.tenant_id=${tenantId} AND a.user_id=${userId} AND a.status='uploaded' AND m.status='active')`;
+    FROM account_avatar_attachments a JOIN tenant_memberships avatar_owner
+      ON avatar_owner.tenant_id=a.tenant_id AND avatar_owner.user_id=a.user_id
+    WHERE a.tenant_id=${tenantId} AND a.user_id=${userId} AND a.status='uploaded' AND avatar_owner.status='active')`;
 }
 
 export function employeeAvatarSql(tenantId: string, employeeId: SQL) {
@@ -28,8 +29,9 @@ export async function userAvatars(tx: Tx, tenantId: string, userIds: readonly st
   if (!ids.length) return new Map<string, AvatarReference | null>();
   const rows = rowsOf<{ id: string; avatar: AvatarReference | null }>(
     await tx.execute(sql`
-    SELECT m.user_id AS id,${avatarSql(tenantId, sql`m.user_id`)} AS avatar FROM tenant_memberships m
-    WHERE m.tenant_id=${tenantId} AND m.user_id=ANY(${`{${ids.join(',')}}`}::uuid[])`),
+    SELECT target_member.user_id AS id,${avatarSql(tenantId, sql`target_member.user_id`)} AS avatar
+    FROM tenant_memberships target_member
+    WHERE target_member.tenant_id=${tenantId} AND target_member.user_id=ANY(${`{${ids.join(',')}}`}::uuid[])`),
   );
   return new Map(rows.map((r) => [r.id, r.avatar]));
 }
