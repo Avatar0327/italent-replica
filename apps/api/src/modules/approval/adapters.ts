@@ -41,6 +41,7 @@ import { lockPerson } from '../personnel/store.js';
 import { loadSubset } from '../personnel/subsets.js';
 import { AppError } from '../../errors.js';
 import { approvalError, rowsOf, type ApprovalContext, type Row } from './context.js';
+import { OPEN_STATUSES } from './store.js';
 
 export type BusinessType = 'employment' | 'personnel_change' | 'contract' | 'idp' | 'talent_review';
 
@@ -257,6 +258,9 @@ async function completedTransferDates(
  * 这是合席条件的超集（只会多取、不会漏取）；此时已持员工锁，任职业务实例的任务集合不会再被别的命令改写。
  * 实例没有异动员工（取不到员工锁）时无法保证，保守按可能合席处理。
  */
+/** 占着会签席位的任务状态：与 countersign.ts 的 HELD 相同（在办 + 已投票），那里不导出。 */
+const HELD_STATUSES = [...OPEN_STATUSES, 'approved', 'disagreed'].map((status) => sql`${status}`);
+
 async function mayMergeSeat(tx: Tx, ctx: ApprovalContext, businessIds: readonly string[], from: string) {
   const [row] = rowsOf<{ found: boolean }>(
     await tx.execute(sql`SELECT EXISTS (SELECT 1 FROM approval_instances i
@@ -267,7 +271,7 @@ async function mayMergeSeat(tx: Tx, ctx: ApprovalContext, businessIds: readonly 
         AND (i.subject_employee_id IS NULL OR EXISTS (SELECT 1 FROM approval_tasks s
           WHERE s.tenant_id=t.tenant_id AND s.instance_id=t.instance_id AND s.id<>t.id
             AND s.activation_id IS NOT DISTINCT FROM t.activation_id
-            AND s.status IN ('pending','queued','add_signed','approved','disagreed')))) AS found`),
+            AND s.status IN (${sql.join(HELD_STATUSES, sql`,`)})))) AS found`),
   );
   return Boolean(row?.found);
 }
