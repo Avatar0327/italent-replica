@@ -15,6 +15,7 @@ import {
 } from '../permission/module-access.js';
 import { EMPTY_SCOPE } from '../permission/scope-types.js';
 import { employeeFieldPolicy, EMPLOYEE_READONLY_FIELDS, PROTOCOL_FIELDS } from './policy.js';
+import { employeeAvatars } from '../avatar/references.js';
 
 const COMMAND_FIELDS = new Set(['initiator', 'transferTypeCode', 'formId', 'mode', 'kind', 'submit']);
 const BUTTONS = new Set(['Transfer.Self', 'Employment.Create', 'Employment.Submit']);
@@ -28,7 +29,8 @@ export async function boundEmployee(tx: Tx, ctx: Pick<EmploymentContext, 'tenant
   `),
   );
   if (!employee) throw new AppError('FORBIDDEN', '当前用户未绑定员工');
-  return employee;
+  const avatars = await employeeAvatars(tx, ctx.tenantId, [employee.id]);
+  return { ...employee, avatar: avatars.get(employee.id) ?? null };
 }
 
 /** 只供本人路由使用，不给 HR / 审批接口增加任何隐式授权或租户范围。 */

@@ -38,9 +38,9 @@ export async function managerChoices(
   const { scope, paths } = await managerScope(tx, ctx.tenantId, date, departmentId);
   const items = await listEmployees(tx, ctx.tenantId, date, page, { status: 'employed', name }, scope);
   return Promise.all(
-    items.map(async ({ id, name }) => {
+    items.map(async ({ id, name, avatar }) => {
       const record = await findCurrentRecord(tx, ctx.tenantId, id, date);
-      return { id, name, orgPath: paths.get(record?.fields.departmentId ?? '') ?? '' };
+      return { id, name, avatar: avatar ?? null, orgPath: paths.get(record?.fields.departmentId ?? '') ?? '' };
     }),
   );
 }

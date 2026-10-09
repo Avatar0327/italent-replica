@@ -57,7 +57,7 @@ export async function referenceChoices(
   const scope = await resolveModuleScopeInTransaction(deps, ctx, tx, objectCode, `${objectCode}.detail`);
   if (PERSON_FIELDS.has(code)) {
     const items = await listEmployees(tx, ctx.tenantId, date, page, { status: 'employed', name }, scope);
-    return items.map(({ id, name }) => ({ id, name }));
+    return items.map(({ id, name, avatar }) => ({ id, name, avatar: avatar ?? null }));
   }
   if (code === 'departmentId') {
     const settings = await readTransferSettings(tx, ctx.tenantId);

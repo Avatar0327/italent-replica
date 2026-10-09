@@ -72,11 +72,11 @@ describe('作答页匿名开关（活动级，DEC-149）× 查看人', () => {
     const s = await setup(w, { showAppraiserName: true, roleDisplay: 'name' });
     await w.transition(s.activity.id, 'enable');
     const view = await w.ok<LinkView>(w.link(await w.token(s.activity.id, s.peer.id))('GET', ''));
-    expect(view.appraiser).toEqual({ name: '同事甲' });
+    expect(view.appraiser).toEqual({ name: '同事甲', avatar: null });
     expect(view.tasks).toEqual([
       {
         relationId: s.peerRelation.id,
-        object: { name: '被评价人E' },
+        object: { name: '被评价人E', avatar: null },
         role: { name: '同事' },
         questionnaires: [expect.objectContaining({ id: s.q.id, status: 'pending' })],
       },
@@ -90,7 +90,7 @@ describe('作答页匿名开关（活动级，DEC-149）× 查看人', () => {
     const view = await w.ok<LinkView>(w.link(await w.token(s.activity.id, s.peer.id))('GET', ''));
     expect(view).not.toHaveProperty('appraiser');
     expect(view.tasks[0]).not.toHaveProperty('role');
-    expect(view.tasks[0]!.object).toEqual({ name: '被评价人E' });
+    expect(view.tasks[0]!.object).toEqual({ name: '被评价人E', avatar: null });
     const detail = await w.ok<Record<string, unknown>>(
       w.link(await w.token(s.activity.id, s.peer.id))('GET', `/tasks/${s.peerRelation.id}/questionnaires/${s.q.id}`),
     );
@@ -168,7 +168,7 @@ describe('作答页匿名开关穷举：姓名两态 × 角色三模式（DEC-14
         const expectedRole =
           roleDisplay === 'name' ? { name: '同事' } : roleDisplay === 'fixed_text' ? { name: '同行' } : undefined;
         for (const page of [view, detail] as Record<string, unknown>[]) {
-          if (showName) expect(page.appraiser).toEqual({ name: '同事甲' });
+          if (showName) expect(page.appraiser).toEqual({ name: '同事甲', avatar: null });
           else expect(page).not.toHaveProperty('appraiser');
         }
         if (expectedRole) {
