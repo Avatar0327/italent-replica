@@ -4,6 +4,7 @@ import { queueTransferLinkage, validateTransferSubordinates } from './transfer-l
 import { lockTransferParticipants } from './transfer-locks.js';
 import { assertEstablishmentCapacity, type EstablishmentWarning } from './activation-checks.js';
 import { personnelHooks } from './personnel-hooks.js';
+import { employeeStatusHooks } from './status-hooks.js';
 import {
   entryStatusFor,
   inheritedStatus,
@@ -654,7 +655,29 @@ export async function materializeEmploymentRecord(
   }
   await queueTransferLinkage(tx, ctx, business.id, payload.kind, fields, payload.effectiveDate);
   await registerCompletion(tx, ctx, business, fields);
+  await notifyMaterialized(tx, ctx, business, status);
+}
+
+/**
+ * 落地后的同事务通知：人员履历投影；R3-T05 设计 §5.4 / DEC-343 的状态钩子（继任离职自动结束、人才池出池），
+ * 员工行已锁。
+ */
+async function notifyMaterialized(
+  tx: Tx,
+  ctx: EmploymentContext,
+  business: LockedEmploymentBusiness,
+  status: VersionStatus,
+): Promise<void> {
+  const { payload } = business;
   await personnelHooks.sync(tx, ctx, business.employeeId, business.id, payload.kind, payload.effectiveDate);
+  await employeeStatusHooks.recordMaterialized(tx, ctx, {
+    employeeId: business.employeeId,
+    recordId: business.id,
+    kind: payload.kind,
+    effectiveDate: payload.effectiveDate,
+    lastWorkDate: payload.lastWorkDate,
+    employeeStatus: status.employeeStatus,
+  });
 }
 
 /**
