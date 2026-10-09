@@ -86,7 +86,7 @@ async function expectBothDone(f: Scene, handed: Response, hired: Response) {
   expect(pendingOf(moved)).toEqual([expect.objectContaining({ assigneeUserId: f.successor })]);
 }
 
-describe.runIf(realPostgres)('F-065 交接与首次绑定的锁序（反向锁环）', () => {
+describe.runIf(realPostgres)('AC-APV F-065 交接与首次绑定的锁序（DEC-196 全局锁序，反向锁环）', () => {
   it('绑定先：交接在员工锁上排队时，入职绑定来源账号；放行后两边都完成，无死锁', async () => {
     const f = await scene('f065-bind-first');
     let handedOver: Promise<Response> = Promise.resolve(new Response());
