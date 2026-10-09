@@ -4,7 +4,7 @@
  * - 组合表达式用 R3-T00 的 validateFormula 校验语法，且只能引用存在的条件序号（字段名 条件1…条件n）。
  * 不按人员求值：C2 先逐条算真假，再以条件序号作布尔字段交 evaluateFormula。运算符编码与 T05 条件行（RULE_OPERATORS）一致。
  */
-import { validateFormula } from '../expression/index.js';
+import { createDefaultRegistry, validateFormula } from '../expression/index.js';
 
 export const ACTIVITY_CONDITION_OPERATORS = [
   'eq',
@@ -87,7 +87,7 @@ const FIELD_PREFIX = '条件';
 export const activityConditionField = (seq: number): string => `${FIELD_PREFIX}${seq}`;
 
 export interface ActivityConditionExpressionError {
-  readonly code: 'EXPRESSION_EMPTY' | 'EXPRESSION_SYNTAX' | 'CONDITION_SEQ_UNKNOWN';
+  readonly code: 'EXPRESSION_EMPTY' | 'EXPRESSION_SYNTAX' | 'CONDITION_SEQ_UNKNOWN' | 'EXPRESSION_FUNCTION_NOT_ALLOWED';
   readonly message?: string;
   readonly line?: number;
   readonly column?: number;
@@ -98,14 +98,28 @@ export type ActivityConditionExpressionResult =
   | { readonly ok: true; readonly referencedSeqs: readonly number[] }
   | { readonly ok: false; readonly errors: readonly ActivityConditionExpressionError[] };
 
-/** 空白表达式不通过：是否允许不设表达式由调用方决定（不设则不调用）。 */
+const CONDITION_KIND = 'boolean' as const;
+const registry = createDefaultRegistry();
+
+/** 取数函数（有记录作用域对象的）：表达式只组合条件，不另行取数（EV-R11 的取数在明细里做）。 */
+const isDataFunction = (name: string): boolean => (registry.resolve(name)?.recordObjects?.length ?? 0) > 0;
+
+/**
+ * 空白表达式不通过：是否允许不设表达式由调用方决定（不设则不调用）。
+ * 引擎对取数函数参数里的记录字段（考核结果.年度 等）不查字段目录，所以 validateFormula 通过后还要复核：
+ * 引用到的每个字段都必须是已有的条件序号，且不得调用取数函数；条件序号按布尔字段参与类型检查。
+ */
 export function validateActivityConditionExpression(
   expression: string,
   seqs: readonly number[],
 ): ActivityConditionExpressionResult {
   if (expression.trim() === '') return { ok: false, errors: [{ code: 'EXPRESSION_EMPTY' }] };
   const known = new Map(seqs.map((seq) => [activityConditionField(seq), seq]));
-  const result = validateFormula(expression, { isKnownField: (path) => known.has(path) });
+  const result = validateFormula(expression, {
+    registry,
+    isKnownField: (path) => known.has(path),
+    fieldKind: (path) => (known.has(path) ? CONDITION_KIND : undefined),
+  });
   if (!result.ok) {
     const errors = result.errors.map((issue) => ({
       code: issue.code === 'UNKNOWN_FIELD' ? ('CONDITION_SEQ_UNKNOWN' as const) : ('EXPRESSION_SYNTAX' as const),
@@ -116,5 +130,10 @@ export function validateActivityConditionExpression(
     }));
     return { ok: false, errors };
   }
-  return { ok: true, referencedSeqs: result.fields.flatMap((field) => known.get(field) ?? []) };
+  const errors: ActivityConditionExpressionError[] = [
+    ...result.fields.filter((field) => !known.has(field)).map(() => ({ code: 'CONDITION_SEQ_UNKNOWN' as const })),
+    ...result.functions.filter(isDataFunction).map(() => ({ code: 'EXPRESSION_FUNCTION_NOT_ALLOWED' as const })),
+  ];
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, referencedSeqs: result.fields.map((field) => known.get(field)!) };
 }

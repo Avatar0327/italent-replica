@@ -159,10 +159,10 @@ describe('AC-EV-conditions 组合表达式：只引用存在的序号（validate
   // 第 2 轮 P2-01：表达式引擎对取数函数参数里的记录字段不查字段目录，必须在本函数复核全部引用
   it('取数函数参数里的记录字段不得绕过条件序号白名单', () => {
     const bypass = '条件1 and PerformanceLastCent(1, 考核结果.年度 = 2026) > 0';
-    expect(validateActivityConditionExpression(bypass, seqs)).toMatchObject({
-      ok: false,
-      errors: [{ code: 'CONDITION_SEQ_UNKNOWN' }],
-    });
+    const result = validateActivityConditionExpression(bypass, seqs);
+    expect(result.ok).toBe(false);
+    const codes = result.ok ? [] : result.errors.map((error) => error.code);
+    expect(codes).toContain('CONDITION_SEQ_UNKNOWN');
     expect(validateActivityConditionExpression('PerformanceLastCent(1, 考核结果.年度 = 2026) > 0', [])).toMatchObject({
       ok: false,
     });
