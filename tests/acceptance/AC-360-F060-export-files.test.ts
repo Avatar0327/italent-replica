@@ -298,7 +298,9 @@ describe('AC-360-F060 受限管理员只得到范围内的文件', () => {
       await w.ok<{ items: { id: string | null }[] }>(w.request('GET', `/activities/${other.id}/reports`))
     ).items[0]!.id!;
     expect(otherReport).toBeTruthy();
-    expect((await w.request('GET', `/activities/${other.id}/reports/${otherReport}/download`)).status).toBe(200);
+    expect((await w.request('GET', `/activities/${other.id}/reports/${otherReport}/download`)).status).toBe(
+      fonts ? 200 : 503,
+    );
     expect((await as('GET', `/activities/${other.id}/reports/${otherReport}/download`)).status).toBe(404);
     expect((await as('GET', `${s.path}/reports/${otherReport}/download`)).status).toBe(404);
   });
