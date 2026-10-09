@@ -98,7 +98,7 @@ const seg = (k, x) => {
   return `<div class="sg ${x.s}" style="${style}" title="${ST.find(s => s[0] === k)[1]}${x.r ? " 第 " + x.r + " 轮" : ""}">${x.s === "d" && !x.r ? "✓" : esc(x.r)}</div>`;
 };
 const card = it => {
-  const head = `<div class="hd"><span class="id">${it.pr ? "#" + it.pr + " " : ""}${esc(it.id)}</span>${it.fable ? '<span class="tg fb">Fable</span>' : ""}${it.cx ? '<span class="tg cx">Codex</span>' : ""}${it.sn ? '<span class="tg sn">Sonnet</span>' : ""}${it.up ? `<span class="tg up" title="${esc(it.up)}">强度↑</span>` : ""}</div><div class="nm" title="${esc(it.n)}">${esc(it.n)}</div>`;
+  const head = `<div class="hd"><span class="id">${it.pr ? "#" + it.pr + " " : ""}${esc(it.id)}</span>${it.fable ? '<span class="tg fb">Fable</span>' : ""}${it.cx ? '<span class="tg cx">Codex</span>' : ""}${it.sn ? '<span class="tg sn">Sonnet</span>' : ""}${it.up ? `<span class="tg up" title="${esc(it.up)}">强度↑</span>` : ""}</div><div class="nm" title="${esc(it.n)}">${esc(it.n)}</div>${it.pd ? `<div class="u">${esc(it.pd)}</div>` : ""}`;
   if (it.k === "done") return `<div class="it done">${head}<div class="u">✓ ${esc(it.u)}</div></div>`;
   if (it.k === "todo") return `<div class="it todo">${head}<div class="u">${esc(it.u)}</div>${it.nx ? `<div class="nx">→ 解锁 ${esc(it.nx)}</div>` : ""}</div>`;
   const p = parse(it.seg);
