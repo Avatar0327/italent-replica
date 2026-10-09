@@ -1,8 +1,8 @@
 /**
  * DEC-340③：答卷审计（保存、提交、屏蔽、恢复、清除）给有活动授权的管理员看**脱敏版本**——不带任何能关联到评价者的
  * 信息：评价关系 ID、评价者人员 ID / 姓名 / 邮箱 / 账号，以及作答请求的来源（IP、终端、来源页、TraceID、命令 ID）。
- * 持“全部活动”者兼任评价者时不豁免，同样只看脱敏版本；没有活动授权的管理员看不到；作答入口（链接 / 待办）的失败
- * 审计仍只给持“全部活动”者（第 2 轮 P2-1 的反例保持拒绝）。
+ * 持“全部活动”者看完整版（F-034 删除快照口径），但兼任该活动的被评价人或评价者时不豁免，同样只看脱敏版本；没有
+ * 活动授权的管理员看不到；作答入口（链接 / 待办）的失败审计仍只给持“全部活动”者（第 2 轮 P2-1 的反例保持拒绝）。
  */
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
@@ -97,16 +97,23 @@ describe('DEC-340③ 答卷审计脱敏', () => {
     expectDesensitized(s, events);
   });
 
-  it('持“全部活动”者兼任评价者时不豁免：同样只看脱敏版本', async () => {
+  it('持“全部活动”者兼任评价者 / 被评价人时不豁免：同样只看脱敏版本；不兼任的看完整版', async () => {
     const s = await scene('d340b');
-    // 上级 M 是本活动的评价者，同时持“全部活动”（360 系统管理员身份）
-    await s.w.appoint(s.user.M, 'system');
-    const events = await sheetEvents(s, s.user.M);
-    const actions = new Set(events.map((e) => e.item.action));
-    for (const action of ACTIONS) expect(actions, action).toContain(action);
-    expectDesensitized(s, events);
-    // 不兼任的“全部活动”持有人（租户 360 系统管理员）同一脱敏口径
-    expectDesensitized(s, await sheetEvents(s, s.w.admin));
+    // 上级 M 是本活动的评价者、T 是被评价人，同时持“全部活动”（360 系统管理员身份）
+    for (const user of [s.user.M, s.user.T]) {
+      await s.w.appoint(user, 'system');
+      const events = await sheetEvents(s, user);
+      const actions = new Set(events.map((e) => e.item.action));
+      for (const action of ACTIONS) expect(actions, action).toContain(action);
+      expectDesensitized(s, events);
+    }
+    // 不兼任的“全部活动”持有人（租户 360 系统管理员）：完整版，带评价关系与命令 ID
+    const full = await sheetEvents(s, s.w.admin);
+    const text = JSON.stringify(full);
+    expect(text).toContain('"relationId"');
+    expect(text).toContain(s.rel.p1.id);
+    const block = full.find((e) => e.item.action === 'survey360.sheet.block')!;
+    expect(block.item.commandId).not.toBeNull();
   });
 
   it('没有活动授权的管理员看不到；作答入口的失败审计对活动管理员仍不可见', async () => {
