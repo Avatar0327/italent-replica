@@ -226,6 +226,50 @@ const CARD_DENIED = new Set<string>([
 ]);
 const isBinary = (res: Response) => /^(image\/|application\/pdf)/.test(res.headers.get('content-type') ?? '');
 
+/**
+ * 逐端点预期状态（F-060 第 3 轮 P3，Opus 接手）：三类无资格身份（被授权的一般管理员、兼任被评价人的全部活动持有人、
+ * 兼任评价者的创建者）在这些端点上的状态相同，固定下来，防止有效读取退化成拒绝（或反之）时仍能通过。
+ * - 汇总 / 报告 / 链接 / 审计读取：200（内容另由标记断言保证不带逐份答案）；
+ * - 卡片与按编号屏蔽：403；令牌 / 待办不是本人的：404；
+ * - 报告已生成后再生成：409；“屏蔽疑似”每个活动 2 小时只能用一次（RATE_LIMITED），同一活动先调的身份 200、后调 409；
+ * - 下载（PNG / PDF）：有中文字体 200，无中文字体 503 EXPORT_FONT_UNAVAILABLE。
+ */
+const DOWNLOAD = 'download';
+const EXPECTED_STATUS: Readonly<Record<string, readonly number[] | typeof DOWNLOAD>> = {
+  [`GET ${ACT}/sheets`]: [403],
+  [`POST ${ACT}/sheets/:sheetId/block`]: [403],
+  [`POST ${ACT}/sheets/:sheetId/unblock`]: [403],
+  [`POST ${ACT}/sheets/block-suspected`]: [200, 409],
+  [`POST ${ACT}/sheets/unblock-all`]: [200],
+  [`GET ${ACT}/score-tables`]: [200],
+  [`GET ${ACT}/score-tables/download`]: DOWNLOAD,
+  [`GET ${ACT}/objects/:objectId/scores`]: [200],
+  [`GET ${ACT}/progress`]: [200],
+  [`GET ${ACT}/progress/:personId`]: [200],
+  [`GET ${ACT}/reports`]: [200],
+  [`GET ${ACT}/reports/:reportId`]: [200],
+  [`GET ${ACT}/reports/:reportId/download`]: DOWNLOAD,
+  [`POST ${ACT}/reports/generate`]: [409],
+  [`POST ${ACT}/reports/forward/preview`]: [200],
+  [`GET ${SURVEY}/my/todos`]: [200],
+  [`GET ${TODO}/answer`]: [404],
+  [`GET ${TODO}/tasks/:relationId/questionnaires/:questionnaireId`]: [404],
+  [`GET ${LINK}`]: [200],
+  [`GET ${LINK}/tasks/:relationId/questionnaires/:questionnaireId`]: [404],
+  [`GET ${REPORT_LINK}`]: [200],
+  [`GET ${REPORT_LINK}/reports/:reportId`]: [200],
+  [`GET ${REPORT_LINK}/reports/:reportId/download`]: DOWNLOAD,
+  [`GET ${AUDIT}/data-changes`]: [200],
+  [`GET ${AUDIT}/data-changes/:id`]: [200],
+  [`GET ${AUDIT}/operation-logs`]: [200],
+  [`GET ${AUDIT}/command-failures`]: [200],
+};
+const expectedStatus = (route: string, fonts: boolean): readonly number[] => {
+  const expected = EXPECTED_STATUS[route];
+  if (!expected) throw new Error(`缺少逐端点预期状态：${route}`);
+  return expected === DOWNLOAD ? [fonts ? 200 : 503] : expected;
+};
+
 const isDownload = (route: string) => route.endsWith('/download');
 
 /**
@@ -246,8 +290,9 @@ async function expectNoAnswers(s: SceneB, user: string, t: Target, who: string) 
       const where = `${who} ${route} → ${res.status}`;
       const noFontDownload = isDownload(route) && !fonts;
       if (CARD_DENIED.has(route)) expect([403, 404], where).toContain(res.status);
-      else if (noFontDownload) expect(res.status === 503 || (res.status >= 400 && res.status < 500), where).toBe(true);
-      else expect(res.status, where).toBeLessThan(500);
+      expect(expectedStatus(route, fonts), where).toContain(res.status);
+      if (res.status === 409 && route.endsWith('/block-suspected'))
+        expect(JSON.parse(await res.clone().text()).error.details.reason, where).toBe('RATE_LIMITED');
       if (isBinary(res)) {
         expect(isDownload(route) && fonts, `${where} 只有有字体时的下载端点返回二进制`).toBe(true);
         continue;
@@ -348,6 +393,7 @@ describe('DEC-364② 匿名活动的答卷出口枚举', () => {
     const listed = [...ANSWER_ENDPOINTS, ...OWN_ANSWER_ENDPOINTS, ...Object.keys(NO_ANSWER_DATA)];
     expect(new Set(listed).size, '两份清单不得重复').toBe(listed.length);
     expect([...listed].sort()).toEqual(declared);
+    expect(Object.keys(EXPECTED_STATUS).sort(), '每个答卷出口都有逐端点预期状态').toEqual([...ANSWER_ENDPOINTS].sort());
   });
 
   it('一般活动管理员（被授权、非创建者）与兼任被评价人的“全部活动”持有人：所有出口都拿不到逐份答案', async () => {
