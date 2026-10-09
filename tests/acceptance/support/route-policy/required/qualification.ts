@@ -185,8 +185,8 @@ const jobLinks = (key: 'category' | 'level', declared: Evidence): Obligation[] =
       declared,
     ],
   },
-  ...JOB_TYPES[key].map(([type, code, codeAnchor, kindAnchor]): Obligation => ({
-    perm: `obj:${code}:view`,
+  ...JOB_TYPES[key].map(([type, objectCode, codeAnchor, kindAnchor]): Obligation => ({
+    perm: `obj:${objectCode}:view`,
     purpose: `guard:ql.jobLinks(${key})`,
     inner: { role: 'when', condition: `jobLinkType=${type}` },
     at: [
