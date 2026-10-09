@@ -424,6 +424,115 @@ describe('AC-EV-config-dicts 活动类型', () => {
     });
   });
 
+  describe('名称唯一、顺序号不唯一（Q-M0-152，issue #171，照原站）', () => {
+    const NAME_EXISTS = '活动类型名称已存在，请重新输入';
+
+    it('新建撞名 409：专用 reason + 原站提示原文，首尾空白按 trim 后比较，数据与审计不变', async () => {
+      const op = await admin();
+      const label = name('撞名');
+      const first = await created(op, { name: label });
+      for (const duplicate of [label, `  ${label}  `]) {
+        const response = await create(op, { name: duplicate });
+        expect(response.status, duplicate).toBe(409);
+        const body = (await response.clone().json()) as { error: { code: string; message: string } };
+        expect(body.error).toMatchObject({ code: 'CONFLICT', message: NAME_EXISTS });
+        expect((await errorOf(response)).reason).toBe('ACTIVITY_TYPE_NAME_EXISTS');
+      }
+      const same = (await list(op, 'pageSize=100')).items.filter((item) => item.name === label);
+      expect(same.map((item) => item.id)).toEqual([first.id]);
+    });
+
+    it('大小写按现有字典口径区分（精确比较）；不同租户可重名', async () => {
+      const op = await admin();
+      const label = `Case${randomUUID().slice(0, 6)}`;
+      await created(op, { name: label });
+      await created(op, { name: label.toLowerCase() });
+      const other = await operator(creatorWorld, { seeAll: true });
+      await created(other, { name: label });
+    });
+
+    it('改名撞名 409 且数据不变；原名保存 / 改成自己的名称不算撞名', async () => {
+      const op = await admin();
+      const a = await created(op, { name: name('甲') });
+      const b = await created(op, { name: name('乙') });
+      const clash = await op.request('PATCH', `${PATH}/${b.id}`, { ifMatch: b.revision, body: { name: a.name } });
+      expect(clash.status).toBe(409);
+      expect((await errorOf(clash)).reason).toBe('ACTIVITY_TYPE_NAME_EXISTS');
+      expect(await ok<ActivityTypeView>(await op.request('GET', `${PATH}/${b.id}`))).toEqual(b);
+      const same = await ok<ActivityTypeView>(
+        await op.request('PATCH', `${PATH}/${b.id}`, { ifMatch: b.revision, body: { name: b.name, displayOrder: 7 } }),
+      );
+      expect(same).toMatchObject({ name: b.name, displayOrder: 7 });
+    });
+
+    it('并发创建同名：库内唯一约束兜底，只成功一条，另一条同样 409 专用 reason', async () => {
+      const op = await admin();
+      const label = name('并发');
+      const results = await Promise.all([create(op, { name: label }), create(op, { name: label })]);
+      expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+      const loser = results.find((r) => r.status === 409)!;
+      expect((await errorOf(loser)).reason).toBe('ACTIVITY_TYPE_NAME_EXISTS');
+    });
+
+    it('顺序号不要求唯一：重复的顺序号可新建、可修改，列表按顺序号再按名称稳定排序', async () => {
+      const op = await admin();
+      const label = name('同序');
+      const x = await created(op, { name: `${label}-b`, displayOrder: 5 });
+      const y = await created(op, { name: `${label}-a`, displayOrder: 5 });
+      const z = await created(op, { name: `${label}-c`, displayOrder: 1 });
+      await ok(await op.request('PATCH', `${PATH}/${z.id}`, { ifMatch: z.revision, body: { displayOrder: 5 } }));
+      const page = await list(op, 'pageSize=100');
+      const mine = page.items.filter((item) => item.name?.startsWith(label)).map((item) => item.id);
+      expect(mine).toEqual([y.id, x.id, z.id]);
+    });
+
+    it('同步任职资格子集开关默认 false；没有“同步任职记录”（DEC-025）', async () => {
+      const op = await admin();
+      const made = await created(op);
+      expect(made.syncQualification).toBe(false);
+      expect(Object.keys(made).some((key) => /EmploymentRecord|syncRecord/i.test(key))).toBe(false);
+    });
+  });
+
+  describe('被引用拒停用的钩子位（原站：被活动引用的类型“停用”置灰；B4 / B5 / C2 登记引用方）', () => {
+    it('登记的引用方命中时停用 409（reason 由引用方给出），数据不变；启用 / 其他字段修改 / 未命中的停用照常', async () => {
+      const op = await admin();
+      const used = await created(op);
+      const free = await created(op);
+      const { registerInUse } = await import('../../apps/api/src/modules/evaluation/usage.js');
+      registerInUse(
+        'activityType',
+        {
+          sql: (ctx, id) => sql`SELECT 1 WHERE ${id}::uuid = ${used.id}::uuid AND ${ctx.tenantId}::uuid IS NOT NULL`,
+          message: '该活动类型已被评定活动引用，不能停用',
+          reason: 'ACTIVITY_TYPE_IN_USE_DISABLE',
+        },
+        'disable',
+      );
+      const blocked = await op.request('PATCH', `${PATH}/${used.id}`, {
+        ifMatch: used.revision,
+        body: { enabled: false },
+      });
+      expect(blocked.status).toBe(409);
+      expect(await errorOf(blocked)).toMatchObject({ code: 'CONFLICT', reason: 'ACTIVITY_TYPE_IN_USE_DISABLE' });
+      expect(await ok<ActivityTypeView>(await op.request('GET', `${PATH}/${used.id}`))).toEqual(used);
+      // 不涉及停用的修改照常（改名、改顺序号、显式写 enabled=true）
+      const renamed = await ok<ActivityTypeView>(
+        await op.request('PATCH', `${PATH}/${used.id}`, {
+          ifMatch: used.revision,
+          body: { name: name('改名'), enabled: true },
+        }),
+      );
+      expect(renamed.enabled).toBe(true);
+      const off = await ok<ActivityTypeView>(
+        await op.request('PATCH', `${PATH}/${free.id}`, { ifMatch: free.revision, body: { enabled: false } }),
+      );
+      expect(off.enabled).toBe(false);
+      // 删除钩子与停用钩子互不串用：停用规则不拦删除
+      await ok(await op.request('DELETE', `${PATH}/${used.id}`, { ifMatch: renamed.revision }));
+    });
+  });
+
   describe('被引用拒删的钩子位（B4 / B5 登记引用方）', () => {
     it('登记的引用方命中时删除 409（reason 由引用方给出），数据与审计不变；未命中照常删除', async () => {
       const op = await admin();
