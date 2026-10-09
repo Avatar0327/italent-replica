@@ -165,8 +165,12 @@ describe('AC-APV（补）F-067 / DEC-358① 例外目标的失败响应与普通
   ) {
     const send = (toUserId: string) => {
       const payload = body(s, toUserId, overrides.taskId ? { taskId: overrides.taskId } : {});
-      if (overrides.reason === null) delete (payload as { reason?: string }).reason;
-      return s.operator()(path, payload, overrides.revision ?? s.instance.revision);
+      const { reason: _reason, ...withoutReason } = payload;
+      return s.operator()(
+        path,
+        overrides.reason === null ? withoutReason : payload,
+        overrides.revision ?? s.instance.revision,
+      );
     };
     const ordinary = await fullResponse(await send(s.stranger.userId));
     const exception = await fullResponse(await send(s.far.userId));

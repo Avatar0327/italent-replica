@@ -27,7 +27,7 @@ export const DIGESTS: Digests = {
     requireWithdrawRight: 'e17fe05b2b0e',
   },
   'apps/api/src/modules/approval/actions.ts': {
-    adminAct: '905c3d891657',
+    adminAct: '80351397819e',
     assertTargetInScope: '3636a0063bda',
     openOwn: '2bf5722813f2',
     openTask: '6f9c0c04e106',

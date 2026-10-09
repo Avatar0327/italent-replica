@@ -891,9 +891,11 @@ export async function adminAct(
   // 靠例外放行的目标（范围外的指导人 / 带教人）：后续任何业务失败（版本冲突、流程已结束、待办已关闭、回避……）都折成
   // 与普通范围外拒绝完全相同的 404，否则失败响应的差异会泄露“目标是该计划的指导人 / 带教人”（DEC-358①，F-068 审查）。
   if (!exception) return performAdmin(tx, ctx, run, input, options);
-  return performAdmin(tx, ctx, run, input, options).catch((error: unknown) => {
+  try {
+    return await performAdmin(tx, ctx, run, input, options);
+  } catch (error) {
     throw error instanceof AppError ? targetNotFound() : error;
-  });
+  }
 }
 
 async function performAdmin(
