@@ -269,6 +269,8 @@ export async function read<T>(
   need: Need,
   load: (tx: Tx, admin: Admin, tenant: TenantContext) => Promise<T>,
   present: Present = trimAs(need.object),
+  /** 缺省回 JSON；下载类接口用同一份已裁剪的数据生成文件（F-060）。 */
+  respond: (c: C, body: never) => Response | Promise<Response> = (c, body) => c.json(body as object),
 ): Promise<Response> {
   const route = await routeNeed(c, deps, need);
   const people = await routePeople(c, deps, route, need.object);
@@ -277,7 +279,7 @@ export async function read<T>(
     const admin = await loadAdmin(tx, deps, tenant, people);
     return present(viewerOf(tx, deps, tenant, admin), (await load(tx, admin, tenant)) as never);
   });
-  return c.json(body as object);
+  return respond(c, body as never);
 }
 
 /** 隐式写入的其他 360 对象（如录入 person 即新建 360 人员）：同样判对象.操作、按钮与字段编辑权。 */

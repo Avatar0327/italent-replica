@@ -175,13 +175,13 @@ describe('同一草稿再次保存、只改建议', () => {
     const s = await resave('d358au-resave-b');
     const events = saves(await sheetEvents(s, s.w.admin));
     expect(events.length).toBe(2);
-    for (const { detail } of events) {
-      const before = detail.before as Record<string, unknown> | null;
-      const after = detail.after as Record<string, unknown>;
-      for (const field of ['activityId', 'relationId', 'questionnaireId'])
-        expect(before, `before 缺 ${field}`).toHaveProperty(field);
-      expect(before?.activityId).toBe(after.activityId);
-    }
+    // 首次保存是新建（before 为空）；再次保存的 before 与 after 元数据对称
+    const resaved = events.filter((e) => e.detail.before);
+    expect(resaved.length).toBe(1);
+    const before = resaved[0]!.detail.before as Record<string, unknown>;
+    const after = resaved[0]!.detail.after as Record<string, unknown>;
+    for (const field of ['activityId', 'relationId', 'questionnaireId'])
+      expect(before[field], field).toBe(after[field]);
     // 完整版查看人看得到真实变化：建议由首存变为改后
     const second = events.find((e) => JSON.stringify(e.detail.after).includes('改后建议'));
     expect(JSON.stringify(second!.detail.before)).toContain('首存建议');

@@ -32,6 +32,7 @@ import { uuidParam } from '../job/context.js';
 import { getModuleViewableFieldsInTransaction } from '../permission/module-access.js';
 import { type ActivityRow, iso, requireActivity } from './access.js';
 import { LINK_TOKEN_HEADER } from './answering.js';
+import { attachmentName, fileResponse, renderPdf, type ReportBody, reportDocument } from './export-files.js';
 import {
   actor,
   type Admin,
@@ -436,6 +437,13 @@ function trimReport(fields: ReadonlySet<string> | undefined, body: unknown): unk
 
 const reportPresent: Present = async (viewer, body: unknown) => trimReport(await viewer.fields('result'), body);
 
+/** 报告详情（已按查看人裁剪）→ PDF 附件；文件名是评价对象姓名，被裁掉时用通用名。 */
+async function reportPdf(_c: C, report: ReportBody): Promise<Response> {
+  const pdf = await renderPdf(reportDocument(report));
+  const subject = report.cover?.objectName;
+  return fileResponse(pdf, 'application/pdf', attachmentName(`${subject ? `${subject}-` : ''}个人报告`, 'pdf'));
+}
+
 /** 转发让收件人看到整份报告：发送人须能看到报告正文涉及的全部结果字段，否则 403（第 2 轮 P2-5）。 */
 const REPORT_FIELDS = [
   'cover',
@@ -461,22 +469,21 @@ export function registerReportRoutes(module: Hono<TenantEnv>, deps: TenantRouteD
       return { items: objects.map((o) => rowView(v, template, o)) };
     }),
   );
+  const detail = async (c: C, tx: Tx, admin: Admin, tenant: TenantContext) => {
+    const activity = await requireActivity(tx, admin, uuidParam(c));
+    const template = await standardTemplate(tx, tenant.tenantId);
+    const reportId = uuidParam(c, 'reportId');
+    // 评价对象须在查看人范围内：范围外的与不存在同一 404
+    if (!(await visibleObjects(tx, activity.id, admin, template.id)).some((o) => o.report_id === reportId))
+      fail('NOT_FOUND', '报告不存在');
+    return reportView(tx, activity, reportId);
+  };
   module.get('/activities/:id/reports/:reportId', (c) =>
-    read(
-      c,
-      deps,
-      VIEW,
-      async (tx, admin, tenant) => {
-        const activity = await requireActivity(tx, admin, uuidParam(c));
-        const template = await standardTemplate(tx, tenant.tenantId);
-        const reportId = uuidParam(c, 'reportId');
-        // 评价对象须在查看人范围内：范围外的与不存在同一 404
-        if (!(await visibleObjects(tx, activity.id, admin, template.id)).some((o) => o.report_id === reportId))
-          fail('NOT_FOUND', '报告不存在');
-        return reportView(tx, activity, reportId);
-      },
-      reportPresent,
-    ),
+    read(c, deps, VIEW, (tx, admin, tenant) => detail(c, tx, admin, tenant), reportPresent),
+  );
+  // 个人报告“下载”是 PDF（`25` §10.3 ⑬⑭）：与详情接口同一权限、同一范围与字段裁剪，文件由同一份数据生成
+  module.get('/activities/:id/reports/:reportId/download', (c) =>
+    read(c, deps, VIEW, (tx, admin, tenant) => detail(c, tx, admin, tenant), reportPresent, reportPdf),
   );
   // 生成 / 转发共用的命令处理函数；注册路径写字面量（F-039 静态扫描按注册处求值）
   const command =
@@ -613,15 +620,17 @@ export function registerReportLinkRoutes(router: Hono<TenantEnv>, deps: TenantRo
     });
     return c.json(body);
   });
-  module.get('/reports/:reportId', async (c) => {
+  const linked = async (c: C) => {
     const { tenantId, hash } = await resolve(c);
     const reportId = uuidParam(c, 'reportId');
-    const body = await withTenant(deps.db, tenantId, async (tx) => {
+    return withTenant(deps.db, tenantId, async (tx) => {
       const { link, activity } = await linkOf(tx, hash);
       if (!link.reportIds.includes(reportId)) fail('NOT_FOUND', '报告不存在');
       return reportView(tx, activity, reportId);
     });
-    return c.json(body);
-  });
+  };
+  module.get('/reports/:reportId', async (c) => c.json(await linked(c)));
+  // 收件人下载 PDF：与上面同一份报告内容（邮件里发的是链接，不发附件）
+  module.get('/reports/:reportId/download', async (c) => reportPdf(c, (await linked(c)) as never));
   router.route('/api/survey360/report-link', module);
 }

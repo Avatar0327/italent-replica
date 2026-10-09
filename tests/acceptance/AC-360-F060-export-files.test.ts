@@ -9,7 +9,6 @@
 import { randomUUID } from 'node:crypto';
 import { survey360 } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
-import sharp from 'sharp';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   docText,
@@ -151,14 +150,13 @@ describe('F-060 报表 PNG 下载', () => {
       expect(decodeURIComponent(res.headers.get('content-disposition')!)).toContain(s.activity.name);
       const bytes = Buffer.from(await res.arrayBuffer());
       expect(bytes.subarray(0, 8).toString('hex')).toBe(PNG_MAGIC);
-      const meta = await sharp(bytes).metadata();
-      expect(meta.width).toBeGreaterThan(200);
-      expect(meta.height).toBeGreaterThan(100);
+      // IHDR：宽高在第 16～23 字节
+      expect(bytes.readUInt32BE(16)).toBeGreaterThan(200);
+      expect(bytes.readUInt32BE(20)).toBeGreaterThan(100);
       const expected = await renderPng(scoreTableDocument(json, { activityName: s.activity.name }));
       expect(bytes.equals(expected), `${level} 与 JSON 生成的文件逐字节相同`).toBe(true);
-      // 不是空白图
-      const stats = await sharp(bytes).stats();
-      expect(stats.channels.some((c) => c.stdev > 1)).toBe(true);
+      // 不是空白图：同尺寸的纯白 PNG 只有几百字节
+      expect(bytes.length).toBeGreaterThan(5000);
     }
   });
 
