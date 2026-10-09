@@ -38,6 +38,7 @@ export interface CalcRuleView {
   readonly assessmentLatestWindow: string;
   readonly description: string | null;
   readonly createdBy: string | null;
+  readonly sortNo: number;
   readonly items: CalcItemView[];
   readonly hints?: { warnings: string[]; cycles: string[][]; blocked: string[]; order: string[] };
   readonly [key: string]: unknown;
@@ -116,6 +117,8 @@ export interface CalcOperatorOptions {
   readonly view?: boolean;
   /** 引用字段所需的字段目录权限：缺省有查看权但没有看全部；seeAll 给看全部；none 不给查看权。 */
   readonly fields?: 'none' | 'creator' | 'seeAll';
+  /** 字段目录里查看人看不到的列（name / kind / enabled / systemWritten …）。 */
+  readonly fieldHidden?: readonly string[];
 }
 
 /** 真实授权器下的操作人：身份带 TalentReview 应用、计算规则对象与（可选）字段目录的查看权。 */
@@ -149,7 +152,11 @@ export async function calcRuleOperator(world: PermissionWorld, options: CalcOper
       profile,
       {
         dataOperations: { create: false, update: false, delete: false },
-        fields: field.fields.map((item) => ({ fieldCode: item.code, view: true, edit: false })),
+        fields: field.fields.map((item) => ({
+          fieldCode: item.code,
+          view: !(options.fieldHidden ?? []).includes(item.code),
+          edit: false,
+        })),
         buttons: [],
       },
       field.code,

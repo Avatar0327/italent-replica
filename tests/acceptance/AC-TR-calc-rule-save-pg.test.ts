@@ -16,11 +16,13 @@ describe.runIf(Boolean(process.env.TEST_DATABASE_URL))('计算规则 · PostgreS
     const created = await w.create(calcBody([calcItem(a, '1')]));
     const patch = (formula: string) =>
       w.request('PATCH', `${CALC_RULES}/${created.id}`, { ifMatch: 1, body: { items: [calcItem(a, formula)] } });
-    const responses = await Promise.all([patch('10'), patch('20')]);
+    const formulas = ['10', '20'];
+    const responses = await Promise.all(formulas.map((formula) => patch(formula)));
     expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    const winner = formulas[responses.findIndex((response) => response.status === 200)]!;
     const now = (await w.read(created.id)).body;
     expect(now.revision).toBe(2);
-    expect(now.items).toHaveLength(1);
+    expect(now.items.map((item) => item.formula)).toEqual([winner]);
   });
 
   it('同名规则并发新建：恰好一个 201，另一个 409，库里只有一条', async () => {

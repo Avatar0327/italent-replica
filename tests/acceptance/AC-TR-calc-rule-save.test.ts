@@ -87,7 +87,7 @@ describe('计算规则新建与读取（设计 §2.2）', () => {
 
 describe('保存校验（validateFormula / orderComputationItems；DEC-274 / 287）', () => {
   it.each([
-    ['语法错误', '1 +', 'SYNTAX'],
+    ['语法错误', '1 +', 'SYNTAX_ERROR'],
     ['未知函数', '不存在的函数(1)', 'UNKNOWN_FUNCTION'],
     ['未知字段', '盘点对象.不存在的字段 + 1', 'UNKNOWN_FIELD'],
   ])('公式非法 · %s：400 FORMULA_INVALID，指出第几个项目，数据不变', async (_name, formula, issue) => {
@@ -101,8 +101,7 @@ describe('保存校验（validateFormula / orderComputationItems；DEC-274 / 287
       'FORMULA_INVALID',
       1,
     ]);
-    expect(error.details.issues?.length).toBeGreaterThan(0);
-    expect(issue).toBeTruthy();
+    expect(error.details.issues?.[0]?.code).toBe(issue);
     expect((await w.list()).items).toEqual([]);
   });
 
