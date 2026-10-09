@@ -95,6 +95,12 @@ export interface BusinessAdapter {
   lockMany?(tx: Tx, ctx: ApprovalContext, businessIds: readonly string[]): Promise<void>;
   /** 同意前的业务前提（R3-T07 无目标校验 IDP-R10）；不满足时抛错，任务不动。 */
   beforeApprove?(tx: Tx, ctx: ApprovalContext, businessId: string, nodeKey: string): Promise<void>;
+  /**
+   * F-048：集合审批的“对象 → 主体”映射（docs/08_设计/F-048_审批多主体回避_设计.md §5.3）——本单涵盖的全部对象对应的
+   * 员工 ID（可重复、可含单主体，含已终止对象）。不实现即单主体业务（只有 snapshot.subjectEmployeeId）。只在发起与重提时
+   * 调用；不得写入、不得自行判断回避。实现方用 runSubjectAdapterContract 跑契约测试。
+   */
+  subjects?(tx: Tx, ctx: ApprovalContext, businessId: string): Promise<readonly string[]>;
 }
 
 const same = (left: unknown, right: unknown) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);

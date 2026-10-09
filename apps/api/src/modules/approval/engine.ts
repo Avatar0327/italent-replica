@@ -51,6 +51,7 @@ import {
   userOfPerson,
   type RoutingSubject,
 } from './resolver.js';
+import { freezeSubjects } from './subjects.js';
 import {
   resumableInstanceOf,
   appendLog,
@@ -752,6 +753,14 @@ async function launch(
   matched: Awaited<ReturnType<typeof matchProcess>>,
 ): Promise<InstanceRow> {
   const instance = await insertInstance(tx, ctx, request, snapshot, matched);
+  // F-048 设计 §5.2：冻结第 1 轮主体（单主体业务只有异动员工本人），之后的提交预检与路由读冻结值
+  await freezeSubjects(
+    tx,
+    ctx,
+    instance,
+    1,
+    (await ADAPTERS[request.businessType].subjects?.(tx, ctx, request.businessId)) ?? [],
+  );
   const run: Run = {
     ctx,
     before: instance,
@@ -857,6 +866,10 @@ export async function resume(tx: Tx, ctx: ApprovalContext, instanceId: string): 
     event: 'resubmit',
     detail: { toNodeKey: toRejecting ? rejecting : null, afterWithdraw },
   });
+  // F-048 设计 §5.2：重提写新一轮冻结（历史员工 ∪ 适配器当前给出的员工，账号按此刻绑定重新取），再预检、路由
+  const adapter = ADAPTERS[run.instance.businessType];
+  const current = (await adapter.subjects?.(tx, ctx, run.instance.businessId)) ?? [];
+  await freezeSubjects(tx, ctx, run.instance, run.instance.round, current);
   await assertExceptionAdminAvailable(tx, run);
   await advanceFrom(tx, run, toRejecting ? nodeIndex(run, rejecting) : 0);
   return persistRun(tx, run, 'approval.instance.resubmit');

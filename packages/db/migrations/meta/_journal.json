@@ -502,15 +502,22 @@
     {
       "idx": 71,
       "version": "7",
-      "when": 1791525017424,
-      "tag": "0071_survey360_b",
+      "when": 1791524499272,
+      "tag": "0071_approval_subjects",
       "breakpoints": true
     },
     {
       "idx": 72,
       "version": "7",
-      "when": 1791525025521,
-      "tag": "0072_survey360_b_isolation",
+      "when": 1791530876126,
+      "tag": "0072_survey360_b",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1791530880122,
+      "tag": "0073_survey360_b_isolation",
       "breakpoints": true
     }
   ]
