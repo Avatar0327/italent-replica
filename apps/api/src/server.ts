@@ -7,6 +7,7 @@ import { databaseFromEnv, localPgliteDir } from './database.js';
 import { identityResolverFromEnv } from './identity.js';
 import { startEmploymentActivationScheduler } from './modules/employment/activation-scheduler.js';
 import { startAuditRetentionScheduler } from './audit/retention.js';
+import { startSuccessionScheduler } from './modules/succession/scheduler.js';
 
 // 生产环境未接入真实登录（B-01）时，这里直接抛错阻止启动，不回退到不安全的身份实现。
 // 授权不在此注入：createApp 缺省使用权限模型授权器（R1-T01），默认拒绝。
@@ -46,5 +47,11 @@ if (handle && process.env.JOB_SEQUENCE_SYNC_SCHEDULER !== 'off') startSequenceSy
 if (handle && process.env.AUDIT_RETENTION_SCHEDULER !== 'off') {
   startAuditRetentionScheduler(handle.db, {
     intervalMs: Number(process.env.AUDIT_RETENTION_INTERVAL_MS || 86_400_000),
+  });
+}
+// R3-T05 继任定时任务（离职自动结束 sweep、职位风险、组织统计，DEC-343①）：任务随 PR 登记，没有任务时不起定时器。
+if (handle && process.env.SUCCESSION_SCHEDULER !== 'off') {
+  startSuccessionScheduler(handle.db, {
+    intervalMs: Number(process.env.SUCCESSION_SCHEDULER_INTERVAL_MS || 900_000),
   });
 }

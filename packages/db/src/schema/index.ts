@@ -16,3 +16,4 @@ export * from './talent.js';
 export * from './idp.js';
 export * from './avatar.js';
 export * from './talent-review.js';
+export * from './succession.js';

@@ -35,6 +35,15 @@ export interface SettingWrite {
   readonly commandId: string;
 }
 
+/** 按键登记的取值校验（业务模块在加载时登记，如继任开关）；未登记的键保持原样不校验。 */
+const validators = new Map<string, (value: unknown) => boolean>();
+
+export function registerSettingValidator(key: string, valid: (value: unknown) => boolean): void {
+  const existing = validators.get(key);
+  if (existing && existing !== valid) throw new Error(`配置键 ${key} 已登记了取值校验`);
+  validators.set(key, valid);
+}
+
 export async function readEffectiveSetting(tx: Tx, tenantId: string, key: string): Promise<EffectiveSetting> {
   const system = await loadSystemSetting(tx, key);
   // 只读路径不加行锁：读者不应阻塞写者，也不需要 UPDATE 权限
@@ -45,6 +54,9 @@ export async function readEffectiveSetting(tx: Tx, tenantId: string, key: string
 export async function overrideSetting(tx: Tx, write: SettingWrite, value: unknown): Promise<EffectiveSetting> {
   const system = await loadSystemSetting(tx, write.key);
   if (!system.overridable) throw new AppError('SETTING_READ_ONLY', '该配置为系统预置只读，不可覆盖');
+  if (validators.get(write.key)?.(value) === false) {
+    throw new AppError('VALIDATION_FAILED', '配置值不合法', { reason: 'SETTING_VALUE_INVALID', key: write.key });
+  }
   const current = await loadOverrideForUpdate(tx, write.tenantId, write.key);
   assertRevision(write.expectedRevision, current);
 
