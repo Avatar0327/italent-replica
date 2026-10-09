@@ -121,7 +121,7 @@ export const EVALUATION_FLOW_OBJECTS = {
     'EvaluationRecord',
     ['totalScore', 'result', 'strengths', 'suggestions', 'abstainReason'],
     ['slotId', 'staffEvaluationId', 'targetVersion', 'judgeEmployeeId', 'status', 'abstainBy', 'submittedAt'],
-    [{ code: 'abstain', level: 'detail' }],
+    [{ code: 'Abstain', level: 'detail' }],
   ),
   /** 评委逐项打分（ev_judge_scores）。 */
   judgeScore: object('EvaluationRecordDetail', ['score', 'comment'], ['judgeRecordId', 'itemKey']),

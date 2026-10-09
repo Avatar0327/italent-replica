@@ -6,8 +6,14 @@
  * - beforeSave（落地前复核）：saveSubset 一处覆盖 HR 子集写入、自助审批通过后的落地与信息采集；source 区分入口，
  *   防止提交后开关或权限变化。
  * 未登记的子集两道检查都不调用，行为不变。同一子集只能登记一份（C1-1 登记 qualification）。
- * 只覆盖经 saveSubset 的写入；直接调 persistSubset 的系统维护写入（jobhistory 任职同步、clearFlags 连带清标记）
- * 不经过本钩子——登记了策略的子集若也有这类写入，须改走 saveSubset 并带系统来源。
+ *
+ * 直写边界：只覆盖经 saveSubset 的写入。以下直接调 persistSubset 的系统维护写入**不经过钩子**：
+ * - employment-sync.ts 的 jobhistory 任职同步（本单位经历的生成与回写）；
+ * - subsets.ts clearFlags 的连带清标记：education 的 isHighestEducation / isFirstEducation / isHighestDegree /
+ *   isMainMajor，professional-technical-post 与 vocational-qualification 的 isHighestLevel——保存一行时把同员工
+ *   其他行的同名标记改为 false，那些连带行不经 beforeSave。
+ * 给 jobhistory、education、professional-technical-post、vocational-qualification 登记策略前，必须先在同一子 PR 里
+ * 处理这些连带行的校验（改走 saveSubset 带系统来源，或在策略里显式覆盖），否则连带行会绕过策略。
  */
 import type { Tx } from '@italent/db';
 import type { SubsetKind } from '@italent/domain';
@@ -37,6 +43,12 @@ export interface SubsetSaveCheck {
   readonly source: SubsetSource;
 }
 
+/**
+ * 取锁限制：钩子运行时调用方已持有员工锁（lockPerson）；经审批中心调用时（同单重提、审批通过后的落地）还持有审批
+ * 实例锁。钩子内**禁止**再取员工锁集合以外的员工锁，也**禁止**反向首次取得业务 / 组织 / 编制等在审批实例锁之前的
+ * 前序锁，否则会与正常顺序的命令死锁；确需这些锁的，由调用方在进入审批实例锁之前预取。钩子只做读取与判断，
+ * 拒绝时抛 AppError，不写任何数据。
+ */
 export interface SubsetPolicy {
   readonly beforeRequest?: (tx: Tx, ctx: PersonnelContext, input: SubsetRequestCheck) => Promise<void>;
   readonly beforeSave?: (tx: Tx, ctx: PersonnelContext, input: SubsetSaveCheck) => Promise<void>;
