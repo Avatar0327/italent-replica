@@ -267,9 +267,10 @@ describe('AC-QL-05 编辑导入标准明细', () => {
       targetCode,
       content,
     });
+    // 逐标准带预期 revision（DEC-067，第 2 轮 P2-06），不再用 If-Match
+    const standards = [{ categoryCode: category.code, revision: standard.revision }];
     const bad = await w.request('POST', '/standards/import', {
-      ifMatch: 0,
-      body: { rows: [row(p1Code, '新1'), row(p2Code, '新X', 'NOPE')] },
+      body: { standards, rows: [row(p1Code, '新1'), row(p2Code, '新X', 'NOPE')] },
     });
     expect(bad.status).toBe(400);
     const receipts = ((await bad.json()) as { error: { details: { receipts: { row: number; reason: string }[] } } })
@@ -282,8 +283,7 @@ describe('AC-QL-05 编辑导入标准明细', () => {
     ]);
 
     const good = await w.request('POST', '/standards/import', {
-      ifMatch: 0,
-      body: { rows: [row(p1Code, '新1'), row(p1Code, '新2'), row(p2Code, '新3')] },
+      body: { standards, rows: [row(p1Code, '新1'), row(p1Code, '新2'), row(p2Code, '新3')] },
     });
     await w.ok(good);
     const after = await w.read<StandardView>(`/standards/${standard.id}`);

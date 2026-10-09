@@ -11,222 +11,15 @@
  *   MANAGEMENT_UNIT_REQUIRED，选了不属于本人的单元与不存在同一个 404；候选只列本人的授权管理单元。
  */
 import { randomUUID } from 'node:crypto';
-import { MODULE_OBJECTS, QUALIFICATION_OBJECTS } from '@italent/domain';
 import { useTestDb } from '@italent/testkit';
 import { beforeAll, describe, expect, it } from 'vitest';
-import {
-  addMember,
-  BASE,
-  createProfile,
-  grant,
-  makeGrantable,
-  seedPermissionWorld,
-  setObjectPermission,
-  type PermissionWorld,
-} from './AC-PRM-support.js';
-import {
-  assignQualificationMou,
-  type CategoryView,
-  QL_APP,
-  QL_BASE,
-  QL_NOW,
-  type StandardView,
-} from './AC-QL-support.js';
-import { createMou, createOrg } from './AC-TC-support.js';
+import { seedPermissionWorld, type PermissionWorld } from './AC-PRM-support.js';
+import { type Data, operator, seed } from './AC-QL-perm-support.js';
+import { type CategoryView, QL_NOW, type StandardView } from './AC-QL-support.js';
+import { createMou } from './AC-TC-support.js';
 import { tenantApi } from './support/tenant-api.js';
 
 const testDb = useTestDb();
-type ObjectKey = keyof typeof QUALIFICATION_OBJECTS;
-
-interface Data {
-  readonly parent: string;
-  readonly child: string;
-  readonly outside: string;
-  readonly childMou: string;
-  readonly open: CategoryView;
-  readonly closed: CategoryView;
-  readonly foreign: CategoryView;
-  readonly levelId: string;
-  readonly plainTarget: string;
-  readonly commonTarget: string;
-  readonly standardId: string;
-  readonly gradeTarget: string;
-  readonly sequences: readonly string[];
-}
-
-async function seed(world: PermissionWorld): Promise<Data> {
-  const setup = tenantApi(world.db, { clock: () => QL_NOW });
-  const parent = await createOrg(setup, world.asAdmin, '任职资格上级部');
-  const child = await createOrg(setup, world.asAdmin, '任职资格下级部', parent);
-  const outside = await createOrg(setup, world.asAdmin, '任职资格其他部');
-  let revision = 0;
-  /** 管理员（单一授权管理单元）在指定组织下建对象：资源集合由系统按授权管理单元填写。 */
-  const as = async (orgId: string) => {
-    const mou = await createMou(setup, world.asAdmin, [orgId], '任职资格');
-    revision = await assignQualificationMou(setup, world.asAdmin, world.asAdmin.user, mou, revision);
-  };
-  const create = async <T>(path: string, body: unknown): Promise<T> => {
-    const response = await setup.request('POST', `${QL_BASE}${path}`, { ...world.asAdmin, ifMatch: 0, body });
-    expect(response.status, await response.clone().text()).toBe(201);
-    return (await response.json()) as T;
-  };
-  const code = () => `Q${randomUUID().slice(0, 6)}`;
-  await as(parent);
-  const klass = await create<{ id: string }>('/category-classes', { code: code(), name: '分类', publicDown: true });
-  const open = await create<CategoryView>('/categories', {
-    code: code(),
-    name: '公开类',
-    classId: klass.id,
-    publicDown: true,
-  });
-  const closed = await create<CategoryView>('/categories', { code: code(), name: '不公开类', classId: klass.id });
-  const level = await create<{ id: string }>('/levels', {
-    code: code(),
-    name: 'P1',
-    displayOrder: 1,
-    publicDown: true,
-  });
-  const type = await create<{ id: string }>('/target-types', { code: code(), name: '类型', publicDown: true });
-  const plainTarget = await create<{ id: string }>('/targets', {
-    code: code(),
-    name: '普通指标',
-    typeId: type.id,
-    description: '保密说明',
-    evalMode: 'score',
-    publicDown: true,
-  });
-  const commonTarget = await create<{ id: string }>('/targets', {
-    code: code(),
-    name: '通用指标',
-    typeId: type.id,
-    description: '通用保密说明',
-    evalMode: 'score',
-    isCommon: true,
-    confirmOverwrite: true,
-    publicDown: true,
-  });
-  const standard = await create<StandardView>('/standards', {
-    categoryId: open.id,
-    name: '公开标准',
-    levelIds: [level.id],
-    details: [{ levelId: level.id, targetId: commonTarget.id }],
-  });
-  const scheme = await create<{ id: string }>('/grade-schemes', {
-    name: `方案${code()}`,
-    details: [{ name: '初级', grade: 1, description: '明细保密描述' }],
-  });
-  const gradeTarget = await create<{ id: string }>('/targets', {
-    code: code(),
-    name: '评级指标',
-    typeId: type.id,
-    evalMode: 'grade',
-    gradeSchemeId: scheme.id,
-    publicDown: true,
-  });
-  const sequences: string[] = [];
-  for (const name of ['保密序列甲', '保密序列乙']) {
-    const response = await setup.request('POST', '/api/tenant/job/sequences', {
-      ...world.asAdmin,
-      ifMatch: 0,
-      body: { name, code: code(), startDate: '2020-01-01' },
-    });
-    expect(response.status, await response.clone().text()).toBe(201);
-    sequences.push(((await response.json()) as { id: string }).id);
-  }
-  await as(outside);
-  const foreignClass = await create<{ id: string }>('/category-classes', { code: code(), name: '外分类' });
-  const foreign = await create<CategoryView>('/categories', { code: code(), name: '外类', classId: foreignClass.id });
-  const childMou = await createMou(setup, world.asAdmin, [child], '下级');
-  return {
-    parent,
-    child,
-    outside,
-    childMou,
-    open,
-    closed,
-    foreign,
-    levelId: level.id,
-    plainTarget: plainTarget.id,
-    commonTarget: commonTarget.id,
-    standardId: standard.id,
-    gradeTarget: gradeTarget.id,
-    sequences,
-  };
-}
-
-async function operator(
-  world: PermissionWorld,
-  options: { mouId?: string; hidden?: Partial<Record<ObjectKey, string[]>>; sequenceHidden?: string[] },
-) {
-  const jobs = options.sequenceHidden !== undefined;
-  const apps = jobs ? [QL_APP, 'TenantBase'] : [QL_APP];
-  const profile = await createProfile(world, `ql-${randomUUID().slice(0, 8)}`, { apps });
-  for (const key of Object.keys(QUALIFICATION_OBJECTS) as ObjectKey[]) {
-    const definition = QUALIFICATION_OBJECTS[key];
-    const hidden = new Set(options.hidden?.[key] ?? []);
-    const response = await setObjectPermission(
-      world,
-      profile,
-      {
-        dataOperations: { create: true, update: true, delete: true },
-        fields: definition.fields.map((field) => ({
-          fieldCode: field.code,
-          view: !hidden.has(field.code),
-          edit: !field.system && !hidden.has(field.code),
-        })),
-        buttons: definition.buttons.map((button) => ({ buttonCode: button.code, level: button.level })),
-      },
-      definition.code,
-    );
-    expect(response.status, await response.clone().text()).toBe(200);
-  }
-  if (jobs) await allowSequences(world, profile, options.sequenceHidden!);
-  await makeGrantable(world, [profile.id]);
-  const user = await addMember(world, `ql-op-${randomUUID().slice(0, 4)}`);
-  expect((await grant(world, user.id, profile.id)).status).toBe(201);
-  const as = { user: user.id, tenant: world.tenant.id };
-  if (options.mouId) {
-    const response = await world.api.request('PUT', `${BASE}/scopes/${user.id}/${QL_APP}`, {
-      ...world.asAdmin,
-      ifMatch: 0,
-      body: { kind: 'mou', mouId: options.mouId },
-    });
-    expect(response.status, await response.clone().text()).toBe(200);
-  }
-  const request = (method: string, path: string, extra: Parameters<typeof world.api.request>[2] = {}) =>
-    world.api.request(method, `${QL_BASE}${path}`, { ...as, ...extra });
-  return { request };
-}
-
-/** 组织员工侧：职务序列看全部（序列无组织字段），按需隐藏字段。 */
-async function allowSequences(
-  world: PermissionWorld,
-  profile: Awaited<ReturnType<typeof createProfile>>,
-  hidden: string[],
-) {
-  const definition = MODULE_OBJECTS.jobSequence;
-  const response = await setObjectPermission(
-    world,
-    profile,
-    {
-      dataOperations: { create: false, update: false, delete: false },
-      fields: definition.fields.map((field) => ({
-        fieldCode: field.code,
-        view: !hidden.includes(field.code),
-        edit: false,
-      })),
-      buttons: [],
-    },
-    definition.code,
-  );
-  expect(response.status, await response.clone().text()).toBe(200);
-  const scope = await world.api.request('PUT', `${BASE}/profiles/${profile.id}/data-scopes/TenantBase`, {
-    ...world.asAdmin,
-    ifMatch: 0,
-    body: { targetKind: 'app', targetCode: '', seeAll: true },
-  });
-  expect(scope.status, await scope.clone().text()).toBe(200);
-}
 
 describe('任职资格配置的数据范围与向下公开', () => {
   let world: PermissionWorld;
@@ -237,7 +30,7 @@ describe('任职资格配置的数据范围与向下公开', () => {
     data = await seed(world);
   });
 
-  it('数据范围缺省为空：列表为空、详情 404、新建 403 NO_MANAGEMENT_UNIT', async () => {
+  it('DEC-043 数据范围缺省为空：列表为空、详情 404、新建 403 NO_MANAGEMENT_UNIT', async () => {
     const op = await operator(world, {});
     const list = await op.request('GET', '/categories');
     expect(await list.json()).toMatchObject({ items: [], hasDataPermission: false });
@@ -249,7 +42,7 @@ describe('任职资格配置的数据范围与向下公开', () => {
     );
   });
 
-  it('下级单元管理员：上级向下公开的对象可读不可写（403），不公开的与范围外的同一个 404', async () => {
+  it('DEC-324② 下级单元管理员：上级向下公开的对象可读不可写（403），不公开的与范围外的同一个 404', async () => {
     const op = await operator(world, { mouId: data.childMou });
     const list = (await (await op.request('GET', '/categories')).json()) as { items: { id: string }[] };
     expect(list.items.map((c) => c.id)).toEqual([data.open.id]);
@@ -280,7 +73,7 @@ describe('任职资格配置的数据范围与向下公开', () => {
     expect(await own.json()).toMatchObject({ ownerOrgId: data.child, publicDown: false });
   });
 
-  it('带出值 #1：看不到指标说明时，新建标准不复制，能力标准留空；看得到时复制', async () => {
+  it('DEC-309 带出值 #1：看不到指标说明时，新建标准不复制，能力标准留空；看得到时复制', async () => {
     const hiddenOp = await operator(world, { mouId: data.childMou, hidden: { target: ['description'] } });
     const visibleOp = await operator(world, { mouId: data.childMou });
     const results: string[] = [];
@@ -313,7 +106,7 @@ describe('任职资格配置的数据范围与向下公开', () => {
     expect(results).toEqual(['', '保密说明']);
   });
 
-  it('带出值 #2：通用指标覆盖写入的能力标准，看不到指标说明时只给标记、不给值', async () => {
+  it('DEC-309 带出值 #2：通用指标覆盖写入的能力标准，看不到指标说明时只给标记、不给值', async () => {
     const hiddenOp = await operator(world, { mouId: data.childMou, hidden: { target: ['description'] } });
     const standard = (await (await hiddenOp.request('GET', `/standards/${data.standardId}`)).json()) as StandardView;
     const ability = standard.details[0]!.abilities[0]!;
@@ -324,22 +117,31 @@ describe('任职资格配置的数据范围与向下公开', () => {
     expect(shown.details[0]!.abilities[0]).toMatchObject({ content: '通用保密说明', source: 'common_overwrite' });
   });
 
-  it('带出值 #3：看不到等级方案明细时，未手改的指标等级描述不给值', async () => {
-    type Descriptions = { items: { gradeDetailId: string; description?: string; modified: boolean }[] };
+  it('DEC-309 带出值 #3：未手改的等级描述随等级方案的读取范围与明细字段权；看不到时不给描述、名称与等级', async () => {
+    type Descriptions = {
+      items: { gradeDetailId: string; description?: string; name?: string; grade?: number; modified: boolean }[];
+    };
     const read = async (op: Awaited<ReturnType<typeof operator>>) => {
       const response = await op.request('GET', `/targets/${data.gradeTarget}/grade-descriptions`);
       expect(response.status, await response.clone().text()).toBe(200);
       return ((await response.json()) as Descriptions).items;
     };
-    const hidden = await read(await operator(world, { mouId: data.childMou, hidden: { gradeScheme: ['details'] } }));
-    expect(hidden).toHaveLength(1);
-    expect(hidden[0]).toMatchObject({ modified: false });
-    expect(hidden[0]).not.toHaveProperty('description');
-    const shown = await read(await operator(world, { mouId: data.childMou }));
-    expect(shown[0]).toMatchObject({ description: '明细保密描述', modified: false });
+    // 方案读取范围外（等级方案是字典：看全部或创建人）
+    const outOfScheme = await read(await operator(world, { mouId: data.childMou }));
+    // 方案可读，但看不到明细字段
+    const hiddenDetails = await read(
+      await operator(world, { mouId: data.childMou, seeAll: true, hidden: { gradeScheme: ['details'] } }),
+    );
+    for (const items of [outOfScheme, hiddenDetails]) {
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ modified: false });
+      for (const key of ['description', 'name', 'grade']) expect(items[0]).not.toHaveProperty(key);
+    }
+    const shown = await read(await operator(world, { mouId: data.childMou, seeAll: true }));
+    expect(shown[0]).toMatchObject({ description: '明细保密描述', name: '初级', grade: 1, modified: false });
   });
 
-  it('带出值 #4：看不到岗职务的编码 / 名称时，引入不带出（须自己填）；看得到时带出', async () => {
+  it('DEC-309 带出值 #4：看不到岗职务的编码 / 名称时，引入不带出（须自己填）；看得到时带出', async () => {
     const importInto = async (op: Awaited<ReturnType<typeof operator>>, item: Record<string, unknown>) => {
       const klass = (await (
         await op.request('POST', '/category-classes', {

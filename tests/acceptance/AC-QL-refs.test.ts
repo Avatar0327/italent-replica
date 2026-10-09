@@ -59,7 +59,7 @@ async function fixture(label: string) {
 }
 
 describe('PR-A 冻结契约：assertQualificationRefs', () => {
-  it('范围内且启用通过；范围外与不存在同一个 404；没有查看权 403；停用 400', async () => {
+  it('DEC-281⑧ 范围内且启用通过；范围外与不存在同一个 404；没有查看权 403；停用 400', async () => {
     const { w, other, tx, insert, scoped, access } = await fixture('ql-refs-basic');
     const mine = await insert(w.orgId);
     const theirs = await insert(other);
@@ -90,7 +90,7 @@ describe('PR-A 冻结契约：assertQualificationRefs', () => {
     });
   });
 
-  it('向下公开：上级组织的类别打开向下公开后，下级范围的操作人可以引用；关闭时 404', async () => {
+  it('DEC-324② 向下公开：上级组织的类别打开向下公开后，下级范围的操作人可以引用；关闭时 404', async () => {
     const { w, child, tx, insert, scoped, access } = await fixture('ql-refs-public-down');
     const closed = await insert(w.orgId);
     const open = await insert(w.orgId, { publicDown: true });
