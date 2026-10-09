@@ -36,11 +36,13 @@ const ANSWER_ENDPOINTS = [
   `POST ${ACT}/sheets/block-suspected`,
   `POST ${ACT}/sheets/unblock-all`,
   `GET ${ACT}/score-tables`,
+  `GET ${ACT}/score-tables/download`,
   `GET ${ACT}/objects/:objectId/scores`,
   `GET ${ACT}/progress`,
   `GET ${ACT}/progress/:personId`,
   `GET ${ACT}/reports`,
   `GET ${ACT}/reports/:reportId`,
+  `GET ${ACT}/reports/:reportId/download`,
   `POST ${ACT}/reports/generate`,
   `POST ${ACT}/reports/forward/preview`,
   `GET ${SURVEY}/my/todos`,
@@ -50,6 +52,7 @@ const ANSWER_ENDPOINTS = [
   `GET ${LINK}/tasks/:relationId/questionnaires/:questionnaireId`,
   `GET ${REPORT_LINK}`,
   `GET ${REPORT_LINK}/reports/:reportId`,
+  `GET ${REPORT_LINK}/reports/:reportId/download`,
   `GET ${AUDIT}/data-changes`,
   `GET ${AUDIT}/data-changes/:id`,
   `GET ${AUDIT}/operation-logs`,
@@ -57,7 +60,12 @@ const ANSWER_ENDPOINTS = [
 ] as const;
 
 /** 报告正文：附录里的建议 / 备注原文是匿名汇总，允许出现。 */
-const REPORT_CONTENT = new Set<string>([`GET ${ACT}/reports/:reportId`, `GET ${REPORT_LINK}/reports/:reportId`]);
+const REPORT_CONTENT = new Set<string>([
+  `GET ${ACT}/reports/:reportId`,
+  `GET ${ACT}/reports/:reportId/download`,
+  `GET ${REPORT_LINK}/reports/:reportId`,
+  `GET ${REPORT_LINK}/reports/:reportId/download`,
+]);
 
 const CONFIG = '配置 / 人员名单，不含答卷';
 const ROSTER = '活动、对象、评价关系、授权、邀请与待办发送：名单与状态，不含答卷';
@@ -183,6 +191,7 @@ function fill(route: string, t: Target, auditId = ''): string {
 
 const QUERIES: Readonly<Record<string, string>> = {
   [`GET ${ACT}/score-tables`]: '?level=questionnaire',
+  [`GET ${ACT}/score-tables/download`]: '?level=questionnaire',
   [`GET ${AUDIT}/data-changes`]: '?limit=100&objectType=survey360-sheet',
   [`GET ${AUDIT}/operation-logs`]: '?limit=100',
   [`GET ${AUDIT}/command-failures`]: '?limit=100',
