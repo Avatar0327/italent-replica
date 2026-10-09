@@ -287,8 +287,11 @@ describe('AC-EMP-F058-P1 ensureHiredAccount 的三类业务和两条绑定分支
         revision = ending.employeeRevision;
         if (binding === 'new') {
           // 模拟已导入任职历史、账号对应尚未初始化的存量人员；待测新业务仍走真实 HTTP 与自动建档端口。
-          await w.db.execute(sql`DELETE FROM permission_user_person_links
-          WHERE tenant_id=${w.tenant.id} AND employee_id=${employee.id}::uuid`);
+          await w.db.transaction(async (tx) => {
+            await tx.execute(sql`SELECT set_config('app.tenant_id',${w.tenant.id},true)`);
+            await tx.execute(sql`DELETE FROM permission_user_person_links
+              WHERE tenant_id=${w.tenant.id} AND employee_id=${employee.id}::uuid`);
+          });
         }
       }
       const target = binding === 'new' ? await addMember(w, `avatar-new-binding-${kind}`) : null;
