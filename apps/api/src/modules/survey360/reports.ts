@@ -457,7 +457,11 @@ async function reportPdf(tenantKey: string, report: ReportBody): Promise<Respons
   return fileResponse(pdf, 'application/pdf', attachmentName(`${subject ? `${subject}-` : ''}个人报告`, 'pdf'));
 }
 
-/** 转发让收件人看到整份报告：发送人须能看到报告正文涉及的全部结果字段，否则 403（第 2 轮 P2-5）。 */
+/**
+ * 转发让收件人看到整份报告：发送人须能看到报告正文涉及的全部结果字段，以及封面里活动名称的来源 Activity.name，
+ * 否则 403（第 2 轮 P2-5；F-060 第 3 轮 P2-R2-1：收件人报告不按发送人裁剪，转发给自己就能读回被隐藏的名称）。
+ * 预览与执行同一处检查。
+ */
 const REPORT_FIELDS = [
   'cover',
   'questionnaires',
@@ -467,8 +471,10 @@ const REPORT_FIELDS = [
 ];
 async function requireFullReportView(tx: Tx, deps: TenantRouteDeps, tenant: TenantContext) {
   const fields = await getModuleViewableFieldsInTransaction(deps, tenant, OBJECTS.result.code, tx);
-  if (fields && REPORT_FIELDS.some((f) => !fields.has(f)))
-    fail('FORBIDDEN', '对报告内容没有完整的查看权限，不能转发', 'REPORT_FIELDS_RESTRICTED');
+  const activityFields = await getModuleViewableFieldsInTransaction(deps, tenant, OBJECTS.activity.code, tx);
+  const restricted =
+    (fields && REPORT_FIELDS.some((f) => !fields.has(f))) || (activityFields && !activityFields.has('name'));
+  if (restricted) fail('FORBIDDEN', '对报告内容没有完整的查看权限，不能转发', 'REPORT_FIELDS_RESTRICTED');
 }
 
 /** 报告详情与 PDF 下载：同一个 detail（权限、范围、报告失效拦截都在这里），只是响应格式不同。 */
