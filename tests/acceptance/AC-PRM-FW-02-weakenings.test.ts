@@ -110,6 +110,38 @@ describe('AC-PRM-FW-02 必需准入分支不能移进 optional（实现审第 2 
     expect(reported(findings), describeFindings(findings)).toBe(true);
   });
 
+  it('经理汇报关系页：只把必需的 Transfer.Hr 按钮这一个叶子移进 optional → 报出（实现审第 3 轮）', () => {
+    const base = route('GET /api/tenant/employment/transfers/manager/reporting');
+    const policy = base.policy as Extract<RoutePolicy, { kind: 'object' }>;
+    expect(JSON.stringify(policy.button)).toContain('Transfer.Hr');
+    const moved = {
+      ...policy,
+      button: { none: true as const, reason: '弱化' },
+      optional: {
+        ...(policy.optional ?? {}),
+        hr: {
+          kind: 'object' as const,
+          object: policy.object,
+          operation: 'button' as const,
+          button: policy.button,
+          scope: { mode: 'none' as const, reason: '弱化' },
+          fields: { mode: 'none' as const, reason: '弱化' },
+        },
+      },
+    } as RoutePolicy;
+    const findings = compareDeclarations(frozen, [withPolicy(base, moved)]);
+    expect(reported(findings), describeFindings(findings)).toBe(true);
+  });
+
+  it('同一个布尔授权函数按调用点区分：经理入口 canViewReporting 是披露，汇报关系页的 403 判定是准入', () => {
+    const entry = frozen.routes['GET /api/tenant/employment/transfers/manager']!.primitives;
+    const reporting = frozen.routes['GET /api/tenant/employment/transfers/manager/reporting']!.primitives;
+    expect(entry['disclose']).toContain('button');
+    expect(entry['button']).toBeUndefined();
+    expect(reporting['button']?.length).toBeGreaterThan(0);
+    expect(reporting['disclose'] ?? []).not.toContain('button');
+  });
+
   it('360 评价者导入：员工信息查看只在 sync=true 时校验，登记为条件守卫而不是无条件 AND', () => {
     const policy = route('POST /api/tenant/survey360/activities/:id/appraisers/import').policy;
     expect(JSON.stringify(policy)).toContain('"survey360.syncEmployees"');

@@ -3,13 +3,19 @@
  * 生成的每一个都必须被比较器报出（WEAKER:* / MISMATCH:*）。与 mutate.ts 的突变套件互补：突变套件按基准观测到
  * 的维度逐类削弱；这里覆盖组合与绑定类削弱——删 all 的分支、all → any、any 的分支降为普通成员、
  * 关系降为普通成员、动态选择器换成别的域、必需准入分支移进 optional（实现审第 2 轮 P2-1 残项：可选分支只决定
- * 附加披露，不能顶替必需授权）。
+ * 附加披露，不能顶替必需授权）、单个叶子准入（按钮 / 对象数据操作）移进 optional（实现审第 3 轮）。
  */
 import type { ManifestRoute, RoutePolicy } from '@italent/api';
 import type { ObservedContract } from './contract.js';
 
 export type WeakeningKind =
-  'all-drop-branch' | 'all→any' | 'any-branch→member' | 'relation→member' | 'selector→domain' | 'required→optional';
+  | 'all-drop-branch'
+  | 'all→any'
+  | 'any-branch→member'
+  | 'relation→member'
+  | 'selector→domain'
+  | 'required→optional'
+  | 'leaf→optional';
 
 export interface Weakening {
   readonly kind: WeakeningKind;
@@ -25,6 +31,7 @@ export const WEAKENING_KINDS: readonly WeakeningKind[] = [
   'relation→member',
   'selector→domain',
   'required→optional',
+  'leaf→optional',
 ];
 
 type Node = Record<string, unknown>;
@@ -90,6 +97,38 @@ function admissionToOptional(policy: Node): Node {
   };
 }
 
+const NONE = { none: true, reason: '弱化反例' };
+const NO_SCOPE = { mode: 'none', reason: '弱化反例' };
+const NO_FIELDS = { mode: 'none', reason: '弱化反例' };
+
+/**
+ * 单个叶子准入移进根上的 optional：按钮（准入节点按钮改为 none，另挂一个只判该按钮的可选对象节点），或对象数据
+ * 操作（准入节点退为只判按钮 / 普通成员，另挂一个只判该对象操作的可选节点）。其余登记不变。
+ */
+function leafToOptional(route: ManifestRoute, at: string, leaf: 'button' | 'operation'): ManifestRoute {
+  const root = structuredClone(route.policy) as unknown as Node;
+  let moved: Node | undefined;
+  for (const [path, node] of nodes(root)) {
+    if (path !== at) continue;
+    if (leaf === 'button') {
+      moved = { kind: 'object', object: node['object'], operation: 'button', button: node['button'] };
+      node['button'] = NONE;
+    } else {
+      moved = { kind: 'object', object: node['object'], operation: node['operation'], button: NONE };
+      if (node['button'] && !(node['button'] as Node)['none']) node['operation'] = 'button';
+      else {
+        const replacement = member(node);
+        for (const key of Object.keys(node)) delete node[key];
+        Object.assign(node, replacement);
+      }
+    }
+  }
+  if (!moved) return route;
+  const optional = (root['optional'] as Node | undefined) ?? {};
+  root['optional'] = { ...optional, [`moved${leaf}`]: { ...moved, scope: NO_SCOPE, fields: NO_FIELDS } };
+  return { ...route, policy: root as unknown as RoutePolicy };
+}
+
 function isSelector(value: unknown): value is Node {
   return !!value && typeof value === 'object' && 'from' in value;
 }
@@ -149,6 +188,15 @@ export function weakeningsOf(route: ManifestRoute, contract: ObservedContract): 
       }
     }
     if (node['kind'] === 'relation') push('relation→member', at, replaceAt(route, at, member));
+    if (node['kind'] === 'object') {
+      const button = node['button'] as Node | undefined;
+      if (button && !button['none'] && node['operation'] !== 'button') {
+        push('leaf→optional', `${at}button`, leafToOptional(route, at, 'button'));
+      }
+      if (node['operation'] !== 'button') {
+        push('leaf→optional', `${at}operation`, leafToOptional(route, at, 'operation'));
+      }
+    }
     for (const key of [...SELECTOR_KEYS, 'objectType']) {
       const selector = node[key];
       if (!isSelector(selector)) continue;
