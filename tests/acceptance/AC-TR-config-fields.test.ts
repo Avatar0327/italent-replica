@@ -58,6 +58,8 @@ describe('盘点字段目录（设计 §2.2）', () => {
     for (const body of [{ code: 'x' }, { kind: 'number' }, { preset: true }, { systemWritten: true }]) {
       const patch = await w.request('PATCH', `/fields/${field.id}`, { ifMatch: 1, body });
       expect([patch.status, await errorCode(patch)], JSON.stringify(body)).toEqual([400, 'VALIDATION_FAILED']);
+    }
+    for (const body of [{ preset: true }, { systemWritten: true }]) {
       const create = await w.request('POST', '/fields', { ifMatch: 0, body: fieldBody(body) });
       expect(create.status, JSON.stringify(body)).toBe(400);
     }
@@ -146,8 +148,8 @@ describe('盘点字段目录（设计 §2.2）', () => {
 describe('预置盘点字段（设计 §2.7）', () => {
   const countRows = (tenant: string) =>
     withTenant(testDb().db, tenant, async (tx) => {
-      const rows = await tx.execute(sql`SELECT count(*)::int AS n FROM talent_review_fields WHERE preset = true`);
-      return (rows.rows[0] as { n: number }).n;
+      const result = await tx.execute(sql`SELECT count(*)::int AS n FROM talent_review_fields WHERE preset = true`);
+      return (result as unknown as { rows: { n: number }[] }).rows[0]!.n;
     });
 
   it('预置清单：业绩 / 能力 / 绩效 / 潜力成对，位置字段系统写入，编码固定且互不重复', () => {

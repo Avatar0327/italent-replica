@@ -32,14 +32,14 @@ export type ConfigObject = ConfigKind | 'settings';
 let counter = 0;
 const next = () => {
   counter += 1;
-  return `${counter}-${randomUUID().slice(0, 4)}`;
+  return `${counter}_${randomUUID().slice(0, 4)}`;
 };
 /** 每种配置对象的最小合法载荷（编码 / 名称唯一）。 */
 export const configBody = (kind: ConfigKind, extra: Record<string, unknown> = {}): Record<string, unknown> => {
   const n = next();
   if (kind === 'category') return { name: `分类${n}`, ...extra };
-  if (kind === 'role') return { code: `role-${n}`, name: `角色${n}`, resolver: 'direct_manager', ...extra };
-  return { code: `fld-${n}`, name: `字段${n}`, kind: 'text', group: 'evaluation', ...extra };
+  if (kind === 'role') return { code: `role_${n}`, name: `角色${n}`, resolver: 'direct_manager', ...extra };
+  return { code: `fld_${n}`, name: `字段${n}`, kind: 'text', group: 'evaluation', ...extra };
 };
 
 export interface ConfigView {

@@ -24,12 +24,14 @@ import {
   trimReview,
   type TalentReviewContext,
 } from './access.js';
+import { registerConfigRoutes } from './config-routes.js';
 import { readinessCreate, readinessPatch } from './readiness-input.js';
 import * as readiness from './readiness-service.js';
 
 const PATH = `${TALENT_REVIEW_BASE}/readiness-levels`;
 
 export function registerTalentReviewRoutes(router: Hono<TenantEnv>, deps: TenantRouteDeps): void {
+  registerConfigRoutes(router, deps); // PR-B1：设置、分类、角色、字段目录
   router.get(PATH, async (c) => {
     const ctx = await reviewContext(c, deps, 'readiness');
     const page = pageQuery(c);

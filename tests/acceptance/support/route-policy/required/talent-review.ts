@@ -73,7 +73,105 @@ function change(operation: Exclude<Operation, 'view'>): Obligation[] {
   ];
 }
 
+// ---- R3-T04 PR-B1：设置 / 分类 / 角色 / 字段目录（modules/talent-review/config-routes.ts） ----------------------------
+const CFG = `${T}/config-routes.ts`;
+const CATALOG = 'packages/domain/src/talent-review/catalog.ts#TALENT_REVIEW_OBJECTS';
+const cfgView = (object: string, constKey: string, label: string, register: string, anchor: string): Obligation => ({
+  perm: `obj:${object}:view`,
+  facts: ['object:objectContext'],
+  at: [
+    { role: 'call', unit: `${CFG}#${register}`, anchor },
+    ...CONTEXT,
+    { role: 'const', unit: `${CATALOG}>${constKey}`, anchor: `object('${label}'` },
+  ],
+});
+function cfgChange(
+  object: string,
+  constKey: string,
+  label: string,
+  register: string,
+  operation: Exclude<Operation, 'view'>,
+): Obligation[] {
+  const entry: Evidence = {
+    role: 'call',
+    unit: `${CFG}#${register}`,
+    anchor: `const ctx = await reviewWriteContext(c, deps, '${constKey}', '${operation}', revision(c))`,
+  };
+  const objectConst: Evidence = { role: 'const', unit: `${CATALOG}>${constKey}`, anchor: `object('${label}'` };
+  const level = operation === 'create' ? 'list' : 'detail';
+  return [
+    { perm: `obj:${object}:${operation}`, facts: ['object:objectContext'], at: [entry, ...CONTEXT, objectConst] },
+    {
+      perm: `btn:${object}#${operation}@${level}`,
+      facts: ['button:button()'],
+      at: [
+        entry,
+        ...BUTTON,
+        { role: 'const', unit: `${ACCESS}#WRITE_BUTTONS`, anchor: `${operation}: ['${operation}', '${level}']` },
+      ],
+    },
+  ];
+}
+const FILTER_GUARD: Obligation = {
+  perm: 'guard:talentReview.filterFieldVisible',
+  facts: ['guard:talentReview.filterFieldVisible'],
+  note: '带 enabled 筛选而无 enabled 字段查看权 → 403 FILTER_FIELD_HIDDEN（字段级，只在带筛选时判定）',
+  at: [
+    {
+      role: 'call',
+      unit: `${CFG}#listResponse`,
+      anchor: "if (enabled !== undefined) await requireFilterVisible(deps, ctx, object, 'enabled')",
+    },
+    {
+      role: 'impl',
+      unit: `${ACCESS}#requireFilterVisible`,
+      anchor: "throw new AppError('FORBIDDEN', '无权按该字段筛选', { reason: 'FILTER_FIELD_HIDDEN', field })",
+    },
+  ],
+};
+const RENAME_GUARD: Obligation = {
+  perm: 'guard:talentReview.configRenameRequiresSeeAll',
+  facts: ['guard:talentReview.configRenameRequiresSeeAll'],
+  note: '名称实际变化且不是看全部 → 403 NAME_REQUIRES_SEE_ALL（在查重之前判定，不暴露隐藏记录）',
+  at: [
+    {
+      role: 'call',
+      unit: `${T}/config-kit.ts#requireSeeAllToRename`,
+      anchor: 'if (name !== undefined && name !== before.name && !ctx.scope.all) {',
+    },
+  ],
+};
+
+/** 分类 / 角色 / 字段目录五条路由；settings 另列（单例，只有读与改）。 */
+function cfgObject(key: string, label: string, register: string, base: string, constName: string): RequiredTable {
+  const object = `TalentReview.${label}`;
+  const get = (anchor: string) => cfgView(object, key, label, register, anchor);
+  const ctx = `const ctx = await reviewContext(c, deps, '${key}')`;
+  return {
+    [`GET ${BASE_ROOT}/${base}`]: [get(`router.get(${constName}, async (c) => { ${ctx}`), FILTER_GUARD],
+    [`GET ${BASE_ROOT}/${base}/:id`]: [get(`router.get(\`\${${constName}}/:id\`, async (c) => { ${ctx}`)],
+    [`POST ${BASE_ROOT}/${base}`]: cfgChange(object, key, label, register, 'create'),
+    [`PATCH ${BASE_ROOT}/${base}/:id`]: [...cfgChange(object, key, label, register, 'update'), RENAME_GUARD],
+    [`DELETE ${BASE_ROOT}/${base}/:id`]: cfgChange(object, key, label, register, 'delete'),
+  };
+}
+const BASE_ROOT = '/api/tenant/talent-review';
+const SETTINGS_OBJECT = 'TalentReview.Settings';
+
 export const TALENT_REVIEW: RequiredTable = {
+  ...cfgObject('category', 'Category', 'registerCategories', 'categories', 'CATEGORIES'),
+  ...cfgObject('role', 'Role', 'registerRoles', 'roles', 'ROLES'),
+  ...cfgObject('field', 'Field', 'registerFields', 'fields', 'FIELDS'),
+  [`GET ${BASE_ROOT}/settings`]: [
+    cfgView(
+      SETTINGS_OBJECT,
+      'settings',
+      'Settings',
+      'registerSettings',
+      "router.get(SETTINGS, async (c) => { const ctx = await reviewContext(c, deps, 'settings')",
+    ),
+  ],
+  [`PATCH ${BASE_ROOT}/settings`]: cfgChange(SETTINGS_OBJECT, 'settings', 'Settings', 'registerSettings', 'update'),
   [`GET ${BASE}`]: [
     view(`router.get(PATH, async (c) => { ${VIEW}`),
     {

@@ -572,11 +572,21 @@ export const DIGESTS: Digests = {
     reviewContext: 'a98e74068a24',
     reviewWriteContext: '007b2d9a1eb5',
   },
+  'apps/api/src/modules/talent-review/config-kit.ts': {
+    requireSeeAllToRename: 'a8243eb93805',
+  },
+  'apps/api/src/modules/talent-review/config-routes.ts': {
+    listResponse: 'e3a37c9329ff',
+    registerCategories: '1c2039a34ebe',
+    registerFields: 'fd4b09a41a60',
+    registerRoles: 'f9cfdcf8d767',
+    registerSettings: '162387861cef',
+  },
   'apps/api/src/modules/talent-review/readiness-service.ts': {
     updateReadiness: '6ebb3ee4b3e3',
   },
   'apps/api/src/modules/talent-review/routes.ts': {
-    registerTalentReviewRoutes: 'cdb0f96da9cd',
+    registerTalentReviewRoutes: '3ab290d0f03e',
   },
   'apps/api/src/modules/talent/access.ts': {
     DATA_OPERATION: 'bb93cac2ac78',
@@ -749,7 +759,11 @@ export const DIGESTS: Digests = {
     crud: 'a441bd24abb2',
   },
   'packages/domain/src/talent-review/catalog.ts': {
+    'TALENT_REVIEW_OBJECTS>category': '4e80ece39877',
+    'TALENT_REVIEW_OBJECTS>field': '0d3439dea979',
     'TALENT_REVIEW_OBJECTS>readiness': 'a1857e585c0c',
+    'TALENT_REVIEW_OBJECTS>role': '25aaaf980051',
+    'TALENT_REVIEW_OBJECTS>settings': '81657ab4046d',
   },
   'packages/domain/src/talent/catalog.ts': {
     'TALENT_OBJECTS>criterion': '48b1c187e566',

@@ -34,6 +34,7 @@ import {
   type InstalledProfile,
 } from '../permission/standard-profiles.js';
 import { installTalentPresets } from '../talent/presets.js';
+import { installTalentReviewPresets } from '../talent-review/presets.js';
 
 /** 开通时登记的外部用户业务身份（DEC-158，符合 DEC-128）。 */
 export const FIRST_ADMIN_IDENTITY = '租户管理员';
@@ -113,6 +114,7 @@ export async function provisionTenant(
       const settings = await installSwitches(tx, scoped);
       const processes = await publishPresetProcesses(tx, scoped);
       await installTalentPresets(tx, write);
+      await installTalentReviewPresets(tx, write);
       return { settings, processes, licenses: await listBalances(tx) };
     });
     const summary: ProvisionResult = {

@@ -526,6 +526,13 @@
       "when": 1791537603883,
       "tag": "0074_talent_review_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1791552246352,
+      "tag": "0075_talent_review_config",
+      "breakpoints": true
     }
   ]
 }

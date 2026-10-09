@@ -64,10 +64,12 @@ describe('盘点租户设置（设计 §2.2）', () => {
     expect([replay.status, await replay.json()]).toEqual([200, await first.json()]);
     const conflict = await w.request('PATCH', '/settings', { ...options, body: { selfResultVisible: false } });
     expect(await errorCode(conflict)).toBe('IDEMPOTENCY_CONFLICT');
+    const racer = await configWorld(testDb().db, 'trc-settings-race');
     const racing = await Promise.all(
-      [1, 2].map((n) => w.request('PATCH', '/settings', { ifMatch: 0, body: { doneHideSuccession: n === 1 } })),
+      [1, 2].map((n) => racer.request('PATCH', '/settings', { ifMatch: 0, body: { doneHideSuccession: n === 1 } })),
     );
-    expect(racing.map((response) => response.status).sort()).toEqual([409, 409]);
+    expect(racing.map((response) => response.status).sort()).toEqual([200, 409]);
+    expect(((await (await racer.request('GET', '/settings')).json()) as SettingsView).revision).toBe(1);
   });
 
   it('系统主体必须是本租户的有效成员；其他租户、不存在、非 UUID 都是 400，可以显式清空', async () => {

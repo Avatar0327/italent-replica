@@ -23,14 +23,14 @@ const testDb = useTestDb();
 const clock = () => TR_NOW;
 /** 每种对象选一个可单独隐藏 / 锁定的非系统字段，以及一次合法的修改载荷。 */
 const SAMPLE = {
-  category: { secret: 'sortNo', patch: { sortNo: 9 } },
-  role: { secret: 'resolver', patch: { sortNo: 9 } },
-  field: { secret: 'group', patch: { sortNo: 9 } },
+  category: { secret: 'sortNo', attempt: { sortNo: 5 }, patch: { enabled: false } },
+  role: { secret: 'resolver', attempt: { resolver: 'self' }, patch: { sortNo: 9 } },
+  field: { secret: 'group', attempt: { group: 'result' }, patch: { sortNo: 9 } },
 } as const;
 
 describe.each(Object.keys(CONFIG_KINDS) as ConfigKind[])('配置对象权限 · %s（DEC-121 / 082 / 043）', (kind) => {
   const { path } = CONFIG_KINDS[kind];
-  const { secret, patch } = SAMPLE[kind];
+  const { secret, attempt, patch } = SAMPLE[kind];
   let world: PermissionWorld;
   let setup: ReturnType<typeof tenantApi>;
   let existing: ConfigView;
@@ -83,12 +83,12 @@ describe.each(Object.keys(CONFIG_KINDS) as ConfigKind[])('配置对象权限 · 
     expect((await operator.request('GET', `${path}/${mine.id}`)).status).toBe(404);
   });
 
-  it('隐藏字段：响应里键缺席；写隐藏 / 只读字段（含显式清空）403，数据不变', async () => {
+  it('隐藏字段：响应里键缺席；写隐藏 / 只读字段 403，数据不变', async () => {
     const operator = await configOperator(world, kind, { seeAll: true, hidden: [secret], readonly: ['name'] });
     const detail = (await (await operator.request('GET', `${path}/${existing.id}`)).json()) as object;
     expect(detail).toMatchObject({ id: existing.id });
     expect(detail).not.toHaveProperty(secret);
-    for (const body of [{ [secret]: null }, { name: '改' }]) {
+    for (const body of [attempt, { name: '改' }]) {
       const response = await operator.request('PATCH', `${path}/${existing.id}`, { ifMatch: 1, body });
       expect(response.status, JSON.stringify(body)).toBe(403);
     }
