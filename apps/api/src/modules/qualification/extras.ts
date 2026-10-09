@@ -53,8 +53,9 @@ export function registerExtras(router: Hono<TenantEnv>, deps: TenantRouteDeps): 
  * 导入 / 引入失败时的任务级日志（DEC-199）：只取行数与可识别的归属编号，不存其他输入值。归属按实际操作的管理单元
  * / 目标锚点登记（第 3 轮 R2-07），让操作人与该单元的审计员经授权查询找得到：
  * - 引入类别 / 级别：请求选定的授权管理单元，没选时取唯一的授权管理单元（与新建时自动填同一口径，DEC-339）；
- * - 标准导入：行里类别的所属组织与其标准（标准锚在类别上），只认操作人当前写范围内的类别；范围外与找不到的一样
- *   退回唯一的授权管理单元——日志查不查得到不能成为范围外类别是否存在的探针。
+ * - 标准导入：行里的类别（对象编号存类别、所属组织取类别的；标准锚在类别上，标准删除后仍可判断，第 4 轮 R3-02），
+ *   只认操作人当前写范围内的类别；范围外与找不到的一样退回唯一的授权管理单元、不带对象编号（审计按执行人回退）
+ *   ——日志查不查得到不能成为范围外类别是否存在的探针。
  */
 function importTask(c: Context<TenantEnv>, deps: TenantRouteDeps, object: QualificationObject, key: 'items' | 'rows') {
   return c.req
@@ -98,17 +99,16 @@ async function operatingUnit(
 
 async function categoryAnchors(tx: Tx, tenantId: string, codes: readonly string[], scope: ModuleScope) {
   const wanted = [...new Set(codes.filter(Boolean))];
-  if (!wanted.length) return new Map<string, { objectId: string | null; orgId: string }>();
-  const rows = rowsOf<{ code: string; owner_org_id: string; standard_id: string | null }>(
-    await tx.execute(sql`SELECT c.code, c.owner_org_id, s.id AS standard_id FROM ql_categories c
-      LEFT JOIN ql_standards s ON s.tenant_id = c.tenant_id AND s.category_id = c.id
+  if (!wanted.length) return new Map<string, { objectId: string; orgId: string }>();
+  const rows = rowsOf<{ id: string; code: string; owner_org_id: string }>(
+    await tx.execute(sql`SELECT c.id, c.code, c.owner_org_id FROM ql_categories c
       WHERE c.tenant_id = ${tenantId}::uuid
         AND ${scopeSql(scope, { org: sql`c.owner_org_id`, creator: sql`c.owner_id` })} AND c.code IN (${sql.join(
           wanted.map((code) => sql`${code}`),
           sql`, `,
         )})`),
   );
-  return new Map(rows.map((row) => [row.code, { objectId: row.standard_id, orgId: row.owner_org_id }]));
+  return new Map(rows.map((row) => [row.code, { objectId: row.id, orgId: row.owner_org_id }]));
 }
 
 function registerImports(router: Hono<TenantEnv>, deps: TenantRouteDeps) {

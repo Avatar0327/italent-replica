@@ -203,7 +203,8 @@ function appConfigRules<K extends string>(
 /**
  * R3-T02 任职资格（设计 §8）：随父对象授权的对象，审计范围与业务接口同锚（第 3 轮 R2-04 / R2-05）——
  * - 标准、发展通道锚在所属类别上：按类别权限对象的范围，判类别当前的所属组织 / 所属人（不因向下公开放宽）；日志
- *   带 categoryId，任务行按行里的标准回查；类别已删除时退回日志的所属组织（只认组织维度，任务行另认执行人）；
+ *   带 categoryId、标准导入任务行的对象编号即类别，标准删除后照样能判断；类别已删除时按日志的所属组织与类别的
+ *   新增记录（创建人）判断（第 4 轮 R3-02）；没有目标类别的失败行按所属组织与执行人；
  * - 指标等级描述随指标：按指标权限对象的范围，所属组织取日志的，创建人取指标的新增记录（DEC-198）；
  * - 其余按 appConfigRules：带资源集合的按所属组织，字典只认看全部或创建人（DEC-121）。
  */
@@ -228,21 +229,32 @@ function qualificationRules(): Rule[] {
 }
 
 function categoryAnchoredRule(code: string): Rule {
+  const category = QUALIFICATION_OBJECTS.category.code;
   return {
     types: [code],
     objectCode: code,
-    scopeCode: QUALIFICATION_OBJECTS.category.code,
+    scopeCode: category,
     visible: (scope, row, viewer) => {
       if (scope.all) return sql`true`;
-      const categoryId = sql`COALESCE(${row.after}->>'categoryId', ${row.before}->>'categoryId',
-        (SELECT s.category_id::text FROM ql_standards s
-          WHERE s.tenant_id = ${viewer.tenantId}::uuid AND s.id = ${uuidOf(row.objectId)}))`;
-      const category = (predicate: SQL) => sql`EXISTS (SELECT 1 FROM ql_categories qa
+      // 类别锚点：数据变更日志取前后值里的 categoryId；任务行的对象编号就是类别（standard-service / extras）
+      const categoryId = row.actor
+        ? sql`NULLIF(${row.objectId}, '')`
+        : sql`COALESCE(${row.after}->>'categoryId', ${row.before}->>'categoryId')`;
+      const live = (predicate: SQL) => sql`EXISTS (SELECT 1 FROM ql_categories qa
         WHERE qa.tenant_id = ${viewer.tenantId}::uuid AND qa.id = ${uuidOf(categoryId)} AND ${predicate})`;
-      const fallback = anchored(scope, row.org, scopeSql(scope, { org: row.org }), row.actor ?? undefined);
-      return sql`(CASE WHEN ${category(sql`true`)}
-        THEN ${category(scopeSql(scope, { org: sql`qa.owner_org_id`, creator: sql`qa.owner_id` }))}
-        ELSE ${fallback} END)`;
+      // 类别已删除：所属组织取日志的（类别的所属组织不可改），所属人取类别的新增记录（DEC-198 最小元数据）
+      const deletedOwner = creatorSql(
+        viewer.tenantId,
+        categoryId,
+        `${QUALIFICATION_AUDIT_ACTIONS.category}.create`,
+        category,
+      );
+      // 没有目标类别（导入时找不到或范围外的行）：按所属组织，任务行另按执行人回退
+      const untargeted = scopeSql(scope, { org: row.org, ...(row.actor ? { creator: row.actor } : {}) });
+      return sql`(CASE WHEN ${live(sql`true`)}
+        THEN ${live(scopeSql(scope, { org: sql`qa.owner_org_id`, creator: sql`qa.owner_id` }))}
+        WHEN ${uuidOf(categoryId)} IS NOT NULL THEN ${scopeSql(scope, { org: row.org, creator: deletedOwner })}
+        ELSE ${untargeted} END)`;
     },
   };
 }

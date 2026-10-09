@@ -569,7 +569,8 @@ const notFound = () => new AppError('NOT_FOUND', `${QUALIFICATION_LABELS.codingR
 /**
  * 编码规则的可见范围 = 看全部 ∪ 创建人（DEC-347③，字典口径同 DEC-121）：看全部的看四项；只有“使用用户”维度的
  * 只看自己建的规则行，看不到的项（还没有人建、或别人建的）一律按缺省值呈现——占位不按全租户有没有行决定，不透露
- * 是否已被别人建过（第 3 轮 R2-02；占位口径待总编排定）；都没有的看不到。
+ * 是否已被别人建过（第 3 轮 R2-02；占位口径待总编排定）；都没有的看不到。占位只有看全部的人能保存（建行），见
+ * updateCodingRule。
  * 缺省值：未启用、无前缀、从 1 起（🟡 原站缺省值未取证）。
  */
 export async function listCodingRules(
@@ -593,16 +594,19 @@ export async function listCodingRules(
 
 export async function updateCodingRule(tx: Tx, ctx: WriteContext, item: CodingItem, body: input.CodingRulePatch) {
   if (!ctx.scope.all && !hasCreatorScope(ctx.scope)) throw notFound();
-  // 还没有人建的项由本次保存的人建（成为创建人）；已有的须在看全部 ∪ 创建人范围内，否则与不存在同一个 404
-  const inserted = rowsOf(
-    await tx.execute(sql`INSERT INTO ql_coding_rules (tenant_id, item, created_by, revision)
-      VALUES (${ctx.tenantId}, ${item}, ${ctx.userId}, 0) ON CONFLICT (tenant_id, item) DO NOTHING RETURNING id`),
-  ).length;
+  // 建行同其他字典只认看全部（DEC-121，第 4 轮 R3-01）：看全部的人保存还没有人建的项时建行并成为创建人；只有
+  // 创建人维度的人只能改自己建的行，没人建过与别人建过同一个 404，不能借 200 / 404 推断是否已被别人建过
+  const inserted = ctx.scope.all
+    ? rowsOf(
+        await tx.execute(sql`INSERT INTO ql_coding_rules (tenant_id, item, created_by, revision)
+          VALUES (${ctx.tenantId}, ${item}, ${ctx.userId}, 0) ON CONFLICT (tenant_id, item) DO NOTHING RETURNING id`),
+      ).length
+    : 0;
   const current = rowsOf<Record<string, unknown>>(
     await tx.execute(sql`SELECT t.*, (${accessSql(ctx, ctx.scope, 'dictionary').readable}) AS readable
       FROM ql_coding_rules t WHERE t.tenant_id = ${ctx.tenantId} AND t.item = ${item} FOR UPDATE OF t`),
-  )[0]!;
-  if (current.readable !== true) throw notFound();
+  )[0];
+  if (current?.readable !== true) throw notFound();
   if (current.revision !== ctx.expectedRevision) {
     throw new AppError('REVISION_CONFLICT', '编码规则已变更，请刷新后显式重提', {
       expected: ctx.expectedRevision,

@@ -490,25 +490,26 @@ export async function importStandardDetails(tx: Tx, ctx: WriteContext, body: inp
     );
     abilities += rows.length;
   }
-  const orgs = new Map<string, string>();
+  const anchors = new Map<string, { objectId: string; orgId: string }>();
   for (const standardId of standards) {
     await tx.execute(sql`UPDATE ql_standards SET revision = revision + 1, updated_at = ${ctx.now.toISOString()}
       WHERE tenant_id = ${ctx.tenantId} AND id = ${standardId}::uuid`);
     const after = await reloadStandard(tx, ctx, standardId);
-    orgs.set(standardId, after.ownerOrgId);
+    anchors.set(standardId, { objectId: after.categoryId, orgId: after.ownerOrgId });
     await audit(tx, ctx, 'standard', 'import', standardId, {
       before: before.get(standardId),
       after,
       orgId: after.ownerOrgId,
     });
   }
-  // 任务级日志（DEC-199，P2-12）：逐行成功，归属到所在标准的所属组织
+  // 任务级日志（DEC-199，P2-12）：逐行成功。逐行锚点存所属类别（对象编号）与其所属组织——标准锚在类别上，
+  // 标准删除后仍能按类别归属判断（第 4 轮 R3-02，audit/visibility.ts categoryAnchoredRule）
   await recordImportLog(
     tx,
     { ...ctx, actorUserId: auditActor(ctx.userId) },
     codeOf('standard'),
     body.rows.map((row) => ({ status: 'updated', code: row.categoryCode })),
-    resolved.map((item) => ({ objectId: item!.standardId, orgId: orgs.get(item!.standardId) ?? null })),
+    resolved.map((item) => anchors.get(item!.standardId) ?? { objectId: null, orgId: null }),
   );
   return { standards: standards.length, cells: cells.size, abilities, standardIds: standards };
 }
