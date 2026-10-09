@@ -278,6 +278,46 @@ describe('AC-EMP-F058：本人个人设置头像及通用人员头像', () => {
     expect(current).toEqual({ id: AVATAR_ID, url: CONTENT });
   });
 
+  it('登记回包前其它标签页已上传，自动上传只用本次登记 revision，409 后冻结并显式刷新', async () => {
+    const otherId = 'f0580000-0000-4000-8000-000000000002';
+    const other = { id: otherId, url: `/api/tenant/avatars/${otherId}/content` };
+    vi.mocked(fetch).mockImplementation(async (input, init = {}) => {
+      if (init.method === 'POST' && String(input) === `${BASE}/attachments`) {
+        const receipt = await mockFetch(input, init);
+        // 登记命令产生 11；其它标签页在这份回执交给 UI 之前推进到 29。
+        revision = 29;
+        current = other;
+        return receipt;
+      }
+      if (init.method === 'POST' && String(input).endsWith('/upload')) {
+        const headers = new Headers(init.headers);
+        requests.push({
+          path: String(input),
+          method: 'POST',
+          headers,
+          body: JSON.parse(String(init.body)) as Record<string, unknown>,
+        });
+        expect(headers.get('if-match')).toBe('11');
+        return json({ error: { code: 'REVISION_CONFLICT', message: '头像已变更' } }, 409);
+      }
+      return mockFetch(input, init);
+    });
+    await renderSettings();
+    await selectFile(file());
+    await click('保存头像');
+    await vi.waitFor(() => expect(host.querySelector('[role="alert"]')?.textContent).toContain('刷新'));
+    expect(writes()).toHaveLength(2);
+    expect(writes()[1]!.headers.get('if-match')).toBe('11');
+    expect(current).toEqual(other);
+    expect(button('保存头像')!.disabled).toBe(true);
+    await click('刷新');
+    await vi.waitFor(() => expect(host.querySelector('img')).toBeTruthy());
+    expect(button('删除头像')!.disabled).toBe(false);
+    expect(current).toEqual(other);
+    expect(writes()).toHaveLength(2);
+    expect(requests.filter((request) => request.method === 'GET' && request.path === BASE)).toHaveLength(2);
+  });
+
   it('超过 5MB 或伪扩展名格式在上传前拒绝且不创建命令', async () => {
     await renderSettings();
     await selectFile(file(5 * 1024 * 1024 + 1));
