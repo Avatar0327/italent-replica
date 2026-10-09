@@ -108,6 +108,14 @@ export const jump = z.strictObject({
 });
 export type JumpInput = z.infer<typeof jump>;
 
+/** 转交（F-066）：转给 toUserId；taskId 缺省取当前阶段唯一的待办；原因可选（转给自己时由审批侧要求必填）。 */
+export const transfer = z.strictObject({
+  toUserId: uuid,
+  taskId: uuid.optional(),
+  reason: z.string().trim().min(1).max(500).optional(),
+});
+export type TransferInput = z.infer<typeof transfer>;
+
 export const taskIssue = z.strictObject({
   commonGoalId: uuid,
   plans: items,

@@ -507,6 +507,21 @@ function registerInterventions(router: Hono<TenantEnv>, deps: TenantRouteDeps) {
     return respondPlan(c, deps, ctx, hr, id, 200);
   });
 
+  router.post(`${BASE}/plans/:id/transfer`, async (c) => {
+    const ctx = await idpWriteContext(c, deps, 'plan', 'update', 'transfer', 'detail', revision(c));
+    const id = uuidParam(c);
+    const body = await parseBody(c, input.transfer);
+    const hr = await idpScope(c, deps, ctx, 'plan');
+    await runIdpCommand<PlanDetail, plans.PlanWriteContext>(c, deps, ctx, {
+      ...planCommand(hr),
+      status: 200,
+      body,
+      execute: (tx, w) => intervention.transferPlan(tx, w, id, body),
+      recheck: (tx) => stillVisible(tx, ctx, hr, id),
+    });
+    return respondPlan(c, deps, ctx, hr, id, 200);
+  });
+
   router.post(`${BASE}/plans/tasks/issue`, async (c) => {
     const ctx = await idpWriteContext(c, deps, 'task', 'create', 'issue', 'list', revision(c));
     requireNew(ctx);

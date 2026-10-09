@@ -4,6 +4,8 @@
  *   每条复核范围（范围外回执 404）、revision（409）；本人为计划员工的计划不能干预（DEC-092）；
  * - 跳转：单个计划，只能跳到当前运行阶段审批流程版本里的节点（跨阶段 409 IDP_JUMP_CROSS_STAGE，AC-IDP-02），经审批中心的
  *   管理员跳转执行（须填原因，不代签 DEC-063）；
+ * - 转交（F-066，IDP-R16）：单个计划，把当前运行阶段审批实例的当前待办转给他人，经审批中心的管理员转交执行，
+ *   目标校验（有效成员、不在冻结主体集合内、不是同节点其他办理人）与本人回避都由 adminAct 判定；
  * - 统一下发任务：勾选的计划须使用同一模板（AC-IDP-06），整体成功或整体失败。
  * 取锁顺序：计划（按 ID 升序）→ 审批实例。
  */
@@ -13,15 +15,16 @@ import { AppError, ERROR_STATUS } from '../../errors.js';
 import { adminAct, urgeAsAdmin } from '../approval/actions.js';
 import type { ApprovalContext } from '../approval/context.js';
 import { personOfUser } from '../approval/resolver.js';
+import { loadTasks } from '../approval/store.js';
 import { accessOf, type ModuleScope, type Projection, rowsOf, viewable } from './access.js';
 import { insertTask } from './execution-service.js';
 import { hrSees } from './plan-access.js';
-import type { BatchItems, JumpInput, StartNextInput, TaskIssue } from './plan-input.js';
+import type { BatchItems, JumpInput, StartNextInput, TaskIssue, TransferInput } from './plan-input.js';
 import { lockPlanForHr, type PlanWriteContext } from './plan-service.js';
 import { bumpPlan, loadPlanRow, loadStages, type PlanRow, requirePlanRow } from './plan-store.js';
 import { loadPlanDetail } from './plan-view.js';
 import { cancelStageInstance, endRunningStage, openStage, type StageActor } from './stage-service.js';
-import { audit, conflict } from './write-support.js';
+import { audit, conflict, invalid } from './write-support.js';
 
 export interface Receipt {
   readonly id: string;
@@ -50,7 +53,7 @@ async function auditIntervention(
   tx: Tx,
   ctx: PlanWriteContext,
   plan: PlanRow,
-  intervention: 'urge' | 'jump' | 'terminate',
+  intervention: 'urge' | 'jump' | 'transfer' | 'terminate',
   change: { readonly before: Record<string, unknown>; readonly after: Record<string, unknown>; reason: string | null },
 ) {
   await audit(tx, ctx, 'plan', 'update', plan.id, {
@@ -158,11 +161,8 @@ export function terminatePlans(tx: Tx, ctx: PlanWriteContext, input: BatchItems)
   });
 }
 
-/** 跳转（K-43）：只能在当前运行阶段的审批流程版本内跳（AC-IDP-02）。 */
-export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, input: JumpInput) {
-  const plan = await lockPlanForHr(tx, ctx, planId);
-  // F-048 §6 #20：本人回避不在这里查实时绑定，由 adminAct 按发起 / 重提时冻结的 U(S) 判定（I′：所有者豁免，主体回避）；
-  // 冻结之后才首次绑定到该员工的所有者本轮不追溯（DEC-329⑤）。催办、终止、开启下一阶段仍用 notOwnPlan。
+/** 单个计划的干预入口共用：当前运行阶段及其进行中的审批实例（没有则 409 IDP_NO_RUNNING_STAGE）。 */
+async function runningInstance(tx: Tx, ctx: PlanWriteContext, plan: PlanRow) {
   const stage = await runningStage(tx, plan);
   if (!stage) conflict('IDP_NO_RUNNING_STAGE', '计划没有进行中的阶段');
   const [instance] = rowsOf<{ revision: number; version_id: string; status: string }>(
@@ -170,6 +170,15 @@ export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, in
       WHERE tenant_id = ${ctx.tenantId} AND id = ${stage.approvalInstanceId}::uuid`),
   );
   if (instance?.status !== 'running') conflict('IDP_NO_RUNNING_STAGE', '计划没有进行中的阶段');
+  return { stage, instance };
+}
+
+/** 跳转（K-43）：只能在当前运行阶段的审批流程版本内跳（AC-IDP-02）。 */
+export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, input: JumpInput) {
+  const plan = await lockPlanForHr(tx, ctx, planId);
+  // F-048 §6 #20：本人回避不在这里查实时绑定，由 adminAct 按发起 / 重提时冻结的 U(S) 判定（I′：所有者豁免，主体回避）；
+  // 冻结之后才首次绑定到该员工的所有者本轮不追溯（DEC-329⑤）。催办、终止、开启下一阶段仍用 notOwnPlan。
+  const { stage, instance } = await runningInstance(tx, ctx, plan);
   const nodes = rowsOf<{ node_key: string }>(
     await tx.execute(sql`SELECT node_key FROM approval_process_nodes WHERE tenant_id = ${ctx.tenantId}
       AND version_id = ${instance.version_id}::uuid`),
@@ -191,6 +200,43 @@ export async function jumpPlan(tx: Tx, ctx: PlanWriteContext, planId: string, in
     before: { stageId: stage.id, toNodeKey: null },
     after: { stageId: stage.id, toNodeKey: input.toNodeKey },
     reason: input.reason,
+  });
+  return loadPlanDetail(tx, await requirePlanRow(tx, ctx.tenantId, plan.id), tenantLocalDate(ctx.now, ctx.timezone));
+}
+
+/**
+ * 转交（F-066，IDP-R16）：把当前运行阶段审批实例的当前待办转给 `toUserId`，撤回原待办、给新人发待办。
+ * 本人回避同跳转（F-048 §6 #17 / #20，DEC-321）：不查实时绑定，由 adminAct 按冻结的 U(S) 判定；转交目标的有效性、
+ * 是否在冻结主体集合内也都由 adminAct 判定，这里不另写一套。未指定 taskId 时只在恰有一条待办时取它。
+ * 计划审计只记计划对象登记的字段；新旧审批人写在审批实例的 `approval.admin.transfer` 审计里（DEC-063）。
+ */
+export async function transferPlan(tx: Tx, ctx: PlanWriteContext, planId: string, input: TransferInput) {
+  const plan = await lockPlanForHr(tx, ctx, planId);
+  const { stage, instance } = await runningInstance(tx, ctx, plan);
+  const instanceId = stage.approvalInstanceId!;
+  const pending = (await loadTasks(tx, ctx.tenantId, instanceId)).filter((t) => t.status === 'pending');
+  if (input.taskId === undefined && pending.length > 1) {
+    invalid('当前阶段有多条待办，请指定要转交的待办', { reason: 'IDP_TRANSFER_TASK_REQUIRED' });
+  }
+  const taskId = input.taskId ?? pending[0]?.id;
+  await adminAct(
+    tx,
+    hrApproval(ctx, Number(instance.revision)),
+    {
+      instanceId,
+      kind: 'transfer',
+      toUserId: input.toUserId,
+      reason: input.reason ?? null,
+      ...(taskId ? { taskId } : {}),
+    },
+    sql`true`,
+    { ownerIntervention: true },
+  );
+  await bumpPlan(tx, ctx.tenantId, plan.id, ctx.now);
+  await auditIntervention(tx, ctx, plan, 'transfer', {
+    before: { stageId: stage.id },
+    after: { stageId: stage.id },
+    reason: input.reason ?? null,
   });
   return loadPlanDetail(tx, await requirePlanRow(tx, ctx.tenantId, plan.id), tenantLocalDate(ctx.now, ctx.timezone));
 }

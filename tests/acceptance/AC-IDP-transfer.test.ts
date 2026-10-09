@@ -82,9 +82,7 @@ describe('F-066 转交：成功路径', () => {
     expect(response.status, await response.clone().text()).toBe(200);
 
     const after = await w.instanceOf(await w.readPlan(plan.id), 1);
-    expect(after.tasks.filter((t) => t.status === 'pending').map((t) => t.assigneeUserId)).toEqual([
-      w.outsider.userId,
-    ]);
+    expect(after.tasks.filter((t) => t.status === 'pending').map((t) => t.assigneeUserId)).toEqual([w.outsider.userId]);
     expect(after.tasks.find((t) => t.id === pending[0]!.id)).toMatchObject({ status: 'transferred' });
     expect((await w.readPlan(plan.id)).revision).toBe(plan.revision + 1);
 
@@ -179,7 +177,7 @@ describe('F-066 转交：权限、范围与状态', () => {
   it('revision 不一致 409 REVISION_CONFLICT；缺 If-Match 400；缺 toUserId 400；业务不变', async () => {
     const { w, plan } = await atApprovePlan('idp-tr-rev');
     const stale = await transfer(w, plan, { toUserId: w.outsider.userId }, w.hrUser, { ifMatch: plan.revision + 9 });
-    expect(await errorOf(stale)).toMatchObject({ status: 409, reason: 'REVISION_CONFLICT' });
+    expect(await errorOf(stale)).toMatchObject({ status: 409, code: 'REVISION_CONFLICT' });
     const noMatch = await w.http(w.hrUser, 'POST', `${IDP}/plans/${plan.id}/transfer`, {
       body: { toUserId: w.outsider.userId },
     });
@@ -202,7 +200,7 @@ describe('F-066 转交：权限、范围与状态', () => {
     expect(await interventionLogs(w, plan.id)).toHaveLength(1);
     expect((await w.readPlan(plan.id)).revision).toBe(plan.revision + 1);
     const conflict = await transfer(w, plan, { ...body, reason: '另一个原因' }, w.hrUser, { idempotencyKey: key });
-    expect(await errorOf(conflict)).toMatchObject({ status: 409, reason: 'IDEMPOTENCY_CONFLICT' });
+    expect(await errorOf(conflict)).toMatchObject({ status: 409, code: 'IDEMPOTENCY_CONFLICT' });
   });
 });
 
@@ -234,8 +232,11 @@ describe('F-066 转交：本人回避（DEC-321 / F-048 §6 #17 #20）', () => {
     ]);
   });
 
-  it('转交目标是冻结主体（计划员工）：被拒，待办不变', async () => {
-    const { w, plan } = await atApprovePlan('idp-tr-subject');
+  it('转交目标是冻结主体（计划员工）：节点开启 avoidSubjects 时被拒（409 APPROVAL_SELF_REVIEW），待办不变', async () => {
+    const w = await planWorld(testDb().db, 'idp-tr-subject', {
+      nodes: { idp_tutor: { actions: { avoidSubjects: true } } },
+    });
+    const plan = await w.submit(await w.startedPlan(), 1, w.employee.userId);
     const response = await transfer(w, plan, { toUserId: w.employee.userId });
     expect(await errorOf(response)).toMatchObject({ status: 409, reason: 'APPROVAL_SELF_REVIEW' });
     expect(await w.readPlan(plan.id)).toMatchObject({ revision: plan.revision });
@@ -244,5 +245,11 @@ describe('F-066 转交：本人回避（DEC-321 / F-048 §6 #17 #20）', () => {
       w.manager.userId,
     ]);
     expect(await interventionLogs(w, plan.id)).toEqual([]);
+  });
+
+  it('目标是否回避主体只由节点开关（adminAct 既有判定）决定：预置节点未开 avoidSubjects 时可转给计划员工', async () => {
+    const { w, plan } = await atApprovePlan('idp-tr-subject-off');
+    const response = await transfer(w, plan, { toUserId: w.employee.userId });
+    expect(response.status, await response.clone().text()).toBe(200);
   });
 });
