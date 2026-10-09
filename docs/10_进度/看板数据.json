@@ -2,7 +2,7 @@
 "updated": "2026-10-09",
 "stats": {
 "merged": 109,
-"open": 13,
+"open": 15,
 "dec": 372,
 "ev": "39/154"
 },
@@ -3091,6 +3091,26 @@
 "n": "F-039 闭包边界降噪 + 独立核心摘要门禁 + 集中报告",
 "seg": "ev:n ds:a1 dev:w rev:w mg:w",
 "now": "#176 方案待审"
+},
+{
+"id": "F-073",
+"g": "base",
+"o": 5,
+"k": "run",
+"pr": 178,
+"n": "F-039 survey360 组补表 / 声明",
+"seg": "ev:n ds:n dev:d1 rev:w mg:w",
+"now": "#178 开发完成，待首审"
+},
+{
+"id": "F-075",
+"g": "base",
+"o": 5,
+"k": "run",
+"pr": 177,
+"n": "去掉 41 项冗余授权调用（DEC-369）",
+"seg": "ev:n ds:n dev:a1 rev:w mg:w",
+"now": "#177 开发中（Draft）"
 }
 ]
 }
