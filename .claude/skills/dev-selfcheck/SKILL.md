@@ -14,7 +14,7 @@ description: 所有开发任务必做（DEC-338）：开发方在 PR 上贴“�
    ```bash
    ocr delegate preview --from origin/main --to HEAD
    ```
-   `ocr` 不在 PATH 时用 `~/.npm-global/bin/ocr`；本机未安装就跳过第 2～3 步，只做第 4 步，并在评论里注明。
+   `ocr` 不在 PATH 时用 `~/.npm-global/bin/ocr`；本机未安装就先安装（`npm install -g --allow-scripts=@alibaba-group/open-code-review @alibaba-group/open-code-review`）。装不上时在“开发完成”评论里写明原因，并报告总编排（DEC-338③，不得跳过）。
 3. **按规则逐组审**：
    ```bash
    ocr delegate rule <上一步列出的文件…>
