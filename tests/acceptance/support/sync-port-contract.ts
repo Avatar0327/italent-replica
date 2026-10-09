@@ -768,6 +768,174 @@ export function runSyncPortContractSuite(name: string, factory: SyncPortFactory)
       });
     });
 
+    describe('回执与页证明的事务隔离（第 3 轮 R2-02）：未提交写入对他人不可见，同键写入互相等待', () => {
+      it('读未提交证明：执行页未提交时，其他事务读不到它的页证明与回执；提交后才可见', async () => {
+        const { tx, plan, rowOf } = await setup();
+        await plan();
+        const reached = gate();
+        const release = gate();
+        const pageA = tx(async (p, t) => {
+          await p.assertExecutionActive(t, { ...key, executionNo: 1, leaseOwner: 'w1' });
+          await p.recordOutcome(t, {
+            ...key,
+            executionNo: 1,
+            pageNo: 1,
+            pageCommandId: page(1),
+            items: [item('target', T_G1)],
+          });
+          reached.open();
+          await release.wait;
+        });
+        await reached.wait;
+        const read = tx((p, t) => p.getPageCommit(t, { ...key, pageCommandId: page(1) }));
+        expect(await settledWithin(read)).toBe(true);
+        expect(await read).toBeNull();
+        expect(await rowOf(T_G1)).toMatchObject({ status: 'pending' });
+        release.open();
+        await pageA;
+        expect(await tx((p, t) => p.getPageCommit(t, { ...key, pageCommandId: page(1) }))).toMatchObject({
+          kind: 'execute',
+        });
+        expect(await rowOf(T_G1)).toMatchObject({ status: 'synced' });
+      });
+
+      it('并发同页重放：后到的同页等先到的结束；先到的回滚后，后到的提交有效，证明与回执都保留', async () => {
+        const { tx, plan, record, rowOf } = await setup();
+        await plan();
+        const reached = gate();
+        const release = gate();
+        const pageA = tx(async (p, t) => {
+          await p.assertExecutionActive(t, { ...key, executionNo: 1, leaseOwner: 'w1' });
+          await p.recordOutcome(t, {
+            ...key,
+            executionNo: 1,
+            pageNo: 1,
+            pageCommandId: page(1),
+            items: [item('target', T_G1)],
+          });
+          reached.open();
+          await release.wait;
+          throw new Error('A 页失败');
+        });
+        await reached.wait;
+        const pageB = record([item('target', T_G1)]);
+        expect(await settledWithin(pageB)).toBe(false);
+        release.open();
+        await pageA.catch(() => undefined);
+        expect(await pageB).toMatchObject({ kind: 'execute', pageCommandId: page(1) });
+        expect(await tx((p, t) => p.getPageCommit(t, { ...key, pageCommandId: page(1) }))).toMatchObject({
+          kind: 'execute',
+        });
+        expect(await rowOf(T_G1)).toMatchObject({ status: 'synced', pageCommandId: page(1) });
+      });
+
+      it('跨页同目标：另一页写同一目标须等前一页结束；前一页回滚不抹掉后一页已提交的结果', async () => {
+        const { tx, plan, record, rowOf } = await setup();
+        await plan();
+        const reached = gate();
+        const release = gate();
+        const pageA = tx(async (p, t) => {
+          await p.assertExecutionActive(t, { ...key, executionNo: 1, leaseOwner: 'w1' });
+          await p.recordOutcome(t, {
+            ...key,
+            executionNo: 1,
+            pageNo: 1,
+            pageCommandId: page(1),
+            items: [failed('target', T_P1, 'STORAGE_UNAVAILABLE', { recovery: 'retry_same_run' })],
+          });
+          reached.open();
+          await release.wait;
+          throw new Error('A 页失败');
+        });
+        await reached.wait;
+        const pageB = record([item('target', T_P1)], 2);
+        expect(await settledWithin(pageB)).toBe(false);
+        release.open();
+        await pageA.catch(() => undefined);
+        expect(await pageB).toMatchObject({ pageNo: 2 });
+        expect(await rowOf(T_P1)).toMatchObject({ status: 'synced', pageCommandId: page(2) });
+        expect(await tx((p, t) => p.getPageCommit(t, { ...key, pageCommandId: page(2) }))).toMatchObject({
+          kind: 'execute',
+        });
+        expect(await tx((p, t) => p.getPageCommit(t, { ...key, pageCommandId: page(1) }))).toBeNull();
+      });
+    });
+
+    describe('健康度读写的锁序（第 3 轮 R2-03）：逆序多组织读写都能完成', () => {
+      const context = { projectId: FX.project, meetingId: null };
+      const principal = { kind: 'principal' as const, userId: FX.principal };
+      const rows = (order: string[], expected: Record<string, number>) =>
+        order.map((orgId) => ({
+          orgId,
+          levelId: FX.readyLater,
+          levelCode: 'H2',
+          status: 'value' as const,
+          expectedRevision: expected[orgId]!,
+        }));
+
+      it('写 [G1, G2] 未提交时读 [G2, G1]：读取立即返回已提交版本，不互相等待；写提交后读到新版本', async () => {
+        const { tx } = await setup();
+        const reached = gate();
+        const release = gate();
+        const write = tx(async (p, t) => {
+          const receipt = await p.recordOrgHealth(t, {
+            tenantId: FX.tenant,
+            context,
+            credential: { kind: 'assign', userId: FX.writer, commandId: 'w-order' },
+            rows: rows([FX.g1, FX.g2], { [FX.g1]: 3, [FX.g2]: 0 }),
+          });
+          reached.open();
+          await release.wait;
+          return receipt;
+        });
+        await reached.wait;
+        const read = tx((p, t) =>
+          p.readOrgHealthRows(t, { tenantId: FX.tenant, context, orgIds: [FX.g2, FX.g1], viewer: principal }),
+        );
+        expect(await settledWithin(read)).toBe(true);
+        expect((await read).map((row) => [row.orgId, row.status])).toEqual([
+          [FX.g2, 'absent'],
+          [FX.g1, 'value'],
+        ]);
+        release.open();
+        expect((await write).items.map((item) => item.outcome)).toEqual(['written', 'written']);
+        const after = await tx((p, t) =>
+          p.readOrgHealthRows(t, { tenantId: FX.tenant, context, orgIds: [FX.g2, FX.g1], viewer: principal }),
+        );
+        expect(after.map((row) => (row.status === 'forbidden' ? null : row.revision))).toEqual([1, 4]);
+      });
+
+      it('两个回写逆序给组织（计算 / 重置）：统一按组织排序取锁，后到的等先到的结束后按 CAS 判定，不死锁', async () => {
+        const { tx } = await setup();
+        const reached = gate();
+        const release = gate();
+        const first = tx(async (p, t) => {
+          const receipt = await p.resetOrgHealth(t, {
+            tenantId: FX.tenant,
+            context,
+            credential: { kind: 'reset', userId: FX.writer, commandId: 'r-order' },
+            rows: rows([FX.g1, FX.g2], { [FX.g1]: 3, [FX.g2]: 0 }),
+          });
+          reached.open();
+          await release.wait;
+          return receipt;
+        });
+        await reached.wait;
+        const second = tx((p, t) =>
+          p.recordOrgHealth(t, {
+            tenantId: FX.tenant,
+            context,
+            credential: { kind: 'compute', principalUserId: FX.principal, calcRunId: FX.run, commandId: 'c-order' },
+            rows: rows([FX.g2, FX.g1], { [FX.g1]: 3, [FX.g2]: 0 }),
+          }),
+        );
+        expect(await settledWithin(second)).toBe(false);
+        release.open();
+        expect((await first).items.map((item) => item.outcome)).toEqual(['written', 'written']);
+        expect((await second).items.map((item) => item.outcome)).toEqual(['REVISION_CONFLICT', 'REVISION_CONFLICT']);
+      });
+    });
+
     describe('SP-12 行状态与完成门槛', () => {
       it('终态同值幂等、异值 ROW_FINAL；可重试失败阻止完成，转成功后可完成', async () => {
         const { plan, record, complete, rejects } = await setup();
@@ -1096,6 +1264,33 @@ export function runSyncPortContractSuite(name: string, factory: SyncPortFactory)
           ['value', [FX.n2]],
         ]);
         expect(current[2]).toMatchObject({ positionId: FX.p1, employeeId: null, orgId: null, source: { tier: 2 } });
+      });
+
+      it('继任读取：提名固定字段（准备度）对查看人隐藏时整条提名不返回，员工 / 组织 / 职位三种选择器一致', async () => {
+        const { h, tx } = await setup();
+        for (const hidden of ['readinessId', 'readinessCode']) {
+          await h.denyViewer(FX.viewer, { fieldCodes: [hidden] });
+          const entries = await tx((p, t) =>
+            p.readSuccessionEntries(t, {
+              tenantId: FX.tenant,
+              employeeIds: [FX.e1],
+              orgIds: [FX.g1],
+              positionIds: [FX.p1],
+              context: { asOf },
+              viewer,
+            }),
+          );
+          expect(
+            entries.map((entry) => [entry.status, entry.nominations.length]),
+            hidden,
+          ).toEqual([
+            ['value', 0],
+            ['value', 0],
+            ['value', 0],
+          ]);
+          expect(JSON.stringify(entries)).not.toContain('RN1');
+          expect(JSON.stringify(entries)).not.toContain(FX.readyNow);
+        }
       });
 
       it('继任读取按 viewer 裁剪：提名表单字段逐个 forbidden，撤了源员工的提名不进组织 / 职位聚合', async () => {
