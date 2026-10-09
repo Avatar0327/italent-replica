@@ -19,6 +19,10 @@ interface AvatarView {
   avatar: { id: string; url: string } | null;
 }
 
+function rowsOf<T>(result: unknown): T[] {
+  return (Array.isArray(result) ? result : (result as { rows: T[] }).rows) as T[];
+}
+
 function signal() {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => {
@@ -64,7 +68,7 @@ async function writeEvidence(s: Awaited<ReturnType<typeof scene>>) {
       (SELECT count(*)::int FROM audit_events WHERE tenant_id=${s.tenant.id}
         AND object_type='Account.Avatar' AND object_id=${s.user.id}) AS audit,
       (SELECT count(*)::int FROM command_ledger WHERE tenant_id=${s.tenant.id}) AS ledger`);
-    return (Array.isArray(result) ? result : result.rows) as { audit: number; ledger: number }[];
+    return rowsOf<{ audit: number; ledger: number }>(result);
   });
 }
 
@@ -122,7 +126,7 @@ describe('AC-EMP（补）F-058 登记命令自己的 revision', () => {
         expect(Buffer.from(await content.arrayBuffer())).toEqual(b.bytes);
         const ledger = await withTenant(s.db, s.tenant.id, async (tx) => {
           const result = await tx.execute(sql`SELECT response_body FROM command_ledger WHERE command_id=${key}`);
-          return (Array.isArray(result) ? result : result.rows) as { response_body: unknown }[];
+          return rowsOf<{ response_body: unknown }>(result);
         });
         expect(ledger[0]!.response_body).toMatchObject({ revision: 2 });
       } finally {
