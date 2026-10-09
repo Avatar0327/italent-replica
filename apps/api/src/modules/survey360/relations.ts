@@ -80,7 +80,7 @@ import {
   syncAccess,
 } from './sync.js';
 import type { ModuleScope } from '../permission/module-access.js';
-import { loadQuestionnaire, markUsed } from './questionnaires.js';
+import { loadQuestionnaire, lockQuestionnaires, markUsed } from './questionnaires.js';
 import { clearObjectAnswers, objectSheets } from './object-answers.js';
 
 const LIMITS = survey360.SURVEY360_LIMITS;
@@ -150,6 +150,8 @@ async function requireQuestionnaires(tx: Tx, ids: readonly string[]): Promise<vo
   if (ids.length < 1 || ids.length > LIMITS.questionnairesPerObject)
     fail('VALIDATION_FAILED', '一个评价对象须选 1～3 个套卷', 'TOO_MANY_QUESTIONNAIRES');
   if (new Set(ids).size !== ids.length) fail('VALIDATION_FAILED', '套卷重复', 'DUPLICATE_QUESTIONNAIRE');
+  // F-053：插入关联前按 id 升序先取套卷行锁，与活动启用同一顺序（调用方已持有活动行锁）
+  await lockQuestionnaires(tx, ids);
   for (const id of ids) {
     const q = await loadQuestionnaire(tx, id);
     // E3-R3：只能选“已启用”的套卷（已使用的同样可用）
