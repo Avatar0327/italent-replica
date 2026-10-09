@@ -82,7 +82,8 @@ describe.runIf(realPostgres)('AC-QL-subset 真 PG：子集引用与配置停用 
           sql`SELECT 1 FROM ql_categories WHERE tenant_id = ${w.tenant.id} AND id = ${catalog.category.id} FOR UPDATE`,
         );
         await tx.execute(
-          sql`UPDATE ql_categories SET enabled = false WHERE tenant_id = ${w.tenant.id} AND id = ${catalog.category.id}`,
+          sql`UPDATE ql_categories SET enabled = false
+            WHERE tenant_id = ${w.tenant.id} AND id = ${catalog.category.id}`,
         );
       },
       () => add(),
