@@ -2,8 +2,8 @@
 "updated": "2026-10-09",
 "stats": {
 "merged": 76,
-"open": 13,
-"dec": 343,
+"open": 15,
+"dec": 344,
 "ev": "34/137"
 },
 "tasks": {
@@ -2257,7 +2257,7 @@
 "合并 PR #1：多租户底座；技术栈定为 TS + PostgreSQL（DEC-050）"
 ]
 ],
-"liveUpdated": "10-09 01:33",
+"liveUpdated": "10-09 01:44",
 "chains": [
 {
 "g": "base",
@@ -2860,8 +2860,8 @@
 "k": "run",
 "cx": "1",
 "n": "范围外上级头像",
-"seg": "ev:n ds:n dev:a1 rev:w mg:w",
-"now": "#138 Draft（Codex，旧分工在途）",
+"seg": "ev:n ds:n dev:a2 rev:d1 mg:w",
+"now": "首轮（Sol high+fast）：1 P1 + 1 P2，自检未发现；第 2 轮修改",
 "pr": 138
 },
 {
@@ -2899,7 +2899,18 @@
 "sn": "1",
 "n": "360 套卷修改与活动启用并发",
 "seg": "ev:n ds:n dev:a1 rev:w mg:w",
-"now": "开发中（Sonnet High，DEC-338 首个 Sonnet 任务）"
+"now": "开发中（Sonnet High，DEC-338 首个 Sonnet 任务）",
+"pr": 141
+},
+{
+"id": "F-062",
+"g": "base",
+"o": 3,
+"k": "run",
+"pr": 139,
+"n": "文档 PR 必需检查快速通过",
+"seg": "ev:n ds:n dev:d1 rev:w1 mg:w",
+"now": "#139 待审（#140 为临时实测，不合并）"
 }
 ]
 }
