@@ -60,7 +60,7 @@ const personScope = (personIds: readonly string[]): ModuleScope => ({
  * 操作人的范围：本业务类型对应的对象 = 实例主体 + 范围内目标；另外两个对象 = 实例主体 + 范围外目标
  * （证明判断的是所属应用的范围，而不是借了别的应用的范围）。
  */
-function scopedApi(scene: Scene) {
+function scopedApi(scene: Scene, operator: string = scene.admin) {
   const authorize: Authorizer = () => true;
   const scopes: Record<string, ModuleScope> = {};
   for (const object of [EMPLOYMENT, CONTRACT_OBJECT, IDP_PLAN]) {
@@ -75,7 +75,7 @@ function scopedApi(scene: Scene) {
   const api = tenantApi(scene.db, { authorize, clock: () => CLOCK });
   return (path: string, revision: number, body: Record<string, unknown>) =>
     api.request('POST', `${APV}/instances/${scene.instanceId}/${path}`, {
-      user: scene.admin,
+      user: operator,
       tenant: scene.tenantId,
       ifMatch: revision,
       body,
@@ -159,28 +159,72 @@ function defineSuite(name: string, build: (label: string) => Promise<Scene>) {
       }
     });
 
-    it('转给操作人自己：不看目标范围（操作人本就看得到该实例），仍要求理由', async () => {
-      const scene = await build(`f067-self-${name}`);
-      const call = scopedApi(scene);
-      const noReason = await call('admin-transfer', scene.revision, { taskId: scene.taskId, toUserId: scene.admin });
-      expect(noReason.status).toBe(400);
-      const done = await call('admin-transfer', scene.revision, {
-        taskId: scene.taskId,
-        toUserId: scene.admin,
-        reason: '转给自己处理',
-      });
-      expect(done.status, await done.clone().text()).toBe(200);
+    it('转给自己同样要求已绑定员工且在操作人范围内：未绑定管理员 / 范围外员工管理员自转交与范围外目标响应相同，实例 / 待办 / 审计 / 操作人可见性不变（F-067 第 2 轮）', async () => {
+      const scene = await build(`f067-self-deny-${name}`);
+      const before = await snapshotOf(scene);
+      for (const [path, extra] of ACTIONS) {
+        const body = (toUserId: string) => ({ taskId: scene.taskId, toUserId, reason: '转给自己', ...extra });
+        const reference = await scopedApi(scene)(path, scene.revision, body(scene.outside.userId));
+        expect(reference.status).toBe(404);
+        const expected = await reference.text();
+        // 未绑定员工的管理员账号、已绑定但不在自己管理范围内的管理员，转给自己都按范围外处理
+        for (const operator of [scene.admin, scene.outside.userId]) {
+          const readBefore = await readAs(scene, operator);
+          const response = await scopedApi(scene, operator)(path, scene.revision, body(operator));
+          expect({ path, operator, status: response.status, body: await response.text() }).toEqual({
+            path,
+            operator,
+            status: 404,
+            body: expected,
+          });
+          expect(await readAs(scene, operator), `${path} 自转交被拒后操作人对业务对象的可见性不变`).toBe(readBefore);
+        }
+      }
+      expect(await snapshotOf(scene)).toEqual(before);
     });
 
-    it('跳转不指定目标人，不受目标范围校验影响', async () => {
+    it('转给自己：已绑定且在范围内的管理员可以，仍须填理由（DEC-070），审计标记自转交', async () => {
+      for (const [path, extra] of ACTIONS) {
+        const scene = await build(`f067-self-ok-${name}-${path}`);
+        const call = scopedApi(scene, scene.inside.userId);
+        const noReason = await call(path, scene.revision, {
+          taskId: scene.taskId,
+          toUserId: scene.inside.userId,
+          ...extra,
+        });
+        expect(noReason.status, path).toBe(400);
+        expect(await noReason.text()).toContain('APPROVAL_REASON_REQUIRED');
+        const done = await call(path, scene.revision, {
+          taskId: scene.taskId,
+          toUserId: scene.inside.userId,
+          reason: '转给自己处理',
+          ...extra,
+        });
+        expect(done.status, `${path}: ${await done.clone().text()}`).toBe(200);
+        const after = await snapshotOf(scene);
+        expect(after.tasks.filter((t) => t.status === 'pending').map((t) => t.assignee_user_id)).toEqual([
+          scene.inside.userId,
+        ]);
+        expect(after.audits).toEqual([{ n: 1 }]);
+      }
+    });
+
+    it('跳转不指定目标人，不受目标范围校验影响：200，原待办关闭、目标节点重新生成待办', async () => {
       const scene = await build(`f067-jump-${name}`);
+      const before = await snapshotOf(scene);
       const response = await scopedApi(scene)('admin-intervene', scene.revision, {
         kind: 'jump',
         toNodeKey: await firstNodeKey(scene),
         reason: '跳转',
       });
-      // 目标范围校验不应介入：不会因范围返回目标不存在；其余业务失败（如节点不存在）不在本用例断言范围
-      expect(await response.text()).not.toContain('转交目标不存在');
+      expect(response.status, await response.clone().text()).toBe(200);
+      const after = await snapshotOf(scene);
+      expect(after.instance[0]).toMatchObject({ status: 'running' });
+      expect(after.instance[0]!.revision).toBeGreaterThan(before.instance[0]!.revision);
+      const stillPending = after.tasks.filter((t) => t.status === 'pending');
+      expect(stillPending).not.toEqual([]);
+      expect(stillPending.map((t) => t.id)).not.toContain(scene.taskId);
+      expect(after.audits).toEqual([{ n: 1 }]);
     });
   });
 }
@@ -378,8 +422,8 @@ defineSuite('发展计划', async (label) => {
   };
 });
 
-describe('AC-APV（补）F-067 既有规则无回归（范围内目标仍走 adminAct 的其余判定）', () => {
-  it('范围内目标是同节点其他办理人 / 冻结主体回避：仍按原错误码拒绝，不被范围校验吞掉', async () => {
+describe('AC-APV（补）F-067 既有规则无回归（范围内目标仍走 adminAct 的冻结主体回避判定）', () => {
+  it('范围内目标是冻结主体（节点开启 avoidSubjects）：仍按原错误码 409 APPROVAL_SELF_REVIEW 拒绝，不被范围校验吞掉', async () => {
     const w = await approvalWorld(database().db, 'f067-regress');
     const s = await transferScene(w);
     await w.publishedProcess({ nodes: [{ ...NODES.outHead, actions: { avoidSubjects: true } }, NODES.inHrbp] });
