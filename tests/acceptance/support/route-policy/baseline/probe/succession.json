@@ -1,0 +1,45 @@
+{
+  "GET /api/tenant/succession/readiness": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [],
+    "scopeQueries": [],
+    "trace": [
+      "obj:Succession.Record:view"
+    ]
+  },
+  "GET /api/tenant/succession/records": {
+    "all": {
+      "status": 200
+    },
+    "fieldQueries": [
+      "fields:Succession.Record"
+    ],
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.Record/Succession.Record.list"
+    ],
+    "trace": [
+      "obj:Succession.Record:view"
+    ]
+  },
+  "GET /api/tenant/succession/records/:id": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "b840bd1d0459",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:SuccessionAndDevelopment/Succession.Record/Succession.Record.detail"
+    ],
+    "trace": [
+      "obj:Succession.Record:view"
+    ]
+  }
+}

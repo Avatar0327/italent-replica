@@ -561,6 +561,20 @@
       "when": 1791570699834,
       "tag": "0079_talent_review_config",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1791575773470,
+      "tag": "0080_succession_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1791575777626,
+      "tag": "0081_succession_records_rls",
+      "breakpoints": true
     }
   ]
 }
