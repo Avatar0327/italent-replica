@@ -18,6 +18,10 @@
   可见且 SUB 有查看权时输出子流程；子流程各字段再按 SUB 当前字段查看权裁剪。
   `endNoticeTemplate` 没有独立对象、按钮或范围，首次写响应与幂等重放同样走当前投影。
 - 写入口要求 PROC 数据操作权与按钮；子流程新建 / 修改 / 删除权限在事务内按实际变化校验。
+  PATCH 带子流程载荷时，在命令台账、规则校验与旧值比较之前，先复核 PROC.subProcesses、SUB 对象及输入字段的当前查看权。
+  模板猜中、猜错或显式清空均不绕过该门禁；旧无变化成功命令重放也先经过它，统一返回 403 FORBIDDEN，
+  reason `IDP_SUB_PROCESS_FIELDS_HIDDEN`。范围覆盖全部 SUB_PROCESS_FIELDS，排除定位 id / 只读 seq；
+  五项开启规则的既有默认 null 同样属于写入输入，省略 endNoticeTemplate 则不包含该字段。
   修改或清空结束通知模板须有 SUB update 与该字段编辑权；未变化的字段不额外要求编辑权。
   PATCH 中子流程实际变化仍须有 PROC.`subProcesses` 编辑权；嵌套权限随命令结果记录，重放再次复核。
 - REV = 缺或非法 `If-Match` 时 `400 REVISION_REQUIRED`；revision 不符时 `409 REVISION_CONFLICT`；
@@ -39,7 +43,7 @@
 | GET | `/processes` | A | object | PROC；view；无按钮 | list `idp.readableSql`，所属组织 / 创建人 / 向下公开，分页前过滤 | projector `idp.processPresenter`，顶层 PROC、嵌套 SUB；`subProcesses[].endNoticeTemplate` 按 SUB 字段查看权 | — | page / pageSize / enabled 非法 400 VALIDATION_FAILED；列表信封沿用 `listEnvelope` |
 | GET | `/processes/:id` | A | object | PROC；view；无按钮 | point id → 当前父流程 → `idp.requireReadable`；范围外与不存在同为 404 NOT_FOUND | 同列表投影，未配置时字段可见才返回 null | — | UUID 规范为小写；非法标识 400 VALIDATION_FAILED；ETag 为流程 revision |
 | POST | `/processes` | A | all[object, object] | PROC；create；create@list；嵌套 SUB create | guard `idp.requireCreatable(process)` + 同租户所属组织存在；返回前按新流程当前行 `requireEditable` | 输入严格结构；PROC 顶层字段与 SUB 新建字段分别检查编辑权，包含显式提交的 endNoticeTemplate；返回按当前 PROC / SUB 查看权投影 | fields body → `idp.createProcess` / `idp.runIdpCommand`；父流程 + 子流程 + 审计同事务；ledger single | REV、IDEM；子流程数量及开启规则沿用现有校验；201；ETag |
-| PATCH | `/processes/:id` | A | object（嵌套写按实际变化附加 SUB 操作权） | PROC；update；update@detail；结束通知模板实际变化须 SUB update + 字段编辑权 | point id → 父流程行锁 → `idp.requireEditable` → REV；子流程行锁；返回前按当前父流程复核 | 顶层 PROC；整组子流程实际变化检查 PROC.subProcesses 与 SUB 对应字段；省略保留、显式 null 清空；返回同列表投影 | fields body → `idp.updateProcess / replaceSubProcesses` / `idp.runIdpCommand`；仅变化段写子流程审计；ledger single | UUID 非法 400；REV、IDEM；被模板引用时，既有顺序 / 增删 / 开启方式限制不变；200；ETag |
+| PATCH | `/processes/:id` | A | object（嵌套写按实际变化附加 SUB 操作权） | PROC；update；update@detail；结束通知模板实际变化须 SUB update + 字段编辑权 | point id → 父流程行锁 → `idp.requireEditable` → REV；子流程行锁；返回前按当前父流程复核 | 命令前 guard `idp.requireSubProcessInputVisible`：PROC.subProcesses + SUB 对象 + 输入字段查看权；之后按实际变化检查 PROC.subProcesses 与 SUB 字段编辑权；省略模板保留、显式 null 清空；返回同列表投影 | fields body → `idp.updateProcess / replaceSubProcesses` / `idp.runIdpCommand`；仅变化段写子流程审计；ledger single | UUID 非法 400；REV、IDEM；隐藏输入无论同值、异值、清空或重放都先 403；被模板引用时既有限制不变；200；ETag |
 | DELETE | `/processes/:id` | A | all[object, object] | PROC；delete；delete@detail；嵌套 SUB delete（无子流程也要求） | point id → 父流程行锁 → `idp.requireEditable` → REV；首次返回与重放按删除时的受控快照归属复核当前可编辑范围 | 无字段赋值，不要求模板字段编辑权；删除前 ProcessView 按当前 PROC / SUB 查看权投影，结束通知模板无查看权时省略 | retained snapshot → `idp.deleteProcess` / `idp.runIdpCommand`；父流程与级联子流程删除、删除快照审计同事务；ledger single | UUID 非法 400；REV、IDEM；被模板引用时 409 IDP_PROCESS_REFERENCED；200；无 ETag |
 
 POST / PATCH 仍执行统一的同源与 JSON 请求校验；命令重放仍要求当前的 PROC 操作权、按钮、
@@ -51,12 +55,12 @@ POST / PATCH 仍执行统一的同源与 JSON 请求校验；命令重放仍要�
 | 查看人 | 流程列表 / 详情 | 新建 / 修改 / 删除与重放 | 审计 |
 |---|---|---|---|
 | 有 PROC 查看权，范围内，且 PROC.subProcesses 与 SUB 查看权、SUB.endNoticeTemplate 查看权均满足 | 返回结束通知模板的当前值，未配置为 null | 另按 PROC 操作权、按钮与实际变化的 SUB 操作 / 字段编辑权校验 | 另需日志审计入口权、SUB 查看权、SUB 字段查看权与当前 IDP 范围 |
-| 有流程查看权，缺 SUB.endNoticeTemplate 查看权 | 可见子流程里省略该字段 | 写入由编辑权独立判断；首次响应和重放仍省略该字段 | 模板值按 SUB 字段权限裁剪 |
-| 缺 PROC.subProcesses 查看权，或缺 SUB 查看权 | 省略整段子流程 | 写入按对应编辑权判定；响应省略整段 | 缺 SUB 查看权不显示该子流程日志 |
+| 有流程查看权，缺 SUB.endNoticeTemplate 查看权 | 可见子流程里省略该字段 | PATCH 显式提交模板字段统一 403；省略时保留原值，可修改其他授权字段；响应仍省略该字段 | 模板值按 SUB 字段权限裁剪 |
+| 缺 PROC.subProcesses 查看权，或缺 SUB 查看权 | 省略整段子流程 | PATCH 带子流程载荷统一 403（含无变化重放）；不带子流程时按顶层字段权判断；响应省略整段 | 缺 SUB 查看权不显示该子流程日志 |
 | 有修改权，缺结束通知模板字段编辑权 | 按当前查看权读取 | 实际修改或显式清空 403 FORBIDDEN，业务 / revision / 审计不变；撤销该编辑权后原命令重放同样 403 | 不因修改权放宽审计查看 |
-| 仅因向下公开可见 | 按查看与字段权限读取 | 403 FORBIDDEN，reason IDP_PUBLIC_DOWN_READONLY | 向下公开不放宽审计范围 |
-| 范围外 / 空范围 | 列表过滤；详情 404 NOT_FOUND | 首次和重放按当前可编辑范围拒绝，业务不变 | 当前范围不满足时不显示 |
-| 无 PROC 查看权 | 403 FORBIDDEN | 写入口另按操作权与按钮判断；返回不带无查看权的内容 | 按独立日志入口与 SUB 当前权限判断 |
+| 仅因向下公开可见 | 按查看与字段权限读取 | 输入可见时 403 IDP_PUBLIC_DOWN_READONLY；隐藏子流程输入先 403 IDP_SUB_PROCESS_FIELDS_HIDDEN | 向下公开不放宽审计范围 |
+| 范围外 / 空范围 | 列表过滤；详情 404 NOT_FOUND | 输入可见时首次和重放按当前范围拒绝；隐藏子流程输入先 403；业务不变 | 当前范围不满足时不显示 |
+| 无 PROC 查看权 | 403 FORBIDDEN | PATCH 带子流程载荷为 403 IDP_SUB_PROCESS_FIELDS_HIDDEN；POST / DELETE 与不带子流程的 PATCH 沿用操作权与按钮校验；返回不带无查看权的内容 | 按独立日志入口与 SUB 当前权限判断 |
 | 其他租户下的流程 | 当前租户列表不带出，详情 404 | 404，业务不变 | 不显示 |
 
 删除流程另须 PROC delete、delete@detail 与 SUB delete；结束通知模板字段的编辑权不替代或限制对象删除权，
