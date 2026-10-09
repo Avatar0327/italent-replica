@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { AppError } from '../../errors.js';
 import type { TenantRouteDeps } from '../../routes.js';
 import type { TenantContext, TenantEnv } from '../../tenant-context.js';
+import { userAvatars } from '../avatar/references.js';
 import { adminCommand, adminGuard, platformCommandId, type RouteContext } from './admin-http.js';
 import { etag, idParam, ifMatch, parseBody } from './http.js';
 import {
@@ -76,7 +77,7 @@ export function registerUserRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
       (tx, w) => registerExternalUser(tx, w, input),
       201,
     );
-    return c.json(result.body, 201);
+    return c.json(await currentAvatar(deps, ctx, result.body as TenantUserView), 201);
   });
   router.put(`${BASE}/:userId`, async (c) => {
     const ctx = await adminGuard(c, deps, CAPABILITY);
@@ -89,7 +90,7 @@ export function registerUserRoutes(router: Hono<TenantEnv>, deps: TenantRouteDep
       updateExternalUser(tx, w, change),
     );
     etag(c, (result.body as TenantUserView).membershipRevision);
-    return c.json(result.body);
+    return c.json(await currentAvatar(deps, ctx, result.body as TenantUserView));
   });
   registerLifecycleRoutes(router, deps);
 }
@@ -140,6 +141,14 @@ async function lifecycleRequest(c: RouteContext, deps: TenantRouteDeps) {
 
 function currentUser(deps: TenantRouteDeps, ctx: TenantContext, userId: string): Promise<TenantUserView> {
   return withTenant(deps.db, ctx.tenantId, (tx) => getTenantUser(tx, userId));
+}
+
+/** DEC-327：只刷新派生头像；业务身份、成员状态与 revision 仍是原命令回执。 */
+async function currentAvatar(deps: TenantRouteDeps, ctx: TenantContext, receipt: TenantUserView) {
+  return withTenant(deps.db, ctx.tenantId, async (tx) => {
+    const avatars = await userAvatars(tx, ctx.tenantId, [receipt.userId]);
+    return { ...receipt, avatar: avatars.get(receipt.userId) ?? null };
+  });
 }
 
 const selfConflict = (reason: string, message: string) => new AppError('CONFLICT', message, { reason });
