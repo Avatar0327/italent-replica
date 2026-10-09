@@ -6,13 +6,19 @@
  * - beforeSave（落地前复核）：saveSubset 一处覆盖 HR 子集写入、自助审批通过后的落地与信息采集；source 区分入口，
  *   防止提交后开关或权限变化。
  * 未登记的子集两道检查都不调用，行为不变。同一子集只能登记一份（C1-1 登记 qualification）。
+ * 只覆盖经 saveSubset 的写入；直接调 persistSubset 的系统维护写入（jobhistory 任职同步、clearFlags 连带清标记）
+ * 不经过本钩子——登记了策略的子集若也有这类写入，须改走 saveSubset 并带系统来源。
  */
 import type { Tx } from '@italent/db';
 import type { SubsetKind } from '@italent/domain';
 import type { PersonnelContext, Row } from './store.js';
 
+/**
+ * 写入来源（subsetMeta.source_type）。后三种是 R3-T02 的系统写入（任职同步 C1-4、子集初始化 C1-5、评定发布 C2-8），
+ * 由 C1-1 的迁移放开 source_type CHECK 后才会传入；先在契约里冻结，C1 / C2 不再改本文件。
+ */
 export type SubsetSource = {
-  readonly type: 'hr_direct' | 'self_service' | 'info_collection';
+  readonly type: 'hr_direct' | 'self_service' | 'info_collection' | 'employment_sync' | 'initialization' | 'evaluation';
   readonly id: string | null;
 };
 

@@ -135,7 +135,7 @@ async function scene(label: string) {
   return { w, s, path, addRecord, submit, submitted, footprint, request, subsetRows, tx };
 }
 
-describe('P0 ②：自助申请准入 beforeRequest', () => {
+describe('AC-PRM-subset-policy P0 ②：自助申请准入 beforeRequest（DEC-099 同单重提、DEC-365③）', () => {
   it('首次提交：钩子在写申请前被调用（带员工、记录与载荷）；拒绝后不留申请、审批实例与申请审计', async () => {
     const { s, addRecord, submit, footprint, subsetRows } = await scene('sp-request-first');
     const record = await addRecord();
@@ -223,7 +223,7 @@ describe('P0 ②：自助申请准入 beforeRequest', () => {
   });
 });
 
-describe('P0 ②：落地前复核 beforeSave（三个入口一处覆盖）', () => {
+describe('AC-PRM-subset-policy P0 ②：落地前复核 beforeSave（三个入口一处覆盖，DEC-087 信息采集）', () => {
   it('HR 子集新增 / 修改 / 删除：source = hr_direct；拒绝时子集与审计都不变', async () => {
     const { w, path, addRecord, subsetRows, tx } = await scene('sp-save-hr');
     const record = await addRecord();
@@ -334,7 +334,7 @@ describe('P0 ②：落地前复核 beforeSave（三个入口一处覆盖）', ()
   });
 });
 
-describe('P0 ②：未登记的子集行为不变；登记表规则', () => {
+describe('AC-PRM-subset-policy P0 ②：未登记的子集行为不变；登记表规则（DEC-365③）', () => {
   it('只对登记的子集调用：family 的 HR 写入与自助申请不经过 education 的策略', async () => {
     const { w, path, submit } = await scene('sp-unregistered');
     const policy = await testPolicy();

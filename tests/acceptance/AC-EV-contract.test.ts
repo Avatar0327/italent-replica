@@ -71,7 +71,7 @@ const registerFlowRule = (rule: FlowRule) => {
   (register as (rule: FlowRule) => void)(rule);
 };
 
-describe('P0 ①：评定流程对象目录（设计 §3.3）', () => {
+describe('AC-EV-contract P0 ①：评定流程对象目录（DEC-331②、DEC-365③；设计 §3.3）', () => {
   it('六个流程对象登记在 TEvaluation 应用，数据范围按该应用解析，权限目录里查得到', () => {
     const codes = Object.values(flow()).map((definition) => definition.code);
     expect(codes.sort()).toEqual(Object.values(FLOW_CODES).sort());
@@ -201,7 +201,7 @@ describe('P0 ①：评定流程对象目录（设计 §3.3）', () => {
   });
 });
 
-describe('P0 ①：身份配置与审计规则位（真实授权器）', () => {
+describe('AC-EV-contract P0 ①：身份配置与审计规则位（DEC-197 fail-closed；真实授权器）', () => {
   it('身份可配置流程对象与弃权按钮；审计查看规则未注入时一律不返回，注入后按注入的规则返回', async () => {
     const world = await seedPermissionWorld(testDb().db);
     const profile = await createProfile(world, `ev-flow-${randomUUID().slice(0, 8)}`, { apps: [EV_APP] });
