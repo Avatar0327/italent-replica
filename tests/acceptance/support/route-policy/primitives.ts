@@ -264,6 +264,7 @@ export const PRIMITIVES: readonly Primitive[] = [
       'assertRejectEnabled',
       'assertReviewer',
       'assertNotNodeAssignee',
+      'assertTargetInScope',
       'assertApprovalEdit',
       'assertNotBlindAfterEdit',
       'addSignAllowed',
@@ -293,6 +294,8 @@ export const PRIMITIVES: readonly Primitive[] = [
     ['linkage.source', call('requireLinkageSource'), NEAR],
     ['linkage.retry', call('authorizeRetry'), NEAR],
     ['approval.withdrawRight', call('requireWithdrawRight'), NEAR],
+    // 管理员转交 / 改派目标须在操作人对业务对象的管理范围内（F-067；routes.ts 解析范围，actions.ts assertTargetInScope 判断）
+    ['approval.adminTargetScope', call('adminTargetScope'), NEAR],
     ['approval.resubmitRight', calls('requireResubmitRight', 'mayResubmit'), NEAR],
     ['personnel.selfServiceFields', call('assertSelfServiceFields'), { near: true, modules: ['personnel'] }],
     ['personnel.viewableFilters', call('listOptions'), { near: true, modules: ['personnel'] }],

@@ -1248,6 +1248,37 @@
         ]
       }
     },
+    "DELETE /api/tenant/survey360/questionnaire-templates/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:delete"
+        ]
+      }
+    },
     "DELETE /api/tenant/survey360/questionnaires/:id": {
       "edge": {
         "anonymous": {
@@ -1832,6 +1863,42 @@
         }
       },
       "module": "survey360-link",
+      "primitives": {}
+    },
+    "GET /api/survey360/report-link": {
+      "edge": {
+        "anonymous": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "NOT_FOUND",
+          "status": 404
+        }
+      },
+      "module": "survey360-report-link",
+      "primitives": {}
+    },
+    "GET /api/survey360/report-link/reports/:reportId": {
+      "edge": {
+        "anonymous": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "NOT_FOUND",
+          "status": 404
+        }
+      },
+      "module": "survey360-report-link",
       "primitives": {}
     },
     "GET /api/tenant/account/avatar": {
@@ -5973,6 +6040,263 @@
         ]
       }
     },
+    "GET /api/tenant/survey360/activities/:id/progress": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Relation:view"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "GET /api/tenant/survey360/activities/:id/progress/:personId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Relation:view"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "GET /api/tenant/survey360/activities/:id/reports": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Result:view"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "GET /api/tenant/survey360/activities/:id/reports/:reportId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Result:view"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "GET /api/tenant/survey360/activities/:id/score-tables": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "GET /api/tenant/survey360/activities/:id/sheets": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "GET /api/tenant/survey360/my/todos": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "status": 200
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {}
+    },
+    "GET /api/tenant/survey360/my/todos/:todoId/answer": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {}
+    },
+    "GET /api/tenant/survey360/my/todos/:todoId/avatars/:attachmentId/content": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {}
+    },
+    "GET /api/tenant/survey360/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {}
+    },
     "GET /api/tenant/survey360/people": {
       "edge": {
         "anonymous": {
@@ -6097,6 +6421,56 @@
         ]
       }
     },
+    "GET /api/tenant/survey360/questionnaire-templates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:view"
+        ]
+      }
+    },
+    "GET /api/tenant/survey360/questionnaire-templates/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:view"
+        ]
+      }
+    },
     "GET /api/tenant/survey360/questionnaires": {
       "edge": {
         "anonymous": {
@@ -6144,6 +6518,28 @@
         ],
         "objectOp": [
           "Survey360.Questionnaire:view"
+        ]
+      }
+    },
+    "GET /api/tenant/survey360/report-template": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "object": [
+          "survey360 read/write(need)"
         ]
       }
     },
@@ -9001,11 +9397,15 @@
         "fieldsOut": [
           "approval views"
         ],
+        "guard": [
+          "approval.adminTargetScope"
+        ],
         "precondition": [
           "assertBusinessUnchanged",
           "assertNotNodeAssignee",
           "assertNotRecused",
           "assertReviewer",
+          "assertTargetInScope",
           "openRun"
         ],
         "scope": [
@@ -9040,11 +9440,15 @@
         "fieldsOut": [
           "approval views"
         ],
+        "guard": [
+          "approval.adminTargetScope"
+        ],
         "precondition": [
           "assertBusinessUnchanged",
           "assertNotNodeAssignee",
           "assertNotRecused",
           "assertReviewer",
+          "assertTargetInScope",
           "openRun"
         ],
         "scope": [
@@ -11379,6 +11783,7 @@
           "assertNotNodeAssignee",
           "assertNotRecused",
           "assertReviewer",
+          "assertTargetInScope",
           "openRun"
         ],
         "scope": [
@@ -11470,6 +11875,7 @@
           "assertNotNodeAssignee",
           "assertNotRecused",
           "assertReviewer",
+          "assertTargetInScope",
           "openRun"
         ],
         "scope": [
@@ -13543,6 +13949,43 @@
         ]
       }
     },
+    "POST /api/tenant/survey360/activities/:id/invitations": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Relation:update"
+        ],
+        "scope": [
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
     "POST /api/tenant/survey360/activities/:id/objects": {
       "edge": {
         "anonymous": {
@@ -13710,6 +14153,402 @@
         ]
       }
     },
+    "POST /api/tenant/survey360/activities/:id/relations/:relationId/reanswer": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Answer:update"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/activities/:id/reports/forward": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Result:update"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/activities/:id/reports/forward/preview": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Result:view"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/activities/:id/reports/generate": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Result:update"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/activities/:id/sheets/:sheetId/block": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Answer:update"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/activities/:id/sheets/:sheetId/unblock": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Answer:update"
+        ],
+        "scope": [
+          "scopeSql",
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/activities/:id/sheets/block-suspected": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Answer:update"
+        ],
+        "scope": [
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/activities/:id/sheets/unblock-all": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Answer:update"
+        ],
+        "scope": [
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/activities/:id/todos": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Relation:update"
+        ],
+        "scope": [
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/activities/:id/todos/cancel": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Relation:update"
+        ],
+        "scope": [
+          "survey360 visibility"
+        ],
+        "scopePoint": [
+          "survey360 point"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId/submit": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
     "POST /api/tenant/survey360/people": {
       "edge": {
         "anonymous": {
@@ -13828,6 +14667,74 @@
         ]
       }
     },
+    "POST /api/tenant/survey360/questionnaire-templates": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "survey360 write(fields)"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:create"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/questionnaire-templates/:id/instantiate": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "survey360 write(fields)"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:create"
+        ]
+      }
+    },
     "POST /api/tenant/survey360/questionnaires": {
       "edge": {
         "anonymous": {
@@ -13890,6 +14797,40 @@
         ],
         "objectOp": [
           "Survey360.Questionnaire:update"
+        ]
+      }
+    },
+    "POST /api/tenant/survey360/questionnaires/:id/save-as-template": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "survey360 write(fields)"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:create"
         ]
       }
     },
@@ -15504,6 +16445,29 @@
         ]
       }
     },
+    "PUT /api/tenant/survey360/my/todos/:todoId/tasks/:relationId/questionnaires/:questionnaireId": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "NOT_FOUND",
+          "status": 404
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "command": [
+          "revision(c)",
+          "runCommand / runWrite"
+        ]
+      }
+    },
     "PUT /api/tenant/survey360/people/:id": {
       "edge": {
         "anonymous": {
@@ -15541,6 +16505,40 @@
         ]
       }
     },
+    "PUT /api/tenant/survey360/questionnaire-templates/:id": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "survey360 write(fields)"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Questionnaire:update"
+        ]
+      }
+    },
     "PUT /api/tenant/survey360/questionnaires/:id": {
       "edge": {
         "anonymous": {
@@ -15572,6 +16570,40 @@
         ],
         "objectOp": [
           "Survey360.Questionnaire:update"
+        ]
+      }
+    },
+    "PUT /api/tenant/survey360/report-template": {
+      "edge": {
+        "anonymous": {
+          "code": "UNAUTHENTICATED",
+          "status": 401
+        },
+        "member": {
+          "code": "FORBIDDEN",
+          "status": 403
+        },
+        "nonMember": {
+          "code": "TENANT_NOT_MEMBER",
+          "status": 403
+        }
+      },
+      "module": "survey360",
+      "primitives": {
+        "button": [
+          "survey360 need button"
+        ],
+        "command": [
+          "write() / command()"
+        ],
+        "fieldsIn": [
+          "survey360 write(fields)"
+        ],
+        "object": [
+          "survey360 read/write(need)"
+        ],
+        "objectOp": [
+          "Survey360.Settings:update"
         ]
       }
     },

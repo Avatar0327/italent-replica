@@ -5,7 +5,7 @@
  * 而不是撞唯一约束返回 500。屏障放在“已有编码读取之后”：没有锁时两个请求都会读到缺失，有锁时后到者根本到不了屏障。
  */
 import { randomUUID } from 'node:crypto';
-import { and, auditEvents, eq, talentDescriptionTypes, withTenant } from '@italent/db';
+import { auditEvents, eq, talentDescriptionTypes, withTenant } from '@italent/db';
 import { useTestDb } from '@italent/testkit';
 import { describe, expect, it } from 'vitest';
 import { recordAudit } from '../../apps/api/src/audit/record.js';
@@ -93,8 +93,16 @@ async function tenant(label: string) {
   );
   return { api, operator, id };
 }
-const backfill = (t: Awaited<ReturnType<typeof tenant>>, modules?: string[]) =>
-  t.api.request('POST', `${PLATFORM}/tenants/${t.id}/seeds/backfill`, {
+type Form = 'lower' | 'upper' | 'mixed';
+/** 同一租户 UUID 的不同书写（PostgreSQL 视为同一个，字符串哈希不同）。 */
+const spell = (id: string, form: Form) =>
+  form === 'lower'
+    ? id.toLowerCase()
+    : form === 'upper'
+      ? id.toUpperCase()
+      : [...id.toLowerCase()].map((ch, index) => (index % 2 === 0 ? ch.toUpperCase() : ch)).join('');
+const backfill = (t: Awaited<ReturnType<typeof tenant>>, modules?: string[], form: Form = 'lower') =>
+  t.api.request('POST', `${PLATFORM}/tenants/${spell(t.id, form)}/seeds/backfill`, {
     user: t.operator.id,
     idempotencyKey: randomUUID(),
     body: modules ? { modules } : {},
@@ -102,41 +110,46 @@ const backfill = (t: Awaited<ReturnType<typeof tenant>>, modules?: string[]) =>
 type Report = { items: { module: string; installed: string[] }[] };
 const installedBy = (report: Report, module: string) => report.items.find((item) => item.module === module)!.installed;
 
-describe.skipIf(!realPostgres)('DEC-361 R2-01 并发回补互斥（真 PG）', () => {
-  it.each([
-    ['两个不带 modules 的回补同时执行', undefined, undefined, ['race-a', 'race-b']],
-    ['两个都带同一 modules 的回补同时执行', ['race-a'], ['race-a'], ['race-a']],
-    ['带 modules 与不带 modules 的回补重叠执行', ['race-a'], undefined, ['race-a', 'race-b']],
-  ] as const)('%s：两个都 200，只装一次，第二个无缺失项，审计不重复', async (_label, first, second, expected) => {
-    const t = await tenant('seed-race');
-    const before = await withTenant(testDb().db, t.id, (tx) =>
-      tx
-        .select({ id: auditEvents.id })
-        .from(auditEvents)
-        .where(and(eq(auditEvents.objectType, OBJECT))),
+const COMBOS = [
+  ['两个不带 modules 的回补同时执行', undefined, undefined, ['race-a', 'race-b']],
+  ['两个都带同一 modules 的回补同时执行', ['race-a'], ['race-a'], ['race-a']],
+  ['带 modules 与不带 modules 的回补重叠执行', ['race-a'], undefined, ['race-a', 'race-b']],
+] as const;
+/** 两个请求对同一租户的 UUID 书写不同：小写 / 大写，混合大小写 / 小写。 */
+const SPELLINGS: readonly (readonly [Form, Form])[] = [
+  ['lower', 'lower'],
+  ['lower', 'upper'],
+  ['mixed', 'lower'],
+];
+
+describe.skipIf(!realPostgres)('DEC-361 R2-01 并发回补互斥（真 PG，含租户 UUID 大小写）', () => {
+  for (const [label, first, second, expected] of COMBOS) {
+    it.each(SPELLINGS)(
+      `${label}（租户 UUID：%s / %s）：两个都 200，只装一次，第二个无缺失项，审计不重复`,
+      async (formA, formB) => {
+        const t = await tenant('seed-race');
+        const count = () =>
+          withTenant(testDb().db, t.id, (tx) =>
+            tx.select({ id: auditEvents.id }).from(auditEvents).where(eq(auditEvents.objectType, OBJECT)),
+          );
+        const before = await count();
+        resetGate();
+        const [a, b] = await Promise.all([
+          backfill(t, first as string[] | undefined, formA),
+          backfill(t, second as string[] | undefined, formB),
+        ]);
+        expect([a.status, b.status], await a.clone().text()).toEqual([200, 200]);
+        const reports = [(await a.json()) as Report, (await b.json()) as Report];
+        expect(reports.map((report) => installedBy(report, 'race-a').length).sort()).toEqual([0, 1]);
+        const rows = await withTenant(testDb().db, t.id, (tx) =>
+          tx
+            .select({ name: talentDescriptionTypes.name })
+            .from(talentDescriptionTypes)
+            .where(eq(talentDescriptionTypes.displayOrder, 99)),
+        );
+        expect(rows.map((row) => row.name).sort()).toEqual(expected.map(seedName));
+        expect((await count()).length - before.length).toBe(expected.length);
+      },
     );
-    resetGate();
-    const [a, b] = await Promise.all([
-      backfill(t, first as string[] | undefined),
-      backfill(t, second as string[] | undefined),
-    ]);
-    expect([a.status, b.status], await a.clone().text()).toEqual([200, 200]);
-    const reports = [(await a.json()) as Report, (await b.json()) as Report];
-    const installs = reports.map((report) => installedBy(report, 'race-a').length);
-    expect(installs.sort()).toEqual([0, 1]);
-    const rows = await withTenant(testDb().db, t.id, (tx) =>
-      tx
-        .select({ name: talentDescriptionTypes.name })
-        .from(talentDescriptionTypes)
-        .where(eq(talentDescriptionTypes.displayOrder, 99)),
-    );
-    expect(rows.map((row) => row.name).sort()).toEqual(expected.map(seedName));
-    const audited = await withTenant(testDb().db, t.id, (tx) =>
-      tx
-        .select({ id: auditEvents.id })
-        .from(auditEvents)
-        .where(and(eq(auditEvents.objectType, OBJECT))),
-    );
-    expect(audited.length - before.length).toBe(expected.length);
-  });
+  }
 });
