@@ -26,6 +26,7 @@ import {
 import type { ScopeBusinessContext } from '../permission/module-contracts.js';
 import { button, objectContext, requestScope, writeFields } from '../permission/module-route-access.js';
 import { EMPTY_SCOPE } from '../permission/scope-types.js';
+import { superiorSnapshots } from './superior.js';
 
 export const OBJECTS = survey360.SURVEY360_OBJECTS;
 export const BUTTONS = survey360.SURVEY360_BUTTONS;
@@ -432,12 +433,17 @@ export async function audit360(
   ctx: Pick<Survey360Context, 'tenantId' | 'commandId' | 'now'> & { readonly actorUserId: string | null },
   entry: AuditEntry,
 ): Promise<void> {
+  const snapshots =
+    entry.objectType === 'survey360-person'
+      ? await superiorSnapshots(tx, ctx.tenantId, entry.before, entry.after)
+      : { before: entry.before, after: entry.after };
   await recordAudit(tx, {
     tenantId: ctx.tenantId,
     actorUserId: ctx.actorUserId,
     commandId: ctx.commandId,
     occurredAt: ctx.now,
     ...entry,
+    ...snapshots,
   });
 }
 

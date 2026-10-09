@@ -354,12 +354,15 @@ const REPLAY_CASES: Record<string, Case | NotApplicable> = {
     const key = randomUUID();
     const saved = (await (await expectStatus(update(key, person!.revision), 200)).json()) as PersonView;
     await s.narrow();
-    // 重放与新命令同一判定（DEC-319①）：上级仍是原值、没有改动，不重新校验可见性，返回原结果；范围外上级只给 ID
-    // （DEC-319②），不带其姓名、邮箱等字段
+    // 未改上级仍保留原值（DEC-319①）；F-057 / DEC-325③：收窄后重放可显示上级姓名，但不能带邮箱等字段。
     const replay = await expectStatus(update(key, person!.revision), 200);
     expect(await replay.clone().json()).toEqual(saved);
+    expect(await replay.clone().json()).toMatchObject({
+      superiorPersonId: env.people.b1.id,
+      superior: { id: env.people.b1.id, name: env.people.b1.name, avatar: null },
+    });
     const replayText = await replay.text();
-    for (const marker of [env.people.b1.name, env.people.b1.email]) expect(replayText).not.toContain(marker);
+    expect(replayText).not.toContain(env.people.b1.email);
     const same = (await (await expectStatus(update(randomUUID(), saved.revision), 200)).json()) as PersonView;
     expect(same.superiorPersonId).toBe(env.people.b1.id);
     // 真的改成另一个范围外的人：仍是“上级人员不存在”
