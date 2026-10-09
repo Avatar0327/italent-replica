@@ -319,7 +319,49 @@
       "obj:Survey360.Result:view"
     ]
   },
+  "GET /api/tenant/survey360/activities/:id/reports/:reportId/download": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Result:view"
+    ]
+  },
   "GET /api/tenant/survey360/activities/:id/score-tables": {
+    "all": {
+      "code": "NOT_FOUND",
+      "error": "ff79ec397a20",
+      "status": 404
+    },
+    "fieldQueries": [],
+    "invalidId": {
+      "code": "VALIDATION_FAILED",
+      "error": "17147722c2a8",
+      "status": 400
+    },
+    "scopeQueries": [
+      "scope:Survey360/Survey360.Person/Survey360.Person.detail"
+    ],
+    "trace": [
+      "btn:Survey360.Activity#viewAll@list",
+      "obj:Survey360.Activity:view",
+      "obj:Survey360.Result:view"
+    ]
+  },
+  "GET /api/tenant/survey360/activities/:id/score-tables/download": {
     "all": {
       "code": "NOT_FOUND",
       "error": "ff79ec397a20",

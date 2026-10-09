@@ -66,9 +66,9 @@ const withPolicy = (base: ManifestRoute, policy: RoutePolicy): ManifestRoute => 
 const withTable = (k: string, obligations: readonly Obligation[]): RequiredTable => ({ ...REQUIRED, [k]: obligations });
 
 describe('AC-PRM-FW-08 发现探测：冻结与覆盖', () => {
-  it('覆盖全部已声明端点（473），每个模块一个冻结文件，条目数与模块端点数一致', () => {
+  it('覆盖全部已声明端点（476），每个模块一个冻结文件，条目数与模块端点数一致', () => {
     expect(Object.keys(fresh).sort()).toEqual(manifest.declared.map(key).sort());
-    expect(manifest.declared).toHaveLength(473);
+    expect(manifest.declared).toHaveLength(476);
     const groups = groupByModule(fresh);
     const files = readdirSync(PROBE_DIR).filter((f) => f.endsWith('.json'));
     expect(files.sort()).toEqual(
@@ -113,12 +113,12 @@ describe('AC-PRM-FW-08 P0 / P3：真实声明 + 显式表零发现', () => {
     expect(findings, show(findings)).toEqual([]);
   });
 
-  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：125 项有实际用途 + 59 项冗余观测（含 #125 新增 34 + 18），互斥', () => {
+  it('不带登记检查：未认领的"端点 × 请求键"恰好等于两本账的登记对之并集：129 项有实际用途 + 59 项冗余观测（含 #125 新增 34 + 18、F-060 新增 4），互斥', () => {
     const open = check(manifest.declared);
     expect(codes(open).every((c) => c === 'PROBE_ADMISSION_UNCLAIMED')).toBe(true);
     const gaps = KNOWN_GAPS.flatMap((g) => g.pairs);
     const redundant = REDUNDANT_OBSERVATIONS.flatMap((g) => g.pairs);
-    expect(gaps).toHaveLength(125);
+    expect(gaps).toHaveLength(129);
     expect(redundant).toHaveLength(59);
     const all = [...gaps, ...redundant].map(([r, k]) => `${r}\t${k}`);
     expect(new Set(all).size, '登记对不重复，两本账互斥').toBe(all.length);

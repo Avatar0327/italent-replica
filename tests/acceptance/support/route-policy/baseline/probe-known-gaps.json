@@ -381,7 +381,7 @@
   },
   {
     "id": "survey360.allActivities#8",
-    "purpose": "资源守卫内部备选（#125 R3-T03 PR-B 新增活动端点：requireActivity 按 allActivities 判活动可见）",
+    "purpose": "资源守卫内部备选（#125 R3-T03 PR-B 新增活动端点：requireActivity 按 allActivities 判活动可见）；F-060 下载端点（报告 PDF 复用 detail、报表 PNG 复用 scoreTables）同一资源守卫",
     "owner": "B1 语义补表 / 声明；360 组 Tier 1 本期不交付（DEC-356②），未排期部分转 F，退出条件：360 组 Tier 1 或接管",
     "evidence": [
       {
@@ -401,12 +401,16 @@
         "anchor": "module.get('/activities/:id/reports', (c) => read(c, deps, VIEW, async (tx, admin, tenant) => { const activity = await requireActivity(tx, admin, uuidParam(c));"
       },
       {
+        "file": "apps/api/src/modules/survey360/reports.ts",
+        "anchor": "const detail = async (c: C, tx: Tx, admin: Admin, tenant: TenantContext) => { const activity = await requireActivity(tx, admin, uuidParam(c));"
+      },
+      {
         "file": "apps/api/src/modules/survey360/progress.ts",
         "anchor": "const activity = await requireActivity(tx, ctx.admin, id, true); await visibleRelation(tx, activity.id, ctx.admin, relationId);"
       },
       {
         "file": "apps/api/src/modules/survey360/tables.ts",
-        "anchor": "read( c, deps, { object: 'result' }, async (tx, admin) => { const activity = await requireActivity(tx, admin, uuidParam(c));"
+        "anchor": "async function scoreTables(tx: Tx, admin: Admin, id: string, raw: Record<string, string>) { const activity = await requireActivity(tx, admin, id);"
       }
     ],
     "pairs": [
@@ -443,11 +447,27 @@
         "obj:Survey360.Activity:view"
       ],
       [
+        "GET /api/tenant/survey360/activities/:id/reports/:reportId/download",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/reports/:reportId/download",
+        "obj:Survey360.Activity:view"
+      ],
+      [
         "GET /api/tenant/survey360/activities/:id/score-tables",
         "btn:Survey360.Activity#viewAll@list"
       ],
       [
         "GET /api/tenant/survey360/activities/:id/score-tables",
+        "obj:Survey360.Activity:view"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/score-tables/download",
+        "btn:Survey360.Activity#viewAll@list"
+      ],
+      [
+        "GET /api/tenant/survey360/activities/:id/score-tables/download",
         "obj:Survey360.Activity:view"
       ],
       [
