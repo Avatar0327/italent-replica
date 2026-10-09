@@ -130,16 +130,16 @@ describe('AC-TR-calc-rule 重放与启用提示按当前授权（真实授权器
     return { a, b, rule: (await created.json()) as CalcRuleView };
   }
 
-  it.each([
-    ['没有字段目录对象查看权', { fields: 'none' as const }],
-    ['字段目录范围里没有这些字段', { fields: 'creator' as const }],
-    ...REFERENCE_COLUMNS.map(
-      (column) => [`缺字段目录「${column}」列查看权`, { fields: 'seeAll' as const, column }] as const,
-    ),
-  ])('P2-08 残留：%s 时启用循环规则：200，仍给出不含字段名的循环提示', async (_label, options) => {
+  type Lacking = { readonly fields: 'none' | 'creator' | 'seeAll'; readonly column?: string };
+  const LACKING: readonly (readonly [string, Lacking])[] = [
+    ['没有字段目录对象查看权', { fields: 'none' }],
+    ['字段目录范围里没有这些字段', { fields: 'creator' }],
+    ...REFERENCE_COLUMNS.map((column) => [`缺字段目录「${column}」列查看权`, { fields: 'seeAll', column }] as const),
+  ];
+  it.each(LACKING)('P2-08 残留：%s 时启用循环规则：200，仍给出不含字段名的循环提示', async (_label, options) => {
     const { a, b, rule } = await cyclicRule();
     const operator = await calcRuleOperator(world, { seeAll: true, fields: options.fields });
-    if ('column' in options) expect((await fieldPermission(operator, { hidden: [options.column] })).status).toBe(200);
+    if (options.column) expect((await fieldPermission(operator, { hidden: [options.column] })).status).toBe(200);
     const enable = await operator.request('PATCH', `${CALC_RULES}/${rule.id}`, { ifMatch: 1, body: { enabled: true } });
     expect(enable.status, await enable.clone().text()).toBe(200);
     const view = (await enable.json()) as CalcRuleView;
