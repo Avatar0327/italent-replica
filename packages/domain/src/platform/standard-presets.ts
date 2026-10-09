@@ -12,6 +12,12 @@ import { PERSONNEL_OBJECTS } from '../personnel/catalog.js';
 import { SURVEY360_APP, SURVEY360_PROFILES } from '../survey360/catalog.js';
 import { TALENT_APP, TALENT_OBJECTS } from '../talent/catalog.js';
 import { TALENT_REVIEW_APP, TALENT_REVIEW_CONFIG_OBJECTS, TALENT_REVIEW_OBJECTS } from '../talent-review/catalog.js';
+import {
+  SUCCESSION_APP,
+  SUCCESSION_CONFIG_OBJECTS,
+  SUCCESSION_OBJECTS,
+  type SuccessionObject,
+} from '../succession/catalog.js';
 
 /**
  * 编制方案的“看全部”目标（数据源类）：编制方案与组织编制共用对象 OrganizationEstablishment，对象级看全部会连带放开
@@ -88,6 +94,78 @@ function readOnly(definition: ObjectDefinition): ObjectPermission {
   };
 }
 
+/** 指定数据操作与按钮（按钮编码，含全部级别）；字段全部可见、非系统字段可编辑。 */
+function partial(
+  definition: ObjectDefinition,
+  operations: readonly ('create' | 'update' | 'delete')[],
+  buttons: readonly string[],
+): ObjectPermission {
+  return {
+    ...full(definition),
+    dataOperations: {
+      create: operations.includes('create'),
+      update: operations.includes('update'),
+      delete: operations.includes('delete'),
+    },
+    buttons: definition.buttons
+      .filter((b) => buttons.includes(b.code))
+      .map((b) => ({ buttonCode: b.code, level: b.level })),
+  };
+}
+
+const succession = (object: SuccessionObject) => SUCCESSION_OBJECTS[object];
+const ALL_WRITES = ['create', 'update', 'delete'] as const;
+
+/**
+ * R3-T05 设计 §8.1 的三个标准身份。数据范围一律不预置（硬规则：默认空），由租户管理员按（用户 ×
+ * SuccessionAndDevelopment）授予；唯一例外与人才盘点同口径：没有组织字段的规则配置对象按 DEC-121 给继任管理员预置
+ * 看全部，否则无人能维护规则。现有标准 HR 身份不自动获得继任权限；许可归属未取证（🟡），与人才标准管理员同口径不占名额。
+ */
+const SUCCESSION_PROFILES: readonly StandardProfile[] = [
+  {
+    code: 'standard_succession_admin',
+    name: '继任管理员（继任与发展）',
+    description: '拥有继任管理的全部功能，可见数据按数据范围控制',
+    licenseType: null,
+    apps: [SUCCESSION_APP],
+    objects: Object.values(SUCCESSION_OBJECTS).map(full),
+    hr: false,
+    seeAll: SUCCESSION_CONFIG_OBJECTS.map((key) => ({
+      appCode: SUCCESSION_APP,
+      targetKind: 'entity' as const,
+      targetCode: succession(key).code,
+    })),
+  },
+  {
+    // HR：继任记录、地图、结果与任务；不含规则配置（HR 读规则正文一律 403，§8.3）；批次终止只给管理员（§2.2 #17）
+    code: 'standard_succession_hr',
+    name: '继任 HR（继任与发展）',
+    description: '维护继任记录与地图，可见数据按数据范围控制',
+    licenseType: null,
+    apps: [SUCCESSION_APP],
+    objects: [
+      ...(['record', 'map', 'riskResult', 'healthResult', 'calcRun'] as const).map((key) => full(succession(key))),
+      partial(succession('syncBatch'), ALL_WRITES, ['sync', 'retry']),
+    ],
+    hr: false,
+  },
+  {
+    // 继任侧系统主体（§4.0，succession.system_principal_user_id 指向的服务账号）：同步与计算的目标写入身份
+    code: 'standard_succession_runner',
+    name: '继任计算主体（继任与发展）',
+    description: '继任同步与计算的系统主体身份，可写范围由租户管理员授予',
+    licenseType: null,
+    apps: [SUCCESSION_APP],
+    objects: [
+      partial(succession('record'), ALL_WRITES, ['create', 'update', 'delete']),
+      partial(succession('riskResult'), ['update'], ['assign']),
+      partial(succession('healthResult'), ['update'], ['assign', 'reset']),
+      partial(succession('map'), [], ['computeRisk', 'computeHealth', 'computeStats']),
+    ],
+    hr: false,
+  },
+];
+
 const MANAGER_OBJECTS = new Set<string>([
   MODULE_OBJECTS.employee.code,
   MODULE_OBJECTS.employmentRecord.code,
@@ -156,6 +234,7 @@ export const STANDARD_PROFILES: readonly StandardProfile[] = [
       targetCode: TALENT_REVIEW_OBJECTS[key].code,
     })),
   },
+  ...SUCCESSION_PROFILES,
   {
     // 经理自助须显式授权（C-003 复核，06 §8）；数据范围由汇报关系规则给出，不预置看全部
     code: 'standard_manager',

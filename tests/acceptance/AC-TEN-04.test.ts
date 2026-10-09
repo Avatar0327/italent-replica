@@ -163,6 +163,10 @@ describe('AC-TEN-04 平台开通租户：标准预置下发', () => {
         'standard_talent_admin',
         // R3-T04 设计 §6.1（C-06）：盘点管理员（人才盘点）
         'standard_talent_review_admin',
+        // R3-T05 设计 §8.1：继任管理员 / 继任 HR / 继任计算主体（继任与发展）
+        'standard_succession_admin',
+        'standard_succession_hr',
+        'standard_succession_runner',
       ].sort(),
     );
     expect(items.every((p) => p.source === 'standard')).toBe(true);
