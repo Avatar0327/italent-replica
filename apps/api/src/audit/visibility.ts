@@ -48,6 +48,7 @@ import {
 import { JOB_OBJECT_CODES } from '../modules/permission/module-route-access.js';
 import { creatorSql } from '../modules/permission/scope-audit.js';
 import { survey360AuditScope } from '../modules/survey360/access.js';
+import { survey360PersonAuditFields } from './survey360-person.js';
 import { IDP_AUDIT_ACTIONS, IDP_ORG_OBJECTS, IDP_PERSON_OBJECTS } from '../modules/idp/access.js';
 import { KEY_INFO, keyInfoScopeSql, keyInfoSnapshot, type KeyInfoSpec } from '../modules/idp/key-info-scope.js';
 import {
@@ -708,7 +709,13 @@ async function resolveRule(deps: Deps, ctx: TenantContext, rule: Rule): Promise<
     if (!extra) return undefined;
     const scope = { all: false, hasDataPermission: true } as ModuleScope;
     const objectFields = rule.objectPermission ? await getModuleViewableFields(deps, ctx, rule.objectCode) : undefined;
-    return { rule, scope, inputs: { extra, objectFields }, fields: fixed ?? withProtocol(objectFields, rule.protocol) };
+    const fields = fixed ?? withProtocol(objectFields, rule.protocol);
+    return {
+      rule,
+      scope,
+      inputs: { extra, objectFields },
+      fields: rule.types.includes('survey360-person') ? survey360PersonAuditFields(fields) : fields,
+    };
   }
   if (!(await canView())) return undefined;
   const scope = await resolveModuleScope(deps, ctx, undefined, rule.objectCode, undefined, rule.view);
@@ -856,6 +863,11 @@ function configPredicate(config: ReadonlyMap<string, ResolvedConfig>, field: str
 function fieldScope(fields: ReadonlySet<string> | undefined, field: string | undefined): SQL {
   if (fields === undefined) return sql`true`;
   if (field !== undefined && !fieldVisible(fields, field)) return sql`false`;
+  // 派生引用字段须对同一条差异联合校验精确路径与筛选字段，不能借隐藏的 superior.name 匹配顶层 name。
+  if (field !== undefined && fields instanceof ExactAuditFields)
+    return sql`EXISTS (SELECT 1 FROM jsonb_array_elements(audit_events.changes) c
+      WHERE c->>'field' = ANY(${textArray([...fields])})
+        AND (c->>'field'=${field} OR right(c->>'field',${field.length + 1})=${`.${field}`}))`;
   if (field !== undefined && fields instanceof CapacityAuditFields)
     return sql`EXISTS (SELECT 1 FROM jsonb_array_elements(${capacityAuditChanges(fields, sql`audit_events.changes`)}) c
       WHERE c->>'field'=${field} OR right(c->>'field',${field.length + 1})=${`.${field}`})`;
@@ -865,6 +877,9 @@ function fieldScope(fields: ReadonlySet<string> | undefined, field: string | und
 /** 该日志（表或别名）至少有一个字段变化在可见字段内。 */
 function changedVisible(table: string, fields: ReadonlySet<string> | undefined): SQL {
   if (fields === undefined) return sql`true`;
+  if (fields instanceof ExactAuditFields)
+    return sql`EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(${sql.identifier(table)}.changes, '[]'::jsonb)) c
+      WHERE c->>'field' = ANY(${textArray([...fields])}))`;
   const changes =
     fields instanceof CapacityAuditFields
       ? capacityAuditChanges(fields, sql`${sql.identifier(table)}.changes`)
