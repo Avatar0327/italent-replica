@@ -183,8 +183,8 @@ describe('AC-EV-contract P0 ①：评定流程对象目录（DEC-331②、DEC-36
     expect(byCode(FLOW_CODES.staffEvaluation).buttons.find((b) => b.code === 'nominate')).toMatchObject({
       requires: 'create',
     });
-    // 规格 24 EV-R31 🟢：TEvaluation.EvaluationRecord / Abstain
-    expect(buttonsOf(byCode(FLOW_CODES.judgeRecord))).toContain('abstain@detail');
+    // 规格 24 EV-R31 🟢：TEvaluation.EvaluationRecord / Abstain（原站编码，大小写照抄）
+    expect(buttonsOf(byCode(FLOW_CODES.judgeRecord))).toContain('Abstain@detail');
     const activity = Object.values(catalogOf('EVALUATION_OBJECTS')).find(
       (definition) => definition.code === 'TEvaluation.EvaluationActivity',
     )!;
@@ -218,6 +218,18 @@ describe('AC-EV-contract P0 ①：身份配置与审计规则位（DEC-197 fail-
       );
       expect(response.status, `${definition.code}: ${await response.clone().text()}`).toBe(200);
     }
+    // 弃权按钮用固定载荷（原站编码 Abstain，规格 24 EV-R31），不从目录生成，防止目录与载荷同错同过
+    const abstain = await setObjectPermission(
+      world,
+      profile,
+      {
+        dataOperations: { create: false, update: true, delete: false },
+        fields: [{ fieldCode: 'abstainReason', view: true, edit: true }],
+        buttons: [{ buttonCode: 'Abstain', level: 'detail' }],
+      },
+      FLOW_CODES.judgeRecord,
+    );
+    expect(abstain.status, await abstain.clone().text()).toBe(200);
     const seeAll = await world.api.request('PUT', `${BASE}/profiles/${profile.id}/data-scopes/${EV_APP}`, {
       ...world.asAdmin,
       ifMatch: 0,
