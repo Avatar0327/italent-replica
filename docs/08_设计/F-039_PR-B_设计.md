@@ -1,4 +1,4 @@
-# F-039 权限框架强制 PR-B：设计与拆分 v3
+# F-039 权限框架强制 PR-B：设计与拆分 v4
 
 > 任务：F-039 PR-B（C 档，设计先行 DEC-249 / 285③；DEC-338①：设计与拆分由 Opus 做，实现拆小交 Sonnet，审查由 Codex 做）
 > 分支：`claude/F-039-pr-b-design`（基于 main e2e2979，PR-A #110 已合并为 6bf3b13）｜状态：**只交设计，未写代码**
@@ -10,6 +10,7 @@
 >
 > **v2**：依据 #152 设计审第 1 轮（GPT-6 Astra Ultra，#issuecomment-6082204948）与修订清单（6082206765）修订，8 项 P2 与 6 项 P3 逐条对应见附录 A。
 > **v3**：依据第 2 轮设计审（GPT-6.1 Sol xhigh，#issuecomment-6082731657）与修订清单（6082732377）修订 B-08 探测的 2 类 P2 与 2 项 P3；口径按 DEC-356、DEC-359 定稿（§5）。对照见附录 B。
+> **v4**：依据第 3 轮设计审（#152 审查原文，head 9b0c443）修订 1 类 P2（守卫内部权限的内部角色）与 1 项 P3（规范化保留固定业务值）。对照见附录 C。
 
 ## 0. 一页摘要
 
@@ -30,6 +31,7 @@
   - **B-07**：动态选择器绑定“端点 + 选择器位置 + 输入来源 + 域 + 映射值”。
   - **B-08**：授权替身。全允许只用来**发现**授权请求；验证一律在“显式表的某个准入备选”的最小授权下做 `only-branch / missing-branch` 和备选内单维撤权。
     - 撤权期望按该权限在所选备选中的**全部用途**决定；同一权限兼作准入时验证拒绝。
+    - 守卫内部的权限再按其**内部角色**（必需 / 内部“或”备选 / 内部条件）与样本实际满足的内部分支决定；承载者必需，不推出其内部每个权限都必需。
     - 每项检查先判**适用 / 未达**：验参或加载失败没有触达授权点的，不算验证，记入覆盖台账交 Tier 1。
   - **B-09**：Tier 1 成功对照样本。
     - 每个探针用独立样本；
@@ -361,13 +363,31 @@
 
    | p 在 A 中的用途 | 撤权期望 | 不符时 |
    |---|---|---|
-   | 含 A 的准入（含 A 选中的“或”组内备选），或守卫内部且承载者是 A 的准入 | 拒绝；记录拒绝码 | `OVERDECLARED:<p>@<备选>` |
+   | 含 A 的准入（含 A 选中的“或”组内备选），或守卫内部、承载者是 A 的准入且内部角色为**必需** | 拒绝；记录拒绝码 | `OVERDECLARED:<p>@<备选>` |
+   | 守卫内部、内部角色为**内部“或”备选**，且样本满足的内部分支**含** p | 拒绝 | `OVERDECLARED:<p>@<备选>/<内部分支>` |
+   | 守卫内部、内部角色为**内部“或”备选**，且样本满足的内部分支**不含** p | 准入结果不变；输出只允许在 p 的其他用途（如披露）绑定的路径上变化 | `GUARD_INNER_NOT_ALTERNATIVE`（说明 p 实际是必需项，表登错角色） |
+   | 守卫内部、内部角色为**内部条件**，按条件成立 / 不成立 | 同下面两行条件准入 | 同下 |
    | 条件准入，且样本是条件成立的输入（Tier 1 登记） | 拒绝 | `OVERDECLARED:<p>@<备选>` |
    | 条件准入，且条件不成立（Tier 0 的 `{}` 或 Tier 1 条件不成立样本） | 结果不变 | `CONDITIONAL_AS_ADMISSION(probe)` |
    | 只有披露用途（纯披露） | 仍 2xx，且输出只在该披露分支绑定的路径上变少 | `PROBE_PURPOSE_MISMATCH` |
 
    - **同权复用**：如 IDP 模板复制的通用目标 / 模板模块查看权，既是继承内容准入，又决定披露。按第一行期望拒绝，处理函数现状返回 403 `IDP_COPY_HIDDEN_FIELDS`，验证通过，不报用途错误。
    - 这类权限的披露用途在撤权时被准入拒绝遮蔽，观察不到，覆盖台账记为 `disclosure-masked`（同权复用）。披露结构由 B-01 / B-03 的静态规则约束，不算探测未覆盖的缺陷。
+   - **守卫内部角色**（第 3 轮审查 P2）：
+     - **登记**：显式表新增 `inner` 字段（归 PR-B1 的 `required/types.ts`）。
+       - 每条 `purpose: 'guard:<承载者>'` 的义务必须写：`{ role: 'required' }` / `{ role: 'or', group, alt }` / `{ role: 'when', condition }`，缺了报 `GUARD_ROLE_UNBOUND`。现表守卫内部义务 PR-A 台账计 45 条，逐条审定。
+       - 内部“或”组还要登记**不经授权器的备选**，如参与人关系，写在 `GUARD_INNER_ALTS`：`承载者 → { group, alts: { 备选名 → 权限键列表 | 'data:<关系名>' } }`，并带证据。
+       - 例：`idp.executor` 内部 = `hr: [obj:IDP.Idp:view]` 或 `participant: data:idp.planParticipant`。依据 `plan-access.ts` `requireExecutor`。
+     - **样本**：带内部“或”组的端点，Tier 1 样本按内部分支各造一份，并登记 `satisfies: { <承载者>: <内部分支> }`；探针以此决定期望。例：执行人入口造“当前待办员工（参与人）”和“非参与人 HR”两份样本。
+     - **内部 `missing-branch`**：只有权限构成的内部备选，撤掉其全部权限，同时让数据态备选不成立（用不满足它的那份样本），结果必须拒绝；否则报 `PROBE_OR_NOT_REQUIRED`。
+     - **未达**：Tier 0 不知道请求满足哪个内部分支，内部“或”备选权限的单撤记 `未达(inner-branch-unknown)`。缺某内部分支的样本，记 `未达(inner-branch-unsampled)`，进覆盖台账。
+     - **9 条同类端点**（审查列出）：能力候选 GET、目标增 / 改 / 删、任务增 / 改 / 删、review 写入、模块 content 写入。计划查看权的期望如下：
+
+       | 样本 | 撤计划查看权的期望 |
+       |---|---|
+       | 参与人样本 | 准入不变（如新增目标仍 201），`responseView` 披露路径允许变化 |
+       | 非参与人 HR 样本 | 拒绝 |
+       | 两支都不满足（非参与人 + 撤查看权） | 拒绝（内部 `missing-branch`） |
 6. **P4 输入来源与分支值**（依赖 PR-B2 的两张表；**PR-B4b 是唯一责任 PR**，合并顺序 B2 先于 B4b）：
    - 在 `branchInputs` 登记的位置逐个放入分支值，轨迹资源要等于 `branchValues`；
    - 不符报 `MISMATCH:branchValue(probe)` / `MISMATCH:branchInput(probe)`；
@@ -375,11 +395,14 @@
 7. **P5 拒绝码**：适用的 P1 得到的拒绝码，要与声明里提供该权限的节点自带的 `denied`（按钮策略、关系、本人）相等，否则报 `MISMATCH:denial`。
 8. **结果比较口径**（审查 P3）：
    - **状态部分**：状态码、`error.code`、`details.reason` 必须相等。
-   - **响应体**：规范化后比较：
-     - UUID 按首次出现顺序替换为占位符；
-     - ISO 时间与日期替换为 `<time>` / `<date>`；
-     - `revision`、`etag` 一类单调值替换为占位；
+   - **响应体**：只替换**样本间随机生成**的值，其余原样比较（第 3 轮审查 P3）：
+     - **样本自造的标识**：工厂登记“角色 → 值”（如 `plan`、`employee:e1`、`org:A`），按角色名替换为 `<plan>`、`<employee:e1>`。不同员工、组织的引用因此仍可区分。
+     - **本次请求新生成的标识**（响应里出现、不在样本登记里的 UUID）：按首次出现顺序替换为 `<new:1>`、`<new:2>`……
+     - **时间**：探测用固定时钟（`AppDeps.clock`），服务端按时钟写的时间本就稳定。数据库默认值生成的时间戳，只对登记的系统时间字段名（如 `createdAt`、`updatedAt`、`occurredAt`）替换为 `<time>`。
+     - **业务日期**（生效日期、截止日期等）与固定引用：保留原值。
+     - `revision` / `etag`：保留原值。每个探针用新样本，起始值确定。
      - 数组保持顺序（排序是现状行为的一部分）。
+     - 规范化后仍有不稳定值，冻结文件新鲜度会失败，按“不稳定值”在工厂里登记角色，不得扩大替换规则。
    - **备选自身允许的输出差异**：如管理员分支整对象、对象分支按字段权裁剪。只有路径属于 A 的出口策略差异时才允许，差异冻结为事实 `altDiff:<A> → [路径]`，由 Tier 1 的 FW-04 按备选逐路径核对。其他路径的差异报 `PROBE_CONTROL_FAILED`。
 9. **`GET /approval/types` 回归**（审查原文 HTTP 实测）：
    - 表备选 {管理员}、{对象查看} 的 `only-branch` 都得 200，且对象分支走字段裁剪（差异进 `altDiff`）；
@@ -401,6 +424,8 @@
 - 经理入口 `canViewReporting` 的义务改登准入：单撤后仍 2xx，报 `OVERDECLARED`。
 - IDP 模板复制撤通用目标 / 模板模块查看权：期望拒绝，得 403 `IDP_COPY_HIDDEN_FIELDS`，零发现；同一权限若在表里只登成纯披露，报 `PROBE_PURPOSE_MISMATCH`（审查二-1）。
 - `POST /api/tenant/idp/plans/<合法UUID>/goals`，请求体 `{}`：400 `VALIDATION_FAILED`，轨迹为空。P1 / P2 / `missing-branch` / P5 全部记“未达（validation）”，零发现，覆盖台账出现对应条目（审查二-2）。
+- **当前执行人撤计划查看权仍成功**（第 3 轮审查正例）：参与人样本新增目标，撤 `obj:IDP.Idp:view`，替身确实问到并回答 false，结果仍 201，零发现；非参与人 HR 样本撤同一权限，报拒绝；把该义务的 `inner` 改登为 `required`，报 `OVERDECLARED`；把非参与人 HR 样本的期望改登为内部“或”且不含 p，报 `GUARD_INNER_NOT_ALTERNATIVE`；删 `inner`，报 `GUARD_ROLE_UNBOUND`。
+- 规范化：两份样本引用不同员工，规范化后仍不相等；业务生效日期不同，规范化后仍不相等。
 - “或”组隔离：夹具里让 B 的权限兼作披露并补入 G(A)，生成 G⁻(A) 变体；把 A 的表项改成实际依赖 B，报 `PROBE_CONTROL_FAILED`。
 - 撤权结果变了但被撤请求未被问到的夹具，报 `PROBE_UNSTABLE`。
 - `invalidId` 改码，报 `MISMATCH:invalidId`；删映射，报 `PROBE_ACTION_UNMAPPED`。
@@ -529,7 +554,7 @@
 | B-05 | 覆盖断言 | 少生成一个备选 | 期望集合 = 生成集合 | `AC-PRM-FW-02-required.test.ts` |
 | B-06 | （复用） | `nestedTutorship` 范围改 `none` | 新分支数 = 枚举数 | `AC-PRM-FW-02-disclosure.test.ts` |
 | B-07 | `MISMATCH:branchValue / branchInput`、`BRANCH_VALUE_UNBOUND / INPUT_UNBOUND` | 六键改指标库；`path` 改名；`from` 改；job 对调；删登记 | 29 个 `map` 选择器 | `AC-PRM-FW-02-evidence.test.ts` |
-| B-08 | `PROBE_ADMISSION_UNCLAIMED / CONTROL_FAILED / OR_NOT_REQUIRED / PURPOSE_MISMATCH / ACTION_UNMAPPED / UNSTABLE / ALT_NOT_ISOLATED`、`OVERDECLARED:<p>@<备选>`、`CONDITIONAL_AS_ADMISSION(probe)`、`MISMATCH:invalidId / denial / branch*(probe)` | 表错登 / 漏登 / 多登；“或”误拆；同权项登成纯披露；隔离变体依赖 B；`invalidId` 改码；未问到却变了 | `GET /approval/types` 两支；IDP 复制同权复用 403；IDP goals `{}` 验参 400 全部记未达 | `AC-PRM-FW-08.probe.<模块>.test.ts` |
+| B-08 | `PROBE_ADMISSION_UNCLAIMED / CONTROL_FAILED / OR_NOT_REQUIRED / PURPOSE_MISMATCH / ACTION_UNMAPPED / UNSTABLE / ALT_NOT_ISOLATED`、`GUARD_ROLE_UNBOUND`、`GUARD_INNER_NOT_ALTERNATIVE`、`OVERDECLARED:<p>@<备选>`、`CONDITIONAL_AS_ADMISSION(probe)`、`MISMATCH:invalidId / denial / branch*(probe)` | 表错登 / 漏登 / 多登；“或”误拆；同权项登成纯披露；隔离变体依赖 B；`invalidId` 改码；未问到却变了 | `GET /approval/types` 两支；IDP 复制同权复用 403；IDP goals `{}` 验参 400 全部记未达；IDP 执行人参与人样本撤计划查看权仍 201 | `AC-PRM-FW-08.probe.<模块>.test.ts` |
 | B-09 | `MISMATCH:ledger / denial`、`WEAKER:scope`、`PROBE_SAMPLE_MISSING`、执行集合 ≠ 必测集合 | denied 改宽；perItem→single；删样本；多写按钮；先分页后过滤模型 | 每组全部端点；待办三项 +2 | 每组一个文件 |
 | B-10 | `RECORDED_UNREGISTERED / STALE`、`WEAKER / OVERDECLARED:precondition` | 同删事实与前提；删证据用例；字面量 | 审批八动作、合同待办 | 随所在组 |
 | B-11 | `CHANGE_UNREGISTERED`、`CHANGES_REMOVED`、`HISTORY_UNAVAILABLE` | 360 同步交换范围与 `need`；各类变更不登记 | 只增 | `AC-PRM-FW-01-changes.test.ts` |
@@ -558,7 +583,7 @@
 
 | PR | 内容 | 估算行数 | 依赖 | 并行 |
 |---|---|---|---|---|
-| **PR-B1 披露语义与范围绑定** | B-01、B-03、B-05：分支析取范式、D1～D3、R2 修订、R3 逐备选、`need` 与“或”满足、R1c / R3c、覆盖断言、`locate` 改造、结构弱化 5 类；表补 `need`（约 45 条准入 + 33 条披露）与审定台账 | 1300～1500 | 无 | 与 B2、B4a 并行 |
+| **PR-B1 披露语义与范围绑定** | B-01、B-03、B-05：分支析取范式、D1～D3、R2 修订、R3 逐备选、`need` 与“或”满足、R1c / R3c、覆盖断言、`locate` 改造、结构弱化 5 类；表补 `need`（约 45 条准入 + 33 条披露）、守卫内部义务补 `inner`（约 45 条）与 `GUARD_INNER_ALTS`、`GUARD_ROLE_UNBOUND` 规则与审定台账 | 1400～1600 | 无 | 与 B2、B4a 并行 |
 | **PR-B2 证据闭包与选择器绑定** | B-02、B-04、B-07：闭包到不动点、`unresolved`、边界清单、`DEPENDENCIES`、R9 键、分支值表、输入来源表（29 个选择器）、`compareSelectors` 五元组、弱化 3 类；PR 描述附闭包实测 | 1200～1500 | 无 | 与 B1、B4a 并行 |
 | **PR-B3 IDP 嵌套披露** | B-06：端点枚举、`nested*` 分支、三种证据模板、范围与 `need`、基准 / 摘要重生成 | 1100～1400 | B1 | 与 B2、B4a 并行 |
 | **PR-B4a 授权替身与发现探测** | B-08 替身、映射、发现探测、P0 / P3、recorded 收集器（B-10 框架）、Tier 0 冻结；PR 描述附请求数与耗时 | 1100～1300 | 无 | 与 B1～B3 并行 |
@@ -599,7 +624,7 @@
 
 - C-B1：PR-B 全体零行为变化（§1.2）。
 - C-B2：可选分支只挂根、不嵌套、名字不含点（D1～D3）。
-- C-B3：单维事实只在显式表的准入备选内推导；全允许只用于发现；撤权期望按所选备选中的全部用途决定；未触达授权点的检查记未达、不算通过；真实授权器只做冒烟一致性。
+- C-B3：单维事实只在显式表的准入备选内推导；全允许只用于发现；撤权期望按所选备选中的全部用途决定，守卫内部权限再按内部角色与样本满足的内部分支决定；未触达授权点的检查记未达、不算通过；真实授权器只做冒烟一致性。
 - C-B4：探测事实、recorded、覆盖台账都是生成后冻结、逐字节比较，变化走 B-11 登记。
 - C-B5：证据闭包边界只允许授权引擎与通用基础设施。
 - C-B6：每个探针一份新样本；台账按实际新增并提交的命令计。
@@ -617,9 +642,9 @@
 
 ## 7. 恢复点（设计阶段）
 
-- 本文件 v3 + PR 描述；无代码、无迁移。
+- 本文件 v4 + PR 描述；无代码、无迁移。
 - 下一步：
-  1. 审查合并窗口发起第 3 轮设计审；
+  1. 审查合并窗口发起第 4 轮设计审；
   2. 总编排确认拆分；
   3. 按 §4 派发 Sonnet。
 
@@ -652,3 +677,10 @@
 | P3 FW-08 依赖真实对象的未交付场景 | 未交付清单补“跨租户对象、成员停用后重放、自助解绑 / 改绑” | §5 |
 | P3 “结果等于 O\*”比较口径 | 状态部分必须相等；响应体规范化（UUID、时间、revision）；备选自身允许的输出差异冻结为 `altDiff`，由 FW-04 逐路径核对 | B-08 步骤二第 8 点 |
 | DEC-356 口径 | Q-B1～Q-B6 定稿写入 §5；B-12 改为引用接管 T1 设计；B-11 改称“削减登记（含内容变更）”，§10.6 作废标注由 PR-B6 补；Q-B7 按 DEC-359 定稿 | §0、B-11、B-12、§5 |
+
+## 附录 C：v3 → v4 对照（#152 设计审第 3 轮，head 9b0c443）
+
+| 审查项 | v4 修订 | 落点 |
+|---|---|---|
+| P2 守卫内部权限一律视为必需，误报“当前执行人撤计划查看权仍 201” | 守卫内部义务登记内部角色 `inner`（必需 / 内部“或”备选 / 内部条件），数据态备选登记在 `GUARD_INNER_ALTS`；样本按内部分支各造一份并登记 `satisfies`；撤权期望按样本实际满足的内部分支决定，新增内部 `missing-branch`、`GUARD_ROLE_UNBOUND`、`GUARD_INNER_NOT_ALTERNATIVE`；Tier 0 记 `inner-branch-unknown`；9 条 IDP 执行人类端点的期望表与正反例 | B-08 步骤二第 5 点、§3、§4 PR-B1 |
+| P3 规范化不应无差别替换 UUID 与业务日期 | 只替换样本间随机生成值：样本标识按角色名、本次新生成标识按出现顺序、系统时间戳按字段名；固定时钟；业务日期、固定引用、revision 保留原值；新增两条规范化反例 | B-08 步骤二第 8 点 |
